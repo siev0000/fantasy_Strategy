@@ -1,129 +1,65 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fantasy Strategy Prototype</title>
+  <title>Fantasy Strategy Prototype (Vue)</title>
   <link rel="stylesheet" href="./styles.css" />
-  <script src="./js/battle.js" defer></script>
-  <script src="./js/sim.js" defer></script>
+  <script src="/socket.io/socket.io.js" defer></script>
+  <script src="/vendor/vue/dist/vue.global.prod.js" defer></script>
+  <script src="./js/realistic-island.js" defer></script>
   <script src="./js/map.js" defer></script>
-  <script src="./js/main.js" defer></script>
+  <script src="./js/components/base-modal.js" defer></script>
+  <script src="./js/components/app-header.js" defer></script>
+  <script src="./js/components/map-generator-panel.js" defer></script>
+  <script src="./js/components/menu-panel.js" defer></script>
+  <script src="./js/components/room-modal.js" defer></script>
+  <script src="./js/components/battle-modal.js" defer></script>
+  <script src="./js/components/simulator-modal.js" defer></script>
+  <script src="./js/app-vue.js" defer></script>
 </head>
 <body>
-  <div class="app">
-    <header>
-      <h1>Fantasy Strategy Prototype</h1>
-    </header>
-    <main>
-      <section class="panel">
-        <div class="status" id="status">ターン: 1 / あなたの行動</div>
-        <h2>味方</h2>
-        <div id="allies" class="field"></div>
-        <h2>敵</h2>
-        <div id="enemies" class="field"></div>
-      </section>
-      <aside class="panel controls">
-        <button id="attackBtn">通常攻撃</button>
-        <button id="skillBtn" class="secondary">種族スキル</button>
-        <button id="nextBtn">ターン終了</button>
-        <button id="resetBtn" class="secondary">リセット</button>
-        <div id="log"></div>
-      </aside>
-    </main>
+  <div id="app" class="app">
+    <app-header :active-room-id="activeRoomId" @open-modal="openModal" />
 
-    <section class="panel simulator">
-      <h2>プレイテスト計算（仮）</h2>
-      <div class="sim-grid">
-        <label>地形難易度
-          <input id="terrainDifficulty" type="number" min="1" max="5" value="3" />
-        </label>
-        <label>開拓値
-          <input id="developmentPower" type="number" min="1" value="20" />
-        </label>
-        <label>参加人数（上限4）
-          <input id="participants" type="number" min="1" max="4" value="2" />
-        </label>
-        <label>現在開拓進捗（%）
-          <input id="currentProgress" type="number" min="0" max="100" value="0" />
-        </label>
-        <label>国家体制補正（%）
-          <input id="govBonus" type="number" value="0" />
-        </label>
-        <label>施設補正（%）
-          <input id="facilityBonus" type="number" value="0" />
-        </label>
-        <label>政策補正（%）
-          <input id="policyBonus" type="number" value="0" />
-        </label>
-        <label>モンスター災害率（%）
-          <input id="monsterRisk" type="number" min="0" max="100" value="50" />
-        </label>
-        <label>食料収支
-          <select id="foodBalance">
-            <option value="1">黒字</option>
-            <option value="0">均衡</option>
-            <option value="-1">赤字</option>
-          </select>
-        </label>
-        <label>現在不満度（0-100）
-          <input id="dissatisfaction" type="number" min="0" max="100" value="20" />
-        </label>
-        <label>仕事充足
-          <select id="jobsFilled">
-            <option value="1">充足</option>
-            <option value="0">不足</option>
-          </select>
-        </label>
-        <label>人口超過
-          <select id="popOver">
-            <option value="0">なし</option>
-            <option value="1">あり</option>
-          </select>
-        </label>
-        <label>防衛不足
-          <select id="defenseLow">
-            <option value="0">なし</option>
-            <option value="1">あり</option>
-          </select>
-        </label>
-      </div>
-      <div style="margin-top:8px;">
-        <button id="simTurnBtn" class="secondary">1ターン計算</button>
-      </div>
-      <div id="simResult">ここに計算結果を表示</div>
-    </section>
+    <map-generator-panel />
 
-    <section class="panel simulator">
-      <h2>地形ランダム生成</h2>
-      <div class="map-tools">
-        <label>マップサイズ
-          <select id="mapSize">
-            <option value="24x24">小 (24x24 = 144マス)</option>
-            <option value="36x36" selected>中 (36x36 = 324マス / 推奨)</option>
-            <option value="54x54">大 (54x54 = 576マス)</option>
-          </select>
-        </label>
-        <label>島形状パターン
-          <select id="islandPattern">
-            <option value="balanced" selected>標準諸島</option>
-            <option value="continent">大陸型</option>
-            <option value="archipelago">多島海</option>
-            <option value="twins">双子島</option>
-            <option value="chain">列島型</option>
-          </select>
-        </label>
-        <button id="generateShapeBtn" class="secondary">島形状のみ</button>
-        <button id="generateMapBtn" class="secondary">生成</button>
-      </div>
-      <div class="map-meta">
-        <div id="mapSizeInfo">サイズ: -</div>
-        <div id="mapCenterInfo">中央座標: -</div>
-        <div id="mapClickInfo">クリック座標: -</div>
-      </div>
-      <div id="mapStats">地形未生成</div>
-      <div id="mapGrid"></div>
-    </section>
+    <menu-panel @open-modal="openModal" />
+
+    <room-modal
+      :show="showRoomModal"
+      :socket-ready="socketReady"
+      :active-room-id="activeRoomId"
+      :room-id-input="roomIdInput"
+      :player-name-input="playerNameInput"
+      :session-status-text="sessionStatusText"
+      :session-status-class="sessionStatusClass"
+      :players-label="playersLabel"
+      @close="closeModal('room')"
+      @update:room-id-input="roomIdInput = $event"
+      @update:player-name-input="playerNameInput = $event"
+      @create-room="createRoom"
+      @join-room="joinRoom"
+      @leave-room="leaveRoom"
+    />
+
+    <battle-modal
+      :show="showBattleModal"
+      :current-state="currentState"
+      :action-disabled="actionDisabled"
+      :next-disabled="nextDisabled"
+      :reset-disabled="resetDisabled"
+      @close="closeModal('battle')"
+      @action="runAction"
+    />
+
+    <simulator-modal
+      :show="showSimModal"
+      :sim="sim"
+      :sim-result="simResult"
+      @close="closeModal('sim')"
+      @run-turn="runSimulatorTurn"
+    />
   </div>
 </body>
 </html>

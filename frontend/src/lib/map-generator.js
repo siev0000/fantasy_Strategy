@@ -1,3 +1,5 @@
+import { generateIsland as generateRealisticIsland } from "./realistic-island.js";
+
 const 地形定義 = [
   { key: "平地", color: "#d9c98b", weight: 28, short: "平" },
   { key: "森", color: "#7fa56a", weight: 18, short: "森" },
@@ -229,11 +231,8 @@ function generateIslands(grid, w, h, totalTiles, patternId = "balanced") {
   const cfg = 島パターン定義[patternId] || 島パターン定義.balanced;
   const targetLand = Math.floor(totalTiles * (cfg.landMin + Math.random() * (cfg.landMax - cfg.landMin)));
   if (patternId === "realistic") {
-    const realistic = window.RealisticIslandGenerator;
-    if (realistic?.generateIsland) {
-      realistic.generateIsland(grid, w, h, targetLand, cfg);
-      return cfg.name;
-    }
+    generateRealisticIsland(grid, w, h, targetLand, cfg);
+    return cfg.name;
   }
   const baseSeedCount = Math.max(2, Math.floor(totalTiles / 140));
   const seedCount = patternId === "archipelago"
@@ -971,15 +970,11 @@ function generateTerrainMap() {
   renderMap(grid, w, h, false, patternName, riverData);
 }
 
-function initMapGenerator() {
-  document.getElementById("generateMapBtn").addEventListener("click", generateTerrainMap);
-  document.getElementById("generateShapeBtn").addEventListener("click", generateIslandShapeOnly);
-  document.getElementById("mapGrid").addEventListener("click", handleMapClick);
-  window.addEventListener("resize", fitMapGrid);
-  generateIslandShapeOnly();
-}
-
-window.App = window.App || {};
-window.App.initMapGenerator = initMapGenerator;
+export {
+  fitMapGrid,
+  handleMapClick,
+  generateIslandShapeOnly,
+  generateTerrainMap
+};
 
 

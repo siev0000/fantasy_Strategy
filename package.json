@@ -1,0 +1,31 @@
+{
+  "name": "fantasy-strategy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fantasy Strategy prototype with room-based multiplayer.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "dev:front": "vite --config frontend/vite.config.mjs",
+    "dev:all": "concurrently -n server,front \"npm run dev\" \"npm run dev:front\"",
+    "build:front": "vite build --config frontend/vite.config.mjs",
+    "preview:front": "vite preview --config frontend/vite.config.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "express": "^4.21.2",
+    "phaser": "^3.90.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "concurrently": "^9.1.2",
+    "vite": "^6.4.1"
+  }
+}
