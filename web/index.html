@@ -4,127 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fantasy Strategy Prototype</title>
-  <style>
-    :root {
-      --bg1: #f7f2e8;
-      --bg2: #e7d8b7;
-      --ink: #1e1a14;
-      --panel: #fffaf0;
-      --accent: #8c4a2f;
-      --accent-2: #355c7d;
-      --good: #2e7d32;
-      --bad: #b71c1c;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
-      color: var(--ink);
-      background: radial-gradient(circle at 20% 20%, var(--bg1), var(--bg2));
-      display: grid;
-      place-items: center;
-      padding: 20px;
-    }
-    .app {
-      width: min(1000px, 100%);
-      background: rgba(255, 250, 240, 0.92);
-      border: 2px solid #bda077;
-      border-radius: 14px;
-      box-shadow: 0 16px 32px rgba(70, 44, 11, 0.22);
-      overflow: hidden;
-    }
-    header {
-      padding: 16px 20px;
-      background: linear-gradient(120deg, #efe0c4, #dfc49a);
-      border-bottom: 2px solid #bda077;
-    }
-    h1 {
-      margin: 0;
-      font-size: 1.25rem;
-      letter-spacing: 0.04em;
-    }
-    main {
-      display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 14px;
-      padding: 14px;
-    }
-    .panel {
-      background: var(--panel);
-      border: 1px solid #ceb487;
-      border-radius: 10px;
-      padding: 12px;
-    }
-    .field {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-    }
-    .unit {
-      border: 1px solid #ba9d73;
-      border-radius: 8px;
-      padding: 8px;
-      background: #fff;
-    }
-    .unit.enemy { background: #fff2f2; }
-    .unit.ally { background: #f3fbff; }
-    .unit h3 {
-      margin: 0 0 4px;
-      font-size: 0.95rem;
-    }
-    .small { font-size: 0.82rem; opacity: 0.85; }
-    .hp-wrap {
-      margin-top: 6px;
-      width: 100%;
-      height: 8px;
-      border-radius: 999px;
-      background: #eee2d3;
-      overflow: hidden;
-    }
-    .hp {
-      height: 100%;
-      background: linear-gradient(90deg, #7cb342, #2e7d32);
-    }
-    .controls {
-      display: grid;
-      gap: 10px;
-    }
-    button {
-      border: none;
-      border-radius: 8px;
-      padding: 10px;
-      font-weight: 700;
-      cursor: pointer;
-      color: #fff;
-      background: var(--accent);
-    }
-    button.secondary { background: var(--accent-2); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    #log {
-      max-height: 290px;
-      overflow: auto;
-      border: 1px solid #d5c5a8;
-      border-radius: 8px;
-      padding: 8px;
-      background: #fff;
-      font-size: 0.86rem;
-      line-height: 1.4;
-    }
-    .status {
-      font-weight: 700;
-      padding: 8px;
-      border-radius: 8px;
-      background: #f3ead9;
-      border: 1px solid #ccb088;
-    }
-    .win { color: var(--good); }
-    .lose { color: var(--bad); }
-    @media (max-width: 860px) {
-      main { grid-template-columns: 1fr; }
-      .field { grid-template-columns: repeat(2, 1fr); }
-    }
-  </style>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="./js/battle.js" defer></script>
+  <script src="./js/sim.js" defer></script>
+  <script src="./js/map.js" defer></script>
+  <script src="./js/main.js" defer></script>
 </head>
 <body>
   <div class="app">
@@ -147,229 +31,99 @@
         <div id="log"></div>
       </aside>
     </main>
+
+    <section class="panel simulator">
+      <h2>プレイテスト計算（仮）</h2>
+      <div class="sim-grid">
+        <label>地形難易度
+          <input id="terrainDifficulty" type="number" min="1" max="5" value="3" />
+        </label>
+        <label>開拓値
+          <input id="developmentPower" type="number" min="1" value="20" />
+        </label>
+        <label>参加人数（上限4）
+          <input id="participants" type="number" min="1" max="4" value="2" />
+        </label>
+        <label>現在開拓進捗（%）
+          <input id="currentProgress" type="number" min="0" max="100" value="0" />
+        </label>
+        <label>国家体制補正（%）
+          <input id="govBonus" type="number" value="0" />
+        </label>
+        <label>施設補正（%）
+          <input id="facilityBonus" type="number" value="0" />
+        </label>
+        <label>政策補正（%）
+          <input id="policyBonus" type="number" value="0" />
+        </label>
+        <label>モンスター災害率（%）
+          <input id="monsterRisk" type="number" min="0" max="100" value="50" />
+        </label>
+        <label>食料収支
+          <select id="foodBalance">
+            <option value="1">黒字</option>
+            <option value="0">均衡</option>
+            <option value="-1">赤字</option>
+          </select>
+        </label>
+        <label>現在不満度（0-100）
+          <input id="dissatisfaction" type="number" min="0" max="100" value="20" />
+        </label>
+        <label>仕事充足
+          <select id="jobsFilled">
+            <option value="1">充足</option>
+            <option value="0">不足</option>
+          </select>
+        </label>
+        <label>人口超過
+          <select id="popOver">
+            <option value="0">なし</option>
+            <option value="1">あり</option>
+          </select>
+        </label>
+        <label>防衛不足
+          <select id="defenseLow">
+            <option value="0">なし</option>
+            <option value="1">あり</option>
+          </select>
+        </label>
+      </div>
+      <div style="margin-top:8px;">
+        <button id="simTurnBtn" class="secondary">1ターン計算</button>
+      </div>
+      <div id="simResult">ここに計算結果を表示</div>
+    </section>
+
+    <section class="panel simulator">
+      <h2>地形ランダム生成</h2>
+      <div class="map-tools">
+        <label>マップサイズ
+          <select id="mapSize">
+            <option value="24x24">小 (24x24 = 144マス)</option>
+            <option value="36x36" selected>中 (36x36 = 324マス / 推奨)</option>
+            <option value="54x54">大 (54x54 = 576マス)</option>
+          </select>
+        </label>
+        <label>島形状パターン
+          <select id="islandPattern">
+            <option value="balanced" selected>標準諸島</option>
+            <option value="continent">大陸型</option>
+            <option value="archipelago">多島海</option>
+            <option value="twins">双子島</option>
+            <option value="chain">列島型</option>
+          </select>
+        </label>
+        <button id="generateShapeBtn" class="secondary">島形状のみ</button>
+        <button id="generateMapBtn" class="secondary">生成</button>
+      </div>
+      <div class="map-meta">
+        <div id="mapSizeInfo">サイズ: -</div>
+        <div id="mapCenterInfo">中央座標: -</div>
+        <div id="mapClickInfo">クリック座標: -</div>
+      </div>
+      <div id="mapStats">地形未生成</div>
+      <div id="mapGrid"></div>
+    </section>
   </div>
-
-  <script>
-    const races = {
-      "只人": { hp: 110, atk: 22, skill: "戦術眼", effect: "次の攻撃+10" },
-      "エルフ": { hp: 85, atk: 26, skill: "森の加護", effect: "自分を20回復" },
-      "オーガ": { hp: 145, atk: 30, skill: "暴走", effect: "大ダメージ40" },
-      "ゴブリン": { hp: 78, atk: 18, skill: "奇襲", effect: "敵に24、先手" },
-      "竜人": { hp: 125, atk: 28, skill: "竜炎", effect: "全体に16" },
-      "悪魔": { hp: 95, atk: 32, skill: "魂喰", effect: "敵に30、自分10回復" },
-      "天使": { hp: 105, atk: 21, skill: "聖域", effect: "味方全員12回復" },
-      "ヴァンパイア": { hp: 100, atk: 24, skill: "吸血", effect: "敵に26、自分13回復" }
-    };
-
-    const allyOrder = ["只人", "エルフ", "竜人", "天使"];
-    const enemyOrder = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"];
-
-    const state = {
-      turn: 1,
-      buffAtk: 0,
-      allies: [],
-      enemies: [],
-      activeSide: "ally",
-      ended: false
-    };
-
-    function unitFromRace(race, side, id) {
-      const base = races[race];
-      return {
-        id,
-        side,
-        race,
-        name: `${race}${side === "ally" ? "兵" : "敵"}`,
-        hp: base.hp,
-        maxHp: base.hp,
-        atk: base.atk,
-        alive: true
-      };
-    }
-
-    function init() {
-      state.turn = 1;
-      state.buffAtk = 0;
-      state.activeSide = "ally";
-      state.ended = false;
-      state.allies = allyOrder.map((r, i) => unitFromRace(r, "ally", `a${i}`));
-      state.enemies = enemyOrder.map((r, i) => unitFromRace(r, "enemy", `e${i}`));
-      document.getElementById("log").innerHTML = "";
-      log("戦闘開始。あなたが先攻です。");
-      render();
-    }
-
-    function aliveUnits(side) {
-      const list = side === "ally" ? state.allies : state.enemies;
-      return list.filter(u => u.alive);
-    }
-
-    function firstAlive(side) {
-      return aliveUnits(side)[0] || null;
-    }
-
-    function damage(target, amount) {
-      target.hp = Math.max(0, target.hp - amount);
-      if (target.hp === 0) target.alive = false;
-    }
-
-    function heal(target, amount) {
-      if (!target.alive) return;
-      target.hp = Math.min(target.maxHp, target.hp + amount);
-    }
-
-    function checkEnd() {
-      const allyAlive = aliveUnits("ally").length;
-      const enemyAlive = aliveUnits("enemy").length;
-      if (allyAlive === 0 || enemyAlive === 0) {
-        state.ended = true;
-        const win = enemyAlive === 0;
-        setStatus(win ? "勝利" : "敗北", win ? "win" : "lose");
-        log(win ? "敵部隊を壊滅させました。" : "味方部隊が全滅しました。", true);
-      }
-    }
-
-    function normalAttack() {
-      if (state.ended || state.activeSide !== "ally") return;
-      const actor = firstAlive("ally");
-      const target = firstAlive("enemy");
-      if (!actor || !target) return;
-      const value = actor.atk + state.buffAtk;
-      state.buffAtk = 0;
-      damage(target, value);
-      log(`${actor.name}が${target.name}へ${value}ダメージ。`);
-      if (!target.alive) log(`${target.name}を撃破。`);
-      checkEnd();
-      render();
-    }
-
-    function raceSkill() {
-      if (state.ended || state.activeSide !== "ally") return;
-      const actor = firstAlive("ally");
-      if (!actor) return;
-      const race = actor.race;
-      const targetEnemy = firstAlive("enemy");
-      if (!targetEnemy) return;
-
-      switch (race) {
-        case "只人":
-          state.buffAtk = 10;
-          log(`${actor.name}の戦術眼。次の通常攻撃が+10。`);
-          break;
-        case "エルフ":
-          heal(actor, 20);
-          log(`${actor.name}が森の加護で20回復。`);
-          break;
-        case "オーガ":
-          damage(targetEnemy, 40);
-          log(`${actor.name}が暴走し${targetEnemy.name}へ40ダメージ。`);
-          break;
-        case "ゴブリン":
-          damage(targetEnemy, 24);
-          log(`${actor.name}の奇襲で${targetEnemy.name}へ24ダメージ。`);
-          break;
-        case "竜人":
-          aliveUnits("enemy").forEach(u => damage(u, 16));
-          log(`${actor.name}が竜炎で敵全体へ16ダメージ。`);
-          break;
-        case "悪魔":
-          damage(targetEnemy, 30);
-          heal(actor, 10);
-          log(`${actor.name}が魂喰で${targetEnemy.name}へ30ダメージ、10回復。`);
-          break;
-        case "天使":
-          aliveUnits("ally").forEach(u => heal(u, 12));
-          log(`${actor.name}が聖域を展開し味方全体を12回復。`);
-          break;
-        case "ヴァンパイア":
-          damage(targetEnemy, 26);
-          heal(actor, 13);
-          log(`${actor.name}が吸血で${targetEnemy.name}へ26ダメージ、13回復。`);
-          break;
-      }
-
-      checkEnd();
-      render();
-    }
-
-    function enemyTurn() {
-      if (state.ended) return;
-      const actor = firstAlive("enemy");
-      const target = firstAlive("ally");
-      if (!actor || !target) return;
-
-      let value = actor.atk;
-      if (actor.race === "ゴブリン") value += 6;
-      if (actor.race === "悪魔") {
-        value += 4;
-        heal(actor, 6);
-      }
-
-      damage(target, value);
-      log(`${actor.name}が${target.name}へ${value}ダメージ。`);
-      if (!target.alive) log(`${target.name}が倒れた。`);
-      checkEnd();
-    }
-
-    function endTurn() {
-      if (state.ended) return;
-      if (state.activeSide === "ally") {
-        state.activeSide = "enemy";
-        setStatus(`ターン: ${state.turn} / 敵の行動`);
-        enemyTurn();
-        if (!state.ended) {
-          state.activeSide = "ally";
-          state.turn += 1;
-          setStatus(`ターン: ${state.turn} / あなたの行動`);
-        }
-      }
-      render();
-    }
-
-    function setStatus(text, cls = "") {
-      const el = document.getElementById("status");
-      el.className = `status ${cls}`.trim();
-      el.textContent = text;
-    }
-
-    function unitCard(unit) {
-      const hpRatio = Math.round((unit.hp / unit.maxHp) * 100);
-      return `
-        <article class="unit ${unit.side} ${unit.alive ? "" : "dead"}">
-          <h3>${unit.name}</h3>
-          <div class="small">種族: ${unit.race}</div>
-          <div class="small">ATK: ${unit.atk} / HP: ${unit.hp}/${unit.maxHp}</div>
-          <div class="hp-wrap"><div class="hp" style="width:${hpRatio}%;"></div></div>
-        </article>
-      `;
-    }
-
-    function render() {
-      document.getElementById("allies").innerHTML = state.allies.map(unitCard).join("");
-      document.getElementById("enemies").innerHTML = state.enemies.map(unitCard).join("");
-      const disable = state.ended || state.activeSide !== "ally";
-      document.getElementById("attackBtn").disabled = disable;
-      document.getElementById("skillBtn").disabled = disable;
-      document.getElementById("nextBtn").disabled = state.ended;
-    }
-
-    function log(text, strong = false) {
-      const line = document.createElement("div");
-      line.innerHTML = strong ? `<b>${text}</b>` : text;
-      const logEl = document.getElementById("log");
-      logEl.prepend(line);
-    }
-
-    document.getElementById("attackBtn").addEventListener("click", normalAttack);
-    document.getElementById("skillBtn").addEventListener("click", raceSkill);
-    document.getElementById("nextBtn").addEventListener("click", endTurn);
-    document.getElementById("resetBtn").addEventListener("click", init);
-
-    init();
-  </script>
 </body>
-<<<<<<< HEAD
 </html>
-=======
-</html>
->>>>>>> 2be2fc8 (first commit)
