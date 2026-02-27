@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { io } from "socket.io-client";
 import AppHeader from "./components/AppHeader.vue";
-import MapGeneratorPanel from "./components/MapGeneratorPanel.vue";
+import PhaserMapGeneratorPanel from "./components/PhaserMapGeneratorPanel.vue";
 import MenuPanel from "./components/MenuPanel.vue";
 import RoomModal from "./components/RoomModal.vue";
 import BattleModal from "./components/BattleModal.vue";
@@ -488,6 +488,10 @@ onMounted(() => {
     setSessionStatus("ローカルモード（1人プレイ）");
   });
 
+  socket.value.on("dev:reload", () => {
+    window.location.reload();
+  });
+
   window.render_game_to_text = () => renderGameStateToText();
   window.advanceTime = ms => ms;
 });
@@ -509,7 +513,7 @@ onBeforeUnmount(() => {
   <div class="app">
     <app-header :active-room-id="activeRoomId" @open-modal="openModal" />
 
-    <map-generator-panel />
+    <phaser-map-generator-panel />
 
     <menu-panel @open-modal="openModal" />
 

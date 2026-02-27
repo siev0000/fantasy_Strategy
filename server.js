@@ -7,7 +7,33 @@ const { Server } = require("socket.io");
 const PORT = Number(process.env.PORT) || 3000;
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const FRONTEND_DIST_DIR = path.join(__dirname, "web-vue-dist");
+const SOCKET_CORS_ORIGINS = (process.env.SOCKET_CORS_ORIGINS || "")
+  .split(",")
+  .map(origin => origin.trim())
+  .filter(Boolean);
+const DEFAULT_DEV_SOCKET_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173"
+];
+const allowedSocketOrigins = new Set(
+  SOCKET_CORS_ORIGINS.length > 0 ? SOCKET_CORS_ORIGINS : DEFAULT_DEV_SOCKET_ORIGINS
+);
+const io = new Server(server, {
+  cors: {
+    origin(origin, callback) {
+      if (!origin || allowedSocketOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Socket.IO CORS blocked origin: ${origin}`));
+    },
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
 
 const RACES = {
   "只人": { hp: 110, atk: 22 },
@@ -25,7 +51,8 @@ const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"
 const VALID_ACTIONS = new Set(["attack", "skill", "next", "reset"]);
 const rooms = new Map();
 const DEV_MODE = process.env.NODE_ENV !== "production";
-const DEV_WATCH_TARGETS = ["web", "assets", "config", "data"].map(p => path.join(__dirname, p));
+const DEV_WATCH_TARGETS = ["web-vue-dist", "assets", "config", "data"].map(p => path.join(__dirname, p));
+const FRONTEND_INDEX_PATH = path.join(FRONTEND_DIST_DIR, "index.html");
 
 function unitFromRace(race, side, id) {
   const base = RACES[race];
@@ -360,15 +387,44 @@ io.on("connection", socket => {
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 app.use("/config", express.static(path.join(__dirname, "config")));
 app.use("/data", express.static(path.join(__dirname, "data")));
-app.use("/vendor", express.static(path.join(__dirname, "node_modules")));
-app.use(express.static(path.join(__dirname, "web")));
+app.use(express.static(FRONTEND_DIST_DIR));
 
 app.get("/health", (_, res) => {
   res.json({ ok: true });
 });
 
+function sendSpaIndex(res) {
+  res.sendFile(FRONTEND_INDEX_PATH, err => {
+    if (!err) return;
+    if (err.code === "ENOENT" && DEV_MODE) {
+      res.status(503).type("html").send(`<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="0.7" />
+    <title>Rebuilding...</title>
+    <style>
+      body { font-family: system-ui, sans-serif; background:#101318; color:#e9eef7; margin:0; display:grid; place-items:center; min-height:100vh; }
+      .box { background:#1a212b; border:1px solid #324155; border-radius:10px; padding:16px 18px; }
+    </style>
+  </head>
+  <body>
+    <div class="box">フロントエンドを再ビルド中です。自動で再読み込みします...</div>
+  </body>
+</html>`);
+      return;
+    }
+    res.status(err.statusCode || 500).end();
+  });
+}
+
 app.get("/", (_, res) => {
-  res.sendFile(path.join(__dirname, "web", "index.html"));
+  sendSpaIndex(res);
+});
+
+app.get("*", (_, res) => {
+  sendSpaIndex(res);
 });
 
 function setupDevAutoReload() {

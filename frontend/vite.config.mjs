@@ -19,6 +19,6 @@ export default defineConfig({
   },
   build: {
     outDir: "../web-vue-dist",
-    emptyOutDir: true
+    emptyOutDir: false
   }
 });

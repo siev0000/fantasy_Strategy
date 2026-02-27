@@ -5,10 +5,10 @@
   "description": "Fantasy Strategy prototype with room-based multiplayer.",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "start": "npm run build:front && node server.js",
+    "dev": "concurrently -n front,server \"npm run dev:front:watch\" \"node server.js\"",
     "dev:front": "vite --config frontend/vite.config.mjs",
-    "dev:all": "concurrently -n server,front \"npm run dev\" \"npm run dev:front\"",
+    "dev:front:watch": "vite build --watch --config frontend/vite.config.mjs",
     "build:front": "vite build --config frontend/vite.config.mjs",
     "preview:front": "vite preview --config frontend/vite.config.mjs"
   },

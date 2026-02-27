@@ -18,7 +18,127 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 - 2026-02-26: Validation passed: `npm run build:front`, server health check, and Vite dev page response.
 - 2026-02-26: Verified `npm run dev:all` reaches both `http://localhost:3000/health` and `http://localhost:5173`.
 - 2026-02-26: `develop-web-game` Playwright client retry still failed because skill-local `playwright` package is unresolved.
+- 2026-02-26: Reworked map rendering to Phaser in `frontend/src/components/PhaserMapGeneratorPanel.vue`.
+- 2026-02-26: Added reusable map data APIs in `frontend/src/lib/map-generator.js` (`createIslandShapeData`, `createTerrainMapData`).
+- 2026-02-26: Preserved existing terrain randomization logic and switched display layer from DOM hex nodes to Phaser canvas.
+- 2026-02-26: Applied fantasy UI styling to the map panel (gold/parchment color direction + atmospheric background).
+- 2026-02-26: Re-validated after Phaser integration (`npm run build:front`, `npm run dev:all` endpoint checks).
+- 2026-02-26: `develop-web-game` Playwright check remains blocked by missing `playwright` dependency.
+- 2026-02-26: Added tile altitude level model (`heightLevelMap`) to terrain map output.
+- 2026-02-26: Updated river generation to prioritize downhill flow based on altitude levels, with local carve behavior to escape sinks.
+- 2026-02-26: Enhanced Phaser map panel to display altitude levels on tiles and in click details (`高度Lv` + `高度Raw`).
+- 2026-02-26: Re-validated after altitude/rivers update (`npm run build:front`, `npm run dev:all` endpoint checks).
+- 2026-02-26: Moved height-number toggle into a dedicated settings modal in `PhaserMapGeneratorPanel.vue`.
+- 2026-02-26: Height numbers are now drawn directly on tiles with adaptive font size, including larger map sizes.
+- 2026-02-26: Added modal UI text clarifying OFF behavior (hide height numbers).
+- 2026-02-26: Re-validated settings modal update (`npm run build:front`, `npm run dev:all` endpoint checks).
 
 TODO / next agent:
 - Decide rollout strategy: serve `web-vue-dist` from Express or keep Vite dev only.
 - Decide whether to deprecate legacy static frontend files under `web/js` after user confirmation.
+- 2026-02-26: Added hidden special terrain layer (`specialMap`) with wet-forest -> swamp (`沼地`) probabilistic transformation while preserving base tile appearance.
+- 2026-02-26: Added reveal behavior for hidden specials: click-to-reveal and settings toggle for always-visible mode in `PhaserMapGeneratorPanel.vue`.
+- 2026-02-26: Added waterfall classification for rivers at height level >= 2 (`waterfallSet` / `waterfallEdgeSet`) and Phaser overlay rendering.
+- 2026-02-26: Validation passed: `npm run build:front`. Playwright client still blocked due missing `playwright` package in skill runtime.
+- 2026-02-26: Unified runtime URL by switching Express static root from `web/` to `web-vue-dist/` and serving SPA index from `web-vue-dist/index.html`.
+- 2026-02-26: Updated scripts for single-URL workflow (`start` builds frontend then serves on 3000, `dev` uses frontend build-watch + server).
+- 2026-02-26: Removed legacy `web/` frontend and unused `frontend/src/components/MapGeneratorPanel.vue` after single-URL migration to `web-vue-dist`.
+- 2026-02-26: Added fantasy hidden specials `峡谷` and `洞窟` with configurable rules/probabilities in `map-generator.js`, and updated Phaser special rendering/stats.
+- 2026-02-27: Reduced cave spawn probability (`洞窟化`) and added cave scale classification by connected cave size (`小/中/大`) with thresholds in special terrain settings.
+- 2026-02-27: Extended map output with `caveSizeMap`/`caveScaleMap`, cave size counters, and cave-specific labels/details in Phaser panel (`洞/中洞/大洞`).
+- 2026-02-27: Re-validated cave updates with `npm run build:front` (pass). `develop-web-game` Playwright client still blocked because skill script cannot resolve `playwright` module from its own runtime path.
+- 2026-02-27: Mountain generation now randomly selects one profile per map (`単峰` / `群峰` / `混合`) with mountain mass spacing randomized to 1-3 tiles.
+- 2026-02-27: Added mountain mass-size rules (`通常: 3-8`, `巨大: 12-15`) and profile-driven mountain placement in `applyTerrainByHeight`.
+- 2026-02-27: Added `mountainProfile` to generated map data and surfaced profile details in Phaser generation stats.
+- 2026-02-27: Validation passed after mountain profile changes: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client check retried and still blocked by skill-runtime module resolution (`Cannot find package 'playwright' imported from ...web_game_playwright_client.js`).
+- 2026-02-27: Fixed zero-mountain edge case in mountain profile builder and revalidated (`npm run build:front` pass).
+- 2026-02-27: Added configurable mountain mode input (`random/single/multi/mixed`) from Phaser settings modal and wired it into `createTerrainMapData`.
+- 2026-02-27: Mountain profile now tracks selection source (`fixed` or `random`) and stats text shows fixed/random mode state.
+- 2026-02-27: Validation passed after mountain mode configurability update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Extended `山岳モード定義` with per-mode min/max knobs (mass counts, mass sizes, and per-mode spacing range), especially for `群峰`.
+- 2026-02-27: Mountain profile generation now reads ranges from mode definitions first, with global settings as fallback.
+- 2026-02-27: Validation passed after per-mode mountain-definition update: `npm run build:front`.
+- 2026-02-27: Tuned `群峰` spacing range in `山岳モード定義` to 1-3 and revalidated (`npm run build:front` pass).
+- 2026-02-27: Added map-size-aware spacing for mountain masses (`群峰`/`混合`): 36x36 resolves to 1-2, 54x54 resolves to 2-3 (allowing 3), while respecting per-mode definition bounds.
+- 2026-02-27: Validation passed after map-size-aware mountain spacing update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Reworked mountain-gap scaling to remove hardcoded map-size thresholds and multipliers from logic; values now come from `山岳モード定義.距離倍率` (36->1.0, 54->1.5).
+- 2026-02-27: Updated per-mode base gap ranges to be definition-driven (`群峰/混合` base 1-2, then scaled by mode rule).
+- 2026-02-27: Validation passed after definition-driven gap scaling update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Removed remaining hardcoded fallback scale constants in gap-scaling logic; if mode scale params are missing, scaling is skipped and base range is used.
+- 2026-02-27: Revalidated after removing gap-scaling fallback constants: `npm run build:front` pass.
+- 2026-02-27: Added per-mode foothill hill probability knob (`山麓丘陵化確率`) in `山岳モード定義`, plus global fallback `地形生成設定.山岳塊.山麓丘陵化確率`.
+- 2026-02-27: Implemented mountain-adjacent hill conversion pass controlled by that probability before remaining hill fill by height.
+- 2026-02-27: Added stats output for foothill conversion (`山麓丘陵化` and `山麓丘陵化数`) in Phaser map details.
+- 2026-02-27: Validation passed after foothill-hill probability update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Mitigated transient `ENOENT web-vue-dist/index.html` during watch rebuild by setting Vite `build.emptyOutDir` to `false`.
+- 2026-02-27: Added Express SPA index fallback handler for dev rebuild windows: when `index.html` is temporarily missing, return a short auto-refresh page instead of raw ENOENT.
+- 2026-02-27: Validation passed after ENOENT mitigation updates: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Decoupled elevation center logic into `島中央隆起幅` and `画面中央隆起幅` with base-height config, so island center and screen center are independently tunable.
+- 2026-02-27: Added connected-island analysis for elevation and introduced post-coherence island relief guarantee to avoid all-plain peripheral islands.
+- 2026-02-27: Added mountain-profile stats line for island relief guarantee additions in Phaser panel.
+- 2026-02-27: Validation passed after island-center/relief updates: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Added composite terrain rendering support by preserving pre-forest relief as `reliefMap` and drawing `森+丘/山` as half-split colors in Phaser.
+- 2026-02-27: Replaced explicit `山岳森林化` probability approach with overlap-condition based composition (forest generation checks relief conditions; mountain tiles become forest only when forest and relief conditions overlap).
+- 2026-02-27: Added composite stats (`複合地形: 森+丘 / 森+山`) and click-time relief metadata support.
+- 2026-02-27: Validation passed after composite-terrain overlap update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Added strong-monster placement condition framework in `map-generator.js` (`強敵配置設定` + environment-match based candidate selection) without adding concrete monster contents yet.
+- 2026-02-27: Added strong-monster output data (`strongMonsterMap`, `strongMonsterInfoMap`, `strongMonsterStats`) to terrain generation results.
+- 2026-02-27: Added Phaser UI indicators for strong-monster candidates (tile marker, stats line, and click detail: match count/level).
+- 2026-02-27: Validation passed after strong-monster condition framework update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Reworked strong-monster logic to explicit rule set (variables in `強敵配置設定.ルール`): `森中央`, `砂漠オアシス`, `大森林外周(>=21, 規模/7, 距離3, 各50%)`, `森環丘山`.
+- 2026-02-27: Implemented rule-3 single-spawn bonus (`単独時Lv加算`) and made all thresholds/probabilities distance values definition-driven (no hardcoded condition values).
+- 2026-02-27: Added helper utilities for terrain components and hex-ring extraction to support rule-driven spawn placement.
+- 2026-02-27: Updated strong-monster stats/click display to show rule-based outputs (`条件別` and `Lv + ルール名`).
+- 2026-02-27: Validation passed after rule-based strong-monster settings update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Added rule-overlap control in strong-monster settings (`重複ルール許可`) and defaulted to non-overlap to avoid duplicate判定 on composite forest-relief cells.
+- 2026-02-27: Added rule knobs to reduce mountain+forest double判定 side effects: `森中央.複合地勢セルを含む` and `森環丘山.中央が被覆森を除外`.
+- 2026-02-27: Validation passed after strong-monster overlap mitigation: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Added randomized terrain-ratio profile system (`地形比率プリセット定義`) with three presets (`均衡`, `森林豊富`, `険峻`) and candidate list setting.
+- 2026-02-27: Terrain generation now resolves one ratio profile per map and uses it for mountain/forest/hill/desert/lake target calculations.
+- 2026-02-27: Added `terrainRatioProfile` to map output and surfaced selected profile in Phaser stats (`地形比率:`).
+- 2026-02-27: Validation passed after terrain-ratio profile randomization update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Added dedicated lower-panel meta line `地形比率` (`mapTerrainProfileInfo`) so selected terrain-ratio preset is always visible outside the stats block.
+- 2026-02-27: Validation passed after terrain-ratio meta line update: `npm run build:front`.
+- 2026-02-27: Added post-coherence forest top-up pass (`topUpForestToTarget`) to reduce undershoot versus target forest ratio caused by clustering constraints and孤立森整理.
+- 2026-02-27: Added explicit forest target output (`forestTargetCount`) and UI stats line (`森林目標 / 実績`) for quick verification.
+- 2026-02-27: Validation passed after forest-ratio alignment update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path.
+- 2026-02-27: Changed terrain-ratio presets from map-level selection to per-island assignment using near-even random distribution across connected islands.
+- 2026-02-27: Applied per-island ratio targets to mountain/hill/forest/desert/lake planning; generation now constrains terrain placement passes to each island and displays per-island preset summary (e.g. `均衡2 / 森林豊富1 / 険峻1`) in lower stats/meta.
+- 2026-02-27: Validation passed after per-island terrain-ratio update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Added configurable large-island count flow (`largeIslandCount`) from Phaser settings modal into map generation APIs.
+- 2026-02-27: Implemented configured large-island placement pass and random islet generation (each islet target size 4-8 tiles; count is randomized per generation) in `generateIslands`.
+- 2026-02-27: Added island composition stats line in Phaser details (`大島 実績/設定`, `孤島 実績/乱数`) so the generated structure is visible.
+- 2026-02-27: Validation passed after island composition settings update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Kept existing island pattern flow and added separate island-custom settings path (`islandCustomSettings`) so pattern mode remains unchanged by default.
+- 2026-02-27: Added a dedicated custom-island modal in `PhaserMapGeneratorPanel.vue` with toggle + knobs (`大島数`, `孤島数レンジ`, `大島間距離`, `目標陸地率`).
+- 2026-02-27: Implemented custom island generation plan in `map-generator.js`: when custom is ON, target land ratio defaults around 70% and islet size range is auto-adjusted from islet count (still bounded to 4-8 tiles).
+- 2026-02-27: Added custom island generation stats output (`島構成(カスタム)` and target land %) to lower detail text.
+- 2026-02-27: Validation passed after custom-island modal and 70% auto-adjust generation update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Fixed island touching in multi-island custom generation by replacing plain smoothing with separation-safe smoothing (`smoothLandKeepingIslandSeparation`) that only fills sea cells surrounded by a single island ID.
+- 2026-02-27: Custom/extended island generation now preserves at least one sea gap between different islands during shape smoothing.
+- 2026-02-27: Validation passed after non-contact island smoothing fix: `npm run build:front`.
+- 2026-02-27: Identified early-stop bug in large-island growth loop (single no-progress round caused premature termination with very low land ratio despite 70% target).
+- 2026-02-27: Fixed large-island growth stability by using per-island multi-trial expansion, higher guard budget, and consecutive-stagnation break (`maxStagnantRounds`) instead of immediate break.
+- 2026-02-27: Validation passed after large-island early-stop fix: `npm run build:front`.
+- 2026-02-27: Updated large-island size allocation for multi-island generation to non-uniform random distribution around equal baseline (75%~125% per island) while preserving the exact configured total land budget.
+- 2026-02-27: Changed custom island default target land ratio from 70% to 50% (UI default + generator fallback).
+- 2026-02-27: Validation passed after island size variance and 50% default ratio update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Updated custom target land area bounds from 45%~85% to 25%~60% in both generator clamp and island-custom modal range input.
+- 2026-02-27: Validation passed after custom land-area range update: `npm run build:front`.
