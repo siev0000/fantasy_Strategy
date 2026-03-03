@@ -7,23 +7,32 @@ import MenuPanel from "./components/MenuPanel.vue";
 import RoomModal from "./components/RoomModal.vue";
 import BattleModal from "./components/BattleModal.vue";
 import SimulatorModal from "./components/SimulatorModal.vue";
+import SkillTreeModal from "./components/SkillTreeModal.vue";
+import RaceSelectModal from "./components/RaceSelectModal.vue";
+import ClassSelectModal from "./components/ClassSelectModal.vue";
+import CharacterStatusModal from "./components/CharacterStatusModal.vue";
+import raceSelectionDb from "../../data/source/export/json/種族.json";
 
-const RACES = {
-  "只人": { hp: 110, atk: 22 },
-  "エルフ": { hp: 85, atk: 26 },
-  "オーガ": { hp: 145, atk: 30 },
-  "ゴブリン": { hp: 78, atk: 18 },
-  "竜人": { hp: 125, atk: 28 },
-  "悪魔": { hp: 95, atk: 32 },
-  "天使": { hp: 105, atk: 21 },
-  "ヴァンパイア": { hp: 100, atk: 24 }
-};
+const DEFAULT_RACE_STATS = { hp: 100, atk: 20 };
+const RACES = Array.isArray(raceSelectionDb)
+  ? raceSelectionDb.reduce((acc, item) => {
+    const key = String(item?.key || "").trim();
+    if (!key) return acc;
+    const hp = Number(item?.hp);
+    const atk = Number(item?.atk);
+    acc[key] = {
+      hp: Number.isFinite(hp) ? hp : DEFAULT_RACE_STATS.hp,
+      atk: Number.isFinite(atk) ? atk : DEFAULT_RACE_STATS.atk
+    };
+    return acc;
+  }, {})
+  : {};
 
 const ALLY_ORDER = ["只人", "エルフ", "竜人", "天使"];
 const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"];
 
 function unitFromRace(race, side, id) {
-  const base = RACES[race];
+  const base = RACES[race] || DEFAULT_RACE_STATS;
   return {
     id,
     side,
@@ -221,6 +230,22 @@ const socketReady = ref(false);
 const showRoomModal = ref(false);
 const showBattleModal = ref(false);
 const showSimModal = ref(false);
+const showSkillTreeModal = ref(false);
+const showRaceModal = ref(false);
+const showClassModal = ref(false);
+const showCharacterStatusModal = ref(false);
+const skillTreeCategories = ref(["魔法", "軍事", "経済", "信仰"]);
+const selectedRace = ref(raceSelectionDb?.[0]?.key || "只人");
+const selectedClass = ref("");
+const mapCharacterState = ref({
+  village: null,
+  units: [],
+  selectedUnitId: "",
+  ruleText: ""
+});
+const characterCount = computed(() => {
+  return Array.isArray(mapCharacterState.value?.units) ? mapCharacterState.value.units.length : 0;
+});
 const localState = ref(createInitialBattleState());
 const roomState = ref(null);
 const activeRoomId = ref("");
@@ -271,22 +296,39 @@ const playersLabel = computed(() => {
   return players.value.map(p => p.name).join(", ") || "-";
 });
 
-function openModal(kind) {
+function openModal(kind, payload = null) {
   showRoomModal.value = kind === "room";
   showBattleModal.value = kind === "battle";
   showSimModal.value = kind === "sim";
+  showSkillTreeModal.value = kind === "skill";
+  showRaceModal.value = kind === "race";
+  showClassModal.value = kind === "class";
+  showCharacterStatusModal.value = kind === "characters";
+  if (kind === "skill" && Array.isArray(payload?.categories)) {
+    skillTreeCategories.value = payload.categories;
+  } else if (kind === "skill" && !skillTreeCategories.value.length) {
+    skillTreeCategories.value = ["魔法", "軍事", "経済", "信仰"];
+  }
 }
 
 function closeModal(kind) {
   if (kind === "room") showRoomModal.value = false;
   if (kind === "battle") showBattleModal.value = false;
   if (kind === "sim") showSimModal.value = false;
+  if (kind === "skill") showSkillTreeModal.value = false;
+  if (kind === "race") showRaceModal.value = false;
+  if (kind === "class") showClassModal.value = false;
+  if (kind === "characters") showCharacterStatusModal.value = false;
 }
 
 function closeAllModals() {
   showRoomModal.value = false;
   showBattleModal.value = false;
   showSimModal.value = false;
+  showSkillTreeModal.value = false;
+  showRaceModal.value = false;
+  showClassModal.value = false;
+  showCharacterStatusModal.value = false;
 }
 
 function setSessionStatus(text, cls = "") {
@@ -301,6 +343,41 @@ function runAction(action) {
     return;
   }
   localState.value = applyBattleAction(localState.value, action);
+}
+
+function applySelectedRace(raceKey) {
+  const key = String(raceKey || "").trim();
+  if (!Object.prototype.hasOwnProperty.call(RACES, key)) return;
+  selectedRace.value = key;
+  setSessionStatus(`開始種族を ${key} に設定`, "ok");
+  showRaceModal.value = false;
+  showClassModal.value = true;
+}
+
+function applySelectedClass(payload) {
+  const className = String(payload?.className || "").trim();
+  if (!className) return;
+  selectedClass.value = className;
+  showClassModal.value = false;
+  setSessionStatus(`開始クラスを ${className} に設定`, "ok");
+}
+
+function handleCharacterStateChange(payload) {
+  const units = Array.isArray(payload?.units)
+    ? payload.units.map(unit => ({
+      ...unit,
+      status: unit?.status ? { ...unit.status } : null,
+      growthRule: unit?.growthRule ? { ...unit.growthRule } : null,
+      equipment: Array.isArray(unit?.equipment) ? unit.equipment.map(e => ({ ...e })) : [],
+      skills: Array.isArray(unit?.skills) ? [...unit.skills] : []
+    }))
+    : [];
+  mapCharacterState.value = {
+    village: payload?.village ? { ...payload.village } : null,
+    units,
+    selectedUnitId: String(payload?.selectedUnitId || ""),
+    ruleText: String(payload?.ruleText || "")
+  };
 }
 
 function createRoom() {
@@ -417,7 +494,15 @@ function renderGameStateToText() {
     modal: {
       room: showRoomModal.value,
       battle: showBattleModal.value,
-      sim: showSimModal.value
+      sim: showSimModal.value,
+      skill: showSkillTreeModal.value,
+      race: showRaceModal.value,
+      class: showClassModal.value,
+      characters: showCharacterStatusModal.value
+    },
+    playerSetup: {
+      selectedRace: selectedRace.value,
+      selectedClass: selectedClass.value || null
     },
     battle: {
       turn: state.turn,
@@ -511,9 +596,19 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app">
-    <app-header :active-room-id="activeRoomId" @open-modal="openModal" />
+    <app-header
+      :active-room-id="activeRoomId"
+      :selected-race="selectedRace"
+      :selected-class="selectedClass"
+      :character-count="characterCount"
+      @open-modal="openModal"
+    />
 
-    <phaser-map-generator-panel />
+    <phaser-map-generator-panel
+      :selected-race="selectedRace"
+      :selected-class="selectedClass"
+      @character-state-change="handleCharacterStateChange"
+    />
 
     <menu-panel @open-modal="openModal" />
 
@@ -550,6 +645,36 @@ onBeforeUnmount(() => {
       :sim-result="simResult"
       @close="closeModal('sim')"
       @run-turn="runSimulatorTurn"
+    />
+
+    <skill-tree-modal
+      :show="showSkillTreeModal"
+      :categories="skillTreeCategories"
+      @close="closeModal('skill')"
+    />
+
+    <race-select-modal
+      :show="showRaceModal"
+      :selected-race="selectedRace"
+      @close="closeModal('race')"
+      @confirm="applySelectedRace"
+    />
+
+    <class-select-modal
+      :show="showClassModal"
+      :selected-race="selectedRace"
+      :selected-class="selectedClass"
+      @close="closeModal('class')"
+      @confirm="applySelectedClass"
+    />
+
+    <character-status-modal
+      :show="showCharacterStatusModal"
+      :units="mapCharacterState.units"
+      :village="mapCharacterState.village"
+      :rule-text="mapCharacterState.ruleText"
+      :default-selected-id="mapCharacterState.selectedUnitId"
+      @close="closeModal('characters')"
     />
   </div>
 </template>

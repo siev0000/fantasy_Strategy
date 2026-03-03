@@ -1,13 +1,24 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Phaser from "phaser";
+import GenericModal from "./GenericModal.vue";
+import { getGameAudioController } from "../lib/audio-player.js";
 import {
+  advanceTerrainTurn,
   createIslandShapeData,
   createTerrainMapData,
   hexCenter,
   parseCoordKey,
   terrainDefinitions
 } from "../lib/map-generator.js";
+import classDb from "../../../data/source/export/json/クラス.json";
+import equipmentDb from "../../../data/source/export/json/装備.json";
+
+const props = defineProps({
+  selectedRace: { type: String, default: "" },
+  selectedClass: { type: String, default: "" }
+});
+const emit = defineEmits(["character-state-change"]);
 
 const mapSize = ref("36x36");
 const patternId = ref("realistic");
@@ -19,13 +30,19 @@ const customIsletCountMin = ref(1);
 const customIsletCountMax = ref(4);
 const customTargetLandPercent = ref(50);
 const customLargeIslandMinGap = ref(6);
-const showHeightNumbers = ref(true);
+const showHeightNumbers = ref(false);
 const heightNumberFontSize = ref(23);
 const heightNumberOutlineWidth = ref(3);
 const useHeightShading = ref(true);
 const showSpecialTilesAlways = ref(true);
 const showWaterfallEffects = ref(true);
+const showStrongEnemyMarkers = ref(false);
 const showSettingsModal = ref(false);
+const showEventControlModal = ref(false);
+const eventActionType = ref("normal");
+const showEventModal = ref(false);
+const eventModalMessage = ref("");
+const eventModalNotes = ref([]);
 const mapSizeInfo = ref("サイズ: -");
 const mapCenterInfo = ref("中央座標: -");
 const mapTerrainProfileInfo = ref("地形比率: -");
@@ -33,16 +50,38 @@ const mapClickInfo = ref("クリック座標: -");
 const mapStats = ref("地形未生成");
 const gameRoot = ref(null);
 const currentData = ref(null);
+const zoomPercent = ref(100);
+const isDevBuild = import.meta.env.DEV;
+const showDevInfo = ref(isDevBuild);
+const clockNowMs = ref(Date.now());
+const mapClockStartMs = ref(Date.now());
+const villageState = ref(null);
+const unitList = ref([]);
+const selectedUnitId = ref("");
+const unitMoveMode = ref(false);
+const villageInfoText = ref("初期村: -");
+const unitInfoText = ref("選択ユニット: -");
+const unitRulesInfoText = ref("部隊生成ルール: 一般兵 6-10 / ネームド 1");
+const audio = getGameAudioController();
+const initialAudioVolumes = audio.getVolumeSettings();
+const masterVolumePercent = ref(Math.round((initialAudioVolumes.masterVolume ?? 0.5) * 100));
+const bgmVolumePercent = ref(Math.round((initialAudioVolumes.bgmVolume ?? 0.5) * 100));
+const seVolumePercent = ref(Math.round((initialAudioVolumes.seVolume ?? 0.5) * 100));
 
 let game = null;
 let scene = null;
 let baseLayer = null;
 let riverLayer = null;
+let lavaLayer = null;
+let unitLayer = null;
+let scoutLayer = null;
 let markerLayer = null;
 let labelTexts = [];
 let hitAreas = [];
 let selectedTileKey = "";
 let resizeHandler = null;
+let clockIntervalId = null;
+let firstGestureHandler = null;
 
 const terrainMap = computed(() => {
   const m = new Map();
@@ -50,9 +89,654 @@ const terrainMap = computed(() => {
   return m;
 });
 
+const customTargetLandTilesLabel = computed(() => {
+  const { w, h } = parseMapSizeValue(mapSize.value);
+  const total = w * h;
+  const raw = Number.isFinite(customTargetLandPercent.value)
+    ? customTargetLandPercent.value
+    : Number(customTargetLandPercent.value);
+  const pct = Math.max(25, Math.min(60, Number.isFinite(raw) ? raw : 50));
+  return `${Math.round((total * pct) / 100)} / ${total} マス`;
+});
+
+const fieldResourceSummary = computed(() => {
+  const data = currentData.value;
+  if (!data?.grid || !Number.isFinite(data.w) || !Number.isFinite(data.h)) {
+    return {
+      food: "-",
+      material: "-"
+    };
+  }
+  const counts = {};
+  terrainDefinitions.forEach(t => { counts[t.key] = 0; });
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const key = data.grid[y][x];
+      if (Object.prototype.hasOwnProperty.call(counts, key)) {
+        counts[key] += 1;
+      }
+    }
+  }
+  const food = (
+    (counts.平地 || 0) * 2
+    + (counts.森 || 0) * 1
+    + (counts.丘陵 || 0) * 1
+    + (counts.河川 || 0) * 2
+    + (counts.湖 || 0) * 2
+    + (counts.山岳 || 0) * 0
+    + (counts.砂漠 || 0) * 0
+  );
+  const material = (
+    (counts.平地 || 0) * 0
+    + (counts.森 || 0) * 1
+    + (counts.丘陵 || 0) * 2
+    + (counts.山岳 || 0) * 3
+    + (counts.河川 || 0) * 0
+    + (counts.湖 || 0) * 0
+    + (counts.砂漠 || 0) * 1
+  );
+  return {
+    food,
+    material
+  };
+});
+
+function formatElapsedClock(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(totalSeconds || 0));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+const turnDurationSec = 60;
+
+const elapsedSeconds = computed(() => {
+  const elapsedSec = Math.floor((clockNowMs.value - mapClockStartMs.value) / 1000);
+  return Math.max(0, elapsedSec);
+});
+
+const elapsedClockText = computed(() => {
+  return formatElapsedClock(elapsedSeconds.value);
+});
+
+const turnClockCycleSeconds = computed(() => {
+  return elapsedSeconds.value % turnDurationSec;
+});
+
+const turnClockRemainingSeconds = computed(() => {
+  return turnDurationSec - turnClockCycleSeconds.value;
+});
+
+const turnClockHandDeg = computed(() => {
+  return (turnClockCycleSeconds.value / turnDurationSec) * 360;
+});
+
+const turnClockTurnNumber = computed(() => {
+  return Math.floor(elapsedSeconds.value / turnDurationSec) + 1;
+});
+
+const mapTurnNumber = computed(() => {
+  const turn = Number(currentData.value?.turnState?.turnNumber || 0);
+  return Math.max(0, Math.floor(turn));
+});
+
+const eventModeOptions = [
+  { value: "normal", label: "通常", desc: "確率で噴火・溶岩を判定" },
+  { value: "eruption", label: "噴火のみ", desc: "山岳を優先して火山化" },
+  { value: "lava", label: "溶岩のみ", desc: "既存火山から溶岩のみ進行" },
+  { value: "both", label: "噴火+溶岩", desc: "同ターンで噴火と溶岩を実行" }
+];
+
+function eventModeLabel(mode) {
+  if (mode === "eruption") return "噴火のみ";
+  if (mode === "lava") return "溶岩のみ";
+  if (mode === "both") return "噴火 + 溶岩";
+  return "通常";
+}
+
+function kickOffBgm() {
+  void audio.startDefaultBgm();
+}
+
+function lavaStopReasonLabel(reason) {
+  if (reason === "river_hit") return "川衝突";
+  if (reason === "random_stop") return "ランダム停止";
+  if (reason === "direction_blocked") return "進行方向維持不可";
+  if (reason === "no_path") return "進路なし";
+  if (reason === "source_lost") return "火山源消失";
+  return reason || "-";
+}
+
+const displaySettingsFields = computed(() => ([
+  {
+    key: "section_display",
+    kind: "header",
+    label: "表示設定"
+  },
+  {
+    key: "showHeightNumbers",
+    kind: "checkbox",
+    label: "タイル上に高度Lvを表示する",
+    value: showHeightNumbers.value
+  },
+  {
+    key: "useHeightShading",
+    kind: "checkbox",
+    label: "高度で色を補正する（低いほど明るい）",
+    value: useHeightShading.value
+  },
+  {
+    key: "showSpecialTilesAlways",
+    kind: "checkbox",
+    label: "隠し特殊地形を常時表示する",
+    value: showSpecialTilesAlways.value
+  },
+  {
+    key: "showWaterfallEffects",
+    kind: "checkbox",
+    label: "滝エフェクトを表示する",
+    value: showWaterfallEffects.value
+  },
+  {
+    key: "showStrongEnemyMarkers",
+    kind: "checkbox",
+    label: "強敵候補を表示する",
+    value: showStrongEnemyMarkers.value
+  },
+  {
+    key: "mountainMode",
+    kind: "select",
+    label: "山岳モード",
+    value: mountainMode.value,
+    options: [
+      { label: "ランダム (単峰/群峰/混合)", value: "random" },
+      { label: "単峰 固定", value: "single" },
+      { label: "群峰 固定", value: "multi" },
+      { label: "混合 固定", value: "mixed" }
+    ]
+  },
+  {
+    key: "heightNumberFontSize",
+    kind: "range",
+    label: "高度Lv文字サイズ",
+    suffix: "px",
+    value: heightNumberFontSize.value,
+    min: 10,
+    max: 28,
+    step: 1
+  },
+  {
+    key: "heightNumberOutlineWidth",
+    kind: "range",
+    label: "高度Lv枠線の太さ",
+    suffix: "px",
+    value: heightNumberOutlineWidth.value,
+    min: 0,
+    max: 6,
+    step: 1
+  },
+  {
+    key: "section_audio",
+    kind: "header",
+    label: "音声設定"
+  },
+  {
+    key: "masterVolumePercent",
+    kind: "range",
+    label: "全体音量",
+    suffix: "%",
+    value: masterVolumePercent.value,
+    min: 0,
+    max: 100,
+    step: 1
+  },
+  {
+    key: "bgmVolumePercent",
+    kind: "range",
+    label: "BGM音量",
+    suffix: "%",
+    value: bgmVolumePercent.value,
+    min: 0,
+    max: 100,
+    step: 1
+  },
+  {
+    key: "seVolumePercent",
+    kind: "range",
+    label: "SE音量",
+    suffix: "%",
+    value: seVolumePercent.value,
+    min: 0,
+    max: 100,
+    step: 1
+  }
+]));
+
+const displaySettingsNotes = [
+  "隠し特殊地形は通常時は見えず、クリック時のみ判明します。常時表示をONで最初から見えます。",
+  "音量は 全体 x BGM/SE の乗算で適用されます。"
+];
+
+const RACE_CLASS_NAME_MAP = {
+  "只人": "ヒューマン",
+  "エルフ": "エルフ",
+  "オーガ": "オーガ",
+  "ゴブリン": "ゴブリン",
+  "竜人": "ドラゴニュート",
+  "悪魔": "デヴィル",
+  "天使": "エンジェル",
+  "ヴァンパイア": "ヴァンパイア"
+};
+
+const STATUS_FIELDS = ["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"];
+const STATUS_GROWTH_FIELDS = ["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中"];
+const ACQUIRED_SKILL_FIELDS = ["Skill1", "Skill2", "Skill3", "Skill4", "Skill5", "Skill6", "Skill7", "Skill8", "Skill9", "Skill10"];
+const NAMED_POOL = ["アレス", "リリア", "ガルド", "セレス", "ノクス", "フレア", "ヴェルク", "イリス"];
+const VILLAGE_NAME_POOL = ["開拓村アスタ", "辺境村ノルド", "河畔村エイル", "森縁村リグナ", "丘陵村ブラム"];
+const INITIAL_LEVEL_MIN = 5;
+const INITIAL_LEVEL_MAX = 10;
+const BASE_RACE_LEVEL = 5;
+const BONUS_RACE_LEVEL = 5;
+const HUMAN_CLASS_BONUS_LEVEL = 5;
+const STATUS_GROWTH_DIVISOR = 10;
+
+const classRows = computed(() => {
+  if (!Array.isArray(classDb)) return [];
+  return classDb.filter(row => nonEmptyText(row?.名前));
+});
+
+const jobClassRows = computed(() => {
+  return classRows.value.filter(row => nonEmptyText(row?.種類) === "職業");
+});
+
+const equipmentRows = computed(() => {
+  if (!Array.isArray(equipmentDb)) return [];
+  return equipmentDb.filter(row => nonEmptyText(row?.装備名));
+});
+
+const selectedUnit = computed(() => {
+  return unitList.value.find(unit => unit.id === selectedUnitId.value) || null;
+});
+
+function nonEmptyText(value) {
+  const text = String(value ?? "").trim();
+  return text.length ? text : "";
+}
+
+function toSafeNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") return fallback;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function randomInt(min, max) {
+  const lo = Math.ceil(Math.min(min, max));
+  const hi = Math.floor(Math.max(min, max));
+  return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+}
+
+function randomPick(arr, fallback = null) {
+  if (!Array.isArray(arr) || !arr.length) return fallback;
+  return arr[Math.floor(Math.random() * arr.length)] ?? fallback;
+}
+
+function coordKey(x, y) {
+  return `${x},${y}`;
+}
+
 function parseMapSizeValue(value) {
   const [w, h] = String(value || "36x36").split("x").map(Number);
   return { w: w || 36, h: h || 36 };
+}
+
+function getHexNeighborCoordsBySize(w, h, x, y) {
+  const isOddRow = y % 2 === 1;
+  const deltas = isOddRow
+    ? [[-1, 0], [1, 0], [0, -1], [1, -1], [0, 1], [1, 1]]
+    : [[-1, 0], [1, 0], [-1, -1], [0, -1], [-1, 1], [0, 1]];
+  const result = [];
+  for (const [dx, dy] of deltas) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+    result.push({ x: nx, y: ny });
+  }
+  return result;
+}
+
+function isPassableTerrain(terrain) {
+  return terrain !== "海" && terrain !== "湖";
+}
+
+function hexDistance(a, b) {
+  const toCube = ({ x, y }) => {
+    const q = x - ((y - (y & 1)) / 2);
+    const r = y;
+    const cx = q;
+    const cz = r;
+    const cy = -cx - cz;
+    return { cx, cy, cz };
+  };
+  const ca = toCube(a);
+  const cb = toCube(b);
+  return Math.max(
+    Math.abs(ca.cx - cb.cx),
+    Math.abs(ca.cy - cb.cy),
+    Math.abs(ca.cz - cb.cz)
+  );
+}
+
+function findPathDistance(data, sx, sy, tx, ty, maxDistance) {
+  if (!data?.grid) return null;
+  if (sx === tx && sy === ty) return 0;
+  const visited = new Set([coordKey(sx, sy)]);
+  const queue = [{ x: sx, y: sy, d: 0 }];
+  while (queue.length) {
+    const cur = queue.shift();
+    if (cur.d >= maxDistance) continue;
+    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, cur.x, cur.y);
+    for (const n of neighbors) {
+      const k = coordKey(n.x, n.y);
+      if (visited.has(k)) continue;
+      if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
+      const nd = cur.d + 1;
+      if (n.x === tx && n.y === ty) return nd;
+      visited.add(k);
+      queue.push({ x: n.x, y: n.y, d: nd });
+    }
+  }
+  return null;
+}
+
+function resolveRaceBaseClassName(raceKey) {
+  const race = nonEmptyText(raceKey);
+  return RACE_CLASS_NAME_MAP[race] || race || "ヒューマン";
+}
+
+function findClassRowByName(name) {
+  const target = nonEmptyText(name);
+  if (!target) return null;
+  return classRows.value.find(row => nonEmptyText(row?.名前) === target) || null;
+}
+
+function choosePrimaryClassForGeneration() {
+  const fromSelection = findClassRowByName(props.selectedClass);
+  if (fromSelection) return fromSelection;
+  return randomPick(jobClassRows.value, null);
+}
+
+function chooseRaceBaseRowForSelection() {
+  const raceName = resolveRaceBaseClassName(props.selectedRace);
+  return findClassRowByName(raceName);
+}
+
+function raceIsHumanType(raceRow) {
+  return nonEmptyText(raceRow?.種類) === "人族";
+}
+
+function rowStatusVector(row, fields = STATUS_GROWTH_FIELDS) {
+  const out = {};
+  for (const key of fields) {
+    const raw = Math.max(0, toSafeNumber(row?.[key], 0));
+    out[key] = Math.max(0, Math.round(raw / STATUS_GROWTH_DIVISOR));
+  }
+  return out;
+}
+
+function multiplyStatusVector(vector, factor) {
+  const out = {};
+  const scale = Math.max(0, Math.round(toSafeNumber(factor, 0)));
+  for (const key of Object.keys(vector || {})) {
+    out[key] = Math.max(0, Math.round(toSafeNumber(vector[key], 0) * scale));
+  }
+  return out;
+}
+
+function addStatusVectors(...vectors) {
+  const out = {};
+  for (const field of STATUS_GROWTH_FIELDS) out[field] = 0;
+  for (const vec of vectors) {
+    if (!vec) continue;
+    for (const field of STATUS_GROWTH_FIELDS) {
+      out[field] += Math.max(0, Math.round(toSafeNumber(vec[field], 0)));
+    }
+  }
+  return out;
+}
+
+function formatStatusCompact(status) {
+  if (!status) return "-";
+  return `HP${status.HP} 攻${status.攻撃} 防${status.防御} 魔${status.魔力} 精${status.精神} 速${status.速度} 命${status.命中} SIZ${status.SIZ}`;
+}
+
+function buildCharacterStatusFromRules(raceRow, classRow, level) {
+  const safeLevel = Math.max(INITIAL_LEVEL_MIN, Math.min(INITIAL_LEVEL_MAX, Math.round(toSafeNumber(level, INITIAL_LEVEL_MIN))));
+  const raceLevels = BASE_RACE_LEVEL + BONUS_RACE_LEVEL;
+  const classPerLevelGain = Math.max(0, safeLevel - 1);
+  const classBonus = raceIsHumanType(raceRow) ? HUMAN_CLASS_BONUS_LEVEL : 0;
+  const classLevels = classPerLevelGain + classBonus;
+
+  const raceGrowth = multiplyStatusVector(rowStatusVector(raceRow), raceLevels);
+  const classGrowth = multiplyStatusVector(rowStatusVector(classRow), classLevels);
+  const mergedGrowth = addStatusVectors(raceGrowth, classGrowth);
+  const sizBase = Math.max(1, Math.round(toSafeNumber(raceRow?.SIZ, toSafeNumber(classRow?.SIZ, 100))));
+  const status = {
+    ...mergedGrowth,
+    SIZ: sizBase
+  };
+  return {
+    level: safeLevel,
+    raceLevels,
+    classLevels,
+    classBonus,
+    classPerLevelGain,
+    status
+  };
+}
+
+function pickVillageCoord(data) {
+  if (!data?.grid || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return null;
+  const cx = (data.w - 1) / 2;
+  const cy = (data.h - 1) / 2;
+  let best = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const terrain = data.grid[y][x];
+      if (!isPassableTerrain(terrain)) continue;
+      if (terrain === "火山") continue;
+      const dist = Math.hypot(x - cx, y - cy);
+      let score = -dist;
+      if (terrain === "平地") score += 3.5;
+      else if (terrain === "森") score += 3.2;
+      else if (terrain === "丘陵") score += 2.8;
+      else if (terrain === "河川") score += 2.2;
+      else if (terrain === "山岳") score += 0.5;
+      else if (terrain === "砂漠") score -= 0.8;
+      score += (Math.random() * 0.6);
+      if (score > bestScore) {
+        bestScore = score;
+        best = { x, y };
+      }
+    }
+  }
+  return best;
+}
+
+function clearCharacterGenerationState() {
+  villageState.value = null;
+  unitList.value = [];
+  selectedUnitId.value = "";
+  updateVillageInfoText();
+  updateUnitInfoText();
+  emitCharacterStateChange();
+}
+
+function pickClassRowForCharacter(raceRow) {
+  let selected = choosePrimaryClassForGeneration();
+  if (raceIsHumanType(raceRow) && nonEmptyText(selected?.種類) !== "職業") {
+    selected = randomPick(jobClassRows.value, selected);
+  }
+  if (!selected) {
+    selected = randomPick(jobClassRows.value, null);
+  }
+  return selected;
+}
+
+function createVillageAndInitialUnit(data) {
+  if (!data || data.shapeOnly) {
+    clearCharacterGenerationState();
+    return;
+  }
+  const villageCoord = pickVillageCoord(data);
+  if (!villageCoord) {
+    clearCharacterGenerationState();
+    return;
+  }
+  const raceRow = chooseRaceBaseRowForSelection() || findClassRowByName("ヒューマン") || classRows.value[0] || null;
+  const classRow = pickClassRowForCharacter(raceRow) || raceRow;
+  const level = randomInt(INITIAL_LEVEL_MIN, INITIAL_LEVEL_MAX);
+  const built = buildCharacterStatusFromRules(raceRow, classRow, level);
+
+  villageState.value = {
+    id: `village-${villageCoord.x}-${villageCoord.y}`,
+    name: randomPick(VILLAGE_NAME_POOL, "開拓村"),
+    x: villageCoord.x,
+    y: villageCoord.y,
+    population: randomInt(90, 180),
+    foodStock: randomInt(170, 280),
+    materialStock: randomInt(120, 240)
+  };
+
+  const unit = {
+    id: `unit-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
+    unitType: "ネームド",
+    name: randomPick(NAMED_POOL, "ネームド"),
+    race: nonEmptyText(props.selectedRace) || nonEmptyText(raceRow?.名前) || "未設定",
+    className: nonEmptyText(classRow?.名前) || "未設定",
+    level: built.level,
+    x: villageCoord.x,
+    y: villageCoord.y,
+    moveRange: 4,
+    scoutRange: 4,
+    equipment: chooseEquipmentForClass(classRow, true),
+    status: built.status,
+    growthRule: {
+      raceLevels: built.raceLevels,
+      classLevels: built.classLevels,
+      classBonus: built.classBonus,
+      classPerLevelGain: built.classPerLevelGain
+    },
+    skills: buildUnitSkillsFromClass(classRow)
+  };
+
+  unitList.value = [unit];
+  selectedUnitId.value = unit.id;
+  updateVillageInfoText();
+  unitRulesInfoText.value = `キャラ生成ルール: 初期Lv ${INITIAL_LEVEL_MIN}-${INITIAL_LEVEL_MAX} / 種族Lv ${BASE_RACE_LEVEL}+${BONUS_RACE_LEVEL}(スキルなし) / 人族クラス補正 +${HUMAN_CLASS_BONUS_LEVEL}Lv / 成長係数 1/${STATUS_GROWTH_DIVISOR}`;
+  updateUnitInfoText(`ステータス ${formatStatusCompact(unit.status)} / 種族Lv${built.raceLevels} + クラスLv${built.classLevels}`);
+  emitCharacterStateChange();
+}
+
+function emitCharacterStateChange() {
+  emit("character-state-change", {
+    village: villageState.value
+      ? { ...villageState.value }
+      : null,
+    units: unitList.value.map(unit => ({
+      ...unit,
+      status: unit?.status ? { ...unit.status } : null,
+      growthRule: unit?.growthRule ? { ...unit.growthRule } : null,
+      equipment: Array.isArray(unit?.equipment) ? unit.equipment.map(e => ({ ...e })) : [],
+      skills: Array.isArray(unit?.skills) ? [...unit.skills] : []
+    })),
+    selectedUnitId: selectedUnitId.value || "",
+    ruleText: unitRulesInfoText.value || ""
+  });
+}
+
+function createEquipmentEntry(row, isNamed) {
+  const quality = isNamed ? randomPick(["rare", "epic"], "rare") : randomPick(["common", "uncommon"], "common");
+  const qualityBonus = quality === "epic" ? 8 : quality === "rare" ? 4 : quality === "uncommon" ? 2 : 0;
+  const power = toSafeNumber(row?.威力, 0);
+  const guard = toSafeNumber(row?.ガード, 0);
+  const traits = [row?.特性1, row?.特性2, row?.特性3, row?.特性4]
+    .map(v => nonEmptyText(v))
+    .filter(Boolean);
+  return {
+    name: nonEmptyText(row?.装備名) || "装備なし",
+    quality,
+    power,
+    guard,
+    atkBonus: Math.max(0, Math.floor(power / 8) + qualityBonus),
+    defBonus: Math.max(0, Math.floor(guard / 10) + Math.floor(qualityBonus / 2)),
+    traits
+  };
+}
+
+function chooseEquipmentForClass(classRow, isNamed) {
+  if (!equipmentRows.value.length) return [];
+  const atk = toSafeNumber(classRow?.攻撃, 0);
+  const mag = toSafeNumber(classRow?.魔力, 0);
+  let pool = equipmentRows.value;
+  if (mag > atk + 12) {
+    pool = equipmentRows.value.filter(row => nonEmptyText(row.装備名).includes("杖"));
+  } else if (atk > mag + 8) {
+    pool = equipmentRows.value.filter(row => ["短剣", "剣", "長剣", "槍", "斧", "戦槌", "棍棒", "弓", "銃"].includes(nonEmptyText(row.装備名)));
+  }
+  const primaryRow = randomPick(pool, randomPick(equipmentRows.value, null));
+  const loadout = [];
+  if (primaryRow) loadout.push(createEquipmentEntry(primaryRow, isNamed));
+  const shieldPool = equipmentRows.value.filter(row => ["盾", "大盾"].includes(nonEmptyText(row.装備名)));
+  const shieldChance = isNamed ? 0.65 : 0.35;
+  if (Math.random() < shieldChance) {
+    const shield = randomPick(shieldPool, null);
+    if (shield) loadout.push(createEquipmentEntry(shield, isNamed));
+  }
+  return loadout;
+}
+
+function buildUnitSkillsFromClass(classRow) {
+  const skills = [];
+  for (const field of ACQUIRED_SKILL_FIELDS) {
+    const name = nonEmptyText(classRow?.[field]);
+    if (!name || name === "0") continue;
+    skills.push(name);
+  }
+  return [...new Set(skills)];
+}
+
+function updateVillageInfoText() {
+  const v = villageState.value;
+  if (!v) {
+    villageInfoText.value = "初期村: -";
+    return;
+  }
+  villageInfoText.value = `初期村: ${v.name} / 座標 (${v.x}, ${v.y}) / 人口 ${v.population} / 食料 ${v.foodStock} / 資材 ${v.materialStock}`;
+}
+
+function updateUnitInfoText(extra = "") {
+  const unit = selectedUnit.value;
+  if (!unit) {
+    unitInfoText.value = "選択ユニット: -";
+    return;
+  }
+  const eqText = unit.equipment.length
+    ? unit.equipment.map(e => `${e.name}[${e.quality}]`).join(", ")
+    : "なし";
+  const note = extra ? ` / ${extra}` : "";
+  unitInfoText.value = `選択ユニット: ${unit.name}(${unit.unitType}) / Lv${unit.level} / 種族:${unit.race} / クラス:${unit.className} / 位置(${unit.x}, ${unit.y}) / 移動${unit.moveRange} / 索敵${unit.scoutRange} / 装備:${eqText}${note}`;
+}
+
+function unitsAt(x, y) {
+  return unitList.value.filter(unit => unit.x === x && unit.y === y);
+}
+
+function normalizeVolumePercent(value, fallback = 100) {
+  const raw = Number.isFinite(value) ? value : Number(value);
+  const safe = Number.isFinite(raw) ? Math.round(raw) : fallback;
+  return Math.max(0, Math.min(100, safe));
 }
 
 function normalizeIntRange(minValue, maxValue, hardMin, hardMax, fallbackMin, fallbackMax) {
@@ -80,6 +764,52 @@ function normalizeCustomIslandSettings() {
   customTargetLandPercent.value = Math.max(25, Math.min(60, Math.round(ratioPct)));
 }
 
+function nudgeCustomIslandInt(key, delta) {
+  const step = Number.isFinite(delta) ? Math.trunc(delta) : Number(delta);
+  if (!Number.isFinite(step) || step === 0) return;
+  if (key === "largeIslandCount") {
+    customLargeIslandCount.value = Number(customLargeIslandCount.value) + step;
+  } else if (key === "largeIslandMinGap") {
+    customLargeIslandMinGap.value = Number(customLargeIslandMinGap.value) + step;
+  } else if (key === "isletCountMin") {
+    customIsletCountMin.value = Number(customIsletCountMin.value) + step;
+  } else if (key === "isletCountMax") {
+    customIsletCountMax.value = Number(customIsletCountMax.value) + step;
+  }
+  normalizeCustomIslandSettings();
+}
+
+function applyDisplaySettingChange(payload) {
+  if (!payload || !payload.key) return;
+  const { key, value } = payload;
+  if (key === "section_display" || key === "section_audio") return;
+  if (key === "showHeightNumbers") showHeightNumbers.value = !!value;
+  else if (key === "useHeightShading") useHeightShading.value = !!value;
+  else if (key === "showSpecialTilesAlways") showSpecialTilesAlways.value = !!value;
+  else if (key === "showWaterfallEffects") showWaterfallEffects.value = !!value;
+  else if (key === "showStrongEnemyMarkers") showStrongEnemyMarkers.value = !!value;
+  else if (key === "mountainMode") mountainMode.value = String(value || "random");
+  else if (key === "heightNumberFontSize") {
+    const raw = Number(value);
+    heightNumberFontSize.value = Number.isFinite(raw) ? Math.max(10, Math.min(28, Math.round(raw))) : 23;
+  } else if (key === "heightNumberOutlineWidth") {
+    const raw = Number(value);
+    heightNumberOutlineWidth.value = Number.isFinite(raw) ? Math.max(0, Math.min(6, Math.round(raw))) : 3;
+  } else if (key === "masterVolumePercent") {
+    const pct = normalizeVolumePercent(value, masterVolumePercent.value);
+    masterVolumePercent.value = pct;
+    audio.setMasterVolume(pct / 100);
+  } else if (key === "bgmVolumePercent") {
+    const pct = normalizeVolumePercent(value, bgmVolumePercent.value);
+    bgmVolumePercent.value = pct;
+    audio.setBgmVolume(pct / 100);
+  } else if (key === "seVolumePercent") {
+    const pct = normalizeVolumePercent(value, seVolumePercent.value);
+    seVolumePercent.value = pct;
+    audio.setSeVolume(pct / 100);
+  }
+}
+
 function buildIslandCustomSettings() {
   if (!useIslandCustomSettings.value) return null;
   normalizeCustomIslandSettings();
@@ -98,6 +828,29 @@ function mapPixelSize(w, h) {
     width: (w * 40) + 20,
     height: ((h - 1) * 36) + 48
   };
+}
+
+function normalizeZoomPercent(value) {
+  const raw = Number.isFinite(value) ? value : Number(value);
+  const safe = Number.isFinite(raw) ? Math.round(raw) : 100;
+  return Math.max(50, Math.min(220, safe));
+}
+
+function setZoomPercent(value) {
+  zoomPercent.value = normalizeZoomPercent(value);
+  renderMapWithPhaser();
+}
+
+function zoomIn() {
+  setZoomPercent(zoomPercent.value + 10);
+}
+
+function zoomOut() {
+  setZoomPercent(zoomPercent.value - 10);
+}
+
+function zoomReset() {
+  setZoomPercent(100);
 }
 
 function toColorInt(hex) {
@@ -120,6 +873,24 @@ function shadeColorByHeight(hex, level) {
   const ng = Math.max(0, Math.min(255, Math.round(g * brightness)));
   const nb = Math.max(0, Math.min(255, Math.round(b * brightness)));
   return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
+}
+
+function blendHexColors(hexA, hexB, ratio = 0.5) {
+  if (!hexA?.startsWith("#")) return hexB;
+  if (!hexB?.startsWith("#")) return hexA;
+  const t = Math.max(0, Math.min(1, Number(ratio)));
+  const a = Number.parseInt(hexA.slice(1), 16);
+  const b = Number.parseInt(hexB.slice(1), 16);
+  const ar = (a >> 16) & 0xff;
+  const ag = (a >> 8) & 0xff;
+  const ab = a & 0xff;
+  const br = (b >> 16) & 0xff;
+  const bg = (b >> 8) & 0xff;
+  const bb = b & 0xff;
+  const r = Math.round(ar + ((br - ar) * t));
+  const g = Math.round(ag + ((bg - ag) * t));
+  const bch = Math.round(ab + ((bb - ab) * t));
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${bch.toString(16).padStart(2, "0")}`;
 }
 
 function buildHexPoints(x, y) {
@@ -208,8 +979,30 @@ function updateMeta(data) {
 }
 
 function buildStatsText(data) {
-  const { w, h, grid, shapeOnly, patternName, terrainRatioProfile, riverData, heightLevelMap, specialCounts, mountainProfile, reliefMap, strongMonsterStats, forestTargetCount, islandGenerationInfo } = data;
+  const {
+    w,
+    h,
+    grid,
+    shapeOnly,
+    patternName,
+    terrainRatioProfile,
+    riverData,
+    heightLevelMap,
+    specialCounts,
+    mountainProfile,
+    reliefMap,
+    strongMonsterStats,
+    forestTargetCount,
+    islandGenerationInfo,
+    coastInfo,
+    lavaMap,
+    turnState
+  } = data;
   const lines = [`サイズ: ${w}x${h} (${w * h}マス)`];
+  lines.push(`ターン: ${Math.max(0, Math.floor(Number(turnState?.turnNumber || 0)))}`);
+  if (turnState?.lastEventMode) {
+    lines.push(`ターン実行モード: ${eventModeLabel(turnState.lastEventMode)}`);
+  }
   if (patternName) lines.push(`パターン: ${patternName}`);
   if (islandGenerationInfo?.largeIslandRequested > 0) {
     const modeLabel = islandGenerationInfo.customApplied ? "カスタム" : "拡張";
@@ -285,6 +1078,18 @@ function buildStatsText(data) {
     }
     lines.push(`複合地形: 森+丘 ${forestHill} / 森+山 ${forestMountain}`);
   }
+  if (coastInfo && Number.isFinite(coastInfo.count)) {
+    lines.push(`海辺: ${coastInfo.count} (海接触 ${coastInfo.directCount || 0})`);
+  }
+  if (lavaMap) {
+    let lavaCount = 0;
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        if (lavaMap?.[y]?.[x]) lavaCount += 1;
+      }
+    }
+    lines.push(`溶岩流: ${lavaCount}マス`);
+  }
 
   if (riverData?.riverSet) {
     lines.push(`川(重なり): ${riverData.riverSet.size} (${((riverData.riverSet.size / (w * h)) * 100).toFixed(1)}%)`);
@@ -295,7 +1100,7 @@ function buildStatsText(data) {
     lines.push(`隠し特殊: 沼地 ${specialCounts.沼地 || 0} / 峡谷 ${specialCounts.峡谷 || 0} / 洞窟 ${specialCounts.洞窟 || 0}`);
     lines.push(`洞窟規模(マス): 小 ${specialCounts.洞窟_小 || 0} / 中 ${specialCounts.洞窟_中 || 0} / 大 ${specialCounts.洞窟_大 || 0}`);
   }
-  if (strongMonsterStats?.有効) {
+  if (showStrongEnemyMarkers.value && strongMonsterStats?.有効) {
     const byRule = strongMonsterStats.条件別 || {};
     lines.push(`強敵候補: ${strongMonsterStats.配置数 || 0}`);
     lines.push(
@@ -492,6 +1297,56 @@ function drawRiverOverlay(data) {
   }
 }
 
+function drawLavaOverlay(data) {
+  if (!lavaLayer) return;
+  lavaLayer.clear();
+  const flow = data?.lavaFlowData;
+  if (!flow) return;
+  const edgeKeys = Array.isArray(flow.edgeKeys) ? flow.edgeKeys : [];
+  const nodeKeys = Array.isArray(flow.nodeKeys) ? flow.nodeKeys : [];
+  const sourceKeys = Array.isArray(flow.sourceKeys) ? flow.sourceKeys : [];
+  if (!edgeKeys.length && !nodeKeys.length && !sourceKeys.length) return;
+
+  lavaLayer.lineStyle(8.6, 0x7c1e08, 0.78);
+  for (const ek of edgeKeys) {
+    const [a, b] = String(ek).split("|");
+    if (!a || !b) continue;
+    const pa = parseCoordKey(a);
+    const pb = parseCoordKey(b);
+    const ca = hexCenter(pa.x, pa.y);
+    const cb = hexCenter(pb.x, pb.y);
+    lavaLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx, ca.cy, cb.cx, cb.cy));
+  }
+
+  lavaLayer.lineStyle(5.1, 0xe2672c, 0.96);
+  for (const ek of edgeKeys) {
+    const [a, b] = String(ek).split("|");
+    if (!a || !b) continue;
+    const pa = parseCoordKey(a);
+    const pb = parseCoordKey(b);
+    const ca = hexCenter(pa.x, pa.y);
+    const cb = hexCenter(pb.x, pb.y);
+    lavaLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx, ca.cy, cb.cx, cb.cy));
+  }
+
+  for (const key of nodeKeys) {
+    const p = parseCoordKey(key);
+    const c = hexCenter(p.x, p.y);
+    lavaLayer.fillStyle(0xffbc6f, 1);
+    lavaLayer.fillCircle(c.cx, c.cy, 3.3);
+    lavaLayer.fillStyle(0xd04f1f, 0.95);
+    lavaLayer.fillCircle(c.cx, c.cy, 2.1);
+  }
+  for (const key of sourceKeys) {
+    const p = parseCoordKey(key);
+    const c = hexCenter(p.x, p.y);
+    lavaLayer.fillStyle(0xffd598, 0.98);
+    lavaLayer.fillCircle(c.cx, c.cy, 4.4);
+    lavaLayer.fillStyle(0xe86d30, 0.98);
+    lavaLayer.fillCircle(c.cx, c.cy, 2.8);
+  }
+}
+
 function clearLabels() {
   labelTexts.forEach(t => t.destroy());
   labelTexts = [];
@@ -508,11 +1363,13 @@ function renderMapWithPhaser() {
 
   const camera = scene.cameras.main;
   camera.setBounds(0, 0, worldW, worldH);
-  const zoom = Math.min(viewW / worldW, viewH / worldH, 1) * 0.96;
-  camera.setZoom(Math.max(zoom, 0.16));
+  const baseZoom = Math.min(viewW / worldW, viewH / worldH, 1) * 0.96;
+  const finalZoom = Math.max(baseZoom * (normalizeZoomPercent(zoomPercent.value) / 100), 0.08);
+  camera.setZoom(finalZoom);
   camera.centerOn(worldW / 2, worldH / 2);
 
   baseLayer.clear();
+  if (lavaLayer) lavaLayer.clear();
   markerLayer.clear();
   clearLabels();
   hitAreas = [];
@@ -526,6 +1383,8 @@ function renderMapWithPhaser() {
   const autoShrink = totalCells > 2000 ? 2 : totalCells > 1200 ? 1 : 0;
   const numberFontSize = Math.max(8, Number(heightNumberFontSize.value || 0) - autoShrink);
   const outlineWidth = Math.max(0, Number(heightNumberOutlineWidth.value || 0));
+  const seaVisual = tileVisual("海", data.shapeOnly);
+  const seaSplitColor = useHeightShading.value ? shadeColorByHeight(seaVisual.color, -2) : seaVisual.color;
 
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
@@ -539,6 +1398,9 @@ function renderMapWithPhaser() {
       const special = specialVisual(data.specialMap?.[y]?.[x], caveScale);
       const revealSpecial = !!special && (showSpecialTilesAlways.value || selectedTileKey === tileKey);
       const isWaterfall = !data.shapeOnly && !!data.riverData?.waterfallSet?.has(tileKey);
+      const isLava = !data.shapeOnly && !!data.lavaMap?.[y]?.[x];
+      const coastType = !data.shapeOnly ? (data.coastTypeMap?.[y]?.[x] || "") : "";
+      const isCoastTile = coastType === "direct";
       const points = buildHexPoints(x, y);
       const polygon = new Phaser.Geom.Polygon(points);
       const mixedForestRelief = (
@@ -551,11 +1413,20 @@ function renderMapWithPhaser() {
         const reliefVisual = tileVisual(reliefKey, false);
         const forestColor = useHeightShading.value ? shadeColorByHeight(visual.color, level) : visual.color;
         const reliefColor = useHeightShading.value ? shadeColorByHeight(reliefVisual.color, level) : reliefVisual.color;
-        drawSplitHex(baseLayer, points, forestColor, reliefColor);
+        if (isCoastTile) {
+          const mixedLandColor = blendHexColors(forestColor, reliefColor, 0.5);
+          drawSplitHex(baseLayer, points, mixedLandColor, seaSplitColor);
+        } else {
+          drawSplitHex(baseLayer, points, forestColor, reliefColor);
+        }
       } else {
         const tileColor = useHeightShading.value ? shadeColorByHeight(visual.color, level) : visual.color;
-        baseLayer.fillStyle(toColorInt(tileColor), 1);
-        baseLayer.fillPoints(points, true);
+        if (isCoastTile) {
+          drawSplitHex(baseLayer, points, tileColor, seaSplitColor);
+        } else {
+          baseLayer.fillStyle(toColorInt(tileColor), 1);
+          baseLayer.fillPoints(points, true);
+        }
       }
       if (revealSpecial) {
         baseLayer.fillStyle(toColorInt(special.overlayColor), special.overlayAlpha);
@@ -592,7 +1463,7 @@ function renderMapWithPhaser() {
         labelTexts.push(fallLabel);
       }
 
-      if (strongInfo) {
+      if (showStrongEnemyMarkers.value && strongInfo) {
         baseLayer.fillStyle(0xa83232, 0.94);
         baseLayer.fillCircle(center.cx + 13, center.cy - 14, 4.3);
         baseLayer.lineStyle(1.2, 0xffe8d6, 0.9);
@@ -635,6 +1506,9 @@ function renderMapWithPhaser() {
         waterfall,
         special: data.specialMap?.[y]?.[x] || "",
         relief: reliefKey,
+        coast: isCoastTile,
+        coastType,
+        lava: isLava,
         strongInfo,
         caveScale,
         caveSize: data.caveSizeMap?.[y]?.[x] || 0,
@@ -644,6 +1518,7 @@ function renderMapWithPhaser() {
   }
 
   drawRiverOverlay(data);
+  drawLavaOverlay(data);
 
   if (selectedTileKey) {
     const match = hitAreas.find(t => `${t.x},${t.y}` === selectedTileKey);
@@ -656,14 +1531,123 @@ function renderMapWithPhaser() {
   }
 }
 
-function applyMapData(data) {
+function formatTurnEventMessage(turn, events, mode = "normal") {
+  if (!events?.length) {
+    return `ターン ${turn} (${eventModeLabel(mode)}): イベントなし`;
+  }
+  const eruptionCount = events.filter(e => e?.type === "eruption").length;
+  const lavaCount = events.filter(e => e?.type === "lava").length;
+  return `ターン ${turn} (${eventModeLabel(mode)}): 噴火 ${eruptionCount}件 / 溶岩流 ${lavaCount}件`;
+}
+
+function formatTurnEventNotes(events) {
+  if (!events?.length) return ["発生イベントはありません。"];
+  const notes = [];
+  const eruptions = events.filter(e => e?.type === "eruption");
+  const lavaFlows = events.filter(e => e?.type === "lava");
+  for (const e of eruptions.slice(0, 6)) {
+    notes.push(`噴火: (${e.x}, ${e.y}) 山岳 -> 火山${e.forced ? " [テスト強制]" : ""}`);
+  }
+  for (const f of lavaFlows.slice(0, 6)) {
+    const stopNote = f.stopped && f.stopReason ? ` / 停止:${lavaStopReasonLabel(f.stopReason)}` : "";
+    notes.push(`溶岩流: (${f.from.x}, ${f.from.y}) から ${f.length}マス -> (${f.to.x}, ${f.to.y})${stopNote}`);
+  }
+  if (events.length > 12) {
+    notes.push(`ほか ${events.length - 12} 件`);
+  }
+  return notes;
+}
+
+function runNextTurn(options = {}) {
+  kickOffBgm();
+  if (options?.playSe !== false) audio.playSe("confirm");
+  if (!currentData.value || currentData.value.shapeOnly) {
+    eventModalMessage.value = "地形マップ生成後にターンを進めてください。";
+    eventModalNotes.value = ["「島形状のみ」ではターンイベントは動作しません。"];
+    showEventModal.value = true;
+    return;
+  }
+  const mode = String(options?.eventMode || "normal");
+  const result = advanceTerrainTurn(currentData.value, {
+    eventMode: mode
+  });
+  applyMapData(result.data, { resetClock: false, rebuildCharacters: false });
+  const turn = Number(result.data?.turnState?.turnNumber || 0);
+  eventModalMessage.value = formatTurnEventMessage(turn, result.events, mode);
+  eventModalNotes.value = formatTurnEventNotes(result.events);
+  showEventModal.value = true;
+}
+
+function runManagedEventTurn() {
+  runNextTurn({ eventMode: eventActionType.value, playSe: false });
+  showEventControlModal.value = false;
+}
+
+function openSettingsModal() {
+  kickOffBgm();
+  audio.playSe("open");
+  showSettingsModal.value = true;
+}
+
+function closeSettingsModal() {
+  audio.playSe("cancel");
+  showSettingsModal.value = false;
+}
+
+function openIslandCustomModal() {
+  kickOffBgm();
+  audio.playSe("open");
+  showIslandCustomModal.value = true;
+}
+
+function closeIslandCustomModal() {
+  audio.playSe("cancel");
+  showIslandCustomModal.value = false;
+}
+
+function openEventControlModal() {
+  kickOffBgm();
+  audio.playSe("open");
+  showEventControlModal.value = true;
+}
+
+function closeEventControlModal() {
+  audio.playSe("cancel");
+  showEventControlModal.value = false;
+}
+
+function closeEventResultModal() {
+  audio.playSe("cancel");
+  showEventModal.value = false;
+}
+
+function selectEventActionType(mode) {
+  const next = String(mode || "normal");
+  if (eventActionType.value === next) return;
+  kickOffBgm();
+  audio.playSe("change");
+  eventActionType.value = next;
+}
+
+function applyMapData(data, options = {}) {
   currentData.value = data;
   selectedTileKey = "";
+  if (options.rebuildCharacters !== false) {
+    createVillageAndInitialUnit(data);
+  }
+  if (options.resetClock !== false) {
+    mapClockStartMs.value = Date.now();
+    clockNowMs.value = mapClockStartMs.value;
+  }
   updateMeta(data);
   renderMapWithPhaser();
 }
 
-function generateShapeMap() {
+function generateShapeMap(options = {}) {
+  if (options.playSe !== false) {
+    kickOffBgm();
+    audio.playSe("confirm");
+  }
   const { w, h } = parseMapSizeValue(mapSize.value);
   const islandCustomSettings = buildIslandCustomSettings();
   const data = createIslandShapeData({
@@ -672,10 +1656,15 @@ function generateShapeMap() {
     patternId: patternId.value,
     islandCustomSettings
   });
-  applyMapData(data);
+  showEventModal.value = false;
+  applyMapData(data, { resetClock: true });
 }
 
-function generateTerrainMap() {
+function generateTerrainMap(options = {}) {
+  if (options.playSe !== false) {
+    kickOffBgm();
+    audio.playSe("confirm");
+  }
   const { w, h } = parseMapSizeValue(mapSize.value);
   const islandCustomSettings = buildIslandCustomSettings();
   const data = createTerrainMapData({
@@ -685,33 +1674,74 @@ function generateTerrainMap() {
     mountainMode: mountainMode.value,
     islandCustomSettings
   });
-  applyMapData(data);
+  showEventModal.value = false;
+  applyMapData(data, { resetClock: true });
+}
+
+function updateMapClickInfo(picked) {
+  if (!picked || !currentData.value) {
+    mapClickInfo.value = "クリック座標: -";
+    return;
+  }
+  const heightRaw = currentData.value.heightMap?.[picked.y]?.[picked.x];
+  const heightLevel = currentData.value.heightLevelMap?.[picked.y]?.[picked.x];
+  const river = picked.river ? "あり" : "なし";
+  const waterfall = picked.waterfall ? "あり" : "なし";
+  const lava = picked.lava ? "あり" : "なし";
+  const special = picked.special || "-";
+  const relief = picked.relief && picked.relief !== picked.terrain ? picked.relief : "-";
+  const coast = picked.coastType === "direct" ? "海辺" : "内陸";
+  const coastContact = picked.coastType === "direct" ? "あり" : "なし";
+  const strong = showStrongEnemyMarkers.value
+    ? (
+      picked.strongInfo
+        ? `候補(Lv${picked.strongInfo.level}, ${Array.isArray(picked.strongInfo.rules) ? picked.strongInfo.rules.join("+") : "-"})`
+        : "なし"
+    )
+    : "非表示(設定OFF)";
+  const caveScale = picked.special === "洞窟"
+    ? (picked.caveScale === "large" ? "大" : picked.caveScale === "medium" ? "中" : "小")
+    : "-";
+  const caveSize = picked.special === "洞窟" ? picked.caveSize : "-";
+  const tileUnits = unitsAt(picked.x, picked.y);
+  const unitText = tileUnits.length
+    ? tileUnits.map(unit => `${unit.name}(Lv${unit.level})`).join(", ")
+    : "なし";
+  mapClickInfo.value = `クリック座標: (${picked.x}, ${picked.y}) / 地形: ${picked.terrain} / 海辺判定: ${coast} / 海接触: ${coastContact} / 地勢: ${relief} / 強敵: ${strong} / 特殊: ${special} / 洞窟規模: ${caveScale}(${caveSize}) / 川: ${river} / 滝: ${waterfall} / 溶岩: ${lava} / 高度Lv: ${Number.isFinite(heightLevel) ? heightLevel : "-"} / 高度Raw: ${Number.isFinite(heightRaw) ? heightRaw : "-"} / ユニット: ${unitText}`;
 }
 
 function handlePointerDown(pointer) {
   const picked = hitAreas.find(area => Phaser.Geom.Polygon.Contains(area.polygon, pointer.worldX, pointer.worldY));
   if (!picked || !currentData.value) return;
   selectedTileKey = `${picked.x},${picked.y}`;
-  const heightRaw = currentData.value.heightMap?.[picked.y]?.[picked.x];
-  const heightLevel = currentData.value.heightLevelMap?.[picked.y]?.[picked.x];
-  const river = picked.river ? "あり" : "なし";
-  const waterfall = picked.waterfall ? "あり" : "なし";
-  const special = picked.special || "-";
-  const relief = picked.relief && picked.relief !== picked.terrain ? picked.relief : "-";
-  const strong = picked.strongInfo
-    ? `候補(Lv${picked.strongInfo.level}, ${Array.isArray(picked.strongInfo.rules) ? picked.strongInfo.rules.join("+") : "-"})`
-    : "なし";
-  const caveScale = picked.special === "洞窟"
-    ? (picked.caveScale === "large" ? "大" : picked.caveScale === "medium" ? "中" : "小")
-    : "-";
-  const caveSize = picked.special === "洞窟" ? picked.caveSize : "-";
-  mapClickInfo.value = `クリック座標: (${picked.x}, ${picked.y}) / 地形: ${picked.terrain} / 地勢: ${relief} / 強敵: ${strong} / 特殊: ${special} / 洞窟規模: ${caveScale}(${caveSize}) / 川: ${river} / 滝: ${waterfall} / 高度Lv: ${Number.isFinite(heightLevel) ? heightLevel : "-"} / 高度Raw: ${Number.isFinite(heightRaw) ? heightRaw : "-"}`;
+  const tileUnits = unitsAt(picked.x, picked.y);
+  if (tileUnits.length) {
+    selectedUnitId.value = tileUnits[0].id;
+    updateUnitInfoText(`選択座標 (${picked.x}, ${picked.y})`);
+    emitCharacterStateChange();
+  }
+  updateMapClickInfo(picked);
   renderMapWithPhaser();
 }
 
 onMounted(async () => {
   await nextTick();
   if (!gameRoot.value) return;
+
+  firstGestureHandler = () => {
+    kickOffBgm();
+    if (firstGestureHandler) {
+      window.removeEventListener("pointerdown", firstGestureHandler);
+      window.removeEventListener("keydown", firstGestureHandler);
+      firstGestureHandler = null;
+    }
+  };
+  window.addEventListener("pointerdown", firstGestureHandler);
+  window.addEventListener("keydown", firstGestureHandler);
+
+  clockIntervalId = window.setInterval(() => {
+    clockNowMs.value = Date.now();
+  }, 250);
 
   game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -724,9 +1754,10 @@ onMounted(async () => {
         scene = this;
         baseLayer = this.add.graphics();
         riverLayer = this.add.graphics();
+        lavaLayer = this.add.graphics();
         markerLayer = this.add.graphics();
         this.input.on("pointerdown", handlePointerDown);
-        generateShapeMap();
+        generateShapeMap({ playSe: false });
       }
     }
   });
@@ -737,14 +1768,31 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (resizeHandler) window.removeEventListener("resize", resizeHandler);
+  if (firstGestureHandler) {
+    window.removeEventListener("pointerdown", firstGestureHandler);
+    window.removeEventListener("keydown", firstGestureHandler);
+    firstGestureHandler = null;
+  }
+  if (clockIntervalId) {
+    window.clearInterval(clockIntervalId);
+    clockIntervalId = null;
+  }
   if (game) {
     game.destroy(true);
     game = null;
   }
+  lavaLayer = null;
 });
 
-watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHeightShading, showSpecialTilesAlways, showWaterfallEffects], () => {
+watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHeightShading, showSpecialTilesAlways, showWaterfallEffects, showStrongEnemyMarkers], () => {
+  if (currentData.value) {
+    mapStats.value = buildStatsText(currentData.value);
+  }
   renderMapWithPhaser();
+  if (selectedTileKey) {
+    const picked = hitAreas.find(t => `${t.x},${t.y}` === selectedTileKey);
+    if (picked) updateMapClickInfo(picked);
+  }
 });
 </script>
 
@@ -754,9 +1802,12 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
     <div class="map-tools">
       <label>マップサイズ
         <select v-model="mapSize">
-          <option value="24x24">小 (24x24 = 144マス)</option>
-          <option value="36x36">中 (36x36 = 324マス / 推奨)</option>
-          <option value="54x54">大 (54x54 = 576マス)</option>
+          <option value="30x40">下限 (30x40 = 1200マス)</option>
+          <option value="36x36">標準 (36x36 = 1296マス / 推奨)</option>
+          <option value="48x48">大 (48x48 = 2304マス)</option>
+          <option value="60x60">特大 (60x60 = 3600マス)</option>
+          <option value="72x72">超特大 (72x72 = 5184マス)</option>
+          <option value="83x83">最大 (83x83 = 6889マス)</option>
         </select>
       </label>
       <label>島形状パターン
@@ -769,101 +1820,249 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
           <option value="chain">列島型</option>
         </select>
       </label>
-      <button type="button" class="secondary" @click="showIslandCustomModal = true">島カスタム設定</button>
-      <button type="button" class="secondary" @click="showSettingsModal = true">設定</button>
+      <button type="button" class="secondary" @click="openIslandCustomModal">島カスタム設定</button>
+      <button type="button" class="secondary" @click="openSettingsModal">設定</button>
+      <button v-if="isDevBuild" type="button" class="secondary" @click="showDevInfo = !showDevInfo">
+        開発情報: {{ showDevInfo ? "ON" : "OFF" }}
+      </button>
       <button id="generateShapeBtn" class="secondary" type="button" @click="generateShapeMap">島形状のみ</button>
       <button id="generateMapBtn" class="secondary" type="button" @click="generateTerrainMap">生成</button>
-    </div>
-    <div id="mapClickInfo" class="map-click-info">{{ mapClickInfo }}</div>
-
-    <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas"></div>
-    <div class="small phaser-help">クリックで座標・地形・高度を表示します。</div>
-    <section class="generation-details">
-      <div class="map-meta">
-        <div id="mapSizeInfo">{{ mapSizeInfo }}</div>
-        <div id="mapCenterInfo">{{ mapCenterInfo }}</div>
-        <div id="mapTerrainProfileInfo">{{ mapTerrainProfileInfo }}</div>
+      <button id="advanceTurnBtn" class="secondary" type="button" @click="runNextTurn">ターン経過</button>
+      <button id="eventManagerBtn" class="secondary" type="button" @click="showEventControlModal = true">イベント管理</button>
+      <div class="zoom-controls">
+        <button type="button" class="secondary" @click="zoomOut">-</button>
+        <button type="button" class="secondary" @click="zoomReset">{{ zoomPercent }}%</button>
+        <button type="button" class="secondary" @click="zoomIn">+</button>
       </div>
-      <pre id="mapStats" class="phaser-map-stats">{{ mapStats }}</pre>
+    </div>
+    <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas">
+      <header class="field-overlay-header">
+        <div class="field-resource-chip">
+          <span>食料</span>
+          <strong>{{ fieldResourceSummary.food }}</strong>
+        </div>
+        <div class="field-resource-chip">
+          <span>資材</span>
+          <strong>{{ fieldResourceSummary.material }}</strong>
+        </div>
+      </header>
+      <div class="field-overlay-clock">
+        <div class="turn-clock-face" :title="`経過 ${elapsedClockText}`">
+          <span class="turn-clock-mark mark-top"></span>
+          <span class="turn-clock-mark mark-right"></span>
+          <span class="turn-clock-mark mark-bottom"></span>
+          <span class="turn-clock-mark mark-left"></span>
+          <div class="turn-clock-hand" :style="{ transform: `translateX(-50%) rotate(${turnClockHandDeg}deg)` }"></div>
+          <div class="turn-clock-center"></div>
+          <div class="turn-clock-turn">T{{ turnClockTurnNumber }}</div>
+        </div>
+        <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s</div>
+        <div class="turn-clock-caption map-turn-caption">マップT{{ mapTurnNumber }}</div>
+      </div>
+    </div>
+    <section v-if="showDevInfo" class="dev-info-panel">
+      <div class="small dev-info-label">開発モード情報</div>
+      <div id="mapClickInfo" class="map-click-info">{{ mapClickInfo }}</div>
+      <div class="character-dev-lines">
+        <div>{{ villageInfoText }}</div>
+        <div>{{ unitRulesInfoText }}</div>
+        <div>{{ unitInfoText }}</div>
+      </div>
+      <div class="small phaser-help">クリックで座標・地形・高度を表示します。</div>
+      <section class="generation-details">
+        <div class="map-meta">
+          <div id="mapSizeInfo">{{ mapSizeInfo }}</div>
+          <div id="mapCenterInfo">{{ mapCenterInfo }}</div>
+          <div id="mapTerrainProfileInfo">{{ mapTerrainProfileInfo }}</div>
+        </div>
+        <pre id="mapStats" class="phaser-map-stats">{{ mapStats }}</pre>
+      </section>
     </section>
 
-    <div v-if="showSettingsModal" class="settings-backdrop" @click.self="showSettingsModal = false">
-      <div class="settings-modal">
-        <h3>表示設定</h3>
-        <label class="setting-row">
-          <input v-model="showHeightNumbers" type="checkbox" />
-          タイル上に高度Lvを表示する
-        </label>
-        <label class="setting-row">
-          <input v-model="useHeightShading" type="checkbox" />
-          高度で色を補正する（低いほど明るい）
-        </label>
-        <label class="setting-row">
-          <input v-model="showSpecialTilesAlways" type="checkbox" />
-          隠し特殊地形を常時表示する
-        </label>
-        <label class="setting-row">
-          <input v-model="showWaterfallEffects" type="checkbox" />
-          滝エフェクトを表示する
-        </label>
-        <label class="setting-column">
-          <span>山岳モード</span>
-          <select v-model="mountainMode">
-            <option value="random">ランダム (単峰/群峰/混合)</option>
-            <option value="single">単峰 固定</option>
-            <option value="multi">群峰 固定</option>
-            <option value="mixed">混合 固定</option>
-          </select>
-        </label>
-        <label class="setting-column">
-          <span>高度Lv文字サイズ: {{ heightNumberFontSize }}px</span>
-          <input v-model.number="heightNumberFontSize" type="range" min="10" max="28" step="1" />
-        </label>
-        <label class="setting-column">
-          <span>高度Lv枠線の太さ: {{ heightNumberOutlineWidth }}px</span>
-          <input v-model.number="heightNumberOutlineWidth" type="range" min="0" max="6" step="1" />
-        </label>
-        <div class="setting-note">
-          隠し特殊地形は通常時は見えず、クリック時のみ判明します。常時表示をONで最初から見えます。
+    <generic-modal
+      :show="showSettingsModal"
+      title="表示設定"
+      modal-type="form"
+      :fields="displaySettingsFields"
+      :notes="displaySettingsNotes"
+      @close="closeSettingsModal"
+      @field-change="applyDisplaySettingChange"
+    />
+
+    <generic-modal
+      :show="showEventModal"
+      title="イベント"
+      modal-type="message"
+      :message="eventModalMessage"
+      :notes="eventModalNotes"
+      close-text="閉じる"
+      @close="closeEventResultModal"
+    />
+
+    <div v-if="showEventControlModal" class="settings-backdrop" @click.self="closeEventControlModal">
+      <div class="settings-modal event-control-modal">
+        <h3>イベント管理</h3>
+        <div class="event-mode-grid" role="radiogroup" aria-label="発生イベント選択">
+          <button
+            v-for="opt in eventModeOptions"
+            :key="opt.value"
+            type="button"
+            class="event-mode-card"
+            :class="{ active: eventActionType === opt.value }"
+            :aria-pressed="eventActionType === opt.value"
+            @click="selectEventActionType(opt.value)"
+          >
+            <span class="event-mode-label">{{ opt.label }}</span>
+            <small class="event-mode-desc">{{ opt.desc }}</small>
+          </button>
         </div>
-        <div class="setting-actions">
-          <button type="button" class="secondary" @click="showSettingsModal = false">閉じる</button>
+        <div class="event-mode-hint">
+          実行モード: {{ eventModeLabel(eventActionType) }} / 1ターン進行
+        </div>
+        <div class="setting-actions event-control-actions">
+          <button type="button" class="secondary" @click="closeEventControlModal">閉じる</button>
+          <button type="button" class="secondary" @click="runManagedEventTurn">実行</button>
         </div>
       </div>
     </div>
 
-    <div v-if="showIslandCustomModal" class="settings-backdrop" @click.self="showIslandCustomModal = false">
-      <div class="settings-modal">
+    <div v-if="showIslandCustomModal" class="settings-backdrop" @click.self="closeIslandCustomModal">
+      <div class="settings-modal island-custom-modal">
         <h3>島カスタム設定</h3>
         <label class="setting-row">
           <input v-model="useIslandCustomSettings" type="checkbox" />
           カスタム島生成を使用する
         </label>
-        <label class="setting-column">
-          <span>大島の数</span>
-          <input v-model.number="customLargeIslandCount" type="number" min="1" max="8" step="1" :disabled="!useIslandCustomSettings" />
-        </label>
-        <label class="setting-column">
-          <span>孤島数 (最小〜最大)</span>
-          <div class="inline-pair">
-            <input v-model.number="customIsletCountMin" type="number" min="0" max="12" step="1" :disabled="!useIslandCustomSettings" />
-            <span>〜</span>
-            <input v-model.number="customIsletCountMax" type="number" min="0" max="12" step="1" :disabled="!useIslandCustomSettings" />
-          </div>
-        </label>
-        <label class="setting-column">
-          <span>大島間の最小距離</span>
-          <input v-model.number="customLargeIslandMinGap" type="number" min="2" max="12" step="1" :disabled="!useIslandCustomSettings" />
-        </label>
-        <label class="setting-column">
-          <span>目標陸地率: {{ customTargetLandPercent }}%</span>
-          <input v-model.number="customTargetLandPercent" type="range" min="25" max="60" step="1" :disabled="!useIslandCustomSettings" />
-        </label>
+        <div class="setting-note">
+          パターンを土台にしつつ、大島/孤島の配置と陸地率を上書きします。
+        </div>
+        <div class="island-custom-grid" :class="{ 'is-disabled': !useIslandCustomSettings }">
+          <label class="setting-column island-field">
+            <span>大島の数</span>
+            <div class="number-stepper">
+              <input
+                v-model.number="customLargeIslandCount"
+                type="number"
+                min="1"
+                max="8"
+                step="1"
+                :disabled="!useIslandCustomSettings"
+                @change="normalizeCustomIslandSettings"
+              />
+              <div class="step-stack">
+                <button
+                  type="button"
+                  class="step-btn"
+                  :disabled="!useIslandCustomSettings"
+                  @click="nudgeCustomIslandInt('largeIslandCount', 1)"
+                >+</button>
+                <button
+                  type="button"
+                  class="step-btn"
+                  :disabled="!useIslandCustomSettings"
+                  @click="nudgeCustomIslandInt('largeIslandCount', -1)"
+                >-</button>
+              </div>
+            </div>
+            <small class="field-help">1〜8で設定。</small>
+          </label>
+          <label class="setting-column island-field">
+            <span>大島間の最小距離</span>
+            <div class="number-stepper">
+              <input
+                v-model.number="customLargeIslandMinGap"
+                type="number"
+                min="2"
+                max="12"
+                step="1"
+                :disabled="!useIslandCustomSettings"
+                @change="normalizeCustomIslandSettings"
+              />
+              <div class="step-stack">
+                <button
+                  type="button"
+                  class="step-btn"
+                  :disabled="!useIslandCustomSettings"
+                  @click="nudgeCustomIslandInt('largeIslandMinGap', 1)"
+                >+</button>
+                <button
+                  type="button"
+                  class="step-btn"
+                  :disabled="!useIslandCustomSettings"
+                  @click="nudgeCustomIslandInt('largeIslandMinGap', -1)"
+                >-</button>
+              </div>
+            </div>
+            <small class="field-help">島と島の間の海マス数目安。</small>
+          </label>
+          <label class="setting-column island-field">
+            <span>孤島数 (最小〜最大)</span>
+            <div class="inline-pair stepper-pair">
+              <div class="number-stepper">
+                <input
+                  v-model.number="customIsletCountMin"
+                  type="number"
+                  min="0"
+                  max="12"
+                  step="1"
+                  :disabled="!useIslandCustomSettings"
+                  @change="normalizeCustomIslandSettings"
+                />
+                <div class="step-stack">
+                  <button
+                    type="button"
+                    class="step-btn"
+                    :disabled="!useIslandCustomSettings"
+                    @click="nudgeCustomIslandInt('isletCountMin', 1)"
+                  >+</button>
+                  <button
+                    type="button"
+                    class="step-btn"
+                    :disabled="!useIslandCustomSettings"
+                    @click="nudgeCustomIslandInt('isletCountMin', -1)"
+                  >-</button>
+                </div>
+              </div>
+              <span>〜</span>
+              <div class="number-stepper">
+                <input
+                  v-model.number="customIsletCountMax"
+                  type="number"
+                  min="0"
+                  max="12"
+                  step="1"
+                  :disabled="!useIslandCustomSettings"
+                  @change="normalizeCustomIslandSettings"
+                />
+                <div class="step-stack">
+                  <button
+                    type="button"
+                    class="step-btn"
+                    :disabled="!useIslandCustomSettings"
+                    @click="nudgeCustomIslandInt('isletCountMax', 1)"
+                  >+</button>
+                  <button
+                    type="button"
+                    class="step-btn"
+                    :disabled="!useIslandCustomSettings"
+                    @click="nudgeCustomIslandInt('isletCountMax', -1)"
+                  >-</button>
+                </div>
+              </div>
+            </div>
+            <small class="field-help">0〜12。生成時に範囲内で抽選。</small>
+          </label>
+          <label class="setting-column island-field">
+            <span>目標陸地率: {{ customTargetLandPercent }}% ({{ customTargetLandTilesLabel }})</span>
+            <input v-model.number="customTargetLandPercent" type="range" min="25" max="60" step="1" :disabled="!useIslandCustomSettings" />
+            <small class="field-help">25〜60%。マップサイズに応じて目標マス数を表示。</small>
+          </label>
+        </div>
         <div class="setting-note">
           カスタムON時は、島形状パターンを土台にしつつ大島/孤島配置を上書きします。孤島サイズは孤島数に応じて自動調整し、目標陸地率(初期50%)に寄せて生成します。
         </div>
         <div class="setting-actions">
-          <button type="button" class="secondary" @click="showIslandCustomModal = false">閉じる</button>
+          <button type="button" class="secondary" @click="closeIslandCustomModal">閉じる</button>
         </div>
       </div>
     </div>
@@ -900,6 +2099,7 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
 }
 
 .phaser-map-canvas {
+  position: relative;
   width: 100%;
   height: min(68vh, 760px);
   border-radius: 10px;
@@ -908,9 +2108,246 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
   overflow: hidden;
 }
 
+.phaser-map-canvas > canvas {
+  position: relative;
+  z-index: 1;
+}
+
+.field-overlay-header {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(247, 218, 158, 0.28);
+  background: linear-gradient(170deg, rgba(17, 22, 33, 0.32), rgba(22, 15, 10, 0.28));
+  backdrop-filter: blur(2px);
+  box-shadow: inset 0 0 0 1px rgba(255, 233, 188, 0.08);
+  pointer-events: none;
+}
+
+.field-resource-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(242, 214, 154, 0.32);
+  background: linear-gradient(170deg, rgba(22, 29, 40, 0.34), rgba(23, 16, 11, 0.3));
+  backdrop-filter: blur(2px);
+  color: #f5e9c6;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.field-resource-chip strong {
+  font-size: 0.9rem;
+  color: #fff3cf;
+}
+
+.field-overlay-clock {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 20;
+  pointer-events: none;
+  width: 88px;
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  color: #fff4d2;
+  font-family: "Noto Sans JP", "Consolas", monospace;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.turn-clock-face {
+  position: relative;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  border: 1px solid rgba(245, 217, 158, 0.46);
+  background: radial-gradient(circle at 35% 28%, rgba(34, 46, 62, 0.82), rgba(16, 11, 8, 0.86));
+  box-shadow: inset 0 0 0 1px rgba(255, 233, 188, 0.12);
+}
+
+.turn-clock-mark {
+  position: absolute;
+  background: rgba(255, 236, 202, 0.8);
+  border-radius: 1px;
+}
+
+.turn-clock-mark.mark-top {
+  top: 6px;
+  left: 50%;
+  width: 2px;
+  height: 9px;
+  transform: translateX(-50%);
+}
+
+.turn-clock-mark.mark-right {
+  top: 50%;
+  right: 6px;
+  width: 9px;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.turn-clock-mark.mark-bottom {
+  bottom: 6px;
+  left: 50%;
+  width: 2px;
+  height: 9px;
+  transform: translateX(-50%);
+}
+
+.turn-clock-mark.mark-left {
+  top: 50%;
+  left: 6px;
+  width: 9px;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.turn-clock-hand {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 2px;
+  height: 24px;
+  transform-origin: 50% 100%;
+  background: linear-gradient(180deg, #fff2d0, #e3c072);
+  border-radius: 2px;
+}
+
+.turn-clock-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #ffe8b7;
+  border: 1px solid rgba(72, 50, 21, 0.8);
+}
+
+.turn-clock-turn {
+  position: absolute;
+  left: 50%;
+  top: 64%;
+  transform: translate(-50%, -50%);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #f8e7c2;
+}
+
+.turn-clock-caption {
+  border-radius: 7px;
+  border: 1px solid rgba(245, 217, 158, 0.36);
+  background: linear-gradient(170deg, rgba(19, 25, 35, 0.74), rgba(16, 11, 8, 0.68));
+  padding: 3px 7px;
+  font-size: 0.68rem;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.turn-clock-caption.map-turn-caption {
+  background: linear-gradient(170deg, rgba(39, 20, 10, 0.78), rgba(24, 16, 10, 0.72));
+  border-color: rgba(247, 168, 114, 0.36);
+}
+
 .phaser-help {
   margin-top: 6px;
   color: #ddcda0;
+}
+
+.dev-info-panel {
+  margin-top: 10px;
+  border: 1px dashed rgba(238, 202, 138, 0.42);
+  border-radius: 9px;
+  padding: 8px;
+  background: linear-gradient(170deg, rgba(23, 18, 13, 0.48), rgba(17, 13, 10, 0.42));
+}
+
+.dev-info-label {
+  color: #efd5a0;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
+
+.event-control-modal {
+  width: min(460px, 100%);
+}
+
+.event-mode-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.event-mode-card {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border-radius: 10px;
+  border: 1px solid rgba(221, 185, 126, 0.38);
+  background: linear-gradient(170deg, rgba(26, 19, 13, 0.78), rgba(17, 12, 8, 0.72));
+  color: #f3e8cb;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.event-mode-card.active {
+  border-color: rgba(255, 214, 138, 0.86);
+  box-shadow: inset 0 0 0 1px rgba(255, 233, 176, 0.34);
+  background: linear-gradient(170deg, rgba(84, 51, 23, 0.84), rgba(39, 22, 11, 0.8));
+}
+
+.event-mode-label {
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.event-mode-desc {
+  color: #ddcfa8;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.event-mode-hint {
+  margin-top: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(221, 185, 126, 0.34);
+  background: rgba(24, 17, 12, 0.62);
+  color: #eadab2;
+  padding: 7px 9px;
+  font-size: 0.82rem;
+}
+
+.event-control-actions {
+  gap: 8px;
+}
+
+.event-control-actions .secondary:last-child {
+  border-color: rgba(255, 219, 156, 0.78);
+  background: linear-gradient(180deg, rgba(150, 98, 47, 0.9), rgba(83, 50, 22, 0.92));
+}
+
+.zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zoom-controls .secondary {
+  min-width: 44px;
+  padding: 4px 8px;
 }
 
 .map-click-info {
@@ -926,6 +2363,22 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
   font-weight: 600;
   line-height: 1.38;
   word-break: break-word;
+}
+
+.character-dev-lines {
+  margin-top: 6px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #f4e7c6;
+}
+
+.character-dev-lines > div {
+  border: 1px solid rgba(220, 188, 128, 0.33);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: linear-gradient(170deg, rgba(28, 20, 14, 0.72), rgba(18, 13, 9, 0.62));
+  line-height: 1.4;
 }
 
 .generation-details {
@@ -949,6 +2402,8 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
   border-radius: 12px;
   padding: 12px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.44);
+  font-size: 1rem;
+  line-height: 1.35;
 }
 
 .settings-modal h3 {
@@ -987,9 +2442,113 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
   align-items: center;
 }
 
+.stepper-pair {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.stepper-pair > span {
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.number-stepper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.number-stepper input[type="number"] {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 6px;
+  border: 1px solid rgba(218, 184, 121, 0.42);
+  background: rgba(15, 11, 7, 0.72);
+  color: #f4ebd2;
+  text-align: center;
+  font-size: 0.96rem;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.number-stepper input[type="number"]::-webkit-outer-spin-button,
+.number-stepper input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.step-stack {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 4px;
+}
+
+.step-btn {
+  min-height: 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(215, 180, 118, 0.58);
+  background: linear-gradient(180deg, rgba(112, 80, 41, 0.88), rgba(62, 43, 22, 0.92));
+  color: #f8e9c2;
+  font-size: 0.96rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.step-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .setting-actions {
   margin-top: 10px;
   display: flex;
   justify-content: flex-end;
+}
+
+.island-custom-modal {
+  width: min(560px, 100%);
+}
+
+.island-custom-grid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.island-custom-grid.is-disabled {
+  opacity: 0.58;
+}
+
+.island-field {
+  margin-top: 0;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(218, 184, 121, 0.3);
+  background: rgba(20, 14, 9, 0.38);
+}
+
+.field-help {
+  color: #dccfa8;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 640px) {
+  .event-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .island-custom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .field-overlay-header {
+    flex-wrap: wrap;
+    right: 56px;
+  }
 }
 </style>

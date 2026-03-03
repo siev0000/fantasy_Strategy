@@ -118,6 +118,7 @@
 
 ## タスクメモ
 - 未確定ルールの管理は `docs/RULE_TASKS.md` を参照する。
+- 実装順タスクは `docs/NEXT_TASKS.md` を参照する。
 
 ## これから決めること（タスク）
 - 1. ゲーム開始時の設定項目を確定する
@@ -140,5 +141,77 @@
 - HP / ATK / DEF / MAG / RES / SPD / 基礎移動 と得意技術分野を決める
 - 10. MVP範囲を固定する
 - 先に実装する対象を「内政・外交・災害」の3本に限定するか確定
+
+## UI実装メモ: 汎用モーダル（GenericModal）
+- コンポーネント: `frontend/src/components/GenericModal.vue`
+- 目的: データ（`fields`）を渡してフォーム型モーダルを共通化し、`modalType` で表示形式を切替える。
+- 運用ルール: 簡単なモーダルは `GenericModal` を優先して使う（専用モーダルは複雑UIが必要な場合のみ）。
+
+### 基本の使い方
+- 親コンポーネントで import:
+  - `import GenericModal from "./GenericModal.vue";`
+- テンプレートで呼び出し:
+  - `:show` で開閉
+  - `title` で見出し
+  - `modal-type` で表示形式
+  - `:fields` でフォーム定義
+  - `@field-change` で入力変更を受ける
+  - `@close` で閉じる
+
+```vue
+<generic-modal
+  :show="showSettingsModal"
+  title="表示設定"
+  modal-type="form"
+  :fields="displaySettingsFields"
+  :notes="displaySettingsNotes"
+  @close="showSettingsModal = false"
+  @field-change="applyDisplaySettingChange"
+/>
+```
+
+### `modalType` の切替
+- `form`: `fields` を使って入力UIを描画する。
+- `form` 以外: `message` を表示する情報モードになる。
+
+### `fields` の定義形式（form時）
+- 必須:
+  - `key`: 一意キー
+  - `kind`: `checkbox | select | range | number | text`
+  - `label`: 表示ラベル
+  - `value`: 現在値
+- 任意:
+  - `min`, `max`, `step`, `disabled`, `help`, `suffix`
+  - `options`（`select`用）: `{ label, value }[]`
+
+### 変更イベント
+- `@field-change` の payload:
+  - `{ key: string, value: unknown }`
+- 親側で `key` を見て state に反映する。
+
+## UI実装メモ: スキルツリーモーダル
+- コンポーネント: `frontend/src/components/SkillTreeModal.vue`
+- DB: `frontend/src/data/skill-tree-db.json`
+- カテゴリ一覧を渡すと、その順番で該当カテゴリだけ表示する。
+
+### 開き方
+- `openModal("skill")`
+  - 既定表示: `["魔法", "軍事", "経済", "信仰"]`
+- `openModal("skill", { categories: ["魔法"] })`
+  - 魔法カテゴリだけ表示
+- `openModal("skill", { categories: ["軍事", "信仰"] })`
+  - 軍事→信仰の順で表示
+
+### 注意
+- 未登録カテゴリはスキップし、モーダル上部に `未登録カテゴリ` として表示する。
+
+## 音声設定メモ
+- 実装: `frontend/src/lib/audio-player.js`
+- BGM既定: `assets/audio/bgm/古の世界地図.mp3`
+- SE: `assets/audio/se` から共通再生
+- 保存先: `localStorage` の `fantasy_strategy.audio_settings.v1`
+  - `masterVolume`
+  - `bgmVolume`
+  - `seVolume`
 
 

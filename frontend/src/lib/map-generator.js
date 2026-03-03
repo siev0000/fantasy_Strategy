@@ -5,6 +5,8 @@ const 地形定義 = [
   { key: "森", color: "#7fa56a", weight: 18, short: "森" },
   { key: "丘陵", color: "#a49367", weight: 12, short: "丘" },
   { key: "山岳", color: "#8b847d", weight: 10, short: "山" },
+  { key: "雪原", color: "#cfdbe8", weight: 6, short: "雪" },
+  { key: "火山", color: "#7e4f45", weight: 4, short: "火" },
   { key: "河川", color: "#78aed8", weight: 10, short: "川" },
   { key: "湖", color: "#6ea5d1", weight: 8, short: "湖" },
   { key: "海", color: "#4f88ba", weight: 7, short: "海" },
@@ -98,7 +100,27 @@ const 地形生成設定 = {
       最小: 1,
       最大: 5
     },
-    孤島試行回数: 36
+    孤島試行回数: 36,
+    島間海マス: 2
+  },
+  気候帯: {
+    北端雪原帯行数: 2
+  },
+  火山化: {
+    休火山化率: 0.2,
+    噴火率毎ターン: 0.01,
+    初期噴火判定ターン数: 1,
+    溶岩流: {
+      最大進行マス: 3,
+      停止確率: 0.35
+    },
+    噴火影響: {
+      周囲産出倍率: 0.5,
+      継続ターン: 2,
+      人口減少最小: 1,
+      人口減少最大: 3,
+      治安減少: 10
+    }
   }
 };
 
@@ -137,14 +159,14 @@ const 地形比率プリセット定義 = {
 
 const 特殊地形設定 = {
   峡谷: {
-    対象地形キー: ["丘陵", "山岳"],
+    対象地形キー: ["丘陵", "山岳", "火山"],
     最低高度Lv: 2,
     最低落差Lv: 2,
     最低川隣接数: 1,
     川判定に自マスを含む: true
   },
   洞窟: {
-    対象地形キー: ["丘陵", "山岳"],
+    対象地形キー: ["丘陵", "山岳", "火山"],
     最低高度Lv: 2,
     最低山岳隣接数: 4,
     山岳判定に自マスを含む: true,
@@ -230,35 +252,7 @@ const 山岳モード定義 = {
   }
 };
 
-let 最新高度マップ = null;
-
 export const terrainDefinitions = 地形定義;
-
-function parseMapSize() {
-  const selected = document.getElementById("mapSize").value;
-  const parts = selected.split("x").map(Number);
-  return { w: parts[0], h: parts[1] };
-}
-
-function getSelectedPatternId() {
-  const el = document.getElementById("islandPattern");
-  return el ? el.value : "balanced";
-}
-
-function pickWeightedTerrain(allowKeys) {
-  const pool = 地形定義.filter(t => allowKeys.includes(t.key));
-  const total = pool.reduce((sum, t) => sum + t.weight, 0);
-  let r = Math.random() * total;
-  for (const t of pool) {
-    r -= t.weight;
-    if (r <= 0) return t;
-  }
-  return pool[0];
-}
-
-function terrainDefByKey(key) {
-  return 地形定義.find(t => t.key === key) || 地形定義[0];
-}
 
 function getHexNeighbors(grid, x, y) {
   const h = grid.length;
@@ -502,9 +496,17 @@ function countAround(grid, x, y, key) {
   return getHexNeighbors(grid, x, y).filter(v => v === key).length;
 }
 
+function isMountainLikeTerrain(terrain) {
+  return terrain === "山岳" || terrain === "火山";
+}
+
+function isLandTerrain(terrain) {
+  return terrain !== "海" && terrain !== "湖" && terrain !== "河川";
+}
+
 function shouldBecomeLake(grid, x, y) {
   const terrain = grid[y][x];
-  if (terrain === "海" || terrain === "河川" || terrain === "山岳") return false;
+  if (terrain === "海" || terrain === "河川" || isMountainLikeTerrain(terrain)) return false;
   const mountainNear = countAround(grid, x, y, "山岳");
   const forestNear = countAround(grid, x, y, "森");
   const seaNear = countAround(grid, x, y, "海");
@@ -579,7 +581,532 @@ function smoothLand(grid, w, h, passCount) {
   }
 }
 
-function smoothLandKeepingIslandSeparation(grid, w, h, islandIdMap, passCount) {
+function applyNorthSnowBand(grid, w, h, rowCount = 2) {
+  const rows = clamp(Math.floor(Number(rowCount) || 0), 0, h);
+  let changed = 0;
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const terrain = grid[y][x];
+      if (terrain === "海" || terrain === "湖" || terrain === "河川") continue;
+      if (terrain === "雪原") continue;
+      grid[y][x] = "雪原";
+      changed += 1;
+    }
+  }
+  return { rows, changed };
+}
+
+function buildDormantVolcanoMap(grid, w, h, dormantRate = 0.2) {
+  const map = buildInitialGrid(w, h, false);
+  const dormantSet = new Set();
+  const rate = normalizeProbability(dormantRate, 0.2);
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] !== "山岳") continue;
+      if (Math.random() >= rate) continue;
+      map[y][x] = true;
+      dormantSet.add(coordKey(x, y));
+    }
+  }
+  return { map, dormantSet };
+}
+
+function runVolcanoEruptionTurns(grid, w, h, dormantMap, volcanoRule) {
+  if (!dormantMap || !dormantMap.length) {
+    return { eruptedSet: new Set(), events: [] };
+  }
+  const perTurnRate = normalizeProbability(volcanoRule?.噴火率毎ターン, 0.01);
+  const turnCount = Math.max(0, Math.floor(Number(volcanoRule?.初期噴火判定ターン数) || 0));
+  const effects = volcanoRule?.噴火影響 || {};
+  const popLossMin = Number.isFinite(effects.人口減少最小) ? effects.人口減少最小 : 1;
+  const popLossMax = Number.isFinite(effects.人口減少最大) ? effects.人口減少最大 : 3;
+  const yieldMultiplier = Number.isFinite(effects.周囲産出倍率) ? effects.周囲産出倍率 : 0.5;
+  const durationTurns = Number.isFinite(effects.継続ターン) ? effects.継続ターン : 2;
+  const securityLoss = Number.isFinite(effects.治安減少) ? effects.治安減少 : 10;
+  const eruptedSet = new Set();
+  const events = [];
+
+  for (let turn = 0; turn < turnCount; turn += 1) {
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        if (!dormantMap[y][x]) continue;
+        if (Math.random() >= perTurnRate) continue;
+        dormantMap[y][x] = false;
+        grid[y][x] = "火山";
+        const key = coordKey(x, y);
+        eruptedSet.add(key);
+        const affectedCoords = getHexNeighborCoords(w, h, x, y);
+        events.push({
+          x,
+          y,
+          key,
+          turn: turn + 1,
+          affectedCoords,
+          effects: {
+            yieldMultiplier,
+            durationTurns,
+            populationLoss: randomInt(popLossMin, popLossMax),
+            securityLoss
+          }
+        });
+      }
+    }
+  }
+
+  return { eruptedSet, events };
+}
+
+function cloneGrid2D(map, fallback) {
+  if (!Array.isArray(map) || !map.length) return fallback;
+  return map.map(row => (Array.isArray(row) ? [...row] : []));
+}
+
+function buildDormantMapFromGrid(grid, w, h) {
+  const map = buildInitialGrid(w, h, false);
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] === "山岳") map[y][x] = true;
+    }
+  }
+  return map;
+}
+
+function processVolcanoEruptionTurn(grid, w, h, dormantMap, heightLevelMap, volcanoRule, options = {}) {
+  const perTurnRate = normalizeProbability(volcanoRule?.噴火率毎ターン, 0.01);
+  const eruptedCells = [];
+  const turnNumber = Number.isFinite(options?.turnNumber) ? Math.max(1, Math.floor(options.turnNumber)) : 1;
+  const markEruption = (x, y, forced = false) => {
+    if (!dormantMap?.[y]?.[x]) return false;
+    dormantMap[y][x] = false;
+    grid[y][x] = "火山";
+    if (Array.isArray(heightLevelMap) && Number.isFinite(heightLevelMap?.[y]?.[x])) {
+      heightLevelMap[y][x] = Math.max(heightLevelMap[y][x], 3);
+    }
+    eruptedCells.push({
+      type: "eruption",
+      turn: turnNumber,
+      x,
+      y,
+      key: coordKey(x, y),
+      forced
+    });
+    return true;
+  };
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (!dormantMap?.[y]?.[x]) continue;
+      if (grid[y][x] !== "山岳") {
+        dormantMap[y][x] = false;
+        continue;
+      }
+      if (Math.random() < perTurnRate) {
+        markEruption(x, y, false);
+      }
+    }
+  }
+
+  if ((options?.forceTestEvent === true) && eruptedCells.length === 0) {
+    const dormantCandidates = [];
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        if (dormantMap?.[y]?.[x] && grid[y][x] === "山岳") {
+          dormantCandidates.push({ x, y });
+        }
+      }
+    }
+    const chosen = randomFrom(dormantCandidates);
+    if (chosen) markEruption(chosen.x, chosen.y, true);
+  }
+
+  return eruptedCells;
+}
+
+function lavaEdgeKey(a, b) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function angleBetweenHex(a, b) {
+  const ca = hexCenter(a.x, a.y);
+  const cb = hexCenter(b.x, b.y);
+  return Math.atan2(cb.cy - ca.cy, cb.cx - ca.cx);
+}
+
+function angleDiffRad(a, b) {
+  const raw = Math.abs(a - b);
+  return Math.min(raw, (Math.PI * 2) - raw);
+}
+
+function cloneLavaState(state) {
+  if (!state || !Array.isArray(state.flows)) return { flows: [] };
+  return {
+    flows: state.flows.map(flow => ({
+      sourceKey: String(flow.sourceKey || ""),
+      sourceX: Number(flow.sourceX),
+      sourceY: Number(flow.sourceY),
+      headKey: String(flow.headKey || flow.sourceKey || ""),
+      headX: Number(flow.headX),
+      headY: Number(flow.headY),
+      directionAngle: Number.isFinite(flow.directionAngle) ? flow.directionAngle : null,
+      active: flow.active !== false,
+      stopReason: String(flow.stopReason || ""),
+      createdTurn: Number.isFinite(flow.createdTurn) ? Math.floor(flow.createdTurn) : 0,
+      path: Array.isArray(flow.path) ? flow.path.map(p => ({
+        x: Number(p.x),
+        y: Number(p.y),
+        key: String(p.key || coordKey(Number(p.x), Number(p.y)))
+      })) : []
+    }))
+  };
+}
+
+function ensureLavaSources(lavaState, grid, w, h, turnNumber) {
+  const sourceSet = new Set();
+  for (const flow of lavaState.flows) {
+    if (flow.sourceKey) sourceSet.add(flow.sourceKey);
+  }
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] !== "火山") continue;
+      const key = coordKey(x, y);
+      if (sourceSet.has(key)) continue;
+      lavaState.flows.push({
+        sourceKey: key,
+        sourceX: x,
+        sourceY: y,
+        headKey: key,
+        headX: x,
+        headY: y,
+        directionAngle: null,
+        active: true,
+        stopReason: "",
+        createdTurn: turnNumber,
+        path: []
+      });
+      sourceSet.add(key);
+    }
+  }
+}
+
+function buildLavaFlowDataFromState(lavaState, w, h) {
+  const lavaMap = buildInitialGrid(w, h, false);
+  const nodeSet = new Set();
+  const edgeSet = new Set();
+  const sourceSet = new Set();
+  const flows = Array.isArray(lavaState?.flows) ? lavaState.flows : [];
+  for (const flow of flows) {
+    const fromKey = flow?.sourceKey;
+    if (!fromKey) continue;
+    sourceSet.add(fromKey);
+    let prevKey = fromKey;
+    for (const p of flow.path || []) {
+      if (!p?.key) continue;
+      nodeSet.add(p.key);
+      lavaMap[p.y][p.x] = true;
+      edgeSet.add(lavaEdgeKey(prevKey, p.key));
+      prevKey = p.key;
+    }
+  }
+  return {
+    lavaMap,
+    lavaFlowData: {
+      nodeKeys: [...nodeSet],
+      edgeKeys: [...edgeSet],
+      sourceKeys: [...sourceSet]
+    }
+  };
+}
+
+function pickNextLavaStep(flow, grid, heightLevelMap, w, h, visited, maxTurnAngle) {
+  const current = { x: flow.headX, y: flow.headY };
+  const neighbors = getHexNeighborCoords(w, h, current.x, current.y);
+  const candidates = [];
+  for (const n of neighbors) {
+    const key = coordKey(n.x, n.y);
+    if (visited.has(key)) continue;
+    const terrain = grid[n.y][n.x];
+    if (terrain === "海" || terrain === "湖") continue;
+    const level = Number.isFinite(heightLevelMap?.[n.y]?.[n.x]) ? heightLevelMap[n.y][n.x] : 99;
+    const angle = angleBetweenHex(current, n);
+    const diff = Number.isFinite(flow.directionAngle) ? angleDiffRad(angle, flow.directionAngle) : 0;
+    candidates.push({
+      x: n.x,
+      y: n.y,
+      key,
+      isRiver: terrain === "河川",
+      level,
+      angle,
+      diff,
+      rand: Math.random()
+    });
+  }
+  if (!candidates.length) return { stopReason: "no_path" };
+  if (Number.isFinite(flow.directionAngle)) {
+    candidates.sort((a, b) => a.diff - b.diff || a.level - b.level || a.rand - b.rand);
+    const best = candidates[0];
+    if (best.diff > maxTurnAngle) return { stopReason: "direction_blocked" };
+    if (best.isRiver) return { stopReason: "river_hit" };
+    return { step: best };
+  }
+  candidates.sort((a, b) => a.level - b.level || a.rand - b.rand);
+  const first = candidates[0];
+  if (first.isRiver) return { stopReason: "river_hit" };
+  return { step: first };
+}
+
+function buildLavaFlowTurn(grid, heightLevelMap, w, h, volcanoRule, prevLavaState, turnNumber = 1, options = {}) {
+  const lavaSettings = volcanoRule?.溶岩流 || {};
+  const maxSteps = Math.max(1, Math.floor(Number(lavaSettings.最大進行マス) || 3));
+  const stopChance = normalizeProbability(lavaSettings.停止確率, 0.35);
+  const maxTurnAngle = (Number.isFinite(lavaSettings.方向維持角度度) ? lavaSettings.方向維持角度度 : 38) * (Math.PI / 180);
+  const lavaState = cloneLavaState(prevLavaState);
+  const events = [];
+
+  if (options?.forceTestEvent === true) {
+    let hasVolcano = false;
+    for (let y = 0; y < h && !hasVolcano; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        if (grid[y][x] === "火山") {
+          hasVolcano = true;
+          break;
+        }
+      }
+    }
+    if (!hasVolcano && options?.allowCreateVolcano !== false) {
+      const mountains = [];
+      for (let y = 0; y < h; y += 1) {
+        for (let x = 0; x < w; x += 1) {
+          if (grid[y][x] === "山岳") mountains.push({ x, y });
+        }
+      }
+      const src = randomFrom(mountains);
+      if (src) {
+        grid[src.y][src.x] = "火山";
+        if (Array.isArray(heightLevelMap) && Number.isFinite(heightLevelMap?.[src.y]?.[src.x])) {
+          heightLevelMap[src.y][src.x] = Math.max(heightLevelMap[src.y][src.x], 3);
+        }
+      }
+    }
+  }
+  ensureLavaSources(lavaState, grid, w, h, turnNumber);
+
+  for (const flow of lavaState.flows) {
+    if (!flow.active) continue;
+    if (grid[flow.sourceY]?.[flow.sourceX] !== "火山") {
+      flow.active = false;
+      flow.stopReason = "source_lost";
+      continue;
+    }
+    const movedPath = [];
+    const from = { x: flow.headX, y: flow.headY, key: flow.headKey };
+    const visited = new Set([flow.sourceKey, ...flow.path.map(p => p.key)]);
+    for (let step = 0; step < maxSteps; step += 1) {
+      const picked = pickNextLavaStep(flow, grid, heightLevelMap, w, h, visited, maxTurnAngle);
+      if (picked.stopReason) {
+        flow.active = false;
+        flow.stopReason = picked.stopReason;
+        break;
+      }
+      const next = picked.step;
+      const stepNode = { x: next.x, y: next.y, key: next.key };
+      flow.path.push(stepNode);
+      movedPath.push(stepNode);
+      flow.headX = next.x;
+      flow.headY = next.y;
+      flow.headKey = next.key;
+      if (!Number.isFinite(flow.directionAngle)) flow.directionAngle = next.angle;
+      visited.add(next.key);
+      if (Math.random() < stopChance) {
+        flow.active = false;
+        flow.stopReason = "random_stop";
+        break;
+      }
+    }
+    if (movedPath.length) {
+      events.push({
+        type: "lava",
+        turn: turnNumber,
+        sourceKey: flow.sourceKey,
+        from,
+        to: movedPath[movedPath.length - 1],
+        length: movedPath.length,
+        path: movedPath,
+        stopped: flow.active === false,
+        stopReason: flow.stopReason || ""
+      });
+    }
+  }
+
+  if ((options?.forceTestEvent === true) && events.length === 0) {
+    const activeFlow = lavaState.flows.find(f => f.active);
+    if (activeFlow) {
+      const from = { x: activeFlow.headX, y: activeFlow.headY, key: activeFlow.headKey };
+      const visited = new Set([activeFlow.sourceKey, ...activeFlow.path.map(p => p.key)]);
+      const picked = pickNextLavaStep(activeFlow, grid, heightLevelMap, w, h, visited, maxTurnAngle);
+      if (!picked.stopReason) {
+        const next = picked.step;
+        const stepNode = { x: next.x, y: next.y, key: next.key };
+        activeFlow.path.push(stepNode);
+        activeFlow.headX = next.x;
+        activeFlow.headY = next.y;
+        activeFlow.headKey = next.key;
+        if (!Number.isFinite(activeFlow.directionAngle)) activeFlow.directionAngle = next.angle;
+        events.push({
+          type: "lava",
+          turn: turnNumber,
+          sourceKey: activeFlow.sourceKey,
+          from,
+          to: stepNode,
+          length: 1,
+          path: [stepNode],
+          stopped: false,
+          stopReason: "",
+          forced: true
+        });
+      } else {
+        activeFlow.active = false;
+        activeFlow.stopReason = picked.stopReason;
+      }
+    }
+  }
+
+  const flowData = buildLavaFlowDataFromState(lavaState, w, h);
+  return {
+    lavaState,
+    lavaMap: flowData.lavaMap,
+    lavaFlowData: flowData.lavaFlowData,
+    events
+  };
+}
+
+function countTerrain(grid, terrainKey) {
+  let count = 0;
+  const h = grid.length;
+  const w = h > 0 ? grid[0].length : 0;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] === terrainKey) count += 1;
+    }
+  }
+  return count;
+}
+
+function countTrueCells(map) {
+  if (!Array.isArray(map) || !map.length) return 0;
+  let count = 0;
+  for (let y = 0; y < map.length; y += 1) {
+    for (let x = 0; x < map[y].length; x += 1) {
+      if (map[y][x]) count += 1;
+    }
+  }
+  return count;
+}
+
+function advanceTerrainTurn(data, options = {}) {
+  if (!data || data.shapeOnly || !Number.isFinite(data.w) || !Number.isFinite(data.h)) {
+    return { data, events: [] };
+  }
+  const w = data.w;
+  const h = data.h;
+  const turnNumber = Math.max(1, Math.floor(Number(data?.turnState?.turnNumber || 0)) + 1);
+  const eventMode = String(options?.eventMode || "normal");
+  const forceEruption = eventMode === "eruption" || eventMode === "both";
+  const enableEruption = eventMode !== "lava";
+  const forceLava = eventMode === "lava" || eventMode === "both";
+  const enableLava = eventMode !== "eruption";
+  const grid = cloneGrid2D(data.grid, data.grid);
+  const heightLevelMap = cloneGrid2D(data.heightLevelMap, data.heightLevelMap);
+  const prevLavaState = cloneLavaState(data?.lavaState);
+  const volcanoRule = 地形生成設定.火山化 || {};
+  const dormantMap = cloneGrid2D(
+    data?.volcanoData?.dormantMap,
+    buildDormantMapFromGrid(grid, w, h)
+  );
+
+  const eruptionEvents = enableEruption
+    ? processVolcanoEruptionTurn(
+      grid,
+      w,
+      h,
+      dormantMap,
+      heightLevelMap,
+      volcanoRule,
+      {
+        turnNumber,
+        forceTestEvent: forceEruption || options?.forceTestEvent === true
+      }
+    )
+    : [];
+  const lavaResult = enableLava
+    ? buildLavaFlowTurn(grid, heightLevelMap, w, h, volcanoRule, prevLavaState, turnNumber, {
+      forceTestEvent: forceLava || options?.forceTestEvent === true,
+      allowCreateVolcano: true
+    })
+    : (() => {
+      const flowData = buildLavaFlowDataFromState(prevLavaState, w, h);
+      return {
+        lavaState: prevLavaState,
+        lavaMap: flowData.lavaMap,
+        lavaFlowData: flowData.lavaFlowData,
+        events: []
+      };
+    })();
+  const lavaEvents = lavaResult.events;
+  const events = [...eruptionEvents, ...lavaEvents];
+  const prevVolcanoData = data.volcanoData || {};
+
+  const nextData = {
+    ...data,
+    grid,
+    heightLevelMap,
+    lavaState: lavaResult.lavaState,
+    lavaMap: lavaResult.lavaMap,
+    lavaFlowData: lavaResult.lavaFlowData,
+    turnState: {
+      turnNumber,
+      lastEventCount: events.length,
+      lastEventMode: eventMode
+    },
+    volcanoData: {
+      ...prevVolcanoData,
+      dormantMap,
+      dormantCount: countTrueCells(dormantMap),
+      eruptedCount: (Number(prevVolcanoData.eruptedCount) || 0) + eruptionEvents.length,
+      eruptedEvents: [...(Array.isArray(prevVolcanoData.eruptedEvents) ? prevVolcanoData.eruptedEvents : []), ...eruptionEvents],
+      volcanoCount: countTerrain(grid, "火山")
+    }
+  };
+
+  return {
+    data: nextData,
+    events
+  };
+}
+
+function hasOtherIslandLandWithinDistance(grid, islandIdMap, w, h, x, y, islandId, maxDistance) {
+  const safeDistance = Math.max(0, Math.floor(maxDistance || 0));
+  if (safeDistance <= 0) return false;
+  const startKey = coordKey(x, y);
+  const queue = [{ x, y, d: 0 }];
+  const visited = new Set([startKey]);
+  while (queue.length) {
+    const cur = queue.shift();
+    if (!(cur.x === x && cur.y === y) && grid[cur.y][cur.x] !== "海") {
+      const otherId = islandIdMap?.[cur.y]?.[cur.x];
+      if (Number.isFinite(otherId) && otherId >= 0 && otherId !== islandId) return true;
+    }
+    if (cur.d >= safeDistance) continue;
+    for (const n of getHexNeighborCoords(w, h, cur.x, cur.y)) {
+      const key = coordKey(n.x, n.y);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      queue.push({ x: n.x, y: n.y, d: cur.d + 1 });
+    }
+  }
+  return false;
+}
+
+function smoothLandKeepingIslandSeparation(grid, w, h, islandIdMap, passCount, separationSeaTiles = 2) {
   if (!islandIdMap) return;
   for (let pass = 0; pass < passCount; pass += 1) {
     const nextGrid = grid.map(r => [...r]);
@@ -598,6 +1125,7 @@ function smoothLandKeepingIslandSeparation(grid, w, h, islandIdMap, passCount) {
         // Different islands around the same sea cell -> keep as sea to avoid bridges.
         if (neighborIslandIds.size !== 1) continue;
         const islandId = [...neighborIslandIds][0];
+        if (hasOtherIslandLandWithinDistance(grid, islandIdMap, w, h, x, y, islandId, separationSeaTiles)) continue;
         nextGrid[y][x] = "平地";
         nextIdMap[y][x] = islandId;
       }
@@ -738,6 +1266,29 @@ function buildSeedListForLargeIslands(patternId, w, h, largeIslandCount, minGap)
   return selected.slice(0, largeIslandCount);
 }
 
+function buildTwinsSeeds(w, h) {
+  const cy = Math.floor(h / 2);
+  return uniqueCoords([
+    { x: Math.floor(w * 0.30), y: clamp(cy + randomInt(-2, 2), 1, Math.max(1, h - 2)) },
+    { x: Math.floor(w * 0.70), y: clamp(cy + randomInt(-2, 2), 1, Math.max(1, h - 2)) }
+  ], w, h);
+}
+
+function buildJapanLikeChainSeeds(w, h, count) {
+  const seedCount = Math.max(4, count);
+  const seeds = [];
+  for (let i = 0; i < seedCount; i += 1) {
+    const t = seedCount <= 1 ? 0.5 : i / (seedCount - 1);
+    const xBase = (w * 0.17) + ((w * 0.66) * t);
+    const yLine = (h * 0.74) - ((h * 0.50) * t);
+    const wave = Math.sin((t * Math.PI * 2.2) + 0.4) * (h * 0.06);
+    const x = clamp(Math.round(xBase + randomInt(-1, 1)), 1, Math.max(1, w - 2));
+    const y = clamp(Math.round(yLine + wave + randomInt(-1, 1)), 1, Math.max(1, h - 2));
+    seeds.push({ x, y });
+  }
+  return uniqueCoords(seeds, w, h);
+}
+
 function buildLargeIslandTargetSizes(totalLand, largeIslandCount, _patternId, plannedIsletLand) {
   const targetLand = Math.max(largeIslandCount, Math.floor(totalLand - plannedIsletLand));
   if (largeIslandCount <= 1) return [targetLand];
@@ -825,7 +1376,7 @@ function buildLargeIslandTargetSizes(totalLand, largeIslandCount, _patternId, pl
     .map(row => row.target);
 }
 
-function canFillForIsland(grid, islandIdMap, w, h, x, y, islandId) {
+function canFillForIsland(grid, islandIdMap, w, h, x, y, islandId, separationSeaTiles) {
   if (isEdge(x, y, w, h)) return false;
   if (grid[y][x] !== "海") return false;
   const neighbors = getHexNeighborCoords(w, h, x, y);
@@ -836,6 +1387,8 @@ function canFillForIsland(grid, islandIdMap, w, h, x, y, islandId) {
     if (neighborIslandId !== islandId) return false;
     ownAdjacent = true;
   }
+  if (!ownAdjacent) return false;
+  if (hasOtherIslandLandWithinDistance(grid, islandIdMap, w, h, x, y, islandId, separationSeaTiles)) return false;
   return ownAdjacent;
 }
 
@@ -845,6 +1398,11 @@ function placeLargeIslands(grid, w, h, cfg, patternId, targetLand, largeIslandCo
     Number.isFinite(plan?.minGap)
       ? plan.minGap
       : (Number.isFinite(islandRule.大島間最小距離) ? islandRule.大島間最小距離 : 6)
+  ));
+  const separationSeaTiles = Math.max(0, Math.floor(
+    Number.isFinite(plan?.separationSeaTiles)
+      ? plan.separationSeaTiles
+      : (Number.isFinite(islandRule.島間海マス) ? islandRule.島間海マス : 2)
   ));
   const islandIdMap = buildInitialGrid(w, h, -1);
   const plannedIsletCountRange = islandRule.孤島数ランダム || {};
@@ -864,7 +1422,12 @@ function placeLargeIslands(grid, w, h, cfg, patternId, targetLand, largeIslandCo
     ? Math.max(0, Math.floor(plan.isletLandBudget))
     : plannedIsletCount * Math.round((isletSizeMin + isletSizeMax) / 2);
   const islandTargets = buildLargeIslandTargetSizes(targetLand, largeIslandCount, patternId, plannedIsletLand);
-  const seeds = buildSeedListForLargeIslands(patternId, w, h, largeIslandCount, minGap);
+  const customSeeds = Array.isArray(plan?.seedList) && plan.seedList.length
+    ? uniqueCoords(plan.seedList, w, h)
+    : [];
+  const seeds = customSeeds.length >= largeIslandCount
+    ? customSeeds.slice(0, largeIslandCount)
+    : buildSeedListForLargeIslands(patternId, w, h, largeIslandCount, minGap);
   const frontiers = [];
   const placedPerIsland = new Array(largeIslandCount).fill(0);
   let landCount = 0;
@@ -901,7 +1464,7 @@ function placeLargeIslands(grid, w, h, cfg, patternId, targetLand, largeIslandCo
         for (const n of neighbors) {
           if (landCount >= targetLand) break;
           if (Math.random() > growthChance) continue;
-          if (!canFillForIsland(grid, islandIdMap, w, h, n.x, n.y, islandId)) continue;
+          if (!canFillForIsland(grid, islandIdMap, w, h, n.x, n.y, islandId, separationSeaTiles)) continue;
           grid[n.y][n.x] = "平地";
           islandIdMap[n.y][n.x] = islandId;
           frontier.push({ x: n.x, y: n.y });
@@ -931,12 +1494,13 @@ function placeLargeIslands(grid, w, h, cfg, patternId, targetLand, largeIslandCo
     isletSizeMin,
     isletSizeMax,
     plannedIsletLand,
+    separationSeaTiles,
     nextIslandId: largeIslandCount,
     landCount
   };
 }
 
-function canFillForIslet(grid, islandIdMap, w, h, x, y, isletId, isletSet) {
+function canFillForIslet(grid, islandIdMap, w, h, x, y, isletId, isletSet, separationSeaTiles) {
   if (isEdge(x, y, w, h)) return false;
   if (grid[y][x] !== "海") return false;
   const neighbors = getHexNeighborCoords(w, h, x, y);
@@ -946,10 +1510,11 @@ function canFillForIslet(grid, islandIdMap, w, h, x, y, isletId, isletSet) {
     const key = coordKey(n.x, n.y);
     if (nId !== isletId || !isletSet.has(key)) return false;
   }
+  if (hasOtherIslandLandWithinDistance(grid, islandIdMap, w, h, x, y, isletId, separationSeaTiles)) return false;
   return true;
 }
 
-function growIslet(grid, islandIdMap, w, h, seed, isletId, targetSize, minSize) {
+function growIslet(grid, islandIdMap, w, h, seed, isletId, targetSize, minSize, separationSeaTiles) {
   if (!seed) return 0;
   if (grid[seed.y][seed.x] !== "海" || isEdge(seed.x, seed.y, w, h)) return 0;
   const placed = [];
@@ -971,7 +1536,7 @@ function growIslet(grid, islandIdMap, w, h, seed, isletId, targetSize, minSize) 
     let expanded = false;
     for (const n of neighbors) {
       if (Math.random() > 0.82) continue;
-      if (!canFillForIslet(grid, islandIdMap, w, h, n.x, n.y, isletId, placedSet)) continue;
+      if (!canFillForIslet(grid, islandIdMap, w, h, n.x, n.y, isletId, placedSet, separationSeaTiles)) continue;
       grid[n.y][n.x] = "平地";
       islandIdMap[n.y][n.x] = isletId;
       placed.push({ x: n.x, y: n.y });
@@ -994,7 +1559,7 @@ function growIslet(grid, islandIdMap, w, h, seed, isletId, targetSize, minSize) 
   return 0;
 }
 
-function addRandomIslets(grid, w, h, islandIdMap, startId, plannedCount, minSize, maxSize) {
+function addRandomIslets(grid, w, h, islandIdMap, startId, plannedCount, minSize, maxSize, separationSeaTiles) {
   const isletRule = 地形生成設定.島構成 || {};
   const maxAttempts = Math.max(8, Math.floor(isletRule.孤島試行回数 || 36));
   let actualCount = 0;
@@ -1006,9 +1571,10 @@ function addRandomIslets(grid, w, h, islandIdMap, startId, plannedCount, minSize
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const seed = randomInteriorCell(w, h);
       if (grid[seed.y][seed.x] !== "海") continue;
+      if (hasOtherIslandLandWithinDistance(grid, islandIdMap, w, h, seed.x, seed.y, nextId, separationSeaTiles)) continue;
       if (getHexNeighborCoords(w, h, seed.x, seed.y).some(n => grid[n.y][n.x] !== "海")) continue;
       const targetSize = randomInt(minSize, maxSize);
-      placed = growIslet(grid, islandIdMap, w, h, seed, nextId, targetSize, minSize);
+      placed = growIslet(grid, islandIdMap, w, h, seed, nextId, targetSize, minSize, separationSeaTiles);
       if (placed >= minSize) {
         actualCount += 1;
         nextId += 1;
@@ -1048,6 +1614,60 @@ function generateIslands(grid, w, h, totalTiles, patternId = "balanced", options
     };
   }
 
+  if (!useCustomPlan && !useLegacyConfiguredLargeIslands && (patternId === "twins" || patternId === "chain")) {
+    const largeIslandCount = patternId === "twins"
+      ? 2
+      : clamp(resolvePatternSeedCount(patternId, totalTiles), 4, 8);
+    const customSeeds = patternId === "twins"
+      ? buildTwinsSeeds(w, h)
+      : buildJapanLikeChainSeeds(w, h, largeIslandCount);
+    const minGap = patternId === "twins"
+      ? Math.max(5, Math.floor(Math.min(w, h) * 0.20))
+      : Math.max(3, Math.floor(Math.min(w, h) * 0.10));
+    const main = placeLargeIslands(
+      grid,
+      w,
+      h,
+      cfg,
+      patternId,
+      patternTargetLand,
+      largeIslandCount,
+      {
+        minGap,
+        isletCount: 0,
+        isletSizeMin: 4,
+        isletSizeMax: 8,
+        isletLandBudget: 0,
+        seedList: customSeeds
+      }
+    );
+    smoothLandKeepingIslandSeparation(
+      grid,
+      w,
+      h,
+      main.islandIdMap,
+      Math.max(1, cfg.smoothingPasses || 1),
+      main.separationSeaTiles
+    );
+    erodeLand(grid, w, h, Math.max(cfg.erosionChance || 0, 0.01));
+    return {
+      patternName: cfg.name,
+      islandGenerationInfo: {
+        mode: "pattern-separated",
+        customApplied: false,
+        targetLandRatio: null,
+        targetLandTiles: patternTargetLand,
+        largeIslandRequested: largeIslandCount,
+        largeIslandActual: main.placedPerIsland.filter(v => v >= 1).length,
+        isletRequested: 0,
+        isletActual: 0,
+        isletMinSize: 0,
+        isletMaxSize: 0,
+        isletLandBudget: 0
+      }
+    };
+  }
+
   if (useCustomPlan || useLegacyConfiguredLargeIslands) {
     const largeIslandCount = useCustomPlan
       ? customPlan.largeIslandCount
@@ -1082,9 +1702,17 @@ function generateIslands(grid, w, h, totalTiles, patternId = "balanced", options
       main.nextIslandId,
       main.plannedIsletCount,
       main.isletSizeMin,
-      main.isletSizeMax
+      main.isletSizeMax,
+      main.separationSeaTiles
     );
-    smoothLandKeepingIslandSeparation(grid, w, h, main.islandIdMap, Math.max(1, cfg.smoothingPasses || 1));
+    smoothLandKeepingIslandSeparation(
+      grid,
+      w,
+      h,
+      main.islandIdMap,
+      Math.max(1, cfg.smoothingPasses || 1),
+      main.separationSeaTiles
+    );
     erodeLand(grid, w, h, Math.max(cfg.erosionChance || 0, 0.01));
     return {
       patternName: cfg.name,
@@ -1943,10 +2571,44 @@ function buildHeightLevelMap(grid, 高度マップ, w, h) {
       let level = Math.round((raw - 42) / 10);
       if (terrain === "丘陵") level = Math.max(level, 1);
       if (terrain === "山岳") level = Math.max(level, 2);
+      if (terrain === "火山") level = Math.max(level, 3);
       levelMap[y][x] = clamp(level, -1, 8);
     }
   }
   return levelMap;
+}
+
+function buildCoastMap(grid, w, h, 高度レベルマップ) {
+  const coastMap = buildInitialGrid(w, h, false);
+  const coastTypeMap = buildInitialGrid(w, h, "");
+  let directCount = 0;
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (!isLandTerrain(grid[y][x])) continue;
+      const neighbors = getHexNeighborCoords(w, h, x, y);
+      const seaNeighbors = neighbors.filter(n => grid[n.y][n.x] === "海");
+      const hasSeaNeighbor = seaNeighbors.length > 0;
+      if (!hasSeaNeighbor) continue;
+      const landLevel = 高度レベルマップ?.[y]?.[x];
+      if (!Number.isFinite(landLevel)) continue;
+      const hasSeaLevelDiffWithinOne = seaNeighbors.some(n => {
+        const seaLevel = 高度レベルマップ?.[n.y]?.[n.x];
+        return Number.isFinite(seaLevel) && Math.abs(landLevel - seaLevel) <= 1;
+      });
+      if (!hasSeaLevelDiffWithinOne) continue;
+      coastMap[y][x] = true;
+      coastTypeMap[y][x] = "direct";
+      directCount += 1;
+    }
+  }
+
+  return {
+    map: coastMap,
+    typeMap: coastTypeMap,
+    count: directCount,
+    directCount
+  };
 }
 
 function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
@@ -1989,9 +2651,9 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
       }
 
       if (caveTerrainSet.has(terrain) && Number.isFinite(level) && level >= caveRule.最低高度Lv) {
-        const mountainBase = (caveRule.山岳判定に自マスを含む && terrain === "山岳") ? 1 : 0;
+        const mountainBase = (caveRule.山岳判定に自マスを含む && isMountainLikeTerrain(terrain)) ? 1 : 0;
         const mountainNear = neighbors.reduce((sum, n) => (
-          sum + (grid[n.y][n.x] === "山岳" ? 1 : 0)
+          sum + (isMountainLikeTerrain(grid[n.y][n.x]) ? 1 : 0)
         ), mountainBase);
         if (mountainNear >= caveRule.最低山岳隣接数 && Math.random() < 地形生成設定.確率.洞窟化) {
           specialMap[y][x] = "洞窟";
@@ -2443,7 +3105,7 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
         ...c,
         level,
         terrain,
-        sourceScore: (terrain === "山岳" ? 3 : 0) + (terrain === "丘陵" ? 1 : 0) + level
+        sourceScore: (isMountainLikeTerrain(terrain) ? 3 : 0) + (terrain === "丘陵" ? 1 : 0) + level
       };
     })
     .filter(c => c.sourceScore >= 2)
@@ -2497,7 +3159,6 @@ function createIslandShapeData({ w, h, patternId = "balanced", islandCustomSetti
   const { patternName, islandGenerationInfo } = generateIslands(grid, w, h, totalTiles, patternId, {
     islandCustomSettings
   });
-  最新高度マップ = null;
   return {
     w,
     h,
@@ -2519,6 +3180,15 @@ function createIslandShapeData({ w, h, patternId = "balanced", islandCustomSetti
     caveSizeMap: null,
     caveScaleMap: null,
     mountainProfile: null,
+    climateBandInfo: null,
+    volcanoData: null,
+    lavaState: null,
+    lavaMap: null,
+    lavaFlowData: null,
+    coastMap: null,
+    coastTypeMap: null,
+    coastInfo: null,
+    turnState: null,
     islandGenerationInfo
   };
 }
@@ -2566,7 +3236,6 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
   const 湖上限計画 = distributeIslandTargets(島一覧, 島別比率設定.profileMap, "湖上限", 0);
 
   const 高度マップ = generateHeightMap(grid, w, h);
-  最新高度マップ = 高度マップ;
   const 島別山岳プロファイル = [];
   for (const island of 島一覧) {
     const islandMountainTarget = 山岳目標計画.byIsland.get(island.id) || 0;
@@ -2679,7 +3348,38 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     }
   }
 
+  const climateBandInfo = applyNorthSnowBand(
+    grid,
+    w,
+    h,
+    地形生成設定.気候帯?.北端雪原帯行数
+  );
+  const dormantVolcanoData = buildDormantVolcanoMap(
+    grid,
+    w,
+    h,
+    地形生成設定.火山化?.休火山化率
+  );
+  const volcanoTurnResult = runVolcanoEruptionTurns(
+    grid,
+    w,
+    h,
+    dormantVolcanoData.map,
+    地形生成設定.火山化
+  );
+  const volcanoData = {
+    dormantRate: normalizeProbability(地形生成設定.火山化?.休火山化率, 0.2),
+    eruptionRatePerTurn: normalizeProbability(地形生成設定.火山化?.噴火率毎ターン, 0.01),
+    initialTurnChecks: Math.max(0, Math.floor(Number(地形生成設定.火山化?.初期噴火判定ターン数) || 0)),
+    dormantMap: dormantVolcanoData.map,
+    dormantCount: dormantVolcanoData.dormantSet.size,
+    eruptedCount: volcanoTurnResult.eruptedSet.size,
+    eruptedEvents: volcanoTurnResult.events,
+    volcanoCount: listCoordsByTerrain(grid, "火山").length
+  };
+
   const 高度レベルマップ = buildHeightLevelMap(grid, 高度マップ, w, h);
+  const coastData = buildCoastMap(grid, w, h, 高度レベルマップ);
   const riverRawData = generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベルマップ);
   const riverData = augmentRiverDataWithWaterfalls(riverRawData, 高度レベルマップ);
   const { specialMap, specialCounts, caveSizeMap, caveScaleMap } = buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ);
@@ -2713,183 +3413,27 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     caveSizeMap,
     caveScaleMap,
     mountainProfile,
+    climateBandInfo,
+    volcanoData,
+    lavaState: { flows: [] },
+    lavaMap: buildInitialGrid(w, h, false),
+    lavaFlowData: {
+      nodeKeys: [],
+      edgeKeys: [],
+      sourceKeys: []
+    },
+    coastMap: coastData.map,
+    coastTypeMap: coastData.typeMap,
+    coastInfo: {
+      count: coastData.count,
+      directCount: coastData.directCount
+    },
+    turnState: {
+      turnNumber: 0,
+      lastEventCount: 0
+    },
     islandGenerationInfo
   };
-}
-
-function buildRiverOverlaySvg(grid, w, h, riverData) {
-  if (!riverData?.riverSet || riverData.riverSet.size === 0) return "";
-
-  const riverSet = riverData.riverSet;
-  const edges = riverData.edgeSet || new Set();
-  const waterLinks = riverData.waterLinkSet || new Set();
-
-  const width = w * 40 + 20;
-  const height = (h - 1) * 36 + 48;
-
-  let lines = "";
-  for (const ek of edges) {
-    const [a, b] = ek.split("|");
-    const pa = parseCoordKey(a);
-    const pb = parseCoordKey(b);
-    const ca = hexCenter(pa.x, pa.y);
-    const cb = hexCenter(pb.x, pb.y);
-    lines += `<line class="river-seg" x1="${ca.cx}" y1="${ca.cy}" x2="${cb.cx}" y2="${cb.cy}" />`;
-  }
-  for (const wk of waterLinks) {
-    const [a, b] = wk.split("|");
-    const pa = parseCoordKey(a);
-    const pb = parseCoordKey(b);
-    const ca = hexCenter(pa.x, pa.y);
-    const cb = hexCenter(pb.x, pb.y);
-    lines += `<line class="river-link" x1="${ca.cx}" y1="${ca.cy}" x2="${cb.cx}" y2="${cb.cy}" />`;
-  }
-
-  let nodes = "";
-  for (const key of riverSet) {
-    const { x, y } = parseCoordKey(key);
-    const c = hexCenter(x, y);
-    const isSource = riverData.sourceSet?.has(key);
-    const isBranch = riverData.branchSet?.has(key);
-    const isMouth = riverData.mouthSet?.has(key);
-    const cls = isSource
-      ? "river-node source"
-      : isBranch
-        ? "river-node branch"
-        : isMouth
-          ? "river-node mouth"
-          : "river-node";
-    nodes += `<circle class="${cls}" cx="${c.cx}" cy="${c.cy}" r="3.1" />`;
-  }
-
-  const lakesUsed = new Set();
-  for (const wk of waterLinks) {
-    const [a, b] = wk.split("|");
-    const aIsRiver = riverSet.has(a);
-    const bIsRiver = riverSet.has(b);
-    if (!aIsRiver) lakesUsed.add(a);
-    if (!bIsRiver) lakesUsed.add(b);
-  }
-  for (const lk of lakesUsed) {
-    const { x, y } = parseCoordKey(lk);
-    const c = hexCenter(x, y);
-    nodes += `<circle class="lake-node" cx="${c.cx}" cy="${c.cy}" r="4.3" />`;
-  }
-
-  return `<svg class="river-overlay" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${lines}${nodes}</svg>`;
-}
-
-function renderMap(grid, w, h, shapeOnly = false, patternName = "", riverData = null) {
-  const counts = {};
-  地形定義.forEach(t => { counts[t.key] = 0; });
-  let landCount = 0;
-  let seaCount = 0;
-  const rows = [];
-
-  for (let y = 0; y < h; y += 1) {
-    let rowHtml = `<div class="hex-row${y % 2 === 1 ? " offset" : ""}">`;
-    for (let x = 0; x < w; x += 1) {
-      const key = grid[y][x];
-      const isSea = key === "海";
-      if (isSea) seaCount += 1;
-      else landCount += 1;
-
-      const tile = shapeOnly
-        ? isSea
-          ? { color: "#4f88ba", short: "海", key: "海" }
-          : { color: "#8fb07a", short: "陸", key: "陸地" }
-        : terrainDefByKey(key);
-      if (!shapeOnly) counts[tile.key] += 1;
-      const riverSet = riverData?.riverSet;
-      const hasRiver = !shapeOnly && riverSet && riverSet.has(`${x},${y}`);
-      const isSource = !shapeOnly && riverData?.sourceSet?.has(`${x},${y}`);
-      const isBranch = !shapeOnly && riverData?.branchSet?.has(`${x},${y}`);
-      const isMouth = !shapeOnly && riverData?.mouthSet?.has(`${x},${y}`);
-      const riverClass = hasRiver ? " river" : "";
-      const sourceClass = isSource ? " river-source" : "";
-      const branchClass = isBranch ? " river-branch" : "";
-      const mouthClass = isMouth ? " river-mouth" : "";
-      const title = hasRiver
-        ? `${tile.key} + 川${isSource ? " / 源流" : ""}${isBranch ? " / 分岐" : ""}${isMouth ? " / 終点" : ""}`
-        : tile.key;
-      rowHtml += `<div class="tile${riverClass}${sourceClass}${branchClass}${mouthClass}" data-x="${x}" data-y="${y}" data-terrain="${tile.key}" data-river="${hasRiver ? "1" : "0"}" style="background:${tile.color}" title="${title}">${tile.short}</div>`;
-    }
-    rowHtml += "</div>";
-    rows.push(rowHtml);
-  }
-
-  const mapGridEl = document.getElementById("mapGrid");
-  const overlay = !shapeOnly ? buildRiverOverlaySvg(grid, w, h, riverData) : "";
-  mapGridEl.innerHTML = `<div class="hex-wrap">${rows.join("")}${overlay}</div>`;
-  fitMapGrid();
-
-  const lines = [`サイズ: ${w}x${h} (${w * h}マス)`];
-  if (patternName) lines.push(`パターン: ${patternName}`);
-  if (shapeOnly) {
-    lines.push(`陸地: ${landCount} (${((landCount / (w * h)) * 100).toFixed(1)}%)`);
-    lines.push(`海: ${seaCount} (${((seaCount / (w * h)) * 100).toFixed(1)}%)`);
-  } else {
-    for (const t of 地形定義) {
-      const c = counts[t.key];
-      const pct = ((c / (w * h)) * 100).toFixed(1);
-      lines.push(`${t.key}: ${c} (${pct}%)`);
-    }
-    if (riverData?.riverSet) {
-      lines.push(`川(重なり): ${riverData.riverSet.size} (${((riverData.riverSet.size / (w * h)) * 100).toFixed(1)}%)`);
-      lines.push(`源流: ${riverData.sourceSet.size} / 分岐: ${riverData.branchSet.size} / 終点: ${riverData.mouthSet.size}`);
-    }
-  }
-  document.getElementById("mapStats").textContent = lines.join("\n");
-  updateMapMeta(w, h, patternName);
-}
-
-function fitMapGrid() {
-  const container = document.getElementById("mapGrid");
-  const content = container?.querySelector(".hex-wrap");
-  if (!container || !content) return;
-
-  content.style.transform = "scale(1)";
-  const availW = Math.max(1, container.clientWidth - 2);
-  const availH = Math.max(1, container.clientHeight - 2);
-  const rawW = Math.max(1, content.scrollWidth);
-  const rawH = Math.max(1, content.scrollHeight);
-  const scale = Math.min(availW / rawW, availH / rawH, 1);
-  content.style.transform = `scale(${scale})`;
-}
-
-function updateMapMeta(w, h, patternName = "") {
-  const centerX = Math.floor((w - 1) / 2);
-  const centerY = Math.floor((h - 1) / 2);
-  const sizeEl = document.getElementById("mapSizeInfo");
-  const centerEl = document.getElementById("mapCenterInfo");
-  if (sizeEl) sizeEl.textContent = `サイズ: ${w} x ${h} (${w * h}マス)`;
-  if (centerEl) centerEl.textContent = `中央座標: (${centerX}, ${centerY})${patternName ? ` / ${patternName}` : ""}`;
-}
-
-function handleMapClick(event) {
-  const tile = event.target.closest(".tile");
-  if (!tile) return;
-  const x = Number(tile.dataset.x);
-  const y = Number(tile.dataset.y);
-  const terrain = tile.dataset.terrain || "-";
-  const river = tile.dataset.river === "1" ? "あり" : "なし";
-  const height = 最新高度マップ?.[y]?.[x];
-  const clickEl = document.getElementById("mapClickInfo");
-  if (clickEl) clickEl.textContent = `クリック座標: (${x}, ${y}) / 地形: ${terrain} / 川: ${river} / 高度: ${Number.isFinite(height) ? height : "-"}`;
-}
-
-function generateIslandShapeOnly() {
-  const { w, h } = parseMapSize();
-  const patternId = getSelectedPatternId();
-  const data = createIslandShapeData({ w, h, patternId });
-  renderMap(data.grid, data.w, data.h, true, data.patternName);
-}
-
-function generateTerrainMap() {
-  const { w, h } = parseMapSize();
-  const patternId = getSelectedPatternId();
-  const data = createTerrainMapData({ w, h, patternId });
-  renderMap(data.grid, data.w, data.h, false, data.patternName, data.riverData);
 }
 
 export {
@@ -2897,10 +3441,7 @@ export {
   hexCenter,
   createIslandShapeData,
   createTerrainMapData,
-  fitMapGrid,
-  handleMapClick,
-  generateIslandShapeOnly,
-  generateTerrainMap
+  advanceTerrainTurn
 };
 
 

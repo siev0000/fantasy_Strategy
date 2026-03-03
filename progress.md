@@ -142,3 +142,132 @@ TODO / next agent:
 - 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
 - 2026-02-27: Updated custom target land area bounds from 45%~85% to 25%~60% in both generator clamp and island-custom modal range input.
 - 2026-02-27: Validation passed after custom land-area range update: `npm run build:front`.
+- 2026-02-27: Cleaned up dead legacy map-render bridge code from `frontend/src/lib/map-generator.js` (old DOM rendering/meta/click handlers and map-size selector helpers) that is no longer referenced by Vue/Phaser.
+- 2026-02-27: Removed obsolete internal state usage (`最新高度マップ`) and narrowed map-generator exports to only active API surface (`parseCoordKey`, `hexCenter`, `createIslandShapeData`, `createTerrainMapData`).
+- 2026-02-27: Validation passed after map-generator cleanup: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Added dedicated separated-pattern generation path for `twins` and `chain` in `generateIslands` (non-custom mode), so those patterns no longer collapse into connected landmasses.
+- 2026-02-27: `twins` now uses fixed two-seed separated layout with stronger minimum gap; `chain` now uses curved seed placement (`buildJapanLikeChainSeeds`) to produce Japan-like archipelago flow.
+- 2026-02-27: Added `seedList` override support in `placeLargeIslands` so pattern-specific seed geometry can be enforced.
+- 2026-02-27: Validation passed after twins/chain pattern shape fix: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Enforced inter-island sea separation of 2 tiles by adding cross-island proximity checks to main-island growth, islet growth, and separation-safe smoothing (`島構成.島間海マス = 2`).
+- 2026-02-27: Added map zoom controls in Phaser panel (`-`, `100% reset`, `+`) using camera zoom multiplier over fit-zoom.
+- 2026-02-27: Validation passed after island-gap + zoom controls update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Added strong-enemy visibility toggle in Phaser settings (`強敵候補を表示する`) and wired it to marker rendering, click details, and stats visibility.
+- 2026-02-27: Improved island custom settings modal usability with grouped 2-column controls, per-field helper text, modal typography normalization, and target land-tile count preview (`目標陸地率` linked to map size).
+- 2026-02-27: Validation passed after strong-enemy toggle + island-custom UI update: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after UI update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Expanded map-size presets to target the requested range (min around 1200 cells, max under 7000 cells): 30x40, 36x36, 48x48, 60x60, 72x72, 83x83. Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after map-size preset expansion is still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Updated default display settings to match requested baseline: `高度Lv表示=OFF`, `高度色補正=ON`, `隠し特殊常時表示=ON`, `滝エフェクト=ON`, `強敵候補表示=OFF` (size 23px / outline 3px / mountain mode random unchanged). Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after default-display update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Improved island custom number input UX by adding +/- stepper controls for `大島の数`, `大島間の最小距離`, and `孤島数(最小/最大)` with auto-normalization on button/input change.
+- 2026-02-27: Added island custom stepper styling (larger clickable controls, centered numeric fields) for easier up/down adjustments on desktop and mobile. Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after island-custom stepper update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Adjusted island-custom steppers from horizontal (- input +) to right-side vertical controls (top `+`, bottom `-`) for easier up/down operation per field.
+- 2026-02-27: Updated stepper layout/styles for vertical control stack (`number-stepper` + `step-stack`) while keeping value normalization behavior. Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after vertical-stepper update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Hid native number-input spin arrows in island custom steppers (`::-webkit-inner/outer-spin-button` off, `appearance: textfield`) so only custom vertical +/- controls are shown. Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after hiding native spin arrows still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Added data-driven reusable `GenericModal.vue` supporting type switching (`modalType`), field schema rendering (`checkbox/select/range/number/text`), notes, and field-change events.
+- 2026-02-27: Replaced Phaser display settings modal with `GenericModal` using schema (`displaySettingsFields`) + centralized apply handler (`applyDisplaySettingChange`) to demonstrate generic modal usage by passed data/type.
+- 2026-02-27: Validation passed after generic modal integration: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after generic modal integration still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Added GenericModal usage notes to `docs/MEMO.md` (purpose, `modalType` switching, field schema, event payload, and integration example).
+- 2026-02-27: Updated docs policy in `docs/MEMO.md`: simple modals should use `GenericModal` by default; dedicated modals only when complex UI is required.
+- 2026-02-27: Added in-field HUD overlays on Phaser map: semi-transparent top header with `食料/資材` summary and bottom-right elapsed clock (`HH:MM:SS`).
+- 2026-02-27: Resource HUD values are derived from generated terrain counts (food/material weighted totals), and elapsed clock resets on each map generation (`applyMapData`) then updates every second.
+- 2026-02-27: Added overlay styles (`map-field-wrap`, `field-overlay-header`, `field-resource-chip`, `field-overlay-clock`) with mobile wrap tuning. Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after HUD/clock overlay update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Tuned map overlay header to be visibly translucent so terrain remains visible behind it (semi-transparent strip + lighter resource chip opacity + subtle blur). Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after header translucency update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Refactored Phaser panel layout to keep gameplay HUD fully inside `#mapGrid` (resource header + elapsed clock overlays now rendered as children of map container).
+- 2026-02-27: Moved non-game diagnostics outside the map into `開発モード情報` section, gated by `showDevInfo` (default from `import.meta.env.DEV`) with a dev-only toolbar toggle (`開発情報: ON/OFF`).
+- 2026-02-27: Updated map canvas stacking styles (`position: relative`, canvas z-index, overlay layering) and added dev-info panel styling. Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after mapGrid-contained HUD/dev-info split still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Replaced bottom-right elapsed text with circular turn clock overlay (analog hand) in map HUD: one full hand rotation per 60 seconds (`turnDurationSec`), with turn index (`Tn`) and remaining seconds to next turn.
+- 2026-02-27: Added turn-clock computed values (`elapsedSeconds`, `turnClockCycleSeconds`, `turnClockHandDeg`, `turnClockTurnNumber`, `turnClockRemainingSeconds`) and increased clock update cadence to 250ms for smoother hand movement. Validation passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after circular turn-clock update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-02-27: Added provisional special-terrain rows to `data/land_base_yield.csv`: `沼地`, `峡谷`, `洞窟` (resource/disaster/difficulty values) to support future non-base terrain yield handling.
+- 2026-02-27: Validated CSV parsing after updates (`Import-Csv` rows=11, no blank terrain keys) and front build passed: `npm run build:front`.
+- 2026-02-27: `develop-web-game` Playwright client retry after land-base-yield update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-01: Split coastal classification into `沿岸(海接触)` and `高度差1海辺` by adding `coastTypeMap` in `map-generator.js`; click info now shows `海辺判定` and separate `海接触` so inner-ring tiles no longer appear as direct sea-contact.
+- 2026-03-01: Validation passed after coast-type split fix: `npm run build:front`.
+- 2026-03-01: `develop-web-game` Playwright retry still blocked by skill-runtime dependency issue (`ERR_MODULE_NOT_FOUND: playwright`).
+- 2026-03-01: Adjusted coast rule per latest spec: only land tiles directly adjacent to sea are `海辺` (`coastTypeMap=direct`); removed `高度差1` coastal classification from generator/render/click text. Validation passed: `npm run build:front`.
+- 2026-03-01: Updated coast rule again: `海辺` now requires both sea adjacency and height-level difference <= 1 against at least one adjacent sea tile. Validation passed: `npm run build:front`.
+- 2026-03-02: Added turn progression system for generated terrain maps with new `advanceTerrainTurn` API in `map-generator.js` (supports per-turn volcano eruptions and lava flow simulation).
+- 2026-03-02: Lava behavior updated per spec: each volcano advances up to 3 tiles per turn with random early stop; lava overlay stored as `lavaMap` and surfaced in stats/click info.
+- 2026-03-02: Added UI controls in `PhaserMapGeneratorPanel.vue`: `ターン経過` button, `イベントテスト` toggle, and event modal (`GenericModal`) showing eruption/lava logs each turn.
+- 2026-03-02: Validation passed: `npm run build:front`. Playwright client retry still blocked by skill-runtime dependency issue (`ERR_MODULE_NOT_FOUND: playwright`).
+- 2026-03-02: Added event-control modal in Phaser map panel (`イベント管理`) to select execution mode per turn: `通常` / `噴火のみ` / `溶岩のみ` / `噴火+溶岩`.
+- 2026-03-02: `advanceTerrainTurn` now accepts `eventMode`, supports forced event generation by mode, and returns `lavaFlowData` (node/edge/source keys) for path rendering.
+- 2026-03-02: Switched lava rendering from tile tint to river-like overlay: thick connected lines + node points (`drawLavaOverlay`), with map click info still showing lava presence.
+- 2026-03-02: Validation passed after event-manager/lava-overlay update: `npm run build:front`; Playwright retry still blocked by skill-runtime `playwright` dependency resolution.
+- 2026-03-02: Changed lava progression to persistent-flow model (`lavaState`) so direction is fixed after first move and prior lava positions do not reshuffle each turn.
+- 2026-03-02: Lava now stops permanently once it stops (`random_stop`/`direction_blocked`/`no_path`) and also stops on river collision (`river_hit`); stopped flows no longer advance on later turns.
+- 2026-03-02: Added event-manager driven `eventMode` handling to `advanceTerrainTurn`; `溶岩` mode can force-create a volcano from a mountain if none exists for test execution.
+- 2026-03-02: Lava rendering remains river-like (thick connected lines + nodes) using accumulated `lavaFlowData`, with persistent overlays across turns.
+- 2026-03-02: Validation passed: `npm run build:front`; Playwright retry still blocked by unresolved `playwright` in skill runtime.
+- 2026-03-02: Improved event-control modal UX by replacing select dropdown with 4 large mode cards (normal/eruption/lava/both), inline descriptions, active highlight, and current-mode hint; mobile switches to single-column cards. Validation passed: `npm run build:front`.
+- 2026-03-02: Added shared audio controller (`frontend/src/lib/audio-player.js`) using `古の世界地図.mp3` as default loop BGM and mapped common UI SE from `assets/audio/se`.
+- 2026-03-02: Extended display settings modal with section headers and audio controls (`全体音量 / BGM音量 / SE音量`) via GenericModal header field support.
+- 2026-03-02: Wired settings UI to audio controller volume APIs (`setMasterVolume`, `setBgmVolume`, `setSeVolume`) and switched modal open/close paths to dedicated handlers using shared SE.
+- 2026-03-02: Validation passed after audio settings update: `npm run build:front`.
+- 2026-03-02: Persisted audio settings to browser localStorage (`fantasy_strategy.audio_settings.v1`): master/bgm/se volumes now restore on load and save on slider change.
+- 2026-03-03: Added skill-tree modal access points in header/menu (`AppHeader.vue`, `MenuPanel.vue`) including category-specific open actions that pass payload categories.
+- 2026-03-03: Added category shortcut UI for skill modal (`魔法/軍事/経済/信仰`) and supporting styles in `frontend/src/styles.css`.
+- 2026-03-03: Updated `docs/MEMO.md` with skill-tree modal usage (`openModal('skill', { categories })`) and audio-settings persistence/reference notes.
+- 2026-03-03: Validation passed after skill-tree entry-point updates: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND` from `web_game_playwright_client.js`).
+- 2026-03-03: Reworked `SkillTreeModal.vue` from list-only view to hybrid strategy-game layout: category tabs (top), branch tree columns (center), and selected-skill detail panel (right).
+- 2026-03-03: Added interactive node selection state in skill modal (active category + selected node sync), with placeholder unlock details (`必要ポイント(仮)`, `前提スキル`, `取得ボタン` disabled).
+- 2026-03-03: Validation passed after skill-tree hybrid UI update: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry after hybrid UI update still blocked by unresolved `playwright` (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-03: Added branch-from-middle pattern support in skill tree data/view: `魔法` category now has `rootSkill` (`魔法の球`) as shared starting node before branch columns.
+- 2026-03-03: Updated `SkillTreeModal.vue` selection logic to include root node IDs, root-first default selection, and prerequisite display (`分岐1段目` prerequisites now point to root when present).
+- 2026-03-03: Added root-node visuals (`root-zone`, down-link, split-line) so the tree clearly shows `起点 -> 分岐` structure.
+- 2026-03-03: Validation passed after root-node branch structure update: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry after root-node update still blocked by unresolved `playwright` (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-03: Added JSON-based race master data for selection UI in `frontend/src/data/race-selection-db.json` (name/icon/description/traits/base stats).
+- 2026-03-03: Added `RaceSelectModal.vue` (left race list + right icon/detail panel + confirm action) and connected it to App modal flow (`open-modal: race`).
+- 2026-03-03: Switched `App.vue` race stats source from hardcoded map to `race-selection-db.json` derived object, with default fallback stats.
+- 2026-03-03: Added race modal entry buttons in `AppHeader.vue` and `MenuPanel.vue`, plus selected-race display in header.
+- 2026-03-03: Added `selectedRace`/`showRaceModal` to `render_game_to_text` payload and app state.
+- 2026-03-03: Validation passed after race-selection modal update: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry after race-selection update still blocked by unresolved `playwright` (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-03: Aligned race data location with JSON export policy by moving race source to `data/source/export/json/種族.json`; updated imports in `App.vue` and `RaceSelectModal.vue`.
+- 2026-03-03: Removed temporary frontend-local race JSON (`frontend/src/data/race-selection-db.json`) after migration to export JSON path.
+- 2026-03-03: Revalidated after race-data path migration: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry after race-data migration still blocked by unresolved `playwright` (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-03: Added `ClassSelectModal.vue` using export JSON sources (`クラス.json`, `スキル一覧.json`, `説明.json`) to show class details by selected race.
+- 2026-03-03: Implemented race-to-class flow: deciding race now opens class modal automatically; class modal supports class list, base status, skill levels, acquired skill details, and confirm action.
+- 2026-03-03: Added class selection state to `App.vue` (`showClassModal`, `selectedClass`) and exposed it in `render_game_to_text` (`modal.class`, `playerSetup.selectedClass`).
+- 2026-03-03: Added class modal open buttons and selected-class display in `AppHeader.vue` / `MenuPanel.vue`.
+- 2026-03-03: Validation passed after class-selection modal integration: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry after class-selection update still blocked by unresolved `playwright` (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-03: Fixed acquired-skill display bug in `ClassSelectModal.vue`: placeholder tokens (`0`, `-`, `なし`, `null`) are now excluded, unknown skill names are skipped, and duplicate render keys are eliminated.
+- 2026-03-03: Adjusted class UI rule: when class type is `人族`, the acquired-skill section is hidden entirely.
+- 2026-03-03: Extended `RaceSelectModal.vue` to show base status panel (HP/攻撃/防御/魔力/精神/速度/命中/SIZ) derived from `クラス.json` race-base rows.
+- 2026-03-03: Validation passed after class/race status display fixes: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry after class/race display fixes still blocked by unresolved `playwright` (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-03: Replaced incomplete status-range draft in `PhaserMapGeneratorPanel.vue` with character-status creation rules: initial level random `5-10`, race base `Lv5 + Lv5` (no race skill gain), and class-based growth per level; human-type races additionally receive class `+5Lv` bonus.
+- 2026-03-03: Added terrain-generation-time bootstrap for initial village and one named unit (`createVillageAndInitialUnit`) and surfaced generated details in dev panel (`初期村` / `キャラ生成ルール` / `選択ユニット`).
+- 2026-03-03: Extended tile-click detail to include units on the tile and wired tile click to select the unit when present.
+- 2026-03-03: Removed duplicate `parseMapSizeValue` declaration in `PhaserMapGeneratorPanel.vue`.
+- 2026-03-03: Validation passed after character-status creation update: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry after character-status update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-03: Added character-state emission from `PhaserMapGeneratorPanel.vue` (`character-state-change`) so generated village/unit data can be consumed by `App.vue`.
+- 2026-03-03: Added `CharacterStatusModal.vue` and wired new modal type `characters`; modal shows self-unit list and selected unit status details (stats/equipment/growth rule).
+- 2026-03-03: Added icon entry using `assets/images/攻撃手段/肉体.webp` in both `AppHeader.vue` and `MenuPanel.vue` to open character status modal.
+- 2026-03-03: Updated `App.vue` modal state and map-panel wiring (`:selected-race`, `:selected-class`, `@character-state-change`) plus `render_game_to_text` modal flag for `characters`.
+- 2026-03-03: Validation passed after character-status modal/icon integration: `npm run build:front`.
+- 2026-03-03: `develop-web-game` Playwright client retry after character-status modal integration still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-03: Reduced character status growth scale by applying `1/10` divisor to per-level growth values (`STATUS_GROWTH_DIVISOR = 10`) in `PhaserMapGeneratorPanel.vue`.
+- 2026-03-03: Updated character rule text output to include growth scale (`成長係数 1/10`) and revalidated build (`npm run build:front` pass).
+- 2026-03-04: Added ordered implementation task sheet in docs/NEXT_TASKS.md (Phase1-3 + DoD + tutorial necessity/MVP steps).
+- 2026-03-04: Linked docs/MEMO.md task section to docs/NEXT_TASKS.md for sequential execution reference.
+- 2026-03-04: Switched Vite build cleanup back to `emptyOutDir: true` in `frontend/vite.config.mjs` so old `web-vue-dist/assets/index-*.js` files are not accumulated.
+- 2026-03-04: Validation passed after dist cleanup setting change: `npm run build:front`.
