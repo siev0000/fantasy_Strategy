@@ -11,21 +11,58 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
   color: var(--ink);
   background: radial-gradient(circle at 20% 20%, var(--bg1), var(--bg2));
-  display: grid;
-  place-items: center;
-  padding: 20px;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+body.game-only-mode {
+  display: block;
+  padding: 0;
+  overflow: hidden;
 }
 .app {
-  width: min(1000px, 100%);
-  background: rgba(255, 250, 240, 0.92);
-  border: 2px solid #bda077;
-  border-radius: 14px;
-  box-shadow: 0 16px 32px rgba(70, 44, 11, 0.22);
+  width: 100%;
+  min-height: 100dvh;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   overflow: hidden;
+}
+.app.game-only {
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+.app.game-only > .phaser-map-panel {
+  width: 100%;
+  height: 100dvh;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+.app.game-only > .phaser-map-panel .phaser-stage-shell {
+  width: 100%;
+  height: 100dvh;
+  max-height: none;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+.app.game-only > .phaser-map-panel .phaser-map-canvas {
+  border: none;
+  border-radius: 0;
 }
 header {
   padding: 16px 20px;
@@ -321,19 +358,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   margin-top: 8px;
   font-size: 0.86rem;
   white-space: pre-line;
-}
-#mapGrid {
-  margin-top: 10px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  background: #c7b08a;
-  border: 1px solid #b89c72;
-  padding: 10px;
-  border-radius: 8px;
-  overflow: hidden;
-  width: 100%;
-  height: min(75vh, 820px);
 }
 .hex-wrap {
   width: max-content;

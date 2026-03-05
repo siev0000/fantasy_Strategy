@@ -1,11 +1,13 @@
 <script setup>
+import { DEFAULT_ICON_SRC } from "../lib/icon-library.js";
+
 const skillCategoryButtons = [
   { label: "魔法", categories: ["魔法"] },
   { label: "軍事", categories: ["軍事"] },
   { label: "経済", categories: ["経済"] },
   { label: "信仰", categories: ["信仰"] }
 ];
-const characterIconSrc = new URL("../../../assets/images/攻撃手段/肉体.webp", import.meta.url).href;
+const characterIconSrc = DEFAULT_ICON_SRC;
 
 defineEmits(["open-modal"]);
 </script>
@@ -14,8 +16,10 @@ defineEmits(["open-modal"]);
   <section class="panel menu-panel">
     <h2>画面メニュー</h2>
     <div class="menu-buttons">
+      <button type="button" @click="$emit('open-modal', 'game-start')">ゲーム開始</button>
       <button class="secondary" type="button" @click="$emit('open-modal', 'race')">種族選択を開く</button>
       <button class="secondary" type="button" @click="$emit('open-modal', 'class')">クラス選択を開く</button>
+      <button class="secondary" type="button" @click="$emit('open-modal', 'name')">名前設定を開く</button>
       <button class="secondary" type="button" @click="$emit('open-modal', 'room')">ルーム管理を開く</button>
       <button type="button" @click="$emit('open-modal', 'battle')">戦闘画面を開く</button>
       <button class="secondary" type="button" @click="$emit('open-modal', 'sim')">シミュレーターを開く</button>

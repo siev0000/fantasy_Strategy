@@ -353,12 +353,14 @@ function confirmClass() {
 }
 
 .class-detail {
+  max-height: 700px;
   border: 1px solid rgba(210, 178, 119, 0.38);
   border-radius: 10px;
   background: linear-gradient(170deg, rgba(27, 19, 13, 0.78), rgba(17, 12, 8, 0.82));
   padding: 12px;
   display: grid;
   gap: 10px;
+  overflow-y: scroll;
 }
 
 .class-title h3 {

@@ -6,7 +6,8 @@ import classDb from "../../../data/source/export/json/クラス.json";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
-  selectedRace: { type: String, default: "" }
+  selectedRace: { type: String, default: "" },
+  allowedRaces: { type: Array, default: () => [] }
 });
 
 const emit = defineEmits(["close", "confirm"]);
@@ -31,27 +32,54 @@ const races = computed(() => {
   });
 });
 
+const allowedRaceSet = computed(() => {
+  const set = new Set();
+  if (!Array.isArray(props.allowedRaces)) return set;
+  for (const raw of props.allowedRaces) {
+    const key = String(raw || "").trim();
+    if (!key) continue;
+    set.add(key);
+  }
+  return set;
+});
+
+const filteredRaces = computed(() => {
+  if (!races.value.length) return [];
+  if (!allowedRaceSet.value.size) return races.value;
+  return races.value.filter(item => allowedRaceSet.value.has(item.key));
+});
+
 const activeRaceKey = ref("");
 
 const activeRace = computed(() => {
-  if (!races.value.length) return null;
-  const found = races.value.find(item => item.key === activeRaceKey.value);
-  return found || races.value[0];
+  if (!filteredRaces.value.length) return null;
+  const found = filteredRaces.value.find(item => item.key === activeRaceKey.value);
+  return found || filteredRaces.value[0];
 });
 
-watch(() => props.show, isOpen => {
-  if (!isOpen) return;
-  const selected = races.value.find(item => item.key === props.selectedRace);
-  activeRaceKey.value = selected?.key || races.value[0]?.key || "";
-}, { immediate: true });
-
-watch(() => props.selectedRace, value => {
-  if (!props.show) return;
-  const selected = races.value.find(item => item.key === value);
-  if (selected) activeRaceKey.value = selected.key;
-});
+watch(
+  [() => props.show, filteredRaces, () => props.selectedRace],
+  ([isOpen, allowedRows, selectedRace]) => {
+    if (!isOpen) return;
+    const list = Array.isArray(allowedRows) ? allowedRows : [];
+    if (!list.length) {
+      activeRaceKey.value = "";
+      return;
+    }
+    const selected = list.find(item => item.key === selectedRace);
+    if (selected) {
+      activeRaceKey.value = selected.key;
+      return;
+    }
+    const current = list.find(item => item.key === activeRaceKey.value);
+    if (current) return;
+    activeRaceKey.value = list[0]?.key || "";
+  },
+  { immediate: true }
+);
 
 function selectRace(key) {
+  if (allowedRaceSet.value.size && !allowedRaceSet.value.has(key)) return;
   activeRaceKey.value = key;
 }
 
@@ -91,10 +119,10 @@ function confirmRace() {
 
 <template>
   <base-modal :show="show" title="種族選択" :wide="true" @close="$emit('close')">
-    <div v-if="races.length" class="race-select-layout">
+    <div v-if="filteredRaces.length" class="race-select-layout">
       <aside class="race-list">
         <button
-          v-for="race in races"
+          v-for="race in filteredRaces"
           :key="race.key"
           type="button"
           class="race-list-item"
@@ -141,7 +169,7 @@ function confirmRace() {
     </div>
 
     <div v-else class="race-empty">
-      種族データがありません。`data/source/export/json/種族.json` を確認してください。
+      {{ races.length ? "選択可能な種族がありません。自陣営の種族データを確認してください。" : "種族データがありません。`data/source/export/json/種族.json` を確認してください。" }}
     </div>
   </base-modal>
 </template>

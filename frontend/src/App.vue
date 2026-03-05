@@ -1,9 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { io } from "socket.io-client";
-import AppHeader from "./components/AppHeader.vue";
 import PhaserMapGeneratorPanel from "./components/PhaserMapGeneratorPanel.vue";
-import MenuPanel from "./components/MenuPanel.vue";
 import RoomModal from "./components/RoomModal.vue";
 import BattleModal from "./components/BattleModal.vue";
 import SimulatorModal from "./components/SimulatorModal.vue";
@@ -11,6 +9,7 @@ import SkillTreeModal from "./components/SkillTreeModal.vue";
 import RaceSelectModal from "./components/RaceSelectModal.vue";
 import ClassSelectModal from "./components/ClassSelectModal.vue";
 import CharacterStatusModal from "./components/CharacterStatusModal.vue";
+import CharacterNameModal from "./components/CharacterNameModal.vue";
 import raceSelectionDb from "../../data/source/export/json/種族.json";
 
 const DEFAULT_RACE_STATS = { hp: 100, atk: 20 };
@@ -234,17 +233,44 @@ const showSkillTreeModal = ref(false);
 const showRaceModal = ref(false);
 const showClassModal = ref(false);
 const showCharacterStatusModal = ref(false);
+const showCharacterNameModal = ref(false);
 const skillTreeCategories = ref(["魔法", "軍事", "経済", "信仰"]);
 const selectedRace = ref(raceSelectionDb?.[0]?.key || "只人");
 const selectedClass = ref("");
+const selectedCharacterName = ref("主人公");
+const selectedVillageName = ref("はじまりの村");
+const gameSetupReady = ref(false);
+const gameFlowStep = ref("idle");
+const characterCommand = ref(null);
+const gameOnlyMode = computed(() => true);
 const mapCharacterState = ref({
   village: null,
   units: [],
+  squads: [],
   selectedUnitId: "",
+  unitMoveMode: false,
+  villageScale: "村",
+  namedLimit: 2,
+  namedCount: 0,
   ruleText: ""
 });
 const characterCount = computed(() => {
   return Array.isArray(mapCharacterState.value?.units) ? mapCharacterState.value.units.length : 0;
+});
+const characterListLabel = computed(() => {
+  const units = Array.isArray(mapCharacterState.value?.units) ? mapCharacterState.value.units : [];
+  if (!units.length) return "なし";
+  const names = units.map(unit => String(unit?.name || "").trim()).filter(Boolean);
+  if (!names.length) return "なし";
+  const shown = names.slice(0, 5);
+  return names.length > 5 ? `${shown.join(", ")} ...` : shown.join(", ");
+});
+const gameFlowLabel = computed(() => {
+  if (gameFlowStep.value === "sovereign") return "統治者作成";
+  if (gameFlowStep.value === "village") return "初期村を配置";
+  if (gameFlowStep.value === "mob") return "モブを作成";
+  if (gameFlowStep.value === "ready") return "完了";
+  return "未開始";
 });
 const localState = ref(createInitialBattleState());
 const roomState = ref(null);
@@ -297,6 +323,25 @@ const playersLabel = computed(() => {
 });
 
 function openModal(kind, payload = null) {
+  if (kind === "game-start") {
+    closeAllModals();
+    gameSetupReady.value = false;
+    gameFlowStep.value = "sovereign";
+    mapCharacterState.value = {
+      village: null,
+      units: [],
+      squads: [],
+      selectedUnitId: "",
+      unitMoveMode: false,
+      villageScale: "村",
+      namedLimit: 2,
+      namedCount: 0,
+      ruleText: ""
+    };
+    showRaceModal.value = true;
+    setSessionStatus("ゲーム開始: 統治者を作成してください（種族 → クラス → 名前）", "warn");
+    return;
+  }
   showRoomModal.value = kind === "room";
   showBattleModal.value = kind === "battle";
   showSimModal.value = kind === "sim";
@@ -304,6 +349,7 @@ function openModal(kind, payload = null) {
   showRaceModal.value = kind === "race";
   showClassModal.value = kind === "class";
   showCharacterStatusModal.value = kind === "characters";
+  showCharacterNameModal.value = kind === "name";
   if (kind === "skill" && Array.isArray(payload?.categories)) {
     skillTreeCategories.value = payload.categories;
   } else if (kind === "skill" && !skillTreeCategories.value.length) {
@@ -319,6 +365,7 @@ function closeModal(kind) {
   if (kind === "race") showRaceModal.value = false;
   if (kind === "class") showClassModal.value = false;
   if (kind === "characters") showCharacterStatusModal.value = false;
+  if (kind === "name") showCharacterNameModal.value = false;
 }
 
 function closeAllModals() {
@@ -329,6 +376,7 @@ function closeAllModals() {
   showRaceModal.value = false;
   showClassModal.value = false;
   showCharacterStatusModal.value = false;
+  showCharacterNameModal.value = false;
 }
 
 function setSessionStatus(text, cls = "") {
@@ -349,7 +397,7 @@ function applySelectedRace(raceKey) {
   const key = String(raceKey || "").trim();
   if (!Object.prototype.hasOwnProperty.call(RACES, key)) return;
   selectedRace.value = key;
-  setSessionStatus(`開始種族を ${key} に設定`, "ok");
+  setSessionStatus(`開始種族を ${key} に設定。次にクラスを選択してください。`, "ok");
   showRaceModal.value = false;
   showClassModal.value = true;
 }
@@ -359,25 +407,163 @@ function applySelectedClass(payload) {
   if (!className) return;
   selectedClass.value = className;
   showClassModal.value = false;
-  setSessionStatus(`開始クラスを ${className} に設定`, "ok");
+  showCharacterNameModal.value = true;
+  setSessionStatus(`開始クラスを ${className} に設定。次に名前を設定してください。`, "ok");
+}
+
+function applyCharacterName(payload) {
+  const characterName = String(payload?.characterName || "").trim().slice(0, 20);
+  const villageName = String(payload?.villageName || "").trim().slice(0, 20);
+  if (!characterName || !villageName) return;
+  selectedCharacterName.value = characterName;
+  selectedVillageName.value = villageName;
+  gameSetupReady.value = true;
+  gameFlowStep.value = "village";
+  showCharacterNameModal.value = false;
+  setSessionStatus(`統治者作成完了: ${characterName} / 村名 ${villageName}。次に初期村を配置してください。`, "warn");
+  characterCommand.value = {
+    type: "startVillagePlacement",
+    nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
+  };
 }
 
 function handleCharacterStateChange(payload) {
   const units = Array.isArray(payload?.units)
     ? payload.units.map(unit => ({
       ...unit,
+      iconName: String(unit?.iconName || ""),
+      iconSrc: String(unit?.iconSrc || ""),
       status: unit?.status ? { ...unit.status } : null,
+      skillLevels: unit?.skillLevels ? { ...unit.skillLevels } : null,
+      baseResistances: unit?.baseResistances ? { ...unit.baseResistances } : null,
+      resistances: unit?.resistances ? { ...unit.resistances } : null,
+      equipmentSlots: unit?.equipmentSlots ? { ...unit.equipmentSlots } : null,
       growthRule: unit?.growthRule ? { ...unit.growthRule } : null,
       equipment: Array.isArray(unit?.equipment) ? unit.equipment.map(e => ({ ...e })) : [],
       skills: Array.isArray(unit?.skills) ? [...unit.skills] : []
     }))
     : [];
+  const squads = Array.isArray(payload?.squads)
+    ? payload.squads.map(squad => ({
+      ...squad,
+      memberIds: Array.isArray(squad?.memberIds) ? squad.memberIds.map(v => String(v || "").trim()).filter(Boolean) : []
+    }))
+    : [];
   mapCharacterState.value = {
     village: payload?.village ? { ...payload.village } : null,
     units,
+    squads,
     selectedUnitId: String(payload?.selectedUnitId || ""),
+    unitMoveMode: !!payload?.unitMoveMode,
+    villageScale: String(payload?.villageScale || "村"),
+    namedLimit: Number(payload?.namedLimit || 2),
+    namedCount: Number(payload?.namedCount || 0),
     ruleText: String(payload?.ruleText || "")
   };
+  const villagePlaced = !!mapCharacterState.value?.village?.placed;
+  if (gameFlowStep.value === "village" && villagePlaced) {
+    gameFlowStep.value = "mob";
+    setSessionStatus("初期村を配置しました。次にモブを作成してください。", "warn");
+    characterCommand.value = {
+      type: "openUnitCreate",
+      nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
+    };
+    return;
+  }
+  const hasMobUnit = units.some(unit => !unit?.isSovereign);
+  if (gameFlowStep.value === "mob" && hasMobUnit) {
+    gameFlowStep.value = "ready";
+    setSessionStatus("ゲーム開始フロー完了。マップ探索を開始できます。", "ok");
+  }
+}
+
+watch(gameOnlyMode, enabled => {
+  if (typeof document === "undefined") return;
+  document.body.classList.toggle("game-only-mode", !!enabled);
+}, { immediate: true });
+
+function sendCharacterCommand(type, unitId, extras = {}) {
+  const cmdType = String(type || "").trim();
+  const id = String(unitId || "").trim();
+  if (!cmdType || !id) return;
+  const payloadExtras = extras && typeof extras === "object" ? extras : {};
+  characterCommand.value = {
+    ...payloadExtras,
+    type: cmdType,
+    unitId: id,
+    nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
+  };
+}
+
+function requestPromoteUnit(payload) {
+  const unitId = String(payload?.unitId || "").trim();
+  if (!unitId) return;
+  sendCharacterCommand("promoteNamed", unitId);
+}
+
+function requestToggleUnitSquad(payload) {
+  const unitId = String(payload?.unitId || "").trim();
+  if (!unitId) return;
+  const memberIds = Array.isArray(payload?.memberIds)
+    ? payload.memberIds
+      .map(id => String(id || "").trim())
+      .filter(Boolean)
+    : [];
+  sendCharacterCommand("toggleSquad", unitId, { memberIds });
+}
+
+function requestRemoveMob(payload) {
+  const unitId = String(payload?.unitId || "").trim();
+  if (!unitId) return;
+  sendCharacterCommand("removeMob", unitId);
+}
+
+function requestCreateSquad(payload) {
+  const leaderId = String(payload?.leaderId || "").trim();
+  if (!leaderId) return;
+  const memberIds = Array.isArray(payload?.memberIds)
+    ? payload.memberIds.map(id => String(id || "").trim()).filter(Boolean)
+    : [];
+  const squadName = String(payload?.squadName || "").trim();
+  sendCharacterCommand("createSquad", leaderId, { memberIds, squadName });
+}
+
+function requestRenameSquad(payload) {
+  const leaderId = String(payload?.leaderId || "").trim();
+  if (!leaderId) return;
+  const squadName = String(payload?.squadName || "").trim();
+  if (!squadName) return;
+  sendCharacterCommand("renameSquad", leaderId, { squadName });
+}
+
+function requestDissolveSquad(payload) {
+  const leaderId = String(payload?.leaderId || "").trim();
+  if (!leaderId) return;
+  sendCharacterCommand("dissolveSquad", leaderId);
+}
+
+function requestUpdateUnitEquipment(payload) {
+  const unitId = String(payload?.unitId || "").trim();
+  if (!unitId) return;
+  const equipmentName = String(payload?.equipmentName || "").trim();
+  if (!equipmentName) return;
+  const rarity = String(payload?.rarity || "").trim();
+  const slotKey = String(payload?.slotKey || "").trim();
+  const slotIndex = Number.isFinite(Number(payload?.slotIndex)) ? Math.max(0, Math.floor(Number(payload.slotIndex))) : 0;
+  sendCharacterCommand("updateEquipment", unitId, {
+    equipmentName,
+    rarity,
+    slotKey,
+    slotIndex
+  });
+}
+
+function requestUpdateUnitIcon(payload) {
+  const unitId = String(payload?.unitId || "").trim();
+  if (!unitId) return;
+  const iconName = String(payload?.iconName || "").trim();
+  if (!iconName) return;
+  sendCharacterCommand("updateIcon", unitId, { iconName });
 }
 
 function createRoom() {
@@ -498,11 +684,16 @@ function renderGameStateToText() {
       skill: showSkillTreeModal.value,
       race: showRaceModal.value,
       class: showClassModal.value,
-      characters: showCharacterStatusModal.value
+      characters: showCharacterStatusModal.value,
+      name: showCharacterNameModal.value
     },
     playerSetup: {
       selectedRace: selectedRace.value,
-      selectedClass: selectedClass.value || null
+      selectedClass: selectedClass.value || null,
+      selectedCharacterName: selectedCharacterName.value || null,
+      selectedVillageName: selectedVillageName.value || null,
+      gameSetupReady: gameSetupReady.value,
+      gameFlowStep: gameFlowStep.value
     },
     battle: {
       turn: state.turn,
@@ -582,6 +773,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (typeof document !== "undefined") {
+    document.body.classList.remove("game-only-mode");
+  }
   if (globalKeyHandler) {
     window.removeEventListener("keydown", globalKeyHandler);
   }
@@ -595,22 +789,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app">
-    <app-header
-      :active-room-id="activeRoomId"
-      :selected-race="selectedRace"
-      :selected-class="selectedClass"
-      :character-count="characterCount"
-      @open-modal="openModal"
-    />
-
+  <div class="app" :class="{ 'game-only': gameOnlyMode }">
     <phaser-map-generator-panel
       :selected-race="selectedRace"
       :selected-class="selectedClass"
+      :selected-character-name="selectedCharacterName"
+      :selected-village-name="selectedVillageName"
+      :game-setup-ready="gameSetupReady"
+      :character-command="characterCommand"
+      @open-modal="openModal"
       @character-state-change="handleCharacterStateChange"
     />
-
-    <menu-panel @open-modal="openModal" />
 
     <room-modal
       :show="showRoomModal"
@@ -668,12 +857,29 @@ onBeforeUnmount(() => {
       @confirm="applySelectedClass"
     />
 
+    <character-name-modal
+      :show="showCharacterNameModal"
+      :selected-name="selectedCharacterName"
+      :selected-village-name="selectedVillageName"
+      @close="closeModal('name')"
+      @confirm="applyCharacterName"
+    />
+
     <character-status-modal
       :show="showCharacterStatusModal"
       :units="mapCharacterState.units"
+      :squads="mapCharacterState.squads"
       :village="mapCharacterState.village"
       :rule-text="mapCharacterState.ruleText"
       :default-selected-id="mapCharacterState.selectedUnitId"
+      @promote-unit="requestPromoteUnit"
+      @toggle-squad="requestToggleUnitSquad"
+      @remove-mob="requestRemoveMob"
+      @create-squad="requestCreateSquad"
+      @rename-squad="requestRenameSquad"
+      @dissolve-squad="requestDissolveSquad"
+      @update-unit-equipment="requestUpdateUnitEquipment"
+      @update-unit-icon="requestUpdateUnitIcon"
       @close="closeModal('characters')"
     />
   </div>

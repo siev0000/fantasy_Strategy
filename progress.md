@@ -271,3 +271,201 @@ TODO / next agent:
 - 2026-03-04: Linked docs/MEMO.md task section to docs/NEXT_TASKS.md for sequential execution reference.
 - 2026-03-04: Switched Vite build cleanup back to `emptyOutDir: true` in `frontend/vite.config.mjs` so old `web-vue-dist/assets/index-*.js` files are not accumulated.
 - 2026-03-04: Validation passed after dist cleanup setting change: `npm run build:front`.
+- 2026-03-04: Added `CharacterNameModal.vue` and character naming flow: after class confirmation, name modal opens (`クラス選択 -> 名前設定`).
+- 2026-03-04: Added `selectedCharacterName` state to `App.vue`, wired modal kind `name`, and passed name into `PhaserMapGeneratorPanel` / `render_game_to_text` playerSetup.
+- 2026-03-04: `PhaserMapGeneratorPanel.vue` now uses selected character name for initial named unit and updates existing named unit when name setting changes.
+- 2026-03-04: Added name-setting entry buttons in `AppHeader.vue` and `MenuPanel.vue`.
+- 2026-03-04: Validation passed after naming flow update: `npm run build:front`.
+- 2026-03-04: `develop-web-game` Playwright client retry after naming flow update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-04: Added `closeOnBackdrop` option to `BaseModal.vue` (default true) and disabled backdrop-close only for `CharacterNameModal.vue`.
+- 2026-03-04: Validation passed after name-modal backdrop behavior update: `npm run build:front`.
+- 2026-03-04: Changed initial village flow in `PhaserMapGeneratorPanel.vue` from auto-placement to manual placement mode after character creation.
+- 2026-03-04: Added village placement button and click-to-place validation (land only; excludes sea/lake/volcano), with pending village state until placement.
+- 2026-03-04: Added in-tile village marker rendering (inner circle + `村` label) without changing tile outer color.
+- 2026-03-04: Validation passed after village manual-placement update: `npm run build:front`.
+- 2026-03-04: Added leader concept for first created unit (`isLeader: true`) and visual leader marker (`L`) on map tiles in Phaser rendering.
+- 2026-03-04: Extended naming flow to support both character name and village name via `CharacterNameModal.vue`; stored in `App.vue` as `selectedCharacterName` + `selectedVillageName`.
+- 2026-03-04: `PhaserMapGeneratorPanel.vue` now consumes `selectedVillageName`, applies it to pending/placed village, and syncs village name on later changes.
+- 2026-03-04: Updated status UI (`CharacterStatusModal.vue`) to show leader indicator and village placement state.
+- 2026-03-04: Validation passed after leader/village-name update: `npm run build:front`.
+- 2026-03-04: `develop-web-game` Playwright client retry after leader/village-name update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-04: Added Phaser map hover highlight (`hoverLayer`) so the tile under cursor is emphasized with a bright frame/fill for easier targeting.
+- 2026-03-04: Added territory border coloring in `PhaserMapGeneratorPanel.vue`: player territory is cyan and enemy territory is red; default border color remains unchanged for unowned tiles.
+- 2026-03-04: Added map drag-pan interaction (click-drag) with drag-threshold handling so drag does not trigger click selection.
+- 2026-03-04: Added mouse-wheel zoom focused on hover/cursor position; zoom now keeps camera focus stable instead of recentering every redraw.
+- 2026-03-04: Updated click detail text to include territory ownership (`自領/敵領/未所属`).
+- 2026-03-04: Validation passed after map interaction update: `npm run build:front`.
+- 2026-03-04: `develop-web-game` Playwright client retry after hover/territory/zoom/drag update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-04: Updated dev help hint text in Phaser panel to reflect new controls (click detail / drag pan / wheel zoom) and revalidated (`npm run build:front`).
+- 2026-03-04: Adjusted player territory range from 4 to 1 tile around the village (`PLAYER_TERRITORY_RANGE = 1`) per latest request; build validation passed (`npm run build:front`).
+- 2026-03-04: Added click-camera-follow setting (`focusCameraOnTileClick`) to display settings; default is OFF. Click focus functions remain in code and are only applied when ON.
+- 2026-03-04: Added temporary race-based village population config JSON: `data/source/export/json/種族初期村人口設定.json` and wired initial village population generation to this data (with default fallback).
+- 2026-03-04: Implemented unit movement mode in `PhaserMapGeneratorPanel.vue` (`ユニット移動: ON/OFF`). Movement consumes no AP, uses path/range check, and updates unit position on map click.
+- 2026-03-04: Added fog-of-war style visibility: tiles outside village vision, unit scout vision, and explored movement path are rendered gray (`不明`). River/lava/special/height overlays are hidden on unseen tiles.
+- 2026-03-04: Visibility is now persistent per map via explored tiles; moved path remains revealed while dynamic visibility comes from village + units scout range.
+- 2026-03-04: Validation passed after click-focus/population/movement/fog implementation: `npm run build:front`.
+- 2026-03-04: `develop-web-game` Playwright client retry after this update is still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-04: Updated fog memory behavior: tiles seen once by scout/village vision are now persisted in `exploredTileKeys` and remain visible thereafter on the same map.
+- 2026-03-04: Updated move-mode range visualization to blinking green border on reachable tiles (excluding current tile), and added 250ms redraw while move mode is ON for blink animation.
+- 2026-03-04: Validation passed after fog-memory + blinking move-range update: `npm run build:front`.
+- 2026-03-04: `develop-web-game` Playwright client retry after fog-memory/move-range blink update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-04: Renamed first-unit role concept to `統治者` and separated it from `リーダー` (leader now means squad-holder).
+- 2026-03-04: Extended initial unit generation to multiple units: `統治者` x1 + random mobs (2-4). Added unit fields `isSovereign`, `isNamed`, `squadCount`, `squads`, and `moveRemaining`.
+- 2026-03-04: Added named-promotion framework with city-scale cap (村2/町4/都市7). Promotion commands can now be sent from character screen and validated in map panel.
+- 2026-03-04: Added squad toggle framework (`toggleSquad`) so units can hold squads and become `リーダー` when squadCount>0.
+- 2026-03-04: Added move-unit selection modal when enabling move mode; user selects which unit to move before entering move mode, and modal shows role/position/move remaining/scout/squad info.
+- 2026-03-04: Updated movement rule to 2-tile chunk per action using `moveRemaining`; each click moves up to 2 tiles toward target, no AP cost. Movement points reset on turn advance.
+- 2026-03-04: Updated CharacterStatusModal with role labels (`統治者/ネームド/モブ`), squad display, move-remaining display, and action buttons for promote/toggle squad.
+- 2026-03-04: Validation passed after multi-unit/sovereign/move-modal/2-tile-move update: `npm run build:front`.
+- 2026-03-04: `develop-web-game` Playwright client retry after this update still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-04: Replaced initial village population source from temporary `種族初期村人口設定.json` to `data/source/export/json/勢力.json` (`初期人数` fixed value, with fallback to first defined value).
+- 2026-03-04: Added multi-resource village state in `PhaserMapGeneratorPanel.vue`: `populationByRace`, `foodStockByType(穀物/野菜/肉/魚)`, `materialStockByType(木材/石材/鉄)` and kept total fields (`foodStock`, `materialStock`) synchronized.
+- 2026-03-04: Implemented per-turn economy order: `領土収入 -> ユニット維持費 -> 村人口消費 -> 不足ペナルティ(保留ログのみ)`; territory income now uses `data/source/export/json/地形.json` per-tile yield.
+- 2026-03-04: Added food substitution rule for shortages (other food stocks consumed at 1.2x conversion), and appended economy breakdown lines to turn event modal.
+- 2026-03-04: Added race-based upkeep/consumption source from class sheet (`クラス.json` race rows, food columns divided by 10 per unit/person).
+- 2026-03-04: Updated village/status UI to show population as headcount (not ratio), race headcount breakdown, and per-resource detailed stocks.
+- 2026-03-04: Added unit tile icon marker behavior for multi-unit stacks: render first unit's race glyph as tile icon and show stack count badge when multiple units share a tile.
+- 2026-03-04: Added sovereign nation log storage (`nationLogsBySovereign`) and new UI button/modal (`統治者ログ`) for viewing nation logs.
+- 2026-03-04: `develop-web-game` client check retried (`web_game_playwright_client.js --help`) and remains blocked by skill-runtime dependency issue (`ERR_MODULE_NOT_FOUND: playwright`).
+- 2026-03-04: Added map HUD population chip (`総人口`) to field header, including quick race-count detail text when village exists.
+- 2026-03-04: Added in-map header action buttons (`ログ`, `ユニット作成`) so log viewing and unit creation are usable even in map-focused/fullscreen flow.
+- 2026-03-04: Added unit creation flow in `PhaserMapGeneratorPanel.vue` with modal UI (name optional / class select / count 1-20), fixed temporary costs consumption (food+material), and spawn-at-village behavior.
+- 2026-03-04: Unit creation now deducts from typed village stocks and writes actions to sovereign nation log; insufficient-resource error handling added.
+- 2026-03-04: Validation passed after HUD population + log button + unit creation implementation: `npm run build:front`.
+- 2026-03-04: `develop-web-game` client retry after unit-creation update is still blocked by skill-runtime dependency issue (`ERR_MODULE_NOT_FOUND: playwright`).
+- 2026-03-04: Refined unit creation flow per latest rule: removed free-form naming and count input; unit creation now selects only `種族` and `クラス` then creates one unit.
+- 2026-03-04: Reused existing `RaceSelectModal.vue` and `ClassSelectModal.vue` for unit creation selection flow (`ユニット作成` -> 種族選択 -> クラス選択 -> 即作成).
+- 2026-03-04: Unit names for created non-named units are now auto-generated as `種族名 + クラス + 連番` (e.g., `只人ファイター3`) via `buildAutoUnitName`.
+- 2026-03-04: Validation passed after unit-creation modal-reuse + auto-name update: `npm run build:front`.
+- 2026-03-04: `develop-web-game` client retry after modal-reuse update is still blocked by skill-runtime dependency issue (`ERR_MODULE_NOT_FOUND: playwright`).
+- 2026-03-04: Removed automatic initial character injection in map generation; start state now creates village data only and leaves unit list empty until explicit unit creation.
+- 2026-03-04: Updated unit creation to support batch mob creation count with cap rule `モブ総数 <= 人口/10`; added count control in map toolbar and enforcement in creation logic.
+- 2026-03-04: Added mob deletion command path (`removeMob`) from CharacterStatusModal -> App -> PhaserMapGeneratorPanel; only non-named/non-sovereign mobs are removable.
+- 2026-03-04: Kept squad formation flow and ensured it works for player-created mobs (toggle squad command unchanged, UI maintained).
+- 2026-03-04: Added character list summary to header (`自キャラ一覧`) so current units are visible directly from header area.
+- 2026-03-04: Validation passed after no-auto-char + mob-cap + mob-delete + header-list update: `npm run build:front`.
+- 2026-03-04: `develop-web-game` client retry after this update is still blocked by skill-runtime dependency issue (`ERR_MODULE_NOT_FOUND: playwright`).
+- 2026-03-04: Adjusted batch-create naming to avoid duplicate names in the same creation burst (`種族+クラス+連番` now increments correctly across multi-create loop).
+- 2026-03-04: Revalidated after batch-name sequence fix: `npm run build:front`.
+- 2026-03-04: `develop-web-game` client retry after batch-name fix is still blocked by skill-runtime dependency issue (`ERR_MODULE_NOT_FOUND: playwright`).
+
+Deferred / memo (latest user decisions):
+- 不足時ペナルティの本実装は後回し（将来イベント化）。現状は不足量をログ表示のみ。
+- ユニット作成コストは仮固定（食料 20/20/20, 資材 20/20/20）。作成UI/本ルールは後続タスク。
+- 勢力/NPC AI 調整は後回し（別タスク）。
+- 2026-03-04: モブ作成仕様を更新。`createUnitFromSelection` 経由の `createUnitRecord` 呼び出しで `fixedLevel=5` と `fixedClassLevels=5` を渡し、モブ初期値を「Lv5 / 選択クラスLv5」に固定。
+- 2026-03-04: `buildCharacterStatusFromRules` にクラスLv固定オプションを追加。固定時は人族ボーナスに依存せず指定クラスLvをそのまま採用。
+- 2026-03-04: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアント再試行は引き続き `ERR_MODULE_NOT_FOUND: playwright`（スキル実行環境依存）。
+- 2026-03-04: Phase1 Task2(建設システム)を実装。村建設モーダルを追加し、建物選択(穀倉/製材所/採石場)で資材コスト消費後に建設できるようにした。
+- 2026-03-04: 村データに `buildings` を追加し、毎ターン経済処理へ建設補正収入を反映（`建設補正収入` 行をイベントログへ出力）。建設前後で収支数値が変化するDoDに対応。
+- 2026-03-04: 建設条件不足をブロック（`建設失敗: 資材不足`）し、成功時は国家ログへ建設完了・コスト・補正を記録。
+- 2026-03-04: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアント再試行は引き続き `ERR_MODULE_NOT_FOUND: playwright`（スキル実行環境依存）。
+- 2026-03-04: `docs/NEXT_TASKS.md` に進捗状態を追記（Task1/Task2=完了、Task3=次着手）し、順次実装の基準を明確化。
+- 2026-03-04: Phase1 Task3(ユニット行動/AP)を実装。ユニットに `actionPointMax/actionPoint` を追加し、移動時にAPを1消費する仕様へ変更（移動2マス/回の既存仕様は維持）。
+- 2026-03-04: APが0のユニットは移動不可。移動モード選択候補は `AP>0 && 移動残>0` のユニットのみ表示。移動不可時は `APがありません` を表示。
+- 2026-03-04: ターン経過で全ユニットの移動残量とAPを最大値へ回復するよう更新し、国家ログへ `行動ポイント回復` を記録。
+- 2026-03-04: CharacterStatusModal に AP 表示を追加し、ユニット詳細でAP残量を確認可能にした。
+- 2026-03-04: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアント再試行は引き続き `ERR_MODULE_NOT_FOUND: playwright`（スキル実行環境依存）。
+- TODO(next): Phase2 Task4 索敵と遭遇（発見状態・発見ログ・戦闘遷移フック）に着手。
+- 2026-03-04: 移動後に全ユニットのAP/移動残が0になった場合、`ユニット移動モード` を自動OFFにするUX補強を追加。
+- 2026-03-04: AP実装後の再検証 `npm run build:front` 成功。Playwright クライアント再試行は `ERR_MODULE_NOT_FOUND: playwright` 継続。
+- 2026-03-04: 要望対応: 移動時のAP表示を全廃し、移動は `移動残` のみで管理する仕様へ戻した（移動選択UI/自キャラ詳細/選択ユニット文言を更新）。
+- 2026-03-04: 移動コストを地形高度対応に変更。1歩=基本1、前後タイルで高度Lvが変化する歩行は追加+1（合計2）を消費。到達可能範囲計算と経路探索を重み付きコスト方式へ更新。
+- 2026-03-04: ターン経過ログ文言を `移動残量回復` に更新。検証 `npm run build:front` 成功。Playwright クライアントは `ERR_MODULE_NOT_FOUND: playwright` 継続。
+- 2026-03-04: 移動ヘルプ文言を更新（高度変化マスは移動コスト+1を明記）。再検証 `npm run build:front` 成功。
+- 2026-03-04: 開始フローを追加。`ゲーム開始` 押下で `統治者作成(種族→クラス→名前)` を開始し、完了後に `初期村を配置`、配置完了後に `モブを作成` へ段階遷移する制御を `App.vue` に実装。
+- 2026-03-04: AppHeader/MenuPanel に `ゲーム開始` ボタンを追加し、ヘッダーに `開始フロー` 表示を追加。
+- 2026-03-04: PhaserMapGeneratorPanel に `gameSetupReady` を追加し、開始前は村配置/モブ作成をブロック。開始完了で村配置待機を有効化。外部コマンド `startVillagePlacement` / `openUnitCreate` に対応。
+- 2026-03-04: 検証 `npm run build:front` 成功。Playwright クライアントは `ERR_MODULE_NOT_FOUND: playwright` 継続。
+- 2026-03-04: 要望対応(基本機能修正)。`createVillageAndInitialUnit` で統治者ユニットを自動生成するよう変更（開始時に自キャラ一覧へ統治者が表示される）。
+- 2026-03-04: 初期化時の国家ログキーを統治者IDへ紐付けし、開始ログに統治者の種族/クラス/Lvを追記。`unitRulesInfoText` も「初期統治者は自動生成」に更新。
+- 2026-03-04: `phaser-map-canvas` 内ヘッダーアクションに `自キャラ` ボタンを追加し、`PhaserMapGeneratorPanel` から `open-modal('characters')` を emit してマップ画面側から自キャラ一覧を開けるようにした。
+- 2026-03-04: `App.vue` で `PhaserMapGeneratorPanel` の `@open-modal` を受ける配線を追加。
+- 2026-03-04: モブ作成の種族選択を自陣営所属のみへ制限。`unitCreateAllowedRaces`（村人口内訳 + 既存ユニット種族 + 選択種族）を導入し、作成時の選択/確定/生成前チェックに適用。
+- 2026-03-04: `RaceSelectModal.vue` に `allowedRaces` プロップを追加し、許可対象のみ表示・選択可能に変更（未指定時は従来通り全種族表示）。
+- 2026-03-04: 統治者追加後の開始フロー判定を修正。`mob` 完了条件は `units.length > 0` ではなく `統治者以外が1体以上` へ変更。
+- 2026-03-04: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアント再試行は引き続き `ERR_MODULE_NOT_FOUND: playwright`（スキル実行環境依存）。
+- 2026-03-04: 追加調整。モブ作成の許可種族から `props.selectedRace` フォールバックを除外し、`村人口内訳 + 既存ユニット` に厳密一致する自陣営種族のみ選択可能にした。
+- 2026-03-04: 再検証 `npm run build:front` 成功。Playwright クライアント再試行は同一理由で失敗（`ERR_MODULE_NOT_FOUND: playwright`）。
+- 2026-03-04: 部隊編成をメンバー選択式へ拡張。`CharacterStatusModal` の「部隊」欄で候補ユニットを選択し、`toggle-squad` で `memberIds` を送信するUIに変更（最大5名、他部隊リーダーは候補から除外）。
+- 2026-03-04: `App.vue` のキャラコマンド送信を拡張し、`toggleSquad` へ `memberIds` を中継可能にした。
+- 2026-03-04: `PhaserMapGeneratorPanel.vue` の部隊ロジックを `configureUnitSquadState` に更新。選択メンバーで部隊を再構成し、他リーダー部隊からの再配属・`squadLeaderId` 付与・`squadCount/squads` 同期を実装。
+- 2026-03-04: ユニット削除時に部隊参照を掃除する `stripRemovedUnitFromSquads` を追加。隊長/隊員の削除で不整合な部隊リンクが残らないよう対応。
+- 2026-03-04: ユニット情報表示/タイルタグを更新（`隊`=リーダー、`員`=隊員）。
+- 2026-03-04: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアント再試行は引き続き `ERR_MODULE_NOT_FOUND: playwright`（スキル実行環境依存）。
+- 2026-03-04: 部隊UIの文言/導線を修正。未編成でも「部隊を解除」と見える問題を解消し、状態別に `部隊を編成 / 部隊を更新 / 部隊を解除 / 隊員状態を解除` を表示。
+- 2026-03-04: 部隊候補が0人のときに案内文（モブ作成が必要）を表示し、実行不能ボタンは無効化。
+- 2026-03-04: 再検証 `npm run build:front` 成功。
+- 2026-03-04: 部隊管理仕様を再設計。`CharacterStatusModal.vue` に `自キャラ / 部隊` タブを追加し、部隊タブで「部隊一覧」「部隊を作成（リーダー→メンバー→名前）」のフローを実装。
+- 2026-03-04: 部隊作成は同座標制約を適用。メンバー候補は `リーダーと同じ座標` かつ `未所属` のみ表示し、既に部隊所属(リーダー/隊員)のユニットは選択不可にした。
+- 2026-03-04: `App.vue` で `squads` を受け渡し対象に追加し、`create-squad / rename-squad / dissolve-squad` のイベントを `characterCommand` 経由で Phaser へ送れるようにした。
+- 2026-03-04: `PhaserMapGeneratorPanel.vue` に部隊サマリ生成 `buildSquadSummaryList` を追加し、`emitCharacterStateChange` で部隊一覧を返却。表示値として部隊索敵/隠密を算出（索敵=最高索敵+各員索敵/5、隠密=合計隠密÷(人数*0.75)※1人時はそのまま）。
+- 2026-03-04: Phaser 側コマンドを拡張。`createSquad / renameSquad / dissolveSquad` を実装し、部隊名、リーダー/隊員リンク、メンバー再配属、削除時リンク掃除を同期。
+- 2026-03-04: 再検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアント再試行は引き続き `ERR_MODULE_NOT_FOUND: playwright`（スキル実行環境依存）。
+- 2026-03-04: 移動仕様を更新。`ソロ or 部隊リーダー` のみ移動対象にし、`squadLeaderId` を持つ部隊員の単独移動を禁止。移動選択モーダル候補も同条件に制限。
+- 2026-03-04: 部隊リーダー選択時の移動を部隊同時移動へ変更。部隊全員が同座標に揃っている場合のみ移動可能、移動残は部隊内最小値で判定し、移動後は全員の座標/移動残を同期更新。
+- 2026-03-04: `CharacterStatusModal` を拡張し、自キャラ詳細で `ステータス / 技能 / 耐性 / 装備` を表示。装備はスロットごとに装備名・レア度を選んで変更可能にした（`update-unit-equipment` emit）。
+- 2026-03-04: `App.vue` に装備変更コマンド中継を追加（`updateEquipment`）。
+- 2026-03-04: `PhaserMapGeneratorPanel.vue` に装備更新処理を追加。`装備.json` を基準にレア度倍率を適用（コモン1.0 / アンコモン1.25 / レア1.5 / エピック1.75 / レジェンダリー2.0）。
+- 2026-03-04: Cr威力の計算を特別化。`上位桁(百の位以上)は固定`・`下2桁のみ倍率` を適用するよう変更（例: 135 x2.0 => 170）。
+- 2026-03-04: ユニット状態に `skillLevels` / `resistances` を追加して emit するよう変更。生成時にクラス技能値と種族+クラス耐性値を保持。
+- 2026-03-04: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアントは引き続き `ERR_MODULE_NOT_FOUND: playwright` で実行不可（スキル実行環境依存）。
+- 2026-03-05: `クラス.json` の装備枠列（`武器1/武器2/頭/体/足/装飾1/装飾2`）をゲームへ取り込み。セルに `×` がある枠は装備不可として判定・UI表示（「× 装備不可」）・コマンド側検証に反映。
+- 2026-03-05: 装備管理をスロット固定へ変更。`CharacterStatusModal` の装備欄を 7枠固定表示にし、各スロットで対応装備のみ選択可能に更新。
+- 2026-03-05: 装備変更コマンドを `slotKey` 対応に拡張。部位不一致装備や装備不可枠への変更要求を拒否するようにした。
+- 2026-03-05: 装備データ拡張に備えて `createEquipmentEntry` を拡張。`値段倍率`・`必要素材`・耐性列を読み込み、価格は `基本20 x 値段倍率` で `金(仮)` 表示する仕様を実装。
+- 2026-03-05: 防具耐性反映に対応。ユニットに `baseResistances` を保持し、装備耐性ボーナスを合算した `resistances` を生成/再計算する処理を追加。
+- 2026-03-05: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアントは引き続き `ERR_MODULE_NOT_FOUND: playwright`（スキル実行環境依存）。
+- 2026-03-05: Added shared icon asset resolver `frontend/src/lib/icon-library.js` to unify icon usage from `assets/images/アイコン` (`DEFAULT_ICON_NAME/SRC`, icon list, name/src resolution).
+- 2026-03-05: Updated `AppHeader.vue` / `MenuPanel.vue` / `CharacterStatusModal.vue` to use unified icon source instead of old `assets/images/攻撃手段` path.
+- 2026-03-05: Extended `CharacterStatusModal.vue` squad member detail to include `技能` / `耐性` / `取得スキル` / `装備枠` in addition to status.
+- 2026-03-05: Added per-unit icon selection UI in `CharacterStatusModal.vue` (character tab and squad detail) and emit `update-unit-icon` command.
+- 2026-03-05: Wired icon update flow `App.vue -> PhaserMapGeneratorPanel.vue` via `characterCommand` type `updateIcon`; units now persist `iconName`/`iconSrc` in emitted character state.
+- 2026-03-05: Added unit icon defaults on unit creation (`createUnitRecord`) with race-based fallback and shared icon resolver.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: `develop-web-game` Playwright client check attempted but blocked by missing runtime dependency (`ERR_MODULE_NOT_FOUND: playwright` from skill script runtime).
+- 2026-03-05: Squad scout/stealth calculation updated to skill-only basis (missing skill now contributes 0) in `PhaserMapGeneratorPanel.vue`.
+- 2026-03-05: Squad scout support formula clarified in code as `max scout + sum(other scouts / 5)`; stealth stays `sum / (count*0.75)` for multi-member squads.
+- 2026-03-05: Added shared character detail component `CharacterUnitDetailPanel.vue` and reused it in both character tab and squad member detail (`CharacterStatusModal.vue`).
+- 2026-03-05: Skill acquisition parser now detects dynamic skill columns (`SkillN` / `スキルN`) and supports delimited values (`/`, `,`, `、`) in `buildUnitSkillsFromClass`.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: Updated Phaser viewport policy to fixed virtual resolution 1280x720 (`GAME_VIEW_WIDTH/HEIGHT`) with `Phaser.Scale.FIT + CENTER_BOTH` for device-size scaling.
+- 2026-03-05: Removed per-render `game.scale.resize(...)` and switched camera view-size calculations to fixed virtual size.
+- 2026-03-05: Updated `.phaser-map-canvas` to 16:9 (`aspect-ratio`) and max width 1280 so the whole frame scales down on smaller screens.
+- 2026-03-05: Build revalidated after viewport scaling changes (`npm run build:front`).
+- 2026-03-05: Moved gameplay controls into map overlay (`自キャラ/スキルツリー/ログ/ユニット移動/作成人数ステッパー/ユニット作成/建設`) in `PhaserMapGeneratorPanel.vue`.
+- 2026-03-05: Added clock-click turn action modal (`ターン経過` / `イベント管理`) and wired clock face as trigger.
+- 2026-03-05: Added in-map `テスト` toggle button next to the clock; external map tools + dev info are now shown only when test mode is ON.
+- 2026-03-05: Build revalidated after in-map UI/layout changes (`npm run build:front`).
+- 2026-03-05: `PhaserMapGeneratorPanel` の `showTestControls` を親へ `test-controls-change` で通知するように変更。
+- 2026-03-05: `App.vue` で `AppHeader` / `MenuPanel` をテストON時のみ表示に変更（通常時は `phaser-map-canvas` のみ表示）。
+- 2026-03-05: マップ右下UIを調整し、テストON/OFFボタンを時計の左側へ移動。
+- 2026-03-05: ユニット作成フローを変更。作成ボタン押下後に「作成数モーダル」で人数決定 -> 種族選択 -> クラス選択の順へ。
+- 2026-03-05: 画面マス選択で常時表示される「選択マス詳細」オーバーレイを追加（町状態/土地状態/配置ユニットを表示）。
+- 2026-03-05: 使わなくなった作成人数インラインUI（ヘッダーstepper/テストパネル内入力）を削除。
+- 2026-03-05: 検証 `npm run build:front` 成功。
+- 2026-03-05: `develop-web-game` Playwright client 実行を再試行したが、スキル側ランタイムで `playwright` モジュール解決に失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-05: 画面幅追従の不具合を修正。原因は `styles.css` の `.app { width: min(1000px, 100%) }` 固定幅。
+- 2026-03-05: `App.vue` に `gameOnlyMode` を追加し、テストOFF時は `body.game-only-mode` + `.app.game-only` でフル幅/フル高さ表示へ切替。
+- 2026-03-05: `phaser-map-panel` の外側余白・枠をゲーム専用モード時に解除し、`phaser-map-canvas` をビューポート幅に追従させるスタイルを追加。
+- 2026-03-05: 検証 `npm run build:front` 成功。
+- 2026-03-05: phaser-map-canvas を基準解像度 1280x720 の仮想ステージとして扱い、ResizeObserver で算出した倍率を 	ransform: scale(...) で適用する全体スケーリングを追加。\n- 2026-03-05: Phaser scale mode を FIT から NONE に変更し、ステージ側スケーリングを単一責務化。\n- 2026-03-05: 画面専用モード時は .phaser-stage-shell を 100vw x 100vh にして中央フィット表示。\n
+- 2026-03-05: PhaserMapGeneratorPanel camera drift fix attempt: render now keeps current camera position on simple redraws (tile click etc.) unless zoom/focus request exists; only re-centers when needed.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: `develop-web-game` Playwright client could not run because `playwright` package is missing in this environment (`ERR_MODULE_NOT_FOUND`).- 2026-03-05: Input/zoom alignment fix: pointer world/view coordinates now resolved from `canvas.getBoundingClientRect()` + camera scroll/zoom instead of raw `pointer.worldX`/`pointer.x`.
+- 2026-03-05: Stage centering adjusted (`phaser-stage-shell` uses grid center, anchor no longer absolute translate) to reduce left-top anchoring drift under scaling.
+- 2026-03-05: Drag start threshold increased (7 -> 12) to reduce accidental camera pan on click.
+- 2026-03-05: Validation passed: `npm run build:front`.- 2026-03-05: Additional pointer offset fix: world conversion now uses `camera.getWorldPoint()` after rect-based view conversion; pointer position cache added for `pointerup` cases where native event coords are missing.
+- 2026-03-05: Validation passed: `npm run build:front`.- 2026-03-05: Added world-wrap toggle in Island Custom modal (`端を反対側へ接続する`) and propagated flag as `worldWrapEnabled` in map data.
+- 2026-03-05: Hex-neighbor calculations in map panel now support wrap mode (movement, visibility, territory BFS, path checks use opposite-side adjacency when enabled).
+- 2026-03-05: Wrap flag is preserved on turn advance and reflected in meta/stats text.
+- 2026-03-05: Reinforced center-based display by fixing map panel size to viewport (`100vw x 100dvh`) and resetting camera center on wrap toggle.
+- 2026-03-05: Validation passed: `npm run build:front`.- 2026-03-05: Reworked wrap rendering to be visually seamless: tile layer, river/lava overlays, village/unit markers, selection and hover are now drawn with 3x3 wrap offsets when world wrap is ON.
+- 2026-03-05: Hit-test in wrap mode now normalizes pointer world coords into primary world before polygon lookup, avoiding wrong tile picks in wrapped views.
+- 2026-03-05: Validation passed: `npm run build:front`.- 2026-03-05: Wrap rendering optimized to "single main map + outer ring" behavior: non-base wrap offsets now draw only boundary tiles/edges/markers/hover/selection instead of full-map duplication.
+- 2026-03-05: Validation passed: `npm run build:front`.- 2026-03-05: Diagnosed zoom anomaly in `frontend/src/components/PhaserMapGeneratorPanel.vue`: wrap-mode zoom center uses raw focus-center delta without torus shortest-path normalization (`renderMapWithPhaser` around lines 3785-3788), causing apparent jump near map seams. Also confirmed `clampCameraScroll` wrapAxis remaps scroll into [-W..2W]/[-H..2H], which can look like forced teleport during zoom/drag transitions.
+- 2026-03-05: Fixed zoom behavior in wrap mode by applying torus shortest-path focus deltas (`normalizeWrappedDelta` / `wrapValueNear`) and removed wrap-axis teleport remap from camera clamp (now bounded clamp only in extended 3x3 space). Build verified with `npm run build:front`.
+- 2026-03-05: Simplified zoom flow per request: removed pointer/tile zoom-focus logic from wheel handling and removed pendingZoomFocus application in camera targeting. Zoom now only changes magnification around current camera center.
+- 2026-03-05: Added DOM wheel fallback on Phaser canvas (`addEventListener("wheel", ... , {passive:false})`) and expanded zoom range to 20-400 with 25-step wheel increments to make zoom visibly change even if Phaser wheel input is unreliable in current layout.
+- 2026-03-05: Adjusted zoom stability per user report: disabled camera scroll clamping when world-wrap is enabled (to avoid per-wheel position shifts), and set zoom lower bound to map-size baseline (min 100%, max 400%).
+- 2026-03-05: Reworked map-camera baseline per user: wrap copies remain enabled at all zoom levels; min zoom is now dynamic from map size so viewport never exceeds map x1.20; drag clamp now uses center-based range and keeps camera around map center. Added `docs/map-screen-overview.md` as implementation spec.
