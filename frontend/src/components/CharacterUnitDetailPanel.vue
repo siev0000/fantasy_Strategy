@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import equipmentDb from "../../../data/source/export/json/装備.json";
 import { DEFAULT_ICON_NAME, getIconSrcByName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
+import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 
 const props = defineProps({
   unit: { type: Object, default: null },
@@ -273,7 +274,7 @@ const skillRows = computed(() => {
   return SKILL_FIELDS.map(key => ({
     key,
     value: skillValue(unit, key)
-  })).filter(row => row.value > 0);
+  }));
 });
 
 const resistanceRows = computed(() => {
@@ -351,11 +352,13 @@ watch(
         </div>
       </div>
       <div v-else class="small">技能データなし</div>
-      <div class="small acquired-skills-line">
-        取得スキル:
-        <span v-if="acquiredSkills.length">{{ acquiredSkills.join(" / ") }}</span>
-        <span v-else>なし</span>
-      </div>
+      <skill-acquired-table
+        :skill-names="acquiredSkills"
+        :show-title="true"
+        title="取得スキル詳細"
+        empty-text="取得スキルなし"
+        :compact="compact"
+      />
     </section>
 
     <section class="char-block">
@@ -513,10 +516,6 @@ watch(
   justify-content: space-between;
   background: rgba(255, 255, 255, 0.82);
   font-size: 0.79rem;
-}
-
-.acquired-skills-line {
-  margin-top: 6px;
 }
 
 .equipment-edit-list {

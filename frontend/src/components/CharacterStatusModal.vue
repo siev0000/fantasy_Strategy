@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
 import CharacterUnitDetailPanel from "./CharacterUnitDetailPanel.vue";
 import equipmentDb from "../../../data/source/export/json/装備.json";
+import classDb from "../../../data/source/export/json/クラス.json";
 import { DEFAULT_ICON_NAME, DEFAULT_ICON_SRC, getIconSrcByName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 
 const props = defineProps({
@@ -11,7 +12,8 @@ const props = defineProps({
   squads: { type: Array, default: () => [] },
   village: { type: Object, default: null },
   ruleText: { type: String, default: "" },
-  defaultSelectedId: { type: String, default: "" }
+  defaultSelectedId: { type: String, default: "" },
+  testMode: { type: Boolean, default: false }
 });
 
 const emit = defineEmits([
@@ -22,7 +24,9 @@ const emit = defineEmits([
   "rename-squad",
   "dissolve-squad",
   "update-unit-equipment",
-  "update-unit-icon"
+  "update-unit-icon",
+  "level-unit",
+  "assign-secondary-class"
 ]);
 
 const STATUS_FIELDS = ["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"];
@@ -97,6 +101,7 @@ const draftSquadName = ref("");
 const renameInput = ref("");
 const equipmentEditBySlot = ref({});
 const iconDraftByUnit = ref({});
+const secondaryClassDraftByUnit = ref({});
 
 const characterIconSrc = DEFAULT_ICON_SRC;
 
@@ -110,6 +115,14 @@ const equipmentRows = computed(() => {
   return equipmentDb
     .filter(row => nonEmptyText(row?.装備名))
     .sort((a, b) => nonEmptyText(a?.装備名).localeCompare(nonEmptyText(b?.装備名), "ja"));
+});
+
+const jobClassNames = computed(() => {
+  if (!Array.isArray(classDb)) return [];
+  return classDb
+    .filter(row => nonEmptyText(row?.種類) === "職業")
+    .map(row => nonEmptyText(row?.名前))
+    .filter(Boolean);
 });
 
 const squadList = computed(() => {
@@ -214,6 +227,75 @@ function canPromote(unit) {
 function canRemoveMob(unit) {
   if (!unit) return false;
   return !isSovereign(unit) && !isNamed(unit);
+}
+
+function isHumanUnit(unit) {
+  const race = nonEmptyText(unit?.race);
+  return race === "只人" || race === "ヒューマン";
+}
+
+function unitLevel(unit) {
+  return Math.max(1, Math.min(10, Math.floor(toSafeNumber(unit?.level, 1))));
+}
+
+function canLevelUp(unit) {
+  return !!unit && unitLevel(unit) < 10;
+}
+
+function canLevelDown(unit) {
+  return !!unit && unitLevel(unit) > 1;
+}
+
+function secondaryClassDraft(unit) {
+  const unitId = nonEmptyText(unit?.id);
+  if (!unitId) return "";
+  return nonEmptyText(secondaryClassDraftByUnit.value[unitId] || unit?.secondaryClassName);
+}
+
+function secondaryClassOptionsForUnit(unit) {
+  const main = nonEmptyText(unit?.className);
+  const current = nonEmptyText(unit?.secondaryClassName);
+  return jobClassNames.value.filter(name => name && name !== main && (!current || name !== current));
+}
+
+function initSecondaryClassDraft(unit) {
+  const unitId = nonEmptyText(unit?.id);
+  if (!unitId) return;
+  const current = nonEmptyText(unit?.secondaryClassName);
+  const options = secondaryClassOptionsForUnit(unit);
+  secondaryClassDraftByUnit.value = {
+    ...secondaryClassDraftByUnit.value,
+    [unitId]: current || options[0] || ""
+  };
+}
+
+function updateSecondaryClassDraft(unit, className) {
+  const unitId = nonEmptyText(unit?.id);
+  if (!unitId) return;
+  secondaryClassDraftByUnit.value = {
+    ...secondaryClassDraftByUnit.value,
+    [unitId]: nonEmptyText(className)
+  };
+}
+
+function levelUpActiveUnit(delta = 1) {
+  const unit = activeUnit.value;
+  if (!unit || !props.testMode) return;
+  const amount = Math.max(-5, Math.min(5, Math.floor(toSafeNumber(delta, 1))));
+  if (!amount) return;
+  emit("level-unit", { unitId: unit.id, delta: amount });
+}
+
+function assignSecondaryClassToActiveUnit() {
+  const unit = activeUnit.value;
+  if (!unit || !props.testMode) return;
+  if (!isHumanUnit(unit) || unitLevel(unit) < 10) return;
+  const className = secondaryClassDraft(unit);
+  if (!className) return;
+  emit("assign-secondary-class", {
+    unitId: unit.id,
+    secondaryClassName: className
+  });
 }
 
 function promoteActiveUnit() {
@@ -458,7 +540,7 @@ function buildSkillRows(unit) {
   return SKILL_FIELDS.map(key => ({
     key,
     value: skillValue(unit, key)
-  })).filter(row => row.value > 0);
+  }));
 }
 
 function buildResistanceRows(unit) {
@@ -472,6 +554,39 @@ function buildResistanceRows(unit) {
 function buildAcquiredSkills(unit) {
   if (!unit || !Array.isArray(unit?.skills)) return [];
   return unit.skills.map(name => nonEmptyText(name)).filter(Boolean);
+}
+
+function acquiredSkillsSummary(unit, limit = 4) {
+  const list = buildAcquiredSkills(unit);
+  if (!list.length) return "なし";
+  const safeLimit = Math.max(1, Math.floor(toSafeNumber(limit, 4)));
+  const visible = list.slice(0, safeLimit);
+  const suffix = list.length > visible.length ? ` +${list.length - visible.length}` : "";
+  return `${visible.join(" / ")}${suffix}`;
+}
+
+function consoleLogCharacterModalOpen() {
+  const snapshot = unitList.value.map(unit => ({
+    id: nonEmptyText(unit?.id),
+    name: nonEmptyText(unit?.name),
+    unitType: nonEmptyText(unit?.unitType),
+    race: nonEmptyText(unit?.race),
+    className: nonEmptyText(unit?.className),
+    level: Math.floor(toSafeNumber(unit?.level, 0)),
+    growthRule: unit?.growthRule || null,
+    status: unit?.status || null,
+    skillLevels: unit?.skillLevels || null,
+    skills: Array.isArray(unit?.skills) ? unit.skills : [],
+    resistances: unit?.resistances || null,
+    pos: {
+      x: Number.isFinite(Number(unit?.x)) ? Number(unit?.x) : null,
+      y: Number.isFinite(Number(unit?.y)) ? Number(unit?.y) : null
+    }
+  }));
+  console.groupCollapsed(`[CharacterStatusModal] open units=${snapshot.length}`);
+  console.log("units(snapshot)", snapshot);
+  console.log("village", props.village || null);
+  console.groupEnd();
 }
 
 function buildEquipmentSlotRows(unit) {
@@ -744,6 +859,7 @@ watch(
     if (!isOpen || !unit) return;
     initEquipmentDraftsForUnit(unit);
     initIconDraft(unit);
+    initSecondaryClassDraft(unit);
   },
   { immediate: true }
 );
@@ -755,6 +871,15 @@ watch(
     initIconDraft(unit);
   },
   { immediate: true }
+);
+
+watch(
+  () => props.show,
+  (isOpen, wasOpen) => {
+    if (isOpen && !wasOpen) {
+      consoleLogCharacterModalOpen();
+    }
+  }
 );
 </script>
 
@@ -796,6 +921,7 @@ watch(
             </div>
             <div class="small">{{ unitRoleLabel(unit) }} / {{ unit.race || "-" }} / {{ unit.className || "-" }}</div>
             <div class="small">座標: ({{ unit.x }}, {{ unit.y }}) / 部隊: {{ unit.squadCount || 0 }}<span v-if="hasSquad(unit)"> / リーダー</span><span v-else-if="unit.squadLeaderId"> / 隊員</span></div>
+            <div class="small">取得スキル: {{ acquiredSkillsSummary(unit, 3) }}</div>
           </button>
         </aside>
 
@@ -807,9 +933,35 @@ watch(
             </div>
             <div class="small">位置: ({{ activeUnit.x }}, {{ activeUnit.y }}) / 移動: {{ activeUnit.moveRange || "-" }} (残 {{ activeUnit.moveRemaining ?? activeUnit.moveRange ?? "-" }}) / 索敵: {{ activeUnit.scoutRange || "-" }}</div>
             <div class="small">都市規模: {{ villageScaleLabel }} / ネームド上限: {{ namedLimit }} / 現在: {{ namedCount }}</div>
+            <div class="small">成長: 種族Lv{{ activeUnit?.growthRule?.raceLevels ?? "-" }} / クラスLv{{ activeUnit?.growthRule?.classLevels ?? "-" }}<span v-if="activeUnit?.secondaryClassName"> / 第2クラス {{ activeUnit.secondaryClassName }}</span></div>
+            <div class="small">取得スキル: <span v-if="activeUnitAcquiredSkills.length">{{ activeUnitAcquiredSkills.join(" / ") }}</span><span v-else>なし</span></div>
             <div class="char-actions">
               <button type="button" :disabled="!canPromote(activeUnit)" @click="promoteActiveUnit">モブをネームドへ昇格</button>
               <button type="button" :disabled="!canRemoveMob(activeUnit)" @click="removeActiveMob">モブを削除</button>
+            </div>
+            <div v-if="testMode" class="test-level-tools">
+              <div class="small">テストON: 手動レベル操作</div>
+              <div class="test-level-row">
+                <button type="button" :disabled="!canLevelDown(activeUnit)" @click="levelUpActiveUnit(-1)">Lv-1</button>
+                <button type="button" :disabled="!canLevelUp(activeUnit)" @click="levelUpActiveUnit(1)">Lv+1</button>
+              </div>
+              <div v-if="isHumanUnit(activeUnit) && unitLevel(activeUnit) >= 10" class="test-level-row">
+                <select
+                  :value="secondaryClassDraft(activeUnit)"
+                  @change="updateSecondaryClassDraft(activeUnit, $event.target.value)"
+                >
+                  <option
+                    v-for="className in secondaryClassOptionsForUnit(activeUnit)"
+                    :key="`secondary-class-${activeUnit.id}-${className}`"
+                    :value="className"
+                  >
+                    {{ className }}
+                  </option>
+                </select>
+                <button type="button" :disabled="!secondaryClassDraft(activeUnit)" @click="assignSecondaryClassToActiveUnit">
+                  第2クラス取得
+                </button>
+              </div>
             </div>
           </header>
 
@@ -1088,6 +1240,29 @@ watch(
 .squad-action-row button:disabled,
 .squad-rename-row button:disabled {
   opacity: 0.5;
+}
+
+.test-level-tools {
+  border: 1px solid rgba(206, 180, 135, 0.7);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  display: grid;
+  gap: 6px;
+}
+
+.test-level-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.test-level-row select {
+  min-width: 180px;
+  border: 1px solid rgba(186, 160, 112, 0.9);
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: #fffdf8;
 }
 
 .char-block {

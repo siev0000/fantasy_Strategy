@@ -1,8 +1,8 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
+import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import classDb from "../../../data/source/export/json/クラス.json";
-import skillInfoDb from "../../../data/source/export/json/スキル一覧.json";
 import skillDescDb from "../../../data/source/export/json/説明.json";
 
 const props = defineProps({
@@ -95,17 +95,6 @@ const skillDescMap = computed(() => {
   return map;
 });
 
-const skillInfoMap = computed(() => {
-  const map = new Map();
-  if (!Array.isArray(skillInfoDb)) return map;
-  for (const row of skillInfoDb) {
-    const name = nonEmptyText(row?.名前);
-    if (!name) continue;
-    map.set(name, row);
-  }
-  return map;
-});
-
 const classCandidates = computed(() => {
   const race = nonEmptyText(props.selectedRace);
   if (!race) return [];
@@ -155,7 +144,7 @@ const skillRows = computed(() => {
   }).filter(item => item.value > 0);
 });
 
-const acquiredSkillRows = computed(() => {
+const acquiredSkillNames = computed(() => {
   const row = activeClass.value;
   if (!row) return [];
   if (nonEmptyText(row.種類) === "人族") return [];
@@ -166,17 +155,7 @@ const acquiredSkillRows = computed(() => {
     if (isPlaceholderSkillName(name)) continue;
     if (seen.has(name)) continue;
     seen.add(name);
-    const skill = skillInfoMap.value.get(name);
-    if (!skill) continue;
-    list.push({
-      name,
-      action: nonEmptyText(skill?.行動) || "-",
-      ap: toSafeNumber(skill?.AP消費),
-      range: nonEmptyText(skill?.範囲) || "-",
-      target: nonEmptyText(skill?.対象) || "-",
-      effect: nonEmptyText(skill?.効果) || "-",
-      detail: nonEmptyText(skill?.詳細) || "-"
-    });
+    list.push(name);
   }
   return list;
 });
@@ -266,22 +245,12 @@ function confirmClass() {
         </section>
 
         <section v-if="showAcquiredSkills" class="detail-block">
-          <h4>取得スキル</h4>
-          <div v-if="acquiredSkillRows.length" class="acq-list">
-            <article
-              v-for="(skill, idx) in acquiredSkillRows"
-              :key="`${activeClass.名前}:${skill.name}:${idx}`"
-              class="acq-item"
-            >
-              <div class="acq-head">
-                <strong>{{ skill.name }}</strong>
-                <span>行動: {{ skill.action }} / AP: {{ skill.ap ?? "-" }}</span>
-              </div>
-              <div class="small">範囲: {{ skill.range }} / 対象: {{ skill.target }} / 効果: {{ skill.effect }}</div>
-              <div class="small">{{ skill.detail }}</div>
-            </article>
-          </div>
-          <div v-else class="small">取得スキルなし</div>
+          <skill-acquired-table
+            :skill-names="acquiredSkillNames"
+            :show-title="true"
+            title="取得スキル"
+            empty-text="取得スキルなし"
+          />
         </section>
 
         <details v-if="resistRows.length" class="resist-box">
@@ -433,26 +402,6 @@ function confirmClass() {
 .skill-card p {
   margin: 6px 0 0;
   color: #dac79d;
-}
-
-.acq-list {
-  display: grid;
-  gap: 6px;
-}
-
-.acq-item {
-  border: 1px solid rgba(218, 186, 128, 0.24);
-  border-radius: 6px;
-  padding: 6px;
-  background: rgba(42, 30, 19, 0.48);
-}
-
-.acq-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  color: #f1e0b7;
-  font-size: 0.8rem;
 }
 
 .resist-box {

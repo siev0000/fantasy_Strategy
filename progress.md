@@ -469,3 +469,76 @@ Deferred / memo (latest user decisions):
 - 2026-03-05: Added DOM wheel fallback on Phaser canvas (`addEventListener("wheel", ... , {passive:false})`) and expanded zoom range to 20-400 with 25-step wheel increments to make zoom visibly change even if Phaser wheel input is unreliable in current layout.
 - 2026-03-05: Adjusted zoom stability per user report: disabled camera scroll clamping when world-wrap is enabled (to avoid per-wheel position shifts), and set zoom lower bound to map-size baseline (min 100%, max 400%).
 - 2026-03-05: Reworked map-camera baseline per user: wrap copies remain enabled at all zoom levels; min zoom is now dynamic from map size so viewport never exceeds map x1.20; drag clamp now uses center-based range and keeps camera around map center. Added `docs/map-screen-overview.md` as implementation spec.
+- 2026-03-05: Extracted resource-bag pure helpers from PhaserMapGeneratorPanel into new composable rontend/src/composables/resourceEconomyUtils.js (empty/normalize/sum/add/multiply/format/split helpers).
+- 2026-03-05: Updated PhaserMapGeneratorPanel.vue to import resource helpers via thin wrappers, keeping existing call sites unchanged.
+- 2026-03-05: Validation passed: 
+pm run build:front.
+- 2026-03-05: develop-web-game Playwright client still blocked by missing playwright package in skill runtime (ERR_MODULE_NOT_FOUND).
+- 2026-03-05: Extended `frontend/src/composables/resourceEconomyUtils.js` with economy demand helpers (`consumeFoodWithSubstitution`, `buildUnitUpkeepFoodDemand`, `buildPopulationFoodDemand`).
+- 2026-03-05: Updated `PhaserMapGeneratorPanel.vue` to call new economy helpers through local wrappers; `processVillageEconomyTurn` behavior unchanged.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` package in skill runtime (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-05: Added `collectTerritoryIncome` and `applyVillageEconomyTurn` to `frontend/src/composables/resourceEconomyUtils.js` to separate economy-core calculations from component state wiring.
+- 2026-03-05: Refactored `PhaserMapGeneratorPanel.vue` to call the new economy utilities; `processVillageEconomyTurn` now delegates territory income and turn application logic.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: `develop-web-game` Playwright client remains blocked by missing `playwright` package in skill runtime (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-05: Added `buildVillageEconomyTurnReport` to `frontend/src/composables/resourceEconomyUtils.js` to encapsulate economy turn log-line and summary text generation.
+- 2026-03-05: Updated `processVillageEconomyTurn` in `PhaserMapGeneratorPanel.vue` to delegate report text building to the new utility.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: `develop-web-game` Playwright client retry still blocked by missing `playwright` package in skill runtime (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-05: Extended `frontend/src/composables/unitCoreUtils.js` with squad-domain helpers (`resolveDefaultSquadName`, `buildSquadSummaryList`, `stripRemovedUnitFromSquads`).
+- 2026-03-05: Replaced corresponding local implementations in `PhaserMapGeneratorPanel.vue` with thin wrappers to `unitCoreUtils`.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: `develop-web-game` Playwright client retry still blocked by unresolved `playwright` package (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-05: Added `configureUnitSquadState` to `frontend/src/composables/unitCoreUtils.js` as pure squad-formation domain logic returning `{ ok, nextUnits, ... }`.
+- 2026-03-05: Replaced component-local `configureUnitSquadState` implementation in `PhaserMapGeneratorPanel.vue` with utility delegation + state apply wrapper.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: `develop-web-game` Playwright client retry still blocked by missing `playwright` package (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-05: Added `renameLeaderSquad` and `dissolveLeaderSquad` to `frontend/src/composables/unitCoreUtils.js` (pure list-in/list-out squad operations).
+- 2026-03-05: Replaced component-local `renameLeaderSquad`/`dissolveLeaderSquad` logic in `PhaserMapGeneratorPanel.vue` with utility delegation wrappers that apply `nextUnits`.
+- 2026-03-05: Validation passed: `npm run build:front`.
+- 2026-03-05: `develop-web-game` Playwright client retry still blocked by missing `playwright` package (`ERR_MODULE_NOT_FOUND`).
+- 2026-03-06: Task4 索敵/遭遇判定を `PhaserMapGeneratorPanel.vue` に実装。プレイヤー側は部隊/ソロをグループ化し、敵側は同一マス敵群を1グループとして索敵/隠密を同式で計算するよう追加。
+- 2026-03-06: 相互発見判定（player scout vs enemy stealth / enemy scout vs player stealth）を追加。敵に見つかった場合は襲撃判定を行い、ファンブル時は不意打ち扱いでログ出力。
+- 2026-03-06: 戦闘遷移は未実装のまま、結果のみ `console.log("[EncounterCheck]")` と統治者ログへ出力する仕様で接続。
+- 2026-03-06: 判定実行タイミングを「ターン経過時」と「ユニット移動成功時（移動先フォーカス）」に追加。
+- 2026-03-06: Validation: `npm run build:front` pass。
+- 2026-03-06: develop-web-game Playwright client 実行を再試行したが、スキルランタイムで `playwright` パッケージ未解決のため失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-06: 可視範囲ルールを更新。ユニット視界は `基本1マス + floor(索敵値/75)` に変更し、移動後/ターン更新時の可視更新に反映（従来の `unit.scoutRange` 直接半径指定は廃止）。
+- 2026-03-06: ネームド補正を更新。ネームド（統治者除く）に全ステータス/技能 +15% を適用。昇格時に即時反映し、レベル再計算時も維持。索敵距離減衰は 1マスごと -50 に変更。
+- 2026-03-06: 索敵成功した敵マスを可視化するため `spottedEnemyTileKeys` を追加。索敵成功時に敵タイルを記録し、マップ上に「敵」マーカーを表示する処理を `PhaserMapGeneratorPanel.vue` に実装。
+- 2026-03-06: ログ表示ON/OFFを追加。ON時は画面右側に統治者ログを縦スクロールで常時表示する固定パネルを実装。Validation: `npm run build:front` pass。
+- 2026-03-06: develop-web-game Playwright client を今回も試行したが、スキルランタイムで `playwright` が見つからず失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-06: 索敵ログ抑制を追加。既に発見済みの敵タイルは2回目以降 `runEnemyEncounterCheck` のログ出力対象から除外。Validation: `npm run build:front` pass。
+- 2026-03-08: 経済スケールを追加。取得量(領土/建設)・消費量(ユニット維持/人口消費)・コスト(ユニット作成/建設)を 0.1 倍に統一。内部値は小数保持。
+- 2026-03-08: 資源表示フォーマットを整数表示に変更（内部小数は維持し、表示時は小数を切り捨て）。Validation: `npm run build:front` pass。
+- 2026-03-08: develop-web-game Playwright client は `playwright` 未導入のため失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-08: 初期資源を仕様変更。初期村配置時に「配置マスの収入値(現行経済倍率適用後) x3」を初期手持ち資源として設定。村未配置時の仮ストックは0に変更。Validation: `npm run build:front` pass。
+- 2026-03-08: develop-web-game Playwright client を再試行したが、スキルランタイムで `playwright` が見つからず失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-08: 初期資源仕様を再修正。配置マス単体ではなく、初期領土(中心+周囲1)の合計収入を算出し、その値の x3 を初期手持ちに設定。Validation: `npm run build:front` pass。
+- 2026-03-08: 食料カテゴリに「死体」「魂」を追加。種族別食事プロファイル生成でクラス.jsonの `死体/魂` 列を参照可能にし、全項目0時の穀物強制消費フォールバックを削除（0なら消費しない）。Validation: `npm run build:front` pass。
+- 2026-03-08: 資源表示をアイコン化。ヘッダーの食料/資材内訳をテキストからアイコン+数値表示へ変更。
+- 2026-03-08: 死体アイコンは `アンデット` 名を優先し、未登録時は `死者` へフォールバック。木材/石材/鉄も未登録時は既存アイコンへフォールバック。Validation: `npm run build:front` pass。
+- 2026-03-08: develop-web-game Playwright client 再試行 -> `playwright` 未導入で失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-08: 資源アイコン表示を改善。表示値が0になる資源は非表示に変更し、ホバー時に資源名を表示（title属性）。Validation: `npm run build:front` pass。
+- 2026-03-08: docs/equipment_material_tables.md / docs/city_system_design.md を実装反映。都市能力(鍛冶場/魔法/信仰/軍事/経済)を村データへ追加し、建設モーダルからLv1→Lv4まで資材で強化可能にした。
+- 2026-03-08: 経済Lvを領土/建物収入倍率へ反映（Lv1=1.0, Lv2=1.15, Lv3=1.3, Lv4=1.5）。村情報/マス詳細に都市能力表示を追加。
+- 2026-03-08: 装備変更に素材消費テーブルを接続。レアリティ→装備Lv(1-4)で木材/金属消費、魔法/信仰系装備は貴金属/宝石も追加消費。鍛冶場/魔法/信仰Lv不足時は装備変更をブロック。
+- 2026-03-08: 互換のためルートにも quipment_material_tables.md / city_system_design.md を追加。Validation: 
+pm run build:front pass。
+- 2026-03-09: Added save-data groundwork: `PhaserMapGeneratorPanel` can emit on-demand map snapshot (`requestSaveSnapshot` command + `save-snapshot` event), and `App.vue` now builds SaveDTO draft (`buildSaveDataDraft`) plus debug helpers (`window.export_game_save_data`, `window.request_map_save_snapshot`).
+- 2026-03-09: Fixed potential blank-screen runtime crash path in save snapshot conversion by hardening coordinate parsing (`buildBinaryMapFromCoordSet` now validates finite indices before writing).
+- 2026-03-09: Disabled automatic snapshot emission on every `applyMapData` update; snapshot generation is now on-demand to avoid expensive/fragile startup-time conversion.
+- 2026-03-09: Validation passed after fixes: `npm run build:front`.- 2026-03-09: Added top-right settings icon action in map HUD using existing icon asset (`設定.webp`) via icon library (`QUICK_SETTINGS_ICON_SRC`).
+- 2026-03-09: Added quick settings modal in Phaser map panel with shortcuts: `音量/表示設定` (opens existing settings modal) and `セーブデータ保存` (downloads JSON using `window.export_game_save_data`).
+- 2026-03-09: Added save export UX guards (`saveExportInProgress`) and success/failure feedback to unit info + nation log. Validation passed: `npm run build:front`.- 2026-03-09: Added test-only multi-faction slots in `PhaserMapGeneratorPanel.vue` (switch active player, add/remove faction, per-player ready state).
+- 2026-03-09: Turn progression now uses ready-check in test multi-player mode; terrain turn advances only after all factions press turn end.
+- 2026-03-09: Added save snapshot multiplayer payload (`map.multiplayer`) and quick settings load action (JSON file input).
+- 2026-03-09: Added `window.import_game_save_data(jsonText)` in `App.vue`; imports save JSON and dispatches `loadSaveState` command to Phaser map.
+- 2026-03-09: Added map-side load handler `loadSaveState` to restore map/river/lava/enemy data and faction runtime snapshots.
+- 2026-03-09: Validation: `npm run build:front` passed.
+- 2026-03-09: Playwright client check blocked (`ERR_MODULE_NOT_FOUND: playwright` in skill-local client environment).
+- 2026-03-10: Fixed runtime error on faction add (
+ormalizeEquipmentRarity is not defined) by restoring compatibility alias to 
+ormalizeEquipmentRarityKey in PhaserMapGeneratorPanel. Validation: 
+pm run build:front passed.

@@ -29,6 +29,7 @@ const RACES = Array.isArray(raceSelectionDb)
 
 const ALLY_ORDER = ["只人", "エルフ", "竜人", "天使"];
 const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"];
+const SAVE_FORMAT_VERSION = 1;
 
 function unitFromRace(race, side, id) {
   const base = RACES[race] || DEFAULT_RACE_STATS;
@@ -242,6 +243,7 @@ const selectedVillageName = ref("はじまりの村");
 const gameSetupReady = ref(false);
 const gameFlowStep = ref("idle");
 const characterCommand = ref(null);
+const testControlsVisible = ref(false);
 const gameOnlyMode = computed(() => true);
 const mapCharacterState = ref({
   village: null,
@@ -254,6 +256,7 @@ const mapCharacterState = ref({
   namedCount: 0,
   ruleText: ""
 });
+const latestMapSaveSnapshot = ref(null);
 const characterCount = computed(() => {
   return Array.isArray(mapCharacterState.value?.units) ? mapCharacterState.value.units.length : 0;
 });
@@ -298,6 +301,7 @@ const sim = reactive({
 });
 
 let globalKeyHandler = null;
+let saveSnapshotWaiters = [];
 
 const currentState = computed(() => {
   if (activeRoomId.value) return roomState.value || localState.value;
@@ -477,6 +481,203 @@ function handleCharacterStateChange(payload) {
   }
 }
 
+function deepCloneJsonValue(value, fallback = null) {
+  try {
+    const raw = JSON.stringify(value);
+    if (raw == null) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function handleSaveSnapshot(payload) {
+  const snapshot = payload?.snapshot ? deepCloneJsonValue(payload.snapshot, null) : null;
+  latestMapSaveSnapshot.value = snapshot;
+  if (!saveSnapshotWaiters.length) return;
+  const waiters = [...saveSnapshotWaiters];
+  saveSnapshotWaiters = [];
+  waiters.forEach(resolve => {
+    try {
+      resolve(snapshot);
+    } catch {
+      // noop
+    }
+  });
+}
+
+function requestMapSaveSnapshot(reason = "manual") {
+  characterCommand.value = {
+    type: "requestSaveSnapshot",
+    reason: String(reason || "manual"),
+    nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
+  };
+}
+
+function requestMapSaveSnapshotAsync(reason = "manual", timeoutMs = 1500) {
+  return new Promise(resolve => {
+    const timerId = window.setTimeout(() => {
+      saveSnapshotWaiters = saveSnapshotWaiters.filter(fn => fn !== onResolve);
+      resolve(latestMapSaveSnapshot.value);
+    }, Math.max(100, Number(timeoutMs) || 1500));
+    const onResolve = snapshot => {
+      window.clearTimeout(timerId);
+      resolve(snapshot);
+    };
+    saveSnapshotWaiters.push(onResolve);
+    requestMapSaveSnapshot(reason);
+  });
+}
+
+function buildPrimaryFactionSaveData() {
+  const units = Array.isArray(mapCharacterState.value?.units)
+    ? mapCharacterState.value.units.map(unit => deepCloneJsonValue(unit, {}))
+    : [];
+  const squads = Array.isArray(mapCharacterState.value?.squads)
+    ? mapCharacterState.value.squads.map(squad => deepCloneJsonValue(squad, {}))
+    : [];
+  const village = mapCharacterState.value?.village
+    ? deepCloneJsonValue(mapCharacterState.value.village, null)
+    : null;
+  const sovereign = units.find(unit => !!unit?.isSovereign) || null;
+  const factionId = String(
+    sovereign?.id
+    || selectedCharacterName.value
+    || selectedRace.value
+    || "faction-player"
+  );
+  const factionName = String(selectedRace.value || "勢力");
+  return {
+    factionId,
+    name: factionName,
+    race: String(selectedRace.value || ""),
+    village,
+    units,
+    squads,
+    selectedUnitId: String(mapCharacterState.value?.selectedUnitId || ""),
+    unitMoveMode: !!mapCharacterState.value?.unitMoveMode,
+    villageScale: String(mapCharacterState.value?.villageScale || "村"),
+    namedLimit: Number(mapCharacterState.value?.namedLimit || 2),
+    namedCount: Number(mapCharacterState.value?.namedCount || 0),
+    ruleText: String(mapCharacterState.value?.ruleText || "")
+  };
+}
+
+function buildSaveDataDraft() {
+  const nowIso = new Date().toISOString();
+  const roomId = String(activeRoomId.value || "");
+  const playerSlots = Array.isArray(players.value)
+    ? players.value.map((player, index) => ({
+      slotId: String(player?.id || `slot-${index + 1}`),
+      displayName: String(player?.name || `Player${index + 1}`),
+      assignedFactionId: null
+    }))
+    : [];
+  return {
+    meta: {
+      formatVersion: SAVE_FORMAT_VERSION,
+      createdAt: nowIso,
+      appVersion: "0.1.0"
+    },
+    session: {
+      roomId: roomId || null,
+      gameFlowStep: String(gameFlowStep.value || "idle"),
+      gameSetupReady: !!gameSetupReady.value
+    },
+    map: deepCloneJsonValue(latestMapSaveSnapshot.value, null),
+    factions: [buildPrimaryFactionSaveData()],
+    systems: {
+      battle: deepCloneJsonValue(currentState.value, null)
+    },
+    multiplayer: {
+      playerSlots,
+      assignmentRequired: true
+    }
+  };
+}
+
+async function exportGameSaveDataAsJson() {
+  await requestMapSaveSnapshotAsync("export");
+  return JSON.stringify(buildSaveDataDraft(), null, 2);
+}
+
+function parseImportedSaveData(jsonText) {
+  const text = String(jsonText || "").trim();
+  if (!text) {
+    throw new Error("ロード失敗: 入力データが空です。");
+  }
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("ロード失敗: JSONの形式が不正です。");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("ロード失敗: セーブデータ構造が不正です。");
+  }
+  if (!parsed.map || typeof parsed.map !== "object") {
+    throw new Error("ロード失敗: mapデータが見つかりません。");
+  }
+  return parsed;
+}
+
+function applyImportedSaveData(saveData) {
+  const mapSnapshot = deepCloneJsonValue(saveData?.map, null);
+  const faction = Array.isArray(saveData?.factions) ? saveData.factions[0] : null;
+  if (!mapSnapshot) {
+    throw new Error("ロード失敗: mapスナップショットを復元できません。");
+  }
+
+  latestMapSaveSnapshot.value = mapSnapshot;
+  if (faction && typeof faction === "object") {
+    const race = String(faction?.race || "").trim();
+    const villageName = String(faction?.village?.name || "").trim();
+    const sovereign = Array.isArray(faction?.units)
+      ? faction.units.find(unit => !!unit?.isSovereign) || faction.units[0]
+      : null;
+    const sovereignName = String(sovereign?.name || "").trim();
+    if (race) selectedRace.value = race;
+    if (villageName) selectedVillageName.value = villageName;
+    if (sovereignName) selectedCharacterName.value = sovereignName;
+  }
+
+  if (saveData?.systems?.battle) {
+    const restoredBattle = deepCloneJsonValue(saveData.systems.battle, null);
+    if (restoredBattle && !activeRoomId.value) {
+      localState.value = restoredBattle;
+    }
+  }
+
+  gameSetupReady.value = true;
+  gameFlowStep.value = "ready";
+  setSessionStatus("セーブデータをロードしました。", "ok");
+  characterCommand.value = {
+    type: "loadSaveState",
+    payload: {
+      saveData,
+      mapSnapshot,
+      faction
+    },
+    nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
+  };
+}
+
+async function importGameSaveDataFromJson(jsonText) {
+  try {
+    const saveData = parseImportedSaveData(jsonText);
+    applyImportedSaveData(saveData);
+    return { ok: true };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "ロード失敗: 不明なエラー";
+    setSessionStatus(reason, "error");
+    return { ok: false, reason };
+  }
+}
+
+function handleTestControlsChange(visible) {
+  testControlsVisible.value = !!visible;
+}
+
 watch(gameOnlyMode, enabled => {
   if (typeof document === "undefined") return;
   document.body.classList.toggle("game-only-mode", !!enabled);
@@ -564,6 +765,23 @@ function requestUpdateUnitIcon(payload) {
   const iconName = String(payload?.iconName || "").trim();
   if (!iconName) return;
   sendCharacterCommand("updateIcon", unitId, { iconName });
+}
+
+function requestLevelUnit(payload) {
+  const unitId = String(payload?.unitId || "").trim();
+  if (!unitId) return;
+  const deltaRaw = Number(payload?.delta);
+  const delta = Number.isFinite(deltaRaw) ? Math.max(-5, Math.min(5, Math.floor(deltaRaw))) : 1;
+  if (!delta) return;
+  sendCharacterCommand("levelUnit", unitId, { delta });
+}
+
+function requestAssignSecondaryClass(payload) {
+  const unitId = String(payload?.unitId || "").trim();
+  if (!unitId) return;
+  const secondaryClassName = String(payload?.secondaryClassName || "").trim();
+  if (!secondaryClassName) return;
+  sendCharacterCommand("assignSecondaryClass", unitId, { secondaryClassName });
 }
 
 function createRoom() {
@@ -770,6 +988,12 @@ onMounted(() => {
 
   window.render_game_to_text = () => renderGameStateToText();
   window.advanceTime = ms => ms;
+  window.request_map_save_snapshot = reason => {
+    requestMapSaveSnapshot(String(reason || "manual"));
+    return true;
+  };
+  window.export_game_save_data = () => exportGameSaveDataAsJson();
+  window.import_game_save_data = jsonText => importGameSaveDataFromJson(jsonText);
 });
 
 onBeforeUnmount(() => {
@@ -785,6 +1009,10 @@ onBeforeUnmount(() => {
   }
   if (window.render_game_to_text) delete window.render_game_to_text;
   if (window.advanceTime) delete window.advanceTime;
+  if (window.request_map_save_snapshot) delete window.request_map_save_snapshot;
+  if (window.export_game_save_data) delete window.export_game_save_data;
+  if (window.import_game_save_data) delete window.import_game_save_data;
+  saveSnapshotWaiters = [];
 });
 </script>
 
@@ -799,6 +1027,8 @@ onBeforeUnmount(() => {
       :character-command="characterCommand"
       @open-modal="openModal"
       @character-state-change="handleCharacterStateChange"
+      @save-snapshot="handleSaveSnapshot"
+      @test-controls-change="handleTestControlsChange"
     />
 
     <room-modal
@@ -872,6 +1102,7 @@ onBeforeUnmount(() => {
       :village="mapCharacterState.village"
       :rule-text="mapCharacterState.ruleText"
       :default-selected-id="mapCharacterState.selectedUnitId"
+      :test-mode="testControlsVisible"
       @promote-unit="requestPromoteUnit"
       @toggle-squad="requestToggleUnitSquad"
       @remove-mob="requestRemoveMob"
@@ -880,6 +1111,8 @@ onBeforeUnmount(() => {
       @dissolve-squad="requestDissolveSquad"
       @update-unit-equipment="requestUpdateUnitEquipment"
       @update-unit-icon="requestUpdateUnitIcon"
+      @level-unit="requestLevelUnit"
+      @assign-secondary-class="requestAssignSecondaryClass"
       @close="closeModal('characters')"
     />
   </div>

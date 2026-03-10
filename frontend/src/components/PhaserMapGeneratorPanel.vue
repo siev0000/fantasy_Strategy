@@ -7,6 +7,64 @@ import ClassSelectModal from "./ClassSelectModal.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, resolveIconName } from "../lib/icon-library.js";
 import {
+  clampCameraCenter as clampCameraCenterUtil,
+  clampCameraScroll as clampCameraScrollUtil,
+  clampNumber as clampNumberUtil,
+  createBoundsAccumulator as createBoundsAccumulatorUtil,
+  extendBoundsWithPoints as extendBoundsWithPointsUtil,
+  finalizeBounds as finalizeBoundsUtil,
+  getCameraCenter as getCameraCenterUtil,
+  normalizeZoomPercent as normalizeZoomPercentUtil,
+  resolveMinZoomPercent as resolveMinZoomPercentUtil
+} from "../composables/mapCameraUtils.js";
+import {
+  buildCharacterStatusFromRules as buildCharacterStatusFromRulesUtil,
+  buildUnitResistances as buildUnitResistancesUtil,
+  buildUnitSkillLevelsFromRules as buildUnitSkillLevelsFromRulesUtil,
+  formatStatusCompact as formatStatusCompactUtil,
+  rowStatusVector as rowStatusVectorUtil
+} from "../composables/unitStatusUtils.js";
+import {
+  buildSquadSummaryList as buildSquadSummaryListUtil,
+  configureUnitSquadState as configureUnitSquadStateUtil,
+  dissolveLeaderSquad as dissolveLeaderSquadUtil,
+  isMobUnit as isMobUnitUtil,
+  isNamedUnit as isNamedUnitUtil,
+  isSovereignUnit as isSovereignUnitUtil,
+  normalizeSquadEntries as normalizeSquadEntriesUtil,
+  renameLeaderSquad as renameLeaderSquadUtil,
+  resolveDefaultSquadName as resolveDefaultSquadNameUtil,
+  resolveUnitScoutValue as resolveUnitScoutValueUtil,
+  resolveUnitStealthValue as resolveUnitStealthValueUtil,
+  squadMemberIds as squadMemberIdsUtil,
+  stripRemovedUnitFromSquads as stripRemovedUnitFromSquadsUtil,
+  toUnitRoleLabel as toUnitRoleLabelUtil,
+  unitHasSquad as unitHasSquadUtil
+} from "../composables/unitCoreUtils.js";
+import {
+  adjustVillagePopulationForTurn as adjustVillagePopulationForTurnUtil,
+  createInitialFoodStockByType as createInitialFoodStockByTypeUtil,
+  createInitialMaterialStockByType as createInitialMaterialStockByTypeUtil,
+  resolveNamedLimit as resolveNamedLimitUtil,
+  resolveVillageScaleLabel as resolveVillageScaleLabelUtil
+} from "../composables/villageCoreUtils.js";
+import {
+  addToResourceBag as addToResourceBagUtil,
+  applyVillageEconomyTurn as applyVillageEconomyTurnUtil,
+  buildEmptyResourceBag as buildEmptyResourceBagUtil,
+  buildVillageEconomyTurnReport as buildVillageEconomyTurnReportUtil,
+  buildPopulationFoodDemand as buildPopulationFoodDemandUtil,
+  buildUnitUpkeepFoodDemand as buildUnitUpkeepFoodDemandUtil,
+  collectTerritoryIncome as collectTerritoryIncomeUtil,
+  consumeFoodWithSubstitution as consumeFoodWithSubstitutionUtil,
+  formatPositiveResourceBag as formatPositiveResourceBagUtil,
+  formatResourceBag as formatResourceBagUtil,
+  multiplyResourceBag as multiplyResourceBagUtil,
+  normalizeResourceBag as normalizeResourceBagUtil,
+  splitTotalIntoBag as splitTotalIntoBagUtil,
+  sumResourceBag as sumResourceBagUtil
+} from "../composables/resourceEconomyUtils.js";
+import {
   advanceTerrainTurn,
   createIslandShapeData,
   createTerrainMapData,
@@ -15,6 +73,7 @@ import {
   terrainDefinitions
 } from "../lib/map-generator.js";
 import classDb from "../../../data/source/export/json/クラス.json";
+import enemySpawnDb from "../../../data/source/export/json/出現敵.json";
 import equipmentDb from "../../../data/source/export/json/装備.json";
 import factionDb from "../../../data/source/export/json/勢力.json";
 import terrainYieldDb from "../../../data/source/export/json/地形.json";
@@ -27,35 +86,43 @@ const props = defineProps({
   gameSetupReady: { type: Boolean, default: false },
   characterCommand: { type: Object, default: null }
 });
-const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change"]);
+const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change", "save-snapshot"]);
 
-const mapSize = ref("36x36");
-const patternId = ref("realistic");
-const mountainMode = ref("random");
-const showIslandCustomModal = ref(false);
-const useIslandCustomSettings = ref(false);
-const customLargeIslandCount = ref(2);
-const customIsletCountMin = ref(1);
-const customIsletCountMax = ref(4);
-const customTargetLandPercent = ref(50);
-const customLargeIslandMinGap = ref(6);
-const customWorldWrapEnabled = ref(true);
-const showHeightNumbers = ref(false);
-const heightNumberFontSize = ref(23);
-const heightNumberOutlineWidth = ref(3);
-const useHeightShading = ref(true);
-const showSpecialTilesAlways = ref(true);
-const showWaterfallEffects = ref(true);
-const showStrongEnemyMarkers = ref(false);
-const focusCameraOnTileClick = ref(false);
-const showSettingsModal = ref(false);
-const showEventControlModal = ref(false);
-const eventActionType = ref("normal");
-const showEventModal = ref(false);
-const eventModalMessage = ref("");
-const eventModalNotes = ref([]);
-const showNationLogModal = ref(false);
-const showVillageBuildModal = ref(false);
+// マップ生成/表示の基本設定
+const mapSize = ref("36x36"); // 生成時のマップサイズ
+const patternId = ref("realistic"); // 島形状プリセット
+const mountainMode = ref("random"); // 山岳生成モード
+const showIslandCustomModal = ref(false); // 島カスタム設定モーダル表示
+const useIslandCustomSettings = ref(false); // 島カスタム設定ON/OFF
+const customLargeIslandCount = ref(2); // 大島の数
+const customIsletCountMin = ref(1); // 孤島数(最小)
+const customIsletCountMax = ref(4); // 孤島数(最大)
+const customTargetLandPercent = ref(50); // 目標陸地率(%)
+const customLargeIslandMinGap = ref(6); // 大島同士の最小距離
+const customWorldWrapEnabled = ref(true); // ワールドラップON/OFF
+const showHeightNumbers = ref(false); // 高度Lvの数字表示
+const heightNumberFontSize = ref(23); // 高度Lv文字サイズ
+const heightNumberOutlineWidth = ref(3); // 高度Lv文字の枠線太さ
+const useHeightShading = ref(true); // 高度による色補正
+const useFiveResourceMode = ref(false); // 資源を5分類表示するか
+const materialHeaderExpanded = ref(false); // 資材ヘッダーの詳細表示ON/OFF
+const showSpecialTilesAlways = ref(true); // 隠し特殊地形の常時表示
+const showWaterfallEffects = ref(true); // 滝エフェクト表示
+const showStrongEnemyMarkers = ref(false); // 強敵候補表示
+const focusCameraOnTileClick = ref(false); // クリック時カメラフォーカス
+const showSettingsModal = ref(false); // 表示設定モーダル表示
+const showQuickSettingsModal = ref(false); // 右上設定メニュー表示
+const saveExportInProgress = ref(false); // セーブ出力中フラグ
+const saveLoadInProgress = ref(false); // セーブ読込中フラグ
+const saveLoadInput = ref(null); // セーブ読込用input
+const showEventControlModal = ref(false); // イベント管理モーダル表示
+const eventActionType = ref("normal"); // イベント実行モード
+const showEventModal = ref(false); // イベント結果モーダル表示
+const eventModalMessage = ref(""); // イベント結果メッセージ
+const eventModalNotes = ref([]); // イベント結果詳細行
+const showNationLogModal = ref(false); // 統治者ログモーダル表示
+const showPinnedNationLogPanel = ref(false); // 右側ログ固定表示ON/OFF
+const showVillageBuildModal = ref(false); // 建設/都市能力モーダル表示
 const selectedVillageBuildingKey = ref("");
 const mapSizeInfo = ref("サイズ: -");
 const mapCenterInfo = ref("中央座標: -");
@@ -69,6 +136,8 @@ const zoomPercent = ref(100);
 const isDevBuild = import.meta.env.DEV;
 const showDevInfo = ref(isDevBuild);
 const showTestControls = ref(false);
+const testPlayerSlots = ref([]); // テスト用プレイヤー勢力スロット
+const activeTestPlayerId = ref("player-1"); // 現在操作中プレイヤーID
 const headerMinimized = ref(false);
 const showTurnActionModal = ref(false);
 const clockNowMs = ref(Date.now());
@@ -104,6 +173,7 @@ const TILE_BORDER_PLAYER = { width: 1.9, color: 0x5ad4ff, alpha: 0.96 };
 const TILE_BORDER_ENEMY = { width: 1.9, color: 0xe25c5c, alpha: 0.96 };
 const FOG_HIDDEN_FILL = 0x7b818a;
 const FOG_HIDDEN_ALPHA = 0.94;
+const FOG_HIDDEN_ALPHA_TEST = 0.56;
 const FOG_HIDDEN_BORDER = { width: 1.15, color: 0x4b525e, alpha: 0.92 };
 const BASE_VILLAGE_SCOUT_RANGE = 1;
 const DRAG_THRESHOLD_PX = 12;
@@ -111,8 +181,13 @@ const WRAP_RING_TILE_MARGIN = 3;
 const WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X = 1.9;
 const WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y = 1.15;
 const CENTER_LOCK_ZOOM_PERCENT = 100;
+const MAX_TEST_PLAYER_COUNT = 4;
 const GAME_VIEW_WIDTH = 1280;
 const GAME_VIEW_HEIGHT = 720;
+const HEADER_RESOURCE_ICON_VISUAL_SIZE_PX = 20; // 表示上のアイコンサイズ(見た目)
+const HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX = 14; // レイアウト占有サイズ(ヘッダー肥大化防止)
+const HEADER_RESOURCE_ICON_SCALE = HEADER_RESOURCE_ICON_VISUAL_SIZE_PX / HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX;
+const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
 const stageScale = ref(1);
 
 let game = null;
@@ -148,8 +223,10 @@ let forceMapCenterOnNextRender = true;
 let territorySets = { player: new Set(), enemy: new Set() };
 let exploredTileKeys = new Set();
 let visibleTileKeys = new Set();
+let spottedEnemyTileKeys = new Set();
 let lastCharacterCommandNonce = "";
 let renderedHexBounds = null;
+let applyingTestPlayerState = false;
 
 const terrainMap = computed(() => {
   const m = new Map();
@@ -187,7 +264,7 @@ const fieldResourceSummary = computed(() => {
   const village = villageState.value;
   if (village) {
     const foodBag = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS);
-    const materialBag = normalizeResourceBag(village.materialStockByType, MATERIAL_RESOURCE_KEYS);
+    const materialBag = normalizeMaterialStockBag(village.materialStockByType);
     const populationByRace = village.populationByRace || {};
     const populationDetail = Object.entries(populationByRace)
       .map(([race, count]) => `${nonEmptyText(race)}${Math.max(0, Math.floor(toSafeNumber(count, 0)))}`)
@@ -195,11 +272,13 @@ const fieldResourceSummary = computed(() => {
       .slice(0, 4)
       .join(" / ");
     return {
-      food: formatCompactNumber(sumResourceBag(foodBag, FOOD_RESOURCE_KEYS)),
-      material: formatCompactNumber(sumResourceBag(materialBag, MATERIAL_RESOURCE_KEYS)),
+      food: formatCompactNumber(sumFoodForDisplay(foodBag)),
+      material: formatCompactNumber(sumMaterialForDisplay(materialBag)),
       population: formatCompactNumber(village.population),
-      foodDetail: formatResourceBag(foodBag, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS),
-      materialDetail: formatResourceBag(materialBag, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS),
+      foodEntries: buildFoodSummaryEntries(foodBag),
+      materialEntries: buildMaterialSummaryEntries(materialBag),
+      materialCollapsedEntries: buildMaterialCollapsedEntries(materialBag),
+      materialGroups: buildMaterialHeaderGroupEntries(materialBag),
       populationDetail
     };
   }
@@ -210,18 +289,22 @@ const fieldResourceSummary = computed(() => {
       food: "-",
       material: "-",
       population: "-",
-      foodDetail: "",
-      materialDetail: "",
+      foodEntries: [],
+      materialEntries: [],
+      materialCollapsedEntries: [],
+      materialGroups: [],
       populationDetail: ""
     };
   }
   const summary = buildMapPotentialResourceSummary(data);
   return {
-    food: formatCompactNumber(sumResourceBag(summary.food, FOOD_RESOURCE_KEYS)),
-    material: formatCompactNumber(sumResourceBag(summary.material, MATERIAL_RESOURCE_KEYS)),
+    food: formatCompactNumber(sumFoodForDisplay(summary.food)),
+    material: formatCompactNumber(sumMaterialForDisplay(summary.material)),
     population: "-",
-    foodDetail: `想定 ${formatResourceBag(summary.food, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS)}`,
-    materialDetail: `想定 ${formatResourceBag(summary.material, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS)}`,
+    foodEntries: buildFoodSummaryEntries(summary.food),
+    materialEntries: buildMaterialSummaryEntries(summary.material),
+    materialCollapsedEntries: buildMaterialCollapsedEntries(summary.material),
+    materialGroups: buildMaterialHeaderGroupEntries(summary.material),
     populationDetail: "村未確定"
   };
 });
@@ -266,11 +349,36 @@ const mapTurnNumber = computed(() => {
   return Math.max(0, Math.floor(turn));
 });
 
+const activeTestPlayerSlot = computed(() => {
+  const id = nonEmptyText(activeTestPlayerId.value);
+  if (!id) return testPlayerSlots.value[0] || null;
+  return testPlayerSlots.value.find(slot => nonEmptyText(slot?.id) === id) || testPlayerSlots.value[0] || null;
+});
+
+const isTestMultiplayerActive = computed(() => testPlayerSlots.value.length > 1);
+
+const testPlayersReadyCount = computed(() => {
+  return testPlayerSlots.value.reduce((sum, slot) => (slot?.ready ? sum + 1 : sum), 0);
+});
+
+const testPlayersReadyLabel = computed(() => {
+  const total = testPlayerSlots.value.length;
+  if (total <= 1) return "1人プレイ";
+  return `${testPlayersReadyCount.value}/${total} がターン終了`;
+});
+
+const activeTestPlayerReady = computed(() => !!activeTestPlayerSlot.value?.ready);
+
 const stageScaleStyle = computed(() => ({
   width: `${GAME_VIEW_WIDTH}px`,
   height: `${GAME_VIEW_HEIGHT}px`,
   transform: `scale(${stageScale.value})`,
   transformOrigin: "center center"
+}));
+
+const mapCanvasStyle = computed(() => ({
+  "--header-resource-icon-layout-size": `${HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX}px`,
+  "--header-resource-icon-scale": String(HEADER_RESOURCE_ICON_SCALE)
 }));
 
 const activeNationLogBucket = computed(() => {
@@ -342,6 +450,12 @@ const displaySettingsFields = computed(() => ([
     kind: "checkbox",
     label: "高度で色を補正する（低いほど明るい）",
     value: useHeightShading.value
+  },
+  {
+    key: "useFiveResourceMode",
+    kind: "checkbox",
+    label: "資源を5分類表示にする（食料/木材/鉄/金/魂）",
+    value: useFiveResourceMode.value
   },
   {
     key: "showSpecialTilesAlways",
@@ -501,26 +615,101 @@ const EQUIPMENT_SLOT_LABELS = {
 };
 const WEAPON_EQUIPMENT_NAMES = ["短剣", "剣", "長剣", "槍", "斧", "戦槌", "棍棒", "弓", "銃", "杖"];
 const SHIELD_EQUIPMENT_NAMES = ["盾", "大盾"];
-const ACQUIRED_SKILL_FIELDS = ["Skill1", "Skill2", "Skill3", "Skill4", "Skill5", "Skill6", "Skill7", "Skill8", "Skill9", "Skill10"];
 const NAMED_POOL = ["アレス", "リリア", "ガルド", "セレス", "ノクス", "フレア", "ヴェルク", "イリス"];
 const VILLAGE_NAME_POOL = ["開拓村アスタ", "辺境村ノルド", "河畔村エイル", "森縁村リグナ", "丘陵村ブラム"];
 const INITIAL_LEVEL_MIN = 5;
 const INITIAL_LEVEL_MAX = 10;
 const MOB_INITIAL_LEVEL = 5;
-const MOB_INITIAL_CLASS_LEVEL = 5;
-const BASE_RACE_LEVEL = 5;
-const BONUS_RACE_LEVEL = 5;
-const HUMAN_CLASS_BONUS_LEVEL = 5;
+const INITIAL_RACE_LEVEL_OFFSET = 5;
 const STATUS_GROWTH_DIVISOR = 10;
+const ENEMY_LEVEL_BASE = 5;
+const ENEMY_LEVEL_PER_HEIGHT = 5;
+const ENEMY_LEVEL_JITTER_MIN = -5;
+const ENEMY_LEVEL_JITTER_MAX = 5;
+const ENEMY_STRONG_HEIGHT_BONUS = 0;
+const ENEMY_LEVEL_MAX = 120;
+const ENEMY_STRONG_LEADER_LEVEL_BONUS = 5;
+const ENEMY_STRONG_NO_ARMAMENT_LEVEL_BONUS = 2;
+const ENEMY_STRONG_FOLLOWER_LEVEL_SCALE = 0.8;
+const ENEMY_STRONG_FOLLOWER_MIN = 2;
+const ENEMY_STRONG_FOLLOWER_MAX = 5;
+const ENEMY_STRONG_EQUIPMENT_TIER = "rare";
+const ENEMY_EQUIPMENT_FIELDS = ["武器", "副武器", "胴", "頭", "足", "装飾1", "装飾2"];
+const ENCOUNTER_ATTACK_BASE_CHANCE = 0.45;
+const ENCOUNTER_ATTACK_DIFF_FACTOR = 0.03;
+const ENCOUNTER_ATTACK_MIN_CHANCE = 0.2;
+const ENCOUNTER_ATTACK_MAX_CHANCE = 0.9;
+const ENCOUNTER_FUMBLE_CHANCE = 0.08;
+const ENCOUNTER_MAX_LOG_LINES = 12;
+const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
+const UNIT_VISION_BASE_RANGE = 1;
+const UNIT_VISION_SCOUT_STEP = 75;
+const NAMED_STATUS_SKILL_BONUS_MULTIPLIER = 1.15;
 const INITIAL_MOB_UNIT_COUNT_MIN = 2;
 const INITIAL_MOB_UNIT_COUNT_MAX = 4;
 const MOB_NAME_POOL = ["見習い兵", "巡回兵", "猟兵", "衛兵", "斥候"];
 const CITY_SCALE_NAMED_LIMIT = {
   村: 2,
   町: 4,
-  都市: 7
+  都市: 7,
+  大都市: 10
 };
 const MAX_SQUAD_MEMBER_COUNT = 5;
+const CITY_ABILITY_KEYS = ["鍛冶場", "魔法", "信仰", "軍事", "経済"];
+const CITY_ABILITY_ACTIVE_CAP = 4;
+const CITY_ABILITY_DEFINED_CAP = 7;
+const CITY_ABILITY_GROWTH_COST = {
+  鍛冶場: {
+    2: { 木材: 20, 石材: 20, 鉄: 12 },
+    3: { 木材: 30, 石材: 26, 鉄: 20, 銀鉄: 6 },
+    4: { 木材: 44, 石材: 34, 鉄: 28, 銀鉄: 12, 青金鋼: 4, 赤黒鋼: 2 }
+  },
+  魔法: {
+    2: { 木材: 12, 石材: 18, 鉄: 8, 銀: 8, 宝石: 2 },
+    3: { 木材: 20, 石材: 26, 鉄: 12, 銀: 14, 金: 6, 宝石: 4 },
+    4: { 木材: 28, 石材: 36, 鉄: 18, 銀: 22, 金: 12, 宝石: 8 }
+  },
+  信仰: {
+    2: { 木材: 10, 石材: 20, 鉄: 8, 銀: 8 },
+    3: { 木材: 16, 石材: 30, 鉄: 12, 銀: 14, 金: 8, 宝石: 2 },
+    4: { 木材: 24, 石材: 42, 鉄: 18, 銀: 20, 金: 14, 宝石: 6 }
+  },
+  軍事: {
+    2: { 木材: 26, 石材: 20, 鉄: 14 },
+    3: { 木材: 38, 石材: 30, 鉄: 22, 銀鉄: 8 },
+    4: { 木材: 52, 石材: 40, 鉄: 30, 銀鉄: 14, 青金鋼: 4 }
+  },
+  経済: {
+    2: { 木材: 22, 石材: 16, 鉄: 8, 銀: 6 },
+    3: { 木材: 32, 石材: 24, 鉄: 14, 銀: 10, 金: 4 },
+    4: { 木材: 44, 石材: 30, 鉄: 20, 銀: 16, 金: 8, 宝石: 2 }
+  }
+};
+const ECONOMY_GAIN_MULTIPLIER_BY_LEVEL = {
+  1: 1.0,
+  2: 1.15,
+  3: 1.3,
+  4: 1.5
+};
+const EQUIPMENT_LEVEL_BY_RARITY = {
+  common: 1,
+  uncommon: 2,
+  rare: 3,
+  epic: 4,
+  legendary: 5
+};
+const EQUIPMENT_CRAFT_MATERIAL_COST_BY_LEVEL = {
+  1: { 木材: 10, 黒木: 0, 特木: 0, 鉄: 10, 銀鉄: 0, 青金鋼: 0, 赤黒鋼: 0 },
+  2: { 木材: 20, 黒木: 0, 特木: 0, 鉄: 20, 銀鉄: 0, 青金鋼: 0, 赤黒鋼: 0 },
+  3: { 木材: 10, 黒木: 10, 特木: 0, 鉄: 10, 銀鉄: 10, 青金鋼: 0, 赤黒鋼: 0 },
+  4: { 木材: 10, 黒木: 20, 特木: 10, 鉄: 10, 銀鉄: 20, 青金鋼: 5, 赤黒鋼: 5 }
+};
+const EQUIPMENT_CRAFT_MAGIC_FAITH_COST_BY_LEVEL = {
+  1: { 金: 5, 銀: 10, 宝石: 0 },
+  2: { 金: 10, 銀: 20, 宝石: 5 },
+  3: { 金: 20, 銀: 40, 宝石: 10 },
+  4: { 金: 40, 銀: 80, 宝石: 20 }
+};
 const EQUIPMENT_RARITY_MAP = {
   common: { label: "コモン", multiplier: 1.0 },
   uncommon: { label: "アンコモン", multiplier: 1.25 },
@@ -536,10 +725,52 @@ const EQUIPMENT_RARITY_ALIAS_MAP = {
   エピック: "epic",
   レジェンダリー: "legendary"
 };
-const FOOD_RESOURCE_KEYS = ["穀物", "野菜", "肉", "魚"];
-const MATERIAL_RESOURCE_KEYS = ["木材", "石材", "鉄"];
-const FOOD_RESOURCE_LABELS = { 穀物: "穀", 野菜: "野", 肉: "肉", 魚: "魚" };
-const MATERIAL_RESOURCE_LABELS = { 木材: "木", 石材: "石", 鉄: "鉄" };
+const FOOD_RESOURCE_KEYS = ["穀物", "野菜", "肉", "魚", "死体", "魂"];
+const FOOD_RESOURCE_SIMPLE_KEYS = ["食料", "魂"];
+const MATERIAL_RESOURCE_KEYS = ["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"];
+const MATERIAL_RESOURCE_LEGACY_KEYS = ["木材", "石材", "鉄"];
+const MATERIAL_RESOURCE_SIMPLE_KEYS = ["木材", "鉄", "金"];
+const MATERIAL_RESOURCE_SOURCE_KEYS = ["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"];
+const MATERIAL_SOURCE_TO_RESOURCE_MAP = {
+  木材: "木材",
+  黒木: "黒木",
+  特木: "特木",
+  石材: "石材",
+  鉄: "鉄",
+  銀鉄: "銀鉄",
+  青金鋼: "青金鋼",
+  赤黒鋼: "赤黒鋼",
+  金: "金",
+  銀: "銀",
+  宝石: "宝石"
+};
+const FOOD_RESOURCE_LABELS = { 穀物: "穀", 野菜: "野", 肉: "肉", 魚: "魚", 死体: "死", 魂: "魂" };
+const FOOD_RESOURCE_SIMPLE_LABELS = { 食料: "食", 魂: "魂" };
+const MATERIAL_RESOURCE_LABELS = { 木材: "木", 黒木: "黒", 特木: "特", 石材: "石", 鉄: "鉄", 銀鉄: "銀鉄", 青金鋼: "青鋼", 赤黒鋼: "赤鋼", 金: "金", 銀: "銀", 宝石: "宝" };
+const MATERIAL_RESOURCE_SIMPLE_LABELS = { 木材: "木", 鉄: "鉄", 金: "金" };
+const FOOD_RESOURCE_SIMPLE_WEIGHT_MAP = {
+  食料: { 穀物: 1, 野菜: 1, 肉: 1, 魚: 1 },
+  魂: { 死体: 1, 魂: 2 }
+};
+const MATERIAL_RESOURCE_SIMPLE_WEIGHT_MAP = {
+  木材: { 木材: 1, 黒木: 2, 特木: 4 },
+  鉄: { 鉄: 1, 銀鉄: 2, 青金鋼: 4, 赤黒鋼: 4 },
+  金: { 金: 2, 銀: 1, 宝石: 2 }
+};
+const MATERIAL_HEADER_GROUP_DEFS = [
+  { label: "木材", keys: ["木材", "黒木", "特木", "石材"] },
+  { label: "金属", keys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"] },
+  { label: "貴金属", keys: ["金", "銀", "宝石"] }
+];
+const MATERIAL_HEADER_GROUP_SIMPLE_DEFS = [
+  { label: "木材", key: "木材" },
+  { label: "鉄", key: "鉄" },
+  { label: "金", key: "金" }
+];
+const RESOURCE_ICON_NAME_MAP = {
+  食料: "穀物",
+  死体: "アンデット"
+};
 const UNIT_CREATION_COST_TEMP = {
   food: { 穀物: 20, 野菜: 20, 肉: 20 },
   material: { 木材: 20, 石材: 20, 鉄: 20 }
@@ -578,6 +809,9 @@ const VILLAGE_BUILDING_DEFINITIONS = [
   }
 ];
 const FOOD_SUBSTITUTE_MULTIPLIER = 1.2;
+const ECONOMY_GAIN_SCALE = 0.1;
+const ECONOMY_CONSUMPTION_SCALE = 0.1;
+const ECONOMY_COST_SCALE = 0.1;
 const RACE_TO_FACTION_NAME_MAP = {
   只人: "人間",
   エルフ: "森人",
@@ -621,6 +855,77 @@ const RACE_ICON_COLOR_MAP = {
 const classRows = computed(() => {
   if (!Array.isArray(classDb)) return [];
   return classDb.filter(row => nonEmptyText(row?.名前));
+});
+
+function parseEnemySpawnCountRange(raw) {
+  const text = nonEmptyText(raw);
+  if (!text) return { min: 1, max: 1, explicit: false };
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) {
+    const value = Math.max(1, Math.floor(numeric));
+    return { min: value, max: value, explicit: true };
+  }
+  const rangeMatch = text.match(/(\d+)\s*[~〜\-]\s*(\d+)/);
+  if (rangeMatch) {
+    const a = Math.max(1, Math.floor(Number(rangeMatch[1])));
+    const b = Math.max(1, Math.floor(Number(rangeMatch[2])));
+    return {
+      min: Math.min(a, b),
+      max: Math.max(a, b),
+      explicit: true
+    };
+  }
+  const singleMatch = text.match(/(\d+)/);
+  if (singleMatch) {
+    const value = Math.max(1, Math.floor(Number(singleMatch[1])));
+    return { min: value, max: value, explicit: true };
+  }
+  return { min: 1, max: 1, explicit: false };
+}
+
+const enemySpawnRows = computed(() => {
+  if (!Array.isArray(enemySpawnDb)) return [];
+  const rows = [];
+  for (const raw of enemySpawnDb) {
+    const terrainKey = nonEmptyText(raw?.出現地形);
+    const raceName = nonEmptyText(raw?.種族);
+    const check = nonEmptyText(raw?.チェック用);
+    if (!terrainKey || !raceName || !check.includes("○")) continue;
+    const lvMinRaw = Number(raw?.Lv_Min);
+    const lvMaxRaw = Number(raw?.Lv_Max);
+    if (!Number.isFinite(lvMinRaw) || !Number.isFinite(lvMaxRaw)) continue;
+    const lvMin = Math.max(1, Math.floor(Math.min(lvMinRaw, lvMaxRaw)));
+    const lvMax = Math.max(lvMin, Math.floor(Math.max(lvMinRaw, lvMaxRaw)));
+    const className = nonEmptyText(raw?.サブクラス);
+    const spawnCount = parseEnemySpawnCountRange(raw?.出現数);
+    const armamentNames = ENEMY_EQUIPMENT_FIELDS
+      .map(key => nonEmptyText(raw?.[key]))
+      .filter(value => value && value !== "0");
+    rows.push({
+      terrainKey,
+      raceName,
+      className: className && className !== "0" ? className : "",
+      displayName: nonEmptyText(raw?.種族名) || raceName,
+      lvMin,
+      lvMax,
+      spawnCountMin: spawnCount.min,
+      spawnCountMax: spawnCount.max,
+      spawnCountExplicit: !!spawnCount.explicit,
+      armamentNames,
+      hasArmament: armamentNames.length > 0,
+      check
+    });
+  }
+  return rows;
+});
+
+const enemySpawnRulesByTerrain = computed(() => {
+  const map = new Map();
+  for (const row of enemySpawnRows.value) {
+    if (!map.has(row.terrainKey)) map.set(row.terrainKey, []);
+    map.get(row.terrainKey).push(row);
+  }
+  return map;
 });
 
 const jobClassRows = computed(() => {
@@ -673,6 +978,29 @@ const canOpenVillageBuild = computed(() => {
   return !!(village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y));
 });
 
+const cityAbilityRows = computed(() => {
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  return CITY_ABILITY_KEYS.map(key => {
+    const level = resolveVillageAbilityLevel(village, key, CITY_ABILITY_DEFINED_CAP);
+    const cappedLevel = Math.min(level, CITY_ABILITY_ACTIVE_CAP);
+    const nextLevel = Math.min(CITY_ABILITY_ACTIVE_CAP, cappedLevel + 1);
+    const atCap = cappedLevel >= CITY_ABILITY_ACTIVE_CAP;
+    const cost = atCap
+      ? buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS)
+      : resolveCityAbilityUpgradeCost(key, nextLevel);
+    const canUpgrade = !atCap && canAffordCityAbilityUpgrade(village, key);
+    return {
+      key,
+      level: cappedLevel,
+      nextLevel,
+      atCap,
+      cost,
+      costText: atCap ? "上限到達" : formatMaterialPositiveResourceBag(cost),
+      canUpgrade
+    };
+  });
+});
+
 const builtVillageBuildingSet = computed(() => {
   return new Set(normalizeVillageBuildings(villageState.value?.buildings));
 });
@@ -692,7 +1020,7 @@ const selectedVillageBuildingDef = computed(() => {
 const selectedVillageBuildingCostText = computed(() => {
   const def = selectedVillageBuildingDef.value;
   if (!def) return "なし";
-  return formatPositiveResourceBag(def.cost, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS);
+  return formatMaterialPositiveResourceBag(def.cost);
 });
 
 const selectedVillageBuildingBonusText = computed(() => {
@@ -711,158 +1039,236 @@ const selectedUnit = computed(() => {
 });
 
 function isSovereignUnit(unit) {
-  return !!unit?.isSovereign;
+  return isSovereignUnitUtil(unit);
 }
 
 function isNamedUnit(unit) {
-  return !!unit?.isNamed || nonEmptyText(unit?.unitType) === "ネームド" || isSovereignUnit(unit);
+  return isNamedUnitUtil(unit, { nonEmptyText });
 }
 
 function isMobUnit(unit) {
-  if (!unit) return false;
-  if (isSovereignUnit(unit)) return false;
-  if (isNamedUnit(unit)) return false;
-  return true;
+  return isMobUnitUtil(unit, { nonEmptyText });
 }
 
 function normalizeSquadEntries(entries, leaderId = "") {
-  if (!Array.isArray(entries)) return [];
-  const keyPrefix = nonEmptyText(leaderId) || "unit";
-  const out = [];
-  const seen = new Set();
-  for (const raw of entries) {
-    const memberId = nonEmptyText(raw?.memberId || raw?.id);
-    if (!memberId || seen.has(memberId)) continue;
-    seen.add(memberId);
-    out.push({
-      id: nonEmptyText(raw?.id) || `${keyPrefix}-sq-${out.length + 1}`,
-      memberId,
-      name: nonEmptyText(raw?.name)
-    });
-  }
-  return out;
+  return normalizeSquadEntriesUtil(entries, leaderId, { nonEmptyText });
 }
 
 function unitHasSquad(unit) {
-  if (!unit) return false;
-  const squads = normalizeSquadEntries(unit?.squads, unit?.id);
-  return squads.length > 0 || Math.max(0, Math.floor(toSafeNumber(unit?.squadCount, 0))) > 0;
+  return unitHasSquadUtil(unit, { nonEmptyText, toSafeNumber });
 }
 
 function squadMemberIds(unit) {
-  return normalizeSquadEntries(unit?.squads, unit?.id).map(row => row.memberId);
+  return squadMemberIdsUtil(unit, { nonEmptyText });
 }
 
 function resolveDefaultSquadName(units = unitList.value) {
-  const source = Array.isArray(units) ? units : [];
-  let maxNo = 0;
-  for (const unit of source) {
-    const name = nonEmptyText(unit?.squadName);
-    if (!name.startsWith("部隊")) continue;
-    const tail = name.slice(2);
-    const no = Number(tail);
-    if (Number.isFinite(no) && no > maxNo) {
-      maxNo = no;
-    }
-  }
-  return `部隊${maxNo + 1}`;
+  return resolveDefaultSquadNameUtil(units, { nonEmptyText });
 }
 
 function resolveUnitScoutValue(unit) {
-  const skillScout = Number(unit?.skillLevels?.索敵);
-  if (Number.isFinite(skillScout)) return Math.max(0, roundTo1(skillScout));
-  return 0;
+  return resolveUnitScoutValueUtil(unit, { roundTo1 });
 }
 
 function resolveUnitStealthValue(unit) {
-  const skillStealth = Number(unit?.skillLevels?.隠密);
-  if (Number.isFinite(skillStealth)) return Math.max(0, roundTo1(skillStealth));
-  return 0;
+  return resolveUnitStealthValueUtil(unit, { roundTo1 });
 }
 
 function buildSquadSummaryList(units = unitList.value) {
-  const source = Array.isArray(units) ? units : [];
-  const byId = new Map(source.map(unit => [unit?.id, unit]));
-  const out = [];
-  for (const leader of source) {
-    if (!leader || !unitHasSquad(leader)) continue;
-    const leaderId = nonEmptyText(leader.id);
-    if (!leaderId) continue;
-    const squads = normalizeSquadEntries(leader.squads, leaderId);
-    if (!squads.length) continue;
-    const memberIds = squads.map(row => row.memberId);
-    const memberUnits = memberIds
-      .map(id => byId.get(id))
-      .filter(Boolean);
-    const fullUnits = [leader, ...memberUnits];
-    const scoutValues = fullUnits.map(resolveUnitScoutValue).sort((a, b) => b - a);
-    const stealthValues = fullUnits.map(resolveUnitStealthValue);
-    const maxScout = scoutValues.length ? Math.max(...scoutValues) : 0;
-    const supportScout = scoutValues.slice(1).reduce((sum, value) => sum + (value / 5), 0);
-    const totalStealth = stealthValues.reduce((sum, value) => sum + value, 0);
-    const memberCount = fullUnits.length;
-    const stealthDivisor = memberCount > 1 ? Math.max(1, memberCount * 0.75) : 1;
-    out.push({
-      id: nonEmptyText(leader.squadId) || `squad-${leaderId}`,
-      name: nonEmptyText(leader.squadName) || resolveDefaultSquadName(source),
-      leaderId,
-      leaderName: nonEmptyText(leader.name) || "リーダー",
-      leaderPos: {
-        x: Number.isFinite(leader?.x) ? leader.x : null,
-        y: Number.isFinite(leader?.y) ? leader.y : null
-      },
-      memberIds,
-      memberNames: memberUnits.map(unit => nonEmptyText(unit?.name)).filter(Boolean),
-      totalMemberCount: memberCount,
-      scoutValue: roundTo1(maxScout + supportScout),
-      stealthValue: roundTo1(totalStealth / stealthDivisor)
-    });
-  }
-  return out;
+  return buildSquadSummaryListUtil(units, {
+    nonEmptyText,
+    toSafeNumber,
+    roundTo1,
+    resolveDefaultSquadName,
+    normalizeSquadEntries,
+    unitHasSquad,
+    resolveUnitScoutValue,
+    resolveUnitStealthValue
+  });
 }
 
 function stripRemovedUnitFromSquads(units, removedUnitId) {
-  const removedId = nonEmptyText(removedUnitId);
-  if (!removedId || !Array.isArray(units)) return Array.isArray(units) ? units : [];
-  return units.map(unit => {
-    if (!unit) return unit;
-    const prevSquads = normalizeSquadEntries(unit?.squads, unit?.id);
-    const nextSquads = prevSquads.filter(row => row.memberId !== removedId);
-    const prevLeaderId = nonEmptyText(unit?.squadLeaderId);
-    const nextLeaderId = prevLeaderId === removedId ? "" : prevLeaderId;
-    if (
-      nextSquads.length === prevSquads.length
-      && nextLeaderId === prevLeaderId
-      && Math.max(0, Math.floor(toSafeNumber(unit?.squadCount, 0))) === nextSquads.length
-    ) {
-      return unit;
-    }
-    return {
-      ...unit,
-      squads: nextSquads,
-      squadCount: nextSquads.length,
-      squadLeaderId: nextLeaderId
-    };
+  return stripRemovedUnitFromSquadsUtil(units, removedUnitId, {
+    nonEmptyText,
+    toSafeNumber,
+    normalizeSquadEntries
   });
 }
 
 function toUnitRoleLabel(unit) {
-  if (!unit) return "-";
-  if (isSovereignUnit(unit)) return "統治者";
-  if (isNamedUnit(unit)) return "ネームド";
-  return "モブ";
+  return toUnitRoleLabelUtil(unit, { nonEmptyText });
 }
 
 function resolveVillageScaleLabel(village) {
-  const pop = toSafeNumber(village?.population, 0);
-  if (pop >= 260) return "都市";
-  if (pop >= 160) return "町";
-  return "村";
+  return resolveVillageScaleLabelUtil(village, { toSafeNumber });
 }
 
 function resolveNamedLimit(village) {
-  const scale = resolveVillageScaleLabel(village);
-  return toSafeNumber(CITY_SCALE_NAMED_LIMIT[scale], CITY_SCALE_NAMED_LIMIT.村);
+  return resolveNamedLimitUtil(village, {
+    toSafeNumber,
+    namedLimitByScale: CITY_SCALE_NAMED_LIMIT
+  });
+}
+
+function normalizeCityAbilityLevel(value, fallback = 1, max = CITY_ABILITY_DEFINED_CAP) {
+  const safe = Math.max(1, Math.floor(toSafeNumber(value, fallback)));
+  return Math.min(max, safe);
+}
+
+function normalizeCityLevels(input) {
+  const out = {};
+  const source = input && typeof input === "object" ? input : {};
+  for (const key of CITY_ABILITY_KEYS) {
+    out[key] = normalizeCityAbilityLevel(source[key], 1, CITY_ABILITY_DEFINED_CAP);
+  }
+  return out;
+}
+
+function resolveVillageCityLevels(village) {
+  return normalizeCityLevels(village?.cityLevels);
+}
+
+function resolveVillageAbilityLevel(village, key, cap = CITY_ABILITY_DEFINED_CAP) {
+  const cityLevels = resolveVillageCityLevels(village);
+  const level = normalizeCityAbilityLevel(cityLevels?.[key], 1, CITY_ABILITY_DEFINED_CAP);
+  return Math.min(cap, level);
+}
+
+function resolveEconomyGainMultiplier(village) {
+  const level = resolveVillageAbilityLevel(village, "経済", CITY_ABILITY_ACTIVE_CAP);
+  const byTable = toSafeNumber(ECONOMY_GAIN_MULTIPLIER_BY_LEVEL[level], 0);
+  if (byTable > 0) return byTable;
+  return roundTo1(1 + Math.max(0, level - 1) * 0.15);
+}
+
+function resolveCityAbilityUpgradeCost(abilityKey, nextLevel) {
+  const key = nonEmptyText(abilityKey);
+  const lv = Math.max(1, Math.floor(toSafeNumber(nextLevel, 1)));
+  const table = CITY_ABILITY_GROWTH_COST[key] || {};
+  return normalizeResourceBag(table[lv], MATERIAL_RESOURCE_KEYS);
+}
+
+function canAffordCityAbilityUpgrade(village, abilityKey) {
+  if (!village) return false;
+  const key = nonEmptyText(abilityKey);
+  if (!key || !CITY_ABILITY_KEYS.includes(key)) return false;
+  const current = resolveVillageAbilityLevel(village, key, CITY_ABILITY_DEFINED_CAP);
+  if (current >= CITY_ABILITY_ACTIVE_CAP) return false;
+  const nextLevel = current + 1;
+  const cost = resolveCityAbilityUpgradeCost(key, nextLevel);
+  const stock = normalizeMaterialStockBag(village.materialStockByType);
+  for (const matKey of MATERIAL_RESOURCE_KEYS) {
+    if (toSafeNumber(stock[matKey], 0) < toSafeNumber(cost[matKey], 0)) return false;
+  }
+  return true;
+}
+
+function applyCityAbilityUpgrade(village, abilityKey) {
+  const nextVillage = ensureVillageStateShape(village, props.selectedRace);
+  if (!nextVillage) return null;
+  const key = nonEmptyText(abilityKey);
+  if (!key || !CITY_ABILITY_KEYS.includes(key)) return null;
+  const current = resolveVillageAbilityLevel(nextVillage, key, CITY_ABILITY_DEFINED_CAP);
+  if (current >= CITY_ABILITY_ACTIVE_CAP) return null;
+  const nextLevel = current + 1;
+  const cost = resolveCityAbilityUpgradeCost(key, nextLevel);
+  const stock = normalizeMaterialStockBag(nextVillage.materialStockByType);
+  for (const matKey of MATERIAL_RESOURCE_KEYS) {
+    const value = roundTo1(Math.max(0, toSafeNumber(stock[matKey], 0) - toSafeNumber(cost[matKey], 0)));
+    stock[matKey] = value;
+  }
+  const cityLevels = {
+    ...resolveVillageCityLevels(nextVillage),
+    [key]: nextLevel
+  };
+  return ensureVillageStateShape({
+    ...nextVillage,
+    materialStockByType: stock,
+    cityLevels
+  }, props.selectedRace);
+}
+
+function formatCityAbilityLevels(village) {
+  const levels = resolveVillageCityLevels(village);
+  return CITY_ABILITY_KEYS
+    .map(key => `${key}Lv${resolveVillageAbilityLevel({ cityLevels: levels }, key, CITY_ABILITY_DEFINED_CAP)}`)
+    .join(" / ");
+}
+
+function resolveEquipmentCraftLevel(rarityKey) {
+  const rarity = normalizeEquipmentRarity(rarityKey, "common");
+  const level = toSafeNumber(EQUIPMENT_LEVEL_BY_RARITY[rarity], 1);
+  return Math.max(1, Math.floor(level));
+}
+
+function resolveSmithCraftCap(village) {
+  return resolveVillageAbilityLevel(village, "鍛冶場", CITY_ABILITY_ACTIVE_CAP);
+}
+
+function isMagicEquipmentRow(row) {
+  if (!row || typeof row !== "object") return false;
+  const name = nonEmptyText(row?.装備名);
+  if (name.includes("杖") || name.includes("法")) return true;
+  const traits = [row?.特性1, row?.特性2, row?.特性3, row?.特性4]
+    .map(v => nonEmptyText(v))
+    .filter(Boolean)
+    .join("/");
+  return traits.includes("魔");
+}
+
+function isFaithEquipmentRow(row) {
+  if (!row || typeof row !== "object") return false;
+  const name = nonEmptyText(row?.装備名);
+  if (name.includes("聖") || name.includes("神")) return true;
+  const traits = [row?.特性1, row?.特性2, row?.特性3, row?.特性4]
+    .map(v => nonEmptyText(v))
+    .filter(Boolean)
+    .join("/");
+  return traits.includes("信仰") || traits.includes("光");
+}
+
+function buildEquipmentCraftMaterialCost(row, rarityKey) {
+  const level = resolveEquipmentCraftLevel(rarityKey);
+  const tableLevel = Math.max(1, Math.min(4, level));
+  const base = normalizeResourceBag(EQUIPMENT_CRAFT_MATERIAL_COST_BY_LEVEL[tableLevel], MATERIAL_RESOURCE_KEYS);
+  const isMagic = isMagicEquipmentRow(row);
+  const isFaith = isFaithEquipmentRow(row);
+  const addPrecious = (isMagic || isFaith)
+    ? normalizeResourceBag(EQUIPMENT_CRAFT_MAGIC_FAITH_COST_BY_LEVEL[tableLevel], MATERIAL_RESOURCE_KEYS)
+    : buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  const total = normalizeMaterialStockBag(base);
+  addToResourceBag(total, addPrecious, MATERIAL_RESOURCE_KEYS);
+  return {
+    level,
+    tableLevel,
+    isMagic,
+    isFaith,
+    material: total
+  };
+}
+
+function canAffordEquipmentCraft(village, craftCost) {
+  if (!village || !craftCost?.material) return false;
+  const stock = normalizeMaterialStockBag(village.materialStockByType);
+  for (const key of MATERIAL_RESOURCE_KEYS) {
+    if (toSafeNumber(stock[key], 0) < toSafeNumber(craftCost.material?.[key], 0)) return false;
+  }
+  return true;
+}
+
+function applyEquipmentCraftCost(village, craftCost) {
+  const nextVillage = ensureVillageStateShape(village, props.selectedRace);
+  if (!nextVillage || !craftCost?.material) return null;
+  const nextStock = normalizeMaterialStockBag(nextVillage.materialStockByType);
+  for (const key of MATERIAL_RESOURCE_KEYS) {
+    nextStock[key] = roundTo1(
+      Math.max(0, toSafeNumber(nextStock[key], 0) - toSafeNumber(craftCost.material?.[key], 0))
+    );
+  }
+  return ensureVillageStateShape({
+    ...nextVillage,
+    materialStockByType: nextStock
+  }, props.selectedRace);
 }
 
 function countPromotedNamedUnits() {
@@ -922,6 +1328,10 @@ function normalizeEquipmentRarityKey(value, fallback = "common") {
   return EQUIPMENT_RARITY_ALIAS_MAP[raw] || fallback;
 }
 
+function normalizeEquipmentRarity(value, fallback = "common") {
+  return normalizeEquipmentRarityKey(value, fallback);
+}
+
 function resolveEquipmentRarity(value, fallback = "common") {
   const key = normalizeEquipmentRarityKey(value, fallback);
   const def = EQUIPMENT_RARITY_MAP[key] || EQUIPMENT_RARITY_MAP.common;
@@ -940,53 +1350,247 @@ function formatEquipmentRarityLabel(value) {
 }
 
 function formatCompactNumber(value) {
-  return String(roundTo1(value).toLocaleString("ja-JP", { minimumFractionDigits: 0, maximumFractionDigits: 1 }));
+  return String(Math.trunc(roundTo1(value)).toLocaleString("ja-JP", { minimumFractionDigits: 0, maximumFractionDigits: 0 }));
 }
 
 function buildEmptyResourceBag(keys) {
-  const out = {};
-  for (const key of keys) out[key] = 0;
-  return out;
+  return buildEmptyResourceBagUtil(keys);
 }
 
 function normalizeResourceBag(raw, keys) {
-  const out = buildEmptyResourceBag(keys);
-  if (!raw || typeof raw !== "object") return out;
-  for (const key of keys) {
-    out[key] = Math.max(0, roundTo1(raw[key]));
-  }
-  return out;
+  return normalizeResourceBagUtil(raw, keys, { roundTo1 });
 }
 
 function sumResourceBag(bag, keys) {
-  return roundTo1(keys.reduce((sum, key) => sum + toSafeNumber(bag?.[key], 0), 0));
+  return sumResourceBagUtil(bag, keys, { roundTo1, toSafeNumber });
 }
 
 function addToResourceBag(target, delta, keys) {
-  for (const key of keys) {
-    target[key] = roundTo1(toSafeNumber(target[key], 0) + toSafeNumber(delta?.[key], 0));
-  }
+  addToResourceBagUtil(target, delta, keys, { roundTo1, toSafeNumber });
 }
 
 function multiplyResourceBag(source, factor, keys) {
-  const out = buildEmptyResourceBag(keys);
-  const safeFactor = toSafeNumber(factor, 0);
-  for (const key of keys) {
-    out[key] = roundTo1(toSafeNumber(source?.[key], 0) * safeFactor);
+  return multiplyResourceBagUtil(source, factor, keys, { roundTo1, toSafeNumber });
+}
+
+function formatResourceBag(bag, keys, labels = {}) {
+  return formatResourceBagUtil(bag, keys, labels, { toSafeNumber, formatCompactNumber });
+}
+
+function formatPositiveResourceBag(bag, keys, labels = {}) {
+  return formatPositiveResourceBagUtil(bag, keys, labels, { toSafeNumber, roundTo1, formatCompactNumber });
+}
+
+const foodDisplayKeys = computed(() => (
+  useFiveResourceMode.value ? FOOD_RESOURCE_SIMPLE_KEYS : FOOD_RESOURCE_KEYS
+));
+
+const foodDisplayLabels = computed(() => (
+  useFiveResourceMode.value ? FOOD_RESOURCE_SIMPLE_LABELS : FOOD_RESOURCE_LABELS
+));
+
+const materialDisplayKeys = computed(() => (
+  useFiveResourceMode.value ? MATERIAL_RESOURCE_SIMPLE_KEYS : MATERIAL_RESOURCE_KEYS
+));
+
+const materialDisplayLabels = computed(() => (
+  useFiveResourceMode.value ? MATERIAL_RESOURCE_SIMPLE_LABELS : MATERIAL_RESOURCE_LABELS
+));
+
+function normalizeMaterialStockBag(raw) {
+  const normalized = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  if (!raw || typeof raw !== "object") return normalized;
+  // 旧保存互換: 旧カテゴリキーを代表資源へ移す
+  normalized.鉄 = roundTo1(normalized.鉄 + Math.max(0, toSafeNumber(raw?.金属, 0)));
+  normalized.金 = roundTo1(normalized.金 + Math.max(0, toSafeNumber(raw?.貴金属, 0)));
+  for (const sourceKey of MATERIAL_RESOURCE_SOURCE_KEYS) {
+    const resourceKey = MATERIAL_SOURCE_TO_RESOURCE_MAP[sourceKey];
+    if (!resourceKey || !Object.prototype.hasOwnProperty.call(normalized, resourceKey)) continue;
+    normalized[resourceKey] = roundTo1(normalized[resourceKey] + Math.max(0, toSafeNumber(raw[sourceKey], 0)));
+  }
+  return normalized;
+}
+
+function weightedSumFromBag(sourceBag, weightMap) {
+  if (!sourceBag || typeof sourceBag !== "object" || !weightMap || typeof weightMap !== "object") return 0;
+  return roundTo1(
+    Object.entries(weightMap).reduce(
+      (sum, [key, weight]) => sum + (toSafeNumber(sourceBag?.[key], 0) * toSafeNumber(weight, 1)),
+      0
+    )
+  );
+}
+
+function buildWeightedBagFromSource(sourceBag, targetWeightDefs) {
+  const out = {};
+  if (!targetWeightDefs || typeof targetWeightDefs !== "object") return out;
+  for (const [targetKey, weightMap] of Object.entries(targetWeightDefs)) {
+    out[targetKey] = weightedSumFromBag(sourceBag, weightMap);
   }
   return out;
 }
 
-function formatResourceBag(bag, keys, labels = {}) {
-  return keys.map(key => `${labels[key] || key}${formatCompactNumber(toSafeNumber(bag?.[key], 0))}`).join(" ");
+function toFoodDisplayBag(raw) {
+  const stockBag = normalizeResourceBag(raw, FOOD_RESOURCE_KEYS);
+  if (!useFiveResourceMode.value) return stockBag;
+  return buildWeightedBagFromSource(stockBag, FOOD_RESOURCE_SIMPLE_WEIGHT_MAP);
 }
 
-function formatPositiveResourceBag(bag, keys, labels = {}) {
-  const parts = keys
-    .map(key => ({ key, value: Math.max(0, roundTo1(toSafeNumber(bag?.[key], 0))) }))
-    .filter(row => row.value > 0)
-    .map(row => `${labels[row.key] || row.key}${formatCompactNumber(row.value)}`);
-  return parts.length ? parts.join(" ") : "なし";
+function sumFoodForDisplay(raw) {
+  return sumResourceBag(toFoodDisplayBag(raw), foodDisplayKeys.value);
+}
+
+function buildFoodSummaryEntries(raw) {
+  return buildResourceSummaryEntries(toFoodDisplayBag(raw), foodDisplayKeys.value);
+}
+
+function formatFoodResourceBag(raw) {
+  return formatResourceBag(toFoodDisplayBag(raw), foodDisplayKeys.value, foodDisplayLabels.value);
+}
+
+function formatFoodPositiveResourceBag(raw) {
+  return formatPositiveResourceBag(toFoodDisplayBag(raw), foodDisplayKeys.value, foodDisplayLabels.value);
+}
+
+function toMaterialDisplayBag(raw) {
+  const stockBag = normalizeMaterialStockBag(raw);
+  if (!useFiveResourceMode.value) return stockBag;
+  return buildWeightedBagFromSource(stockBag, MATERIAL_RESOURCE_SIMPLE_WEIGHT_MAP);
+}
+
+function sumMaterialForDisplay(raw) {
+  return sumResourceBag(toMaterialDisplayBag(raw), materialDisplayKeys.value);
+}
+
+function buildMaterialSummaryEntries(raw) {
+  return buildResourceSummaryEntries(toMaterialDisplayBag(raw), materialDisplayKeys.value);
+}
+
+function formatMaterialResourceBag(raw) {
+  return formatResourceBag(toMaterialDisplayBag(raw), materialDisplayKeys.value, materialDisplayLabels.value);
+}
+
+function formatMaterialPositiveResourceBag(raw) {
+  return formatPositiveResourceBag(toMaterialDisplayBag(raw), materialDisplayKeys.value, materialDisplayLabels.value);
+}
+
+function buildMaterialCollapsedEntries(raw) {
+  if (useFiveResourceMode.value) {
+    const bag = toMaterialDisplayBag(raw);
+    const defs = [
+      { key: "木材", label: "木材", iconKey: "木材", value: roundTo1(toSafeNumber(bag?.木材, 0)) },
+      { key: "鉄", label: "鉄", iconKey: "鉄", value: roundTo1(toSafeNumber(bag?.鉄, 0)) },
+      { key: "金", label: "金", iconKey: "金", value: roundTo1(toSafeNumber(bag?.金, 0)) }
+    ];
+    return defs.map(def => ({
+      ...def,
+      iconSrc: resolveResourceIconSrc(def.iconKey),
+      displayValue: formatCompactNumber(def.value)
+    }));
+  }
+  const bag = normalizeMaterialStockBag(raw);
+  const totalWood = roundTo1(
+    toSafeNumber(bag?.木材, 0)
+    + toSafeNumber(bag?.黒木, 0)
+    + toSafeNumber(bag?.特木, 0)
+  );
+  const totalMetal = roundTo1(
+    toSafeNumber(bag?.鉄, 0)
+    + toSafeNumber(bag?.銀鉄, 0)
+    + toSafeNumber(bag?.青金鋼, 0)
+    + toSafeNumber(bag?.赤黒鋼, 0)
+  );
+  const defs = [
+    { key: "木材", label: "木材", iconKey: "木材", value: totalWood },
+    { key: "石", label: "石", iconKey: "石材", value: roundTo1(toSafeNumber(bag?.石材, 0)) },
+    { key: "鉄", label: "鉄", iconKey: "鉄", value: totalMetal },
+    { key: "金", label: "金", iconKey: "金", value: roundTo1(toSafeNumber(bag?.金, 0)) },
+    { key: "銀", label: "銀", iconKey: "銀", value: roundTo1(toSafeNumber(bag?.銀, 0)) }
+  ];
+  return defs.map(def => ({
+    ...def,
+    iconSrc: resolveResourceIconSrc(def.iconKey),
+    displayValue: formatCompactNumber(def.value)
+  }));
+}
+
+function buildMaterialHeaderGroupEntries(raw) {
+  if (useFiveResourceMode.value) {
+    const bag = toMaterialDisplayBag(raw);
+    return MATERIAL_HEADER_GROUP_SIMPLE_DEFS.map(group => {
+      const value = roundTo1(toSafeNumber(bag?.[group.key], 0));
+      return {
+        label: group.label,
+        value,
+        displayValue: formatCompactNumber(value),
+        details: [{
+          key: group.key,
+          label: group.key,
+          value,
+          displayValue: formatCompactNumber(value),
+          iconSrc: resolveResourceIconSrc(group.key)
+        }]
+      };
+    });
+  }
+  const bag = normalizeMaterialStockBag(raw);
+  return MATERIAL_HEADER_GROUP_DEFS.map(group => {
+    const details = group.keys.map(key => ({
+      key,
+      label: key,
+      value: roundTo1(toSafeNumber(bag?.[key], 0)),
+      displayValue: formatCompactNumber(toSafeNumber(bag?.[key], 0)),
+      iconSrc: resolveResourceIconSrc(key)
+    }));
+    const value = roundTo1(group.keys.reduce((sum, key) => sum + toSafeNumber(bag?.[key], 0), 0));
+    return {
+      label: group.label,
+      value,
+      displayValue: formatCompactNumber(value),
+      details
+    };
+  });
+}
+
+function toggleMaterialHeaderExpanded() {
+  materialHeaderExpanded.value = !materialHeaderExpanded.value;
+}
+
+function resolveResourceIconSrc(resourceKey) {
+  const key = nonEmptyText(resourceKey);
+  const preferred = RESOURCE_ICON_NAME_MAP[key] || key;
+  return getIconSrcByName(preferred, DEFAULT_ICON_NAME);
+}
+
+function buildResourceSummaryEntries(bag, keys) {
+  return (Array.isArray(keys) ? keys : [])
+    .map(key => {
+      const rawValue = toSafeNumber(bag?.[key], 0);
+      const displayValue = formatCompactNumber(rawValue);
+      return {
+        key,
+        iconSrc: resolveResourceIconSrc(key),
+        rawValue,
+        displayValue
+      };
+    })
+    .filter(entry => entry.rawValue > 0);
+}
+
+function buildMaterialIncomeFromTerrainRow(row) {
+  const out = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  if (!row || typeof row !== "object") return out;
+  for (const sourceKey of MATERIAL_RESOURCE_SOURCE_KEYS) {
+    const resourceKey = MATERIAL_SOURCE_TO_RESOURCE_MAP[sourceKey];
+    if (!resourceKey) continue;
+    out[resourceKey] = roundTo1(out[resourceKey] + toSafeNumber(row?.[sourceKey], 0));
+  }
+  return out;
+}
+
+function scaleResourceBagByFactor(bag, keys, factor = 1) {
+  const safeFactor = Math.max(0, toSafeNumber(factor, 1));
+  return multiplyResourceBag(bag, safeFactor, keys);
 }
 
 function normalizeVillageBuildings(input) {
@@ -1032,12 +1636,15 @@ function collectVillageBuildingIncome(village) {
     addToResourceBag(result.food, def.bonus?.food, FOOD_RESOURCE_KEYS);
     addToResourceBag(result.material, def.bonus?.material, MATERIAL_RESOURCE_KEYS);
   }
+  const gainScale = ECONOMY_GAIN_SCALE * resolveEconomyGainMultiplier(village);
+  result.food = scaleResourceBagByFactor(result.food, FOOD_RESOURCE_KEYS, gainScale);
+  result.material = scaleResourceBagByFactor(result.material, MATERIAL_RESOURCE_KEYS, gainScale);
   return result;
 }
 
 function formatVillageBuildingBonus(bonus) {
-  const foodRaw = formatPositiveResourceBag(bonus?.food, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS);
-  const materialRaw = formatPositiveResourceBag(bonus?.material, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS);
+  const foodRaw = formatFoodPositiveResourceBag(bonus?.food);
+  const materialRaw = formatMaterialPositiveResourceBag(bonus?.material);
   if (foodRaw === "なし" && materialRaw === "なし") return "なし";
   const foodText = foodRaw === "なし" ? "0" : foodRaw;
   const materialText = materialRaw === "なし" ? "0" : materialRaw;
@@ -1046,17 +1653,18 @@ function formatVillageBuildingBonus(bonus) {
 
 function buildUnitCreationCost(count = 1) {
   const safeCount = Math.max(1, Math.min(20, Math.floor(toSafeNumber(count, 1))));
+  const scaledCount = safeCount * ECONOMY_COST_SCALE;
   return {
     count: safeCount,
-    food: multiplyResourceBag(UNIT_CREATION_COST_TEMP.food, safeCount, FOOD_RESOURCE_KEYS),
-    material: multiplyResourceBag(UNIT_CREATION_COST_TEMP.material, safeCount, MATERIAL_RESOURCE_KEYS)
+    food: multiplyResourceBag(UNIT_CREATION_COST_TEMP.food, scaledCount, FOOD_RESOURCE_KEYS),
+    material: multiplyResourceBag(UNIT_CREATION_COST_TEMP.material, scaledCount, MATERIAL_RESOURCE_KEYS)
   };
 }
 
 function canAffordUnitCreation(village, cost) {
   if (!village || !cost) return false;
   const foodBag = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS);
-  const materialBag = normalizeResourceBag(village.materialStockByType, MATERIAL_RESOURCE_KEYS);
+  const materialBag = normalizeMaterialStockBag(village.materialStockByType);
   for (const key of FOOD_RESOURCE_KEYS) {
     if (foodBag[key] < toSafeNumber(cost.food?.[key], 0)) return false;
   }
@@ -1070,7 +1678,7 @@ function applyUnitCreationCost(village, cost) {
   const nextVillage = ensureVillageStateShape(village, props.selectedRace);
   if (!nextVillage) return null;
   const nextFood = normalizeResourceBag(nextVillage.foodStockByType, FOOD_RESOURCE_KEYS);
-  const nextMaterial = normalizeResourceBag(nextVillage.materialStockByType, MATERIAL_RESOURCE_KEYS);
+  const nextMaterial = normalizeMaterialStockBag(nextVillage.materialStockByType);
   for (const key of FOOD_RESOURCE_KEYS) {
     nextFood[key] = roundTo1(Math.max(0, nextFood[key] - toSafeNumber(cost?.food?.[key], 0)));
   }
@@ -1086,8 +1694,12 @@ function applyUnitCreationCost(village, cost) {
 
 function canAffordVillageBuilding(village, definition) {
   if (!village || !definition) return false;
-  const materialBag = normalizeResourceBag(village.materialStockByType, MATERIAL_RESOURCE_KEYS);
-  const costBag = normalizeResourceBag(definition.cost, MATERIAL_RESOURCE_KEYS);
+  const materialBag = normalizeMaterialStockBag(village.materialStockByType);
+  const costBag = scaleResourceBagByFactor(
+    normalizeResourceBag(definition.cost, MATERIAL_RESOURCE_KEYS),
+    MATERIAL_RESOURCE_KEYS,
+    ECONOMY_COST_SCALE
+  );
   for (const key of MATERIAL_RESOURCE_KEYS) {
     if (materialBag[key] < costBag[key]) return false;
   }
@@ -1097,8 +1709,12 @@ function canAffordVillageBuilding(village, definition) {
 function applyVillageBuildingCost(village, definition) {
   const nextVillage = ensureVillageStateShape(village, props.selectedRace);
   if (!nextVillage || !definition) return null;
-  const nextMaterial = normalizeResourceBag(nextVillage.materialStockByType, MATERIAL_RESOURCE_KEYS);
-  const costBag = normalizeResourceBag(definition.cost, MATERIAL_RESOURCE_KEYS);
+  const nextMaterial = normalizeMaterialStockBag(nextVillage.materialStockByType);
+  const costBag = scaleResourceBagByFactor(
+    normalizeResourceBag(definition.cost, MATERIAL_RESOURCE_KEYS),
+    MATERIAL_RESOURCE_KEYS,
+    ECONOMY_COST_SCALE
+  );
   for (const key of MATERIAL_RESOURCE_KEYS) {
     nextMaterial[key] = roundTo1(Math.max(0, nextMaterial[key] - costBag[key]));
   }
@@ -1129,19 +1745,7 @@ function buildAutoUnitName(raceName, className, units = unitList.value) {
 }
 
 function splitTotalIntoBag(total, keys) {
-  const safeTotal = Math.max(0, Math.floor(toSafeNumber(total, 0)));
-  const out = buildEmptyResourceBag(keys);
-  if (!keys.length || safeTotal <= 0) return out;
-  const base = Math.floor(safeTotal / keys.length);
-  let rem = safeTotal - (base * keys.length);
-  for (const key of keys) {
-    out[key] = base;
-    if (rem > 0) {
-      out[key] += 1;
-      rem -= 1;
-    }
-  }
-  return out;
+  return splitTotalIntoBagUtil(total, keys, { toSafeNumber });
 }
 
 function formatPopulationByRace(populationByRace) {
@@ -1167,11 +1771,12 @@ function buildMapPotentialResourceSummary(data) {
       for (const key of FOOD_RESOURCE_KEYS) {
         summary.food[key] = roundTo1(summary.food[key] + toSafeNumber(row?.[key], 0));
       }
-      for (const key of MATERIAL_RESOURCE_KEYS) {
-        summary.material[key] = roundTo1(summary.material[key] + toSafeNumber(row?.[key], 0));
-      }
+      addToResourceBag(summary.material, buildMaterialIncomeFromTerrainRow(row), MATERIAL_RESOURCE_KEYS);
     }
   }
+  const gainScale = ECONOMY_GAIN_SCALE * resolveEconomyGainMultiplier(villageState.value);
+  summary.food = scaleResourceBagByFactor(summary.food, FOOD_RESOURCE_KEYS, gainScale);
+  summary.material = scaleResourceBagByFactor(summary.material, MATERIAL_RESOURCE_KEYS, gainScale);
   return summary;
 }
 
@@ -1251,9 +1856,282 @@ function isPassableTerrain(terrain) {
   return terrain !== "海" && terrain !== "湖";
 }
 
-function buildPlayerTerritorySet(data) {
+function buildVisibilitySnapshotFromLiveState() {
+  return {
+    exploredTileKeys: Array.from(exploredTileKeys || []).map(v => String(v || "")),
+    visibleTileKeys: Array.from(visibleTileKeys || []).map(v => String(v || "")),
+    spottedEnemyTileKeys: Array.from(spottedEnemyTileKeys || []).map(v => String(v || ""))
+  };
+}
+
+function applyVisibilitySnapshotToLiveState(snapshot) {
+  const explored = Array.isArray(snapshot?.exploredTileKeys) ? snapshot.exploredTileKeys : [];
+  const visible = Array.isArray(snapshot?.visibleTileKeys) ? snapshot.visibleTileKeys : [];
+  const spotted = Array.isArray(snapshot?.spottedEnemyTileKeys) ? snapshot.spottedEnemyTileKeys : [];
+  exploredTileKeys = new Set(explored.map(v => String(v || "")));
+  visibleTileKeys = new Set(visible.map(v => String(v || "")));
+  spottedEnemyTileKeys = new Set(spotted.map(v => String(v || "")));
+}
+
+function resolveRaceFromUnitList(units = []) {
+  const sovereign = units.find(unit => isSovereignUnit(unit)) || units[0] || null;
+  return nonEmptyText(sovereign?.race) || nonEmptyText(props.selectedRace) || "只人";
+}
+
+function buildLiveFactionStateSnapshot() {
+  return {
+    village: deepCloneJsonValue(villageState.value, null),
+    units: deepCloneJsonValue(unitList.value, []),
+    selectedUnitId: nonEmptyText(selectedUnitId.value),
+    villagePlacementMode: !!villagePlacementMode.value,
+    unitMoveMode: !!unitMoveMode.value,
+    nationLogKey: nonEmptyText(activeNationLogKey.value),
+    visibility: buildVisibilitySnapshotFromLiveState()
+  };
+}
+
+function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
+  const units = Array.isArray(snapshot?.units)
+    ? snapshot.units.map(unit => deepCloneJsonValue(unit, {}))
+    : [];
+  const raceFallback = resolveRaceFromUnitList(units);
+  const villageRaw = snapshot?.village ? deepCloneJsonValue(snapshot.village, null) : null;
+  const village = villageRaw ? ensureVillageStateShape(villageRaw, raceFallback) : null;
+  const nextSelectedUnitId = nonEmptyText(snapshot?.selectedUnitId) || units[0]?.id || "";
+  const nextNationLogKey = nonEmptyText(snapshot?.nationLogKey)
+    || nonEmptyText(units.find(unit => isSovereignUnit(unit))?.id)
+    || `nation-${nonEmptyText(activeTestPlayerId.value) || "player-1"}`;
+  const sovereignName = nonEmptyText(units.find(unit => isSovereignUnit(unit))?.name) || "統治者";
+
+  applyingTestPlayerState = true;
+  villageState.value = village;
+  unitList.value = units;
+  selectedUnitId.value = nextSelectedUnitId;
+  villagePlacementMode.value = !!snapshot?.villagePlacementMode;
+  unitMoveMode.value = !!snapshot?.unitMoveMode;
+  activeNationLogKey.value = nextNationLogKey;
+  ensureNationLogBucket(nextNationLogKey, sovereignName);
+  applyVisibilitySnapshotToLiveState(snapshot?.visibility || {});
+  applyingTestPlayerState = false;
+
+  updateVillageInfoText();
+  updateUnitInfoText();
+  if (currentData.value) {
+    rebuildTerritorySets(currentData.value);
+    rebuildVisibleTiles(currentData.value);
+  }
+  if (options.emitState !== false) emitCharacterStateChange();
+  if (options.render !== false) renderMapWithPhaser();
+}
+
+function buildTestPlayerSlotFromLiveState(id, label, options = {}) {
+  return {
+    id: nonEmptyText(id) || "player-1",
+    label: nonEmptyText(label) || "プレイヤー1",
+    race: nonEmptyText(options?.race) || resolveRaceFromUnitList(unitList.value),
+    ready: !!options?.ready,
+    factionState: options?.factionState
+      ? deepCloneJsonValue(options.factionState, buildLiveFactionStateSnapshot())
+      : buildLiveFactionStateSnapshot()
+  };
+}
+
+function syncActiveTestPlayerSlotFromLiveState() {
+  if (applyingTestPlayerState) return;
+  const activeId = nonEmptyText(activeTestPlayerId.value) || "player-1";
+  const next = [...testPlayerSlots.value];
+  const idx = next.findIndex(slot => nonEmptyText(slot?.id) === activeId);
+  const factionState = buildLiveFactionStateSnapshot();
+  if (idx < 0) {
+    next.push(buildTestPlayerSlotFromLiveState(activeId, `プレイヤー${next.length + 1}`, { factionState }));
+  } else {
+    next[idx] = {
+      ...next[idx],
+      race: resolveRaceFromUnitList(unitList.value),
+      factionState
+    };
+  }
+  testPlayerSlots.value = next;
+}
+
+function resetTestPlayerSlotsFromLiveState() {
+  const primary = buildTestPlayerSlotFromLiveState("player-1", "プレイヤー1", { ready: false });
+  testPlayerSlots.value = [primary];
+  activeTestPlayerId.value = primary.id;
+}
+
+function ensureTestPlayerSlotsInitialized() {
+  if (testPlayerSlots.value.length) return;
+  resetTestPlayerSlotsFromLiveState();
+}
+
+function resolveNextTestPlayerIdentity() {
+  const usedIds = new Set(testPlayerSlots.value.map(slot => nonEmptyText(slot?.id)).filter(Boolean));
+  let maxNo = 0;
+  for (const slot of testPlayerSlots.value) {
+    const id = nonEmptyText(slot?.id);
+    const m = id.match(/^player-(\d+)$/);
+    if (!m) continue;
+    const no = Math.max(0, Math.floor(toSafeNumber(m[1], 0)));
+    if (no > maxNo) maxNo = no;
+  }
+  let nextNo = Math.max(1, maxNo + 1);
+  let nextId = `player-${nextNo}`;
+  while (usedIds.has(nextId)) {
+    nextNo += 1;
+    nextId = `player-${nextNo}`;
+  }
+  return {
+    id: nextId,
+    no: nextNo,
+    label: `プレイヤー${nextNo}`
+  };
+}
+
+function createDraftFactionStateForAdditionalPlayer(slotId, label) {
+  const raceName = nonEmptyText(props.selectedRace) || "只人";
+  const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName))
+    || chooseRaceBaseRowForSelection()
+    || classRows.value[0]
+    || null;
+  const classRow = findClassRowByName(props.selectedClass)
+    || pickClassRowForCharacter(raceRow)
+    || classRows.value[0]
+    || null;
+  const sovereign = createUnitRecord({
+    raceRow,
+    classRow,
+    name: `統治者${label}`,
+    raceLabel: raceName,
+    isSovereign: true,
+    isNamed: true,
+    unitType: "統治者"
+  });
+  sovereign.x = null;
+  sovereign.y = null;
+  const initialPopulation = resolveInitialVillagePopulationByRace(raceName);
+  const villageName = randomPick(VILLAGE_NAME_POOL, "開拓村");
+  const village = ensureVillageStateShape({
+    id: `${slotId}-village-pending`,
+    name: villageName,
+    x: null,
+    y: null,
+    placed: false,
+    cityLevels: normalizeCityLevels({}),
+    buildings: [],
+    population: initialPopulation,
+    populationByRace: {
+      [raceName]: initialPopulation
+    },
+    foodStockByType: buildEmptyResourceBag(FOOD_RESOURCE_KEYS),
+    materialStockByType: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS)
+  }, raceName);
+  return {
+    village,
+    units: [sovereign],
+    selectedUnitId: sovereign.id,
+    villagePlacementMode: true,
+    unitMoveMode: false,
+    nationLogKey: sovereign.id,
+    visibility: {
+      exploredTileKeys: [],
+      visibleTileKeys: [],
+      spottedEnemyTileKeys: []
+    }
+  };
+}
+
+function switchActiveTestPlayer(playerId, options = {}) {
+  const targetId = nonEmptyText(playerId);
+  if (!targetId) return;
+  const currentId = nonEmptyText(activeTestPlayerId.value);
+  if (currentId && currentId !== targetId) {
+    syncActiveTestPlayerSlotFromLiveState();
+  }
+  const slot = testPlayerSlots.value.find(row => nonEmptyText(row?.id) === targetId);
+  if (!slot) return;
+  activeTestPlayerId.value = targetId;
+  applyFactionStateSnapshotToLiveState(slot.factionState, {
+    emitState: options.emitState !== false,
+    render: options.render !== false
+  });
+}
+
+function addTestPlayerFaction() {
+  ensureTestPlayerSlotsInitialized();
+  if (testPlayerSlots.value.length >= MAX_TEST_PLAYER_COUNT) {
+    updateUnitInfoText(`プレイヤー勢力は最大 ${MAX_TEST_PLAYER_COUNT} までです。`);
+    audio.playSe("cancel");
+    return;
+  }
+  if (!currentData.value || currentData.value.shapeOnly) {
+    updateUnitInfoText("勢力追加は地形マップ生成後に使用できます。");
+    audio.playSe("cancel");
+    return;
+  }
+  syncActiveTestPlayerSlotFromLiveState();
+  const nextIdentity = resolveNextTestPlayerIdentity();
+  const id = nextIdentity.id;
+  const label = nextIdentity.label;
+  const factionState = createDraftFactionStateForAdditionalPlayer(id, String(nextIdentity.no));
+  ensureNationLogBucket(factionState.nationLogKey, `統治者${nextIdentity.no}`);
+  pushNationLog(`勢力追加: ${label} を作成`);
+  testPlayerSlots.value = [
+    ...testPlayerSlots.value,
+    {
+      id,
+      label,
+      race: nonEmptyText(props.selectedRace) || "只人",
+      ready: false,
+      factionState
+    }
+  ];
+  switchActiveTestPlayer(id);
+  updateUnitInfoText(`${label} を追加しました。初期村を配置してください。`);
+  audio.playSe("confirm");
+}
+
+function removeActiveTestPlayerFaction() {
+  ensureTestPlayerSlotsInitialized();
+  if (testPlayerSlots.value.length <= 1) {
+    updateUnitInfoText("最後の1勢力は削除できません。");
+    audio.playSe("cancel");
+    return;
+  }
+  const targetId = nonEmptyText(activeTestPlayerId.value);
+  if (!targetId) return;
+  const removed = testPlayerSlots.value.find(slot => nonEmptyText(slot?.id) === targetId) || null;
+  const next = testPlayerSlots.value.filter(slot => nonEmptyText(slot?.id) !== targetId);
+  testPlayerSlots.value = next;
+  const fallback = next[0] || null;
+  if (fallback) {
+    switchActiveTestPlayer(fallback.id);
+  }
+  updateUnitInfoText(`${removed?.label || "選択勢力"} を削除しました。`);
+  audio.playSe("confirm");
+}
+
+function markActiveTestPlayerTurnReady() {
+  const targetId = nonEmptyText(activeTestPlayerId.value);
+  if (!targetId) return;
+  testPlayerSlots.value = testPlayerSlots.value.map(slot => {
+    if (nonEmptyText(slot?.id) !== targetId) return slot;
+    return { ...slot, ready: true };
+  });
+}
+
+function clearAllTestPlayerTurnReady() {
+  testPlayerSlots.value = testPlayerSlots.value.map(slot => ({ ...slot, ready: false }));
+}
+
+function areAllTestPlayersReady() {
+  if (testPlayerSlots.value.length <= 1) return true;
+  return testPlayerSlots.value.every(slot => !!slot?.ready);
+}
+
+function buildPlayerTerritorySet(data, villageOverride = villageState.value) {
   const owned = new Set();
-  const v = villageState.value;
+  const v = villageOverride;
   if (!data?.grid || !v?.placed || !Number.isFinite(v.x) || !Number.isFinite(v.y)) return owned;
   if (v.x < 0 || v.y < 0 || v.x >= data.w || v.y >= data.h) return owned;
 
@@ -1304,16 +2182,32 @@ function buildEnemyTerritorySet(data) {
 }
 
 function rebuildTerritorySets(data) {
+  const hostile = buildEnemyTerritorySet(data);
+  if (testPlayerSlots.value.length > 1) {
+    const activeId = nonEmptyText(activeTestPlayerId.value);
+    const player = new Set();
+    for (const slot of testPlayerSlots.value) {
+      const slotId = nonEmptyText(slot?.id);
+      const set = buildPlayerTerritorySet(data, slot?.factionState?.village);
+      if (slotId && slotId === activeId) {
+        for (const key of set) player.add(key);
+      } else {
+        for (const key of set) hostile.add(key);
+      }
+    }
+    territorySets = { player, enemy: hostile };
+    return;
+  }
   territorySets = {
-    player: buildPlayerTerritorySet(data),
-    enemy: buildEnemyTerritorySet(data)
+    player: buildPlayerTerritorySet(data, villageState.value),
+    enemy: hostile
   };
 }
 
 function tileOwnerAt(x, y) {
   const key = coordKey(x, y);
-  if (territorySets.enemy.has(key)) return "enemy";
   if (territorySets.player.has(key)) return "player";
+  if (territorySets.enemy.has(key)) return "enemy";
   return "";
 }
 
@@ -1359,9 +2253,6 @@ function resolveRaceFoodProfile(raceKey = "") {
   for (const key of FOOD_RESOURCE_KEYS) {
     profile[key] = roundTo1(Math.max(0, toSafeNumber(row?.[key], 0) / 10));
   }
-  if (sumResourceBag(profile, FOOD_RESOURCE_KEYS) <= 0) {
-    profile.穀物 = 1;
-  }
   return profile;
 }
 
@@ -1406,15 +2297,15 @@ function ensureVillageStateShape(village, preferredRace = "") {
     village.foodStockByType || splitTotalIntoBag(village.foodStock, FOOD_RESOURCE_KEYS),
     FOOD_RESOURCE_KEYS
   );
-  const materialStockByType = normalizeResourceBag(
-    village.materialStockByType || splitTotalIntoBag(village.materialStock, MATERIAL_RESOURCE_KEYS),
-    MATERIAL_RESOURCE_KEYS
-  );
+  const materialSource = village.materialStockByType || splitTotalIntoBag(village.materialStock, MATERIAL_RESOURCE_LEGACY_KEYS);
+  const materialStockByType = normalizeMaterialStockBag(materialSource);
+  const cityLevels = normalizeCityLevels(village.cityLevels);
   const syncedPopulation = Math.max(1, Math.floor(Object.values(populationByRace).reduce((acc, n) => acc + toSafeNumber(n, 0), 0)));
   return {
     ...village,
     population: syncedPopulation,
     populationByRace,
+    cityLevels,
     buildings,
     foodStockByType,
     materialStockByType,
@@ -1424,45 +2315,21 @@ function ensureVillageStateShape(village, preferredRace = "") {
 }
 
 function createInitialFoodStockByType(initialPopulation = 10) {
-  const pop = Math.max(1, Math.floor(toSafeNumber(initialPopulation, 10)));
-  return {
-    穀物: randomInt(pop * 6, pop * 9),
-    野菜: randomInt(pop * 4, pop * 7),
-    肉: randomInt(pop * 3, pop * 6),
-    魚: randomInt(pop * 2, pop * 5)
-  };
+  return createInitialFoodStockByTypeUtil(initialPopulation, { toSafeNumber, randomInt });
 }
 
 function createInitialMaterialStockByType(initialPopulation = 10) {
-  const pop = Math.max(1, Math.floor(toSafeNumber(initialPopulation, 10)));
-  return {
-    木材: randomInt(pop * 3, pop * 5),
-    石材: randomInt(pop * 2, pop * 4),
-    鉄: randomInt(pop * 1, pop * 3)
-  };
+  const initial = createInitialMaterialStockByTypeUtil(initialPopulation, { toSafeNumber, randomInt });
+  return normalizeMaterialStockBag(initial);
 }
 
 function adjustVillagePopulationForTurn(village, shortageTotal = 0) {
-  if (!village) return 0;
-  const shortage = Math.max(0, toSafeNumber(shortageTotal, 0));
-  const driftMin = shortage > 0 ? -2 : -1;
-  const driftMax = shortage > 0 ? 0 : 2;
-  let delta = randomInt(driftMin, driftMax);
-  const entries = Object.entries(village.populationByRace || {})
-    .map(([race, count]) => ({ race, count: Math.max(0, Math.floor(toSafeNumber(count, 0))) }))
-    .filter(v => nonEmptyText(v.race) && v.count > 0)
-    .sort((a, b) => b.count - a.count);
-  const targetRace = entries[0]?.race || nonEmptyText(props.selectedRace) || "只人";
-  const current = Math.max(0, Math.floor(toSafeNumber(village.populationByRace?.[targetRace], 0)));
-  if (current + delta < 1) {
-    delta = 1 - current;
-  }
-  village.populationByRace = {
-    ...(village.populationByRace || {}),
-    [targetRace]: Math.max(1, current + delta)
-  };
-  village.population = Math.max(1, Math.floor(Object.values(village.populationByRace).reduce((acc, n) => acc + toSafeNumber(n, 0), 0)));
-  return delta;
+  return adjustVillagePopulationForTurnUtil(village, shortageTotal, {
+    toSafeNumber,
+    randomInt,
+    nonEmptyText,
+    selectedRaceFallback: props.selectedRace
+  });
 }
 
 function shouldDisableFog(data) {
@@ -1474,11 +2341,29 @@ function shouldDisableFog(data) {
 function resetVisibilityState() {
   exploredTileKeys = new Set();
   visibleTileKeys = new Set();
+  spottedEnemyTileKeys = new Set();
 }
 
 function markTileExplored(x, y) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   exploredTileKeys.add(coordKey(x, y));
+}
+
+function markEnemySpotted(x, y, data = currentData.value) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const w = Number.isFinite(data?.w) ? data.w : 0;
+  const h = Number.isFinite(data?.h) ? data.h : 0;
+  if (x < 0 || y < 0 || x >= w || y >= h) return false;
+  const tileEnemies = data?.enemySpawnMap?.[y]?.[x];
+  if (!Array.isArray(tileEnemies) || !tileEnemies.length) return false;
+  const key = coordKey(x, y);
+  if (spottedEnemyTileKeys.has(key)) {
+    markTileExplored(x, y);
+    return false;
+  }
+  spottedEnemyTileKeys.add(key);
+  markTileExplored(x, y);
+  return true;
 }
 
 function markPathExplored(path) {
@@ -1537,7 +2422,7 @@ function rebuildVisibleTiles(data) {
   }
   for (const unit of unitList.value) {
     if (!Number.isFinite(unit?.x) || !Number.isFinite(unit?.y) || unit.x < 0 || unit.y < 0) continue;
-    addVisionRangeKeys(data, unit.x, unit.y, toSafeNumber(unit.scoutRange, 0), dynamicVisible);
+    addVisionRangeKeys(data, unit.x, unit.y, resolveUnitVisionRange(unit), dynamicVisible);
   }
   for (const key of dynamicVisible) {
     exploredTileKeys.add(key);
@@ -1709,32 +2594,31 @@ function raceIsHumanType(raceRow) {
 }
 
 function rowStatusVector(row, fields = STATUS_GROWTH_FIELDS) {
-  const out = {};
-  for (const key of fields) {
-    const raw = Math.max(0, toSafeNumber(row?.[key], 0));
-    out[key] = Math.max(0, Math.round(raw / STATUS_GROWTH_DIVISOR));
-  }
-  return out;
+  return rowStatusVectorUtil(row, {
+    statusGrowthFields: fields,
+    statusGrowthDivisor: STATUS_GROWTH_DIVISOR,
+    toSafeNumber
+  });
 }
 
-function buildUnitSkillLevelsFromClass(classRow) {
-  const out = {};
-  for (const key of SKILL_LEVEL_FIELDS) {
-    const raw = toSafeNumber(classRow?.[key], 0);
-    out[key] = Math.max(0, Math.round(raw));
-  }
-  return out;
+function buildUnitSkillLevelsFromClass(raceRow, classRow, raceLevels, classLevels) {
+  return buildUnitSkillLevelsFromRulesUtil({
+    raceRow,
+    classRow,
+    raceLevels,
+    classLevels,
+    raceLevelBaseOffset: INITIAL_RACE_LEVEL_OFFSET,
+    skillLevelFields: SKILL_LEVEL_FIELDS,
+    statusGrowthDivisor: STATUS_GROWTH_DIVISOR,
+    toSafeNumber
+  });
 }
 
 function buildUnitResistances(raceRow, classRow) {
-  const out = {};
-  for (const key of RESISTANCE_FIELDS) {
-    const raceValue = toSafeNumber(raceRow?.[key], 0);
-    const classValue = toSafeNumber(classRow?.[key], 0);
-    const total = Math.round(raceValue + classValue);
-    out[key] = total;
-  }
-  return out;
+  return buildUnitResistancesUtil(raceRow, classRow, {
+    resistanceFields: RESISTANCE_FIELDS,
+    toSafeNumber
+  });
 }
 
 function allowsEquipmentBySlotCell(value) {
@@ -1840,63 +2724,287 @@ function mergeResistances(baseResistances, bonusResistances) {
   return out;
 }
 
-function multiplyStatusVector(vector, factor) {
-  const out = {};
-  const scale = Math.max(0, Math.round(toSafeNumber(factor, 0)));
-  for (const key of Object.keys(vector || {})) {
-    out[key] = Math.max(0, Math.round(toSafeNumber(vector[key], 0) * scale));
-  }
-  return out;
-}
-
-function addStatusVectors(...vectors) {
-  const out = {};
-  for (const field of STATUS_GROWTH_FIELDS) out[field] = 0;
-  for (const vec of vectors) {
-    if (!vec) continue;
-    for (const field of STATUS_GROWTH_FIELDS) {
-      out[field] += Math.max(0, Math.round(toSafeNumber(vec[field], 0)));
-    }
-  }
-  return out;
-}
-
 function formatStatusCompact(status) {
-  if (!status) return "-";
-  return `HP${status.HP} 攻${status.攻撃} 防${status.防御} 魔${status.魔力} 精${status.精神} 速${status.速度} 命${status.命中} SIZ${status.SIZ}`;
+  return formatStatusCompactUtil(status);
 }
 
 function buildCharacterStatusFromRules(raceRow, classRow, level, options = {}) {
-  const safeLevel = Math.max(INITIAL_LEVEL_MIN, Math.min(INITIAL_LEVEL_MAX, Math.round(toSafeNumber(level, INITIAL_LEVEL_MIN))));
-  const raceLevels = BASE_RACE_LEVEL + BONUS_RACE_LEVEL;
-  const defaultClassPerLevelGain = Math.max(0, safeLevel - 1);
-  const defaultClassBonus = raceIsHumanType(raceRow) ? HUMAN_CLASS_BONUS_LEVEL : 0;
-  const hasFixedClassLevels = options?.classLevels !== undefined && options?.classLevels !== null;
-  const classLevels = hasFixedClassLevels
-    ? Math.max(0, Math.round(toSafeNumber(options.classLevels, defaultClassPerLevelGain + defaultClassBonus)))
-    : (defaultClassPerLevelGain + defaultClassBonus);
-  const classPerLevelGain = hasFixedClassLevels ? classLevels : defaultClassPerLevelGain;
-  const classBonus = hasFixedClassLevels ? 0 : defaultClassBonus;
+  return buildCharacterStatusFromRulesUtil({
+    raceRow,
+    classRow,
+    level,
+    raceLevels: options?.raceLevels,
+    classLevels: options?.classLevels,
+    isHumanRace: raceIsHumanType(raceRow),
+    statusGrowthFields: STATUS_GROWTH_FIELDS,
+    toSafeNumber,
+    initialLevelMin: INITIAL_LEVEL_MIN,
+    initialLevelMax: INITIAL_LEVEL_MAX,
+    raceLevelBaseOffset: INITIAL_RACE_LEVEL_OFFSET,
+    statusGrowthDivisor: STATUS_GROWTH_DIVISOR,
+    defaultSizBase: 100
+  });
+}
 
-  const raceGrowth = multiplyStatusVector(rowStatusVector(raceRow), raceLevels);
-  const classGrowth = multiplyStatusVector(rowStatusVector(classRow), classLevels);
-  const mergedGrowth = addStatusVectors(raceGrowth, classGrowth);
-  const sizBase = Math.max(1, Math.round(toSafeNumber(raceRow?.SIZ, toSafeNumber(classRow?.SIZ, 100))));
-  const status = {
-    ...mergedGrowth,
-    SIZ: sizBase
+function buildEnemyCharacterStatusFromRules(raceRow, classRow, level, options = {}) {
+  return buildCharacterStatusFromRulesUtil({
+    raceRow,
+    classRow: classRow || {},
+    level,
+    raceLevels: options?.raceLevels,
+    classLevels: options?.classLevels,
+    isHumanRace: raceIsHumanType(raceRow),
+    statusGrowthFields: STATUS_GROWTH_FIELDS,
+    toSafeNumber,
+    initialLevelMin: 1,
+    initialLevelMax: ENEMY_LEVEL_MAX,
+    raceLevelBaseOffset: INITIAL_RACE_LEVEL_OFFSET,
+    statusGrowthDivisor: STATUS_GROWTH_DIVISOR,
+    defaultSizBase: 100
+  });
+}
+
+function collectEnemySpawnTerrainKeys(data, x, y) {
+  const set = new Set();
+  const terrain = nonEmptyText(data?.grid?.[y]?.[x]);
+  if (terrain) set.add(terrain);
+  const relief = nonEmptyText(data?.reliefMap?.[y]?.[x]);
+  if (relief === "山岳") set.add("山岳");
+  const special = nonEmptyText(data?.specialMap?.[y]?.[x]);
+  if (special) set.add(special);
+  const key = coordKey(x, y);
+  if (data?.riverData?.riverSet?.has(key)) set.add("河川");
+  if (data?.lavaMap?.[y]?.[x]) set.add("溶岩");
+  return Array.from(set);
+}
+
+function resolveEnemyBaseLevelByTile(data, x, y, isStrongTile) {
+  const rawHeightLevel = Math.floor(toSafeNumber(data?.heightLevelMap?.[y]?.[x], 0));
+  const heightDistanceFromZero = Math.abs(rawHeightLevel) + (isStrongTile ? ENEMY_STRONG_HEIGHT_BONUS : 0);
+  const jitter = randomInt(ENEMY_LEVEL_JITTER_MIN, ENEMY_LEVEL_JITTER_MAX);
+  const level = ENEMY_LEVEL_BASE + (ENEMY_LEVEL_PER_HEIGHT * heightDistanceFromZero) + jitter;
+  return Math.max(1, Math.min(ENEMY_LEVEL_MAX, Math.floor(level)));
+}
+
+function resolveEnemySpawnCountByTile(rule) {
+  if (!rule?.spawnCountExplicit) return 1;
+  const min = Math.max(1, Math.floor(toSafeNumber(rule?.spawnCountMin, 1)));
+  const max = Math.max(min, Math.floor(toSafeNumber(rule?.spawnCountMax, min)));
+  return randomInt(min, max);
+}
+
+function levelDistanceFromRange(level, min, max) {
+  if (level < min) return min - level;
+  if (level > max) return level - max;
+  return 0;
+}
+
+function pickEnemyRule(candidates, baseLevel, preferClosestRange = false) {
+  if (!Array.isArray(candidates) || !candidates.length) return null;
+  if (!preferClosestRange) return randomPick(candidates, null);
+  let minDistance = Number.POSITIVE_INFINITY;
+  const near = [];
+  for (const row of candidates) {
+    const d = levelDistanceFromRange(baseLevel, Math.max(1, Math.floor(toSafeNumber(row?.lvMin, 1))), Math.max(1, Math.floor(toSafeNumber(row?.lvMax, 1))));
+    if (d < minDistance) {
+      minDistance = d;
+      near.length = 0;
+      near.push(row);
+    } else if (d === minDistance) {
+      near.push(row);
+    }
+  }
+  return randomPick(near, randomPick(candidates, null));
+}
+
+function clampEnemyLevel(levelRaw) {
+  return Math.max(1, Math.min(ENEMY_LEVEL_MAX, Math.floor(toSafeNumber(levelRaw, 1))));
+}
+
+function resolveNormalEnemyLevel(baseLevel, rule, spawnCount) {
+  const lvMin = Math.max(1, Math.floor(toSafeNumber(rule?.lvMin, 1)));
+  const lvMax = Math.max(lvMin, Math.floor(toSafeNumber(rule?.lvMax, lvMin)));
+  const countPenalty = Math.max(0, Math.floor(toSafeNumber(spawnCount, 1)) - 1) * 2;
+  const adjustedMax = Math.max(lvMin, lvMax - countPenalty);
+  const normalizedBase = Math.floor(toSafeNumber(baseLevel, lvMin));
+  const clamped = Math.max(lvMin, Math.min(adjustedMax, normalizedBase));
+  return clampEnemyLevel(clamped);
+}
+
+function buildEnemySpawnDataForMap(data) {
+  if (!data || data.shapeOnly || !Number.isFinite(data?.w) || !Number.isFinite(data?.h) || !Array.isArray(data?.grid)) {
+    return {
+      enemySpawnMap: null,
+      enemySpawnStats: null
+    };
+  }
+  if (Array.isArray(data.enemySpawnMap) && data.enemySpawnMap.length === data.h) {
+    return {
+      enemySpawnMap: data.enemySpawnMap,
+      enemySpawnStats: data.enemySpawnStats || null
+    };
+  }
+  const rows = enemySpawnRows.value;
+  const rulesByTerrain = enemySpawnRulesByTerrain.value;
+  if (!rows.length || !rulesByTerrain.size) {
+      return {
+        enemySpawnMap: Array.from({ length: data.h }, () => Array.from({ length: data.w }, () => null)),
+        enemySpawnStats: {
+          total: 0,
+          totalUnits: 0,
+          strongTileCount: 0,
+          byTerrain: {}
+        }
+    };
+  }
+
+  const enemySpawnMap = Array.from({ length: data.h }, () => Array.from({ length: data.w }, () => null));
+  const stats = {
+    total: 0,
+    totalUnits: 0,
+    strongTileCount: 0,
+    byTerrain: {}
   };
+
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const terrainKeys = collectEnemySpawnTerrainKeys(data, x, y);
+      if (!terrainKeys.length) continue;
+      const isStrongTile = data?.strongMonsterMap?.[y]?.[x] === "強敵候補";
+      const baseLevel = resolveEnemyBaseLevelByTile(data, x, y, isStrongTile);
+      const terrainCandidates = [];
+      const candidates = [];
+      for (const terrainKey of terrainKeys) {
+        const pool = rulesByTerrain.get(terrainKey) || [];
+        for (const rule of pool) {
+          const merged = { ...rule, matchedTerrain: terrainKey };
+          terrainCandidates.push(merged);
+          if (baseLevel < rule.lvMin || baseLevel > rule.lvMax) continue;
+          candidates.push(merged);
+        }
+      }
+      let picked = pickEnemyRule(candidates, baseLevel, false);
+      if (!picked && isStrongTile) {
+        picked = pickEnemyRule(terrainCandidates, baseLevel, true);
+      }
+      if (!picked && isStrongTile) {
+        const globalFallback = rows.map(row => ({ ...row, matchedTerrain: row.terrainKey }));
+        picked = pickEnemyRule(globalFallback, baseLevel, true);
+      }
+      if (!picked) continue;
+      const spawnCount = resolveEnemySpawnCountByTile(picked);
+      if (spawnCount <= 0) continue;
+
+      let raceRow = findClassRowByName(picked.raceName);
+      if (!raceRow && isStrongTile) {
+        const fallbackPool = [
+          ...terrainCandidates,
+          ...rows.map(row => ({ ...row, matchedTerrain: row.terrainKey }))
+        ];
+        const validPool = fallbackPool.filter(row => !!findClassRowByName(row.raceName));
+        const fallbackPicked = pickEnemyRule(validPool, baseLevel, true);
+        if (fallbackPicked) {
+          picked = fallbackPicked;
+          raceRow = findClassRowByName(picked.raceName);
+        }
+      }
+      if (!raceRow) continue;
+      const classRow = picked.className ? findClassRowByName(picked.className) : null;
+      const tileEnemies = [];
+
+      const tileMaxRuleLevel = terrainCandidates.length
+        ? terrainCandidates.reduce((maxLv, row) => Math.max(maxLv, Math.max(1, Math.floor(toSafeNumber(row?.lvMax, baseLevel)))), Math.max(1, baseLevel))
+        : Math.max(1, baseLevel);
+
+      const pushEnemyRecord = (enemyLevel, index, role, groupCount, roleBaseLevel) => {
+        const progression = classRow
+          ? resolveGrowthLevelsForUnitLevel(raceRow, enemyLevel, ENEMY_LEVEL_MAX)
+          : { raceLevels: enemyLevel, classLevels: 0 };
+        const raceLevels = Math.max(0, Math.floor(toSafeNumber(progression.raceLevels, 0)));
+        const classLevels = Math.max(0, Math.floor(toSafeNumber(progression.classLevels, 0)));
+        const built = buildEnemyCharacterStatusFromRules(raceRow, classRow || {}, enemyLevel, {
+          raceLevels,
+          classLevels
+        });
+        const skillLevels = buildUnitSkillLevelsFromClass(raceRow, classRow || {}, built.raceLevels, built.classLevels);
+        const resistances = buildUnitResistances(raceRow, classRow || {});
+        const skills = buildUnitSkillsForProgression({
+          raceRow,
+          classRow: classRow || {},
+          raceLevels: built.raceLevels,
+          classLevels: built.classLevels
+        });
+        tileEnemies.push({
+          id: `enemy-${x}-${y}-${index}`,
+          name: picked.displayName || picked.raceName,
+          race: nonEmptyText(raceRow?.名前) || picked.raceName,
+          className: classRow ? nonEmptyText(classRow?.名前) : "",
+          level: built.level,
+          baseLevel: roleBaseLevel,
+          targetLevel: enemyLevel,
+          matchedTerrain: picked.matchedTerrain,
+          strong: isStrongTile,
+          strongRole: role,
+          strongGroupSize: groupCount,
+          equipmentTier: isStrongTile ? ENEMY_STRONG_EQUIPMENT_TIER : "",
+          armamentNames: Array.isArray(picked.armamentNames) ? [...picked.armamentNames] : [],
+          status: built.status,
+          skillLevels,
+          skills,
+          resistances,
+          spawnCount: groupCount,
+          spawnIndex: index + 1,
+          growthRule: {
+            raceLevels: built.raceLevels,
+            classLevels: built.classLevels,
+            raceLevelBonus: 0
+          }
+        });
+      };
+
+      if (isStrongTile) {
+        const hasArmament = !!picked.hasArmament;
+        const leaderLevel = clampEnemyLevel(
+          tileMaxRuleLevel
+            + ENEMY_STRONG_LEADER_LEVEL_BONUS
+            + (hasArmament ? 0 : ENEMY_STRONG_NO_ARMAMENT_LEVEL_BONUS)
+        );
+        const followerLevel = clampEnemyLevel(Math.floor(tileMaxRuleLevel * ENEMY_STRONG_FOLLOWER_LEVEL_SCALE));
+        const followerCount = randomInt(ENEMY_STRONG_FOLLOWER_MIN, ENEMY_STRONG_FOLLOWER_MAX);
+        const groupCount = 1 + followerCount;
+        pushEnemyRecord(leaderLevel, 0, "leader", groupCount, leaderLevel);
+        for (let i = 0; i < followerCount; i += 1) {
+          pushEnemyRecord(followerLevel, i + 1, "follower", groupCount, followerLevel);
+        }
+      } else {
+        const normalEnemyLevel = resolveNormalEnemyLevel(baseLevel, picked, spawnCount);
+        for (let i = 0; i < spawnCount; i += 1) {
+          pushEnemyRecord(normalEnemyLevel, i, "normal", spawnCount, normalEnemyLevel);
+        }
+      }
+      enemySpawnMap[y][x] = tileEnemies;
+
+      stats.total += 1;
+      stats.totalUnits += tileEnemies.length;
+      if (isStrongTile) stats.strongTileCount += 1;
+      stats.byTerrain[picked.matchedTerrain] = Math.max(0, Math.floor(toSafeNumber(stats.byTerrain[picked.matchedTerrain], 0))) + tileEnemies.length;
+    }
+  }
+
   return {
-    level: safeLevel,
-    raceLevels,
-    classLevels,
-    classBonus,
-    classPerLevelGain,
-    status
+    enemySpawnMap,
+    enemySpawnStats: stats
   };
 }
 
+function enemiesAt(x, y, data = currentData.value) {
+  const list = data?.enemySpawnMap?.[y]?.[x];
+  if (!Array.isArray(list)) return [];
+  return list.filter(Boolean);
+}
+
 function clearCharacterGenerationState() {
+  applyingTestPlayerState = true;
   villageState.value = null;
   unitList.value = [];
   selectedUnitId.value = "";
@@ -1912,6 +3020,8 @@ function clearCharacterGenerationState() {
   unitMoveMode.value = false;
   showMoveUnitModal.value = false;
   resetVisibilityState();
+  applyingTestPlayerState = false;
+  resetTestPlayerSlotsFromLiveState();
   updateVillageInfoText();
   updateUnitInfoText();
   emitCharacterStateChange();
@@ -1928,6 +3038,29 @@ function pickClassRowForCharacter(raceRow) {
   return selected;
 }
 
+function clampUnitLevel(value, fallback = INITIAL_LEVEL_MIN, maxLevel = INITIAL_LEVEL_MAX) {
+  const safe = Math.round(toSafeNumber(value, fallback));
+  const cappedMax = Math.max(1, Math.floor(toSafeNumber(maxLevel, INITIAL_LEVEL_MAX)));
+  return Math.max(1, Math.min(cappedMax, safe));
+}
+
+function resolveGrowthLevelsForUnitLevel(raceRow, totalLevel, maxLevel = INITIAL_LEVEL_MAX) {
+  const level = clampUnitLevel(totalLevel, INITIAL_LEVEL_MIN, maxLevel);
+  if (raceIsHumanType(raceRow)) {
+    return { raceLevels: 0, classLevels: level };
+  }
+  let raceLevels = 0;
+  let classLevels = 0;
+  for (let lv = 1; lv <= level; lv += 1) {
+    if (lv % 2 === 1) {
+      raceLevels += 1;
+    } else {
+      classLevels += 1;
+    }
+  }
+  return { raceLevels, classLevels };
+}
+
 function createUnitRecord({
   raceRow,
   classRow,
@@ -1937,15 +3070,30 @@ function createUnitRecord({
   isNamed = false,
   unitType = "モブ",
   fixedLevel = null,
-  fixedClassLevels = null
+  fixedClassLevels = null,
+  fixedRaceLevels = null,
+  secondaryClassName = ""
 }) {
   const hasFixedLevel = fixedLevel !== undefined && fixedLevel !== null;
   const level = hasFixedLevel
-    ? Math.max(INITIAL_LEVEL_MIN, Math.min(INITIAL_LEVEL_MAX, Math.round(toSafeNumber(fixedLevel, INITIAL_LEVEL_MIN))))
+    ? clampUnitLevel(fixedLevel, INITIAL_LEVEL_MIN)
     : randomInt(INITIAL_LEVEL_MIN, INITIAL_LEVEL_MAX);
+  const progression = resolveGrowthLevelsForUnitLevel(raceRow, level);
+  const raceLevels = fixedRaceLevels == null ? progression.raceLevels : Math.max(0, Math.floor(toSafeNumber(fixedRaceLevels, progression.raceLevels)));
+  const classLevels = fixedClassLevels == null ? progression.classLevels : Math.max(0, Math.floor(toSafeNumber(fixedClassLevels, progression.classLevels)));
+  const secondaryClass = nonEmptyText(secondaryClassName);
+  const secondaryClassRow = secondaryClass ? findClassRowByName(secondaryClass) : null;
+  const secondaryClassLevels = raceIsHumanType(raceRow) && level >= 10 && secondaryClassRow ? 1 : 0;
   const built = buildCharacterStatusFromRules(raceRow, classRow, level, {
-    classLevels: fixedClassLevels
+    raceLevels,
+    classLevels
   });
+  const baseSkillLevels = buildUnitSkillLevelsFromClass(raceRow, classRow, built.raceLevels, built.classLevels);
+  const namedBonus = applyNamedStatusSkillBonus(
+    built.status,
+    baseSkillLevels,
+    !!isNamed && !isSovereign
+  );
   const equipmentSlots = buildEquipmentSlotsFromClassRow(raceRow || classRow || {});
   const equipment = chooseEquipmentForClass(classRow, isNamed || isSovereign, equipmentSlots);
   const baseResistances = buildUnitResistances(raceRow, classRow);
@@ -1977,17 +3125,118 @@ function createUnitRecord({
     squadName: "",
     equipmentSlots,
     equipment,
-    status: built.status,
-    skillLevels: buildUnitSkillLevelsFromClass(classRow),
+    status: namedBonus.status,
+    skillLevels: namedBonus.skillLevels,
     baseResistances,
     resistances,
     growthRule: {
       raceLevels: built.raceLevels,
       classLevels: built.classLevels,
       classBonus: built.classBonus,
-      classPerLevelGain: built.classPerLevelGain
+      classPerLevelGain: built.classPerLevelGain,
+      secondaryClassName: secondaryClassRow ? nonEmptyText(secondaryClassRow?.名前) : "",
+      secondaryClassLevels
     },
-    skills: buildUnitSkillsFromClass(classRow)
+    secondaryClassName: secondaryClassRow ? nonEmptyText(secondaryClassRow?.名前) : "",
+    skills: buildUnitSkillsForProgression({
+      raceRow,
+      classRow,
+      raceLevels: built.raceLevels,
+      classLevels: built.classLevels,
+      secondaryClassRow,
+      secondaryClassLevels
+    })
+  };
+}
+
+function resolveSecondaryClassCandidates(mainClassName = "") {
+  const main = nonEmptyText(mainClassName);
+  return jobClassRows.value.filter(row => {
+    const name = nonEmptyText(row?.名前);
+    if (!name) return false;
+    return name !== main;
+  });
+}
+
+function rebuildUnitByLevelRules(unit, options = {}) {
+  if (!unit) return { ok: false, reason: "対象ユニットが見つかりません。" };
+  const raceName = nonEmptyText(unit?.race) || nonEmptyText(props.selectedRace) || "只人";
+  const className = nonEmptyText(unit?.className) || nonEmptyText(props.selectedClass);
+  const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName)) || null;
+  const classRow = findClassRowByName(className) || null;
+  if (!raceRow) return { ok: false, reason: "種族データが見つかりません。" };
+  if (!classRow) return { ok: false, reason: "クラスデータが見つかりません。" };
+
+  const nextLevel = clampUnitLevel(options?.level ?? unit?.level, unit?.level || INITIAL_LEVEL_MIN);
+  const progression = resolveGrowthLevelsForUnitLevel(raceRow, nextLevel);
+  const built = buildCharacterStatusFromRules(raceRow, classRow, nextLevel, {
+    raceLevels: progression.raceLevels,
+    classLevels: progression.classLevels
+  });
+
+  let secondaryClassName = nonEmptyText(options?.secondaryClassName || unit?.secondaryClassName);
+  let secondaryClassRow = secondaryClassName ? findClassRowByName(secondaryClassName) : null;
+  if (secondaryClassName && !secondaryClassRow) {
+    secondaryClassName = "";
+    secondaryClassRow = null;
+  }
+  const human = raceIsHumanType(raceRow);
+  if (!human || nextLevel < 10) {
+    secondaryClassName = "";
+    secondaryClassRow = null;
+  }
+  if (human && nextLevel >= 10 && !secondaryClassRow && options?.autoPickSecondaryClass) {
+    const candidates = resolveSecondaryClassCandidates(className);
+    const picked = randomPick(candidates, null);
+    if (picked) {
+      secondaryClassName = nonEmptyText(picked?.名前);
+      secondaryClassRow = picked;
+    }
+  }
+  const secondaryClassLevels = (human && nextLevel >= 10 && secondaryClassRow) ? 1 : 0;
+  const equipment = normalizeEquipmentList(unit?.equipment);
+  const baseResistances = buildUnitResistances(raceRow, classRow);
+  const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(equipment));
+  const baseSkillLevels = buildUnitSkillLevelsFromClass(raceRow, classRow, built.raceLevels, built.classLevels);
+  const namedBonus = applyNamedStatusSkillBonus(
+    built.status,
+    baseSkillLevels,
+    !!unit?.isNamed && !isSovereignUnit(unit)
+  );
+
+  const nextUnit = {
+    ...unit,
+    level: built.level,
+    status: namedBonus.status,
+    skillLevels: namedBonus.skillLevels,
+    baseResistances,
+    resistances,
+    growthRule: {
+      ...(unit?.growthRule || {}),
+      raceLevels: built.raceLevels,
+      classLevels: built.classLevels,
+      classBonus: built.classBonus,
+      classPerLevelGain: built.classPerLevelGain,
+      secondaryClassName,
+      secondaryClassLevels
+    },
+    secondaryClassName,
+    skills: buildUnitSkillsForProgression({
+      raceRow,
+      classRow,
+      raceLevels: built.raceLevels,
+      classLevels: built.classLevels,
+      secondaryClassRow,
+      secondaryClassLevels
+    })
+  };
+  return {
+    ok: true,
+    unit: nextUnit,
+    level: built.level,
+    raceLevels: built.raceLevels,
+    classLevels: built.classLevels,
+    secondaryClassName
   };
 }
 
@@ -2007,8 +3256,8 @@ function createVillageAndInitialUnit(data) {
   const chosenVillageName = nonEmptyText(props.selectedVillageName);
   const pendingVillageName = chosenVillageName || randomPick(VILLAGE_NAME_POOL, "開拓村");
   const pendingPopulation = initialPopulation;
-  const pendingFoodByType = createInitialFoodStockByType(pendingPopulation);
-  const pendingMaterialByType = createInitialMaterialStockByType(pendingPopulation);
+  const pendingFoodByType = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
+  const pendingMaterialByType = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
 
   villageState.value = {
     id: "village-pending",
@@ -2016,6 +3265,7 @@ function createVillageAndInitialUnit(data) {
     x: null,
     y: null,
     placed: false,
+    cityLevels: normalizeCityLevels({}),
     buildings: [],
     population: pendingPopulation,
     populationByRace: {
@@ -2062,8 +3312,10 @@ function createVillageAndInitialUnit(data) {
   resetVisibilityState();
   mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
   updateVillageInfoText();
-  unitRulesInfoText.value = `キャラ生成ルール: 初期統治者は自動生成 / 村人口(勢力初期人数): ${pendingPopulation} 固定 / モブ上限: 人口の1/10 / ネームド上限 村2 町4 都市7 / ユニット作成(仮) 食料 ${UNIT_CREATION_COST_TEMP.food.穀物}/${UNIT_CREATION_COST_TEMP.food.野菜}/${UNIT_CREATION_COST_TEMP.food.肉} + 資材 ${UNIT_CREATION_COST_TEMP.material.木材}/${UNIT_CREATION_COST_TEMP.material.石材}/${UNIT_CREATION_COST_TEMP.material.鉄} / ターン順: 領土収入→ユニット維持費→村人口消費→不足判定`;
+  const unitCostPreview = buildUnitCreationCost(1);
+  unitRulesInfoText.value = `キャラ生成ルール: 初期統治者は自動生成 / 村人口(勢力初期人数): ${pendingPopulation} 固定 / モブ上限: 人口の1/10 / ネームド上限 村2 町4 都市7 / ユニット作成(仮) 食料 ${formatFoodResourceBag(unitCostPreview.food)} + 資材 ${formatMaterialResourceBag(unitCostPreview.material)} / ターン順: 領土収入→ユニット維持費→村人口消費→不足判定`;
   updateUnitInfoText(`統治者を作成: ${sovereignUnit.name} / ${sovereignUnit.race} / ${sovereignUnit.className} / 村配置先を選択してください。`);
+  resetTestPlayerSlotsFromLiveState();
   emitCharacterStateChange();
 }
 
@@ -2078,11 +3330,13 @@ function canPlaceVillageOnTile(picked) {
 function placeVillageAt(x, y) {
   const selectedRaceName = nonEmptyText(props.selectedRace) || "只人";
   const initialPopulation = resolveInitialVillagePopulationByRace(selectedRaceName);
-  const defaultFoodByType = createInitialFoodStockByType(initialPopulation);
-  const defaultMaterialByType = createInitialMaterialStockByType(initialPopulation);
+  const initialStock = buildInitialVillageStockByTerritory(currentData.value, x, y);
+  const defaultFoodByType = initialStock.food;
+  const defaultMaterialByType = initialStock.material;
   const baseVillage = villageState.value || {
     id: "village-pending",
     name: randomPick(VILLAGE_NAME_POOL, "開拓村"),
+    cityLevels: normalizeCityLevels({}),
     buildings: [],
     population: initialPopulation,
     populationByRace: {
@@ -2098,7 +3352,9 @@ function placeVillageAt(x, y) {
     id: `village-${x}-${y}`,
     x,
     y,
-    placed: true
+    placed: true,
+    foodStockByType: defaultFoodByType,
+    materialStockByType: defaultMaterialByType
   }, selectedRaceName);
   unitList.value = unitList.value.map(unit => ({
     ...unit,
@@ -2117,6 +3373,7 @@ function placeVillageAt(x, y) {
   updateVillageInfoText();
   updateUnitInfoText(`初期村を配置: (${x}, ${y})`);
   pushNationLog(`初期村を配置: (${x}, ${y}) ${villageState.value?.name || ""}`);
+  pushNationLog(`初期資源設定: 領土収入(${initialStock.tiles}マス)x3 / 食料 ${formatFoodResourceBag(defaultFoodByType)} / 資材 ${formatMaterialResourceBag(defaultMaterialByType)}`);
   emitCharacterStateChange();
 }
 
@@ -2136,6 +3393,9 @@ function startVillagePlacementMode() {
 }
 
 function emitCharacterStateChange() {
+  if (!applyingTestPlayerState) {
+    syncActiveTestPlayerSlotFromLiveState();
+  }
   const villageScale = resolveVillageScaleLabel(villageState.value);
   const namedLimit = resolveNamedLimit(villageState.value);
   const namedCount = countPromotedNamedUnits();
@@ -2176,6 +3436,297 @@ function emitCharacterStateChange() {
   });
 }
 
+function deepCloneJsonValue(value, fallback = null) {
+  try {
+    const raw = JSON.stringify(value);
+    if (raw == null) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function buildBinaryMapFromCoordSet(setLike, w, h) {
+  const out = Array.from({ length: h }, () => Array.from({ length: w }, () => 0));
+  if (!setLike || typeof setLike[Symbol.iterator] !== "function") return out;
+  for (const key of setLike) {
+    const parsed = parseCoordKey(nonEmptyText(key));
+    const px = Number(parsed?.x);
+    const py = Number(parsed?.y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    const x = Math.floor(px);
+    const y = Math.floor(py);
+    if (x < 0 || x >= w || y < 0 || y >= h) continue;
+    out[y][x] = 1;
+  }
+  return out;
+}
+
+function cloneEnemySpawnMapForSave(enemySpawnMap) {
+  if (!Array.isArray(enemySpawnMap)) return [];
+  return enemySpawnMap.map(row => {
+    if (!Array.isArray(row)) return [];
+    return row.map(cell => {
+      if (!Array.isArray(cell)) return [];
+      return cell.map(enemy => deepCloneJsonValue(enemy, {}));
+    });
+  });
+}
+
+function buildMapSnapshotForSave() {
+  const data = currentData.value;
+  if (!data || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return null;
+  const w = Math.max(1, Math.floor(toSafeNumber(data.w, 0)));
+  const h = Math.max(1, Math.floor(toSafeNumber(data.h, 0)));
+  const riverData = data?.riverData || {};
+  return {
+    size: { w, h },
+    generation: {
+      patternId: nonEmptyText(data?.patternId) || nonEmptyText(patternId.value),
+      mountainMode: nonEmptyText(data?.mountainMode) || nonEmptyText(mountainMode.value) || "random",
+      patternName: nonEmptyText(data?.patternName),
+      worldWrapEnabled: !!resolveWorldWrapEnabled(data),
+      shapeOnly: !!data?.shapeOnly,
+      terrainRatioProfile: deepCloneJsonValue(data?.terrainRatioProfile, null)
+    },
+    turnState: deepCloneJsonValue(data?.turnState, { turnNumber: 0 }),
+    base: {
+      grid: deepCloneJsonValue(data?.grid, []),
+      heightMap: deepCloneJsonValue(data?.heightMap, []),
+      heightLevelMap: deepCloneJsonValue(data?.heightLevelMap, []),
+      topLayerMap: deepCloneJsonValue(data?.topLayerMap, []),
+      reliefMap: deepCloneJsonValue(data?.reliefMap, []),
+      coastTypeMap: deepCloneJsonValue(data?.coastTypeMap, []),
+      specialMap: deepCloneJsonValue(data?.specialMap, [])
+    },
+    dynamic: {
+      lavaMap: deepCloneJsonValue(data?.lavaMap, []),
+      lavaFlowData: deepCloneJsonValue(data?.lavaFlowData, null),
+      enemySpawnMap: cloneEnemySpawnMapForSave(data?.enemySpawnMap),
+      strongEnemyMap: deepCloneJsonValue(data?.strongEnemyMap, []),
+      river: {
+        riverMap: buildBinaryMapFromCoordSet(riverData?.riverSet, w, h),
+        sourceMap: buildBinaryMapFromCoordSet(riverData?.sourceSet, w, h),
+        branchMap: buildBinaryMapFromCoordSet(riverData?.branchSet, w, h),
+        mouthMap: buildBinaryMapFromCoordSet(riverData?.mouthSet, w, h),
+        waterLinkMap: buildBinaryMapFromCoordSet(riverData?.waterLinkSet, w, h),
+        waterfallMap: buildBinaryMapFromCoordSet(riverData?.waterfallSet, w, h),
+        edgeList: Array.from(riverData?.edgeSet || []).map(v => String(v || "")),
+        waterfallEdgeList: Array.from(riverData?.waterfallEdgeSet || []).map(v => String(v || ""))
+      }
+    },
+    visibility: {
+      exploredTileKeys: Array.from(exploredTileKeys || []).map(v => String(v || "")),
+      visibleTileKeys: Array.from(visibleTileKeys || []).map(v => String(v || "")),
+      spottedEnemyTileKeys: Array.from(spottedEnemyTileKeys || []).map(v => String(v || "")),
+      territory: {
+        player: Array.from(territorySets?.player || []).map(v => String(v || "")),
+        enemy: Array.from(territorySets?.enemy || []).map(v => String(v || ""))
+      }
+    },
+    multiplayer: {
+      activePlayerId: nonEmptyText(activeTestPlayerId.value) || "player-1",
+      players: testPlayerSlots.value.map(slot => ({
+        id: nonEmptyText(slot?.id),
+        label: nonEmptyText(slot?.label),
+        race: nonEmptyText(slot?.race),
+        ready: !!slot?.ready,
+        factionState: deepCloneJsonValue(slot?.factionState, null)
+      }))
+    }
+  };
+}
+
+function buildCoordSetFromBinaryMap(binaryMap, w, h) {
+  const out = new Set();
+  if (!Array.isArray(binaryMap) || !Number.isFinite(w) || !Number.isFinite(h)) return out;
+  for (let y = 0; y < Math.min(h, binaryMap.length); y += 1) {
+    const row = binaryMap[y];
+    if (!Array.isArray(row)) continue;
+    for (let x = 0; x < Math.min(w, row.length); x += 1) {
+      if (toSafeNumber(row[x], 0) > 0) out.add(coordKey(x, y));
+    }
+  }
+  return out;
+}
+
+function restoreRiverDataFromSaveSnapshot(snapshot, w, h) {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const riverSet = buildCoordSetFromBinaryMap(snapshot.riverMap, w, h);
+  const sourceSet = buildCoordSetFromBinaryMap(snapshot.sourceMap, w, h);
+  const branchSet = buildCoordSetFromBinaryMap(snapshot.branchMap, w, h);
+  const mouthSet = buildCoordSetFromBinaryMap(snapshot.mouthMap, w, h);
+  const waterLinkSet = buildCoordSetFromBinaryMap(snapshot.waterLinkMap, w, h);
+  const waterfallSet = buildCoordSetFromBinaryMap(snapshot.waterfallMap, w, h);
+  const edgeSet = new Set(
+    (Array.isArray(snapshot.edgeList) ? snapshot.edgeList : [])
+      .map(v => String(v || ""))
+      .filter(Boolean)
+  );
+  const waterfallEdgeSet = new Set(
+    (Array.isArray(snapshot.waterfallEdgeList) ? snapshot.waterfallEdgeList : [])
+      .map(v => String(v || ""))
+      .filter(Boolean)
+  );
+  return {
+    riverSet,
+    sourceSet,
+    branchSet,
+    mouthSet,
+    edgeSet,
+    waterLinkSet,
+    waterfallSet,
+    waterfallEdgeSet
+  };
+}
+
+function buildMapDataFromSaveSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const w = Math.max(1, Math.floor(toSafeNumber(snapshot?.size?.w, 0)));
+  const h = Math.max(1, Math.floor(toSafeNumber(snapshot?.size?.h, 0)));
+  if (w <= 0 || h <= 0) return null;
+  const riverData = restoreRiverDataFromSaveSnapshot(snapshot?.dynamic?.river, w, h);
+  return {
+    w,
+    h,
+    patternId: nonEmptyText(snapshot?.generation?.patternId) || nonEmptyText(patternId.value),
+    mountainMode: nonEmptyText(snapshot?.generation?.mountainMode) || nonEmptyText(mountainMode.value) || "random",
+    patternName: nonEmptyText(snapshot?.generation?.patternName),
+    terrainRatioProfile: deepCloneJsonValue(snapshot?.generation?.terrainRatioProfile, null),
+    worldWrapEnabled: !!snapshot?.generation?.worldWrapEnabled,
+    shapeOnly: !!snapshot?.generation?.shapeOnly,
+    turnState: deepCloneJsonValue(snapshot?.turnState, { turnNumber: 0 }),
+    grid: deepCloneJsonValue(snapshot?.base?.grid, []),
+    heightMap: deepCloneJsonValue(snapshot?.base?.heightMap, []),
+    heightLevelMap: deepCloneJsonValue(snapshot?.base?.heightLevelMap, []),
+    topLayerMap: deepCloneJsonValue(snapshot?.base?.topLayerMap, []),
+    reliefMap: deepCloneJsonValue(snapshot?.base?.reliefMap, []),
+    coastTypeMap: deepCloneJsonValue(snapshot?.base?.coastTypeMap, []),
+    specialMap: deepCloneJsonValue(snapshot?.base?.specialMap, []),
+    lavaMap: deepCloneJsonValue(snapshot?.dynamic?.lavaMap, []),
+    lavaFlowData: deepCloneJsonValue(snapshot?.dynamic?.lavaFlowData, null),
+    enemySpawnMap: cloneEnemySpawnMapForSave(snapshot?.dynamic?.enemySpawnMap),
+    strongEnemyMap: deepCloneJsonValue(snapshot?.dynamic?.strongEnemyMap, []),
+    riverData
+  };
+}
+
+function normalizeVisibilitySnapshot(raw, fallback = {}) {
+  const source = raw && typeof raw === "object" ? raw : fallback;
+  return {
+    exploredTileKeys: Array.isArray(source?.exploredTileKeys) ? source.exploredTileKeys.map(v => String(v || "")).filter(Boolean) : [],
+    visibleTileKeys: Array.isArray(source?.visibleTileKeys) ? source.visibleTileKeys.map(v => String(v || "")).filter(Boolean) : [],
+    spottedEnemyTileKeys: Array.isArray(source?.spottedEnemyTileKeys) ? source.spottedEnemyTileKeys.map(v => String(v || "")).filter(Boolean) : []
+  };
+}
+
+function normalizeFactionStateFromSave(raw, fallbackVisibility = {}) {
+  if (!raw || typeof raw !== "object") return null;
+  const units = Array.isArray(raw?.units) ? raw.units.map(unit => deepCloneJsonValue(unit, {})) : [];
+  const villageRaw = raw?.village ? deepCloneJsonValue(raw.village, null) : null;
+  const raceFallback = nonEmptyText(raw?.race) || resolveRaceFromUnitList(units);
+  const village = villageRaw ? ensureVillageStateShape(villageRaw, raceFallback) : null;
+  const selected = nonEmptyText(raw?.selectedUnitId) || units[0]?.id || "";
+  const nationLogKey = nonEmptyText(raw?.factionId)
+    || nonEmptyText(units.find(unit => isSovereignUnit(unit))?.id)
+    || "nation-player";
+  return {
+    village,
+    units,
+    selectedUnitId: selected,
+    villagePlacementMode: !!raw?.villagePlacementMode,
+    unitMoveMode: !!raw?.unitMoveMode,
+    nationLogKey,
+    visibility: normalizeVisibilitySnapshot(raw?.visibility, fallbackVisibility)
+  };
+}
+
+function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) {
+  if (!Array.isArray(snapshotPlayers)) return [];
+  const out = [];
+  for (let i = 0; i < snapshotPlayers.length; i += 1) {
+    const row = snapshotPlayers[i];
+    const id = nonEmptyText(row?.id) || `player-${i + 1}`;
+    const label = nonEmptyText(row?.label) || `プレイヤー${i + 1}`;
+    const stateRaw = row?.factionState && typeof row.factionState === "object" ? row.factionState : null;
+    if (!stateRaw) continue;
+    const state = {
+      village: deepCloneJsonValue(stateRaw?.village, null),
+      units: Array.isArray(stateRaw?.units) ? stateRaw.units.map(unit => deepCloneJsonValue(unit, {})) : [],
+      selectedUnitId: nonEmptyText(stateRaw?.selectedUnitId),
+      villagePlacementMode: !!stateRaw?.villagePlacementMode,
+      unitMoveMode: !!stateRaw?.unitMoveMode,
+      nationLogKey: nonEmptyText(stateRaw?.nationLogKey) || `nation-${id}`,
+      visibility: normalizeVisibilitySnapshot(stateRaw?.visibility, fallbackVisibility)
+    };
+    out.push({
+      id,
+      label,
+      race: nonEmptyText(row?.race) || resolveRaceFromUnitList(state.units),
+      ready: !!row?.ready,
+      factionState: state
+    });
+  }
+  return out;
+}
+
+function applyLoadedSaveState(payload) {
+  const mapSnapshot = payload?.mapSnapshot || payload?.map || payload?.saveData?.map || null;
+  const nextData = buildMapDataFromSaveSnapshot(mapSnapshot);
+  if (!nextData) {
+    return { ok: false, reason: "ロード失敗: マップデータ形式が不正です。" };
+  }
+  const fallbackVisibility = normalizeVisibilitySnapshot(mapSnapshot?.visibility, {});
+  const saveFaction = payload?.faction || payload?.saveData?.factions?.[0] || null;
+  const fallbackFactionState = normalizeFactionStateFromSave(saveFaction, fallbackVisibility);
+  const loadedSlots = normalizeTestPlayersFromSave(mapSnapshot?.multiplayer?.players, fallbackVisibility);
+  const loadedActiveId = nonEmptyText(mapSnapshot?.multiplayer?.activePlayerId);
+
+  applyMapData(nextData, {
+    resetClock: false,
+    rebuildCharacters: false,
+    forceCenterOnInit: true
+  });
+
+  nationLogsBySovereign.value = {};
+  const nextSlots = loadedSlots.length
+    ? loadedSlots
+    : [buildTestPlayerSlotFromLiveState("player-1", "プレイヤー1", {
+      factionState: fallbackFactionState || buildLiveFactionStateSnapshot(),
+      ready: false
+    })];
+  testPlayerSlots.value = nextSlots.slice(0, MAX_TEST_PLAYER_COUNT);
+  activeTestPlayerId.value = loadedActiveId
+    && testPlayerSlots.value.some(slot => slot.id === loadedActiveId)
+    ? loadedActiveId
+    : (testPlayerSlots.value[0]?.id || "player-1");
+
+  for (const slot of testPlayerSlots.value) {
+    const sovereign = slot?.factionState?.units?.find(unit => isSovereignUnit(unit)) || slot?.factionState?.units?.[0] || null;
+    const label = nonEmptyText(sovereign?.name) || nonEmptyText(slot?.label) || "統治者";
+    ensureNationLogBucket(nonEmptyText(slot?.factionState?.nationLogKey) || `nation-${slot?.id}`, label);
+  }
+
+  const activeSlot = testPlayerSlots.value.find(slot => slot.id === activeTestPlayerId.value) || testPlayerSlots.value[0] || null;
+  if (activeSlot?.factionState) {
+    applyFactionStateSnapshotToLiveState(activeSlot.factionState, { emitState: true, render: true });
+  } else {
+    renderMapWithPhaser();
+    emitCharacterStateChange();
+  }
+  updateMeta(nextData);
+  pushNationLog("セーブデータをロードしました。");
+  return { ok: true };
+}
+
+function emitSaveSnapshot(reason = "manual") {
+  emit("save-snapshot", {
+    reason: nonEmptyText(reason) || "manual",
+    generatedAt: new Date().toISOString(),
+    snapshot: buildMapSnapshotForSave()
+  });
+}
+
 function canPromoteToNamed(unit) {
   if (!unit || isSovereignUnit(unit) || isNamedUnit(unit)) return false;
   const namedLimit = resolveNamedLimit(villageState.value);
@@ -2194,125 +3745,34 @@ function promoteMobToNamed(unitId) {
     const namedLimit = resolveNamedLimit(villageState.value);
     return { ok: false, reason: `ネームド上限です（${villageScale}: ${namedLimit}体）。` };
   }
+  const namedBonus = applyNamedStatusSkillBonus(unit?.status, unit?.skillLevels, true);
   unitList.value[idx] = {
     ...unit,
     isNamed: true,
-    unitType: "ネームド"
+    unitType: "ネームド",
+    status: namedBonus.status,
+    skillLevels: namedBonus.skillLevels
   };
   return { ok: true };
 }
 
 function configureUnitSquadState(unitId, memberIds = [], options = {}) {
-  const leaderId = nonEmptyText(unitId);
-  const idx = unitList.value.findIndex(unit => unit?.id === leaderId);
-  if (idx < 0) return { ok: false, reason: "対象ユニットが見つかりません。" };
-
-  const currentUnits = unitList.value;
-  const leaderUnit = currentUnits[idx];
-  const leaderX = Number.isFinite(leaderUnit?.x) ? leaderUnit.x : null;
-  const leaderY = Number.isFinite(leaderUnit?.y) ? leaderUnit.y : null;
-  if (!Number.isFinite(leaderX) || !Number.isFinite(leaderY) || leaderX < 0 || leaderY < 0) {
-    return { ok: false, reason: "リーダーの座標が未確定です。" };
-  }
-  if (nonEmptyText(leaderUnit?.squadLeaderId)) {
-    return { ok: false, reason: "このユニットは既に別部隊の隊員です。" };
-  }
-  const selected = [];
-  const seen = new Set();
-  const sourceIds = Array.isArray(memberIds) ? memberIds : [];
-  for (const raw of sourceIds) {
-    const memberId = nonEmptyText(raw);
-    if (!memberId || memberId === leaderId || seen.has(memberId)) continue;
-    const target = currentUnits.find(unit => unit?.id === memberId);
-    if (!target) continue;
-    if (unitHasSquad(target)) {
-      return { ok: false, reason: `${target.name || "ユニット"} は既に部隊リーダーです。` };
-    }
-    const memberLeaderId = nonEmptyText(target?.squadLeaderId);
-    if (memberLeaderId && memberLeaderId !== leaderId) {
-      return { ok: false, reason: `${target.name || "ユニット"} は既に別部隊に所属しています。` };
-    }
-    const targetX = Number.isFinite(target?.x) ? target.x : null;
-    const targetY = Number.isFinite(target?.y) ? target.y : null;
-    if (!Number.isFinite(targetX) || !Number.isFinite(targetY) || targetX !== leaderX || targetY !== leaderY) {
-      return { ok: false, reason: "同じ座標にいるユニットのみ部隊編成できます。" };
-    }
-    seen.add(memberId);
-    selected.push(memberId);
-    if (selected.length >= MAX_SQUAD_MEMBER_COUNT) break;
-  }
-  const selectedSet = new Set(selected);
-  const nextSquadName = nonEmptyText(options?.squadName)
-    || nonEmptyText(leaderUnit?.squadName)
-    || resolveDefaultSquadName(currentUnits);
-  const nextSquadId = nonEmptyText(leaderUnit?.squadId) || `squad-${leaderId}`;
-
-  let nextUnits = currentUnits.map(unit => {
-    if (!unit) return unit;
-    const currentSquads = normalizeSquadEntries(unit?.squads, unit?.id);
-    let nextSquads = currentSquads;
-    let nextLeaderId = nonEmptyText(unit?.squadLeaderId);
-    let nextSquadIdForUnit = nonEmptyText(unit?.squadId);
-    let nextSquadNameForUnit = nonEmptyText(unit?.squadName);
-
-    if (unit.id === leaderId) {
-      nextSquads = [];
-      nextLeaderId = "";
-      nextSquadIdForUnit = "";
-      nextSquadNameForUnit = "";
-    } else {
-      nextSquads = currentSquads.filter(row => !selectedSet.has(row.memberId));
-      if (nextLeaderId === leaderId) {
-        nextLeaderId = "";
-        nextSquadIdForUnit = "";
-        nextSquadNameForUnit = "";
-      }
-      if (selectedSet.has(unit.id)) {
-        nextLeaderId = leaderId;
-        nextSquadIdForUnit = nextSquadId;
-        nextSquadNameForUnit = nextSquadName;
-      }
-    }
-
-    return {
-      ...unit,
-      squads: nextSquads,
-      squadCount: nextSquads.length,
-      squadLeaderId: nextLeaderId,
-      squadId: nextSquadIdForUnit,
-      squadName: nextSquadNameForUnit
-    };
+  const result = configureUnitSquadStateUtil(unitList.value, unitId, memberIds, {
+    squadName: options?.squadName,
+    maxSquadMemberCount: MAX_SQUAD_MEMBER_COUNT,
+    nonEmptyText,
+    normalizeSquadEntries,
+    unitHasSquad,
+    resolveDefaultSquadName
   });
-
-  const nextSquads = selected.map((memberId, order) => {
-    const member = nextUnits.find(unit => unit?.id === memberId);
-    return {
-      id: `${leaderId}-sq-${order + 1}`,
-      memberId,
-      name: nonEmptyText(member?.name) || `隊員${order + 1}`
-    };
-  });
-
-  nextUnits = nextUnits.map(unit => (
-    unit?.id === leaderId
-      ? {
-        ...unit,
-        squads: nextSquads,
-        squadCount: nextSquads.length,
-        squadLeaderId: "",
-        squadId: nextSquads.length ? nextSquadId : "",
-        squadName: nextSquads.length ? nextSquadName : ""
-      }
-      : unit
-  ));
-
-  unitList.value = nextUnits;
+  if (!result?.ok) return result;
+  unitList.value = Array.isArray(result.nextUnits) ? result.nextUnits : unitList.value;
   return {
     ok: true,
-    hasSquad: nextSquads.length > 0,
-    memberCount: nextSquads.length,
-    memberNames: nextSquads.map(row => nonEmptyText(row.name)).filter(Boolean),
-    squadName: nextSquadName
+    hasSquad: !!result.hasSquad,
+    memberCount: Math.max(0, Math.floor(toSafeNumber(result.memberCount, 0))),
+    memberNames: Array.isArray(result.memberNames) ? result.memberNames : [],
+    squadName: nonEmptyText(result.squadName)
   };
 }
 
@@ -2333,27 +3793,32 @@ function removeMobUnit(unitId) {
 }
 
 function renameLeaderSquad(unitId, squadName) {
-  const leaderId = nonEmptyText(unitId);
-  const nextName = nonEmptyText(squadName);
-  if (!leaderId || !nextName) return { ok: false, reason: "部隊名が未入力です。" };
-  const idx = unitList.value.findIndex(unit => unit?.id === leaderId);
-  if (idx < 0) return { ok: false, reason: "部隊リーダーが見つかりません。" };
-  const leader = unitList.value[idx];
-  if (!unitHasSquad(leader)) return { ok: false, reason: "このユニットは部隊を持っていません。" };
-  unitList.value[idx] = {
-    ...leader,
-    squadName: nextName
-  };
-  return { ok: true, squadName: nextName };
+  const result = renameLeaderSquadUtil(unitList.value, unitId, squadName, {
+    nonEmptyText,
+    unitHasSquad
+  });
+  if (!result?.ok) return result;
+  unitList.value = Array.isArray(result.nextUnits) ? result.nextUnits : unitList.value;
+  return { ok: true, squadName: nonEmptyText(result.squadName) };
 }
 
 function dissolveLeaderSquad(unitId) {
-  const leaderId = nonEmptyText(unitId);
-  if (!leaderId) return { ok: false, reason: "部隊リーダーが未指定です。" };
-  const leader = unitList.value.find(unit => unit?.id === leaderId);
-  if (!leader) return { ok: false, reason: "部隊リーダーが見つかりません。" };
-  if (!unitHasSquad(leader)) return { ok: false, reason: "このユニットは部隊を持っていません。" };
-  return configureUnitSquadState(leaderId, [], { squadName: "" });
+  const result = dissolveLeaderSquadUtil(unitList.value, unitId, {
+    maxSquadMemberCount: MAX_SQUAD_MEMBER_COUNT,
+    nonEmptyText,
+    normalizeSquadEntries,
+    unitHasSquad,
+    resolveDefaultSquadName
+  });
+  if (!result?.ok) return result;
+  unitList.value = Array.isArray(result.nextUnits) ? result.nextUnits : unitList.value;
+  return {
+    ok: true,
+    hasSquad: !!result.hasSquad,
+    memberCount: Math.max(0, Math.floor(toSafeNumber(result.memberCount, 0))),
+    memberNames: Array.isArray(result.memberNames) ? result.memberNames : [],
+    squadName: nonEmptyText(result.squadName)
+  };
 }
 
 function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slotKeyRaw = "") {
@@ -2365,6 +3830,30 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
   if (idx < 0) return { ok: false, reason: "対象ユニットが見つかりません。" };
   const row = findEquipmentRowByName(eqName);
   if (!row) return { ok: false, reason: "装備データが見つかりません。" };
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  if (!village?.placed) {
+    return { ok: false, reason: "装備変更には都市（初期村）の配置が必要です。" };
+  }
+  const craftCost = buildEquipmentCraftMaterialCost(row, rarityKey);
+  const smithCap = resolveSmithCraftCap(village);
+  if (craftCost.level > smithCap) {
+    return { ok: false, reason: `鍛冶場Lv不足: 必要Lv${craftCost.level} / 現在Lv${smithCap}` };
+  }
+  if (craftCost.isMagic) {
+    const magicLv = resolveVillageAbilityLevel(village, "魔法", CITY_ABILITY_ACTIVE_CAP);
+    if (craftCost.level > magicLv) {
+      return { ok: false, reason: `魔法Lv不足: 必要Lv${craftCost.level} / 現在Lv${magicLv}` };
+    }
+  }
+  if (craftCost.isFaith) {
+    const faithLv = resolveVillageAbilityLevel(village, "信仰", CITY_ABILITY_ACTIVE_CAP);
+    if (craftCost.level > faithLv) {
+      return { ok: false, reason: `信仰Lv不足: 必要Lv${craftCost.level} / 現在Lv${faithLv}` };
+    }
+  }
+  if (!canAffordEquipmentCraft(village, craftCost)) {
+    return { ok: false, reason: `素材不足: 必要 ${formatMaterialPositiveResourceBag(craftCost.material)}` };
+  }
 
   const target = unitList.value[idx];
   const slotIndex = Math.max(0, Math.floor(toSafeNumber(slotIndexRaw, 0)));
@@ -2389,11 +3878,16 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
     equipment: normalizeEquipmentList(nextEquipment),
     resistances: nextResistances
   };
+  const nextVillage = applyEquipmentCraftCost(village, craftCost);
+  if (nextVillage) {
+    villageState.value = nextVillage;
+  }
   return {
     ok: true,
     equipment: nextItem,
     slotIndex,
-    slotKey
+    slotKey,
+    craftCost
   };
 }
 
@@ -2420,6 +3914,11 @@ function applyCharacterCommand(command) {
   const type = nonEmptyText(command?.type);
   if (!type) return;
 
+  if (type === "requestSaveSnapshot") {
+    emitSaveSnapshot(nonEmptyText(command?.reason) || "manual");
+    return;
+  }
+
   if (type === "startVillagePlacement") {
     startVillagePlacementMode();
     return;
@@ -2427,6 +3926,18 @@ function applyCharacterCommand(command) {
 
   if (type === "openUnitCreate") {
     openUnitCreateModal();
+    return;
+  }
+
+  if (type === "loadSaveState") {
+    const result = applyLoadedSaveState(command?.payload || {});
+    if (!result.ok) {
+      updateUnitInfoText(result.reason || "ロード失敗: データ適用に失敗しました。");
+      audio.playSe("cancel");
+      return;
+    }
+    updateUnitInfoText("ロード完了: セーブデータを反映しました。");
+    audio.playSe("confirm");
     return;
   }
 
@@ -2442,6 +3953,68 @@ function applyCharacterCommand(command) {
       const target = unitList.value.find(unit => unit.id === unitId);
       updateUnitInfoText(`${target?.name || "ユニット"} をネームドに昇格`);
       pushNationLog(`ネームド昇格: ${target?.name || "ユニット"}`);
+    }
+    emitCharacterStateChange();
+    renderMapWithPhaser();
+    return;
+  }
+
+  if (type === "levelUnit") {
+    const idx = unitList.value.findIndex(unit => unit?.id === unitId);
+    if (idx < 0) return;
+    const unit = unitList.value[idx];
+    const delta = Math.max(-5, Math.min(5, Math.floor(toSafeNumber(command?.delta, 1))));
+    const targetLevel = clampUnitLevel(toSafeNumber(unit?.level, INITIAL_LEVEL_MIN) + delta, unit?.level || INITIAL_LEVEL_MIN);
+    const result = rebuildUnitByLevelRules(unit, { level: targetLevel });
+    if (!result.ok || !result.unit) {
+      updateUnitInfoText(`Lv変更失敗: ${result.reason || "更新不可"}`);
+      pushNationLog(`Lv変更失敗: ${result.reason || "更新不可"}`);
+    } else {
+      unitList.value[idx] = result.unit;
+      const secondary = nonEmptyText(result.secondaryClassName);
+      const extra = secondary ? ` / 第2クラス:${secondary}` : "";
+      updateUnitInfoText(`Lv変更: ${result.unit.name} -> Lv${result.level} (種族Lv${result.raceLevels} / クラスLv${result.classLevels})${extra}`);
+      pushNationLog(`Lv変更: ${result.unit.name} / Lv${result.level} (種族Lv${result.raceLevels} / クラスLv${result.classLevels})${extra}`);
+    }
+    emitCharacterStateChange();
+    renderMapWithPhaser();
+    return;
+  }
+
+  if (type === "assignSecondaryClass") {
+    const idx = unitList.value.findIndex(unit => unit?.id === unitId);
+    if (idx < 0) return;
+    const unit = unitList.value[idx];
+    const className = nonEmptyText(command?.secondaryClassName);
+    if (!className) {
+      updateUnitInfoText("第2クラス設定失敗: クラス未指定");
+      return;
+    }
+    const raceRow = findClassRowByName(resolveRaceBaseClassName(unit?.race)) || null;
+    if (!raceIsHumanType(raceRow)) {
+      updateUnitInfoText("第2クラス設定失敗: 人族のみ設定できます。");
+      return;
+    }
+    const level = clampUnitLevel(unit?.level, INITIAL_LEVEL_MIN);
+    if (level < 10) {
+      updateUnitInfoText("第2クラス設定失敗: Lv10以上で設定できます。");
+      return;
+    }
+    if (className === nonEmptyText(unit?.className)) {
+      updateUnitInfoText("第2クラス設定失敗: メインクラスと同じです。");
+      return;
+    }
+    const result = rebuildUnitByLevelRules(unit, {
+      level,
+      secondaryClassName: className
+    });
+    if (!result.ok || !result.unit) {
+      updateUnitInfoText(`第2クラス設定失敗: ${result.reason || "設定不可"}`);
+      pushNationLog(`第2クラス設定失敗: ${result.reason || "設定不可"}`);
+    } else {
+      unitList.value[idx] = result.unit;
+      updateUnitInfoText(`第2クラス設定: ${result.unit.name} / ${result.secondaryClassName || className}`);
+      pushNationLog(`第2クラス設定: ${result.unit.name} / ${result.secondaryClassName || className}`);
     }
     emitCharacterStateChange();
     renderMapWithPhaser();
@@ -2526,8 +4099,10 @@ function applyCharacterCommand(command) {
       const item = result.equipment;
       const rarityText = item?.qualityLabel || formatEquipmentRarityLabel(item?.quality);
       const slotLabel = EQUIPMENT_SLOT_LABELS[result.slotKey] || `Slot${result.slotIndex + 1}`;
-      updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 金${item?.priceGold || 0}(仮)`);
-      pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 金${item?.priceGold || 0}(仮)`);
+      const craftCostText = formatMaterialPositiveResourceBag(result?.craftCost?.material);
+      updateVillageInfoText();
+      updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 素材 ${craftCostText}`);
+      pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 素材 ${craftCostText}`);
     }
     emitCharacterStateChange();
     renderMapWithPhaser();
@@ -2591,7 +4166,8 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
   const range = Number.isFinite(Number(row?.射程)) ? Math.round(toSafeNumber(row?.射程, 0)) : null;
   const itemPriceMultiplier = Math.max(0, toSafeNumber(row?.値段倍率, 1));
   const basePriceGold = Math.max(0, Math.round(20 * itemPriceMultiplier));
-  const requiredMaterial = nonEmptyText(row?.必要素材);
+  const craftCost = buildEquipmentCraftMaterialCost(row, quality);
+  const requiredMaterial = formatMaterialPositiveResourceBag(craftCost.material);
   const resistanceBonus = {};
   for (const key of RESISTANCE_FIELDS) {
     resistanceBonus[key] = Math.round(toSafeNumber(row?.[key], 0) * multiplier);
@@ -2621,6 +4197,8 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
     itemPriceMultiplier,
     priceGold: basePriceGold,
     requiredMaterial,
+    craftLevel: craftCost.level,
+    craftCostMaterial: craftCost.material,
     resistanceBonus,
     traits
   };
@@ -2662,18 +4240,6 @@ function findEquipmentRowByName(name) {
   return equipmentRows.value.find(row => nonEmptyText(row?.装備名) === target) || null;
 }
 
-function collectSkillFieldNames(row) {
-  const names = new Set(ACQUIRED_SKILL_FIELDS);
-  if (!row || typeof row !== "object") return Array.from(names);
-  for (const key of Object.keys(row)) {
-    const raw = nonEmptyText(key);
-    if (!raw) continue;
-    if (/^Skill\d+$/i.test(raw)) names.add(raw);
-    if (/^スキル\d+$/.test(raw)) names.add(raw);
-  }
-  return Array.from(names);
-}
-
 function extractSkillNamesFromValue(value) {
   const text = nonEmptyText(value);
   if (!text || text === "0") return [];
@@ -2683,15 +4249,36 @@ function extractSkillNamesFromValue(value) {
     .filter(part => part && part !== "0");
 }
 
-function buildUnitSkillsFromClass(classRow) {
+function buildUnitSkillsFromRowByLevel(row, levelCount) {
+  const cap = Math.max(0, Math.min(10, Math.floor(toSafeNumber(levelCount, 0))));
+  if (!row || typeof row !== "object" || cap <= 0) return [];
   const skills = [];
-  const fields = collectSkillFieldNames(classRow);
-  for (const field of fields) {
-    const names = extractSkillNamesFromValue(classRow?.[field]);
-    if (!names.length) continue;
-    skills.push(...names);
+  for (let i = 1; i <= cap; i += 1) {
+    const english = `Skill${i}`;
+    const japanese = `スキル${i}`;
+    const names = [
+      ...extractSkillNamesFromValue(row?.[english]),
+      ...extractSkillNamesFromValue(row?.[japanese])
+    ];
+    if (names.length) skills.push(...names);
   }
   return [...new Set(skills)];
+}
+
+function buildUnitSkillsForProgression({
+  raceRow,
+  classRow,
+  raceLevels = 0,
+  classLevels = 0,
+  secondaryClassRow = null,
+  secondaryClassLevels = 0
+} = {}) {
+  const merged = [
+    ...buildUnitSkillsFromRowByLevel(raceRow, raceLevels),
+    ...buildUnitSkillsFromRowByLevel(classRow, classLevels),
+    ...buildUnitSkillsFromRowByLevel(secondaryClassRow, secondaryClassLevels)
+  ];
+  return [...new Set(merged)];
 }
 
 function updateVillageInfoText() {
@@ -2703,15 +4290,17 @@ function updateVillageInfoText() {
     villageInfoText.value = "初期村: -";
     return;
   }
-  const foodText = formatResourceBag(v.foodStockByType, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS);
-  const materialText = formatResourceBag(v.materialStockByType, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS);
+  const foodText = formatFoodResourceBag(v.foodStockByType);
+  const materialText = formatMaterialResourceBag(v.materialStockByType);
   const popText = formatPopulationByRace(v.populationByRace);
   const buildingText = formatVillageBuildingList(v.buildings);
+  const scaleText = resolveVillageScaleLabel(v);
+  const cityAbilityText = formatCityAbilityLevels(v);
   if (!v.placed || !Number.isFinite(v.x) || !Number.isFinite(v.y)) {
-    villageInfoText.value = `初期村: ${v.name} / 未配置 (マップをクリックして配置) / 人口 ${formatCompactNumber(v.population)} (${popText}) / 食料 ${formatCompactNumber(v.foodStock)} [${foodText}] / 資材 ${formatCompactNumber(v.materialStock)} [${materialText}] / 建物 ${buildingText}`;
+    villageInfoText.value = `初期村: ${v.name} / 規模 ${scaleText} / 未配置 (マップをクリックして配置) / 人口 ${formatCompactNumber(v.population)} (${popText}) / 食料 ${formatCompactNumber(v.foodStock)} [${foodText}] / 資材 ${formatCompactNumber(v.materialStock)} [${materialText}] / 能力 ${cityAbilityText} / 建物 ${buildingText}`;
     return;
   }
-  villageInfoText.value = `初期村: ${v.name} / 座標 (${v.x}, ${v.y}) / 人口 ${formatCompactNumber(v.population)} (${popText}) / 食料 ${formatCompactNumber(v.foodStock)} [${foodText}] / 資材 ${formatCompactNumber(v.materialStock)} [${materialText}] / 建物 ${buildingText}`;
+  villageInfoText.value = `初期村: ${v.name} / 規模 ${scaleText} / 座標 (${v.x}, ${v.y}) / 人口 ${formatCompactNumber(v.population)} (${popText}) / 食料 ${formatCompactNumber(v.foodStock)} [${foodText}] / 資材 ${formatCompactNumber(v.materialStock)} [${materialText}] / 能力 ${cityAbilityText} / 建物 ${buildingText}`;
 }
 
 function updateUnitInfoText(extra = "") {
@@ -2747,96 +4336,100 @@ function resolveTileTerrainForYield(data, x, y) {
   return nonEmptyText(data.grid?.[y]?.[x]);
 }
 
-function collectTerritoryIncome(data, ownedSet) {
-  const income = {
+function buildInitialVillageStockByTerritory(data, x, y) {
+  const result = {
     food: buildEmptyResourceBag(FOOD_RESOURCE_KEYS),
     material: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS),
     tiles: 0
   };
-  if (!data?.grid || !(ownedSet instanceof Set) || !ownedSet.size) return income;
-  const yields = terrainYieldMap.value;
-  for (const key of ownedSet) {
-    const pos = parseCoordKey(key);
-    if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) continue;
-    if (pos.x < 0 || pos.y < 0 || pos.x >= data.w || pos.y >= data.h) continue;
-    const terrain = resolveTileTerrainForYield(data, pos.x, pos.y);
-    const row = yields.get(terrain) || null;
-    if (!row) continue;
-    income.tiles += 1;
-    for (const foodKey of FOOD_RESOURCE_KEYS) {
-      income.food[foodKey] = roundTo1(income.food[foodKey] + toSafeNumber(row?.[foodKey], 0));
-    }
-    for (const matKey of MATERIAL_RESOURCE_KEYS) {
-      income.material[matKey] = roundTo1(income.material[matKey] + toSafeNumber(row?.[matKey], 0));
+  if (!data?.grid || !Number.isFinite(x) || !Number.isFinite(y)) return result;
+  if (x < 0 || y < 0 || x >= data.w || y >= data.h) return result;
+
+  const ownedSet = new Set([coordKey(x, y)]);
+  const queue = [{ x, y, d: 0 }];
+  while (queue.length) {
+    const cur = queue.shift();
+    if (!cur || cur.d >= PLAYER_TERRITORY_RANGE) continue;
+    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, cur.x, cur.y, resolveWorldWrapEnabled(data));
+    for (const n of neighbors) {
+      const key = coordKey(n.x, n.y);
+      if (ownedSet.has(key)) continue;
+      if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
+      ownedSet.add(key);
+      queue.push({ x: n.x, y: n.y, d: cur.d + 1 });
     }
   }
+
+  const territoryIncome = collectTerritoryIncome(data, ownedSet);
+  result.tiles = Math.max(0, Math.floor(toSafeNumber(territoryIncome.tiles, 0)));
+  result.food = scaleResourceBagByFactor(territoryIncome.food, FOOD_RESOURCE_KEYS, 3);
+  result.material = scaleResourceBagByFactor(territoryIncome.material, MATERIAL_RESOURCE_KEYS, 3);
+  return result;
+}
+
+function collectTerritoryIncome(data, ownedSet) {
+  const rawIncome = collectTerritoryIncomeUtil(
+    data,
+    ownedSet,
+    FOOD_RESOURCE_KEYS,
+    MATERIAL_RESOURCE_SOURCE_KEYS,
+    {
+      roundTo1,
+      toSafeNumber,
+      parseCoordKey,
+      resolveTileTerrainForYield,
+      terrainYieldMap: terrainYieldMap.value
+    }
+  );
+  const income = {
+    food: rawIncome.food,
+    material: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS),
+    tiles: rawIncome.tiles
+  };
+  for (const sourceKey of MATERIAL_RESOURCE_SOURCE_KEYS) {
+    const resourceKey = MATERIAL_SOURCE_TO_RESOURCE_MAP[sourceKey];
+    if (!resourceKey) continue;
+    income.material[resourceKey] = roundTo1(
+      income.material[resourceKey] + toSafeNumber(rawIncome.material?.[sourceKey], 0)
+    );
+  }
+  const gainScale = ECONOMY_GAIN_SCALE * resolveEconomyGainMultiplier(villageState.value);
+  income.food = scaleResourceBagByFactor(income.food, FOOD_RESOURCE_KEYS, gainScale);
+  income.material = scaleResourceBagByFactor(income.material, MATERIAL_RESOURCE_KEYS, gainScale);
   return income;
 }
 
 function consumeFoodWithSubstitution(stockBag, demandBag, fallbackMultiplier = FOOD_SUBSTITUTE_MULTIPLIER) {
-  const stocks = normalizeResourceBag(stockBag, FOOD_RESOURCE_KEYS);
-  const before = { ...stocks };
-  const shortageByType = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
-  const safeMultiplier = Math.max(1, toSafeNumber(fallbackMultiplier, FOOD_SUBSTITUTE_MULTIPLIER));
-
-  for (const key of FOOD_RESOURCE_KEYS) {
-    const demand = Math.max(0, roundTo1(toSafeNumber(demandBag?.[key], 0)));
-    if (demand <= 0) continue;
-    const direct = Math.min(stocks[key], demand);
-    stocks[key] = roundTo1(stocks[key] - direct);
-    const deficit = roundTo1(demand - direct);
-    if (deficit <= 0) continue;
-    let remainingEquivalent = roundTo1(deficit * safeMultiplier);
-    const donors = FOOD_RESOURCE_KEYS
-      .filter(foodKey => foodKey !== key)
-      .sort((a, b) => stocks[b] - stocks[a]);
-    for (const donor of donors) {
-      if (remainingEquivalent <= 0) break;
-      const take = Math.min(stocks[donor], remainingEquivalent);
-      if (take <= 0) continue;
-      stocks[donor] = roundTo1(stocks[donor] - take);
-      remainingEquivalent = roundTo1(remainingEquivalent - take);
-    }
-    if (remainingEquivalent > 0) {
-      shortageByType[key] = roundTo1(shortageByType[key] + (remainingEquivalent / safeMultiplier));
-    }
-  }
-
-  const consumedByType = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
-  for (const key of FOOD_RESOURCE_KEYS) {
-    consumedByType[key] = roundTo1(before[key] - stocks[key]);
-  }
-  return {
-    nextStock: stocks,
-    consumedByType,
-    shortageByType,
-    shortageTotal: sumResourceBag(shortageByType, FOOD_RESOURCE_KEYS)
-  };
+  return consumeFoodWithSubstitutionUtil(
+    stockBag,
+    demandBag,
+    FOOD_RESOURCE_KEYS,
+    fallbackMultiplier,
+    { toSafeNumber, roundTo1 }
+  );
 }
 
 function buildUnitUpkeepFoodDemand() {
-  const demand = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
-  for (const unit of unitList.value) {
-    const profile = resolveRaceFoodProfile(unit?.race);
-    addToResourceBag(demand, profile, FOOD_RESOURCE_KEYS);
-  }
-  return demand;
+  const demand = buildUnitUpkeepFoodDemandUtil(
+    unitList.value,
+    FOOD_RESOURCE_KEYS,
+    resolveRaceFoodProfile,
+    { roundTo1, toSafeNumber }
+  );
+  return scaleResourceBagByFactor(demand, FOOD_RESOURCE_KEYS, ECONOMY_CONSUMPTION_SCALE);
 }
 
 function buildPopulationFoodDemand(village) {
-  const demand = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
-  const popByRace = village?.populationByRace || {};
-  for (const [race, countRaw] of Object.entries(popByRace)) {
-    const count = Math.max(0, Math.floor(toSafeNumber(countRaw, 0)));
-    if (count <= 0) continue;
-    const profile = resolveRaceFoodProfile(race);
-    const scaled = multiplyResourceBag(profile, count, FOOD_RESOURCE_KEYS);
-    addToResourceBag(demand, scaled, FOOD_RESOURCE_KEYS);
-  }
-  return demand;
+  const demand = buildPopulationFoodDemandUtil(
+    village,
+    FOOD_RESOURCE_KEYS,
+    resolveRaceFoodProfile,
+    { roundTo1, toSafeNumber }
+  );
+  return scaleResourceBagByFactor(demand, FOOD_RESOURCE_KEYS, ECONOMY_CONSUMPTION_SCALE);
 }
 
-function processVillageEconomyTurn(data) {
+function processVillageEconomyTurn(data, options = {}) {
   if (!data?.grid) {
     return { applied: false, notes: ["経済処理: マップ未生成"] };
   }
@@ -2844,7 +4437,7 @@ function processVillageEconomyTurn(data) {
     return { applied: false, notes: ["経済処理: 初期村未配置"] };
   }
 
-  const raceFallback = nonEmptyText(props.selectedRace) || "只人";
+  const raceFallback = nonEmptyText(options?.raceFallback) || nonEmptyText(props.selectedRace) || "只人";
   const village = ensureVillageStateShape(villageState.value, raceFallback);
   if (!village) {
     return { applied: false, notes: ["経済処理: 村データ不正"] };
@@ -2853,37 +4446,59 @@ function processVillageEconomyTurn(data) {
 
   const territoryIncome = collectTerritoryIncome(data, territorySets.player);
   const buildingIncome = collectVillageBuildingIncome(village);
-  addToResourceBag(village.foodStockByType, territoryIncome.food, FOOD_RESOURCE_KEYS);
-  addToResourceBag(village.materialStockByType, territoryIncome.material, MATERIAL_RESOURCE_KEYS);
-  addToResourceBag(village.foodStockByType, buildingIncome.food, FOOD_RESOURCE_KEYS);
-  addToResourceBag(village.materialStockByType, buildingIncome.material, MATERIAL_RESOURCE_KEYS);
-
   const unitUpkeepDemand = buildUnitUpkeepFoodDemand();
-  const upkeepResult = consumeFoodWithSubstitution(village.foodStockByType, unitUpkeepDemand, FOOD_SUBSTITUTE_MULTIPLIER);
-  village.foodStockByType = upkeepResult.nextStock;
-
   const populationDemand = buildPopulationFoodDemand(village);
-  const popResult = consumeFoodWithSubstitution(village.foodStockByType, populationDemand, FOOD_SUBSTITUTE_MULTIPLIER);
-  village.foodStockByType = popResult.nextStock;
-
-  const shortageTotal = roundTo1(upkeepResult.shortageTotal + popResult.shortageTotal);
-  const populationDelta = adjustVillagePopulationForTurn(village, shortageTotal);
+  const economyCore = applyVillageEconomyTurnUtil(village, {
+    territoryIncome,
+    buildingIncome,
+    unitUpkeepDemand,
+    populationDemand,
+    foodKeys: FOOD_RESOURCE_KEYS,
+    materialKeys: MATERIAL_RESOURCE_KEYS,
+    fallbackMultiplier: FOOD_SUBSTITUTE_MULTIPLIER,
+    adjustVillagePopulationForTurn: shortage => adjustVillagePopulationForTurn(village, shortage)
+  }, { roundTo1, toSafeNumber });
+  const upkeepResult = economyCore.upkeepResult;
+  const popResult = economyCore.popResult;
+  const shortageTotal = economyCore.shortageTotal;
+  const populationDelta = economyCore.populationDelta;
   const normalizedVillage = ensureVillageStateShape(village, raceFallback);
   villageState.value = normalizedVillage;
   updateVillageInfoText();
-  emitCharacterStateChange();
+  if (options.emitState !== false) emitCharacterStateChange();
 
-  const lines = [
-    `領土収入: 食料 +${formatResourceBag(territoryIncome.food, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS)} / 資材 +${formatResourceBag(territoryIncome.material, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS)} (領土${territoryIncome.tiles}マス)`,
-    `建設補正収入: ${buildingIncome.count > 0 ? `${formatVillageBuildingBonus(buildingIncome)} (建物${buildingIncome.count}件)` : "なし"}`,
-    `ユニット維持費: 食料 -${formatResourceBag(upkeepResult.consumedByType, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS)}${upkeepResult.shortageTotal > 0 ? ` / 不足${formatCompactNumber(upkeepResult.shortageTotal)}` : ""}`,
-    `村人口消費: 食料 -${formatResourceBag(popResult.consumedByType, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS)}${popResult.shortageTotal > 0 ? ` / 不足${formatCompactNumber(popResult.shortageTotal)}` : ""}`,
-    shortageTotal > 0
-      ? `不足ペナルティ: 後回し（将来イベント化） / 不足合計 ${formatCompactNumber(shortageTotal)}`
-      : "不足ペナルティ: なし",
-    `人口変動: ${populationDelta >= 0 ? "+" : ""}${populationDelta} -> ${formatCompactNumber(normalizedVillage.population)}人 (${formatPopulationByRace(normalizedVillage.populationByRace)})`
-  ];
-  lastEconomySummary.value = `経済: T${mapTurnNumber.value} / 食料${formatCompactNumber(normalizedVillage.foodStock)} / 資材${formatCompactNumber(normalizedVillage.materialStock)} / 人口${formatCompactNumber(normalizedVillage.population)}`;
+  const reportFormatResourceBag = (bag, keys, labels) => {
+    const safeKeys = Array.isArray(keys) ? keys : [];
+    if (safeKeys.some(key => FOOD_RESOURCE_KEYS.includes(key) || FOOD_RESOURCE_SIMPLE_KEYS.includes(key))) {
+      return formatResourceBag(toFoodDisplayBag(bag), safeKeys, labels);
+    }
+    if (safeKeys.some(key => MATERIAL_RESOURCE_KEYS.includes(key) || MATERIAL_RESOURCE_SIMPLE_KEYS.includes(key) || key === "金属")) {
+      return formatResourceBag(toMaterialDisplayBag(bag), safeKeys, labels);
+    }
+    return formatResourceBag(bag, safeKeys, labels);
+  };
+
+  const report = buildVillageEconomyTurnReportUtil({
+    territoryIncome,
+    buildingIncome,
+    upkeepResult,
+    popResult,
+    shortageTotal,
+    populationDelta,
+    normalizedVillage,
+    mapTurnNumber: mapTurnNumber.value,
+    foodKeys: foodDisplayKeys.value,
+    materialKeys: materialDisplayKeys.value,
+    foodLabels: foodDisplayLabels.value,
+    materialLabels: materialDisplayLabels.value
+  }, {
+    formatResourceBag: reportFormatResourceBag,
+    formatCompactNumber,
+    formatVillageBuildingBonus,
+    formatPopulationByRace
+  });
+  const lines = report.lines;
+  lastEconomySummary.value = report.summary;
   return {
     applied: true,
     notes: lines,
@@ -2961,6 +4576,314 @@ function unitsAt(x, y) {
   return unitList.value.filter(unit => unit.x === x && unit.y === y);
 }
 
+function scaleNumericMapValues(input, multiplier) {
+  if (!input || typeof input !== "object") return input;
+  const out = {};
+  const scale = Math.max(0, toSafeNumber(multiplier, 1));
+  for (const [key, value] of Object.entries(input)) {
+    const numeric = toSafeNumber(value, NaN);
+    out[key] = Number.isFinite(numeric) ? Math.round(numeric * scale) : value;
+  }
+  return out;
+}
+
+function applyNamedStatusSkillBonus(status, skillLevels, enabled = false) {
+  if (!enabled) {
+    return { status, skillLevels };
+  }
+  return {
+    status: scaleNumericMapValues(status, NAMED_STATUS_SKILL_BONUS_MULTIPLIER),
+    skillLevels: scaleNumericMapValues(skillLevels, NAMED_STATUS_SKILL_BONUS_MULTIPLIER)
+  };
+}
+
+function resolveEncounterScoutValueForUnit(unit) {
+  const skillScout = resolveUnitScoutValue(unit);
+  const fallbackScout = Math.max(0, roundTo1(toSafeNumber(unit?.scoutRange, 0)));
+  return Math.max(skillScout, fallbackScout);
+}
+
+function resolveUnitVisionRange(unit) {
+  const scoutValue = Math.max(0, roundTo1(resolveEncounterScoutValueForUnit(unit)));
+  const bonusRange = Math.max(0, Math.floor(scoutValue / UNIT_VISION_SCOUT_STEP));
+  return Math.max(0, UNIT_VISION_BASE_RANGE + bonusRange);
+}
+
+function resolveEncounterStealthValueForUnit(unit) {
+  return Math.max(0, resolveUnitStealthValue(unit));
+}
+
+function resolveEncounterScoutValueForEnemy(enemy) {
+  return Math.max(0, roundTo1(toSafeNumber(enemy?.skillLevels?.索敵, 0)));
+}
+
+function resolveEncounterStealthValueForEnemy(enemy) {
+  return Math.max(0, roundTo1(toSafeNumber(enemy?.skillLevels?.隠密, 0)));
+}
+
+function resolveEncounterGroupSense(scoutValues = [], stealthValues = []) {
+  const scouts = (Array.isArray(scoutValues) ? scoutValues : [])
+    .map(v => Math.max(0, roundTo1(toSafeNumber(v, 0))))
+    .sort((a, b) => b - a);
+  const steaths = (Array.isArray(stealthValues) ? stealthValues : [])
+    .map(v => Math.max(0, roundTo1(toSafeNumber(v, 0))));
+  const maxScout = scouts.length ? scouts[0] : 0;
+  const supportScout = scouts.slice(1).reduce((sum, value) => sum + (value / 5), 0);
+  const totalStealth = steaths.reduce((sum, value) => sum + value, 0);
+  const count = Math.max(1, steaths.length || scouts.length);
+  const stealthDivisor = count > 1 ? Math.max(1, count * 0.75) : 1;
+  return {
+    scout: roundTo1(maxScout + supportScout),
+    stealth: roundTo1(totalStealth / stealthDivisor),
+    count
+  };
+}
+
+function buildPlayerEncounterGroups() {
+  const groups = [];
+  const byId = new Map(unitList.value.map(unit => [unit?.id, unit]));
+  const squadSummaries = buildSquadSummaryList(unitList.value);
+  const groupedUnitIds = new Set();
+
+  for (const summary of squadSummaries) {
+    const leader = byId.get(summary?.leaderId);
+    if (!leader || !Number.isFinite(leader?.x) || !Number.isFinite(leader?.y)) continue;
+    const members = (Array.isArray(summary?.memberIds) ? summary.memberIds : [])
+      .map(id => byId.get(id))
+      .filter(Boolean);
+    const membersAll = [leader, ...members];
+    for (const row of membersAll) groupedUnitIds.add(row.id);
+    const sense = resolveEncounterGroupSense(
+      membersAll.map(resolveEncounterScoutValueForUnit),
+      membersAll.map(resolveEncounterStealthValueForUnit)
+    );
+    groups.push({
+      id: `player-squad-${leader.id}`,
+      type: "squad",
+      label: nonEmptyText(summary?.name) || nonEmptyText(leader?.name) || "部隊",
+      x: leader.x,
+      y: leader.y,
+      scout: sense.scout,
+      stealth: sense.stealth,
+      count: membersAll.length,
+      unitNames: membersAll.map(unit => nonEmptyText(unit?.name)).filter(Boolean)
+    });
+  }
+
+  for (const unit of unitList.value) {
+    if (!unit || groupedUnitIds.has(unit.id)) continue;
+    if (nonEmptyText(unit?.squadLeaderId)) continue;
+    if (!Number.isFinite(unit?.x) || !Number.isFinite(unit?.y) || unit.x < 0 || unit.y < 0) continue;
+    const sense = resolveEncounterGroupSense(
+      [resolveEncounterScoutValueForUnit(unit)],
+      [resolveEncounterStealthValueForUnit(unit)]
+    );
+    groups.push({
+      id: `player-solo-${unit.id}`,
+      type: "solo",
+      label: nonEmptyText(unit?.name) || "探索キャラ",
+      x: unit.x,
+      y: unit.y,
+      scout: sense.scout,
+      stealth: sense.stealth,
+      count: 1,
+      unitNames: [nonEmptyText(unit?.name) || "探索キャラ"]
+    });
+  }
+  return groups;
+}
+
+function buildEnemyEncounterGroups(data = currentData.value) {
+  if (!Array.isArray(data?.enemySpawnMap)) return [];
+  const groups = [];
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const enemies = enemiesAt(x, y, data);
+      if (!enemies.length) continue;
+      const sense = resolveEncounterGroupSense(
+        enemies.map(resolveEncounterScoutValueForEnemy),
+        enemies.map(resolveEncounterStealthValueForEnemy)
+      );
+      const first = enemies[0];
+      groups.push({
+        id: `enemy-${x}-${y}`,
+        x,
+        y,
+        scout: sense.scout,
+        stealth: sense.stealth,
+        count: enemies.length,
+        strong: enemies.some(enemy => !!enemy?.strong),
+        names: enemies.map(enemy => nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵")
+          .filter(Boolean),
+        topLevel: enemies.reduce((maxLv, enemy) => Math.max(maxLv, Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)))), 1),
+        terrain: nonEmptyText(first?.matchedTerrain) || nonEmptyText(data?.grid?.[y]?.[x]) || "-"
+      });
+    }
+  }
+  return groups;
+}
+
+function resolveEncounterDistance(playerGroup, enemyGroup) {
+  if (!playerGroup || !enemyGroup) return Number.POSITIVE_INFINITY;
+  return hexDistance(
+    { x: playerGroup.x, y: playerGroup.y },
+    { x: enemyGroup.x, y: enemyGroup.y }
+  );
+}
+
+function runEnemyEncounterCheck(options = {}) {
+  const context = nonEmptyText(options?.context) || "turn";
+  const focusPos = options?.focusPos;
+  const data = currentData.value;
+  if (!data || data.shapeOnly || !Array.isArray(data.enemySpawnMap)) {
+    return { context, entries: [], notes: [] };
+  }
+
+  const playerGroups = buildPlayerEncounterGroups().filter(group => {
+    if (!focusPos || !Number.isFinite(focusPos?.x) || !Number.isFinite(focusPos?.y)) return true;
+    return group.x === focusPos.x && group.y === focusPos.y;
+  });
+  const enemyGroups = buildEnemyEncounterGroups(data);
+  const entries = [];
+  let discoveredAnyEnemy = false;
+
+  for (const player of playerGroups) {
+    for (const enemy of enemyGroups) {
+      const distance = resolveEncounterDistance(player, enemy);
+      if (!Number.isFinite(distance)) continue;
+      const enemyTileKey = coordKey(enemy.x, enemy.y);
+      const alreadySpottedEnemy = spottedEnemyTileKeys.has(enemyTileKey);
+      const playerEffectiveScout = roundTo1(player.scout - (distance * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE));
+      const enemyEffectiveScout = roundTo1(enemy.scout - (distance * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE));
+      const playerFoundEnemy = playerEffectiveScout > enemy.stealth;
+      const enemyFoundPlayer = enemyEffectiveScout > player.stealth;
+      if (!playerFoundEnemy && !enemyFoundPlayer) continue;
+      let newlySpottedEnemy = false;
+      if (playerFoundEnemy) {
+        newlySpottedEnemy = markEnemySpotted(enemy.x, enemy.y, data);
+        discoveredAnyEnemy = newlySpottedEnemy || discoveredAnyEnemy;
+      }
+
+      let enemyAttack = false;
+      let ambushByFumble = false;
+      let attackChance = 0;
+      let attackRoll = null;
+      let fumbleRoll = null;
+      if (enemyFoundPlayer) {
+        fumbleRoll = Math.random();
+        if (fumbleRoll < ENCOUNTER_FUMBLE_CHANCE) {
+          ambushByFumble = true;
+          enemyAttack = true;
+        } else {
+          attackChance = clampNumber(
+            ENCOUNTER_ATTACK_BASE_CHANCE + ((enemyEffectiveScout - player.stealth) * ENCOUNTER_ATTACK_DIFF_FACTOR),
+            ENCOUNTER_ATTACK_MIN_CHANCE,
+            ENCOUNTER_ATTACK_MAX_CHANCE
+          );
+          attackRoll = Math.random();
+          enemyAttack = attackRoll < attackChance;
+        }
+      }
+
+      entries.push({
+        context,
+        playerGroup: {
+          id: player.id,
+          label: player.label,
+          type: player.type,
+          x: player.x,
+          y: player.y,
+          scout: player.scout,
+          stealth: player.stealth,
+          count: player.count,
+          unitNames: player.unitNames
+        },
+        enemyGroup: {
+          id: enemy.id,
+          x: enemy.x,
+          y: enemy.y,
+          scout: enemy.scout,
+          stealth: enemy.stealth,
+          count: enemy.count,
+          topLevel: enemy.topLevel,
+          terrain: enemy.terrain,
+          strong: enemy.strong,
+          names: enemy.names
+        },
+        distance,
+        enemyTileKey,
+        alreadySpottedEnemy,
+        newlySpottedEnemy,
+        playerEffectiveScout,
+        enemyEffectiveScout,
+        playerFoundEnemy,
+        enemyFoundPlayer,
+        enemyAttack,
+        ambushByFumble,
+        attackChance,
+        attackRoll,
+        fumbleRoll
+      });
+    }
+  }
+
+  const notes = [];
+  if (!entries.length) {
+    notes.push(
+      context === "move"
+        ? "索敵判定(移動): 周辺に敵影なし"
+        : "索敵判定(ターン): 敵影なし"
+    );
+  } else {
+    const emittedNotes = [];
+    for (const entry of entries) {
+      if (entry.alreadySpottedEnemy && !entry.newlySpottedEnemy) {
+        // Already discovered enemy should not be logged repeatedly.
+        continue;
+      }
+      const playerTag = `${entry.playerGroup.label}(索${entry.playerGroup.scout}/隠${entry.playerGroup.stealth})`;
+      const enemyTag = `${entry.enemyGroup.names[0] || "敵"}x${entry.enemyGroup.count}(索${entry.enemyGroup.scout}/隠${entry.enemyGroup.stealth})`;
+      const detectText = entry.playerFoundEnemy ? "発見成功" : "未発見";
+      const foundByEnemyText = entry.enemyFoundPlayer ? "被発見" : "未発見";
+      let attackText = "接敵なし";
+      if (entry.enemyFoundPlayer) {
+        if (entry.ambushByFumble) {
+          attackText = "不意打ち被弾(ファンブル)";
+        } else if (entry.enemyAttack) {
+          attackText = `襲撃判定成功(${Math.round(entry.attackChance * 100)}%)`;
+        } else {
+          attackText = `襲撃判定失敗(${Math.round(entry.attackChance * 100)}%)`;
+        }
+      }
+      emittedNotes.push(
+        `索敵: ${playerTag} vs ${enemyTag} / 距離${entry.distance} / ${detectText} / ${foundByEnemyText} / ${attackText}`
+      );
+      if (emittedNotes.length >= ENCOUNTER_MAX_LOG_LINES) break;
+    }
+    notes.push(...emittedNotes);
+    const suppressedCount = entries.length - emittedNotes.length;
+    if (suppressedCount > 0 && !notes.length) {
+      notes.push(
+        context === "move"
+          ? "索敵判定(移動): 既知敵のみ（新規ログなし）"
+          : "索敵判定(ターン): 既知敵のみ（新規ログなし）"
+      );
+    }
+    if (entries.length > emittedNotes.length && emittedNotes.length >= ENCOUNTER_MAX_LOG_LINES) {
+      notes.push(`索敵: ほか ${entries.length - emittedNotes.length} 件(既知含む)`);
+    }
+  }
+
+  console.log("[EncounterCheck]", { context, entries, notes });
+  for (const note of notes) {
+    pushNationLog(note);
+  }
+  if (discoveredAnyEnemy) {
+    renderMapWithPhaser();
+  }
+  return { context, entries, notes };
+}
+
 function normalizeVolumePercent(value, fallback = 100) {
   const raw = Number.isFinite(value) ? value : Number(value);
   const safe = Number.isFinite(raw) ? Math.round(raw) : fallback;
@@ -3013,6 +4936,7 @@ function applyDisplaySettingChange(payload) {
   if (key === "section_display" || key === "section_audio") return;
   if (key === "showHeightNumbers") showHeightNumbers.value = !!value;
   else if (key === "useHeightShading") useHeightShading.value = !!value;
+  else if (key === "useFiveResourceMode") useFiveResourceMode.value = !!value;
   else if (key === "showSpecialTilesAlways") showSpecialTilesAlways.value = !!value;
   else if (key === "showWaterfallEffects") showWaterfallEffects.value = !!value;
   else if (key === "showStrongEnemyMarkers") showStrongEnemyMarkers.value = !!value;
@@ -3060,10 +4984,6 @@ function mapPixelSize(w, h) {
   };
 }
 
-function clampNumber(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
 function normalizeFocusPoint(focusWorld) {
   if (!focusWorld) return null;
   const fx = Number(focusWorld.x);
@@ -3072,134 +4992,34 @@ function normalizeFocusPoint(focusWorld) {
   return { x: fx, y: fy };
 }
 
-function getCameraCenter(camera, viewW, viewH) {
-  const zoom = Number.isFinite(camera?.zoom) && camera.zoom > 0 ? camera.zoom : 1;
-  return {
-    x: (camera?.scrollX || 0) + (viewW / zoom) / 2,
-    y: (camera?.scrollY || 0) + (viewH / zoom) / 2
-  };
-}
-
-function clampCameraCenter(center, worldW, worldH, viewW, viewH, zoom) {
-  const halfW = (viewW / Math.max(zoom, 0.01)) / 2;
-  const halfH = (viewH / Math.max(zoom, 0.01)) / 2;
-  const minX = halfW;
-  const maxX = worldW - halfW;
-  const minY = halfH;
-  const maxY = worldH - halfH;
-  return {
-    x: minX > maxX ? worldW / 2 : clampNumber(center.x, minX, maxX),
-    y: minY > maxY ? worldH / 2 : clampNumber(center.y, minY, maxY)
-  };
-}
-
-function createBoundsAccumulator() {
-  return {
-    minX: Infinity,
-    minY: Infinity,
-    maxX: -Infinity,
-    maxY: -Infinity
-  };
-}
-
-function extendBoundsWithPoints(acc, points) {
-  if (!acc || !Array.isArray(points)) return;
-  for (const p of points) {
-    const x = Number(p?.x);
-    const y = Number(p?.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    if (x < acc.minX) acc.minX = x;
-    if (x > acc.maxX) acc.maxX = x;
-    if (y < acc.minY) acc.minY = y;
-    if (y > acc.maxY) acc.maxY = y;
-  }
-}
-
-function finalizeBounds(acc, fallbackW = 0, fallbackH = 0) {
-  if (
-    !acc
-    || !Number.isFinite(acc.minX)
-    || !Number.isFinite(acc.maxX)
-    || !Number.isFinite(acc.minY)
-    || !Number.isFinite(acc.maxY)
-    || acc.maxX <= acc.minX
-    || acc.maxY <= acc.minY
-  ) {
-    return {
-      minX: 0,
-      minY: 0,
-      maxX: Math.max(0, fallbackW),
-      maxY: Math.max(0, fallbackH)
-    };
-  }
-  return {
-    minX: acc.minX,
-    minY: acc.minY,
-    maxX: acc.maxX,
-    maxY: acc.maxY
-  };
-}
+const clampNumber = clampNumberUtil;
+const getCameraCenter = getCameraCenterUtil;
+const clampCameraCenter = clampCameraCenterUtil;
+const createBoundsAccumulator = createBoundsAccumulatorUtil;
+const extendBoundsWithPoints = extendBoundsWithPointsUtil;
+const finalizeBounds = finalizeBoundsUtil;
 
 function clampCameraScroll(camera, worldW, worldH, viewW, viewH, options = {}) {
-  if (!camera) return;
-  const forceCenter = !!options?.forceCenter;
-  const zoom = Number.isFinite(camera.zoom) && camera.zoom > 0 ? camera.zoom : 1;
-  const viewWorldW = viewW / zoom;
-  const viewWorldH = viewH / zoom;
-  const wrapEnabled = resolveWorldWrapEnabled(currentData.value);
-  const centerScrollX = (worldW / 2) - (viewWorldW / 2);
-  const centerScrollY = (worldH / 2) - (viewWorldH / 2);
-  if (forceCenter) {
-    camera.scrollX = centerScrollX;
-    camera.scrollY = centerScrollY;
-    return;
-  }
-  if (wrapEnabled) {
-    const bounds = renderedHexBounds || finalizeBounds(null, worldW, worldH);
-    const drawnW = Math.max(1, bounds.maxX - bounds.minX);
-    const drawnH = Math.max(1, bounds.maxY - bounds.minY);
-    const allowedW = drawnW * WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X;
-    const allowedH = drawnH * WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y;
-    const centerX = (bounds.minX + bounds.maxX) / 2;
-    const centerY = (bounds.minY + bounds.maxY) / 2;
-    const minCenterX = centerX - (allowedW / 2);
-    const maxCenterX = centerX + (allowedW / 2);
-    const minCenterY = centerY - (allowedH / 2);
-    const maxCenterY = centerY + (allowedH / 2);
-    const minScrollX = minCenterX - (viewWorldW / 2);
-    const maxScrollX = maxCenterX - (viewWorldW / 2);
-    const minScrollY = minCenterY - (viewWorldH / 2);
-    const maxScrollY = maxCenterY - (viewWorldH / 2);
-    camera.scrollX = minScrollX > maxScrollX
-      ? (minScrollX + maxScrollX) / 2
-      : clampNumber(camera.scrollX, minScrollX, maxScrollX);
-    camera.scrollY = minScrollY > maxScrollY
-      ? (minScrollY + maxScrollY) / 2
-      : clampNumber(camera.scrollY, minScrollY, maxScrollY);
-    return;
-  }
-  const maxX = worldW - viewWorldW;
-  const maxY = worldH - viewWorldH;
-  camera.scrollX = maxX < 0 ? centerScrollX : clampNumber(camera.scrollX, 0, maxX);
-  camera.scrollY = maxY < 0 ? centerScrollY : clampNumber(camera.scrollY, 0, maxY);
+  clampCameraScrollUtil(camera, worldW, worldH, viewW, viewH, {
+    ...options,
+    wrapEnabled: resolveWorldWrapEnabled(currentData.value),
+    renderedHexBounds,
+    wrapDragMultiplierX: WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X,
+    wrapDragMultiplierY: WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y
+  });
 }
 
 function resolveMinZoomPercent(dataLike = currentData.value) {
-  const w = Number(dataLike?.w);
-  const h = Number(dataLike?.h);
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 100;
-  const { width: worldW, height: worldH } = mapPixelSize(w, h);
-  const fitZoomWidth = GAME_VIEW_WIDTH / Math.max(worldW, 1);
-  const fitZoomHeight = GAME_VIEW_HEIGHT / Math.max(worldH, 1);
-  const baseZoom = Math.min(fitZoomWidth, fitZoomHeight, 1) * 0.96;
-  const maxViewW = worldW * WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X;
-  const maxViewH = worldH * WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y;
-  const minFinalZoom = Math.max(
-    GAME_VIEW_WIDTH / Math.max(maxViewW, 1),
-    GAME_VIEW_HEIGHT / Math.max(maxViewH, 1)
-  );
-  const minPercent = Math.ceil((minFinalZoom / Math.max(baseZoom, 0.0001)) * 100);
-  return Math.max(80, Math.min(resolveMaxZoomPercent(), minPercent));
+  return resolveMinZoomPercentUtil(dataLike, {
+    mapPixelSize,
+    gameViewWidth: GAME_VIEW_WIDTH,
+    gameViewHeight: GAME_VIEW_HEIGHT,
+    wrapDragMultiplierX: WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X,
+    wrapDragMultiplierY: WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y,
+    resolveMaxZoomPercent,
+    minZoomFloor: 80,
+    defaultPercent: 100
+  });
 }
 
 function resolveMaxZoomPercent() {
@@ -3207,11 +5027,11 @@ function resolveMaxZoomPercent() {
 }
 
 function normalizeZoomPercent(value, dataLike = currentData.value) {
-  const raw = Number.isFinite(value) ? value : Number(value);
-  const safe = Number.isFinite(raw) ? Math.round(raw) : 80;
-  const minZoom = resolveMinZoomPercent(dataLike);
-  const maxZoom = resolveMaxZoomPercent();
-  return Math.max(minZoom, Math.min(maxZoom, safe));
+  return normalizeZoomPercentUtil(value, dataLike, {
+    resolveMinZoomPercent,
+    resolveMaxZoomPercent,
+    defaultPercent: 80
+  });
 }
 
 function setZoomPercent(value) {
@@ -3439,7 +5259,8 @@ function buildStatsText(data) {
     islandGenerationInfo,
     coastInfo,
     lavaMap,
-    turnState
+    turnState,
+    enemySpawnStats
   } = data;
   const lines = [`サイズ: ${w}x${h} (${w * h}マス)`];
   lines.push(`端接続: ${data?.worldWrapEnabled ? "ON (反対側へ接続)" : "OFF (端で停止)"}`);
@@ -3550,6 +5371,22 @@ function buildStatsText(data) {
     lines.push(
       `条件別: 森中央 ${byRule.森中央 || 0} / オアシス ${byRule.砂漠オアシス || 0} / 大森林外周 ${byRule.大森林外周 || 0} / 森環丘山 ${byRule.森環丘山 || 0}`
     );
+  }
+  if (enemySpawnStats) {
+    const enemyTotal = Math.max(0, Math.floor(toSafeNumber(enemySpawnStats.total, 0)));
+    const enemyUnits = Math.max(0, Math.floor(toSafeNumber(enemySpawnStats.totalUnits, 0)));
+    const strongCount = Math.max(0, Math.floor(toSafeNumber(enemySpawnStats.strongTileCount, 0)));
+    lines.push(`敵候補: ${enemyTotal}マス / 敵総数: ${enemyUnits} / 強敵地形: ${strongCount}`);
+    const byTerrain = enemySpawnStats.byTerrain && typeof enemySpawnStats.byTerrain === "object"
+      ? enemySpawnStats.byTerrain
+      : {};
+    const terrainEntries = Object.entries(byTerrain)
+      .map(([key, value]) => [key, Math.max(0, Math.floor(toSafeNumber(value, 0)))])
+      .filter(([key, value]) => nonEmptyText(key) && value > 0)
+      .sort((a, b) => b[1] - a[1]);
+    if (terrainEntries.length) {
+      lines.push(`敵地形内訳: ${terrainEntries.map(([key, value]) => `${key} ${value}`).join(" / ")}`);
+    }
   }
 
   if (heightLevelMap) {
@@ -3974,6 +5811,7 @@ function renderMapWithPhaser() {
   })();
   const moveBlinkPhase = (clockNowMs.value % 1000) / 1000;
   const moveBlinkAlpha = 0.38 + ((Math.sin(moveBlinkPhase * Math.PI * 2) + 1) * 0.24);
+  const fogHiddenAlpha = showTestControls.value ? FOG_HIDDEN_ALPHA_TEST : FOG_HIDDEN_ALPHA;
   const boundsAcc = createBoundsAccumulator();
 
   const wrapOffsets = buildWrapOffsets(data);
@@ -4007,10 +5845,7 @@ function renderMapWithPhaser() {
           && (reliefKey === "丘陵" || reliefKey === "山岳")
         );
 
-        if (!tileVisible) {
-          baseLayer.fillStyle(FOG_HIDDEN_FILL, FOG_HIDDEN_ALPHA);
-          baseLayer.fillPoints(points, true);
-        } else if (mixedForestRelief) {
+        if (mixedForestRelief) {
           const reliefVisual = tileVisual(reliefKey, false);
           const forestColor = useHeightShading.value ? shadeColorByHeight(visual.color, level) : visual.color;
           const reliefColor = useHeightShading.value ? shadeColorByHeight(reliefVisual.color, level) : reliefVisual.color;
@@ -4028,6 +5863,10 @@ function renderMapWithPhaser() {
             baseLayer.fillStyle(toColorInt(tileColor), 1);
             baseLayer.fillPoints(points, true);
           }
+        }
+        if (!tileVisible) {
+          baseLayer.fillStyle(FOG_HIDDEN_FILL, fogHiddenAlpha);
+          baseLayer.fillPoints(points, true);
         }
         if (revealSpecial) {
           baseLayer.fillStyle(toColorInt(special.overlayColor), special.overlayAlpha);
@@ -4085,6 +5924,24 @@ function renderMapWithPhaser() {
           eliteLabel.setStroke("#4f1111", 2);
           eliteLabel.setOrigin(0.5);
           labelTexts.push(eliteLabel);
+        }
+
+        const hasTileEnemy = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) && data.enemySpawnMap[y][x].length > 0;
+        const spottedEnemyVisible = tileVisible && hasTileEnemy && spottedEnemyTileKeys.has(tileKey);
+        if (spottedEnemyVisible) {
+          markerLayer.fillStyle(0xb82f2f, 0.96);
+          markerLayer.fillCircle(center.cx + 13, center.cy + 12, 5);
+          markerLayer.lineStyle(1.2, 0xfff0cf, 0.94);
+          markerLayer.strokeCircle(center.cx + 13, center.cy + 12, 5);
+          const enemyMarker = scene.add.text(center.cx + 13, center.cy + 12, "敵", {
+            fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+            fontStyle: "700",
+            fontSize: "9px",
+            color: "#fff2da"
+          });
+          enemyMarker.setOrigin(0.5);
+          enemyMarker.setStroke("#3f0f0f", 2);
+          labelTexts.push(enemyMarker);
         }
 
         if (tileVisible && drawHeightNumber && Number.isFinite(level)) {
@@ -4312,6 +6169,57 @@ function formatTurnEventNotes(events) {
   return notes;
 }
 
+function runTurnForActiveFaction(data, options = {}) {
+  if (currentData.value) rebuildTerritorySets(currentData.value);
+  resetAllUnitMoveRemaining();
+  pushNationLog("移動残量回復: 全ユニットの移動残を最大まで回復");
+  const economyResult = processVillageEconomyTurn(data, {
+    raceFallback: nonEmptyText(options?.raceFallback),
+    emitState: false
+  });
+  const encounterResult = runEnemyEncounterCheck({ context: "turn" });
+  return {
+    economyResult,
+    encounterResult
+  };
+}
+
+function runTurnForAllTestPlayers(data) {
+  const slots = [...testPlayerSlots.value];
+  const activeBefore = nonEmptyText(activeTestPlayerId.value);
+  const allEconomyNotes = [];
+  const allEncounterNotes = [];
+
+  for (const slot of slots) {
+    if (!slot?.factionState) continue;
+    applyFactionStateSnapshotToLiveState(slot.factionState, { emitState: false, render: false });
+    const result = runTurnForActiveFaction(data, {
+      raceFallback: nonEmptyText(slot?.race)
+    });
+    slot.factionState = buildLiveFactionStateSnapshot();
+    const head = `--- ${nonEmptyText(slot?.label) || nonEmptyText(slot?.id) || "プレイヤー"} ---`;
+    const economyLines = Array.isArray(result?.economyResult?.notes) ? result.economyResult.notes : [];
+    const encounterLines = Array.isArray(result?.encounterResult?.notes) ? result.encounterResult.notes : [];
+    allEconomyNotes.push(head, ...economyLines);
+    allEncounterNotes.push(head, ...encounterLines);
+  }
+
+  testPlayerSlots.value = slots.map(slot => ({ ...slot, ready: false }));
+  const restoreId = testPlayerSlots.value.some(slot => slot.id === activeBefore)
+    ? activeBefore
+    : (testPlayerSlots.value[0]?.id || "player-1");
+  const restoreSlot = testPlayerSlots.value.find(slot => slot.id === restoreId) || null;
+  activeTestPlayerId.value = restoreId;
+  if (restoreSlot?.factionState) {
+    applyFactionStateSnapshotToLiveState(restoreSlot.factionState, { emitState: false, render: false });
+  }
+
+  return {
+    economyNotes: allEconomyNotes,
+    encounterNotes: allEncounterNotes
+  };
+}
+
 function runNextTurn(options = {}) {
   kickOffBgm();
   if (options?.playSe !== false) audio.playSe("confirm");
@@ -4321,26 +6229,51 @@ function runNextTurn(options = {}) {
     showEventModal.value = true;
     return;
   }
+  ensureTestPlayerSlotsInitialized();
+  if (isTestMultiplayerActive.value) {
+    syncActiveTestPlayerSlotFromLiveState();
+    markActiveTestPlayerTurnReady();
+    const activeLabel = nonEmptyText(activeTestPlayerSlot.value?.label) || "プレイヤー";
+    if (!areAllTestPlayersReady()) {
+      updateUnitInfoText(`ターン待機: ${activeLabel} が終了（${testPlayersReadyLabel.value}）`);
+      renderMapWithPhaser();
+      return;
+    }
+  }
   const mode = String(options?.eventMode || "normal");
   const result = advanceTerrainTurn(currentData.value, {
     eventMode: mode
   });
   result.data.worldWrapEnabled = !!currentData.value?.worldWrapEnabled;
   applyMapData(result.data, { resetClock: false, rebuildCharacters: false });
-  resetAllUnitMoveRemaining();
-  pushNationLog("移動残量回復: 全ユニットの移動残を最大まで回復");
-  const economyResult = processVillageEconomyTurn(result.data);
+  const turnRuntime = isTestMultiplayerActive.value
+    ? runTurnForAllTestPlayers(result.data)
+    : (() => {
+      const singleResult = runTurnForActiveFaction(result.data);
+      return {
+        economyNotes: Array.isArray(singleResult?.economyResult?.notes) ? singleResult.economyResult.notes : [],
+        encounterNotes: Array.isArray(singleResult?.encounterResult?.notes) ? singleResult.encounterResult.notes : [],
+        economyApplied: !!singleResult?.economyResult?.applied
+      };
+    })();
   const turn = Number(result.data?.turnState?.turnNumber || 0);
   eventModalMessage.value = formatTurnEventMessage(turn, result.events, mode);
   const baseNotes = formatTurnEventNotes(result.events);
-  if (economyResult.applied) {
-    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyResult.notes];
-    for (const line of economyResult.notes) {
+  const economyNotes = Array.isArray(turnRuntime?.economyNotes) ? turnRuntime.economyNotes : [];
+  const encounterNotes = Array.isArray(turnRuntime?.encounterNotes) ? turnRuntime.encounterNotes : [];
+  const economyApplied = turnRuntime?.economyApplied !== false;
+  if (economyApplied) {
+    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyNotes, "---- 索敵処理 ----", ...encounterNotes];
+    for (const line of economyNotes) {
+      if (String(line || "").startsWith("--- ")) continue;
       pushNationLog(line);
     }
   } else {
-    eventModalNotes.value = [...baseNotes, ...economyResult.notes];
+    eventModalNotes.value = [...baseNotes, ...economyNotes, "---- 索敵処理 ----", ...encounterNotes];
   }
+  clearAllTestPlayerTurnReady();
+  emitCharacterStateChange();
+  renderMapWithPhaser();
   pushNationLog(`ターン進行: T${turn} / ${eventModeLabel(mode)} / イベント${result.events.length}件`);
   showEventModal.value = true;
 }
@@ -4348,6 +6281,119 @@ function runNextTurn(options = {}) {
 function runManagedEventTurn() {
   runNextTurn({ eventMode: eventActionType.value, playSe: false });
   showEventControlModal.value = false;
+}
+
+function openQuickSettingsModalFromMap() {
+  kickOffBgm();
+  audio.playSe("open");
+  showQuickSettingsModal.value = true;
+}
+
+function closeQuickSettingsModalFromMap() {
+  audio.playSe("cancel");
+  showQuickSettingsModal.value = false;
+}
+
+function openDisplaySettingsFromQuickMenu() {
+  showQuickSettingsModal.value = false;
+  openSettingsModal();
+}
+
+function buildSaveDownloadFileName() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `fantasy_strategy_save_${y}${m}${d}_${hh}${mm}${ss}.json`;
+}
+
+async function downloadSaveDataFromQuickMenu() {
+  if (saveExportInProgress.value) return;
+  saveExportInProgress.value = true;
+  try {
+    const exporter = typeof window !== "undefined" ? window.export_game_save_data : null;
+    if (typeof exporter !== "function") {
+      updateUnitInfoText("セーブ失敗: エクスポート関数が未初期化です。");
+      audio.playSe("cancel");
+      return;
+    }
+    const jsonText = await exporter();
+    const text = nonEmptyText(jsonText);
+    if (!text) {
+      updateUnitInfoText("セーブ失敗: 出力データが空です。");
+      audio.playSe("cancel");
+      return;
+    }
+    const fileName = buildSaveDownloadFileName();
+    const blob = new Blob([jsonText], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    updateUnitInfoText(`セーブ完了: ${fileName}`);
+    pushNationLog(`セーブ出力: ${fileName}`);
+    audio.playSe("confirm");
+    showQuickSettingsModal.value = false;
+  } catch (error) {
+    console.error("[QuickSettings][SaveExport] failed", error);
+    updateUnitInfoText("セーブ失敗: 出力処理でエラーが発生しました。");
+    audio.playSe("cancel");
+  } finally {
+    saveExportInProgress.value = false;
+  }
+}
+
+function openSaveLoadFileDialogFromQuickMenu() {
+  if (saveLoadInProgress.value) return;
+  const input = saveLoadInput.value;
+  if (!input) {
+    updateUnitInfoText("ロード失敗: ファイル入力の初期化に失敗しました。");
+    audio.playSe("cancel");
+    return;
+  }
+  input.value = "";
+  input.click();
+}
+
+async function handleSaveLoadFileChange(event) {
+  const input = event?.target;
+  const file = input?.files?.[0] || null;
+  if (!file) return;
+  if (saveLoadInProgress.value) return;
+  saveLoadInProgress.value = true;
+  try {
+    const text = await file.text();
+    const importer = typeof window !== "undefined" ? window.import_game_save_data : null;
+    if (typeof importer !== "function") {
+      updateUnitInfoText("ロード失敗: インポート関数が未初期化です。");
+      audio.playSe("cancel");
+      return;
+    }
+    const result = await importer(text);
+    if (!result || result.ok === false) {
+      const reason = nonEmptyText(result?.reason) || "ロード失敗: データ適用に失敗しました。";
+      updateUnitInfoText(reason);
+      audio.playSe("cancel");
+      return;
+    }
+    updateUnitInfoText(`ロード完了: ${file.name}`);
+    showQuickSettingsModal.value = false;
+    audio.playSe("confirm");
+  } catch (error) {
+    console.error("[QuickSettings][SaveLoad] failed", error);
+    updateUnitInfoText("ロード失敗: JSONの読み込みに失敗しました。");
+    audio.playSe("cancel");
+  } finally {
+    saveLoadInProgress.value = false;
+    if (input) input.value = "";
+  }
 }
 
 function openSettingsModal() {
@@ -4394,6 +6440,12 @@ function openNationLogModal() {
   showNationLogModal.value = true;
 }
 
+function togglePinnedNationLogPanel() {
+  kickOffBgm();
+  audio.playSe("change");
+  showPinnedNationLogPanel.value = !showPinnedNationLogPanel.value;
+}
+
 function openCharacterStatusModalFromMap() {
   kickOffBgm();
   audio.playSe("open");
@@ -4434,10 +6486,6 @@ function openVillageBuildModal() {
     return;
   }
   syncSelectedVillageBuildingKey();
-  if (!availableVillageBuildingDefs.value.length) {
-    updateUnitInfoText("建設可能な建物がありません（全建設済み）。");
-    return;
-  }
   kickOffBgm();
   audio.playSe("open");
   showVillageBuildModal.value = true;
@@ -4465,7 +6513,7 @@ function applyVillageConstruction() {
     return;
   }
   if (!canAffordVillageBuilding(village, definition)) {
-    const costText = formatPositiveResourceBag(definition.cost, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS);
+    const costText = formatMaterialPositiveResourceBag(definition.cost);
     updateUnitInfoText(`建設失敗: 資材不足 (必要: ${costText})`);
     return;
   }
@@ -4477,10 +6525,49 @@ function applyVillageConstruction() {
   villageState.value = nextVillage;
   updateVillageInfoText();
   updateUnitInfoText(`建設完了: ${definition.name} / 補正 ${formatVillageBuildingBonus(definition.bonus)}`);
-  pushNationLog(`建設完了: ${definition.name} / コスト ${formatPositiveResourceBag(definition.cost, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS)} / 補正 ${formatVillageBuildingBonus(definition.bonus)}`);
+  pushNationLog(`建設完了: ${definition.name} / コスト ${formatMaterialPositiveResourceBag(definition.cost)} / 補正 ${formatVillageBuildingBonus(definition.bonus)}`);
   emitCharacterStateChange();
   audio.playSe("confirm");
   showVillageBuildModal.value = false;
+}
+
+function applyCityAbilityLevelUp(abilityKey) {
+  if (!canOpenVillageBuild.value) {
+    updateUnitInfoText("都市能力強化失敗: 初期村を配置してください。");
+    return;
+  }
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  if (!village) {
+    updateUnitInfoText("都市能力強化失敗: 村データが不正です。");
+    return;
+  }
+  const key = nonEmptyText(abilityKey);
+  if (!CITY_ABILITY_KEYS.includes(key)) {
+    updateUnitInfoText("都市能力強化失敗: 能力キーが不正です。");
+    return;
+  }
+  const current = resolveVillageAbilityLevel(village, key, CITY_ABILITY_DEFINED_CAP);
+  if (current >= CITY_ABILITY_ACTIVE_CAP) {
+    updateUnitInfoText(`都市能力強化失敗: ${key} は当面上限Lv${CITY_ABILITY_ACTIVE_CAP}です。`);
+    return;
+  }
+  const nextLevel = current + 1;
+  const cost = resolveCityAbilityUpgradeCost(key, nextLevel);
+  if (!canAffordCityAbilityUpgrade(village, key)) {
+    updateUnitInfoText(`都市能力強化失敗: 資材不足 (${key} Lv${nextLevel} / 必要: ${formatMaterialPositiveResourceBag(cost)})`);
+    return;
+  }
+  const nextVillage = applyCityAbilityUpgrade(village, key);
+  if (!nextVillage) {
+    updateUnitInfoText("都市能力強化失敗: 村データ更新に失敗しました。");
+    return;
+  }
+  villageState.value = nextVillage;
+  updateVillageInfoText();
+  updateUnitInfoText(`都市能力強化: ${key} Lv${current} -> Lv${nextLevel} / コスト ${formatMaterialPositiveResourceBag(cost)}`);
+  pushNationLog(`都市能力強化: ${key} Lv${current} -> Lv${nextLevel} / コスト ${formatMaterialPositiveResourceBag(cost)}`);
+  emitCharacterStateChange();
+  audio.playSe("confirm");
 }
 
 function openUnitCreateModal() {
@@ -4546,7 +6633,14 @@ function toggleTestControls() {
     showDevInfo.value = false;
   } else if (isDevBuild) {
     showDevInfo.value = true;
+    ensureTestPlayerSlotsInitialized();
   }
+}
+
+function handleActiveTestPlayerSelection() {
+  const targetId = nonEmptyText(activeTestPlayerId.value);
+  if (!targetId) return;
+  switchActiveTestPlayer(targetId);
 }
 
 function openTurnActionModal() {
@@ -4651,7 +6745,7 @@ function createUnitFromSelection() {
   const cappedByPopulation = requestedCount > createCount;
   const cost = buildUnitCreationCost(createCount);
   if (!canAffordUnitCreation(village, cost)) {
-    updateUnitInfoText(`ユニット作成失敗: 資源不足 (必要: 食料 ${formatResourceBag(cost.food, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS)} / 資材 ${formatResourceBag(cost.material, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS)})`);
+    updateUnitInfoText(`ユニット作成失敗: 資源不足 (必要: 食料 ${formatFoodResourceBag(cost.food)} / 資材 ${formatMaterialResourceBag(cost.material)})`);
     return;
   }
   const nextVillage = applyUnitCreationCost(village, cost);
@@ -4671,8 +6765,7 @@ function createUnitFromSelection() {
       isSovereign: false,
       isNamed: false,
       unitType: "モブ",
-      fixedLevel: MOB_INITIAL_LEVEL,
-      fixedClassLevels: MOB_INITIAL_CLASS_LEVEL
+      fixedLevel: MOB_INITIAL_LEVEL
     });
     unit.x = village.x;
     unit.y = village.y;
@@ -4688,7 +6781,7 @@ function createUnitFromSelection() {
   const firstName = createdUnits[0]?.name || "-";
   const lastName = createdUnits[createdUnits.length - 1]?.name || "-";
   updateUnitInfoText(`ユニット作成: ${createdUnits.length}体 (${raceName}/${className})${cappedByPopulation ? ` / 上限により ${requestedCount} -> ${createCount}` : ""} / ${firstName}${createdUnits.length > 1 ? ` ... ${lastName}` : ""} / 村座標 (${village.x}, ${village.y})`);
-  pushNationLog(`ユニット作成: ${createdUnits.length}体 (${raceName}/${className})${cappedByPopulation ? ` [上限補正 ${requestedCount}->${createCount}]` : ""} / ${firstName}${createdUnits.length > 1 ? `〜${lastName}` : ""} / コスト 食料 ${formatResourceBag(cost.food, FOOD_RESOURCE_KEYS, FOOD_RESOURCE_LABELS)} / 資材 ${formatResourceBag(cost.material, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS)} / モブ ${mobUnitCount.value}/${mobUnitCap.value}`);
+  pushNationLog(`ユニット作成: ${createdUnits.length}体 (${raceName}/${className})${cappedByPopulation ? ` [上限補正 ${requestedCount}->${createCount}]` : ""} / ${firstName}${createdUnits.length > 1 ? `〜${lastName}` : ""} / コスト 食料 ${formatFoodResourceBag(cost.food)} / 資材 ${formatMaterialResourceBag(cost.material)} / モブ ${mobUnitCount.value}/${mobUnitCap.value}`);
   emitCharacterStateChange();
   audio.playSe("confirm");
   renderMapWithPhaser();
@@ -4703,11 +6796,16 @@ function selectEventActionType(mode) {
 }
 
 function applyMapData(data, options = {}) {
-  const normalizedData = {
+  const baseData = {
     ...(data || {}),
     worldWrapEnabled: data?.worldWrapEnabled == null
       ? !!customWorldWrapEnabled.value
       : !!data.worldWrapEnabled
+  };
+  const enemySpawnData = buildEnemySpawnDataForMap(baseData);
+  const normalizedData = {
+    ...baseData,
+    ...enemySpawnData
   };
   currentData.value = normalizedData;
   zoomPercent.value = normalizeZoomPercent(zoomPercent.value, normalizedData);
@@ -4726,6 +6824,9 @@ function applyMapData(data, options = {}) {
   }
   if (options.rebuildCharacters !== false) {
     createVillageAndInitialUnit(normalizedData);
+    resetTestPlayerSlotsFromLiveState();
+  } else {
+    ensureTestPlayerSlotsInitialized();
   }
   if (options.resetClock !== false) {
     mapClockStartMs.value = Date.now();
@@ -4796,7 +6897,9 @@ function updateMapClickInfo(picked) {
       heightLevel: "-",
       heightRaw: "-",
       village: "不明",
-      units: "不明"
+      units: "不明",
+      enemies: "不明",
+      canOpenVillageActions: false
     };
     return;
   }
@@ -4832,12 +6935,39 @@ function updateMapClickInfo(picked) {
       return `${unit.name}${tagText}(Lv${unit.level})`;
     }).join(", ")
     : "なし";
+  const tileEnemies = enemiesAt(picked.x, picked.y, currentData.value);
+  console.log("[EnemySpawn][TileSelect]", {
+    x: picked.x,
+    y: picked.y,
+    terrain: picked.terrain,
+    heightLevel: Number.isFinite(heightLevel) ? heightLevel : null,
+    enemyCount: tileEnemies.length,
+    enemies: tileEnemies
+  });
+  const enemyText = tileEnemies.length
+    ? tileEnemies.map(enemy => {
+      const parts = [];
+      const name = nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵";
+      const lv = Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)));
+      parts.push(`${name}(Lv${lv})`);
+      const className = nonEmptyText(enemy?.className);
+      if (className) parts.push(`/${className}`);
+      if (enemy?.strong) parts.push("[強]");
+      return parts.join("");
+    }).join(", ")
+    : "なし";
   const village = villageState.value?.placed && villageState.value?.x === picked.x && villageState.value?.y === picked.y ? "あり" : "なし";
   const villageDetailText = village === "あり"
-    ? `${nonEmptyText(villageState.value?.name) || "村"} / ${villageState.value?.scale || "村"} / 人口${formatCompactNumber(villageState.value?.population)} / 建設:${formatVillageBuildingList(villageState.value?.buildings)}`
+    ? `${nonEmptyText(villageState.value?.name) || "村"} / ${resolveVillageScaleLabel(villageState.value)} / 人口${formatCompactNumber(villageState.value?.population)} / 能力:${formatCityAbilityLevels(villageState.value)} / 建設:${formatVillageBuildingList(villageState.value?.buildings)}`
     : "なし";
   const owner = picked.owner || tileOwnerAt(picked.x, picked.y);
   const ownerText = owner === "player" ? "自領" : owner === "enemy" ? "敵領" : "未所属";
+  const isOwnVillageTile = !!(
+    owner === "player"
+    && villageState.value?.placed
+    && villageState.value?.x === picked.x
+    && villageState.value?.y === picked.y
+  );
   const placementModeText = villagePlacementMode.value ? " / 配置モード: ON" : "";
   const moveModeText = unitMoveMode.value ? " / 移動モード: ON" : "";
   selectedTileDetail.value = {
@@ -4854,9 +6984,11 @@ function updateMapClickInfo(picked) {
     heightLevel: Number.isFinite(heightLevel) ? String(heightLevel) : "-",
     heightRaw: Number.isFinite(heightRaw) ? String(heightRaw) : "-",
     village: villageDetailText,
-    units: unitText
+    units: unitText,
+    enemies: enemyText,
+    canOpenVillageActions: isOwnVillageTile
   };
-  mapClickInfo.value = `クリック座標: (${picked.x}, ${picked.y}) / 地形: ${picked.terrain} / 領土: ${ownerText} / 村: ${village} / 海辺判定: ${coast} / 海接触: ${coastContact} / 地勢: ${relief} / 強敵: ${strong} / 特殊: ${special} / 洞窟規模: ${caveScale}(${caveSize}) / 川: ${river} / 滝: ${waterfall} / 溶岩: ${lava} / 高度Lv: ${Number.isFinite(heightLevel) ? heightLevel : "-"} / 高度Raw: ${Number.isFinite(heightRaw) ? heightRaw : "-"} / ユニット: ${unitText}${moveModeText}${placementModeText}`;
+  mapClickInfo.value = `クリック座標: (${picked.x}, ${picked.y}) / 地形: ${picked.terrain} / 領土: ${ownerText} / 村: ${village} / 海辺判定: ${coast} / 海接触: ${coastContact} / 地勢: ${relief} / 強敵: ${strong} / 特殊: ${special} / 洞窟規模: ${caveScale}(${caveSize}) / 川: ${river} / 滝: ${waterfall} / 溶岩: ${lava} / 高度Lv: ${Number.isFinite(heightLevel) ? heightLevel : "-"} / 高度Raw: ${Number.isFinite(heightRaw) ? heightRaw : "-"} / 敵: ${enemyText} / ユニット: ${unitText}${moveModeText}${placementModeText}`;
 }
 
 function setCanvasCursor(style) {
@@ -5156,6 +7288,10 @@ function moveSelectedUnitToTile(picked) {
     ? `部隊移動(${moveGroup.participants.length}体)`
     : "移動";
   updateUnitInfoText(`${movePrefix}: (${fromX}, ${fromY}) -> (${stepNode.x}, ${stepNode.y}) / +${stepIndex}マス / コスト${spentCost} / 残${nextRemaining}`);
+  runEnemyEncounterCheck({
+    context: "move",
+    focusPos: { x: stepNode.x, y: stepNode.y }
+  });
   emitCharacterStateChange();
   return {
     moved: true,
@@ -5431,7 +7567,7 @@ watch(customWorldWrapEnabled, enabled => {
   renderMapWithPhaser();
 });
 
-watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHeightShading, showSpecialTilesAlways, showWaterfallEffects, showStrongEnemyMarkers], () => {
+watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHeightShading, useFiveResourceMode, showSpecialTilesAlways, showWaterfallEffects, showStrongEnemyMarkers], () => {
   if (currentData.value) {
     mapStats.value = buildStatsText(currentData.value);
   }
@@ -5498,21 +7634,62 @@ watch(() => props.characterCommand, command => {
     <div ref="stageShell" class="phaser-stage-shell">
       <div class="phaser-stage-anchor">
       <div class="phaser-stage" :style="stageScaleStyle">
-        <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas">
+        <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas" :style="mapCanvasStyle">
       <header class="field-overlay-header" :class="{ minimized: headerMinimized }">
-        <button type="button" class="overlay-action-btn mini overlay-header-toggle" @click="headerMinimized = !headerMinimized">
-          {{ headerMinimized ? "展開" : "最小化" }}
-        </button>
         <template v-if="!headerMinimized">
         <div class="field-resource-chip">
           <span>食料</span>
           <strong>{{ fieldResourceSummary.food }}</strong>
-          <small>{{ fieldResourceSummary.foodDetail }}</small>
+          <small class="resource-icon-row">
+            <span
+              v-for="entry in fieldResourceSummary.foodEntries"
+              :key="`food-${entry.key}`"
+              class="resource-icon-entry"
+              :title="entry.key"
+            >
+              <img :src="entry.iconSrc" :alt="entry.key" />
+              <em>{{ entry.displayValue }}</em>
+            </span>
+          </small>
         </div>
-        <div class="field-resource-chip">
+        <div
+          class="field-resource-chip field-resource-chip-clickable field-resource-chip-inline-label"
+          role="button"
+          tabindex="0"
+          :aria-pressed="materialHeaderExpanded"
+          @click="toggleMaterialHeaderExpanded"
+          @keydown.enter.prevent="toggleMaterialHeaderExpanded"
+          @keydown.space.prevent="toggleMaterialHeaderExpanded"
+        >
           <span>資材</span>
-          <strong>{{ fieldResourceSummary.material }}</strong>
-          <small>{{ fieldResourceSummary.materialDetail }}</small>
+          <small v-if="!materialHeaderExpanded" class="resource-icon-row">
+            <span
+              v-for="entry in fieldResourceSummary.materialCollapsedEntries"
+              :key="`mat-collapsed-${entry.key}`"
+              class="resource-icon-entry"
+              :title="entry.label"
+            >
+              <img :src="entry.iconSrc" :alt="entry.label" />
+              <em>{{ entry.displayValue }}</em>
+            </span>
+          </small>
+          <small v-else class="material-rows">
+            <span
+              v-for="group in fieldResourceSummary.materialGroups"
+              :key="`mat-group-${group.label}`"
+              class="material-row"
+            >
+              <span
+                v-for="detail in group.details"
+                :key="`mat-detail-${group.label}-${detail.key}`"
+                class="material-token"
+                :title="detail.key"
+              >
+                <img :src="detail.iconSrc" :alt="detail.key" />
+                <em>{{ detail.displayValue }}</em>
+              </span>
+            </span>
+          </small>
         </div>
         <div class="field-resource-chip">
           <span>総人口</span>
@@ -5522,7 +7699,9 @@ watch(() => props.characterCommand, command => {
         <div class="field-overlay-actions">
           <button type="button" class="overlay-action-btn" @click="openCharacterStatusModalFromMap">自キャラ</button>
           <button type="button" class="overlay-action-btn" @click="openSkillTreeModalFromMap">スキルツリー</button>
-          <button type="button" class="overlay-action-btn" @click="openNationLogModal">ログ</button>
+          <button type="button" class="overlay-action-btn" :aria-pressed="showPinnedNationLogPanel" @click="togglePinnedNationLogPanel">
+            ログ表示: {{ showPinnedNationLogPanel ? "ON" : "OFF" }}
+          </button>
           <button
             type="button"
             class="overlay-action-btn"
@@ -5533,9 +7712,27 @@ watch(() => props.characterCommand, command => {
             ユニット移動: {{ unitMoveMode ? "ON" : "OFF" }}
           </button>
           <button type="button" class="overlay-action-btn" :disabled="!canCreateMob" @click="openUnitCreateModal">ユニット作成</button>
-          <button type="button" class="overlay-action-btn" :disabled="!canOpenVillageBuild" @click="openVillageBuildModal">建設</button>
+          <button
+            type="button"
+            class="overlay-action-btn icon-only"
+            title="設定"
+            aria-label="設定"
+            @click="openQuickSettingsModalFromMap"
+          >
+            <img class="overlay-action-icon" :src="QUICK_SETTINGS_ICON_SRC" alt="設定" />
+          </button>
         </div>
         </template>
+        <button
+          type="button"
+          class="overlay-header-drawer-toggle"
+          :class="{ minimized: headerMinimized }"
+          :title="headerMinimized ? 'ヘッダーを展開' : 'ヘッダーを最小化'"
+          :aria-label="headerMinimized ? 'ヘッダーを展開' : 'ヘッダーを最小化'"
+          @click="headerMinimized = !headerMinimized"
+        >
+          <span class="overlay-header-drawer-arrow" aria-hidden="true">{{ headerMinimized ? "▽" : "△" }}</span>
+        </button>
       </header>
       <section class="field-overlay-tile-detail">
         <div class="field-overlay-tile-title">選択マス詳細</div>
@@ -5549,10 +7746,24 @@ watch(() => props.characterCommand, command => {
           <div><span>川/滝/溶岩</span><strong>{{ selectedTileDetail.river }} / {{ selectedTileDetail.waterfall }} / {{ selectedTileDetail.lava }}</strong></div>
           <div><span>高度</span><strong>Lv {{ selectedTileDetail.heightLevel }} (Raw {{ selectedTileDetail.heightRaw }})</strong></div>
           <div class="wide"><span>町状態</span><strong>{{ selectedTileDetail.village }}</strong></div>
+          <div class="wide"><span>敵候補</span><strong>{{ selectedTileDetail.enemies }}</strong></div>
           <div class="wide"><span>ユニット</span><strong>{{ selectedTileDetail.units }}</strong></div>
+        </div>
+        <div v-if="selectedTileDetail?.canOpenVillageActions" class="field-overlay-tile-actions">
+          <button type="button" class="overlay-action-btn" :disabled="!canOpenVillageBuild" @click="openVillageBuildModal">建設</button>
         </div>
         <div v-else class="field-overlay-tile-empty">マスをクリックすると詳細を表示します。</div>
       </section>
+      <aside v-if="showPinnedNationLogPanel" class="field-overlay-live-log">
+        <div class="field-overlay-live-log-head">
+          <strong>統治者ログ</strong>
+          <button type="button" class="overlay-action-btn mini" @click="togglePinnedNationLogPanel">×</button>
+        </div>
+        <div class="field-overlay-live-log-summary">{{ nationLogSummaryText }}</div>
+        <div class="field-overlay-live-log-list">
+          <div v-for="(line, idx) in nationLogNotes" :key="`live-log-${idx}`">{{ line }}</div>
+        </div>
+      </aside>
       <div class="field-overlay-bottom-right">
         <button type="button" class="overlay-test-btn" @click="toggleTestControls">
           テスト: {{ showTestControls ? "ON" : "OFF" }}
@@ -5575,6 +7786,25 @@ watch(() => props.characterCommand, command => {
       </div>
       <aside v-if="showTestControls" class="in-canvas-test-panel">
         <div class="map-tools">
+          <section class="test-player-controls">
+            <div class="small">テストプレイヤー</div>
+            <label>操作勢力
+              <select v-model="activeTestPlayerId" @change="handleActiveTestPlayerSelection">
+                <option v-for="slot in testPlayerSlots" :key="`test-player-${slot.id}`" :value="slot.id">
+                  {{ slot.label }} {{ slot.ready ? "(終了)" : "(未終了)" }}
+                </option>
+              </select>
+            </label>
+            <div class="test-player-actions">
+              <button type="button" class="secondary" :disabled="testPlayerSlots.length >= MAX_TEST_PLAYER_COUNT" @click="addTestPlayerFaction">
+                勢力追加
+              </button>
+              <button type="button" class="secondary" :disabled="testPlayerSlots.length <= 1" @click="removeActiveTestPlayerFaction">
+                選択勢力削除
+              </button>
+            </div>
+            <div class="small">ターン状態: {{ testPlayersReadyLabel }}</div>
+          </section>
           <label>マップサイズ
             <select v-model="mapSize">
               <option value="30x40">下限 (30x40 = 1200マス)</option>
@@ -5622,7 +7852,9 @@ watch(() => props.characterCommand, command => {
           >
             ユニット移動: {{ unitMoveMode ? "ON" : "OFF" }}
           </button>
-          <button id="advanceTurnBtn" class="secondary" type="button" @click="runNextTurn">ターン経過</button>
+          <button id="advanceTurnBtn" class="secondary" type="button" :disabled="isTestMultiplayerActive && activeTestPlayerReady" @click="runNextTurn">
+            {{ isTestMultiplayerActive ? (activeTestPlayerReady ? "ターン終了済み" : "ターン終了") : "ターン経過" }}
+          </button>
           <button id="eventManagerBtn" class="secondary" type="button" @click="showEventControlModal = true">イベント管理</button>
           <button id="createUnitBtn" class="secondary" type="button" :disabled="!canCreateMob" @click="openUnitCreateModal">ユニット作成</button>
           <button id="villageBuildBtn" class="secondary" type="button" :disabled="!canOpenVillageBuild" @click="openVillageBuildModal">建設</button>
@@ -5667,6 +7899,33 @@ watch(() => props.characterCommand, command => {
       @close="closeSettingsModal"
       @field-change="applyDisplaySettingChange"
     />
+    <div v-if="showQuickSettingsModal" class="settings-backdrop" @click.self="closeQuickSettingsModalFromMap">
+      <div class="settings-modal quick-settings-modal">
+        <h3>設定メニュー</h3>
+        <div class="quick-settings-grid">
+          <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">音量/表示設定</button>
+          <button type="button" class="secondary" :disabled="saveExportInProgress" @click="downloadSaveDataFromQuickMenu">
+            {{ saveExportInProgress ? "セーブ生成中..." : "セーブデータ保存" }}
+          </button>
+          <button type="button" class="secondary" :disabled="saveLoadInProgress" @click="openSaveLoadFileDialogFromQuickMenu">
+            {{ saveLoadInProgress ? "ロード中..." : "セーブデータ読込" }}
+          </button>
+          <input
+            ref="saveLoadInput"
+            type="file"
+            accept=".json,application/json"
+            class="visually-hidden"
+            @change="handleSaveLoadFileChange"
+          />
+        </div>
+        <div class="setting-note">
+          セーブは現在の進行状態を JSON で保存します。
+        </div>
+        <div class="setting-actions">
+          <button type="button" class="secondary" @click="closeQuickSettingsModalFromMap">閉じる</button>
+        </div>
+      </div>
+    </div>
 
     <generic-modal
       :show="showEventModal"
@@ -5733,6 +7992,23 @@ watch(() => props.characterCommand, command => {
     <div v-if="showVillageBuildModal" class="settings-backdrop" @click.self="closeVillageBuildModal">
       <div class="settings-modal village-build-modal">
         <h3>村の建設</h3>
+        <div class="small build-hint">都市規模: {{ resolveVillageScaleLabel(villageState) }} / 都市能力: {{ formatCityAbilityLevels(villageState) }}</div>
+        <div class="city-ability-grid">
+          <div
+            v-for="row in cityAbilityRows"
+            :key="`city-ability-${row.key}`"
+            class="city-ability-item"
+          >
+            <div class="move-unit-line">
+              <strong>{{ row.key }} Lv{{ row.level }}</strong>
+              <span class="small">{{ row.atCap ? "上限" : `次 Lv${row.nextLevel}` }}</span>
+            </div>
+            <div class="small">必要資材: {{ row.costText }}</div>
+            <button type="button" class="secondary" :disabled="!row.canUpgrade" @click="applyCityAbilityLevelUp(row.key)">
+              Lvアップ
+            </button>
+          </div>
+        </div>
         <div class="small build-hint">建設済み: {{ formatVillageBuildingList(villageState?.buildings) }}</div>
         <div v-if="availableVillageBuildingDefs.length" class="village-build-list">
           <button
@@ -5748,7 +8024,7 @@ watch(() => props.characterCommand, command => {
               <span class="small">未建設</span>
             </div>
             <div class="small">{{ def.description }}</div>
-            <div class="small">必要資材: {{ formatPositiveResourceBag(def.cost, MATERIAL_RESOURCE_KEYS, MATERIAL_RESOURCE_LABELS) }}</div>
+            <div class="small">必要資材: {{ formatMaterialPositiveResourceBag(def.cost) }}</div>
             <div class="small">毎ターン補正: {{ formatVillageBuildingBonus(def.bonus) }}</div>
           </button>
         </div>
@@ -6103,6 +8379,19 @@ watch(() => props.characterCommand, command => {
   width: 100%;
 }
 
+.test-player-controls {
+  border: 1px solid rgba(214, 183, 124, 0.28);
+  border-radius: 8px;
+  padding: 6px;
+  background: rgba(19, 25, 37, 0.42);
+}
+
+.test-player-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
 .field-overlay-header {
   position: absolute;
   top: 0;
@@ -6122,13 +8411,70 @@ watch(() => props.characterCommand, command => {
 }
 
 .field-overlay-header.minimized {
-  right: auto;
-  padding: 4px 6px;
-  border-radius: 0 0 8px 0;
+  padding: 0;
+  min-height: 18px;
+  border-color: transparent;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
 }
 
-.overlay-header-toggle {
-  flex: 0 0 auto;
+.overlay-header-drawer-toggle {
+  position: absolute;
+  left: 50%;
+  z-index: 21;
+  transform: translateX(-50%) translateY(-4px) scale(0.98);
+  bottom: -14px;
+  width: 42px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(236, 205, 146, 0.28);
+  border-top: none;
+  background: linear-gradient(170deg, rgba(14, 19, 31, 0.56), rgba(22, 15, 11, 0.5));
+  color: rgba(249, 233, 198, 0.9);
+  cursor: pointer;
+  font-size: 0.58rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  backdrop-filter: blur(1.4px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22), inset 0 0 0 1px rgba(255, 235, 193, 0.05);
+  opacity: 0;
+  pointer-events: none;
+  transition: border-color 120ms ease, background 120ms ease, transform 160ms ease, opacity 160ms ease, width 140ms ease;
+}
+
+.field-overlay-header:hover .overlay-header-drawer-toggle,
+.field-overlay-header:focus-within .overlay-header-drawer-toggle,
+.overlay-header-drawer-toggle:focus-visible {
+  opacity: 0.9;
+  pointer-events: auto;
+  width: 50px;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.overlay-header-drawer-toggle:hover {
+  opacity: 1;
+  border-color: rgba(247, 218, 158, 0.52);
+  background: linear-gradient(170deg, rgba(17, 23, 36, 0.7), rgba(27, 18, 13, 0.64));
+}
+
+.overlay-header-drawer-toggle:active {
+  transform: translateX(-50%) translateY(1px) scale(0.97);
+}
+
+.overlay-header-drawer-toggle.minimized {
+  bottom: auto;
+  top: 2px;
+  border-top: 1px solid rgba(236, 205, 146, 0.28);
+}
+
+.overlay-header-drawer-arrow {
+  font-size: 0.6rem;
+  color: rgba(255, 241, 208, 0.92);
+  text-shadow: 0 0 6px rgba(255, 230, 178, 0.22);
 }
 
 .field-resource-chip {
@@ -6159,6 +8505,117 @@ watch(() => props.characterCommand, command => {
   letter-spacing: 0.01em;
 }
 
+.resource-icon-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 9px;
+  align-items: center;
+}
+
+.field-resource-chip-clickable {
+  cursor: pointer;
+}
+
+.field-resource-chip-clickable:hover {
+  border-color: rgba(244, 215, 156, 0.52);
+}
+
+.field-resource-chip-inline-label {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 8px;
+  align-items: start;
+}
+
+.field-resource-chip-inline-label > span {
+  grid-column: 1;
+  align-self: start;
+  white-space: nowrap;
+  padding-top: 1px;
+}
+
+.field-resource-chip-inline-label > small {
+  grid-column: 2 / 3;
+}
+
+.material-rows {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+}
+
+.material-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  align-items: center;
+}
+
+.material-token {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  color: rgba(249, 236, 204, 0.92);
+  font-size: 0.64rem;
+}
+
+.material-token img {
+  width: var(--header-resource-icon-layout-size, 13px);
+  height: var(--header-resource-icon-layout-size, 13px);
+  object-fit: contain;
+  transform: scale(var(--header-resource-icon-scale, 1));
+  transform-origin: center center;
+  /* padding: 1px; */
+  /* border-radius: 6px; */
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(255, 255, 255, 0.48) 52%,
+    rgba(255, 255, 255, 0.08) 82%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  /* box-shadow:
+    0 0 7px rgba(255, 244, 208, 0.58),
+    0 0 1px rgba(255, 255, 255, 0.95) inset; */
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.4));
+}
+
+.material-token em {
+  font-style: normal;
+  color: rgba(241, 226, 190, 0.9);
+}
+
+.resource-icon-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.resource-icon-entry img {
+  width: var(--header-resource-icon-layout-size, 13px);
+  height: var(--header-resource-icon-layout-size, 13px);
+  object-fit: contain;
+  transform: scale(var(--header-resource-icon-scale, 1));
+  transform-origin: center center;
+  /* padding: 1px;
+  border-radius: 6px; */
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.66) 0%,
+    rgba(255, 255, 255, 0.48) 52%,
+    rgba(255, 255, 255, 0.08) 82%,
+    rgba(255, 255, 255, 0) 90%
+  );
+  /* box-shadow:
+    0 0 7px rgba(255, 244, 208, 0.58),
+    0 0 1px rgba(255, 255, 255, 0.95) inset; */
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.4));
+}
+
+.resource-icon-entry em {
+  font-style: normal;
+  color: rgba(255, 243, 215, 0.92);
+}
+
 .field-overlay-tile-detail {
   position: absolute;
   left: 12px;
@@ -6186,6 +8643,12 @@ watch(() => props.characterCommand, command => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px 8px;
+}
+
+.field-overlay-tile-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .field-overlay-tile-grid > div {
@@ -6224,6 +8687,63 @@ watch(() => props.characterCommand, command => {
   justify-content: flex-end;
 }
 
+.field-overlay-live-log {
+  position: absolute;
+  right: 12px;
+  top: 76px;
+  bottom: 106px;
+  width: min(320px, 30vw);
+  border: 1px solid rgba(235, 203, 142, 0.52);
+  border-radius: 10px;
+  background: linear-gradient(170deg, rgba(18, 24, 36, 0.9), rgba(12, 10, 8, 0.86));
+  box-shadow: inset 0 0 0 1px rgba(255, 236, 189, 0.1);
+  color: #f7e8c3;
+  z-index: 18;
+  padding: 8px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 7px;
+  pointer-events: auto;
+}
+
+.field-overlay-live-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.field-overlay-live-log-head strong {
+  font-size: 0.8rem;
+}
+
+.field-overlay-live-log-summary {
+  font-size: 0.72rem;
+  color: rgba(247, 232, 195, 0.86);
+  border: 1px solid rgba(235, 203, 142, 0.34);
+  border-radius: 8px;
+  padding: 5px 7px;
+  background: rgba(25, 18, 13, 0.5);
+}
+
+.field-overlay-live-log-list {
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.field-overlay-live-log-list > div {
+  border: 1px solid rgba(220, 188, 128, 0.28);
+  border-radius: 7px;
+  padding: 5px 6px;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  background: rgba(15, 11, 8, 0.5);
+  color: #f6e6bf;
+}
+
 .overlay-action-btn {
   border: 1px solid rgba(222, 193, 135, 0.56);
   border-radius: 8px;
@@ -6234,6 +8754,22 @@ watch(() => props.characterCommand, command => {
   line-height: 1;
   padding: 5px 8px;
   cursor: pointer;
+}
+
+.overlay-action-btn.icon-only {
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overlay-action-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 2px rgba(255, 248, 226, 0.85));
 }
 
 .overlay-action-btn.mini {
@@ -6502,6 +9038,22 @@ watch(() => props.characterCommand, command => {
   color: #eadab2;
 }
 
+.city-ability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.city-ability-item {
+  border: 1px solid rgba(221, 185, 126, 0.35);
+  border-radius: 9px;
+  background: linear-gradient(170deg, rgba(23, 18, 13, 0.72), rgba(17, 12, 9, 0.68));
+  color: #f2e6c7;
+  padding: 7px 8px;
+  display: grid;
+  gap: 4px;
+}
+
 .village-build-list {
   display: grid;
   gap: 7px;
@@ -6655,6 +9207,28 @@ watch(() => props.characterCommand, command => {
   line-height: 1.35;
 }
 
+.quick-settings-modal {
+  width: min(360px, 100%);
+}
+
+.quick-settings-grid {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .settings-modal h3 {
   margin: 0 0 8px;
   color: #f6e6b5;
@@ -6795,6 +9369,10 @@ watch(() => props.characterCommand, command => {
     grid-template-columns: 1fr;
   }
 
+  .city-ability-grid {
+    grid-template-columns: 1fr;
+  }
+
   .field-overlay-header {
     flex-wrap: wrap;
     left: 0;
@@ -6818,6 +9396,15 @@ watch(() => props.characterCommand, command => {
     right: 8px;
     bottom: 8px;
     gap: 6px;
+  }
+
+  .field-overlay-live-log {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    top: auto;
+    bottom: 96px;
+    max-height: 220px;
   }
 
   .overlay-test-btn {
