@@ -43,6 +43,11 @@ export function resolveIconName(name, fallbackName = DEFAULT_ICON_NAME) {
   return DEFAULT_ICON_NAME;
 }
 
+export function hasIconName(name) {
+  const target = toText(name);
+  return !!target && iconMap.has(target);
+}
+
 export function getIconSrcByName(name, fallbackName = DEFAULT_ICON_NAME) {
   const normalized = resolveIconName(name, fallbackName);
   return iconMap.get(normalized) || DEFAULT_ICON_SRC;

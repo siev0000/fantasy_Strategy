@@ -4,7 +4,7 @@ import BaseModal from "./BaseModal.vue";
 import CharacterUnitDetailPanel from "./CharacterUnitDetailPanel.vue";
 import equipmentDb from "../../../data/source/export/json/装備.json";
 import classDb from "../../../data/source/export/json/クラス.json";
-import { DEFAULT_ICON_NAME, DEFAULT_ICON_SRC, getIconSrcByName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
+import { DEFAULT_ICON_NAME, DEFAULT_ICON_SRC, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -401,11 +401,27 @@ function equipmentOptionsForSlot(slotKey) {
 const iconOptions = computed(() => listIconOptions());
 
 function iconNameForUnit(unit) {
-  return resolveIconName(unit?.iconName, DEFAULT_ICON_NAME);
+  const name = nonEmptyText(unit?.iconName);
+  if (name && hasIconName(name)) return name;
+  return "";
 }
 
 function iconSrcForUnit(unit) {
-  return getIconSrcByName(iconNameForUnit(unit), DEFAULT_ICON_NAME);
+  const direct = nonEmptyText(unit?.iconSrc);
+  if (direct) return direct;
+  const iconName = iconNameForUnit(unit);
+  if (iconName) return getIconSrcByName(iconName, iconName);
+  return "";
+}
+
+function iconGlyphForUnit(unit) {
+  const race = nonEmptyText(unit?.race);
+  if (race) return Array.from(race)[0] || "?";
+  const className = nonEmptyText(unit?.className);
+  if (className) return Array.from(className)[0] || "?";
+  const name = nonEmptyText(unit?.name);
+  if (name) return Array.from(name)[0] || "?";
+  return "?";
 }
 
 function iconDraft(unit) {
@@ -914,7 +930,8 @@ watch(
           >
             <div class="char-list-line">
               <span class="char-list-name-with-icon">
-                <img :src="iconSrcForUnit(unit)" :alt="`${unit.name} アイコン`" class="char-list-icon" />
+                <img v-if="iconSrcForUnit(unit)" :src="iconSrcForUnit(unit)" :alt="`${unit.name} アイコン`" class="char-list-icon" />
+                <span v-else class="char-list-icon-fallback">{{ iconGlyphForUnit(unit) }}</span>
                 <strong>{{ unit.name }}<span v-if="isSovereign(unit)"> ◆</span></strong>
               </span>
               <span>Lv{{ unit.level || "-" }}</span>
@@ -1097,7 +1114,8 @@ watch(
                 :class="{ active: activeSquadMemberId === row.id }"
                 @click="activeSquadMemberId = row.id"
               >
-                <img :src="iconSrcForUnit(row.unit)" :alt="`${row.name} アイコン`" class="squad-member-chip-icon" />
+                <img v-if="iconSrcForUnit(row.unit)" :src="iconSrcForUnit(row.unit)" :alt="`${row.name} アイコン`" class="squad-member-chip-icon" />
+                <span v-else class="squad-member-chip-icon-fallback">{{ iconGlyphForUnit(row.unit) }}</span>
                 {{ row.role }}: {{ row.name }}
               </button>
             </div>
@@ -1439,6 +1457,21 @@ watch(
   background: rgba(255, 255, 255, 0.65);
 }
 
+.char-list-icon-fallback {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(189, 160, 119, 0.68);
+  background: rgba(255, 255, 255, 0.65);
+  color: #3a2d1a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .squad-rule-note,
 .squad-empty-note {
   color: #5f4b2b;
@@ -1508,6 +1541,21 @@ watch(
   object-fit: cover;
   border: 1px solid rgba(189, 160, 119, 0.68);
   background: rgba(255, 255, 255, 0.65);
+}
+
+.squad-member-chip-icon-fallback {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(189, 160, 119, 0.68);
+  background: rgba(255, 255, 255, 0.65);
+  color: #3a2d1a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .squad-member-chip.active {

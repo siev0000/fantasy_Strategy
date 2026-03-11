@@ -30,6 +30,7 @@ const RACES = Array.isArray(raceSelectionDb)
 const ALLY_ORDER = ["只人", "エルフ", "竜人", "天使"];
 const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"];
 const SAVE_FORMAT_VERSION = 1;
+const GAME_START_MAX_FACTIONS = 8;
 
 function unitFromRace(race, side, id) {
   const base = RACES[race] || DEFAULT_RACE_STATS;
@@ -235,7 +236,14 @@ const showRaceModal = ref(false);
 const showClassModal = ref(false);
 const showCharacterStatusModal = ref(false);
 const showCharacterNameModal = ref(false);
+const showGameStartSetupModal = ref(false);
 const skillTreeCategories = ref(["魔法", "軍事", "経済", "信仰"]);
+const gameStartPlayerCount = ref(1);
+const gameStartOtherFactionCount = ref(3);
+const gameStartRandomPlacementEnabled = ref(true);
+const gameStartPlayerPlacementMode = ref("all_random");
+const gameStartSetupSlotIds = ref([]);
+const gameStartSetupSlotIndex = ref(0);
 const selectedRace = ref(raceSelectionDb?.[0]?.key || "只人");
 const selectedClass = ref("");
 const selectedCharacterName = ref("主人公");
@@ -274,6 +282,33 @@ const gameFlowLabel = computed(() => {
   if (gameFlowStep.value === "mob") return "モブを作成";
   if (gameFlowStep.value === "ready") return "完了";
   return "未開始";
+});
+const gameStartTotalFactions = computed(() => {
+  const playerCount = Math.max(1, Math.floor(Number(gameStartPlayerCount.value) || 1));
+  const otherCount = Math.max(0, Math.floor(Number(gameStartOtherFactionCount.value) || 0));
+  return Math.max(1, Math.min(GAME_START_MAX_FACTIONS, playerCount + otherCount));
+});
+const gameSetupQueueActive = computed(() => gameStartSetupSlotIds.value.length > 0);
+const currentGameSetupSlotId = computed(() => {
+  const idx = Math.max(0, Math.floor(Number(gameStartSetupSlotIndex.value) || 0));
+  return gameStartSetupSlotIds.value[idx] || "";
+});
+const currentGameSetupIsPlayer = computed(() => {
+  const idx = Math.max(0, Math.floor(Number(gameStartSetupSlotIndex.value) || 0));
+  const playerCount = Math.max(1, Math.floor(Number(gameStartPlayerCount.value) || 1));
+  return idx < playerCount;
+});
+const perPlayerVillageSelectionMode = computed(() => String(gameStartPlayerPlacementMode.value || "") === "player_choose");
+const gameSetupProgressText = computed(() => {
+  if (!gameSetupQueueActive.value) return "";
+  const idx = Math.max(0, Math.floor(Number(gameStartSetupSlotIndex.value) || 0));
+  const total = gameStartSetupSlotIds.value.length;
+  if (!total) return "";
+  const playerCount = Math.max(1, Math.floor(Number(gameStartPlayerCount.value) || 1));
+  const slotLabel = idx < playerCount
+    ? `プレイヤー${idx + 1}`
+    : `別勢力${Math.max(1, (idx + 1) - playerCount)}`;
+  return `${slotLabel} (${idx + 1}/${total})`;
 });
 const localState = ref(createInitialBattleState());
 const roomState = ref(null);
@@ -329,8 +364,15 @@ const playersLabel = computed(() => {
 function openModal(kind, payload = null) {
   if (kind === "game-start") {
     closeAllModals();
+    showGameStartSetupModal.value = true;
+    gameStartPlayerCount.value = 1;
+    gameStartOtherFactionCount.value = 3;
+    gameStartRandomPlacementEnabled.value = true;
+    gameStartPlayerPlacementMode.value = "all_random";
+    gameStartSetupSlotIds.value = [];
+    gameStartSetupSlotIndex.value = 0;
     gameSetupReady.value = false;
-    gameFlowStep.value = "sovereign";
+    gameFlowStep.value = "idle";
     mapCharacterState.value = {
       village: null,
       units: [],
@@ -342,8 +384,7 @@ function openModal(kind, payload = null) {
       namedCount: 0,
       ruleText: ""
     };
-    showRaceModal.value = true;
-    setSessionStatus("ゲーム開始: 統治者を作成してください（種族 → クラス → 名前）", "warn");
+    setSessionStatus("ゲーム開始設定: プレイヤー数と別勢力数を選択してください。", "warn");
     return;
   }
   showRoomModal.value = kind === "room";
@@ -354,6 +395,7 @@ function openModal(kind, payload = null) {
   showClassModal.value = kind === "class";
   showCharacterStatusModal.value = kind === "characters";
   showCharacterNameModal.value = kind === "name";
+  showGameStartSetupModal.value = kind === "game-start-setup";
   if (kind === "skill" && Array.isArray(payload?.categories)) {
     skillTreeCategories.value = payload.categories;
   } else if (kind === "skill" && !skillTreeCategories.value.length) {
@@ -370,6 +412,7 @@ function closeModal(kind) {
   if (kind === "class") showClassModal.value = false;
   if (kind === "characters") showCharacterStatusModal.value = false;
   if (kind === "name") showCharacterNameModal.value = false;
+  if (kind === "game-start-setup") showGameStartSetupModal.value = false;
 }
 
 function closeAllModals() {
@@ -381,11 +424,119 @@ function closeAllModals() {
   showClassModal.value = false;
   showCharacterStatusModal.value = false;
   showCharacterNameModal.value = false;
+  showGameStartSetupModal.value = false;
 }
 
 function setSessionStatus(text, cls = "") {
   sessionStatusText.value = text;
   sessionStatusClass.value = cls;
+}
+
+function sendMapCommand(type, payload = {}) {
+  const cmdType = String(type || "").trim();
+  if (!cmdType) return;
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  characterCommand.value = {
+    ...safePayload,
+    type: cmdType,
+    nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
+  };
+}
+
+function sendMapCommandBatch(commands = []) {
+  const normalized = Array.isArray(commands)
+    ? commands
+      .filter(cmd => cmd && typeof cmd === "object")
+      .map(cmd => {
+        const type = String(cmd.type || "").trim();
+        if (!type) return null;
+        return { ...cmd, type };
+      })
+      .filter(Boolean)
+    : [];
+  if (!normalized.length) return;
+  characterCommand.value = {
+    type: "batch",
+    commands: normalized,
+    nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
+  };
+}
+
+function normalizeGameStartCounts() {
+  const playerCount = Math.max(1, Math.floor(Number(gameStartPlayerCount.value) || 1));
+  let otherCount = Math.max(0, Math.floor(Number(gameStartOtherFactionCount.value) || 0));
+  if (playerCount + otherCount > GAME_START_MAX_FACTIONS) {
+    otherCount = Math.max(0, GAME_START_MAX_FACTIONS - playerCount);
+  }
+  gameStartPlayerCount.value = playerCount;
+  gameStartOtherFactionCount.value = otherCount;
+}
+
+function beginFactionSetupAt(index, options = {}) {
+  if (!Array.isArray(gameStartSetupSlotIds.value) || !gameStartSetupSlotIds.value.length) return false;
+  const idx = Math.max(0, Math.floor(Number(index) || 0));
+  if (idx >= gameStartSetupSlotIds.value.length) return false;
+  gameStartSetupSlotIndex.value = idx;
+  const slotId = gameStartSetupSlotIds.value[idx];
+  if (!slotId) return false;
+  if (!options?.skipSwitchCommand) {
+    sendMapCommand("switchActiveTestPlayer", { playerId: slotId });
+  }
+  selectedClass.value = "";
+  gameSetupReady.value = false;
+  gameFlowStep.value = "sovereign";
+  if (options?.openRace !== false) {
+    showRaceModal.value = true;
+    showClassModal.value = false;
+    showCharacterNameModal.value = false;
+  }
+  const total = gameStartSetupSlotIds.value.length;
+  setSessionStatus(`勢力 ${idx + 1}/${total}: 統治者を作成してください（種族 → クラス → 名前）`, "warn");
+  return true;
+}
+
+function confirmGameStartSetup() {
+  normalizeGameStartCounts();
+  const playerCount = Math.max(1, Math.floor(Number(gameStartPlayerCount.value) || 1));
+  const otherFactionCount = Math.max(0, Math.floor(Number(gameStartOtherFactionCount.value) || 0));
+  const totalFactions = Math.max(1, Math.min(GAME_START_MAX_FACTIONS, playerCount + otherFactionCount));
+  const slotIds = Array.from({ length: totalFactions }, (_, i) => `player-${i + 1}`);
+  gameStartSetupSlotIds.value = slotIds;
+  gameStartSetupSlotIndex.value = 0;
+  gameSetupReady.value = false;
+  gameFlowStep.value = "sovereign";
+  mapCharacterState.value = {
+    village: null,
+    units: [],
+    squads: [],
+    selectedUnitId: "",
+    unitMoveMode: false,
+    villageScale: "村",
+    namedLimit: 2,
+    namedCount: 0,
+    ruleText: ""
+  };
+  const initCommands = [{
+    type: "initTestPlayerSlots",
+    playerCount,
+    otherFactionCount,
+    totalCount: totalFactions
+  }];
+  if (perPlayerVillageSelectionMode.value) {
+    initCommands.push({ type: "prepareGameStartMap" });
+  }
+  sendMapCommandBatch(initCommands);
+  showGameStartSetupModal.value = false;
+  beginFactionSetupAt(0, { openRace: true, skipSwitchCommand: true });
+}
+
+function cancelGameStartSetup() {
+  showGameStartSetupModal.value = false;
+  gameStartSetupSlotIds.value = [];
+  gameStartSetupSlotIndex.value = 0;
+  gameFlowStep.value = "idle";
+  gameSetupReady.value = false;
+  setSessionStatus("ゲーム開始をキャンセルしました。", "");
 }
 
 function runAction(action) {
@@ -415,20 +566,91 @@ function applySelectedClass(payload) {
   setSessionStatus(`開始クラスを ${className} に設定。次に名前を設定してください。`, "ok");
 }
 
+function backToRaceFromClass() {
+  showClassModal.value = false;
+  showRaceModal.value = true;
+  setSessionStatus("種族を選び直してください。", "warn");
+}
+
 function applyCharacterName(payload) {
   const characterName = String(payload?.characterName || "").trim().slice(0, 20);
   const villageName = String(payload?.villageName || "").trim().slice(0, 20);
   if (!characterName || !villageName) return;
+  if (gameSetupQueueActive.value && !currentGameSetupSlotId.value) {
+    setSessionStatus("ゲーム開始設定エラー: 設定対象の勢力が見つかりません。", "error");
+    return;
+  }
   selectedCharacterName.value = characterName;
   selectedVillageName.value = villageName;
-  gameSetupReady.value = true;
-  gameFlowStep.value = "village";
+  gameSetupReady.value = false;
+  gameFlowStep.value = "sovereign";
   showCharacterNameModal.value = false;
-  setSessionStatus(`統治者作成完了: ${characterName} / 村名 ${villageName}。次に初期村を配置してください。`, "warn");
-  characterCommand.value = {
-    type: "startVillagePlacement",
-    nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
+  const profileCommand = {
+    type: "applySovereignProfile",
+    slotId: currentGameSetupSlotId.value || "player-1",
+    race: selectedRace.value,
+    className: selectedClass.value,
+    characterName,
+    villageName
   };
+
+  const inQueue = gameSetupQueueActive.value;
+  const hasNextSlot = inQueue && gameStartSetupSlotIndex.value < gameStartSetupSlotIds.value.length - 1;
+  if (perPlayerVillageSelectionMode.value && currentGameSetupIsPlayer.value) {
+    gameSetupReady.value = true;
+    gameFlowStep.value = "village";
+    sendMapCommandBatch([
+      profileCommand,
+      { type: "startVillagePlacement" }
+    ]);
+    const progressText = inQueue
+      ? `勢力 ${gameStartSetupSlotIndex.value + 1}/${gameStartSetupSlotIds.value.length}`
+      : "勢力 1/1";
+    setSessionStatus(`${progressText}: 統治者設定完了。初期村の土地を選択してください。`, "warn");
+    return;
+  }
+
+  if (hasNextSlot) {
+    const currentIndex = gameStartSetupSlotIndex.value;
+    const nextIndex = currentIndex + 1;
+    const nextSlotId = gameStartSetupSlotIds.value[nextIndex] || "";
+    const completed = currentIndex + 1;
+    const total = gameStartSetupSlotIds.value.length;
+    if (nextSlotId) {
+      sendMapCommandBatch([
+        profileCommand,
+        { type: "switchActiveTestPlayer", playerId: nextSlotId }
+      ]);
+    } else {
+      sendMapCommandBatch([profileCommand]);
+    }
+    setSessionStatus(`勢力 ${completed}/${total} の統治者設定が完了。次の勢力を設定します。`, "ok");
+    beginFactionSetupAt(nextIndex, { openRace: true, skipSwitchCommand: true });
+    return;
+  }
+
+  const total = inQueue ? gameStartSetupSlotIds.value.length : 1;
+  const needsManualVillagePlacement = !gameStartRandomPlacementEnabled.value
+    || gameStartPlayerPlacementMode.value === "player_choose";
+  gameSetupReady.value = true;
+  gameFlowStep.value = "ready";
+  setSessionStatus(
+    needsManualVillagePlacement
+      ? `全${total}勢力の統治者設定が完了。マップ生成後、プレイヤー勢力の初期村を配置してください。`
+      : `全${total}勢力の統治者設定が完了。マップ生成と初期配置を実行します。`,
+    "ok"
+  );
+  sendMapCommandBatch([
+    profileCommand,
+    {
+      type: "finalizeGameStartSetup",
+      randomPlacementEnabled: !!gameStartRandomPlacementEnabled.value,
+      playerPlacementMode: String(gameStartPlayerPlacementMode.value || "all_random"),
+      reuseCurrentMap: !!perPlayerVillageSelectionMode.value
+    }
+  ]);
+  gameStartSetupSlotIds.value = [];
+  gameStartSetupSlotIndex.value = 0;
 }
 
 function handleCharacterStateChange(payload) {
@@ -465,9 +687,29 @@ function handleCharacterStateChange(payload) {
     ruleText: String(payload?.ruleText || "")
   };
   const villagePlaced = !!mapCharacterState.value?.village?.placed;
+  if (perPlayerVillageSelectionMode.value && gameFlowStep.value === "village" && villagePlaced) {
+    if (gameSetupQueueActive.value && gameStartSetupSlotIndex.value < gameStartSetupSlotIds.value.length - 1) {
+      const completed = gameStartSetupSlotIndex.value + 1;
+      const total = gameStartSetupSlotIds.value.length;
+      setSessionStatus(`勢力 ${completed}/${total} の土地設定が完了。次の勢力を設定します。`, "ok");
+      beginFactionSetupAt(gameStartSetupSlotIndex.value + 1, { openRace: true });
+      return;
+    }
+    gameFlowStep.value = "ready";
+    const total = gameSetupQueueActive.value ? gameStartSetupSlotIds.value.length : 1;
+    if (gameSetupQueueActive.value) {
+      gameStartSetupSlotIds.value = [];
+      gameStartSetupSlotIndex.value = 0;
+    }
+    setSessionStatus(`全${total}勢力の初期設定が完了。マップ探索を開始できます。`, "ok");
+    return;
+  }
   if (gameFlowStep.value === "village" && villagePlaced) {
     gameFlowStep.value = "mob";
-    setSessionStatus("初期村を配置しました。次にモブを作成してください。", "warn");
+    const progressText = gameSetupQueueActive.value
+      ? `勢力 ${gameStartSetupSlotIndex.value + 1}/${gameStartSetupSlotIds.value.length}`
+      : "勢力 1/1";
+    setSessionStatus(`${progressText}: 初期村を配置しました。次にモブを作成してください。`, "warn");
     characterCommand.value = {
       type: "openUnitCreate",
       nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
@@ -476,8 +718,22 @@ function handleCharacterStateChange(payload) {
   }
   const hasMobUnit = units.some(unit => !unit?.isSovereign);
   if (gameFlowStep.value === "mob" && hasMobUnit) {
+    if (gameSetupQueueActive.value && gameStartSetupSlotIndex.value < gameStartSetupSlotIds.value.length - 1) {
+      const completed = gameStartSetupSlotIndex.value + 1;
+      const total = gameStartSetupSlotIds.value.length;
+      setSessionStatus(`勢力 ${completed}/${total} の初期設定が完了。次の勢力を設定します。`, "ok");
+      beginFactionSetupAt(gameStartSetupSlotIndex.value + 1, { openRace: true });
+      return;
+    }
     gameFlowStep.value = "ready";
-    setSessionStatus("ゲーム開始フロー完了。マップ探索を開始できます。", "ok");
+    if (gameSetupQueueActive.value) {
+      const total = gameStartSetupSlotIds.value.length;
+      gameStartSetupSlotIds.value = [];
+      gameStartSetupSlotIndex.value = 0;
+      setSessionStatus(`全${total}勢力の初期設定が完了。マップ探索を開始できます。`, "ok");
+    } else {
+      setSessionStatus("ゲーム開始フロー完了。マップ探索を開始できます。", "ok");
+    }
   }
 }
 
@@ -1024,6 +1280,7 @@ onBeforeUnmount(() => {
       :selected-character-name="selectedCharacterName"
       :selected-village-name="selectedVillageName"
       :game-setup-ready="gameSetupReady"
+      :game-setup-progress-text="gameSetupProgressText"
       :character-command="characterCommand"
       @open-modal="openModal"
       @character-state-change="handleCharacterStateChange"
@@ -1072,9 +1329,59 @@ onBeforeUnmount(() => {
       @close="closeModal('skill')"
     />
 
+    <div v-if="showGameStartSetupModal" class="game-start-backdrop" @click.self>
+      <div class="game-start-modal">
+        <h3>ゲーム開始設定</h3>
+        <p class="game-start-note">最初にプレイヤー数と別勢力数を設定します。デフォルトはプレイヤー1 + 別勢力3（合計4勢力）です。</p>
+        <label class="game-start-field">
+          <span>プレイヤー数</span>
+          <input
+            v-model.number="gameStartPlayerCount"
+            type="number"
+            min="1"
+            :max="GAME_START_MAX_FACTIONS"
+            step="1"
+            @change="normalizeGameStartCounts"
+          />
+        </label>
+        <label class="game-start-field">
+          <span>別勢力数</span>
+          <input
+            v-model.number="gameStartOtherFactionCount"
+            type="number"
+            min="0"
+            :max="GAME_START_MAX_FACTIONS"
+            step="1"
+            @change="normalizeGameStartCounts"
+          />
+        </label>
+        <label class="game-start-field game-start-check">
+          <span>ランダム配置</span>
+          <input
+            v-model="gameStartRandomPlacementEnabled"
+            type="checkbox"
+          />
+        </label>
+        <label class="game-start-field">
+          <span>プレイヤー配置方式</span>
+          <select v-model="gameStartPlayerPlacementMode">
+            <option value="all_random">全勢力ランダム</option>
+            <option value="player_random_only">プレイヤーのみランダム</option>
+            <option value="player_choose">プレイヤーは手動選択</option>
+          </select>
+        </label>
+        <div class="game-start-total">合計勢力: {{ gameStartTotalFactions }} / 最大 {{ GAME_START_MAX_FACTIONS }}</div>
+        <div class="game-start-actions">
+          <button type="button" class="secondary" @click="cancelGameStartSetup">閉じる</button>
+          <button type="button" class="secondary" @click="confirmGameStartSetup">次へ</button>
+        </div>
+      </div>
+    </div>
+
     <race-select-modal
       :show="showRaceModal"
       :selected-race="selectedRace"
+      :setup-progress-text="gameSetupProgressText"
       @close="closeModal('race')"
       @confirm="applySelectedRace"
     />
@@ -1083,7 +1390,9 @@ onBeforeUnmount(() => {
       :show="showClassModal"
       :selected-race="selectedRace"
       :selected-class="selectedClass"
+      :setup-progress-text="gameSetupProgressText"
       @close="closeModal('class')"
+      @back="backToRaceFromClass"
       @confirm="applySelectedClass"
     />
 
@@ -1091,6 +1400,7 @@ onBeforeUnmount(() => {
       :show="showCharacterNameModal"
       :selected-name="selectedCharacterName"
       :selected-village-name="selectedVillageName"
+      :setup-progress-text="gameSetupProgressText"
       @close="closeModal('name')"
       @confirm="applyCharacterName"
     />
@@ -1117,3 +1427,85 @@ onBeforeUnmount(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.game-start-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 15, 0.58);
+  display: grid;
+  place-items: center;
+  z-index: 1200;
+  padding: 12px;
+}
+
+.game-start-modal {
+  width: min(420px, 100%);
+  border: 1px solid rgba(222, 191, 138, 0.52);
+  border-radius: 12px;
+  background: linear-gradient(170deg, rgba(50, 35, 19, 0.96), rgba(18, 13, 9, 0.94));
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.4);
+  padding: 14px;
+  color: #f5e9cc;
+  display: grid;
+  gap: 10px;
+}
+
+.game-start-modal h3 {
+  margin: 0;
+}
+
+.game-start-note {
+  margin: 0;
+  font-size: 0.88rem;
+  color: rgba(245, 233, 204, 0.88);
+}
+
+.game-start-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.86rem;
+}
+
+.game-start-field input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid rgba(220, 188, 133, 0.62);
+  border-radius: 8px;
+  background: rgba(255, 248, 235, 0.93);
+  color: #2f2417;
+  padding: 4px 8px;
+}
+
+.game-start-field select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid rgba(220, 188, 133, 0.62);
+  border-radius: 8px;
+  background: rgba(255, 248, 235, 0.93);
+  color: #2f2417;
+  padding: 4px 8px;
+}
+
+.game-start-field.game-start-check {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.game-start-field.game-start-check input {
+  width: auto;
+  min-height: auto;
+}
+
+.game-start-total {
+  font-size: 0.84rem;
+  color: rgba(244, 227, 189, 0.94);
+}
+
+.game-start-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+</style>

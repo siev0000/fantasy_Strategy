@@ -542,3 +542,80 @@ pm run build:front pass。
 ormalizeEquipmentRarity is not defined) by restoring compatibility alias to 
 ormalizeEquipmentRarityKey in PhaserMapGeneratorPanel. Validation: 
 pm run build:front passed.
+
+- 2026-03-10: Added game-start setup modal in App (player count + other faction count, default 1+3=4 factions, max 8).
+- 2026-03-10: Added per-faction setup queue in App; existing flow (race -> class -> name -> village -> mob) now repeats for each configured faction sequentially.
+- 2026-03-10: Added map commands initTestPlayerSlots and switchActiveTestPlayer in Phaser panel and raised test faction cap to 8.
+- 2026-03-10: Adjusted sovereign creation path to preserve multi-faction slot state instead of collapsing back to single slot during sequential setup.
+- 2026-03-10: Validation passed: 
+pm run build:front.
+- 2026-03-10: Added game-start placement options in App.vue (ランダム配置 default ON + プレイヤー配置方式: 全勢力ランダム / プレイヤーのみランダム / プレイヤー手動)。
+- 2026-03-10: Changed game-start flow to configure sovereign profile per faction first, then trigger inalizeGameStartSetup for map generation and initial placement.
+- 2026-03-10: Added command handlers in PhaserMapGeneratorPanel.vue: pplySovereignProfile and inalizeGameStartSetup.
+- 2026-03-10: Reworked multi-faction start to allow slot initialization before map generation (initTestPlayerSlots no longer requires pre-generated map).
+- 2026-03-10: Implemented faction-aware start placement planner:
+  - reads terrain/height preference from data/source/export/json/勢力.json (土地, 高さ)
+  - maps aliases (丘→丘陵, 山→山岳, 沼→沼地, 渓谷→峡谷, etc.)
+  - chooses village tiles with suitability scoring (terrain/special/height) and map-size-dependent minimum distance target
+  - retries terrain generation multiple times and picks best plan before applying
+- 2026-03-10: Added placement strategies by mode:
+  - ll_random: all factions random
+  - player_random_only: player factions random, non-player factions auto (deterministic suitability-priority)
+  - player_choose: player factions manual placement, others random
+- 2026-03-10: Test ON now reveals entire map by forcing fog disable (shouldDisableFog checks showTestControls).
+- 2026-03-10: Persisted isPlayer in multiplayer slot snapshots for save/load compatibility.
+- 2026-03-10: Validation passed: 
+pm run build:front.
+- 2026-03-10: develop-web-game Playwright client check still blocked in this environment (ERR_MODULE_NOT_FOUND: playwright from skill runtime path).- 2026-03-10: Fixed game-start command race/overwrite by adding atch character command support and switching multi-step setup commands in App.vue to batch dispatch (pplySovereignProfile + switch / pplySovereignProfile + finalize).
+- 2026-03-10: Prevented initial setup state corruption from props.gameSetupReady watcher by guarding fallback createVillageAndInitialUnit path when unit/village state already exists.
+- 2026-03-10: Added in-header setup progress label (勢力作成中) so current target faction is visible during setup.
+- 2026-03-10: Validation passed after fixes: 
+pm run build:front.- 2026-03-10: Added setup progress subtitle support in BaseModal and passed current faction progress (gameSetupProgressText) to race/class/name modals.
+- 2026-03-10: Added ClassSelectModal back action (種族へ戻る) and wired @back in App.vue to reopen race modal.
+- 2026-03-10: Removed in-map header setup progress chip (moved progress display to modal headers as requested).
+- 2026-03-10: Fixed manual village placement sequence for multiple player factions: after placing one player village, auto-switches to next unplaced player and keeps placement mode active until all player villages are placed.
+- 2026-03-10: Validation passed after modal/placement-flow fixes: 
+pm run build:front.- 2026-03-10: Fixed fog-of-war toggle regression: when test mode is turned OFF, visibility is now recomputed and the map is re-rendered so unexplored tiles return to gray.
+- 2026-03-10: Added cross-faction detection support using scout/stealth contest against other factions' unit groups (in addition to monster encounter checks).
+- 2026-03-10: Added persistent visibility key `spottedFactionTileKeys` to live state, per-faction snapshots, and save/load snapshots.
+- 2026-03-10: Added map markers for discovered opposing-faction presence (`勢`) and extended tile detail enemy section to include spotted opposing faction units.
+- 2026-03-10: Validation passed: `npm run build:front`.
+- 2026-03-10: `develop-web-game` Playwright client remains blocked in this environment (`ERR_MODULE_NOT_FOUND: playwright` from skill runtime script).
+- 2026-03-10: Added faction-specific territory border coloring (15-color palette, sequential assignment by slot order, wraps after 15).
+- 2026-03-10: Territory border width increased for readability (default/player/enemy and faction borders tuned thicker).
+- 2026-03-10: Added `territoryOwnerByTile` map so border rendering can resolve concrete owner faction IDs in multiplayer.
+- 2026-03-10: Tile detail owner label now shows faction label in multiplayer (e.g. プレイヤー2領 / 別勢力1領).
+- 2026-03-10: Validation passed: `npm run build:front`.
+- 2026-03-10: Unit icon fallback behavior updated: when no valid icon image exists, UI now shows a one-character glyph instead of default icon image (CharacterStatusModal + CharacterUnitDetailPanel).
+- 2026-03-10: Added fallback icon badge styles for character list, squad member chips, and unit detail icon preview.
+- 2026-03-10: Validation passed: `npm run build:front`.
+- 2026-03-10: Added race-icon display to move-unit selection modal (PhaserMapGeneratorPanel). The unit card now prefers race-side icon from class/race data and falls back to one-character glyph when image is missing.
+- 2026-03-10: Validation passed: `npm run build:front` (after move-unit icon update).
+- 2026-03-10: Icon alias resolution added in PhaserMapGeneratorPanel (`画像ID` missing file fallback), e.g. `只人 -> 人間`, `ヒューマン -> 人間`, `ドラゴニュート -> 竜人`, `デヴィル -> 悪魔`, `エンジェル -> 天使`.
+- 2026-03-10: Validation passed: `npm run build:front` (after icon alias update).
+- 2026-03-10: Removed temporary icon alias resolution per request (no `只人->人間` etc automatic mapping). Icon resolution is now strict by icon filename again.
+- 2026-03-10: Added race icon rendering on map tiles (unit marker inside hex now shows race icon image when available; falls back to race glyph if icon texture is unavailable/not found).
+- 2026-03-10: Validation passed: `npm run build:front` (after strict icon + map marker image update).
+- 2026-03-10: Investigated icon non-display root cause: map marker previously rendered race glyph text by design, not image sprite.
+- 2026-03-10: Verified class-image ID consistency against icon assets. Current class image IDs count: 17, missing IDs: 0 (`只人.webp` now exists).
+- 2026-03-10: Added enemy marker icon rendering on map tiles (uses first spotted enemy class/race icon; falls back to "敵" text if icon unavailable).
+- 2026-03-10: Validation passed: `npm run build:front` (after enemy marker icon update).
+- 2026-03-10: Refactored marker sizing into constants in PhaserMapGeneratorPanel (`MAP_UNIT_MARKER_CONFIG`, `MAP_ENEMY_MARKER_CONFIG`, `MAP_FACTION_MARKER_CONFIG`) so icon/radius/offset can be tuned from one place.
+- 2026-03-10: Validation passed: `npm run build:front` (after marker-size constants refactor).
+
+- 2026-03-11: Added icon-based map markers for sovereigns and special tiles in frontend/src/components/PhaserMapGeneratorPanel.vue (王冠 for 統治者, 滝 icon overlay, 洞窟/峡谷 special icons with 渓谷 fallback).
+- 2026-03-11: Validation passed after icon rendering update: npm run build:front.
+- 2026-03-11: develop-web-game Playwright check blocked in this environment (playwright package missing).
+- 2026-03-11: Refactored sovereign/special/waterfall marker sizes into commented config fields (icon size, offsets, fallback text size) in PhaserMapGeneratorPanel.vue.
+- 2026-03-11: Added right-side own-faction navigator panel in PhaserMapGeneratorPanel (squad list + character list). Clicking an entry now focuses camera and selects corresponding unit/tile.
+- 2026-03-11: Updated wheel zoom behavior to prioritize camera focus on player village when village is placed; falls back to world-center when village is not placed.
+- 2026-03-11: Refactored own-faction navigator from in-canvas right panel to dedicated modal component (OwnFactionNavigatorModal.vue); removed related inline template/CSS from PhaserMapGeneratorPanel and wired focus events via modal.
+- 2026-03-12: 自陣営一覧をモーダルから右固定パネルへ変更（常時表示）。ヘッダークリックで最小化、ヘッダー内タブで「キャラ/部隊」切替を追加。
+- 2026-03-12: キャラ行に種族アイコン・HPゲージ・所属部隊表示を追加。選択で座標へフォーカスし、右パネル下部に詳細ステータス表示を追加。
+- 2026-03-12: 右パネルから「詳細」押下で自キャラ詳細モーダルを開けるように連携（対象ユニットを選択状態に設定）。
+- 2026-03-12: ナビゲータ用データに HP/所属部隊/基礎ステータスを追加（frontend/src/lib/own-faction-navigator.js）。
+- 2026-03-12: Validation passed: npm run build:front.
+- 2026-03-12: 自陣営一覧パネルでキャラ/部隊タブ切替時に消える問題へ対処。ヘッダー最小化クリックに対してタブ領域のクリック伝播を停止（OwnFactionNavigatorModal.vue）。
+- 2026-03-12: プレイヤー切替時の状態取りこぼし対策として `:reset-key="activeTestPlayerId"` を right panel component に渡し、タブ/最小化/選択状態を初期化。
+- 2026-03-12: Validation passed: npm run build:front.
+- 2026-03-12: develop-web-game Playwright check is still blocked here (ERR_MODULE_NOT_FOUND: playwright in skill runtime).

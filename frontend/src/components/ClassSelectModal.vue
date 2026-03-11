@@ -8,10 +8,11 @@ import skillDescDb from "../../../data/source/export/json/説明.json";
 const props = defineProps({
   show: { type: Boolean, default: false },
   selectedRace: { type: String, default: "" },
-  selectedClass: { type: String, default: "" }
+  selectedClass: { type: String, default: "" },
+  setupProgressText: { type: String, default: "" }
 });
 
-const emit = defineEmits(["close", "confirm"]);
+const emit = defineEmits(["close", "confirm", "back"]);
 
 const RACE_CLASS_NAME_MAP = {
   "只人": "ヒューマン",
@@ -196,7 +197,7 @@ function confirmClass() {
 </script>
 
 <template>
-  <base-modal :show="show" title="クラス選択" :wide="true" @close="$emit('close')">
+  <base-modal :show="show" title="クラス選択" :subtitle="setupProgressText" :wide="true" @close="$emit('close')">
     <div v-if="selectedRace && classCandidates.length" class="class-layout">
       <aside class="class-list">
         <div class="small class-list-head">種族: {{ selectedRace }}</div>
@@ -263,6 +264,7 @@ function confirmClass() {
         </details>
 
         <div class="class-actions">
+          <button type="button" class="secondary" @click="$emit('back')">種族へ戻る</button>
           <button type="button" @click="confirmClass">このクラスで決定</button>
         </div>
       </section>
@@ -421,7 +423,9 @@ function confirmClass() {
 
 .class-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .class-empty {

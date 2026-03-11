@@ -7,7 +7,8 @@ import classDb from "../../../data/source/export/json/クラス.json";
 const props = defineProps({
   show: { type: Boolean, default: false },
   selectedRace: { type: String, default: "" },
-  allowedRaces: { type: Array, default: () => [] }
+  allowedRaces: { type: Array, default: () => [] },
+  setupProgressText: { type: String, default: "" }
 });
 
 const emit = defineEmits(["close", "confirm"]);
@@ -118,7 +119,7 @@ function confirmRace() {
 </script>
 
 <template>
-  <base-modal :show="show" title="種族選択" :wide="true" @close="$emit('close')">
+  <base-modal :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" @close="$emit('close')">
     <div v-if="filteredRaces.length" class="race-select-layout">
       <aside class="race-list">
         <button

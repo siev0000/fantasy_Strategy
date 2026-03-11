@@ -4,8 +4,10 @@ import Phaser from "phaser";
 import GenericModal from "./GenericModal.vue";
 import RaceSelectModal from "./RaceSelectModal.vue";
 import ClassSelectModal from "./ClassSelectModal.vue";
+import OwnFactionNavigatorModal from "./OwnFactionNavigatorModal.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
-import { DEFAULT_ICON_NAME, getIconSrcByName, resolveIconName } from "../lib/icon-library.js";
+import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
+import { createOwnCharacterNavigatorEntries, createOwnSquadNavigatorEntries } from "../lib/own-faction-navigator.js";
 import {
   clampCameraCenter as clampCameraCenterUtil,
   clampCameraScroll as clampCameraScrollUtil,
@@ -17,6 +19,7 @@ import {
   normalizeZoomPercent as normalizeZoomPercentUtil,
   resolveMinZoomPercent as resolveMinZoomPercentUtil
 } from "../composables/mapCameraUtils.js";
+import { createMapZoomController } from "../composables/mapZoomController.js";
 import {
   buildCharacterStatusFromRules as buildCharacterStatusFromRulesUtil,
   buildUnitResistances as buildUnitResistancesUtil,
@@ -65,6 +68,50 @@ import {
   sumResourceBag as sumResourceBagUtil
 } from "../composables/resourceEconomyUtils.js";
 import {
+  buildOtherFactionLabel,
+  buildTestPlayerLabel,
+  DEFAULT_TEST_PLAYER_ID,
+  PRIMARY_TEST_PLAYER_LABEL
+} from "../lib/test-player-data.js";
+import {
+  BASE_TERRAIN_KEYS,
+  BASE_VILLAGE_SCOUT_RANGE,
+  CENTER_LOCK_ZOOM_PERCENT,
+  DRAG_THRESHOLD_PX,
+  FACTION_BORDER_COLOR_PALETTE,
+  FACTION_TERRAIN_ALIAS_MAP,
+  FOG_HIDDEN_ALPHA,
+  FOG_HIDDEN_ALPHA_TEST,
+  FOG_HIDDEN_BORDER,
+  FOG_HIDDEN_FILL,
+  GAME_START_PLAYER_PLACEMENT_MODE_ALL_RANDOM,
+  GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_CHOOSE,
+  GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_RANDOM_ONLY,
+  GAME_START_PLAYER_PLACEMENT_MODE_VALUES,
+  GAME_VIEW_HEIGHT,
+  GAME_VIEW_WIDTH,
+  HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX,
+  HEADER_RESOURCE_ICON_SCALE,
+  HEADER_RESOURCE_ICON_VISUAL_SIZE_PX,
+  MAP_ENEMY_MARKER_CONFIG,
+  MAP_FACTION_MARKER_CONFIG,
+  MAP_SPECIAL_ICON_CONFIG,
+  MAP_SOVEREIGN_MARKER_CONFIG,
+  MAP_UNIT_MARKER_CONFIG,
+  MAP_WATERFALL_ICON_CONFIG,
+  MAX_TEST_PLAYER_COUNT,
+  PLAYER_TERRITORY_RANGE,
+  SPECIAL_TERRAIN_KEYS,
+  TILE_BORDER_DEFAULT,
+  TILE_BORDER_ENEMY,
+  TILE_BORDER_FACTION_ALPHA,
+  TILE_BORDER_FACTION_WIDTH,
+  TILE_BORDER_PLAYER,
+  WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X,
+  WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y,
+  WRAP_RING_TILE_MARGIN
+} from "../lib/phaser-map-panel-config.js";
+import {
   advanceTerrainTurn,
   createIslandShapeData,
   createTerrainMapData,
@@ -84,6 +131,7 @@ const props = defineProps({
   selectedCharacterName: { type: String, default: "" },
   selectedVillageName: { type: String, default: "" },
   gameSetupReady: { type: Boolean, default: false },
+  gameSetupProgressText: { type: String, default: "" },
   characterCommand: { type: Object, default: null }
 });
 const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change", "save-snapshot"]);
@@ -137,7 +185,7 @@ const isDevBuild = import.meta.env.DEV;
 const showDevInfo = ref(isDevBuild);
 const showTestControls = ref(false);
 const testPlayerSlots = ref([]); // テスト用プレイヤー勢力スロット
-const activeTestPlayerId = ref("player-1"); // 現在操作中プレイヤーID
+const activeTestPlayerId = ref(DEFAULT_TEST_PLAYER_ID); // 現在操作中プレイヤーID
 const headerMinimized = ref(false);
 const showTurnActionModal = ref(false);
 const clockNowMs = ref(Date.now());
@@ -167,26 +215,6 @@ const initialAudioVolumes = audio.getVolumeSettings();
 const masterVolumePercent = ref(Math.round((initialAudioVolumes.masterVolume ?? 0.5) * 100));
 const bgmVolumePercent = ref(Math.round((initialAudioVolumes.bgmVolume ?? 0.5) * 100));
 const seVolumePercent = ref(Math.round((initialAudioVolumes.seVolume ?? 0.5) * 100));
-const PLAYER_TERRITORY_RANGE = 1;
-const TILE_BORDER_DEFAULT = { width: 1.25, color: 0x2f3848, alpha: 0.80 };
-const TILE_BORDER_PLAYER = { width: 1.9, color: 0x5ad4ff, alpha: 0.96 };
-const TILE_BORDER_ENEMY = { width: 1.9, color: 0xe25c5c, alpha: 0.96 };
-const FOG_HIDDEN_FILL = 0x7b818a;
-const FOG_HIDDEN_ALPHA = 0.94;
-const FOG_HIDDEN_ALPHA_TEST = 0.56;
-const FOG_HIDDEN_BORDER = { width: 1.15, color: 0x4b525e, alpha: 0.92 };
-const BASE_VILLAGE_SCOUT_RANGE = 1;
-const DRAG_THRESHOLD_PX = 12;
-const WRAP_RING_TILE_MARGIN = 3;
-const WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X = 1.9;
-const WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y = 1.15;
-const CENTER_LOCK_ZOOM_PERCENT = 100;
-const MAX_TEST_PLAYER_COUNT = 4;
-const GAME_VIEW_WIDTH = 1280;
-const GAME_VIEW_HEIGHT = 720;
-const HEADER_RESOURCE_ICON_VISUAL_SIZE_PX = 20; // 表示上のアイコンサイズ(見た目)
-const HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX = 14; // レイアウト占有サイズ(ヘッダー肥大化防止)
-const HEADER_RESOURCE_ICON_SCALE = HEADER_RESOURCE_ICON_VISUAL_SIZE_PX / HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX;
 const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
 const stageScale = ref(1);
 
@@ -211,6 +239,7 @@ let firstGestureHandler = null;
 let nativeWheelHandler = null;
 let cameraInitialized = false;
 let pendingClickFocusWorld = null;
+let pendingClickFocusMode = "near";
 let centerMapOnNextZoom = false;
 let dragPointerId = null;
 let dragStarted = false;
@@ -221,9 +250,12 @@ let dragStartScrollY = 0;
 let pointerViewCache = new Map();
 let forceMapCenterOnNextRender = true;
 let territorySets = { player: new Set(), enemy: new Set() };
+let territoryOwnerByTile = new Map();
 let exploredTileKeys = new Set();
 let visibleTileKeys = new Set();
 let spottedEnemyTileKeys = new Set();
+let spottedFactionTileKeys = new Set();
+let raceMarkerTexturePending = new Set();
 let lastCharacterCommandNonce = "";
 let renderedHexBounds = null;
 let applyingTestPlayerState = false;
@@ -369,6 +401,22 @@ const testPlayersReadyLabel = computed(() => {
 
 const activeTestPlayerReady = computed(() => !!activeTestPlayerSlot.value?.ready);
 
+const factionBorderStyleMap = computed(() => {
+  const out = new Map();
+  const slots = Array.isArray(testPlayerSlots.value) ? testPlayerSlots.value : [];
+  for (let i = 0; i < slots.length; i += 1) {
+    const slotId = nonEmptyText(slots[i]?.id);
+    if (!slotId) continue;
+    const color = FACTION_BORDER_COLOR_PALETTE[i % FACTION_BORDER_COLOR_PALETTE.length];
+    out.set(slotId, {
+      width: TILE_BORDER_FACTION_WIDTH,
+      color,
+      alpha: TILE_BORDER_FACTION_ALPHA
+    });
+  }
+  return out;
+});
+
 const stageScaleStyle = computed(() => ({
   width: `${GAME_VIEW_WIDTH}px`,
   height: `${GAME_VIEW_HEIGHT}px`,
@@ -403,6 +451,31 @@ const nationLogNotes = computed(() => {
     const stamp = nonEmptyText(entry?.at);
     const text = nonEmptyText(entry?.text) || "-";
     return `[T${turn}] ${stamp} ${text}`;
+  });
+});
+
+const ownSquadNavigatorEntries = computed(() => {
+  const byId = new Map(unitList.value.map(unit => [nonEmptyText(unit?.id), unit]).filter(row => row[0]));
+  return createOwnSquadNavigatorEntries({
+    squadSummaries: buildSquadSummaryList(unitList.value).map(summary => ({
+      ...summary,
+      x: summary?.leaderPos?.x,
+      y: summary?.leaderPos?.y
+    })),
+    unitByIdMap: byId,
+    moveUnitIconSrc,
+    moveUnitIconGlyph
+  });
+});
+
+const ownCharacterNavigatorEntries = computed(() => {
+  return createOwnCharacterNavigatorEntries({
+    unitList: unitList.value,
+    isSovereignUnit,
+    isNamedUnit,
+    toUnitRoleLabel,
+    moveUnitIconSrc,
+    moveUnitIconGlyph
   });
 });
 
@@ -1288,12 +1361,76 @@ function resolveUnitIconName(name, fallback = DEFAULT_ICON_NAME) {
 }
 
 function resolveUnitIconSrc(name, fallback = DEFAULT_ICON_NAME) {
-  return getIconSrcByName(resolveUnitIconName(name, fallback), fallback);
+  const iconName = nonEmptyText(name);
+  if (iconName && hasIconName(iconName)) {
+    return getIconSrcByName(iconName, iconName);
+  }
+  const fallbackName = nonEmptyText(fallback);
+  if (fallbackName && hasIconName(fallbackName)) {
+    return getIconSrcByName(fallbackName, fallbackName);
+  }
+  return "";
 }
 
-function resolveDefaultUnitIconName(raceName) {
+function resolveAvailableIconName(...candidates) {
+  for (const candidate of candidates) {
+    const iconName = nonEmptyText(candidate);
+    if (iconName && hasIconName(iconName)) return iconName;
+  }
+  return "";
+}
+
+function resolveSpecialOverlayIconName(specialKey) {
+  if (specialKey === "沼地") return resolveAvailableIconName("沼地", "沼");
+  if (specialKey === "洞窟") return resolveAvailableIconName("洞窟");
+  if (specialKey === "峡谷") return resolveAvailableIconName("峡谷", "渓谷");
+  return "";
+}
+
+function resolveWaterfallIconName() {
+  return resolveAvailableIconName("滝");
+}
+
+function resolveSovereignIconName() {
+  return resolveAvailableIconName("王冠");
+}
+
+function resolveClassRowIconName(row, fallback = DEFAULT_ICON_NAME) {
+  if (!row) return "";
+  const imageId = nonEmptyText(row?.画像ID);
+  if (!imageId) return "";
+  if (hasIconName(imageId)) return imageId;
+  const fallbackIcon = nonEmptyText(fallback);
+  if (fallbackIcon && hasIconName(fallbackIcon)) return fallbackIcon;
+  return "";
+}
+
+function resolveDefaultUnitIconName(options = {}) {
+  const raceName = nonEmptyText(options?.raceName);
+  const className = nonEmptyText(options?.className);
+  const classRow = options?.classRow || findClassRowByName(className);
+  const raceRow = options?.raceRow || findClassRowByName(resolveRaceBaseClassName(raceName));
+  const classIcon = resolveClassRowIconName(classRow, "");
+  if (classIcon) return classIcon;
+  const raceIcon = resolveClassRowIconName(raceRow, "");
+  if (raceIcon) return raceIcon;
   const raceKey = nonEmptyText(raceName);
-  return resolveUnitIconName(raceKey, DEFAULT_ICON_NAME);
+  if (raceKey && hasIconName(raceKey)) return raceKey;
+  return "";
+}
+
+function resolveFallbackIconNameForUnit(unit) {
+  const className = nonEmptyText(unit?.className);
+  const raceName = nonEmptyText(unit?.race);
+  return resolveDefaultUnitIconName({ raceName, className });
+}
+
+function resolveUnitIconNameStrict(name, fallback = "") {
+  const iconName = nonEmptyText(name);
+  if (iconName && hasIconName(iconName)) return iconName;
+  const fallbackName = nonEmptyText(fallback);
+  if (fallbackName && hasIconName(fallbackName)) return fallbackName;
+  return "";
 }
 
 function toSafeNumber(value, fallback = 0) {
@@ -1860,7 +1997,8 @@ function buildVisibilitySnapshotFromLiveState() {
   return {
     exploredTileKeys: Array.from(exploredTileKeys || []).map(v => String(v || "")),
     visibleTileKeys: Array.from(visibleTileKeys || []).map(v => String(v || "")),
-    spottedEnemyTileKeys: Array.from(spottedEnemyTileKeys || []).map(v => String(v || ""))
+    spottedEnemyTileKeys: Array.from(spottedEnemyTileKeys || []).map(v => String(v || "")),
+    spottedFactionTileKeys: Array.from(spottedFactionTileKeys || []).map(v => String(v || ""))
   };
 }
 
@@ -1868,14 +2006,20 @@ function applyVisibilitySnapshotToLiveState(snapshot) {
   const explored = Array.isArray(snapshot?.exploredTileKeys) ? snapshot.exploredTileKeys : [];
   const visible = Array.isArray(snapshot?.visibleTileKeys) ? snapshot.visibleTileKeys : [];
   const spotted = Array.isArray(snapshot?.spottedEnemyTileKeys) ? snapshot.spottedEnemyTileKeys : [];
+  const spottedFaction = Array.isArray(snapshot?.spottedFactionTileKeys) ? snapshot.spottedFactionTileKeys : [];
   exploredTileKeys = new Set(explored.map(v => String(v || "")));
   visibleTileKeys = new Set(visible.map(v => String(v || "")));
   spottedEnemyTileKeys = new Set(spotted.map(v => String(v || "")));
+  spottedFactionTileKeys = new Set(spottedFaction.map(v => String(v || "")));
 }
 
 function resolveRaceFromUnitList(units = []) {
   const sovereign = units.find(unit => isSovereignUnit(unit)) || units[0] || null;
   return nonEmptyText(sovereign?.race) || nonEmptyText(props.selectedRace) || "只人";
+}
+
+function resolveActiveFactionRace() {
+  return resolveRaceFromUnitList(unitList.value);
 }
 
 function buildLiveFactionStateSnapshot() {
@@ -1900,7 +2044,7 @@ function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
   const nextSelectedUnitId = nonEmptyText(snapshot?.selectedUnitId) || units[0]?.id || "";
   const nextNationLogKey = nonEmptyText(snapshot?.nationLogKey)
     || nonEmptyText(units.find(unit => isSovereignUnit(unit))?.id)
-    || `nation-${nonEmptyText(activeTestPlayerId.value) || "player-1"}`;
+    || `nation-${nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID}`;
   const sovereignName = nonEmptyText(units.find(unit => isSovereignUnit(unit))?.name) || "統治者";
 
   applyingTestPlayerState = true;
@@ -1926,8 +2070,9 @@ function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
 
 function buildTestPlayerSlotFromLiveState(id, label, options = {}) {
   return {
-    id: nonEmptyText(id) || "player-1",
-    label: nonEmptyText(label) || "プレイヤー1",
+    id: nonEmptyText(id) || DEFAULT_TEST_PLAYER_ID,
+    label: nonEmptyText(label) || PRIMARY_TEST_PLAYER_LABEL,
+    isPlayer: options?.isPlayer !== false,
     race: nonEmptyText(options?.race) || resolveRaceFromUnitList(unitList.value),
     ready: !!options?.ready,
     factionState: options?.factionState
@@ -1938,12 +2083,12 @@ function buildTestPlayerSlotFromLiveState(id, label, options = {}) {
 
 function syncActiveTestPlayerSlotFromLiveState() {
   if (applyingTestPlayerState) return;
-  const activeId = nonEmptyText(activeTestPlayerId.value) || "player-1";
+  const activeId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
   const next = [...testPlayerSlots.value];
   const idx = next.findIndex(slot => nonEmptyText(slot?.id) === activeId);
   const factionState = buildLiveFactionStateSnapshot();
   if (idx < 0) {
-    next.push(buildTestPlayerSlotFromLiveState(activeId, `プレイヤー${next.length + 1}`, { factionState }));
+    next.push(buildTestPlayerSlotFromLiveState(activeId, buildTestPlayerLabel(next.length + 1), { factionState }));
   } else {
     next[idx] = {
       ...next[idx],
@@ -1955,7 +2100,7 @@ function syncActiveTestPlayerSlotFromLiveState() {
 }
 
 function resetTestPlayerSlotsFromLiveState() {
-  const primary = buildTestPlayerSlotFromLiveState("player-1", "プレイヤー1", { ready: false });
+  const primary = buildTestPlayerSlotFromLiveState(DEFAULT_TEST_PLAYER_ID, PRIMARY_TEST_PLAYER_LABEL, { isPlayer: true, ready: false });
   testPlayerSlots.value = [primary];
   activeTestPlayerId.value = primary.id;
 }
@@ -1963,6 +2108,47 @@ function resetTestPlayerSlotsFromLiveState() {
 function ensureTestPlayerSlotsInitialized() {
   if (testPlayerSlots.value.length) return;
   resetTestPlayerSlotsFromLiveState();
+}
+
+function initializeTestPlayerSlotsFromConfig(config = {}) {
+  const requestedPlayers = Math.max(1, Math.floor(toSafeNumber(config?.playerCount, 1)));
+  const requestedOthers = Math.max(0, Math.floor(toSafeNumber(config?.otherFactionCount, 0)));
+  const requestedTotalRaw = Math.max(1, Math.floor(toSafeNumber(config?.totalCount, requestedPlayers + requestedOthers)));
+  const total = Math.max(1, Math.min(MAX_TEST_PLAYER_COUNT, requestedTotalRaw));
+  const playerCount = Math.max(1, Math.min(requestedPlayers, total));
+  const otherCount = Math.max(0, Math.min(requestedOthers, Math.max(0, total - playerCount)));
+
+  nationLogsBySovereign.value = {};
+  activeNationLogKey.value = "";
+  const nextSlots = [];
+  for (let i = 1; i <= total; i += 1) {
+    const id = `player-${i}`;
+    const isPlayer = i <= playerCount;
+    const label = isPlayer ? buildTestPlayerLabel(i) : buildOtherFactionLabel(i - playerCount);
+    const factionState = createDraftFactionStateForAdditionalPlayer(id, String(i));
+    const sovereign = Array.isArray(factionState?.units)
+      ? factionState.units.find(unit => isSovereignUnit(unit)) || factionState.units[0] || null
+      : null;
+    ensureNationLogBucket(factionState?.nationLogKey, nonEmptyText(sovereign?.name) || `統治者${i}`);
+    nextSlots.push({
+      id,
+      label,
+      race: nonEmptyText(sovereign?.race) || nonEmptyText(props.selectedRace) || "只人",
+      isPlayer,
+      ready: false,
+      factionState
+    });
+  }
+  testPlayerSlots.value = nextSlots;
+  activeTestPlayerId.value = nextSlots[0]?.id || DEFAULT_TEST_PLAYER_ID;
+  const activeSlot = nextSlots[0] || null;
+  if (activeSlot?.factionState) {
+    applyFactionStateSnapshotToLiveState(activeSlot.factionState, { emitState: true, render: !!currentData.value });
+  } else {
+    emitCharacterStateChange();
+    if (currentData.value) renderMapWithPhaser();
+  }
+  return { ok: true, total, playerCount, otherCount };
 }
 
 function resolveNextTestPlayerIdentity() {
@@ -1984,24 +2170,25 @@ function resolveNextTestPlayerIdentity() {
   return {
     id: nextId,
     no: nextNo,
-    label: `プレイヤー${nextNo}`
+    label: buildTestPlayerLabel(nextNo)
   };
 }
 
-function createDraftFactionStateForAdditionalPlayer(slotId, label) {
-  const raceName = nonEmptyText(props.selectedRace) || "只人";
+function createDraftFactionStateForAdditionalPlayer(slotId, label, options = {}) {
+  const raceName = nonEmptyText(options?.raceName) || nonEmptyText(props.selectedRace) || "只人";
+  const preferredClassName = nonEmptyText(options?.className) || nonEmptyText(props.selectedClass);
   const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName))
     || chooseRaceBaseRowForSelection()
     || classRows.value[0]
     || null;
-  const classRow = findClassRowByName(props.selectedClass)
+  const classRow = findClassRowByName(preferredClassName)
     || pickClassRowForCharacter(raceRow)
     || classRows.value[0]
     || null;
   const sovereign = createUnitRecord({
     raceRow,
     classRow,
-    name: `統治者${label}`,
+    name: nonEmptyText(options?.sovereignName) || `統治者${label}`,
     raceLabel: raceName,
     isSovereign: true,
     isNamed: true,
@@ -2010,7 +2197,7 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label) {
   sovereign.x = null;
   sovereign.y = null;
   const initialPopulation = resolveInitialVillagePopulationByRace(raceName);
-  const villageName = randomPick(VILLAGE_NAME_POOL, "開拓村");
+  const villageName = nonEmptyText(options?.villageName) || randomPick(VILLAGE_NAME_POOL, "開拓村");
   const village = ensureVillageStateShape({
     id: `${slotId}-village-pending`,
     name: villageName,
@@ -2036,7 +2223,8 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label) {
     visibility: {
       exploredTileKeys: [],
       visibleTileKeys: [],
-      spottedEnemyTileKeys: []
+      spottedEnemyTileKeys: [],
+      spottedFactionTileKeys: []
     }
   };
 }
@@ -2053,8 +2241,75 @@ function switchActiveTestPlayer(playerId, options = {}) {
   activeTestPlayerId.value = targetId;
   applyFactionStateSnapshotToLiveState(slot.factionState, {
     emitState: options.emitState !== false,
-    render: options.render !== false
+    render: false
   });
+  const focusOnSwitch = options.focusOnSwitch !== false;
+  if (focusOnSwitch) {
+    const focused = focusActiveFactionPrimaryTile(slot?.factionState);
+    if (!focused) {
+      centerMapOnNextZoom = true;
+    }
+  }
+  if (options.render !== false) renderMapWithPhaser();
+}
+
+function focusActiveFactionPrimaryTile(factionState = null) {
+  const village = factionState?.village || null;
+  const villageX = Math.floor(toSafeNumber(village?.x, NaN));
+  const villageY = Math.floor(toSafeNumber(village?.y, NaN));
+  if (village?.placed && Number.isFinite(villageX) && Number.isFinite(villageY) && villageX >= 0 && villageY >= 0) {
+    centerMapOnNextZoom = false;
+    queueCameraFocusAtTile(villageX, villageY, { mode: "absolute" });
+    return true;
+  }
+  const units = Array.isArray(factionState?.units) ? factionState.units : [];
+  const sovereign = units.find(unit => isSovereignUnit(unit)) || units[0] || null;
+  const unitX = Math.floor(toSafeNumber(sovereign?.x, NaN));
+  const unitY = Math.floor(toSafeNumber(sovereign?.y, NaN));
+  if (Number.isFinite(unitX) && Number.isFinite(unitY) && unitX >= 0 && unitY >= 0) {
+    centerMapOnNextZoom = false;
+    queueCameraFocusAtTile(unitX, unitY, { mode: "absolute" });
+    return true;
+  }
+  return false;
+}
+
+function applySovereignProfileToSlot(command = {}) {
+  const targetId = nonEmptyText(command?.slotId) || nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  if (!targetId) return { ok: false, reason: "勢力IDが未指定です。" };
+  ensureTestPlayerSlotsInitialized();
+  switchActiveTestPlayer(targetId, { emitState: false, render: false });
+
+  const currentSlot = testPlayerSlots.value.find(slot => nonEmptyText(slot?.id) === targetId) || null;
+  const raceName = nonEmptyText(command?.race)
+    || nonEmptyText(currentSlot?.race)
+    || nonEmptyText(props.selectedRace)
+    || "只人";
+  const className = nonEmptyText(command?.className) || nonEmptyText(props.selectedClass);
+  const fallbackLabel = nonEmptyText(currentSlot?.label) || "勢力";
+  const labelNo = (fallbackLabel.match(/\d+/)?.[0]) || "1";
+  const sovereignName = nonEmptyText(command?.characterName) || `統治者${labelNo}`;
+  const villageName = nonEmptyText(command?.villageName) || randomPick(VILLAGE_NAME_POOL, "開拓村");
+  const nextState = createDraftFactionStateForAdditionalPlayer(targetId, labelNo, {
+    raceName,
+    className,
+    sovereignName,
+    villageName
+  });
+  const nextSlots = testPlayerSlots.value.map(slot => {
+    if (nonEmptyText(slot?.id) !== targetId) return slot;
+    return {
+      ...slot,
+      race: raceName,
+      factionState: nextState
+    };
+  });
+  testPlayerSlots.value = nextSlots;
+  applyFactionStateSnapshotToLiveState(nextState, { emitState: true, render: false });
+  updateUnitInfoText(`勢力設定: ${fallbackLabel} / ${sovereignName} / ${raceName}${className ? ` / ${className}` : ""}`);
+  pushNationLog(`勢力設定: ${fallbackLabel} / 統治者 ${sovereignName} / 種族 ${raceName}${className ? ` / クラス ${className}` : ""}`);
+  if (currentData.value) renderMapWithPhaser();
+  return { ok: true, slotId: targetId };
 }
 
 function addTestPlayerFaction() {
@@ -2078,13 +2333,14 @@ function addTestPlayerFaction() {
   pushNationLog(`勢力追加: ${label} を作成`);
   testPlayerSlots.value = [
     ...testPlayerSlots.value,
-    {
-      id,
-      label,
-      race: nonEmptyText(props.selectedRace) || "只人",
-      ready: false,
-      factionState
-    }
+      {
+        id,
+        label,
+        isPlayer: true,
+        race: nonEmptyText(props.selectedRace) || "只人",
+        ready: false,
+        factionState
+      }
   ];
   switchActiveTestPlayer(id);
   updateUnitInfoText(`${label} を追加しました。初期村を配置してください。`);
@@ -2183,6 +2439,10 @@ function buildEnemyTerritorySet(data) {
 
 function rebuildTerritorySets(data) {
   const hostile = buildEnemyTerritorySet(data);
+  const ownerMap = new Map();
+  for (const key of hostile) {
+    ownerMap.set(key, "enemy");
+  }
   if (testPlayerSlots.value.length > 1) {
     const activeId = nonEmptyText(activeTestPlayerId.value);
     const player = new Set();
@@ -2190,18 +2450,30 @@ function rebuildTerritorySets(data) {
       const slotId = nonEmptyText(slot?.id);
       const set = buildPlayerTerritorySet(data, slot?.factionState?.village);
       if (slotId && slotId === activeId) {
-        for (const key of set) player.add(key);
+        for (const key of set) {
+          player.add(key);
+          ownerMap.set(key, slotId);
+        }
       } else {
-        for (const key of set) hostile.add(key);
+        for (const key of set) {
+          hostile.add(key);
+          if (!ownerMap.has(key)) ownerMap.set(key, slotId || "enemy");
+        }
       }
     }
     territorySets = { player, enemy: hostile };
+    territoryOwnerByTile = ownerMap;
     return;
   }
+  const playerSet = buildPlayerTerritorySet(data, villageState.value);
+  for (const key of playerSet) {
+    ownerMap.set(key, "player");
+  }
   territorySets = {
-    player: buildPlayerTerritorySet(data, villageState.value),
+    player: playerSet,
     enemy: hostile
   };
+  territoryOwnerByTile = ownerMap;
 }
 
 function tileOwnerAt(x, y) {
@@ -2211,7 +2483,23 @@ function tileOwnerAt(x, y) {
   return "";
 }
 
-function borderStyleForOwner(owner) {
+function tileFactionOwnerIdAt(x, y) {
+  const key = coordKey(x, y);
+  return nonEmptyText(territoryOwnerByTile.get(key));
+}
+
+function resolveFactionLabelById(slotId = "") {
+  const id = nonEmptyText(slotId);
+  if (!id) return "";
+  const slot = testPlayerSlots.value.find(row => nonEmptyText(row?.id) === id) || null;
+  return nonEmptyText(slot?.label);
+}
+
+function borderStyleForOwner(owner, factionOwnerId = "") {
+  if (isTestMultiplayerActive.value && factionOwnerId) {
+    const factionStyle = factionBorderStyleMap.value.get(factionOwnerId);
+    if (factionStyle) return factionStyle;
+  }
   if (owner === "player") return TILE_BORDER_PLAYER;
   if (owner === "enemy") return TILE_BORDER_ENEMY;
   return TILE_BORDER_DEFAULT;
@@ -2244,6 +2532,69 @@ function resolveInitialVillagePopulationByRace(raceKey = "") {
   const num = Math.floor(toSafeNumber(row?.初期人数, 0));
   if (num > 0) return num;
   return resolveFallbackInitialPopulation();
+}
+
+function normalizeFactionTerrainToken(rawToken) {
+  const token = nonEmptyText(rawToken)
+    .replace(/\s+/g, "")
+    .replace(/[　]/g, "");
+  if (!token) return "";
+  return FACTION_TERRAIN_ALIAS_MAP[token] || token;
+}
+
+function resolveFactionTerrainPreferenceByRace(raceKey = "") {
+  const row = resolveFactionRowByRace(raceKey);
+  const terrainRaw = nonEmptyText(row?.土地);
+  if (!terrainRaw) {
+    return {
+      base: new Set(),
+      special: new Set()
+    };
+  }
+  const base = new Set();
+  const special = new Set();
+  const tokens = terrainRaw
+    .split(/[,\u3001\/]/)
+    .map(token => normalizeFactionTerrainToken(token))
+    .filter(Boolean);
+  for (const token of tokens) {
+    if (BASE_TERRAIN_KEYS.has(token)) base.add(token);
+    else if (SPECIAL_TERRAIN_KEYS.has(token)) special.add(token);
+  }
+  return { base, special };
+}
+
+function resolveFactionPreferredHeightLevelByRace(raceKey = "") {
+  const row = resolveFactionRowByRace(raceKey);
+  const h = Number(row?.高さ);
+  if (!Number.isFinite(h)) return null;
+  return Math.floor(h);
+}
+
+function resolveFactionPlacementSpecByRace(raceKey = "") {
+  const race = nonEmptyText(raceKey) || "只人";
+  const preference = resolveFactionTerrainPreferenceByRace(race);
+  return {
+    race,
+    preferredBaseTerrains: preference.base,
+    preferredSpecialTerrains: preference.special,
+    preferredHeightLevel: resolveFactionPreferredHeightLevelByRace(race)
+  };
+}
+
+function resolveSlotPlacementStrategy(slot, placementConfig = {}) {
+  const isPlayer = !!slot?.isPlayer;
+  const randomPlacementEnabled = placementConfig?.randomPlacementEnabled !== false;
+  const mode = GAME_START_PLAYER_PLACEMENT_MODE_VALUES.has(placementConfig?.playerPlacementMode)
+    ? placementConfig.playerPlacementMode
+    : GAME_START_PLAYER_PLACEMENT_MODE_ALL_RANDOM;
+
+  if (!randomPlacementEnabled && isPlayer) return "manual";
+  if (mode === GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_CHOOSE && isPlayer) return "manual";
+  if (mode === GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_RANDOM_ONLY) {
+    return isPlayer ? "random" : "auto";
+  }
+  return randomPlacementEnabled ? "random" : "auto";
 }
 
 function resolveRaceFoodProfile(raceKey = "") {
@@ -2334,6 +2685,7 @@ function adjustVillagePopulationForTurn(village, shortageTotal = 0) {
 
 function shouldDisableFog(data) {
   if (!data || data.shapeOnly) return true;
+  if (showTestControls.value) return true;
   const v = villageState.value;
   return villagePlacementMode.value && (!v?.placed || !Number.isFinite(v.x) || !Number.isFinite(v.y));
 }
@@ -2342,6 +2694,7 @@ function resetVisibilityState() {
   exploredTileKeys = new Set();
   visibleTileKeys = new Set();
   spottedEnemyTileKeys = new Set();
+  spottedFactionTileKeys = new Set();
 }
 
 function markTileExplored(x, y) {
@@ -2362,6 +2715,21 @@ function markEnemySpotted(x, y, data = currentData.value) {
     return false;
   }
   spottedEnemyTileKeys.add(key);
+  markTileExplored(x, y);
+  return true;
+}
+
+function markFactionSpotted(x, y, data = currentData.value) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const w = Number.isFinite(data?.w) ? data.w : 0;
+  const h = Number.isFinite(data?.h) ? data.h : 0;
+  if (x < 0 || y < 0 || x >= w || y >= h) return false;
+  const key = coordKey(x, y);
+  if (spottedFactionTileKeys.has(key)) {
+    markTileExplored(x, y);
+    return false;
+  }
+  spottedFactionTileKeys.add(key);
   markTileExplored(x, y);
   return true;
 }
@@ -3101,7 +3469,12 @@ function createUnitRecord({
   const moveRange = 6;
   const normalizedType = isSovereign ? "統治者" : (isNamed ? "ネームド" : unitType);
   const resolvedRace = nonEmptyText(raceLabel) || nonEmptyText(props.selectedRace) || nonEmptyText(raceRow?.名前) || "未設定";
-  const iconName = resolveDefaultUnitIconName(resolvedRace);
+  const iconName = resolveDefaultUnitIconName({
+    raceName: resolvedRace,
+    className: nonEmptyText(classRow?.名前),
+    classRow,
+    raceRow
+  });
   return {
     id: `unit-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
     unitType: normalizedType,
@@ -3251,7 +3624,7 @@ function createVillageAndInitialUnit(data) {
     updateUnitInfoText("ゲーム開始待機中。統治者作成後に初期村を配置できます。");
     return;
   }
-  const selectedRaceName = nonEmptyText(props.selectedRace) || "只人";
+  const selectedRaceName = resolveActiveFactionRace();
   const initialPopulation = resolveInitialVillagePopulationByRace(selectedRaceName);
   const chosenVillageName = nonEmptyText(props.selectedVillageName);
   const pendingVillageName = chosenVillageName || randomPick(VILLAGE_NAME_POOL, "開拓村");
@@ -3315,8 +3688,522 @@ function createVillageAndInitialUnit(data) {
   const unitCostPreview = buildUnitCreationCost(1);
   unitRulesInfoText.value = `キャラ生成ルール: 初期統治者は自動生成 / 村人口(勢力初期人数): ${pendingPopulation} 固定 / モブ上限: 人口の1/10 / ネームド上限 村2 町4 都市7 / ユニット作成(仮) 食料 ${formatFoodResourceBag(unitCostPreview.food)} + 資材 ${formatMaterialResourceBag(unitCostPreview.material)} / ターン順: 領土収入→ユニット維持費→村人口消費→不足判定`;
   updateUnitInfoText(`統治者を作成: ${sovereignUnit.name} / ${sovereignUnit.race} / ${sovereignUnit.className} / 村配置先を選択してください。`);
-  resetTestPlayerSlotsFromLiveState();
+  if (testPlayerSlots.value.length > 1) {
+    syncActiveTestPlayerSlotFromLiveState();
+  } else {
+    resetTestPlayerSlotsFromLiveState();
+  }
   emitCharacterStateChange();
+}
+
+function buildGameStartPlacementConfig(command = {}) {
+  const randomPlacementEnabled = command?.randomPlacementEnabled !== false;
+  const modeRaw = nonEmptyText(command?.playerPlacementMode);
+  const playerPlacementMode = GAME_START_PLAYER_PLACEMENT_MODE_VALUES.has(modeRaw)
+    ? modeRaw
+    : GAME_START_PLAYER_PLACEMENT_MODE_ALL_RANDOM;
+  return {
+    randomPlacementEnabled,
+    playerPlacementMode
+  };
+}
+
+function resolveFactionEntryForSlot(slot, fallbackIndex = 0, placementConfig = {}) {
+  const slotId = nonEmptyText(slot?.id) || `player-${fallbackIndex + 1}`;
+  const units = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+  const race = resolveRaceFromUnitList(units)
+    || nonEmptyText(slot?.race)
+    || nonEmptyText(props.selectedRace)
+    || "只人";
+  const placementSpec = resolveFactionPlacementSpecByRace(race);
+  const isPlayer = slot?.isPlayer != null
+    ? !!slot.isPlayer
+    : (fallbackIndex === 0 || nonEmptyText(slot?.label).startsWith("プレイヤー"));
+  const strategy = resolveSlotPlacementStrategy({ ...slot, isPlayer }, placementConfig);
+  return {
+    id: slotId,
+    label: nonEmptyText(slot?.label) || `勢力${fallbackIndex + 1}`,
+    race,
+    isPlayer,
+    strategy,
+    preferredBaseTerrains: placementSpec.preferredBaseTerrains,
+    preferredSpecialTerrains: placementSpec.preferredSpecialTerrains,
+    preferredHeightLevel: placementSpec.preferredHeightLevel
+  };
+}
+
+function isVillagePlaceableTerrain(data, x, y) {
+  const terrain = nonEmptyText(data?.grid?.[y]?.[x]);
+  if (!terrain) return false;
+  if (terrain === "海" || terrain === "湖" || terrain === "火山") return false;
+  return true;
+}
+
+function evaluateFactionTileSuitability(data, entry, x, y) {
+  const terrain = nonEmptyText(data?.grid?.[y]?.[x]);
+  const special = nonEmptyText(data?.specialMap?.[y]?.[x]);
+  const heightLevelRaw = Number(data?.heightLevelMap?.[y]?.[x]);
+  const preferredBaseTerrains = entry?.preferredBaseTerrains instanceof Set ? entry.preferredBaseTerrains : new Set();
+  const preferredSpecialTerrains = entry?.preferredSpecialTerrains instanceof Set ? entry.preferredSpecialTerrains : new Set();
+  const preferredHeightLevel = Number.isFinite(entry?.preferredHeightLevel) ? entry.preferredHeightLevel : null;
+
+  const hasTerrainPreference = preferredBaseTerrains.size > 0 || preferredSpecialTerrains.size > 0;
+  const terrainMatch = preferredBaseTerrains.has(terrain);
+  const specialMatch = preferredSpecialTerrains.has(special);
+  const terrainScore = hasTerrainPreference ? ((terrainMatch || specialMatch) ? 1 : 0) : 0.6;
+
+  let heightScore = 0.55;
+  if (preferredHeightLevel != null && Number.isFinite(heightLevelRaw)) {
+    const diff = Math.abs(Math.floor(heightLevelRaw) - preferredHeightLevel);
+    heightScore = Math.max(0, 1 - (diff / 4));
+  } else if (preferredHeightLevel != null) {
+    heightScore = 0.25;
+  }
+
+  const total = (terrainScore * 0.72) + (heightScore * 0.28);
+  return {
+    total,
+    terrainScore,
+    heightScore,
+    matched: terrainMatch || specialMatch,
+    terrain,
+    special,
+    heightLevel: Number.isFinite(heightLevelRaw) ? Math.floor(heightLevelRaw) : null
+  };
+}
+
+function resolvePlacementMinDistanceByMap(data, factionCount) {
+  const side = Math.max(1, Math.min(data?.w || 0, data?.h || 0));
+  const baseDistance = Math.max(2, Math.floor(side * 0.17));
+  const scale = Math.max(0.55, Math.sqrt(4 / Math.max(2, factionCount)));
+  return Math.max(2, Math.floor(baseDistance * scale));
+}
+
+function planFactionVillagePlacements(data, entries, placementConfig = {}, options = {}) {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  const fixedPlacements = Array.isArray(options?.fixedPlacements)
+    ? options.fixedPlacements
+      .filter(row => row && Number.isFinite(row.x) && Number.isFinite(row.y))
+      .map(row => ({
+        ...row,
+        key: coordKey(row.x, row.y)
+      }))
+    : [];
+  const fixedSlotIds = new Set(fixedPlacements.map(row => nonEmptyText(row?.slotId)).filter(Boolean));
+  const candidates = [];
+  for (let y = 0; y < (data?.h || 0); y += 1) {
+    for (let x = 0; x < (data?.w || 0); x += 1) {
+      if (!isVillagePlaceableTerrain(data, x, y)) continue;
+      candidates.push({ x, y, key: coordKey(x, y) });
+    }
+  }
+  const autoEntries = safeEntries.filter(entry => entry.strategy !== "manual" && !fixedSlotIds.has(nonEmptyText(entry?.id)));
+  const manualEntries = safeEntries.filter(entry => entry.strategy === "manual");
+  const placementMinDistance = resolvePlacementMinDistanceByMap(data, Math.max(1, safeEntries.length));
+  const used = new Set(fixedPlacements.map(row => row.key));
+  const placements = fixedPlacements.map(row => ({
+    ...row,
+    minDist: placementMinDistance,
+    suitability: evaluateFactionTileSuitability(
+      data,
+      safeEntries.find(entry => nonEmptyText(entry?.id) === nonEmptyText(row?.slotId)) || null,
+      row.x,
+      row.y
+    )
+  }));
+  const sortedAutoEntries = [...autoEntries].sort((a, b) => {
+    const aPref = (a.preferredBaseTerrains?.size || 0) + (a.preferredSpecialTerrains?.size || 0);
+    const bPref = (b.preferredBaseTerrains?.size || 0) + (b.preferredSpecialTerrains?.size || 0);
+    return aPref - bPref;
+  });
+  const bestSuitabilityBySlot = new Map();
+
+  for (const entry of safeEntries) {
+    let best = 0;
+    for (const candidate of candidates) {
+      const suit = evaluateFactionTileSuitability(data, entry, candidate.x, candidate.y);
+      if (suit.total > best) best = suit.total;
+    }
+    bestSuitabilityBySlot.set(entry.id, best);
+  }
+
+  for (const entry of sortedAutoEntries) {
+    let bestPick = null;
+    for (const candidate of candidates) {
+      if (used.has(candidate.key)) continue;
+      const suit = evaluateFactionTileSuitability(data, entry, candidate.x, candidate.y);
+      const minDist = placements.length
+        ? placements.reduce((best, placed) => Math.min(best, hexDistance(candidate, placed)), Number.POSITIVE_INFINITY)
+        : placementMinDistance;
+      const distScore = Math.min(1.25, minDist / Math.max(1, placementMinDistance));
+      const tooClosePenalty = minDist < Math.max(2, Math.floor(placementMinDistance * 0.65)) ? 16 : 0;
+      const randomJitter = entry.strategy === "random" ? Math.random() * 5.5 : 0;
+      const score = (suit.total * 100) + (distScore * 38) + (suit.matched ? 10 : -6) + randomJitter - tooClosePenalty;
+      if (!bestPick || score > bestPick.score) {
+        bestPick = {
+          ...candidate,
+          score,
+          suitability: suit,
+          minDist
+        };
+      }
+    }
+    if (!bestPick) continue;
+    used.add(bestPick.key);
+    placements.push({
+      x: bestPick.x,
+      y: bestPick.y,
+      key: bestPick.key,
+      slotId: entry.id,
+      race: entry.race,
+      label: entry.label,
+      minDist: bestPick.minDist,
+      suitability: bestPick.suitability
+    });
+  }
+
+  const assignmentBySlot = new Map(
+    fixedPlacements
+      .map(row => [nonEmptyText(row?.slotId), row])
+      .filter(row => !!row[0])
+  );
+  for (const placed of placements) {
+    const slotId = nonEmptyText(placed?.slotId);
+    if (slotId) assignmentBySlot.set(slotId, placed);
+  }
+
+  const placedSuitabilityTotal = placements.reduce((sum, row) => sum + (row.suitability?.total || 0), 0);
+  const matchedCount = placements.reduce((sum, row) => sum + (row.suitability?.matched ? 1 : 0), 0);
+  const minPairDistance = placements.length > 1
+    ? placements.reduce((best, row, idx) => {
+      let rowBest = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < placements.length; i += 1) {
+        if (i === idx) continue;
+        rowBest = Math.min(rowBest, hexDistance(row, placements[i]));
+      }
+      return Math.min(best, rowBest);
+    }, Number.POSITIVE_INFINITY)
+    : placementMinDistance;
+  const supportedCount = safeEntries.reduce((sum, entry) => sum + ((bestSuitabilityBySlot.get(entry.id) || 0) >= 0.70 ? 1 : 0), 0);
+  const score = (Math.max(0, placements.length - fixedPlacements.length) * 1000)
+    + (matchedCount * 220)
+    + (supportedCount * 140)
+    + Math.round(placedSuitabilityTotal * 100)
+    + Math.round((Number.isFinite(minPairDistance) ? minPairDistance : 0) * 10);
+
+  return {
+    placementMinDistance,
+    entries: safeEntries,
+    autoEntries,
+    manualEntries,
+    placements,
+    assignmentBySlot,
+    bestSuitabilityBySlot,
+    supportedCount,
+    matchedCount,
+    score,
+    allAutoPlaced: placements.length >= (autoEntries.length + fixedPlacements.length),
+    avgPlacedSuitability: placements.length ? placedSuitabilityTotal / placements.length : 0
+  };
+}
+
+function buildFactionStateWithVillagePlacement(slot, data, placement) {
+  const slotId = nonEmptyText(slot?.id) || DEFAULT_TEST_PLAYER_ID;
+  const fallbackNo = (slotId.match(/\d+/)?.[0]) || "1";
+  const baseState = deepCloneJsonValue(slot?.factionState, null)
+    || createDraftFactionStateForAdditionalPlayer(slotId, fallbackNo);
+  const raceName = resolveRaceFromUnitList(baseState?.units || [])
+    || nonEmptyText(slot?.race)
+    || nonEmptyText(props.selectedRace)
+    || "只人";
+  const initialPopulation = resolveInitialVillagePopulationByRace(raceName);
+  const initialStock = buildInitialVillageStockByTerritory(data, placement.x, placement.y);
+  const defaultFoodByType = initialStock.food;
+  const defaultMaterialByType = initialStock.material;
+  const baseVillage = baseState.village || {
+    id: `${slotId}-village-pending`,
+    name: randomPick(VILLAGE_NAME_POOL, "開拓村"),
+    cityLevels: normalizeCityLevels({}),
+    buildings: [],
+    population: initialPopulation,
+    populationByRace: {
+      [raceName]: initialPopulation
+    },
+    foodStockByType: defaultFoodByType,
+    materialStockByType: defaultMaterialByType,
+    foodStock: sumResourceBag(defaultFoodByType, FOOD_RESOURCE_KEYS),
+    materialStock: sumResourceBag(defaultMaterialByType, MATERIAL_RESOURCE_KEYS)
+  };
+  const village = ensureVillageStateShape({
+    ...baseVillage,
+    id: `${slotId}-village-${placement.x}-${placement.y}`,
+    x: placement.x,
+    y: placement.y,
+    placed: true,
+    foodStockByType: defaultFoodByType,
+    materialStockByType: defaultMaterialByType
+  }, raceName);
+  const units = Array.isArray(baseState.units)
+    ? baseState.units.map(unit => ({
+      ...unit,
+      x: placement.x,
+      y: placement.y,
+      moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit?.moveRange, 0)))
+    }))
+    : [];
+  const tileKey = coordKey(placement.x, placement.y);
+  return {
+    ...baseState,
+    village,
+    units,
+    selectedUnitId: units[0]?.id || "",
+    villagePlacementMode: false,
+    unitMoveMode: false,
+    visibility: {
+      exploredTileKeys: [tileKey],
+      visibleTileKeys: [tileKey],
+      spottedEnemyTileKeys: [],
+      spottedFactionTileKeys: []
+    }
+  };
+}
+
+function buildFactionStateWithPendingVillage(slot) {
+  const slotId = nonEmptyText(slot?.id) || DEFAULT_TEST_PLAYER_ID;
+  const fallbackNo = (slotId.match(/\d+/)?.[0]) || "1";
+  const baseState = deepCloneJsonValue(slot?.factionState, null)
+    || createDraftFactionStateForAdditionalPlayer(slotId, fallbackNo);
+  const baseRace = resolveRaceFromUnitList(baseState?.units || [])
+    || nonEmptyText(slot?.race)
+    || nonEmptyText(props.selectedRace)
+    || "只人";
+  const population = resolveInitialVillagePopulationByRace(baseRace);
+  const nextVillage = ensureVillageStateShape({
+    ...(baseState.village || {}),
+    id: `${slotId}-village-pending`,
+    name: nonEmptyText(baseState?.village?.name) || randomPick(VILLAGE_NAME_POOL, "開拓村"),
+    x: null,
+    y: null,
+    placed: false,
+    population,
+    populationByRace: {
+      [baseRace]: population
+    },
+    cityLevels: normalizeCityLevels(baseState?.village?.cityLevels || {}),
+    buildings: normalizeVillageBuildings(baseState?.village?.buildings || []),
+    foodStockByType: buildEmptyResourceBag(FOOD_RESOURCE_KEYS),
+    materialStockByType: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS)
+  }, baseRace);
+  return {
+    ...baseState,
+    village: nextVillage,
+    villagePlacementMode: true,
+    unitMoveMode: false,
+    visibility: {
+      exploredTileKeys: [],
+      visibleTileKeys: [],
+      spottedEnemyTileKeys: [],
+      spottedFactionTileKeys: []
+    }
+  };
+}
+
+function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
+  const slots = Array.isArray(testPlayerSlots.value) ? [...testPlayerSlots.value] : [];
+  if (!slots.length) return { autoPlacedCount: 0, manualPlayerCount: 0 };
+  const assignmentBySlot = plan?.assignmentBySlot instanceof Map ? plan.assignmentBySlot : new Map();
+  const activeBefore = nonEmptyText(activeTestPlayerId.value);
+
+  const nextSlots = slots.map((slot, idx) => {
+    const entry = resolveFactionEntryForSlot(slot, idx, placementConfig);
+    const placement = assignmentBySlot.get(entry.id);
+    const slotVillagePlaced = !!slot?.factionState?.village?.placed;
+    let nextState = null;
+    if (placement && !(entry.strategy === "manual" && slotVillagePlaced)) {
+      nextState = buildFactionStateWithVillagePlacement(slot, data, placement);
+    } else if (entry.strategy === "manual") {
+      nextState = slotVillagePlaced
+        ? deepCloneJsonValue(slot?.factionState, null)
+        : buildFactionStateWithPendingVillage(slot);
+    } else {
+      nextState = deepCloneJsonValue(slot?.factionState, null);
+    }
+    return {
+      ...slot,
+      race: entry.race,
+      ready: false,
+      factionState: nextState || slot?.factionState
+    };
+  });
+  testPlayerSlots.value = nextSlots;
+
+  const firstManualPlayer = nextSlots.find((slot, idx) => {
+    const entry = resolveFactionEntryForSlot(slot, idx, placementConfig);
+    return entry.strategy === "manual" && entry.isPlayer && !slot?.factionState?.village?.placed;
+  }) || null;
+  const restoreId = firstManualPlayer?.id
+    || (nextSlots.some(slot => nonEmptyText(slot?.id) === activeBefore) ? activeBefore : nonEmptyText(nextSlots[0]?.id) || DEFAULT_TEST_PLAYER_ID);
+  activeTestPlayerId.value = restoreId;
+  const restoreSlot = nextSlots.find(slot => nonEmptyText(slot?.id) === restoreId) || null;
+  if (restoreSlot?.factionState) {
+    applyFactionStateSnapshotToLiveState(restoreSlot.factionState, { emitState: true, render: false });
+  } else {
+    emitCharacterStateChange();
+  }
+
+  if (firstManualPlayer) {
+    villagePlacementMode.value = true;
+    unitMoveMode.value = false;
+    showMoveUnitModal.value = false;
+    mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
+    updateUnitInfoText(`${firstManualPlayer.label} は手動配置モードです。初期村の配置先をクリックしてください。`);
+  }
+  rebuildTerritorySets(data);
+  rebuildVisibleTiles(data);
+  renderMapWithPhaser();
+
+  const autoPlacedCount = nextSlots.reduce((sum, slot) => {
+    const placed = !!slot?.factionState?.village?.placed;
+    return sum + (placed ? 1 : 0);
+  }, 0);
+  const manualPlayerCount = nextSlots.reduce((sum, slot, idx) => {
+    const entry = resolveFactionEntryForSlot(slot, idx, placementConfig);
+    return sum + ((entry.isPlayer && entry.strategy === "manual") ? 1 : 0);
+  }, 0);
+  return {
+    autoPlacedCount,
+    manualPlayerCount
+  };
+}
+
+function generateTerrainMapForGameStart(entries, placementConfig = {}) {
+  const { w, h } = parseMapSizeValue(mapSize.value);
+  const islandCustomSettings = buildIslandCustomSettings();
+  const attemptCount = Math.max(6, Math.min(20, 6 + (entries.length * 2)));
+  let best = null;
+  for (let i = 0; i < attemptCount; i += 1) {
+    const data = createTerrainMapData({
+      w,
+      h,
+      patternId: patternId.value,
+      mountainMode: mountainMode.value,
+      islandCustomSettings
+    });
+    data.worldWrapEnabled = !!customWorldWrapEnabled.value;
+    const plan = planFactionVillagePlacements(data, entries, placementConfig);
+    if (!best || plan.score > best.score) {
+      best = {
+        data,
+        plan,
+        score: plan.score,
+        attempt: i + 1
+      };
+    }
+    if (plan.allAutoPlaced && plan.supportedCount >= entries.length) break;
+  }
+  return best;
+}
+
+function collectFixedVillagePlacementsForSetup(entries = [], data = currentData.value) {
+  const slots = Array.isArray(testPlayerSlots.value) ? testPlayerSlots.value : [];
+  if (!slots.length || !Array.isArray(entries) || !entries.length) return [];
+  const w = Number(data?.w);
+  const h = Number(data?.h);
+  const byEntryId = new Map(entries.map(entry => [nonEmptyText(entry?.id), entry]));
+  const usedTileKeys = new Set();
+  const fixed = [];
+  for (const slot of slots) {
+    const slotId = nonEmptyText(slot?.id);
+    if (!slotId || !byEntryId.has(slotId)) continue;
+    const village = slot?.factionState?.village || null;
+    if (!village?.placed) continue;
+    const x = Math.floor(toSafeNumber(village?.x, Number.NaN));
+    const y = Math.floor(toSafeNumber(village?.y, Number.NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (Number.isFinite(w) && (x < 0 || x >= w)) continue;
+    if (Number.isFinite(h) && (y < 0 || y >= h)) continue;
+    const key = coordKey(x, y);
+    if (usedTileKeys.has(key)) continue;
+    usedTileKeys.add(key);
+    const entry = byEntryId.get(slotId);
+    fixed.push({
+      slotId,
+      label: nonEmptyText(slot?.label) || nonEmptyText(entry?.label) || slotId,
+      race: nonEmptyText(slot?.race) || nonEmptyText(entry?.race) || "只人",
+      x,
+      y,
+      key
+    });
+  }
+  return fixed;
+}
+
+function prepareGameStartMap(command = {}) {
+  ensureTestPlayerSlotsInitialized();
+  const placementConfig = buildGameStartPlacementConfig(command);
+  const entries = testPlayerSlots.value.map((slot, idx) => resolveFactionEntryForSlot(slot, idx, placementConfig));
+  if (!entries.length) {
+    updateUnitInfoText("開始失敗: 勢力データが未設定です。");
+    return { ok: false, reason: "勢力未設定" };
+  }
+  const generated = generateTerrainMapForGameStart(entries, placementConfig);
+  if (!generated?.data) {
+    updateUnitInfoText("開始失敗: マップ生成に失敗しました。");
+    return { ok: false, reason: "map_generation_failed" };
+  }
+  const activeIdBefore = nonEmptyText(activeTestPlayerId.value) || nonEmptyText(testPlayerSlots.value[0]?.id) || DEFAULT_TEST_PLAYER_ID;
+  showEventModal.value = false;
+  applyMapData(generated.data, { resetClock: true, rebuildCharacters: false });
+  switchActiveTestPlayer(activeIdBefore, { emitState: true, render: false });
+  const total = entries.length;
+  const supportText = `${generated.plan.supportedCount}/${total}`;
+  updateUnitInfoText(`開始マップ生成: 適正地形対応 ${supportText} / 最低距離目標 ${generated.plan.placementMinDistance} / 試行 ${generated.attempt}回`);
+  renderMapWithPhaser();
+  return { ok: true };
+}
+
+function finalizeGameStartSetup(command = {}) {
+  ensureTestPlayerSlotsInitialized();
+  syncActiveTestPlayerSlotFromLiveState();
+  const placementConfig = buildGameStartPlacementConfig(command);
+  const entries = testPlayerSlots.value.map((slot, idx) => resolveFactionEntryForSlot(slot, idx, placementConfig));
+  if (!entries.length) {
+    updateUnitInfoText("開始失敗: 勢力データが未設定です。");
+    return { ok: false, reason: "勢力未設定" };
+  }
+  const reuseCurrentMap = !!command?.reuseCurrentMap && !!currentData.value && !currentData.value.shapeOnly;
+  let mapData = null;
+  let plan = null;
+  let attemptCount = 1;
+  showEventModal.value = false;
+  if (reuseCurrentMap) {
+    mapData = currentData.value;
+    const fixedPlacements = collectFixedVillagePlacementsForSetup(entries, mapData);
+    plan = planFactionVillagePlacements(mapData, entries, placementConfig, {
+      fixedPlacements
+    });
+  } else {
+    const generated = generateTerrainMapForGameStart(entries, placementConfig);
+    if (!generated?.data) {
+      updateUnitInfoText("開始失敗: マップ生成に失敗しました。");
+      return { ok: false, reason: "map_generation_failed" };
+    }
+    mapData = generated.data;
+    plan = generated.plan;
+    attemptCount = generated.attempt;
+    applyMapData(mapData, { resetClock: true, rebuildCharacters: false });
+  }
+  const placementResult = applyFactionPlacementsToSlots(mapData, plan, placementConfig);
+  const placedCount = plan.placements.length;
+  const total = entries.length;
+  const minDistance = plan.placementMinDistance;
+  const supportText = `${plan.supportedCount}/${total}`;
+  const modeText = reuseCurrentMap ? "既存マップ維持" : `試行 ${attemptCount}回`;
+  updateUnitInfoText(`開始配置完了: 自動配置 ${placedCount}/${total} / 適正地形対応 ${supportText} / 最低距離目標 ${minDistance} / ${modeText}`);
+  pushNationLog(`開始配置: 自動 ${placementResult.autoPlacedCount}/${total} / 手動プレイヤー ${placementResult.manualPlayerCount} / 距離目標 ${minDistance} / ${modeText}`);
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+  return { ok: true };
 }
 
 function canPlaceVillageOnTile(picked) {
@@ -3328,7 +4215,7 @@ function canPlaceVillageOnTile(picked) {
 }
 
 function placeVillageAt(x, y) {
-  const selectedRaceName = nonEmptyText(props.selectedRace) || "只人";
+  const selectedRaceName = resolveActiveFactionRace();
   const initialPopulation = resolveInitialVillagePopulationByRace(selectedRaceName);
   const initialStock = buildInitialVillageStockByTerritory(currentData.value, x, y);
   const defaultFoodByType = initialStock.food;
@@ -3374,6 +4261,7 @@ function placeVillageAt(x, y) {
   updateUnitInfoText(`初期村を配置: (${x}, ${y})`);
   pushNationLog(`初期村を配置: (${x}, ${y}) ${villageState.value?.name || ""}`);
   pushNationLog(`初期資源設定: 領土収入(${initialStock.tiles}マス)x3 / 食料 ${formatFoodResourceBag(defaultFoodByType)} / 資材 ${formatMaterialResourceBag(defaultMaterialByType)}`);
+  syncActiveTestPlayerSlotFromLiveState();
   emitCharacterStateChange();
 }
 
@@ -3410,7 +4298,8 @@ function emitCharacterStateChange() {
         ? { ...unit.baseResistances }
         : mergeResistances(unit?.resistances || {}, {});
       const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(equipment));
-      const iconName = resolveUnitIconName(unit?.iconName || unit?.race, DEFAULT_ICON_NAME);
+      const iconFallback = resolveFallbackIconNameForUnit(unit);
+      const iconName = resolveUnitIconNameStrict(unit?.iconName, iconFallback);
       return {
         ...unit,
         iconName,
@@ -3519,16 +4408,18 @@ function buildMapSnapshotForSave() {
       exploredTileKeys: Array.from(exploredTileKeys || []).map(v => String(v || "")),
       visibleTileKeys: Array.from(visibleTileKeys || []).map(v => String(v || "")),
       spottedEnemyTileKeys: Array.from(spottedEnemyTileKeys || []).map(v => String(v || "")),
+      spottedFactionTileKeys: Array.from(spottedFactionTileKeys || []).map(v => String(v || "")),
       territory: {
         player: Array.from(territorySets?.player || []).map(v => String(v || "")),
         enemy: Array.from(territorySets?.enemy || []).map(v => String(v || ""))
       }
     },
     multiplayer: {
-      activePlayerId: nonEmptyText(activeTestPlayerId.value) || "player-1",
+      activePlayerId: nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID,
       players: testPlayerSlots.value.map(slot => ({
         id: nonEmptyText(slot?.id),
         label: nonEmptyText(slot?.label),
+        isPlayer: slot?.isPlayer !== false,
         race: nonEmptyText(slot?.race),
         ready: !!slot?.ready,
         factionState: deepCloneJsonValue(slot?.factionState, null)
@@ -3616,7 +4507,8 @@ function normalizeVisibilitySnapshot(raw, fallback = {}) {
   return {
     exploredTileKeys: Array.isArray(source?.exploredTileKeys) ? source.exploredTileKeys.map(v => String(v || "")).filter(Boolean) : [],
     visibleTileKeys: Array.isArray(source?.visibleTileKeys) ? source.visibleTileKeys.map(v => String(v || "")).filter(Boolean) : [],
-    spottedEnemyTileKeys: Array.isArray(source?.spottedEnemyTileKeys) ? source.spottedEnemyTileKeys.map(v => String(v || "")).filter(Boolean) : []
+    spottedEnemyTileKeys: Array.isArray(source?.spottedEnemyTileKeys) ? source.spottedEnemyTileKeys.map(v => String(v || "")).filter(Boolean) : [],
+    spottedFactionTileKeys: Array.isArray(source?.spottedFactionTileKeys) ? source.spottedFactionTileKeys.map(v => String(v || "")).filter(Boolean) : []
   };
 }
 
@@ -3647,7 +4539,7 @@ function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) 
   for (let i = 0; i < snapshotPlayers.length; i += 1) {
     const row = snapshotPlayers[i];
     const id = nonEmptyText(row?.id) || `player-${i + 1}`;
-    const label = nonEmptyText(row?.label) || `プレイヤー${i + 1}`;
+    const label = nonEmptyText(row?.label) || buildTestPlayerLabel(i + 1);
     const stateRaw = row?.factionState && typeof row.factionState === "object" ? row.factionState : null;
     if (!stateRaw) continue;
     const state = {
@@ -3662,6 +4554,7 @@ function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) 
     out.push({
       id,
       label,
+      isPlayer: row?.isPlayer !== false,
       race: nonEmptyText(row?.race) || resolveRaceFromUnitList(state.units),
       ready: !!row?.ready,
       factionState: state
@@ -3691,7 +4584,7 @@ function applyLoadedSaveState(payload) {
   nationLogsBySovereign.value = {};
   const nextSlots = loadedSlots.length
     ? loadedSlots
-    : [buildTestPlayerSlotFromLiveState("player-1", "プレイヤー1", {
+    : [buildTestPlayerSlotFromLiveState(DEFAULT_TEST_PLAYER_ID, PRIMARY_TEST_PLAYER_LABEL, {
       factionState: fallbackFactionState || buildLiveFactionStateSnapshot(),
       ready: false
     })];
@@ -3699,7 +4592,7 @@ function applyLoadedSaveState(payload) {
   activeTestPlayerId.value = loadedActiveId
     && testPlayerSlots.value.some(slot => slot.id === loadedActiveId)
     ? loadedActiveId
-    : (testPlayerSlots.value[0]?.id || "player-1");
+    : (testPlayerSlots.value[0]?.id || DEFAULT_TEST_PLAYER_ID);
 
   for (const slot of testPlayerSlots.value) {
     const sovereign = slot?.factionState?.units?.find(unit => isSovereignUnit(unit)) || slot?.factionState?.units?.[0] || null;
@@ -3897,7 +4790,8 @@ function updateUnitIcon(unitId, iconNameRaw) {
   const idx = unitList.value.findIndex(unit => unit?.id === targetId);
   if (idx < 0) return { ok: false, reason: "対象ユニットが見つかりません。" };
   const target = unitList.value[idx];
-  const iconName = resolveUnitIconName(iconNameRaw, target?.iconName || target?.race || DEFAULT_ICON_NAME);
+  const iconFallback = resolveFallbackIconNameForUnit(target);
+  const iconName = resolveUnitIconNameStrict(iconNameRaw, target?.iconName || iconFallback || "");
   unitList.value[idx] = {
     ...target,
     iconName,
@@ -3914,6 +4808,15 @@ function applyCharacterCommand(command) {
   const type = nonEmptyText(command?.type);
   if (!type) return;
 
+  if (type === "batch") {
+    const commands = Array.isArray(command?.commands) ? command.commands : [];
+    for (const row of commands) {
+      if (!row || typeof row !== "object") continue;
+      applyCharacterCommand(row);
+    }
+    return;
+  }
+
   if (type === "requestSaveSnapshot") {
     emitSaveSnapshot(nonEmptyText(command?.reason) || "manual");
     return;
@@ -3924,8 +4827,58 @@ function applyCharacterCommand(command) {
     return;
   }
 
+  if (type === "prepareGameStartMap") {
+    const result = prepareGameStartMap(command);
+    if (!result.ok) {
+      updateUnitInfoText(result.reason || "開始マップの準備に失敗しました。");
+      audio.playSe("cancel");
+      return;
+    }
+    return;
+  }
+
   if (type === "openUnitCreate") {
     openUnitCreateModal();
+    return;
+  }
+
+  if (type === "initTestPlayerSlots") {
+    const result = initializeTestPlayerSlotsFromConfig({
+      playerCount: command?.playerCount,
+      otherFactionCount: command?.otherFactionCount,
+      totalCount: command?.totalCount
+    });
+    if (!result.ok) {
+      updateUnitInfoText(result.reason || "勢力初期化に失敗しました。");
+      return;
+    }
+    updateUnitInfoText(`勢力を初期化: プレイヤー${result.playerCount} / 別勢力${result.otherCount} / 合計${result.total}`);
+    return;
+  }
+
+  if (type === "applySovereignProfile") {
+    const result = applySovereignProfileToSlot(command);
+    if (!result.ok) {
+      updateUnitInfoText(result.reason || "勢力設定に失敗しました。");
+    }
+    return;
+  }
+
+  if (type === "finalizeGameStartSetup") {
+    const result = finalizeGameStartSetup(command);
+    if (!result.ok) {
+      updateUnitInfoText(result.reason || "ゲーム開始設定の確定に失敗しました。");
+      audio.playSe("cancel");
+      return;
+    }
+    audio.playSe("confirm");
+    return;
+  }
+
+  if (type === "switchActiveTestPlayer") {
+    const targetPlayerId = nonEmptyText(command?.playerId) || nonEmptyText(command?.slotId);
+    if (!targetPlayerId) return;
+    switchActiveTestPlayer(targetPlayerId);
     return;
   }
 
@@ -4572,6 +5525,74 @@ function resolveRaceMarkerColor(raceName) {
   return 0x4a617f;
 }
 
+function resolveRaceIconNameForUnit(unit) {
+  const raceName = nonEmptyText(unit?.race);
+  const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName));
+  const raceIconName = resolveClassRowIconName(raceRow, "");
+  if (raceIconName) return raceIconName;
+  if (raceName && hasIconName(raceName)) return raceName;
+  return "";
+}
+
+function resolveEnemyIconName(enemy) {
+  if (!enemy) return "";
+  const className = nonEmptyText(enemy?.className);
+  const raceName = nonEmptyText(enemy?.race);
+  const classRow = className ? findClassRowByName(className) : null;
+  const classIcon = resolveClassRowIconName(classRow, "");
+  if (classIcon) return classIcon;
+  const raceRow = raceName ? findClassRowByName(raceName) : null;
+  const raceIcon = resolveClassRowIconName(raceRow, "");
+  if (raceIcon) return raceIcon;
+  if (raceName && hasIconName(raceName)) return raceName;
+  return "";
+}
+
+function moveUnitIconSrc(unit) {
+  const iconName = resolveRaceIconNameForUnit(unit);
+  if (!iconName) return "";
+  return resolveUnitIconSrc(iconName, "");
+}
+
+function moveUnitIconGlyph(unit) {
+  return resolveRaceGlyph(unit?.race);
+}
+
+function raceMarkerTextureKey(iconName) {
+  const name = nonEmptyText(iconName);
+  if (!name) return "";
+  return `race-marker:${name}`;
+}
+
+function ensureRaceMarkerTexture(iconName) {
+  const name = nonEmptyText(iconName);
+  if (!name || !scene?.textures) return "";
+  const textureKey = raceMarkerTextureKey(name);
+  if (!textureKey) return "";
+  if (scene.textures.exists(textureKey)) return textureKey;
+  if (raceMarkerTexturePending.has(name)) return "";
+  const src = resolveUnitIconSrc(name, "");
+  if (!src) return "";
+  raceMarkerTexturePending.add(name);
+  const image = new Image();
+  image.decoding = "async";
+  image.onload = () => {
+    raceMarkerTexturePending.delete(name);
+    if (!scene?.textures) return;
+    if (!scene.textures.exists(textureKey)) {
+      scene.textures.addImage(textureKey, image);
+    }
+    if (currentData.value) {
+      renderMapWithPhaser();
+    }
+  };
+  image.onerror = () => {
+    raceMarkerTexturePending.delete(name);
+  };
+  image.src = src;
+  return "";
+}
+
 function unitsAt(x, y) {
   return unitList.value.filter(unit => unit.x === x && unit.y === y);
 }
@@ -4723,6 +5744,84 @@ function buildEnemyEncounterGroups(data = currentData.value) {
   return groups;
 }
 
+function buildOpposingFactionUnitsByTile(data = currentData.value) {
+  const result = new Map();
+  if (!data || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return result;
+  const activeId = nonEmptyText(activeTestPlayerId.value);
+  for (const slot of testPlayerSlots.value) {
+    const slotId = nonEmptyText(slot?.id);
+    if (!slotId || slotId === activeId) continue;
+    const units = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+    const factionLabel = nonEmptyText(slot?.label) || slotId;
+    for (const unit of units) {
+      const x = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+      const y = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (x < 0 || y < 0 || x >= data.w || y >= data.h) continue;
+      const key = coordKey(x, y);
+      let bucket = result.get(key);
+      if (!bucket) {
+        bucket = {
+          x,
+          y,
+          key,
+          factionIds: new Set(),
+          factionLabels: new Set(),
+          units: []
+        };
+        result.set(key, bucket);
+      }
+      bucket.factionIds.add(slotId);
+      bucket.factionLabels.add(factionLabel);
+      bucket.units.push(unit);
+    }
+  }
+  return result;
+}
+
+function buildOtherFactionEncounterGroups(data = currentData.value) {
+  const tileMap = buildOpposingFactionUnitsByTile(data);
+  if (!tileMap.size) return [];
+  const groups = [];
+  for (const bucket of tileMap.values()) {
+    const sense = resolveEncounterGroupSense(
+      bucket.units.map(resolveEncounterScoutValueForUnit),
+      bucket.units.map(resolveEncounterStealthValueForUnit)
+    );
+    const names = bucket.units
+      .map(unit => nonEmptyText(unit?.name) || nonEmptyText(unit?.race) || "勢力ユニット")
+      .filter(Boolean);
+    groups.push({
+      id: `faction-${Array.from(bucket.factionIds).join("_")}-${bucket.key}`,
+      kind: "faction",
+      x: bucket.x,
+      y: bucket.y,
+      scout: sense.scout,
+      stealth: sense.stealth,
+      count: bucket.units.length,
+      factionIds: Array.from(bucket.factionIds),
+      factionLabel: Array.from(bucket.factionLabels).join("/"),
+      names
+    });
+  }
+  return groups;
+}
+
+function formatOpposingFactionUnitsAtTile(x, y, options = {}) {
+  if (!currentData.value) return "なし";
+  const map = options?.tileMap instanceof Map
+    ? options.tileMap
+    : buildOpposingFactionUnitsByTile(currentData.value);
+  const key = coordKey(x, y);
+  const bucket = map.get(key);
+  if (!bucket || !Array.isArray(bucket.units) || !bucket.units.length) return "なし";
+  return bucket.units.map(unit => {
+    const name = nonEmptyText(unit?.name) || nonEmptyText(unit?.race) || "勢力ユニット";
+    const lv = Math.max(1, Math.floor(toSafeNumber(unit?.level, 1)));
+    return `${name}(Lv${lv})`;
+  }).join(", ");
+}
+
 function resolveEncounterDistance(playerGroup, enemyGroup) {
   if (!playerGroup || !enemyGroup) return Number.POSITIVE_INFINITY;
   return hexDistance(
@@ -4744,15 +5843,23 @@ function runEnemyEncounterCheck(options = {}) {
     return group.x === focusPos.x && group.y === focusPos.y;
   });
   const enemyGroups = buildEnemyEncounterGroups(data);
+  const factionGroups = buildOtherFactionEncounterGroups(data);
+  const hostileGroups = [
+    ...enemyGroups.map(group => ({ ...group, kind: "spawn" })),
+    ...factionGroups
+  ];
   const entries = [];
-  let discoveredAnyEnemy = false;
+  let discoveredAnyTarget = false;
 
   for (const player of playerGroups) {
-    for (const enemy of enemyGroups) {
+    for (const enemy of hostileGroups) {
+      const kind = nonEmptyText(enemy?.kind) || "spawn";
       const distance = resolveEncounterDistance(player, enemy);
       if (!Number.isFinite(distance)) continue;
       const enemyTileKey = coordKey(enemy.x, enemy.y);
-      const alreadySpottedEnemy = spottedEnemyTileKeys.has(enemyTileKey);
+      const alreadySpottedEnemy = kind === "faction"
+        ? spottedFactionTileKeys.has(enemyTileKey)
+        : spottedEnemyTileKeys.has(enemyTileKey);
       const playerEffectiveScout = roundTo1(player.scout - (distance * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE));
       const enemyEffectiveScout = roundTo1(enemy.scout - (distance * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE));
       const playerFoundEnemy = playerEffectiveScout > enemy.stealth;
@@ -4760,8 +5867,10 @@ function runEnemyEncounterCheck(options = {}) {
       if (!playerFoundEnemy && !enemyFoundPlayer) continue;
       let newlySpottedEnemy = false;
       if (playerFoundEnemy) {
-        newlySpottedEnemy = markEnemySpotted(enemy.x, enemy.y, data);
-        discoveredAnyEnemy = newlySpottedEnemy || discoveredAnyEnemy;
+        newlySpottedEnemy = kind === "faction"
+          ? markFactionSpotted(enemy.x, enemy.y, data)
+          : markEnemySpotted(enemy.x, enemy.y, data);
+        discoveredAnyTarget = newlySpottedEnemy || discoveredAnyTarget;
       }
 
       let enemyAttack = false;
@@ -4800,6 +5909,7 @@ function runEnemyEncounterCheck(options = {}) {
         },
         enemyGroup: {
           id: enemy.id,
+          kind,
           x: enemy.x,
           y: enemy.y,
           scout: enemy.scout,
@@ -4808,7 +5918,8 @@ function runEnemyEncounterCheck(options = {}) {
           topLevel: enemy.topLevel,
           terrain: enemy.terrain,
           strong: enemy.strong,
-          names: enemy.names
+          names: enemy.names,
+          factionLabel: nonEmptyText(enemy?.factionLabel)
         },
         distance,
         enemyTileKey,
@@ -4842,7 +5953,10 @@ function runEnemyEncounterCheck(options = {}) {
         continue;
       }
       const playerTag = `${entry.playerGroup.label}(索${entry.playerGroup.scout}/隠${entry.playerGroup.stealth})`;
-      const enemyTag = `${entry.enemyGroup.names[0] || "敵"}x${entry.enemyGroup.count}(索${entry.enemyGroup.scout}/隠${entry.enemyGroup.stealth})`;
+      const enemyHead = entry.enemyGroup.kind === "faction"
+        ? `${entry.enemyGroup.factionLabel || "他勢力"}部隊`
+        : (entry.enemyGroup.names[0] || "敵");
+      const enemyTag = `${enemyHead}x${entry.enemyGroup.count}(索${entry.enemyGroup.scout}/隠${entry.enemyGroup.stealth})`;
       const detectText = entry.playerFoundEnemy ? "発見成功" : "未発見";
       const foundByEnemyText = entry.enemyFoundPlayer ? "被発見" : "未発見";
       let attackText = "接敵なし";
@@ -4878,7 +5992,7 @@ function runEnemyEncounterCheck(options = {}) {
   for (const note of notes) {
     pushNationLog(note);
   }
-  if (discoveredAnyEnemy) {
+  if (discoveredAnyTarget) {
     renderMapWithPhaser();
   }
   return { context, entries, notes };
@@ -5034,43 +6148,98 @@ function normalizeZoomPercent(value, dataLike = currentData.value) {
   });
 }
 
-function setZoomPercent(value) {
-  zoomPercent.value = normalizeZoomPercent(value, currentData.value);
-  centerMapOnNextZoom = true;
+const zoomController = createMapZoomController({
+  getCurrentData: () => currentData.value,
+  getVillageState: () => villageState.value,
+  getZoomPercent: () => zoomPercent.value,
+  setZoomPercentValue: value => {
+    zoomPercent.value = value;
+  },
+  normalizeZoomPercent,
+  resolveMinZoomPercent,
+  toSafeNumber,
+  nonEmptyText,
+  normalizeFocusPoint,
+  hexCenter,
+  setCenterMapOnNextZoom: value => {
+    centerMapOnNextZoom = !!value;
+  },
+  setPendingFocus: (focusWorld, mode = "near") => {
+    pendingClickFocusWorld = focusWorld;
+    pendingClickFocusMode = mode;
+  },
+  renderMapWithPhaser: () => {
+    renderMapWithPhaser();
+  }
+});
+
+const {
+  setZoomPercent,
+  isMinZoomActive,
+  canDragMapAtCurrentZoom,
+  queueCameraFocusAtWorld,
+  queueCameraFocusAtTile,
+  zoomIn,
+  zoomOut,
+  zoomReset
+} = zoomController;
+
+function focusCameraToNavigatorTarget(x, y, options = {}) {
+  const data = currentData.value;
+  if (!data || data.shapeOnly) {
+    updateUnitInfoText("視点移動失敗: マップ未生成です。");
+    return;
+  }
+  const tx = Math.floor(toSafeNumber(x, NaN));
+  const ty = Math.floor(toSafeNumber(y, NaN));
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+    updateUnitInfoText("視点移動失敗: 対象座標が未配置です。");
+    return;
+  }
+  if (tx < 0 || ty < 0 || tx >= data.w || ty >= data.h) {
+    updateUnitInfoText(`視点移動失敗: 範囲外座標 (${tx}, ${ty})`);
+    return;
+  }
+  const unitId = nonEmptyText(options?.unitId);
+  if (unitId && unitList.value.some(unit => nonEmptyText(unit?.id) === unitId)) {
+    selectedUnitId.value = unitId;
+  }
+  selectedTileKey = coordKey(tx, ty);
+  queueCameraFocusAtTile(tx, ty);
   renderMapWithPhaser();
+  const picked = hitAreaMap.get(selectedTileKey);
+  if (picked) updateMapClickInfo(picked);
+  const label = nonEmptyText(options?.label) || "対象";
+  updateUnitInfoText(`${label}へ視点移動: (${tx}, ${ty})`);
 }
 
-function isMinZoomActive(dataLike = currentData.value) {
-  if (!dataLike) return false;
-  const currentZoom = normalizeZoomPercent(zoomPercent.value, dataLike);
-  return currentZoom <= resolveMinZoomPercent(dataLike);
+function focusCameraToUnitByIdFromNavigator(unitId) {
+  const targetId = nonEmptyText(unitId);
+  if (!targetId) return;
+  const target = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
+  if (!target) {
+    updateUnitInfoText("視点移動失敗: 対象ユニットが見つかりません。");
+    return;
+  }
+  focusCameraToNavigatorTarget(target.x, target.y, {
+    unitId: target.id,
+    label: nonEmptyText(target.name) || "ユニット"
+  });
 }
 
-function canDragMapAtCurrentZoom(dataLike = currentData.value) {
-  return !!dataLike && !isMinZoomActive(dataLike);
-}
-
-function queueCameraFocusAtWorld(worldX, worldY) {
-  const normalized = normalizeFocusPoint({ x: worldX, y: worldY });
-  if (!normalized) return;
-  pendingClickFocusWorld = normalized;
-}
-
-function queueCameraFocusAtTile(x, y) {
-  const c = hexCenter(x, y);
-  queueCameraFocusAtWorld(c.cx, c.cy);
-}
-
-function zoomIn() {
-  setZoomPercent(zoomPercent.value + 10);
-}
-
-function zoomOut() {
-  setZoomPercent(zoomPercent.value - 10);
-}
-
-function zoomReset() {
-  setZoomPercent(100);
+function focusCameraToSquadByLeaderFromNavigator(leaderId) {
+  const targetLeaderId = nonEmptyText(leaderId);
+  if (!targetLeaderId) return;
+  const leader = unitList.value.find(unit => nonEmptyText(unit?.id) === targetLeaderId) || null;
+  if (!leader) {
+    updateUnitInfoText("視点移動失敗: 部隊リーダーが見つかりません。");
+    return;
+  }
+  const squadName = nonEmptyText(leader?.squadName) || nonEmptyText(leader?.name) || "部隊";
+  focusCameraToNavigatorTarget(leader.x, leader.y, {
+    unitId: leader.id,
+    label: squadName
+  });
 }
 
 function toColorInt(hex) {
@@ -5748,7 +6917,7 @@ function renderMapWithPhaser() {
       // At max zoom-out, always keep the map centered regardless of previous click focus.
       targetCenter = { x: worldW / 2, y: worldH / 2 };
     } else if (pendingClickFocusWorld) {
-      targetCenter = wrapEnabled
+      targetCenter = wrapEnabled && pendingClickFocusMode !== "absolute"
         ? {
           x: wrapValueNear(pendingClickFocusWorld.x, prevCenter.x, worldW),
           y: wrapValueNear(pendingClickFocusWorld.y, prevCenter.y, worldH)
@@ -5772,6 +6941,7 @@ function renderMapWithPhaser() {
   forceMapCenterOnNextRender = false;
   centerMapOnNextZoom = false;
   pendingClickFocusWorld = null;
+  pendingClickFocusMode = "near";
 
   baseLayer.clear();
   if (lavaLayer) lavaLayer.clear();
@@ -5782,6 +6952,7 @@ function renderMapWithPhaser() {
   hitAreaMap = new Map();
   rebuildTerritorySets(data);
   rebuildVisibleTiles(data);
+  const opposingFactionTileMap = buildOpposingFactionUnitsByTile(data);
 
   baseLayer.fillStyle(0x101623, 1);
   baseLayer.fillRect(0, 0, worldW, worldH);
@@ -5812,6 +6983,8 @@ function renderMapWithPhaser() {
   const moveBlinkPhase = (clockNowMs.value % 1000) / 1000;
   const moveBlinkAlpha = 0.38 + ((Math.sin(moveBlinkPhase * Math.PI * 2) + 1) * 0.24);
   const fogHiddenAlpha = showTestControls.value ? FOG_HIDDEN_ALPHA_TEST : FOG_HIDDEN_ALPHA;
+  const waterfallTextureKey = ensureRaceMarkerTexture(resolveWaterfallIconName());
+  const sovereignTextureKey = ensureRaceMarkerTexture(resolveSovereignIconName());
   const boundsAcc = createBoundsAccumulator();
 
   const wrapOffsets = buildWrapOffsets(data);
@@ -5873,7 +7046,8 @@ function renderMapWithPhaser() {
           baseLayer.fillPoints(points, true);
         }
         const owner = tileVisible ? tileOwnerAt(x, y) : "";
-        const borderStyle = tileVisible ? borderStyleForOwner(owner) : FOG_HIDDEN_BORDER;
+        const factionOwnerId = tileVisible ? tileFactionOwnerIdAt(x, y) : "";
+        const borderStyle = tileVisible ? borderStyleForOwner(owner, factionOwnerId) : FOG_HIDDEN_BORDER;
         baseLayer.lineStyle(borderStyle.width, borderStyle.color, borderStyle.alpha);
         baseLayer.strokePoints(points, true);
         if (tileVisible && moveContext.reachableSet.has(tileKey) && tileKey !== moveContext.startKey) {
@@ -5884,13 +7058,36 @@ function renderMapWithPhaser() {
         const baseCenter = hexCenter(x, y);
         const center = { cx: baseCenter.cx + offX, cy: baseCenter.cy + offY };
         const symbolShouldDraw = tileVisible && (drawTerrainSymbol || revealSpecial);
-        if (symbolShouldDraw) {
+        let specialIconRendered = false;
+        if (revealSpecial) {
+          const specialIconName = resolveSpecialOverlayIconName(special.key);
+          const specialIconTextureKey = ensureRaceMarkerTexture(specialIconName);
+          if (specialIconTextureKey && scene.textures.exists(specialIconTextureKey)) {
+            const iconSize = special.key === "洞窟"
+              ? MAP_SPECIAL_ICON_CONFIG.caveSize
+              : MAP_SPECIAL_ICON_CONFIG.defaultSize;
+            const specialIcon = scene.add.image(
+              center.cx,
+              center.cy + MAP_SPECIAL_ICON_CONFIG.offsetY,
+              specialIconTextureKey
+            );
+            specialIcon.setDisplaySize(iconSize, iconSize);
+            specialIcon.setOrigin(0.5);
+            labelTexts.push(specialIcon);
+            specialIconRendered = true;
+          }
+        }
+        if (symbolShouldDraw && !specialIconRendered) {
           const terrainShort = mixedForestRelief
             ? (reliefKey === "山岳" ? "森山" : "森丘")
             : visual.short;
           const symbolLabel = scene.add.text(center.cx, center.cy - 6, revealSpecial ? special.short : terrainShort, {
             fontFamily: "Times New Roman, Yu Mincho, serif",
-            fontSize: revealSpecial ? (special.key === "洞窟" ? "16px" : "18px") : "19px",
+            fontSize: revealSpecial
+              ? `${special.key === "洞窟"
+                ? MAP_SPECIAL_ICON_CONFIG.fallbackCaveTextFontSizePx
+                : MAP_SPECIAL_ICON_CONFIG.fallbackTextFontSizePx}px`
+              : "19px",
             color: revealSpecial ? special.textColor : "#f8f5e8"
           });
           symbolLabel.setOrigin(0.5);
@@ -5898,16 +7095,26 @@ function renderMapWithPhaser() {
         }
 
         if (tileVisible && showWaterfallEffects.value && isWaterfall) {
-          const fallLabel = scene.add.text(center.cx, symbolShouldDraw ? center.cy - 20 : center.cy - 10, "滝", {
-            fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-            fontStyle: "700",
-            fontSize: "11px",
-            color: "#ecf8ff"
-          });
-          fallLabel.setStroke("#153a52", 3);
-          fallLabel.setShadow(0, 0, "#000000", 3, false, true);
-          fallLabel.setOrigin(0.5);
-          labelTexts.push(fallLabel);
+          const fallY = symbolShouldDraw
+            ? center.cy + MAP_WATERFALL_ICON_CONFIG.yOffsetWhenTerrainSymbolVisible
+            : center.cy + MAP_WATERFALL_ICON_CONFIG.yOffsetWhenTerrainSymbolHidden;
+          if (waterfallTextureKey && scene.textures.exists(waterfallTextureKey)) {
+            const fallIcon = scene.add.image(center.cx, fallY, waterfallTextureKey);
+            fallIcon.setDisplaySize(MAP_WATERFALL_ICON_CONFIG.size, MAP_WATERFALL_ICON_CONFIG.size);
+            fallIcon.setOrigin(0.5);
+            labelTexts.push(fallIcon);
+          } else {
+            const fallLabel = scene.add.text(center.cx, fallY, "滝", {
+              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+              fontStyle: "700",
+              fontSize: `${MAP_WATERFALL_ICON_CONFIG.fallbackFontSizePx}px`,
+              color: "#ecf8ff"
+            });
+            fallLabel.setStroke("#153a52", 3);
+            fallLabel.setShadow(0, 0, "#000000", 3, false, true);
+            fallLabel.setOrigin(0.5);
+            labelTexts.push(fallLabel);
+          }
         }
 
         if (tileVisible && showStrongEnemyMarkers.value && strongInfo) {
@@ -5927,21 +7134,53 @@ function renderMapWithPhaser() {
         }
 
         const hasTileEnemy = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) && data.enemySpawnMap[y][x].length > 0;
+        const hasFactionEnemy = opposingFactionTileMap.has(tileKey);
         const spottedEnemyVisible = tileVisible && hasTileEnemy && spottedEnemyTileKeys.has(tileKey);
+        const spottedFactionVisible = tileVisible && hasFactionEnemy && spottedFactionTileKeys.has(tileKey);
         if (spottedEnemyVisible) {
+          const tileEnemyList = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) ? data.enemySpawnMap[y][x] : [];
+          const leadEnemy = tileEnemyList.length ? tileEnemyList[0] : null;
+          const enemyMarkerIconName = resolveEnemyIconName(leadEnemy);
+          const enemyMarkerTextureKey = ensureRaceMarkerTexture(enemyMarkerIconName);
+          const enemyMx = center.cx + MAP_ENEMY_MARKER_CONFIG.offsetX;
+          const enemyMy = center.cy + MAP_ENEMY_MARKER_CONFIG.offsetY;
           markerLayer.fillStyle(0xb82f2f, 0.96);
-          markerLayer.fillCircle(center.cx + 13, center.cy + 12, 5);
+          markerLayer.fillCircle(enemyMx, enemyMy, MAP_ENEMY_MARKER_CONFIG.radius);
           markerLayer.lineStyle(1.2, 0xfff0cf, 0.94);
-          markerLayer.strokeCircle(center.cx + 13, center.cy + 12, 5);
-          const enemyMarker = scene.add.text(center.cx + 13, center.cy + 12, "敵", {
+          markerLayer.strokeCircle(enemyMx, enemyMy, MAP_ENEMY_MARKER_CONFIG.radius);
+          if (enemyMarkerTextureKey && scene.textures.exists(enemyMarkerTextureKey)) {
+            const enemyIconSprite = scene.add.image(enemyMx, enemyMy, enemyMarkerTextureKey);
+            enemyIconSprite.setDisplaySize(MAP_ENEMY_MARKER_CONFIG.iconSize, MAP_ENEMY_MARKER_CONFIG.iconSize);
+            enemyIconSprite.setOrigin(0.5);
+            labelTexts.push(enemyIconSprite);
+          } else {
+            const enemyMarker = scene.add.text(enemyMx, enemyMy, "敵", {
+              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+              fontStyle: "700",
+              fontSize: "9px",
+              color: "#fff2da"
+            });
+            enemyMarker.setOrigin(0.5);
+            enemyMarker.setStroke("#3f0f0f", 2);
+            labelTexts.push(enemyMarker);
+          }
+        }
+        if (spottedFactionVisible) {
+          const factionMx = center.cx + MAP_FACTION_MARKER_CONFIG.offsetX;
+          const factionMy = center.cy + MAP_FACTION_MARKER_CONFIG.offsetY;
+          markerLayer.fillStyle(0x2c68b8, 0.96);
+          markerLayer.fillCircle(factionMx, factionMy, MAP_FACTION_MARKER_CONFIG.radius);
+          markerLayer.lineStyle(1.2, 0xe3f1ff, 0.94);
+          markerLayer.strokeCircle(factionMx, factionMy, MAP_FACTION_MARKER_CONFIG.radius);
+          const factionMarker = scene.add.text(factionMx, factionMy, "勢", {
             fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
             fontStyle: "700",
             fontSize: "9px",
-            color: "#fff2da"
+            color: "#f2f7ff"
           });
-          enemyMarker.setOrigin(0.5);
-          enemyMarker.setStroke("#3f0f0f", 2);
-          labelTexts.push(enemyMarker);
+          factionMarker.setOrigin(0.5);
+          factionMarker.setStroke("#0f2142", 2);
+          labelTexts.push(factionMarker);
         }
 
         if (tileVisible && drawHeightNumber && Number.isFinite(level)) {
@@ -6036,25 +7275,36 @@ function renderMapWithPhaser() {
     const lead = members[0];
     const baseCenter = hexCenter(lead.x, lead.y);
     const iconColor = resolveRaceMarkerColor(lead.race);
+    const markerIconName = resolveRaceIconNameForUnit(lead);
+    const markerTextureKey = ensureRaceMarkerTexture(markerIconName);
     const glyph = resolveRaceGlyph(lead.race);
     for (const offset of wrapOffsets) {
       if (!shouldDrawWrappedTileCopy(lead.x, lead.y, offset, data.w, data.h)) continue;
       const ox = offset?.x || 0;
       const oy = offset?.y || 0;
       const center = { cx: baseCenter.cx + ox, cy: baseCenter.cy + oy };
+      const unitMx = center.cx + MAP_UNIT_MARKER_CONFIG.offsetX;
+      const unitMy = center.cy + MAP_UNIT_MARKER_CONFIG.offsetY;
       markerLayer.fillStyle(iconColor, 0.92);
-      markerLayer.fillCircle(center.cx - 12.5, center.cy - 11.5, 7.3);
+      markerLayer.fillCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
       markerLayer.lineStyle(1.5, 0xe8f3ff, 0.95);
-      markerLayer.strokeCircle(center.cx - 12.5, center.cy - 11.5, 7.3);
-      const raceGlyphText = scene.add.text(center.cx - 12.5, center.cy - 11.5, glyph, {
-        fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-        fontStyle: "700",
-        fontSize: "9px",
-        color: "#f8fbff"
-      });
-      raceGlyphText.setOrigin(0.5);
-      raceGlyphText.setStroke("#12202f", 2);
-      labelTexts.push(raceGlyphText);
+      markerLayer.strokeCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
+      if (markerTextureKey && scene.textures.exists(markerTextureKey)) {
+        const raceIconSprite = scene.add.image(unitMx, unitMy, markerTextureKey);
+        raceIconSprite.setDisplaySize(MAP_UNIT_MARKER_CONFIG.iconSize, MAP_UNIT_MARKER_CONFIG.iconSize);
+        raceIconSprite.setOrigin(0.5);
+        labelTexts.push(raceIconSprite);
+      } else {
+        const raceGlyphText = scene.add.text(unitMx, unitMy, glyph, {
+          fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+          fontStyle: "700",
+          fontSize: "9px",
+          color: "#f8fbff"
+        });
+        raceGlyphText.setOrigin(0.5);
+        raceGlyphText.setStroke("#12202f", 2);
+        labelTexts.push(raceGlyphText);
+      }
 
       if (members.length > 1) {
         markerLayer.fillStyle(0x18233b, 0.94);
@@ -6084,19 +7334,28 @@ function renderMapWithPhaser() {
       const ox = offset?.x || 0;
       const oy = offset?.y || 0;
       const center = { cx: baseCenter.cx + ox, cy: baseCenter.cy + oy };
+      const rulerX = center.cx + MAP_SOVEREIGN_MARKER_CONFIG.offsetX;
+      const rulerY = center.cy + MAP_SOVEREIGN_MARKER_CONFIG.offsetY;
       markerLayer.fillStyle(0x1d2b43, 0.95);
-      markerLayer.fillCircle(center.cx + 12, center.cy - 12, 8);
+      markerLayer.fillCircle(rulerX, rulerY, MAP_SOVEREIGN_MARKER_CONFIG.radius);
       markerLayer.lineStyle(1.6, 0xffe59b, 0.95);
-      markerLayer.strokeCircle(center.cx + 12, center.cy - 12, 8);
-      const rulerLabel = scene.add.text(center.cx + 12, center.cy - 12, "統", {
-        fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-        fontStyle: "700",
-        fontSize: "11px",
-        color: "#ffe9ad"
-      });
-      rulerLabel.setOrigin(0.5);
-      rulerLabel.setStroke("#2a1b08", 2);
-      labelTexts.push(rulerLabel);
+      markerLayer.strokeCircle(rulerX, rulerY, MAP_SOVEREIGN_MARKER_CONFIG.radius);
+      if (sovereignTextureKey && scene.textures.exists(sovereignTextureKey)) {
+        const rulerIcon = scene.add.image(rulerX, rulerY, sovereignTextureKey);
+        rulerIcon.setDisplaySize(MAP_SOVEREIGN_MARKER_CONFIG.iconSize, MAP_SOVEREIGN_MARKER_CONFIG.iconSize);
+        rulerIcon.setOrigin(0.5);
+        labelTexts.push(rulerIcon);
+      } else {
+        const rulerLabel = scene.add.text(rulerX, rulerY, "統", {
+          fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+          fontStyle: "700",
+          fontSize: `${MAP_SOVEREIGN_MARKER_CONFIG.fallbackFontSizePx}px`,
+          color: "#ffe9ad"
+        });
+        rulerLabel.setOrigin(0.5);
+        rulerLabel.setStroke("#2a1b08", 2);
+        labelTexts.push(rulerLabel);
+      }
     }
   }
 
@@ -6207,7 +7466,7 @@ function runTurnForAllTestPlayers(data) {
   testPlayerSlots.value = slots.map(slot => ({ ...slot, ready: false }));
   const restoreId = testPlayerSlots.value.some(slot => slot.id === activeBefore)
     ? activeBefore
-    : (testPlayerSlots.value[0]?.id || "player-1");
+    : (testPlayerSlots.value[0]?.id || DEFAULT_TEST_PLAYER_ID);
   const restoreSlot = testPlayerSlots.value.find(slot => slot.id === restoreId) || null;
   activeTestPlayerId.value = restoreId;
   if (restoreSlot?.factionState) {
@@ -6438,6 +7697,22 @@ function openNationLogModal() {
   kickOffBgm();
   audio.playSe("open");
   showNationLogModal.value = true;
+}
+
+function handleOwnUnitNavigatorFocusUnit(payload = {}) {
+  focusCameraToUnitByIdFromNavigator(payload?.unitId);
+}
+
+function handleOwnUnitNavigatorFocusSquad(payload = {}) {
+  focusCameraToSquadByLeaderFromNavigator(payload?.leaderId);
+}
+
+function handleOwnUnitNavigatorOpenCharacterStatus(payload = {}) {
+  const targetId = nonEmptyText(payload?.unitId);
+  if (targetId && unitList.value.some(unit => nonEmptyText(unit?.id) === targetId)) {
+    selectedUnitId.value = targetId;
+  }
+  openCharacterStatusModalFromMap();
 }
 
 function togglePinnedNationLogPanel() {
@@ -6817,6 +8092,7 @@ function applyMapData(data, options = {}) {
   cameraInitialized = false;
   forceMapCenterOnNextRender = options.forceCenterOnInit !== false;
   pendingClickFocusWorld = null;
+  pendingClickFocusMode = "near";
   dragPointerId = null;
   dragStarted = false;
   if (options.rebuildCharacters !== false) {
@@ -6824,7 +8100,11 @@ function applyMapData(data, options = {}) {
   }
   if (options.rebuildCharacters !== false) {
     createVillageAndInitialUnit(normalizedData);
-    resetTestPlayerSlotsFromLiveState();
+    if (testPlayerSlots.value.length > 1) {
+      syncActiveTestPlayerSlotFromLiveState();
+    } else {
+      resetTestPlayerSlotsFromLiveState();
+    }
   } else {
     ensureTestPlayerSlotsInitialized();
   }
@@ -6936,15 +8216,26 @@ function updateMapClickInfo(picked) {
     }).join(", ")
     : "なし";
   const tileEnemies = enemiesAt(picked.x, picked.y, currentData.value);
+  const tileKey = coordKey(picked.x, picked.y);
+  const opposingFactionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
+  const hasOpposingFactionUnits = opposingFactionTileMap.has(tileKey);
+  const factionSpotted = showTestControls.value || spottedFactionTileKeys.has(tileKey);
+  const opposingFactionText = hasOpposingFactionUnits
+    ? (factionSpotted
+      ? formatOpposingFactionUnitsAtTile(picked.x, picked.y, { tileMap: opposingFactionTileMap })
+      : "未発見")
+    : "なし";
   console.log("[EnemySpawn][TileSelect]", {
     x: picked.x,
     y: picked.y,
     terrain: picked.terrain,
     heightLevel: Number.isFinite(heightLevel) ? heightLevel : null,
     enemyCount: tileEnemies.length,
-    enemies: tileEnemies
+    enemies: tileEnemies,
+    opposingFactionCount: hasOpposingFactionUnits ? toSafeNumber(opposingFactionTileMap.get(tileKey)?.units?.length, 0) : 0,
+    opposingFactionSpotted: factionSpotted
   });
-  const enemyText = tileEnemies.length
+  const monsterEnemyText = tileEnemies.length
     ? tileEnemies.map(enemy => {
       const parts = [];
       const name = nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵";
@@ -6956,12 +8247,19 @@ function updateMapClickInfo(picked) {
       return parts.join("");
     }).join(", ")
     : "なし";
+  const enemyText = hasOpposingFactionUnits || factionSpotted
+    ? `モンスター:${monsterEnemyText} / 他勢力:${opposingFactionText}`
+    : monsterEnemyText;
   const village = villageState.value?.placed && villageState.value?.x === picked.x && villageState.value?.y === picked.y ? "あり" : "なし";
   const villageDetailText = village === "あり"
     ? `${nonEmptyText(villageState.value?.name) || "村"} / ${resolveVillageScaleLabel(villageState.value)} / 人口${formatCompactNumber(villageState.value?.population)} / 能力:${formatCityAbilityLevels(villageState.value)} / 建設:${formatVillageBuildingList(villageState.value?.buildings)}`
     : "なし";
   const owner = picked.owner || tileOwnerAt(picked.x, picked.y);
-  const ownerText = owner === "player" ? "自領" : owner === "enemy" ? "敵領" : "未所属";
+  const ownerFactionId = tileFactionOwnerIdAt(picked.x, picked.y);
+  const ownerFactionLabel = resolveFactionLabelById(ownerFactionId);
+  const ownerText = isTestMultiplayerActive.value && ownerFactionId
+    ? `${ownerFactionLabel || ownerFactionId}領`
+    : (owner === "player" ? "自領" : owner === "enemy" ? "敵領" : "未所属");
   const isOwnVillageTile = !!(
     owner === "player"
     && villageState.value?.placed
@@ -7317,6 +8615,7 @@ function handleMapTileClick(pointer) {
   if (!picked || !currentData.value) return;
   // Click should not move camera unless explicit focus-on-click is enabled.
   pendingClickFocusWorld = null;
+  pendingClickFocusMode = "near";
   selectedTileKey = coordKey(picked.x, picked.y);
   if (villagePlacementMode.value) {
     if (!canPlaceVillageOnTile(picked)) {
@@ -7437,7 +8736,7 @@ function handleCanvasWheel(event) {
   const direction = Number(event?.deltaY) < 0 ? 1 : -1;
   const nextZoom = normalizeZoomPercent(zoomPercent.value + (direction * 25));
   if (nextZoom === zoomPercent.value) return;
-  setZoomPercent(nextZoom);
+  setZoomPercent(nextZoom, { centerMode: "village" });
 }
 
 onMounted(async () => {
@@ -7547,12 +8846,18 @@ onBeforeUnmount(() => {
   selectedTileKey = "";
   selectedTileDetail.value = null;
   pendingClickFocusWorld = null;
+  pendingClickFocusMode = "near";
   pointerViewCache.clear();
+  raceMarkerTexturePending = new Set();
   resetVisibilityState();
 });
 
 watch(showTestControls, visible => {
   emit("test-controls-change", !!visible);
+  if (currentData.value) {
+    rebuildVisibleTiles(currentData.value);
+    renderMapWithPhaser();
+  }
 }, { immediate: true });
 
 watch(customWorldWrapEnabled, enabled => {
@@ -7586,11 +8891,11 @@ watch([currentData, selectedUnitId, villagePlacementMode], () => {
 });
 
 watch(() => props.gameSetupReady, ready => {
+  if (!ready) return;
   if (!currentData.value || currentData.value.shapeOnly) return;
+  if (unitList.value.length || villageState.value) return;
   createVillageAndInitialUnit(currentData.value);
-  if (ready) {
-    mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
-  }
+  mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
   renderMapWithPhaser();
 });
 
@@ -7754,6 +9059,17 @@ watch(() => props.characterCommand, command => {
         </div>
         <div v-else class="field-overlay-tile-empty">マスをクリックすると詳細を表示します。</div>
       </section>
+      <aside class="field-overlay-own-faction-panel">
+        <own-faction-navigator-modal
+          :squad-entries="ownSquadNavigatorEntries"
+          :unit-entries="ownCharacterNavigatorEntries"
+          :selected-unit-id="selectedUnitId"
+          :reset-key="activeTestPlayerId"
+          @focus-unit="handleOwnUnitNavigatorFocusUnit"
+          @focus-squad="handleOwnUnitNavigatorFocusSquad"
+          @open-character-status="handleOwnUnitNavigatorOpenCharacterStatus"
+        />
+      </aside>
       <aside v-if="showPinnedNationLogPanel" class="field-overlay-live-log">
         <div class="field-overlay-live-log-head">
           <strong>統治者ログ</strong>
@@ -8053,7 +9369,11 @@ watch(() => props.characterCommand, command => {
             @click="moveUnitCandidateId = unit.id"
           >
             <div class="move-unit-line">
-              <strong>{{ unit.name }}</strong>
+              <span class="move-unit-name-with-icon">
+                <img v-if="moveUnitIconSrc(unit)" :src="moveUnitIconSrc(unit)" :alt="`${unit.race || unit.name} アイコン`" class="move-unit-icon" />
+                <span v-else class="move-unit-icon-fallback">{{ moveUnitIconGlyph(unit) }}</span>
+                <strong>{{ unit.name }}</strong>
+              </span>
               <span>{{ toUnitRoleLabel(unit) }}</span>
             </div>
             <div class="small">
@@ -8258,1158 +9578,4 @@ watch(() => props.characterCommand, command => {
   </section>
 </template>
 
-<style scoped>
-.phaser-map-panel {
-  margin: 0 !important;
-  padding: 0 !important;
-  border: none !important;
-  border-radius: 0 !important;
-  background: transparent;
-  color: #f8f0d8;
-  box-shadow: none;
-  font-size: 25px;
-  width: 100vw;
-  height: 100dvh;
-}
-
-.phaser-map-panel h2 {
-  margin-top: 0;
-  color: #f5e7b7;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  letter-spacing: 0.04em;
-}
-
-.phaser-map-stats {
-  margin: 8px 0;
-  white-space: pre-wrap;
-  border: 1px solid rgba(201, 169, 109, 0.5);
-  border-radius: 8px;
-  background: rgba(32, 23, 14, 0.66);
-  color: #f6eecf;
-  padding: 8px;
-  font-family: "Times New Roman", "Yu Mincho", serif;
-}
-
-.phaser-stage-shell {
-  position: relative;
-  width: 100%;
-  height: 100dvh;
-  max-height: none;
-  min-height: 0;
-  aspect-ratio: auto;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-}
-
-.phaser-stage-anchor {
-  position: relative;
-  width: 1280px;
-  height: 720px;
-}
-
-.phaser-stage {
-  width: 1280px;
-  height: 720px;
-  display: block;
-}
-
-.phaser-map-canvas {
-  position: relative;
-  width: 1280px;
-  height: 720px;
-  border-radius: 10px;
-  border: 1px solid rgba(214, 183, 124, 0.4);
-  background: radial-gradient(circle at 30% 20%, #1d2835, #0f141f);
-  overflow: hidden;
-}
-
-.phaser-map-canvas > canvas {
-  position: relative;
-  z-index: 1;
-}
-
-.in-canvas-test-panel {
-  position: absolute;
-  left: 12px;
-  top: 58px;
-  z-index: 24;
-  width: min(320px, calc(100% - 104px));
-  height: 370px;
-  max-height: 370px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  border: 1px solid rgba(218, 184, 125, 0.4);
-  border-radius: 10px;
-  background: linear-gradient(170deg, rgba(18, 13, 10, 0.86), rgba(12, 16, 24, 0.82));
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.36);
-  padding: 8px;
-}
-
-.map-tools {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-items: stretch;
-  gap: 7px;
-}
-
-.map-tools > * {
-  width: 100%;
-}
-
-.map-tools label {
-  display: grid;
-  gap: 3px;
-  font-size: 0.74rem;
-  color: #f4e8ca;
-}
-
-.map-tools select {
-  width: 100%;
-  min-height: 30px;
-  border: 1px solid rgba(208, 172, 113, 0.6);
-  border-radius: 7px;
-  background: rgba(255, 249, 236, 0.9);
-  color: #2f2517;
-  font-size: 0.74rem;
-  padding: 4px 6px;
-}
-
-.map-tools .secondary {
-  width: 100%;
-}
-
-.test-player-controls {
-  border: 1px solid rgba(214, 183, 124, 0.28);
-  border-radius: 8px;
-  padding: 6px;
-  background: rgba(19, 25, 37, 0.42);
-}
-
-.test-player-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.field-overlay-header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 20;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 6px 8px;
-  border-radius: 0 0 10px 10px;
-  border: 1px solid rgba(247, 218, 158, 0.28);
-  background: linear-gradient(170deg, rgba(17, 22, 33, 0.32), rgba(22, 15, 10, 0.28));
-  backdrop-filter: blur(2px);
-  box-shadow: inset 0 0 0 1px rgba(255, 233, 188, 0.08);
-  pointer-events: auto;
-}
-
-.field-overlay-header.minimized {
-  padding: 0;
-  min-height: 18px;
-  border-color: transparent;
-  background: transparent;
-  backdrop-filter: none;
-  box-shadow: none;
-}
-
-.overlay-header-drawer-toggle {
-  position: absolute;
-  left: 50%;
-  z-index: 21;
-  transform: translateX(-50%) translateY(-4px) scale(0.98);
-  bottom: -14px;
-  width: 42px;
-  height: 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(236, 205, 146, 0.28);
-  border-top: none;
-  background: linear-gradient(170deg, rgba(14, 19, 31, 0.56), rgba(22, 15, 11, 0.5));
-  color: rgba(249, 233, 198, 0.9);
-  cursor: pointer;
-  font-size: 0.58rem;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  backdrop-filter: blur(1.4px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22), inset 0 0 0 1px rgba(255, 235, 193, 0.05);
-  opacity: 0;
-  pointer-events: none;
-  transition: border-color 120ms ease, background 120ms ease, transform 160ms ease, opacity 160ms ease, width 140ms ease;
-}
-
-.field-overlay-header:hover .overlay-header-drawer-toggle,
-.field-overlay-header:focus-within .overlay-header-drawer-toggle,
-.overlay-header-drawer-toggle:focus-visible {
-  opacity: 0.9;
-  pointer-events: auto;
-  width: 50px;
-  transform: translateX(-50%) translateY(0) scale(1);
-}
-
-.overlay-header-drawer-toggle:hover {
-  opacity: 1;
-  border-color: rgba(247, 218, 158, 0.52);
-  background: linear-gradient(170deg, rgba(17, 23, 36, 0.7), rgba(27, 18, 13, 0.64));
-}
-
-.overlay-header-drawer-toggle:active {
-  transform: translateX(-50%) translateY(1px) scale(0.97);
-}
-
-.overlay-header-drawer-toggle.minimized {
-  bottom: auto;
-  top: 2px;
-  border-top: 1px solid rgba(236, 205, 146, 0.28);
-}
-
-.overlay-header-drawer-arrow {
-  font-size: 0.6rem;
-  color: rgba(255, 241, 208, 0.92);
-  text-shadow: 0 0 6px rgba(255, 230, 178, 0.22);
-}
-
-.field-resource-chip {
-  display: grid;
-  gap: 2px 8px;
-  grid-template-columns: auto auto;
-  align-items: center;
-  padding: 5px 10px 6px;
-  border-radius: 12px;
-  border: 1px solid rgba(242, 214, 154, 0.32);
-  background: linear-gradient(170deg, rgba(22, 29, 40, 0.34), rgba(23, 16, 11, 0.3));
-  backdrop-filter: blur(2px);
-  color: #f5e9c6;
-  font-size: 0.82rem;
-  line-height: 1.1;
-}
-
-.field-resource-chip strong {
-  justify-self: end;
-  font-size: 0.9rem;
-  color: #fff3cf;
-}
-
-.field-resource-chip small {
-  grid-column: 1 / -1;
-  color: rgba(245, 234, 201, 0.82);
-  font-size: 0.67rem;
-  letter-spacing: 0.01em;
-}
-
-.resource-icon-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 9px;
-  align-items: center;
-}
-
-.field-resource-chip-clickable {
-  cursor: pointer;
-}
-
-.field-resource-chip-clickable:hover {
-  border-color: rgba(244, 215, 156, 0.52);
-}
-
-.field-resource-chip-inline-label {
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0 8px;
-  align-items: start;
-}
-
-.field-resource-chip-inline-label > span {
-  grid-column: 1;
-  align-self: start;
-  white-space: nowrap;
-  padding-top: 1px;
-}
-
-.field-resource-chip-inline-label > small {
-  grid-column: 2 / 3;
-}
-
-.material-rows {
-  display: grid;
-  gap: 3px;
-  align-content: start;
-}
-
-.material-row {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 3px 8px;
-  align-items: center;
-}
-
-.material-token {
-  display: inline-flex;
-  gap: 3px;
-  align-items: center;
-  color: rgba(249, 236, 204, 0.92);
-  font-size: 0.64rem;
-}
-
-.material-token img {
-  width: var(--header-resource-icon-layout-size, 13px);
-  height: var(--header-resource-icon-layout-size, 13px);
-  object-fit: contain;
-  transform: scale(var(--header-resource-icon-scale, 1));
-  transform-origin: center center;
-  /* padding: 1px; */
-  /* border-radius: 6px; */
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(255, 255, 255, 0.86) 0%,
-    rgba(255, 255, 255, 0.48) 52%,
-    rgba(255, 255, 255, 0.08) 82%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  /* box-shadow:
-    0 0 7px rgba(255, 244, 208, 0.58),
-    0 0 1px rgba(255, 255, 255, 0.95) inset; */
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.4));
-}
-
-.material-token em {
-  font-style: normal;
-  color: rgba(241, 226, 190, 0.9);
-}
-
-.resource-icon-entry {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.resource-icon-entry img {
-  width: var(--header-resource-icon-layout-size, 13px);
-  height: var(--header-resource-icon-layout-size, 13px);
-  object-fit: contain;
-  transform: scale(var(--header-resource-icon-scale, 1));
-  transform-origin: center center;
-  /* padding: 1px;
-  border-radius: 6px; */
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(255, 255, 255, 0.66) 0%,
-    rgba(255, 255, 255, 0.48) 52%,
-    rgba(255, 255, 255, 0.08) 82%,
-    rgba(255, 255, 255, 0) 90%
-  );
-  /* box-shadow:
-    0 0 7px rgba(255, 244, 208, 0.58),
-    0 0 1px rgba(255, 255, 255, 0.95) inset; */
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.4));
-}
-
-.resource-icon-entry em {
-  font-style: normal;
-  color: rgba(255, 243, 215, 0.92);
-}
-
-.field-overlay-tile-detail {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 20;
-  width: min(420px, calc(100% - 116px));
-  max-height: 220px;
-  overflow: auto;
-  border: 1px solid rgba(239, 207, 141, 0.42);
-  border-radius: 10px;
-  background: linear-gradient(170deg, rgba(17, 22, 33, 0.74), rgba(22, 15, 10, 0.7));
-  box-shadow: inset 0 0 0 1px rgba(255, 233, 188, 0.08);
-  padding: 7px 9px;
-  color: #f7ecd0;
-}
-
-.field-overlay-tile-title {
-  font-size: 0.72rem;
-  font-weight: 700;
-  margin-bottom: 5px;
-  color: #f9e9bc;
-}
-
-.field-overlay-tile-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 8px;
-}
-
-.field-overlay-tile-actions {
-  margin-top: 8px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.field-overlay-tile-grid > div {
-  display: grid;
-  gap: 1px;
-}
-
-.field-overlay-tile-grid > div.wide {
-  grid-column: 1 / -1;
-}
-
-.field-overlay-tile-grid span {
-  font-size: 0.62rem;
-  color: rgba(241, 228, 193, 0.78);
-}
-
-.field-overlay-tile-grid strong {
-  font-size: 0.72rem;
-  line-height: 1.3;
-  color: #fff4d2;
-  font-weight: 700;
-  word-break: break-word;
-}
-
-.field-overlay-tile-empty {
-  font-size: 0.74rem;
-  color: rgba(243, 228, 193, 0.84);
-}
-
-.field-overlay-actions {
-  margin-left: auto;
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.field-overlay-live-log {
-  position: absolute;
-  right: 12px;
-  top: 76px;
-  bottom: 106px;
-  width: min(320px, 30vw);
-  border: 1px solid rgba(235, 203, 142, 0.52);
-  border-radius: 10px;
-  background: linear-gradient(170deg, rgba(18, 24, 36, 0.9), rgba(12, 10, 8, 0.86));
-  box-shadow: inset 0 0 0 1px rgba(255, 236, 189, 0.1);
-  color: #f7e8c3;
-  z-index: 18;
-  padding: 8px;
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  gap: 7px;
-  pointer-events: auto;
-}
-
-.field-overlay-live-log-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.field-overlay-live-log-head strong {
-  font-size: 0.8rem;
-}
-
-.field-overlay-live-log-summary {
-  font-size: 0.72rem;
-  color: rgba(247, 232, 195, 0.86);
-  border: 1px solid rgba(235, 203, 142, 0.34);
-  border-radius: 8px;
-  padding: 5px 7px;
-  background: rgba(25, 18, 13, 0.5);
-}
-
-.field-overlay-live-log-list {
-  overflow: auto;
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  padding-right: 2px;
-}
-
-.field-overlay-live-log-list > div {
-  border: 1px solid rgba(220, 188, 128, 0.28);
-  border-radius: 7px;
-  padding: 5px 6px;
-  font-size: 0.68rem;
-  line-height: 1.35;
-  background: rgba(15, 11, 8, 0.5);
-  color: #f6e6bf;
-}
-
-.overlay-action-btn {
-  border: 1px solid rgba(222, 193, 135, 0.56);
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgba(244, 223, 185, 0.92), rgba(213, 186, 143, 0.9));
-  color: #2d2418;
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 5px 8px;
-  cursor: pointer;
-}
-
-.overlay-action-btn.icon-only {
-  width: 32px;
-  height: 30px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.overlay-action-icon {
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
-  filter: drop-shadow(0 0 2px rgba(255, 248, 226, 0.85));
-}
-
-.overlay-action-btn.mini {
-  min-width: 26px;
-  padding: 4px 6px;
-}
-
-.overlay-action-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.field-overlay-bottom-right {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 20;
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 8px;
-  pointer-events: auto;
-}
-
-.field-overlay-clock {
-  width: 88px;
-  display: grid;
-  gap: 5px;
-  justify-items: center;
-  color: #fff4d2;
-  font-family: "Noto Sans JP", "Consolas", monospace;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
-}
-
-.turn-clock-button {
-  border: none;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-}
-
-.turn-clock-face {
-  position: relative;
-  width: 66px;
-  height: 66px;
-  border-radius: 50%;
-  border: 1px solid rgba(245, 217, 158, 0.46);
-  background: radial-gradient(circle at 35% 28%, rgba(34, 46, 62, 0.82), rgba(16, 11, 8, 0.86));
-  box-shadow: inset 0 0 0 1px rgba(255, 233, 188, 0.12);
-}
-
-.turn-clock-button:hover .turn-clock-face {
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 233, 188, 0.2),
-    0 0 0 1px rgba(255, 233, 188, 0.35);
-}
-
-.turn-clock-mark {
-  position: absolute;
-  background: rgba(255, 236, 202, 0.8);
-  border-radius: 1px;
-}
-
-.turn-clock-mark.mark-top {
-  top: 6px;
-  left: 50%;
-  width: 2px;
-  height: 9px;
-  transform: translateX(-50%);
-}
-
-.turn-clock-mark.mark-right {
-  top: 50%;
-  right: 6px;
-  width: 9px;
-  height: 2px;
-  transform: translateY(-50%);
-}
-
-.turn-clock-mark.mark-bottom {
-  bottom: 6px;
-  left: 50%;
-  width: 2px;
-  height: 9px;
-  transform: translateX(-50%);
-}
-
-.turn-clock-mark.mark-left {
-  top: 50%;
-  left: 6px;
-  width: 9px;
-  height: 2px;
-  transform: translateY(-50%);
-}
-
-.turn-clock-hand {
-  position: absolute;
-  left: 50%;
-  bottom: 50%;
-  width: 2px;
-  height: 24px;
-  transform-origin: 50% 100%;
-  background: linear-gradient(180deg, #fff2d0, #e3c072);
-  border-radius: 2px;
-}
-
-.turn-clock-center {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  background: #ffe8b7;
-  border: 1px solid rgba(72, 50, 21, 0.8);
-}
-
-.turn-clock-turn {
-  position: absolute;
-  left: 50%;
-  top: 64%;
-  transform: translate(-50%, -50%);
-  font-size: 0.62rem;
-  font-weight: 700;
-  color: #f8e7c2;
-}
-
-.turn-clock-caption {
-  border-radius: 7px;
-  border: 1px solid rgba(245, 217, 158, 0.36);
-  background: linear-gradient(170deg, rgba(19, 25, 35, 0.74), rgba(16, 11, 8, 0.68));
-  padding: 3px 7px;
-  font-size: 0.68rem;
-  line-height: 1;
-  font-weight: 700;
-}
-
-.turn-clock-caption.map-turn-caption {
-  background: linear-gradient(170deg, rgba(39, 20, 10, 0.78), rgba(24, 16, 10, 0.72));
-  border-color: rgba(247, 168, 114, 0.36);
-}
-
-.overlay-test-btn {
-  border: 1px solid rgba(220, 190, 132, 0.58);
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgba(245, 225, 189, 0.92), rgba(208, 181, 140, 0.9));
-  color: #2d2418;
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 6px 9px;
-  cursor: pointer;
-}
-
-.phaser-help {
-  margin-top: 6px;
-  color: #ddcda0;
-}
-
-.dev-info-panel {
-  margin-top: 10px;
-  border: 1px dashed rgba(238, 202, 138, 0.42);
-  border-radius: 9px;
-  padding: 8px;
-  background: linear-gradient(170deg, rgba(23, 18, 13, 0.48), rgba(17, 13, 10, 0.42));
-}
-
-.in-canvas-dev-info {
-  margin-top: 8px;
-}
-
-.dev-info-label {
-  color: #efd5a0;
-  letter-spacing: 0.03em;
-  font-weight: 700;
-}
-
-.event-control-modal {
-  width: min(460px, 100%);
-}
-
-.unit-create-count-modal {
-  width: min(360px, 100%);
-  display: grid;
-  gap: 8px;
-}
-
-.unit-create-count-picker {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.unit-create-count-picker input {
-  width: 96px;
-  border: 1px solid rgba(173, 138, 86, 0.7);
-  border-radius: 8px;
-  padding: 6px 8px;
-  font-size: 1rem;
-  text-align: center;
-}
-
-.count-step-btn {
-  min-width: 42px;
-}
-
-.turn-action-modal {
-  width: min(360px, 100%);
-}
-
-.turn-action-note {
-  color: #eadab2;
-}
-
-.move-unit-modal {
-  width: min(520px, 100%);
-  display: grid;
-  gap: 8px;
-}
-
-.move-unit-note {
-  color: #eadab2;
-}
-
-.move-unit-list {
-  display: grid;
-  gap: 7px;
-  max-height: min(46vh, 360px);
-  overflow: auto;
-  padding-right: 2px;
-}
-
-.move-unit-item {
-  border: 1px solid rgba(221, 185, 126, 0.4);
-  border-radius: 9px;
-  background: linear-gradient(170deg, rgba(24, 17, 12, 0.78), rgba(17, 12, 8, 0.72));
-  color: #f3e7c8;
-  padding: 8px 9px;
-  text-align: left;
-  display: grid;
-  gap: 3px;
-}
-
-.move-unit-item.active {
-  border-color: rgba(141, 255, 159, 0.82);
-  box-shadow: inset 0 0 0 1px rgba(141, 255, 159, 0.24);
-  background: linear-gradient(170deg, rgba(24, 42, 21, 0.84), rgba(14, 28, 13, 0.8));
-}
-
-.move-unit-line {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.village-build-modal {
-  width: min(560px, 100%);
-  display: grid;
-  gap: 8px;
-}
-
-.build-hint {
-  color: #eadab2;
-}
-
-.city-ability-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-}
-
-.city-ability-item {
-  border: 1px solid rgba(221, 185, 126, 0.35);
-  border-radius: 9px;
-  background: linear-gradient(170deg, rgba(23, 18, 13, 0.72), rgba(17, 12, 9, 0.68));
-  color: #f2e6c7;
-  padding: 7px 8px;
-  display: grid;
-  gap: 4px;
-}
-
-.village-build-list {
-  display: grid;
-  gap: 7px;
-  max-height: min(42vh, 320px);
-  overflow: auto;
-  padding-right: 2px;
-}
-
-.village-build-item {
-  border: 1px solid rgba(221, 185, 126, 0.4);
-  border-radius: 9px;
-  background: linear-gradient(170deg, rgba(24, 17, 12, 0.78), rgba(17, 12, 8, 0.72));
-  color: #f3e7c8;
-  padding: 8px 9px;
-  text-align: left;
-  display: grid;
-  gap: 3px;
-}
-
-.village-build-item.active {
-  border-color: rgba(141, 200, 255, 0.88);
-  box-shadow: inset 0 0 0 1px rgba(141, 200, 255, 0.24);
-  background: linear-gradient(170deg, rgba(17, 35, 52, 0.84), rgba(10, 20, 32, 0.8));
-}
-
-.build-selected-info {
-  color: #f0dfb7;
-  border-top: 1px solid rgba(221, 186, 125, 0.35);
-  padding-top: 7px;
-}
-
-.event-mode-grid {
-  margin-top: 8px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.event-mode-card {
-  display: grid;
-  gap: 4px;
-  text-align: left;
-  border-radius: 10px;
-  border: 1px solid rgba(221, 185, 126, 0.38);
-  background: linear-gradient(170deg, rgba(26, 19, 13, 0.78), rgba(17, 12, 8, 0.72));
-  color: #f3e8cb;
-  padding: 9px 10px;
-  cursor: pointer;
-}
-
-.event-mode-card.active {
-  border-color: rgba(255, 214, 138, 0.86);
-  box-shadow: inset 0 0 0 1px rgba(255, 233, 176, 0.34);
-  background: linear-gradient(170deg, rgba(84, 51, 23, 0.84), rgba(39, 22, 11, 0.8));
-}
-
-.event-mode-label {
-  font-size: 0.94rem;
-  font-weight: 700;
-}
-
-.event-mode-desc {
-  color: #ddcfa8;
-  font-size: 0.76rem;
-  line-height: 1.35;
-}
-
-.event-mode-hint {
-  margin-top: 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(221, 185, 126, 0.34);
-  background: rgba(24, 17, 12, 0.62);
-  color: #eadab2;
-  padding: 7px 9px;
-  font-size: 0.82rem;
-}
-
-.event-control-actions {
-  gap: 8px;
-}
-
-.event-control-actions .secondary:last-child {
-  border-color: rgba(255, 219, 156, 0.78);
-  background: linear-gradient(180deg, rgba(150, 98, 47, 0.9), rgba(83, 50, 22, 0.92));
-}
-
-.zoom-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.zoom-controls .secondary {
-  min-width: 44px;
-  padding: 4px 8px;
-}
-
-.map-click-info {
-  margin-top: 8px;
-  margin-bottom: 8px;
-  border: 1px solid rgba(235, 203, 142, 0.52);
-  border-radius: 8px;
-  padding: 9px 10px;
-  color: #fff4cf;
-  background: linear-gradient(170deg, rgba(26, 33, 48, 0.85), rgba(20, 15, 10, 0.75));
-  box-shadow: inset 0 0 0 1px rgba(255, 236, 189, 0.12);
-  font-size: 0.96rem;
-  font-weight: 600;
-  line-height: 1.38;
-  word-break: break-word;
-}
-
-.character-dev-lines {
-  margin-top: 6px;
-  display: grid;
-  gap: 6px;
-  font-size: 0.85rem;
-  color: #f4e7c6;
-}
-
-.character-dev-lines > div {
-  border: 1px solid rgba(220, 188, 128, 0.33);
-  border-radius: 8px;
-  padding: 7px 9px;
-  background: linear-gradient(170deg, rgba(28, 20, 14, 0.72), rgba(18, 13, 9, 0.62));
-  line-height: 1.4;
-}
-
-.generation-details {
-  margin-top: 10px;
-}
-
-.settings-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(10, 7, 4, 0.5);
-  display: grid;
-  place-items: center;
-  padding: 14px;
-  z-index: 1200;
-}
-
-.settings-modal {
-  width: min(420px, 100%);
-  background: linear-gradient(170deg, rgba(56, 40, 22, 0.96), rgba(20, 14, 9, 0.96));
-  border: 1px solid rgba(218, 184, 121, 0.55);
-  border-radius: 12px;
-  padding: 12px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.44);
-  font-size: 1rem;
-  line-height: 1.35;
-}
-
-.quick-settings-modal {
-  width: min(360px, 100%);
-}
-
-.quick-settings-grid {
-  margin-top: 8px;
-  display: grid;
-  gap: 8px;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.settings-modal h3 {
-  margin: 0 0 8px;
-  color: #f6e6b5;
-}
-
-.setting-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #f4ebd2;
-}
-
-.setting-note {
-  margin-top: 8px;
-  color: #dccfa8;
-  font-size: 0.86rem;
-}
-
-.setting-column {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
-  color: #f4ebd2;
-}
-
-.setting-column input[type="range"] {
-  accent-color: #d3b277;
-}
-
-.inline-pair {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 8px;
-  align-items: center;
-}
-
-.stepper-pair {
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-}
-
-.stepper-pair > span {
-  text-align: center;
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.number-stepper {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
-  gap: 6px;
-  align-items: stretch;
-}
-
-.number-stepper input[type="number"] {
-  width: 100%;
-  min-height: 40px;
-  border-radius: 6px;
-  border: 1px solid rgba(218, 184, 121, 0.42);
-  background: rgba(15, 11, 7, 0.72);
-  color: #f4ebd2;
-  text-align: center;
-  font-size: 0.96rem;
-  appearance: textfield;
-  -moz-appearance: textfield;
-}
-
-.number-stepper input[type="number"]::-webkit-outer-spin-button,
-.number-stepper input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.step-stack {
-  display: grid;
-  grid-template-rows: 1fr 1fr;
-  gap: 4px;
-}
-
-.step-btn {
-  min-height: 18px;
-  border-radius: 6px;
-  border: 1px solid rgba(215, 180, 118, 0.58);
-  background: linear-gradient(180deg, rgba(112, 80, 41, 0.88), rgba(62, 43, 22, 0.92));
-  color: #f8e9c2;
-  font-size: 0.96rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-
-.step-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.setting-actions {
-  margin-top: 10px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.island-custom-modal {
-  width: min(560px, 100%);
-}
-
-.island-custom-grid {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.island-custom-grid.is-disabled {
-  opacity: 0.58;
-}
-
-.island-field {
-  margin-top: 0;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid rgba(218, 184, 121, 0.3);
-  background: rgba(20, 14, 9, 0.38);
-}
-
-.field-help {
-  color: #dccfa8;
-  font-size: 0.78rem;
-  line-height: 1.35;
-}
-
-@media (max-width: 640px) {
-  .event-mode-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .island-custom-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .city-ability-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .field-overlay-header {
-    flex-wrap: wrap;
-    left: 0;
-    right: 0;
-    top: 0;
-  }
-
-  .field-overlay-tile-detail {
-    width: min(95%, 390px);
-    max-height: 190px;
-    bottom: 8px;
-    left: 8px;
-  }
-
-  .field-overlay-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-  .field-overlay-bottom-right {
-    right: 8px;
-    bottom: 8px;
-    gap: 6px;
-  }
-
-  .field-overlay-live-log {
-    left: 8px;
-    right: 8px;
-    width: auto;
-    top: auto;
-    bottom: 96px;
-    max-height: 220px;
-  }
-
-  .overlay-test-btn {
-    padding: 5px 8px;
-    font-size: 0.68rem;
-  }
-}
-</style>
+<style scoped src="./PhaserMapGeneratorPanel.css"></style>

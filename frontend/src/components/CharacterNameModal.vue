@@ -5,7 +5,8 @@ import BaseModal from "./BaseModal.vue";
 const props = defineProps({
   show: { type: Boolean, default: false },
   selectedName: { type: String, default: "" },
-  selectedVillageName: { type: String, default: "" }
+  selectedVillageName: { type: String, default: "" },
+  setupProgressText: { type: String, default: "" }
 });
 
 const emit = defineEmits(["close", "confirm"]);
@@ -35,7 +36,7 @@ function confirmName() {
 </script>
 
 <template>
-  <base-modal :show="show" title="キャラ名設定" :close-on-backdrop="false" @close="$emit('close')">
+  <base-modal :show="show" title="キャラ名設定" :subtitle="setupProgressText" :close-on-backdrop="false" @close="$emit('close')">
     <div class="name-form">
       <label class="name-label">
         <span>キャラ名 (20文字まで)</span>

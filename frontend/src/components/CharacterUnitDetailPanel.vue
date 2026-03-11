@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import equipmentDb from "../../../data/source/export/json/装備.json";
-import { DEFAULT_ICON_NAME, getIconSrcByName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
+import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 
 const props = defineProps({
@@ -192,16 +192,32 @@ function equipmentOptionsForSlot(slotKey) {
 }
 
 function unitIconName(unit) {
-  return resolveIconName(unit?.iconName, DEFAULT_ICON_NAME);
+  const name = nonEmptyText(unit?.iconName);
+  if (name && hasIconName(name)) return name;
+  return "";
 }
 
 function unitIconSrc(unit) {
-  return getIconSrcByName(unitIconName(unit), DEFAULT_ICON_NAME);
+  const direct = nonEmptyText(unit?.iconSrc);
+  if (direct) return direct;
+  const iconName = unitIconName(unit);
+  if (iconName) return getIconSrcByName(iconName, iconName);
+  return "";
+}
+
+function unitIconGlyph(unit) {
+  const race = nonEmptyText(unit?.race);
+  if (race) return Array.from(race)[0] || "?";
+  const className = nonEmptyText(unit?.className);
+  if (className) return Array.from(className)[0] || "?";
+  const name = nonEmptyText(unit?.name);
+  if (name) return Array.from(name)[0] || "?";
+  return "?";
 }
 
 function initDrafts(unit) {
   if (!unit) return;
-  iconDraft.value = unitIconName(unit);
+  iconDraft.value = resolveIconName(unit?.iconName, DEFAULT_ICON_NAME);
   const slots = resolveUnitEquipmentSlots(unit);
   const next = {};
   for (const slotKey of EQUIPMENT_SLOT_KEYS) {
@@ -321,7 +337,8 @@ watch(
     <section class="char-block">
       <h4>アイコン</h4>
       <div class="icon-edit-row">
-        <img :src="unitIconSrc(unit)" :alt="`${unit.name} アイコン`" class="char-unit-icon-preview" :class="{ mini: compact }" />
+        <img v-if="unitIconSrc(unit)" :src="unitIconSrc(unit)" :alt="`${unit.name} アイコン`" class="char-unit-icon-preview" :class="{ mini: compact }" />
+        <span v-else class="char-unit-icon-preview-fallback" :class="{ mini: compact }">{{ unitIconGlyph(unit) }}</span>
         <select :value="iconDraft" @change="iconDraft = $event.target.value">
           <option v-for="row in iconOptions" :key="`icon-opt-${unit.id}-${row.name}`" :value="row.name">
             {{ row.name }}
@@ -475,10 +492,32 @@ watch(
   background: rgba(255, 255, 255, 0.65);
 }
 
+.char-unit-icon-preview-fallback {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid rgba(189, 160, 119, 0.74);
+  background: rgba(255, 255, 255, 0.65);
+  color: #3a2d1a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .char-unit-icon-preview.mini {
   width: 30px;
   height: 30px;
   border-radius: 6px;
+}
+
+.char-unit-icon-preview-fallback.mini {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 0.86rem;
 }
 
 .char-status-grid {
