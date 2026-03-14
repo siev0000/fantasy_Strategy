@@ -146,7 +146,7 @@ export function resolveMinZoomPercent(dataLike, options = {}) {
     gameViewHeight / Math.max(maxViewH, 1)
   );
   const minPercent = Math.ceil((minFinalZoom / Math.max(baseZoom, 0.0001)) * 100);
-  const maxZoom = typeof resolveMaxZoomPercent === "function" ? resolveMaxZoomPercent() : 400;
+  const maxZoom = typeof resolveMaxZoomPercent === "function" ? resolveMaxZoomPercent(dataLike) : 400;
   return Math.max(minZoomFloor, Math.min(maxZoom, minPercent));
 }
 
@@ -160,7 +160,7 @@ export function normalizeZoomPercent(value, dataLike, options = {}) {
     ? resolveMinZoomPercentFn(dataLike)
     : 10;
   const maxZoom = typeof resolveMaxZoomPercentFn === "function"
-    ? resolveMaxZoomPercentFn()
+    ? resolveMaxZoomPercentFn(dataLike)
     : 400;
   return Math.max(minZoom, Math.min(maxZoom, safe));
 }

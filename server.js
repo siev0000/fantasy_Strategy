@@ -1,10 +1,13 @@
 const express = require("express");
 const http = require("http");
+const os = require("os");
 const path = require("path");
 const chokidar = require("chokidar");
 const { Server } = require("socket.io");
 
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
+const DEV_MODE = process.env.NODE_ENV !== "production";
 const app = express();
 const server = http.createServer(app);
 const FRONTEND_DIST_DIR = path.join(__dirname, "web-vue-dist");
@@ -21,10 +24,11 @@ const DEFAULT_DEV_SOCKET_ORIGINS = [
 const allowedSocketOrigins = new Set(
   SOCKET_CORS_ORIGINS.length > 0 ? SOCKET_CORS_ORIGINS : DEFAULT_DEV_SOCKET_ORIGINS
 );
+const allowAllSocketOriginsInDev = DEV_MODE && SOCKET_CORS_ORIGINS.length === 0;
 const io = new Server(server, {
   cors: {
     origin(origin, callback) {
-      if (!origin || allowedSocketOrigins.has(origin)) {
+      if (allowAllSocketOriginsInDev || !origin || allowedSocketOrigins.has(origin)) {
         callback(null, true);
         return;
       }
@@ -50,9 +54,37 @@ const ALLY_ORDER = ["只人", "エルフ", "竜人", "天使"];
 const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"];
 const VALID_ACTIONS = new Set(["attack", "skill", "next", "reset"]);
 const rooms = new Map();
-const DEV_MODE = process.env.NODE_ENV !== "production";
 const DEV_WATCH_TARGETS = ["web-vue-dist", "assets", "config", "data"].map(p => path.join(__dirname, p));
 const FRONTEND_INDEX_PATH = path.join(FRONTEND_DIST_DIR, "index.html");
+
+function getLanIPv4Addresses() {
+  const nets = os.networkInterfaces();
+  const addresses = [];
+  for (const netList of Object.values(nets)) {
+    if (!Array.isArray(netList)) continue;
+    for (const net of netList) {
+      if (!net) continue;
+      if (net.family !== "IPv4") continue;
+      if (net.internal) continue;
+      addresses.push(net.address);
+    }
+  }
+  return addresses;
+}
+
+function resolveStartupUrls(host, port) {
+  const urls = new Set();
+  const add = target => urls.add(`http://${target}:${port}`);
+  if (host === "0.0.0.0" || host === "::") {
+    add("localhost");
+    add("127.0.0.1");
+    for (const ip of getLanIPv4Addresses()) add(ip);
+    return [...urls];
+  }
+  add(host);
+  if (host === "localhost") add("127.0.0.1");
+  return [...urls];
+}
 
 function unitFromRace(race, side, id) {
   const base = RACES[race];
@@ -465,6 +497,9 @@ function setupDevAutoReload() {
 
 setupDevAutoReload();
 
-server.listen(PORT, () => {
-  console.log(`Fantasy Strategy server listening on http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log("Fantasy Strategy server listening:");
+  for (const url of resolveStartupUrls(HOST, PORT)) {
+    console.log(`  - ${url}`);
+  }
 });

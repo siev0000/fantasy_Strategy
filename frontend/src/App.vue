@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { io } from "socket.io-client";
+import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH } from "./lib/phaser-map-panel-config.js";
 import PhaserMapGeneratorPanel from "./components/PhaserMapGeneratorPanel.vue";
 import RoomModal from "./components/RoomModal.vue";
 import BattleModal from "./components/BattleModal.vue";
@@ -265,6 +266,7 @@ const mapCharacterState = ref({
   ruleText: ""
 });
 const latestMapSaveSnapshot = ref(null);
+const appRootScale = ref(1);
 const characterCount = computed(() => {
   return Array.isArray(mapCharacterState.value?.units) ? mapCharacterState.value.units.length : 0;
 });
@@ -337,6 +339,7 @@ const sim = reactive({
 
 let globalKeyHandler = null;
 let saveSnapshotWaiters = [];
+let appResizeHandler = null;
 
 const currentState = computed(() => {
   if (activeRoomId.value) return roomState.value || localState.value;
@@ -360,6 +363,27 @@ const playersLabel = computed(() => {
   if (!activeRoomId.value) return "-";
   return players.value.map(p => p.name).join(", ") || "-";
 });
+
+const appRootStyle = computed(() => ({
+  "--game-root-scale": String(appRootScale.value)
+}));
+
+function updateAppRootScale() {
+  if (typeof window === "undefined") return;
+  if (!gameOnlyMode.value) {
+    appRootScale.value = 1;
+    if (typeof document !== "undefined") {
+      document.documentElement.style.setProperty("--game-modal-scale", "1");
+    }
+    return;
+  }
+  const fitScale = Math.min(window.innerWidth / GAME_VIEW_WIDTH, window.innerHeight / GAME_VIEW_HEIGHT);
+  const nextScale = Number.isFinite(fitScale) ? fitScale : 1;
+  appRootScale.value = Math.max(0.25, Math.min(3, Math.round(nextScale * 1000) / 1000));
+  if (typeof document !== "undefined") {
+    document.documentElement.style.setProperty("--game-modal-scale", String(appRootScale.value));
+  }
+}
 
 function openModal(kind, payload = null) {
   if (kind === "game-start") {
@@ -659,6 +683,8 @@ function handleCharacterStateChange(payload) {
       ...unit,
       iconName: String(unit?.iconName || ""),
       iconSrc: String(unit?.iconSrc || ""),
+      subIconName: String(unit?.subIconName || ""),
+      subIconSrc: String(unit?.subIconSrc || ""),
       status: unit?.status ? { ...unit.status } : null,
       skillLevels: unit?.skillLevels ? { ...unit.skillLevels } : null,
       baseResistances: unit?.baseResistances ? { ...unit.baseResistances } : null,
@@ -934,11 +960,6 @@ function handleTestControlsChange(visible) {
   testControlsVisible.value = !!visible;
 }
 
-watch(gameOnlyMode, enabled => {
-  if (typeof document === "undefined") return;
-  document.body.classList.toggle("game-only-mode", !!enabled);
-}, { immediate: true });
-
 function sendCharacterCommand(type, unitId, extras = {}) {
   const cmdType = String(type || "").trim();
   const id = String(unitId || "").trim();
@@ -997,6 +1018,14 @@ function requestDissolveSquad(payload) {
   const leaderId = String(payload?.leaderId || "").trim();
   if (!leaderId) return;
   sendCharacterCommand("dissolveSquad", leaderId);
+}
+
+function requestUpdateSquadIcon(payload) {
+  const leaderId = String(payload?.leaderId || "").trim();
+  if (!leaderId) return;
+  const iconName = String(payload?.iconName || "").trim();
+  if (!iconName) return;
+  sendCharacterCommand("updateSquadIcon", leaderId, { iconName });
 }
 
 function requestUpdateUnitEquipment(payload) {
@@ -1193,7 +1222,7 @@ onMounted(() => {
   };
   window.addEventListener("keydown", globalKeyHandler);
 
-  const defaultSocketUrl = window.location.port === "5173" ? "http://localhost:3000" : window.location.origin;
+  const defaultSocketUrl = window.location.origin;
   const socketUrl = import.meta.env.VITE_SOCKET_URL || defaultSocketUrl;
   socket.value = io(socketUrl, { path: "/socket.io" });
 
@@ -1250,11 +1279,18 @@ onMounted(() => {
   };
   window.export_game_save_data = () => exportGameSaveDataAsJson();
   window.import_game_save_data = jsonText => importGameSaveDataFromJson(jsonText);
+  updateAppRootScale();
+  appResizeHandler = () => updateAppRootScale();
+  window.addEventListener("resize", appResizeHandler);
 });
 
 onBeforeUnmount(() => {
   if (typeof document !== "undefined") {
-    document.body.classList.remove("game-only-mode");
+    document.documentElement.style.removeProperty("--game-modal-scale");
+  }
+  if (appResizeHandler) {
+    window.removeEventListener("resize", appResizeHandler);
+    appResizeHandler = null;
   }
   if (globalKeyHandler) {
     window.removeEventListener("keydown", globalKeyHandler);
@@ -1270,10 +1306,14 @@ onBeforeUnmount(() => {
   if (window.import_game_save_data) delete window.import_game_save_data;
   saveSnapshotWaiters = [];
 });
+
+watch(gameOnlyMode, () => {
+  updateAppRootScale();
+}, { immediate: true });
 </script>
 
 <template>
-  <div class="app" :class="{ 'game-only': gameOnlyMode }">
+  <div class="app" :class="{ 'game-only': gameOnlyMode }" :style="appRootStyle">
     <phaser-map-generator-panel
       :selected-race="selectedRace"
       :selected-class="selectedClass"
@@ -1419,6 +1459,7 @@ onBeforeUnmount(() => {
       @create-squad="requestCreateSquad"
       @rename-squad="requestRenameSquad"
       @dissolve-squad="requestDissolveSquad"
+      @update-squad-icon="requestUpdateSquadIcon"
       @update-unit-equipment="requestUpdateUnitEquipment"
       @update-unit-icon="requestUpdateUnitIcon"
       @level-unit="requestLevelUnit"
@@ -1449,6 +1490,8 @@ onBeforeUnmount(() => {
   color: #f5e9cc;
   display: grid;
   gap: 10px;
+  transform: scale(var(--game-modal-scale, 1));
+  transform-origin: center center;
 }
 
 .game-start-modal h3 {

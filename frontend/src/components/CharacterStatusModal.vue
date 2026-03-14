@@ -4,7 +4,7 @@ import BaseModal from "./BaseModal.vue";
 import CharacterUnitDetailPanel from "./CharacterUnitDetailPanel.vue";
 import equipmentDb from "../../../data/source/export/json/装備.json";
 import classDb from "../../../data/source/export/json/クラス.json";
-import { DEFAULT_ICON_NAME, DEFAULT_ICON_SRC, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
+import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -23,6 +23,7 @@ const emit = defineEmits([
   "create-squad",
   "rename-squad",
   "dissolve-squad",
+  "update-squad-icon",
   "update-unit-equipment",
   "update-unit-icon",
   "level-unit",
@@ -30,22 +31,22 @@ const emit = defineEmits([
 ]);
 
 const STATUS_FIELDS = ["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"];
-const SKILL_FIELDS = [
-  "指揮",
-  "威圧",
-  "看破",
-  "早業",
-  "技術",
-  "隠密",
-  "索敵",
-  "農業",
-  "林業",
-  "漁業",
-  "工業",
-  "統治",
-  "交渉",
-  "魔法技術",
-  "信仰"
+const SKILL_FIELD_DEFS = [
+  { key: "指揮", label: "指揮" },
+  { key: "威圧", label: "威圧" },
+  { key: "看破", label: "看破" },
+  { key: "早業", label: "早業" },
+  { key: "技術", label: "技術" },
+  { key: "隠密", label: "隠密" },
+  { key: "索敵", label: "索敵" },
+  { key: "農業", label: "農業" },
+  { key: "林業", label: "林業" },
+  { key: "漁業", label: "漁業" },
+  { key: "工業", label: "工業" },
+  { key: "統治", label: "統治" },
+  { key: "交渉", label: "交渉" },
+  { key: "魔術", label: "魔術", aliases: ["魔法技術"] },
+  { key: "信仰", label: "信仰" }
 ];
 const RESISTANCE_FIELDS = [
   "物理耐性",
@@ -91,6 +92,10 @@ const activeTab = ref("character");
 const activeUnitId = ref("");
 const activeSquadId = ref("");
 const activeSquadMemberId = ref("");
+const activeUnitIconModalOpen = ref(false);
+const activeUnitIconModalDraft = ref(DEFAULT_ICON_NAME);
+const activeSquadIconModalOpen = ref(false);
+const activeSquadIconModalDraft = ref(DEFAULT_ICON_NAME);
 
 const creatingSquad = ref(false);
 const createStep = ref("leader");
@@ -102,8 +107,6 @@ const renameInput = ref("");
 const equipmentEditBySlot = ref({});
 const iconDraftByUnit = ref({});
 const secondaryClassDraftByUnit = ref({});
-
-const characterIconSrc = DEFAULT_ICON_SRC;
 
 const unitList = computed(() => {
   if (!Array.isArray(props.units)) return [];
@@ -134,6 +137,7 @@ const squadList = computed(() => {
       name: String(row?.name || "").trim(),
       leaderId: String(row?.leaderId || "").trim(),
       leaderName: String(row?.leaderName || "").trim(),
+      squadIconName: String(row?.squadIconName || "").trim(),
       memberIds: Array.isArray(row?.memberIds)
         ? row.memberIds.map(id => String(id || "").trim()).filter(Boolean)
         : []
@@ -424,11 +428,31 @@ function iconGlyphForUnit(unit) {
   return "?";
 }
 
+function subIconNameForUnit(unit) {
+  const name = nonEmptyText(unit?.subIconName);
+  if (name && hasIconName(name)) return name;
+  return "";
+}
+
+function subIconSrcForUnit(unit) {
+  const direct = nonEmptyText(unit?.subIconSrc);
+  if (direct) return direct;
+  const iconName = subIconNameForUnit(unit);
+  if (iconName) return getIconSrcByName(iconName, iconName);
+  return "";
+}
+
+function cardSubIconStyle(unit) {
+  const src = subIconSrcForUnit(unit);
+  if (!src) return {};
+  return { "--card-sub-icon-image": `url("${src}")` };
+}
+
 function iconDraft(unit) {
   const unitId = nonEmptyText(unit?.id);
   if (!unitId) return DEFAULT_ICON_NAME;
   const current = nonEmptyText(iconDraftByUnit.value[unitId]);
-  return resolveIconName(current || unit?.iconName, DEFAULT_ICON_NAME);
+  return resolveIconName(current || unit?.subIconName, DEFAULT_ICON_NAME);
 }
 
 function updateIconDraft(unit, iconName) {
@@ -443,7 +467,7 @@ function updateIconDraft(unit, iconName) {
 function initIconDraft(unit) {
   const unitId = nonEmptyText(unit?.id);
   if (!unitId) return;
-  const nextName = resolveIconName(unit?.iconName, DEFAULT_ICON_NAME);
+  const nextName = resolveIconName(unit?.subIconName, DEFAULT_ICON_NAME);
   iconDraftByUnit.value = {
     ...iconDraftByUnit.value,
     [unitId]: nextName
@@ -457,14 +481,100 @@ function applyUnitIconChange(unit) {
   emit("update-unit-icon", { unitId, iconName });
 }
 
+function openActiveUnitIconModal() {
+  const unit = activeUnit.value;
+  if (!unit || !iconOptions.value.length) return;
+  activeUnitIconModalDraft.value = iconDraft(unit);
+  activeUnitIconModalOpen.value = true;
+}
+
+function closeActiveUnitIconModal() {
+  activeUnitIconModalOpen.value = false;
+}
+
+function selectActiveUnitModalIcon(iconName) {
+  activeUnitIconModalDraft.value = resolveIconName(iconName, DEFAULT_ICON_NAME);
+}
+
+function applyActiveUnitIconModal() {
+  const unit = activeUnit.value;
+  if (!unit) return;
+  updateIconDraft(unit, activeUnitIconModalDraft.value);
+  applyUnitIconChange(unit);
+  activeUnitIconModalOpen.value = false;
+}
+
+function iconSrcByName(iconName) {
+  const name = resolveIconName(iconName, DEFAULT_ICON_NAME);
+  return getIconSrcByName(name, name);
+}
+
+function squadIconNameForSquad(squad) {
+  const raw = nonEmptyText(squad?.squadIconName);
+  if (!raw) return "";
+  return resolveIconName(raw, "");
+}
+
+function squadIconSrcForSquad(squad) {
+  const name = squadIconNameForSquad(squad);
+  if (!name) return "";
+  return getIconSrcByName(name, name);
+}
+
+function squadIconGlyphForSquad(squad) {
+  const name = squadIconNameForSquad(squad);
+  if (name) return Array.from(name)[0] || "隊";
+  const squadName = nonEmptyText(squad?.name);
+  if (squadName) return Array.from(squadName)[0] || "隊";
+  return "隊";
+}
+
+function openActiveSquadIconModal() {
+  const squad = activeSquad.value;
+  if (!squad || !iconOptions.value.length) return;
+  activeSquadIconModalDraft.value = resolveIconName(squad?.squadIconName, DEFAULT_ICON_NAME);
+  activeSquadIconModalOpen.value = true;
+}
+
+function closeActiveSquadIconModal() {
+  activeSquadIconModalOpen.value = false;
+}
+
+function selectActiveSquadModalIcon(iconName) {
+  activeSquadIconModalDraft.value = resolveIconName(iconName, DEFAULT_ICON_NAME);
+}
+
+function applyActiveSquadIconModal() {
+  const squad = activeSquad.value;
+  if (!squad) return;
+  const leaderId = nonEmptyText(squad?.leaderId);
+  if (!leaderId) return;
+  emit("update-squad-icon", {
+    leaderId,
+    iconName: resolveIconName(activeSquadIconModalDraft.value, DEFAULT_ICON_NAME)
+  });
+  activeSquadIconModalOpen.value = false;
+}
+
 function formatBag(raw, keys, labels) {
   if (!raw || typeof raw !== "object") return "-";
   return keys.map(key => `${labels[key] || key}${Math.round(toSafeNumber(raw[key], 0))}`).join(" ");
 }
 
-function skillValue(unit, key) {
-  const raw = Number(unit?.skillLevels?.[key]);
-  if (Number.isFinite(raw)) return Math.max(0, Math.round(raw));
+function resolveSkillFieldKeys(field) {
+  if (!field) return [];
+  if (typeof field === "string") return [field];
+  const keys = [nonEmptyText(field?.key), ...(Array.isArray(field?.aliases) ? field.aliases.map(nonEmptyText) : [])]
+    .filter(Boolean);
+  return [...new Set(keys)];
+}
+
+function skillValue(unit, field) {
+  const keys = resolveSkillFieldKeys(field);
+  for (const key of keys) {
+    const raw = Number(unit?.skillLevels?.[key]);
+    if (Number.isFinite(raw)) return Math.max(0, Math.round(raw));
+  }
   return 0;
 }
 
@@ -553,9 +663,10 @@ function applyEquipmentChange(slot) {
 
 function buildSkillRows(unit) {
   if (!unit) return [];
-  return SKILL_FIELDS.map(key => ({
-    key,
-    value: skillValue(unit, key)
+  return SKILL_FIELD_DEFS.map(field => ({
+    key: field.key,
+    label: field.label || field.key,
+    value: skillValue(unit, field)
   }));
 }
 
@@ -774,14 +885,13 @@ function selectSquad(squadId) {
   activeSquadId.value = String(squadId || "");
 }
 
-const activeSquadMemberOptions = computed(() => {
-  const squad = activeSquad.value;
+function buildSquadMemberRows(squad) {
   if (!squad) return [];
   const leader = findUnitById(squad.leaderId);
   const leaderRow = leader
     ? [{ id: leader.id, name: leader.name || "リーダー", role: "リーダー", unit: leader }]
     : [];
-  const memberRows = squad.memberIds
+  const memberRows = (Array.isArray(squad.memberIds) ? squad.memberIds : [])
     .map(memberId => {
       const unit = findUnitById(memberId);
       if (!unit) return null;
@@ -789,6 +899,34 @@ const activeSquadMemberOptions = computed(() => {
     })
     .filter(Boolean);
   return [...leaderRow, ...memberRows];
+}
+
+const squadMemberRowsMap = computed(() => {
+  const map = new Map();
+  for (const squad of squadList.value) {
+    map.set(squad.id, buildSquadMemberRows(squad));
+  }
+  return map;
+});
+
+function squadMembersForList(squad) {
+  const squadId = nonEmptyText(squad?.id);
+  if (!squadId) return [];
+  return squadMemberRowsMap.value.get(squadId) || [];
+}
+
+function isSquadExpanded(squadId) {
+  return nonEmptyText(activeSquad.value?.id) === nonEmptyText(squadId);
+}
+
+function selectSquadMemberFromList(squadId, memberId) {
+  activeSquadId.value = nonEmptyText(squadId);
+  activeSquadMemberId.value = nonEmptyText(memberId);
+}
+
+const activeSquadMemberOptions = computed(() => {
+  const squad = activeSquad.value;
+  return buildSquadMemberRows(squad);
 });
 
 const activeSquadMemberUnit = computed(() => {
@@ -813,20 +951,25 @@ function dissolveSquad() {
 
 watch(
   [() => props.show, unitList, () => props.defaultSelectedId],
-  ([isOpen, units, selectedId]) => {
+  ([isOpen, units, selectedId], previous) => {
     if (!isOpen) return;
+    const wasOpen = Array.isArray(previous) ? !!previous[0] : false;
+    const justOpened = isOpen && !wasOpen;
+    const hasCurrent = !!activeUnitId.value && units.some(unit => String(unit?.id || "") === activeUnitId.value);
     const preferred = String(selectedId || "").trim();
-    if (preferred && units.some(unit => String(unit?.id || "") === preferred)) {
+    if (preferred && units.some(unit => String(unit?.id || "") === preferred) && (!hasCurrent || justOpened)) {
       activeUnitId.value = preferred;
-    } else {
+    } else if (!hasCurrent) {
       activeUnitId.value = units.length ? String(units[0]?.id || "") : "";
     }
-    activeTab.value = "character";
-    creatingSquad.value = false;
-    createStep.value = "leader";
-    draftLeaderId.value = "";
-    draftMemberIds.value = [];
-    draftSquadName.value = "";
+    if (justOpened) {
+      activeTab.value = "character";
+      creatingSquad.value = false;
+      createStep.value = "leader";
+      draftLeaderId.value = "";
+      draftMemberIds.value = [];
+      draftSquadName.value = "";
+    }
   },
   { immediate: true }
 );
@@ -876,6 +1019,8 @@ watch(
     initEquipmentDraftsForUnit(unit);
     initIconDraft(unit);
     initSecondaryClassDraft(unit);
+    activeUnitIconModalOpen.value = false;
+    activeSquadIconModalOpen.value = false;
   },
   { immediate: true }
 );
@@ -894,6 +1039,8 @@ watch(
   (isOpen, wasOpen) => {
     if (isOpen && !wasOpen) {
       consoleLogCharacterModalOpen();
+      activeUnitIconModalOpen.value = false;
+      activeSquadIconModalOpen.value = false;
     }
   }
 );
@@ -901,31 +1048,24 @@ watch(
 
 <template>
   <base-modal :show="show" title="自キャラステータス" :wide="true" @close="emit('close')">
-    <div class="char-modal-head">
-      <img :src="characterIconSrc" alt="自キャラ" class="char-head-icon" />
-      <div class="small">マップで生成された自キャラ管理。部隊タブで編成できます。</div>
-    </div>
-
     <div class="char-tabs">
-      <button type="button" class="char-tab-btn" :class="{ active: activeTab === 'character' }" @click="selectTab('character')">自キャラ</button>
-      <button type="button" class="char-tab-btn" :class="{ active: activeTab === 'squad' }" @click="selectTab('squad')">部隊</button>
+      <div class="char-tabs-left">
+        <button type="button" class="char-tab-btn" :class="{ active: activeTab === 'character' }" @click="selectTab('character')">キャラクター</button>
+        <button type="button" class="char-tab-btn" :class="{ active: activeTab === 'squad' }" @click="selectTab('squad')">部隊</button>
+      </div>
+      <button type="button" class="secondary char-tabs-close-btn" @click="emit('close')">閉じる</button>
     </div>
 
     <div v-if="activeTab === 'character'">
       <div v-if="unitList.length" class="char-layout">
         <aside class="char-list">
-          <div v-if="village" class="small char-note">
-            初期村: {{ village.name }} <span v-if="village.placed">({{ village.x }}, {{ village.y }})</span><span v-else>（未配置）</span>
-            <div>人口: {{ village.population || "-" }}人 / 内訳: {{ villagePopulationText }}</div>
-            <div>食料: {{ village.foodStock || "-" }} [{{ villageFoodText }}] / 資材: {{ village.materialStock || "-" }} [{{ villageMaterialText }}]</div>
-          </div>
-          <div v-if="ruleText" class="small char-note">{{ ruleText }}</div>
           <button
             v-for="unit in unitList"
             :key="unit.id"
             type="button"
             class="char-list-item"
-            :class="{ active: activeUnit?.id === unit.id }"
+            :class="{ active: activeUnit?.id === unit.id, 'with-sub-icon': !!subIconSrcForUnit(unit) }"
+            :style="cardSubIconStyle(unit)"
             @click="selectUnit(unit.id)"
           >
             <div class="char-list-line">
@@ -936,22 +1076,34 @@ watch(
               </span>
               <span>Lv{{ unit.level || "-" }}</span>
             </div>
-            <div class="small">{{ unitRoleLabel(unit) }} / {{ unit.race || "-" }} / {{ unit.className || "-" }}</div>
-            <div class="small">座標: ({{ unit.x }}, {{ unit.y }}) / 部隊: {{ unit.squadCount || 0 }}<span v-if="hasSquad(unit)"> / リーダー</span><span v-else-if="unit.squadLeaderId"> / 隊員</span></div>
-            <div class="small">取得スキル: {{ acquiredSkillsSummary(unit, 3) }}</div>
+            <div class="small">種族: {{ unit.race || "-" }} / クラス: {{ unit.className || "-" }} / 役割: {{ unitRoleLabel(unit) }}</div>
           </button>
         </aside>
 
-        <section v-if="activeUnit" class="char-detail">
+        <section
+          v-if="activeUnit"
+          class="char-detail"
+          :class="{ 'with-sub-icon': !!subIconSrcForUnit(activeUnit) }"
+          :style="cardSubIconStyle(activeUnit)"
+        >
           <header class="char-title">
-            <h3>{{ activeUnit.name }}</h3>
+            <div class="char-title-top">
+              <h3>{{ activeUnit.name }}</h3>
+              <button
+                type="button"
+                class="char-title-subicon-btn"
+                title="サブアイコン変更"
+                aria-label="サブアイコン変更"
+                :disabled="!iconOptions.length"
+                @click="openActiveUnitIconModal"
+              >
+                <img v-if="subIconSrcForUnit(activeUnit)" :src="subIconSrcForUnit(activeUnit)" :alt="`${activeUnit.name} サブアイコン`" class="char-title-subicon-image" />
+                <span v-else class="char-title-subicon-fallback">{{ iconGlyphForUnit(activeUnit) }}</span>
+              </button>
+            </div>
             <div class="small">
               {{ unitRoleLabel(activeUnit) }}<span v-if="isSovereign(activeUnit)"> / 統治者</span><span v-if="hasSquad(activeUnit)"> / リーダー</span><span v-else-if="activeUnit.squadLeaderId"> / 隊員</span> / Lv{{ activeUnit.level || "-" }} / {{ activeUnit.race || "-" }} / {{ activeUnit.className || "-" }}
             </div>
-            <div class="small">位置: ({{ activeUnit.x }}, {{ activeUnit.y }}) / 移動: {{ activeUnit.moveRange || "-" }} (残 {{ activeUnit.moveRemaining ?? activeUnit.moveRange ?? "-" }}) / 索敵: {{ activeUnit.scoutRange || "-" }}</div>
-            <div class="small">都市規模: {{ villageScaleLabel }} / ネームド上限: {{ namedLimit }} / 現在: {{ namedCount }}</div>
-            <div class="small">成長: 種族Lv{{ activeUnit?.growthRule?.raceLevels ?? "-" }} / クラスLv{{ activeUnit?.growthRule?.classLevels ?? "-" }}<span v-if="activeUnit?.secondaryClassName"> / 第2クラス {{ activeUnit.secondaryClassName }}</span></div>
-            <div class="small">取得スキル: <span v-if="activeUnitAcquiredSkills.length">{{ activeUnitAcquiredSkills.join(" / ") }}</span><span v-else>なし</span></div>
             <div class="char-actions">
               <button type="button" :disabled="!canPromote(activeUnit)" @click="promoteActiveUnit">モブをネームドへ昇格</button>
               <button type="button" :disabled="!canRemoveMob(activeUnit)" @click="removeActiveMob">モブを削除</button>
@@ -984,6 +1136,7 @@ watch(
 
           <character-unit-detail-panel
             :unit="activeUnit"
+            :hide-icon-editor="true"
             @update-unit-icon="emit('update-unit-icon', $event)"
             @update-unit-equipment="emit('update-unit-equipment', $event)"
           />
@@ -998,21 +1151,57 @@ watch(
         <aside class="squad-list-panel">
           <button type="button" class="squad-create-btn" @click="startSquadCreate">部隊を作成</button>
           <div class="small squad-rule-note">既に部隊に所属しているキャラは選べません。</div>
-          <button
+          <div
             v-for="squad in squadList"
             :key="`squad-row-${squad.id}`"
-            type="button"
-            class="squad-list-item"
-            :class="{ active: activeSquad?.id === squad.id }"
-            @click="selectSquad(squad.id)"
+            class="squad-group"
+            :class="{ active: isSquadExpanded(squad.id) }"
           >
-            <div class="move-unit-line">
-              <strong>{{ squad.name || "無名部隊" }}</strong>
-              <span>{{ squad.totalMemberCount || (squad.memberIds.length + 1) }}人</span>
+            <button
+              type="button"
+              class="squad-list-item"
+              :class="{ active: activeSquad?.id === squad.id }"
+              @click="selectSquad(squad.id)"
+            >
+              <div class="move-unit-line">
+                <span class="char-list-name-with-icon">
+                  <img
+                    v-if="squadIconSrcForSquad(squad)"
+                    :src="squadIconSrcForSquad(squad)"
+                    :alt="`${squad.name || '部隊'} アイコン`"
+                    class="char-list-icon"
+                  />
+                  <span v-else class="char-list-icon-fallback">{{ squadIconGlyphForSquad(squad) }}</span>
+                  <strong>{{ squad.name || "無名部隊" }}</strong>
+                </span>
+                <span>{{ squad.totalMemberCount || (squad.memberIds.length + 1) }}人</span>
+              </div>
+              <div class="small">リーダー: {{ squad.leaderName || squad.leaderId }}</div>
+              <div class="small" v-if="squad.leaderPos">座標: ({{ squad.leaderPos?.x }}, {{ squad.leaderPos?.y }})</div>
+              <div class="small squad-expand-hint">{{ isSquadExpanded(squad.id) ? "▾ メンバー" : "▸ メンバー" }}</div>
+            </button>
+
+            <div v-if="isSquadExpanded(squad.id)" class="squad-group-member-list">
+              <button
+                v-for="row in squadMembersForList(squad)"
+                :key="`squad-inline-member-${squad.id}-${row.id}`"
+                type="button"
+                class="squad-inline-member-item"
+                :class="{ active: activeSquadMemberId === row.id }"
+                @click.stop="selectSquadMemberFromList(squad.id, row.id)"
+              >
+                <div class="move-unit-line">
+                  <span class="char-list-name-with-icon">
+                    <img v-if="iconSrcForUnit(row.unit)" :src="iconSrcForUnit(row.unit)" :alt="`${row.name} アイコン`" class="char-list-icon" />
+                    <span v-else class="char-list-icon-fallback">{{ iconGlyphForUnit(row.unit) }}</span>
+                    <strong>{{ row.name }}</strong>
+                  </span>
+                  <span>Lv{{ row.unit?.level || "-" }}</span>
+                </div>
+                <div class="small">{{ row.role }} / {{ row.unit?.race || "-" }} / {{ row.unit?.className || "-" }}</div>
+              </button>
             </div>
-            <div class="small">リーダー: {{ squad.leaderName || squad.leaderId }}</div>
-            <div class="small" v-if="squad.leaderPos">座標: ({{ squad.leaderPos?.x }}, {{ squad.leaderPos?.y }})</div>
-          </button>
+          </div>
           <div v-if="!squadList.length" class="small squad-empty-note">部隊はまだありません。</div>
         </aside>
 
@@ -1092,7 +1281,25 @@ watch(
           </div>
 
           <div v-else-if="activeSquad" class="squad-detail">
-            <h3>{{ activeSquad.name || "無名部隊" }}</h3>
+            <div class="char-title-top">
+              <h3>{{ activeSquad.name || "無名部隊" }}</h3>
+              <button
+                type="button"
+                class="char-title-subicon-btn"
+                title="部隊アイコン変更"
+                aria-label="部隊アイコン変更"
+                :disabled="!iconOptions.length"
+                @click="openActiveSquadIconModal"
+              >
+                <img
+                  v-if="squadIconSrcForSquad(activeSquad)"
+                  :src="squadIconSrcForSquad(activeSquad)"
+                  :alt="`${activeSquad.name || '部隊'} アイコン`"
+                  class="char-title-subicon-image"
+                />
+                <span v-else class="char-title-subicon-fallback">{{ squadIconGlyphForSquad(activeSquad) }}</span>
+              </button>
+            </div>
             <div class="small">リーダー: {{ activeSquad.leaderName || activeSquad.leaderId }} / 座標: ({{ activeSquad.leaderPos?.x }}, {{ activeSquad.leaderPos?.y }})</div>
             <div class="small">
               索敵: {{ roundTo1(activeSquad.scoutValue) }}（最高索敵 + 各員索敵/5） /
@@ -1105,32 +1312,27 @@ watch(
               <button type="button" class="secondary danger" @click="dissolveSquad">部隊を解除</button>
             </div>
 
-            <div class="squad-member-select">
-              <button
-                v-for="row in activeSquadMemberOptions"
-                :key="`squad-member-${row.id}`"
-                type="button"
-                class="squad-member-chip"
-                :class="{ active: activeSquadMemberId === row.id }"
-                @click="activeSquadMemberId = row.id"
-              >
-                <img v-if="iconSrcForUnit(row.unit)" :src="iconSrcForUnit(row.unit)" :alt="`${row.name} アイコン`" class="squad-member-chip-icon" />
-                <span v-else class="squad-member-chip-icon-fallback">{{ iconGlyphForUnit(row.unit) }}</span>
-                {{ row.role }}: {{ row.name }}
-              </button>
-            </div>
-
-            <div v-if="activeSquadMemberUnit" class="squad-member-detail">
-              <h4>{{ activeSquadMemberUnit.name }}</h4>
-              <div class="small">Lv{{ activeSquadMemberUnit.level || "-" }} / {{ activeSquadMemberUnit.race || "-" }} / {{ activeSquadMemberUnit.className || "-" }}</div>
-              <div class="small">座標: ({{ activeSquadMemberUnit.x }}, {{ activeSquadMemberUnit.y }}) / 索敵: {{ activeSquadMemberUnit.scoutRange || 0 }}</div>
+            <section
+              v-if="activeSquadMemberUnit"
+              class="char-detail squad-member-detail"
+              :class="{ 'with-sub-icon': !!subIconSrcForUnit(activeSquadMemberUnit) }"
+              :style="cardSubIconStyle(activeSquadMemberUnit)"
+            >
+              <header class="char-title">
+                <h3>{{ activeSquadMemberUnit.name }}</h3>
+                <div class="small">
+                  {{ unitRoleLabel(activeSquadMemberUnit) }} / Lv{{ activeSquadMemberUnit.level || "-" }} / {{ activeSquadMemberUnit.race || "-" }} / {{ activeSquadMemberUnit.className || "-" }}
+                </div>
+                <div class="small">座標: ({{ activeSquadMemberUnit.x }}, {{ activeSquadMemberUnit.y }}) / 索敵: {{ activeSquadMemberUnit.scoutRange || 0 }}</div>
+              </header>
               <character-unit-detail-panel
                 :unit="activeSquadMemberUnit"
-                :compact="true"
+                :hide-icon-editor="true"
                 @update-unit-icon="emit('update-unit-icon', $event)"
                 @update-unit-equipment="emit('update-unit-equipment', $event)"
               />
-            </div>
+            </section>
+            <div v-else class="char-empty">左の部隊メンバーを選択してください。</div>
           </div>
 
           <div v-else class="char-empty">部隊がありません。左の「部隊を作成」から開始してください。</div>
@@ -1138,29 +1340,102 @@ watch(
       </div>
     </div>
   </base-modal>
+
+  <base-modal
+    :show="show && activeUnitIconModalOpen"
+    title="サブアイコン変更"
+    @close="closeActiveUnitIconModal"
+  >
+    <div class="subicon-modal-head">
+      <span class="small">対象: {{ activeUnit?.name || "-" }}</span>
+      <span class="small">選択中: {{ activeUnitIconModalDraft || "-" }}</span>
+    </div>
+    <div class="subicon-modal-current">
+      <img :src="iconSrcByName(activeUnitIconModalDraft)" :alt="`選択中アイコン ${activeUnitIconModalDraft}`" />
+    </div>
+    <div class="subicon-modal-grid">
+      <button
+        v-for="row in iconOptions"
+        :key="`subicon-modal-${activeUnit?.id || 'none'}-${row.name}`"
+        type="button"
+        class="subicon-modal-item"
+        :class="{ active: activeUnitIconModalDraft === row.name }"
+        :title="row.name"
+        @click="selectActiveUnitModalIcon(row.name)"
+      >
+        <img :src="row.src" :alt="row.name" />
+      </button>
+    </div>
+    <div class="subicon-modal-actions">
+      <button type="button" class="secondary" :disabled="!activeUnit || !iconOptions.length" @click="applyActiveUnitIconModal">変更する</button>
+      <button type="button" class="secondary" @click="closeActiveUnitIconModal">閉じる</button>
+    </div>
+  </base-modal>
+
+  <base-modal
+    :show="show && activeSquadIconModalOpen"
+    title="部隊アイコン変更"
+    @close="closeActiveSquadIconModal"
+  >
+    <div class="subicon-modal-head">
+      <span class="small">対象: {{ activeSquad?.name || "-" }}</span>
+      <span class="small">選択中: {{ activeSquadIconModalDraft || "-" }}</span>
+    </div>
+    <div class="subicon-modal-current">
+      <img :src="iconSrcByName(activeSquadIconModalDraft)" :alt="`選択中アイコン ${activeSquadIconModalDraft}`" />
+    </div>
+    <div class="subicon-modal-grid">
+      <button
+        v-for="row in iconOptions"
+        :key="`squad-icon-modal-${activeSquad?.id || 'none'}-${row.name}`"
+        type="button"
+        class="subicon-modal-item"
+        :class="{ active: activeSquadIconModalDraft === row.name }"
+        :title="row.name"
+        @click="selectActiveSquadModalIcon(row.name)"
+      >
+        <img :src="row.src" :alt="row.name" />
+      </button>
+    </div>
+    <div class="subicon-modal-actions">
+      <button type="button" class="secondary" :disabled="!activeSquad || !iconOptions.length" @click="applyActiveSquadIconModal">変更する</button>
+      <button type="button" class="secondary" @click="closeActiveSquadIconModal">閉じる</button>
+    </div>
+  </base-modal>
 </template>
 
+<style scoped src="./CharacterDetailShared.css"></style>
+
 <style scoped>
-.char-modal-head {
+:deep(.modal-card.modal-card-wide) {
+  width: min(1120px, calc(100vw - 24px));
+  /* height: min(860px, calc(100vh - 24px)); */
+  max-height: min(860px, calc(100vh - 24px));
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.char-head-icon {
-  width: 36px;
-  height: 36px;
-  object-fit: cover;
-  border-radius: 8px;
-  border: 1px solid rgba(189, 160, 119, 0.65);
-  background: rgba(255, 255, 255, 0.55);
+:deep(.modal-body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:deep(.modal-head) {
+  display: none;
 }
 
 .char-tabs {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 10px;
+}
+
+.char-tabs-left {
+  display: flex;
+  gap: 8px;
 }
 
 .char-tab-btn {
@@ -1176,11 +1451,19 @@ watch(
   background: linear-gradient(165deg, rgba(238, 218, 181, 0.98), rgba(228, 202, 160, 0.96));
 }
 
+.char-tabs-close-btn {
+  padding: 5px 12px;
+}
+
 .char-layout,
 .squad-layout {
+  --char-panel-max-height: min(68vh, 720px);
   display: grid;
   grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
-  gap: 12px;
+  gap: 0px;
+  align-items: start;
+  max-height: var(--char-panel-max-height);
+  overflow: hidden;
 }
 
 .char-list,
@@ -1188,10 +1471,17 @@ watch(
   border: 1px solid rgba(206, 180, 135, 0.78);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.72);
-  padding: 8px;
+  padding: 4px;
   display: grid;
   gap: 7px;
   align-content: start;
+  min-height: 0;
+}
+
+.char-list {
+  max-height: var(--char-panel-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .char-note {
@@ -1209,8 +1499,75 @@ watch(
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.95);
   color: #2d2418;
-  padding: 8px;
+  padding: 4px;
   text-align: left;
+}
+
+.squad-group {
+  display: grid;
+  gap: 4px;
+}
+
+.squad-group-member-list {
+  display: grid;
+  gap: 4px;
+  padding-left: 14px;
+  border-left: 2px solid rgba(178, 149, 102, 0.48);
+}
+
+.squad-inline-member-item {
+  width: 100%;
+  border: 1px solid rgba(197, 168, 124, 0.62);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #2d2418;
+  padding: 4px;
+  text-align: left;
+}
+
+.squad-inline-member-item.active {
+  border-color: rgba(95, 134, 72, 0.9);
+  background: linear-gradient(165deg, rgba(221, 242, 199, 0.96), rgba(195, 227, 162, 0.94));
+}
+
+.squad-expand-hint {
+  margin-top: 2px;
+  color: #6f5932;
+  font-size: 0.62rem;
+}
+
+.char-list-item,
+.char-detail,
+.squad-member-detail {
+  position: relative;
+  overflow: hidden;
+}
+
+.with-sub-icon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--card-sub-icon-image, none);
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 76px 76px;
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.with-sub-icon > * {
+  position: relative;
+  z-index: 1;
+}
+
+.char-detail.with-sub-icon::after {
+  background-size: 160px 160px;
+  opacity: 0.11;
+}
+
+.squad-member-detail.with-sub-icon::after {
+  background-size: 92px 92px;
+  opacity: 0.13;
 }
 
 .char-list-item.active,
@@ -1228,12 +1585,133 @@ watch(
   padding: 10px;
   display: grid;
   gap: 10px;
+  min-height: 0;
+}
+
+.char-detail {
+  max-height: var(--char-panel-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.squad-detail-panel {
+  max-height: var(--char-panel-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .char-title h3,
 .squad-detail h3,
 .squad-create-wizard h3 {
   margin: 0;
+}
+
+.char-title-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.char-title-subicon-btn {
+  border: 1px solid rgba(169, 138, 92, 0.88);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  width: 30px;
+  height: 30px;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.char-title-subicon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.char-title-subicon-image,
+.char-title-subicon-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+}
+
+.char-title-subicon-image {
+  object-fit: cover;
+}
+
+.char-title-subicon-fallback {
+  border: 1px solid rgba(189, 160, 119, 0.7);
+  background: rgba(255, 255, 255, 0.7);
+  color: #3a2d1a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.subicon-modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.subicon-modal-current {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.subicon-modal-current img {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  border: 1px solid rgba(170, 140, 94, 0.74);
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.subicon-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(54px, 54px));
+  gap: 7px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 2px;
+}
+
+.subicon-modal-item {
+  width: 54px;
+  height: 54px;
+  border: 1px solid rgba(170, 140, 94, 0.72);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 2px;
+  cursor: pointer;
+}
+
+.subicon-modal-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 5px;
+}
+
+.subicon-modal-item.active {
+  border-color: rgba(77, 165, 226, 0.96);
+  box-shadow: 0 0 0 1px rgba(91, 198, 255, 0.44);
+}
+
+.subicon-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .char-actions {
@@ -1263,7 +1741,7 @@ watch(
 .test-level-tools {
   border: 1px solid rgba(206, 180, 135, 0.7);
   border-radius: 8px;
-  padding: 8px;
+  padding: 4px;
   background: rgba(255, 255, 255, 0.62);
   display: grid;
   gap: 6px;
@@ -1283,120 +1761,16 @@ watch(
   background: #fffdf8;
 }
 
-.char-block {
-  border: 1px solid rgba(206, 180, 135, 0.68);
-  border-radius: 8px;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.char-block h4 {
-  margin: 0 0 7px;
-  font-size: 0.9rem;
-}
-
-.char-status-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-
 .char-status-grid.mini {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 8px;
-}
-
-.char-status-chip {
-  border: 1px solid rgba(206, 180, 135, 0.62);
-  border-radius: 7px;
-  padding: 6px 8px;
-  display: flex;
-  justify-content: space-between;
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.char-skill-grid,
-.char-resist-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.char-skill-chip,
-.char-resist-chip {
-  border: 1px solid rgba(206, 180, 135, 0.62);
-  border-radius: 7px;
-  padding: 6px 8px;
-  display: flex;
-  justify-content: space-between;
-  background: rgba(255, 255, 255, 0.82);
-  font-size: 0.79rem;
 }
 
 .acquired-skills-line {
   margin-top: 6px;
 }
 
-.equipment-edit-list {
-  display: grid;
-  gap: 7px;
-}
-
-.equipment-edit-item {
-  border: 1px solid rgba(206, 180, 135, 0.62);
-  border-radius: 7px;
-  padding: 7px 8px;
-  background: rgba(255, 255, 255, 0.82);
-  display: grid;
-  gap: 6px;
-}
-
-.equipment-edit-item.disabled {
-  opacity: 0.72;
-  background: rgba(240, 236, 226, 0.72);
-}
-
-.equipment-edit-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(120px, 150px) auto;
-  gap: 6px;
-  align-items: center;
-}
-
-.icon-edit-row {
-  display: grid;
-  grid-template-columns: auto minmax(140px, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-}
-
 .icon-edit-row.mini {
   margin-top: 8px;
-}
-
-.icon-edit-row select {
-  width: 100%;
-  border: 1px solid rgba(170, 140, 94, 0.86);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #2d2418;
-  padding: 6px 8px;
-  font-size: 0.79rem;
-}
-
-.char-unit-icon-preview {
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
-  object-fit: cover;
-  border: 1px solid rgba(189, 160, 119, 0.74);
-  background: rgba(255, 255, 255, 0.65);
-}
-
-.char-unit-icon-preview.mini {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
 }
 
 .equipment-read-list {
@@ -1415,16 +1789,6 @@ watch(
   justify-content: space-between;
   gap: 8px;
   font-size: 0.75rem;
-}
-
-.equipment-edit-row select {
-  width: 100%;
-  border: 1px solid rgba(170, 140, 94, 0.86);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #2d2418;
-  padding: 6px 8px;
-  font-size: 0.79rem;
 }
 
 .char-empty {
@@ -1449,20 +1813,20 @@ watch(
 }
 
 .char-list-icon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   object-fit: cover;
-  border: 1px solid rgba(189, 160, 119, 0.68);
-  background: rgba(255, 255, 255, 0.65);
+  /* border: 1px solid rgba(189, 160, 119, 0.68);
+  background: rgba(255, 255, 255, 0.65); */
 }
 
 .char-list-icon-fallback {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
-  border: 1px solid rgba(189, 160, 119, 0.68);
-  background: rgba(255, 255, 255, 0.65);
+  /* border: 1px solid rgba(189, 160, 119, 0.68);
+  background: rgba(255, 255, 255, 0.65); */
   color: #3a2d1a;
   display: inline-flex;
   align-items: center;
@@ -1564,12 +1928,7 @@ watch(
 }
 
 .squad-member-detail {
-  border: 1px solid rgba(206, 180, 135, 0.68);
-  border-radius: 8px;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.72);
-  display: grid;
-  gap: 8px;
+  min-height: 0;
 }
 
 .squad-member-block {
@@ -1577,31 +1936,14 @@ watch(
   gap: 6px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1px) {
   .char-layout,
   .squad-layout {
+    --char-panel-max-height: min(72vh, 760px);
     grid-template-columns: 1fr;
-  }
-
-  .char-status-grid,
-  .char-status-grid.mini {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .char-skill-grid,
-  .char-resist-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .squad-rename-row {
-    grid-template-columns: 1fr;
-  }
-
-  .equipment-edit-row {
-    grid-template-columns: 1fr;
-  }
-
-  .icon-edit-row {
     grid-template-columns: 1fr;
   }
 

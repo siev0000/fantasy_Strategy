@@ -149,6 +149,7 @@ export function buildSquadSummaryList(units = [], options = {}) {
     out.push({
       id: nonEmptyText(leader.squadId) || `squad-${leaderId}`,
       name: nonEmptyText(leader.squadName) || resolveDefaultSquadNameFn(source),
+      squadIconName: nonEmptyText(leader?.squadIconName),
       leaderId,
       leaderName: nonEmptyText(leader.name) || "リーダー",
       leaderPos: {
@@ -262,6 +263,7 @@ export function configureUnitSquadState(units, unitId, memberIds = [], options =
   const nextSquadName = nonEmptyText(options?.squadName)
     || nonEmptyText(leaderUnit?.squadName)
     || resolveDefaultSquadNameFn(currentUnits);
+  const nextSquadIconName = nonEmptyText(options?.squadIconName) || nonEmptyText(leaderUnit?.squadIconName);
   const nextSquadId = nonEmptyText(leaderUnit?.squadId) || `squad-${leaderId}`;
 
   let nextUnits = currentUnits.map(unit => {
@@ -271,23 +273,27 @@ export function configureUnitSquadState(units, unitId, memberIds = [], options =
     let nextLeaderId = nonEmptyText(unit?.squadLeaderId);
     let nextSquadIdForUnit = nonEmptyText(unit?.squadId);
     let nextSquadNameForUnit = nonEmptyText(unit?.squadName);
+    let nextSquadIconNameForUnit = nonEmptyText(unit?.squadIconName);
 
     if (unit.id === leaderId) {
       nextSquads = [];
       nextLeaderId = "";
       nextSquadIdForUnit = "";
       nextSquadNameForUnit = "";
+      nextSquadIconNameForUnit = "";
     } else {
       nextSquads = currentSquads.filter(row => !selectedSet.has(row.memberId));
       if (nextLeaderId === leaderId) {
         nextLeaderId = "";
         nextSquadIdForUnit = "";
         nextSquadNameForUnit = "";
+        nextSquadIconNameForUnit = "";
       }
       if (selectedSet.has(unit.id)) {
         nextLeaderId = leaderId;
         nextSquadIdForUnit = nextSquadId;
         nextSquadNameForUnit = nextSquadName;
+        nextSquadIconNameForUnit = "";
       }
     }
 
@@ -297,7 +303,8 @@ export function configureUnitSquadState(units, unitId, memberIds = [], options =
       squadCount: nextSquads.length,
       squadLeaderId: nextLeaderId,
       squadId: nextSquadIdForUnit,
-      squadName: nextSquadNameForUnit
+      squadName: nextSquadNameForUnit,
+      squadIconName: nextSquadIconNameForUnit
     };
   });
 
@@ -318,7 +325,8 @@ export function configureUnitSquadState(units, unitId, memberIds = [], options =
         squadCount: nextSquads.length,
         squadLeaderId: "",
         squadId: nextSquads.length ? nextSquadId : "",
-        squadName: nextSquads.length ? nextSquadName : ""
+        squadName: nextSquads.length ? nextSquadName : "",
+        squadIconName: nextSquads.length ? nextSquadIconName : ""
       }
       : unit
   ));
@@ -331,6 +339,29 @@ export function configureUnitSquadState(units, unitId, memberIds = [], options =
     squadName: nextSquadName,
     nextUnits
   };
+}
+
+export function updateLeaderSquadIcon(units, unitId, iconName, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function"
+    ? options.nonEmptyText
+    : value => String(value ?? "").trim();
+  const unitHasSquadFn = typeof options?.unitHasSquad === "function"
+    ? options.unitHasSquad
+    : (unit => unitHasSquad(unit, options));
+  const source = Array.isArray(units) ? units : [];
+  const leaderId = nonEmptyText(unitId);
+  if (!leaderId) return { ok: false, reason: "部隊リーダーが未指定です。" };
+  const idx = source.findIndex(unit => unit?.id === leaderId);
+  if (idx < 0) return { ok: false, reason: "部隊リーダーが見つかりません。" };
+  const leader = source[idx];
+  if (!unitHasSquadFn(leader)) return { ok: false, reason: "このユニットは部隊を持っていません。" };
+  const nextIconName = nonEmptyText(iconName);
+  const nextUnits = source.map((unit, index) => (
+    index === idx
+      ? { ...unit, squadIconName: nextIconName }
+      : unit
+  ));
+  return { ok: true, squadIconName: nextIconName, nextUnits };
 }
 
 export function renameLeaderSquad(units, unitId, squadName, options = {}) {

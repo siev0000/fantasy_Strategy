@@ -619,3 +619,34 @@ pm run build:front.- 2026-03-10: Fixed fog-of-war toggle regression: when test m
 - 2026-03-12: プレイヤー切替時の状態取りこぼし対策として `:reset-key="activeTestPlayerId"` を right panel component に渡し、タブ/最小化/選択状態を初期化。
 - 2026-03-12: Validation passed: npm run build:front.
 - 2026-03-12: develop-web-game Playwright check is still blocked here (ERR_MODULE_NOT_FOUND: playwright in skill runtime).
+- 2026-03-12: 全体スクロールバーを細めのファンタジー調へ統一。`frontend/src/styles.css` に共通変数と WebKit/Firefox のスクロールバー共通スタイルを追加。
+- 2026-03-12: Validation passed: npm run build:front (scrollbar theme update).
+- 2026-03-13: modal-card-wide を 1040px 基準へ調整し、ワイドモーダルの視認性を改善。
+- 2026-03-13: CharacterStatusModal の watch 条件を修正し、ユニット更新時にタブが強制で character に戻る問題を解消。
+- 2026-03-13: アイコン変更を subIcon 用途へ変更。updateIcon コマンドは subIconName/subIconSrc を更新し、メイン iconName/iconSrc は維持。
+- 2026-03-13: CharacterStatusModal と CharacterUnitDetailPanel にサブアイコン背景（ウォーターマーク）を追加。UI文言を サブアイコン に統一。
+- 2026-03-13: 検証: npm run build:front は成功。Playwright クライアントは playwright 依存未解決で実行不可（ERR_MODULE_NOT_FOUND）。
+- 2026-03-14: Updated own-faction icon policy. Map unit marker now prefers `squadIconName` when available (fallback race icon).
+- 2026-03-14: Updated own-faction navigator entries so `.own-faction-icon` stays race-fixed and `subIconSrc` is provided separately for row background rendering.
+- 2026-03-14: Updated `OwnFactionNavigatorModal.vue` rows to render sub/squad icon as a subtle background overlay while keeping icon frame race-based.
+- 2026-03-14: Validation passed: `npm run build:front`.
+- 2026-03-14: CharacterStatusModal squad tab updated to grouped tree-style list on the left (squad row expands member rows). Selecting a member in the left group now directly sets the active squad member detail.
+- 2026-03-14: CharacterStatusModal squad tab cleaned up: removed duplicate right-side member list and kept only selected member detail panel. Left grouped squad/member list remains the single selector source.
+- 2026-03-14: CharacterUnitDetailPanel redesigned to 2-column detail layout: right side fixed skill list, left side switchable tabs for status/equipment. Added responsive fallback to single-column under 980px.
+- 2026-03-14: Modal scaling sync added. `stageScale` now updates global CSS var `--game-modal-scale` (clamped 0.5-1.0), and BaseModal/GenericModal/settings modal/game-start modal all read this var via `transform: scale(...)`.
+- 2026-03-14: Removed JS stage fit scaling path from Phaser map panel (updateStageScale, ResizeObserver, stageScale watch, modal-scale sync) to eliminate double-scaling drift.
+- 2026-03-14: `phaser-stage` now uses fixed logical size style only (no CSS transform scale from Vue), leaving zoom control to Phaser camera path.
+- 2026-03-14: Kept wrapper classes (`game-only-mode` / `.app.game-only` / `.phaser-map-panel` / `.phaser-stage-shell`) as layout-only containers; no transform/zoom applied on these wrappers.
+- 2026-03-14: Validation: `npm run build:front` passed.
+- 2026-03-14: Removed body `game-only-mode` class toggle and related CSS block; keep only `.app.game-only` for game-only layout state.
+- 2026-03-14: Removed `.phaser-stage-shell` wrapper from map template. `phaser-stage` is now the direct gameplay container inside `phaser-map-panel`.
+- 2026-03-14: Implemented viewport-fit sizing on `.phaser-stage` via CSS (`min(100vw, 100dvh*16/9)` and paired height rule). Map canvas now fills stage with `width/height: 100%`.
+- 2026-03-14: Removed inline stage style binding (`stageScaleStyle`) so no JS/CSS double-scaling path remains.
+- 2026-03-14: Reintroduced single viewport-fit scale on `phaser-stage` (fixed logical 1280x720 + transform scale from host size).
+- 2026-03-14: Synced modal/global UI scale by updating `--game-modal-scale` from the same stage scale value (`updateStageViewportScale`).
+- 2026-03-14: Added `ResizeObserver` on stage host + resize handler to keep stage/header/modal scaling in sync.
+- 2026-03-14: Reverted per-user request: removed `phaser-stage` local scaling path again and stopped mutating `--game-modal-scale` from map panel.
+- 2026-03-14: `phaser-stage` now relies on external/global scaling only; internal map panel no longer applies an additional scale layer.
+- 2026-03-14: Restored scaling by moving to single global root scale on `App` (`.app.game-only`) based on viewport vs 1280x720.
+- 2026-03-14: `phaser-map-panel` switched to `width/height: 100%` to follow root-scaled container; removed dependency on viewport units for panel sizing.
+- 2026-03-14: Keeps `phaser-stage` unscaled locally to avoid double scaling.

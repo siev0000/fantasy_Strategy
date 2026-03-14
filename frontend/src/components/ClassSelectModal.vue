@@ -25,22 +25,22 @@ const RACE_CLASS_NAME_MAP = {
   "ヴァンパイア": "ヴァンパイア"
 };
 
-const SKILL_FIELDS = [
-  "指揮",
-  "威圧",
-  "看破",
-  "早業",
-  "技術",
-  "隠密",
-  "索敵",
-  "農業",
-  "林業",
-  "漁業",
-  "工業",
-  "統治",
-  "交渉",
-  "魔法技術",
-  "信仰"
+const SKILL_FIELD_DEFS = [
+  { key: "指揮", label: "指揮" },
+  { key: "威圧", label: "威圧" },
+  { key: "看破", label: "看破" },
+  { key: "早業", label: "早業" },
+  { key: "技術", label: "技術" },
+  { key: "隠密", label: "隠密" },
+  { key: "索敵", label: "索敵" },
+  { key: "農業", label: "農業" },
+  { key: "林業", label: "林業" },
+  { key: "漁業", label: "漁業" },
+  { key: "工業", label: "工業" },
+  { key: "統治", label: "統治" },
+  { key: "交渉", label: "交渉" },
+  { key: "魔術", label: "魔術", aliases: ["魔法技術"] },
+  { key: "信仰", label: "信仰" }
 ];
 
 const BASE_STATUS_FIELDS = ["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"];
@@ -78,6 +78,32 @@ function isPlaceholderSkillName(value) {
   const text = nonEmptyText(value).toLowerCase();
   if (!text) return true;
   return text === "0" || text === "-" || text === "－" || text === "なし" || text === "null";
+}
+
+function resolveSkillFieldKeys(field) {
+  if (!field) return [];
+  if (typeof field === "string") return [field];
+  const keys = [nonEmptyText(field?.key), ...(Array.isArray(field?.aliases) ? field.aliases.map(nonEmptyText) : [])]
+    .filter(Boolean);
+  return [...new Set(keys)];
+}
+
+function resolveSkillFieldValue(row, field) {
+  const keys = resolveSkillFieldKeys(field);
+  for (const key of keys) {
+    const value = toSafeNumber(row?.[key]);
+    if (value !== null) return value;
+  }
+  return 0;
+}
+
+function resolveSkillDescription(field) {
+  const keys = resolveSkillFieldKeys(field);
+  for (const key of keys) {
+    const desc = skillDescMap.value.get(key);
+    if (desc) return desc;
+  }
+  return "";
 }
 
 const allClasses = computed(() => {
@@ -135,12 +161,13 @@ const resistRows = computed(() => {
 const skillRows = computed(() => {
   const row = activeClass.value;
   if (!row) return [];
-  return SKILL_FIELDS.map(key => {
-    const value = toSafeNumber(row[key]);
+  return SKILL_FIELD_DEFS.map(field => {
+    const value = resolveSkillFieldValue(row, field);
     return {
-      key,
+      key: field.key,
+      label: field.label || field.key,
       value: value ?? 0,
-      desc: skillDescMap.value.get(key) || ""
+      desc: resolveSkillDescription(field)
     };
   }).filter(item => item.value > 0);
 });
@@ -236,7 +263,7 @@ function confirmClass() {
           <div v-if="skillRows.length" class="skill-grid">
             <article v-for="item in skillRows" :key="item.key" class="skill-card">
               <div class="skill-head">
-                <strong>{{ item.key }}</strong>
+                <strong>{{ item.label }}</strong>
                 <span>Lv {{ item.value }}</span>
               </div>
               <p class="small">{{ item.desc || "説明なし" }}</p>
@@ -248,6 +275,7 @@ function confirmClass() {
         <section v-if="showAcquiredSkills" class="detail-block">
           <skill-acquired-table
             :skill-names="acquiredSkillNames"
+            :status-source="activeClass"
             :show-title="true"
             title="取得スキル"
             empty-text="取得スキルなし"
@@ -282,6 +310,8 @@ function confirmClass() {
   display: grid;
   grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
   gap: 12px;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .class-list {
@@ -292,6 +322,7 @@ function confirmClass() {
   display: grid;
   gap: 6px;
   align-content: start;
+  min-width: 0;
 }
 
 .class-list-head {
@@ -311,6 +342,14 @@ function confirmClass() {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+}
+
+.class-item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .class-item.active {
@@ -332,6 +371,8 @@ function confirmClass() {
   display: grid;
   gap: 10px;
   overflow-y: scroll;
+  overflow-x: hidden;
+  min-width: 0;
 }
 
 .class-title h3 {
@@ -435,7 +476,7 @@ function confirmClass() {
   color: #d9c79f;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1px) {
   .class-layout {
     grid-template-columns: 1fr;
   }

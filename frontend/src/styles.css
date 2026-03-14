@@ -7,19 +7,56 @@
   --accent-2: #355c7d;
   --good: #2e7d32;
   --bad: #b71c1c;
+  --scrollbar-size: 8px;
+  --scrollbar-track: linear-gradient(180deg, rgba(10, 22, 34, 0.74), rgba(7, 16, 26, 0.82));
+  --scrollbar-thumb: linear-gradient(180deg, #6ee7ef, #2e9db4);
+  --scrollbar-thumb-hover: linear-gradient(180deg, #9af6ff, #3bc0da);
+  --scrollbar-border: rgba(19, 74, 96, 0.88);
+  --game-modal-scale: 1;
 }
 * { box-sizing: border-box; }
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #59cbe0 rgba(7, 16, 26, 0.82);
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(115, 236, 255, 0.2),
+    inset 0 0 8px rgba(59, 145, 179, 0.22);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 1px solid var(--scrollbar-border);
+  box-shadow:
+    inset 0 1px 0 rgba(216, 251, 255, 0.62),
+    0 0 8px rgba(73, 194, 220, 0.52);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: rgba(7, 16, 26, 0.9);
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
   font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
   color: var(--ink);
   background: radial-gradient(circle at 20% 20%, var(--bg1), var(--bg2));
-  display: block;
-  padding: 0;
-  overflow: hidden;
-}
-body.game-only-mode {
   display: block;
   padding: 0;
   overflow: hidden;
@@ -34,18 +71,24 @@ body.game-only-mode {
   overflow: hidden;
 }
 .app.game-only {
-  width: 100%;
-  max-width: none;
-  min-height: 100dvh;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 1280px;
+  height: 720px;
+  max-width: 1280px;
+  min-height: 720px;
   border: none;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  transform: translate(-50%, -50%) scale(var(--game-root-scale, 1));
+  transform-origin: center center;
   overflow: hidden;
 }
 .app.game-only > .phaser-map-panel {
   width: 100%;
-  height: 100dvh;
+  height: 100%;
   margin: 0;
   border: none;
   border-radius: 0;
@@ -53,16 +96,16 @@ body.game-only-mode {
   box-shadow: none;
   padding: 0;
 }
-.app.game-only > .phaser-map-panel .phaser-stage-shell {
-  width: 100%;
-  height: 100dvh;
-  max-height: none;
-  min-height: 0;
-  aspect-ratio: auto;
-}
 .app.game-only > .phaser-map-panel .phaser-map-canvas {
   border: none;
   border-radius: 0;
+}
+.app.game-only .modal-card,
+.app.game-only .modal-card-wide,
+.app.game-only .generic-modal,
+.app.game-only .settings-modal,
+.app.game-only .game-start-modal {
+  transform: none !important;
 }
 header {
   padding: 16px 20px;
@@ -278,9 +321,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   width: min(780px, 100%);
   max-height: calc(100vh - 32px);
   overflow: auto;
+  transform: scale(var(--game-modal-scale, 1));
+  transform-origin: center center;
 }
 .modal-card-wide {
-  width: min(1120px, 100%);
+  width: min(1040px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  transform: scale(var(--game-modal-scale, 1));
+  transform-origin: center center;
 }
 .modal-head {
   display: flex;
@@ -291,11 +339,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .modal-head h2 {
   margin: 0;
-}
-.modal-close {
-  min-width: 36px;
-  padding: 6px 10px;
-  background: #684b35;
 }
 .battle-layout {
   display: grid;
@@ -329,18 +372,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   line-height: 1.45;
   white-space: pre-line;
 }
-.map-tools {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.map-tools select {
-  border: 1px solid #c8ad81;
-  border-radius: 6px;
-  padding: 6px;
-  background: #fff;
-}
 .map-meta {
   margin-top: 8px;
   display: grid;
@@ -358,22 +389,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   margin-top: 8px;
   font-size: 0.86rem;
   white-space: pre-line;
-}
-.hex-wrap {
-  width: max-content;
-  transform-origin: top left;
-  position: relative;
-}
-.hex-row {
-  display: flex;
-  gap: 0;
-  margin-top: -12px;
-}
-.hex-row:first-child {
-  margin-top: 0;
-}
-.hex-row.offset {
-  margin-left: 20px;
 }
 .tile {
   width: 40px;
@@ -409,51 +424,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .tile.river-source::before { content: "S"; }
 .tile.river-branch::before { content: "B"; }
 .tile.river-mouth::before { content: "M"; }
-.river-overlay {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.river-seg {
-  stroke: #2f9be0;
-  stroke-width: 8.8;
-  stroke-linecap: round;
-  opacity: 0.95;
-}
-.river-link {
-  stroke: #5ec2ff;
-  stroke-width: 1.2;
-  stroke-linecap: round;
-  opacity: 0.9;
-}
-.river-node {
-  fill: #2b88ca;
-  stroke: #d6f2ff;
-  stroke-width: 0.6;
-}
-.river-node.source {
-  fill: #f7fff9;
-  stroke: #2c8e4d;
-  stroke-width: 1.1;
-}
-.river-node.branch {
-  fill: #ffd36e;
-  stroke: #7a5a0d;
-  stroke-width: 0.9;
-}
-.river-node.mouth {
-  fill: #ff9770;
-  stroke: #7f2b11;
-  stroke-width: 0.9;
-}
-.lake-node {
-  fill: #6ecbff;
-  stroke: #0f5e96;
-  stroke-width: 1.2;
-}
-@media (max-width: 860px) {
+@media (max-width: 1px) {
   main { grid-template-columns: 1fr; }
   .top-room { width: 100%; margin-left: 0; }
   .battle-layout { grid-template-columns: 1fr; }

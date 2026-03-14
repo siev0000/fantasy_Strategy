@@ -133,6 +133,8 @@ function fieldLabel(field) {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.44);
   font-size: 1rem;
   line-height: 1.35;
+  transform: scale(var(--game-modal-scale, 1));
+  transform-origin: center center;
 }
 
 .generic-modal-wide {

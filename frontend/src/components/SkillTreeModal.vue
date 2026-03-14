@@ -494,13 +494,13 @@ function selectRootSkill() {
   color: #d9c79f;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1px) {
   .tree-layout {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1px) {
   .branch-columns {
     grid-template-columns: 1fr;
   }

@@ -37,6 +37,7 @@ import {
   normalizeSquadEntries as normalizeSquadEntriesUtil,
   renameLeaderSquad as renameLeaderSquadUtil,
   resolveDefaultSquadName as resolveDefaultSquadNameUtil,
+  updateLeaderSquadIcon as updateLeaderSquadIconUtil,
   resolveUnitScoutValue as resolveUnitScoutValueUtil,
   resolveUnitStealthValue as resolveUnitStealthValueUtil,
   squadMemberIds as squadMemberIdsUtil,
@@ -96,7 +97,6 @@ import {
   MAP_ENEMY_MARKER_CONFIG,
   MAP_FACTION_MARKER_CONFIG,
   MAP_SPECIAL_ICON_CONFIG,
-  MAP_SOVEREIGN_MARKER_CONFIG,
   MAP_UNIT_MARKER_CONFIG,
   MAP_WATERFALL_ICON_CONFIG,
   MAX_TEST_PLAYER_COUNT,
@@ -178,7 +178,6 @@ const mapTerrainProfileInfo = ref("地形比率: -");
 const mapClickInfo = ref("クリック座標: -");
 const mapStats = ref("地形未生成");
 const gameRoot = ref(null);
-const stageShell = ref(null);
 const currentData = ref(null);
 const zoomPercent = ref(100);
 const isDevBuild = import.meta.env.DEV;
@@ -216,7 +215,6 @@ const masterVolumePercent = ref(Math.round((initialAudioVolumes.masterVolume ?? 
 const bgmVolumePercent = ref(Math.round((initialAudioVolumes.bgmVolume ?? 0.5) * 100));
 const seVolumePercent = ref(Math.round((initialAudioVolumes.seVolume ?? 0.5) * 100));
 const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
-const stageScale = ref(1);
 
 let game = null;
 let scene = null;
@@ -233,7 +231,6 @@ let hitAreaMap = new Map();
 let selectedTileKey = "";
 let hoveredTileKey = "";
 let resizeHandler = null;
-let stageResizeObserver = null;
 let clockIntervalId = null;
 let firstGestureHandler = null;
 let nativeWheelHandler = null;
@@ -248,6 +245,10 @@ let dragStartScreenY = 0;
 let dragStartScrollX = 0;
 let dragStartScrollY = 0;
 let pointerViewCache = new Map();
+let touchPointerViewMap = new Map();
+let pinchActive = false;
+let pinchStartDistance = 0;
+let suppressTouchTapUntilRelease = false;
 let forceMapCenterOnNextRender = true;
 let territorySets = { player: new Set(), enemy: new Set() };
 let territoryOwnerByTile = new Map();
@@ -416,13 +417,6 @@ const factionBorderStyleMap = computed(() => {
   }
   return out;
 });
-
-const stageScaleStyle = computed(() => ({
-  width: `${GAME_VIEW_WIDTH}px`,
-  height: `${GAME_VIEW_HEIGHT}px`,
-  transform: `scale(${stageScale.value})`,
-  transformOrigin: "center center"
-}));
 
 const mapCanvasStyle = computed(() => ({
   "--header-resource-icon-layout-size": `${HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX}px`,
@@ -656,7 +650,7 @@ const SKILL_LEVEL_FIELDS = [
   "工業",
   "統治",
   "交渉",
-  "魔法技術",
+  "魔術",
   "信仰"
 ];
 const RESISTANCE_FIELDS = [
@@ -4300,10 +4294,13 @@ function emitCharacterStateChange() {
       const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(equipment));
       const iconFallback = resolveFallbackIconNameForUnit(unit);
       const iconName = resolveUnitIconNameStrict(unit?.iconName, iconFallback);
+      const subIconName = resolveUnitIconNameStrict(unit?.subIconName, "");
       return {
         ...unit,
         iconName,
         iconSrc: resolveUnitIconSrc(iconName),
+        subIconName,
+        subIconSrc: resolveUnitIconSrc(subIconName, ""),
         status: unit?.status ? { ...unit.status } : null,
         skillLevels: unit?.skillLevels ? { ...unit.skillLevels } : null,
         baseResistances,
@@ -4652,6 +4649,7 @@ function promoteMobToNamed(unitId) {
 function configureUnitSquadState(unitId, memberIds = [], options = {}) {
   const result = configureUnitSquadStateUtil(unitList.value, unitId, memberIds, {
     squadName: options?.squadName,
+    squadIconName: options?.squadIconName,
     maxSquadMemberCount: MAX_SQUAD_MEMBER_COUNT,
     nonEmptyText,
     normalizeSquadEntries,
@@ -4790,17 +4788,32 @@ function updateUnitIcon(unitId, iconNameRaw) {
   const idx = unitList.value.findIndex(unit => unit?.id === targetId);
   if (idx < 0) return { ok: false, reason: "対象ユニットが見つかりません。" };
   const target = unitList.value[idx];
-  const iconFallback = resolveFallbackIconNameForUnit(target);
-  const iconName = resolveUnitIconNameStrict(iconNameRaw, target?.iconName || iconFallback || "");
+  const iconName = resolveUnitIconNameStrict(iconNameRaw, target?.subIconName || "");
   unitList.value[idx] = {
     ...target,
-    iconName,
-    iconSrc: resolveUnitIconSrc(iconName)
+    subIconName: iconName,
+    subIconSrc: resolveUnitIconSrc(iconName, "")
   };
   return {
     ok: true,
     iconName,
-    iconSrc: resolveUnitIconSrc(iconName)
+    iconSrc: resolveUnitIconSrc(iconName, "")
+  };
+}
+
+function updateSquadIcon(unitId, iconNameRaw) {
+  const targetId = nonEmptyText(unitId);
+  if (!targetId) return { ok: false, reason: "部隊リーダーが未指定です。" };
+  const iconName = resolveUnitIconNameStrict(iconNameRaw, "");
+  const result = updateLeaderSquadIconUtil(unitList.value, targetId, iconName, {
+    nonEmptyText,
+    unitHasSquad
+  });
+  if (!result?.ok) return result;
+  unitList.value = Array.isArray(result.nextUnits) ? result.nextUnits : unitList.value;
+  return {
+    ok: true,
+    iconName: nonEmptyText(result.squadIconName)
   };
 }
 
@@ -4992,7 +5005,8 @@ function applyCharacterCommand(command) {
   if (type === "createSquad") {
     const memberIds = Array.isArray(command?.memberIds) ? command.memberIds : [];
     const squadName = nonEmptyText(command?.squadName);
-    const result = configureUnitSquadState(unitId, memberIds, { squadName });
+    const squadIconName = nonEmptyText(command?.squadIconName);
+    const result = configureUnitSquadState(unitId, memberIds, { squadName, squadIconName });
     if (!result.ok) {
       updateUnitInfoText(`部隊作成失敗: ${result.reason || "作成不可"}`);
       pushNationLog(`部隊作成失敗: ${result.reason || "作成不可"}`);
@@ -5017,6 +5031,24 @@ function applyCharacterCommand(command) {
       const leader = unitList.value.find(unit => unit.id === unitId);
       updateUnitInfoText(`部隊名変更: ${leader?.name || "リーダー"} -> ${result.squadName}`);
       pushNationLog(`部隊名変更: ${leader?.name || "リーダー"} / ${result.squadName}`);
+    }
+    emitCharacterStateChange();
+    renderMapWithPhaser();
+    return;
+  }
+
+  if (type === "updateSquadIcon") {
+    const iconName = nonEmptyText(command?.iconName);
+    const result = updateSquadIcon(unitId, iconName);
+    if (!result.ok) {
+      updateUnitInfoText(`部隊アイコン変更失敗: ${result.reason || "変更不可"}`);
+      pushNationLog(`部隊アイコン変更失敗: ${result.reason || "変更不可"}`);
+    } else {
+      const leader = unitList.value.find(unit => unit.id === unitId) || null;
+      const squadName = nonEmptyText(leader?.squadName) || nonEmptyText(leader?.name) || "部隊";
+      const label = result.iconName || "(なし)";
+      updateUnitInfoText(`部隊アイコン変更: ${squadName} / ${label}`);
+      pushNationLog(`部隊アイコン変更: ${squadName} / ${label}`);
     }
     emitCharacterStateChange();
     renderMapWithPhaser();
@@ -5549,7 +5581,11 @@ function resolveEnemyIconName(enemy) {
 }
 
 function moveUnitIconSrc(unit) {
-  const iconName = resolveRaceIconNameForUnit(unit);
+  const iconName = resolveAvailableIconName(
+    unit?.subIconName,
+    unit?.iconName,
+    resolveRaceIconNameForUnit(unit)
+  );
   if (!iconName) return "";
   return resolveUnitIconSrc(iconName, "");
 }
@@ -6136,8 +6172,15 @@ function resolveMinZoomPercent(dataLike = currentData.value) {
   });
 }
 
-function resolveMaxZoomPercent() {
-  return 400;
+function resolveMaxZoomPercent(dataLike = currentData.value) {
+  const w = Number(dataLike?.w);
+  const h = Number(dataLike?.h);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 400;
+  // 36x36 => 400%, 72x72 => 800% になるようにマップ総タイル数の平方根でスケール。
+  const baseTiles = 36 * 36;
+  const tileCount = Math.max(1, w * h);
+  const scaled = 400 * Math.sqrt(tileCount / baseTiles);
+  return Math.round(clampNumber(scaled, 400, 1200));
 }
 
 function normalizeZoomPercent(value, dataLike = currentData.value) {
@@ -6984,7 +7027,6 @@ function renderMapWithPhaser() {
   const moveBlinkAlpha = 0.38 + ((Math.sin(moveBlinkPhase * Math.PI * 2) + 1) * 0.24);
   const fogHiddenAlpha = showTestControls.value ? FOG_HIDDEN_ALPHA_TEST : FOG_HIDDEN_ALPHA;
   const waterfallTextureKey = ensureRaceMarkerTexture(resolveWaterfallIconName());
-  const sovereignTextureKey = ensureRaceMarkerTexture(resolveSovereignIconName());
   const boundsAcc = createBoundsAccumulator();
 
   const wrapOffsets = buildWrapOffsets(data);
@@ -7144,10 +7186,6 @@ function renderMapWithPhaser() {
           const enemyMarkerTextureKey = ensureRaceMarkerTexture(enemyMarkerIconName);
           const enemyMx = center.cx + MAP_ENEMY_MARKER_CONFIG.offsetX;
           const enemyMy = center.cy + MAP_ENEMY_MARKER_CONFIG.offsetY;
-          markerLayer.fillStyle(0xb82f2f, 0.96);
-          markerLayer.fillCircle(enemyMx, enemyMy, MAP_ENEMY_MARKER_CONFIG.radius);
-          markerLayer.lineStyle(1.2, 0xfff0cf, 0.94);
-          markerLayer.strokeCircle(enemyMx, enemyMy, MAP_ENEMY_MARKER_CONFIG.radius);
           if (enemyMarkerTextureKey && scene.textures.exists(enemyMarkerTextureKey)) {
             const enemyIconSprite = scene.add.image(enemyMx, enemyMy, enemyMarkerTextureKey);
             enemyIconSprite.setDisplaySize(MAP_ENEMY_MARKER_CONFIG.iconSize, MAP_ENEMY_MARKER_CONFIG.iconSize);
@@ -7275,7 +7313,13 @@ function renderMapWithPhaser() {
     const lead = members[0];
     const baseCenter = hexCenter(lead.x, lead.y);
     const iconColor = resolveRaceMarkerColor(lead.race);
-    const markerIconName = resolveRaceIconNameForUnit(lead);
+    const squadMarkerIconName = members
+      .map(unit => nonEmptyText(unit?.squadIconName))
+      .find(name => name.length > 0) || "";
+    const markerIconName = resolveAvailableIconName(
+      squadMarkerIconName,
+      resolveRaceIconNameForUnit(lead)
+    );
     const markerTextureKey = ensureRaceMarkerTexture(markerIconName);
     const glyph = resolveRaceGlyph(lead.race);
     for (const offset of wrapOffsets) {
@@ -7298,7 +7342,7 @@ function renderMapWithPhaser() {
         const raceGlyphText = scene.add.text(unitMx, unitMy, glyph, {
           fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
           fontStyle: "700",
-          fontSize: "9px",
+          fontSize: "11px",
           color: "#f8fbff"
         });
         raceGlyphText.setOrigin(0.5);
@@ -7307,54 +7351,21 @@ function renderMapWithPhaser() {
       }
 
       if (members.length > 1) {
-        markerLayer.fillStyle(0x18233b, 0.94);
-        markerLayer.fillCircle(center.cx - 2.5, center.cy - 20, 5.5);
-        markerLayer.lineStyle(1.2, 0xb9d8ff, 0.95);
-        markerLayer.strokeCircle(center.cx - 2.5, center.cy - 20, 5.5);
-        const countText = scene.add.text(center.cx - 2.5, center.cy - 20, `${members.length}`, {
-          fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-          fontStyle: "700",
-          fontSize: "8px",
-          color: "#dbe9ff"
-        });
+        const countText = scene.add.text(
+          unitMx + MAP_UNIT_MARKER_CONFIG.radius * 0.66,
+          unitMy + MAP_UNIT_MARKER_CONFIG.radius * 0.66,
+          `${members.length}`,
+          {
+            fontFamily: "Consolas, 'Courier New', monospace",
+            fontStyle: "800",
+            fontSize: "11px",
+            color: "#f2f7ff"
+          }
+        );
         countText.setOrigin(0.5);
-        countText.setStroke("#09111f", 2);
+        countText.setStroke("#09111f", 1);
+        countText.setResolution(2);
         labelTexts.push(countText);
-      }
-    }
-  }
-
-  for (const unit of unitList.value) {
-    if (!isSovereignUnit(unit)) continue;
-    if (!Number.isFinite(unit.x) || !Number.isFinite(unit.y) || unit.x < 0 || unit.y < 0) continue;
-    if (!isTileVisible(coordKey(unit.x, unit.y), data)) continue;
-    const baseCenter = hexCenter(unit.x, unit.y);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(unit.x, unit.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      const center = { cx: baseCenter.cx + ox, cy: baseCenter.cy + oy };
-      const rulerX = center.cx + MAP_SOVEREIGN_MARKER_CONFIG.offsetX;
-      const rulerY = center.cy + MAP_SOVEREIGN_MARKER_CONFIG.offsetY;
-      markerLayer.fillStyle(0x1d2b43, 0.95);
-      markerLayer.fillCircle(rulerX, rulerY, MAP_SOVEREIGN_MARKER_CONFIG.radius);
-      markerLayer.lineStyle(1.6, 0xffe59b, 0.95);
-      markerLayer.strokeCircle(rulerX, rulerY, MAP_SOVEREIGN_MARKER_CONFIG.radius);
-      if (sovereignTextureKey && scene.textures.exists(sovereignTextureKey)) {
-        const rulerIcon = scene.add.image(rulerX, rulerY, sovereignTextureKey);
-        rulerIcon.setDisplaySize(MAP_SOVEREIGN_MARKER_CONFIG.iconSize, MAP_SOVEREIGN_MARKER_CONFIG.iconSize);
-        rulerIcon.setOrigin(0.5);
-        labelTexts.push(rulerIcon);
-      } else {
-        const rulerLabel = scene.add.text(rulerX, rulerY, "統", {
-          fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-          fontStyle: "700",
-          fontSize: `${MAP_SOVEREIGN_MARKER_CONFIG.fallbackFontSizePx}px`,
-          color: "#ffe9ad"
-        });
-        rulerLabel.setOrigin(0.5);
-        rulerLabel.setStroke("#2a1b08", 2);
-        labelTexts.push(rulerLabel);
       }
     }
   }
@@ -7713,6 +7724,37 @@ function handleOwnUnitNavigatorOpenCharacterStatus(payload = {}) {
     selectedUnitId.value = targetId;
   }
   openCharacterStatusModalFromMap();
+}
+
+function handleOwnUnitNavigatorSelectMoveUnit(payload = {}) {
+  if (unitMoveMode.value) {
+    toggleUnitMoveMode();
+    return;
+  }
+  const targetId = nonEmptyText(payload?.unitId);
+  if (!targetId) return;
+  const source = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
+  if (!source) {
+    updateUnitInfoText("移動対象の選択に失敗: ユニットが見つかりません。");
+    return;
+  }
+  const leaderId = nonEmptyText(source?.squadLeaderId);
+  const target = leaderId
+    ? (unitList.value.find(unit => nonEmptyText(unit?.id) === leaderId) || source)
+    : source;
+  if (!canUseUnitAsMoveCandidate(target)) {
+    updateUnitInfoText(`${nonEmptyText(target?.name) || "ユニット"} は移動対象にできません。`);
+    return;
+  }
+  kickOffBgm();
+  audio.playSe("select");
+  selectedUnitId.value = target.id;
+  moveUnitCandidateId.value = target.id;
+  unitMoveMode.value = true;
+  showMoveUnitModal.value = false;
+  updateUnitInfoText(`${target.name} を移動対象に設定`);
+  emitCharacterStateChange();
+  renderMapWithPhaser();
 }
 
 function togglePinnedNationLogPanel() {
@@ -8095,6 +8137,10 @@ function applyMapData(data, options = {}) {
   pendingClickFocusMode = "near";
   dragPointerId = null;
   dragStarted = false;
+  touchPointerViewMap.clear();
+  pinchActive = false;
+  pinchStartDistance = 0;
+  suppressTouchTapUntilRelease = false;
   if (options.rebuildCharacters !== false) {
     resetVisibilityState();
   }
@@ -8303,16 +8349,6 @@ function refreshMapCursor() {
   setCanvasCursor(canDragMapAtCurrentZoom() ? "grab" : "default");
 }
 
-function updateStageScale() {
-  const shell = stageShell.value;
-  if (!shell) return;
-  const shellWidth = Math.max(1, Math.floor(shell.clientWidth || 0));
-  const shellHeight = Math.max(1, Math.floor(shell.clientHeight || 0));
-  const fitScale = Math.min(shellWidth / GAME_VIEW_WIDTH, shellHeight / GAME_VIEW_HEIGHT);
-  const nextScale = Math.max(0.25, Math.min(2.5, fitScale || 1));
-  stageScale.value = Math.round(nextScale * 1000) / 1000;
-}
-
 function findHitAreaAtWorld(worldX, worldY) {
   const data = currentData.value;
   if (!data || !Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
@@ -8395,6 +8431,73 @@ function resolvePointerWorldPosition(pointer) {
   };
 }
 
+function isTouchPointer(pointer) {
+  if (pointer?.wasTouch) return true;
+  return nonEmptyText(pointer?.event?.pointerType).toLowerCase() === "touch";
+}
+
+function upsertTouchPointerView(pointer) {
+  if (!isTouchPointer(pointer)) return false;
+  const pointerId = pointer?.id;
+  if (pointerId === undefined || pointerId === null) return false;
+  const view = resolvePointerViewPosition(pointer);
+  if (!Number.isFinite(view?.x) || !Number.isFinite(view?.y)) return false;
+  touchPointerViewMap.set(pointerId, { x: view.x, y: view.y });
+  return true;
+}
+
+function removeTouchPointerView(pointer) {
+  const pointerId = pointer?.id;
+  if (pointerId === undefined || pointerId === null) return;
+  touchPointerViewMap.delete(pointerId);
+}
+
+function getActiveTouchPair() {
+  if (touchPointerViewMap.size < 2) return null;
+  const points = Array.from(touchPointerViewMap.values());
+  const a = points[0];
+  const b = points[1];
+  if (!a || !b) return null;
+  return [a, b];
+}
+
+function applyWheelStyleZoomStep(direction) {
+  const stepDirection = direction > 0 ? 1 : -1;
+  const nextZoom = normalizeZoomPercent(zoomPercent.value + (stepDirection * 25));
+  if (nextZoom === zoomPercent.value) return false;
+  setZoomPercent(nextZoom, { centerMode: "village" });
+  return true;
+}
+
+function updatePinchZoom() {
+  if (!scene || !currentData.value || touchPointerViewMap.size < 2) return;
+  const pair = getActiveTouchPair();
+  if (!pair) return;
+  const [a, b] = pair;
+  const distance = Math.hypot(a.x - b.x, a.y - b.y);
+  if (!Number.isFinite(distance) || distance < 8) return;
+
+  if (!pinchActive) {
+    pinchActive = true;
+    pinchStartDistance = distance;
+    suppressTouchTapUntilRelease = true;
+    if (dragPointerId !== null) resetDragState();
+    setCanvasCursor("default");
+    return;
+  }
+
+  const scaleRatio = distance / Math.max(pinchStartDistance, 1);
+  if (Math.abs(scaleRatio - 1) < 0.08) return;
+  applyWheelStyleZoomStep(scaleRatio > 1 ? 1 : -1);
+  pinchStartDistance = distance;
+}
+
+function finishPinchIfNeeded() {
+  if (touchPointerViewMap.size >= 2) return;
+  pinchActive = false;
+  pinchStartDistance = 0;
+}
+
 function updateHoveredTileByPointer(pointer) {
   const world = resolvePointerWorldPosition(pointer);
   const picked = findHitAreaAtWorld(world.x, world.y);
@@ -8463,8 +8566,14 @@ function resolveMoveGroupForUnit(unit, options = {}) {
   };
 }
 
+function isDirectMoveSelectableUnit(unit) {
+  if (!unit) return false;
+  return !nonEmptyText(unit?.squadLeaderId);
+}
+
 function canUseUnitAsMoveCandidate(unit) {
   if (!unit) return false;
+  if (!isDirectMoveSelectableUnit(unit)) return false;
   const group = resolveMoveGroupForUnit(unit);
   return group.ok && group.minMoveRemaining > 0;
 }
@@ -8659,6 +8768,11 @@ function handleMapTileClick(pointer) {
 
 function handlePointerDown(pointer) {
   if (!scene || !currentData.value) return;
+  const touchPointer = upsertTouchPointerView(pointer);
+  if (touchPointer && touchPointerViewMap.size >= 2) {
+    updatePinchZoom();
+    return;
+  }
   dragPointerId = pointer.id;
   dragStarted = false;
   if (!canDragMapAtCurrentZoom()) {
@@ -8674,6 +8788,11 @@ function handlePointerDown(pointer) {
 
 function handlePointerMove(pointer) {
   if (!scene || !currentData.value) return;
+  const isTouch = upsertTouchPointerView(pointer);
+  if ((isTouch && touchPointerViewMap.size >= 2) || pinchActive) {
+    updatePinchZoom();
+    return;
+  }
   if (pointer.id === dragPointerId && pointer.isDown) {
     if (!canDragMapAtCurrentZoom()) {
       dragStarted = false;
@@ -8707,8 +8826,23 @@ function resetDragState() {
 
 function handlePointerUp(pointer) {
   if (!scene || !currentData.value) return;
+  const touchPointer = isTouchPointer(pointer);
+  if (touchPointer) {
+    removeTouchPointerView(pointer);
+    finishPinchIfNeeded();
+  }
   if (pointer?.id !== undefined && pointer?.id !== null) {
     pointerViewCache.delete(pointer.id);
+  }
+  if (touchPointer && (pinchActive || suppressTouchTapUntilRelease)) {
+    if (pointer.id === dragPointerId) {
+      resetDragState();
+    }
+    if (touchPointerViewMap.size === 0) {
+      suppressTouchTapUntilRelease = false;
+    }
+    updateHoveredTileByPointer(pointer);
+    return;
   }
   if (pointer.id !== dragPointerId) {
     updateHoveredTileByPointer(pointer);
@@ -8721,6 +8855,9 @@ function handlePointerUp(pointer) {
     return;
   }
   handleMapTileClick(pointer);
+  if (touchPointer && touchPointerViewMap.size === 0) {
+    suppressTouchTapUntilRelease = false;
+  }
 }
 
 function handlePointerLeave() {
@@ -8728,31 +8865,22 @@ function handlePointerLeave() {
   drawHoverOverlay();
   if (dragPointerId !== null) resetDragState();
   pointerViewCache.clear();
+  touchPointerViewMap.clear();
+  pinchActive = false;
+  pinchStartDistance = 0;
+  suppressTouchTapUntilRelease = false;
 }
 
 function handleCanvasWheel(event) {
   if (!scene || !currentData.value) return;
   if (event?.preventDefault) event.preventDefault();
   const direction = Number(event?.deltaY) < 0 ? 1 : -1;
-  const nextZoom = normalizeZoomPercent(zoomPercent.value + (direction * 25));
-  if (nextZoom === zoomPercent.value) return;
-  setZoomPercent(nextZoom, { centerMode: "village" });
+  applyWheelStyleZoomStep(direction);
 }
 
 onMounted(async () => {
   await nextTick();
-  if (!gameRoot.value || !stageShell.value) return;
-
-  updateStageScale();
-  requestAnimationFrame(() => {
-    updateStageScale();
-  });
-  if (typeof ResizeObserver !== "undefined") {
-    stageResizeObserver = new ResizeObserver(() => {
-      updateStageScale();
-    });
-    stageResizeObserver.observe(stageShell.value);
-  }
+  if (!gameRoot.value) return;
 
   firstGestureHandler = () => {
     kickOffBgm();
@@ -8777,6 +8905,10 @@ onMounted(async () => {
     parent: gameRoot.value,
     width: GAME_VIEW_WIDTH,
     height: GAME_VIEW_HEIGHT,
+    // Improve clarity when the 1280x720 canvas is CSS-scaled on different displays.
+    resolution: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
+    antialias: true,
+    pixelArt: false,
     scale: {
       mode: Phaser.Scale.NONE,
       width: GAME_VIEW_WIDTH,
@@ -8786,6 +8918,8 @@ onMounted(async () => {
     scene: {
       create() {
         scene = this;
+        // スマホの2本指ピンチズーム用に追加ポインタを確保する。
+        this.input.addPointer(2);
         baseLayer = this.add.graphics();
         riverLayer = this.add.graphics();
         lavaLayer = this.add.graphics();
@@ -8809,7 +8943,6 @@ onMounted(async () => {
   });
 
   resizeHandler = () => {
-    updateStageScale();
     renderMapWithPhaser();
   };
   window.addEventListener("resize", resizeHandler);
@@ -8817,10 +8950,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (resizeHandler) window.removeEventListener("resize", resizeHandler);
-  if (stageResizeObserver) {
-    stageResizeObserver.disconnect();
-    stageResizeObserver = null;
-  }
   if (firstGestureHandler) {
     window.removeEventListener("pointerdown", firstGestureHandler);
     window.removeEventListener("keydown", firstGestureHandler);
@@ -8848,6 +8977,10 @@ onBeforeUnmount(() => {
   pendingClickFocusWorld = null;
   pendingClickFocusMode = "near";
   pointerViewCache.clear();
+  touchPointerViewMap.clear();
+  pinchActive = false;
+  pinchStartDistance = 0;
+  suppressTouchTapUntilRelease = false;
   raceMarkerTexturePending = new Set();
   resetVisibilityState();
 });
@@ -8936,9 +9069,7 @@ watch(() => props.characterCommand, command => {
 
 <template>
   <section class="panel simulator map-top phaser-map-panel">
-    <div ref="stageShell" class="phaser-stage-shell">
-      <div class="phaser-stage-anchor">
-      <div class="phaser-stage" :style="stageScaleStyle">
+    <div class="phaser-stage">
         <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas" :style="mapCanvasStyle">
       <header class="field-overlay-header" :class="{ minimized: headerMinimized }">
         <template v-if="!headerMinimized">
@@ -9064,10 +9195,13 @@ watch(() => props.characterCommand, command => {
           :squad-entries="ownSquadNavigatorEntries"
           :unit-entries="ownCharacterNavigatorEntries"
           :selected-unit-id="selectedUnitId"
+          :can-use-move-mode="canUseUnitMoveMode()"
+          :move-mode-enabled="unitMoveMode"
           :reset-key="activeTestPlayerId"
           @focus-unit="handleOwnUnitNavigatorFocusUnit"
           @focus-squad="handleOwnUnitNavigatorFocusSquad"
           @open-character-status="handleOwnUnitNavigatorOpenCharacterStatus"
+          @select-move-unit="handleOwnUnitNavigatorSelectMoveUnit"
         />
       </aside>
       <aside v-if="showPinnedNationLogPanel" class="field-overlay-live-log">
@@ -9190,7 +9324,7 @@ watch(() => props.characterCommand, command => {
             <div>{{ unitInfoText }}</div>
             <div>{{ lastEconomySummary }}</div>
           </div>
-          <div class="small phaser-help">クリックで詳細表示 / ドラッグで移動 / ホイールでカーソル中心に拡大縮小 / ユニット移動ONでクリック移動（緑点滅枠が移動可能範囲、高度変化マスは移動コスト+1）。</div>
+          <div class="small phaser-help">クリックで詳細表示 / ドラッグで移動 / ホイール・2本指ピンチで拡大縮小 / ユニット移動ONでクリック移動（緑点滅枠が移動可能範囲、高度変化マスは移動コスト+1）。</div>
           <section class="generation-details">
             <div class="map-meta">
               <div id="mapSizeInfo">{{ mapSizeInfo }}</div>
@@ -9202,8 +9336,6 @@ watch(() => props.characterCommand, command => {
         </section>
         </aside>
       </div>
-    </div>
-    </div>
     </div>
 
     <generic-modal
@@ -9358,7 +9490,7 @@ watch(() => props.characterCommand, command => {
     <div v-if="showMoveUnitModal" class="settings-backdrop" @click.self="closeMoveUnitSelectModal">
       <div class="settings-modal move-unit-modal">
         <h3>移動ユニット選択</h3>
-        <div class="small move-unit-note">移動対象のユニットを選択してください。1回の移動処理は2マスまで進行します。部隊所属ユニットは単独移動できず、部隊リーダーを選択した場合は部隊全員が同時移動します。</div>
+        <div class="small move-unit-note">移動対象は「単体ユニット」または「部隊リーダー（部隊移動）」のみ選択できます。1回の移動処理は2マスまで進行します。</div>
         <div class="move-unit-list">
           <button
             v-for="unit in movableUnits()"

@@ -313,7 +313,7 @@ function confirmRace() {
   color: #d9c79f;
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1px) {
   .race-select-layout {
     grid-template-columns: 1fr;
   }

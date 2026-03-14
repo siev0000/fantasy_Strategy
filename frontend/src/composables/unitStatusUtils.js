@@ -15,7 +15,7 @@ export function rowStatusVector(row, options = {}) {
 
   const out = {};
   for (const key of fields) {
-    const raw = Math.max(0, toSafeNumber(row?.[key], 0));
+    const raw = Math.max(0, resolveFieldNumericValue(row, key, toSafeNumber, 0));
     out[key] = Math.max(0, Math.round(raw / Math.max(divisor, 1)));
   }
   return out;
@@ -31,7 +31,7 @@ export function buildUnitSkillLevelsFromClass(classRow, options = {}) {
     };
   const out = {};
   for (const key of fields) {
-    const raw = toSafeNumber(classRow?.[key], 0);
+    const raw = resolveFieldNumericValue(classRow, key, toSafeNumber, 0);
     out[key] = Math.max(0, Math.round(raw));
   }
   return out;
@@ -93,6 +93,19 @@ function multiplyStatusVector(vector, factor, toSafeNumber) {
     out[key] = Math.max(0, Math.round(toSafeNumber(vector[key], 0) * scale));
   }
   return out;
+}
+
+function resolveFieldNumericValue(row, fieldKey, toSafeNumber, fallback = 0) {
+  const key = String(fieldKey || "").trim();
+  if (!key) return fallback;
+  const aliases = [key];
+  if (key === "魔術") aliases.push("魔法技術");
+  if (key === "魔法技術") aliases.push("魔術");
+  for (const aliasKey of aliases) {
+    const value = toSafeNumber(row?.[aliasKey], NaN);
+    if (Number.isFinite(value)) return value;
+  }
+  return fallback;
 }
 
 function addStatusVectors(vectors, fields, toSafeNumber) {

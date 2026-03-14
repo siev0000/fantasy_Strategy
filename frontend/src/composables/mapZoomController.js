@@ -30,6 +30,13 @@ export function createMapZoomController(options = {}) {
   function setZoomPercent(value, zoomOptions = {}) {
     const data = getCurrentData();
     setZoomPercentValue(normalizeZoomPercent(value, data));
+    const focusWorld = normalizeFocusPoint(zoomOptions?.focusWorld);
+    if (focusWorld) {
+      setCenterMapOnNextZoom(false);
+      setPendingFocus(focusWorld, "absolute");
+      renderMapWithPhaser();
+      return;
+    }
     const centerMode = nonEmptyText(zoomOptions?.centerMode) || "world";
     if (centerMode === "village") {
       const village = getVillageState();
