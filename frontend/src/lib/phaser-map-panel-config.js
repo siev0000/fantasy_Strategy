@@ -1,6 +1,23 @@
 // 村中心から領土として扱う半径。
 export const PLAYER_TERRITORY_RANGE = 1;
 
+// 領土タイル運用設定（資源化/居住化）。
+export const TERRITORY_TILE_MODE_RESOURCE = "resource";
+export const TERRITORY_TILE_MODE_SETTLEMENT = "settlement";
+export const TERRITORY_TILE_MODE_CONFIG = {
+  [TERRITORY_TILE_MODE_RESOURCE]: {
+    label: "資源化",
+    populationCapacityBonus: 5,
+    incomeMultiplier: 2.0 // 資源+100%
+  },
+  [TERRITORY_TILE_MODE_SETTLEMENT]: {
+    label: "居住化",
+    populationCapacityBonus: 15,
+    incomeMultiplier: 1.0
+  }
+};
+export const TERRITORY_TILE_MODE_CONVERSION_TURNS = 2;
+
 // 六角タイル枠線の見た目設定。
 export const TILE_BORDER_DEFAULT = { width: 1.0, color: 0x2f3848, alpha: 0.5 };
 export const TILE_BORDER_PLAYER = { width: 2.25, color: 0x5ad4ff, alpha: 0.98 };
@@ -28,6 +45,7 @@ export const WRAP_RING_TILE_MARGIN = 3;
 export const WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X = 1.9;
 export const WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y = 1.15;
 export const CENTER_LOCK_ZOOM_PERCENT = 100;
+export const MOVE_STEP_INTERVAL_MS = 1000; // 移動時の1マスごとの待機時間(ms)
 
 // テスト勢力の上限数。
 export const MAX_TEST_PLAYER_COUNT = 8;
@@ -73,6 +91,16 @@ export const SPECIAL_TERRAIN_KEYS = new Set(["沼地", "洞窟", "峡谷"]);
 export const GAME_VIEW_WIDTH = 1280;
 export const GAME_VIEW_HEIGHT = 720;
 
+// UI手動スケール設定（見た目調整用）。
+// ここを変更すると、ゲーム内UIの相対サイズだけを調整できる。
+// root側の自動フィットスケール（画面サイズ追従）とは独立。
+export const UI_MANUAL_SCALE_CONFIG = {
+  modal: 1.0, // 全モーダル共通
+  clock: 1.5, // 右下時計UI
+  ownFactionPanel: 1.5, // field-overlay-own-faction-panel
+  characterDetailPane: 1.0 // char-block / detail-right-pane を含む詳細パネル
+};
+
 // マップ上マーカーの位置・サイズ設定。
 export const MAP_UNIT_MARKER_CONFIG = {
   offsetX: -10,
@@ -90,6 +118,20 @@ export const MAP_FACTION_MARKER_CONFIG = {
   offsetX: -13,
   offsetY: 12,
   radius: 5
+};
+
+// 村/町/都市マーカー設定。
+// 画像は透過前提で表示し、必要時のみ背面の丸背景を描く。
+export const MAP_SETTLEMENT_MARKER_CONFIG = {
+  iconSize: 36,
+  drawBackdrop: false,
+  backdropOuterRadius: 11.5,
+  backdropInnerRadius: 6.2
+};
+
+// 領土運用「資源化」タイルのマーカー設定。
+export const MAP_RESOURCE_TILE_MARKER_CONFIG = {
+  iconSize: 22
 };
 
 // 統治者マーク（王冠）の設定。
@@ -120,6 +162,21 @@ export const MAP_WATERFALL_ICON_CONFIG = {
 
 // ヘッダー資源アイコン設定。
 // 見た目サイズを大きくしても、レイアウト占有サイズを抑えてヘッダー高さを維持する。
-export const HEADER_RESOURCE_ICON_VISUAL_SIZE_PX = 20;
-export const HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX = 14;
+export const HEADER_RESOURCE_ICON_VISUAL_SIZE_PX = 24;
+export const HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX = 16;
 export const HEADER_RESOURCE_ICON_SCALE = HEADER_RESOURCE_ICON_VISUAL_SIZE_PX / HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX;
+
+// ヘッダー資材アイコン設定（食料とは別に手動調整可能）。
+export const HEADER_MATERIAL_ICON_VISUAL_SIZE_PX = 26;
+export const HEADER_MATERIAL_ICON_LAYOUT_SIZE_PX = 17;
+export const HEADER_MATERIAL_ICON_SCALE = HEADER_MATERIAL_ICON_VISUAL_SIZE_PX / HEADER_MATERIAL_ICON_LAYOUT_SIZE_PX;
+
+// ヘッダー食料/資材チップのサイズ係数（文字・余白比率）。
+export const HEADER_FOOD_CHIP_SCALE = 1.15;
+export const HEADER_MATERIAL_CHIP_SCALE = 1.15;
+
+// フィールド上の丸アイコンボタン設定。
+export const OVERLAY_ICON_BUTTON_SIZE_PX = 65;
+export const OVERLAY_ICON_BUTTON_ICON_INSET_PX = 8;
+export const OVERLAY_ICON_BUTTON_EMOJI_SIZE_PX = 30;
+export const OVERLAY_ICON_BUTTON_PLUS_BADGE_SIZE_PX = 18;

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
-import skillTreeDb from "../data/skill-tree-db.json";
+import { researchTreeData, resolveResearchCategoryList, normalizeResearchCategoryName } from "../lib/research-tree-config.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -13,20 +13,21 @@ const props = defineProps({
 
 defineEmits(["close"]);
 
-const allCategoryKeys = Object.keys(skillTreeDb);
+const researchCategoriesMap = researchTreeData.categories || {};
+const allCategoryKeys = Object.keys(researchCategoriesMap);
 const activeCategory = ref("");
 const selectedSkillId = ref("");
 
 function normalizeCategoryName(value) {
-  return String(value || "").trim();
+  return normalizeResearchCategoryName(String(value || "").trim());
 }
 
 function toSection(key) {
   return {
     key,
-    label: skillTreeDb[key]?.name || key,
-    rootSkill: skillTreeDb[key]?.rootSkill || null,
-    branches: Array.isArray(skillTreeDb[key]?.branches) ? skillTreeDb[key].branches : []
+    label: researchCategoriesMap[key]?.name || key,
+    rootSkill: researchCategoriesMap[key]?.rootSkill || null,
+    branches: Array.isArray(researchCategoriesMap[key]?.branches) ? researchCategoriesMap[key].branches : []
   };
 }
 
@@ -63,16 +64,7 @@ const resolvedCategories = computed(() => {
   const requested = Array.isArray(props.categories)
     ? props.categories.map(normalizeCategoryName).filter(Boolean)
     : [];
-  const source = requested.length ? requested : allCategoryKeys;
-  const seen = new Set();
-  const ordered = [];
-  for (const key of source) {
-    if (seen.has(key)) continue;
-    if (!Object.prototype.hasOwnProperty.call(skillTreeDb, key)) continue;
-    seen.add(key);
-    ordered.push(key);
-  }
-  return ordered;
+  return resolveResearchCategoryList(requested, researchCategoriesMap);
 });
 
 const skippedCategories = computed(() => {
@@ -80,12 +72,12 @@ const skippedCategories = computed(() => {
     ? props.categories.map(normalizeCategoryName).filter(Boolean)
     : [];
   if (!requested.length) return [];
-  return requested.filter(key => !Object.prototype.hasOwnProperty.call(skillTreeDb, key));
+  return requested.filter(key => !Object.prototype.hasOwnProperty.call(researchCategoriesMap, key));
 });
 
 const activeSection = computed(() => {
   if (!activeCategory.value) return null;
-  if (!Object.prototype.hasOwnProperty.call(skillTreeDb, activeCategory.value)) return null;
+  if (!Object.prototype.hasOwnProperty.call(researchCategoriesMap, activeCategory.value)) return null;
   return toSection(activeCategory.value);
 });
 
@@ -96,14 +88,16 @@ const selectedSkillInfo = computed(() => {
     const rootTier = Number.isFinite(Number(section.rootSkill.tier))
       ? Number(section.rootSkill.tier)
       : 1;
-    return {
-      categoryLabel: section.label,
-      branchName: "起点",
-      skill: section.rootSkill,
-      prerequisite: "なし",
-      pointCost: rootTier * 100
-    };
-  }
+      return {
+        categoryLabel: section.label,
+        branchName: "起点",
+        skill: section.rootSkill,
+        prerequisite: "なし",
+        pointCost: rootTier * 100,
+        requiredUnitLevel: researchTreeData.levelRequirements?.[rootTier] ?? null,
+        reductionSkill: researchTreeData.timeReductionSkills?.[section.key] || "-"
+      };
+    }
   for (const branch of section.branches) {
     for (let i = 0; i < branch.skills.length; i += 1) {
       const skill = branch.skills[i];
@@ -116,7 +110,9 @@ const selectedSkillInfo = computed(() => {
         branchName: branch.name,
         skill,
         prerequisite,
-        pointCost: skill.tier * 100
+        pointCost: skill.tier * 100,
+        requiredUnitLevel: researchTreeData.levelRequirements?.[skill.tier] ?? null,
+        reductionSkill: researchTreeData.timeReductionSkills?.[section.key] || "-"
       };
     }
   }
@@ -161,13 +157,13 @@ function selectRootSkill() {
 <template>
   <base-modal
     :show="show"
-    title="スキルツリー"
+    title="研究ツリー"
     :wide="true"
     @close="$emit('close')"
   >
     <div class="skill-tree-modal">
       <p class="small skill-tree-help">
-        上でカテゴリを切り替え、中央で分岐ツリーを選択、右側で詳細を確認します。
+        上で研究系統を切り替え、中央で一本ルートの段階を選択、右側で研究詳細を確認します。
       </p>
 
       <div v-if="skippedCategories.length" class="skill-tree-warning">
@@ -183,7 +179,7 @@ function selectRootSkill() {
           :class="{ active: key === activeCategory }"
           @click="selectCategory(key)"
         >
-          {{ skillTreeDb[key]?.name || key }}
+          {{ researchCategoriesMap[key]?.name || key }}
         </button>
       </div>
 
@@ -191,7 +187,7 @@ function selectRootSkill() {
         <section class="tree-canvas">
           <header class="tree-head">
             <h3>{{ activeSection.label }} ツリー</h3>
-            <div class="small">分岐数: {{ activeSection.branches.length }}</div>
+            <div class="small">段階数: {{ (activeSection.rootSkill ? 1 : 0) + (activeSection.branches?.[0]?.skills?.length || 0) }}</div>
           </header>
 
           <div v-if="activeSection.rootSkill" class="root-zone">
@@ -205,7 +201,6 @@ function selectRootSkill() {
               <span class="node-name">{{ activeSection.rootSkill.name }}</span>
             </button>
             <div class="root-down-link" />
-            <div class="root-split-line" />
           </div>
 
           <div class="branch-columns">
@@ -244,6 +239,8 @@ function selectRootSkill() {
             <p class="detail-desc">{{ selectedSkillInfo.skill.desc }}</p>
             <ul class="detail-list">
               <li>必要ポイント(仮): {{ selectedSkillInfo.pointCost }}</li>
+              <li>研究必要ユニットLv: {{ selectedSkillInfo.requiredUnitLevel || "-" }}</li>
+              <li>研究時間短縮技能: {{ selectedSkillInfo.reductionSkill }}</li>
               <li>前提スキル: {{ selectedSkillInfo.prerequisite }}</li>
               <li>状態: 未解放（取得処理は未実装）</li>
             </ul>
@@ -337,7 +334,7 @@ function selectRootSkill() {
 
 .branch-columns {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
   align-items: start;
 }
@@ -373,13 +370,6 @@ function selectRootSkill() {
   width: 2px;
   height: 14px;
   background: linear-gradient(to bottom, rgba(169, 209, 255, 0.72), rgba(145, 176, 221, 0.4));
-}
-
-.root-split-line {
-  width: min(92%, 680px);
-  height: 2px;
-  background: linear-gradient(to right, rgba(169, 209, 255, 0.2), rgba(169, 209, 255, 0.74), rgba(169, 209, 255, 0.2));
-  margin-bottom: 6px;
 }
 
 .branch-stack {

@@ -185,6 +185,9 @@ export function collectTerritoryIncome(data, ownedSet, foodKeys, materialKeys, o
   const resolveTileTerrainForYield = typeof options?.resolveTileTerrainForYield === "function"
     ? options.resolveTileTerrainForYield
     : (() => "");
+  const resolveTileYieldMultiplier = typeof options?.resolveTileYieldMultiplier === "function"
+    ? options.resolveTileYieldMultiplier
+    : (() => 1);
   const terrainYieldMap = options?.terrainYieldMap;
   const safeFoodKeys = Array.isArray(foodKeys) ? foodKeys : [];
   const safeMaterialKeys = Array.isArray(materialKeys) ? materialKeys : [];
@@ -201,12 +204,19 @@ export function collectTerritoryIncome(data, ownedSet, foodKeys, materialKeys, o
     const terrain = resolveTileTerrainForYield(data, pos.x, pos.y);
     const row = terrainYieldMap.get(terrain) || null;
     if (!row) continue;
+    const tileMultiplier = Math.max(0, toSafeNumber(resolveTileYieldMultiplier({
+      x: pos.x,
+      y: pos.y,
+      key,
+      terrain,
+      row
+    }), 1));
     income.tiles += 1;
     for (const foodKey of safeFoodKeys) {
-      income.food[foodKey] = roundTo1(income.food[foodKey] + toSafeNumber(row?.[foodKey], 0));
+      income.food[foodKey] = roundTo1(income.food[foodKey] + (toSafeNumber(row?.[foodKey], 0) * tileMultiplier));
     }
     for (const matKey of safeMaterialKeys) {
-      income.material[matKey] = roundTo1(income.material[matKey] + toSafeNumber(row?.[matKey], 0));
+      income.material[matKey] = roundTo1(income.material[matKey] + (toSafeNumber(row?.[matKey], 0) * tileMultiplier));
     }
   }
   return income;

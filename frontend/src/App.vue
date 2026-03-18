@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { io } from "socket.io-client";
-import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH } from "./lib/phaser-map-panel-config.js";
+import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH, UI_MANUAL_SCALE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { RESEARCH_CATEGORY_ORDER } from "./lib/research-tree-config.js";
 import PhaserMapGeneratorPanel from "./components/PhaserMapGeneratorPanel.vue";
 import RoomModal from "./components/RoomModal.vue";
 import BattleModal from "./components/BattleModal.vue";
@@ -238,7 +239,7 @@ const showClassModal = ref(false);
 const showCharacterStatusModal = ref(false);
 const showCharacterNameModal = ref(false);
 const showGameStartSetupModal = ref(false);
-const skillTreeCategories = ref(["魔法", "軍事", "経済", "信仰"]);
+const skillTreeCategories = ref([...RESEARCH_CATEGORY_ORDER]);
 const gameStartPlayerCount = ref(1);
 const gameStartOtherFactionCount = ref(3);
 const gameStartRandomPlacementEnabled = ref(true);
@@ -365,7 +366,11 @@ const playersLabel = computed(() => {
 });
 
 const appRootStyle = computed(() => ({
-  "--game-root-scale": String(appRootScale.value)
+  "--game-root-scale": String(appRootScale.value),
+  "--ui-manual-modal-scale": String(UI_MANUAL_SCALE_CONFIG.modal),
+  "--ui-manual-clock-scale": String(UI_MANUAL_SCALE_CONFIG.clock),
+  "--ui-manual-own-faction-panel-scale": String(UI_MANUAL_SCALE_CONFIG.ownFactionPanel),
+  "--ui-manual-character-detail-scale": String(UI_MANUAL_SCALE_CONFIG.characterDetailPane)
 }));
 
 function updateAppRootScale() {
@@ -423,7 +428,7 @@ function openModal(kind, payload = null) {
   if (kind === "skill" && Array.isArray(payload?.categories)) {
     skillTreeCategories.value = payload.categories;
   } else if (kind === "skill" && !skillTreeCategories.value.length) {
-    skillTreeCategories.value = ["魔法", "軍事", "経済", "信仰"];
+    skillTreeCategories.value = [...RESEARCH_CATEGORY_ORDER];
   }
 }
 
@@ -1490,7 +1495,7 @@ watch(gameOnlyMode, () => {
   color: #f5e9cc;
   display: grid;
   gap: 10px;
-  transform: scale(var(--game-modal-scale, 1));
+  transform: scale(calc(var(--game-modal-scale, 1) * var(--ui-manual-modal-scale, 1)));
   transform-origin: center center;
 }
 

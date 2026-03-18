@@ -74,6 +74,7 @@ export function createOwnSquadNavigatorEntries({
           });
         }
       }
+      const totalLevel = members.reduce((sum, member) => sum + Math.max(1, Math.floor(toSafeNumber(member?.level, 1))), 0);
       const rawX = toSafeNumber(summary?.x, NaN);
       const rawY = toSafeNumber(summary?.y, NaN);
       const positioned = Number.isFinite(rawX) && Number.isFinite(rawY) && rawX >= 0 && rawY >= 0;
@@ -101,6 +102,7 @@ export function createOwnSquadNavigatorEntries({
         x: positioned ? Math.floor(rawX) : null,
         y: positioned ? Math.floor(rawY) : null,
         totalMemberCount: Math.max(1, Math.floor(toSafeNumber(summary?.totalMemberCount, 1))),
+        totalLevel: Math.max(1, Math.floor(toSafeNumber(summary?.totalLevel, totalLevel || 1))),
         scoutValue: roundTo1(toSafeNumber(summary?.scoutValue, 0)),
         stealthValue: roundTo1(toSafeNumber(summary?.stealthValue, 0)),
         members,

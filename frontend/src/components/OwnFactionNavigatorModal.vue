@@ -170,11 +170,14 @@ function rowBackgroundStyle(entry) {
           :disabled="!entry.positioned"
           @click="onFocusUnit(entry)"
         >
-          <span class="own-faction-unit-main">
-            <img v-if="entry.iconSrc" :src="entry.iconSrc" :alt="`${entry.name} アイコン`" class="own-faction-icon" />
-            <span v-else class="own-faction-icon-fallback">{{ entry.iconGlyph }}</span>
-            <strong>{{ entry.name }}</strong>
-          </span>
+          <div class="own-faction-row-head">
+            <span class="own-faction-unit-main">
+              <img v-if="entry.iconSrc" :src="entry.iconSrc" :alt="`${entry.name} アイコン`" class="own-faction-icon" />
+              <span v-else class="own-faction-icon-fallback">{{ entry.iconGlyph }}</span>
+              <strong>{{ entry.name }}</strong>
+            </span>
+            <span class="own-faction-level-tag">Lv{{ entry.level }}</span>
+          </div>
           <span class="own-faction-hp-line">
             <span class="own-faction-hp-label">HP:</span>
             <span class="own-faction-hp-bar">
@@ -201,11 +204,14 @@ function rowBackgroundStyle(entry) {
           :style="rowBackgroundStyle(entry)"
           @click="onFocusSquad(entry)"
           >
-            <span class="own-faction-unit-main">
-              <img v-if="entry.iconSrc" :src="entry.iconSrc" :alt="`${entry.name} アイコン`" class="own-faction-icon" />
-              <span v-else class="own-faction-icon-fallback">{{ entry.iconGlyph || entry.leaderIconGlyph }}</span>
-              <strong>{{ entry.name }}</strong>
-            </span>
+            <div class="own-faction-row-head">
+              <span class="own-faction-unit-main">
+                <img v-if="entry.iconSrc" :src="entry.iconSrc" :alt="`${entry.name} アイコン`" class="own-faction-icon" />
+                <span v-else class="own-faction-icon-fallback">{{ entry.iconGlyph || entry.leaderIconGlyph }}</span>
+                <strong>{{ entry.name }}</strong>
+              </span>
+              <span class="own-faction-level-tag">ΣLv{{ entry.totalLevel || 0 }}</span>
+            </div>
           <span class="own-faction-unit-sub">
             {{ entry.positioned ? `(${entry.x}, ${entry.y})` : "未配置" }} / {{ entry.totalMemberCount }}体 / 索{{ entry.scoutValue }} 隠{{ entry.stealthValue }}
           </span>
@@ -248,6 +254,7 @@ function rowBackgroundStyle(entry) {
         </div>
         <div class="own-faction-squad-summary">
           <span>人数: {{ selectedSquadEntry.totalMemberCount }}</span>
+          <span>合計Lv: {{ selectedSquadEntry.totalLevel || 0 }}</span>
           <span>索敵: {{ selectedSquadEntry.scoutValue }}</span>
           <span>隠密: {{ selectedSquadEntry.stealthValue }}</span>
         </div>
@@ -479,11 +486,34 @@ function rowBackgroundStyle(entry) {
   min-width: 0;
 }
 
+.own-faction-row-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .own-faction-unit-main strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.own-faction-level-tag {
+  justify-self: end;
+  min-width: 42px;
+  padding: 1px 6px;
+  border: 1px solid rgba(222, 193, 135, 0.48);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(40, 30, 20, 0.82), rgba(24, 19, 12, 0.88));
+  color: #f8ebc8;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .own-faction-icon,
@@ -583,6 +613,8 @@ function rowBackgroundStyle(entry) {
   max-height: 175px;
   overflow-x: hidden;
   overflow-y: auto;
+  /* 一旦非表示に */
+  display: none;
 }
 
 .detail-icon-btn {

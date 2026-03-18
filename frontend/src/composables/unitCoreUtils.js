@@ -72,9 +72,14 @@ export function resolveUnitStealthValue(unit, options = {}) {
 }
 
 export function toUnitRoleLabel(unit, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function"
+    ? options.nonEmptyText
+    : value => String(value ?? "").trim();
   if (!unit) return "-";
   if (isSovereignUnit(unit)) return "統治者";
   if (isNamedUnit(unit, options)) return "ネームド";
+  const type = nonEmptyText(unit?.unitType);
+  if (type && type !== "モブ") return type;
   return "モブ";
 }
 

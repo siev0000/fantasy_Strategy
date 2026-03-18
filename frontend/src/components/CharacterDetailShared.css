@@ -1,7 +1,7 @@
 .char-block {
   border: 1px solid rgba(206, 180, 135, 0.68);
   border-radius: 8px;
-  padding: 8px;
+  padding: 10px;
   background: rgba(255, 255, 255, 0.72);
 }
 
@@ -12,26 +12,29 @@
 
 .char-status-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
 .char-status-grid.mini {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .char-status-chip {
   border: 1px solid rgba(206, 180, 135, 0.62);
   border-radius: 7px;
-  padding: 3px 2px;
+  padding: 6px 8px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
   background: rgba(255, 255, 255, 0.82);
+  min-height: 36px;
+  font-size: 15px;
 }
 
 .char-skill-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -45,10 +48,12 @@
 .char-resist-chip {
   border: 1px solid rgba(206, 180, 135, 0.62);
   border-radius: 7px;
-  padding: 3px 2px;
+  padding: 6px 8px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
   background: rgba(255, 255, 255, 0.82);
+  min-height: 36px;
   font-size: 15px;
 }
 

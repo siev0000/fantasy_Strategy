@@ -128,6 +128,20 @@ const jobClassNames = computed(() => {
     .filter(Boolean);
 });
 
+const classImageIdByName = computed(() => {
+  if (!Array.isArray(classDb)) return {};
+  const map = {};
+  for (const row of classDb) {
+    const name = nonEmptyText(row?.名前);
+    const imageId = nonEmptyText(row?.画像ID);
+    if (!name || !imageId || !hasIconName(imageId)) continue;
+    if (!Object.prototype.hasOwnProperty.call(map, name)) {
+      map[name] = imageId;
+    }
+  }
+  return map;
+});
+
 const squadList = computed(() => {
   if (!Array.isArray(props.squads)) return [];
   return props.squads
@@ -426,6 +440,27 @@ function iconGlyphForUnit(unit) {
   const name = nonEmptyText(unit?.name);
   if (name) return Array.from(name)[0] || "?";
   return "?";
+}
+
+function primaryClassNameForUnit(unit) {
+  const raw = nonEmptyText(unit?.className);
+  if (!raw) return "";
+  const [head] = raw.split("/");
+  return nonEmptyText(head);
+}
+
+function classIconSrcForUnit(unit) {
+  const className = primaryClassNameForUnit(unit);
+  if (!className) return "";
+  const imageId = nonEmptyText(classImageIdByName.value[className]);
+  if (!imageId) return "";
+  return getIconSrcByName(imageId, imageId);
+}
+
+function classCardStyleForUnit(unit) {
+  const src = classIconSrcForUnit(unit);
+  if (!src) return {};
+  return { "--char-list-class-icon-image": `url("${src}")` };
 }
 
 function subIconNameForUnit(unit) {
@@ -1064,8 +1099,8 @@ watch(
             :key="unit.id"
             type="button"
             class="char-list-item"
-            :class="{ active: activeUnit?.id === unit.id, 'with-sub-icon': !!subIconSrcForUnit(unit) }"
-            :style="cardSubIconStyle(unit)"
+            :class="{ active: activeUnit?.id === unit.id }"
+            :style="classCardStyleForUnit(unit)"
             @click="selectUnit(unit.id)"
           >
             <div class="char-list-line">
@@ -1074,9 +1109,11 @@ watch(
                 <span v-else class="char-list-icon-fallback">{{ iconGlyphForUnit(unit) }}</span>
                 <strong>{{ unit.name }}<span v-if="isSovereign(unit)"> ◆</span></strong>
               </span>
-              <span>Lv{{ unit.level || "-" }}</span>
             </div>
-            <div class="small">種族: {{ unit.race || "-" }} / クラス: {{ unit.className || "-" }} / 役割: {{ unitRoleLabel(unit) }}</div>
+            <div class="small char-list-meta">
+              <span class="char-list-level">Lv{{ unit.level || "-" }}</span>
+              <span class="char-list-role">役割: {{ unitRoleLabel(unit) }}</span>
+            </div>
           </button>
         </aside>
 
@@ -1344,6 +1381,7 @@ watch(
   <base-modal
     :show="show && activeUnitIconModalOpen"
     title="サブアイコン変更"
+    wide
     @close="closeActiveUnitIconModal"
   >
     <div class="subicon-modal-head">
@@ -1375,6 +1413,7 @@ watch(
   <base-modal
     :show="show && activeSquadIconModalOpen"
     title="部隊アイコン変更"
+    wide
     @close="closeActiveSquadIconModal"
   >
     <div class="subicon-modal-head">
@@ -1408,12 +1447,13 @@ watch(
 
 <style scoped>
 :deep(.modal-card.modal-card-wide) {
-  width: min(1120px, calc(100vw - 24px));
-  /* height: min(860px, calc(100vh - 24px)); */
-  max-height: min(860px, calc(100vh - 24px));
+  width: min(920px, calc(100% - 24px));
+  /* height: min(860px, calc(100% - 24px)); */
+  max-height: min(860px, calc(100% - 24px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  font-size: 1.02rem;
 }
 
 :deep(.modal-body) {
@@ -1459,7 +1499,7 @@ watch(
 .squad-layout {
   --char-panel-max-height: min(68vh, 720px);
   display: grid;
-  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
   gap: 0px;
   align-items: start;
   max-height: var(--char-panel-max-height);
@@ -1499,7 +1539,7 @@ watch(
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.95);
   color: #2d2418;
-  padding: 4px;
+  padding: 6px;
   text-align: left;
 }
 
@@ -1575,6 +1615,18 @@ watch(
 .squad-candidate-item.active {
   border-color: rgba(111, 84, 47, 0.9);
   background: linear-gradient(165deg, rgba(238, 218, 181, 0.98), rgba(228, 202, 160, 0.96));
+}
+
+.char-list-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--char-list-class-icon-image, none);
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 64px 64px;
+  opacity: 0.12;
+  pointer-events: none;
 }
 
 .char-detail,
@@ -1668,8 +1720,8 @@ watch(
 }
 
 .subicon-modal-current img {
-  width: 56px;
-  height: 56px;
+  width: 85px;
+  height: 85px;
   border-radius: 10px;
   border: 1px solid rgba(170, 140, 94, 0.74);
   object-fit: cover;
@@ -1678,16 +1730,16 @@ watch(
 
 .subicon-modal-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(54px, 54px));
-  gap: 7px;
-  max-height: 240px;
+  grid-template-columns: repeat(auto-fill, minmax(85px, 85px));
+  gap: 8px;
+  max-height: 360px;
   overflow: auto;
   padding: 2px;
 }
 
 .subicon-modal-item {
-  width: 54px;
-  height: 54px;
+  width: 85px;
+  height: 85px;
   border: 1px solid rgba(170, 140, 94, 0.72);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.92);
@@ -1804,6 +1856,24 @@ watch(
   justify-content: space-between;
   gap: 8px;
   align-items: center;
+}
+
+.char-list-level {
+  font-weight: 700;
+  min-width: 44px;
+  text-align: left;
+}
+
+.char-list-meta {
+  margin-top: 3px;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px;
+  align-items: center;
+}
+
+.char-list-role {
+  font-size: 0.88rem;
 }
 
 .char-list-name-with-icon {

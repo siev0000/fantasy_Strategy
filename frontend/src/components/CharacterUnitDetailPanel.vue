@@ -339,6 +339,28 @@ const resistanceRows = computed(() => {
   })).filter(row => row.value !== null && row.value !== 0);
 });
 
+const combatProfileRows = computed(() => {
+  const profile = props.unit?.combatProfile;
+  if (!profile || typeof profile !== "object") return [];
+  const hpMultiplier = Number(profile?.hpMultiplier);
+  const attackCount = Number(profile?.attackCount);
+  const populationCost = Number(profile?.populationCost);
+  const rows = [];
+  if (Number.isFinite(hpMultiplier) && hpMultiplier > 1) {
+    rows.push({ key: "HP倍率", value: `x${Math.round(hpMultiplier * 10) / 10}` });
+  }
+  if (Number.isFinite(attackCount) && attackCount > 1) {
+    rows.push({ key: "攻撃回数", value: `${Math.floor(attackCount)}回` });
+  }
+  if (Number.isFinite(populationCost) && populationCost > 0) {
+    rows.push({ key: "人口消費", value: `${Math.floor(populationCost)}人/体` });
+  }
+  if (profile?.simpleActionOnly) {
+    rows.push({ key: "行動制限", value: "単純行動のみ" });
+  }
+  return rows;
+});
+
 const acquiredSkills = computed(() => {
   const unit = props.unit;
   if (!unit || !Array.isArray(unit?.skills)) return [];
@@ -434,6 +456,12 @@ watch(
               <div v-for="key in STATUS_FIELDS" :key="`status-${unit.id}-${key}`" class="char-status-chip">
                 <span>{{ key }}</span>
                 <strong>{{ statusValue(unit, key) }}</strong>
+              </div>
+            </div>
+            <div v-if="combatProfileRows.length" class="char-combat-grid">
+              <div v-for="row in combatProfileRows" :key="`combat-${unit.id}-${row.key}`" class="char-skill-chip">
+                <span>{{ row.key }}</span>
+                <strong>{{ row.value }}</strong>
               </div>
             </div>
           </section>
@@ -544,19 +572,24 @@ watch(
 
 .detail-split {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(340px, 0.95fr);
-  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr);
+  gap: 8px;
   align-items: start;
+  transform: scale(var(--ui-manual-character-detail-scale, 1));
+  transform-origin: top left;
+  width: calc(100% / max(var(--ui-manual-character-detail-scale, 1), 0.001));
 }
 
 .detail-left-pane {
   display: grid;
   gap: 5px;
   min-width: 0;
+  min-height: 420px;
 }
 
 .detail-right-pane {
   min-width: 0;
+  min-height: 420px;
 }
 
 .detail-view-tabs {
@@ -671,6 +704,17 @@ watch(
   justify-content: space-between;
   gap: 8px;
   align-items: center;
+}
+
+.char-combat-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.detail-right-pane :deep(.skill-table-wrap) {
+  min-height: 420px;
 }
 
 @media (max-width: 1px) {

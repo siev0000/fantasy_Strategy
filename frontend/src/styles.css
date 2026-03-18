@@ -13,6 +13,7 @@
   --scrollbar-thumb-hover: linear-gradient(180deg, #9af6ff, #3bc0da);
   --scrollbar-border: rgba(19, 74, 96, 0.88);
   --game-modal-scale: 1;
+  --modal-base-font-size: 16px;
 }
 * { box-sizing: border-box; }
 
@@ -105,7 +106,7 @@ body {
 .app.game-only .generic-modal,
 .app.game-only .settings-modal,
 .app.game-only .game-start-modal {
-  transform: none !important;
+  transform: scale(var(--ui-manual-modal-scale, 1)) !important;
 }
 header {
   padding: 16px 20px;
@@ -319,16 +320,23 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .modal-card {
   width: min(780px, 100%);
-  max-height: calc(100vh - 32px);
+  max-height: calc(100% - 32px);
   overflow: auto;
-  transform: scale(var(--game-modal-scale, 1));
+  font-size: var(--modal-base-font-size);
+  line-height: 1.42;
+  transform: scale(calc(var(--game-modal-scale, 1) * var(--ui-manual-modal-scale, 1)));
   transform-origin: center center;
 }
 .modal-card-wide {
-  width: min(1040px, calc(100vw - 24px));
-  max-height: calc(100vh - 24px);
-  transform: scale(var(--game-modal-scale, 1));
+  width: min(980px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  font-size: var(--modal-base-font-size);
+  line-height: 1.42;
+  transform: scale(calc(var(--game-modal-scale, 1) * var(--ui-manual-modal-scale, 1)));
   transform-origin: center center;
+}
+.panel.modal-card {
+  padding: 14px;
 }
 .modal-head {
   display: flex;
@@ -339,6 +347,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .modal-head h2 {
   margin: 0;
+  font-size: 1.24rem;
 }
 .battle-layout {
   display: grid;

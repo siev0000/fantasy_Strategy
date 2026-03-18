@@ -1,6 +1,11 @@
 Original prompt: 全体を整理してほしい。メモと地形ランダム生成だけは消さないで vueファイルにできるところはVueファイルに
 
 - 2026-02-26: Started reorganization with focus on preserving map random generation and memo docs.
+- 2026-03-18: ルール追記。行動処理順を `索敵(情報確定) -> 移動(同時解決/1マス判定) -> 接敵ロック -> 奇襲/攻撃 -> 建築/経済` に整理し、先逃げ防止の接敵ロック方針を `docs/fantasy_strategy_core_design.md` と `docs/NEXT_TASKS.md` に反映。
+- 2026-03-18: ユニット移動を非同期ステップ実行へ変更。経路確認後は `MOVE_STEP_INTERVAL_MS`（既定1000ms）ごとに1マスずつ進み、各マスで判定を実施。移動中の再入力ガード（経路再作成/移動モード切替）も追加。
+- 2026-03-18: `develop-web-game` Playwright クライアント検証を実行したが、スキル実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-18: 索敵で発見/被発見したユニットに「接敵ロック」を付与。ロック中は移動不可にし、移動停止理由を `selectedTileDetail` と `mapClickInfo` に可視化。ロック状態は勢力スナップショット保存/復元に対応。
+- 2026-03-18: 仕様調整。索敵された時点で即移動禁止にはせず、非攻撃なら移動継続可能へ変更。代わりに `敵がいるマスを通過/侵入できない` ルールを経路探索・到達可能範囲・移動計画に反映。
 - 2026-02-26: Confirmed current map generation exists in `web/js/map.js` and is currently bridged from `app-vue.js` via direct DOM listeners.
 - 2026-02-26: Added Vue component files `app-header.js`, `map-generator-panel.js`, and `menu-panel.js` to move UI blocks out of `index.html`.
 - 2026-02-26: Updated `index.html` to use Vue components and removed large inline section markup.
@@ -650,3 +655,16 @@ pm run build:front.- 2026-03-10: Fixed fog-of-war toggle regression: when test m
 - 2026-03-14: Restored scaling by moving to single global root scale on `App` (`.app.game-only`) based on viewport vs 1280x720.
 - 2026-03-14: `phaser-map-panel` switched to `width/height: 100%` to follow root-scaled container; removed dependency on viewport units for panel sizing.
 - 2026-03-14: Keeps `phaser-stage` unscaled locally to avoid double scaling.
+- 2026-03-19: 研究ツリーを `都市研究と施設ルールまとめ.md` 準拠で5系統（鍛冶Lv/魔法Lv/信仰Lv/軍事Lv/経済Lv）に更新。別ファイル `frontend/src/lib/research-tree-config.js` を新設し、カテゴリ順・Lv要件・時間短縮技能・既定分岐データを集約。
+- 2026-03-19: `SkillTreeModal.vue` を研究ツリー表示に差し替え。カテゴリ正規化・未登録カテゴリ警告・研究必要ユニットLv/時間短縮技能の詳細表示に対応。
+- 2026-03-19: 研究ツリー呼び出しカテゴリを `App.vue` と `PhaserMapGeneratorPanel.vue` で5系統へ統一。
+- 2026-03-19: 検証 `npm run build:front` 成功。- 2026-03-19: develop-web-game Playwright クライアント再実行。スキル実行環境で playwright が解決できず ERR_MODULE_NOT_FOUND（web_game_playwright_client.js）で失敗。
+- 2026-03-19: 研究ツリー仕様を一本ルートへ変更。`research-tree-config.js` でカテゴリごとに分岐を単一路へ正規化（同Tier分岐は `A / B` 形式で統合）。
+- 2026-03-19: `SkillTreeModal.vue` の文言/表示を一本ルート前提へ更新（分岐表現を段階表現へ変更、列レイアウトを自動幅に調整）。
+- 2026-03-19: 検証 `npm run build:front` 成功。- 2026-03-19: 研究ツリー一本化後に develop-web-game Playwright クライアント再実行。playwright 未解決（ERR_MODULE_NOT_FOUND）のため実行不可。
+- 2026-03-19: 軍事ユニット仕様を追加。`frontend/src/composables/militaryUnitUtils.js` を新設し、ユニット作成モード（個体/軍隊/強化軍隊）・軍事Lv解放・人口消費・HP倍率・攻撃回数を定義。
+- 2026-03-19: `PhaserMapGeneratorPanel.vue` のユニット作成モーダルに種別切替を追加し、作成時に軍事Lvに応じたモード適用（軍事Lv2: 人口4/HPx2.5/攻撃4回、軍事Lv3: 人口5/HPx3/攻撃5回）。人口不足時エラー表示とログ出力を追加。
+- 2026-03-19: `createUnitRecord` / 再ビルド処理で `combatProfile` を保持し、HP倍率を継続反映するよう更新。
+- 2026-03-19: `CharacterUnitDetailPanel.vue` に軍事ユニット補正表示（HP倍率/攻撃回数/人口消費/単純行動）を追加。
+- 2026-03-19: `toUnitRoleLabel` を更新し、モブ以外の `unitType`（軍隊/精鋭軍隊）を表示可能に。
+- 2026-03-19: 検証 `npm run build:front` 成功。- 2026-03-19: 軍事ユニット実装後に develop-web-game Playwright クライアント実行を再試行。playwright 未解決 (ERR_MODULE_NOT_FOUND) のため失敗。
