@@ -49,8 +49,8 @@ defineEmits(["open-modal"]);
       <button class="secondary" type="button" @click="$emit('open-modal', 'room')">ルーム管理</button>
       <button type="button" @click="$emit('open-modal', 'battle')">戦闘画面</button>
       <button class="secondary" type="button" @click="$emit('open-modal', 'sim')">シミュレーター</button>
-      <button type="button" @click="$emit('open-modal', 'skill', { categories: ['魔法', '軍事', '経済', '信仰'] })">
-        スキルツリー
+      <button type="button" @click="$emit('open-modal', 'skill', { categories: ['鍛冶Lv', '魔法Lv', '信仰Lv', '軍事Lv', '経済Lv'] })">
+        研究
       </button>
       <button class="secondary" type="button" @click="$emit('open-modal', 'race')">種族選択</button>
       <button class="secondary" type="button" @click="$emit('open-modal', 'class')">クラス選択</button>

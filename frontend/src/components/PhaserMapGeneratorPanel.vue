@@ -5,6 +5,7 @@ import GenericModal from "./GenericModal.vue";
 import RaceSelectModal from "./RaceSelectModal.vue";
 import ClassSelectModal from "./ClassSelectModal.vue";
 import OwnFactionNavigatorModal from "./OwnFactionNavigatorModal.vue";
+import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
 import { createOwnCharacterNavigatorEntries, createOwnSquadNavigatorEntries } from "../lib/own-faction-navigator.js";
@@ -34,6 +35,17 @@ import {
   resolveVillagePopulationCapacityByTerritory as resolveVillagePopulationCapacityByTerritoryUtil
 } from "../composables/territoryDevelopmentUtils.js";
 import {
+  applyResidentialCenterUpgradeUtil,
+  createHousingUpgradeSelectionStateUtil,
+  ensureTerritoryResidentialClusterMapShapeUtil,
+  normalizeTerritoryResidentialCenterMapUtil,
+  resolveResidentialAttachmentCandidatesUtil,
+  resolveTerritoryResidentialAttachmentKeysUtil,
+  resolveTerritoryResidentialCenterKeyUtil,
+  summarizeHousingUpgradeSelectionUtil,
+  toggleHousingUpgradeSelectionTileUtil
+} from "../composables/territoryResidentialClusterUtils.js";
+import {
   buildCharacterStatusFromRules as buildCharacterStatusFromRulesUtil,
   buildUnitResistances as buildUnitResistancesUtil,
   buildUnitSkillLevelsFromRules as buildUnitSkillLevelsFromRulesUtil,
@@ -62,9 +74,9 @@ import {
   UNIT_CREATE_MODE_KEYS,
   applyMilitaryProfileToStatus as applyMilitaryProfileToStatusUtil,
   consumeVillagePopulationByRace as consumeVillagePopulationByRaceUtil,
+  resolveUnitCreateModeCatalog as resolveUnitCreateModeCatalogUtil,
   resolveMaxCreatableByPopulation as resolveMaxCreatableByPopulationUtil,
-  resolveUnitCreateMode as resolveUnitCreateModeUtil,
-  resolveUnitCreateModeOptions as resolveUnitCreateModeOptionsUtil
+  resolveUnitCreateMode as resolveUnitCreateModeUtil
 } from "../composables/militaryUnitUtils.js";
 import {
   adjustVillagePopulationForTurn as adjustVillagePopulationForTurnUtil,
@@ -136,6 +148,14 @@ import {
   SPECIAL_TERRAIN_KEYS,
   TERRITORY_TILE_MODE_CONFIG,
   TERRITORY_TILE_MODE_CONVERSION_TURNS,
+  TERRITORY_RESIDENTIAL_LEVEL_CONFIG,
+  TERRITORY_RESIDENTIAL_LEVEL_ATTACHED,
+  TERRITORY_RESIDENTIAL_LEVEL_CITY,
+  TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS,
+  TERRITORY_RESIDENTIAL_LEVEL_TOWN,
+  TERRITORY_RESIDENTIAL_LEVEL_ORDER,
+  TERRITORY_RESIDENTIAL_LEVEL_LAND,
+  TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
   TERRITORY_TILE_MODE_RESOURCE,
   TERRITORY_TILE_MODE_SETTLEMENT,
   TILE_BORDER_DEFAULT,
@@ -156,9 +176,13 @@ import {
   terrainDefinitions
 } from "../lib/map-generator.js";
 import classDb from "../../../data/source/export/json/クラス.json";
+import consumptionDb from "../../../data/source/export/json/消費量.json";
 import enemySpawnDb from "../../../data/source/export/json/出現敵.json";
 import equipmentDb from "../../../data/source/export/json/装備.json";
 import factionDb from "../../../data/source/export/json/勢力.json";
+import facilityDb from "../../../data/source/export/json/施設.json";
+import enchantDb from "../../../data/source/export/json/付与.json";
+import skillInfoDb from "../../../data/source/export/json/スキル一覧.json";
 import terrainYieldDb from "../../../data/source/export/json/地形.json";
 
 const props = defineProps({
@@ -166,6 +190,7 @@ const props = defineProps({
   selectedClass: { type: String, default: "" },
   selectedCharacterName: { type: String, default: "" },
   selectedVillageName: { type: String, default: "" },
+  researchProgress: { type: Object, default: null },
   gameSetupReady: { type: Boolean, default: false },
   gameSetupProgressText: { type: String, default: "" },
   characterCommand: { type: Object, default: null }
@@ -208,6 +233,7 @@ const eventModalNotes = ref([]); // イベント結果詳細行
 const showNationLogModal = ref(false); // 統治者ログモーダル表示
 const showPinnedNationLogPanel = ref(false); // 右側ログ固定表示ON/OFF
 const showVillageBuildModal = ref(false); // 建設/都市能力モーダル表示
+const showEquipmentInventoryModal = ref(false); // 道具一覧モーダル表示
 const selectedVillageBuildingKey = ref("");
 const mapSizeInfo = ref("サイズ: -");
 const mapCenterInfo = ref("中央座標: -");
@@ -253,6 +279,10 @@ const unitCreateClass = ref("");
 const unitCreateBatchCount = ref(1);
 const unitCreateMode = ref(UNIT_CREATE_MODE_KEYS.NORMAL);
 const selectedTileDetail = ref(null);
+const housingUpgradeSelectionState = ref(null); // 住居拡張の付属領域選択状態
+const tileDetailMinimized = ref(false);
+const tileDetailPanelWidth = ref(460);
+const tileDetailPanelHeight = ref(360);
 const villageInfoText = ref("初期村: -");
 const unitInfoText = ref("選択ユニット: -");
 const unitRulesInfoText = ref("部隊生成ルール: 一般兵 6-10 / ネームド 1");
@@ -267,6 +297,7 @@ const seVolumePercent = ref(Math.round((initialAudioVolumes.seVolume ?? 0.5) * 1
 const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
 const SKILL_TREE_ICON_SRC = getIconSrcByName("本", DEFAULT_ICON_NAME);
 const UNIT_CREATE_ICON_SRC = getIconSrcByName("兵士", DEFAULT_ICON_NAME);
+const EQUIPMENT_INVENTORY_ICON_SRC = getIconSrcByName("装備", DEFAULT_ICON_NAME);
 
 let game = null;
 let scene = null;
@@ -307,6 +338,7 @@ let territorySets = { player: new Set(), enemy: new Set() };
 let territoryOwnerByTile = new Map();
 let exploredTileKeys = new Set();
 let visibleTileKeys = new Set();
+let currentVisionTileKeys = new Set();
 let spottedEnemyTileKeys = new Set();
 let spottedFactionTileKeys = new Set();
 let raceMarkerTexturePending = new Set();
@@ -336,6 +368,11 @@ const factionRows = computed(() => {
   return factionDb;
 });
 
+const facilityRows = computed(() => {
+  if (!Array.isArray(facilityDb)) return [];
+  return facilityDb.filter(row => nonEmptyText(row?.施設名));
+});
+
 const customTargetLandTilesLabel = computed(() => {
   const { w, h } = parseMapSizeValue(mapSize.value);
   const total = w * h;
@@ -354,32 +391,394 @@ function formatHeaderPercentOrDash(value) {
   return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
 }
 
-function buildPopulationHeaderEntries(village, units = []) {
-  const population = Math.max(0, Math.floor(toSafeNumber(village?.population, 0)));
-  const populationCapacity = Math.max(
-    population,
-    Math.floor(toSafeNumber(village?.populationCapacity, population))
+function formatHeaderNumberOrDash(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return "-";
+  const rounded = roundTo1(raw);
+  return Number.isInteger(rounded) ? String(Math.round(rounded)) : rounded.toFixed(1);
+}
+
+function readFirstFiniteNumber(...values) {
+  for (const value of values) {
+    const num = Number(value);
+    if (Number.isFinite(num)) return num;
+  }
+  return Number.NaN;
+}
+
+function clampRatio01(value) {
+  const ratio = Number(value);
+  if (!Number.isFinite(ratio)) return 0;
+  if (ratio <= 0) return 0;
+  if (ratio >= 1) return 1;
+  return ratio;
+}
+
+function normalizeVillageTileValueMap(raw, options = {}) {
+  const allowNegative = !!options?.allowNegative;
+  const source = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    const key = nonEmptyText(rawKey);
+    if (!key.includes(",")) continue;
+    const value = roundTo1(toSafeNumber(rawValue, 0));
+    if (!Number.isFinite(value)) continue;
+    if (!allowNegative && value <= 0) continue;
+    if (allowNegative && value === 0) continue;
+    out[key] = allowNegative ? value : Math.max(0, value);
+  }
+  return out;
+}
+
+function resolveVillageManagedTileKeys(village) {
+  const keys = new Set();
+  const modeMap = village?.territoryTileModeMap && typeof village.territoryTileModeMap === "object"
+    ? village.territoryTileModeMap
+    : {};
+  for (const keyRaw of Object.keys(modeMap)) {
+    const key = nonEmptyText(keyRaw);
+    if (key.includes(",")) keys.add(key);
+  }
+  const vx = Math.floor(toSafeNumber(village?.x, Number.NaN));
+  const vy = Math.floor(toSafeNumber(village?.y, Number.NaN));
+  if (village?.placed && Number.isFinite(vx) && Number.isFinite(vy)) {
+    keys.add(coordKey(vx, vy));
+  }
+  return keys;
+}
+
+function resolveVillageTileCorruptionMap(village) {
+  return normalizeVillageTileValueMap(village?.[VILLAGE_TILE_CORRUPTION_MAP_KEY], { allowNegative: false });
+}
+
+function resolveVillageTilePurificationMap(village) {
+  return normalizeVillageTileValueMap(village?.[VILLAGE_TILE_PURIFICATION_MAP_KEY], { allowNegative: false });
+}
+
+function resolveVillageTileRecoveryMap(village) {
+  return normalizeVillageTileValueMap(village?.[VILLAGE_TILE_RECOVERY_MAP_KEY], { allowNegative: false });
+}
+
+function resolveVillageTileStatusBaseByLevel(levelKey) {
+  const key = normalizeTerritoryResidentialLevelKey(levelKey, TERRITORY_RESIDENTIAL_LEVEL_LAND);
+  return VILLAGE_TILE_STATUS_DEFAULT_BY_RESIDENTIAL_LEVEL[key]
+    || VILLAGE_TILE_STATUS_DEFAULT_BY_RESIDENTIAL_LEVEL[TERRITORY_RESIDENTIAL_LEVEL_LAND]
+    || { purification: 0, recovery: 0 };
+}
+
+function resolveVillageTileEffectiveResidentialLevel(village, tileKey) {
+  const key = nonEmptyText(tileKey);
+  if (!key.includes(",")) return TERRITORY_RESIDENTIAL_LEVEL_LAND;
+  const level = resolveTerritoryResidentialLevelAt(village, key, {
+    fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_LAND
+  });
+  if (level === TERRITORY_RESIDENTIAL_LEVEL_ATTACHED) {
+    const centerKey = resolveTerritoryResidentialCenterKey(village, key);
+    if (centerKey && centerKey !== key) {
+      return resolveTerritoryResidentialLevelAt(village, centerKey, {
+        fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE
+      });
+    }
+  }
+  return level;
+}
+
+function resolveVillageTilePurificationValue(village, tileKey, purificationMapOverride = null) {
+  const key = nonEmptyText(tileKey);
+  if (!key.includes(",")) return 0;
+  const overrideMap = purificationMapOverride && typeof purificationMapOverride === "object"
+    ? purificationMapOverride
+    : resolveVillageTilePurificationMap(village);
+  if (Object.prototype.hasOwnProperty.call(overrideMap, key)) {
+    return Math.max(0, roundTo1(toSafeNumber(overrideMap[key], 0)));
+  }
+  const level = resolveVillageTileEffectiveResidentialLevel(village, key);
+  const base = resolveVillageTileStatusBaseByLevel(level);
+  return Math.max(0, roundTo1(toSafeNumber(base?.purification, 0)));
+}
+
+function resolveVillageTileRecoveryValue(village, tileKey, recoveryMapOverride = null) {
+  const key = nonEmptyText(tileKey);
+  if (!key.includes(",")) return 0;
+  const overrideMap = recoveryMapOverride && typeof recoveryMapOverride === "object"
+    ? recoveryMapOverride
+    : resolveVillageTileRecoveryMap(village);
+  if (Object.prototype.hasOwnProperty.call(overrideMap, key)) {
+    return Math.max(0, roundTo1(toSafeNumber(overrideMap[key], 0)));
+  }
+  const level = resolveVillageTileEffectiveResidentialLevel(village, key);
+  const base = resolveVillageTileStatusBaseByLevel(level);
+  return Math.max(0, roundTo1(toSafeNumber(base?.recovery, 0)));
+}
+
+function resolveVillageTileStatusSummary(village) {
+  const managedKeys = resolveVillageManagedTileKeys(village);
+  const corruptionMap = resolveVillageTileCorruptionMap(village);
+  const purificationMap = resolveVillageTilePurificationMap(village);
+  const recoveryMap = resolveVillageTileRecoveryMap(village);
+  for (const key of Object.keys(corruptionMap)) {
+    if (nonEmptyText(key).includes(",")) managedKeys.add(key);
+  }
+  let corruption = 0;
+  let purification = 0;
+  let recovery = 0;
+  for (const key of managedKeys) {
+    corruption += Math.max(0, toSafeNumber(corruptionMap[key], 0));
+    purification += resolveVillageTilePurificationValue(village, key, purificationMap);
+    recovery += resolveVillageTileRecoveryValue(village, key, recoveryMap);
+  }
+  return {
+    tileCount: managedKeys.size,
+    corruption: roundTo1(corruption),
+    purification: roundTo1(purification),
+    recovery: roundTo1(recovery)
+  };
+}
+
+function resolveVillageMaintenancePenalty(metrics) {
+  const population = Math.max(0, toSafeNumber(metrics?.population, 0));
+  const holdable = Math.max(0, toSafeNumber(metrics?.holdablePopulation, 0));
+  const ratio = holdable > 0 ? (population / holdable) : (population > 0 ? 0 : 1);
+  let activeRule = null;
+  for (const rule of VILLAGE_MAINTENANCE_PENALTY_RULES) {
+    const threshold = toSafeNumber(rule?.threshold, 0);
+    if (ratio < threshold) {
+      activeRule = rule;
+      break;
+    }
+  }
+  if (!activeRule) {
+    return {
+      ratio,
+      label: "正常",
+      productionMultiplier: 1,
+      happinessPenalty: 0,
+      securityPenalty: 0
+    };
+  }
+  return {
+    ratio,
+    label: nonEmptyText(activeRule?.label) || "維持不足",
+    productionMultiplier: Math.max(0, Math.min(1, toSafeNumber(activeRule?.productionMultiplier, 1))),
+    happinessPenalty: Math.max(0, toSafeNumber(activeRule?.happinessPenalty, 0)),
+    securityPenalty: Math.max(0, toSafeNumber(activeRule?.securityPenalty, 0))
+  };
+}
+
+function resolveRaceSizForPopulation(raceName) {
+  const race = nonEmptyText(raceName);
+  if (!race) return 170;
+  const raceBaseName = resolveRaceBaseClassName(race);
+  const raceRow = findClassRowByName(raceBaseName) || findClassRowByName(race);
+  const siz = Number(raceRow?.SIZ);
+  return Number.isFinite(siz) && siz > 0 ? siz : 170;
+}
+
+function resolvePopulationByRaceSizUsage(populationByRace = {}) {
+  let totalPopulation = 0;
+  let normalizedUsage = 0;
+  for (const [raceName, countRaw] of Object.entries(populationByRace || {})) {
+    const count = Math.max(0, Math.floor(toSafeNumber(countRaw, 0)));
+    if (count <= 0) continue;
+    const siz = resolveRaceSizForPopulation(raceName);
+    totalPopulation += count;
+    normalizedUsage += count * (siz / 170);
+  }
+  return {
+    totalPopulation,
+    normalizedUsage
+  };
+}
+
+function resolveVillagePopulationStatusMetrics(village, units = []) {
+  const populationByRace = village?.populationByRace && typeof village.populationByRace === "object"
+    ? village.populationByRace
+    : {};
+  const fallbackPopulation = Math.max(0, Math.floor(toSafeNumber(village?.population, 0)));
+  const usage = resolvePopulationByRaceSizUsage(populationByRace);
+  const population = usage.totalPopulation > 0 ? usage.totalPopulation : fallbackPopulation;
+  const populationCapacity = Math.max(0, Math.floor(toSafeNumber(village?.populationCapacity, population)));
+  const normalizedUsage = usage.normalizedUsage > 0
+    ? usage.normalizedUsage
+    : Math.max(0, Math.floor(toSafeNumber(population, 0)));
+  const capacityBySiz = normalizedUsage > 0
+    ? (populationCapacity * (Math.max(1, population) / normalizedUsage))
+    : populationCapacity;
+  const holdablePopulation = Math.max(0, Math.floor(capacityBySiz));
+  const housedPopulation = Math.min(population, holdablePopulation);
+  const populationRetentionRatio = population > 0
+    ? clampRatio01(housedPopulation / population)
+    : 0;
+  const vagrantRate = clampRatio01(1 - populationRetentionRatio);
+  const militaryEquivalentFromUnits = (Array.isArray(units) ? units : []).reduce((sum, unit) => {
+    if (!isMilitaryUnit(unit)) return sum;
+    const rawCost = Math.floor(toSafeNumber(unit?.combatProfile?.populationCost, 0));
+    const cost = rawCost > 0 ? rawCost : 1;
+    return sum + cost;
+  }, 0);
+  const militaryEquivalentFallback = Math.max(
+    0,
+    Math.floor(toSafeNumber(village?.militaryPopulation, 0))
   );
-  const rawVagrants = Number(village?.vagrants ?? village?.floaters ?? village?.drifters ?? Number.NaN);
-  const vagrants = Number.isFinite(rawVagrants) ? Math.max(0, Math.floor(rawVagrants)) : 0;
-  const militaryPopulation = Math.max(0, Math.floor(toSafeNumber(village?.militaryPopulation, units.length)));
-  const rawConscriptionRate = Number(village?.conscriptionRate ?? Number.NaN);
-  const conscriptionRate = Number.isFinite(rawConscriptionRate)
-    ? Math.max(0, rawConscriptionRate)
-    : (population > 0 ? (militaryPopulation / population) * 100 : 0);
-  const rawLaborPopulation = Number(village?.laborPopulation ?? Number.NaN);
-  const laborPopulation = Number.isFinite(rawLaborPopulation)
-    ? Math.max(0, Math.floor(rawLaborPopulation))
-    : Math.max(0, population - vagrants - militaryPopulation);
-  const rawSecurity = Number(village?.security ?? village?.publicSafety ?? village?.治安 ?? Number.NaN);
-  const rawHappiness = Number(village?.happiness ?? village?.morale ?? village?.幸福度 ?? Number.NaN);
+  const militaryEquivalent = militaryEquivalentFromUnits > 0
+    ? militaryEquivalentFromUnits
+    : militaryEquivalentFallback;
+  const conscriptionRate = population > 0
+    ? clampRatio01(militaryEquivalent / population)
+    : 0;
+  return {
+    population,
+    populationCapacity,
+    holdablePopulation,
+    housedPopulation,
+    populationRetentionRatio,
+    vagrantRate,
+    militaryEquivalent,
+    conscriptionRate
+  };
+}
+
+function resolveVillageProductionCorrection(village) {
+  const correction = readFirstFiniteNumber(
+    village?.productionCorrection,
+    village?.productionModifier,
+    village?.productionBonus,
+    village?.生産補正,
+    village?.生産力補正
+  );
+  return Number.isFinite(correction) && correction >= 0 ? correction : 1;
+}
+
+function resolveVillageProductionPowerPercent(village, units = unitList.value) {
+  if (!village || typeof village !== "object") return 0;
+  const metrics = resolveVillagePopulationStatusMetrics(village, units);
+  const correction = resolveVillageProductionCorrection(village);
+  const maintenance = resolveVillageMaintenancePenalty(metrics);
+  const ratio = clampRatio01(metrics.populationRetentionRatio)
+    * clampRatio01(1 - metrics.conscriptionRate)
+    * clampRatio01(1 - metrics.vagrantRate)
+    * Math.max(0, correction)
+    * Math.max(0, toSafeNumber(maintenance?.productionMultiplier, 1));
+  return Math.max(0, roundTo1(ratio * 100));
+}
+
+function resolveVillageSecurityValue(village, metrics, maintenance = null) {
+  const rawSecurity = readFirstFiniteNumber(village?.security, village?.publicSafety, village?.治安);
+  const base = readFirstFiniteNumber(village?.securityBase, village?.baseSecurity, village?.治安基礎値, village?.治安基礎);
+  const building = readFirstFiniteNumber(
+    village?.securityFromBuilding,
+    village?.buildingSecurity,
+    village?.治安建物補正,
+    village?.治安建物
+  );
+  const military = readFirstFiniteNumber(
+    village?.securityFromMilitary,
+    village?.militarySecurity,
+    village?.治安軍事補正,
+    village?.治安軍事
+  );
+  const vagrantPenalty = readFirstFiniteNumber(
+    village?.securityVagrantPenalty,
+    village?.vagrantSecurityPenalty,
+    village?.浮浪者治安補正
+  );
+  const hasFormulaParts = [base, building, military, vagrantPenalty].some(Number.isFinite);
+  const maintenancePenalty = Math.max(0, toSafeNumber(maintenance?.securityPenalty, 0));
+  if (!hasFormulaParts && Number.isFinite(rawSecurity)) return roundTo1(rawSecurity - maintenancePenalty);
+  const baseValue = Number.isFinite(base) ? base : (Number.isFinite(rawSecurity) ? rawSecurity : 50);
+  const buildingValue = Number.isFinite(building) ? building : 0;
+  const militaryValue = Number.isFinite(military) ? military : roundTo1((metrics.conscriptionRate || 0) * 20);
+  const vagrantPenaltyValue = Number.isFinite(vagrantPenalty) ? vagrantPenalty : roundTo1((metrics.vagrantRate || 0) * 25);
+  return roundTo1(baseValue + buildingValue + militaryValue - vagrantPenaltyValue - maintenancePenalty);
+}
+
+function resolveVillageHappinessValue(village, metrics, maintenance = null) {
+  const rawHappiness = readFirstFiniteNumber(village?.happiness, village?.morale, village?.幸福度);
+  const foodSufficiency = readFirstFiniteNumber(
+    village?.foodSufficiency,
+    village?.happinessFood,
+    village?.幸福度食料,
+    village?.幸福度食料充足
+  );
+  const housing = readFirstFiniteNumber(
+    village?.housingSatisfaction,
+    village?.happinessHousing,
+    village?.幸福度住宅,
+    village?.幸福度住居
+  );
+  const event = readFirstFiniteNumber(village?.eventHappiness, village?.happinessEvent, village?.幸福度イベント);
+  const hasFormulaParts = [foodSufficiency, housing, event].some(Number.isFinite);
+  const maintenancePenalty = Math.max(0, toSafeNumber(maintenance?.happinessPenalty, 0));
+  if (!hasFormulaParts && Number.isFinite(rawHappiness)) return roundTo1(rawHappiness - maintenancePenalty);
+  const foodValue = Number.isFinite(foodSufficiency) ? foodSufficiency : (Number.isFinite(rawHappiness) ? rawHappiness : 50);
+  const housingValue = Number.isFinite(housing) ? housing : roundTo1((metrics.populationRetentionRatio || 0) * 50);
+  const eventValue = Number.isFinite(event) ? event : 0;
+  return roundTo1(foodValue + housingValue + eventValue - maintenancePenalty);
+}
+
+function resolveVillageEnvironmentStabilityValue(village) {
+  const rawEnvironment = readFirstFiniteNumber(
+    village?.environmentStability,
+    village?.environment,
+    village?.環境安定度
+  );
+  const terrainDisaster = readFirstFiniteNumber(
+    village?.terrainDisaster,
+    village?.environmentTerrainDisaster,
+    village?.地形災害
+  );
+  const magic = readFirstFiniteNumber(village?.environmentMagic, village?.魔法環境);
+  const faith = readFirstFiniteNumber(village?.environmentFaith, village?.信仰環境);
+  const hasFormulaParts = [terrainDisaster, magic, faith].some(Number.isFinite);
+  if (!hasFormulaParts && Number.isFinite(rawEnvironment)) return rawEnvironment;
+  const terrainValue = Number.isFinite(terrainDisaster) ? terrainDisaster : (Number.isFinite(rawEnvironment) ? rawEnvironment : 0);
+  const magicValue = Number.isFinite(magic) ? magic : 0;
+  const faithValue = Number.isFinite(faith) ? faith : 0;
+  return roundTo1(terrainValue + magicValue + faithValue);
+}
+
+function buildPopulationHeaderEntries(village, units = []) {
+  if (!village || typeof village !== "object") {
+    return [
+      { key: "productionPower", label: "生産力", value: "-" },
+      { key: "conscriptionRate", label: "徴兵率", value: "-" },
+      { key: "maintenanceRate", label: "維持率", value: "-" },
+      { key: "populationRetention", label: "人口保有率", value: "-" },
+      { key: "holdablePopulation", label: "保有可能人数", value: "-" },
+      { key: "security", label: "治安", value: "-" },
+      { key: "happiness", label: "幸福度", value: "-" },
+      { key: "environmentStability", label: "環境安定度", value: "-" },
+      { key: "vagrantRate", label: "浮浪者率", value: "-" },
+      { key: "tileCorruption", label: "穢れ", value: "-" },
+      { key: "tilePurification", label: "浄化", value: "-" },
+      { key: "tileRecovery", label: "回復", value: "-" }
+    ];
+  }
+  const metrics = resolveVillagePopulationStatusMetrics(village, units);
+  const maintenance = resolveVillageMaintenancePenalty(metrics);
+  const tileStatus = resolveVillageTileStatusSummary(village);
+  const productionCorrection = resolveVillageProductionCorrection(village);
+  const productionPowerRatio = clampRatio01(metrics.populationRetentionRatio)
+    * clampRatio01(1 - metrics.conscriptionRate)
+    * clampRatio01(1 - metrics.vagrantRate)
+    * Math.max(0, productionCorrection)
+    * Math.max(0, toSafeNumber(maintenance?.productionMultiplier, 1));
+  const security = resolveVillageSecurityValue(village, metrics, maintenance);
+  const happiness = resolveVillageHappinessValue(village, metrics, maintenance);
+  const environmentStability = resolveVillageEnvironmentStabilityValue(village);
   return [
-    { key: "capacity", label: "許容人数", value: formatCompactNumber(populationCapacity) },
-    { key: "vagrants", label: "浮浪者", value: formatCompactNumber(vagrants) },
-    { key: "security", label: "治安", value: formatHeaderPercentOrDash(rawSecurity) },
-    { key: "happiness", label: "幸福度", value: formatHeaderPercentOrDash(rawHappiness) },
-    { key: "conscriptionRate", label: "徴兵率", value: formatHeaderPercentOrDash(conscriptionRate) },
-    { key: "laborPopulation", label: "労働人口", value: formatCompactNumber(laborPopulation) }
+    { key: "productionPower", label: "生産力", value: formatHeaderPercentOrDash(productionPowerRatio * 100) },
+    { key: "conscriptionRate", label: "徴兵率", value: formatHeaderPercentOrDash(metrics.conscriptionRate * 100) },
+    { key: "maintenanceRate", label: "維持率", value: formatHeaderPercentOrDash(maintenance.ratio * 100) },
+    { key: "populationRetention", label: "人口保有率", value: formatHeaderPercentOrDash(metrics.populationRetentionRatio * 100) },
+    { key: "holdablePopulation", label: "保有可能人数", value: formatCompactNumber(metrics.holdablePopulation) },
+    { key: "security", label: "治安", value: formatHeaderNumberOrDash(security) },
+    { key: "happiness", label: "幸福度", value: formatHeaderNumberOrDash(happiness) },
+    { key: "environmentStability", label: "環境安定度", value: formatHeaderNumberOrDash(environmentStability) },
+    { key: "vagrantRate", label: "浮浪者率", value: formatHeaderPercentOrDash(metrics.vagrantRate * 100) },
+    { key: "tileCorruption", label: "穢れ", value: formatHeaderNumberOrDash(tileStatus.corruption) },
+    { key: "tilePurification", label: "浄化", value: formatHeaderNumberOrDash(tileStatus.purification) },
+    { key: "tileRecovery", label: "回復", value: formatHeaderNumberOrDash(tileStatus.recovery) }
   ];
 }
 
@@ -552,6 +951,8 @@ const mapCanvasStyle = computed(() => ({
   "--header-material-icon-scale": String(HEADER_MATERIAL_ICON_SCALE),
   "--header-food-chip-scale": String(HEADER_FOOD_CHIP_SCALE),
   "--header-material-chip-scale": String(HEADER_MATERIAL_CHIP_SCALE),
+  "--tile-detail-width": `${Math.max(360, Math.min(640, Math.floor(toSafeNumber(tileDetailPanelWidth.value, 460))))}px`,
+  "--tile-detail-height": `${Math.max(260, Math.min(560, Math.floor(toSafeNumber(tileDetailPanelHeight.value, 360))))}px`,
   "--overlay-icon-button-size": `${OVERLAY_ICON_BUTTON_SIZE_PX}px`,
   "--overlay-icon-button-icon-inset": `${OVERLAY_ICON_BUTTON_ICON_INSET_PX}px`,
   "--overlay-icon-button-emoji-size": `${OVERLAY_ICON_BUTTON_EMOJI_SIZE_PX}px`,
@@ -616,7 +1017,8 @@ const ownCharacterNavigatorEntries = computed(() => {
     isNamedUnit,
     toUnitRoleLabel,
     moveUnitIconSrc,
-    moveUnitIconGlyph
+    moveUnitIconGlyph,
+    soldierIconSrc: () => UNIT_CREATE_ICON_SRC
   });
 });
 
@@ -728,6 +1130,26 @@ const displaySettingsFields = computed(() => ([
     step: 1
   },
   {
+    key: "tileDetailPanelWidth",
+    kind: "range",
+    label: "選択マス詳細パネル横幅",
+    suffix: "px",
+    value: tileDetailPanelWidth.value,
+    min: 360,
+    max: 640,
+    step: 10
+  },
+  {
+    key: "tileDetailPanelHeight",
+    kind: "range",
+    label: "選択マス詳細パネル高さ",
+    suffix: "px",
+    value: tileDetailPanelHeight.value,
+    min: 260,
+    max: 560,
+    step: 10
+  },
+  {
     key: "section_audio",
     kind: "header",
     label: "音声設定"
@@ -833,7 +1255,7 @@ const NAMED_POOL = ["アレス", "リリア", "ガルド", "セレス", "ノク�
 const VILLAGE_NAME_POOL = ["開拓村アスタ", "辺境村ノルド", "河畔村エイル", "森縁村リグナ", "丘陵村ブラム"];
 const INITIAL_LEVEL_MIN = 5;
 const INITIAL_LEVEL_MAX = 10;
-const MOB_INITIAL_LEVEL = 5;
+const HERO_INITIAL_LEVEL = 5;
 const INITIAL_RACE_LEVEL_OFFSET = 5;
 const STATUS_GROWTH_DIVISOR = 10;
 const ENEMY_LEVEL_BASE = 5;
@@ -860,14 +1282,44 @@ const ENCOUNTER_ACTION_MOVE_COST = 3;
 const ENCOUNTER_FUMBLE_CHANCE = 0.08;
 const ENCOUNTER_MAX_LOG_LINES = 12;
 const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
+const EQUIPMENT_ACTION_POPULATION_STEP = 25;
 const UNIT_VISION_BASE_RANGE = 1;
 const UNIT_VISION_SCOUT_STEP = 75;
 const TILE_DANGER_MAX_PERCENT = 100;
 const TILE_DANGER_REDUCE_PER_CLEAR_PERCENT = 15;
 const NAMED_STATUS_SKILL_BONUS_MULTIPLIER = 1.15;
-const INITIAL_MOB_UNIT_COUNT_MIN = 2;
-const INITIAL_MOB_UNIT_COUNT_MAX = 4;
-const MOB_NAME_POOL = ["見習い兵", "巡回兵", "猟兵", "衛兵", "斥候"];
+// 穢れ: ユニット死亡時にタイルへ加算される基本値（必要に応じて調整）
+const VILLAGE_CORRUPTION_PER_UNIT_DEATH = 5;
+// 維持率ペナルティ（しきい値未満で適用）
+// 例: threshold 0.7 は「維持率70%未満」で発動。
+const VILLAGE_MAINTENANCE_PENALTY_RULES = [
+  { threshold: 0.3, productionMultiplier: 0.4, happinessPenalty: 30, securityPenalty: 20, label: "維持率30%未満" },
+  { threshold: 0.5, productionMultiplier: 0.6, happinessPenalty: 20, securityPenalty: 0, label: "維持率50%未満" },
+  { threshold: 0.7, productionMultiplier: 0.8, happinessPenalty: 10, securityPenalty: 0, label: "維持率70%未満" }
+];
+// 住居区分ごとの土地ステータス基礎値（穢れ減衰/回復量の基準）
+// 必要ならここだけ変更すれば全体に反映される。
+const VILLAGE_TILE_STATUS_DEFAULT_BY_RESIDENTIAL_LEVEL = {
+  [TERRITORY_RESIDENTIAL_LEVEL_LAND]: { purification: 0, recovery: 0 },
+  [TERRITORY_RESIDENTIAL_LEVEL_VILLAGE]: { purification: 2, recovery: 6 },
+  [TERRITORY_RESIDENTIAL_LEVEL_TOWN]: { purification: 4, recovery: 10 },
+  [TERRITORY_RESIDENTIAL_LEVEL_CITY]: { purification: 6, recovery: 14 },
+  [TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS]: { purification: 8, recovery: 20 },
+  [TERRITORY_RESIDENTIAL_LEVEL_ATTACHED]: { purification: 1, recovery: 4 }
+};
+const HERO_NAME_POOL = ["見習い兵", "巡回兵", "猟兵", "衛兵", "斥候"];
+const HERO_AUTO_GROWTH_BASE_CHANCE_PERCENT = 1;
+const HERO_AUTO_GROWTH_ARMY_LV10_BONUS_PERCENT = 20;
+const HERO_AUTO_GROWTH_PER_SETTLEMENT_BONUS_PERCENT = 10;
+const HERO_AUTO_GROWTH_PER_CITY_STAGE_BONUS_PERCENT = 50;
+const HERO_AUTO_GROWTH_PER_CITY_STAGE_CAP_BONUS = 1;
+const VILLAGE_SCALE_STAGE_THRESHOLDS = [
+  { label: "村", minPopulation: 0, stage: 0 },
+  { label: "町", minPopulation: 160, stage: 1 },
+  { label: "都市", minPopulation: 260, stage: 2 },
+  { label: "大都市", minPopulation: 420, stage: 3 },
+  { label: "最大都市", minPopulation: 560, stage: 4 }
+];
 const CITY_SCALE_NAMED_LIMIT = {
   村: 2,
   町: 4,
@@ -918,6 +1370,11 @@ const EQUIPMENT_LEVEL_BY_RARITY = {
   epic: 4,
   legendary: 5
 };
+const ARMOR_MAGIC_BONUS_RATE_BY_RARITY_LEVEL = {
+  3: 0.15,
+  4: 0.3,
+  5: 0.5
+};
 const EQUIPMENT_CRAFT_MATERIAL_COST_BY_LEVEL = {
   1: { 木材: 10, 黒木: 0, 特木: 0, 鉄: 10, 銀鉄: 0, 青金鋼: 0, 赤黒鋼: 0 },
   2: { 木材: 20, 黒木: 0, 特木: 0, 鉄: 20, 銀鉄: 0, 青金鋼: 0, 赤黒鋼: 0 },
@@ -945,6 +1402,51 @@ const EQUIPMENT_RARITY_ALIAS_MAP = {
   エピック: "epic",
   レジェンダリー: "legendary"
 };
+const ENCHANT_REQUIREMENT_KEYS = ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"];
+const ENCHANT_REQUIREMENT_TO_CITY_ABILITY_KEY = {
+  鍛冶Lv: "鍛冶場",
+  魔法Lv: "魔法",
+  信仰Lv: "信仰",
+  軍事Lv: "軍事",
+  経済Lv: "経済"
+};
+const ENCHANT_METADATA_KEYS = new Set([
+  "付与能力",
+  "ルビ",
+  "対象装備",
+  "獲得スキル",
+  "Lv",
+  ...ENCHANT_REQUIREMENT_KEYS
+]);
+const ENCHANT_EFFECT_PRIMARY_FIELDS = ["物理", "ガード", "防御", "Cr率", "Cr威力", "炎", "氷", "雷", "毒", "光", "闇"];
+const ENCHANT_EFFECT_FALLBACK_FIELDS = [...STATUS_FIELDS, ...SKILL_LEVEL_FIELDS, ...RESISTANCE_FIELDS];
+const SKILL_ACTIVE_ACTION_CODE = "A";
+const SKILL_WEAPON_ATTACK_STYLE = "武器";
+const SKILL_SCHEMA_DEFAULTS = (() => {
+  const defaults = {};
+  const row = Array.isArray(skillInfoDb) && skillInfoDb.length > 0 && skillInfoDb[0] && typeof skillInfoDb[0] === "object"
+    ? skillInfoDb[0]
+    : null;
+  if (!row) return defaults;
+  for (const key of Object.keys(row)) {
+    defaults[key] = null;
+  }
+  if (Object.prototype.hasOwnProperty.call(defaults, "HP消費")) defaults["HP消費"] = "";
+  if (Object.prototype.hasOwnProperty.call(defaults, "AP消費")) defaults["AP消費"] = "";
+  return defaults;
+})();
+const SKILL_TEMPLATES_BY_ATTACK_STYLE = (() => {
+  const map = new Map();
+  const rows = Array.isArray(skillInfoDb) ? skillInfoDb : [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const attackStyle = nonEmptyText(row?.攻撃手段);
+    if (!attackStyle) continue;
+    if (!map.has(attackStyle)) map.set(attackStyle, []);
+    map.get(attackStyle).push(row);
+  }
+  return map;
+})();
 const FOOD_RESOURCE_KEYS = ["穀物", "野菜", "肉", "魚", "死体", "魂"];
 const FOOD_RESOURCE_SIMPLE_KEYS = ["食料", "魂"];
 const MATERIAL_RESOURCE_KEYS = ["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"];
@@ -1039,6 +1541,15 @@ const ECONOMY_COST_SCALE = 0.1;
 const TERRITORY_TILE_MODE_DEFAULT = TERRITORY_TILE_MODE_RESOURCE;
 const TERRITORY_TILE_MODE_HOME_DEFAULT = TERRITORY_TILE_MODE_SETTLEMENT;
 const TERRITORY_POPULATION_CAPACITY_FALLBACK = 30;
+const TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY = "territoryResidentialLevelMap";
+const TERRITORY_RESIDENTIAL_CENTER_MAP_KEY = "territoryResidentialCenterMap";
+const TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY = "territoryResidentialUpgradeQueueMap";
+const VILLAGE_TILE_CORRUPTION_MAP_KEY = "tileCorruptionMap";
+const VILLAGE_TILE_PURIFICATION_MAP_KEY = "tilePurificationMap";
+const VILLAGE_TILE_RECOVERY_MAP_KEY = "tileRecoveryMap";
+const TERRITORY_RESIDENTIAL_UPGRADE_BASE_TURNS = 3;
+const TERRITORY_RESIDENTIAL_UPGRADE_MIN_TURNS = 1;
+const TERRITORY_RESIDENTIAL_UPGRADE_COST_SCALE = 1;
 const RACE_TO_FACTION_NAME_MAP = {
   只人: "人間",
   エルフ: "森人",
@@ -1159,26 +1670,53 @@ const jobClassRows = computed(() => {
   return classRows.value.filter(row => nonEmptyText(row?.種類) === "職業");
 });
 
+const initialJobClassRows = computed(() => {
+  return jobClassRows.value.filter(row => isInitialClassRow(row));
+});
+
 const canOpenUnitCreate = computed(() => {
   const village = villageState.value;
   return !!(village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y));
 });
 
-const mobUnitCount = computed(() => {
-  return unitList.value.filter(unit => isMobUnit(unit)).length;
+const heroUnitCount = computed(() => {
+  return unitList.value.filter(unit => isMobUnit(unit) && !isMilitaryUnit(unit)).length;
 });
 
-const mobUnitCap = computed(() => {
-  const population = Math.floor(toSafeNumber(villageState.value?.population, 0));
-  return Math.max(0, Math.floor(population / 10));
+const armyUnitCount = computed(() => {
+  return unitList.value.filter(unit => isMobUnit(unit) && isMilitaryUnit(unit)).length;
 });
 
-const mobCreateRemaining = computed(() => {
-  return Math.max(0, mobUnitCap.value - mobUnitCount.value);
+const heroUnitCap = computed(() => {
+  const village = ensureVillageStateShape(villageState.value, resolveActiveFactionRace());
+  const race = resolveActiveFactionRace();
+  return resolveFactionHeroUnitCap(village, race);
 });
 
-const canCreateMob = computed(() => {
-  return canOpenUnitCreate.value && mobCreateRemaining.value > 0;
+const armyUnitCap = computed(() => {
+  const village = ensureVillageStateShape(villageState.value, resolveActiveFactionRace());
+  const race = resolveActiveFactionRace();
+  return resolveFactionArmyUnitCap(village, race);
+});
+
+const heroCreateRemaining = computed(() => {
+  return Math.max(0, heroUnitCap.value - heroUnitCount.value);
+});
+
+const heroCreateUnlocked = computed(() => {
+  return resolveHeroCreateUnlockedCount(villageState.value);
+});
+
+const heroCreateAvailable = computed(() => {
+  return Math.max(0, Math.min(heroCreateRemaining.value, heroCreateUnlocked.value));
+});
+
+const armyCreateRemaining = computed(() => {
+  return Math.max(0, armyUnitCap.value - armyUnitCount.value);
+});
+
+const canCreateAnyUnit = computed(() => {
+  return canOpenUnitCreate.value && (heroCreateAvailable.value > 0 || armyCreateRemaining.value > 0);
 });
 
 const unitCreateMilitaryLevel = computed(() => {
@@ -1187,11 +1725,68 @@ const unitCreateMilitaryLevel = computed(() => {
 });
 
 const unitCreateModeOptions = computed(() => {
-  return resolveUnitCreateModeOptions(unitCreateMilitaryLevel.value);
+  const level = Math.max(1, Math.floor(toSafeNumber(unitCreateMilitaryLevel.value, 1)));
+  return resolveUnitCreateModeCatalog().map(mode => {
+    const requiredLv = Math.max(1, Math.floor(toSafeNumber(mode?.requiredMilitaryLevel, 1)));
+    const usesArmyCap = mode.mode !== UNIT_CREATE_MODE_KEYS.NORMAL;
+    const currentCount = usesArmyCap ? armyUnitCount.value : heroUnitCount.value;
+    const cap = usesArmyCap ? armyUnitCap.value : heroUnitCap.value;
+    const remainingRaw = Math.max(0, cap - currentCount);
+    const remaining = usesArmyCap ? remainingRaw : Math.max(0, Math.min(remainingRaw, heroCreateUnlocked.value));
+    const levelEnabled = level >= requiredLv;
+    const enabled = levelEnabled && remaining > 0;
+    const requirementText = !levelEnabled
+      ? `軍事Lv${requiredLv}で解放`
+      : (remaining > 0
+        ? `残り${remaining}`
+        : (usesArmyCap
+          ? `上限 ${currentCount}/${cap}`
+          : (remainingRaw > 0 ? "誕生待ち" : `上限 ${currentCount}/${cap}`)));
+    return {
+      ...mode,
+      enabled,
+      currentCount,
+      cap,
+      remaining,
+      unlocked: usesArmyCap ? null : heroCreateUnlocked.value,
+      requirementText
+    };
+  });
 });
 
 const selectedUnitCreateModeSpec = computed(() => {
   return resolveUnitCreateMode(unitCreateMode.value, unitCreateMilitaryLevel.value);
+});
+
+const selectedUnitCreateCurrentCount = computed(() => {
+  const mode = selectedUnitCreateModeSpec.value?.mode;
+  return mode === UNIT_CREATE_MODE_KEYS.NORMAL ? heroUnitCount.value : armyUnitCount.value;
+});
+
+const selectedUnitCreateCap = computed(() => {
+  const mode = selectedUnitCreateModeSpec.value?.mode;
+  return mode === UNIT_CREATE_MODE_KEYS.NORMAL ? heroUnitCap.value : armyUnitCap.value;
+});
+
+const selectedUnitCreateRemaining = computed(() => {
+  const mode = selectedUnitCreateModeSpec.value?.mode;
+  if (mode === UNIT_CREATE_MODE_KEYS.NORMAL) return heroCreateAvailable.value;
+  return Math.max(0, selectedUnitCreateCap.value - selectedUnitCreateCurrentCount.value);
+});
+
+const canCreateSelectedUnitType = computed(() => {
+  return canOpenUnitCreate.value && selectedUnitCreateRemaining.value > 0;
+});
+
+const unitCreateSetupProgressText = computed(() => {
+  const spec = selectedUnitCreateModeSpec.value;
+  const popText = spec.populationCost > 0
+    ? `人口${spec.populationCost}人消費`
+    : "人口消費なし";
+  const unlockText = spec.mode === UNIT_CREATE_MODE_KEYS.NORMAL
+    ? ` / 解放${heroCreateUnlocked.value}`
+    : "";
+  return `作成種別: ${spec.label} / 軍事Lv${unitCreateMilitaryLevel.value} / HPx${spec.hpMultiplier} / 攻撃${spec.attackCount}回 / ${popText}${unlockText}`;
 });
 
 const unitCreateAllowedRaces = computed(() => {
@@ -1274,6 +1869,11 @@ const equipmentRows = computed(() => {
   return equipmentDb.filter(row => nonEmptyText(row?.装備名));
 });
 
+const enchantRows = computed(() => {
+  if (!Array.isArray(enchantDb)) return [];
+  return enchantDb.filter(row => nonEmptyText(row?.付与能力));
+});
+
 const selectedUnit = computed(() => {
   return unitList.value.find(unit => unit.id === selectedUnitId.value) || null;
 });
@@ -1282,6 +1882,38 @@ const tileSurveyActionState = computed(() => resolveSelectedTileSurveyState());
 const tileAmbushActionState = computed(() => resolveSelectedTileAmbushState());
 const tileSettlementConvertActionState = computed(() => resolveTerritoryTileConversionActionState(TERRITORY_TILE_MODE_SETTLEMENT));
 const tileResourceConvertActionState = computed(() => resolveTerritoryTileConversionActionState(TERRITORY_TILE_MODE_RESOURCE));
+const tileHousingUpgradeActionState = computed(() => resolveTerritoryHousingUpgradeActionState());
+const tileHousingUpgradeButtonLabel = computed(() => {
+  const selection = housingUpgradeSelectionState.value;
+  if (selection?.active) {
+    const current = Math.max(0, selection.selectedAttachmentKeys?.length || 0);
+    const target = Math.max(0, Math.floor(toSafeNumber(selection.targetAttachedCount, 0)));
+    return `住居拡張 ${current}/${target}`;
+  }
+  return "住居拡張";
+});
+const tileHousingUpgradeButtonTitle = computed(() => {
+  const state = tileHousingUpgradeActionState.value;
+  const selection = housingUpgradeSelectionState.value;
+  if (selection?.active) {
+    const summary = resolveHousingUpgradeSelectionSummary(selection);
+    const turns = Math.max(1, Math.floor(toSafeNumber(selection?.requiredTurns, 1)));
+    return `${summary} / 候補マスをクリックして選択し、もう一度ボタンで確定 (${turns}T)`;
+  }
+  if (!state?.enabled) {
+    return `住居拡張不可: ${state?.reason || "条件未達です。"}`;
+  }
+  const turns = Math.max(1, Math.floor(toSafeNumber(state?.requiredTurns, 1)));
+  const costText = state?.upgradeCost?.found
+    ? ` / 資材 ${formatMaterialPositiveResourceBag(state.upgradeCost.material)} / 食料 ${formatFoodPositiveResourceBag(state.upgradeCost.food)}`
+    : "";
+  return `住居拡張: ${state.currentDef?.label || "-"} -> ${state.nextDef?.label || "-"} / ${turns}T${costText}`;
+});
+const equipmentCraftUsageStateForModal = computed(() => resolveVillageCraftActionUsageState(villageState.value));
+const equipmentEnchantUsageStateForModal = computed(() => ({
+  magic: resolveVillageEnchantActionUsageState(villageState.value, false),
+  faith: resolveVillageEnchantActionUsageState(villageState.value, true)
+}));
 
 function isSovereignUnit(unit) {
   return isSovereignUnitUtil(unit);
@@ -1344,6 +1976,13 @@ function toUnitRoleLabel(unit) {
   return toUnitRoleLabelUtil(unit, { nonEmptyText });
 }
 
+function isMilitaryUnit(unit) {
+  const mode = nonEmptyText(unit?.combatProfile?.mode);
+  if (mode && mode !== UNIT_CREATE_MODE_KEYS.NORMAL) return true;
+  const typeText = `${nonEmptyText(unit?.unitType)} ${nonEmptyText(unit?.combatProfile?.unitTypeLabel)}`;
+  return typeText.includes("軍隊");
+}
+
 function resolveVillageScaleLabel(village) {
   return resolveVillageScaleLabelUtil(village, { toSafeNumber });
 }
@@ -1355,8 +1994,8 @@ function resolveNamedLimit(village) {
   });
 }
 
-function resolveUnitCreateModeOptions(militaryLevel = 1) {
-  return resolveUnitCreateModeOptionsUtil(militaryLevel);
+function resolveUnitCreateModeCatalog() {
+  return resolveUnitCreateModeCatalogUtil();
 }
 
 function resolveUnitCreateMode(mode, militaryLevel = 1) {
@@ -1401,11 +2040,51 @@ function resolveVillageAbilityLevel(village, key, cap = CITY_ABILITY_DEFINED_CAP
   return Math.min(cap, level);
 }
 
+function readResearchCompletedLevelMap(categoryKey) {
+  const key = nonEmptyText(categoryKey);
+  if (!key) return {};
+  const source = props?.researchProgress?.completedByCategoryLevel?.[key];
+  if (!source || typeof source !== "object") return {};
+  return source;
+}
+
+function resolveResearchCompletedLevel(categoryKey) {
+  const map = readResearchCompletedLevelMap(categoryKey);
+  let done = 0;
+  const keys = Object.keys(map);
+  const maxLv = keys.reduce((acc, raw) => Math.max(acc, Math.max(1, Math.floor(Number(raw) || 1))), 1);
+  for (let lv = 1; lv <= maxLv; lv += 1) {
+    const value = map[lv];
+    const ids = Array.isArray(value)
+      ? value.map(v => nonEmptyText(v)).filter(Boolean)
+      : (value && typeof value === "object")
+        ? Object.values(value).map(v => nonEmptyText(v)).filter(Boolean)
+        : [nonEmptyText(value)].filter(Boolean);
+    if (!ids.length) break;
+    done = lv;
+  }
+  return done;
+}
+
+function resolveResearchCurrentLevel(categoryKey, cap = CITY_ABILITY_DEFINED_CAP) {
+  const completed = resolveResearchCompletedLevel(categoryKey);
+  const current = Math.max(1, completed + 1);
+  return Math.min(cap, current);
+}
+
+function resolveCombinedAbilityLevel(village, cityAbilityKey, researchCategoryKey, cap = CITY_ABILITY_DEFINED_CAP) {
+  const cityLevel = cityAbilityKey ? resolveVillageAbilityLevel(village, cityAbilityKey, cap) : 0;
+  const researchLevel = researchCategoryKey ? resolveResearchCurrentLevel(researchCategoryKey, cap) : 0;
+  return Math.max(cityLevel, researchLevel, 1);
+}
+
 function resolveEconomyGainMultiplier(village) {
   const level = resolveVillageAbilityLevel(village, "経済", CITY_ABILITY_ACTIVE_CAP);
   const byTable = toSafeNumber(ECONOMY_GAIN_MULTIPLIER_BY_LEVEL[level], 0);
-  if (byTable > 0) return byTable;
-  return roundTo1(1 + Math.max(0, level - 1) * 0.15);
+  const baseMultiplier = byTable > 0 ? byTable : roundTo1(1 + Math.max(0, level - 1) * 0.15);
+  const metrics = resolveVillagePopulationStatusMetrics(village, unitList.value);
+  const maintenance = resolveVillageMaintenancePenalty(metrics);
+  return roundTo1(baseMultiplier * Math.max(0, toSafeNumber(maintenance?.productionMultiplier, 1)));
 }
 
 function resolveCityAbilityUpgradeCost(abilityKey, nextLevel) {
@@ -1469,7 +2148,7 @@ function resolveEquipmentCraftLevel(rarityKey) {
 }
 
 function resolveSmithCraftCap(village) {
-  return resolveVillageAbilityLevel(village, "鍛冶場", CITY_ABILITY_ACTIVE_CAP);
+  return resolveCombinedAbilityLevel(village, "鍛冶場", "鍛冶Lv", CITY_ABILITY_DEFINED_CAP);
 }
 
 function isMagicEquipmentRow(row) {
@@ -1494,20 +2173,125 @@ function isFaithEquipmentRow(row) {
   return traits.includes("信仰") || traits.includes("光");
 }
 
+function cloneSkillSchemaDefaults() {
+  return { ...SKILL_SCHEMA_DEFAULTS };
+}
+
+function resolveSkillTemplateByAttackStyle(attackStyle, actionCode = SKILL_ACTIVE_ACTION_CODE) {
+  const style = nonEmptyText(attackStyle);
+  const rows = style ? (SKILL_TEMPLATES_BY_ATTACK_STYLE.get(style) || []) : [];
+  if (!rows.length) return null;
+  const targetAction = nonEmptyText(actionCode).toUpperCase();
+  return rows.find(row => nonEmptyText(row?.行動).toUpperCase() === targetAction) || rows[0];
+}
+
+function buildEquipmentSkillRow(equipmentRow, entry) {
+  const skillRow = cloneSkillSchemaDefaults();
+  const attackStyle = isWeaponEquipmentRow(equipmentRow) ? SKILL_WEAPON_ATTACK_STYLE : "";
+  const template = resolveSkillTemplateByAttackStyle(attackStyle, SKILL_ACTIVE_ACTION_CODE);
+  if (template && typeof template === "object") {
+    for (const key of Object.keys(skillRow)) {
+      if (!Object.prototype.hasOwnProperty.call(template, key)) continue;
+      skillRow[key] = template[key];
+    }
+  }
+  const name = nonEmptyText(entry?.name) || nonEmptyText(equipmentRow?.装備名) || "装備";
+  const qualityLabel = nonEmptyText(entry?.qualityLabel);
+  const attackAp = Math.round(toSafeNumber(entry?.attackAp, 0));
+  const magicAp = Math.round(toSafeNumber(entry?.magicAp, 0));
+  const apCost = Math.max(0, Math.abs(attackAp) + Math.abs(magicAp));
+  const traitsText = Array.isArray(entry?.traits)
+    ? entry.traits.map(v => nonEmptyText(v)).filter(Boolean).join(" / ")
+    : "";
+  const detailBase = nonEmptyText(skillRow?.詳細);
+  const detailEquip = `装備:${name}${qualityLabel ? ` [${qualityLabel}]` : ""}`;
+  skillRow["名前"] = name;
+  if (Object.prototype.hasOwnProperty.call(skillRow, "行動")) skillRow["行動"] = SKILL_ACTIVE_ACTION_CODE;
+  if (Object.prototype.hasOwnProperty.call(skillRow, "攻撃手段")) {
+    skillRow["攻撃手段"] = attackStyle || nonEmptyText(skillRow["攻撃手段"]);
+  }
+  if (Object.prototype.hasOwnProperty.call(skillRow, "AP消費")) skillRow["AP消費"] = apCost;
+  if (Object.prototype.hasOwnProperty.call(skillRow, "判定")) skillRow["判定"] = nonEmptyText(skillRow["判定"]) || "攻撃";
+  if (Object.prototype.hasOwnProperty.call(skillRow, "物理")) skillRow["物理"] = Math.round(toSafeNumber(entry?.power, 0));
+  if (Object.prototype.hasOwnProperty.call(skillRow, "ガード")) skillRow["ガード"] = Math.round(toSafeNumber(entry?.guard, 0));
+  if (Object.prototype.hasOwnProperty.call(skillRow, "Cr率")) skillRow["Cr率"] = Math.round(toSafeNumber(entry?.criticalRate, 0));
+  if (Object.prototype.hasOwnProperty.call(skillRow, "Cr威力")) skillRow["Cr威力"] = Math.round(toSafeNumber(entry?.criticalPower, 0));
+  if (Object.prototype.hasOwnProperty.call(skillRow, "射程")) {
+    const range = Number.isFinite(Number(entry?.range)) ? Math.round(toSafeNumber(entry?.range, 0)) : null;
+    skillRow["射程"] = range;
+  }
+  if (Object.prototype.hasOwnProperty.call(skillRow, "物理耐性")) {
+    skillRow["物理耐性"] = Math.round(toSafeNumber(entry?.resistanceBonus?.["物理耐性"], 0));
+  }
+  if (Object.prototype.hasOwnProperty.call(skillRow, "魔法耐性")) {
+    skillRow["魔法耐性"] = Math.round(toSafeNumber(entry?.resistanceBonus?.["魔法耐性"], 0));
+  }
+  if (Object.prototype.hasOwnProperty.call(skillRow, "効果")) {
+    skillRow["効果"] = traitsText || nonEmptyText(skillRow["効果"]) || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(skillRow, "詳細")) {
+    skillRow["詳細"] = [detailEquip, detailBase, traitsText].map(nonEmptyText).filter(Boolean).join(" / ");
+  }
+  return skillRow;
+}
+
+function resolveArmorResistanceRatesForLevel(levelRaw) {
+  const level = Math.max(1, Math.floor(toSafeNumber(levelRaw, 1)));
+  const consumptionRows = Array.isArray(consumptionDb) ? consumptionDb : [];
+  const baseRow = consumptionRows.find(item => (
+    nonEmptyText(item?.種別) === "装備" && Math.floor(toSafeNumber(item?.Lv, 0)) === level
+  )) || null;
+  return {
+    physicalRate: Math.max(0, toSafeNumber(baseRow?.防具_物理, 1)),
+    magicRate: Math.max(0, toSafeNumber(baseRow?.防具_魔法, 0))
+  };
+}
+
+function resolveArmorMagicBonusRateByRarity(rarityKey) {
+  const level = resolveEquipmentCraftLevel(rarityKey);
+  return Math.max(0, toSafeNumber(ARMOR_MAGIC_BONUS_RATE_BY_RARITY_LEVEL[level], 0));
+}
+
 function buildEquipmentCraftMaterialCost(row, rarityKey) {
   const level = resolveEquipmentCraftLevel(rarityKey);
-  const tableLevel = Math.max(1, Math.min(4, level));
-  const base = normalizeResourceBag(EQUIPMENT_CRAFT_MATERIAL_COST_BY_LEVEL[tableLevel], MATERIAL_RESOURCE_KEYS);
+  const consumptionRows = Array.isArray(consumptionDb) ? consumptionDb : [];
+  const baseRow = consumptionRows.find(item => (
+    nonEmptyText(item?.種別) === "装備" && Math.floor(toSafeNumber(item?.Lv, 0)) === level
+  )) || null;
+  const fallbackLevel = Math.max(1, Math.min(4, level));
+  const fallbackBase = normalizeResourceBag(EQUIPMENT_CRAFT_MATERIAL_COST_BY_LEVEL[fallbackLevel], MATERIAL_RESOURCE_KEYS);
+  const base = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  if (baseRow) {
+    const woodRatioRaw = Math.max(0, toSafeNumber(row?.木材, 0));
+    const oreRatioRaw = Math.max(0, toSafeNumber(row?.鉱石, 0));
+    const hasRatio = woodRatioRaw > 0 || oreRatioRaw > 0;
+    const woodScale = hasRatio ? woodRatioRaw : 1;
+    const oreScale = hasRatio ? oreRatioRaw : 1;
+    const woodKeys = ["木材", "黒木", "特木"];
+    const oreKeys = ["鉄", "銀鉄", "青金鋼", "赤黒鋼"];
+    for (const key of woodKeys) {
+      base[key] = roundTo1(Math.max(0, toSafeNumber(baseRow?.[key], 0) * woodScale));
+    }
+    for (const key of oreKeys) {
+      base[key] = roundTo1(Math.max(0, toSafeNumber(baseRow?.[key], 0) * oreScale));
+    }
+    // 装備生成の基本素材は木材系・鉱石系のみを使用する。
+    base["石材"] = 0;
+    base["金"] = 0;
+    base["銀"] = 0;
+    base["宝石"] = 0;
+  } else {
+    addToResourceBag(base, fallbackBase, MATERIAL_RESOURCE_KEYS);
+  }
   const isMagic = isMagicEquipmentRow(row);
   const isFaith = isFaithEquipmentRow(row);
-  const addPrecious = (isMagic || isFaith)
-    ? normalizeResourceBag(EQUIPMENT_CRAFT_MAGIC_FAITH_COST_BY_LEVEL[tableLevel], MATERIAL_RESOURCE_KEYS)
-    : buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  // 魔法/信仰付与は未実装。現時点では追加コストを入れない。
+  const addPrecious = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
   const total = normalizeMaterialStockBag(base);
   addToResourceBag(total, addPrecious, MATERIAL_RESOURCE_KEYS);
   return {
     level,
-    tableLevel,
+    tableLevel: level,
     isMagic,
     isFaith,
     material: total
@@ -1536,6 +2320,439 @@ function applyEquipmentCraftCost(village, craftCost) {
     ...nextVillage,
     materialStockByType: nextStock
   }, props.selectedRace);
+}
+
+function parseEnchantTargetTokens(targetRaw) {
+  const text = nonEmptyText(targetRaw);
+  if (!text) return [];
+  return text
+    .split(/[,、\/／|]/)
+    .map(token => nonEmptyText(token))
+    .filter(Boolean);
+}
+
+function enchantTargetTokenMatchesEquipment(tokenRaw, equipmentRow, item) {
+  const tokenSource = nonEmptyText(tokenRaw);
+  const token = nonEmptyText(tokenSource.replace(/^種別[:：]/, ""));
+  if (!token) return false;
+  const eqName = nonEmptyText(item?.name || equipmentRow?.装備名);
+  const slot = normalizeEquipmentSlotKey(item?.slot);
+  if (token === "武器" || token.includes("武器")) {
+    if (slot === "武器1" || slot === "武器2") return true;
+    if (/盾|シールド|バックラー/.test(eqName)) return true;
+    return isWeaponEquipmentRow(equipmentRow);
+  }
+  if (token === "防具") return isArmorEquipmentRow(equipmentRow);
+  if (token === "装飾") return slot === "装飾1" || slot === "装飾2";
+  if (token === "頭") return slot === "頭";
+  if (token === "体") return slot === "体";
+  if (token === "足") return slot === "足";
+  if (!eqName) return false;
+  return eqName.includes(token) || token.includes(eqName);
+}
+
+function enchantRowMatchesEquipmentTarget(enchantRow, equipmentRow, item) {
+  const targets = parseEnchantTargetTokens(enchantRow?.対象装備);
+  if (!targets.length) return true;
+  return targets.some(token => enchantTargetTokenMatchesEquipment(token, equipmentRow, item));
+}
+
+function resolveVillageAbilityLevelForEnchant(village, requirementKey) {
+  const reqKey = nonEmptyText(requirementKey);
+  const key = ENCHANT_REQUIREMENT_TO_CITY_ABILITY_KEY[reqKey] || "";
+  if (!key && !reqKey) return 0;
+  return resolveCombinedAbilityLevel(village, key, reqKey, CITY_ABILITY_DEFINED_CAP);
+}
+
+function resolveCurrentTurnNumber() {
+  return Math.max(0, Math.floor(toSafeNumber(currentData.value?.turnState?.turnNumber, 0)));
+}
+
+function resolveEquipmentActionPopulationMultiplier(village) {
+  const population = Math.max(0, Math.floor(toSafeNumber(village?.population, 0)));
+  return Math.max(1, 1 + Math.floor(population / EQUIPMENT_ACTION_POPULATION_STEP));
+}
+
+function normalizeVillageEquipmentActionUsage(village) {
+  const turn = resolveCurrentTurnNumber();
+  const source = village?.equipmentActionUsage && typeof village.equipmentActionUsage === "object"
+    ? village.equipmentActionUsage
+    : {};
+  const sourceTurn = Math.max(0, Math.floor(toSafeNumber(source?.turn, -1)));
+  const resetRequired = sourceTurn !== turn;
+  return {
+    turn,
+    craftUsed: resetRequired ? 0 : Math.max(0, Math.floor(toSafeNumber(source?.craftUsed, 0))),
+    enchantMagicUsed: resetRequired ? 0 : Math.max(0, Math.floor(toSafeNumber(source?.enchantMagicUsed, 0))),
+    enchantFaithUsed: resetRequired ? 0 : Math.max(0, Math.floor(toSafeNumber(source?.enchantFaithUsed, 0)))
+  };
+}
+
+function normalizeVillageWithEquipmentActionUsage(village) {
+  const nextVillage = ensureVillageStateShape(village, props.selectedRace);
+  if (!nextVillage) return null;
+  return ensureVillageStateShape({
+    ...nextVillage,
+    equipmentActionUsage: normalizeVillageEquipmentActionUsage(nextVillage)
+  }, props.selectedRace);
+}
+
+function resolveVillageCraftActionUsageState(village) {
+  const nextVillage = normalizeVillageWithEquipmentActionUsage(village);
+  if (!nextVillage?.placed) return { max: 0, used: 0, remaining: 0 };
+  const multiplier = resolveEquipmentActionPopulationMultiplier(nextVillage);
+  const max = Math.max(1, resolveSmithCraftCap(nextVillage) * multiplier);
+  const used = Math.max(0, Math.floor(toSafeNumber(nextVillage?.equipmentActionUsage?.craftUsed, 0)));
+  return {
+    max,
+    used,
+    remaining: Math.max(0, max - used)
+  };
+}
+
+function resolveVillageEnchantActionUsageState(village, usesFaith = false) {
+  const nextVillage = normalizeVillageWithEquipmentActionUsage(village);
+  if (!nextVillage?.placed) return { max: 0, used: 0, remaining: 0 };
+  const multiplier = resolveEquipmentActionPopulationMultiplier(nextVillage);
+  const abilityKey = usesFaith ? "信仰Lv" : "魔法Lv";
+  const base = Math.max(1, resolveVillageAbilityLevelForEnchant(nextVillage, abilityKey));
+  const max = Math.max(1, base * multiplier);
+  const usedKey = usesFaith ? "enchantFaithUsed" : "enchantMagicUsed";
+  const used = Math.max(0, Math.floor(toSafeNumber(nextVillage?.equipmentActionUsage?.[usedKey], 0)));
+  return {
+    max,
+    used,
+    remaining: Math.max(0, max - used)
+  };
+}
+
+function resolveEnchantActionUsageSpec(enchantRow, item = null) {
+  const level = Math.max(1, Math.floor(toSafeNumber(enchantRow?.Lv, 1)));
+  const rarityLevel = resolveEquipmentCraftLevel(item?.quality || item?.qualityLabel || "common");
+  const usesFaith = Math.max(0, Math.floor(toSafeNumber(enchantRow?.["信仰Lv"], 0))) > 0;
+  const usageCost = Math.max(1, level + Math.max(0, rarityLevel - 1));
+  return {
+    usesFaith,
+    usageCost
+  };
+}
+
+function applyVillageCraftActionUsage(village, usageCost = 1) {
+  const nextVillage = normalizeVillageWithEquipmentActionUsage(village);
+  if (!nextVillage?.placed) return { ok: false, reason: "装備作成には都市（初期村）の配置が必要です。", village: nextVillage };
+  const cost = Math.max(1, Math.floor(toSafeNumber(usageCost, 1)));
+  const state = resolveVillageCraftActionUsageState(nextVillage);
+  if (state.remaining < cost) {
+    return {
+      ok: false,
+      reason: `作成回数不足: 残り ${state.remaining}/${state.max} (必要${cost})`,
+      village: nextVillage,
+      usage: state
+    };
+  }
+  const updatedUsage = {
+    ...normalizeVillageEquipmentActionUsage(nextVillage),
+    craftUsed: state.used + cost
+  };
+  const updatedVillage = ensureVillageStateShape({
+    ...nextVillage,
+    equipmentActionUsage: updatedUsage
+  }, props.selectedRace);
+  return {
+    ok: true,
+    village: updatedVillage,
+    usage: resolveVillageCraftActionUsageState(updatedVillage)
+  };
+}
+
+function applyVillageEnchantActionUsage(village, usageSpec = {}) {
+  const nextVillage = normalizeVillageWithEquipmentActionUsage(village);
+  if (!nextVillage?.placed) return { ok: false, reason: "付与には都市（初期村）の配置が必要です。", village: nextVillage };
+  const usesFaith = !!usageSpec?.usesFaith;
+  const cost = Math.max(1, Math.floor(toSafeNumber(usageSpec?.usageCost, 1)));
+  const state = resolveVillageEnchantActionUsageState(nextVillage, usesFaith);
+  if (state.remaining < cost) {
+    const label = usesFaith ? "信仰" : "魔術";
+    return {
+      ok: false,
+      reason: `付与回数不足(${label}): 残り ${state.remaining}/${state.max} (必要${cost})`,
+      village: nextVillage,
+      usage: state
+    };
+  }
+  const usage = normalizeVillageEquipmentActionUsage(nextVillage);
+  const key = usesFaith ? "enchantFaithUsed" : "enchantMagicUsed";
+  usage[key] = Math.max(0, Math.floor(toSafeNumber(usage[key], 0))) + cost;
+  const updatedVillage = ensureVillageStateShape({
+    ...nextVillage,
+    equipmentActionUsage: usage
+  }, props.selectedRace);
+  return {
+    ok: true,
+    village: updatedVillage,
+    usage: resolveVillageEnchantActionUsageState(updatedVillage, usesFaith)
+  };
+}
+
+function evaluateEnchantRequirement(village, enchantRow) {
+  const failed = [];
+  for (const requirementKey of ENCHANT_REQUIREMENT_KEYS) {
+    const required = Math.max(0, Math.floor(toSafeNumber(enchantRow?.[requirementKey], 0)));
+    if (required <= 0) continue;
+    const current = resolveVillageAbilityLevelForEnchant(village, requirementKey);
+    if (current < required) {
+      failed.push({ key: requirementKey, required, current });
+    }
+  }
+  return {
+    ok: failed.length === 0,
+    failed
+  };
+}
+
+function buildEnchantRequirementLabel(village, enchantRow) {
+  const parts = [];
+  for (const requirementKey of ENCHANT_REQUIREMENT_KEYS) {
+    const required = Math.max(0, Math.floor(toSafeNumber(enchantRow?.[requirementKey], 0)));
+    if (required <= 0) continue;
+    const current = resolveVillageAbilityLevelForEnchant(village, requirementKey);
+    parts.push(`${requirementKey} ${current}/${required}`);
+  }
+  if (!parts.length) return "条件: なし";
+  return `条件: ${parts.join(" / ")}`;
+}
+
+function parseRequiredToolsText(raw) {
+  const text = nonEmptyText(raw);
+  if (!text || text === "-" || text === "なし" || text === "〇" || text === "○") return [];
+  return text
+    .split(/[,、\/／|]/)
+    .map(token => nonEmptyText(token))
+    .filter(Boolean)
+    .map(token => {
+      const match = token.match(/^(.+?)[xX×＊*](\d+)$/);
+      if (match) {
+        return {
+          name: nonEmptyText(match[1]),
+          count: Math.max(1, Math.floor(toSafeNumber(match[2], 1)))
+        };
+      }
+      return {
+        name: token,
+        count: 1
+      };
+    })
+    .filter(row => nonEmptyText(row?.name));
+}
+
+function resolveEnchantRequiredTools(enchantRow) {
+  const cols = ["必要道具", "必要道具1", "必要道具2", "必要素材", "必要アイテム", "道具", "特殊道具", "特殊アイテム"];
+  const map = new Map();
+  for (const col of cols) {
+    const parsed = parseRequiredToolsText(enchantRow?.[col]);
+    for (const row of parsed) {
+      const name = nonEmptyText(row?.name);
+      if (!name) continue;
+      map.set(name, Math.max(1, Math.floor(toSafeNumber(map.get(name), 0))) + Math.max(1, Math.floor(toSafeNumber(row?.count, 1))));
+    }
+  }
+  return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+}
+
+function buildEquipmentEnchantCost(enchantRow) {
+  const level = Math.max(1, Math.floor(toSafeNumber(enchantRow?.Lv, 1)));
+  const baseRow = (Array.isArray(consumptionDb) ? consumptionDb : []).find(item => (
+    nonEmptyText(item?.種別) === "付与" && Math.floor(toSafeNumber(item?.Lv, 0)) === level
+  )) || null;
+  const material = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  const food = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
+  if (baseRow) {
+    for (const key of MATERIAL_RESOURCE_KEYS) {
+      material[key] = roundTo1(Math.max(0, toSafeNumber(baseRow?.[key], 0)));
+    }
+    for (const key of FOOD_RESOURCE_KEYS) {
+      food[key] = roundTo1(Math.max(0, toSafeNumber(baseRow?.[key], 0)));
+    }
+  }
+  return {
+    level,
+    material: normalizeMaterialStockBag(material),
+    food: normalizeResourceBag(food, FOOD_RESOURCE_KEYS),
+    requiredTools: resolveEnchantRequiredTools(enchantRow)
+  };
+}
+
+function formatEnchantRequiredTools(requiredTools) {
+  const source = Array.isArray(requiredTools) ? requiredTools : [];
+  if (!source.length) return "なし";
+  return source
+    .map(row => `${nonEmptyText(row?.name) || "道具"}x${Math.max(1, Math.floor(toSafeNumber(row?.count, 1)))}`)
+    .join(", ");
+}
+
+function buildEnchantEffectSummary(enchantRow) {
+  const out = [];
+  const keys = [...ENCHANT_EFFECT_PRIMARY_FIELDS, ...ENCHANT_EFFECT_FALLBACK_FIELDS];
+  for (const key of keys) {
+    const value = toSafeNumber(enchantRow?.[key], 0);
+    if (!Number.isFinite(value) || value === 0) continue;
+    out.push(`${key}${value > 0 ? "+" : ""}${Math.round(value)}`);
+  }
+  if (!out.length) return "効果なし";
+  return out.join(" / ");
+}
+
+function resolveItemAppliedEnchantNames(item) {
+  const source = Array.isArray(item?.enchantments) ? item.enchantments : [];
+  const out = [];
+  for (const row of source) {
+    const name = typeof row === "string"
+      ? nonEmptyText(row)
+      : nonEmptyText(row?.name || row?.abilityName || row?.付与能力);
+    if (!name) continue;
+    if (out.includes(name)) continue;
+    out.push(name);
+  }
+  return out;
+}
+
+function resolveItemAppliedEnchantRows(item) {
+  const names = resolveItemAppliedEnchantNames(item);
+  const rows = [];
+  for (const name of names) {
+    const found = findEnchantRowByAbilityName(name);
+    if (found) rows.push(found);
+  }
+  return rows;
+}
+
+function evaluateWeaponEnchantCapacity(item, equipmentRow, nextEnchantRow = null) {
+  if (!isWeaponEquipmentRow(equipmentRow)) {
+    return {
+      ok: true,
+      isWeapon: false,
+      maxCount: 3,
+      currentCount: 0,
+      currentLevelSum: 0,
+      levelLimit: 0,
+      remainingLevel: 0,
+      reason: ""
+    };
+  }
+  const appliedRows = resolveItemAppliedEnchantRows(item);
+  const currentCount = appliedRows.length;
+  const currentLevelSum = appliedRows.reduce((sum, row) => (
+    sum + Math.max(0, Math.floor(toSafeNumber(row?.Lv, 0)))
+  ), 0);
+  const quality = nonEmptyText(item?.quality || item?.qualityLabel || "common");
+  const levelLimit = resolveEquipmentCraftLevel(quality);
+  const nextLevel = nextEnchantRow ? Math.max(0, Math.floor(toSafeNumber(nextEnchantRow?.Lv, 0))) : 0;
+  const nextName = nonEmptyText(nextEnchantRow?.付与能力);
+  const duplicate = nextName && appliedRows.some(row => nonEmptyText(row?.付与能力) === nextName);
+  if (duplicate) {
+    return {
+      ok: false,
+      isWeapon: true,
+      maxCount: 3,
+      currentCount,
+      currentLevelSum,
+      levelLimit,
+      remainingLevel: Math.max(0, levelLimit - currentLevelSum),
+      reason: `同じ付与は重複できません: ${nextName}`
+    };
+  }
+  if (nextEnchantRow && currentCount >= 3) {
+    return {
+      ok: false,
+      isWeapon: true,
+      maxCount: 3,
+      currentCount,
+      currentLevelSum,
+      levelLimit,
+      remainingLevel: Math.max(0, levelLimit - currentLevelSum),
+      reason: "武器付与上限: 最大3つまでです。"
+    };
+  }
+  if (nextEnchantRow && (currentLevelSum + nextLevel > levelLimit)) {
+    return {
+      ok: false,
+      isWeapon: true,
+      maxCount: 3,
+      currentCount,
+      currentLevelSum,
+      levelLimit,
+      remainingLevel: Math.max(0, levelLimit - currentLevelSum),
+      reason: `武器付与Lv上限: 合計${levelLimit}まで（現在${currentLevelSum} + 追加${nextLevel}）`
+    };
+  }
+  return {
+    ok: true,
+    isWeapon: true,
+    maxCount: 3,
+    currentCount,
+    currentLevelSum,
+    levelLimit,
+    remainingLevel: Math.max(0, levelLimit - currentLevelSum),
+    reason: ""
+  };
+}
+
+function applyEnchantRowToEquipmentItem(item, enchantRow) {
+  const source = item && typeof item === "object" ? item : {};
+  const next = {
+    ...source,
+    resistanceBonus: { ...(source?.resistanceBonus || {}) }
+  };
+  const skillRowBase = ensureEquipmentSkillRowForItem(next) || {};
+  const skillRow = { ...skillRowBase };
+  const bonus = { ...(source?.enchantBonus || {}) };
+  for (const [key, rawValue] of Object.entries(enchantRow || {})) {
+    if (ENCHANT_METADATA_KEYS.has(key)) continue;
+    const value = toSafeNumber(rawValue, 0);
+    if (!Number.isFinite(value) || value === 0) continue;
+    bonus[key] = roundTo1(toSafeNumber(bonus[key], 0) + value);
+    const currentSkill = toSafeNumber(skillRow[key], 0);
+    skillRow[key] = roundTo1(currentSkill + value);
+  }
+  const guardDelta = toSafeNumber(enchantRow?.ガード, 0) + toSafeNumber(enchantRow?.防御, 0);
+  if (guardDelta !== 0) {
+    next.guard = Math.round(toSafeNumber(next?.guard, 0) + guardDelta);
+  }
+  const powerDelta = toSafeNumber(enchantRow?.物理, 0);
+  if (powerDelta !== 0) {
+    next.power = Math.round(toSafeNumber(next?.power, 0) + powerDelta);
+  }
+  const criticalRateDelta = toSafeNumber(enchantRow?.Cr率, 0);
+  if (criticalRateDelta !== 0) {
+    next.criticalRate = Math.round(toSafeNumber(next?.criticalRate, 0) + criticalRateDelta);
+  }
+  const criticalPowerDelta = toSafeNumber(enchantRow?.Cr威力, 0);
+  if (criticalPowerDelta !== 0) {
+    next.criticalPower = Math.round(toSafeNumber(next?.criticalPower, 0) + criticalPowerDelta);
+  }
+  const rangeDelta = toSafeNumber(enchantRow?.射程, 0);
+  if (rangeDelta !== 0) {
+    next.range = Math.max(0, Math.round(toSafeNumber(next?.range, 0) + rangeDelta));
+  }
+  for (const key of RESISTANCE_FIELDS) {
+    const delta = toSafeNumber(enchantRow?.[key], 0);
+    if (delta === 0) continue;
+    next.resistanceBonus[key] = Math.round(toSafeNumber(next.resistanceBonus?.[key], 0) + delta);
+  }
+  const enchantName = nonEmptyText(enchantRow?.付与能力);
+  const prevEnchantments = Array.isArray(next?.enchantments) ? next.enchantments : [];
+  next.enchantments = enchantName
+    ? [...prevEnchantments.filter(name => nonEmptyText(name) !== enchantName), enchantName]
+    : [...prevEnchantments];
+  if (enchantName) {
+    const baseEffect = nonEmptyText(skillRow?.効果);
+    skillRow["効果"] = [baseEffect, `付与:${enchantName}`].filter(Boolean).join(" / ");
+    const baseDetail = nonEmptyText(skillRow?.詳細);
+    skillRow["詳細"] = [baseDetail, `付与:${enchantName}`].filter(Boolean).join(" / ");
+  }
+  next.enchantBonus = bonus;
+  next.skillRow = skillRow;
+  return next;
 }
 
 function countPromotedNamedUnits() {
@@ -1593,6 +2810,338 @@ function resolveVillageMarkerIconNameByScale(scaleLabel) {
   const scale = nonEmptyText(scaleLabel);
   if (scale === "村") return resolveAvailableIconName("村");
   return resolveAvailableIconName("町", "都市", "大都市", "村");
+}
+
+const TERRITORY_RESIDENTIAL_CENTER_LEVEL_SET = new Set([
+  TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+  TERRITORY_RESIDENTIAL_LEVEL_TOWN,
+  TERRITORY_RESIDENTIAL_LEVEL_CITY,
+  TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS
+]);
+
+const TERRITORY_RESIDENTIAL_TARGET_ATTACHED_COUNT = {
+  [TERRITORY_RESIDENTIAL_LEVEL_VILLAGE]: 0,
+  [TERRITORY_RESIDENTIAL_LEVEL_TOWN]: 1,
+  [TERRITORY_RESIDENTIAL_LEVEL_CITY]: 2,
+  [TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS]: 6
+};
+
+function isTerritoryResidentialCenterLevel(levelKey) {
+  const key = normalizeTerritoryResidentialLevelKey(levelKey, TERRITORY_RESIDENTIAL_LEVEL_LAND);
+  return TERRITORY_RESIDENTIAL_CENTER_LEVEL_SET.has(key);
+}
+
+function resolveTerritoryResidentialAttachedTarget(levelKey) {
+  const key = normalizeTerritoryResidentialLevelKey(levelKey, TERRITORY_RESIDENTIAL_LEVEL_VILLAGE);
+  return Math.max(0, Math.floor(toSafeNumber(TERRITORY_RESIDENTIAL_TARGET_ATTACHED_COUNT[key], 0)));
+}
+
+function normalizeTerritoryResidentialUpgradeQueueMap(raw) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  for (const [rawCenterKey, rowRaw] of Object.entries(source)) {
+    const key = nonEmptyText(rawCenterKey);
+    if (!key.includes(",")) continue;
+    const row = rowRaw && typeof rowRaw === "object" ? rowRaw : {};
+    const centerKey = nonEmptyText(row?.centerKey) || key;
+    if (!centerKey.includes(",")) continue;
+    const nextLevel = normalizeTerritoryResidentialLevelKey(row?.nextLevel, "");
+    if (!nextLevel || !isTerritoryResidentialCenterLevel(nextLevel)) continue;
+    const remainingTurns = Math.max(0, Math.floor(toSafeNumber(row?.remainingTurns, 0)));
+    if (remainingTurns <= 0) continue;
+    const totalTurns = Math.max(remainingTurns, Math.floor(toSafeNumber(row?.totalTurns, remainingTurns)));
+    const attachmentKeys = Array.from(new Set((Array.isArray(row?.attachmentKeys) ? row.attachmentKeys : [])
+      .map(v => nonEmptyText(v))
+      .filter(v => v.includes(",") && v !== centerKey)));
+    const tileCount = Math.max(
+      1,
+      Math.floor(toSafeNumber(row?.tileCount, Math.max(1, attachmentKeys.length + 1)))
+    );
+    out[centerKey] = {
+      centerKey,
+      nextLevel,
+      remainingTurns,
+      totalTurns,
+      attachmentKeys,
+      tileCount
+    };
+  }
+  return out;
+}
+
+function resolveTerritoryResidentialUpgradeQueueEntryAtTile(village, tileKey) {
+  const key = nonEmptyText(tileKey);
+  if (!key.includes(",")) return null;
+  const queueMap = normalizeTerritoryResidentialUpgradeQueueMap(village?.[TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]);
+  for (const row of Object.values(queueMap)) {
+    if (!row || typeof row !== "object") continue;
+    if (row.centerKey === key) return row;
+    if (Array.isArray(row.attachmentKeys) && row.attachmentKeys.includes(key)) return row;
+  }
+  return null;
+}
+
+function collectTerritoryResidentialUpgradePendingTileSet(village) {
+  const set = new Set();
+  const queueMap = normalizeTerritoryResidentialUpgradeQueueMap(village?.[TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]);
+  for (const row of Object.values(queueMap)) {
+    if (!row || typeof row !== "object") continue;
+    if (nonEmptyText(row.centerKey).includes(",")) set.add(row.centerKey);
+    for (const key of Array.isArray(row.attachmentKeys) ? row.attachmentKeys : []) {
+      if (nonEmptyText(key).includes(",")) set.add(key);
+    }
+  }
+  return set;
+}
+
+function normalizeFacilityNameToken(value) {
+  return nonEmptyText(value)
+    .replace(/\s+/g, "")
+    .replace(/[()（）\[\]【】「」『』・]/g, "")
+    .toLowerCase();
+}
+
+function resolveResidentialUpgradeFacilityNameCandidates(levelKey) {
+  const level = normalizeTerritoryResidentialLevelKey(levelKey, "");
+  const levelDef = resolveTerritoryResidentialLevelDef(level);
+  const label = nonEmptyText(levelDef?.label);
+  const map = {
+    [TERRITORY_RESIDENTIAL_LEVEL_TOWN]: ["町", "町化", "町拡張", "居住拡張町", "住居拡張町", "residentialtown", "town"],
+    [TERRITORY_RESIDENTIAL_LEVEL_CITY]: ["都市", "都市化", "都市拡張", "居住拡張都市", "住居拡張都市", "residentialcity", "city"],
+    [TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS]: ["大都市", "大都市化", "大都市拡張", "居住拡張大都市", "住居拡張大都市", "metropolis"]
+  };
+  const base = Array.isArray(map[level]) ? [...map[level]] : [];
+  if (label) {
+    base.unshift(label, `${label}化`, `${label}拡張`, `住居${label}`, `住居拡張${label}`, `居住拡張${label}`);
+  }
+  return Array.from(new Set(base.map(v => normalizeFacilityNameToken(v)).filter(Boolean)));
+}
+
+function findResidentialUpgradeFacilityRow(levelKey) {
+  const candidates = resolveResidentialUpgradeFacilityNameCandidates(levelKey);
+  if (!candidates.length) return null;
+  for (const row of facilityRows.value) {
+    const name = normalizeFacilityNameToken(row?.施設名);
+    if (!name) continue;
+    if (candidates.includes(name)) return row;
+  }
+  for (const row of facilityRows.value) {
+    const name = normalizeFacilityNameToken(row?.施設名);
+    if (!name) continue;
+    if (candidates.some(token => name.includes(token) || token.includes(name))) {
+      return row;
+    }
+  }
+  return null;
+}
+
+function buildTerritoryResidentialUpgradeCost(levelKey, tileCount = 1) {
+  const count = Math.max(1, Math.floor(toSafeNumber(tileCount, 1)));
+  const row = findResidentialUpgradeFacilityRow(levelKey);
+  if (!row) {
+    return {
+      found: false,
+      levelKey: normalizeTerritoryResidentialLevelKey(levelKey, ""),
+      tileCount: count,
+      facilityName: "",
+      food: buildEmptyResourceBag(FOOD_RESOURCE_KEYS),
+      material: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS)
+    };
+  }
+  const perTileFood = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
+  for (const key of FOOD_RESOURCE_KEYS) {
+    perTileFood[key] = Math.max(0, toSafeNumber(row?.[key], 0));
+  }
+  const perTileMaterial = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  for (const key of MATERIAL_RESOURCE_KEYS) {
+    perTileMaterial[key] = Math.max(0, toSafeNumber(row?.[key], 0));
+  }
+  const scale = Math.max(0, toSafeNumber(TERRITORY_RESIDENTIAL_UPGRADE_COST_SCALE, 1));
+  const factor = count * scale;
+  return {
+    found: true,
+    levelKey: normalizeTerritoryResidentialLevelKey(levelKey, ""),
+    tileCount: count,
+    facilityName: nonEmptyText(row?.施設名),
+    food: multiplyResourceBag(perTileFood, factor, FOOD_RESOURCE_KEYS),
+    material: multiplyResourceBag(perTileMaterial, factor, MATERIAL_RESOURCE_KEYS)
+  };
+}
+
+function canAffordTerritoryResidentialUpgrade(village, cost) {
+  if (!village || !cost?.found) return false;
+  const foodBag = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS);
+  const materialBag = normalizeMaterialStockBag(village.materialStockByType);
+  for (const key of FOOD_RESOURCE_KEYS) {
+    if (toSafeNumber(foodBag[key], 0) < toSafeNumber(cost?.food?.[key], 0)) return false;
+  }
+  for (const key of MATERIAL_RESOURCE_KEYS) {
+    if (toSafeNumber(materialBag[key], 0) < toSafeNumber(cost?.material?.[key], 0)) return false;
+  }
+  return true;
+}
+
+function applyTerritoryResidentialUpgradeCost(village, cost) {
+  const nextVillage = ensureVillageStateShape(village, resolveActiveFactionRace());
+  if (!nextVillage || !cost?.found) return null;
+  const nextFood = normalizeResourceBag(nextVillage.foodStockByType, FOOD_RESOURCE_KEYS);
+  const nextMaterial = normalizeMaterialStockBag(nextVillage.materialStockByType);
+  for (const key of FOOD_RESOURCE_KEYS) {
+    nextFood[key] = roundTo1(Math.max(0, toSafeNumber(nextFood[key], 0) - toSafeNumber(cost?.food?.[key], 0)));
+  }
+  for (const key of MATERIAL_RESOURCE_KEYS) {
+    nextMaterial[key] = roundTo1(Math.max(0, toSafeNumber(nextMaterial[key], 0) - toSafeNumber(cost?.material?.[key], 0)));
+  }
+  return ensureVillageStateShape({
+    ...nextVillage,
+    foodStockByType: nextFood,
+    materialStockByType: nextMaterial
+  }, resolveActiveFactionRace());
+}
+
+function resolveTerritoryResidentialUpgradeRequiredTurns(village) {
+  const productionPercent = resolveVillageProductionPowerPercent(village, unitList.value);
+  const reduceTurns = Math.max(0, Math.floor(productionPercent / 100));
+  return Math.max(
+    TERRITORY_RESIDENTIAL_UPGRADE_MIN_TURNS,
+    TERRITORY_RESIDENTIAL_UPGRADE_BASE_TURNS - reduceTurns
+  );
+}
+
+function normalizeTerritoryResidentialLevelKey(levelKey, fallback = TERRITORY_RESIDENTIAL_LEVEL_LAND) {
+  const key = nonEmptyText(levelKey);
+  if (key && Object.prototype.hasOwnProperty.call(TERRITORY_RESIDENTIAL_LEVEL_CONFIG, key)) {
+    return key;
+  }
+  return nonEmptyText(fallback) || TERRITORY_RESIDENTIAL_LEVEL_LAND;
+}
+
+function resolveTerritoryResidentialLevelDef(levelKey) {
+  const key = normalizeTerritoryResidentialLevelKey(levelKey, TERRITORY_RESIDENTIAL_LEVEL_LAND);
+  return TERRITORY_RESIDENTIAL_LEVEL_CONFIG[key] || TERRITORY_RESIDENTIAL_LEVEL_CONFIG[TERRITORY_RESIDENTIAL_LEVEL_LAND];
+}
+
+function normalizeTerritoryResidentialLevelMap(raw, village = null) {
+  const source = raw && typeof raw === "object"
+    ? raw
+    : (village?.[TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY] && typeof village[TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY] === "object"
+      ? village[TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY]
+      : {});
+  const out = {};
+  for (const [keyRaw, levelRaw] of Object.entries(source)) {
+    const key = nonEmptyText(keyRaw);
+    if (!key.includes(",")) continue;
+    const mode = resolveTerritoryTileModeAt(village, key, {
+      fallbackModeKey: TERRITORY_TILE_MODE_RESOURCE
+    });
+    const fallback = mode === TERRITORY_TILE_MODE_SETTLEMENT
+      ? TERRITORY_RESIDENTIAL_LEVEL_LAND
+      : TERRITORY_RESIDENTIAL_LEVEL_LAND;
+    out[key] = normalizeTerritoryResidentialLevelKey(levelRaw, fallback);
+  }
+  return out;
+}
+
+function normalizeTerritoryResidentialCenterMap(raw, village = null, levelMapOverride = null) {
+  return normalizeTerritoryResidentialCenterMapUtil(raw, village, levelMapOverride, {
+    nonEmptyText,
+    centerMapKey: TERRITORY_RESIDENTIAL_CENTER_MAP_KEY,
+    attachedLevelKey: TERRITORY_RESIDENTIAL_LEVEL_ATTACHED,
+    landLevelKey: TERRITORY_RESIDENTIAL_LEVEL_LAND,
+    normalizeTerritoryResidentialLevelMap,
+    normalizeTerritoryResidentialLevelKey,
+    isTerritoryResidentialCenterLevel
+  });
+}
+
+function ensureTerritoryResidentialClusterMapShape(village) {
+  return ensureTerritoryResidentialClusterMapShapeUtil(village, {
+    nonEmptyText,
+    coordKey,
+    levelMapKey: TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY,
+    centerMapKey: TERRITORY_RESIDENTIAL_CENTER_MAP_KEY,
+    settlementModeKey: TERRITORY_TILE_MODE_SETTLEMENT,
+    resourceModeKey: TERRITORY_TILE_MODE_RESOURCE,
+    villageLevelKey: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+    landLevelKey: TERRITORY_RESIDENTIAL_LEVEL_LAND,
+    attachedLevelKey: TERRITORY_RESIDENTIAL_LEVEL_ATTACHED,
+    normalizeTerritoryTileModeMap,
+    normalizeTerritoryResidentialLevelMap,
+    normalizeTerritoryResidentialLevelKey,
+    normalizeTerritoryResidentialCenterMap,
+    isTerritoryResidentialCenterLevel,
+    resolveTerritoryTileModeAt
+  });
+}
+
+function resolveTerritoryResidentialLevelAt(village, tileKey, options = {}) {
+  const key = nonEmptyText(tileKey);
+  if (!key.includes(",")) return TERRITORY_RESIDENTIAL_LEVEL_LAND;
+  const mode = resolveTerritoryTileModeAt(village, key);
+  const fallbackByMode = mode === TERRITORY_TILE_MODE_SETTLEMENT
+    ? TERRITORY_RESIDENTIAL_LEVEL_LAND
+    : TERRITORY_RESIDENTIAL_LEVEL_LAND;
+  const fallbackLevel = normalizeTerritoryResidentialLevelKey(options?.fallbackLevel, fallbackByMode);
+  const levelMap = normalizeTerritoryResidentialLevelMap(village?.[TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY], village);
+  return normalizeTerritoryResidentialLevelKey(levelMap[key], fallbackLevel);
+}
+
+function resolveTerritoryResidentialCenterKey(village, tileKey) {
+  return resolveTerritoryResidentialCenterKeyUtil(village, tileKey, {
+    nonEmptyText,
+    centerMapKey: TERRITORY_RESIDENTIAL_CENTER_MAP_KEY,
+    attachedLevelKey: TERRITORY_RESIDENTIAL_LEVEL_ATTACHED,
+    landLevelKey: TERRITORY_RESIDENTIAL_LEVEL_LAND,
+    normalizeTerritoryResidentialCenterMap,
+    resolveTerritoryResidentialLevelAt,
+    isTerritoryResidentialCenterLevel
+  });
+}
+
+function resolveTerritoryResidentialAttachmentKeys(village, centerKey) {
+  return resolveTerritoryResidentialAttachmentKeysUtil(village, centerKey, {
+    nonEmptyText,
+    levelMapKey: TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY,
+    centerMapKey: TERRITORY_RESIDENTIAL_CENTER_MAP_KEY,
+    attachedLevelKey: TERRITORY_RESIDENTIAL_LEVEL_ATTACHED,
+    landLevelKey: TERRITORY_RESIDENTIAL_LEVEL_LAND,
+    normalizeTerritoryResidentialCenterMap,
+    normalizeTerritoryResidentialLevelMap,
+    normalizeTerritoryResidentialLevelKey
+  });
+}
+
+function resolveTerritoryResidentialContribution(levelKey) {
+  const def = resolveTerritoryResidentialLevelDef(levelKey);
+  const perTile = Math.max(0, toSafeNumber(def?.capacityPerTile, 0));
+  const useTiles = Math.max(1, Math.floor(toSafeNumber(def?.footprintTiles, 1)));
+  return perTile * useTiles;
+}
+
+function resolveTerritoryResidentialIconName(levelKey) {
+  const def = resolveTerritoryResidentialLevelDef(levelKey);
+  const preferred = nonEmptyText(def?.iconName);
+  if (!preferred) return "";
+  return resolveAvailableIconName(preferred);
+}
+
+function resolveTerritoryResidentialIconSize(levelKey) {
+  const def = resolveTerritoryResidentialLevelDef(levelKey);
+  const configured = Math.floor(toSafeNumber(def?.markerIconSize, 0));
+  if (configured > 0) return configured;
+  return Math.max(16, Math.floor(toSafeNumber(MAP_SETTLEMENT_MARKER_CONFIG.iconSize, 32)));
+}
+
+function resolveNextTerritoryResidentialLevel(currentLevel) {
+  const current = normalizeTerritoryResidentialLevelKey(currentLevel, TERRITORY_RESIDENTIAL_LEVEL_VILLAGE);
+  const idx = TERRITORY_RESIDENTIAL_LEVEL_ORDER.indexOf(current);
+  if (idx < 0) return TERRITORY_RESIDENTIAL_LEVEL_ORDER[0] || "";
+  if (idx >= TERRITORY_RESIDENTIAL_LEVEL_ORDER.length - 1) return "";
+  return TERRITORY_RESIDENTIAL_LEVEL_ORDER[idx + 1];
+}
+
+function ensureVillageResidentialLevelMapShape(village) {
+  return ensureTerritoryResidentialClusterMapShape(village);
 }
 
 function resolveClassRowIconName(row, fallback = DEFAULT_ICON_NAME) {
@@ -2307,6 +3856,7 @@ function applyVisibilitySnapshotToLiveState(snapshot) {
   const spottedFaction = Array.isArray(snapshot?.spottedFactionTileKeys) ? snapshot.spottedFactionTileKeys : [];
   exploredTileKeys = new Set(explored.map(v => String(v || "")));
   visibleTileKeys = new Set(visible.map(v => String(v || "")));
+  currentVisionTileKeys = new Set(visibleTileKeys);
   spottedEnemyTileKeys = new Set(spotted.map(v => String(v || "")));
   spottedFactionTileKeys = new Set(spottedFaction.map(v => String(v || "")));
 }
@@ -2602,7 +4152,8 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label, options = {})
       [raceName]: initialPopulation
     },
     foodStockByType: buildEmptyResourceBag(FOOD_RESOURCE_KEYS),
-    materialStockByType: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS)
+    materialStockByType: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS),
+    equipmentInventory: []
   }, raceName);
   return {
     village,
@@ -2954,6 +4505,97 @@ function resolveInitialVillagePopulationByRace(raceKey = "") {
   return resolveFallbackInitialPopulation();
 }
 
+function resolveFactionLimitFromRow(rawValue, population = 0, fallback = 0) {
+  const pop = Math.max(0, Math.floor(toSafeNumber(population, 0)));
+  const fallbackValue = Math.max(0, Math.floor(toSafeNumber(fallback, 0)));
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= 0) return fallbackValue;
+  if (value > 0 && value < 1) {
+    if (pop <= 0) return 0;
+    return Math.max(1, Math.floor(pop * value));
+  }
+  return Math.max(0, Math.floor(value));
+}
+
+function resolveVillageScaleStage(village) {
+  const population = Math.max(0, Math.floor(toSafeNumber(village?.population, 0)));
+  for (let i = VILLAGE_SCALE_STAGE_THRESHOLDS.length - 1; i >= 0; i -= 1) {
+    const row = VILLAGE_SCALE_STAGE_THRESHOLDS[i];
+    if (population >= row.minPopulation) {
+      return { ...row };
+    }
+  }
+  return { ...VILLAGE_SCALE_STAGE_THRESHOLDS[0] };
+}
+
+function resolveFactionArmyUnitCap(village, raceKey = "") {
+  const row = resolveFactionRowByRace(raceKey);
+  const population = Math.max(0, Math.floor(toSafeNumber(village?.population, 0)));
+  const fallback = Math.floor(population / 10);
+  return resolveFactionLimitFromRow(row?.軍隊, population, fallback);
+}
+
+function resolveFactionHeroUnitCap(village, raceKey = "") {
+  const row = resolveFactionRowByRace(raceKey);
+  const population = Math.max(0, Math.floor(toSafeNumber(village?.population, 0)));
+  const base = resolveFactionLimitFromRow(row?.ヒーロー, population, Math.floor(population / 10));
+  const stage = resolveVillageScaleStage(village);
+  const stageBonus = Math.max(0, Math.floor(toSafeNumber(stage?.stage, 0))) * HERO_AUTO_GROWTH_PER_CITY_STAGE_CAP_BONUS;
+  return Math.max(0, base + stageBonus);
+}
+
+function resolveHeroCreateUnlockedCount(village) {
+  return Math.max(0, Math.floor(toSafeNumber(village?.heroBirthUnlock, 0)));
+}
+
+function resolveHeroGrowthBonusMultiplierByRace(raceKey = "") {
+  const row = resolveFactionRowByRace(raceKey);
+  const raw = toSafeNumber(row?.ヒーロー, 1);
+  if (!Number.isFinite(raw) || raw <= 0) return 1;
+  return Math.max(0.1, roundTo1(raw));
+}
+
+function countSettlementTiles(village) {
+  const modeMap = normalizeTerritoryTileModeMap(village?.territoryTileModeMap);
+  let count = 0;
+  for (const mode of Object.values(modeMap)) {
+    if (resolveTerritoryTileModeKey(mode) === TERRITORY_TILE_MODE_SETTLEMENT) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function buildHeroAutoGrowthBreakdown(village, units = unitList.value, raceKey = "") {
+  const safeUnits = Array.isArray(units) ? units : [];
+  const hasArmyLv10 = safeUnits.some(unit => isMilitaryUnit(unit) && Math.floor(toSafeNumber(unit?.level, 1)) >= 10);
+  const settlementCount = countSettlementTiles(village);
+  const additionalSettlements = Math.max(0, settlementCount - 1);
+  const stage = resolveVillageScaleStage(village);
+  const stageValue = Math.max(0, Math.floor(toSafeNumber(stage?.stage, 0)));
+  const heroGrowthMultiplier = resolveHeroGrowthBonusMultiplierByRace(raceKey);
+  const baseArmyBonus = hasArmyLv10 ? HERO_AUTO_GROWTH_ARMY_LV10_BONUS_PERCENT : 0;
+  const baseSettlementBonus = additionalSettlements * HERO_AUTO_GROWTH_PER_SETTLEMENT_BONUS_PERCENT;
+  const baseStageBonus = stageValue * HERO_AUTO_GROWTH_PER_CITY_STAGE_BONUS_PERCENT;
+  const scaledBonusTotal = (baseArmyBonus + baseSettlementBonus + baseStageBonus) * heroGrowthMultiplier;
+  const chance = roundTo1(
+    HERO_AUTO_GROWTH_BASE_CHANCE_PERCENT
+      + scaledBonusTotal
+  );
+  return {
+    chance,
+    heroGrowthMultiplier,
+    hasArmyLv10,
+    settlementCount,
+    additionalSettlements,
+    stageLabel: nonEmptyText(stage?.label) || "村",
+    stageValue,
+    baseArmyBonus,
+    baseSettlementBonus,
+    baseStageBonus
+  };
+}
+
 function normalizeFactionTerrainToken(rawToken) {
   const token = nonEmptyText(rawToken)
     .replace(/\s+/g, "")
@@ -3069,6 +4711,12 @@ function territoryDevOptions(overrides = {}) {
     coordKey,
     parseCoordKey,
     modeConfig: TERRITORY_TILE_MODE_CONFIG,
+    residentialLevelConfig: TERRITORY_RESIDENTIAL_LEVEL_CONFIG,
+    residentialLevelMapKey: TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY,
+    residentialCenterMapKey: TERRITORY_RESIDENTIAL_CENTER_MAP_KEY,
+    residentialClusterCapacityMode: true,
+    residentialDefaultLevelForResource: TERRITORY_RESIDENTIAL_LEVEL_LAND,
+    residentialDefaultLevelForSettlement: TERRITORY_RESIDENTIAL_LEVEL_LAND,
     resourceModeKey: TERRITORY_TILE_MODE_RESOURCE,
     settlementModeKey: TERRITORY_TILE_MODE_SETTLEMENT,
     defaultModeKey: TERRITORY_TILE_MODE_DEFAULT,
@@ -3115,9 +4763,42 @@ function ensureVillageStateShape(village, preferredRace = "") {
   );
   const materialSource = village.materialStockByType || splitTotalIntoBag(village.materialStock, MATERIAL_RESOURCE_LEGACY_KEYS);
   const materialStockByType = normalizeMaterialStockBag(materialSource);
+  const equipmentInventory = normalizeVillageEquipmentInventory(village.equipmentInventory);
   const cityLevels = normalizeCityLevels(village.cityLevels);
   const territoryTileModeMap = normalizeTerritoryTileModeMap(village.territoryTileModeMap);
   const territoryTileConversionMap = normalizeTerritoryTileConversionMap(village.territoryTileConversionMap);
+  const tileCorruptionMap = normalizeVillageTileValueMap(
+    village?.[VILLAGE_TILE_CORRUPTION_MAP_KEY],
+    { allowNegative: false }
+  );
+  const tilePurificationMap = normalizeVillageTileValueMap(
+    village?.[VILLAGE_TILE_PURIFICATION_MAP_KEY],
+    { allowNegative: false }
+  );
+  const tileRecoveryMap = normalizeVillageTileValueMap(
+    village?.[VILLAGE_TILE_RECOVERY_MAP_KEY],
+    { allowNegative: false }
+  );
+  const territoryResidentialUpgradeQueueMap = normalizeTerritoryResidentialUpgradeQueueMap(
+    village?.[TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]
+  );
+  const territoryResidentialLevelMap = normalizeTerritoryResidentialLevelMap(
+    village?.[TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY],
+    {
+      ...village,
+      territoryTileModeMap,
+      [TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]: territoryResidentialUpgradeQueueMap
+    }
+  );
+  const territoryResidentialCenterMap = normalizeTerritoryResidentialCenterMap(
+    village?.[TERRITORY_RESIDENTIAL_CENTER_MAP_KEY],
+    {
+      ...village,
+      territoryTileModeMap,
+      [TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY]: territoryResidentialLevelMap
+    },
+    territoryResidentialLevelMap
+  );
   const syncedPopulation = Math.max(1, Math.floor(Object.values(populationByRace).reduce((acc, n) => acc + toSafeNumber(n, 0), 0)));
   const basePopulationCapacity = Math.max(
     1,
@@ -3132,7 +4813,8 @@ function ensureVillageStateShape(village, preferredRace = "") {
     1,
     Math.floor(toSafeNumber(village.populationCapacity, basePopulationCapacity))
   );
-  return {
+  const heroBirthUnlock = resolveHeroCreateUnlockedCount(village);
+  const shaped = {
     ...village,
     population: syncedPopulation,
     populationByRace,
@@ -3140,13 +4822,22 @@ function ensureVillageStateShape(village, preferredRace = "") {
     buildings,
     foodStockByType,
     materialStockByType,
+    equipmentInventory,
     territoryTileModeMap,
     territoryTileConversionMap,
+    [VILLAGE_TILE_CORRUPTION_MAP_KEY]: tileCorruptionMap,
+    [VILLAGE_TILE_PURIFICATION_MAP_KEY]: tilePurificationMap,
+    [VILLAGE_TILE_RECOVERY_MAP_KEY]: tileRecoveryMap,
+    [TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]: territoryResidentialUpgradeQueueMap,
+    [TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY]: territoryResidentialLevelMap,
+    [TERRITORY_RESIDENTIAL_CENTER_MAP_KEY]: territoryResidentialCenterMap,
     basePopulationCapacity,
     populationCapacity,
+    heroBirthUnlock,
     foodStock: sumResourceBag(foodStockByType, FOOD_RESOURCE_KEYS),
     materialStock: sumResourceBag(materialStockByType, MATERIAL_RESOURCE_KEYS)
   };
+  return ensureVillageResidentialLevelMapShape(shaped);
 }
 
 function createInitialFoodStockByType(initialPopulation = 10) {
@@ -3177,6 +4868,7 @@ function shouldDisableFog(data) {
 function resetVisibilityState() {
   exploredTileKeys = new Set();
   visibleTileKeys = new Set();
+  currentVisionTileKeys = new Set();
   spottedEnemyTileKeys = new Set();
   spottedFactionTileKeys = new Set();
 }
@@ -3254,6 +4946,7 @@ function addVisionRangeKeys(data, sx, sy, range, outSet) {
 function rebuildVisibleTiles(data) {
   if (!data?.grid) {
     visibleTileKeys = new Set();
+    currentVisionTileKeys = new Set();
     return;
   }
   if (shouldDisableFog(data)) {
@@ -3264,6 +4957,7 @@ function rebuildVisibleTiles(data) {
       }
     }
     visibleTileKeys = all;
+    currentVisionTileKeys = all;
     return;
   }
 
@@ -3279,6 +4973,7 @@ function rebuildVisibleTiles(data) {
   for (const key of dynamicVisible) {
     exploredTileKeys.add(key);
   }
+  currentVisionTileKeys = dynamicVisible;
   visibleTileKeys = new Set(exploredTileKeys);
 }
 
@@ -3286,6 +4981,12 @@ function isTileVisible(tileKey, data) {
   if (!data?.grid) return false;
   if (shouldDisableFog(data)) return true;
   return visibleTileKeys.has(tileKey);
+}
+
+function isTileInCurrentVision(tileKey, data) {
+  if (!data?.grid) return false;
+  if (shouldDisableFog(data)) return true;
+  return currentVisionTileKeys.has(tileKey);
 }
 
 function buildReachableTileSet(data, sx, sy, maxDistance) {
@@ -3300,7 +5001,6 @@ function buildReachableTileSet(data, sx, sy, maxDistance) {
 
   const minCostByKey = new Map();
   minCostByKey.set(startKey, 0);
-  const hostileBlockedSet = buildHostileOccupiedTileKeySet(data);
   const queue = [{ x: sx, y: sy, cost: 0 }];
   while (queue.length) {
     let minIndex = 0;
@@ -3313,7 +5013,6 @@ function buildReachableTileSet(data, sx, sy, maxDistance) {
     for (const n of neighbors) {
       const key = coordKey(n.x, n.y);
       if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
-      if (hasHostileOccupationAtTile(data, n.x, n.y, { blockedSet: hostileBlockedSet, ignoreKey: startKey })) continue;
       const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y);
       const nextCost = cur.cost + stepCost;
       if (nextCost > safeDistance) continue;
@@ -3335,8 +5034,6 @@ function findPathWithinDistance(data, sx, sy, tx, ty, maxDistance) {
   const safeDistance = Math.max(0, Math.floor(toSafeNumber(maxDistance, 0)));
   const startKey = coordKey(sx, sy);
   const targetKey = coordKey(tx, ty);
-  const hostileBlockedSet = buildHostileOccupiedTileKeySet(data);
-  if (hasHostileOccupationAtTile(data, tx, ty, { blockedSet: hostileBlockedSet, ignoreKey: startKey })) return null;
   if (startKey === targetKey) return [{ x: sx, y: sy }];
 
   const minCostByKey = new Map();
@@ -3357,7 +5054,6 @@ function findPathWithinDistance(data, sx, sy, tx, ty, maxDistance) {
     for (const n of neighbors) {
       const key = coordKey(n.x, n.y);
       if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
-      if (hasHostileOccupationAtTile(data, n.x, n.y, { blockedSet: hostileBlockedSet, ignoreKey: startKey })) continue;
       const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y);
       const nextCost = cur.cost + stepCost;
       if (nextCost > safeDistance) continue;
@@ -3435,10 +5131,129 @@ function findClassRowByName(name) {
   return classRows.value.find(row => nonEmptyText(row?.名前) === target) || null;
 }
 
+function isInitialClassRow(row) {
+  if (!row || typeof row !== "object") return false;
+  const conditionLv = nonEmptyText(row?.条件Lv);
+  if (conditionLv && conditionLv !== "初期" && conditionLv !== "0" && conditionLv !== "-" && conditionLv !== "なし") {
+    return false;
+  }
+  for (let i = 1; i <= 4; i += 1) {
+    const token = nonEmptyText(row?.[`条件_${i}`]);
+    const lvRaw = Number(row?.[`Lv_${i}`]);
+    if (token) return false;
+    if (Number.isFinite(lvRaw) && lvRaw > 0) return false;
+  }
+  return true;
+}
+
+function normalizeClassConditionEntry(rawToken, rawLevel, fallbackToken = "") {
+  const tokenText = nonEmptyText(rawToken);
+  const fallback = nonEmptyText(fallbackToken);
+  if (!tokenText && !fallback) return null;
+  const source = tokenText || fallback;
+  const lvInTokenMatch = source.match(/^(.+?)(?:Lv|LV|lv|レベル)\s*(\d+)$/);
+  if (lvInTokenMatch) {
+    return {
+      token: nonEmptyText(lvInTokenMatch[1]),
+      required: Math.max(1, Math.floor(toSafeNumber(lvInTokenMatch[2], 1)))
+    };
+  }
+  const requiredFromCell = Math.max(1, Math.floor(toSafeNumber(rawLevel, 1)));
+  return {
+    token: source,
+    required: requiredFromCell
+  };
+}
+
+function resolveVillageBuildingDefinitionByToken(rawToken) {
+  const token = nonEmptyText(rawToken);
+  if (!token) return null;
+  return VILLAGE_BUILDING_DEFINITIONS.find((def) => {
+    const key = nonEmptyText(def?.key);
+    const name = nonEmptyText(def?.name);
+    if (!key && !name) return false;
+    if (token === key || token === name) return true;
+    if (name && (name.includes(token) || token.includes(name))) return true;
+    return false;
+  }) || null;
+}
+
+function resolveUnitProgressLevelByConditionToken(unit, rawToken) {
+  const token = nonEmptyText(rawToken);
+  if (!token || !unit || typeof unit !== "object") return { matched: false, current: 0 };
+  const unitLevel = clampUnitLevel(unit?.level, INITIAL_LEVEL_MIN);
+  if (token === "自身Lv" || token === "Lv" || token === "レベル") {
+    return { matched: true, current: unitLevel };
+  }
+  const primaryClassName = nonEmptyText(unit?.className);
+  const secondaryClassName = nonEmptyText(unit?.secondaryClassName);
+  const raceName = nonEmptyText(unit?.race);
+  const raceBaseName = resolveRaceBaseClassName(raceName);
+  const growth = unit?.growthRule || {};
+  if (token === primaryClassName) {
+    return { matched: true, current: Math.max(0, Math.floor(toSafeNumber(growth?.classLevels, 0))) };
+  }
+  if (secondaryClassName && token === secondaryClassName) {
+    return { matched: true, current: Math.max(0, Math.floor(toSafeNumber(growth?.secondaryClassLevels, 0))) };
+  }
+  if (token === raceName || token === raceBaseName) {
+    return { matched: true, current: Math.max(0, Math.floor(toSafeNumber(growth?.raceLevels, 0))) };
+  }
+  return { matched: false, current: 0 };
+}
+
+function evaluateClassUnlockRequirements(classRow, unit = null, village = villageState.value) {
+  if (!classRow || typeof classRow !== "object") return { ok: true, failed: [] };
+  const checks = [];
+  const normalizedConditionLv = nonEmptyText(classRow?.条件Lv);
+  if (normalizedConditionLv && normalizedConditionLv !== "初期" && normalizedConditionLv !== "0" && normalizedConditionLv !== "-" && normalizedConditionLv !== "なし") {
+    const entry = normalizeClassConditionEntry(normalizedConditionLv, 1);
+    if (entry?.token) checks.push(entry);
+  }
+  for (let i = 1; i <= 4; i += 1) {
+    const entry = normalizeClassConditionEntry(classRow?.[`条件_${i}`], classRow?.[`Lv_${i}`]);
+    if (entry?.token) checks.push(entry);
+  }
+  const failed = [];
+  const nextVillage = ensureVillageStateShape(village, props.selectedRace);
+  const builtBuildingSet = new Set(normalizeVillageBuildings(nextVillage?.buildings));
+  for (const requirement of checks) {
+    const token = nonEmptyText(requirement?.token);
+    const required = Math.max(1, Math.floor(toSafeNumber(requirement?.required, 1)));
+    if (!token) continue;
+    if (ENCHANT_REQUIREMENT_KEYS.includes(token)) {
+      const current = resolveVillageAbilityLevelForEnchant(nextVillage, token);
+      if (current < required) failed.push(`${token} ${current}/${required}`);
+      continue;
+    }
+    if (CITY_ABILITY_KEYS.includes(token)) {
+      const current = resolveVillageAbilityLevel(nextVillage, token, CITY_ABILITY_DEFINED_CAP);
+      if (current < required) failed.push(`${token} ${current}/${required}`);
+      continue;
+    }
+    const buildingDef = resolveVillageBuildingDefinitionByToken(token);
+    if (buildingDef) {
+      const current = builtBuildingSet.has(buildingDef.key) ? 1 : 0;
+      if (current < required) failed.push(`${nonEmptyText(buildingDef.name) || token} ${current}/${required}`);
+      continue;
+    }
+    const unitProgress = resolveUnitProgressLevelByConditionToken(unit, token);
+    if (unitProgress.matched) {
+      if (unitProgress.current < required) failed.push(`${token} ${unitProgress.current}/${required}`);
+      continue;
+    }
+    failed.push(`${token} 条件未定義`);
+  }
+  return {
+    ok: failed.length === 0,
+    failed
+  };
+}
+
 function choosePrimaryClassForGeneration() {
   const fromSelection = findClassRowByName(props.selectedClass);
-  if (fromSelection) return fromSelection;
-  return randomPick(jobClassRows.value, null);
+  if (fromSelection && isInitialClassRow(fromSelection)) return fromSelection;
+  return randomPick(initialJobClassRows.value, null);
 }
 
 function chooseRaceBaseRowForSelection() {
@@ -3528,6 +5343,7 @@ function resolveEquipmentSlotCandidates(row) {
 
   const name = nonEmptyText(row?.装備名);
   if (SHIELD_EQUIPMENT_NAMES.includes(name)) return ["武器2"];
+  if (/盾|シールド|バックラー/.test(name)) return ["武器2"];
   if (WEAPON_EQUIPMENT_NAMES.includes(name)) return ["武器1", "武器2"];
   if (/(兜|ヘルム|帽|頭)/.test(name)) return ["頭"];
   if (/(鎧|ローブ|服|法衣|胸当|体)/.test(name)) return ["体"];
@@ -3543,18 +5359,256 @@ function equipmentRowMatchesSlot(row, slotKey) {
   return candidates.includes(key);
 }
 
+function isWeaponEquipmentRow(row) {
+  if (!row || typeof row !== "object") return false;
+  return equipmentRowMatchesSlot(row, "武器1") || equipmentRowMatchesSlot(row, "武器2");
+}
+
+function isArmorEquipmentRow(row) {
+  if (!row || typeof row !== "object") return false;
+  return equipmentRowMatchesSlot(row, "頭") || equipmentRowMatchesSlot(row, "体") || equipmentRowMatchesSlot(row, "足");
+}
+
 function normalizeEquipmentList(list) {
   const source = Array.isArray(list) ? list : [];
   return source
     .map((item, index) => {
       if (!item || typeof item !== "object") return null;
       const slot = normalizeEquipmentSlotKey(item?.slot) || slotKeyFromIndex(index);
+      const skillRow = item?.skillRow && typeof item.skillRow === "object"
+        ? item.skillRow
+        : ensureEquipmentSkillRowForItem({ ...item, slot });
       return {
         ...item,
-        slot
+        slot,
+        ...(skillRow && typeof skillRow === "object" ? { skillRow } : {})
       };
     })
     .filter(Boolean);
+}
+
+function ensureEquipmentSkillRowForItem(item) {
+  if (!item || typeof item !== "object") return null;
+  if (item?.skillRow && typeof item.skillRow === "object") return item.skillRow;
+  const eqName = nonEmptyText(item?.name || item?.equipmentName);
+  if (!eqName) return null;
+  const row = findEquipmentRowByName(eqName);
+  if (!row) return null;
+  return buildEquipmentSkillRow(row, item);
+}
+
+function equipmentInventoryKey(name, quality) {
+  const eqName = nonEmptyText(name);
+  if (!eqName) return "";
+  const rarity = normalizeEquipmentRarity(quality, "common");
+  return `${eqName}::${rarity}`;
+}
+
+function normalizeVillageEquipmentInventory(list) {
+  const source = Array.isArray(list) ? list : [];
+  const map = new Map();
+  for (const row of source) {
+    if (!row || typeof row !== "object") continue;
+    const rawItem = row?.item && typeof row.item === "object" ? row.item : row;
+    const eqName = nonEmptyText(rawItem?.name || row?.name || row?.equipmentName);
+    if (!eqName) continue;
+    const quality = normalizeEquipmentRarity(
+      rawItem?.quality || row?.quality || rawItem?.qualityLabel || row?.qualityLabel,
+      "common"
+    );
+    const key = equipmentInventoryKey(eqName, quality);
+    if (!key) continue;
+    const qualityLabel = formatEquipmentRarityLabel(quality);
+    const count = Math.max(
+      0,
+      Math.floor(
+        toSafeNumber(row?.count, toSafeNumber(row?.quantity, 1))
+      )
+    );
+    if (!count) continue;
+    const slot = normalizeEquipmentSlotKey(rawItem?.slot) || "武器1";
+    const item = {
+      ...rawItem,
+      name: eqName,
+      quality,
+      qualityLabel,
+      slot
+    };
+    const skillRow = ensureEquipmentSkillRowForItem(item);
+    if (skillRow) {
+      item.skillRow = skillRow;
+    }
+    const prev = map.get(key);
+    if (prev) {
+      prev.count += count;
+      if (!prev.item) prev.item = item;
+      continue;
+    }
+    map.set(key, {
+      key,
+      name: eqName,
+      quality,
+      qualityLabel,
+      count,
+      item
+    });
+  }
+  return Array.from(map.values())
+    .filter(row => row.count > 0)
+    .sort((a, b) => {
+      const nameCmp = nonEmptyText(a?.name).localeCompare(nonEmptyText(b?.name), "ja");
+      if (nameCmp !== 0) return nameCmp;
+      return nonEmptyText(a?.quality).localeCompare(nonEmptyText(b?.quality), "ja");
+    });
+}
+
+function addEquipmentInventoryItem(village, item, countRaw = 1) {
+  const nextVillage = ensureVillageStateShape(village, props.selectedRace);
+  if (!nextVillage) return null;
+  const nextCount = Math.max(0, Math.floor(toSafeNumber(countRaw, 1)));
+  if (!nextCount) return nextVillage;
+  const eqName = nonEmptyText(item?.name);
+  if (!eqName) return nextVillage;
+  const quality = normalizeEquipmentRarity(item?.quality || item?.qualityLabel, "common");
+  const key = equipmentInventoryKey(eqName, quality);
+  if (!key) return nextVillage;
+  const qualityLabel = formatEquipmentRarityLabel(quality);
+  const source = normalizeVillageEquipmentInventory(nextVillage?.equipmentInventory);
+  const idx = source.findIndex(row => row.key === key);
+  const slot = normalizeEquipmentSlotKey(item?.slot) || "武器1";
+  const normalizedItem = {
+    ...item,
+    name: eqName,
+    quality,
+    qualityLabel,
+    slot
+  };
+  const skillRow = ensureEquipmentSkillRowForItem(normalizedItem);
+  if (skillRow) {
+    normalizedItem.skillRow = skillRow;
+  }
+  if (idx >= 0) {
+    source[idx] = {
+      ...source[idx],
+      count: source[idx].count + nextCount,
+      item: source[idx].item || normalizedItem
+    };
+  } else {
+    source.push({
+      key,
+      name: eqName,
+      quality,
+      qualityLabel,
+      count: nextCount,
+      item: normalizedItem
+    });
+  }
+  return ensureVillageStateShape({
+    ...nextVillage,
+    equipmentInventory: source
+  }, props.selectedRace);
+}
+
+function consumeEquipmentInventoryItem(village, equipmentName, rarityKey, countRaw = 1) {
+  const nextVillage = ensureVillageStateShape(village, props.selectedRace);
+  if (!nextVillage) {
+    return { ok: false, reason: "村データが不正です。", village: null, item: null };
+  }
+  const eqName = nonEmptyText(equipmentName);
+  if (!eqName) {
+    return { ok: false, reason: "装備名が未指定です。", village: null, item: null };
+  }
+  const need = Math.max(1, Math.floor(toSafeNumber(countRaw, 1)));
+  const quality = normalizeEquipmentRarity(rarityKey, "common");
+  const key = equipmentInventoryKey(eqName, quality);
+  const source = normalizeVillageEquipmentInventory(nextVillage?.equipmentInventory);
+  const idx = source.findIndex(row => row.key === key);
+  if (idx < 0 || source[idx].count < need) {
+    return {
+      ok: false,
+      reason: `在庫不足: ${eqName}[${formatEquipmentRarityLabel(quality)}] x${need}`,
+      village: nextVillage,
+      item: null
+    };
+  }
+  const row = source[idx];
+  const nextCount = row.count - need;
+  if (nextCount <= 0) {
+    source.splice(idx, 1);
+  } else {
+    source[idx] = {
+      ...row,
+      count: nextCount
+    };
+  }
+  const updatedVillage = ensureVillageStateShape({
+    ...nextVillage,
+    equipmentInventory: source
+  }, props.selectedRace);
+  return {
+    ok: true,
+    village: updatedVillage,
+    item: row?.item ? { ...row.item } : null
+  };
+}
+
+function countEquipmentInventoryItemByName(village, equipmentName) {
+  const eqName = nonEmptyText(equipmentName);
+  if (!eqName) return 0;
+  const rows = normalizeVillageEquipmentInventory(village?.equipmentInventory);
+  return rows.reduce((sum, row) => {
+    if (nonEmptyText(row?.name) !== eqName) return sum;
+    return sum + Math.max(0, Math.floor(toSafeNumber(row?.count, 0)));
+  }, 0);
+}
+
+function consumeEquipmentInventoryItemAnyRarity(village, equipmentName, countRaw = 1) {
+  const nextVillage = ensureVillageStateShape(village, props.selectedRace);
+  if (!nextVillage) {
+    return { ok: false, reason: "村データが不正です。", village: null };
+  }
+  const eqName = nonEmptyText(equipmentName);
+  if (!eqName) {
+    return { ok: false, reason: "必要道具名が未指定です。", village: nextVillage };
+  }
+  let need = Math.max(1, Math.floor(toSafeNumber(countRaw, 1)));
+  const source = normalizeVillageEquipmentInventory(nextVillage?.equipmentInventory);
+  const candidates = source
+    .filter(row => nonEmptyText(row?.name) === eqName && Math.max(0, Math.floor(toSafeNumber(row?.count, 0))) > 0)
+    .sort((a, b) => {
+      const ai = EQUIPMENT_RARITY_KEYS.indexOf(nonEmptyText(a?.quality));
+      const bi = EQUIPMENT_RARITY_KEYS.indexOf(nonEmptyText(b?.quality));
+      return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+    });
+  if (!candidates.length) {
+    return { ok: false, reason: `必要道具不足: ${eqName}x${need}`, village: nextVillage };
+  }
+  for (const row of candidates) {
+    if (need <= 0) break;
+    const idx = source.findIndex(item => item.key === row.key);
+    if (idx < 0) continue;
+    const have = Math.max(0, Math.floor(toSafeNumber(source[idx]?.count, 0)));
+    if (have <= 0) continue;
+    const use = Math.min(have, need);
+    const nextCount = have - use;
+    if (nextCount <= 0) {
+      source.splice(idx, 1);
+    } else {
+      source[idx] = {
+        ...source[idx],
+        count: nextCount
+      };
+    }
+    need -= use;
+  }
+  if (need > 0) {
+    return { ok: false, reason: `必要道具不足: ${eqName}x${Math.max(1, Math.floor(toSafeNumber(countRaw, 1)))}`, village: nextVillage };
+  }
+  const updatedVillage = ensureVillageStateShape({
+    ...nextVillage,
+    equipmentInventory: source
+  }, props.selectedRace);
+  return { ok: true, village: updatedVillage };
 }
 
 function buildEquipmentResistanceBonus(equipmentList) {
@@ -3994,6 +6048,7 @@ function clearCharacterGenerationState() {
   showUnitCreateRaceModal.value = false;
   showUnitCreateClassModal.value = false;
   showVillageBuildModal.value = false;
+  showEquipmentInventoryModal.value = false;
   lastEconomySummary.value = "経済: -";
   villagePlacementMode.value = false;
   unitMoveMode.value = false;
@@ -4009,10 +6064,10 @@ function clearCharacterGenerationState() {
 function pickClassRowForCharacter(raceRow) {
   let selected = choosePrimaryClassForGeneration();
   if (raceIsHumanType(raceRow) && nonEmptyText(selected?.種類) !== "職業") {
-    selected = randomPick(jobClassRows.value, selected);
+    selected = randomPick(initialJobClassRows.value, selected);
   }
   if (!selected) {
-    selected = randomPick(jobClassRows.value, null);
+    selected = randomPick(initialJobClassRows.value, null);
   }
   return selected;
 }
@@ -4047,7 +6102,7 @@ function createUnitRecord({
   raceLabel = "",
   isSovereign = false,
   isNamed = false,
-  unitType = "モブ",
+  unitType = "ヒーロー",
   fixedLevel = null,
   fixedClassLevels = null,
   fixedRaceLevels = null,
@@ -4091,7 +6146,7 @@ function createUnitRecord({
   return {
     id: `unit-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
     unitType: normalizedType,
-    name: nonEmptyText(name) || (isSovereign ? "統治者" : randomPick(MOB_NAME_POOL, "モブ")),
+    name: nonEmptyText(name) || (isSovereign ? "統治者" : randomPick(HERO_NAME_POOL, "ヒーロー")),
     isSovereign: !!isSovereign,
     isNamed: !!isNamed || !!isSovereign,
     race: resolvedRace,
@@ -4112,6 +6167,8 @@ function createUnitRecord({
     equipmentSlots,
     equipment,
     status: finalStatus,
+    maxHp: Math.max(1, Math.floor(toSafeNumber(finalStatus?.HP, 1))),
+    currentHp: Math.max(1, Math.floor(toSafeNumber(finalStatus?.HP, 1))),
     skillLevels: namedBonus.skillLevels,
     baseResistances,
     resistances,
@@ -4198,11 +6255,18 @@ function rebuildUnitByLevelRules(unit, options = {}) {
     !!unit?.isNamed && !isSovereignUnit(unit)
   );
   const nextStatus = applyMilitaryProfileToStatus(namedBonus.status, unit?.combatProfile);
+  const prevMaxHp = resolveUnitMaxHpValue(unit);
+  const prevCurrentHp = resolveUnitCurrentHpValue(unit, prevMaxHp);
+  const hpRatio = prevMaxHp > 0 ? (prevCurrentHp / prevMaxHp) : 1;
+  const nextMaxHp = Math.max(1, Math.floor(toSafeNumber(nextStatus?.HP, 1)));
+  const nextCurrentHp = Math.max(0, Math.min(nextMaxHp, Math.floor(nextMaxHp * hpRatio)));
 
   const nextUnit = {
     ...unit,
     level: built.level,
     status: nextStatus,
+    maxHp: nextMaxHp,
+    currentHp: nextCurrentHp,
     skillLevels: namedBonus.skillLevels,
     baseResistances,
     resistances,
@@ -4268,6 +6332,7 @@ function createVillageAndInitialUnit(data) {
     },
     foodStockByType: pendingFoodByType,
     materialStockByType: pendingMaterialByType,
+    equipmentInventory: [],
     foodStock: sumResourceBag(pendingFoodByType, FOOD_RESOURCE_KEYS),
     materialStock: sumResourceBag(pendingMaterialByType, MATERIAL_RESOURCE_KEYS)
   };
@@ -4278,7 +6343,7 @@ function createVillageAndInitialUnit(data) {
     || null;
   const classRow = findClassRowByName(props.selectedClass)
     || pickClassRowForCharacter(raceRow)
-    || randomPick(jobClassRows.value, classRows.value[0] || null);
+    || randomPick(initialJobClassRows.value, classRows.value[0] || null);
   const sovereignName = nonEmptyText(props.selectedCharacterName) || "統治者";
   const sovereignUnit = createUnitRecord({
     raceRow,
@@ -4305,11 +6370,12 @@ function createVillageAndInitialUnit(data) {
   showUnitCreateRaceModal.value = false;
   showUnitCreateClassModal.value = false;
   showVillageBuildModal.value = false;
+  showEquipmentInventoryModal.value = false;
   resetVisibilityState();
   mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
   updateVillageInfoText();
   const unitCostPreview = buildUnitCreationCost(1);
-  unitRulesInfoText.value = `キャラ生成ルール: 初期統治者は自動生成 / 村人口(勢力初期人数): ${pendingPopulation} 固定 / モブ上限: 人口の1/10 / ネームド上限 村2 町4 都市7 / 軍隊ユニット: 軍事Lv2(人口4/HPx2.5/攻撃4回)・軍事Lv3(人口5/HPx3/攻撃5回) / ユニット作成(仮) 食料 ${formatFoodResourceBag(unitCostPreview.food)} + 資材 ${formatMaterialResourceBag(unitCostPreview.material)} / ターン順: 領土収入→ユニット維持費→村人口消費→不足判定`;
+  unitRulesInfoText.value = `キャラ生成ルール: 初期統治者は自動生成 / 村人口(勢力初期人数): ${pendingPopulation} 固定 / ヒーロー上限: 勢力.ヒーロー(+都市規模補正) + 英雄誕生で作成解放 / 軍隊上限: 勢力.軍隊 / 軍隊ユニット: 軍事Lv1(人口4/HPx2.5/攻撃4回)・軍事Lv3(人口5/HPx3/攻撃5回) / ユニット作成(仮) 食料 ${formatFoodResourceBag(unitCostPreview.food)} + 資材 ${formatMaterialResourceBag(unitCostPreview.material)} / ターン順: 領土収入→ユニット維持費→村人口消費→不足判定`;
   updateUnitInfoText(`統治者を作成: ${sovereignUnit.name} / ${sovereignUnit.race} / ${sovereignUnit.className} / 村配置先を選択してください。`);
   if (testPlayerSlots.value.length > 1) {
     syncActiveTestPlayerSlotFromLiveState();
@@ -4554,6 +6620,7 @@ function buildFactionStateWithVillagePlacement(slot, data, placement) {
     },
     foodStockByType: defaultFoodByType,
     materialStockByType: defaultMaterialByType,
+    equipmentInventory: [],
     foodStock: sumResourceBag(defaultFoodByType, FOOD_RESOURCE_KEYS),
     materialStock: sumResourceBag(defaultMaterialByType, MATERIAL_RESOURCE_KEYS)
   };
@@ -4615,7 +6682,8 @@ function buildFactionStateWithPendingVillage(slot) {
     cityLevels: normalizeCityLevels(baseState?.village?.cityLevels || {}),
     buildings: normalizeVillageBuildings(baseState?.village?.buildings || []),
     foodStockByType: buildEmptyResourceBag(FOOD_RESOURCE_KEYS),
-    materialStockByType: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS)
+    materialStockByType: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS),
+    equipmentInventory: normalizeVillageEquipmentInventory(baseState?.village?.equipmentInventory)
   }, baseRace);
   return {
     ...baseState,
@@ -4838,6 +6906,7 @@ function canPlaceVillageOnTile(picked) {
 }
 
 function placeVillageAt(x, y) {
+  clearHousingUpgradeSelectionState();
   const selectedRaceName = resolveActiveFactionRace();
   const initialPopulation = resolveInitialVillagePopulationByRace(selectedRaceName);
   const initialStock = buildInitialVillageStockByTerritory(currentData.value, x, y);
@@ -4855,6 +6924,7 @@ function placeVillageAt(x, y) {
     basePopulationCapacity: Math.max(TERRITORY_POPULATION_CAPACITY_FALLBACK, initialPopulation),
     foodStockByType: defaultFoodByType,
     materialStockByType: defaultMaterialByType,
+    equipmentInventory: [],
     foodStock: sumResourceBag(defaultFoodByType, FOOD_RESOURCE_KEYS),
     materialStock: sumResourceBag(defaultMaterialByType, MATERIAL_RESOURCE_KEYS)
   };
@@ -4903,6 +6973,7 @@ function startVillagePlacementMode() {
   }
   if (!currentData.value || currentData.value.shapeOnly) return;
   villagePlacementMode.value = true;
+  clearHousingUpgradeSelectionState();
   unitMoveMode.value = false;
   showMoveUnitModal.value = false;
   mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
@@ -5307,12 +7378,12 @@ function configureUnitSquadState(unitId, memberIds = [], options = {}) {
   };
 }
 
-function removeMobUnit(unitId) {
+function removeMobUnit(unitId, options = {}) {
   const idx = unitList.value.findIndex(unit => unit?.id === unitId);
   if (idx < 0) return { ok: false, reason: "対象ユニットが見つかりません。" };
   const unit = unitList.value[idx];
   if (!isMobUnit(unit)) {
-    return { ok: false, reason: "モブのみ削除できます。" };
+    return { ok: false, reason: "ヒーローのみ削除できます。" };
   }
   const nextRaw = unitList.value.filter(row => row.id !== unitId);
   const next = stripRemovedUnitFromSquads(nextRaw, unitId);
@@ -5320,7 +7391,15 @@ function removeMobUnit(unitId) {
   if (selectedUnitId.value === unitId) {
     selectedUnitId.value = next[0]?.id || "";
   }
-  return { ok: true, removed: unit };
+  let corruptionResult = null;
+  if (options?.asDeath) {
+    const x = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const y = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    if (Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0) {
+      corruptionResult = recordUnitDeathCorruptionAtTile(x, y, VILLAGE_CORRUPTION_PER_UNIT_DEATH);
+    }
+  }
+  return { ok: true, removed: unit, corruptionResult };
 }
 
 function renameLeaderSquad(unitId, squadName) {
@@ -5365,27 +7444,6 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
   if (!village?.placed) {
     return { ok: false, reason: "装備変更には都市（初期村）の配置が必要です。" };
   }
-  const craftCost = buildEquipmentCraftMaterialCost(row, rarityKey);
-  const smithCap = resolveSmithCraftCap(village);
-  if (craftCost.level > smithCap) {
-    return { ok: false, reason: `鍛冶場Lv不足: 必要Lv${craftCost.level} / 現在Lv${smithCap}` };
-  }
-  if (craftCost.isMagic) {
-    const magicLv = resolveVillageAbilityLevel(village, "魔法", CITY_ABILITY_ACTIVE_CAP);
-    if (craftCost.level > magicLv) {
-      return { ok: false, reason: `魔法Lv不足: 必要Lv${craftCost.level} / 現在Lv${magicLv}` };
-    }
-  }
-  if (craftCost.isFaith) {
-    const faithLv = resolveVillageAbilityLevel(village, "信仰", CITY_ABILITY_ACTIVE_CAP);
-    if (craftCost.level > faithLv) {
-      return { ok: false, reason: `信仰Lv不足: 必要Lv${craftCost.level} / 現在Lv${faithLv}` };
-    }
-  }
-  if (!canAffordEquipmentCraft(village, craftCost)) {
-    return { ok: false, reason: `素材不足: 必要 ${formatMaterialPositiveResourceBag(craftCost.material)}` };
-  }
-
   const target = unitList.value[idx];
   const slotIndex = Math.max(0, Math.floor(toSafeNumber(slotIndexRaw, 0)));
   const slotKey = normalizeEquipmentSlotKey(slotKeyRaw) || slotKeyFromIndex(slotIndex);
@@ -5397,8 +7455,58 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
     return { ok: false, reason: `${eqName} は ${EQUIPMENT_SLOT_LABELS[slotKey] || slotKey} に装備できません。` };
   }
 
+  let nextVillage = village;
+  let craftCost = null;
+  let sourceType = "inventory";
+  const fromInventory = consumeEquipmentInventoryItem(nextVillage, eqName, rarityKey, 1);
+  let nextItem = null;
+  if (fromInventory.ok) {
+    nextVillage = fromInventory.village;
+    nextItem = fromInventory.item
+      ? {
+        ...fromInventory.item,
+        slot: slotKey,
+        slotLabel: EQUIPMENT_SLOT_LABELS[slotKey] || slotKey
+      }
+      : createEquipmentEntry(row, !!target?.isNamed || !!target?.isSovereign, rarityKey, slotKey);
+  } else {
+    sourceType = "craft";
+    craftCost = buildEquipmentCraftMaterialCost(row, rarityKey);
+    const smithCap = resolveSmithCraftCap(nextVillage);
+    if (craftCost.level > smithCap) {
+      return { ok: false, reason: `鍛冶Lv不足: 必要Lv${craftCost.level} / 現在Lv${smithCap}` };
+    }
+    if (craftCost.isMagic) {
+      const magicLv = resolveVillageAbilityLevelForEnchant(nextVillage, "魔法Lv");
+      if (craftCost.level > magicLv) {
+        return { ok: false, reason: `魔法Lv不足: 必要Lv${craftCost.level} / 現在Lv${magicLv}` };
+      }
+    }
+    if (craftCost.isFaith) {
+      const faithLv = resolveVillageAbilityLevelForEnchant(nextVillage, "信仰Lv");
+      if (craftCost.level > faithLv) {
+        return { ok: false, reason: `信仰Lv不足: 必要Lv${craftCost.level} / 現在Lv${faithLv}` };
+      }
+    }
+    if (!canAffordEquipmentCraft(nextVillage, craftCost)) {
+      return { ok: false, reason: `在庫不足か素材不足: ${fromInventory.reason || `必要 ${formatMaterialPositiveResourceBag(craftCost.material)}`}` };
+    }
+    nextVillage = applyEquipmentCraftCost(nextVillage, craftCost);
+    if (!nextVillage) {
+      return { ok: false, reason: "素材消費後の村データ更新に失敗しました。" };
+    }
+    nextItem = createEquipmentEntry(row, !!target?.isNamed || !!target?.isSovereign, rarityKey, slotKey);
+  }
+
   const currentEquipment = normalizeEquipmentList(target?.equipment).map(item => ({ ...item }));
-  const nextItem = createEquipmentEntry(row, !!target?.isNamed || !!target?.isSovereign, rarityKey, slotKey);
+  const oldSlotItem = currentEquipment.find(item => nonEmptyText(item?.slot) === slotKey) || null;
+  if (oldSlotItem) {
+    const villageWithReturnedItem = addEquipmentInventoryItem(nextVillage, oldSlotItem, 1);
+    if (!villageWithReturnedItem) {
+      return { ok: false, reason: "旧装備の在庫返却に失敗しました。" };
+    }
+    nextVillage = villageWithReturnedItem;
+  }
   const nextEquipment = currentEquipment.filter(item => nonEmptyText(item?.slot) !== slotKey);
   nextEquipment.push(nextItem);
   const baseResistances = target?.baseResistances || target?.resistances || {};
@@ -5409,15 +7517,66 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
     equipment: normalizeEquipmentList(nextEquipment),
     resistances: nextResistances
   };
-  const nextVillage = applyEquipmentCraftCost(village, craftCost);
-  if (nextVillage) {
-    villageState.value = nextVillage;
-  }
+  villageState.value = nextVillage;
   return {
     ok: true,
     equipment: nextItem,
     slotIndex,
     slotKey,
+    craftCost,
+    sourceType
+  };
+}
+
+function craftEquipmentInventoryItem(equipmentName, rarityKey, countRaw = 1) {
+  const eqName = nonEmptyText(equipmentName);
+  if (!eqName) return { ok: false, reason: "装備名が未指定です。" };
+  const count = Math.max(1, Math.floor(toSafeNumber(countRaw, 1)));
+  const row = findEquipmentRowByName(eqName);
+  if (!row) return { ok: false, reason: "装備データが見つかりません。" };
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  if (!village?.placed) {
+    return { ok: false, reason: "装備作成には都市（初期村）の配置が必要です。" };
+  }
+  const craftCostSingle = buildEquipmentCraftMaterialCost(row, rarityKey);
+  const smithCap = resolveSmithCraftCap(village);
+  if (craftCostSingle.level > smithCap) {
+    return { ok: false, reason: `鍛冶Lv不足: 必要Lv${craftCostSingle.level} / 現在Lv${smithCap}` };
+  }
+  if (craftCostSingle.isMagic) {
+    const magicLv = resolveVillageAbilityLevelForEnchant(village, "魔法Lv");
+    if (craftCostSingle.level > magicLv) {
+      return { ok: false, reason: `魔法Lv不足: 必要Lv${craftCostSingle.level} / 現在Lv${magicLv}` };
+    }
+  }
+  if (craftCostSingle.isFaith) {
+    const faithLv = resolveVillageAbilityLevelForEnchant(village, "信仰Lv");
+    if (craftCostSingle.level > faithLv) {
+      return { ok: false, reason: `信仰Lv不足: 必要Lv${craftCostSingle.level} / 現在Lv${faithLv}` };
+    }
+  }
+  const totalMaterial = multiplyResourceBag(craftCostSingle.material, count, MATERIAL_RESOURCE_KEYS);
+  const craftCost = {
+    ...craftCostSingle,
+    material: totalMaterial
+  };
+  if (!canAffordEquipmentCraft(village, craftCost)) {
+    return { ok: false, reason: `素材不足: 必要 ${formatMaterialPositiveResourceBag(totalMaterial)}` };
+  }
+  const consumedVillage = applyEquipmentCraftCost(village, craftCost);
+  if (!consumedVillage) {
+    return { ok: false, reason: "素材消費後の村データ更新に失敗しました。" };
+  }
+  const craftedTemplate = createEquipmentEntry(row, false, rarityKey, resolveEquipmentSlotCandidates(row)[0] || "武器1");
+  const stockedVillage = addEquipmentInventoryItem(consumedVillage, craftedTemplate, count);
+  if (!stockedVillage) {
+    return { ok: false, reason: "作成装備の在庫追加に失敗しました。" };
+  }
+  villageState.value = stockedVillage;
+  return {
+    ok: true,
+    item: craftedTemplate,
+    count,
     craftCost
   };
 }
@@ -5610,6 +7769,17 @@ function applyCharacterCommand(command) {
       updateUnitInfoText("第2クラス設定失敗: メインクラスと同じです。");
       return;
     }
+    const classRow = findClassRowByName(className);
+    if (!classRow) {
+      updateUnitInfoText("第2クラス設定失敗: クラスデータが見つかりません。");
+      return;
+    }
+    const requirement = evaluateClassUnlockRequirements(classRow, unit, villageState.value);
+    if (!requirement.ok) {
+      updateUnitInfoText(`第2クラス設定失敗: 条件未達 (${requirement.failed.join(" / ")})`);
+      pushNationLog(`第2クラス設定失敗: ${className} 条件未達 (${requirement.failed.join(" / ")})`);
+      return;
+    }
     const result = rebuildUnitByLevelRules(unit, {
       level,
       secondaryClassName: className
@@ -5633,9 +7803,9 @@ function applyCharacterCommand(command) {
       updateUnitInfoText(`削除失敗: ${result.reason || "削除不可"}`);
       pushNationLog(`削除失敗: ${result.reason || "削除不可"}`);
     } else {
-      const removedName = result.removed?.name || "モブ";
+      const removedName = result.removed?.name || "ヒーロー";
       updateUnitInfoText(`${removedName} を削除`);
-      pushNationLog(`モブ削除: ${removedName}`);
+      pushNationLog(`ヒーロー削除: ${removedName}`);
     }
     emitCharacterStateChange();
     renderMapWithPhaser();
@@ -5724,13 +7894,23 @@ function applyCharacterCommand(command) {
       const item = result.equipment;
       const rarityText = item?.qualityLabel || formatEquipmentRarityLabel(item?.quality);
       const slotLabel = EQUIPMENT_SLOT_LABELS[result.slotKey] || `Slot${result.slotIndex + 1}`;
-      const craftCostText = formatMaterialPositiveResourceBag(result?.craftCost?.material);
       updateVillageInfoText();
-      updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 素材 ${craftCostText}`);
-      pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 素材 ${craftCostText}`);
+      if (result.sourceType === "inventory") {
+        updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 在庫使用`);
+        pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 在庫使用`);
+      } else {
+        const craftCostText = formatMaterialPositiveResourceBag(result?.craftCost?.material);
+        updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 鍛造 ${craftCostText}`);
+        pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 鍛造 ${craftCostText}`);
+      }
     }
     emitCharacterStateChange();
     renderMapWithPhaser();
+    return;
+  }
+
+  if (type === "craftEquipmentItem") {
+    craftEquipmentInventoryWithFeedback(command?.equipmentName, command?.rarity, command?.count, "装備作成");
     return;
   }
 
@@ -5785,22 +7965,35 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
   const guard = Math.round(toSafeNumber(row?.ガード, 0) * multiplier);
   const criticalRate = Math.round(toSafeNumber(row?.Cr率, 0) * multiplier);
   const criticalPower = scaleCriticalPower(toSafeNumber(row?.Cr威力, 0), multiplier);
-  const attackAp = Math.round(toSafeNumber(row?.攻撃AP, 0) * multiplier);
-  const magicAp = Math.round(toSafeNumber(row?.魔法AP, 0) * multiplier);
+  const attackAp = Math.round(toSafeNumber(row?.攻撃AP, 0));
+  const magicAp = Math.round(toSafeNumber(row?.魔法AP, 0));
   const shot = Math.round(toSafeNumber(row?.射撃, 0) * multiplier);
   const range = Number.isFinite(Number(row?.射程)) ? Math.round(toSafeNumber(row?.射程, 0)) : null;
   const itemPriceMultiplier = Math.max(0, toSafeNumber(row?.値段倍率, 1));
   const basePriceGold = Math.max(0, Math.round(20 * itemPriceMultiplier));
   const craftCost = buildEquipmentCraftMaterialCost(row, quality);
   const requiredMaterial = formatMaterialPositiveResourceBag(craftCost.material);
+  const armorBaseResistance = Math.max(0, toSafeNumber(row?.耐性, 0));
+  const armorResistanceRates = resolveArmorResistanceRatesForLevel(craftCost.level);
+  const armorBaseScaled = armorBaseResistance * multiplier;
+  const armorPhysicalRes = Math.round(armorBaseScaled * armorResistanceRates.physicalRate);
+  const armorMagicBaseRes = Math.round(armorBaseScaled * armorResistanceRates.magicRate);
+  const armorMagicBonusRate = resolveArmorMagicBonusRateByRarity(quality);
+  const armorMagicBonusFromPhysical = Math.round(armorPhysicalRes * armorMagicBonusRate);
   const resistanceBonus = {};
   for (const key of RESISTANCE_FIELDS) {
     resistanceBonus[key] = Math.round(toSafeNumber(row?.[key], 0) * multiplier);
   }
+  if (isArmorEquipmentRow(row) && armorBaseResistance > 0) {
+    resistanceBonus["物理耐性"] = Math.round(toSafeNumber(resistanceBonus["物理耐性"], 0) + armorPhysicalRes);
+    resistanceBonus["魔法耐性"] = Math.round(
+      toSafeNumber(resistanceBonus["魔法耐性"], 0) + armorMagicBaseRes + armorMagicBonusFromPhysical
+    );
+  }
   const traits = [row?.特性1, row?.特性2, row?.特性3, row?.特性4]
     .map(v => nonEmptyText(v))
     .filter(Boolean);
-  return {
+  const entry = {
     slot,
     slotLabel: EQUIPMENT_SLOT_LABELS[slot] || slot,
     name: nonEmptyText(row?.装備名) || "装備なし",
@@ -5825,8 +8018,12 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
     craftLevel: craftCost.level,
     craftCostMaterial: craftCost.material,
     resistanceBonus,
+    physicalResistance: Math.round(toSafeNumber(resistanceBonus["物理耐性"], 0)),
+    magicResistance: Math.round(toSafeNumber(resistanceBonus["魔法耐性"], 0)),
     traits
   };
+  entry.skillRow = buildEquipmentSkillRow(row, entry);
+  return entry;
 }
 
 function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null) {
@@ -5834,6 +8031,47 @@ function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null) {
   const slots = equipmentSlots && typeof equipmentSlots === "object"
     ? equipmentSlots
     : resolveUnitEquipmentSlots({});
+  const parsePresetNames = (value) => {
+    const text = nonEmptyText(value);
+    if (!text || text === "-" || text === "×" || text.toLowerCase() === "null") return [];
+    return text
+      .split(/[\/,、，／]/)
+      .map(part => nonEmptyText(part))
+      .filter(Boolean);
+  };
+  const findPresetRowForSlot = (slotKey) => {
+    const names = parsePresetNames(classRow?.[slotKey]);
+    if (!names.length) return null;
+    for (const name of names) {
+      const exact = findEquipmentRowByName(name);
+      if (exact && equipmentRowMatchesSlot(exact, slotKey)) return exact;
+    }
+    for (const name of names) {
+      const partial = equipmentRows.value.find(row => {
+        const eqName = nonEmptyText(row?.装備名);
+        return eqName && eqName.includes(name) && equipmentRowMatchesSlot(row, slotKey);
+      });
+      if (partial) return partial;
+    }
+    return null;
+  };
+  const presetBySlot = {};
+  let hasAnyPreset = false;
+  for (const slotKey of EQUIPMENT_SLOT_KEYS) {
+    const presetRow = findPresetRowForSlot(slotKey);
+    presetBySlot[slotKey] = presetRow;
+    if (presetRow) hasAnyPreset = true;
+  }
+  if (hasAnyPreset) {
+    const loadout = [];
+    for (const slotKey of EQUIPMENT_SLOT_KEYS) {
+      if (slots[slotKey] === false) continue;
+      const preset = presetBySlot[slotKey];
+      if (!preset) continue;
+      loadout.push(createEquipmentEntry(preset, isNamed, "", slotKey));
+    }
+    return normalizeEquipmentList(loadout);
+  }
   const atk = toSafeNumber(classRow?.攻撃, 0);
   const mag = toSafeNumber(classRow?.魔力, 0);
   const weaponPoolBase = equipmentRows.value.filter(row => equipmentRowMatchesSlot(row, "武器1"));
@@ -5845,18 +8083,118 @@ function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null) {
     const meleePool = pool.filter(row => WEAPON_EQUIPMENT_NAMES.includes(nonEmptyText(row.装備名)));
     if (meleePool.length) pool = meleePool;
   }
-  const primaryRow = randomPick(pool, randomPick(equipmentRows.value, null));
+  const primaryPreset = findPresetRowForSlot("武器1");
+  const primaryRow = primaryPreset || randomPick(pool, randomPick(equipmentRows.value, null));
   const loadout = [];
   if (primaryRow && slots["武器1"] !== false) {
     loadout.push(createEquipmentEntry(primaryRow, isNamed, "", "武器1"));
   }
   const shieldPool = equipmentRows.value.filter(row => SHIELD_EQUIPMENT_NAMES.includes(nonEmptyText(row.装備名)));
   const shieldChance = isNamed ? 0.65 : 0.35;
-  if (slots["武器2"] !== false && Math.random() < shieldChance) {
-    const shield = randomPick(shieldPool, null);
-    if (shield) loadout.push(createEquipmentEntry(shield, isNamed, "", "武器2"));
+  const secondaryPreset = findPresetRowForSlot("武器2");
+  if (slots["武器2"] !== false) {
+    if (secondaryPreset) {
+      loadout.push(createEquipmentEntry(secondaryPreset, isNamed, "", "武器2"));
+    } else if (Math.random() < shieldChance) {
+      const shield = randomPick(shieldPool, null);
+      if (shield) loadout.push(createEquipmentEntry(shield, isNamed, "", "武器2"));
+    }
+  }
+  for (const slotKey of ["頭", "体", "足", "装飾1", "装飾2"]) {
+    if (slots[slotKey] === false) continue;
+    const preset = findPresetRowForSlot(slotKey);
+    if (!preset) continue;
+    loadout.push(createEquipmentEntry(preset, isNamed, "", slotKey));
   }
   return normalizeEquipmentList(loadout);
+}
+
+function applyAutoEquipForCreatedUnit(unit, raceRow, classRow, village) {
+  if (!unit || typeof unit !== "object") {
+    return { unit, village, fromInventory: 0, generated: 0, warningMessages: [] };
+  }
+  const loadout = normalizeEquipmentList(unit?.equipment);
+  if (!loadout.length) {
+    return { unit, village, fromInventory: 0, generated: 0, warningMessages: [] };
+  }
+  let nextVillage = ensureVillageStateShape(village, nonEmptyText(unit?.race) || props.selectedRace);
+  let fromInventory = 0;
+  let generated = 0;
+  const warningMessages = [];
+  const nextEquipment = loadout.map(item => {
+    const eqName = nonEmptyText(item?.name);
+    if (!eqName || !nextVillage?.placed) {
+      return item;
+    }
+    const rarityKey = normalizeEquipmentRarity(item?.quality || item?.qualityLabel, "common");
+    const consume = consumeEquipmentInventoryItem(nextVillage, eqName, rarityKey, 1);
+    if (!consume?.ok || !consume?.village) {
+      const row = findEquipmentRowByName(eqName);
+      if (!row) {
+        warningMessages.push(`初期装備不足: ${eqName}（装備データなし）`);
+        return null;
+      }
+      const craftCost = buildEquipmentCraftMaterialCost(row, rarityKey);
+      const smithCap = resolveSmithCraftCap(nextVillage);
+      if (craftCost.level > smithCap) {
+        warningMessages.push(`初期装備不足: ${eqName}（鍛冶Lv不足 ${smithCap}/${craftCost.level}）`);
+        return null;
+      }
+      if (craftCost.isMagic) {
+        const magicLv = resolveVillageAbilityLevelForEnchant(nextVillage, "魔法Lv");
+        if (craftCost.level > magicLv) {
+          warningMessages.push(`初期装備不足: ${eqName}（魔法Lv不足 ${magicLv}/${craftCost.level}）`);
+          return null;
+        }
+      }
+      if (craftCost.isFaith) {
+        const faithLv = resolveVillageAbilityLevelForEnchant(nextVillage, "信仰Lv");
+        if (craftCost.level > faithLv) {
+          warningMessages.push(`初期装備不足: ${eqName}（信仰Lv不足 ${faithLv}/${craftCost.level}）`);
+          return null;
+        }
+      }
+      if (!canAffordEquipmentCraft(nextVillage, craftCost)) {
+        warningMessages.push(`初期装備不足: ${eqName}（素材不足: ${formatMaterialPositiveResourceBag(craftCost.material)}）`);
+        return null;
+      }
+      const consumedVillage = applyEquipmentCraftCost(nextVillage, craftCost);
+      if (!consumedVillage) {
+        warningMessages.push(`初期装備不足: ${eqName}（素材反映失敗）`);
+        return null;
+      }
+      nextVillage = consumedVillage;
+      generated += 1;
+      return createEquipmentEntry(row, !!unit?.isNamed || !!unit?.isSovereign, rarityKey, nonEmptyText(item?.slot) || "武器1");
+    }
+    nextVillage = consume.village;
+    fromInventory += 1;
+    const consumedItem = consume.item && typeof consume.item === "object" ? consume.item : item;
+    const normalizedQuality = normalizeEquipmentRarity(consumedItem?.quality || consumedItem?.qualityLabel || rarityKey, rarityKey);
+    return {
+      ...item,
+      ...consumedItem,
+      slot: nonEmptyText(item?.slot) || nonEmptyText(consumedItem?.slot) || "武器1",
+      name: eqName,
+      quality: normalizedQuality,
+      qualityLabel: formatEquipmentRarityLabel(normalizedQuality)
+    };
+  });
+  const normalizedEquipment = normalizeEquipmentList(nextEquipment.filter(Boolean));
+  const baseResistances = buildUnitResistances(raceRow, classRow);
+  const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(normalizedEquipment));
+  return {
+    unit: {
+      ...unit,
+      equipment: normalizedEquipment,
+      baseResistances,
+      resistances
+    },
+    village: nextVillage,
+    fromInventory,
+    generated,
+    warningMessages
+  };
 }
 
 function findEquipmentRowByName(name) {
@@ -5953,7 +8291,8 @@ function updateUnitInfoText(extra = "") {
   const squadCount = Math.max(0, Math.floor(toSafeNumber(unit.squadCount, 0)));
   const lock = resolveEncounterMoveLock(unit.id);
   const lockTag = lock ? ` / ${formatEncounterMoveLockReason(lock)}` : "";
-  unitInfoText.value = `選択ユニット: ${unit.name}(${role})${sovereignTag}${leaderTag}${memberTag} / Lv${unit.level} / 種族:${unit.race} / クラス:${unit.className} / 位置(${unit.x}, ${unit.y}) / 移動${unit.moveRange} 残${moveRemaining} / 索敵${unit.scoutRange} / 部隊${squadCount}${lockTag} / 装備:${eqText}${note}`;
+  const level = clampUnitLevel(unit?.level, INITIAL_LEVEL_MIN);
+  unitInfoText.value = `選択ユニット: ${unit.name}(${role})${sovereignTag}${leaderTag}${memberTag} / Lv${level} / 種族:${unit.race} / クラス:${unit.className} / 位置(${unit.x}, ${unit.y}) / 移動${unit.moveRange} 残${moveRemaining} / 索敵${unit.scoutRange} / 部隊${squadCount}${lockTag} / 装備:${eqText}${note}`;
 }
 
 function resolveTileTerrainForYield(data, x, y) {
@@ -6073,6 +8412,195 @@ function buildPopulationFoodDemand(village) {
   return scaleResourceBagByFactor(demand, FOOD_RESOURCE_KEYS, ECONOMY_CONSUMPTION_SCALE);
 }
 
+function resolveUnitMaxHpValue(unit) {
+  return Math.max(1, Math.floor(toSafeNumber(unit?.status?.HP, 1)));
+}
+
+function resolveUnitCurrentHpValue(unit, maxHp = resolveUnitMaxHpValue(unit)) {
+  const rawCurrent = Math.floor(toSafeNumber(unit?.currentHp, maxHp));
+  return Math.max(0, Math.min(maxHp, rawCurrent));
+}
+
+function normalizeUnitHpRuntime(unit) {
+  if (!unit || typeof unit !== "object") return unit;
+  const maxHp = resolveUnitMaxHpValue(unit);
+  const currentHp = resolveUnitCurrentHpValue(unit, maxHp);
+  return {
+    ...unit,
+    maxHp,
+    currentHp
+  };
+}
+
+function recordUnitDeathCorruptionAtTile(x, y, amount = VILLAGE_CORRUPTION_PER_UNIT_DEATH, options = {}) {
+  const safeAmount = Math.max(0, roundTo1(toSafeNumber(amount, VILLAGE_CORRUPTION_PER_UNIT_DEATH)));
+  const safeX = Math.floor(toSafeNumber(x, Number.NaN));
+  const safeY = Math.floor(toSafeNumber(y, Number.NaN));
+  if (!Number.isFinite(safeX) || !Number.isFinite(safeY)) {
+    return { applied: false, reason: "死亡座標が不正です。" };
+  }
+  const raceFallback = nonEmptyText(options?.raceFallback) || resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village) {
+    return { applied: false, reason: "村データが未設定です。" };
+  }
+  const tileKey = coordKey(safeX, safeY);
+  const corruptionMap = resolveVillageTileCorruptionMap(village);
+  const before = Math.max(0, toSafeNumber(corruptionMap[tileKey], 0));
+  const after = roundTo1(before + safeAmount);
+  const nextMap = {
+    ...corruptionMap,
+    [tileKey]: after
+  };
+  villageState.value = ensureVillageStateShape({
+    ...village,
+    [VILLAGE_TILE_CORRUPTION_MAP_KEY]: nextMap
+  }, raceFallback);
+  return { applied: true, tileKey, before, after, amount: safeAmount };
+}
+
+function applyVillageTilePurificationTurn(village, options = {}) {
+  const raceFallback = nonEmptyText(options?.raceFallback) || resolveActiveFactionRace();
+  const safeVillage = ensureVillageStateShape(village, raceFallback);
+  if (!safeVillage) {
+    return { village, reducedTotal: 0, cleanedTiles: 0, notes: [] };
+  }
+  const corruptionMap = resolveVillageTileCorruptionMap(safeVillage);
+  const purificationMap = resolveVillageTilePurificationMap(safeVillage);
+  const managedKeys = options?.ownedSet instanceof Set
+    ? new Set(Array.from(options.ownedSet).map(v => nonEmptyText(v)).filter(v => v.includes(",")))
+    : resolveVillageManagedTileKeys(safeVillage);
+  for (const key of Object.keys(corruptionMap)) {
+    if (nonEmptyText(key).includes(",")) managedKeys.add(key);
+  }
+  if (!managedKeys.size || !Object.keys(corruptionMap).length) {
+    return { village: safeVillage, reducedTotal: 0, cleanedTiles: 0, notes: [] };
+  }
+
+  let reducedTotal = 0;
+  let cleanedTiles = 0;
+  const nextMap = { ...corruptionMap };
+  for (const key of managedKeys) {
+    const before = Math.max(0, toSafeNumber(nextMap[key], 0));
+    if (before <= 0) continue;
+    const purification = Math.max(0, resolveVillageTilePurificationValue(safeVillage, key, purificationMap));
+    if (purification <= 0) continue;
+    const after = Math.max(0, roundTo1(before - purification));
+    if (after === before) continue;
+    reducedTotal = roundTo1(reducedTotal + (before - after));
+    if (after <= 0) {
+      delete nextMap[key];
+      cleanedTiles += 1;
+    } else {
+      nextMap[key] = after;
+    }
+  }
+  const nextVillage = ensureVillageStateShape({
+    ...safeVillage,
+    [VILLAGE_TILE_CORRUPTION_MAP_KEY]: nextMap
+  }, raceFallback);
+  const notes = [];
+  if (reducedTotal > 0) {
+    notes.push(`浄化: 穢れ -${formatCompactNumber(reducedTotal)} (${cleanedTiles}マス浄化完了)`);
+  }
+  return { village: nextVillage, reducedTotal, cleanedTiles, notes };
+}
+
+function applyVillageTileRecoveryTurn(village, units = unitList.value) {
+  const safeUnits = Array.isArray(units) ? units : [];
+  const recoveryMap = resolveVillageTileRecoveryMap(village);
+  let healedTotal = 0;
+  let healedUnits = 0;
+  const nextUnits = safeUnits.map(unit => {
+    if (!unit || typeof unit !== "object") return unit;
+    const normalized = normalizeUnitHpRuntime(unit);
+    const x = Math.floor(toSafeNumber(normalized?.x, Number.NaN));
+    const y = Math.floor(toSafeNumber(normalized?.y, Number.NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
+      return normalized;
+    }
+    const tileKey = coordKey(x, y);
+    const baseRecovery = Math.max(0, resolveVillageTileRecoveryValue(village, tileKey, recoveryMap));
+    if (baseRecovery <= 0 || normalized.currentHp >= normalized.maxHp) {
+      return normalized;
+    }
+    const militaryMultiplier = isMilitaryUnit(normalized)
+      ? Math.max(1, toSafeNumber(normalized?.combatProfile?.hpMultiplier, 1))
+      : 1;
+    const healAmount = Math.max(0, Math.floor(baseRecovery * militaryMultiplier));
+    if (healAmount <= 0) return normalized;
+    const nextHp = Math.min(normalized.maxHp, normalized.currentHp + healAmount);
+    if (nextHp <= normalized.currentHp) return normalized;
+    healedUnits += 1;
+    healedTotal += (nextHp - normalized.currentHp);
+    return {
+      ...normalized,
+      currentHp: nextHp
+    };
+  });
+  const notes = [];
+  if (healedTotal > 0) {
+    notes.push(`回復: ${healedUnits}体 / HP+${formatCompactNumber(healedTotal)}`);
+  }
+  return {
+    units: nextUnits,
+    healedUnits,
+    healedTotal,
+    notes
+  };
+}
+
+function advanceVillageTerritoryResidentialUpgrades(village, options = {}) {
+  const safeVillage = ensureVillageStateShape(village, nonEmptyText(options?.raceFallback) || resolveActiveFactionRace());
+  if (!safeVillage) {
+    return { village, notes: [], progressed: 0, completed: 0 };
+  }
+  const queueMap = normalizeTerritoryResidentialUpgradeQueueMap(
+    safeVillage?.[TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]
+  );
+  if (!Object.keys(queueMap).length) {
+    return { village: safeVillage, notes: [], progressed: 0, completed: 0 };
+  }
+  const notes = [];
+  let progressed = 0;
+  let completed = 0;
+  let nextVillage = safeVillage;
+  const nextQueue = {};
+
+  for (const [centerKey, row] of Object.entries(queueMap)) {
+    const remainingTurns = Math.max(0, Math.floor(toSafeNumber(row?.remainingTurns, 0)) - 1);
+    if (remainingTurns > 0) {
+      nextQueue[centerKey] = {
+        ...row,
+        remainingTurns
+      };
+      progressed += 1;
+      continue;
+    }
+    const nextLevel = normalizeTerritoryResidentialLevelKey(row?.nextLevel, TERRITORY_RESIDENTIAL_LEVEL_VILLAGE);
+    const attachments = Array.isArray(row?.attachmentKeys) ? row.attachmentKeys : [];
+    nextVillage = applyResidentialCenterUpgrade(nextVillage, centerKey, nextLevel, attachments);
+    completed += 1;
+    const pos = parseCoordKey(centerKey);
+    const nextLabel = resolveTerritoryResidentialLevelDef(nextLevel).label;
+    if (Number.isFinite(pos?.x) && Number.isFinite(pos?.y)) {
+      notes.push(`住居拡張完了: (${pos.x}, ${pos.y}) -> ${nextLabel}`);
+    } else {
+      notes.push(`住居拡張完了: ${centerKey} -> ${nextLabel}`);
+    }
+  }
+
+  return {
+    village: ensureVillageStateShape({
+      ...nextVillage,
+      [TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]: nextQueue
+    }, nonEmptyText(options?.raceFallback) || resolveActiveFactionRace()),
+    notes,
+    progressed,
+    completed
+  };
+}
+
 function processVillageEconomyTurn(data, options = {}) {
   if (!data?.grid) {
     return { applied: false, notes: ["経済処理: マップ未生成"] };
@@ -6092,15 +8620,19 @@ function processVillageEconomyTurn(data, options = {}) {
   });
   const conversionResult = advanceVillageTerritoryTileConversions(villageWithTerritoryDefaults);
   const villageAfterConversion = conversionResult.village;
-
-  const territoryIncome = collectTerritoryIncome(data, territorySets.player, {
-    villageOverride: villageAfterConversion,
+  const residentialUpgradeResult = advanceVillageTerritoryResidentialUpgrades(villageAfterConversion, {
     raceFallback
   });
-  const buildingIncome = collectVillageBuildingIncome(villageAfterConversion);
+  const villageAfterResidentialUpgrade = residentialUpgradeResult.village;
+
+  const territoryIncome = collectTerritoryIncome(data, territorySets.player, {
+    villageOverride: villageAfterResidentialUpgrade,
+    raceFallback
+  });
+  const buildingIncome = collectVillageBuildingIncome(villageAfterResidentialUpgrade);
   const unitUpkeepDemand = buildUnitUpkeepFoodDemand();
-  const populationDemand = buildPopulationFoodDemand(villageAfterConversion);
-  const economyCore = applyVillageEconomyTurnUtil(villageAfterConversion, {
+  const populationDemand = buildPopulationFoodDemand(villageAfterResidentialUpgrade);
+  const economyCore = applyVillageEconomyTurnUtil(villageAfterResidentialUpgrade, {
     territoryIncome,
     buildingIncome,
     unitUpkeepDemand,
@@ -6108,19 +8640,30 @@ function processVillageEconomyTurn(data, options = {}) {
     foodKeys: FOOD_RESOURCE_KEYS,
     materialKeys: MATERIAL_RESOURCE_KEYS,
     fallbackMultiplier: FOOD_SUBSTITUTE_MULTIPLIER,
-    adjustVillagePopulationForTurn: shortage => adjustVillagePopulationForTurn(villageAfterConversion, shortage)
+    adjustVillagePopulationForTurn: shortage => adjustVillagePopulationForTurn(villageAfterResidentialUpgrade, shortage)
   }, { roundTo1, toSafeNumber });
   const upkeepResult = economyCore.upkeepResult;
   const popResult = economyCore.popResult;
   const shortageTotal = economyCore.shortageTotal;
   let populationDelta = economyCore.populationDelta;
-  const normalizedVillage = ensureVillageStateShape(villageAfterConversion, raceFallback);
-  const populationCapacity = resolveVillagePopulationCapacityByTerritory(normalizedVillage, territorySets.player);
-  const reducedByCapacity = applyVillagePopulationCapacityClamp(normalizedVillage, populationCapacity);
+  const economyVillage = ensureVillageStateShape(economyCore?.village || villageAfterResidentialUpgrade, raceFallback);
+  if (!economyVillage) {
+    return { applied: false, notes: ["経済処理: 村データ更新に失敗しました。"] };
+  }
+  const populationCapacity = resolveVillagePopulationCapacityByTerritory(economyVillage, territorySets.player);
+  const reducedByCapacity = applyVillagePopulationCapacityClamp(economyVillage, populationCapacity);
   if (reducedByCapacity > 0) {
     populationDelta -= reducedByCapacity;
   }
-  normalizedVillage.populationCapacity = populationCapacity;
+  economyVillage.populationCapacity = populationCapacity;
+  const purificationResult = applyVillageTilePurificationTurn(economyVillage, {
+    raceFallback,
+    ownedSet: territorySets.player
+  });
+  const villageAfterPurification = ensureVillageStateShape(purificationResult.village, raceFallback);
+  const recoveryResult = applyVillageTileRecoveryTurn(villageAfterPurification, unitList.value);
+  unitList.value = recoveryResult.units;
+  const normalizedVillage = ensureVillageStateShape(villageAfterPurification, raceFallback);
   villageState.value = normalizedVillage;
   updateVillageInfoText();
   if (options.emitState !== false) emitCharacterStateChange();
@@ -6164,6 +8707,27 @@ function processVillageEconomyTurn(data, options = {}) {
   }
   if (Array.isArray(conversionResult?.notes) && conversionResult.notes.length) {
     lines.push(...conversionResult.notes);
+  }
+  if (Array.isArray(residentialUpgradeResult?.notes) && residentialUpgradeResult.notes.length) {
+    lines.push(...residentialUpgradeResult.notes);
+  }
+  if (Array.isArray(purificationResult?.notes) && purificationResult.notes.length) {
+    lines.push(...purificationResult.notes);
+  }
+  if (Array.isArray(recoveryResult?.notes) && recoveryResult.notes.length) {
+    lines.push(...recoveryResult.notes);
+  }
+  const maintenanceMetrics = resolveVillagePopulationStatusMetrics(normalizedVillage, unitList.value);
+  const maintenance = resolveVillageMaintenancePenalty(maintenanceMetrics);
+  if (maintenance.productionMultiplier < 1 || maintenance.happinessPenalty > 0 || maintenance.securityPenalty > 0) {
+    const productionPenaltyPercent = Math.round((1 - maintenance.productionMultiplier) * 100);
+    lines.push(
+      `都市維持: ${maintenance.label} / 維持率${formatHeaderPercentOrDash(maintenance.ratio * 100)} / `
+      + `生産-${productionPenaltyPercent}% / 幸福度-${formatCompactNumber(maintenance.happinessPenalty)}`
+      + (maintenance.securityPenalty > 0 ? ` / 治安-${formatCompactNumber(maintenance.securityPenalty)}` : "")
+    );
+  } else {
+    lines.push(`都市維持: 正常 (維持率${formatHeaderPercentOrDash(maintenance.ratio * 100)})`);
   }
   lastEconomySummary.value = report.summary;
   return {
@@ -6343,6 +8907,61 @@ function ensureRaceMarkerTexture(iconName, options = {}) {
 
 function unitsAt(x, y) {
   return unitList.value.filter(unit => unit.x === x && unit.y === y);
+}
+
+function countHeroUnits(units = unitList.value) {
+  const source = Array.isArray(units) ? units : [];
+  return source.filter(unit => isMobUnit(unit) && !isMilitaryUnit(unit)).length;
+}
+
+function runHeroAutoGrowthForTurn(options = {}) {
+  const raceFallback = nonEmptyText(options?.raceFallback) || resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village?.placed) {
+    return { applied: false, notes: ["ヒーロー増加: 村未配置のためスキップ"] };
+  }
+  const heroCap = resolveFactionHeroUnitCap(village, raceFallback);
+  const currentHeroCount = countHeroUnits(unitList.value);
+  const unlockedBefore = resolveHeroCreateUnlockedCount(village);
+  const remaining = Math.max(0, heroCap - currentHeroCount - unlockedBefore);
+  const breakdown = buildHeroAutoGrowthBreakdown(village, unitList.value, raceFallback);
+  if (remaining <= 0) {
+    return {
+      applied: false,
+      notes: [
+        `ヒーロー増加判定: ${breakdown.chance}% (上限 ${currentHeroCount}/${heroCap} / 解放${unlockedBefore})`
+      ]
+    };
+  }
+
+  const chance = Math.max(0, toSafeNumber(breakdown.chance, 0));
+  const guaranteed = Math.max(0, Math.floor(chance / 100));
+  const remainder = chance - (guaranteed * 100);
+  let spawnCount = guaranteed;
+  if (remainder > 0 && Math.random() * 100 < remainder) {
+    spawnCount += 1;
+  }
+  spawnCount = Math.min(remaining, spawnCount);
+
+  const notes = [
+    `ヒーロー増加判定: ${chance}% (倍率x${breakdown.heroGrowthMultiplier} / 軍隊Lv10:${breakdown.hasArmyLv10 ? "有" : "無"} / 居住化:${breakdown.settlementCount} / 都市段階:${breakdown.stageLabel})`
+  ];
+  if (spawnCount <= 0) {
+    notes.push("ヒーロー増加: なし");
+    return { applied: false, notes };
+  }
+  const nextUnlocked = unlockedBefore + spawnCount;
+  villageState.value = {
+    ...village,
+    heroBirthUnlock: nextUnlocked
+  };
+  notes.push(`英雄が誕生しました。ヒーロー作成を ${spawnCount} 枠解放 (解放 ${nextUnlocked})`);
+  return {
+    applied: true,
+    notes,
+    unlocked: spawnCount,
+    unlockedTotal: nextUnlocked
+  };
 }
 
 function scaleNumericMapValues(input, multiplier) {
@@ -6636,6 +9255,96 @@ function resolveEncounterDetectionByContext(context, inRange, effectiveScout, ta
   };
 }
 
+function resolveMoveGroupEncounterSense(moveGroup) {
+  const participants = Array.isArray(moveGroup?.participants) ? moveGroup.participants : [];
+  const scouts = participants.map(resolveEncounterScoutValueForUnit);
+  const stealths = participants.map(resolveEncounterStealthValueForUnit);
+  return resolveEncounterGroupSense(scouts, stealths);
+}
+
+function resolveHostileGroupsAtTileForMove(data, x, y, options = {}) {
+  const groups = [];
+  if (!data || !Number.isFinite(x) || !Number.isFinite(y)) return groups;
+  const tileEnemies = enemiesAt(x, y, data);
+  if (tileEnemies.length) {
+    const sense = resolveEncounterGroupSense(
+      tileEnemies.map(resolveEncounterScoutValueForEnemy),
+      tileEnemies.map(resolveEncounterStealthValueForEnemy)
+    );
+    groups.push({
+      kind: "spawn",
+      x,
+      y,
+      scout: sense.scout,
+      stealth: sense.stealth,
+      label: tileEnemies[0]?.name || tileEnemies[0]?.race || "敵"
+    });
+  }
+  const tileKey = coordKey(x, y);
+  const factionTileMap = options?.factionTileMap instanceof Map
+    ? options.factionTileMap
+    : buildOpposingFactionUnitsByTile(data);
+  const bucket = factionTileMap.get(tileKey);
+  if (bucket && Array.isArray(bucket.units) && bucket.units.length) {
+    const sense = resolveEncounterGroupSense(
+      bucket.units.map(resolveEncounterScoutValueForUnit),
+      bucket.units.map(resolveEncounterStealthValueForUnit)
+    );
+    groups.push({
+      kind: "faction",
+      x,
+      y,
+      scout: sense.scout,
+      stealth: sense.stealth,
+      label: Array.from(bucket.factionLabels || []).join("/") || "他勢力"
+    });
+  }
+  return groups;
+}
+
+function runHostilePassStealthCheckAtTile(options = {}) {
+  const data = options?.data || currentData.value;
+  const moveGroup = options?.moveGroup;
+  const x = Math.floor(toSafeNumber(options?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(options?.y, Number.NaN));
+  if (!data || !moveGroup || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return { blocked: false, reason: "", lockApplied: false };
+  }
+  const hostileGroups = resolveHostileGroupsAtTileForMove(data, x, y, {
+    factionTileMap: options?.factionTileMap
+  });
+  if (!hostileGroups.length) return { blocked: false, reason: "", lockApplied: false };
+  const playerSense = resolveMoveGroupEncounterSense(moveGroup);
+  for (const hostile of hostileGroups) {
+    const chancePercent = resolveEncounterSurveyDetectChancePercent(hostile.scout, playerSense.stealth);
+    const detected = chancePercent >= 100 ? true : (Math.random() < (chancePercent / 100));
+    if (!detected) continue;
+    const enemyLabel = hostile.kind === "faction"
+      ? `${hostile.label}部隊`
+      : hostile.label;
+    const lockResult = applyEncounterMoveLock(moveGroup.participantIds, {
+      enemyLabel,
+      distance: 0,
+      context: "move",
+      lockType: "detected",
+      turn: mapTurnNumber.value,
+      atX: x,
+      atY: y
+    });
+    if (hostile.kind === "faction") {
+      markFactionSpotted(x, y, data);
+    } else {
+      markEnemySpotted(x, y, data);
+    }
+    return {
+      blocked: true,
+      reason: `${enemyLabel}に発見され通行不可`,
+      lockApplied: !!lockResult?.applied
+    };
+  }
+  return { blocked: false, reason: "", lockApplied: false };
+}
+
 function consumeEncounterActionMoveByUnitIds(unitIds = [], moveCost = ENCOUNTER_ACTION_MOVE_COST) {
   const ids = Array.from(
     new Set(
@@ -6819,7 +9528,7 @@ function runEnemyEncounterCheck(options = {}) {
       let attackChance = 0;
       let attackRoll = null;
       let fumbleRoll = null;
-      const playerAmbush = distance === 0 && playerFoundEnemy && !enemyFoundPlayer;
+      const playerAmbush = context === "survey" && distance === 0 && playerFoundEnemy && !enemyFoundPlayer;
       let ambushClearResult = null;
       let ambushMoveCostSpent = false;
       let ambushBlockedByMovePoint = false;
@@ -7067,6 +9776,12 @@ function applyDisplaySettingChange(payload) {
   } else if (key === "heightNumberOutlineWidth") {
     const raw = Number(value);
     heightNumberOutlineWidth.value = Number.isFinite(raw) ? Math.max(0, Math.min(6, Math.round(raw))) : 3;
+  } else if (key === "tileDetailPanelWidth") {
+    const raw = Number(value);
+    tileDetailPanelWidth.value = Number.isFinite(raw) ? Math.max(360, Math.min(640, Math.round(raw))) : 460;
+  } else if (key === "tileDetailPanelHeight") {
+    const raw = Number(value);
+    tileDetailPanelHeight.value = Number.isFinite(raw) ? Math.max(260, Math.min(560, Math.round(raw))) : 360;
   } else if (key === "masterVolumePercent") {
     const pct = normalizeVolumePercent(value, masterVolumePercent.value);
     masterVolumePercent.value = pct;
@@ -8079,9 +10794,18 @@ function renderMapWithPhaser() {
   const moveBlinkAlpha = 0.38 + ((Math.sin(moveBlinkPhase * Math.PI * 2) + 1) * 0.24);
   const fogHiddenAlpha = showTestControls.value ? FOG_HIDDEN_ALPHA_TEST : FOG_HIDDEN_ALPHA;
   const waterfallTextureKey = ensureRaceMarkerTexture(resolveWaterfallIconName());
-  const settlementTileTextureKey = ensureRaceMarkerTexture(resolveVillageMarkerIconNameByScale("村"));
+  const settlementMarkerTextureByLevel = new Map();
+  for (const levelKey of TERRITORY_RESIDENTIAL_LEVEL_ORDER) {
+    const iconName = resolveTerritoryResidentialIconName(levelKey);
+    if (!iconName) continue;
+    const textureKey = ensureRaceMarkerTexture(iconName);
+    if (textureKey) {
+      settlementMarkerTextureByLevel.set(levelKey, textureKey);
+    }
+  }
   const activeVillageState = ensureVillageStateShape(villageState.value, resolveActiveFactionRace());
   const activeVillageConversionMap = normalizeTerritoryTileConversionMap(activeVillageState?.territoryTileConversionMap);
+  const activeVillageResidentialPendingTileSet = collectTerritoryResidentialUpgradePendingTileSet(activeVillageState);
   const activeVillageHomeKey = (
     activeVillageState?.placed
     && Number.isFinite(activeVillageState?.x)
@@ -8089,6 +10813,10 @@ function renderMapWithPhaser() {
   )
     ? coordKey(activeVillageState.x, activeVillageState.y)
     : "";
+  const housingSelection = housingUpgradeSelectionState.value;
+  const housingSelectionCenterKey = nonEmptyText(housingSelection?.centerKey);
+  const housingSelectionCandidateSet = new Set(housingSelection?.candidateAttachmentKeys || []);
+  const housingSelectionSelectedSet = new Set(housingSelection?.selectedAttachmentKeys || []);
   const terrainResourceIconCache = new Map();
   const boundsAcc = createBoundsAccumulator();
 
@@ -8159,6 +10887,18 @@ function renderMapWithPhaser() {
           baseLayer.lineStyle(2.35, 0x6cff79, moveBlinkAlpha);
           baseLayer.strokePoints(points, true);
         }
+        if (tileVisible && housingSelection?.active) {
+          if (tileKey === housingSelectionCenterKey) {
+            baseLayer.lineStyle(3.25, 0xffd874, 0.92);
+            baseLayer.strokePoints(points, true);
+          } else if (housingSelectionSelectedSet.has(tileKey)) {
+            baseLayer.lineStyle(2.85, 0x7effc9, 0.92);
+            baseLayer.strokePoints(points, true);
+          } else if (housingSelectionCandidateSet.has(tileKey)) {
+            baseLayer.lineStyle(2.15, 0x56b3ff, 0.72);
+            baseLayer.strokePoints(points, true);
+          }
+        }
 
         const baseCenter = hexCenter(x, y);
         const center = { cx: baseCenter.cx + offX, cy: baseCenter.cy + offY };
@@ -8224,6 +10964,9 @@ function renderMapWithPhaser() {
         if (tileVisible && owner === "player" && activeVillageState) {
           const tileMode = resolveTerritoryTileModeAt(activeVillageState, tileKey);
           const pendingConversion = activeVillageConversionMap?.[tileKey];
+          const pendingResidentialUpgrade = activeVillageResidentialPendingTileSet.has(tileKey)
+            ? resolveTerritoryResidentialUpgradeQueueEntryAtTile(activeVillageState, tileKey)
+            : null;
           const pendingSettlement = (
             pendingConversion?.targetMode === TERRITORY_TILE_MODE_SETTLEMENT
             && toSafeNumber(pendingConversion?.remainingTurns, 0) > 0
@@ -8237,21 +10980,47 @@ function renderMapWithPhaser() {
             && tileKey !== activeVillageHomeKey
           );
           if (drawSettlementMarker) {
-            if (settlementTileTextureKey && scene.textures.exists(settlementTileTextureKey)) {
-              const settlementIcon = scene.add.image(center.cx, center.cy, settlementTileTextureKey);
-              settlementIcon.setDisplaySize(MAP_SETTLEMENT_MARKER_CONFIG.iconSize, MAP_SETTLEMENT_MARKER_CONFIG.iconSize);
-              settlementIcon.setOrigin(0.5);
-              labelTexts.push(settlementIcon);
-            } else {
-              const settlementLabel = scene.add.text(center.cx, center.cy, "村", {
-                fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-                fontStyle: "700",
-                fontSize: "11px",
-                color: "#4f3515"
+            const residentialLevel = pendingSettlement
+              ? TERRITORY_RESIDENTIAL_LEVEL_VILLAGE
+              : resolveTerritoryResidentialLevelAt(activeVillageState, tileKey, {
+                fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_LAND
               });
-              settlementLabel.setOrigin(0.5);
-              settlementLabel.setStroke("#fff7df", 2);
-              labelTexts.push(settlementLabel);
+            const centerKeyForMarker = resolveTerritoryResidentialCenterKey(activeVillageState, tileKey);
+            const isAttachedTile = !!centerKeyForMarker && centerKeyForMarker !== tileKey;
+            const markerLevel = (() => {
+              if (!isAttachedTile && (!centerKeyForMarker || centerKeyForMarker === tileKey)) return residentialLevel;
+              const centerKey = centerKeyForMarker;
+              if (!centerKey) return TERRITORY_RESIDENTIAL_LEVEL_VILLAGE;
+              return resolveTerritoryResidentialLevelAt(activeVillageState, centerKey, {
+                fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE
+              });
+            })();
+            if (markerLevel !== TERRITORY_RESIDENTIAL_LEVEL_LAND) {
+              const residentialDef = resolveTerritoryResidentialLevelDef(markerLevel);
+              const settlementTextureKey = settlementMarkerTextureByLevel.get(markerLevel);
+              const settlementIconSize = resolveTerritoryResidentialIconSize(markerLevel);
+              const displaySize = settlementIconSize;
+              const displayAlpha = (pendingSettlement || pendingResidentialUpgrade)
+                ? 0.55
+                : ((centerKeyForMarker && centerKeyForMarker !== tileKey) ? 0.9 : 1);
+              if (settlementTextureKey && scene.textures.exists(settlementTextureKey)) {
+                const settlementIcon = scene.add.image(center.cx, center.cy, settlementTextureKey);
+                settlementIcon.setDisplaySize(displaySize, displaySize);
+                settlementIcon.setAlpha(displayAlpha);
+                settlementIcon.setOrigin(0.5);
+                labelTexts.push(settlementIcon);
+              } else {
+                const settlementLabel = scene.add.text(center.cx, center.cy, residentialDef?.label || "村", {
+                  fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+                  fontStyle: "700",
+                  fontSize: "11px",
+                  color: "#4f3515"
+                });
+                settlementLabel.setOrigin(0.5);
+                settlementLabel.setStroke("#fff7df", 2);
+                if (isAttachedTile) settlementLabel.setAlpha(displayAlpha);
+                labelTexts.push(settlementLabel);
+              }
             }
           } else if (tileMode === TERRITORY_TILE_MODE_RESOURCE || pendingResource) {
             if (!terrainResourceIconCache.has(rawKey)) {
@@ -8293,8 +11062,9 @@ function renderMapWithPhaser() {
 
         const hasTileEnemy = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) && data.enemySpawnMap[y][x].length > 0;
         const hasFactionEnemy = opposingFactionTileMap.has(tileKey);
-        const spottedEnemyVisible = tileVisible && hasTileEnemy && spottedEnemyTileKeys.has(tileKey);
-        const spottedFactionVisible = tileVisible && hasFactionEnemy && spottedFactionTileKeys.has(tileKey);
+        const tileInCurrentVision = isTileInCurrentVision(tileKey, data);
+        const spottedEnemyVisible = tileInCurrentVision && hasTileEnemy && spottedEnemyTileKeys.has(tileKey);
+        const spottedFactionVisible = tileInCurrentVision && hasFactionEnemy && spottedFactionTileKeys.has(tileKey);
         if (spottedEnemyVisible) {
           const tileEnemyList = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) ? data.enemySpawnMap[y][x] : [];
           const leadEnemy = tileEnemyList.length ? tileEnemyList[0] : null;
@@ -8393,8 +11163,17 @@ function renderMapWithPhaser() {
   if (v?.placed && Number.isFinite(v.x) && Number.isFinite(v.y) && isTileVisible(coordKey(v.x, v.y), data)) {
     const baseCenter = hexCenter(v.x, v.y);
     const villageScaleLabel = resolveVillageScaleLabel(v);
-    const villageMarkerIconName = resolveVillageMarkerIconNameByScale(villageScaleLabel);
+    const homeTileKey = coordKey(v.x, v.y);
+    const homeResidentialLevel = resolveTerritoryResidentialLevelAt(v, homeTileKey, {
+      fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE
+    });
+    const homeResidentialDef = resolveTerritoryResidentialLevelDef(homeResidentialLevel);
+    const villageMarkerIconName = resolveTerritoryResidentialIconName(homeResidentialLevel)
+      || resolveVillageMarkerIconNameByScale(villageScaleLabel);
     const villageMarkerTextureKey = ensureRaceMarkerTexture(villageMarkerIconName);
+    const villageMarkerSize = resolveTerritoryResidentialIconName(homeResidentialLevel)
+      ? resolveTerritoryResidentialIconSize(homeResidentialLevel)
+      : MAP_SETTLEMENT_MARKER_CONFIG.iconSize;
     for (const offset of wrapOffsets) {
       if (!shouldDrawWrappedTileCopy(v.x, v.y, offset, data.w, data.h)) continue;
       const ox = offset?.x || 0;
@@ -8410,10 +11189,10 @@ function renderMapWithPhaser() {
       }
       if (villageMarkerTextureKey && scene.textures.exists(villageMarkerTextureKey)) {
         const villageIcon = scene.add.image(center.cx, center.cy, villageMarkerTextureKey);
-        villageIcon.setDisplaySize(MAP_SETTLEMENT_MARKER_CONFIG.iconSize, MAP_SETTLEMENT_MARKER_CONFIG.iconSize);
+        villageIcon.setDisplaySize(villageMarkerSize, villageMarkerSize);
         labelTexts.push(villageIcon);
       } else {
-        const villageLabel = scene.add.text(center.cx, center.cy, villageScaleLabel === "村" ? "村" : "町", {
+        const villageLabel = scene.add.text(center.cx, center.cy, homeResidentialDef?.label || (villageScaleLabel === "村" ? "村" : "町"), {
           fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
           fontStyle: "700",
           fontSize: "11px",
@@ -8579,9 +11358,15 @@ function runTurnForActiveFaction(data, options = {}) {
     raceFallback: nonEmptyText(options?.raceFallback),
     emitState: false
   });
+  const heroGrowthResult = runHeroAutoGrowthForTurn({
+    raceFallback: nonEmptyText(options?.raceFallback)
+  });
+  const heroNotes = Array.isArray(heroGrowthResult?.notes) ? heroGrowthResult.notes : [];
   const encounterResult = runEnemyEncounterCheck({ context: "turn" });
   return {
     economyResult,
+    heroGrowthResult,
+    heroNotes,
     encounterResult
   };
 }
@@ -8590,6 +11375,7 @@ function runTurnForAllTestPlayers(data) {
   const slots = [...testPlayerSlots.value];
   const activeBefore = nonEmptyText(activeTestPlayerId.value);
   const allEconomyNotes = [];
+  const allHeroNotes = [];
   const allEncounterNotes = [];
 
   for (const slot of slots) {
@@ -8601,8 +11387,10 @@ function runTurnForAllTestPlayers(data) {
     slot.factionState = buildLiveFactionStateSnapshot();
     const head = `--- ${nonEmptyText(slot?.label) || nonEmptyText(slot?.id) || "プレイヤー"} ---`;
     const economyLines = Array.isArray(result?.economyResult?.notes) ? result.economyResult.notes : [];
+    const heroLines = Array.isArray(result?.heroNotes) ? result.heroNotes : [];
     const encounterLines = Array.isArray(result?.encounterResult?.notes) ? result.encounterResult.notes : [];
     allEconomyNotes.push(head, ...economyLines);
+    allHeroNotes.push(head, ...heroLines);
     allEncounterNotes.push(head, ...encounterLines);
   }
 
@@ -8618,6 +11406,7 @@ function runTurnForAllTestPlayers(data) {
 
   return {
     economyNotes: allEconomyNotes,
+    heroNotes: allHeroNotes,
     encounterNotes: allEncounterNotes
   };
 }
@@ -8654,6 +11443,7 @@ function runNextTurn(options = {}) {
       const singleResult = runTurnForActiveFaction(result.data);
       return {
         economyNotes: Array.isArray(singleResult?.economyResult?.notes) ? singleResult.economyResult.notes : [],
+        heroNotes: Array.isArray(singleResult?.heroNotes) ? singleResult.heroNotes : [],
         encounterNotes: Array.isArray(singleResult?.encounterResult?.notes) ? singleResult.encounterResult.notes : [],
         economyApplied: !!singleResult?.economyResult?.applied
       };
@@ -8662,16 +11452,21 @@ function runNextTurn(options = {}) {
   eventModalMessage.value = formatTurnEventMessage(turn, result.events, mode);
   const baseNotes = formatTurnEventNotes(result.events);
   const economyNotes = Array.isArray(turnRuntime?.economyNotes) ? turnRuntime.economyNotes : [];
+  const heroNotes = Array.isArray(turnRuntime?.heroNotes) ? turnRuntime.heroNotes : [];
   const encounterNotes = Array.isArray(turnRuntime?.encounterNotes) ? turnRuntime.encounterNotes : [];
   const economyApplied = turnRuntime?.economyApplied !== false;
   if (economyApplied) {
-    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyNotes, "---- 索敵処理 ----", ...encounterNotes];
+    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 索敵処理 ----", ...encounterNotes];
     for (const line of economyNotes) {
       if (String(line || "").startsWith("--- ")) continue;
       pushNationLog(line);
     }
+    for (const line of heroNotes) {
+      if (String(line || "").startsWith("--- ")) continue;
+      pushNationLog(line);
+    }
   } else {
-    eventModalNotes.value = [...baseNotes, ...economyNotes, "---- 索敵処理 ----", ...encounterNotes];
+    eventModalNotes.value = [...baseNotes, ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 索敵処理 ----", ...encounterNotes];
   }
   clearAllTestPlayerTurnReady();
   emitCharacterStateChange();
@@ -8902,6 +11697,402 @@ function openCharacterStatusModalFromMap() {
   emit("open-modal", "characters");
 }
 
+function openEquipmentInventoryModalFromMap() {
+  kickOffBgm();
+  audio.playSe("open");
+  showEquipmentInventoryModal.value = true;
+}
+
+function closeEquipmentInventoryModal() {
+  audio.playSe("cancel");
+  showEquipmentInventoryModal.value = false;
+}
+
+function craftEquipmentInventoryWithFeedback(equipmentNameRaw, rarityRaw, countRaw = 1, actionLabel = "装備作成") {
+  const equipmentName = nonEmptyText(equipmentNameRaw);
+  const rarity = nonEmptyText(rarityRaw);
+  const count = Math.max(1, Math.floor(toSafeNumber(countRaw, 1)));
+  const result = craftEquipmentInventoryItem(equipmentName, rarity, count);
+  if (!result.ok) {
+    updateUnitInfoText(`${actionLabel}失敗: ${result.reason || "作成不可"}`);
+    pushNationLog(`${actionLabel}失敗: ${result.reason || "作成不可"}`);
+    emitCharacterStateChange();
+    renderMapWithPhaser();
+    return { ok: false, result };
+  }
+  const item = result.item;
+  const rarityText = item?.qualityLabel || formatEquipmentRarityLabel(item?.quality);
+  const craftCostText = formatMaterialPositiveResourceBag(result?.craftCost?.material);
+  updateVillageInfoText();
+  updateUnitInfoText(`${actionLabel}: ${item?.name || "-"} [${rarityText}] x${result.count} / 素材 ${craftCostText}`);
+  pushNationLog(`${actionLabel}: ${item?.name || "-"} [${rarityText}] x${result.count} / 素材 ${craftCostText}`);
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+  return { ok: true, result };
+}
+
+function findEnchantRowByAbilityName(nameRaw) {
+  const name = nonEmptyText(nameRaw);
+  if (!name) return null;
+  return enchantRows.value.find(row => nonEmptyText(row?.付与能力) === name) || null;
+}
+
+function canAffordEquipmentEnchant(village, enchantCost) {
+  if (!village || !enchantCost) return false;
+  const foodBag = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS);
+  const materialBag = normalizeMaterialStockBag(village.materialStockByType);
+  for (const key of FOOD_RESOURCE_KEYS) {
+    if (foodBag[key] < toSafeNumber(enchantCost?.food?.[key], 0)) return false;
+  }
+  for (const key of MATERIAL_RESOURCE_KEYS) {
+    if (materialBag[key] < toSafeNumber(enchantCost?.material?.[key], 0)) return false;
+  }
+  const requiredTools = Array.isArray(enchantCost?.requiredTools) ? enchantCost.requiredTools : [];
+  for (const tool of requiredTools) {
+    const name = nonEmptyText(tool?.name);
+    if (!name) continue;
+    const need = Math.max(1, Math.floor(toSafeNumber(tool?.count, 1)));
+    const have = countEquipmentInventoryItemByName(village, name);
+    if (have < need) return false;
+  }
+  return true;
+}
+
+function applyEquipmentEnchantCost(village, enchantCost) {
+  let nextVillage = ensureVillageStateShape(village, props.selectedRace);
+  if (!nextVillage || !enchantCost) {
+    return { ok: false, reason: "付与コスト適用に失敗しました。", village: nextVillage };
+  }
+  const nextFood = normalizeResourceBag(nextVillage.foodStockByType, FOOD_RESOURCE_KEYS);
+  const nextMaterial = normalizeMaterialStockBag(nextVillage.materialStockByType);
+  for (const key of FOOD_RESOURCE_KEYS) {
+    nextFood[key] = roundTo1(Math.max(0, nextFood[key] - toSafeNumber(enchantCost?.food?.[key], 0)));
+  }
+  for (const key of MATERIAL_RESOURCE_KEYS) {
+    nextMaterial[key] = roundTo1(Math.max(0, nextMaterial[key] - toSafeNumber(enchantCost?.material?.[key], 0)));
+  }
+  nextVillage = ensureVillageStateShape({
+    ...nextVillage,
+    foodStockByType: nextFood,
+    materialStockByType: nextMaterial
+  }, props.selectedRace);
+  const requiredTools = Array.isArray(enchantCost?.requiredTools) ? enchantCost.requiredTools : [];
+  for (const tool of requiredTools) {
+    const name = nonEmptyText(tool?.name);
+    const count = Math.max(1, Math.floor(toSafeNumber(tool?.count, 1)));
+    if (!name || count <= 0) continue;
+    const consumed = consumeEquipmentInventoryItemAnyRarity(nextVillage, name, count);
+    if (!consumed.ok || !consumed.village) {
+      return { ok: false, reason: consumed.reason || `必要道具不足: ${name}x${count}`, village: nextVillage };
+    }
+    nextVillage = consumed.village;
+  }
+  return { ok: true, village: nextVillage };
+}
+
+function buildEnchantOptionFromRow(village, enchantRow, capacity = null, item = null) {
+  const cost = buildEquipmentEnchantCost(enchantRow);
+  const materialCost = normalizeMaterialStockBag(cost?.material);
+  const foodCost = normalizeResourceBag(cost?.food, FOOD_RESOURCE_KEYS);
+  const requiredTools = Array.isArray(cost?.requiredTools)
+    ? cost.requiredTools
+      .map(row => ({
+        name: nonEmptyText(row?.name),
+        count: Math.max(1, Math.floor(toSafeNumber(row?.count, 1)))
+      }))
+      .filter(row => row.name)
+    : [];
+  const materialText = formatMaterialPositiveResourceBag(cost?.material);
+  const foodText = formatFoodPositiveResourceBag(cost?.food);
+  const toolsText = formatEnchantRequiredTools(cost?.requiredTools);
+  const capacityText = capacity?.isWeapon
+    ? `武器付与枠 ${Math.max(0, Math.floor(toSafeNumber(capacity?.currentCount, 0)))}/${Math.max(1, Math.floor(toSafeNumber(capacity?.maxCount, 3)))} / Lv ${Math.max(0, Math.floor(toSafeNumber(capacity?.currentLevelSum, 0)))}/${Math.max(0, Math.floor(toSafeNumber(capacity?.levelLimit, 0)))}`
+    : "";
+  const usageSpec = resolveEnchantActionUsageSpec(enchantRow, item);
+  const usageState = resolveVillageEnchantActionUsageState(village, usageSpec.usesFaith);
+  const usageTypeLabel = usageSpec.usesFaith ? "信仰" : "魔術";
+  const usageText = `${usageTypeLabel}回数 ${usageState.remaining}/${usageState.max} (必要${usageSpec.usageCost})`;
+  return {
+    abilityName: nonEmptyText(enchantRow?.付与能力),
+    level: Math.max(1, Math.floor(toSafeNumber(enchantRow?.Lv, 1))),
+    target: nonEmptyText(enchantRow?.対象装備) || "指定なし",
+    requirementText: buildEnchantRequirementLabel(village, enchantRow),
+    materialCostText: materialText === "なし" ? "なし" : materialText,
+    foodCostText: foodText === "なし" ? "なし" : foodText,
+    requiredToolsText: toolsText,
+    materialCost,
+    foodCost,
+    requiredTools,
+    effectSummary: buildEnchantEffectSummary(enchantRow),
+    capacityText,
+    usageCost: usageSpec.usageCost,
+    usageRemaining: usageState.remaining,
+    usageMax: usageState.max,
+    usageType: usageTypeLabel,
+    usageText
+  };
+}
+
+function handleResolveEnchantOptionsFromInventoryModal(payload = {}) {
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  const item = payload?.item && typeof payload.item === "object" ? payload.item : null;
+  const equipmentName = nonEmptyText(item?.name || payload?.equipmentName);
+  if (!village?.placed) {
+    return { ok: false, reason: "付与には都市（初期村）の配置が必要です。", options: [] };
+  }
+  if (!equipmentName) {
+    return { ok: false, reason: "装備が未選択です。", options: [] };
+  }
+  const equipmentRow = findEquipmentRowByName(equipmentName);
+  if (!equipmentRow) {
+    return { ok: false, reason: "装備データが見つかりません。", options: [] };
+  }
+  const capacityBase = evaluateWeaponEnchantCapacity(item || {}, equipmentRow, null);
+  const options = [];
+  const blockedReasons = new Set();
+  for (const row of enchantRows.value) {
+    if (!enchantRowMatchesEquipmentTarget(row, equipmentRow, item)) continue;
+    const req = evaluateEnchantRequirement(village, row);
+    if (!req.ok) continue; // AND条件: すべて満たした候補のみ表示
+    const capacity = evaluateWeaponEnchantCapacity(item || {}, equipmentRow, row);
+    if (!capacity.ok) {
+      blockedReasons.add(nonEmptyText(capacity.reason));
+      continue;
+    }
+    options.push(buildEnchantOptionFromRow(village, row, capacityBase, item));
+  }
+  options.sort((a, b) => {
+    const lvDiff = Math.max(1, Math.floor(toSafeNumber(a?.level, 1))) - Math.max(1, Math.floor(toSafeNumber(b?.level, 1)));
+    if (lvDiff !== 0) return lvDiff;
+    return nonEmptyText(a?.abilityName).localeCompare(nonEmptyText(b?.abilityName), "ja");
+  });
+  if (!options.length) {
+    const reason = Array.from(blockedReasons).find(Boolean) || "条件を満たす付与候補がありません。";
+    return { ok: false, reason, options: [] };
+  }
+  return { ok: true, reason: "", options };
+}
+
+function handleApplyEnchantFromInventoryModal(payload = {}) {
+  const itemKey = nonEmptyText(payload?.itemKey);
+  const enchantName = nonEmptyText(payload?.enchantName);
+  if (!itemKey) return { ok: false, reason: "付与対象アイテムが未指定です。" };
+  if (!enchantName) return { ok: false, reason: "付与能力が未指定です。" };
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  if (!village?.placed) return { ok: false, reason: "付与には都市（初期村）の配置が必要です。" };
+  const sourceInventory = normalizeVillageEquipmentInventory(village?.equipmentInventory);
+  const targetRow = sourceInventory.find(row => nonEmptyText(row?.key) === itemKey) || null;
+  if (!targetRow) return { ok: false, reason: "付与対象アイテムが見つかりません。" };
+  const targetItem = targetRow?.item && typeof targetRow.item === "object" ? { ...targetRow.item } : null;
+  if (!targetItem) return { ok: false, reason: "付与対象アイテムデータが不正です。" };
+  const equipmentRow = findEquipmentRowByName(targetRow?.name);
+  if (!equipmentRow) return { ok: false, reason: "装備データが見つかりません。" };
+  const enchantRow = findEnchantRowByAbilityName(enchantName);
+  if (!enchantRow) return { ok: false, reason: "付与データが見つかりません。" };
+  if (!enchantRowMatchesEquipmentTarget(enchantRow, equipmentRow, targetItem)) {
+    return { ok: false, reason: `${enchantName} は ${targetRow?.name || "この装備"} に付与できません。` };
+  }
+  const usageSpec = resolveEnchantActionUsageSpec(enchantRow, targetItem);
+  const usageState = resolveVillageEnchantActionUsageState(village, usageSpec.usesFaith);
+  if (usageState.remaining < usageSpec.usageCost) {
+    const label = usageSpec.usesFaith ? "信仰" : "魔術";
+    return {
+      ok: false,
+      reason: `付与回数不足(${label}): 残り ${usageState.remaining}/${usageState.max} (必要${usageSpec.usageCost})`
+    };
+  }
+  const capacity = evaluateWeaponEnchantCapacity(targetItem, equipmentRow, enchantRow);
+  if (!capacity.ok) {
+    return { ok: false, reason: nonEmptyText(capacity.reason) || "武器付与上限により実行できません。" };
+  }
+  const requirement = evaluateEnchantRequirement(village, enchantRow);
+  if (!requirement.ok) {
+    const reason = requirement.failed
+      .map(row => `${row.key}不足 ${row.current}/${row.required}`)
+      .join(" / ");
+    return { ok: false, reason: `付与条件不足: ${reason}` };
+  }
+  const consumedTarget = consumeEquipmentInventoryItem(village, targetRow?.name, targetRow?.quality, 1);
+  if (!consumedTarget.ok || !consumedTarget.village || !consumedTarget.item) {
+    return { ok: false, reason: consumedTarget.reason || "付与対象装備の在庫消費に失敗しました。" };
+  }
+  const enchantCost = buildEquipmentEnchantCost(enchantRow);
+  if (!canAffordEquipmentEnchant(consumedTarget.village, enchantCost)) {
+    const materialText = formatMaterialPositiveResourceBag(enchantCost.material);
+    const foodText = formatFoodPositiveResourceBag(enchantCost.food);
+    const toolsText = formatEnchantRequiredTools(enchantCost.requiredTools);
+    return { ok: false, reason: `付与素材不足: 資材 ${materialText} / 食料 ${foodText} / 道具 ${toolsText}` };
+  }
+  const paid = applyEquipmentEnchantCost(consumedTarget.village, enchantCost);
+  if (!paid.ok || !paid.village) {
+    return { ok: false, reason: paid.reason || "付与コスト消費に失敗しました。" };
+  }
+  const enchantedItem = applyEnchantRowToEquipmentItem(consumedTarget.item, enchantRow);
+  const stockedVillage = addEquipmentInventoryItem(paid.village, enchantedItem, 1);
+  if (!stockedVillage) {
+    return { ok: false, reason: "付与後装備の在庫追加に失敗しました。" };
+  }
+  const usageApplied = applyVillageEnchantActionUsage(stockedVillage, usageSpec);
+  if (!usageApplied.ok || !usageApplied.village) {
+    return { ok: false, reason: usageApplied.reason || "付与回数の更新に失敗しました。" };
+  }
+  villageState.value = usageApplied.village;
+  updateVillageInfoText();
+  const costMaterial = formatMaterialPositiveResourceBag(enchantCost.material);
+  const costFood = formatFoodPositiveResourceBag(enchantCost.food);
+  const costTools = formatEnchantRequiredTools(enchantCost.requiredTools);
+  const usageText = usageApplied?.usage
+    ? ` / 回数 ${usageApplied.usage.remaining}/${usageApplied.usage.max}`
+    : "";
+  const message = `装備付与: ${targetRow?.name || "-"} -> ${enchantName} / 資材 ${costMaterial} / 食料 ${costFood} / 道具 ${costTools}${usageText}`;
+  updateUnitInfoText(message);
+  pushNationLog(message);
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+  return { ok: true };
+}
+
+function handleResolveCraftCostFromInventoryModal(payload = {}) {
+  const equipmentName = nonEmptyText(payload?.equipmentName);
+  const rarityKey = nonEmptyText(payload?.rarity || "common");
+  const count = Math.max(1, Math.floor(toSafeNumber(payload?.count, 1)));
+  const craftType = nonEmptyText(payload?.craftType);
+  if (!equipmentName) {
+    return { ok: false, reason: "装備名が未指定です。", materialCost: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS) };
+  }
+  const row = findEquipmentRowByName(equipmentName);
+  if (!row) {
+    return { ok: false, reason: "装備データが見つかりません。", materialCost: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS) };
+  }
+  const isWeapon = isWeaponEquipmentRow(row);
+  const isArmor = isArmorEquipmentRow(row);
+  if (craftType === "weapon" && !isWeapon) {
+    return { ok: false, reason: "武器を選択してください。", materialCost: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS) };
+  }
+  if (craftType === "armor" && !isArmor) {
+    return { ok: false, reason: "防具を選択してください。", materialCost: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS) };
+  }
+
+  const craftCostSingle = buildEquipmentCraftMaterialCost(row, rarityKey);
+  const totalMaterial = normalizeMaterialStockBag(
+    multiplyResourceBag(craftCostSingle.material, count, MATERIAL_RESOURCE_KEYS)
+  );
+
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  if (!village?.placed) {
+    return {
+      ok: false,
+      reason: "装備作成には都市（初期村）の配置が必要です。",
+      materialCost: totalMaterial
+    };
+  }
+
+  const smithCap = resolveSmithCraftCap(village);
+  if (craftCostSingle.level > smithCap) {
+    return {
+      ok: false,
+      reason: `鍛冶Lv不足: 必要Lv${craftCostSingle.level} / 現在Lv${smithCap}`,
+      materialCost: totalMaterial
+    };
+  }
+  if (craftCostSingle.isMagic) {
+    const magicLv = resolveVillageAbilityLevelForEnchant(village, "魔法Lv");
+    if (craftCostSingle.level > magicLv) {
+      return {
+        ok: false,
+        reason: `魔法Lv不足: 必要Lv${craftCostSingle.level} / 現在Lv${magicLv}`,
+        materialCost: totalMaterial
+      };
+    }
+  }
+  if (craftCostSingle.isFaith) {
+    const faithLv = resolveVillageAbilityLevelForEnchant(village, "信仰Lv");
+    if (craftCostSingle.level > faithLv) {
+      return {
+        ok: false,
+        reason: `信仰Lv不足: 必要Lv${craftCostSingle.level} / 現在Lv${faithLv}`,
+        materialCost: totalMaterial
+      };
+    }
+  }
+  const craftUsageState = resolveVillageCraftActionUsageState(village);
+  if (craftUsageState.remaining < count) {
+    return {
+      ok: false,
+      reason: `作成回数不足: 残り ${craftUsageState.remaining}/${craftUsageState.max} (必要${count})`,
+      materialCost: totalMaterial
+    };
+  }
+  if (!canAffordEquipmentCraft(village, { ...craftCostSingle, material: totalMaterial })) {
+    return {
+      ok: false,
+      reason: `素材不足: 必要 ${formatMaterialPositiveResourceBag(totalMaterial)}`,
+      materialCost: totalMaterial
+    };
+  }
+  return {
+    ok: true,
+    reason: "",
+    materialCost: totalMaterial
+  };
+}
+
+function handleCraftWeaponFromInventoryModal(payload = {}) {
+  const equipmentName = nonEmptyText(payload?.equipmentName);
+  const rarity = nonEmptyText(payload?.rarity);
+  const count = Math.max(1, Math.floor(toSafeNumber(payload?.count, 1)));
+  const craftType = nonEmptyText(payload?.craftType);
+  if (!equipmentName) {
+    updateUnitInfoText("装備生成失敗: 装備名が未指定です。");
+    return { ok: false, reason: "装備名が未指定です。" };
+  }
+  const row = findEquipmentRowByName(equipmentName);
+  if (!row) {
+    updateUnitInfoText("装備生成失敗: 装備データが見つかりません。");
+    return { ok: false, reason: "装備データが見つかりません。" };
+  }
+  const isWeapon = isWeaponEquipmentRow(row);
+  const isArmor = isArmorEquipmentRow(row);
+  if (!isWeapon && !isArmor) {
+    updateUnitInfoText("装備生成失敗: 生成対象外の装備です。");
+    return { ok: false, reason: "生成対象外の装備です。" };
+  }
+  if (craftType === "weapon" && !isWeapon) {
+    updateUnitInfoText("装備生成失敗: 武器を選択してください。");
+    return { ok: false, reason: "武器を選択してください。" };
+  }
+  if (craftType === "armor" && !isArmor) {
+    updateUnitInfoText("装備生成失敗: 防具を選択してください。");
+    return { ok: false, reason: "防具を選択してください。" };
+  }
+  kickOffBgm();
+  audio.playSe("confirm");
+  const villageBefore = ensureVillageStateShape(villageState.value, props.selectedRace);
+  const usageBefore = resolveVillageCraftActionUsageState(villageBefore);
+  if (usageBefore.remaining < count) {
+    updateUnitInfoText(`装備生成失敗: 作成回数不足 (${usageBefore.remaining}/${usageBefore.max}, 必要${count})`);
+    return { ok: false, reason: `作成回数不足: 残り ${usageBefore.remaining}/${usageBefore.max} (必要${count})` };
+  }
+  const actionLabel = isArmor ? "防具生成" : "武器生成";
+  const result = craftEquipmentInventoryWithFeedback(equipmentName, rarity, count, actionLabel);
+  if (!result?.ok) {
+    return {
+      ok: false,
+      reason: nonEmptyText(result?.result?.reason) || "生成不可"
+    };
+  }
+  const usageApplied = applyVillageCraftActionUsage(villageState.value, count);
+  if (usageApplied.ok && usageApplied.village) {
+    villageState.value = usageApplied.village;
+    updateVillageInfoText();
+    const remainText = `${usageApplied.usage.remaining}/${usageApplied.usage.max}`;
+    updateUnitInfoText(`作成回数 残${remainText}`);
+  } else if (!usageApplied.ok) {
+    return { ok: false, reason: usageApplied.reason || "作成回数更新に失敗しました。" };
+  }
+  return { ok: true };
+}
+
 function openSkillTreeModalFromMap() {
   kickOffBgm();
   audio.playSe("open");
@@ -9020,15 +12211,47 @@ function applyCityAbilityLevelUp(abilityKey) {
   audio.playSe("confirm");
 }
 
+function resolveUnitCreateCapacityByMode(mode) {
+  const key = nonEmptyText(mode) || UNIT_CREATE_MODE_KEYS.NORMAL;
+  const useArmyCap = key !== UNIT_CREATE_MODE_KEYS.NORMAL;
+  const current = useArmyCap ? armyUnitCount.value : heroUnitCount.value;
+  const cap = useArmyCap ? armyUnitCap.value : heroUnitCap.value;
+  const remainingRaw = Math.max(0, cap - current);
+  const unlocked = useArmyCap ? null : heroCreateUnlocked.value;
+  const remaining = useArmyCap
+    ? remainingRaw
+    : Math.max(0, Math.min(remainingRaw, Math.max(0, Math.floor(toSafeNumber(unlocked, 0)))));
+  return {
+    mode: key,
+    current,
+    cap,
+    remainingRaw,
+    unlocked,
+    remaining,
+    unitTypeLabel: useArmyCap ? "軍隊" : "ヒーロー"
+  };
+}
+
+function resolveUnitCreateModeForCurrentCapacity(preferredMode = unitCreateMode.value) {
+  const byLevel = resolveUnitCreateMode(preferredMode, unitCreateMilitaryLevel.value);
+  const capState = resolveUnitCreateCapacityByMode(byLevel.mode);
+  if (capState.remaining > 0) return byLevel;
+  const fallback = unitCreateModeOptions.value.find(mode => mode.enabled && mode.remaining > 0);
+  if (fallback?.mode) {
+    return resolveUnitCreateMode(fallback.mode, unitCreateMilitaryLevel.value);
+  }
+  return byLevel;
+}
+
 function openUnitCreateModal() {
   if (!props.gameSetupReady) {
     updateUnitInfoText("ユニット作成はゲーム開始後に可能です。");
     return;
   }
-  if (!canCreateMob.value) {
-    const cap = mobUnitCap.value;
-    const current = mobUnitCount.value;
-    updateUnitInfoText(`ユニット作成不可: モブ上限に到達 (${current}/${cap}) または村未配置`);
+  if (!canCreateAnyUnit.value) {
+    updateUnitInfoText(
+      `ユニット作成不可: ヒーロー上限 ${heroUnitCount.value}/${heroUnitCap.value} (解放${heroCreateUnlocked.value}) / 軍隊上限 ${armyUnitCount.value}/${armyUnitCap.value} または村未配置`
+    );
     return;
   }
   if (!canOpenUnitCreate.value) {
@@ -9042,9 +12265,10 @@ function openUnitCreateModal() {
     updateUnitInfoText("ユニット作成不可: 自陣営に所属する種族がありません。");
     return;
   }
-  const resolvedMode = resolveUnitCreateMode(unitCreateMode.value, unitCreateMilitaryLevel.value);
+  const resolvedMode = resolveUnitCreateModeForCurrentCapacity(unitCreateMode.value);
   unitCreateMode.value = resolvedMode.mode;
-  unitCreateBatchCount.value = Math.max(1, Math.min(unitCreateBatchCount.value, mobCreateRemaining.value));
+  const modeCap = resolveUnitCreateCapacityByMode(resolvedMode.mode);
+  unitCreateBatchCount.value = Math.max(1, Math.min(unitCreateBatchCount.value, modeCap.remaining));
   showUnitCreateCountModal.value = true;
 }
 
@@ -9061,7 +12285,7 @@ function confirmUnitCreateCount() {
     showUnitCreateCountModal.value = false;
     return;
   }
-  const resolvedMode = resolveUnitCreateMode(unitCreateMode.value, unitCreateMilitaryLevel.value);
+  const resolvedMode = resolveUnitCreateModeForCurrentCapacity(unitCreateMode.value);
   unitCreateMode.value = resolvedMode.mode;
   showUnitCreateCountModal.value = false;
   const preferredRace = nonEmptyText(unitCreateRace.value);
@@ -9082,8 +12306,9 @@ function nudgeUnitCreateBatchCount(delta) {
 }
 
 function applyUnitCreateMode(mode) {
-  const resolved = resolveUnitCreateMode(mode, unitCreateMilitaryLevel.value);
+  const resolved = resolveUnitCreateModeForCurrentCapacity(mode);
   unitCreateMode.value = resolved.mode;
+  normalizeUnitCreateBatchCount();
 }
 
 function toggleTestControls() {
@@ -9133,6 +12358,12 @@ function closeUnitCreateClassModal() {
   showUnitCreateClassModal.value = false;
 }
 
+function backUnitCreateClassToRaceModal() {
+  audio.playSe("cancel");
+  showUnitCreateClassModal.value = false;
+  showUnitCreateRaceModal.value = true;
+}
+
 function applyUnitCreateRace(raceKey) {
   const key = nonEmptyText(raceKey);
   if (!key) return;
@@ -9157,15 +12388,15 @@ function applyUnitCreateClass(payload) {
 
 function normalizeUnitCreateBatchCount() {
   const raw = Math.floor(toSafeNumber(unitCreateBatchCount.value, 1));
-  const maxAllowed = Math.max(1, mobCreateRemaining.value);
+  const maxAllowed = Math.max(1, selectedUnitCreateRemaining.value);
   unitCreateBatchCount.value = Math.max(1, Math.min(maxAllowed, raw));
 }
 
 function createUnitFromSelection() {
-  if (!canCreateMob.value) {
-    const cap = mobUnitCap.value;
-    const current = mobUnitCount.value;
-    updateUnitInfoText(`ユニット作成不可: モブ上限に到達 (${current}/${cap}) または村未配置`);
+  if (!canCreateAnyUnit.value) {
+    updateUnitInfoText(
+      `ユニット作成不可: ヒーロー上限 ${heroUnitCount.value}/${heroUnitCap.value} (解放${heroCreateUnlocked.value}) / 軍隊上限 ${armyUnitCount.value}/${armyUnitCap.value} または村未配置`
+    );
     return;
   }
   if (!canOpenUnitCreate.value) {
@@ -9179,9 +12410,13 @@ function createUnitFromSelection() {
     return;
   }
   const className = nonEmptyText(unitCreateClass.value) || nonEmptyText(props.selectedClass);
-  const classRow = findClassRowByName(className) || randomPick(jobClassRows.value, null);
+  const classRow = findClassRowByName(className) || randomPick(initialJobClassRows.value, null);
   if (!classRow) {
     updateUnitInfoText("ユニット作成失敗: クラスデータが見つかりません。");
+    return;
+  }
+  if (!isInitialClassRow(classRow)) {
+    updateUnitInfoText("ユニット作成失敗: 上位クラスは作成時に選択できません。");
     return;
   }
   const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName)) || classRows.value[0] || null;
@@ -9194,13 +12429,17 @@ function createUnitFromSelection() {
     updateUnitInfoText("ユニット作成失敗: 村が未配置です。");
     return;
   }
-  const militaryLv = resolveVillageAbilityLevel(village, "軍事", CITY_ABILITY_ACTIVE_CAP);
-  const modeSpec = resolveUnitCreateMode(unitCreateMode.value, militaryLv);
+  const modeSpec = resolveUnitCreateModeForCurrentCapacity(unitCreateMode.value);
   unitCreateMode.value = modeSpec.mode;
   const requestedCount = Math.max(1, Math.floor(toSafeNumber(unitCreateBatchCount.value, 1)));
-  const availableSlots = Math.max(0, mobCreateRemaining.value);
+  const modeCap = resolveUnitCreateCapacityByMode(modeSpec.mode);
+  const availableSlots = Math.max(0, modeCap.remaining);
   if (availableSlots <= 0) {
-    updateUnitInfoText(`ユニット作成失敗: モブ上限 ${mobUnitCount.value}/${mobUnitCap.value}`);
+    if (modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL && Math.max(0, Math.floor(toSafeNumber(modeCap.unlocked, 0))) <= 0) {
+      updateUnitInfoText("ユニット作成失敗: ヒーローは未解放です（英雄の誕生を待機中）。");
+      return;
+    }
+    updateUnitInfoText(`ユニット作成失敗: ${modeCap.unitTypeLabel}上限 ${modeCap.current}/${modeCap.cap}`);
     return;
   }
   const maxByPopulation = resolveMaxCreatableByPopulation(village, raceName, modeSpec.populationCost);
@@ -9240,6 +12479,21 @@ function createUnitFromSelection() {
 
   const createdUnits = [];
   const namingUnits = [...unitList.value];
+  let gearVillage = nextVillage;
+  const gearWarnings = [];
+  if (modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL) {
+    const unlockBefore = resolveHeroCreateUnlockedCount(gearVillage);
+    if (unlockBefore < createCount) {
+      updateUnitInfoText(`ユニット作成失敗: ヒーロー解放枠不足 (${unlockBefore}/${createCount})`);
+      return;
+    }
+    gearVillage = {
+      ...gearVillage,
+      heroBirthUnlock: Math.max(0, unlockBefore - createCount)
+    };
+  }
+  let gearFromInventoryTotal = 0;
+  let gearGeneratedTotal = 0;
   for (let i = 0; i < createCount; i += 1) {
     const unit = createUnitRecord({
       raceRow,
@@ -9248,19 +12502,27 @@ function createUnitFromSelection() {
       raceLabel: raceName,
       isSovereign: false,
       isNamed: false,
-      unitType: modeSpec.unitTypeLabel || "モブ",
-      fixedLevel: MOB_INITIAL_LEVEL,
+      unitType: modeSpec.unitTypeLabel || (modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL ? "ヒーロー" : "軍隊"),
+      fixedLevel: HERO_INITIAL_LEVEL,
       militaryProfile: modeSpec
     });
-    unit.x = village.x;
-    unit.y = village.y;
-    unit.moveRemaining = Math.max(0, Math.floor(toSafeNumber(unit.moveRange, 0)));
-    createdUnits.push(unit);
-    namingUnits.push(unit);
+    const equipped = applyAutoEquipForCreatedUnit(unit, raceRow, classRow, gearVillage);
+    const nextUnit = equipped?.unit || unit;
+    gearVillage = equipped?.village || gearVillage;
+    gearFromInventoryTotal += Math.max(0, Math.floor(toSafeNumber(equipped?.fromInventory, 0)));
+    gearGeneratedTotal += Math.max(0, Math.floor(toSafeNumber(equipped?.generated, 0)));
+    if (Array.isArray(equipped?.warningMessages) && equipped.warningMessages.length) {
+      gearWarnings.push(...equipped.warningMessages);
+    }
+    nextUnit.x = village.x;
+    nextUnit.y = village.y;
+    nextUnit.moveRemaining = Math.max(0, Math.floor(toSafeNumber(nextUnit.moveRange, 0)));
+    createdUnits.push(nextUnit);
+    namingUnits.push(nextUnit);
   }
 
   unitList.value = [...unitList.value, ...createdUnits];
-  villageState.value = nextVillage;
+  villageState.value = gearVillage;
   selectedUnitId.value = createdUnits[0]?.id || selectedUnitId.value;
   updateVillageInfoText();
   const firstName = createdUnits[0]?.name || "-";
@@ -9269,16 +12531,26 @@ function createUnitFromSelection() {
     `ユニット作成: ${createdUnits.length}体 (${raceName}/${className}/${modeSpec.label})`
     + `${cappedByPopulation ? ` / 上限により ${requestedCount} -> ${createCount}` : ""}`
     + `${totalPopulationConsume > 0 ? ` / 人口-${totalPopulationConsume}` : ""}`
+    + `${modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL ? ` / 解放残 ${resolveHeroCreateUnlockedCount(gearVillage)}` : ""}`
+    + ` / 装備 在庫${gearFromInventoryTotal} 生成${gearGeneratedTotal}`
+    + `${gearWarnings.length ? ` / 装備警告${gearWarnings.length}件` : ""}`
     + ` / ${firstName}${createdUnits.length > 1 ? ` ... ${lastName}` : ""} / 村座標 (${village.x}, ${village.y})`
   );
   pushNationLog(
     `ユニット作成: ${createdUnits.length}体 (${raceName}/${className}/${modeSpec.label})`
     + `${cappedByPopulation ? ` [上限補正 ${requestedCount}->${createCount}]` : ""}`
     + `${totalPopulationConsume > 0 ? ` / 人口消費 ${raceName}-${totalPopulationConsume}` : ""}`
+    + `${modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL ? ` / 解放消費 ${createCount} (残${resolveHeroCreateUnlockedCount(gearVillage)})` : ""}`
+    + ` / 装備 在庫${gearFromInventoryTotal} 生成${gearGeneratedTotal}`
+    + `${gearWarnings.length ? ` / 装備警告${gearWarnings.length}件` : ""}`
     + ` / ${firstName}${createdUnits.length > 1 ? `〜${lastName}` : ""}`
     + ` / コスト 食料 ${formatFoodResourceBag(cost.food)} / 資材 ${formatMaterialResourceBag(cost.material)}`
-    + ` / モブ ${mobUnitCount.value}/${mobUnitCap.value}`
+    + ` / ヒーロー ${heroUnitCount.value}/${heroUnitCap.value}`
+    + ` / 軍隊 ${armyUnitCount.value}/${armyUnitCap.value}`
   );
+  if (gearWarnings.length) {
+    pushNationLog(`初期装備警告: ${gearWarnings.slice(0, 3).join(" / ")}${gearWarnings.length > 3 ? " / ..." : ""}`);
+  }
   emitCharacterStateChange();
   audio.playSe("confirm");
   renderMapWithPhaser();
@@ -9310,6 +12582,7 @@ function applyMapData(data, options = {}) {
   selectedTileKey = "";
   hoveredTileKey = "";
   selectedTileDetail.value = null;
+  clearHousingUpgradeSelectionState();
   clearLastMoveStopState();
   showMoveUnitModal.value = false;
   cameraInitialized = false;
@@ -9419,6 +12692,7 @@ function updateMapClickInfo(picked) {
       units: "不明",
       enemies: "不明",
       development: "不明",
+      residential: "不明",
       moveStopReason: stopReason || "-",
       canOpenVillageActions: false,
       canManageTerritoryDevelopment: false
@@ -9461,6 +12735,7 @@ function updateMapClickInfo(picked) {
       if (unitHasSquad(unit)) tags.push("隊");
       if (nonEmptyText(unit?.squadLeaderId)) tags.push("員");
       if (isNamedUnit(unit) && !isSovereignUnit(unit)) tags.push("名");
+      if (isMilitaryUnit(unit)) tags.push("軍");
       const tagText = tags.length ? `[${tags.join("")}]` : "";
       return `${unit.name}${tagText}(Lv${unit.level})`;
     }).join(", ")
@@ -9518,8 +12793,60 @@ function updateMapClickInfo(picked) {
     && villageState.value?.y === picked.y
   );
   const ownTerritoryTile = isOwnTerritoryTile(picked.x, picked.y);
+  const pendingResidentialUpgrade = ownTerritoryTile
+    ? resolveTerritoryResidentialUpgradeQueueEntryAtTile(villageState.value, tileKey)
+    : null;
   const territoryDevelopmentText = ownTerritoryTile
-    ? formatTerritoryTileDevelopmentText(villageState.value, picked.x, picked.y)
+    ? (() => {
+      const baseText = formatTerritoryTileDevelopmentText(villageState.value, picked.x, picked.y);
+      if (!pendingResidentialUpgrade) return baseText;
+      const nextLabel = resolveTerritoryResidentialLevelDef(pendingResidentialUpgrade?.nextLevel).label;
+      const remaining = Math.max(0, Math.floor(toSafeNumber(pendingResidentialUpgrade?.remainingTurns, 0)));
+      return `${baseText} / 住居拡張中(${nextLabel}) 残り${remaining}T`;
+    })()
+    : "-";
+  const residentialLevelKey = ownTerritoryTile
+    ? resolveTerritoryResidentialLevelAt(villageState.value, tileKey, {
+      fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_LAND
+    })
+    : "";
+  const residentialCenterKey = ownTerritoryTile
+    ? resolveTerritoryResidentialCenterKey(villageState.value, tileKey)
+    : "";
+  const residentialCenterLevel = residentialCenterKey
+    ? resolveTerritoryResidentialLevelAt(villageState.value, residentialCenterKey, {
+      fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE
+    })
+    : "";
+  const isResidentialAttachedTile = !!(residentialCenterKey && residentialCenterKey !== tileKey);
+  const displayResidentialLevelKey = isResidentialAttachedTile
+    ? (residentialCenterLevel || residentialLevelKey || TERRITORY_RESIDENTIAL_LEVEL_LAND)
+    : (residentialLevelKey || TERRITORY_RESIDENTIAL_LEVEL_LAND);
+  const residentialDef = resolveTerritoryResidentialLevelDef(displayResidentialLevelKey);
+  const residentialPerTileCapacity = Math.floor(toSafeNumber(residentialDef?.capacityPerTile, 0));
+  const residentialCenterPos = residentialCenterKey ? parseCoordKey(residentialCenterKey) : { x: Number.NaN, y: Number.NaN };
+  const residentialAttachmentCount = residentialCenterKey
+    ? resolveTerritoryResidentialAttachmentKeys(villageState.value, residentialCenterKey).length
+    : 0;
+  const residentialClusterTileCount = residentialCenterKey
+    ? Math.max(1, residentialAttachmentCount + 1)
+    : 1;
+  const residentialClusterCapacity = Math.max(0, residentialPerTileCapacity * residentialClusterTileCount);
+  const residentialText = ownTerritoryTile
+    ? (() => {
+      if (isResidentialAttachedTile) {
+        const centerDef = resolveTerritoryResidentialLevelDef(residentialCenterLevel || displayResidentialLevelKey);
+        const centerText = Number.isFinite(residentialCenterPos?.x) && Number.isFinite(residentialCenterPos?.y)
+          ? `中心(${residentialCenterPos.x}, ${residentialCenterPos.y})`
+          : "中心未設定";
+        return `${centerDef.label}(付属) / ${centerText} / 1マス${formatCompactNumber(residentialPerTileCapacity)} / 合計${formatCompactNumber(residentialClusterCapacity)}`;
+      }
+      if (isTerritoryResidentialCenterLevel(displayResidentialLevelKey)) {
+        const perTile = formatCompactNumber(residentialPerTileCapacity);
+        return `${residentialDef.label} (${perTile}x${residentialClusterTileCount}=${formatCompactNumber(residentialClusterCapacity)} / 付属${residentialAttachmentCount}マス)`;
+      }
+      return `${residentialDef.label} (${formatCompactNumber(residentialPerTileCapacity)})`;
+    })()
     : "-";
   const stopState = lastMoveStopState.value || {};
   const moveStopReason = (
@@ -9550,6 +12877,7 @@ function updateMapClickInfo(picked) {
     units: unitText,
     enemies: enemyText,
     development: territoryDevelopmentText,
+    residential: residentialText,
     moveStopReason: moveStopReason || "-",
     canOpenVillageActions: isOwnVillageTile,
     canManageTerritoryDevelopment: ownTerritoryTile
@@ -9567,6 +12895,10 @@ function setCanvasCursor(style) {
 function refreshMapCursor() {
   if (dragStarted) {
     setCanvasCursor("grabbing");
+    return;
+  }
+  if (housingUpgradeSelectionState.value?.active) {
+    setCanvasCursor("crosshair");
     return;
   }
   setCanvasCursor(canDragMapAtCurrentZoom() ? "grab" : "default");
@@ -9909,6 +13241,18 @@ function resolveTerritoryTileConversionActionState(targetMode) {
     return { enabled: false, reason: "村中心タイルは変更できません。", x, y, target, targetLabel };
   }
   const key = coordKey(x, y);
+  const pendingResidentialUpgrade = resolveTerritoryResidentialUpgradeQueueEntryAtTile(village, key);
+  if (pendingResidentialUpgrade) {
+    return {
+      enabled: false,
+      reason: `住居拡張中です (残り${Math.max(0, Math.floor(toSafeNumber(pendingResidentialUpgrade?.remainingTurns, 0)))}T)`,
+      x,
+      y,
+      key,
+      target,
+      targetLabel
+    };
+  }
   const currentMode = resolveTerritoryTileModeAt(village, key);
   const conversionMap = normalizeTerritoryTileConversionMap(village.territoryTileConversionMap);
   const pending = conversionMap?.[key];
@@ -9951,7 +13295,350 @@ function resolveTerritoryTileConversionActionState(targetMode) {
   };
 }
 
+function resolveResidentialAttachmentCandidates(village, centerKey, options = {}) {
+  return resolveResidentialAttachmentCandidatesUtil(village, centerKey, {
+    nonEmptyText,
+    toSafeNumber,
+    parseCoordKey,
+    coordKey,
+    getHexNeighborCoordsBySize,
+    resolveWorldWrapEnabled,
+    resolveTerritoryTileModeAt,
+    normalizeTerritoryResidentialLevelMap,
+    normalizeTerritoryResidentialCenterMap,
+    normalizeTerritoryResidentialLevelKey,
+    isTerritoryResidentialCenterLevel,
+    isOwnTerritoryTile,
+    data: options?.data || currentData.value,
+    bypassByTest: !!options?.bypassByTest,
+    villageLevelKey: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+    settlementModeKey: TERRITORY_TILE_MODE_SETTLEMENT,
+    resourceModeKey: TERRITORY_TILE_MODE_RESOURCE,
+    attachedLevelKey: TERRITORY_RESIDENTIAL_LEVEL_ATTACHED,
+    landLevelKey: TERRITORY_RESIDENTIAL_LEVEL_LAND,
+    levelMapKey: TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY,
+    centerMapKey: TERRITORY_RESIDENTIAL_CENTER_MAP_KEY
+  });
+}
+
+function applyResidentialCenterUpgrade(village, centerKey, nextLevel, attachmentKeys = []) {
+  return applyResidentialCenterUpgradeUtil(village, centerKey, nextLevel, attachmentKeys, {
+    nonEmptyText,
+    levelMapKey: TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY,
+    centerMapKey: TERRITORY_RESIDENTIAL_CENTER_MAP_KEY,
+    attachedLevelKey: TERRITORY_RESIDENTIAL_LEVEL_ATTACHED,
+    landLevelKey: TERRITORY_RESIDENTIAL_LEVEL_LAND,
+    villageLevelKey: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+    normalizeTerritoryResidentialLevelMap,
+    normalizeTerritoryResidentialCenterMap,
+    normalizeTerritoryResidentialLevelKey,
+    ensureVillageResidentialLevelMapShape,
+    resolveResidentialAttachedTarget: resolveTerritoryResidentialAttachedTarget
+  });
+}
+
+function clearHousingUpgradeSelectionState() {
+  housingUpgradeSelectionState.value = null;
+  refreshMapCursor();
+}
+
+function beginHousingUpgradeSelection(state) {
+  const base = createHousingUpgradeSelectionStateUtil(state, { toSafeNumber });
+  housingUpgradeSelectionState.value = {
+    ...base,
+    requiredTurns: Math.max(1, Math.floor(toSafeNumber(state?.requiredTurns, 1))),
+    tileCount: Math.max(1, Math.floor(toSafeNumber(state?.tileCount, Math.max(1, toSafeNumber(state?.targetAttachedCount, 0) + 1)))),
+    upgradeCost: state?.upgradeCost || null
+  };
+  refreshMapCursor();
+}
+
+function resolveHousingUpgradeSelectionSummary(selection = housingUpgradeSelectionState.value) {
+  return summarizeHousingUpgradeSelectionUtil(selection, { toSafeNumber });
+}
+
+function handleHousingUpgradeSelectionTileClick(picked) {
+  const selection = housingUpgradeSelectionState.value;
+  if (!selection?.active || !picked) return false;
+  const tileKey = coordKey(picked.x, picked.y);
+  selectedTileKey = tileKey;
+  const toggled = toggleHousingUpgradeSelectionTileUtil(selection, tileKey, { nonEmptyText, toSafeNumber });
+  if (!toggled?.handled) return false;
+  if (toggled?.selection) {
+    housingUpgradeSelectionState.value = toggled.selection;
+  }
+  if (toggled?.reason === "outside") {
+    updateUnitInfoText(`${resolveHousingUpgradeSelectionSummary(selection)} / このマスは候補外です。`);
+    return true;
+  }
+  if (toggled?.reason === "fixed") {
+    updateUnitInfoText(`${resolveHousingUpgradeSelectionSummary(selection)} / 既存付属領域は解除できません。`);
+    return true;
+  }
+  if (toggled?.reason === "max") {
+    updateUnitInfoText(`${resolveHousingUpgradeSelectionSummary(selection)} / 選択上限に達しています。`);
+    return true;
+  }
+  updateUnitInfoText(`${resolveHousingUpgradeSelectionSummary()} / 住居拡張ボタンで確定できます。`);
+  return true;
+}
+
+function resolveTerritoryHousingUpgradeActionState() {
+  const activeSelection = housingUpgradeSelectionState.value;
+  if (activeSelection?.active) {
+    return {
+      enabled: true,
+      reason: "",
+      isSelectingAttachments: true,
+      centerKey: activeSelection.centerKey,
+      x: activeSelection.centerX,
+      y: activeSelection.centerY,
+      currentLevel: activeSelection.currentLevel,
+      nextLevel: activeSelection.nextLevel,
+      currentDef: resolveTerritoryResidentialLevelDef(activeSelection.currentLevel),
+      nextDef: resolveTerritoryResidentialLevelDef(activeSelection.nextLevel),
+      targetAttachedCount: activeSelection.targetAttachedCount,
+      selectedAttachmentCount: Math.max(0, activeSelection.selectedAttachmentKeys?.length || 0),
+      requiredTurns: Math.max(1, Math.floor(toSafeNumber(activeSelection.requiredTurns, 1)))
+    };
+  }
+  const detail = selectedTileDetail.value;
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return { enabled: false, reason: "マスを選択してください。", x: null, y: null };
+  }
+  if (!isOwnTerritoryTile(x, y)) {
+    return { enabled: false, reason: "自領タイルのみ拡張できます。", x, y };
+  }
+  const raceFallback = resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village?.placed) {
+    return { enabled: false, reason: "初期村配置後に拡張できます。", x, y };
+  }
+  const key = coordKey(x, y);
+  const mode = resolveTerritoryTileModeAt(village, key);
+  const pendingConversion = normalizeTerritoryTileConversionMap(village?.territoryTileConversionMap)?.[key];
+  if (pendingConversion) {
+    return {
+      enabled: false,
+      reason: `変換中です (残り${Math.max(0, Math.floor(toSafeNumber(pendingConversion?.remainingTurns, 0)))}T)`,
+      x,
+      y,
+      key
+    };
+  }
+  const pendingUpgrade = resolveTerritoryResidentialUpgradeQueueEntryAtTile(village, key);
+  if (pendingUpgrade) {
+    const remaining = Math.max(0, Math.floor(toSafeNumber(pendingUpgrade?.remainingTurns, 0)));
+    return {
+      enabled: false,
+      reason: `住居拡張中です (残り${remaining}T)`,
+      x,
+      y,
+      key
+    };
+  }
+  if (mode !== TERRITORY_TILE_MODE_SETTLEMENT) {
+    return { enabled: false, reason: "居住化タイルのみ拡張できます。", x, y, key };
+  }
+  const currentLevel = resolveTerritoryResidentialLevelAt(village, key, {
+    fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_LAND
+  });
+  const centerKeyForTile = resolveTerritoryResidentialCenterKey(village, key);
+  if (centerKeyForTile && centerKeyForTile !== key) {
+    return { enabled: false, reason: "付属領域ではなく中心マスを選択してください。", x, y, key, currentLevel };
+  }
+  if (!isTerritoryResidentialCenterLevel(currentLevel)) {
+    return { enabled: false, reason: "住居中心マスのみ拡張できます。", x, y, key, currentLevel };
+  }
+  const nextLevel = resolveNextTerritoryResidentialLevel(currentLevel);
+  if (!nextLevel) {
+    return { enabled: false, reason: "既に最大区分です。", x, y, key, currentLevel };
+  }
+  const currentDef = resolveTerritoryResidentialLevelDef(currentLevel);
+  const nextDef = resolveTerritoryResidentialLevelDef(nextLevel);
+  const targetAttachedCount = resolveTerritoryResidentialAttachedTarget(nextLevel);
+  const bypassByTest = !!showTestControls.value;
+  const candidateAttachmentKeys = resolveResidentialAttachmentCandidates(village, key, {
+    bypassByTest,
+    data: currentData.value
+  });
+  const fixedAttachmentKeys = resolveTerritoryResidentialAttachmentKeys(village, key)
+    .filter(tileKey => candidateAttachmentKeys.includes(tileKey));
+  if (fixedAttachmentKeys.length > targetAttachedCount) {
+    return {
+      enabled: false,
+      reason: "既存の付属領域が上限を超えています。",
+      x,
+      y,
+      key,
+      centerKey: key,
+      currentLevel,
+      nextLevel,
+      currentDef,
+      nextDef
+    };
+  }
+  const selectableAdditionalKeys = candidateAttachmentKeys.filter(tileKey => !fixedAttachmentKeys.includes(tileKey));
+  const needAdditionalCount = targetAttachedCount - fixedAttachmentKeys.length;
+  if (needAdditionalCount > 0 && selectableAdditionalKeys.length < needAdditionalCount) {
+    return {
+      enabled: false,
+      reason: `拡張候補が不足しています (${candidateAttachmentKeys.length}/${targetAttachedCount})`,
+      x,
+      y,
+      key,
+      centerKey: key,
+      currentLevel,
+      nextLevel,
+      currentDef,
+      nextDef
+    };
+  }
+  const requiresAttachmentSelection = targetAttachedCount > 0;
+  const selectedAttachmentKeys = [...fixedAttachmentKeys];
+  const tileCount = Math.max(1, targetAttachedCount + 1);
+  const upgradeCost = buildTerritoryResidentialUpgradeCost(nextLevel, tileCount);
+  if (!upgradeCost?.found) {
+    return {
+      enabled: false,
+      reason: `施設.jsonに住居拡張コスト未設定 (${nextDef?.label || nextLevel})`,
+      x,
+      y,
+      key,
+      centerKey: key,
+      currentLevel,
+      nextLevel,
+      currentDef,
+      nextDef,
+      targetAttachedCount
+    };
+  }
+  if (!canAffordTerritoryResidentialUpgrade(village, upgradeCost)) {
+    return {
+      enabled: false,
+      reason: `素材不足 (${formatMaterialPositiveResourceBag(upgradeCost.material)} / 食料 ${formatFoodPositiveResourceBag(upgradeCost.food)})`,
+      x,
+      y,
+      key,
+      centerKey: key,
+      currentLevel,
+      nextLevel,
+      currentDef,
+      nextDef,
+      targetAttachedCount,
+      upgradeCost
+    };
+  }
+  const requiredTurns = resolveTerritoryResidentialUpgradeRequiredTurns(village);
+  return {
+    enabled: true,
+    reason: "",
+    x,
+    y,
+    key,
+    centerKey: key,
+    currentLevel,
+    nextLevel,
+    currentDef,
+    nextDef,
+    targetAttachedCount,
+    fixedAttachmentKeys,
+    selectedAttachmentKeys,
+    candidateAttachmentKeys,
+    requiresAttachmentSelection,
+    bypassByTest,
+    requiredTurns,
+    tileCount,
+    upgradeCost
+  };
+}
+
+function applyTerritoryHousingUpgrade() {
+  const state = resolveTerritoryHousingUpgradeActionState();
+  if (!state.enabled || !state.centerKey || !state.nextLevel) {
+    updateUnitInfoText(`住居拡張不可: ${state.reason || "条件未達です。"}`);
+    return;
+  }
+  if (state.isSelectingAttachments) {
+    const selection = housingUpgradeSelectionState.value;
+    const selectedCount = Math.max(0, selection?.selectedAttachmentKeys?.length || 0);
+    const targetCount = Math.max(0, Math.floor(toSafeNumber(selection?.targetAttachedCount, 0)));
+    if (selectedCount < targetCount) {
+      updateUnitInfoText(`${resolveHousingUpgradeSelectionSummary(selection)} / 不足: あと${targetCount - selectedCount}マス`);
+      return;
+    }
+  } else if (state.requiresAttachmentSelection) {
+    beginHousingUpgradeSelection(state);
+    updateUnitInfoText(`${resolveHousingUpgradeSelectionSummary()} / 候補マスをクリックして選択してください。`);
+    renderMapWithPhaser();
+    return;
+  }
+  const raceFallback = resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village) {
+    updateUnitInfoText("住居拡張失敗: 村データが不正です。");
+    return;
+  }
+  const selection = housingUpgradeSelectionState.value;
+  const selectedAttachmentKeys = state.isSelectingAttachments
+    ? (Array.isArray(selection?.selectedAttachmentKeys) ? [...selection.selectedAttachmentKeys] : [])
+    : (Array.isArray(state.selectedAttachmentKeys) ? [...state.selectedAttachmentKeys] : []);
+  const tileCount = Math.max(1, selectedAttachmentKeys.length + 1);
+  const upgradeCost = buildTerritoryResidentialUpgradeCost(state.nextLevel, tileCount);
+  if (!upgradeCost?.found) {
+    updateUnitInfoText(`住居拡張失敗: 施設.jsonに住居拡張コスト未設定 (${state.nextDef?.label || state.nextLevel})`);
+    return;
+  }
+  if (!canAffordTerritoryResidentialUpgrade(village, upgradeCost)) {
+    updateUnitInfoText(`住居拡張失敗: 素材不足 (資材 ${formatMaterialPositiveResourceBag(upgradeCost.material)} / 食料 ${formatFoodPositiveResourceBag(upgradeCost.food)})`);
+    return;
+  }
+  const paidVillage = applyTerritoryResidentialUpgradeCost(village, upgradeCost);
+  if (!paidVillage) {
+    updateUnitInfoText("住居拡張失敗: 素材消費処理に失敗しました。");
+    return;
+  }
+  const requiredTurns = resolveTerritoryResidentialUpgradeRequiredTurns(village);
+  const queueMap = normalizeTerritoryResidentialUpgradeQueueMap(
+    paidVillage?.[TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]
+  );
+  queueMap[state.centerKey] = {
+    centerKey: state.centerKey,
+    nextLevel: normalizeTerritoryResidentialLevelKey(state.nextLevel, TERRITORY_RESIDENTIAL_LEVEL_VILLAGE),
+    remainingTurns: requiredTurns,
+    totalTurns: requiredTurns,
+    attachmentKeys: selectedAttachmentKeys,
+    tileCount
+  };
+  const nextVillage = ensureVillageStateShape({
+    ...paidVillage,
+    [TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]: queueMap
+  }, raceFallback);
+  villageState.value = nextVillage;
+  clearHousingUpgradeSelectionState();
+  updateVillageInfoText();
+  const fromLabel = state.currentDef?.label || resolveTerritoryResidentialLevelDef(state.currentLevel).label;
+  const toLabel = state.nextDef?.label || resolveTerritoryResidentialLevelDef(state.nextLevel).label;
+  const selectedCount = Math.max(0, selectedAttachmentKeys.length);
+  const bypassText = state.bypassByTest ? " [テスト無条件]" : "";
+  updateUnitInfoText(
+    `住居拡張開始: (${state.x}, ${state.y}) ${fromLabel} -> ${toLabel} / 付属 ${selectedCount}マス / ${requiredTurns}T / 資材 ${formatMaterialPositiveResourceBag(upgradeCost.material)} / 食料 ${formatFoodPositiveResourceBag(upgradeCost.food)}${bypassText}`
+  );
+  pushNationLog(
+    `住居拡張開始: (${state.x}, ${state.y}) ${fromLabel} -> ${toLabel} / 付属 ${selectedCount}マス / ${requiredTurns}T / 資材 ${formatMaterialPositiveResourceBag(upgradeCost.material)} / 食料 ${formatFoodPositiveResourceBag(upgradeCost.food)}${bypassText}`
+  );
+  const latest = hitAreaMap.get(state.centerKey);
+  if (latest) {
+    updateMapClickInfo(latest);
+  }
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+}
+
 function startTerritoryTileModeConversion(targetMode) {
+  clearHousingUpgradeSelectionState();
   const state = resolveTerritoryTileConversionActionState(targetMode);
   if (!state.enabled || !state.key || !state.target) {
     updateUnitInfoText(`領土運用変更不可: ${state.reason || "条件未達です。"}`);
@@ -10091,12 +13778,14 @@ function toggleUnitMoveMode() {
     unitMoveMode.value = false;
     showMoveUnitModal.value = false;
     clearPlannedMovePath();
+    clearHousingUpgradeSelectionState();
     mapClickInfo.value = "クリック座標: - / ユニット移動モードを OFF にしました。";
     emitCharacterStateChange();
     renderMapWithPhaser();
     return;
   }
   if (!canUseUnitMoveMode()) return;
+  clearHousingUpgradeSelectionState();
   openMoveUnitSelectModal();
 }
 
@@ -10124,9 +13813,6 @@ function resolveMovePathPlanToTile(picked) {
   const unit = moveGroup.leader;
   if (!isPassableTerrain(data.grid[picked.y][picked.x])) {
     return { ok: false, reason: "海/湖には移動できません。" };
-  }
-  if (hasHostileOccupationAtTile(data, picked.x, picked.y, { ignoreKey: coordKey(unit.x, unit.y) })) {
-    return { ok: false, reason: "敵がいるマスには移動できません（通り抜け不可）。" };
   }
   const moveRemaining = Math.max(0, Math.floor(toSafeNumber(moveGroup.minMoveRemaining, 0)));
   if (moveRemaining <= 0) {
@@ -10168,11 +13854,15 @@ function shouldStopMoveByEncounter(encounterResult = null) {
     !!entry?.enemyAttack
     || !!entry?.ambushByFumble
     || !!entry?.playerAmbush
+    || (entry?.context === "move" && !!entry?.enemyFoundPlayer)
   )) || null;
   if (!stopEntry) return { stop: false, reason: "" };
   const enemyName = stopEntry?.enemyGroup?.kind === "faction"
     ? (stopEntry?.enemyGroup?.factionLabel || "他勢力")
     : (stopEntry?.enemyGroup?.names?.[0] || "敵");
+  if (stopEntry?.context === "move" && stopEntry?.enemyFoundPlayer) {
+    return { stop: true, reason: `${enemyName}に発見されたため停止` };
+  }
   if (stopEntry?.playerAmbush) {
     return { stop: true, reason: `同マスで${enemyName}を捕捉したため停止` };
   }
@@ -10227,6 +13917,7 @@ async function executePlannedMovePath() {
   let stopReason = "";
   let lastNode = { x: fromX, y: fromY };
   const participantIdSet = new Set(plan.moveGroup.participantIds);
+  const hostileFactionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
   for (let i = 1; i < plan.path.length; i += 1) {
     const prev = plan.path[i - 1];
     const next = plan.path[i];
@@ -10235,6 +13926,20 @@ async function executePlannedMovePath() {
     if (spentCost + stepCost > plan.moveRemaining) {
       stopReason = "移動残量が不足しました。";
       setLastMoveStopState(stopReason, prev?.x, prev?.y);
+      break;
+    }
+    const passCheck = runHostilePassStealthCheckAtTile({
+      data: currentData.value,
+      moveGroup: plan.moveGroup,
+      x: next.x,
+      y: next.y,
+      factionTileMap: hostileFactionTileMap
+    });
+    if (passCheck.blocked) {
+      stopReason = passCheck.reason || "敵に発見されて通行不可になりました。";
+      setLastMoveStopState(stopReason, prev?.x, prev?.y);
+      emitCharacterStateChange();
+      renderMapWithPhaser();
       break;
     }
     unitList.value = unitList.value.map(row => {
@@ -10343,6 +14048,18 @@ function handleMapTileClick(pointer) {
   pendingClickFocusWorld = null;
   pendingClickFocusMode = "near";
   selectedTileKey = coordKey(picked.x, picked.y);
+  if (handleHousingUpgradeSelectionTileClick(picked)) {
+    renderMapWithPhaser();
+    const latest = hitAreaMap.get(selectedTileKey);
+    if (latest) {
+      updateMapClickInfo(latest);
+      mapClickInfo.value += ` / ${resolveHousingUpgradeSelectionSummary()}`;
+    } else {
+      updateMapClickInfo(picked);
+      mapClickInfo.value += ` / ${resolveHousingUpgradeSelectionSummary()}`;
+    }
+    return;
+  }
   if (villagePlacementMode.value) {
     if (!canPlaceVillageOnTile(picked)) {
       updateMapClickInfo(picked);
@@ -10797,11 +14514,11 @@ watch(() => props.characterCommand, command => {
           <button
             type="button"
             class="overlay-action-btn icon-only"
-            title="スキルツリー"
-            aria-label="スキルツリー"
+            title="研究"
+            aria-label="研究"
             @click="openSkillTreeModalFromMap"
           >
-            <img class="overlay-action-icon" :src="SKILL_TREE_ICON_SRC" alt="スキルツリー" />
+            <img class="overlay-action-icon" :src="SKILL_TREE_ICON_SRC" alt="研究" />
           </button>
           <button
             type="button"
@@ -10819,10 +14536,19 @@ watch(() => props.characterCommand, command => {
             class="overlay-action-btn icon-only unit-create-icon-btn"
             title="ユニット作成"
             aria-label="ユニット作成"
-            :disabled="!canCreateMob"
+            :disabled="!canCreateAnyUnit"
             @click="openUnitCreateModal"
           >
             <img class="overlay-action-icon" :src="UNIT_CREATE_ICON_SRC" alt="ユニット作成" />
+          </button>
+          <button
+            type="button"
+            class="overlay-action-btn icon-only"
+            title="道具一覧"
+            aria-label="道具一覧"
+            @click="openEquipmentInventoryModalFromMap"
+          >
+            <img class="overlay-action-icon" :src="EQUIPMENT_INVENTORY_ICON_SRC" alt="道具一覧" />
           </button>
           <button
             type="button"
@@ -10846,75 +14572,109 @@ watch(() => props.characterCommand, command => {
           <span class="overlay-header-drawer-arrow" aria-hidden="true">{{ headerMinimized ? "▽" : "△" }}</span>
         </button>
       </header>
-      <section class="field-overlay-tile-detail">
+      <section class="field-overlay-tile-detail" :class="{ minimized: tileDetailMinimized }">
         <div class="field-overlay-tile-head">
           <div class="field-overlay-tile-title">
             <span class="field-overlay-tile-title-main">{{ selectedTileDetail?.terrain || "選択マス詳細" }}</span>
             <small v-if="selectedTileDetail" class="field-overlay-tile-title-sub">({{ selectedTileDetail.x }}, {{ selectedTileDetail.y }})</small>
           </div>
-          <div v-if="selectedTileDetail" class="field-overlay-tile-actions">
+          <div class="field-overlay-tile-head-right">
+            <div v-if="selectedTileDetail" class="field-overlay-tile-actions">
+              <button
+                type="button"
+                class="overlay-action-btn tile-action-icon-btn"
+                :disabled="!tileSurveyActionState.enabled"
+                :title="tileSurveyActionState.enabled ? `調査を実行 (移動${ENCOUNTER_ACTION_MOVE_COST})` : `調査不可: ${tileSurveyActionState.reason}`"
+                aria-label="調査"
+                @click="runSelectedTileSurvey"
+              >
+                <span aria-hidden="true">🔍</span>
+              </button>
+              <button
+                type="button"
+                class="overlay-action-btn tile-action-icon-btn"
+                :disabled="!tileAmbushActionState.enabled"
+                :title="tileAmbushActionState.enabled ? `奇襲を実行 (移動${ENCOUNTER_ACTION_MOVE_COST})` : `奇襲不可: ${tileAmbushActionState.reason}`"
+                aria-label="奇襲"
+                @click="runSelectedTileAmbush"
+              >
+                <span aria-hidden="true">⚔</span>
+              </button>
+              <button
+                v-if="selectedTileDetail?.canManageTerritoryDevelopment"
+                type="button"
+                class="overlay-action-btn"
+                :disabled="!tileSettlementConvertActionState.enabled"
+                :title="tileSettlementConvertActionState.enabled ? `居住化に変更 (${TERRITORY_TILE_MODE_CONVERSION_TURNS}T)` : `居住化不可: ${tileSettlementConvertActionState.reason}`"
+                @click="startTerritoryTileModeConversion(TERRITORY_TILE_MODE_SETTLEMENT)"
+              >
+                居住化
+              </button>
+              <button
+                v-if="selectedTileDetail?.canManageTerritoryDevelopment"
+                type="button"
+                class="overlay-action-btn"
+                :disabled="!tileResourceConvertActionState.enabled"
+                :title="tileResourceConvertActionState.enabled ? `資源化に変更 (${TERRITORY_TILE_MODE_CONVERSION_TURNS}T)` : `資源化不可: ${tileResourceConvertActionState.reason}`"
+                @click="startTerritoryTileModeConversion(TERRITORY_TILE_MODE_RESOURCE)"
+              >
+                資源化
+              </button>
+              <button
+                v-if="selectedTileDetail?.canManageTerritoryDevelopment || housingUpgradeSelectionState?.active"
+                type="button"
+                class="overlay-action-btn"
+                :disabled="!tileHousingUpgradeActionState.enabled"
+                :title="tileHousingUpgradeButtonTitle"
+                @click="applyTerritoryHousingUpgrade"
+              >
+                {{ tileHousingUpgradeButtonLabel }}
+              </button>
+              <button
+                v-if="housingUpgradeSelectionState?.active"
+                type="button"
+                class="overlay-action-btn"
+                title="住居拡張の選択をキャンセル"
+                @click="clearHousingUpgradeSelectionState"
+              >
+                選択解除
+              </button>
+              <button
+                v-if="selectedTileDetail?.canOpenVillageActions"
+                type="button"
+                class="overlay-action-btn"
+                :disabled="!canOpenVillageBuild"
+                @click="openVillageBuildModal"
+              >
+                建設
+              </button>
+            </div>
             <button
               type="button"
-              class="overlay-action-btn tile-action-icon-btn"
-              :disabled="!tileSurveyActionState.enabled"
-              :title="tileSurveyActionState.enabled ? `調査を実行 (移動${ENCOUNTER_ACTION_MOVE_COST})` : `調査不可: ${tileSurveyActionState.reason}`"
-              aria-label="調査"
-              @click="runSelectedTileSurvey"
+              class="overlay-action-btn mini tile-detail-toggle-btn"
+              :title="tileDetailMinimized ? '選択マス詳細を展開' : '選択マス詳細を最小化'"
+              :aria-label="tileDetailMinimized ? '選択マス詳細を展開' : '選択マス詳細を最小化'"
+              @click="tileDetailMinimized = !tileDetailMinimized"
             >
-              <span aria-hidden="true">🔍</span>
-            </button>
-            <button
-              type="button"
-              class="overlay-action-btn tile-action-icon-btn"
-              :disabled="!tileAmbushActionState.enabled"
-              :title="tileAmbushActionState.enabled ? `奇襲を実行 (移動${ENCOUNTER_ACTION_MOVE_COST})` : `奇襲不可: ${tileAmbushActionState.reason}`"
-              aria-label="奇襲"
-              @click="runSelectedTileAmbush"
-            >
-              <span aria-hidden="true">⚔</span>
-            </button>
-            <button
-              v-if="selectedTileDetail?.canManageTerritoryDevelopment"
-              type="button"
-              class="overlay-action-btn"
-              :disabled="!tileSettlementConvertActionState.enabled"
-              :title="tileSettlementConvertActionState.enabled ? `居住化に変更 (${TERRITORY_TILE_MODE_CONVERSION_TURNS}T)` : `居住化不可: ${tileSettlementConvertActionState.reason}`"
-              @click="startTerritoryTileModeConversion(TERRITORY_TILE_MODE_SETTLEMENT)"
-            >
-              居住化
-            </button>
-            <button
-              v-if="selectedTileDetail?.canManageTerritoryDevelopment"
-              type="button"
-              class="overlay-action-btn"
-              :disabled="!tileResourceConvertActionState.enabled"
-              :title="tileResourceConvertActionState.enabled ? `資源化に変更 (${TERRITORY_TILE_MODE_CONVERSION_TURNS}T)` : `資源化不可: ${tileResourceConvertActionState.reason}`"
-              @click="startTerritoryTileModeConversion(TERRITORY_TILE_MODE_RESOURCE)"
-            >
-              資源化
-            </button>
-            <button
-              v-if="selectedTileDetail?.canOpenVillageActions"
-              type="button"
-              class="overlay-action-btn"
-              :disabled="!canOpenVillageBuild"
-              @click="openVillageBuildModal"
-            >
-              建設
+              {{ tileDetailMinimized ? "▽" : "△" }}
             </button>
           </div>
         </div>
-        <div v-if="selectedTileDetail" class="field-overlay-tile-grid">
-          <div><span>座標</span><strong>({{ selectedTileDetail.x }}, {{ selectedTileDetail.y }})</strong></div>
-          <div><span>領土</span><strong>{{ selectedTileDetail.territory }}</strong></div>
-          <div><span>危険度</span><strong>{{ selectedTileDetail.danger }}</strong></div>
-          <div><span>土地</span><strong>{{ selectedTileDetail.terrain }}</strong></div>
-          <div><span>高度</span><strong>Lv {{ selectedTileDetail.heightLevel }}</strong></div>
-          <div class="wide"><span>町状態</span><strong>{{ selectedTileDetail.village }}</strong></div>
-          <div class="wide"><span>ユニット</span><strong>{{ selectedTileDetail.units }}</strong></div>
-          <div class="wide"><span>移動停止</span><strong>{{ selectedTileDetail.moveStopReason || "-" }}</strong></div>
+        <div v-if="!tileDetailMinimized" class="field-overlay-tile-body">
+          <div v-if="selectedTileDetail" class="field-overlay-tile-grid">
+            <div><span>座標</span><strong>({{ selectedTileDetail.x }}, {{ selectedTileDetail.y }})</strong></div>
+            <div><span>領土</span><strong>{{ selectedTileDetail.territory }}</strong></div>
+            <div><span>危険度</span><strong>{{ selectedTileDetail.danger }}</strong></div>
+            <div><span>土地</span><strong>{{ selectedTileDetail.terrain }}</strong></div>
+            <div><span>高度</span><strong>Lv {{ selectedTileDetail.heightLevel }}</strong></div>
+            <div class="wide"><span>町状態</span><strong>{{ selectedTileDetail.village }}</strong></div>
+            <div class="wide"><span>領土運用</span><strong>{{ selectedTileDetail.development }}</strong></div>
+            <div class="wide"><span>住居区分</span><strong>{{ selectedTileDetail.residential }}</strong></div>
+            <div class="wide"><span>ユニット</span><strong>{{ selectedTileDetail.units }}</strong></div>
+            <div class="wide"><span>移動停止</span><strong>{{ selectedTileDetail.moveStopReason || "-" }}</strong></div>
+          </div>
+          <div v-else class="field-overlay-tile-empty">マスをクリックすると詳細を表示します。</div>
         </div>
-        <div v-else class="field-overlay-tile-empty">マスをクリックすると詳細を表示します。</div>
       </section>
       <aside class="field-overlay-own-faction-panel">
         <own-faction-navigator-modal
@@ -11030,7 +14790,7 @@ watch(() => props.characterCommand, command => {
             {{ isTestMultiplayerActive ? (activeTestPlayerReady ? "ターン終了済み" : "ターン終了") : "ターン経過" }}
           </button>
           <button id="eventManagerBtn" class="secondary" type="button" @click="showEventControlModal = true">イベント管理</button>
-          <button id="createUnitBtn" class="secondary" type="button" :disabled="!canCreateMob" @click="openUnitCreateModal">ユニット作成</button>
+          <button id="createUnitBtn" class="secondary" type="button" :disabled="!canCreateAnyUnit" @click="openUnitCreateModal">ユニット作成</button>
           <button id="villageBuildBtn" class="secondary" type="button" :disabled="!canOpenVillageBuild" @click="openVillageBuildModal">建設</button>
           <button id="nationLogBtn" class="secondary" type="button" @click="openNationLogModal">統治者ログ</button>
           <div class="zoom-controls">
@@ -11099,6 +14859,21 @@ watch(() => props.characterCommand, command => {
       </div>
     </div>
 
+    <equipment-inventory-modal
+      :show="showEquipmentInventoryModal"
+      :village="villageState"
+      :smith-level="resolveSmithCraftCap(villageState)"
+      :craft-usage-state="equipmentCraftUsageStateForModal"
+      :enchant-usage-state="equipmentEnchantUsageStateForModal"
+      :craft-weapon-handler="handleCraftWeaponFromInventoryModal"
+      :craft-cost-handler="handleResolveCraftCostFromInventoryModal"
+      :enchant-options-handler="handleResolveEnchantOptionsFromInventoryModal"
+      :enchant-apply-handler="handleApplyEnchantFromInventoryModal"
+      @close="closeEquipmentInventoryModal"
+      @craft-weapon="handleCraftWeaponFromInventoryModal"
+      @apply-enchant="handleApplyEnchantFromInventoryModal"
+    />
+
     <generic-modal
       :show="showEventModal"
       title="イベント"
@@ -11124,7 +14899,7 @@ watch(() => props.characterCommand, command => {
       <div class="settings-modal unit-create-count-modal">
         <h3>ユニット作成数</h3>
         <div class="small">作成する人数を決めてから、種族とクラスを選択します。</div>
-        <div class="small">
+        <div class="unit-create-mode-summary">
           軍事Lv {{ unitCreateMilitaryLevel }} /
           選択種別: {{ selectedUnitCreateModeSpec.label }}
           (HPx{{ selectedUnitCreateModeSpec.hpMultiplier }} / 攻撃{{ selectedUnitCreateModeSpec.attackCount }}回
@@ -11137,29 +14912,34 @@ watch(() => props.characterCommand, command => {
             :key="`unit-create-mode-${mode.mode}`"
             type="button"
             class="secondary unit-create-mode-btn"
-            :class="{ active: selectedUnitCreateModeSpec.mode === mode.mode }"
+            :class="{ active: selectedUnitCreateModeSpec.mode === mode.mode, locked: !mode.enabled }"
+            :disabled="!mode.enabled"
             @click="applyUnitCreateMode(mode.mode)"
           >
-            {{ mode.label }}
+            <span>{{ mode.label }}</span>
+            <small>{{ mode.requirementText }}</small>
           </button>
         </div>
         <div class="unit-create-count-picker">
-          <button type="button" class="secondary count-step-btn" :disabled="!canCreateMob" @click="nudgeUnitCreateBatchCount(-1)">-</button>
+          <button type="button" class="secondary count-step-btn" :disabled="!canCreateSelectedUnitType" @click="nudgeUnitCreateBatchCount(-1)">-</button>
           <input
             v-model.number="unitCreateBatchCount"
             type="number"
             min="1"
-            :max="Math.max(1, mobCreateRemaining)"
+            :max="Math.max(1, selectedUnitCreateRemaining)"
             step="1"
-            :disabled="!canCreateMob"
+            :disabled="!canCreateSelectedUnitType"
             @change="normalizeUnitCreateBatchCount"
           />
-          <button type="button" class="secondary count-step-btn" :disabled="!canCreateMob" @click="nudgeUnitCreateBatchCount(1)">+</button>
+          <button type="button" class="secondary count-step-btn" :disabled="!canCreateSelectedUnitType" @click="nudgeUnitCreateBatchCount(1)">+</button>
         </div>
-        <div class="small">モブ {{ mobUnitCount }}/{{ mobUnitCap }} (残り {{ mobCreateRemaining }})</div>
+        <div class="small">
+          ヒーロー {{ heroUnitCount }}/{{ heroUnitCap }} (残り {{ heroCreateRemaining }} / 解放 {{ heroCreateUnlocked }}) /
+          軍隊 {{ armyUnitCount }}/{{ armyUnitCap }} (残り {{ armyCreateRemaining }})
+        </div>
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeUnitCreateCountModal">閉じる</button>
-          <button type="button" class="secondary" :disabled="!canCreateMob" @click="confirmUnitCreateCount">次へ</button>
+          <button type="button" class="secondary" :disabled="!canCreateSelectedUnitType" @click="confirmUnitCreateCount">次へ</button>
         </div>
       </div>
     </div>
@@ -11168,6 +14948,7 @@ watch(() => props.characterCommand, command => {
       :show="showUnitCreateRaceModal"
       :selected-race="unitCreateRace || props.selectedRace"
       :allowed-races="unitCreateAllowedRaces"
+      :setup-progress-text="unitCreateSetupProgressText"
       @close="closeUnitCreateRaceModal"
       @confirm="applyUnitCreateRace"
     />
@@ -11176,7 +14957,9 @@ watch(() => props.characterCommand, command => {
       :show="showUnitCreateClassModal"
       :selected-race="unitCreateRace || props.selectedRace"
       :selected-class="unitCreateClass || props.selectedClass"
+      :setup-progress-text="unitCreateSetupProgressText"
       @close="closeUnitCreateClassModal"
+      @back="backUnitCreateClassToRaceModal"
       @confirm="applyUnitCreateClass"
     />
 

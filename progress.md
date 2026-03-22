@@ -1,6 +1,26 @@
 Original prompt: 全体を整理してほしい。メモと地形ランダム生成だけは消さないで vueファイルにできるところはVueファイルに
 
 - 2026-02-26: Started reorganization with focus on preserving map random generation and memo docs.
+- 2026-03-20: 装備在庫UIを専用モーダル化。`EquipmentInventoryModal.vue` を追加し、フィールド右上アクションに「道具一覧」ボタン（装備アイコン）を追加。`PhaserMapGeneratorPanel.vue` から開閉できるよう接続。
+- 2026-03-20: `CharacterStatusModal.vue` の暫定「装備在庫チップバー」を削除し、装備在庫表示を専用モーダルへ一本化。
+- 2026-03-20: 検証: `npm run build:front` 成功。
+- 2026-03-20: `develop-web-game` Playwrightクライアント実行を再試行したが、スキル実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-21: `付与.json` を用いた装備付与処理を実装。`EquipmentInventoryModal.vue` の「付与」タブで、対象装備に対する候補を表示し、実行できるように接続。
+- 2026-03-21: 付与候補は `対象装備` 一致 + Lv条件 (`鍛冶Lv/魔法Lv/信仰Lv/軍事Lv/経済Lv`) を **AND条件** で満たすもののみ表示するように変更。
+- 2026-03-21: 付与実行時に `消費量.json` の `種別: 付与` + `Lv` 対応コストを消費。`付与.json` 側の必要道具列（存在時）も追加消費する処理を追加。
+- 2026-03-21: 付与結果は在庫装備に反映（`skillRow`/主要戦闘値/耐性/付与履歴を更新）し、ログと通知に出力。
+- 2026-03-21: 付与上限制御を追加。`種別:武器` は盾含む全武器に適用し、武器は「最大3つ」「付与Lv合計は武器レアリティLv以下（コモン=1, アンコモン=2, ...）」を満たす候補のみ表示/実行可能化。
+- 2026-03-21: 道具一覧モーダルは「付与」タブ時のみ拡張サイズに自動変更し、付与枠情報（数/Lv上限）を表示。
+- 2026-03-21: 検証: `npm run build:front` 成功。
+- 2026-03-21: `develop-web-game` Playwrightクライアントは今回も `playwright` パッケージ未解決で実行不可（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-20: ユニット作成時の装備自動付与を強化。`chooseEquipmentForClass` がクラス行の `武器1/武器2/頭/体/足/装飾1/装飾2` を優先参照し、未設定時は従来ロジックで選定。
+- 2026-03-20: 作成ユニットの装備は「在庫優先」で装着し、在庫不足分は装備データから生成して装着する処理を `applyAutoEquipForCreatedUnit` として追加。ユニット作成ログに `装備 在庫N 生成M` を表示。
+- 2026-03-20: 検証: `npm run build:front` 成功。
+- 2026-03-20: 道具一覧モーダルに「武器生成」機能を追加。武器名・レアリティ・個数を指定して生成可能にし、鍛冶Lvに応じて選択可能レアリティを制御（common〜legendary）。
+- 2026-03-20: `PhaserMapGeneratorPanel.vue` に武器生成イベントハンドラを追加し、既存 `craftEquipmentInventoryItem` に接続。ログ/通知は「武器生成」として表示。
+- 2026-03-20: 装備生成コスト計算を調整。`消費量.json(Lv)` と `装備.json` の `木材` / `鉱石` 倍率のみで素材計算し、石材・金・銀・宝石は武器生成基本コストから除外。
+- 2026-03-20: 鍛冶生成上限は `鍛冶場Lv` の定義上限（defined cap）参照に変更。
+- 2026-03-20: 武器生成「押しても何も起きない」対策として、道具モーダルに親関数直接呼び出し経路（`onCraftWeapon`）を追加し、モーダル内に実行結果/失敗理由メッセージを表示。
 - 2026-03-18: ルール追記。行動処理順を `索敵(情報確定) -> 移動(同時解決/1マス判定) -> 接敵ロック -> 奇襲/攻撃 -> 建築/経済` に整理し、先逃げ防止の接敵ロック方針を `docs/fantasy_strategy_core_design.md` と `docs/NEXT_TASKS.md` に反映。
 - 2026-03-18: ユニット移動を非同期ステップ実行へ変更。経路確認後は `MOVE_STEP_INTERVAL_MS`（既定1000ms）ごとに1マスずつ進み、各マスで判定を実施。移動中の再入力ガード（経路再作成/移動モード切替）も追加。
 - 2026-03-18: `develop-web-game` Playwright クライアント検証を実行したが、スキル実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
@@ -668,3 +688,130 @@ pm run build:front.- 2026-03-10: Fixed fog-of-war toggle regression: when test m
 - 2026-03-19: `CharacterUnitDetailPanel.vue` に軍事ユニット補正表示（HP倍率/攻撃回数/人口消費/単純行動）を追加。
 - 2026-03-19: `toUnitRoleLabel` を更新し、モブ以外の `unitType`（軍隊/精鋭軍隊）を表示可能に。
 - 2026-03-19: 検証 `npm run build:front` 成功。- 2026-03-19: 軍事ユニット実装後に develop-web-game Playwright クライアント実行を再試行。playwright 未解決 (ERR_MODULE_NOT_FOUND) のため失敗。
+- 2026-03-20: 研究UIを `研究.json` 直接参照に変更。`frontend/src/lib/research-tree-config.js` を再構築し、行データ（項目名/技術対象/Lv/詳細）からカテゴリ・Lv・候補を生成するように更新。デフォルトツリー依存を廃止。
+- 2026-03-20: `SkillTreeModal.vue` を研究専用UIへ刷新。カテゴリ切替 + Lvタブ + 候補一覧 + 右側詳細表示 + 「Lvごとに1つ選択」ローカル選択状態を実装。
+- 2026-03-20: 残っていた表記を `スキルツリー` -> `研究` に統一（`AppHeader.vue`, `MenuPanel.vue`, `PhaserMapGeneratorPanel.vue`）。
+- 2026-03-20: 検証 `npm run build:front` 成功。
+- 2026-03-20: `develop-web-game` Playwright クライアント実行を再試行。`playwright` 未解決（ERR_MODULE_NOT_FOUND）のため失敗。- 2026-03-20: 研究モーダル (`SkillTreeModal.vue`) を表形式へ改修。Lvヘッダーを横並び（1行目）にし、候補を縦3行ベースで表示するグリッドUIへ変更。
+- 2026-03-20: 研究カテゴリ（鍛冶/魔法/信仰/軍事/経済）タブにアイコン表示を追加。`icon-library` 経由でフォルダ内アイコンを解決。
+- 2026-03-20: 研究モーダルから「選択状況」サマリー枠を削除。選択済みはセル枠色で判別する仕様に統一。
+- 2026-03-20: `npm run build:front` 実行成功。
+- 2026-03-20: develop-web-game Playwrightクライアント実行を再試行したが、スキル実行環境で `playwright` 未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-20: モーダルのスケーリング適用ルールを共通化。`styles.css` に `--ui-effective-modal-scale` を追加し、`modal-backdrop / generic-modal-backdrop / settings-backdrop / game-start-backdrop` 配下のモーダル本体へ一律適用する方式へ変更。
+- 2026-03-20: `styles.css` の `.app.game-only ... !important` 上書きスケールを削除。モーダルごとの差異で縮尺が崩れる経路を解消。
+- 2026-03-20: `GenericModal.vue` / `App.vue(game-start-modal)` / `PhaserMapGeneratorPanel.css(settings-modal)` の個別 transform 指定を削除し、共通ルールに一本化。
+- 2026-03-20: 検証 `npm run build:front` 成功。
+- 2026-03-20: develop-web-game Playwrightクライアント再試行。スキル実行環境で `playwright` 未解決（ERR_MODULE_NOT_FOUND）のため実行不可。
+- 2026-03-20: モーダルUI固定化。`calc(100% - 24px)` 系指定を廃止し、`styles.css` でモーダル幅/高さを固定変数（normal/wide）で統一。内容量に依存せずサイズが変わらないように変更。
+- 2026-03-20: `modal-body` を共通スクロール領域にし、モーダル外形は固定・内容だけスクロールする構成へ変更。
+- 2026-03-20: モーダル内文字の下限サイズを `--modal-min-text-size: 15px` として反映（small系含む）。
+- 2026-03-20: `GenericModal.vue` / `App.vue(game-start-modal)` / `PhaserMapGeneratorPanel.css(settings-modal)` / `CharacterStatusModal.vue` を固定サイズ + 共通スケール前提へ調整。
+- 2026-03-20: 検証 `npm run build:front` 成功。
+- 2026-03-20: 文字倍率の対象を全体ではなく研究モーダル限定へ修正。`SkillTreeModal.vue` に `--research-text-scale` を追加し、主要テキストサイズへ倍率を適用。
+- 2026-03-20: 直前に追加した全体文字倍率（`styles.css` の `--ui-manual-text-scale` / `html font-size` と `UI_MANUAL_SCALE_CONFIG.text`）は撤回して削除。
+- 2026-03-20: 検証 `npm run build:front` 成功。
+- 2026-03-20: モーダル縮尺異常の原因を修正。`app.game-only` のスケーリングに加えてモーダル側でも `--game-modal-scale` を掛けていたため二重拡縮になっていた。
+- 2026-03-20: `styles.css` の `--ui-effective-modal-scale` を `--ui-manual-modal-scale` のみへ変更し、モーダル倍率を単一経路化。
+- 2026-03-20: `App.vue` の `--game-modal-scale` set/remove 処理を削除。`panel modal-card modal-card-wide` を含む全モーダルで縮小時の比率崩れを抑制。
+- 2026-03-20: 検証 `npm run build:front` 成功。
+- 2026-03-20: 研究モーダルにカテゴリ別研究進行を追加。上タブに現在Lv表示、カテゴリ別EXP蓄積/消費でLvアップ（必要EXP=100*2^(現在Lv-1)）を実装。
+- 2026-03-20: 研究候補の解放条件を「そのカテゴリの現在研究Lv以下」に変更。
+- 2026-03-20: 研究モーダルにEXP表示・Lvアップ操作を追加（テスト用EXP+100ボタン含む）。
+- 2026-03-20: 検証 `npm run build:front` 成功。
+- 2026-03-20: 研究モーダルにカテゴリ別進行（Lv/EXP）を導入済み構成を App 側状態へ接続。`researchProgress` と `researchSelection` を `App.vue` で保持し、`SkillTreeModal` の `update:*` イベントで同期するように変更。
+- 2026-03-20: セーブ/ロードに研究データを追加。`systems.research.progress` と `systems.research.selection` をエクスポートし、ロード時に復元するように更新。
+- 2026-03-20: `render_game_to_text` 出力へ研究進行情報（カテゴリ配列と進行Map）を追加。
+- 2026-03-20: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアントは依存 `playwright` 未解決で実行失敗（ERR_MODULE_NOT_FOUND）。- 2026-03-20: 研究進行をカテゴリLv管理から「研究対象ごとのEXP管理」へ変更。`targetExpMap`（対象別EXP）, `completedByCategoryLevel`（完了研究）, `carryByCategory`（繰越EXP）を導入。
+- 2026-03-20: 研究完了時に超過EXPをカテゴリ繰越として保持し、次の研究対象を選択したタイミングで繰越EXPを適用する仕様を実装。
+- 2026-03-20: 研究モーダルのヘッダーに手動テスト用 `+50 / -50` ボタンを追加。研究対象に設定済みかつ未完了の対象のみ増減できるよう制限。
+- 2026-03-20: セーブ/ロード側の `systems.research` 正規化を新構造（targetExpMap/completedByCategoryLevel/carryByCategory）に更新。
+- 2026-03-20: 検証 `npm run build:front` 成功。Playwright クライアントは `playwright` 依存不足で実行失敗（ERR_MODULE_NOT_FOUND）。- 2026-03-20: 研究仕様を更新。Lvごとに複数研究を完了できるように変更（同時進行は選択中の1件のみ）。完了データ `completedByCategoryLevel` は `level -> [researchId...]` の配列管理へ変更。
+- 2026-03-20: 研究項目セルに個別EXPゲージを追加。`currentExp/requiredExp` を項目名下に表示し、進捗が視覚的に分かるように調整。
+- 2026-03-20: 保存データ正規化を新形式に対応（旧: 文字列1件完了、 新: 配列複数完了）。- 2026-03-20: `Lv内複数研究` 対応。研究完了判定をレベル単位1件から項目単位に変更し、完了済みは `completedByCategoryLevel[category][level] = [id...]` で保持。
+- 2026-03-20: Playwright クライアント再実行は依存 `playwright` 不足で失敗（ERR_MODULE_NOT_FOUND）。- 2026-03-20: 研究モーダルUI調整。`対象EXP/繰越EXP/+50/-50` を `research-pane-head` へ移動し、研究項目セル内の `0/100` 数値表示を削除（ゲージのみ表示）。
+- 2026-03-20: 研究モーダルの文字コントラスト改善（ヘッダー、非アクティブセル、詳細文、補助テキスト、ロック状態の可視性を調整）。- 2026-03-20: `SkillTreeModal.vue` の `research-pane-head` を簡素化（進行Lv表示削除）し、`research-head-controls` を横並び固定に調整。`npm run build:front` 成功。
+- 2026-03-20: 装備機能を在庫管理化。`village.equipmentInventory` を追加し、装備変更時は在庫消費/旧装備返却に対応。`craftEquipmentItem` コマンドを追加し、装備作成を在庫追加方式へ変更。作成コストは `消費量.json(種別=装備, Lv)` と `装備.json` の `鉱石/木材` 比率で算出するよう更新（魔法/信仰付与コストは現時点で未適用）。CharacterUnitDetailPanel に小型アイテム一覧（レア度・数）と詳細表示、選択スロット装備UIを追加。`npm run build:front` 成功。
+- 2026-03-20: 自キャラステータスモーダル上部に「装備在庫」バーを追加。`village.equipmentInventory` を集約表示（装備名/レア度/個数）。在庫0件時は「在庫なし」表示。`npm run build:front` 成功。
+- 2026-03-20: 武器生成の無反応対策を追加。`EquipmentInventoryModal.vue` の生成ハンドラprop名を `onCraftWeapon` から `craftWeaponHandler` に変更し、`on*` イベント名衝突を回避。
+- 2026-03-20: 武器生成ボタン押下時の失敗理由表示を強化。生成不可理由（武器未選択/鍛冶Lv不足/武器データなし）を明示し、ハンドラ例外時もモーダル内にエラー文言を表示。
+- 2026-03-20: `submitWeaponCraft` で Promise戻り値にも対応し、完了/失敗のステータス表示を追加。
+- 2026-03-20: 検証: `npm run build:front` 成功。
+- 2026-03-20: `develop-web-game` Playwrightクライアント実行は環境側 `playwright` 未導入で失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-20: キャラ装備変更UIを改善。`CharacterUnitDetailPanel.vue` で選択スロットに適合する在庫のみ表示するようにし、在庫装備/装備変更/在庫作成の実行ステータス文言を追加。
+- 2026-03-20: キャラ装備変更導線を「道具一覧モーダル」経由に統一。`CharacterUnitDetailPanel.vue` から在庫リストを外し、`EquipmentInventoryModal.vue` の pickerMode + filterSlotKey で選択して装備反映する方式へ変更。
+- 2026-03-20: キャラ装備UIを再整理。スロット行の `在庫へ作成` を削除し、装備モーダル起動を装備ヘッダーの単一ボタンへ統一。あわせて `craft-equipment-item` のイベント配線（CharacterUnitDetailPanel/CharacterStatusModal/App）を削除。
+- 2026-03-20: キャラ装備欄のプルダウン（種類リスト）を撤去。スロット行は情報表示＋「このスロットを変更」ボタンのみ、実際の装備選択は道具一覧モーダルに一本化。
+
+## 2026-03-20 22:18:59 防具生成対応
+- 道具一覧モーダルの生成タブに 種別(武器/防具) を追加。防具を選んで生成可能に変更。
+- 防具生成時は 装備.json の 耐性 と 消費量.json(防具_物理/防具_魔法) を参照して 物理耐性/魔法耐性 を算出。
+- レア度3/4/5で魔法耐性に追加補正(物理耐性の15%/30%/50%)を適用。
+- 生成ハンドラは武器/防具の両方を受け付けるように変更。
+- 装備表示に 物/魔耐 を追加（値がある場合のみ）。
+
+## 2026-03-20 22:40:21 UI最小フォント15px対応
+- App.vue に最低フォント補正処理を追加。ゲーム画面/各モーダル配下で computed font-size が15px未満の要素へ 15px を自動適用。
+- MutationObserver + resize + gameOnlyMode監視で再適用。
+- styles.css に --ui-min-font-size を追加し .small を最低15pxへ。
+- game-start modal 内の 0.88rem/0.86rem/0.84rem も max(15px, ...) 化。
+- 2026-03-21: ユニット種別ルールを更新。通常ユニットを`ヒーローユニット`へ統一、軍隊ユニットの解放Lvを`軍事Lv1`へ変更（強化軍隊はLv3維持）。
+- 2026-03-21: `勢力.json`参照の上限へ移行。軍隊上限=`軍隊`列（0<x<1は人口倍率、1以上は固定値）、ヒーロー上限=`ヒーロー`列（未設定時は人口/10フォールバック）+都市段階補正(+1/段階)を実装。
+- 2026-03-21: ユニット作成モーダルを上限分離に対応。`ヒーロー`/`軍隊`の現在数・上限・残数を表示し、選択種別ごとの上限到達時は作成不可に変更。
+- 2026-03-21: ターン処理にヒーロー自動増加を追加。確率=基礎1% + 軍隊Lv10補正20% + 居住化追加数*10% + 都市段階*50%。100%超過は確定生成+余剰確率ロールで処理。
+- 2026-03-21: 文言整理。画面表示上の`モブ`表記を`ヒーロー`へ置換（作成導線・削除導線・進行ステータス含む）。
+- 2026-03-21: 検証: `npm run build:front` 成功。
+- 2026-03-21: `develop-web-game` Playwrightクライアント実行を再試行したが、スキル実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-21: ヒーロー自動増加ロジックをターン処理へ組み込み後、`npm run build:front` を再実行して成功。
+- 2026-03-21: Playwrightクライアント再試行（2回目）も `ERR_MODULE_NOT_FOUND: playwright` で実行不可を確認。
+- 2026-03-21: ヒーロー自動増加を仕様変更。自動ユニット追加ではなく「英雄が誕生しました。」通知で `heroBirthUnlock` を増やし、ヒーロー作成枠を解放する方式へ移行。
+- 2026-03-21: ヒーロー作成時は解放枠を消費するよう変更。作成モーダルに「解放」表示を追加し、未解放時はヒーロー作成不可（誕生待ち）表示に変更。
+- 2026-03-21: 検証: 上記変更後に `npm run build:front` 成功。
+- 2026-03-21: Playwrightクライアント再試行（誕生解放仕様変更後）も `ERR_MODULE_NOT_FOUND: playwright` のため実行不可。
+- 2026-03-22: 都市ステータス計算を更新。総人口チップ展開に「生産力/徴兵率/人口保有率/保有可能人数/治安/幸福度/環境安定度/浮浪者率」を表示し、指定式（人口保有率・浮浪者率・生産力）を実装。SIZ補正（SIZ170=1人分）で保有可能人数を算出し、軍事ユニットは populationCost を人数換算として徴兵率に反映。
+- 2026-03-22: 検証: `npm run build:front` 成功。
+- 2026-03-22: `develop-web-game` Playwright クライアント再実行は `ERR_MODULE_NOT_FOUND: playwright` で実行不可。
+- 2026-03-22: 住居区分システムを追加。土地/村/町/都市/大都市の定義（収容人数・使用マス・アイコンサイズ）を `phaser-map-panel-config.js` に追加。
+- 2026-03-22: 保有可能人数計算を住居区分ベースへ変更。`resolveVillagePopulationCapacityByTerritory` が住居区分設定を検出した場合、各タイルの `収容人数 x 使用マス` 合計で収容上限を算出。
+- 2026-03-22: 領土タイル詳細に「領土運用」「住居区分」を表示。
+- 2026-03-22: タイル行動に「住居拡張」を追加。条件は居住化タイル + 隣接する自陣営住居マス。テストON時は条件を無視して拡張可能。
+- 2026-03-22: 住居拡張時に `territoryResidentialLevelMap` を更新し、収容上限を即時再計算。
+- 2026-03-22: マップ描画の居住化アイコンを住居区分連動に変更（村/町/都市/大都市でサイズも変更）。
+- 2026-03-22: 検証: `npm run build:front` 成功。
+- 2026-03-22: `develop-web-game` Playwrightクライアント再実行は `ERR_MODULE_NOT_FOUND: playwright` で実行不可。
+
+## 2026-03-22 住居クラスター実装
+- 住居拡張を「中心マス + 付属領域」モデルへ変更。
+- 住居区分マップに加えて `territoryResidentialCenterMap` を導入し、中心/付属の紐づけを保持。
+- 町(2マス)/都市(3マス)は住居拡張ボタン後に隣接候補をマップクリックで選択して確定。
+- 大都市(7マス)は中心周囲6マスを自動割当で拡張。
+- 付属領域は単体機能を持たないようにし、描画マーカーも中心のみ表示。
+- 選択マス詳細の住居区分表示を中心/付属の情報付きに調整。
+- マップ再生成・村配置・移動モード切替時に住居拡張選択状態を自動クリアするように修正。
+- build確認: `npm run build:front` 成功。
+- Playwright確認: `web_game_playwright_client.js` 実行時に `playwright` パッケージ未導入で `ERR_MODULE_NOT_FOUND`。
+
+## 2026-03-22 住居クラスター改修(別ファイル化)
+- 住居クラスター処理を `frontend/src/composables/territoryResidentialClusterUtils.js` へ分離。
+- `PhaserMapGeneratorPanel.vue` の住居関連ロジックは新ユーティリティ呼び出しへ置換。
+- 住居拡張は町/都市/大都市すべて「複数マス選択モード」で確定する方式へ統一。
+- 選択中はカーソルを `crosshair` に変更し、`選択解除` ボタンを追加。
+- 住居表示を中心だけでなく付属領域にも描画（付属は縮小＋半透明）して範囲が見えるように調整。
+- build確認: `npm run build:front` 成功。
+- 住居クラスターを「付属マスも中心と同レベル扱い」に変更。
+- 容量計算をクラスター対応へ修正（町=50x2=100 / 都市=100x3=300 / 大都市=150x7=1050）。
+- 住居画像を付属マスにも同種で描画するように調整。
+- 2026-03-22: 住居拡張を即時反映から「建築キュー方式」に変更。`territoryResidentialUpgradeQueueMap` を村状態へ追加し、拡張開始時は素材消費＋必要ターン設定のみ行い、ターン経過で完了時にレベル反映するよう実装。
+- 2026-03-22: 住居拡張ターン短縮を追加。必要ターンは `TERRITORY_RESIDENTIAL_UPGRADE_BASE_TURNS(3)` を基準に、`生産力100%ごとに-1T`（下限1T）で算出。
+- 2026-03-22: 住居拡張コストを `施設.json` 参照へ変更。目標区分（町/都市/大都市）に対応する施設名を解決し、`food/material` をタイル数分（中心+付属）消費。コスト未設定時は拡張不可理由を表示。
+- 2026-03-22: 住居拡張中タイルは `居住化/資源化` 切替を不可に変更。選択マス詳細の「領土運用」に拡張中表示（残りT）を追加。
+- 2026-03-22: 住居拡張キュー対象タイルの住居マーカーを半透明表示するよう調整。
+- 2026-03-22: 検証: `npm run build:front` 成功。
+- 2026-03-22: `develop-web-game` Playwright クライアント実行を試行したが、スキル実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-22: 都市ステータスに「穢れ/浄化/回復」を追加。タイル別データ（tileCorruptionMap ほか）を ensureVillageStateShape で正規化し、人口ヘッダー展開に表示。
+- 2026-03-22: 都市維持率ペナルティを追加。維持率 = 現在人口 / 保有可能人数 とし、しきい値(<70/<50/<30)に応じて生産倍率・幸福度・治安へ反映。しきい値/倍率は定数化して調整可能にした。
+- 2026-03-22: 毎ターン処理に「浄化(穢れ減衰)」と「回復(自ユニットHP回復)」を追加。軍隊ユニットは hpMultiplier 分だけ回復量を乗算。
+- 2026-03-22: ユニットHPランタイム値（maxHp/currentHp）を作成時・レベル再計算時に保持するよう調整。ターン回復でも不足時に補正。
+- 2026-03-22: ユニット死亡時の穢れ加算用フック recordUnitDeathCorruptionAtTile を追加（今後の戦闘死亡処理から呼び出し予定）。
+- 2026-03-22: 検証 npm run build:front 成功。
+- 2026-03-22: develop-web-game Playwrightクライアント実行を再試行したが、スキル実行環境で playwright パッケージ未解決のため失敗（ERR_MODULE_NOT_FOUND）。
+- TODO: 戦闘でユニット死亡が確定した経路（将来の戦闘解決処理）から recordUnitDeathCorruptionAtTile を呼び出して穢れ加算を本接続する。

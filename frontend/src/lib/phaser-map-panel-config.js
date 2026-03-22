@@ -18,6 +18,65 @@ export const TERRITORY_TILE_MODE_CONFIG = {
 };
 export const TERRITORY_TILE_MODE_CONVERSION_TURNS = 2;
 
+// 領土タイルの住居区分（保有可能人数計算）。
+// 総収容人数 = 1マスあたり収容人数 × 使用マス数
+export const TERRITORY_RESIDENTIAL_LEVEL_LAND = "land";
+export const TERRITORY_RESIDENTIAL_LEVEL_ATTACHED = "attached";
+export const TERRITORY_RESIDENTIAL_LEVEL_VILLAGE = "village";
+export const TERRITORY_RESIDENTIAL_LEVEL_TOWN = "town";
+export const TERRITORY_RESIDENTIAL_LEVEL_CITY = "city";
+export const TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS = "metropolis";
+export const TERRITORY_RESIDENTIAL_LEVEL_ORDER = [
+  TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+  TERRITORY_RESIDENTIAL_LEVEL_TOWN,
+  TERRITORY_RESIDENTIAL_LEVEL_CITY,
+  TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS
+];
+export const TERRITORY_RESIDENTIAL_LEVEL_CONFIG = {
+  [TERRITORY_RESIDENTIAL_LEVEL_LAND]: {
+    label: "土地",
+    capacityPerTile: 5,
+    footprintTiles: 1,
+    iconName: "",
+    markerIconSize: 0
+  },
+  [TERRITORY_RESIDENTIAL_LEVEL_ATTACHED]: {
+    label: "付属領域",
+    capacityPerTile: 0,
+    footprintTiles: 1,
+    iconName: "",
+    markerIconSize: 0
+  },
+  [TERRITORY_RESIDENTIAL_LEVEL_VILLAGE]: {
+    label: "村",
+    capacityPerTile: 20,
+    footprintTiles: 1,
+    iconName: "村",
+    markerIconSize: 32
+  },
+  [TERRITORY_RESIDENTIAL_LEVEL_TOWN]: {
+    label: "町",
+    capacityPerTile: 50,
+    footprintTiles: 2,
+    iconName: "町",
+    markerIconSize: 38
+  },
+  [TERRITORY_RESIDENTIAL_LEVEL_CITY]: {
+    label: "都市",
+    capacityPerTile: 100,
+    footprintTiles: 3,
+    iconName: "都市",
+    markerIconSize: 44
+  },
+  [TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS]: {
+    label: "大都市",
+    capacityPerTile: 150,
+    footprintTiles: 7,
+    iconName: "大都市",
+    markerIconSize: 52
+  }
+};
+
 // 六角タイル枠線の見た目設定。
 export const TILE_BORDER_DEFAULT = { width: 1.0, color: 0x2f3848, alpha: 0.5 };
 export const TILE_BORDER_PLAYER = { width: 2.25, color: 0x5ad4ff, alpha: 0.98 };
@@ -34,8 +93,8 @@ export const FACTION_BORDER_COLOR_PALETTE = [
 
 // 未探索/非可視タイル（Fog）の表示設定。
 export const FOG_HIDDEN_FILL = 0x7b818a;
-export const FOG_HIDDEN_ALPHA = 0.94;
-export const FOG_HIDDEN_ALPHA_TEST = 0.56;
+export const FOG_HIDDEN_ALPHA = 0.84;
+export const FOG_HIDDEN_ALPHA_TEST = 0.46;
 export const FOG_HIDDEN_BORDER = { width: 1.15, color: 0x4b525e, alpha: 0.92 };
 
 // 索敵とカメラ操作に関する共通値。
@@ -95,7 +154,6 @@ export const GAME_VIEW_HEIGHT = 720;
 // ここを変更すると、ゲーム内UIの相対サイズだけを調整できる。
 // root側の自動フィットスケール（画面サイズ追従）とは独立。
 export const UI_MANUAL_SCALE_CONFIG = {
-  modal: 1.0, // 全モーダル共通
   clock: 1.5, // 右下時計UI
   ownFactionPanel: 1.5, // field-overlay-own-faction-panel
   characterDetailPane: 1.0 // char-block / detail-right-pane を含む詳細パネル

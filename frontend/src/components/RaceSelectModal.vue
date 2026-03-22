@@ -1,8 +1,11 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
+import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import raceSelectionDb from "../../../data/source/export/json/種族.json";
 import classDb from "../../../data/source/export/json/クラス.json";
+import skillDescDb from "../../../data/source/export/json/説明.json";
+import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -24,20 +27,94 @@ const RACE_CLASS_NAME_MAP = {
   "ヴァンパイア": "ヴァンパイア"
 };
 
-const BASE_STATUS_FIELDS = ["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"];
+const SKILL_FIELD_DEFS = [
+  { key: "指揮", label: "指揮" },
+  { key: "威圧", label: "威圧" },
+  { key: "看破", label: "看破" },
+  { key: "早業", label: "早業" },
+  { key: "技術", label: "技術" },
+  { key: "隠密", label: "隠密" },
+  { key: "索敵", label: "索敵" },
+  { key: "農業", label: "農業" },
+  { key: "林業", label: "林業" },
+  { key: "漁業", label: "漁業" },
+  { key: "工業", label: "工業" },
+  { key: "統治", label: "統治" },
+  { key: "交渉", label: "交渉" },
+  { key: "魔術", label: "魔術", aliases: ["魔法技術"] },
+  { key: "信仰", label: "信仰" }
+];
+
+const STATUS_ROW_FIELDS = [
+  ["HP", "攻撃", "魔力", "命中"],
+  ["SIZ", "防御", "精神", "速度"]
+];
+
+const ACQUIRED_SKILL_FIELDS_LV5 = ["Skill1", "Skill2", "Skill3", "Skill4", "Skill5"];
+
+function nonEmptyText(value) {
+  const text = String(value ?? "").trim();
+  return text.length ? text : "";
+}
+
+function toSafeNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function isPlaceholderSkillName(value) {
+  const text = nonEmptyText(value).toLowerCase();
+  if (!text) return true;
+  return text === "0" || text === "-" || text === "－" || text === "なし" || text === "null";
+}
+
+function resolveSkillFieldKeys(field) {
+  if (!field) return [];
+  if (typeof field === "string") return [field];
+  const keys = [nonEmptyText(field?.key), ...(Array.isArray(field?.aliases) ? field.aliases.map(nonEmptyText) : [])]
+    .filter(Boolean);
+  return [...new Set(keys)];
+}
+
+function resolveSkillFieldValue(row, field) {
+  const keys = resolveSkillFieldKeys(field);
+  for (const key of keys) {
+    const value = toSafeNumber(row?.[key]);
+    if (value !== null) return value;
+  }
+  return 0;
+}
+
+function resolveSkillDescription(field) {
+  const keys = resolveSkillFieldKeys(field);
+  for (const key of keys) {
+    const desc = skillDescMap.value.get(key);
+    if (desc) return desc;
+  }
+  return "";
+}
+
+function raceListIconSrc(race) {
+  const icon = nonEmptyText(race?.icon);
+  if (icon) return icon;
+  const iconName = nonEmptyText(race?.画像ID);
+  if (iconName && hasIconName(iconName)) {
+    return getIconSrcByName(iconName, iconName);
+  }
+  return "";
+}
 
 const races = computed(() => {
   if (!Array.isArray(raceSelectionDb)) return [];
-  return raceSelectionDb.filter(item => {
-    return item && typeof item.key === "string" && item.key.trim().length > 0;
-  });
+  return raceSelectionDb.filter(item => item && typeof item.key === "string" && item.key.trim().length > 0);
 });
 
 const allowedRaceSet = computed(() => {
   const set = new Set();
   if (!Array.isArray(props.allowedRaces)) return set;
   for (const raw of props.allowedRaces) {
-    const key = String(raw || "").trim();
+    const key = nonEmptyText(raw);
     if (!key) continue;
     set.add(key);
   }
@@ -50,12 +127,74 @@ const filteredRaces = computed(() => {
   return races.value.filter(item => allowedRaceSet.value.has(item.key));
 });
 
+const classRows = computed(() => {
+  if (!Array.isArray(classDb)) return [];
+  return classDb.filter(row => nonEmptyText(row?.名前));
+});
+
+const skillDescMap = computed(() => {
+  const map = new Map();
+  if (!Array.isArray(skillDescDb)) return map;
+  for (const row of skillDescDb) {
+    const name = nonEmptyText(row?.技能名);
+    if (!name) continue;
+    map.set(name, nonEmptyText(row?.説明));
+  }
+  return map;
+});
+
 const activeRaceKey = ref("");
 
 const activeRace = computed(() => {
   if (!filteredRaces.value.length) return null;
-  const found = filteredRaces.value.find(item => item.key === activeRaceKey.value);
-  return found || filteredRaces.value[0];
+  return filteredRaces.value.find(item => item.key === activeRaceKey.value) || filteredRaces.value[0];
+});
+
+const activeRaceClassRow = computed(() => {
+  const raceKey = nonEmptyText(activeRace.value?.key);
+  if (!raceKey) return null;
+  const raceClassName = RACE_CLASS_NAME_MAP[raceKey] || raceKey;
+  return classRows.value.find(row => nonEmptyText(row.名前) === raceClassName) || null;
+});
+
+const statusRowGroups = computed(() => {
+  const row = activeRaceClassRow.value;
+  if (!row) return [];
+  return STATUS_ROW_FIELDS.map((group, index) => ({
+    key: `status-row-${index}`,
+    fields: group.map(field => ({
+      key: field,
+      value: toSafeNumber(row[field])
+    }))
+  }));
+});
+
+const skillRows = computed(() => {
+  const row = activeRaceClassRow.value;
+  if (!row) return [];
+  return SKILL_FIELD_DEFS.map((field) => {
+    const value = resolveSkillFieldValue(row, field);
+    return {
+      key: field.key,
+      label: field.label || field.key,
+      value,
+      desc: resolveSkillDescription(field)
+    };
+  }).filter(item => item.value > 0);
+});
+
+const raceLv5SkillNames = computed(() => {
+  const row = activeRaceClassRow.value;
+  if (!row) return [];
+  const out = [];
+  const seen = new Set();
+  for (const field of ACQUIRED_SKILL_FIELDS_LV5) {
+    const name = nonEmptyText(row[field]);
+    if (isPlaceholderSkillName(name) || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
 });
 
 watch(
@@ -84,34 +223,6 @@ function selectRace(key) {
   activeRaceKey.value = key;
 }
 
-function nonEmptyText(value) {
-  const text = String(value ?? "").trim();
-  return text.length ? text : "";
-}
-
-function toSafeNumber(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-const classRows = computed(() => {
-  if (!Array.isArray(classDb)) return [];
-  return classDb.filter(row => nonEmptyText(row?.名前));
-});
-
-const activeRaceStatusRows = computed(() => {
-  const raceKey = activeRace.value?.key;
-  if (!raceKey) return [];
-  const raceClassName = RACE_CLASS_NAME_MAP[raceKey] || raceKey;
-  const classRow = classRows.value.find(row => nonEmptyText(row.名前) === raceClassName);
-  if (!classRow) return [];
-  return BASE_STATUS_FIELDS.map(key => ({
-    key,
-    value: toSafeNumber(classRow[key])
-  }));
-});
-
 function confirmRace() {
   if (!activeRace.value?.key) return;
   emit("confirm", activeRace.value.key);
@@ -119,48 +230,75 @@ function confirmRace() {
 </script>
 
 <template>
-  <base-modal :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" @close="$emit('close')">
-    <div v-if="filteredRaces.length" class="race-select-layout">
+  <base-modal :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" @close="$emit('close')">
+    <div v-if="filteredRaces.length" class="race-layout">
       <aside class="race-list">
         <button
           v-for="race in filteredRaces"
           :key="race.key"
           type="button"
-          class="race-list-item"
+          class="race-item"
           :class="{ active: activeRace?.key === race.key }"
           @click="selectRace(race.key)"
         >
-          {{ race.name }}
+          <span class="race-item-main">
+            <img v-if="raceListIconSrc(race)" :src="raceListIconSrc(race)" :alt="`${race.name} アイコン`" class="race-item-icon" />
+            <span v-else class="race-item-icon-fallback">{{ String(race.name || "?").slice(0, 1) }}</span>
+            <span class="race-item-name">{{ race.name }}</span>
+          </span>
         </button>
       </aside>
 
       <section v-if="activeRace" class="race-detail">
-        <header class="race-head">
-          <img :src="activeRace.icon" :alt="`${activeRace.name} アイコン`" class="race-icon" />
-          <div>
-            <h3>{{ activeRace.name }}</h3>
-            <div class="small">基礎値: HP {{ activeRace.hp }} / ATK {{ activeRace.atk }}</div>
-          </div>
+        <header class="race-title">
+          <h3>{{ activeRace.name }}</h3>
+          <div class="race-title-sub">基礎値: HP {{ activeRace.hp }} / ATK {{ activeRace.atk }}</div>
+          <p class="race-summary">{{ activeRace.summary }}</p>
+          <p class="race-description">{{ activeRace.detail }}</p>
         </header>
 
-        <p class="race-summary">{{ activeRace.summary }}</p>
-        <p class="race-description">{{ activeRace.detail }}</p>
+        <div class="race-body-split">
+          <section class="race-left-pane">
+            <section class="detail-block">
+              <h4>ステータス</h4>
+              <div class="status-rows">
+                <div v-for="row in statusRowGroups" :key="row.key" class="status-row">
+                  <div v-for="item in row.fields" :key="item.key" class="status-chip">
+                    <span>{{ item.key }}</span>
+                    <strong>{{ item.value ?? "-" }}</strong>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-        <section class="race-status">
-          <h4>ステータス</h4>
-          <div v-if="activeRaceStatusRows.length" class="status-grid">
-            <div v-for="item in activeRaceStatusRows" :key="item.key" class="status-chip">
-              <span>{{ item.key }}</span>
-              <strong>{{ item.value ?? "-" }}</strong>
-            </div>
-          </div>
-          <div v-else class="small">ステータスデータなし</div>
-        </section>
+            <section class="detail-block">
+              <h4>技能</h4>
+              <div v-if="skillRows.length" class="skill-value-grid">
+                <div
+                  v-for="item in skillRows"
+                  :key="item.key"
+                  class="skill-value-chip"
+                  :title="item.desc || `${item.label}: 詳細なし`"
+                >
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                </div>
+              </div>
+              <div v-else class="small note-text">技能データなし</div>
+            </section>
+          </section>
 
-        <div class="race-traits">
-          <span v-for="trait in activeRace.traits || []" :key="`${activeRace.key}:${trait}`" class="race-trait">
-            {{ trait }}
-          </span>
+          <section class="race-right-pane">
+            <section class="detail-block skill-detail-block">
+              <h4>種族スキル (Lv1-5)</h4>
+              <skill-acquired-table
+                :skill-names="raceLv5SkillNames"
+                :status-source="activeRaceClassRow"
+                :show-title="false"
+                empty-text="種族スキルなし"
+              />
+            </section>
+          </section>
         </div>
 
         <div class="race-actions">
@@ -176,130 +314,214 @@ function confirmRace() {
 </template>
 
 <style scoped>
-.race-select-layout {
+.race-layout {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
 }
 
 .race-list {
-  border: 1px solid rgba(210, 178, 119, 0.38);
+  border: 1px solid rgba(210, 178, 119, 0.42);
   border-radius: 10px;
-  background: rgba(24, 18, 12, 0.66);
-  padding: 8px;
+  background: rgba(24, 18, 12, 0.7);
+  padding: 10px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   align-content: start;
+  min-width: 0;
+  max-height: 760px;
+  overflow-y: auto;
 }
 
-.race-list-item {
+.race-item {
   width: 100%;
   text-align: left;
-  border: 1px solid rgba(212, 181, 126, 0.32);
-  background: rgba(46, 32, 20, 0.72);
-  color: #f2e4c3;
-  padding: 9px 10px;
+  border: 1px solid rgba(212, 181, 126, 0.34);
+  background: rgba(46, 32, 20, 0.8);
+  color: #fff0cf;
+  padding: 8px 10px;
   border-radius: 8px;
-  font-size: 0.86rem;
+  font-size: var(--race-picker-item-font-size, 25px);
+  line-height: 1.1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.race-item-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.race-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.race-item-icon,
+.race-item-icon-fallback {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+
+.race-item-icon {
+  border: 1px solid rgba(222, 191, 133, 0.58);
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.race-item-icon-fallback {
+  border: 1px solid rgba(222, 191, 133, 0.58);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffe7b7;
+  background: rgba(0, 0, 0, 0.34);
+  font-size: 18px;
   font-weight: 700;
 }
 
-.race-list-item.active {
-  border-color: rgba(243, 212, 146, 0.8);
-  background: linear-gradient(160deg, rgba(139, 91, 44, 0.86), rgba(89, 57, 30, 0.9));
-  box-shadow: 0 0 0 1px rgba(248, 226, 177, 0.35) inset;
+.race-item.active {
+  border-color: rgba(243, 212, 146, 0.84);
+  background: linear-gradient(160deg, rgba(139, 91, 44, 0.92), rgba(89, 57, 30, 0.95));
+  box-shadow: 0 0 0 1px rgba(248, 226, 177, 0.36) inset;
 }
 
 .race-detail {
-  border: 1px solid rgba(210, 178, 119, 0.38);
+  border: 1px solid rgba(210, 178, 119, 0.42);
   border-radius: 10px;
-  background: linear-gradient(170deg, rgba(27, 19, 13, 0.78), rgba(17, 12, 8, 0.82));
+  background: linear-gradient(170deg, rgba(27, 19, 13, 0.86), rgba(17, 12, 8, 0.9));
   padding: 12px;
   display: grid;
   gap: 10px;
+  min-width: 0;
+  max-height: 760px;
+  overflow: hidden;
 }
 
-.race-head {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.race-head h3 {
+.race-title h3 {
   margin: 0;
-  color: #f4e5c2;
-  letter-spacing: 0.03em;
+  color: #fff4d6;
+  font-size: 30px;
+  line-height: 1.1;
 }
 
-.race-icon {
-  width: 86px;
-  height: 86px;
-  border-radius: 10px;
-  object-fit: cover;
-  border: 1px solid rgba(222, 191, 133, 0.5);
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.race-summary {
-  margin: 0;
-  color: #f1deb4;
+.race-title-sub {
+  margin-top: 4px;
+  color: #ffe6b8;
+  font-size: 16px;
   font-weight: 700;
 }
 
+.race-summary {
+  margin: 6px 0 0;
+  color: #ffe3b0;
+  font-weight: 700;
+  font-size: 16px;
+}
+
 .race-description {
-  margin: 0;
-  color: #decca1;
-  font-size: 0.86rem;
-  line-height: 1.55;
+  margin: 4px 0 0;
+  color: #ffe3b0;
+  font-size: 15px;
+  line-height: 1.45;
 }
 
-.race-status {
-  border: 1px solid rgba(211, 179, 121, 0.26);
+.race-body-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.race-left-pane,
+.race-right-pane {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.detail-block {
+  border: 1px solid rgba(211, 179, 121, 0.3);
   border-radius: 8px;
-  padding: 8px;
-  background: rgba(22, 16, 11, 0.5);
+  padding: 10px;
+  background: rgba(22, 16, 11, 0.55);
 }
 
-.race-status h4 {
-  margin: 0 0 7px;
-  color: #f0ddad;
-  font-size: 0.85rem;
+.detail-block h4 {
+  margin: 0 0 8px;
+  color: #fff1cd;
+  font-size: 17px;
 }
 
-.status-grid {
+.status-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.status-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
 .status-chip {
-  border: 1px solid rgba(218, 186, 128, 0.28);
+  border: 1px solid rgba(218, 186, 128, 0.3);
   border-radius: 6px;
-  padding: 5px 7px;
-  background: rgba(48, 34, 21, 0.55);
+  padding: 6px 8px;
+  background: rgba(48, 34, 21, 0.58);
   display: flex;
   justify-content: space-between;
-  color: #e8d8b0;
-  font-size: 0.78rem;
+  gap: 6px;
+  color: #ffe5b8;
+  font-size: 15px;
 }
 
 .status-chip strong {
-  color: #fff2d3;
+  color: #fff8e6;
 }
 
-.race-traits {
-  display: flex;
-  flex-wrap: wrap;
+.skill-value-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
-.race-trait {
-  border: 1px solid rgba(223, 193, 139, 0.42);
-  border-radius: 999px;
-  background: rgba(63, 43, 25, 0.72);
-  color: #f3e4be;
-  font-size: 0.78rem;
-  padding: 3px 10px;
+.skill-value-chip {
+  border: 1px solid rgba(218, 186, 128, 0.28);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(42, 30, 19, 0.5);
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  color: #ffe0ad;
+  font-size: 15px;
+}
+
+.skill-value-chip strong {
+  color: #fff8e6;
+}
+
+.note-text {
+  color: #e7d4aa;
+  font-size: 15px;
+}
+
+.skill-detail-block :deep(.skill-table-wrap) {
+  max-height: 540px;
 }
 
 .race-actions {
@@ -310,16 +532,17 @@ function confirmRace() {
   border: 1px dashed rgba(214, 181, 122, 0.45);
   border-radius: 10px;
   padding: 12px;
-  color: #d9c79f;
+  color: #f1deba;
+  font-size: 16px;
 }
 
 @media (max-width: 1px) {
-  .race-select-layout {
+  .race-layout {
     grid-template-columns: 1fr;
   }
 
-  .status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .race-body-split {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -7,8 +7,8 @@ export const UNIT_CREATE_MODE_KEYS = {
 const MILITARY_UNIT_MODE_DEFS = {
   [UNIT_CREATE_MODE_KEYS.NORMAL]: {
     mode: UNIT_CREATE_MODE_KEYS.NORMAL,
-    label: "個体ユニット",
-    unitTypeLabel: "モブ",
+    label: "ヒーローユニット",
+    unitTypeLabel: "ヒーロー",
     requiredMilitaryLevel: 1,
     populationCost: 0,
     hpMultiplier: 1,
@@ -19,7 +19,7 @@ const MILITARY_UNIT_MODE_DEFS = {
     mode: UNIT_CREATE_MODE_KEYS.ARMY,
     label: "軍隊ユニット",
     unitTypeLabel: "軍隊",
-    requiredMilitaryLevel: 2,
+    requiredMilitaryLevel: 1,
     populationCost: 4,
     hpMultiplier: 2.5,
     attackCount: 4,
@@ -56,6 +56,12 @@ export function resolveUnitCreateModeOptions(militaryLevel = 1) {
   const level = Math.max(1, Math.floor(toSafeNumber(militaryLevel, 1)));
   return Object.values(MILITARY_UNIT_MODE_DEFS)
     .filter(def => level >= def.requiredMilitaryLevel)
+    .sort((a, b) => a.requiredMilitaryLevel - b.requiredMilitaryLevel);
+}
+
+export function resolveUnitCreateModeCatalog() {
+  return Object.values(MILITARY_UNIT_MODE_DEFS)
+    .map(def => ({ ...def }))
     .sort((a, b) => a.requiredMilitaryLevel - b.requiredMilitaryLevel);
 }
 

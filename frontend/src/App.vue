@@ -33,6 +33,7 @@ const ALLY_ORDER = ["只人", "エルフ", "竜人", "天使"];
 const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"];
 const SAVE_FORMAT_VERSION = 1;
 const GAME_START_MAX_FACTIONS = 8;
+const MIN_UI_FONT_SIZE_PX = 15;
 
 function unitFromRace(race, side, id) {
   const base = RACES[race] || DEFAULT_RACE_STATS;
@@ -240,6 +241,12 @@ const showCharacterStatusModal = ref(false);
 const showCharacterNameModal = ref(false);
 const showGameStartSetupModal = ref(false);
 const skillTreeCategories = ref([...RESEARCH_CATEGORY_ORDER]);
+const researchProgress = ref({
+  targetExpMap: {},
+  completedByCategoryLevel: {},
+  carryByCategory: {}
+});
+const researchSelection = ref({});
 const gameStartPlayerCount = ref(1);
 const gameStartOtherFactionCount = ref(3);
 const gameStartRandomPlacementEnabled = ref(true);
@@ -282,7 +289,7 @@ const characterListLabel = computed(() => {
 const gameFlowLabel = computed(() => {
   if (gameFlowStep.value === "sovereign") return "統治者作成";
   if (gameFlowStep.value === "village") return "初期村を配置";
-  if (gameFlowStep.value === "mob") return "モブを作成";
+  if (gameFlowStep.value === "mob") return "ヒーローを作成";
   if (gameFlowStep.value === "ready") return "完了";
   return "未開始";
 });
@@ -341,6 +348,8 @@ const sim = reactive({
 let globalKeyHandler = null;
 let saveSnapshotWaiters = [];
 let appResizeHandler = null;
+let minUiFontObserver = null;
+let minUiFontRafId = 0;
 
 const currentState = computed(() => {
   if (activeRoomId.value) return roomState.value || localState.value;
@@ -367,7 +376,6 @@ const playersLabel = computed(() => {
 
 const appRootStyle = computed(() => ({
   "--game-root-scale": String(appRootScale.value),
-  "--ui-manual-modal-scale": String(UI_MANUAL_SCALE_CONFIG.modal),
   "--ui-manual-clock-scale": String(UI_MANUAL_SCALE_CONFIG.clock),
   "--ui-manual-own-faction-panel-scale": String(UI_MANUAL_SCALE_CONFIG.ownFactionPanel),
   "--ui-manual-character-detail-scale": String(UI_MANUAL_SCALE_CONFIG.characterDetailPane)
@@ -378,7 +386,7 @@ function updateAppRootScale() {
   if (!gameOnlyMode.value) {
     appRootScale.value = 1;
     if (typeof document !== "undefined") {
-      document.documentElement.style.setProperty("--game-modal-scale", "1");
+      document.documentElement.style.setProperty("--ui-app-root-scale", "1");
     }
     return;
   }
@@ -386,7 +394,38 @@ function updateAppRootScale() {
   const nextScale = Number.isFinite(fitScale) ? fitScale : 1;
   appRootScale.value = Math.max(0.25, Math.min(3, Math.round(nextScale * 1000) / 1000));
   if (typeof document !== "undefined") {
-    document.documentElement.style.setProperty("--game-modal-scale", String(appRootScale.value));
+    document.documentElement.style.setProperty("--ui-app-root-scale", String(appRootScale.value));
+  }
+}
+
+function scheduleMinimumUiFontEnforce() {
+  if (typeof window === "undefined") return;
+  if (minUiFontRafId) {
+    window.cancelAnimationFrame(minUiFontRafId);
+  }
+  minUiFontRafId = window.requestAnimationFrame(() => {
+    minUiFontRafId = 0;
+    enforceMinimumUiFontSize();
+  });
+}
+
+function enforceMinimumUiFontSize() {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  const roots = Array.from(document.querySelectorAll(".panel.modal-card, .panel.modal-card-wide"));
+  const visited = new Set();
+  for (const root of roots) {
+    if (!(root instanceof HTMLElement)) continue;
+    const elements = [root, ...Array.from(root.querySelectorAll("*"))];
+    for (const el of elements) {
+      if (!(el instanceof HTMLElement)) continue;
+      if (visited.has(el)) continue;
+      visited.add(el);
+      if (el.matches("canvas,svg,path,img,video,audio,iframe,script,style")) continue;
+      const size = Number.parseFloat(window.getComputedStyle(el).fontSize);
+      if (!Number.isFinite(size)) continue;
+      if (size >= MIN_UI_FONT_SIZE_PX) continue;
+      el.style.setProperty("font-size", `${MIN_UI_FONT_SIZE_PX}px`, "important");
+    }
   }
 }
 
@@ -413,6 +452,8 @@ function openModal(kind, payload = null) {
       namedCount: 0,
       ruleText: ""
     };
+    researchProgress.value = normalizeResearchProgress(null);
+    researchSelection.value = {};
     setSessionStatus("ゲーム開始設定: プレイヤー数と別勢力数を選択してください。", "warn");
     return;
   }
@@ -740,7 +781,7 @@ function handleCharacterStateChange(payload) {
     const progressText = gameSetupQueueActive.value
       ? `勢力 ${gameStartSetupSlotIndex.value + 1}/${gameStartSetupSlotIds.value.length}`
       : "勢力 1/1";
-    setSessionStatus(`${progressText}: 初期村を配置しました。次にモブを作成してください。`, "warn");
+    setSessionStatus(`${progressText}: 初期村を配置しました。次にヒーローを作成してください。`, "warn");
     characterCommand.value = {
       type: "openUnitCreate",
       nonce: `${Date.now()}-${Math.floor(Math.random() * 99999)}`
@@ -776,6 +817,79 @@ function deepCloneJsonValue(value, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+function normalizeResearchProgress(raw) {
+  const empty = {
+    targetExpMap: {},
+    completedByCategoryLevel: {},
+    carryByCategory: {}
+  };
+  if (!raw || typeof raw !== "object") return empty;
+  const targetExpMapRaw = raw?.targetExpMap && typeof raw.targetExpMap === "object" ? raw.targetExpMap : {};
+  const completedRaw = raw?.completedByCategoryLevel && typeof raw.completedByCategoryLevel === "object"
+    ? raw.completedByCategoryLevel
+    : {};
+  const carryRaw = raw?.carryByCategory && typeof raw.carryByCategory === "object" ? raw.carryByCategory : {};
+  const targetExpMap = Object.entries(targetExpMapRaw).reduce((acc, [targetId, value]) => {
+    const id = String(targetId || "").trim();
+    if (!id) return acc;
+    acc[id] = Math.max(0, Math.floor(Number(value) || 0));
+    return acc;
+  }, {});
+  const completedByCategoryLevel = Object.entries(completedRaw).reduce((acc, [categoryKey, value]) => {
+    const key = String(categoryKey || "").trim();
+    if (!key || !value || typeof value !== "object") return acc;
+    const selectedMap = Object.entries(value).reduce((selectedAcc, [levelKey, itemValue]) => {
+      const level = Math.max(1, Math.floor(Number(levelKey) || 1));
+      const ids = Array.isArray(itemValue)
+        ? itemValue.map(v => String(v || "").trim()).filter(Boolean)
+        : (itemValue && typeof itemValue === "object")
+          ? Object.values(itemValue).map(v => String(v || "").trim()).filter(Boolean)
+          : [String(itemValue || "").trim()].filter(Boolean);
+      if (!ids.length) return selectedAcc;
+      selectedAcc[level] = [...new Set(ids)];
+      return selectedAcc;
+    }, {});
+    acc[key] = selectedMap;
+    return acc;
+  }, {});
+  const carryByCategory = Object.entries(carryRaw).reduce((acc, [categoryKey, value]) => {
+    const key = String(categoryKey || "").trim();
+    if (!key) return acc;
+    acc[key] = Math.max(0, Math.floor(Number(value) || 0));
+    return acc;
+  }, {});
+  return {
+    targetExpMap,
+    completedByCategoryLevel,
+    carryByCategory
+  };
+}
+
+function normalizeResearchSelection(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  return Object.entries(raw).reduce((acc, [categoryKey, value]) => {
+    const key = String(categoryKey || "").trim();
+    if (!key || !value || typeof value !== "object") return acc;
+    const selectedMap = Object.entries(value).reduce((selectedAcc, [levelKey, itemId]) => {
+      const level = Math.max(1, Math.floor(Number(levelKey) || 1));
+      const id = String(itemId || "").trim();
+      if (!id) return selectedAcc;
+      selectedAcc[level] = id;
+      return selectedAcc;
+    }, {});
+    acc[key] = selectedMap;
+    return acc;
+  }, {});
+}
+
+function updateResearchProgress(payload) {
+  researchProgress.value = normalizeResearchProgress(payload);
+}
+
+function updateResearchSelection(payload) {
+  researchSelection.value = normalizeResearchSelection(payload);
 }
 
 function handleSaveSnapshot(payload) {
@@ -874,7 +988,11 @@ function buildSaveDataDraft() {
     map: deepCloneJsonValue(latestMapSaveSnapshot.value, null),
     factions: [buildPrimaryFactionSaveData()],
     systems: {
-      battle: deepCloneJsonValue(currentState.value, null)
+      battle: deepCloneJsonValue(currentState.value, null),
+      research: {
+        progress: deepCloneJsonValue(researchProgress.value, {}),
+        selection: deepCloneJsonValue(researchSelection.value, {})
+      }
     },
     multiplayer: {
       playerSlots,
@@ -933,6 +1051,15 @@ function applyImportedSaveData(saveData) {
     if (restoredBattle && !activeRoomId.value) {
       localState.value = restoredBattle;
     }
+  }
+
+  const restoredResearch = saveData?.systems?.research;
+  if (restoredResearch && typeof restoredResearch === "object") {
+    researchProgress.value = normalizeResearchProgress(restoredResearch.progress);
+    researchSelection.value = normalizeResearchSelection(restoredResearch.selection);
+  } else {
+    researchProgress.value = normalizeResearchProgress(null);
+    researchSelection.value = {};
   }
 
   gameSetupReady.value = true;
@@ -1203,6 +1330,10 @@ function renderGameStateToText() {
       gameSetupReady: gameSetupReady.value,
       gameFlowStep: gameFlowStep.value
     },
+    research: {
+      progress: researchProgress.value,
+      categories: skillTreeCategories.value
+    },
     battle: {
       turn: state.turn,
       activeSide: state.activeSide,
@@ -1285,14 +1416,21 @@ onMounted(() => {
   window.export_game_save_data = () => exportGameSaveDataAsJson();
   window.import_game_save_data = jsonText => importGameSaveDataFromJson(jsonText);
   updateAppRootScale();
-  appResizeHandler = () => updateAppRootScale();
+  appResizeHandler = () => {
+    updateAppRootScale();
+    scheduleMinimumUiFontEnforce();
+  };
   window.addEventListener("resize", appResizeHandler);
+  if (typeof MutationObserver !== "undefined" && typeof document !== "undefined") {
+    minUiFontObserver = new MutationObserver(() => {
+      scheduleMinimumUiFontEnforce();
+    });
+    minUiFontObserver.observe(document.body, { childList: true, subtree: true });
+  }
+  scheduleMinimumUiFontEnforce();
 });
 
 onBeforeUnmount(() => {
-  if (typeof document !== "undefined") {
-    document.documentElement.style.removeProperty("--game-modal-scale");
-  }
   if (appResizeHandler) {
     window.removeEventListener("resize", appResizeHandler);
     appResizeHandler = null;
@@ -1309,11 +1447,23 @@ onBeforeUnmount(() => {
   if (window.request_map_save_snapshot) delete window.request_map_save_snapshot;
   if (window.export_game_save_data) delete window.export_game_save_data;
   if (window.import_game_save_data) delete window.import_game_save_data;
+  if (minUiFontObserver) {
+    minUiFontObserver.disconnect();
+    minUiFontObserver = null;
+  }
+  if (typeof window !== "undefined" && minUiFontRafId) {
+    window.cancelAnimationFrame(minUiFontRafId);
+    minUiFontRafId = 0;
+  }
+  if (typeof document !== "undefined") {
+    document.documentElement.style.setProperty("--ui-app-root-scale", "1");
+  }
   saveSnapshotWaiters = [];
 });
 
 watch(gameOnlyMode, () => {
   updateAppRootScale();
+  scheduleMinimumUiFontEnforce();
 }, { immediate: true });
 </script>
 
@@ -1324,6 +1474,7 @@ watch(gameOnlyMode, () => {
       :selected-class="selectedClass"
       :selected-character-name="selectedCharacterName"
       :selected-village-name="selectedVillageName"
+      :research-progress="researchProgress"
       :game-setup-ready="gameSetupReady"
       :game-setup-progress-text="gameSetupProgressText"
       :character-command="characterCommand"
@@ -1371,7 +1522,11 @@ watch(gameOnlyMode, () => {
     <skill-tree-modal
       :show="showSkillTreeModal"
       :categories="skillTreeCategories"
+      :research-progress="researchProgress"
+      :research-selection="researchSelection"
       @close="closeModal('skill')"
+      @update:research-progress="updateResearchProgress"
+      @update:research-selection="updateResearchSelection"
     />
 
     <div v-if="showGameStartSetupModal" class="game-start-backdrop" @click.self>
@@ -1455,6 +1610,7 @@ watch(gameOnlyMode, () => {
       :units="mapCharacterState.units"
       :squads="mapCharacterState.squads"
       :village="mapCharacterState.village"
+      :research-progress="researchProgress"
       :rule-text="mapCharacterState.ruleText"
       :default-selected-id="mapCharacterState.selectedUnitId"
       :test-mode="testControlsVisible"
@@ -1486,7 +1642,10 @@ watch(gameOnlyMode, () => {
 }
 
 .game-start-modal {
-  width: min(420px, 100%);
+  width: var(--modal-normal-width, 880px);
+  height: var(--modal-normal-height, 620px);
+  max-width: 98%;
+  max-height: 98%;
   border: 1px solid rgba(222, 191, 138, 0.52);
   border-radius: 12px;
   background: linear-gradient(170deg, rgba(50, 35, 19, 0.96), rgba(18, 13, 9, 0.94));
@@ -1495,8 +1654,9 @@ watch(gameOnlyMode, () => {
   color: #f5e9cc;
   display: grid;
   gap: 10px;
-  transform: scale(calc(var(--game-modal-scale, 1) * var(--ui-manual-modal-scale, 1)));
-  transform-origin: center center;
+  overflow: auto;
+  font-size: max(var(--modal-base-font-size, 16px), var(--modal-min-text-size, 15px));
+  line-height: 1.45;
 }
 
 .game-start-modal h3 {

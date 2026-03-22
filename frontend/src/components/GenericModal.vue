@@ -125,20 +125,27 @@ function fieldLabel(field) {
 }
 
 .generic-modal {
-  width: min(420px, 100%);
+  width: var(--modal-normal-width, 880px);
+  height: var(--modal-normal-height, 620px);
+  max-width: 98%;
+  max-height: 98%;
   background: linear-gradient(170deg, rgba(56, 40, 22, 0.96), rgba(20, 14, 9, 0.96));
   border: 1px solid rgba(218, 184, 121, 0.55);
   border-radius: 12px;
   padding: 12px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.44);
-  font-size: 1rem;
-  line-height: 1.35;
-  transform: scale(var(--game-modal-scale, 1));
-  transform-origin: center center;
+  font-size: max(var(--modal-base-font-size, 16px), var(--modal-min-text-size, 15px));
+  line-height: 1.45;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .generic-modal-wide {
-  width: min(560px, 100%);
+  width: var(--modal-wide-width, 1140px);
+  height: var(--modal-wide-height, 650px);
+  max-width: 98%;
+  max-height: 98%;
 }
 
 .generic-modal h3 {
@@ -149,6 +156,9 @@ function fieldLabel(field) {
 .generic-form {
   display: grid;
   gap: 10px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .generic-row {
@@ -186,6 +196,9 @@ function fieldLabel(field) {
 
 .generic-message {
   color: #f4ebd2;
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .generic-notes {

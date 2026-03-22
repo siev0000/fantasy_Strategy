@@ -19,6 +19,20 @@ function roundTo1(value) {
   return Math.round(toSafeNumber(value, 0) * 10) / 10;
 }
 
+const UNIT_LEVEL_CAP = 10;
+const NORMAL_COMBAT_MODE = "normal";
+
+function clampUnitLevel(value) {
+  return Math.max(1, Math.min(UNIT_LEVEL_CAP, Math.floor(toSafeNumber(value, 1))));
+}
+
+function isMilitaryUnitRecord(unit) {
+  const mode = nonEmptyText(unit?.combatProfile?.mode);
+  if (mode && mode !== NORMAL_COMBAT_MODE) return true;
+  const typeText = `${nonEmptyText(unit?.unitType)} ${nonEmptyText(unit?.combatProfile?.unitTypeLabel)}`;
+  return typeText.includes("軍隊");
+}
+
 export function createOwnSquadNavigatorEntries({
   squadSummaries = [],
   unitByIdMap = new Map(),
@@ -33,7 +47,7 @@ export function createOwnSquadNavigatorEntries({
       id: nonEmptyText(unit?.id),
       name: nonEmptyText(unit?.name) || nonEmptyText(fallbackName) || "メンバー",
       race: nonEmptyText(unit?.race) || "-",
-      level: Math.max(1, Math.floor(toSafeNumber(unit?.level, 1))),
+      level: clampUnitLevel(unit?.level),
       className: nonEmptyText(unit?.className) || "-",
       hpCurrent,
       hpMax
@@ -122,7 +136,8 @@ export function createOwnCharacterNavigatorEntries({
   isNamedUnit = () => false,
   toUnitRoleLabel = () => "",
   moveUnitIconSrc = () => "",
-  moveUnitIconGlyph = () => "兵"
+  moveUnitIconGlyph = () => "兵",
+  soldierIconSrc = () => ""
 }) {
   const rolePriority = unit => {
     if (isSovereignUnit(unit)) return 0;
@@ -139,13 +154,14 @@ export function createOwnCharacterNavigatorEntries({
       const subIconSrc = subIconName
         ? moveUnitIconSrc({ ...unit, subIconName, iconName: subIconName, race: "" })
         : "";
+      const isMilitary = isMilitaryUnitRecord(unit);
       return {
         id: nonEmptyText(unit?.id),
         name: nonEmptyText(unit?.name) || "ユニット",
         roleLabel: toUnitRoleLabel(unit),
         race: nonEmptyText(unit?.race) || "-",
         className: nonEmptyText(unit?.className) || "-",
-        level: Math.max(1, Math.floor(toSafeNumber(unit?.level, 1))),
+        level: clampUnitLevel(unit?.level),
         squadName: nonEmptyText(unit?.squadName),
         moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit?.moveRemaining, 0))),
         moveRange: Math.max(0, Math.floor(toSafeNumber(unit?.moveRange, 0))),
@@ -168,7 +184,10 @@ export function createOwnCharacterNavigatorEntries({
         y: positioned ? Math.floor(rawY) : null,
         iconSrc: raceIconSrc,
         iconGlyph: moveUnitIconGlyph(unit),
-        subIconSrc
+        subIconSrc,
+        isMilitary,
+        militaryBadgeSrc: isMilitary ? nonEmptyText(soldierIconSrc(unit)) : "",
+        militaryBadgeGlyph: "兵"
       };
     })
     .filter(entry => entry.id)

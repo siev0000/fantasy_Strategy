@@ -24,6 +24,112 @@ function hasCoordDelimiter(key) {
   return String(key ?? "").includes(",");
 }
 
+function resolveResidentialLevelConfig(options = {}) {
+  const source = options?.residentialLevelConfig && typeof options.residentialLevelConfig === "object"
+    ? options.residentialLevelConfig
+    : null;
+  return source || {};
+}
+
+function resolveResidentialLevelDefaultForMode(modeKey, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
+  const settlementModeKey = nonEmptyText(options?.settlementModeKey || "settlement") || "settlement";
+  const resourceDefault = nonEmptyText(options?.residentialDefaultLevelForResource || "land") || "land";
+  const settlementDefault = nonEmptyText(options?.residentialDefaultLevelForSettlement || "village") || "village";
+  return modeKey === settlementModeKey ? settlementDefault : resourceDefault;
+}
+
+function normalizeTerritoryResidentialLevelKey(levelKeyRaw, modeKey, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
+  const config = resolveResidentialLevelConfig(options);
+  const requested = nonEmptyText(levelKeyRaw);
+  if (requested && Object.prototype.hasOwnProperty.call(config, requested)) {
+    return requested;
+  }
+  return resolveResidentialLevelDefaultForMode(modeKey, options);
+}
+
+function normalizeTerritoryResidentialLevelMap(raw, village, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
+  const mapKey = nonEmptyText(options?.residentialLevelMapKey || "territoryResidentialLevelMap") || "territoryResidentialLevelMap";
+  const input = raw && typeof raw === "object" ? raw : (village?.[mapKey] && typeof village[mapKey] === "object" ? village[mapKey] : {});
+  const out = {};
+  for (const [keyRaw, levelRaw] of Object.entries(input || {})) {
+    const key = nonEmptyText(keyRaw);
+    if (!hasCoordDelimiter(key)) continue;
+    const mode = resolveTerritoryTileModeAt(village, key, options);
+    out[key] = normalizeTerritoryResidentialLevelKey(levelRaw, mode, options);
+  }
+  return out;
+}
+
+function resolveTerritoryResidentialLevelAt(village, tileKey, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
+  const mapKey = nonEmptyText(options?.residentialLevelMapKey || "territoryResidentialLevelMap") || "territoryResidentialLevelMap";
+  const key = nonEmptyText(tileKey);
+  if (!hasCoordDelimiter(key)) return "";
+  const mode = resolveTerritoryTileModeAt(village, key, options);
+  const map = normalizeTerritoryResidentialLevelMap(village?.[mapKey], village, options);
+  return normalizeTerritoryResidentialLevelKey(map?.[key], mode, options);
+}
+
+function normalizeTerritoryResidentialCenterMap(raw, village, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
+  const mapKey = nonEmptyText(options?.residentialCenterMapKey || "territoryResidentialCenterMap") || "territoryResidentialCenterMap";
+  const input = raw && typeof raw === "object" ? raw : (village?.[mapKey] && typeof village[mapKey] === "object" ? village[mapKey] : {});
+  const out = {};
+  for (const [keyRaw, centerRaw] of Object.entries(input || {})) {
+    const key = nonEmptyText(keyRaw);
+    const centerKey = nonEmptyText(centerRaw);
+    if (!hasCoordDelimiter(key) || !hasCoordDelimiter(centerKey)) continue;
+    out[key] = centerKey;
+  }
+  return out;
+}
+
+function resolveTerritoryResidentialCenterKey(village, tileKey, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
+  const key = nonEmptyText(tileKey);
+  if (!hasCoordDelimiter(key)) return "";
+  const centerMap = normalizeTerritoryResidentialCenterMap(
+    village?.[nonEmptyText(options?.residentialCenterMapKey || "territoryResidentialCenterMap") || "territoryResidentialCenterMap"],
+    village,
+    options
+  );
+  const centerKey = nonEmptyText(centerMap?.[key]);
+  if (hasCoordDelimiter(centerKey)) return centerKey;
+  return "";
+}
+
+function resolveTerritoryResidentialCapacityAt(village, tileKey, options = {}) {
+  const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
+  const toSafeNumber = typeof options?.toSafeNumber === "function" ? options.toSafeNumber : defaultToSafeNumber;
+  const config = resolveResidentialLevelConfig(options);
+  const clusterCapacityMode = options?.residentialClusterCapacityMode !== false;
+  const levelKey = resolveTerritoryResidentialLevelAt(village, tileKey, options);
+  const levelDef = config?.[levelKey];
+  if (!levelDef || typeof levelDef !== "object") return Number.NaN;
+  let capacityPerTile = Math.max(0, toSafeNumber(levelDef?.capacityPerTile, 0));
+  if (clusterCapacityMode) {
+    const centerKey = resolveTerritoryResidentialCenterKey(village, tileKey, options);
+    const key = nonEmptyText(tileKey);
+    if (centerKey && centerKey !== key) {
+      const centerLevelKey = resolveTerritoryResidentialLevelAt(village, centerKey, options);
+      const centerDef = config?.[centerLevelKey];
+      const centerPerTile = Math.max(0, toSafeNumber(centerDef?.capacityPerTile, Number.NaN));
+      if (Number.isFinite(centerPerTile)) {
+        capacityPerTile = centerPerTile;
+      }
+      return capacityPerTile;
+    }
+    if (centerKey && centerKey === key) {
+      return capacityPerTile;
+    }
+  }
+  const footprintTiles = Math.max(1, Math.floor(toSafeNumber(levelDef?.footprintTiles, 1)));
+  return capacityPerTile * footprintTiles;
+}
+
 export function resolveTerritoryTileModeKey(mode, options = {}) {
   const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
   const resourceModeKey = nonEmptyText(options?.resourceModeKey || "resource") || "resource";
@@ -163,6 +269,8 @@ export function resolveTerritoryTileIncomeMultiplier(village, tileKey, options =
 export function resolveVillagePopulationCapacityByTerritory(village, ownedSet, options = {}) {
   const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
   const toSafeNumber = typeof options?.toSafeNumber === "function" ? options.toSafeNumber : defaultToSafeNumber;
+  const residentialConfig = resolveResidentialLevelConfig(options);
+  const hasResidentialRules = Object.keys(residentialConfig).length > 0;
   const capacityFallback = Math.max(1, Math.floor(toSafeNumber(options?.capacityFallback, 30)));
   const base = Math.max(
     1,
@@ -174,6 +282,16 @@ export function resolveVillagePopulationCapacityByTerritory(village, ownedSet, o
     )
   );
   if (!(ownedSet instanceof Set) || !ownedSet.size) return base;
+  if (hasResidentialRules) {
+    let total = 0;
+    for (const keyRaw of ownedSet) {
+      const key = nonEmptyText(keyRaw);
+      if (!hasCoordDelimiter(key)) continue;
+      const add = resolveTerritoryResidentialCapacityAt(village, key, options);
+      total += Number.isFinite(add) ? Math.max(0, add) : 0;
+    }
+    return Math.max(1, Math.floor(total));
+  }
   let bonus = 0;
   for (const keyRaw of ownedSet) {
     const key = nonEmptyText(keyRaw);
@@ -289,14 +407,20 @@ export function advanceVillageTerritoryTileConversions(village, options = {}) {
 export function formatTerritoryTileDevelopmentText(village, x, y, options = {}) {
   const coordKey = typeof options?.coordKey === "function" ? options.coordKey : defaultCoordKey;
   const toSafeNumber = typeof options?.toSafeNumber === "function" ? options.toSafeNumber : defaultToSafeNumber;
+  const config = resolveResidentialLevelConfig(options);
   if (!village || !Number.isFinite(x) || !Number.isFinite(y)) return "-";
   const key = coordKey(x, y);
   const mode = resolveTerritoryTileModeAt(village, key, options);
   const modeDef = resolveTerritoryTileModeDef(mode, options);
   const conversion = normalizeTerritoryTileConversionMap(village.territoryTileConversionMap, options)?.[key];
+  const levelKey = resolveTerritoryResidentialLevelAt(village, key, options);
+  const levelDef = config?.[levelKey];
+  const residentialText = levelDef
+    ? ` / ${levelDef.label}(${Math.floor(toSafeNumber(levelDef.capacityPerTile, 0))}x${Math.floor(toSafeNumber(levelDef.footprintTiles, 1))})`
+    : "";
   if (!conversion) {
-    return `${modeDef.label} (人口+${Math.floor(toSafeNumber(modeDef.populationCapacityBonus, 0))} / 資源x${toSafeNumber(modeDef.incomeMultiplier, 1)})`;
+    return `${modeDef.label} (人口+${Math.floor(toSafeNumber(modeDef.populationCapacityBonus, 0))} / 資源x${toSafeNumber(modeDef.incomeMultiplier, 1)})${residentialText}`;
   }
   const targetDef = resolveTerritoryTileModeDef(conversion.targetMode, options);
-  return `${modeDef.label} -> ${targetDef.label} (変換中: ${conversion.remainingTurns}T)`;
+  return `${modeDef.label} -> ${targetDef.label} (変換中: ${conversion.remainingTurns}T)${residentialText}`;
 }

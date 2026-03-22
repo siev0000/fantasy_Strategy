@@ -175,6 +175,20 @@ function rowBackgroundStyle(entry) {
               <img v-if="entry.iconSrc" :src="entry.iconSrc" :alt="`${entry.name} アイコン`" class="own-faction-icon" />
               <span v-else class="own-faction-icon-fallback">{{ entry.iconGlyph }}</span>
               <strong>{{ entry.name }}</strong>
+              <img
+                v-if="entry.isMilitary && entry.militaryBadgeSrc"
+                :src="entry.militaryBadgeSrc"
+                alt="兵士"
+                class="own-faction-military-badge"
+                title="軍隊ユニット"
+              />
+              <span
+                v-else-if="entry.isMilitary"
+                class="own-faction-military-badge own-faction-military-badge-fallback"
+                title="軍隊ユニット"
+              >
+                兵
+              </span>
             </span>
             <span class="own-faction-level-tag">Lv{{ entry.level }}</span>
           </div>
@@ -536,6 +550,26 @@ function rowBackgroundStyle(entry) {
   color: #f5e9c8;
   font-size: 10px;
   font-weight: 700;
+  line-height: 1;
+}
+
+.own-faction-military-badge {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(223, 188, 129, 0.86);
+  background: rgba(255, 250, 235, 0.92);
+  flex: 0 0 auto;
+}
+
+.own-faction-military-badge-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #4a2d10;
+  font-size: 0.56rem;
+  font-weight: 800;
   line-height: 1;
 }
 

@@ -12,8 +12,13 @@
   --scrollbar-thumb: linear-gradient(180deg, #6ee7ef, #2e9db4);
   --scrollbar-thumb-hover: linear-gradient(180deg, #9af6ff, #3bc0da);
   --scrollbar-border: rgba(19, 74, 96, 0.88);
-  --game-modal-scale: 1;
-  --modal-base-font-size: 16px;
+  --ui-app-root-scale: 1;
+  --modal-min-text-size: 20px;
+  --modal-base-font-size: 20px;
+  --modal-normal-width: 880px;
+  --modal-normal-height: 620px;
+  --modal-wide-width: 1140px;
+  --modal-wide-height: 700px;
 }
 * { box-sizing: border-box; }
 
@@ -101,13 +106,8 @@ body {
   border: none;
   border-radius: 0;
 }
-.app.game-only .modal-card,
-.app.game-only .modal-card-wide,
-.app.game-only .generic-modal,
-.app.game-only .settings-modal,
-.app.game-only .game-start-modal {
-  transform: scale(var(--ui-manual-modal-scale, 1)) !important;
-}
+/* Rule: modal does not apply additional scale.
+   Only App.vue root scale is used. */
 header {
   padding: 16px 20px;
   background: linear-gradient(120deg, #efe0c4, #dfc49a);
@@ -315,28 +315,45 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   backdrop-filter: blur(1px);
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: 0;
   z-index: 1000;
 }
 .modal-card {
-  width: min(780px, 100%);
-  max-height: calc(100% - 32px);
-  overflow: auto;
-  font-size: var(--modal-base-font-size);
-  line-height: 1.42;
-  transform: scale(calc(var(--game-modal-scale, 1) * var(--ui-manual-modal-scale, 1)));
-  transform-origin: center center;
+  width: var(--modal-normal-width);
+  height: var(--modal-normal-height);
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: max(var(--modal-base-font-size), var(--modal-min-text-size));
+  line-height: 1.45;
 }
 .modal-card-wide {
-  width: min(980px, calc(100% - 24px));
-  max-height: calc(100% - 24px);
-  font-size: var(--modal-base-font-size);
-  line-height: 1.42;
-  transform: scale(calc(var(--game-modal-scale, 1) * var(--ui-manual-modal-scale, 1)));
-  transform-origin: center center;
+  width: var(--modal-wide-width);
+  height: var(--modal-wide-height);
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: max(var(--modal-base-font-size), var(--modal-min-text-size));
+  line-height: 1.45;
 }
 .panel.modal-card {
   padding: 14px;
+}
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.modal-card .small,
+.modal-card-wide .small,
+.generic-modal .small,
+.settings-modal .small,
+.game-start-modal .small {
+  font-size: max(15px, 0.92rem);
 }
 .modal-head {
   display: flex;

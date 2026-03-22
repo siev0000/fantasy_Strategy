@@ -214,4 +214,17 @@
   - `bgmVolume`
   - `seVolume`
 
+## UIスケーリング共通ルール（固定）
+- スケーリングの基準は `App.vue` の全体スケーリングのみを使う。
+- 基準サイズは `frontend/src/lib/phaser-map-panel-config.js` の `GAME_VIEW_WIDTH / GAME_VIEW_HEIGHT`（現在 `1280x720`）。
+- モーダル側で `transform: scale(...)` を追加しない（個別スケーリング禁止）。
+- 主要レイアウトは比率指定を使わない。
+  - `fr`, `minmax(...)`, `vw/vh` ベースの可変比率で組まない。
+  - 固定 px 幅/高さを基本にし、必要時はコンテナをスクロールさせる。
+- 画面差分は App の root scale で吸収し、各コンポーネントで再計算しない。
+- 新規 UI 作成時のチェック:
+  - `App.vue` 以外で追加スケーリングしていないか
+  - モーダル内で比率レイアウトに戻していないか
+  - 固定サイズ + overflow で収まる構成になっているか
+
 

@@ -78,9 +78,14 @@ export function toUnitRoleLabel(unit, options = {}) {
   if (!unit) return "-";
   if (isSovereignUnit(unit)) return "統治者";
   if (isNamedUnit(unit, options)) return "ネームド";
+  const combatMode = nonEmptyText(unit?.combatProfile?.mode);
+  const combatTypeLabel = nonEmptyText(unit?.combatProfile?.unitTypeLabel);
+  if (combatTypeLabel && combatTypeLabel.includes("軍隊")) return combatTypeLabel;
   const type = nonEmptyText(unit?.unitType);
-  if (type && type !== "モブ") return type;
-  return "モブ";
+  if (type && type.includes("軍隊")) return type;
+  if (combatMode && combatMode !== "normal") return "軍隊";
+  if (type && type !== "ヒーロー") return type;
+  return "ヒーロー";
 }
 
 export function resolveDefaultSquadName(units = [], options = {}) {

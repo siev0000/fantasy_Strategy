@@ -1,12 +1,15 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import equipmentDb from "../../../data/source/export/json/装備.json";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
+import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 
 const props = defineProps({
   unit: { type: Object, default: null },
+  village: { type: Object, default: null },
+  researchProgress: { type: Object, default: null },
   compact: { type: Boolean, default: false },
+  showCombatProfile: { type: Boolean, default: true },
   hideIconEditor: { type: Boolean, default: false }
 });
 
@@ -15,7 +18,11 @@ const emit = defineEmits([
   "update-unit-equipment"
 ]);
 
-const STATUS_FIELDS = ["HP", "攻撃", "魔力", "命中", "SIZ", "防御", "精神", "速度"];
+const STATUS_FIELD_ROWS = [
+  ["HP", "SIZ"],
+  ["攻撃", "魔力", "命中"],
+  ["防御", "精神", "速度"]
+];
 const SKILL_FIELD_DEFS = [
   { key: "指揮", label: "指揮" },
   { key: "威圧", label: "威圧" },
@@ -54,13 +61,6 @@ const RESISTANCE_FIELDS = [
   "Cr率耐性",
   "Cr威力耐性"
 ];
-const EQUIPMENT_RARITY_OPTIONS = [
-  { key: "common", label: "コモン" },
-  { key: "uncommon", label: "アンコモン" },
-  { key: "rare", label: "レア" },
-  { key: "epic", label: "エピック" },
-  { key: "legendary", label: "レジェンダリー" }
-];
 const EQUIPMENT_RARITY_ALIAS_MAP = {
   コモン: "common",
   アンコモン: "uncommon",
@@ -69,21 +69,14 @@ const EQUIPMENT_RARITY_ALIAS_MAP = {
   レジェンダリー: "legendary"
 };
 const EQUIPMENT_SLOT_KEYS = ["武器1", "武器2", "頭", "体", "足", "装飾1", "装飾2"];
-const WEAPON_EQUIPMENT_NAMES = ["短剣", "剣", "長剣", "槍", "斧", "戦槌", "棍棒", "弓", "銃", "杖"];
-const SHIELD_EQUIPMENT_NAMES = ["盾", "大盾"];
 
 const iconOptions = computed(() => listIconOptions());
-const equipmentRows = computed(() => {
-  if (!Array.isArray(equipmentDb)) return [];
-  return equipmentDb
-    .filter(row => nonEmptyText(row?.装備名))
-    .sort((a, b) => nonEmptyText(a?.装備名).localeCompare(nonEmptyText(b?.装備名), "ja"));
-});
-
-const equipmentEditBySlot = ref({});
 const iconDraft = ref(DEFAULT_ICON_NAME);
 const iconPickerOpen = ref(false);
 const leftPanelView = ref("status");
+const selectedEquipSlotKey = ref("武器1");
+const showEquipmentPickerModal = ref(false);
+const equipmentActionStatus = ref("");
 
 function nonEmptyText(value) {
   const text = String(value ?? "").trim();
@@ -94,6 +87,32 @@ function toSafeNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === "") return fallback;
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+function normalizeResearchCompletedMap(progress, categoryKey) {
+  const key = nonEmptyText(categoryKey);
+  if (!key) return {};
+  const source = progress?.completedByCategoryLevel?.[key];
+  if (!source || typeof source !== "object") return {};
+  return source;
+}
+
+function resolveResearchCurrentLevel(progress, categoryKey) {
+  const completedMap = normalizeResearchCompletedMap(progress, categoryKey);
+  let done = 0;
+  const keys = Object.keys(completedMap);
+  const maxLv = keys.reduce((acc, raw) => Math.max(acc, Math.max(1, Math.floor(Number(raw) || 1))), 1);
+  for (let lv = 1; lv <= maxLv; lv += 1) {
+    const value = completedMap[lv];
+    const ids = Array.isArray(value)
+      ? value.map(v => nonEmptyText(v)).filter(Boolean)
+      : (value && typeof value === "object")
+        ? Object.values(value).map(v => nonEmptyText(v)).filter(Boolean)
+        : [nonEmptyText(value)].filter(Boolean);
+    if (!ids.length) break;
+    done = lv;
+  }
+  return Math.max(1, done + 1);
 }
 
 function statusValue(unit, key) {
@@ -136,13 +155,62 @@ function normalizeEquipmentRarity(value) {
   const text = nonEmptyText(value);
   if (!text) return "common";
   const lower = text.toLowerCase();
-  if (EQUIPMENT_RARITY_OPTIONS.some(row => row.key === lower)) return lower;
+  if (["common", "uncommon", "rare", "epic", "legendary"].includes(lower)) return lower;
   return EQUIPMENT_RARITY_ALIAS_MAP[text] || "common";
+}
+
+function equipmentRarityShort(value) {
+  const key = normalizeEquipmentRarity(value);
+  if (key === "legendary") return "L";
+  if (key === "epic") return "E";
+  if (key === "rare") return "R";
+  if (key === "uncommon") return "U";
+  return "C";
 }
 
 function equipmentRarityLabel(value) {
   const key = normalizeEquipmentRarity(value);
-  return EQUIPMENT_RARITY_OPTIONS.find(row => row.key === key)?.label || "コモン";
+  if (key === "legendary") return "レジェンダリー";
+  if (key === "epic") return "エピック";
+  if (key === "rare") return "レア";
+  if (key === "uncommon") return "アンコモン";
+  return "コモン";
+}
+
+function equipmentRarityClass(value) {
+  return `rarity-${normalizeEquipmentRarity(value)}`;
+}
+
+function equipmentItemIconSrc(item) {
+  const directName = nonEmptyText(item?.iconName || item?.name);
+  if (directName && hasIconName(directName)) return getIconSrcByName(directName, directName);
+  return "";
+}
+
+function equipmentItemGlyph(item) {
+  const name = nonEmptyText(item?.name);
+  if (!name) return "?";
+  return Array.from(name)[0] || "?";
+}
+
+function equipmentApText(item) {
+  const attackAp = Number(item?.attackAp);
+  const magicAp = Number(item?.magicAp);
+  const hasAttack = Number.isFinite(attackAp);
+  const hasMagic = Number.isFinite(magicAp);
+  if (hasAttack && hasMagic && Math.round(attackAp) !== Math.round(magicAp)) {
+    return `${Math.round(attackAp)}/${Math.round(magicAp)}`;
+  }
+  if (hasAttack) return String(Math.round(attackAp));
+  if (hasMagic) return String(Math.round(magicAp));
+  return "0";
+}
+
+function equipmentResistancePairText(item) {
+  const physical = Math.round(toSafeNumber(item?.resistanceBonus?.["物理耐性"], 0));
+  const magic = Math.round(toSafeNumber(item?.resistanceBonus?.["魔法耐性"], 0));
+  if (physical === 0 && magic === 0) return "";
+  return `${physical}/${magic}`;
 }
 
 function normalizeEquipmentSlotKey(value) {
@@ -151,27 +219,6 @@ function normalizeEquipmentSlotKey(value) {
   if (EQUIPMENT_SLOT_KEYS.includes(text)) return text;
   if (text === "武器") return "武器1";
   return "";
-}
-
-function resolveEquipmentSlotCandidates(row) {
-  const explicitSlot = normalizeEquipmentSlotKey(row?.装備部位);
-  if (explicitSlot === "武器1") return ["武器1", "武器2"];
-  if (explicitSlot) return [explicitSlot];
-  const name = nonEmptyText(row?.装備名);
-  if (SHIELD_EQUIPMENT_NAMES.includes(name)) return ["武器2"];
-  if (WEAPON_EQUIPMENT_NAMES.includes(name)) return ["武器1", "武器2"];
-  if (/(兜|ヘルム|帽|頭)/.test(name)) return ["頭"];
-  if (/(鎧|ローブ|服|法衣|胸当|体)/.test(name)) return ["体"];
-  if (/(靴|ブーツ|足)/.test(name)) return ["足"];
-  if (/(指輪|リング|首飾|首輪|護符|ペンダント|装飾)/.test(name)) return ["装飾1", "装飾2"];
-  return ["武器1"];
-}
-
-function equipmentRowMatchesSlot(row, slotKey) {
-  const key = nonEmptyText(slotKey);
-  if (!key) return false;
-  const slots = resolveEquipmentSlotCandidates(row);
-  return slots.includes(key);
 }
 
 function resolveUnitEquipmentSlots(unit) {
@@ -205,10 +252,6 @@ function unitEquipmentAtSlot(unit, slotKey) {
   return normalizeEquipmentList(unit).find(item => item.slot === slotKey) || null;
 }
 
-function equipmentOptionsForSlot(slotKey) {
-  return equipmentRows.value.filter(row => equipmentRowMatchesSlot(row, slotKey));
-}
-
 function unitIconName(unit) {
   const name = nonEmptyText(unit?.subIconName);
   if (name && hasIconName(name)) return name;
@@ -237,61 +280,79 @@ function initDrafts(unit) {
   if (!unit) return;
   iconDraft.value = resolveIconName(unit?.subIconName, DEFAULT_ICON_NAME);
   iconPickerOpen.value = false;
-  const slots = resolveUnitEquipmentSlots(unit);
-  const next = {};
-  for (const slotKey of EQUIPMENT_SLOT_KEYS) {
-    const options = equipmentOptionsForSlot(slotKey);
-    const defaultName = nonEmptyText(options[0]?.装備名);
-    const item = unitEquipmentAtSlot(unit, slotKey);
-    next[slotKey] = {
-      equipmentName: slots[slotKey] === false ? "" : (nonEmptyText(item?.name) || defaultName),
-      rarity: normalizeEquipmentRarity(item?.quality || item?.qualityLabel)
-    };
+}
+
+function selectEquipmentSlot(slotKey) {
+  const key = normalizeEquipmentSlotKey(slotKey);
+  if (!key) return;
+  selectedEquipSlotKey.value = key;
+}
+
+function openEquipmentPickerModal() {
+  const slotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
+  if (!slotKey) {
+    equipmentActionStatus.value = "装備選択失敗: スロットを選択してください。";
+    return;
   }
-  equipmentEditBySlot.value = next;
-}
-
-function slotDraft(slotKey) {
-  const draft = equipmentEditBySlot.value?.[slotKey];
-  if (draft && nonEmptyText(draft.equipmentName)) {
-    return {
-      equipmentName: draft.equipmentName,
-      rarity: normalizeEquipmentRarity(draft.rarity)
-    };
+  const slot = equipmentSlots.value.find(row => row.key === slotKey);
+  if (!slot?.enabled) {
+    equipmentActionStatus.value = "装備選択失敗: このスロットは装備不可です。";
+    return;
   }
-  const unit = props.unit;
-  const currentItem = unitEquipmentAtSlot(unit, slotKey);
-  const options = equipmentOptionsForSlot(slotKey);
-  return {
-    equipmentName: nonEmptyText(currentItem?.name) || nonEmptyText(options[0]?.装備名),
-    rarity: normalizeEquipmentRarity(currentItem?.quality || currentItem?.qualityLabel)
-  };
+  showEquipmentPickerModal.value = true;
 }
 
-function updateSlotDraft(slotKey, patch) {
-  const current = slotDraft(slotKey);
-  equipmentEditBySlot.value = {
-    ...equipmentEditBySlot.value,
-    [slotKey]: {
-      ...current,
-      ...patch
-    }
-  };
+function closeEquipmentPickerModal() {
+  showEquipmentPickerModal.value = false;
 }
 
-function applyEquipmentChange(slot) {
+function applyPickedEquipmentItem(payload = {}) {
   const unitId = nonEmptyText(props.unit?.id);
-  if (!unitId || !slot?.enabled) return;
-  const draft = slotDraft(slot.key);
-  const equipmentName = nonEmptyText(draft.equipmentName);
-  if (!equipmentName) return;
+  const slotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
+  const equipmentName = nonEmptyText(payload?.equipmentName);
+  const rarity = normalizeEquipmentRarity(payload?.rarity);
+  if (!unitId || !slotKey || !equipmentName) {
+    equipmentActionStatus.value = "在庫装備失敗: 対象が未選択です。";
+    return;
+  }
+  const slot = equipmentSlots.value.find(row => row.key === slotKey);
+  if (!slot?.enabled) {
+    equipmentActionStatus.value = "在庫装備失敗: このスロットは装備不可です。";
+    return;
+  }
   emit("update-unit-equipment", {
     unitId,
     slotIndex: slot.index,
     slotKey: slot.key,
     equipmentName,
-    rarity: normalizeEquipmentRarity(draft.rarity)
+    rarity
   });
+  equipmentActionStatus.value = `在庫から装備: ${slot.label} -> ${equipmentName}[${equipmentRarityShort(rarity)}]`;
+  showEquipmentPickerModal.value = false;
+}
+
+function applyCraftFromPicker(payload = {}) {
+  const unitId = nonEmptyText(props.unit?.id);
+  const slotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
+  const equipmentName = nonEmptyText(payload?.equipmentName);
+  const rarity = normalizeEquipmentRarity(payload?.rarity);
+  if (!unitId || !slotKey || !equipmentName) {
+    equipmentActionStatus.value = "装備生成失敗: 対象が未選択です。";
+    return;
+  }
+  const slot = equipmentSlots.value.find(row => row.key === slotKey);
+  if (!slot?.enabled) {
+    equipmentActionStatus.value = "装備生成失敗: このスロットは装備不可です。";
+    return;
+  }
+  emit("update-unit-equipment", {
+    unitId,
+    slotIndex: slot.index,
+    slotKey: slot.key,
+    equipmentName,
+    rarity
+  });
+  equipmentActionStatus.value = `装備生成: ${slot.label} -> ${equipmentName}[${equipmentRarityShort(rarity)}]`;
 }
 
 function applyIconChange(iconNameOverride = "") {
@@ -376,17 +437,36 @@ const equipmentSlots = computed(() => {
     key: slotKey,
     label: slotKey,
     enabled: slots[slotKey] !== false,
-    item: unitEquipmentAtSlot(unit, slotKey),
-    options: equipmentOptionsForSlot(slotKey)
+    item: unitEquipmentAtSlot(unit, slotKey)
   }));
 });
 
+const smithLevelForModal = computed(() => {
+  const cityLevel = Math.max(1, Math.floor(toSafeNumber(props?.village?.cityLevels?.["鍛冶場"], 1)));
+  const researchLevel = resolveResearchCurrentLevel(props?.researchProgress, "鍛冶Lv");
+  return Math.max(cityLevel, researchLevel, 1);
+});
+
 watch(
-  [() => props.unit, equipmentRows],
-  ([unit]) => {
+  () => props.unit,
+  (unit) => {
     if (!unit) return;
     initDrafts(unit);
     leftPanelView.value = "status";
+    equipmentActionStatus.value = "";
+    showEquipmentPickerModal.value = false;
+  },
+  { immediate: true }
+);
+
+watch(
+  equipmentSlots,
+  (slots) => {
+    const enabledSlot = slots.find(row => row.enabled) || slots[0] || null;
+    const currentSlotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
+    if (!currentSlotKey || !slots.some(row => row.key === currentSlotKey)) {
+      selectedEquipSlotKey.value = enabledSlot?.key || "";
+    }
   },
   { immediate: true }
 );
@@ -450,100 +530,112 @@ watch(
         </div>
 
         <template v-if="leftPanelView === 'status'">
-          <section class="char-block">
-            <h4>ステータス</h4>
-            <div class="char-status-grid" :class="{ mini: compact }">
-              <div v-for="key in STATUS_FIELDS" :key="`status-${unit.id}-${key}`" class="char-status-chip">
-                <span>{{ key }}</span>
-                <strong>{{ statusValue(unit, key) }}</strong>
+          <div class="detail-status-scroll">
+            <section class="char-block">
+              <h4>ステータス</h4>
+              <div class="char-status-rows" :class="{ mini: compact }">
+                <div
+                  v-for="(rowKeys, rowIndex) in STATUS_FIELD_ROWS"
+                  :key="`status-row-${unit.id}-${rowIndex}`"
+                  class="char-status-row"
+                  :class="`cols-${rowKeys.length}`"
+                >
+                  <div v-for="key in rowKeys" :key="`status-${unit.id}-${key}`" class="char-status-chip">
+                    <span>{{ key }}</span>
+                    <strong>{{ statusValue(unit, key) }}</strong>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div v-if="combatProfileRows.length" class="char-combat-grid">
-              <div v-for="row in combatProfileRows" :key="`combat-${unit.id}-${row.key}`" class="char-skill-chip">
-                <span>{{ row.key }}</span>
-                <strong>{{ row.value }}</strong>
+              <div v-if="showCombatProfile && combatProfileRows.length" class="char-combat-grid">
+                <div v-for="row in combatProfileRows" :key="`combat-${unit.id}-${row.key}`" class="char-skill-chip">
+                  <span>{{ row.key }}</span>
+                  <strong>{{ row.value }}</strong>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section class="char-block">
-            <h4>技能</h4>
-            <div v-if="skillRows.length" class="char-skill-grid">
-              <div v-for="row in skillRows" :key="`skill-${unit.id}-${row.key}`" class="char-skill-chip">
-                <span>{{ row.label }}</span>
-                <strong>{{ row.value }}</strong>
+            <section class="char-block">
+              <h4>技能</h4>
+              <div v-if="skillRows.length" class="char-skill-grid">
+                <div v-for="row in skillRows" :key="`skill-${unit.id}-${row.key}`" class="char-skill-chip">
+                  <span>{{ row.label }}</span>
+                  <strong>{{ row.value }}</strong>
+                </div>
               </div>
-            </div>
-            <div v-else class="small">技能データなし</div>
-          </section>
+              <div v-else class="small">技能データなし</div>
+            </section>
 
-          <section class="char-block">
-            <h4>耐性</h4>
-            <div v-if="resistanceRows.length" class="char-resist-grid">
-              <div v-for="row in resistanceRows" :key="`resist-${unit.id}-${row.key}`" class="char-resist-chip">
-                <span>{{ row.key }}</span>
-                <strong>{{ signedValueText(row.value) }}</strong>
+            <section class="char-block">
+              <h4>耐性</h4>
+              <div v-if="resistanceRows.length" class="char-resist-grid">
+                <div v-for="row in resistanceRows" :key="`resist-${unit.id}-${row.key}`" class="char-resist-chip">
+                  <span>{{ row.key }}</span>
+                  <strong>{{ signedValueText(row.value) }}</strong>
+                </div>
               </div>
-            </div>
-            <div v-else class="small">耐性データなし</div>
-          </section>
+              <div v-else class="small">耐性データなし</div>
+            </section>
+          </div>
         </template>
 
         <template v-else>
           <section class="char-block">
-            <h4>装備一覧</h4>
+            <div class="equipment-head-row">
+              <h4>装備一覧</h4>
+              <button type="button" class="secondary" :disabled="!selectedEquipSlotKey" @click="openEquipmentPickerModal">
+                スロットを変更
+              </button>
+            </div>
+            <div class="small">対象スロット: {{ selectedEquipSlotKey || "-" }}</div>
             <div v-if="equipmentSlots.length" class="equipment-edit-list">
               <article
                 v-for="slot in equipmentSlots"
                 :key="`equip-slot-${unit.id}-${slot.index}`"
                 class="equipment-edit-item"
-                :class="{ disabled: !slot.enabled }"
+                :class="{ disabled: !slot.enabled, active: selectedEquipSlotKey === slot.key }"
+                @click="selectEquipmentSlot(slot.key)"
               >
-                <div class="line">
-                  <strong>{{ slot.label }}</strong>
-                  <span>
-                    <template v-if="!slot.enabled">× 装備不可</template>
-                    <template v-else>
-                      {{ slot.item?.name || "-" }}
-                      <template v-if="slot.item">[{{ slot.item?.qualityLabel || equipmentRarityLabel(slot.item?.quality) }}]</template>
-                    </template>
-                  </span>
-                </div>
-                <div class="small" v-if="slot.item">
-                  威力 {{ slot.item.power ?? "-" }} / ガード {{ slot.item.guard ?? "-" }} / Cr率 {{ slot.item.criticalRate ?? "-" }} / Cr威力 {{ slot.item.criticalPower ?? "-" }}
-                  <span> / 価格(仮): 金{{ slot.item.priceGold ?? "-" }}</span>
-                  <span v-if="slot.item.requiredMaterial"> / 必要素材: {{ slot.item.requiredMaterial }}</span>
-                </div>
-                <div v-if="slot.enabled" class="equipment-edit-row">
-                  <select
-                    :value="slotDraft(slot.key).equipmentName"
-                    @change="updateSlotDraft(slot.key, { equipmentName: $event.target.value })"
+                <div class="equipment-edit-main">
+                  <div
+                    class="equipment-edit-icon-wrap"
+                    :class="slot.item ? equipmentRarityClass(slot.item?.quality || slot.item?.qualityLabel) : ''"
                   >
-                    <option
-                      v-for="row in slot.options"
-                      :key="`equip-opt-${unit.id}-${slot.key}-${row.装備名}`"
-                      :value="row.装備名"
+                    <img
+                      v-if="slot.item && equipmentItemIconSrc(slot.item)"
+                      :src="equipmentItemIconSrc(slot.item)"
+                      :alt="slot.item?.name || slot.label"
+                      class="equipment-edit-icon"
+                    />
+                    <span v-else class="equipment-edit-icon-fallback">{{ slot.item ? equipmentItemGlyph(slot.item) : "-" }}</span>
+                    <span
+                      v-if="slot.item"
+                      class="equipment-edit-rarity-badge"
+                      :class="equipmentRarityClass(slot.item?.quality || slot.item?.qualityLabel)"
+                      :title="equipmentRarityLabel(slot.item?.quality || slot.item?.qualityLabel)"
                     >
-                      {{ row.装備名 }}
-                    </option>
-                  </select>
-                  <select
-                    :value="slotDraft(slot.key).rarity"
-                    @change="updateSlotDraft(slot.key, { rarity: $event.target.value })"
-                  >
-                    <option
-                      v-for="row in EQUIPMENT_RARITY_OPTIONS"
-                      :key="`rarity-opt-${unit.id}-${slot.key}-${row.key}`"
-                      :value="row.key"
-                    >
-                      {{ row.label }}
-                    </option>
-                  </select>
-                  <button type="button" class="secondary" :disabled="!slot.options.length" @click="applyEquipmentChange(slot)">装備変更</button>
+                      {{ equipmentRarityShort(slot.item?.quality || slot.item?.qualityLabel) }}
+                    </span>
+                  </div>
+                  <div class="equipment-edit-meta">
+                    <div class="line">
+                      <strong>{{ slot.label }}</strong>
+                      <span>
+                        <template v-if="!slot.enabled">× 装備不可</template>
+                        <template v-else>
+                          {{ slot.item?.name || "-" }}
+                        </template>
+                      </span>
+                    </div>
+                    <div class="small" v-if="slot.item">
+                      威/守 {{ toSafeNumber(slot.item.power, 0) }}/{{ toSafeNumber(slot.item.guard, 0) }} / Cr率 {{ toSafeNumber(slot.item.criticalRate, 0) }} / Cr威力 {{ toSafeNumber(slot.item.criticalPower, 0) }} / AP {{ equipmentApText(slot.item) }}
+                      <template v-if="equipmentResistancePairText(slot.item)"> / 物/魔耐 {{ equipmentResistancePairText(slot.item) }}</template>
+                    </div>
+                  </div>
                 </div>
               </article>
             </div>
             <div v-else class="small">装備データなし</div>
+            <div v-if="equipmentActionStatus" class="small equipment-action-status">{{ equipmentActionStatus }}</div>
           </section>
         </template>
       </div>
@@ -560,6 +652,18 @@ watch(
       </section>
     </section>
   </section>
+
+  <equipment-inventory-modal
+    :show="showEquipmentPickerModal"
+    :village="village"
+    :smith-level="smithLevelForModal"
+    :picker-mode="true"
+    :allow-craft-in-picker-mode="true"
+    :filter-slot-key="selectedEquipSlotKey"
+    @close="closeEquipmentPickerModal"
+    @select-item="applyPickedEquipmentItem"
+    @craft-weapon="applyCraftFromPicker"
+  />
 </template>
 
 <style scoped src="./CharacterDetailShared.css"></style>
@@ -585,11 +689,23 @@ watch(
   gap: 5px;
   min-width: 0;
   min-height: 420px;
+  align-content: start;
+}
+
+.detail-status-scroll {
+  max-height: min(420px, 52vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  gap: 6px;
+  padding-right: 2px;
 }
 
 .detail-right-pane {
   min-width: 0;
-  min-height: 420px;
+  display: grid;
+  align-content: start;
+  min-height: 0;
 }
 
 .detail-view-tabs {
@@ -706,6 +822,142 @@ watch(
   align-items: center;
 }
 
+.char-status-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.char-status-row {
+  display: grid;
+  gap: 6px;
+}
+
+.char-status-row.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.char-status-row.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.equipment-edit-item.active {
+  border-color: rgba(77, 165, 226, 0.92);
+  box-shadow: 0 0 0 1px rgba(91, 198, 255, 0.35);
+}
+
+.equipment-edit-row {
+  grid-template-columns: minmax(120px, 1fr) auto;
+}
+
+.equipment-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.equipment-action-status {
+  color: rgba(60, 46, 30, 0.92);
+  font-weight: 700;
+}
+
+.equipment-edit-list {
+  max-height: min(360px, 46vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+
+.equipment-edit-main {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.equipment-edit-icon-wrap {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(175, 151, 112, 0.74);
+  border-radius: 7px;
+  background: rgba(25, 23, 20, 0.82);
+  overflow: hidden;
+}
+
+.equipment-edit-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.equipment-edit-icon-fallback {
+  width: 100%;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f5e8c7;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.equipment-edit-rarity-badge {
+  position: absolute;
+  left: 2px;
+  top: 1px;
+  min-width: 14px;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 0.56rem;
+  line-height: 1.25;
+  color: #fdf3da;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.65);
+  background: rgba(31, 22, 14, 0.86);
+}
+
+.equipment-edit-rarity-badge.rarity-common {
+  color: #c9c9c9;
+}
+
+.equipment-edit-rarity-badge.rarity-uncommon {
+  color: #78d86c;
+}
+
+.equipment-edit-rarity-badge.rarity-rare {
+  color: #63b1ff;
+}
+
+.equipment-edit-rarity-badge.rarity-epic {
+  color: #c992ff;
+}
+
+.equipment-edit-rarity-badge.rarity-legendary {
+  color: #ffd06e;
+}
+
+.equipment-edit-icon-wrap.rarity-uncommon {
+  border-color: rgba(126, 209, 124, 0.86);
+}
+
+.equipment-edit-icon-wrap.rarity-rare {
+  border-color: rgba(99, 164, 241, 0.86);
+}
+
+.equipment-edit-icon-wrap.rarity-epic {
+  border-color: rgba(201, 131, 255, 0.9);
+}
+
+.equipment-edit-icon-wrap.rarity-legendary {
+  border-color: rgba(250, 188, 90, 0.94);
+}
+
+.equipment-edit-meta {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
 .char-combat-grid {
   margin-top: 8px;
   display: grid;
@@ -713,8 +965,16 @@ watch(
   gap: 6px;
 }
 
+.detail-right-pane :deep(.skill-table-root) {
+  min-height: 0;
+  display: grid;
+}
+
 .detail-right-pane :deep(.skill-table-wrap) {
-  min-height: 420px;
+  min-height: 0;
+  max-height: min(360px, 46vh);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 @media (max-width: 1px) {

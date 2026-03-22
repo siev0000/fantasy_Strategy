@@ -2,10 +2,11 @@
 import { DEFAULT_ICON_SRC } from "../lib/icon-library.js";
 
 const skillCategoryButtons = [
-  { label: "魔法", categories: ["魔法"] },
-  { label: "軍事", categories: ["軍事"] },
-  { label: "経済", categories: ["経済"] },
-  { label: "信仰", categories: ["信仰"] }
+  { label: "鍛冶", categories: ["鍛冶Lv"] },
+  { label: "魔法", categories: ["魔法Lv"] },
+  { label: "信仰", categories: ["信仰Lv"] },
+  { label: "軍事", categories: ["軍事Lv"] },
+  { label: "経済", categories: ["経済Lv"] }
 ];
 const characterIconSrc = DEFAULT_ICON_SRC;
 
@@ -27,8 +28,8 @@ defineEmits(["open-modal"]);
         <img :src="characterIconSrc" alt="自キャラ" class="action-icon" />
         <span>自キャラ一覧を開く</span>
       </button>
-      <button type="button" @click="$emit('open-modal', 'skill', { categories: ['魔法', '軍事', '経済', '信仰'] })">
-        スキルツリーを開く
+      <button type="button" @click="$emit('open-modal', 'skill', { categories: ['鍛冶Lv', '魔法Lv', '信仰Lv', '軍事Lv', '経済Lv'] })">
+        研究を開く
       </button>
     </div>
     <div class="skill-shortcuts">
