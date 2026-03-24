@@ -815,3 +815,6 @@ pm run build:front.- 2026-03-10: Fixed fog-of-war toggle regression: when test m
 - 2026-03-22: 検証 npm run build:front 成功。
 - 2026-03-22: develop-web-game Playwrightクライアント実行を再試行したが、スキル実行環境で playwright パッケージ未解決のため失敗（ERR_MODULE_NOT_FOUND）。
 - TODO: 戦闘でユニット死亡が確定した経路（将来の戦闘解決処理）から recordUnitDeathCorruptionAtTile を呼び出して穢れ加算を本接続する。
+- 2026-03-24: 施設建設の資材表示を生資材キー基準に統一。建設画面に所持資材と必要比 (現在/必要) を表示し、資材不足理由も不足キー単位で出すよう修正。
+- 2026-03-24: 建設モーダルを左右レイアウトへ再構成。ヘッダーは都市規模/研究Lv/残り土地のみに整理し、施設.json の 建築時間 を 村/町/都市/大都市 は土地上限、それ以外は土地消費として扱うよう更新。
+- 2026-03-24: 建設モーダルを VillageBuildModal.vue + VillageBuildModal.css に分離。PhaserMapGeneratorPanel からは表示ロジック呼び出しに集約し、親CSSの建設モーダル専用定義を削除。

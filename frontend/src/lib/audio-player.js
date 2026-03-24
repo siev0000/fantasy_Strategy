@@ -4,13 +4,13 @@ function buildAudioPath(folder, filename) {
 
 const audioAssetMap = {
   bgm: {
-    main: buildAudioPath("bgm", "古の世界地図.mp3")
+    main: buildAudioPath("bgm", "bgm-main.mp3")
   },
   se: {
-    confirm: buildAudioPath("se", "決定ボタンを押す11.mp3"),
-    cancel: buildAudioPath("se", "キャンセル9.mp3"),
-    open: buildAudioPath("se", "紙を広げる1.mp3"),
-    change: buildAudioPath("se", "決定ボタンを押す14 (1).mp3")
+    confirm: buildAudioPath("se", "se-confirm.mp3"),
+    cancel: buildAudioPath("se", "se-cancel.mp3"),
+    open: buildAudioPath("se", "se-open.mp3"),
+    change: buildAudioPath("se", "se-change.mp3")
   }
 };
 
