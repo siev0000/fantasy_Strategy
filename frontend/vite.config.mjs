@@ -25,6 +25,14 @@ export default defineConfig(({ mode }) => {
       outDir: "../web-vue-dist",
       emptyOutDir: true,
       rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return null;
+            if (id.includes("phaser")) return "vendor-phaser";
+            if (id.includes("socket.io-client") || id.includes("engine.io-client")) return "vendor-socket";
+            return "vendor-misc";
+          }
+        },
         plugins: [
           isTestOnMode
             ? visualizer({

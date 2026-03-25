@@ -103,6 +103,11 @@ import {
   splitTotalIntoBag as splitTotalIntoBagUtil,
   sumResourceBag as sumResourceBagUtil
 } from "../composables/resourceEconomyUtils.js";
+import { useVillageBuildPanel } from "../composables/useVillageBuildPanel.js";
+import { useUnitCreatePanel } from "../composables/useUnitCreatePanel.js";
+import { useUnitMovePanel } from "../composables/useUnitMovePanel.js";
+import { createPathfindingWorkerClient } from "../composables/pathfindingWorkerClient.js";
+import { createMapRenderScheduler } from "../composables/mapRenderScheduler.js";
 import {
   buildOtherFactionLabel,
   buildTestPlayerLabel,
@@ -259,6 +264,7 @@ const unitList = ref([]);
 const selectedUnitId = ref("");
 const villagePlacementMode = ref(false);
 const unitMoveMode = ref(false);
+const tileAttackSelectionMode = ref(false);
 const showMoveUnitModal = ref(false);
 const moveUnitCandidateId = ref("");
 const showMovePathConfirmModal = ref(false);
@@ -266,6 +272,8 @@ const plannedMovePathNodes = ref([]);
 const plannedMoveTarget = ref(null);
 const plannedMoveSummaryText = ref("");
 const isPathMoveInProgress = ref(false);
+const showFieldBattleResultModal = ref(false);
+const fieldBattleState = ref(null);
 const encounterMoveLocks = ref({});
 const lastMoveStopState = ref({
   reason: "",
@@ -276,8 +284,10 @@ const lastMoveStopState = ref({
 const showUnitCreateCountModal = ref(false);
 const showUnitCreateRaceModal = ref(false);
 const showUnitCreateClassModal = ref(false);
+const showUnitCreateRarityModal = ref(false);
 const unitCreateRace = ref("");
 const unitCreateClass = ref("");
+const unitCreateRarity = ref("common");
 const unitCreateBatchCount = ref(1);
 const unitCreateMode = ref(UNIT_CREATE_MODE_KEYS.NORMAL);
 const selectedTileDetail = ref(null);
@@ -300,6 +310,17 @@ const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
 const SKILL_TREE_ICON_SRC = getIconSrcByName("本", DEFAULT_ICON_NAME);
 const UNIT_CREATE_ICON_SRC = getIconSrcByName("兵士", DEFAULT_ICON_NAME);
 const EQUIPMENT_INVENTORY_ICON_SRC = getIconSrcByName("装備", DEFAULT_ICON_NAME);
+const ATTACK_CURSOR_STYLE = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v20M2 12h20' stroke='%23ff4d4f' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3.5' fill='none' stroke='%23ffd0d0' stroke-width='2'/%3E%3C/svg%3E\") 12 12, crosshair";
+const pathfindingWorkerClient = createPathfindingWorkerClient();
+const mapRenderScheduler = createMapRenderScheduler(() => renderMapWithPhaser());
+
+function requestMapRender() {
+  mapRenderScheduler.requestRender();
+}
+
+function renderMapNow() {
+  mapRenderScheduler.renderNow();
+}
 
 let game = null;
 let scene = null;
@@ -343,6 +364,8 @@ let visibleTileKeys = new Set();
 let currentVisionTileKeys = new Set();
 let spottedEnemyTileKeys = new Set();
 let spottedFactionTileKeys = new Set();
+let alertedEnemyTileKeys = new Set();
+let alertedFactionTileKeys = new Set();
 let raceMarkerTexturePending = new Set();
 let lastCharacterCommandNonce = "";
 let renderedHexBounds = null;
@@ -1536,29 +1559,6 @@ const VILLAGE_BUILDING_DEFINITIONS = [
     }
   }
 ];
-const FACILITY_REQUIREMENT_FIELD_TO_ABILITY_KEY = {
-  鍛冶Lv: "鍛冶場",
-  魔法Lv: "魔法",
-  信仰Lv: "信仰",
-  軍事Lv: "軍事",
-  経済Lv: "経済"
-};
-const FACILITY_REQUIREMENT_FIELDS = Object.keys(FACILITY_REQUIREMENT_FIELD_TO_ABILITY_KEY);
-const SETTLEMENT_STAGE_FACILITY_NAMES = ["村", "町", "都市", "大都市"];
-const RESEARCH_CATEGORY_DISPLAY_NAME_MAP = {
-  鍛冶Lv: "鍛冶",
-  魔法Lv: "魔法",
-  信仰Lv: "信仰",
-  軍事Lv: "軍事",
-  経済Lv: "経済"
-};
-const RESEARCH_CATEGORY_ICON_NAME_MAP = {
-  鍛冶Lv: "鍛冶",
-  魔法Lv: "魔法",
-  信仰Lv: "信仰",
-  軍事Lv: "兵士",
-  経済Lv: "金"
-};
 const FOOD_SUBSTITUTE_MULTIPLIER = 1.2;
 const ECONOMY_GAIN_SCALE = 0.1;
 const ECONOMY_CONSUMPTION_SCALE = 0.1;
@@ -1618,6 +1618,16 @@ const RACE_ICON_COLOR_MAP = {
 const classRows = computed(() => {
   if (!Array.isArray(classDb)) return [];
   return classDb.filter(row => nonEmptyText(row?.名前));
+});
+
+const classRowByNameMap = computed(() => {
+  const map = new Map();
+  for (const row of classRows.value) {
+    const name = nonEmptyText(row?.名前);
+    if (!name || map.has(name)) continue;
+    map.set(name, row);
+  }
+  return map;
 });
 
 function parseEnemySpawnCountRange(raw) {
@@ -1699,143 +1709,170 @@ const initialJobClassRows = computed(() => {
   return jobClassRows.value.filter(row => isInitialClassRow(row));
 });
 
-const canOpenUnitCreate = computed(() => {
-  const village = villageState.value;
-  return !!(village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y));
+const {
+  canOpenUnitCreate,
+  heroUnitCount,
+  armyUnitCount,
+  heroUnitCap,
+  armyUnitCap,
+  heroCreateRemaining,
+  heroCreateUnlocked,
+  heroCreateAvailable,
+  armyCreateRemaining,
+  canCreateAnyUnit,
+  unitCreateMilitaryLevel,
+  unitCreateModeOptions,
+  selectedUnitCreateModeSpec,
+  selectedUnitCreateRemaining,
+  canCreateSelectedUnitType,
+  unitCreateSetupProgressText,
+  unitCreateRarityOptions,
+  selectedUnitCreateRarityLabel,
+  unitCreateAllowedRaces,
+  openUnitCreateModal,
+  closeUnitCreateCountModal,
+  confirmUnitCreateCount,
+  nudgeUnitCreateBatchCount,
+  applyUnitCreateMode,
+  closeUnitCreateRaceModal,
+  closeUnitCreateClassModal,
+  backUnitCreateClassToRaceModal,
+  closeUnitCreateRarityModal,
+  backUnitCreateRarityToClassModal,
+  applyUnitCreateRace,
+  applyUnitCreateClass,
+  selectUnitCreateRarity,
+  applyUnitCreateRarity,
+  normalizeUnitCreateBatchCount,
+  resetUnitCreateState
+} = useUnitCreatePanel({
+  props,
+  unitCreateModeKeys: UNIT_CREATE_MODE_KEYS,
+  showUnitCreateCountModal,
+  showUnitCreateRaceModal,
+  showUnitCreateClassModal,
+  showUnitCreateRarityModal,
+  unitCreateRace,
+  unitCreateClass,
+  unitCreateRarity,
+  unitCreateBatchCount,
+  unitCreateMode,
+  villageState,
+  unitList,
+  selectedUnitId,
+  cityAbilityActiveCap: CITY_ABILITY_ACTIVE_CAP,
+  resolveActiveFactionRace,
+  ensureVillageStateShape,
+  resolveVillageAbilityLevel,
+  resolveFactionHeroUnitCap,
+  resolveFactionArmyUnitCap,
+  resolveHeroCreateUnlockedCount,
+  isMobUnit,
+  isMilitaryUnit,
+  resolveUnitCreateModeCatalog,
+  resolveUnitCreateMode,
+  nonEmptyText,
+  toSafeNumber,
+  updateUnitInfoText,
+  kickOffBgm,
+  audio,
+  findClassRowByName,
+  randomPick,
+  initialJobClassRows,
+  isInitialClassRow,
+  resolveRaceBaseClassName,
+  classRows,
+  resolveMaxCreatableByPopulation,
+  buildUnitCreationCost,
+  canAffordUnitCreation,
+  applyUnitCreationCost,
+  consumeVillagePopulationByRace,
+  createUnitRecord,
+  buildAutoUnitName,
+  applyAutoEquipForCreatedUnit,
+  heroInitialLevel: HERO_INITIAL_LEVEL,
+  formatFoodResourceBag,
+  formatMaterialResourceBag,
+  normalizeEquipmentRarity,
+  formatEquipmentRarityLabel,
+  equipmentRarityKeys: EQUIPMENT_RARITY_KEYS,
+  updateVillageInfoText,
+  pushNationLog,
+  emitCharacterStateChange,
+  renderMapWithPhaser: requestMapRender
 });
 
-const heroUnitCount = computed(() => {
-  return unitList.value.filter(unit => isMobUnit(unit) && !isMilitaryUnit(unit)).length;
+const UNIT_CREATE_RARITY_COST_GROUP_DEFS = [
+  { key: "woodStone", label: "木材&石", keys: ["木材", "黒木", "特木", "石材"] },
+  { key: "metal", label: "金属", keys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"] },
+  { key: "precious", label: "貴金属", keys: ["金", "銀", "宝石"] }
+];
+
+function formatUnitCreateCostAmount(value) {
+  const safe = Math.max(0, toSafeNumber(value, 0));
+  if (Math.abs(safe - Math.round(safe)) < 0.0001) return String(Math.round(safe));
+  return safe.toFixed(1);
+}
+
+const unitCreateEquipmentCountPerUnit = computed(() => {
+  const spec = selectedUnitCreateModeSpec.value;
+  if (nonEmptyText(spec?.mode) === UNIT_CREATE_MODE_KEYS.NORMAL) return 1;
+  return Math.max(1, Math.floor(toSafeNumber(spec?.populationCost, 1)));
 });
 
-const armyUnitCount = computed(() => {
-  return unitList.value.filter(unit => isMobUnit(unit) && isMilitaryUnit(unit)).length;
+const unitCreateTotalEquipmentCount = computed(() => {
+  const createCount = Math.max(1, Math.floor(toSafeNumber(unitCreateBatchCount.value, 1)));
+  return Math.max(1, createCount * unitCreateEquipmentCountPerUnit.value);
 });
 
-const heroUnitCap = computed(() => {
-  const village = ensureVillageStateShape(villageState.value, resolveActiveFactionRace());
-  const race = resolveActiveFactionRace();
-  return resolveFactionHeroUnitCap(village, race);
-});
+const unitCreateRarityMaterialRows = computed(() => {
+  const raceName = nonEmptyText(unitCreateRace.value) || nonEmptyText(props.selectedRace);
+  const village = ensureVillageStateShape(villageState.value, raceName);
+  const materialBag = normalizeMaterialStockBag(village?.materialStockByType);
+  const className = nonEmptyText(unitCreateClass.value) || nonEmptyText(props.selectedClass);
+  const classRow = classRowByNameMap.value.get(className) || findClassRowByName(className) || null;
+  const totalEquipmentCount = unitCreateTotalEquipmentCount.value;
+  const equipmentNames = buildPresetEquipmentNameList(classRow);
 
-const armyUnitCap = computed(() => {
-  const village = ensureVillageStateShape(villageState.value, resolveActiveFactionRace());
-  const race = resolveActiveFactionRace();
-  return resolveFactionArmyUnitCap(village, race);
-});
-
-const heroCreateRemaining = computed(() => {
-  return Math.max(0, heroUnitCap.value - heroUnitCount.value);
-});
-
-const heroCreateUnlocked = computed(() => {
-  return resolveHeroCreateUnlockedCount(villageState.value);
-});
-
-const heroCreateAvailable = computed(() => {
-  return Math.max(0, Math.min(heroCreateRemaining.value, heroCreateUnlocked.value));
-});
-
-const armyCreateRemaining = computed(() => {
-  return Math.max(0, armyUnitCap.value - armyUnitCount.value);
-});
-
-const canCreateAnyUnit = computed(() => {
-  return canOpenUnitCreate.value && (heroCreateAvailable.value > 0 || armyCreateRemaining.value > 0);
-});
-
-const unitCreateMilitaryLevel = computed(() => {
-  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
-  return resolveVillageAbilityLevel(village, "軍事", CITY_ABILITY_ACTIVE_CAP);
-});
-
-const unitCreateModeOptions = computed(() => {
-  const level = Math.max(1, Math.floor(toSafeNumber(unitCreateMilitaryLevel.value, 1)));
-  return resolveUnitCreateModeCatalog().map(mode => {
-    const requiredLv = Math.max(1, Math.floor(toSafeNumber(mode?.requiredMilitaryLevel, 1)));
-    const usesArmyCap = mode.mode !== UNIT_CREATE_MODE_KEYS.NORMAL;
-    const currentCount = usesArmyCap ? armyUnitCount.value : heroUnitCount.value;
-    const cap = usesArmyCap ? armyUnitCap.value : heroUnitCap.value;
-    const remainingRaw = Math.max(0, cap - currentCount);
-    const remaining = usesArmyCap ? remainingRaw : Math.max(0, Math.min(remainingRaw, heroCreateUnlocked.value));
-    const levelEnabled = level >= requiredLv;
-    const enabled = levelEnabled && remaining > 0;
-    const requirementText = !levelEnabled
-      ? `軍事Lv${requiredLv}で解放`
-      : (remaining > 0
-        ? `残り${remaining}`
-        : (usesArmyCap
-          ? `上限 ${currentCount}/${cap}`
-          : (remainingRaw > 0 ? "誕生待ち" : `上限 ${currentCount}/${cap}`)));
+  return unitCreateRarityOptions.value.map(option => {
+    const needBag = buildPresetEquipmentMaterialNeedByRarity(classRow, option.key, totalEquipmentCount);
+    const columns = UNIT_CREATE_RARITY_COST_GROUP_DEFS.map(group => {
+      const rows = group.keys
+        .map(resourceKey => {
+          const have = toSafeNumber(materialBag?.[resourceKey], 0);
+          const need = toSafeNumber(needBag?.[resourceKey], 0);
+          return {
+            key: resourceKey,
+            label: resourceKey,
+            iconSrc: getIconSrcByName(resourceKey, resourceKey),
+            have,
+            need,
+            valueText: `${formatUnitCreateCostAmount(have)}/${formatUnitCreateCostAmount(need)}`,
+            shortage: have < need
+          };
+        })
+        .filter(row => row.have > 0 || row.need > 0);
+      return {
+        ...group,
+        rows
+      };
+    });
+    const shortage = columns.some(group => group.rows.some(row => row.shortage));
+    const totalNeed = sumResourceBag(needBag, MATERIAL_RESOURCE_KEYS);
     return {
-      ...mode,
-      enabled,
-      currentCount,
-      cap,
-      remaining,
-      unlocked: usesArmyCap ? null : heroCreateUnlocked.value,
-      requirementText
+      key: option.key,
+      label: option.label,
+      equipmentNames,
+      columns,
+      shortage,
+      totalNeed
     };
   });
 });
 
-const selectedUnitCreateModeSpec = computed(() => {
-  return resolveUnitCreateMode(unitCreateMode.value, unitCreateMilitaryLevel.value);
-});
-
-const selectedUnitCreateCurrentCount = computed(() => {
-  const mode = selectedUnitCreateModeSpec.value?.mode;
-  return mode === UNIT_CREATE_MODE_KEYS.NORMAL ? heroUnitCount.value : armyUnitCount.value;
-});
-
-const selectedUnitCreateCap = computed(() => {
-  const mode = selectedUnitCreateModeSpec.value?.mode;
-  return mode === UNIT_CREATE_MODE_KEYS.NORMAL ? heroUnitCap.value : armyUnitCap.value;
-});
-
-const selectedUnitCreateRemaining = computed(() => {
-  const mode = selectedUnitCreateModeSpec.value?.mode;
-  if (mode === UNIT_CREATE_MODE_KEYS.NORMAL) return heroCreateAvailable.value;
-  return Math.max(0, selectedUnitCreateCap.value - selectedUnitCreateCurrentCount.value);
-});
-
-const canCreateSelectedUnitType = computed(() => {
-  return canOpenUnitCreate.value && selectedUnitCreateRemaining.value > 0;
-});
-
-const unitCreateSetupProgressText = computed(() => {
-  const spec = selectedUnitCreateModeSpec.value;
-  const popText = spec.populationCost > 0
-    ? `人口${spec.populationCost}人消費`
-    : "人口消費なし";
-  const unlockText = spec.mode === UNIT_CREATE_MODE_KEYS.NORMAL
-    ? ` / 解放${heroCreateUnlocked.value}`
-    : "";
-  return `作成種別: ${spec.label} / 軍事Lv${unitCreateMilitaryLevel.value} / HPx${spec.hpMultiplier} / 攻撃${spec.attackCount}回 / ${popText}${unlockText}`;
-});
-
-const unitCreateAllowedRaces = computed(() => {
-  const set = new Set();
-  const villageRaceMap = villageState.value?.populationByRace;
-  if (villageRaceMap && typeof villageRaceMap === "object") {
-    for (const [race, countRaw] of Object.entries(villageRaceMap)) {
-      const raceName = nonEmptyText(race);
-      const count = Math.max(0, Math.floor(toSafeNumber(countRaw, 0)));
-      if (!raceName || count <= 0) continue;
-      set.add(raceName);
-    }
-  }
-  for (const unit of unitList.value) {
-    const raceName = nonEmptyText(unit?.race);
-    if (!raceName) continue;
-    set.add(raceName);
-  }
-  return Array.from(set);
-});
-
-const canOpenVillageBuild = computed(() => {
-  const village = villageState.value;
-  return !!(village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y));
+const selectedUnitCreateRarityMaterialRow = computed(() => {
+  const selectedKey = normalizeEquipmentRarity(unitCreateRarity.value, "common");
+  return unitCreateRarityMaterialRows.value.find(row => row.key === selectedKey) || unitCreateRarityMaterialRows.value[0] || null;
 });
 
 const cityAbilityRows = computed(() => {
@@ -1861,106 +1898,70 @@ const cityAbilityRows = computed(() => {
   });
 });
 
-const facilityBuildingDefs = computed(() => {
-  return facilityRows.value.map((row, index) => {
-    const name = nonEmptyText(row?.施設名) || `施設${index + 1}`;
-    const conditionTerrain = nonEmptyText(row?.条件地形) || "なし";
-    const isSettlementStage = SETTLEMENT_STAGE_FACILITY_NAMES.includes(name);
-    const cost = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
-    for (const key of MATERIAL_RESOURCE_KEYS) {
-      cost[key] = Math.max(0, toSafeNumber(row?.[key], 0));
-    }
-    const slotValueRaw = Math.max(0, Math.floor(toSafeNumber(row?.建築時間, 0)));
-    const requirements = FACILITY_REQUIREMENT_FIELDS
-      .map(field => {
-        const level = Math.max(0, Math.floor(toSafeNumber(row?.[field], 0)));
-        if (level <= 0) return null;
-        return {
-          field,
-          label: field,
-          abilityKey: FACILITY_REQUIREMENT_FIELD_TO_ABILITY_KEY[field],
-          requiredLevel: level
-        };
-      })
-      .filter(Boolean);
-    return {
-      key: `${normalizeFacilityNameToken(name) || "facility"}__${index}`,
-      name,
-      description: nonEmptyText(row?.詳細) || "-",
-      conditionTerrain,
-      cost,
-      requirements,
-      isSettlementStage,
-      buildSlotValue: Math.max(1, slotValueRaw || 1),
-      iconSrc: resolveFacilityBuildingIconSrc({ name, conditionTerrain, requirements, row })
-    };
-  });
+const {
+  canOpenVillageBuild,
+  facilityBuildingDefs,
+  availableVillageBuildingDefs,
+  villageBuildResearchRows,
+  villageBuildCapacity,
+  villageBuildUsedSlots,
+  villageBuildRemainingSlots,
+  selectedVillageBuildingDef,
+  selectedVillageBuildingAvailability,
+  selectedVillageBuildingPreviewStyle,
+  normalizeVillageBuildings,
+  formatVillageBuildingList,
+  collectVillageBuildingIncome,
+  formatVillageBuildingBonus,
+  openVillageBuildModal,
+  closeVillageBuildModal,
+  applyVillageConstruction,
+  resetVillageBuildState
+} = useVillageBuildPanel({
+  facilityRows,
+  villageState,
+  showVillageBuildModal,
+  selectedVillageBuildingKey,
+  resolveSelectedRace: () => props.selectedRace,
+  nonEmptyText,
+  toSafeNumber,
+  roundTo1,
+  resolveVillageScaleLabel,
+  resolveResearchCurrentLevel,
+  normalizeFacilityNameToken,
+  resolveAvailableIconName,
+  getIconSrcByName,
+  ensureVillageStateShape,
+  normalizeMaterialStockBag,
+  normalizeResourceBag,
+  buildEmptyResourceBag,
+  formatMaterialCompactNumber,
+  formatMaterialRawPositiveResourceBag,
+  formatFoodPositiveResourceBag,
+  formatMaterialPositiveResourceBag,
+  updateUnitInfoText,
+  updateVillageInfoText,
+  pushNationLog,
+  emitCharacterStateChange,
+  kickOffBgm,
+  audio,
+  materialResourceKeys: MATERIAL_RESOURCE_KEYS,
+  foodResourceKeys: FOOD_RESOURCE_KEYS,
+  researchCategoryOrder: RESEARCH_CATEGORY_ORDER_CONFIG,
+  cityAbilityDefinedCap: CITY_ABILITY_DEFINED_CAP
 });
 
-const builtVillageBuildingSet = computed(() => {
-  return new Set(normalizeVillageBuildings(villageState.value?.buildings));
-});
-
-const villageBuildRows = computed(() => {
-  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
-  const built = builtVillageBuildingSet.value;
-  return facilityBuildingDefs.value
-    .filter(def => !built.has(def.key))
-    .map(def => ({
-      ...def,
-      availability: resolveVillageBuildingAvailability(village, def)
-    }));
-});
-
-const availableVillageBuildingDefs = computed(() => {
-  return villageBuildRows.value.filter(def => !def.isSettlementStage);
-});
-
-const villageBuildResearchRows = computed(() => {
-  return RESEARCH_CATEGORY_ORDER_CONFIG.map(key => ({
-    key,
-    label: RESEARCH_CATEGORY_DISPLAY_NAME_MAP[key] || key.replace(/Lv$/u, ""),
-    level: resolveResearchCurrentLevel(key, CITY_ABILITY_DEFINED_CAP),
-    iconSrc: getIconSrcByName(RESEARCH_CATEGORY_ICON_NAME_MAP[key] || key.replace(/Lv$/u, ""), "本")
-  }));
-});
-
-const villageBuildCapacity = computed(() => {
-  return resolveVillageBuildCapacity(villageState.value);
-});
-
-const villageBuildUsedSlots = computed(() => {
-  return resolveVillageBuildUsedSlots(villageState.value);
-});
-
-const villageBuildRemainingSlots = computed(() => {
-  return Math.max(0, villageBuildCapacity.value - villageBuildUsedSlots.value);
-});
-
-const selectedVillageBuildingDef = computed(() => {
-  const selectedKey = nonEmptyText(selectedVillageBuildingKey.value);
-  const available = availableVillageBuildingDefs.value;
-  if (!available.length) return null;
-  return available.find(def => def.key === selectedKey) || available[0];
-});
-
-const selectedVillageBuildingAvailability = computed(() => {
-  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
-  const def = selectedVillageBuildingDef.value;
-  if (!village || !def) return null;
-  return resolveVillageBuildingAvailability(village, def);
-});
-
-const selectedVillageBuildingPreviewStyle = computed(() => {
-  const src = nonEmptyText(selectedVillageBuildingDef.value?.iconSrc);
-  return {
-    backgroundImage: src
-      ? `linear-gradient(180deg, rgba(14, 11, 8, 0.18), rgba(14, 11, 8, 0.88)), url("${src}")`
-      : "linear-gradient(180deg, rgba(70, 51, 31, 0.72), rgba(19, 14, 10, 0.94))",
-    backgroundSize: src ? "160px auto" : "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat"
-  };
+const facilityBuildingDefinitionByTokenMap = computed(() => {
+  const map = new Map();
+  for (const def of facilityBuildingDefs.value) {
+    const key = nonEmptyText(def?.key);
+    const name = nonEmptyText(def?.name);
+    const normalizedName = normalizeFacilityNameToken(name);
+    if (key && !map.has(key)) map.set(key, def);
+    if (name && !map.has(name)) map.set(name, def);
+    if (normalizedName && !map.has(normalizedName)) map.set(normalizedName, def);
+  }
+  return map;
 });
 
 const equipmentRows = computed(() => {
@@ -1977,8 +1978,74 @@ const selectedUnit = computed(() => {
   return unitList.value.find(unit => unit.id === selectedUnitId.value) || null;
 });
 
+const {
+  resolveUnitMoveRemaining,
+  resolveMoveGroupForUnit,
+  canUseUnitAsMoveCandidate,
+  moveUnitModalRows,
+  canUseUnitMoveModeState,
+  openMoveUnitSelectModal,
+  closeMoveUnitSelectModal,
+  confirmMoveUnitSelection,
+  toggleUnitMoveMode,
+  clearPlannedMovePath,
+  closeMovePathConfirmModal,
+  queueMovePathPlanToTile,
+  confirmPlannedMovePath,
+  resetAllUnitMoveRemaining,
+  resetMoveUiState
+} = useUnitMovePanel({
+  showMoveUnitModal,
+  moveUnitCandidateId,
+  showMovePathConfirmModal,
+  plannedMovePathNodes,
+  plannedMoveTarget,
+  plannedMoveSummaryText,
+  isPathMoveInProgress,
+  unitMoveMode,
+  villagePlacementMode,
+  unitList,
+  selectedUnitId,
+  selectedUnit,
+  currentData,
+  mapClickInfo,
+  nonEmptyText,
+  toSafeNumber,
+  coordKey,
+  unitHasSquad,
+  squadMemberIds,
+  movementStepCost,
+  isPassableTerrain,
+  findPathWithinDistanceSync: findPathWithinDistance,
+  findPathWithinDistanceAsync: (data, sx, sy, tx, ty, maxDistance) => pathfindingWorkerClient.findPathWithinDistance(data, sx, sy, tx, ty, maxDistance),
+  clearLastMoveStopState,
+  setLastMoveStopState,
+  getLastMoveStopState: () => lastMoveStopState.value,
+  markPathExplored,
+  buildOpposingFactionUnitsByTile,
+  runHostilePassStealthCheckAtTile,
+  runEnemyEncounterCheck,
+  onStartEncounterBattle: payload => {
+    startFieldBattleFromEncounter(payload);
+  },
+  updateUnitInfoText,
+  emitCharacterStateChange,
+  requestMapRender,
+  renderMapNow,
+  clearHousingUpgradeSelectionState,
+  onMapTileSelected: syncMapTileSelectionInfo,
+  setSelectedTileKey: key => {
+    selectedTileKey = nonEmptyText(key);
+  },
+  getSelectedTileKey: () => selectedTileKey,
+  resolveMoveUnitIconSrc: moveUnitIconSrc,
+  resolveMoveUnitIconGlyph: moveUnitIconGlyph,
+  toUnitRoleLabel,
+  moveStepIntervalMs: MOVE_STEP_INTERVAL_MS
+});
+
 const tileSurveyActionState = computed(() => resolveSelectedTileSurveyState());
-const tileAmbushActionState = computed(() => resolveSelectedTileAmbushState());
+const tileAttackActionState = computed(() => resolveSelectedTileAttackActionState());
 const tileSettlementConvertActionState = computed(() => resolveTerritoryTileConversionActionState(TERRITORY_TILE_MODE_SETTLEMENT));
 const tileResourceConvertActionState = computed(() => resolveTerritoryTileConversionActionState(TERRITORY_TILE_MODE_RESOURCE));
 const tileHousingUpgradeActionState = computed(() => resolveTerritoryHousingUpgradeActionState());
@@ -3652,211 +3719,6 @@ function scaleResourceBagByFactor(bag, keys, factor = 1) {
   return multiplyResourceBag(bag, safeFactor, keys);
 }
 
-function normalizeVillageBuildings(input) {
-  const defs = facilityBuildingDefs.value;
-  const allowed = new Set(defs.map(def => def.key));
-  const byNameToken = new Map();
-  for (const def of defs) {
-    const token = normalizeFacilityNameToken(def?.name);
-    if (!token || byNameToken.has(token)) continue;
-    byNameToken.set(token, def.key);
-  }
-  const out = [];
-  const pushed = new Set();
-  const source = Array.isArray(input) ? input : [];
-  for (const raw of source) {
-    const key = nonEmptyText(raw);
-    if (!key) continue;
-    const normalizedKey = allowed.has(key)
-      ? key
-      : (byNameToken.get(normalizeFacilityNameToken(key)) || "");
-    if (!normalizedKey || pushed.has(normalizedKey)) continue;
-    pushed.add(normalizedKey);
-    out.push(normalizedKey);
-  }
-  return out;
-}
-
-function findVillageBuildingDefinition(key) {
-  const normalized = nonEmptyText(key);
-  if (!normalized) return null;
-  return facilityBuildingDefs.value.find(def => def.key === normalized || def.name === normalized) || null;
-}
-
-function formatVillageBuildingList(buildings) {
-  const keys = normalizeVillageBuildings(buildings);
-  if (!keys.length) return "なし";
-  const names = keys
-    .map(key => findVillageBuildingDefinition(key)?.name || "")
-    .filter(Boolean);
-  return names.length ? names.join(", ") : "なし";
-}
-
-function collectVillageBuildingIncome(village) {
-  const result = {
-    food: buildEmptyResourceBag(FOOD_RESOURCE_KEYS),
-    material: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS),
-    count: 0
-  };
-  const keys = normalizeVillageBuildings(village?.buildings);
-  for (const key of keys) {
-    result.count += 1;
-  }
-  return result;
-}
-
-function formatVillageBuildingBonus(bonus) {
-  const foodRaw = formatFoodPositiveResourceBag(bonus?.food);
-  const materialRaw = formatMaterialPositiveResourceBag(bonus?.material);
-  if (foodRaw === "なし" && materialRaw === "なし") return "なし";
-  const foodText = foodRaw === "なし" ? "0" : foodRaw;
-  const materialText = materialRaw === "なし" ? "0" : materialRaw;
-  return `食料 +${foodText} / 資材 +${materialText}`;
-}
-
-function resolveResearchCategoryDisplayName(categoryKey) {
-  const key = nonEmptyText(categoryKey);
-  return RESEARCH_CATEGORY_DISPLAY_NAME_MAP[key] || key.replace(/Lv$/u, "") || key;
-}
-
-function resolveFacilityBuildingIconSrc(definition) {
-  const def = definition && typeof definition === "object" ? definition : {};
-  const name = nonEmptyText(def?.name || def?.施設名);
-  const terrain = nonEmptyText(def?.conditionTerrain || def?.条件地形);
-  const requirementKeys = (Array.isArray(def?.requirements) ? def.requirements : [])
-    .map(row => nonEmptyText(row?.field))
-    .filter(Boolean);
-  const candidates = [
-    name,
-    name.replace(/場$/u, ""),
-    name.replace(/塔$/u, ""),
-    name.replace(/院$/u, ""),
-    name.replace(/堂$/u, ""),
-    name.replace(/市場$/u, "金"),
-    name.replace(/鍛冶場$/u, "鍛冶"),
-    name.replace(/教会|修道院|神殿|大聖堂/u, "信仰"),
-    name.replace(/魔導塔|魔術工房|結界装置/u, "魔法"),
-    name.replace(/兵舎|射撃場|防壁|城壁|見張り塔|司令部/u, "兵士"),
-    name.replace(/農場/u, "穀物"),
-    name.replace(/伐採場/u, "木材"),
-    name.replace(/採石場/u, "石材"),
-    name.replace(/鉱山/u, "鉄"),
-    name.replace(/市場|倉庫|ギルド/u, "金"),
-    name.replace(/港/u, "海人"),
-    name.replace(/公衆浴場|温泉/u, "回復"),
-    terrain,
-    ...requirementKeys.map(key => RESEARCH_CATEGORY_ICON_NAME_MAP[key] || resolveResearchCategoryDisplayName(key)),
-    "城"
-  ]
-    .map(value => nonEmptyText(value))
-    .filter(Boolean);
-  return getIconSrcByName(resolveAvailableIconName(...candidates), "城");
-}
-
-function resolveVillageBuildCapacityDefinition(village) {
-  const defs = facilityBuildingDefs.value.filter(def => def.isSettlementStage);
-  if (!defs.length) return null;
-  const scaleLabel = nonEmptyText(resolveVillageScaleLabel(village));
-  return defs.find(def => def.name === scaleLabel)
-    || defs.find(def => def.name === "大都市")
-    || defs[defs.length - 1]
-    || null;
-}
-
-function resolveVillageBuildCapacity(village) {
-  const def = resolveVillageBuildCapacityDefinition(village);
-  return Math.max(1, Math.floor(toSafeNumber(def?.buildSlotValue, 1)));
-}
-
-function resolveVillageBuildingSlotCost(definition) {
-  const value = Math.max(1, Math.floor(toSafeNumber(definition?.buildSlotValue, 1)));
-  return value;
-}
-
-function resolveVillageBuildUsedSlots(village) {
-  const keys = normalizeVillageBuildings(village?.buildings);
-  return keys.reduce((sum, key) => {
-    const def = findVillageBuildingDefinition(key);
-    if (!def || def.isSettlementStage) return sum;
-    return sum + resolveVillageBuildingSlotCost(def);
-  }, 0);
-}
-
-function formatVillageBuildingRequirementText(definition) {
-  const def = definition && typeof definition === "object" ? definition : null;
-  if (!def) return "なし";
-  const parts = [];
-  const terrain = nonEmptyText(def.conditionTerrain);
-  if (terrain && terrain !== "なし") parts.push(`条件地形: ${terrain}`);
-  const researchText = formatVillageBuildingResearchRequirementText(def);
-  if (researchText !== "なし") parts.push(`研究Lv: ${researchText}`);
-  return parts.length ? parts.join(" / ") : "なし";
-}
-
-function formatVillageBuildingResearchRequirementText(definition) {
-  const def = definition && typeof definition === "object" ? definition : null;
-  if (!def) return "なし";
-  const requirements = Array.isArray(def.requirements) ? def.requirements : [];
-  if (requirements.length) {
-    return requirements
-      .map(row => `${resolveResearchCategoryDisplayName(row.label)} Lv${row.requiredLevel}`)
-      .join(" / ");
-  }
-  return "なし";
-}
-
-function resolveVillageBuildingStatusText(availability) {
-  const source = availability && typeof availability === "object" ? availability : {};
-  const states = [];
-  if (source.hasResearch === false) states.push("研究不足");
-  if (source.canAfford === false) states.push("素材不足");
-  if (source.hasLand === false) states.push("土地不足");
-  return states.length ? states.join("・") : "建設可能";
-}
-
-function resolveVillageBuildingAvailability(village, definition) {
-  const def = definition && typeof definition === "object" ? definition : null;
-  if (!def) {
-    return { selectable: false, canAfford: false, hasResearch: false, hasLand: false, reasons: ["施設定義不正"], statusText: "条件不正" };
-  }
-  const reasons = [];
-  const requirements = Array.isArray(def.requirements) ? def.requirements : [];
-  let hasResearch = true;
-  for (const requirement of requirements) {
-    const abilityKey = nonEmptyText(requirement?.abilityKey);
-    const label = nonEmptyText(requirement?.label) || abilityKey;
-    const requiredLevel = Math.max(0, Math.floor(toSafeNumber(requirement?.requiredLevel, 0)));
-    const currentLevel = resolveResearchCurrentLevel(label, CITY_ABILITY_DEFINED_CAP);
-    if (requiredLevel > currentLevel) {
-      hasResearch = false;
-      reasons.push(`${resolveResearchCategoryDisplayName(label)}Lv ${currentLevel}/${requiredLevel}`);
-    }
-  }
-  const slotCost = resolveVillageBuildingSlotCost(def);
-  const remainingSlots = Math.max(0, resolveVillageBuildCapacity(village) - resolveVillageBuildUsedSlots(village));
-  const hasLand = remainingSlots >= slotCost;
-  if (!hasLand) {
-    reasons.push(`土地 ${remainingSlots}/${slotCost}`);
-  }
-  const materialStatus = resolveVillageBuildingMaterialStatus(village, def);
-  const canAfford = materialStatus.canAfford;
-  if (!canAfford) {
-    reasons.push(`資材不足: ${materialStatus.shortageText || formatMaterialRawPositiveResourceBag(def.cost)}`);
-  }
-  const statusText = resolveVillageBuildingStatusText({ hasResearch, canAfford, hasLand });
-  return {
-    selectable: hasResearch && canAfford && hasLand,
-    canAfford,
-    hasResearch,
-    hasLand,
-    slotCost,
-    remainingSlots,
-    materialStatus,
-    reasons,
-    statusText
-  };
-}
-
 function buildUnitCreationCost(count = 1) {
   const safeCount = Math.max(1, Math.min(20, Math.floor(toSafeNumber(count, 1))));
   const scaledCount = safeCount * ECONOMY_COST_SCALE;
@@ -3895,61 +3757,6 @@ function applyUnitCreationCost(village, cost) {
     ...nextVillage,
     foodStockByType: nextFood,
     materialStockByType: nextMaterial
-  }, props.selectedRace);
-}
-
-function canAffordVillageBuilding(village, definition) {
-  return resolveVillageBuildingMaterialStatus(village, definition).canAfford;
-}
-
-function resolveVillageBuildingMaterialStatus(village, definition) {
-  if (!definition) {
-    return {
-      canAfford: false,
-      materialBag: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS),
-      costBag: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS),
-      statusEntries: [],
-      shortages: [],
-      statusText: "なし",
-      shortageText: ""
-    };
-  }
-  const materialBag = normalizeMaterialStockBag(village?.materialStockByType);
-  const costBag = normalizeResourceBag(definition.cost, MATERIAL_RESOURCE_KEYS);
-  const statusEntries = [];
-  const shortages = [];
-  for (const key of MATERIAL_RESOURCE_KEYS) {
-    const need = roundTo1(Math.max(0, toSafeNumber(costBag[key], 0)));
-    if (!(need > 0)) continue;
-    const have = roundTo1(Math.max(0, toSafeNumber(materialBag[key], 0)));
-    const entryText = `${key}${formatMaterialCompactNumber(have)}/${formatMaterialCompactNumber(need)}`;
-    statusEntries.push(entryText);
-    if (have < need) shortages.push(entryText);
-  }
-  return {
-    canAfford: shortages.length === 0,
-    materialBag,
-    costBag,
-    statusEntries,
-    shortages,
-    statusText: statusEntries.join(" / ") || "不要",
-    shortageText: shortages.join(" / ")
-  };
-}
-
-function applyVillageBuildingCost(village, definition) {
-  const nextVillage = ensureVillageStateShape(village, props.selectedRace);
-  if (!nextVillage || !definition) return null;
-  const nextMaterial = normalizeMaterialStockBag(nextVillage.materialStockByType);
-  const costBag = normalizeResourceBag(definition.cost, MATERIAL_RESOURCE_KEYS);
-  for (const key of MATERIAL_RESOURCE_KEYS) {
-    nextMaterial[key] = roundTo1(Math.max(0, nextMaterial[key] - costBag[key]));
-  }
-  const nextBuildings = normalizeVillageBuildings([...(nextVillage.buildings || []), definition.key]);
-  return ensureVillageStateShape({
-    ...nextVillage,
-    materialStockByType: nextMaterial,
-    buildings: nextBuildings
   }, props.selectedRace);
 }
 
@@ -4121,7 +3928,9 @@ function buildVisibilitySnapshotFromLiveState() {
     exploredTileKeys: Array.from(exploredTileKeys || []).map(v => String(v || "")),
     visibleTileKeys: Array.from(visibleTileKeys || []).map(v => String(v || "")),
     spottedEnemyTileKeys: Array.from(spottedEnemyTileKeys || []).map(v => String(v || "")),
-    spottedFactionTileKeys: Array.from(spottedFactionTileKeys || []).map(v => String(v || ""))
+    spottedFactionTileKeys: Array.from(spottedFactionTileKeys || []).map(v => String(v || "")),
+    alertedEnemyTileKeys: Array.from(alertedEnemyTileKeys || []).map(v => String(v || "")),
+    alertedFactionTileKeys: Array.from(alertedFactionTileKeys || []).map(v => String(v || ""))
   };
 }
 
@@ -4130,11 +3939,15 @@ function applyVisibilitySnapshotToLiveState(snapshot) {
   const visible = Array.isArray(snapshot?.visibleTileKeys) ? snapshot.visibleTileKeys : [];
   const spotted = Array.isArray(snapshot?.spottedEnemyTileKeys) ? snapshot.spottedEnemyTileKeys : [];
   const spottedFaction = Array.isArray(snapshot?.spottedFactionTileKeys) ? snapshot.spottedFactionTileKeys : [];
+  const alerted = Array.isArray(snapshot?.alertedEnemyTileKeys) ? snapshot.alertedEnemyTileKeys : [];
+  const alertedFaction = Array.isArray(snapshot?.alertedFactionTileKeys) ? snapshot.alertedFactionTileKeys : [];
   exploredTileKeys = new Set(explored.map(v => String(v || "")));
   visibleTileKeys = new Set(visible.map(v => String(v || "")));
   currentVisionTileKeys = new Set(visibleTileKeys);
   spottedEnemyTileKeys = new Set(spotted.map(v => String(v || "")));
   spottedFactionTileKeys = new Set(spottedFaction.map(v => String(v || "")));
+  alertedEnemyTileKeys = new Set(alerted.map(v => String(v || "")));
+  alertedFactionTileKeys = new Set(alertedFaction.map(v => String(v || "")));
 }
 
 function resolveRaceFromUnitList(units = []) {
@@ -4442,7 +4255,9 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label, options = {})
       exploredTileKeys: [],
       visibleTileKeys: [],
       spottedEnemyTileKeys: [],
-      spottedFactionTileKeys: []
+      spottedFactionTileKeys: [],
+      alertedEnemyTileKeys: [],
+      alertedFactionTileKeys: []
     }
   };
 }
@@ -5147,6 +4962,8 @@ function resetVisibilityState() {
   currentVisionTileKeys = new Set();
   spottedEnemyTileKeys = new Set();
   spottedFactionTileKeys = new Set();
+  alertedEnemyTileKeys = new Set();
+  alertedFactionTileKeys = new Set();
 }
 
 function markTileExplored(x, y) {
@@ -5183,6 +5000,28 @@ function markFactionSpotted(x, y, data = currentData.value) {
   }
   spottedFactionTileKeys.add(key);
   markTileExplored(x, y);
+  return true;
+}
+
+function markEnemyAlerted(x, y, data = currentData.value) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const w = Number.isFinite(data?.w) ? data.w : 0;
+  const h = Number.isFinite(data?.h) ? data.h : 0;
+  if (x < 0 || y < 0 || x >= w || y >= h) return false;
+  const tileEnemies = data?.enemySpawnMap?.[y]?.[x];
+  if (!Array.isArray(tileEnemies) || !tileEnemies.length) return false;
+  const key = coordKey(x, y);
+  alertedEnemyTileKeys.add(key);
+  return true;
+}
+
+function markFactionAlerted(x, y, data = currentData.value) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const w = Number.isFinite(data?.w) ? data.w : 0;
+  const h = Number.isFinite(data?.h) ? data.h : 0;
+  if (x < 0 || y < 0 || x >= w || y >= h) return false;
+  const key = coordKey(x, y);
+  alertedFactionTileKeys.add(key);
   return true;
 }
 
@@ -5404,7 +5243,7 @@ function resolveRaceBaseClassName(raceKey) {
 function findClassRowByName(name) {
   const target = nonEmptyText(name);
   if (!target) return null;
-  return classRows.value.find(row => nonEmptyText(row?.名前) === target) || null;
+  return classRowByNameMap.value.get(target) || null;
 }
 
 function isInitialClassRow(row) {
@@ -5444,13 +5283,14 @@ function normalizeClassConditionEntry(rawToken, rawLevel, fallbackToken = "") {
 function resolveVillageBuildingDefinitionByToken(rawToken) {
   const token = nonEmptyText(rawToken);
   if (!token) return null;
+  const normalized = normalizeFacilityNameToken(token);
+  const direct = facilityBuildingDefinitionByTokenMap.value.get(token)
+    || (normalized ? facilityBuildingDefinitionByTokenMap.value.get(normalized) : null);
+  if (direct) return direct;
   return facilityBuildingDefs.value.find((def) => {
-    const key = nonEmptyText(def?.key);
     const name = nonEmptyText(def?.name);
-    if (!key && !name) return false;
-    if (token === key || token === name) return true;
-    if (name && (name.includes(token) || token.includes(name))) return true;
-    return false;
+    if (!name) return false;
+    return name.includes(token) || token.includes(name);
   }) || null;
 }
 
@@ -6318,17 +6158,12 @@ function clearCharacterGenerationState() {
   selectedUnitId.value = "";
   nationLogsBySovereign.value = {};
   activeNationLogKey.value = "";
-  unitCreateBatchCount.value = 1;
-  unitCreateMode.value = UNIT_CREATE_MODE_KEYS.NORMAL;
-  selectedVillageBuildingKey.value = "";
-  showUnitCreateRaceModal.value = false;
-  showUnitCreateClassModal.value = false;
-  showVillageBuildModal.value = false;
+  resetUnitCreateState();
+  resetVillageBuildState();
   showEquipmentInventoryModal.value = false;
   lastEconomySummary.value = "経済: -";
   villagePlacementMode.value = false;
-  unitMoveMode.value = false;
-  showMoveUnitModal.value = false;
+  resetMoveUiState();
   resetVisibilityState();
   applyingTestPlayerState = false;
   resetTestPlayerSlotsFromLiveState();
@@ -6383,7 +6218,8 @@ function createUnitRecord({
   fixedClassLevels = null,
   fixedRaceLevels = null,
   secondaryClassName = "",
-  militaryProfile = null
+  militaryProfile = null,
+  equipmentRarity = ""
 }) {
   const hasFixedLevel = fixedLevel !== undefined && fixedLevel !== null;
   const level = hasFixedLevel
@@ -6406,8 +6242,8 @@ function createUnitRecord({
     !!isNamed && !isSovereign
   );
   const finalStatus = applyMilitaryProfileToStatus(namedBonus.status, militaryProfile);
-  const equipmentSlots = buildEquipmentSlotsFromClassRow(raceRow || classRow || {});
-  const equipment = chooseEquipmentForClass(classRow, isNamed || isSovereign, equipmentSlots);
+  const equipmentSlots = buildEquipmentSlotsFromClassRow(classRow || raceRow || {});
+  const equipment = chooseEquipmentForClass(classRow, isNamed || isSovereign, equipmentSlots, equipmentRarity);
   const baseResistances = buildUnitResistances(raceRow, classRow);
   const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(equipment));
   const moveRange = 6;
@@ -6639,13 +6475,9 @@ function createVillageAndInitialUnit(data) {
   pushNationLog(`国家を開始: 種族 ${selectedRaceName} / 初期人口 ${pendingPopulation}人`);
   pushNationLog(`統治者を任命: ${sovereignUnit.name} / ${sovereignUnit.race} / ${sovereignUnit.className} / Lv${sovereignUnit.level}`);
   villagePlacementMode.value = true;
-  unitMoveMode.value = false;
-  unitCreateBatchCount.value = 1;
-  unitCreateMode.value = UNIT_CREATE_MODE_KEYS.NORMAL;
-  selectedVillageBuildingKey.value = "";
-  showUnitCreateRaceModal.value = false;
-  showUnitCreateClassModal.value = false;
-  showVillageBuildModal.value = false;
+  resetMoveUiState();
+  resetUnitCreateState();
+  resetVillageBuildState();
   showEquipmentInventoryModal.value = false;
   resetVisibilityState();
   mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
@@ -6929,7 +6761,9 @@ function buildFactionStateWithVillagePlacement(slot, data, placement) {
       exploredTileKeys: [tileKey],
       visibleTileKeys: [tileKey],
       spottedEnemyTileKeys: [],
-      spottedFactionTileKeys: []
+      spottedFactionTileKeys: [],
+      alertedEnemyTileKeys: [],
+      alertedFactionTileKeys: []
     }
   };
 }
@@ -6970,7 +6804,9 @@ function buildFactionStateWithPendingVillage(slot) {
       exploredTileKeys: [],
       visibleTileKeys: [],
       spottedEnemyTileKeys: [],
-      spottedFactionTileKeys: []
+      spottedFactionTileKeys: [],
+      alertedEnemyTileKeys: [],
+      alertedFactionTileKeys: []
     }
   };
 }
@@ -7391,6 +7227,8 @@ function buildMapSnapshotForSave() {
       visibleTileKeys: Array.from(visibleTileKeys || []).map(v => String(v || "")),
       spottedEnemyTileKeys: Array.from(spottedEnemyTileKeys || []).map(v => String(v || "")),
       spottedFactionTileKeys: Array.from(spottedFactionTileKeys || []).map(v => String(v || "")),
+      alertedEnemyTileKeys: Array.from(alertedEnemyTileKeys || []).map(v => String(v || "")),
+      alertedFactionTileKeys: Array.from(alertedFactionTileKeys || []).map(v => String(v || "")),
       territory: {
         player: Array.from(territorySets?.player || []).map(v => String(v || "")),
         enemy: Array.from(territorySets?.enemy || []).map(v => String(v || ""))
@@ -7492,7 +7330,9 @@ function normalizeVisibilitySnapshot(raw, fallback = {}) {
     exploredTileKeys: Array.isArray(source?.exploredTileKeys) ? source.exploredTileKeys.map(v => String(v || "")).filter(Boolean) : [],
     visibleTileKeys: Array.isArray(source?.visibleTileKeys) ? source.visibleTileKeys.map(v => String(v || "")).filter(Boolean) : [],
     spottedEnemyTileKeys: Array.isArray(source?.spottedEnemyTileKeys) ? source.spottedEnemyTileKeys.map(v => String(v || "")).filter(Boolean) : [],
-    spottedFactionTileKeys: Array.isArray(source?.spottedFactionTileKeys) ? source.spottedFactionTileKeys.map(v => String(v || "")).filter(Boolean) : []
+    spottedFactionTileKeys: Array.isArray(source?.spottedFactionTileKeys) ? source.spottedFactionTileKeys.map(v => String(v || "")).filter(Boolean) : [],
+    alertedEnemyTileKeys: Array.isArray(source?.alertedEnemyTileKeys) ? source.alertedEnemyTileKeys.map(v => String(v || "")).filter(Boolean) : [],
+    alertedFactionTileKeys: Array.isArray(source?.alertedFactionTileKeys) ? source.alertedFactionTileKeys.map(v => String(v || "")).filter(Boolean) : []
   };
 }
 
@@ -7707,15 +7547,28 @@ function dissolveLeaderSquad(unitId) {
   };
 }
 
+function resolveEquipmentRequiredCountForUnit(unit, fallback = 1) {
+  const fallbackCount = Math.max(1, Math.floor(toSafeNumber(fallback, 1)));
+  if (!unit || !isMilitaryUnit(unit)) return fallbackCount;
+  const byProfile = Math.max(0, Math.floor(toSafeNumber(unit?.combatProfile?.populationCost, 0)));
+  return Math.max(1, byProfile || fallbackCount);
+}
+
+function scaleCraftCostByCount(craftCost, count = 1) {
+  const need = Math.max(1, Math.floor(toSafeNumber(count, 1)));
+  if (!craftCost || typeof craftCost !== "object") return null;
+  return {
+    ...craftCost,
+    material: multiplyResourceBag(craftCost.material, need, MATERIAL_RESOURCE_KEYS)
+  };
+}
+
 function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slotKeyRaw = "") {
   const targetId = nonEmptyText(unitId);
   const eqName = nonEmptyText(equipmentName);
   if (!targetId) return { ok: false, reason: "対象ユニットが未指定です。" };
-  if (!eqName) return { ok: false, reason: "装備名が未指定です。" };
   const idx = unitList.value.findIndex(unit => unit?.id === targetId);
   if (idx < 0) return { ok: false, reason: "対象ユニットが見つかりません。" };
-  const row = findEquipmentRowByName(eqName);
-  if (!row) return { ok: false, reason: "装備データが見つかりません。" };
   const village = ensureVillageStateShape(villageState.value, props.selectedRace);
   if (!village?.placed) {
     return { ok: false, reason: "装備変更には都市（初期村）の配置が必要です。" };
@@ -7727,14 +7580,46 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
   if (equipmentSlots[slotKey] === false) {
     return { ok: false, reason: `このユニットは ${EQUIPMENT_SLOT_LABELS[slotKey] || slotKey} を装備できません。` };
   }
+  const equipmentCount = resolveEquipmentRequiredCountForUnit(target, 1);
+  const currentEquipment = normalizeEquipmentList(target?.equipment).map(item => ({ ...item }));
+  const oldSlotItem = currentEquipment.find(item => nonEmptyText(item?.slot) === slotKey) || null;
+
+  let nextVillage = village;
+  if (!eqName) {
+    if (!oldSlotItem) {
+      return { ok: false, reason: "外せる装備がありません。" };
+    }
+    const returned = addEquipmentInventoryItem(nextVillage, oldSlotItem, equipmentCount);
+    if (!returned) {
+      return { ok: false, reason: "装備の在庫返却に失敗しました。" };
+    }
+    const nextEquipment = currentEquipment.filter(item => nonEmptyText(item?.slot) !== slotKey);
+    const baseResistances = target?.baseResistances || target?.resistances || {};
+    const nextResistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(nextEquipment));
+    unitList.value[idx] = {
+      ...target,
+      equipment: normalizeEquipmentList(nextEquipment),
+      resistances: nextResistances
+    };
+    villageState.value = returned;
+    return {
+      ok: true,
+      removed: true,
+      slotIndex,
+      slotKey,
+      sourceType: "remove",
+      equipmentCount
+    };
+  }
+  const row = findEquipmentRowByName(eqName);
+  if (!row) return { ok: false, reason: "装備データが見つかりません。" };
   if (!equipmentRowMatchesSlot(row, slotKey)) {
     return { ok: false, reason: `${eqName} は ${EQUIPMENT_SLOT_LABELS[slotKey] || slotKey} に装備できません。` };
   }
 
-  let nextVillage = village;
   let craftCost = null;
   let sourceType = "inventory";
-  const fromInventory = consumeEquipmentInventoryItem(nextVillage, eqName, rarityKey, 1);
+  const fromInventory = consumeEquipmentInventoryItem(nextVillage, eqName, rarityKey, equipmentCount);
   let nextItem = null;
   if (fromInventory.ok) {
     nextVillage = fromInventory.village;
@@ -7742,12 +7627,14 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
       ? {
         ...fromInventory.item,
         slot: slotKey,
-        slotLabel: EQUIPMENT_SLOT_LABELS[slotKey] || slotKey
+        slotLabel: EQUIPMENT_SLOT_LABELS[slotKey] || slotKey,
+        unitCount: equipmentCount
       }
       : createEquipmentEntry(row, !!target?.isNamed || !!target?.isSovereign, rarityKey, slotKey);
   } else {
     sourceType = "craft";
-    craftCost = buildEquipmentCraftMaterialCost(row, rarityKey);
+    const craftCostSingle = buildEquipmentCraftMaterialCost(row, rarityKey);
+    craftCost = scaleCraftCostByCount(craftCostSingle, equipmentCount);
     const smithCap = resolveSmithCraftCap(nextVillage);
     if (craftCost.level > smithCap) {
       return { ok: false, reason: `鍛冶Lv不足: 必要Lv${craftCost.level} / 現在Lv${smithCap}` };
@@ -7772,12 +7659,14 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
       return { ok: false, reason: "素材消費後の村データ更新に失敗しました。" };
     }
     nextItem = createEquipmentEntry(row, !!target?.isNamed || !!target?.isSovereign, rarityKey, slotKey);
+    nextItem.unitCount = equipmentCount;
+  }
+  if (nextItem && !Number.isFinite(Number(nextItem.unitCount))) {
+    nextItem.unitCount = equipmentCount;
   }
 
-  const currentEquipment = normalizeEquipmentList(target?.equipment).map(item => ({ ...item }));
-  const oldSlotItem = currentEquipment.find(item => nonEmptyText(item?.slot) === slotKey) || null;
   if (oldSlotItem) {
-    const villageWithReturnedItem = addEquipmentInventoryItem(nextVillage, oldSlotItem, 1);
+    const villageWithReturnedItem = addEquipmentInventoryItem(nextVillage, oldSlotItem, equipmentCount);
     if (!villageWithReturnedItem) {
       return { ok: false, reason: "旧装備の在庫返却に失敗しました。" };
     }
@@ -7800,7 +7689,8 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
     slotIndex,
     slotKey,
     craftCost,
-    sourceType
+    sourceType,
+    equipmentCount
   };
 }
 
@@ -8168,16 +8058,23 @@ function applyCharacterCommand(command) {
     } else {
       const target = unitList.value.find(unit => unit.id === unitId) || null;
       const item = result.equipment;
-      const rarityText = item?.qualityLabel || formatEquipmentRarityLabel(item?.quality);
       const slotLabel = EQUIPMENT_SLOT_LABELS[result.slotKey] || `Slot${result.slotIndex + 1}`;
+      const perUnitText = Math.max(1, Math.floor(toSafeNumber(result?.equipmentCount, 1))) > 1
+        ? ` x${Math.max(1, Math.floor(toSafeNumber(result?.equipmentCount, 1)))}`
+        : "";
       updateVillageInfoText();
-      if (result.sourceType === "inventory") {
-        updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 在庫使用`);
-        pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 在庫使用`);
+      if (result.sourceType === "remove") {
+        updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} を外す${perUnitText}`);
+        pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} を外す${perUnitText}`);
+      } else if (result.sourceType === "inventory") {
+        const rarityText = item?.qualityLabel || formatEquipmentRarityLabel(item?.quality);
+        updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 在庫使用${perUnitText}`);
+        pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 在庫使用${perUnitText}`);
       } else {
+        const rarityText = item?.qualityLabel || formatEquipmentRarityLabel(item?.quality);
         const craftCostText = formatMaterialPositiveResourceBag(result?.craftCost?.material);
-        updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 鍛造 ${craftCostText}`);
-        pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 鍛造 ${craftCostText}`);
+        updateUnitInfoText(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 鍛造 ${craftCostText}${perUnitText}`);
+        pushNationLog(`装備変更: ${target?.name || "ユニット"} / ${slotLabel} ${item?.name || "-"} [${rarityText}] / 鍛造 ${craftCostText}${perUnitText}`);
       }
     }
     emitCharacterStateChange();
@@ -8302,39 +8199,72 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
   return entry;
 }
 
-function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null) {
+function parseEquipmentPresetNames(value) {
+  const text = nonEmptyText(value);
+  if (!text || text === "-" || text === "×" || text.toLowerCase() === "null") return [];
+  return text
+    .split(/[\/,、，／]/)
+    .map(part => nonEmptyText(part))
+    .filter(Boolean);
+}
+
+function findPresetEquipmentRowForSlot(classRow, slotKey) {
+  const names = parseEquipmentPresetNames(classRow?.[slotKey]);
+  if (!names.length) return null;
+  for (const name of names) {
+    const exact = findEquipmentRowByName(name);
+    if (exact && equipmentRowMatchesSlot(exact, slotKey)) return exact;
+  }
+  for (const name of names) {
+    const partial = equipmentRows.value.find(row => {
+      const eqName = nonEmptyText(row?.装備名);
+      return eqName && eqName.includes(name) && equipmentRowMatchesSlot(row, slotKey);
+    });
+    if (partial) return partial;
+  }
+  return null;
+}
+
+function buildPresetEquipmentMaterialNeedByRarity(classRow, rarityKey, totalEquipmentCount = 1) {
+  const out = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  if (!classRow || typeof classRow !== "object") return out;
+  const count = Math.max(1, Math.floor(toSafeNumber(totalEquipmentCount, 1)));
+  const rarity = normalizeEquipmentRarity(rarityKey, "common");
+  for (const slotKey of EQUIPMENT_SLOT_KEYS) {
+    if (!allowsEquipmentBySlotCell(classRow?.[slotKey])) continue;
+    const preset = findPresetEquipmentRowForSlot(classRow, slotKey);
+    if (!preset) continue;
+    const craftCost = buildEquipmentCraftMaterialCost(preset, rarity);
+    const scaled = multiplyResourceBag(craftCost.material, count, MATERIAL_RESOURCE_KEYS);
+    addToResourceBag(out, scaled, MATERIAL_RESOURCE_KEYS);
+  }
+  return normalizeMaterialStockBag(out);
+}
+
+function buildPresetEquipmentNameList(classRow) {
+  if (!classRow || typeof classRow !== "object") return [];
+  const names = [];
+  const seen = new Set();
+  for (const slotKey of EQUIPMENT_SLOT_KEYS) {
+    if (!allowsEquipmentBySlotCell(classRow?.[slotKey])) continue;
+    const preset = findPresetEquipmentRowForSlot(classRow, slotKey);
+    const eqName = nonEmptyText(preset?.装備名);
+    if (!eqName || seen.has(eqName)) continue;
+    seen.add(eqName);
+    names.push(eqName);
+  }
+  return names;
+}
+
+function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null, rarityOverride = "") {
   if (!equipmentRows.value.length) return [];
   const slots = equipmentSlots && typeof equipmentSlots === "object"
     ? equipmentSlots
     : resolveUnitEquipmentSlots({});
-  const parsePresetNames = (value) => {
-    const text = nonEmptyText(value);
-    if (!text || text === "-" || text === "×" || text.toLowerCase() === "null") return [];
-    return text
-      .split(/[\/,、，／]/)
-      .map(part => nonEmptyText(part))
-      .filter(Boolean);
-  };
-  const findPresetRowForSlot = (slotKey) => {
-    const names = parsePresetNames(classRow?.[slotKey]);
-    if (!names.length) return null;
-    for (const name of names) {
-      const exact = findEquipmentRowByName(name);
-      if (exact && equipmentRowMatchesSlot(exact, slotKey)) return exact;
-    }
-    for (const name of names) {
-      const partial = equipmentRows.value.find(row => {
-        const eqName = nonEmptyText(row?.装備名);
-        return eqName && eqName.includes(name) && equipmentRowMatchesSlot(row, slotKey);
-      });
-      if (partial) return partial;
-    }
-    return null;
-  };
   const presetBySlot = {};
   let hasAnyPreset = false;
   for (const slotKey of EQUIPMENT_SLOT_KEYS) {
-    const presetRow = findPresetRowForSlot(slotKey);
+    const presetRow = findPresetEquipmentRowForSlot(classRow, slotKey);
     presetBySlot[slotKey] = presetRow;
     if (presetRow) hasAnyPreset = true;
   }
@@ -8344,7 +8274,7 @@ function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null) {
       if (slots[slotKey] === false) continue;
       const preset = presetBySlot[slotKey];
       if (!preset) continue;
-      loadout.push(createEquipmentEntry(preset, isNamed, "", slotKey));
+      loadout.push(createEquipmentEntry(preset, isNamed, rarityOverride, slotKey));
     }
     return normalizeEquipmentList(loadout);
   }
@@ -8359,107 +8289,145 @@ function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null) {
     const meleePool = pool.filter(row => WEAPON_EQUIPMENT_NAMES.includes(nonEmptyText(row.装備名)));
     if (meleePool.length) pool = meleePool;
   }
-  const primaryPreset = findPresetRowForSlot("武器1");
+  const primaryPreset = findPresetEquipmentRowForSlot(classRow, "武器1");
   const primaryRow = primaryPreset || randomPick(pool, randomPick(equipmentRows.value, null));
   const loadout = [];
   if (primaryRow && slots["武器1"] !== false) {
-    loadout.push(createEquipmentEntry(primaryRow, isNamed, "", "武器1"));
+    loadout.push(createEquipmentEntry(primaryRow, isNamed, rarityOverride, "武器1"));
   }
   const shieldPool = equipmentRows.value.filter(row => SHIELD_EQUIPMENT_NAMES.includes(nonEmptyText(row.装備名)));
   const shieldChance = isNamed ? 0.65 : 0.35;
-  const secondaryPreset = findPresetRowForSlot("武器2");
+  const secondaryPreset = findPresetEquipmentRowForSlot(classRow, "武器2");
   if (slots["武器2"] !== false) {
     if (secondaryPreset) {
-      loadout.push(createEquipmentEntry(secondaryPreset, isNamed, "", "武器2"));
+      loadout.push(createEquipmentEntry(secondaryPreset, isNamed, rarityOverride, "武器2"));
     } else if (Math.random() < shieldChance) {
       const shield = randomPick(shieldPool, null);
-      if (shield) loadout.push(createEquipmentEntry(shield, isNamed, "", "武器2"));
+      if (shield) loadout.push(createEquipmentEntry(shield, isNamed, rarityOverride, "武器2"));
     }
   }
   for (const slotKey of ["頭", "体", "足", "装飾1", "装飾2"]) {
     if (slots[slotKey] === false) continue;
-    const preset = findPresetRowForSlot(slotKey);
+    const preset = findPresetEquipmentRowForSlot(classRow, slotKey);
     if (!preset) continue;
-    loadout.push(createEquipmentEntry(preset, isNamed, "", slotKey));
+    loadout.push(createEquipmentEntry(preset, isNamed, rarityOverride, slotKey));
   }
   return normalizeEquipmentList(loadout);
 }
 
-function applyAutoEquipForCreatedUnit(unit, raceRow, classRow, village) {
+function applyAutoEquipForCreatedUnit(unit, raceRow, classRow, village, options = {}) {
   if (!unit || typeof unit !== "object") {
-    return { unit, village, fromInventory: 0, generated: 0, warningMessages: [] };
+    return { ok: true, unit, village, fromInventory: 0, generated: 0, warningMessages: [] };
   }
   const loadout = normalizeEquipmentList(unit?.equipment);
   if (!loadout.length) {
-    return { unit, village, fromInventory: 0, generated: 0, warningMessages: [] };
+    return { ok: true, unit, village, fromInventory: 0, generated: 0, warningMessages: [] };
   }
   let nextVillage = ensureVillageStateShape(village, nonEmptyText(unit?.race) || props.selectedRace);
   let fromInventory = 0;
   let generated = 0;
   const warningMessages = [];
-  const nextEquipment = loadout.map(item => {
+  const strict = !!options?.strict;
+  const preferCraft = !!options?.preferCraft;
+  const defaultEquipmentCount = Math.max(1, Math.floor(toSafeNumber(options?.equipmentCount, 1)));
+  const equipmentCount = resolveEquipmentRequiredCountForUnit(unit, defaultEquipmentCount);
+  const nextEquipment = [];
+  for (const item of loadout) {
     const eqName = nonEmptyText(item?.name);
     if (!eqName || !nextVillage?.placed) {
-      return item;
+      nextEquipment.push(item);
+      continue;
     }
     const rarityKey = normalizeEquipmentRarity(item?.quality || item?.qualityLabel, "common");
-    const consume = consumeEquipmentInventoryItem(nextVillage, eqName, rarityKey, 1);
-    if (!consume?.ok || !consume?.village) {
-      const row = findEquipmentRowByName(eqName);
-      if (!row) {
-        warningMessages.push(`初期装備不足: ${eqName}（装備データなし）`);
-        return null;
+    if (!preferCraft) {
+      const consume = consumeEquipmentInventoryItem(nextVillage, eqName, rarityKey, equipmentCount);
+      if (consume?.ok && consume?.village) {
+        nextVillage = consume.village;
+        fromInventory += equipmentCount;
+        const consumedItem = consume.item && typeof consume.item === "object" ? consume.item : item;
+        const normalizedQuality = normalizeEquipmentRarity(consumedItem?.quality || consumedItem?.qualityLabel || rarityKey, rarityKey);
+        nextEquipment.push({
+          ...item,
+          ...consumedItem,
+          slot: nonEmptyText(item?.slot) || nonEmptyText(consumedItem?.slot) || "武器1",
+          name: eqName,
+          quality: normalizedQuality,
+          qualityLabel: formatEquipmentRarityLabel(normalizedQuality),
+          unitCount: equipmentCount
+        });
+        continue;
       }
-      const craftCost = buildEquipmentCraftMaterialCost(row, rarityKey);
-      const smithCap = resolveSmithCraftCap(nextVillage);
-      if (craftCost.level > smithCap) {
-        warningMessages.push(`初期装備不足: ${eqName}（鍛冶Lv不足 ${smithCap}/${craftCost.level}）`);
-        return null;
-      }
-      if (craftCost.isMagic) {
-        const magicLv = resolveVillageAbilityLevelForEnchant(nextVillage, "魔法Lv");
-        if (craftCost.level > magicLv) {
-          warningMessages.push(`初期装備不足: ${eqName}（魔法Lv不足 ${magicLv}/${craftCost.level}）`);
-          return null;
-        }
-      }
-      if (craftCost.isFaith) {
-        const faithLv = resolveVillageAbilityLevelForEnchant(nextVillage, "信仰Lv");
-        if (craftCost.level > faithLv) {
-          warningMessages.push(`初期装備不足: ${eqName}（信仰Lv不足 ${faithLv}/${craftCost.level}）`);
-          return null;
-        }
-      }
-      if (!canAffordEquipmentCraft(nextVillage, craftCost)) {
-        warningMessages.push(`初期装備不足: ${eqName}（素材不足: ${formatMaterialPositiveResourceBag(craftCost.material)}）`);
-        return null;
-      }
-      const consumedVillage = applyEquipmentCraftCost(nextVillage, craftCost);
-      if (!consumedVillage) {
-        warningMessages.push(`初期装備不足: ${eqName}（素材反映失敗）`);
-        return null;
-      }
-      nextVillage = consumedVillage;
-      generated += 1;
-      return createEquipmentEntry(row, !!unit?.isNamed || !!unit?.isSovereign, rarityKey, nonEmptyText(item?.slot) || "武器1");
     }
-    nextVillage = consume.village;
-    fromInventory += 1;
-    const consumedItem = consume.item && typeof consume.item === "object" ? consume.item : item;
-    const normalizedQuality = normalizeEquipmentRarity(consumedItem?.quality || consumedItem?.qualityLabel || rarityKey, rarityKey);
-    return {
-      ...item,
-      ...consumedItem,
-      slot: nonEmptyText(item?.slot) || nonEmptyText(consumedItem?.slot) || "武器1",
-      name: eqName,
-      quality: normalizedQuality,
-      qualityLabel: formatEquipmentRarityLabel(normalizedQuality)
-    };
-  });
+    const row = findEquipmentRowByName(eqName);
+    if (!row) {
+      const reason = `初期装備不足: ${eqName}（装備データなし）`;
+      if (strict) {
+        return { ok: false, reason, unit, village: nextVillage, fromInventory, generated, warningMessages };
+      }
+      warningMessages.push(reason);
+      continue;
+    }
+    const craftCostSingle = buildEquipmentCraftMaterialCost(row, rarityKey);
+    const craftCost = scaleCraftCostByCount(craftCostSingle, equipmentCount);
+    const smithCap = resolveSmithCraftCap(nextVillage);
+    if (craftCost.level > smithCap) {
+      const reason = `初期装備不足: ${eqName}（鍛冶Lv不足 ${smithCap}/${craftCost.level}）`;
+      if (strict) {
+        return { ok: false, reason, unit, village: nextVillage, fromInventory, generated, warningMessages };
+      }
+      warningMessages.push(reason);
+      continue;
+    }
+    if (craftCost.isMagic) {
+      const magicLv = resolveVillageAbilityLevelForEnchant(nextVillage, "魔法Lv");
+      if (craftCost.level > magicLv) {
+        const reason = `初期装備不足: ${eqName}（魔法Lv不足 ${magicLv}/${craftCost.level}）`;
+        if (strict) {
+          return { ok: false, reason, unit, village: nextVillage, fromInventory, generated, warningMessages };
+        }
+        warningMessages.push(reason);
+        continue;
+      }
+    }
+    if (craftCost.isFaith) {
+      const faithLv = resolveVillageAbilityLevelForEnchant(nextVillage, "信仰Lv");
+      if (craftCost.level > faithLv) {
+        const reason = `初期装備不足: ${eqName}（信仰Lv不足 ${faithLv}/${craftCost.level}）`;
+        if (strict) {
+          return { ok: false, reason, unit, village: nextVillage, fromInventory, generated, warningMessages };
+        }
+        warningMessages.push(reason);
+        continue;
+      }
+    }
+    if (!canAffordEquipmentCraft(nextVillage, craftCost)) {
+      const reason = `初期装備不足: ${eqName}（素材不足: ${formatMaterialPositiveResourceBag(craftCost.material)}）`;
+      if (strict) {
+        return { ok: false, reason, unit, village: nextVillage, fromInventory, generated, warningMessages };
+      }
+      warningMessages.push(reason);
+      continue;
+    }
+    const consumedVillage = applyEquipmentCraftCost(nextVillage, craftCost);
+    if (!consumedVillage) {
+      const reason = `初期装備不足: ${eqName}（素材反映失敗）`;
+      if (strict) {
+        return { ok: false, reason, unit, village: nextVillage, fromInventory, generated, warningMessages };
+      }
+      warningMessages.push(reason);
+      continue;
+    }
+    nextVillage = consumedVillage;
+    generated += equipmentCount;
+    const nextItem = createEquipmentEntry(row, !!unit?.isNamed || !!unit?.isSovereign, rarityKey, nonEmptyText(item?.slot) || "武器1");
+    nextItem.unitCount = equipmentCount;
+    nextEquipment.push(nextItem);
+  }
   const normalizedEquipment = normalizeEquipmentList(nextEquipment.filter(Boolean));
   const baseResistances = buildUnitResistances(raceRow, classRow);
   const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(normalizedEquipment));
   return {
+    ok: true,
     unit: {
       ...unit,
       equipment: normalizedEquipment,
@@ -8469,7 +8437,8 @@ function applyAutoEquipForCreatedUnit(unit, raceRow, classRow, village) {
     village: nextVillage,
     fromInventory,
     generated,
-    warningMessages
+    warningMessages,
+    equipmentCount
   };
 }
 
@@ -9385,6 +9354,7 @@ function buildEnemyEncounterGroups(data = currentData.value) {
         y,
         scout: sense.scout,
         stealth: sense.stealth,
+        aggressive: true,
         visionRange: resolveEncounterVisionRangeByScout(sense.scout),
         count: enemies.length,
         strong: enemies.some(enemy => !!enemy?.strong),
@@ -9452,6 +9422,7 @@ function buildOtherFactionEncounterGroups(data = currentData.value) {
       y: bucket.y,
       scout: sense.scout,
       stealth: sense.stealth,
+      aggressive: false,
       visionRange: resolveEncounterVisionRangeByScout(sense.scout),
       count: bucket.units.length,
       factionIds: Array.from(bucket.factionIds),
@@ -9553,7 +9524,8 @@ function resolveHostileGroupsAtTileForMove(data, x, y, options = {}) {
       y,
       scout: sense.scout,
       stealth: sense.stealth,
-      label: tileEnemies[0]?.name || tileEnemies[0]?.race || "敵"
+      label: tileEnemies[0]?.name || tileEnemies[0]?.race || "敵",
+      aggressive: true
     });
   }
   const tileKey = coordKey(x, y);
@@ -9572,7 +9544,8 @@ function resolveHostileGroupsAtTileForMove(data, x, y, options = {}) {
       y,
       scout: sense.scout,
       stealth: sense.stealth,
-      label: Array.from(bucket.factionLabels || []).join("/") || "他勢力"
+      label: Array.from(bucket.factionLabels || []).join("/") || "他勢力",
+      aggressive: false
     });
   }
   return groups;
@@ -9584,12 +9557,14 @@ function runHostilePassStealthCheckAtTile(options = {}) {
   const x = Math.floor(toSafeNumber(options?.x, Number.NaN));
   const y = Math.floor(toSafeNumber(options?.y, Number.NaN));
   if (!data || !moveGroup || !Number.isFinite(x) || !Number.isFinite(y)) {
-    return { blocked: false, reason: "", lockApplied: false };
+    return { blocked: false, reason: "", lockApplied: false, detected: false, aggressiveDetected: false };
   }
   const hostileGroups = resolveHostileGroupsAtTileForMove(data, x, y, {
     factionTileMap: options?.factionTileMap
   });
-  if (!hostileGroups.length) return { blocked: false, reason: "", lockApplied: false };
+  if (!hostileGroups.length) {
+    return { blocked: false, reason: "", lockApplied: false, detected: false, aggressiveDetected: false };
+  }
   const playerSense = resolveMoveGroupEncounterSense(moveGroup);
   for (const hostile of hostileGroups) {
     const chancePercent = resolveEncounterSurveyDetectChancePercent(hostile.scout, playerSense.stealth);
@@ -9598,27 +9573,35 @@ function runHostilePassStealthCheckAtTile(options = {}) {
     const enemyLabel = hostile.kind === "faction"
       ? `${hostile.label}部隊`
       : hostile.label;
-    const lockResult = applyEncounterMoveLock(moveGroup.participantIds, {
-      enemyLabel,
-      distance: 0,
-      context: "move",
-      lockType: "detected",
-      turn: mapTurnNumber.value,
-      atX: x,
-      atY: y
-    });
+    const aggressive = hostile?.aggressive !== false;
+    let lockApplied = false;
+    if (aggressive) {
+      const lockResult = applyEncounterMoveLock(moveGroup.participantIds, {
+        enemyLabel,
+        distance: 0,
+        context: "move",
+        lockType: "detected",
+        turn: mapTurnNumber.value,
+        atX: x,
+        atY: y
+      });
+      lockApplied = !!lockResult?.applied;
+    }
     if (hostile.kind === "faction") {
-      markFactionSpotted(x, y, data);
+      markFactionAlerted(x, y, data);
     } else {
-      markEnemySpotted(x, y, data);
+      markEnemyAlerted(x, y, data);
     }
     return {
-      blocked: true,
-      reason: `${enemyLabel}に発見され通行不可`,
-      lockApplied: !!lockResult?.applied
+      blocked: false,
+      reason: `${enemyLabel}に発見`,
+      lockApplied,
+      detected: true,
+      aggressiveDetected: aggressive,
+      enemyLabel
     };
   }
-  return { blocked: false, reason: "", lockApplied: false };
+  return { blocked: false, reason: "", lockApplied: false, detected: false, aggressiveDetected: false };
 }
 
 function consumeEncounterActionMoveByUnitIds(unitIds = [], moveCost = ENCOUNTER_ACTION_MOVE_COST) {
@@ -9695,6 +9678,8 @@ function clearMonsterTileByAmbush(data, x, y) {
   data.enemySpawnMap[y][x] = [];
   const tileKey = coordKey(x, y);
   spottedEnemyTileKeys.delete(tileKey);
+  alertedEnemyTileKeys.delete(tileKey);
+  alertedFactionTileKeys.delete(tileKey);
   let claimed = false;
   let respawnCount = 0;
   if (afterDanger <= 0) {
@@ -9749,6 +9734,9 @@ function runEnemyEncounterCheck(options = {}) {
   for (const player of playerGroups) {
     for (const enemy of hostileGroups) {
       const kind = nonEmptyText(enemy?.kind) || "spawn";
+      const enemyAggressive = kind === "faction"
+        ? !!enemy?.aggressive
+        : enemy?.aggressive !== false;
       const distance = resolveEncounterDistance(player, enemy);
       if (!Number.isFinite(distance)) continue;
       const playerVisionRange = Math.max(0, Math.floor(toSafeNumber(player?.visionRange, UNIT_VISION_BASE_RANGE)));
@@ -9781,19 +9769,29 @@ function runEnemyEncounterCheck(options = {}) {
           : markEnemySpotted(enemy.x, enemy.y, data);
         discoveredAnyTarget = newlySpottedEnemy || discoveredAnyTarget;
       }
+      if (enemyFoundPlayer) {
+        if (kind === "faction") {
+          markFactionAlerted(enemy.x, enemy.y, data);
+        } else {
+          markEnemyAlerted(enemy.x, enemy.y, data);
+        }
+      }
       const lockType = playerFoundEnemy && enemyFoundPlayer
         ? "mutual"
         : (playerFoundEnemy ? "detected" : "spotted");
-      const moveLockResult = applyEncounterMoveLock(player.unitIds, {
-        enemyLabel: enemyHeadLabel,
-        distance,
-        context,
-        lockType,
-        turn: mapTurnNumber.value,
-        atX: enemy.x,
-        atY: enemy.y
-      });
-      const moveLockApplied = !!moveLockResult.applied;
+      const shouldApplyMoveLock = !!enemyFoundPlayer && !!enemyAggressive;
+      const moveLockResult = shouldApplyMoveLock
+        ? applyEncounterMoveLock(player.unitIds, {
+          enemyLabel: enemyHeadLabel,
+          distance,
+          context,
+          lockType,
+          turn: mapTurnNumber.value,
+          atX: enemy.x,
+          atY: enemy.y
+        })
+        : { applied: false, reasonText: "" };
+      const moveLockApplied = !!moveLockResult?.applied;
       const moveLockActive = moveLockApplied || player.unitIds.some(unitId => !!resolveEncounterMoveLock(unitId));
       if (moveLockApplied) {
         didApplyMoveLock = true;
@@ -9801,6 +9799,7 @@ function runEnemyEncounterCheck(options = {}) {
 
       let enemyAttack = false;
       let ambushByFumble = false;
+      let stealthAmbush = false;
       let attackChance = 0;
       let attackRoll = null;
       let fumbleRoll = null;
@@ -9808,32 +9807,26 @@ function runEnemyEncounterCheck(options = {}) {
       let ambushClearResult = null;
       let ambushMoveCostSpent = false;
       let ambushBlockedByMovePoint = false;
-      const canResolveAmbushByContext = context === "survey";
-      if (playerAmbush && kind === "spawn" && canResolveAmbushByContext && !resolvedSpawnTileByEncounter.has(enemyTileKey)) {
-        const ambushCostResult = consumeEncounterActionMoveByUnitIds(player.unitIds, ENCOUNTER_ACTION_MOVE_COST);
-        if (ambushCostResult.consumed) {
-          ambushMoveCostSpent = true;
-          didConsumeEncounterMove = true;
-          ambushClearResult = clearMonsterTileByAmbush(data, enemy.x, enemy.y);
-          resolvedSpawnTileByEncounter.add(enemyTileKey);
-          if (ambushClearResult?.cleared) discoveredAnyTarget = true;
-        } else {
-          ambushBlockedByMovePoint = true;
-        }
-      }
-      if (enemyFoundPlayer) {
-        fumbleRoll = Math.random();
-        if (fumbleRoll < ENCOUNTER_FUMBLE_CHANCE) {
-          ambushByFumble = true;
+      if (enemyFoundPlayer && enemyAggressive) {
+        if (context === "move" && distance === 0 && !playerFoundEnemy) {
+          stealthAmbush = true;
           enemyAttack = true;
+          attackChance = 1;
+          attackRoll = 0;
         } else {
-          attackChance = clampNumber(
-            ENCOUNTER_ATTACK_BASE_CHANCE + ((enemyEffectiveScout - player.stealth) * ENCOUNTER_ATTACK_DIFF_FACTOR),
-            ENCOUNTER_ATTACK_MIN_CHANCE,
-            ENCOUNTER_ATTACK_MAX_CHANCE
-          );
-          attackRoll = Math.random();
-          enemyAttack = attackRoll < attackChance;
+          fumbleRoll = Math.random();
+          if (fumbleRoll < ENCOUNTER_FUMBLE_CHANCE) {
+            ambushByFumble = true;
+            enemyAttack = true;
+          } else {
+            attackChance = clampNumber(
+              ENCOUNTER_ATTACK_BASE_CHANCE + ((enemyEffectiveScout - player.stealth) * ENCOUNTER_ATTACK_DIFF_FACTOR),
+              ENCOUNTER_ATTACK_MIN_CHANCE,
+              ENCOUNTER_ATTACK_MAX_CHANCE
+            );
+            attackRoll = Math.random();
+            enemyAttack = attackRoll < attackChance;
+          }
         }
       }
 
@@ -9854,6 +9847,7 @@ function runEnemyEncounterCheck(options = {}) {
         enemyGroup: {
           id: enemy.id,
           kind,
+          aggressive: enemyAggressive,
           x: enemy.x,
           y: enemy.y,
           scout: enemy.scout,
@@ -9876,6 +9870,7 @@ function runEnemyEncounterCheck(options = {}) {
         newlySpottedEnemy,
         playerEffectiveScout,
         enemyEffectiveScout,
+        enemyAggressive,
         playerFoundEnemy,
         enemyFoundPlayer,
         playerDetectChance,
@@ -9890,6 +9885,7 @@ function runEnemyEncounterCheck(options = {}) {
         ambushBlockedByMovePoint,
         enemyAttack,
         ambushByFumble,
+        stealthAmbush,
         attackChance,
         attackRoll,
         fumbleRoll
@@ -11364,6 +11360,17 @@ function renderMapWithPhaser() {
             enemyMarker.setStroke("#3f0f0f", 2);
             labelTexts.push(enemyMarker);
           }
+          if (alertedEnemyTileKeys.has(tileKey)) {
+            const alertLabel = scene.add.text(enemyMx, enemyMy - Math.max(10, MAP_ENEMY_MARKER_CONFIG.iconSize * 0.55), "!", {
+              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+              fontStyle: "700",
+              fontSize: "16px",
+              color: "#ffdede"
+            });
+            alertLabel.setOrigin(0.5);
+            alertLabel.setStroke("#8b1111", 3);
+            labelTexts.push(alertLabel);
+          }
         }
         if (spottedFactionVisible) {
           const factionMx = center.cx + MAP_FACTION_MARKER_CONFIG.offsetX;
@@ -11381,6 +11388,17 @@ function renderMapWithPhaser() {
           factionMarker.setOrigin(0.5);
           factionMarker.setStroke("#0f2142", 2);
           labelTexts.push(factionMarker);
+          if (alertedFactionTileKeys.has(tileKey)) {
+            const alertLabel = scene.add.text(factionMx, factionMy - (MAP_FACTION_MARKER_CONFIG.radius + 11), "!", {
+              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+              fontStyle: "700",
+              fontSize: "16px",
+              color: "#ffdede"
+            });
+            alertLabel.setOrigin(0.5);
+            alertLabel.setStroke("#8b1111", 3);
+            labelTexts.push(alertLabel);
+          }
         }
 
         if (tileVisible && drawHeightNumber && Number.isFinite(level)) {
@@ -12386,75 +12404,6 @@ function closeNationLogModal() {
   showNationLogModal.value = false;
 }
 
-function syncSelectedVillageBuildingKey() {
-  const available = availableVillageBuildingDefs.value;
-  if (!available.length) {
-    selectedVillageBuildingKey.value = "";
-    return;
-  }
-  const current = nonEmptyText(selectedVillageBuildingKey.value);
-  if (available.some(def => def.key === current)) return;
-  selectedVillageBuildingKey.value = available[0].key;
-}
-
-function openVillageBuildModal() {
-  if (!canOpenVillageBuild.value) {
-    updateUnitInfoText("建設不可: 初期村を配置してください。");
-    return;
-  }
-  syncSelectedVillageBuildingKey();
-  kickOffBgm();
-  audio.playSe("open");
-  showVillageBuildModal.value = true;
-}
-
-function closeVillageBuildModal() {
-  audio.playSe("cancel");
-  showVillageBuildModal.value = false;
-}
-
-function applyVillageConstruction() {
-  if (!canOpenVillageBuild.value) {
-    updateUnitInfoText("建設失敗: 初期村を配置してください。");
-    return;
-  }
-  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
-  if (!village) {
-    updateUnitInfoText("建設失敗: 村データが不正です。");
-    return;
-  }
-  syncSelectedVillageBuildingKey();
-  const definition = selectedVillageBuildingDef.value;
-  if (!definition) {
-    updateUnitInfoText("建設失敗: 建設可能な施設がありません。");
-    return;
-  }
-  const availability = resolveVillageBuildingAvailability(village, definition);
-  if (!availability.selectable) {
-    updateUnitInfoText(`建設失敗: ${availability.reasons.join(" / ") || "条件未達"}`);
-    return;
-  }
-  if (!canAffordVillageBuilding(village, definition)) {
-    const materialStatus = resolveVillageBuildingMaterialStatus(village, definition);
-    const costText = formatMaterialRawPositiveResourceBag(definition.cost);
-    const shortageText = materialStatus.shortageText || costText;
-    updateUnitInfoText(`建設失敗: 資材不足 (${shortageText} / 必要: ${costText})`);
-    return;
-  }
-  const nextVillage = applyVillageBuildingCost(village, definition);
-  if (!nextVillage) {
-    updateUnitInfoText("建設失敗: 村データ更新に失敗しました。");
-    return;
-  }
-  villageState.value = nextVillage;
-  updateVillageInfoText();
-  updateUnitInfoText(`建設完了: ${definition.name}`);
-  pushNationLog(`建設完了: ${definition.name} / コスト ${formatMaterialRawPositiveResourceBag(definition.cost)}`);
-  emitCharacterStateChange();
-  audio.playSe("confirm");
-  showVillageBuildModal.value = false;
-}
-
 function applyCityAbilityLevelUp(abilityKey) {
   if (!canOpenVillageBuild.value) {
     updateUnitInfoText("都市能力強化失敗: 初期村を配置してください。");
@@ -12494,106 +12443,6 @@ function applyCityAbilityLevelUp(abilityKey) {
   audio.playSe("confirm");
 }
 
-function resolveUnitCreateCapacityByMode(mode) {
-  const key = nonEmptyText(mode) || UNIT_CREATE_MODE_KEYS.NORMAL;
-  const useArmyCap = key !== UNIT_CREATE_MODE_KEYS.NORMAL;
-  const current = useArmyCap ? armyUnitCount.value : heroUnitCount.value;
-  const cap = useArmyCap ? armyUnitCap.value : heroUnitCap.value;
-  const remainingRaw = Math.max(0, cap - current);
-  const unlocked = useArmyCap ? null : heroCreateUnlocked.value;
-  const remaining = useArmyCap
-    ? remainingRaw
-    : Math.max(0, Math.min(remainingRaw, Math.max(0, Math.floor(toSafeNumber(unlocked, 0)))));
-  return {
-    mode: key,
-    current,
-    cap,
-    remainingRaw,
-    unlocked,
-    remaining,
-    unitTypeLabel: useArmyCap ? "軍隊" : "ヒーロー"
-  };
-}
-
-function resolveUnitCreateModeForCurrentCapacity(preferredMode = unitCreateMode.value) {
-  const byLevel = resolveUnitCreateMode(preferredMode, unitCreateMilitaryLevel.value);
-  const capState = resolveUnitCreateCapacityByMode(byLevel.mode);
-  if (capState.remaining > 0) return byLevel;
-  const fallback = unitCreateModeOptions.value.find(mode => mode.enabled && mode.remaining > 0);
-  if (fallback?.mode) {
-    return resolveUnitCreateMode(fallback.mode, unitCreateMilitaryLevel.value);
-  }
-  return byLevel;
-}
-
-function openUnitCreateModal() {
-  if (!props.gameSetupReady) {
-    updateUnitInfoText("ユニット作成はゲーム開始後に可能です。");
-    return;
-  }
-  if (!canCreateAnyUnit.value) {
-    updateUnitInfoText(
-      `ユニット作成不可: ヒーロー上限 ${heroUnitCount.value}/${heroUnitCap.value} (解放${heroCreateUnlocked.value}) / 軍隊上限 ${armyUnitCount.value}/${armyUnitCap.value} または村未配置`
-    );
-    return;
-  }
-  if (!canOpenUnitCreate.value) {
-    updateUnitInfoText("ユニット作成には初期村の配置が必要です。");
-    return;
-  }
-  kickOffBgm();
-  audio.playSe("open");
-  const allowedRaces = unitCreateAllowedRaces.value;
-  if (!allowedRaces.length) {
-    updateUnitInfoText("ユニット作成不可: 自陣営に所属する種族がありません。");
-    return;
-  }
-  const resolvedMode = resolveUnitCreateModeForCurrentCapacity(unitCreateMode.value);
-  unitCreateMode.value = resolvedMode.mode;
-  const modeCap = resolveUnitCreateCapacityByMode(resolvedMode.mode);
-  unitCreateBatchCount.value = Math.max(1, Math.min(unitCreateBatchCount.value, modeCap.remaining));
-  showUnitCreateCountModal.value = true;
-}
-
-function closeUnitCreateCountModal() {
-  audio.playSe("cancel");
-  showUnitCreateCountModal.value = false;
-}
-
-function confirmUnitCreateCount() {
-  normalizeUnitCreateBatchCount();
-  const allowedRaces = unitCreateAllowedRaces.value;
-  if (!allowedRaces.length) {
-    updateUnitInfoText("ユニット作成不可: 自陣営に所属する種族がありません。");
-    showUnitCreateCountModal.value = false;
-    return;
-  }
-  const resolvedMode = resolveUnitCreateModeForCurrentCapacity(unitCreateMode.value);
-  unitCreateMode.value = resolvedMode.mode;
-  showUnitCreateCountModal.value = false;
-  const preferredRace = nonEmptyText(unitCreateRace.value);
-  unitCreateRace.value = allowedRaces.includes(preferredRace)
-    ? preferredRace
-    : allowedRaces[0];
-  unitCreateClass.value = nonEmptyText(props.selectedClass);
-  showUnitCreateRaceModal.value = true;
-  audio.playSe("confirm");
-}
-
-function nudgeUnitCreateBatchCount(delta) {
-  const step = Math.floor(toSafeNumber(delta, 0));
-  if (!Number.isFinite(step) || step === 0) return;
-  const current = Math.floor(toSafeNumber(unitCreateBatchCount.value, 1));
-  unitCreateBatchCount.value = current + step;
-  normalizeUnitCreateBatchCount();
-}
-
-function applyUnitCreateMode(mode) {
-  const resolved = resolveUnitCreateModeForCurrentCapacity(mode);
-  unitCreateMode.value = resolved.mode;
-  normalizeUnitCreateBatchCount();
-}
-
 function toggleTestControls() {
   showTestControls.value = !showTestControls.value;
   if (!showTestControls.value) {
@@ -12631,214 +12480,6 @@ function openEventControlFromClock() {
   openEventControlModal();
 }
 
-function closeUnitCreateRaceModal() {
-  audio.playSe("cancel");
-  showUnitCreateRaceModal.value = false;
-}
-
-function closeUnitCreateClassModal() {
-  audio.playSe("cancel");
-  showUnitCreateClassModal.value = false;
-}
-
-function backUnitCreateClassToRaceModal() {
-  audio.playSe("cancel");
-  showUnitCreateClassModal.value = false;
-  showUnitCreateRaceModal.value = true;
-}
-
-function applyUnitCreateRace(raceKey) {
-  const key = nonEmptyText(raceKey);
-  if (!key) return;
-  if (!unitCreateAllowedRaces.value.includes(key)) {
-    updateUnitInfoText("種族選択失敗: 自陣営に所属していない種族は選べません。");
-    return;
-  }
-  unitCreateRace.value = key;
-  unitCreateClass.value = "";
-  showUnitCreateRaceModal.value = false;
-  showUnitCreateClassModal.value = true;
-  audio.playSe("change");
-}
-
-function applyUnitCreateClass(payload) {
-  const className = nonEmptyText(payload?.className);
-  if (!className) return;
-  unitCreateClass.value = className;
-  showUnitCreateClassModal.value = false;
-  createUnitFromSelection();
-}
-
-function normalizeUnitCreateBatchCount() {
-  const raw = Math.floor(toSafeNumber(unitCreateBatchCount.value, 1));
-  const maxAllowed = Math.max(1, selectedUnitCreateRemaining.value);
-  unitCreateBatchCount.value = Math.max(1, Math.min(maxAllowed, raw));
-}
-
-function createUnitFromSelection() {
-  if (!canCreateAnyUnit.value) {
-    updateUnitInfoText(
-      `ユニット作成不可: ヒーロー上限 ${heroUnitCount.value}/${heroUnitCap.value} (解放${heroCreateUnlocked.value}) / 軍隊上限 ${armyUnitCount.value}/${armyUnitCap.value} または村未配置`
-    );
-    return;
-  }
-  if (!canOpenUnitCreate.value) {
-    updateUnitInfoText("ユニット作成には初期村の配置が必要です。");
-    return;
-  }
-  normalizeUnitCreateBatchCount();
-  const raceName = nonEmptyText(unitCreateRace.value) || nonEmptyText(props.selectedRace) || "只人";
-  if (!unitCreateAllowedRaces.value.includes(raceName)) {
-    updateUnitInfoText(`ユニット作成失敗: 種族 ${raceName} は自陣営に所属していません。`);
-    return;
-  }
-  const className = nonEmptyText(unitCreateClass.value) || nonEmptyText(props.selectedClass);
-  const classRow = findClassRowByName(className) || randomPick(initialJobClassRows.value, null);
-  if (!classRow) {
-    updateUnitInfoText("ユニット作成失敗: クラスデータが見つかりません。");
-    return;
-  }
-  if (!isInitialClassRow(classRow)) {
-    updateUnitInfoText("ユニット作成失敗: 上位クラスは作成時に選択できません。");
-    return;
-  }
-  const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName)) || classRows.value[0] || null;
-  if (!raceRow) {
-    updateUnitInfoText("ユニット作成失敗: 種族データが見つかりません。");
-    return;
-  }
-  const village = ensureVillageStateShape(villageState.value, raceName);
-  if (!village || !village.placed) {
-    updateUnitInfoText("ユニット作成失敗: 村が未配置です。");
-    return;
-  }
-  const modeSpec = resolveUnitCreateModeForCurrentCapacity(unitCreateMode.value);
-  unitCreateMode.value = modeSpec.mode;
-  const requestedCount = Math.max(1, Math.floor(toSafeNumber(unitCreateBatchCount.value, 1)));
-  const modeCap = resolveUnitCreateCapacityByMode(modeSpec.mode);
-  const availableSlots = Math.max(0, modeCap.remaining);
-  if (availableSlots <= 0) {
-    if (modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL && Math.max(0, Math.floor(toSafeNumber(modeCap.unlocked, 0))) <= 0) {
-      updateUnitInfoText("ユニット作成失敗: ヒーローは未解放です（英雄の誕生を待機中）。");
-      return;
-    }
-    updateUnitInfoText(`ユニット作成失敗: ${modeCap.unitTypeLabel}上限 ${modeCap.current}/${modeCap.cap}`);
-    return;
-  }
-  const maxByPopulation = resolveMaxCreatableByPopulation(village, raceName, modeSpec.populationCost);
-  if (maxByPopulation <= 0) {
-    updateUnitInfoText(
-      `ユニット作成失敗: 人口不足 (${raceName} ${Math.floor(toSafeNumber(village.populationByRace?.[raceName], 0))}人 / ${modeSpec.label}は1体${modeSpec.populationCost}人消費)`
-    );
-    return;
-  }
-  const createCount = Math.min(requestedCount, availableSlots, maxByPopulation);
-  const cappedByPopulation = requestedCount > createCount;
-  const totalPopulationConsume = createCount * Math.max(0, Math.floor(toSafeNumber(modeSpec.populationCost, 0)));
-  const cost = buildUnitCreationCost(createCount);
-  if (!canAffordUnitCreation(village, cost)) {
-    updateUnitInfoText(`ユニット作成失敗: 資源不足 (必要: 食料 ${formatFoodResourceBag(cost.food)} / 資材 ${formatMaterialResourceBag(cost.material)})`);
-    return;
-  }
-  const resourceUpdatedVillage = applyUnitCreationCost(village, cost);
-  if (!resourceUpdatedVillage) {
-    updateUnitInfoText("ユニット作成失敗: 村データ更新に失敗しました。");
-    return;
-  }
-  const populationConsumeResult = consumeVillagePopulationByRace(
-    resourceUpdatedVillage,
-    raceName,
-    totalPopulationConsume
-  );
-  if (!populationConsumeResult.ok) {
-    updateUnitInfoText(`ユニット作成失敗: ${populationConsumeResult.reason || "人口消費に失敗しました。"}`);
-    return;
-  }
-  const nextVillage = ensureVillageStateShape(populationConsumeResult.village, raceName);
-  if (!nextVillage) {
-    updateUnitInfoText("ユニット作成失敗: 人口反映後の村データ更新に失敗しました。");
-    return;
-  }
-
-  const createdUnits = [];
-  const namingUnits = [...unitList.value];
-  let gearVillage = nextVillage;
-  const gearWarnings = [];
-  if (modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL) {
-    const unlockBefore = resolveHeroCreateUnlockedCount(gearVillage);
-    if (unlockBefore < createCount) {
-      updateUnitInfoText(`ユニット作成失敗: ヒーロー解放枠不足 (${unlockBefore}/${createCount})`);
-      return;
-    }
-    gearVillage = {
-      ...gearVillage,
-      heroBirthUnlock: Math.max(0, unlockBefore - createCount)
-    };
-  }
-  let gearFromInventoryTotal = 0;
-  let gearGeneratedTotal = 0;
-  for (let i = 0; i < createCount; i += 1) {
-    const unit = createUnitRecord({
-      raceRow,
-      classRow,
-      name: buildAutoUnitName(raceName, className, namingUnits),
-      raceLabel: raceName,
-      isSovereign: false,
-      isNamed: false,
-      unitType: modeSpec.unitTypeLabel || (modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL ? "ヒーロー" : "軍隊"),
-      fixedLevel: HERO_INITIAL_LEVEL,
-      militaryProfile: modeSpec
-    });
-    const equipped = applyAutoEquipForCreatedUnit(unit, raceRow, classRow, gearVillage);
-    const nextUnit = equipped?.unit || unit;
-    gearVillage = equipped?.village || gearVillage;
-    gearFromInventoryTotal += Math.max(0, Math.floor(toSafeNumber(equipped?.fromInventory, 0)));
-    gearGeneratedTotal += Math.max(0, Math.floor(toSafeNumber(equipped?.generated, 0)));
-    if (Array.isArray(equipped?.warningMessages) && equipped.warningMessages.length) {
-      gearWarnings.push(...equipped.warningMessages);
-    }
-    nextUnit.x = village.x;
-    nextUnit.y = village.y;
-    nextUnit.moveRemaining = Math.max(0, Math.floor(toSafeNumber(nextUnit.moveRange, 0)));
-    createdUnits.push(nextUnit);
-    namingUnits.push(nextUnit);
-  }
-
-  unitList.value = [...unitList.value, ...createdUnits];
-  villageState.value = gearVillage;
-  selectedUnitId.value = createdUnits[0]?.id || selectedUnitId.value;
-  updateVillageInfoText();
-  const firstName = createdUnits[0]?.name || "-";
-  const lastName = createdUnits[createdUnits.length - 1]?.name || "-";
-  updateUnitInfoText(
-    `ユニット作成: ${createdUnits.length}体 (${raceName}/${className}/${modeSpec.label})`
-    + `${cappedByPopulation ? ` / 上限により ${requestedCount} -> ${createCount}` : ""}`
-    + `${totalPopulationConsume > 0 ? ` / 人口-${totalPopulationConsume}` : ""}`
-    + `${modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL ? ` / 解放残 ${resolveHeroCreateUnlockedCount(gearVillage)}` : ""}`
-    + ` / 装備 在庫${gearFromInventoryTotal} 生成${gearGeneratedTotal}`
-    + `${gearWarnings.length ? ` / 装備警告${gearWarnings.length}件` : ""}`
-    + ` / ${firstName}${createdUnits.length > 1 ? ` ... ${lastName}` : ""} / 村座標 (${village.x}, ${village.y})`
-  );
-  pushNationLog(
-    `ユニット作成: ${createdUnits.length}体 (${raceName}/${className}/${modeSpec.label})`
-    + `${cappedByPopulation ? ` [上限補正 ${requestedCount}->${createCount}]` : ""}`
-    + `${totalPopulationConsume > 0 ? ` / 人口消費 ${raceName}-${totalPopulationConsume}` : ""}`
-    + `${modeSpec.mode === UNIT_CREATE_MODE_KEYS.NORMAL ? ` / 解放消費 ${createCount} (残${resolveHeroCreateUnlockedCount(gearVillage)})` : ""}`
-    + ` / 装備 在庫${gearFromInventoryTotal} 生成${gearGeneratedTotal}`
-    + `${gearWarnings.length ? ` / 装備警告${gearWarnings.length}件` : ""}`
-    + ` / ${firstName}${createdUnits.length > 1 ? `〜${lastName}` : ""}`
-    + ` / コスト 食料 ${formatFoodResourceBag(cost.food)} / 資材 ${formatMaterialResourceBag(cost.material)}`
-    + ` / ヒーロー ${heroUnitCount.value}/${heroUnitCap.value}`
-    + ` / 軍隊 ${armyUnitCount.value}/${armyUnitCap.value}`
-  );
-  if (gearWarnings.length) {
-    pushNationLog(`初期装備警告: ${gearWarnings.slice(0, 3).join(" / ")}${gearWarnings.length > 3 ? " / ..." : ""}`);
-  }
-  emitCharacterStateChange();
-  audio.playSe("confirm");
-  renderMapWithPhaser();
-}
-
 function selectEventActionType(mode) {
   const next = String(mode || "normal");
   if (eventActionType.value === next) return;
@@ -12860,6 +12501,10 @@ function applyMapData(data, options = {}) {
     ...enemySpawnData
   };
   currentData.value = normalizedData;
+  pathfindingWorkerClient.resetMapCache();
+  pathfindingWorkerClient.ensureMapDataSynced(normalizedData).catch(error => {
+    console.warn("[PathfindingWorkerSync]", error);
+  });
   zoomPercent.value = normalizeZoomPercent(zoomPercent.value, normalizedData);
   customWorldWrapEnabled.value = !!normalizedData.worldWrapEnabled;
   selectedTileKey = "";
@@ -13180,6 +12825,10 @@ function refreshMapCursor() {
     setCanvasCursor("grabbing");
     return;
   }
+  if (tileAttackSelectionMode.value) {
+    setCanvasCursor(ATTACK_CURSOR_STYLE);
+    return;
+  }
   if (housingUpgradeSelectionState.value?.active) {
     setCanvasCursor("crosshair");
     return;
@@ -13345,94 +12994,313 @@ function updateHoveredTileByPointer(pointer) {
   drawHoverOverlay();
 }
 
-function resolveUnitMoveRemaining(unit) {
-  return Math.max(0, Math.floor(toSafeNumber(unit?.moveRemaining, unit?.moveRange)));
+function resolveEncounterEnemyHeadLabel(entry = null) {
+  if (!entry) return "敵";
+  const kind = nonEmptyText(entry?.enemyGroup?.kind || entry?.kind || "");
+  if (kind === "faction") {
+    return nonEmptyText(entry?.enemyGroup?.factionLabel)
+      || nonEmptyText(entry?.factionLabel)
+      || "他勢力";
+  }
+  const names = Array.isArray(entry?.enemyGroup?.names) ? entry.enemyGroup.names : [];
+  return nonEmptyText(names[0])
+    || nonEmptyText(entry?.enemyLabel)
+    || "敵";
 }
 
-function resolveMoveGroupForUnit(unit, options = {}) {
-  const allowMemberAsLeader = !!options?.allowMemberAsLeader;
-  if (!unit) return { ok: false, reason: "ユニットが見つかりません。" };
-  const leaderId = nonEmptyText(unit?.squadLeaderId);
-  if (leaderId && !allowMemberAsLeader) {
-    return { ok: false, reason: "部隊所属ユニットは単独移動できません。部隊リーダーを選択してください。" };
-  }
-  if (leaderId && allowMemberAsLeader) {
-    const leader = unitList.value.find(row => row?.id === leaderId) || null;
-    if (!leader) {
-      return { ok: false, reason: "所属部隊のリーダーが見つかりません。" };
-    }
-    return resolveMoveGroupForUnit(leader, { allowMemberAsLeader: false });
-  }
+function openFieldBattleResultSelection(payload = {}) {
+  const enemyLabel = nonEmptyText(payload?.enemyLabel) || "敵";
+  const x = Number.isFinite(payload?.x) ? Math.floor(payload.x) : null;
+  const y = Number.isFinite(payload?.y) ? Math.floor(payload.y) : null;
+  const source = nonEmptyText(payload?.source) || "encounter";
+  const message = nonEmptyText(payload?.message)
+    || `${enemyLabel}と戦闘`;
+  const summary = nonEmptyText(payload?.summary)
+    || `戦闘(${source}): ${enemyLabel}`;
+  fieldBattleState.value = {
+    source,
+    enemyLabel,
+    x,
+    y,
+    message,
+    summary,
+    onResolve: typeof payload?.onResolve === "function" ? payload.onResolve : null
+  };
+  showFieldBattleResultModal.value = true;
+  updateUnitInfoText(message);
+}
 
-  const participants = [unit];
-  if (unitHasSquad(unit)) {
-    const memberIds = squadMemberIds(unit);
-    for (const memberId of memberIds) {
-      const member = unitList.value.find(row => row?.id === memberId) || null;
-      if (!member) {
-        return { ok: false, reason: "部隊メンバー情報が不足しています。" };
+function closeFieldBattleResultModal() {
+  showFieldBattleResultModal.value = false;
+  fieldBattleState.value = null;
+}
+
+function applyFieldBattleResult(isVictory) {
+  const state = fieldBattleState.value;
+  if (!state) {
+    closeFieldBattleResultModal();
+    return;
+  }
+  const win = !!isVictory;
+  const resultLabel = win ? "勝利" : "敗北";
+  if (typeof state.onResolve === "function") {
+    try {
+      state.onResolve({ win, state });
+    } catch (error) {
+      console.warn("[FieldBattleResolve]", error);
+    }
+  }
+  if (win && Number.isFinite(state.x) && Number.isFinite(state.y) && currentData.value) {
+    const autoTarget = resolveAttackTargetAtTile(state.x, state.y, { data: currentData.value });
+    if (autoTarget.hasTarget) {
+      applyFieldBattleVictoryAtTile(state.x, state.y, autoTarget);
+    }
+  }
+  const coordText = Number.isFinite(state.x) && Number.isFinite(state.y)
+    ? ` (${state.x}, ${state.y})`
+    : "";
+  const resultText = `${state.summary}${coordText} / ${resultLabel}`;
+  updateUnitInfoText(resultText);
+  pushNationLog(resultText);
+  closeFieldBattleResultModal();
+  requestMapRender();
+}
+
+function removeOpposingFactionUnitsAtTile(x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return { removedCount: 0, factionLabels: [] };
+  }
+  if (!Array.isArray(testPlayerSlots.value) || !testPlayerSlots.value.length) {
+    return { removedCount: 0, factionLabels: [] };
+  }
+  const tx = Math.floor(x);
+  const ty = Math.floor(y);
+  const activeId = nonEmptyText(activeTestPlayerId.value);
+  let removedCount = 0;
+  const factionLabels = new Set();
+  let changed = false;
+  const nextSlots = testPlayerSlots.value.map(slot => {
+    const slotId = nonEmptyText(slot?.id);
+    if (!slotId || slotId === activeId) return slot;
+    const units = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+    if (!units.length) return slot;
+    const remain = [];
+    for (const unit of units) {
+      const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+      const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+      if (ux === tx && uy === ty) {
+        removedCount += 1;
+        factionLabels.add(nonEmptyText(slot?.label) || slotId);
+      } else {
+        remain.push(unit);
       }
-      participants.push(member);
     }
+    if (remain.length === units.length) return slot;
+    changed = true;
+    return {
+      ...slot,
+      factionState: {
+        ...slot.factionState,
+        units: remain
+      }
+    };
+  });
+  if (changed) {
+    testPlayerSlots.value = nextSlots;
   }
+  return { removedCount, factionLabels: Array.from(factionLabels) };
+}
 
-  const leaderX = Number(unit?.x);
-  const leaderY = Number(unit?.y);
-  if (!Number.isFinite(leaderX) || !Number.isFinite(leaderY) || leaderX < 0 || leaderY < 0) {
-    return { ok: false, reason: "ユニット位置が未確定です。" };
+function applyFieldBattleVictoryAtTile(x, y, target = {}) {
+  const tx = Number.isFinite(x) ? Math.floor(x) : Number.NaN;
+  const ty = Number.isFinite(y) ? Math.floor(y) : Number.NaN;
+  if (!Number.isFinite(tx) || !Number.isFinite(ty) || !currentData.value) {
+    return { spawnCleared: false, factionRemoved: 0 };
   }
-
-  for (const member of participants) {
-    const x = Number(member?.x);
-    const y = Number(member?.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
-      return { ok: false, reason: "部隊メンバー位置が未確定です。" };
-    }
-    if (x !== leaderX || y !== leaderY) {
-      return { ok: false, reason: "部隊メンバーが同じ座標に揃っていません。" };
-    }
+  const hasSpawn = !!target?.hasSpawn;
+  const hasFaction = !!target?.hasFaction;
+  let spawnCleared = false;
+  let factionRemoved = 0;
+  if (hasSpawn) {
+    const clearResult = clearMonsterTileByAmbush(currentData.value, tx, ty);
+    spawnCleared = !!clearResult?.cleared;
   }
+  if (hasFaction) {
+    const removeResult = removeOpposingFactionUnitsAtTile(tx, ty);
+    factionRemoved = Math.max(0, Math.floor(toSafeNumber(removeResult?.removedCount, 0)));
+  }
+  if (spawnCleared || factionRemoved > 0) {
+    rebuildTerritorySets(currentData.value);
+    emitCharacterStateChange();
+    renderMapWithPhaser();
+  }
+  return { spawnCleared, factionRemoved };
+}
 
-  const minMoveRemaining = participants.reduce((min, row) => Math.min(min, resolveUnitMoveRemaining(row)), Infinity);
+function resolveAttackTargetAtTile(x, y, options = {}) {
+  const data = options?.data || currentData.value;
+  if (!data || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return { hasTarget: false, label: "", hasSpawn: false, hasFaction: false, x, y, factionIds: [] };
+  }
+  const tileEnemies = enemiesAt(x, y, data);
+  const hasSpawn = Array.isArray(tileEnemies) && tileEnemies.length > 0;
+  const factionTileMap = options?.factionTileMap instanceof Map
+    ? options.factionTileMap
+    : buildOpposingFactionUnitsByTile(data);
+  const bucket = factionTileMap.get(coordKey(x, y));
+  const hasFaction = !!(bucket && Array.isArray(bucket.units) && bucket.units.length);
+  if (!hasSpawn && !hasFaction) {
+    return { hasTarget: false, label: "", hasSpawn: false, hasFaction: false, x, y, factionIds: [] };
+  }
+  const spawnLabel = hasSpawn
+    ? (nonEmptyText(tileEnemies?.[0]?.name) || nonEmptyText(tileEnemies?.[0]?.race) || "敵")
+    : "";
+  const factionLabel = hasFaction
+    ? (Array.from(bucket.factionLabels || []).join("/") || "他勢力")
+    : "";
+  const label = hasSpawn ? spawnLabel : `${factionLabel}部隊`;
   return {
-    ok: true,
-    leader: unit,
-    participants,
-    participantIds: participants.map(row => row.id),
-    minMoveRemaining: Number.isFinite(minMoveRemaining) ? minMoveRemaining : 0,
-    isSquadMove: participants.length > 1
+    hasTarget: true,
+    label,
+    hasSpawn,
+    hasFaction,
+    x,
+    y,
+    factionIds: hasFaction ? Array.from(bucket?.factionIds || []) : []
   };
 }
 
-function isDirectMoveSelectableUnit(unit) {
-  if (!unit) return false;
-  return !nonEmptyText(unit?.squadLeaderId);
-}
-
-function canUseUnitAsMoveCandidate(unit) {
-  if (!unit) return false;
-  if (!isDirectMoveSelectableUnit(unit)) return false;
-  const group = resolveMoveGroupForUnit(unit);
-  return group.ok && group.minMoveRemaining > 0;
-}
-
-function displayMoveRemainingForCandidate(unit) {
-  const group = resolveMoveGroupForUnit(unit);
-  if (!group.ok) return resolveUnitMoveRemaining(unit);
-  return group.minMoveRemaining;
-}
-
-function moveLockTextForCandidate(unit) {
-  const group = resolveMoveGroupForUnit(unit);
-  if (!group.ok) return "";
-  return formatEncounterMoveLockReason(resolveMoveLockForGroup(group));
-}
-
-function canUseUnitMoveMode() {
+function resolveSelectedTileAttackActionState() {
   const data = currentData.value;
-  if (!data || data.shapeOnly || villagePlacementMode.value) return false;
-  return unitList.value.some(unit => canUseUnitAsMoveCandidate(unit));
+  if (!data || data.shapeOnly) {
+    return { enabled: false, reason: "マップ生成後に攻撃できます。", moveGroup: null, targetCount: 0 };
+  }
+  if (isPathMoveInProgress.value) {
+    return { enabled: false, reason: "移動中は攻撃できません。", moveGroup: null, targetCount: 0 };
+  }
+  const unit = selectedUnit.value;
+  if (!unit) {
+    return { enabled: false, reason: "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0 };
+  }
+  const moveGroup = resolveMoveGroupForUnit(unit, { allowMemberAsLeader: true });
+  if (!moveGroup.ok || !moveGroup.leader) {
+    return { enabled: false, reason: moveGroup.reason || "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0 };
+  }
+  const leader = moveGroup.leader;
+  const factionTileMap = buildOpposingFactionUnitsByTile(data);
+  const currentTarget = resolveAttackTargetAtTile(leader.x, leader.y, { data, factionTileMap });
+  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, leader.x, leader.y, resolveWorldWrapEnabled(data));
+  let targetCount = 0;
+  if (currentTarget.hasTarget) targetCount += 1;
+  for (const n of neighbors) {
+    const target = resolveAttackTargetAtTile(n.x, n.y, { data, factionTileMap });
+    if (target.hasTarget) targetCount += 1;
+  }
+  if (targetCount <= 0) {
+    return { enabled: false, reason: "同マス/隣接マスに攻撃対象がいません。", moveGroup, targetCount: 0 };
+  }
+  return { enabled: true, reason: "", moveGroup, targetCount };
 }
+
+function cancelTileAttackSelectionMode(silent = false) {
+  if (!tileAttackSelectionMode.value) return;
+  tileAttackSelectionMode.value = false;
+  refreshMapCursor();
+  if (!silent) {
+    updateUnitInfoText("攻撃モードを終了しました。");
+  }
+}
+
+function toggleTileAttackSelectionMode() {
+  if (tileAttackSelectionMode.value) {
+    cancelTileAttackSelectionMode();
+    return;
+  }
+  const state = resolveSelectedTileAttackActionState();
+  if (!state.enabled || !state.moveGroup?.leader) {
+    updateUnitInfoText(`攻撃モード開始不可: ${state.reason || "条件未達です。"}`);
+    return;
+  }
+  if (unitMoveMode.value) {
+    unitMoveMode.value = false;
+    clearPlannedMovePath();
+  }
+  clearHousingUpgradeSelectionState();
+  tileAttackSelectionMode.value = true;
+  refreshMapCursor();
+  updateUnitInfoText("攻撃モード: 同マスまたは隣接マスを選択してください。");
+}
+
+function startFieldBattleFromEncounter(payload = {}) {
+  const entry = payload?.entry;
+  const enemyLabel = resolveEncounterEnemyHeadLabel(entry);
+  const x = Number.isFinite(entry?.enemyGroup?.x) ? entry.enemyGroup.x : payload?.atX;
+  const y = Number.isFinite(entry?.enemyGroup?.y) ? entry.enemyGroup.y : payload?.atY;
+  const stealthAmbush = !!entry?.stealthAmbush
+    || (
+      payload?.context === "move"
+      && !!entry?.enemyAggressive
+      && !!entry?.enemyFoundPlayer
+      && !entry?.playerFoundEnemy
+    );
+  const message = stealthAmbush
+    ? `${enemyLabel}の奇襲を受けた`
+    : (nonEmptyText(payload?.reason) || `${enemyLabel}と戦闘`);
+  const sourceLabel = payload?.context === "move"
+    ? (stealthAmbush ? "ambush" : "move")
+    : (payload?.context === "survey" && !!entry?.playerAmbush ? "ambush" : "encounter");
+  openFieldBattleResultSelection({
+    source: sourceLabel,
+    x,
+    y,
+    enemyLabel,
+    message,
+    summary: `戦闘(${sourceLabel}): ${enemyLabel}`
+  });
+}
+
+function handleTileAttackSelectionClick(picked) {
+  if (!tileAttackSelectionMode.value || !picked || !currentData.value) return false;
+  const state = resolveSelectedTileAttackActionState();
+  if (!state.enabled || !state.moveGroup?.leader) {
+    cancelTileAttackSelectionMode(true);
+    updateUnitInfoText(`攻撃モード終了: ${state.reason || "条件未達です。"}`);
+    return false;
+  }
+  const leader = state.moveGroup.leader;
+  const distance = hexDistance(
+    { x: leader.x, y: leader.y },
+    { x: picked.x, y: picked.y }
+  );
+  if (distance < 0 || distance > 1) {
+    updateUnitInfoText("攻撃対象は同マスまたは隣接マスのみ選択できます。");
+    return true;
+  }
+  const factionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
+  const target = resolveAttackTargetAtTile(picked.x, picked.y, {
+    data: currentData.value,
+    factionTileMap
+  });
+  if (!target.hasTarget) {
+    updateUnitInfoText("そのマスには攻撃対象がいません。");
+    return true;
+  }
+  cancelTileAttackSelectionMode(true);
+  kickOffBgm();
+  audio.playSe("confirm");
+  const attackerName = nonEmptyText(leader?.name) || "ユニット";
+  const sourceLabel = distance === 0 ? "ambush" : "attack";
+  openFieldBattleResultSelection({
+    source: sourceLabel,
+    x: picked.x,
+    y: picked.y,
+    enemyLabel: target.label,
+    message: `${attackerName}が${target.label}へ攻撃`,
+    summary: `攻撃: ${attackerName} -> ${target.label}`
+  });
+  return true;
+}
+
 
 function resolveSelectedTileSurveyState() {
   const detail = selectedTileDetail.value;
@@ -13466,42 +13334,6 @@ function resolveSelectedTileSurveyState() {
     };
   }
   return { enabled: true, reason: "", x, y, moveGroup };
-}
-
-function resolveSelectedTileAmbushState() {
-  const surveyState = resolveSelectedTileSurveyState();
-  const x = Math.floor(toSafeNumber(surveyState?.x, Number.NaN));
-  const y = Math.floor(toSafeNumber(surveyState?.y, Number.NaN));
-  if (!surveyState.enabled || !Number.isFinite(x) || !Number.isFinite(y)) {
-    return {
-      enabled: false,
-      reason: surveyState.reason || "奇襲ユニットを選択してください。",
-      x,
-      y,
-      moveGroup: surveyState.moveGroup || null,
-      enemyCount: 0
-    };
-  }
-  const data = currentData.value;
-  const tileEnemies = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) ? data.enemySpawnMap[y][x] : [];
-  if (!tileEnemies.length) {
-    return {
-      enabled: false,
-      reason: "このマスに奇襲対象がいません。",
-      x,
-      y,
-      moveGroup: surveyState.moveGroup,
-      enemyCount: 0
-    };
-  }
-  return {
-    enabled: true,
-    reason: "",
-    x,
-    y,
-    moveGroup: surveyState.moveGroup,
-    enemyCount: tileEnemies.length
-  };
 }
 
 function resolveTerritoryTileConversionActionState(targetMode) {
@@ -13976,6 +13808,23 @@ function runSelectedTileSurvey() {
     context: "survey",
     focusPos: { x: state.x, y: state.y }
   });
+  const battleEntry = Array.isArray(encounterResult?.entries)
+    ? encounterResult.entries.find(entry => (
+      !!entry?.playerAmbush
+      || !!entry?.enemyAttack
+      || !!entry?.ambushByFumble
+      || !!entry?.stealthAmbush
+    )) || null
+    : null;
+  if (battleEntry) {
+    startFieldBattleFromEncounter({
+      context: "survey",
+      reason: "調査中に敵と遭遇した",
+      entry: battleEntry,
+      atX: state.x,
+      atY: state.y
+    });
+  }
   const notePreview = Array.isArray(encounterResult?.notes) && encounterResult.notes.length
     ? ` / ${encounterResult.notes[0]}`
     : "";
@@ -13987,343 +13836,23 @@ function runSelectedTileSurvey() {
   renderMapWithPhaser();
 }
 
-function runSelectedTileAmbush() {
-  const state = resolveSelectedTileAmbushState();
-  if (!state.enabled || !state.moveGroup || !Number.isFinite(state.x) || !Number.isFinite(state.y)) {
-    updateUnitInfoText(`奇襲不可: ${state.reason || "条件未達です。"}`);
-    return;
-  }
-  const spendResult = consumeEncounterActionMoveByUnitIds(state.moveGroup.participantIds, ENCOUNTER_ACTION_MOVE_COST);
-  if (!spendResult.consumed) {
-    updateUnitInfoText(`奇襲不可: ${spendResult.reason || "移動残量が不足しています。"}`);
-    return;
-  }
-  kickOffBgm();
-  audio.playSe("confirm");
-  emitCharacterStateChange();
-  const clearResult = clearMonsterTileByAmbush(currentData.value, state.x, state.y);
-  if (clearResult?.cleared) {
-    const claimedText = clearResult.claimed ? " / 領地化" : "";
-    const respawnText = clearResult.claimed ? "" : ` / 再抽選:${clearResult.respawnCount}体`;
-    const summary = `奇襲: (${state.x}, ${state.y}) / 撃破${clearResult.defeatedCount}体 / 危険度${clearResult.beforeDanger}%→${clearResult.afterDanger}%${respawnText}${claimedText} / 移動-${ENCOUNTER_ACTION_MOVE_COST} / 残${spendResult.remaining}`;
-    updateUnitInfoText(summary);
-    pushNationLog(summary);
-  } else {
-    updateUnitInfoText(`奇襲: (${state.x}, ${state.y}) / 対象なし / 移動-${ENCOUNTER_ACTION_MOVE_COST} / 残${spendResult.remaining}`);
-  }
-  const latest = hitAreaMap.get(coordKey(state.x, state.y));
+function syncMapTileSelectionInfo(picked = null, explicitKey = "") {
+  const key = nonEmptyText(explicitKey) || (
+    Number.isFinite(picked?.x) && Number.isFinite(picked?.y)
+      ? coordKey(picked.x, picked.y)
+      : ""
+  );
+  const latest = key ? hitAreaMap.get(key) : null;
   if (latest) {
     updateMapClickInfo(latest);
-  }
-  renderMapWithPhaser();
-}
-
-function movableUnits() {
-  return unitList.value.filter(unit => canUseUnitAsMoveCandidate(unit));
-}
-
-function openMoveUnitSelectModal() {
-  const candidates = movableUnits();
-  if (!candidates.length) return;
-  const preferred = selectedUnitId.value && candidates.some(unit => unit.id === selectedUnitId.value)
-    ? selectedUnitId.value
-    : candidates[0].id;
-  moveUnitCandidateId.value = preferred;
-  showMoveUnitModal.value = true;
-}
-
-function closeMoveUnitSelectModal() {
-  showMoveUnitModal.value = false;
-}
-
-function confirmMoveUnitSelection() {
-  const candidates = movableUnits();
-  if (!candidates.length) {
-    showMoveUnitModal.value = false;
     return;
   }
-  const target = candidates.find(unit => unit.id === moveUnitCandidateId.value) || candidates[0];
-  selectedUnitId.value = target.id;
-  unitMoveMode.value = true;
-  clearPlannedMovePath();
-  showMoveUnitModal.value = false;
-  updateUnitInfoText(`${target.name} を移動対象に選択`);
-  emitCharacterStateChange();
-  renderMapWithPhaser();
-}
-
-function toggleUnitMoveMode() {
-  if (isPathMoveInProgress.value) {
-    updateUnitInfoText("移動中は移動モードを切り替えできません。");
-    return;
-  }
-  if (unitMoveMode.value) {
-    unitMoveMode.value = false;
-    showMoveUnitModal.value = false;
-    clearPlannedMovePath();
-    clearHousingUpgradeSelectionState();
-    mapClickInfo.value = "クリック座標: - / ユニット移動モードを OFF にしました。";
-    emitCharacterStateChange();
-    renderMapWithPhaser();
-    return;
-  }
-  if (!canUseUnitMoveMode()) return;
-  clearHousingUpgradeSelectionState();
-  openMoveUnitSelectModal();
-}
-
-function clearPlannedMovePath() {
-  plannedMovePathNodes.value = [];
-  plannedMoveTarget.value = null;
-  plannedMoveSummaryText.value = "";
-  showMovePathConfirmModal.value = false;
-}
-
-function closeMovePathConfirmModal() {
-  if (isPathMoveInProgress.value) return;
-  clearPlannedMovePath();
-  renderMapWithPhaser();
-}
-
-function resolveMovePathPlanToTile(picked) {
-  const data = currentData.value;
-  const selected = selectedUnit.value;
-  if (!data || !selected || !picked) return { ok: false, reason: "移動対象を選択してください。" };
-  const moveGroup = resolveMoveGroupForUnit(selected);
-  if (!moveGroup.ok || !moveGroup.leader) {
-    return { ok: false, reason: moveGroup.reason || "移動対象を確定できません。" };
-  }
-  const unit = moveGroup.leader;
-  if (!isPassableTerrain(data.grid[picked.y][picked.x])) {
-    return { ok: false, reason: "海/湖には移動できません。" };
-  }
-  const moveRemaining = Math.max(0, Math.floor(toSafeNumber(moveGroup.minMoveRemaining, 0)));
-  if (moveRemaining <= 0) {
-    return { ok: false, reason: "移動残量がありません。ターン経過で回復します。" };
-  }
-  const path = findPathWithinDistance(data, unit.x, unit.y, picked.x, picked.y, moveRemaining);
-  if (!path) {
-    return { ok: false, reason: `移動残量(${moveRemaining})で到達できません。` };
-  }
-  const pathDistance = Math.max(0, path.length - 1);
-  if (pathDistance <= 0) {
-    return { ok: false, reason: "同じマスです。" };
-  }
-  let estimatedCost = 0;
-  for (let i = 1; i < path.length; i += 1) {
-    const prev = path[i - 1];
-    const next = path[i];
-    if (!prev || !next) continue;
-    const stepCost = movementStepCost(data, prev.x, prev.y, next.x, next.y);
-    estimatedCost += stepCost;
-  }
-  if (estimatedCost > moveRemaining) {
-    return { ok: false, reason: `移動残量(${moveRemaining})で到達できません。` };
-  }
-  return {
-    ok: true,
-    picked,
-    moveGroup,
-    path,
-    pathDistance,
-    moveRemaining,
-    estimatedCost
-  };
-}
-
-function shouldStopMoveByEncounter(encounterResult = null) {
-  const entries = Array.isArray(encounterResult?.entries) ? encounterResult.entries : [];
-  const stopEntry = entries.find(entry => (
-    !!entry?.enemyAttack
-    || !!entry?.ambushByFumble
-    || !!entry?.playerAmbush
-    || (entry?.context === "move" && !!entry?.enemyFoundPlayer)
-  )) || null;
-  if (!stopEntry) return { stop: false, reason: "" };
-  const enemyName = stopEntry?.enemyGroup?.kind === "faction"
-    ? (stopEntry?.enemyGroup?.factionLabel || "他勢力")
-    : (stopEntry?.enemyGroup?.names?.[0] || "敵");
-  if (stopEntry?.context === "move" && stopEntry?.enemyFoundPlayer) {
-    return { stop: true, reason: `${enemyName}に発見されたため停止` };
-  }
-  if (stopEntry?.playerAmbush) {
-    return { stop: true, reason: `同マスで${enemyName}を捕捉したため停止` };
-  }
-  if (stopEntry?.ambushByFumble) {
-    return { stop: true, reason: `${enemyName}の不意打ちで停止` };
-  }
-  return { stop: true, reason: `${enemyName}との交戦判定で停止` };
-}
-
-function queueMovePathPlanToTile(picked) {
-  if (isPathMoveInProgress.value) {
-    return { queued: false, reason: "移動中です。完了後に再実行してください。" };
-  }
-  const plan = resolveMovePathPlanToTile(picked);
-  if (!plan.ok) return { queued: false, reason: plan.reason || "移動経路を作成できません。" };
-  plannedMovePathNodes.value = plan.path.map(node => ({ x: node.x, y: node.y }));
-  plannedMoveTarget.value = { x: picked.x, y: picked.y };
-  plannedMoveSummaryText.value = (
-    `経路: (${plan.moveGroup.leader.x}, ${plan.moveGroup.leader.y}) -> (${picked.x}, ${picked.y}) `
-    + `/ ${plan.pathDistance}マス / 予測コスト${plan.estimatedCost} / 残${Math.max(0, plan.moveRemaining - plan.estimatedCost)}`
-  );
-  showMovePathConfirmModal.value = true;
-  return { queued: true, pathDistance: plan.pathDistance, estimatedCost: plan.estimatedCost };
-}
-
-function waitMoveStepInterval() {
-  const delayMs = Math.max(0, Math.floor(toSafeNumber(MOVE_STEP_INTERVAL_MS, 0)));
-  if (delayMs <= 0) return Promise.resolve();
-  return new Promise(resolve => {
-    window.setTimeout(resolve, delayMs);
-  });
-}
-
-async function executePlannedMovePath() {
-  clearLastMoveStopState();
-  const target = plannedMoveTarget.value;
-  const picked = target && Number.isFinite(target?.x) && Number.isFinite(target?.y)
-    ? { x: target.x, y: target.y }
-    : null;
-  if (!picked) {
-    return { moved: false, reason: "移動先が未設定です。" };
-  }
-  const plan = resolveMovePathPlanToTile(picked);
-  if (!plan.ok) {
-    return { moved: false, reason: plan.reason || "移動経路が無効です。" };
-  }
-  const unit = plan.moveGroup.leader;
-  const fromX = unit.x;
-  const fromY = unit.y;
-  let spentCost = 0;
-  let movedTiles = 0;
-  let stopReason = "";
-  let lastNode = { x: fromX, y: fromY };
-  const participantIdSet = new Set(plan.moveGroup.participantIds);
-  const hostileFactionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
-  for (let i = 1; i < plan.path.length; i += 1) {
-    const prev = plan.path[i - 1];
-    const next = plan.path[i];
-    if (!prev || !next) continue;
-    const stepCost = movementStepCost(currentData.value, prev.x, prev.y, next.x, next.y);
-    if (spentCost + stepCost > plan.moveRemaining) {
-      stopReason = "移動残量が不足しました。";
-      setLastMoveStopState(stopReason, prev?.x, prev?.y);
-      break;
-    }
-    const passCheck = runHostilePassStealthCheckAtTile({
-      data: currentData.value,
-      moveGroup: plan.moveGroup,
-      x: next.x,
-      y: next.y,
-      factionTileMap: hostileFactionTileMap
-    });
-    if (passCheck.blocked) {
-      stopReason = passCheck.reason || "敵に発見されて通行不可になりました。";
-      setLastMoveStopState(stopReason, prev?.x, prev?.y);
-      emitCharacterStateChange();
-      renderMapWithPhaser();
-      break;
-    }
-    unitList.value = unitList.value.map(row => {
-      if (!participantIdSet.has(row.id)) return row;
-      const ownRemaining = resolveUnitMoveRemaining(row);
-      return {
-        ...row,
-        x: next.x,
-        y: next.y,
-        moveRemaining: Math.max(0, ownRemaining - stepCost)
-      };
-    });
-    spentCost += stepCost;
-    movedTiles += 1;
-    lastNode = { x: next.x, y: next.y };
-    markPathExplored([next]);
-    selectedTileKey = coordKey(next.x, next.y);
-    renderMapWithPhaser();
-    const latestStepTile = selectedTileKey ? hitAreaMap.get(selectedTileKey) : null;
-    if (latestStepTile) {
-      updateMapClickInfo(latestStepTile);
-    }
-    const encounterResult = runEnemyEncounterCheck({
-      context: "move",
-      focusPos: { x: next.x, y: next.y }
-    });
-    const stopCheck = shouldStopMoveByEncounter(encounterResult);
-    if (stopCheck.stop) {
-      stopReason = stopCheck.reason || "交戦判定により停止しました。";
-      setLastMoveStopState(stopReason, next?.x, next?.y);
-      break;
-    }
-    const isLastStep = i >= (plan.path.length - 1);
-    if (!isLastStep) {
-      await waitMoveStepInterval();
-    }
-  }
-  if (movedTiles <= 0) {
-    if (!nonEmptyText(lastMoveStopState.value?.reason)) {
-      setLastMoveStopState(stopReason || "移動できませんでした。", fromX, fromY);
-    }
-    return { moved: false, reason: stopReason || "移動できませんでした。" };
-  }
-  const nextRemaining = Math.max(0, plan.moveRemaining - spentCost);
-  const movePrefix = plan.moveGroup.isSquadMove
-    ? `部隊移動(${plan.moveGroup.participants.length}体)`
-    : "移動";
-  const stopSuffix = stopReason ? ` / 停止: ${stopReason}` : "";
-  if (stopReason && !nonEmptyText(lastMoveStopState.value?.reason)) {
-    setLastMoveStopState(stopReason, lastNode.x, lastNode.y);
-  }
-  updateUnitInfoText(`${movePrefix}: (${fromX}, ${fromY}) -> (${lastNode.x}, ${lastNode.y}) / +${movedTiles}マス / コスト${spentCost} / 残${nextRemaining}${stopSuffix}`);
-  emitCharacterStateChange();
-  return {
-    moved: true,
-    distance: movedTiles,
-    remaining: nextRemaining,
-    cost: spentCost,
-    movedUnitCount: plan.moveGroup.participants.length,
-    stopReason,
-    x: lastNode.x,
-    y: lastNode.y
-  };
-}
-
-async function confirmPlannedMovePath() {
-  if (isPathMoveInProgress.value) return;
-  isPathMoveInProgress.value = true;
-  showMovePathConfirmModal.value = false;
-  updateUnitInfoText("移動開始: 1マスずつ進行します。");
-  try {
-    const result = await executePlannedMovePath();
-    clearPlannedMovePath();
-    if (result?.reason && !result?.moved) {
-      setLastMoveStopState(result.reason, selectedUnit.value?.x, selectedUnit.value?.y);
-      updateUnitInfoText(`移動失敗: ${result.reason}`);
-    } else if (result?.moved) {
-      if (Number.isFinite(result?.x) && Number.isFinite(result?.y)) {
-        selectedTileKey = coordKey(result.x, result.y);
-      }
-    }
-    renderMapWithPhaser();
-    const latest = selectedTileKey ? hitAreaMap.get(selectedTileKey) : null;
-    if (latest) {
-      updateMapClickInfo(latest);
-    }
-  } finally {
-    isPathMoveInProgress.value = false;
+  if (picked && Number.isFinite(picked?.x) && Number.isFinite(picked?.y)) {
+    updateMapClickInfo(picked);
   }
 }
 
-function resetAllUnitMoveRemaining() {
-  if (!unitList.value.length) return;
-  unitList.value = unitList.value.map(unit => ({
-    ...unit,
-    moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit.moveRange, 0)))
-  }));
-  emitCharacterStateChange();
-}
-
-function handleMapTileClick(pointer) {
+async function handleMapTileClick(pointer) {
   const world = resolvePointerWorldPosition(pointer);
   const picked = findHitAreaAtWorld(world.x, world.y);
   if (!picked || !currentData.value) return;
@@ -14332,42 +13861,39 @@ function handleMapTileClick(pointer) {
   pendingClickFocusMode = "near";
   selectedTileKey = coordKey(picked.x, picked.y);
   if (handleHousingUpgradeSelectionTileClick(picked)) {
-    renderMapWithPhaser();
-    const latest = hitAreaMap.get(selectedTileKey);
-    if (latest) {
-      updateMapClickInfo(latest);
-      mapClickInfo.value += ` / ${resolveHousingUpgradeSelectionSummary()}`;
-    } else {
-      updateMapClickInfo(picked);
-      mapClickInfo.value += ` / ${resolveHousingUpgradeSelectionSummary()}`;
-    }
+    requestMapRender();
+    syncMapTileSelectionInfo(picked, selectedTileKey);
+    mapClickInfo.value += ` / ${resolveHousingUpgradeSelectionSummary()}`;
     return;
   }
   if (villagePlacementMode.value) {
     if (!canPlaceVillageOnTile(picked)) {
       updateMapClickInfo(picked);
       mapClickInfo.value += " / 初期村は陸地(海/湖/火山以外)に配置してください。";
-      renderMapWithPhaser();
+      requestMapRender();
       return;
     }
     placeVillageAt(picked.x, picked.y);
   }
+  if (tileAttackSelectionMode.value) {
+    const handledAttack = handleTileAttackSelectionClick(picked);
+    requestMapRender();
+    syncMapTileSelectionInfo(picked, selectedTileKey);
+    if (handledAttack) {
+      return;
+    }
+  }
   let movePlanResult = null;
   if (unitMoveMode.value) {
-    movePlanResult = queueMovePathPlanToTile(picked);
+    movePlanResult = await queueMovePathPlanToTile(picked);
     if (movePlanResult?.reason) {
       setLastMoveStopState(movePlanResult.reason, picked.x, picked.y);
       updateUnitInfoText(`移動経路作成失敗: ${movePlanResult.reason}`);
     } else if (movePlanResult?.queued) {
       updateUnitInfoText(`移動経路作成: ${movePlanResult.pathDistance}マス / 予測コスト${movePlanResult.estimatedCost}`);
     }
-    renderMapWithPhaser();
-    const latest = hitAreaMap.get(selectedTileKey);
-    if (latest) {
-      updateMapClickInfo(latest);
-    } else {
-      updateMapClickInfo(picked);
-    }
+    requestMapRender();
+    syncMapTileSelectionInfo(picked, selectedTileKey);
     if (movePlanResult?.queued) {
       mapClickInfo.value += " / 経路作成OK（確認待ち）";
     }
@@ -14385,13 +13911,8 @@ function handleMapTileClick(pointer) {
   if (focusCameraOnTileClick.value) {
     queueCameraFocusAtTile(picked.x, picked.y);
   }
-  renderMapWithPhaser();
-  const latest = hitAreaMap.get(selectedTileKey);
-  if (latest) {
-    updateMapClickInfo(latest);
-  } else {
-    updateMapClickInfo(picked);
-  }
+  requestMapRender();
+  syncMapTileSelectionInfo(picked, selectedTileKey);
 }
 
 function handlePointerDown(pointer) {
@@ -14482,7 +14003,7 @@ function handlePointerUp(pointer) {
     updateHoveredTileByPointer(pointer);
     return;
   }
-  handleMapTileClick(pointer);
+  void handleMapTileClick(pointer);
   if (touchPointer && touchPointerViewMap.size === 0) {
     suppressTouchTapUntilRelease = false;
   }
@@ -14526,7 +14047,7 @@ onMounted(async () => {
     clockNowMs.value = Date.now();
     processClockTurnProgress();
     if (unitMoveMode.value && currentData.value) {
-      renderMapWithPhaser();
+      requestMapRender();
     }
   }, 250);
 
@@ -14573,12 +14094,14 @@ onMounted(async () => {
   });
 
   resizeHandler = () => {
-    renderMapWithPhaser();
+    requestMapRender();
   };
   window.addEventListener("resize", resizeHandler);
 });
 
 onBeforeUnmount(() => {
+  mapRenderScheduler.dispose();
+  pathfindingWorkerClient.dispose();
   if (resizeHandler) window.removeEventListener("resize", resizeHandler);
   if (firstGestureHandler) {
     window.removeEventListener("pointerdown", firstGestureHandler);
@@ -14619,7 +14142,7 @@ watch(showTestControls, visible => {
   emit("test-controls-change", !!visible);
   if (currentData.value) {
     rebuildVisibleTiles(currentData.value);
-    renderMapWithPhaser();
+    requestMapRender();
   }
 }, { immediate: true });
 
@@ -14629,28 +14152,38 @@ watch(customWorldWrapEnabled, enabled => {
     ...currentData.value,
     worldWrapEnabled: !!enabled
   };
+  pathfindingWorkerClient.resetMapCache();
+  pathfindingWorkerClient.ensureMapDataSynced(currentData.value).catch(error => {
+    console.warn("[PathfindingWorkerSync]", error);
+  });
   cameraInitialized = false;
   pendingClickFocusWorld = null;
   updateMeta(currentData.value);
-  renderMapWithPhaser();
+  requestMapRender();
 });
 
 watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHeightShading, useFiveResourceMode, showSpecialTilesAlways, showWaterfallEffects, showStrongEnemyMarkers], () => {
   if (currentData.value) {
     mapStats.value = buildStatsText(currentData.value);
   }
-  renderMapWithPhaser();
+  requestMapRender();
   if (selectedTileKey) {
     const picked = hitAreaMap.get(selectedTileKey);
     if (picked) updateMapClickInfo(picked);
   }
 });
 
-watch([currentData, selectedUnitId, villagePlacementMode], () => {
-  if (!canUseUnitMoveMode() && unitMoveMode.value) {
+watch([currentData, selectedUnitId, villagePlacementMode, unitMoveMode], () => {
+  if (!canUseUnitMoveModeState.value && unitMoveMode.value) {
     unitMoveMode.value = false;
     clearPlannedMovePath();
-    renderMapWithPhaser();
+    requestMapRender();
+  }
+  if (tileAttackSelectionMode.value) {
+    const attackState = resolveSelectedTileAttackActionState();
+    if (!attackState.enabled || unitMoveMode.value || villagePlacementMode.value) {
+      cancelTileAttackSelectionMode(true);
+    }
   }
   if (plannedMovePathNodes.value.length && !unitMoveMode.value) {
     clearPlannedMovePath();
@@ -14663,7 +14196,7 @@ watch(() => props.gameSetupReady, ready => {
   if (unitList.value.length || villageState.value) return;
   createVillageAndInitialUnit(currentData.value);
   mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
-  renderMapWithPhaser();
+  requestMapRender();
 });
 
 watch(() => props.selectedCharacterName, nextName => {
@@ -14876,12 +14409,17 @@ watch(() => props.characterCommand, command => {
               <button
                 type="button"
                 class="overlay-action-btn tile-action-icon-btn"
-                :disabled="!tileAmbushActionState.enabled"
-                :title="tileAmbushActionState.enabled ? `奇襲を実行 (移動${ENCOUNTER_ACTION_MOVE_COST})` : `奇襲不可: ${tileAmbushActionState.reason}`"
-                aria-label="奇襲"
-                @click="runSelectedTileAmbush"
+                :class="{ active: tileAttackSelectionMode }"
+                :disabled="!tileAttackActionState.enabled"
+                :title="tileAttackSelectionMode
+                  ? '攻撃モード中: 同マス/隣接マスを選択'
+                  : (tileAttackActionState.enabled
+                    ? `攻撃モードON (対象${tileAttackActionState.targetCount}マス)`
+                    : `攻撃不可: ${tileAttackActionState.reason}`)"
+                aria-label="攻撃"
+                @click="toggleTileAttackSelectionMode"
               >
-                <span aria-hidden="true">⚔</span>
+                <span aria-hidden="true">攻</span>
               </button>
               <button
                 v-if="selectedTileDetail?.canManageTerritoryDevelopment"
@@ -14964,7 +14502,7 @@ watch(() => props.characterCommand, command => {
           :squad-entries="ownSquadNavigatorEntries"
           :unit-entries="ownCharacterNavigatorEntries"
           :selected-unit-id="selectedUnitId"
-          :can-use-move-mode="canUseUnitMoveMode()"
+          :can-use-move-mode="canUseUnitMoveModeState"
           :move-mode-enabled="unitMoveMode"
           :reset-key="activeTestPlayerId"
           @focus-unit="handleOwnUnitNavigatorFocusUnit"
@@ -15063,7 +14601,7 @@ watch(() => props.characterCommand, command => {
             id="unitMoveModeBtn"
             class="secondary"
             type="button"
-            :disabled="!canUseUnitMoveMode()"
+            :disabled="!canUseUnitMoveModeState"
             :aria-pressed="unitMoveMode"
             @click="toggleUnitMoveMode"
           >
@@ -15167,6 +14705,19 @@ watch(() => props.characterCommand, command => {
       @close="closeEventResultModal"
     />
 
+    <div v-if="showFieldBattleResultModal" class="settings-backdrop" @click.self="closeFieldBattleResultModal">
+      <div class="settings-modal battle-result-modal">
+        <h3>戦闘結果（仮）</h3>
+        <div class="small">{{ fieldBattleState?.message || "戦闘結果を選択してください。" }}</div>
+        <div class="battle-result-summary">{{ fieldBattleState?.summary || "-" }}</div>
+        <div class="setting-actions battle-result-actions">
+          <button type="button" class="secondary" @click="applyFieldBattleResult(true)">勝利</button>
+          <button type="button" class="secondary" @click="applyFieldBattleResult(false)">敗北</button>
+          <button type="button" class="secondary" @click="closeFieldBattleResultModal">閉じる</button>
+        </div>
+      </div>
+    </div>
+
     <generic-modal
       :show="showNationLogModal"
       title="統治者ログ"
@@ -15180,8 +14731,8 @@ watch(() => props.characterCommand, command => {
 
     <div v-if="showUnitCreateCountModal" class="settings-backdrop" @click.self="closeUnitCreateCountModal">
       <div class="settings-modal unit-create-count-modal">
-        <h3>ユニット作成数</h3>
-        <div class="small">作成する人数を決めてから、種族とクラスを選択します。</div>
+        <h3>ユニット種別/人数</h3>
+        <div class="small">種族選択後に、生成するユニット種別と人数を決めます。</div>
         <div class="unit-create-mode-summary">
           軍事Lv {{ unitCreateMilitaryLevel }} /
           選択種別: {{ selectedUnitCreateModeSpec.label }}
@@ -15222,7 +14773,7 @@ watch(() => props.characterCommand, command => {
         </div>
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeUnitCreateCountModal">閉じる</button>
-          <button type="button" class="secondary" :disabled="!canCreateSelectedUnitType" @click="confirmUnitCreateCount">次へ</button>
+          <button type="button" class="secondary" :disabled="!canCreateSelectedUnitType" @click="confirmUnitCreateCount">クラス選択へ</button>
         </div>
       </div>
     </div>
@@ -15246,6 +14797,66 @@ watch(() => props.characterCommand, command => {
       @confirm="applyUnitCreateClass"
     />
 
+    <div v-if="showUnitCreateRarityModal" class="settings-backdrop" @click.self="closeUnitCreateRarityModal">
+      <div class="settings-modal unit-create-rarity-modal">
+        <h3>装備レア度選択</h3>
+        <div class="small">作成時に装備するレア度を選択してください。軍隊ユニットは人数分の素材を消費して装備生成します。</div>
+        <div class="small">作成数 {{ Math.max(1, Math.floor(toSafeNumber(unitCreateBatchCount, 1))) }} / 装備倍率 x{{ unitCreateEquipmentCountPerUnit }} / 合計装備係数 x{{ unitCreateTotalEquipmentCount }}</div>
+        <div class="unit-create-rarity-row">
+          <button
+            v-for="row in unitCreateRarityOptions"
+            :key="`unit-create-rarity-${row.key}`"
+            type="button"
+            class="secondary unit-create-rarity-btn"
+            :class="{ active: row.key === unitCreateRarity }"
+            @click="selectUnitCreateRarity(row.key)"
+          >
+            {{ row.label }}
+          </button>
+        </div>
+        <div class="small">選択中: {{ selectedUnitCreateRarityLabel }}</div>
+        <div class="unit-create-rarity-cost-list">
+          <div v-if="selectedUnitCreateRarityMaterialRow" class="unit-create-rarity-cost-card active">
+            <div class="unit-create-rarity-cost-header">
+              <strong>{{ selectedUnitCreateRarityMaterialRow.label }}</strong>
+              <span class="small" :class="{ shortage: selectedUnitCreateRarityMaterialRow.shortage }">
+                必要合計 {{ formatMaterialCompactNumber(selectedUnitCreateRarityMaterialRow.totalNeed) }}{{ selectedUnitCreateRarityMaterialRow.shortage ? " / 素材不足あり" : "" }}
+              </span>
+            </div>
+            <div class="small unit-create-rarity-equipment">
+              生成装備: {{ selectedUnitCreateRarityMaterialRow.equipmentNames.length ? selectedUnitCreateRarityMaterialRow.equipmentNames.join(" / ") : "-" }}
+            </div>
+            <div class="unit-create-rarity-cost-columns">
+              <div
+                v-for="group in selectedUnitCreateRarityMaterialRow.columns"
+                :key="`unit-create-rarity-cost-col-${selectedUnitCreateRarityMaterialRow.key}-${group.key}`"
+                class="unit-create-rarity-cost-column"
+              >
+                <div class="unit-create-rarity-cost-title">{{ group.label }}</div>
+                <div class="unit-create-rarity-cost-rows">
+                  <div
+                    v-for="entry in group.rows"
+                    :key="`unit-create-rarity-cost-entry-${selectedUnitCreateRarityMaterialRow.key}-${group.key}-${entry.key}`"
+                    class="unit-create-rarity-cost-entry"
+                    :class="{ shortage: entry.shortage }"
+                  >
+                    <img :src="entry.iconSrc" :alt="`${entry.label} アイコン`" class="unit-create-rarity-cost-icon">
+                    <span class="unit-create-rarity-cost-value">{{ entry.label }} {{ entry.valueText }}</span>
+                  </div>
+                  <div v-if="!group.rows.length" class="unit-create-rarity-cost-empty">-</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="setting-actions">
+          <button type="button" class="secondary" @click="backUnitCreateRarityToClassModal">クラスへ戻る</button>
+          <button type="button" class="secondary" @click="applyUnitCreateRarity()">このレア度で作成</button>
+          <button type="button" class="secondary" @click="closeUnitCreateRarityModal">閉じる</button>
+        </div>
+      </div>
+    </div>
+
     <village-build-modal
       :show="showVillageBuildModal"
       :village-scale-label="resolveVillageScaleLabel(villageState)"
@@ -15268,25 +14879,25 @@ watch(() => props.characterCommand, command => {
         <div class="small move-unit-note">移動対象は「単体ユニット」または「部隊リーダー（部隊移動）」のみ選択できます。移動先クリックで経路確認後、1マスずつ判定しながら進行します。</div>
         <div class="move-unit-list">
           <button
-            v-for="unit in movableUnits()"
-            :key="`move-select-${unit.id}`"
+            v-for="row in moveUnitModalRows"
+            :key="`move-select-${row.id}`"
             type="button"
             class="move-unit-item"
-            :class="{ active: moveUnitCandidateId === unit.id }"
-            @click="moveUnitCandidateId = unit.id"
+            :class="{ active: moveUnitCandidateId === row.id }"
+            @click="moveUnitCandidateId = row.id"
           >
             <div class="move-unit-line">
               <span class="move-unit-name-with-icon">
-                <img v-if="moveUnitIconSrc(unit)" :src="moveUnitIconSrc(unit)" :alt="`${unit.race || unit.name} アイコン`" class="move-unit-icon" />
-                <span v-else class="move-unit-icon-fallback">{{ moveUnitIconGlyph(unit) }}</span>
-                <strong>{{ unit.name }}</strong>
+                <img v-if="row.iconSrc" :src="row.iconSrc" :alt="`${row.unit?.race || row.name} アイコン`" class="move-unit-icon" />
+                <span v-else class="move-unit-icon-fallback">{{ row.iconGlyph }}</span>
+                <strong>{{ row.name }}</strong>
               </span>
-              <span>{{ toUnitRoleLabel(unit) }}</span>
+              <span>{{ row.roleLabel }}</span>
             </div>
             <div class="small">
-              Lv{{ unit.level }} / 座標({{ unit.x }}, {{ unit.y }}) / 移動残 {{ displayMoveRemainingForCandidate(unit) }} / 索敵 {{ unit.scoutRange }}
+              Lv{{ row.level }} / 座標({{ row.x }}, {{ row.y }}) / 移動残 {{ row.moveRemaining }} / 索敵 {{ row.scoutRange }}
             </div>
-            <div class="small">部隊: {{ unit.squadCount || 0 }} <span v-if="unitHasSquad(unit)">/ リーダー</span></div>
+            <div class="small">部隊: {{ row.squadCount }} <span v-if="row.hasSquad">/ リーダー</span></div>
           </button>
         </div>
         <div class="setting-actions">

@@ -355,6 +355,28 @@ function applyCraftFromPicker(payload = {}) {
   equipmentActionStatus.value = `装備生成: ${slot.label} -> ${equipmentName}[${equipmentRarityShort(rarity)}]`;
 }
 
+function removeSelectedEquipment() {
+  const unitId = nonEmptyText(props.unit?.id);
+  const slotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
+  if (!unitId || !slotKey) {
+    equipmentActionStatus.value = "装備解除失敗: 対象が未選択です。";
+    return;
+  }
+  const slot = equipmentSlots.value.find(row => row.key === slotKey);
+  if (!slot?.enabled || !slot?.item) {
+    equipmentActionStatus.value = "装備解除失敗: 外せる装備がありません。";
+    return;
+  }
+  emit("update-unit-equipment", {
+    unitId,
+    slotIndex: slot.index,
+    slotKey: slot.key,
+    equipmentName: "",
+    rarity: normalizeEquipmentRarity(slot?.item?.quality || slot?.item?.qualityLabel || "common")
+  });
+  equipmentActionStatus.value = `装備解除: ${slot.label}`;
+}
+
 function applyIconChange(iconNameOverride = "") {
   const unitId = nonEmptyText(props.unit?.id);
   if (!unitId) return;
@@ -439,6 +461,13 @@ const equipmentSlots = computed(() => {
     enabled: slots[slotKey] !== false,
     item: unitEquipmentAtSlot(unit, slotKey)
   }));
+});
+
+const canRemoveSelectedEquipment = computed(() => {
+  const key = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
+  if (!key) return false;
+  const slot = equipmentSlots.value.find(row => row.key === key);
+  return !!(slot?.enabled && slot?.item);
 });
 
 const smithLevelForModal = computed(() => {
@@ -582,9 +611,14 @@ watch(
           <section class="char-block">
             <div class="equipment-head-row">
               <h4>装備一覧</h4>
-              <button type="button" class="secondary" :disabled="!selectedEquipSlotKey" @click="openEquipmentPickerModal">
-                スロットを変更
-              </button>
+              <div class="equipment-head-actions">
+                <button type="button" class="secondary" :disabled="!selectedEquipSlotKey" @click="openEquipmentPickerModal">
+                  スロットを変更
+                </button>
+                <button type="button" class="secondary" :disabled="!canRemoveSelectedEquipment" @click="removeSelectedEquipment">
+                  外す
+                </button>
+              </div>
             </div>
             <div class="small">対象スロット: {{ selectedEquipSlotKey || "-" }}</div>
             <div v-if="equipmentSlots.length" class="equipment-edit-list">
@@ -741,6 +775,12 @@ watch(
 .detail-root-head h4 {
   margin: 0;
   font-size: 0.92rem;
+}
+
+.equipment-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .icon-header-button {

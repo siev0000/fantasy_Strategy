@@ -1,18 +1,19 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { io } from "socket.io-client";
 import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH, UI_MANUAL_SCALE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./lib/research-tree-config.js";
-import PhaserMapGeneratorPanel from "./components/PhaserMapGeneratorPanel.vue";
-import RoomModal from "./components/RoomModal.vue";
-import BattleModal from "./components/BattleModal.vue";
-import SimulatorModal from "./components/SimulatorModal.vue";
-import SkillTreeModal from "./components/SkillTreeModal.vue";
-import RaceSelectModal from "./components/RaceSelectModal.vue";
-import ClassSelectModal from "./components/ClassSelectModal.vue";
-import CharacterStatusModal from "./components/CharacterStatusModal.vue";
-import CharacterNameModal from "./components/CharacterNameModal.vue";
 import raceSelectionDb from "../../data/source/export/json/種族.json";
+
+const PhaserMapGeneratorPanel = defineAsyncComponent(() => import("./components/PhaserMapGeneratorPanel.vue"));
+const RoomModal = defineAsyncComponent(() => import("./components/RoomModal.vue"));
+const BattleModal = defineAsyncComponent(() => import("./components/BattleModal.vue"));
+const SimulatorModal = defineAsyncComponent(() => import("./components/SimulatorModal.vue"));
+const SkillTreeModal = defineAsyncComponent(() => import("./components/SkillTreeModal.vue"));
+const RaceSelectModal = defineAsyncComponent(() => import("./components/RaceSelectModal.vue"));
+const ClassSelectModal = defineAsyncComponent(() => import("./components/ClassSelectModal.vue"));
+const CharacterStatusModal = defineAsyncComponent(() => import("./components/CharacterStatusModal.vue"));
+const CharacterNameModal = defineAsyncComponent(() => import("./components/CharacterNameModal.vue"));
 
 const DEFAULT_RACE_STATS = { hp: 100, atk: 20 };
 const RACES = Array.isArray(raceSelectionDb)
