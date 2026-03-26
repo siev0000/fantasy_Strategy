@@ -93,8 +93,8 @@ export const FACTION_BORDER_COLOR_PALETTE = [
 
 // 未探索/非可視タイル（Fog）の表示設定。
 export const FOG_HIDDEN_FILL = 0x7b818a;
-export const FOG_HIDDEN_ALPHA = 0.84;
-export const FOG_HIDDEN_ALPHA_TEST = 0.46;
+export const FOG_HIDDEN_ALPHA = 0.5; // Fogタイルは半透明の塗りつぶしで、下の地形がうっすら見えるようにする。
+export const FOG_HIDDEN_ALPHA_TEST = 0.5;// Fogタイルの境界線は、Fogの下に薄く描いて、Fogが消えたときに自然に見えるようにする。
 export const FOG_HIDDEN_BORDER = { width: 1.15, color: 0x4b525e, alpha: 0.92 };
 
 // 索敵とカメラ操作に関する共通値。
@@ -162,7 +162,7 @@ export const UI_MANUAL_SCALE_CONFIG = {
 // マップ上マーカーの位置・サイズ設定。
 export const MAP_UNIT_MARKER_CONFIG = {
   offsetX: -10,
-  offsetY: -10,
+  offsetY: 10,
   radius: 7.3,
   iconSize: 20
 };

@@ -114,10 +114,48 @@ export function useVillageBuildPanel(options = {}) {
     ? options.researchCategoryOrder
     : [];
   const cityAbilityDefinedCap = Math.max(1, Math.floor(toSafeNumber(options.cityAbilityDefinedCap, 1)));
+  const tileFacilityMapKey = nonEmptyText(options.tileFacilityMapKey) || "tileFacilityMap";
+  const settlementModeKey = nonEmptyText(options.settlementModeKey) || "settlement";
+  const resourceModeKey = nonEmptyText(options.resourceModeKey) || "resource";
+  const resolveSelectedBuildTileKey = typeof options.resolveSelectedBuildTileKey === "function"
+    ? options.resolveSelectedBuildTileKey
+    : (() => "");
+  const resolveSelectedBuildTileMode = typeof options.resolveSelectedBuildTileMode === "function"
+    ? options.resolveSelectedBuildTileMode
+    : (() => "");
+  const canOpenVillageBuildAtTile = typeof options.canOpenVillageBuildAtTile === "function"
+    ? options.canOpenVillageBuildAtTile
+    : (() => false);
+
+  function normalizeVillageTileFacilityMap(rawMap) {
+    const source = rawMap && typeof rawMap === "object" ? rawMap : {};
+    const out = {};
+    for (const [rawTileKey, rawList] of Object.entries(source)) {
+      const tileKey = nonEmptyText(rawTileKey);
+      if (!tileKey.includes(",")) continue;
+      const list = normalizeVillageBuildings(rawList);
+      if (!list.length) continue;
+      out[tileKey] = list;
+    }
+    return out;
+  }
+
+  function resolveCurrentBuildTarget() {
+    const tileKey = nonEmptyText(resolveSelectedBuildTileKey());
+    const tileMode = nonEmptyText(resolveSelectedBuildTileMode());
+    const buildable = !!canOpenVillageBuildAtTile();
+    return {
+      tileKey,
+      tileMode,
+      buildable
+    };
+  }
 
   const canOpenVillageBuild = computed(() => {
     const village = villageState.value;
-    return !!(village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y));
+    if (!(village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y))) return false;
+    const target = resolveCurrentBuildTarget();
+    return !!(target.buildable && target.tileKey.includes(","));
   });
 
   function resolveFacilityBuildingIconSrc(definition) {
@@ -264,7 +302,9 @@ export function useVillageBuildPanel(options = {}) {
       || null;
   }
 
-  function resolveVillageBuildCapacity(village) {
+  function resolveVillageBuildCapacity(village, target = resolveCurrentBuildTarget()) {
+    const mode = nonEmptyText(target?.tileMode);
+    if (mode === resourceModeKey) return 1;
     const def = resolveVillageBuildCapacityDefinition(village);
     return Math.max(1, Math.floor(toSafeNumber(def?.buildSlotValue, 1)));
   }
@@ -273,8 +313,11 @@ export function useVillageBuildPanel(options = {}) {
     return Math.max(1, Math.floor(toSafeNumber(definition?.buildSlotValue, 1)));
   }
 
-  function resolveVillageBuildUsedSlots(village) {
-    const keys = normalizeVillageBuildings(village?.buildings);
+  function resolveVillageBuildUsedSlots(village, target = resolveCurrentBuildTarget()) {
+    const tileKey = nonEmptyText(target?.tileKey);
+    if (!tileKey.includes(",")) return 0;
+    const tileMap = normalizeVillageTileFacilityMap(village?.[tileFacilityMapKey]);
+    const keys = Array.isArray(tileMap[tileKey]) ? tileMap[tileKey] : [];
     return keys.reduce((sum, key) => {
       const def = findVillageBuildingDefinition(key);
       if (!def || def.isSettlementStage) return sum;
@@ -330,10 +373,31 @@ export function useVillageBuildPanel(options = {}) {
     return resolveVillageBuildingMaterialStatus(village, definition).canAfford;
   }
 
-  function resolveVillageBuildingAvailability(village, definition) {
+  function resolveVillageBuildingAvailability(village, definition, target = resolveCurrentBuildTarget()) {
     const def = definition && typeof definition === "object" ? definition : null;
     if (!def) {
       return { selectable: false, canAfford: false, hasResearch: false, hasLand: false, reasons: ["施設定義不正"], statusText: "条件不正" };
+    }
+    const tileKey = nonEmptyText(target?.tileKey);
+    if (!tileKey.includes(",")) {
+      return {
+        selectable: false,
+        canAfford: false,
+        hasResearch: false,
+        hasLand: false,
+        reasons: ["建設対象マスを選択してください"],
+        statusText: "建設不可"
+      };
+    }
+    if (!target?.buildable) {
+      return {
+        selectable: false,
+        canAfford: false,
+        hasResearch: false,
+        hasLand: false,
+        reasons: ["自陣営の居住地/資源化タイルのみ建設できます"],
+        statusText: "建設不可"
+      };
     }
     const reasons = [];
     const requirements = Array.isArray(def.requirements) ? def.requirements : [];
@@ -348,7 +412,7 @@ export function useVillageBuildPanel(options = {}) {
       }
     }
     const slotCost = resolveVillageBuildingSlotCost(def);
-    const remainingSlots = Math.max(0, resolveVillageBuildCapacity(village) - resolveVillageBuildUsedSlots(village));
+    const remainingSlots = Math.max(0, resolveVillageBuildCapacity(village, target) - resolveVillageBuildUsedSlots(village, target));
     const hasLand = remainingSlots >= slotCost;
     if (!hasLand) {
       reasons.push(`土地 ${remainingSlots}/${slotCost}`);
@@ -366,40 +430,56 @@ export function useVillageBuildPanel(options = {}) {
       hasLand,
       slotCost,
       remainingSlots,
+      tileKey,
       materialStatus,
       reasons,
       statusText
     };
   }
 
-  function applyVillageBuildingCost(village, definition) {
+  function applyVillageBuildingCost(village, definition, target = resolveCurrentBuildTarget()) {
     const nextVillage = ensureVillageStateShape(village, selectedRace());
     if (!nextVillage || !definition) return null;
+    const tileKey = nonEmptyText(target?.tileKey);
+    if (!tileKey.includes(",")) return null;
     const nextMaterial = normalizeMaterialStockBag(nextVillage.materialStockByType);
     const costBag = normalizeResourceBag(definition.cost, materialResourceKeys);
     for (const key of materialResourceKeys) {
       nextMaterial[key] = roundTo1(Math.max(0, nextMaterial[key] - costBag[key]));
     }
-    const nextBuildings = normalizeVillageBuildings([...(nextVillage.buildings || []), definition.key]);
+    const tileMap = normalizeVillageTileFacilityMap(nextVillage?.[tileFacilityMapKey]);
+    const tileFacilities = normalizeVillageBuildings([...(tileMap[tileKey] || []), definition.key]);
+    tileMap[tileKey] = tileFacilities;
+    const allFacilityKeys = Object.values(tileMap).flatMap((list) => (Array.isArray(list) ? list : []));
+    const existingBuildings = normalizeVillageBuildings(nextVillage.buildings || []);
+    const stageKeys = existingBuildings.filter((key) => {
+      const def = findVillageBuildingDefinition(key);
+      return !!def?.isSettlementStage;
+    });
+    const nextBuildings = normalizeVillageBuildings([...stageKeys, ...allFacilityKeys]);
     return ensureVillageStateShape({
       ...nextVillage,
       materialStockByType: nextMaterial,
-      buildings: nextBuildings
+      buildings: nextBuildings,
+      [tileFacilityMapKey]: tileMap
     }, selectedRace());
   }
 
   const builtVillageBuildingSet = computed(() => {
-    return new Set(normalizeVillageBuildings(villageState.value?.buildings));
+    const target = resolveCurrentBuildTarget();
+    const tileMap = normalizeVillageTileFacilityMap(villageState.value?.[tileFacilityMapKey]);
+    return new Set(Array.isArray(tileMap[target.tileKey]) ? tileMap[target.tileKey] : []);
   });
 
   const villageBuildRows = computed(() => {
     const village = ensureVillageStateShape(villageState.value, selectedRace());
+    const target = resolveCurrentBuildTarget();
     const built = builtVillageBuildingSet.value;
     return facilityBuildingDefs.value
       .filter(def => !built.has(def.key))
       .map(def => ({
         ...def,
-        availability: resolveVillageBuildingAvailability(village, def)
+        availability: resolveVillageBuildingAvailability(village, def, target)
       }));
   });
 
@@ -417,11 +497,11 @@ export function useVillageBuildPanel(options = {}) {
   });
 
   const villageBuildCapacity = computed(() => {
-    return resolveVillageBuildCapacity(villageState.value);
+    return resolveVillageBuildCapacity(villageState.value, resolveCurrentBuildTarget());
   });
 
   const villageBuildUsedSlots = computed(() => {
-    return resolveVillageBuildUsedSlots(villageState.value);
+    return resolveVillageBuildUsedSlots(villageState.value, resolveCurrentBuildTarget());
   });
 
   const villageBuildRemainingSlots = computed(() => {
@@ -439,7 +519,7 @@ export function useVillageBuildPanel(options = {}) {
     const village = ensureVillageStateShape(villageState.value, selectedRace());
     const def = selectedVillageBuildingDef.value;
     if (!village || !def) return null;
-    return resolveVillageBuildingAvailability(village, def);
+    return resolveVillageBuildingAvailability(village, def, resolveCurrentBuildTarget());
   });
 
   const selectedVillageBuildingPreviewStyle = computed(() => {
@@ -497,7 +577,8 @@ export function useVillageBuildPanel(options = {}) {
       updateUnitInfoText("建設失敗: 建設可能な施設がありません。");
       return;
     }
-    const availability = resolveVillageBuildingAvailability(village, definition);
+    const target = resolveCurrentBuildTarget();
+    const availability = resolveVillageBuildingAvailability(village, definition, target);
     if (!availability.selectable) {
       updateUnitInfoText(`建設失敗: ${availability.reasons.join(" / ") || "条件未達"}`);
       return;
@@ -509,7 +590,7 @@ export function useVillageBuildPanel(options = {}) {
       updateUnitInfoText(`建設失敗: 資材不足 (${shortageText} / 必要: ${costText})`);
       return;
     }
-    const nextVillage = applyVillageBuildingCost(village, definition);
+    const nextVillage = applyVillageBuildingCost(village, definition, target);
     if (!nextVillage) {
       updateUnitInfoText("建設失敗: 村データ更新に失敗しました。");
       return;

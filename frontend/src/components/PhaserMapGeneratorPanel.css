@@ -1076,6 +1076,23 @@
   gap: 10px;
 }
 
+.battle-result-enemy-visual {
+  border: 1px solid rgba(228, 197, 139, 0.36);
+  border-radius: 10px;
+  background: linear-gradient(160deg, rgba(19, 13, 9, 0.78), rgba(12, 9, 7, 0.72));
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.battle-result-enemy-visual img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
 .battle-result-summary {
   color: #f1e6ca;
   border: 1px solid rgba(222, 188, 129, 0.35);
