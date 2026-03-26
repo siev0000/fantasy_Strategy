@@ -193,6 +193,27 @@ import enchantDb from "../../../data/source/export/json/付与.json";
 import skillInfoDb from "../../../data/source/export/json/スキル一覧.json";
 import terrainYieldDb from "../../../data/source/export/json/地形.json";
 
+const rawEnemyIllustrationModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
+  eager: true,
+  import: "default"
+});
+const enemyIllustrationSrcByName = new Map(
+  Object.entries(rawEnemyIllustrationModules)
+    .map(([path, src]) => {
+      const name = nonEmptyText(extractFileStem(path));
+      const srcText = nonEmptyText(src);
+      if (!name || !srcText) return null;
+      return [name, srcText];
+    })
+    .filter(Boolean)
+);
+const enemyIllustrationSrcByNormalizedName = new Map();
+for (const [name, src] of enemyIllustrationSrcByName.entries()) {
+  const normalized = normalizeEnemyImageLookupKey(name);
+  if (!normalized || enemyIllustrationSrcByNormalizedName.has(normalized)) continue;
+  enemyIllustrationSrcByNormalizedName.set(normalized, src);
+}
+
 const props = defineProps({
   selectedRace: { type: String, default: "" },
   selectedClass: { type: String, default: "" },
@@ -1756,36 +1777,23 @@ const enemySpawnRulesByTerrain = computed(() => {
   return map;
 });
 
-/* const enemyImageNameByLabel = computed(() => {
+const enemyImageNameByLabel = computed(() => {
   const map = new Map();
-  if (!Array.isArray(enemySpawnDb)) return map;
-  for (const raw of enemySpawnDb) {
-    if (!raw || typeof raw !== "object") continue;
-    let label = nonEmptyText(raw?.種族名 || raw?.name || raw?.Name);
-    let imageName = nonEmptyText(raw?.画像 || raw?.image || raw?.Image);
-    if (!label || !imageName) {
-      for (const [keyRaw, valueRaw] of Object.entries(raw)) {
-        const key = String(keyRaw || "");
-        const value = nonEmptyText(valueRaw);
-        if (!value) continue;
-        if (!label && (key.includes("種族名") || key.includes("遞ｮ譌・))) {
-          label = value;
-          continue;
-        }
-        if (!imageName && (key.includes("画像") || key.includes("逕ｻ蜒・) || key.toLowerCase() === "image")) {
-          imageName = value;
-        }
+  for (const row of enemySpawnRows.value) {
+    const imageName = nonEmptyText(row?.imageName);
+    if (!imageName) continue;
+    const labels = [
+      nonEmptyText(row?.displayName),
+      nonEmptyText(row?.raceName)
+    ].filter(Boolean);
+    for (const label of labels) {
+      if (!map.has(label)) {
+        map.set(label, imageName);
       }
     }
-    if (!label || !imageName) continue;
-    if (!hasIconName(imageName)) continue;
-    map.set(label, imageName);
   }
   return map;
 });
-
-*/
-const enemyImageNameByLabel = computed(() => new Map());
 
 const jobClassRows = computed(() => {
   return classRows.value.filter(row => nonEmptyText(row?.種類) === "職業");
@@ -3047,6 +3055,28 @@ function countPromotedNamedUnits() {
 function nonEmptyText(value) {
   const text = String(value ?? "").trim();
   return text.length ? text : "";
+}
+
+function extractFileStem(pathOrName) {
+  const text = String(pathOrName ?? "").replace(/\\/g, "/");
+  const fileName = text.split("/").pop() || "";
+  const lastDot = fileName.lastIndexOf(".");
+  return lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
+}
+
+function normalizeEnemyImageLookupKey(value) {
+  return nonEmptyText(extractFileStem(value))
+    .toLowerCase()
+    .replace(/[\s　_\-・=]+/g, "");
+}
+
+function resolveEnemyIllustrationSrc(name) {
+  const target = nonEmptyText(extractFileStem(name));
+  if (!target) return "";
+  const exact = enemyIllustrationSrcByName.get(target);
+  if (exact) return exact;
+  const normalized = normalizeEnemyImageLookupKey(target);
+  return normalized ? (enemyIllustrationSrcByNormalizedName.get(normalized) || "") : "";
 }
 
 function resolveUnitIconName(name, fallback = DEFAULT_ICON_NAME) {
@@ -9696,7 +9726,7 @@ function buildEnemyEncounterGroups(data = currentData.value) {
         enemies.map(resolveEncounterStealthValueForEnemy)
       );
       const first = enemies[0];
-      const imageName = resolveEnemyIconName(first);
+      const imageName = nonEmptyText(first?.imageName) || resolveEnemyIconName(first);
       groups.push({
         id: `enemy-${x}-${y}`,
         x,
@@ -13527,9 +13557,28 @@ function resolveBattleParticipantLabel(payload = {}) {
 
 function resolveFieldBattleEnemyImageSrc(payload = {}) {
   const enemyLabel = nonEmptyText(payload?.enemyLabel);
-  const iconName = resolveAvailableIconName(
+  const entryEnemyNames = Array.isArray(payload?.entry?.enemyGroup?.names)
+    ? payload.entry.enemyGroup.names.map(name => nonEmptyText(name)).filter(Boolean)
+    : [];
+  const mappedLabelImageName = enemyLabel ? nonEmptyText(enemyImageNameByLabel.value.get(enemyLabel)) : "";
+  const mappedEntryImageNames = entryEnemyNames
+    .map(name => nonEmptyText(enemyImageNameByLabel.value.get(name)))
+    .filter(Boolean);
+  const imageCandidates = [
     nonEmptyText(payload?.enemyImageName),
     nonEmptyText(payload?.entry?.enemyGroup?.imageName),
+    mappedLabelImageName,
+    ...mappedEntryImageNames
+  ].filter((name, index, list) => name && list.indexOf(name) === index);
+
+  for (const imageName of imageCandidates) {
+    const src = resolveEnemyIllustrationSrc(imageName);
+    if (src) return src;
+  }
+
+  const iconName = resolveAvailableIconName(
+    ...imageCandidates,
+    ...entryEnemyNames,
     enemyLabel
   );
   if (iconName) {
@@ -13768,7 +13817,7 @@ function resolveAttackTargetAtTile(x, y, options = {}) {
     x,
     y,
     factionIds: hasFaction ? Array.from(bucket?.factionIds || []) : [],
-    enemyImageName: hasSpawn ? resolveEnemyIconName(tileEnemies?.[0]) : ""
+    enemyImageName: hasSpawn ? (nonEmptyText(tileEnemies?.[0]?.imageName) || resolveEnemyIconName(tileEnemies?.[0])) : ""
   };
 }
 
