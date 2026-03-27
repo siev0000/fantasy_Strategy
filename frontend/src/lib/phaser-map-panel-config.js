@@ -155,8 +155,7 @@ export const GAME_VIEW_HEIGHT = 720;
 // root側の自動フィットスケール（画面サイズ追従）とは独立。
 export const UI_MANUAL_SCALE_CONFIG = {
   clock: 1.5, // 右下時計UI
-  ownFactionPanel: 1.5, // field-overlay-own-faction-panel
-  characterDetailPane: 1.0 // char-block / detail-right-pane を含む詳細パネル
+  ownFactionPanel: 1.5 // field-overlay-own-faction-panel
 };
 
 // マップ上マーカーの位置・サイズ設定。

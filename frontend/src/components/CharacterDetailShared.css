@@ -23,13 +23,13 @@
 .char-status-chip {
   border: 1px solid rgba(206, 180, 135, 0.62);
   border-radius: 7px;
-  padding: 6px 8px;
+  padding: 0px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   background: rgba(255, 255, 255, 0.82);
   min-height: 36px;
-  font-size: 15px;
+  font-size: 20px;
 }
 
 .char-skill-grid {
@@ -48,13 +48,13 @@
 .char-resist-chip {
   border: 1px solid rgba(206, 180, 135, 0.62);
   border-radius: 7px;
-  padding: 6px 8px;
+  padding: 0px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   background: rgba(255, 255, 255, 0.82);
   min-height: 36px;
-  font-size: 15px;
+  font-size: 20px;
 }
 
 .equipment-edit-list {

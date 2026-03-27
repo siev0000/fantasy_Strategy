@@ -90,6 +90,9 @@ const EQUIPMENT_SLOT_KEYS = ["武器1", "武器2", "頭", "体", "足", "装飾1
 const WEAPON_EQUIPMENT_NAMES = ["短剣", "剣", "長剣", "槍", "斧", "戦槌", "棍棒", "弓", "銃", "杖"];
 const SHIELD_EQUIPMENT_NAMES = ["盾", "大盾"];
 const SOLDIER_ICON_SRC = getIconSrcByName("兵士", "");
+const UNIT_EXP_LEVEL_CAP = 120;
+const UNIT_EXP_LEVEL_SPLIT = 15;
+const CLASS_SKILL_MAX = 10;
 const RACE_CLASS_NAME_MAP = {
   "只人": "ヒューマン",
   "エルフ": "エルフ",
@@ -173,6 +176,17 @@ const squadList = computed(() => {
     .filter(row => row.id && row.leaderId);
 });
 
+const classRowByName = computed(() => {
+  if (!Array.isArray(classDb)) return {};
+  const map = {};
+  for (const row of classDb) {
+    const name = nonEmptyText(row?.名前);
+    if (!name || Object.prototype.hasOwnProperty.call(map, name)) continue;
+    map[name] = row;
+  }
+  return map;
+});
+
 function nonEmptyText(value) {
   const text = String(value ?? "").trim();
   return text.length ? text : "";
@@ -233,7 +247,7 @@ function unitRoleLabel(unit) {
   if (unitType && unitType.includes("軍隊")) return unitType;
   const combatMode = nonEmptyText(unit?.combatProfile?.mode);
   if (combatMode && combatMode !== UNIT_CREATE_MODE_KEYS.NORMAL) return "軍隊";
-  return "ヒーロー";
+  return "英雄";
 }
 
 const villageScaleLabel = computed(() => {
@@ -273,7 +287,51 @@ function isHumanUnit(unit) {
 }
 
 function unitLevel(unit) {
-  return Math.max(1, Math.min(10, Math.floor(toSafeNumber(unit?.level, 1))));
+  return Math.max(1, Math.floor(toSafeNumber(unit?.level, 1)));
+}
+
+function findClassRowByName(name) {
+  const key = nonEmptyText(name);
+  if (!key) return null;
+  return classRowByName.value[key] || null;
+}
+
+function unitExpValue(unit) {
+  return Math.max(0, Math.floor(toSafeNumber(unit?.status?.exp, toSafeNumber(unit?.exp, 0))));
+}
+
+function resolveExpRaceCategoryForUnit(unit) {
+  const raceName = nonEmptyText(unit?.race);
+  const raceClassName = nonEmptyText(RACE_CLASS_NAME_MAP[raceName] || raceName);
+  const raceRow = findClassRowByName(raceClassName) || findClassRowByName(raceName);
+  const kind = nonEmptyText(raceRow?.種類);
+  if (kind === "人族") return "human";
+  if (kind === "亜人") return "demi";
+  if (kind === "魔族") return "demon";
+  return "other";
+}
+
+function resolveUnitExpNeedForNextLevel(levelRaw, raceCategoryRaw = "other") {
+  const level = Math.max(1, Math.floor(toSafeNumber(levelRaw, 1)));
+  const raceCategory = nonEmptyText(raceCategoryRaw) || "other";
+  const early = level < UNIT_EXP_LEVEL_SPLIT;
+  if (raceCategory === "human") return early ? (175 + level * 50) : (150 + level * 80);
+  if (raceCategory === "demi") return early ? (150 + level * 50) : (150 + level * 80);
+  if (raceCategory === "demon") return early ? (100 + level * 50) : (200 + level * 100);
+  const demiBase = early ? (150 + level * 50) : (150 + level * 80);
+  return Math.max(1, Math.floor(demiBase * 1.1));
+}
+
+function unitExpToNextLevel(unit) {
+  const level = unitLevel(unit);
+  if (level >= UNIT_EXP_LEVEL_CAP) return 0;
+  const current = unitExpValue(unit);
+  const need = resolveUnitExpNeedForNextLevel(level, resolveExpRaceCategoryForUnit(unit));
+  return Math.max(0, need - current);
+}
+
+function unitNextLevelExpText(unit) {
+  return `次Lv ${unitExpToNextLevel(unit)}exp`;
 }
 
 function isMilitaryUnit(unit) {
@@ -794,6 +852,94 @@ function acquiredSkillsSummary(unit, limit = 4) {
   return `${visible.join(" / ")}${suffix}`;
 }
 
+function extractSkillNamesFromValue(value) {
+  const text = nonEmptyText(value);
+  if (!text || text === "0") return [];
+  return text
+    .split(/[\/,、\s]+/)
+    .map(part => nonEmptyText(part))
+    .filter(part => part && part !== "0");
+}
+
+function buildSkillsFromClassRowByLevel(row, levelCount) {
+  const cap = Math.max(0, Math.min(CLASS_SKILL_MAX, Math.floor(toSafeNumber(levelCount, 0))));
+  if (!row || typeof row !== "object" || cap <= 0) return [];
+  const skills = [];
+  for (let i = 1; i <= cap; i += 1) {
+    const englishKey = `Skill${i}`;
+    const japaneseKey = `スキル${i}`;
+    const names = [
+      ...extractSkillNamesFromValue(row?.[englishKey]),
+      ...extractSkillNamesFromValue(row?.[japaneseKey])
+    ];
+    if (names.length) skills.push(...names);
+  }
+  return [...new Set(skills)];
+}
+
+function normalizeClassGrowthEntries(unit) {
+  const growth = unit?.growthRule && typeof unit.growthRule === "object" ? unit.growthRule : {};
+  const entries = [];
+  const classLevelsRaw = growth?.classLevels;
+  const fallbackClassName = primaryClassNameForUnit(unit) || nonEmptyText(unit?.className) || "クラス";
+  if (classLevelsRaw && typeof classLevelsRaw === "object" && !Array.isArray(classLevelsRaw)) {
+    for (const [classNameRaw, levelRaw] of Object.entries(classLevelsRaw)) {
+      const className = nonEmptyText(classNameRaw);
+      const level = Math.max(0, Math.floor(toSafeNumber(levelRaw, 0)));
+      if (!className || level <= 0) continue;
+      entries.push({ className, level });
+    }
+  } else {
+    const level = Math.max(0, Math.floor(toSafeNumber(classLevelsRaw, 0)));
+    if (level > 0) {
+      entries.push({ className: fallbackClassName, level });
+    }
+  }
+  const secondaryClassName = nonEmptyText(growth?.secondaryClassName || unit?.secondaryClassName);
+  const secondaryClassLevels = Math.max(0, Math.floor(toSafeNumber(growth?.secondaryClassLevels, 0)));
+  if (secondaryClassName && secondaryClassLevels > 0) {
+    const existing = entries.find(row => row.className === secondaryClassName);
+    if (existing) {
+      existing.level += secondaryClassLevels;
+    } else {
+      entries.push({ className: secondaryClassName, level: secondaryClassLevels });
+    }
+  }
+  return entries;
+}
+
+function buildUnitGrowthRows(unit) {
+  if (!unit || typeof unit !== "object") return [];
+  const rows = [];
+  const growth = unit?.growthRule && typeof unit.growthRule === "object" ? unit.growthRule : {};
+  const raceName = nonEmptyText(unit?.race);
+  const raceLevel = Math.max(0, Math.floor(toSafeNumber(growth?.raceLevels, 0)));
+  if (raceName || raceLevel > 0) {
+    const raceClassName = nonEmptyText(RACE_CLASS_NAME_MAP[raceName] || raceName);
+    const raceRow = findClassRowByName(raceClassName) || findClassRowByName(raceName);
+    rows.push({
+      key: `race-${raceName || "default"}`,
+      label: raceName || "種族",
+      level: raceLevel,
+      skills: buildSkillsFromClassRowByLevel(raceRow, raceLevel)
+    });
+  }
+  const classEntries = normalizeClassGrowthEntries(unit);
+  for (const entry of classEntries) {
+    const className = nonEmptyText(entry?.className);
+    const level = Math.max(0, Math.floor(toSafeNumber(entry?.level, 0)));
+    if (!className || level <= 0) continue;
+    const classRow = findClassRowByName(className);
+    rows.push({
+      key: `class-${className}`,
+      label: className,
+      level,
+      skills: buildSkillsFromClassRowByLevel(classRow, level)
+    });
+  }
+  return rows;
+}
+
 function consoleLogCharacterModalOpen() {
   const snapshot = unitList.value.map(unit => ({
     id: nonEmptyText(unit?.id),
@@ -835,11 +981,13 @@ const activeUnitSkillRows = computed(() => buildSkillRows(activeUnit.value));
 const activeUnitResistanceRows = computed(() => buildResistanceRows(activeUnit.value));
 const activeUnitAcquiredSkills = computed(() => buildAcquiredSkills(activeUnit.value));
 const activeUnitEquipmentSlots = computed(() => buildEquipmentSlotRows(activeUnit.value));
+const activeUnitGrowthRows = computed(() => buildUnitGrowthRows(activeUnit.value));
 
 const activeSquadMemberSkillRows = computed(() => buildSkillRows(activeSquadMemberUnit.value));
 const activeSquadMemberResistanceRows = computed(() => buildResistanceRows(activeSquadMemberUnit.value));
 const activeSquadMemberAcquiredSkills = computed(() => buildAcquiredSkills(activeSquadMemberUnit.value));
 const activeSquadMemberEquipmentSlots = computed(() => buildEquipmentSlotRows(activeSquadMemberUnit.value));
+const activeSquadMemberGrowthRows = computed(() => buildUnitGrowthRows(activeSquadMemberUnit.value));
 
 const villagePopulationText = computed(() => {
   const byRace = props?.village?.populationByRace;
@@ -1196,22 +1344,33 @@ watch(
             @click="selectUnit(unit.id)"
           >
             <div class="char-list-unit-line">
-              <img v-if="iconSrcForUnit(unit)" :src="iconSrcForUnit(unit)" :alt="`${unit.name} 種族アイコン`" class="char-list-icon" />
-              <span v-else class="char-list-icon-fallback">{{ iconGlyphForUnit(unit) }}</span>
+              <span class="char-list-icon-stack">
+                <img v-if="iconSrcForUnit(unit)" :src="iconSrcForUnit(unit)" :alt="`${unit.name} 種族アイコン`" class="char-list-icon" />
+                <span v-else class="char-list-icon-fallback">{{ iconGlyphForUnit(unit) }}</span>
+                <img
+                  v-if="isMilitaryUnit(unit) && SOLDIER_ICON_SRC"
+                  :src="SOLDIER_ICON_SRC"
+                  alt="兵士"
+                  class="char-list-military-under-icon"
+                  title="軍隊ユニット"
+                />
+                <span
+                  v-else-if="isMilitaryUnit(unit)"
+                  class="char-list-military-under-icon char-list-military-under-icon-fallback"
+                  title="軍隊ユニット"
+                >
+                  兵
+                </span>
+              </span>
               <span class="char-list-unit-main">
                 <span class="char-list-unit-name-row">
                   <strong>{{ unit.name }}<span v-if="isSovereign(unit)"> ◆</span></strong>
                   <span class="char-list-level">Lv{{ unitLevel(unit) }}</span>
-                  <img
-                    v-if="isMilitaryUnit(unit) && SOLDIER_ICON_SRC"
-                    :src="SOLDIER_ICON_SRC"
-                    alt="兵士"
-                    class="char-list-military-badge"
-                    title="軍隊ユニット"
-                  />
-                  <span v-else-if="isMilitaryUnit(unit)" class="char-list-military-badge char-list-military-badge-fallback" title="軍隊ユニット">兵</span>
                 </span>
-                <span class="char-list-role">役割: {{ unitRoleLabel(unit) }}</span>
+                <span class="char-list-role-row">
+                  <span class="char-list-role">{{ unitRoleLabel(unit) }}</span>
+                  <span class="char-list-next-exp">{{ unitNextLevelExpText(unit) }}</span>
+                </span>
               </span>
             </div>
           </button>
@@ -1278,6 +1437,7 @@ watch(
             :unit="activeUnit"
             :village="props.village"
             :research-progress="props.researchProgress"
+            :growth-rows="activeUnitGrowthRows"
             :show-combat-profile="false"
             :hide-icon-editor="true"
             @update-unit-icon="emit('update-unit-icon', $event)"
@@ -1334,17 +1494,25 @@ watch(
               >
                 <div class="move-unit-line">
                   <span class="char-list-name-with-icon">
-                    <img v-if="iconSrcForUnit(row.unit)" :src="iconSrcForUnit(row.unit)" :alt="`${row.name} アイコン`" class="char-list-icon" />
-                    <span v-else class="char-list-icon-fallback">{{ iconGlyphForUnit(row.unit) }}</span>
+                    <span class="char-list-icon-stack">
+                      <img v-if="iconSrcForUnit(row.unit)" :src="iconSrcForUnit(row.unit)" :alt="`${row.name} アイコン`" class="char-list-icon" />
+                      <span v-else class="char-list-icon-fallback">{{ iconGlyphForUnit(row.unit) }}</span>
+                      <img
+                        v-if="isMilitaryUnit(row.unit) && SOLDIER_ICON_SRC"
+                        :src="SOLDIER_ICON_SRC"
+                        alt="兵士"
+                        class="char-list-military-under-icon"
+                        title="軍隊ユニット"
+                      />
+                      <span
+                        v-else-if="isMilitaryUnit(row.unit)"
+                        class="char-list-military-under-icon char-list-military-under-icon-fallback"
+                        title="軍隊ユニット"
+                      >
+                        兵
+                      </span>
+                    </span>
                     <strong>{{ row.name }}</strong>
-                    <img
-                      v-if="isMilitaryUnit(row.unit) && SOLDIER_ICON_SRC"
-                      :src="SOLDIER_ICON_SRC"
-                      alt="兵士"
-                      class="char-list-military-badge"
-                      title="軍隊ユニット"
-                    />
-                    <span v-else-if="isMilitaryUnit(row.unit)" class="char-list-military-badge char-list-military-badge-fallback" title="軍隊ユニット">兵</span>
                   </span>
                   <span>Lv{{ unitLevel(row.unit) }}</span>
                 </div>
@@ -1478,6 +1646,7 @@ watch(
                 :unit="activeSquadMemberUnit"
                 :village="props.village"
                 :research-progress="props.researchProgress"
+                :growth-rows="activeSquadMemberGrowthRows"
                 :hide-icon-editor="true"
                 @update-unit-icon="emit('update-unit-icon', $event)"
                 @update-unit-equipment="emit('update-unit-equipment', $event)"
@@ -1612,12 +1781,10 @@ watch(
 
 .char-layout,
 .squad-layout {
-  --char-panel-max-height: min(74vh, 720px);
   display: grid;
   grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
   gap: 0px;
   align-items: start;
-  max-height: var(--char-panel-max-height);
   overflow: hidden;
 }
 
@@ -1634,7 +1801,6 @@ watch(
 }
 
 .char-list {
-  max-height: var(--char-panel-max-height);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -1756,13 +1922,11 @@ watch(
 }
 
 .char-detail {
-  max-height: var(--char-panel-max-height);
   overflow: hidden;
   overscroll-behavior: contain;
 }
 
 .squad-detail-panel {
-  max-height: var(--char-panel-max-height);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -2015,6 +2179,20 @@ watch(
   color: #5f4a2b;
 }
 
+.char-list-role-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.char-list-next-exp {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #6f5a36;
+  white-space: nowrap;
+}
+
 .char-list-unit-line {
   display: grid;
   grid-template-columns: 35px minmax(0, 1fr);
@@ -2049,11 +2227,17 @@ watch(
   min-width: 0;
 }
 
-.char-list-name-with-icon strong,
-.char-list-military-badge,
-.char-list-military-badge-fallback {
+.char-list-name-with-icon strong {
   position: relative;
   z-index: 1;
+}
+
+.char-list-icon-stack {
+  width: 35px;
+  display: grid;
+  justify-items: center;
+  align-items: start;
+  gap: 3px;
 }
 
 .char-list-icon {
@@ -2090,9 +2274,9 @@ watch(
   z-index: 1;
 }
 
-.char-list-military-badge {
-  width: 14px;
-  height: 14px;
+.char-list-military-under-icon {
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid rgba(189, 160, 119, 0.88);
@@ -2100,12 +2284,12 @@ watch(
   flex: 0 0 auto;
 }
 
-.char-list-military-badge-fallback {
+.char-list-military-under-icon-fallback {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #4a2d10;
-  font-size: 0.58rem;
+  font-size: 0.46rem;
   font-weight: 800;
   line-height: 1;
 }
@@ -2219,7 +2403,6 @@ watch(
 @media (max-width: 1px) {
   .char-layout,
   .squad-layout {
-    --char-panel-max-height: min(72vh, 760px);
     grid-template-columns: 1fr;
   }
 

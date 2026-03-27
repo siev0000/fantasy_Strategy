@@ -378,8 +378,7 @@ const playersLabel = computed(() => {
 const appRootStyle = computed(() => ({
   "--game-root-scale": String(appRootScale.value),
   "--ui-manual-clock-scale": String(UI_MANUAL_SCALE_CONFIG.clock),
-  "--ui-manual-own-faction-panel-scale": String(UI_MANUAL_SCALE_CONFIG.ownFactionPanel),
-  "--ui-manual-character-detail-scale": String(UI_MANUAL_SCALE_CONFIG.characterDetailPane)
+  "--ui-manual-own-faction-panel-scale": String(UI_MANUAL_SCALE_CONFIG.ownFactionPanel)
 }));
 
 function updateAppRootScale() {

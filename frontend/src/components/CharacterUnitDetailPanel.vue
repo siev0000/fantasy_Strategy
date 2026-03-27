@@ -8,6 +8,7 @@ const props = defineProps({
   unit: { type: Object, default: null },
   village: { type: Object, default: null },
   researchProgress: { type: Object, default: null },
+  growthRows: { type: Array, default: () => [] },
   compact: { type: Boolean, default: false },
   showCombatProfile: { type: Boolean, default: true },
   hideIconEditor: { type: Boolean, default: false }
@@ -42,7 +43,8 @@ const SKILL_FIELD_DEFS = [
 ];
 const LEFT_PANEL_TABS = [
   { key: "status", label: "ステータス" },
-  { key: "equipment", label: "装備" }
+  { key: "equipment", label: "装備" },
+  { key: "role", label: "ロール" }
 ];
 const RESISTANCE_FIELDS = [
   "物理耐性",
@@ -450,6 +452,31 @@ const acquiredSkills = computed(() => {
   return unit.skills.map(name => nonEmptyText(name)).filter(Boolean);
 });
 
+const roleGrowthRows = computed(() => {
+  if (!Array.isArray(props.growthRows)) return [];
+  return props.growthRows
+    .map((row, index) => {
+      const label = nonEmptyText(row?.label);
+      const level = Math.max(0, Math.floor(toSafeNumber(row?.level, 0)));
+      const skills = Array.isArray(row?.skills)
+        ? row.skills.map(name => nonEmptyText(name)).filter(Boolean)
+        : [];
+      if (!label) return null;
+      return {
+        key: nonEmptyText(row?.key) || `${label}-${index}`,
+        label,
+        level,
+        skills
+      };
+    })
+    .filter(Boolean);
+});
+
+function roleRowSkillsText(row) {
+  const skills = Array.isArray(row?.skills) ? row.skills : [];
+  return skills.length ? skills.join(" / ") : "-";
+}
+
 const equipmentSlots = computed(() => {
   const unit = props.unit;
   if (!unit) return [];
@@ -607,7 +634,7 @@ watch(
           </div>
         </template>
 
-        <template v-else>
+        <template v-else-if="leftPanelView === 'equipment'">
           <section class="char-block">
             <div class="equipment-head-row">
               <h4>装備一覧</h4>
@@ -672,6 +699,24 @@ watch(
             <div v-if="equipmentActionStatus" class="small equipment-action-status">{{ equipmentActionStatus }}</div>
           </section>
         </template>
+
+        <template v-else>
+          <section class="char-block role-growth-block">
+            <h4>ロール</h4>
+            <div v-if="roleGrowthRows.length" class="role-growth-list">
+              <div
+                v-for="row in roleGrowthRows"
+                :key="`role-growth-${unit.id}-${row.key}`"
+                class="role-growth-row"
+              >
+                <span class="role-growth-name">{{ row.label }}</span>
+                <span class="role-growth-level">Lv{{ row.level }}</span>
+                <span class="role-growth-skills">{{ roleRowSkillsText(row) }}</span>
+              </div>
+            </div>
+            <div v-else class="small">ロールデータなし</div>
+          </section>
+        </template>
       </div>
 
       <section class="char-block detail-right-pane">
@@ -713,9 +758,6 @@ watch(
   grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr);
   gap: 8px;
   align-items: start;
-  transform: scale(var(--ui-manual-character-detail-scale, 1));
-  transform-origin: top left;
-  width: calc(100% / max(var(--ui-manual-character-detail-scale, 1), 0.001));
 }
 
 .detail-left-pane {
@@ -727,7 +769,7 @@ watch(
 }
 
 .detail-status-scroll {
-  max-height: min(420px, 52vh);
+  height: 420px;
   overflow-y: auto;
   overflow-x: hidden;
   display: grid;
@@ -1012,9 +1054,46 @@ watch(
 
 .detail-right-pane :deep(.skill-table-wrap) {
   min-height: 0;
-  max-height: min(360px, 46vh);
+  height: 405px;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.role-growth-block {
+  display: grid;
+  gap: 6px;
+}
+
+.role-growth-list {
+  display: grid;
+  gap: 5px;
+}
+
+.role-growth-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 120px) 52px 1fr;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(206, 180, 135, 0.62);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 0.8rem;
+}
+
+.role-growth-name {
+  font-weight: 700;
+  color: #3a2d1a;
+}
+
+.role-growth-level {
+  font-weight: 700;
+  color: #5b4528;
+}
+
+.role-growth-skills {
+  color: #5f4b2b;
+  word-break: break-word;
 }
 
 @media (max-width: 1px) {

@@ -1386,6 +1386,19 @@ const TILE_DANGER_MAX_PERCENT = 100;
 const TILE_DANGER_REDUCE_PER_CLEAR_PERCENT = 15;
 const TILE_DANGER_REDUCE_PER_SURVEY_PERCENT = 15;
 const FIELD_BATTLE_HP_COST = 20;
+const UNIT_EXP_LEVEL_CAP = 120;
+const UNIT_EXP_LEVEL_SPLIT = 15;
+const UNIT_EXP_GAIN_BASE_PER_ENEMY_LEVEL = 50;
+const UNIT_EXP_DIFF_SMALL_THRESHOLD = 5;
+const UNIT_EXP_DIFF_SMALL_RATE = 0.25;
+const UNIT_EXP_DIFF_LARGE_RATE = 0.5;
+const UNIT_EXP_OTHER_RACE_BONUS_RATE = 0.275;
+const UNIT_EXP_RACE_BONUS_RATE_MAP = {
+  human: 0.15,
+  demi: 0.25,
+  demon: 0.35,
+  other: UNIT_EXP_OTHER_RACE_BONUS_RATE
+};
 const NAMED_STATUS_SKILL_BONUS_MULTIPLIER = 1.15;
 // 穢れ: ユニット死亡時にタイルへ加算される基本値（必要に応じて調整）
 const VILLAGE_CORRUPTION_PER_UNIT_DEATH = 5;
@@ -4424,9 +4437,10 @@ function buildLiveFactionStateSnapshot() {
 }
 
 function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
-  const units = Array.isArray(snapshot?.units)
+  const rawUnits = Array.isArray(snapshot?.units)
     ? snapshot.units.map(unit => deepCloneJsonValue(unit, {}))
     : [];
+  const units = syncUnitLevelsByTotalExp(rawUnits).units;
   const raceFallback = resolveRaceFromUnitList(units);
   const villageRaw = snapshot?.village ? deepCloneJsonValue(snapshot.village, null) : null;
   const village = villageRaw ? ensureVillageStateShape(villageRaw, raceFallback) : null;
@@ -6554,6 +6568,111 @@ function clampUnitLevel(value, fallback = INITIAL_LEVEL_MIN, maxLevel = INITIAL_
   return Math.max(1, Math.min(cappedMax, safe));
 }
 
+function resolveExpRaceCategoryFromName(raceNameRaw = "") {
+  const raceName = nonEmptyText(raceNameRaw);
+  const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName))
+    || findClassRowByName(raceName)
+    || null;
+  const kind = nonEmptyText(raceRow?.種類);
+  if (kind === "人族") return "human";
+  if (kind === "亜人") return "demi";
+  if (kind === "魔族") return "demon";
+  return "other";
+}
+
+function resolveExpRaceCategoryForUnit(unit) {
+  return resolveExpRaceCategoryFromName(unit?.race);
+}
+
+function resolveUnitExpNeedForNextLevel(levelRaw, raceCategoryRaw = "other") {
+  const level = Math.max(1, Math.floor(toSafeNumber(levelRaw, 1)));
+  const raceCategory = nonEmptyText(raceCategoryRaw) || "other";
+  const early = level < UNIT_EXP_LEVEL_SPLIT;
+  if (raceCategory === "human") {
+    return early ? (175 + level * 50) : (150 + level * 80);
+  }
+  if (raceCategory === "demi") {
+    return early ? (150 + level * 50) : (150 + level * 80);
+  }
+  if (raceCategory === "demon") {
+    return early ? (100 + level * 50) : (200 + level * 100);
+  }
+  const demiBase = early ? (150 + level * 50) : (150 + level * 80);
+  return Math.max(1, Math.floor(demiBase * 1.1));
+}
+
+function resolveUnitTotalExpForLevel(levelRaw, raceCategoryRaw = "other") {
+  const level = Math.max(1, Math.floor(toSafeNumber(levelRaw, 1)));
+  let total = 0;
+  for (let lv = 1; lv < level; lv += 1) {
+    total += resolveUnitExpNeedForNextLevel(lv, raceCategoryRaw);
+  }
+  return Math.max(0, Math.floor(total));
+}
+
+function resolveUnitLevelFromTotalExp(totalExpRaw, raceCategoryRaw = "other", maxLevelRaw = UNIT_EXP_LEVEL_CAP) {
+  const totalExp = Math.max(0, Math.floor(toSafeNumber(totalExpRaw, 0)));
+  const maxLevel = Math.max(1, Math.floor(toSafeNumber(maxLevelRaw, UNIT_EXP_LEVEL_CAP)));
+  let level = 1;
+  let accumulated = 0;
+  while (level < maxLevel) {
+    const nextNeed = Math.max(1, Math.floor(toSafeNumber(resolveUnitExpNeedForNextLevel(level, raceCategoryRaw), 1)));
+    if ((accumulated + nextNeed) > totalExp) break;
+    accumulated += nextNeed;
+    level += 1;
+  }
+  return Math.max(1, Math.min(maxLevel, level));
+}
+
+function resolveUnitExpProgressAtLevel(totalExpRaw, levelRaw, raceCategoryRaw = "other") {
+  const totalExp = Math.max(0, Math.floor(toSafeNumber(totalExpRaw, 0)));
+  const level = Math.max(1, Math.floor(toSafeNumber(levelRaw, 1)));
+  const consumed = resolveUnitTotalExpForLevel(level, raceCategoryRaw);
+  const nextNeed = Math.max(1, Math.floor(toSafeNumber(resolveUnitExpNeedForNextLevel(level, raceCategoryRaw), 1)));
+  const progress = Math.max(0, Math.min(nextNeed, totalExp - consumed));
+  return {
+    exp: progress,
+    totalExp
+  };
+}
+
+function withExpStatus(status, expRaw, totalExpRaw) {
+  const source = status && typeof status === "object" ? status : {};
+  const exp = Math.max(0, Math.floor(toSafeNumber(expRaw, 0)));
+  const totalExp = Math.max(0, Math.floor(toSafeNumber(totalExpRaw, 0)));
+  return {
+    ...source,
+    exp,
+    totalExp
+  };
+}
+
+function applyUnitLevelPenaltyToStatus(status, peakLevelRaw, currentLevelRaw) {
+  const source = status && typeof status === "object" ? status : {};
+  const peakLevel = Math.max(1, Math.floor(toSafeNumber(peakLevelRaw, 1)));
+  const currentLevel = Math.max(1, Math.floor(toSafeNumber(currentLevelRaw, 1)));
+  const penaltyLevel = Math.max(0, peakLevel - currentLevel);
+  if (!penaltyLevel) {
+    return {
+      status: { ...source },
+      penaltyLevel: 0,
+      penaltyRate: 0
+    };
+  }
+  const rawRate = penaltyLevel / Math.max(1, currentLevel + 5);
+  const penaltyRate = Math.max(0, Math.min(0.95, rawRate));
+  const next = { ...source };
+  for (const key of STATUS_FIELDS) {
+    const current = Math.max(0, Math.floor(toSafeNumber(next?.[key], 0)));
+    next[key] = Math.max(0, Math.floor(current * (1 - penaltyRate)));
+  }
+  return {
+    status: next,
+    penaltyLevel,
+    penaltyRate
+  };
+}
+
 function resolveGrowthLevelsForUnitLevel(raceRow, totalLevel, maxLevel = INITIAL_LEVEL_MAX) {
   const level = clampUnitLevel(totalLevel, INITIAL_LEVEL_MIN, maxLevel);
   if (raceIsHumanType(raceRow)) {
@@ -6620,6 +6739,10 @@ function createUnitRecord({
     classRow,
     raceRow
   });
+  const raceCategory = resolveExpRaceCategoryFromName(resolvedRace);
+  const initialTotalExp = resolveUnitTotalExpForLevel(built.level, raceCategory);
+  const initialExp = 0;
+  const statusWithExp = withExpStatus(finalStatus, initialExp, initialTotalExp);
   return {
     id: `unit-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
     unitType: normalizedType,
@@ -6643,9 +6766,14 @@ function createUnitRecord({
     squadName: "",
     equipmentSlots,
     equipment,
-    status: finalStatus,
-    maxHp: Math.max(1, Math.floor(toSafeNumber(finalStatus?.HP, 1))),
-    currentHp: Math.max(1, Math.floor(toSafeNumber(finalStatus?.HP, 1))),
+    status: statusWithExp,
+    exp: initialExp,
+    totalExp: initialTotalExp,
+    expPeakLevel: built.level,
+    expPenaltyLevel: 0,
+    expPenaltyRate: 0,
+    maxHp: Math.max(1, Math.floor(toSafeNumber(statusWithExp?.HP, 1))),
+    currentHp: Math.max(1, Math.floor(toSafeNumber(statusWithExp?.HP, 1))),
     skillLevels: namedBonus.skillLevels,
     baseResistances,
     resistances,
@@ -6695,8 +6823,9 @@ function rebuildUnitByLevelRules(unit, options = {}) {
   if (!raceRow) return { ok: false, reason: "種族データが見つかりません。" };
   if (!classRow) return { ok: false, reason: "クラスデータが見つかりません。" };
 
-  const nextLevel = clampUnitLevel(options?.level ?? unit?.level, unit?.level || INITIAL_LEVEL_MIN);
-  const progression = resolveGrowthLevelsForUnitLevel(raceRow, nextLevel);
+  const levelCap = Math.max(1, Math.floor(toSafeNumber(options?.maxLevel, INITIAL_LEVEL_MAX)));
+  const nextLevel = clampUnitLevel(options?.level ?? unit?.level, unit?.level || INITIAL_LEVEL_MIN, levelCap);
+  const progression = resolveGrowthLevelsForUnitLevel(raceRow, nextLevel, levelCap);
   const built = buildCharacterStatusFromRules(raceRow, classRow, nextLevel, {
     raceLevels: progression.raceLevels,
     classLevels: progression.classLevels
@@ -6731,7 +6860,15 @@ function rebuildUnitByLevelRules(unit, options = {}) {
     baseSkillLevels,
     !!unit?.isNamed && !isSovereignUnit(unit)
   );
-  const nextStatus = applyMilitaryProfileToStatus(namedBonus.status, unit?.combatProfile);
+  const raceCategory = resolveExpRaceCategoryForUnit(unit);
+  const fallbackTotalExp = resolveUnitTotalExpForLevel(nextLevel, raceCategory);
+  const nextTotalExp = Math.max(0, Math.floor(toSafeNumber(unit?.totalExp, toSafeNumber(unit?.status?.totalExp, fallbackTotalExp))));
+  const nextExp = Math.max(0, Math.floor(toSafeNumber(unit?.exp, toSafeNumber(unit?.status?.exp, 0))));
+  const nextStatus = withExpStatus(
+    applyMilitaryProfileToStatus(namedBonus.status, unit?.combatProfile),
+    nextExp,
+    nextTotalExp
+  );
   const prevMaxHp = resolveUnitMaxHpValue(unit);
   const prevCurrentHp = resolveUnitCurrentHpValue(unit, prevMaxHp);
   const hpRatio = prevMaxHp > 0 ? (prevCurrentHp / prevMaxHp) : 1;
@@ -6745,6 +6882,11 @@ function rebuildUnitByLevelRules(unit, options = {}) {
     maxHp: nextMaxHp,
     currentHp: nextCurrentHp,
     skillLevels: namedBonus.skillLevels,
+    exp: nextExp,
+    totalExp: nextTotalExp,
+    expPeakLevel: Math.max(1, Math.floor(toSafeNumber(unit?.expPeakLevel, nextLevel))),
+    expPenaltyLevel: Math.max(0, Math.floor(toSafeNumber(unit?.expPenaltyLevel, 0))),
+    expPenaltyRate: Math.max(0, toSafeNumber(unit?.expPenaltyRate, 0)),
     baseResistances,
     resistances,
     growthRule: {
@@ -6774,6 +6916,87 @@ function rebuildUnitByLevelRules(unit, options = {}) {
     classLevels: built.classLevels,
     secondaryClassName
   };
+}
+
+function rebuildUnitByExperience(unit, options = {}) {
+  if (!unit || typeof unit !== "object") return { ok: false, changed: false, unit };
+  const raceCategory = resolveExpRaceCategoryForUnit(unit);
+  const currentLevel = clampUnitLevel(unit?.level, INITIAL_LEVEL_MIN, UNIT_EXP_LEVEL_CAP);
+  const totalExpFallback = resolveUnitTotalExpForLevel(currentLevel, raceCategory);
+  const currentTotalExp = Math.max(0, Math.floor(toSafeNumber(unit?.totalExp, toSafeNumber(unit?.status?.totalExp, totalExpFallback))));
+  const targetLevel = resolveUnitLevelFromTotalExp(currentTotalExp, raceCategory, options?.maxLevel ?? UNIT_EXP_LEVEL_CAP);
+  const expProgress = resolveUnitExpProgressAtLevel(currentTotalExp, targetLevel, raceCategory);
+  const previousPeakLevel = Math.max(
+    currentLevel,
+    Math.floor(toSafeNumber(unit?.expPeakLevel, currentLevel))
+  );
+  const nextPeakLevel = Math.max(previousPeakLevel, targetLevel);
+  const rebuilt = rebuildUnitByLevelRules(unit, {
+    ...options,
+    level: targetLevel,
+    maxLevel: options?.maxLevel ?? UNIT_EXP_LEVEL_CAP
+  });
+  if (!rebuilt?.ok || !rebuilt?.unit) {
+    return { ok: false, changed: false, unit };
+  }
+  const downLeveled = targetLevel < currentLevel;
+  const keptSkillLevels = downLeveled
+    ? deepCloneJsonValue(unit?.skillLevels, rebuilt.unit.skillLevels)
+    : rebuilt.unit.skillLevels;
+  const keptSkills = downLeveled
+    ? deepCloneJsonValue(unit?.skills, rebuilt.unit.skills)
+    : rebuilt.unit.skills;
+  const penaltyState = applyUnitLevelPenaltyToStatus(rebuilt.unit?.status, nextPeakLevel, targetLevel);
+  const statusWithExp = withExpStatus(penaltyState.status, expProgress.exp, currentTotalExp);
+  const prevMaxHp = resolveUnitMaxHpValue(unit);
+  const prevCurrentHp = resolveUnitCurrentHpValue(unit, prevMaxHp);
+  const hpRatio = prevMaxHp > 0 ? (prevCurrentHp / prevMaxHp) : 1;
+  const nextMaxHp = Math.max(1, Math.floor(toSafeNumber(statusWithExp?.HP, 1)));
+  const nextCurrentHp = Math.max(0, Math.min(nextMaxHp, Math.floor(nextMaxHp * hpRatio)));
+  const nextUnit = {
+    ...rebuilt.unit,
+    level: targetLevel,
+    status: statusWithExp,
+    exp: expProgress.exp,
+    totalExp: currentTotalExp,
+    expPeakLevel: nextPeakLevel,
+    expPenaltyLevel: penaltyState.penaltyLevel,
+    expPenaltyRate: penaltyState.penaltyRate,
+    maxHp: nextMaxHp,
+    currentHp: nextCurrentHp,
+    skillLevels: keptSkillLevels,
+    skills: keptSkills
+  };
+  const changed = targetLevel !== currentLevel
+    || nextUnit.exp !== Math.floor(toSafeNumber(unit?.exp, toSafeNumber(unit?.status?.exp, 0)))
+    || nextUnit.totalExp !== Math.floor(toSafeNumber(unit?.totalExp, toSafeNumber(unit?.status?.totalExp, 0)))
+    || nextUnit.expPeakLevel !== Math.floor(toSafeNumber(unit?.expPeakLevel, currentLevel));
+  return {
+    ok: true,
+    changed,
+    unit: nextUnit,
+    fromLevel: currentLevel,
+    toLevel: targetLevel
+  };
+}
+
+function syncUnitLevelsByTotalExp(units = unitList.value) {
+  const source = Array.isArray(units) ? units : [];
+  if (!source.length) return { units: source, changed: 0, up: 0, down: 0 };
+  let changed = 0;
+  let up = 0;
+  let down = 0;
+  const nextUnits = source.map(unit => {
+    const result = rebuildUnitByExperience(unit, { maxLevel: UNIT_EXP_LEVEL_CAP });
+    if (!result?.ok || !result?.unit) return unit;
+    if (result.changed) {
+      changed += 1;
+      if (result.toLevel > result.fromLevel) up += 1;
+      if (result.toLevel < result.fromLevel) down += 1;
+    }
+    return result.unit;
+  });
+  return { units: nextUnits, changed, up, down };
 }
 
 function createVillageAndInitialUnit(data) {
@@ -9282,7 +9505,8 @@ function processVillageEconomyTurn(data, options = {}) {
     ownedSet: territorySets.player
   });
   const villageAfterPurification = ensureVillageStateShape(purificationResult.village, raceFallback);
-  const recoveryResult = applyVillageTileRecoveryTurn(villageAfterPurification, unitList.value);
+  const expSyncResult = syncUnitLevelsByTotalExp(unitList.value);
+  const recoveryResult = applyVillageTileRecoveryTurn(villageAfterPurification, expSyncResult.units);
   unitList.value = recoveryResult.units;
   const normalizedVillage = ensureVillageStateShape(villageAfterPurification, raceFallback);
   villageState.value = normalizedVillage;
@@ -9726,6 +9950,12 @@ function buildEnemyEncounterGroups(data = currentData.value) {
         enemies.map(resolveEncounterStealthValueForEnemy)
       );
       const first = enemies[0];
+      const topEnemy = enemies.reduce((best, enemy) => {
+        const bestLv = Math.max(1, Math.floor(toSafeNumber(best?.level, 1)));
+        const lv = Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)));
+        return lv > bestLv ? enemy : best;
+      }, first);
+      const topRaceName = nonEmptyText(topEnemy?.race) || nonEmptyText(topEnemy?.name) || nonEmptyText(first?.race) || "";
       const imageName = nonEmptyText(first?.imageName) || resolveEnemyIconName(first);
       groups.push({
         id: `enemy-${x}-${y}`,
@@ -9741,6 +9971,8 @@ function buildEnemyEncounterGroups(data = currentData.value) {
         names: enemies.map(enemy => nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵")
           .filter(Boolean),
         topLevel: enemies.reduce((maxLv, enemy) => Math.max(maxLv, Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)))), 1),
+        topRaceName,
+        topRaceCategory: resolveExpRaceCategoryFromName(topRaceName),
         terrain: nonEmptyText(first?.matchedTerrain) || nonEmptyText(data?.grid?.[y]?.[x]) || "-"
       });
     }
@@ -9792,6 +10024,12 @@ function buildOtherFactionEncounterGroups(data = currentData.value) {
       bucket.units.map(resolveEncounterScoutValueForUnit),
       bucket.units.map(resolveEncounterStealthValueForUnit)
     );
+    const topUnit = bucket.units.reduce((best, unit) => {
+      const bestLv = Math.max(1, Math.floor(toSafeNumber(best?.level, 1)));
+      const lv = Math.max(1, Math.floor(toSafeNumber(unit?.level, 1)));
+      return lv > bestLv ? unit : best;
+    }, bucket.units[0] || null);
+    const topRaceName = nonEmptyText(topUnit?.race);
     const names = bucket.units
       .map(unit => nonEmptyText(unit?.name) || nonEmptyText(unit?.race) || "勢力ユニット")
       .filter(Boolean);
@@ -9805,6 +10043,9 @@ function buildOtherFactionEncounterGroups(data = currentData.value) {
       aggressive: false,
       visionRange: resolveEncounterVisionRangeByScout(sense.scout),
       count: bucket.units.length,
+      topLevel: bucket.units.reduce((maxLv, unit) => Math.max(maxLv, Math.max(1, Math.floor(toSafeNumber(unit?.level, 1)))), 1),
+      topRaceName,
+      topRaceCategory: resolveExpRaceCategoryFromName(topRaceName),
       factionIds: Array.from(bucket.factionIds),
       factionLabel: Array.from(bucket.factionLabels).join("/"),
       names
@@ -10270,6 +10511,8 @@ function runEnemyEncounterCheck(options = {}) {
           visionRange: enemyVisionRange,
           count: enemy.count,
           topLevel: enemy.topLevel,
+          topRaceName: nonEmptyText(enemy?.topRaceName),
+          topRaceCategory: nonEmptyText(enemy?.topRaceCategory) || resolveExpRaceCategoryFromName(enemy?.topRaceName),
           terrain: enemy.terrain,
           strong: enemy.strong,
           imageName: nonEmptyText(enemy?.imageName),
@@ -13618,6 +13861,20 @@ function openFieldBattleResultSelection(payload = {}) {
   const source = nonEmptyText(payload?.source) || "encounter";
   const attackerLabel = nonEmptyText(payload?.attackerLabel) || resolveBattleParticipantLabel(payload);
   const attackerUnitIds = resolveBattleParticipantUnitIds(payload);
+  const enemyLevel = Math.max(
+    1,
+    Math.floor(toSafeNumber(payload?.enemyLevel, toSafeNumber(payload?.entry?.enemyGroup?.topLevel, 1)))
+  );
+  const enemyCount = Math.max(
+    1,
+    Math.floor(toSafeNumber(payload?.enemyCount, toSafeNumber(payload?.entry?.enemyGroup?.count, 1)))
+  );
+  const enemyRaceName = nonEmptyText(payload?.enemyRaceName)
+    || nonEmptyText(payload?.entry?.enemyGroup?.topRaceName)
+    || nonEmptyText(payload?.entry?.enemyGroup?.names?.[0]);
+  const enemyRaceCategory = nonEmptyText(payload?.enemyRaceCategory)
+    || nonEmptyText(payload?.entry?.enemyGroup?.topRaceCategory)
+    || resolveExpRaceCategoryFromName(enemyRaceName);
   const enemyImageSrc = resolveFieldBattleEnemyImageSrc(payload);
   const message = nonEmptyText(payload?.message)
     || `${enemyLabel}と戦闘`;
@@ -13632,6 +13889,10 @@ function openFieldBattleResultSelection(payload = {}) {
     message,
     summary,
     attackerUnitIds,
+    enemyLevel,
+    enemyCount,
+    enemyRaceName,
+    enemyRaceCategory,
     enemyImageSrc,
     onResolve: typeof payload?.onResolve === "function" ? payload.onResolve : null
   };
@@ -13675,6 +13936,68 @@ function applyFieldBattleResult(isVictory) {
   requestMapRender();
 }
 
+function resolveFieldBattleLevelDiffRate(enemyLevelRaw, unitLevelRaw) {
+  const enemyLevel = Math.max(1, Math.floor(toSafeNumber(enemyLevelRaw, 1)));
+  const unitLevel = Math.max(1, Math.floor(toSafeNumber(unitLevelRaw, 1)));
+  const diff = enemyLevel - unitLevel;
+  if (!diff) return 0;
+  const absDiff = Math.abs(diff);
+  const rate = absDiff >= UNIT_EXP_DIFF_SMALL_THRESHOLD
+    ? UNIT_EXP_DIFF_LARGE_RATE
+    : UNIT_EXP_DIFF_SMALL_RATE;
+  return diff > 0 ? rate : -rate;
+}
+
+function resolveFieldBattleRaceBonusRate(raceCategoryRaw = "other") {
+  const raceCategory = nonEmptyText(raceCategoryRaw) || "other";
+  return Object.prototype.hasOwnProperty.call(UNIT_EXP_RACE_BONUS_RATE_MAP, raceCategory)
+    ? toSafeNumber(UNIT_EXP_RACE_BONUS_RATE_MAP[raceCategory], 0)
+    : toSafeNumber(UNIT_EXP_RACE_BONUS_RATE_MAP.other, UNIT_EXP_OTHER_RACE_BONUS_RATE);
+}
+
+function applyFieldBattleExperienceToUnits(state = {}) {
+  const ids = Array.isArray(state?.attackerUnitIds)
+    ? state.attackerUnitIds.map(id => nonEmptyText(id)).filter(Boolean)
+    : [];
+  if (!ids.length || !Array.isArray(unitList.value) || !unitList.value.length) {
+    return { appliedUnits: 0, totalGain: 0, perUnitBase: 0 };
+  }
+  const idSet = new Set(ids);
+  const participants = unitList.value.filter(unit => idSet.has(nonEmptyText(unit?.id)));
+  if (!participants.length) {
+    return { appliedUnits: 0, totalGain: 0, perUnitBase: 0 };
+  }
+  const enemyLevel = Math.max(1, Math.floor(toSafeNumber(state?.enemyLevel, 1)));
+  const enemyCount = Math.max(1, Math.floor(toSafeNumber(state?.enemyCount, 1)));
+  const raceCategory = nonEmptyText(state?.enemyRaceCategory) || resolveExpRaceCategoryFromName(state?.enemyRaceName);
+  const raceBonusRate = resolveFieldBattleRaceBonusRate(raceCategory);
+  const basePool = Math.max(1, enemyLevel * UNIT_EXP_GAIN_BASE_PER_ENEMY_LEVEL * enemyCount);
+  const perUnitBase = Math.max(1, Math.floor(basePool / participants.length));
+  let appliedUnits = 0;
+  let totalGain = 0;
+  unitList.value = unitList.value.map(unit => {
+    const id = nonEmptyText(unit?.id);
+    if (!idSet.has(id)) return unit;
+    const unitLevel = Math.max(1, Math.floor(toSafeNumber(unit?.level, 1)));
+    const diffRate = resolveFieldBattleLevelDiffRate(enemyLevel, unitLevel);
+    const gainRate = 1 + diffRate + raceBonusRate;
+    const gainedExp = Math.max(1, Math.floor(perUnitBase * Math.max(0.1, gainRate)));
+    const fallbackTotalExp = resolveUnitTotalExpForLevel(unitLevel, resolveExpRaceCategoryForUnit(unit));
+    const currentTotalExp = Math.max(0, Math.floor(toSafeNumber(unit?.totalExp, toSafeNumber(unit?.status?.totalExp, fallbackTotalExp))));
+    const nextTotalExp = Math.max(0, currentTotalExp + gainedExp);
+    const patched = {
+      ...unit,
+      totalExp: nextTotalExp,
+      status: withExpStatus(unit?.status, toSafeNumber(unit?.exp, unit?.status?.exp), nextTotalExp)
+    };
+    const synced = rebuildUnitByExperience(patched, { maxLevel: UNIT_EXP_LEVEL_CAP });
+    appliedUnits += 1;
+    totalGain += gainedExp;
+    return synced?.ok && synced?.unit ? synced.unit : patched;
+  });
+  return { appliedUnits, totalGain, perUnitBase };
+}
+
 function applyFieldBattleResultV2(isVictory) {
   const state = fieldBattleState.value;
   if (!state) {
@@ -13684,6 +14007,9 @@ function applyFieldBattleResultV2(isVictory) {
   const win = !!isVictory;
   const resultLabel = win ? "勝利" : "敗北";
   const hpCostResult = applyFieldBattleHpCostToUnits(state?.attackerUnitIds, FIELD_BATTLE_HP_COST);
+  const expGainResult = win
+    ? applyFieldBattleExperienceToUnits(state)
+    : { appliedUnits: 0, totalGain: 0, perUnitBase: 0 };
   if (typeof state.onResolve === "function") {
     try {
       state.onResolve({ win, state });
@@ -13702,6 +14028,9 @@ function applyFieldBattleResultV2(isVictory) {
     : "";
   const hpCostText = hpCostResult.appliedUnits > 0
     ? ` / HP-${FIELD_BATTLE_HP_COST} (${hpCostResult.appliedUnits}体)`
+    : "";
+  const expText = expGainResult.appliedUnits > 0
+    ? ` / EXP+${expGainResult.totalGain} (${expGainResult.appliedUnits}体)`
     : "";
   const resultText = `${state.summary}${coordText} / ${resultLabel}${hpCostText}`;
   updateUnitInfoText(resultText);
@@ -13786,7 +14115,7 @@ function resolveAttackTargetAtTile(x, y, options = {}) {
   const data = options?.data || currentData.value;
   const requireSpotted = options?.requireSpotted === true;
   if (!data || !Number.isFinite(x) || !Number.isFinite(y)) {
-    return { hasTarget: false, label: "", hasSpawn: false, hasFaction: false, x, y, factionIds: [], enemyImageName: "" };
+    return { hasTarget: false, label: "", hasSpawn: false, hasFaction: false, x, y, factionIds: [], enemyImageName: "", enemyLevel: 1, enemyCount: 1, enemyRaceName: "", enemyRaceCategory: "other" };
   }
   const tileKey = coordKey(x, y);
   const tileInVision = isTileInCurrentVision(tileKey, data);
@@ -13800,8 +14129,22 @@ function resolveAttackTargetAtTile(x, y, options = {}) {
   const bucket = factionTileMap.get(tileKey);
   const hasFaction = !!(bucket && Array.isArray(bucket.units) && bucket.units.length && (!requireSpotted || factionSpotted));
   if (!hasSpawn && !hasFaction) {
-    return { hasTarget: false, label: "", hasSpawn: false, hasFaction: false, x, y, factionIds: [], enemyImageName: "" };
+    return { hasTarget: false, label: "", hasSpawn: false, hasFaction: false, x, y, factionIds: [], enemyImageName: "", enemyLevel: 1, enemyCount: 1, enemyRaceName: "", enemyRaceCategory: "other" };
   }
+  const topSpawnEnemy = hasSpawn
+    ? tileEnemies.reduce((best, enemy) => {
+      const bestLv = Math.max(1, Math.floor(toSafeNumber(best?.level, 1)));
+      const lv = Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)));
+      return lv > bestLv ? enemy : best;
+    }, tileEnemies[0] || null)
+    : null;
+  const topFactionEnemy = hasFaction
+    ? bucket.units.reduce((best, unit) => {
+      const bestLv = Math.max(1, Math.floor(toSafeNumber(best?.level, 1)));
+      const lv = Math.max(1, Math.floor(toSafeNumber(unit?.level, 1)));
+      return lv > bestLv ? unit : best;
+    }, bucket.units[0] || null)
+    : null;
   const spawnLabel = hasSpawn
     ? (nonEmptyText(tileEnemies?.[0]?.name) || nonEmptyText(tileEnemies?.[0]?.race) || "敵")
     : "";
@@ -13817,7 +14160,19 @@ function resolveAttackTargetAtTile(x, y, options = {}) {
     x,
     y,
     factionIds: hasFaction ? Array.from(bucket?.factionIds || []) : [],
-    enemyImageName: hasSpawn ? (nonEmptyText(tileEnemies?.[0]?.imageName) || resolveEnemyIconName(tileEnemies?.[0])) : ""
+    enemyImageName: hasSpawn ? (nonEmptyText(tileEnemies?.[0]?.imageName) || resolveEnemyIconName(tileEnemies?.[0])) : "",
+    enemyLevel: hasSpawn
+      ? Math.max(1, Math.floor(toSafeNumber(topSpawnEnemy?.level, 1)))
+      : Math.max(1, Math.floor(toSafeNumber(topFactionEnemy?.level, 1))),
+    enemyCount: hasSpawn
+      ? Math.max(1, Math.floor(toSafeNumber(tileEnemies?.length, 1)))
+      : Math.max(1, Math.floor(toSafeNumber(bucket?.units?.length, 1))),
+    enemyRaceName: hasSpawn
+      ? (nonEmptyText(topSpawnEnemy?.race) || nonEmptyText(tileEnemies?.[0]?.race))
+      : (nonEmptyText(topFactionEnemy?.race) || nonEmptyText(bucket?.units?.[0]?.race)),
+    enemyRaceCategory: hasSpawn
+      ? resolveExpRaceCategoryFromName(nonEmptyText(topSpawnEnemy?.race) || nonEmptyText(tileEnemies?.[0]?.race))
+      : resolveExpRaceCategoryFromName(nonEmptyText(topFactionEnemy?.race) || nonEmptyText(bucket?.units?.[0]?.race))
   };
 }
 
@@ -13907,6 +14262,10 @@ function startFieldBattleFromEncounter(payload = {}) {
     y,
     enemyLabel,
     enemyImageName: nonEmptyText(entry?.enemyGroup?.imageName),
+    enemyLevel: Math.max(1, Math.floor(toSafeNumber(entry?.enemyGroup?.topLevel, 1))),
+    enemyCount: Math.max(1, Math.floor(toSafeNumber(entry?.enemyGroup?.count, 1))),
+    enemyRaceName: nonEmptyText(entry?.enemyGroup?.topRaceName) || nonEmptyText(entry?.enemyGroup?.names?.[0]),
+    enemyRaceCategory: nonEmptyText(entry?.enemyGroup?.topRaceCategory),
     attackerLabel,
     attackerUnitIds: resolveBattleParticipantUnitIds(payload),
     message: `${attackerLabel}: ${message}`,
@@ -13952,6 +14311,10 @@ function handleTileAttackSelectionClick(picked) {
     y: picked.y,
     enemyLabel: target.label,
     enemyImageName: nonEmptyText(target?.enemyImageName),
+    enemyLevel: Math.max(1, Math.floor(toSafeNumber(target?.enemyLevel, 1))),
+    enemyCount: Math.max(1, Math.floor(toSafeNumber(target?.enemyCount, 1))),
+    enemyRaceName: nonEmptyText(target?.enemyRaceName),
+    enemyRaceCategory: nonEmptyText(target?.enemyRaceCategory),
     attackerLabel: resolveBattleParticipantLabel({ moveGroup: state.moveGroup }),
     attackerUnitIds: Array.isArray(state.moveGroup?.participantIds) ? state.moveGroup.participantIds : [],
     message: `${attackerName}が${target.label}へ攻撃`,
