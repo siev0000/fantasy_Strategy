@@ -6,6 +6,13 @@ import equipmentDb from "../../../data/source/export/json/装備.json";
 import classDb from "../../../data/source/export/json/クラス.json";
 import { UNIT_CREATE_MODE_KEYS } from "../composables/militaryUnitUtils.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
+import {
+  EQUIPMENT_SLOT_KEYS,
+  RACE_CLASS_NAME_MAP,
+  RESISTANCE_FIELDS,
+  SKILL_FIELD_DEFS,
+  STATUS_FIELDS
+} from "../constants/unitCommon.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -32,41 +39,6 @@ const emit = defineEmits([
   "assign-secondary-class"
 ]);
 
-const STATUS_FIELDS = ["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"];
-const SKILL_FIELD_DEFS = [
-  { key: "指揮", label: "指揮" },
-  { key: "威圧", label: "威圧" },
-  { key: "看破", label: "看破" },
-  { key: "早業", label: "早業" },
-  { key: "技術", label: "技術" },
-  { key: "隠密", label: "隠密" },
-  { key: "索敵", label: "索敵" },
-  { key: "農業", label: "農業" },
-  { key: "林業", label: "林業" },
-  { key: "漁業", label: "漁業" },
-  { key: "工業", label: "工業" },
-  { key: "統治", label: "統治" },
-  { key: "交渉", label: "交渉" },
-  { key: "魔術", label: "魔術", aliases: ["魔法技術"] },
-  { key: "信仰", label: "信仰" }
-];
-const RESISTANCE_FIELDS = [
-  "物理耐性",
-  "魔法耐性",
-  "炎耐性",
-  "氷耐性",
-  "雷耐性",
-  "毒耐性",
-  "光耐性",
-  "闇耐性",
-  "精神耐性",
-  "怯み耐性",
-  "出血耐性",
-  "拘束耐性",
-  "幻覚耐性",
-  "Cr率耐性",
-  "Cr威力耐性"
-];
 const FOOD_KEYS = ["穀物", "野菜", "肉", "魚"];
 const MAT_KEYS = ["木材", "石材", "鉄"];
 const FOOD_LABEL = { 穀物: "穀", 野菜: "野", 肉: "肉", 魚: "魚" };
@@ -86,23 +58,12 @@ const EQUIPMENT_RARITY_ALIAS_MAP = {
   エピック: "epic",
   レジェンダリー: "legendary"
 };
-const EQUIPMENT_SLOT_KEYS = ["武器1", "武器2", "頭", "体", "足", "装飾1", "装飾2"];
 const WEAPON_EQUIPMENT_NAMES = ["短剣", "剣", "長剣", "槍", "斧", "戦槌", "棍棒", "弓", "銃", "杖"];
 const SHIELD_EQUIPMENT_NAMES = ["盾", "大盾"];
 const SOLDIER_ICON_SRC = getIconSrcByName("兵士", "");
 const UNIT_EXP_LEVEL_CAP = 120;
 const UNIT_EXP_LEVEL_SPLIT = 15;
 const CLASS_SKILL_MAX = 10;
-const RACE_CLASS_NAME_MAP = {
-  "只人": "ヒューマン",
-  "エルフ": "エルフ",
-  "オーガ": "オーガ",
-  "ゴブリン": "ゴブリン",
-  "竜人": "ドラゴニュート",
-  "悪魔": "デヴィル",
-  "天使": "エンジェル",
-  "ヴァンパイア": "ヴァンパイア"
-};
 
 const activeTab = ref("character");
 const activeUnitId = ref("");

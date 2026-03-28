@@ -5,6 +5,7 @@ import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import classDb from "../../../data/source/export/json/クラス.json";
 import skillDescDb from "../../../data/source/export/json/説明.json";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
+import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -15,35 +16,6 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["close", "confirm", "back"]);
-
-const RACE_CLASS_NAME_MAP = {
-  "只人": "ヒューマン",
-  "エルフ": "エルフ",
-  "オーガ": "オーガ",
-  "ゴブリン": "ゴブリン",
-  "竜人": "ドラゴニュート",
-  "悪魔": "デヴィル",
-  "天使": "エンジェル",
-  "ヴァンパイア": "ヴァンパイア"
-};
-
-const SKILL_FIELD_DEFS = [
-  { key: "指揮", label: "指揮" },
-  { key: "威圧", label: "威圧" },
-  { key: "看破", label: "看破" },
-  { key: "早業", label: "早業" },
-  { key: "技術", label: "技術" },
-  { key: "隠密", label: "隠密" },
-  { key: "索敵", label: "索敵" },
-  { key: "農業", label: "農業" },
-  { key: "林業", label: "林業" },
-  { key: "漁業", label: "漁業" },
-  { key: "工業", label: "工業" },
-  { key: "統治", label: "統治" },
-  { key: "交渉", label: "交渉" },
-  { key: "魔術", label: "魔術", aliases: ["魔法技術"] },
-  { key: "信仰", label: "信仰" }
-];
 
 const STATUS_ROW_FIELDS = [
   ["HP", "攻撃", "魔力", "命中"],

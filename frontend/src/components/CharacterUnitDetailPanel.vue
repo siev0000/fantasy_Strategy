@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
+import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 
@@ -24,44 +25,10 @@ const STATUS_FIELD_ROWS = [
   ["攻撃", "魔力", "命中"],
   ["防御", "精神", "速度"]
 ];
-const SKILL_FIELD_DEFS = [
-  { key: "指揮", label: "指揮" },
-  { key: "威圧", label: "威圧" },
-  { key: "看破", label: "看破" },
-  { key: "早業", label: "早業" },
-  { key: "技術", label: "技術" },
-  { key: "隠密", label: "隠密" },
-  { key: "索敵", label: "索敵" },
-  { key: "農業", label: "農業" },
-  { key: "林業", label: "林業" },
-  { key: "漁業", label: "漁業" },
-  { key: "工業", label: "工業" },
-  { key: "統治", label: "統治" },
-  { key: "交渉", label: "交渉" },
-  { key: "魔術", label: "魔術", aliases: ["魔法技術"] },
-  { key: "信仰", label: "信仰" }
-];
 const LEFT_PANEL_TABS = [
   { key: "status", label: "ステータス" },
   { key: "equipment", label: "装備" },
   { key: "role", label: "ロール" }
-];
-const RESISTANCE_FIELDS = [
-  "物理耐性",
-  "魔法耐性",
-  "炎耐性",
-  "氷耐性",
-  "雷耐性",
-  "毒耐性",
-  "光耐性",
-  "闇耐性",
-  "精神耐性",
-  "怯み耐性",
-  "出血耐性",
-  "拘束耐性",
-  "幻覚耐性",
-  "Cr率耐性",
-  "Cr威力耐性"
 ];
 const EQUIPMENT_RARITY_ALIAS_MAP = {
   コモン: "common",
@@ -70,7 +37,6 @@ const EQUIPMENT_RARITY_ALIAS_MAP = {
   エピック: "epic",
   レジェンダリー: "legendary"
 };
-const EQUIPMENT_SLOT_KEYS = ["武器1", "武器2", "頭", "体", "足", "装飾1", "装飾2"];
 
 const iconOptions = computed(() => listIconOptions());
 const iconDraft = ref(DEFAULT_ICON_NAME);
