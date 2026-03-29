@@ -1177,6 +1177,62 @@
   gap: 9px;
 }
 
+.move-path-confirm-popup {
+  position: absolute;
+  z-index: 36;
+  transform: translate(-50%, calc(-100% - 8px));
+  min-width: 250px;
+  max-width: min(420px, calc(100% - 24px));
+  border: 1px solid rgba(238, 206, 147, 0.86);
+  border-radius: 10px;
+  background: linear-gradient(170deg, rgba(21, 26, 38, 0.95), rgba(33, 22, 13, 0.95));
+  box-shadow: 0 9px 22px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(255, 235, 197, 0.12);
+  color: #f6ebcd;
+  padding: 8px 9px;
+  display: grid;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.move-path-confirm-popup::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  border-width: 8px 7px 0 7px;
+  border-style: solid;
+  border-color: rgba(213, 176, 114, 0.95) transparent transparent transparent;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
+}
+
+.move-path-confirm-popup-head {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffe5b4;
+  letter-spacing: 0.01em;
+}
+
+.move-path-confirm-popup-cost {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f7f1d7;
+}
+
+.move-path-confirm-popup-summary {
+  color: rgba(243, 228, 192, 0.88);
+  font-size: 15px;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.move-path-confirm-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
 .battle-result-modal {
   width: min(480px, 100%);
   display: grid;

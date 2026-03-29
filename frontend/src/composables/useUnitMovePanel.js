@@ -7,6 +7,9 @@ export function useUnitMovePanel(options = {}) {
   const plannedMovePathNodes = options.plannedMovePathNodes;
   const plannedMoveTarget = options.plannedMoveTarget;
   const plannedMoveSummaryText = options.plannedMoveSummaryText;
+  const plannedMovePreview = options.plannedMovePreview && typeof options.plannedMovePreview === "object"
+    ? options.plannedMovePreview
+    : { value: { pathDistance: 0, estimatedCost: 0, remainingAfter: 0 } };
   const isPathMoveInProgress = options.isPathMoveInProgress;
   const unitMoveMode = options.unitMoveMode;
   const villagePlacementMode = options.villagePlacementMode;
@@ -230,6 +233,7 @@ export function useUnitMovePanel(options = {}) {
     plannedMovePathNodes.value = [];
     plannedMoveTarget.value = null;
     plannedMoveSummaryText.value = "";
+    plannedMovePreview.value = { pathDistance: 0, estimatedCost: 0, remainingAfter: 0 };
     showMovePathConfirmModal.value = false;
   }
 
@@ -277,7 +281,7 @@ export function useUnitMovePanel(options = {}) {
     requestMapRender();
   }
 
-  async function resolvePathWithWorkerFallback(data, sx, sy, tx, ty, maxDistance) {
+  async function resolvePathWithWorkerFallback(data, sx, sy, tx, ty, maxDistance, moveUnit = null) {
     if (findPathWithinDistanceAsync) {
       try {
         const workerPath = await findPathWithinDistanceAsync(data, sx, sy, tx, ty, maxDistance);
@@ -286,7 +290,30 @@ export function useUnitMovePanel(options = {}) {
         console.warn("[PathfindingWorkerFallback]", error);
       }
     }
-    return findPathWithinDistanceSync(data, sx, sy, tx, ty, maxDistance);
+    return findPathWithinDistanceSync(data, sx, sy, tx, ty, maxDistance, moveUnit);
+  }
+
+  function evaluatePathMovementCost(data, path, moveUnit = null) {
+    if (!Array.isArray(path) || path.length <= 1) {
+      return { ok: false, blocked: false, cost: 0, reason: "同じマスです。" };
+    }
+    let total = 0;
+    for (let i = 1; i < path.length; i += 1) {
+      const prev = path[i - 1];
+      const next = path[i];
+      if (!prev || !next) continue;
+      const stepCost = movementStepCost(data, prev.x, prev.y, next.x, next.y, moveUnit);
+      if (!Number.isFinite(stepCost) || stepCost < 0) {
+        return {
+          ok: false,
+          blocked: true,
+          cost: Number.POSITIVE_INFINITY,
+          reason: "高度差が大きく、飛行なしでは通行できません。"
+        };
+      }
+      total += stepCost;
+    }
+    return { ok: true, blocked: false, cost: total, reason: "" };
   }
 
   async function resolveMovePathPlanToTile(picked) {
@@ -305,7 +332,7 @@ export function useUnitMovePanel(options = {}) {
     if (moveRemaining <= 0) {
       return { ok: false, reason: "移動残量がありません。ターン経過で回復します。" };
     }
-    const path = await resolvePathWithWorkerFallback(data, unit.x, unit.y, picked.x, picked.y, moveRemaining);
+    let path = await resolvePathWithWorkerFallback(data, unit.x, unit.y, picked.x, picked.y, moveRemaining, unit);
     if (!path) {
       return { ok: false, reason: `移動残量(${moveRemaining})で到達できません。` };
     }
@@ -313,14 +340,19 @@ export function useUnitMovePanel(options = {}) {
     if (pathDistance <= 0) {
       return { ok: false, reason: "同じマスです。" };
     }
-    let estimatedCost = 0;
-    for (let i = 1; i < path.length; i += 1) {
-      const prev = path[i - 1];
-      const next = path[i];
-      if (!prev || !next) continue;
-      estimatedCost += movementStepCost(data, prev.x, prev.y, next.x, next.y);
+    let costEval = evaluatePathMovementCost(data, path, unit);
+    if ((!costEval.ok || costEval.cost > moveRemaining) && findPathWithinDistanceSync) {
+      const syncPath = findPathWithinDistanceSync(data, unit.x, unit.y, picked.x, picked.y, moveRemaining, unit);
+      if (Array.isArray(syncPath) && syncPath.length > 1) {
+        path = syncPath;
+        costEval = evaluatePathMovementCost(data, path, unit);
+      }
     }
-    if (estimatedCost > moveRemaining) {
+    if (!costEval.ok && costEval.blocked) {
+      return { ok: false, reason: costEval.reason || "通行できない地形差があります。" };
+    }
+    const estimatedCost = costEval.cost;
+    if (!Number.isFinite(estimatedCost) || estimatedCost > moveRemaining) {
       return { ok: false, reason: `移動残量(${moveRemaining})で到達できません。` };
     }
     return {
@@ -361,13 +393,18 @@ export function useUnitMovePanel(options = {}) {
 
   function shouldStopMoveByEncounterEx(encounterResult = null) {
     const entries = Array.isArray(encounterResult?.entries) ? encounterResult.entries : [];
-    const stopEntry = entries.find(entry => (
-      !!entry?.enemyAttack
-      || !!entry?.ambushByFumble
-      || !!entry?.stealthAmbush
-      || !!entry?.playerAmbush
-      || (entry?.context === "move" && !!entry?.enemyFoundPlayer && !!entry?.enemyAggressive)
-    )) || null;
+    const stopEntry = entries.find(entry => {
+      const distance = Number(entry?.distance);
+      const isDirectContact = Number.isFinite(distance) && distance <= 0;
+      if (!isDirectContact) return false;
+      return (
+        !!entry?.enemyAttack
+        || !!entry?.ambushByFumble
+        || !!entry?.stealthAmbush
+        || !!entry?.playerAmbush
+        || (entry?.context === "move" && !!entry?.enemyFoundPlayer && !!entry?.enemyAggressive)
+      );
+    }) || null;
     if (!stopEntry) {
       return { stop: false, reason: "", battleTriggered: false, battleEntry: null };
     }
@@ -433,7 +470,6 @@ export function useUnitMovePanel(options = {}) {
       || !!entry?.ambushByFumble
       || !!entry?.stealthAmbush
       || !!entry?.playerAmbush
-      || (entry?.context === "move" && !!entry?.enemyFoundPlayer && !!entry?.enemyAggressive)
     )) || null;
     if (!stopEntry) {
       return { stop: false, reason: "", battleTriggered: false, battleEntry: null };
@@ -441,26 +477,12 @@ export function useUnitMovePanel(options = {}) {
     const enemyName = stopEntry?.enemyGroup?.kind === "faction"
       ? (stopEntry?.enemyGroup?.factionLabel || "Faction")
       : (stopEntry?.enemyGroup?.names?.[0] || "Enemy");
-    const stealthAmbush = !!stopEntry?.stealthAmbush
-      || (
-        stopEntry?.context === "move"
-        && !!stopEntry?.enemyAggressive
-        && !!stopEntry?.enemyFoundPlayer
-        && !stopEntry?.playerFoundEnemy
-      );
+    const stealthAmbush = !!stopEntry?.stealthAmbush;
     if (stealthAmbush) {
       return {
         stop: true,
         reason: `${enemyName}の奇襲を受けた`,
         battleTriggered: true,
-        battleEntry: stopEntry
-      };
-    }
-    if (stopEntry?.context === "move" && stopEntry?.enemyFoundPlayer && stopEntry?.enemyAggressive) {
-      return {
-        stop: true,
-        reason: `${enemyName}に発見され足止め`,
-        battleTriggered: !!stopEntry?.enemyAttack || !!stopEntry?.ambushByFumble,
         battleEntry: stopEntry
       };
     }
@@ -503,6 +525,11 @@ export function useUnitMovePanel(options = {}) {
       `経路: (${plan.moveGroup.leader.x}, ${plan.moveGroup.leader.y}) -> (${picked.x}, ${picked.y}) `
       + `/ ${plan.pathDistance}マス / 予測コスト${plan.estimatedCost} / 残${Math.max(0, plan.moveRemaining - plan.estimatedCost)}`
     );
+    plannedMovePreview.value = {
+      pathDistance: plan.pathDistance,
+      estimatedCost: plan.estimatedCost,
+      remainingAfter: Math.max(0, plan.moveRemaining - plan.estimatedCost)
+    };
     showMovePathConfirmModal.value = true;
     return { queued: true, pathDistance: plan.pathDistance, estimatedCost: plan.estimatedCost };
   }
@@ -540,7 +567,12 @@ export function useUnitMovePanel(options = {}) {
       const prev = plan.path[i - 1];
       const next = plan.path[i];
       if (!prev || !next) continue;
-      const stepCost = movementStepCost(currentData.value, prev.x, prev.y, next.x, next.y);
+      const stepCost = movementStepCost(currentData.value, prev.x, prev.y, next.x, next.y, unit);
+      if (!Number.isFinite(stepCost) || stepCost < 0) {
+        stopReason = "高度差が大きく、飛行なしでは通行できません。";
+        setLastMoveStopState(stopReason, prev?.x, prev?.y);
+        break;
+      }
       if (spentCost + stepCost > plan.moveRemaining) {
         stopReason = "移動残量が不足しました。";
         setLastMoveStopState(stopReason, prev?.x, prev?.y);

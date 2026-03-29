@@ -313,6 +313,12 @@ const showMovePathConfirmModal = ref(false);
 const plannedMovePathNodes = ref([]);
 const plannedMoveTarget = ref(null);
 const plannedMoveSummaryText = ref("");
+const plannedMovePreview = ref({
+  pathDistance: 0,
+  estimatedCost: 0,
+  remainingAfter: 0
+});
+const movePathConfirmPopupStyle = ref(null);
 const isPathMoveInProgress = ref(false);
 const showFieldBattleResultModal = ref(false);
 const fieldBattleState = ref(null);
@@ -569,13 +575,10 @@ function resolveVillageTileFacilityNames(village, tileKey) {
 }
 
 function resolveUnitRegenerationPerTurn(unit) {
-  const statusRegen = toSafeNumber(unit?.status?.再生, Number.NaN);
-  const skillRegen = toSafeNumber(unit?.skillLevels?.再生, Number.NaN);
-  const fallbackRegen = toSafeNumber(unit?.regeneration, Number.NaN);
-  const raw = Number.isFinite(statusRegen)
-    ? statusRegen
-    : (Number.isFinite(skillRegen) ? skillRegen : (Number.isFinite(fallbackRegen) ? fallbackRegen : 0));
-  return Math.max(0, Math.floor(raw / 10));
+  // 毎ターンの基礎自動回復は「最大HPの5%」を適用する。
+  // 自領地での回復値加算は applyVillageTileRecoveryTurn 側で別途加算する。
+  const maxHp = Math.max(1, resolveUnitMaxHpValue(unit));
+  return Math.max(1, Math.floor(maxHp * 0.05));
 }
 
 function hasChurchFacilityOnTile(village, tileKey) {
@@ -665,6 +668,23 @@ function resolveVillageTileStatusSummary(village) {
     purification: roundTo1(purification),
     recovery: roundTo1(recovery)
   };
+}
+
+function resolveVillageTerritoryRecoveryBonus(village, recoveryMapOverride = null) {
+  const vx = Math.floor(toSafeNumber(village?.x, Number.NaN));
+  const vy = Math.floor(toSafeNumber(village?.y, Number.NaN));
+  if (Number.isFinite(vx) && Number.isFinite(vy)) {
+    const centerRecovery = Math.max(
+      0,
+      resolveVillageTileRecoveryValue(village, coordKey(vx, vy), recoveryMapOverride)
+    );
+    if (centerRecovery > 0) return centerRecovery;
+  }
+  const summary = resolveVillageTileStatusSummary(village);
+  if (summary.tileCount > 0 && summary.recovery > 0) {
+    return Math.max(0, roundTo1(summary.recovery / summary.tileCount));
+  }
+  return 0;
 }
 
 function resolveVillageMaintenancePenalty(metrics) {
@@ -1095,6 +1115,11 @@ const mapCanvasStyle = computed(() => ({
   "--overlay-icon-button-plus-badge-size": `${OVERLAY_ICON_BUTTON_PLUS_BADGE_SIZE_PX}px`
 }));
 
+const movePathConfirmPopupLabel = computed(() => {
+  const cost = Math.max(0, Math.floor(toSafeNumber(plannedMovePreview.value?.estimatedCost, 0)));
+  return `移動 ${cost}（消費移動力）`;
+});
+
 const sovereignHeaderActionIconSrc = computed(() => {
   const sovereign = unitList.value.find(unit => isSovereignUnit(unit)) || unitList.value[0] || null;
   const iconName = resolveAvailableIconName(
@@ -1461,6 +1486,7 @@ const SURVEY_ACTION_REQUIRED_TURNS = 2;
 const SURVEY_DEFAULT_PROGRESS_PERCENT = 100;
 const SURVEY_NO_ENEMY_REDUCE_SCALE = 1.5;
 const SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT = 25;
+const ENCOUNTER_NON_AGGRESSIVE_SAME_TILE_ATTACK_CHANCE = 0.25;
 const ENCOUNTER_FUMBLE_CHANCE = 0.08;
 const ENCOUNTER_MAX_LOG_LINES = 12;
 const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
@@ -1766,6 +1792,10 @@ function parseEnemySpawnCountRange(raw) {
   return { min: 1, max: 1, explicit: false };
 }
 
+function isStrictTrueFlag(value) {
+  return value === true;
+}
+
 const enemySpawnRows = computed(() => {
   if (!Array.isArray(enemySpawnDb)) return [];
   const rows = [];
@@ -1781,6 +1811,7 @@ const enemySpawnRows = computed(() => {
     const lvMax = Math.max(lvMin, Math.floor(Math.max(lvMinRaw, lvMaxRaw)));
     const className = nonEmptyText(raw?.サブクラス);
     const spawnCount = parseEnemySpawnCountRange(raw?.出現数);
+    const aggressive = isStrictTrueFlag(raw?.好戦的);
     const armamentNames = ENEMY_EQUIPMENT_FIELDS
       .map(key => nonEmptyText(raw?.[key]))
       .filter(value => value && value !== "0");
@@ -1795,6 +1826,7 @@ const enemySpawnRows = computed(() => {
       spawnCountMin: spawnCount.min,
       spawnCountMax: spawnCount.max,
       spawnCountExplicit: !!spawnCount.explicit,
+      aggressive,
       armamentNames,
       hasArmament: armamentNames.length > 0,
       check
@@ -2137,6 +2169,7 @@ const {
   plannedMovePathNodes,
   plannedMoveTarget,
   plannedMoveSummaryText,
+  plannedMovePreview,
   isPathMoveInProgress,
   unitMoveMode,
   villagePlacementMode,
@@ -3455,13 +3488,40 @@ function tileHeightLevel(data, x, y) {
   return Number.isFinite(raw) ? Math.floor(raw) : null;
 }
 
-function movementStepCost(data, fromX, fromY, toX, toY) {
+function resolveUnitFlightValue(unit) {
+  if (!unit || typeof unit !== "object") return 0;
+  const statusFlight = toSafeNumber(unit?.status?.飛行, Number.NaN);
+  const directFlight = toSafeNumber(unit?.飛行, Number.NaN);
+  const skillFlight = toSafeNumber(unit?.skillLevels?.飛行, Number.NaN);
+  const candidate = Number.isFinite(statusFlight)
+    ? statusFlight
+    : (Number.isFinite(directFlight) ? directFlight : skillFlight);
+  return Math.max(0, Math.floor(toSafeNumber(candidate, 0)));
+}
+
+function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
   const fromLevel = tileHeightLevel(data, fromX, fromY);
   const toLevel = tileHeightLevel(data, toX, toY);
-  const extraCost = Number.isFinite(fromLevel) && Number.isFinite(toLevel) && fromLevel !== toLevel
-    ? 1
+  const absDiff = Number.isFinite(fromLevel) && Number.isFinite(toLevel)
+    ? Math.abs(toLevel - fromLevel)
     : 0;
-  return 1 + extraCost;
+  const climbDiff = Number.isFinite(fromLevel) && Number.isFinite(toLevel)
+    ? Math.max(0, toLevel - fromLevel)
+    : 0;
+  const flightValue = resolveUnitFlightValue(moveUnit);
+  const hasFlight = flightValue > 0;
+
+  // 高低差エッジ(差2以上)は飛行なしでは通行不可。
+  if (absDiff > 1 && !hasFlight) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  // 基本1 + 登り(高度差1につき+2)。
+  let cost = 1 + (climbDiff * 2);
+  // 飛行30ごとに移動コスト-1。0未満にはしない。
+  const flightReduction = Math.floor(flightValue / 30);
+  cost = Math.max(0, cost - flightReduction);
+  return cost;
 }
 
 function roundTo1(value) {
@@ -5507,10 +5567,28 @@ function buildMonsterLabelText(list = []) {
   return names.join(", ");
 }
 
+function formatConfiguredMonsterSummary(list = []) {
+  if (!Array.isArray(list) || !list.length) return "設定なし";
+  const grouped = new Map();
+  for (const enemy of list) {
+    const name = nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵";
+    const aggressiveLabel = enemy?.aggressive === true ? "好戦" : "非好戦";
+    const key = `${name}|${aggressiveLabel}`;
+    grouped.set(key, (grouped.get(key) || 0) + 1);
+  }
+  if (!grouped.size) return "設定なし";
+  return Array.from(grouped.entries())
+    .map(([key, count]) => {
+      const [name, aggressiveLabel] = String(key).split("|");
+      return `${name}(${aggressiveLabel})x${count}`;
+    })
+    .join(", ");
+}
+
 function rememberSpottedEnemyNames(x, y, data = currentData.value) {
   const key = coordKey(x, y);
-  const tileEnemies = data?.enemySpawnMap?.[y]?.[x];
-  const label = buildMonsterLabelText(Array.isArray(tileEnemies) ? tileEnemies : []);
+  const tileEnemies = enemiesAt(x, y, data);
+  const label = buildMonsterLabelText(tileEnemies);
   if (label) {
     spottedEnemyNamesByTile.set(key, label);
   } else {
@@ -5528,8 +5606,8 @@ function markEnemySpotted(x, y, data = currentData.value) {
   const w = Number.isFinite(data?.w) ? data.w : 0;
   const h = Number.isFinite(data?.h) ? data.h : 0;
   if (x < 0 || y < 0 || x >= w || y >= h) return false;
-  const tileEnemies = data?.enemySpawnMap?.[y]?.[x];
-  if (!Array.isArray(tileEnemies) || !tileEnemies.length) return false;
+  const tileEnemies = enemiesAt(x, y, data);
+  if (!tileEnemies.length) return false;
   const key = coordKey(x, y);
   if (spottedEnemyTileKeys.has(key)) {
     markTileExplored(x, y);
@@ -5562,8 +5640,8 @@ function markEnemyAlerted(x, y, data = currentData.value) {
   const w = Number.isFinite(data?.w) ? data.w : 0;
   const h = Number.isFinite(data?.h) ? data.h : 0;
   if (x < 0 || y < 0 || x >= w || y >= h) return false;
-  const tileEnemies = data?.enemySpawnMap?.[y]?.[x];
-  if (!Array.isArray(tileEnemies) || !tileEnemies.length) return false;
+  const tileEnemies = enemiesAt(x, y, data);
+  if (!tileEnemies.length) return false;
   const key = coordKey(x, y);
   alertedEnemyTileKeys.add(key);
   return true;
@@ -5658,7 +5736,7 @@ function isTileInCurrentVision(tileKey, data) {
   return currentVisionTileKeys.has(tileKey);
 }
 
-function buildReachableTileSet(data, sx, sy, maxDistance) {
+function buildReachableTileSet(data, sx, sy, maxDistance, moveUnit = null) {
   const reachable = new Set();
   if (!data?.grid) return reachable;
   if (!Number.isFinite(sx) || !Number.isFinite(sy)) return reachable;
@@ -5682,7 +5760,8 @@ function buildReachableTileSet(data, sx, sy, maxDistance) {
     for (const n of neighbors) {
       const key = coordKey(n.x, n.y);
       if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
-      const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y);
+      const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y, moveUnit);
+      if (!Number.isFinite(stepCost) || stepCost < 0) continue;
       const nextCost = cur.cost + stepCost;
       if (nextCost > safeDistance) continue;
       const best = minCostByKey.get(key);
@@ -5695,7 +5774,7 @@ function buildReachableTileSet(data, sx, sy, maxDistance) {
   return reachable;
 }
 
-function findPathWithinDistance(data, sx, sy, tx, ty, maxDistance) {
+function findPathWithinDistance(data, sx, sy, tx, ty, maxDistance, moveUnit = null) {
   if (!data?.grid) return null;
   if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(tx) || !Number.isFinite(ty)) return null;
   if (tx < 0 || ty < 0 || tx >= data.w || ty >= data.h) return null;
@@ -5723,7 +5802,8 @@ function findPathWithinDistance(data, sx, sy, tx, ty, maxDistance) {
     for (const n of neighbors) {
       const key = coordKey(n.x, n.y);
       if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
-      const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y);
+      const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y, moveUnit);
+      if (!Number.isFinite(stepCost) || stepCost < 0) continue;
       const nextCost = cur.cost + stepCost;
       if (nextCost > safeDistance) continue;
       const best = minCostByKey.get(key);
@@ -6515,6 +6595,36 @@ function clearEnemyPresenceAtTile(data, x, y, options = {}) {
   return hadEnemies;
 }
 
+function collectActiveSurveyTileKeys(data) {
+  const keys = new Set();
+  const inBounds = (x, y) => (
+    Number.isFinite(x)
+    && Number.isFinite(y)
+    && x >= 0
+    && y >= 0
+    && x < toSafeNumber(data?.w, 0)
+    && y < toSafeNumber(data?.h, 0)
+  );
+  const pushFromUnits = (units) => {
+    if (!Array.isArray(units)) return;
+    for (const unit of units) {
+      const task = resolveUnitSurveyTask(unit);
+      if (!task) continue;
+      const tx = Math.floor(toSafeNumber(task?.x, Number.NaN));
+      const ty = Math.floor(toSafeNumber(task?.y, Number.NaN));
+      if (!inBounds(tx, ty)) continue;
+      keys.add(coordKey(tx, ty));
+    }
+  };
+  // 現在アクティブ勢力
+  pushFromUnits(unitList.value);
+  // テストマルチ時は他勢力の調査中タイルも除外対象にする
+  for (const slot of testPlayerSlots.value || []) {
+    pushFromUnits(slot?.factionState?.units);
+  }
+  return keys;
+}
+
 function applyDangerRulesByTerritory(data, options = {}) {
   if (!data || data.shapeOnly || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) {
     return { applied: false, ownZeroedTiles: 0, increasedTiles: 0, clearedEnemyTiles: 0, periodicApplied: false };
@@ -6530,6 +6640,8 @@ function applyDangerRulesByTerritory(data, options = {}) {
   let increasedTiles = 0;
   let clearedEnemyTiles = 0;
   let enemyMapChanged = false;
+  const enemySpawnMap = Array.isArray(data?.enemySpawnMap) ? data.enemySpawnMap : null;
+  const activeSurveyTileKeys = collectActiveSurveyTileKeys(data);
 
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
@@ -6546,7 +6658,8 @@ function applyDangerRulesByTerritory(data, options = {}) {
         if (ownedByPlayer) ownZeroedTiles += 1;
       }
 
-      if (periodicApplied && !ownedByAny) {
+      // 調査中タイルは危険度の自然回復（時間経過上昇）を停止する。
+      if (periodicApplied && !ownedByAny && !activeSurveyTileKeys.has(tileKey)) {
         const raised = Math.min(TILE_DANGER_MAX_PERCENT, nextDanger + TILE_DANGER_UNOWNED_INCREASE_PERCENT);
         if (raised !== nextDanger) {
           nextDanger = raised;
@@ -6559,10 +6672,18 @@ function applyDangerRulesByTerritory(data, options = {}) {
       }
 
       if (nextDanger <= 0) {
-        const cleared = clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
-        if (cleared) {
-          clearedEnemyTiles += 1;
-          enemyMapChanged = true;
+        const enemyList = enemySpawnMap?.[y]?.[x];
+        const hasEnemyOnTile = Array.isArray(enemyList) && enemyList.length > 0;
+        const hasEnemyMemory = spottedEnemyTileKeys.has(tileKey)
+          || alertedEnemyTileKeys.has(tileKey)
+          || spottedEnemyNamesByTile.has(tileKey);
+        const needCleanup = beforeDanger > 0 || hasEnemyOnTile || hasEnemyMemory;
+        if (needCleanup) {
+          const cleared = clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+          if (cleared) {
+            clearedEnemyTiles += 1;
+            enemyMapChanged = true;
+          }
         }
       }
     }
@@ -6796,6 +6917,7 @@ function buildEnemySpawnDataForMap(data) {
           baseLevel: roleBaseLevel,
           targetLevel: enemyLevel,
           matchedTerrain: picked.matchedTerrain,
+          aggressive: picked?.aggressive === true,
           strong: isStrongTile,
           strongRole: role,
           strongGroupSize: groupCount,
@@ -6852,10 +6974,49 @@ function buildEnemySpawnDataForMap(data) {
   };
 }
 
+function resolveTileDangerPercent(data, x, y) {
+  if (!data || !Number.isFinite(x) || !Number.isFinite(y)) return 0;
+  const tx = Math.floor(toSafeNumber(x, Number.NaN));
+  const ty = Math.floor(toSafeNumber(y, Number.NaN));
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return 0;
+  // 重い ensureEnemyDangerMap() をホットパスで呼ばない。
+  // enemyDangerMap は applyMapData / 生成時に正規化済み前提で軽量参照する。
+  const dangerMap = Array.isArray(data?.enemyDangerMap) ? data.enemyDangerMap : null;
+  const row = Array.isArray(dangerMap?.[ty]) ? dangerMap[ty] : null;
+  const raw = row?.[tx];
+  return Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(raw, 0))));
+}
+
+function configuredEnemiesAt(x, y, data = currentData.value) {
+  const tx = Math.floor(toSafeNumber(x, Number.NaN));
+  const ty = Math.floor(toSafeNumber(y, Number.NaN));
+  if (!data || !Number.isFinite(tx) || !Number.isFinite(ty)) return [];
+  const list = data?.enemySpawnMap?.[ty]?.[tx];
+  if (!Array.isArray(list) || !list.length) return [];
+  return list;
+}
+
 function enemiesAt(x, y, data = currentData.value) {
-  const list = data?.enemySpawnMap?.[y]?.[x];
-  if (!Array.isArray(list)) return [];
-  return list.filter(Boolean);
+  const tx = Math.floor(toSafeNumber(x, Number.NaN));
+  const ty = Math.floor(toSafeNumber(y, Number.NaN));
+  if (!data || !Number.isFinite(tx) || !Number.isFinite(ty)) return [];
+  const list = configuredEnemiesAt(tx, ty, data);
+  if (!list.length) return [];
+  const dangerPercent = resolveTileDangerPercent(data, tx, ty);
+  if (dangerPercent <= 0) return [];
+  let hasFalsy = false;
+  for (let i = 0; i < list.length; i += 1) {
+    if (!list[i]) {
+      hasFalsy = true;
+      break;
+    }
+  }
+  if (!hasFalsy) return list;
+  const compact = [];
+  for (let i = 0; i < list.length; i += 1) {
+    if (list[i]) compact.push(list[i]);
+  }
+  return compact;
 }
 
 function clearCharacterGenerationState() {
@@ -7732,6 +7893,19 @@ function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
   if (!slots.length) return { autoPlacedCount: 0, manualPlayerCount: 0 };
   const assignmentBySlot = plan?.assignmentBySlot instanceof Map ? plan.assignmentBySlot : new Map();
   const activeBefore = nonEmptyText(activeTestPlayerId.value);
+  // 開始時の危険度/敵配置クリアは、描画・進行で参照中の currentData を優先して更新する。
+  const liveMapData = (
+    currentData.value
+    && Number.isFinite(currentData.value?.w)
+    && Number.isFinite(currentData.value?.h)
+    && Number.isFinite(data?.w)
+    && Number.isFinite(data?.h)
+    && currentData.value.w === data.w
+    && currentData.value.h === data.h
+    && Array.isArray(currentData.value?.grid)
+  )
+    ? currentData.value
+    : data;
 
   const nextSlots = slots.map((slot, idx) => {
     const entry = resolveFactionEntryForSlot(slot, idx, placementConfig);
@@ -7777,11 +7951,11 @@ function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
     mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
     updateUnitInfoText(`${firstManualPlayer.label} は手動配置モードです。初期村の配置先をクリックしてください。`);
   }
-  rebuildTerritorySets(data);
-  forceZeroDangerForAllPlacedFactionTerritories(data);
-  rebuildTerritorySets(data);
-  applyDangerRulesByTerritory(data, { applyUnownedIncrease: false });
-  rebuildVisibleTiles(data);
+  rebuildTerritorySets(liveMapData);
+  forceZeroDangerForAllPlacedFactionTerritories(liveMapData);
+  rebuildTerritorySets(liveMapData);
+  applyDangerRulesByTerritory(liveMapData, { applyUnownedIncrease: false });
+  rebuildVisibleTiles(liveMapData);
   renderMapWithPhaser();
 
   const autoPlacedCount = nextSlots.reduce((sum, slot) => {
@@ -9705,26 +9879,28 @@ function applyVillageTilePurificationTurn(village, options = {}) {
 function applyVillageTileRecoveryTurn(village, units = unitList.value) {
   const safeUnits = Array.isArray(units) ? units : [];
   const recoveryMap = resolveVillageTileRecoveryMap(village);
+  const managedTileKeys = resolveVillageManagedTileKeys(village);
+  const territoryRecoveryBonus = resolveVillageTerritoryRecoveryBonus(village, recoveryMap);
   let healedTotal = 0;
   let healedUnits = 0;
   const nextUnits = safeUnits.map(unit => {
     if (!unit || typeof unit !== "object") return unit;
     const normalized = normalizeUnitHpRuntime(unit);
+    const regenerationRecovery = resolveUnitRegenerationPerTurn(normalized);
     const x = Math.floor(toSafeNumber(normalized?.x, Number.NaN));
     const y = Math.floor(toSafeNumber(normalized?.y, Number.NaN));
-    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
-      return normalized;
-    }
-    const regenerationRecovery = resolveUnitRegenerationPerTurn(normalized);
-    const onVillageCenter = !!(
+    const hasValidTile = Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0;
+    const tileKey = hasValidTile ? coordKey(x, y) : "";
+    const managedOwnTile = hasValidTile && managedTileKeys.has(tileKey);
+    const onVillageCenter = hasValidTile && !!(
       village?.placed
       && Math.floor(toSafeNumber(village?.x, Number.NaN)) === x
       && Math.floor(toSafeNumber(village?.y, Number.NaN)) === y
     );
-    const canApplyTerritoryRecovery = isOwnTerritoryTile(x, y) || onVillageCenter;
-    const tileKey = coordKey(x, y);
+    const canApplyTerritoryRecovery = hasValidTile
+      && (isOwnTerritoryTile(x, y) || managedOwnTile || onVillageCenter);
     const baseRecovery = canApplyTerritoryRecovery
-      ? Math.max(0, resolveVillageTileRecoveryValue(village, tileKey, recoveryMap))
+      ? territoryRecoveryBonus
       : 0;
     const churchRecovery = canApplyTerritoryRecovery && hasChurchFacilityOnTile(village, tileKey) ? 5 : 0;
     const totalBaseRecovery = Math.max(0, regenerationRecovery + baseRecovery + churchRecovery);
@@ -10326,7 +10502,7 @@ function buildEnemyEncounterGroups(data = currentData.value) {
         y,
         scout: sense.scout,
         stealth: sense.stealth,
-        aggressive: true,
+        aggressive: enemies.some(enemy => enemy?.aggressive === true),
         visionRange: resolveEncounterVisionRangeByScout(sense.scout),
         count: enemies.length,
         strong: enemies.some(enemy => !!enemy?.strong),
@@ -10422,14 +10598,22 @@ function formatOpposingFactionUnitsAtTile(x, y, options = {}) {
   const map = options?.tileMap instanceof Map
     ? options.tileMap
     : buildOpposingFactionUnitsByTile(currentData.value);
+  const awarenessSuffix = nonEmptyText(options?.awarenessSuffix);
   const key = coordKey(x, y);
   const bucket = map.get(key);
   if (!bucket || !Array.isArray(bucket.units) || !bucket.units.length) return "なし";
   return bucket.units.map(unit => {
     const name = nonEmptyText(unit?.name) || nonEmptyText(unit?.race) || "勢力ユニット";
     const lv = Math.max(1, Math.floor(toSafeNumber(unit?.level, 1)));
-    return `${name}(Lv${lv})`;
+    return `${name}(Lv${lv})${awarenessSuffix}`;
   }).join(", ");
+}
+
+function buildEnemyAwarenessSuffix(spotted, alerted) {
+  const tags = [];
+  if (spotted) tags.push("発見");
+  if (alerted) tags.push("視線");
+  return tags.length ? `[${tags.join("/")}]` : "";
 }
 
 function resolveEncounterDistance(playerGroup, enemyGroup) {
@@ -10509,7 +10693,7 @@ function resolveHostileGroupsAtTileForMove(data, x, y, options = {}) {
       scout: sense.scout,
       stealth: sense.stealth,
       label: tileEnemies[0]?.name || tileEnemies[0]?.race || "敵",
-      aggressive: true
+      aggressive: tileEnemies.some(enemy => enemy?.aggressive === true)
     });
   }
   const tileKey = coordKey(x, y);
@@ -10554,10 +10738,15 @@ function runHostilePassStealthCheckAtTile(options = {}) {
     const chancePercent = resolveEncounterSurveyDetectChancePercent(hostile.scout, playerSense.stealth);
     const detected = chancePercent >= 100 ? true : (Math.random() < (chancePercent / 100));
     if (!detected) continue;
+    const tileKey = coordKey(x, y);
+    const discoveredByPlayer = hostile.kind === "faction"
+      ? spottedFactionTileKeys.has(tileKey)
+      : spottedEnemyTileKeys.has(tileKey);
+    if (!discoveredByPlayer) continue;
     const enemyLabel = hostile.kind === "faction"
       ? `${hostile.label}部隊`
       : hostile.label;
-    const aggressive = hostile?.aggressive !== false;
+    const aggressive = hostile?.aggressive === true;
     let lockApplied = false;
     if (aggressive) {
       const lockResult = applyEncounterMoveLock(moveGroup.participantIds, {
@@ -10711,9 +10900,7 @@ function runEnemyEncounterCheck(options = {}) {
   for (const player of playerGroups) {
     for (const enemy of hostileGroups) {
       const kind = nonEmptyText(enemy?.kind) || "spawn";
-      const enemyAggressive = kind === "faction"
-        ? !!enemy?.aggressive
-        : enemy?.aggressive !== false;
+      const enemyAggressive = enemy?.aggressive === true;
       const distance = resolveEncounterDistance(player, enemy);
       if (!Number.isFinite(distance)) continue;
       const playerVisionRange = Math.max(0, Math.floor(toSafeNumber(player?.visionRange, UNIT_VISION_BASE_RANGE)));
@@ -10725,8 +10912,9 @@ function runEnemyEncounterCheck(options = {}) {
       const alreadySpottedEnemy = kind === "faction"
         ? spottedFactionTileKeys.has(enemyTileKey)
         : spottedEnemyTileKeys.has(enemyTileKey);
-      const playerEffectiveScout = roundTo1(player.scout - (distance * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE));
-      const enemyEffectiveScout = roundTo1(enemy.scout - (distance * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE));
+      const scoutDistancePenalty = Math.max(0, distance - 1) * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE;
+      const playerEffectiveScout = roundTo1(player.scout - scoutDistancePenalty);
+      const enemyEffectiveScout = roundTo1(enemy.scout - scoutDistancePenalty);
       const playerDetectResult = resolveEncounterDetectionByContext(context, playerInRange, playerEffectiveScout, enemy.stealth);
       const enemyDetectResult = resolveEncounterDetectionByContext(context, enemyInRange, enemyEffectiveScout, player.stealth);
       const playerDetectChance = playerDetectResult.chance;
@@ -10735,7 +10923,7 @@ function runEnemyEncounterCheck(options = {}) {
       const enemyDetectRoll = enemyDetectResult.roll;
       const playerFoundEnemy = playerDetectResult.found;
       const enemyFoundPlayer = enemyDetectResult.found;
-      if (!playerFoundEnemy && !enemyFoundPlayer) continue;
+      if (!playerFoundEnemy && !enemyFoundPlayer && !alreadySpottedEnemy) continue;
       const enemyHeadLabel = kind === "faction"
         ? `${nonEmptyText(enemy?.factionLabel) || "他勢力"}部隊`
         : (enemy.names?.[0] || "敵");
@@ -10756,7 +10944,34 @@ function runEnemyEncounterCheck(options = {}) {
       const lockType = playerFoundEnemy && enemyFoundPlayer
         ? "mutual"
         : (playerFoundEnemy ? "detected" : "spotted");
-      const shouldApplyMoveLock = !!enemyFoundPlayer && !!enemyAggressive;
+      const discoveredByPlayer = !!alreadySpottedEnemy || !!playerFoundEnemy;
+      const enemyCanActByKnown = discoveredByPlayer && context === "move";
+      const isSameTile = distance <= 0;
+      const isAdjacentOrSame = distance <= 1;
+
+      let enemyAttack = false;
+      let ambushByFumble = false;
+      let stealthAmbush = false;
+      let attackChance = 0;
+      let attackRoll = null;
+      let fumbleRoll = null;
+      const playerAmbush = context === "survey" && distance === 0 && playerFoundEnemy && !enemyFoundPlayer;
+      let ambushClearResult = null;
+      let ambushMoveCostSpent = false;
+      let ambushBlockedByMovePoint = false;
+      if (enemyCanActByKnown) {
+        if (enemyAggressive && isAdjacentOrSame) {
+          attackChance = 1;
+          attackRoll = 0;
+          enemyAttack = true;
+        } else if (!enemyAggressive && isSameTile) {
+          attackChance = ENCOUNTER_NON_AGGRESSIVE_SAME_TILE_ATTACK_CHANCE;
+          attackRoll = Math.random();
+          enemyAttack = attackRoll < attackChance;
+        }
+      }
+
+      const shouldApplyMoveLock = context === "move" && !!enemyAttack;
       const moveLockResult = shouldApplyMoveLock
         ? applyEncounterMoveLock(player.unitIds, {
           enemyLabel: enemyHeadLabel,
@@ -10772,39 +10987,6 @@ function runEnemyEncounterCheck(options = {}) {
       const moveLockActive = moveLockApplied || player.unitIds.some(unitId => !!resolveEncounterMoveLock(unitId));
       if (moveLockApplied) {
         didApplyMoveLock = true;
-      }
-
-      let enemyAttack = false;
-      let ambushByFumble = false;
-      let stealthAmbush = false;
-      let attackChance = 0;
-      let attackRoll = null;
-      let fumbleRoll = null;
-      const playerAmbush = context === "survey" && distance === 0 && playerFoundEnemy && !enemyFoundPlayer;
-      let ambushClearResult = null;
-      let ambushMoveCostSpent = false;
-      let ambushBlockedByMovePoint = false;
-      if (enemyFoundPlayer && enemyAggressive) {
-        if (context === "move" && distance === 0 && !playerFoundEnemy) {
-          stealthAmbush = true;
-          enemyAttack = true;
-          attackChance = 1;
-          attackRoll = 0;
-        } else {
-          fumbleRoll = Math.random();
-          if (fumbleRoll < ENCOUNTER_FUMBLE_CHANCE) {
-            ambushByFumble = true;
-            enemyAttack = true;
-          } else {
-            attackChance = clampNumber(
-              ENCOUNTER_ATTACK_BASE_CHANCE + ((enemyEffectiveScout - player.stealth) * ENCOUNTER_ATTACK_DIFF_FACTOR),
-              ENCOUNTER_ATTACK_MIN_CHANCE,
-              ENCOUNTER_ATTACK_MAX_CHANCE
-            );
-            attackRoll = Math.random();
-            enemyAttack = attackRoll < attackChance;
-          }
-        }
       }
 
       entries.push({
@@ -10847,6 +11029,7 @@ function runEnemyEncounterCheck(options = {}) {
         distance,
         enemyTileKey,
         alreadySpottedEnemy,
+        discoveredByPlayer,
         newlySpottedEnemy,
         playerEffectiveScout,
         enemyEffectiveScout,
@@ -10904,14 +11087,20 @@ function runEnemyEncounterCheck(options = {}) {
           ? `被発見(${Math.round(entry.enemyDetectChance * 100)}%)`
           : `未発見(${Math.round(entry.enemyDetectChance * 100)}%)`);
       let attackText = "接敵なし";
-      if (entry.enemyFoundPlayer) {
-        if (entry.ambushByFumble) {
-          attackText = "不意打ち被弾(ファンブル)";
-        } else if (entry.enemyAttack) {
-          attackText = `襲撃判定成功(${Math.round(entry.attackChance * 100)}%)`;
-        } else {
-          attackText = `襲撃判定失敗(${Math.round(entry.attackChance * 100)}%)`;
-        }
+      if (!entry.discoveredByPlayer) {
+        attackText = "未発見(攻撃なし)";
+      } else if (entry.enemyAttack) {
+        attackText = entry.enemyAggressive
+          ? "好戦:隣接即攻撃"
+          : `非好戦:同マス襲撃成功(${Math.round(entry.attackChance * 100)}%)`;
+      } else if (!entry.enemyAggressive && entry.context === "move" && entry.distance === 0) {
+        attackText = `非好戦:同マス襲撃失敗(${Math.round(entry.attackChance * 100)}%)`;
+      } else if (!entry.enemyAggressive) {
+        attackText = "非好戦:攻撃なし";
+      } else if (entry.context === "move" && entry.distance <= 1) {
+        attackText = "好戦:攻撃条件成立";
+      } else {
+        attackText = "好戦:条件外";
       }
       let ambushText = "奇襲不可";
       if (entry.playerAmbush) {
@@ -10953,7 +11142,9 @@ function runEnemyEncounterCheck(options = {}) {
     }
   }
 
-  console.log("[EncounterCheck]", { context, entries, notes });
+  if (showTestControls.value) {
+    console.log("[EncounterCheck]", { context, entries, notes });
+  }
   for (const note of notes) {
     pushNationLog(note);
   }
@@ -12197,7 +12388,7 @@ function renderMapWithPhaser() {
     const unit = moveGroup.leader;
     const moveRemaining = Math.max(0, Math.floor(toSafeNumber(moveGroup.minMoveRemaining, 0)));
     return {
-      reachableSet: buildReachableTileSet(data, unit.x, unit.y, moveRemaining),
+      reachableSet: buildReachableTileSet(data, unit.x, unit.y, moveRemaining, unit),
       startKey: coordKey(unit.x, unit.y)
     };
   })();
@@ -12485,13 +12676,13 @@ function renderMapWithPhaser() {
           labelTexts.push(eliteLabel);
         }
 
-        const hasTileEnemy = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) && data.enemySpawnMap[y][x].length > 0;
         const hasFactionEnemy = opposingFactionTileMap.has(tileKey);
         const tileInCurrentVision = isTileInCurrentVision(tileKey, data);
-        const spottedEnemyVisible = tileInCurrentVision && hasTileEnemy && spottedEnemyTileKeys.has(tileKey);
+        const enemySpottedOnVision = tileInCurrentVision && spottedEnemyTileKeys.has(tileKey);
+        const tileEnemyList = enemySpottedOnVision ? enemiesAt(x, y, data) : [];
+        const spottedEnemyVisible = enemySpottedOnVision && tileEnemyList.length > 0;
         const spottedFactionVisible = tileInCurrentVision && hasFactionEnemy && spottedFactionTileKeys.has(tileKey);
         if (spottedEnemyVisible) {
-          const tileEnemyList = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) ? data.enemySpawnMap[y][x] : [];
           const leadEnemy = tileEnemyList.length ? tileEnemyList[0] : null;
           const enemyMarkerIconName = resolveEnemyIconName(leadEnemy);
           const enemyMarkerTextureKey = ensureRaceMarkerTexture(enemyMarkerIconName, { removeWhiteBg: true });
@@ -12857,6 +13048,11 @@ function renderMapWithPhaser() {
     hoveredTileKey = "";
   }
   drawHoverOverlay();
+  if (showMovePathConfirmModal.value) {
+    syncMovePathConfirmPopupStyle(plannedMoveTarget.value);
+  } else if (movePathConfirmPopupStyle.value) {
+    movePathConfirmPopupStyle.value = null;
+  }
   refreshMapCursor();
 }
 
@@ -13882,6 +14078,13 @@ function updateMapClickInfo(picked) {
       village: "不明",
       units: "不明",
       enemies: "不明",
+      enemySense: "-",
+      monsterConfigured: showTestControls.value
+        ? (() => {
+          const configured = configuredEnemiesAt(picked.x, picked.y, currentData.value);
+          return formatConfiguredMonsterSummary(configured);
+        })()
+        : "-",
       development: "不明",
       facilities: "不明",
       moveStopReason: stopReason || "-",
@@ -13932,13 +14135,23 @@ function updateMapClickInfo(picked) {
     }).join(", ")
     : "なし";
   const tileEnemies = enemiesAt(picked.x, picked.y, currentData.value);
+  const configuredTileEnemies = configuredEnemiesAt(picked.x, picked.y, currentData.value);
   const tileKey = coordKey(picked.x, picked.y);
+  const monsterSpottedByDetection = spottedEnemyTileKeys.has(tileKey);
+  const monsterAlertedByDetection = alertedEnemyTileKeys.has(tileKey);
+  const monsterAwarenessSuffix = buildEnemyAwarenessSuffix(monsterSpottedByDetection, monsterAlertedByDetection);
   const opposingFactionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
   const hasOpposingFactionUnits = opposingFactionTileMap.has(tileKey);
+  const factionSpottedByDetection = spottedFactionTileKeys.has(tileKey);
+  const factionAlertedByDetection = alertedFactionTileKeys.has(tileKey);
+  const factionAwarenessSuffix = buildEnemyAwarenessSuffix(factionSpottedByDetection, factionAlertedByDetection);
   const factionSpotted = showTestControls.value || spottedFactionTileKeys.has(tileKey);
   const opposingFactionText = hasOpposingFactionUnits
     ? (factionSpotted
-      ? formatOpposingFactionUnitsAtTile(picked.x, picked.y, { tileMap: opposingFactionTileMap })
+      ? formatOpposingFactionUnitsAtTile(picked.x, picked.y, {
+        tileMap: opposingFactionTileMap,
+        awarenessSuffix: factionAwarenessSuffix
+      })
       : "未発見")
     : "なし";
   console.log("[EnemySpawn][TileSelect]", {
@@ -13958,16 +14171,46 @@ function updateMapClickInfo(picked) {
       const parts = [];
       const name = nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵";
       const lv = Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)));
-      parts.push(`${name}(Lv${lv})`);
+      parts.push(`${name}(Lv${lv})${monsterAwarenessSuffix}`);
       const className = nonEmptyText(enemy?.className);
       if (className) parts.push(`/${className}`);
       if (enemy?.strong) parts.push("[強]");
       return parts.join("");
     }).join(", ")
-    : (rememberedMonsterNames ? `発見履歴:${rememberedMonsterNames}` : "なし");
+    : (rememberedMonsterNames ? `発見履歴:${rememberedMonsterNames}${monsterAwarenessSuffix}` : "なし");
   const enemyText = hasOpposingFactionUnits || factionSpotted || !!rememberedMonsterNames
     ? `モンスター:${monsterEnemyText} / 他勢力:${opposingFactionText}`
     : monsterEnemyText;
+  const monsterEncounterSenseText = tileEnemies.length
+    ? (() => {
+      const monsterSense = resolveEncounterGroupSense(
+        tileEnemies.map(resolveEncounterScoutValueForEnemy),
+        tileEnemies.map(resolveEncounterStealthValueForEnemy)
+      );
+      return `モンスター 索敵${monsterSense.scout}/隠密${monsterSense.stealth}`;
+    })()
+    : "";
+  const factionEncounterSenseText = hasOpposingFactionUnits
+    ? (() => {
+      const factionUnits = Array.isArray(opposingFactionTileMap.get(tileKey)?.units)
+        ? opposingFactionTileMap.get(tileKey).units
+        : [];
+      if (!factionUnits.length) return "";
+      const factionSense = resolveEncounterGroupSense(
+        factionUnits.map(resolveEncounterScoutValueForUnit),
+        factionUnits.map(resolveEncounterStealthValueForUnit)
+      );
+      return `他勢力 索敵${factionSense.scout}/隠密${factionSense.stealth}`;
+    })()
+    : "";
+  const enemyEncounterSenseText = [monsterEncounterSenseText, factionEncounterSenseText]
+    .filter(Boolean)
+    .join(" / ") || "-";
+  const monsterConfiguredText = showTestControls.value
+    ? (() => {
+      return formatConfiguredMonsterSummary(configuredTileEnemies);
+    })()
+    : "-";
   const village = villageState.value?.placed && villageState.value?.x === picked.x && villageState.value?.y === picked.y ? "あり" : "なし";
   const villageDetailText = village === "あり"
     ? `${nonEmptyText(villageState.value?.name) || "村"} / ${resolveVillageScaleLabel(villageState.value)} / 人口${formatCompactNumber(villageState.value?.population)} / 能力:${formatCityAbilityLevels(villageState.value)} / 建設:${formatVillageBuildingList(villageState.value?.buildings)}`
@@ -14098,6 +14341,8 @@ function updateMapClickInfo(picked) {
     village: villageDetailText,
     units: unitText,
     enemies: enemyText,
+    enemySense: enemyEncounterSenseText,
+    monsterConfigured: monsterConfiguredText,
     development: developmentSummary,
     facilities: facilitiesText,
     moveStopReason: moveStopReason || "-",
@@ -14209,6 +14454,67 @@ function resolvePointerWorldPosition(pointer) {
   return {
     x: Number(pointer?.worldX),
     y: Number(pointer?.worldY)
+  };
+}
+
+function resolveHexAreaCenterPoint(area) {
+  const points = Array.isArray(area?.polygon?.points) ? area.polygon.points : [];
+  if (!points.length) return null;
+  let sx = 0;
+  let sy = 0;
+  let count = 0;
+  for (const point of points) {
+    const px = Number(point?.x);
+    const py = Number(point?.y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    sx += px;
+    sy += py;
+    count += 1;
+  }
+  if (!count) return null;
+  return { x: sx / count, y: sy / count };
+}
+
+function syncMovePathConfirmPopupStyle(target = plannedMoveTarget.value) {
+  if (!showMovePathConfirmModal.value) {
+    movePathConfirmPopupStyle.value = null;
+    return;
+  }
+  const tx = Math.floor(toSafeNumber(target?.x, Number.NaN));
+  const ty = Math.floor(toSafeNumber(target?.y, Number.NaN));
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+    movePathConfirmPopupStyle.value = null;
+    return;
+  }
+  const area = hitAreaMap.get(coordKey(tx, ty));
+  const center = resolveHexAreaCenterPoint(area);
+  const camera = scene?.cameras?.main;
+  const hostEl = gameRoot.value;
+  const canvasEl = game?.canvas || hostEl?.querySelector?.("canvas");
+  if (!center || !camera || !hostEl || !canvasEl) {
+    movePathConfirmPopupStyle.value = null;
+    return;
+  }
+  const hostRect = hostEl.getBoundingClientRect();
+  const canvasRect = canvasEl.getBoundingClientRect();
+  if (hostRect.width <= 0 || hostRect.height <= 0 || canvasRect.width <= 0 || canvasRect.height <= 0) {
+    movePathConfirmPopupStyle.value = null;
+    return;
+  }
+  const viewW = Math.max(1, toSafeNumber(gameViewWidth.value, game?.scale?.width || canvasEl.width || 1));
+  const viewH = Math.max(1, toSafeNumber(gameViewHeight.value, game?.scale?.height || canvasEl.height || 1));
+  const zoom = Math.max(0.0001, Number(camera.zoom) || 1);
+  const viewX = (center.x - camera.worldView.x) * zoom;
+  const viewY = (center.y - camera.worldView.y) * zoom;
+  const cssX = (canvasRect.left - hostRect.left) + ((viewX / viewW) * canvasRect.width);
+  const cssY = (canvasRect.top - hostRect.top) + ((viewY / viewH) * canvasRect.height);
+  const margin = 14;
+  const approxPopupHeight = 128;
+  const clampedLeft = clampNumber(cssX, margin, Math.max(margin, hostRect.width - margin));
+  const clampedTop = clampNumber(cssY, margin + approxPopupHeight, Math.max(margin + approxPopupHeight, hostRect.height - margin));
+  movePathConfirmPopupStyle.value = {
+    left: `${clampedLeft}px`,
+    top: `${clampedTop}px`
   };
 }
 
@@ -16495,10 +16801,13 @@ watch(() => props.characterCommand, command => {
             <div><span>領土</span><strong>{{ selectedTileDetail.territory }}</strong></div>
             <div><span>危険度</span><strong>{{ selectedTileDetail.danger }}</strong></div>
             <div><span>高度</span><strong>Lv {{ selectedTileDetail.heightLevel }}</strong></div>
+            <div v-if="showTestControls" class="wide"><span>モンスター設定</span><strong>{{ selectedTileDetail.monsterConfigured || "-" }}</strong></div>
+            <div v-if="showTestControls" class="wide"><span>敵索敵/隠密</span><strong>{{ selectedTileDetail.enemySense || "-" }}</strong></div>
             <div class="wide"><span>町状態</span><strong>{{ selectedTileDetail.village }}</strong></div>
             <div class="wide"><span>領土状態</span><strong>{{ selectedTileDetail.development }}</strong></div>
             <div class="wide"><span>施設</span><strong>{{ selectedTileDetail.facilities || "-" }}</strong></div>
             <div class="wide"><span>ユニット</span><strong>{{ selectedTileDetail.units }}</strong></div>
+            <div class="wide"><span>敵</span><strong>{{ selectedTileDetail.enemies || "-" }}</strong></div>
             <div class="wide"><span>移動停止</span><strong>{{ selectedTileDetail.moveStopReason || "-" }}</strong></div>
           </div>
           <div v-else class="field-overlay-tile-empty">マスをクリックすると詳細を表示します。</div>
@@ -16556,6 +16865,19 @@ watch(() => props.characterCommand, command => {
             <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s</div>
             <div class="turn-clock-caption map-turn-caption">{{ mapTurnNumber }}T</div>
           </div>
+        </div>
+      </div>
+      <div
+        v-if="showMovePathConfirmModal && movePathConfirmPopupStyle"
+        class="move-path-confirm-popup"
+        :style="movePathConfirmPopupStyle"
+      >
+        <div class="move-path-confirm-popup-head">移動経路確認</div>
+        <div class="move-path-confirm-popup-cost">{{ movePathConfirmPopupLabel }}</div>
+        <div class="small move-path-confirm-popup-summary">{{ plannedMoveSummaryText }}</div>
+        <div class="move-path-confirm-popup-actions">
+          <button type="button" class="secondary mini" @click="closeMovePathConfirmModal">キャンセル</button>
+          <button type="button" class="secondary mini" @click="confirmPlannedMovePath">OK</button>
         </div>
       </div>
       <aside v-if="showTestControls" class="in-canvas-test-panel">
@@ -16947,18 +17269,6 @@ watch(() => props.characterCommand, command => {
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeMoveUnitSelectModal">閉じる</button>
           <button type="button" class="secondary" @click="confirmMoveUnitSelection">このユニットで移動開始</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showMovePathConfirmModal" class="settings-backdrop" @click.self="closeMovePathConfirmModal">
-      <div class="settings-modal move-path-confirm-modal">
-        <h3>移動経路確認</h3>
-        <div class="small move-unit-note">矢印で表示された経路に沿って、1マスごとに判定しながら進みます。途中で停止する場合があります。</div>
-        <div class="small move-path-summary">{{ plannedMoveSummaryText }}</div>
-        <div class="setting-actions">
-          <button type="button" class="secondary" @click="closeMovePathConfirmModal">キャンセル</button>
-          <button type="button" class="secondary" @click="confirmPlannedMovePath">OKで移動</button>
         </div>
       </div>
     </div>
