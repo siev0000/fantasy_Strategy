@@ -863,3 +863,14 @@ pm run build:front 成功 (chunk warning unchanged).
 - 2026-03-29: 検証 `npm run build:front` 成功。
 - 2026-03-29: 初期配置直後の危険度反映を強化。`syncDangerRulesForCurrentMap` を追加し、村配置完了後 `nextTick` で領土再計算→危険度同期→再描画を再実行して開始時ズレを抑止。
 - 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: ターン進行を自動時間経過へ変更。共通基準 TURN_SECONDS（既定60秒）を追加し、時計・ターン進行・移動時間計算をこの基準へ統一。
+- 2026-03-29: 自動進行は AUTO_TURN_PAUSE_EVERY_TURNS（既定10T）ごとに停止するように変更。時計モーダルから「開始/停止」で再開・停止可能化。
+- 2026-03-29: 移動を時間経過式へ変更。1マス移動時間 = (MOVE_TIME_BASE_TURNS * TURN_SECONDS) / 移動値（既定 2*60/移動）で待機し、停止中は移動進行も停止。
+- 2026-03-29: unNextTurn に showEventModal オプションを追加し、自動進行時は毎ターンのイベントモーダル表示を抑止。
+- 2026-03-29: 検証: 
+pm run build:front 成功。
+- 2026-03-29: ユニット移動の全体ロックを撤廃し、ユニット単位の移動中管理へ変更。`useUnitMovePanel.js` に `movingUnitIdSet` / `isMoveGroupInProgress` を追加し、移動中でも他ユニット選択・別ユニット移動指示・各UI操作が並行可能な構成へ更新。
+- 2026-03-29: 移動中ユニット以外の操作性を維持するため、移動ステップ中の `setSelectedTileKey` / `onMapTileSelected` は「現在選択中ユニットが当該移動グループに含まれる場合のみ」反映するよう修正。
+- 2026-03-29: 攻撃可否の移動判定を「誰かが移動中」から「選択中ユニット(移動グループ)が移動中」に変更（`resolveSelectedTileAttackActionState`）。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: `develop-web-game` Playwright クライアント実行を試行したが、実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。

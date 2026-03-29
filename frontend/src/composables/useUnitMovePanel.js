@@ -1,4 +1,4 @@
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 export function useUnitMovePanel(options = {}) {
   const showMoveUnitModal = options.showMoveUnitModal;
@@ -11,6 +11,9 @@ export function useUnitMovePanel(options = {}) {
     ? options.plannedMovePreview
     : { value: { pathDistance: 0, estimatedCost: 0, remainingAfter: 0 } };
   const isPathMoveInProgress = options.isPathMoveInProgress;
+  const movingUnitIdSet = options.movingUnitIdSet && typeof options.movingUnitIdSet === "object"
+    ? options.movingUnitIdSet
+    : ref(new Set());
   const unitMoveMode = options.unitMoveMode;
   const villagePlacementMode = options.villagePlacementMode;
   const unitList = options.unitList;
@@ -106,10 +109,104 @@ export function useUnitMovePanel(options = {}) {
   const toUnitRoleLabel = typeof options.toUnitRoleLabel === "function"
     ? options.toUnitRoleLabel
     : (() => "");
-  const moveStepIntervalMs = Math.max(0, Math.floor(toSafeNumber(options.moveStepIntervalMs, 0)));
+  const turnSeconds = Math.max(1, toSafeNumber(options.turnSeconds, 60));
+  const moveTimeBaseTurns = Math.max(0.1, toSafeNumber(options.moveTimeBaseTurns, 2));
+  const getClockElapsedMs = typeof options.getClockElapsedMs === "function"
+    ? options.getClockElapsedMs
+    : (() => Date.now());
+
+  function normalizeUnitIdSet(raw) {
+    if (raw instanceof Set) return new Set(raw);
+    if (Array.isArray(raw)) {
+      return new Set(raw.map(value => nonEmptyText(value)).filter(Boolean));
+    }
+    if (raw && typeof raw === "object") {
+      const next = new Set();
+      for (const [key, enabled] of Object.entries(raw)) {
+        if (enabled) {
+          const unitId = nonEmptyText(key);
+          if (unitId) next.add(unitId);
+        }
+      }
+      return next;
+    }
+    return new Set();
+  }
+
+  function readMovingUnitIdSet() {
+    return normalizeUnitIdSet(movingUnitIdSet?.value);
+  }
+
+  function writeMovingUnitIdSet(nextSet) {
+    movingUnitIdSet.value = normalizeUnitIdSet(nextSet);
+    if (isPathMoveInProgress && typeof isPathMoveInProgress === "object" && "value" in isPathMoveInProgress) {
+      isPathMoveInProgress.value = movingUnitIdSet.value.size > 0;
+    }
+  }
+
+  function isUnitMoving(unitOrId) {
+    const unitId = typeof unitOrId === "string"
+      ? nonEmptyText(unitOrId)
+      : nonEmptyText(unitOrId?.id);
+    if (!unitId) return false;
+    return readMovingUnitIdSet().has(unitId);
+  }
+
+  function resolveMoveGroupUnitIds(moveGroup) {
+    const explicitIds = Array.isArray(moveGroup?.participantIds) ? moveGroup.participantIds : [];
+    const ids = explicitIds
+      .map(id => nonEmptyText(id))
+      .filter(Boolean);
+    if (ids.length) return ids;
+    const leaderId = nonEmptyText(moveGroup?.leader?.id);
+    return leaderId ? [leaderId] : [];
+  }
+
+  function isMoveGroupInProgress(moveGroup) {
+    const unitIds = resolveMoveGroupUnitIds(moveGroup);
+    if (!unitIds.length) return false;
+    const activeSet = readMovingUnitIdSet();
+    return unitIds.some(unitId => activeSet.has(unitId));
+  }
+
+  function setMoveGroupInProgress(moveGroup, inProgress) {
+    const unitIds = resolveMoveGroupUnitIds(moveGroup);
+    if (!unitIds.length) return;
+    const next = readMovingUnitIdSet();
+    for (const unitId of unitIds) {
+      if (inProgress) next.add(unitId);
+      else next.delete(unitId);
+    }
+    writeMovingUnitIdSet(next);
+  }
 
   function resolveUnitMoveRemaining(unit) {
     return Math.max(0, Math.floor(toSafeNumber(unit?.moveRemaining, unit?.moveRange)));
+  }
+
+  function resolveUnitMoveStat(unit) {
+    const statusMove = toSafeNumber(unit?.status?.移動, Number.NaN);
+    const directMove = toSafeNumber(unit?.移動, Number.NaN);
+    const fallbackMove = toSafeNumber(unit?.moveRange, Number.NaN);
+    const raw = Number.isFinite(statusMove)
+      ? statusMove
+      : (Number.isFinite(directMove) ? directMove : fallbackMove);
+    return Math.max(1, Math.floor(toSafeNumber(raw, 1)));
+  }
+
+  function resolveMoveSecondsPerTile(unit) {
+    const moveStat = resolveUnitMoveStat(unit);
+    return (turnSeconds * moveTimeBaseTurns) / moveStat;
+  }
+
+  function resolveMoveDurationMsForStep(unit) {
+    return Math.max(0, Math.round(resolveMoveSecondsPerTile(unit) * 1000));
+  }
+
+  function resolveMoveTravelSeconds(unit, tiles) {
+    const tileCount = Math.max(0, Math.floor(toSafeNumber(tiles, 0)));
+    if (tileCount <= 0) return 0;
+    return Math.max(1, Math.round(resolveMoveSecondsPerTile(unit) * tileCount));
   }
 
   function resolveMoveGroupForUnit(unit, config = {}) {
@@ -169,8 +266,10 @@ export function useUnitMovePanel(options = {}) {
 
   function canUseUnitAsMoveCandidate(unit) {
     if (!unit) return false;
+    if (isUnitMoving(unit)) return false;
     if (nonEmptyText(unit?.squadLeaderId)) return false;
     const group = resolveMoveGroupForUnit(unit);
+    if (group.ok && isMoveGroupInProgress(group)) return false;
     return group.ok && group.minMoveRemaining > 0;
   }
 
@@ -254,10 +353,6 @@ export function useUnitMovePanel(options = {}) {
   }
 
   function toggleUnitMoveMode() {
-    if (isPathMoveInProgress.value) {
-      updateUnitInfoText("移動中は移動モードを切り替えできません。");
-      return;
-    }
     if (unitMoveMode.value) {
       unitMoveMode.value = false;
       showMoveUnitModal.value = false;
@@ -276,7 +371,6 @@ export function useUnitMovePanel(options = {}) {
   }
 
   function closeMovePathConfirmModal() {
-    if (isPathMoveInProgress.value) return;
     clearPlannedMovePath();
     requestMapRender();
   }
@@ -331,6 +425,9 @@ export function useUnitMovePanel(options = {}) {
     const moveRemaining = Math.max(0, Math.floor(toSafeNumber(moveGroup.minMoveRemaining, 0)));
     if (moveRemaining <= 0) {
       return { ok: false, reason: "移動残量がありません。ターン経過で回復します。" };
+    }
+    if (isMoveGroupInProgress(moveGroup)) {
+      return { ok: false, reason: "このユニットは移動中です。完了後に再実行してください。" };
     }
     let path = await resolvePathWithWorkerFallback(data, unit.x, unit.y, picked.x, picked.y, moveRemaining, unit);
     if (!path) {
@@ -514,16 +611,14 @@ export function useUnitMovePanel(options = {}) {
   }
 
   async function queueMovePathPlanToTile(picked) {
-    if (isPathMoveInProgress.value) {
-      return { queued: false, reason: "移動中です。完了後に再実行してください。" };
-    }
     const plan = await resolveMovePathPlanToTile(picked);
     if (!plan.ok) return { queued: false, reason: plan.reason || "移動経路を作成できません。" };
     plannedMovePathNodes.value = plan.path.map(node => ({ x: node.x, y: node.y }));
     plannedMoveTarget.value = { x: picked.x, y: picked.y };
     plannedMoveSummaryText.value = (
       `経路: (${plan.moveGroup.leader.x}, ${plan.moveGroup.leader.y}) -> (${picked.x}, ${picked.y}) `
-      + `/ ${plan.pathDistance}マス / 予測コスト${plan.estimatedCost} / 残${Math.max(0, plan.moveRemaining - plan.estimatedCost)}`
+      + `/ ${plan.pathDistance}マス / 所要${resolveMoveTravelSeconds(plan.moveGroup.leader, plan.pathDistance)}s`
+      + ` / 予測コスト${plan.estimatedCost} / 残${Math.max(0, plan.moveRemaining - plan.estimatedCost)}`
     );
     plannedMovePreview.value = {
       pathDistance: plan.pathDistance,
@@ -534,16 +629,30 @@ export function useUnitMovePanel(options = {}) {
     return { queued: true, pathDistance: plan.pathDistance, estimatedCost: plan.estimatedCost };
   }
 
-  function waitMoveStepInterval() {
-    if (moveStepIntervalMs <= 0) return Promise.resolve();
+  function waitByGameClockMs(durationMs) {
+    const needMs = Math.max(0, Math.floor(toSafeNumber(durationMs, 0)));
+    if (needMs <= 0) return Promise.resolve();
+    const startClockMs = Math.max(0, Math.floor(toSafeNumber(getClockElapsedMs(), 0)));
     return new Promise(resolve => {
-      window.setTimeout(resolve, moveStepIntervalMs);
+      const poll = () => {
+        const currentClockMs = Math.max(0, Math.floor(toSafeNumber(getClockElapsedMs(), 0)));
+        if ((currentClockMs - startClockMs) >= needMs) {
+          resolve();
+          return;
+        }
+        window.setTimeout(poll, 80);
+      };
+      window.setTimeout(poll, 80);
     });
   }
 
-  async function executePlannedMovePath() {
+  async function executePlannedMovePath(moveTarget = null) {
     clearLastMoveStopState();
-    const target = plannedMoveTarget.value;
+    const target = moveTarget
+      && Number.isFinite(moveTarget?.x)
+      && Number.isFinite(moveTarget?.y)
+      ? moveTarget
+      : plannedMoveTarget.value;
     const picked = target && Number.isFinite(target?.x) && Number.isFinite(target?.y)
       ? { x: target.x, y: target.y }
       : null;
@@ -554,6 +663,10 @@ export function useUnitMovePanel(options = {}) {
     if (!plan.ok) {
       return { moved: false, reason: plan.reason || "移動経路が無効です。" };
     }
+    if (isMoveGroupInProgress(plan.moveGroup)) {
+      return { moved: false, reason: "このユニットは移動中です。完了後に再実行してください。", moveGroup: plan.moveGroup };
+    }
+    setMoveGroupInProgress(plan.moveGroup, true);
     const unit = plan.moveGroup.leader;
     const fromX = unit.x;
     const fromY = unit.y;
@@ -563,83 +676,89 @@ export function useUnitMovePanel(options = {}) {
     let lastNode = { x: fromX, y: fromY };
     const participantIdSet = new Set(plan.moveGroup.participantIds);
     const hostileFactionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
-    for (let i = 1; i < plan.path.length; i += 1) {
-      const prev = plan.path[i - 1];
-      const next = plan.path[i];
-      if (!prev || !next) continue;
-      const stepCost = movementStepCost(currentData.value, prev.x, prev.y, next.x, next.y, unit);
-      if (!Number.isFinite(stepCost) || stepCost < 0) {
-        stopReason = "高度差が大きく、飛行なしでは通行できません。";
-        setLastMoveStopState(stopReason, prev?.x, prev?.y);
-        break;
-      }
-      if (spentCost + stepCost > plan.moveRemaining) {
-        stopReason = "移動残量が不足しました。";
-        setLastMoveStopState(stopReason, prev?.x, prev?.y);
-        break;
-      }
-      const passCheck = runHostilePassStealthCheckAtTile({
-        data: currentData.value,
-        moveGroup: plan.moveGroup,
-        x: next.x,
-        y: next.y,
-        factionTileMap: hostileFactionTileMap
-      });
-      if (passCheck.blocked) {
-        stopReason = passCheck.reason || "敵に発見されて通行不可になりました。";
-        setLastMoveStopState(stopReason, prev?.x, prev?.y);
-        emitCharacterStateChange();
-        renderMapNow();
-        break;
-      }
-      unitList.value = unitList.value.map(row => {
-        if (!participantIdSet.has(row.id)) return row;
-        const ownRemaining = resolveUnitMoveRemaining(row);
-        return {
-          ...row,
+    const perTileDurationMs = resolveMoveDurationMsForStep(unit);
+    try {
+      for (let i = 1; i < plan.path.length; i += 1) {
+        const prev = plan.path[i - 1];
+        const next = plan.path[i];
+        if (!prev || !next) continue;
+        await waitByGameClockMs(perTileDurationMs);
+        const stepCost = movementStepCost(currentData.value, prev.x, prev.y, next.x, next.y, unit);
+        if (!Number.isFinite(stepCost) || stepCost < 0) {
+          stopReason = "高度差が大きく、飛行なしでは通行できません。";
+          setLastMoveStopState(stopReason, prev?.x, prev?.y);
+          break;
+        }
+        if (spentCost + stepCost > plan.moveRemaining) {
+          stopReason = "移動残量が不足しました。";
+          setLastMoveStopState(stopReason, prev?.x, prev?.y);
+          break;
+        }
+        const passCheck = runHostilePassStealthCheckAtTile({
+          data: currentData.value,
+          moveGroup: plan.moveGroup,
           x: next.x,
           y: next.y,
-          moveRemaining: Math.max(0, ownRemaining - stepCost)
-        };
-      });
-      spentCost += stepCost;
-      movedTiles += 1;
-      lastNode = { x: next.x, y: next.y };
-      markPathExplored([next]);
-      const tileKey = coordKey(next.x, next.y);
-      setSelectedTileKey(tileKey);
-      renderMapNow();
-      onMapTileSelected(next, tileKey);
-      const encounterResult = runEnemyEncounterCheck({
-        context: "move",
-        focusPos: { x: next.x, y: next.y }
-      });
-      const stopCheck = shouldStopMoveByEncounterEx(encounterResult);
-      if (stopCheck.stop) {
-        stopReason = stopCheck.reason || "交戦判定により停止しました。";
-        setLastMoveStopState(stopReason, next?.x, next?.y);
-        if (stopCheck.battleTriggered && stopCheck.battleEntry) {
-          onStartEncounterBattle({
-            context: "move",
-            reason: stopReason,
-            entry: stopCheck.battleEntry,
-            atX: next?.x,
-            atY: next?.y,
-            moveGroup: plan.moveGroup
-          });
+          factionTileMap: hostileFactionTileMap
+        });
+        if (passCheck.blocked) {
+          stopReason = passCheck.reason || "敵に発見されて通行不可になりました。";
+          setLastMoveStopState(stopReason, prev?.x, prev?.y);
+          emitCharacterStateChange();
+          renderMapNow();
+          break;
         }
-        break;
+        unitList.value = unitList.value.map(row => {
+          if (!participantIdSet.has(row.id)) return row;
+          const ownRemaining = resolveUnitMoveRemaining(row);
+          return {
+            ...row,
+            x: next.x,
+            y: next.y,
+            moveRemaining: Math.max(0, ownRemaining - stepCost)
+          };
+        });
+        spentCost += stepCost;
+        movedTiles += 1;
+        lastNode = { x: next.x, y: next.y };
+        markPathExplored([next]);
+        const tileKey = coordKey(next.x, next.y);
+        const activeUnitId = nonEmptyText(selectedUnitId.value);
+        const focusMovingGroup = activeUnitId && participantIdSet.has(activeUnitId);
+        if (focusMovingGroup) {
+          setSelectedTileKey(tileKey);
+          onMapTileSelected(next, tileKey);
+        }
+        renderMapNow();
+        const encounterResult = runEnemyEncounterCheck({
+          context: "move",
+          focusPos: { x: next.x, y: next.y }
+        });
+        const stopCheck = shouldStopMoveByEncounterEx(encounterResult);
+        if (stopCheck.stop) {
+          stopReason = stopCheck.reason || "交戦判定により停止しました。";
+          setLastMoveStopState(stopReason, next?.x, next?.y);
+          if (stopCheck.battleTriggered && stopCheck.battleEntry) {
+            onStartEncounterBattle({
+              context: "move",
+              reason: stopReason,
+              entry: stopCheck.battleEntry,
+              atX: next?.x,
+              atY: next?.y,
+              moveGroup: plan.moveGroup
+            });
+          }
+          break;
+        }
       }
-      const isLastStep = i >= (plan.path.length - 1);
-      if (!isLastStep) {
-        await waitMoveStepInterval();
-      }
+    } finally {
+      setMoveGroupInProgress(plan.moveGroup, false);
     }
     if (movedTiles <= 0) {
       if (!nonEmptyText(getLastMoveStopState()?.reason)) {
         setLastMoveStopState(stopReason || "移動できませんでした。", fromX, fromY);
       }
-      return { moved: false, reason: stopReason || "移動できませんでした。" };
+      return { moved: false, reason: stopReason || "移動できませんでした。", moveGroup: plan.moveGroup };
     }
     const nextRemaining = Math.max(0, plan.moveRemaining - spentCost);
     const movePrefix = plan.moveGroup.isSquadMove
@@ -649,7 +768,8 @@ export function useUnitMovePanel(options = {}) {
     if (stopReason && !nonEmptyText(getLastMoveStopState()?.reason)) {
       setLastMoveStopState(stopReason, lastNode.x, lastNode.y);
     }
-    updateUnitInfoText(`${movePrefix}: (${fromX}, ${fromY}) -> (${lastNode.x}, ${lastNode.y}) / +${movedTiles}マス / コスト${spentCost} / 残${nextRemaining}${stopSuffix}`);
+    const elapsedSec = resolveMoveTravelSeconds(unit, movedTiles);
+    updateUnitInfoText(`${movePrefix}: (${fromX}, ${fromY}) -> (${lastNode.x}, ${lastNode.y}) / +${movedTiles}マス / ${elapsedSec}s / コスト${spentCost} / 残${nextRemaining}${stopSuffix}`);
     emitCharacterStateChange();
     return {
       moved: true,
@@ -657,35 +777,44 @@ export function useUnitMovePanel(options = {}) {
       remaining: nextRemaining,
       cost: spentCost,
       movedUnitCount: plan.moveGroup.participants.length,
+      movedUnitIds: Array.from(participantIdSet),
       stopReason,
       x: lastNode.x,
-      y: lastNode.y
+      y: lastNode.y,
+      moveGroup: plan.moveGroup
     };
   }
 
   async function confirmPlannedMovePath() {
-    if (isPathMoveInProgress.value) return;
-    isPathMoveInProgress.value = true;
-    showMovePathConfirmModal.value = false;
-    updateUnitInfoText("移動開始: 1マスずつ進行します。");
-    try {
-      const result = await executePlannedMovePath();
+    const picked = plannedMoveTarget.value
+      && Number.isFinite(plannedMoveTarget.value?.x)
+      && Number.isFinite(plannedMoveTarget.value?.y)
+      ? { x: plannedMoveTarget.value.x, y: plannedMoveTarget.value.y }
+      : null;
+    if (!picked) {
       clearPlannedMovePath();
-      if (result?.reason && !result?.moved) {
-        setLastMoveStopState(result.reason, selectedUnit.value?.x, selectedUnit.value?.y);
-        updateUnitInfoText(`移動失敗: ${result.reason}`);
-      } else if (result?.moved) {
-        if (Number.isFinite(result?.x) && Number.isFinite(result?.y)) {
-          const tileKey = coordKey(result.x, result.y);
-          setSelectedTileKey(tileKey);
-        }
-      }
-      renderMapNow();
-      const latestKey = getSelectedTileKey();
-      onMapTileSelected(result, latestKey);
-    } finally {
-      isPathMoveInProgress.value = false;
+      return;
     }
+    showMovePathConfirmModal.value = false;
+    clearPlannedMovePath();
+    updateUnitInfoText("移動開始: 1マスずつ進行します。");
+    const result = await executePlannedMovePath(picked);
+    if (result?.reason && !result?.moved) {
+      const fallbackX = Number.isFinite(result?.moveGroup?.leader?.x) ? result.moveGroup.leader.x : selectedUnit.value?.x;
+      const fallbackY = Number.isFinite(result?.moveGroup?.leader?.y) ? result.moveGroup.leader.y : selectedUnit.value?.y;
+      setLastMoveStopState(result.reason, fallbackX, fallbackY);
+      updateUnitInfoText(`移動失敗: ${result.reason}`);
+    } else if (result?.moved) {
+      const activeUnitId = nonEmptyText(selectedUnitId.value);
+      const moveUnitIds = Array.isArray(result?.movedUnitIds) ? result.movedUnitIds : [];
+      const shouldFocusResultTile = activeUnitId && moveUnitIds.includes(activeUnitId);
+      if (shouldFocusResultTile && Number.isFinite(result?.x) && Number.isFinite(result?.y)) {
+        const tileKey = coordKey(result.x, result.y);
+        setSelectedTileKey(tileKey);
+        onMapTileSelected(result, tileKey);
+      }
+    }
+    renderMapNow();
   }
 
   function resetAllUnitMoveRemaining() {
@@ -723,6 +852,8 @@ export function useUnitMovePanel(options = {}) {
     queueMovePathPlanToTile,
     executePlannedMovePath,
     confirmPlannedMovePath,
+    isUnitMoving,
+    isMoveGroupInProgress,
     resetAllUnitMoveRemaining,
     resetMoveUiState
   };

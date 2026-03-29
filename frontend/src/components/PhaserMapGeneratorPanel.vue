@@ -159,9 +159,11 @@ import {
    MAP_SETTLEMENT_MARKER_CONFIG,
    MAP_SPECIAL_ICON_CONFIG,
    MAP_FOREST_ICON_CONFIG,
-   MAP_UNIT_MARKER_CONFIG,
-   MAP_WATERFALL_ICON_CONFIG,
-  MOVE_STEP_INTERVAL_MS,
+  MAP_UNIT_MARKER_CONFIG,
+  MAP_WATERFALL_ICON_CONFIG,
+  TURN_SECONDS,
+  AUTO_TURN_PAUSE_EVERY_TURNS,
+  MOVE_TIME_BASE_TURNS,
   MAX_TEST_PLAYER_COUNT,
   PLAYER_TERRITORY_RANGE,
   SPECIAL_TERRAIN_KEYS,
@@ -296,6 +298,10 @@ const headerMinimized = ref(false);
 const showTurnActionModal = ref(false);
 const clockNowMs = ref(Date.now());
 const mapClockStartMs = ref(Date.now());
+const clockElapsedMs = ref(0);
+const clockLastTickRealMs = ref(Date.now());
+const autoTimeRunning = ref(true);
+const autoTimePausedByCheckpoint = ref(false);
 const villageState = ref(null);
 const unitList = ref([]);
 const selectedUnitId = ref("");
@@ -320,6 +326,7 @@ const plannedMovePreview = ref({
 });
 const movePathConfirmPopupStyle = ref(null);
 const isPathMoveInProgress = ref(false);
+const movingUnitIdSet = ref(new Set());
 const showFieldBattleResultModal = ref(false);
 const fieldBattleState = ref(null);
 const encounterMoveLocks = ref({});
@@ -986,11 +993,11 @@ const fieldResourceSummary = computed(() => {
   };
 });
 
-const turnDurationSec = 60;
-const autoTurnAdvanceByClock = false;
+const turnDurationSec = TURN_SECONDS;
+const autoTurnAdvanceByClock = true;
 
 const elapsedSeconds = computed(() => {
-  const elapsedSec = Math.floor((clockNowMs.value - mapClockStartMs.value) / 1000);
+  const elapsedSec = Math.floor(clockElapsedMs.value / 1000);
   return Math.max(0, elapsedSec);
 });
 
@@ -998,7 +1005,7 @@ const turnClockCycleSeconds = computed(() => {
   return elapsedSeconds.value % turnDurationSec;
 });
 
-const turnClockTenMinuteSec = 600;
+const turnClockTenMinuteSec = turnDurationSec * Math.max(1, AUTO_TURN_PAUSE_EVERY_TURNS);
 
 const turnClockTenMinuteCycleSeconds = computed(() => {
   return elapsedSeconds.value % turnClockTenMinuteSec;
@@ -1007,6 +1014,24 @@ const turnClockTenMinuteCycleSeconds = computed(() => {
 const turnClockRemainingSeconds = computed(() => {
   return turnDurationSec - turnClockCycleSeconds.value;
 });
+
+const turnClockRemainingTurns = computed(() => {
+  return Math.max(0, turnClockRemainingSeconds.value / Math.max(1, turnDurationSec));
+});
+
+const autoTimeStatusLabel = computed(() => {
+  if (autoTimeRunning.value) return "進行中";
+  return autoTimePausedByCheckpoint.value ? `停止中 (${AUTO_TURN_PAUSE_EVERY_TURNS}T区切り)` : "停止中";
+});
+
+const turnsUntilAutoPause = computed(() => {
+  if (AUTO_TURN_PAUSE_EVERY_TURNS <= 0) return 0;
+  const currentCycle = getClockTurnCycleIndex(clockNowMs.value);
+  const mod = currentCycle % AUTO_TURN_PAUSE_EVERY_TURNS;
+  return mod === 0 ? AUTO_TURN_PAUSE_EVERY_TURNS : (AUTO_TURN_PAUSE_EVERY_TURNS - mod);
+});
+
+const secondsUntilAutoPause = computed(() => turnsToSeconds(turnsUntilAutoPause.value));
 
 const turnClockInnerHandDeg = computed(() => {
   const ratio = turnClockCycleSeconds.value / turnDurationSec;
@@ -1028,8 +1053,8 @@ const turnClockTicks = Array.from({ length: 31 }, (_, index) => {
 });
 
 function getClockTurnCycleIndex(nowMs = clockNowMs.value) {
-  const now = Number(nowMs);
-  const elapsedSec = Math.max(0, Math.floor((now - mapClockStartMs.value) / 1000));
+  const elapsedMs = Math.max(0, Math.floor(toSafeNumber(nowMs, mapClockStartMs.value) - mapClockStartMs.value));
+  const elapsedSec = Math.max(0, Math.floor(elapsedMs / 1000));
   return Math.floor(elapsedSec / turnDurationSec);
 }
 
@@ -1037,25 +1062,70 @@ function resetClockTurnCycleIndex(nowMs = clockNowMs.value) {
   lastClockTurnCycleIndex = getClockTurnCycleIndex(nowMs);
 }
 
+function turnsToSeconds(turns) {
+  return Math.max(0, Math.floor(toSafeNumber(turns, 0) * turnDurationSec));
+}
+
+function resetClockRuntime(nowMs = Date.now()) {
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  mapClockStartMs.value = now;
+  clockElapsedMs.value = 0;
+  clockNowMs.value = now;
+  clockLastTickRealMs.value = now;
+  autoTimeRunning.value = true;
+  autoTimePausedByCheckpoint.value = false;
+  resetClockTurnCycleIndex(now);
+}
+
+function startAutoTimeProgress(options = {}) {
+  autoTimeRunning.value = true;
+  autoTimePausedByCheckpoint.value = false;
+  clockLastTickRealMs.value = Date.now();
+  if (options?.announce) {
+    updateUnitInfoText("自動時間経過を開始しました。");
+  }
+}
+
+function stopAutoTimeProgress(options = {}) {
+  autoTimeRunning.value = false;
+  if (options?.preserveCheckpoint !== true) {
+    autoTimePausedByCheckpoint.value = false;
+  }
+  clockLastTickRealMs.value = Date.now();
+  if (options?.announce) {
+    updateUnitInfoText("自動時間経過を停止しました。");
+  }
+}
+
 function canAutoAdvanceTurnByClock() {
+  if (!autoTimeRunning.value) return false;
   if (!autoTurnAdvanceByClock) return false;
   if (!props.gameSetupReady) return false;
   if (!currentData.value || currentData.value.shapeOnly) return false;
   if (isTestMultiplayerActive.value) return false;
-  if (isPathMoveInProgress.value) return false;
-  if (showMovePathConfirmModal.value) return false;
-  if (showTurnActionModal.value || showEventControlModal.value || showEventModal.value) return false;
   return true;
 }
 
 function processClockTurnProgress() {
   const nextCycleIndex = getClockTurnCycleIndex();
   if (nextCycleIndex <= lastClockTurnCycleIndex) return;
-  const cycleDiff = nextCycleIndex - lastClockTurnCycleIndex;
-  lastClockTurnCycleIndex = nextCycleIndex;
-  if (!canAutoAdvanceTurnByClock()) return;
-  for (let i = 0; i < cycleDiff; i += 1) {
-    runNextTurn({ playSe: false });
+  if (!canAutoAdvanceTurnByClock()) {
+    lastClockTurnCycleIndex = nextCycleIndex;
+    return;
+  }
+  while (lastClockTurnCycleIndex < nextCycleIndex) {
+    lastClockTurnCycleIndex += 1;
+    runNextTurn({ playSe: false, showEventModal: false, source: "auto-clock" });
+    if (
+      AUTO_TURN_PAUSE_EVERY_TURNS > 0
+      && (lastClockTurnCycleIndex % AUTO_TURN_PAUSE_EVERY_TURNS) === 0
+    ) {
+      autoTimeRunning.value = false;
+      autoTimePausedByCheckpoint.value = true;
+      updateUnitInfoText(`自動時間経過を停止: ${AUTO_TURN_PAUSE_EVERY_TURNS}T経過。時計から「開始」で再開できます。`);
+      showTurnActionModal.value = true;
+      break;
+    }
   }
 }
 
@@ -2160,6 +2230,7 @@ const {
   closeMovePathConfirmModal,
   queueMovePathPlanToTile,
   confirmPlannedMovePath,
+  isMoveGroupInProgress,
   resetAllUnitMoveRemaining,
   resetMoveUiState
 } = useUnitMovePanel({
@@ -2171,6 +2242,7 @@ const {
   plannedMoveSummaryText,
   plannedMovePreview,
   isPathMoveInProgress,
+  movingUnitIdSet,
   unitMoveMode,
   villagePlacementMode,
   unitList,
@@ -2210,7 +2282,9 @@ const {
   resolveMoveUnitIconSrc: moveUnitIconSrc,
   resolveMoveUnitIconGlyph: moveUnitIconGlyph,
   toUnitRoleLabel,
-  moveStepIntervalMs: MOVE_STEP_INTERVAL_MS
+  turnSeconds: turnDurationSec,
+  moveTimeBaseTurns: MOVE_TIME_BASE_TURNS,
+  getClockElapsedMs: () => Math.max(0, Math.floor(clockElapsedMs.value))
 });
 
 const tileSurveyActionState = computed(() => resolveSelectedTileSurveyStateV2());
@@ -13180,10 +13254,13 @@ function runTurnForAllTestPlayers(data) {
 function runNextTurn(options = {}) {
   kickOffBgm();
   if (options?.playSe !== false) audio.playSe("confirm");
+  const showEventModalForThisTurn = options?.showEventModal !== false;
   if (!currentData.value || currentData.value.shapeOnly) {
     eventModalMessage.value = "地形マップ生成後にターンを進めてください。";
     eventModalNotes.value = ["「島形状のみ」ではターンイベントは動作しません。"];
-    showEventModal.value = true;
+    if (showEventModalForThisTurn) {
+      showEventModal.value = true;
+    }
     return;
   }
   ensureTestPlayerSlotsInitialized();
@@ -13250,7 +13327,9 @@ function runNextTurn(options = {}) {
   emitCharacterStateChange();
   renderMapWithPhaser();
   pushNationLog(`ターン進行: T${turn} / ${eventModeLabel(mode)} / イベント${result.events.length}件`);
-  showEventModal.value = true;
+  if (showEventModalForThisTurn) {
+    showEventModal.value = true;
+  }
 }
 
 function runManagedEventTurn() {
@@ -13915,9 +13994,13 @@ function closeTurnActionModal() {
   showTurnActionModal.value = false;
 }
 
-function runNextTurnFromClock() {
+function toggleAutoTimeProgressFromClock() {
+  if (autoTimeRunning.value) {
+    stopAutoTimeProgress({ announce: true });
+  } else {
+    startAutoTimeProgress({ announce: true });
+  }
   showTurnActionModal.value = false;
-  runNextTurn({ playSe: false });
 }
 
 function openEventControlFromClock() {
@@ -13996,9 +14079,7 @@ function applyMapData(data, options = {}) {
     }
   }
   if (options.resetClock !== false) {
-    mapClockStartMs.value = Date.now();
-    clockNowMs.value = mapClockStartMs.value;
-    resetClockTurnCycleIndex(clockNowMs.value);
+    resetClockRuntime(Date.now());
   }
   updateMeta(normalizedData);
   renderMapWithPhaser();
@@ -15314,9 +15395,6 @@ function resolveSelectedTileAttackActionState() {
   if (!data || data.shapeOnly) {
     return { enabled: false, reason: "マップ生成後に攻撃できます。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
-  if (isPathMoveInProgress.value) {
-    return { enabled: false, reason: "移動中は攻撃できません。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
-  }
   const unit = selectedUnit.value;
   if (!unit) {
     return { enabled: false, reason: "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
@@ -15324,6 +15402,9 @@ function resolveSelectedTileAttackActionState() {
   const moveGroup = resolveMoveGroupForUnit(unit, { allowMemberAsLeader: true });
   if (!moveGroup.ok || !moveGroup.leader) {
     return { enabled: false, reason: moveGroup.reason || "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
+  }
+  if (isMoveGroupInProgress(moveGroup)) {
+    return { enabled: false, reason: "選択ユニットは移動中です。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   const leader = moveGroup.leader;
   const normalizedPattern = normalizeTileAttackPatternKey(tileAttackPatternKey.value);
@@ -16278,9 +16359,16 @@ onMounted(async () => {
   window.addEventListener("pointerdown", firstGestureHandler);
   window.addEventListener("keydown", firstGestureHandler);
 
-  resetClockTurnCycleIndex(Date.now());
+  resetClockRuntime(Date.now());
   clockIntervalId = window.setInterval(() => {
-    clockNowMs.value = Date.now();
+    const now = Date.now();
+    const prev = Math.max(0, Math.floor(toSafeNumber(clockLastTickRealMs.value, now)));
+    const delta = Math.max(0, now - prev);
+    clockLastTickRealMs.value = now;
+    if (autoTimeRunning.value) {
+      clockElapsedMs.value = Math.max(0, Math.floor(toSafeNumber(clockElapsedMs.value, 0) + delta));
+    }
+    clockNowMs.value = mapClockStartMs.value + clockElapsedMs.value;
     processClockTurnProgress();
     if (unitMoveMode.value && currentData.value) {
       requestMapRender();
@@ -16843,7 +16931,12 @@ watch(() => props.characterCommand, command => {
           テスト: {{ showTestControls ? "ON" : "OFF" }}
         </button>
         <div class="field-overlay-clock">
-          <button type="button" class="turn-clock-button" :title="`次ターンまで ${turnClockRemainingSeconds}s`" @click="openTurnActionModal">
+          <button
+            type="button"
+            class="turn-clock-button"
+            :title="autoTimeRunning ? `次ターンまで ${turnClockRemainingSeconds}s` : '自動時間経過 停止中（時計から開始）'"
+            @click="openTurnActionModal"
+          >
             <div class="turn-clock-face">
               <span
                 v-for="tick in turnClockTicks"
@@ -16862,7 +16955,7 @@ watch(() => props.characterCommand, command => {
             </div>
           </button>
           <div class="turn-clock-caption-row">
-            <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s</div>
+            <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s ({{ turnClockRemainingTurns.toFixed(2) }}T)</div>
             <div class="turn-clock-caption map-turn-caption">{{ mapTurnNumber }}T</div>
           </div>
         </div>
@@ -17303,11 +17396,12 @@ watch(() => props.characterCommand, command => {
     <div v-if="showTurnActionModal" class="settings-backdrop" @click.self="closeTurnActionModal">
       <div class="settings-modal turn-action-modal">
         <h3>ターン操作</h3>
-        <div class="small turn-action-note">時計からターン進行やイベント管理を選択します。</div>
+        <div class="small turn-action-note">自動時間経過: {{ autoTimeStatusLabel }} / 1T={{ turnDurationSec }}秒 / 次停止まで {{ turnsUntilAutoPause }}T ({{ secondsUntilAutoPause }}秒)</div>
+        <div class="small turn-action-note">次ターンまで {{ turnClockRemainingSeconds }}秒（{{ turnClockRemainingTurns.toFixed(2) }}T）</div>
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeTurnActionModal">閉じる</button>
           <button type="button" class="secondary" @click="openEventControlFromClock">イベント管理を開く</button>
-          <button type="button" class="secondary" @click="runNextTurnFromClock">ターン経過</button>
+          <button type="button" class="secondary" @click="toggleAutoTimeProgressFromClock">{{ autoTimeRunning ? "停止" : "開始" }}</button>
         </div>
       </div>
     </div>
