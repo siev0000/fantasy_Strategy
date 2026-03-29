@@ -138,6 +138,8 @@ import {
   GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_CHOOSE,
   GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_RANDOM_ONLY,
   GAME_START_PLAYER_PLACEMENT_MODE_VALUES,
+  GAME_VIEW_PRESET_CONFIG,
+  DEFAULT_GAME_VIEW_PRESET_KEY,
   GAME_VIEW_HEIGHT,
   GAME_VIEW_WIDTH,
   HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX,
@@ -153,12 +155,13 @@ import {
   OVERLAY_ICON_BUTTON_PLUS_BADGE_SIZE_PX,
   MAP_ENEMY_MARKER_CONFIG,
   MAP_FACTION_MARKER_CONFIG,
-  MAP_RESOURCE_TILE_MARKER_CONFIG,
-  MAP_SETTLEMENT_MARKER_CONFIG,
-  MAP_SPECIAL_ICON_CONFIG,
-  MAP_UNIT_MARKER_CONFIG,
+   MAP_RESOURCE_TILE_MARKER_CONFIG,
+   MAP_SETTLEMENT_MARKER_CONFIG,
+   MAP_SPECIAL_ICON_CONFIG,
+   MAP_FOREST_ICON_CONFIG,
+   MAP_UNIT_MARKER_CONFIG,
+   MAP_WATERFALL_ICON_CONFIG,
   MOVE_STEP_INTERVAL_MS,
-  MAP_WATERFALL_ICON_CONFIG,
   MAX_TEST_PLAYER_COUNT,
   PLAYER_TERRITORY_RANGE,
   SPECIAL_TERRAIN_KEYS,
@@ -185,6 +188,7 @@ import {
 } from "../lib/phaser-map-panel-config.js";
 import {
   advanceTerrainTurn,
+  buildRiverTouchSet,
   createIslandShapeData,
   createTerrainMapData,
   hexCenter,
@@ -232,12 +236,15 @@ const props = defineProps({
   gameSetupProgressText: { type: String, default: "" },
   characterCommand: { type: Object, default: null }
 });
-const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change", "save-snapshot"]);
+const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change", "save-snapshot", "game-view-size-change"]);
 
 // マップ生成/表示の基本設定
 const mapSize = ref("36x36"); // 生成時のマップサイズ
 const patternId = ref("realistic"); // 島形状プリセット
 const mountainMode = ref("random"); // 山岳生成モード
+const gameViewPresetKey = ref(DEFAULT_GAME_VIEW_PRESET_KEY); // 描画解像度プリセット
+const gameViewWidth = ref(GAME_VIEW_WIDTH); // 現在の描画横幅(px)
+const gameViewHeight = ref(GAME_VIEW_HEIGHT); // 現在の描画縦幅(px)
 const showIslandCustomModal = ref(false); // 島カスタム設定モーダル表示
 const useIslandCustomSettings = ref(false); // 島カスタム設定ON/OFF
 const customLargeIslandCount = ref(2); // 大島の数
@@ -295,6 +302,11 @@ const selectedUnitId = ref("");
 const villagePlacementMode = ref(false);
 const unitMoveMode = ref(false);
 const tileAttackSelectionMode = ref(false);
+const tileAttackPatternKey = ref("single");
+const tileAttackRange = ref(3);
+const tileAttackDirectionAnchor = ref(null);
+const tileAttackDirectionCandidate = ref(null);
+const tileAttackDirectionLocked = ref(false);
 const showMoveUnitModal = ref(false);
 const moveUnitCandidateId = ref("");
 const showMovePathConfirmModal = ref(false);
@@ -340,6 +352,21 @@ const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
 const SKILL_TREE_ICON_SRC = getIconSrcByName("本", DEFAULT_ICON_NAME);
 const UNIT_CREATE_ICON_SRC = getIconSrcByName("兵士", DEFAULT_ICON_NAME);
 const EQUIPMENT_INVENTORY_ICON_SRC = getIconSrcByName("装備", DEFAULT_ICON_NAME);
+const TILE_ATTACK_PATTERN_OPTIONS = Object.freeze([
+  { key: "single", label: "単体" },
+  { key: "straight", label: "直線" },
+  { key: "fan", label: "扇" },
+  { key: "circle", label: "円" },
+  { key: "around", label: "周囲" },
+  { key: "front", label: "前方" },
+  { key: "line", label: "ライン" },
+  { key: "all", label: "全体" }
+]);
+const TILE_ATTACK_RANGE_MIN = 1;
+const TILE_ATTACK_RANGE_MAX = 12;
+const DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS = new Set(["single", "straight", "fan", "front"]);
+const TILE_ATTACK_PATTERN_KEY_SET = new Set(TILE_ATTACK_PATTERN_OPTIONS.map(row => row.key));
+const TILE_ATTACK_PATTERN_LABEL_MAP = new Map(TILE_ATTACK_PATTERN_OPTIONS.map(row => [row.key, row.label]));
 const ATTACK_CURSOR_STYLE = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v20M2 12h20' stroke='%23ff4d4f' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3.5' fill='none' stroke='%23ffd0d0' stroke-width='2'/%3E%3C/svg%3E\") 12 12, crosshair";
 const pathfindingWorkerClient = createPathfindingWorkerClient();
 const mapRenderScheduler = createMapRenderScheduler(() => renderMapWithPhaser());
@@ -396,6 +423,7 @@ let spottedEnemyTileKeys = new Set();
 let spottedFactionTileKeys = new Set();
 let alertedEnemyTileKeys = new Set();
 let alertedFactionTileKeys = new Set();
+let spottedEnemyNamesByTile = new Map();
 let raceMarkerTexturePending = new Set();
 let lastCharacterCommandNonce = "";
 let renderedHexBounds = null;
@@ -950,13 +978,33 @@ const turnClockCycleSeconds = computed(() => {
   return elapsedSeconds.value % turnDurationSec;
 });
 
+const turnClockTenMinuteSec = 600;
+
+const turnClockTenMinuteCycleSeconds = computed(() => {
+  return elapsedSeconds.value % turnClockTenMinuteSec;
+});
+
 const turnClockRemainingSeconds = computed(() => {
   return turnDurationSec - turnClockCycleSeconds.value;
 });
 
-const turnClockHandDeg = computed(() => {
+const turnClockInnerHandDeg = computed(() => {
   const ratio = turnClockCycleSeconds.value / turnDurationSec;
   return -90 + (ratio * 180);
+});
+
+const turnClockOuterHandDeg = computed(() => {
+  const ratio = turnClockTenMinuteCycleSeconds.value / turnClockTenMinuteSec;
+  return -90 + (ratio * 180);
+});
+
+const turnClockTicks = Array.from({ length: 31 }, (_, index) => {
+  const deg = -90 + ((180 / 30) * index);
+  return {
+    index,
+    deg,
+    major: index % 5 === 0
+  };
 });
 
 function getClockTurnCycleIndex(nowMs = clockNowMs.value) {
@@ -1110,6 +1158,14 @@ const ownCharacterNavigatorEntries = computed(() => {
   });
 });
 
+const ownFactionSelectedTileCoord = computed(() => {
+  const detail = selectedTileDetail.value;
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+});
+
 const eventModeOptions = [
   { value: "normal", label: "通常", desc: "確率で噴火・溶岩を判定" },
   { value: "eruption", label: "噴火のみ", desc: "山岳を優先して火山化" },
@@ -1137,11 +1193,87 @@ function lavaStopReasonLabel(reason) {
   return reason || "-";
 }
 
+const GAME_VIEW_PRESET_FALLBACK = GAME_VIEW_PRESET_CONFIG[DEFAULT_GAME_VIEW_PRESET_KEY];
+const gameViewPresetOptions = Object.entries(GAME_VIEW_PRESET_CONFIG).map(([key, preset]) => ({
+  value: key,
+  label: `${preset.label} (${preset.width} x ${preset.height})`
+}));
+
+function resolveGameViewPreset(key) {
+  const normalized = nonEmptyText(key);
+  if (normalized && GAME_VIEW_PRESET_CONFIG[normalized]) {
+    return {
+      key: normalized,
+      ...GAME_VIEW_PRESET_CONFIG[normalized]
+    };
+  }
+  return {
+    key: DEFAULT_GAME_VIEW_PRESET_KEY,
+    ...GAME_VIEW_PRESET_FALLBACK
+  };
+}
+
+function emitGameViewSizeChange() {
+  emit("game-view-size-change", {
+    preset: gameViewPresetKey.value,
+    width: gameViewWidth.value,
+    height: gameViewHeight.value
+  });
+}
+
+function resizePhaserViewport(width, height) {
+  const normalizedWidth = Math.max(1, Math.floor(Number(width) || GAME_VIEW_WIDTH));
+  const normalizedHeight = Math.max(1, Math.floor(Number(height) || GAME_VIEW_HEIGHT));
+  if (!game?.scale) return;
+  if (game.config) {
+    game.config.width = normalizedWidth;
+    game.config.height = normalizedHeight;
+  }
+  if (typeof game.scale.resize === "function") {
+    game.scale.resize(normalizedWidth, normalizedHeight);
+  }
+  if (scene?.cameras?.main) {
+    scene.cameras.main.setSize(normalizedWidth, normalizedHeight);
+  }
+  if (game.canvas instanceof HTMLCanvasElement) {
+    game.canvas.style.width = "100%";
+    game.canvas.style.height = "100%";
+  }
+}
+
+function applyGameViewPreset(presetKey, options = {}) {
+  const preset = resolveGameViewPreset(presetKey);
+  const prevKey = gameViewPresetKey.value;
+  const prevWidth = gameViewWidth.value;
+  const prevHeight = gameViewHeight.value;
+  gameViewPresetKey.value = preset.key;
+  gameViewWidth.value = preset.width;
+  gameViewHeight.value = preset.height;
+  if (prevKey === preset.key && prevWidth === preset.width && prevHeight === preset.height) {
+    return;
+  }
+  pointerViewCache.clear();
+  touchPointerViewMap.clear();
+  if (options.resizePhaser !== false) {
+    resizePhaserViewport(preset.width, preset.height);
+  }
+  if (scene && options.render !== false) {
+    requestMapRender();
+  }
+}
+
 const displaySettingsFields = computed(() => ([
   {
     key: "section_display",
     kind: "header",
     label: "表示設定"
+  },
+  {
+    key: "gameViewPreset",
+    kind: "select",
+    label: "描画解像度",
+    value: gameViewPresetKey.value,
+    options: gameViewPresetOptions
   },
   {
     key: "showHeightNumbers",
@@ -1275,6 +1407,7 @@ const displaySettingsFields = computed(() => ([
 ]));
 
 const displaySettingsNotes = [
+  "描画解像度は 軽量(960x480) / バランス(1440x720) / 高品質(1920x960) から切替できます。",
   "隠し特殊地形は通常時は見えず、クリック時のみ判明します。常時表示をONで最初から見えます。",
   "クリック時の視点移動は初期OFFです。必要時のみONにしてください。",
   "音量は 全体 x BGM/SE の乗算で適用されます。"
@@ -1313,12 +1446,21 @@ const ENEMY_EQUIPMENT_FIELDS = ["武器", "副武器", "胴", "頭", "足", "装
 const ENCOUNTER_ATTACK_BASE_CHANCE = 0.45;
 const ENCOUNTER_ATTACK_DIFF_FACTOR = 0.03;
 const ENCOUNTER_ATTACK_MIN_CHANCE = 0.2;
+const HEIGHT_DIFF_BORDER_MEDIUM_COLOR = 0x2f3848;
+const HEIGHT_DIFF_BORDER_STRONG_COLOR = 0x171c26;
+const HEIGHT_DIFF_BORDER_MEDIUM_ALPHA = 0.78;
+const HEIGHT_DIFF_BORDER_STRONG_ALPHA = 0.92;
+const HEIGHT_DIFF_BORDER_LINE_WIDTH_PX = 1.05;
+const HEIGHT_DIFF_BORDER_LINE_SPACING_PX = 1.9;
 const ENCOUNTER_ATTACK_MAX_CHANCE = 0.9;
 const ENCOUNTER_SURVEY_BASE_PERCENT = 50;
 const ENCOUNTER_SURVEY_DIFF_DIVISOR = 2;
 const ENCOUNTER_SURVEY_GUARANTEE_DIFF = 100;
 const ENCOUNTER_ACTION_MOVE_COST = 3;
 const SURVEY_ACTION_REQUIRED_TURNS = 2;
+const SURVEY_DEFAULT_PROGRESS_PERCENT = 100;
+const SURVEY_NO_ENEMY_REDUCE_SCALE = 1.5;
+const SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT = 25;
 const ENCOUNTER_FUMBLE_CHANCE = 0.08;
 const ENCOUNTER_MAX_LOG_LINES = 12;
 const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
@@ -1328,6 +1470,8 @@ const UNIT_VISION_SCOUT_STEP = 75;
 const TILE_DANGER_MAX_PERCENT = 100;
 const TILE_DANGER_REDUCE_PER_CLEAR_PERCENT = 15;
 const TILE_DANGER_REDUCE_PER_SURVEY_PERCENT = 15;
+const TILE_DANGER_UNOWNED_INCREASE_INTERVAL_TURNS = 3;
+const TILE_DANGER_UNOWNED_INCREASE_PERCENT = 20;
 const FIELD_BATTLE_HP_COST = 20;
 const UNIT_EXP_LEVEL_CAP = 120;
 const UNIT_EXP_LEVEL_SPLIT = 15;
@@ -3781,6 +3925,74 @@ function coordKey(x, y) {
   return `${x},${y}`;
 }
 
+function normalizeCoordKeyText(value) {
+  const text = String(value || "");
+  const parsed = parseCoordKey(text);
+  if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y)) return "";
+  return coordKey(Math.floor(parsed.x), Math.floor(parsed.y));
+}
+
+function appendEdgeEndpointsToCoordSet(targetSet, edgeIterable) {
+  if (!(targetSet instanceof Set) || !edgeIterable) return;
+  for (const edgeRaw of edgeIterable) {
+    const edgeText = String(edgeRaw || "");
+    if (!edgeText) continue;
+    const [a, b] = edgeText.split("|");
+    const aKey = normalizeCoordKeyText(a);
+    const bKey = normalizeCoordKeyText(b);
+    if (aKey) targetSet.add(aKey);
+    if (bKey) targetSet.add(bKey);
+  }
+}
+
+function resolveRiverTouchSet(data) {
+  const riverData = data?.riverData;
+  if (!riverData || typeof riverData !== "object") return new Set();
+  if (riverData.riverTouchSet instanceof Set) return riverData.riverTouchSet;
+  const built = buildRiverTouchSet(riverData);
+  riverData.riverTouchSet = built;
+  return built;
+}
+
+function resolveLavaTouchSet(data) {
+  if (data?.lavaTouchSet instanceof Set) return data.lavaTouchSet;
+  const out = new Set();
+  if (!data || typeof data !== "object") return out;
+  const flow = data?.lavaFlowData;
+  if (flow && typeof flow === "object") {
+    for (const keyRaw of flow.nodeKeys || []) {
+      const key = normalizeCoordKeyText(keyRaw);
+      if (key) out.add(key);
+    }
+    for (const keyRaw of flow.sourceKeys || []) {
+      const key = normalizeCoordKeyText(keyRaw);
+      if (key) out.add(key);
+    }
+    appendEdgeEndpointsToCoordSet(out, flow.edgeKeys || []);
+  }
+  if (!out.size && Array.isArray(data?.lavaMap)) {
+    for (let y = 0; y < data.lavaMap.length; y += 1) {
+      const row = data.lavaMap[y];
+      if (!Array.isArray(row)) continue;
+      for (let x = 0; x < row.length; x += 1) {
+        if (row[x]) out.add(coordKey(x, y));
+      }
+    }
+  }
+  data.lavaTouchSet = out;
+  return out;
+}
+
+function hasRiverTouchAt(data, x, y, riverTouchSet = null) {
+  const set = riverTouchSet || resolveRiverTouchSet(data);
+  return !!set?.has?.(coordKey(x, y));
+}
+
+function hasLavaTouchAt(data, x, y, lavaTouchSet = null) {
+  const set = lavaTouchSet || resolveLavaTouchSet(data);
+  return !!set?.has?.(coordKey(x, y));
+}
+
 function parseMapSizeValue(value) {
   const [w, h] = String(value || "36x36").split("x").map(Number);
   return { w: w || 36, h: h || 36 };
@@ -3907,12 +4119,20 @@ function normalizeSurveyTask(raw) {
     totalTurns,
     Math.floor(toSafeNumber(raw?.remainingTurns, totalTurns))
   ));
+  const progressPercent = clampNumber(
+    Math.floor(toSafeNumber(raw?.progressPercent, SURVEY_DEFAULT_PROGRESS_PERCENT)),
+    0,
+    100
+  );
+  const dangerLevel = Math.max(1, Math.floor(toSafeNumber(raw?.dangerLevel, 1)));
   return {
     key: nonEmptyText(raw?.key) || coordKey(x, y),
     x,
     y,
     totalTurns,
     remainingTurns,
+    progressPercent,
+    dangerLevel,
     startedTurn: Math.max(0, Math.floor(toSafeNumber(raw?.startedTurn, mapTurnNumber.value)))
   };
 }
@@ -3940,6 +4160,8 @@ function applySurveyTaskPatchByLeaderId(patchByLeaderId) {
       && currentTask.y === nextTask.y
       && currentTask.totalTurns === nextTask.totalTurns
       && currentTask.remainingTurns === nextTask.remainingTurns
+      && currentTask.progressPercent === nextTask.progressPercent
+      && currentTask.dangerLevel === nextTask.dangerLevel
     ) {
       return unit;
     }
@@ -3965,6 +4187,15 @@ function startSurveyTaskByLeaderId(leaderId, x, y) {
   const sx = Math.floor(toSafeNumber(x, Number.NaN));
   const sy = Math.floor(toSafeNumber(y, Number.NaN));
   if (!id || !Number.isFinite(sx) || !Number.isFinite(sy)) return false;
+  const data = currentData.value;
+  const dangerMap = data ? ensureEnemyDangerMap(data) : null;
+  const progressPercent = clampNumber(
+    Math.floor(toSafeNumber(dangerMap?.[sy]?.[sx], SURVEY_DEFAULT_PROGRESS_PERCENT)),
+    0,
+    100
+  );
+  const tileEnemies = data ? enemiesAt(sx, sy, data) : [];
+  const dangerMeta = resolveSurveyDangerLevelAtTile(data, sx, sy, tileEnemies);
   const patch = new Map();
   patch.set(id, {
     key: coordKey(sx, sy),
@@ -3972,6 +4203,8 @@ function startSurveyTaskByLeaderId(leaderId, x, y) {
     y: sy,
     totalTurns: SURVEY_ACTION_REQUIRED_TURNS,
     remainingTurns: SURVEY_ACTION_REQUIRED_TURNS,
+    progressPercent,
+    dangerLevel: Math.max(1, Math.floor(toSafeNumber(dangerMeta?.dangerLevel, 1))),
     startedTurn: mapTurnNumber.value
   });
   applySurveyTaskPatchByLeaderId(patch);
@@ -3994,6 +4227,133 @@ function resolveSurveyBattleEntryFromEncounterResult(encounterResult = null) {
     || !!entry?.ambushByFumble
     || !!entry?.stealthAmbush
   )) || null;
+}
+
+function resolveSurveyTileHeightDelta(data, x, y) {
+  if (!data || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return 0;
+  const sourceLevel = tileHeightLevel(data, x, y);
+  if (!Number.isFinite(sourceLevel)) return 0;
+  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, x, y, resolveWorldWrapEnabled(data));
+  if (!Array.isArray(neighbors) || !neighbors.length) return 0;
+  let maxDelta = 0;
+  for (const neighbor of neighbors) {
+    const targetLevel = tileHeightLevel(data, neighbor.x, neighbor.y);
+    if (!Number.isFinite(targetLevel)) continue;
+    maxDelta = Math.max(maxDelta, Math.abs(sourceLevel - targetLevel));
+  }
+  return Math.max(0, Math.min(6, Math.floor(maxDelta)));
+}
+
+function resolveSurveyTileMonsterDanger(tileEnemies = []) {
+  const list = Array.isArray(tileEnemies) ? tileEnemies : [];
+  if (!list.length) return 0;
+  return list.reduce((max, enemy) => {
+    const level = Math.max(
+      1,
+      Math.floor(toSafeNumber(enemy?.level, toSafeNumber(enemy?.baseLevel, 1)))
+    );
+    return Math.max(max, level);
+  }, 0);
+}
+
+function resolveSurveyDangerLevelAtTile(data, x, y, tileEnemies = []) {
+  const monsterDanger = resolveSurveyTileMonsterDanger(tileEnemies);
+  const heightDelta = resolveSurveyTileHeightDelta(data, x, y);
+  const dangerLevel = Math.max(1, Math.round((monsterDanger / 5) + heightDelta + 5));
+  return {
+    monsterDanger,
+    heightDelta,
+    dangerLevel
+  };
+}
+
+function resolveSurveyEnemySense(tileEnemies = []) {
+  const list = Array.isArray(tileEnemies) ? tileEnemies : [];
+  if (!list.length) return { scout: 0, stealth: 0, count: 0 };
+  return resolveEncounterGroupSense(
+    list.map(resolveEncounterScoutValueForEnemy),
+    list.map(resolveEncounterStealthValueForEnemy)
+  );
+}
+
+function resolveSurveyDetectResult(leaderScout, enemyStealth) {
+  const scout = roundTo1(toSafeNumber(leaderScout, 0));
+  const stealth = roundTo1(toSafeNumber(enemyStealth, 0));
+  const diff = scout - stealth;
+  if (diff >= ENCOUNTER_SURVEY_GUARANTEE_DIFF) {
+    return { found: true, chancePercent: 100, roll: null, diff };
+  }
+  const chancePercent = clampNumber(
+    ENCOUNTER_SURVEY_BASE_PERCENT + (diff / ENCOUNTER_SURVEY_DIFF_DIVISOR),
+    0,
+    100
+  );
+  const roll = Math.random() * 100;
+  return {
+    found: roll < chancePercent,
+    chancePercent: Math.round(chancePercent),
+    roll: Math.round(roll),
+    diff
+  };
+}
+
+function resolveSurveyProgressReduceAmount(leaderLevel, surveyDangerLevel) {
+  const level = Math.max(1, Math.floor(toSafeNumber(leaderLevel, 1)));
+  const dangerLevel = Math.max(1, Math.floor(toSafeNumber(surveyDangerLevel, 1)));
+  const multiplier = level / dangerLevel;
+  return Math.max(1, Math.round(TILE_DANGER_REDUCE_PER_SURVEY_PERCENT * multiplier));
+}
+
+function buildSurveyEncounterEntry(leader, task, tileEnemies) {
+  const list = Array.isArray(tileEnemies) ? tileEnemies : [];
+  const sense = resolveSurveyEnemySense(list);
+  const topEnemy = list.reduce((best, enemy) => {
+    const bestLv = Math.max(1, Math.floor(toSafeNumber(best?.level, 1)));
+    const lv = Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)));
+    return lv > bestLv ? enemy : best;
+  }, list[0] || null);
+  return {
+    context: "survey",
+    distance: 0,
+    playerFoundEnemy: true,
+    enemyFoundPlayer: false,
+    playerAmbush: true,
+    enemyAggressive: true,
+    enemyGroup: {
+      kind: "spawn",
+      x: task.x,
+      y: task.y,
+      scout: sense.scout,
+      stealth: sense.stealth,
+      count: Math.max(1, list.length),
+      topLevel: Math.max(1, Math.floor(toSafeNumber(topEnemy?.level, 1))),
+      topRaceName: nonEmptyText(topEnemy?.race) || nonEmptyText(topEnemy?.name),
+      topRaceCategory: resolveExpRaceCategoryFromName(nonEmptyText(topEnemy?.race) || nonEmptyText(topEnemy?.name)),
+      imageName: nonEmptyText(topEnemy?.imageName),
+      names: list.map(enemy => nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵")
+    },
+    playerGroup: {
+      id: nonEmptyText(leader?.id),
+      label: nonEmptyText(leader?.name) || "調査隊",
+      type: "solo",
+      x: task.x,
+      y: task.y,
+      scout: resolveEncounterScoutValueForUnit(leader),
+      stealth: resolveEncounterStealthValueForUnit(leader),
+      count: 1,
+      unitIds: [nonEmptyText(leader?.id)].filter(Boolean),
+      unitNames: [nonEmptyText(leader?.name) || "調査隊"]
+    }
+  };
+}
+
+function askSurveyAttackDecision(leaderName, x, y, enemyLabel, detectResult) {
+  const chanceText = Number.isFinite(detectResult?.chancePercent) ? `発見率${detectResult.chancePercent}%` : "発見成功";
+  const message = `調査で敵を発見: ${enemyLabel}\n(${x}, ${y}) / ${chanceText}\n攻撃しますか？`;
+  if (typeof window !== "undefined" && typeof window.confirm === "function") {
+    return window.confirm(message);
+  }
+  return true;
 }
 
 function advanceSurveyTasksForTurn(data, options = {}) {
@@ -4038,71 +4398,94 @@ function advanceSurveyTasksForTurnV2(data, options = {}) {
       notes.push(`調査中断: ${leaderName} (${task.x}, ${task.y})`);
       continue;
     }
-
     progressed += 1;
-    const totalTurns = Math.max(1, Math.floor(toSafeNumber(task.totalTurns, SURVEY_ACTION_REQUIRED_TURNS)));
-    const nextRemainingTurns = Math.max(0, Math.floor(toSafeNumber(task.remainingTurns, totalTurns)) - 1);
-    if (nextRemainingTurns > 0) {
-      patch.set(row.leaderId, {
-        ...task,
-        totalTurns,
-        remainingTurns: nextRemainingTurns
-      });
-      notes.push(`調査進行: ${leaderName} (${task.x}, ${task.y}) 残り${nextRemainingTurns}T`);
+    const dangerMap = ensureEnemyDangerMap(data);
+    const beforeDanger = Math.max(0, Math.floor(toSafeNumber(dangerMap?.[task.y]?.[task.x], 0)));
+    if (beforeDanger <= 0) {
+      patch.set(row.leaderId, null);
+      completed += 1;
+      notes.push(`調査完了: ${leaderName} (${task.x}, ${task.y}) 危険度0%`);
       continue;
     }
 
-    const encounterResult = (data && !data?.shapeOnly)
-      ? runEnemyEncounterCheck({
-        context: "survey",
-        focusPos: { x: task.x, y: task.y }
-      })
-      : { entries: [] };
-    const battleEntry = resolveSurveyBattleEntryFromEncounterResult(encounterResult);
-    if (battleEntry) {
-      notes.push(`調査遭遇: ${leaderName} (${task.x}, ${task.y}) で戦闘発生`);
+    let tileEnemies = enemiesAt(task.x, task.y, data);
+    if (!Array.isArray(tileEnemies) || !tileEnemies.length) {
+      tileEnemies = rerollEnemySpawnAtTile(data, task.x, task.y);
+    }
+
+    let reduceAmount = 0;
+    let dangerLevel = 1;
+    if (Array.isArray(tileEnemies) && tileEnemies.length > 0) {
+      const leaderScout = resolveEncounterScoutValueForUnit(leader);
+      const enemySense = resolveSurveyEnemySense(tileEnemies);
+      const detect = resolveSurveyDetectResult(leaderScout, enemySense.stealth);
+      if (!detect.found) {
+        notes.push(`調査: ${leaderName} (${task.x}, ${task.y}) 何かがいる様だ`);
+        patch.set(row.leaderId, {
+          ...task,
+          progressPercent: beforeDanger,
+          dangerLevel: Math.max(1, Math.floor(toSafeNumber(task?.dangerLevel, 1)))
+        });
+        continue;
+      }
+
+      markEnemySpotted(task.x, task.y, data);
+      const enemyLabel = nonEmptyText(tileEnemies?.[0]?.name) || nonEmptyText(tileEnemies?.[0]?.race) || "敵";
+      const doAttack = allowBattleModal
+        ? askSurveyAttackDecision(leaderName, task.x, task.y, enemyLabel, detect)
+        : true;
+      if (!doAttack) {
+        patch.set(row.leaderId, null);
+        completed += 1;
+        notes.push(`調査中断: ${leaderName} (${task.x}, ${task.y}) ${enemyLabel}を発見したが攻撃しなかった`);
+        continue;
+      }
+
       if (allowBattleModal && !startedBattle && !showFieldBattleResultModal.value) {
         const surveyMoveGroup = resolveMoveGroupForUnit(leader, { allowMemberAsLeader: true });
+        const entry = buildSurveyEncounterEntry(leader, task, tileEnemies);
         startFieldBattleFromEncounter({
           context: "survey",
-          reason: "調査中に戦闘が発生した",
-          entry: battleEntry,
+          reason: "調査で敵を発見",
+          entry,
           atX: task.x,
           atY: task.y,
-          moveGroup: surveyMoveGroup?.ok ? surveyMoveGroup : null
+          moveGroup: surveyMoveGroup?.ok ? surveyMoveGroup : null,
+          surveyContext: true,
+          surveyDangerBonusPercent: SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT
         });
         startedBattle = true;
       }
-      patch.set(row.leaderId, {
-        ...task,
-        totalTurns,
-        remainingTurns: totalTurns
-      });
-      continue;
-    }
 
-    const tileEnemies = enemiesAt(task.x, task.y, data);
-    if (Array.isArray(tileEnemies) && tileEnemies.length > 0) {
-      notes.push(`調査継続: ${leaderName} (${task.x}, ${task.y}) 敵影を捉えられず`);
-      patch.set(row.leaderId, {
-        ...task,
-        totalTurns,
-        remainingTurns: totalTurns
-      });
-      continue;
-    }
-
-    const reduceResult = reduceTileDangerBySurvey(data, task.x, task.y);
-    if (reduceResult?.reduced) {
-      const claimedText = reduceResult.claimed ? " / 領土化" : "";
-      notes.push(`調査効果: ${leaderName} (${task.x}, ${task.y}) 危険度 ${reduceResult.beforeDanger}% → ${reduceResult.afterDanger}%${claimedText}`);
+      const dangerMeta = resolveSurveyDangerLevelAtTile(data, task.x, task.y, tileEnemies);
+      dangerLevel = Math.max(1, Math.floor(toSafeNumber(dangerMeta?.dangerLevel, 1)));
+      const leaderLevel = Math.max(1, Math.floor(toSafeNumber(leader?.level, 1)));
+      reduceAmount = resolveSurveyProgressReduceAmount(leaderLevel, dangerLevel);
     } else {
-      notes.push(`調査完了: ${leaderName} (${task.x}, ${task.y}) 変化なし`);
+      const leaderLevel = Math.max(1, Math.floor(toSafeNumber(leader?.level, 1)));
+      reduceAmount = Math.max(1, Math.round(leaderLevel * SURVEY_NO_ENEMY_REDUCE_SCALE));
+      dangerLevel = Math.max(1, Math.floor(toSafeNumber(task?.dangerLevel, 1)));
+    }
+
+    const reduceResult = reduceTileDangerBySurvey(data, task.x, task.y, {
+      reduceAmount
+    });
+    if (reduceResult?.reduced) {
+      const claimedText = reduceResult.claimed ? " / 領地化" : "";
+      notes.push(`調査進行: ${leaderName} (${task.x}, ${task.y}) 危険度 ${reduceResult.beforeDanger}% → ${reduceResult.afterDanger}%${claimedText}`);
+    } else {
+      notes.push(`調査進行: ${leaderName} (${task.x}, ${task.y}) 危険度変化なし`);
+    }
+
+    if (reduceResult?.afterDanger <= 0) {
+      patch.set(row.leaderId, null);
+      completed += 1;
+      continue;
     }
     patch.set(row.leaderId, {
       ...task,
-      totalTurns,
-      remainingTurns: totalTurns
+      progressPercent: Math.max(0, Math.floor(toSafeNumber(reduceResult?.afterDanger, beforeDanger))),
+      dangerLevel
     });
   }
 
@@ -4543,28 +4926,38 @@ function areAllTestPlayersReady() {
   return testPlayerSlots.value.every(slot => !!slot?.ready);
 }
 
-function buildPlayerTerritorySet(data, villageOverride = villageState.value) {
-  const owned = new Set();
-  const v = villageOverride;
-  if (!data?.grid || !v?.placed || !Number.isFinite(v.x) || !Number.isFinite(v.y)) return owned;
-  if (v.x < 0 || v.y < 0 || v.x >= data.w || v.y >= data.h) return owned;
-
-  const startKey = coordKey(v.x, v.y);
-  const queue = [{ x: v.x, y: v.y, d: 0 }];
-  owned.add(startKey);
+function buildVillageRangeTileSet(data, originX, originY, options = {}) {
+  const out = new Set();
+  if (!data?.grid || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return out;
+  const sx = Math.floor(toSafeNumber(originX, Number.NaN));
+  const sy = Math.floor(toSafeNumber(originY, Number.NaN));
+  if (!Number.isFinite(sx) || !Number.isFinite(sy)) return out;
+  if (sx < 0 || sy < 0 || sx >= data.w || sy >= data.h) return out;
+  const passableOnly = options?.passableOnly !== false;
+  const worldWrapEnabled = resolveWorldWrapEnabled(data);
+  const startKey = coordKey(sx, sy);
+  const queue = [{ x: sx, y: sy, d: 0 }];
+  out.add(startKey);
   while (queue.length) {
     const cur = queue.shift();
     if (!cur || cur.d >= PLAYER_TERRITORY_RANGE) continue;
-    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, cur.x, cur.y, resolveWorldWrapEnabled(data));
+    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, cur.x, cur.y, worldWrapEnabled);
     for (const n of neighbors) {
       const key = coordKey(n.x, n.y);
-      if (owned.has(key)) continue;
-      if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
-      owned.add(key);
+      if (out.has(key)) continue;
+      if (passableOnly && !isPassableTerrain(data.grid[n.y][n.x])) continue;
+      out.add(key);
       queue.push({ x: n.x, y: n.y, d: cur.d + 1 });
     }
   }
-  return owned;
+  return out;
+}
+
+function buildPlayerTerritorySet(data, villageOverride = villageState.value) {
+  const owned = new Set();
+  const v = villageOverride;
+  if (!data?.grid || !v?.placed) return owned;
+  return buildVillageRangeTileSet(data, v?.x, v?.y, { passableOnly: true });
 }
 
 function buildEnemyTerritorySet(data) {
@@ -4603,17 +4996,23 @@ function rebuildTerritorySets(data) {
   }
   const claimedMap = ensureClaimedTerritoryMap(data);
   if (testPlayerSlots.value.length > 1) {
-    const activeId = nonEmptyText(activeTestPlayerId.value);
+    const activeId = nonEmptyText(activeTestPlayerId.value)
+      || nonEmptyText(testPlayerSlots.value[0]?.id)
+      || DEFAULT_TEST_PLAYER_ID;
     const player = new Set();
     for (const slot of testPlayerSlots.value) {
       const slotId = nonEmptyText(slot?.id);
-      const set = buildPlayerTerritorySet(data, slot?.factionState?.village);
       if (slotId && slotId === activeId) {
+        // 配置直後は slot 側の保存より live 側が先に更新される場合があるため、
+        // アクティブ勢力は常に live villageState を優先して領土を再計算する。
+        const activeVillage = villageState.value?.placed ? villageState.value : slot?.factionState?.village;
+        const set = buildPlayerTerritorySet(data, activeVillage);
         for (const key of set) {
           player.add(key);
           ownerMap.set(key, slotId);
         }
       } else {
+        const set = buildPlayerTerritorySet(data, slot?.factionState?.village);
         for (const key of set) {
           hostile.add(key);
           if (!ownerMap.has(key)) ownerMap.set(key, slotId || "enemy");
@@ -5093,6 +5492,30 @@ function resetVisibilityState() {
   spottedFactionTileKeys = new Set();
   alertedEnemyTileKeys = new Set();
   alertedFactionTileKeys = new Set();
+  spottedEnemyNamesByTile = new Map();
+}
+
+function buildMonsterLabelText(list = []) {
+  if (!Array.isArray(list) || !list.length) return "";
+  const names = [];
+  for (const enemy of list) {
+    const name = nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵";
+    if (!name) continue;
+    names.push(name);
+  }
+  if (!names.length) return "";
+  return names.join(", ");
+}
+
+function rememberSpottedEnemyNames(x, y, data = currentData.value) {
+  const key = coordKey(x, y);
+  const tileEnemies = data?.enemySpawnMap?.[y]?.[x];
+  const label = buildMonsterLabelText(Array.isArray(tileEnemies) ? tileEnemies : []);
+  if (label) {
+    spottedEnemyNamesByTile.set(key, label);
+  } else {
+    spottedEnemyNamesByTile.delete(key);
+  }
 }
 
 function markTileExplored(x, y) {
@@ -5110,10 +5533,12 @@ function markEnemySpotted(x, y, data = currentData.value) {
   const key = coordKey(x, y);
   if (spottedEnemyTileKeys.has(key)) {
     markTileExplored(x, y);
+    rememberSpottedEnemyNames(x, y, data);
     return false;
   }
   spottedEnemyTileKeys.add(key);
   markTileExplored(x, y);
+  rememberSpottedEnemyNames(x, y, data);
   return true;
 }
 
@@ -5907,7 +6332,7 @@ function collectEnemySpawnTerrainKeys(data, x, y) {
   const special = nonEmptyText(data?.specialMap?.[y]?.[x]);
   if (special) set.add(special);
   const key = coordKey(x, y);
-  if (data?.riverData?.riverSet?.has(key)) set.add("河川");
+  if (data?.riverData?.riverSet?.has?.(key)) set.add("河川");
   if (data?.lavaMap?.[y]?.[x]) set.add("溶岩");
   return Array.from(set);
 }
@@ -6070,6 +6495,180 @@ function resolveActiveTerritoryOwnerId() {
     return nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
   }
   return "player";
+}
+
+function clearEnemyPresenceAtTile(data, x, y, options = {}) {
+  if (!data || !Array.isArray(data?.enemySpawnMap)) return false;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const tx = Math.floor(x);
+  const ty = Math.floor(y);
+  if (tx < 0 || ty < 0 || tx >= data.w || ty >= data.h) return false;
+  if (!Array.isArray(data.enemySpawnMap[ty])) data.enemySpawnMap[ty] = [];
+  const hadEnemies = Array.isArray(data.enemySpawnMap[ty][tx]) && data.enemySpawnMap[ty][tx].length > 0;
+  if (hadEnemies) data.enemySpawnMap[ty][tx] = [];
+  const tileKey = coordKey(tx, ty);
+  spottedEnemyTileKeys.delete(tileKey);
+  alertedEnemyTileKeys.delete(tileKey);
+  if (options.clearSpottedMemory !== false) {
+    spottedEnemyNamesByTile.delete(tileKey);
+  }
+  return hadEnemies;
+}
+
+function applyDangerRulesByTerritory(data, options = {}) {
+  if (!data || data.shapeOnly || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) {
+    return { applied: false, ownZeroedTiles: 0, increasedTiles: 0, clearedEnemyTiles: 0, periodicApplied: false };
+  }
+  const dangerMap = ensureEnemyDangerMap(data);
+  ensureClaimedTerritoryMap(data);
+  rebuildTerritorySets(data);
+  const turnNumber = Math.max(0, Math.floor(toSafeNumber(data?.turnState?.turnNumber, 0)));
+  const periodicApplied = options?.applyUnownedIncrease === true
+    && turnNumber > 0
+    && (turnNumber % TILE_DANGER_UNOWNED_INCREASE_INTERVAL_TURNS) === 0;
+  let ownZeroedTiles = 0;
+  let increasedTiles = 0;
+  let clearedEnemyTiles = 0;
+  let enemyMapChanged = false;
+
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const tileKey = coordKey(x, y);
+      const ownerId = nonEmptyText(territoryOwnerByTile.get(tileKey));
+      const ownedByAny = !!ownerId;
+      const ownedByPlayer = territorySets.player.has(tileKey);
+      const beforeDanger = Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0))));
+      let nextDanger = beforeDanger;
+
+      // 領土化されているタイル（自勢力/他勢力を問わず）は危険度0%を維持する。
+      if (ownedByAny && nextDanger > 0) {
+        nextDanger = 0;
+        if (ownedByPlayer) ownZeroedTiles += 1;
+      }
+
+      if (periodicApplied && !ownedByAny) {
+        const raised = Math.min(TILE_DANGER_MAX_PERCENT, nextDanger + TILE_DANGER_UNOWNED_INCREASE_PERCENT);
+        if (raised !== nextDanger) {
+          nextDanger = raised;
+          increasedTiles += 1;
+        }
+      }
+
+      if (nextDanger !== beforeDanger) {
+        dangerMap[y][x] = nextDanger;
+      }
+
+      if (nextDanger <= 0) {
+        const cleared = clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+        if (cleared) {
+          clearedEnemyTiles += 1;
+          enemyMapChanged = true;
+        }
+      }
+    }
+  }
+
+  if (enemyMapChanged) {
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+  }
+
+  return {
+    applied: true,
+    ownZeroedTiles,
+    increasedTiles,
+    clearedEnemyTiles,
+    periodicApplied
+  };
+}
+
+function syncDangerRulesForCurrentMap(options = {}) {
+  if (!currentData.value || currentData.value.shapeOnly) return;
+  rebuildTerritorySets(currentData.value);
+  applyDangerRulesByTerritory(currentData.value, {
+    applyUnownedIncrease: options?.applyUnownedIncrease === true
+  });
+}
+
+function claimTerritoryByVillageRange(data, village, ownerIdRaw = "") {
+  if (!data || data.shapeOnly) return 0;
+  const ownerId = nonEmptyText(ownerIdRaw) || resolveActiveTerritoryOwnerId();
+  if (!ownerId) return 0;
+  const set = buildVillageRangeTileSet(data, village?.x, village?.y, { passableOnly: false });
+  if (!set.size) return 0;
+  const claimedMap = ensureClaimedTerritoryMap(data);
+  let applied = 0;
+  for (const key of set) {
+    const [sx, sy] = String(key || "").split(",");
+    const x = Math.floor(toSafeNumber(sx, NaN));
+    const y = Math.floor(toSafeNumber(sy, NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (x < 0 || y < 0 || x >= data.w || y >= data.h) continue;
+    if (claimedMap[y][x] === ownerId) continue;
+    claimedMap[y][x] = ownerId;
+    applied += 1;
+  }
+  return applied;
+}
+
+function forceZeroDangerForVillageTerritory(data, village, ownerIdRaw = "") {
+  if (!data || data.shapeOnly) return { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 };
+  const ownerId = nonEmptyText(ownerIdRaw) || resolveActiveTerritoryOwnerId();
+  if (!ownerId) return { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 };
+  const set = buildVillageRangeTileSet(data, village?.x, village?.y, { passableOnly: false });
+  if (!set.size) return { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 };
+  const claimedMap = ensureClaimedTerritoryMap(data);
+  const dangerMap = ensureEnemyDangerMap(data);
+  let zeroedTiles = 0;
+  let claimedTiles = 0;
+  let clearedEnemyTiles = 0;
+  let enemyMapChanged = false;
+  for (const key of set) {
+    const [sx, sy] = String(key || "").split(",");
+    const x = Math.floor(toSafeNumber(sx, Number.NaN));
+    const y = Math.floor(toSafeNumber(sy, Number.NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (x < 0 || y < 0 || x >= data.w || y >= data.h) continue;
+    if (claimedMap?.[y]?.[x] !== ownerId) {
+      claimedMap[y][x] = ownerId;
+      claimedTiles += 1;
+    }
+    const beforeDanger = Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0))));
+    if (beforeDanger > 0) {
+      dangerMap[y][x] = 0;
+      zeroedTiles += 1;
+    }
+    const cleared = clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+    if (cleared) {
+      clearedEnemyTiles += 1;
+      enemyMapChanged = true;
+    }
+  }
+  if (enemyMapChanged) {
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+  }
+  return {
+    appliedTiles: set.size,
+    zeroedTiles,
+    claimedTiles,
+    clearedEnemyTiles
+  };
+}
+
+function forceZeroDangerForAllPlacedFactionTerritories(data) {
+  if (!data || data.shapeOnly) return { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 };
+  if (Array.isArray(testPlayerSlots.value) && testPlayerSlots.value.length > 1) {
+    return testPlayerSlots.value.reduce((acc, slot) => {
+      const ownerId = nonEmptyText(slot?.id);
+      const village = slot?.factionState?.village;
+      const result = forceZeroDangerForVillageTerritory(data, village, ownerId);
+      acc.appliedTiles += Math.max(0, Math.floor(toSafeNumber(result?.appliedTiles, 0)));
+      acc.zeroedTiles += Math.max(0, Math.floor(toSafeNumber(result?.zeroedTiles, 0)));
+      acc.claimedTiles += Math.max(0, Math.floor(toSafeNumber(result?.claimedTiles, 0)));
+      acc.clearedEnemyTiles += Math.max(0, Math.floor(toSafeNumber(result?.clearedEnemyTiles, 0)));
+      return acc;
+    }, { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 });
+  }
+  return forceZeroDangerForVillageTerritory(data, villageState.value, "player");
 }
 
 function buildEnemySpawnDataForMap(data) {
@@ -7179,6 +7778,9 @@ function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
     updateUnitInfoText(`${firstManualPlayer.label} は手動配置モードです。初期村の配置先をクリックしてください。`);
   }
   rebuildTerritorySets(data);
+  forceZeroDangerForAllPlacedFactionTerritories(data);
+  rebuildTerritorySets(data);
+  applyDangerRulesByTerritory(data, { applyUnownedIncrease: false });
   rebuildVisibleTiles(data);
   renderMapWithPhaser();
 
@@ -7380,18 +7982,30 @@ function placeVillageAt(x, y) {
   showMoveUnitModal.value = false;
   markTileExplored(x, y);
   if (currentData.value) {
+    // マルチ勢力作成中は、配置直後の村情報を先にアクティブ勢力スロットへ反映してから
+    // 領土再計算を行わないと、中心1マスだけが領土扱いになることがある。
+    syncActiveTestPlayerSlotFromLiveState();
+    rebuildTerritorySets(currentData.value);
+    forceZeroDangerForVillageTerritory(currentData.value, villageState.value, resolveActiveTerritoryOwnerId());
     rebuildTerritorySets(currentData.value);
     villageState.value = ensureTerritoryTileModeDefaultsForOwnedSet(villageState.value, territorySets.player, {
       forceHomeSettlement: true,
       homeKey: coordKey(x, y)
     });
+    applyDangerRulesByTerritory(currentData.value, { applyUnownedIncrease: false });
   }
   updateVillageInfoText();
   updateUnitInfoText(`初期村を配置: (${x}, ${y})`);
   pushNationLog(`初期村を配置: (${x}, ${y}) ${villageState.value?.name || ""}`);
   pushNationLog(`初期資源設定: 領土収入(${initialStock.tiles}マス)x3 / 食料 ${formatFoodResourceBag(defaultFoodByType)} / 資材 ${formatMaterialResourceBag(defaultMaterialByType)}`);
-  syncActiveTestPlayerSlotFromLiveState();
   emitCharacterStateChange();
+  // 初期配置直後は親→子の同期順で領土判定が一時的にズレるケースがあるため、
+  // 次Tickでもう一度危険度同期を掛けて開始時の危険度を確定させる。
+  nextTick(() => {
+    forceZeroDangerForVillageTerritory(currentData.value, villageState.value, resolveActiveTerritoryOwnerId());
+    syncDangerRulesForCurrentMap({ applyUnownedIncrease: false });
+    renderMapWithPhaser();
+  });
 }
 
 function startVillagePlacementMode() {
@@ -7534,6 +8148,7 @@ function buildMapSnapshotForSave() {
         branchMap: buildBinaryMapFromCoordSet(riverData?.branchSet, w, h),
         mouthMap: buildBinaryMapFromCoordSet(riverData?.mouthSet, w, h),
         waterLinkMap: buildBinaryMapFromCoordSet(riverData?.waterLinkSet, w, h),
+        waterLinkEdgeList: Array.from(riverData?.waterLinkSet || []).map(v => String(v || "")),
         waterfallMap: buildBinaryMapFromCoordSet(riverData?.waterfallSet, w, h),
         edgeList: Array.from(riverData?.edgeSet || []).map(v => String(v || "")),
         waterfallEdgeList: Array.from(riverData?.waterfallEdgeSet || []).map(v => String(v || ""))
@@ -7584,7 +8199,17 @@ function restoreRiverDataFromSaveSnapshot(snapshot, w, h) {
   const sourceSet = buildCoordSetFromBinaryMap(snapshot.sourceMap, w, h);
   const branchSet = buildCoordSetFromBinaryMap(snapshot.branchMap, w, h);
   const mouthSet = buildCoordSetFromBinaryMap(snapshot.mouthMap, w, h);
-  const waterLinkSet = buildCoordSetFromBinaryMap(snapshot.waterLinkMap, w, h);
+  const waterLinkSet = new Set(
+    (Array.isArray(snapshot.waterLinkEdgeList) ? snapshot.waterLinkEdgeList : [])
+      .map(v => String(v || ""))
+      .filter(v => v.includes("|"))
+  );
+  if (!waterLinkSet.size) {
+    const fallbackWaterLinkCoords = buildCoordSetFromBinaryMap(snapshot.waterLinkMap, w, h);
+    for (const key of fallbackWaterLinkCoords) {
+      if (String(key || "").includes("|")) waterLinkSet.add(String(key || ""));
+    }
+  }
   const waterfallSet = buildCoordSetFromBinaryMap(snapshot.waterfallMap, w, h);
   const edgeSet = new Set(
     (Array.isArray(snapshot.edgeList) ? snapshot.edgeList : [])
@@ -7603,6 +8228,7 @@ function restoreRiverDataFromSaveSnapshot(snapshot, w, h) {
     mouthSet,
     edgeSet,
     waterLinkSet,
+    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet }),
     waterfallSet,
     waterfallEdgeSet
   };
@@ -8855,8 +9481,11 @@ function updateUnitInfoText(extra = "") {
   const lockTag = lock ? ` / ${formatEncounterMoveLockReason(lock)}` : "";
   const surveyTask = resolveUnitSurveyTask(unit)
     || resolveUnitSurveyTask(unitList.value.find(row => row?.id === nonEmptyText(unit?.squadLeaderId)));
-  const surveyTag = surveyTask
-    ? ` / 調査中(${surveyTask.remainingTurns}/${surveyTask.totalTurns}T)`
+  const surveyDangerPercent = surveyTask
+    ? Math.max(0, Math.floor(toSafeNumber(surveyTask?.progressPercent, 0)))
+    : null;
+  const surveyTag = Number.isFinite(surveyDangerPercent)
+    ? ` / 調査中(危険度${surveyDangerPercent}%)`
     : "";
   const level = clampUnitLevel(unit?.level, INITIAL_LEVEL_MIN);
   unitInfoText.value = `選択ユニット: ${unit.name}(${role})${sovereignTag}${leaderTag}${memberTag} / Lv${level} / 種族:${unit.race} / クラス:${unit.className} / 位置(${unit.x}, ${unit.y}) / 移動${unit.moveRange} 残${moveRemaining} / 索敵${unit.scoutRange} / 部隊${squadCount}${lockTag}${surveyTag} / 装備:${eqText}${note}`;
@@ -8864,7 +9493,7 @@ function updateUnitInfoText(extra = "") {
 
 function resolveTileTerrainForYield(data, x, y) {
   if (!data?.grid || !Number.isFinite(x) || !Number.isFinite(y)) return "";
-  if (data.lavaMap?.[y]?.[x]) return "溶岩";
+  if (data?.lavaMap?.[y]?.[x]) return "溶岩";
   const special = nonEmptyText(data.specialMap?.[y]?.[x]);
   if (special) return special;
   return nonEmptyText(data.grid?.[y]?.[x]);
@@ -9086,14 +9715,19 @@ function applyVillageTileRecoveryTurn(village, units = unitList.value) {
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
       return normalized;
     }
-    if (!isOwnTerritoryTile(x, y)) {
-      return normalized;
-    }
-    const tileKey = coordKey(x, y);
-    const baseRecovery = Math.max(0, resolveVillageTileRecoveryValue(village, tileKey, recoveryMap));
     const regenerationRecovery = resolveUnitRegenerationPerTurn(normalized);
-    const churchRecovery = hasChurchFacilityOnTile(village, tileKey) ? 5 : 0;
-    const totalBaseRecovery = Math.max(0, baseRecovery + regenerationRecovery + churchRecovery);
+    const onVillageCenter = !!(
+      village?.placed
+      && Math.floor(toSafeNumber(village?.x, Number.NaN)) === x
+      && Math.floor(toSafeNumber(village?.y, Number.NaN)) === y
+    );
+    const canApplyTerritoryRecovery = isOwnTerritoryTile(x, y) || onVillageCenter;
+    const tileKey = coordKey(x, y);
+    const baseRecovery = canApplyTerritoryRecovery
+      ? Math.max(0, resolveVillageTileRecoveryValue(village, tileKey, recoveryMap))
+      : 0;
+    const churchRecovery = canApplyTerritoryRecovery && hasChurchFacilityOnTile(village, tileKey) ? 5 : 0;
+    const totalBaseRecovery = Math.max(0, regenerationRecovery + baseRecovery + churchRecovery);
     if (totalBaseRecovery <= 0 || normalized.currentHp >= normalized.maxHp) {
       return normalized;
     }
@@ -9957,6 +10591,13 @@ function runHostilePassStealthCheckAtTile(options = {}) {
 function rerollEnemySpawnAtTile(data, x, y) {
   if (!data || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return [];
   if (!Array.isArray(data?.enemySpawnMap)) return [];
+  const dangerMap = ensureEnemyDangerMap(data);
+  const currentDanger = Math.max(0, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0)));
+  if (currentDanger <= 0) {
+    clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+    return [];
+  }
   const regenerated = buildEnemySpawnDataForMap({
     ...data,
     enemySpawnMap: null,
@@ -9984,25 +10625,13 @@ function clearMonsterTileByAmbush(data, x, y) {
   const beforeDanger = Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0))));
   let afterDanger = Math.max(0, beforeDanger - TILE_DANGER_REDUCE_PER_CLEAR_PERCENT);
   dangerMap[y][x] = afterDanger;
-  data.enemySpawnMap[y][x] = [];
-  const tileKey = coordKey(x, y);
-  spottedEnemyTileKeys.delete(tileKey);
-  alertedEnemyTileKeys.delete(tileKey);
-  alertedFactionTileKeys.delete(tileKey);
+  clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+  alertedFactionTileKeys.delete(coordKey(x, y));
   let claimed = false;
-  let respawnCount = 0;
+  const respawnCount = 0;
   if (afterDanger <= 0) {
     claimedMap[y][x] = resolveActiveTerritoryOwnerId();
     claimed = true;
-  } else {
-    const rerolled = rerollEnemySpawnAtTile(data, x, y);
-    respawnCount = Array.isArray(rerolled) ? rerolled.length : 0;
-    if (respawnCount <= 0) {
-      afterDanger = 0;
-      dangerMap[y][x] = 0;
-      claimedMap[y][x] = resolveActiveTerritoryOwnerId();
-      claimed = true;
-    }
   }
   data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
   rebuildTerritorySets(data);
@@ -10039,6 +10668,10 @@ function reduceTileDangerBySurvey(data, x, y, options = {}) {
   dangerMap[ty][tx] = afterDanger;
   let claimed = false;
   if (afterDanger <= 0) {
+    const cleared = clearEnemyPresenceAtTile(data, tx, ty, { clearSpottedMemory: true });
+    if (cleared) {
+      data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+    }
     claimedMap[ty][tx] = resolveActiveTerritoryOwnerId();
     claimed = true;
     rebuildTerritorySets(data);
@@ -10290,7 +10923,9 @@ function runEnemyEncounterCheck(options = {}) {
           const claimedText = entry.ambushClearResult.claimed ? " / 領地化" : "";
           const respawnText = entry.ambushClearResult.claimed
             ? ""
-            : ` / 再抽選:${entry.ambushClearResult.respawnCount}体`;
+            : (entry.ambushClearResult.respawnCount > 0
+              ? ` / 再抽選:${entry.ambushClearResult.respawnCount}体`
+              : "");
           const moveCostText = entry.ambushMoveCostSpent ? ` / 移動-${ENCOUNTER_ACTION_MOVE_COST}` : "";
           ambushText = `奇襲撃破:${entry.ambushClearResult.defeatedCount}体 / 危険度${entry.ambushClearResult.beforeDanger}%→${entry.ambushClearResult.afterDanger}%${respawnText}${claimedText}${moveCostText}`;
         } else {
@@ -10381,7 +11016,9 @@ function applyDisplaySettingChange(payload) {
   if (!payload || !payload.key) return;
   const { key, value } = payload;
   if (key === "section_display" || key === "section_audio") return;
-  if (key === "showHeightNumbers") showHeightNumbers.value = !!value;
+  if (key === "gameViewPreset") {
+    applyGameViewPreset(String(value || DEFAULT_GAME_VIEW_PRESET_KEY));
+  } else if (key === "showHeightNumbers") showHeightNumbers.value = !!value;
   else if (key === "useHeightShading") useHeightShading.value = !!value;
   else if (key === "useFiveResourceMode") useFiveResourceMode.value = !!value;
   else if (key === "showSpecialTilesAlways") showSpecialTilesAlways.value = !!value;
@@ -10465,8 +11102,8 @@ function clampCameraScroll(camera, worldW, worldH, viewW, viewH, options = {}) {
 function resolveMinZoomPercent(dataLike = currentData.value) {
   return resolveMinZoomPercentUtil(dataLike, {
     mapPixelSize,
-    gameViewWidth: GAME_VIEW_WIDTH,
-    gameViewHeight: GAME_VIEW_HEIGHT,
+    gameViewWidth: gameViewWidth.value,
+    gameViewHeight: gameViewHeight.value,
     wrapDragMultiplierX: WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X,
     wrapDragMultiplierY: WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y,
     resolveMaxZoomPercent,
@@ -10486,6 +11123,16 @@ function resolveMaxZoomPercent(dataLike = currentData.value) {
   return Math.round(clampNumber(scaled, 400, 1200));
 }
 
+function resolveZoomStepPercent(dataLike = currentData.value) {
+  const w = Number(dataLike?.w);
+  const h = Number(dataLike?.h);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 25;
+  const baseSize = Math.max(w, h);
+  const scaled = 25 * (baseSize / 36);
+  const stepped = Math.round(scaled / 5) * 5;
+  return Math.round(clampNumber(stepped, 25, 100));
+}
+
 function normalizeZoomPercent(value, dataLike = currentData.value) {
   return normalizeZoomPercentUtil(value, dataLike, {
     resolveMinZoomPercent,
@@ -10503,6 +11150,7 @@ const zoomController = createMapZoomController({
   },
   normalizeZoomPercent,
   resolveMinZoomPercent,
+  resolveZoomStepPercent,
   toSafeNumber,
   nonEmptyText,
   normalizeFocusPoint,
@@ -10610,6 +11258,21 @@ function shadeColorByHeight(hex, level) {
   return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
 }
 
+function shadeSeaColorByDepth(hex, level) {
+  if (!hex || !hex.startsWith("#") || !Number.isFinite(level)) return hex;
+  const raw = Number.parseInt(hex.slice(1), 16);
+  const r = (raw >> 16) & 0xff;
+  const g = (raw >> 8) & 0xff;
+  const b = raw & 0xff;
+  const depth = Math.max(0, -Math.floor(level));
+  const darkenRate = Math.min(0.62, depth * 0.09);
+  const brightness = 1 - darkenRate;
+  const nr = Math.max(0, Math.min(255, Math.round(r * brightness)));
+  const ng = Math.max(0, Math.min(255, Math.round(g * brightness)));
+  const nb = Math.max(0, Math.min(255, Math.round(b * brightness)));
+  return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
+}
+
 function blendHexColors(hexA, hexB, ratio = 0.5) {
   if (!hexA?.startsWith("#")) return hexB;
   if (!hexB?.startsWith("#")) return hexA;
@@ -10640,6 +11303,77 @@ function buildHexPoints(x, y) {
     { x: left + 0, y: top + 36 },
     { x: left + 0, y: top + 12 }
   ];
+}
+
+function pointCoordKey(point) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return "";
+  return `${Math.round(point.x * 1000) / 1000},${Math.round(point.y * 1000) / 1000}`;
+}
+
+function resolveSharedHexEdgePoints(ax, ay, bx, by, offsetX = 0, offsetY = 0) {
+  const aPoints = buildHexPoints(ax, ay);
+  const bPoints = buildHexPoints(bx, by);
+  const bSet = new Set(bPoints.map(pointCoordKey));
+  const shared = aPoints
+    .filter(p => bSet.has(pointCoordKey(p)))
+    .map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
+  if (shared.length < 2) return null;
+  if (shared.length === 2) return [shared[0], shared[1]];
+  let bestPair = null;
+  let bestDistance = -1;
+  for (let i = 0; i < shared.length; i += 1) {
+    for (let j = i + 1; j < shared.length; j += 1) {
+      const dx = shared[j].x - shared[i].x;
+      const dy = shared[j].y - shared[i].y;
+      const dist = (dx * dx) + (dy * dy);
+      if (dist > bestDistance) {
+        bestDistance = dist;
+        bestPair = [shared[i], shared[j]];
+      }
+    }
+  }
+  return bestPair;
+}
+
+function resolveFlowSegmentByTilePair(ax, ay, bx, by, offsetX = 0, offsetY = 0) {
+  const edge = resolveSharedHexEdgePoints(ax, ay, bx, by, offsetX, offsetY);
+  if (edge) return edge;
+  const ca = hexCenter(ax, ay);
+  const cb = hexCenter(bx, by);
+  return [
+    { x: ca.cx + offsetX, y: ca.cy + offsetY },
+    { x: cb.cx + offsetX, y: cb.cy + offsetY }
+  ];
+}
+
+function drawParallelEdgeLines(graphics, start, end, lineCount, options = {}) {
+  if (!graphics || !start || !end) return;
+  const count = Math.max(0, Math.floor(Number(lineCount) || 0));
+  if (count <= 0) return;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.001) return;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const color = Number.isFinite(options.color) ? options.color : HEIGHT_DIFF_BORDER_MEDIUM_COLOR;
+  const alpha = Number.isFinite(options.alpha) ? options.alpha : HEIGHT_DIFF_BORDER_MEDIUM_ALPHA;
+  const width = Math.max(0.2, Number(options.widthPx) || HEIGHT_DIFF_BORDER_LINE_WIDTH_PX);
+  const spacing = Math.max(0, Number(options.spacingPx) || HEIGHT_DIFF_BORDER_LINE_SPACING_PX);
+  for (let i = 0; i < count; i += 1) {
+    const shift = (i - ((count - 1) / 2)) * spacing;
+    const ox = nx * shift;
+    const oy = ny * shift;
+    graphics.lineStyle(width, color, alpha);
+    graphics.strokeLineShape(
+      new Phaser.Geom.Line(
+        start.x + ox,
+        start.y + oy,
+        end.x + ox,
+        end.y + oy
+      )
+    );
+  }
 }
 
 function drawSplitHex(graphics, points, leftHexColor, rightHexColor) {
@@ -11140,6 +11874,66 @@ function drawRiverOverlay(data, visibleKeys = null, wrapOffsets = [{ x: 0, y: 0 
   }
 }
 
+function drawHeightDiffBordersForTile(data, x, y, wrapOffset, tileVisible = true) {
+  if (!baseLayer || !data?.heightLevelMap || !tileVisible) return;
+  const sourceLevel = Number(data.heightLevelMap?.[y]?.[x]);
+  if (!Number.isFinite(sourceLevel)) return;
+  const sourceKey = coordKey(x, y);
+  const worldWrapEnabled = resolveWorldWrapEnabled(data);
+  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, x, y, worldWrapEnabled);
+  const offX = wrapOffset?.x || 0;
+  const offY = wrapOffset?.y || 0;
+  for (const n of neighbors) {
+    if (!Number.isFinite(n?.x) || !Number.isFinite(n?.y)) continue;
+    if (!shouldDrawWrappedTileCopy(n.x, n.y, wrapOffset, data.w, data.h)) continue;
+    const targetKey = coordKey(n.x, n.y);
+    if (sourceKey >= targetKey) continue;
+    if (!isTileVisible(targetKey, data)) continue;
+    const targetLevel = Number(data.heightLevelMap?.[n.y]?.[n.x]);
+    if (!Number.isFinite(targetLevel)) continue;
+    const diff = Math.abs(targetLevel - sourceLevel);
+    if (diff <= 1) continue;
+    const lineCount = Math.min(3, Math.max(1, Math.floor(diff)));
+    const segment = resolveSharedHexEdgePoints(x, y, n.x, n.y, offX, offY);
+    if (!segment) continue;
+    const isStrongDiff = diff >= 3;
+    drawParallelEdgeLines(baseLayer, segment[0], segment[1], lineCount, {
+      color: isStrongDiff ? HEIGHT_DIFF_BORDER_STRONG_COLOR : HEIGHT_DIFF_BORDER_MEDIUM_COLOR,
+      alpha: isStrongDiff ? HEIGHT_DIFF_BORDER_STRONG_ALPHA : HEIGHT_DIFF_BORDER_MEDIUM_ALPHA,
+      widthPx: HEIGHT_DIFF_BORDER_LINE_WIDTH_PX,
+      spacingPx: HEIGHT_DIFF_BORDER_LINE_SPACING_PX
+    });
+  }
+}
+
+function drawOwnTerritoryBoundaryEdgesForTile(data, x, y, wrapOffset, tileVisible = true) {
+  if (!baseLayer || !tileVisible) return;
+  const owner = tileOwnerAt(x, y);
+  if (owner !== "player") return;
+  const ownerFactionId = tileFactionOwnerIdAt(x, y);
+  const style = borderStyleForOwner(owner, ownerFactionId);
+  const worldWrapEnabled = resolveWorldWrapEnabled(data);
+  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, x, y, worldWrapEnabled);
+  const offX = wrapOffset?.x || 0;
+  const offY = wrapOffset?.y || 0;
+  for (const n of neighbors) {
+    if (!Number.isFinite(n?.x) || !Number.isFinite(n?.y)) continue;
+    if (!shouldDrawWrappedTileCopy(n.x, n.y, wrapOffset, data.w, data.h)) continue;
+    const neighborOwner = tileOwnerAt(n.x, n.y);
+    const neighborFactionId = tileFactionOwnerIdAt(n.x, n.y);
+    if (neighborOwner === owner && neighborFactionId === ownerFactionId) continue;
+    const segment = resolveSharedHexEdgePoints(x, y, n.x, n.y, offX, offY);
+    if (!segment) continue;
+    baseLayer.lineStyle(style.width, style.color, style.alpha);
+    baseLayer.strokeLineShape(new Phaser.Geom.Line(
+      segment[0].x,
+      segment[0].y,
+      segment[1].x,
+      segment[1].y
+    ));
+  }
+}
+
 function drawLavaOverlay(data, visibleKeys = null, wrapOffsets = [{ x: 0, y: 0 }]) {
   if (!lavaLayer) return;
   lavaLayer.clear();
@@ -11310,8 +12104,8 @@ function renderMapWithPhaser() {
 
   const data = currentData.value;
   const { width: worldW, height: worldH } = mapPixelSize(data.w, data.h);
-  const viewW = GAME_VIEW_WIDTH;
-  const viewH = GAME_VIEW_HEIGHT;
+  const viewW = Math.max(1, Math.floor(Number(gameViewWidth.value) || GAME_VIEW_WIDTH));
+  const viewH = Math.max(1, Math.floor(Number(gameViewHeight.value) || GAME_VIEW_HEIGHT));
   const normalizedZoomPercent = normalizeZoomPercent(zoomPercent.value, data);
   const wrapEnabled = resolveWorldWrapEnabled(data);
 
@@ -11392,8 +12186,6 @@ function renderMapWithPhaser() {
   const autoShrink = totalCells > 2000 ? 2 : totalCells > 1200 ? 1 : 0;
   const numberFontSize = Math.max(8, Number(heightNumberFontSize.value || 0) - autoShrink);
   const outlineWidth = Math.max(0, Number(heightNumberOutlineWidth.value || 0));
-  const seaVisual = tileVisual("海", data.shapeOnly);
-  const seaSplitColor = useHeightShading.value ? shadeColorByHeight(seaVisual.color, -2) : seaVisual.color;
   const moveContext = (() => {
     if (!unitMoveMode.value || !selectedUnit.value) {
       return { reachableSet: new Set(), startKey: "" };
@@ -11412,6 +12204,8 @@ function renderMapWithPhaser() {
   const moveBlinkPhase = (clockNowMs.value % 1000) / 1000;
   const moveBlinkAlpha = 0.38 + ((Math.sin(moveBlinkPhase * Math.PI * 2) + 1) * 0.24);
   const fogHiddenAlpha = showTestControls.value ? FOG_HIDDEN_ALPHA_TEST : FOG_HIDDEN_ALPHA;
+  const forestTileIconName = resolveAvailableIconName("森", "森林");
+  const forestTileIconTextureKey = forestTileIconName ? ensureRaceMarkerTexture(forestTileIconName) : "";
   const waterfallTextureKey = ensureRaceMarkerTexture(resolveWaterfallIconName());
   const settlementMarkerTextureByLevel = new Map();
   for (const levelKey of TERRITORY_RESIDENTIAL_LEVEL_ORDER) {
@@ -11469,26 +12263,16 @@ function renderMapWithPhaser() {
           && rawKey === "森"
           && (reliefKey === "丘陵" || reliefKey === "山岳")
         );
+        const baseTerrainKey = mixedForestRelief ? reliefKey : rawKey;
 
-        if (mixedForestRelief) {
-          const reliefVisual = tileVisual(reliefKey, false);
-          const forestColor = useHeightShading.value ? shadeColorByHeight(visual.color, level) : visual.color;
-          const reliefColor = useHeightShading.value ? shadeColorByHeight(reliefVisual.color, level) : reliefVisual.color;
-          if (isCoastTile) {
-            const mixedLandColor = blendHexColors(forestColor, reliefColor, 0.5);
-            drawSplitHex(baseLayer, points, mixedLandColor, seaSplitColor);
-          } else {
-            drawSplitHex(baseLayer, points, forestColor, reliefColor);
-          }
-        } else {
-          const tileColor = useHeightShading.value ? shadeColorByHeight(visual.color, level) : visual.color;
-          if (isCoastTile) {
-            drawSplitHex(baseLayer, points, tileColor, seaSplitColor);
-          } else {
-            baseLayer.fillStyle(toColorInt(tileColor), 1);
-            baseLayer.fillPoints(points, true);
-          }
-        }
+        const baseVisual = tileVisual(baseTerrainKey, data.shapeOnly);
+        const tileColor = useHeightShading.value
+          ? (baseTerrainKey === "海"
+            ? shadeSeaColorByDepth(baseVisual.color, level)
+            : shadeColorByHeight(baseVisual.color, level))
+          : baseVisual.color;
+        baseLayer.fillStyle(toColorInt(tileColor), 1);
+        baseLayer.fillPoints(points, true);
         if (!tileVisible) {
           baseLayer.fillStyle(FOG_HIDDEN_FILL, fogHiddenAlpha);
           baseLayer.fillPoints(points, true);
@@ -11498,10 +12282,13 @@ function renderMapWithPhaser() {
           baseLayer.fillPoints(points, true);
         }
         const owner = tileVisible ? tileOwnerAt(x, y) : "";
-        const factionOwnerId = tileVisible ? tileFactionOwnerIdAt(x, y) : "";
-        const borderStyle = tileVisible ? borderStyleForOwner(owner, factionOwnerId) : FOG_HIDDEN_BORDER;
-        baseLayer.lineStyle(borderStyle.width, borderStyle.color, borderStyle.alpha);
-        baseLayer.strokePoints(points, true);
+        if (!tileVisible) {
+          baseLayer.lineStyle(FOG_HIDDEN_BORDER.width, FOG_HIDDEN_BORDER.color, FOG_HIDDEN_BORDER.alpha);
+          baseLayer.strokePoints(points, true);
+        } else {
+          drawHeightDiffBordersForTile(data, x, y, wrapOffset, true);
+          drawOwnTerritoryBoundaryEdgesForTile(data, x, y, wrapOffset, true);
+        }
         if (tileVisible && moveContext.reachableSet.has(tileKey) && tileKey !== moveContext.startKey) {
           baseLayer.lineStyle(2.35, 0x6cff79, moveBlinkAlpha);
           baseLayer.strokePoints(points, true);
@@ -11541,7 +12328,25 @@ function renderMapWithPhaser() {
             specialIconRendered = true;
           }
         }
-        if (symbolShouldDraw && !specialIconRendered) {
+        let forestIconRendered = false;
+        if (
+          tileVisible
+          && !revealSpecial
+          && rawKey === "森"
+          && forestTileIconTextureKey
+          && scene.textures.exists(forestTileIconTextureKey)
+        ) {
+          const forestIcon = scene.add.image(
+            center.cx,
+            center.cy + MAP_FOREST_ICON_CONFIG.offsetY,
+            forestTileIconTextureKey
+          );
+          forestIcon.setDisplaySize(MAP_FOREST_ICON_CONFIG.size, MAP_FOREST_ICON_CONFIG.size);
+          forestIcon.setOrigin(0.5);
+          labelTexts.push(forestIcon);
+          forestIconRendered = true;
+        }
+        if (symbolShouldDraw && !specialIconRendered && !forestIconRendered) {
           const terrainShort = mixedForestRelief
             ? (reliefKey === "山岳" ? "森山" : "森丘")
             : visual.short;
@@ -11580,6 +12385,7 @@ function renderMapWithPhaser() {
             labelTexts.push(fallLabel);
           }
         }
+
         if (tileVisible && owner === "player" && activeVillageState) {
           const tileMode = resolveTerritoryTileModeAt(activeVillageState, tileKey);
           const pendingConversion = activeVillageConversionMap?.[tileKey];
@@ -11966,6 +12772,55 @@ function renderMapWithPhaser() {
       : null;
     const leader = attackMoveGroup?.ok ? attackMoveGroup.leader : null;
     if (Number.isFinite(leader?.x) && Number.isFinite(leader?.y)) {
+      const previewKeySet = buildAttackPatternTileKeySet(data, leader, tileAttackPatternKey.value, tileAttackRange.value);
+      for (const previewKey of previewKeySet) {
+        const previewTile = hitAreaMap.get(previewKey);
+        if (!previewTile) continue;
+        for (const offset of wrapOffsets) {
+          if (!shouldDrawWrappedTileCopy(previewTile.x, previewTile.y, offset, data.w, data.h)) continue;
+          const ox = offset?.x || 0;
+          const oy = offset?.y || 0;
+          const points = (ox || oy) ? offsetHexPoints(previewTile.polygon.points, ox, oy) : previewTile.polygon.points;
+          markerLayer.lineStyle(2.2, 0xff7373, 0.95);
+          markerLayer.strokePoints(points, true);
+          markerLayer.fillStyle(0xff7373, 0.13);
+          markerLayer.fillPoints(points, true);
+        }
+      }
+      if (!tileAttackDirectionLocked.value) {
+        const candidateAnchor = normalizeTileAttackDirectionAnchor(tileAttackDirectionCandidate.value, data, leader);
+        if (candidateAnchor) {
+          const candidateKey = coordKey(candidateAnchor.x, candidateAnchor.y);
+          const candidateTile = hitAreaMap.get(candidateKey);
+          if (candidateTile) {
+            for (const offset of wrapOffsets) {
+              if (!shouldDrawWrappedTileCopy(candidateTile.x, candidateTile.y, offset, data.w, data.h)) continue;
+              const ox = offset?.x || 0;
+              const oy = offset?.y || 0;
+              const points = (ox || oy) ? offsetHexPoints(candidateTile.polygon.points, ox, oy) : candidateTile.polygon.points;
+              markerLayer.lineStyle(2.8, 0xffc86a, 0.98);
+              markerLayer.strokePoints(points, true);
+            }
+          }
+        }
+      }
+      if (tileAttackDirectionLocked.value) {
+        const anchor = resolveAttackPatternAnchorCoord(data, leader, { lockOnly: true });
+        if (anchor) {
+          const anchorKey = coordKey(anchor.x, anchor.y);
+          const anchorTile = hitAreaMap.get(anchorKey);
+          if (anchorTile) {
+            for (const offset of wrapOffsets) {
+              if (!shouldDrawWrappedTileCopy(anchorTile.x, anchorTile.y, offset, data.w, data.h)) continue;
+              const ox = offset?.x || 0;
+              const oy = offset?.y || 0;
+              const points = (ox || oy) ? offsetHexPoints(anchorTile.polygon.points, ox, oy) : anchorTile.polygon.points;
+              markerLayer.lineStyle(3.1, 0xffdd7f, 0.98);
+              markerLayer.strokePoints(points, true);
+            }
+          }
+        }
+      }
       const attackKey = coordKey(leader.x, leader.y);
       const attackTile = hitAreaMap.get(attackKey);
       if (attackTile) {
@@ -12151,7 +13006,13 @@ function runNextTurn(options = {}) {
     eventMode: mode
   });
   result.data.worldWrapEnabled = !!currentData.value?.worldWrapEnabled;
-  applyMapData(result.data, { resetClock: false, rebuildCharacters: false });
+  applyMapData(result.data, {
+    resetClock: false,
+    rebuildCharacters: false,
+    forceCenterOnInit: false,
+    focusPrimaryOnInit: true,
+    applyUnownedDangerIncrease: true
+  });
   const turnRuntime = isTestMultiplayerActive.value
     ? runTurnForAllTestPlayers(result.data)
     : (() => {
@@ -12925,6 +13786,19 @@ function applyMapData(data, options = {}) {
   } else {
     ensureTestPlayerSlotsInitialized();
   }
+  applyDangerRulesByTerritory(normalizedData, {
+    applyUnownedIncrease: options.applyUnownedDangerIncrease === true
+  });
+  if (options.focusPrimaryOnInit === true) {
+    const focused = focusActiveFactionPrimaryTile({
+      village: villageState.value,
+      units: unitList.value
+    });
+    forceMapCenterOnNextRender = false;
+    if (!focused) {
+      centerMapOnNextZoom = false;
+    }
+  }
   if (options.resetClock !== false) {
     mapClockStartMs.value = Date.now();
     clockNowMs.value = mapClockStartMs.value;
@@ -13078,6 +13952,7 @@ function updateMapClickInfo(picked) {
     opposingFactionCount: hasOpposingFactionUnits ? toSafeNumber(opposingFactionTileMap.get(tileKey)?.units?.length, 0) : 0,
     opposingFactionSpotted: factionSpotted
   });
+  const rememberedMonsterNames = nonEmptyText(spottedEnemyNamesByTile.get(tileKey));
   const monsterEnemyText = tileEnemies.length
     ? tileEnemies.map(enemy => {
       const parts = [];
@@ -13089,8 +13964,8 @@ function updateMapClickInfo(picked) {
       if (enemy?.strong) parts.push("[強]");
       return parts.join("");
     }).join(", ")
-    : "なし";
-  const enemyText = hasOpposingFactionUnits || factionSpotted
+    : (rememberedMonsterNames ? `発見履歴:${rememberedMonsterNames}` : "なし");
+  const enemyText = hasOpposingFactionUnits || factionSpotted || !!rememberedMonsterNames
     ? `モンスター:${monsterEnemyText} / 他勢力:${opposingFactionText}`
     : monsterEnemyText;
   const village = villageState.value?.placed && villageState.value?.x === picked.x && villageState.value?.y === picked.y ? "あり" : "なし";
@@ -13177,7 +14052,15 @@ function updateMapClickInfo(picked) {
       || tileMode === TERRITORY_TILE_MODE_RESOURCE
       || isVillageCenterTile
     );
-  const terrainTitleParts = [nonEmptyText(picked.terrain)];
+  const terrainName = nonEmptyText(picked.terrain);
+  const reliefName = nonEmptyText(relief);
+  const terrainDisplayName = (
+    terrainName === "森"
+    && (reliefName === "丘陵" || reliefName === "山岳")
+  )
+    ? `${reliefName}/${terrainName}`
+    : terrainName;
+  const terrainTitleParts = [terrainDisplayName];
   if (picked.waterfall) terrainTitleParts.push("滝");
   if (nonEmptyText(picked.special)) terrainTitleParts.push(nonEmptyText(picked.special));
   const tileTitle = terrainTitleParts.filter(Boolean).join(" ");
@@ -13200,7 +14083,7 @@ function updateMapClickInfo(picked) {
   selectedTileDetail.value = {
     x: picked.x,
     y: picked.y,
-    terrain: picked.terrain,
+    terrain: terrainDisplayName || picked.terrain,
     title: tileTitle || picked.terrain,
     territory: ownerText,
     danger: dangerText,
@@ -13293,8 +14176,8 @@ function resolvePointerViewPosition(pointer) {
     const rect = canvas.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       const resolved = {
-        x: ((clientX - rect.left) / rect.width) * GAME_VIEW_WIDTH,
-        y: ((clientY - rect.top) / rect.height) * GAME_VIEW_HEIGHT
+        x: ((clientX - rect.left) / rect.width) * gameViewWidth.value,
+        y: ((clientY - rect.top) / rect.height) * gameViewHeight.value
       };
       if (pointerId !== undefined && pointerId !== null) {
         pointerViewCache.set(pointerId, resolved);
@@ -13361,7 +14244,8 @@ function getActiveTouchPair() {
 
 function applyWheelStyleZoomStep(direction) {
   const stepDirection = direction > 0 ? 1 : -1;
-  const nextZoom = normalizeZoomPercent(zoomPercent.value + (stepDirection * 25));
+  const zoomStep = resolveZoomStepPercent(currentData.value);
+  const nextZoom = normalizeZoomPercent(zoomPercent.value + (stepDirection * zoomStep));
   if (nextZoom === zoomPercent.value) return false;
   setZoomPercent(nextZoom, { centerMode: "village" });
   return true;
@@ -13529,6 +14413,11 @@ function openFieldBattleResultSelection(payload = {}) {
     || `${enemyLabel}と戦闘`;
   const summary = nonEmptyText(payload?.summary)
     || `戦闘(${source}): ${enemyLabel}`;
+  const surveyContext = payload?.surveyContext === true;
+  const surveyDangerBonusPercent = Math.max(
+    0,
+    Math.floor(toSafeNumber(payload?.surveyDangerBonusPercent, SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT))
+  );
   fieldBattleState.value = {
     source,
     enemyLabel,
@@ -13543,6 +14432,8 @@ function openFieldBattleResultSelection(payload = {}) {
     enemyRaceName,
     enemyRaceCategory,
     enemyImageSrc,
+    surveyContext,
+    surveyDangerBonusPercent,
     onResolve: typeof payload?.onResolve === "function" ? payload.onResolve : null
   };
   showFieldBattleResultModal.value = true;
@@ -13641,6 +14532,12 @@ function applyFieldBattleResultV2(isVictory) {
       applyFieldBattleVictoryAtTile(state.x, state.y, autoTarget);
     }
   }
+  let surveyBonusResult = null;
+  if (win && state?.surveyContext && Number.isFinite(state.x) && Number.isFinite(state.y) && currentData.value) {
+    surveyBonusResult = reduceTileDangerBySurvey(currentData.value, state.x, state.y, {
+      reduceAmount: Math.max(1, Math.floor(toSafeNumber(state?.surveyDangerBonusPercent, SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT)))
+    });
+  }
   const coordText = Number.isFinite(state.x) && Number.isFinite(state.y)
     ? ` (${state.x}, ${state.y})`
     : "";
@@ -13650,7 +14547,10 @@ function applyFieldBattleResultV2(isVictory) {
   const expText = expGainResult.appliedUnits > 0
     ? ` / EXP+${expGainResult.totalGain} (${expGainResult.appliedUnits}体)`
     : "";
-  const resultText = `${state.summary}${coordText} / ${resultLabel}${hpCostText}`;
+  const surveyBonusText = (win && state?.surveyContext && surveyBonusResult?.reduced)
+    ? ` / 調査危険度${surveyBonusResult.beforeDanger}%→${surveyBonusResult.afterDanger}%`
+    : "";
+  const resultText = `${state.summary}${coordText} / ${resultLabel}${hpCostText}${surveyBonusText}`;
   updateUnitInfoText(resultText);
   pushNationLog(resultText);
   emitCharacterStateChange();
@@ -13794,41 +14694,384 @@ function resolveAttackTargetAtTile(x, y, options = {}) {
   };
 }
 
+function normalizeTileAttackPatternKey(rawKey = "") {
+  const key = nonEmptyText(rawKey).toLowerCase();
+  return TILE_ATTACK_PATTERN_KEY_SET.has(key) ? key : "single";
+}
+
+function normalizeTileAttackRange(rawRange) {
+  const safe = Math.floor(toSafeNumber(rawRange, TILE_ATTACK_RANGE_MIN));
+  return clampNumber(safe, TILE_ATTACK_RANGE_MIN, TILE_ATTACK_RANGE_MAX);
+}
+
+function nudgeTileAttackRange(delta) {
+  const next = normalizeTileAttackRange(tileAttackRange.value + toSafeNumber(delta, 0));
+  if (next === tileAttackRange.value) return;
+  tileAttackRange.value = next;
+  if (tileAttackSelectionMode.value) {
+    const state = resolveSelectedTileAttackActionState();
+    const message = state.enabled
+      ? `攻撃範囲: ${resolveTileAttackPatternLabel(tileAttackPatternKey.value)} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`
+      : `攻撃範囲: ${resolveTileAttackPatternLabel(tileAttackPatternKey.value)} 射程${tileAttackRange.value} / ${state.reason || "対象なし"}`;
+    updateUnitInfoText(message);
+  }
+  requestMapRender();
+}
+
+function resolveTileAttackPatternLabel(patternKey = "") {
+  const key = normalizeTileAttackPatternKey(patternKey);
+  return TILE_ATTACK_PATTERN_LABEL_MAP.get(key) || "単体";
+}
+
+const tileAttackPatternLabel = computed(() => resolveTileAttackPatternLabel(tileAttackPatternKey.value));
+const tileAttackPatternDirectional = computed(() => DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS.has(normalizeTileAttackPatternKey(tileAttackPatternKey.value)));
+
+function isDirectionalTileAttackPattern(patternKey = "") {
+  return DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS.has(normalizeTileAttackPatternKey(patternKey));
+}
+
+function clearTileAttackDirectionLock() {
+  tileAttackDirectionCandidate.value = null;
+  tileAttackDirectionAnchor.value = null;
+  tileAttackDirectionLocked.value = false;
+}
+
+function normalizeTileAttackDirectionAnchor(rawAnchor, data, leader) {
+  if (!rawAnchor || !data || !leader) return null;
+  let x = Math.floor(toSafeNumber(rawAnchor?.x, Number.NaN));
+  let y = Math.floor(toSafeNumber(rawAnchor?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (resolveWorldWrapEnabled(data)) {
+    x = normalizeWrappedCoord(x, data.w);
+    y = normalizeWrappedCoord(y, data.h);
+  } else if (x < 0 || y < 0 || x >= data.w || y >= data.h) {
+    return null;
+  }
+  if (x === leader.x && y === leader.y) return null;
+  return { x, y };
+}
+
+function normalizeAttackDirectionIndex(index) {
+  const n = Number.isFinite(index) ? Math.floor(index) : 0;
+  return ((n % 6) + 6) % 6;
+}
+
+function stepHexCoordByDirection(data, x, y, directionIndex) {
+  if (!data || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const dir = normalizeAttackDirectionIndex(directionIndex);
+  const odd = (y % 2) === 1;
+  let dx = 0;
+  let dy = 0;
+  switch (dir) {
+    case 0: // E
+      dx = 1;
+      dy = 0;
+      break;
+    case 1: // NE
+      dx = odd ? 1 : 0;
+      dy = -1;
+      break;
+    case 2: // NW
+      dx = odd ? 0 : -1;
+      dy = -1;
+      break;
+    case 3: // W
+      dx = -1;
+      dy = 0;
+      break;
+    case 4: // SW
+      dx = odd ? 0 : -1;
+      dy = 1;
+      break;
+    case 5: // SE
+      dx = odd ? 1 : 0;
+      dy = 1;
+      break;
+    default:
+      break;
+  }
+  let nx = x + dx;
+  let ny = y + dy;
+  if (resolveWorldWrapEnabled(data)) {
+    nx = normalizeWrappedCoord(nx, data.w);
+    ny = normalizeWrappedCoord(ny, data.h);
+  } else if (nx < 0 || ny < 0 || nx >= data.w || ny >= data.h) {
+    return null;
+  }
+  return { x: nx, y: ny };
+}
+
+function resolveAttackPatternAnchorCoord(data, leader, options = {}) {
+  const anchorOverride = normalizeTileAttackDirectionAnchor(options?.anchor, data, leader);
+  if (anchorOverride) return anchorOverride;
+  const lockOnly = options?.lockOnly === true;
+  const lockedAnchor = tileAttackDirectionLocked.value
+    ? normalizeTileAttackDirectionAnchor(tileAttackDirectionAnchor.value, data, leader)
+    : null;
+  if (lockedAnchor) return lockedAnchor;
+  if (!lockOnly) {
+    const candidateAnchor = normalizeTileAttackDirectionAnchor(tileAttackDirectionCandidate.value, data, leader);
+    if (candidateAnchor) return candidateAnchor;
+  }
+  if (lockOnly) return null;
+  const tryKeys = [selectedTileKey, hoveredTileKey];
+  for (const key of tryKeys) {
+    const text = nonEmptyText(key);
+    if (!text) continue;
+    const parsed = parseCoordKey(text);
+    if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y)) continue;
+    if (parsed.x < 0 || parsed.y < 0 || parsed.x >= data.w || parsed.y >= data.h) continue;
+    if (parsed.x === leader.x && parsed.y === leader.y) continue;
+    return { x: parsed.x, y: parsed.y };
+  }
+  return null;
+}
+
+function resolveAttackForwardDirectionIndex(data, leader, options = {}) {
+  if (Number.isFinite(options?.directionIndexOverride)) {
+    return normalizeAttackDirectionIndex(Math.floor(options.directionIndexOverride));
+  }
+  const anchor = resolveAttackPatternAnchorCoord(data, leader, options);
+  if (!anchor) return 0;
+  let bestDir = 0;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let dir = 0; dir < 6; dir += 1) {
+    const next = stepHexCoordByDirection(data, leader.x, leader.y, dir);
+    if (!next) continue;
+    const dist = hexDistance(next, anchor);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestDir = dir;
+    }
+  }
+  return bestDir;
+}
+
+function buildAttackPatternTileKeySet(data, leader, patternKey = "single", range = TILE_ATTACK_RANGE_MIN, options = {}) {
+  const out = new Set();
+  if (!data || !leader || !Number.isFinite(leader?.x) || !Number.isFinite(leader?.y)) return out;
+  const attackRange = normalizeTileAttackRange(range);
+  const addCoord = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    let nx = Math.floor(x);
+    let ny = Math.floor(y);
+    if (resolveWorldWrapEnabled(data)) {
+      nx = normalizeWrappedCoord(nx, data.w);
+      ny = normalizeWrappedCoord(ny, data.h);
+    } else if (nx < 0 || ny < 0 || nx >= data.w || ny >= data.h) {
+      return false;
+    }
+    out.add(coordKey(nx, ny));
+    return true;
+  };
+  const addCoordObject = coord => addCoord(coord?.x, coord?.y);
+  const forwardDir = resolveAttackForwardDirectionIndex(data, leader, options);
+  const oppositeDir = normalizeAttackDirectionIndex(forwardDir + 3);
+  const key = normalizeTileAttackPatternKey(patternKey);
+  const origin = { x: leader.x, y: leader.y };
+  addCoordObject(origin);
+
+  if (key === "all") {
+    for (let y = 0; y < data.h; y += 1) {
+      for (let x = 0; x < data.w; x += 1) {
+        addCoord(x, y);
+      }
+    }
+    return out;
+  }
+
+  const ray = (start, dir, length) => {
+    let cursor = { x: start.x, y: start.y };
+    for (let i = 0; i < length; i += 1) {
+      const next = stepHexCoordByDirection(data, cursor.x, cursor.y, dir);
+      if (!next) break;
+      addCoordObject(next);
+      cursor = next;
+    }
+  };
+
+  const addCircle = radius => {
+    const queue = [{ x: origin.x, y: origin.y, d: 0 }];
+    const seen = new Set([coordKey(origin.x, origin.y)]);
+    while (queue.length) {
+      const cur = queue.shift();
+      addCoord(cur.x, cur.y);
+      if (cur.d >= radius) continue;
+      for (let dir = 0; dir < 6; dir += 1) {
+        const next = stepHexCoordByDirection(data, cur.x, cur.y, dir);
+        if (!next) continue;
+        const keyText = coordKey(next.x, next.y);
+        if (seen.has(keyText)) continue;
+        seen.add(keyText);
+        queue.push({ x: next.x, y: next.y, d: cur.d + 1 });
+      }
+    }
+  };
+
+  switch (key) {
+    case "single": {
+      ray(origin, forwardDir, attackRange);
+      break;
+    }
+    case "straight": {
+      ray(origin, forwardDir, attackRange);
+      break;
+    }
+    case "front": {
+      // 前方は「選択方向の1マス + その横1マス」の2マス固定。
+      const frontTile = stepHexCoordByDirection(data, origin.x, origin.y, forwardDir);
+      if (!frontTile) break;
+      addCoordObject(frontTile);
+      const sideDirA = normalizeAttackDirectionIndex(forwardDir - 1);
+      const sideDirB = normalizeAttackDirectionIndex(forwardDir + 1);
+      const sideTileA = stepHexCoordByDirection(data, origin.x, origin.y, sideDirA);
+      const sideTileB = stepHexCoordByDirection(data, origin.x, origin.y, sideDirB);
+      if (sideTileA && sideTileB) {
+        // 画像指定の「横並び2マス」になりやすいよう、前方タイルと同じ段に近い方を採用。
+        const frontDxA = Math.abs(sideTileA.x - frontTile.x);
+        const frontDxB = Math.abs(sideTileB.x - frontTile.x);
+        const frontDyA = Math.abs(sideTileA.y - frontTile.y);
+        const frontDyB = Math.abs(sideTileB.y - frontTile.y);
+        const scoreA = (frontDyA * 1000) + frontDxA;
+        const scoreB = (frontDyB * 1000) + frontDxB;
+        addCoordObject(scoreA <= scoreB ? sideTileA : sideTileB);
+      } else if (sideTileA || sideTileB) {
+        addCoordObject(sideTileA || sideTileB);
+      }
+      break;
+    }
+    case "fan": {
+      const first = stepHexCoordByDirection(data, origin.x, origin.y, forwardDir);
+      if (!first) break;
+      addCoordObject(first);
+      if (attackRange <= 1) break;
+      let frontier = [first];
+      const branchDirs = [normalizeAttackDirectionIndex(forwardDir - 1), forwardDir, normalizeAttackDirectionIndex(forwardDir + 1)];
+      for (let depth = 2; depth <= attackRange; depth += 1) {
+        const nextMap = new Map();
+        for (const node of frontier) {
+          for (const dir of branchDirs) {
+            const next = stepHexCoordByDirection(data, node.x, node.y, dir);
+            if (!next) continue;
+            const nextKey = coordKey(next.x, next.y);
+            if (nextMap.has(nextKey)) continue;
+            nextMap.set(nextKey, next);
+            addCoordObject(next);
+          }
+        }
+        frontier = Array.from(nextMap.values());
+        if (!frontier.length) break;
+      }
+      break;
+    }
+    case "around": {
+      out.clear();
+      for (let radius = 1; radius <= attackRange; radius += 1) {
+        const queue = [{ x: origin.x, y: origin.y, d: 0 }];
+        const seen = new Set([coordKey(origin.x, origin.y)]);
+        while (queue.length) {
+          const cur = queue.shift();
+          if (cur.d === radius) {
+            addCoord(cur.x, cur.y);
+            continue;
+          }
+          if (cur.d > radius) continue;
+          for (let dir = 0; dir < 6; dir += 1) {
+            const next = stepHexCoordByDirection(data, cur.x, cur.y, dir);
+            if (!next) continue;
+            const keyText = coordKey(next.x, next.y);
+            if (seen.has(keyText)) continue;
+            seen.add(keyText);
+            queue.push({ x: next.x, y: next.y, d: cur.d + 1 });
+          }
+        }
+      }
+      break;
+    }
+    case "circle": {
+      addCircle(attackRange);
+      break;
+    }
+    case "line": {
+      ray(origin, forwardDir, attackRange);
+      ray(origin, oppositeDir, attackRange);
+      break;
+    }
+    default:
+      break;
+  }
+  return out;
+}
+
 function resolveSelectedTileAttackActionState() {
   const data = currentData.value;
   if (!data || data.shapeOnly) {
-    return { enabled: false, reason: "マップ生成後に攻撃できます。", moveGroup: null, targetCount: 0 };
+    return { enabled: false, reason: "マップ生成後に攻撃できます。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   if (isPathMoveInProgress.value) {
-    return { enabled: false, reason: "移動中は攻撃できません。", moveGroup: null, targetCount: 0 };
+    return { enabled: false, reason: "移動中は攻撃できません。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   const unit = selectedUnit.value;
   if (!unit) {
-    return { enabled: false, reason: "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0 };
+    return { enabled: false, reason: "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   const moveGroup = resolveMoveGroupForUnit(unit, { allowMemberAsLeader: true });
   if (!moveGroup.ok || !moveGroup.leader) {
-    return { enabled: false, reason: moveGroup.reason || "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0 };
+    return { enabled: false, reason: moveGroup.reason || "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   const leader = moveGroup.leader;
+  const normalizedPattern = normalizeTileAttackPatternKey(tileAttackPatternKey.value);
+  const directional = isDirectionalTileAttackPattern(normalizedPattern);
+  let patternTileKeys = buildAttackPatternTileKeySet(data, leader, normalizedPattern, tileAttackRange.value);
+  if (directional && !tileAttackDirectionLocked.value) {
+    const directionCandidate = normalizeTileAttackDirectionAnchor(tileAttackDirectionCandidate.value, data, leader);
+    if (directionCandidate) {
+      patternTileKeys = buildAttackPatternTileKeySet(
+        data,
+        leader,
+        normalizedPattern,
+        tileAttackRange.value,
+        { anchor: directionCandidate }
+      );
+    } else {
+      const union = new Set();
+      for (let dir = 0; dir < 6; dir += 1) {
+        const candidate = buildAttackPatternTileKeySet(
+          data,
+          leader,
+          normalizedPattern,
+          tileAttackRange.value,
+          { directionIndexOverride: dir }
+        );
+        for (const key of candidate) union.add(key);
+      }
+      patternTileKeys = union;
+    }
+  }
   const factionTileMap = buildOpposingFactionUnitsByTile(data);
-  const currentTarget = resolveAttackTargetAtTile(leader.x, leader.y, { data, factionTileMap, requireSpotted: true });
-  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, leader.x, leader.y, resolveWorldWrapEnabled(data));
   let targetCount = 0;
-  if (currentTarget.hasTarget) targetCount += 1;
-  for (const n of neighbors) {
-    const target = resolveAttackTargetAtTile(n.x, n.y, { data, factionTileMap, requireSpotted: true });
+  for (const key of patternTileKeys) {
+    const point = parseCoordKey(key);
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+    const target = resolveAttackTargetAtTile(point.x, point.y, { data, factionTileMap, requireSpotted: true });
     if (target.hasTarget) targetCount += 1;
   }
   if (targetCount <= 0) {
-    return { enabled: false, reason: "同マス/隣接マスに攻撃対象がいません。", moveGroup, targetCount: 0 };
+    return {
+      enabled: false,
+      reason: `${resolveTileAttackPatternLabel(tileAttackPatternKey.value)} 射程${tileAttackRange.value} の範囲に攻撃対象がいません。`,
+      moveGroup,
+      targetCount: 0,
+      patternTileKeys
+    };
   }
-  return { enabled: true, reason: "", moveGroup, targetCount };
+  return { enabled: true, reason: "", moveGroup, targetCount, patternTileKeys };
 }
 
 function cancelTileAttackSelectionMode(silent = false) {
   if (!tileAttackSelectionMode.value) return;
   tileAttackSelectionMode.value = false;
+  clearTileAttackDirectionLock();
   refreshMapCursor();
   if (!silent) {
     updateUnitInfoText("攻撃モードを終了しました。");
@@ -13849,10 +15092,29 @@ function toggleTileAttackSelectionMode() {
     unitMoveMode.value = false;
     clearPlannedMovePath();
   }
+  clearTileAttackDirectionLock();
   clearHousingUpgradeSelectionState();
   tileAttackSelectionMode.value = true;
   refreshMapCursor();
-  updateUnitInfoText("攻撃モード: 同マスまたは隣接マスを選択してください。");
+  const directionalHint = isDirectionalTileAttackPattern(tileAttackPatternKey.value)
+    ? "同じマスを2回クリックで方向固定→対象マスをクリック"
+    : "範囲内の対象マスを選択";
+  updateUnitInfoText(`攻撃モード(${resolveTileAttackPatternLabel(tileAttackPatternKey.value)} / 射程${tileAttackRange.value}): ${directionalHint}`);
+}
+
+function setTileAttackPattern(nextPatternKey) {
+  const normalized = normalizeTileAttackPatternKey(nextPatternKey);
+  if (tileAttackPatternKey.value === normalized) return;
+  tileAttackPatternKey.value = normalized;
+  clearTileAttackDirectionLock();
+  if (tileAttackSelectionMode.value) {
+    const state = resolveSelectedTileAttackActionState();
+    const message = state.enabled
+      ? `攻撃範囲: ${resolveTileAttackPatternLabel(normalized)} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`
+      : `攻撃範囲: ${resolveTileAttackPatternLabel(normalized)} 射程${tileAttackRange.value} / ${state.reason || "対象なし"}`;
+    updateUnitInfoText(message);
+  }
+  requestMapRender();
 }
 
 function startFieldBattleFromEncounter(payload = {}) {
@@ -13873,6 +15135,7 @@ function startFieldBattleFromEncounter(payload = {}) {
   const sourceLabel = payload?.context === "move"
     ? (stealthAmbush ? "ambush" : "move")
     : (payload?.context === "survey" && !!entry?.playerAmbush ? "ambush" : "encounter");
+  const surveyContext = payload?.surveyContext === true || payload?.context === "survey";
   const attackerLabel = resolveBattleParticipantLabel(payload);
   openFieldBattleResultSelection({
     source: sourceLabel,
@@ -13886,6 +15149,8 @@ function startFieldBattleFromEncounter(payload = {}) {
     enemyRaceCategory: nonEmptyText(entry?.enemyGroup?.topRaceCategory),
     attackerLabel,
     attackerUnitIds: resolveBattleParticipantUnitIds(payload),
+    surveyContext,
+    surveyDangerBonusPercent: Math.max(0, Math.floor(toSafeNumber(payload?.surveyDangerBonusPercent, SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT))),
     message: `${attackerLabel}: ${message}`,
     summary: `戦闘(${sourceLabel}): ${enemyLabel}`
   });
@@ -13900,12 +15165,45 @@ function handleTileAttackSelectionClick(picked) {
     return false;
   }
   const leader = state.moveGroup.leader;
-  const distance = hexDistance(
-    { x: leader.x, y: leader.y },
-    { x: picked.x, y: picked.y }
-  );
-  if (distance < 0 || distance > 1) {
-    updateUnitInfoText("攻撃対象は同マスまたは隣接マスのみ選択できます。");
+  const directionalPattern = isDirectionalTileAttackPattern(tileAttackPatternKey.value);
+  if (directionalPattern && !tileAttackDirectionLocked.value) {
+    const anchor = normalizeTileAttackDirectionAnchor({ x: picked.x, y: picked.y }, currentData.value, leader);
+    if (!anchor) {
+      updateUnitInfoText("方向指定は自ユニット以外のマスを選択してください。");
+      return true;
+    }
+    const prevCandidate = normalizeTileAttackDirectionAnchor(tileAttackDirectionCandidate.value, currentData.value, leader);
+    const sameCandidate = !!prevCandidate && prevCandidate.x === anchor.x && prevCandidate.y === anchor.y;
+    tileAttackDirectionCandidate.value = anchor;
+    if (!sameCandidate) {
+      const updatedState = resolveSelectedTileAttackActionState();
+      const targetHint = updatedState.enabled
+        ? `対象${updatedState.targetCount}マス`
+        : (updatedState.reason || "対象なし");
+      updateUnitInfoText(`方向候補: (${anchor.x}, ${anchor.y}) / 同じマスをもう一度クリックで固定 (${targetHint})`);
+      return true;
+    }
+    tileAttackDirectionAnchor.value = anchor;
+    tileAttackDirectionLocked.value = true;
+    tileAttackDirectionCandidate.value = null;
+    const updatedState = resolveSelectedTileAttackActionState();
+    const targetHint = updatedState.enabled
+      ? `対象${updatedState.targetCount}マス`
+      : (updatedState.reason || "対象なし");
+    updateUnitInfoText(`方向固定: (${anchor.x}, ${anchor.y}) / 対象マスをクリックで攻撃 (${targetHint})`);
+    return true;
+  }
+  if (directionalPattern && tileAttackDirectionLocked.value && leader.x === picked.x && leader.y === picked.y) {
+    clearTileAttackDirectionLock();
+    updateUnitInfoText("方向固定を解除しました。同じマスを2回クリックで方向を再指定してください。");
+    return true;
+  }
+  const attackRangeSet = state.patternTileKeys instanceof Set
+    ? state.patternTileKeys
+    : buildAttackPatternTileKeySet(currentData.value, leader, tileAttackPatternKey.value, tileAttackRange.value);
+  const targetTileKey = coordKey(picked.x, picked.y);
+  if (!attackRangeSet.has(targetTileKey)) {
+    updateUnitInfoText(`${resolveTileAttackPatternLabel(tileAttackPatternKey.value)}範囲外のため攻撃できません。`);
     return true;
   }
   const factionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
@@ -13922,6 +15220,10 @@ function handleTileAttackSelectionClick(picked) {
   kickOffBgm();
   audio.playSe("confirm");
   const attackerName = nonEmptyText(leader?.name) || "ユニット";
+  const distance = hexDistance(
+    { x: leader.x, y: leader.y },
+    { x: picked.x, y: picked.y }
+  );
   const sourceLabel = distance === 0 ? "ambush" : "attack";
   openFieldBattleResultSelection({
     source: sourceLabel,
@@ -14456,7 +15758,7 @@ function runSelectedTileSurveyV2() {
   kickOffBgm();
   audio.playSe("confirm");
   emitCharacterStateChange();
-  updateUnitInfoText(`調査開始: (${state.x}, ${state.y}) / 完了まで${SURVEY_ACTION_REQUIRED_TURNS}T`);
+  updateUnitInfoText(`調査開始: (${state.x}, ${state.y}) / 危険度0%で完了`);
   const latest = hitAreaMap.get(coordKey(state.x, state.y));
   if (latest) {
     updateMapClickInfo(latest);
@@ -14682,16 +15984,16 @@ onMounted(async () => {
   game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: gameRoot.value,
-    width: GAME_VIEW_WIDTH,
-    height: GAME_VIEW_HEIGHT,
-    // Improve clarity when the 1280x720 canvas is CSS-scaled on different displays.
+    width: gameViewWidth.value,
+    height: gameViewHeight.value,
+    // Keep clarity when the canvas is CSS-scaled on different displays.
     resolution: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
     antialias: true,
     pixelArt: false,
     scale: {
       mode: Phaser.Scale.NONE,
-      width: GAME_VIEW_WIDTH,
-      height: GAME_VIEW_HEIGHT
+      width: gameViewWidth.value,
+      height: gameViewHeight.value
     },
     transparent: true,
     scene: {
@@ -14766,6 +16068,10 @@ onBeforeUnmount(() => {
   resetVisibilityState();
 });
 
+watch([gameViewPresetKey, gameViewWidth, gameViewHeight], () => {
+  emitGameViewSizeChange();
+}, { immediate: true });
+
 watch(showTestControls, visible => {
   emit("test-controls-change", !!visible);
   if (currentData.value) {
@@ -14816,6 +16122,35 @@ watch([currentData, selectedUnitId, villagePlacementMode, unitMoveMode], () => {
   if (plannedMovePathNodes.value.length && !unitMoveMode.value) {
     clearPlannedMovePath();
   }
+  if (!tileAttackSelectionMode.value && tileAttackDirectionLocked.value) {
+    clearTileAttackDirectionLock();
+  }
+});
+
+watch(() => tileAttackPatternKey.value, next => {
+  tileAttackPatternKey.value = normalizeTileAttackPatternKey(next);
+  if (tileAttackSelectionMode.value) {
+    const state = resolveSelectedTileAttackActionState();
+    if (!state.enabled) {
+      cancelTileAttackSelectionMode(true);
+      updateUnitInfoText(`攻撃モード終了: ${state.reason || "条件未達です。"}`);
+    }
+  }
+  requestMapRender();
+});
+
+watch(() => tileAttackRange.value, next => {
+  tileAttackRange.value = normalizeTileAttackRange(next);
+  if (tileAttackSelectionMode.value) {
+    const state = resolveSelectedTileAttackActionState();
+    if (!state.enabled) {
+      cancelTileAttackSelectionMode(true);
+      updateUnitInfoText(`攻撃モード終了: ${state.reason || "条件未達です。"}`);
+    } else {
+      updateUnitInfoText(`攻撃範囲: ${tileAttackPatternLabel.value} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`);
+    }
+  }
+  requestMapRender();
 });
 
 watch(() => props.gameSetupReady, ready => {
@@ -15020,6 +16355,7 @@ watch(() => props.characterCommand, command => {
         <div class="field-overlay-tile-head">
           <div class="field-overlay-tile-title">
             <span class="field-overlay-tile-title-main">{{ selectedTileDetail?.title || selectedTileDetail?.terrain || "選択マス詳細" }}</span>
+            <span v-if="selectedTileDetail" class="field-overlay-tile-title-sub">座標 ({{ selectedTileDetail.x }}, {{ selectedTileDetail.y }})</span>
           </div>
           <div class="field-overlay-tile-head-right">
             <div v-if="selectedTileDetail" class="field-overlay-tile-actions">
@@ -15027,7 +16363,7 @@ watch(() => props.characterCommand, command => {
                 type="button"
                 class="overlay-action-btn tile-action-icon-btn"
                 :disabled="!tileSurveyActionState.enabled"
-                :title="tileSurveyActionState.enabled ? `調査を開始 (${SURVEY_ACTION_REQUIRED_TURNS}T)` : `調査不可: ${tileSurveyActionState.reason}`"
+                :title="tileSurveyActionState.enabled ? '調査を開始 (危険度0%で完了)' : `調査不可: ${tileSurveyActionState.reason}`"
                 aria-label="調査"
                 @click="runSelectedTileSurveyV2"
               >
@@ -15039,9 +16375,13 @@ watch(() => props.characterCommand, command => {
                 :class="{ active: tileAttackSelectionMode }"
                 :disabled="!tileAttackActionState.enabled"
                 :title="tileAttackSelectionMode
-                  ? '攻撃モード中: 同マス/隣接マスを選択'
+                  ? (tileAttackPatternDirectional
+                    ? (tileAttackDirectionLocked
+                      ? `攻撃モード中(${tileAttackPatternLabel} / 射程${tileAttackRange}): 対象マスをクリックで攻撃`
+                      : `攻撃モード中(${tileAttackPatternLabel} / 射程${tileAttackRange}): 同じマスを2回クリックで方向固定`)
+                    : `攻撃モード中(${tileAttackPatternLabel} / 射程${tileAttackRange}): 範囲内の対象を選択`)
                   : (tileAttackActionState.enabled
-                    ? `攻撃モードON (対象${tileAttackActionState.targetCount}マス)`
+                    ? `攻撃モードON (${tileAttackPatternLabel} / 射程${tileAttackRange} / 対象${tileAttackActionState.targetCount}マス)`
                     : `攻撃不可: ${tileAttackActionState.reason}`)"
                 aria-label="攻撃"
                 @click="toggleTileAttackSelectionMode"
@@ -15109,6 +16449,48 @@ watch(() => props.characterCommand, command => {
           </div>
         </div>
         <div v-if="!tileDetailMinimized" class="field-overlay-tile-body">
+          <div v-if="selectedTileDetail && tileAttackSelectionMode" class="field-overlay-attack-pattern-list">
+            <button
+              v-for="pattern in TILE_ATTACK_PATTERN_OPTIONS"
+              :key="`tile-attack-pattern-${pattern.key}`"
+              type="button"
+              class="field-overlay-attack-pattern-btn"
+              :class="{ active: tileAttackPatternKey === pattern.key }"
+              @click="setTileAttackPattern(pattern.key)"
+            >
+              {{ pattern.label }}
+            </button>
+            <div class="field-overlay-attack-range-row">
+              <span class="field-overlay-attack-range-label">射程</span>
+              <div class="number-stepper field-overlay-attack-range-stepper">
+                <input
+                  v-model.number="tileAttackRange"
+                  type="number"
+                  class="field-overlay-attack-range-input"
+                  :min="TILE_ATTACK_RANGE_MIN"
+                  :max="TILE_ATTACK_RANGE_MAX"
+                  step="1"
+                />
+                <div class="step-stack">
+                  <button
+                    type="button"
+                    class="step-btn field-overlay-attack-range-btn"
+                    :disabled="tileAttackRange >= TILE_ATTACK_RANGE_MAX"
+                    @click="nudgeTileAttackRange(1)"
+                  >△</button>
+                  <button
+                    type="button"
+                    class="step-btn field-overlay-attack-range-btn"
+                    :disabled="tileAttackRange <= TILE_ATTACK_RANGE_MIN"
+                    @click="nudgeTileAttackRange(-1)"
+                  >▽</button>
+                </div>
+              </div>
+            </div>
+            <div v-if="tileAttackPatternDirectional" class="field-overlay-attack-direction-note">
+              {{ tileAttackDirectionLocked ? "方向固定済み: 対象マスをクリックで攻撃" : "方向未固定: 同じマスを2回クリックで方向固定" }}
+            </div>
+          </div>
           <div v-if="selectedTileDetail" class="field-overlay-tile-grid">
             <div><span>領土</span><strong>{{ selectedTileDetail.territory }}</strong></div>
             <div><span>危険度</span><strong>{{ selectedTileDetail.danger }}</strong></div>
@@ -15126,6 +16508,7 @@ watch(() => props.characterCommand, command => {
         <own-faction-navigator-modal
           :squad-entries="ownSquadNavigatorEntries"
           :unit-entries="ownCharacterNavigatorEntries"
+          :selected-tile-coord="ownFactionSelectedTileCoord"
           :selected-unit-id="selectedUnitId"
           :can-use-move-mode="canUseUnitMoveModeState"
           :move-mode-enabled="unitMoveMode"
@@ -15153,15 +16536,26 @@ watch(() => props.characterCommand, command => {
         <div class="field-overlay-clock">
           <button type="button" class="turn-clock-button" :title="`次ターンまで ${turnClockRemainingSeconds}s`" @click="openTurnActionModal">
             <div class="turn-clock-face">
-              <span class="turn-clock-mark mark-top"></span>
-              <span class="turn-clock-mark mark-right"></span>
-              <span class="turn-clock-mark mark-left"></span>
-              <div class="turn-clock-hand" :style="{ transform: `translateX(-50%) rotate(${turnClockHandDeg}deg)` }"></div>
+              <span
+                v-for="tick in turnClockTicks"
+                :key="`turn-clock-tick-${tick.index}`"
+                class="turn-clock-tick"
+                :class="{ major: tick.major }"
+                :style="{ transform: `translateX(-50%) rotate(${tick.deg}deg) translateY(-34px)` }"
+              ></span>
+              <span class="turn-clock-edge turn-clock-edge-left"></span>
+              <span class="turn-clock-edge turn-clock-edge-right"></span>
+              <div class="turn-clock-ring turn-clock-ring-outer"></div>
+              <div class="turn-clock-ring turn-clock-ring-inner"></div>
+              <div class="turn-clock-hand turn-clock-hand-outer" :style="{ transform: `translateX(-50%) rotate(${turnClockOuterHandDeg}deg)` }"></div>
+              <div class="turn-clock-hand turn-clock-hand-inner" :style="{ transform: `translateX(-50%) rotate(${turnClockInnerHandDeg}deg)` }"></div>
               <div class="turn-clock-center"></div>
             </div>
           </button>
-          <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s</div>
-          <div class="turn-clock-caption map-turn-caption">{{ mapTurnNumber }}T</div>
+          <div class="turn-clock-caption-row">
+            <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s</div>
+            <div class="turn-clock-caption map-turn-caption">{{ mapTurnNumber }}T</div>
+          </div>
         </div>
       </div>
       <aside v-if="showTestControls" class="in-canvas-test-panel">
@@ -15391,17 +16785,31 @@ watch(() => props.characterCommand, command => {
           </button>
         </div>
         <div class="unit-create-count-picker">
-          <button type="button" class="secondary count-step-btn" :disabled="!canCreateSelectedUnitType" @click="nudgeUnitCreateBatchCount(-1)">-</button>
-          <input
-            v-model.number="unitCreateBatchCount"
-            type="number"
-            min="1"
-            :max="Math.max(1, selectedUnitCreateRemaining)"
-            step="1"
-            :disabled="!canCreateSelectedUnitType"
-            @change="normalizeUnitCreateBatchCount"
-          />
-          <button type="button" class="secondary count-step-btn" :disabled="!canCreateSelectedUnitType" @click="nudgeUnitCreateBatchCount(1)">+</button>
+          <div class="number-stepper unit-create-count-stepper">
+            <input
+              v-model.number="unitCreateBatchCount"
+              type="number"
+              min="1"
+              :max="Math.max(1, selectedUnitCreateRemaining)"
+              step="1"
+              :disabled="!canCreateSelectedUnitType"
+              @change="normalizeUnitCreateBatchCount"
+            />
+            <div class="step-stack">
+              <button
+                type="button"
+                class="step-btn"
+                :disabled="!canCreateSelectedUnitType || unitCreateBatchCount >= Math.max(1, selectedUnitCreateRemaining)"
+                @click="nudgeUnitCreateBatchCount(1)"
+              >△</button>
+              <button
+                type="button"
+                class="step-btn"
+                :disabled="!canCreateSelectedUnitType || unitCreateBatchCount <= 1"
+                @click="nudgeUnitCreateBatchCount(-1)"
+              >▽</button>
+            </div>
+          </div>
         </div>
         <div class="small">
           ヒーロー {{ heroUnitCount }}/{{ heroUnitCap }} (残り {{ heroCreateRemaining }} / 解放 {{ heroCreateUnlocked }}) /
@@ -15630,13 +17038,13 @@ watch(() => props.characterCommand, command => {
                   class="step-btn"
                   :disabled="!useIslandCustomSettings"
                   @click="nudgeCustomIslandInt('largeIslandCount', 1)"
-                >+</button>
+                >△</button>
                 <button
                   type="button"
                   class="step-btn"
                   :disabled="!useIslandCustomSettings"
                   @click="nudgeCustomIslandInt('largeIslandCount', -1)"
-                >-</button>
+                >▽</button>
               </div>
             </div>
             <small class="field-help">1〜8で設定。</small>
@@ -15659,13 +17067,13 @@ watch(() => props.characterCommand, command => {
                   class="step-btn"
                   :disabled="!useIslandCustomSettings"
                   @click="nudgeCustomIslandInt('largeIslandMinGap', 1)"
-                >+</button>
+                >△</button>
                 <button
                   type="button"
                   class="step-btn"
                   :disabled="!useIslandCustomSettings"
                   @click="nudgeCustomIslandInt('largeIslandMinGap', -1)"
-                >-</button>
+                >▽</button>
               </div>
             </div>
             <small class="field-help">島と島の間の海マス数目安。</small>
@@ -15689,13 +17097,13 @@ watch(() => props.characterCommand, command => {
                     class="step-btn"
                     :disabled="!useIslandCustomSettings"
                     @click="nudgeCustomIslandInt('isletCountMin', 1)"
-                  >+</button>
+                  >△</button>
                   <button
                     type="button"
                     class="step-btn"
                     :disabled="!useIslandCustomSettings"
                     @click="nudgeCustomIslandInt('isletCountMin', -1)"
-                  >-</button>
+                  >▽</button>
                 </div>
               </div>
               <span>〜</span>
@@ -15715,13 +17123,13 @@ watch(() => props.characterCommand, command => {
                     class="step-btn"
                     :disabled="!useIslandCustomSettings"
                     @click="nudgeCustomIslandInt('isletCountMax', 1)"
-                  >+</button>
+                  >△</button>
                   <button
                     type="button"
                     class="step-btn"
                     :disabled="!useIslandCustomSettings"
                     @click="nudgeCustomIslandInt('isletCountMax', -1)"
-                  >-</button>
+                  >▽</button>
                 </div>
               </div>
             </div>

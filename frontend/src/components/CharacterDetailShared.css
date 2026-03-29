@@ -30,6 +30,7 @@
   background: rgba(255, 255, 255, 0.82);
   min-height: 36px;
   font-size: 20px;
+  width: 125px;
 }
 
 .char-skill-grid {

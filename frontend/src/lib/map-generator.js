@@ -1,7 +1,8 @@
 import { generateIsland as generateRealisticIsland } from "./realistic-island.js";
 
 const 地形定義 = [
-  { key: "平地", color: "#d9c98b", weight: 28, short: "平" },
+  { key: "平地", color: "#b6cc71", weight: 26, short: "平" },
+  { key: "荒野", color: "#d9c98b", weight: 12, short: "荒" },
   { key: "森", color: "#7fa56a", weight: 18, short: "森" },
   { key: "丘陵", color: "#a49367", weight: 12, short: "丘" },
   { key: "山岳", color: "#8b847d", weight: 10, short: "山" },
@@ -52,8 +53,11 @@ const 地形生成設定 = {
     島中央隆起幅: 68,
     画面中央隆起幅: 0,
     海岸減衰幅: 44,
-    ノイズ幅: 10,
-    平滑化回数: 2
+    ノイズ幅: 13,
+    平滑化回数: 1,
+    海沿岸高度Lv: -1,
+    海深度最小Lv: -8,
+    海深度距離係数: 1
   },
   山岳塊: {
     モード候補: ["single", "multi", "mixed"],
@@ -1000,6 +1004,44 @@ function countTrueCells(map) {
     }
   }
   return count;
+}
+
+function isValidCoordKeyText(value) {
+  if (typeof value !== "string") return false;
+  const [x, y] = value.split(",").map(Number);
+  return Number.isFinite(x) && Number.isFinite(y);
+}
+
+function normalizeCoordKeyText(value) {
+  const text = String(value || "");
+  if (!isValidCoordKeyText(text)) return "";
+  const [x, y] = text.split(",").map(Number);
+  return `${Math.floor(x)},${Math.floor(y)}`;
+}
+
+function appendEdgeEndpointsToCoordSet(targetSet, edgeIterable) {
+  if (!(targetSet instanceof Set) || !edgeIterable) return;
+  for (const edgeKeyRaw of edgeIterable) {
+    const edgeKey = String(edgeKeyRaw || "");
+    if (!edgeKey) continue;
+    const [a, b] = edgeKey.split("|");
+    const aKey = normalizeCoordKeyText(a);
+    const bKey = normalizeCoordKeyText(b);
+    if (aKey) targetSet.add(aKey);
+    if (bKey) targetSet.add(bKey);
+  }
+}
+
+function buildRiverTouchSet(riverData) {
+  const out = new Set();
+  if (!riverData || typeof riverData !== "object") return out;
+  for (const keyRaw of riverData.riverSet || []) {
+    const key = normalizeCoordKeyText(String(keyRaw || ""));
+    if (key) out.add(key);
+  }
+  appendEdgeEndpointsToCoordSet(out, riverData.edgeSet);
+  appendEdgeEndpointsToCoordSet(out, riverData.waterLinkSet);
+  return out;
 }
 
 function advanceTerrainTurn(data, options = {}) {
@@ -2038,7 +2080,7 @@ function topUpForestToTarget(grid, reliefMap, w, h, targetForestCount, allowedCo
 
   const canBecomeForest = (x, y) => {
     if (allowedCoordSet && !allowedCoordSet.has(coordKey(x, y))) return false;
-    if (grid[y][x] === "森" || grid[y][x] === "海" || grid[y][x] === "湖" || grid[y][x] === "河川" || grid[y][x] === "砂漠") {
+    if (grid[y][x] === "森" || grid[y][x] === "海" || grid[y][x] === "湖" || grid[y][x] === "河川" || grid[y][x] === "砂漠" || grid[y][x] === "荒野") {
       return false;
     }
     const relief = reliefMap?.[y]?.[x];
@@ -2342,14 +2384,14 @@ function dominantNeighborTerrain(grid, x, y, keys) {
 
 function cohereTerrainBlobs(grid, w, h) {
   const next = grid.map(r => [...r]);
-  const blobKeys = ["山岳", "丘陵", "森", "砂漠"];
+  const blobKeys = ["山岳", "丘陵", "森", "砂漠", "荒野"];
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
       const t = grid[y][x];
       if (!blobKeys.includes(t)) continue;
       const same = countAround(grid, x, y, t);
       if (same >= 1) continue;
-      const around = dominantNeighborTerrain(grid, x, y, ["山岳", "丘陵", "森", "平地"]);
+      const around = dominantNeighborTerrain(grid, x, y, ["山岳", "丘陵", "森", "平地", "荒野"]);
       next[y][x] = around || "平地";
     }
   }
@@ -2526,6 +2568,47 @@ function desertLatitudeWeight(y, h) {
   return 0.15 + (core * core) * 0.85;
 }
 
+function applyWastelandTransition(grid, reliefMap, w, h) {
+  const toWasteland = [];
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] !== "平地") continue;
+      const relief = reliefMap?.[y]?.[x];
+      if (relief !== "平地" && relief !== "丘陵") continue;
+      const desertNear = countAround(grid, x, y, "砂漠");
+      if (desertNear <= 0) continue;
+      const forestNear = countAround(grid, x, y, "森");
+      const seaNear = countAround(grid, x, y, "海");
+      const lakeNear = countAround(grid, x, y, "湖");
+      const riverNear = countAround(grid, x, y, "河川");
+      const dryness = desertLatitudeWeight(y, h);
+      const aridScore = (desertNear * 1.35)
+        + (dryness * 1.4)
+        - (forestNear * 1.15)
+        - (lakeNear * 0.9)
+        - (riverNear * 0.45)
+        - (seaNear * 0.35);
+      if (aridScore >= 2.05 || (desertNear >= 2 && forestNear === 0 && dryness >= 0.4)) {
+        toWasteland.push({ x, y });
+      }
+    }
+  }
+  for (const p of toWasteland) {
+    grid[p.y][p.x] = "荒野";
+  }
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] !== "荒野") continue;
+      const desertNear = countAround(grid, x, y, "砂漠");
+      const forestNear = countAround(grid, x, y, "森");
+      if (forestNear >= 2 && desertNear <= 1) {
+        grid[y][x] = "平地";
+      }
+    }
+  }
+  return toWasteland.length;
+}
+
 function placeCentralOasis(grid, w, h) {
   const deserts = [];
   for (let y = 1; y < h - 1; y += 1) {
@@ -2554,25 +2637,95 @@ function placeCentralOasis(grid, w, h) {
   return true;
 }
 
+function buildSeaDistanceMapFromLand(grid, w, h) {
+  const distanceMap = buildInitialGrid(w, h, Number.POSITIVE_INFINITY);
+  const queue = [];
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] === "海") continue;
+      distanceMap[y][x] = 0;
+      queue.push({ x, y });
+    }
+  }
+  if (!queue.length) {
+    return buildInitialGrid(w, h, 1);
+  }
+  let head = 0;
+  while (head < queue.length) {
+    const cur = queue[head];
+    head += 1;
+    const baseDistance = Number(distanceMap[cur.y][cur.x]) || 0;
+    const neighbors = getHexNeighborCoords(w, h, cur.x, cur.y);
+    for (const n of neighbors) {
+      if (grid[n.y][n.x] !== "海") continue;
+      const nextDistance = baseDistance + 1;
+      if (nextDistance >= distanceMap[n.y][n.x]) continue;
+      distanceMap[n.y][n.x] = nextDistance;
+      queue.push({ x: n.x, y: n.y });
+    }
+  }
+  return distanceMap;
+}
+
+function resolveSeaHeightLevelByDistance(distanceFromLand) {
+  const coastalLevel = Number.isFinite(地形生成設定.高度.海沿岸高度Lv)
+    ? Math.floor(地形生成設定.高度.海沿岸高度Lv)
+    : -1;
+  const minLevel = Number.isFinite(地形生成設定.高度.海深度最小Lv)
+    ? Math.floor(地形生成設定.高度.海深度最小Lv)
+    : -8;
+  const distanceFactor = Number.isFinite(地形生成設定.高度.海深度距離係数)
+    ? Math.max(0.1, Number(地形生成設定.高度.海深度距離係数))
+    : 1;
+  const distBase = Number.isFinite(distanceFromLand) ? Number(distanceFromLand) : 1;
+  const dist = Math.max(1, Math.floor(distBase));
+  const depthStep = Math.max(0, Math.floor((dist - 1) * distanceFactor));
+  return clamp(coastalLevel - depthStep, minLevel, coastalLevel);
+}
+
 function buildHeightLevelMap(grid, 高度マップ, w, h) {
-  const levelMap = buildInitialGrid(w, h, 0);
+  const levelMap = buildInitialGrid(w, h, null);
+  const seaDistanceMap = buildSeaDistanceMapFromLand(grid, w, h);
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
       const terrain = grid[y][x];
       if (terrain === "海") {
-        levelMap[y][x] = -2;
+        const distanceFromLand = seaDistanceMap?.[y]?.[x];
+        levelMap[y][x] = resolveSeaHeightLevelByDistance(distanceFromLand);
         continue;
       }
       if (terrain === "湖") {
-        levelMap[y][x] = -1;
         continue;
       }
       const raw = Number.isFinite(高度マップ?.[y]?.[x]) ? 高度マップ[y][x] : 35;
       let level = Math.round((raw - 42) / 10);
+      if (terrain === "山岳") level += 1;
+      if (terrain === "火山") level += 2;
       if (terrain === "丘陵") level = Math.max(level, 1);
       if (terrain === "山岳") level = Math.max(level, 2);
       if (terrain === "火山") level = Math.max(level, 3);
       levelMap[y][x] = clamp(level, -1, 8);
+    }
+  }
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] !== "湖") continue;
+      const neighborLevels = getHexNeighborCoords(w, h, x, y)
+        .map(n => ({ level: levelMap?.[n.y]?.[n.x], terrain: grid?.[n.y]?.[n.x] }))
+        .filter(n => n.terrain !== "海" && Number.isFinite(n.level))
+        .map(n => Number(n.level));
+      if (!neighborLevels.length) {
+        levelMap[y][x] = -1;
+        continue;
+      }
+      const average = Math.round(neighborLevels.reduce((sum, value) => sum + value, 0) / neighborLevels.length);
+      const minLevel = Math.min(...neighborLevels);
+      const maxLevel = Math.max(...neighborLevels);
+      // 湖は周囲より約1段低い水準に寄せる
+      const aroundMinusOne = average - 1;
+      const normalized = Math.max(minLevel - 1, Math.min(maxLevel, aroundMinusOne));
+      levelMap[y][x] = clamp(normalized, -2, 7);
     }
   }
   return levelMap;
@@ -2921,7 +3074,7 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
 function augmentRiverDataWithWaterfalls(riverData, 高度レベルマップ) {
   const waterfallSet = new Set();
   const waterfallEdgeSet = new Set();
-  if (!riverData) return { waterfallSet, waterfallEdgeSet };
+  if (!riverData) return { waterfallSet, waterfallEdgeSet, riverTouchSet: new Set() };
 
   const markEdgeIfWaterfall = edgeKey => {
     const [a, b] = edgeKey.split("|");
@@ -2947,6 +3100,7 @@ function augmentRiverDataWithWaterfalls(riverData, 高度レベルマップ) {
 
   return {
     ...riverData,
+    riverTouchSet: buildRiverTouchSet(riverData),
     waterfallSet,
     waterfallEdgeSet
   };
@@ -2962,7 +3116,7 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
   const edgeSet = new Set();
   const waterLinkSet = new Set();
   if (!waters.length) {
-    return { riverSet, sourceSet, branchSet, mouthSet, edgeSet, waterLinkSet };
+    return { riverSet, sourceSet, branchSet, mouthSet, edgeSet, waterLinkSet, riverTouchSet: new Set() };
   }
 
   const flowLevelMap = (高度レベルマップ && 高度レベルマップ.length)
@@ -3041,25 +3195,34 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
             const drop = currentLevel - level;
             const waterDist = minDistanceToTargets(n.x, n.y, waters);
             const canFlow = isWaterTerrain(terrain) || level <= currentLevel;
-            const score = (isWaterTerrain(terrain) ? -999 : 0)
-              + (drop >= 0 ? -(drop * 3.6) : 999)
-              + (waterDist * 0.65)
-              + (Math.random() * 0.35);
-            return { n, terrain, level, drop, waterDist, score, canFlow };
+            // Edge-flow rule:
+            // Always prioritize lower height direction first.
+            // Same-height is fallback. Uphill is forbidden.
+            const downhillRank = isWaterTerrain(terrain)
+              ? -1
+              : (level < currentLevel ? 0 : 1);
+            const tie = Math.random() * 0.12;
+            return { n, terrain, level, drop, waterDist, canFlow, downhillRank, tie };
           })
           .filter(info => info.canFlow)
-          .sort((a, b) => a.score - b.score);
+          .sort((a, b) =>
+            a.downhillRank - b.downhillRank
+            || a.level - b.level
+            || a.waterDist - b.waterDist
+            || a.tie - b.tie
+          );
 
         if (!candidates.length) break;
         let nextInfo = candidates[0];
 
         if (ch.age < 2 && isWaterTerrain(nextInfo.terrain) && candidates.length > 1) {
-          nextInfo = candidates[1];
+          const nonWater = candidates.find(c => !isWaterTerrain(c.terrain));
+          if (nonWater) nextInfo = nonWater;
         }
 
         if (ch.age >= 3 && ch.branchBudget > 0 && candidates.length > 1) {
           const branchChance = ch.major ? 0.35 : 0.18;
-          const alt = candidates[1];
+          const alt = candidates.find(c => c !== nextInfo && !isWaterTerrain(c.terrain));
           if (alt && !isWaterTerrain(alt.terrain) && Math.random() < branchChance) {
             branchSet.add(currentKey);
             channels.push({
@@ -3112,7 +3275,15 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
     .sort((a, b) => b.sourceScore - a.sourceScore || Math.random() - 0.5);
 
   if (!sourceCandidates.length) {
-    return { riverSet, sourceSet, branchSet, mouthSet, edgeSet, waterLinkSet };
+    return {
+      riverSet,
+      sourceSet,
+      branchSet,
+      mouthSet,
+      edgeSet,
+      waterLinkSet,
+      riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet })
+    };
   }
 
   const riverCount = Math.max(3, Math.floor(totalTiles / 70));
@@ -3134,7 +3305,15 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
     traceRiverFromSource(src, i < majorCount);
   }
 
-  return { riverSet, sourceSet, branchSet, mouthSet, edgeSet, waterLinkSet };
+  return {
+    riverSet,
+    sourceSet,
+    branchSet,
+    mouthSet,
+    edgeSet,
+    waterLinkSet,
+    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet })
+  };
 }
 
 function parseCoordKey(key) {
@@ -3307,6 +3486,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
       );
     }
   }
+  applyWastelandTransition(grid, reliefMap, w, h);
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
@@ -3439,6 +3619,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
 export {
   parseCoordKey,
   hexCenter,
+  buildRiverTouchSet,
   createIslandShapeData,
   createTerrainMapData,
   advanceTerrainTurn

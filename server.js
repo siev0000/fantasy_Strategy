@@ -472,17 +472,36 @@ function setupDevAutoReload() {
   });
 
   let timer = null;
-  let reason = "file change";
+  const pendingReasons = new Set();
+  let pendingChangeCount = 0;
+
+  function normalizeReloadReason(filePath, eventName) {
+    const relativePath = path.relative(__dirname, filePath).replace(/\\/g, "/");
+    if (relativePath.startsWith("web-vue-dist/")) {
+      return "front rebuild";
+    }
+    return `${eventName}: ${relativePath}`;
+  }
 
   function queueReload(filePath, eventName) {
-    const relativePath = path.relative(__dirname, filePath).replace(/\\/g, "/");
-    reason = `${eventName}: ${relativePath}`;
+    pendingReasons.add(normalizeReloadReason(filePath, eventName));
+    pendingChangeCount += 1;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
+      const reasonList = [...pendingReasons];
+      let reason = "file change";
+      if (reasonList.length === 1) {
+        reason = reasonList[0];
+      } else if (reasonList.length > 1) {
+        const head = reasonList.slice(0, 2).join(", ");
+        reason = `${head} (+${reasonList.length - 2})`;
+      }
       io.emit("dev:reload", { reason, at: Date.now() });
-      console.log(`[dev] browser reload -> ${reason}`);
+      console.log(`[dev] browser reload -> ${reason} [${pendingChangeCount} changes]`);
+      pendingReasons.clear();
+      pendingChangeCount = 0;
       timer = null;
-    }, 120);
+    }, 900);
   }
 
   watcher.on("change", filePath => queueReload(filePath, "change"));

@@ -14,10 +14,10 @@ function Get-Lines { param([string]$Path,[int]$Skip=0,[int]$First=40)
   $enc=[Text.UTF8Encoding]::new($false)
   $text=[IO.File]::ReadAllText($Path,$enc)
   if($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF){ $text=$text.Substring(1) }
-  $ls=$text -split \"`r?`n\"
-  for($i=$Skip; $i -lt [Math]::Min($Skip+$First,$ls.Length); $i++){ \"{0:D4}: {1}\" -f ($i+1), $ls[$i] }
+  $ls=$text -split "`r?`n"
+  for($i=$Skip; $i -lt [Math]::Min($Skip+$First,$ls.Length); $i++){ "{0:D4}: {1}" -f ($i+1), $ls[$i] }
 }
-Get-Lines -Path \"path/to/file.ext\" -First 120 -Skip 0
+Get-Lines -Path "path/to/file.ext" -First 120 -Skip 0
 "'
 ```
 

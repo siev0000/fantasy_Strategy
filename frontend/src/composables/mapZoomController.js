@@ -6,6 +6,7 @@ export function createMapZoomController(options = {}) {
     setZoomPercentValue,
     normalizeZoomPercent,
     resolveMinZoomPercent,
+    resolveZoomStepPercent,
     toSafeNumber,
     nonEmptyText,
     normalizeFocusPoint,
@@ -67,12 +68,21 @@ export function createMapZoomController(options = {}) {
     return !!dataLike && !isMinZoomActive(dataLike);
   }
 
+  function getZoomStepPercent(dataLike = getCurrentData()) {
+    const fallback = 25;
+    const raw = Number(resolveZoomStepPercent?.(dataLike));
+    if (!Number.isFinite(raw)) return fallback;
+    return Math.max(5, Math.round(raw));
+  }
+
   function zoomIn() {
-    setZoomPercent(getZoomPercent() + 10, { centerMode: "village" });
+    const step = getZoomStepPercent();
+    setZoomPercent(getZoomPercent() + step, { centerMode: "village" });
   }
 
   function zoomOut() {
-    setZoomPercent(getZoomPercent() - 10, { centerMode: "village" });
+    const step = getZoomStepPercent();
+    setZoomPercent(getZoomPercent() - step, { centerMode: "village" });
   }
 
   function zoomReset() {

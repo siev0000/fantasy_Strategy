@@ -122,6 +122,8 @@ export const GAME_START_PLAYER_PLACEMENT_MODE_VALUES = new Set([
 // 勢力データの地形名ゆれを正規化するマップ。
 export const FACTION_TERRAIN_ALIAS_MAP = {
   平地: "平地",
+  荒: "荒野",
+  荒野: "荒野",
   森: "森",
   丘: "丘陵",
   丘陵: "丘陵",
@@ -143,12 +145,33 @@ export const FACTION_TERRAIN_ALIAS_MAP = {
 };
 
 // 生成・描画で使う地形カテゴリ。
-export const BASE_TERRAIN_KEYS = new Set(["平地", "森", "丘陵", "山岳", "雪原", "火山", "湖", "砂漠", "河川"]);
+export const BASE_TERRAIN_KEYS = new Set(["平地", "荒野", "森", "丘陵", "山岳", "雪原", "火山", "湖", "砂漠", "河川"]);
 export const SPECIAL_TERRAIN_KEYS = new Set(["沼地", "洞窟", "峡谷"]);
 
-// ゲーム描画の基準解像度。
-export const GAME_VIEW_WIDTH = 1280;
-export const GAME_VIEW_HEIGHT = 720;
+// ゲーム描画の解像度プリセット。
+export const GAME_VIEW_PRESET_CONFIG = Object.freeze({
+  performance: Object.freeze({
+    label: "軽量重視",
+    width: 960,
+    height: 480
+  }),
+  balance: Object.freeze({
+    label: "バランス",
+    width: 1440,
+    height: 720
+  }),
+  quality: Object.freeze({
+    label: "高品質",
+    width: 1920,
+    height: 960
+  })
+});
+export const DEFAULT_GAME_VIEW_PRESET_KEY = "balance";
+
+// 既存処理との互換用: 既定プリセットを基準解像度として扱う。
+const DEFAULT_GAME_VIEW_PRESET = GAME_VIEW_PRESET_CONFIG[DEFAULT_GAME_VIEW_PRESET_KEY];
+export const GAME_VIEW_WIDTH = DEFAULT_GAME_VIEW_PRESET.width;
+export const GAME_VIEW_HEIGHT = DEFAULT_GAME_VIEW_PRESET.height;
 
 // UI手動スケール設定（見た目調整用）。
 // ここを変更すると、ゲーム内UIの相対サイズだけを調整できる。
@@ -207,6 +230,12 @@ export const MAP_SPECIAL_ICON_CONFIG = {
   offsetY: -0,
   fallbackTextFontSizePx: 25,
   fallbackCaveTextFontSizePx: 20
+};
+
+// 森タイル上に重ねるアイコン設定。
+export const MAP_FOREST_ICON_CONFIG = {
+  size: 45,
+  offsetY: 0
 };
 
 // 滝アイコン設定。

@@ -34,8 +34,8 @@
 
 .phaser-stage {
   position: relative;
-  width: 1280px;
-  height: 720px;
+  width: 100%;
+  height: 100%;
   display: block;
 }
 
@@ -445,6 +445,9 @@
   min-height: 0;
   overflow: auto;
   padding-right: 2px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
 }
 
 .field-overlay-tile-title-main {
@@ -463,6 +466,82 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px 8px;
+}
+
+.field-overlay-attack-pattern-list {
+  display: grid;
+  grid-template-columns: minmax(0, 120px);
+  gap: 4px;
+  align-content: start;
+}
+
+.field-overlay-attack-pattern-btn {
+  min-height: 30px;
+  border: 1px solid rgba(233, 205, 149, 0.5);
+  border-radius: 6px;
+  background: rgba(23, 30, 45, 0.74);
+  color: #f6e8c6;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.field-overlay-attack-pattern-btn:hover {
+  background: rgba(42, 54, 79, 0.86);
+}
+
+.field-overlay-attack-pattern-btn.active {
+  border-color: rgba(255, 167, 137, 0.95);
+  background: rgba(109, 32, 28, 0.9);
+  color: #fff3dd;
+  box-shadow: 0 0 0 1px rgba(255, 193, 152, 0.25) inset;
+}
+
+.field-overlay-attack-range-row {
+  margin-top: 2px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 92px);
+  align-items: center;
+  gap: 6px;
+}
+
+.field-overlay-attack-range-label {
+  font-size: 14px;
+  color: rgba(247, 231, 197, 0.9);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.field-overlay-attack-range-stepper {
+  grid-template-columns: minmax(0, 1fr) 24px;
+  gap: 4px;
+}
+
+.field-overlay-attack-range-stepper .step-stack {
+  gap: 2px;
+}
+
+.field-overlay-attack-range-btn {
+  min-height: 13px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.field-overlay-attack-range-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.field-overlay-attack-range-input {
+  min-height: 28px !important;
+  font-size: 0.88rem !important;
+}
+
+.field-overlay-attack-direction-note {
+  margin-top: 2px;
+  font-size: 14px;
+  color: rgba(250, 235, 203, 0.9);
+  line-height: 1.2;
 }
 
 .field-overlay-tile-actions {
@@ -690,7 +769,7 @@
 }
 
 .field-overlay-clock {
-  width: 106px;
+  width: 130px;
   display: grid;
   gap: 4px;
   justify-items: center;
@@ -717,7 +796,7 @@
   width: 92px;
   height: 48px;
   border-radius: 92px 92px 0 0;
-  border: 1px solid rgba(245, 217, 158, 0.46);
+  border: 1px solid rgba(245, 217, 158, 0.64);
   border-bottom: 0;
   overflow: hidden;
   background: radial-gradient(circle at 50% 100%, rgba(34, 46, 62, 0.82), rgba(16, 11, 8, 0.9));
@@ -730,87 +809,115 @@
     0 0 0 1px rgba(255, 233, 188, 0.35);
 }
 
-.turn-clock-mark {
+.turn-clock-ring {
   position: absolute;
-  background: rgba(255, 236, 202, 0.8);
+  border-radius: 999px 999px 0 0;
+  border: 1px solid rgba(255, 236, 202, 0.36);
+  border-bottom: 0;
+}
+
+.turn-clock-ring.turn-clock-ring-outer {
+  left: 7px;
+  right: 7px;
+  top: 6px;
+  height: 35px;
+}
+
+.turn-clock-ring.turn-clock-ring-inner {
+  left: 22px;
+  right: 22px;
+  top: 20px;
+  height: 20px;
+  border-color: rgba(154, 219, 255, 0.5);
+}
+
+.turn-clock-tick {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 1px;
+  height: 4px;
   border-radius: 1px;
+  background: rgba(255, 235, 198, 0.56);
+  transform-origin: 50% 100%;
+  pointer-events: none;
 }
 
-.turn-clock-mark.mark-top {
-  top: 8px;
-  left: 50%;
+.turn-clock-tick.major {
   width: 2px;
-  height: 10px;
-  transform: translateX(-50%);
+  height: 7px;
+  background: rgba(255, 235, 198, 0.84);
 }
 
-.turn-clock-mark.mark-right {
-  top: 82%;
-  right: 11px;
-  width: 10px;
-  height: 2px;
-  transform: translateY(-50%);
+.turn-clock-edge {
+  position: absolute;
+  top: 6px;
+  bottom: 2px;
+  width: 1px;
+  background: rgba(255, 235, 198, 0.7);
+  pointer-events: none;
 }
 
-.turn-clock-mark.mark-bottom {
-  bottom: 6px;
-  left: 50%;
-  width: 2px;
-  height: 9px;
-  transform: translateX(-50%);
+.turn-clock-edge.turn-clock-edge-left {
+  left: 2px;
 }
 
-.turn-clock-mark.mark-left {
-  top: 82%;
-  left: 11px;
-  width: 10px;
-  height: 2px;
-  transform: translateY(-50%);
+.turn-clock-edge.turn-clock-edge-right {
+  right: 2px;
 }
 
 .turn-clock-hand {
   position: absolute;
   left: 50%;
+  transform-origin: 50% 100%;
+  border-radius: 2px;
+}
+
+.turn-clock-hand.turn-clock-hand-outer {
+  bottom: 3px;
+  width: 3px;
+  height: 34px;
+  background: linear-gradient(180deg, #fff2d0, #e3c072);
+}
+
+.turn-clock-hand.turn-clock-hand-inner {
   bottom: 3px;
   width: 2px;
-  height: 34px;
-  transform-origin: 50% 100%;
-  background: linear-gradient(180deg, #fff2d0, #e3c072);
-  border-radius: 2px;
+  height: 20px;
+  background: linear-gradient(180deg, #d8efff, #5dc2ff);
 }
 
 .turn-clock-center {
   position: absolute;
   left: 50%;
   bottom: 2px;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   transform: translateX(-50%);
   background: #ffe8b7;
   border: 1px solid rgba(72, 50, 21, 0.8);
 }
 
-.turn-clock-turn {
-  position: absolute;
-  left: 50%;
-  top: 64%;
-  transform: translate(-50%, -50%);
-  font-size: 0.62rem;
-  font-weight: 700;
-  color: #f8e7c2;
-}
-
 .turn-clock-caption {
-  width: 100%;
+  min-width: 0;
   text-align: center;
   border-radius: 8px;
   border: 1px solid rgba(245, 217, 158, 0.36);
   background: linear-gradient(170deg, rgba(19, 25, 35, 0.74), rgba(16, 11, 8, 0.68));
-  padding: 4px 8px;
+  padding: 4px 6px;
   font-size: 0.72rem;
   line-height: 1;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.turn-clock-caption-row {
+  width: 100%;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
 }
 
 .turn-clock-caption.map-turn-caption {
@@ -914,20 +1021,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 0;
 }
 
-.unit-create-count-picker input {
-  width: 96px;
+.unit-create-count-stepper {
+  width: 120px;
+}
+
+.unit-create-count-picker .number-stepper input {
+  width: 100%;
   border: 1px solid rgba(173, 138, 86, 0.7);
   border-radius: 8px;
   padding: 6px 8px;
   font-size: 1rem;
   text-align: center;
-}
-
-.count-step-btn {
-  min-width: 42px;
 }
 
 .unit-create-rarity-modal {

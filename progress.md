@@ -1,6 +1,8 @@
 Original prompt: 全体を整理してほしい。メモと地形ランダム生成だけは消さないで vueファイルにできるところはVueファイルに
 
 - 2026-02-26: Started reorganization with focus on preserving map random generation and memo docs.
+- 2026-03-28: 移動コスト判定を調整。`高さ差1`は通常コスト、`高さ差2以上`のみ追加コスト+1に変更して、高さLv2以上タイルが実質移動不能になりやすい問題を緩和。`PhaserMapGeneratorPanel.vue` と `pathfindingWorker.js` の両方を同条件に統一。
+- 2026-03-28: 高度差2マスを増やす調整を実施。`地形生成設定.高度` の `ノイズ幅: 10 -> 13`、`平滑化回数: 2 -> 1`。さらに高度Lv算出で `山岳 +1 / 火山 +2` の持ち上げを追加し、平地との段差が出やすいように調整。
 - 2026-03-20: 装備在庫UIを専用モーダル化。`EquipmentInventoryModal.vue` を追加し、フィールド右上アクションに「道具一覧」ボタン（装備アイコン）を追加。`PhaserMapGeneratorPanel.vue` から開閉できるよう接続。
 - 2026-03-20: `CharacterStatusModal.vue` の暫定「装備在庫チップバー」を削除し、装備在庫表示を専用モーダルへ一本化。
 - 2026-03-20: 検証: `npm run build:front` 成功。
@@ -18,6 +20,8 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 - 2026-03-20: 検証: `npm run build:front` 成功。
 - 2026-03-20: 道具一覧モーダルに「武器生成」機能を追加。武器名・レアリティ・個数を指定して生成可能にし、鍛冶Lvに応じて選択可能レアリティを制御（common〜legendary）。
 - 2026-03-20: `PhaserMapGeneratorPanel.vue` に武器生成イベントハンドラを追加し、既存 `craftEquipmentInventoryItem` に接続。ログ/通知は「武器生成」として表示。
+- 2026-03-28: 地形高度レベルを再調整。海にディスタンスマップを使った深度差を導入し、湖/平地/山岳のスケールを再設計して湖が単一値にならず、山岳により大きな高さ差が出るように変更。
+- 2026-03-28: 検証: `npm run build:front` 成功。
 - 2026-03-20: 装備生成コスト計算を調整。`消費量.json(Lv)` と `装備.json` の `木材` / `鉱石` 倍率のみで素材計算し、石材・金・銀・宝石は武器生成基本コストから除外。
 - 2026-03-20: 鍛冶生成上限は `鍛冶場Lv` の定義上限（defined cap）参照に変更。
 - 2026-03-20: 武器生成「押しても何も起きない」対策として、道具モーダルに親関数直接呼び出し経路（`onCraftWeapon`）を追加し、モーダル内に実行結果/失敗理由メッセージを表示。
@@ -824,3 +828,38 @@ pm run build:front.- 2026-03-10: Fixed fog-of-war toggle regression: when test m
 - 2026-03-24: タイル詳細に攻撃ボタンを追加。押下で攻撃モード（赤カーソル）に切替し、隣接マスクリックで仮戦闘モーダルを開く暫定フローを実装。
 - 2026-03-24: 検証 `npm run build:front` 成功。
 - 2026-03-24: `develop-web-game` Playwright クライアント実行を試行したが、スキル実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-28: 川/滝/溶岩の画面描画を edge 基準へ寄せるため、PhaserMapGeneratorPanel.vue のタイル中央滝アイコン描画と川ノード（円）描画を削除。川・滝・溶岩は共有辺ライン描画のみを使用。
+- 2026-03-28: 関連する未使用定義（esolveWaterfallIconName / MAP_WATERFALL_ICON_CONFIG 参照 / waterfallTextureKey）を整理。
+- 2026-03-28: 検証: 
+pm run build:front 成功。
+- 2026-03-28: develop-web-game Playwrightクライアント実行は playwright パッケージ未導入のため失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-28: Height-difference borders now use Δ-level to choose line count (diff>1 draws 2 or 3 lines, ≤1 hides), colors/alpha keyed to strong drops, matching the spec for multi-line borders.
+- 2026-03-28: ビルド: 
+pm run build:front 成功 (chunk warning unchanged).
+
+- 2026-03-29: 平地/荒野を分離。`地形定義`に`荒野`を追加し、色を調整（平地=黄緑系、荒野=旧平地色）。
+- 2026-03-29: 生成ルールを追加。砂漠隣接・乾燥度・森隣接などを使って`平地 -> 荒野`へ変換する`applyWastelandTransition`を実装し、「森寄りは平地、砂漠寄りは荒野」を反映。
+- 2026-03-29: 森の目標補充が荒野を上書きしないよう`topUpForestToTarget`を修正。
+- 2026-03-29: 地形塊の整形対象に`荒野`を追加（孤立荒野の補正含む）。
+- 2026-03-29: 勢力地形名の正規化とカテゴリに`荒野`を追加（`FACTION_TERRAIN_ALIAS_MAP` / `BASE_TERRAIN_KEYS`）。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: `develop-web-game` Playwright クライアントは今回も `playwright` パッケージ未解決で実行不可（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-29: 数値入力UIを「右側△▽ステッパー」基準に統一。`PhaserMapGeneratorPanel.vue` の島カスタム/攻撃射程/ユニット作成数を更新し、`App.vue` のゲーム開始設定（プレイヤー数・別勢力数）にも同形式を追加。
+- 2026-03-29: `App.vue` にゲーム開始数値のステップ調整関数 `nudgeGameStartCount` を追加。合計上限（最大勢力数）に従う既存 `normalizeGameStartCounts` を継続利用。
+- 2026-03-29: 検証 `npm run build:front` 成功。- 2026-03-29: develop-web-game Playwrightクライアント再実行は playwright パッケージ未解決のため失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-29: 修正: 戦闘勝利後の敵マーカー残留を抑止。`applyFieldBattleResultV2` で調査文脈を含む全勝利時にタイル敵クリア処理を通すよう変更し、`clearMonsterTileByAmbush` の即時再抽選を停止（次回調査時再抽選）。
+- 2026-03-29: 修正: 選択マス詳細の敵表示を改善。発見時の敵名を `spottedEnemyNamesByTile` に記録し、現在敵がいない場合でも `発見履歴:` として表示。
+- 2026-03-29: 修正: ターン終了時HP回復の適用条件を見直し。再生値回復は常時適用、地形回復は自領または村中心で適用するよう `applyVillageTileRecoveryTurn` を更新。
+- 2026-03-29: 検証: `npm run build:front` 成功。`develop-web-game` Playwright クライアントは `playwright` パッケージ未解決で実行不可（ERR_MODULE_NOT_FOUND）。
+- 2026-03-29: 追補: 奇襲ログの「再抽選:0体」表示を抑止。再ビルド確認 (`npm run build:front` 成功)。
+- 2026-03-29: 危険度ルール更新。自領タイルは `applyDangerRulesByTerritory` で常時危険度0%に補正し、危険度0%タイルは `clearEnemyPresenceAtTile` で敵自然配置を抑止。
+- 2026-03-29: 無主地の危険度自然上昇を追加。3ターンごとに +20%（上限100%）をターン進行時のみ適用。
+- 2026-03-29: 村配置時/マップ適用時に危険度ルールを再適用し、`rerollEnemySpawnAtTile` 側でも危険度0%時は敵再抽選しないよう修正。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: 初期村配置直後の危険度0化不具合を修正。マルチ勢力作成中に `syncActiveTestPlayerSlotFromLiveState` より前に領土再計算していたため中心1マスのみ0化されるケースがあり、同期→領土再計算→危険度適用の順へ変更。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: 危険度0化条件を拡張。`applyDangerRulesByTerritory` で「自勢力のみ」から「領土化済みタイル全体（全勢力）」を危険度0%維持に変更。
+- 2026-03-29: マルチ初期配置直後の同期差分対策として、`rebuildTerritorySets` のアクティブ勢力判定は live `villageState` を優先し、activeId未設定時は先頭スロットIDへフォールバック。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: 初期配置直後の危険度反映を強化。`syncDangerRulesForCurrentMap` を追加し、村配置完了後 `nextTick` で領土再計算→危険度同期→再描画を再実行して開始時ズレを抑止。
+- 2026-03-29: 検証 `npm run build:front` 成功。

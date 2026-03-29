@@ -155,6 +155,8 @@ export function createOwnCharacterNavigatorEntries({
         ? moveUnitIconSrc({ ...unit, subIconName, iconName: subIconName, race: "" })
         : "";
       const isMilitary = isMilitaryUnitRecord(unit);
+      const isSovereign = !!isSovereignUnit(unit);
+      const squadLeaderId = nonEmptyText(unit?.squadLeaderId);
       return {
         id: nonEmptyText(unit?.id),
         name: nonEmptyText(unit?.name) || "ユニット",
@@ -178,6 +180,9 @@ export function createOwnCharacterNavigatorEntries({
           速度: Math.max(0, Math.floor(toSafeNumber(unit?.status?.速度, 0))),
           命中: Math.max(0, Math.floor(toSafeNumber(unit?.status?.命中, 0)))
         },
+        isSovereign,
+        squadLeaderId,
+        isSquadMember: !!squadLeaderId,
         rolePriority: rolePriority(unit),
         positioned,
         x: positioned ? Math.floor(rawX) : null,
