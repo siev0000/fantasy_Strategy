@@ -14,7 +14,7 @@ export function useUnitMovePanel(options = {}) {
   const movingUnitIdSet = options.movingUnitIdSet && typeof options.movingUnitIdSet === "object"
     ? options.movingUnitIdSet
     : ref(new Set());
-  const unitMoveMode = options.unitMoveMode;
+  const moveCommandUnitId = options.moveCommandUnitId;
   const villagePlacementMode = options.villagePlacementMode;
   const unitList = options.unitList;
   const selectedUnitId = options.selectedUnitId;
@@ -310,6 +310,46 @@ export function useUnitMovePanel(options = {}) {
     });
   });
 
+  const moveCommandUnit = computed(() => {
+    const armedUnitId = nonEmptyText(moveCommandUnitId?.value);
+    if (!armedUnitId) return null;
+    return unitList.value.find(unit => nonEmptyText(unit?.id) === armedUnitId) || null;
+  });
+
+  const isMoveCommandPendingForSelectedUnit = computed(() => {
+    const armedUnitId = nonEmptyText(moveCommandUnitId?.value);
+    const activeSelectedUnitId = nonEmptyText(selectedUnitId?.value);
+    return !!armedUnitId && armedUnitId === activeSelectedUnitId;
+  });
+
+  function clearMoveCommandState(options = {}) {
+    if (moveCommandUnitId && typeof moveCommandUnitId === "object" && "value" in moveCommandUnitId) {
+      moveCommandUnitId.value = "";
+    }
+    if (options.clearCandidate !== false) {
+      moveUnitCandidateId.value = "";
+    }
+    if (options.clearPlannedPath !== false) {
+      clearPlannedMovePath();
+    }
+  }
+
+  function armMoveCommandForUnit(unitId, options = {}) {
+    const normalizedId = nonEmptyText(unitId);
+    if (!normalizedId) {
+      clearMoveCommandState(options);
+      return false;
+    }
+    moveCommandUnitId.value = normalizedId;
+    if (options.syncCandidate !== false) {
+      moveUnitCandidateId.value = normalizedId;
+    }
+    if (options.clearPlannedPath !== false) {
+      clearPlannedMovePath();
+    }
+    return true;
+  }
+
   function canUseUnitMoveMode() {
     return canUseUnitMoveModeState.value;
   }
@@ -344,22 +384,20 @@ export function useUnitMovePanel(options = {}) {
     }
     const target = candidates.find(unit => unit.id === moveUnitCandidateId.value) || candidates[0];
     selectedUnitId.value = target.id;
-    unitMoveMode.value = true;
-    clearPlannedMovePath();
+    armMoveCommandForUnit(target.id);
     showMoveUnitModal.value = false;
-    updateUnitInfoText(`${target.name} を移動対象に選択`);
+    updateUnitInfoText(`${target.name} の移動先を選択`);
     emitCharacterStateChange();
     requestMapRender();
   }
 
   function toggleUnitMoveMode() {
-    if (unitMoveMode.value) {
-      unitMoveMode.value = false;
+    if (isMoveCommandPendingForSelectedUnit.value) {
       showMoveUnitModal.value = false;
-      clearPlannedMovePath();
+      clearMoveCommandState({ clearCandidate: false });
       clearHousingUpgradeSelectionState();
       if (mapClickInfo?.value != null) {
-        mapClickInfo.value = "クリック座標: - / ユニット移動モードを OFF にしました。";
+        mapClickInfo.value = "クリック座標: - / 移動指示を解除しました。";
       }
       emitCharacterStateChange();
       requestMapRender();
@@ -558,6 +596,44 @@ export function useUnitMovePanel(options = {}) {
     return { stop: true, reason: `${enemyName}との遭遇で停止`, battleTriggered: false, battleEntry: stopEntry };
   }
 
+  function normalizeMoveRouteNodes(path = []) {
+    if (!Array.isArray(path)) return [];
+    const nodes = [];
+    for (const node of path) {
+      const x = Number(node?.x);
+      const y = Number(node?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      nodes.push({ x: Math.floor(x), y: Math.floor(y) });
+    }
+    return nodes;
+  }
+
+  function applyMoveRouteToParticipants(participantIdSet, pathNodes = []) {
+    if (!(participantIdSet instanceof Set) || !participantIdSet.size) return;
+    const normalizedPath = normalizeMoveRouteNodes(pathNodes);
+    const remainingTiles = Math.max(0, normalizedPath.length - 1);
+    unitList.value = unitList.value.map(row => {
+      if (!participantIdSet.has(row?.id)) return row;
+      return {
+        ...row,
+        moveRoutePathNodes: normalizedPath,
+        moveRouteRemainingTiles: remainingTiles
+      };
+    });
+  }
+
+  function clearMoveRouteFromParticipants(participantIdSet) {
+    if (!(participantIdSet instanceof Set) || !participantIdSet.size) return;
+    unitList.value = unitList.value.map(row => {
+      if (!participantIdSet.has(row?.id)) return row;
+      return {
+        ...row,
+        moveRoutePathNodes: [],
+        moveRouteRemainingTiles: 0
+      };
+    });
+  }
+
   */
 
   function shouldStopMoveByEncounterEx(encounterResult = null) {
@@ -608,6 +684,44 @@ export function useUnitMovePanel(options = {}) {
       };
     }
     return { stop: true, reason: `${enemyName}との遭遇で停止`, battleTriggered: false, battleEntry: stopEntry };
+  }
+
+  function normalizeMoveRouteNodes(path = []) {
+    if (!Array.isArray(path)) return [];
+    const nodes = [];
+    for (const node of path) {
+      const x = Number(node?.x);
+      const y = Number(node?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      nodes.push({ x: Math.floor(x), y: Math.floor(y) });
+    }
+    return nodes;
+  }
+
+  function applyMoveRouteToParticipants(participantIdSet, pathNodes = []) {
+    if (!(participantIdSet instanceof Set) || !participantIdSet.size) return;
+    const normalizedPath = normalizeMoveRouteNodes(pathNodes);
+    const remainingTiles = Math.max(0, normalizedPath.length - 1);
+    unitList.value = unitList.value.map(row => {
+      if (!participantIdSet.has(row?.id)) return row;
+      return {
+        ...row,
+        moveRoutePathNodes: normalizedPath,
+        moveRouteRemainingTiles: remainingTiles
+      };
+    });
+  }
+
+  function clearMoveRouteFromParticipants(participantIdSet) {
+    if (!(participantIdSet instanceof Set) || !participantIdSet.size) return;
+    unitList.value = unitList.value.map(row => {
+      if (!participantIdSet.has(row?.id)) return row;
+      return {
+        ...row,
+        moveRoutePathNodes: [],
+        moveRouteRemainingTiles: 0
+      };
+    });
   }
 
   async function queueMovePathPlanToTile(picked) {
@@ -675,6 +789,9 @@ export function useUnitMovePanel(options = {}) {
     let stopReason = "";
     let lastNode = { x: fromX, y: fromY };
     const participantIdSet = new Set(plan.moveGroup.participantIds);
+    let remainingRouteNodes = normalizeMoveRouteNodes(plan.path);
+    applyMoveRouteToParticipants(participantIdSet, remainingRouteNodes);
+    renderMapNow();
     const hostileFactionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
     const perTileDurationMs = resolveMoveDurationMsForStep(unit);
     try {
@@ -711,13 +828,22 @@ export function useUnitMovePanel(options = {}) {
         unitList.value = unitList.value.map(row => {
           if (!participantIdSet.has(row.id)) return row;
           const ownRemaining = resolveUnitMoveRemaining(row);
+          const nextRouteNodes = remainingRouteNodes.length > 1
+            ? remainingRouteNodes.slice(1)
+            : [{ x: next.x, y: next.y }];
+          const routeRemainingTiles = Math.max(0, nextRouteNodes.length - 1);
           return {
             ...row,
             x: next.x,
             y: next.y,
-            moveRemaining: Math.max(0, ownRemaining - stepCost)
+            moveRemaining: Math.max(0, ownRemaining - stepCost),
+            moveRoutePathNodes: nextRouteNodes,
+            moveRouteRemainingTiles: routeRemainingTiles
           };
         });
+        remainingRouteNodes = remainingRouteNodes.length > 1
+          ? remainingRouteNodes.slice(1)
+          : [{ x: next.x, y: next.y }];
         spentCost += stepCost;
         movedTiles += 1;
         lastNode = { x: next.x, y: next.y };
@@ -753,6 +879,7 @@ export function useUnitMovePanel(options = {}) {
       }
     } finally {
       setMoveGroupInProgress(plan.moveGroup, false);
+      clearMoveRouteFromParticipants(participantIdSet);
     }
     if (movedTiles <= 0) {
       if (!nonEmptyText(getLastMoveStopState()?.reason)) {
@@ -827,10 +954,8 @@ export function useUnitMovePanel(options = {}) {
   }
 
   function resetMoveUiState() {
-    unitMoveMode.value = false;
+    clearMoveCommandState({ clearCandidate: true });
     showMoveUnitModal.value = false;
-    moveUnitCandidateId.value = "";
-    clearPlannedMovePath();
   }
 
   return {
@@ -840,10 +965,14 @@ export function useUnitMovePanel(options = {}) {
     displayMoveRemainingForCandidate,
     movableUnitCandidates,
     moveUnitModalRows,
+    moveCommandUnit,
+    isMoveCommandPendingForSelectedUnit,
     canUseUnitMoveModeState,
     canUseUnitMoveMode,
     openMoveUnitSelectModal,
     closeMoveUnitSelectModal,
+    armMoveCommandForUnit,
+    clearMoveCommandState,
     confirmMoveUnitSelection,
     toggleUnitMoveMode,
     clearPlannedMovePath,

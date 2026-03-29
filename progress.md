@@ -874,3 +874,4 @@ pm run build:front 成功。
 - 2026-03-29: 攻撃可否の移動判定を「誰かが移動中」から「選択中ユニット(移動グループ)が移動中」に変更（`resolveSelectedTileAttackActionState`）。
 - 2026-03-29: 検証 `npm run build:front` 成功。
 - 2026-03-29: `develop-web-game` Playwright クライアント実行を試行したが、実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-29: own-faction-panel に移動中インジケータを追加。`unitEntries` に `isMoving` を付与し、移動値の右に `👣` を点滅表示するよう更新。検証: `npm run build:front` 成功。

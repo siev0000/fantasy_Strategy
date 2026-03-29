@@ -452,11 +452,24 @@ function sendSpaIndex(res) {
   });
 }
 
+function shouldServeSpaIndex(req) {
+  const requestPath = typeof req?.path === "string" ? req.path : "";
+  if (!requestPath || requestPath === "/") return true;
+  if (requestPath.startsWith("/socket.io")) return false;
+  const ext = path.extname(requestPath);
+  if (ext) return false;
+  return true;
+}
+
 app.get("/", (_, res) => {
   sendSpaIndex(res);
 });
 
-app.get("*", (_, res) => {
+app.get("*", (req, res) => {
+  if (!shouldServeSpaIndex(req)) {
+    res.status(404).type("text/plain").send("Not found");
+    return;
+  }
   sendSpaIndex(res);
 });
 
@@ -475,6 +488,14 @@ function setupDevAutoReload() {
   const pendingReasons = new Set();
   let pendingChangeCount = 0;
 
+  function isFrontReloadTarget(filePath, eventName) {
+    const relativePath = path.relative(__dirname, filePath).replace(/\\/g, "/");
+    if (!relativePath.startsWith("web-vue-dist/")) return true;
+    if (eventName !== "change") return false;
+    if (relativePath === "web-vue-dist/index.html") return true;
+    return /\.(css|js)$/i.test(relativePath);
+  }
+
   function normalizeReloadReason(filePath, eventName) {
     const relativePath = path.relative(__dirname, filePath).replace(/\\/g, "/");
     if (relativePath.startsWith("web-vue-dist/")) {
@@ -484,6 +505,7 @@ function setupDevAutoReload() {
   }
 
   function queueReload(filePath, eventName) {
+    if (!isFrontReloadTarget(filePath, eventName)) return;
     pendingReasons.add(normalizeReloadReason(filePath, eventName));
     pendingChangeCount += 1;
     if (timer) clearTimeout(timer);
@@ -501,7 +523,7 @@ function setupDevAutoReload() {
       pendingReasons.clear();
       pendingChangeCount = 0;
       timer = null;
-    }, 900);
+    }, 1200);
   }
 
   watcher.on("change", filePath => queueReload(filePath, "change"));
@@ -516,6 +538,14 @@ function setupDevAutoReload() {
 }
 
 setupDevAutoReload();
+
+server.on("error", error => {
+  if (error?.code === "EADDRINUSE") {
+    console.error(`[server] port ${PORT} is already in use. Stop the existing process or change PORT.`);
+    return;
+  }
+  console.error("[server] startup error", error);
+});
 
 server.listen(PORT, HOST, () => {
   console.log("Fantasy Strategy server listening:");

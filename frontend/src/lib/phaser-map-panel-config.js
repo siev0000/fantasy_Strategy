@@ -105,12 +105,12 @@ export const WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X = 1.9;
 export const WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y = 1.15;
 export const CENTER_LOCK_ZOOM_PERCENT = 100;
 // 時間経過の共通基準（ここを変えると全体速度が変わる）。
-export const TURN_SECONDS = 60;
+export const TURN_SECONDS = 30;
 // 自動進行を停止するターン間隔（例: 10Tごとに停止）。
 export const AUTO_TURN_PAUSE_EVERY_TURNS = 10;
 // 1マス移動の基本は「2ターン / 移動値1」。
 export const MOVE_TIME_BASE_TURNS = 2;
-export const MOVE_STEP_INTERVAL_MS = 1000; // 移動時の1マスごとの待機時間(ms)
+export const MOVE_STEP_INTERVAL_MS = Math.max(100, Math.round((TURN_SECONDS / 60) * 1000)); // 60秒/ターン時1000ms、30秒なら500ms
 
 // テスト勢力の上限数。
 export const MAX_TEST_PLAYER_COUNT = 8;

@@ -1,3 +1,5 @@
+import PathfindingWorker from "../workers/pathfindingWorker.js?worker";
+
 function toSafeInt(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.floor(n) : fallback;
@@ -16,7 +18,7 @@ export function createPathfindingWorkerClient() {
     if (terminated) return null;
     if (worker) return worker;
     if (typeof Worker === "undefined") return null;
-    worker = new Worker(new URL("../workers/pathfindingWorker.js", import.meta.url), { type: "module" });
+    worker = new PathfindingWorker();
     worker.onmessage = event => {
       const payload = event?.data || {};
       const id = payload.id;

@@ -633,12 +633,13 @@
   position: absolute;
   right: 12px;
   top: 76px;
-  width: clamp(190px, 13.5vw, 200px);
-  max-height: min(58vh, 480px);
+  width: clamp(204px, 13.5vw, 200px);
+  height: 500px;
   z-index: 19;
   pointer-events: auto;
   transform: scale(var(--ui-manual-own-faction-panel-scale, 1));
   transform-origin: top right;
+  overflow: visible;
 }
 
 .field-overlay-own-faction-panel > * {

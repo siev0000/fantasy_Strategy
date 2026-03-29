@@ -306,7 +306,7 @@ const villageState = ref(null);
 const unitList = ref([]);
 const selectedUnitId = ref("");
 const villagePlacementMode = ref(false);
-const unitMoveMode = ref(false);
+const moveCommandUnitId = ref("");
 const tileAttackSelectionMode = ref(false);
 const tileAttackPatternKey = ref("single");
 const tileAttackRange = ref(3);
@@ -365,6 +365,7 @@ const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
 const SKILL_TREE_ICON_SRC = getIconSrcByName("本", DEFAULT_ICON_NAME);
 const UNIT_CREATE_ICON_SRC = getIconSrcByName("兵士", DEFAULT_ICON_NAME);
 const EQUIPMENT_INVENTORY_ICON_SRC = getIconSrcByName("装備", DEFAULT_ICON_NAME);
+const UNIT_BATTLE_ICON_SRC = getIconSrcByName("攻撃", DEFAULT_ICON_NAME);
 const TILE_ATTACK_PATTERN_OPTIONS = Object.freeze([
   { key: "single", label: "単体" },
   { key: "straight", label: "直線" },
@@ -1015,10 +1016,6 @@ const turnClockRemainingSeconds = computed(() => {
   return turnDurationSec - turnClockCycleSeconds.value;
 });
 
-const turnClockRemainingTurns = computed(() => {
-  return Math.max(0, turnClockRemainingSeconds.value / Math.max(1, turnDurationSec));
-});
-
 const autoTimeStatusLabel = computed(() => {
   if (autoTimeRunning.value) return "進行中";
   return autoTimePausedByCheckpoint.value ? `停止中 (${AUTO_TURN_PAUSE_EVERY_TURNS}T区切り)` : "停止中";
@@ -1246,10 +1243,14 @@ const ownCharacterNavigatorEntries = computed(() => {
     unitList: unitList.value,
     isSovereignUnit,
     isNamedUnit,
+    isMovingUnit: unit => isUnitMoving(unit),
+    isBattleUnit: unit => isUnitInBattleState(unit),
+    resolveSurveyTask: unit => resolveUnitSurveyTask(unit),
     toUnitRoleLabel,
     moveUnitIconSrc,
     moveUnitIconGlyph,
-    soldierIconSrc: () => UNIT_CREATE_ICON_SRC
+    soldierIconSrc: () => UNIT_CREATE_ICON_SRC,
+    battleIconSrc: () => UNIT_BATTLE_ICON_SRC
   });
 });
 
@@ -1552,10 +1553,16 @@ const ENCOUNTER_SURVEY_BASE_PERCENT = 50;
 const ENCOUNTER_SURVEY_DIFF_DIVISOR = 2;
 const ENCOUNTER_SURVEY_GUARANTEE_DIFF = 100;
 const ENCOUNTER_ACTION_MOVE_COST = 3;
-const SURVEY_ACTION_REQUIRED_TURNS = 2;
+const SURVEY_ACTION_REQUIRED_TURNS = 1;
 const SURVEY_DEFAULT_PROGRESS_PERCENT = 100;
 const SURVEY_NO_ENEMY_REDUCE_SCALE = 1.5;
 const SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT = 25;
+
+function resolveSurveyDurationSeconds(task) {
+  const totalTurns = Math.max(1, Math.floor(toSafeNumber(task?.totalTurns, SURVEY_ACTION_REQUIRED_TURNS)));
+  return totalTurns * TURN_SECONDS;
+}
+
 const ENCOUNTER_NON_AGGRESSIVE_SAME_TILE_ATTACK_CHANCE = 0.25;
 const ENCOUNTER_FUMBLE_CHANCE = 0.08;
 const ENCOUNTER_MAX_LOG_LINES = 12;
@@ -2221,15 +2228,20 @@ const {
   resolveMoveGroupForUnit,
   canUseUnitAsMoveCandidate,
   moveUnitModalRows,
+  moveCommandUnit,
+  isMoveCommandPendingForSelectedUnit,
   canUseUnitMoveModeState,
   openMoveUnitSelectModal,
   closeMoveUnitSelectModal,
+  armMoveCommandForUnit,
+  clearMoveCommandState,
   confirmMoveUnitSelection,
   toggleUnitMoveMode,
   clearPlannedMovePath,
   closeMovePathConfirmModal,
   queueMovePathPlanToTile,
   confirmPlannedMovePath,
+  isUnitMoving,
   isMoveGroupInProgress,
   resetAllUnitMoveRemaining,
   resetMoveUiState
@@ -2243,7 +2255,7 @@ const {
   plannedMovePreview,
   isPathMoveInProgress,
   movingUnitIdSet,
-  unitMoveMode,
+  moveCommandUnitId,
   villagePlacementMode,
   unitList,
   selectedUnitId,
@@ -2286,6 +2298,12 @@ const {
   moveTimeBaseTurns: MOVE_TIME_BASE_TURNS,
   getClockElapsedMs: () => Math.max(0, Math.floor(clockElapsedMs.value))
 });
+
+function resolveMoveCommandInfoText() {
+  if (!isMoveCommandPendingForSelectedUnit.value) return "";
+  const unitName = nonEmptyText(moveCommandUnit.value?.name) || "選択ユニット";
+  return ` / 移動指示: ${unitName}`;
+}
 
 const tileSurveyActionState = computed(() => resolveSelectedTileSurveyStateV2());
 const tileAttackActionState = computed(() => resolveSelectedTileAttackActionState());
@@ -4481,15 +4499,6 @@ function buildSurveyEncounterEntry(leader, task, tileEnemies) {
   };
 }
 
-function askSurveyAttackDecision(leaderName, x, y, enemyLabel, detectResult) {
-  const chanceText = Number.isFinite(detectResult?.chancePercent) ? `発見率${detectResult.chancePercent}%` : "発見成功";
-  const message = `調査で敵を発見: ${enemyLabel}\n(${x}, ${y}) / ${chanceText}\n攻撃しますか？`;
-  if (typeof window !== "undefined" && typeof window.confirm === "function") {
-    return window.confirm(message);
-  }
-  return true;
-}
-
 function advanceSurveyTasksForTurn(data, options = {}) {
   return advanceSurveyTasksForTurnV2(data, options);
 }
@@ -4565,30 +4574,42 @@ function advanceSurveyTasksForTurnV2(data, options = {}) {
 
       markEnemySpotted(task.x, task.y, data);
       const enemyLabel = nonEmptyText(tileEnemies?.[0]?.name) || nonEmptyText(tileEnemies?.[0]?.race) || "敵";
-      const doAttack = allowBattleModal
-        ? askSurveyAttackDecision(leaderName, task.x, task.y, enemyLabel, detect)
-        : true;
-      if (!doAttack) {
-        patch.set(row.leaderId, null);
-        completed += 1;
-        notes.push(`調査中断: ${leaderName} (${task.x}, ${task.y}) ${enemyLabel}を発見したが攻撃しなかった`);
-        continue;
-      }
-
-      if (allowBattleModal && !startedBattle && !showFieldBattleResultModal.value) {
-        const surveyMoveGroup = resolveMoveGroupForUnit(leader, { allowMemberAsLeader: true });
-        const entry = buildSurveyEncounterEntry(leader, task, tileEnemies);
-        startFieldBattleFromEncounter({
-          context: "survey",
-          reason: "調査で敵を発見",
-          entry,
-          atX: task.x,
-          atY: task.y,
-          moveGroup: surveyMoveGroup?.ok ? surveyMoveGroup : null,
-          surveyContext: true,
-          surveyDangerBonusPercent: SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT
+      if (allowBattleModal) {
+        if (!startedBattle && !showFieldBattleResultModal.value) {
+          const chanceText = Number.isFinite(detect?.chancePercent) ? ` / 発見率${detect.chancePercent}%` : "";
+          const surveyTaskDangerLevel = Math.max(1, Math.floor(toSafeNumber(task?.dangerLevel, 1)));
+          const surveyTaskProgressPercent = Math.max(0, Math.floor(toSafeNumber(task?.progressPercent, beforeDanger)));
+          const currentLeaderId = row.leaderId;
+          const retreatMessage = `調査撤退: ${leaderName} (${task.x}, ${task.y}) ${enemyLabel}を発見したため撤退`;
+          const surveyMoveGroup = resolveMoveGroupForUnit(leader, { allowMemberAsLeader: true });
+          const entry = buildSurveyEncounterEntry(leader, task, tileEnemies);
+          startFieldBattleFromEncounter({
+            context: "survey",
+            reason: "調査で敵を発見",
+            entry,
+            atX: task.x,
+            atY: task.y,
+            moveGroup: surveyMoveGroup?.ok ? surveyMoveGroup : null,
+            surveyContext: true,
+            surveyDangerBonusPercent: SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT,
+            allowRetreat: true,
+            message: `${leaderName}: ${enemyLabel}を発見 (${task.x}, ${task.y})${chanceText}`,
+            summary: `調査遭遇: ${leaderName} -> ${enemyLabel}`,
+            onResolve: payload => {
+              if (payload?.result !== "retreat") return;
+              clearSurveyTaskByLeaderIds([currentLeaderId]);
+              updateUnitInfoText(retreatMessage);
+              pushNationLog(retreatMessage);
+            }
+          });
+          startedBattle = true;
+        }
+        patch.set(row.leaderId, {
+          ...task,
+          progressPercent: Math.max(0, Math.floor(toSafeNumber(task?.progressPercent, beforeDanger))),
+          dangerLevel: Math.max(1, Math.floor(toSafeNumber(task?.dangerLevel, 1)))
         });
-        startedBattle = true;
+        continue;
       }
 
       const dangerMeta = resolveSurveyDangerLevelAtTile(data, task.x, task.y, tileEnemies);
@@ -4658,6 +4679,20 @@ function resolveEncounterMoveLock(unitId) {
   return lock && typeof lock === "object" ? lock : null;
 }
 
+function isUnitInBattleState(unitOrId) {
+  const id = typeof unitOrId === "string"
+    ? nonEmptyText(unitOrId)
+    : nonEmptyText(unitOrId?.id);
+  if (!id) return false;
+  const activeBattleIds = Array.isArray(fieldBattleState.value?.attackerUnitIds)
+    ? fieldBattleState.value.attackerUnitIds
+    : [];
+  if (showFieldBattleResultModal.value && activeBattleIds.some(unitId => nonEmptyText(unitId) === id)) {
+    return true;
+  }
+  return !!resolveEncounterMoveLock(id);
+}
+
 function formatEncounterMoveLockReason(lock) {
   if (!lock || typeof lock !== "object") return "";
   const enemyLabel = nonEmptyText(lock.enemyLabel) || "敵";
@@ -4697,7 +4732,8 @@ function buildLiveFactionStateSnapshot() {
     units: deepCloneJsonValue(unitList.value, []),
     selectedUnitId: nonEmptyText(selectedUnitId.value),
     villagePlacementMode: !!villagePlacementMode.value,
-    unitMoveMode: !!unitMoveMode.value,
+    unitMoveMode: !!isMoveCommandPendingForSelectedUnit.value,
+    moveCommandUnitId: nonEmptyText(moveCommandUnitId.value),
     nationLogKey: nonEmptyText(activeNationLogKey.value),
     encounterMoveLocks: deepCloneJsonValue(normalizeEncounterMoveLocks(encounterMoveLocks.value), {}),
     visibility: buildVisibilitySnapshotFromLiveState()
@@ -4723,7 +4759,8 @@ function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
   unitList.value = units;
   selectedUnitId.value = nextSelectedUnitId;
   villagePlacementMode.value = !!snapshot?.villagePlacementMode;
-  unitMoveMode.value = !!snapshot?.unitMoveMode;
+  moveCommandUnitId.value = nonEmptyText(snapshot?.moveCommandUnitId)
+    || (snapshot?.unitMoveMode ? nextSelectedUnitId : "");
   activeNationLogKey.value = nextNationLogKey;
   encounterMoveLocks.value = normalizeEncounterMoveLocks(snapshot?.encounterMoveLocks);
   ensureNationLogBucket(nextNationLogKey, sovereignName);
@@ -4891,7 +4928,7 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label, options = {})
     units: [sovereign],
     selectedUnitId: sovereign.id,
     villagePlacementMode: true,
-    unitMoveMode: false,
+    moveCommandUnitId: "",
     nationLogKey: sovereign.id,
     visibility: {
       exploredTileKeys: [],
@@ -7907,7 +7944,7 @@ function buildFactionStateWithVillagePlacement(slot, data, placement) {
     units,
     selectedUnitId: units[0]?.id || "",
     villagePlacementMode: false,
-    unitMoveMode: false,
+    moveCommandUnitId: "",
     visibility: {
       exploredTileKeys: [tileKey],
       visibleTileKeys: [tileKey],
@@ -7950,7 +7987,7 @@ function buildFactionStateWithPendingVillage(slot) {
     ...baseState,
     village: nextVillage,
     villagePlacementMode: true,
-    unitMoveMode: false,
+    moveCommandUnitId: "",
     visibility: {
       exploredTileKeys: [],
       visibleTileKeys: [],
@@ -8020,7 +8057,7 @@ function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
 
   if (firstManualPlayer) {
     villagePlacementMode.value = true;
-    unitMoveMode.value = false;
+    clearMoveCommandState({ clearCandidate: true });
     showMoveUnitModal.value = false;
     mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
     updateUnitInfoText(`${firstManualPlayer.label} は手動配置モードです。初期村の配置先をクリックしてください。`);
@@ -8226,7 +8263,7 @@ function placeVillageAt(x, y) {
     selectedUnitId.value = unitList.value[0].id;
   }
   villagePlacementMode.value = false;
-  unitMoveMode.value = false;
+  clearMoveCommandState({ clearCandidate: true });
   showMoveUnitModal.value = false;
   markTileExplored(x, y);
   if (currentData.value) {
@@ -8265,7 +8302,7 @@ function startVillagePlacementMode() {
   if (!currentData.value || currentData.value.shapeOnly) return;
   villagePlacementMode.value = true;
   clearHousingUpgradeSelectionState();
-  unitMoveMode.value = false;
+  clearMoveCommandState({ clearCandidate: true });
   showMoveUnitModal.value = false;
   mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
   emitCharacterStateChange();
@@ -8312,7 +8349,8 @@ function emitCharacterStateChange() {
     selectedUnitId: selectedUnitId.value || "",
     squads: buildSquadSummaryList(unitList.value),
     villagePlacementMode: villagePlacementMode.value,
-    unitMoveMode: unitMoveMode.value,
+    unitMoveMode: isMoveCommandPendingForSelectedUnit.value,
+    moveCommandUnitId: moveCommandUnitId.value || "",
     villageScale,
     namedLimit,
     namedCount,
@@ -8542,7 +8580,7 @@ function normalizeFactionStateFromSave(raw, fallbackVisibility = {}) {
     units,
     selectedUnitId: selected,
     villagePlacementMode: !!raw?.villagePlacementMode,
-    unitMoveMode: !!raw?.unitMoveMode,
+    moveCommandUnitId: nonEmptyText(raw?.moveCommandUnitId) || (raw?.unitMoveMode ? selected : ""),
     nationLogKey,
     visibility: normalizeVisibilitySnapshot(raw?.visibility, fallbackVisibility)
   };
@@ -8562,7 +8600,8 @@ function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) 
       units: Array.isArray(stateRaw?.units) ? stateRaw.units.map(unit => deepCloneJsonValue(unit, {})) : [],
       selectedUnitId: nonEmptyText(stateRaw?.selectedUnitId),
       villagePlacementMode: !!stateRaw?.villagePlacementMode,
-      unitMoveMode: !!stateRaw?.unitMoveMode,
+      moveCommandUnitId: nonEmptyText(stateRaw?.moveCommandUnitId)
+        || (stateRaw?.unitMoveMode ? nonEmptyText(stateRaw?.selectedUnitId) : ""),
       nationLogKey: nonEmptyText(stateRaw?.nationLogKey) || `nation-${id}`,
       visibility: normalizeVisibilitySnapshot(stateRaw?.visibility, fallbackVisibility)
     };
@@ -12359,6 +12398,100 @@ function drawPlannedMovePathOverlay(data, pathNodes = [], wrapOffsets = [{ x: 0,
   }
 }
 
+function collectActiveMoveRoutePathNodes(units = unitList.value) {
+  const source = Array.isArray(units) ? units : [];
+  const uniqueMap = new Map();
+  for (const unit of source) {
+    const rawPath = Array.isArray(unit?.moveRoutePathNodes) ? unit.moveRoutePathNodes : [];
+    if (rawPath.length < 2) continue;
+    const normalizedPath = [];
+    for (const node of rawPath) {
+      const x = Number(node?.x);
+      const y = Number(node?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      normalizedPath.push({ x: Math.floor(x), y: Math.floor(y) });
+    }
+    if (normalizedPath.length < 2) continue;
+    const key = normalizedPath.map(node => coordKey(node.x, node.y)).join(">");
+    if (!key || uniqueMap.has(key)) continue;
+    uniqueMap.set(key, normalizedPath);
+  }
+  return [...uniqueMap.values()];
+}
+
+function strokeDashedLineShape(layer, fromX, fromY, toX, toY, dashLength = 9, gapLength = 6) {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const distance = Math.hypot(dx, dy);
+  if (!Number.isFinite(distance) || distance <= 0.5) return;
+  const ux = dx / distance;
+  const uy = dy / distance;
+  let cursor = 0;
+  while (cursor < distance) {
+    const start = cursor;
+    const end = Math.min(distance, start + dashLength);
+    const sx = fromX + (ux * start);
+    const sy = fromY + (uy * start);
+    const ex = fromX + (ux * end);
+    const ey = fromY + (uy * end);
+    layer.strokeLineShape(new Phaser.Geom.Line(sx, sy, ex, ey));
+    cursor += (dashLength + gapLength);
+  }
+}
+
+function drawActiveMoveRouteOverlay(data, routePaths = [], wrapOffsets = [{ x: 0, y: 0 }]) {
+  if (!markerLayer || !data?.grid) return;
+  const paths = Array.isArray(routePaths) ? routePaths : [];
+  if (!paths.length) return;
+  markerLayer.lineStyle(4.4, 0x12374f, 0.52);
+  for (const path of paths) {
+    if (!Array.isArray(path) || path.length < 2) continue;
+    for (let i = 1; i < path.length; i += 1) {
+      const a = path[i - 1];
+      const b = path[i];
+      if (!Number.isFinite(a?.x) || !Number.isFinite(a?.y) || !Number.isFinite(b?.x) || !Number.isFinite(b?.y)) continue;
+      const ca = hexCenter(a.x, a.y);
+      const cb = hexCenter(b.x, b.y);
+      for (const offset of wrapOffsets) {
+        if (!shouldDrawWrappedTileCopy(a.x, a.y, offset, data.w, data.h)) continue;
+        if (!shouldDrawWrappedTileCopy(b.x, b.y, offset, data.w, data.h)) continue;
+        const ox = offset?.x || 0;
+        const oy = offset?.y || 0;
+        strokeDashedLineShape(markerLayer, ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy, 10, 6);
+      }
+    }
+  }
+  markerLayer.lineStyle(2.4, 0x8cdfff, 0.96);
+  for (const path of paths) {
+    if (!Array.isArray(path) || path.length < 2) continue;
+    for (let i = 1; i < path.length; i += 1) {
+      const a = path[i - 1];
+      const b = path[i];
+      if (!Number.isFinite(a?.x) || !Number.isFinite(a?.y) || !Number.isFinite(b?.x) || !Number.isFinite(b?.y)) continue;
+      const ca = hexCenter(a.x, a.y);
+      const cb = hexCenter(b.x, b.y);
+      for (const offset of wrapOffsets) {
+        if (!shouldDrawWrappedTileCopy(a.x, a.y, offset, data.w, data.h)) continue;
+        if (!shouldDrawWrappedTileCopy(b.x, b.y, offset, data.w, data.h)) continue;
+        const ox = offset?.x || 0;
+        const oy = offset?.y || 0;
+        strokeDashedLineShape(markerLayer, ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy, 7, 6);
+      }
+    }
+    const nextNode = path[1];
+    if (Number.isFinite(nextNode?.x) && Number.isFinite(nextNode?.y)) {
+      const center = hexCenter(nextNode.x, nextNode.y);
+      for (const offset of wrapOffsets) {
+        if (!shouldDrawWrappedTileCopy(nextNode.x, nextNode.y, offset, data.w, data.h)) continue;
+        const ox = offset?.x || 0;
+        const oy = offset?.y || 0;
+        markerLayer.fillStyle(0xd5f2ff, 0.95);
+        markerLayer.fillCircle(center.cx + ox, center.cy + oy, 2.1);
+      }
+    }
+  }
+}
+
 function clearLabels() {
   labelTexts.forEach(t => t.destroy());
   labelTexts = [];
@@ -12452,7 +12585,7 @@ function renderMapWithPhaser() {
   const numberFontSize = Math.max(8, Number(heightNumberFontSize.value || 0) - autoShrink);
   const outlineWidth = Math.max(0, Number(heightNumberOutlineWidth.value || 0));
   const moveContext = (() => {
-    if (!unitMoveMode.value || !selectedUnit.value) {
+    if (!isMoveCommandPendingForSelectedUnit.value || !selectedUnit.value) {
       return { reachableSet: new Set(), startKey: "" };
     }
     const moveGroup = resolveMoveGroupForUnit(selectedUnit.value);
@@ -12867,7 +13000,11 @@ function renderMapWithPhaser() {
 
   drawRiverOverlay(data, visibleTileKeys, wrapOffsets);
   drawLavaOverlay(data, visibleTileKeys, wrapOffsets);
-  if (unitMoveMode.value && plannedMovePathNodes.value.length >= 2) {
+  const activeMoveRoutePaths = collectActiveMoveRoutePathNodes(unitList.value);
+  if (activeMoveRoutePaths.length) {
+    drawActiveMoveRouteOverlay(data, activeMoveRoutePaths, wrapOffsets);
+  }
+  if (isMoveCommandPendingForSelectedUnit.value && plannedMovePathNodes.value.length >= 2) {
     drawPlannedMovePathOverlay(data, plannedMovePathNodes.value, wrapOffsets);
   }
 
@@ -12951,6 +13088,9 @@ function renderMapWithPhaser() {
     const surveyTask = members
       .map(unit => resolveUnitSurveyTask(unit))
       .find(task => !!task);
+    const battleMember = members.find(unit => isUnitInBattleState(unit)) || null;
+    const battleIconName = resolveAvailableIconName("攻撃");
+    const battleTextureKey = battleIconName ? ensureRaceMarkerTexture(battleIconName) : "";
     for (const offset of wrapOffsets) {
       if (!shouldDrawWrappedTileCopy(lead.x, lead.y, offset, data.w, data.h)) continue;
       const ox = offset?.x || 0;
@@ -12997,20 +13137,47 @@ function renderMapWithPhaser() {
         labelTexts.push(countText);
       }
       if (surveyTask) {
+        const surveySeconds = resolveSurveyDurationSeconds(surveyTask);
+        const surveyLabelText = Number.isFinite(surveySeconds) ? `🔍${surveySeconds}秒` : "🔍";
         const surveyLabel = scene.add.text(
           unitMx,
           unitMy - (MAP_UNIT_MARKER_CONFIG.radius + 12),
-          "🔍",
+          surveyLabelText,
           {
             fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
             fontStyle: "700",
-            fontSize: "12px",
+            fontSize: "11px",
             color: "#eaf5ff"
           }
         );
         surveyLabel.setOrigin(0.5);
         surveyLabel.setStroke("#0b1f35", 3);
         labelTexts.push(surveyLabel);
+      }
+      if (battleMember) {
+        const battleX = unitMx + (MAP_UNIT_MARKER_CONFIG.radius + 7);
+        const battleY = unitMy - (MAP_UNIT_MARKER_CONFIG.radius + 9);
+        if (battleTextureKey && scene.textures.exists(battleTextureKey)) {
+          const battleIcon = scene.add.image(battleX, battleY, battleTextureKey);
+          battleIcon.setOrigin(0.5);
+          battleIcon.setDisplaySize(13, 13);
+          labelTexts.push(battleIcon);
+        } else {
+          const battleLabel = scene.add.text(
+            battleX,
+            battleY,
+            "⚔",
+            {
+              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+              fontStyle: "800",
+              fontSize: "11px",
+              color: "#ffd6d6"
+            }
+          );
+          battleLabel.setOrigin(0.5);
+          battleLabel.setStroke("#5a0b0b", 2);
+          labelTexts.push(battleLabel);
+        }
       }
       if (attackLeaderId && nonEmptyText(lead?.id) === attackLeaderId) {
         const attackLabel = scene.add.text(
@@ -13511,10 +13678,6 @@ function handleOwnUnitNavigatorOpenCharacterStatus(payload = {}) {
 }
 
 function handleOwnUnitNavigatorSelectMoveUnit(payload = {}) {
-  if (unitMoveMode.value) {
-    toggleUnitMoveMode();
-    return;
-  }
   const targetId = nonEmptyText(payload?.unitId);
   if (!targetId) return;
   const source = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
@@ -13532,12 +13695,42 @@ function handleOwnUnitNavigatorSelectMoveUnit(payload = {}) {
   }
   kickOffBgm();
   audio.playSe("select");
+  if (tileAttackSelectionMode.value) {
+    cancelTileAttackSelectionMode(true);
+  }
   selectedUnitId.value = target.id;
-  moveUnitCandidateId.value = target.id;
-  unitMoveMode.value = true;
-  clearPlannedMovePath();
+  armMoveCommandForUnit(target.id, { syncCandidate: true, clearPlannedPath: true });
   showMoveUnitModal.value = false;
-  updateUnitInfoText(`${target.name} を移動対象に設定`);
+  updateUnitInfoText(`${target.name} の移動先を選択`);
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+}
+
+function handleOwnUnitNavigatorSelectAttackUnit(payload = {}) {
+  const targetId = nonEmptyText(payload?.unitId);
+  if (!targetId) return;
+  const source = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
+  if (!source) {
+    updateUnitInfoText("攻撃対象の選択に失敗: ユニットが見つかりません。");
+    return;
+  }
+  const leaderId = nonEmptyText(source?.squadLeaderId);
+  const target = leaderId
+    ? (unitList.value.find(unit => nonEmptyText(unit?.id) === leaderId) || source)
+    : source;
+  if (!target?.positioned) {
+    updateUnitInfoText(`${nonEmptyText(target?.name) || "ユニット"} は未配置のため攻撃できません。`);
+    return;
+  }
+  kickOffBgm();
+  audio.playSe("select");
+  selectedUnitId.value = target.id;
+  clearMoveCommandState({ clearCandidate: true });
+  if (tileAttackSelectionMode.value) {
+    cancelTileAttackSelectionMode(true);
+  }
+  toggleTileAttackSelectionMode();
+  showMoveUnitModal.value = false;
   emitCharacterStateChange();
   renderMapWithPhaser();
 }
@@ -14129,7 +14322,7 @@ function updateMapClickInfo(picked) {
     return;
   }
   if (!picked.fogVisible) {
-    const moveModeText = unitMoveMode.value ? " / 移動モード: ON" : "";
+    const moveModeText = resolveMoveCommandInfoText();
     const placementModeText = villagePlacementMode.value ? " / 配置モード: ON" : "";
     const stopState = lastMoveStopState.value || {};
     const stopReason = (
@@ -14403,7 +14596,7 @@ function updateMapClickInfo(picked) {
     ? nonEmptyText(stopState.reason)
     : "";
   const placementModeText = villagePlacementMode.value ? " / 配置モード: ON" : "";
-  const moveModeText = unitMoveMode.value ? " / 移動モード: ON" : "";
+  const moveModeText = resolveMoveCommandInfoText();
   selectedTileDetail.value = {
     x: picked.x,
     y: picked.y,
@@ -14820,6 +15013,7 @@ function openFieldBattleResultSelection(payload = {}) {
     enemyRaceCategory,
     enemyImageSrc,
     surveyContext,
+    allowRetreat: payload?.allowRetreat === true || surveyContext,
     surveyDangerBonusPercent,
     onResolve: typeof payload?.onResolve === "function" ? payload.onResolve : null
   };
@@ -14894,25 +15088,41 @@ function applyFieldBattleExperienceToUnits(state = {}) {
   return { appliedUnits, totalGain, perUnitBase };
 }
 
-function applyFieldBattleResultV2(isVictory) {
+function applyFieldBattleResultV2(resultInput) {
   const state = fieldBattleState.value;
   if (!state) {
     closeFieldBattleResultModal();
     return;
   }
-  const win = !!isVictory;
-  const resultLabel = win ? "勝利" : "敗北";
-  const hpCostResult = applyFieldBattleHpCostToUnits(state?.attackerUnitIds, FIELD_BATTLE_HP_COST);
-  const expGainResult = win
-    ? applyFieldBattleExperienceToUnits(state)
-    : { appliedUnits: 0, totalGain: 0, perUnitBase: 0 };
+  const normalizedResult = typeof resultInput === "string"
+    ? nonEmptyText(resultInput).toLowerCase()
+    : (resultInput ? "victory" : "defeat");
+  const win = normalizedResult === "victory";
+  const retreat = normalizedResult === "retreat";
+  const resultLabel = retreat ? "逃走" : (win ? "勝利" : "敗北");
   if (typeof state.onResolve === "function") {
     try {
-      state.onResolve({ win, state });
+      state.onResolve({ result: normalizedResult, win, state });
     } catch (error) {
       console.warn("[FieldBattleResolve]", error);
     }
   }
+  if (retreat) {
+    const coordText = Number.isFinite(state.x) && Number.isFinite(state.y)
+      ? ` (${state.x}, ${state.y})`
+      : "";
+    const resultText = `${state.summary}${coordText} / ${resultLabel}`;
+    updateUnitInfoText(resultText);
+    pushNationLog(resultText);
+    emitCharacterStateChange();
+    closeFieldBattleResultModal();
+    requestMapRender();
+    return;
+  }
+  const hpCostResult = applyFieldBattleHpCostToUnits(state?.attackerUnitIds, FIELD_BATTLE_HP_COST);
+  const expGainResult = win
+    ? applyFieldBattleExperienceToUnits(state)
+    : { appliedUnits: 0, totalGain: 0, perUnitBase: 0 };
   if (win && Number.isFinite(state.x) && Number.isFinite(state.y) && currentData.value) {
     const autoTarget = resolveAttackTargetAtTile(state.x, state.y, { data: currentData.value });
     if (autoTarget.hasTarget) {
@@ -15475,9 +15685,8 @@ function toggleTileAttackSelectionMode() {
     updateUnitInfoText(`攻撃モード開始不可: ${state.reason || "条件未達です。"}`);
     return;
   }
-  if (unitMoveMode.value) {
-    unitMoveMode.value = false;
-    clearPlannedMovePath();
+  if (isMoveCommandPendingForSelectedUnit.value) {
+    clearMoveCommandState({ clearCandidate: false });
   }
   clearTileAttackDirectionLock();
   clearHousingUpgradeSelectionState();
@@ -15524,6 +15733,8 @@ function startFieldBattleFromEncounter(payload = {}) {
     : (payload?.context === "survey" && !!entry?.playerAmbush ? "ambush" : "encounter");
   const surveyContext = payload?.surveyContext === true || payload?.context === "survey";
   const attackerLabel = resolveBattleParticipantLabel(payload);
+  const modalMessage = nonEmptyText(payload?.message) || `${attackerLabel}: ${message}`;
+  const modalSummary = nonEmptyText(payload?.summary) || `戦闘(${sourceLabel}): ${enemyLabel}`;
   openFieldBattleResultSelection({
     source: sourceLabel,
     x,
@@ -15538,8 +15749,10 @@ function startFieldBattleFromEncounter(payload = {}) {
     attackerUnitIds: resolveBattleParticipantUnitIds(payload),
     surveyContext,
     surveyDangerBonusPercent: Math.max(0, Math.floor(toSafeNumber(payload?.surveyDangerBonusPercent, SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT))),
-    message: `${attackerLabel}: ${message}`,
-    summary: `戦闘(${sourceLabel}): ${enemyLabel}`
+    allowRetreat: payload?.allowRetreat === true,
+    message: modalMessage,
+    summary: modalSummary,
+    onResolve: typeof payload?.onResolve === "function" ? payload.onResolve : null
   });
 }
 
@@ -16201,7 +16414,7 @@ async function handleMapTileClick(pointer) {
     }
   }
   let movePlanResult = null;
-  if (unitMoveMode.value) {
+  if (isMoveCommandPendingForSelectedUnit.value) {
     movePlanResult = await queueMovePathPlanToTile(picked);
     if (movePlanResult?.reason) {
       setLastMoveStopState(movePlanResult.reason, picked.x, picked.y);
@@ -16370,7 +16583,7 @@ onMounted(async () => {
     }
     clockNowMs.value = mapClockStartMs.value + clockElapsedMs.value;
     processClockTurnProgress();
-    if (unitMoveMode.value && currentData.value) {
+    if (isMoveCommandPendingForSelectedUnit.value && currentData.value) {
       requestMapRender();
     }
   }, 250);
@@ -16501,19 +16714,31 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
   }
 });
 
-watch([currentData, selectedUnitId, villagePlacementMode, unitMoveMode], () => {
-  if (!canUseUnitMoveModeState.value && unitMoveMode.value) {
-    unitMoveMode.value = false;
-    clearPlannedMovePath();
+watch([currentData, selectedUnitId, villagePlacementMode, moveCommandUnitId, unitList], () => {
+  const armedUnitId = nonEmptyText(moveCommandUnitId.value);
+  const armedUnit = armedUnitId
+    ? (unitList.value.find(unit => nonEmptyText(unit?.id) === armedUnitId) || null)
+    : null;
+  const canKeepMoveCommand = !!(
+    armedUnitId
+    && armedUnit
+    && armedUnitId === nonEmptyText(selectedUnitId.value)
+    && currentData.value
+    && !currentData.value.shapeOnly
+    && !villagePlacementMode.value
+    && canUseUnitAsMoveCandidate(armedUnit)
+  );
+  if (armedUnitId && !canKeepMoveCommand) {
+    clearMoveCommandState({ clearCandidate: false });
     requestMapRender();
   }
   if (tileAttackSelectionMode.value) {
     const attackState = resolveSelectedTileAttackActionState();
-    if (!attackState.enabled || unitMoveMode.value || villagePlacementMode.value) {
+    if (!attackState.enabled || isMoveCommandPendingForSelectedUnit.value || villagePlacementMode.value) {
       cancelTileAttackSelectionMode(true);
     }
   }
-  if (plannedMovePathNodes.value.length && !unitMoveMode.value) {
+  if (plannedMovePathNodes.value.length && !isMoveCommandPendingForSelectedUnit.value) {
     clearPlannedMovePath();
   }
   if (!tileAttackSelectionMode.value && tileAttackDirectionLocked.value) {
@@ -16908,12 +17133,12 @@ watch(() => props.characterCommand, command => {
           :selected-tile-coord="ownFactionSelectedTileCoord"
           :selected-unit-id="selectedUnitId"
           :can-use-move-mode="canUseUnitMoveModeState"
-          :move-mode-enabled="unitMoveMode"
           :reset-key="activeTestPlayerId"
           @focus-unit="handleOwnUnitNavigatorFocusUnit"
           @focus-squad="handleOwnUnitNavigatorFocusSquad"
           @open-character-status="handleOwnUnitNavigatorOpenCharacterStatus"
           @select-move-unit="handleOwnUnitNavigatorSelectMoveUnit"
+          @select-attack-unit="handleOwnUnitNavigatorSelectAttackUnit"
         />
       </aside>
       <aside v-if="showPinnedNationLogPanel" class="field-overlay-live-log">
@@ -16955,7 +17180,7 @@ watch(() => props.characterCommand, command => {
             </div>
           </button>
           <div class="turn-clock-caption-row">
-            <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s ({{ turnClockRemainingTurns.toFixed(2) }}T)</div>
+            <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s</div>
             <div class="turn-clock-caption map-turn-caption">{{ mapTurnNumber }}T</div>
           </div>
         </div>
@@ -17036,10 +17261,10 @@ watch(() => props.characterCommand, command => {
             class="secondary"
             type="button"
             :disabled="!canUseUnitMoveModeState"
-            :aria-pressed="unitMoveMode"
+            :aria-pressed="isMoveCommandPendingForSelectedUnit"
             @click="toggleUnitMoveMode"
           >
-            ユニット移動: {{ unitMoveMode ? "ON" : "OFF" }}
+            {{ isMoveCommandPendingForSelectedUnit ? "移動指示を解除" : "移動ユニット選択" }}
           </button>
           <button id="advanceTurnBtn" class="secondary" type="button" :disabled="isTestMultiplayerActive && activeTestPlayerReady" @click="runNextTurn">
             {{ isTestMultiplayerActive ? (activeTestPlayerReady ? "ターン終了済み" : "ターン終了") : "ターン経過" }}
@@ -17063,7 +17288,7 @@ watch(() => props.characterCommand, command => {
             <div>{{ unitInfoText }}</div>
             <div>{{ lastEconomySummary }}</div>
           </div>
-          <div class="small phaser-help">クリックで詳細表示 / ドラッグで移動 / ホイール・2本指ピンチで拡大縮小 / ユニット移動ONでクリック移動（緑点滅枠が移動可能範囲、高度変化マスは移動コスト+1）。</div>
+          <div class="small phaser-help">クリックで詳細表示 / ドラッグで移動 / ホイール・2本指ピンチで拡大縮小 / 移動指示中のユニットはクリックで経路確認（緑点滅枠が移動可能範囲、高度変化マスは移動コスト+1）。</div>
           <section class="generation-details">
             <div class="map-meta">
               <div id="mapSizeInfo">{{ mapSizeInfo }}</div>
@@ -17361,7 +17586,7 @@ watch(() => props.characterCommand, command => {
         </div>
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeMoveUnitSelectModal">閉じる</button>
-          <button type="button" class="secondary" @click="confirmMoveUnitSelection">このユニットで移動開始</button>
+          <button type="button" class="secondary" @click="confirmMoveUnitSelection">このユニットの移動先を選ぶ</button>
         </div>
       </div>
     </div>
@@ -17397,7 +17622,7 @@ watch(() => props.characterCommand, command => {
       <div class="settings-modal turn-action-modal">
         <h3>ターン操作</h3>
         <div class="small turn-action-note">自動時間経過: {{ autoTimeStatusLabel }} / 1T={{ turnDurationSec }}秒 / 次停止まで {{ turnsUntilAutoPause }}T ({{ secondsUntilAutoPause }}秒)</div>
-        <div class="small turn-action-note">次ターンまで {{ turnClockRemainingSeconds }}秒（{{ turnClockRemainingTurns.toFixed(2) }}T）</div>
+        <div class="small turn-action-note">次ターンまで {{ turnClockRemainingSeconds }}秒</div>
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeTurnActionModal">閉じる</button>
           <button type="button" class="secondary" @click="openEventControlFromClock">イベント管理を開く</button>
