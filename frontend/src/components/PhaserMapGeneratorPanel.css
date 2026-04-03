@@ -289,6 +289,74 @@
   --resource-chip-small-font-size: calc(0.67rem * var(--header-population-chip-scale, 1));
 }
 
+.field-resource-chip-research {
+  --resource-chip-font-size: 0.78rem;
+  --resource-chip-strong-font-size: 0.86rem;
+  --resource-chip-small-font-size: 0.62rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 4px 8px;
+}
+
+.field-header-research-list {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+}
+
+.field-header-research-chip {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.field-header-research-gauge {
+  --_size: 22px;
+  --_thickness: 2px;
+  position: relative;
+  width: var(--_size);
+  height: var(--_size);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.field-header-research-gauge::before,
+.field-header-research-gauge::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--_thickness)), #000 calc(100% - var(--_thickness)));
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--_thickness)), #000 calc(100% - var(--_thickness)));
+}
+
+.field-header-research-gauge::before {
+  background: conic-gradient(
+    from 135deg,
+    rgba(227, 201, 145, 0.54) 0deg 270deg,
+    transparent 270deg 360deg
+  );
+}
+
+.field-header-research-gauge::after {
+  background: conic-gradient(
+    from 135deg,
+    rgba(104, 215, 255, 0.96) 0deg calc(var(--research-progress-ratio, 0) * 270deg),
+    transparent calc(var(--research-progress-ratio, 0) * 270deg) 360deg
+  );
+}
+
+.field-header-research-gauge img {
+  width: 15px;
+  height: 15px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.18));
+}
+
 .population-rows {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -466,6 +534,47 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px 8px;
+}
+
+.field-overlay-tile-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.field-overlay-tile-preview-card {
+  border: 1px solid rgba(236, 205, 146, 0.35);
+  border-radius: 8px;
+  background: linear-gradient(170deg, rgba(21, 28, 40, 0.52), rgba(23, 16, 11, 0.48));
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: 64px;
+  cursor: help;
+}
+
+.field-overlay-tile-preview-card img,
+.field-overlay-tile-preview-fallback {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid rgba(230, 196, 132, 0.42);
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04));
+}
+
+.field-overlay-tile-preview-card img {
+  object-fit: cover;
+}
+
+.field-overlay-tile-preview-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f8ecca;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .field-overlay-attack-pattern-list {

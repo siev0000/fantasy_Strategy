@@ -241,7 +241,7 @@ const props = defineProps({
 const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change", "save-snapshot", "game-view-size-change"]);
 
 // マップ生成/表示の基本設定
-const mapSize = ref("36x36"); // 生成時のマップサイズ
+const mapSize = ref("60x60"); // 生成時のマップサイズ
 const patternId = ref("realistic"); // 島形状プリセット
 const mountainMode = ref("random"); // 山岳生成モード
 const gameViewPresetKey = ref(DEFAULT_GAME_VIEW_PRESET_KEY); // 描画解像度プリセット
@@ -384,6 +384,10 @@ const TILE_ATTACK_PATTERN_LABEL_MAP = new Map(TILE_ATTACK_PATTERN_OPTIONS.map(ro
 const ATTACK_CURSOR_STYLE = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v20M2 12h20' stroke='%23ff4d4f' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3.5' fill='none' stroke='%23ffd0d0' stroke-width='2'/%3E%3C/svg%3E\") 12 12, crosshair";
 const pathfindingWorkerClient = createPathfindingWorkerClient();
 const mapRenderScheduler = createMapRenderScheduler(() => renderMapWithPhaser());
+const LARGE_MAP_TILE_THRESHOLD = 3000;
+const RIVER_DETAIL_TILE_THRESHOLD = 2800;
+const RIVER_CORNER_LEVEL_CACHE = new WeakMap();
+const EMPTY_CORNER_LEVEL_MAP = new Map();
 
 function requestMapRender() {
   mapRenderScheduler.requestRender();
@@ -580,6 +584,34 @@ function resolveVillageTileFacilityNames(village, tileKey) {
   return resolveVillageTileFacilityKeys(village, tileKey)
     .map((facilityKey) => resolveVillageBuildingDefinitionByToken(facilityKey)?.name || nonEmptyText(facilityKey))
     .filter(Boolean);
+}
+
+function normalizeVillageTileCampMap(rawMap) {
+  const source = rawMap && typeof rawMap === "object" ? rawMap : {};
+  const out = {};
+  for (const [rawTileKey, rawValue] of Object.entries(source)) {
+    const tileKey = nonEmptyText(rawTileKey);
+    if (!tileKey.includes(",")) continue;
+    if (!rawValue) continue;
+    const createdTurn = Math.max(0, Math.floor(toSafeNumber(rawValue?.createdTurn, 0)));
+    out[tileKey] = {
+      createdTurn
+    };
+  }
+  return out;
+}
+
+function resolveVillageCampEntryAtTile(village, tileKey) {
+  const key = nonEmptyText(tileKey);
+  if (!key.includes(",")) return null;
+  const map = normalizeVillageTileCampMap(village?.[VILLAGE_TILE_CAMP_MAP_KEY]);
+  const row = map[key];
+  if (!row || typeof row !== "object") return null;
+  return row;
+}
+
+function hasCampOnTile(village, tileKey) {
+  return !!resolveVillageCampEntryAtTile(village, tileKey);
 }
 
 function resolveUnitRegenerationPerTurn(unit) {
@@ -994,6 +1026,47 @@ const fieldResourceSummary = computed(() => {
   };
 });
 
+function resolveResearchRequiredExpForLevel(level) {
+  const lv = Math.max(1, Math.floor(toSafeNumber(level, 1)));
+  return RESEARCH_EXP_BASE * (2 ** (lv - 1));
+}
+
+function resolveResearchSelectionItemId(categoryKey, level) {
+  const key = nonEmptyText(categoryKey);
+  const lv = Math.max(1, Math.floor(toSafeNumber(level, 1)));
+  if (!key) return "";
+  const source = props?.researchSelection?.[key];
+  if (!source || typeof source !== "object") return "";
+  return nonEmptyText(source?.[lv]);
+}
+
+const headerResearchRows = computed(() => {
+  return RESEARCH_CATEGORY_ORDER_CONFIG.map((categoryKey) => {
+    const key = nonEmptyText(categoryKey);
+    const level = resolveResearchCurrentLevel(key, CITY_ABILITY_DEFINED_CAP);
+    const selectedItemId = resolveResearchSelectionItemId(key, level);
+    const currentExp = selectedItemId
+      ? Math.max(0, Math.floor(toSafeNumber(props?.researchProgress?.targetExpMap?.[selectedItemId], 0)))
+      : 0;
+    const requiredExp = resolveResearchRequiredExpForLevel(level);
+    const progressRatio = requiredExp > 0
+      ? Math.max(0, Math.min(1, currentExp / requiredExp))
+      : 0;
+    const label = key.replace(/Lv$/u, "");
+    const iconName = HEADER_RESEARCH_CATEGORY_ICON_MAP[key] || label;
+    return {
+      key,
+      label,
+      level,
+      selectedItemId,
+      currentExp,
+      requiredExp,
+      progressRatio,
+      iconSrc: getIconSrcByName(iconName, "本")
+    };
+  });
+});
+
 const turnDurationSec = TURN_SECONDS;
 const autoTurnAdvanceByClock = true;
 
@@ -1290,19 +1363,9 @@ function lavaStopReasonLabel(reason) {
 }
 
 const GAME_VIEW_PRESET_FALLBACK = GAME_VIEW_PRESET_CONFIG[DEFAULT_GAME_VIEW_PRESET_KEY];
-const gameViewPresetOptions = Object.entries(GAME_VIEW_PRESET_CONFIG).map(([key, preset]) => ({
-  value: key,
-  label: `${preset.label} (${preset.width} x ${preset.height})`
-}));
 
 function resolveGameViewPreset(key) {
-  const normalized = nonEmptyText(key);
-  if (normalized && GAME_VIEW_PRESET_CONFIG[normalized]) {
-    return {
-      key: normalized,
-      ...GAME_VIEW_PRESET_CONFIG[normalized]
-    };
-  }
+  void key;
   return {
     key: DEFAULT_GAME_VIEW_PRESET_KEY,
     ...GAME_VIEW_PRESET_FALLBACK
@@ -1358,18 +1421,23 @@ function applyGameViewPreset(presetKey, options = {}) {
   }
 }
 
+function isLargeMapBySize(w, h) {
+  if (!Number.isFinite(w) || !Number.isFinite(h)) return false;
+  return (Math.floor(w) * Math.floor(h)) >= LARGE_MAP_TILE_THRESHOLD;
+}
+
+function applyLargeMapPerformanceDefaults(w, h) {
+  if (!isLargeMapBySize(w, h)) return;
+  if (showWaterfallEffects.value) {
+    showWaterfallEffects.value = false;
+  }
+}
+
 const displaySettingsFields = computed(() => ([
   {
     key: "section_display",
     kind: "header",
     label: "表示設定"
-  },
-  {
-    key: "gameViewPreset",
-    kind: "select",
-    label: "描画解像度",
-    value: gameViewPresetKey.value,
-    options: gameViewPresetOptions
   },
   {
     key: "showHeightNumbers",
@@ -1503,7 +1571,7 @@ const displaySettingsFields = computed(() => ([
 ]));
 
 const displaySettingsNotes = [
-  "描画解像度は 軽量(960x480) / バランス(1440x720) / 高品質(1920x960) から切替できます。",
+  "描画解像度は 1440x720 で固定です（文字つぶれ防止）。",
   "隠し特殊地形は通常時は見えず、クリック時のみ判明します。常時表示をONで最初から見えます。",
   "クリック時の視点移動は初期OFFです。必要時のみONにしてください。",
   "音量は 全体 x BGM/SE の乗算で適用されます。"
@@ -1762,6 +1830,13 @@ const RESOURCE_ICON_NAME_MAP = {
   食料: "穀物",
   死体: "アンデット"
 };
+const HEADER_RESEARCH_CATEGORY_ICON_MAP = {
+  鍛冶Lv: "鍛冶",
+  魔法Lv: "魔法",
+  信仰Lv: "信仰",
+  軍事Lv: "兵士",
+  経済Lv: "金"
+};
 const RESOURCE_TILE_MARKER_PRIORITY_KEYS = [
   "赤黒鋼", "青金鋼", "銀鉄", "鉄", "宝石", "金", "銀",
   "特木", "黒木", "木材", "石材",
@@ -1785,6 +1860,9 @@ const VILLAGE_TILE_CORRUPTION_MAP_KEY = "tileCorruptionMap";
 const VILLAGE_TILE_PURIFICATION_MAP_KEY = "tilePurificationMap";
 const VILLAGE_TILE_RECOVERY_MAP_KEY = "tileRecoveryMap";
 const VILLAGE_TILE_FACILITY_MAP_KEY = "tileFacilityMap";
+const VILLAGE_TILE_CAMP_MAP_KEY = "tileCampMap";
+const CAMP_MIN_DISTANCE_FROM_VILLAGE = 3;
+const RESEARCH_EXP_BASE = 100;
 const TERRITORY_RESIDENTIAL_UPGRADE_BASE_TURNS = 3;
 const TERRITORY_RESIDENTIAL_UPGRADE_MIN_TURNS = 1;
 const TERRITORY_RESIDENTIAL_UPGRADE_COST_SCALE = 1;
@@ -2310,6 +2388,7 @@ const tileAttackActionState = computed(() => resolveSelectedTileAttackActionStat
 const tileSettlementConvertActionState = computed(() => resolveTerritoryTileConversionActionState(TERRITORY_TILE_MODE_SETTLEMENT));
 const tileResourceConvertActionState = computed(() => resolveTerritoryTileConversionActionState(TERRITORY_TILE_MODE_RESOURCE));
 const tileHousingUpgradeActionState = computed(() => resolveTerritoryHousingUpgradeActionState());
+const tileCampActionState = computed(() => resolveSelectedTileCampActionState());
 const tileHousingUpgradeButtonLabel = computed(() => {
   const selection = housingUpgradeSelectionState.value;
   if (selection?.active) {
@@ -3187,6 +3266,19 @@ function resolveAvailableIconName(...candidates) {
     if (iconName && hasIconName(iconName)) return iconName;
   }
   return "";
+}
+
+function resolveTerrainIconName(picked, terrainDisplayName = "", reliefName = "", specialName = "") {
+  const terrain = nonEmptyText(picked?.terrain);
+  const relief = nonEmptyText(reliefName);
+  const display = nonEmptyText(terrainDisplayName);
+  const special = nonEmptyText(specialName);
+  const tokens = [terrain, display, relief, special]
+    .flatMap(value => String(value || "").split(/[\/\s]+/))
+    .map(value => nonEmptyText(value))
+    .filter(Boolean);
+  const unique = Array.from(new Set(tokens));
+  return resolveAvailableIconName(...unique, "平地", "地形");
 }
 
 function resolveSpecialOverlayIconName(specialKey) {
@@ -4146,8 +4238,8 @@ function hasLavaTouchAt(data, x, y, lavaTouchSet = null) {
 }
 
 function parseMapSizeValue(value) {
-  const [w, h] = String(value || "36x36").split("x").map(Number);
-  return { w: w || 36, h: h || 36 };
+  const [w, h] = String(value || "60x60").split("x").map(Number);
+  return { w: w || 60, h: h || 60 };
 }
 
 function normalizeWrappedCoord(value, size) {
@@ -5565,6 +5657,9 @@ function ensureVillageStateShape(village, preferredRace = "") {
     village?.[VILLAGE_TILE_RECOVERY_MAP_KEY],
     { allowNegative: false }
   );
+  const tileCampMap = normalizeVillageTileCampMap(
+    village?.[VILLAGE_TILE_CAMP_MAP_KEY]
+  );
   const tileFacilityMap = normalizeVillageTileFacilityMap(
     village?.[VILLAGE_TILE_FACILITY_MAP_KEY]
   );
@@ -5617,6 +5712,7 @@ function ensureVillageStateShape(village, preferredRace = "") {
     [VILLAGE_TILE_CORRUPTION_MAP_KEY]: tileCorruptionMap,
     [VILLAGE_TILE_PURIFICATION_MAP_KEY]: tilePurificationMap,
     [VILLAGE_TILE_RECOVERY_MAP_KEY]: tileRecoveryMap,
+    [VILLAGE_TILE_CAMP_MAP_KEY]: tileCampMap,
     [VILLAGE_TILE_FACILITY_MAP_KEY]: tileFacilityMap,
     [TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]: territoryResidentialUpgradeQueueMap,
     [TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY]: territoryResidentialLevelMap,
@@ -8085,6 +8181,7 @@ function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
 
 function generateTerrainMapForGameStart(entries, placementConfig = {}) {
   const { w, h } = parseMapSizeValue(mapSize.value);
+  applyLargeMapPerformanceDefaults(w, h);
   const islandCustomSettings = buildIslandCustomSettings();
   const attemptCount = Math.max(6, Math.min(20, 6 + (entries.length * 2)));
   let best = null;
@@ -8435,9 +8532,13 @@ function buildMapSnapshotForSave() {
         mouthMap: buildBinaryMapFromCoordSet(riverData?.mouthSet, w, h),
         waterLinkMap: buildBinaryMapFromCoordSet(riverData?.waterLinkSet, w, h),
         waterLinkEdgeList: Array.from(riverData?.waterLinkSet || []).map(v => String(v || "")),
+        cornerEdgeList: Array.from(riverData?.cornerEdgeSet || []).map(v => String(v || "")),
+        cornerWaterLinkList: Array.from(riverData?.cornerWaterLinkSet || []).map(v => String(v || "")),
+        meshCenterMap: buildBinaryMapFromCoordSet(riverData?.meshCenterSet || riverData?.largeRiverSet, w, h),
         waterfallMap: buildBinaryMapFromCoordSet(riverData?.waterfallSet, w, h),
         edgeList: Array.from(riverData?.edgeSet || []).map(v => String(v || "")),
-        waterfallEdgeList: Array.from(riverData?.waterfallEdgeSet || []).map(v => String(v || ""))
+        waterfallEdgeList: Array.from(riverData?.waterfallEdgeSet || []).map(v => String(v || "")),
+        cornerWaterfallEdgeList: Array.from(riverData?.cornerWaterfallEdgeSet || []).map(v => String(v || ""))
       }
     },
     visibility: {
@@ -8502,11 +8603,27 @@ function restoreRiverDataFromSaveSnapshot(snapshot, w, h) {
       .map(v => String(v || ""))
       .filter(Boolean)
   );
+  const cornerEdgeSet = new Set(
+    (Array.isArray(snapshot.cornerEdgeList) ? snapshot.cornerEdgeList : [])
+      .map(v => String(v || ""))
+      .filter(v => v.includes("|"))
+  );
+  const cornerWaterLinkSet = new Set(
+    (Array.isArray(snapshot.cornerWaterLinkList) ? snapshot.cornerWaterLinkList : [])
+      .map(v => String(v || ""))
+      .filter(v => v.includes("|"))
+  );
   const waterfallEdgeSet = new Set(
     (Array.isArray(snapshot.waterfallEdgeList) ? snapshot.waterfallEdgeList : [])
       .map(v => String(v || ""))
       .filter(Boolean)
   );
+  const cornerWaterfallEdgeSet = new Set(
+    (Array.isArray(snapshot.cornerWaterfallEdgeList) ? snapshot.cornerWaterfallEdgeList : [])
+      .map(v => String(v || ""))
+      .filter(v => v.includes("|"))
+  );
+  const meshCenterSet = buildCoordSetFromBinaryMap(snapshot.meshCenterMap, w, h);
   return {
     riverSet,
     sourceSet,
@@ -8514,9 +8631,14 @@ function restoreRiverDataFromSaveSnapshot(snapshot, w, h) {
     mouthSet,
     edgeSet,
     waterLinkSet,
-    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet }),
+    cornerEdgeSet,
+    cornerWaterLinkSet,
+    meshCenterSet,
+    largeRiverSet: new Set(meshCenterSet),
+    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet }),
     waterfallSet,
-    waterfallEdgeSet
+    waterfallEdgeSet,
+    cornerWaterfallEdgeSet
   };
 }
 
@@ -9992,6 +10114,7 @@ function applyVillageTilePurificationTurn(village, options = {}) {
 function applyVillageTileRecoveryTurn(village, units = unitList.value) {
   const safeUnits = Array.isArray(units) ? units : [];
   const recoveryMap = resolveVillageTileRecoveryMap(village);
+  const campMap = normalizeVillageTileCampMap(village?.[VILLAGE_TILE_CAMP_MAP_KEY]);
   const managedTileKeys = resolveVillageManagedTileKeys(village);
   const territoryRecoveryBonus = resolveVillageTerritoryRecoveryBonus(village, recoveryMap);
   let healedTotal = 0;
@@ -10015,8 +10138,10 @@ function applyVillageTileRecoveryTurn(village, units = unitList.value) {
     const baseRecovery = canApplyTerritoryRecovery
       ? territoryRecoveryBonus
       : 0;
+    const hasCamp = !!(tileKey && campMap[tileKey]);
+    const campRecovery = hasCamp ? regenerationRecovery : 0;
     const churchRecovery = canApplyTerritoryRecovery && hasChurchFacilityOnTile(village, tileKey) ? 5 : 0;
-    const totalBaseRecovery = Math.max(0, regenerationRecovery + baseRecovery + churchRecovery);
+    const totalBaseRecovery = Math.max(0, regenerationRecovery + baseRecovery + campRecovery + churchRecovery);
     if (totalBaseRecovery <= 0 || normalized.currentHp >= normalized.maxHp) {
       return normalized;
     }
@@ -11321,7 +11446,8 @@ function applyDisplaySettingChange(payload) {
   const { key, value } = payload;
   if (key === "section_display" || key === "section_audio") return;
   if (key === "gameViewPreset") {
-    applyGameViewPreset(String(value || DEFAULT_GAME_VIEW_PRESET_KEY));
+    // 解像度は固定運用。既存データ互換のため入力は受けるが反映しない。
+    return;
   } else if (key === "showHeightNumbers") showHeightNumbers.value = !!value;
   else if (key === "useHeightShading") useHeightShading.value = !!value;
   else if (key === "useFiveResourceMode") useFiveResourceMode.value = !!value;
@@ -11912,6 +12038,7 @@ function buildStatsText(data) {
   if (riverData?.riverSet) {
     lines.push(`川(重なり): ${riverData.riverSet.size} (${((riverData.riverSet.size / (w * h)) * 100).toFixed(1)}%)`);
     lines.push(`源流: ${riverData.sourceSet.size} / 分岐: ${riverData.branchSet.size} / 終点: ${riverData.mouthSet.size}`);
+    lines.push(`大河中心: ${riverData.meshCenterSet?.size || riverData.largeRiverSet?.size || 0}タイル`);
     lines.push(`滝: ${riverData.waterfallSet?.size || 0}タイル / 滝経路: ${riverData.waterfallEdgeSet?.size || 0}`);
   }
   if (specialCounts) {
@@ -11965,215 +12092,197 @@ function buildStatsText(data) {
   return lines.join("\n");
 }
 
+function resolveRiverCornerLevelMap(data) {
+  const w = Math.max(0, Math.floor(toSafeNumber(data?.w, 0)));
+  const h = Math.max(0, Math.floor(toSafeNumber(data?.h, 0)));
+  const heightLevelMap = data?.heightLevelMap;
+  if (!Array.isArray(heightLevelMap) || !heightLevelMap.length || w <= 0 || h <= 0) {
+    return EMPTY_CORNER_LEVEL_MAP;
+  }
+  const cached = RIVER_CORNER_LEVEL_CACHE.get(heightLevelMap);
+  if (cached && cached.w === w && cached.h === h && cached.cornerLevelMap instanceof Map) {
+    return cached.cornerLevelMap;
+  }
+  const cornerLevelBuckets = new Map();
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const lv = Number(heightLevelMap?.[y]?.[x]);
+      if (!Number.isFinite(lv)) continue;
+      const points = buildHexPoints(x, y);
+      for (const point of points) {
+        const pKey = pointCoordKey(point);
+        if (!pKey) continue;
+        if (!cornerLevelBuckets.has(pKey)) cornerLevelBuckets.set(pKey, []);
+        cornerLevelBuckets.get(pKey).push(lv);
+      }
+    }
+  }
+  const cornerLevelMap = new Map();
+  for (const [pKey, values] of cornerLevelBuckets.entries()) {
+    if (!Array.isArray(values) || !values.length) continue;
+    cornerLevelMap.set(pKey, Math.min(...values));
+  }
+  RIVER_CORNER_LEVEL_CACHE.set(heightLevelMap, { w, h, cornerLevelMap });
+  return cornerLevelMap;
+}
+
 function drawRiverOverlay(data, visibleKeys = null, wrapOffsets = [{ x: 0, y: 0 }]) {
   if (!riverLayer) return;
   riverLayer.clear();
   const riverData = data.riverData;
   if (!riverData) return;
-  const riverSet = riverData.riverSet || new Set();
+
   const isVisibleKey = key => !visibleKeys || visibleKeys.has(key);
+  const totalTiles = Math.max(0, Math.floor(toSafeNumber(data?.w, 0)) * Math.floor(toSafeNumber(data?.h, 0)));
+  const showRiverMicroDetails = totalTiles <= RIVER_DETAIL_TILE_THRESHOLD;
+  const cornerPointMap = new Map();
+  const flowArrowQueue = [];
+  const cornerLevelMap = resolveRiverCornerLevelMap(data);
 
-  const levelOfKey = key => {
-    const p = parseCoordKey(key);
-    return data.heightLevelMap?.[p.y]?.[p.x];
+  const pushCornerPoint = point => {
+    if (!showRiverMicroDetails) return;
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+    const key = `${Math.round(point.x * 1000) / 1000},${Math.round(point.y * 1000) / 1000}`;
+    if (!cornerPointMap.has(key)) cornerPointMap.set(key, { x: point.x, y: point.y });
   };
 
-  const riverAdj = new Map();
-  for (const key of riverSet) {
-    riverAdj.set(key, new Set());
-  }
-  for (const ek of riverData.edgeSet || []) {
-    const [a, b] = ek.split("|");
-    if (!riverAdj.has(a)) riverAdj.set(a, new Set());
-    if (!riverAdj.has(b)) riverAdj.set(b, new Set());
-    riverAdj.get(a).add(b);
-    riverAdj.get(b).add(a);
-  }
-
-  const mouthDistance = new Map();
-  const queue = [];
-  const pushMouthSeed = key => {
-    if (!riverSet.has(key) || mouthDistance.has(key)) return;
-    mouthDistance.set(key, 0);
-    queue.push(key);
-  };
-  for (const key of riverData.mouthSet || []) pushMouthSeed(key);
-  for (const wk of riverData.waterLinkSet || []) {
-    const [a, b] = wk.split("|");
-    if (riverSet.has(a) && !riverSet.has(b)) pushMouthSeed(a);
-    if (riverSet.has(b) && !riverSet.has(a)) pushMouthSeed(b);
-  }
-  while (queue.length) {
-    const cur = queue.shift();
-    const curDist = mouthDistance.get(cur) || 0;
-    for (const nx of riverAdj.get(cur) || []) {
-      if (mouthDistance.has(nx)) continue;
-      mouthDistance.set(nx, curDist + 1);
-      queue.push(nx);
-    }
-  }
-
-  const directedPair = (a, b) => {
-    const da = mouthDistance.get(a);
-    const db = mouthDistance.get(b);
-    if (Number.isFinite(da) && Number.isFinite(db) && da !== db) {
-      return da > db ? [a, b] : [b, a];
-    }
-
-    const al = levelOfKey(a);
-    const bl = levelOfKey(b);
-    if (Number.isFinite(al) && Number.isFinite(bl) && al !== bl) {
-      return al > bl ? [a, b] : [b, a];
-    }
-    return null;
-  };
-
-  const drawFlowArrow = (fromKey, toKey, color, alpha = 0.95) => {
-    const pa = parseCoordKey(fromKey);
-    const pb = parseCoordKey(toKey);
-    const ca = hexCenter(pa.x, pa.y);
-    const cb = hexCenter(pb.x, pb.y);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
-      if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      const fromX = ca.cx + ox;
-      const fromY = ca.cy + oy;
-      const toX = cb.cx + ox;
-      const toY = cb.cy + oy;
-      const dx = toX - fromX;
-      const dy = toY - fromY;
-      const len = Math.hypot(dx, dy);
-      if (len < 8) continue;
-
-      const ux = dx / len;
-      const uy = dy / len;
-      const px = -uy;
-      const py = ux;
-      const tip = {
-        x: fromX + ux * Math.min(len - 2, len * 0.62),
-        y: fromY + uy * Math.min(len - 2, len * 0.62)
-      };
-      const headLen = 6.2;
-      const wing = 3.1;
-      const base = { x: tip.x - ux * headLen, y: tip.y - uy * headLen };
-      const p2 = { x: base.x + px * wing, y: base.y + py * wing };
-      const p3 = { x: base.x - px * wing, y: base.y - py * wing };
-      riverLayer.fillStyle(color, alpha);
-      riverLayer.fillPoints([tip, p2, p3], true);
+  const queueFlowArrowByCornerLevel = (start, end) => {
+    if (!showRiverMicroDetails) return;
+    const startLv = cornerLevelMap.get(pointCoordKey(start));
+    const endLv = cornerLevelMap.get(pointCoordKey(end));
+    if (!Number.isFinite(startLv) || !Number.isFinite(endLv)) return;
+    if (Math.abs(startLv - endLv) < 0.0001) return;
+    if (startLv > endLv) {
+      flowArrowQueue.push({ from: start, to: end });
+    } else {
+      flowArrowQueue.push({ from: end, to: start });
     }
   };
 
-  riverLayer.lineStyle(5, 0x9ed3ff, 0.95);
-  for (const ek of riverData.edgeSet || []) {
-    const [a, b] = ek.split("|");
-    if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
+  const drawFlowArrowByPoints = (from, to, color, alpha = 0.95) => {
+    if (!from || !to) return;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 7) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    const px = -uy;
+    const py = ux;
+    const tip = {
+      x: from.x + ux * Math.min(len - 1.2, len * 0.62),
+      y: from.y + uy * Math.min(len - 1.2, len * 0.62)
+    };
+    const headLen = 3.4;
+    const wing = 1.9;
+    const base = { x: tip.x - ux * headLen, y: tip.y - uy * headLen };
+    const p2 = { x: base.x + px * wing, y: base.y + py * wing };
+    const p3 = { x: base.x - px * wing, y: base.y - py * wing };
+    riverLayer.fillStyle(color, alpha);
+    riverLayer.fillPoints([tip, p2, p3], true);
+  };
+
+  const parseEdgePoints = edgeKeyRaw => {
+    const [a, b] = String(edgeKeyRaw || "").split("|");
+    if (!a || !b) return null;
     const pa = parseCoordKey(a);
     const pb = parseCoordKey(b);
-    const ca = hexCenter(pa.x, pa.y);
-    const cb = hexCenter(pb.x, pb.y);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
-      if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      riverLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy));
-    }
-  }
+    if (!Number.isFinite(pa?.x) || !Number.isFinite(pa?.y) || !Number.isFinite(pb?.x) || !Number.isFinite(pb?.y)) return null;
+    return [pa, pb];
+  };
 
-  riverLayer.lineStyle(3.4, 0x6ab7ff, 0.82);
-  for (const wk of riverData.waterLinkSet || []) {
-    const [a, b] = wk.split("|");
-    if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-    const pa = parseCoordKey(a);
-    const pb = parseCoordKey(b);
-    const ca = hexCenter(pa.x, pa.y);
-    const cb = hexCenter(pb.x, pb.y);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
-      if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      riverLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy));
-    }
-  }
-
-  for (const ek of riverData.edgeSet || []) {
-    const [a, b] = ek.split("|");
-    if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-    const dir = directedPair(a, b);
-    if (dir) drawFlowArrow(dir[0], dir[1], 0xf4fbff, 0.94);
-  }
-  for (const wk of riverData.waterLinkSet || []) {
-    const [a, b] = wk.split("|");
-    if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-    const aRiver = riverSet.has(a);
-    const bRiver = riverSet.has(b);
-    if (aRiver && !bRiver) drawFlowArrow(a, b, 0xcbeaff, 0.9);
-    else if (bRiver && !aRiver) drawFlowArrow(b, a, 0xcbeaff, 0.9);
-    else {
-      const dir = directedPair(a, b);
-      if (dir) drawFlowArrow(dir[0], dir[1], 0xcbeaff, 0.9);
-    }
-  }
-
-  const drawNode = (key, radius, color) => {
-    if (!isVisibleKey(key)) return;
-    const p = parseCoordKey(key);
-    const c = hexCenter(p.x, p.y);
-    riverLayer.fillStyle(color, 1);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(p.x, p.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      riverLayer.fillCircle(c.cx + ox, c.cy + oy, radius);
+  const drawCornerSegments = (edgeIterable, width, color, alpha = 1) => {
+    riverLayer.lineStyle(width, color, alpha);
+    for (const edgeKeyRaw of edgeIterable || []) {
+      const points = parseEdgePoints(edgeKeyRaw);
+      if (!points) continue;
+      const [startBase, endBase] = points;
+      for (const offset of wrapOffsets) {
+        const ox = offset?.x || 0;
+        const oy = offset?.y || 0;
+        const start = { x: startBase.x + ox, y: startBase.y + oy };
+        const end = { x: endBase.x + ox, y: endBase.y + oy };
+        riverLayer.strokeLineShape(new Phaser.Geom.Line(start.x, start.y, end.x, end.y));
+        pushCornerPoint(start);
+        pushCornerPoint(end);
+        queueFlowArrowByCornerLevel(start, end);
+      }
     }
   };
 
-  for (const key of riverData.riverSet || []) drawNode(key, 3.1, 0xb9e2ff);
-  for (const key of riverData.sourceSet || []) drawNode(key, 4.4, 0xd7f0ff);
-  for (const key of riverData.branchSet || []) drawNode(key, 3.9, 0x9ed3ff);
-  for (const key of riverData.mouthSet || []) drawNode(key, 3.9, 0x6ab7ff);
-
-  if (showWaterfallEffects.value) {
-    riverLayer.lineStyle(6.1, 0xf8fcff, 0.74);
-    for (const ek of riverData.waterfallEdgeSet || []) {
-      const [a, b] = ek.split("|");
+  const drawTileEdgeSegments = (edgeIterable, width, color, alpha = 1) => {
+    riverLayer.lineStyle(width, color, alpha);
+    for (const edgeKeyRaw of edgeIterable || []) {
+      const [a, b] = String(edgeKeyRaw || "").split("|");
+      if (!a || !b) continue;
       if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
       const pa = parseCoordKey(a);
       const pb = parseCoordKey(b);
-      const ca = hexCenter(pa.x, pa.y);
-      const cb = hexCenter(pb.x, pb.y);
+      if (!Number.isFinite(pa?.x) || !Number.isFinite(pa?.y) || !Number.isFinite(pb?.x) || !Number.isFinite(pb?.y)) continue;
       for (const offset of wrapOffsets) {
         if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
         if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
         const ox = offset?.x || 0;
         const oy = offset?.y || 0;
-        riverLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy));
+        const segment = resolveSharedHexEdgePoints(pa.x, pa.y, pb.x, pb.y, ox, oy);
+        if (!segment) continue;
+        const [start, end] = segment;
+        riverLayer.strokeLineShape(new Phaser.Geom.Line(start.x, start.y, end.x, end.y));
+        pushCornerPoint(start);
+        pushCornerPoint(end);
+        queueFlowArrowByCornerLevel(start, end);
       }
     }
+  };
 
-    riverLayer.lineStyle(3.4, 0x8bd6ff, 0.95);
-    for (const ek of riverData.waterfallEdgeSet || []) {
-      const [a, b] = ek.split("|");
-      if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-      const pa = parseCoordKey(a);
-      const pb = parseCoordKey(b);
-      const ca = hexCenter(pa.x, pa.y);
-      const cb = hexCenter(pb.x, pb.y);
+  const drawLargeRiverCenters = meshCenterIterable => {
+    if (!meshCenterIterable) return;
+    for (const keyRaw of meshCenterIterable) {
+      const pos = parseCoordKey(String(keyRaw || ""));
+      if (!Number.isFinite(pos?.x) || !Number.isFinite(pos?.y)) continue;
+      const tx = Math.floor(pos.x);
+      const ty = Math.floor(pos.y);
+      const tileKey = coordKey(tx, ty);
+      if (!isVisibleKey(tileKey)) continue;
       for (const offset of wrapOffsets) {
-        if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
-        if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
+        if (!shouldDrawWrappedTileCopy(tx, ty, offset, data.w, data.h)) continue;
         const ox = offset?.x || 0;
         const oy = offset?.y || 0;
-        riverLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy));
+        const points = buildHexPoints(tx, ty).map(p => ({ x: p.x + ox, y: p.y + oy }));
+        riverLayer.fillStyle(0x78bae8, 0.24);
+        riverLayer.fillPoints(points, true);
+        riverLayer.lineStyle(1.5, 0xaee6ff, 0.58);
+        riverLayer.strokePoints(points, true);
       }
     }
+  };
 
-    for (const key of riverData.waterfallSet || []) {
-      drawNode(key, 4.4, 0xf7fbff);
-      drawNode(key, 2.4, 0x87d0ff);
+  const hasCornerEdges = (riverData.cornerEdgeSet?.size || 0) + (riverData.cornerWaterLinkSet?.size || 0) > 0;
+  drawLargeRiverCenters(riverData.meshCenterSet || riverData.largeRiverSet);
+
+  if (hasCornerEdges) {
+    drawCornerSegments(riverData.cornerEdgeSet, 5, 0x9ed3ff, 0.95);
+    drawCornerSegments(riverData.cornerWaterLinkSet, 3.4, 0x6ab7ff, 0.82);
+    if (showWaterfallEffects.value) {
+      drawCornerSegments(riverData.cornerWaterfallEdgeSet, 6.1, 0xf8fcff, 0.74);
+      drawCornerSegments(riverData.cornerWaterfallEdgeSet, 3.4, 0x8bd6ff, 0.95);
+    }
+  } else {
+    drawTileEdgeSegments(riverData.edgeSet, 5, 0x9ed3ff, 0.95);
+    drawTileEdgeSegments(riverData.waterLinkSet, 3.4, 0x6ab7ff, 0.82);
+    if (showWaterfallEffects.value) {
+      drawTileEdgeSegments(riverData.waterfallEdgeSet, 6.1, 0xf8fcff, 0.74);
+      drawTileEdgeSegments(riverData.waterfallEdgeSet, 3.4, 0x8bd6ff, 0.95);
+    }
+  }
+
+  if (showRiverMicroDetails) {
+    for (const flow of flowArrowQueue) {
+      drawFlowArrowByPoints(flow.from, flow.to, 0xf4fbff, 0.9);
+    }
+    riverLayer.fillStyle(0xb9e2ff, 0.96);
+    for (const point of cornerPointMap.values()) {
+      riverLayer.fillCircle(point.x, point.y, 2.2);
     }
   }
 }
@@ -14284,6 +14393,7 @@ function generateShapeMap(options = {}) {
     audio.playSe("confirm");
   }
   const { w, h } = parseMapSizeValue(mapSize.value);
+  applyLargeMapPerformanceDefaults(w, h);
   const islandCustomSettings = buildIslandCustomSettings();
   const data = createIslandShapeData({
     w,
@@ -14302,6 +14412,7 @@ function generateTerrainMap(options = {}) {
     audio.playSe("confirm");
   }
   const { w, h } = parseMapSizeValue(mapSize.value);
+  applyLargeMapPerformanceDefaults(w, h);
   const islandCustomSettings = buildIslandCustomSettings();
   const data = createTerrainMapData({
     w,
@@ -14339,6 +14450,12 @@ function updateMapClickInfo(picked) {
       y: picked.y,
       title: "未探索",
       terrain: "不明(未探索)",
+      terrainIconSrc: resolveUnitIconSrc("地形", DEFAULT_ICON_NAME),
+      terrainIconLabel: "未探索",
+      unitIconSrc: "",
+      unitIconGlyph: "",
+      unitName: "",
+      unitSummary: "不明",
       territory: "不明",
       danger: "-",
       coast: "-",
@@ -14360,6 +14477,8 @@ function updateMapClickInfo(picked) {
         })()
         : "-",
       development: "不明",
+      camp: "不明",
+      tileRecovery: "-",
       facilities: "不明",
       moveStopReason: stopReason || "-",
       canOpenVillageActions: false,
@@ -14396,6 +14515,11 @@ function updateMapClickInfo(picked) {
     : "-";
   const caveSize = picked.special === "洞窟" ? picked.caveSize : "-";
   const tileUnits = unitsAt(picked.x, picked.y);
+  const leadTileUnit = tileUnits.find(unit => nonEmptyText(unit?.id) === nonEmptyText(selectedUnitId.value))
+    || tileUnits[0]
+    || null;
+  const leadTileUnitIconSrc = leadTileUnit ? moveUnitIconSrc(leadTileUnit) : "";
+  const leadTileUnitGlyph = leadTileUnit ? moveUnitIconGlyph(leadTileUnit) : "";
   const unitText = tileUnits.length
     ? tileUnits.map(unit => {
       const tags = [];
@@ -14408,6 +14532,9 @@ function updateMapClickInfo(picked) {
       return `${unit.name}${tagText}(Lv${unit.level})`;
     }).join(", ")
     : "なし";
+  const tileUnitSummaryText = tileUnits.length
+    ? `${nonEmptyText(leadTileUnit?.name) || "ユニット"} / ${tileUnits.length}体`
+    : "ユニットなし";
   const tileEnemies = enemiesAt(picked.x, picked.y, currentData.value);
   const configuredTileEnemies = configuredEnemiesAt(picked.x, picked.y, currentData.value);
   const tileKey = coordKey(picked.x, picked.y);
@@ -14581,8 +14708,23 @@ function updateMapClickInfo(picked) {
   if (picked.waterfall) terrainTitleParts.push("滝");
   if (nonEmptyText(picked.special)) terrainTitleParts.push(nonEmptyText(picked.special));
   const tileTitle = terrainTitleParts.filter(Boolean).join(" ");
+  const terrainIconName = resolveTerrainIconName(picked, terrainDisplayName, reliefName, special);
+  const terrainIconSrc = resolveUnitIconSrc(terrainIconName, DEFAULT_ICON_NAME);
+  const campEntry = resolveVillageCampEntryAtTile(villageState.value, tileKey);
+  const campText = campEntry ? "あり" : "なし";
   const facilityNames = resolveVillageTileFacilityNames(villageState.value, tileKey);
+  if (campEntry) {
+    facilityNames.push("野営キャンプ");
+  }
   const facilitiesText = facilityNames.length ? facilityNames.join(", ") : "-";
+  const tileRecoveryValue = ownTerritoryTile
+    ? Math.max(0, roundTo1(resolveVillageTileRecoveryValue(villageState.value, tileKey)))
+    : 0;
+  const tileRecoveryText = (ownTerritoryTile || campEntry)
+    ? (campEntry
+      ? `${formatCompactNumber(tileRecoveryValue)} + 待機回復`
+      : formatCompactNumber(tileRecoveryValue))
+    : "-";
   const developmentSummary = ownTerritoryTile
     ? `${territoryDevelopmentText} / ${residentialText}`
     : "-";
@@ -14602,6 +14744,12 @@ function updateMapClickInfo(picked) {
     y: picked.y,
     terrain: terrainDisplayName || picked.terrain,
     title: tileTitle || picked.terrain,
+    terrainIconSrc,
+    terrainIconLabel: terrainDisplayName || picked.terrain,
+    unitIconSrc: leadTileUnitIconSrc || "",
+    unitIconGlyph: leadTileUnitIconSrc ? "" : leadTileUnitGlyph,
+    unitName: nonEmptyText(leadTileUnit?.name),
+    unitSummary: tileUnitSummaryText,
     territory: ownerText,
     danger: dangerText,
     coast,
@@ -14618,6 +14766,8 @@ function updateMapClickInfo(picked) {
     enemySense: enemyEncounterSenseText,
     monsterConfigured: monsterConfiguredText,
     development: developmentSummary,
+    camp: campText,
+    tileRecovery: tileRecoveryText,
     facilities: facilitiesText,
     moveStopReason: moveStopReason || "-",
     canOpenVillageActions: canOpenVillageActionsOnTile,
@@ -16297,6 +16447,100 @@ function startTerritoryTileModeConversion(targetMode) {
   renderMapWithPhaser();
 }
 
+function resolveSelectedTileCampActionState() {
+  const detail = selectedTileDetail.value;
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return { enabled: false, reason: "マスを選択してください。", x: null, y: null, key: "" };
+  }
+  const data = currentData.value;
+  if (!data || data.shapeOnly) {
+    return { enabled: false, reason: "マップ生成後に建設できます。", x, y, key: coordKey(x, y) };
+  }
+  const raceFallback = resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village?.placed) {
+    return { enabled: false, reason: "初期村配置後に建設できます。", x, y, key: coordKey(x, y) };
+  }
+  const key = coordKey(x, y);
+  if (hasCampOnTile(village, key)) {
+    return { enabled: false, reason: "既にキャンプがあります。", x, y, key };
+  }
+  const villageX = Math.floor(toSafeNumber(village?.x, Number.NaN));
+  const villageY = Math.floor(toSafeNumber(village?.y, Number.NaN));
+  if (!Number.isFinite(villageX) || !Number.isFinite(villageY)) {
+    return { enabled: false, reason: "村の位置が不正です。", x, y, key };
+  }
+  if (villageX === x && villageY === y) {
+    return { enabled: false, reason: "村中心には建設できません。", x, y, key };
+  }
+  const distance = Math.max(0, Math.floor(hexDistance({ x, y }, { x: villageX, y: villageY })));
+  if (distance < CAMP_MIN_DISTANCE_FROM_VILLAGE) {
+    return { enabled: false, reason: `村から${CAMP_MIN_DISTANCE_FROM_VILLAGE}マス以上離してください。`, x, y, key, distance };
+  }
+  const terrain = nonEmptyText(data?.grid?.[y]?.[x]);
+  if (!terrain || terrain === "海" || terrain === "湖" || terrain === "溶岩") {
+    return { enabled: false, reason: "この地形には建設できません。", x, y, key, distance };
+  }
+  const tileDangerPercent = Math.max(
+    0,
+    Math.min(
+      TILE_DANGER_MAX_PERCENT,
+      Math.floor(toSafeNumber(data?.enemyDangerMap?.[y]?.[x], 0))
+    )
+  );
+  if (tileDangerPercent > 0) {
+    return { enabled: false, reason: "危険度0%のマスで建設できます。", x, y, key, distance };
+  }
+  const ownUnitOnTile = unitsAt(x, y).some(unit => canUseUnitAsMoveCandidate(unit));
+  if (!ownUnitOnTile) {
+    return { enabled: false, reason: "自勢力ユニットがいるマスで建設できます。", x, y, key, distance };
+  }
+  return {
+    enabled: true,
+    reason: "",
+    x,
+    y,
+    key,
+    distance
+  };
+}
+
+function buildCampAtSelectedTile() {
+  const state = resolveSelectedTileCampActionState();
+  if (!state.enabled || !state.key) {
+    updateUnitInfoText(`キャンプ建設不可: ${state.reason || "条件未達です。"}`);
+    return;
+  }
+  const raceFallback = resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village?.placed) {
+    updateUnitInfoText("キャンプ建設失敗: 村データが不正です。");
+    return;
+  }
+  const campMap = normalizeVillageTileCampMap(village?.[VILLAGE_TILE_CAMP_MAP_KEY]);
+  campMap[state.key] = {
+    createdTurn: Math.max(0, Math.floor(toSafeNumber(mapTurnNumber.value, 0)))
+  };
+  const nextVillage = ensureVillageStateShape({
+    ...village,
+    [VILLAGE_TILE_CAMP_MAP_KEY]: campMap
+  }, raceFallback);
+  villageState.value = nextVillage;
+  updateVillageInfoText();
+  kickOffBgm();
+  audio.playSe("confirm");
+  updateUnitInfoText(`キャンプ建設: (${state.x}, ${state.y}) / 待機と同量の追加回復を付与`);
+  pushNationLog(`キャンプ建設: (${state.x}, ${state.y}) / 遠征拠点を設置`);
+  const latest = hitAreaMap.get(state.key);
+  if (latest) {
+    updateMapClickInfo(latest);
+  }
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+}
+
 function resolveSelectedTileSurveyStateV2() {
   const detail = selectedTileDetail.value;
   const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
@@ -16899,6 +17143,20 @@ watch(() => props.characterCommand, command => {
             </span>
           </small>
         </div>
+        <div class="field-resource-chip field-resource-chip-research" title="研究レベル">
+          <small class="field-header-research-list">
+            <span
+              v-for="row in headerResearchRows"
+              :key="`header-research-${row.key}`"
+              class="field-header-research-chip"
+              :title="`${row.label} Lv${row.level} / EXP ${row.currentExp}/${row.requiredExp}`"
+            >
+              <span class="field-header-research-gauge" :style="{ '--research-progress-ratio': String(row.progressRatio) }">
+                <img :src="row.iconSrc" :alt="`${row.label} アイコン`" />
+              </span>
+            </span>
+          </small>
+        </div>
         <div class="field-overlay-actions">
           <button
             type="button"
@@ -17055,6 +17313,15 @@ watch(() => props.characterCommand, command => {
               >
                 建設
               </button>
+              <button
+                type="button"
+                class="overlay-action-btn"
+                :disabled="!tileCampActionState.enabled"
+                :title="tileCampActionState.enabled ? '遠征用キャンプを建設' : `キャンプ不可: ${tileCampActionState.reason}`"
+                @click="buildCampAtSelectedTile"
+              >
+                キャンプ
+              </button>
             </div>
             <button
               type="button"
@@ -17110,14 +17377,42 @@ watch(() => props.characterCommand, command => {
               {{ tileAttackDirectionLocked ? "方向固定済み: 対象マスをクリックで攻撃" : "方向未固定: 同じマスを2回クリックで方向固定" }}
             </div>
           </div>
+          <div v-if="selectedTileDetail" class="field-overlay-tile-preview">
+            <article
+              class="field-overlay-tile-preview-card terrain"
+              :title="`地形: ${selectedTileDetail.terrainIconLabel || selectedTileDetail.terrain || '-'}`"
+            >
+              <img :src="selectedTileDetail.terrainIconSrc" :alt="`${selectedTileDetail.terrainIconLabel || selectedTileDetail.terrain} タイル`" />
+            </article>
+            <article
+              class="field-overlay-tile-preview-card unit"
+              :title="selectedTileDetail.unitIconSrc || selectedTileDetail.unitName
+                ? `ユニット: ${selectedTileDetail.unitSummary || selectedTileDetail.unitName}`
+                : 'ユニットなし'"
+            >
+              <template v-if="selectedTileDetail.unitIconSrc || selectedTileDetail.unitName">
+                <img
+                  v-if="selectedTileDetail.unitIconSrc"
+                  :src="selectedTileDetail.unitIconSrc"
+                  :alt="`${selectedTileDetail.unitName || 'ユニット'} アイコン`"
+                />
+                <span v-else class="field-overlay-tile-preview-fallback">{{ selectedTileDetail.unitIconGlyph || "兵" }}</span>
+              </template>
+              <template v-else>
+                <span class="field-overlay-tile-preview-fallback">-</span>
+              </template>
+            </article>
+          </div>
           <div v-if="selectedTileDetail" class="field-overlay-tile-grid">
             <div><span>領土</span><strong>{{ selectedTileDetail.territory }}</strong></div>
             <div><span>危険度</span><strong>{{ selectedTileDetail.danger }}</strong></div>
             <div><span>高度</span><strong>Lv {{ selectedTileDetail.heightLevel }}</strong></div>
+            <div><span>キャンプ</span><strong>{{ selectedTileDetail.camp || "-" }}</strong></div>
             <div v-if="showTestControls" class="wide"><span>モンスター設定</span><strong>{{ selectedTileDetail.monsterConfigured || "-" }}</strong></div>
             <div v-if="showTestControls" class="wide"><span>敵索敵/隠密</span><strong>{{ selectedTileDetail.enemySense || "-" }}</strong></div>
             <div class="wide"><span>町状態</span><strong>{{ selectedTileDetail.village }}</strong></div>
             <div class="wide"><span>領土状態</span><strong>{{ selectedTileDetail.development }}</strong></div>
+            <div class="wide"><span>回復補正</span><strong>{{ selectedTileDetail.tileRecovery || "-" }}</strong></div>
             <div class="wide"><span>施設</span><strong>{{ selectedTileDetail.facilities || "-" }}</strong></div>
             <div class="wide"><span>ユニット</span><strong>{{ selectedTileDetail.units }}</strong></div>
             <div class="wide"><span>敵</span><strong>{{ selectedTileDetail.enemies || "-" }}</strong></div>

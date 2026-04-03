@@ -44,9 +44,45 @@ const 地形生成設定 = {
   確率: {
     湖候補: 0.35,
     沼地化: 0.28,
-    滝化: 0.35,
+    滝化: 0.5,
     峡谷化: 0.18,
     洞窟化: 0.1
+  },
+  河川: {
+    発生率係数: 40,
+    最低本数: 3,
+    幹線割合: 0.35,
+    源流候補最小スコア: 2,
+    源流上位抽選率: 0.35,
+    源流上位最低件数: 4,
+    源流重複再抽選回数: 12,
+    水際回避ステップ: 2,
+    流路長: {
+      幹線基本: 26,
+      支流基本: 18,
+      追加ランダム: 10
+    },
+    分岐: {
+      幹線予算: 2,
+      支流予算: 1,
+      開始年齢: 3,
+      幹線確率: 0.24,
+      支流確率: 0.1,
+      分岐TTL倍率: 0.52,
+      分岐TTL最小: 5
+    },
+    網目抑制: {
+      次角接続ペナルティ: 1.35,
+      現在角接続ペナルティ: 0.75,
+      平坦初期ペナルティ: 0.45,
+      平坦後半ペナルティ: 1.8,
+      平坦初期閾値: 1
+    },
+    網目処理: {
+      有効: true,
+      中央湖化: true,
+      囲み辺閾値: 6
+    }
   },
   高度: {
     基礎高度: 18,
@@ -186,7 +222,12 @@ const 特殊地形設定 = {
       最低水隣接数: 1,
       水判定に自マスを含む: false,
       最低川隣接数: 1,
-      川判定に自マスを含む: true
+      川判定に自マスを含む: true,
+      川判定種別: "大河", // "河川" | "大河"
+      左右川で湿地化: {
+        有効: true,
+        判定種別: "大河" // "河川" | "大河"
+      }
     }
   }
 };
@@ -1036,6 +1077,10 @@ function buildRiverTouchSet(riverData) {
   const out = new Set();
   if (!riverData || typeof riverData !== "object") return out;
   for (const keyRaw of riverData.riverSet || []) {
+    const key = normalizeCoordKeyText(String(keyRaw || ""));
+    if (key) out.add(key);
+  }
+  for (const keyRaw of riverData.meshCenterSet || riverData.largeRiverSet || []) {
     const key = normalizeCoordKeyText(String(keyRaw || ""));
     if (key) out.add(key);
   }
@@ -2731,6 +2776,39 @@ function buildHeightLevelMap(grid, 高度マップ, w, h) {
   return levelMap;
 }
 
+function applyMeshRiverLakeTiles(grid, meshCenterSet, heightLevelMap, w, h) {
+  if (!Array.isArray(grid) || !(meshCenterSet instanceof Set) || !meshCenterSet.size) return 0;
+  let converted = 0;
+  for (const keyRaw of meshCenterSet) {
+    const pos = parseCoordKey(String(keyRaw || ""));
+    if (!Number.isFinite(pos?.x) || !Number.isFinite(pos?.y)) continue;
+    const x = Math.floor(pos.x);
+    const y = Math.floor(pos.y);
+    if (x < 0 || x >= w || y < 0 || y >= h) continue;
+    const terrain = grid?.[y]?.[x];
+    if (!terrain || terrain === "海" || terrain === "湖") continue;
+    grid[y][x] = "湖";
+    converted += 1;
+
+    if (!Array.isArray(heightLevelMap) || !Array.isArray(heightLevelMap[y])) continue;
+    const neighborLevels = getHexNeighborCoords(w, h, x, y)
+      .map(n => ({ level: heightLevelMap?.[n.y]?.[n.x], terrain: grid?.[n.y]?.[n.x] }))
+      .filter(n => n.terrain !== "海" && Number.isFinite(n.level))
+      .map(n => Number(n.level));
+    if (!neighborLevels.length) {
+      heightLevelMap[y][x] = -1;
+      continue;
+    }
+    const average = Math.round(neighborLevels.reduce((sum, value) => sum + value, 0) / neighborLevels.length);
+    const minLevel = Math.min(...neighborLevels);
+    const maxLevel = Math.max(...neighborLevels);
+    const aroundMinusOne = average - 1;
+    const normalized = Math.max(minLevel - 1, Math.min(maxLevel, aroundMinusOne));
+    heightLevelMap[y][x] = clamp(normalized, -2, 7);
+  }
+  return converted;
+}
+
 function buildCoastMap(grid, w, h, 高度レベルマップ) {
   const coastMap = buildInitialGrid(w, h, false);
   const coastTypeMap = buildInitialGrid(w, h, "");
@@ -2767,13 +2845,20 @@ function buildCoastMap(grid, w, h, 高度レベルマップ) {
 function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
   const specialMap = buildInitialGrid(w, h, null);
   const specialCounts = { 沼地: 0, 峡谷: 0, 洞窟: 0, 洞窟_小: 0, 洞窟_中: 0, 洞窟_大: 0 };
-  const riverSet = riverData?.riverSet || new Set();
+  const riverSet = riverData?.riverSet instanceof Set ? riverData.riverSet : new Set();
+  const majorRiverSet = riverData?.largeRiverSet instanceof Set
+    ? riverData.largeRiverSet
+    : (riverData?.meshCenterSet instanceof Set ? riverData.meshCenterSet : new Set());
   const canyonRule = 特殊地形設定.峡谷;
   const caveRule = 特殊地形設定.洞窟;
   const wetRule = 特殊地形設定.沼地.湿潤条件;
   const waterTerrainSet = new Set(wetRule.水地形キー || []);
   const canyonTerrainSet = new Set(canyonRule.対象地形キー || []);
   const caveTerrainSet = new Set(caveRule.対象地形キー || []);
+  const resolveRiverJudgeSet = judgeType => (judgeType === "大河" ? majorRiverSet : riverSet);
+  const wetRiverSet = resolveRiverJudgeSet(String(wetRule.川判定種別 || "河川"));
+  const leftRightRule = wetRule.左右川で湿地化 || {};
+  const leftRightRiverSet = resolveRiverJudgeSet(String(leftRightRule.判定種別 || wetRule.川判定種別 || "河川"));
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
@@ -2822,14 +2907,22 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
         const terrain = grid[n.y][n.x];
         return sum + (waterTerrainSet.has(terrain) ? 1 : 0);
       }, waterBase);
-      const riverBase = (wetRule.川判定に自マスを含む && riverSet.has(tileKey)) ? 1 : 0;
+      const riverBase = (wetRule.川判定に自マスを含む && wetRiverSet.has(tileKey)) ? 1 : 0;
       const riverNear = neighbors.reduce((sum, n) => (
-        sum + (riverSet.has(`${n.x},${n.y}`) ? 1 : 0)
+        sum + (wetRiverSet.has(`${n.x},${n.y}`) ? 1 : 0)
       ), riverBase);
+      const hasLeftRightRiver = (
+        leftRightRule.有効 !== false
+        && x > 0
+        && x < (w - 1)
+        && leftRightRiverSet.has(`${x - 1},${y}`)
+        && leftRightRiverSet.has(`${x + 1},${y}`)
+      );
 
       const isWetForest = (
         waterNear >= wetRule.最低水隣接数
         || riverNear >= wetRule.最低川隣接数
+        || hasLeftRightRiver
       );
       if (!isWetForest) continue;
 
@@ -3071,42 +3164,181 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
   };
 }
 
-function augmentRiverDataWithWaterfalls(riverData, 高度レベルマップ) {
+function buildHexCornerPoints(x, y) {
+  const offsetX = (y % 2 === 1) ? 20 : 0;
+  const left = (x * 40) + offsetX;
+  const top = y * 36;
+  return [
+    { x: left + 20, y: top + 0 },
+    { x: left + 40, y: top + 12 },
+    { x: left + 40, y: top + 36 },
+    { x: left + 20, y: top + 48 },
+    { x: left + 0, y: top + 36 },
+    { x: left + 0, y: top + 12 }
+  ];
+}
+
+function cornerCoordKey(point) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return "";
+  const x = Math.round(point.x * 1000) / 1000;
+  const y = Math.round(point.y * 1000) / 1000;
+  return `${x},${y}`;
+}
+
+function riverEdgeKey(a, b) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function buildCornerLevelMapFromHeight(heightLevelMap, w, h) {
+  const cornerLevelBuckets = new Map();
+  const cornerTileMap = new Map();
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const lv = Number(heightLevelMap?.[y]?.[x]);
+      if (!Number.isFinite(lv)) continue;
+      const tileKey = coordKey(x, y);
+      const points = buildHexCornerPoints(x, y);
+      for (const point of points) {
+        const cKey = cornerCoordKey(point);
+        if (!cKey) continue;
+        if (!cornerLevelBuckets.has(cKey)) cornerLevelBuckets.set(cKey, []);
+        cornerLevelBuckets.get(cKey).push(lv);
+        if (!cornerTileMap.has(cKey)) cornerTileMap.set(cKey, new Set());
+        cornerTileMap.get(cKey).add(tileKey);
+      }
+    }
+  }
+  const cornerLevelMap = new Map();
+  for (const [cKey, values] of cornerLevelBuckets.entries()) {
+    if (!Array.isArray(values) || !values.length) continue;
+    cornerLevelMap.set(cKey, Math.min(...values));
+  }
+  return { cornerLevelMap, cornerTileMap };
+}
+
+function buildCornerEdgeTileMap(w, h) {
+  const out = new Map();
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const tileKey = coordKey(x, y);
+      const corners = buildHexCornerPoints(x, y)
+        .map(cornerCoordKey)
+        .filter(Boolean);
+      if (corners.length !== 6) continue;
+      for (let i = 0; i < corners.length; i += 1) {
+        const edgeKey = riverEdgeKey(corners[i], corners[(i + 1) % corners.length]);
+        if (!out.has(edgeKey)) out.set(edgeKey, new Set());
+        out.get(edgeKey).add(tileKey);
+      }
+    }
+  }
+  return out;
+}
+
+function augmentRiverDataWithWaterfalls(riverData, heightLevelMap) {
   const waterfallSet = new Set();
   const waterfallEdgeSet = new Set();
-  if (!riverData) return { waterfallSet, waterfallEdgeSet, riverTouchSet: new Set() };
+  const cornerWaterfallEdgeSet = new Set();
+  const blockedCornerNodeSet = new Set();
+  const blockedTileNodeSet = new Set();
+  const baseWaterfallChance = normalizeProbability(地形生成設定?.確率?.滝化, 0.18);
+  if (!riverData) return { waterfallSet, waterfallEdgeSet, cornerWaterfallEdgeSet, riverTouchSet: new Set() };
 
-  const markEdgeIfWaterfall = edgeKey => {
-    const [a, b] = edgeKey.split("|");
-    const pa = parseCoordKey(a);
-    const pb = parseCoordKey(b);
-    const al = 高度レベルマップ?.[pa.y]?.[pa.x];
-    const bl = 高度レベルマップ?.[pb.y]?.[pb.x];
-    if (!Number.isFinite(al) || !Number.isFinite(bl)) return;
-    const high = Math.max(al, bl);
-    const low = Math.min(al, bl);
-    const drop = high - low;
-    // 滝は「高所(>=2)から低所へ落差がある区間」に限定する
-    if (!(high >= 2 && drop >= 1)) return;
-    if (Math.random() >= 地形生成設定.確率.滝化) return;
+  const levelMapH = Array.isArray(heightLevelMap) ? heightLevelMap.length : 0;
+  const levelMapW = levelMapH > 0 && Array.isArray(heightLevelMap[0]) ? heightLevelMap[0].length : 0;
+  const hasCornerRiverEdges = ((riverData.cornerEdgeSet?.size || 0) + (riverData.cornerWaterLinkSet?.size || 0)) > 0;
 
-    waterfallEdgeSet.add(edgeKey);
-    if (al === high && riverData.riverSet?.has(a)) waterfallSet.add(a);
-    if (bl === high && riverData.riverSet?.has(b)) waterfallSet.add(b);
-  };
+  if (hasCornerRiverEdges && levelMapW > 0 && levelMapH > 0) {
+    const { cornerLevelMap, cornerTileMap } = buildCornerLevelMapFromHeight(heightLevelMap, levelMapW, levelMapH);
+    const cornerEdgeTileMap = buildCornerEdgeTileMap(levelMapW, levelMapH);
+    const tileLevelOf = tileKey => {
+      const p = parseCoordKey(String(tileKey || ""));
+      if (!Number.isFinite(p?.x) || !Number.isFinite(p?.y)) return Number.NEGATIVE_INFINITY;
+      const lv = Number(heightLevelMap?.[p.y]?.[p.x]);
+      return Number.isFinite(lv) ? lv : Number.NEGATIVE_INFINITY;
+    };
+    const markCornerEdgeIfWaterfall = (edgeKey, isWaterLink = false) => {
+      const [a, b] = String(edgeKey || "").split("|");
+      if (!a || !b) return;
+      if (blockedCornerNodeSet.has(a) || blockedCornerNodeSet.has(b)) return;
+      const al = Number(cornerLevelMap.get(a));
+      const bl = Number(cornerLevelMap.get(b));
+      if (!Number.isFinite(al) || !Number.isFinite(bl)) return;
+      const high = Math.max(al, bl);
+      const low = Math.min(al, bl);
+      const drop = high - low;
+      if (!(high >= 2 && drop >= 1)) return;
 
-  for (const edge of riverData.edgeSet || []) markEdgeIfWaterfall(edge);
-  for (const edge of riverData.waterLinkSet || []) markEdgeIfWaterfall(edge);
+      const edgeTiles = [...(cornerEdgeTileMap.get(edgeKey) || [])];
+      const riverTilesOnEdge = edgeTiles.filter(tileKey => riverData.riverSet?.has(tileKey));
+      if (!riverTilesOnEdge.length) return;
+
+      if (isWaterLink && drop < 2) return;
+      let chance = baseWaterfallChance + Math.min(0.28, Math.max(0, drop - 1) * 0.12);
+      if (isWaterLink) chance *= 0.45;
+      if (Math.random() >= chance) return;
+
+      cornerWaterfallEdgeSet.add(edgeKey);
+      blockedCornerNodeSet.add(a);
+      blockedCornerNodeSet.add(b);
+
+      const beforeCount = waterfallSet.size;
+      let peakTileLevel = Number.NEGATIVE_INFINITY;
+      for (const tileKey of riverTilesOnEdge) {
+        peakTileLevel = Math.max(peakTileLevel, tileLevelOf(tileKey));
+      }
+      for (const tileKey of riverTilesOnEdge) {
+        if (tileLevelOf(tileKey) >= peakTileLevel && riverData.riverSet?.has(tileKey)) {
+          waterfallSet.add(tileKey);
+        }
+      }
+      if (waterfallSet.size === beforeCount) {
+        const highCornerKey = al >= bl ? a : b;
+        const touchedTiles = cornerTileMap.get(highCornerKey);
+        for (const tileKey of touchedTiles || []) {
+          if (riverData.riverSet?.has(tileKey)) waterfallSet.add(tileKey);
+        }
+      }
+    };
+    for (const edge of riverData.cornerEdgeSet || []) markCornerEdgeIfWaterfall(edge, false);
+    for (const edge of riverData.cornerWaterLinkSet || []) markCornerEdgeIfWaterfall(edge, true);
+  } else {
+    const markTileEdgeIfWaterfall = edgeKey => {
+      const [a, b] = String(edgeKey || "").split("|");
+      if (!a || !b) return;
+      if (blockedTileNodeSet.has(a) || blockedTileNodeSet.has(b)) return;
+      const pa = parseCoordKey(a);
+      const pb = parseCoordKey(b);
+      const al = heightLevelMap?.[pa.y]?.[pa.x];
+      const bl = heightLevelMap?.[pb.y]?.[pb.x];
+      if (!Number.isFinite(al) || !Number.isFinite(bl)) return;
+      const high = Math.max(al, bl);
+      const low = Math.min(al, bl);
+      const drop = high - low;
+      if (!(high >= 2 && drop >= 1)) return;
+      const chance = baseWaterfallChance + Math.min(0.28, Math.max(0, drop - 1) * 0.12);
+      if (Math.random() >= chance) return;
+
+      waterfallEdgeSet.add(edgeKey);
+      blockedTileNodeSet.add(a);
+      blockedTileNodeSet.add(b);
+      if (al === high && riverData.riverSet?.has(a)) waterfallSet.add(a);
+      if (bl === high && riverData.riverSet?.has(b)) waterfallSet.add(b);
+    };
+    for (const edge of riverData.edgeSet || []) markTileEdgeIfWaterfall(edge);
+    for (const edge of riverData.waterLinkSet || []) markTileEdgeIfWaterfall(edge);
+  }
 
   return {
     ...riverData,
     riverTouchSet: buildRiverTouchSet(riverData),
     waterfallSet,
-    waterfallEdgeSet
+    waterfallEdgeSet,
+    cornerWaterfallEdgeSet
   };
 }
 
-function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベルマップ) {
+function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap) {
   const seas = listCoordsByTerrain(grid, "海");
   const waters = [...seas, ...listCoordsByTerrain(grid, "湖")];
   const riverSet = new Set();
@@ -3115,13 +3347,58 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
   const mouthSet = new Set();
   const edgeSet = new Set();
   const waterLinkSet = new Set();
+  const cornerEdgeSet = new Set();
+  const cornerWaterLinkSet = new Set();
   if (!waters.length) {
-    return { riverSet, sourceSet, branchSet, mouthSet, edgeSet, waterLinkSet, riverTouchSet: new Set() };
+    return {
+      riverSet,
+      sourceSet,
+      branchSet,
+      mouthSet,
+      edgeSet,
+      waterLinkSet,
+      cornerEdgeSet,
+      cornerWaterLinkSet,
+      meshCenterSet: new Set(),
+      largeRiverSet: new Set(),
+      riverTouchSet: new Set()
+    };
   }
 
-  const flowLevelMap = (高度レベルマップ && 高度レベルマップ.length)
-    ? 高度レベルマップ.map(row => [...row])
-    : buildHeightLevelMap(grid, 高度マップ, w, h);
+  const flowLevelMap = (heightLevelMap && heightLevelMap.length)
+    ? heightLevelMap.map(row => [...row])
+    : buildHeightLevelMap(grid, heightMap, w, h);
+  const { cornerLevelMap } = buildCornerLevelMapFromHeight(flowLevelMap, w, h);
+  const riverRule = 地形生成設定.河川 || {};
+  const riverFlowRule = riverRule.流路長 || {};
+  const riverBranchRule = riverRule.分岐 || {};
+  const riverMeshRule = riverRule.網目抑制 || {};
+  const riverMeshHandlingRule = riverRule.網目処理 || {};
+  const majorBaseTtl = Math.max(1, Math.floor(Number.isFinite(riverFlowRule.幹線基本) ? riverFlowRule.幹線基本 : 26));
+  const minorBaseTtl = Math.max(1, Math.floor(Number.isFinite(riverFlowRule.支流基本) ? riverFlowRule.支流基本 : 18));
+  const ttlRandomSpan = Math.max(0, Math.floor(Number.isFinite(riverFlowRule.追加ランダム) ? riverFlowRule.追加ランダム : 10));
+  const branchBudgetMajor = Math.max(0, Math.floor(Number.isFinite(riverBranchRule.幹線予算) ? riverBranchRule.幹線予算 : 2));
+  const branchBudgetMinor = Math.max(0, Math.floor(Number.isFinite(riverBranchRule.支流予算) ? riverBranchRule.支流予算 : 1));
+  const branchStartAge = Math.max(0, Math.floor(Number.isFinite(riverBranchRule.開始年齢) ? riverBranchRule.開始年齢 : 3));
+  const majorBranchChance = normalizeProbability(riverBranchRule.幹線確率, 0.24);
+  const minorBranchChance = normalizeProbability(riverBranchRule.支流確率, 0.1);
+  const branchTtlRatio = clamp(Number.isFinite(riverBranchRule.分岐TTL倍率) ? riverBranchRule.分岐TTL倍率 : 0.52, 0.1, 1);
+  const branchTtlMin = Math.max(1, Math.floor(Number.isFinite(riverBranchRule.分岐TTL最小) ? riverBranchRule.分岐TTL最小 : 5));
+  const avoidOutletEarlySteps = Math.max(0, Math.floor(Number.isFinite(riverRule.水際回避ステップ) ? riverRule.水際回避ステップ : 2));
+  const meshPenaltyNextCorner = Math.max(0, Number.isFinite(riverMeshRule.次角接続ペナルティ) ? riverMeshRule.次角接続ペナルティ : 1.35);
+  const meshPenaltyCurrentCorner = Math.max(0, Number.isFinite(riverMeshRule.現在角接続ペナルティ) ? riverMeshRule.現在角接続ペナルティ : 0.75);
+  const meshPenaltyFlatEarly = Math.max(0, Number.isFinite(riverMeshRule.平坦初期ペナルティ) ? riverMeshRule.平坦初期ペナルティ : 0.45);
+  const meshPenaltyFlatLate = Math.max(0, Number.isFinite(riverMeshRule.平坦後半ペナルティ) ? riverMeshRule.平坦後半ペナルティ : 1.8);
+  const meshPenaltyFlatEarlyAge = Math.max(0, Math.floor(Number.isFinite(riverMeshRule.平坦初期閾値) ? riverMeshRule.平坦初期閾値 : 1));
+  const sourceMinScore = Number.isFinite(riverRule.源流候補最小スコア) ? riverRule.源流候補最小スコア : 2;
+  const sourceTopRate = normalizeProbability(riverRule.源流上位抽選率, 0.35);
+  const sourceTopMin = Math.max(1, Math.floor(Number.isFinite(riverRule.源流上位最低件数) ? riverRule.源流上位最低件数 : 4));
+  const sourceRetryLimit = Math.max(1, Math.floor(Number.isFinite(riverRule.源流重複再抽選回数) ? riverRule.源流重複再抽選回数 : 12));
+  const riverCountDivisor = Math.max(8, Math.floor(Number.isFinite(riverRule.発生率係数) ? riverRule.発生率係数 : 78));
+  const riverCountMin = Math.max(1, Math.floor(Number.isFinite(riverRule.最低本数) ? riverRule.最低本数 : 3));
+  const majorRatio = normalizeProbability(riverRule.幹線割合, 0.58);
+  const meshLoopEnabled = riverMeshHandlingRule.有効 !== false;
+  const meshLoopThreshold = Math.max(3, Math.min(6, Math.floor(Number.isFinite(riverMeshHandlingRule.囲み辺閾値) ? riverMeshHandlingRule.囲み辺閾値 : 6)));
 
   function isWaterTerrain(terrain) {
     return terrain === "海" || terrain === "湖";
@@ -3131,130 +3408,319 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
     return `${x},${y}`;
   }
 
-  function riverEdgeKey(a, b) {
-    return a < b ? `${a}|${b}` : `${b}|${a}`;
-  }
-
   function getLevel(x, y) {
     if (y < 0 || y >= h || x < 0 || x >= w) return -2;
     return flowLevelMap[y][x];
   }
 
-  function waterNeighborOf(x, y) {
-    const neighbors = getHexNeighborCoords(w, h, x, y);
-    let best = null;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (const n of neighbors) {
-      if (!isWaterTerrain(grid[n.y][n.x])) continue;
-      const dist = seas.length ? minDistanceToTargets(n.x, n.y, seas) : 0;
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = n;
+  const cornerTileMap = new Map();
+  const tileCornersMap = new Map();
+  const edgeInfoMap = new Map();
+  const cornerNeighborsMap = new Map();
+  const riverCornerDegreeMap = new Map();
+
+  const ensureCornerNeighbor = (fromKey, toKey, edgeKey) => {
+    if (!cornerNeighborsMap.has(fromKey)) cornerNeighborsMap.set(fromKey, new Map());
+    cornerNeighborsMap.get(fromKey).set(toKey, edgeKey);
+  };
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const tileKey = keyOf(x, y);
+      const cornerKeys = buildHexCornerPoints(x, y)
+        .map(cornerCoordKey)
+        .filter(Boolean);
+      if (cornerKeys.length !== 6) continue;
+      tileCornersMap.set(tileKey, cornerKeys);
+      for (const cKey of cornerKeys) {
+        if (!cornerTileMap.has(cKey)) cornerTileMap.set(cKey, new Set());
+        cornerTileMap.get(cKey).add(tileKey);
+      }
+      for (let i = 0; i < cornerKeys.length; i += 1) {
+        const a = cornerKeys[i];
+        const b = cornerKeys[(i + 1) % cornerKeys.length];
+        const edgeKey = riverEdgeKey(a, b);
+        if (!edgeInfoMap.has(edgeKey)) {
+          edgeInfoMap.set(edgeKey, { a, b, tileKeys: new Set() });
+        }
+        edgeInfoMap.get(edgeKey).tileKeys.add(tileKey);
       }
     }
-    return best;
   }
 
-  function traceRiverFromSource(source, isMajor) {
-    const sourceKey = keyOf(source.x, source.y);
-    sourceSet.add(sourceKey);
+  for (const [edgeKey, edgeInfo] of edgeInfoMap.entries()) {
+    ensureCornerNeighbor(edgeInfo.a, edgeInfo.b, edgeKey);
+    ensureCornerNeighbor(edgeInfo.b, edgeInfo.a, edgeKey);
+  }
+
+  const isTileKeyWater = tileKey => {
+    const pos = parseCoordKey(tileKey);
+    if (!Number.isFinite(pos?.x) || !Number.isFinite(pos?.y)) return false;
+    return isWaterTerrain(grid[pos.y]?.[pos.x]);
+  };
+
+  const cornerWaterSet = new Set();
+  for (const [cornerKey, tileKeys] of cornerTileMap.entries()) {
+    for (const tileKey of tileKeys) {
+      if (isTileKeyWater(tileKey)) {
+        cornerWaterSet.add(cornerKey);
+        break;
+      }
+    }
+  }
+
+  const cornerWaterDistanceMap = new Map();
+  const queue = [];
+  let head = 0;
+  for (const cornerKey of cornerWaterSet) {
+    cornerWaterDistanceMap.set(cornerKey, 0);
+    queue.push(cornerKey);
+  }
+  while (head < queue.length) {
+    const currentKey = queue[head];
+    head += 1;
+    const currentDist = cornerWaterDistanceMap.get(currentKey);
+    const neighbors = cornerNeighborsMap.get(currentKey);
+    if (!neighbors) continue;
+    for (const nextKey of neighbors.keys()) {
+      const nextDist = currentDist + 1;
+      if (!cornerWaterDistanceMap.has(nextKey) || nextDist < cornerWaterDistanceMap.get(nextKey)) {
+        cornerWaterDistanceMap.set(nextKey, nextDist);
+        queue.push(nextKey);
+      }
+    }
+  }
+
+  const markRiverTilesAtCorner = cornerKey => {
+    const tiles = cornerTileMap.get(cornerKey);
+    for (const tileKey of tiles || []) {
+      if (!isTileKeyWater(tileKey)) riverSet.add(tileKey);
+    }
+  };
+
+  const pickTilePairFromEdge = edgeInfo => {
+    const keys = [...(edgeInfo?.tileKeys || [])];
+    if (keys.length < 2) return null;
+    return [keys[0], keys[1]];
+  };
+
+  const registerFlowEdge = (fromCornerKey, toCornerKey, useWaterLink = false) => {
+    const edgeKey = riverEdgeKey(fromCornerKey, toCornerKey);
+    const edgeInfo = edgeInfoMap.get(edgeKey);
+    if (!edgeInfo) return;
+    if (cornerEdgeSet.has(edgeKey) || cornerWaterLinkSet.has(edgeKey)) return;
+
+    const sideTiles = [...edgeInfo.tileKeys];
+    const landTiles = sideTiles.filter(key => !isTileKeyWater(key));
+    const hasWaterSide = sideTiles.length < 2 || sideTiles.some(isTileKeyWater);
+
+    if (useWaterLink || hasWaterSide) {
+      cornerWaterLinkSet.add(edgeKey);
+      for (const tileKey of landTiles) mouthSet.add(tileKey);
+    } else {
+      cornerEdgeSet.add(edgeKey);
+    }
+
+    for (const tileKey of landTiles) riverSet.add(tileKey);
+
+    const tilePair = pickTilePairFromEdge(edgeInfo);
+    if (!tilePair) return;
+    const [ta, tb] = tilePair;
+    const aWater = isTileKeyWater(ta);
+    const bWater = isTileKeyWater(tb);
+    if (useWaterLink || aWater || bWater) {
+      waterLinkSet.add(riverEdgeKey(ta, tb));
+    } else {
+      edgeSet.add(riverEdgeKey(ta, tb));
+    }
+
+    riverCornerDegreeMap.set(fromCornerKey, (riverCornerDegreeMap.get(fromCornerKey) || 0) + 1);
+    riverCornerDegreeMap.set(toCornerKey, (riverCornerDegreeMap.get(toCornerKey) || 0) + 1);
+  };
+
+  const detectMeshCenterTiles = () => {
+    const out = new Set();
+    if (!meshLoopEnabled) return out;
+    const activeEdges = new Set([...cornerEdgeSet, ...cornerWaterLinkSet]);
+    if (!activeEdges.size) return out;
+    for (const [tileKey, corners] of tileCornersMap.entries()) {
+      if (!Array.isArray(corners) || corners.length !== 6) continue;
+      if (isTileKeyWater(tileKey)) continue;
+      let aroundCount = 0;
+      for (let i = 0; i < corners.length; i += 1) {
+        const edgeKey = riverEdgeKey(corners[i], corners[(i + 1) % corners.length]);
+        if (activeEdges.has(edgeKey)) aroundCount += 1;
+      }
+      if (aroundCount >= meshLoopThreshold) {
+        out.add(tileKey);
+        riverSet.add(tileKey);
+      }
+    }
+    return out;
+  };
+
+  const cornersForTile = tileKey => tileCornersMap.get(tileKey) || [];
+
+  const chooseSourceCorner = tileKey => {
+    const corners = cornersForTile(tileKey);
+    if (!corners.length) return "";
+    const scored = corners
+      .map(cornerKey => {
+        const currentLevel = cornerLevelMap.get(cornerKey);
+        const neighbors = cornerNeighborsMap.get(cornerKey);
+        const downhill = [...(neighbors?.keys() || [])].some(nextKey => {
+          const nextLevel = cornerLevelMap.get(nextKey);
+          return Number.isFinite(nextLevel) && Number.isFinite(currentLevel) && nextLevel < currentLevel;
+        });
+        return {
+          cornerKey,
+          level: Number.isFinite(currentLevel) ? currentLevel : Number.NEGATIVE_INFINITY,
+          downhill,
+          waterDist: Number.isFinite(cornerWaterDistanceMap.get(cornerKey)) ? cornerWaterDistanceMap.get(cornerKey) : Number.POSITIVE_INFINITY,
+          touchingWater: cornerWaterSet.has(cornerKey),
+          tie: Math.random()
+        };
+      })
+      .filter(info => Number.isFinite(info.level))
+      .sort((a, b) =>
+        Number(b.downhill) - Number(a.downhill)
+        || Number(a.touchingWater) - Number(b.touchingWater)
+        || b.level - a.level
+        || a.waterDist - b.waterDist
+        || a.tie - b.tie
+      );
+    return scored[0]?.cornerKey || "";
+  };
+
+  function traceRiverFromSource(source, sourceCornerKey, isMajor) {
+    const sourceTileKey = keyOf(source.x, source.y);
+    sourceSet.add(sourceTileKey);
     const channels = [{
-      x: source.x,
-      y: source.y,
-      ttl: (isMajor ? 22 : 15) + Math.floor(Math.random() * 10),
+      cornerKey: sourceCornerKey,
+      ttl: (isMajor ? majorBaseTtl : minorBaseTtl) + (ttlRandomSpan > 0 ? Math.floor(Math.random() * ttlRandomSpan) : 0),
       age: 0,
-      branchBudget: isMajor ? 2 : 1,
+      branchBudget: isMajor ? branchBudgetMajor : branchBudgetMinor,
       major: isMajor,
-      visited: new Set([sourceKey])
+      visited: new Set([sourceCornerKey])
     }];
+
+    markRiverTilesAtCorner(sourceCornerKey);
 
     while (channels.length) {
       const ch = channels.pop();
-      let current = { x: ch.x, y: ch.y };
-      let currentKey = keyOf(current.x, current.y);
-
-      if (!isWaterTerrain(grid[current.y][current.x])) {
-        riverSet.add(currentKey);
-      }
+      let currentCornerKey = ch.cornerKey;
 
       while (ch.ttl > 0) {
-        const outlet = waterNeighborOf(current.x, current.y);
-        if (outlet && ch.age >= 1) {
-          const outletKey = keyOf(outlet.x, outlet.y);
-          waterLinkSet.add(riverEdgeKey(currentKey, outletKey));
-          mouthSet.add(currentKey);
+        markRiverTilesAtCorner(currentCornerKey);
+
+        if (ch.age >= 1 && cornerWaterSet.has(currentCornerKey)) {
+          const touched = cornerTileMap.get(currentCornerKey);
+          for (const tileKey of touched || []) {
+            if (!isTileKeyWater(tileKey)) mouthSet.add(tileKey);
+          }
           break;
         }
 
-        const currentLevel = getLevel(current.x, current.y);
-        const candidates = getHexNeighborCoords(w, h, current.x, current.y)
-          .filter(n => !ch.visited.has(keyOf(n.x, n.y)))
-          .map(n => {
-            const terrain = grid[n.y][n.x];
-            const level = getLevel(n.x, n.y);
-            const drop = currentLevel - level;
-            const waterDist = minDistanceToTargets(n.x, n.y, waters);
-            const canFlow = isWaterTerrain(terrain) || level <= currentLevel;
-            // Edge-flow rule:
-            // Always prioritize lower height direction first.
-            // Same-height is fallback. Uphill is forbidden.
-            const downhillRank = isWaterTerrain(terrain)
+        const currentLevel = cornerLevelMap.get(currentCornerKey);
+        if (!Number.isFinite(currentLevel)) break;
+        const neighbors = cornerNeighborsMap.get(currentCornerKey);
+        if (!neighbors || !neighbors.size) break;
+
+        const candidates = [...neighbors.entries()]
+          .filter(([nextCornerKey]) => !ch.visited.has(nextCornerKey))
+          .map(([nextCornerKey, edgeKey]) => {
+            const nextLevel = cornerLevelMap.get(nextCornerKey);
+            if (!Number.isFinite(nextLevel)) return null;
+            const drop = currentLevel - nextLevel;
+            if (drop < 0) return null;
+            const edgeInfo = edgeInfoMap.get(edgeKey);
+            if (!edgeInfo) return null;
+            const sideTiles = [...edgeInfo.tileKeys];
+            const hasWaterSide = sideTiles.length < 2 || sideTiles.some(isTileKeyWater);
+            const hasLandSide = sideTiles.some(tileKey => !isTileKeyWater(tileKey));
+            if (!hasLandSide) return null;
+
+            const nextCornerDegree = riverCornerDegreeMap.get(nextCornerKey) || 0;
+            const currentCornerDegree = riverCornerDegreeMap.get(currentCornerKey) || 0;
+            const isFlatMove = drop === 0;
+            // Mesh suppression as score penalty (not hard reject).
+            // Keep rivers alive while making honeycomb loops less likely.
+            let meshPenalty = 0;
+            if (!hasWaterSide) {
+              meshPenalty += nextCornerDegree * meshPenaltyNextCorner;
+              meshPenalty += Math.max(0, currentCornerDegree - 1) * meshPenaltyCurrentCorner;
+              if (isFlatMove) {
+                meshPenalty += (ch.age <= meshPenaltyFlatEarlyAge) ? meshPenaltyFlatEarly : meshPenaltyFlatLate;
+              }
+            }
+
+            const waterDist = Number.isFinite(cornerWaterDistanceMap.get(nextCornerKey))
+              ? cornerWaterDistanceMap.get(nextCornerKey)
+              : Number.POSITIVE_INFINITY;
+            const downhillRank = hasWaterSide
               ? -1
-              : (level < currentLevel ? 0 : 1);
-            const tie = Math.random() * 0.12;
-            return { n, terrain, level, drop, waterDist, canFlow, downhillRank, tie };
+              : (drop > 0 ? 0 : 1);
+            return {
+              nextCornerKey,
+              edgeInfo,
+              hasWaterSide,
+              drop,
+              nextLevel,
+              waterDist,
+              meshPenalty,
+              downhillRank,
+              tie: Math.random() * 0.15
+            };
           })
-          .filter(info => info.canFlow)
+          .filter(Boolean)
           .sort((a, b) =>
             a.downhillRank - b.downhillRank
-            || a.level - b.level
+            || a.nextLevel - b.nextLevel
+            || a.meshPenalty - b.meshPenalty
             || a.waterDist - b.waterDist
+            || b.drop - a.drop
             || a.tie - b.tie
           );
 
         if (!candidates.length) break;
-        let nextInfo = candidates[0];
 
-        if (ch.age < 2 && isWaterTerrain(nextInfo.terrain) && candidates.length > 1) {
-          const nonWater = candidates.find(c => !isWaterTerrain(c.terrain));
-          if (nonWater) nextInfo = nonWater;
+        let nextInfo = candidates[0];
+        if (ch.age < avoidOutletEarlySteps && nextInfo.hasWaterSide && candidates.length > 1) {
+          const nonOutlet = candidates.find(c => !c.hasWaterSide);
+          if (nonOutlet) nextInfo = nonOutlet;
         }
 
-        if (ch.age >= 3 && ch.branchBudget > 0 && candidates.length > 1) {
-          const branchChance = ch.major ? 0.35 : 0.18;
-          const alt = candidates.find(c => c !== nextInfo && !isWaterTerrain(c.terrain));
-          if (alt && !isWaterTerrain(alt.terrain) && Math.random() < branchChance) {
-            branchSet.add(currentKey);
+        if (ch.age >= branchStartAge && ch.branchBudget > 0 && candidates.length > 1) {
+          const branchChance = ch.major ? majorBranchChance : minorBranchChance;
+          const alt = candidates.find(c => c !== nextInfo && !c.hasWaterSide);
+          if (alt && Math.random() < branchChance) {
+            const branchTiles = cornerTileMap.get(currentCornerKey);
+            for (const tileKey of branchTiles || []) {
+              if (!isTileKeyWater(tileKey)) branchSet.add(tileKey);
+            }
+            const nextVisited = new Set(ch.visited);
+            nextVisited.add(alt.nextCornerKey);
             channels.push({
-              x: alt.n.x,
-              y: alt.n.y,
-              ttl: Math.max(5, Math.floor(ch.ttl * 0.52)),
+              cornerKey: alt.nextCornerKey,
+              ttl: Math.max(branchTtlMin, Math.floor(ch.ttl * branchTtlRatio)),
               age: 0,
               branchBudget: ch.branchBudget - 1,
               major: false,
-              visited: new Set(ch.visited)
+              visited: nextVisited
             });
             ch.branchBudget -= 1;
           }
         }
 
-        const next = nextInfo.n;
-        const nextKey = keyOf(next.x, next.y);
-        ch.visited.add(nextKey);
+        ch.visited.add(nextInfo.nextCornerKey);
         ch.ttl -= 1;
         ch.age += 1;
 
-        if (isWaterTerrain(nextInfo.terrain)) {
-          waterLinkSet.add(riverEdgeKey(currentKey, nextKey));
-          mouthSet.add(currentKey);
-          break;
-        }
+        const toOutlet = nextInfo.hasWaterSide && ch.age >= 1;
+        registerFlowEdge(currentCornerKey, nextInfo.nextCornerKey, toOutlet);
+        if (toOutlet) break;
 
-        edgeSet.add(riverEdgeKey(currentKey, nextKey));
-        riverSet.add(currentKey);
-        riverSet.add(nextKey);
-        current = next;
-        currentKey = nextKey;
+        currentCornerKey = nextInfo.nextCornerKey;
       }
     }
   }
@@ -3271,10 +3737,11 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
         sourceScore: (isMountainLikeTerrain(terrain) ? 3 : 0) + (terrain === "丘陵" ? 1 : 0) + level
       };
     })
-    .filter(c => c.sourceScore >= 2)
+    .filter(c => c.sourceScore >= sourceMinScore)
     .sort((a, b) => b.sourceScore - a.sourceScore || Math.random() - 0.5);
 
   if (!sourceCandidates.length) {
+    const meshCenterSet = new Set();
     return {
       riverSet,
       sourceSet,
@@ -3282,28 +3749,37 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
       mouthSet,
       edgeSet,
       waterLinkSet,
-      riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet })
+      cornerEdgeSet,
+      cornerWaterLinkSet,
+      meshCenterSet,
+      largeRiverSet: new Set(meshCenterSet),
+      riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet })
     };
   }
 
-  const riverCount = Math.max(3, Math.floor(totalTiles / 70));
-  const majorCount = Math.max(1, Math.floor(riverCount * 0.6));
-  const topSliceSize = Math.max(4, Math.floor(sourceCandidates.length * 0.35));
+  const riverCountAdjusted = Math.max(riverCountMin, Math.floor(totalTiles / riverCountDivisor));
+  const majorCount = Math.max(1, Math.floor(riverCountAdjusted * majorRatio));
+  const topSliceSize = Math.max(sourceTopMin, Math.floor(sourceCandidates.length * sourceTopRate));
   const topSources = sourceCandidates.slice(0, topSliceSize);
   const used = new Set();
 
-  for (let i = 0; i < riverCount; i += 1) {
+  for (let i = 0; i < riverCountAdjusted; i += 1) {
     let src = randomFrom(topSources) || randomFrom(sourceCandidates);
     if (!src) continue;
     let guard = 0;
-    while (src && used.has(keyOf(src.x, src.y)) && guard < 12) {
+    while (src && used.has(keyOf(src.x, src.y)) && guard < sourceRetryLimit) {
       src = randomFrom(sourceCandidates);
       guard += 1;
     }
     if (!src) continue;
-    used.add(keyOf(src.x, src.y));
-    traceRiverFromSource(src, i < majorCount);
+    const srcTileKey = keyOf(src.x, src.y);
+    const srcCornerKey = chooseSourceCorner(srcTileKey);
+    if (!srcCornerKey) continue;
+    used.add(srcTileKey);
+    traceRiverFromSource(src, srcCornerKey, i < majorCount);
   }
+
+  const meshCenterSet = detectMeshCenterTiles();
 
   return {
     riverSet,
@@ -3312,10 +3788,13 @@ function generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベル
     mouthSet,
     edgeSet,
     waterLinkSet,
-    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet })
+    cornerEdgeSet,
+    cornerWaterLinkSet,
+    meshCenterSet,
+    largeRiverSet: new Set(meshCenterSet),
+    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet })
   };
 }
-
 function parseCoordKey(key) {
   const [x, y] = key.split(",").map(Number);
   return { x, y };
@@ -3559,9 +4038,13 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
   };
 
   const 高度レベルマップ = buildHeightLevelMap(grid, 高度マップ, w, h);
-  const coastData = buildCoastMap(grid, w, h, 高度レベルマップ);
   const riverRawData = generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベルマップ);
   const riverData = augmentRiverDataWithWaterfalls(riverRawData, 高度レベルマップ);
+  const meshHandlingRule = 地形生成設定.河川?.網目処理 || {};
+  if (meshHandlingRule.中央湖化 !== false) {
+    applyMeshRiverLakeTiles(grid, riverData?.meshCenterSet, 高度レベルマップ, w, h);
+  }
+  const coastData = buildCoastMap(grid, w, h, 高度レベルマップ);
   const { specialMap, specialCounts, caveSizeMap, caveScaleMap } = buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ);
   const { strongMonsterMap, strongMonsterInfoMap, strongMonsterStats } = buildStrongMonsterSpawnData(
     grid,
