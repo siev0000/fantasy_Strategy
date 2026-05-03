@@ -875,3 +875,21 @@ pm run build:front 成功。
 - 2026-03-29: 検証 `npm run build:front` 成功。
 - 2026-03-29: `develop-web-game` Playwright クライアント実行を試行したが、実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
 - 2026-03-29: own-faction-panel に移動中インジケータを追加。`unitEntries` に `isMoving` を付与し、移動値の右に `👣` を点滅表示するよう更新。検証: `npm run build:front` 成功。
+- 2026-04-05: 強敵出現ルールを調整。map-generator.js の 強敵配置設定 に 出現率倍率: 0.5 と テリトリー半径 を追加し、強敵候補生成時にテリトリー重複チェックを導入（重複時は候補生成をスキップ）。PhaserMapGeneratorPanel.vue 側でも強敵タイルは常にテリトリー付きで敵スポーンするよう統一し、既存テリトリー重複チェックを適用。
+- 2026-04-05: 修正: map-generator.js で未定義の clampNumber を使用していたため clamp に統一。Uncaught ReferenceError: clampNumber is not defined を解消。
+pm run build:front 成功。
+- 2026-04-05: 修正: map-generator.js に 	oSafeNumber ヘルパーを追加し、強敵テリトリー関連変更で発生した 	oSafeNumber is not defined を解消。
+pm run build:front 成功。
+- 2026-04-05: ゲーム中クリック時の文字選択ハイライトを無効化。PhaserMapGeneratorPanel.css で user-select none と tap-highlight 無効化を追加し、input/textarea/select/contenteditable は除外。
+
+- 2026-04-05: 河川生成を仕様変更。generateRivers を主河川/小河川の2段生成へ再構成。
+  - 主河川: 連結陸地サイズごとの本数テーブル（1〜39=0, 40〜119=1, 120〜219=2, 220〜359=3, 360〜539=4, 540〜759=5, 760以上=6+200毎+1）で生成。
+  - 主河川: 下り方向のみで流路作成、最小長6、河口間距離>=6、中間距離>=4を満たす候補のみ採用。
+  - 小河川: 主河川生成後に密度ベース（大陸サイズ/係数）で短距離（3〜8）を追加。
+  - 既存の riverData 返却形式（riverSet/sourceSet/branchSet/mouthSet/edgeSet/waterLinkSet/corner*Set/meshCenterSet/largeRiverSet）を維持。
+- 2026-04-05: 検証: 
+pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整（河川.分岐.幹線確率=0.25）。小河川生成数を分岐率でスケーリングし、分岐流路は llowEarlyStop:false + 長さレンジ拡張で分岐先が伸びるよう修正。検証: npm run build:front 成功。
+- 2026-04-05: 川分岐の生成起点を主河川隣接へ変更し、分岐開始エッジを明示接続。分岐ルートの近接判定を先頭数マスで緩和して『分岐してすぐ止まる』状態を改善。検証: npm run build:front 成功。
+- 2026-04-11: 敵配置調整。森モンスターの地形キー付与を『周囲隣接がすべて森の内部タイル』に限定し、森端での出現を抑制。平地隣接時のテリトリー中心ズレを軽減。検証: npm run build:front 成功。
+
+- 2026-04-12: フィールド非表示の原因を修正。isForestCoreSpawnTile 内で未定義の getHexNeighborCoords を呼んでいたため実行時に初期化停止。getHexNeighborCoordsBySize(..., resolveWorldWrapEnabled(data)) に差し替え。uild:front と Playwright で pageerror 解消・描画復帰を確認。

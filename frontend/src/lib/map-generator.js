@@ -51,6 +51,11 @@ const 地形生成設定 = {
   河川: {
     発生率係数: 40,
     最低本数: 3,
+    大陸あたり本数: {
+      最小: 3,
+      最大: 4
+    },
+    大陸判定最小マス: 12,
     幹線割合: 0.35,
     源流候補最小スコア: 2,
     源流上位抽選率: 0.35,
@@ -69,7 +74,8 @@ const 地形生成設定 = {
       幹線確率: 0.24,
       支流確率: 0.1,
       分岐TTL倍率: 0.52,
-      分岐TTL最小: 5
+      分岐TTL最小: 5,
+      開始点最小距離: 4
     },
     網目抑制: {
       次角接続ペナルティ: 1.35,
@@ -89,6 +95,15 @@ const 地形生成設定 = {
     島中央隆起幅: 68,
     画面中央隆起幅: 0,
     海岸減衰幅: 44,
+    海岸高地化率: {
+      最小: 0.15,
+      最大: 0.25
+    },
+    海岸高地加算: {
+      最小: 10,
+      最大: 18
+    },
+    海岸高地連鎖率: 0.35,
     ノイズ幅: 13,
     平滑化回数: 1,
     海沿岸高度Lv: -1,
@@ -117,6 +132,11 @@ const 地形生成設定 = {
       最小: 1,
       最大: 3
     },
+    外縁高山シード率: {
+      最小: 0.15,
+      最大: 0.25
+    },
+    外縁候補比率: 0.85,
     山麓丘陵化確率: 0.45,
     起伏保証: {
       有効: true,
@@ -206,10 +226,24 @@ const 特殊地形設定 = {
     川判定に自マスを含む: true
   },
   洞窟: {
-    対象地形キー: ["丘陵", "山岳", "火山"],
+    対象地形キー: ["森", "丘陵", "山岳", "火山"],
     最低高度Lv: 2,
     最低山岳隣接数: 4,
     山岳判定に自マスを含む: true,
+    森丘混在条件: {
+      有効: true,
+      最低丘陵隣接数: 1,
+      最低森隣接数: 1,
+      出現倍率: 1.45
+    },
+    海岸高地条件: {
+      有効: true,
+      最低海隣接数: 1,
+      最低高地隣接数: 2,
+      高地判定高度Lv: 2,
+      出現倍率: 1.8,
+      高地追加倍率: 0.14
+    },
     規模閾値: {
       中: 3,
       大: 6
@@ -236,6 +270,8 @@ const 強敵配置設定 = {
   有効: true,
   基本Lv: 1,
   基本出現確率: 0.5,
+  出現率倍率: 0.5,
+  テリトリー半径: 3,
   重複ルール許可: false,
   ルール: {
     森中央: {
@@ -346,10 +382,25 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function toSafeNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
 function randomInt(min, max) {
   const lo = Math.ceil(Math.min(min, max));
   const hi = Math.floor(Math.max(min, max));
   return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+}
+
+function normalizeIntRange(minValue, maxValue, hardMin, hardMax, fallbackMin, fallbackMax) {
+  const rawMin = Number.isFinite(minValue) ? minValue : Number(minValue);
+  const rawMax = Number.isFinite(maxValue) ? maxValue : Number(maxValue);
+  const min = Number.isFinite(rawMin) ? Math.floor(rawMin) : fallbackMin;
+  const max = Number.isFinite(rawMax) ? Math.floor(rawMax) : fallbackMax;
+  const clampedMin = Math.max(hardMin, Math.min(hardMax, Math.min(min, max)));
+  const clampedMax = Math.max(clampedMin, Math.min(hardMax, Math.max(min, max)));
+  return { min: clampedMin, max: clampedMax };
 }
 
 function coordKey(x, y) {
@@ -368,6 +419,21 @@ function readRangeValue(primaryRange, fallbackRange, defaultMin, defaultMax) {
   );
   const max = Math.max(min, maxRaw);
   return { min, max };
+}
+
+function readProbabilityRange(primaryRange, fallbackRange, defaultMin, defaultMax) {
+  const rawMin = Number.isFinite(primaryRange?.最小) ? primaryRange.最小 : (
+    Number.isFinite(fallbackRange?.最小) ? fallbackRange.最小 : defaultMin
+  );
+  const rawMax = Number.isFinite(primaryRange?.最大) ? primaryRange.最大 : (
+    Number.isFinite(fallbackRange?.最大) ? fallbackRange.最大 : defaultMax
+  );
+  const min = normalizeProbability(rawMin, defaultMin);
+  const max = normalizeProbability(rawMax, defaultMax);
+  return {
+    min: Math.min(min, max),
+    max: Math.max(min, max)
+  };
 }
 
 function normalizeProbability(value, fallback = 0) {
@@ -1073,7 +1139,20 @@ function appendEdgeEndpointsToCoordSet(targetSet, edgeIterable) {
   }
 }
 
-function buildRiverTouchSet(riverData) {
+function appendCornerEdgeTilesToCoordSet(targetSet, edgeIterable, w, h) {
+  if (!(targetSet instanceof Set) || !edgeIterable) return;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return;
+  const cornerEdgeTileMap = buildCornerEdgeTileMap(w, h);
+  for (const edgeKeyRaw of edgeIterable) {
+    const edgeKey = String(edgeKeyRaw || "");
+    if (!edgeKey) continue;
+    const tileSet = cornerEdgeTileMap.get(edgeKey);
+    if (!tileSet) continue;
+    for (const tileKey of tileSet) targetSet.add(tileKey);
+  }
+}
+
+function buildRiverTouchSet(riverData, w = 0, h = 0) {
   const out = new Set();
   if (!riverData || typeof riverData !== "object") return out;
   for (const keyRaw of riverData.riverSet || []) {
@@ -1086,6 +1165,8 @@ function buildRiverTouchSet(riverData) {
   }
   appendEdgeEndpointsToCoordSet(out, riverData.edgeSet);
   appendEdgeEndpointsToCoordSet(out, riverData.waterLinkSet);
+  appendCornerEdgeTilesToCoordSet(out, riverData.cornerEdgeSet, w, h);
+  appendCornerEdgeTilesToCoordSet(out, riverData.cornerWaterLinkSet, w, h);
   return out;
 }
 
@@ -2304,6 +2385,21 @@ function buildMountainProfile(山岳上限枚数, preferredMode = "random", mapW
   const minGap = randomInt(gapRange.min, gapRange.max);
   const modeSelection = fixedModeKey ? "fixed" : "random";
   const foothillHillChance = normalizeProbability(mode?.山麓丘陵化確率, rule?.山麓丘陵化確率);
+  const offCenterSeedRateRange = readProbabilityRange(
+    mode?.外縁高山シード率,
+    rule?.外縁高山シード率,
+    0.15,
+    0.25
+  );
+  const offCenterSeedRate = offCenterSeedRateRange.min
+    + (Math.random() * (offCenterSeedRateRange.max - offCenterSeedRateRange.min));
+  const offCenterCandidateRatio = clamp(
+    Number.isFinite(mode?.外縁候補比率)
+      ? mode.外縁候補比率
+      : (Number.isFinite(rule?.外縁候補比率) ? rule.外縁候補比率 : 0.85),
+    0.45,
+    1
+  );
 
   if (山岳上限枚数 <= 0) {
     return {
@@ -2312,6 +2408,8 @@ function buildMountainProfile(山岳上限枚数, preferredMode = "random", mapW
       modeSelection,
       minGap,
       foothillHillChance,
+      offCenterSeedRate,
+      offCenterCandidateRatio,
       massSizes: [],
       targetMountainCount: 0
     };
@@ -2337,6 +2435,8 @@ function buildMountainProfile(山岳上限枚数, preferredMode = "random", mapW
     modeSelection,
     minGap,
     foothillHillChance,
+    offCenterSeedRate,
+    offCenterCandidateRatio,
     massSizes,
     targetMountainCount
   };
@@ -2369,6 +2469,14 @@ function placeMountainsByProfile(grid, 陸地一覧, 山岳上限枚数, profile
   const sortedByHeight = [...陸地一覧].sort((a, b) => b.高度 - a.高度 || b.乱数 - a.乱数);
   const topSliceSize = Math.max(6, Math.floor(sortedByHeight.length * 0.42));
   const topCandidates = sortedByHeight.slice(0, topSliceSize);
+  const offCenterSeedRate = normalizeProbability(profile?.offCenterSeedRate, 0);
+  const offCenterRatio = clamp(
+    Number.isFinite(profile?.offCenterCandidateRatio) ? profile.offCenterCandidateRatio : 0.85,
+    0.45,
+    1
+  );
+  const offCenterBandEnd = Math.max(topSliceSize + 1, Math.floor(sortedByHeight.length * offCenterRatio));
+  const offCenterCandidates = sortedByHeight.slice(topSliceSize, offCenterBandEnd);
 
   for (const p of 陸地一覧) {
     if (grid[p.y][p.x] === "山岳") placedSet.add(coordKey(p.x, p.y));
@@ -2380,9 +2488,19 @@ function placeMountainsByProfile(grid, 陸地一覧, 山岳上限枚数, profile
     && grid[y][x] !== "山岳"
   );
   for (const massSize of profile.massSizes) {
-    const seed = pickMountainSeed(topCandidates, seeds, grid, profile.minGap)
-      || pickMountainSeed(sortedByHeight, seeds, grid, profile.minGap)
-      || pickMountainSeed(sortedByHeight, seeds, grid, 1);
+    const useOffCenterSeed = offCenterCandidates.length > 0 && Math.random() < offCenterSeedRate;
+    const seed = useOffCenterSeed
+      ? (
+        pickMountainSeed(offCenterCandidates, seeds, grid, profile.minGap)
+        || pickMountainSeed(topCandidates, seeds, grid, profile.minGap)
+        || pickMountainSeed(sortedByHeight, seeds, grid, profile.minGap)
+        || pickMountainSeed(sortedByHeight, seeds, grid, 1)
+      )
+      : (
+        pickMountainSeed(topCandidates, seeds, grid, profile.minGap)
+        || pickMountainSeed(sortedByHeight, seeds, grid, profile.minGap)
+        || pickMountainSeed(sortedByHeight, seeds, grid, 1)
+      );
     if (!seed) continue;
     seeds.push(seed);
     const grown = growClusterFromSeed(grid, w, h, "山岳", seed, massSize, canFillMountain);
@@ -2447,6 +2565,72 @@ function cohereTerrainBlobs(grid, w, h) {
   }
 }
 
+function applyCoastalHighlandVariation(grid, 高度マップ, w, h) {
+  const heightRule = 地形生成設定?.高度 || {};
+  const rateRange = readProbabilityRange(heightRule?.海岸高地化率, null, 0.15, 0.25);
+  const boostRange = readRangeValue(heightRule?.海岸高地加算, null, 8, 16);
+  const chainRate = normalizeProbability(heightRule?.海岸高地連鎖率, 0.35);
+  const targetRate = rateRange.min + (Math.random() * (rateRange.max - rateRange.min));
+  const coastCells = [];
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (grid[y][x] === "海") continue;
+      const seaNear = countAround(grid, x, y, "海");
+      if (seaNear <= 0) continue;
+      const raw = Number.isFinite(高度マップ?.[y]?.[x]) ? 高度マップ[y][x] : 0;
+      coastCells.push({
+        x,
+        y,
+        seaNear,
+        raw,
+        rand: Math.random()
+      });
+    }
+  }
+  if (!coastCells.length) return 0;
+
+  // 海に面した枚数のうち一部だけを高地化する（海岸の大半は低地のまま維持）。
+  const targetCount = clamp(Math.round(coastCells.length * targetRate), 0, coastCells.length);
+  if (targetCount <= 0) return 0;
+  const selected = new Set();
+  const ordered = [...coastCells].sort((a, b) => {
+    // 既に少し高い海岸・海への接触が少ない海岸を優先して崖地形に寄せる。
+    const scoreA = (a.raw * 1.1) - (a.seaNear * 6) + (a.rand * 8);
+    const scoreB = (b.raw * 1.1) - (b.seaNear * 6) + (b.rand * 8);
+    return scoreB - scoreA;
+  });
+
+  for (const c of ordered) {
+    if (selected.size >= targetCount) break;
+    const key = coordKey(c.x, c.y);
+    if (selected.has(key)) continue;
+    selected.add(key);
+  }
+
+  const applyBoost = (x, y, minBoost = boostRange.min, maxBoost = boostRange.max) => {
+    if (!Number.isFinite(高度マップ?.[y]?.[x])) return;
+    const add = randomInt(minBoost, maxBoost);
+    高度マップ[y][x] = Math.round(clamp(高度マップ[y][x] + add, 1, 100));
+  };
+
+  let changed = 0;
+  for (const key of selected) {
+    const pos = parseCoordKey(key);
+    if (!pos) continue;
+    applyBoost(pos.x, pos.y);
+    changed += 1;
+    const neighbors = getHexNeighborCoords(w, h, pos.x, pos.y);
+    for (const n of neighbors) {
+      if (Math.random() >= chainRate) continue;
+      if (grid[n.y][n.x] === "海") continue;
+      if (countAround(grid, n.x, n.y, "海") <= 0) continue;
+      applyBoost(n.x, n.y, Math.max(1, boostRange.min - 4), Math.max(2, boostRange.max - 6));
+    }
+  }
+  return changed;
+}
+
 function generateHeightMap(grid, w, h) {
   const 高度マップ = buildInitialGrid(w, h, 0);
   const 画面中央X = (w - 1) / 2;
@@ -2505,6 +2689,8 @@ function generateHeightMap(grid, w, h) {
       }
     }
   }
+
+  applyCoastalHighlandVariation(grid, 高度マップ, w, h);
 
   return 高度マップ;
 }
@@ -2845,7 +3031,11 @@ function buildCoastMap(grid, w, h, 高度レベルマップ) {
 function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
   const specialMap = buildInitialGrid(w, h, null);
   const specialCounts = { 沼地: 0, 峡谷: 0, 洞窟: 0, 洞窟_小: 0, 洞窟_中: 0, 洞窟_大: 0 };
+  const caveCoastAnchorMap = buildInitialGrid(w, h, "");
   const riverSet = riverData?.riverSet instanceof Set ? riverData.riverSet : new Set();
+  const riverTouchSet = riverData?.riverTouchSet instanceof Set
+    ? riverData.riverTouchSet
+    : buildRiverTouchSet(riverData || {}, w, h);
   const majorRiverSet = riverData?.largeRiverSet instanceof Set
     ? riverData.largeRiverSet
     : (riverData?.meshCenterSet instanceof Set ? riverData.meshCenterSet : new Set());
@@ -2855,7 +3045,7 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
   const waterTerrainSet = new Set(wetRule.水地形キー || []);
   const canyonTerrainSet = new Set(canyonRule.対象地形キー || []);
   const caveTerrainSet = new Set(caveRule.対象地形キー || []);
-  const resolveRiverJudgeSet = judgeType => (judgeType === "大河" ? majorRiverSet : riverSet);
+  const resolveRiverJudgeSet = judgeType => (judgeType === "大河" ? majorRiverSet : riverTouchSet);
   const wetRiverSet = resolveRiverJudgeSet(String(wetRule.川判定種別 || "河川"));
   const leftRightRule = wetRule.左右川で湿地化 || {};
   const leftRightRiverSet = resolveRiverJudgeSet(String(leftRightRule.判定種別 || wetRule.川判定種別 || "河川"));
@@ -2868,9 +3058,9 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
       const neighbors = getHexNeighborCoords(w, h, x, y);
 
       if (canyonTerrainSet.has(terrain) && Number.isFinite(level) && level >= canyonRule.最低高度Lv) {
-        const riverBase = (canyonRule.川判定に自マスを含む && riverSet.has(tileKey)) ? 1 : 0;
+        const riverBase = (canyonRule.川判定に自マスを含む && riverTouchSet.has(tileKey)) ? 1 : 0;
         const riverNear = neighbors.reduce((sum, n) => (
-          sum + (riverSet.has(`${n.x},${n.y}`) ? 1 : 0)
+          sum + (riverTouchSet.has(`${n.x},${n.y}`) ? 1 : 0)
         ), riverBase);
         const maxDrop = neighbors.reduce((best, n) => {
           const nLevel = 高度レベルマップ?.[n.y]?.[n.x];
@@ -2893,10 +3083,62 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
         const mountainNear = neighbors.reduce((sum, n) => (
           sum + (isMountainLikeTerrain(grid[n.y][n.x]) ? 1 : 0)
         ), mountainBase);
-        if (mountainNear >= caveRule.最低山岳隣接数 && Math.random() < 地形生成設定.確率.洞窟化) {
-          specialMap[y][x] = "洞窟";
-          specialCounts.洞窟 += 1;
-          continue;
+        const seaNear = neighbors.reduce((sum, n) => (
+          sum + (grid[n.y][n.x] === "海" ? 1 : 0)
+        ), 0);
+        const seaNeighbors = neighbors.filter(n => grid[n.y][n.x] === "海");
+        const forestNear = neighbors.reduce((sum, n) => (
+          sum + (grid[n.y][n.x] === "森" ? 1 : 0)
+        ), terrain === "森" ? 1 : 0);
+        const hillNear = neighbors.reduce((sum, n) => (
+          sum + (grid[n.y][n.x] === "丘陵" ? 1 : 0)
+        ), terrain === "丘陵" ? 1 : 0);
+
+        const forestHillRule = caveRule.森丘混在条件 || {};
+        const coastRule = caveRule.海岸高地条件 || {};
+        const baseChance = normalizeProbability(地形生成設定.確率.洞窟化, 0.1);
+
+        const forestHillEligible = (
+          forestHillRule.有効 !== false
+          && forestNear >= Math.max(1, Math.floor(toSafeNumber(forestHillRule.最低森隣接数, 1)))
+          && hillNear >= Math.max(1, Math.floor(toSafeNumber(forestHillRule.最低丘陵隣接数, 1)))
+        );
+
+        const highLevelThreshold = Math.max(1, Math.floor(toSafeNumber(coastRule.高地判定高度Lv, 2)));
+        const highNear = neighbors.reduce((sum, n) => {
+          const nLevel = Number(高度レベルマップ?.[n.y]?.[n.x]);
+          if (!Number.isFinite(nLevel)) return sum;
+          return sum + (nLevel >= highLevelThreshold ? 1 : 0);
+        }, 0);
+        const coastEligible = (
+          coastRule.有効 !== false
+          && seaNear >= Math.max(1, Math.floor(toSafeNumber(coastRule.最低海隣接数, 1)))
+          && highNear >= Math.max(1, Math.floor(toSafeNumber(coastRule.最低高地隣接数, 2)))
+        );
+
+        const mountainEligible = mountainNear >= caveRule.最低山岳隣接数;
+        const caveEligible = mountainEligible || forestHillEligible || coastEligible;
+        if (caveEligible) {
+          let chance = baseChance;
+          if (forestHillEligible) {
+            chance *= Math.max(1, toSafeNumber(forestHillRule.出現倍率, 1.45));
+          }
+          if (coastEligible) {
+            const coastBoost = Math.max(1, toSafeNumber(coastRule.出現倍率, 1.8));
+            const extraPerHigh = Math.max(0, toSafeNumber(coastRule.高地追加倍率, 0.14));
+            const overHigh = Math.max(0, highNear - Math.floor(toSafeNumber(coastRule.最低高地隣接数, 2)));
+            chance *= coastBoost * (1 + (overHigh * extraPerHigh));
+          }
+          chance = clamp(chance, 0, 0.92);
+          if (Math.random() < chance) {
+            specialMap[y][x] = "洞窟";
+            if (coastEligible && seaNeighbors.length) {
+              const targetSea = seaNeighbors[Math.floor(Math.random() * seaNeighbors.length)];
+              caveCoastAnchorMap[y][x] = coordKey(targetSea.x, targetSea.y);
+            }
+            specialCounts.洞窟 += 1;
+            continue;
+          }
         }
       }
 
@@ -2976,7 +3218,7 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
     }
   }
 
-  return { specialMap, specialCounts, caveSizeMap, caveScaleMap };
+  return { specialMap, specialCounts, caveSizeMap, caveScaleMap, caveCoastAnchorMap };
 }
 
 function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, specialMap, riverData, reliefMap) {
@@ -2992,11 +3234,14 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
   }
 
   const baseLevel = Math.max(1, Math.floor(setting.基本Lv || 1));
-  const baseChance = normalizeProbability(setting.基本出現確率, 0.5);
+  const spawnChanceScale = clamp(toSafeNumber(setting?.出現率倍率, 0.5), 0, 1);
+  const baseChance = clamp(normalizeProbability(setting.基本出現確率, 0.5) * spawnChanceScale, 0, 1);
+  const territoryRadiusBase = Math.max(1, Math.floor(toSafeNumber(setting?.テリトリー半径, 3)));
   const allowRuleOverlap = setting.重複ルール許可 === true;
   const rules = setting.ルール || {};
   const relief = reliefMap || grid;
   const spawned = new Set();
+  const occupiedStrongTerritories = [];
   const ruleCounts = {
     森中央: 0,
     砂漠オアシス: 0,
@@ -3012,6 +3257,29 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
     const r = reliefAt(x, y);
     return t === "森" && (r === "丘陵" || r === "山岳");
   };
+  const oddrToCube = (x, y) => {
+    const q = x - ((y - (y & 1)) / 2);
+    const r = y;
+    const cx = q;
+    const cz = r;
+    const cy = -cx - cz;
+    return { x: cx, y: cy, z: cz };
+  };
+  const hexDistance = (ax, ay, bx, by) => {
+    const a = oddrToCube(ax, ay);
+    const b = oddrToCube(bx, by);
+    return Math.max(
+      Math.abs(a.x - b.x),
+      Math.abs(a.y - b.y),
+      Math.abs(a.z - b.z)
+    );
+  };
+  const isStrongTerritoryOverlapped = (x, y, radius) => occupiedStrongTerritories.some(territory => {
+    const distance = hexDistance(x, y, territory.x, territory.y);
+    const threshold = Math.max(1, Math.floor(toSafeNumber(radius, territoryRadiusBase)))
+      + Math.max(1, Math.floor(toSafeNumber(territory.radius, territoryRadiusBase)));
+    return distance <= threshold;
+  });
   const addSpawn = (x, y, level, ruleKey, extra = null) => {
     if (x < 0 || x >= w || y < 0 || y >= h) return false;
     const terrain = terrainAt(x, y);
@@ -3021,6 +3289,11 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
     const current = strongMonsterInfoMap[y][x];
     if (current && !allowRuleOverlap) return false;
     if (!current) {
+      const territoryRadius = Math.max(
+        1,
+        Math.floor(toSafeNumber(extra?.territoryRadius, territoryRadiusBase))
+      );
+      if (isStrongTerritoryOverlapped(x, y, territoryRadius)) return false;
       strongMonsterMap[y][x] = "強敵候補";
       strongMonsterInfoMap[y][x] = {
         level: lv,
@@ -3028,8 +3301,13 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
         terrain,
         relief: reliefAt(x, y),
         heightLevel: heightLevelAt(x, y),
+        territoryId: `strong-${x}-${y}`,
+        territoryCenterX: x,
+        territoryCenterY: y,
+        territoryRadius,
         extra
       };
+      occupiedStrongTerritories.push({ x, y, radius: territoryRadius });
       spawned.add(key);
       ruleCounts[ruleKey] = (ruleCounts[ruleKey] || 0) + 1;
       return true;
@@ -3083,7 +3361,11 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
     const minForestSize = Math.max(1, Math.floor(largeForestRule.最低森規模 || 21));
     const divisor = Math.max(1, Math.floor(largeForestRule.規模分母 || 7));
     const ringDist = Math.max(1, Math.floor(largeForestRule.配置距離 || 3));
-    const perCandidateChance = normalizeProbability(largeForestRule.各候補出現確率, 0.5);
+    const perCandidateChance = clamp(
+      normalizeProbability(largeForestRule.各候補出現確率, 0.5) * spawnChanceScale,
+      0,
+      1
+    );
     const singleBoost = Math.max(0, Math.floor(largeForestRule.単独時Lv加算 || 0));
     const forestComps = buildTerrainComponents(grid, w, h, "森").components;
 
@@ -3138,7 +3420,10 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
   if (ringForestRule.有効 !== false) {
     const targetReliefSet = new Set(ringForestRule.中央対象地勢 || ["丘陵", "山岳"]);
     const forestNeed = Math.max(1, Math.floor(ringForestRule.最低森隣接数 || 6));
-    const chance = normalizeProbability(ringForestRule.出現確率, baseChance);
+    const hasCustomChance = Number.isFinite(toSafeNumber(ringForestRule.出現確率, Number.NaN));
+    const chance = hasCustomChance
+      ? clamp(normalizeProbability(ringForestRule.出現確率, baseChance) * spawnChanceScale, 0, 1)
+      : baseChance;
     const excludeForestCoverCenter = ringForestRule.中央が被覆森を除外 !== false;
     for (let y = 0; y < h; y += 1) {
       for (let x = 0; x < w; x += 1) {
@@ -3281,24 +3566,11 @@ function augmentRiverDataWithWaterfalls(riverData, heightLevelMap) {
       cornerWaterfallEdgeSet.add(edgeKey);
       blockedCornerNodeSet.add(a);
       blockedCornerNodeSet.add(b);
-
-      const beforeCount = waterfallSet.size;
-      let peakTileLevel = Number.NEGATIVE_INFINITY;
-      for (const tileKey of riverTilesOnEdge) {
-        peakTileLevel = Math.max(peakTileLevel, tileLevelOf(tileKey));
-      }
-      for (const tileKey of riverTilesOnEdge) {
-        if (tileLevelOf(tileKey) >= peakTileLevel && riverData.riverSet?.has(tileKey)) {
-          waterfallSet.add(tileKey);
-        }
-      }
-      if (waterfallSet.size === beforeCount) {
-        const highCornerKey = al >= bl ? a : b;
-        const touchedTiles = cornerTileMap.get(highCornerKey);
-        for (const tileKey of touchedTiles || []) {
-          if (riverData.riverSet?.has(tileKey)) waterfallSet.add(tileKey);
-        }
-      }
+      const sortedTiles = riverTilesOnEdge
+        .map(tileKey => ({ tileKey, level: tileLevelOf(tileKey), tie: Math.random() }))
+        .sort((lhs, rhs) => rhs.level - lhs.level || lhs.tie - rhs.tie);
+      const chosenTileKey = sortedTiles[0]?.tileKey || riverTilesOnEdge[0];
+      if (chosenTileKey) waterfallSet.add(chosenTileKey);
     };
     for (const edge of riverData.cornerEdgeSet || []) markCornerEdgeIfWaterfall(edge, false);
     for (const edge of riverData.cornerWaterLinkSet || []) markCornerEdgeIfWaterfall(edge, true);
@@ -3322,8 +3594,11 @@ function augmentRiverDataWithWaterfalls(riverData, heightLevelMap) {
       waterfallEdgeSet.add(edgeKey);
       blockedTileNodeSet.add(a);
       blockedTileNodeSet.add(b);
-      if (al === high && riverData.riverSet?.has(a)) waterfallSet.add(a);
-      if (bl === high && riverData.riverSet?.has(b)) waterfallSet.add(b);
+      const candidates = [];
+      if (riverData.riverSet?.has(a)) candidates.push({ key: a, level: Number(al), tie: Math.random() });
+      if (riverData.riverSet?.has(b)) candidates.push({ key: b, level: Number(bl), tie: Math.random() });
+      candidates.sort((lhs, rhs) => rhs.level - lhs.level || lhs.tie - rhs.tie);
+      if (candidates[0]?.key) waterfallSet.add(candidates[0].key);
     };
     for (const edge of riverData.edgeSet || []) markTileEdgeIfWaterfall(edge);
     for (const edge of riverData.waterLinkSet || []) markTileEdgeIfWaterfall(edge);
@@ -3331,14 +3606,14 @@ function augmentRiverDataWithWaterfalls(riverData, heightLevelMap) {
 
   return {
     ...riverData,
-    riverTouchSet: buildRiverTouchSet(riverData),
+    riverTouchSet: buildRiverTouchSet(riverData, levelMapW, levelMapH),
     waterfallSet,
     waterfallEdgeSet,
     cornerWaterfallEdgeSet
   };
 }
 
-function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap) {
+function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap, islandCustomSettings = null) {
   const seas = listCoordsByTerrain(grid, "海");
   const waters = [...seas, ...listCoordsByTerrain(grid, "湖")];
   const riverSet = new Set();
@@ -3349,6 +3624,7 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap) {
   const waterLinkSet = new Set();
   const cornerEdgeSet = new Set();
   const cornerWaterLinkSet = new Set();
+
   if (!waters.length) {
     return {
       riverSet,
@@ -3368,89 +3644,85 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap) {
   const flowLevelMap = (heightLevelMap && heightLevelMap.length)
     ? heightLevelMap.map(row => [...row])
     : buildHeightLevelMap(grid, heightMap, w, h);
-  const { cornerLevelMap } = buildCornerLevelMapFromHeight(flowLevelMap, w, h);
   const riverRule = 地形生成設定.河川 || {};
   const riverFlowRule = riverRule.流路長 || {};
-  const riverBranchRule = riverRule.分岐 || {};
-  const riverMeshRule = riverRule.網目抑制 || {};
   const riverMeshHandlingRule = riverRule.網目処理 || {};
-  const majorBaseTtl = Math.max(1, Math.floor(Number.isFinite(riverFlowRule.幹線基本) ? riverFlowRule.幹線基本 : 26));
-  const minorBaseTtl = Math.max(1, Math.floor(Number.isFinite(riverFlowRule.支流基本) ? riverFlowRule.支流基本 : 18));
-  const ttlRandomSpan = Math.max(0, Math.floor(Number.isFinite(riverFlowRule.追加ランダム) ? riverFlowRule.追加ランダム : 10));
-  const branchBudgetMajor = Math.max(0, Math.floor(Number.isFinite(riverBranchRule.幹線予算) ? riverBranchRule.幹線予算 : 2));
-  const branchBudgetMinor = Math.max(0, Math.floor(Number.isFinite(riverBranchRule.支流予算) ? riverBranchRule.支流予算 : 1));
-  const branchStartAge = Math.max(0, Math.floor(Number.isFinite(riverBranchRule.開始年齢) ? riverBranchRule.開始年齢 : 3));
-  const majorBranchChance = normalizeProbability(riverBranchRule.幹線確率, 0.24);
-  const minorBranchChance = normalizeProbability(riverBranchRule.支流確率, 0.1);
-  const branchTtlRatio = clamp(Number.isFinite(riverBranchRule.分岐TTL倍率) ? riverBranchRule.分岐TTL倍率 : 0.52, 0.1, 1);
-  const branchTtlMin = Math.max(1, Math.floor(Number.isFinite(riverBranchRule.分岐TTL最小) ? riverBranchRule.分岐TTL最小 : 5));
-  const avoidOutletEarlySteps = Math.max(0, Math.floor(Number.isFinite(riverRule.水際回避ステップ) ? riverRule.水際回避ステップ : 2));
-  const meshPenaltyNextCorner = Math.max(0, Number.isFinite(riverMeshRule.次角接続ペナルティ) ? riverMeshRule.次角接続ペナルティ : 1.35);
-  const meshPenaltyCurrentCorner = Math.max(0, Number.isFinite(riverMeshRule.現在角接続ペナルティ) ? riverMeshRule.現在角接続ペナルティ : 0.75);
-  const meshPenaltyFlatEarly = Math.max(0, Number.isFinite(riverMeshRule.平坦初期ペナルティ) ? riverMeshRule.平坦初期ペナルティ : 0.45);
-  const meshPenaltyFlatLate = Math.max(0, Number.isFinite(riverMeshRule.平坦後半ペナルティ) ? riverMeshRule.平坦後半ペナルティ : 1.8);
-  const meshPenaltyFlatEarlyAge = Math.max(0, Math.floor(Number.isFinite(riverMeshRule.平坦初期閾値) ? riverMeshRule.平坦初期閾値 : 1));
-  const sourceMinScore = Number.isFinite(riverRule.源流候補最小スコア) ? riverRule.源流候補最小スコア : 2;
-  const sourceTopRate = normalizeProbability(riverRule.源流上位抽選率, 0.35);
-  const sourceTopMin = Math.max(1, Math.floor(Number.isFinite(riverRule.源流上位最低件数) ? riverRule.源流上位最低件数 : 4));
-  const sourceRetryLimit = Math.max(1, Math.floor(Number.isFinite(riverRule.源流重複再抽選回数) ? riverRule.源流重複再抽選回数 : 12));
-  const riverCountDivisor = Math.max(8, Math.floor(Number.isFinite(riverRule.発生率係数) ? riverRule.発生率係数 : 78));
-  const riverCountMin = Math.max(1, Math.floor(Number.isFinite(riverRule.最低本数) ? riverRule.最低本数 : 3));
-  const majorRatio = normalizeProbability(riverRule.幹線割合, 0.58);
+  const sourceRetryLimit = Math.max(8, Math.floor(toSafeNumber(riverRule.源流重複再抽選回数, 28)));
+  const majorMinLength = Math.max(6, Math.floor(toSafeNumber(riverFlowRule.主河川最小長, 6)));
+  const majorMaxLength = Math.max(majorMinLength + 4, Math.floor(toSafeNumber(riverFlowRule.主河川最大長, Math.max(12, Math.floor((w + h) * 0.58)))));
+  const minorMinLength = Math.max(3, Math.floor(toSafeNumber(riverFlowRule.小河川最小長, 3)));
+  const minorMaxLength = Math.max(minorMinLength, Math.floor(toSafeNumber(riverFlowRule.小河川最大長, 8)));
+  const majorMouthMinDistance = Math.max(1, Math.floor(toSafeNumber(riverRule.主河川河口最小距離, 6)));
+  const majorMidMinDistance = Math.max(1, Math.floor(toSafeNumber(riverRule.主河川中間最小距離, 4)));
+  const minorSpacingDistance = Math.max(1, Math.floor(toSafeNumber(riverRule.小河川最小距離, 2)));
+  const minorDensityDivisor = Math.max(120, Math.floor(toSafeNumber(riverRule.小河川密度係数, 210)));
+  const minorRetryLimitPerRiver = Math.max(8, Math.floor(toSafeNumber(riverRule.小河川再生成上限, 22)));
+  const branchRule = riverRule.分岐 || {};
+  // 枝分かれの発生率。既定で25%に抑える。
+  const branchSpawnRate = clamp(normalizeProbability(branchRule.幹線確率, 0.25), 0, 1);
+  const branchMinorRate = clamp(normalizeProbability(branchRule.支流確率, 0.1), 0, 1);
+  const branchStartMinDistance = Math.max(2, Math.floor(toSafeNumber(branchRule.開始点最小距離, 4)));
+  // 枝分かれした先は短すぎないように、通常の小河川より長めにする。
+  const branchLengthFactor = clamp(toSafeNumber(branchRule.分岐TTL倍率, 0.52), 0.45, 0.9);
+  const branchMinLength = Math.max(
+    Math.floor(toSafeNumber(branchRule.分岐TTL最小, 5)),
+    minorMinLength + 2,
+    Math.floor(majorMinLength * Math.max(0.6, branchLengthFactor))
+  );
+  const branchMaxLength = Math.max(branchMinLength + 4, Math.floor(majorMaxLength * Math.min(0.88, branchLengthFactor + 0.22)));
   const meshLoopEnabled = riverMeshHandlingRule.有効 !== false;
   const meshLoopThreshold = Math.max(3, Math.min(6, Math.floor(Number.isFinite(riverMeshHandlingRule.囲み辺閾値) ? riverMeshHandlingRule.囲み辺閾値 : 6)));
+  const continentMinTiles = Math.max(1, Math.floor(toSafeNumber(riverRule.大陸判定最小マス, 12)));
+  const customRiverMinRaw = Number(islandCustomSettings?.riverPerContinentMin);
+  const customRiverMaxRaw = Number(islandCustomSettings?.riverPerContinentMax);
+  const hasCustomRiverRange = Number.isFinite(customRiverMinRaw) && Number.isFinite(customRiverMaxRaw);
+  const customRiverMin = hasCustomRiverRange ? Math.max(0, Math.floor(Math.min(customRiverMinRaw, customRiverMaxRaw))) : 0;
+  const customRiverMax = hasCustomRiverRange ? Math.max(customRiverMin, Math.floor(Math.max(customRiverMinRaw, customRiverMaxRaw))) : 0;
 
-  function isWaterTerrain(terrain) {
-    return terrain === "海" || terrain === "湖";
-  }
-
-  function keyOf(x, y) {
-    return `${x},${y}`;
-  }
-
-  function getLevel(x, y) {
+  const isWaterTerrain = terrain => terrain === "海" || terrain === "湖";
+  const keyOf = (x, y) => `${x},${y}`;
+  const getLevel = (x, y) => {
     if (y < 0 || y >= h || x < 0 || x >= w) return -2;
     return flowLevelMap[y][x];
-  }
+  };
+  const oddrToCube = (x, y) => {
+    const q = x - ((y - (y & 1)) / 2);
+    const r = y;
+    const cx = q;
+    const cz = r;
+    const cy = -cx - cz;
+    return { x: cx, y: cy, z: cz };
+  };
+  const hexDistance = (ax, ay, bx, by) => {
+    const a = oddrToCube(ax, ay);
+    const b = oddrToCube(bx, by);
+    return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y), Math.abs(a.z - b.z));
+  };
 
-  const cornerTileMap = new Map();
   const tileCornersMap = new Map();
   const edgeInfoMap = new Map();
-  const cornerNeighborsMap = new Map();
-  const riverCornerDegreeMap = new Map();
-
-  const ensureCornerNeighbor = (fromKey, toKey, edgeKey) => {
-    if (!cornerNeighborsMap.has(fromKey)) cornerNeighborsMap.set(fromKey, new Map());
-    cornerNeighborsMap.get(fromKey).set(toKey, edgeKey);
-  };
+  const tilePairToCornerEdgeMap = new Map();
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
       const tileKey = keyOf(x, y);
-      const cornerKeys = buildHexCornerPoints(x, y)
-        .map(cornerCoordKey)
-        .filter(Boolean);
+      const cornerKeys = buildHexCornerPoints(x, y).map(cornerCoordKey).filter(Boolean);
       if (cornerKeys.length !== 6) continue;
       tileCornersMap.set(tileKey, cornerKeys);
-      for (const cKey of cornerKeys) {
-        if (!cornerTileMap.has(cKey)) cornerTileMap.set(cKey, new Set());
-        cornerTileMap.get(cKey).add(tileKey);
-      }
       for (let i = 0; i < cornerKeys.length; i += 1) {
         const a = cornerKeys[i];
         const b = cornerKeys[(i + 1) % cornerKeys.length];
         const edgeKey = riverEdgeKey(a, b);
-        if (!edgeInfoMap.has(edgeKey)) {
-          edgeInfoMap.set(edgeKey, { a, b, tileKeys: new Set() });
-        }
+        if (!edgeInfoMap.has(edgeKey)) edgeInfoMap.set(edgeKey, { a, b, tileKeys: new Set() });
         edgeInfoMap.get(edgeKey).tileKeys.add(tileKey);
       }
     }
   }
 
-  for (const [edgeKey, edgeInfo] of edgeInfoMap.entries()) {
-    ensureCornerNeighbor(edgeInfo.a, edgeInfo.b, edgeKey);
-    ensureCornerNeighbor(edgeInfo.b, edgeInfo.a, edgeKey);
+  for (const [cornerEdgeKey, edgeInfo] of edgeInfoMap.entries()) {
+    const sideKeys = [...(edgeInfo?.tileKeys || [])];
+    if (sideKeys.length !== 2) continue;
+    tilePairToCornerEdgeMap.set(riverEdgeKey(sideKeys[0], sideKeys[1]), cornerEdgeKey);
   }
 
   const isTileKeyWater = tileKey => {
@@ -3459,83 +3731,469 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap) {
     return isWaterTerrain(grid[pos.y]?.[pos.x]);
   };
 
-  const cornerWaterSet = new Set();
-  for (const [cornerKey, tileKeys] of cornerTileMap.entries()) {
-    for (const tileKey of tileKeys) {
-      if (isTileKeyWater(tileKey)) {
-        cornerWaterSet.add(cornerKey);
-        break;
+  const splitCornerEdgeKey = edgeKey => {
+    const [a, b] = String(edgeKey || "").split("|");
+    if (!a || !b) return null;
+    return [a, b];
+  };
+
+  const buildBridgeCornerEdgesOnTile = (tileKey, prevEndpoints, nextEndpoints) => {
+    const corners = tileCornersMap.get(tileKey);
+    if (!Array.isArray(corners) || corners.length !== 6) return [];
+    if (!Array.isArray(prevEndpoints) || prevEndpoints.length !== 2) return [];
+    if (!Array.isArray(nextEndpoints) || nextEndpoints.length !== 2) return [];
+    const idxMap = new Map(corners.map((key, i) => [key, i]));
+
+    let bestPair = null;
+    for (const fromKey of prevEndpoints) {
+      const fromIdx = idxMap.get(fromKey);
+      if (!Number.isFinite(fromIdx)) continue;
+      for (const toKey of nextEndpoints) {
+        const toIdx = idxMap.get(toKey);
+        if (!Number.isFinite(toIdx)) continue;
+        if (fromIdx === toIdx) continue;
+        const cw = (toIdx - fromIdx + 6) % 6;
+        const ccw = (fromIdx - toIdx + 6) % 6;
+        const steps = Math.min(cw, ccw);
+        if (!bestPair || steps < bestPair.steps) {
+          bestPair = { fromIdx, toIdx, cw, ccw, steps };
+        }
       }
+    }
+    if (!bestPair) return [];
+    const useCw = bestPair.cw <= bestPair.ccw;
+    const dir = useCw ? 1 : -1;
+    const edges = [];
+    let idx = bestPair.fromIdx;
+    while (idx !== bestPair.toIdx) {
+      const nextIdx = (idx + dir + 6) % 6;
+      const a = corners[idx];
+      const b = corners[nextIdx];
+      if (a && b) edges.push(riverEdgeKey(a, b));
+      idx = nextIdx;
+    }
+    return edges;
+  };
+
+  const waterDistanceMap = buildInitialGrid(w, h, Number.POSITIVE_INFINITY);
+  const waterQueue = [];
+  for (const src of waters) {
+    if (!Number.isFinite(src?.x) || !Number.isFinite(src?.y)) continue;
+    if (src.x < 0 || src.x >= w || src.y < 0 || src.y >= h) continue;
+    if (waterDistanceMap[src.y][src.x] !== Number.POSITIVE_INFINITY) continue;
+    waterDistanceMap[src.y][src.x] = 0;
+    waterQueue.push({ x: src.x, y: src.y });
+  }
+  for (let q = 0; q < waterQueue.length; q += 1) {
+    const cur = waterQueue[q];
+    const curDist = waterDistanceMap[cur.y][cur.x];
+    for (const n of getHexNeighborCoords(w, h, cur.x, cur.y)) {
+      const nextDist = curDist + 1;
+      if (nextDist >= waterDistanceMap[n.y][n.x]) continue;
+      waterDistanceMap[n.y][n.x] = nextDist;
+      waterQueue.push({ x: n.x, y: n.y });
     }
   }
 
-  const cornerWaterDistanceMap = new Map();
-  const queue = [];
-  let head = 0;
-  for (const cornerKey of cornerWaterSet) {
-    cornerWaterDistanceMap.set(cornerKey, 0);
-    queue.push(cornerKey);
-  }
-  while (head < queue.length) {
-    const currentKey = queue[head];
-    head += 1;
-    const currentDist = cornerWaterDistanceMap.get(currentKey);
-    const neighbors = cornerNeighborsMap.get(currentKey);
-    if (!neighbors) continue;
-    for (const nextKey of neighbors.keys()) {
-      const nextDist = currentDist + 1;
-      if (!cornerWaterDistanceMap.has(nextKey) || nextDist < cornerWaterDistanceMap.get(nextKey)) {
-        cornerWaterDistanceMap.set(nextKey, nextDist);
-        queue.push(nextKey);
-      }
-    }
-  }
+  const majorRiverCoords = [];
+  const majorMouthCoords = [];
+  const allRiverCoords = [];
+  const allRiverCoordSet = new Set();
+  const majorRiverSet = new Set();
 
-  const markRiverTilesAtCorner = cornerKey => {
-    const tiles = cornerTileMap.get(cornerKey);
-    for (const tileKey of tiles || []) {
-      if (!isTileKeyWater(tileKey)) riverSet.add(tileKey);
+  const ensureAllRiverCoord = (x, y) => {
+    const k = keyOf(x, y);
+    if (allRiverCoordSet.has(k)) return;
+    allRiverCoordSet.add(k);
+    allRiverCoords.push({ x, y });
+  };
+
+  const registerTileEdge = (fromTileKey, toTileKey, useWaterLink = false) => {
+    const tileEdgeKey = riverEdgeKey(fromTileKey, toTileKey);
+    if (useWaterLink) waterLinkSet.add(tileEdgeKey);
+    else edgeSet.add(tileEdgeKey);
+    const cornerEdgeKey = tilePairToCornerEdgeMap.get(tileEdgeKey);
+    if (cornerEdgeKey) {
+      if (useWaterLink) cornerWaterLinkSet.add(cornerEdgeKey);
+      else cornerEdgeSet.add(cornerEdgeKey);
+    }
+    const fromIsWater = isTileKeyWater(fromTileKey);
+    const toIsWater = isTileKeyWater(toTileKey);
+    if (!fromIsWater) riverSet.add(fromTileKey);
+    if (!toIsWater) riverSet.add(toTileKey);
+    if (useWaterLink) {
+      if (!fromIsWater) mouthSet.add(fromTileKey);
+      if (!toIsWater) mouthSet.add(toTileKey);
     }
   };
 
-  const pickTilePairFromEdge = edgeInfo => {
-    const keys = [...(edgeInfo?.tileKeys || [])];
-    if (keys.length < 2) return null;
-    return [keys[0], keys[1]];
+  const majorCountBySize = size => {
+    if (hasCustomRiverRange) {
+      if (size < continentMinTiles) return 0;
+      return Math.min(6, Math.max(0, randomInt(customRiverMin, customRiverMax)));
+    }
+    if (size < 40) return 0;
+    if (size < 120) return 1;
+    if (size < 220) return 2;
+    if (size < 360) return 3;
+    if (size < 540) return 4;
+    if (size < 760) return 5;
+    return 6;
   };
 
-  const registerFlowEdge = (fromCornerKey, toCornerKey, useWaterLink = false) => {
-    const edgeKey = riverEdgeKey(fromCornerKey, toCornerKey);
-    const edgeInfo = edgeInfoMap.get(edgeKey);
-    if (!edgeInfo) return;
-    if (cornerEdgeSet.has(edgeKey) || cornerWaterLinkSet.has(edgeKey)) return;
+  const isSeaMouthRoute = route => {
+    if (!route?.ok || !route?.mouth) return false;
+    const mx = Number(route.mouth.x);
+    const my = Number(route.mouth.y);
+    if (!Number.isFinite(mx) || !Number.isFinite(my)) return false;
+    return grid[my]?.[mx] === "海";
+  };
 
-    const sideTiles = [...edgeInfo.tileKeys];
-    const landTiles = sideTiles.filter(key => !isTileKeyWater(key));
-    const hasWaterSide = sideTiles.length < 2 || sideTiles.some(isTileKeyWater);
+  const buildLandmassComponents = () => {
+    const visited = buildInitialGrid(w, h, false);
+    const components = [];
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        if (visited[y][x]) continue;
+        if (isWaterTerrain(grid[y][x])) continue;
+        const queue = [{ x, y }];
+        const cells = [];
+        visited[y][x] = true;
+        for (let q = 0; q < queue.length; q += 1) {
+          const cur = queue[q];
+          cells.push(cur);
+          for (const n of getHexNeighborCoords(w, h, cur.x, cur.y)) {
+            if (visited[n.y][n.x]) continue;
+            if (isWaterTerrain(grid[n.y][n.x])) continue;
+            visited[n.y][n.x] = true;
+            queue.push({ x: n.x, y: n.y });
+          }
+        }
+        if (!cells.length) continue;
+        const cx = cells.reduce((sum, c) => sum + c.x, 0) / cells.length;
+        const cy = cells.reduce((sum, c) => sum + c.y, 0) / cells.length;
+        components.push({ cells, size: cells.length, cx, cy });
+      }
+    }
+    return components;
+  };
 
-    if (useWaterLink || hasWaterSide) {
-      cornerWaterLinkSet.add(edgeKey);
-      for (const tileKey of landTiles) mouthSet.add(tileKey);
-    } else {
-      cornerEdgeSet.add(edgeKey);
+  const listMountainCenters = component => {
+    const componentKeySet = new Set(component.cells.map(c => keyOf(c.x, c.y)));
+    const visited = new Set();
+    const centers = [];
+    for (const cell of component.cells) {
+      const terrain = grid[cell.y][cell.x];
+      if (!isMountainLikeTerrain(terrain)) continue;
+      const sKey = keyOf(cell.x, cell.y);
+      if (visited.has(sKey)) continue;
+      const queue = [cell];
+      const cluster = [];
+      visited.add(sKey);
+      for (let q = 0; q < queue.length; q += 1) {
+        const cur = queue[q];
+        cluster.push(cur);
+        for (const n of getHexNeighborCoords(w, h, cur.x, cur.y)) {
+          const nKey = keyOf(n.x, n.y);
+          if (visited.has(nKey)) continue;
+          if (!componentKeySet.has(nKey)) continue;
+          if (!isMountainLikeTerrain(grid[n.y][n.x])) continue;
+          visited.add(nKey);
+          queue.push({ x: n.x, y: n.y });
+        }
+      }
+      if (!cluster.length) continue;
+      const cx = cluster.reduce((sum, c) => sum + c.x, 0) / cluster.length;
+      const cy = cluster.reduce((sum, c) => sum + c.y, 0) / cluster.length;
+      let center = cluster[0];
+      let best = Number.POSITIVE_INFINITY;
+      for (const c of cluster) {
+        const d = Math.hypot(c.x - cx, c.y - cy);
+        if (d < best) {
+          best = d;
+          center = c;
+        }
+      }
+      centers.push(center);
+    }
+    return centers;
+  };
+
+  const buildSourceCandidates = component => {
+    if (!component?.cells?.length) return [];
+    let maxLevel = Number.NEGATIVE_INFINITY;
+    for (const c of component.cells) {
+      const lv = getLevel(c.x, c.y);
+      if (Number.isFinite(lv)) maxLevel = Math.max(maxLevel, lv);
+    }
+    if (!Number.isFinite(maxLevel)) maxLevel = 0;
+    const mountainCenters = listMountainCenters(component);
+    const fallbackCenter = { x: Math.round(component.cx || 0), y: Math.round(component.cy || 0) };
+    return component.cells
+      .map(c => {
+        const terrain = grid[c.y][c.x];
+        const level = getLevel(c.x, c.y);
+        const nearPeak = Number(level >= (maxLevel - 1));
+        const distToCenter = mountainCenters.length
+          ? Math.min(...mountainCenters.map(m => hexDistance(c.x, c.y, m.x, m.y)))
+          : hexDistance(c.x, c.y, fallbackCenter.x, fallbackCenter.y);
+        const centerBonus = Math.max(0, 36 - (distToCenter * 5));
+        const terrainBonus = (isMountainLikeTerrain(terrain) ? 36 : 0) + (terrain === "丘陵" ? 12 : 0);
+        const score = (toSafeNumber(level, 0) * 18) + (nearPeak * 90) + terrainBonus + centerBonus + (Math.random() * 0.25);
+        return { x: c.x, y: c.y, key: keyOf(c.x, c.y), terrain, level, score };
+      })
+      .filter(c => Number.isFinite(c.level))
+      .sort((a, b) => b.score - a.score);
+  };
+
+  const buildPreferredMajorSourceCandidates = (candidates, component) => {
+    if (!Array.isArray(candidates) || !candidates.length) return [];
+    const maxLevel = component?.cells?.length
+      ? component.cells.reduce((mx, c) => {
+        const lv = getLevel(c.x, c.y);
+        return Number.isFinite(lv) ? Math.max(mx, lv) : mx;
+      }, Number.NEGATIVE_INFINITY)
+      : Number.NEGATIVE_INFINITY;
+    const preferred = candidates.filter(c => {
+      if (!Number.isFinite(c?.level)) return false;
+      const highByLevel = Number.isFinite(maxLevel) ? c.level >= (maxLevel - 1) : false;
+      const highByTerrain = isMountainLikeTerrain(c?.terrain) || c?.terrain === "丘陵";
+      return highByLevel || highByTerrain;
+    });
+    if (preferred.length >= Math.max(4, Math.floor(candidates.length * 0.18))) return preferred;
+    return candidates.slice(0, Math.max(6, Math.floor(candidates.length * 0.35)));
+  };
+
+  const pickMouthWaterTile = (waterCandidates, preferSea = true) => {
+    if (!Array.isArray(waterCandidates) || !waterCandidates.length) return null;
+    const scored = waterCandidates.map(c => {
+      const terrain = grid[c.y]?.[c.x];
+      const seaBonus = (preferSea && terrain === "海") ? -8 : 0;
+      const level = getLevel(c.x, c.y);
+      return { ...c, score: seaBonus + toSafeNumber(level, 0) + (Math.random() * 0.2) };
+    });
+    scored.sort((a, b) => a.score - b.score);
+    return scored[0] || null;
+  };
+
+  const traceDownhillPath = (source, opts = {}) => {
+    const minLen = Math.max(1, Math.floor(toSafeNumber(opts.minLength, 1)));
+    const maxLen = Math.max(minLen, Math.floor(toSafeNumber(opts.maxLength, minLen)));
+    const requireWaterMouth = opts.requireWaterMouth !== false;
+    const preferSeaMouth = opts.preferSeaMouth !== false;
+    const allowEarlyStop = opts.allowEarlyStop === true;
+    const path = [];
+    const visited = new Set();
+    let breachSteps = 0;
+    const maxBreachSteps = Math.max(3, Math.floor(maxLen * 0.5));
+    const sourceKey = keyOf(source.x, source.y);
+    path.push({ x: source.x, y: source.y, key: sourceKey, level: getLevel(source.x, source.y) });
+    visited.add(sourceKey);
+
+    while (path.length <= maxLen) {
+      const current = path[path.length - 1];
+      const waterNeighbors = getHexNeighborCoords(w, h, current.x, current.y).filter(n => isWaterTerrain(grid[n.y]?.[n.x]));
+      if (path.length >= minLen && waterNeighbors.length) {
+        return { ok: true, path, mouth: pickMouthWaterTile(waterNeighbors, preferSeaMouth) };
+      }
+      if (path.length >= maxLen) break;
+
+      const rawCandidates = getHexNeighborCoords(w, h, current.x, current.y)
+        .map(n => {
+          const terrain = grid[n.y]?.[n.x];
+          if (isWaterTerrain(terrain)) return null;
+          const nKey = keyOf(n.x, n.y);
+          if (visited.has(nKey)) return null;
+          const nextLevel = getLevel(n.x, n.y);
+          const curLevel = getLevel(current.x, current.y);
+          if (!Number.isFinite(nextLevel) || !Number.isFinite(curLevel)) return null;
+          const drop = curLevel - nextLevel;
+          const waterDist = toSafeNumber(waterDistanceMap[n.y]?.[n.x], Number.POSITIVE_INFINITY);
+          const terrainBonus = (terrain === "丘陵" ? -0.8 : 0) + (isMountainLikeTerrain(terrain) ? -0.6 : 0);
+          return {
+            x: n.x,
+            y: n.y,
+            key: nKey,
+            level: nextLevel,
+            drop,
+            // 基本は下り（drop>0）を優先。詰まったときのみ平坦/微上りを許可する。
+            downScore: nextLevel + (waterDist * 0.3) - (Math.max(drop, 0) * 0.7) + terrainBonus + (Math.random() * 0.2),
+            breachScore: (waterDist * 0.95) + (nextLevel * 0.35) + (drop === 0 ? 1.8 : 4.2) + (Math.random() * 0.2)
+          };
+        })
+        .filter(Boolean);
+      const downhill = rawCandidates
+        .filter(c => c.drop > 0)
+        .sort((a, b) => a.downScore - b.downScore || a.level - b.level || b.drop - a.drop);
+      const breach = rawCandidates
+        .filter(c => c.drop >= -3)
+        .sort((a, b) => a.breachScore - b.breachScore || a.level - b.level || a.waterDist - b.waterDist);
+      const usingBreach = downhill.length === 0;
+      if (usingBreach && !breach.length) break;
+      if (usingBreach && breachSteps >= maxBreachSteps) break;
+      const next = usingBreach ? breach[0] : downhill[0];
+      if (!next) break;
+      breachSteps = usingBreach ? (breachSteps + 1) : Math.max(0, breachSteps - 1);
+      path.push(next);
+      visited.add(next.key);
+
+      if (allowEarlyStop && path.length >= minLen) {
+        const remaining = maxLen - path.length;
+        const stopChance = remaining <= 0 ? 1 : clamp(0.15 + ((path.length - minLen) * 0.1), 0.15, 0.7);
+        if (Math.random() < stopChance) {
+          const lakeNear = getHexNeighborCoords(w, h, next.x, next.y).filter(n => isWaterTerrain(grid[n.y]?.[n.x]));
+          return { ok: true, path, mouth: pickMouthWaterTile(lakeNear, false) };
+        }
+      }
     }
 
-    for (const tileKey of landTiles) riverSet.add(tileKey);
-
-    const tilePair = pickTilePairFromEdge(edgeInfo);
-    if (!tilePair) return;
-    const [ta, tb] = tilePair;
-    const aWater = isTileKeyWater(ta);
-    const bWater = isTileKeyWater(tb);
-    if (useWaterLink || aWater || bWater) {
-      waterLinkSet.add(riverEdgeKey(ta, tb));
-    } else {
-      edgeSet.add(riverEdgeKey(ta, tb));
+    if (path.length >= minLen) {
+      const current = path[path.length - 1];
+      const waterNeighbors = getHexNeighborCoords(w, h, current.x, current.y).filter(n => isWaterTerrain(grid[n.y]?.[n.x]));
+      if (waterNeighbors.length) return { ok: true, path, mouth: pickMouthWaterTile(waterNeighbors, preferSeaMouth) };
+      if (!requireWaterMouth) return { ok: true, path, mouth: null };
     }
 
-    riverCornerDegreeMap.set(fromCornerKey, (riverCornerDegreeMap.get(fromCornerKey) || 0) + 1);
-    riverCornerDegreeMap.set(toCornerKey, (riverCornerDegreeMap.get(toCornerKey) || 0) + 1);
+    return { ok: false, path, mouth: null };
+  };
+
+  // 最終フォールバック用: 水際距離を優先して海/湖へ到達させる流路探索。
+  // 地形が平坦すぎて通常の下り探索で詰まるケースを救済する。
+  const traceForcedToWaterPath = (source, opts = {}) => {
+    const minLen = Math.max(1, Math.floor(toSafeNumber(opts.minLength, 1)));
+    const maxLen = Math.max(minLen, Math.floor(toSafeNumber(opts.maxLength, Math.max(24, majorMaxLength + 12))));
+    const path = [];
+    const visited = new Set();
+    const sourceKey = keyOf(source.x, source.y);
+    path.push({ x: source.x, y: source.y, key: sourceKey, level: getLevel(source.x, source.y) });
+    visited.add(sourceKey);
+
+    while (path.length <= maxLen) {
+      const current = path[path.length - 1];
+      const waterNeighbors = getHexNeighborCoords(w, h, current.x, current.y).filter(n => isWaterTerrain(grid[n.y]?.[n.x]));
+      if (path.length >= minLen && waterNeighbors.length) {
+        return { ok: true, path, mouth: pickMouthWaterTile(waterNeighbors, true) };
+      }
+      if (path.length >= maxLen) break;
+
+      const candidates = getHexNeighborCoords(w, h, current.x, current.y)
+        .map(n => {
+          const terrain = grid[n.y]?.[n.x];
+          if (isWaterTerrain(terrain)) return null;
+          const nKey = keyOf(n.x, n.y);
+          if (visited.has(nKey)) return null;
+          const nextLevel = getLevel(n.x, n.y);
+          const curLevel = getLevel(current.x, current.y);
+          if (!Number.isFinite(nextLevel) || !Number.isFinite(curLevel)) return null;
+          const uphill = Math.max(0, nextLevel - curLevel);
+          const waterDist = toSafeNumber(waterDistanceMap[n.y]?.[n.x], Number.POSITIVE_INFINITY);
+          return {
+            x: n.x,
+            y: n.y,
+            key: nKey,
+            level: nextLevel,
+            score: (waterDist * 1.35) + (uphill * 3.6) + (nextLevel * 0.12) + (Math.random() * 0.2)
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.score - b.score || a.level - b.level);
+      if (!candidates.length) break;
+
+      const next = candidates[0];
+      path.push(next);
+      visited.add(next.key);
+    }
+
+    return { ok: false, path, mouth: null };
+  };
+
+  const hasAnyPathTileNear = (path, coords, minDistance) => {
+    if (!coords.length || minDistance <= 0) return false;
+    for (const p of path) {
+      for (const c of coords) {
+        if (hexDistance(p.x, p.y, c.x, c.y) < minDistance) return true;
+      }
+    }
+    return false;
+  };
+
+  const bridgeCornerEdgesBetweenTileSteps = (prevTileKey, curTileKey, nextTileKey) => {
+    const prevCornerEdgeKey = tilePairToCornerEdgeMap.get(riverEdgeKey(prevTileKey, curTileKey));
+    const nextCornerEdgeKey = tilePairToCornerEdgeMap.get(riverEdgeKey(curTileKey, nextTileKey));
+    if (!prevCornerEdgeKey || !nextCornerEdgeKey) return;
+    if (prevCornerEdgeKey === nextCornerEdgeKey) return;
+    const prevEnds = splitCornerEdgeKey(prevCornerEdgeKey);
+    const nextEnds = splitCornerEdgeKey(nextCornerEdgeKey);
+    if (!prevEnds || !nextEnds) return;
+    const shared = prevEnds.some(p => nextEnds.includes(p));
+    if (shared) return;
+    const bridgeEdges = buildBridgeCornerEdgesOnTile(curTileKey, prevEnds, nextEnds);
+    for (const bridgeEdge of bridgeEdges) {
+      cornerEdgeSet.add(bridgeEdge);
+    }
+  };
+
+  const commitPath = (route, type) => {
+    if (!route?.ok || !Array.isArray(route.path) || !route.path.length) return;
+    sourceSet.add(route.path[0].key);
+    for (const n of route.path) {
+      riverSet.add(n.key);
+      ensureAllRiverCoord(n.x, n.y);
+      if (type === "major") {
+        majorRiverSet.add(n.key);
+        majorRiverCoords.push({ x: n.x, y: n.y });
+      } else {
+        branchSet.add(n.key);
+      }
+    }
+    for (let i = 1; i < route.path.length; i += 1) {
+      registerTileEdge(route.path[i - 1].key, route.path[i].key, false);
+    }
+
+    // tileベース経路をedgeベースに変換した際、連続stepでも共有頂点を持たないケースがある。
+    // その場合は中間タイル境界の最短ルートを補間して、edge連結を途切れさせない。
+    for (let i = 1; i < route.path.length - 1; i += 1) {
+      const prevTileKey = route.path[i - 1].key;
+      const curTileKey = route.path[i].key;
+      const nextTileKey = route.path[i + 1].key;
+      bridgeCornerEdgesBetweenTileSteps(prevTileKey, curTileKey, nextTileKey);
+    }
+
+    if (route.mouth && Number.isFinite(route.mouth.x) && Number.isFinite(route.mouth.y)) {
+      const endNode = route.path[route.path.length - 1];
+      const mouthTileKey = keyOf(route.mouth.x, route.mouth.y);
+      registerTileEdge(endNode.key, mouthTileKey, true);
+
+      // 河口接続側でもedgeの切断を防ぐため、必要時のみ終端タイル上で補間する。
+      if (route.path.length >= 2) {
+        const prevEndNode = route.path[route.path.length - 2];
+        const prevCornerEdgeKey = tilePairToCornerEdgeMap.get(riverEdgeKey(prevEndNode.key, endNode.key));
+        const mouthCornerEdgeKey = tilePairToCornerEdgeMap.get(riverEdgeKey(endNode.key, mouthTileKey));
+        if (prevCornerEdgeKey && mouthCornerEdgeKey && prevCornerEdgeKey !== mouthCornerEdgeKey) {
+          const prevEnds = splitCornerEdgeKey(prevCornerEdgeKey);
+          const mouthEnds = splitCornerEdgeKey(mouthCornerEdgeKey);
+          const shared = !!(prevEnds && mouthEnds && prevEnds.some(p => mouthEnds.includes(p)));
+          if (!shared) {
+            const bridgeEdges = buildBridgeCornerEdgesOnTile(endNode.key, prevEnds, mouthEnds);
+            for (const bridgeEdge of bridgeEdges) {
+              cornerEdgeSet.add(bridgeEdge);
+            }
+          }
+        }
+      }
+
+      if (type === "major") majorMouthCoords.push({ x: endNode.x, y: endNode.y });
+    }
+  };
+
+  const minorCountBySize = (size, majorTarget = 0) => {
+    if (!Number.isFinite(size) || size < 40) return 0;
+    const baseDensity = Math.max(60, Math.floor(minorDensityDivisor * 0.58));
+    const bySize = Math.floor(size / baseDensity);
+    const byMajor = Math.max(0, Math.floor(majorTarget * 0.8));
+    const result = bySize + byMajor;
+    // 小河川は主河川より多めだが、過密回避のため上限を設ける
+    return Math.max(0, Math.min(result, 28));
   };
 
   const detectMeshCenterTiles = () => {
@@ -3554,193 +4212,16 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap) {
       if (aroundCount >= meshLoopThreshold) {
         out.add(tileKey);
         riverSet.add(tileKey);
+        const p = parseCoordKey(tileKey);
+        if (Number.isFinite(p?.x) && Number.isFinite(p?.y)) ensureAllRiverCoord(p.x, p.y);
       }
     }
     return out;
   };
 
-  const cornersForTile = tileKey => tileCornersMap.get(tileKey) || [];
-
-  const chooseSourceCorner = tileKey => {
-    const corners = cornersForTile(tileKey);
-    if (!corners.length) return "";
-    const scored = corners
-      .map(cornerKey => {
-        const currentLevel = cornerLevelMap.get(cornerKey);
-        const neighbors = cornerNeighborsMap.get(cornerKey);
-        const downhill = [...(neighbors?.keys() || [])].some(nextKey => {
-          const nextLevel = cornerLevelMap.get(nextKey);
-          return Number.isFinite(nextLevel) && Number.isFinite(currentLevel) && nextLevel < currentLevel;
-        });
-        return {
-          cornerKey,
-          level: Number.isFinite(currentLevel) ? currentLevel : Number.NEGATIVE_INFINITY,
-          downhill,
-          waterDist: Number.isFinite(cornerWaterDistanceMap.get(cornerKey)) ? cornerWaterDistanceMap.get(cornerKey) : Number.POSITIVE_INFINITY,
-          touchingWater: cornerWaterSet.has(cornerKey),
-          tie: Math.random()
-        };
-      })
-      .filter(info => Number.isFinite(info.level))
-      .sort((a, b) =>
-        Number(b.downhill) - Number(a.downhill)
-        || Number(a.touchingWater) - Number(b.touchingWater)
-        || b.level - a.level
-        || a.waterDist - b.waterDist
-        || a.tie - b.tie
-      );
-    return scored[0]?.cornerKey || "";
-  };
-
-  function traceRiverFromSource(source, sourceCornerKey, isMajor) {
-    const sourceTileKey = keyOf(source.x, source.y);
-    sourceSet.add(sourceTileKey);
-    const channels = [{
-      cornerKey: sourceCornerKey,
-      ttl: (isMajor ? majorBaseTtl : minorBaseTtl) + (ttlRandomSpan > 0 ? Math.floor(Math.random() * ttlRandomSpan) : 0),
-      age: 0,
-      branchBudget: isMajor ? branchBudgetMajor : branchBudgetMinor,
-      major: isMajor,
-      visited: new Set([sourceCornerKey])
-    }];
-
-    markRiverTilesAtCorner(sourceCornerKey);
-
-    while (channels.length) {
-      const ch = channels.pop();
-      let currentCornerKey = ch.cornerKey;
-
-      while (ch.ttl > 0) {
-        markRiverTilesAtCorner(currentCornerKey);
-
-        if (ch.age >= 1 && cornerWaterSet.has(currentCornerKey)) {
-          const touched = cornerTileMap.get(currentCornerKey);
-          for (const tileKey of touched || []) {
-            if (!isTileKeyWater(tileKey)) mouthSet.add(tileKey);
-          }
-          break;
-        }
-
-        const currentLevel = cornerLevelMap.get(currentCornerKey);
-        if (!Number.isFinite(currentLevel)) break;
-        const neighbors = cornerNeighborsMap.get(currentCornerKey);
-        if (!neighbors || !neighbors.size) break;
-
-        const candidates = [...neighbors.entries()]
-          .filter(([nextCornerKey]) => !ch.visited.has(nextCornerKey))
-          .map(([nextCornerKey, edgeKey]) => {
-            const nextLevel = cornerLevelMap.get(nextCornerKey);
-            if (!Number.isFinite(nextLevel)) return null;
-            const drop = currentLevel - nextLevel;
-            if (drop < 0) return null;
-            const edgeInfo = edgeInfoMap.get(edgeKey);
-            if (!edgeInfo) return null;
-            const sideTiles = [...edgeInfo.tileKeys];
-            const hasWaterSide = sideTiles.length < 2 || sideTiles.some(isTileKeyWater);
-            const hasLandSide = sideTiles.some(tileKey => !isTileKeyWater(tileKey));
-            if (!hasLandSide) return null;
-
-            const nextCornerDegree = riverCornerDegreeMap.get(nextCornerKey) || 0;
-            const currentCornerDegree = riverCornerDegreeMap.get(currentCornerKey) || 0;
-            const isFlatMove = drop === 0;
-            // Mesh suppression as score penalty (not hard reject).
-            // Keep rivers alive while making honeycomb loops less likely.
-            let meshPenalty = 0;
-            if (!hasWaterSide) {
-              meshPenalty += nextCornerDegree * meshPenaltyNextCorner;
-              meshPenalty += Math.max(0, currentCornerDegree - 1) * meshPenaltyCurrentCorner;
-              if (isFlatMove) {
-                meshPenalty += (ch.age <= meshPenaltyFlatEarlyAge) ? meshPenaltyFlatEarly : meshPenaltyFlatLate;
-              }
-            }
-
-            const waterDist = Number.isFinite(cornerWaterDistanceMap.get(nextCornerKey))
-              ? cornerWaterDistanceMap.get(nextCornerKey)
-              : Number.POSITIVE_INFINITY;
-            const downhillRank = hasWaterSide
-              ? -1
-              : (drop > 0 ? 0 : 1);
-            return {
-              nextCornerKey,
-              edgeInfo,
-              hasWaterSide,
-              drop,
-              nextLevel,
-              waterDist,
-              meshPenalty,
-              downhillRank,
-              tie: Math.random() * 0.15
-            };
-          })
-          .filter(Boolean)
-          .sort((a, b) =>
-            a.downhillRank - b.downhillRank
-            || a.nextLevel - b.nextLevel
-            || a.meshPenalty - b.meshPenalty
-            || a.waterDist - b.waterDist
-            || b.drop - a.drop
-            || a.tie - b.tie
-          );
-
-        if (!candidates.length) break;
-
-        let nextInfo = candidates[0];
-        if (ch.age < avoidOutletEarlySteps && nextInfo.hasWaterSide && candidates.length > 1) {
-          const nonOutlet = candidates.find(c => !c.hasWaterSide);
-          if (nonOutlet) nextInfo = nonOutlet;
-        }
-
-        if (ch.age >= branchStartAge && ch.branchBudget > 0 && candidates.length > 1) {
-          const branchChance = ch.major ? majorBranchChance : minorBranchChance;
-          const alt = candidates.find(c => c !== nextInfo && !c.hasWaterSide);
-          if (alt && Math.random() < branchChance) {
-            const branchTiles = cornerTileMap.get(currentCornerKey);
-            for (const tileKey of branchTiles || []) {
-              if (!isTileKeyWater(tileKey)) branchSet.add(tileKey);
-            }
-            const nextVisited = new Set(ch.visited);
-            nextVisited.add(alt.nextCornerKey);
-            channels.push({
-              cornerKey: alt.nextCornerKey,
-              ttl: Math.max(branchTtlMin, Math.floor(ch.ttl * branchTtlRatio)),
-              age: 0,
-              branchBudget: ch.branchBudget - 1,
-              major: false,
-              visited: nextVisited
-            });
-            ch.branchBudget -= 1;
-          }
-        }
-
-        ch.visited.add(nextInfo.nextCornerKey);
-        ch.ttl -= 1;
-        ch.age += 1;
-
-        const toOutlet = nextInfo.hasWaterSide && ch.age >= 1;
-        registerFlowEdge(currentCornerKey, nextInfo.nextCornerKey, toOutlet);
-        if (toOutlet) break;
-
-        currentCornerKey = nextInfo.nextCornerKey;
-      }
-    }
-  }
-
-  const sourceCandidates = listLandCoords(grid)
-    .filter(c => !isWaterTerrain(grid[c.y][c.x]))
-    .map(c => {
-      const terrain = grid[c.y][c.x];
-      const level = getLevel(c.x, c.y);
-      return {
-        ...c,
-        level,
-        terrain,
-        sourceScore: (isMountainLikeTerrain(terrain) ? 3 : 0) + (terrain === "丘陵" ? 1 : 0) + level
-      };
-    })
-    .filter(c => c.sourceScore >= sourceMinScore)
-    .sort((a, b) => b.sourceScore - a.sourceScore || Math.random() - 0.5);
-
-  if (!sourceCandidates.length) {
+  const components = buildLandmassComponents().filter(c => Number(c?.size) > 0).sort((a, b) => b.size - a.size);
+  const riverGenStats = [];
+  if (!components.length) {
     const meshCenterSet = new Set();
     return {
       riverSet,
@@ -3752,34 +4233,353 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap) {
       cornerEdgeSet,
       cornerWaterLinkSet,
       meshCenterSet,
-      largeRiverSet: new Set(meshCenterSet),
-      riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet })
+      largeRiverSet: new Set(),
+      riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet, cornerEdgeSet, cornerWaterLinkSet }, w, h)
     };
   }
 
-  const riverCountAdjusted = Math.max(riverCountMin, Math.floor(totalTiles / riverCountDivisor));
-  const majorCount = Math.max(1, Math.floor(riverCountAdjusted * majorRatio));
-  const topSliceSize = Math.max(sourceTopMin, Math.floor(sourceCandidates.length * sourceTopRate));
-  const topSources = sourceCandidates.slice(0, topSliceSize);
-  const used = new Set();
-
-  for (let i = 0; i < riverCountAdjusted; i += 1) {
-    let src = randomFrom(topSources) || randomFrom(sourceCandidates);
-    if (!src) continue;
-    let guard = 0;
-    while (src && used.has(keyOf(src.x, src.y)) && guard < sourceRetryLimit) {
-      src = randomFrom(sourceCandidates);
-      guard += 1;
+  for (const component of components) {
+    const majorTarget = majorCountBySize(component.size);
+    if (majorTarget <= 0) {
+      riverGenStats.push({
+        continentSize: component.size,
+        target: majorTarget,
+        generated: 0,
+        sourceCandidates: 0
+      });
+      continue;
     }
-    if (!src) continue;
-    const srcTileKey = keyOf(src.x, src.y);
-    const srcCornerKey = chooseSourceCorner(srcTileKey);
-    if (!srcCornerKey) continue;
-    used.add(srcTileKey);
-    traceRiverFromSource(src, srcCornerKey, i < majorCount);
+    const candidates = buildSourceCandidates(component);
+    if (!candidates.length) {
+      riverGenStats.push({
+        continentSize: component.size,
+        target: majorTarget,
+        generated: 0,
+        sourceCandidates: 0
+      });
+      continue;
+    }
+    let generated = 0;
+    const usedSources = new Set();
+    const majorCandidates = buildPreferredMajorSourceCandidates(candidates, component);
+    const topCount = Math.max(1, Math.floor(majorCandidates.length * 0.45));
+    const topList = majorCandidates.slice(0, topCount);
+    const retryCap = Math.max(sourceRetryLimit * 4, majorTarget * sourceRetryLimit * 2);
+    for (let retry = 0; retry < retryCap && generated < majorTarget; retry += 1) {
+      let source = randomFrom(topList) || randomFrom(majorCandidates) || randomFrom(candidates);
+      if (!source) break;
+      if (usedSources.has(source.key)) {
+        source = randomFrom(majorCandidates.filter(c => !usedSources.has(c.key)))
+          || randomFrom(candidates.filter(c => !usedSources.has(c.key)));
+        if (!source) continue;
+      }
+      usedSources.add(source.key);
+      const route = traceDownhillPath(source, {
+        minLength: majorMinLength,
+        maxLength: majorMaxLength,
+        requireWaterMouth: true,
+        preferSeaMouth: true,
+        allowEarlyStop: false
+      });
+      if (!isSeaMouthRoute(route)) continue;
+      if (route.path.length < majorMinLength) continue;
+      if (hasAnyPathTileNear(route.path, majorRiverCoords, majorMidMinDistance)) continue;
+      const end = route.path[route.path.length - 1];
+      if (majorMouthCoords.some(m => hexDistance(end.x, end.y, m.x, m.y) < majorMouthMinDistance)) continue;
+      commitPath(route, "major");
+      generated += 1;
+    }
+
+    // 条件が厳しすぎて主河川が不足した場合の補完生成。
+    // 「主河川のみ」の方針は維持しつつ、間隔・長さの閾値を少しだけ緩めて再試行する。
+    if (generated < majorTarget) {
+      const relaxedMinLength = Math.max(4, majorMinLength - 2);
+      const relaxedMidDistance = Math.max(1, majorMidMinDistance - 1);
+      const relaxedMouthDistance = Math.max(1, majorMouthMinDistance - 2);
+      const relaxedRetryCap = Math.max(sourceRetryLimit * 8, (majorTarget - generated) * sourceRetryLimit * 4);
+      for (let retry = 0; retry < relaxedRetryCap && generated < majorTarget; retry += 1) {
+        const source = randomFrom(majorCandidates) || randomFrom(candidates);
+        if (!source) break;
+        const route = traceDownhillPath(source, {
+          minLength: relaxedMinLength,
+          maxLength: majorMaxLength + 8,
+          requireWaterMouth: true,
+          preferSeaMouth: true,
+          allowEarlyStop: false
+        });
+        if (!isSeaMouthRoute(route)) continue;
+        if (route.path.length < relaxedMinLength) continue;
+        if (hasAnyPathTileNear(route.path, majorRiverCoords, relaxedMidDistance)) continue;
+        const end = route.path[route.path.length - 1];
+        if (majorMouthCoords.some(m => hexDistance(end.x, end.y, m.x, m.y) < relaxedMouthDistance)) continue;
+        commitPath(route, "major");
+        generated += 1;
+      }
+    }
+
+    // まだ不足している場合の最終フォールバック。
+    if (generated < majorTarget) {
+      const forcedMinLength = Math.max(3, majorMinLength - 3);
+      const forcedMidDistance = Math.max(1, majorMidMinDistance - 2);
+      const forcedMouthDistance = Math.max(1, majorMouthMinDistance - 3);
+      const forcedRetryCap = Math.max(48, (majorTarget - generated) * 30);
+      for (let retry = 0; retry < forcedRetryCap && generated < majorTarget; retry += 1) {
+        const source = randomFrom(majorCandidates) || randomFrom(candidates);
+        if (!source) break;
+        const route = traceForcedToWaterPath(source, {
+          minLength: forcedMinLength,
+          maxLength: majorMaxLength + Math.max(14, Math.floor((w + h) * 0.25))
+        });
+        if (!isSeaMouthRoute(route)) continue;
+        if (route.path.length < forcedMinLength) continue;
+        if (hasAnyPathTileNear(route.path, majorRiverCoords, forcedMidDistance)) continue;
+        const end = route.path[route.path.length - 1];
+        if (majorMouthCoords.some(m => hexDistance(end.x, end.y, m.x, m.y) < forcedMouthDistance)) continue;
+        commitPath(route, "major");
+        generated += 1;
+      }
+    }
+
+    // 保険: それでも0本の場合は最低1本だけ強制確保。
+    if (generated === 0 && majorTarget > 0 && candidates.length) {
+      const guaranteedMinLength = Math.max(2, majorMinLength - 4);
+      const fallbackPool = [...buildPreferredMajorSourceCandidates(candidates, component), ...candidates];
+      for (let i = 0; i < Math.min(fallbackPool.length, 180); i += 1) {
+        const source = fallbackPool[i];
+        const route = traceForcedToWaterPath(source, {
+          minLength: guaranteedMinLength,
+          maxLength: majorMaxLength + Math.max(20, Math.floor((w + h) * 0.35))
+        });
+        if (!isSeaMouthRoute(route)) continue;
+        if (route.path.length < guaranteedMinLength) continue;
+        commitPath(route, "major");
+        generated = 1;
+        break;
+      }
+    }
+
+    riverGenStats.push({
+      continentSize: component.size,
+      target: majorTarget,
+      generated,
+      sourceCandidates: candidates.length
+    });
   }
 
+  for (const component of components) {
+    const majorTarget = majorCountBySize(component.size);
+    const minorTargetBase = minorCountBySize(component.size, majorTarget);
+    const minorSpawnScale = clamp(0.5 + branchMinorRate, 0.5, 1.3);
+    const minorTarget = Math.max(0, Math.round(minorTargetBase * branchSpawnRate * minorSpawnScale));
+    if (minorTarget <= 0) continue;
+    const componentKeySet = new Set(component.cells.map(c => keyOf(c.x, c.y)));
+    const branchParentCoords = [];
+    const branchStarterMap = new Map();
+    for (const c of component.cells) {
+      const riverKey = keyOf(c.x, c.y);
+      if (!majorRiverSet.has(riverKey)) continue;
+      const parentLevel = getLevel(c.x, c.y);
+      for (const n of getHexNeighborCoords(w, h, c.x, c.y)) {
+        const nKey = keyOf(n.x, n.y);
+        if (!componentKeySet.has(nKey)) continue;
+        if (isWaterTerrain(grid[n.y]?.[n.x])) continue;
+        if (riverSet.has(nKey)) continue;
+        const nextLevel = getLevel(n.x, n.y);
+        if (!Number.isFinite(parentLevel) || !Number.isFinite(nextLevel)) continue;
+        const drop = parentLevel - nextLevel;
+        const waterDist = toSafeNumber(waterDistanceMap[n.y]?.[n.x], Number.POSITIVE_INFINITY);
+        const uphillPenalty = Math.max(0, -drop) * 2.8;
+        const score = nextLevel + (waterDist * 0.45) + uphillPenalty + (Math.random() * 0.15);
+        const prev = branchStarterMap.get(nKey);
+        if (!prev || score < prev.score) {
+          branchStarterMap.set(nKey, {
+            x: n.x,
+            y: n.y,
+            key: nKey,
+            level: nextLevel,
+            score,
+            parent: { x: c.x, y: c.y, key: riverKey, level: parentLevel }
+          });
+        }
+      }
+    }
+    const branchStarters = [...branchStarterMap.values()].sort((a, b) => a.score - b.score);
+    const fallbackCandidates = buildSourceCandidates(component)
+      .filter(c => !majorRiverSet.has(c.key) && !riverSet.has(c.key))
+      .map(c => ({ ...c, parent: null }));
+    const candidates = branchStarters.length ? branchStarters : fallbackCandidates;
+    if (!candidates.length) continue;
+    const topCount = Math.max(1, Math.floor(candidates.length * 0.85));
+    const topList = candidates.slice(0, topCount);
+    let generated = 0;
+    let retry = 0;
+    const retryCap = minorTarget * minorRetryLimitPerRiver;
+    while (generated < minorTarget && retry < retryCap) {
+      retry += 1;
+      const source = randomFrom(topList) || randomFrom(candidates);
+      if (!source) break;
+      if (riverSet.has(source.key)) continue;
+      if (
+        source.parent &&
+        branchParentCoords.some(p => hexDistance(source.parent.x, source.parent.y, p.x, p.y) < branchStartMinDistance)
+      ) continue;
+      const route = traceDownhillPath(source, {
+        minLength: branchMinLength,
+        maxLength: randomInt(branchMinLength, Math.max(branchMinLength, branchMaxLength)),
+        requireWaterMouth: false,
+        preferSeaMouth: false,
+        allowEarlyStop: false
+      });
+      if (!route.ok) continue;
+      if (route.path.length < branchMinLength || route.path.length > branchMaxLength) continue;
+      if (route.path.some((n, idx) => idx > 0 && riverSet.has(n.key))) continue;
+      const spacingCheckStart = Math.min(3, route.path.length);
+      const pathForSpacing = route.path.slice(spacingCheckStart);
+      const branchSpacingDistance = Math.max(2, minorSpacingDistance);
+      if (pathForSpacing.length && hasAnyPathTileNear(pathForSpacing, allRiverCoords, branchSpacingDistance)) continue;
+      if (source.parent && route.path.length) {
+        registerTileEdge(source.parent.key, route.path[0].key, false);
+        if (route.path.length >= 2) {
+          bridgeCornerEdgesBetweenTileSteps(source.parent.key, route.path[0].key, route.path[1].key);
+        }
+      }
+      commitPath(route, "minor");
+      if (source.parent) branchParentCoords.push({ x: source.parent.x, y: source.parent.y });
+      generated += 1;
+    }
+  }
+
+  const splitTileEdgeKey = edgeKey => {
+    const [aRaw, bRaw] = String(edgeKey || "").split("|");
+    const a = normalizeCoordKeyText(aRaw);
+    const b = normalizeCoordKeyText(bRaw);
+    if (!a || !b) return null;
+    return [a, b];
+  };
+
+  // 見た目を崩す「1マスだけ横に飛び出す枝」を除去する。
+  // 条件: 支流タイルで、陸地河川隣接が1、かつ接続先が分岐点(次数3以上)。
+  const pruneSingleTileSideBranches = () => {
+    const landAdjMap = new Map();
+    const ensureAdj = tileKey => {
+      if (!landAdjMap.has(tileKey)) landAdjMap.set(tileKey, new Set());
+      return landAdjMap.get(tileKey);
+    };
+    for (const edgeKey of edgeSet) {
+      const nodes = splitTileEdgeKey(edgeKey);
+      if (!nodes) continue;
+      const [a, b] = nodes;
+      if (!riverSet.has(a) || !riverSet.has(b)) continue;
+      if (isTileKeyWater(a) || isTileKeyWater(b)) continue;
+      ensureAdj(a).add(b);
+      ensureAdj(b).add(a);
+    }
+
+    const pruneTargets = [];
+    for (const tileKey of branchSet) {
+      if (!riverSet.has(tileKey)) continue;
+      if (majorRiverSet.has(tileKey)) continue;
+      if (mouthSet.has(tileKey)) continue;
+      const neighbors = [...(landAdjMap.get(tileKey) || [])];
+      if (neighbors.length !== 1) continue;
+      const parentKey = neighbors[0];
+      const parentDegree = (landAdjMap.get(parentKey)?.size) || 0;
+      if (parentDegree < 3) continue;
+      pruneTargets.push(tileKey);
+    }
+    if (!pruneTargets.length) return 0;
+
+    const pruneSet = new Set(pruneTargets);
+    for (const tileKey of pruneTargets) {
+      riverSet.delete(tileKey);
+      branchSet.delete(tileKey);
+      sourceSet.delete(tileKey);
+      mouthSet.delete(tileKey);
+      allRiverCoordSet.delete(tileKey);
+    }
+
+    for (const edgeKey of [...edgeSet]) {
+      const nodes = splitTileEdgeKey(edgeKey);
+      if (!nodes) continue;
+      const [a, b] = nodes;
+      if (!pruneSet.has(a) && !pruneSet.has(b)) continue;
+      edgeSet.delete(edgeKey);
+      const cornerKey = tilePairToCornerEdgeMap.get(edgeKey);
+      if (cornerKey) cornerEdgeSet.delete(cornerKey);
+    }
+    for (const edgeKey of [...waterLinkSet]) {
+      const nodes = splitTileEdgeKey(edgeKey);
+      if (!nodes) continue;
+      const [a, b] = nodes;
+      if (!pruneSet.has(a) && !pruneSet.has(b)) continue;
+      waterLinkSet.delete(edgeKey);
+      const cornerKey = tilePairToCornerEdgeMap.get(edgeKey);
+      if (cornerKey) cornerWaterLinkSet.delete(cornerKey);
+    }
+
+    allRiverCoords.length = 0;
+    for (const key of allRiverCoordSet) {
+      if (!riverSet.has(key)) continue;
+      const p = parseCoordKey(key);
+      if (!Number.isFinite(p?.x) || !Number.isFinite(p?.y)) continue;
+      allRiverCoords.push({ x: p.x, y: p.y });
+    }
+    return pruneTargets.length;
+  };
+  const prunedSingleTileBranchCount = pruneSingleTileSideBranches();
+
+  // 角エッジ描画で出る「1本トゲ」を除去する（片端が葉、もう片端が分岐点）。
+  const pruneSingleSegmentCornerSpikes = () => {
+    const activeCornerEdges = new Set([...cornerEdgeSet, ...cornerWaterLinkSet]);
+    if (!activeCornerEdges.size) return 0;
+    const degreeMap = new Map();
+    const addDegree = cornerKey => {
+      degreeMap.set(cornerKey, (degreeMap.get(cornerKey) || 0) + 1);
+    };
+    for (const edgeKey of activeCornerEdges) {
+      const nodes = splitCornerEdgeKey(edgeKey);
+      if (!nodes) continue;
+      addDegree(nodes[0]);
+      addDegree(nodes[1]);
+    }
+
+    const pruneEdges = [];
+    for (const edgeKey of cornerEdgeSet) {
+      const nodes = splitCornerEdgeKey(edgeKey);
+      if (!nodes) continue;
+      const [a, b] = nodes;
+      const degA = degreeMap.get(a) || 0;
+      const degB = degreeMap.get(b) || 0;
+      const isSpike = (degA === 1 && degB >= 3) || (degB === 1 && degA >= 3);
+      if (isSpike) pruneEdges.push(edgeKey);
+    }
+    for (const edgeKey of pruneEdges) {
+      cornerEdgeSet.delete(edgeKey);
+    }
+    return pruneEdges.length;
+  };
+  const prunedCornerSpikeCount = pruneSingleSegmentCornerSpikes();
+
   const meshCenterSet = detectMeshCenterTiles();
+  if (typeof console !== "undefined" && typeof console.log === "function") {
+    const majorRiverCount = majorMouthCoords.length;
+    const minorRiverCount = Math.max(0, sourceSet.size - majorRiverCount);
+    console.log("[RiverGen] 主河川生成結果", {
+      continents: components.length,
+      majorRiverCount,
+      minorRiverCount,
+      riverTileCount: riverSet.size,
+      edgeCount: edgeSet.size,
+      cornerEdgeCount: cornerEdgeSet.size,
+      mouthLinkCount: waterLinkSet.size,
+      cornerWaterLinkCount: cornerWaterLinkSet.size,
+      prunedSingleTileBranchCount,
+      prunedCornerSpikeCount,
+      customRiverRange: hasCustomRiverRange ? { min: customRiverMin, max: customRiverMax } : null,
+      continentMinTiles,
+      stats: riverGenStats
+    });
+  }
 
   return {
     riverSet,
@@ -3791,8 +4591,8 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap) {
     cornerEdgeSet,
     cornerWaterLinkSet,
     meshCenterSet,
-    largeRiverSet: new Set(meshCenterSet),
-    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet })
+    largeRiverSet: majorRiverSet,
+    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet, cornerEdgeSet, cornerWaterLinkSet }, w, h)
   };
 }
 function parseCoordKey(key) {
@@ -3837,6 +4637,7 @@ function createIslandShapeData({ w, h, patternId = "balanced", islandCustomSetti
     specialCounts: null,
     caveSizeMap: null,
     caveScaleMap: null,
+    caveCoastAnchorMap: null,
     mountainProfile: null,
     climateBandInfo: null,
     volcanoData: null,
@@ -4038,14 +4839,22 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
   };
 
   const 高度レベルマップ = buildHeightLevelMap(grid, 高度マップ, w, h);
-  const riverRawData = generateRivers(grid, w, h, totalTiles, 高度マップ, 高度レベルマップ);
+  const riverRawData = generateRivers(
+    grid,
+    w,
+    h,
+    totalTiles,
+    高度マップ,
+    高度レベルマップ,
+    islandCustomSettings
+  );
   const riverData = augmentRiverDataWithWaterfalls(riverRawData, 高度レベルマップ);
   const meshHandlingRule = 地形生成設定.河川?.網目処理 || {};
   if (meshHandlingRule.中央湖化 !== false) {
     applyMeshRiverLakeTiles(grid, riverData?.meshCenterSet, 高度レベルマップ, w, h);
   }
   const coastData = buildCoastMap(grid, w, h, 高度レベルマップ);
-  const { specialMap, specialCounts, caveSizeMap, caveScaleMap } = buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ);
+  const { specialMap, specialCounts, caveSizeMap, caveScaleMap, caveCoastAnchorMap } = buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ);
   const { strongMonsterMap, strongMonsterInfoMap, strongMonsterStats } = buildStrongMonsterSpawnData(
     grid,
     w,
@@ -4075,6 +4884,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     specialCounts,
     caveSizeMap,
     caveScaleMap,
+    caveCoastAnchorMap,
     mountainProfile,
     climateBandInfo,
     volcanoData,

@@ -246,7 +246,7 @@ export const MAP_FOREST_ICON_CONFIG = {
 
 // 滝アイコン設定。
 export const MAP_WATERFALL_ICON_CONFIG = {
-  size: 30,
+  size: 22,
   yOffsetWhenTerrainSymbolVisible: -0,
   yOffsetWhenTerrainSymbolHidden: +0,
   fallbackFontSizePx: 11

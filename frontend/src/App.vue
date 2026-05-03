@@ -35,6 +35,7 @@ const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"
 const SAVE_FORMAT_VERSION = 1;
 const GAME_START_MAX_FACTIONS = 8;
 const MIN_UI_FONT_SIZE_PX = 15;
+const ROOM_CHAT_MAX_LENGTH = 240;
 
 function clampNumber(value, min, max) {
   const num = Number(value);
@@ -335,6 +336,8 @@ const activeRoomId = ref("");
 const roomIdInput = ref("ROOM1");
 const playerNameInput = ref("Player");
 const players = ref([]);
+const roomChatLog = ref([]);
+const roomChatMessageInput = ref("");
 const sessionStatusText = ref("ローカルモード（1人プレイ）");
 const sessionStatusClass = ref("");
 const simResult = ref("ここに計算結果を表示");
@@ -1246,6 +1249,43 @@ function createRoom() {
   socket.value.emit("room:create", { playerName });
 }
 
+function normalizeRoomChatMessage(raw) {
+  return String(raw || "")
+    .replace(/\r?\n/g, " ")
+    .trim()
+    .slice(0, ROOM_CHAT_MAX_LENGTH);
+}
+
+function normalizeRoomChatEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const id = String(entry.id || "").trim();
+  const sender = String(entry.sender || "").trim().slice(0, 20) || "Player";
+  const message = normalizeRoomChatMessage(entry.message);
+  const timestampNum = Number(entry.timestamp);
+  const timestamp = Number.isFinite(timestampNum) ? timestampNum : Date.now();
+  if (!message) return null;
+  return { id: id || `${timestamp}-${sender}`, sender, message, timestamp };
+}
+
+function applyRoomChatLog(rawChatLog) {
+  if (!Array.isArray(rawChatLog)) {
+    roomChatLog.value = [];
+    return;
+  }
+  roomChatLog.value = rawChatLog
+    .map(normalizeRoomChatEntry)
+    .filter(Boolean)
+    .slice(0, 120);
+}
+
+function sendRoomChat() {
+  if (!socket.value || !socketReady.value || !activeRoomId.value) return;
+  const message = normalizeRoomChatMessage(roomChatMessageInput.value);
+  if (!message) return;
+  socket.value.emit("room:chat:send", { roomId: activeRoomId.value, message });
+  roomChatMessageInput.value = "";
+}
+
 function joinRoom() {
   if (!socket.value || !socketReady.value) return;
   const roomId = normalizeRoomId(roomIdInput.value);
@@ -1266,6 +1306,8 @@ function leaveRoom() {
   activeRoomId.value = "";
   roomState.value = null;
   players.value = [];
+  roomChatLog.value = [];
+  roomChatMessageInput.value = "";
   setSessionStatus("ローカルモード（1人プレイ）");
 }
 
@@ -1430,13 +1472,21 @@ onMounted(() => {
     activeRoomId.value = payload.roomId || activeRoomId.value;
     roomState.value = payload.state;
     players.value = Array.isArray(payload.players) ? payload.players : players.value;
+    applyRoomChatLog(payload.chatLog);
     setSessionStatus(`ルーム ${activeRoomId.value} 参加中`, "ok");
+  });
+
+  socket.value.on("room:chat", payload => {
+    if (!payload || payload.roomId !== activeRoomId.value) return;
+    applyRoomChatLog(payload.chatLog);
   });
 
   socket.value.on("room:left", () => {
     activeRoomId.value = "";
     roomState.value = null;
     players.value = [];
+    roomChatLog.value = [];
+    roomChatMessageInput.value = "";
     setSessionStatus("ローカルモード（1人プレイ）");
   });
 
@@ -1531,12 +1581,16 @@ watch(gameOnlyMode, () => {
       :session-status-text="sessionStatusText"
       :session-status-class="sessionStatusClass"
       :players-label="playersLabel"
+      :chat-log="roomChatLog"
+      :chat-message-input="roomChatMessageInput"
       @close="closeModal('room')"
       @update:room-id-input="roomIdInput = $event"
       @update:player-name-input="playerNameInput = $event"
+      @update:chat-message-input="roomChatMessageInput = $event"
       @create-room="createRoom"
       @join-room="joinRoom"
       @leave-room="leaveRoom"
+      @send-chat="sendRoomChat"
     />
 
     <battle-modal

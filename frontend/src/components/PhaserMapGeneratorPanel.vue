@@ -254,6 +254,8 @@ const customIsletCountMin = ref(1); // 孤島数(最小)
 const customIsletCountMax = ref(4); // 孤島数(最大)
 const customTargetLandPercent = ref(50); // 目標陸地率(%)
 const customLargeIslandMinGap = ref(6); // 大島同士の最小距離
+const customRiverPerContinentMin = ref(3); // 大陸あたり川本数(最小)
+const customRiverPerContinentMax = ref(4); // 大陸あたり川本数(最大)
 const customWorldWrapEnabled = ref(true); // ワールドラップON/OFF
 const showHeightNumbers = ref(false); // 高度Lvの数字表示
 const heightNumberFontSize = ref(23); // 高度Lv文字サイズ
@@ -265,6 +267,8 @@ const populationHeaderExpanded = ref(false); // 人口ヘッダーの詳細表�
 const showSpecialTilesAlways = ref(true); // 隠し特殊地形の常時表示
 const showWaterfallEffects = ref(true); // 滝エフェクト表示
 const showStrongEnemyMarkers = ref(false); // 強敵候補表示
+const lowPowerMode = ref(true); // 省電力モード
+const isPageHidden = ref(typeof document !== "undefined" ? !!document.hidden : false); // タブ非表示状態
 const focusCameraOnTileClick = ref(false); // クリック時カメラフォーカス
 const showSettingsModal = ref(false); // 表示設定モーダル表示
 const showQuickSettingsModal = ref(false); // 右上設定メニュー表示
@@ -304,8 +308,16 @@ const autoTimeRunning = ref(true);
 const autoTimePausedByCheckpoint = ref(false);
 const villageState = ref(null);
 const unitList = ref([]);
+const ownFactionSidebarRef = ref(null);
+const activeResourcePanel = ref(null);
 const selectedUnitId = ref("");
 const villagePlacementMode = ref(false);
+const cityBlockPlacementMode = ref(false);
+const cityBlockPlacementType = ref("city");
+const cityBlockPlacements = ref([]);
+const cityBlockPlacementPreview = ref(null);
+const cityBlockPlacementPending = ref(null);
+const showCityBlockPlacementConfirmModal = ref(false);
 const moveCommandUnitId = ref("");
 const tileAttackSelectionMode = ref(false);
 const tileAttackPatternKey = ref("single");
@@ -381,9 +393,30 @@ const TILE_ATTACK_RANGE_MAX = 12;
 const DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS = new Set(["single", "straight", "fan", "front"]);
 const TILE_ATTACK_PATTERN_KEY_SET = new Set(TILE_ATTACK_PATTERN_OPTIONS.map(row => row.key));
 const TILE_ATTACK_PATTERN_LABEL_MAP = new Map(TILE_ATTACK_PATTERN_OPTIONS.map(row => [row.key, row.label]));
+const MONSTER_BEHAVIOR_ACTION_OPTIONS = Object.freeze([
+  { key: "approach", label: "接近" },
+  { key: "melee_attack", label: "通常攻撃" },
+  { key: "ranged_attack", label: "遠距離攻撃" },
+  { key: "retreat", label: "後退" },
+  { key: "flee", label: "逃走" },
+  { key: "wait", label: "待機" },
+  { key: "patrol", label: "巡回" }
+]);
+const MONSTER_BEHAVIOR_ACTION_KEYS = Object.freeze(MONSTER_BEHAVIOR_ACTION_OPTIONS.map(row => row.key));
 const ATTACK_CURSOR_STYLE = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v20M2 12h20' stroke='%23ff4d4f' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3.5' fill='none' stroke='%23ffd0d0' stroke-width='2'/%3E%3C/svg%3E\") 12 12, crosshair";
 const pathfindingWorkerClient = createPathfindingWorkerClient();
-const mapRenderScheduler = createMapRenderScheduler(() => renderMapWithPhaser());
+const MAP_RENDER_INTERVAL_NORMAL_MS = 16;
+const MAP_RENDER_INTERVAL_LOW_POWER_MS = 125;
+const MAP_RENDER_INTERVAL_HIDDEN_MS = 250;
+const mapRenderScheduler = createMapRenderScheduler(
+  () => renderMapWithPhaser(),
+  {
+    resolveMinFrameIntervalMs: () => {
+      if (isPageHidden.value) return MAP_RENDER_INTERVAL_HIDDEN_MS;
+      return lowPowerMode.value ? MAP_RENDER_INTERVAL_LOW_POWER_MS : MAP_RENDER_INTERVAL_NORMAL_MS;
+    }
+  }
+);
 const LARGE_MAP_TILE_THRESHOLD = 3000;
 const RIVER_DETAIL_TILE_THRESHOLD = 2800;
 const RIVER_CORNER_LEVEL_CACHE = new WeakMap();
@@ -395,6 +428,12 @@ function requestMapRender() {
 
 function renderMapNow() {
   mapRenderScheduler.renderNow();
+}
+
+function applyLowPowerDisplayDefaults(enabled) {
+  if (!enabled) return;
+  if (showWaterfallEffects.value) showWaterfallEffects.value = false;
+  if (showHeightNumbers.value) showHeightNumbers.value = false;
 }
 
 let game = null;
@@ -414,7 +453,9 @@ let hoveredTileKey = "";
 let resizeHandler = null;
 let clockIntervalId = null;
 let firstGestureHandler = null;
+let pageVisibilityHandler = null;
 let nativeWheelHandler = null;
+let sidebarResourceOutsidePointerHandler = null;
 let lastClockTurnCycleIndex = 0;
 let cameraInitialized = false;
 let pendingClickFocusWorld = null;
@@ -431,6 +472,20 @@ let touchPointerViewMap = new Map();
 let pinchActive = false;
 let pinchStartDistance = 0;
 let suppressTouchTapUntilRelease = false;
+
+function syncRuntimePowerSaveState() {
+  const hidden = !!isPageHidden.value;
+  mapRenderScheduler.setSuspended(hidden);
+  const loop = game?.loop;
+  if (loop) {
+    if (hidden) {
+      if (typeof loop.sleep === "function") loop.sleep();
+    } else if (typeof loop.wake === "function") {
+      loop.wake();
+    }
+  }
+  if (!hidden) requestMapRender();
+}
 let forceMapCenterOnNextRender = true;
 let territorySets = { player: new Set(), enemy: new Set() };
 let territoryOwnerByTile = new Map();
@@ -443,9 +498,11 @@ let alertedEnemyTileKeys = new Set();
 let alertedFactionTileKeys = new Set();
 let spottedEnemyNamesByTile = new Map();
 let raceMarkerTexturePending = new Set();
+let enemyIllustrationTexturePending = new Set();
 let lastCharacterCommandNonce = "";
 let renderedHexBounds = null;
 let applyingTestPlayerState = false;
+let lastMapRenderAtMs = 0;
 
 const terrainMap = computed(() => {
   const m = new Map();
@@ -1026,6 +1083,110 @@ const fieldResourceSummary = computed(() => {
   };
 });
 
+function sumMaterialValuesByKeys(bag, keys) {
+  return roundTo1(
+    (Array.isArray(keys) ? keys : []).reduce(
+      (sum, key) => sum + toSafeNumber(bag?.[key], 0),
+      0
+    )
+  );
+}
+
+function formatSignedMaterialCompactNumber(value) {
+  const safeValue = roundTo1(toSafeNumber(value, 0));
+  const absText = formatMaterialCompactNumber(Math.abs(safeValue));
+  if (safeValue > 0) return `+${absText}`;
+  if (safeValue < 0) return `-${absText}`;
+  return "±0";
+}
+
+const sidebarResourcePanelEntries = computed(() => {
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  const stockBag = normalizeMaterialStockBag(village?.materialStockByType);
+  const deltaBag = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  if (village?.placed && currentData.value?.grid) {
+    const managedTileKeys = resolveVillageManagedTileKeys(village);
+    const territoryIncome = collectTerritoryIncome(currentData.value, managedTileKeys, {
+      villageOverride: village,
+      raceFallback: props.selectedRace
+    });
+    const buildingIncome = collectVillageBuildingIncome(village);
+    for (const key of MATERIAL_RESOURCE_KEYS) {
+      deltaBag[key] = roundTo1(
+        toSafeNumber(territoryIncome?.material?.[key], 0)
+        + toSafeNumber(buildingIncome?.material?.[key], 0)
+      );
+    }
+  }
+  const out = {};
+  for (const def of SIDEBAR_RESOURCE_PANEL_DEFS) {
+    out[def.key] = {
+      key: def.key,
+      label: def.label,
+      total: sumMaterialValuesByKeys(stockBag, def.detailKeys),
+      delta: sumMaterialValuesByKeys(deltaBag, def.detailKeys),
+      detailKeys: [...def.detailKeys],
+      detailStockBag: stockBag
+    };
+  }
+  return out;
+});
+
+const sidebarResourcePanelRows = computed(() => {
+  return SIDEBAR_RESOURCE_PANEL_DEFS.map(def => {
+    const entry = sidebarResourcePanelEntries.value[def.key];
+    const delta = toSafeNumber(entry?.delta, 0);
+    return {
+      key: def.key,
+      label: def.label,
+      totalDisplay: formatMaterialCompactNumber(entry?.total),
+      deltaDisplay: formatSignedMaterialCompactNumber(delta),
+      deltaClass: delta > 0 ? "positive" : (delta < 0 ? "negative" : "neutral"),
+      isActive: activeResourcePanel.value === def.key
+    };
+  });
+});
+
+const activeSidebarResourcePanel = computed(() => {
+  const key = nonEmptyText(activeResourcePanel.value);
+  const def = SIDEBAR_RESOURCE_PANEL_DEF_MAP[key];
+  if (!def) return null;
+  const entry = sidebarResourcePanelEntries.value[key];
+  return {
+    key,
+    label: def.label,
+    items: def.detailKeys.map(resourceKey => ({
+      key: resourceKey,
+      label: resourceKey,
+      valueDisplay: formatMaterialCompactNumber(toSafeNumber(entry?.detailStockBag?.[resourceKey], 0))
+    }))
+  };
+});
+
+function closeSidebarResourcePanel() {
+  activeResourcePanel.value = null;
+}
+
+function toggleSidebarResourcePanel(panelKey) {
+  const key = nonEmptyText(panelKey);
+  if (!SIDEBAR_RESOURCE_PANEL_DEF_MAP[key]) {
+    closeSidebarResourcePanel();
+    return;
+  }
+  activeResourcePanel.value = activeResourcePanel.value === key ? null : key;
+}
+
+function handleSidebarOutsidePointerDown(event) {
+  if (!activeResourcePanel.value) return;
+  const panelRoot = ownFactionSidebarRef.value;
+  if (!panelRoot || typeof Node === "undefined") return;
+  const targetNode = event?.target;
+  if (!(targetNode instanceof Node)) return;
+  if (!panelRoot.contains(targetNode)) {
+    closeSidebarResourcePanel();
+  }
+}
+
 function resolveResearchRequiredExpForLevel(level) {
   const lv = Math.max(1, Math.floor(toSafeNumber(level, 1)));
   return RESEARCH_EXP_BASE * (2 ** (lv - 1));
@@ -1476,6 +1637,12 @@ const displaySettingsFields = computed(() => ([
     value: showStrongEnemyMarkers.value
   },
   {
+    key: "lowPowerMode",
+    kind: "checkbox",
+    label: "省電力モード（描画間引き・15fps目標）",
+    value: lowPowerMode.value
+  },
+  {
     key: "focusCameraOnTileClick",
     kind: "checkbox",
     label: "クリックで視点を選択タイルへ移動する",
@@ -1573,6 +1740,7 @@ const displaySettingsFields = computed(() => ([
 const displaySettingsNotes = [
   "描画解像度は 1440x720 で固定です（文字つぶれ防止）。",
   "隠し特殊地形は通常時は見えず、クリック時のみ判明します。常時表示をONで最初から見えます。",
+  "省電力モードON時は描画更新を抑えて消費電力を下げます。",
   "クリック時の視点移動は初期OFFです。必要時のみONにしてください。",
   "音量は 全体 x BGM/SE の乗算で適用されます。"
 ];
@@ -1600,22 +1768,85 @@ const ENEMY_LEVEL_JITTER_MIN = -5;
 const ENEMY_LEVEL_JITTER_MAX = 5;
 const ENEMY_STRONG_HEIGHT_BONUS = 0;
 const ENEMY_LEVEL_MAX = 120;
+const PHASER_FPS_TARGET_NORMAL = 60;
+const PHASER_FPS_TARGET_LOW_POWER = 15;
+const CITY_BLOCK_PLACEMENT_TYPE_CITY = "city";
+const CITY_BLOCK_PLACEMENT_TYPE_TOWN = "town";
+const CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS = "metropolis";
+const CITY_BLOCK_TILE_COUNT = 3;
+const CITY_BLOCK_PLACEMENT_TYPE_DEFS = Object.freeze({
+  [CITY_BLOCK_PLACEMENT_TYPE_CITY]: {
+    key: CITY_BLOCK_PLACEMENT_TYPE_CITY,
+    tileCount: CITY_BLOCK_TILE_COUNT,
+    modeLabel: "3マス土地",
+    iconName: "都市",
+    buttonLabel: "3マス土地を配置",
+    buttonActiveLabel: "3マス土地配置を終了",
+    placementGuideText: "3マス土地配置: △の頂点にしたいマスをクリックしてください。",
+    clickGuideText: "クリック座標: 3マス土地(△)の頂点マスをクリックしてください。",
+    anchorLabel: "起点",
+    confirmTitle: "3マス土地を設置しますか？",
+    confirmDescription: "△3マス範囲に都市画像を1枚で配置します。"
+  },
+  [CITY_BLOCK_PLACEMENT_TYPE_TOWN]: {
+    key: CITY_BLOCK_PLACEMENT_TYPE_TOWN,
+    tileCount: 2,
+    modeLabel: "町(横2マス)",
+    iconName: "町",
+    buttonLabel: "町(横2)を配置",
+    buttonActiveLabel: "町(横2)配置を終了",
+    placementGuideText: "町配置: 横2マスの左側にしたいマスをクリックしてください。",
+    clickGuideText: "クリック座標: 町(横2)の左側マスをクリックしてください。",
+    anchorLabel: "左端",
+    confirmTitle: "町(横2マス)を設置しますか？",
+    confirmDescription: "横2マス範囲に町画像を1枚で配置します。"
+  },
+  [CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS]: {
+    key: CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS,
+    tileCount: 7,
+    modeLabel: "大都市(7マス)",
+    iconName: "大都市",
+    buttonLabel: "大都市(7マス)を配置",
+    buttonActiveLabel: "大都市(7マス)配置を終了",
+    placementGuideText: "大都市配置: 中心にしたいマスをクリックしてください。",
+    clickGuideText: "クリック座標: 大都市(7マス)の中心マスをクリックしてください。",
+    anchorLabel: "中心",
+    confirmTitle: "大都市(7マス)を設置しますか？",
+    confirmDescription: "中心1+周囲6マスに大都市画像を1枚で配置します。"
+  }
+});
+const CITY_BLOCK_PREVIEW_ALPHA = 0.44;
+const CITY_BLOCK_PLACED_ALPHA = 0.82;
+const ENEMY_SPAWN_TILE_RATE_NORMAL = 0.4; // 通常敵の出現割合(現状比)。1.0=100%、0.4=40%
 const ENEMY_STRONG_LEADER_LEVEL_BONUS = 5;
 const ENEMY_STRONG_NO_ARMAMENT_LEVEL_BONUS = 2;
 const ENEMY_STRONG_FOLLOWER_LEVEL_SCALE = 0.8;
 const ENEMY_STRONG_FOLLOWER_MIN = 2;
 const ENEMY_STRONG_FOLLOWER_MAX = 5;
 const ENEMY_STRONG_EQUIPMENT_TIER = "rare";
+const ENEMY_SWARM_TERRITORY_RADIUS_MIN = 2; // 群れテリトリー半径の下限
+const ENEMY_SWARM_TERRITORY_RADIUS_MAX = 6; // 群れテリトリー半径の上限
+const ENEMY_SWARM_TERRITORY_RADIUS_BASE_OFFSET = 1; // 出現数ベース半径への加算値
+const ENEMY_STRONG_SCOUT_BLOCK_BUFFER = 0; // 強敵索敵範囲に追加する一般敵の配置禁止距離(ヘックス距離)
+const ENEMY_SWARM_FREE_ROAM_MOVE_CHANCE = 1; // ボス不在群れのターン移動確率（1=毎ターン）
 const ENEMY_EQUIPMENT_FIELDS = ["武器", "副武器", "胴", "頭", "足", "装飾1", "装飾2"];
-const ENCOUNTER_ATTACK_BASE_CHANCE = 0.45;
-const ENCOUNTER_ATTACK_DIFF_FACTOR = 0.03;
-const ENCOUNTER_ATTACK_MIN_CHANCE = 0.2;
-const HEIGHT_DIFF_BORDER_MEDIUM_COLOR = 0x2f3848;
-const HEIGHT_DIFF_BORDER_STRONG_COLOR = 0x171c26;
-const HEIGHT_DIFF_BORDER_MEDIUM_ALPHA = 0.78;
-const HEIGHT_DIFF_BORDER_STRONG_ALPHA = 0.92;
-const HEIGHT_DIFF_BORDER_LINE_WIDTH_PX = 1.05;
-const HEIGHT_DIFF_BORDER_LINE_SPACING_PX = 1.9;
+const ENCOUNTER_ATTACK_BASE_CHANCE = 0.45; // 敵から攻撃を受ける基礎確率
+const ENCOUNTER_ATTACK_DIFF_FACTOR = 0.03; // 能力差1あたりで増減する攻撃確率係数
+const ENCOUNTER_ATTACK_MIN_CHANCE = 0.2; // 攻撃確率の下限
+const HEIGHT_DIFF_CLIFF_ALPHA = 0.94; // 高低差エッジの不透明度
+const HEIGHT_DIFF_CLIFF_WIDTH_BASE_PX = 3; // 高低差2のときの基本線幅(px)
+const HEIGHT_DIFF_CLIFF_WIDTH_STEP_PX = 3; // 高低差ステージ1増加ごとの線幅加算(px)
+const HEIGHT_DIFF_CLIFF_WIDTH_MAX_PX = 18; // 高低差エッジ線幅の上限(px)
+const HEIGHT_DIFF_CLIFF_DARKEN_BASE = 0.56; // エッジ色の基本暗化率
+const HEIGHT_DIFF_CLIFF_DARKEN_STEP = 0.08; // 高低差ステージ1増加ごとの暗化率加算
+// 高度差エッジを高い側へどれだけ寄せるか（px）。小さくすると外側寄りになる。
+const HEIGHT_DIFF_CLIFF_INSET_BASE_PX = 0.0;
+// 高度差エッジの太さに応じた追加内側オフセット係数（width * ratio）。
+const HEIGHT_DIFF_CLIFF_INSET_WIDTH_RATIO = 0.36;
+// 高低差エッジ端の台形キャップ長さ係数（width * ratio）。
+const HEIGHT_DIFF_CLIFF_TRAPEZOID_CAP_LENGTH_RATIO = 0.42;
+// 高低差エッジ端の台形先端の細さ係数（小さいほど尖る）。
+const HEIGHT_DIFF_CLIFF_TRAPEZOID_CAP_NARROW_RATIO = 0.56;
 const ENCOUNTER_ATTACK_MAX_CHANCE = 0.9;
 const ENCOUNTER_SURVEY_BASE_PERCENT = 50;
 const ENCOUNTER_SURVEY_DIFF_DIVISOR = 2;
@@ -1634,7 +1865,18 @@ function resolveSurveyDurationSeconds(task) {
 const ENCOUNTER_NON_AGGRESSIVE_SAME_TILE_ATTACK_CHANCE = 0.25;
 const ENCOUNTER_FUMBLE_CHANCE = 0.08;
 const ENCOUNTER_MAX_LOG_LINES = 12;
-const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
+const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50; // 索敵の距離減衰量（2マス目以降、1マスごと）
+const MAP_CAVE_COAST_ICON_BIAS = 0.32; // 海岸高地条件で生成された洞窟アイコンを海側へ寄せる比率
+// 川/高低差エッジの接続見た目（台形ボディ＋接続ジョイント＋末端のみ尖り）。
+const RIVER_EDGE_JOIN_RADIUS_RATIO = 0.52; // 接続ジョイント半径の係数（halfWidth * ratio）
+const RIVER_EDGE_JOIN_RADIUS_EXTRA_PX = 0.45; // 接続ジョイント半径へ加える固定値(px)
+const RIVER_EDGE_POINTED_CAP_LENGTH_RATIO = 0.0; // 末端尖りキャップの長さ係数（width * ratio）
+const RIVER_EDGE_POINTED_CAP_MIN_PX = 1.6; // 末端尖りキャップの最小長さ(px)
+const TILE_SELECTED_OUTSET_PX = 2.0; // 選択枠線をタイル外側へ広げる量(px)
+const TILE_HOVER_OUTSET_PX = 1.0; // ホバー枠線をタイル外側へ広げる量(px)
+const TILE_SELECTED_HIGHLIGHT_ALPHA = 0.68; // 選択枠線の透明度
+const TILE_HOVER_HIGHLIGHT_ALPHA = 0.56; // ホバー枠線の透明度
+const MAP_ENEMY_ILLUST_MARKER_SIZE_PX = 36; // 索敵後に表示する敵イラストの表示サイズ(px)
 const EQUIPMENT_ACTION_POPULATION_STEP = 25;
 const UNIT_VISION_BASE_RANGE = 1;
 const UNIT_VISION_SCOUT_STEP = 75;
@@ -1826,6 +2068,14 @@ const MATERIAL_HEADER_GROUP_SIMPLE_DEFS = [
   { label: "鉄", key: "鉄" },
   { label: "金", key: "金" }
 ];
+const SIDEBAR_RESOURCE_PANEL_DEFS = [
+  { key: "wood", label: "木材", detailKeys: ["木材", "黒木", "特木"] },
+  { key: "metal", label: "金属", detailKeys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"] },
+  { key: "precious", label: "貴金属", detailKeys: ["金", "銀", "宝石"] }
+];
+const SIDEBAR_RESOURCE_PANEL_DEF_MAP = Object.fromEntries(
+  SIDEBAR_RESOURCE_PANEL_DEFS.map(def => [def.key, def])
+);
 const RESOURCE_ICON_NAME_MAP = {
   食料: "穀物",
   死体: "アンデット"
@@ -3248,6 +3498,31 @@ function resolveEnemyIllustrationSrc(name) {
   return normalized ? (enemyIllustrationSrcByNormalizedName.get(normalized) || "") : "";
 }
 
+function resolveEnemyIllustrationNameForMap(enemy, enemyList = []) {
+  const leadEnemy = enemy || (Array.isArray(enemyList) && enemyList.length ? enemyList[0] : null);
+  const labels = [
+    nonEmptyText(leadEnemy?.name),
+    nonEmptyText(leadEnemy?.race),
+    nonEmptyText(leadEnemy?.className),
+    ...((Array.isArray(enemyList) ? enemyList : [])
+      .flatMap(entry => [nonEmptyText(entry?.name), nonEmptyText(entry?.race), nonEmptyText(entry?.className)]))
+  ].filter(Boolean);
+  const mappedImageNames = labels
+    .map(label => nonEmptyText(enemyImageNameByLabel.value.get(label)))
+    .filter(Boolean);
+  const candidates = [
+    nonEmptyText(leadEnemy?.imageName),
+    nonEmptyText(leadEnemy?.image),
+    ...mappedImageNames,
+    ...labels,
+    "default"
+  ].filter((name, index, list) => name && list.indexOf(name) === index);
+  for (const candidate of candidates) {
+    if (resolveEnemyIllustrationSrc(candidate)) return candidate;
+  }
+  return "";
+}
+
 function resolveUnitIconSrc(name, fallback = DEFAULT_ICON_NAME) {
   const iconName = nonEmptyText(name);
   if (iconName && hasIconName(iconName)) {
@@ -4189,13 +4464,68 @@ function appendEdgeEndpointsToCoordSet(targetSet, edgeIterable) {
   }
 }
 
+function buildCornerEdgeTileTouchMap(w, h) {
+  const out = new Map();
+  const safeW = Math.max(1, Math.floor(toSafeNumber(w, 0)));
+  const safeH = Math.max(1, Math.floor(toSafeNumber(h, 0)));
+  for (let y = 0; y < safeH; y += 1) {
+    for (let x = 0; x < safeW; x += 1) {
+      const tileKey = coordKey(x, y);
+      const corners = buildHexPoints(x, y).map(pointCoordKey).filter(Boolean);
+      if (corners.length !== 6) continue;
+      for (let i = 0; i < corners.length; i += 1) {
+        const a = corners[i];
+        const b = corners[(i + 1) % corners.length];
+        const edgeKey = a < b ? `${a}|${b}` : `${b}|${a}`;
+        if (!out.has(edgeKey)) out.set(edgeKey, new Set());
+        out.get(edgeKey).add(tileKey);
+      }
+    }
+  }
+  return out;
+}
+
+function appendCornerEdgeTilesToCoordSet(targetSet, edgeIterable, data, riverData) {
+  if (!(targetSet instanceof Set) || !edgeIterable || !data || !riverData) return;
+  if (!(riverData.__cornerEdgeTileTouchMap instanceof Map)) {
+    riverData.__cornerEdgeTileTouchMap = buildCornerEdgeTileTouchMap(data.w, data.h);
+  }
+  const edgeTileMap = riverData.__cornerEdgeTileTouchMap;
+  for (const edgeRaw of edgeIterable) {
+    const edgeKey = String(edgeRaw || "");
+    if (!edgeKey) continue;
+    const tileSet = edgeTileMap.get(edgeKey);
+    if (!tileSet) continue;
+    for (const tileKey of tileSet) targetSet.add(tileKey);
+  }
+}
+
 function resolveRiverTouchSet(data) {
   const riverData = data?.riverData;
   if (!riverData || typeof riverData !== "object") return new Set();
   if (riverData.riverTouchSet instanceof Set) return riverData.riverTouchSet;
   const built = buildRiverTouchSet(riverData);
+  appendCornerEdgeTilesToCoordSet(built, riverData.cornerEdgeSet, data, riverData);
+  appendCornerEdgeTilesToCoordSet(built, riverData.cornerWaterLinkSet, data, riverData);
   riverData.riverTouchSet = built;
   return built;
+}
+
+function resolveWaterfallTouchSet(data) {
+  const riverData = data?.riverData;
+  if (!riverData || typeof riverData !== "object") return new Set();
+  if (riverData.waterfallTouchSet instanceof Set) return riverData.waterfallTouchSet;
+  const out = new Set();
+  for (const keyRaw of riverData.waterfallSet || []) {
+    const key = normalizeCoordKeyText(keyRaw);
+    if (key) out.add(key);
+  }
+  if (!out.size) {
+    appendEdgeEndpointsToCoordSet(out, riverData.waterfallEdgeSet);
+    appendCornerEdgeTilesToCoordSet(out, riverData.cornerWaterfallEdgeSet, data, riverData);
+  }
+  riverData.waterfallTouchSet = out;
+  return out;
 }
 
 function resolveLavaTouchSet(data) {
@@ -4229,6 +4559,11 @@ function resolveLavaTouchSet(data) {
 
 function hasRiverTouchAt(data, x, y, riverTouchSet = null) {
   const set = riverTouchSet || resolveRiverTouchSet(data);
+  return !!set?.has?.(coordKey(x, y));
+}
+
+function hasWaterfallTouchAt(data, x, y, waterfallTouchSet = null) {
+  const set = waterfallTouchSet || resolveWaterfallTouchSet(data);
   return !!set?.has?.(coordKey(x, y));
 }
 
@@ -6610,17 +6945,40 @@ function buildEnemyCharacterStatusFromRules(raceRow, classRow, level, options = 
   });
 }
 
+function isForestCoreSpawnTile(data, x, y) {
+  if (nonEmptyText(data?.grid?.[y]?.[x]) !== "森") return false;
+  const neighbors = getHexNeighborCoordsBySize(
+    toSafeNumber(data?.w, 0),
+    toSafeNumber(data?.h, 0),
+    x,
+    y,
+    resolveWorldWrapEnabled(data)
+  );
+  if (!neighbors.length) return false;
+  const forestAround = neighbors.reduce((sum, n) => (
+    sum + (nonEmptyText(data?.grid?.[n.y]?.[n.x]) === "森" ? 1 : 0)
+  ), 0);
+  // 森モンスターは「周囲が森」の内部タイルを優先する。
+  return forestAround >= neighbors.length;
+}
+
 function collectEnemySpawnTerrainKeys(data, x, y) {
   const set = new Set();
   const terrain = nonEmptyText(data?.grid?.[y]?.[x]);
   if (terrain) set.add(terrain);
   const relief = nonEmptyText(data?.reliefMap?.[y]?.[x]);
-  if (relief === "山岳") set.add("山岳");
+  if (relief && relief !== terrain) set.add(relief);
   const special = nonEmptyText(data?.specialMap?.[y]?.[x]);
   if (special) set.add(special);
   const key = coordKey(x, y);
-  if (data?.riverData?.riverSet?.has?.(key)) set.add("河川");
-  if (data?.lavaMap?.[y]?.[x]) set.add("溶岩");
+  const riverTouchSet = resolveRiverTouchSet(data);
+  if (data?.riverData?.riverSet?.has?.(key) || riverTouchSet?.has?.(key)) set.add("河川");
+  const waterfallTouchSet = resolveWaterfallTouchSet(data);
+  if (data?.riverData?.waterfallSet?.has?.(key) || waterfallTouchSet?.has?.(key)) set.add("滝");
+  if (hasLavaTouchAt(data, x, y)) set.add("溶岩");
+  if (set.has("森") && !isForestCoreSpawnTile(data, x, y)) {
+    set.delete("森");
+  }
   return Array.from(set);
 }
 
@@ -6637,6 +6995,17 @@ function resolveEnemySpawnCountByTile(rule) {
   const min = Math.max(1, Math.floor(toSafeNumber(rule?.spawnCountMin, 1)));
   const max = Math.max(min, Math.floor(toSafeNumber(rule?.spawnCountMax, min)));
   return randomInt(min, max);
+}
+
+function resolveEnemySwarmTerritoryRadiusForRule(rule, fallback = ENEMY_SWARM_TERRITORY_RADIUS_MIN) {
+  const explicitMax = Math.max(1, Math.floor(toSafeNumber(rule?.spawnCountMax, 1)));
+  const base = explicitMax + ENEMY_SWARM_TERRITORY_RADIUS_BASE_OFFSET;
+  const safeFallback = Math.max(ENEMY_SWARM_TERRITORY_RADIUS_MIN, Math.floor(toSafeNumber(fallback, ENEMY_SWARM_TERRITORY_RADIUS_MIN)));
+  return clampNumber(
+    Math.max(base, safeFallback),
+    ENEMY_SWARM_TERRITORY_RADIUS_MIN,
+    ENEMY_SWARM_TERRITORY_RADIUS_MAX
+  );
 }
 
 function levelDistanceFromRange(level, min, max) {
@@ -6661,6 +7030,28 @@ function pickEnemyRule(candidates, baseLevel, preferClosestRange = false) {
     }
   }
   return randomPick(near, randomPick(candidates, null));
+}
+
+function resolveTerrainMonsterDangerByKey(terrainKey) {
+  const key = nonEmptyText(terrainKey);
+  if (!key) return 0;
+  const row = terrainYieldMap.value.get(key);
+  const danger = toSafeNumber(row?.モンスター危険度, Number.NaN);
+  if (!Number.isFinite(danger)) return 0;
+  return clampNumber(danger, 0, 1);
+}
+
+function filterCandidatesByHighestTerrainDanger(candidates) {
+  if (!Array.isArray(candidates) || !candidates.length) return [];
+  let maxDanger = Number.NEGATIVE_INFINITY;
+  const scored = candidates.map(row => {
+    const danger = resolveTerrainMonsterDangerByKey(row?.matchedTerrain || row?.terrainKey);
+    if (danger > maxDanger) maxDanger = danger;
+    return { row, danger };
+  });
+  return scored
+    .filter(entry => entry.danger === maxDanger)
+    .map(entry => entry.row);
 }
 
 function clampEnemyLevel(levelRaw) {
@@ -7039,18 +7430,77 @@ function buildEnemySpawnDataForMap(data) {
   }
 
   const enemySpawnMap = Array.from({ length: data.h }, () => Array.from({ length: data.w }, () => null));
+  const occupiedSwarmTerritories = [];
+  const resolveStrongScoutBlockRadius = enemies => {
+    const list = Array.isArray(enemies) ? enemies : [];
+    if (!list.length) return 1;
+    const maxScout = list.reduce((maxValue, enemy) => {
+      const scout = Math.max(0, roundTo1(toSafeNumber(enemy?.skillLevels?.索敵, 0)));
+      return Math.max(maxValue, scout);
+    }, 0);
+    const baseRadius = 1 + Math.floor(Math.max(0, maxScout - 1) / ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE);
+    return Math.max(1, baseRadius + Math.max(0, Math.floor(toSafeNumber(ENEMY_STRONG_SCOUT_BLOCK_BUFFER, 0))));
+  };
   const stats = {
     total: 0,
     totalUnits: 0,
     strongTileCount: 0,
     byTerrain: {}
   };
+  const normalSpawnTileRate = Math.max(0, Math.min(1, toSafeNumber(ENEMY_SPAWN_TILE_RATE_NORMAL, 0.4)));
+  const resolveTileMonsterDangerScale = (data, x, y) => {
+    const keys = collectEnemySpawnTerrainKeys(data, x, y);
+    if (!keys.length) return 1;
+    let maxDanger = Number.NaN;
+    for (const key of keys) {
+      const row = terrainYieldMap.value.get(key);
+      const value = toSafeNumber(row?.モンスター危険度, Number.NaN);
+      if (!Number.isFinite(value)) continue;
+      if (!Number.isFinite(maxDanger)) {
+        maxDanger = value;
+        continue;
+      }
+      maxDanger = Math.max(maxDanger, value);
+    }
+    if (!Number.isFinite(maxDanger)) return 1;
+    return clampNumber(maxDanger, 0, 1);
+  };
+  const resolveNormalSpawnTileChance = (data, x, y) => {
+    const dangerScale = resolveTileMonsterDangerScale(data, x, y);
+    return Math.max(0, Math.min(1, normalSpawnTileRate * dangerScale));
+  };
 
+  const spawnTileOrder = [];
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
+      spawnTileOrder.push({
+        x,
+        y,
+        strong: data?.strongMonsterMap?.[y]?.[x] === "強敵候補",
+        dangerScale: resolveTileMonsterDangerScale(data, x, y)
+      });
+    }
+  }
+  spawnTileOrder.sort((a, b) => {
+    const strongDiff = Number(b.strong) - Number(a.strong);
+    if (strongDiff !== 0) return strongDiff;
+    const dangerDiff = toSafeNumber(b.dangerScale, 0) - toSafeNumber(a.dangerScale, 0);
+    if (dangerDiff !== 0) return dangerDiff;
+    if (a.y !== b.y) return a.y - b.y;
+    return a.x - b.x;
+  });
+
+  for (const tile of spawnTileOrder) {
+    const x = tile.x;
+    const y = tile.y;
       const terrainKeys = collectEnemySpawnTerrainKeys(data, x, y);
       if (!terrainKeys.length) continue;
       const isStrongTile = data?.strongMonsterMap?.[y]?.[x] === "強敵候補";
+      if (!isStrongTile) {
+        const tileChance = resolveNormalSpawnTileChance(data, x, y);
+        if (tileChance <= 0 || Math.random() > tileChance) continue;
+      }
+      const strongInfo = data?.strongMonsterInfoMap?.[y]?.[x] || null;
       const baseLevel = resolveEnemyBaseLevelByTile(data, x, y, isStrongTile);
       const terrainCandidates = [];
       const candidates = [];
@@ -7063,16 +7513,43 @@ function buildEnemySpawnDataForMap(data) {
           candidates.push(merged);
         }
       }
-      let picked = pickEnemyRule(candidates, baseLevel, false);
+      const prioritizedCandidates = filterCandidatesByHighestTerrainDanger(candidates);
+      const prioritizedTerrainCandidates = filterCandidatesByHighestTerrainDanger(terrainCandidates);
+      let picked = pickEnemyRule(
+        prioritizedCandidates.length ? prioritizedCandidates : candidates,
+        baseLevel,
+        false
+      );
       if (!picked && isStrongTile) {
-        picked = pickEnemyRule(terrainCandidates, baseLevel, true);
+        picked = pickEnemyRule(
+          prioritizedTerrainCandidates.length ? prioritizedTerrainCandidates : terrainCandidates,
+          baseLevel,
+          true
+        );
       }
       if (!picked && isStrongTile) {
         const globalFallback = rows.map(row => ({ ...row, matchedTerrain: row.terrainKey }));
-        picked = pickEnemyRule(globalFallback, baseLevel, true);
+        const prioritizedGlobalFallback = filterCandidatesByHighestTerrainDanger(globalFallback);
+        picked = pickEnemyRule(
+          prioritizedGlobalFallback.length ? prioritizedGlobalFallback : globalFallback,
+          baseLevel,
+          true
+        );
+      }
+      if (!picked && isStrongTile) {
+        const fallbackRow = filterCandidatesByHighestTerrainDanger(rows)
+          .find(row => !!findClassRowByName(row?.raceName))
+          || rows.find(row => !!findClassRowByName(row?.raceName));
+        if (fallbackRow) {
+          picked = {
+            ...fallbackRow,
+            matchedTerrain: nonEmptyText(fallbackRow?.terrainKey) || (terrainKeys[0] || "")
+          };
+        }
       }
       if (!picked) continue;
-      const spawnCount = resolveEnemySpawnCountByTile(picked);
+      let spawnCount = resolveEnemySpawnCountByTile(picked);
+      if (isStrongTile) spawnCount = Math.max(1, spawnCount);
       if (spawnCount <= 0) continue;
 
       let raceRow = findClassRowByName(picked.raceName);
@@ -7088,9 +7565,42 @@ function buildEnemySpawnDataForMap(data) {
           raceRow = findClassRowByName(picked.raceName);
         }
       }
+      if (!raceRow && isStrongTile) {
+        const fallbackRow = filterCandidatesByHighestTerrainDanger(rows)
+          .find(row => !!findClassRowByName(row?.raceName))
+          || rows.find(row => !!findClassRowByName(row?.raceName));
+        if (fallbackRow) {
+          picked = {
+            ...fallbackRow,
+            matchedTerrain: nonEmptyText(fallbackRow?.terrainKey) || nonEmptyText(picked?.matchedTerrain) || (terrainKeys[0] || "")
+          };
+          raceRow = findClassRowByName(picked.raceName);
+        }
+      }
       if (!raceRow) continue;
       const classRow = picked.className ? findClassRowByName(picked.className) : null;
       const tileEnemies = [];
+      const isSwarmTerritoryOverlapped = radius => occupiedSwarmTerritories.some(territory => {
+        const distance = hexDistance({ x, y }, territory);
+        const threshold = Math.max(1, Math.floor(toSafeNumber(radius, 1)) + Math.max(1, territory.radius));
+        return distance <= threshold;
+      });
+      let swarmRuleEnabled = picked?.spawnCountExplicit === true || isStrongTile;
+      let territoryId = "";
+      let territoryRadius = 0;
+      if (swarmRuleEnabled) {
+        territoryId = isStrongTile
+          ? nonEmptyText(strongInfo?.territoryId) || `swarm-strong-${x}-${y}`
+          : `swarm-${x}-${y}`;
+        territoryRadius = isStrongTile
+          ? clampNumber(
+            Math.floor(toSafeNumber(strongInfo?.territoryRadius, ENEMY_SWARM_TERRITORY_RADIUS_MIN + 1)),
+            ENEMY_SWARM_TERRITORY_RADIUS_MIN,
+            ENEMY_SWARM_TERRITORY_RADIUS_MAX
+          )
+          : resolveEnemySwarmTerritoryRadiusForRule(picked, ENEMY_SWARM_TERRITORY_RADIUS_MIN);
+        if (!isStrongTile && isSwarmTerritoryOverlapped(territoryRadius)) continue;
+      }
 
       const tileMaxRuleLevel = terrainCandidates.length
         ? terrainCandidates.reduce((maxLv, row) => Math.max(maxLv, Math.max(1, Math.floor(toSafeNumber(row?.lvMax, baseLevel)))), Math.max(1, baseLevel))
@@ -7136,6 +7646,15 @@ function buildEnemySpawnDataForMap(data) {
           resistances,
           spawnCount: groupCount,
           spawnIndex: index + 1,
+          behaviorAction: "",
+          behaviorPattern: [],
+          behaviorActionCandidates: MONSTER_BEHAVIOR_ACTION_KEYS,
+          swarmRule: swarmRuleEnabled,
+          territoryId,
+          territoryCenterX: swarmRuleEnabled ? x : null,
+          territoryCenterY: swarmRuleEnabled ? y : null,
+          territoryRadius,
+          isBoss: role === "leader",
           growthRule: {
             raceLevels: built.raceLevels,
             classLevels: built.classLevels,
@@ -7154,6 +7673,13 @@ function buildEnemySpawnDataForMap(data) {
         const followerLevel = clampEnemyLevel(Math.floor(tileMaxRuleLevel * ENEMY_STRONG_FOLLOWER_LEVEL_SCALE));
         const followerCount = randomInt(ENEMY_STRONG_FOLLOWER_MIN, ENEMY_STRONG_FOLLOWER_MAX);
         const groupCount = 1 + followerCount;
+        if (!swarmRuleEnabled && groupCount >= 2) {
+          const strongSwarmRadius = resolveEnemySwarmTerritoryRadiusForRule(picked, groupCount);
+          if (isSwarmTerritoryOverlapped(strongSwarmRadius)) continue;
+          swarmRuleEnabled = true;
+          territoryId = `swarm-strong-${x}-${y}`;
+          territoryRadius = strongSwarmRadius;
+        }
         pushEnemyRecord(leaderLevel, 0, "leader", groupCount, leaderLevel);
         for (let i = 0; i < followerCount; i += 1) {
           pushEnemyRecord(followerLevel, i + 1, "follower", groupCount, followerLevel);
@@ -7165,17 +7691,50 @@ function buildEnemySpawnDataForMap(data) {
         }
       }
       enemySpawnMap[y][x] = tileEnemies;
+      if (swarmRuleEnabled) {
+        occupiedSwarmTerritories.push({ x, y, radius: territoryRadius });
+      }
 
       stats.total += 1;
       stats.totalUnits += tileEnemies.length;
       if (isStrongTile) stats.strongTileCount += 1;
       stats.byTerrain[picked.matchedTerrain] = Math.max(0, Math.floor(toSafeNumber(stats.byTerrain[picked.matchedTerrain], 0))) + tileEnemies.length;
+  }
+
+  const strongScoutZones = [];
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const tileEnemies = Array.isArray(enemySpawnMap?.[y]?.[x]) ? enemySpawnMap[y][x] : [];
+      if (!tileEnemies.length) continue;
+      const strongEnemies = tileEnemies.filter(enemy => enemy?.strong === true);
+      if (!strongEnemies.length) continue;
+      strongScoutZones.push({
+        x,
+        y,
+        radius: resolveStrongScoutBlockRadius(strongEnemies)
+      });
     }
   }
+  if (strongScoutZones.length) {
+    for (let y = 0; y < data.h; y += 1) {
+      for (let x = 0; x < data.w; x += 1) {
+        const tileEnemies = Array.isArray(enemySpawnMap?.[y]?.[x]) ? enemySpawnMap[y][x] : [];
+        if (!tileEnemies.length) continue;
+        if (tileEnemies.some(enemy => enemy?.strong === true)) continue;
+        const blockedByStrongScout = strongScoutZones.some(zone => {
+          const distance = hexDistance({ x, y }, zone);
+          return distance <= Math.max(1, Math.floor(toSafeNumber(zone?.radius, 1)));
+        });
+        if (!blockedByStrongScout) continue;
+        enemySpawnMap[y][x] = [];
+      }
+    }
+  }
+  const finalStats = buildEnemySpawnStatsFromMap(enemySpawnMap);
 
   return {
     enemySpawnMap,
-    enemySpawnStats: stats,
+    enemySpawnStats: finalStats,
     enemyDangerMap: buildInitialEnemyDangerMap(data, rulesByTerrain),
     claimedTerritoryMap: buildEmptyClaimedTerritoryMap(data)
   };
@@ -8318,6 +8877,233 @@ function canPlaceVillageOnTile(picked) {
   return true;
 }
 
+function resolveCityBlockPlacementTypeDef(type = cityBlockPlacementType.value) {
+  const safeType = nonEmptyText(type);
+  return CITY_BLOCK_PLACEMENT_TYPE_DEFS[safeType] || CITY_BLOCK_PLACEMENT_TYPE_DEFS[CITY_BLOCK_PLACEMENT_TYPE_CITY];
+}
+
+function buildCityBlockPlacementCells(anchorX, anchorY, placementType = cityBlockPlacementType.value) {
+  const ax = Math.floor(toSafeNumber(anchorX, Number.NaN));
+  const ay = Math.floor(toSafeNumber(anchorY, Number.NaN));
+  if (!Number.isFinite(ax) || !Number.isFinite(ay)) return [];
+  const typeDef = resolveCityBlockPlacementTypeDef(placementType);
+  if (typeDef.key === CITY_BLOCK_PLACEMENT_TYPE_TOWN) {
+    return [
+      { x: ax, y: ay },
+      { x: ax + 1, y: ay }
+    ];
+  }
+  if (typeDef.key === CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS) {
+    const isOddRow = ay % 2 === 1;
+    const deltas = isOddRow
+      ? [[-1, 0], [1, 0], [0, -1], [1, -1], [0, 1], [1, 1]]
+      : [[-1, 0], [1, 0], [-1, -1], [0, -1], [-1, 1], [0, 1]];
+    return [
+      { x: ax, y: ay },
+      ...deltas.map(([dx, dy]) => ({ x: ax + dx, y: ay + dy }))
+    ];
+  }
+  const isOddRow = ay % 2 === 1;
+  // △形: 頂点(anchor) + 下段2マス
+  const baseLeft = isOddRow ? { x: ax, y: ay + 1 } : { x: ax - 1, y: ay + 1 };
+  const baseRight = isOddRow ? { x: ax + 1, y: ay + 1 } : { x: ax, y: ay + 1 };
+  const cells = [
+    { x: ax, y: ay },
+    baseLeft,
+    baseRight
+  ];
+  return cells;
+}
+
+function resolveCityBlockPlacementPreview(anchorX, anchorY, data = currentData.value, placementType = cityBlockPlacementType.value) {
+  const typeDef = resolveCityBlockPlacementTypeDef(placementType);
+  const cells = buildCityBlockPlacementCells(anchorX, anchorY, typeDef.key);
+  if (!data || data.shapeOnly || !cells.length) {
+    return {
+      valid: false,
+      reason: "マップ生成後に配置できます。",
+      type: typeDef.key,
+      anchorX,
+      anchorY,
+      cells: [],
+      tileKeys: []
+    };
+  }
+  const occupied = new Set();
+  for (const placement of cityBlockPlacements.value) {
+    for (const key of placement?.tileKeys || []) occupied.add(nonEmptyText(key));
+  }
+  for (const cell of cells) {
+    if (cell.x < 0 || cell.y < 0 || cell.x >= data.w || cell.y >= data.h) {
+      return {
+        valid: false,
+        reason: `${typeDef.tileCount}マスがマップ範囲外です。`,
+        type: typeDef.key,
+        anchorX,
+        anchorY,
+        cells,
+        tileKeys: cells.map(pos => coordKey(pos.x, pos.y))
+      };
+    }
+    const terrain = nonEmptyText(data?.grid?.[cell.y]?.[cell.x]);
+    if (!terrain || !isPassableTerrain(terrain) || terrain === "火山") {
+      return {
+        valid: false,
+        reason: "海/湖/火山を含むため配置できません。",
+        type: typeDef.key,
+        anchorX,
+        anchorY,
+        cells,
+        tileKeys: cells.map(pos => coordKey(pos.x, pos.y))
+      };
+    }
+    const tileKey = coordKey(cell.x, cell.y);
+    if (occupied.has(tileKey)) {
+      return {
+        valid: false,
+        reason: "既に土地配置がある範囲です。",
+        type: typeDef.key,
+        anchorX,
+        anchorY,
+        cells,
+        tileKeys: cells.map(pos => coordKey(pos.x, pos.y))
+      };
+    }
+  }
+  return {
+    valid: true,
+    reason: "",
+    type: typeDef.key,
+    anchorX,
+    anchorY,
+    cells,
+    tileKeys: cells.map(pos => coordKey(pos.x, pos.y))
+  };
+}
+
+function closeCityBlockPlacementConfirmModal(options = {}) {
+  const keepPreview = options?.keepPreview === true;
+  showCityBlockPlacementConfirmModal.value = false;
+  cityBlockPlacementPending.value = null;
+  if (!keepPreview) cityBlockPlacementPreview.value = null;
+}
+
+function cancelCityBlockPlacementMode(options = {}) {
+  closeCityBlockPlacementConfirmModal({ keepPreview: false });
+  const currentTypeDef = resolveCityBlockPlacementTypeDef(cityBlockPlacementType.value);
+  cityBlockPlacementMode.value = false;
+  if (options?.announce !== false) {
+    updateUnitInfoText(`${currentTypeDef.modeLabel}の配置モードを終了しました。`);
+  }
+  emitCharacterStateChange();
+}
+
+function startCityBlockPlacementMode(nextType = CITY_BLOCK_PLACEMENT_TYPE_CITY) {
+  const typeDef = resolveCityBlockPlacementTypeDef(nextType);
+  if (!currentData.value || currentData.value.shapeOnly) {
+    updateUnitInfoText(`${typeDef.modeLabel}はマップ生成後に配置できます。`);
+    return;
+  }
+  if (cityBlockPlacementMode.value && cityBlockPlacementType.value === typeDef.key) {
+    cancelCityBlockPlacementMode({ announce: true });
+    requestMapRender();
+    return;
+  }
+  clearHousingUpgradeSelectionState();
+  clearMoveCommandState({ clearCandidate: true });
+  villagePlacementMode.value = false;
+  showMoveUnitModal.value = false;
+  cityBlockPlacementMode.value = true;
+  cityBlockPlacementType.value = typeDef.key;
+  cityBlockPlacementPreview.value = null;
+  closeCityBlockPlacementConfirmModal({ keepPreview: false });
+  updateUnitInfoText(typeDef.placementGuideText);
+  mapClickInfo.value = typeDef.clickGuideText;
+  emitCharacterStateChange();
+  requestMapRender();
+}
+
+function syncCityBlockPlacementHoverPreview(picked) {
+  if (!cityBlockPlacementMode.value || showCityBlockPlacementConfirmModal.value) return false;
+  const nextPreview = picked
+    ? resolveCityBlockPlacementPreview(picked.x, picked.y, currentData.value, cityBlockPlacementType.value)
+    : null;
+  const prevPreview = cityBlockPlacementPreview.value;
+  const changed = (
+    !prevPreview
+    || !nextPreview
+    || nonEmptyText(prevPreview.type) !== nonEmptyText(nextPreview.type)
+    || prevPreview.anchorX !== nextPreview.anchorX
+    || prevPreview.anchorY !== nextPreview.anchorY
+    || !!prevPreview.valid !== !!nextPreview.valid
+    || nonEmptyText(prevPreview.reason) !== nonEmptyText(nextPreview.reason)
+  );
+  if (!changed) return false;
+  cityBlockPlacementPreview.value = nextPreview;
+  return true;
+}
+
+function handleCityBlockPlacementTileClick(picked) {
+  if (!cityBlockPlacementMode.value || !picked) return false;
+  const preview = resolveCityBlockPlacementPreview(picked.x, picked.y, currentData.value, cityBlockPlacementType.value);
+  const typeDef = resolveCityBlockPlacementTypeDef(preview.type);
+  cityBlockPlacementPreview.value = preview;
+  if (!preview.valid) {
+    updateMapClickInfo(picked);
+    mapClickInfo.value += ` / ${typeDef.modeLabel}: ${preview.reason}`;
+    updateUnitInfoText(`${typeDef.modeLabel}: ${preview.reason}`);
+    closeCityBlockPlacementConfirmModal({ keepPreview: true });
+    return true;
+  }
+  cityBlockPlacementPending.value = preview;
+  showCityBlockPlacementConfirmModal.value = true;
+  updateMapClickInfo(picked);
+  mapClickInfo.value += ` / ${typeDef.modeLabel}候補: (${preview.anchorX}, ${preview.anchorY}) ${typeDef.anchorLabel}`;
+  updateUnitInfoText(`${typeDef.modeLabel}候補: (${preview.anchorX}, ${preview.anchorY}) ${typeDef.anchorLabel} / 「設置」で確定`);
+  return true;
+}
+
+function confirmCityBlockPlacement() {
+  const pending = cityBlockPlacementPending.value;
+  if (!pending) return;
+  const latest = resolveCityBlockPlacementPreview(
+    pending.anchorX,
+    pending.anchorY,
+    currentData.value,
+    pending.type || cityBlockPlacementType.value
+  );
+  const typeDef = resolveCityBlockPlacementTypeDef(latest.type);
+  if (!latest.valid) {
+    cityBlockPlacementPreview.value = latest;
+    showCityBlockPlacementConfirmModal.value = false;
+    cityBlockPlacementPending.value = null;
+    updateUnitInfoText(`${typeDef.modeLabel}: ${latest.reason}`);
+    requestMapRender();
+    return;
+  }
+  const id = `city-block-${typeDef.key}-${latest.anchorX}-${latest.anchorY}-${Date.now()}`;
+  cityBlockPlacements.value = [
+    ...cityBlockPlacements.value,
+    {
+      id,
+      type: typeDef.key,
+      anchorX: latest.anchorX,
+      anchorY: latest.anchorY,
+      cells: latest.cells.map(cell => ({ x: cell.x, y: cell.y })),
+      tileKeys: [...latest.tileKeys],
+      iconName: typeDef.iconName
+    }
+  ];
+  showCityBlockPlacementConfirmModal.value = false;
+  cityBlockPlacementPending.value = null;
+  cityBlockPlacementPreview.value = null;
+  kickOffBgm();
+  audio.playSe("confirm");
+  updateUnitInfoText(`${typeDef.modeLabel}を設置: ${typeDef.anchorLabel} (${latest.anchorX}, ${latest.anchorY})`);
+  pushNationLog(`${typeDef.modeLabel}を設置: ${typeDef.anchorLabel} (${latest.anchorX}, ${latest.anchorY})`);
+  requestMapRender();
+}
+
 function placeVillageAt(x, y) {
   clearHousingUpgradeSelectionState();
   const selectedRaceName = resolveActiveFactionRace();
@@ -8397,6 +9183,11 @@ function startVillagePlacementMode() {
     return;
   }
   if (!currentData.value || currentData.value.shapeOnly) return;
+  cityBlockPlacementMode.value = false;
+  cityBlockPlacementType.value = CITY_BLOCK_PLACEMENT_TYPE_CITY;
+  cityBlockPlacementPreview.value = null;
+  cityBlockPlacementPending.value = null;
+  showCityBlockPlacementConfirmModal.value = false;
   villagePlacementMode.value = true;
   clearHousingUpgradeSelectionState();
   clearMoveCommandState({ clearCandidate: true });
@@ -8516,7 +9307,8 @@ function buildMapSnapshotForSave() {
       topLayerMap: deepCloneJsonValue(data?.topLayerMap, []),
       reliefMap: deepCloneJsonValue(data?.reliefMap, []),
       coastTypeMap: deepCloneJsonValue(data?.coastTypeMap, []),
-      specialMap: deepCloneJsonValue(data?.specialMap, [])
+      specialMap: deepCloneJsonValue(data?.specialMap, []),
+      caveCoastAnchorMap: deepCloneJsonValue(data?.caveCoastAnchorMap, [])
     },
     dynamic: {
       lavaMap: deepCloneJsonValue(data?.lavaMap, []),
@@ -8635,7 +9427,7 @@ function restoreRiverDataFromSaveSnapshot(snapshot, w, h) {
     cornerWaterLinkSet,
     meshCenterSet,
     largeRiverSet: new Set(meshCenterSet),
-    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet }),
+    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet, cornerEdgeSet, cornerWaterLinkSet }, w, h),
     waterfallSet,
     waterfallEdgeSet,
     cornerWaterfallEdgeSet
@@ -8665,6 +9457,7 @@ function buildMapDataFromSaveSnapshot(snapshot) {
     reliefMap: deepCloneJsonValue(snapshot?.base?.reliefMap, []),
     coastTypeMap: deepCloneJsonValue(snapshot?.base?.coastTypeMap, []),
     specialMap: deepCloneJsonValue(snapshot?.base?.specialMap, []),
+    caveCoastAnchorMap: deepCloneJsonValue(snapshot?.base?.caveCoastAnchorMap, []),
     lavaMap: deepCloneJsonValue(snapshot?.dynamic?.lavaMap, []),
     lavaFlowData: deepCloneJsonValue(snapshot?.dynamic?.lavaFlowData, null),
     enemySpawnMap: cloneEnemySpawnMapForSave(snapshot?.dynamic?.enemySpawnMap),
@@ -10529,6 +11322,46 @@ function ensureRaceMarkerTexture(iconName, options = {}) {
   return "";
 }
 
+function enemyIllustrationTextureKey(imageName, variant = "default") {
+  const normalized = normalizeEnemyImageLookupKey(imageName);
+  if (!normalized) return "";
+  return `enemy-illust:${variant}:${normalized}`;
+}
+
+function ensureEnemyIllustrationTexture(imageName, options = {}) {
+  const name = nonEmptyText(imageName);
+  if (!name || !scene?.textures) return "";
+  const src = resolveEnemyIllustrationSrc(name);
+  if (!src) return "";
+  const variant = options?.removeWhiteBg ? "chroma" : "default";
+  const textureKey = enemyIllustrationTextureKey(name, variant);
+  if (!textureKey) return "";
+  if (scene.textures.exists(textureKey)) return textureKey;
+  const pendingKey = `${variant}:${normalizeEnemyImageLookupKey(name)}`;
+  if (enemyIllustrationTexturePending.has(pendingKey)) return "";
+  enemyIllustrationTexturePending.add(pendingKey);
+  const image = new Image();
+  image.decoding = "async";
+  image.onload = () => {
+    enemyIllustrationTexturePending.delete(pendingKey);
+    if (!scene?.textures) return;
+    if (!scene.textures.exists(textureKey)) {
+      const sourceImage = options?.removeWhiteBg
+        ? removeWhiteBackgroundForMarker(image)
+        : image;
+      scene.textures.addImage(textureKey, sourceImage);
+    }
+    if (currentData.value) {
+      renderMapWithPhaser();
+    }
+  };
+  image.onerror = () => {
+    enemyIllustrationTexturePending.delete(pendingKey);
+  };
+  image.src = src;
+  return "";
+}
+
 function unitsAt(x, y) {
   return unitList.value.filter(unit => unit.x === x && unit.y === y);
 }
@@ -11417,6 +12250,16 @@ function normalizeCustomIslandSettings() {
   const isletRange = normalizeIntRange(customIsletCountMin.value, customIsletCountMax.value, 0, 12, 1, 4);
   customIsletCountMin.value = isletRange.min;
   customIsletCountMax.value = isletRange.max;
+  const riverRange = normalizeIntRange(
+    customRiverPerContinentMin.value,
+    customRiverPerContinentMax.value,
+    1,
+    12,
+    3,
+    4
+  );
+  customRiverPerContinentMin.value = riverRange.min;
+  customRiverPerContinentMax.value = riverRange.max;
   const gapRange = normalizeIntRange(customLargeIslandMinGap.value, customLargeIslandMinGap.value, 2, 12, 6, 6);
   customLargeIslandMinGap.value = gapRange.min;
   const ratioRaw = Number.isFinite(customTargetLandPercent.value)
@@ -11437,6 +12280,10 @@ function nudgeCustomIslandInt(key, delta) {
     customIsletCountMin.value = Number(customIsletCountMin.value) + step;
   } else if (key === "isletCountMax") {
     customIsletCountMax.value = Number(customIsletCountMax.value) + step;
+  } else if (key === "riverPerContinentMin") {
+    customRiverPerContinentMin.value = Number(customRiverPerContinentMin.value) + step;
+  } else if (key === "riverPerContinentMax") {
+    customRiverPerContinentMax.value = Number(customRiverPerContinentMax.value) + step;
   }
   normalizeCustomIslandSettings();
 }
@@ -11454,6 +12301,7 @@ function applyDisplaySettingChange(payload) {
   else if (key === "showSpecialTilesAlways") showSpecialTilesAlways.value = !!value;
   else if (key === "showWaterfallEffects") showWaterfallEffects.value = !!value;
   else if (key === "showStrongEnemyMarkers") showStrongEnemyMarkers.value = !!value;
+  else if (key === "lowPowerMode") lowPowerMode.value = !!value;
   else if (key === "focusCameraOnTileClick") focusCameraOnTileClick.value = !!value;
   else if (key === "mountainMode") mountainMode.value = String(value || "random");
   else if (key === "heightNumberFontSize") {
@@ -11484,13 +12332,14 @@ function applyDisplaySettingChange(payload) {
 }
 
 function buildIslandCustomSettings() {
-  if (!useIslandCustomSettings.value) return null;
   normalizeCustomIslandSettings();
   return {
-    enabled: true,
+    enabled: !!useIslandCustomSettings.value,
     largeIslandCount: customLargeIslandCount.value,
     isletCountMin: customIsletCountMin.value,
     isletCountMax: customIsletCountMax.value,
+    riverPerContinentMin: customRiverPerContinentMin.value,
+    riverPerContinentMax: customRiverPerContinentMax.value,
     targetLandRatio: customTargetLandPercent.value / 100,
     largeIslandMinGap: customLargeIslandMinGap.value,
     worldWrapEnabled: !!customWorldWrapEnabled.value
@@ -11574,6 +12423,7 @@ function normalizeZoomPercent(value, dataLike = currentData.value) {
 const zoomController = createMapZoomController({
   getCurrentData: () => currentData.value,
   getVillageState: () => villageState.value,
+  getSelectedTileCoord: () => parseCoordKey(selectedTileKey),
   getZoomPercent: () => zoomPercent.value,
   setZoomPercentValue: value => {
     zoomPercent.value = value;
@@ -11776,36 +12626,6 @@ function resolveFlowSegmentByTilePair(ax, ay, bx, by, offsetX = 0, offsetY = 0) 
   ];
 }
 
-function drawParallelEdgeLines(graphics, start, end, lineCount, options = {}) {
-  if (!graphics || !start || !end) return;
-  const count = Math.max(0, Math.floor(Number(lineCount) || 0));
-  if (count <= 0) return;
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 0.001) return;
-  const nx = -dy / len;
-  const ny = dx / len;
-  const color = Number.isFinite(options.color) ? options.color : HEIGHT_DIFF_BORDER_MEDIUM_COLOR;
-  const alpha = Number.isFinite(options.alpha) ? options.alpha : HEIGHT_DIFF_BORDER_MEDIUM_ALPHA;
-  const width = Math.max(0.2, Number(options.widthPx) || HEIGHT_DIFF_BORDER_LINE_WIDTH_PX);
-  const spacing = Math.max(0, Number(options.spacingPx) || HEIGHT_DIFF_BORDER_LINE_SPACING_PX);
-  for (let i = 0; i < count; i += 1) {
-    const shift = (i - ((count - 1) / 2)) * spacing;
-    const ox = nx * shift;
-    const oy = ny * shift;
-    graphics.lineStyle(width, color, alpha);
-    graphics.strokeLineShape(
-      new Phaser.Geom.Line(
-        start.x + ox,
-        start.y + oy,
-        end.x + ox,
-        end.y + oy
-      )
-    );
-  }
-}
-
 function drawSplitHex(graphics, points, leftHexColor, rightHexColor) {
   if (!graphics || !points || points.length < 6) return;
   const p0 = points[0];
@@ -11823,6 +12643,150 @@ function drawSplitHex(graphics, points, leftHexColor, rightHexColor) {
 function offsetHexPoints(points, offsetX = 0, offsetY = 0) {
   if (!Array.isArray(points) || (!offsetX && !offsetY)) return points;
   return points.map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
+}
+
+function expandPolygonPoints(points, outsetPx = 0) {
+  if (!Array.isArray(points) || !points.length) return points;
+  const delta = Number(outsetPx) || 0;
+  if (Math.abs(delta) < 0.001) return points;
+  let cx = 0;
+  let cy = 0;
+  let count = 0;
+  for (const p of points) {
+    if (!Number.isFinite(p?.x) || !Number.isFinite(p?.y)) continue;
+    cx += p.x;
+    cy += p.y;
+    count += 1;
+  }
+  if (!count) return points;
+  cx /= count;
+  cy /= count;
+  return points.map(p => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const len = Math.hypot(dx, dy);
+    if (!Number.isFinite(len) || len < 0.0001) return { x: p.x, y: p.y };
+    const scale = (len + delta) / len;
+    return {
+      x: cx + (dx * scale),
+      y: cy + (dy * scale)
+    };
+  });
+}
+
+function hasEnemySwarmRule(enemy) {
+  return enemy?.swarmRule === true;
+}
+
+function hasEnemyBossRole(enemy) {
+  return enemy?.isBoss === true || nonEmptyText(enemy?.strongRole) === "leader";
+}
+
+function runEnemySwarmFreeRoamTurn(data = currentData.value) {
+  if (!data || data.shapeOnly || !Number.isFinite(data?.w) || !Number.isFinite(data?.h) || !Array.isArray(data?.enemySpawnMap)) {
+    return { movedGroups: 0, notes: [] };
+  }
+  const notes = [];
+  const groups = [];
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const enemies = enemiesAt(x, y, data);
+      if (!enemies.length) continue;
+      if (!enemies.some(hasEnemySwarmRule)) continue;
+      const first = enemies[0];
+      groups.push({
+        x,
+        y,
+        enemies,
+        territoryId: nonEmptyText(first?.territoryId) || `swarm-${x}-${y}`,
+        centerX: Math.floor(toSafeNumber(first?.territoryCenterX, x)),
+        centerY: Math.floor(toSafeNumber(first?.territoryCenterY, y)),
+        radius: clampNumber(
+          Math.floor(toSafeNumber(first?.territoryRadius, ENEMY_SWARM_TERRITORY_RADIUS_MIN)),
+          ENEMY_SWARM_TERRITORY_RADIUS_MIN,
+          ENEMY_SWARM_TERRITORY_RADIUS_MAX
+        ),
+        hasBoss: enemies.some(hasEnemyBossRole)
+      });
+    }
+  }
+  if (!groups.length) return { movedGroups: 0, notes };
+
+  let movedGroups = 0;
+  let changed = false;
+  const movedTerritoryIds = new Set();
+  const wrapEnabled = resolveWorldWrapEnabled(data);
+  for (const group of groups) {
+    if (!group || !group.territoryId || movedTerritoryIds.has(group.territoryId)) continue;
+    movedTerritoryIds.add(group.territoryId);
+    // 群れルールは出現数設定ありの場合のみ適用。ボス不在時のみテリトリー内フリー移動。
+    if (group.hasBoss) continue;
+    if (Math.random() > ENEMY_SWARM_FREE_ROAM_MOVE_CHANCE) continue;
+    const candidates = getHexNeighborCoordsBySize(data.w, data.h, group.x, group.y, wrapEnabled).filter(next => {
+      if (!next || !Number.isFinite(next.x) || !Number.isFinite(next.y)) return false;
+      if (!isPassableTerrain(data.grid?.[next.y]?.[next.x])) return false;
+      if (hexDistance({ x: next.x, y: next.y }, { x: group.centerX, y: group.centerY }) > group.radius) return false;
+      const targetEnemies = enemiesAt(next.x, next.y, data);
+      if (targetEnemies.length > 0) return false;
+      return true;
+    });
+    if (!candidates.length) continue;
+    const to = randomPick(candidates, null);
+    if (!to) continue;
+    const fromX = group.x;
+    const fromY = group.y;
+    const fromKey = coordKey(fromX, fromY);
+    const toKey = coordKey(to.x, to.y);
+    const wasSpotted = spottedEnemyTileKeys.has(fromKey);
+    const wasAlerted = alertedEnemyTileKeys.has(fromKey);
+    const spottedNames = Array.isArray(spottedEnemyNamesByTile.get(fromKey))
+      ? [...spottedEnemyNamesByTile.get(fromKey)]
+      : [];
+    const movedEnemies = group.enemies.map((enemy, index) => ({
+      ...enemy,
+      id: nonEmptyText(enemy?.id) || `enemy-${to.x}-${to.y}-${index}`,
+      territoryId: group.territoryId,
+      territoryCenterX: group.centerX,
+      territoryCenterY: group.centerY,
+      territoryRadius: group.radius
+    }));
+    if (!Array.isArray(data.enemySpawnMap[fromY])) data.enemySpawnMap[fromY] = [];
+    if (!Array.isArray(data.enemySpawnMap[to.y])) data.enemySpawnMap[to.y] = [];
+    data.enemySpawnMap[fromY][fromX] = [];
+    data.enemySpawnMap[to.y][to.x] = movedEnemies;
+    spottedEnemyTileKeys.delete(fromKey);
+    alertedEnemyTileKeys.delete(fromKey);
+    spottedEnemyNamesByTile.delete(fromKey);
+    if (wasSpotted) {
+      spottedEnemyTileKeys.add(toKey);
+      if (spottedNames.length) spottedEnemyNamesByTile.set(toKey, spottedNames);
+    }
+    if (wasAlerted) {
+      alertedEnemyTileKeys.add(toKey);
+    }
+    movedGroups += 1;
+    changed = true;
+    const groupLabel = nonEmptyText(group.enemies?.[0]?.name) || nonEmptyText(group.enemies?.[0]?.race) || "群れ";
+    notes.push(`群れ移動: ${groupLabel} (${fromX}, ${fromY}) -> (${to.x}, ${to.y})`);
+  }
+
+  if (changed) {
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+  }
+  return { movedGroups, notes };
+}
+
+function strokeClosedPolygon(graphics, points) {
+  if (!graphics || !Array.isArray(points) || points.length < 2) return;
+  const first = points[0];
+  graphics.beginPath();
+  graphics.moveTo(first.x, first.y);
+  for (let i = 1; i < points.length; i += 1) {
+    graphics.lineTo(points[i].x, points[i].y);
+  }
+  graphics.lineTo(first.x, first.y);
+  graphics.closePath();
+  graphics.strokePath();
 }
 
 function buildWrapOffsets(data) {
@@ -12191,8 +13155,85 @@ function drawRiverOverlay(data, visibleKeys = null, wrapOffsets = [{ x: 0, y: 0 
     return [pa, pb];
   };
 
+  const drawConnectedRiverSegments = (segments, width, color, alpha = 1) => {
+    if (!Array.isArray(segments) || !segments.length) return;
+    const safeWidth = Math.max(0.8, Number(width) || 1);
+    const half = safeWidth * 0.5;
+    const colorInt = Number.isFinite(color) ? color : 0x9ed3ff;
+    const safeAlpha = clampNumber(Number(alpha), 0, 1);
+    const endpointMap = new Map();
+    const endpointDegree = new Map();
+    const addEndpoint = point => {
+      const key = pointCoordKey(point);
+      if (!key) return;
+      endpointMap.set(key, point);
+      endpointDegree.set(key, (endpointDegree.get(key) || 0) + 1);
+    };
+    for (const seg of segments) {
+      addEndpoint(seg.start);
+      addEndpoint(seg.end);
+    }
+
+    riverLayer.fillStyle(colorInt, safeAlpha);
+    for (const seg of segments) {
+      const start = seg.start;
+      const end = seg.end;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(len) || len < 0.001) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+      const body = [
+        new Phaser.Math.Vector2(start.x + (px * half), start.y + (py * half)),
+        new Phaser.Math.Vector2(end.x + (px * half), end.y + (py * half)),
+        new Phaser.Math.Vector2(end.x - (px * half), end.y - (py * half)),
+        new Phaser.Math.Vector2(start.x - (px * half), start.y - (py * half))
+      ];
+      riverLayer.fillPoints(body, true);
+    }
+
+    const joinRadius = Math.max(0.8, (half * RIVER_EDGE_JOIN_RADIUS_RATIO) + RIVER_EDGE_JOIN_RADIUS_EXTRA_PX);
+    for (const [key, point] of endpointMap.entries()) {
+      if ((endpointDegree.get(key) || 0) < 2) continue;
+      riverLayer.fillCircle(point.x, point.y, joinRadius);
+    }
+
+    const capLen = Math.max(RIVER_EDGE_POINTED_CAP_MIN_PX, safeWidth * RIVER_EDGE_POINTED_CAP_LENGTH_RATIO);
+    for (const seg of segments) {
+      const start = seg.start;
+      const end = seg.end;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(len) || len < 0.001) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+
+      const startKey = pointCoordKey(start);
+      if ((endpointDegree.get(startKey) || 0) === 1) {
+        const tip = new Phaser.Math.Vector2(start.x - (ux * capLen), start.y - (uy * capLen));
+        const s1 = new Phaser.Math.Vector2(start.x + (px * half), start.y + (py * half));
+        const s2 = new Phaser.Math.Vector2(start.x - (px * half), start.y - (py * half));
+        riverLayer.fillPoints([s1, s2, tip], true);
+      }
+
+      const endKey = pointCoordKey(end);
+      if ((endpointDegree.get(endKey) || 0) === 1) {
+        const tip = new Phaser.Math.Vector2(end.x + (ux * capLen), end.y + (uy * capLen));
+        const e1 = new Phaser.Math.Vector2(end.x + (px * half), end.y + (py * half));
+        const e2 = new Phaser.Math.Vector2(end.x - (px * half), end.y - (py * half));
+        riverLayer.fillPoints([e1, e2, tip], true);
+      }
+    }
+  };
+
   const drawCornerSegments = (edgeIterable, width, color, alpha = 1) => {
-    riverLayer.lineStyle(width, color, alpha);
+    const segments = [];
     for (const edgeKeyRaw of edgeIterable || []) {
       const points = parseEdgePoints(edgeKeyRaw);
       if (!points) continue;
@@ -12202,16 +13243,17 @@ function drawRiverOverlay(data, visibleKeys = null, wrapOffsets = [{ x: 0, y: 0 
         const oy = offset?.y || 0;
         const start = { x: startBase.x + ox, y: startBase.y + oy };
         const end = { x: endBase.x + ox, y: endBase.y + oy };
-        riverLayer.strokeLineShape(new Phaser.Geom.Line(start.x, start.y, end.x, end.y));
+        segments.push({ start, end });
         pushCornerPoint(start);
         pushCornerPoint(end);
         queueFlowArrowByCornerLevel(start, end);
       }
     }
+    drawConnectedRiverSegments(segments, width, color, alpha);
   };
 
   const drawTileEdgeSegments = (edgeIterable, width, color, alpha = 1) => {
-    riverLayer.lineStyle(width, color, alpha);
+    const segments = [];
     for (const edgeKeyRaw of edgeIterable || []) {
       const [a, b] = String(edgeKeyRaw || "").split("|");
       if (!a || !b) continue;
@@ -12227,12 +13269,13 @@ function drawRiverOverlay(data, visibleKeys = null, wrapOffsets = [{ x: 0, y: 0 
         const segment = resolveSharedHexEdgePoints(pa.x, pa.y, pb.x, pb.y, ox, oy);
         if (!segment) continue;
         const [start, end] = segment;
-        riverLayer.strokeLineShape(new Phaser.Geom.Line(start.x, start.y, end.x, end.y));
+        segments.push({ start, end });
         pushCornerPoint(start);
         pushCornerPoint(end);
         queueFlowArrowByCornerLevel(start, end);
       }
     }
+    drawConnectedRiverSegments(segments, width, color, alpha);
   };
 
   const drawLargeRiverCenters = meshCenterIterable => {
@@ -12287,7 +13330,7 @@ function drawRiverOverlay(data, visibleKeys = null, wrapOffsets = [{ x: 0, y: 0 
   }
 }
 
-function drawHeightDiffBordersForTile(data, x, y, wrapOffset, tileVisible = true) {
+function drawHeightDiffBordersForTile(data, x, y, wrapOffset, tileVisible = true, collector = null) {
   if (!baseLayer || !data?.heightLevelMap || !tileVisible) return;
   const sourceLevel = Number(data.heightLevelMap?.[y]?.[x]);
   if (!Number.isFinite(sourceLevel)) return;
@@ -12306,16 +13349,209 @@ function drawHeightDiffBordersForTile(data, x, y, wrapOffset, tileVisible = true
     if (!Number.isFinite(targetLevel)) continue;
     const diff = Math.abs(targetLevel - sourceLevel);
     if (diff <= 1) continue;
-    const lineCount = Math.min(3, Math.max(1, Math.floor(diff)));
     const segment = resolveSharedHexEdgePoints(x, y, n.x, n.y, offX, offY);
     if (!segment) continue;
-    const isStrongDiff = diff >= 3;
-    drawParallelEdgeLines(baseLayer, segment[0], segment[1], lineCount, {
-      color: isStrongDiff ? HEIGHT_DIFF_BORDER_STRONG_COLOR : HEIGHT_DIFF_BORDER_MEDIUM_COLOR,
-      alpha: isStrongDiff ? HEIGHT_DIFF_BORDER_STRONG_ALPHA : HEIGHT_DIFF_BORDER_MEDIUM_ALPHA,
-      widthPx: HEIGHT_DIFF_BORDER_LINE_WIDTH_PX,
-      spacingPx: HEIGHT_DIFF_BORDER_LINE_SPACING_PX
-    });
+    const sourceCenter = hexCenter(x, y);
+    const targetCenter = hexCenter(n.x, n.y);
+    const sourceCenterWithOffset = { x: sourceCenter.cx + offX, y: sourceCenter.cy + offY };
+    const targetCenterWithOffset = { x: targetCenter.cx + offX, y: targetCenter.cy + offY };
+    const isSourceHigher = sourceLevel >= targetLevel;
+    const higherCenter = isSourceHigher ? sourceCenterWithOffset : targetCenterWithOffset;
+    const stage = Math.max(0, Math.floor(diff) - 2);
+    const widthPx = Math.min(
+      HEIGHT_DIFF_CLIFF_WIDTH_MAX_PX,
+      HEIGHT_DIFF_CLIFF_WIDTH_BASE_PX + (stage * HEIGHT_DIFF_CLIFF_WIDTH_STEP_PX)
+    );
+    const insetPx = HEIGHT_DIFF_CLIFF_INSET_BASE_PX + (widthPx * HEIGHT_DIFF_CLIFF_INSET_WIDTH_RATIO);
+    const insetSegment = insetHexEdgeSegmentTowardPoint(segment[0], segment[1], higherCenter, insetPx);
+    if (!insetSegment) continue;
+    const darkenRatio = clampNumber(
+      HEIGHT_DIFF_CLIFF_DARKEN_BASE + (stage * HEIGHT_DIFF_CLIFF_DARKEN_STEP),
+      HEIGHT_DIFF_CLIFF_DARKEN_BASE,
+      0.86
+    );
+    const highX = isSourceHigher ? x : n.x;
+    const highY = isSourceHigher ? y : n.y;
+    const highTileColor = resolveTileDisplayColor(data, highX, highY);
+    const edgeColor = toColorInt(blendHexColors(highTileColor, "#000000", darkenRatio));
+    if (Array.isArray(collector)) {
+      collector.push({
+        start: insetSegment[0],
+        end: insetSegment[1],
+        width: widthPx,
+        color: edgeColor,
+        alpha: HEIGHT_DIFF_CLIFF_ALPHA
+      });
+    } else {
+      drawTrapezoidCliffSegment(baseLayer, insetSegment[0], insetSegment[1], widthPx, edgeColor, HEIGHT_DIFF_CLIFF_ALPHA);
+    }
+  }
+}
+
+function resolveTileDisplayColor(data, x, y) {
+  const rawKey = data?.grid?.[y]?.[x] || "";
+  const reliefKey = data?.reliefMap?.[y]?.[x] || "";
+  const mixedForestRelief = rawKey === "森" && (reliefKey === "丘陵" || reliefKey === "山岳");
+  const baseTerrainKey = mixedForestRelief ? reliefKey : rawKey;
+  const baseVisual = tileVisual(baseTerrainKey, data.shapeOnly);
+  const level = Number(data?.heightLevelMap?.[y]?.[x]);
+  if (!useHeightShading.value || !Number.isFinite(level)) return baseVisual.color;
+  if (baseTerrainKey === "海") return shadeSeaColorByDepth(baseVisual.color, level);
+  return shadeColorByHeight(baseVisual.color, level);
+}
+
+function insetHexEdgeSegmentTowardPoint(start, end, targetPoint, insetPx) {
+  if (!start || !end || !targetPoint) return null;
+  const sx = Number(start.x);
+  const sy = Number(start.y);
+  const ex = Number(end.x);
+  const ey = Number(end.y);
+  const tx = Number(targetPoint.x);
+  const ty = Number(targetPoint.y);
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(ex) || !Number.isFinite(ey)) return null;
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+  const mx = (sx + ex) * 0.5;
+  const my = (sy + ey) * 0.5;
+  let vx = tx - mx;
+  let vy = ty - my;
+  const vLen = Math.hypot(vx, vy);
+  if (!Number.isFinite(vLen) || vLen < 0.001) return [{ x: sx, y: sy }, { x: ex, y: ey }];
+  vx /= vLen;
+  vy /= vLen;
+  const shift = Math.max(0, Number(insetPx) || 0);
+  return [
+    { x: sx + (vx * shift), y: sy + (vy * shift) },
+    { x: ex + (vx * shift), y: ey + (vy * shift) }
+  ];
+}
+
+function drawTrapezoidCliffSegment(graphics, start, end, widthPx, color, alpha = 1) {
+  if (!graphics || !start || !end) return;
+  const width = Math.max(0.5, Number(widthPx) || 1);
+  const colorInt = Number.isFinite(color) ? color : 0x1c2430;
+  const safeAlpha = clampNumber(Number(alpha), 0, 1);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.hypot(dx, dy);
+  if (!Number.isFinite(len) || len < 0.001) return;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+
+  graphics.lineStyle(width, colorInt, safeAlpha);
+  graphics.strokeLineShape(new Phaser.Geom.Line(start.x, start.y, end.x, end.y));
+
+  const capLen = Math.max(0.8, width * HEIGHT_DIFF_CLIFF_TRAPEZOID_CAP_LENGTH_RATIO);
+  const halfWide = width * 0.5;
+  const halfNarrow = Math.max(0.4, halfWide * HEIGHT_DIFF_CLIFF_TRAPEZOID_CAP_NARROW_RATIO);
+  graphics.fillStyle(colorInt, safeAlpha);
+  const startTrap = [
+    new Phaser.Math.Vector2(start.x + (px * halfWide), start.y + (py * halfWide)),
+    new Phaser.Math.Vector2(start.x - (px * halfWide), start.y - (py * halfWide)),
+    new Phaser.Math.Vector2(start.x - (ux * capLen) - (px * halfNarrow), start.y - (uy * capLen) - (py * halfNarrow)),
+    new Phaser.Math.Vector2(start.x - (ux * capLen) + (px * halfNarrow), start.y - (uy * capLen) + (py * halfNarrow))
+  ];
+  const endTrap = [
+    new Phaser.Math.Vector2(end.x + (px * halfWide), end.y + (py * halfWide)),
+    new Phaser.Math.Vector2(end.x - (px * halfWide), end.y - (py * halfWide)),
+    new Phaser.Math.Vector2(end.x + (ux * capLen) - (px * halfNarrow), end.y + (uy * capLen) - (py * halfNarrow)),
+    new Phaser.Math.Vector2(end.x + (ux * capLen) + (px * halfNarrow), end.y + (uy * capLen) + (py * halfNarrow))
+  ];
+  graphics.fillPoints(startTrap, true);
+  graphics.fillPoints(endTrap, true);
+}
+
+function drawConnectedHeightDiffSegments(graphics, rawSegments = []) {
+  if (!graphics || !Array.isArray(rawSegments) || !rawSegments.length) return;
+
+  const styleGroups = new Map();
+  for (const seg of rawSegments) {
+    const start = seg?.start;
+    const end = seg?.end;
+    const width = Math.max(0.8, Number(seg?.width) || 1);
+    const color = Number.isFinite(seg?.color) ? seg.color : 0x1c2430;
+    const alpha = clampNumber(Number(seg?.alpha), 0, 1);
+    if (!start || !end) continue;
+    const styleKey = `${Math.round(width * 100) / 100}|${color}|${Math.round(alpha * 1000) / 1000}`;
+    if (!styleGroups.has(styleKey)) {
+      styleGroups.set(styleKey, { width, color, alpha, segments: [] });
+    }
+    styleGroups.get(styleKey).segments.push({ start, end });
+  }
+
+  for (const group of styleGroups.values()) {
+    const width = group.width;
+    const half = width * 0.5;
+    const color = group.color;
+    const alpha = group.alpha;
+    const segments = group.segments;
+    const endpointMap = new Map();
+    const endpointDegree = new Map();
+    const addEndpoint = point => {
+      const key = pointCoordKey(point);
+      if (!key) return;
+      endpointMap.set(key, point);
+      endpointDegree.set(key, (endpointDegree.get(key) || 0) + 1);
+    };
+
+    for (const seg of segments) {
+      addEndpoint(seg.start);
+      addEndpoint(seg.end);
+    }
+
+    graphics.fillStyle(color, alpha);
+    for (const seg of segments) {
+      const dx = seg.end.x - seg.start.x;
+      const dy = seg.end.y - seg.start.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(len) || len < 0.001) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+      const body = [
+        new Phaser.Math.Vector2(seg.start.x + (px * half), seg.start.y + (py * half)),
+        new Phaser.Math.Vector2(seg.end.x + (px * half), seg.end.y + (py * half)),
+        new Phaser.Math.Vector2(seg.end.x - (px * half), seg.end.y - (py * half)),
+        new Phaser.Math.Vector2(seg.start.x - (px * half), seg.start.y - (py * half))
+      ];
+      graphics.fillPoints(body, true);
+    }
+
+    const joinRadius = Math.max(0.8, (half * RIVER_EDGE_JOIN_RADIUS_RATIO) + RIVER_EDGE_JOIN_RADIUS_EXTRA_PX);
+    for (const [key, point] of endpointMap.entries()) {
+      if ((endpointDegree.get(key) || 0) < 2) continue;
+      graphics.fillCircle(point.x, point.y, joinRadius);
+    }
+
+    const capLen = Math.max(RIVER_EDGE_POINTED_CAP_MIN_PX, width * RIVER_EDGE_POINTED_CAP_LENGTH_RATIO);
+    for (const seg of segments) {
+      const dx = seg.end.x - seg.start.x;
+      const dy = seg.end.y - seg.start.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(len) || len < 0.001) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+
+      const startKey = pointCoordKey(seg.start);
+      if ((endpointDegree.get(startKey) || 0) === 1) {
+        const tip = new Phaser.Math.Vector2(seg.start.x - (ux * capLen), seg.start.y - (uy * capLen));
+        const s1 = new Phaser.Math.Vector2(seg.start.x + (px * half), seg.start.y + (py * half));
+        const s2 = new Phaser.Math.Vector2(seg.start.x - (px * half), seg.start.y - (py * half));
+        graphics.fillPoints([s1, s2, tip], true);
+      }
+
+      const endKey = pointCoordKey(seg.end);
+      if ((endpointDegree.get(endKey) || 0) === 1) {
+        const tip = new Phaser.Math.Vector2(seg.end.x + (ux * capLen), seg.end.y + (uy * capLen));
+        const e1 = new Phaser.Math.Vector2(seg.end.x + (px * half), seg.end.y + (py * half));
+        const e2 = new Phaser.Math.Vector2(seg.end.x - (px * half), seg.end.y - (py * half));
+        graphics.fillPoints([e1, e2, tip], true);
+      }
+    }
   }
 }
 
@@ -12608,6 +13844,14 @@ function clearLabels() {
 
 function renderMapWithPhaser() {
   if (!scene || !baseLayer || !gameRoot.value || !currentData.value) return;
+  if (isPageHidden.value) return;
+  const nowMs = Date.now();
+  const minIntervalMs = lowPowerMode.value ? MAP_RENDER_INTERVAL_LOW_POWER_MS : 0;
+  if (minIntervalMs > 0 && (nowMs - lastMapRenderAtMs) < minIntervalMs) {
+    requestMapRender();
+    return;
+  }
+  lastMapRenderAtMs = nowMs;
 
   const data = currentData.value;
   const { width: worldW, height: worldH } = mapPixelSize(data.w, data.h);
@@ -12711,6 +13955,8 @@ function renderMapWithPhaser() {
   const moveBlinkPhase = (clockNowMs.value % 1000) / 1000;
   const moveBlinkAlpha = 0.38 + ((Math.sin(moveBlinkPhase * Math.PI * 2) + 1) * 0.24);
   const fogHiddenAlpha = showTestControls.value ? FOG_HIDDEN_ALPHA_TEST : FOG_HIDDEN_ALPHA;
+  const riverTouchSet = resolveRiverTouchSet(data);
+  const waterfallTouchSet = resolveWaterfallTouchSet(data);
   const forestTileIconName = resolveAvailableIconName("森", "森林");
   const forestTileIconTextureKey = forestTileIconName ? ensureRaceMarkerTexture(forestTileIconName) : "";
   const waterfallTextureKey = ensureRaceMarkerTexture(resolveWaterfallIconName());
@@ -12737,8 +13983,62 @@ function renderMapWithPhaser() {
   const housingSelectionCenterKey = nonEmptyText(housingSelection?.centerKey);
   const housingSelectionCandidateSet = new Set(housingSelection?.candidateAttachmentKeys || []);
   const housingSelectionSelectedSet = new Set(housingSelection?.selectedAttachmentKeys || []);
+  const cityBlockPreview = cityBlockPlacementPreview.value;
+  const cityBlockPreviewTileKeySet = new Set(cityBlockPreview?.tileKeys || []);
+  const cityBlockPreviewValid = !!cityBlockPreview?.valid;
+  const cityBlockPlacedTileKeySet = new Set();
+  for (const placement of cityBlockPlacements.value) {
+    for (const tileKey of placement?.tileKeys || []) {
+      const key = nonEmptyText(tileKey);
+      if (key) cityBlockPlacedTileKeySet.add(key);
+    }
+  }
+  const cityBlockTextureByIconName = new Map();
+  const cityBlockVisualEntries = [];
+  for (const placement of cityBlockPlacements.value) {
+    const cells = Array.isArray(placement?.cells)
+      ? placement.cells.filter(cell => Number.isFinite(cell?.x) && Number.isFinite(cell?.y))
+      : [];
+    if (!cells.length) continue;
+    const typeDef = resolveCityBlockPlacementTypeDef(placement?.type);
+    cityBlockVisualEntries.push({
+      cells,
+      iconName: nonEmptyText(placement?.iconName) || typeDef.iconName,
+      alpha: CITY_BLOCK_PLACED_ALPHA
+    });
+  }
+  if (cityBlockPlacementMode.value && Array.isArray(cityBlockPreview?.cells) && cityBlockPreview.cells.length) {
+    const previewCells = cityBlockPreview.cells.filter(cell => Number.isFinite(cell?.x) && Number.isFinite(cell?.y));
+    if (previewCells.length) {
+      const typeDef = resolveCityBlockPlacementTypeDef(cityBlockPreview?.type || cityBlockPlacementType.value);
+      cityBlockVisualEntries.push({
+        cells: previewCells,
+        iconName: typeDef.iconName,
+        alpha: CITY_BLOCK_PREVIEW_ALPHA
+      });
+    }
+  }
   const terrainResourceIconCache = new Map();
+  const drawnEnemyTerritoryIds = new Set();
+  const drawnEnemyTerritoryAnchors = [];
   const boundsAcc = createBoundsAccumulator();
+  const heightDiffSegments = [];
+  // フィールド画像の重なり順（数値が大きいほど手前）
+  // 要件: パネル < 森 < 滝 < 特殊(洞窟/沼地/峡谷)
+  const fieldVisualDepth = {
+    panel: 0,
+    forest: 1,
+    waterfall: 2,
+    special: 3,
+    monster: 100
+  };
+  const pushLabelWithDepth = (label, depth) => {
+    if (!label) return;
+    if (Number.isFinite(depth) && typeof label.setDepth === "function") {
+      label.setDepth(depth);
+    }
+    labelTexts.push(label);
+  };
 
   const wrapOffsets = buildWrapOffsets(data);
   for (const wrapOffset of wrapOffsets) {
@@ -12758,7 +14058,7 @@ function renderMapWithPhaser() {
         const special = specialVisual(data.specialMap?.[y]?.[x], caveScale);
         const tileVisible = isTileVisible(tileKey, data);
         const revealSpecial = tileVisible && !!special && (showSpecialTilesAlways.value || selectedTileKey === tileKey);
-        const isWaterfall = !data.shapeOnly && !!data.riverData?.waterfallSet?.has(tileKey);
+        const isWaterfall = !data.shapeOnly && hasWaterfallTouchAt(data, x, y, waterfallTouchSet);
         const isLava = !data.shapeOnly && !!data.lavaMap?.[y]?.[x];
         const coastType = !data.shapeOnly ? (data.coastTypeMap?.[y]?.[x] || "") : "";
         const isCoastTile = coastType === "direct";
@@ -12793,7 +14093,7 @@ function renderMapWithPhaser() {
           baseLayer.lineStyle(FOG_HIDDEN_BORDER.width, FOG_HIDDEN_BORDER.color, FOG_HIDDEN_BORDER.alpha);
           baseLayer.strokePoints(points, true);
         } else {
-          drawHeightDiffBordersForTile(data, x, y, wrapOffset, true);
+          drawHeightDiffBordersForTile(data, x, y, wrapOffset, true, heightDiffSegments);
           drawOwnTerritoryBoundaryEdgesForTile(data, x, y, wrapOffset, true);
         }
         if (tileVisible && moveContext.reachableSet.has(tileKey) && tileKey !== moveContext.startKey) {
@@ -12812,12 +14112,37 @@ function renderMapWithPhaser() {
             baseLayer.strokePoints(points, true);
           }
         }
+        if (cityBlockPlacedTileKeySet.has(tileKey)) {
+          baseLayer.lineStyle(2.9, 0xffd065, 0.9);
+          baseLayer.strokePoints(points, true);
+        }
+        if (cityBlockPlacementMode.value && cityBlockPreviewTileKeySet.has(tileKey)) {
+          baseLayer.lineStyle(3.3, cityBlockPreviewValid ? 0x65ffd5 : 0xff7676, 0.95);
+          baseLayer.strokePoints(points, true);
+        }
 
         const baseCenter = hexCenter(x, y);
         const center = { cx: baseCenter.cx + offX, cy: baseCenter.cy + offY };
         const symbolShouldDraw = tileVisible && (drawTerrainSymbol || revealSpecial);
         let specialIconRendered = false;
         if (revealSpecial) {
+          const caveAnchorKey = special.key === "洞窟"
+            ? nonEmptyText(data?.caveCoastAnchorMap?.[y]?.[x])
+            : "";
+          let specialIconCx = center.cx;
+          let specialIconCy = center.cy + MAP_SPECIAL_ICON_CONFIG.offsetY;
+          if (caveAnchorKey) {
+            const caveAnchor = parseCoordKey(caveAnchorKey);
+            if (Number.isFinite(caveAnchor?.x) && Number.isFinite(caveAnchor?.y)) {
+              const anchorBaseCenter = hexCenter(caveAnchor.x, caveAnchor.y);
+              const anchorCenter = { cx: anchorBaseCenter.cx + offX, cy: anchorBaseCenter.cy + offY };
+              specialIconCx = center.cx + ((anchorCenter.cx - center.cx) * MAP_CAVE_COAST_ICON_BIAS);
+              specialIconCy = center.cy + ((anchorCenter.cy - center.cy) * MAP_CAVE_COAST_ICON_BIAS) + MAP_SPECIAL_ICON_CONFIG.offsetY;
+            }
+          }
+          if (special.key === "洞窟" && rawKey === "森") {
+            specialIconCy -= (MAP_SPECIAL_ICON_CONFIG.caveSize * 0.22);
+          }
           const specialIconName = resolveSpecialOverlayIconName(special.key);
           const specialIconTextureKey = ensureRaceMarkerTexture(specialIconName);
           if (specialIconTextureKey && scene.textures.exists(specialIconTextureKey)) {
@@ -12825,20 +14150,31 @@ function renderMapWithPhaser() {
               ? MAP_SPECIAL_ICON_CONFIG.caveSize
               : MAP_SPECIAL_ICON_CONFIG.defaultSize;
             const specialIcon = scene.add.image(
-              center.cx,
-              center.cy + MAP_SPECIAL_ICON_CONFIG.offsetY,
+              specialIconCx,
+              specialIconCy,
               specialIconTextureKey
             );
             specialIcon.setDisplaySize(iconSize, iconSize);
             specialIcon.setOrigin(0.5);
-            labelTexts.push(specialIcon);
+            pushLabelWithDepth(specialIcon, fieldVisualDepth.special);
+            specialIconRendered = true;
+          } else {
+            const specialLabel = scene.add.text(specialIconCx, specialIconCy, special.short, {
+              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+              fontStyle: "700",
+              fontSize: `${special.key === "洞窟"
+                ? MAP_SPECIAL_ICON_CONFIG.fallbackCaveTextFontSizePx
+                : MAP_SPECIAL_ICON_CONFIG.fallbackTextFontSizePx}px`,
+              color: special.textColor
+            });
+            specialLabel.setOrigin(0.5);
+            pushLabelWithDepth(specialLabel, fieldVisualDepth.special);
             specialIconRendered = true;
           }
         }
         let forestIconRendered = false;
         if (
           tileVisible
-          && !revealSpecial
           && rawKey === "森"
           && forestTileIconTextureKey
           && scene.textures.exists(forestTileIconTextureKey)
@@ -12850,7 +14186,7 @@ function renderMapWithPhaser() {
           );
           forestIcon.setDisplaySize(MAP_FOREST_ICON_CONFIG.size, MAP_FOREST_ICON_CONFIG.size);
           forestIcon.setOrigin(0.5);
-          labelTexts.push(forestIcon);
+          pushLabelWithDepth(forestIcon, fieldVisualDepth.forest);
           forestIconRendered = true;
         }
         if (symbolShouldDraw && !specialIconRendered && !forestIconRendered) {
@@ -12870,7 +14206,7 @@ function renderMapWithPhaser() {
           labelTexts.push(symbolLabel);
         }
 
-        if (tileVisible && showWaterfallEffects.value && isWaterfall) {
+        if (tileVisible && isWaterfall) {
           const fallY = symbolShouldDraw
             ? center.cy + MAP_WATERFALL_ICON_CONFIG.yOffsetWhenTerrainSymbolVisible
             : center.cy + MAP_WATERFALL_ICON_CONFIG.yOffsetWhenTerrainSymbolHidden;
@@ -12878,7 +14214,7 @@ function renderMapWithPhaser() {
             const fallIcon = scene.add.image(center.cx, fallY, waterfallTextureKey);
             fallIcon.setDisplaySize(MAP_WATERFALL_ICON_CONFIG.size, MAP_WATERFALL_ICON_CONFIG.size);
             fallIcon.setOrigin(0.5);
-            labelTexts.push(fallIcon);
+            pushLabelWithDepth(fallIcon, fieldVisualDepth.waterfall);
           } else {
             const fallLabel = scene.add.text(center.cx, fallY, "滝", {
               fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
@@ -12889,7 +14225,7 @@ function renderMapWithPhaser() {
             fallLabel.setStroke("#153a52", 3);
             fallLabel.setShadow(0, 0, "#000000", 3, false, true);
             fallLabel.setOrigin(0.5);
-            labelTexts.push(fallLabel);
+            pushLabelWithDepth(fallLabel, fieldVisualDepth.waterfall);
           }
         }
 
@@ -12940,7 +14276,7 @@ function renderMapWithPhaser() {
                 settlementIcon.setDisplaySize(displaySize, displaySize);
                 settlementIcon.setAlpha(displayAlpha);
                 settlementIcon.setOrigin(0.5);
-                labelTexts.push(settlementIcon);
+                pushLabelWithDepth(settlementIcon, fieldVisualDepth.panel);
               } else {
                 const settlementLabel = scene.add.text(center.cx, center.cy, residentialDef?.label || "村", {
                   fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
@@ -12951,7 +14287,7 @@ function renderMapWithPhaser() {
                 settlementLabel.setOrigin(0.5);
                 settlementLabel.setStroke("#fff7df", 2);
                 if (isAttachedTile) settlementLabel.setAlpha(displayAlpha);
-                labelTexts.push(settlementLabel);
+                pushLabelWithDepth(settlementLabel, fieldVisualDepth.panel);
               }
             }
           } else if (tileMode === TERRITORY_TILE_MODE_RESOURCE || pendingResource) {
@@ -12970,13 +14306,13 @@ function renderMapWithPhaser() {
                   MAP_RESOURCE_TILE_MARKER_CONFIG.iconSize
                 );
                 resourceIcon.setOrigin(0.5);
-                labelTexts.push(resourceIcon);
+                pushLabelWithDepth(resourceIcon, fieldVisualDepth.panel);
               }
             }
           }
         }
 
-        if (tileVisible && showStrongEnemyMarkers.value && strongInfo) {
+        if (tileVisible && (showTestControls.value || showStrongEnemyMarkers.value) && strongInfo) {
           baseLayer.fillStyle(0xa83232, 0.94);
           baseLayer.fillCircle(center.cx + 13, center.cy - 14, 4.3);
           baseLayer.lineStyle(1.2, 0xffe8d6, 0.9);
@@ -12994,42 +14330,91 @@ function renderMapWithPhaser() {
 
         const hasFactionEnemy = opposingFactionTileMap.has(tileKey);
         const tileInCurrentVision = isTileInCurrentVision(tileKey, data);
-        const enemySpottedOnVision = tileInCurrentVision && spottedEnemyTileKeys.has(tileKey);
+        const enemySpottedOnVision = (showTestControls.value === true) || (tileInCurrentVision && spottedEnemyTileKeys.has(tileKey));
         const tileEnemyList = enemySpottedOnVision ? enemiesAt(x, y, data) : [];
         const spottedEnemyVisible = enemySpottedOnVision && tileEnemyList.length > 0;
         const spottedFactionVisible = tileInCurrentVision && hasFactionEnemy && spottedFactionTileKeys.has(tileKey);
         if (spottedEnemyVisible) {
           const leadEnemy = tileEnemyList.length ? tileEnemyList[0] : null;
-          const enemyMarkerIconName = resolveEnemyIconName(leadEnemy);
-          const enemyMarkerTextureKey = ensureRaceMarkerTexture(enemyMarkerIconName, { removeWhiteBg: true });
-          const enemyMx = center.cx + MAP_ENEMY_MARKER_CONFIG.offsetX;
-          const enemyMy = center.cy + MAP_ENEMY_MARKER_CONFIG.offsetY;
-          if (enemyMarkerTextureKey && scene.textures.exists(enemyMarkerTextureKey)) {
-            const enemyIconSprite = scene.add.image(enemyMx, enemyMy, enemyMarkerTextureKey);
-            enemyIconSprite.setDisplaySize(MAP_ENEMY_MARKER_CONFIG.iconSize, MAP_ENEMY_MARKER_CONFIG.iconSize);
-            enemyIconSprite.setOrigin(0.5);
-            labelTexts.push(enemyIconSprite);
-          } else {
-            const enemyMarker = scene.add.text(enemyMx, enemyMy, "敵", {
-              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-              fontStyle: "700",
-              fontSize: "9px",
-              color: "#fff2da"
-            });
-            enemyMarker.setOrigin(0.5);
-            enemyMarker.setStroke("#3f0f0f", 2);
-            labelTexts.push(enemyMarker);
-          }
-          if (alertedEnemyTileKeys.has(tileKey)) {
-            const alertLabel = scene.add.text(enemyMx, enemyMy - Math.max(10, MAP_ENEMY_MARKER_CONFIG.iconSize * 0.55), "!", {
-              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-              fontStyle: "700",
-              fontSize: "16px",
-              color: "#ffdede"
-            });
-            alertLabel.setOrigin(0.5);
-            alertLabel.setStroke("#8b1111", 3);
-            labelTexts.push(alertLabel);
+          const nonAggressiveOnlyInTile = tileEnemyList.length > 0
+            && tileEnemyList.every(enemy => enemy?.aggressive !== true);
+          const enemyMarkerAlpha = (showTestControls.value && nonAggressiveOnlyInTile)
+            ? 0.5
+            : 1;
+          const enemyTerritoryId = nonEmptyText(leadEnemy?.territoryId);
+          const enemyTerritoryCenterX = Math.floor(toSafeNumber(leadEnemy?.territoryCenterX, x));
+          const enemyTerritoryCenterY = Math.floor(toSafeNumber(leadEnemy?.territoryCenterY, y));
+          const enemyTerritoryRadius = Math.max(
+            1,
+            Math.floor(toSafeNumber(leadEnemy?.territoryRadius, ENEMY_SWARM_TERRITORY_RADIUS_MIN))
+          );
+          const useEnemyIllustrationOnMap = enemySpottedOnVision;
+          const shouldSkipByTerritory = useEnemyIllustrationOnMap
+            && !!enemyTerritoryId
+            && drawnEnemyTerritoryIds.has(enemyTerritoryId);
+          const shouldSkipByTerritoryOverlap = useEnemyIllustrationOnMap
+            && drawnEnemyTerritoryAnchors.some(anchor => (
+              hexDistance(
+                { x: enemyTerritoryCenterX, y: enemyTerritoryCenterY },
+                { x: anchor.x, y: anchor.y }
+              ) <= (enemyTerritoryRadius + Math.max(1, anchor.radius))
+            ));
+          if (!shouldSkipByTerritory && !shouldSkipByTerritoryOverlap) {
+            const enemyMx = center.cx;
+            const enemyMy = center.cy;
+            let enemyMarkerTextureKey = "";
+            let useIllustTexture = false;
+            if (useEnemyIllustrationOnMap) {
+              const imageName = resolveEnemyIllustrationNameForMap(leadEnemy, tileEnemyList);
+              enemyMarkerTextureKey = ensureEnemyIllustrationTexture(imageName, { removeWhiteBg: true });
+              useIllustTexture = !!enemyMarkerTextureKey;
+            }
+            if (!enemyMarkerTextureKey) {
+              const enemyMarkerIconName = resolveEnemyIconName(leadEnemy);
+              enemyMarkerTextureKey = ensureRaceMarkerTexture(enemyMarkerIconName, { removeWhiteBg: true });
+            }
+            if (enemyMarkerTextureKey && scene.textures.exists(enemyMarkerTextureKey)) {
+              const enemyIconSprite = scene.add.image(enemyMx, enemyMy, enemyMarkerTextureKey);
+              const markerSize = useIllustTexture
+                ? MAP_ENEMY_ILLUST_MARKER_SIZE_PX
+                : MAP_ENEMY_MARKER_CONFIG.iconSize;
+              enemyIconSprite.setDisplaySize(markerSize, markerSize);
+              enemyIconSprite.setOrigin(0.5);
+              enemyIconSprite.setAlpha(enemyMarkerAlpha);
+              pushLabelWithDepth(enemyIconSprite, fieldVisualDepth.monster);
+            } else {
+              const enemyMarker = scene.add.text(enemyMx, enemyMy, "敵", {
+                fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+                fontStyle: "700",
+                fontSize: "9px",
+                color: "#fff2da"
+              });
+              enemyMarker.setOrigin(0.5);
+              enemyMarker.setStroke("#3f0f0f", 2);
+              enemyMarker.setAlpha(enemyMarkerAlpha);
+              pushLabelWithDepth(enemyMarker, fieldVisualDepth.monster);
+            }
+            if (alertedEnemyTileKeys.has(tileKey)) {
+              const alertLabel = scene.add.text(enemyMx, enemyMy - Math.max(10, MAP_ENEMY_MARKER_CONFIG.iconSize * 0.55), "!", {
+                fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+                fontStyle: "700",
+                fontSize: "16px",
+                color: "#ffdede"
+              });
+              alertLabel.setOrigin(0.5);
+              alertLabel.setStroke("#8b1111", 3);
+              pushLabelWithDepth(alertLabel, fieldVisualDepth.monster);
+            }
+            if (useEnemyIllustrationOnMap && enemyTerritoryId) {
+              drawnEnemyTerritoryIds.add(enemyTerritoryId);
+            }
+            if (useEnemyIllustrationOnMap) {
+              drawnEnemyTerritoryAnchors.push({
+                x: enemyTerritoryCenterX,
+                y: enemyTerritoryCenterY,
+                radius: enemyTerritoryRadius
+              });
+            }
           }
         }
         if (spottedFactionVisible) {
@@ -13080,7 +14465,7 @@ function renderMapWithPhaser() {
 
         if (!isBase) continue;
         const polygon = new Phaser.Geom.Polygon(basePoints);
-        const river = !data.shapeOnly && !!data.riverData?.riverSet?.has(tileKey);
+        const river = !data.shapeOnly && hasRiverTouchAt(data, x, y, riverTouchSet);
         const waterfall = isWaterfall;
         hitAreas.push({
           x,
@@ -13106,6 +14491,53 @@ function renderMapWithPhaser() {
     }
   }
   renderedHexBounds = finalizeBounds(boundsAcc, worldW, worldH);
+  drawConnectedHeightDiffSegments(baseLayer, heightDiffSegments);
+
+  for (const placement of cityBlockVisualEntries) {
+    const iconName = nonEmptyText(placement?.iconName);
+    if (!iconName) continue;
+    if (!cityBlockTextureByIconName.has(iconName)) {
+      cityBlockTextureByIconName.set(iconName, ensureRaceMarkerTexture(iconName));
+    }
+    const textureKey = cityBlockTextureByIconName.get(iconName);
+    if (!textureKey || !scene.textures.exists(textureKey)) continue;
+    const cells = placement?.cells || [];
+    const visibleCells = cells.filter(cell => isTileVisible(coordKey(cell.x, cell.y), data));
+    if (!visibleCells.length) continue;
+    for (const offset of wrapOffsets) {
+      if (!shouldDrawWrappedTileCopy(visibleCells[0].x, visibleCells[0].y, offset, data.w, data.h)) continue;
+      const ox = offset?.x || 0;
+      const oy = offset?.y || 0;
+      let minCx = Number.POSITIVE_INFINITY;
+      let maxCx = Number.NEGATIVE_INFINITY;
+      let minCy = Number.POSITIVE_INFINITY;
+      let maxCy = Number.NEGATIVE_INFINITY;
+      let sumCx = 0;
+      let sumCy = 0;
+      let count = 0;
+      for (const cell of visibleCells) {
+        const c = hexCenter(cell.x, cell.y);
+        const cx = c.cx + ox;
+        const cy = c.cy + oy;
+        minCx = Math.min(minCx, cx);
+        maxCx = Math.max(maxCx, cx);
+        minCy = Math.min(minCy, cy);
+        maxCy = Math.max(maxCy, cy);
+        sumCx += cx;
+        sumCy += cy;
+        count += 1;
+      }
+      if (!count) continue;
+      const icon = scene.add.image(sumCx / count, sumCy / count, textureKey);
+      icon.setDisplaySize(
+        Math.max(54, (maxCx - minCx) + 56),
+        Math.max(54, (maxCy - minCy) + 56)
+      );
+      icon.setAlpha(toSafeNumber(placement?.alpha, CITY_BLOCK_PLACED_ALPHA));
+      icon.setOrigin(0.5);
+      pushLabelWithDepth(icon, fieldVisualDepth.panel);
+    }
+  }
 
   drawRiverOverlay(data, visibleTileKeys, wrapOffsets);
   drawLavaOverlay(data, visibleTileKeys, wrapOffsets);
@@ -13148,7 +14580,7 @@ function renderMapWithPhaser() {
       if (villageMarkerTextureKey && scene.textures.exists(villageMarkerTextureKey)) {
         const villageIcon = scene.add.image(center.cx, center.cy, villageMarkerTextureKey);
         villageIcon.setDisplaySize(villageMarkerSize, villageMarkerSize);
-        labelTexts.push(villageIcon);
+        pushLabelWithDepth(villageIcon, fieldVisualDepth.panel);
       } else {
         const villageLabel = scene.add.text(center.cx, center.cy, homeResidentialDef?.label || (villageScaleLabel === "村" ? "村" : "町"), {
           fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
@@ -13158,7 +14590,7 @@ function renderMapWithPhaser() {
         });
         villageLabel.setOrigin(0.5);
         villageLabel.setStroke("#fff7df", 2);
-        labelTexts.push(villageLabel);
+        pushLabelWithDepth(villageLabel, fieldVisualDepth.panel);
       }
     }
   }
@@ -13387,10 +14819,9 @@ function renderMapWithPhaser() {
         const ox = offset?.x || 0;
         const oy = offset?.y || 0;
         const points = (ox || oy) ? offsetHexPoints(match.polygon.points, ox, oy) : match.polygon.points;
-        markerLayer.lineStyle(2.8, 0xffe1a8, 1);
-        markerLayer.strokePoints(points, true);
-        markerLayer.fillStyle(0xffe1a8, 0.15);
-        markerLayer.fillPoints(points, true);
+        const expandedPoints = expandPolygonPoints(points, TILE_SELECTED_OUTSET_PX);
+        markerLayer.lineStyle(2.8, 0xffe1a8, TILE_SELECTED_HIGHLIGHT_ALPHA);
+        strokeClosedPolygon(markerLayer, expandedPoints);
       }
     }
   }
@@ -13419,10 +14850,9 @@ function drawHoverOverlay() {
     const ox = offset?.x || 0;
     const oy = offset?.y || 0;
     const points = (ox || oy) ? offsetHexPoints(area.polygon.points, ox, oy) : area.polygon.points;
-    hoverLayer.lineStyle(3.2, 0xf8f0b8, 0.98);
-    hoverLayer.strokePoints(points, true);
-    hoverLayer.fillStyle(0xf8f0b8, 0.1);
-    hoverLayer.fillPoints(points, true);
+    const expandedPoints = expandPolygonPoints(points, TILE_HOVER_OUTSET_PX);
+    hoverLayer.lineStyle(3.2, 0xf8f0b8, TILE_HOVER_HIGHLIGHT_ALPHA);
+    strokeClosedPolygon(hoverLayer, expandedPoints);
   }
 }
 
@@ -13471,6 +14901,8 @@ function runTurnForActiveFaction(data, options = {}) {
     allowBattleModal: options?.allowBattleModal !== false
   });
   const surveyNotes = Array.isArray(surveyResult?.notes) ? surveyResult.notes : [];
+  const enemyRoamResult = runEnemySwarmFreeRoamTurn(data);
+  const enemyRoamNotes = Array.isArray(enemyRoamResult?.notes) ? enemyRoamResult.notes : [];
   const encounterResult = runEnemyEncounterCheck({ context: "turn" });
   return {
     economyResult,
@@ -13478,6 +14910,8 @@ function runTurnForActiveFaction(data, options = {}) {
     heroNotes,
     surveyResult,
     surveyNotes,
+    enemyRoamResult,
+    enemyRoamNotes,
     encounterResult
   };
 }
@@ -13488,6 +14922,7 @@ function runTurnForAllTestPlayers(data) {
   const allEconomyNotes = [];
   const allHeroNotes = [];
   const allSurveyNotes = [];
+  const allEnemyRoamNotes = [];
   const allEncounterNotes = [];
 
   for (const slot of slots) {
@@ -13502,10 +14937,12 @@ function runTurnForAllTestPlayers(data) {
     const economyLines = Array.isArray(result?.economyResult?.notes) ? result.economyResult.notes : [];
     const heroLines = Array.isArray(result?.heroNotes) ? result.heroNotes : [];
     const surveyLines = Array.isArray(result?.surveyNotes) ? result.surveyNotes : [];
+    const enemyRoamLines = Array.isArray(result?.enemyRoamNotes) ? result.enemyRoamNotes : [];
     const encounterLines = Array.isArray(result?.encounterResult?.notes) ? result.encounterResult.notes : [];
     allEconomyNotes.push(head, ...economyLines);
     allHeroNotes.push(head, ...heroLines);
     allSurveyNotes.push(head, ...surveyLines);
+    allEnemyRoamNotes.push(head, ...enemyRoamLines);
     allEncounterNotes.push(head, ...encounterLines);
   }
 
@@ -13523,6 +14960,7 @@ function runTurnForAllTestPlayers(data) {
     economyNotes: allEconomyNotes,
     heroNotes: allHeroNotes,
     surveyNotes: allSurveyNotes,
+    enemyRoamNotes: allEnemyRoamNotes,
     encounterNotes: allEncounterNotes
   };
 }
@@ -13566,24 +15004,26 @@ function runNextTurn(options = {}) {
     ? runTurnForAllTestPlayers(result.data)
     : (() => {
       const singleResult = runTurnForActiveFaction(result.data);
-      return {
-        economyNotes: Array.isArray(singleResult?.economyResult?.notes) ? singleResult.economyResult.notes : [],
-        heroNotes: Array.isArray(singleResult?.heroNotes) ? singleResult.heroNotes : [],
-        surveyNotes: Array.isArray(singleResult?.surveyNotes) ? singleResult.surveyNotes : [],
-        encounterNotes: Array.isArray(singleResult?.encounterResult?.notes) ? singleResult.encounterResult.notes : [],
-        economyApplied: !!singleResult?.economyResult?.applied
-      };
-    })();
+        return {
+          economyNotes: Array.isArray(singleResult?.economyResult?.notes) ? singleResult.economyResult.notes : [],
+          heroNotes: Array.isArray(singleResult?.heroNotes) ? singleResult.heroNotes : [],
+          surveyNotes: Array.isArray(singleResult?.surveyNotes) ? singleResult.surveyNotes : [],
+          enemyRoamNotes: Array.isArray(singleResult?.enemyRoamNotes) ? singleResult.enemyRoamNotes : [],
+          encounterNotes: Array.isArray(singleResult?.encounterResult?.notes) ? singleResult.encounterResult.notes : [],
+          economyApplied: !!singleResult?.economyResult?.applied
+        };
+      })();
   const turn = Number(result.data?.turnState?.turnNumber || 0);
   eventModalMessage.value = formatTurnEventMessage(turn, result.events, mode);
   const baseNotes = formatTurnEventNotes(result.events);
   const economyNotes = Array.isArray(turnRuntime?.economyNotes) ? turnRuntime.economyNotes : [];
   const heroNotes = Array.isArray(turnRuntime?.heroNotes) ? turnRuntime.heroNotes : [];
   const surveyNotes = Array.isArray(turnRuntime?.surveyNotes) ? turnRuntime.surveyNotes : [];
+  const enemyRoamNotes = Array.isArray(turnRuntime?.enemyRoamNotes) ? turnRuntime.enemyRoamNotes : [];
   const encounterNotes = Array.isArray(turnRuntime?.encounterNotes) ? turnRuntime.encounterNotes : [];
   const economyApplied = turnRuntime?.economyApplied !== false;
   if (economyApplied) {
-    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 索敵処理 ----", ...encounterNotes];
+    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 群れ移動 ----", ...enemyRoamNotes, "---- 索敵処理 ----", ...encounterNotes];
     for (const line of economyNotes) {
       if (String(line || "").startsWith("--- ")) continue;
       pushNationLog(line);
@@ -13596,8 +15036,12 @@ function runNextTurn(options = {}) {
       if (String(line || "").startsWith("--- ")) continue;
       pushNationLog(line);
     }
+    for (const line of enemyRoamNotes) {
+      if (String(line || "").startsWith("--- ")) continue;
+      pushNationLog(line);
+    }
   } else {
-    eventModalNotes.value = [...baseNotes, ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 索敵処理 ----", ...encounterNotes];
+    eventModalNotes.value = [...baseNotes, ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 群れ移動 ----", ...enemyRoamNotes, "---- 索敵処理 ----", ...encounterNotes];
   }
   clearAllTestPlayerTurnReady();
   emitCharacterStateChange();
@@ -14340,6 +15784,12 @@ function applyMapData(data, options = {}) {
   selectedTileKey = "";
   hoveredTileKey = "";
   selectedTileDetail.value = null;
+  cityBlockPlacementMode.value = false;
+  cityBlockPlacementType.value = CITY_BLOCK_PLACEMENT_TYPE_CITY;
+  cityBlockPlacements.value = [];
+  cityBlockPlacementPreview.value = null;
+  cityBlockPlacementPending.value = null;
+  showCityBlockPlacementConfirmModal.value = false;
   clearHousingUpgradeSelectionState();
   clearLastMoveStopState();
   showMoveUnitModal.value = false;
@@ -14426,6 +15876,14 @@ function generateTerrainMap(options = {}) {
   applyMapData(data, { resetClock: true });
 }
 
+function resolvePlacementModeInfoText() {
+  const modeLabels = [];
+  if (villagePlacementMode.value) modeLabels.push("初期村");
+  if (cityBlockPlacementMode.value) modeLabels.push(resolveCityBlockPlacementTypeDef(cityBlockPlacementType.value).modeLabel);
+  if (!modeLabels.length) return "";
+  return ` / 配置モード: ${modeLabels.join("+")}`;
+}
+
 function updateMapClickInfo(picked) {
   if (!picked || !currentData.value) {
     mapClickInfo.value = "クリック座標: -";
@@ -14434,7 +15892,7 @@ function updateMapClickInfo(picked) {
   }
   if (!picked.fogVisible) {
     const moveModeText = resolveMoveCommandInfoText();
-    const placementModeText = villagePlacementMode.value ? " / 配置モード: ON" : "";
+    const placementModeText = resolvePlacementModeInfoText();
     const stopState = lastMoveStopState.value || {};
     const stopReason = (
       Number.isFinite(stopState?.x)
@@ -14698,16 +16156,14 @@ function updateMapClickInfo(picked) {
     );
   const terrainName = nonEmptyText(picked.terrain);
   const reliefName = nonEmptyText(relief);
-  const terrainDisplayName = (
-    terrainName === "森"
-    && (reliefName === "丘陵" || reliefName === "山岳")
-  )
-    ? `${reliefName}/${terrainName}`
-    : terrainName;
-  const terrainTitleParts = [terrainDisplayName];
-  if (picked.waterfall) terrainTitleParts.push("滝");
-  if (nonEmptyText(picked.special)) terrainTitleParts.push(nonEmptyText(picked.special));
-  const tileTitle = terrainTitleParts.filter(Boolean).join(" ");
+  const terrainFacetNames = [];
+  if (terrainName) terrainFacetNames.push(terrainName);
+  if (reliefName && reliefName !== "-" && reliefName !== terrainName) terrainFacetNames.push(reliefName);
+  if (picked.river) terrainFacetNames.push("川");
+  if (picked.waterfall) terrainFacetNames.push("滝");
+  if (nonEmptyText(picked.special)) terrainFacetNames.push(nonEmptyText(picked.special));
+  const terrainDisplayName = terrainFacetNames.length ? terrainFacetNames.join("/") : terrainName;
+  const tileTitle = terrainDisplayName || picked.terrain;
   const terrainIconName = resolveTerrainIconName(picked, terrainDisplayName, reliefName, special);
   const terrainIconSrc = resolveUnitIconSrc(terrainIconName, DEFAULT_ICON_NAME);
   const campEntry = resolveVillageCampEntryAtTile(villageState.value, tileKey);
@@ -14737,7 +16193,7 @@ function updateMapClickInfo(picked) {
   )
     ? nonEmptyText(stopState.reason)
     : "";
-  const placementModeText = villagePlacementMode.value ? " / 配置モード: ON" : "";
+  const placementModeText = resolvePlacementModeInfoText();
   const moveModeText = resolveMoveCommandInfoText();
   selectedTileDetail.value = {
     x: picked.x,
@@ -14977,7 +16433,7 @@ function applyWheelStyleZoomStep(direction) {
   const zoomStep = resolveZoomStepPercent(currentData.value);
   const nextZoom = normalizeZoomPercent(zoomPercent.value + (stepDirection * zoomStep));
   if (nextZoom === zoomPercent.value) return false;
-  setZoomPercent(nextZoom, { centerMode: "village" });
+  setZoomPercent(nextZoom, { centerMode: "selected-or-village" });
   return true;
 }
 
@@ -15014,9 +16470,15 @@ function updateHoveredTileByPointer(pointer) {
   const world = resolvePointerWorldPosition(pointer);
   const picked = findHitAreaAtWorld(world.x, world.y);
   const nextKey = picked ? coordKey(picked.x, picked.y) : "";
-  if (nextKey === hoveredTileKey) return;
-  hoveredTileKey = nextKey;
-  drawHoverOverlay();
+  let needsRender = false;
+  if (nextKey !== hoveredTileKey) {
+    hoveredTileKey = nextKey;
+    drawHoverOverlay();
+  }
+  if (syncCityBlockPlacementHoverPreview(picked)) {
+    needsRender = true;
+  }
+  if (needsRender) requestMapRender();
 }
 
 function resolveEncounterEnemyHeadLabel(entry = null) {
@@ -16640,6 +18102,11 @@ async function handleMapTileClick(pointer) {
     mapClickInfo.value += ` / ${resolveHousingUpgradeSelectionSummary()}`;
     return;
   }
+  if (handleCityBlockPlacementTileClick(picked)) {
+    requestMapRender();
+    syncMapTileSelectionInfo(picked, selectedTileKey);
+    return;
+  }
   if (villagePlacementMode.value) {
     if (!canPlaceVillageOnTile(picked)) {
       updateMapClickInfo(picked);
@@ -16786,6 +18253,10 @@ function handlePointerUp(pointer) {
 function handlePointerLeave() {
   hoveredTileKey = "";
   drawHoverOverlay();
+  if (cityBlockPlacementMode.value && !showCityBlockPlacementConfirmModal.value && cityBlockPlacementPreview.value) {
+    cityBlockPlacementPreview.value = null;
+    requestMapRender();
+  }
   if (dragPointerId !== null) resetDragState();
   pointerViewCache.clear();
   touchPointerViewMap.clear();
@@ -16804,6 +18275,7 @@ function handleCanvasWheel(event) {
 onMounted(async () => {
   await nextTick();
   if (!gameRoot.value) return;
+  applyLowPowerDisplayDefaults(lowPowerMode.value);
 
   firstGestureHandler = () => {
     kickOffBgm();
@@ -16818,6 +18290,7 @@ onMounted(async () => {
 
   resetClockRuntime(Date.now());
   clockIntervalId = window.setInterval(() => {
+    if (isPageHidden.value) return;
     const now = Date.now();
     const prev = Math.max(0, Math.floor(toSafeNumber(clockLastTickRealMs.value, now)));
     const delta = Math.max(0, now - prev);
@@ -16838,9 +18311,18 @@ onMounted(async () => {
     width: gameViewWidth.value,
     height: gameViewHeight.value,
     // Keep clarity when the canvas is CSS-scaled on different displays.
-    resolution: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
-    antialias: true,
+    resolution: lowPowerMode.value
+      ? 0.75
+      : Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
+    antialias: !lowPowerMode.value,
     pixelArt: false,
+    render: {
+      powerPreference: lowPowerMode.value ? "low-power" : "high-performance"
+    },
+    fps: {
+      target: lowPowerMode.value ? PHASER_FPS_TARGET_LOW_POWER : PHASER_FPS_TARGET_NORMAL,
+      forceSetTimeOut: true
+    },
     scale: {
       mode: Phaser.Scale.NONE,
       width: gameViewWidth.value,
@@ -16878,6 +18360,18 @@ onMounted(async () => {
     requestMapRender();
   };
   window.addEventListener("resize", resizeHandler);
+  if (typeof document !== "undefined") {
+    pageVisibilityHandler = () => {
+      isPageHidden.value = !!document.hidden;
+      if (isPageHidden.value) setCanvasCursor("default");
+      syncRuntimePowerSaveState();
+    };
+    document.addEventListener("visibilitychange", pageVisibilityHandler);
+    sidebarResourceOutsidePointerHandler = event => handleSidebarOutsidePointerDown(event);
+    document.addEventListener("pointerdown", sidebarResourceOutsidePointerHandler);
+    isPageHidden.value = !!document.hidden;
+  }
+  syncRuntimePowerSaveState();
 });
 
 onBeforeUnmount(() => {
@@ -16888,6 +18382,14 @@ onBeforeUnmount(() => {
     window.removeEventListener("pointerdown", firstGestureHandler);
     window.removeEventListener("keydown", firstGestureHandler);
     firstGestureHandler = null;
+  }
+  if (pageVisibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", pageVisibilityHandler);
+    pageVisibilityHandler = null;
+  }
+  if (sidebarResourceOutsidePointerHandler && typeof document !== "undefined") {
+    document.removeEventListener("pointerdown", sidebarResourceOutsidePointerHandler);
+    sidebarResourceOutsidePointerHandler = null;
   }
   if (clockIntervalId) {
     window.clearInterval(clockIntervalId);
@@ -16916,6 +18418,7 @@ onBeforeUnmount(() => {
   pinchStartDistance = 0;
   suppressTouchTapUntilRelease = false;
   raceMarkerTexturePending = new Set();
+  enemyIllustrationTexturePending = new Set();
   resetVisibilityState();
 });
 
@@ -16929,6 +18432,12 @@ watch(showTestControls, visible => {
     rebuildVisibleTiles(currentData.value);
     requestMapRender();
   }
+}, { immediate: true });
+
+watch(lowPowerMode, enabled => {
+  applyLowPowerDisplayDefaults(!!enabled);
+  syncRuntimePowerSaveState();
+  requestMapRender();
 }, { immediate: true });
 
 watch(customWorldWrapEnabled, enabled => {
@@ -17408,33 +18917,64 @@ watch(() => props.characterCommand, command => {
             <div><span>危険度</span><strong>{{ selectedTileDetail.danger }}</strong></div>
             <div><span>高度</span><strong>Lv {{ selectedTileDetail.heightLevel }}</strong></div>
             <div><span>キャンプ</span><strong>{{ selectedTileDetail.camp || "-" }}</strong></div>
-            <div v-if="showTestControls" class="wide"><span>モンスター設定</span><strong>{{ selectedTileDetail.monsterConfigured || "-" }}</strong></div>
+            <div class="wide"><span>敵</span><strong>{{ selectedTileDetail.enemies || "-" }}</strong></div>
             <div v-if="showTestControls" class="wide"><span>敵索敵/隠密</span><strong>{{ selectedTileDetail.enemySense || "-" }}</strong></div>
             <div class="wide"><span>町状態</span><strong>{{ selectedTileDetail.village }}</strong></div>
             <div class="wide"><span>領土状態</span><strong>{{ selectedTileDetail.development }}</strong></div>
             <div class="wide"><span>回復補正</span><strong>{{ selectedTileDetail.tileRecovery || "-" }}</strong></div>
             <div class="wide"><span>施設</span><strong>{{ selectedTileDetail.facilities || "-" }}</strong></div>
             <div class="wide"><span>ユニット</span><strong>{{ selectedTileDetail.units }}</strong></div>
-            <div class="wide"><span>敵</span><strong>{{ selectedTileDetail.enemies || "-" }}</strong></div>
             <div class="wide"><span>移動停止</span><strong>{{ selectedTileDetail.moveStopReason || "-" }}</strong></div>
           </div>
           <div v-else class="field-overlay-tile-empty">マスをクリックすると詳細を表示します。</div>
         </div>
       </section>
-      <aside class="field-overlay-own-faction-panel">
-        <own-faction-navigator-modal
-          :squad-entries="ownSquadNavigatorEntries"
-          :unit-entries="ownCharacterNavigatorEntries"
-          :selected-tile-coord="ownFactionSelectedTileCoord"
-          :selected-unit-id="selectedUnitId"
-          :can-use-move-mode="canUseUnitMoveModeState"
-          :reset-key="activeTestPlayerId"
-          @focus-unit="handleOwnUnitNavigatorFocusUnit"
-          @focus-squad="handleOwnUnitNavigatorFocusSquad"
-          @open-character-status="handleOwnUnitNavigatorOpenCharacterStatus"
-          @select-move-unit="handleOwnUnitNavigatorSelectMoveUnit"
-          @select-attack-unit="handleOwnUnitNavigatorSelectAttackUnit"
-        />
+      <aside ref="ownFactionSidebarRef" class="field-overlay-own-faction-panel">
+        <div class="sidebar-resource-menu" role="menu" aria-label="資源収支">
+          <button
+            v-for="row in sidebarResourcePanelRows"
+            :key="`sidebar-resource-${row.key}`"
+            type="button"
+            class="sidebar-resource-menu-item"
+            :class="{ active: row.isActive }"
+            @click="toggleSidebarResourcePanel(row.key)"
+          >
+            <span class="sidebar-resource-menu-label">{{ row.label }}</span>
+            <span class="sidebar-resource-menu-total">{{ row.totalDisplay }}</span>
+            <span class="sidebar-resource-menu-delta" :class="row.deltaClass">{{ row.deltaDisplay }}</span>
+            <span class="sidebar-resource-menu-arrow">▶</span>
+          </button>
+          <transition name="sidebar-resource-panel-slide" mode="out-in">
+            <section
+              v-if="activeSidebarResourcePanel"
+              :key="activeSidebarResourcePanel.key"
+              class="sidebar-resource-detail-panel"
+            >
+              <header class="sidebar-resource-detail-head">{{ activeSidebarResourcePanel.label }}</header>
+              <ul class="sidebar-resource-detail-list">
+                <li v-for="item in activeSidebarResourcePanel.items" :key="`sidebar-resource-detail-${item.key}`">
+                  <span class="sidebar-resource-detail-name">{{ item.label }}</span>
+                  <span class="sidebar-resource-detail-value">{{ item.valueDisplay }}</span>
+                </li>
+              </ul>
+            </section>
+          </transition>
+        </div>
+        <div class="field-overlay-own-faction-navigator-wrap">
+          <own-faction-navigator-modal
+            :squad-entries="ownSquadNavigatorEntries"
+            :unit-entries="ownCharacterNavigatorEntries"
+            :selected-tile-coord="ownFactionSelectedTileCoord"
+            :selected-unit-id="selectedUnitId"
+            :can-use-move-mode="canUseUnitMoveModeState"
+            :reset-key="activeTestPlayerId"
+            @focus-unit="handleOwnUnitNavigatorFocusUnit"
+            @focus-squad="handleOwnUnitNavigatorFocusSquad"
+            @open-character-status="handleOwnUnitNavigatorOpenCharacterStatus"
+            @select-move-unit="handleOwnUnitNavigatorSelectMoveUnit"
+            @select-attack-unit="handleOwnUnitNavigatorSelectAttackUnit"
+          />
+        </div>
       </aside>
       <aside v-if="showPinnedNationLogPanel" class="field-overlay-live-log">
         <div class="field-overlay-live-log-head">
@@ -17567,6 +19107,48 @@ watch(() => props.characterCommand, command => {
           <button id="eventManagerBtn" class="secondary" type="button" @click="showEventControlModal = true">イベント管理</button>
           <button id="createUnitBtn" class="secondary" type="button" :disabled="!canCreateAnyUnit" @click="openUnitCreateModal">ユニット作成</button>
           <button id="villageBuildBtn" class="secondary" type="button" :disabled="!canOpenVillageBuild" @click="openVillageBuildModal">建設</button>
+          <button
+            id="cityBlockPlacementBtn"
+            class="secondary"
+            type="button"
+            :disabled="!currentData || currentData.shapeOnly"
+            :aria-pressed="cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_CITY"
+            @click="startCityBlockPlacementMode(CITY_BLOCK_PLACEMENT_TYPE_CITY)"
+          >
+            {{
+              cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_CITY
+                ? resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_CITY).buttonActiveLabel
+                : resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_CITY).buttonLabel
+            }}
+          </button>
+          <button
+            id="townPlacementBtn"
+            class="secondary"
+            type="button"
+            :disabled="!currentData || currentData.shapeOnly"
+            :aria-pressed="cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_TOWN"
+            @click="startCityBlockPlacementMode(CITY_BLOCK_PLACEMENT_TYPE_TOWN)"
+          >
+            {{
+              cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_TOWN
+                ? resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_TOWN).buttonActiveLabel
+                : resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_TOWN).buttonLabel
+            }}
+          </button>
+          <button
+            id="metropolisPlacementBtn"
+            class="secondary"
+            type="button"
+            :disabled="!currentData || currentData.shapeOnly"
+            :aria-pressed="cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS"
+            @click="startCityBlockPlacementMode(CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS)"
+          >
+            {{
+              cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS
+                ? resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS).buttonActiveLabel
+                : resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS).buttonLabel
+            }}
+          </button>
           <button id="nationLogBtn" class="secondary" type="button" @click="openNationLogModal">統治者ログ</button>
           <div class="zoom-controls">
             <button type="button" class="secondary" @click="zoomOut">-</button>
@@ -17630,6 +19212,30 @@ watch(() => props.characterCommand, command => {
         </div>
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeQuickSettingsModalFromMap">閉じる</button>
+        </div>
+      </div>
+    </div>
+    <div
+      v-if="showCityBlockPlacementConfirmModal"
+      class="settings-backdrop"
+      @click.self="closeCityBlockPlacementConfirmModal({ keepPreview: true })"
+    >
+      <div class="settings-modal city-block-placement-modal">
+        <h3>{{ resolveCityBlockPlacementTypeDef(cityBlockPlacementPending?.type).confirmTitle }}</h3>
+        <div class="setting-note">
+          {{ resolveCityBlockPlacementTypeDef(cityBlockPlacementPending?.type).anchorLabel }}:
+          ({{ cityBlockPlacementPending?.anchorX }}, {{ cityBlockPlacementPending?.anchorY }})<br>
+          {{ resolveCityBlockPlacementTypeDef(cityBlockPlacementPending?.type).confirmDescription }}
+        </div>
+        <div class="setting-actions city-block-placement-actions">
+          <button
+            type="button"
+            class="secondary"
+            @click="closeCityBlockPlacementConfirmModal({ keepPreview: true })"
+          >
+            キャンセル
+          </button>
+          <button type="button" class="secondary" @click="confirmCityBlockPlacement">設置</button>
         </div>
       </div>
     </div>
@@ -18065,6 +19671,57 @@ watch(() => props.characterCommand, command => {
             <small class="field-help">25〜60%。マップサイズに応じて目標マス数を表示。</small>
           </label>
         </div>
+        <label class="setting-column island-field">
+          <span>大陸あたり川本数 (最小〜最大)</span>
+          <div class="inline-pair stepper-pair">
+            <div class="number-stepper">
+              <input
+                v-model.number="customRiverPerContinentMin"
+                type="number"
+                min="1"
+                max="12"
+                step="1"
+                @change="normalizeCustomIslandSettings"
+              />
+              <div class="step-stack">
+                <button
+                  type="button"
+                  class="step-btn"
+                  @click="nudgeCustomIslandInt('riverPerContinentMin', 1)"
+                >△</button>
+                <button
+                  type="button"
+                  class="step-btn"
+                  @click="nudgeCustomIslandInt('riverPerContinentMin', -1)"
+                >▽</button>
+              </div>
+            </div>
+            <span>〜</span>
+            <div class="number-stepper">
+              <input
+                v-model.number="customRiverPerContinentMax"
+                type="number"
+                min="1"
+                max="12"
+                step="1"
+                @change="normalizeCustomIslandSettings"
+              />
+              <div class="step-stack">
+                <button
+                  type="button"
+                  class="step-btn"
+                  @click="nudgeCustomIslandInt('riverPerContinentMax', 1)"
+                >△</button>
+                <button
+                  type="button"
+                  class="step-btn"
+                  @click="nudgeCustomIslandInt('riverPerContinentMax', -1)"
+                >▽</button>
+              </div>
+            </div>
+          </div>
+          <small class="field-help">デフォルト3〜4。島カスタムのON/OFFに関係なく適用されます。</small>
+        </label>
         <div class="setting-note">
           カスタムON時は、島形状パターンを土台にしつつ大島/孤島配置を上書きします。孤島サイズは孤島数に応じて自動調整し、目標陸地率(初期50%)に寄せて生成します。
         </div>

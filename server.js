@@ -54,6 +54,8 @@ const RACES = {
 const ALLY_ORDER = ["只人", "エルフ", "竜人", "天使"];
 const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"];
 const VALID_ACTIONS = new Set(["attack", "skill", "next", "reset"]);
+const ROOM_CHAT_MAX_ITEMS = 120;
+const ROOM_CHAT_MAX_LENGTH = 240;
 const rooms = new Map();
 const DEV_WATCH_TARGETS = ["web-vue-dist", "assets", "config", "data"].map(p => path.join(__dirname, p));
 const FRONTEND_INDEX_PATH = path.join(FRONTEND_DIST_DIR, "index.html");
@@ -284,6 +286,13 @@ function normalizePlayerName(raw) {
     .slice(0, 20) || "Player";
 }
 
+function normalizeRoomChatMessage(raw) {
+  return String(raw || "")
+    .replace(/\r?\n/g, " ")
+    .trim()
+    .slice(0, ROOM_CHAT_MAX_LENGTH);
+}
+
 function generateRoomId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let roomId = "";
@@ -302,10 +311,23 @@ function getOrCreateRoom(roomId) {
     rooms.set(roomId, {
       roomId,
       state: createInitialBattleState(),
-      players: new Map()
+      players: new Map(),
+      chatLog: []
     });
   }
   return rooms.get(roomId);
+}
+
+function pushRoomChat(room, sender, message) {
+  const normalizedMessage = normalizeRoomChatMessage(message);
+  if (!normalizedMessage) return;
+  room.chatLog.unshift({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    sender: String(sender || "Player").trim().slice(0, 20) || "Player",
+    message: normalizedMessage,
+    timestamp: Date.now()
+  });
+  if (room.chatLog.length > ROOM_CHAT_MAX_ITEMS) room.chatLog.length = ROOM_CHAT_MAX_ITEMS;
 }
 
 function serializePlayers(room) {
@@ -320,7 +342,7 @@ function broadcastRoom(roomId) {
   if (!room) return;
   const players = serializePlayers(room);
   io.to(roomId).emit("room:players", { roomId, players });
-  io.to(roomId).emit("room:state", { roomId, state: room.state, players });
+  io.to(roomId).emit("room:state", { roomId, state: room.state, players, chatLog: room.chatLog });
 }
 
 function leaveRoom(socket) {
@@ -343,6 +365,7 @@ function leaveRoom(socket) {
     return;
   }
 
+  pushRoomChat(room, "System", `${playerName} がルームを退出。`);
   pushLog(room.state, `${playerName} がルームを退出。`);
   broadcastRoom(roomId);
 }
@@ -359,6 +382,7 @@ io.on("connection", socket => {
     socket.join(roomId);
     socket.data.roomId = roomId;
     room.players.set(socket.id, playerName);
+    pushRoomChat(room, "System", `${playerName} がルームを作成。`);
     pushLog(room.state, `${playerName} がルームを作成。`);
     socket.emit("room:created", { roomId });
     broadcastRoom(roomId);
@@ -381,6 +405,7 @@ io.on("connection", socket => {
     socket.join(roomId);
     socket.data.roomId = roomId;
     room.players.set(socket.id, playerName);
+    pushRoomChat(room, "System", `${playerName} がルームに参加。`);
     pushLog(room.state, `${playerName} がルームに参加。`);
     broadcastRoom(roomId);
   });
@@ -410,6 +435,30 @@ io.on("connection", socket => {
 
     room.state = applyBattleAction(room.state, action);
     broadcastRoom(roomId);
+  });
+
+  socket.on("room:chat:send", payload => {
+    const roomId = normalizeRoomId(payload?.roomId);
+    if (!roomId || socket.data.roomId !== roomId) {
+      socket.emit("room:error", { message: "ルーム参加後にチャットできます。" });
+      return;
+    }
+
+    const room = rooms.get(roomId);
+    if (!room) {
+      socket.emit("room:error", { message: "ルームが見つかりません。" });
+      return;
+    }
+
+    const message = normalizeRoomChatMessage(payload?.message);
+    if (!message) {
+      socket.emit("room:error", { message: "チャット内容を入力してください。" });
+      return;
+    }
+
+    const playerName = room.players.get(socket.id) || "Player";
+    pushRoomChat(room, playerName, message);
+    io.to(roomId).emit("room:chat", { roomId, chatLog: room.chatLog });
   });
 
   socket.on("disconnect", () => {
