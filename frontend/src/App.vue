@@ -1562,6 +1562,7 @@ watch(gameOnlyMode, () => {
       :selected-character-name="selectedCharacterName"
       :selected-village-name="selectedVillageName"
       :research-progress="researchProgress"
+      :research-selection="researchSelection"
       :game-setup-ready="gameSetupReady"
       :game-setup-progress-text="gameSetupProgressText"
       :character-command="characterCommand"

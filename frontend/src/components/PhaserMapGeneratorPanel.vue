@@ -234,6 +234,7 @@ const props = defineProps({
   selectedCharacterName: { type: String, default: "" },
   selectedVillageName: { type: String, default: "" },
   researchProgress: { type: Object, default: null },
+  researchSelection: { type: Object, default: null },
   gameSetupReady: { type: Boolean, default: false },
   gameSetupProgressText: { type: String, default: "" },
   characterCommand: { type: Object, default: null }
@@ -308,7 +309,10 @@ const autoTimeRunning = ref(true);
 const autoTimePausedByCheckpoint = ref(false);
 const villageState = ref(null);
 const unitList = ref([]);
-const ownFactionSidebarRef = ref(null);
+const headerResourceMenuRef = ref(null);
+const headerPopulationMenuRef = ref(null);
+const headerResourceButtonRefMap = ref({});
+const headerResourceMenuLayoutVersion = ref(0);
 const activeResourcePanel = ref(null);
 const selectedUnitId = ref("");
 const villagePlacementMode = ref(false);
@@ -378,6 +382,7 @@ const SKILL_TREE_ICON_SRC = getIconSrcByName("本", DEFAULT_ICON_NAME);
 const UNIT_CREATE_ICON_SRC = getIconSrcByName("兵士", DEFAULT_ICON_NAME);
 const EQUIPMENT_INVENTORY_ICON_SRC = getIconSrcByName("装備", DEFAULT_ICON_NAME);
 const UNIT_BATTLE_ICON_SRC = getIconSrcByName("攻撃", DEFAULT_ICON_NAME);
+const POPULATION_ICON_SRC = getIconSrcByName("人間", DEFAULT_ICON_NAME);
 const TILE_ATTACK_PATTERN_OPTIONS = Object.freeze([
   { key: "single", label: "単体" },
   { key: "straight", label: "直線" },
@@ -1083,6 +1088,32 @@ const fieldResourceSummary = computed(() => {
   };
 });
 
+const headerPopulationDisplay = computed(() => {
+  const village = villageState.value;
+  if (!village || typeof village !== "object") return fieldResourceSummary.value.population;
+  const population = formatCompactNumber(village.population);
+  const capacity = formatCompactNumber(village.populationCapacity ?? village.population);
+  return `${population}/${capacity}`;
+});
+
+const populationHappinessDisplay = computed(() => {
+  const entries = Array.isArray(fieldResourceSummary.value?.populationEntries)
+    ? fieldResourceSummary.value.populationEntries
+    : [];
+  const happinessRow = entries.find(entry => nonEmptyText(entry?.key) === "happiness");
+  return happinessRow?.value ?? "-";
+});
+
+const populationExpandedRows = computed(() => {
+  const entries = Array.isArray(fieldResourceSummary.value?.populationEntries)
+    ? fieldResourceSummary.value.populationEntries
+    : [];
+  return entries.filter(entry => {
+    const key = nonEmptyText(entry?.key);
+    return key !== "happiness" && key !== "population";
+  });
+});
+
 function sumMaterialValuesByKeys(bag, keys) {
   return roundTo1(
     (Array.isArray(keys) ? keys : []).reduce(
@@ -1100,33 +1131,58 @@ function formatSignedMaterialCompactNumber(value) {
   return "±0";
 }
 
+function formatSignedFoodCompactNumber(value) {
+  const safeValue = roundTo1(toSafeNumber(value, 0));
+  const absText = formatFoodCompactNumber(Math.abs(safeValue));
+  if (safeValue > 0) return `+${absText}`;
+  if (safeValue < 0) return `-${absText}`;
+  return "±0";
+}
+
 const sidebarResourcePanelEntries = computed(() => {
   const village = ensureVillageStateShape(villageState.value, props.selectedRace);
   const stockBag = normalizeMaterialStockBag(village?.materialStockByType);
-  const deltaBag = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  const foodStockBag = normalizeResourceBag(village?.foodStockByType, FOOD_RESOURCE_KEYS);
+  const materialDeltaBag = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  const foodDeltaBag = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
   if (village?.placed && currentData.value?.grid) {
-    const managedTileKeys = resolveVillageManagedTileKeys(village);
-    const territoryIncome = collectTerritoryIncome(currentData.value, managedTileKeys, {
+    const ownedSet = buildPlayerTerritorySet(currentData.value, village);
+    const territoryIncome = collectTerritoryIncome(currentData.value, ownedSet, {
       villageOverride: village,
       raceFallback: props.selectedRace
     });
     const buildingIncome = collectVillageBuildingIncome(village);
     for (const key of MATERIAL_RESOURCE_KEYS) {
-      deltaBag[key] = roundTo1(
+      materialDeltaBag[key] = roundTo1(
         toSafeNumber(territoryIncome?.material?.[key], 0)
         + toSafeNumber(buildingIncome?.material?.[key], 0)
+      );
+    }
+    for (const key of FOOD_RESOURCE_KEYS) {
+      foodDeltaBag[key] = roundTo1(
+        toSafeNumber(territoryIncome?.food?.[key], 0)
+        + toSafeNumber(buildingIncome?.food?.[key], 0)
       );
     }
   }
   const out = {};
   for (const def of SIDEBAR_RESOURCE_PANEL_DEFS) {
+    const isFoodPanel = def.category === "food";
     out[def.key] = {
       key: def.key,
       label: def.label,
-      total: sumMaterialValuesByKeys(stockBag, def.detailKeys),
-      delta: sumMaterialValuesByKeys(deltaBag, def.detailKeys),
+      category: def.category,
+      total: isFoodPanel
+        ? sumMaterialValuesByKeys(foodStockBag, FOOD_RESOURCE_KEYS)
+        : sumMaterialValuesByKeys(stockBag, def.detailKeys),
+      delta: isFoodPanel
+        ? sumMaterialValuesByKeys(foodDeltaBag, FOOD_RESOURCE_KEYS)
+        : sumMaterialValuesByKeys(materialDeltaBag, def.detailKeys),
       detailKeys: [...def.detailKeys],
-      detailStockBag: stockBag
+      detailStockBag: stockBag,
+      foodStockBag,
+      detailDeltaBag: materialDeltaBag,
+      foodDeltaBag
     };
   }
   return out;
@@ -1136,11 +1192,18 @@ const sidebarResourcePanelRows = computed(() => {
   return SIDEBAR_RESOURCE_PANEL_DEFS.map(def => {
     const entry = sidebarResourcePanelEntries.value[def.key];
     const delta = toSafeNumber(entry?.delta, 0);
+    const isFoodPanel = def.category === "food";
+    const iconKey = Array.isArray(def.detailKeys) && def.detailKeys.length ? def.detailKeys[0] : "木材";
     return {
       key: def.key,
       label: def.label,
-      totalDisplay: formatMaterialCompactNumber(entry?.total),
-      deltaDisplay: formatSignedMaterialCompactNumber(delta),
+      iconSrc: resolveResourceIconSrc(iconKey),
+      totalDisplay: isFoodPanel
+        ? formatFoodCompactNumber(entry?.total)
+        : formatMaterialCompactNumber(entry?.total),
+      deltaDisplay: isFoodPanel
+        ? formatSignedFoodCompactNumber(delta)
+        : formatSignedMaterialCompactNumber(delta),
       deltaClass: delta > 0 ? "positive" : (delta < 0 ? "negative" : "neutral"),
       isActive: activeResourcePanel.value === def.key
     };
@@ -1155,13 +1218,60 @@ const activeSidebarResourcePanel = computed(() => {
   return {
     key,
     label: def.label,
-    items: def.detailKeys.map(resourceKey => ({
-      key: resourceKey,
-      label: resourceKey,
-      valueDisplay: formatMaterialCompactNumber(toSafeNumber(entry?.detailStockBag?.[resourceKey], 0))
-    }))
+    materialItems: def.category === "food"
+      ? []
+      : def.detailKeys.map(resourceKey => ({
+        key: resourceKey,
+        label: resourceKey,
+        iconSrc: resolveResourceIconSrc(resourceKey),
+        stockDisplay: formatMaterialCompactNumber(toSafeNumber(entry?.detailStockBag?.[resourceKey], 0)),
+        gainDisplay: formatSignedMaterialCompactNumber(toSafeNumber(entry?.detailDeltaBag?.[resourceKey], 0)),
+        gainClass: toSafeNumber(entry?.detailDeltaBag?.[resourceKey], 0) > 0
+          ? "positive"
+          : (toSafeNumber(entry?.detailDeltaBag?.[resourceKey], 0) < 0 ? "negative" : "neutral")
+      })),
+    foodItems: FOOD_RESOURCE_KEYS
+      .map(resourceKey => ({
+        key: resourceKey,
+        label: resourceKey,
+        stockValue: toSafeNumber(entry?.foodStockBag?.[resourceKey], 0),
+        gainValue: toSafeNumber(entry?.foodDeltaBag?.[resourceKey], 0)
+      }))
+      .filter(row => {
+        if (row.key !== "魂" && row.key !== "死体") return true;
+        return row.stockValue !== 0 || row.gainValue !== 0;
+      })
+      .map(row => ({
+        key: row.key,
+        label: row.label,
+        iconSrc: resolveResourceIconSrc(row.key),
+        stockDisplay: formatFoodCompactNumber(row.stockValue),
+        gainDisplay: formatSignedFoodCompactNumber(row.gainValue),
+        gainClass: row.gainValue > 0 ? "positive" : (row.gainValue < 0 ? "negative" : "neutral")
+      }))
   };
 });
+
+const headerResourceDetailPanelStyle = computed(() => {
+  const layoutVersion = headerResourceMenuLayoutVersion.value;
+  const activeKey = nonEmptyText(activeResourcePanel.value);
+  if (!activeKey) return null;
+  const buttonEl = headerResourceButtonRefMap.value?.[activeKey];
+  const offsetLeft = Number(buttonEl?.offsetLeft);
+  return Number.isFinite(offsetLeft)
+    ? { left: `${Math.max(0, Math.floor(offsetLeft))}px`, "--header-resource-layout-version": String(layoutVersion) }
+    : { left: "0px", "--header-resource-layout-version": String(layoutVersion) };
+});
+
+function setHeaderResourceButtonRef(panelKey, el) {
+  const key = nonEmptyText(panelKey);
+  if (!key) return;
+  if (el) {
+    headerResourceButtonRefMap.value[key] = el;
+    return;
+  }
+  delete headerResourceButtonRefMap.value[key];
+}
 
 function closeSidebarResourcePanel() {
   activeResourcePanel.value = null;
@@ -1173,19 +1283,33 @@ function toggleSidebarResourcePanel(panelKey) {
     closeSidebarResourcePanel();
     return;
   }
+  if (activeResourcePanel.value !== key) {
+    populationHeaderExpanded.value = false;
+  }
   activeResourcePanel.value = activeResourcePanel.value === key ? null : key;
 }
 
 function handleSidebarOutsidePointerDown(event) {
-  if (!activeResourcePanel.value) return;
-  const panelRoot = ownFactionSidebarRef.value;
-  if (!panelRoot || typeof Node === "undefined") return;
+  if (typeof Node === "undefined") return;
   const targetNode = event?.target;
   if (!(targetNode instanceof Node)) return;
-  if (!panelRoot.contains(targetNode)) {
+
+  const resourcePanelRoot = headerResourceMenuRef.value;
+  if (activeResourcePanel.value && resourcePanelRoot && !resourcePanelRoot.contains(targetNode)) {
     closeSidebarResourcePanel();
   }
+
+  const populationPanelRoot = headerPopulationMenuRef.value;
+  if (populationHeaderExpanded.value && populationPanelRoot && !populationPanelRoot.contains(targetNode)) {
+    populationHeaderExpanded.value = false;
+  }
 }
+
+watch(activeResourcePanel, async nextKey => {
+  if (!nonEmptyText(nextKey)) return;
+  await nextTick();
+  headerResourceMenuLayoutVersion.value += 1;
+});
 
 function resolveResearchRequiredExpForLevel(level) {
   const lv = Math.max(1, Math.floor(toSafeNumber(level, 1)));
@@ -1215,6 +1339,7 @@ const headerResearchRows = computed(() => {
       : 0;
     const label = key.replace(/Lv$/u, "");
     const iconName = HEADER_RESEARCH_CATEGORY_ICON_MAP[key] || label;
+    const gaugeColor = HEADER_RESEARCH_CATEGORY_GAUGE_COLOR_MAP[key] || "#52ddff";
     return {
       key,
       label,
@@ -1223,6 +1348,7 @@ const headerResearchRows = computed(() => {
       currentExp,
       requiredExp,
       progressRatio,
+      gaugeColor,
       iconSrc: getIconSrcByName(iconName, "本")
     };
   });
@@ -2069,9 +2195,10 @@ const MATERIAL_HEADER_GROUP_SIMPLE_DEFS = [
   { label: "金", key: "金" }
 ];
 const SIDEBAR_RESOURCE_PANEL_DEFS = [
-  { key: "wood", label: "木材", detailKeys: ["木材", "黒木", "特木"] },
-  { key: "metal", label: "金属", detailKeys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"] },
-  { key: "precious", label: "貴金属", detailKeys: ["金", "銀", "宝石"] }
+  { key: "food", label: "食料", detailKeys: FOOD_RESOURCE_KEYS, category: "food" },
+  { key: "wood", label: "木材", detailKeys: ["木材", "黒木", "特木", "石材"], category: "material" },
+  { key: "metal", label: "金属", detailKeys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"], category: "material" },
+  { key: "precious", label: "貴金属", detailKeys: ["金", "銀", "宝石"], category: "material" }
 ];
 const SIDEBAR_RESOURCE_PANEL_DEF_MAP = Object.fromEntries(
   SIDEBAR_RESOURCE_PANEL_DEFS.map(def => [def.key, def])
@@ -2086,6 +2213,13 @@ const HEADER_RESEARCH_CATEGORY_ICON_MAP = {
   信仰Lv: "信仰",
   軍事Lv: "兵士",
   経済Lv: "金"
+};
+const HEADER_RESEARCH_CATEGORY_GAUGE_COLOR_MAP = {
+  鍛冶Lv: "#52ddff",
+  魔法Lv: "#b86cff",
+  信仰Lv: "#f3cf65",
+  軍事Lv: "#ff6f6f",
+  経済Lv: "#6cff93"
 };
 const RESOURCE_TILE_MARKER_PRIORITY_KEYS = [
   "赤黒鋼", "青金鋼", "銀鉄", "鉄", "宝石", "金", "銀",
@@ -4276,7 +4410,11 @@ function toggleMaterialHeaderExpanded() {
 }
 
 function togglePopulationHeaderExpanded() {
-  populationHeaderExpanded.value = !populationHeaderExpanded.value;
+  const nextExpanded = !populationHeaderExpanded.value;
+  if (nextExpanded) {
+    closeSidebarResourcePanel();
+  }
+  populationHeaderExpanded.value = nextExpanded;
 }
 
 function resolveResourceIconSrc(resourceKey) {
@@ -18357,6 +18495,7 @@ onMounted(async () => {
   });
 
   resizeHandler = () => {
+    headerResourceMenuLayoutVersion.value += 1;
     requestMapRender();
   };
   window.addEventListener("resize", resizeHandler);
@@ -18575,84 +18714,7 @@ watch(() => props.characterCommand, command => {
         <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas" :style="mapCanvasStyle">
       <header class="field-overlay-header" :class="{ minimized: headerMinimized }">
         <template v-if="!headerMinimized">
-        <div class="field-resource-chip field-resource-chip-food">
-          <span>食料</span>
-          <strong>{{ fieldResourceSummary.food }}</strong>
-          <small class="resource-icon-row">
-            <span
-              v-for="entry in fieldResourceSummary.foodEntries"
-              :key="`food-${entry.key}`"
-              class="resource-icon-entry"
-              :title="entry.key"
-            >
-              <img :src="entry.iconSrc" :alt="entry.key" />
-              <em>{{ entry.displayValue }}</em>
-            </span>
-          </small>
-        </div>
-        <div
-          class="field-resource-chip field-resource-chip-material field-resource-chip-clickable field-resource-chip-inline-label"
-          role="button"
-          tabindex="0"
-          :aria-pressed="materialHeaderExpanded"
-          @click="toggleMaterialHeaderExpanded"
-          @keydown.enter.prevent="toggleMaterialHeaderExpanded"
-          @keydown.space.prevent="toggleMaterialHeaderExpanded"
-        >
-          <span>資材</span>
-          <small v-if="!materialHeaderExpanded" class="resource-icon-row">
-            <span
-              v-for="entry in fieldResourceSummary.materialCollapsedEntries"
-              :key="`mat-collapsed-${entry.key}`"
-              class="resource-icon-entry material-resource-icon-entry"
-              :title="entry.label"
-            >
-              <img :src="entry.iconSrc" :alt="entry.label" />
-              <em>{{ entry.displayValue }}</em>
-            </span>
-          </small>
-          <small v-else class="material-rows">
-            <span
-              v-for="group in fieldResourceSummary.materialGroups"
-              :key="`mat-group-${group.label}`"
-              class="material-row"
-            >
-              <span
-                v-for="detail in group.details"
-                :key="`mat-detail-${group.label}-${detail.key}`"
-                class="material-token"
-                :title="detail.key"
-              >
-                <img :src="detail.iconSrc" :alt="detail.key" />
-                <em>{{ detail.displayValue }}</em>
-              </span>
-            </span>
-          </small>
-        </div>
-        <div
-          class="field-resource-chip field-resource-chip-population field-resource-chip-clickable field-resource-chip-inline-label"
-          role="button"
-          tabindex="0"
-          :aria-pressed="populationHeaderExpanded"
-          @click="togglePopulationHeaderExpanded"
-          @keydown.enter.prevent="togglePopulationHeaderExpanded"
-          @keydown.space.prevent="togglePopulationHeaderExpanded"
-        >
-          <span>総人口</span>
-          <strong>{{ fieldResourceSummary.population }}</strong>
-          <small v-if="!populationHeaderExpanded">{{ fieldResourceSummary.populationDetail }}</small>
-          <small v-else class="population-rows">
-            <span
-              v-for="entry in fieldResourceSummary.populationEntries"
-              :key="`population-${entry.key}`"
-              class="population-token"
-            >
-              <em>{{ entry.label }}</em>
-              <strong>{{ entry.value }}</strong>
-            </span>
-          </small>
-        </div>
-        <div class="field-resource-chip field-resource-chip-research" title="研究レベル">
+        <div class="field-header-research-wrap" title="研究レベル">
           <small class="field-header-research-list">
             <span
               v-for="row in headerResearchRows"
@@ -18660,11 +18722,122 @@ watch(() => props.characterCommand, command => {
               class="field-header-research-chip"
               :title="`${row.label} Lv${row.level} / EXP ${row.currentExp}/${row.requiredExp}`"
             >
-              <span class="field-header-research-gauge" :style="{ '--research-progress-ratio': String(row.progressRatio) }">
+              <span
+                class="field-header-research-gauge"
+                :style="{
+                  '--research-progress-ratio': String(row.progressRatio),
+                  '--research-gauge-accent': row.gaugeColor
+                }"
+              >
                 <img :src="row.iconSrc" :alt="`${row.label} アイコン`" />
               </span>
             </span>
           </small>
+        </div>
+        <div ref="headerResourceMenuRef" class="field-header-resource-menu-wrap">
+          <div class="sidebar-resource-menu header-resource-menu" role="menu" aria-label="資源収支">
+            <button
+              v-for="row in sidebarResourcePanelRows"
+              :key="`header-resource-${row.key}`"
+              type="button"
+              :ref="el => setHeaderResourceButtonRef(row.key, el)"
+              class="sidebar-resource-menu-item"
+              :class="{ active: row.isActive }"
+              @click="toggleSidebarResourcePanel(row.key)"
+            >
+              <span class="sidebar-resource-menu-icon" :title="row.label">
+                <img :src="row.iconSrc" :alt="row.label" />
+              </span>
+              <span class="sidebar-resource-menu-values">
+                <span class="sidebar-resource-menu-total">{{ row.totalDisplay }}</span>
+                <span class="sidebar-resource-menu-delta" :class="row.deltaClass">{{ row.deltaDisplay }}</span>
+              </span>
+              <span class="sidebar-resource-menu-arrow">▶</span>
+            </button>
+          </div>
+          <transition name="sidebar-resource-panel-slide" mode="out-in">
+            <section
+              v-if="activeSidebarResourcePanel"
+              :key="activeSidebarResourcePanel.key"
+              class="sidebar-resource-detail-panel sidebar-resource-menu header-resource-detail-panel"
+              :style="headerResourceDetailPanelStyle"
+            >
+              <template v-if="activeSidebarResourcePanel.materialItems.length">
+                <ul class="sidebar-resource-detail-list">
+                  <li
+                    v-for="item in activeSidebarResourcePanel.materialItems"
+                    :key="`header-resource-detail-${item.key}`"
+                    class="sidebar-resource-menu-item sidebar-resource-detail-item"
+                  >
+                    <span class="sidebar-resource-menu-icon" :title="item.label">
+                      <img :src="item.iconSrc" :alt="item.label" />
+                    </span>
+                    <span class="sidebar-resource-menu-values">
+                      <span class="sidebar-resource-menu-total">{{ item.stockDisplay }}</span>
+                      <span class="sidebar-resource-menu-delta" :class="item.gainClass">{{ item.gainDisplay }}</span>
+                    </span>
+                  </li>
+                </ul>
+              </template>
+              <template v-if="activeSidebarResourcePanel.key === 'food'">
+                <ul class="sidebar-resource-detail-list">
+                  <li
+                    v-for="item in activeSidebarResourcePanel.foodItems"
+                    :key="`header-food-detail-${item.key}`"
+                    class="sidebar-resource-menu-item sidebar-resource-detail-item"
+                  >
+                    <span class="sidebar-resource-menu-icon" :title="item.label">
+                      <img :src="item.iconSrc" :alt="item.label" />
+                    </span>
+                    <span class="sidebar-resource-menu-values">
+                      <span class="sidebar-resource-menu-total">{{ item.stockDisplay }}</span>
+                      <span class="sidebar-resource-menu-delta" :class="item.gainClass">{{ item.gainDisplay }}</span>
+                    </span>
+                  </li>
+                </ul>
+              </template>
+            </section>
+          </transition>
+        </div>
+        <div ref="headerPopulationMenuRef" class="field-header-population-menu-wrap">
+          <div
+            class="field-resource-chip field-resource-chip-population field-resource-chip-inline-label field-resource-chip-clickable"
+            role="button"
+            tabindex="0"
+            :aria-pressed="populationHeaderExpanded"
+            @click="togglePopulationHeaderExpanded"
+            @keydown.enter.prevent="togglePopulationHeaderExpanded"
+            @keydown.space.prevent="togglePopulationHeaderExpanded"
+          >
+            <span class="field-resource-chip-label-with-icon">
+              <img :src="POPULATION_ICON_SRC" alt="人口" />
+              <em>人口</em>
+            </span>
+            <strong>{{ headerPopulationDisplay }}</strong>
+            <small class="population-summary-inline">
+              <span class="population-token">
+                <em>幸福度</em>
+                <strong>{{ populationHappinessDisplay }}</strong>
+              </span>
+            </small>
+          </div>
+          <transition name="sidebar-resource-panel-slide" mode="out-in">
+            <section
+              v-if="populationHeaderExpanded"
+              class="sidebar-resource-detail-panel sidebar-resource-menu population-detail-panel"
+            >
+              <ul class="sidebar-resource-detail-list population-detail-list">
+                <li
+                  v-for="entry in populationExpandedRows"
+                  :key="`population-${entry.key}`"
+                  class="sidebar-resource-menu-item sidebar-resource-detail-item population-detail-item"
+                >
+                  <span class="population-detail-label">{{ entry.label }}</span>
+                  <span class="population-detail-value">{{ entry.value }}</span>
+                </li>
+              </ul>
+            </section>
+          </transition>
         </div>
         <div class="field-overlay-actions">
           <button
@@ -18929,52 +19102,20 @@ watch(() => props.characterCommand, command => {
           <div v-else class="field-overlay-tile-empty">マスをクリックすると詳細を表示します。</div>
         </div>
       </section>
-      <aside ref="ownFactionSidebarRef" class="field-overlay-own-faction-panel">
-        <div class="sidebar-resource-menu" role="menu" aria-label="資源収支">
-          <button
-            v-for="row in sidebarResourcePanelRows"
-            :key="`sidebar-resource-${row.key}`"
-            type="button"
-            class="sidebar-resource-menu-item"
-            :class="{ active: row.isActive }"
-            @click="toggleSidebarResourcePanel(row.key)"
-          >
-            <span class="sidebar-resource-menu-label">{{ row.label }}</span>
-            <span class="sidebar-resource-menu-total">{{ row.totalDisplay }}</span>
-            <span class="sidebar-resource-menu-delta" :class="row.deltaClass">{{ row.deltaDisplay }}</span>
-            <span class="sidebar-resource-menu-arrow">▶</span>
-          </button>
-          <transition name="sidebar-resource-panel-slide" mode="out-in">
-            <section
-              v-if="activeSidebarResourcePanel"
-              :key="activeSidebarResourcePanel.key"
-              class="sidebar-resource-detail-panel"
-            >
-              <header class="sidebar-resource-detail-head">{{ activeSidebarResourcePanel.label }}</header>
-              <ul class="sidebar-resource-detail-list">
-                <li v-for="item in activeSidebarResourcePanel.items" :key="`sidebar-resource-detail-${item.key}`">
-                  <span class="sidebar-resource-detail-name">{{ item.label }}</span>
-                  <span class="sidebar-resource-detail-value">{{ item.valueDisplay }}</span>
-                </li>
-              </ul>
-            </section>
-          </transition>
-        </div>
-        <div class="field-overlay-own-faction-navigator-wrap">
-          <own-faction-navigator-modal
-            :squad-entries="ownSquadNavigatorEntries"
-            :unit-entries="ownCharacterNavigatorEntries"
-            :selected-tile-coord="ownFactionSelectedTileCoord"
-            :selected-unit-id="selectedUnitId"
-            :can-use-move-mode="canUseUnitMoveModeState"
-            :reset-key="activeTestPlayerId"
-            @focus-unit="handleOwnUnitNavigatorFocusUnit"
-            @focus-squad="handleOwnUnitNavigatorFocusSquad"
-            @open-character-status="handleOwnUnitNavigatorOpenCharacterStatus"
-            @select-move-unit="handleOwnUnitNavigatorSelectMoveUnit"
-            @select-attack-unit="handleOwnUnitNavigatorSelectAttackUnit"
-          />
-        </div>
+      <aside class="field-overlay-own-faction-panel">
+        <own-faction-navigator-modal
+          :squad-entries="ownSquadNavigatorEntries"
+          :unit-entries="ownCharacterNavigatorEntries"
+          :selected-tile-coord="ownFactionSelectedTileCoord"
+          :selected-unit-id="selectedUnitId"
+          :can-use-move-mode="canUseUnitMoveModeState"
+          :reset-key="activeTestPlayerId"
+          @focus-unit="handleOwnUnitNavigatorFocusUnit"
+          @focus-squad="handleOwnUnitNavigatorFocusSquad"
+          @open-character-status="handleOwnUnitNavigatorOpenCharacterStatus"
+          @select-move-unit="handleOwnUnitNavigatorSelectMoveUnit"
+          @select-attack-unit="handleOwnUnitNavigatorSelectAttackUnit"
+        />
       </aside>
       <aside v-if="showPinnedNationLogPanel" class="field-overlay-live-log">
         <div class="field-overlay-live-log-head">
