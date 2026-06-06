@@ -49,7 +49,7 @@
 .char-resist-chip {
   border: 1px solid rgba(206, 180, 135, 0.62);
   border-radius: 7px;
-  padding: 0px 8px;
+  padding: 0px 6px;
   display: flex;
   justify-content: space-between;
   align-items: center;

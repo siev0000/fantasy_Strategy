@@ -11,8 +11,11 @@ const props = defineProps({
   emptyText: { type: String, default: "取得スキルなし" },
   compact: { type: Boolean, default: false },
   showFamilyIcon: { type: Boolean, default: false },
-  statusSource: { type: Object, default: null }
+  statusSource: { type: Object, default: null },
+  selectable: { type: Boolean, default: false },
+  selectedName: { type: String, default: "" }
 });
+const emit = defineEmits(["select-skill"]);
 
 function nonEmptyText(value) {
   const text = String(value ?? "").trim();
@@ -108,6 +111,23 @@ const detailRows = computed(() => {
     };
   });
 });
+
+const normalizedSelectedName = computed(() => nonEmptyText(props.selectedName));
+
+function handleSkillRowClick(row) {
+  if (!props.selectable) return;
+  const name = nonEmptyText(row?.name);
+  if (!name) return;
+  emit("select-skill", { name, row });
+}
+
+function handleSkillRowKeydown(event, row) {
+  if (!props.selectable) return;
+  const key = nonEmptyText(event?.key).toLowerCase();
+  if (key !== "enter" && key !== " ") return;
+  event.preventDefault();
+  handleSkillRowClick(row);
+}
 </script>
 
 <template>
@@ -119,7 +139,14 @@ const detailRows = computed(() => {
           v-for="(row, index) in detailRows"
           :key="`skill-row-${row.name}-${index}`"
           class="skill-row"
-          :class="`action-${row.actionType}`"
+          :class="[
+            `action-${row.actionType}`,
+            { selectable: props.selectable, selected: normalizedSelectedName && normalizedSelectedName === row.name }
+          ]"
+          :role="props.selectable ? 'button' : null"
+          :tabindex="props.selectable ? 0 : null"
+          @click="handleSkillRowClick(row)"
+          @keydown="handleSkillRowKeydown($event, row)"
         >
           <div class="skill-left">
             <div class="skill-top">
@@ -189,6 +216,19 @@ const detailRows = computed(() => {
 
 .skill-row:last-child {
   border-bottom: none;
+}
+
+.skill-row.selectable {
+  cursor: pointer;
+}
+
+.skill-row.selectable:hover {
+  filter: brightness(1.08);
+}
+
+.skill-row.selectable.selected {
+  outline: 2px solid rgba(255, 214, 142, 0.96);
+  outline-offset: -2px;
 }
 
 .skill-left {

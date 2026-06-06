@@ -149,9 +149,9 @@
   right: 0;
   z-index: 20;
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
-  padding: 6px 8px 8px;
+  padding: 9px 12px 12px;
   border-radius: 0 0 12px 12px;
   border: none;
   border-bottom: 1px solid rgba(223, 189, 126, 0.34);
@@ -179,8 +179,8 @@
   min-width: 0;
   order: 1;
   flex: 0 0 auto;
-  --sidebar-menu-icon-size: 25px;
-  --sidebar-detail-icon-size: 25px;
+  --sidebar-menu-icon-size: 38px;
+  --sidebar-detail-icon-size: 38px;
   overflow: visible;
 }
 
@@ -212,13 +212,14 @@
 
 .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item {
   width: auto;
-  min-width: 90px;
+  min-width: 135px;
   flex: 0 0 auto;
   border: none;
   border-left: 1px solid rgba(223, 189, 126, 0.26);
   border-radius: 0;
   background: transparent;
-  padding: 3px 16px 3px 2px;
+  padding: 5px 24px 5px 4px;
+  font-size: 23px;
 }
 
 .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item:first-child {
@@ -240,14 +241,14 @@
 }
 
 .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-total {
-  font-size: 14px;
+  font-size: 21px;
   color: #f7e9c8;
 }
 
 .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-delta {
   top: 2px;
   right: 4px;
-  font-size: 12px;
+  font-size: 18px;
   background: transparent;
 }
 
@@ -433,6 +434,18 @@
   min-width: 0;
   flex: 0 0 auto;
   overflow: visible;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: filter 0.12s ease, box-shadow 0.12s ease;
+}
+
+.field-header-research-wrap:hover {
+  filter: brightness(1.08);
+}
+
+.field-header-research-wrap:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(121, 202, 255, 0.72);
 }
 
 .field-header-research-list {
@@ -451,10 +464,15 @@
   min-width: 0;
   display: inline-flex;
   align-items: center;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .field-header-research-gauge {
-  --_size: 48px;
+  --_size: 72px;
   --_thickness: 4px;
   --research-gauge-accent: #52ddff;
   position: relative;
@@ -502,9 +520,24 @@
   );
 }
 
+.field-header-research-gauge.completed {
+  border-color: rgba(178, 236, 166, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+    0 0 10px rgba(112, 204, 130, 0.42);
+}
+
+.field-header-research-gauge.completed::after {
+  background: conic-gradient(
+    from 0deg,
+    rgba(130, 226, 154, 0.98) 0deg 360deg
+  );
+}
+
 .field-header-research-gauge img {
-  width: 40px;
-  height: 40px;
+  width: 60px;
+  height: 60px;
   object-fit: cover;
   border-radius: 50%;
   border: 1px solid rgba(212, 188, 138, 0.44);
@@ -670,8 +703,9 @@
   left: 12px;
   bottom: 12px;
   z-index: 20;
-  width: min(var(--tile-detail-width, 320px), calc(100% - 116px));
-  height: var(--tile-detail-height, 360px);
+  /* width: min(var(--tile-detail-width, 320px), calc(100% - 116px)); */
+  /* height: var(--tile-detail-height, 360px); */
+  width: 310px;
   max-height: calc(100% - 132px);
   overflow: hidden;
   display: grid;
@@ -854,6 +888,51 @@
   line-height: 1.2;
 }
 
+.field-overlay-attack-preview-summary {
+  margin-top: 2px;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  color: rgba(248, 235, 205, 0.94);
+}
+
+.field-overlay-attack-skill {
+  font-weight: 700;
+  color: #ffe4ad;
+}
+
+.field-overlay-attack-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: rgba(246, 231, 197, 0.92);
+}
+
+.field-overlay-attack-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.field-overlay-attack-legend-chip {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  display: inline-block;
+}
+
+.field-overlay-attack-legend-chip.is-range {
+  background: rgba(255, 238, 114, 0.52);
+  border-color: rgba(255, 238, 114, 0.98);
+}
+
+.field-overlay-attack-legend-chip.is-pattern {
+  background: rgba(255, 79, 79, 0.52);
+  border-color: rgba(255, 79, 79, 0.98);
+}
+
 .field-overlay-tile-actions {
   margin: 0 0 0 auto;
   display: flex;
@@ -922,9 +1001,22 @@
   justify-content: flex-end;
 }
 
+.field-overlay-memory-top-right {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 24;
+  color: #44dd66;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .field-overlay-live-log {
   position: absolute;
-  right: 12px;
+  left: 12px;
   top: 76px;
   bottom: 106px;
   width: min(320px, 30vw);
@@ -944,7 +1036,7 @@
 .field-overlay-own-faction-panel {
   position: absolute;
   right: 12px;
-  top: 76px;
+  top: 97px;
   width: clamp(204px, 13.5vw, 200px);
   height: 500px;
   z-index: 19;
@@ -956,6 +1048,255 @@
 
 .field-overlay-own-faction-panel > * {
   max-height: inherit;
+}
+
+.field-overlay-own-faction-navigator-host {
+  height: 415px;
+  max-height: 415px;
+}
+
+.field-overlay-own-faction-attack-list-panel {
+  height: 410px;
+  border: 1px solid rgba(235, 203, 142, 0.5);
+  border-radius: 10px;
+  background: linear-gradient(170deg, rgba(18, 24, 36, 0.92), rgba(12, 10, 8, 0.88));
+  box-shadow: inset 0 0 0 1px rgba(255, 236, 189, 0.1);
+  color: #f6e7c4;
+  padding: 6px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.field-overlay-own-faction-attack-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  display: none;
+}
+
+.field-overlay-own-faction-attack-list {
+  height: 280px;
+  max-height: 280px;
+  border: 1px solid rgba(218, 186, 128, 0.22);
+  border-radius: 8px;
+  background: rgba(19, 15, 11, 0.56);
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+}
+
+.field-overlay-own-faction-attack-item {
+  border: none;
+  border-bottom: 1px solid rgba(218, 186, 128, 0.2);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 6px;
+  display: grid;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.field-overlay-own-faction-attack-item:last-child {
+  border-bottom: none;
+}
+
+.field-overlay-own-faction-attack-item:hover {
+  background: rgba(106, 75, 38, 0.28);
+}
+
+.field-overlay-own-faction-attack-item.active {
+  background: rgba(138, 88, 36, 0.35);
+  outline: 1px solid rgba(255, 214, 142, 0.88);
+  outline-offset: -1px;
+}
+
+.field-overlay-own-faction-attack-item-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff3dc;
+  min-width: 0;
+}
+
+.field-overlay-own-faction-attack-item .skill-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.field-overlay-own-faction-attack-item .skill-inline-icon-wrap {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(232, 201, 145, 0.64);
+  background: rgba(255, 255, 255, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.field-overlay-own-faction-attack-item .skill-inline-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.field-overlay-own-faction-attack-item .skill-inline-icon-fallback {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(232, 201, 145, 0.48);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f2e3bf;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.field-overlay-own-faction-attack-item .skill-family-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid rgba(233, 199, 140, 0.46);
+  border-radius: 999px;
+  padding: 0px 6px;
+  font-size: 11px;
+  color: #f4e4bd;
+  background: rgba(34, 25, 17, 0.54);
+}
+
+.field-overlay-own-faction-attack-item .family-icon-wrap {
+  border-radius: 999px;
+  border-color: rgba(233, 199, 140, 0.6);
+}
+
+.field-overlay-own-faction-attack-item .action-chip {
+  margin-left: 0;
+  min-width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.field-overlay-own-faction-attack-item .action-action .action-chip {
+  background: rgba(182, 95, 42, 0.72);
+  color: #fff2dd;
+}
+
+.field-overlay-own-faction-attack-item .action-passive .action-chip {
+  background: rgba(44, 117, 161, 0.72);
+  color: #e5f7ff;
+}
+
+.field-overlay-own-faction-attack-item-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.field-overlay-own-faction-attack-item-detail .skill-meta-chip {
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid rgba(218, 186, 128, 0.24);
+  background: rgba(17, 12, 7, 0.48);
+  color: #e9dbb9;
+  line-height: 1.35;
+  font-size: 12px;
+}
+
+.field-overlay-own-faction-attack-detail {
+  border: 1px solid rgba(214, 178, 119, 0.32);
+  border-radius: 8px;
+  background: rgba(29, 21, 14, 0.62);
+  padding: 6px;
+  height: 110px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 4px;
+  overflow: hidden;
+  align-self: end;
+}
+
+.field-overlay-own-faction-attack-detail-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff3db;
+}
+
+.field-overlay-own-faction-attack-detail-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field-overlay-own-faction-attack-use-btn {
+  border: 1px solid rgba(222, 193, 135, 0.58);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(244, 223, 185, 0.92), rgba(213, 186, 143, 0.9));
+  color: #2d2418;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.field-overlay-own-faction-attack-use-btn:hover {
+  filter: brightness(1.06);
+}
+
+.field-overlay-own-faction-attack-detail-text {
+  font-size: 12px;
+  color: #eadab4;
+  line-height: 1.35;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.field-overlay-own-faction-attack-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.field-overlay-own-faction-attack-detail-meta > span {
+  border: 1px solid rgba(210, 176, 120, 0.34);
+  border-radius: 6px;
+  padding: 1px 5px;
+  font-size: 11px;
+  color: #f3e4c1;
+  background: rgba(16, 12, 9, 0.46);
+}
+
+.field-overlay-own-faction-attack-empty {
+  color: rgba(240, 223, 188, 0.82);
+}
+
+.field-overlay-own-faction-attack-detail-empty {
+  height: 110px;
+  align-self: end;
+  display: flex;
+  align-items: center;
+  border: 1px solid rgba(214, 178, 119, 0.2);
+  border-radius: 8px;
+  background: rgba(29, 21, 14, 0.38);
+  padding: 6px;
 }
 
 .field-overlay-resource-sidebar {
@@ -1359,6 +1700,10 @@
 
 .field-overlay-clock {
   width: 130px;
+  position: fixed;
+  left: 12px;
+  top: 84px;
+  z-index: 20;
   display: grid;
   gap: 4px;
   justify-items: center;
@@ -1366,7 +1711,7 @@
   font-family: "Noto Sans JP", "Consolas", monospace;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
   transform: scale(var(--ui-manual-clock-scale, 1));
-  transform-origin: bottom right;
+  transform-origin: top left;
 }
 
 .turn-clock-button {
@@ -1760,6 +2105,23 @@
   gap: 8px;
 }
 
+.footer-unit-skill-modal {
+  width: min(980px, 98vw);
+  height: auto;
+  max-height: min(82vh, 760px);
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.footer-unit-skill-modal .skill-table-root {
+  min-height: 0;
+}
+
+.footer-unit-skill-modal .skill-table-wrap {
+  max-height: min(62vh, 560px);
+}
+
 .move-path-confirm-modal {
   width: min(480px, 100%);
   display: grid;
@@ -1935,7 +2297,8 @@
 .event-mode-grid {
   margin-top: 8px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(210px, 210px));
+  justify-content: start;
   gap: 8px;
 }
 
@@ -1943,6 +2306,8 @@
   display: grid;
   gap: 4px;
   text-align: left;
+  width: 210px;
+  min-height: 84px;
   border-radius: 10px;
   border: 1px solid rgba(221, 185, 126, 0.38);
   background: linear-gradient(170deg, rgba(26, 19, 13, 0.78), rgba(17, 12, 8, 0.72));
@@ -2080,6 +2445,13 @@
   margin-top: 8px;
   display: grid;
   gap: 8px;
+}
+
+.quick-settings-checkbox-row {
+  border: 1px solid rgba(216, 181, 120, 0.34);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(22, 17, 12, 0.4);
 }
 
 .visually-hidden {
@@ -2256,10 +2628,23 @@
     justify-content: flex-end;
   }
 
+  .field-overlay-memory-top-right {
+    top: 8px;
+    right: 8px;
+    min-height: 22px;
+    padding: 4px 7px;
+    font-size: 0.62rem;
+  }
+
   .field-overlay-bottom-right {
     right: 8px;
     bottom: 8px;
     gap: 6px;
+  }
+
+  .field-overlay-clock {
+    left: 8px;
+    top: 76px;
   }
 
   .field-overlay-live-log {
@@ -2277,6 +2662,11 @@
     width: auto;
     top: 76px;
     max-height: 240px;
+  }
+
+  .field-overlay-own-faction-navigator-host {
+    height: 100%;
+    max-height: 100%;
   }
 
   .overlay-test-btn {

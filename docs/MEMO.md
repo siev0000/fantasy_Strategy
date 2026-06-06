@@ -253,4 +253,48 @@
   - 半透明パネル + 高コントラスト数値で、地形の視認を優先する。
   - 原則「文字よりアイコン優先」、必要最小限の文言のみ表示する。
 
+## マップエフェクト外部再生API（2026-05-06）
+- 実装先: `frontend/src/components/PhaserMapGeneratorPanel.vue`
+- 目的: 攻撃処理など別処理から、`向き / 角度 / 再生先` を指定してマップ上エフェクトを再生する。
+
+### 呼び出し方法1: windowブリッジ
+- `window.__fantasy_strategy_map_effect_bridge__.play(payload)`
+- イベント名は `window.__fantasy_strategy_map_effect_bridge__.eventName` に保持。
+
+### 呼び出し方法2: CustomEvent
+- `window.dispatchEvent(new CustomEvent("fantasy-strategy:play-map-effect", { detail: payload }))`
+
+### payload（主な指定）
+- 再生対象:
+  - `src`（直接画像URL）
+  - または `effectName` / `name`（`assets/effect/320×240/*.webp` のファイル名）
+- 角度:
+  - `angleDeg`（0〜360、優先）
+  - `directionIndex`（0:E, 1:NE, 2:NW, 3:W, 4:SW, 5:SE）
+  - `direction`（`"E" | "NE" | "NW" | "W" | "SW" | "SE"`）
+- 再生先:
+  - `worldX`, `worldY`（ワールド座標を直接指定）
+  - または `tileX`, `tileY` / `tileCoord` / `tileKey`（タイル座標指定）
+- 任意:
+  - `scalePercent`（10〜400）
+  - `tint`（色変更。`0xff0000` / `"#ff0000"` 形式）
+
+```js
+window.__fantasy_strategy_map_effect_bridge__.play({
+  effectName: "炎全体",
+  tileX: 22,
+  tileY: 14,
+  directionIndex: 1,
+  scalePercent: 60
+});
+```
+
+## 装備運用メモ（2026-05-10）
+- 装備変更UIの主対象は `ネームド/ヒーロー系ユニット` とする。
+- `モブ` は個別装備を直接編集しない運用にする。
+- モブの装備は固定プリセット参照のみ（クラスに紐づく既定構成を使う）。
+- アイテム一覧モーダルには、モブ向け装備は表示しない。
+- モブ装備で許可する更新は `レア度一新` のみ。
+- レア度一新時は、サイド作成時と同じ素材ルールで資材を消費する。
+
 

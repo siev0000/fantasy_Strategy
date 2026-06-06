@@ -1,4 +1,5 @@
 import { generateIsland as generateRealisticIsland } from "./realistic-island.js";
+import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
 
 const 地形定義 = [
   { key: "平地", color: "#b6cc71", weight: 26, short: "平" },
@@ -3450,16 +3451,23 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
 }
 
 function buildHexCornerPoints(x, y) {
-  const offsetX = (y % 2 === 1) ? 20 : 0;
-  const left = (x * 40) + offsetX;
-  const top = y * 36;
+  const tileW = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.width, 40));
+  const tileH = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.height, 48));
+  const rowStep = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.rowStep, 36));
+  const oddRowOffsetX = toSafeNumber(HEX_TILE_CONFIG?.oddRowOffsetX, tileW / 2);
+  const halfW = tileW / 2;
+  const upperY = tileH - rowStep;
+  const lowerY = rowStep;
+  const offsetX = (y % 2 === 1) ? oddRowOffsetX : 0;
+  const left = (x * tileW) + offsetX;
+  const top = y * rowStep;
   return [
-    { x: left + 20, y: top + 0 },
-    { x: left + 40, y: top + 12 },
-    { x: left + 40, y: top + 36 },
-    { x: left + 20, y: top + 48 },
-    { x: left + 0, y: top + 36 },
-    { x: left + 0, y: top + 12 }
+    { x: left + halfW, y: top + 0 },
+    { x: left + tileW, y: top + upperY },
+    { x: left + tileW, y: top + lowerY },
+    { x: left + halfW, y: top + tileH },
+    { x: left + 0, y: top + lowerY },
+    { x: left + 0, y: top + upperY }
   ];
 }
 
@@ -4601,10 +4609,11 @@ function parseCoordKey(key) {
 }
 
 function hexCenter(x, y) {
-  const tileW = 40;
-  const tileH = 48;
-  const rowStep = 36; // 48 + (-12)
-  const offsetX = (y % 2 === 1) ? 20 : 0;
+  const tileW = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.width, 40));
+  const tileH = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.height, 48));
+  const rowStep = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.rowStep, 36));
+  const oddRowOffsetX = toSafeNumber(HEX_TILE_CONFIG?.oddRowOffsetX, tileW / 2);
+  const offsetX = (y % 2 === 1) ? oddRowOffsetX : 0;
   return {
     cx: offsetX + x * tileW + tileW / 2,
     cy: y * rowStep + tileH / 2

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>画像リストから再生</title>
+    <style>
+      #effect-player {
+        width: 120px;
+        height: 120px;
+        margin: 1em auto;
+      }
+
+      #sprite-image {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: auto;
+        height: auto;
+        image-rendering: pixelated;
+        mix-blend-mode: screen; /* ← lightenから変更 */
+        pointer-events: none; /* 必要なら下クリックを透過 */
+      }
+
+      #sprite-frame {
+        overflow: hidden;
+        position: relative;
+        background-color: transparent;
+        background: none;
+        pointer-events: none;
+
+        /* ✅ 枠線スタイルを追加 */
+        border: 2px solid rgba(255, 255, 255, 0.6); /* 半透明の白枠 */
+        border-radius: 8px;
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.2); /* うっすら光る縁 */
+      }
+
+      /* ボタン＆セレクト共通の装飾 */
+      .button-like,
+      .select-like {
+        padding: 0.4em 1em;
+        border-radius: 8px;
+        font-size: 1em;
+        font-weight: bold;
+        font-family: "Georgia", serif;
+        background: linear-gradient(to bottom, #f3e2c7, #c8a474);
+        border: 2px solid #8b5e3c;
+        color: #3a2a14;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        cursor: pointer;
+        margin: 0.5em;
+        transition: background 0.2s ease, transform 0.1s ease;
+      }
+      #effect-selector,
+      .button-like:hover,
+      .select-like:hover {
+        background: linear-gradient(to bottom, #ffe8bc, #d9a96d);
+        transform: translateY(-1px);
+      }
+
+      #effect-selector,
+      .button-like:active,
+      .select-like:active {
+        transform: scale(0.97);
+      }
+
+      /* 配置ラッパー */
+      #control-panel {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 1em;
+        margin-top: 1em;
+      }
+      #effect-panel-background {
+        background-color: rgba(0, 0, 0, 0.5);
+        color: white; /* テキストも見やすくするなら */
+        margin: 0;
+        padding: 0;
+        min-height: 100%; /* 全画面にする */
+      }
+    </style>
+  </head>
+  <body id="effect-panel-background">
+    <h2>画像リストから選んで再生</h2>
+
+    <div id="control-panel">
+      <select id="effect-selector"></select>
+      <select id="flip-select" class="select-like" onchange="onFlipChange()">
+        <option value="none">標準</option>
+        <option value="horizontal">左右反転</option>
+        <option value="vertical">上下反転</option>
+        <option value="both">上下左右反転</option>
+      </select>
+
+      <button id="play-button" class="button-like">▶ 再生</button>
+    </div>
+
+    <div id="effect-player">
+      <div id="sprite-frame">
+        <img id="sprite-image" src="" />
+      </div>
+    </div>
+
+    <script>
+      let allFiles = [];
+
+      window.addEventListener("DOMContentLoaded", async () => {
+        await loadEffectFileList();
+        const playButton = document.getElementById("play-button");
+        if (playButton) {
+          playButton.onclick = playSelected;
+        } else {
+          console.warn("play-button が見つかりません");
+        }
+      });
+
+      function onFlipChange() {
+        const mode = document.getElementById("flip-select").value;
+        const img = document.getElementById("sprite-image");
+
+        switch (mode) {
+          case "horizontal":
+            img.style.transform = "scaleX(-1)";
+            break;
+          case "vertical":
+            img.style.transform = "scaleY(-1)";
+            break;
+          case "both":
+            img.style.transform = "scale(-1, -1)";
+            break;
+          default:
+            img.style.transform = "scale(1, 1)";
+            break;
+        }
+      }
+
+      async function loadEffectFileList() {
+        try {
+          const res = await fetch("/data/effect_list.json");
+          const list = await res.json();
+
+          if (Array.isArray(list)) {
+            allFiles = list;
+            console.log("✅ エフェクト一覧:", allFiles);
+            populateEffectSelector();
+          } else {
+            console.error("❌ 無効な形式:", list);
+          }
+        } catch (err) {
+          console.error("❌ エフェクト一覧取得失敗:", err);
+        }
+      }
+
+
+      function populateEffectSelector() {
+        const selector = document.getElementById("effect-selector");
+        selector.innerHTML = "";
+
+        allFiles.forEach((file) => {
+          const option = document.createElement("option");
+          option.value = file;
+          option.textContent = file;
+          selector.appendChild(option);
+        });
+      }
+
+      function playSelected() {
+        const selector = document.getElementById("effect-selector");
+        const selectedFile = selector.value;
+        const effectImage = document.getElementById("sprite-image");
+
+        console.log("画像再生");
+        if (!selectedFile) {
+          alert("ファイルを選択してください");
+          return;
+        }
+
+        const path = `/assets/effect/エフェクト集/320×240/${encodeURIComponent(selectedFile)}.webp`;
+
+        const preload = new Image();
+        preload.onload = () => {
+          const effectImage = document.getElementById("sprite-image");
+          effectImage.src = path;
+          effectImage.style.display = "block";
+          effectImage.style.left = "0px";
+          effectImage.style.top = "0px";
+
+          adjustEffectContainerWidth(preload); // ← preloadのサイズを使って調整
+        };
+        preload.src = path;
+
+        playSpriteFixed("sprite-image", 120, 60);
+      }
+
+      function playSpriteFixed(
+        imageId = "sprite-image",
+        unit = 120,
+        interval = 100
+      ) {
+        const img = document.getElementById(imageId);
+
+        img.onload = () => {
+          const w = img.naturalWidth;
+          const h = img.naturalHeight;
+          const isHorizontal = w > h;
+          const frameCount = Math.floor((isHorizontal ? w : h) / unit);
+
+          const container = document.getElementById("effect-player");
+          const frame = document.getElementById("sprite-frame");
+          container.style.width = unit + "px";
+          container.style.height = unit + "px";
+          frame.style.width = unit + "px";
+          frame.style.height = unit + "px";
+
+          let current = 0;
+          img.style.left = "0px";
+          img.style.top = "0px";
+
+          const timer = setInterval(() => {
+            if (isHorizontal) {
+              img.style.left = `-${unit * current}px`;
+            } else {
+              img.style.top = `-${unit * current}px`;
+            }
+            current++;
+            if (current >= frameCount) {
+              clearInterval(timer);
+              img.style.display = "none";
+            }
+          }, interval);
+        };
+      }
+
+      function adjustEffectContainerWidth(img) {
+        const container = document.getElementById("effect-player");
+        const frame = document.getElementById("sprite-frame");
+        if (!img || !container) return;
+
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+
+        let newWidth;
+
+        if (w > h) {
+          newWidth = 120;
+          console.log("🧭 横が長い画像 → 表示幅 120px に固定");
+        } else {
+          newWidth = w;
+          console.log(`🧭 縦が長い画像 → 画像の横幅 ${w}px を使用`);
+        }
+
+        container.style.width = `${newWidth}px`;
+        container.style.minWidth = `${newWidth}px`; // ← 念のため追加
+        container.style.maxWidth = `${newWidth}px`;
+
+        if (frame) {
+          frame.style.width = `${newWidth}px`;
+          frame.style.minWidth = `${newWidth}px`;
+          frame.style.maxWidth = `${newWidth}px`;
+        }
+
+        console.log(`📐 #effect-player width = ${newWidth}px`);
+      }
+    </script>
+  </body>
+</html>

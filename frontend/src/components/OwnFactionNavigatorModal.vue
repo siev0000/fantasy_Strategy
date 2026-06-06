@@ -379,10 +379,36 @@ function selectAttackUnit(entry, event) {
   emit("select-attack-unit", { unitId });
 }
 
-function hpRate(entry) {
+function clamp01(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (n <= 0) return 0;
+  if (n >= 1) return 1;
+  return n;
+}
+
+function resolveHpHueByRatio(ratioRaw) {
+  const ratio = clamp01(ratioRaw);
+  if (ratio <= 0.2) return 0;
+  if (ratio <= 0.5) {
+    const t = (ratio - 0.2) / 0.3;
+    return Math.round(t * 60);
+  }
+  const t = (ratio - 0.5) / 0.5;
+  return Math.round(60 + (t * 60));
+}
+
+function hpFillStyle(entry) {
   const max = Math.max(1, Number(entry?.hpMax) || 1);
   const cur = Math.max(0, Number(entry?.hpCurrent) || 0);
-  return Math.max(0, Math.min(100, (cur / max) * 100));
+  const ratio = clamp01(cur / max);
+  const hue = resolveHpHueByRatio(ratio);
+  const start = `hsl(${hue} 82% 38%)`;
+  const end = `hsl(${hue} 90% 56%)`;
+  return {
+    width: `${Math.round(ratio * 1000) / 10}%`,
+    background: `linear-gradient(90deg, ${start}, ${end})`
+  };
 }
 
 function resolveMoveDisplayValue(entry) {
@@ -438,7 +464,7 @@ function rowBackgroundStyle(entry) {
     </header>
 
     <div
-      v-if="isActionPopupVisible && !minimized"
+      v-if="false && isActionPopupVisible && !minimized"
       ref="actionPopupRef"
       class="own-faction-floating-action-popup"
       :style="{ top: `${actionPopupTop}px`, left: `${actionPopupLeft}px` }"
@@ -492,7 +518,7 @@ function rowBackgroundStyle(entry) {
             <span v-if="row.type === 'governor' && sovereignEntry" class="own-faction-hp-line">
               <span class="own-faction-hp-label">HP:</span>
               <span class="own-faction-hp-bar">
-                <i :style="{ width: `${hpRate(sovereignEntry)}%` }"></i>
+                <i :style="hpFillStyle(sovereignEntry)"></i>
                 <b>{{ sovereignEntry.hpCurrent }} / {{ sovereignEntry.hpMax }}</b>
               </span>
             </span>
@@ -545,7 +571,7 @@ function rowBackgroundStyle(entry) {
             <span class="own-faction-hp-line">
               <span class="own-faction-hp-label">HP:</span>
               <span class="own-faction-hp-bar">
-                <i :style="{ width: `${hpRate(entry)}%` }"></i>
+                <i :style="hpFillStyle(entry)"></i>
                 <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
               </span>
             </span>
@@ -603,7 +629,7 @@ function rowBackgroundStyle(entry) {
           <span class="own-faction-hp-line">
             <span class="own-faction-hp-label">HP:</span>
             <span class="own-faction-hp-bar">
-              <i :style="{ width: `${hpRate(entry)}%` }"></i>
+              <i :style="hpFillStyle(entry)"></i>
               <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
             </span>
           </span>
@@ -682,7 +708,16 @@ function rowBackgroundStyle(entry) {
   color: #f7e8c3;
   pointer-events: auto;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
+  height: 100%;
+  display: grid;
+  grid-template-rows: var(--own-faction-head-height) minmax(0, 1fr);
+}
+
+.own-faction-panel.minimized {
+  height: var(--own-faction-head-height);
+  min-height: var(--own-faction-head-height);
+  grid-template-rows: var(--own-faction-head-height);
 }
 
 .own-faction-panel-head {
@@ -736,8 +771,9 @@ function rowBackgroundStyle(entry) {
   display: grid;
   gap: 4px;
   padding: 5px;
+  min-height: 0;
   min-width: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .own-faction-floating-action-popup {
@@ -782,19 +818,24 @@ function rowBackgroundStyle(entry) {
   min-width: 0;
   display: grid;
   gap: 4px;
+  min-height: 0;
+  grid-auto-rows: max-content;
+  align-content: start;
 }
 
 .own-faction-list {
   min-height: 0;
-  max-height: calc((var(--own-faction-row-height) * 4) + 6px);
+  max-height: none;
   display: grid;
   gap: 2px;
+  grid-auto-rows: max-content;
+  align-content: start;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .own-faction-group-list {
-  max-height: calc((var(--own-faction-row-height) * 3) + 6px);
+  max-height: none;
 }
 
 .own-faction-unit-row,
@@ -810,6 +851,7 @@ function rowBackgroundStyle(entry) {
   min-height: var(--own-faction-row-height);
   display: grid;
   gap: 3px;
+  align-self: start;
   cursor: pointer;
 }
 
@@ -929,7 +971,7 @@ function rowBackgroundStyle(entry) {
 
 .own-faction-hp-label {
   flex: 0 0 auto;
-  font-size: 0.58rem;
+  font-size: 15px;
   color: rgba(247, 232, 195, 0.86);
 }
 
@@ -939,7 +981,9 @@ function rowBackgroundStyle(entry) {
   min-width: 0;
   height: 14px;
   border-radius: 999px;
+  border: 1px solid rgba(239, 215, 166, 0.62);
   background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(24, 16, 10, 0.52);
   overflow: hidden;
 }
 

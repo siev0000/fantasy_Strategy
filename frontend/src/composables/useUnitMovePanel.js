@@ -49,6 +49,9 @@ export function useUnitMovePanel(options = {}) {
   const findPathWithinDistanceSync = typeof options.findPathWithinDistanceSync === "function"
     ? options.findPathWithinDistanceSync
     : (() => null);
+  const buildReachableTileSetSync = typeof options.buildReachableTileSetSync === "function"
+    ? options.buildReachableTileSetSync
+    : (() => new Set());
   const findPathWithinDistanceAsync = typeof options.findPathWithinDistanceAsync === "function"
     ? options.findPathWithinDistanceAsync
     : null;
@@ -448,6 +451,92 @@ export function useUnitMovePanel(options = {}) {
     return { ok: true, blocked: false, cost: total, reason: "" };
   }
 
+  function parseCoordKey(rawKey) {
+    const text = nonEmptyText(rawKey);
+    if (!text) return null;
+    const [xText, yText] = text.split(",");
+    const x = Number(xText);
+    const y = Number(yText);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x: Math.floor(x), y: Math.floor(y) };
+  }
+
+  function hexDistance(a, b) {
+    const ax = Number(a?.x);
+    const ay = Number(a?.y);
+    const bx = Number(b?.x);
+    const by = Number(b?.y);
+    if (!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(bx) || !Number.isFinite(by)) {
+      return Number.POSITIVE_INFINITY;
+    }
+    const toCube = (x, y) => {
+      const q = x - ((y - (y & 1)) / 2);
+      const r = y;
+      return {
+        cx: q,
+        cz: r,
+        cy: -q - r
+      };
+    };
+    const ca = toCube(Math.floor(ax), Math.floor(ay));
+    const cb = toCube(Math.floor(bx), Math.floor(by));
+    return Math.max(
+      Math.abs(ca.cx - cb.cx),
+      Math.abs(ca.cy - cb.cy),
+      Math.abs(ca.cz - cb.cz)
+    );
+  }
+
+  async function resolveFallbackMovePlan(data, unit, picked, moveRemaining) {
+    const reachable = buildReachableTileSetSync(data, unit.x, unit.y, moveRemaining, unit);
+    if (!(reachable instanceof Set) || !reachable.size) return null;
+    const startKey = coordKey(unit.x, unit.y);
+    const candidates = [];
+    for (const key of reachable) {
+      if (!key || key === startKey) continue;
+      const node = parseCoordKey(key);
+      if (!node) continue;
+      if (!isPassableTerrain(data.grid?.[node.y]?.[node.x])) continue;
+      const toTarget = hexDistance(node, picked);
+      if (!Number.isFinite(toTarget)) continue;
+      const fromStart = hexDistance(node, { x: unit.x, y: unit.y });
+      candidates.push({
+        ...node,
+        toTarget,
+        fromStart: Number.isFinite(fromStart) ? fromStart : 0
+      });
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => {
+      if (a.toTarget !== b.toTarget) return a.toTarget - b.toTarget;
+      if (a.fromStart !== b.fromStart) return b.fromStart - a.fromStart;
+      if (a.y !== b.y) return a.y - b.y;
+      return a.x - b.x;
+    });
+    for (const candidate of candidates) {
+      const candidatePath = await resolvePathWithWorkerFallback(
+        data,
+        unit.x,
+        unit.y,
+        candidate.x,
+        candidate.y,
+        moveRemaining,
+        unit
+      );
+      if (!Array.isArray(candidatePath) || candidatePath.length <= 1) continue;
+      const costEval = evaluatePathMovementCost(data, candidatePath, unit);
+      if (!costEval.ok || !Number.isFinite(costEval.cost) || costEval.cost > moveRemaining) continue;
+      return {
+        picked: { x: candidate.x, y: candidate.y },
+        path: candidatePath,
+        pathDistance: Math.max(0, candidatePath.length - 1),
+        estimatedCost: costEval.cost,
+        partialStopReason: "目的地まで届かないため、手前で停止します。"
+      };
+    }
+    return null;
+  }
+
   async function resolveMovePathPlanToTile(picked) {
     const data = currentData.value;
     const selected = selectedUnit.value;
@@ -468,36 +557,52 @@ export function useUnitMovePanel(options = {}) {
       return { ok: false, reason: "このユニットは移動中です。完了後に再実行してください。" };
     }
     let path = await resolvePathWithWorkerFallback(data, unit.x, unit.y, picked.x, picked.y, moveRemaining, unit);
-    if (!path) {
-      return { ok: false, reason: `移動残量(${moveRemaining})で到達できません。` };
-    }
-    const pathDistance = Math.max(0, path.length - 1);
-    if (pathDistance <= 0) {
-      return { ok: false, reason: "同じマスです。" };
-    }
+    let pathDistance = Math.max(0, Array.isArray(path) ? path.length - 1 : 0);
     let costEval = evaluatePathMovementCost(data, path, unit);
     if ((!costEval.ok || costEval.cost > moveRemaining) && findPathWithinDistanceSync) {
       const syncPath = findPathWithinDistanceSync(data, unit.x, unit.y, picked.x, picked.y, moveRemaining, unit);
       if (Array.isArray(syncPath) && syncPath.length > 1) {
         path = syncPath;
+        pathDistance = Math.max(0, path.length - 1);
         costEval = evaluatePathMovementCost(data, path, unit);
       }
     }
-    if (!costEval.ok && costEval.blocked) {
-      return { ok: false, reason: costEval.reason || "通行できない地形差があります。" };
+    let planPicked = picked;
+    let partialStopReason = "";
+    if (
+      !Array.isArray(path)
+      || pathDistance <= 0
+      || !costEval.ok
+      || !Number.isFinite(costEval.cost)
+      || costEval.cost > moveRemaining
+    ) {
+      const fallbackPlan = await resolveFallbackMovePlan(data, unit, picked, moveRemaining);
+      if (!fallbackPlan) {
+        if (!costEval.ok && costEval.blocked) {
+          return { ok: false, reason: costEval.reason || "通行できない地形差があります。" };
+        }
+        return { ok: false, reason: `移動残量(${moveRemaining})で到達できません。` };
+      }
+      planPicked = fallbackPlan.picked;
+      path = fallbackPlan.path;
+      pathDistance = fallbackPlan.pathDistance;
+      costEval = { ok: true, blocked: false, cost: fallbackPlan.estimatedCost, reason: "" };
+      partialStopReason = fallbackPlan.partialStopReason;
+    }
+    if (pathDistance <= 0) {
+      return { ok: false, reason: "同じマスです。" };
     }
     const estimatedCost = costEval.cost;
-    if (!Number.isFinite(estimatedCost) || estimatedCost > moveRemaining) {
-      return { ok: false, reason: `移動残量(${moveRemaining})で到達できません。` };
-    }
     return {
       ok: true,
-      picked,
+      picked: planPicked,
+      requestedPicked: picked,
       moveGroup,
       path,
       pathDistance,
       moveRemaining,
-      estimatedCost
+      estimatedCost,
+      partialStopReason
     };
   }
 
@@ -728,11 +833,18 @@ export function useUnitMovePanel(options = {}) {
     const plan = await resolveMovePathPlanToTile(picked);
     if (!plan.ok) return { queued: false, reason: plan.reason || "移動経路を作成できません。" };
     plannedMovePathNodes.value = plan.path.map(node => ({ x: node.x, y: node.y }));
-    plannedMoveTarget.value = { x: picked.x, y: picked.y };
+    plannedMoveTarget.value = { x: plan.picked.x, y: plan.picked.y };
+    const requestedX = Number.isFinite(plan?.requestedPicked?.x) ? plan.requestedPicked.x : picked.x;
+    const requestedY = Number.isFinite(plan?.requestedPicked?.y) ? plan.requestedPicked.y : picked.y;
+    const actualTargetNote = (requestedX !== plan.picked.x || requestedY !== plan.picked.y)
+      ? ` / 実停止先(${plan.picked.x}, ${plan.picked.y})`
+      : "";
+    const partialNote = nonEmptyText(plan.partialStopReason) ? ` / ${plan.partialStopReason}` : "";
     plannedMoveSummaryText.value = (
-      `経路: (${plan.moveGroup.leader.x}, ${plan.moveGroup.leader.y}) -> (${picked.x}, ${picked.y}) `
+      `経路: (${plan.moveGroup.leader.x}, ${plan.moveGroup.leader.y}) -> (${requestedX}, ${requestedY})${actualTargetNote}`
       + `/ ${plan.pathDistance}マス / 所要${resolveMoveTravelSeconds(plan.moveGroup.leader, plan.pathDistance)}s`
       + ` / 予測コスト${plan.estimatedCost} / 残${Math.max(0, plan.moveRemaining - plan.estimatedCost)}`
+      + partialNote
     );
     plannedMovePreview.value = {
       pathDistance: plan.pathDistance,
@@ -740,7 +852,12 @@ export function useUnitMovePanel(options = {}) {
       remainingAfter: Math.max(0, plan.moveRemaining - plan.estimatedCost)
     };
     showMovePathConfirmModal.value = true;
-    return { queued: true, pathDistance: plan.pathDistance, estimatedCost: plan.estimatedCost };
+    return {
+      queued: true,
+      pathDistance: plan.pathDistance,
+      estimatedCost: plan.estimatedCost,
+      partialStopReason: plan.partialStopReason
+    };
   }
 
   function waitByGameClockMs(durationMs) {

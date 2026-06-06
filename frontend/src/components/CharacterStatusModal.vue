@@ -22,7 +22,8 @@ const props = defineProps({
   researchProgress: { type: Object, default: null },
   ruleText: { type: String, default: "" },
   defaultSelectedId: { type: String, default: "" },
-  testMode: { type: Boolean, default: false }
+  testMode: { type: Boolean, default: false },
+  squadFeatureEnabled: { type: Boolean, default: true }
 });
 
 const emit = defineEmits([
@@ -968,7 +969,7 @@ function selectUnit(id) {
 }
 
 function selectTab(tabKey) {
-  const key = tabKey === "squad" ? "squad" : "character";
+  const key = (tabKey === "squad" && props.squadFeatureEnabled) ? "squad" : "character";
   activeTab.value = key;
   if (key !== "squad") {
     creatingSquad.value = false;
@@ -1280,6 +1281,19 @@ watch(
     }
   }
 );
+
+watch(
+  () => props.squadFeatureEnabled,
+  enabled => {
+    if (enabled) return;
+    if (activeTab.value === "squad") {
+      activeTab.value = "character";
+    }
+    creatingSquad.value = false;
+    editingSquadName.value = false;
+    activeSquadIconModalOpen.value = false;
+  }
+);
 </script>
 
 <template>
@@ -1287,7 +1301,15 @@ watch(
     <div class="char-tabs">
       <div class="char-tabs-left">
         <button type="button" class="char-tab-btn" :class="{ active: activeTab === 'character' }" @click="selectTab('character')">キャラクター</button>
-        <button type="button" class="char-tab-btn" :class="{ active: activeTab === 'squad' }" @click="selectTab('squad')">部隊</button>
+        <button
+          type="button"
+          class="char-tab-btn"
+          :class="{ active: activeTab === 'squad' }"
+          :disabled="!squadFeatureEnabled"
+          @click="selectTab('squad')"
+        >
+          部隊
+        </button>
       </div>
       <button type="button" class="secondary char-tabs-close-btn" @click="emit('close')">閉じる</button>
     </div>
@@ -1410,7 +1432,7 @@ watch(
       <div v-else class="char-empty">自キャラデータがありません。村配置後にユニット作成からヒーローを追加してください。</div>
     </div>
 
-    <div v-else>
+    <div v-else-if="squadFeatureEnabled">
       <div class="squad-layout">
         <aside class="squad-list-panel">
           <button type="button" class="squad-create-btn" @click="startSquadCreate">部隊を作成</button>
@@ -1620,6 +1642,7 @@ watch(
         </section>
       </div>
     </div>
+    <div v-else class="char-empty">チーム編成機能は設定で停止中です。</div>
   </base-modal>
 
   <base-modal

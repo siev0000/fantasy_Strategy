@@ -52,28 +52,28 @@ export const TERRITORY_RESIDENTIAL_LEVEL_CONFIG = {
     capacityPerTile: 20,
     footprintTiles: 1,
     iconName: "村",
-    markerIconSize: 32
+    markerIconSize: 60
   },
   [TERRITORY_RESIDENTIAL_LEVEL_TOWN]: {
     label: "町",
     capacityPerTile: 50,
     footprintTiles: 2,
     iconName: "町",
-    markerIconSize: 38
+    markerIconSize: 57
   },
   [TERRITORY_RESIDENTIAL_LEVEL_CITY]: {
     label: "都市",
     capacityPerTile: 100,
     footprintTiles: 3,
     iconName: "都市",
-    markerIconSize: 44
+    markerIconSize: 66
   },
   [TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS]: {
     label: "大都市",
     capacityPerTile: 150,
     footprintTiles: 7,
     iconName: "大都市",
-    markerIconSize: 52
+    markerIconSize: 78
   }
 };
 
@@ -114,6 +114,15 @@ export const MOVE_STEP_INTERVAL_MS = Math.max(100, Math.round((TURN_SECONDS / 60
 
 // テスト勢力の上限数。
 export const MAX_TEST_PLAYER_COUNT = 8;
+
+// 六角タイル描画の基本寸法。
+// width/height を変更した場合、関連する描画・当たり判定へ一括反映される。
+export const HEX_TILE_CONFIG = Object.freeze({
+  width: 62,
+  height: 74,
+  rowStep: 56,
+  oddRowOffsetX: 31
+});
 
 // ゲーム開始時の配置モード定義。
 export const GAME_START_PLAYER_PLACEMENT_MODE_ALL_RANDOM = "all_random";
@@ -189,83 +198,85 @@ export const UI_MANUAL_SCALE_CONFIG = {
 
 // マップ上マーカーの位置・サイズ設定。
 export const MAP_UNIT_MARKER_CONFIG = {
-  offsetX: -10,
-  offsetY: 10,
-  radius: 7.3,
-  iconSize: 20
+  offsetX: 0,
+  offsetY: 0,
+  radius: 11,
+  iconSize: 30
 };
 export const MAP_ENEMY_MARKER_CONFIG = {
   offsetX: 10,
   offsetY: 10,
-  radius: 5,
-  iconSize: 16
+  radius: 7.5,
+  iconSize: 24
 };
 export const MAP_FACTION_MARKER_CONFIG = {
   offsetX: -13,
   offsetY: 12,
-  radius: 5
+  radius: 7.5
 };
 
 // 村/町/都市マーカー設定。
 // 画像は透過前提で表示し、必要時のみ背面の丸背景を描く。
 export const MAP_SETTLEMENT_MARKER_CONFIG = {
-  iconSize: 36,
+  iconSize: 54,
   drawBackdrop: false,
-  backdropOuterRadius: 11.5,
-  backdropInnerRadius: 6.2
+  backdropOuterRadius: 17.25,
+  backdropInnerRadius: 9.3
 };
 
 // 領土運用「資源化」タイルのマーカー設定。
 export const MAP_RESOURCE_TILE_MARKER_CONFIG = {
-  iconSize: 22
+  iconSize: 33,
+  offsetX: 0,
+  offsetY: 10
 };
 
 // 統治者マーク（王冠）の設定。
 export const MAP_SOVEREIGN_MARKER_CONFIG = {
   offsetX: -12,
   offsetY: -16,
-  radius: 8,
-  iconSize: 9,
-  fallbackFontSizePx: 11
+  radius: 12,
+  iconSize: 14,
+  fallbackFontSizePx: 17
 };
 
 // 特殊地形アイコン設定。
 export const MAP_SPECIAL_ICON_CONFIG = {
-  defaultSize: 35,
-  caveSize: 30,
+  defaultSize: 53,
+  caveSize: 45,
   offsetY: -0,
-  fallbackTextFontSizePx: 25,
-  fallbackCaveTextFontSizePx: 20
+  fallbackTextFontSizePx: 38,
+  fallbackCaveTextFontSizePx: 30
 };
 
 // 森タイル上に重ねるアイコン設定。
 export const MAP_FOREST_ICON_CONFIG = {
-  size: 45,
+  size: 68,
   offsetY: 0
 };
 
 // 滝アイコン設定。
 export const MAP_WATERFALL_ICON_CONFIG = {
-  size: 22,
+  size: 33,
   yOffsetWhenTerrainSymbolVisible: -0,
   yOffsetWhenTerrainSymbolHidden: +0,
-  fallbackFontSizePx: 11
+  fallbackFontSizePx: 17
 };
 
 // ヘッダー資源アイコン設定。
 // 見た目サイズを大きくしても、レイアウト占有サイズを抑えてヘッダー高さを維持する。
-export const HEADER_RESOURCE_ICON_VISUAL_SIZE_PX = 24;
+export const HEADER_RESOURCE_ICON_VISUAL_SIZE_PX = 36;
 export const HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX = 16;
 export const HEADER_RESOURCE_ICON_SCALE = HEADER_RESOURCE_ICON_VISUAL_SIZE_PX / HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX;
 
 // ヘッダー資材アイコン設定（食料とは別に手動調整可能）。
-export const HEADER_MATERIAL_ICON_VISUAL_SIZE_PX = 26;
+export const HEADER_MATERIAL_ICON_VISUAL_SIZE_PX = 39;
 export const HEADER_MATERIAL_ICON_LAYOUT_SIZE_PX = 17;
 export const HEADER_MATERIAL_ICON_SCALE = HEADER_MATERIAL_ICON_VISUAL_SIZE_PX / HEADER_MATERIAL_ICON_LAYOUT_SIZE_PX;
 
 // ヘッダー食料/資材チップのサイズ係数（文字・余白比率）。
-export const HEADER_FOOD_CHIP_SCALE = 1.15;
-export const HEADER_MATERIAL_CHIP_SCALE = 1.15;
+export const HEADER_FOOD_CHIP_SCALE = 1.72;
+export const HEADER_MATERIAL_CHIP_SCALE = 1.72;
 
 // フィールド上の丸アイコンボタン設定。
 export const OVERLAY_ICON_BUTTON_SIZE_PX = 65;

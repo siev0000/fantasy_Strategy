@@ -8,8 +8,11 @@ import OwnFactionNavigatorModal from "./OwnFactionNavigatorModal.vue";
 import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 import VillageBuildModal from "./VillageBuildModal.vue";
 import FieldBattleResultModal from "./FieldBattleResultModal.vue";
+import FieldFooterTabsOverlay from "./FieldFooterTabsOverlay.vue";
+import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
+import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import { RESEARCH_CATEGORY_ORDER as RESEARCH_CATEGORY_ORDER_CONFIG } from "../lib/research-tree-config.js";
 import { createOwnCharacterNavigatorEntries, createOwnSquadNavigatorEntries } from "../lib/own-faction-navigator.js";
 import {
@@ -142,6 +145,7 @@ import {
   DEFAULT_GAME_VIEW_PRESET_KEY,
   GAME_VIEW_HEIGHT,
   GAME_VIEW_WIDTH,
+  HEX_TILE_CONFIG,
   HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX,
   HEADER_MATERIAL_ICON_LAYOUT_SIZE_PX,
   HEADER_MATERIAL_ICON_SCALE,
@@ -206,10 +210,28 @@ import facilityDb from "../../../data/source/export/json/施設.json";
 import enchantDb from "../../../data/source/export/json/付与.json";
 import skillInfoDb from "../../../data/source/export/json/スキル一覧.json";
 import terrainYieldDb from "../../../data/source/export/json/地形.json";
+import effectList320 from "../../../assets/effect/320×240/effect_list.json";
+import effectListAnimation1 from "../../../assets/effect/アニメーション1/effect_list.json";
 
 const rawEnemyIllustrationModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
   eager: true,
   import: "default"
+});
+const rawUnitIllustrationModules = import.meta.glob("../../../assets/images/units/**/*.{png,jpg,jpeg,webp,avif,gif}", {
+  eager: true,
+  import: "default"
+});
+const rawEffectImageModules320 = import.meta.glob("../../../assets/effect/320×240/*.{webp,png,jpg,jpeg,avif,gif}", {
+  eager: true,
+  import: "default"
+});
+const rawEffectImageModulesAnimation1 = import.meta.glob("../../../assets/effect/アニメーション1/*.{webp,png,jpg,jpeg,avif,gif}", {
+  eager: true,
+  import: "default"
+});
+const ENEMY_NEST_ICON_NAME_ALIAS_MAP = Object.freeze({
+  "虫系の巣": "蟲系の巣",
+  "土の輪": "地の輪"
 });
 const enemyIllustrationSrcByName = new Map(
   Object.entries(rawEnemyIllustrationModules)
@@ -227,6 +249,50 @@ for (const [name, src] of enemyIllustrationSrcByName.entries()) {
   if (!normalized || enemyIllustrationSrcByNormalizedName.has(normalized)) continue;
   enemyIllustrationSrcByNormalizedName.set(normalized, src);
 }
+const unitIllustrationSrcByName = new Map(
+  Object.entries(rawUnitIllustrationModules)
+    .map(([path, src]) => {
+      const name = nonEmptyText(extractFileStem(path));
+      const srcText = nonEmptyText(src);
+      if (!name || !srcText) return null;
+      return [name, srcText];
+    })
+    .filter(Boolean)
+);
+const unitIllustrationSrcByNormalizedName = new Map();
+for (const [name, src] of unitIllustrationSrcByName.entries()) {
+  const normalized = normalizeUnitImageLookupKey(name);
+  if (!normalized || unitIllustrationSrcByNormalizedName.has(normalized)) continue;
+  unitIllustrationSrcByNormalizedName.set(normalized, src);
+}
+const effectSrcByName = new Map();
+for (const [path, src] of Object.entries({ ...rawEffectImageModules320, ...rawEffectImageModulesAnimation1 })) {
+  const fileName = path.split("/").pop() || "";
+  const baseName = fileName.replace(/\.(webp|png|jpg|jpeg|avif|gif)$/i, "");
+  const srcText = nonEmptyText(src);
+  if (!baseName || !srcText || effectSrcByName.has(baseName)) continue;
+  effectSrcByName.set(baseName, srcText);
+}
+const effectSrcByName320 = new Map();
+for (const [path, src] of Object.entries(rawEffectImageModules320)) {
+  const fileName = path.split("/").pop() || "";
+  const baseName = fileName.replace(/\.(webp|png|jpg|jpeg|avif|gif)$/i, "");
+  const srcText = nonEmptyText(src);
+  if (!baseName || !srcText || effectSrcByName320.has(baseName)) continue;
+  effectSrcByName320.set(baseName, srcText);
+}
+const animation1EffectSrcSet = new Set(
+  Object.values(rawEffectImageModulesAnimation1)
+    .map(src => nonEmptyText(src))
+    .filter(Boolean)
+);
+const effectNameCatalog = [
+  ...(Array.isArray(effectList320) ? effectList320 : []),
+  ...(Array.isArray(effectListAnimation1) ? effectListAnimation1 : [])
+]
+  .map(name => nonEmptyText(name))
+  .filter((name, index, arr) => name.length > 0 && arr.indexOf(name) === index && effectSrcByName.has(name));
+const DEFAULT_ATTACK_EFFECT_NAME = "斬撃";
 
 const props = defineProps({
   selectedRace: { type: String, default: "" },
@@ -240,6 +306,11 @@ const props = defineProps({
   characterCommand: { type: Object, default: null }
 });
 const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change", "save-snapshot", "game-view-size-change"]);
+
+defineExpose({
+  playEffect: payload => playEffectFromExternalRequest(payload),
+  reviveUnitFromDeadReserve: payload => reviveUnitFromDeadReserve(payload?.unitId, payload)
+});
 
 // マップ生成/表示の基本設定
 const mapSize = ref("60x60"); // 生成時のマップサイズ
@@ -273,6 +344,7 @@ const isPageHidden = ref(typeof document !== "undefined" ? !!document.hidden : f
 const focusCameraOnTileClick = ref(false); // クリック時カメラフォーカス
 const showSettingsModal = ref(false); // 表示設定モーダル表示
 const showQuickSettingsModal = ref(false); // 右上設定メニュー表示
+const squadFormationEnabled = ref(true); // チーム編成機能ON/OFF
 const saveExportInProgress = ref(false); // セーブ出力中フラグ
 const saveLoadInProgress = ref(false); // セーブ読込中フラグ
 const saveLoadInput = ref(null); // セーブ読込用input
@@ -297,6 +369,7 @@ const zoomPercent = ref(100);
 const isDevBuild = import.meta.env.DEV;
 const showDevInfo = ref(isDevBuild);
 const showTestControls = ref(false);
+const runtimeMemoryText = ref("-");
 const testPlayerSlots = ref([]); // テスト用プレイヤー勢力スロット
 const activeTestPlayerId = ref(DEFAULT_TEST_PLAYER_ID); // 現在操作中プレイヤーID
 const headerMinimized = ref(false);
@@ -309,6 +382,7 @@ const autoTimeRunning = ref(true);
 const autoTimePausedByCheckpoint = ref(false);
 const villageState = ref(null);
 const unitList = ref([]);
+const deadUnitReserve = ref([]); // 回収済み死亡ユニットを保持する死亡枠（蘇生元データ）
 const headerResourceMenuRef = ref(null);
 const headerPopulationMenuRef = ref(null);
 const headerResourceButtonRefMap = ref({});
@@ -362,10 +436,32 @@ const unitCreateRarity = ref("common");
 const unitCreateBatchCount = ref(1);
 const unitCreateMode = ref(UNIT_CREATE_MODE_KEYS.NORMAL);
 const selectedTileDetail = ref(null);
+const showFooterUnitSkillModal = ref(false);
+const footerUnitSkillModalUnitId = ref("");
+const footerUnitSkillModalSelectedSkillName = ref("");
+const selectedTileAttackSkillName = ref("");
+const effectPlaybackPreset = ref({
+  name: "",
+  src: "",
+  angleDeg: 0,
+  scalePercent: 50,
+  tint: null,
+  colorStrengthPercent: 100,
+  hueAnimationDegPerFrame: 0,
+  grayscaleBase: false,
+  renderStyle: "soft",
+  frameOffsets: {},
+  showPreviousFrameGhost: false
+});
+const suppressFooterSkillModalOnce = ref(false);
+const ownFactionPanelViewMode = ref("navigator");
+const ownFactionAttackPanelUnitId = ref("");
+const ownFactionAttackPanelSelectedSkillName = ref("");
 const housingUpgradeSelectionState = ref(null); // 住居拡張の付属領域選択状態
 const tileDetailMinimized = ref(false);
 const tileDetailPanelWidth = ref(460);
 const tileDetailPanelHeight = ref(360);
+const showLegacyTileDetailPanel = false;
 const villageInfoText = ref("初期村: -");
 const unitInfoText = ref("選択ユニット: -");
 const unitRulesInfoText = ref("部隊生成ルール: 一般兵 6-10 / ネームド 1");
@@ -378,7 +474,6 @@ const masterVolumePercent = ref(Math.round((initialAudioVolumes.masterVolume ?? 
 const bgmVolumePercent = ref(Math.round((initialAudioVolumes.bgmVolume ?? 0.5) * 100));
 const seVolumePercent = ref(Math.round((initialAudioVolumes.seVolume ?? 0.5) * 100));
 const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
-const SKILL_TREE_ICON_SRC = getIconSrcByName("本", DEFAULT_ICON_NAME);
 const UNIT_CREATE_ICON_SRC = getIconSrcByName("兵士", DEFAULT_ICON_NAME);
 const EQUIPMENT_INVENTORY_ICON_SRC = getIconSrcByName("装備", DEFAULT_ICON_NAME);
 const UNIT_BATTLE_ICON_SRC = getIconSrcByName("攻撃", DEFAULT_ICON_NAME);
@@ -395,9 +490,13 @@ const TILE_ATTACK_PATTERN_OPTIONS = Object.freeze([
 ]);
 const TILE_ATTACK_RANGE_MIN = 1;
 const TILE_ATTACK_RANGE_MAX = 12;
-const DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS = new Set(["single", "straight", "fan", "front"]);
+const SKILL_ACTIVE_ACTION_CODE = "A";
+const DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS = new Set(["straight", "fan", "front"]);
 const TILE_ATTACK_PATTERN_KEY_SET = new Set(TILE_ATTACK_PATTERN_OPTIONS.map(row => row.key));
 const TILE_ATTACK_PATTERN_LABEL_MAP = new Map(TILE_ATTACK_PATTERN_OPTIONS.map(row => [row.key, row.label]));
+const TILE_ATTACK_PREVIEW_COLOR_RANGE = 0xffee72;
+const TILE_ATTACK_PREVIEW_COLOR_HIT = 0xff4f4f;
+const TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF = 0xffb347;
 const MONSTER_BEHAVIOR_ACTION_OPTIONS = Object.freeze([
   { key: "approach", label: "接近" },
   { key: "melee_attack", label: "通常攻撃" },
@@ -409,6 +508,42 @@ const MONSTER_BEHAVIOR_ACTION_OPTIONS = Object.freeze([
 ]);
 const MONSTER_BEHAVIOR_ACTION_KEYS = Object.freeze(MONSTER_BEHAVIOR_ACTION_OPTIONS.map(row => row.key));
 const ATTACK_CURSOR_STYLE = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v20M2 12h20' stroke='%23ff4d4f' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3.5' fill='none' stroke='%23ffd0d0' stroke-width='2'/%3E%3C/svg%3E\") 12 12, crosshair";
+const EFFECT_SPRITE_UNIT = 120;
+const EFFECT_VERTICAL_SPLIT_TARGET_WIDTH = 320;
+const EFFECT_VERTICAL_SPLIT_FRAME_HEIGHT = 120;
+const EFFECT_TOTAL_PLAYBACK_MS = 1500;
+const EFFECT_FRAME_INTERVAL_MS = 60;
+const EFFECT_SEQUENCE_GAP_MS = 10;
+const EFFECT_PLAYBACK_DEPTH = 1000000;
+const EFFECT_SCALE_BASE_PERCENT = 100;
+const EFFECT_ELLIPSE_RATIO_THRESHOLD = 1.15;
+const EFFECT_SOFT_MASK_TEXTURE_KEY = "tile-effect-soft-mask";
+const EFFECT_SOFT_MASK_TEXTURE_SIZE = 256;
+const EFFECT_SOFT_MASK_INNER_RATIO = 0.58;
+const EFFECT_RENDER_STYLE_SOFT = "soft";
+const EFFECT_RENDER_STYLE_RECT = "rect";
+const EFFECT_RENDER_STYLE_NONE = "none";
+const EFFECT_RENDER_STYLE_SET = new Set([EFFECT_RENDER_STYLE_SOFT, EFFECT_RENDER_STYLE_RECT, EFFECT_RENDER_STYLE_NONE]);
+const EFFECT_DEBUG_PREFIX = "[AttackEffect]";
+const MAP_EFFECT_PLAY_EVENT_NAME = "fantasy-strategy:play-map-effect";
+const MAP_EFFECT_BRIDGE_NAMESPACE = "__fantasy_strategy_map_effect_bridge__";
+// 死亡ユニットのフィールド残留時間（ms計算用の秒値）。
+// runDeadUnitLifecycleTick で、未回収死体を消滅させる判定に使う。
+const DEAD_UNIT_FIELD_TIMEOUT_SECONDS = 30;
+// DEAD_UNIT_FIELD_TIMEOUT_SECONDS をミリ秒化した実行時比較値。
+const DEAD_UNIT_FIELD_TIMEOUT_MS = DEAD_UNIT_FIELD_TIMEOUT_SECONDS * 1000;
+// HP0以下になったユニットへ付与する状態ラベル。
+// UI表示と死亡判定フラグ同期に利用。
+const DEAD_UNIT_STATE_LABEL = "死亡";
+// 初期村配置時に「この半径内は敵を置かない」安全地帯の半径。
+// 開始直後の接敵事故防止（即終了リスク低減）に使う。
+const START_VILLAGE_SAFE_NO_ENEMY_RADIUS = 3;
+// 初期村近傍の敵レベル制限をかける半径。
+// SAFE_NO_ENEMY_RADIUS より外〜この半径内を低レベル帯に調整する。
+const START_VILLAGE_LOW_LEVEL_RADIUS = 7;
+// 初期村近傍（LOW_LEVEL_RADIUS内）で許容する敵レベル上限。
+// 現在は Lv10 以下を目標に、敵ステータス再計算時の上限として利用。
+const START_VILLAGE_LOW_LEVEL_CAP = 10;
 const pathfindingWorkerClient = createPathfindingWorkerClient();
 const MAP_RENDER_INTERVAL_NORMAL_MS = 16;
 const MAP_RENDER_INTERVAL_LOW_POWER_MS = 125;
@@ -457,10 +592,18 @@ let selectedTileKey = "";
 let hoveredTileKey = "";
 let resizeHandler = null;
 let clockIntervalId = null;
+let runtimeMemoryIntervalId = null;
 let firstGestureHandler = null;
 let pageVisibilityHandler = null;
 let nativeWheelHandler = null;
 let sidebarResourceOutsidePointerHandler = null;
+let externalMapEffectPlayEventHandler = null;
+let externalMapEffectPlayBridgeFn = null;
+let enemyAutoAttackElapsedMs = 0;
+let unitDamageBlinkTimerId = null;
+let unitDamageBlinkUntilMsById = new Map();
+let unitRecentDamageAmountById = new Map();
+let activeDamagePopupTexts = new Set();
 let lastClockTurnCycleIndex = 0;
 let cameraInitialized = false;
 let pendingClickFocusWorld = null;
@@ -504,10 +647,17 @@ let alertedFactionTileKeys = new Set();
 let spottedEnemyNamesByTile = new Map();
 let raceMarkerTexturePending = new Set();
 let enemyIllustrationTexturePending = new Set();
+let unitIllustrationTexturePending = new Set();
 let lastCharacterCommandNonce = "";
 let renderedHexBounds = null;
 let applyingTestPlayerState = false;
 let lastMapRenderAtMs = 0;
+let activeTileEffectImage = null;
+let activeTileEffectPrevGhostImage = null;
+let activeTileEffectMaskImage = null;
+let activeTileEffectFrameTimerId = null;
+let activeTileEffectHideTimerId = null;
+let activeTileEffectPlaybackRequestId = 0;
 
 const terrainMap = computed(() => {
   const m = new Map();
@@ -544,6 +694,343 @@ const customTargetLandTilesLabel = computed(() => {
     : Number(customTargetLandPercent.value);
   const pct = Math.max(25, Math.min(60, Number.isFinite(raw) ? raw : 50));
   return `${Math.round((total * pct) / 100)} / ${total} マス`;
+});
+
+const hasSelectedTileForEffect = computed(() => !!resolveSelectedTileCoordForEffect());
+
+const footerTileUnitRows = computed(() => {
+  const detail = selectedTileDetail.value;
+  if (!detail) return [];
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+  return unitsAt(x, y).map(unit => ({
+    ...unit,
+    iconSrc: moveUnitIconSrc(unit),
+    iconGlyph: moveUnitIconGlyph(unit)
+  }));
+});
+
+const footerTileEnemyRows = computed(() => {
+  const detail = selectedTileDetail.value;
+  if (!detail || !currentData.value) return [];
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+
+  const out = [];
+  const seen = new Set();
+  const pushEnemy = (enemy, prefix = "enemy", options = {}) => {
+    if (!enemy || typeof enemy !== "object") return;
+    const baseId = nonEmptyText(enemy?.id) || `${prefix}-${x}-${y}-${out.length + 1}`;
+    const rowId = `${prefix}:${baseId}`;
+    if (seen.has(rowId)) return;
+    seen.add(rowId);
+    const explicitIconSrc = nonEmptyText(options?.iconSrc);
+    const fallbackIconSrc = nonEmptyText(enemy?.iconSrc);
+    out.push({
+      ...enemy,
+      id: rowId,
+      name: nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵",
+      unitType: nonEmptyText(enemy?.unitType) || "敵",
+      iconSrc: explicitIconSrc || fallbackIconSrc || ""
+    });
+  };
+
+  // フッター表示は一時的な危険度変動に影響されないよう、配置済み敵データを直接使う。
+  const spawnEnemies = configuredEnemiesAt(x, y, currentData.value);
+  for (const enemy of spawnEnemies) {
+    const illustName = resolveEnemyIllustrationNameForMap(enemy, [enemy]);
+    const illustSrc = resolveEnemyIllustrationSrc(illustName);
+    pushEnemy(enemy, "spawn", { iconSrc: illustSrc });
+  }
+
+  const opposingMap = buildOpposingFactionUnitsByTile(currentData.value);
+  const key = coordKey(x, y);
+  const bucket = opposingMap.get(key);
+  if (bucket && Array.isArray(bucket.units)) {
+    for (const unit of bucket.units) {
+      const unitIllustName = resolveUnitIllustrationNameForMap(unit);
+      const unitIllustSrc = resolveUnitIllustrationSrc(unitIllustName);
+      pushEnemy({
+        ...unit,
+        unitType: nonEmptyText(bucket?.factionLabel) || "他勢力"
+      }, "faction", {
+        iconSrc: unitIllustSrc || moveUnitIconSrc(unit)
+      });
+    }
+  }
+  return out;
+});
+
+const footerUnitSkillModalUnit = computed(() => {
+  const id = nonEmptyText(footerUnitSkillModalUnitId.value);
+  if (!id) return null;
+  return unitList.value.find(unit => nonEmptyText(unit?.id) === id) || null;
+});
+
+const footerUnitSkillModalSkillNames = computed(() => {
+  const source = Array.isArray(footerUnitSkillModalUnit.value?.skills)
+    ? footerUnitSkillModalUnit.value.skills
+    : [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of source) {
+    const name = nonEmptyText(raw);
+    if (!name || name === "0" || name === "-" || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+});
+
+const footerUnitSkillModalSelectedSkillSummary = computed(() => {
+  const skillName = nonEmptyText(footerUnitSkillModalSelectedSkillName.value);
+  if (!skillName) return "";
+  const row = resolveSkillInfoRowByName(skillName);
+  if (!row) return `${skillName}: 射程/範囲の定義がありません。`;
+  const range = resolveSkillAttackRangeFromRow(row, TILE_ATTACK_RANGE_MIN, {
+    unit: footerUnitSkillModalUnit.value
+  });
+  const patternKey = resolveTileAttackPatternKeyFromSkillArea(row?.範囲);
+  return `${skillName}: ${resolveTileAttackPatternLabel(patternKey)} / 射程${range}`;
+});
+
+const ownFactionAttackPanelUnit = computed(() => {
+  const preferredId = nonEmptyText(ownFactionAttackPanelUnitId.value);
+  if (preferredId) {
+    const matched = unitList.value.find(unit => nonEmptyText(unit?.id) === preferredId) || null;
+    if (matched) return matched;
+  }
+  const selectedId = nonEmptyText(selectedUnitId.value);
+  if (!selectedId) return null;
+  return unitList.value.find(unit => nonEmptyText(unit?.id) === selectedId) || null;
+});
+
+const ownFactionAttackPanelSkillNames = computed(() => {
+  const source = Array.isArray(ownFactionAttackPanelUnit.value?.skills)
+    ? ownFactionAttackPanelUnit.value.skills
+    : [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of source) {
+    const name = nonEmptyText(raw);
+    if (!name || name === "0" || name === "-" || seen.has(name)) continue;
+    const row = resolveSkillInfoRowByName(name);
+    const action = nonEmptyText(row?.行動).toUpperCase();
+    if (action && action !== SKILL_ACTIVE_ACTION_CODE && action !== "A" && action !== "ACTION") continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+});
+
+function toSkillDisplayText(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const num = Number(value);
+  if (Number.isFinite(num)) return String(num);
+  const text = nonEmptyText(value);
+  return text || "-";
+}
+
+function resolveSkillPanelActionType(value) {
+  const text = nonEmptyText(value).toUpperCase();
+  if (text === "P" || text === "PASSIVE" || text === "パッシブ") return "passive";
+  return "action";
+}
+
+function resolveSkillPanelIconNameFromText(value) {
+  const text = nonEmptyText(value);
+  if (!text || text === "-") return "";
+  if (hasIconName(text)) return text;
+  const chunks = text
+    .split(/[\s/／・,，\+\+]+/)
+    .map(nonEmptyText)
+    .filter(Boolean);
+  for (const chunk of chunks) {
+    if (hasIconName(chunk)) return chunk;
+  }
+  return "";
+}
+
+function resolveSkillPanelIconSrcFromText(value) {
+  const iconName = resolveSkillPanelIconNameFromText(value);
+  if (!iconName) return "";
+  return getIconSrcByName(iconName, "");
+}
+
+function isWeaponAttackStyleText(value) {
+  const normalized = nonEmptyText(value).toLowerCase();
+  return normalized === "武器" || normalized === "weapon";
+}
+
+function buildOwnFactionAttackRow(nameRaw, skillRow, statusSource, options = {}) {
+  const name = nonEmptyText(nameRaw);
+  const rowSource = skillRow && typeof skillRow === "object" ? skillRow : {};
+  const sourceType = nonEmptyText(options?.sourceType) || "skill";
+  const scaled = computeSkillScaledTriplet(rowSource, statusSource);
+  const shouldApplyWeaponBonus = sourceType !== "weapon" && isWeaponAttackStyleText(rowSource?.攻撃手段);
+  const weaponBonusRow = shouldApplyWeaponBonus && options?.weaponBonusRow && typeof options.weaponBonusRow === "object"
+    ? options.weaponBonusRow
+    : null;
+  const weaponScaled = weaponBonusRow
+    ? computeSkillScaledTriplet(weaponBonusRow, statusSource)
+    : null;
+  const powerValue = Math.round(toSafeNumber(scaled?.power, 0) + toSafeNumber(weaponScaled?.power, 0));
+  const stateValue = Math.round(toSafeNumber(scaled?.state, 0) + toSafeNumber(weaponScaled?.state, 0));
+  const guardValue = Math.round(toSafeNumber(scaled?.guard, 0) + toSafeNumber(weaponScaled?.guard, 0));
+  const range = resolveSkillAttackRangeFromRow(rowSource, TILE_ATTACK_RANGE_MIN, {
+    unit: options?.unit,
+    weaponRow: weaponBonusRow
+  });
+  const patternKey = resolveTileAttackPatternKeyFromSkillArea(rowSource?.範囲);
+  const attackStyle = toSkillDisplayText(rowSource?.攻撃手段);
+  const family = toSkillDisplayText(rowSource?.系統);
+  const actionType = resolveSkillPanelActionType(rowSource?.行動);
+  return {
+    rowKey: nonEmptyText(options?.rowKey) || `attack:${name}`,
+    sourceType,
+    slotLabel: nonEmptyText(options?.slotLabel),
+    name,
+    detail: toSkillDisplayText(rowSource?.詳細),
+    apCost: toSkillDisplayText(rowSource?.AP消費),
+    ct: toSkillDisplayText(rowSource?.CT),
+    duration: toSkillDisplayText(rowSource?.効果時間),
+    power: toSkillDisplayText(powerValue),
+    state: toSkillDisplayText(stateValue),
+    guard: toSkillDisplayText(guardValue),
+    range,
+    patternKey,
+    patternLabel: resolveTileAttackPatternLabel(patternKey),
+    attackStyle,
+    family,
+    actionType,
+    actionShort: actionType === "passive" ? "P" : "A",
+    attackStyleIconSrc: resolveSkillPanelIconSrcFromText(attackStyle),
+    familyIconSrc: resolveSkillPanelIconSrcFromText(family),
+    skillRowRef: rowSource
+  };
+}
+
+function resolveWeaponBaseSkillRowForItem(item) {
+  if (!item || typeof item !== "object") return null;
+  const name = nonEmptyText(item?.name || item?.equipmentName);
+  if (!name) return null;
+  const equipmentRow = findEquipmentRowByName(name);
+  if (!equipmentRow) {
+    return ensureEquipmentSkillRowForItem(item) || item?.skillRow || null;
+  }
+  const baseEntry = {
+    ...item,
+    power: Math.round(toSafeNumber(equipmentRow?.威力, 0)),
+    guard: Math.round(toSafeNumber(equipmentRow?.ガード, 0)),
+    criticalRate: Math.round(toSafeNumber(equipmentRow?.Cr率, 0)),
+    criticalPower: Math.round(toSafeNumber(equipmentRow?.Cr威力, 0)),
+    attackAp: Math.round(toSafeNumber(equipmentRow?.攻撃AP, 0)),
+    magicAp: Math.round(toSafeNumber(equipmentRow?.魔法AP, 0)),
+    range: Number.isFinite(Number(equipmentRow?.射程))
+      ? Math.round(toSafeNumber(equipmentRow?.射程, 0))
+      : null
+  };
+  return buildEquipmentSkillRow(equipmentRow, baseEntry);
+}
+
+function resolveWeaponAttackRowsForUnit(unit, statusSource) {
+  const equipment = normalizeEquipmentList(unit?.equipment);
+  const rows = [];
+  for (let i = 0; i < equipment.length; i += 1) {
+    const item = equipment[i];
+    const slot = nonEmptyText(item?.slot);
+    if (slot !== "武器1" && slot !== "武器2") continue;
+    const name = nonEmptyText(item?.name || item?.equipmentName);
+    if (!name) continue;
+    const skillRow = resolveWeaponBaseSkillRowForItem(item);
+    rows.push(buildOwnFactionAttackRow(name, skillRow, statusSource, {
+      rowKey: `weapon:${slot}:${name}:${i}`,
+      sourceType: "weapon",
+      slotLabel: EQUIPMENT_SLOT_LABELS[slot] || slot,
+      unit
+    }));
+  }
+  return rows;
+}
+
+function resolvePrimaryWeaponBaseSkillRowForUnit(unit) {
+  const equipment = normalizeEquipmentList(unit?.equipment);
+  let fallbackWeaponItem = null;
+  for (const item of equipment) {
+    const slot = nonEmptyText(item?.slot);
+    if (slot !== "武器1" && slot !== "武器2") continue;
+    if (!fallbackWeaponItem) fallbackWeaponItem = item;
+    if (slot === "武器1") {
+      return resolveWeaponBaseSkillRowForItem(item);
+    }
+  }
+  return fallbackWeaponItem ? resolveWeaponBaseSkillRowForItem(fallbackWeaponItem) : null;
+}
+
+function resolveWeaponSkillRowByNameForUnit(skillNameRaw, unit) {
+  const skillName = nonEmptyText(skillNameRaw);
+  if (!skillName) return null;
+  const equipment = normalizeEquipmentList(unit?.equipment);
+  for (const item of equipment) {
+    const slot = nonEmptyText(item?.slot);
+    if (slot !== "武器1" && slot !== "武器2") continue;
+    const name = nonEmptyText(item?.name || item?.equipmentName);
+    if (name !== skillName) continue;
+    return resolveWeaponBaseSkillRowForItem(item);
+  }
+  return null;
+}
+
+const ownFactionAttackPanelSkillRows = computed(() => {
+  const statusSource = ownFactionAttackPanelUnit.value?.status || null;
+  const weaponRows = resolveWeaponAttackRowsForUnit(ownFactionAttackPanelUnit.value, statusSource);
+  const mainWeaponSkillRow = resolvePrimaryWeaponBaseSkillRowForUnit(ownFactionAttackPanelUnit.value);
+  const skillRows = ownFactionAttackPanelSkillNames.value.map(name => {
+    const skillRow = resolveSkillInfoRowByName(name);
+    return buildOwnFactionAttackRow(name, skillRow, statusSource, {
+      rowKey: `skill:${name}`,
+      sourceType: "skill",
+      weaponBonusRow: mainWeaponSkillRow,
+      unit: ownFactionAttackPanelUnit.value
+    });
+  });
+  return [...weaponRows, ...skillRows];
+});
+
+const ownFactionAttackPanelSelectedSkillRow = computed(() => {
+  const selectedName = nonEmptyText(ownFactionAttackPanelSelectedSkillName.value);
+  const rows = ownFactionAttackPanelSkillRows.value;
+  if (selectedName) {
+    const matched = rows.find(row => nonEmptyText(row?.name) === selectedName) || null;
+    if (matched) return matched;
+  }
+  return rows[0] || null;
+});
+
+const ownFactionAttackPanelSelectedSkillSummary = computed(() => {
+  const row = ownFactionAttackPanelSelectedSkillRow.value;
+  if (!row) return "";
+  return `${row.name}: ${row.patternLabel} / 射程${row.range}`;
+});
+
+watch(ownFactionAttackPanelSkillRows, (rows) => {
+  const selectedName = nonEmptyText(ownFactionAttackPanelSelectedSkillName.value);
+  if (selectedName && rows.some(row => nonEmptyText(row?.name) === selectedName)) return;
+  ownFactionAttackPanelSelectedSkillName.value = nonEmptyText(rows?.[0]?.name);
+}, { immediate: true });
+
+watch(ownFactionAttackPanelSelectedSkillRow, (row) => {
+  const skillName = nonEmptyText(row?.name);
+  if (!skillName) return;
+  footerUnitSkillModalSelectedSkillName.value = skillName;
+  selectedTileAttackSkillName.value = skillName;
+}, { immediate: true });
+
+const tileAttackPreviewSkillLabel = computed(() => {
+  const selected = nonEmptyText(selectedTileAttackSkillName.value);
+  return selected || "通常攻撃";
 });
 
 function formatHeaderPercentOrDash(value) {
@@ -1316,20 +1803,29 @@ function resolveResearchRequiredExpForLevel(level) {
   return RESEARCH_EXP_BASE * (2 ** (lv - 1));
 }
 
-function resolveResearchSelectionItemId(categoryKey, level) {
+function resolveResearchSelectionItemId(categoryKey) {
   const key = nonEmptyText(categoryKey);
-  const lv = Math.max(1, Math.floor(toSafeNumber(level, 1)));
   if (!key) return "";
   const source = props?.researchSelection?.[key];
-  if (!source || typeof source !== "object") return "";
-  return nonEmptyText(source?.[lv]);
+  if (!source) return "";
+  if (typeof source === "string" || typeof source === "number") {
+    return nonEmptyText(source);
+  }
+  if (typeof source !== "object") return "";
+  const selectedPairs = Object.entries(source).map(([levelKey, itemId]) => {
+    const level = Math.max(1, Math.floor(toSafeNumber(levelKey, 1)));
+    const id = nonEmptyText(itemId);
+    return { level, id };
+  }).filter(row => !!row.id);
+  selectedPairs.sort((a, b) => b.level - a.level);
+  return selectedPairs[0]?.id || nonEmptyText(source?.itemId || source?.id || "");
 }
 
 const headerResearchRows = computed(() => {
   return RESEARCH_CATEGORY_ORDER_CONFIG.map((categoryKey) => {
     const key = nonEmptyText(categoryKey);
     const level = resolveResearchCurrentLevel(key, CITY_ABILITY_DEFINED_CAP);
-    const selectedItemId = resolveResearchSelectionItemId(key, level);
+    const selectedItemId = resolveResearchSelectionItemId(key);
     const currentExp = selectedItemId
       ? Math.max(0, Math.floor(toSafeNumber(props?.researchProgress?.targetExpMap?.[selectedItemId], 0)))
       : 0;
@@ -1429,6 +1925,7 @@ function resetClockRuntime(nowMs = Date.now()) {
   clockElapsedMs.value = 0;
   clockNowMs.value = now;
   clockLastTickRealMs.value = now;
+  enemyAutoAttackElapsedMs = 0;
   autoTimeRunning.value = true;
   autoTimePausedByCheckpoint.value = false;
   resetClockTurnCycleIndex(now);
@@ -1775,6 +2272,12 @@ const displaySettingsFields = computed(() => ([
     value: focusCameraOnTileClick.value
   },
   {
+    key: "squadFormationEnabled",
+    kind: "checkbox",
+    label: "チーム編成機能を有効にする",
+    value: squadFormationEnabled.value
+  },
+  {
     key: "mountainMode",
     kind: "select",
     label: "山岳モード",
@@ -2002,7 +2505,13 @@ const TILE_SELECTED_OUTSET_PX = 2.0; // 選択枠線をタイル外側へ広げ�
 const TILE_HOVER_OUTSET_PX = 1.0; // ホバー枠線をタイル外側へ広げる量(px)
 const TILE_SELECTED_HIGHLIGHT_ALPHA = 0.68; // 選択枠線の透明度
 const TILE_HOVER_HIGHLIGHT_ALPHA = 0.56; // ホバー枠線の透明度
-const MAP_ENEMY_ILLUST_MARKER_SIZE_PX = 36; // 索敵後に表示する敵イラストの表示サイズ(px)
+const MAP_ENEMY_ILLUST_MARKER_SIZE_PX = 64; // 索敵後に表示する敵イラストの高さ(px)
+const MAP_ENEMY_ILLUST_ASPECT_WIDTH = 2; // 画像比率 2:3 (width:height)
+const MAP_ENEMY_ILLUST_ASPECT_HEIGHT = 3;
+const MAP_UNIT_ILLUST_MARKER_SIZE_PX = 64; // 味方ユニット表示に使うイラスト高さ(px)
+const MAP_UNIT_ILLUST_ASPECT_WIDTH = 2; // 画像比率 2:3 (width:height)
+const MAP_UNIT_ILLUST_ASPECT_HEIGHT = 3;
+const MAP_ENEMY_NEST_MARKER_SIZE_PX = 64; // 群れ/強敵の巣アイコン表示サイズ(px)
 const EQUIPMENT_ACTION_POPULATION_STEP = 25;
 const UNIT_VISION_BASE_RANGE = 1;
 const UNIT_VISION_SCOUT_STEP = 75;
@@ -2012,6 +2521,35 @@ const TILE_DANGER_REDUCE_PER_SURVEY_PERCENT = 15;
 const TILE_DANGER_UNOWNED_INCREASE_INTERVAL_TURNS = 3;
 const TILE_DANGER_UNOWNED_INCREASE_PERCENT = 20;
 const FIELD_BATTLE_HP_COST = 20;
+const FIELD_BATTLE_RESULT_MODAL_ENABLED = false;
+const FRIENDLY_FIRE_DAMAGE_RATE = 0.5;
+const SKILL_DAMAGE_RANDOM_RATE_A = 0.5;
+const SKILL_DAMAGE_RANDOM_RATE_B = 0.4;
+const ATTACK_DAMAGE_TYPE_KEYS = Object.freeze([
+  "物理",
+  "魔法",
+  "射撃",
+  "切断",
+  "貫通",
+  "打撃",
+  "炎",
+  "氷",
+  "雷",
+  "毒",
+  "光",
+  "闇",
+  "精神"
+]);
+const ENEMY_AUTO_ATTACK_INTERVAL_MS = 12000;
+const UNIT_DAMAGE_BLINK_DURATION_MS = 720;
+const UNIT_DAMAGE_BLINK_INTERVAL_MS = 90;
+const UNIT_DAMAGE_BLINK_DIM_ALPHA = 0.28;
+const UNIT_HP_DAMAGE_HOLD_MS = 1000;
+const UNIT_HP_DAMAGE_FADE_MS = 800;
+const DAMAGE_POPUP_DURATION_MS = 1400;
+const DAMAGE_POPUP_STEP_DELAY_MS = 180;
+const DAMAGE_POPUP_RISE_PX = 26;
+const DAMAGE_POPUP_DEPTH = 1000200;
 const UNIT_EXP_LEVEL_CAP = 120;
 const UNIT_EXP_LEVEL_SPLIT = 15;
 const UNIT_EXP_GAIN_BASE_PER_ENEMY_LEVEL = 50;
@@ -2125,7 +2663,6 @@ const ENCHANT_METADATA_KEYS = new Set([
 ]);
 const ENCHANT_EFFECT_PRIMARY_FIELDS = ["物理", "ガード", "防御", "Cr率", "Cr威力", "炎", "氷", "雷", "毒", "光", "闇"];
 const ENCHANT_EFFECT_FALLBACK_FIELDS = [...STATUS_FIELDS, ...SKILL_LEVEL_FIELDS, ...RESISTANCE_FIELDS];
-const SKILL_ACTIVE_ACTION_CODE = "A";
 const SKILL_WEAPON_ATTACK_STYLE = "武器";
 const SKILL_SCHEMA_DEFAULTS = (() => {
   const defaults = {};
@@ -2152,6 +2689,58 @@ const SKILL_TEMPLATES_BY_ATTACK_STYLE = (() => {
   }
   return map;
 })();
+function normalizeSkillNameForLookup(nameRaw) {
+  return nonEmptyText(nameRaw).replace(/\s+/g, "").replace(/　+/g, "");
+}
+const SKILL_INFO_BY_NAME = (() => {
+  const map = new Map();
+  const rows = Array.isArray(skillInfoDb) ? skillInfoDb : [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const name = nonEmptyText(row?.名前);
+    if (!name || map.has(name)) continue;
+    map.set(name, row);
+  }
+  return map;
+})();
+const SKILL_INFO_BY_NORMALIZED_NAME = (() => {
+  const map = new Map();
+  const rows = Array.isArray(skillInfoDb) ? skillInfoDb : [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const key = normalizeSkillNameForLookup(row?.名前);
+    if (!key || map.has(key)) continue;
+    map.set(key, row);
+  }
+  return map;
+})();
+const SKILL_AREA_PATTERN_ALIAS_MAP = Object.freeze({
+  "単体": "single",
+  "単": "single",
+  "single": "single",
+  "直線": "straight",
+  "straight": "straight",
+  "放射": "fan",
+  "放射状": "fan",
+  "扇": "fan",
+  "扇形": "fan",
+  "散弾": "fan",
+  "fan": "fan",
+  "円": "circle",
+  "円形": "circle",
+  "サークル": "circle",
+  "circle": "circle",
+  "周囲": "around",
+  "周辺": "around",
+  "around": "around",
+  "前方": "front",
+  "front": "front",
+  "ライン": "line",
+  "列": "line",
+  "line": "line",
+  "全体": "all",
+  "all": "all"
+});
 const FOOD_RESOURCE_KEYS = ["穀物", "野菜", "肉", "魚", "死体", "魂"];
 const FOOD_RESOURCE_SIMPLE_KEYS = ["食料", "魂"];
 const MATERIAL_RESOURCE_KEYS = ["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"];
@@ -2359,6 +2948,7 @@ const enemySpawnRows = computed(() => {
       raceName,
       className: className && className !== "0" ? className : "",
       imageName: nonEmptyText(raw?.画像 || raw?.image || raw?.Image),
+      nestName: nonEmptyText(raw?.巣 || raw?.nest || raw?.Nest),
       displayName: nonEmptyText(raw?.種族名) || raceName,
       lvMin,
       lvMax,
@@ -2395,6 +2985,24 @@ const enemyImageNameByLabel = computed(() => {
     for (const label of labels) {
       if (!map.has(label)) {
         map.set(label, imageName);
+      }
+    }
+  }
+  return map;
+});
+
+const enemyNestNameByLabel = computed(() => {
+  const map = new Map();
+  for (const row of enemySpawnRows.value) {
+    const nestName = nonEmptyText(row?.nestName);
+    if (!nestName) continue;
+    const labels = [
+      nonEmptyText(row?.displayName),
+      nonEmptyText(row?.raceName)
+    ].filter(Boolean);
+    for (const label of labels) {
+      if (!map.has(label)) {
+        map.set(label, nestName);
       }
     }
   }
@@ -2731,6 +3339,7 @@ const {
   squadMemberIds,
   movementStepCost,
   isPassableTerrain,
+  buildReachableTileSetSync: buildReachableTileSet,
   findPathWithinDistanceSync: findPathWithinDistance,
   findPathWithinDistanceAsync: (data, sx, sy, tx, ty, maxDistance) => pathfindingWorkerClient.findPathWithinDistance(data, sx, sy, tx, ty, maxDistance),
   clearLastMoveStopState,
@@ -3623,6 +4232,12 @@ function normalizeEnemyImageLookupKey(value) {
     .replace(/[\s　_\-・=]+/g, "");
 }
 
+function normalizeUnitImageLookupKey(value) {
+  return nonEmptyText(extractFileStem(value))
+    .toLowerCase()
+    .replace(/[\s　_\-・=]+/g, "");
+}
+
 function resolveEnemyIllustrationSrc(name) {
   const target = nonEmptyText(extractFileStem(name));
   if (!target) return "";
@@ -3630,6 +4245,31 @@ function resolveEnemyIllustrationSrc(name) {
   if (exact) return exact;
   const normalized = normalizeEnemyImageLookupKey(target);
   return normalized ? (enemyIllustrationSrcByNormalizedName.get(normalized) || "") : "";
+}
+
+function resolveUnitIllustrationSrc(name) {
+  const target = nonEmptyText(extractFileStem(name));
+  if (!target) return "";
+  const exact = unitIllustrationSrcByName.get(target);
+  if (exact) return exact;
+  const normalized = normalizeUnitImageLookupKey(target);
+  return normalized ? (unitIllustrationSrcByNormalizedName.get(normalized) || "") : "";
+}
+
+function resolveUnitIllustrationNameForMap(unit) {
+  if (!unit) return "";
+  const raceName = nonEmptyText(unit?.race);
+  const className = nonEmptyText(unit?.className);
+  const candidates = [
+    raceName && className ? `${raceName}_${className}` : "",
+    raceName,
+    // 只人だけは「クラス名.webp」運用を許可する（例: クレリック.webp）
+    raceName === "只人" ? className : ""
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (resolveUnitIllustrationSrc(candidate)) return candidate;
+  }
+  return "";
 }
 
 function resolveEnemyIllustrationNameForMap(enemy, enemyList = []) {
@@ -3653,6 +4293,30 @@ function resolveEnemyIllustrationNameForMap(enemy, enemyList = []) {
   ].filter((name, index, list) => name && list.indexOf(name) === index);
   for (const candidate of candidates) {
     if (resolveEnemyIllustrationSrc(candidate)) return candidate;
+  }
+  return "";
+}
+
+function resolveEnemyNestIconNameForMap(enemy, enemyList = []) {
+  const leadEnemy = enemy || (Array.isArray(enemyList) && enemyList.length ? enemyList[0] : null);
+  const labels = [
+    nonEmptyText(leadEnemy?.name),
+    nonEmptyText(leadEnemy?.race),
+    nonEmptyText(leadEnemy?.className),
+    ...((Array.isArray(enemyList) ? enemyList : [])
+      .flatMap(entry => [nonEmptyText(entry?.name), nonEmptyText(entry?.race), nonEmptyText(entry?.className)]))
+  ].filter(Boolean);
+  const mappedNestNames = labels
+    .map(label => nonEmptyText(enemyNestNameByLabel.value.get(label)))
+    .filter(Boolean);
+  const candidates = [
+    nonEmptyText(leadEnemy?.nestName),
+    nonEmptyText(leadEnemy?.nest),
+    ...mappedNestNames
+  ].filter((name, index, list) => name && list.indexOf(name) === index);
+  for (const candidate of candidates) {
+    const iconName = resolveEnemyNestIconName(candidate);
+    if (iconName) return iconName;
   }
   return "";
 }
@@ -5295,6 +5959,7 @@ function buildLiveFactionStateSnapshot() {
   return {
     village: deepCloneJsonValue(villageState.value, null),
     units: deepCloneJsonValue(unitList.value, []),
+    deadUnitReserve: deepCloneJsonValue(normalizeDeadUnitReserveRows(deadUnitReserve.value), []),
     selectedUnitId: nonEmptyText(selectedUnitId.value),
     villagePlacementMode: !!villagePlacementMode.value,
     unitMoveMode: !!isMoveCommandPendingForSelectedUnit.value,
@@ -5322,6 +5987,7 @@ function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
   applyingTestPlayerState = true;
   villageState.value = village;
   unitList.value = units;
+  deadUnitReserve.value = normalizeDeadUnitReserveRows(snapshot?.deadUnitReserve);
   selectedUnitId.value = nextSelectedUnitId;
   villagePlacementMode.value = !!snapshot?.villagePlacementMode;
   moveCommandUnitId.value = nonEmptyText(snapshot?.moveCommandUnitId)
@@ -7331,6 +7997,129 @@ function clearEnemyPresenceAtTile(data, x, y, options = {}) {
   return hadEnemies;
 }
 
+function rebuildEnemyUnitToLevel(enemyRaw, levelRaw) {
+  const enemy = enemyRaw && typeof enemyRaw === "object" ? enemyRaw : null; // 再計算対象の敵ユニット
+  if (!enemy) return enemyRaw;
+  const safeLevel = clampEnemyLevel(levelRaw); // 上下限を含めた最終適用レベル
+  const raceName = nonEmptyText(enemy?.race); // 種族名（成長表参照キー）
+  const className = nonEmptyText(enemy?.className); // クラス名（成長表参照キー）
+  const raceRow = raceName ? findClassRowByName(raceName) : null; // 種族データ行
+  const classRow = className ? findClassRowByName(className) : null; // クラスデータ行
+  if (!raceRow) {
+    return {
+      ...enemy,
+      level: safeLevel,
+      targetLevel: safeLevel,
+      baseLevel: Math.min(safeLevel, Math.max(1, Math.floor(toSafeNumber(enemy?.baseLevel, safeLevel))))
+    };
+  }
+  const progression = classRow // レベルに対する種族Lv/クラスLvの配分
+    ? resolveGrowthLevelsForUnitLevel(raceRow, safeLevel, ENEMY_LEVEL_MAX)
+    : { raceLevels: safeLevel, classLevels: 0 };
+  const raceLevels = Math.max(0, Math.floor(toSafeNumber(progression?.raceLevels, safeLevel))); // 種族Lv
+  const classLevels = Math.max(0, Math.floor(toSafeNumber(progression?.classLevels, 0))); // クラスLv
+  const built = buildEnemyCharacterStatusFromRules(raceRow, classRow || {}, safeLevel, { // ステータス再構築結果
+    raceLevels,
+    classLevels
+  });
+  const skillLevels = buildUnitSkillLevelsFromClass(raceRow, classRow || {}, built.raceLevels, built.classLevels); // スキルLv再計算
+  const skills = buildUnitSkillsForProgression({ // 習得スキル再計算
+    raceRow,
+    classRow: classRow || {},
+    raceLevels: built.raceLevels,
+    classLevels: built.classLevels
+  });
+  const resistances = buildUnitResistances(raceRow, classRow || {}); // 耐性再計算
+  return {
+    ...enemy,
+    level: built.level,
+    targetLevel: safeLevel,
+    baseLevel: Math.min(safeLevel, Math.max(1, Math.floor(toSafeNumber(enemy?.baseLevel, safeLevel)))),
+    status: built.status,
+    skillLevels,
+    skills,
+    resistances,
+    growthRule: {
+      ...(enemy?.growthRule && typeof enemy.growthRule === "object" ? enemy.growthRule : {}),
+      raceLevels: built.raceLevels,
+      classLevels: built.classLevels
+    }
+  };
+}
+
+function applyStartVillageSafetyZone(data, villageXRaw, villageYRaw, options = {}) {
+  if (!data || !Array.isArray(data?.enemySpawnMap)) {
+    return { applied: false, clearedTiles: 0, lowLevelTiles: 0, lowLevelUnits: 0, zeroedDangerTiles: 0 };
+  }
+  const villageX = Math.floor(toSafeNumber(villageXRaw, Number.NaN)); // 村中心X
+  const villageY = Math.floor(toSafeNumber(villageYRaw, Number.NaN)); // 村中心Y
+  if (!Number.isFinite(villageX) || !Number.isFinite(villageY)) {
+    return { applied: false, clearedTiles: 0, lowLevelTiles: 0, lowLevelUnits: 0, zeroedDangerTiles: 0 };
+  }
+  const clearRadius = Math.max(0, Math.floor(toSafeNumber(options?.clearRadius, START_VILLAGE_SAFE_NO_ENEMY_RADIUS))); // 完全排除半径
+  const lowLevelRadius = Math.max(clearRadius, Math.floor(toSafeNumber(options?.lowLevelRadius, START_VILLAGE_LOW_LEVEL_RADIUS))); // 低レベル化半径
+  const levelCap = Math.max(1, Math.floor(toSafeNumber(options?.levelCap, START_VILLAGE_LOW_LEVEL_CAP))); // 近傍敵レベル上限
+  const dangerMap = ensureEnemyDangerMap(data); // 危険度マップ（0化に使用）
+  let clearedTiles = 0;
+  let lowLevelTiles = 0;
+  let lowLevelUnits = 0;
+  let zeroedDangerTiles = 0;
+  let changed = false; // 変更有無（統計再計算トリガ）
+
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const distance = hexDistance({ x, y }, { x: villageX, y: villageY }); // 村からの距離
+      if (!Number.isFinite(distance)) continue;
+      if (distance <= clearRadius) {
+        const beforeDanger = Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0)))); // 変更前危険度
+        if (beforeDanger > 0) {
+          dangerMap[y][x] = 0;
+          zeroedDangerTiles += 1;
+          changed = true;
+        }
+        const cleared = clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true }); // 敵削除
+        if (cleared) {
+          clearedTiles += 1;
+          changed = true;
+        }
+        continue;
+      }
+      if (distance > lowLevelRadius) continue;
+      const enemies = Array.isArray(data.enemySpawnMap?.[y]?.[x]) ? data.enemySpawnMap[y][x] : []; // このマスの敵一覧
+      if (!enemies.length) continue;
+      let tileChanged = false; // このマスでレベル上限適用が発生したか
+      const nextEnemies = enemies.map(enemy => {
+        const currentLevel = clampEnemyLevel( // 現在レベル（補助値含む）
+          toSafeNumber(enemy?.level, toSafeNumber(enemy?.targetLevel, toSafeNumber(enemy?.baseLevel, 1)))
+        );
+        if (currentLevel <= levelCap) return enemy;
+        tileChanged = true;
+        lowLevelUnits += 1;
+        return rebuildEnemyUnitToLevel(enemy, levelCap); // Lv上限で再構築
+      });
+      if (tileChanged) {
+        data.enemySpawnMap[y][x] = nextEnemies;
+        lowLevelTiles += 1;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap); // 集計値更新
+  }
+  return {
+    applied: changed,
+    clearedTiles,
+    lowLevelTiles,
+    lowLevelUnits,
+    zeroedDangerTiles,
+    clearRadius,
+    lowLevelRadius,
+    levelCap
+  };
+}
+
 function collectActiveSurveyTileKeys(data) {
   const keys = new Set();
   const inBounds = (x, y) => (
@@ -7766,6 +8555,7 @@ function buildEnemySpawnDataForMap(data) {
           id: `enemy-${x}-${y}-${index}`,
           name: picked.displayName || picked.raceName,
           imageName: nonEmptyText(picked?.imageName),
+          nestName: nonEmptyText(picked?.nestName),
           race: nonEmptyText(raceRow?.名前) || picked.raceName,
           className: classRow ? nonEmptyText(classRow?.名前) : "",
           level: built.level,
@@ -7927,6 +8717,7 @@ function clearCharacterGenerationState() {
   applyingTestPlayerState = true;
   villageState.value = null;
   unitList.value = [];
+  deadUnitReserve.value = [];
   selectedUnitId.value = "";
   nationLogsBySovereign.value = {};
   activeNationLogKey.value = "";
@@ -9287,6 +10078,7 @@ function placeVillageAt(x, y) {
   clearMoveCommandState({ clearCandidate: true });
   showMoveUnitModal.value = false;
   markTileExplored(x, y);
+  let startSafetyResult = null;
   if (currentData.value) {
     // マルチ勢力作成中は、配置直後の村情報を先にアクティブ勢力スロットへ反映してから
     // 領土再計算を行わないと、中心1マスだけが領土扱いになることがある。
@@ -9299,17 +10091,29 @@ function placeVillageAt(x, y) {
       homeKey: coordKey(x, y)
     });
     applyDangerRulesByTerritory(currentData.value, { applyUnownedIncrease: false });
+    startSafetyResult = applyStartVillageSafetyZone(currentData.value, x, y);
   }
   updateVillageInfoText();
-  updateUnitInfoText(`初期村を配置: (${x}, ${y})`);
+  const safetyText = startSafetyResult
+    ? ` / 開始保護: 半径${startSafetyResult.clearRadius}敵排除${startSafetyResult.clearedTiles}マス・Lv${startSafetyResult.levelCap}以下化${startSafetyResult.lowLevelUnits}体`
+    : "";
+  updateUnitInfoText(`初期村を配置: (${x}, ${y})${safetyText}`);
   pushNationLog(`初期村を配置: (${x}, ${y}) ${villageState.value?.name || ""}`);
   pushNationLog(`初期資源設定: 領土収入(${initialStock.tiles}マス)x3 / 食料 ${formatFoodResourceBag(defaultFoodByType)} / 資材 ${formatMaterialResourceBag(defaultMaterialByType)}`);
+  if (startSafetyResult && startSafetyResult.applied) {
+    pushNationLog(
+      `開始保護: 半径${startSafetyResult.clearRadius}敵排除${startSafetyResult.clearedTiles}マス / 周辺半径${startSafetyResult.lowLevelRadius}をLv${startSafetyResult.levelCap}以下化 ${startSafetyResult.lowLevelUnits}体`
+    );
+  }
   emitCharacterStateChange();
   // 初期配置直後は親→子の同期順で領土判定が一時的にズレるケースがあるため、
   // 次Tickでもう一度危険度同期を掛けて開始時の危険度を確定させる。
   nextTick(() => {
     forceZeroDangerForVillageTerritory(currentData.value, villageState.value, resolveActiveTerritoryOwnerId());
     syncDangerRulesForCurrentMap({ applyUnownedIncrease: false });
+    if (currentData.value) {
+      applyStartVillageSafetyZone(currentData.value, x, y);
+    }
     renderMapWithPhaser();
   });
 }
@@ -9372,6 +10176,7 @@ function emitCharacterStateChange() {
         skills: Array.isArray(unit?.skills) ? [...unit.skills] : []
       };
     }),
+    deadUnitReserve: normalizeDeadUnitReserveRows(deadUnitReserve.value),
     selectedUnitId: selectedUnitId.value || "",
     squads: buildSquadSummaryList(unitList.value),
     villagePlacementMode: villagePlacementMode.value,
@@ -9380,7 +10185,8 @@ function emitCharacterStateChange() {
     villageScale,
     namedLimit,
     namedCount,
-    ruleText: unitRulesInfoText.value || ""
+    ruleText: unitRulesInfoText.value || "",
+    squadFormationEnabled: squadFormationEnabled.value
   });
 }
 
@@ -9631,6 +10437,7 @@ function normalizeFactionStateFromSave(raw, fallbackVisibility = {}) {
   return {
     village,
     units,
+    deadUnitReserve: normalizeDeadUnitReserveRows(raw?.deadUnitReserve),
     selectedUnitId: selected,
     villagePlacementMode: !!raw?.villagePlacementMode,
     moveCommandUnitId: nonEmptyText(raw?.moveCommandUnitId) || (raw?.unitMoveMode ? selected : ""),
@@ -9651,6 +10458,7 @@ function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) 
     const state = {
       village: deepCloneJsonValue(stateRaw?.village, null),
       units: Array.isArray(stateRaw?.units) ? stateRaw.units.map(unit => deepCloneJsonValue(unit, {})) : [],
+      deadUnitReserve: normalizeDeadUnitReserveRows(stateRaw?.deadUnitReserve),
       selectedUnitId: nonEmptyText(stateRaw?.selectedUnitId),
       villagePlacementMode: !!stateRaw?.villagePlacementMode,
       moveCommandUnitId: nonEmptyText(stateRaw?.moveCommandUnitId)
@@ -9846,6 +10654,66 @@ function scaleCraftCostByCount(craftCost, count = 1) {
   };
 }
 
+function rerollMobUnitEquipmentRarity(unitId, rarityKeyRaw) {
+  const targetId = nonEmptyText(unitId);
+  if (!targetId) return { ok: false, reason: "対象ユニットが未指定です。" };
+  const idx = unitList.value.findIndex(unit => unit?.id === targetId);
+  if (idx < 0) return { ok: false, reason: "対象ユニットが見つかりません。" };
+  const target = unitList.value[idx];
+  if (!isMobUnit(target)) {
+    return { ok: false, reason: "固定プリセットのレア度一新はモブ専用です。" };
+  }
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  if (!village?.placed) {
+    return { ok: false, reason: "装備変更には都市（初期村）の配置が必要です。" };
+  }
+  const className = nonEmptyText(target?.className);
+  const classRow = findClassRowByName(className);
+  if (!classRow) {
+    return { ok: false, reason: `クラスデータが見つかりません: ${className || "未設定"}` };
+  }
+  const raceName = nonEmptyText(target?.race) || nonEmptyText(props.selectedRace);
+  const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName))
+    || findClassRowByName(raceName)
+    || null;
+  const rarity = normalizeEquipmentRarity(rarityKeyRaw, "common");
+  const equipmentSlots = resolveUnitEquipmentSlots(target);
+  const loadout = chooseEquipmentForClass(classRow, false, equipmentSlots, rarity);
+  if (!loadout.length) {
+    return { ok: false, reason: "固定プリセット装備を生成できませんでした。" };
+  }
+  const equipmentCount = resolveEquipmentRequiredCountForUnit(target, 1);
+  const applied = applyAutoEquipForCreatedUnit(
+    { ...target, equipment: loadout },
+    raceRow,
+    classRow,
+    village,
+    { strict: true, preferCraft: true, equipmentCount }
+  );
+  if (!applied?.ok || !applied?.unit || !applied?.village) {
+    return { ok: false, reason: applied?.reason || "レア度一新に失敗しました。" };
+  }
+  const materialCost = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  for (const item of normalizeEquipmentList(applied.unit?.equipment)) {
+    const row = findEquipmentRowByName(item?.name);
+    if (!row) continue;
+    const craftCost = buildEquipmentCraftMaterialCost(row, item?.quality || item?.qualityLabel || rarity);
+    const count = Math.max(1, Math.floor(toSafeNumber(item?.unitCount, equipmentCount)));
+    const scaled = multiplyResourceBag(craftCost.material, count, MATERIAL_RESOURCE_KEYS);
+    addToResourceBag(materialCost, scaled, MATERIAL_RESOURCE_KEYS);
+  }
+  unitList.value[idx] = applied.unit;
+  villageState.value = applied.village;
+  return {
+    ok: true,
+    sourceType: "rerollRarity",
+    rarity,
+    equipmentCount: Math.max(1, Math.floor(toSafeNumber(applied?.equipmentCount, equipmentCount))),
+    generated: Math.max(0, Math.floor(toSafeNumber(applied?.generated, 0))),
+    craftCostMaterial: normalizeMaterialStockBag(materialCost)
+  };
+}
+
 function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slotKeyRaw = "") {
   const targetId = nonEmptyText(unitId);
   const eqName = nonEmptyText(equipmentName);
@@ -9860,6 +10728,9 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
   const slotIndex = Math.max(0, Math.floor(toSafeNumber(slotIndexRaw, 0)));
   const slotKey = normalizeEquipmentSlotKey(slotKeyRaw) || slotKeyFromIndex(slotIndex);
   const equipmentSlots = resolveUnitEquipmentSlots(target);
+  if (isMobUnit(target)) {
+    return { ok: false, reason: "モブは個別装備変更できません。レア度一新を使ってください。" };
+  }
   if (equipmentSlots[slotKey] === false) {
     return { ok: false, reason: `このユニットは ${EQUIPMENT_SLOT_LABELS[slotKey] || slotKey} を装備できません。` };
   }
@@ -10157,6 +11028,17 @@ function applyCharacterCommand(command) {
 
   const unitId = nonEmptyText(command?.unitId);
   if (!unitId) return;
+  if (!squadFormationEnabled.value && (
+    type === "createSquad"
+    || type === "renameSquad"
+    || type === "updateSquadIcon"
+    || type === "dissolveSquad"
+    || type === "toggleSquad"
+  )) {
+    updateUnitInfoText("チーム編成機能が設定でOFFになっています。");
+    pushNationLog("チーム編成機能OFF中のため、部隊操作を中止しました。");
+    return;
+  }
 
   if (type === "promoteNamed") {
     const result = promoteMobToNamed(unitId);
@@ -10184,7 +11066,22 @@ function applyCharacterCommand(command) {
       updateUnitInfoText(`Lv変更失敗: ${result.reason || "更新不可"}`);
       pushNationLog(`Lv変更失敗: ${result.reason || "更新不可"}`);
     } else {
-      unitList.value[idx] = result.unit;
+      const raceCategory = resolveExpRaceCategoryForUnit(unit);
+      const levelBaseTotalExp = resolveUnitTotalExpForLevel(result.level, raceCategory);
+      const nextNeed = Math.max(1, Math.floor(toSafeNumber(resolveUnitExpNeedForNextLevel(result.level, raceCategory), 1)));
+      const carryExp = Math.max(0, Math.floor(toSafeNumber(unit?.exp, toSafeNumber(unit?.status?.exp, 0))));
+      const nextExp = Math.max(0, Math.min(nextNeed - 1, carryExp));
+      const nextTotalExp = Math.max(0, Math.floor(levelBaseTotalExp + nextExp));
+      const nextStatus = withExpStatus(result.unit?.status, nextExp, nextTotalExp);
+      unitList.value[idx] = {
+        ...result.unit,
+        status: nextStatus,
+        exp: nextExp,
+        totalExp: nextTotalExp,
+        expPeakLevel: result.level,
+        expPenaltyLevel: 0,
+        expPenaltyRate: 0
+      };
       const secondary = nonEmptyText(result.secondaryClassName);
       const extra = secondary ? ` / 第2クラス:${secondary}` : "";
       updateUnitInfoText(`Lv変更: ${result.unit.name} -> Lv${result.level} (種族Lv${result.raceLevels} / クラスLv${result.classLevels})${extra}`);
@@ -10330,16 +11227,29 @@ function applyCharacterCommand(command) {
   }
 
   if (type === "updateEquipment") {
+    const mode = nonEmptyText(command?.mode);
     const slotIndex = toSafeNumber(command?.slotIndex, 0);
     const slotKey = nonEmptyText(command?.slotKey);
     const equipmentName = nonEmptyText(command?.equipmentName);
     const rarity = nonEmptyText(command?.rarity);
-    const result = updateUnitEquipment(unitId, slotIndex, equipmentName, rarity, slotKey);
+    const result = mode === "rerollRarity"
+      ? rerollMobUnitEquipmentRarity(unitId, rarity)
+      : updateUnitEquipment(unitId, slotIndex, equipmentName, rarity, slotKey);
     if (!result.ok) {
       updateUnitInfoText(`装備変更失敗: ${result.reason || "変更不可"}`);
       pushNationLog(`装備変更失敗: ${result.reason || "変更不可"}`);
     } else {
       const target = unitList.value.find(unit => unit.id === unitId) || null;
+      if (result.sourceType === "rerollRarity") {
+        const rarityText = formatEquipmentRarityLabel(result?.rarity || rarity);
+        const craftCostText = formatMaterialPositiveResourceBag(result?.craftCostMaterial);
+        updateVillageInfoText();
+        updateUnitInfoText(`モブ装備一新: ${target?.name || "ユニット"} / ${rarityText} / 素材 ${craftCostText}`);
+        pushNationLog(`モブ装備一新: ${target?.name || "ユニット"} / ${rarityText} / 素材 ${craftCostText}`);
+        emitCharacterStateChange();
+        renderMapWithPhaser();
+        return;
+      }
       const item = result.equipment;
       const slotLabel = EQUIPMENT_SLOT_LABELS[result.slotKey] || `Slot${result.slotIndex + 1}`;
       const perUnitText = Math.max(1, Math.floor(toSafeNumber(result?.equipmentCount, 1))) > 1
@@ -10957,15 +11867,215 @@ function resolveUnitCurrentHpValue(unit, maxHp = resolveUnitMaxHpValue(unit)) {
   return Math.max(0, Math.min(maxHp, rawCurrent));
 }
 
+function resolveUnitLifeStateLabelFromHp(currentHpRaw = 0) {
+  const hp = Math.floor(toSafeNumber(currentHpRaw, 0));
+  return hp <= 0 ? DEAD_UNIT_STATE_LABEL : "";
+}
+
+function resolveClockRuntimeNowMs() {
+  return Math.max(0, Math.floor(toSafeNumber(clockNowMs.value, Date.now())));
+}
+
+function resolveDeadUnitExpireAtMs(unit, nowMs = resolveClockRuntimeNowMs()) {
+  const deadAt = Math.max(0, Math.floor(toSafeNumber(unit?.deadAtMs, nowMs)));
+  const explicitExpire = Math.floor(toSafeNumber(unit?.deadExpireAtMs, 0));
+  if (explicitExpire > 0) return explicitExpire;
+  return deadAt + DEAD_UNIT_FIELD_TIMEOUT_MS;
+}
+
+function isUnitDeadState(unit) {
+  if (!unit || typeof unit !== "object") return false;
+  if (unit?.isDead === true) return true;
+  const maxHp = resolveUnitMaxHpValue(unit);
+  const hp = resolveUnitCurrentHpValue(unit, maxHp);
+  return hp <= 0;
+}
+
+function applyUnitLifeState(target, currentHpRaw = target?.currentHp) {
+  if (!target || typeof target !== "object") return target;
+  const statusBase = target?.status && typeof target.status === "object"
+    ? target.status
+    : {};
+  const stateLabel = resolveUnitLifeStateLabelFromHp(currentHpRaw);
+  if (stateLabel) {
+    const nowMs = resolveClockRuntimeNowMs();
+    const deadAt = Math.max(0, Math.floor(toSafeNumber(target?.deadAtMs, nowMs)));
+    target.status = {
+      ...statusBase,
+      状態: stateLabel
+    };
+    target.isDead = true;
+    target.deadAtMs = deadAt;
+    target.deadExpireAtMs = resolveDeadUnitExpireAtMs(target, nowMs);
+    target.moveRemaining = 0;
+    return target;
+  }
+  if (Object.prototype.hasOwnProperty.call(statusBase, "状態")) {
+    const { 状態: _removedState, ...restStatus } = statusBase;
+    target.status = restStatus;
+  } else if (!(target?.status && typeof target.status === "object")) {
+    target.status = statusBase;
+  }
+  target.isDead = false;
+  if (Object.prototype.hasOwnProperty.call(target, "deadAtMs")) delete target.deadAtMs;
+  if (Object.prototype.hasOwnProperty.call(target, "deadExpireAtMs")) delete target.deadExpireAtMs;
+  return target;
+}
+
 function normalizeUnitHpRuntime(unit) {
   if (!unit || typeof unit !== "object") return unit;
   const maxHp = resolveUnitMaxHpValue(unit);
   const currentHp = resolveUnitCurrentHpValue(unit, maxHp);
-  return {
+  return applyUnitLifeState({
     ...unit,
     maxHp,
     currentHp
+  }, currentHp);
+}
+
+function normalizeDeadUnitReserveRows(rows = deadUnitReserve.value) {
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const unit = row?.unit && typeof row.unit === "object" ? deepCloneJsonValue(row.unit, null) : null;
+    const unitId = nonEmptyText(row?.unitId) || nonEmptyText(unit?.id);
+    if (!unit || !unitId || seen.has(unitId)) continue;
+    seen.add(unitId);
+    out.push({
+      unitId,
+      unit,
+      reason: nonEmptyText(row?.reason) || "回収",
+      storedAtMs: Math.max(0, Math.floor(toSafeNumber(row?.storedAtMs, resolveClockRuntimeNowMs()))),
+      storedAtTurn: Math.max(0, Math.floor(toSafeNumber(row?.storedAtTurn, mapTurnNumber.value)))
+    });
+  }
+  return out;
+}
+
+function pushDeadUnitToReserve(unit, options = {}) {
+  const safeUnit = unit && typeof unit === "object" ? deepCloneJsonValue(unit, null) : null;
+  const unitId = nonEmptyText(safeUnit?.id);
+  if (!safeUnit || !unitId) return false;
+  const nowMs = Math.max(0, Math.floor(toSafeNumber(options?.nowMs, resolveClockRuntimeNowMs())));
+  const reason = nonEmptyText(options?.reason) || "回収";
+  const reserve = normalizeDeadUnitReserveRows(deadUnitReserve.value);
+  const nextEntry = {
+    unitId,
+    unit: safeUnit,
+    reason,
+    storedAtMs: nowMs,
+    storedAtTurn: Math.max(0, Math.floor(toSafeNumber(options?.turn, mapTurnNumber.value)))
   };
+  const idx = reserve.findIndex(row => nonEmptyText(row?.unitId) === unitId);
+  if (idx >= 0) {
+    reserve[idx] = nextEntry;
+  } else {
+    reserve.push(nextEntry);
+  }
+  deadUnitReserve.value = reserve;
+  return true;
+}
+
+function reviveUnitFromDeadReserve(unitIdRaw, options = {}) {
+  const unitId = nonEmptyText(unitIdRaw);
+  if (!unitId) return { ok: false, reason: "蘇生対象IDが未指定です。" };
+  const reserve = normalizeDeadUnitReserveRows(deadUnitReserve.value);
+  const idx = reserve.findIndex(row => nonEmptyText(row?.unitId) === unitId);
+  if (idx < 0) return { ok: false, reason: "死亡枠に対象がいません。" };
+  if (unitList.value.some(unit => nonEmptyText(unit?.id) === unitId)) {
+    return { ok: false, reason: "既にフィールド上に存在します。" };
+  }
+  const source = deepCloneJsonValue(reserve[idx]?.unit, null);
+  if (!source || typeof source !== "object") return { ok: false, reason: "死亡枠データが不正です。" };
+  const maxHp = resolveUnitMaxHpValue(source);
+  const reviveHp = Math.max(1, Math.min(maxHp, Math.floor(toSafeNumber(options?.hp, maxHp))));
+  const reviveX = Number.isFinite(options?.x) ? Math.floor(options.x) : Math.floor(toSafeNumber(source?.x, 0));
+  const reviveY = Number.isFinite(options?.y) ? Math.floor(options.y) : Math.floor(toSafeNumber(source?.y, 0));
+  const revived = applyUnitLifeState({
+    ...source,
+    x: reviveX,
+    y: reviveY,
+    currentHp: reviveHp,
+    hp: reviveHp
+  }, reviveHp);
+  unitList.value = [...unitList.value, revived];
+  reserve.splice(idx, 1);
+  deadUnitReserve.value = reserve;
+  pushNationLog(`蘇生: ${nonEmptyText(revived?.name) || unitId} / HP${reviveHp}`);
+  emitCharacterStateChange();
+  requestMapRender();
+  return { ok: true, unit: revived };
+}
+
+function runDeadUnitLifecycleTick() {
+  if (!Array.isArray(unitList.value) || !unitList.value.length) return;
+  const nowMs = resolveClockRuntimeNowMs();
+  const aliveTileSet = new Set();
+  for (const unit of unitList.value) {
+    if (!unit || typeof unit !== "object") continue;
+    if (isUnitDeadState(unit)) continue;
+    const x = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const y = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    aliveTileSet.add(coordKey(x, y));
+  }
+
+  const removedIds = [];
+  const nextUnits = [];
+  let collectedCount = 0;
+  let expiredCount = 0;
+  for (const unitRaw of unitList.value) {
+    if (!unitRaw || typeof unitRaw !== "object") continue;
+    const unit = normalizeUnitHpRuntime(unitRaw);
+    if (!isUnitDeadState(unit)) {
+      nextUnits.push(unit);
+      continue;
+    }
+    const unitId = nonEmptyText(unit?.id);
+    const unitName = nonEmptyText(unit?.name) || unitId || "ユニット";
+    const x = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const y = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    const tileKey = (Number.isFinite(x) && Number.isFinite(y)) ? coordKey(x, y) : "";
+    const hasCollector = !!tileKey && aliveTileSet.has(tileKey);
+    const expireAtMs = resolveDeadUnitExpireAtMs(unit, nowMs);
+    if (hasCollector) {
+      const stored = pushDeadUnitToReserve(unit, { reason: "回収", nowMs });
+      if (stored) {
+        collectedCount += 1;
+        removedIds.push(unitId);
+        pushNationLog(`死亡回収: ${unitName} (${x}, ${y}) -> 死亡枠`);
+        continue;
+      }
+    }
+    if (nowMs >= expireAtMs) {
+      expiredCount += 1;
+      removedIds.push(unitId);
+      pushNationLog(`死亡消滅: ${unitName} (${x}, ${y}) / ${DEAD_UNIT_FIELD_TIMEOUT_SECONDS}秒経過`);
+      continue;
+    }
+    nextUnits.push(unit);
+  }
+
+  if (!removedIds.length) {
+    unitList.value = nextUnits;
+    return;
+  }
+  let strippedUnits = nextUnits;
+  for (const removedId of removedIds) {
+    strippedUnits = stripRemovedUnitFromSquads(strippedUnits, removedId);
+  }
+  unitList.value = strippedUnits;
+  if (!unitList.value.some(unit => nonEmptyText(unit?.id) === nonEmptyText(selectedUnitId.value))) {
+    selectedUnitId.value = unitList.value[0]?.id || "";
+  }
+  const notes = [];
+  if (collectedCount > 0) notes.push(`回収 ${collectedCount}`);
+  if (expiredCount > 0) notes.push(`消滅 ${expiredCount}`);
+  updateUnitInfoText(`死亡処理: ${notes.join(" / ")}`);
+  emitCharacterStateChange();
+  requestMapRender();
 }
 
 function recordUnitDeathCorruptionAtTile(x, y, amount = VILLAGE_CORRUPTION_PER_UNIT_DEATH, options = {}) {
@@ -11085,10 +12195,11 @@ function applyVillageTileRecoveryTurn(village, units = unitList.value) {
     if (nextHp <= normalized.currentHp) return normalized;
     healedUnits += 1;
     healedTotal += (nextHp - normalized.currentHp);
-    return {
+    return applyUnitLifeState({
       ...normalized,
+      hp: nextHp,
       currentHp: nextHp
-    };
+    }, nextHp);
   });
   const notes = [];
   if (healedTotal > 0) {
@@ -11381,6 +12492,13 @@ function resolveEnemyIconName(enemy) {
   return "";
 }
 
+function resolveEnemyNestIconName(nestName) {
+  const rawName = nonEmptyText(nestName);
+  if (!rawName) return "";
+  const aliasName = ENEMY_NEST_ICON_NAME_ALIAS_MAP[rawName] || rawName;
+  return resolveAvailableIconName(aliasName, rawName);
+}
+
 function moveUnitIconSrc(unit) {
   const iconName = resolveAvailableIconName(
     unit?.subIconName,
@@ -11464,6 +12582,46 @@ function enemyIllustrationTextureKey(imageName, variant = "default") {
   const normalized = normalizeEnemyImageLookupKey(imageName);
   if (!normalized) return "";
   return `enemy-illust:${variant}:${normalized}`;
+}
+
+function unitIllustrationTextureKey(imageName, variant = "default") {
+  const normalized = normalizeUnitImageLookupKey(imageName);
+  if (!normalized) return "";
+  return `unit-illust:${variant}:${normalized}`;
+}
+
+function ensureUnitIllustrationTexture(imageName, options = {}) {
+  const name = nonEmptyText(imageName);
+  if (!name || !scene?.textures) return "";
+  const src = resolveUnitIllustrationSrc(name);
+  if (!src) return "";
+  const variant = options?.removeWhiteBg ? "chroma" : "default";
+  const textureKey = unitIllustrationTextureKey(name, variant);
+  if (!textureKey) return "";
+  if (scene.textures.exists(textureKey)) return textureKey;
+  const pendingKey = `${variant}:${normalizeUnitImageLookupKey(name)}`;
+  if (unitIllustrationTexturePending.has(pendingKey)) return "";
+  unitIllustrationTexturePending.add(pendingKey);
+  const image = new Image();
+  image.decoding = "async";
+  image.onload = () => {
+    unitIllustrationTexturePending.delete(pendingKey);
+    if (!scene?.textures) return;
+    if (!scene.textures.exists(textureKey)) {
+      const sourceImage = options?.removeWhiteBg
+        ? removeWhiteBackgroundForMarker(image)
+        : image;
+      scene.textures.addImage(textureKey, sourceImage);
+    }
+    if (currentData.value) {
+      renderMapWithPhaser();
+    }
+  };
+  image.onerror = () => {
+    unitIllustrationTexturePending.delete(pendingKey);
+  };
+  image.src = src;
+  return "";
 }
 
 function ensureEnemyIllustrationTexture(imageName, options = {}) {
@@ -12441,6 +13599,7 @@ function applyDisplaySettingChange(payload) {
   else if (key === "showStrongEnemyMarkers") showStrongEnemyMarkers.value = !!value;
   else if (key === "lowPowerMode") lowPowerMode.value = !!value;
   else if (key === "focusCameraOnTileClick") focusCameraOnTileClick.value = !!value;
+  else if (key === "squadFormationEnabled") setSquadFormationEnabled(!!value, { playSe: false });
   else if (key === "mountainMode") mountainMode.value = String(value || "random");
   else if (key === "heightNumberFontSize") {
     const raw = Number(value);
@@ -12485,9 +13644,13 @@ function buildIslandCustomSettings() {
 }
 
 function mapPixelSize(w, h) {
+  const tileW = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.width, 40));
+  const tileH = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.height, 48));
+  const rowStep = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.rowStep, 36));
+  const oddRowOffsetX = toSafeNumber(HEX_TILE_CONFIG?.oddRowOffsetX, tileW / 2);
   return {
-    width: (w * 40) + 20,
-    height: ((h - 1) * 36) + 48
+    width: (w * tileW) + oddRowOffsetX,
+    height: ((h - 1) * rowStep) + tileH
   };
 }
 
@@ -12710,16 +13873,23 @@ function blendHexColors(hexA, hexB, ratio = 0.5) {
 }
 
 function buildHexPoints(x, y) {
-  const offsetX = (y % 2 === 1) ? 20 : 0;
-  const left = (x * 40) + offsetX;
-  const top = y * 36;
+  const tileW = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.width, 40));
+  const tileH = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.height, 48));
+  const rowStep = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.rowStep, 36));
+  const oddRowOffsetX = toSafeNumber(HEX_TILE_CONFIG?.oddRowOffsetX, tileW / 2);
+  const halfW = tileW / 2;
+  const upperY = tileH - rowStep;
+  const lowerY = rowStep;
+  const offsetX = (y % 2 === 1) ? oddRowOffsetX : 0;
+  const left = (x * tileW) + offsetX;
+  const top = y * rowStep;
   return [
-    { x: left + 20, y: top + 0 },
-    { x: left + 40, y: top + 12 },
-    { x: left + 40, y: top + 36 },
-    { x: left + 20, y: top + 48 },
-    { x: left + 0, y: top + 36 },
-    { x: left + 0, y: top + 12 }
+    { x: left + halfW, y: top + 0 },
+    { x: left + tileW, y: top + upperY },
+    { x: left + tileW, y: top + lowerY },
+    { x: left + halfW, y: top + tileH },
+    { x: left + 0, y: top + lowerY },
+    { x: left + 0, y: top + upperY }
   ];
 }
 
@@ -14159,6 +15329,8 @@ function renderMapWithPhaser() {
   const terrainResourceIconCache = new Map();
   const drawnEnemyTerritoryIds = new Set();
   const drawnEnemyTerritoryAnchors = [];
+  const drawnEnemyNestTerritoryIds = new Set();
+  const drawnEnemyNestTerritoryAnchors = [];
   const boundsAcc = createBoundsAccumulator();
   const heightDiffSegments = [];
   // フィールド画像の重なり順（数値が大きいほど手前）
@@ -14234,7 +15406,7 @@ function renderMapWithPhaser() {
           drawHeightDiffBordersForTile(data, x, y, wrapOffset, true, heightDiffSegments);
           drawOwnTerritoryBoundaryEdgesForTile(data, x, y, wrapOffset, true);
         }
-        if (tileVisible && moveContext.reachableSet.has(tileKey) && tileKey !== moveContext.startKey) {
+        if (moveContext.reachableSet.has(tileKey) && tileKey !== moveContext.startKey) {
           baseLayer.lineStyle(2.35, 0x6cff79, moveBlinkAlpha);
           baseLayer.strokePoints(points, true);
         }
@@ -14438,7 +15610,11 @@ function renderMapWithPhaser() {
             if (resourceIconName) {
               const resourceTextureKey = ensureRaceMarkerTexture(resourceIconName);
               if (resourceTextureKey && scene.textures.exists(resourceTextureKey)) {
-                const resourceIcon = scene.add.image(center.cx, center.cy, resourceTextureKey);
+                const resourceIcon = scene.add.image(
+                  center.cx + toSafeNumber(MAP_RESOURCE_TILE_MARKER_CONFIG.offsetX, 0),
+                  center.cy + toSafeNumber(MAP_RESOURCE_TILE_MARKER_CONFIG.offsetY, 0),
+                  resourceTextureKey
+                );
                 resourceIcon.setDisplaySize(
                   MAP_RESOURCE_TILE_MARKER_CONFIG.iconSize,
                   MAP_RESOURCE_TILE_MARKER_CONFIG.iconSize
@@ -14466,6 +15642,61 @@ function renderMapWithPhaser() {
           labelTexts.push(eliteLabel);
         }
 
+        const tileEnemyNestList = tileVisible ? configuredEnemiesAt(x, y, data) : [];
+        if (tileEnemyNestList.length > 0) {
+          const leadNestEnemy = tileEnemyNestList[0];
+          const isCaveTile = rawKey === "洞窟" || nonEmptyText(data?.specialMap?.[y]?.[x]) === "洞窟";
+          const enemyTerritoryId = nonEmptyText(leadNestEnemy?.territoryId);
+          const enemyTerritoryCenterX = Math.floor(toSafeNumber(leadNestEnemy?.territoryCenterX, x));
+          const enemyTerritoryCenterY = Math.floor(toSafeNumber(leadNestEnemy?.territoryCenterY, y));
+          const enemyTerritoryRadius = Math.max(
+            1,
+            Math.floor(toSafeNumber(leadNestEnemy?.territoryRadius, ENEMY_SWARM_TERRITORY_RADIUS_MIN))
+          );
+          const enemyNestIconName = resolveEnemyNestIconNameForMap(leadNestEnemy, tileEnemyNestList);
+          const enemyGroupSize = Math.max(
+            tileEnemyNestList.length,
+            Math.floor(toSafeNumber(leadNestEnemy?.strongGroupSize, tileEnemyNestList.length))
+          );
+          const hasSwarmLikeMetadata = hasEnemySwarmRule(leadNestEnemy)
+            || leadNestEnemy?.strong === true
+            || enemyGroupSize >= 2
+            || Number.isFinite(leadNestEnemy?.territoryCenterX)
+            || Number.isFinite(leadNestEnemy?.territoryCenterY);
+          const fallbackTerritoryId = `nest-${enemyTerritoryCenterX}-${enemyTerritoryCenterY}-${enemyNestIconName}`;
+          const nestTerritoryId = enemyTerritoryId || fallbackTerritoryId;
+          const shouldDrawNestIcon = hasSwarmLikeMetadata
+            && !!enemyNestIconName
+            && (leadNestEnemy?.strong === true || enemyGroupSize >= 2 || hasEnemySwarmRule(leadNestEnemy))
+            && !isCaveTile;
+          const nestDrawnByTerritory = !!nestTerritoryId && drawnEnemyNestTerritoryIds.has(nestTerritoryId);
+          const nestDrawnByTerritoryOverlap = drawnEnemyNestTerritoryAnchors.some(anchor => (
+            hexDistance(
+              { x: enemyTerritoryCenterX, y: enemyTerritoryCenterY },
+              { x: anchor.x, y: anchor.y }
+            ) <= (enemyTerritoryRadius + Math.max(1, anchor.radius))
+          ));
+          if (shouldDrawNestIcon && !nestDrawnByTerritory && !nestDrawnByTerritoryOverlap) {
+            const nestTextureKey = ensureRaceMarkerTexture(enemyNestIconName, { removeWhiteBg: true });
+            if (nestTextureKey && scene.textures.exists(nestTextureKey)) {
+              const nestCenter = hexCenter(enemyTerritoryCenterX, enemyTerritoryCenterY);
+              const nestSprite = scene.add.image(nestCenter.cx, nestCenter.cy, nestTextureKey);
+              nestSprite.setDisplaySize(MAP_ENEMY_NEST_MARKER_SIZE_PX, MAP_ENEMY_NEST_MARKER_SIZE_PX);
+              nestSprite.setOrigin(0.5);
+              nestSprite.setAlpha(0.96);
+              pushLabelWithDepth(nestSprite, Math.max(0, fieldVisualDepth.monster - 0.1));
+            }
+            if (nestTerritoryId) {
+              drawnEnemyNestTerritoryIds.add(nestTerritoryId);
+            }
+            drawnEnemyNestTerritoryAnchors.push({
+              x: enemyTerritoryCenterX,
+              y: enemyTerritoryCenterY,
+              radius: enemyTerritoryRadius
+            });
+          }
+        }
+
         const hasFactionEnemy = opposingFactionTileMap.has(tileKey);
         const tileInCurrentVision = isTileInCurrentVision(tileKey, data);
         const enemySpottedOnVision = (showTestControls.value === true) || (tileInCurrentVision && spottedEnemyTileKeys.has(tileKey));
@@ -14479,6 +15710,29 @@ function renderMapWithPhaser() {
           const enemyMarkerAlpha = (showTestControls.value && nonAggressiveOnlyInTile)
             ? 0.5
             : 1;
+          let enemyHpMaxTotal = 0;
+          let enemyHpNowTotal = 0;
+          let enemyRecentDamageTotal = 0;
+          for (const enemy of tileEnemyList) {
+            const enemyId = nonEmptyText(enemy?.id);
+            const hpMax = Math.max(
+              1,
+              Math.floor(toSafeNumber(enemy?.maxHp, toSafeNumber(enemy?.currentHp, toSafeNumber(enemy?.hp, 1))))
+            );
+            const hpNow = Math.max(0, Math.floor(toSafeNumber(enemy?.currentHp, toSafeNumber(enemy?.hp, hpMax))));
+            enemyHpMaxTotal += hpMax;
+            enemyHpNowTotal += Math.min(hpNow, hpMax);
+            if (enemyId) {
+              enemyRecentDamageTotal += resolveRecentDamageForUnit(`spawn:${enemyId}`);
+            }
+          }
+          const enemyHpRatio = enemyHpMaxTotal > 0
+            ? Math.max(0, Math.min(1, enemyHpNowTotal / enemyHpMaxTotal))
+            : 0;
+          const enemyHpPrevTotal = Math.max(0, Math.min(enemyHpMaxTotal, enemyHpNowTotal + enemyRecentDamageTotal));
+          const enemyHpPrevRatio = enemyHpMaxTotal > 0
+            ? Math.max(enemyHpRatio, Math.min(1, enemyHpPrevTotal / enemyHpMaxTotal))
+            : enemyHpRatio;
           const enemyTerritoryId = nonEmptyText(leadEnemy?.territoryId);
           const enemyTerritoryCenterX = Math.floor(toSafeNumber(leadEnemy?.territoryCenterX, x));
           const enemyTerritoryCenterY = Math.floor(toSafeNumber(leadEnemy?.territoryCenterY, y));
@@ -14500,6 +15754,8 @@ function renderMapWithPhaser() {
           if (!shouldSkipByTerritory && !shouldSkipByTerritoryOverlap) {
             const enemyMx = center.cx;
             const enemyMy = center.cy;
+            let drawnEnemyMarkerWidth = MAP_ENEMY_MARKER_CONFIG.iconSize;
+            let drawnEnemyMarkerHeight = MAP_ENEMY_MARKER_CONFIG.iconSize;
             let enemyMarkerTextureKey = "";
             let useIllustTexture = false;
             if (useEnemyIllustrationOnMap) {
@@ -14513,10 +15769,15 @@ function renderMapWithPhaser() {
             }
             if (enemyMarkerTextureKey && scene.textures.exists(enemyMarkerTextureKey)) {
               const enemyIconSprite = scene.add.image(enemyMx, enemyMy, enemyMarkerTextureKey);
-              const markerSize = useIllustTexture
+              const markerHeight = useIllustTexture
                 ? MAP_ENEMY_ILLUST_MARKER_SIZE_PX
                 : MAP_ENEMY_MARKER_CONFIG.iconSize;
-              enemyIconSprite.setDisplaySize(markerSize, markerSize);
+              const markerWidth = useIllustTexture
+                ? (markerHeight * MAP_ENEMY_ILLUST_ASPECT_WIDTH) / MAP_ENEMY_ILLUST_ASPECT_HEIGHT
+                : markerHeight;
+              drawnEnemyMarkerWidth = markerWidth;
+              drawnEnemyMarkerHeight = markerHeight;
+              enemyIconSprite.setDisplaySize(markerWidth, markerHeight);
               enemyIconSprite.setOrigin(0.5);
               enemyIconSprite.setAlpha(enemyMarkerAlpha);
               pushLabelWithDepth(enemyIconSprite, fieldVisualDepth.monster);
@@ -14531,6 +15792,27 @@ function renderMapWithPhaser() {
               enemyMarker.setStroke("#3f0f0f", 2);
               enemyMarker.setAlpha(enemyMarkerAlpha);
               pushLabelWithDepth(enemyMarker, fieldVisualDepth.monster);
+            }
+            if (enemyRecentDamageTotal > 0 && enemyHpMaxTotal > 0) {
+              const hpBarWidth = Math.max(18, Math.round(drawnEnemyMarkerWidth * 0.68));
+              const hpBarHeight = 4;
+              const hpBarX = Math.round(enemyMx - (hpBarWidth * 0.5));
+              const hpBarY = Math.round(enemyMy + (drawnEnemyMarkerHeight * 0.5 + 3));
+              markerLayer.fillStyle(0x101010, 0.82 * enemyMarkerAlpha);
+              markerLayer.fillRoundedRect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, 2);
+              markerLayer.lineStyle(1, 0xf0d8ae, 0.74 * enemyMarkerAlpha);
+              markerLayer.strokeRoundedRect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, 2);
+              const hpFillWidth = Math.max(0, Math.floor(hpBarWidth * enemyHpRatio));
+              if (hpFillWidth > 0) {
+                markerLayer.fillStyle(0x53d476, 0.9 * enemyMarkerAlpha);
+                markerLayer.fillRoundedRect(hpBarX, hpBarY, hpFillWidth, hpBarHeight, 2);
+              }
+              const hpPrevFillWidth = Math.max(0, Math.floor(hpBarWidth * enemyHpPrevRatio));
+              const hpDamageWidth = Math.max(0, hpPrevFillWidth - hpFillWidth);
+              if (hpDamageWidth > 0) {
+                markerLayer.fillStyle(0xe04a4a, 0.9 * enemyMarkerAlpha);
+                markerLayer.fillRoundedRect(hpBarX + hpFillWidth, hpBarY, hpDamageWidth, hpBarHeight, 2);
+              }
             }
             if (alertedEnemyTileKeys.has(tileKey)) {
               const alertLabel = scene.add.text(enemyMx, enemyMy - Math.max(10, MAP_ENEMY_MARKER_CONFIG.iconSize * 0.55), "!", {
@@ -14750,11 +16032,19 @@ function renderMapWithPhaser() {
     unitsByTile.get(tileKey).push(unit);
   }
 
+  const blinkNowMs = Date.now();
   for (const [, members] of unitsByTile.entries()) {
     if (!members.length) continue;
     const lead = members[0];
+    const memberUnitIds = members.map(unit => nonEmptyText(unit?.id)).filter(Boolean);
+    const unitBlinkAlpha = resolveUnitDamageBlinkAlphaByIds(memberUnitIds, blinkNowMs);
     const baseCenter = hexCenter(lead.x, lead.y);
     const iconColor = resolveRaceMarkerColor(lead.race);
+    const unitIllustrationName = resolveUnitIllustrationNameForMap(lead);
+    const unitIllustrationTextureKey = unitIllustrationName
+      ? ensureUnitIllustrationTexture(unitIllustrationName, { removeWhiteBg: true })
+      : "";
+    const useUnitIllustration = !!(unitIllustrationTextureKey && scene.textures.exists(unitIllustrationTextureKey));
     const squadMarkerIconName = members
       .map(unit => nonEmptyText(unit?.squadIconName))
       .find(name => name.length > 0) || "";
@@ -14777,16 +16067,41 @@ function renderMapWithPhaser() {
       const center = { cx: baseCenter.cx + ox, cy: baseCenter.cy + oy };
       const unitMx = center.cx + MAP_UNIT_MARKER_CONFIG.offsetX;
       const unitMy = center.cy + MAP_UNIT_MARKER_CONFIG.offsetY;
-      markerLayer.fillStyle(iconColor, 0.92);
-      markerLayer.fillCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
-      markerLayer.lineStyle(1.5, 0xe8f3ff, 0.95);
-      markerLayer.strokeCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
-      if (markerTextureKey && scene.textures.exists(markerTextureKey)) {
+      const markerHeight = MAP_UNIT_ILLUST_MARKER_SIZE_PX;
+      const markerWidth = (markerHeight * MAP_UNIT_ILLUST_ASPECT_WIDTH) / MAP_UNIT_ILLUST_ASPECT_HEIGHT;
+      const hpMax = Math.max(1, resolveUnitMaxHpValue(lead));
+      const hpNow = Math.max(0, resolveUnitCurrentHpValue(lead, hpMax));
+      const isUnitDead = hpNow <= 0;
+      const unitMarkerAlpha = unitBlinkAlpha * (isUnitDead ? 0.72 : 1);
+      const hpRatio = Math.max(0, Math.min(1, hpNow / hpMax));
+      const recentDamage = resolveRecentDamageForUnit(nonEmptyText(lead?.id), blinkNowMs);
+      const hpPrev = Math.max(0, Math.min(hpMax, hpNow + recentDamage));
+      const hpPrevRatio = Math.max(hpRatio, Math.min(1, hpPrev / hpMax));
+      if (useUnitIllustration) {
+        const illustSprite = scene.add.image(unitMx, unitMy, unitIllustrationTextureKey);
+        illustSprite.setDisplaySize(markerWidth, markerHeight);
+        illustSprite.setOrigin(0.5);
+        illustSprite.setAlpha(unitMarkerAlpha);
+        if (isUnitDead) {
+          illustSprite.setTint(0x8f8f8f);
+        }
+        pushLabelWithDepth(illustSprite, fieldVisualDepth.monster);
+      } else {
+        markerLayer.fillStyle(iconColor, 0.92 * unitMarkerAlpha);
+        markerLayer.fillCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
+        markerLayer.lineStyle(1.5, 0xe8f3ff, 0.95 * unitMarkerAlpha);
+        markerLayer.strokeCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
+      }
+      if (!useUnitIllustration && markerTextureKey && scene.textures.exists(markerTextureKey)) {
         const raceIconSprite = scene.add.image(unitMx, unitMy, markerTextureKey);
         raceIconSprite.setDisplaySize(MAP_UNIT_MARKER_CONFIG.iconSize, MAP_UNIT_MARKER_CONFIG.iconSize);
         raceIconSprite.setOrigin(0.5);
-        labelTexts.push(raceIconSprite);
-      } else {
+        raceIconSprite.setAlpha(unitMarkerAlpha);
+        if (isUnitDead) {
+          raceIconSprite.setTint(0x8f8f8f);
+        }
+        pushLabelWithDepth(raceIconSprite, fieldVisualDepth.monster);
+      } else if (!useUnitIllustration) {
         const raceGlyphText = scene.add.text(unitMx, unitMy, glyph, {
           fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
           fontStyle: "700",
@@ -14795,7 +16110,33 @@ function renderMapWithPhaser() {
         });
         raceGlyphText.setOrigin(0.5);
         raceGlyphText.setStroke("#12202f", 2);
-        labelTexts.push(raceGlyphText);
+        raceGlyphText.setAlpha(unitMarkerAlpha);
+        if (isUnitDead) {
+          raceGlyphText.setColor("#a5aab2");
+        }
+        pushLabelWithDepth(raceGlyphText, fieldVisualDepth.monster);
+      }
+
+      if (recentDamage > 0) {
+        const hpBarWidth = Math.max(18, Math.round((useUnitIllustration ? markerWidth : (MAP_UNIT_MARKER_CONFIG.radius * 2.2)) * 0.68));
+        const hpBarHeight = 4;
+        const hpBarX = Math.round(unitMx - (hpBarWidth * 0.5));
+        const hpBarY = Math.round(unitMy + (useUnitIllustration ? (markerHeight * 0.5 + 3) : (MAP_UNIT_MARKER_CONFIG.radius + 3)));
+        markerLayer.fillStyle(0x101010, 0.82 * unitMarkerAlpha);
+        markerLayer.fillRoundedRect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, 2);
+        markerLayer.lineStyle(1, 0xf0d8ae, 0.74 * unitMarkerAlpha);
+        markerLayer.strokeRoundedRect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, 2);
+        const hpFillWidth = Math.max(0, Math.floor(hpBarWidth * hpRatio));
+        if (hpFillWidth > 0) {
+          markerLayer.fillStyle(0x53d476, 0.9 * unitMarkerAlpha);
+          markerLayer.fillRoundedRect(hpBarX, hpBarY, hpFillWidth, hpBarHeight, 2);
+        }
+        const hpPrevFillWidth = Math.max(0, Math.floor(hpBarWidth * hpPrevRatio));
+        const hpDamageWidth = Math.max(0, hpPrevFillWidth - hpFillWidth);
+        if (hpDamageWidth > 0) {
+          markerLayer.fillStyle(0xe04a4a, 0.9 * unitMarkerAlpha);
+          markerLayer.fillRoundedRect(hpBarX + hpFillWidth, hpBarY, hpDamageWidth, hpBarHeight, 2);
+        }
       }
 
       if (members.length > 1) {
@@ -14813,7 +16154,8 @@ function renderMapWithPhaser() {
         countText.setOrigin(0.5);
         countText.setStroke("#09111f", 1);
         countText.setResolution(2);
-        labelTexts.push(countText);
+        countText.setAlpha(unitBlinkAlpha);
+        pushLabelWithDepth(countText, fieldVisualDepth.monster);
       }
       if (surveyTask) {
         const surveySeconds = resolveSurveyDurationSeconds(surveyTask);
@@ -14831,7 +16173,8 @@ function renderMapWithPhaser() {
         );
         surveyLabel.setOrigin(0.5);
         surveyLabel.setStroke("#0b1f35", 3);
-        labelTexts.push(surveyLabel);
+        surveyLabel.setAlpha(unitBlinkAlpha);
+        pushLabelWithDepth(surveyLabel, fieldVisualDepth.monster);
       }
       if (battleMember) {
         const battleX = unitMx + (MAP_UNIT_MARKER_CONFIG.radius + 7);
@@ -14840,7 +16183,8 @@ function renderMapWithPhaser() {
           const battleIcon = scene.add.image(battleX, battleY, battleTextureKey);
           battleIcon.setOrigin(0.5);
           battleIcon.setDisplaySize(13, 13);
-          labelTexts.push(battleIcon);
+          battleIcon.setAlpha(unitBlinkAlpha);
+          pushLabelWithDepth(battleIcon, fieldVisualDepth.monster);
         } else {
           const battleLabel = scene.add.text(
             battleX,
@@ -14855,7 +16199,8 @@ function renderMapWithPhaser() {
           );
           battleLabel.setOrigin(0.5);
           battleLabel.setStroke("#5a0b0b", 2);
-          labelTexts.push(battleLabel);
+          battleLabel.setAlpha(unitBlinkAlpha);
+          pushLabelWithDepth(battleLabel, fieldVisualDepth.monster);
         }
       }
       if (attackLeaderId && nonEmptyText(lead?.id) === attackLeaderId) {
@@ -14872,18 +16217,52 @@ function renderMapWithPhaser() {
         );
         attackLabel.setOrigin(0.5);
         attackLabel.setStroke("#5a0b0b", 3);
-        labelTexts.push(attackLabel);
+        attackLabel.setAlpha(unitBlinkAlpha);
+        pushLabelWithDepth(attackLabel, fieldVisualDepth.monster);
       }
     }
   }
 
   if (tileAttackSelectionMode.value) {
-    const attackMoveGroup = selectedUnit.value
-      ? resolveMoveGroupForUnit(selectedUnit.value, { allowMemberAsLeader: true })
-      : null;
-    const leader = attackMoveGroup?.ok ? attackMoveGroup.leader : null;
+    const attackState = resolveSelectedTileAttackActionState();
+    const leader = attackState?.moveGroup?.leader || null;
     if (Number.isFinite(leader?.x) && Number.isFinite(leader?.y)) {
-      const previewKeySet = buildAttackPatternTileKeySet(data, leader, tileAttackPatternKey.value, tileAttackRange.value);
+      const leaderKey = coordKey(leader.x, leader.y);
+      const rangeKeySet = buildAttackPatternTileKeySet(data, leader, "circle", tileAttackRange.value);
+      rangeKeySet.delete(leaderKey);
+      const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+      let previewKeySet = attackState?.patternTileKeys instanceof Set
+        ? new Set(attackState.patternTileKeys)
+        : buildAttackPatternTileKeySet(data, leader, effectivePatternKey, tileAttackRange.value);
+      previewKeySet.delete(leaderKey);
+      const normalizedPattern = normalizeTileAttackPatternKey(effectivePatternKey);
+      if (normalizedPattern === "single") {
+        const singleTargetSet = new Set();
+        const candidateKeys = [nonEmptyText(hoveredTileKey), nonEmptyText(selectedTileKey)].filter(Boolean);
+        for (const key of candidateKeys) {
+          if (!rangeKeySet.has(key) || key === leaderKey) continue;
+          singleTargetSet.add(key);
+          break;
+        }
+        previewKeySet = singleTargetSet;
+      }
+      const splashSpec = resolveSelectedTileAttackSplashSpec();
+      const splashAnchorKey = resolveTileAttackPreviewAnchorKey(rangeKeySet, previewKeySet, leader);
+      const splashPreviewSets = buildSplashPreviewTileKeySets(data, splashAnchorKey, splashSpec);
+      for (const rangeKey of rangeKeySet) {
+        const rangeTile = hitAreaMap.get(rangeKey);
+        if (!rangeTile) continue;
+        for (const offset of wrapOffsets) {
+          if (!shouldDrawWrappedTileCopy(rangeTile.x, rangeTile.y, offset, data.w, data.h)) continue;
+          const ox = offset?.x || 0;
+          const oy = offset?.y || 0;
+          const points = (ox || oy) ? offsetHexPoints(rangeTile.polygon.points, ox, oy) : rangeTile.polygon.points;
+          markerLayer.lineStyle(2.1, TILE_ATTACK_PREVIEW_COLOR_RANGE, 0.92);
+          markerLayer.strokePoints(points, true);
+          markerLayer.fillStyle(TILE_ATTACK_PREVIEW_COLOR_RANGE, 0.12);
+          markerLayer.fillPoints(points, true);
+        }
+      }
       for (const previewKey of previewKeySet) {
         const previewTile = hitAreaMap.get(previewKey);
         if (!previewTile) continue;
@@ -14892,9 +16271,37 @@ function renderMapWithPhaser() {
           const ox = offset?.x || 0;
           const oy = offset?.y || 0;
           const points = (ox || oy) ? offsetHexPoints(previewTile.polygon.points, ox, oy) : previewTile.polygon.points;
-          markerLayer.lineStyle(2.2, 0xff7373, 0.95);
+          markerLayer.lineStyle(2.5, TILE_ATTACK_PREVIEW_COLOR_HIT, 0.98);
           markerLayer.strokePoints(points, true);
-          markerLayer.fillStyle(0xff7373, 0.13);
+          markerLayer.fillStyle(TILE_ATTACK_PREVIEW_COLOR_HIT, 0.2);
+          markerLayer.fillPoints(points, true);
+        }
+      }
+      for (const splashKey of splashPreviewSets.fullKeySet) {
+        const splashTile = hitAreaMap.get(splashKey);
+        if (!splashTile) continue;
+        for (const offset of wrapOffsets) {
+          if (!shouldDrawWrappedTileCopy(splashTile.x, splashTile.y, offset, data.w, data.h)) continue;
+          const ox = offset?.x || 0;
+          const oy = offset?.y || 0;
+          const points = (ox || oy) ? offsetHexPoints(splashTile.polygon.points, ox, oy) : splashTile.polygon.points;
+          markerLayer.lineStyle(2.5, TILE_ATTACK_PREVIEW_COLOR_HIT, 0.92);
+          markerLayer.strokePoints(points, true);
+          markerLayer.fillStyle(TILE_ATTACK_PREVIEW_COLOR_HIT, 0.14);
+          markerLayer.fillPoints(points, true);
+        }
+      }
+      for (const splashKey of splashPreviewSets.falloffKeySet) {
+        const splashTile = hitAreaMap.get(splashKey);
+        if (!splashTile) continue;
+        for (const offset of wrapOffsets) {
+          if (!shouldDrawWrappedTileCopy(splashTile.x, splashTile.y, offset, data.w, data.h)) continue;
+          const ox = offset?.x || 0;
+          const oy = offset?.y || 0;
+          const points = (ox || oy) ? offsetHexPoints(splashTile.polygon.points, ox, oy) : splashTile.polygon.points;
+          markerLayer.lineStyle(2.4, TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF, 0.95);
+          markerLayer.strokePoints(points, true);
+          markerLayer.fillStyle(TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF, 0.16);
           markerLayer.fillPoints(points, true);
         }
       }
@@ -14982,6 +16389,46 @@ function drawHoverOverlay() {
   const area = hitAreaMap.get(hoveredTileKey);
   const data = currentData.value;
   if (!area || !data) return;
+  let lineColor = 0xf8f0b8;
+  let lineAlpha = TILE_HOVER_HIGHLIGHT_ALPHA;
+  if (tileAttackSelectionMode.value) {
+    const attackState = resolveSelectedTileAttackActionState();
+    const leader = attackState?.moveGroup?.leader || null;
+    if (Number.isFinite(leader?.x) && Number.isFinite(leader?.y)) {
+      const leaderKey = coordKey(leader.x, leader.y);
+      const rangeKeySet = buildAttackPatternTileKeySet(data, leader, "circle", tileAttackRange.value);
+      rangeKeySet.delete(leaderKey);
+      const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+      let previewKeySet = attackState?.patternTileKeys instanceof Set
+        ? new Set(attackState.patternTileKeys)
+        : buildAttackPatternTileKeySet(data, leader, effectivePatternKey, tileAttackRange.value);
+      previewKeySet.delete(leaderKey);
+      const normalizedPattern = normalizeTileAttackPatternKey(effectivePatternKey);
+      if (normalizedPattern === "single") {
+        const singleTargetSet = new Set();
+        const candidateKeys = [nonEmptyText(hoveredTileKey), nonEmptyText(selectedTileKey)].filter(Boolean);
+        for (const key of candidateKeys) {
+          if (!rangeKeySet.has(key) || key === leaderKey) continue;
+          singleTargetSet.add(key);
+          break;
+        }
+        previewKeySet = singleTargetSet;
+      }
+      const splashSpec = resolveSelectedTileAttackSplashSpec();
+      const splashAnchorKey = resolveTileAttackPreviewAnchorKey(rangeKeySet, previewKeySet, leader);
+      const splashPreviewSets = buildSplashPreviewTileKeySets(data, splashAnchorKey, splashSpec);
+      if (splashPreviewSets.falloffKeySet.has(hoveredTileKey)) {
+        lineColor = TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF;
+        lineAlpha = 0.97;
+      } else if (splashPreviewSets.fullKeySet.has(hoveredTileKey) || previewKeySet.has(hoveredTileKey)) {
+        lineColor = TILE_ATTACK_PREVIEW_COLOR_HIT;
+        lineAlpha = 0.98;
+      } else if (rangeKeySet.has(hoveredTileKey)) {
+        lineColor = TILE_ATTACK_PREVIEW_COLOR_RANGE;
+        lineAlpha = 0.92;
+      }
+    }
+  }
   const offsets = buildWrapOffsets(currentData.value);
   for (const offset of offsets) {
     if (!shouldDrawWrappedTileCopy(area.x, area.y, offset, data.w, data.h)) continue;
@@ -14989,7 +16436,7 @@ function drawHoverOverlay() {
     const oy = offset?.y || 0;
     const points = (ox || oy) ? offsetHexPoints(area.polygon.points, ox, oy) : area.polygon.points;
     const expandedPoints = expandPolygonPoints(points, TILE_HOVER_OUTSET_PX);
-    hoverLayer.lineStyle(3.2, 0xf8f0b8, TILE_HOVER_HIGHLIGHT_ALPHA);
+    hoverLayer.lineStyle(3.2, lineColor, lineAlpha);
     strokeClosedPolygon(hoverLayer, expandedPoints);
   }
 }
@@ -15036,7 +16483,7 @@ function runTurnForActiveFaction(data, options = {}) {
   });
   const heroNotes = Array.isArray(heroGrowthResult?.notes) ? heroGrowthResult.notes : [];
   const surveyResult = advanceSurveyTasksForTurn(data, {
-    allowBattleModal: options?.allowBattleModal !== false
+    allowBattleModal: (options?.allowBattleModal !== false) && FIELD_BATTLE_RESULT_MODAL_ENABLED
   });
   const surveyNotes = Array.isArray(surveyResult?.notes) ? surveyResult.notes : [];
   const enemyRoamResult = runEnemySwarmFreeRoamTurn(data);
@@ -15136,6 +16583,7 @@ function runNextTurn(options = {}) {
     rebuildCharacters: false,
     forceCenterOnInit: false,
     focusPrimaryOnInit: true,
+    preserveTileSelection: true,
     applyUnownedDangerIncrease: true
   });
   const turnRuntime = isTestMultiplayerActive.value
@@ -15209,6 +16657,23 @@ function closeQuickSettingsModalFromMap() {
 function openDisplaySettingsFromQuickMenu() {
   showQuickSettingsModal.value = false;
   openSettingsModal();
+}
+
+function setSquadFormationEnabled(nextValue, options = {}) {
+  const nextEnabled = !!nextValue;
+  if (squadFormationEnabled.value === nextEnabled) return;
+  squadFormationEnabled.value = nextEnabled;
+  if (options?.playSe !== false) {
+    audio.playSe("change");
+  }
+  const label = nextEnabled ? "ON" : "OFF";
+  updateUnitInfoText(`チーム編成機能: ${label}`);
+  pushNationLog(`チーム編成機能: ${label}`);
+  emitCharacterStateChange();
+}
+
+function toggleSquadFormationEnabledFromQuickMenu(enabled) {
+  setSquadFormationEnabled(enabled, { playSe: true });
 }
 
 function buildSaveDownloadFileName() {
@@ -15368,18 +16833,29 @@ function handleOwnUnitNavigatorOpenCharacterStatus(payload = {}) {
   openCharacterStatusModalFromMap();
 }
 
-function handleOwnUnitNavigatorSelectMoveUnit(payload = {}) {
-  const targetId = nonEmptyText(payload?.unitId);
-  if (!targetId) return;
+function resolveNavigatorLeaderUnitById(unitIdRaw) {
+  const targetId = nonEmptyText(unitIdRaw);
+  if (!targetId) {
+    return { ok: false, reason: "ユニットが未指定です。", source: null, leader: null };
+  }
   const source = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
   if (!source) {
-    updateUnitInfoText("移動対象の選択に失敗: ユニットが見つかりません。");
-    return;
+    return { ok: false, reason: "ユニットが見つかりません。", source: null, leader: null };
   }
   const leaderId = nonEmptyText(source?.squadLeaderId);
-  const target = leaderId
+  const leader = leaderId
     ? (unitList.value.find(unit => nonEmptyText(unit?.id) === leaderId) || source)
     : source;
+  return { ok: true, reason: "", source, leader };
+}
+
+function handleOwnUnitNavigatorSelectMoveUnit(payload = {}) {
+  const resolved = resolveNavigatorLeaderUnitById(payload?.unitId);
+  if (!resolved.ok || !resolved.leader) {
+    updateUnitInfoText(`移動対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
+    return;
+  }
+  const target = resolved.leader;
   if (!canUseUnitAsMoveCandidate(target)) {
     updateUnitInfoText(`${nonEmptyText(target?.name) || "ユニット"} は移動対象にできません。`);
     return;
@@ -15398,17 +16874,12 @@ function handleOwnUnitNavigatorSelectMoveUnit(payload = {}) {
 }
 
 function handleOwnUnitNavigatorSelectAttackUnit(payload = {}) {
-  const targetId = nonEmptyText(payload?.unitId);
-  if (!targetId) return;
-  const source = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
-  if (!source) {
-    updateUnitInfoText("攻撃対象の選択に失敗: ユニットが見つかりません。");
+  const resolved = resolveNavigatorLeaderUnitById(payload?.unitId);
+  if (!resolved.ok || !resolved.leader) {
+    updateUnitInfoText(`攻撃対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
     return;
   }
-  const leaderId = nonEmptyText(source?.squadLeaderId);
-  const target = leaderId
-    ? (unitList.value.find(unit => nonEmptyText(unit?.id) === leaderId) || source)
-    : source;
+  const target = resolved.leader;
   if (!target?.positioned) {
     updateUnitInfoText(`${nonEmptyText(target?.name) || "ユニット"} は未配置のため攻撃できません。`);
     return;
@@ -15416,6 +16887,7 @@ function handleOwnUnitNavigatorSelectAttackUnit(payload = {}) {
   kickOffBgm();
   audio.playSe("select");
   selectedUnitId.value = target.id;
+  selectedTileAttackSkillName.value = "";
   clearMoveCommandState({ clearCandidate: true });
   if (tileAttackSelectionMode.value) {
     cancelTileAttackSelectionMode(true);
@@ -15424,6 +16896,287 @@ function handleOwnUnitNavigatorSelectAttackUnit(payload = {}) {
   showMoveUnitModal.value = false;
   emitCharacterStateChange();
   renderMapWithPhaser();
+}
+
+function handleFooterSelectUnit(payload = {}) {
+  const targetId = nonEmptyText(payload?.unitId);
+  if (!targetId) return;
+  const target = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
+  if (!target) return;
+  selectedUnitId.value = target.id;
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+}
+
+function handleFooterMoveRequest(payload = {}) {
+  const resolved = resolveNavigatorLeaderUnitById(payload?.unitId);
+  if (!resolved.ok || !resolved.leader) {
+    updateUnitInfoText(`移動対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
+    return;
+  }
+  const target = resolved.leader;
+  const selectedId = nonEmptyText(selectedUnitId.value);
+  if (
+    isMoveCommandPendingForSelectedUnit.value
+    && selectedId
+    && selectedId === nonEmptyText(target?.id)
+  ) {
+    clearMoveCommandState({ clearCandidate: false });
+    updateUnitInfoText("移動指示を解除しました。");
+    renderMapWithPhaser();
+    return;
+  }
+  handleOwnUnitNavigatorSelectMoveUnit(payload);
+}
+
+function handleFooterAttackRequest(payload = {}) {
+  const resolved = resolveNavigatorLeaderUnitById(payload?.unitId);
+  if (!resolved.ok || !resolved.leader) {
+    updateUnitInfoText(`攻撃対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
+    suppressFooterSkillModalOnce.value = true;
+    return;
+  }
+  const target = resolved.leader;
+  const selectedId = nonEmptyText(selectedUnitId.value);
+  if (
+    tileAttackSelectionMode.value
+    && selectedId
+    && selectedId === nonEmptyText(target?.id)
+  ) {
+    cancelTileAttackSelectionMode();
+    suppressFooterSkillModalOnce.value = true;
+    return;
+  }
+  suppressFooterSkillModalOnce.value = false;
+  handleOwnUnitNavigatorSelectAttackUnit(payload);
+}
+
+function applyHpDeltaToUnitLike(target, deltaRaw = 0) {
+  if (!target || typeof target !== "object") return false;
+  const delta = Math.floor(toSafeNumber(deltaRaw, 0));
+  if (!delta) return false;
+  const maxHp = Math.max(
+    0,
+    Math.floor(
+      toSafeNumber(
+        target?.status?.HP,
+        toSafeNumber(target?.maxHp, toSafeNumber(target?.currentHp, toSafeNumber(target?.hp, 0)))
+      )
+    )
+  );
+  const currentHp = Math.max(
+    0,
+    Math.floor(toSafeNumber(target?.currentHp, toSafeNumber(target?.hp, maxHp)))
+  );
+  const upper = maxHp > 0 ? maxHp : Number.MAX_SAFE_INTEGER;
+  const nextHp = clampNumber(currentHp + delta, 0, upper);
+  if (nextHp === currentHp) return false;
+  target.currentHp = nextHp;
+  target.hp = nextHp;
+  if (!Number.isFinite(toSafeNumber(target?.maxHp, Number.NaN)) && maxHp > 0) {
+    target.maxHp = maxHp;
+  }
+  applyUnitLifeState(target, nextHp);
+  return true;
+}
+
+function handleFooterEnemyHpAdjust(payload = {}) {
+  const enemyIdRaw = nonEmptyText(payload?.enemyId);
+  const sep = enemyIdRaw.indexOf(":");
+  const prefix = sep >= 0 ? enemyIdRaw.slice(0, sep) : "";
+  const enemyId = sep >= 0 ? enemyIdRaw.slice(sep + 1) : enemyIdRaw;
+  const delta = Math.floor(toSafeNumber(payload?.delta, 0));
+  if (!enemyId || !delta) return;
+
+  let updated = false;
+  if (prefix === "spawn") {
+    const data = currentData.value;
+    if (data && Array.isArray(data.enemySpawnMap)) {
+      for (const row of data.enemySpawnMap) {
+        if (!Array.isArray(row)) continue;
+        for (const cell of row) {
+          if (!Array.isArray(cell)) continue;
+          const target = cell.find(enemy => nonEmptyText(enemy?.id) === enemyId) || null;
+          if (!target) continue;
+          updated = applyHpDeltaToUnitLike(target, delta) || updated;
+          if (updated) break;
+        }
+        if (updated) break;
+      }
+    }
+  } else if (prefix === "faction") {
+    for (const slot of testPlayerSlots.value) {
+      const units = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+      const target = units.find(unit => nonEmptyText(unit?.id) === enemyId) || null;
+      if (!target) continue;
+      updated = applyHpDeltaToUnitLike(target, delta) || updated;
+      if (updated) break;
+    }
+  } else {
+    const target = unitList.value.find(unit => nonEmptyText(unit?.id) === enemyId) || null;
+    if (target) {
+      updated = applyHpDeltaToUnitLike(target, delta) || updated;
+    }
+  }
+
+  if (!updated) return;
+  emitCharacterStateChange();
+  if (selectedTileKey) {
+    const picked = hitAreaMap.get(selectedTileKey);
+    if (picked) updateMapClickInfo(picked);
+  }
+  renderMapWithPhaser();
+}
+
+function setOwnFactionPanelViewMode(modeRaw = "navigator") {
+  const mode = nonEmptyText(modeRaw).toLowerCase() === "attack" ? "attack" : "navigator";
+  ownFactionPanelViewMode.value = mode;
+  if (mode === "attack" && !nonEmptyText(ownFactionAttackPanelUnitId.value) && selectedUnit.value) {
+    ownFactionAttackPanelUnitId.value = nonEmptyText(selectedUnit.value?.id);
+  }
+}
+
+function openOwnFactionAttackPanelForUnit(unitIdRaw = "") {
+  const previousUnitId = nonEmptyText(ownFactionAttackPanelUnitId.value);
+  const unitId = nonEmptyText(unitIdRaw);
+  const unit = unitId
+    ? (unitList.value.find(row => nonEmptyText(row?.id) === unitId) || null)
+    : (selectedUnit.value || null);
+  const resolvedUnitId = nonEmptyText(unit?.id);
+  if (resolvedUnitId) {
+    ownFactionAttackPanelUnitId.value = resolvedUnitId;
+    footerUnitSkillModalUnitId.value = resolvedUnitId;
+    if (resolvedUnitId !== previousUnitId) {
+      ownFactionAttackPanelSelectedSkillName.value = "";
+    }
+    if (selectedUnitId.value !== resolvedUnitId) {
+      selectedUnitId.value = resolvedUnitId;
+      emitCharacterStateChange();
+    }
+  }
+  setOwnFactionPanelViewMode("attack");
+  showFooterUnitSkillModal.value = false;
+}
+
+function closeOwnFactionAttackPanel(options = {}) {
+  const shouldCancelPreview = options?.cancelPreview !== false;
+  setOwnFactionPanelViewMode("navigator");
+  if (shouldCancelPreview && tileAttackSelectionMode.value) {
+    cancelTileAttackSelectionMode(true);
+  }
+  requestMapRender();
+}
+
+function handleOwnFactionAttackSkillSelect(payload = {}, options = {}) {
+  const skillName = nonEmptyText(payload?.name || payload?.skillName || payload);
+  if (!skillName) return;
+  ownFactionAttackPanelSelectedSkillName.value = skillName;
+  footerUnitSkillModalSelectedSkillName.value = skillName;
+  selectedTileAttackSkillName.value = skillName;
+  const shouldActivatePreview = options?.activatePreview === true || payload?.activatePreview === true;
+  if (shouldActivatePreview) {
+    const unitId = nonEmptyText(ownFactionAttackPanelUnit.value?.id);
+    if (!unitId) {
+      updateUnitInfoText("攻撃ユニットを選択してください。");
+      requestMapRender();
+      return;
+    }
+    const activated = activateTileAttackPreviewByUnitSkill(unitId, skillName, { closeFooterModal: false });
+    if (!activated?.ok) {
+      updateUnitInfoText(`攻撃プレビュー開始失敗: ${skillName} / ${activated?.reason || "条件未達"}`);
+      requestMapRender();
+    }
+    return;
+  }
+  const applied = applyTileAttackSettingsBySkillName(skillName);
+  if (!applied.ok) {
+    updateUnitInfoText(`スキル適用失敗: ${skillName} / ${applied.reason || "定義不足"}`);
+    requestMapRender();
+    return;
+  }
+  updateUnitInfoText(`攻撃設定: ${skillName} / ${applied.patternKey} / 射程${applied.range}`);
+  requestMapRender();
+}
+
+function activateTileAttackPreviewByUnitSkill(unitIdRaw = "", skillNameRaw = "", options = {}) {
+  const skillName = nonEmptyText(skillNameRaw);
+  const unitId = nonEmptyText(unitIdRaw);
+  if (!skillName || !unitId) return { ok: false, reason: "missing-params" };
+  // 既存の「攻撃選択」導線と同じ経路を必ず通す
+  handleOwnUnitNavigatorSelectAttackUnit({ unitId });
+
+  const activeUnitId = nonEmptyText(selectedUnitId.value);
+  if (!activeUnitId) {
+    requestMapRender();
+    return { ok: false, reason: "attack-mode-start-failed" };
+  }
+
+  footerUnitSkillModalSelectedSkillName.value = skillName;
+  ownFactionAttackPanelSelectedSkillName.value = skillName;
+  selectedTileAttackSkillName.value = skillName;
+
+  const applied = applyTileAttackSettingsBySkillName(skillName);
+  if (!applied.ok) {
+    updateUnitInfoText(`スキル適用失敗: ${skillName} / ${applied.reason || "定義不足"}`);
+    requestMapRender();
+    return { ok: false, reason: "apply-failed", applied };
+  }
+
+  if (!tileAttackSelectionMode.value) {
+    toggleTileAttackSelectionMode();
+  }
+
+  const state = resolveSelectedTileAttackActionState();
+  if (state.enabled) {
+    updateUnitInfoText(`攻撃範囲: ${tileAttackPatternLabel.value} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`);
+  }
+
+  if (options?.closeFooterModal !== false) {
+    showFooterUnitSkillModal.value = false;
+  }
+  requestMapRender();
+  return { ok: true, applied };
+}
+
+function activateOwnFactionAttackPreview(payload = {}) {
+  const skillName = nonEmptyText(payload?.name || payload?.skillName || ownFactionAttackPanelSelectedSkillRow.value?.name);
+  if (!skillName) {
+    updateUnitInfoText("スキルを選択してください。");
+    return;
+  }
+  const unit = ownFactionAttackPanelUnit.value;
+  const unitId = nonEmptyText(unit?.id);
+  if (!unitId) {
+    updateUnitInfoText("ユニット未選択です。");
+    return;
+  }
+  kickOffBgm();
+  audio.playSe("select");
+  handleOwnFactionAttackSkillSelect({ name: skillName, activatePreview: true });
+}
+
+function openFooterUnitSkillModal(payload = {}) {
+  if (suppressFooterSkillModalOnce.value) {
+    suppressFooterSkillModalOnce.value = false;
+    return;
+  }
+  const targetId = nonEmptyText(payload?.unitId);
+  openOwnFactionAttackPanelForUnit(targetId);
+}
+
+function closeFooterUnitSkillModal() {
+  showFooterUnitSkillModal.value = false;
+  footerUnitSkillModalSelectedSkillName.value = "";
+}
+
+function handleFooterUnitSkillSelect(payload = {}) {
+  const skillName = nonEmptyText(payload?.name || payload?.skillName);
+  if (!skillName) return;
+  const modalUnit = footerUnitSkillModalUnit.value;
+  if (!modalUnit) return;
+  const modalUnitId = nonEmptyText(modalUnit?.id);
+  if (!modalUnitId) return;
+  activateTileAttackPreviewByUnitSkill(modalUnitId, skillName, { closeFooterModal: true });
 }
 
 function togglePinnedNationLogPanel() {
@@ -15834,10 +17587,14 @@ function handleCraftWeaponFromInventoryModal(payload = {}) {
   return { ok: true };
 }
 
-function openSkillTreeModalFromMap() {
+function openSkillTreeModalFromMap(categoryKey = "") {
   kickOffBgm();
   audio.playSe("open");
-  emit("open-modal", "skill", { categories: ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"] });
+  const key = nonEmptyText(categoryKey);
+  emit("open-modal", "skill", {
+    categories: ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"],
+    initialCategory: key
+  });
 }
 
 function openGameStartModalFromMap() {
@@ -15859,6 +17616,53 @@ function toggleTestControls() {
     showDevInfo.value = true;
     ensureTestPlayerSlotsInitialized();
   }
+}
+
+function formatRuntimeMemoryBytes(bytes) {
+  const amount = Number(bytes);
+  if (!Number.isFinite(amount) || amount <= 0) return "-";
+  const megaBytes = amount / (1024 * 1024);
+  if (megaBytes >= 100) return `${megaBytes.toFixed(0)} MB`;
+  return `${megaBytes.toFixed(1)} MB`;
+}
+
+async function updateRuntimeMemoryText() {
+  if (typeof window === "undefined" || typeof performance === "undefined") {
+    runtimeMemoryText.value = "-";
+    return;
+  }
+  try {
+    const heapBytes = Number(performance?.memory?.usedJSHeapSize);
+    if (Number.isFinite(heapBytes) && heapBytes > 0) {
+      runtimeMemoryText.value = formatRuntimeMemoryBytes(heapBytes);
+      return;
+    }
+    if (typeof performance.measureUserAgentSpecificMemory === "function") {
+      const memoryResult = await performance.measureUserAgentSpecificMemory();
+      runtimeMemoryText.value = formatRuntimeMemoryBytes(memoryResult?.bytes);
+      return;
+    }
+    runtimeMemoryText.value = "N/A";
+  } catch (error) {
+    runtimeMemoryText.value = "N/A";
+  }
+}
+
+function stopRuntimeMemoryWatch() {
+  if (runtimeMemoryIntervalId) {
+    window.clearInterval(runtimeMemoryIntervalId);
+    runtimeMemoryIntervalId = null;
+  }
+}
+
+function startRuntimeMemoryWatch() {
+  if (typeof window === "undefined") return;
+  stopRuntimeMemoryWatch();
+  runtimeMemoryText.value = "計測中...";
+  void updateRuntimeMemoryText();
+  runtimeMemoryIntervalId = window.setInterval(() => {
+    void updateRuntimeMemoryText();
+  }, 1000);
 }
 
 function handleActiveTestPlayerSelection() {
@@ -15919,9 +17723,38 @@ function applyMapData(data, options = {}) {
   });
   zoomPercent.value = normalizeZoomPercent(zoomPercent.value, normalizedData);
   customWorldWrapEnabled.value = !!normalizedData.worldWrapEnabled;
+  const preserveTileSelection = options?.preserveTileSelection === true;
+  const previousSelectedTileKey = nonEmptyText(selectedTileKey);
+  const previousSelectedTileDetail = selectedTileDetail.value;
   selectedTileKey = "";
   hoveredTileKey = "";
   selectedTileDetail.value = null;
+  if (preserveTileSelection && previousSelectedTileKey) {
+    const coord = parseCoordKey(previousSelectedTileKey);
+    const maxW = Math.max(0, Math.floor(toSafeNumber(normalizedData?.w, 0)));
+    const maxH = Math.max(0, Math.floor(toSafeNumber(normalizedData?.h, 0)));
+    if (
+      coord
+      && Number.isFinite(coord?.x)
+      && Number.isFinite(coord?.y)
+      && coord.x >= 0
+      && coord.y >= 0
+      && coord.x < maxW
+      && coord.y < maxH
+    ) {
+      selectedTileKey = previousSelectedTileKey;
+      selectedTileDetail.value = previousSelectedTileDetail && typeof previousSelectedTileDetail === "object"
+        ? {
+          ...previousSelectedTileDetail,
+          x: coord.x,
+          y: coord.y
+        }
+        : {
+          x: coord.x,
+          y: coord.y
+        };
+    }
+  }
   cityBlockPlacementMode.value = false;
   cityBlockPlacementType.value = CITY_BLOCK_PLACEMENT_TYPE_CITY;
   cityBlockPlacements.value = [];
@@ -16396,11 +18229,17 @@ function refreshMapCursor() {
 function findHitAreaAtWorld(worldX, worldY) {
   const data = currentData.value;
   if (!data || !Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+  const tileW = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.width, 40));
+  const tileH = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.height, 48));
+  const rowStep = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.rowStep, 36));
+  const oddRowOffsetX = toSafeNumber(HEX_TILE_CONFIG?.oddRowOffsetX, tileW / 2);
+  const halfW = tileW / 2;
+  const halfH = tileH / 2;
   const findInBase = (baseWorldX, baseWorldY) => {
-    const roughY = clampNumber(Math.round((baseWorldY - 24) / 36), 0, data.h - 1);
+    const roughY = clampNumber(Math.round((baseWorldY - halfH) / rowStep), 0, data.h - 1);
     for (let y = Math.max(0, roughY - 1); y <= Math.min(data.h - 1, roughY + 1); y += 1) {
-      const offsetX = y % 2 === 1 ? 20 : 0;
-      const roughX = clampNumber(Math.round((baseWorldX - offsetX - 20) / 40), 0, data.w - 1);
+      const offsetX = y % 2 === 1 ? oddRowOffsetX : 0;
+      const roughX = clampNumber(Math.round((baseWorldX - offsetX - halfW) / tileW), 0, data.w - 1);
       for (let x = Math.max(0, roughX - 1); x <= Math.min(data.w - 1, roughX + 1); x += 1) {
         const area = hitAreaMap.get(coordKey(x, y));
         if (area && Phaser.Geom.Polygon.Contains(area.polygon, baseWorldX, baseWorldY)) {
@@ -16493,6 +18332,923 @@ function resolveHexAreaCenterPoint(area) {
   return { x: sx / count, y: sy / count };
 }
 
+function resolveViewPositionFromWorld(camera, worldX, worldY, viewW, viewH) {
+  if (!camera || !Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+  const base = camera.getWorldPoint(0, 0);
+  const plusX = camera.getWorldPoint(1, 0);
+  const plusY = camera.getWorldPoint(0, 1);
+  if (
+    !Number.isFinite(base?.x) || !Number.isFinite(base?.y)
+    || !Number.isFinite(plusX?.x) || !Number.isFinite(plusX?.y)
+    || !Number.isFinite(plusY?.x) || !Number.isFinite(plusY?.y)
+  ) {
+    return null;
+  }
+  const j11 = plusX.x - base.x;
+  const j21 = plusX.y - base.y;
+  const j12 = plusY.x - base.x;
+  const j22 = plusY.y - base.y;
+  const det = (j11 * j22) - (j12 * j21);
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-9) return null;
+  const dx = worldX - base.x;
+  const dy = worldY - base.y;
+  const sx = ((dx * j22) - (dy * j12)) / det;
+  const sy = ((-dx * j21) + (dy * j11)) / det;
+  return { x: sx, y: sy };
+}
+
+function resolveOverlayAnchorStyleByTileCoord(tileX, tileY, margin = 8) {
+  const tx = Math.floor(toSafeNumber(tileX, Number.NaN));
+  const ty = Math.floor(toSafeNumber(tileY, Number.NaN));
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+  const centerHex = hexCenter(tx, ty);
+  const camera = scene?.cameras?.main;
+  const hostEl = gameRoot.value;
+  const canvasEl = game?.canvas || hostEl?.querySelector?.("canvas");
+  if (!centerHex || !camera || !hostEl || !canvasEl) return null;
+
+  const hostRect = hostEl.getBoundingClientRect();
+  const canvasRect = canvasEl.getBoundingClientRect();
+  if (hostRect.width <= 0 || hostRect.height <= 0 || canvasRect.width <= 0 || canvasRect.height <= 0) {
+    return null;
+  }
+
+  const viewW = Math.max(1, toSafeNumber(gameViewWidth.value, game?.scale?.width || canvasEl.width || 1));
+  const viewH = Math.max(1, toSafeNumber(gameViewHeight.value, game?.scale?.height || canvasEl.height || 1));
+  const data = currentData.value;
+  const wrapEnabled = resolveWorldWrapEnabled(data);
+  const mapSize = data ? mapPixelSize(data.w, data.h) : { width: 0, height: 0 };
+  const cameraCenter = getCameraCenter(camera, viewW, viewH);
+  const worldX = wrapEnabled
+    ? wrapValueNear(centerHex.cx, cameraCenter.x, mapSize.width)
+    : centerHex.cx;
+  const worldY = wrapEnabled
+    ? wrapValueNear(centerHex.cy, cameraCenter.y, mapSize.height)
+    : centerHex.cy;
+  const viewPos = resolveViewPositionFromWorld(camera, worldX, worldY, viewW, viewH);
+  if (!viewPos) return null;
+  const cssX = (canvasRect.left - hostRect.left) + ((viewPos.x / viewW) * canvasRect.width);
+  const cssY = (canvasRect.top - hostRect.top) + ((viewPos.y / viewH) * canvasRect.height);
+  const clampedLeft = clampNumber(cssX, margin, Math.max(margin, hostRect.width - margin));
+  const clampedTop = clampNumber(cssY, margin, Math.max(margin, hostRect.height - margin));
+  return {
+    left: `${clampedLeft}px`,
+    top: `${clampedTop}px`
+  };
+}
+
+function resolveSelectedTileCoordForEffect() {
+  let tileCoord = parseCoordKey(selectedTileKey);
+  if (!tileCoord) {
+    const detail = selectedTileDetail.value;
+    if (detail && Number.isFinite(toSafeNumber(detail.x, Number.NaN)) && Number.isFinite(toSafeNumber(detail.y, Number.NaN))) {
+      tileCoord = {
+        x: Math.floor(toSafeNumber(detail.x, 0)),
+        y: Math.floor(toSafeNumber(detail.y, 0))
+      };
+    }
+  }
+  if (!tileCoord) return null;
+  return {
+    x: Math.floor(toSafeNumber(tileCoord.x, Number.NaN)),
+    y: Math.floor(toSafeNumber(tileCoord.y, Number.NaN))
+  };
+}
+
+function normalizeEffectTargetTileCoord(candidate) {
+  if (!candidate) return null;
+  if (typeof candidate === "string") {
+    const parsed = parseCoordKey(nonEmptyText(candidate));
+    if (!parsed) return null;
+    return {
+      x: Math.floor(toSafeNumber(parsed.x, Number.NaN)),
+      y: Math.floor(toSafeNumber(parsed.y, Number.NaN))
+    };
+  }
+  if (!Number.isFinite(toSafeNumber(candidate.x, Number.NaN)) || !Number.isFinite(toSafeNumber(candidate.y, Number.NaN))) {
+    return null;
+  }
+  return {
+    x: Math.floor(toSafeNumber(candidate.x, Number.NaN)),
+    y: Math.floor(toSafeNumber(candidate.y, Number.NaN))
+  };
+}
+
+function resolveEffectTargetTileCoord(payload) {
+  if (!payload) return null;
+  const candidates = [
+    payload?.tileCoord,
+    payload?.targetTileCoord,
+    payload?.targetTileKey,
+    payload?.tileKey,
+    payload?.targetTile,
+    payload?.target?.tileCoord,
+    payload?.target?.tileKey,
+    payload?.target
+  ];
+  if (Number.isFinite(toSafeNumber(payload?.tileX, Number.NaN)) && Number.isFinite(toSafeNumber(payload?.tileY, Number.NaN))) {
+    candidates.unshift({
+      x: Math.floor(toSafeNumber(payload.tileX, Number.NaN)),
+      y: Math.floor(toSafeNumber(payload.tileY, Number.NaN))
+    });
+  }
+  for (const candidate of candidates) {
+    const normalized = normalizeEffectTargetTileCoord(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function resolveEffectTargetWorldPos(payload) {
+  if (!payload) return null;
+  const candidates = [
+    payload?.worldPos,
+    payload?.world,
+    payload?.targetWorldPos,
+    payload?.target?.worldPos,
+    payload?.target?.world
+  ];
+  if (Number.isFinite(toSafeNumber(payload?.worldX, Number.NaN)) && Number.isFinite(toSafeNumber(payload?.worldY, Number.NaN))) {
+    candidates.unshift({
+      x: toSafeNumber(payload.worldX, Number.NaN),
+      y: toSafeNumber(payload.worldY, Number.NaN)
+    });
+  }
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const x = toSafeNumber(candidate.x, Number.NaN);
+    const y = toSafeNumber(candidate.y, Number.NaN);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y };
+    }
+  }
+  return null;
+}
+
+function resolveEffectSourceByPayload(payload) {
+  const src = nonEmptyText(payload?.src);
+  if (src) return src;
+  const nameCandidates = [
+    nonEmptyText(payload?.effectName),
+    nonEmptyText(payload?.name),
+    nonEmptyText(payload?.effect)
+  ].filter(Boolean);
+  for (const name of nameCandidates) {
+    const resolvedName = resolveKnownEffectName(name);
+    const found = nonEmptyText(effectSrcByName.get(resolvedName));
+    if (found) return found;
+  }
+  return "";
+}
+
+function normalizeEffectScalePercent(rawValue, fallback = 50) {
+  return clampNumber(toSafeNumber(rawValue, fallback), 10, 400);
+}
+
+function normalizeHalfWidthDigits(text) {
+  return nonEmptyText(text).replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+}
+
+function resolveKnownEffectName(rawName) {
+  const source = nonEmptyText(rawName).replace(/\.(webp|png|jpg|jpeg|avif|gif)$/i, "");
+  if (!source) return "";
+  const base = normalizeHalfWidthDigits(source);
+  const attempts = [];
+  const pushAttempt = value => {
+    const key = nonEmptyText(value);
+    if (!key || attempts.includes(key)) return;
+    attempts.push(key);
+  };
+  pushAttempt(base);
+  pushAttempt(base.replace(/\s+/g, ""));
+  const tailMatch = base.match(/^(.*?)(\d+)$/);
+  if (tailMatch) {
+    const head = nonEmptyText(tailMatch[1]);
+    const num = tailMatch[2];
+    pushAttempt(head);
+    pushAttempt(`${head}(${num})`);
+    pushAttempt(`${head} (${num})`);
+  }
+  for (const name of attempts) {
+    if (effectSrcByName.has(name)) return name;
+  }
+  return "";
+}
+
+function resolveSkillAnimationEffectNames(rawValue) {
+  const text = nonEmptyText(rawValue);
+  if (!text) return [];
+  const direct = resolveKnownEffectName(text);
+  if (direct) return [direct];
+  const candidates = text
+    .split(/[\s,，\/／|｜:：;；>＞]+/)
+    .map(part => resolveKnownEffectName(part))
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!effectSrcByName.has(candidate) || seen.has(candidate)) continue;
+    seen.add(candidate);
+    out.push(candidate);
+  }
+  return out;
+}
+
+function resolveSkillAnimationEffectName(rawValue) {
+  const names = resolveSkillAnimationEffectNames(rawValue);
+  return names[0] || "";
+}
+
+function resolveEffectSourceSequenceByPayload(payload) {
+  const directSequenceSources = Array.isArray(payload?.sequenceSources)
+    ? payload.sequenceSources.map(nonEmptyText).filter(Boolean)
+    : [];
+  if (directSequenceSources.length) return directSequenceSources;
+
+  const directSequenceNames = Array.isArray(payload?.sequenceNames)
+    ? payload.sequenceNames.map(nonEmptyText).filter(Boolean)
+    : [];
+  if (directSequenceNames.length) {
+    const mapped = directSequenceNames
+      .map(name => resolveKnownEffectName(name))
+      .map(name => nonEmptyText(effectSrcByName.get(name)))
+      .filter(Boolean);
+    if (mapped.length) return mapped;
+  }
+
+  const sequenceText = nonEmptyText(payload?.effectName || payload?.effect || payload?.name);
+  if (sequenceText) {
+    const sequenceNames = resolveSkillAnimationEffectNames(sequenceText);
+    const mapped = sequenceNames
+      .map(name => nonEmptyText(effectSrcByName.get(name)))
+      .filter(Boolean);
+    if (mapped.length) return mapped;
+  }
+
+  const single = resolveEffectSourceByPayload(payload);
+  return single ? [single] : [];
+}
+
+function resolveDefaultEffectSource() {
+  for (const name of effectNameCatalog) {
+    const src = nonEmptyText(effectSrcByName.get(name));
+    if (src) return src;
+  }
+  const iter = effectSrcByName.values().next();
+  return nonEmptyText(iter?.value);
+}
+
+function resolveDefaultAttackEffectSource() {
+  return nonEmptyText(effectSrcByName320.get(DEFAULT_ATTACK_EFFECT_NAME))
+    || nonEmptyText(effectSrcByName.get(DEFAULT_ATTACK_EFFECT_NAME))
+    || resolveDefaultEffectSource();
+}
+
+function rememberEffectPlaybackPreset(payload) {
+  if (!payload || typeof payload !== "object") return;
+  const resolvedSrc = resolveEffectSourceByPayload(payload);
+  if (!resolvedSrc) return;
+  const resolvedName = nonEmptyText(payload?.effectName || payload?.name || payload?.effect);
+  effectPlaybackPreset.value = {
+    name: resolvedName,
+    src: resolvedSrc,
+    angleDeg: resolveEffectAngleDegByPayload(payload),
+    scalePercent: normalizeEffectScalePercent(payload?.scalePercent, effectPlaybackPreset.value?.scalePercent ?? 50),
+    tint: resolveEffectTintByPayload(payload),
+    colorStrengthPercent: resolveEffectColorStrengthPercentByPayload(payload, effectPlaybackPreset.value?.colorStrengthPercent ?? 100),
+    hueAnimationDegPerFrame: resolveEffectHueAnimationDegPerFrameByPayload(payload, effectPlaybackPreset.value?.hueAnimationDegPerFrame ?? 0),
+    grayscaleBase: resolveEffectGrayscaleBaseByPayload(payload, effectPlaybackPreset.value?.grayscaleBase),
+    renderStyle: resolveEffectRenderStyleByPayload(payload, effectPlaybackPreset.value?.renderStyle),
+    frameOffsets: resolveEffectFrameOffsetsByPayload(payload),
+    showPreviousFrameGhost: !!payload?.showPreviousFrameGhost
+  };
+}
+
+function buildAttackEffectPlayPayloadBySkill(options = {}) {
+  const picked = options?.picked || null;
+  const splashSpec = options?.splashSpec || null;
+  const explicitSkillName = nonEmptyText(options?.skillName);
+  const fallbackSelectedSkillName = nonEmptyText(selectedTileAttackSkillName.value) || nonEmptyText(footerUnitSkillModalSelectedSkillName.value);
+  const skillName = explicitSkillName || fallbackSelectedSkillName;
+  const skillRow = options?.skillRow && typeof options.skillRow === "object"
+    ? options.skillRow
+    : resolveSkillInfoRowByName(skillName);
+  if (!picked) return null;
+  const skillEffectNames = resolveSkillAnimationEffectNames(skillRow?.アニメ);
+  const skillEffectSources = skillEffectNames
+    .map(name => nonEmptyText(effectSrcByName.get(name)))
+    .filter(Boolean);
+  const skillEffectName = nonEmptyText(skillEffectNames[0]);
+  const skillEffectSrc = nonEmptyText(skillEffectSources[0]);
+  const preset = effectPlaybackPreset.value || {};
+  const fallbackSrc = resolveDefaultAttackEffectSource() || nonEmptyText(preset?.src) || resolveDefaultEffectSource();
+  const src = skillEffectSrc || fallbackSrc;
+  if (!src) return null;
+  const splashValue = Math.max(0, toSafeNumber(splashSpec?.value, 0));
+  const scaleMultiplier = 1 + splashValue;
+  const baseScalePercent = normalizeEffectScalePercent(preset?.scalePercent, 50);
+  const scaledPercent = normalizeEffectScalePercent(Math.round(baseScalePercent * scaleMultiplier), baseScalePercent);
+  const payload = {
+    src,
+    tileX: Math.floor(toSafeNumber(picked.x, Number.NaN)),
+    tileY: Math.floor(toSafeNumber(picked.y, Number.NaN)),
+    scalePercent: scaledPercent,
+    angleDeg: resolveEffectAngleDegByPayload({ angleDeg: preset?.angleDeg }),
+    colorStrengthPercent: resolveEffectColorStrengthPercentByPayload({ colorStrengthPercent: preset?.colorStrengthPercent }),
+    hueAnimationDegPerFrame: resolveEffectHueAnimationDegPerFrameByPayload({ hueAnimationDegPerFrame: preset?.hueAnimationDegPerFrame }),
+    grayscaleBase: resolveEffectGrayscaleBaseByPayload({ grayscaleBase: preset?.grayscaleBase }),
+    renderStyle: resolveEffectRenderStyleByPayload({ renderStyle: preset?.renderStyle }),
+    frameOffsets: resolveEffectFrameOffsetsByPayload({ frameOffsets: preset?.frameOffsets }),
+    showPreviousFrameGhost: !!preset?.showPreviousFrameGhost,
+    rememberPreset: false
+  };
+  const effectName = skillEffectName || DEFAULT_ATTACK_EFFECT_NAME || nonEmptyText(preset?.name);
+  if (effectName) payload.name = effectName;
+  if (skillEffectSources.length > 1) {
+    payload.sequenceSources = [...skillEffectSources];
+    payload.sequenceNames = [...skillEffectNames];
+  }
+  const tint = preset?.tint;
+  if (tint !== null && tint !== undefined && tint !== "") {
+    payload.tint = tint;
+  }
+  return payload;
+}
+
+function buildTileAttackEffectPlayPayload(picked, leader, splashSpec) {
+  return buildAttackEffectPlayPayloadBySkill({
+    picked,
+    leader,
+    splashSpec
+  });
+}
+
+function resolveEffectAngleDegByPayload(payload) {
+  const explicitRaw = Number(payload?.angleDeg);
+  if (Number.isFinite(explicitRaw)) {
+    const normalized = explicitRaw % 360;
+    return normalized < 0 ? normalized + 360 : normalized;
+  }
+  const directionText = nonEmptyText(payload?.direction || payload?.dir || payload?.facing).toUpperCase();
+  const directionAliasMap = {
+    E: 0,
+    NE: 1,
+    NW: 2,
+    W: 3,
+    SW: 4,
+    SE: 5
+  };
+  if (directionText && Object.prototype.hasOwnProperty.call(directionAliasMap, directionText)) {
+    return normalizeAttackDirectionIndex(directionAliasMap[directionText]) * 60;
+  }
+  const dirRaw = toSafeNumber(payload?.directionIndex, Number.NaN);
+  if (Number.isFinite(dirRaw)) {
+    return normalizeAttackDirectionIndex(Math.floor(dirRaw)) * 60;
+  }
+  return 0;
+}
+
+function resolveEffectTintByPayload(payload) {
+  const raw = payload?.tint;
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (Number.isFinite(raw)) {
+    const num = Math.floor(Number(raw));
+    return clampNumber(num, 0x000000, 0xffffff);
+  }
+  const text = nonEmptyText(raw);
+  if (!text) return null;
+  const normalized = text.trim();
+  const hexBody = normalized.startsWith("#")
+    ? normalized.slice(1)
+    : normalized.toLowerCase().startsWith("0x")
+      ? normalized.slice(2)
+      : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(hexBody)) return null;
+  const parsed = Number.parseInt(hexBody, 16);
+  if (!Number.isFinite(parsed)) return null;
+  return clampNumber(parsed, 0x000000, 0xffffff);
+}
+
+function resolveEffectColorStrengthPercentByPayload(payload, fallback = 100) {
+  const raw = toSafeNumber(payload?.colorStrengthPercent, fallback);
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
+function resolveEffectHueAnimationDegPerFrameByPayload(payload, fallback = 0) {
+  const raw = toSafeNumber(payload?.hueAnimationDegPerFrame, fallback);
+  return Math.max(-180, Math.min(180, raw));
+}
+
+function resolveEffectGrayscaleBaseByPayload(payload, fallback = false) {
+  if (payload?.grayscaleBase === undefined || payload?.grayscaleBase === null) return !!fallback;
+  return !!payload.grayscaleBase;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, toSafeNumber(value, 0)));
+}
+
+function mixTintColorByStrength(color, strengthPercent) {
+  const strength = clamp01(toSafeNumber(strengthPercent, 100) / 100);
+  const source = Math.max(0, Math.min(0xffffff, Math.floor(toSafeNumber(color, 0xffffff))));
+  const r = (source >> 16) & 0xff;
+  const g = (source >> 8) & 0xff;
+  const b = source & 0xff;
+  const outR = Math.round((255 * (1 - strength)) + (r * strength));
+  const outG = Math.round((255 * (1 - strength)) + (g * strength));
+  const outB = Math.round((255 * (1 - strength)) + (b * strength));
+  return ((outR & 0xff) << 16) | ((outG & 0xff) << 8) | (outB & 0xff);
+}
+
+function rotateHexColorHue(color, hueShiftDegRaw = 0) {
+  const hueShiftDeg = toSafeNumber(hueShiftDegRaw, 0);
+  if (!Number.isFinite(hueShiftDeg) || Math.abs(hueShiftDeg) < 0.0001) {
+    return Math.max(0, Math.min(0xffffff, Math.floor(toSafeNumber(color, 0xffffff))));
+  }
+  const source = Math.max(0, Math.min(0xffffff, Math.floor(toSafeNumber(color, 0xffffff))));
+  let r = ((source >> 16) & 0xff) / 255;
+  let g = ((source >> 8) & 0xff) / 255;
+  let b = (source & 0xff) / 255;
+  const cMax = Math.max(r, g, b);
+  const cMin = Math.min(r, g, b);
+  const delta = cMax - cMin;
+  let h = 0;
+  if (delta !== 0) {
+    if (cMax === r) h = ((g - b) / delta) % 6;
+    else if (cMax === g) h = ((b - r) / delta) + 2;
+    else h = ((r - g) / delta) + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const l = (cMax + cMin) / 2;
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs((2 * l) - 1));
+  const nextHue = ((((h + hueShiftDeg) % 360) + 360) % 360) / 360;
+  const hue2rgb = (p, q, tRaw) => {
+    let t = tRaw;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < (1 / 6)) return p + ((q - p) * 6 * t);
+    if (t < (1 / 2)) return q;
+    if (t < (2 / 3)) return p + ((q - p) * ((2 / 3) - t) * 6);
+    return p;
+  };
+  if (s === 0) {
+    r = l;
+    g = l;
+    b = l;
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - (l * s);
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, nextHue + (1 / 3));
+    g = hue2rgb(p, q, nextHue);
+    b = hue2rgb(p, q, nextHue - (1 / 3));
+  }
+  const outR = Math.round(clamp01(r) * 255);
+  const outG = Math.round(clamp01(g) * 255);
+  const outB = Math.round(clamp01(b) * 255);
+  return ((outR & 0xff) << 16) | ((outG & 0xff) << 8) | (outB & 0xff);
+}
+
+function applyGrayscaleBaseToEffectImage(targetImage, enabled) {
+  if (!enabled || !targetImage) return;
+  try {
+    const fx = typeof targetImage?.postFX?.addColorMatrix === "function"
+      ? targetImage.postFX.addColorMatrix()
+      : typeof targetImage?.preFX?.addColorMatrix === "function"
+        ? targetImage.preFX.addColorMatrix()
+        : null;
+    if (fx && typeof fx.reset === "function" && typeof fx.grayscale === "function") {
+      fx.reset();
+      fx.grayscale(1, false);
+    }
+  } catch (_error) {
+    // FX が使えない環境では tint のみで継続
+  }
+}
+
+function resolveEffectRenderStyleByPayload(payload, fallback = EFFECT_RENDER_STYLE_SOFT) {
+  const raw = nonEmptyText(payload?.renderStyle || payload?.shape || payload?.maskStyle || payload?.style);
+  if (raw && EFFECT_RENDER_STYLE_SET.has(raw)) return raw;
+  return EFFECT_RENDER_STYLE_SET.has(fallback) ? fallback : EFFECT_RENDER_STYLE_SOFT;
+}
+
+function resolveEffectFrameOffsetsByPayload(payload) {
+  const source = payload?.frameOffsets;
+  if (!source || typeof source !== "object") return {};
+  const out = {};
+  for (const [indexText, offset] of Object.entries(source)) {
+    const frameIndex = Math.floor(toSafeNumber(indexText, Number.NaN));
+    if (!Number.isFinite(frameIndex) || frameIndex < 0) continue;
+    if (!offset || typeof offset !== "object") continue;
+    const x = toSafeNumber(offset.x, 0);
+    const y = toSafeNumber(offset.y, 0);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    out[frameIndex] = { x, y };
+  }
+  return out;
+}
+
+async function playEffectFromExternalRequest(payload) {
+  await handleEffectPlayerPlayRequest(payload);
+}
+
+function installExternalMapEffectBridge() {
+  if (typeof window === "undefined") return;
+  externalMapEffectPlayBridgeFn = payload => {
+    void playEffectFromExternalRequest(payload);
+  };
+  const bridge = window[MAP_EFFECT_BRIDGE_NAMESPACE] && typeof window[MAP_EFFECT_BRIDGE_NAMESPACE] === "object"
+    ? window[MAP_EFFECT_BRIDGE_NAMESPACE]
+    : {};
+  bridge.play = externalMapEffectPlayBridgeFn;
+  bridge.eventName = MAP_EFFECT_PLAY_EVENT_NAME;
+  window[MAP_EFFECT_BRIDGE_NAMESPACE] = bridge;
+  externalMapEffectPlayEventHandler = event => {
+    void playEffectFromExternalRequest(event?.detail);
+  };
+  window.addEventListener(MAP_EFFECT_PLAY_EVENT_NAME, externalMapEffectPlayEventHandler);
+}
+
+function uninstallExternalMapEffectBridge() {
+  if (typeof window === "undefined") return;
+  if (externalMapEffectPlayEventHandler) {
+    window.removeEventListener(MAP_EFFECT_PLAY_EVENT_NAME, externalMapEffectPlayEventHandler);
+    externalMapEffectPlayEventHandler = null;
+  }
+  const bridge = window[MAP_EFFECT_BRIDGE_NAMESPACE];
+  if (bridge && typeof bridge === "object" && bridge.play === externalMapEffectPlayBridgeFn) {
+    delete bridge.play;
+  }
+  externalMapEffectPlayBridgeFn = null;
+}
+
+function clearActiveTileEffectPlayback() {
+  if (activeTileEffectFrameTimerId) {
+    clearInterval(activeTileEffectFrameTimerId);
+    activeTileEffectFrameTimerId = null;
+  }
+  if (activeTileEffectHideTimerId) {
+    clearTimeout(activeTileEffectHideTimerId);
+    activeTileEffectHideTimerId = null;
+  }
+  if (activeTileEffectImage) {
+    if (typeof activeTileEffectImage.clearMask === "function") {
+      activeTileEffectImage.clearMask(true);
+    }
+    activeTileEffectImage.destroy();
+    activeTileEffectImage = null;
+  }
+  if (activeTileEffectPrevGhostImage) {
+    if (typeof activeTileEffectPrevGhostImage.clearMask === "function") {
+      activeTileEffectPrevGhostImage.clearMask(true);
+    }
+    activeTileEffectPrevGhostImage.destroy();
+    activeTileEffectPrevGhostImage = null;
+  }
+  if (activeTileEffectMaskImage) {
+    activeTileEffectMaskImage.destroy();
+    activeTileEffectMaskImage = null;
+  }
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`effect image load failed: ${src}`));
+    img.src = src;
+  });
+}
+
+async function ensureEffectTextureKey(src) {
+  const textureKey = `tile-effect:${src}`;
+  const textureManager = scene?.textures;
+  if (!textureManager) return null;
+  if (textureManager.exists(textureKey)) return textureKey;
+  const image = await loadImageElement(src);
+  if (!scene?.textures) return null;
+  if (scene.textures.exists(textureKey)) return textureKey;
+  scene.textures.addImage(textureKey, image);
+  return textureKey;
+}
+
+function ensureEffectSoftMaskTextureKey() {
+  const textureManager = scene?.textures;
+  if (!textureManager) return null;
+  if (textureManager.exists(EFFECT_SOFT_MASK_TEXTURE_KEY)) {
+    return EFFECT_SOFT_MASK_TEXTURE_KEY;
+  }
+  const size = Math.max(32, Math.floor(EFFECT_SOFT_MASK_TEXTURE_SIZE));
+  const texture = textureManager.createCanvas(EFFECT_SOFT_MASK_TEXTURE_KEY, size, size);
+  if (!texture?.context) return null;
+  const ctx = texture.context;
+  const cx = size * 0.5;
+  const cy = size * 0.5;
+  const outerR = Math.max(1, size * 0.5);
+  const innerR = Math.max(0, outerR * clampNumber(EFFECT_SOFT_MASK_INNER_RATIO, 0, 0.98));
+  ctx.clearRect(0, 0, size, size);
+  const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  texture.refresh();
+  return EFFECT_SOFT_MASK_TEXTURE_KEY;
+}
+
+function resolveEffectWorldPosition(tileX, tileY) {
+  const centerHex = hexCenter(tileX, tileY);
+  if (!centerHex) return null;
+  const camera = scene?.cameras?.main;
+  const data = currentData.value;
+  if (!camera || !data || !resolveWorldWrapEnabled(data)) {
+    return { x: centerHex.cx, y: centerHex.cy };
+  }
+  const { width: worldW, height: worldH } = mapPixelSize(data.w, data.h);
+  const viewW = Math.max(1, Math.floor(Number(gameViewWidth.value) || GAME_VIEW_WIDTH));
+  const viewH = Math.max(1, Math.floor(Number(gameViewHeight.value) || GAME_VIEW_HEIGHT));
+  const center = getCameraCenter(camera, viewW, viewH);
+  return {
+    x: wrapValueNear(centerHex.cx, center.x, worldW),
+    y: wrapValueNear(centerHex.cy, center.y, worldH)
+  };
+}
+
+async function playSingleEffectAtWorldPos(src, payload, worldPos, requestId) {
+  if (!src || !worldPos || requestId !== activeTileEffectPlaybackRequestId) return false;
+  const textureKey = await ensureEffectTextureKey(src);
+  if (!textureKey || !scene || !currentData.value || requestId !== activeTileEffectPlaybackRequestId) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: texture-or-scene-invalid`, {
+      textureKey,
+      hasScene: !!scene,
+      hasMap: !!currentData.value
+    });
+    return false;
+  }
+  const texture = scene.textures.get(textureKey);
+  const sourceImage = texture?.getSourceImage?.();
+  const sourceW = Number(sourceImage?.width) || 0;
+  const sourceH = Number(sourceImage?.height) || 0;
+  if (sourceW <= 0 || sourceH <= 0) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: invalid-source-size`, { sourceW, sourceH, textureKey });
+    return false;
+  }
+
+  clearActiveTileEffectPlayback();
+  const isHorizontal = sourceW > sourceH;
+  const isFixed320VerticalSplit = sourceW === EFFECT_VERTICAL_SPLIT_TARGET_WIDTH
+    && sourceH >= (EFFECT_VERTICAL_SPLIT_FRAME_HEIGHT * 2);
+  const useHorizontalFrames = isFixed320VerticalSplit ? false : isHorizontal;
+  let frameCount = 1;
+  if (isFixed320VerticalSplit) {
+    frameCount = Math.max(1, Math.floor(sourceH / EFFECT_VERTICAL_SPLIT_FRAME_HEIGHT));
+  } else if (useHorizontalFrames) {
+    if (sourceH > 0 && (sourceW % sourceH) === 0) {
+      frameCount = Math.max(1, Math.floor(sourceW / sourceH));
+    } else {
+      frameCount = Math.max(1, Math.floor(sourceW / EFFECT_SPRITE_UNIT));
+    }
+  } else {
+    if (sourceW > 0 && (sourceH % sourceW) === 0) {
+      frameCount = Math.max(1, Math.floor(sourceH / sourceW));
+    } else {
+      frameCount = Math.max(1, Math.floor(sourceH / EFFECT_SPRITE_UNIT));
+    }
+  }
+  const frameW = useHorizontalFrames
+    ? Math.max(1, Math.floor(sourceW / frameCount))
+    : Math.max(1, sourceW);
+  const frameH = useHorizontalFrames
+    ? Math.max(1, sourceH)
+    : (isFixed320VerticalSplit
+      ? EFFECT_VERTICAL_SPLIT_FRAME_HEIGHT
+      : Math.max(1, Math.floor(sourceH / frameCount)));
+  const angle = resolveEffectAngleDegByPayload(payload);
+  const angleRad = (angle * Math.PI) / 180;
+  const angleCos = Math.cos(angleRad);
+  const angleSin = Math.sin(angleRad);
+  const tintColor = resolveEffectTintByPayload(payload);
+  const colorStrengthPercent = resolveEffectColorStrengthPercentByPayload(payload, effectPlaybackPreset.value?.colorStrengthPercent ?? 100);
+  const hueAnimationDegPerFrame = resolveEffectHueAnimationDegPerFrameByPayload(payload, effectPlaybackPreset.value?.hueAnimationDegPerFrame ?? 0);
+  const grayscaleBase = resolveEffectGrayscaleBaseByPayload(payload, effectPlaybackPreset.value?.grayscaleBase);
+  const renderStyle = resolveEffectRenderStyleByPayload(payload, effectPlaybackPreset.value?.renderStyle);
+  const frameOffsets = resolveEffectFrameOffsetsByPayload(payload);
+  const showPreviousFrameGhost = !!payload?.showPreviousFrameGhost;
+  const scalePercent = normalizeEffectScalePercent(payload?.scalePercent, 50);
+  const scaleFactor = scalePercent / EFFECT_SCALE_BASE_PERCENT;
+  const sourceScaleMultiplier = animation1EffectSrcSet.has(nonEmptyText(src)) ? 2 : 1;
+  const effectiveScaleFactor = scaleFactor * sourceScaleMultiplier;
+  const anchorX = worldPos.x;
+  const anchorY = worldPos.y;
+  const displayFrameW = frameW * effectiveScaleFactor;
+  const displayFrameH = frameH * effectiveScaleFactor;
+
+  function resolveFramePlacement(frameIndexRaw = 0) {
+    const frameIndex = Math.max(0, Math.min(frameCount - 1, Math.floor(toSafeNumber(frameIndexRaw, 0))));
+    const cropX = useHorizontalFrames ? (frameIndex * frameW) : 0;
+    const cropY = useHorizontalFrames ? 0 : (frameIndex * frameH);
+    const frameOffset = frameOffsets[frameIndex] || { x: 0, y: 0 };
+    const localOffsetX = ((sourceW * 0.5) - cropX - (frameW * 0.5)) * effectiveScaleFactor;
+    const localOffsetY = ((sourceH * 0.5) - cropY - (frameH * 0.5)) * effectiveScaleFactor;
+    const rotatedOffsetX = (localOffsetX * angleCos) - (localOffsetY * angleSin);
+    const rotatedOffsetY = (localOffsetX * angleSin) + (localOffsetY * angleCos);
+    const fixedX = anchorX + rotatedOffsetX + toSafeNumber(frameOffset?.x, 0);
+    const fixedY = anchorY + rotatedOffsetY + toSafeNumber(frameOffset?.y, 0);
+    return { cropX, cropY, fixedX, fixedY };
+  }
+
+  function applyFramePlacement(targetImage, placement) {
+    if (!targetImage || !placement) return;
+    targetImage.setCrop(placement.cropX, placement.cropY, frameW, frameH);
+    targetImage.setPosition(placement.fixedX, placement.fixedY);
+  }
+
+  function applyFrameTint(targetImage, frameIndexRaw = 0) {
+    if (!targetImage) return;
+    if (tintColor === null) {
+      targetImage.clearTint();
+      return;
+    }
+    const frameIndex = Math.max(0, Math.floor(toSafeNumber(frameIndexRaw, 0)));
+    const hueShiftDeg = hueAnimationDegPerFrame * frameIndex;
+    const shifted = rotateHexColorHue(tintColor, hueShiftDeg);
+    const mixed = mixTintColorByStrength(shifted, colorStrengthPercent);
+    targetImage.setTint(mixed);
+  }
+
+  activeTileEffectImage = scene.add.image(worldPos.x, worldPos.y, textureKey);
+  activeTileEffectImage.setOrigin(0.5, 0.5);
+  activeTileEffectImage.setScale(effectiveScaleFactor);
+  activeTileEffectImage.setDepth(EFFECT_PLAYBACK_DEPTH);
+  activeTileEffectImage.setAngle(angle);
+  applyGrayscaleBaseToEffectImage(activeTileEffectImage, grayscaleBase);
+  applyFrameTint(activeTileEffectImage, 0);
+  activeTileEffectImage.setBlendMode(Phaser.BlendModes.SCREEN);
+  if (showPreviousFrameGhost && frameCount > 1) {
+    activeTileEffectPrevGhostImage = scene.add.image(worldPos.x, worldPos.y, textureKey);
+    activeTileEffectPrevGhostImage.setOrigin(0.5, 0.5);
+    activeTileEffectPrevGhostImage.setScale(effectiveScaleFactor);
+    activeTileEffectPrevGhostImage.setDepth(EFFECT_PLAYBACK_DEPTH - 1);
+    activeTileEffectPrevGhostImage.setAngle(angle);
+    activeTileEffectPrevGhostImage.setAlpha(0.35);
+    applyGrayscaleBaseToEffectImage(activeTileEffectPrevGhostImage, grayscaleBase);
+    applyFrameTint(activeTileEffectPrevGhostImage, 0);
+    activeTileEffectPrevGhostImage.setBlendMode(Phaser.BlendModes.SCREEN);
+  }
+  if (renderStyle === EFFECT_RENDER_STYLE_SOFT) {
+    const softMaskTextureKey = ensureEffectSoftMaskTextureKey();
+    if (softMaskTextureKey) {
+      activeTileEffectMaskImage = scene.make.image({ x: anchorX, y: anchorY, key: softMaskTextureKey, add: false });
+    }
+    if (activeTileEffectMaskImage) {
+      const isEllipse = displayFrameW > (displayFrameH * EFFECT_ELLIPSE_RATIO_THRESHOLD);
+      const maskW = isEllipse ? displayFrameW : Math.min(displayFrameW, displayFrameH);
+      const maskH = isEllipse ? displayFrameH : Math.min(displayFrameW, displayFrameH);
+      activeTileEffectMaskImage.setOrigin(0.5, 0.5);
+      activeTileEffectMaskImage.setDisplaySize(Math.max(1, maskW), Math.max(1, maskH));
+      activeTileEffectMaskImage.setAngle(angle);
+      activeTileEffectImage.setMask(activeTileEffectMaskImage.createBitmapMask());
+    }
+  }
+  console.info(`${EFFECT_DEBUG_PREFIX} playback-started`, {
+    textureKey,
+    worldPos,
+    scalePercent,
+    sourceScaleMultiplier,
+    angle,
+    frameCount,
+    useHorizontalFrames,
+    isFixed320VerticalSplit,
+    renderStyle,
+    showPreviousFrameGhost,
+    colorStrengthPercent,
+    hueAnimationDegPerFrame,
+    grayscaleBase
+  });
+  applyFramePlacement(activeTileEffectImage, resolveFramePlacement(0));
+  applyFrameTint(activeTileEffectImage, 0);
+  if (activeTileEffectPrevGhostImage) {
+    applyFramePlacement(activeTileEffectPrevGhostImage, resolveFramePlacement(0));
+    applyFrameTint(activeTileEffectPrevGhostImage, 0);
+  }
+
+  await new Promise(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve(true);
+    };
+    if (frameCount <= 1) {
+      activeTileEffectHideTimerId = setTimeout(() => {
+        if (requestId === activeTileEffectPlaybackRequestId) {
+          clearActiveTileEffectPlayback();
+        }
+        finish();
+      }, EFFECT_TOTAL_PLAYBACK_MS);
+      return;
+    }
+
+    const frameIntervalMs = Math.max(16, Math.floor(EFFECT_TOTAL_PLAYBACK_MS / Math.max(1, frameCount)));
+    let frameIndex = 0;
+    activeTileEffectFrameTimerId = setInterval(() => {
+      if (requestId !== activeTileEffectPlaybackRequestId) {
+        if (activeTileEffectFrameTimerId) {
+          clearInterval(activeTileEffectFrameTimerId);
+          activeTileEffectFrameTimerId = null;
+        }
+        finish();
+        return;
+      }
+      if (!activeTileEffectImage || !scene) return;
+      const placement = resolveFramePlacement(frameIndex);
+      applyFramePlacement(activeTileEffectImage, placement);
+      applyFrameTint(activeTileEffectImage, frameIndex);
+      if (activeTileEffectPrevGhostImage) {
+        const prevPlacement = resolveFramePlacement(Math.max(0, frameIndex - 1));
+        applyFramePlacement(activeTileEffectPrevGhostImage, prevPlacement);
+        applyFrameTint(activeTileEffectPrevGhostImage, Math.max(0, frameIndex - 1));
+      }
+      frameIndex += 1;
+      if (frameIndex >= frameCount) {
+        if (activeTileEffectFrameTimerId) {
+          clearInterval(activeTileEffectFrameTimerId);
+          activeTileEffectFrameTimerId = null;
+        }
+        if (requestId === activeTileEffectPlaybackRequestId) {
+          clearActiveTileEffectPlayback();
+        }
+        finish();
+      }
+    }, frameIntervalMs);
+  });
+  return true;
+}
+
+function waitMs(ms) {
+  const delay = Math.max(0, Math.floor(toSafeNumber(ms, 0)));
+  if (delay <= 0) return Promise.resolve();
+  return new Promise(resolve => {
+    setTimeout(resolve, delay);
+  });
+}
+
+async function handleEffectPlayerPlayRequest(payload) {
+  if (payload?.rememberPreset !== false) {
+    rememberEffectPlaybackPreset(payload);
+  }
+  console.info(`${EFFECT_DEBUG_PREFIX} handleEffectPlayerPlayRequest:start`, payload);
+
+  const sequenceSources = resolveEffectSourceSequenceByPayload(payload);
+  if (!sequenceSources.length || !scene || !currentData.value) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: missing-src-or-scene-or-map`, {
+      sequenceLength: sequenceSources.length,
+      hasScene: !!scene,
+      hasMap: !!currentData.value
+    });
+    return;
+  }
+  const explicitWorldPos = resolveEffectTargetWorldPos(payload);
+  const explicitTileCoord = resolveEffectTargetTileCoord(payload);
+  const selectedTileCoord = resolveSelectedTileCoordForEffect();
+  if (!explicitWorldPos && !explicitTileCoord && !selectedTileCoord) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: no-target-position`, {
+      explicitWorldPos,
+      explicitTileCoord,
+      selectedTileCoord
+    });
+    return;
+  }
+  const worldPos = explicitWorldPos || (() => {
+    const coord = explicitTileCoord || selectedTileCoord;
+    if (!coord) return null;
+    return resolveEffectWorldPosition(coord.x, coord.y);
+  })();
+  if (!worldPos) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: world-position-unresolved`, {
+      explicitWorldPos,
+      explicitTileCoord,
+      selectedTileCoord
+    });
+    return;
+  }
+
+  const requestId = ++activeTileEffectPlaybackRequestId;
+  for (let i = 0; i < sequenceSources.length; i += 1) {
+    if (requestId !== activeTileEffectPlaybackRequestId) break;
+    const src = sequenceSources[i];
+    console.info(`${EFFECT_DEBUG_PREFIX} sequence-step`, {
+      step: i + 1,
+      total: sequenceSources.length,
+      src
+    });
+    await playSingleEffectAtWorldPos(src, payload, worldPos, requestId);
+    if (i < sequenceSources.length - 1 && requestId === activeTileEffectPlaybackRequestId) {
+      await waitMs(EFFECT_SEQUENCE_GAP_MS);
+    }
+  }
+}
+
 function syncMovePathConfirmPopupStyle(target = plannedMoveTarget.value) {
   if (!showMovePathConfirmModal.value) {
     movePathConfirmPopupStyle.value = null;
@@ -16500,38 +19256,27 @@ function syncMovePathConfirmPopupStyle(target = plannedMoveTarget.value) {
   }
   const tx = Math.floor(toSafeNumber(target?.x, Number.NaN));
   const ty = Math.floor(toSafeNumber(target?.y, Number.NaN));
-  if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+  const anchorStyle = resolveOverlayAnchorStyleByTileCoord(tx, ty, 14);
+  if (!anchorStyle) {
     movePathConfirmPopupStyle.value = null;
     return;
   }
-  const area = hitAreaMap.get(coordKey(tx, ty));
-  const center = resolveHexAreaCenterPoint(area);
-  const camera = scene?.cameras?.main;
-  const hostEl = gameRoot.value;
-  const canvasEl = game?.canvas || hostEl?.querySelector?.("canvas");
-  if (!center || !camera || !hostEl || !canvasEl) {
-    movePathConfirmPopupStyle.value = null;
-    return;
-  }
-  const hostRect = hostEl.getBoundingClientRect();
-  const canvasRect = canvasEl.getBoundingClientRect();
-  if (hostRect.width <= 0 || hostRect.height <= 0 || canvasRect.width <= 0 || canvasRect.height <= 0) {
-    movePathConfirmPopupStyle.value = null;
-    return;
-  }
-  const viewW = Math.max(1, toSafeNumber(gameViewWidth.value, game?.scale?.width || canvasEl.width || 1));
-  const viewH = Math.max(1, toSafeNumber(gameViewHeight.value, game?.scale?.height || canvasEl.height || 1));
-  const zoom = Math.max(0.0001, Number(camera.zoom) || 1);
-  const viewX = (center.x - camera.worldView.x) * zoom;
-  const viewY = (center.y - camera.worldView.y) * zoom;
-  const cssX = (canvasRect.left - hostRect.left) + ((viewX / viewW) * canvasRect.width);
-  const cssY = (canvasRect.top - hostRect.top) + ((viewY / viewH) * canvasRect.height);
+  const topNumeric = toSafeNumber(anchorStyle.top?.replace?.("px", ""), Number.NaN);
   const margin = 14;
   const approxPopupHeight = 128;
-  const clampedLeft = clampNumber(cssX, margin, Math.max(margin, hostRect.width - margin));
-  const clampedTop = clampNumber(cssY, margin + approxPopupHeight, Math.max(margin + approxPopupHeight, hostRect.height - margin));
+  const hostEl = gameRoot.value;
+  const hostRect = hostEl?.getBoundingClientRect?.();
+  if (!hostRect) {
+    movePathConfirmPopupStyle.value = null;
+    return;
+  }
+  const clampedTop = clampNumber(
+    topNumeric,
+    margin + approxPopupHeight,
+    Math.max(margin + approxPopupHeight, hostRect.height - margin)
+  );
   movePathConfirmPopupStyle.value = {
-    left: `${clampedLeft}px`,
+    left: anchorStyle.left,
     top: `${clampedTop}px`
   };
 }
@@ -16612,6 +19357,10 @@ function updateHoveredTileByPointer(pointer) {
   if (nextKey !== hoveredTileKey) {
     hoveredTileKey = nextKey;
     drawHoverOverlay();
+    if (tileAttackSelectionMode.value) {
+      // 攻撃モード中はホバー位置で炸裂プレビューが変わるため、毎回マップ再描画する。
+      needsRender = true;
+    }
   }
   if (syncCityBlockPlacementHoverPreview(picked)) {
     needsRender = true;
@@ -16708,16 +19457,29 @@ function applyFieldBattleHpCostToUnits(unitIds = [], hpCost = FIELD_BATTLE_HP_CO
     const currentHp = Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, maxHp)));
     const nextHp = Math.max(0, currentHp - safeCost);
     appliedUnits += 1;
-    return {
+    return applyUnitLifeState({
       ...unit,
       maxHp,
+      hp: nextHp,
       currentHp: nextHp
-    };
+    }, nextHp);
   });
   return { appliedUnits, hpCost: safeCost };
 }
 
 function openFieldBattleResultSelection(payload = {}) {
+  if (!FIELD_BATTLE_RESULT_MODAL_ENABLED) {
+    const source = nonEmptyText(payload?.source) || "encounter";
+    const enemyLabel = nonEmptyText(payload?.enemyLabel) || "敵";
+    const summary = nonEmptyText(payload?.summary) || `戦闘(${source}): ${enemyLabel}`;
+    const x = Number.isFinite(payload?.x) ? Math.floor(payload.x) : null;
+    const y = Number.isFinite(payload?.y) ? Math.floor(payload.y) : null;
+    const coordText = Number.isFinite(x) && Number.isFinite(y) ? ` (${x}, ${y})` : "";
+    const skippedText = `戦闘モーダルOFF: ${summary}${coordText}`;
+    updateUnitInfoText(skippedText);
+    pushNationLog(skippedText);
+    return;
+  }
   const enemyLabel = nonEmptyText(payload?.enemyLabel) || "敵";
   const x = Number.isFinite(payload?.x) ? Math.floor(payload.x) : null;
   const y = Number.isFinite(payload?.y) ? Math.floor(payload.y) : null;
@@ -17041,6 +19803,1011 @@ function resolveAttackTargetAtTile(x, y, options = {}) {
   };
 }
 
+function resolveSkillInfoRowByName(skillNameRaw) {
+  const skillName = nonEmptyText(skillNameRaw);
+  if (!skillName) return null;
+  const skillInfo = SKILL_INFO_BY_NAME.get(skillName);
+  if (skillInfo) return skillInfo;
+  const normalized = normalizeSkillNameForLookup(skillName);
+  if (normalized) {
+    const normalizedRow = SKILL_INFO_BY_NORMALIZED_NAME.get(normalized);
+    if (normalizedRow) return normalizedRow;
+  }
+  const panelUnit = ownFactionAttackPanelUnit.value;
+  const selectedByPanel = resolveWeaponSkillRowByNameForUnit(skillName, panelUnit);
+  if (selectedByPanel) return selectedByPanel;
+  const selectedByCurrent = resolveWeaponSkillRowByNameForUnit(skillName, selectedUnit.value);
+  if (selectedByCurrent) return selectedByCurrent;
+  return null;
+}
+
+function normalizeSkillAreaText(areaRaw) {
+  return nonEmptyText(areaRaw).replace(/\s+/g, "").replace(/　+/g, "").toLowerCase();
+}
+
+function resolveTileAttackPatternKeyFromSkillArea(areaRaw) {
+  const normalizedArea = normalizeSkillAreaText(areaRaw);
+  if (!normalizedArea) return "single";
+  const exact = SKILL_AREA_PATTERN_ALIAS_MAP[normalizedArea];
+  if (exact) return normalizeTileAttackPatternKey(exact);
+  if (normalizedArea.includes("全体")) return "all";
+  if (normalizedArea.includes("放射") || normalizedArea.includes("扇") || normalizedArea.includes("散弾")) return "fan";
+  if (normalizedArea.includes("周囲") || normalizedArea.includes("周辺")) return "around";
+  if (normalizedArea.includes("前方")) return "front";
+  if (normalizedArea.includes("直線")) return "straight";
+  if (normalizedArea.includes("ライン") || normalizedArea.includes("列")) return "line";
+  if (normalizedArea.includes("円")) return "circle";
+  return "single";
+}
+
+function hasSkillAreaDefinition(skillRow) {
+  const normalizedArea = normalizeSkillAreaText(skillRow?.範囲);
+  if (!normalizedArea) return false;
+  if (normalizedArea === "-" || normalizedArea === "なし" || normalizedArea === "無し") return false;
+  if (normalizedArea === "null" || normalizedArea === "none") return false;
+  return true;
+}
+
+function resolveEffectiveTileAttackPatternKey(rawPatternKey = tileAttackPatternKey.value) {
+  const selectedSkillName = nonEmptyText(selectedTileAttackSkillName.value)
+    || nonEmptyText(footerUnitSkillModalSelectedSkillName.value);
+  if (!selectedSkillName) return normalizeTileAttackPatternKey(rawPatternKey);
+  const skillRow = resolveSkillInfoRowByName(selectedSkillName);
+  if (!hasSkillAreaDefinition(skillRow)) return "single";
+  return normalizeTileAttackPatternKey(rawPatternKey);
+}
+
+function parseSkillRangeValue(rawRange) {
+  if (rawRange === null || rawRange === undefined || rawRange === "") return null;
+  const numeric = Number(rawRange);
+  if (Number.isFinite(numeric)) return Math.round(numeric);
+  const match = String(rawRange).match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed);
+}
+
+function resolveSkillAttackRangeFromRow(skillRow, fallbackRange = TILE_ATTACK_RANGE_MIN, options = {}) {
+  const fallback = normalizeTileAttackRange(fallbackRange);
+  if (!skillRow || typeof skillRow !== "object") return fallback;
+  const parsed = parseSkillRangeValue(skillRow?.射程);
+  if (parsed !== null) return normalizeTileAttackRange(parsed);
+
+  if (isWeaponAttackStyleText(skillRow?.攻撃手段)) {
+    const primaryWeaponRow = options?.weaponRow && typeof options.weaponRow === "object"
+      ? options.weaponRow
+      : resolvePrimaryWeaponBaseSkillRowForUnit(options?.unit);
+    const weaponParsed = parseSkillRangeValue(primaryWeaponRow?.射程);
+    if (weaponParsed !== null) return normalizeTileAttackRange(weaponParsed);
+  }
+  return TILE_ATTACK_RANGE_MIN;
+}
+
+function parseSplashNumericValue(rawValue, keyword = "") {
+  if (rawValue === null || rawValue === undefined || rawValue === "") return Number.NaN;
+  const direct = Number(rawValue);
+  if (Number.isFinite(direct)) return direct;
+  const text = nonEmptyText(rawValue);
+  if (!text) return Number.NaN;
+  const compact = text.replace(/\s+/g, "");
+  const escapedKeyword = nonEmptyText(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (escapedKeyword) {
+    // キーワード指定時は「炸裂」の明示記述がある場合のみ値を採用する。
+    const withKeyword = new RegExp(`${escapedKeyword}[：:]?(-?\\d+(?:\\.\\d+)?)`, "i");
+    const match = compact.match(withKeyword);
+    if (!match) return Number.NaN;
+    const parsed = Number(match[1] ?? match[0]);
+    if (Number.isFinite(parsed)) return parsed;
+    return Number.NaN;
+  }
+  const match = compact.match(/(-?\d+(?:\.\d+)?)/);
+  if (!match) return Number.NaN;
+  const parsed = Number(match[1] ?? match[0]);
+  if (Number.isFinite(parsed)) return parsed;
+  return Number.NaN;
+}
+
+function resolveSkillSplashValueFromRow(skillRow) {
+  if (!skillRow || typeof skillRow !== "object") return 0;
+  const direct = parseSplashNumericValue(skillRow?.炸裂, "炸裂");
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const textFields = [skillRow?.効果, skillRow?.詳細];
+  for (const value of textFields) {
+    const parsed = parseSplashNumericValue(value, "炸裂");
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function buildSplashSpec(rawValue) {
+  const value = Math.max(0, toSafeNumber(rawValue, 0));
+  if (!(value > 0)) {
+    return {
+      enabled: false,
+      value: 0,
+      fullRadius: 0,
+      fractionalRadius: 0,
+      fractionalRatio: 0
+    };
+  }
+  const fullRadius = Math.max(0, Math.floor(value));
+  const fractionalRatio = Math.max(0, Math.round((value - fullRadius) * 1000) / 1000);
+  const fractionalRadius = fractionalRatio > 0 ? (fullRadius + 1) : 0;
+  const enabled = fullRadius > 0 || fractionalRatio > 0;
+  return {
+    enabled,
+    value,
+    fullRadius,
+    fractionalRadius,
+    fractionalRatio
+  };
+}
+
+function resolveSelectedTileAttackSplashSpec() {
+  const selectedSkillName = nonEmptyText(selectedTileAttackSkillName.value)
+    || nonEmptyText(footerUnitSkillModalSelectedSkillName.value);
+  if (!selectedSkillName) return buildSplashSpec(0);
+  const skillRow = resolveSkillInfoRowByName(selectedSkillName);
+  const splashValue = resolveSkillSplashValueFromRow(skillRow);
+  return buildSplashSpec(splashValue);
+}
+
+function cleanupUnitDamageBlinkState(nowMs = Date.now()) {
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  if (!(unitDamageBlinkUntilMsById instanceof Map) || unitDamageBlinkUntilMsById.size <= 0) return 0;
+  for (const [unitId, untilMs] of unitDamageBlinkUntilMsById.entries()) {
+    const safeUntil = Math.max(0, Math.floor(toSafeNumber(untilMs, 0)));
+    if (!unitId || safeUntil <= now) {
+      unitDamageBlinkUntilMsById.delete(unitId);
+    }
+  }
+  return unitDamageBlinkUntilMsById.size;
+}
+
+function cleanupRecentDamageState(nowMs = Date.now()) {
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  if (!(unitRecentDamageAmountById instanceof Map) || unitRecentDamageAmountById.size <= 0) return 0;
+  for (const [unitId, entry] of unitRecentDamageAmountById.entries()) {
+    const remain = resolveRecentDamageAmountFromEntry(entry, now);
+    if (!unitId || remain <= 0) {
+      unitRecentDamageAmountById.delete(unitId);
+    }
+  }
+  return unitRecentDamageAmountById.size;
+}
+
+function stopUnitDamageBlinkTicker() {
+  if (!unitDamageBlinkTimerId) return;
+  window.clearInterval(unitDamageBlinkTimerId);
+  unitDamageBlinkTimerId = null;
+}
+
+function ensureUnitDamageBlinkTicker() {
+  if (unitDamageBlinkTimerId) return;
+  unitDamageBlinkTimerId = window.setInterval(() => {
+    const now = Date.now();
+    const blinkRemain = cleanupUnitDamageBlinkState(now);
+    const recentRemain = cleanupRecentDamageState(now);
+    if (blinkRemain <= 0 && recentRemain <= 0) {
+      stopUnitDamageBlinkTicker();
+      requestMapRender();
+      return;
+    }
+    requestMapRender();
+  }, UNIT_DAMAGE_BLINK_INTERVAL_MS);
+}
+
+function triggerUnitDamageBlinkByIds(unitIds = []) {
+  const ids = Array.from(new Set((Array.isArray(unitIds) ? unitIds : [])
+    .map(id => nonEmptyText(id))
+    .filter(Boolean)));
+  if (!ids.length) return;
+  const now = Date.now();
+  const until = now + UNIT_DAMAGE_BLINK_DURATION_MS;
+  cleanupUnitDamageBlinkState(now);
+  for (const id of ids) {
+    const prev = Math.max(0, Math.floor(toSafeNumber(unitDamageBlinkUntilMsById.get(id), 0)));
+    unitDamageBlinkUntilMsById.set(id, Math.max(prev, until));
+  }
+  ensureUnitDamageBlinkTicker();
+  requestMapRender();
+}
+
+function resolveUnitDamageBlinkAlphaByIds(unitIds = [], nowMs = Date.now()) {
+  const ids = Array.isArray(unitIds) ? unitIds : [];
+  if (!ids.length) return 1;
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  let blinking = false;
+  for (const rawId of ids) {
+    const id = nonEmptyText(rawId);
+    if (!id) continue;
+    const until = Math.max(0, Math.floor(toSafeNumber(unitDamageBlinkUntilMsById.get(id), 0)));
+    if (until <= now) continue;
+    blinking = true;
+    break;
+  }
+  if (!blinking) return 1;
+  const phase = Math.floor(now / UNIT_DAMAGE_BLINK_INTERVAL_MS) % 2;
+  return phase === 0 ? 1 : UNIT_DAMAGE_BLINK_DIM_ALPHA;
+}
+
+function rememberRecentDamageForUnit(unitIdRaw, damageRaw, nowMs = Date.now()) {
+  const unitId = nonEmptyText(unitIdRaw);
+  const damage = Math.max(0, Math.floor(toSafeNumber(damageRaw, 0)));
+  if (!unitId || damage <= 0) return;
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  const prev = unitRecentDamageAmountById.get(unitId);
+  const prevDamage = resolveRecentDamageAmountFromEntry(prev, now);
+  const holdUntilMs = now + UNIT_HP_DAMAGE_HOLD_MS;
+  const fadeEndMs = holdUntilMs + UNIT_HP_DAMAGE_FADE_MS;
+  unitRecentDamageAmountById.set(unitId, {
+    damage: prevDamage + damage,
+    holdUntilMs,
+    fadeEndMs
+  });
+  ensureUnitDamageBlinkTicker();
+  requestMapRender();
+}
+
+function resolveRecentDamageAmountFromEntry(entry, nowMs = Date.now()) {
+  if (!entry || typeof entry !== "object") return 0;
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  const baseDamage = Math.max(0, Math.floor(toSafeNumber(entry?.damage, 0)));
+  if (baseDamage <= 0) return 0;
+  const holdUntilMs = Math.max(0, Math.floor(toSafeNumber(entry?.holdUntilMs, 0)));
+  const fadeEndMs = Math.max(0, Math.floor(toSafeNumber(entry?.fadeEndMs, 0)));
+  if (holdUntilMs > 0 && fadeEndMs > holdUntilMs) {
+    if (now <= holdUntilMs) return baseDamage;
+    if (now >= fadeEndMs) return 0;
+    const ratio = 1 - ((now - holdUntilMs) / Math.max(1, (fadeEndMs - holdUntilMs)));
+    return Math.max(0, Math.round(baseDamage * ratio));
+  }
+  // 互換: 旧形式 (untilMs) は固定表示のまま期限切れで消す。
+  const legacyUntilMs = Math.max(0, Math.floor(toSafeNumber(entry?.untilMs, 0)));
+  if (legacyUntilMs > now) return baseDamage;
+  return 0;
+}
+
+function resolveRecentDamageForUnit(unitIdRaw, nowMs = Date.now()) {
+  const unitId = nonEmptyText(unitIdRaw);
+  if (!unitId) return 0;
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  const entry = unitRecentDamageAmountById.get(unitId);
+  if (!entry) return 0;
+  const amount = resolveRecentDamageAmountFromEntry(entry, now);
+  if (amount <= 0) {
+    unitRecentDamageAmountById.delete(unitId);
+    return 0;
+  }
+  return amount;
+}
+
+function clearActiveDamagePopups() {
+  if (!(activeDamagePopupTexts instanceof Set) || activeDamagePopupTexts.size <= 0) {
+    activeDamagePopupTexts = new Set();
+    return;
+  }
+  for (const text of activeDamagePopupTexts) {
+    if (!text || !text.scene) continue;
+    if (typeof text.destroy === "function") text.destroy();
+  }
+  activeDamagePopupTexts = new Set();
+}
+
+function spawnDamagePopupAtTile(tileXRaw, tileYRaw, damageRaw, options = {}) {
+  if (!scene || !currentData.value) return;
+  const tileX = Math.floor(toSafeNumber(tileXRaw, Number.NaN));
+  const tileY = Math.floor(toSafeNumber(tileYRaw, Number.NaN));
+  if (!Number.isFinite(tileX) || !Number.isFinite(tileY)) return;
+  const damage = Math.max(0, Math.floor(toSafeNumber(damageRaw, 0)));
+  if (damage <= 0) return;
+  const worldPos = resolveEffectWorldPosition(tileX, tileY);
+  if (!worldPos) return;
+  const jitterX = Math.round((Math.random() * 22) - 11);
+  const popupLabel = nonEmptyText(options?.text) || `-${damage}`;
+  const popupColor = nonEmptyText(options?.color) || (options?.friendly ? "#ffd59a" : "#ffb3b3");
+  const delayMs = Math.max(0, Math.floor(toSafeNumber(options?.delayMs, 0)));
+  const popupText = scene.add.text(worldPos.x + jitterX, worldPos.y - 14, popupLabel, {
+    fontFamily: "Noto Sans JP, Meiryo, sans-serif",
+    fontStyle: "700",
+    fontSize: "20px",
+    color: popupColor,
+    stroke: "#200303",
+    strokeThickness: 4
+  });
+  popupText.setOrigin(0.5);
+  popupText.setDepth(DAMAGE_POPUP_DEPTH);
+  activeDamagePopupTexts.add(popupText);
+  if (!scene.tweens || typeof scene.tweens.add !== "function") return;
+  scene.tweens.add({
+    targets: popupText,
+    y: popupText.y - DAMAGE_POPUP_RISE_PX,
+    alpha: 0,
+    delay: delayMs,
+    duration: DAMAGE_POPUP_DURATION_MS,
+    ease: "Cubic.Out",
+    onComplete: () => {
+      activeDamagePopupTexts.delete(popupText);
+      if (popupText && popupText.scene && typeof popupText.destroy === "function") popupText.destroy();
+    }
+  });
+}
+
+function spawnDamagePopupCumulativeAtTile(tileXRaw, tileYRaw, hitDamagesRaw, options = {}) {
+  const hitDamages = Array.isArray(hitDamagesRaw)
+    ? hitDamagesRaw.map(v => Math.max(0, Math.floor(toSafeNumber(v, 0)))).filter(v => v > 0)
+    : [];
+  if (!hitDamages.length) {
+    spawnDamagePopupAtTile(tileXRaw, tileYRaw, 0, options);
+    return;
+  }
+  if (hitDamages.length === 1) {
+    spawnDamagePopupAtTile(tileXRaw, tileYRaw, hitDamages[0], options);
+    return;
+  }
+  let cumulative = 0;
+  for (let i = 0; i < hitDamages.length; i += 1) {
+    cumulative += hitDamages[i];
+    const isFinal = i === (hitDamages.length - 1);
+    spawnDamagePopupAtTile(tileXRaw, tileYRaw, cumulative, {
+      ...options,
+      text: `-${cumulative}`,
+      color: isFinal
+        ? (options?.friendly ? "#ffd59a" : "#ffb3b3")
+        : (options?.friendly ? "#fff3a6" : "#ffd36d"),
+      delayMs: i * DAMAGE_POPUP_STEP_DELAY_MS
+    });
+  }
+}
+
+function resolveSkillAttackHitCount(skillRow) {
+  const parsed = parseSkillRangeValue(skillRow?.攻撃回数);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return Math.max(1, Math.floor(parsed));
+}
+
+function resolveSkillDefenseStatKey(skillRow) {
+  const judge = nonEmptyText(skillRow?.判定).toLowerCase();
+  if (!judge) return "防御";
+  if (judge.includes("魔") || judge.includes("magic")) return "精神";
+  return "防御";
+}
+
+function resolveSkillResistanceKey(skillRow) {
+  if (!skillRow || typeof skillRow !== "object") return "物理耐性";
+  let pickedType = "";
+  let pickedValue = Number.NEGATIVE_INFINITY;
+  for (const key of ATTACK_DAMAGE_TYPE_KEYS) {
+    const value = toSafeNumber(skillRow?.[key], Number.NaN);
+    if (!Number.isFinite(value)) continue;
+    if (value <= 0) continue;
+    if (value <= pickedValue) continue;
+    pickedValue = value;
+    pickedType = key;
+  }
+  if (pickedType) return `${pickedType}耐性`;
+  const judge = nonEmptyText(skillRow?.判定).toLowerCase();
+  if (judge.includes("魔") || judge.includes("magic")) return "魔法耐性";
+  return "物理耐性";
+}
+
+function resolveUnitResistanceValue(unit, resistanceKey) {
+  const key = nonEmptyText(resistanceKey);
+  if (!key) return 0;
+  const direct = toSafeNumber(unit?.resistances?.[key], Number.NaN);
+  if (Number.isFinite(direct)) return Math.max(0, direct);
+  const fallback = toSafeNumber(unit?.status?.[key], Number.NaN);
+  if (Number.isFinite(fallback)) return Math.max(0, fallback);
+  return 0;
+}
+
+function resolveUnitLevelValue(unit) {
+  const raw = toSafeNumber(unit?.level, toSafeNumber(unit?.status?.Lv, 1));
+  if (!Number.isFinite(raw)) return 1;
+  return Math.max(1, Math.floor(raw));
+}
+
+function resolveSkillDamageRandomRate() {
+  const min = Math.min(SKILL_DAMAGE_RANDOM_RATE_A, SKILL_DAMAGE_RANDOM_RATE_B);
+  const max = Math.max(SKILL_DAMAGE_RANDOM_RATE_A, SKILL_DAMAGE_RANDOM_RATE_B);
+  if (max <= min) return min;
+  return min + ((max - min) * Math.random());
+}
+
+function computeSkillDamageAmount(options = {}) {
+  const breakdown = computeSkillDamageBreakdown(options);
+  return Math.max(0, Math.floor(toSafeNumber(breakdown?.total, 0)));
+}
+
+function computeSkillDamageBreakdown(options = {}) {
+  const power = Math.max(0, toSafeNumber(options?.power, 0));
+  if (!(power > 0)) return { total: 0, hits: [] };
+  const targetUnit = options?.targetUnit || null;
+  const defenseKey = nonEmptyText(options?.defenseKey) || "防御";
+  const defense = Math.max(0, toSafeNumber(targetUnit?.status?.[defenseKey], 0));
+  const resistanceKey = resolveSkillResistanceKey(options?.skillRow || null);
+  const resistanceValue = Math.max(0, resolveUnitResistanceValue(targetUnit, resistanceKey));
+  const resistanceRate = Math.max(0, Math.min(1, resistanceValue / 100));
+  const targetLevel = resolveUnitLevelValue(targetUnit);
+  const flatReduction = (targetLevel / 10) * resistanceValue;
+  const powerAfterLevelReduction = Math.max(0, power - flatReduction);
+  const splashScale = Math.max(0, toSafeNumber(options?.splashScale, 1));
+  const friendlyRate = Math.max(0, toSafeNumber(options?.friendlyRate, 1));
+  const attackCount = Math.max(1, Math.floor(toSafeNumber(options?.attackCount, 1)));
+  let totalDamage = 0;
+  const hits = [];
+  const hitSteps = [];
+  const damageAfterDefense = powerAfterLevelReduction / (1 + (defense / 100));
+  for (let i = 0; i < attackCount; i += 1) {
+    const randomRate = resolveSkillDamageRandomRate();
+    const damageAfterRandom = damageAfterDefense * randomRate;
+    const damageAfterResistanceRate = damageAfterRandom * (1 - resistanceRate);
+    const singleHitDamage = Math.max(0, Math.floor(damageAfterResistanceRate * splashScale * friendlyRate));
+    hits.push(singleHitDamage);
+    hitSteps.push({
+      hitIndex: i + 1,
+      randomRate,
+      damageAfterRandom,
+      damageAfterResistanceRate,
+      finalDamage: singleHitDamage
+    });
+    totalDamage += singleHitDamage;
+  }
+  return {
+    total: totalDamage,
+    hits,
+    debug: {
+      power,
+      defenseKey,
+      defense,
+      damageAfterDefense,
+      resistanceKey,
+      resistanceValue,
+      resistanceRate,
+      targetLevel,
+      flatReduction,
+      powerAfterLevelReduction,
+      splashScale,
+      friendlyRate,
+      attackCount,
+      hitSteps
+    }
+  };
+}
+
+function logDamageFormulaDebug(options = {}) {
+  const attacker = nonEmptyText(options?.attackerLabel) || "攻撃者";
+  const target = nonEmptyText(options?.targetLabel) || "対象";
+  const skillName = nonEmptyText(options?.skillName) || "通常攻撃";
+  const attackMethod = nonEmptyText(options?.attackMethod) || "通常";
+  const skillRow = options?.skillRow && typeof options.skillRow === "object" ? options.skillRow : null;
+  const attackerUnit = options?.attackerUnit || null;
+  const detail = options?.detail && typeof options.detail === "object" ? options.detail : {};
+  const debug = detail?.debug && typeof detail.debug === "object" ? detail.debug : {};
+  const attackCount = Math.max(1, Math.floor(toSafeNumber(debug?.attackCount, 1)));
+  const totalDamage = Math.max(0, Math.floor(toSafeNumber(detail?.total, 0)));
+  const hits = Array.isArray(detail?.hits) ? detail.hits.map(hit => Math.max(0, Math.floor(toSafeNumber(hit, 0)))) : [];
+  const judgeRaw = nonEmptyText(skillRow?.判定);
+  const judgeTokens = judgeRaw
+    .split(/[\s/／・,，]+/)
+    .map(nonEmptyText)
+    .filter(Boolean);
+  let judgeStatusName = "";
+  let judgeStatusValue = Number.NaN;
+  if (judgeRaw) {
+    const direct = Number(judgeRaw);
+    if (Number.isFinite(direct)) {
+      judgeStatusName = "固定値";
+      judgeStatusValue = direct;
+    } else {
+      const statusSource = attackerUnit?.status || null;
+      for (const token of judgeTokens) {
+        const value = toSafeNumber(statusSource?.[token], Number.NaN);
+        if (Number.isFinite(value) && value !== 0) {
+          judgeStatusName = token;
+          judgeStatusValue = value;
+          break;
+        }
+      }
+      if (!judgeStatusName && judgeTokens.length) {
+        const fallbackToken = judgeTokens[0];
+        judgeStatusName = fallbackToken;
+        judgeStatusValue = toSafeNumber(statusSource?.[fallbackToken], 0);
+      }
+    }
+  }
+  console.info("[ダメージ計算]", {
+    攻撃者: attacker,
+    対象: target,
+    技名: skillName,
+    攻撃手段: attackMethod,
+    計算威力: Math.max(0, Math.floor(toSafeNumber(debug?.power, 0))),
+    判定参照ステータス: judgeStatusName || "-",
+    判定値: Number.isFinite(judgeStatusValue) ? judgeStatusValue : "-",
+    耐性軽減割合: `${Math.max(0, Math.min(100, Math.round(toSafeNumber(debug?.resistanceRate, 0) * 1000) / 10))}%`,
+    Lv軽減値: Math.max(0, Math.round(toSafeNumber(debug?.flatReduction, 0) * 100) / 100),
+    攻撃回数: attackCount,
+    ヒットダメージ配列: hits,
+    合計ダメージ: totalDamage,
+    スキルデータ: skillRow || null
+  });
+}
+
+function resolveSkillAttackPowerValue(skillRow, attackerUnit, options = {}) {
+  const override = toSafeNumber(options?.powerOverride, Number.NaN);
+  if (Number.isFinite(override)) return Math.max(0, Math.floor(override));
+  if (!skillRow || typeof skillRow !== "object") {
+    return Math.max(0, Math.floor(toSafeNumber(attackerUnit?.status?.攻撃, 0)));
+  }
+  const statusSource = attackerUnit?.status || null;
+  const scaled = computeSkillScaledTriplet(skillRow, statusSource);
+  let power = Math.max(0, Math.floor(toSafeNumber(scaled?.power, 0)));
+  if (isWeaponAttackStyleText(skillRow?.攻撃手段)) {
+    const weaponRow = options?.weaponRow && typeof options.weaponRow === "object"
+      ? options.weaponRow
+      : resolvePrimaryWeaponBaseSkillRowForUnit(attackerUnit);
+    if (weaponRow) {
+      const weaponScaled = computeSkillScaledTriplet(weaponRow, statusSource);
+      power += Math.max(0, Math.floor(toSafeNumber(weaponScaled?.power, 0)));
+    }
+  }
+  return power;
+}
+
+function buildTileAttackDamageScaleMap(data, picked, splashSpec) {
+  const result = new Map();
+  const px = Math.floor(toSafeNumber(picked?.x, Number.NaN));
+  const py = Math.floor(toSafeNumber(picked?.y, Number.NaN));
+  if (!data || !Number.isFinite(px) || !Number.isFinite(py)) return result;
+  const anchorKey = coordKey(px, py);
+  result.set(anchorKey, 1);
+  if (!(splashSpec?.enabled)) return result;
+  const splashSets = buildSplashPreviewTileKeySets(data, anchorKey, splashSpec);
+  for (const key of splashSets.fullKeySet) {
+    result.set(key, Math.max(toSafeNumber(result.get(key), 0), 1));
+  }
+  const fractionalRatio = Math.max(0, toSafeNumber(splashSpec?.fractionalRatio, 0));
+  if (fractionalRatio > 0) {
+    for (const key of splashSets.falloffKeySet) {
+      result.set(key, Math.max(toSafeNumber(result.get(key), 0), fractionalRatio));
+    }
+  }
+  return result;
+}
+
+function collectFactionUnitsAtTile(x, y, data = currentData.value, options = {}) {
+  const out = [];
+  if (!data || !Number.isFinite(x) || !Number.isFinite(y)) return out;
+  const tx = Math.floor(x);
+  const ty = Math.floor(y);
+  const includeSpawnTargets = options?.includeSpawnTargets === true;
+  const activeId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  for (const unit of unitList.value) {
+    const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    if (ux !== tx || uy !== ty) continue;
+    out.push({
+      slotId: activeId,
+      unitId: nonEmptyText(unit?.id),
+      unit,
+      active: true
+    });
+  }
+  for (const slot of testPlayerSlots.value) {
+    const slotId = nonEmptyText(slot?.id);
+    if (!slotId || slotId === activeId) continue;
+    const units = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+    for (const unit of units) {
+      const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+      const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+      if (ux !== tx || uy !== ty) continue;
+      out.push({
+        slotId,
+        unitId: nonEmptyText(unit?.id),
+        unit,
+        active: false
+      });
+    }
+  }
+  if (includeSpawnTargets) {
+    const spawnEnemies = Array.isArray(data?.enemySpawnMap?.[ty]?.[tx]) ? data.enemySpawnMap[ty][tx] : [];
+    for (const enemy of spawnEnemies) {
+      const enemyId = nonEmptyText(enemy?.id);
+      if (!enemyId) continue;
+      out.push({
+        slotId: "__spawn__",
+        unitId: enemyId,
+        unit: enemy,
+        active: false,
+        targetType: "spawn"
+      });
+    }
+  }
+  return out;
+}
+
+function applySkillDamageToFactionUnits(options = {}) {
+  const data = options?.data || currentData.value;
+  const picked = options?.picked || null;
+  const attackerFactionId = nonEmptyText(options?.attackerFactionId);
+  const attackerUnit = options?.attackerUnit || null;
+  const attackerLabel = nonEmptyText(options?.attackerLabel) || nonEmptyText(attackerUnit?.name) || "攻撃者";
+  const skillName = nonEmptyText(options?.skillName) || "通常攻撃";
+  const skillRow = options?.skillRow && typeof options.skillRow === "object" ? options.skillRow : null;
+  const attackMethod = nonEmptyText(options?.attackMethod) || nonEmptyText(skillRow?.攻撃手段) || "通常";
+  const splashSpec = options?.splashSpec || buildSplashSpec(0);
+  const power = Math.max(0, Math.floor(resolveSkillAttackPowerValue(skillRow, attackerUnit, {
+    powerOverride: options?.powerOverride,
+    weaponRow: options?.weaponRow || null
+  })));
+  const includeSpawnTargets = options?.includeSpawnTargets === true;
+  const attackCount = resolveSkillAttackHitCount(skillRow);
+  const defenseKey = resolveSkillDefenseStatKey(skillRow);
+  const tileScaleMap = buildTileAttackDamageScaleMap(data, picked, splashSpec);
+  if (!tileScaleMap.size || power <= 0) {
+    return { applied: false, hitCount: 0, totalDamage: 0, lines: [] };
+  }
+
+  const targetMap = new Map();
+  const totalDamageHitBreakdown = [];
+  for (const [tileKey, splashScaleRaw] of tileScaleMap.entries()) {
+    const point = parseCoordKey(tileKey);
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+    const splashScale = Math.max(0, toSafeNumber(splashScaleRaw, 0));
+    if (splashScale <= 0) continue;
+    const targets = collectFactionUnitsAtTile(point.x, point.y, data, { includeSpawnTargets });
+    for (const target of targets) {
+      const unitId = nonEmptyText(target?.unitId);
+      const slotId = nonEmptyText(target?.slotId);
+      if (!unitId || !slotId || !target?.unit) continue;
+      const mapKey = `${slotId}:${unitId}`;
+      const friendly = !!attackerFactionId && attackerFactionId === slotId;
+      const friendlyRate = friendly ? FRIENDLY_FIRE_DAMAGE_RATE : 1;
+      const damageBreakdown = computeSkillDamageBreakdown({
+        power,
+        defenseKey,
+        skillRow,
+        targetUnit: target.unit,
+        splashScale,
+        friendlyRate,
+        attackCount
+      });
+      const damage = Math.max(0, Math.floor(toSafeNumber(damageBreakdown?.total, 0)));
+      logDamageFormulaDebug({
+        attackerLabel,
+        targetLabel: nonEmptyText(target?.unit?.name) || nonEmptyText(target?.unit?.race) || "ユニット",
+        skillName,
+        attackMethod,
+        skillRow,
+        attackerUnit,
+        detail: damageBreakdown
+      });
+      if (damage <= 0) continue;
+      if (Array.isArray(damageBreakdown?.hits)) {
+        for (const raw of damageBreakdown.hits) {
+          const hitDamage = Math.max(0, Math.floor(toSafeNumber(raw, 0)));
+          if (hitDamage <= 0) continue;
+          totalDamageHitBreakdown.push(hitDamage);
+        }
+      }
+      if (!targetMap.has(mapKey)) {
+        const maxHp = Math.max(1, Math.floor(toSafeNumber(target.unit?.maxHp, resolveUnitMaxHpValue(target.unit))));
+        const currentHp = Math.max(0, Math.floor(toSafeNumber(target.unit?.currentHp, maxHp)));
+        targetMap.set(mapKey, {
+          slotId,
+          unitId,
+          name: nonEmptyText(target.unit?.name) || nonEmptyText(target.unit?.race) || "ユニット",
+          tileX: point.x,
+          tileY: point.y,
+          maxHp,
+          beforeHp: currentHp,
+          damage: 0,
+          hitDamages: [],
+          friendly,
+          targetType: nonEmptyText(target?.targetType) || "faction"
+        });
+      }
+      const entry = targetMap.get(mapKey);
+      entry.damage += damage;
+      if (Array.isArray(damageBreakdown?.hits) && damageBreakdown.hits.length > 0) {
+        for (const raw of damageBreakdown.hits) {
+          const hitDamage = Math.max(0, Math.floor(toSafeNumber(raw, 0)));
+          if (hitDamage <= 0) continue;
+          entry.hitDamages.push(hitDamage);
+        }
+      } else if (damage > 0) {
+        entry.hitDamages.push(damage);
+      }
+    }
+  }
+
+  if (!targetMap.size) {
+    return { applied: false, hitCount: 0, totalDamage: 0, lines: [] };
+  }
+
+  const activeId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const damageBySlot = new Map();
+  for (const entry of targetMap.values()) {
+    if (!damageBySlot.has(entry.slotId)) damageBySlot.set(entry.slotId, new Map());
+    damageBySlot.get(entry.slotId).set(entry.unitId, entry.damage);
+  }
+
+  const activeDamageMap = damageBySlot.get(activeId) || null;
+  if (activeDamageMap && activeDamageMap.size) {
+    unitList.value = unitList.value.map(unit => {
+      const unitId = nonEmptyText(unit?.id);
+      if (!unitId || !activeDamageMap.has(unitId)) return unit;
+      const maxHp = Math.max(1, Math.floor(toSafeNumber(unit?.maxHp, resolveUnitMaxHpValue(unit))));
+      const currentHp = Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, maxHp)));
+      const nextHp = Math.max(0, currentHp - Math.max(0, Math.floor(toSafeNumber(activeDamageMap.get(unitId), 0))));
+      return applyUnitLifeState({
+        ...unit,
+        maxHp,
+        hp: nextHp,
+        currentHp: nextHp
+      }, nextHp);
+    });
+  }
+
+  let slotsChanged = false;
+  const nextSlots = testPlayerSlots.value.map(slot => {
+    const slotId = nonEmptyText(slot?.id);
+    if (!slotId || slotId === activeId) return slot;
+    const slotDamageMap = damageBySlot.get(slotId);
+    if (!slotDamageMap || !slotDamageMap.size) return slot;
+    const prevUnits = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+    const nextUnits = prevUnits.map(unit => {
+      const unitId = nonEmptyText(unit?.id);
+      if (!unitId || !slotDamageMap.has(unitId)) return unit;
+      const maxHp = Math.max(1, Math.floor(toSafeNumber(unit?.maxHp, resolveUnitMaxHpValue(unit))));
+      const currentHp = Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, maxHp)));
+      const nextHp = Math.max(0, currentHp - Math.max(0, Math.floor(toSafeNumber(slotDamageMap.get(unitId), 0))));
+      return applyUnitLifeState({
+        ...unit,
+        maxHp,
+        hp: nextHp,
+        currentHp: nextHp
+      }, nextHp);
+    });
+    slotsChanged = true;
+    return {
+      ...slot,
+      factionState: {
+        ...slot.factionState,
+        units: nextUnits
+      }
+    };
+  });
+  if (slotsChanged) {
+    testPlayerSlots.value = nextSlots;
+  }
+
+  const spawnDamageMap = new Map();
+  for (const entry of targetMap.values()) {
+    if (entry?.targetType !== "spawn") continue;
+    const enemyId = nonEmptyText(entry?.unitId);
+    if (!enemyId) continue;
+    spawnDamageMap.set(enemyId, Math.max(0, Math.floor(toSafeNumber(entry?.damage, 0))));
+  }
+  if (spawnDamageMap.size && Array.isArray(data?.enemySpawnMap)) {
+    for (const row of data.enemySpawnMap) {
+      if (!Array.isArray(row)) continue;
+      for (const cell of row) {
+        if (!Array.isArray(cell)) continue;
+        for (const enemy of cell) {
+          const enemyId = nonEmptyText(enemy?.id);
+          if (!enemyId || !spawnDamageMap.has(enemyId)) continue;
+          const damage = Math.max(0, Math.floor(toSafeNumber(spawnDamageMap.get(enemyId), 0)));
+          if (damage <= 0) continue;
+          applyHpDeltaToUnitLike(enemy, -damage);
+        }
+      }
+    }
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+  }
+
+  const detailRows = [];
+  let totalDamage = 0;
+  let hitCount = 0;
+  let friendlyHits = 0;
+  const blinkTargetUnitIds = new Set();
+  const activeSlotId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const attackerUnitId = nonEmptyText(attackerUnit?.id);
+  if (attackerUnitId && attackerFactionId && attackerFactionId === activeSlotId) {
+    blinkTargetUnitIds.add(attackerUnitId);
+  }
+  for (const entry of targetMap.values()) {
+    const beforeHp = Math.max(0, Math.floor(toSafeNumber(entry?.beforeHp, 0)));
+    const dealt = Math.max(0, Math.floor(toSafeNumber(entry?.damage, 0)));
+    const afterHpRaw = beforeHp - dealt;
+    const afterHp = Math.max(0, afterHpRaw);
+    const hpLost = Math.max(0, beforeHp - afterHp);
+    if (dealt <= 0) continue;
+    totalDamage += dealt;
+    hitCount += 1;
+    if (entry.friendly) friendlyHits += 1;
+    if (entry?.targetType === "spawn") {
+      rememberRecentDamageForUnit(`spawn:${entry.unitId}`, hpLost);
+    }
+    if (entry.slotId === activeSlotId) {
+      blinkTargetUnitIds.add(nonEmptyText(entry.unitId));
+      rememberRecentDamageForUnit(entry.unitId, hpLost);
+    }
+    spawnDamagePopupCumulativeAtTile(entry.tileX, entry.tileY, entry.hitDamages, { friendly: entry.friendly });
+    detailRows.push(`${entry.name} HP ${beforeHp}→${afterHpRaw} (-${dealt})${entry.friendly ? " [同士討ち半減]" : ""}`);
+  }
+  const breakdownText = totalDamageHitBreakdown.length > 1
+    ? ` (${totalDamageHitBreakdown.join(",")})`
+    : "";
+  const summary = `戦闘: ${attackerLabel} / 手段:${attackMethod} / 技:${skillName} / ${hitCount}体 / 合計${totalDamage}${breakdownText}ダメージ${friendlyHits > 0 ? ` / 同士討ち ${friendlyHits}体` : ""}`;
+  if (blinkTargetUnitIds.size > 0) {
+    triggerUnitDamageBlinkByIds(Array.from(blinkTargetUnitIds));
+  }
+  return {
+    applied: hitCount > 0,
+    hitCount,
+    totalDamage,
+    summary,
+    lines: [summary, ...detailRows]
+  };
+}
+
+function resolveEnemyActionSkillRows(enemy) {
+  const out = [];
+  const seen = new Set();
+  const skillNames = Array.isArray(enemy?.skills) ? enemy.skills : [];
+  for (const raw of skillNames) {
+    const skillName = nonEmptyText(raw);
+    if (!skillName || seen.has(skillName)) continue;
+    const normalized = normalizeSkillNameForLookup(skillName);
+    const row = SKILL_INFO_BY_NAME.get(skillName)
+      || (normalized ? SKILL_INFO_BY_NORMALIZED_NAME.get(normalized) : null)
+      || null;
+    if (!row || typeof row !== "object") continue;
+    const action = nonEmptyText(row?.行動).toUpperCase();
+    if (!action || (action !== SKILL_ACTIVE_ACTION_CODE && action !== "A" && action !== "ACTION")) continue;
+    seen.add(skillName);
+    out.push({ skillName, skillRow: row });
+  }
+  return out;
+}
+
+function buildEnemyAutoAttackCandidate(data, enemyGroup, playerTargets) {
+  if (!enemyGroup || !Array.isArray(enemyGroup.enemies) || !enemyGroup.enemies.length) return null;
+  const attacker = randomPick(enemyGroup.enemies, enemyGroup.enemies[0] || null);
+  if (!attacker) return null;
+  const actionSkills = resolveEnemyActionSkillRows(attacker);
+  const choices = [];
+  for (const row of actionSkills) {
+    const range = resolveSkillAttackRangeFromRow(row.skillRow, TILE_ATTACK_RANGE_MIN);
+    const targets = playerTargets.filter(unit => {
+      const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+      const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+      if (!Number.isFinite(ux) || !Number.isFinite(uy)) return false;
+      return hexDistance({ x: enemyGroup.x, y: enemyGroup.y }, { x: ux, y: uy }) <= range;
+    });
+    if (!targets.length) continue;
+    choices.push({
+      skillName: row.skillName,
+      skillRow: row.skillRow,
+      targets
+    });
+  }
+  if (!choices.length) return null;
+  const pickedChoice = randomPick(choices, choices[0]);
+  const pickedTarget = randomPick(pickedChoice.targets, pickedChoice.targets[0] || null);
+  if (!pickedTarget) return null;
+  return {
+    attacker,
+    skillName: nonEmptyText(pickedChoice?.skillName) || "通常攻撃",
+    skillRow: pickedChoice?.skillRow || null,
+    picked: {
+      x: Math.floor(toSafeNumber(pickedTarget?.x, Number.NaN)),
+      y: Math.floor(toSafeNumber(pickedTarget?.y, Number.NaN))
+    }
+  };
+}
+
+function runEnemyAutoAttackTick(deltaMs = 0) {
+  if (isPageHidden.value) return;
+  if (!autoTimeRunning.value) return;
+  const data = currentData.value;
+  if (!data || data.shapeOnly || !Array.isArray(data?.enemySpawnMap)) return;
+  const addMs = Math.max(0, Math.floor(toSafeNumber(deltaMs, 0)));
+  enemyAutoAttackElapsedMs += addMs;
+  if (enemyAutoAttackElapsedMs < ENEMY_AUTO_ATTACK_INTERVAL_MS) return;
+  enemyAutoAttackElapsedMs = enemyAutoAttackElapsedMs % ENEMY_AUTO_ATTACK_INTERVAL_MS;
+  const alivePlayers = unitList.value.filter(unit => {
+    const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    if (!Number.isFinite(ux) || !Number.isFinite(uy)) return false;
+    const maxHp = Math.max(1, Math.floor(toSafeNumber(unit?.maxHp, resolveUnitMaxHpValue(unit))));
+    const currentHp = Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, maxHp)));
+    return currentHp > 0;
+  });
+  if (!alivePlayers.length) return;
+  const candidates = [];
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const tileEnemies = enemiesAt(x, y, data);
+      if (!tileEnemies.length || !tileEnemies.some(enemy => enemy?.aggressive === true)) continue;
+      const key = coordKey(x, y);
+      if (!spottedEnemyTileKeys.has(key) && !alertedEnemyTileKeys.has(key)) continue;
+      const candidate = buildEnemyAutoAttackCandidate(data, { x, y, enemies: tileEnemies }, alivePlayers);
+      if (!candidate) continue;
+      candidates.push(candidate);
+    }
+  }
+  if (!candidates.length) return;
+  const activeId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const chosen = randomPick(candidates, candidates[0]);
+  const splashSpec = buildSplashSpec(resolveSkillSplashValueFromRow(chosen.skillRow));
+  const enemyAttackEffectPayload = buildAttackEffectPlayPayloadBySkill({
+    picked: chosen.picked,
+    leader: chosen.attacker,
+    splashSpec,
+    skillName: chosen.skillName,
+    skillRow: chosen.skillRow
+  });
+  if (enemyAttackEffectPayload) {
+    console.info(`${EFFECT_DEBUG_PREFIX} enemy-precheck:ready`, {
+      skillName: chosen.skillName,
+      picked: chosen.picked,
+      splashValue: toSafeNumber(splashSpec?.value, 0),
+      payload: enemyAttackEffectPayload
+    });
+    void handleEffectPlayerPlayRequest(enemyAttackEffectPayload);
+  } else {
+    console.warn(`${EFFECT_DEBUG_PREFIX} enemy-precheck:failed`, {
+      skillName: chosen.skillName,
+      picked: chosen.picked,
+      splashValue: toSafeNumber(splashSpec?.value, 0)
+    });
+  }
+  const damageResult = applySkillDamageToFactionUnits({
+    data,
+    picked: chosen.picked,
+    splashSpec,
+    attackerFactionId: "__enemy__",
+    attackerUnit: chosen.attacker,
+    attackerLabel: nonEmptyText(chosen?.attacker?.name) || nonEmptyText(chosen?.attacker?.race) || "敵",
+    skillName: chosen.skillName,
+    skillRow: chosen.skillRow,
+    attackMethod: nonEmptyText(chosen?.skillRow?.攻撃手段) || "通常"
+  });
+  if (!damageResult.applied) return;
+  for (const line of damageResult.lines) {
+    pushNationLog(`敵攻撃: ${line}`);
+  }
+  const attackInfo = `${nonEmptyText(chosen?.attacker?.name) || nonEmptyText(chosen?.attacker?.race) || "敵"} の ${nonEmptyText(chosen?.skillRow?.攻撃手段) || "通常"} / ${chosen.skillName}`;
+  updateUnitInfoText(`敵攻撃(${activeId}): ${attackInfo}`);
+  emitCharacterStateChange();
+  requestMapRender();
+}
+
+function applyTileAttackSettingsBySkillName(skillNameRaw) {
+  const skillName = nonEmptyText(skillNameRaw);
+  if (!skillName) return { ok: false, reason: "スキル名が空です。" };
+  const skillRow = resolveSkillInfoRowByName(skillName);
+  const hasArea = nonEmptyText(skillRow?.範囲).length > 0;
+  const nextPattern = hasArea
+    ? resolveTileAttackPatternKeyFromSkillArea(skillRow?.範囲)
+    : "single";
+  const nextRange = resolveSkillAttackRangeFromRow(skillRow, TILE_ATTACK_RANGE_MIN, {
+    unit: ownFactionAttackPanelUnit.value || selectedUnit.value
+  });
+  tileAttackRange.value = nextRange;
+  setTileAttackPattern(nextPattern);
+  return {
+    ok: true,
+    skillName,
+    patternKey: nextPattern,
+    range: nextRange,
+    usedDefaultPattern: !hasArea
+  };
+}
+
 function normalizeTileAttackPatternKey(rawKey = "") {
   const key = nonEmptyText(rawKey).toLowerCase();
   return TILE_ATTACK_PATTERN_KEY_SET.has(key) ? key : "single";
@@ -17057,9 +20824,10 @@ function nudgeTileAttackRange(delta) {
   tileAttackRange.value = next;
   if (tileAttackSelectionMode.value) {
     const state = resolveSelectedTileAttackActionState();
+    const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
     const message = state.enabled
-      ? `攻撃範囲: ${resolveTileAttackPatternLabel(tileAttackPatternKey.value)} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`
-      : `攻撃範囲: ${resolveTileAttackPatternLabel(tileAttackPatternKey.value)} 射程${tileAttackRange.value} / ${state.reason || "対象なし"}`;
+      ? `攻撃範囲: ${resolveTileAttackPatternLabel(effectivePatternKey)} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`
+      : `攻撃範囲: ${resolveTileAttackPatternLabel(effectivePatternKey)} 射程${tileAttackRange.value} / ${state.reason || "対象なし"}`;
     updateUnitInfoText(message);
   }
   requestMapRender();
@@ -17070,8 +20838,8 @@ function resolveTileAttackPatternLabel(patternKey = "") {
   return TILE_ATTACK_PATTERN_LABEL_MAP.get(key) || "単体";
 }
 
-const tileAttackPatternLabel = computed(() => resolveTileAttackPatternLabel(tileAttackPatternKey.value));
-const tileAttackPatternDirectional = computed(() => DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS.has(normalizeTileAttackPatternKey(tileAttackPatternKey.value)));
+const tileAttackPatternLabel = computed(() => resolveTileAttackPatternLabel(resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value)));
+const tileAttackPatternDirectional = computed(() => DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS.has(resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value)));
 
 function isDirectionalTileAttackPattern(patternKey = "") {
   return DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS.has(normalizeTileAttackPatternKey(patternKey));
@@ -17198,6 +20966,7 @@ function buildAttackPatternTileKeySet(data, leader, patternKey = "single", range
   const out = new Set();
   if (!data || !leader || !Number.isFinite(leader?.x) || !Number.isFinite(leader?.y)) return out;
   const attackRange = normalizeTileAttackRange(range);
+  const originKey = coordKey(leader.x, leader.y);
   const addCoord = (x, y) => {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     let nx = Math.floor(x);
@@ -17255,9 +21024,41 @@ function buildAttackPatternTileKeySet(data, leader, patternKey = "single", range
     }
   };
 
+  const isReachableWithinRange = (targetX, targetY, maxDistance) => {
+    const tx = Math.floor(toSafeNumber(targetX, Number.NaN));
+    const ty = Math.floor(toSafeNumber(targetY, Number.NaN));
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) return false;
+    const targetKey = coordKey(tx, ty);
+    if (targetKey === originKey) return true;
+    const queue = [{ x: origin.x, y: origin.y, d: 0 }];
+    const seen = new Set([originKey]);
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur.d >= maxDistance) continue;
+      for (let dir = 0; dir < 6; dir += 1) {
+        const next = stepHexCoordByDirection(data, cur.x, cur.y, dir);
+        if (!next) continue;
+        const nextKey = coordKey(next.x, next.y);
+        if (seen.has(nextKey)) continue;
+        if (nextKey === targetKey) return true;
+        seen.add(nextKey);
+        queue.push({ x: next.x, y: next.y, d: cur.d + 1 });
+      }
+    }
+    return false;
+  };
+
   switch (key) {
     case "single": {
-      ray(origin, forwardDir, attackRange);
+      const anchor = normalizeTileAttackDirectionAnchor(options?.anchor, data, leader);
+      if (anchor && isReachableWithinRange(anchor.x, anchor.y, attackRange)) {
+        out.clear();
+        addCoord(anchor.x, anchor.y);
+        break;
+      }
+      out.clear();
+      addCircle(attackRange);
+      out.delete(originKey);
       break;
     }
     case "straight": {
@@ -17350,6 +21151,74 @@ function buildAttackPatternTileKeySet(data, leader, patternKey = "single", range
   return out;
 }
 
+function resolveTileAttackPreviewAnchorKey(rangeKeySet, previewKeySet, leader) {
+  const leaderKey = Number.isFinite(leader?.x) && Number.isFinite(leader?.y)
+    ? coordKey(leader.x, leader.y)
+    : "";
+  const hoveredKey = nonEmptyText(hoveredTileKey);
+  if (hoveredKey && hoveredKey !== leaderKey) {
+    if (!(rangeKeySet instanceof Set) || rangeKeySet.has(hoveredKey)) {
+      return hoveredKey;
+    }
+  }
+  const selectedKey = nonEmptyText(selectedTileKey);
+  if (selectedKey && selectedKey !== leaderKey) {
+    if (!(rangeKeySet instanceof Set) || rangeKeySet.has(selectedKey)) {
+      if (!(previewKeySet instanceof Set) || previewKeySet.size <= 0 || previewKeySet.has(selectedKey)) {
+        return selectedKey;
+      }
+    }
+  }
+  if (previewKeySet instanceof Set && previewKeySet.size === 1) {
+    return Array.from(previewKeySet)[0] || "";
+  }
+  return "";
+}
+
+function buildSplashPreviewTileKeySets(data, anchorKey, splashSpec) {
+  const fullKeySet = new Set();
+  const falloffKeySet = new Set();
+  if (!data || !anchorKey || !(splashSpec?.enabled)) {
+    return { fullKeySet, falloffKeySet };
+  }
+  const anchor = parseCoordKey(anchorKey);
+  if (!Number.isFinite(anchor?.x) || !Number.isFinite(anchor?.y)) {
+    return { fullKeySet, falloffKeySet };
+  }
+  const fullRadius = Math.max(0, Math.floor(toSafeNumber(splashSpec?.fullRadius, 0)));
+  const fractionalRadius = Math.max(0, Math.floor(toSafeNumber(splashSpec?.fractionalRadius, 0)));
+  const maxRadius = Math.max(fullRadius, fractionalRadius);
+  if (maxRadius <= 0) return { fullKeySet, falloffKeySet };
+  const queue = [{ x: anchor.x, y: anchor.y, d: 0 }];
+  const seen = new Set([coordKey(anchor.x, anchor.y)]);
+  while (queue.length) {
+    const cur = queue.shift();
+    if (!cur) break;
+    if (cur.d > maxRadius) continue;
+    const key = coordKey(cur.x, cur.y);
+    if (cur.d > 0) {
+      if (cur.d <= fullRadius) {
+        fullKeySet.add(key);
+      } else if (fractionalRadius > 0 && cur.d === fractionalRadius) {
+        falloffKeySet.add(key);
+      }
+    }
+    if (cur.d >= maxRadius) continue;
+    for (let dir = 0; dir < 6; dir += 1) {
+      const next = stepHexCoordByDirection(data, cur.x, cur.y, dir);
+      if (!next) continue;
+      const nextKey = coordKey(next.x, next.y);
+      if (seen.has(nextKey)) continue;
+      seen.add(nextKey);
+      queue.push({ x: next.x, y: next.y, d: cur.d + 1 });
+    }
+  }
+  for (const key of fullKeySet) {
+    if (falloffKeySet.has(key)) falloffKeySet.delete(key);
+  }
+  return { fullKeySet, falloffKeySet };
+}
+
 function resolveSelectedTileAttackActionState() {
   const data = currentData.value;
   if (!data || data.shapeOnly) {
@@ -17367,7 +21236,7 @@ function resolveSelectedTileAttackActionState() {
     return { enabled: false, reason: "選択ユニットは移動中です。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   const leader = moveGroup.leader;
-  const normalizedPattern = normalizeTileAttackPatternKey(tileAttackPatternKey.value);
+  const normalizedPattern = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
   const directional = isDirectionalTileAttackPattern(normalizedPattern);
   let patternTileKeys = buildAttackPatternTileKeySet(data, leader, normalizedPattern, tileAttackRange.value);
   if (directional && !tileAttackDirectionLocked.value) {
@@ -17405,8 +21274,8 @@ function resolveSelectedTileAttackActionState() {
   }
   if (targetCount <= 0) {
     return {
-      enabled: false,
-      reason: `${resolveTileAttackPatternLabel(tileAttackPatternKey.value)} 射程${tileAttackRange.value} の範囲に攻撃対象がいません。`,
+      enabled: true,
+      reason: `${resolveTileAttackPatternLabel(normalizedPattern)} 射程${tileAttackRange.value} の範囲に攻撃対象がいません。`,
       moveGroup,
       targetCount: 0,
       patternTileKeys
@@ -17442,10 +21311,11 @@ function toggleTileAttackSelectionMode() {
   clearHousingUpgradeSelectionState();
   tileAttackSelectionMode.value = true;
   refreshMapCursor();
-  const directionalHint = isDirectionalTileAttackPattern(tileAttackPatternKey.value)
+  const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+  const directionalHint = isDirectionalTileAttackPattern(effectivePatternKey)
     ? "同じマスを2回クリックで方向固定→対象マスをクリック"
     : "範囲内の対象マスを選択";
-  updateUnitInfoText(`攻撃モード(${resolveTileAttackPatternLabel(tileAttackPatternKey.value)} / 射程${tileAttackRange.value}): ${directionalHint}`);
+  updateUnitInfoText(`攻撃モード(${resolveTileAttackPatternLabel(effectivePatternKey)} / 射程${tileAttackRange.value}): ${directionalHint}`);
 }
 
 function setTileAttackPattern(nextPatternKey) {
@@ -17485,6 +21355,12 @@ function startFieldBattleFromEncounter(payload = {}) {
   const attackerLabel = resolveBattleParticipantLabel(payload);
   const modalMessage = nonEmptyText(payload?.message) || `${attackerLabel}: ${message}`;
   const modalSummary = nonEmptyText(payload?.summary) || `戦闘(${sourceLabel}): ${enemyLabel}`;
+  if (!FIELD_BATTLE_RESULT_MODAL_ENABLED) {
+    const skippedText = `戦闘モーダルOFF: ${modalSummary}`;
+    updateUnitInfoText(skippedText);
+    pushNationLog(skippedText);
+    return;
+  }
   openFieldBattleResultSelection({
     source: sourceLabel,
     x,
@@ -17515,7 +21391,8 @@ function handleTileAttackSelectionClick(picked) {
     return false;
   }
   const leader = state.moveGroup.leader;
-  const directionalPattern = isDirectionalTileAttackPattern(tileAttackPatternKey.value);
+  const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+  const directionalPattern = isDirectionalTileAttackPattern(effectivePatternKey);
   if (directionalPattern && !tileAttackDirectionLocked.value) {
     const anchor = normalizeTileAttackDirectionAnchor({ x: picked.x, y: picked.y }, currentData.value, leader);
     if (!anchor) {
@@ -17550,10 +21427,61 @@ function handleTileAttackSelectionClick(picked) {
   }
   const attackRangeSet = state.patternTileKeys instanceof Set
     ? state.patternTileKeys
-    : buildAttackPatternTileKeySet(currentData.value, leader, tileAttackPatternKey.value, tileAttackRange.value);
+    : buildAttackPatternTileKeySet(currentData.value, leader, effectivePatternKey, tileAttackRange.value);
   const targetTileKey = coordKey(picked.x, picked.y);
   if (!attackRangeSet.has(targetTileKey)) {
-    updateUnitInfoText(`${resolveTileAttackPatternLabel(tileAttackPatternKey.value)}範囲外のため攻撃できません。`);
+    updateUnitInfoText(`${resolveTileAttackPatternLabel(effectivePatternKey)}範囲外のため攻撃できません。`);
+    return true;
+  }
+  const splashSpec = resolveSelectedTileAttackSplashSpec();
+  const attackEffectPayload = buildTileAttackEffectPlayPayload(picked, leader, splashSpec);
+  if (attackEffectPayload) {
+    console.info(`${EFFECT_DEBUG_PREFIX} precheck:ready`, {
+      skillName: nonEmptyText(selectedTileAttackSkillName.value) || nonEmptyText(footerUnitSkillModalSelectedSkillName.value),
+      picked,
+      splashValue: toSafeNumber(splashSpec?.value, 0),
+      payload: attackEffectPayload
+    });
+    void handleEffectPlayerPlayRequest(attackEffectPayload);
+    closeOwnFactionAttackPanel({ cancelPreview: true });
+  } else {
+    console.warn(`${EFFECT_DEBUG_PREFIX} precheck:failed`, {
+      skillName: nonEmptyText(selectedTileAttackSkillName.value) || nonEmptyText(footerUnitSkillModalSelectedSkillName.value),
+      picked,
+      splashValue: toSafeNumber(splashSpec?.value, 0)
+    });
+  }
+  const selectedSkillName = nonEmptyText(selectedTileAttackSkillName.value)
+    || nonEmptyText(footerUnitSkillModalSelectedSkillName.value)
+    || "通常攻撃";
+  const selectedSkillRow = resolveSkillInfoRowByName(selectedSkillName);
+  const selectedPanelRow = ownFactionAttackPanelSkillRows.value
+    .find(row => nonEmptyText(row?.name) === selectedSkillName) || null;
+  const activeFactionId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const damageResult = applySkillDamageToFactionUnits({
+    data: currentData.value,
+    picked,
+    splashSpec,
+    includeSpawnTargets: true,
+    attackerFactionId: activeFactionId,
+    attackerUnit: leader,
+    attackerLabel: nonEmptyText(leader?.name) || "ユニット",
+    skillName: selectedSkillName,
+    skillRow: selectedSkillRow,
+    attackMethod: nonEmptyText(selectedPanelRow?.attackStyle) || nonEmptyText(selectedSkillRow?.攻撃手段) || "通常",
+    powerOverride: toSafeNumber(selectedPanelRow?.power, Number.NaN),
+    weaponRow: resolvePrimaryWeaponBaseSkillRowForUnit(leader)
+  });
+  if (damageResult.applied) {
+    cancelTileAttackSelectionMode(true);
+    kickOffBgm();
+    audio.playSe("confirm");
+    updateUnitInfoText(damageResult.summary || "攻撃を実行しました。");
+    for (const line of damageResult.lines || []) {
+      pushNationLog(line);
+    }
+    emitCharacterStateChange();
+    requestMapRender();
     return true;
   }
   const factionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
@@ -17563,7 +21491,11 @@ function handleTileAttackSelectionClick(picked) {
     requireSpotted: true
   });
   if (!target.hasTarget) {
-    updateUnitInfoText("そのマスには攻撃対象がいません。");
+    updateUnitInfoText("そのマスには攻撃対象がいません。（エフェクトのみ発動）");
+    return true;
+  }
+  if (!target.hasSpawn) {
+    updateUnitInfoText("対象ユニットに有効ダメージを与えられませんでした。");
     return true;
   }
   cancelTileAttackSelectionMode(true);
@@ -18223,6 +22155,7 @@ function syncMapTileSelectionInfo(picked = null, explicitKey = "") {
   }
   if (picked && Number.isFinite(picked?.x) && Number.isFinite(picked?.y)) {
     updateMapClickInfo(picked);
+    return;
   }
 }
 
@@ -18269,7 +22202,10 @@ async function handleMapTileClick(pointer) {
       setLastMoveStopState(movePlanResult.reason, picked.x, picked.y);
       updateUnitInfoText(`移動経路作成失敗: ${movePlanResult.reason}`);
     } else if (movePlanResult?.queued) {
-      updateUnitInfoText(`移動経路作成: ${movePlanResult.pathDistance}マス / 予測コスト${movePlanResult.estimatedCost}`);
+      const partialNote = nonEmptyText(movePlanResult.partialStopReason)
+        ? ` / ${movePlanResult.partialStopReason}`
+        : "";
+      updateUnitInfoText(`移動経路作成: ${movePlanResult.pathDistance}マス / 予測コスト${movePlanResult.estimatedCost}${partialNote}`);
     }
     requestMapRender();
     syncMapTileSelectionInfo(picked, selectedTileKey);
@@ -18425,6 +22361,7 @@ onMounted(async () => {
   };
   window.addEventListener("pointerdown", firstGestureHandler);
   window.addEventListener("keydown", firstGestureHandler);
+  installExternalMapEffectBridge();
 
   resetClockRuntime(Date.now());
   clockIntervalId = window.setInterval(() => {
@@ -18438,6 +22375,8 @@ onMounted(async () => {
     }
     clockNowMs.value = mapClockStartMs.value + clockElapsedMs.value;
     processClockTurnProgress();
+    runEnemyAutoAttackTick(delta);
+    runDeadUnitLifecycleTick();
     if (isMoveCommandPendingForSelectedUnit.value && currentData.value) {
       requestMapRender();
     }
@@ -18514,6 +22453,13 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  stopRuntimeMemoryWatch();
+  stopUnitDamageBlinkTicker();
+  unitDamageBlinkUntilMsById = new Map();
+  unitRecentDamageAmountById = new Map();
+  clearActiveDamagePopups();
+  clearActiveTileEffectPlayback();
+  uninstallExternalMapEffectBridge();
   mapRenderScheduler.dispose();
   pathfindingWorkerClient.dispose();
   if (resizeHandler) window.removeEventListener("resize", resizeHandler);
@@ -18558,6 +22504,7 @@ onBeforeUnmount(() => {
   suppressTouchTapUntilRelease = false;
   raceMarkerTexturePending = new Set();
   enemyIllustrationTexturePending = new Set();
+  unitIllustrationTexturePending = new Set();
   resetVisibilityState();
 });
 
@@ -18566,6 +22513,12 @@ watch([gameViewPresetKey, gameViewWidth, gameViewHeight], () => {
 }, { immediate: true });
 
 watch(showTestControls, visible => {
+  if (visible) {
+    startRuntimeMemoryWatch();
+  } else {
+    stopRuntimeMemoryWatch();
+    runtimeMemoryText.value = "-";
+  }
   emit("test-controls-change", !!visible);
   if (currentData.value) {
     rebuildVisibleTiles(currentData.value);
@@ -18635,6 +22588,28 @@ watch([currentData, selectedUnitId, villagePlacementMode, moveCommandUnitId, uni
   }
   if (!tileAttackSelectionMode.value && tileAttackDirectionLocked.value) {
     clearTileAttackDirectionLock();
+  }
+});
+
+watch([unitList, selectedTileDetail], () => {
+  const modalUnitId = nonEmptyText(footerUnitSkillModalUnitId.value);
+  if (!modalUnitId) return;
+  const modalUnit = unitList.value.find(unit => nonEmptyText(unit?.id) === modalUnitId) || null;
+  if (!modalUnit) {
+    showFooterUnitSkillModal.value = false;
+    footerUnitSkillModalUnitId.value = "";
+    footerUnitSkillModalSelectedSkillName.value = "";
+    return;
+  }
+  if (!showFooterUnitSkillModal.value) return;
+  const detail = selectedTileDetail.value;
+  if (!detail) return;
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  if (modalUnit.x !== x || modalUnit.y !== y) {
+    showFooterUnitSkillModal.value = false;
+    footerUnitSkillModalSelectedSkillName.value = "";
   }
 });
 
@@ -18714,16 +22689,24 @@ watch(() => props.characterCommand, command => {
         <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas" :style="mapCanvasStyle">
       <header class="field-overlay-header" :class="{ minimized: headerMinimized }">
         <template v-if="!headerMinimized">
-        <div class="field-header-research-wrap" title="研究レベル">
+        <div
+          class="field-header-research-wrap"
+          title="研究レベル（クリックで研究画面）"
+          @click="openSkillTreeModalFromMap"
+        >
           <small class="field-header-research-list">
-            <span
+            <button
               v-for="row in headerResearchRows"
               :key="`header-research-${row.key}`"
+              type="button"
               class="field-header-research-chip"
               :title="`${row.label} Lv${row.level} / EXP ${row.currentExp}/${row.requiredExp}`"
+              :aria-label="`${row.label} の研究画面を開く`"
+              @click.stop="openSkillTreeModalFromMap(row.key)"
             >
               <span
                 class="field-header-research-gauge"
+                :class="{ completed: row.progressRatio >= 1 }"
                 :style="{
                   '--research-progress-ratio': String(row.progressRatio),
                   '--research-gauge-accent': row.gaugeColor
@@ -18731,7 +22714,7 @@ watch(() => props.characterCommand, command => {
               >
                 <img :src="row.iconSrc" :alt="`${row.label} アイコン`" />
               </span>
-            </span>
+            </button>
           </small>
         </div>
         <div ref="headerResourceMenuRef" class="field-header-resource-menu-wrap">
@@ -18852,15 +22835,6 @@ watch(() => props.characterCommand, command => {
           <button
             type="button"
             class="overlay-action-btn icon-only"
-            title="研究"
-            aria-label="研究"
-            @click="openSkillTreeModalFromMap"
-          >
-            <img class="overlay-action-icon" :src="SKILL_TREE_ICON_SRC" alt="研究" />
-          </button>
-          <button
-            type="button"
-            class="overlay-action-btn icon-only"
             :class="{ active: showPinnedNationLogPanel }"
             :title="showPinnedNationLogPanel ? 'ログ表示: ON' : 'ログ表示: OFF'"
             aria-label="ログ表示"
@@ -18910,7 +22884,10 @@ watch(() => props.characterCommand, command => {
           <span class="overlay-header-drawer-arrow" aria-hidden="true">{{ headerMinimized ? "▽" : "△" }}</span>
         </button>
       </header>
-      <section class="field-overlay-tile-detail" :class="{ minimized: tileDetailMinimized }">
+      <div v-if="showTestControls" class="field-overlay-memory-top-right" title="使用メモリ">
+        メモリ: {{ runtimeMemoryText }}
+      </div>
+      <section v-if="showLegacyTileDetailPanel" class="field-overlay-tile-detail" :class="{ minimized: tileDetailMinimized }">
         <div class="field-overlay-tile-head">
           <div class="field-overlay-tile-title">
             <span class="field-overlay-tile-title-main">{{ selectedTileDetail?.title || selectedTileDetail?.terrain || "選択マス詳細" }}</span>
@@ -19058,6 +23035,18 @@ watch(() => props.characterCommand, command => {
             <div v-if="tileAttackPatternDirectional" class="field-overlay-attack-direction-note">
               {{ tileAttackDirectionLocked ? "方向固定済み: 対象マスをクリックで攻撃" : "方向未固定: 同じマスを2回クリックで方向固定" }}
             </div>
+            <div class="field-overlay-attack-preview-summary">
+              <span class="field-overlay-attack-skill">{{ tileAttackPreviewSkillLabel }}</span>
+              <span>{{ tileAttackPatternLabel }} / 射程{{ tileAttackRange }}</span>
+            </div>
+            <div class="field-overlay-attack-legend">
+              <span class="field-overlay-attack-legend-item">
+                <i class="field-overlay-attack-legend-chip is-range"></i> 攻撃可能範囲
+              </span>
+              <span class="field-overlay-attack-legend-item">
+                <i class="field-overlay-attack-legend-chip is-pattern"></i> 攻撃範囲
+              </span>
+            </div>
           </div>
           <div v-if="selectedTileDetail" class="field-overlay-tile-preview">
             <article
@@ -19104,6 +23093,8 @@ watch(() => props.characterCommand, command => {
       </section>
       <aside class="field-overlay-own-faction-panel">
         <own-faction-navigator-modal
+          v-if="ownFactionPanelViewMode === 'navigator'"
+          class="field-overlay-own-faction-navigator-host"
           :squad-entries="ownSquadNavigatorEntries"
           :unit-entries="ownCharacterNavigatorEntries"
           :selected-tile-coord="ownFactionSelectedTileCoord"
@@ -19116,6 +23107,67 @@ watch(() => props.characterCommand, command => {
           @select-move-unit="handleOwnUnitNavigatorSelectMoveUnit"
           @select-attack-unit="handleOwnUnitNavigatorSelectAttackUnit"
         />
+        <section v-else class="field-overlay-own-faction-attack-list-panel">
+          <div class="field-overlay-own-faction-attack-head">
+            <strong>攻撃一覧</strong>
+            <span class="small">{{ ownFactionAttackPanelUnit?.name || "ユニット未選択" }}</span>
+            <button type="button" class="secondary" @click="closeOwnFactionAttackPanel({ cancelPreview: true })">閉じる</button>
+          </div>
+          <div v-if="ownFactionAttackPanelSkillRows.length" class="field-overlay-own-faction-attack-list skill-table-wrap">
+            <button
+              v-for="row in ownFactionAttackPanelSkillRows"
+              :key="`own-faction-attack-skill-${row.rowKey || row.name}`"
+              type="button"
+              class="field-overlay-own-faction-attack-item"
+              :class="{ active: ownFactionAttackPanelSelectedSkillRow && ownFactionAttackPanelSelectedSkillRow.name === row.name }"
+              @click="handleOwnFactionAttackSkillSelect({ name: row.name, activatePreview: true })"
+              @dblclick="activateOwnFactionAttackPreview({ name: row.name })"
+            >
+              <div class="skill-top" :class="`action-${row.actionType}`">
+                <span class="action-chip">{{ row.actionShort }}</span>
+                <span v-if="row.attackStyleIconSrc" class="skill-inline-icon-wrap">
+                  <img :src="row.attackStyleIconSrc" :alt="row.attackStyle" class="skill-inline-icon" />
+                </span>
+                <span v-else class="skill-inline-icon-fallback">{{ row.attackStyle !== '-' ? row.attackStyle.slice(0, 1) : "?" }}</span>
+                <span class="field-overlay-own-faction-attack-item-name">{{ row.name }}</span>
+                <span class="skill-family-chip">
+                  <span v-if="row.familyIconSrc" class="skill-inline-icon-wrap family-icon-wrap">
+                    <img :src="row.familyIconSrc" :alt="row.family" class="skill-inline-icon" />
+                  </span>
+                  <span>{{ row.family }}</span>
+                </span>
+              </div>
+              <div class="skill-bottom field-overlay-own-faction-attack-item-detail">
+                <span class="skill-meta-chip">
+                  威/状/守 {{ row.power }}/{{ row.state }}/{{ row.guard }}
+                </span>
+                <span class="skill-meta-chip">AP {{ row.apCost }}</span>
+                <span class="skill-meta-chip">CT {{ row.ct }}</span>
+                <span class="skill-meta-chip">射程 {{ row.range }}</span>
+                <span class="skill-meta-chip">効果 {{ row.duration }}</span>
+              </div>
+            </button>
+          </div>
+          <div v-else class="small field-overlay-own-faction-attack-empty">
+            攻撃スキルがありません。
+          </div>
+          <div v-if="ownFactionAttackPanelSelectedSkillRow" class="field-overlay-own-faction-attack-detail">
+            <div class="field-overlay-own-faction-attack-detail-title-row">
+              <div class="field-overlay-own-faction-attack-detail-title">{{ ownFactionAttackPanelSelectedSkillRow.name }}</div>
+              <button
+                type="button"
+                class="field-overlay-own-faction-attack-use-btn"
+                @click="handleOwnFactionAttackSkillSelect({ name: ownFactionAttackPanelSelectedSkillRow.name, activatePreview: true })"
+              >
+                使用
+              </button>
+            </div>
+            <div v-if="ownFactionAttackPanelSelectedSkillRow.detail !== '-'" class="field-overlay-own-faction-attack-detail-text">{{ ownFactionAttackPanelSelectedSkillRow.detail }}</div>
+          </div>
+          <div v-else class="small field-overlay-own-faction-attack-empty field-overlay-own-faction-attack-detail-empty">
+            スキルを選択すると詳細を表示します。
+          </div>
+        </section>
       </aside>
       <aside v-if="showPinnedNationLogPanel" class="field-overlay-live-log">
         <div class="field-overlay-live-log-head">
@@ -19161,6 +23213,20 @@ watch(() => props.characterCommand, command => {
           </div>
         </div>
       </div>
+      <field-footer-tabs-overlay
+        :selected-tile-detail="selectedTileDetail"
+        :tile-units="footerTileUnitRows"
+        :tile-enemy-units="footerTileEnemyRows"
+        :selected-unit-id="selectedUnitId"
+        :can-play-effect="hasSelectedTileForEffect"
+        :show-test-controls="showTestControls"
+        @play-effect="handleEffectPlayerPlayRequest"
+        @select-unit="handleFooterSelectUnit"
+        @move-request="handleFooterMoveRequest"
+        @attack-request="handleFooterAttackRequest"
+        @open-skill-request="openFooterUnitSkillModal"
+        @enemy-hp-adjust="handleFooterEnemyHpAdjust"
+      />
       <div
         v-if="showMovePathConfirmModal && movePathConfirmPopupStyle"
         class="move-path-confirm-popup"
@@ -19334,6 +23400,14 @@ watch(() => props.characterCommand, command => {
         <h3>設定メニュー</h3>
         <div class="quick-settings-grid">
           <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">音量/表示設定</button>
+          <label class="setting-row quick-settings-checkbox-row">
+            <input
+              type="checkbox"
+              :checked="squadFormationEnabled"
+              @change="toggleSquadFormationEnabledFromQuickMenu($event.target.checked)"
+            />
+            <span>チーム編成機能を有効にする</span>
+          </label>
           <button type="button" class="secondary" :disabled="saveExportInProgress" @click="downloadSaveDataFromQuickMenu">
             {{ saveExportInProgress ? "セーブ生成中..." : "セーブデータ保存" }}
           </button>
@@ -19384,6 +23458,7 @@ watch(() => props.characterCommand, command => {
     <equipment-inventory-modal
       :show="showEquipmentInventoryModal"
       :village="villageState"
+      :units="unitList"
       :smith-level="resolveSmithCraftCap(villageState)"
       :craft-usage-state="equipmentCraftUsageStateForModal"
       :enchant-usage-state="equipmentEnchantUsageStateForModal"
@@ -19395,6 +23470,30 @@ watch(() => props.characterCommand, command => {
       @craft-weapon="handleCraftWeaponFromInventoryModal"
       @apply-enchant="handleApplyEnchantFromInventoryModal"
     />
+
+    <div v-if="showFooterUnitSkillModal" class="settings-backdrop" @click.self="closeFooterUnitSkillModal">
+      <div class="settings-modal footer-unit-skill-modal">
+        <h3>{{ footerUnitSkillModalUnit?.name || "ユニット" }} スキル一覧</h3>
+        <skill-acquired-table
+          :skill-names="footerUnitSkillModalSkillNames"
+          :status-source="footerUnitSkillModalUnit?.status || null"
+          :show-title="false"
+          :compact="true"
+          :show-family-icon="true"
+          :selectable="true"
+          :selected-name="footerUnitSkillModalSelectedSkillName"
+          empty-text="このユニットはスキルを所持していません。"
+          @select-skill="handleFooterUnitSkillSelect"
+        />
+        <div v-if="footerUnitSkillModalSelectedSkillSummary" class="small">
+          選択中: {{ footerUnitSkillModalSelectedSkillSummary }}
+        </div>
+        <div class="small">スキルをクリックすると、射程/範囲を攻撃プレビューへ反映します。</div>
+        <div class="setting-actions">
+          <button type="button" class="secondary" @click="closeFooterUnitSkillModal">閉じる</button>
+        </div>
+      </div>
+    </div>
 
     <generic-modal
       :show="showEventModal"
