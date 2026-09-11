@@ -1,3 +1,8 @@
 node_modules/
 npm-debug.log*
 web-vue-dist/
+# 誤って混入したVite生成物。オーガの元画像は引き続きGit管理する。
+assets/images/units/オーガ/*.js
+assets/images/units/オーガ/*.css
+assets/images/units/オーガ/*-[0-9A-Za-z_]*.webp
+assets/images/units/オーガ/*-[0-9A-Za-z_]*.png
