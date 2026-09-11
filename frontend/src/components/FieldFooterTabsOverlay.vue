@@ -232,10 +232,25 @@ function buildHpBarFillStyle(hpState) {
   };
 }
 
+function buildActionPointState(unit) {
+  const max = Math.max(1, Math.round(toSafeNumber(unit?.actionPointMax, 100)));
+  const current = Math.max(0, Math.min(max, Math.round(toSafeNumber(unit?.actionPoint, max))));
+  return { current, max, ratio: current / max };
+}
+
+function buildActionPointBarFillStyle(actionPointState) {
+  return {
+    width: `${Math.round(clamp01(actionPointState?.ratio) * 1000) / 10}%`,
+    background: "linear-gradient(90deg, #1779bb, #66c8ff)"
+  };
+}
+
 const selectedCharacterHpState = computed(() => {
   const unit = selectedCharacter.value;
   return buildHpState(unit);
 });
+
+const selectedCharacterActionPointState = computed(() => buildActionPointState(selectedCharacter.value));
 
 function normalizeSelectedCharacter() {
   const candidates = tileUnitRows.value;
@@ -605,12 +620,21 @@ watch(selectedEnemySkillRows, (rows) => {
 
               <div class="field-footer-character-status-col">
                 <template v-if="selectedCharacter">
-                  <div class="own-faction-hp-line field-footer-hp-line">
-                    <span class="own-faction-hp-label">HP:</span>
-                    <span class="own-faction-hp-bar">
-                      <i :style="buildHpBarFillStyle(selectedCharacterHpState)"></i>
-                      <b>{{ selectedCharacterHpState.current }} / {{ selectedCharacterHpState.max }}</b>
-                    </span>
+                  <div class="field-footer-vital-stack">
+                    <div class="own-faction-hp-line field-footer-hp-line">
+                      <span class="own-faction-hp-label">HP:</span>
+                      <span class="own-faction-hp-bar">
+                        <i :style="buildHpBarFillStyle(selectedCharacterHpState)"></i>
+                        <b>{{ selectedCharacterHpState.current }} / {{ selectedCharacterHpState.max }}</b>
+                      </span>
+                    </div>
+                    <div class="own-faction-hp-line field-footer-ap-line">
+                      <span class="own-faction-hp-label">AP:</span>
+                      <span class="own-faction-hp-bar own-faction-ap-bar">
+                        <i :style="buildActionPointBarFillStyle(selectedCharacterActionPointState)"></i>
+                        <b>{{ selectedCharacterActionPointState.current }} / {{ selectedCharacterActionPointState.max }}</b>
+                      </span>
+                    </div>
                   </div>
                   <div class="field-footer-inline-status">
                     <div
@@ -1121,6 +1145,31 @@ watch(selectedEnemySkillRows, (rows) => {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #3bb75d, #8ae58f);
+}
+
+.field-footer-ap-line {
+  margin-top: 0;
+}
+
+.field-footer-vital-stack {
+  display: grid;
+  gap: 0;
+}
+
+.field-footer-vital-stack .own-faction-hp-label {
+  font-size: 12px;
+}
+
+.field-footer-vital-stack .own-faction-hp-bar {
+  height: 10px;
+}
+
+.field-footer-vital-stack .own-faction-hp-bar b {
+  font-size: 11px;
+}
+
+.own-faction-hp-bar.own-faction-ap-bar i {
+  background: linear-gradient(90deg, #1779bb, #66c8ff);
 }
 
 .own-faction-hp-bar b {

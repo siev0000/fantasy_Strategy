@@ -372,6 +372,8 @@ const showTestControls = ref(false);
 const runtimeMemoryText = ref("-");
 const testPlayerSlots = ref([]); // テスト用プレイヤー勢力スロット
 const activeTestPlayerId = ref(DEFAULT_TEST_PLAYER_ID); // 現在操作中プレイヤーID
+const diplomacyRelations = ref({}); // 勢力ペアごとの戦争状態・外交評価ペナルティ
+const warDeclarationPending = ref(null);
 const headerMinimized = ref(false);
 const showTurnActionModal = ref(false);
 const clockNowMs = ref(Date.now());
@@ -380,6 +382,7 @@ const clockElapsedMs = ref(0);
 const clockLastTickRealMs = ref(Date.now());
 const autoTimeRunning = ref(true);
 const autoTimePausedByCheckpoint = ref(false);
+const turnTicker = ref({ text: "", kind: "progress", key: 0 });
 const villageState = ref(null);
 const unitList = ref([]);
 const deadUnitReserve = ref([]); // 回収済み死亡ユニットを保持する死亡枠（蘇生元データ）
@@ -491,12 +494,16 @@ const TILE_ATTACK_PATTERN_OPTIONS = Object.freeze([
 const TILE_ATTACK_RANGE_MIN = 1;
 const TILE_ATTACK_RANGE_MAX = 12;
 const SKILL_ACTIVE_ACTION_CODE = "A";
+const UNIT_ACTION_POINT_MAX = 100; // 各ユニットが1ターンに使える行動ポイントの最大値
+const DEFAULT_ATTACK_ACTION_POINT_COST = 40; // スキルのAP消費が未記載の攻撃に使う既定コスト
 const DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS = new Set(["straight", "fan", "front"]);
 const TILE_ATTACK_PATTERN_KEY_SET = new Set(TILE_ATTACK_PATTERN_OPTIONS.map(row => row.key));
 const TILE_ATTACK_PATTERN_LABEL_MAP = new Map(TILE_ATTACK_PATTERN_OPTIONS.map(row => [row.key, row.label]));
 const TILE_ATTACK_PREVIEW_COLOR_RANGE = 0xffee72;
 const TILE_ATTACK_PREVIEW_COLOR_HIT = 0xff4f4f;
 const TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF = 0xffb347;
+const SCOUT_RANGE_BOUNDARY_COLOR = 0x58c8bb;
+const SCOUT_RANGE_BOUNDARY_ALPHA = 0.35;
 const MONSTER_BEHAVIOR_ACTION_OPTIONS = Object.freeze([
   { key: "approach", label: "接近" },
   { key: "melee_attack", label: "通常攻撃" },
@@ -605,6 +612,7 @@ let unitDamageBlinkUntilMsById = new Map();
 let unitRecentDamageAmountById = new Map();
 let activeDamagePopupTexts = new Set();
 let lastClockTurnCycleIndex = 0;
+let turnTickerTimerId = null;
 let cameraInitialized = false;
 let pendingClickFocusWorld = null;
 let pendingClickFocusMode = "near";
@@ -998,6 +1006,13 @@ const ownFactionAttackPanelSkillRows = computed(() => {
   });
   return [...weaponRows, ...skillRows];
 });
+
+const ownFactionAttackPanelActionPoint = computed(() => resolveUnitActionPoint(ownFactionAttackPanelUnit.value));
+const ownFactionAttackPanelActionPointMax = computed(() => resolveUnitActionPointMax(ownFactionAttackPanelUnit.value));
+
+function isOwnFactionAttackRowAffordable(row) {
+  return resolveSkillActionPointCost(row?.skillRowRef) <= ownFactionAttackPanelActionPoint.value;
+}
 
 const ownFactionAttackPanelSelectedSkillRow = computed(() => {
   const selectedName = nonEmptyText(ownFactionAttackPanelSelectedSkillName.value);
@@ -1931,12 +1946,32 @@ function resetClockRuntime(nowMs = Date.now()) {
   resetClockTurnCycleIndex(now);
 }
 
+function showTurnTicker(textRaw, kindRaw = "progress") {
+  const text = nonEmptyText(textRaw);
+  if (!text) return;
+  if (turnTickerTimerId) {
+    window.clearTimeout(turnTickerTimerId);
+    turnTickerTimerId = null;
+  }
+  const kind = kindRaw === "paused" || kindRaw === "stopped" ? kindRaw : "progress";
+  turnTicker.value = {
+    text,
+    kind,
+    key: turnTicker.value.key + 1
+  };
+  turnTickerTimerId = window.setTimeout(() => {
+    turnTicker.value = { ...turnTicker.value, text: "" };
+    turnTickerTimerId = null;
+  }, 3800);
+}
+
 function startAutoTimeProgress(options = {}) {
   autoTimeRunning.value = true;
   autoTimePausedByCheckpoint.value = false;
   clockLastTickRealMs.value = Date.now();
   if (options?.announce) {
     updateUnitInfoText("自動時間経過を開始しました。");
+    showTurnTicker("自動時間経過を開始", "progress");
   }
 }
 
@@ -1948,6 +1983,7 @@ function stopAutoTimeProgress(options = {}) {
   clockLastTickRealMs.value = Date.now();
   if (options?.announce) {
     updateUnitInfoText("自動時間経過を停止しました。");
+    showTurnTicker("自動時間経過を停止", "stopped");
   }
 }
 
@@ -1977,6 +2013,7 @@ function processClockTurnProgress() {
       autoTimeRunning.value = false;
       autoTimePausedByCheckpoint.value = true;
       updateUnitInfoText(`自動時間経過を停止: ${AUTO_TURN_PAUSE_EVERY_TURNS}T経過。時計から「開始」で再開できます。`);
+      showTurnTicker(`${AUTO_TURN_PAUSE_EVERY_TURNS}ターン経過: 自動進行を停止`, "paused");
       showTurnActionModal.value = true;
       break;
     }
@@ -2523,6 +2560,8 @@ const TILE_DANGER_UNOWNED_INCREASE_PERCENT = 20;
 const FIELD_BATTLE_HP_COST = 20;
 const FIELD_BATTLE_RESULT_MODAL_ENABLED = false;
 const FRIENDLY_FIRE_DAMAGE_RATE = 0.5;
+const WAR_DECLARATION_DIPLOMACY_PENALTY = -20; // 宣戦布告時の外交評価ペナルティ
+const WAR_DECLARATION_PENALTY_TURNS = 20; // 宣戦布告ペナルティの継続ターン数
 const SKILL_DAMAGE_RANDOM_RATE_A = 0.5;
 const SKILL_DAMAGE_RANDOM_RATE_B = 0.4;
 const ATTACK_DAMAGE_TYPE_KEYS = Object.freeze([
@@ -3651,7 +3690,9 @@ function buildEquipmentSkillRow(equipmentRow, entry) {
   const qualityLabel = nonEmptyText(entry?.qualityLabel);
   const attackAp = Math.round(toSafeNumber(entry?.attackAp, 0));
   const magicAp = Math.round(toSafeNumber(entry?.magicAp, 0));
-  const apCost = Math.max(0, Math.abs(attackAp) + Math.abs(magicAp));
+  // 装備の攻撃AP/魔法APが未設定でも、通常攻撃は行動としてAPを消費する。
+  const rawApCost = Math.max(0, Math.abs(attackAp) + Math.abs(magicAp));
+  const apCost = rawApCost > 0 ? rawApCost : DEFAULT_ATTACK_ACTION_POINT_COST;
   const traitsText = Array.isArray(entry?.traits)
     ? entry.traits.map(v => nonEmptyText(v)).filter(Boolean).join(" / ")
     : "";
@@ -4773,12 +4814,17 @@ function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
     return Number.POSITIVE_INFINITY;
   }
 
-  // 基本1 + 登り(高度差1につき+2)。
-  let cost = 1 + (climbDiff * 2);
+  // 基本1 + 登り(高度差1につき+2)。移動力4なら平地1マスはAP25となる。
+  let terrainCost = 1 + (climbDiff * 2);
   // 飛行30ごとに移動コスト-1。0未満にはしない。
   const flightReduction = Math.floor(flightValue / 30);
-  cost = Math.max(0, cost - flightReduction);
-  return cost;
+  terrainCost = Math.max(0, terrainCost - flightReduction);
+  const moveStat = Math.max(1, Math.floor(toSafeNumber(
+    moveUnit?.status?.移動,
+    toSafeNumber(moveUnit?.移動, toSafeNumber(moveUnit?.moveRange, 1))
+  )));
+  const baseApCost = UNIT_ACTION_POINT_MAX / moveStat;
+  return Math.max(0, Math.ceil(terrainCost * baseApCost));
 }
 
 function roundTo1(value) {
@@ -6043,6 +6089,7 @@ function resetTestPlayerSlotsFromLiveState() {
   const primary = buildTestPlayerSlotFromLiveState(DEFAULT_TEST_PLAYER_ID, PRIMARY_TEST_PLAYER_LABEL, { isPlayer: true, ready: false });
   testPlayerSlots.value = [primary];
   activeTestPlayerId.value = primary.id;
+  diplomacyRelations.value = {};
 }
 
 function ensureTestPlayerSlotsInitialized() {
@@ -6081,6 +6128,7 @@ function initializeTestPlayerSlotsFromConfig(config = {}) {
   }
   testPlayerSlots.value = nextSlots;
   activeTestPlayerId.value = nextSlots[0]?.id || DEFAULT_TEST_PLAYER_ID;
+  diplomacyRelations.value = {};
   const activeSlot = nextSlots[0] || null;
   if (activeSlot?.factionState) {
     applyFactionStateSnapshotToLiveState(activeSlot.factionState, { emitState: true, render: !!currentData.value });
@@ -6481,6 +6529,86 @@ function resolveFactionLabelById(slotId = "") {
   if (!id) return "";
   const slot = testPlayerSlots.value.find(row => nonEmptyText(row?.id) === id) || null;
   return nonEmptyText(slot?.label);
+}
+
+function buildFactionRelationKey(firstIdRaw = "", secondIdRaw = "") {
+  const firstId = nonEmptyText(firstIdRaw);
+  const secondId = nonEmptyText(secondIdRaw);
+  if (!firstId || !secondId || firstId === secondId) return "";
+  return [firstId, secondId].sort((a, b) => a.localeCompare(b)).join("|");
+}
+
+function resolveFactionRaceById(slotIdRaw = "") {
+  const slotId = nonEmptyText(slotIdRaw);
+  const slot = testPlayerSlots.value.find(row => nonEmptyText(row?.id) === slotId) || null;
+  return nonEmptyText(slot?.race)
+    || resolveRaceFromUnitList(slot?.factionState?.units)
+    || "";
+}
+
+function isDemonFactionPair(firstIdRaw = "", secondIdRaw = "") {
+  return resolveFactionRaceById(firstIdRaw) === "魔族"
+    && resolveFactionRaceById(secondIdRaw) === "魔族";
+}
+
+function resolveFactionWarState(firstIdRaw = "", secondIdRaw = "") {
+  const key = buildFactionRelationKey(firstIdRaw, secondIdRaw);
+  const state = key ? diplomacyRelations.value?.[key] : null;
+  return state && typeof state === "object" ? state : null;
+}
+
+function canAttackOtherFaction(firstIdRaw = "", secondIdRaw = "") {
+  const firstId = nonEmptyText(firstIdRaw);
+  const secondId = nonEmptyText(secondIdRaw);
+  if (!firstId || !secondId || firstId === secondId) return true;
+  if (isDemonFactionPair(firstId, secondId)) return true;
+  return resolveFactionWarState(firstId, secondId)?.atWar === true;
+}
+
+function requestWarDeclaration(targetFactionIdRaw = "") {
+  const attackerFactionId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const targetFactionId = nonEmptyText(targetFactionIdRaw);
+  if (!targetFactionId || targetFactionId === attackerFactionId) return false;
+  if (canAttackOtherFaction(attackerFactionId, targetFactionId)) return false;
+  warDeclarationPending.value = {
+    attackerFactionId,
+    targetFactionId,
+    targetLabel: resolveFactionLabelById(targetFactionId) || "他勢力",
+    penalty: WAR_DECLARATION_DIPLOMACY_PENALTY,
+    penaltyTurns: WAR_DECLARATION_PENALTY_TURNS
+  };
+  return true;
+}
+
+function closeWarDeclarationModal() {
+  warDeclarationPending.value = null;
+}
+
+function confirmWarDeclaration() {
+  const pending = warDeclarationPending.value;
+  const attackerFactionId = nonEmptyText(pending?.attackerFactionId);
+  const targetFactionId = nonEmptyText(pending?.targetFactionId);
+  const key = buildFactionRelationKey(attackerFactionId, targetFactionId);
+  if (!key) return;
+  const currentTurn = Math.max(0, Math.floor(toSafeNumber(mapTurnNumber.value, 0)));
+  const penaltyExempt = isDemonFactionPair(attackerFactionId, targetFactionId);
+  diplomacyRelations.value = {
+    ...diplomacyRelations.value,
+    [key]: {
+      atWar: true,
+      declaredAtTurn: currentTurn,
+      declaredBy: attackerFactionId,
+      diplomacyPenalty: penaltyExempt ? 0 : WAR_DECLARATION_DIPLOMACY_PENALTY,
+      penaltyUntilTurn: penaltyExempt ? currentTurn : currentTurn + WAR_DECLARATION_PENALTY_TURNS
+    }
+  };
+  const targetLabel = nonEmptyText(pending?.targetLabel) || resolveFactionLabelById(targetFactionId) || "他勢力";
+  const penaltyText = penaltyExempt ? "魔族同士のため外交ペナルティなし" : `外交評価${WAR_DECLARATION_DIPLOMACY_PENALTY} (${WAR_DECLARATION_PENALTY_TURNS}T)`;
+  const message = `${targetLabel}へ宣戦布告: ${penaltyText}`;
+  updateUnitInfoText(message);
+  pushNationLog(message);
+  emitCharacterStateChange();
+  closeWarDeclarationModal();
 }
 
 function borderStyleForOwner(owner, factionOwnerId = "") {
@@ -7036,12 +7164,51 @@ function addVisionRangeKeys(data, sx, sy, range, outSet) {
   }
 }
 
+function buildCurrentScoutRangeTileSet(data) {
+  const dynamicVisible = new Set();
+  if (!data?.grid) return dynamicVisible;
+
+  const v = villageState.value;
+  if (v?.placed && Number.isFinite(v.x) && Number.isFinite(v.y)) {
+    addVisionRangeKeys(data, v.x, v.y, BASE_VILLAGE_SCOUT_RANGE, dynamicVisible);
+  }
+  for (const unit of unitList.value) {
+    if (!Number.isFinite(unit?.x) || !Number.isFinite(unit?.y) || unit.x < 0 || unit.y < 0) continue;
+    addVisionRangeKeys(data, unit.x, unit.y, resolveUnitVisionRange(unit), dynamicVisible);
+  }
+  return dynamicVisible;
+}
+
+function drawScoutRangeBoundaryOverlay(data, scoutRangeTileKeys, graphics, wrapOffsets) {
+  if (!data?.grid || !graphics || !(scoutRangeTileKeys instanceof Set) || !scoutRangeTileKeys.size) return;
+  const wrapEnabled = resolveWorldWrapEnabled(data);
+  graphics.lineStyle(1, SCOUT_RANGE_BOUNDARY_COLOR, SCOUT_RANGE_BOUNDARY_ALPHA);
+  for (const tileKey of scoutRangeTileKeys) {
+    const [xText, yText] = String(tileKey).split(",");
+    const x = Number(xText);
+    const y = Number(yText);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
+    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, x, y, wrapEnabled);
+    for (const neighbor of neighbors) {
+      // 索敵範囲内で接する辺は描かず、範囲外との境界だけを残す。
+      if (scoutRangeTileKeys.has(coordKey(neighbor.x, neighbor.y))) continue;
+      for (const offset of wrapOffsets) {
+        if (!shouldDrawWrappedTileCopy(x, y, offset, data.w, data.h)) continue;
+        const segment = resolveSharedHexEdgePoints(x, y, neighbor.x, neighbor.y, offset?.x || 0, offset?.y || 0);
+        if (!segment) continue;
+        graphics.lineBetween(segment[0].x, segment[0].y, segment[1].x, segment[1].y);
+      }
+    }
+  }
+}
+
 function rebuildVisibleTiles(data) {
   if (!data?.grid) {
     visibleTileKeys = new Set();
     currentVisionTileKeys = new Set();
-    return;
+    return new Set();
   }
+  const dynamicVisible = buildCurrentScoutRangeTileSet(data);
   if (shouldDisableFog(data)) {
     const all = new Set();
     for (let y = 0; y < data.h; y += 1) {
@@ -7051,23 +7218,14 @@ function rebuildVisibleTiles(data) {
     }
     visibleTileKeys = all;
     currentVisionTileKeys = all;
-    return;
-  }
-
-  const dynamicVisible = new Set();
-  const v = villageState.value;
-  if (v?.placed && Number.isFinite(v.x) && Number.isFinite(v.y)) {
-    addVisionRangeKeys(data, v.x, v.y, BASE_VILLAGE_SCOUT_RANGE, dynamicVisible);
-  }
-  for (const unit of unitList.value) {
-    if (!Number.isFinite(unit?.x) || !Number.isFinite(unit?.y) || unit.x < 0 || unit.y < 0) continue;
-    addVisionRangeKeys(data, unit.x, unit.y, resolveUnitVisionRange(unit), dynamicVisible);
+    return dynamicVisible;
   }
   for (const key of dynamicVisible) {
     exploredTileKeys.add(key);
   }
   currentVisionTileKeys = dynamicVisible;
   visibleTileKeys = new Set(exploredTileKeys);
+  return dynamicVisible;
 }
 
 function isTileVisible(tileKey, data) {
@@ -8941,7 +9099,9 @@ function createUnitRecord({
     x: -1,
     y: -1,
     moveRange,
-    moveRemaining: moveRange,
+    actionPointMax: UNIT_ACTION_POINT_MAX,
+    actionPoint: UNIT_ACTION_POINT_MAX,
+    moveRemaining: UNIT_ACTION_POINT_MAX,
     scoutRange: 4,
     squadCount: 0,
     squads: [],
@@ -9518,7 +9678,9 @@ function buildFactionStateWithVillagePlacement(slot, data, placement) {
       ...unit,
       x: placement.x,
       y: placement.y,
-      moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit?.moveRange, 0)))
+      actionPointMax: resolveUnitActionPointMax(unit),
+      actionPoint: resolveUnitActionPointMax(unit),
+      moveRemaining: resolveUnitActionPointMax(unit)
     }))
     : [];
   const tileKey = coordKey(placement.x, placement.y);
@@ -10069,7 +10231,9 @@ function placeVillageAt(x, y) {
     ...unit,
     x,
     y,
-    moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit.moveRange, 0)))
+    actionPointMax: resolveUnitActionPointMax(unit),
+    actionPoint: resolveUnitActionPointMax(unit),
+    moveRemaining: resolveUnitActionPointMax(unit)
   }));
   if (unitList.value.length) {
     selectedUnitId.value = unitList.value[0].id;
@@ -10291,6 +10455,7 @@ function buildMapSnapshotForSave() {
     },
     multiplayer: {
       activePlayerId: nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID,
+      diplomacyRelations: deepCloneJsonValue(diplomacyRelations.value, {}),
       players: testPlayerSlots.value.map(slot => ({
         id: nonEmptyText(slot?.id),
         label: nonEmptyText(slot?.label),
@@ -10489,6 +10654,7 @@ function applyLoadedSaveState(payload) {
   const fallbackFactionState = normalizeFactionStateFromSave(saveFaction, fallbackVisibility);
   const loadedSlots = normalizeTestPlayersFromSave(mapSnapshot?.multiplayer?.players, fallbackVisibility);
   const loadedActiveId = nonEmptyText(mapSnapshot?.multiplayer?.activePlayerId);
+  diplomacyRelations.value = deepCloneJsonValue(mapSnapshot?.multiplayer?.diplomacyRelations, {});
 
   applyMapData(nextData, {
     resetClock: false,
@@ -11725,7 +11891,7 @@ function updateUnitInfoText(extra = "") {
     : "";
   const memberTag = squadLeaderName ? ` / 隊員(${squadLeaderName})` : "";
   const sovereignTag = isSovereignUnit(unit) ? " / 統治者" : "";
-  const moveRemaining = Math.max(0, Math.floor(toSafeNumber(unit.moveRemaining, unit.moveRange)));
+  const actionPoint = resolveUnitActionPoint(unit);
   const squadCount = Math.max(0, Math.floor(toSafeNumber(unit.squadCount, 0)));
   const lock = resolveEncounterMoveLock(unit.id);
   const lockTag = lock ? ` / ${formatEncounterMoveLockReason(lock)}` : "";
@@ -11738,7 +11904,7 @@ function updateUnitInfoText(extra = "") {
     ? ` / 調査中(危険度${surveyDangerPercent}%)`
     : "";
   const level = clampUnitLevel(unit?.level, INITIAL_LEVEL_MIN);
-  unitInfoText.value = `選択ユニット: ${unit.name}(${role})${sovereignTag}${leaderTag}${memberTag} / Lv${level} / 種族:${unit.race} / クラス:${unit.className} / 位置(${unit.x}, ${unit.y}) / 移動${unit.moveRange} 残${moveRemaining} / 索敵${unit.scoutRange} / 部隊${squadCount}${lockTag}${surveyTag} / 装備:${eqText}${note}`;
+  unitInfoText.value = `選択ユニット: ${unit.name}(${role})${sovereignTag}${leaderTag}${memberTag} / Lv${level} / 種族:${unit.race} / クラス:${unit.className} / 位置(${unit.x}, ${unit.y}) / 移動${unit.moveRange} / AP${actionPoint}/100 / 索敵${unit.scoutRange} / 部隊${squadCount}${lockTag}${surveyTag} / 装備:${eqText}${note}`;
 }
 
 function resolveTileTerrainForYield(data, x, y) {
@@ -11867,6 +12033,37 @@ function resolveUnitCurrentHpValue(unit, maxHp = resolveUnitMaxHpValue(unit)) {
   return Math.max(0, Math.min(maxHp, rawCurrent));
 }
 
+function resolveUnitActionPointMax(unit) {
+  return Math.max(1, Math.floor(toSafeNumber(unit?.actionPointMax, UNIT_ACTION_POINT_MAX)));
+}
+
+function resolveUnitActionPoint(unit) {
+  const max = resolveUnitActionPointMax(unit);
+  return Math.max(0, Math.min(max, Math.floor(toSafeNumber(unit?.actionPoint, max))));
+}
+
+function resolveSkillActionPointCost(skillRow, fallback = DEFAULT_ATTACK_ACTION_POINT_COST) {
+  const raw = skillRow?.AP消費;
+  if (raw === null || raw === undefined || String(raw).trim() === "") return Math.max(0, Math.floor(fallback));
+  return Math.max(0, Math.ceil(toSafeNumber(raw, fallback)));
+}
+
+function spendUnitActionPoint(unitId, amount) {
+  const cost = Math.max(0, Math.ceil(toSafeNumber(amount, 0)));
+  const index = unitList.value.findIndex(unit => unit?.id === unitId);
+  if (index < 0) return false;
+  const unit = unitList.value[index];
+  const current = resolveUnitActionPoint(unit);
+  if (cost > current) return false;
+  unitList.value[index] = {
+    ...unit,
+    actionPointMax: resolveUnitActionPointMax(unit),
+    actionPoint: current - cost,
+    moveRemaining: current - cost
+  };
+  return true;
+}
+
 function resolveUnitLifeStateLabelFromHp(currentHpRaw = 0) {
   const hp = Math.floor(toSafeNumber(currentHpRaw, 0));
   return hp <= 0 ? DEAD_UNIT_STATE_LABEL : "";
@@ -11907,6 +12104,7 @@ function applyUnitLifeState(target, currentHpRaw = target?.currentHp) {
     target.isDead = true;
     target.deadAtMs = deadAt;
     target.deadExpireAtMs = resolveDeadUnitExpireAtMs(target, nowMs);
+    target.actionPoint = 0;
     target.moveRemaining = 0;
     return target;
   }
@@ -11929,7 +12127,10 @@ function normalizeUnitHpRuntime(unit) {
   return applyUnitLifeState({
     ...unit,
     maxHp,
-    currentHp
+    currentHp,
+    actionPointMax: resolveUnitActionPointMax(unit),
+    actionPoint: resolveUnitActionPoint(unit),
+    moveRemaining: resolveUnitActionPoint(unit)
   }, currentHp);
 }
 
@@ -15233,7 +15434,7 @@ function renderMapWithPhaser() {
   hitAreas = [];
   hitAreaMap = new Map();
   rebuildTerritorySets(data);
-  rebuildVisibleTiles(data);
+  const scoutRangeTileKeys = rebuildVisibleTiles(data);
   const opposingFactionTileMap = buildOpposingFactionUnitsByTile(data);
 
   baseLayer.fillStyle(0x101623, 1);
@@ -15911,6 +16112,7 @@ function renderMapWithPhaser() {
     }
   }
   renderedHexBounds = finalizeBounds(boundsAcc, worldW, worldH);
+  drawScoutRangeBoundaryOverlay(data, scoutRangeTileKeys, baseLayer, wrapOffsets);
   drawConnectedHeightDiffSegments(baseLayer, heightDiffSegments);
 
   for (const placement of cityBlockVisualEntries) {
@@ -16138,7 +16340,6 @@ function renderMapWithPhaser() {
           markerLayer.fillRoundedRect(hpBarX + hpFillWidth, hpBarY, hpDamageWidth, hpBarHeight, 2);
         }
       }
-
       if (members.length > 1) {
         const countText = scene.add.text(
           unitMx + MAP_UNIT_MARKER_CONFIG.radius * 0.66,
@@ -16473,7 +16674,7 @@ function runTurnForActiveFaction(data, options = {}) {
   clearEncounterMoveLocks();
   clearLastMoveStopState();
   resetAllUnitMoveRemaining();
-  pushNationLog("移動残量回復: 全ユニットの移動残を最大まで回復");
+  pushNationLog("AP回復: 全ユニットのAPを100まで回復");
   const economyResult = processVillageEconomyTurn(data, {
     raceFallback: nonEmptyText(options?.raceFallback),
     emitState: false
@@ -16582,7 +16783,8 @@ function runNextTurn(options = {}) {
     resetClock: false,
     rebuildCharacters: false,
     forceCenterOnInit: false,
-    focusPrimaryOnInit: true,
+    focusPrimaryOnInit: false,
+    preserveCameraView: true,
     preserveTileSelection: true,
     applyUnownedDangerIncrease: true
   });
@@ -16633,6 +16835,7 @@ function runNextTurn(options = {}) {
   emitCharacterStateChange();
   renderMapWithPhaser();
   pushNationLog(`ターン進行: T${turn} / ${eventModeLabel(mode)} / イベント${result.events.length}件`);
+  showTurnTicker(`ターン ${turn} 経過`, "progress");
   if (showEventModalForThisTurn) {
     showEventModal.value = true;
   }
@@ -16914,13 +17117,7 @@ function handleFooterMoveRequest(payload = {}) {
     updateUnitInfoText(`移動対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
     return;
   }
-  const target = resolved.leader;
-  const selectedId = nonEmptyText(selectedUnitId.value);
-  if (
-    isMoveCommandPendingForSelectedUnit.value
-    && selectedId
-    && selectedId === nonEmptyText(target?.id)
-  ) {
+  if (nonEmptyText(moveCommandUnitId.value)) {
     clearMoveCommandState({ clearCandidate: false });
     updateUnitInfoText("移動指示を解除しました。");
     renderMapWithPhaser();
@@ -16936,14 +17133,8 @@ function handleFooterAttackRequest(payload = {}) {
     suppressFooterSkillModalOnce.value = true;
     return;
   }
-  const target = resolved.leader;
-  const selectedId = nonEmptyText(selectedUnitId.value);
-  if (
-    tileAttackSelectionMode.value
-    && selectedId
-    && selectedId === nonEmptyText(target?.id)
-  ) {
-    cancelTileAttackSelectionMode();
+  if (tileAttackSelectionMode.value || ownFactionPanelViewMode.value === "attack") {
+    closeOwnFactionAttackPanel({ cancelPreview: true });
     suppressFooterSkillModalOnce.value = true;
     return;
   }
@@ -17070,6 +17261,14 @@ function closeOwnFactionAttackPanel(options = {}) {
 function handleOwnFactionAttackSkillSelect(payload = {}, options = {}) {
   const skillName = nonEmptyText(payload?.name || payload?.skillName || payload);
   if (!skillName) return;
+  const selectedRow = ownFactionAttackPanelSkillRows.value
+    .find(row => nonEmptyText(row?.name) === skillName) || null;
+  const actionPointCost = resolveSkillActionPointCost(selectedRow?.skillRowRef);
+  const actionPoint = resolveUnitActionPoint(ownFactionAttackPanelUnit.value);
+  if (actionPointCost > actionPoint) {
+    updateUnitInfoText(`AP不足: ${skillName} はAP${actionPointCost}必要です。残りAP${actionPoint}`);
+    return;
+  }
   ownFactionAttackPanelSelectedSkillName.value = skillName;
   footerUnitSkillModalSelectedSkillName.value = skillName;
   selectedTileAttackSkillName.value = skillName;
@@ -17724,6 +17923,7 @@ function applyMapData(data, options = {}) {
   zoomPercent.value = normalizeZoomPercent(zoomPercent.value, normalizedData);
   customWorldWrapEnabled.value = !!normalizedData.worldWrapEnabled;
   const preserveTileSelection = options?.preserveTileSelection === true;
+  const preserveCameraView = options?.preserveCameraView === true;
   const previousSelectedTileKey = nonEmptyText(selectedTileKey);
   const previousSelectedTileDetail = selectedTileDetail.value;
   selectedTileKey = "";
@@ -17764,8 +17964,14 @@ function applyMapData(data, options = {}) {
   clearHousingUpgradeSelectionState();
   clearLastMoveStopState();
   showMoveUnitModal.value = false;
-  cameraInitialized = false;
-  forceMapCenterOnNextRender = options.forceCenterOnInit !== false;
+  if (preserveCameraView) {
+    // ターン更新は同じマップの状態差し替えなので、閲覧中の視点を維持する。
+    forceMapCenterOnNextRender = false;
+    centerMapOnNextZoom = false;
+  } else {
+    cameraInitialized = false;
+    forceMapCenterOnNextRender = options.forceCenterOnInit !== false;
+  }
   pendingClickFocusWorld = null;
   pendingClickFocusMode = "near";
   dragPointerId = null;
@@ -17791,7 +17997,7 @@ function applyMapData(data, options = {}) {
   applyDangerRulesByTerritory(normalizedData, {
     applyUnownedIncrease: options.applyUnownedDangerIncrease === true
   });
-  if (options.focusPrimaryOnInit === true) {
+  if (!preserveCameraView && options.focusPrimaryOnInit === true) {
     const focused = focusActiveFactionPrimaryTile({
       village: villageState.value,
       units: unitList.value
@@ -20442,6 +20648,7 @@ function applySkillDamageToFactionUnits(options = {}) {
     weaponRow: options?.weaponRow || null
   })));
   const includeSpawnTargets = options?.includeSpawnTargets === true;
+  const canDamageTarget = typeof options?.canDamageTarget === "function" ? options.canDamageTarget : null;
   const attackCount = resolveSkillAttackHitCount(skillRow);
   const defenseKey = resolveSkillDefenseStatKey(skillRow);
   const tileScaleMap = buildTileAttackDamageScaleMap(data, picked, splashSpec);
@@ -20458,6 +20665,7 @@ function applySkillDamageToFactionUnits(options = {}) {
     if (splashScale <= 0) continue;
     const targets = collectFactionUnitsAtTile(point.x, point.y, data, { includeSpawnTargets });
     for (const target of targets) {
+      if (canDamageTarget && !canDamageTarget(target)) continue;
       const unitId = nonEmptyText(target?.unitId);
       const slotId = nonEmptyText(target?.slotId);
       if (!unitId || !slotId || !target?.unit) continue;
@@ -21433,6 +21641,33 @@ function handleTileAttackSelectionClick(picked) {
     updateUnitInfoText(`${resolveTileAttackPatternLabel(effectivePatternKey)}範囲外のため攻撃できません。`);
     return true;
   }
+  const selectedSkillName = nonEmptyText(selectedTileAttackSkillName.value)
+    || nonEmptyText(footerUnitSkillModalSelectedSkillName.value)
+    || "通常攻撃";
+  const selectedSkillRow = resolveSkillInfoRowByName(selectedSkillName);
+  const selectedPanelRow = ownFactionAttackPanelSkillRows.value
+    .find(row => nonEmptyText(row?.name) === selectedSkillName) || null;
+  // 装備攻撃は同名のマスタースキルではなく、画面で選んだ生成済み行のAP消費を使う。
+  const selectedAttackSkillRow = selectedPanelRow?.skillRowRef || selectedSkillRow;
+  const actionPointCost = resolveSkillActionPointCost(selectedAttackSkillRow);
+  const actionPoint = resolveUnitActionPoint(leader);
+  if (actionPointCost > actionPoint) {
+    updateUnitInfoText(`AP不足: ${selectedSkillName} はAP${actionPointCost}必要です。残りAP${actionPoint}`);
+    return true;
+  }
+  const activeFactionId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const targetAtPicked = resolveAttackTargetAtTile(picked.x, picked.y, {
+    data: currentData.value,
+    factionTileMap: buildOpposingFactionUnitsByTile(currentData.value),
+    requireSpotted: true
+  });
+  const undeclaredFactionId = (Array.isArray(targetAtPicked?.factionIds) ? targetAtPicked.factionIds : [])
+    .find(factionId => !canAttackOtherFaction(activeFactionId, factionId));
+  if (undeclaredFactionId) {
+    requestWarDeclaration(undeclaredFactionId);
+    updateUnitInfoText(`${resolveFactionLabelById(undeclaredFactionId) || "他勢力"}への攻撃には宣戦布告が必要です。`);
+    return true;
+  }
   const splashSpec = resolveSelectedTileAttackSplashSpec();
   const attackEffectPayload = buildTileAttackEffectPlayPayload(picked, leader, splashSpec);
   if (attackEffectPayload) {
@@ -21451,13 +21686,11 @@ function handleTileAttackSelectionClick(picked) {
       splashValue: toSafeNumber(splashSpec?.value, 0)
     });
   }
-  const selectedSkillName = nonEmptyText(selectedTileAttackSkillName.value)
-    || nonEmptyText(footerUnitSkillModalSelectedSkillName.value)
-    || "通常攻撃";
-  const selectedSkillRow = resolveSkillInfoRowByName(selectedSkillName);
-  const selectedPanelRow = ownFactionAttackPanelSkillRows.value
-    .find(row => nonEmptyText(row?.name) === selectedSkillName) || null;
-  const activeFactionId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  // ダメージの有無にかかわらず、攻撃の発動確定時にAPを消費する。
+  if (!spendUnitActionPoint(leader.id, actionPointCost)) {
+    updateUnitInfoText(`AP不足: ${selectedSkillName} はAP${actionPointCost}必要です。残りAP${resolveUnitActionPoint(leader)}`);
+    return true;
+  }
   const damageResult = applySkillDamageToFactionUnits({
     data: currentData.value,
     picked,
@@ -21467,16 +21700,20 @@ function handleTileAttackSelectionClick(picked) {
     attackerUnit: leader,
     attackerLabel: nonEmptyText(leader?.name) || "ユニット",
     skillName: selectedSkillName,
-    skillRow: selectedSkillRow,
-    attackMethod: nonEmptyText(selectedPanelRow?.attackStyle) || nonEmptyText(selectedSkillRow?.攻撃手段) || "通常",
+    skillRow: selectedAttackSkillRow,
+    attackMethod: nonEmptyText(selectedPanelRow?.attackStyle) || nonEmptyText(selectedAttackSkillRow?.攻撃手段) || "通常",
     powerOverride: toSafeNumber(selectedPanelRow?.power, Number.NaN),
-    weaponRow: resolvePrimaryWeaponBaseSkillRowForUnit(leader)
+    weaponRow: resolvePrimaryWeaponBaseSkillRowForUnit(leader),
+    canDamageTarget: target => {
+      const targetFactionId = nonEmptyText(target?.slotId);
+      return !targetFactionId || targetFactionId === "__spawn__" || canAttackOtherFaction(activeFactionId, targetFactionId);
+    }
   });
   if (damageResult.applied) {
     cancelTileAttackSelectionMode(true);
     kickOffBgm();
     audio.playSe("confirm");
-    updateUnitInfoText(damageResult.summary || "攻撃を実行しました。");
+    updateUnitInfoText(`${damageResult.summary || "攻撃を実行しました。"} / AP-${actionPointCost} 残${Math.max(0, actionPoint - actionPointCost)}`);
     for (const line of damageResult.lines || []) {
       pushNationLog(line);
     }
@@ -22453,6 +22690,10 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  if (turnTickerTimerId) {
+    window.clearTimeout(turnTickerTimerId);
+    turnTickerTimerId = null;
+  }
   stopRuntimeMemoryWatch();
   stopUnitDamageBlinkTicker();
   unitDamageBlinkUntilMsById = new Map();
@@ -22687,6 +22928,18 @@ watch(() => props.characterCommand, command => {
   <section class="panel simulator map-top phaser-map-panel">
     <div class="phaser-stage">
         <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas" :style="mapCanvasStyle">
+      <transition name="turn-ticker">
+        <div
+          v-if="turnTicker.text"
+          :key="turnTicker.key"
+          class="field-overlay-turn-ticker"
+          :class="`is-${turnTicker.kind}`"
+          role="status"
+          aria-live="polite"
+        >
+          {{ turnTicker.text }}
+        </div>
+      </transition>
       <header class="field-overlay-header" :class="{ minimized: headerMinimized }">
         <template v-if="!headerMinimized">
         <div
@@ -23109,9 +23362,7 @@ watch(() => props.characterCommand, command => {
         />
         <section v-else class="field-overlay-own-faction-attack-list-panel">
           <div class="field-overlay-own-faction-attack-head">
-            <strong>攻撃一覧</strong>
-            <span class="small">{{ ownFactionAttackPanelUnit?.name || "ユニット未選択" }}</span>
-            <button type="button" class="secondary" @click="closeOwnFactionAttackPanel({ cancelPreview: true })">閉じる</button>
+            <span>AP {{ ownFactionAttackPanelActionPoint }} / {{ ownFactionAttackPanelActionPointMax }}</span>
           </div>
           <div v-if="ownFactionAttackPanelSkillRows.length" class="field-overlay-own-faction-attack-list skill-table-wrap">
             <button
@@ -23119,7 +23370,11 @@ watch(() => props.characterCommand, command => {
               :key="`own-faction-attack-skill-${row.rowKey || row.name}`"
               type="button"
               class="field-overlay-own-faction-attack-item"
-              :class="{ active: ownFactionAttackPanelSelectedSkillRow && ownFactionAttackPanelSelectedSkillRow.name === row.name }"
+              :class="{
+                active: ownFactionAttackPanelSelectedSkillRow && ownFactionAttackPanelSelectedSkillRow.name === row.name,
+                'is-ap-insufficient': !isOwnFactionAttackRowAffordable(row)
+              }"
+              :disabled="!isOwnFactionAttackRowAffordable(row)"
               @click="handleOwnFactionAttackSkillSelect({ name: row.name, activatePreview: true })"
               @dblclick="activateOwnFactionAttackPreview({ name: row.name })"
             >
@@ -23157,6 +23412,7 @@ watch(() => props.characterCommand, command => {
               <button
                 type="button"
                 class="field-overlay-own-faction-attack-use-btn"
+                :disabled="!isOwnFactionAttackRowAffordable(ownFactionAttackPanelSelectedSkillRow)"
                 @click="handleOwnFactionAttackSkillSelect({ name: ownFactionAttackPanelSelectedSkillRow.name, activatePreview: true })"
               >
                 使用
@@ -23512,6 +23768,18 @@ watch(() => props.characterCommand, command => {
       @resolve="applyFieldBattleResultV2"
     />
 
+    <div v-if="warDeclarationPending" class="settings-backdrop" @click.self="closeWarDeclarationModal">
+      <div class="settings-modal war-declaration-modal" role="dialog" aria-modal="true" aria-label="宣戦布告の確認">
+        <h3>宣戦布告</h3>
+        <div class="small">{{ warDeclarationPending.targetLabel }}へ宣戦布告します。宣戦布告するまで、他勢力ユニットは攻撃できません。</div>
+        <div class="war-declaration-penalty">外交評価 {{ warDeclarationPending.penalty }} / {{ warDeclarationPending.penaltyTurns }}ターン</div>
+        <div class="setting-actions">
+          <button type="button" class="secondary" @click="closeWarDeclarationModal">中止</button>
+          <button type="button" @click="confirmWarDeclaration">宣戦布告する</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="false && showFieldBattleResultModal" class="settings-backdrop" @click.self="closeFieldBattleResultModal">
       <div class="settings-modal battle-result-modal">
         <h3>戦闘結果（仮）</h3>
@@ -23720,7 +23988,7 @@ watch(() => props.characterCommand, command => {
               <span>{{ row.roleLabel }}</span>
             </div>
             <div class="small">
-              Lv{{ row.level }} / 座標({{ row.x }}, {{ row.y }}) / 移動残 {{ row.moveRemaining }} / 索敵 {{ row.scoutRange }}
+              Lv{{ row.level }} / 座標({{ row.x }}, {{ row.y }}) / AP {{ row.moveRemaining }}/100 / 索敵 {{ row.scoutRange }}
             </div>
             <div class="small">部隊: {{ row.squadCount }} <span v-if="row.hasSquad">/ リーダー</span></div>
           </button>

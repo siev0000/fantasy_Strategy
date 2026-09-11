@@ -163,6 +163,65 @@
   pointer-events: auto;
 }
 
+.field-overlay-turn-ticker {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  z-index: 26;
+  min-width: min(440px, calc(100% - 32px));
+  max-width: calc(100% - 32px);
+  padding: 8px 18px;
+  border: 1px solid rgba(154, 219, 255, 0.8);
+  border-radius: 999px;
+  color: #effaff;
+  background: linear-gradient(90deg, rgba(10, 36, 58, 0.94), rgba(22, 75, 105, 0.96), rgba(10, 36, 58, 0.94));
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.46), inset 0 1px rgba(255, 255, 255, 0.22);
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  line-height: 1.25;
+  text-align: center;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.field-overlay-turn-ticker.is-paused,
+.field-overlay-turn-ticker.is-stopped {
+  border-color: rgba(255, 205, 112, 0.86);
+  color: #fff5d7;
+  background: linear-gradient(90deg, rgba(70, 40, 12, 0.94), rgba(119, 76, 23, 0.96), rgba(70, 40, 12, 0.94));
+}
+
+.turn-ticker-enter-active {
+  animation: field-turn-ticker-flow 3.8s ease-in-out both;
+}
+
+.turn-ticker-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.turn-ticker-leave-to {
+  opacity: 0;
+}
+
+@keyframes field-turn-ticker-flow {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -24px);
+  }
+
+  12%,
+  76% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+}
+
 .field-overlay-header.minimized {
   padding: 0;
   min-height: 18px;
@@ -1070,10 +1129,12 @@
 
 .field-overlay-own-faction-attack-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-  display: none;
+  justify-content: flex-end;
+  min-height: 12px;
+  color: #78cfff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .field-overlay-own-faction-attack-list {
@@ -1234,6 +1295,18 @@
   font-size: 14px;
   font-weight: 800;
   color: #fff3db;
+}
+
+.field-overlay-own-faction-attack-item.is-ap-insufficient,
+.field-overlay-own-faction-attack-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+  filter: grayscale(0.55);
+}
+
+.field-overlay-own-faction-attack-item.is-ap-insufficient:hover,
+.field-overlay-own-faction-attack-item:disabled:hover {
+  background: transparent;
 }
 
 .field-overlay-own-faction-attack-detail-title-row {
@@ -2434,6 +2507,22 @@
   width: min(420px, 94vw);
   height: auto;
   max-height: none;
+}
+
+.war-declaration-modal {
+  width: min(420px, 94vw);
+  height: auto;
+  max-height: none;
+}
+
+.war-declaration-penalty {
+  margin: 12px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(220, 105, 82, 0.72);
+  border-radius: 6px;
+  color: #ffd7c6;
+  background: rgba(108, 34, 22, 0.42);
+  font-weight: 800;
 }
 
 .city-block-placement-actions {

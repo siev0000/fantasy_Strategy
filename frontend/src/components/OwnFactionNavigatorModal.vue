@@ -411,6 +411,15 @@ function hpFillStyle(entry) {
   };
 }
 
+function apFillStyle(entry) {
+  const max = Math.max(1, Number(entry?.actionPointMax) || 100);
+  const current = Math.max(0, Number(entry?.actionPoint) || 0);
+  return {
+    width: `${Math.round(clamp01(current / max) * 1000) / 10}%`,
+    background: "linear-gradient(90deg, #1779bb, #66c8ff)"
+  };
+}
+
 function resolveMoveDisplayValue(entry) {
   if (!entry) return 0;
   if (entry.isMoving && Number.isFinite(Number(entry?.moveTilesRemaining))) {
@@ -515,11 +524,20 @@ function rowBackgroundStyle(entry) {
               </span>
               <span class="own-faction-level-tag">{{ row.badge }}</span>
             </div>
-            <span v-if="row.type === 'governor' && sovereignEntry" class="own-faction-hp-line">
-              <span class="own-faction-hp-label">HP:</span>
-              <span class="own-faction-hp-bar">
-                <i :style="hpFillStyle(sovereignEntry)"></i>
-                <b>{{ sovereignEntry.hpCurrent }} / {{ sovereignEntry.hpMax }}</b>
+            <span v-if="row.type === 'governor' && sovereignEntry" class="own-faction-vital-stack">
+              <span class="own-faction-hp-line">
+                <span class="own-faction-hp-label">HP:</span>
+                <span class="own-faction-hp-bar">
+                  <i :style="hpFillStyle(sovereignEntry)"></i>
+                  <b>{{ sovereignEntry.hpCurrent }} / {{ sovereignEntry.hpMax }}</b>
+                </span>
+              </span>
+              <span class="own-faction-hp-line own-faction-ap-line">
+                <span class="own-faction-hp-label">AP:</span>
+                <span class="own-faction-hp-bar own-faction-ap-bar">
+                  <i :style="apFillStyle(sovereignEntry)"></i>
+                  <b>{{ sovereignEntry.actionPoint }} / {{ sovereignEntry.actionPointMax }}</b>
+                </span>
               </span>
             </span>
             <span class="own-faction-unit-sub">
@@ -568,11 +586,20 @@ function rowBackgroundStyle(entry) {
               </span>
               <span class="own-faction-level-tag">Lv{{ entry.level }}</span>
             </div>
-            <span class="own-faction-hp-line">
-              <span class="own-faction-hp-label">HP:</span>
-              <span class="own-faction-hp-bar">
-                <i :style="hpFillStyle(entry)"></i>
-                <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
+            <span class="own-faction-vital-stack">
+              <span class="own-faction-hp-line">
+                <span class="own-faction-hp-label">HP:</span>
+                <span class="own-faction-hp-bar">
+                  <i :style="hpFillStyle(entry)"></i>
+                  <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
+                </span>
+              </span>
+              <span class="own-faction-hp-line own-faction-ap-line">
+                <span class="own-faction-hp-label">AP:</span>
+                <span class="own-faction-hp-bar own-faction-ap-bar">
+                  <i :style="apFillStyle(entry)"></i>
+                  <b>{{ entry.actionPoint }} / {{ entry.actionPointMax }}</b>
+                </span>
               </span>
             </span>
             <span class="own-faction-unit-sub">
@@ -626,11 +653,20 @@ function rowBackgroundStyle(entry) {
             </span>
             <span class="own-faction-level-tag">Lv{{ entry.level }}</span>
           </div>
-          <span class="own-faction-hp-line">
-            <span class="own-faction-hp-label">HP:</span>
-            <span class="own-faction-hp-bar">
-              <i :style="hpFillStyle(entry)"></i>
-              <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
+          <span class="own-faction-vital-stack">
+            <span class="own-faction-hp-line">
+              <span class="own-faction-hp-label">HP:</span>
+              <span class="own-faction-hp-bar">
+                <i :style="hpFillStyle(entry)"></i>
+                <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
+              </span>
+            </span>
+            <span class="own-faction-hp-line own-faction-ap-line">
+              <span class="own-faction-hp-label">AP:</span>
+              <span class="own-faction-hp-bar own-faction-ap-bar">
+                <i :style="apFillStyle(entry)"></i>
+                <b>{{ entry.actionPoint }} / {{ entry.actionPointMax }}</b>
+              </span>
             </span>
           </span>
           <span class="own-faction-unit-sub">
@@ -992,6 +1028,31 @@ function rowBackgroundStyle(entry) {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #3bb75d, #8ae58f);
+}
+
+.own-faction-ap-line {
+  margin-top: 0;
+}
+
+.own-faction-vital-stack {
+  display: grid;
+  gap: 0;
+}
+
+.own-faction-vital-stack .own-faction-hp-label {
+  font-size: 11px;
+}
+
+.own-faction-vital-stack .own-faction-hp-bar {
+  height: 8px;
+}
+
+.own-faction-vital-stack .own-faction-hp-bar b {
+  font-size: 9px;
+}
+
+.own-faction-hp-bar.own-faction-ap-bar i {
+  background: linear-gradient(90deg, #1779bb, #66c8ff);
 }
 
 .own-faction-hp-bar b {

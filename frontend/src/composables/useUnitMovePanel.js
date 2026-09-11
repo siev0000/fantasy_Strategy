@@ -1,6 +1,7 @@
 import { computed, ref } from "vue";
 
 export function useUnitMovePanel(options = {}) {
+  const actionPointMax = Math.max(1, Math.floor(Number(options.actionPointMax) || 100));
   const showMoveUnitModal = options.showMoveUnitModal;
   const moveUnitCandidateId = options.moveUnitCandidateId;
   const showMovePathConfirmModal = options.showMovePathConfirmModal;
@@ -184,7 +185,8 @@ export function useUnitMovePanel(options = {}) {
   }
 
   function resolveUnitMoveRemaining(unit) {
-    return Math.max(0, Math.floor(toSafeNumber(unit?.moveRemaining, unit?.moveRange)));
+    const max = Math.max(1, Math.floor(toSafeNumber(unit?.actionPointMax, actionPointMax)));
+    return Math.max(0, Math.min(max, Math.floor(toSafeNumber(unit?.actionPoint, max))));
   }
 
   function resolveUnitMoveStat(unit) {
@@ -551,7 +553,7 @@ export function useUnitMovePanel(options = {}) {
     }
     const moveRemaining = Math.max(0, Math.floor(toSafeNumber(moveGroup.minMoveRemaining, 0)));
     if (moveRemaining <= 0) {
-      return { ok: false, reason: "移動残量がありません。ターン経過で回復します。" };
+      return { ok: false, reason: "APがありません。ターン経過で回復します。" };
     }
     if (isMoveGroupInProgress(moveGroup)) {
       return { ok: false, reason: "このユニットは移動中です。完了後に再実行してください。" };
@@ -581,7 +583,7 @@ export function useUnitMovePanel(options = {}) {
         if (!costEval.ok && costEval.blocked) {
           return { ok: false, reason: costEval.reason || "通行できない地形差があります。" };
         }
-        return { ok: false, reason: `移動残量(${moveRemaining})で到達できません。` };
+        return { ok: false, reason: `AP(${moveRemaining})で到達できません。` };
       }
       planPicked = fallbackPlan.picked;
       path = fallbackPlan.path;
@@ -924,7 +926,7 @@ export function useUnitMovePanel(options = {}) {
           break;
         }
         if (spentCost + stepCost > plan.moveRemaining) {
-          stopReason = "移動残量が不足しました。";
+          stopReason = "APが不足しました。";
           setLastMoveStopState(stopReason, prev?.x, prev?.y);
           break;
         }
@@ -953,6 +955,8 @@ export function useUnitMovePanel(options = {}) {
             ...row,
             x: next.x,
             y: next.y,
+            actionPointMax: Math.max(1, Math.floor(toSafeNumber(row?.actionPointMax, actionPointMax))),
+            actionPoint: Math.max(0, ownRemaining - stepCost),
             moveRemaining: Math.max(0, ownRemaining - stepCost),
             moveRoutePathNodes: nextRouteNodes,
             moveRouteRemainingTiles: routeRemainingTiles
@@ -1065,7 +1069,9 @@ export function useUnitMovePanel(options = {}) {
     if (!unitList.value.length) return;
     unitList.value = unitList.value.map(unit => ({
       ...unit,
-      moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit.moveRange, 0)))
+      actionPointMax: Math.max(1, Math.floor(toSafeNumber(unit?.actionPointMax, actionPointMax))),
+      actionPoint: Math.max(1, Math.floor(toSafeNumber(unit?.actionPointMax, actionPointMax))),
+      moveRemaining: Math.max(1, Math.floor(toSafeNumber(unit?.actionPointMax, actionPointMax)))
     }));
     emitCharacterStateChange();
   }

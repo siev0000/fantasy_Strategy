@@ -180,6 +180,8 @@ export function createOwnCharacterNavigatorEntries({
           ? Math.max(0, Math.floor(moveTilesRemainingRaw))
           : null,
         moveRange: Math.max(0, Math.floor(toSafeNumber(unit?.moveRange, 0))),
+        actionPoint: Math.max(0, Math.floor(toSafeNumber(unit?.actionPoint, 100))),
+        actionPointMax: Math.max(1, Math.floor(toSafeNumber(unit?.actionPointMax, 100))),
         scoutValue: roundTo1(toSafeNumber(unit?.skillLevels?.索敵, unit?.scoutRange)),
         stealthValue: roundTo1(toSafeNumber(unit?.skillLevels?.隠密, 0)),
         hpCurrent: Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, unit?.status?.HP))),
