@@ -20,7 +20,8 @@ def replace_once(path, old, new):
 
 def sub_once(path, pattern, replacement, flags=0):
     text = read(path)
-    next_text, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+    repl = replacement if callable(replacement) else (lambda _match: replacement)
+    next_text, count = re.subn(pattern, repl, text, count=1, flags=flags)
     if count != 1:
         raise SystemExit(f"{path}: expected one regex match, found {count}: {pattern[:120]!r}")
     write(path, next_text)
@@ -184,15 +185,14 @@ sub_once(
 sub_once(
     phaser_path,
     r'''(  resolveSelectedBuildTileMode: \(\) => resolveSelectedBuildTileContext\(\)\.tileMode,\n  canOpenVillageBuildAtTile: \(\) => resolveSelectedBuildTileContext\(\)\.buildable)(\n\}\);)''',
-    r'''\1,
-  resolveFacilityTerrainCondition: resolveFacilityTerrainConditionForSelectedTile\2'''
+    lambda match: match.group(1) + ',\n  resolveFacilityTerrainCondition: resolveFacilityTerrainConditionForSelectedTile' + match.group(2)
 )
 
 # Enforce terrain status in construction availability.
 sub_once(
     build_path,
     r'''(  const canOpenVillageBuildAtTile = typeof options\.canOpenVillageBuildAtTile === "function"\n\s+\? options\.canOpenVillageBuildAtTile\n\s+: \(\(\) => false\);)''',
-    r'''\1
+    lambda match: match.group(1) + '''
   const resolveFacilityTerrainCondition = typeof options.resolveFacilityTerrainCondition === "function"
     ? options.resolveFacilityTerrainCondition
     : (conditionRaw => {
