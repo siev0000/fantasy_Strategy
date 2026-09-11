@@ -43,7 +43,7 @@ const FOOD_KEYS = ["穀物", "野菜", "肉", "魚"];
 const MAT_KEYS = ["木材", "石材", "鉄"];
 const FOOD_LABEL = { 穀物: "穀", 野菜: "野", 肉: "肉", 魚: "魚" };
 const MAT_LABEL = { 木材: "木", 石材: "石", 鉄: "鉄" };
-const MAX_SQUAD_MEMBER_COUNT = 5;
+const MAX_SQUAD_MEMBER_COUNT = 4;
 const EQUIPMENT_RARITY_OPTIONS = [
   { key: "common", label: "コモン" },
   { key: "uncommon", label: "アンコモン" },
@@ -213,12 +213,14 @@ function unitRoleLabel(unit) {
 
 const villageScaleLabel = computed(() => {
   const pop = Number(props?.village?.population || 0);
+  if (pop >= 420) return "大都市";
   if (pop >= 260) return "都市";
   if (pop >= 160) return "町";
   return "村";
 });
 
 const namedLimit = computed(() => {
+  if (villageScaleLabel.value === "大都市") return 10;
   if (villageScaleLabel.value === "都市") return 7;
   if (villageScaleLabel.value === "町") return 4;
   return 2;

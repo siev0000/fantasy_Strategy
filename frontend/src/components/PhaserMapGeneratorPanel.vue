@@ -1381,7 +1381,7 @@ const CITY_SCALE_NAMED_LIMIT = {
   都市: 7,
   大都市: 10
 };
-const MAX_SQUAD_MEMBER_COUNT = 5;
+const MAX_SQUAD_MEMBER_COUNT = 4;
 const CITY_ABILITY_KEYS = ["鍛冶場", "魔法", "信仰", "軍事", "経済"];
 const CITY_ABILITY_ACTIVE_CAP = 4;
 const CITY_ABILITY_DEFINED_CAP = 7;
@@ -1860,12 +1860,76 @@ const selectedUnitCreateRarityMaterialRow = computed(() => {
   return unitCreateRarityMaterialRows.value.find(row => row.key === selectedKey) || unitCreateRarityMaterialRows.value[0] || null;
 });
 
+function normalizeFacilityTerrainName(value) {
+  const text = nonEmptyText(value);
+  const aliases = {
+    丘: "丘陵",
+    山: "山岳",
+    雪: "雪原",
+    河: "河川",
+    沼: "沼地",
+    洞: "洞窟",
+    渓谷: "峡谷"
+  };
+  return aliases[text] || text;
+}
+
+function resolveFacilityTerrainAt(data, xRaw, yRaw) {
+  if (!data?.grid || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return "";
+  const w = Math.max(1, Math.floor(toSafeNumber(data.w, 1)));
+  const h = Math.max(1, Math.floor(toSafeNumber(data.h, 1)));
+  let x = Math.floor(toSafeNumber(xRaw, Number.NaN));
+  let y = Math.floor(toSafeNumber(yRaw, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return "";
+  if (resolveWorldWrapEnabled(data)) {
+    x = normalizeWrappedCoord(x, w);
+    y = normalizeWrappedCoord(y, h);
+  } else if (x < 0 || y < 0 || x >= w || y >= h) {
+    return "";
+  }
+  return normalizeFacilityTerrainName(data?.grid?.[y]?.[x]);
+}
+
+function resolveFacilityTerrainDistance(a, b, data) {
+  if (!resolveWorldWrapEnabled(data)) return hexDistance(a, b);
+  const w = Math.max(1, Math.floor(toSafeNumber(data?.w, 1)));
+  const h = Math.max(1, Math.floor(toSafeNumber(data?.h, 1)));
+  let best = Number.POSITIVE_INFINITY;
+  for (const shiftX of [-w, 0, w]) {
+    for (const shiftY of [-h, 0, h]) {
+      best = Math.min(best, hexDistance(a, { x: b.x + shiftX, y: b.y + shiftY }));
+    }
+  }
+  return best;
+}
+
+function hasFacilityTerrainWithinRange(terrainRaw, rangeRaw, xRaw, yRaw, options = {}) {
+  const data = currentData.value;
+  if (!data?.grid || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return false;
+  const terrain = normalizeFacilityTerrainName(terrainRaw);
+  const range = Math.max(0, Math.floor(toSafeNumber(rangeRaw, 0)));
+  const origin = {
+    x: Math.floor(toSafeNumber(xRaw, Number.NaN)),
+    y: Math.floor(toSafeNumber(yRaw, Number.NaN))
+  };
+  if (!terrain || !Number.isFinite(origin.x) || !Number.isFinite(origin.y)) return false;
+  const excludeCenter = !!options?.excludeCenter;
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      if (excludeCenter && x === origin.x && y === origin.y) continue;
+      if (resolveFacilityTerrainAt(data, x, y) !== terrain) continue;
+      if (resolveFacilityTerrainDistance(origin, { x, y }, data) <= range) return true;
+    }
+  }
+  return false;
+}
+
 function resolveSelectedBuildTileContext() {
   const detail = selectedTileDetail.value;
   const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
   const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return { tileKey: "", tileMode: "", buildable: false };
+    return { x: null, y: null, tileKey: "", tileMode: "", terrain: "", buildable: false };
   }
   const tileKey = coordKey(x, y);
   const ownTerritory = isOwnTerritoryTile(x, y);
@@ -1881,7 +1945,34 @@ function resolveSelectedBuildTileContext() {
       || tileMode === TERRITORY_TILE_MODE_RESOURCE
       || isVillageCenterTile
     );
-  return { tileKey, tileMode, buildable };
+  const terrain = resolveFacilityTerrainAt(currentData.value, x, y) || normalizeFacilityTerrainName(detail?.terrain);
+  return { x, y, tileKey, tileMode, terrain, buildable };
+}
+
+function resolveFacilityTerrainConditionForSelectedTile(conditionRaw) {
+  const condition = nonEmptyText(conditionRaw);
+  if (!condition || condition === "なし") return { ok: true, reason: "" };
+  const target = resolveSelectedBuildTileContext();
+  if (!target.buildable || !Number.isFinite(target.x) || !Number.isFinite(target.y)) {
+    return { ok: false, reason: `地形条件 ${condition}: 建設対象マスを確認できません` };
+  }
+  if (condition === "海辺") {
+    const ok = hasFacilityTerrainWithinRange("海", 1, target.x, target.y, { excludeCenter: true });
+    return { ok, reason: ok ? "" : "地形条件: 海に隣接したマスが必要です" };
+  }
+  const withinMatch = condition.match(/^(.+?)[：:]\s*(\d+)マス以内$/u);
+  if (withinMatch) {
+    const requiredTerrain = normalizeFacilityTerrainName(withinMatch[1]);
+    const range = Math.max(0, Math.floor(toSafeNumber(withinMatch[2], 0)));
+    const ok = hasFacilityTerrainWithinRange(requiredTerrain, range, target.x, target.y);
+    return { ok, reason: ok ? "" : `地形条件: ${requiredTerrain}が${range}マス以内に必要です` };
+  }
+  const requiredTerrain = normalizeFacilityTerrainName(condition);
+  const ok = normalizeFacilityTerrainName(target.terrain) === requiredTerrain;
+  return {
+    ok,
+    reason: ok ? "" : `地形条件: ${requiredTerrain}が必要です (現在: ${target.terrain || "不明"})`
+  };
 }
 
 const {
@@ -1940,7 +2031,8 @@ const {
   resourceModeKey: TERRITORY_TILE_MODE_RESOURCE,
   resolveSelectedBuildTileKey: () => resolveSelectedBuildTileContext().tileKey,
   resolveSelectedBuildTileMode: () => resolveSelectedBuildTileContext().tileMode,
-  canOpenVillageBuildAtTile: () => resolveSelectedBuildTileContext().buildable
+  canOpenVillageBuildAtTile: () => resolveSelectedBuildTileContext().buildable,
+  resolveFacilityTerrainCondition: resolveFacilityTerrainConditionForSelectedTile
 });
 
 const facilityBuildingDefinitionByTokenMap = computed(() => {
