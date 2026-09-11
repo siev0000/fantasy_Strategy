@@ -1,0 +1,68 @@
+name: Merge spec adjustment into fix
+
+on:
+  push:
+    branches:
+      - fix/spec-bugs-20260911
+    paths:
+      - .github/workflows/merge-spec-into-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/spec-bugs-20260911
+          fetch-depth: 0
+
+      - name: Merge 仕様調整 into fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "仕様調整:refs/remotes/origin/spec-adjustment"
+
+          set +e
+          git merge --no-ff --no-commit -X theirs origin/spec-adjustment
+          MERGE_STATUS=$?
+          set -e
+
+          if [ "$MERGE_STATUS" -ne 0 ]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            for f in "${conflicts[@]}"; do
+              if git checkout --theirs -- "$f" 2>/dev/null; then
+                git add -- "$f"
+              else
+                git rm -f --ignore-unmatch -- "$f"
+              fi
+            done
+          fi
+
+          # Keep the bug-fix branch's intended squad cap and facility terrain validation.
+          grep -q 'MAX_SQUAD_MEMBER_COUNT = 4' frontend/src/components/CharacterStatusModal.vue
+          grep -q 'MAX_SQUAD_MEMBER_COUNT = 4' frontend/src/components/PhaserMapGeneratorPanel.vue
+          grep -q 'maxSquadMemberCount = 4' frontend/src/composables/unitCoreUtils.js
+          grep -q 'resolveFacilityTerrainConditionForSelectedTile' frontend/src/components/PhaserMapGeneratorPanel.vue
+          grep -q 'hasTerrain' frontend/src/composables/useVillageBuildPanel.js
+
+          rm -f .github/workflows/merge-spec-into-fix.yml
+          git add -A
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build:front
+
+      - name: Commit and push merged branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git commit -m "merge: 仕様調整をfixブランチへ統合"
+          git push origin HEAD:fix/spec-bugs-20260911
