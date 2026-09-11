@@ -1,5 +1,24 @@
 # AGENTS.md
 
+## Documentation source of truth
+
+Before changing game behavior, read `docs/README.md` and follow its documentation priority.
+
+When specifications conflict, use this order:
+
+1. Current code / `data` / `config`
+2. `docs/現状ゲーム仕様メモ.md`
+3. Current subsystem rule documents
+4. `docs/ALL_TASKS_UNIFIED.md`
+5. Future-design notes
+6. Old task notes / drafts / `progress.md`
+
+Do not implement a rule only because it appears in `MEMO.md`, `NEXT_TASKS.md`, `RULE_TASKS.md`, a draft, or `progress.md`.
+Treat `仮`, `暫定`, `将来`, and `未実装` items as proposals unless current code confirms them.
+Update the relevant current document when a specification is intentionally changed.
+
+---
+
 **Rule:** In each command, **define → use**. Do **not** escape `$`. Use generic `'path/to/file.ext'`.
 
 ---
@@ -46,9 +65,9 @@ function Write-Utf8NoBom { param([string]$Path,[string]$Content)
     }
   }
 }
-$file = "path/to/your_file.ext"
+$file = \"path/to/your_file.ext\"
 $enc  = [Text.UTF8Encoding]::new($false)
 $old  = (Test-Path $file) ? ([IO.File]::ReadAllText($file,$enc)) : ''
-Write-Utf8NoBom -Path $file -Content ($old+"`nYOUR_TEXT_HERE`n")
+Write-Utf8NoBom -Path $file -Content ($old+\"`nYOUR_TEXT_HERE`n\")
 "'
 ```
