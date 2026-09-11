@@ -1,0 +1,149 @@
+/* Responsive field UI port.
+   Keep Phaser map/fog/scouting/territory rendering untouched; this file only reshapes overlay UI. */
+
+@media (max-width: 950px) {
+  /* Scroll remains available, but scrollbars never consume layout width. */
+  .field-footer-tabs-overlay,
+  .field-footer-tab-body,
+  .field-footer-unit-pane,
+  .field-footer-character-pane,
+  .field-footer-enemy-pane,
+  .field-footer-tile-pane,
+  .field-footer-tile-data-pane,
+  .field-overlay-own-faction-panel,
+  .own-faction-navigator-modal,
+  .own-faction-navigator-body {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+    scrollbar-gutter: auto !important;
+  }
+
+  .field-footer-tabs-overlay::-webkit-scrollbar,
+  .field-footer-tab-body::-webkit-scrollbar,
+  .field-footer-unit-pane::-webkit-scrollbar,
+  .field-footer-character-pane::-webkit-scrollbar,
+  .field-footer-enemy-pane::-webkit-scrollbar,
+  .field-footer-tile-pane::-webkit-scrollbar,
+  .field-footer-tile-data-pane::-webkit-scrollbar,
+  .field-overlay-own-faction-panel::-webkit-scrollbar,
+  .own-faction-navigator-modal::-webkit-scrollbar,
+  .own-faction-navigator-body::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
+  }
+
+  /* Existing right character navigator overlaps the new command area on mobile.
+     Character/squad navigation will be consolidated into the responsive command UI. */
+  .field-overlay-own-faction-panel {
+    display: none !important;
+  }
+
+  .field-footer-tabs-overlay {
+    z-index: 42 !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    background: rgba(12, 22, 27, 0.97) !important;
+    border: 1px solid rgba(103, 151, 164, 0.7) !important;
+    box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.36) !important;
+    backdrop-filter: blur(4px);
+  }
+
+  .field-footer-tab-row {
+    flex: 0 0 auto !important;
+    min-height: 38px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+  }
+
+  .field-footer-tab-row::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
+  }
+
+  .field-footer-tab-btn {
+    min-height: 36px !important;
+    min-width: 74px !important;
+    padding: 7px 10px !important;
+    font-size: clamp(12px, 3.1vw, 16px) !important;
+    white-space: nowrap !important;
+  }
+
+  .field-footer-tab-body {
+    min-height: 0 !important;
+    overflow: auto !important;
+    overscroll-behavior: contain !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Portrait: field above, command/info panel at the bottom. */
+@media (max-width: 950px) and (orientation: portrait) {
+  .field-footer-tabs-overlay {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 40% !important;
+    max-height: 44% !important;
+    transform: none !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-radius: 10px 10px 0 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Keep important map overlays above the map portion and out of the footer where possible. */
+  .field-overlay-turn-clock,
+  .field-overlay-turn-ticker {
+    max-bottom: 41%;
+  }
+}
+
+/* Landscape: no bottom footer. The same component becomes the right command bar. */
+@media (max-width: 950px) and (orientation: landscape) {
+  .field-footer-tabs-overlay {
+    position: absolute !important;
+    left: auto !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: clamp(300px, 35vw, 430px) !important;
+    height: 100% !important;
+    max-height: none !important;
+    transform: none !important;
+    border-top: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-radius: 10px 0 0 10px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-shadow: -3px 0 14px rgba(0, 0, 0, 0.36) !important;
+  }
+
+  .field-footer-tab-row {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    padding: 6px !important;
+    overflow: visible !important;
+  }
+
+  .field-footer-tab-btn {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: clamp(12px, 1.8vw, 15px) !important;
+  }
+
+  .field-footer-tab-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+  }
+}
