@@ -134,10 +134,14 @@ export function createOwnCharacterNavigatorEntries({
   unitList = [],
   isSovereignUnit = () => false,
   isNamedUnit = () => false,
+  isMovingUnit = () => false,
+  isBattleUnit = () => false,
+  resolveSurveyTask = () => null,
   toUnitRoleLabel = () => "",
   moveUnitIconSrc = () => "",
   moveUnitIconGlyph = () => "兵",
-  soldierIconSrc = () => ""
+  soldierIconSrc = () => "",
+  battleIconSrc = () => ""
 }) {
   const rolePriority = unit => {
     if (isSovereignUnit(unit)) return 0;
@@ -155,6 +159,14 @@ export function createOwnCharacterNavigatorEntries({
         ? moveUnitIconSrc({ ...unit, subIconName, iconName: subIconName, race: "" })
         : "";
       const isMilitary = isMilitaryUnitRecord(unit);
+      const isSovereign = !!isSovereignUnit(unit);
+      const squadLeaderId = nonEmptyText(unit?.squadLeaderId);
+      const surveyTask = resolveSurveyTask(unit);
+      const surveyTotalTurnsRaw = toSafeNumber(surveyTask?.totalTurns, Number.NaN);
+      const surveyRemainingTurnsRaw = toSafeNumber(surveyTask?.remainingTurns, Number.NaN);
+      const surveyDangerPercentRaw = toSafeNumber(surveyTask?.progressPercent, Number.NaN);
+      const inBattle = !!isBattleUnit(unit);
+      const moveTilesRemainingRaw = toSafeNumber(unit?.moveRouteRemainingTiles, Number.NaN);
       return {
         id: nonEmptyText(unit?.id),
         name: nonEmptyText(unit?.name) || "ユニット",
@@ -164,7 +176,12 @@ export function createOwnCharacterNavigatorEntries({
         level: clampUnitLevel(unit?.level),
         squadName: nonEmptyText(unit?.squadName),
         moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit?.moveRemaining, 0))),
+        moveTilesRemaining: Number.isFinite(moveTilesRemainingRaw)
+          ? Math.max(0, Math.floor(moveTilesRemainingRaw))
+          : null,
         moveRange: Math.max(0, Math.floor(toSafeNumber(unit?.moveRange, 0))),
+        actionPoint: Math.max(0, Math.floor(toSafeNumber(unit?.actionPoint, 100))),
+        actionPointMax: Math.max(1, Math.floor(toSafeNumber(unit?.actionPointMax, 100))),
         scoutValue: roundTo1(toSafeNumber(unit?.skillLevels?.索敵, unit?.scoutRange)),
         stealthValue: roundTo1(toSafeNumber(unit?.skillLevels?.隠密, 0)),
         hpCurrent: Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, unit?.status?.HP))),
@@ -178,6 +195,22 @@ export function createOwnCharacterNavigatorEntries({
           速度: Math.max(0, Math.floor(toSafeNumber(unit?.status?.速度, 0))),
           命中: Math.max(0, Math.floor(toSafeNumber(unit?.status?.命中, 0)))
         },
+        isSovereign,
+        squadLeaderId,
+        isSquadMember: !!squadLeaderId,
+        isMoving: !!isMovingUnit(unit),
+        isInBattle: inBattle,
+        battleIconSrc: inBattle ? nonEmptyText(battleIconSrc(unit)) : "",
+        isSurveying: !!surveyTask,
+        surveyTotalTurns: Number.isFinite(surveyTotalTurnsRaw)
+          ? Math.max(0, Math.floor(surveyTotalTurnsRaw))
+          : null,
+        surveyRemainingTurns: Number.isFinite(surveyRemainingTurnsRaw)
+          ? Math.max(0, Math.floor(surveyRemainingTurnsRaw))
+          : null,
+        surveyDangerPercent: Number.isFinite(surveyDangerPercentRaw)
+          ? Math.max(0, Math.min(100, Math.floor(surveyDangerPercentRaw)))
+          : null,
         rolePriority: rolePriority(unit),
         positioned,
         x: positioned ? Math.floor(rawX) : null,

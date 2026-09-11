@@ -8,8 +8,11 @@ import OwnFactionNavigatorModal from "./OwnFactionNavigatorModal.vue";
 import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 import VillageBuildModal from "./VillageBuildModal.vue";
 import FieldBattleResultModal from "./FieldBattleResultModal.vue";
+import FieldFooterTabsOverlay from "./FieldFooterTabsOverlay.vue";
+import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
+import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import { RESEARCH_CATEGORY_ORDER as RESEARCH_CATEGORY_ORDER_CONFIG } from "../lib/research-tree-config.js";
 import { createOwnCharacterNavigatorEntries, createOwnSquadNavigatorEntries } from "../lib/own-faction-navigator.js";
 import {
@@ -138,8 +141,11 @@ import {
   GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_CHOOSE,
   GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_RANDOM_ONLY,
   GAME_START_PLAYER_PLACEMENT_MODE_VALUES,
+  GAME_VIEW_PRESET_CONFIG,
+  DEFAULT_GAME_VIEW_PRESET_KEY,
   GAME_VIEW_HEIGHT,
   GAME_VIEW_WIDTH,
+  HEX_TILE_CONFIG,
   HEADER_RESOURCE_ICON_LAYOUT_SIZE_PX,
   HEADER_MATERIAL_ICON_LAYOUT_SIZE_PX,
   HEADER_MATERIAL_ICON_SCALE,
@@ -153,12 +159,15 @@ import {
   OVERLAY_ICON_BUTTON_PLUS_BADGE_SIZE_PX,
   MAP_ENEMY_MARKER_CONFIG,
   MAP_FACTION_MARKER_CONFIG,
-  MAP_RESOURCE_TILE_MARKER_CONFIG,
-  MAP_SETTLEMENT_MARKER_CONFIG,
-  MAP_SPECIAL_ICON_CONFIG,
+   MAP_RESOURCE_TILE_MARKER_CONFIG,
+   MAP_SETTLEMENT_MARKER_CONFIG,
+   MAP_SPECIAL_ICON_CONFIG,
+   MAP_FOREST_ICON_CONFIG,
   MAP_UNIT_MARKER_CONFIG,
-  MOVE_STEP_INTERVAL_MS,
   MAP_WATERFALL_ICON_CONFIG,
+  TURN_SECONDS,
+  AUTO_TURN_PAUSE_EVERY_TURNS,
+  MOVE_TIME_BASE_TURNS,
   MAX_TEST_PLAYER_COUNT,
   PLAYER_TERRITORY_RANGE,
   SPECIAL_TERRAIN_KEYS,
@@ -185,6 +194,7 @@ import {
 } from "../lib/phaser-map-panel-config.js";
 import {
   advanceTerrainTurn,
+  buildRiverTouchSet,
   createIslandShapeData,
   createTerrainMapData,
   hexCenter,
@@ -200,10 +210,28 @@ import facilityDb from "../../../data/source/export/json/施設.json";
 import enchantDb from "../../../data/source/export/json/付与.json";
 import skillInfoDb from "../../../data/source/export/json/スキル一覧.json";
 import terrainYieldDb from "../../../data/source/export/json/地形.json";
+import effectList320 from "../../../assets/effect/320×240/effect_list.json";
+import effectListAnimation1 from "../../../assets/effect/アニメーション1/effect_list.json";
 
 const rawEnemyIllustrationModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
   eager: true,
   import: "default"
+});
+const rawUnitIllustrationModules = import.meta.glob("../../../assets/images/units/**/*.{png,jpg,jpeg,webp,avif,gif}", {
+  eager: true,
+  import: "default"
+});
+const rawEffectImageModules320 = import.meta.glob("../../../assets/effect/320×240/*.{webp,png,jpg,jpeg,avif,gif}", {
+  eager: true,
+  import: "default"
+});
+const rawEffectImageModulesAnimation1 = import.meta.glob("../../../assets/effect/アニメーション1/*.{webp,png,jpg,jpeg,avif,gif}", {
+  eager: true,
+  import: "default"
+});
+const ENEMY_NEST_ICON_NAME_ALIAS_MAP = Object.freeze({
+  "虫系の巣": "蟲系の巣",
+  "土の輪": "地の輪"
 });
 const enemyIllustrationSrcByName = new Map(
   Object.entries(rawEnemyIllustrationModules)
@@ -221,6 +249,50 @@ for (const [name, src] of enemyIllustrationSrcByName.entries()) {
   if (!normalized || enemyIllustrationSrcByNormalizedName.has(normalized)) continue;
   enemyIllustrationSrcByNormalizedName.set(normalized, src);
 }
+const unitIllustrationSrcByName = new Map(
+  Object.entries(rawUnitIllustrationModules)
+    .map(([path, src]) => {
+      const name = nonEmptyText(extractFileStem(path));
+      const srcText = nonEmptyText(src);
+      if (!name || !srcText) return null;
+      return [name, srcText];
+    })
+    .filter(Boolean)
+);
+const unitIllustrationSrcByNormalizedName = new Map();
+for (const [name, src] of unitIllustrationSrcByName.entries()) {
+  const normalized = normalizeUnitImageLookupKey(name);
+  if (!normalized || unitIllustrationSrcByNormalizedName.has(normalized)) continue;
+  unitIllustrationSrcByNormalizedName.set(normalized, src);
+}
+const effectSrcByName = new Map();
+for (const [path, src] of Object.entries({ ...rawEffectImageModules320, ...rawEffectImageModulesAnimation1 })) {
+  const fileName = path.split("/").pop() || "";
+  const baseName = fileName.replace(/\.(webp|png|jpg|jpeg|avif|gif)$/i, "");
+  const srcText = nonEmptyText(src);
+  if (!baseName || !srcText || effectSrcByName.has(baseName)) continue;
+  effectSrcByName.set(baseName, srcText);
+}
+const effectSrcByName320 = new Map();
+for (const [path, src] of Object.entries(rawEffectImageModules320)) {
+  const fileName = path.split("/").pop() || "";
+  const baseName = fileName.replace(/\.(webp|png|jpg|jpeg|avif|gif)$/i, "");
+  const srcText = nonEmptyText(src);
+  if (!baseName || !srcText || effectSrcByName320.has(baseName)) continue;
+  effectSrcByName320.set(baseName, srcText);
+}
+const animation1EffectSrcSet = new Set(
+  Object.values(rawEffectImageModulesAnimation1)
+    .map(src => nonEmptyText(src))
+    .filter(Boolean)
+);
+const effectNameCatalog = [
+  ...(Array.isArray(effectList320) ? effectList320 : []),
+  ...(Array.isArray(effectListAnimation1) ? effectListAnimation1 : [])
+]
+  .map(name => nonEmptyText(name))
+  .filter((name, index, arr) => name.length > 0 && arr.indexOf(name) === index && effectSrcByName.has(name));
+const DEFAULT_ATTACK_EFFECT_NAME = "斬撃";
 
 const props = defineProps({
   selectedRace: { type: String, default: "" },
@@ -228,16 +300,25 @@ const props = defineProps({
   selectedCharacterName: { type: String, default: "" },
   selectedVillageName: { type: String, default: "" },
   researchProgress: { type: Object, default: null },
+  researchSelection: { type: Object, default: null },
   gameSetupReady: { type: Boolean, default: false },
   gameSetupProgressText: { type: String, default: "" },
   characterCommand: { type: Object, default: null }
 });
-const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change", "save-snapshot"]);
+const emit = defineEmits(["character-state-change", "open-modal", "test-controls-change", "save-snapshot", "game-view-size-change"]);
+
+defineExpose({
+  playEffect: payload => playEffectFromExternalRequest(payload),
+  reviveUnitFromDeadReserve: payload => reviveUnitFromDeadReserve(payload?.unitId, payload)
+});
 
 // マップ生成/表示の基本設定
-const mapSize = ref("36x36"); // 生成時のマップサイズ
+const mapSize = ref("60x60"); // 生成時のマップサイズ
 const patternId = ref("realistic"); // 島形状プリセット
 const mountainMode = ref("random"); // 山岳生成モード
+const gameViewPresetKey = ref(DEFAULT_GAME_VIEW_PRESET_KEY); // 描画解像度プリセット
+const gameViewWidth = ref(GAME_VIEW_WIDTH); // 現在の描画横幅(px)
+const gameViewHeight = ref(GAME_VIEW_HEIGHT); // 現在の描画縦幅(px)
 const showIslandCustomModal = ref(false); // 島カスタム設定モーダル表示
 const useIslandCustomSettings = ref(false); // 島カスタム設定ON/OFF
 const customLargeIslandCount = ref(2); // 大島の数
@@ -245,6 +326,8 @@ const customIsletCountMin = ref(1); // 孤島数(最小)
 const customIsletCountMax = ref(4); // 孤島数(最大)
 const customTargetLandPercent = ref(50); // 目標陸地率(%)
 const customLargeIslandMinGap = ref(6); // 大島同士の最小距離
+const customRiverPerContinentMin = ref(3); // 大陸あたり川本数(最小)
+const customRiverPerContinentMax = ref(4); // 大陸あたり川本数(最大)
 const customWorldWrapEnabled = ref(true); // ワールドラップON/OFF
 const showHeightNumbers = ref(false); // 高度Lvの数字表示
 const heightNumberFontSize = ref(23); // 高度Lv文字サイズ
@@ -256,9 +339,12 @@ const populationHeaderExpanded = ref(false); // 人口ヘッダーの詳細表�
 const showSpecialTilesAlways = ref(true); // 隠し特殊地形の常時表示
 const showWaterfallEffects = ref(true); // 滝エフェクト表示
 const showStrongEnemyMarkers = ref(false); // 強敵候補表示
+const lowPowerMode = ref(true); // 省電力モード
+const isPageHidden = ref(typeof document !== "undefined" ? !!document.hidden : false); // タブ非表示状態
 const focusCameraOnTileClick = ref(false); // クリック時カメラフォーカス
 const showSettingsModal = ref(false); // 表示設定モーダル表示
 const showQuickSettingsModal = ref(false); // 右上設定メニュー表示
+const squadFormationEnabled = ref(true); // チーム編成機能ON/OFF
 const saveExportInProgress = ref(false); // セーブ出力中フラグ
 const saveLoadInProgress = ref(false); // セーブ読込中フラグ
 const saveLoadInput = ref(null); // セーブ読込用input
@@ -283,25 +369,57 @@ const zoomPercent = ref(100);
 const isDevBuild = import.meta.env.DEV;
 const showDevInfo = ref(isDevBuild);
 const showTestControls = ref(false);
+const runtimeMemoryText = ref("-");
 const testPlayerSlots = ref([]); // テスト用プレイヤー勢力スロット
 const activeTestPlayerId = ref(DEFAULT_TEST_PLAYER_ID); // 現在操作中プレイヤーID
+const diplomacyRelations = ref({}); // 勢力ペアごとの戦争状態・外交評価ペナルティ
+const warDeclarationPending = ref(null);
 const headerMinimized = ref(false);
 const showTurnActionModal = ref(false);
 const clockNowMs = ref(Date.now());
 const mapClockStartMs = ref(Date.now());
+const clockElapsedMs = ref(0);
+const clockLastTickRealMs = ref(Date.now());
+const autoTimeRunning = ref(true);
+const autoTimePausedByCheckpoint = ref(false);
+const turnTicker = ref({ text: "", kind: "progress", key: 0 });
 const villageState = ref(null);
 const unitList = ref([]);
+const deadUnitReserve = ref([]); // 回収済み死亡ユニットを保持する死亡枠（蘇生元データ）
+const headerResourceMenuRef = ref(null);
+const headerPopulationMenuRef = ref(null);
+const headerResourceButtonRefMap = ref({});
+const headerResourceMenuLayoutVersion = ref(0);
+const activeResourcePanel = ref(null);
 const selectedUnitId = ref("");
 const villagePlacementMode = ref(false);
-const unitMoveMode = ref(false);
+const cityBlockPlacementMode = ref(false);
+const cityBlockPlacementType = ref("city");
+const cityBlockPlacements = ref([]);
+const cityBlockPlacementPreview = ref(null);
+const cityBlockPlacementPending = ref(null);
+const showCityBlockPlacementConfirmModal = ref(false);
+const moveCommandUnitId = ref("");
 const tileAttackSelectionMode = ref(false);
+const tileAttackPatternKey = ref("single");
+const tileAttackRange = ref(3);
+const tileAttackDirectionAnchor = ref(null);
+const tileAttackDirectionCandidate = ref(null);
+const tileAttackDirectionLocked = ref(false);
 const showMoveUnitModal = ref(false);
 const moveUnitCandidateId = ref("");
 const showMovePathConfirmModal = ref(false);
 const plannedMovePathNodes = ref([]);
 const plannedMoveTarget = ref(null);
 const plannedMoveSummaryText = ref("");
+const plannedMovePreview = ref({
+  pathDistance: 0,
+  estimatedCost: 0,
+  remainingAfter: 0
+});
+const movePathConfirmPopupStyle = ref(null);
 const isPathMoveInProgress = ref(false);
+const movingUnitIdSet = ref(new Set());
 const showFieldBattleResultModal = ref(false);
 const fieldBattleState = ref(null);
 const encounterMoveLocks = ref({});
@@ -321,10 +439,32 @@ const unitCreateRarity = ref("common");
 const unitCreateBatchCount = ref(1);
 const unitCreateMode = ref(UNIT_CREATE_MODE_KEYS.NORMAL);
 const selectedTileDetail = ref(null);
+const showFooterUnitSkillModal = ref(false);
+const footerUnitSkillModalUnitId = ref("");
+const footerUnitSkillModalSelectedSkillName = ref("");
+const selectedTileAttackSkillName = ref("");
+const effectPlaybackPreset = ref({
+  name: "",
+  src: "",
+  angleDeg: 0,
+  scalePercent: 50,
+  tint: null,
+  colorStrengthPercent: 100,
+  hueAnimationDegPerFrame: 0,
+  grayscaleBase: false,
+  renderStyle: "soft",
+  frameOffsets: {},
+  showPreviousFrameGhost: false
+});
+const suppressFooterSkillModalOnce = ref(false);
+const ownFactionPanelViewMode = ref("navigator");
+const ownFactionAttackPanelUnitId = ref("");
+const ownFactionAttackPanelSelectedSkillName = ref("");
 const housingUpgradeSelectionState = ref(null); // 住居拡張の付属領域選択状態
 const tileDetailMinimized = ref(false);
 const tileDetailPanelWidth = ref(460);
 const tileDetailPanelHeight = ref(360);
+const showLegacyTileDetailPanel = false;
 const villageInfoText = ref("初期村: -");
 const unitInfoText = ref("選択ユニット: -");
 const unitRulesInfoText = ref("部隊生成ルール: 一般兵 6-10 / ネームド 1");
@@ -337,12 +477,97 @@ const masterVolumePercent = ref(Math.round((initialAudioVolumes.masterVolume ?? 
 const bgmVolumePercent = ref(Math.round((initialAudioVolumes.bgmVolume ?? 0.5) * 100));
 const seVolumePercent = ref(Math.round((initialAudioVolumes.seVolume ?? 0.5) * 100));
 const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
-const SKILL_TREE_ICON_SRC = getIconSrcByName("本", DEFAULT_ICON_NAME);
 const UNIT_CREATE_ICON_SRC = getIconSrcByName("兵士", DEFAULT_ICON_NAME);
 const EQUIPMENT_INVENTORY_ICON_SRC = getIconSrcByName("装備", DEFAULT_ICON_NAME);
+const UNIT_BATTLE_ICON_SRC = getIconSrcByName("攻撃", DEFAULT_ICON_NAME);
+const POPULATION_ICON_SRC = getIconSrcByName("人間", DEFAULT_ICON_NAME);
+const TILE_ATTACK_PATTERN_OPTIONS = Object.freeze([
+  { key: "single", label: "単体" },
+  { key: "straight", label: "直線" },
+  { key: "fan", label: "扇" },
+  { key: "circle", label: "円" },
+  { key: "around", label: "周囲" },
+  { key: "front", label: "前方" },
+  { key: "line", label: "ライン" },
+  { key: "all", label: "全体" }
+]);
+const TILE_ATTACK_RANGE_MIN = 1;
+const TILE_ATTACK_RANGE_MAX = 12;
+const SKILL_ACTIVE_ACTION_CODE = "A";
+const UNIT_ACTION_POINT_MAX = 100; // 各ユニットが1ターンに使える行動ポイントの最大値
+const DEFAULT_ATTACK_ACTION_POINT_COST = 40; // スキルのAP消費が未記載の攻撃に使う既定コスト
+const DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS = new Set(["straight", "fan", "front"]);
+const TILE_ATTACK_PATTERN_KEY_SET = new Set(TILE_ATTACK_PATTERN_OPTIONS.map(row => row.key));
+const TILE_ATTACK_PATTERN_LABEL_MAP = new Map(TILE_ATTACK_PATTERN_OPTIONS.map(row => [row.key, row.label]));
+const TILE_ATTACK_PREVIEW_COLOR_RANGE = 0xffee72;
+const TILE_ATTACK_PREVIEW_COLOR_HIT = 0xff4f4f;
+const TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF = 0xffb347;
+const SCOUT_RANGE_BOUNDARY_COLOR = 0x58c8bb;
+const SCOUT_RANGE_BOUNDARY_ALPHA = 0.35;
+const MONSTER_BEHAVIOR_ACTION_OPTIONS = Object.freeze([
+  { key: "approach", label: "接近" },
+  { key: "melee_attack", label: "通常攻撃" },
+  { key: "ranged_attack", label: "遠距離攻撃" },
+  { key: "retreat", label: "後退" },
+  { key: "flee", label: "逃走" },
+  { key: "wait", label: "待機" },
+  { key: "patrol", label: "巡回" }
+]);
+const MONSTER_BEHAVIOR_ACTION_KEYS = Object.freeze(MONSTER_BEHAVIOR_ACTION_OPTIONS.map(row => row.key));
 const ATTACK_CURSOR_STYLE = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v20M2 12h20' stroke='%23ff4d4f' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3.5' fill='none' stroke='%23ffd0d0' stroke-width='2'/%3E%3C/svg%3E\") 12 12, crosshair";
+const EFFECT_SPRITE_UNIT = 120;
+const EFFECT_VERTICAL_SPLIT_TARGET_WIDTH = 320;
+const EFFECT_VERTICAL_SPLIT_FRAME_HEIGHT = 120;
+const EFFECT_TOTAL_PLAYBACK_MS = 1500;
+const EFFECT_FRAME_INTERVAL_MS = 60;
+const EFFECT_SEQUENCE_GAP_MS = 10;
+const EFFECT_PLAYBACK_DEPTH = 1000000;
+const EFFECT_SCALE_BASE_PERCENT = 100;
+const EFFECT_ELLIPSE_RATIO_THRESHOLD = 1.15;
+const EFFECT_SOFT_MASK_TEXTURE_KEY = "tile-effect-soft-mask";
+const EFFECT_SOFT_MASK_TEXTURE_SIZE = 256;
+const EFFECT_SOFT_MASK_INNER_RATIO = 0.58;
+const EFFECT_RENDER_STYLE_SOFT = "soft";
+const EFFECT_RENDER_STYLE_RECT = "rect";
+const EFFECT_RENDER_STYLE_NONE = "none";
+const EFFECT_RENDER_STYLE_SET = new Set([EFFECT_RENDER_STYLE_SOFT, EFFECT_RENDER_STYLE_RECT, EFFECT_RENDER_STYLE_NONE]);
+const EFFECT_DEBUG_PREFIX = "[AttackEffect]";
+const MAP_EFFECT_PLAY_EVENT_NAME = "fantasy-strategy:play-map-effect";
+const MAP_EFFECT_BRIDGE_NAMESPACE = "__fantasy_strategy_map_effect_bridge__";
+// 死亡ユニットのフィールド残留時間（ms計算用の秒値）。
+// runDeadUnitLifecycleTick で、未回収死体を消滅させる判定に使う。
+const DEAD_UNIT_FIELD_TIMEOUT_SECONDS = 30;
+// DEAD_UNIT_FIELD_TIMEOUT_SECONDS をミリ秒化した実行時比較値。
+const DEAD_UNIT_FIELD_TIMEOUT_MS = DEAD_UNIT_FIELD_TIMEOUT_SECONDS * 1000;
+// HP0以下になったユニットへ付与する状態ラベル。
+// UI表示と死亡判定フラグ同期に利用。
+const DEAD_UNIT_STATE_LABEL = "死亡";
+// 初期村配置時に「この半径内は敵を置かない」安全地帯の半径。
+// 開始直後の接敵事故防止（即終了リスク低減）に使う。
+const START_VILLAGE_SAFE_NO_ENEMY_RADIUS = 3;
+// 初期村近傍の敵レベル制限をかける半径。
+// SAFE_NO_ENEMY_RADIUS より外〜この半径内を低レベル帯に調整する。
+const START_VILLAGE_LOW_LEVEL_RADIUS = 7;
+// 初期村近傍（LOW_LEVEL_RADIUS内）で許容する敵レベル上限。
+// 現在は Lv10 以下を目標に、敵ステータス再計算時の上限として利用。
+const START_VILLAGE_LOW_LEVEL_CAP = 10;
 const pathfindingWorkerClient = createPathfindingWorkerClient();
-const mapRenderScheduler = createMapRenderScheduler(() => renderMapWithPhaser());
+const MAP_RENDER_INTERVAL_NORMAL_MS = 16;
+const MAP_RENDER_INTERVAL_LOW_POWER_MS = 125;
+const MAP_RENDER_INTERVAL_HIDDEN_MS = 250;
+const mapRenderScheduler = createMapRenderScheduler(
+  () => renderMapWithPhaser(),
+  {
+    resolveMinFrameIntervalMs: () => {
+      if (isPageHidden.value) return MAP_RENDER_INTERVAL_HIDDEN_MS;
+      return lowPowerMode.value ? MAP_RENDER_INTERVAL_LOW_POWER_MS : MAP_RENDER_INTERVAL_NORMAL_MS;
+    }
+  }
+);
+const LARGE_MAP_TILE_THRESHOLD = 3000;
+const RIVER_DETAIL_TILE_THRESHOLD = 2800;
+const RIVER_CORNER_LEVEL_CACHE = new WeakMap();
+const EMPTY_CORNER_LEVEL_MAP = new Map();
 
 function requestMapRender() {
   mapRenderScheduler.requestRender();
@@ -350,6 +575,12 @@ function requestMapRender() {
 
 function renderMapNow() {
   mapRenderScheduler.renderNow();
+}
+
+function applyLowPowerDisplayDefaults(enabled) {
+  if (!enabled) return;
+  if (showWaterfallEffects.value) showWaterfallEffects.value = false;
+  if (showHeightNumbers.value) showHeightNumbers.value = false;
 }
 
 let game = null;
@@ -368,9 +599,20 @@ let selectedTileKey = "";
 let hoveredTileKey = "";
 let resizeHandler = null;
 let clockIntervalId = null;
+let runtimeMemoryIntervalId = null;
 let firstGestureHandler = null;
+let pageVisibilityHandler = null;
 let nativeWheelHandler = null;
+let sidebarResourceOutsidePointerHandler = null;
+let externalMapEffectPlayEventHandler = null;
+let externalMapEffectPlayBridgeFn = null;
+let enemyAutoAttackElapsedMs = 0;
+let unitDamageBlinkTimerId = null;
+let unitDamageBlinkUntilMsById = new Map();
+let unitRecentDamageAmountById = new Map();
+let activeDamagePopupTexts = new Set();
 let lastClockTurnCycleIndex = 0;
+let turnTickerTimerId = null;
 let cameraInitialized = false;
 let pendingClickFocusWorld = null;
 let pendingClickFocusMode = "near";
@@ -386,6 +628,20 @@ let touchPointerViewMap = new Map();
 let pinchActive = false;
 let pinchStartDistance = 0;
 let suppressTouchTapUntilRelease = false;
+
+function syncRuntimePowerSaveState() {
+  const hidden = !!isPageHidden.value;
+  mapRenderScheduler.setSuspended(hidden);
+  const loop = game?.loop;
+  if (loop) {
+    if (hidden) {
+      if (typeof loop.sleep === "function") loop.sleep();
+    } else if (typeof loop.wake === "function") {
+      loop.wake();
+    }
+  }
+  if (!hidden) requestMapRender();
+}
 let forceMapCenterOnNextRender = true;
 let territorySets = { player: new Set(), enemy: new Set() };
 let territoryOwnerByTile = new Map();
@@ -396,10 +652,20 @@ let spottedEnemyTileKeys = new Set();
 let spottedFactionTileKeys = new Set();
 let alertedEnemyTileKeys = new Set();
 let alertedFactionTileKeys = new Set();
+let spottedEnemyNamesByTile = new Map();
 let raceMarkerTexturePending = new Set();
+let enemyIllustrationTexturePending = new Set();
+let unitIllustrationTexturePending = new Set();
 let lastCharacterCommandNonce = "";
 let renderedHexBounds = null;
 let applyingTestPlayerState = false;
+let lastMapRenderAtMs = 0;
+let activeTileEffectImage = null;
+let activeTileEffectPrevGhostImage = null;
+let activeTileEffectMaskImage = null;
+let activeTileEffectFrameTimerId = null;
+let activeTileEffectHideTimerId = null;
+let activeTileEffectPlaybackRequestId = 0;
 
 const terrainMap = computed(() => {
   const m = new Map();
@@ -436,6 +702,350 @@ const customTargetLandTilesLabel = computed(() => {
     : Number(customTargetLandPercent.value);
   const pct = Math.max(25, Math.min(60, Number.isFinite(raw) ? raw : 50));
   return `${Math.round((total * pct) / 100)} / ${total} マス`;
+});
+
+const hasSelectedTileForEffect = computed(() => !!resolveSelectedTileCoordForEffect());
+
+const footerTileUnitRows = computed(() => {
+  const detail = selectedTileDetail.value;
+  if (!detail) return [];
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+  return unitsAt(x, y).map(unit => ({
+    ...unit,
+    iconSrc: moveUnitIconSrc(unit),
+    iconGlyph: moveUnitIconGlyph(unit)
+  }));
+});
+
+const footerTileEnemyRows = computed(() => {
+  const detail = selectedTileDetail.value;
+  if (!detail || !currentData.value) return [];
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
+
+  const out = [];
+  const seen = new Set();
+  const pushEnemy = (enemy, prefix = "enemy", options = {}) => {
+    if (!enemy || typeof enemy !== "object") return;
+    const baseId = nonEmptyText(enemy?.id) || `${prefix}-${x}-${y}-${out.length + 1}`;
+    const rowId = `${prefix}:${baseId}`;
+    if (seen.has(rowId)) return;
+    seen.add(rowId);
+    const explicitIconSrc = nonEmptyText(options?.iconSrc);
+    const fallbackIconSrc = nonEmptyText(enemy?.iconSrc);
+    out.push({
+      ...enemy,
+      id: rowId,
+      name: nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵",
+      unitType: nonEmptyText(enemy?.unitType) || "敵",
+      iconSrc: explicitIconSrc || fallbackIconSrc || ""
+    });
+  };
+
+  // フッター表示は一時的な危険度変動に影響されないよう、配置済み敵データを直接使う。
+  const spawnEnemies = configuredEnemiesAt(x, y, currentData.value);
+  for (const enemy of spawnEnemies) {
+    const illustName = resolveEnemyIllustrationNameForMap(enemy, [enemy]);
+    const illustSrc = resolveEnemyIllustrationSrc(illustName);
+    pushEnemy(enemy, "spawn", { iconSrc: illustSrc });
+  }
+
+  const opposingMap = buildOpposingFactionUnitsByTile(currentData.value);
+  const key = coordKey(x, y);
+  const bucket = opposingMap.get(key);
+  if (bucket && Array.isArray(bucket.units)) {
+    for (const unit of bucket.units) {
+      const unitIllustName = resolveUnitIllustrationNameForMap(unit);
+      const unitIllustSrc = resolveUnitIllustrationSrc(unitIllustName);
+      pushEnemy({
+        ...unit,
+        unitType: nonEmptyText(bucket?.factionLabel) || "他勢力"
+      }, "faction", {
+        iconSrc: unitIllustSrc || moveUnitIconSrc(unit)
+      });
+    }
+  }
+  return out;
+});
+
+const footerUnitSkillModalUnit = computed(() => {
+  const id = nonEmptyText(footerUnitSkillModalUnitId.value);
+  if (!id) return null;
+  return unitList.value.find(unit => nonEmptyText(unit?.id) === id) || null;
+});
+
+const footerUnitSkillModalSkillNames = computed(() => {
+  const source = Array.isArray(footerUnitSkillModalUnit.value?.skills)
+    ? footerUnitSkillModalUnit.value.skills
+    : [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of source) {
+    const name = nonEmptyText(raw);
+    if (!name || name === "0" || name === "-" || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+});
+
+const footerUnitSkillModalSelectedSkillSummary = computed(() => {
+  const skillName = nonEmptyText(footerUnitSkillModalSelectedSkillName.value);
+  if (!skillName) return "";
+  const row = resolveSkillInfoRowByName(skillName);
+  if (!row) return `${skillName}: 射程/範囲の定義がありません。`;
+  const range = resolveSkillAttackRangeFromRow(row, TILE_ATTACK_RANGE_MIN, {
+    unit: footerUnitSkillModalUnit.value
+  });
+  const patternKey = resolveTileAttackPatternKeyFromSkillArea(row?.範囲);
+  return `${skillName}: ${resolveTileAttackPatternLabel(patternKey)} / 射程${range}`;
+});
+
+const ownFactionAttackPanelUnit = computed(() => {
+  const preferredId = nonEmptyText(ownFactionAttackPanelUnitId.value);
+  if (preferredId) {
+    const matched = unitList.value.find(unit => nonEmptyText(unit?.id) === preferredId) || null;
+    if (matched) return matched;
+  }
+  const selectedId = nonEmptyText(selectedUnitId.value);
+  if (!selectedId) return null;
+  return unitList.value.find(unit => nonEmptyText(unit?.id) === selectedId) || null;
+});
+
+const ownFactionAttackPanelSkillNames = computed(() => {
+  const source = Array.isArray(ownFactionAttackPanelUnit.value?.skills)
+    ? ownFactionAttackPanelUnit.value.skills
+    : [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of source) {
+    const name = nonEmptyText(raw);
+    if (!name || name === "0" || name === "-" || seen.has(name)) continue;
+    const row = resolveSkillInfoRowByName(name);
+    const action = nonEmptyText(row?.行動).toUpperCase();
+    if (action && action !== SKILL_ACTIVE_ACTION_CODE && action !== "A" && action !== "ACTION") continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+});
+
+function toSkillDisplayText(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const num = Number(value);
+  if (Number.isFinite(num)) return String(num);
+  const text = nonEmptyText(value);
+  return text || "-";
+}
+
+function resolveSkillPanelActionType(value) {
+  const text = nonEmptyText(value).toUpperCase();
+  if (text === "P" || text === "PASSIVE" || text === "パッシブ") return "passive";
+  return "action";
+}
+
+function resolveSkillPanelIconNameFromText(value) {
+  const text = nonEmptyText(value);
+  if (!text || text === "-") return "";
+  if (hasIconName(text)) return text;
+  const chunks = text
+    .split(/[\s/／・,，\+\+]+/)
+    .map(nonEmptyText)
+    .filter(Boolean);
+  for (const chunk of chunks) {
+    if (hasIconName(chunk)) return chunk;
+  }
+  return "";
+}
+
+function resolveSkillPanelIconSrcFromText(value) {
+  const iconName = resolveSkillPanelIconNameFromText(value);
+  if (!iconName) return "";
+  return getIconSrcByName(iconName, "");
+}
+
+function isWeaponAttackStyleText(value) {
+  const normalized = nonEmptyText(value).toLowerCase();
+  return normalized === "武器" || normalized === "weapon";
+}
+
+function buildOwnFactionAttackRow(nameRaw, skillRow, statusSource, options = {}) {
+  const name = nonEmptyText(nameRaw);
+  const rowSource = skillRow && typeof skillRow === "object" ? skillRow : {};
+  const sourceType = nonEmptyText(options?.sourceType) || "skill";
+  const scaled = computeSkillScaledTriplet(rowSource, statusSource);
+  const shouldApplyWeaponBonus = sourceType !== "weapon" && isWeaponAttackStyleText(rowSource?.攻撃手段);
+  const weaponBonusRow = shouldApplyWeaponBonus && options?.weaponBonusRow && typeof options.weaponBonusRow === "object"
+    ? options.weaponBonusRow
+    : null;
+  const weaponScaled = weaponBonusRow
+    ? computeSkillScaledTriplet(weaponBonusRow, statusSource)
+    : null;
+  const powerValue = Math.round(toSafeNumber(scaled?.power, 0) + toSafeNumber(weaponScaled?.power, 0));
+  const stateValue = Math.round(toSafeNumber(scaled?.state, 0) + toSafeNumber(weaponScaled?.state, 0));
+  const guardValue = Math.round(toSafeNumber(scaled?.guard, 0) + toSafeNumber(weaponScaled?.guard, 0));
+  const range = resolveSkillAttackRangeFromRow(rowSource, TILE_ATTACK_RANGE_MIN, {
+    unit: options?.unit,
+    weaponRow: weaponBonusRow
+  });
+  const patternKey = resolveTileAttackPatternKeyFromSkillArea(rowSource?.範囲);
+  const attackStyle = toSkillDisplayText(rowSource?.攻撃手段);
+  const family = toSkillDisplayText(rowSource?.系統);
+  const actionType = resolveSkillPanelActionType(rowSource?.行動);
+  return {
+    rowKey: nonEmptyText(options?.rowKey) || `attack:${name}`,
+    sourceType,
+    slotLabel: nonEmptyText(options?.slotLabel),
+    name,
+    detail: toSkillDisplayText(rowSource?.詳細),
+    apCost: toSkillDisplayText(rowSource?.AP消費),
+    ct: toSkillDisplayText(rowSource?.CT),
+    duration: toSkillDisplayText(rowSource?.効果時間),
+    power: toSkillDisplayText(powerValue),
+    state: toSkillDisplayText(stateValue),
+    guard: toSkillDisplayText(guardValue),
+    range,
+    patternKey,
+    patternLabel: resolveTileAttackPatternLabel(patternKey),
+    attackStyle,
+    family,
+    actionType,
+    actionShort: actionType === "passive" ? "P" : "A",
+    attackStyleIconSrc: resolveSkillPanelIconSrcFromText(attackStyle),
+    familyIconSrc: resolveSkillPanelIconSrcFromText(family),
+    skillRowRef: rowSource
+  };
+}
+
+function resolveWeaponBaseSkillRowForItem(item) {
+  if (!item || typeof item !== "object") return null;
+  const name = nonEmptyText(item?.name || item?.equipmentName);
+  if (!name) return null;
+  const equipmentRow = findEquipmentRowByName(name);
+  if (!equipmentRow) {
+    return ensureEquipmentSkillRowForItem(item) || item?.skillRow || null;
+  }
+  const baseEntry = {
+    ...item,
+    power: Math.round(toSafeNumber(equipmentRow?.威力, 0)),
+    guard: Math.round(toSafeNumber(equipmentRow?.ガード, 0)),
+    criticalRate: Math.round(toSafeNumber(equipmentRow?.Cr率, 0)),
+    criticalPower: Math.round(toSafeNumber(equipmentRow?.Cr威力, 0)),
+    attackAp: Math.round(toSafeNumber(equipmentRow?.攻撃AP, 0)),
+    magicAp: Math.round(toSafeNumber(equipmentRow?.魔法AP, 0)),
+    range: Number.isFinite(Number(equipmentRow?.射程))
+      ? Math.round(toSafeNumber(equipmentRow?.射程, 0))
+      : null
+  };
+  return buildEquipmentSkillRow(equipmentRow, baseEntry);
+}
+
+function resolveWeaponAttackRowsForUnit(unit, statusSource) {
+  const equipment = normalizeEquipmentList(unit?.equipment);
+  const rows = [];
+  for (let i = 0; i < equipment.length; i += 1) {
+    const item = equipment[i];
+    const slot = nonEmptyText(item?.slot);
+    if (slot !== "武器1" && slot !== "武器2") continue;
+    const name = nonEmptyText(item?.name || item?.equipmentName);
+    if (!name) continue;
+    const skillRow = resolveWeaponBaseSkillRowForItem(item);
+    rows.push(buildOwnFactionAttackRow(name, skillRow, statusSource, {
+      rowKey: `weapon:${slot}:${name}:${i}`,
+      sourceType: "weapon",
+      slotLabel: EQUIPMENT_SLOT_LABELS[slot] || slot,
+      unit
+    }));
+  }
+  return rows;
+}
+
+function resolvePrimaryWeaponBaseSkillRowForUnit(unit) {
+  const equipment = normalizeEquipmentList(unit?.equipment);
+  let fallbackWeaponItem = null;
+  for (const item of equipment) {
+    const slot = nonEmptyText(item?.slot);
+    if (slot !== "武器1" && slot !== "武器2") continue;
+    if (!fallbackWeaponItem) fallbackWeaponItem = item;
+    if (slot === "武器1") {
+      return resolveWeaponBaseSkillRowForItem(item);
+    }
+  }
+  return fallbackWeaponItem ? resolveWeaponBaseSkillRowForItem(fallbackWeaponItem) : null;
+}
+
+function resolveWeaponSkillRowByNameForUnit(skillNameRaw, unit) {
+  const skillName = nonEmptyText(skillNameRaw);
+  if (!skillName) return null;
+  const equipment = normalizeEquipmentList(unit?.equipment);
+  for (const item of equipment) {
+    const slot = nonEmptyText(item?.slot);
+    if (slot !== "武器1" && slot !== "武器2") continue;
+    const name = nonEmptyText(item?.name || item?.equipmentName);
+    if (name !== skillName) continue;
+    return resolveWeaponBaseSkillRowForItem(item);
+  }
+  return null;
+}
+
+const ownFactionAttackPanelSkillRows = computed(() => {
+  const statusSource = ownFactionAttackPanelUnit.value?.status || null;
+  const weaponRows = resolveWeaponAttackRowsForUnit(ownFactionAttackPanelUnit.value, statusSource);
+  const mainWeaponSkillRow = resolvePrimaryWeaponBaseSkillRowForUnit(ownFactionAttackPanelUnit.value);
+  const skillRows = ownFactionAttackPanelSkillNames.value.map(name => {
+    const skillRow = resolveSkillInfoRowByName(name);
+    return buildOwnFactionAttackRow(name, skillRow, statusSource, {
+      rowKey: `skill:${name}`,
+      sourceType: "skill",
+      weaponBonusRow: mainWeaponSkillRow,
+      unit: ownFactionAttackPanelUnit.value
+    });
+  });
+  return [...weaponRows, ...skillRows];
+});
+
+const ownFactionAttackPanelActionPoint = computed(() => resolveUnitActionPoint(ownFactionAttackPanelUnit.value));
+const ownFactionAttackPanelActionPointMax = computed(() => resolveUnitActionPointMax(ownFactionAttackPanelUnit.value));
+
+function isOwnFactionAttackRowAffordable(row) {
+  return resolveSkillActionPointCost(row?.skillRowRef) <= ownFactionAttackPanelActionPoint.value;
+}
+
+const ownFactionAttackPanelSelectedSkillRow = computed(() => {
+  const selectedName = nonEmptyText(ownFactionAttackPanelSelectedSkillName.value);
+  const rows = ownFactionAttackPanelSkillRows.value;
+  if (selectedName) {
+    const matched = rows.find(row => nonEmptyText(row?.name) === selectedName) || null;
+    if (matched) return matched;
+  }
+  return rows[0] || null;
+});
+
+const ownFactionAttackPanelSelectedSkillSummary = computed(() => {
+  const row = ownFactionAttackPanelSelectedSkillRow.value;
+  if (!row) return "";
+  return `${row.name}: ${row.patternLabel} / 射程${row.range}`;
+});
+
+watch(ownFactionAttackPanelSkillRows, (rows) => {
+  const selectedName = nonEmptyText(ownFactionAttackPanelSelectedSkillName.value);
+  if (selectedName && rows.some(row => nonEmptyText(row?.name) === selectedName)) return;
+  ownFactionAttackPanelSelectedSkillName.value = nonEmptyText(rows?.[0]?.name);
+}, { immediate: true });
+
+watch(ownFactionAttackPanelSelectedSkillRow, (row) => {
+  const skillName = nonEmptyText(row?.name);
+  if (!skillName) return;
+  footerUnitSkillModalSelectedSkillName.value = skillName;
+  selectedTileAttackSkillName.value = skillName;
+}, { immediate: true });
+
+const tileAttackPreviewSkillLabel = computed(() => {
+  const selected = nonEmptyText(selectedTileAttackSkillName.value);
+  return selected || "通常攻撃";
 });
 
 function formatHeaderPercentOrDash(value) {
@@ -540,14 +1150,39 @@ function resolveVillageTileFacilityNames(village, tileKey) {
     .filter(Boolean);
 }
 
+function normalizeVillageTileCampMap(rawMap) {
+  const source = rawMap && typeof rawMap === "object" ? rawMap : {};
+  const out = {};
+  for (const [rawTileKey, rawValue] of Object.entries(source)) {
+    const tileKey = nonEmptyText(rawTileKey);
+    if (!tileKey.includes(",")) continue;
+    if (!rawValue) continue;
+    const createdTurn = Math.max(0, Math.floor(toSafeNumber(rawValue?.createdTurn, 0)));
+    out[tileKey] = {
+      createdTurn
+    };
+  }
+  return out;
+}
+
+function resolveVillageCampEntryAtTile(village, tileKey) {
+  const key = nonEmptyText(tileKey);
+  if (!key.includes(",")) return null;
+  const map = normalizeVillageTileCampMap(village?.[VILLAGE_TILE_CAMP_MAP_KEY]);
+  const row = map[key];
+  if (!row || typeof row !== "object") return null;
+  return row;
+}
+
+function hasCampOnTile(village, tileKey) {
+  return !!resolveVillageCampEntryAtTile(village, tileKey);
+}
+
 function resolveUnitRegenerationPerTurn(unit) {
-  const statusRegen = toSafeNumber(unit?.status?.再生, Number.NaN);
-  const skillRegen = toSafeNumber(unit?.skillLevels?.再生, Number.NaN);
-  const fallbackRegen = toSafeNumber(unit?.regeneration, Number.NaN);
-  const raw = Number.isFinite(statusRegen)
-    ? statusRegen
-    : (Number.isFinite(skillRegen) ? skillRegen : (Number.isFinite(fallbackRegen) ? fallbackRegen : 0));
-  return Math.max(0, Math.floor(raw / 10));
+  // 毎ターンの基礎自動回復は「最大HPの5%」を適用する。
+  // 自領地での回復値加算は applyVillageTileRecoveryTurn 側で別途加算する。
+  const maxHp = Math.max(1, resolveUnitMaxHpValue(unit));
+  return Math.max(1, Math.floor(maxHp * 0.05));
 }
 
 function hasChurchFacilityOnTile(village, tileKey) {
@@ -637,6 +1272,23 @@ function resolveVillageTileStatusSummary(village) {
     purification: roundTo1(purification),
     recovery: roundTo1(recovery)
   };
+}
+
+function resolveVillageTerritoryRecoveryBonus(village, recoveryMapOverride = null) {
+  const vx = Math.floor(toSafeNumber(village?.x, Number.NaN));
+  const vy = Math.floor(toSafeNumber(village?.y, Number.NaN));
+  if (Number.isFinite(vx) && Number.isFinite(vy)) {
+    const centerRecovery = Math.max(
+      0,
+      resolveVillageTileRecoveryValue(village, coordKey(vx, vy), recoveryMapOverride)
+    );
+    if (centerRecovery > 0) return centerRecovery;
+  }
+  const summary = resolveVillageTileStatusSummary(village);
+  if (summary.tileCount > 0 && summary.recovery > 0) {
+    return Math.max(0, roundTo1(summary.recovery / summary.tileCount));
+  }
+  return 0;
 }
 
 function resolveVillageMaintenancePenalty(metrics) {
@@ -938,11 +1590,286 @@ const fieldResourceSummary = computed(() => {
   };
 });
 
-const turnDurationSec = 60;
-const autoTurnAdvanceByClock = false;
+const headerPopulationDisplay = computed(() => {
+  const village = villageState.value;
+  if (!village || typeof village !== "object") return fieldResourceSummary.value.population;
+  const population = formatCompactNumber(village.population);
+  const capacity = formatCompactNumber(village.populationCapacity ?? village.population);
+  return `${population}/${capacity}`;
+});
+
+const populationHappinessDisplay = computed(() => {
+  const entries = Array.isArray(fieldResourceSummary.value?.populationEntries)
+    ? fieldResourceSummary.value.populationEntries
+    : [];
+  const happinessRow = entries.find(entry => nonEmptyText(entry?.key) === "happiness");
+  return happinessRow?.value ?? "-";
+});
+
+const populationExpandedRows = computed(() => {
+  const entries = Array.isArray(fieldResourceSummary.value?.populationEntries)
+    ? fieldResourceSummary.value.populationEntries
+    : [];
+  return entries.filter(entry => {
+    const key = nonEmptyText(entry?.key);
+    return key !== "happiness" && key !== "population";
+  });
+});
+
+function sumMaterialValuesByKeys(bag, keys) {
+  return roundTo1(
+    (Array.isArray(keys) ? keys : []).reduce(
+      (sum, key) => sum + toSafeNumber(bag?.[key], 0),
+      0
+    )
+  );
+}
+
+function formatSignedMaterialCompactNumber(value) {
+  const safeValue = roundTo1(toSafeNumber(value, 0));
+  const absText = formatMaterialCompactNumber(Math.abs(safeValue));
+  if (safeValue > 0) return `+${absText}`;
+  if (safeValue < 0) return `-${absText}`;
+  return "±0";
+}
+
+function formatSignedFoodCompactNumber(value) {
+  const safeValue = roundTo1(toSafeNumber(value, 0));
+  const absText = formatFoodCompactNumber(Math.abs(safeValue));
+  if (safeValue > 0) return `+${absText}`;
+  if (safeValue < 0) return `-${absText}`;
+  return "±0";
+}
+
+const sidebarResourcePanelEntries = computed(() => {
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  const stockBag = normalizeMaterialStockBag(village?.materialStockByType);
+  const foodStockBag = normalizeResourceBag(village?.foodStockByType, FOOD_RESOURCE_KEYS);
+  const materialDeltaBag = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  const foodDeltaBag = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
+  if (village?.placed && currentData.value?.grid) {
+    const ownedSet = buildPlayerTerritorySet(currentData.value, village);
+    const territoryIncome = collectTerritoryIncome(currentData.value, ownedSet, {
+      villageOverride: village,
+      raceFallback: props.selectedRace
+    });
+    const buildingIncome = collectVillageBuildingIncome(village);
+    for (const key of MATERIAL_RESOURCE_KEYS) {
+      materialDeltaBag[key] = roundTo1(
+        toSafeNumber(territoryIncome?.material?.[key], 0)
+        + toSafeNumber(buildingIncome?.material?.[key], 0)
+      );
+    }
+    for (const key of FOOD_RESOURCE_KEYS) {
+      foodDeltaBag[key] = roundTo1(
+        toSafeNumber(territoryIncome?.food?.[key], 0)
+        + toSafeNumber(buildingIncome?.food?.[key], 0)
+      );
+    }
+  }
+  const out = {};
+  for (const def of SIDEBAR_RESOURCE_PANEL_DEFS) {
+    const isFoodPanel = def.category === "food";
+    out[def.key] = {
+      key: def.key,
+      label: def.label,
+      category: def.category,
+      total: isFoodPanel
+        ? sumMaterialValuesByKeys(foodStockBag, FOOD_RESOURCE_KEYS)
+        : sumMaterialValuesByKeys(stockBag, def.detailKeys),
+      delta: isFoodPanel
+        ? sumMaterialValuesByKeys(foodDeltaBag, FOOD_RESOURCE_KEYS)
+        : sumMaterialValuesByKeys(materialDeltaBag, def.detailKeys),
+      detailKeys: [...def.detailKeys],
+      detailStockBag: stockBag,
+      foodStockBag,
+      detailDeltaBag: materialDeltaBag,
+      foodDeltaBag
+    };
+  }
+  return out;
+});
+
+const sidebarResourcePanelRows = computed(() => {
+  return SIDEBAR_RESOURCE_PANEL_DEFS.map(def => {
+    const entry = sidebarResourcePanelEntries.value[def.key];
+    const delta = toSafeNumber(entry?.delta, 0);
+    const isFoodPanel = def.category === "food";
+    const iconKey = Array.isArray(def.detailKeys) && def.detailKeys.length ? def.detailKeys[0] : "木材";
+    return {
+      key: def.key,
+      label: def.label,
+      iconSrc: resolveResourceIconSrc(iconKey),
+      totalDisplay: isFoodPanel
+        ? formatFoodCompactNumber(entry?.total)
+        : formatMaterialCompactNumber(entry?.total),
+      deltaDisplay: isFoodPanel
+        ? formatSignedFoodCompactNumber(delta)
+        : formatSignedMaterialCompactNumber(delta),
+      deltaClass: delta > 0 ? "positive" : (delta < 0 ? "negative" : "neutral"),
+      isActive: activeResourcePanel.value === def.key
+    };
+  });
+});
+
+const activeSidebarResourcePanel = computed(() => {
+  const key = nonEmptyText(activeResourcePanel.value);
+  const def = SIDEBAR_RESOURCE_PANEL_DEF_MAP[key];
+  if (!def) return null;
+  const entry = sidebarResourcePanelEntries.value[key];
+  return {
+    key,
+    label: def.label,
+    materialItems: def.category === "food"
+      ? []
+      : def.detailKeys.map(resourceKey => ({
+        key: resourceKey,
+        label: resourceKey,
+        iconSrc: resolveResourceIconSrc(resourceKey),
+        stockDisplay: formatMaterialCompactNumber(toSafeNumber(entry?.detailStockBag?.[resourceKey], 0)),
+        gainDisplay: formatSignedMaterialCompactNumber(toSafeNumber(entry?.detailDeltaBag?.[resourceKey], 0)),
+        gainClass: toSafeNumber(entry?.detailDeltaBag?.[resourceKey], 0) > 0
+          ? "positive"
+          : (toSafeNumber(entry?.detailDeltaBag?.[resourceKey], 0) < 0 ? "negative" : "neutral")
+      })),
+    foodItems: FOOD_RESOURCE_KEYS
+      .map(resourceKey => ({
+        key: resourceKey,
+        label: resourceKey,
+        stockValue: toSafeNumber(entry?.foodStockBag?.[resourceKey], 0),
+        gainValue: toSafeNumber(entry?.foodDeltaBag?.[resourceKey], 0)
+      }))
+      .filter(row => {
+        if (row.key !== "魂" && row.key !== "死体") return true;
+        return row.stockValue !== 0 || row.gainValue !== 0;
+      })
+      .map(row => ({
+        key: row.key,
+        label: row.label,
+        iconSrc: resolveResourceIconSrc(row.key),
+        stockDisplay: formatFoodCompactNumber(row.stockValue),
+        gainDisplay: formatSignedFoodCompactNumber(row.gainValue),
+        gainClass: row.gainValue > 0 ? "positive" : (row.gainValue < 0 ? "negative" : "neutral")
+      }))
+  };
+});
+
+const headerResourceDetailPanelStyle = computed(() => {
+  const layoutVersion = headerResourceMenuLayoutVersion.value;
+  const activeKey = nonEmptyText(activeResourcePanel.value);
+  if (!activeKey) return null;
+  const buttonEl = headerResourceButtonRefMap.value?.[activeKey];
+  const offsetLeft = Number(buttonEl?.offsetLeft);
+  return Number.isFinite(offsetLeft)
+    ? { left: `${Math.max(0, Math.floor(offsetLeft))}px`, "--header-resource-layout-version": String(layoutVersion) }
+    : { left: "0px", "--header-resource-layout-version": String(layoutVersion) };
+});
+
+function setHeaderResourceButtonRef(panelKey, el) {
+  const key = nonEmptyText(panelKey);
+  if (!key) return;
+  if (el) {
+    headerResourceButtonRefMap.value[key] = el;
+    return;
+  }
+  delete headerResourceButtonRefMap.value[key];
+}
+
+function closeSidebarResourcePanel() {
+  activeResourcePanel.value = null;
+}
+
+function toggleSidebarResourcePanel(panelKey) {
+  const key = nonEmptyText(panelKey);
+  if (!SIDEBAR_RESOURCE_PANEL_DEF_MAP[key]) {
+    closeSidebarResourcePanel();
+    return;
+  }
+  if (activeResourcePanel.value !== key) {
+    populationHeaderExpanded.value = false;
+  }
+  activeResourcePanel.value = activeResourcePanel.value === key ? null : key;
+}
+
+function handleSidebarOutsidePointerDown(event) {
+  if (typeof Node === "undefined") return;
+  const targetNode = event?.target;
+  if (!(targetNode instanceof Node)) return;
+
+  const resourcePanelRoot = headerResourceMenuRef.value;
+  if (activeResourcePanel.value && resourcePanelRoot && !resourcePanelRoot.contains(targetNode)) {
+    closeSidebarResourcePanel();
+  }
+
+  const populationPanelRoot = headerPopulationMenuRef.value;
+  if (populationHeaderExpanded.value && populationPanelRoot && !populationPanelRoot.contains(targetNode)) {
+    populationHeaderExpanded.value = false;
+  }
+}
+
+watch(activeResourcePanel, async nextKey => {
+  if (!nonEmptyText(nextKey)) return;
+  await nextTick();
+  headerResourceMenuLayoutVersion.value += 1;
+});
+
+function resolveResearchRequiredExpForLevel(level) {
+  const lv = Math.max(1, Math.floor(toSafeNumber(level, 1)));
+  return RESEARCH_EXP_BASE * (2 ** (lv - 1));
+}
+
+function resolveResearchSelectionItemId(categoryKey) {
+  const key = nonEmptyText(categoryKey);
+  if (!key) return "";
+  const source = props?.researchSelection?.[key];
+  if (!source) return "";
+  if (typeof source === "string" || typeof source === "number") {
+    return nonEmptyText(source);
+  }
+  if (typeof source !== "object") return "";
+  const selectedPairs = Object.entries(source).map(([levelKey, itemId]) => {
+    const level = Math.max(1, Math.floor(toSafeNumber(levelKey, 1)));
+    const id = nonEmptyText(itemId);
+    return { level, id };
+  }).filter(row => !!row.id);
+  selectedPairs.sort((a, b) => b.level - a.level);
+  return selectedPairs[0]?.id || nonEmptyText(source?.itemId || source?.id || "");
+}
+
+const headerResearchRows = computed(() => {
+  return RESEARCH_CATEGORY_ORDER_CONFIG.map((categoryKey) => {
+    const key = nonEmptyText(categoryKey);
+    const level = resolveResearchCurrentLevel(key, CITY_ABILITY_DEFINED_CAP);
+    const selectedItemId = resolveResearchSelectionItemId(key);
+    const currentExp = selectedItemId
+      ? Math.max(0, Math.floor(toSafeNumber(props?.researchProgress?.targetExpMap?.[selectedItemId], 0)))
+      : 0;
+    const requiredExp = resolveResearchRequiredExpForLevel(level);
+    const progressRatio = requiredExp > 0
+      ? Math.max(0, Math.min(1, currentExp / requiredExp))
+      : 0;
+    const label = key.replace(/Lv$/u, "");
+    const iconName = HEADER_RESEARCH_CATEGORY_ICON_MAP[key] || label;
+    const gaugeColor = HEADER_RESEARCH_CATEGORY_GAUGE_COLOR_MAP[key] || "#52ddff";
+    return {
+      key,
+      label,
+      level,
+      selectedItemId,
+      currentExp,
+      requiredExp,
+      progressRatio,
+      gaugeColor,
+      iconSrc: getIconSrcByName(iconName, "本")
+    };
+  });
+});
+
+const turnDurationSec = TURN_SECONDS;
+const autoTurnAdvanceByClock = true;
 
 const elapsedSeconds = computed(() => {
-  const elapsedSec = Math.floor((clockNowMs.value - mapClockStartMs.value) / 1000);
+  const elapsedSec = Math.floor(clockElapsedMs.value / 1000);
   return Math.max(0, elapsedSec);
 });
 
@@ -950,18 +1877,52 @@ const turnClockCycleSeconds = computed(() => {
   return elapsedSeconds.value % turnDurationSec;
 });
 
+const turnClockTenMinuteSec = turnDurationSec * Math.max(1, AUTO_TURN_PAUSE_EVERY_TURNS);
+
+const turnClockTenMinuteCycleSeconds = computed(() => {
+  return elapsedSeconds.value % turnClockTenMinuteSec;
+});
+
 const turnClockRemainingSeconds = computed(() => {
   return turnDurationSec - turnClockCycleSeconds.value;
 });
 
-const turnClockHandDeg = computed(() => {
+const autoTimeStatusLabel = computed(() => {
+  if (autoTimeRunning.value) return "進行中";
+  return autoTimePausedByCheckpoint.value ? `停止中 (${AUTO_TURN_PAUSE_EVERY_TURNS}T区切り)` : "停止中";
+});
+
+const turnsUntilAutoPause = computed(() => {
+  if (AUTO_TURN_PAUSE_EVERY_TURNS <= 0) return 0;
+  const currentCycle = getClockTurnCycleIndex(clockNowMs.value);
+  const mod = currentCycle % AUTO_TURN_PAUSE_EVERY_TURNS;
+  return mod === 0 ? AUTO_TURN_PAUSE_EVERY_TURNS : (AUTO_TURN_PAUSE_EVERY_TURNS - mod);
+});
+
+const secondsUntilAutoPause = computed(() => turnsToSeconds(turnsUntilAutoPause.value));
+
+const turnClockInnerHandDeg = computed(() => {
   const ratio = turnClockCycleSeconds.value / turnDurationSec;
   return -90 + (ratio * 180);
 });
 
+const turnClockOuterHandDeg = computed(() => {
+  const ratio = turnClockTenMinuteCycleSeconds.value / turnClockTenMinuteSec;
+  return -90 + (ratio * 180);
+});
+
+const turnClockTicks = Array.from({ length: 31 }, (_, index) => {
+  const deg = -90 + ((180 / 30) * index);
+  return {
+    index,
+    deg,
+    major: index % 5 === 0
+  };
+});
+
 function getClockTurnCycleIndex(nowMs = clockNowMs.value) {
-  const now = Number(nowMs);
-  const elapsedSec = Math.max(0, Math.floor((now - mapClockStartMs.value) / 1000));
+  const elapsedMs = Math.max(0, Math.floor(toSafeNumber(nowMs, mapClockStartMs.value) - mapClockStartMs.value));
+  const elapsedSec = Math.max(0, Math.floor(elapsedMs / 1000));
   return Math.floor(elapsedSec / turnDurationSec);
 }
 
@@ -969,25 +1930,93 @@ function resetClockTurnCycleIndex(nowMs = clockNowMs.value) {
   lastClockTurnCycleIndex = getClockTurnCycleIndex(nowMs);
 }
 
+function turnsToSeconds(turns) {
+  return Math.max(0, Math.floor(toSafeNumber(turns, 0) * turnDurationSec));
+}
+
+function resetClockRuntime(nowMs = Date.now()) {
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  mapClockStartMs.value = now;
+  clockElapsedMs.value = 0;
+  clockNowMs.value = now;
+  clockLastTickRealMs.value = now;
+  enemyAutoAttackElapsedMs = 0;
+  autoTimeRunning.value = true;
+  autoTimePausedByCheckpoint.value = false;
+  resetClockTurnCycleIndex(now);
+}
+
+function showTurnTicker(textRaw, kindRaw = "progress") {
+  const text = nonEmptyText(textRaw);
+  if (!text) return;
+  if (turnTickerTimerId) {
+    window.clearTimeout(turnTickerTimerId);
+    turnTickerTimerId = null;
+  }
+  const kind = kindRaw === "paused" || kindRaw === "stopped" ? kindRaw : "progress";
+  turnTicker.value = {
+    text,
+    kind,
+    key: turnTicker.value.key + 1
+  };
+  turnTickerTimerId = window.setTimeout(() => {
+    turnTicker.value = { ...turnTicker.value, text: "" };
+    turnTickerTimerId = null;
+  }, 3800);
+}
+
+function startAutoTimeProgress(options = {}) {
+  autoTimeRunning.value = true;
+  autoTimePausedByCheckpoint.value = false;
+  clockLastTickRealMs.value = Date.now();
+  if (options?.announce) {
+    updateUnitInfoText("自動時間経過を開始しました。");
+    showTurnTicker("自動時間経過を開始", "progress");
+  }
+}
+
+function stopAutoTimeProgress(options = {}) {
+  autoTimeRunning.value = false;
+  if (options?.preserveCheckpoint !== true) {
+    autoTimePausedByCheckpoint.value = false;
+  }
+  clockLastTickRealMs.value = Date.now();
+  if (options?.announce) {
+    updateUnitInfoText("自動時間経過を停止しました。");
+    showTurnTicker("自動時間経過を停止", "stopped");
+  }
+}
+
 function canAutoAdvanceTurnByClock() {
+  if (!autoTimeRunning.value) return false;
   if (!autoTurnAdvanceByClock) return false;
   if (!props.gameSetupReady) return false;
   if (!currentData.value || currentData.value.shapeOnly) return false;
   if (isTestMultiplayerActive.value) return false;
-  if (isPathMoveInProgress.value) return false;
-  if (showMovePathConfirmModal.value) return false;
-  if (showTurnActionModal.value || showEventControlModal.value || showEventModal.value) return false;
   return true;
 }
 
 function processClockTurnProgress() {
   const nextCycleIndex = getClockTurnCycleIndex();
   if (nextCycleIndex <= lastClockTurnCycleIndex) return;
-  const cycleDiff = nextCycleIndex - lastClockTurnCycleIndex;
-  lastClockTurnCycleIndex = nextCycleIndex;
-  if (!canAutoAdvanceTurnByClock()) return;
-  for (let i = 0; i < cycleDiff; i += 1) {
-    runNextTurn({ playSe: false });
+  if (!canAutoAdvanceTurnByClock()) {
+    lastClockTurnCycleIndex = nextCycleIndex;
+    return;
+  }
+  while (lastClockTurnCycleIndex < nextCycleIndex) {
+    lastClockTurnCycleIndex += 1;
+    runNextTurn({ playSe: false, showEventModal: false, source: "auto-clock" });
+    if (
+      AUTO_TURN_PAUSE_EVERY_TURNS > 0
+      && (lastClockTurnCycleIndex % AUTO_TURN_PAUSE_EVERY_TURNS) === 0
+    ) {
+      autoTimeRunning.value = false;
+      autoTimePausedByCheckpoint.value = true;
+      updateUnitInfoText(`自動時間経過を停止: ${AUTO_TURN_PAUSE_EVERY_TURNS}T経過。時計から「開始」で再開できます。`);
+      showTurnTicker(`${AUTO_TURN_PAUSE_EVERY_TURNS}ターン経過: 自動進行を停止`, "paused");
+      showTurnActionModal.value = true;
+      break;
+    }
   }
 }
 
@@ -1047,6 +2076,11 @@ const mapCanvasStyle = computed(() => ({
   "--overlay-icon-button-plus-badge-size": `${OVERLAY_ICON_BUTTON_PLUS_BADGE_SIZE_PX}px`
 }));
 
+const movePathConfirmPopupLabel = computed(() => {
+  const cost = Math.max(0, Math.floor(toSafeNumber(plannedMovePreview.value?.estimatedCost, 0)));
+  return `移動 ${cost}（消費移動力）`;
+});
+
 const sovereignHeaderActionIconSrc = computed(() => {
   const sovereign = unitList.value.find(unit => isSovereignUnit(unit)) || unitList.value[0] || null;
   const iconName = resolveAvailableIconName(
@@ -1103,11 +2137,23 @@ const ownCharacterNavigatorEntries = computed(() => {
     unitList: unitList.value,
     isSovereignUnit,
     isNamedUnit,
+    isMovingUnit: unit => isUnitMoving(unit),
+    isBattleUnit: unit => isUnitInBattleState(unit),
+    resolveSurveyTask: unit => resolveUnitSurveyTask(unit),
     toUnitRoleLabel,
     moveUnitIconSrc,
     moveUnitIconGlyph,
-    soldierIconSrc: () => UNIT_CREATE_ICON_SRC
+    soldierIconSrc: () => UNIT_CREATE_ICON_SRC,
+    battleIconSrc: () => UNIT_BATTLE_ICON_SRC
   });
+});
+
+const ownFactionSelectedTileCoord = computed(() => {
+  const detail = selectedTileDetail.value;
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
 });
 
 const eventModeOptions = [
@@ -1135,6 +2181,77 @@ function lavaStopReasonLabel(reason) {
   if (reason === "no_path") return "進路なし";
   if (reason === "source_lost") return "火山源消失";
   return reason || "-";
+}
+
+const GAME_VIEW_PRESET_FALLBACK = GAME_VIEW_PRESET_CONFIG[DEFAULT_GAME_VIEW_PRESET_KEY];
+
+function resolveGameViewPreset(key) {
+  void key;
+  return {
+    key: DEFAULT_GAME_VIEW_PRESET_KEY,
+    ...GAME_VIEW_PRESET_FALLBACK
+  };
+}
+
+function emitGameViewSizeChange() {
+  emit("game-view-size-change", {
+    preset: gameViewPresetKey.value,
+    width: gameViewWidth.value,
+    height: gameViewHeight.value
+  });
+}
+
+function resizePhaserViewport(width, height) {
+  const normalizedWidth = Math.max(1, Math.floor(Number(width) || GAME_VIEW_WIDTH));
+  const normalizedHeight = Math.max(1, Math.floor(Number(height) || GAME_VIEW_HEIGHT));
+  if (!game?.scale) return;
+  if (game.config) {
+    game.config.width = normalizedWidth;
+    game.config.height = normalizedHeight;
+  }
+  if (typeof game.scale.resize === "function") {
+    game.scale.resize(normalizedWidth, normalizedHeight);
+  }
+  if (scene?.cameras?.main) {
+    scene.cameras.main.setSize(normalizedWidth, normalizedHeight);
+  }
+  if (game.canvas instanceof HTMLCanvasElement) {
+    game.canvas.style.width = "100%";
+    game.canvas.style.height = "100%";
+  }
+}
+
+function applyGameViewPreset(presetKey, options = {}) {
+  const preset = resolveGameViewPreset(presetKey);
+  const prevKey = gameViewPresetKey.value;
+  const prevWidth = gameViewWidth.value;
+  const prevHeight = gameViewHeight.value;
+  gameViewPresetKey.value = preset.key;
+  gameViewWidth.value = preset.width;
+  gameViewHeight.value = preset.height;
+  if (prevKey === preset.key && prevWidth === preset.width && prevHeight === preset.height) {
+    return;
+  }
+  pointerViewCache.clear();
+  touchPointerViewMap.clear();
+  if (options.resizePhaser !== false) {
+    resizePhaserViewport(preset.width, preset.height);
+  }
+  if (scene && options.render !== false) {
+    requestMapRender();
+  }
+}
+
+function isLargeMapBySize(w, h) {
+  if (!Number.isFinite(w) || !Number.isFinite(h)) return false;
+  return (Math.floor(w) * Math.floor(h)) >= LARGE_MAP_TILE_THRESHOLD;
+}
+
+function applyLargeMapPerformanceDefaults(w, h) {
+  if (!isLargeMapBySize(w, h)) return;
+  if (showWaterfallEffects.value) {
+    showWaterfallEffects.value = false;
+  }
 }
 
 const displaySettingsFields = computed(() => ([
@@ -1180,10 +2297,22 @@ const displaySettingsFields = computed(() => ([
     value: showStrongEnemyMarkers.value
   },
   {
+    key: "lowPowerMode",
+    kind: "checkbox",
+    label: "省電力モード（描画間引き・15fps目標）",
+    value: lowPowerMode.value
+  },
+  {
     key: "focusCameraOnTileClick",
     kind: "checkbox",
     label: "クリックで視点を選択タイルへ移動する",
     value: focusCameraOnTileClick.value
+  },
+  {
+    key: "squadFormationEnabled",
+    kind: "checkbox",
+    label: "チーム編成機能を有効にする",
+    value: squadFormationEnabled.value
   },
   {
     key: "mountainMode",
@@ -1275,7 +2404,9 @@ const displaySettingsFields = computed(() => ([
 ]));
 
 const displaySettingsNotes = [
+  "描画解像度は 1440x720 で固定です（文字つぶれ防止）。",
   "隠し特殊地形は通常時は見えず、クリック時のみ判明します。常時表示をONで最初から見えます。",
+  "省電力モードON時は描画更新を抑えて消費電力を下げます。",
   "クリック時の視点移動は初期OFFです。必要時のみONにしてください。",
   "音量は 全体 x BGM/SE の乗算で適用されます。"
 ];
@@ -1303,32 +2434,161 @@ const ENEMY_LEVEL_JITTER_MIN = -5;
 const ENEMY_LEVEL_JITTER_MAX = 5;
 const ENEMY_STRONG_HEIGHT_BONUS = 0;
 const ENEMY_LEVEL_MAX = 120;
+const PHASER_FPS_TARGET_NORMAL = 60;
+const PHASER_FPS_TARGET_LOW_POWER = 15;
+const CITY_BLOCK_PLACEMENT_TYPE_CITY = "city";
+const CITY_BLOCK_PLACEMENT_TYPE_TOWN = "town";
+const CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS = "metropolis";
+const CITY_BLOCK_TILE_COUNT = 3;
+const CITY_BLOCK_PLACEMENT_TYPE_DEFS = Object.freeze({
+  [CITY_BLOCK_PLACEMENT_TYPE_CITY]: {
+    key: CITY_BLOCK_PLACEMENT_TYPE_CITY,
+    tileCount: CITY_BLOCK_TILE_COUNT,
+    modeLabel: "3マス土地",
+    iconName: "都市",
+    buttonLabel: "3マス土地を配置",
+    buttonActiveLabel: "3マス土地配置を終了",
+    placementGuideText: "3マス土地配置: △の頂点にしたいマスをクリックしてください。",
+    clickGuideText: "クリック座標: 3マス土地(△)の頂点マスをクリックしてください。",
+    anchorLabel: "起点",
+    confirmTitle: "3マス土地を設置しますか？",
+    confirmDescription: "△3マス範囲に都市画像を1枚で配置します。"
+  },
+  [CITY_BLOCK_PLACEMENT_TYPE_TOWN]: {
+    key: CITY_BLOCK_PLACEMENT_TYPE_TOWN,
+    tileCount: 2,
+    modeLabel: "町(横2マス)",
+    iconName: "町",
+    buttonLabel: "町(横2)を配置",
+    buttonActiveLabel: "町(横2)配置を終了",
+    placementGuideText: "町配置: 横2マスの左側にしたいマスをクリックしてください。",
+    clickGuideText: "クリック座標: 町(横2)の左側マスをクリックしてください。",
+    anchorLabel: "左端",
+    confirmTitle: "町(横2マス)を設置しますか？",
+    confirmDescription: "横2マス範囲に町画像を1枚で配置します。"
+  },
+  [CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS]: {
+    key: CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS,
+    tileCount: 7,
+    modeLabel: "大都市(7マス)",
+    iconName: "大都市",
+    buttonLabel: "大都市(7マス)を配置",
+    buttonActiveLabel: "大都市(7マス)配置を終了",
+    placementGuideText: "大都市配置: 中心にしたいマスをクリックしてください。",
+    clickGuideText: "クリック座標: 大都市(7マス)の中心マスをクリックしてください。",
+    anchorLabel: "中心",
+    confirmTitle: "大都市(7マス)を設置しますか？",
+    confirmDescription: "中心1+周囲6マスに大都市画像を1枚で配置します。"
+  }
+});
+const CITY_BLOCK_PREVIEW_ALPHA = 0.44;
+const CITY_BLOCK_PLACED_ALPHA = 0.82;
+const ENEMY_SPAWN_TILE_RATE_NORMAL = 0.4; // 通常敵の出現割合(現状比)。1.0=100%、0.4=40%
 const ENEMY_STRONG_LEADER_LEVEL_BONUS = 5;
 const ENEMY_STRONG_NO_ARMAMENT_LEVEL_BONUS = 2;
 const ENEMY_STRONG_FOLLOWER_LEVEL_SCALE = 0.8;
 const ENEMY_STRONG_FOLLOWER_MIN = 2;
 const ENEMY_STRONG_FOLLOWER_MAX = 5;
 const ENEMY_STRONG_EQUIPMENT_TIER = "rare";
+const ENEMY_SWARM_TERRITORY_RADIUS_MIN = 2; // 群れテリトリー半径の下限
+const ENEMY_SWARM_TERRITORY_RADIUS_MAX = 6; // 群れテリトリー半径の上限
+const ENEMY_SWARM_TERRITORY_RADIUS_BASE_OFFSET = 1; // 出現数ベース半径への加算値
+const ENEMY_STRONG_SCOUT_BLOCK_BUFFER = 0; // 強敵索敵範囲に追加する一般敵の配置禁止距離(ヘックス距離)
+const ENEMY_SWARM_FREE_ROAM_MOVE_CHANCE = 1; // ボス不在群れのターン移動確率（1=毎ターン）
 const ENEMY_EQUIPMENT_FIELDS = ["武器", "副武器", "胴", "頭", "足", "装飾1", "装飾2"];
-const ENCOUNTER_ATTACK_BASE_CHANCE = 0.45;
-const ENCOUNTER_ATTACK_DIFF_FACTOR = 0.03;
-const ENCOUNTER_ATTACK_MIN_CHANCE = 0.2;
+const ENCOUNTER_ATTACK_BASE_CHANCE = 0.45; // 敵から攻撃を受ける基礎確率
+const ENCOUNTER_ATTACK_DIFF_FACTOR = 0.03; // 能力差1あたりで増減する攻撃確率係数
+const ENCOUNTER_ATTACK_MIN_CHANCE = 0.2; // 攻撃確率の下限
+const HEIGHT_DIFF_CLIFF_ALPHA = 0.94; // 高低差エッジの不透明度
+const HEIGHT_DIFF_CLIFF_WIDTH_BASE_PX = 3; // 高低差2のときの基本線幅(px)
+const HEIGHT_DIFF_CLIFF_WIDTH_STEP_PX = 3; // 高低差ステージ1増加ごとの線幅加算(px)
+const HEIGHT_DIFF_CLIFF_WIDTH_MAX_PX = 18; // 高低差エッジ線幅の上限(px)
+const HEIGHT_DIFF_CLIFF_DARKEN_BASE = 0.56; // エッジ色の基本暗化率
+const HEIGHT_DIFF_CLIFF_DARKEN_STEP = 0.08; // 高低差ステージ1増加ごとの暗化率加算
+// 高度差エッジを高い側へどれだけ寄せるか（px）。小さくすると外側寄りになる。
+const HEIGHT_DIFF_CLIFF_INSET_BASE_PX = 0.0;
+// 高度差エッジの太さに応じた追加内側オフセット係数（width * ratio）。
+const HEIGHT_DIFF_CLIFF_INSET_WIDTH_RATIO = 0.36;
+// 高低差エッジ端の台形キャップ長さ係数（width * ratio）。
+const HEIGHT_DIFF_CLIFF_TRAPEZOID_CAP_LENGTH_RATIO = 0.42;
+// 高低差エッジ端の台形先端の細さ係数（小さいほど尖る）。
+const HEIGHT_DIFF_CLIFF_TRAPEZOID_CAP_NARROW_RATIO = 0.56;
 const ENCOUNTER_ATTACK_MAX_CHANCE = 0.9;
 const ENCOUNTER_SURVEY_BASE_PERCENT = 50;
 const ENCOUNTER_SURVEY_DIFF_DIVISOR = 2;
 const ENCOUNTER_SURVEY_GUARANTEE_DIFF = 100;
 const ENCOUNTER_ACTION_MOVE_COST = 3;
-const SURVEY_ACTION_REQUIRED_TURNS = 2;
+const SURVEY_ACTION_REQUIRED_TURNS = 1;
+const SURVEY_DEFAULT_PROGRESS_PERCENT = 100;
+const SURVEY_NO_ENEMY_REDUCE_SCALE = 1.5;
+const SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT = 25;
+
+function resolveSurveyDurationSeconds(task) {
+  const totalTurns = Math.max(1, Math.floor(toSafeNumber(task?.totalTurns, SURVEY_ACTION_REQUIRED_TURNS)));
+  return totalTurns * TURN_SECONDS;
+}
+
+const ENCOUNTER_NON_AGGRESSIVE_SAME_TILE_ATTACK_CHANCE = 0.25;
 const ENCOUNTER_FUMBLE_CHANCE = 0.08;
 const ENCOUNTER_MAX_LOG_LINES = 12;
-const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
+const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50; // 索敵の距離減衰量（2マス目以降、1マスごと）
+const MAP_CAVE_COAST_ICON_BIAS = 0.32; // 海岸高地条件で生成された洞窟アイコンを海側へ寄せる比率
+// 川/高低差エッジの接続見た目（台形ボディ＋接続ジョイント＋末端のみ尖り）。
+const RIVER_EDGE_JOIN_RADIUS_RATIO = 0.52; // 接続ジョイント半径の係数（halfWidth * ratio）
+const RIVER_EDGE_JOIN_RADIUS_EXTRA_PX = 0.45; // 接続ジョイント半径へ加える固定値(px)
+const RIVER_EDGE_POINTED_CAP_LENGTH_RATIO = 0.0; // 末端尖りキャップの長さ係数（width * ratio）
+const RIVER_EDGE_POINTED_CAP_MIN_PX = 1.6; // 末端尖りキャップの最小長さ(px)
+const TILE_SELECTED_OUTSET_PX = 2.0; // 選択枠線をタイル外側へ広げる量(px)
+const TILE_HOVER_OUTSET_PX = 1.0; // ホバー枠線をタイル外側へ広げる量(px)
+const TILE_SELECTED_HIGHLIGHT_ALPHA = 0.68; // 選択枠線の透明度
+const TILE_HOVER_HIGHLIGHT_ALPHA = 0.56; // ホバー枠線の透明度
+const MAP_ENEMY_ILLUST_MARKER_SIZE_PX = 64; // 索敵後に表示する敵イラストの高さ(px)
+const MAP_ENEMY_ILLUST_ASPECT_WIDTH = 2; // 画像比率 2:3 (width:height)
+const MAP_ENEMY_ILLUST_ASPECT_HEIGHT = 3;
+const MAP_UNIT_ILLUST_MARKER_SIZE_PX = 64; // 味方ユニット表示に使うイラスト高さ(px)
+const MAP_UNIT_ILLUST_ASPECT_WIDTH = 2; // 画像比率 2:3 (width:height)
+const MAP_UNIT_ILLUST_ASPECT_HEIGHT = 3;
+const MAP_ENEMY_NEST_MARKER_SIZE_PX = 64; // 群れ/強敵の巣アイコン表示サイズ(px)
 const EQUIPMENT_ACTION_POPULATION_STEP = 25;
 const UNIT_VISION_BASE_RANGE = 1;
 const UNIT_VISION_SCOUT_STEP = 75;
 const TILE_DANGER_MAX_PERCENT = 100;
 const TILE_DANGER_REDUCE_PER_CLEAR_PERCENT = 15;
 const TILE_DANGER_REDUCE_PER_SURVEY_PERCENT = 15;
+const TILE_DANGER_UNOWNED_INCREASE_INTERVAL_TURNS = 3;
+const TILE_DANGER_UNOWNED_INCREASE_PERCENT = 20;
 const FIELD_BATTLE_HP_COST = 20;
+const FIELD_BATTLE_RESULT_MODAL_ENABLED = false;
+const FRIENDLY_FIRE_DAMAGE_RATE = 0.5;
+const WAR_DECLARATION_DIPLOMACY_PENALTY = -20; // 宣戦布告時の外交評価ペナルティ
+const WAR_DECLARATION_PENALTY_TURNS = 20; // 宣戦布告ペナルティの継続ターン数
+const SKILL_DAMAGE_RANDOM_RATE_A = 0.5;
+const SKILL_DAMAGE_RANDOM_RATE_B = 0.4;
+const ATTACK_DAMAGE_TYPE_KEYS = Object.freeze([
+  "物理",
+  "魔法",
+  "射撃",
+  "切断",
+  "貫通",
+  "打撃",
+  "炎",
+  "氷",
+  "雷",
+  "毒",
+  "光",
+  "闇",
+  "精神"
+]);
+const ENEMY_AUTO_ATTACK_INTERVAL_MS = 12000;
+const UNIT_DAMAGE_BLINK_DURATION_MS = 720;
+const UNIT_DAMAGE_BLINK_INTERVAL_MS = 90;
+const UNIT_DAMAGE_BLINK_DIM_ALPHA = 0.28;
+const UNIT_HP_DAMAGE_HOLD_MS = 1000;
+const UNIT_HP_DAMAGE_FADE_MS = 800;
+const DAMAGE_POPUP_DURATION_MS = 1400;
+const DAMAGE_POPUP_STEP_DELAY_MS = 180;
+const DAMAGE_POPUP_RISE_PX = 26;
+const DAMAGE_POPUP_DEPTH = 1000200;
 const UNIT_EXP_LEVEL_CAP = 120;
 const UNIT_EXP_LEVEL_SPLIT = 15;
 const UNIT_EXP_GAIN_BASE_PER_ENEMY_LEVEL = 50;
@@ -1442,7 +2702,6 @@ const ENCHANT_METADATA_KEYS = new Set([
 ]);
 const ENCHANT_EFFECT_PRIMARY_FIELDS = ["物理", "ガード", "防御", "Cr率", "Cr威力", "炎", "氷", "雷", "毒", "光", "闇"];
 const ENCHANT_EFFECT_FALLBACK_FIELDS = [...STATUS_FIELDS, ...SKILL_LEVEL_FIELDS, ...RESISTANCE_FIELDS];
-const SKILL_ACTIVE_ACTION_CODE = "A";
 const SKILL_WEAPON_ATTACK_STYLE = "武器";
 const SKILL_SCHEMA_DEFAULTS = (() => {
   const defaults = {};
@@ -1469,6 +2728,58 @@ const SKILL_TEMPLATES_BY_ATTACK_STYLE = (() => {
   }
   return map;
 })();
+function normalizeSkillNameForLookup(nameRaw) {
+  return nonEmptyText(nameRaw).replace(/\s+/g, "").replace(/　+/g, "");
+}
+const SKILL_INFO_BY_NAME = (() => {
+  const map = new Map();
+  const rows = Array.isArray(skillInfoDb) ? skillInfoDb : [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const name = nonEmptyText(row?.名前);
+    if (!name || map.has(name)) continue;
+    map.set(name, row);
+  }
+  return map;
+})();
+const SKILL_INFO_BY_NORMALIZED_NAME = (() => {
+  const map = new Map();
+  const rows = Array.isArray(skillInfoDb) ? skillInfoDb : [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const key = normalizeSkillNameForLookup(row?.名前);
+    if (!key || map.has(key)) continue;
+    map.set(key, row);
+  }
+  return map;
+})();
+const SKILL_AREA_PATTERN_ALIAS_MAP = Object.freeze({
+  "単体": "single",
+  "単": "single",
+  "single": "single",
+  "直線": "straight",
+  "straight": "straight",
+  "放射": "fan",
+  "放射状": "fan",
+  "扇": "fan",
+  "扇形": "fan",
+  "散弾": "fan",
+  "fan": "fan",
+  "円": "circle",
+  "円形": "circle",
+  "サークル": "circle",
+  "circle": "circle",
+  "周囲": "around",
+  "周辺": "around",
+  "around": "around",
+  "前方": "front",
+  "front": "front",
+  "ライン": "line",
+  "列": "line",
+  "line": "line",
+  "全体": "all",
+  "all": "all"
+});
 const FOOD_RESOURCE_KEYS = ["穀物", "野菜", "肉", "魚", "死体", "魂"];
 const FOOD_RESOURCE_SIMPLE_KEYS = ["食料", "魂"];
 const MATERIAL_RESOURCE_KEYS = ["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"];
@@ -1511,9 +2822,32 @@ const MATERIAL_HEADER_GROUP_SIMPLE_DEFS = [
   { label: "鉄", key: "鉄" },
   { label: "金", key: "金" }
 ];
+const SIDEBAR_RESOURCE_PANEL_DEFS = [
+  { key: "food", label: "食料", detailKeys: FOOD_RESOURCE_KEYS, category: "food" },
+  { key: "wood", label: "木材", detailKeys: ["木材", "黒木", "特木", "石材"], category: "material" },
+  { key: "metal", label: "金属", detailKeys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"], category: "material" },
+  { key: "precious", label: "貴金属", detailKeys: ["金", "銀", "宝石"], category: "material" }
+];
+const SIDEBAR_RESOURCE_PANEL_DEF_MAP = Object.fromEntries(
+  SIDEBAR_RESOURCE_PANEL_DEFS.map(def => [def.key, def])
+);
 const RESOURCE_ICON_NAME_MAP = {
   食料: "穀物",
   死体: "アンデット"
+};
+const HEADER_RESEARCH_CATEGORY_ICON_MAP = {
+  鍛冶Lv: "鍛冶",
+  魔法Lv: "魔法",
+  信仰Lv: "信仰",
+  軍事Lv: "兵士",
+  経済Lv: "金"
+};
+const HEADER_RESEARCH_CATEGORY_GAUGE_COLOR_MAP = {
+  鍛冶Lv: "#52ddff",
+  魔法Lv: "#b86cff",
+  信仰Lv: "#f3cf65",
+  軍事Lv: "#ff6f6f",
+  経済Lv: "#6cff93"
 };
 const RESOURCE_TILE_MARKER_PRIORITY_KEYS = [
   "赤黒鋼", "青金鋼", "銀鉄", "鉄", "宝石", "金", "銀",
@@ -1538,6 +2872,9 @@ const VILLAGE_TILE_CORRUPTION_MAP_KEY = "tileCorruptionMap";
 const VILLAGE_TILE_PURIFICATION_MAP_KEY = "tilePurificationMap";
 const VILLAGE_TILE_RECOVERY_MAP_KEY = "tileRecoveryMap";
 const VILLAGE_TILE_FACILITY_MAP_KEY = "tileFacilityMap";
+const VILLAGE_TILE_CAMP_MAP_KEY = "tileCampMap";
+const CAMP_MIN_DISTANCE_FROM_VILLAGE = 3;
+const RESEARCH_EXP_BASE = 100;
 const TERRITORY_RESIDENTIAL_UPGRADE_BASE_TURNS = 3;
 const TERRITORY_RESIDENTIAL_UPGRADE_MIN_TURNS = 1;
 const TERRITORY_RESIDENTIAL_UPGRADE_COST_SCALE = 1;
@@ -1622,6 +2959,10 @@ function parseEnemySpawnCountRange(raw) {
   return { min: 1, max: 1, explicit: false };
 }
 
+function isStrictTrueFlag(value) {
+  return value === true;
+}
+
 const enemySpawnRows = computed(() => {
   if (!Array.isArray(enemySpawnDb)) return [];
   const rows = [];
@@ -1637,6 +2978,7 @@ const enemySpawnRows = computed(() => {
     const lvMax = Math.max(lvMin, Math.floor(Math.max(lvMinRaw, lvMaxRaw)));
     const className = nonEmptyText(raw?.サブクラス);
     const spawnCount = parseEnemySpawnCountRange(raw?.出現数);
+    const aggressive = isStrictTrueFlag(raw?.好戦的);
     const armamentNames = ENEMY_EQUIPMENT_FIELDS
       .map(key => nonEmptyText(raw?.[key]))
       .filter(value => value && value !== "0");
@@ -1645,12 +2987,14 @@ const enemySpawnRows = computed(() => {
       raceName,
       className: className && className !== "0" ? className : "",
       imageName: nonEmptyText(raw?.画像 || raw?.image || raw?.Image),
+      nestName: nonEmptyText(raw?.巣 || raw?.nest || raw?.Nest),
       displayName: nonEmptyText(raw?.種族名) || raceName,
       lvMin,
       lvMax,
       spawnCountMin: spawnCount.min,
       spawnCountMax: spawnCount.max,
       spawnCountExplicit: !!spawnCount.explicit,
+      aggressive,
       armamentNames,
       hasArmament: armamentNames.length > 0,
       check
@@ -1680,6 +3024,24 @@ const enemyImageNameByLabel = computed(() => {
     for (const label of labels) {
       if (!map.has(label)) {
         map.set(label, imageName);
+      }
+    }
+  }
+  return map;
+});
+
+const enemyNestNameByLabel = computed(() => {
+  const map = new Map();
+  for (const row of enemySpawnRows.value) {
+    const nestName = nonEmptyText(row?.nestName);
+    if (!nestName) continue;
+    const labels = [
+      nonEmptyText(row?.displayName),
+      nonEmptyText(row?.raceName)
+    ].filter(Boolean);
+    for (const label of labels) {
+      if (!map.has(label)) {
+        map.set(label, nestName);
       }
     }
   }
@@ -2067,15 +3429,21 @@ const {
   resolveMoveGroupForUnit,
   canUseUnitAsMoveCandidate,
   moveUnitModalRows,
+  moveCommandUnit,
+  isMoveCommandPendingForSelectedUnit,
   canUseUnitMoveModeState,
   openMoveUnitSelectModal,
   closeMoveUnitSelectModal,
+  armMoveCommandForUnit,
+  clearMoveCommandState,
   confirmMoveUnitSelection,
   toggleUnitMoveMode,
   clearPlannedMovePath,
   closeMovePathConfirmModal,
   queueMovePathPlanToTile,
   confirmPlannedMovePath,
+  isUnitMoving,
+  isMoveGroupInProgress,
   resetAllUnitMoveRemaining,
   resetMoveUiState
 } = useUnitMovePanel({
@@ -2085,8 +3453,10 @@ const {
   plannedMovePathNodes,
   plannedMoveTarget,
   plannedMoveSummaryText,
+  plannedMovePreview,
   isPathMoveInProgress,
-  unitMoveMode,
+  movingUnitIdSet,
+  moveCommandUnitId,
   villagePlacementMode,
   unitList,
   selectedUnitId,
@@ -2100,6 +3470,7 @@ const {
   squadMemberIds,
   movementStepCost,
   isPassableTerrain,
+  buildReachableTileSetSync: buildReachableTileSet,
   findPathWithinDistanceSync: findPathWithinDistance,
   findPathWithinDistanceAsync: (data, sx, sy, tx, ty, maxDistance) => pathfindingWorkerClient.findPathWithinDistance(data, sx, sy, tx, ty, maxDistance),
   clearLastMoveStopState,
@@ -2125,14 +3496,23 @@ const {
   resolveMoveUnitIconSrc: moveUnitIconSrc,
   resolveMoveUnitIconGlyph: moveUnitIconGlyph,
   toUnitRoleLabel,
-  moveStepIntervalMs: MOVE_STEP_INTERVAL_MS
+  turnSeconds: turnDurationSec,
+  moveTimeBaseTurns: MOVE_TIME_BASE_TURNS,
+  getClockElapsedMs: () => Math.max(0, Math.floor(clockElapsedMs.value))
 });
+
+function resolveMoveCommandInfoText() {
+  if (!isMoveCommandPendingForSelectedUnit.value) return "";
+  const unitName = nonEmptyText(moveCommandUnit.value?.name) || "選択ユニット";
+  return ` / 移動指示: ${unitName}`;
+}
 
 const tileSurveyActionState = computed(() => resolveSelectedTileSurveyStateV2());
 const tileAttackActionState = computed(() => resolveSelectedTileAttackActionState());
 const tileSettlementConvertActionState = computed(() => resolveTerritoryTileConversionActionState(TERRITORY_TILE_MODE_SETTLEMENT));
 const tileResourceConvertActionState = computed(() => resolveTerritoryTileConversionActionState(TERRITORY_TILE_MODE_RESOURCE));
 const tileHousingUpgradeActionState = computed(() => resolveTerritoryHousingUpgradeActionState());
+const tileCampActionState = computed(() => resolveSelectedTileCampActionState());
 const tileHousingUpgradeButtonLabel = computed(() => {
   const selection = housingUpgradeSelectionState.value;
   if (selection?.active) {
@@ -2402,7 +3782,9 @@ function buildEquipmentSkillRow(equipmentRow, entry) {
   const qualityLabel = nonEmptyText(entry?.qualityLabel);
   const attackAp = Math.round(toSafeNumber(entry?.attackAp, 0));
   const magicAp = Math.round(toSafeNumber(entry?.magicAp, 0));
-  const apCost = Math.max(0, Math.abs(attackAp) + Math.abs(magicAp));
+  // 装備の攻撃AP/魔法APが未設定でも、通常攻撃は行動としてAPを消費する。
+  const rawApCost = Math.max(0, Math.abs(attackAp) + Math.abs(magicAp));
+  const apCost = rawApCost > 0 ? rawApCost : DEFAULT_ATTACK_ACTION_POINT_COST;
   const traitsText = Array.isArray(entry?.traits)
     ? entry.traits.map(v => nonEmptyText(v)).filter(Boolean).join(" / ")
     : "";
@@ -2983,6 +4365,12 @@ function normalizeEnemyImageLookupKey(value) {
     .replace(/[\s　_\-・=]+/g, "");
 }
 
+function normalizeUnitImageLookupKey(value) {
+  return nonEmptyText(extractFileStem(value))
+    .toLowerCase()
+    .replace(/[\s　_\-・=]+/g, "");
+}
+
 function resolveEnemyIllustrationSrc(name) {
   const target = nonEmptyText(extractFileStem(name));
   if (!target) return "";
@@ -2990,6 +4378,80 @@ function resolveEnemyIllustrationSrc(name) {
   if (exact) return exact;
   const normalized = normalizeEnemyImageLookupKey(target);
   return normalized ? (enemyIllustrationSrcByNormalizedName.get(normalized) || "") : "";
+}
+
+function resolveUnitIllustrationSrc(name) {
+  const target = nonEmptyText(extractFileStem(name));
+  if (!target) return "";
+  const exact = unitIllustrationSrcByName.get(target);
+  if (exact) return exact;
+  const normalized = normalizeUnitImageLookupKey(target);
+  return normalized ? (unitIllustrationSrcByNormalizedName.get(normalized) || "") : "";
+}
+
+function resolveUnitIllustrationNameForMap(unit) {
+  if (!unit) return "";
+  const raceName = nonEmptyText(unit?.race);
+  const className = nonEmptyText(unit?.className);
+  const candidates = [
+    raceName && className ? `${raceName}_${className}` : "",
+    raceName,
+    // 只人だけは「クラス名.webp」運用を許可する（例: クレリック.webp）
+    raceName === "只人" ? className : ""
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (resolveUnitIllustrationSrc(candidate)) return candidate;
+  }
+  return "";
+}
+
+function resolveEnemyIllustrationNameForMap(enemy, enemyList = []) {
+  const leadEnemy = enemy || (Array.isArray(enemyList) && enemyList.length ? enemyList[0] : null);
+  const labels = [
+    nonEmptyText(leadEnemy?.name),
+    nonEmptyText(leadEnemy?.race),
+    nonEmptyText(leadEnemy?.className),
+    ...((Array.isArray(enemyList) ? enemyList : [])
+      .flatMap(entry => [nonEmptyText(entry?.name), nonEmptyText(entry?.race), nonEmptyText(entry?.className)]))
+  ].filter(Boolean);
+  const mappedImageNames = labels
+    .map(label => nonEmptyText(enemyImageNameByLabel.value.get(label)))
+    .filter(Boolean);
+  const candidates = [
+    nonEmptyText(leadEnemy?.imageName),
+    nonEmptyText(leadEnemy?.image),
+    ...mappedImageNames,
+    ...labels,
+    "default"
+  ].filter((name, index, list) => name && list.indexOf(name) === index);
+  for (const candidate of candidates) {
+    if (resolveEnemyIllustrationSrc(candidate)) return candidate;
+  }
+  return "";
+}
+
+function resolveEnemyNestIconNameForMap(enemy, enemyList = []) {
+  const leadEnemy = enemy || (Array.isArray(enemyList) && enemyList.length ? enemyList[0] : null);
+  const labels = [
+    nonEmptyText(leadEnemy?.name),
+    nonEmptyText(leadEnemy?.race),
+    nonEmptyText(leadEnemy?.className),
+    ...((Array.isArray(enemyList) ? enemyList : [])
+      .flatMap(entry => [nonEmptyText(entry?.name), nonEmptyText(entry?.race), nonEmptyText(entry?.className)]))
+  ].filter(Boolean);
+  const mappedNestNames = labels
+    .map(label => nonEmptyText(enemyNestNameByLabel.value.get(label)))
+    .filter(Boolean);
+  const candidates = [
+    nonEmptyText(leadEnemy?.nestName),
+    nonEmptyText(leadEnemy?.nest),
+    ...mappedNestNames
+  ].filter((name, index, list) => name && list.indexOf(name) === index);
+  for (const candidate of candidates) {
+    const iconName = resolveEnemyNestIconName(candidate);
+    if (iconName) return iconName;
+  }
+  return "";
 }
 
 function resolveUnitIconSrc(name, fallback = DEFAULT_ICON_NAME) {
@@ -3010,6 +4472,19 @@ function resolveAvailableIconName(...candidates) {
     if (iconName && hasIconName(iconName)) return iconName;
   }
   return "";
+}
+
+function resolveTerrainIconName(picked, terrainDisplayName = "", reliefName = "", specialName = "") {
+  const terrain = nonEmptyText(picked?.terrain);
+  const relief = nonEmptyText(reliefName);
+  const display = nonEmptyText(terrainDisplayName);
+  const special = nonEmptyText(specialName);
+  const tokens = [terrain, display, relief, special]
+    .flatMap(value => String(value || "").split(/[\/\s]+/))
+    .map(value => nonEmptyText(value))
+    .filter(Boolean);
+  const unique = Array.from(new Set(tokens));
+  return resolveAvailableIconName(...unique, "平地", "地形");
 }
 
 function resolveSpecialOverlayIconName(specialKey) {
@@ -3403,13 +4878,45 @@ function tileHeightLevel(data, x, y) {
   return Number.isFinite(raw) ? Math.floor(raw) : null;
 }
 
-function movementStepCost(data, fromX, fromY, toX, toY) {
+function resolveUnitFlightValue(unit) {
+  if (!unit || typeof unit !== "object") return 0;
+  const statusFlight = toSafeNumber(unit?.status?.飛行, Number.NaN);
+  const directFlight = toSafeNumber(unit?.飛行, Number.NaN);
+  const skillFlight = toSafeNumber(unit?.skillLevels?.飛行, Number.NaN);
+  const candidate = Number.isFinite(statusFlight)
+    ? statusFlight
+    : (Number.isFinite(directFlight) ? directFlight : skillFlight);
+  return Math.max(0, Math.floor(toSafeNumber(candidate, 0)));
+}
+
+function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
   const fromLevel = tileHeightLevel(data, fromX, fromY);
   const toLevel = tileHeightLevel(data, toX, toY);
-  const extraCost = Number.isFinite(fromLevel) && Number.isFinite(toLevel) && fromLevel !== toLevel
-    ? 1
+  const absDiff = Number.isFinite(fromLevel) && Number.isFinite(toLevel)
+    ? Math.abs(toLevel - fromLevel)
     : 0;
-  return 1 + extraCost;
+  const climbDiff = Number.isFinite(fromLevel) && Number.isFinite(toLevel)
+    ? Math.max(0, toLevel - fromLevel)
+    : 0;
+  const flightValue = resolveUnitFlightValue(moveUnit);
+  const hasFlight = flightValue > 0;
+
+  // 高低差エッジ(差2以上)は飛行なしでは通行不可。
+  if (absDiff > 1 && !hasFlight) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  // 基本1 + 登り(高度差1につき+2)。移動力4なら平地1マスはAP25となる。
+  let terrainCost = 1 + (climbDiff * 2);
+  // 飛行30ごとに移動コスト-1。0未満にはしない。
+  const flightReduction = Math.floor(flightValue / 30);
+  terrainCost = Math.max(0, terrainCost - flightReduction);
+  const moveStat = Math.max(1, Math.floor(toSafeNumber(
+    moveUnit?.status?.移動,
+    toSafeNumber(moveUnit?.移動, toSafeNumber(moveUnit?.moveRange, 1))
+  )));
+  const baseApCost = UNIT_ACTION_POINT_MAX / moveStat;
+  return Math.max(0, Math.ceil(terrainCost * baseApCost));
 }
 
 function roundTo1(value) {
@@ -3705,7 +5212,11 @@ function toggleMaterialHeaderExpanded() {
 }
 
 function togglePopulationHeaderExpanded() {
-  populationHeaderExpanded.value = !populationHeaderExpanded.value;
+  const nextExpanded = !populationHeaderExpanded.value;
+  if (nextExpanded) {
+    closeSidebarResourcePanel();
+  }
+  populationHeaderExpanded.value = nextExpanded;
 }
 
 function resolveResourceIconSrc(resourceKey) {
@@ -3873,9 +5384,137 @@ function coordKey(x, y) {
   return `${x},${y}`;
 }
 
+function normalizeCoordKeyText(value) {
+  const text = String(value || "");
+  const parsed = parseCoordKey(text);
+  if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y)) return "";
+  return coordKey(Math.floor(parsed.x), Math.floor(parsed.y));
+}
+
+function appendEdgeEndpointsToCoordSet(targetSet, edgeIterable) {
+  if (!(targetSet instanceof Set) || !edgeIterable) return;
+  for (const edgeRaw of edgeIterable) {
+    const edgeText = String(edgeRaw || "");
+    if (!edgeText) continue;
+    const [a, b] = edgeText.split("|");
+    const aKey = normalizeCoordKeyText(a);
+    const bKey = normalizeCoordKeyText(b);
+    if (aKey) targetSet.add(aKey);
+    if (bKey) targetSet.add(bKey);
+  }
+}
+
+function buildCornerEdgeTileTouchMap(w, h) {
+  const out = new Map();
+  const safeW = Math.max(1, Math.floor(toSafeNumber(w, 0)));
+  const safeH = Math.max(1, Math.floor(toSafeNumber(h, 0)));
+  for (let y = 0; y < safeH; y += 1) {
+    for (let x = 0; x < safeW; x += 1) {
+      const tileKey = coordKey(x, y);
+      const corners = buildHexPoints(x, y).map(pointCoordKey).filter(Boolean);
+      if (corners.length !== 6) continue;
+      for (let i = 0; i < corners.length; i += 1) {
+        const a = corners[i];
+        const b = corners[(i + 1) % corners.length];
+        const edgeKey = a < b ? `${a}|${b}` : `${b}|${a}`;
+        if (!out.has(edgeKey)) out.set(edgeKey, new Set());
+        out.get(edgeKey).add(tileKey);
+      }
+    }
+  }
+  return out;
+}
+
+function appendCornerEdgeTilesToCoordSet(targetSet, edgeIterable, data, riverData) {
+  if (!(targetSet instanceof Set) || !edgeIterable || !data || !riverData) return;
+  if (!(riverData.__cornerEdgeTileTouchMap instanceof Map)) {
+    riverData.__cornerEdgeTileTouchMap = buildCornerEdgeTileTouchMap(data.w, data.h);
+  }
+  const edgeTileMap = riverData.__cornerEdgeTileTouchMap;
+  for (const edgeRaw of edgeIterable) {
+    const edgeKey = String(edgeRaw || "");
+    if (!edgeKey) continue;
+    const tileSet = edgeTileMap.get(edgeKey);
+    if (!tileSet) continue;
+    for (const tileKey of tileSet) targetSet.add(tileKey);
+  }
+}
+
+function resolveRiverTouchSet(data) {
+  const riverData = data?.riverData;
+  if (!riverData || typeof riverData !== "object") return new Set();
+  if (riverData.riverTouchSet instanceof Set) return riverData.riverTouchSet;
+  const built = buildRiverTouchSet(riverData);
+  appendCornerEdgeTilesToCoordSet(built, riverData.cornerEdgeSet, data, riverData);
+  appendCornerEdgeTilesToCoordSet(built, riverData.cornerWaterLinkSet, data, riverData);
+  riverData.riverTouchSet = built;
+  return built;
+}
+
+function resolveWaterfallTouchSet(data) {
+  const riverData = data?.riverData;
+  if (!riverData || typeof riverData !== "object") return new Set();
+  if (riverData.waterfallTouchSet instanceof Set) return riverData.waterfallTouchSet;
+  const out = new Set();
+  for (const keyRaw of riverData.waterfallSet || []) {
+    const key = normalizeCoordKeyText(keyRaw);
+    if (key) out.add(key);
+  }
+  if (!out.size) {
+    appendEdgeEndpointsToCoordSet(out, riverData.waterfallEdgeSet);
+    appendCornerEdgeTilesToCoordSet(out, riverData.cornerWaterfallEdgeSet, data, riverData);
+  }
+  riverData.waterfallTouchSet = out;
+  return out;
+}
+
+function resolveLavaTouchSet(data) {
+  if (data?.lavaTouchSet instanceof Set) return data.lavaTouchSet;
+  const out = new Set();
+  if (!data || typeof data !== "object") return out;
+  const flow = data?.lavaFlowData;
+  if (flow && typeof flow === "object") {
+    for (const keyRaw of flow.nodeKeys || []) {
+      const key = normalizeCoordKeyText(keyRaw);
+      if (key) out.add(key);
+    }
+    for (const keyRaw of flow.sourceKeys || []) {
+      const key = normalizeCoordKeyText(keyRaw);
+      if (key) out.add(key);
+    }
+    appendEdgeEndpointsToCoordSet(out, flow.edgeKeys || []);
+  }
+  if (!out.size && Array.isArray(data?.lavaMap)) {
+    for (let y = 0; y < data.lavaMap.length; y += 1) {
+      const row = data.lavaMap[y];
+      if (!Array.isArray(row)) continue;
+      for (let x = 0; x < row.length; x += 1) {
+        if (row[x]) out.add(coordKey(x, y));
+      }
+    }
+  }
+  data.lavaTouchSet = out;
+  return out;
+}
+
+function hasRiverTouchAt(data, x, y, riverTouchSet = null) {
+  const set = riverTouchSet || resolveRiverTouchSet(data);
+  return !!set?.has?.(coordKey(x, y));
+}
+
+function hasWaterfallTouchAt(data, x, y, waterfallTouchSet = null) {
+  const set = waterfallTouchSet || resolveWaterfallTouchSet(data);
+  return !!set?.has?.(coordKey(x, y));
+}
+
+function hasLavaTouchAt(data, x, y, lavaTouchSet = null) {
+  const set = lavaTouchSet || resolveLavaTouchSet(data);
+  return !!set?.has?.(coordKey(x, y));
+}
+
 function parseMapSizeValue(value) {
-  const [w, h] = String(value || "36x36").split("x").map(Number);
-  return { w: w || 36, h: h || 36 };
+  const [w, h] = String(value || "60x60").split("x").map(Number);
+  return { w: w || 60, h: h || 60 };
 }
 
 function normalizeWrappedCoord(value, size) {
@@ -3999,12 +5638,20 @@ function normalizeSurveyTask(raw) {
     totalTurns,
     Math.floor(toSafeNumber(raw?.remainingTurns, totalTurns))
   ));
+  const progressPercent = clampNumber(
+    Math.floor(toSafeNumber(raw?.progressPercent, SURVEY_DEFAULT_PROGRESS_PERCENT)),
+    0,
+    100
+  );
+  const dangerLevel = Math.max(1, Math.floor(toSafeNumber(raw?.dangerLevel, 1)));
   return {
     key: nonEmptyText(raw?.key) || coordKey(x, y),
     x,
     y,
     totalTurns,
     remainingTurns,
+    progressPercent,
+    dangerLevel,
     startedTurn: Math.max(0, Math.floor(toSafeNumber(raw?.startedTurn, mapTurnNumber.value)))
   };
 }
@@ -4032,6 +5679,8 @@ function applySurveyTaskPatchByLeaderId(patchByLeaderId) {
       && currentTask.y === nextTask.y
       && currentTask.totalTurns === nextTask.totalTurns
       && currentTask.remainingTurns === nextTask.remainingTurns
+      && currentTask.progressPercent === nextTask.progressPercent
+      && currentTask.dangerLevel === nextTask.dangerLevel
     ) {
       return unit;
     }
@@ -4057,6 +5706,15 @@ function startSurveyTaskByLeaderId(leaderId, x, y) {
   const sx = Math.floor(toSafeNumber(x, Number.NaN));
   const sy = Math.floor(toSafeNumber(y, Number.NaN));
   if (!id || !Number.isFinite(sx) || !Number.isFinite(sy)) return false;
+  const data = currentData.value;
+  const dangerMap = data ? ensureEnemyDangerMap(data) : null;
+  const progressPercent = clampNumber(
+    Math.floor(toSafeNumber(dangerMap?.[sy]?.[sx], SURVEY_DEFAULT_PROGRESS_PERCENT)),
+    0,
+    100
+  );
+  const tileEnemies = data ? enemiesAt(sx, sy, data) : [];
+  const dangerMeta = resolveSurveyDangerLevelAtTile(data, sx, sy, tileEnemies);
   const patch = new Map();
   patch.set(id, {
     key: coordKey(sx, sy),
@@ -4064,6 +5722,8 @@ function startSurveyTaskByLeaderId(leaderId, x, y) {
     y: sy,
     totalTurns: SURVEY_ACTION_REQUIRED_TURNS,
     remainingTurns: SURVEY_ACTION_REQUIRED_TURNS,
+    progressPercent,
+    dangerLevel: Math.max(1, Math.floor(toSafeNumber(dangerMeta?.dangerLevel, 1))),
     startedTurn: mapTurnNumber.value
   });
   applySurveyTaskPatchByLeaderId(patch);
@@ -4086,6 +5746,124 @@ function resolveSurveyBattleEntryFromEncounterResult(encounterResult = null) {
     || !!entry?.ambushByFumble
     || !!entry?.stealthAmbush
   )) || null;
+}
+
+function resolveSurveyTileHeightDelta(data, x, y) {
+  if (!data || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return 0;
+  const sourceLevel = tileHeightLevel(data, x, y);
+  if (!Number.isFinite(sourceLevel)) return 0;
+  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, x, y, resolveWorldWrapEnabled(data));
+  if (!Array.isArray(neighbors) || !neighbors.length) return 0;
+  let maxDelta = 0;
+  for (const neighbor of neighbors) {
+    const targetLevel = tileHeightLevel(data, neighbor.x, neighbor.y);
+    if (!Number.isFinite(targetLevel)) continue;
+    maxDelta = Math.max(maxDelta, Math.abs(sourceLevel - targetLevel));
+  }
+  return Math.max(0, Math.min(6, Math.floor(maxDelta)));
+}
+
+function resolveSurveyTileMonsterDanger(tileEnemies = []) {
+  const list = Array.isArray(tileEnemies) ? tileEnemies : [];
+  if (!list.length) return 0;
+  return list.reduce((max, enemy) => {
+    const level = Math.max(
+      1,
+      Math.floor(toSafeNumber(enemy?.level, toSafeNumber(enemy?.baseLevel, 1)))
+    );
+    return Math.max(max, level);
+  }, 0);
+}
+
+function resolveSurveyDangerLevelAtTile(data, x, y, tileEnemies = []) {
+  const monsterDanger = resolveSurveyTileMonsterDanger(tileEnemies);
+  const heightDelta = resolveSurveyTileHeightDelta(data, x, y);
+  const dangerLevel = Math.max(1, Math.round((monsterDanger / 5) + heightDelta + 5));
+  return {
+    monsterDanger,
+    heightDelta,
+    dangerLevel
+  };
+}
+
+function resolveSurveyEnemySense(tileEnemies = []) {
+  const list = Array.isArray(tileEnemies) ? tileEnemies : [];
+  if (!list.length) return { scout: 0, stealth: 0, count: 0 };
+  return resolveEncounterGroupSense(
+    list.map(resolveEncounterScoutValueForEnemy),
+    list.map(resolveEncounterStealthValueForEnemy)
+  );
+}
+
+function resolveSurveyDetectResult(leaderScout, enemyStealth) {
+  const scout = roundTo1(toSafeNumber(leaderScout, 0));
+  const stealth = roundTo1(toSafeNumber(enemyStealth, 0));
+  const diff = scout - stealth;
+  if (diff >= ENCOUNTER_SURVEY_GUARANTEE_DIFF) {
+    return { found: true, chancePercent: 100, roll: null, diff };
+  }
+  const chancePercent = clampNumber(
+    ENCOUNTER_SURVEY_BASE_PERCENT + (diff / ENCOUNTER_SURVEY_DIFF_DIVISOR),
+    0,
+    100
+  );
+  const roll = Math.random() * 100;
+  return {
+    found: roll < chancePercent,
+    chancePercent: Math.round(chancePercent),
+    roll: Math.round(roll),
+    diff
+  };
+}
+
+function resolveSurveyProgressReduceAmount(leaderLevel, surveyDangerLevel) {
+  const level = Math.max(1, Math.floor(toSafeNumber(leaderLevel, 1)));
+  const dangerLevel = Math.max(1, Math.floor(toSafeNumber(surveyDangerLevel, 1)));
+  const multiplier = level / dangerLevel;
+  return Math.max(1, Math.round(TILE_DANGER_REDUCE_PER_SURVEY_PERCENT * multiplier));
+}
+
+function buildSurveyEncounterEntry(leader, task, tileEnemies) {
+  const list = Array.isArray(tileEnemies) ? tileEnemies : [];
+  const sense = resolveSurveyEnemySense(list);
+  const topEnemy = list.reduce((best, enemy) => {
+    const bestLv = Math.max(1, Math.floor(toSafeNumber(best?.level, 1)));
+    const lv = Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)));
+    return lv > bestLv ? enemy : best;
+  }, list[0] || null);
+  return {
+    context: "survey",
+    distance: 0,
+    playerFoundEnemy: true,
+    enemyFoundPlayer: false,
+    playerAmbush: true,
+    enemyAggressive: true,
+    enemyGroup: {
+      kind: "spawn",
+      x: task.x,
+      y: task.y,
+      scout: sense.scout,
+      stealth: sense.stealth,
+      count: Math.max(1, list.length),
+      topLevel: Math.max(1, Math.floor(toSafeNumber(topEnemy?.level, 1))),
+      topRaceName: nonEmptyText(topEnemy?.race) || nonEmptyText(topEnemy?.name),
+      topRaceCategory: resolveExpRaceCategoryFromName(nonEmptyText(topEnemy?.race) || nonEmptyText(topEnemy?.name)),
+      imageName: nonEmptyText(topEnemy?.imageName),
+      names: list.map(enemy => nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵")
+    },
+    playerGroup: {
+      id: nonEmptyText(leader?.id),
+      label: nonEmptyText(leader?.name) || "調査隊",
+      type: "solo",
+      x: task.x,
+      y: task.y,
+      scout: resolveEncounterScoutValueForUnit(leader),
+      stealth: resolveEncounterStealthValueForUnit(leader),
+      count: 1,
+      unitIds: [nonEmptyText(leader?.id)].filter(Boolean),
+      unitNames: [nonEmptyText(leader?.name) || "調査隊"]
+    }
+  };
 }
 
 function advanceSurveyTasksForTurn(data, options = {}) {
@@ -4130,71 +5908,106 @@ function advanceSurveyTasksForTurnV2(data, options = {}) {
       notes.push(`調査中断: ${leaderName} (${task.x}, ${task.y})`);
       continue;
     }
-
     progressed += 1;
-    const totalTurns = Math.max(1, Math.floor(toSafeNumber(task.totalTurns, SURVEY_ACTION_REQUIRED_TURNS)));
-    const nextRemainingTurns = Math.max(0, Math.floor(toSafeNumber(task.remainingTurns, totalTurns)) - 1);
-    if (nextRemainingTurns > 0) {
-      patch.set(row.leaderId, {
-        ...task,
-        totalTurns,
-        remainingTurns: nextRemainingTurns
-      });
-      notes.push(`調査進行: ${leaderName} (${task.x}, ${task.y}) 残り${nextRemainingTurns}T`);
+    const dangerMap = ensureEnemyDangerMap(data);
+    const beforeDanger = Math.max(0, Math.floor(toSafeNumber(dangerMap?.[task.y]?.[task.x], 0)));
+    if (beforeDanger <= 0) {
+      patch.set(row.leaderId, null);
+      completed += 1;
+      notes.push(`調査完了: ${leaderName} (${task.x}, ${task.y}) 危険度0%`);
       continue;
     }
 
-    const encounterResult = (data && !data?.shapeOnly)
-      ? runEnemyEncounterCheck({
-        context: "survey",
-        focusPos: { x: task.x, y: task.y }
-      })
-      : { entries: [] };
-    const battleEntry = resolveSurveyBattleEntryFromEncounterResult(encounterResult);
-    if (battleEntry) {
-      notes.push(`調査遭遇: ${leaderName} (${task.x}, ${task.y}) で戦闘発生`);
-      if (allowBattleModal && !startedBattle && !showFieldBattleResultModal.value) {
-        const surveyMoveGroup = resolveMoveGroupForUnit(leader, { allowMemberAsLeader: true });
-        startFieldBattleFromEncounter({
-          context: "survey",
-          reason: "調査中に戦闘が発生した",
-          entry: battleEntry,
-          atX: task.x,
-          atY: task.y,
-          moveGroup: surveyMoveGroup?.ok ? surveyMoveGroup : null
-        });
-        startedBattle = true;
-      }
-      patch.set(row.leaderId, {
-        ...task,
-        totalTurns,
-        remainingTurns: totalTurns
-      });
-      continue;
+    let tileEnemies = enemiesAt(task.x, task.y, data);
+    if (!Array.isArray(tileEnemies) || !tileEnemies.length) {
+      tileEnemies = rerollEnemySpawnAtTile(data, task.x, task.y);
     }
 
-    const tileEnemies = enemiesAt(task.x, task.y, data);
+    let reduceAmount = 0;
+    let dangerLevel = 1;
     if (Array.isArray(tileEnemies) && tileEnemies.length > 0) {
-      notes.push(`調査継続: ${leaderName} (${task.x}, ${task.y}) 敵影を捉えられず`);
-      patch.set(row.leaderId, {
-        ...task,
-        totalTurns,
-        remainingTurns: totalTurns
-      });
-      continue;
+      const leaderScout = resolveEncounterScoutValueForUnit(leader);
+      const enemySense = resolveSurveyEnemySense(tileEnemies);
+      const detect = resolveSurveyDetectResult(leaderScout, enemySense.stealth);
+      if (!detect.found) {
+        notes.push(`調査: ${leaderName} (${task.x}, ${task.y}) 何かがいる様だ`);
+        patch.set(row.leaderId, {
+          ...task,
+          progressPercent: beforeDanger,
+          dangerLevel: Math.max(1, Math.floor(toSafeNumber(task?.dangerLevel, 1)))
+        });
+        continue;
+      }
+
+      markEnemySpotted(task.x, task.y, data);
+      const enemyLabel = nonEmptyText(tileEnemies?.[0]?.name) || nonEmptyText(tileEnemies?.[0]?.race) || "敵";
+      if (allowBattleModal) {
+        if (!startedBattle && !showFieldBattleResultModal.value) {
+          const chanceText = Number.isFinite(detect?.chancePercent) ? ` / 発見率${detect.chancePercent}%` : "";
+          const surveyTaskDangerLevel = Math.max(1, Math.floor(toSafeNumber(task?.dangerLevel, 1)));
+          const surveyTaskProgressPercent = Math.max(0, Math.floor(toSafeNumber(task?.progressPercent, beforeDanger)));
+          const currentLeaderId = row.leaderId;
+          const retreatMessage = `調査撤退: ${leaderName} (${task.x}, ${task.y}) ${enemyLabel}を発見したため撤退`;
+          const surveyMoveGroup = resolveMoveGroupForUnit(leader, { allowMemberAsLeader: true });
+          const entry = buildSurveyEncounterEntry(leader, task, tileEnemies);
+          startFieldBattleFromEncounter({
+            context: "survey",
+            reason: "調査で敵を発見",
+            entry,
+            atX: task.x,
+            atY: task.y,
+            moveGroup: surveyMoveGroup?.ok ? surveyMoveGroup : null,
+            surveyContext: true,
+            surveyDangerBonusPercent: SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT,
+            allowRetreat: true,
+            message: `${leaderName}: ${enemyLabel}を発見 (${task.x}, ${task.y})${chanceText}`,
+            summary: `調査遭遇: ${leaderName} -> ${enemyLabel}`,
+            onResolve: payload => {
+              if (payload?.result !== "retreat") return;
+              clearSurveyTaskByLeaderIds([currentLeaderId]);
+              updateUnitInfoText(retreatMessage);
+              pushNationLog(retreatMessage);
+            }
+          });
+          startedBattle = true;
+        }
+        patch.set(row.leaderId, {
+          ...task,
+          progressPercent: Math.max(0, Math.floor(toSafeNumber(task?.progressPercent, beforeDanger))),
+          dangerLevel: Math.max(1, Math.floor(toSafeNumber(task?.dangerLevel, 1)))
+        });
+        continue;
+      }
+
+      const dangerMeta = resolveSurveyDangerLevelAtTile(data, task.x, task.y, tileEnemies);
+      dangerLevel = Math.max(1, Math.floor(toSafeNumber(dangerMeta?.dangerLevel, 1)));
+      const leaderLevel = Math.max(1, Math.floor(toSafeNumber(leader?.level, 1)));
+      reduceAmount = resolveSurveyProgressReduceAmount(leaderLevel, dangerLevel);
+    } else {
+      const leaderLevel = Math.max(1, Math.floor(toSafeNumber(leader?.level, 1)));
+      reduceAmount = Math.max(1, Math.round(leaderLevel * SURVEY_NO_ENEMY_REDUCE_SCALE));
+      dangerLevel = Math.max(1, Math.floor(toSafeNumber(task?.dangerLevel, 1)));
     }
 
-    const reduceResult = reduceTileDangerBySurvey(data, task.x, task.y);
+    const reduceResult = reduceTileDangerBySurvey(data, task.x, task.y, {
+      reduceAmount
+    });
     if (reduceResult?.reduced) {
-      const claimedText = reduceResult.claimed ? " / 領土化" : "";
-      notes.push(`調査効果: ${leaderName} (${task.x}, ${task.y}) 危険度 ${reduceResult.beforeDanger}% → ${reduceResult.afterDanger}%${claimedText}`);
+      const claimedText = reduceResult.claimed ? " / 領地化" : "";
+      notes.push(`調査進行: ${leaderName} (${task.x}, ${task.y}) 危険度 ${reduceResult.beforeDanger}% → ${reduceResult.afterDanger}%${claimedText}`);
     } else {
-      notes.push(`調査完了: ${leaderName} (${task.x}, ${task.y}) 変化なし`);
+      notes.push(`調査進行: ${leaderName} (${task.x}, ${task.y}) 危険度変化なし`);
+    }
+
+    if (reduceResult?.afterDanger <= 0) {
+      patch.set(row.leaderId, null);
+      completed += 1;
+      continue;
     }
     patch.set(row.leaderId, {
       ...task,
-      totalTurns,
-      remainingTurns: totalTurns
+      progressPercent: Math.max(0, Math.floor(toSafeNumber(reduceResult?.afterDanger, beforeDanger))),
+      dangerLevel
     });
   }
 
@@ -4231,6 +6044,20 @@ function resolveEncounterMoveLock(unitId) {
   if (!id) return null;
   const lock = encounterMoveLocks.value?.[id];
   return lock && typeof lock === "object" ? lock : null;
+}
+
+function isUnitInBattleState(unitOrId) {
+  const id = typeof unitOrId === "string"
+    ? nonEmptyText(unitOrId)
+    : nonEmptyText(unitOrId?.id);
+  if (!id) return false;
+  const activeBattleIds = Array.isArray(fieldBattleState.value?.attackerUnitIds)
+    ? fieldBattleState.value.attackerUnitIds
+    : [];
+  if (showFieldBattleResultModal.value && activeBattleIds.some(unitId => nonEmptyText(unitId) === id)) {
+    return true;
+  }
+  return !!resolveEncounterMoveLock(id);
 }
 
 function formatEncounterMoveLockReason(lock) {
@@ -4270,9 +6097,11 @@ function buildLiveFactionStateSnapshot() {
   return {
     village: deepCloneJsonValue(villageState.value, null),
     units: deepCloneJsonValue(unitList.value, []),
+    deadUnitReserve: deepCloneJsonValue(normalizeDeadUnitReserveRows(deadUnitReserve.value), []),
     selectedUnitId: nonEmptyText(selectedUnitId.value),
     villagePlacementMode: !!villagePlacementMode.value,
-    unitMoveMode: !!unitMoveMode.value,
+    unitMoveMode: !!isMoveCommandPendingForSelectedUnit.value,
+    moveCommandUnitId: nonEmptyText(moveCommandUnitId.value),
     nationLogKey: nonEmptyText(activeNationLogKey.value),
     encounterMoveLocks: deepCloneJsonValue(normalizeEncounterMoveLocks(encounterMoveLocks.value), {}),
     visibility: buildVisibilitySnapshotFromLiveState()
@@ -4296,9 +6125,11 @@ function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
   applyingTestPlayerState = true;
   villageState.value = village;
   unitList.value = units;
+  deadUnitReserve.value = normalizeDeadUnitReserveRows(snapshot?.deadUnitReserve);
   selectedUnitId.value = nextSelectedUnitId;
   villagePlacementMode.value = !!snapshot?.villagePlacementMode;
-  unitMoveMode.value = !!snapshot?.unitMoveMode;
+  moveCommandUnitId.value = nonEmptyText(snapshot?.moveCommandUnitId)
+    || (snapshot?.unitMoveMode ? nextSelectedUnitId : "");
   activeNationLogKey.value = nextNationLogKey;
   encounterMoveLocks.value = normalizeEncounterMoveLocks(snapshot?.encounterMoveLocks);
   ensureNationLogBucket(nextNationLogKey, sovereignName);
@@ -4350,6 +6181,7 @@ function resetTestPlayerSlotsFromLiveState() {
   const primary = buildTestPlayerSlotFromLiveState(DEFAULT_TEST_PLAYER_ID, PRIMARY_TEST_PLAYER_LABEL, { isPlayer: true, ready: false });
   testPlayerSlots.value = [primary];
   activeTestPlayerId.value = primary.id;
+  diplomacyRelations.value = {};
 }
 
 function ensureTestPlayerSlotsInitialized() {
@@ -4388,6 +6220,7 @@ function initializeTestPlayerSlotsFromConfig(config = {}) {
   }
   testPlayerSlots.value = nextSlots;
   activeTestPlayerId.value = nextSlots[0]?.id || DEFAULT_TEST_PLAYER_ID;
+  diplomacyRelations.value = {};
   const activeSlot = nextSlots[0] || null;
   if (activeSlot?.factionState) {
     applyFactionStateSnapshotToLiveState(activeSlot.factionState, { emitState: true, render: !!currentData.value });
@@ -4466,7 +6299,7 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label, options = {})
     units: [sovereign],
     selectedUnitId: sovereign.id,
     villagePlacementMode: true,
-    unitMoveMode: false,
+    moveCommandUnitId: "",
     nationLogKey: sovereign.id,
     visibility: {
       exploredTileKeys: [],
@@ -4635,28 +6468,38 @@ function areAllTestPlayersReady() {
   return testPlayerSlots.value.every(slot => !!slot?.ready);
 }
 
-function buildPlayerTerritorySet(data, villageOverride = villageState.value) {
-  const owned = new Set();
-  const v = villageOverride;
-  if (!data?.grid || !v?.placed || !Number.isFinite(v.x) || !Number.isFinite(v.y)) return owned;
-  if (v.x < 0 || v.y < 0 || v.x >= data.w || v.y >= data.h) return owned;
-
-  const startKey = coordKey(v.x, v.y);
-  const queue = [{ x: v.x, y: v.y, d: 0 }];
-  owned.add(startKey);
+function buildVillageRangeTileSet(data, originX, originY, options = {}) {
+  const out = new Set();
+  if (!data?.grid || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return out;
+  const sx = Math.floor(toSafeNumber(originX, Number.NaN));
+  const sy = Math.floor(toSafeNumber(originY, Number.NaN));
+  if (!Number.isFinite(sx) || !Number.isFinite(sy)) return out;
+  if (sx < 0 || sy < 0 || sx >= data.w || sy >= data.h) return out;
+  const passableOnly = options?.passableOnly !== false;
+  const worldWrapEnabled = resolveWorldWrapEnabled(data);
+  const startKey = coordKey(sx, sy);
+  const queue = [{ x: sx, y: sy, d: 0 }];
+  out.add(startKey);
   while (queue.length) {
     const cur = queue.shift();
     if (!cur || cur.d >= PLAYER_TERRITORY_RANGE) continue;
-    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, cur.x, cur.y, resolveWorldWrapEnabled(data));
+    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, cur.x, cur.y, worldWrapEnabled);
     for (const n of neighbors) {
       const key = coordKey(n.x, n.y);
-      if (owned.has(key)) continue;
-      if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
-      owned.add(key);
+      if (out.has(key)) continue;
+      if (passableOnly && !isPassableTerrain(data.grid[n.y][n.x])) continue;
+      out.add(key);
       queue.push({ x: n.x, y: n.y, d: cur.d + 1 });
     }
   }
-  return owned;
+  return out;
+}
+
+function buildPlayerTerritorySet(data, villageOverride = villageState.value) {
+  const owned = new Set();
+  const v = villageOverride;
+  if (!data?.grid || !v?.placed) return owned;
+  return buildVillageRangeTileSet(data, v?.x, v?.y, { passableOnly: true });
 }
 
 function buildEnemyTerritorySet(data) {
@@ -4695,17 +6538,23 @@ function rebuildTerritorySets(data) {
   }
   const claimedMap = ensureClaimedTerritoryMap(data);
   if (testPlayerSlots.value.length > 1) {
-    const activeId = nonEmptyText(activeTestPlayerId.value);
+    const activeId = nonEmptyText(activeTestPlayerId.value)
+      || nonEmptyText(testPlayerSlots.value[0]?.id)
+      || DEFAULT_TEST_PLAYER_ID;
     const player = new Set();
     for (const slot of testPlayerSlots.value) {
       const slotId = nonEmptyText(slot?.id);
-      const set = buildPlayerTerritorySet(data, slot?.factionState?.village);
       if (slotId && slotId === activeId) {
+        // 配置直後は slot 側の保存より live 側が先に更新される場合があるため、
+        // アクティブ勢力は常に live villageState を優先して領土を再計算する。
+        const activeVillage = villageState.value?.placed ? villageState.value : slot?.factionState?.village;
+        const set = buildPlayerTerritorySet(data, activeVillage);
         for (const key of set) {
           player.add(key);
           ownerMap.set(key, slotId);
         }
       } else {
+        const set = buildPlayerTerritorySet(data, slot?.factionState?.village);
         for (const key of set) {
           hostile.add(key);
           if (!ownerMap.has(key)) ownerMap.set(key, slotId || "enemy");
@@ -4772,6 +6621,86 @@ function resolveFactionLabelById(slotId = "") {
   if (!id) return "";
   const slot = testPlayerSlots.value.find(row => nonEmptyText(row?.id) === id) || null;
   return nonEmptyText(slot?.label);
+}
+
+function buildFactionRelationKey(firstIdRaw = "", secondIdRaw = "") {
+  const firstId = nonEmptyText(firstIdRaw);
+  const secondId = nonEmptyText(secondIdRaw);
+  if (!firstId || !secondId || firstId === secondId) return "";
+  return [firstId, secondId].sort((a, b) => a.localeCompare(b)).join("|");
+}
+
+function resolveFactionRaceById(slotIdRaw = "") {
+  const slotId = nonEmptyText(slotIdRaw);
+  const slot = testPlayerSlots.value.find(row => nonEmptyText(row?.id) === slotId) || null;
+  return nonEmptyText(slot?.race)
+    || resolveRaceFromUnitList(slot?.factionState?.units)
+    || "";
+}
+
+function isDemonFactionPair(firstIdRaw = "", secondIdRaw = "") {
+  return resolveFactionRaceById(firstIdRaw) === "魔族"
+    && resolveFactionRaceById(secondIdRaw) === "魔族";
+}
+
+function resolveFactionWarState(firstIdRaw = "", secondIdRaw = "") {
+  const key = buildFactionRelationKey(firstIdRaw, secondIdRaw);
+  const state = key ? diplomacyRelations.value?.[key] : null;
+  return state && typeof state === "object" ? state : null;
+}
+
+function canAttackOtherFaction(firstIdRaw = "", secondIdRaw = "") {
+  const firstId = nonEmptyText(firstIdRaw);
+  const secondId = nonEmptyText(secondIdRaw);
+  if (!firstId || !secondId || firstId === secondId) return true;
+  if (isDemonFactionPair(firstId, secondId)) return true;
+  return resolveFactionWarState(firstId, secondId)?.atWar === true;
+}
+
+function requestWarDeclaration(targetFactionIdRaw = "") {
+  const attackerFactionId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const targetFactionId = nonEmptyText(targetFactionIdRaw);
+  if (!targetFactionId || targetFactionId === attackerFactionId) return false;
+  if (canAttackOtherFaction(attackerFactionId, targetFactionId)) return false;
+  warDeclarationPending.value = {
+    attackerFactionId,
+    targetFactionId,
+    targetLabel: resolveFactionLabelById(targetFactionId) || "他勢力",
+    penalty: WAR_DECLARATION_DIPLOMACY_PENALTY,
+    penaltyTurns: WAR_DECLARATION_PENALTY_TURNS
+  };
+  return true;
+}
+
+function closeWarDeclarationModal() {
+  warDeclarationPending.value = null;
+}
+
+function confirmWarDeclaration() {
+  const pending = warDeclarationPending.value;
+  const attackerFactionId = nonEmptyText(pending?.attackerFactionId);
+  const targetFactionId = nonEmptyText(pending?.targetFactionId);
+  const key = buildFactionRelationKey(attackerFactionId, targetFactionId);
+  if (!key) return;
+  const currentTurn = Math.max(0, Math.floor(toSafeNumber(mapTurnNumber.value, 0)));
+  const penaltyExempt = isDemonFactionPair(attackerFactionId, targetFactionId);
+  diplomacyRelations.value = {
+    ...diplomacyRelations.value,
+    [key]: {
+      atWar: true,
+      declaredAtTurn: currentTurn,
+      declaredBy: attackerFactionId,
+      diplomacyPenalty: penaltyExempt ? 0 : WAR_DECLARATION_DIPLOMACY_PENALTY,
+      penaltyUntilTurn: penaltyExempt ? currentTurn : currentTurn + WAR_DECLARATION_PENALTY_TURNS
+    }
+  };
+  const targetLabel = nonEmptyText(pending?.targetLabel) || resolveFactionLabelById(targetFactionId) || "他勢力";
+  const penaltyText = penaltyExempt ? "魔族同士のため外交ペナルティなし" : `外交評価${WAR_DECLARATION_DIPLOMACY_PENALTY} (${WAR_DECLARATION_PENALTY_TURNS}T)`;
+  const message = `${targetLabel}へ宣戦布告: ${penaltyText}`;
+  updateUnitInfoText(message);
+  pushNationLog(message);
+  emitCharacterStateChange();
+  closeWarDeclarationModal();
 }
 
 function borderStyleForOwner(owner, factionOwnerId = "") {
@@ -5087,6 +7016,9 @@ function ensureVillageStateShape(village, preferredRace = "") {
     village?.[VILLAGE_TILE_RECOVERY_MAP_KEY],
     { allowNegative: false }
   );
+  const tileCampMap = normalizeVillageTileCampMap(
+    village?.[VILLAGE_TILE_CAMP_MAP_KEY]
+  );
   const tileFacilityMap = normalizeVillageTileFacilityMap(
     village?.[VILLAGE_TILE_FACILITY_MAP_KEY]
   );
@@ -5139,6 +7071,7 @@ function ensureVillageStateShape(village, preferredRace = "") {
     [VILLAGE_TILE_CORRUPTION_MAP_KEY]: tileCorruptionMap,
     [VILLAGE_TILE_PURIFICATION_MAP_KEY]: tilePurificationMap,
     [VILLAGE_TILE_RECOVERY_MAP_KEY]: tileRecoveryMap,
+    [VILLAGE_TILE_CAMP_MAP_KEY]: tileCampMap,
     [VILLAGE_TILE_FACILITY_MAP_KEY]: tileFacilityMap,
     [TERRITORY_RESIDENTIAL_UPGRADE_QUEUE_MAP_KEY]: territoryResidentialUpgradeQueueMap,
     [TERRITORY_RESIDENTIAL_LEVEL_MAP_KEY]: territoryResidentialLevelMap,
@@ -5185,6 +7118,48 @@ function resetVisibilityState() {
   spottedFactionTileKeys = new Set();
   alertedEnemyTileKeys = new Set();
   alertedFactionTileKeys = new Set();
+  spottedEnemyNamesByTile = new Map();
+}
+
+function buildMonsterLabelText(list = []) {
+  if (!Array.isArray(list) || !list.length) return "";
+  const names = [];
+  for (const enemy of list) {
+    const name = nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵";
+    if (!name) continue;
+    names.push(name);
+  }
+  if (!names.length) return "";
+  return names.join(", ");
+}
+
+function formatConfiguredMonsterSummary(list = []) {
+  if (!Array.isArray(list) || !list.length) return "設定なし";
+  const grouped = new Map();
+  for (const enemy of list) {
+    const name = nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵";
+    const aggressiveLabel = enemy?.aggressive === true ? "好戦" : "非好戦";
+    const key = `${name}|${aggressiveLabel}`;
+    grouped.set(key, (grouped.get(key) || 0) + 1);
+  }
+  if (!grouped.size) return "設定なし";
+  return Array.from(grouped.entries())
+    .map(([key, count]) => {
+      const [name, aggressiveLabel] = String(key).split("|");
+      return `${name}(${aggressiveLabel})x${count}`;
+    })
+    .join(", ");
+}
+
+function rememberSpottedEnemyNames(x, y, data = currentData.value) {
+  const key = coordKey(x, y);
+  const tileEnemies = enemiesAt(x, y, data);
+  const label = buildMonsterLabelText(tileEnemies);
+  if (label) {
+    spottedEnemyNamesByTile.set(key, label);
+  } else {
+    spottedEnemyNamesByTile.delete(key);
+  }
 }
 
 function markTileExplored(x, y) {
@@ -5197,15 +7172,17 @@ function markEnemySpotted(x, y, data = currentData.value) {
   const w = Number.isFinite(data?.w) ? data.w : 0;
   const h = Number.isFinite(data?.h) ? data.h : 0;
   if (x < 0 || y < 0 || x >= w || y >= h) return false;
-  const tileEnemies = data?.enemySpawnMap?.[y]?.[x];
-  if (!Array.isArray(tileEnemies) || !tileEnemies.length) return false;
+  const tileEnemies = enemiesAt(x, y, data);
+  if (!tileEnemies.length) return false;
   const key = coordKey(x, y);
   if (spottedEnemyTileKeys.has(key)) {
     markTileExplored(x, y);
+    rememberSpottedEnemyNames(x, y, data);
     return false;
   }
   spottedEnemyTileKeys.add(key);
   markTileExplored(x, y);
+  rememberSpottedEnemyNames(x, y, data);
   return true;
 }
 
@@ -5229,8 +7206,8 @@ function markEnemyAlerted(x, y, data = currentData.value) {
   const w = Number.isFinite(data?.w) ? data.w : 0;
   const h = Number.isFinite(data?.h) ? data.h : 0;
   if (x < 0 || y < 0 || x >= w || y >= h) return false;
-  const tileEnemies = data?.enemySpawnMap?.[y]?.[x];
-  if (!Array.isArray(tileEnemies) || !tileEnemies.length) return false;
+  const tileEnemies = enemiesAt(x, y, data);
+  if (!tileEnemies.length) return false;
   const key = coordKey(x, y);
   alertedEnemyTileKeys.add(key);
   return true;
@@ -5279,12 +7256,51 @@ function addVisionRangeKeys(data, sx, sy, range, outSet) {
   }
 }
 
+function buildCurrentScoutRangeTileSet(data) {
+  const dynamicVisible = new Set();
+  if (!data?.grid) return dynamicVisible;
+
+  const v = villageState.value;
+  if (v?.placed && Number.isFinite(v.x) && Number.isFinite(v.y)) {
+    addVisionRangeKeys(data, v.x, v.y, BASE_VILLAGE_SCOUT_RANGE, dynamicVisible);
+  }
+  for (const unit of unitList.value) {
+    if (!Number.isFinite(unit?.x) || !Number.isFinite(unit?.y) || unit.x < 0 || unit.y < 0) continue;
+    addVisionRangeKeys(data, unit.x, unit.y, resolveUnitVisionRange(unit), dynamicVisible);
+  }
+  return dynamicVisible;
+}
+
+function drawScoutRangeBoundaryOverlay(data, scoutRangeTileKeys, graphics, wrapOffsets) {
+  if (!data?.grid || !graphics || !(scoutRangeTileKeys instanceof Set) || !scoutRangeTileKeys.size) return;
+  const wrapEnabled = resolveWorldWrapEnabled(data);
+  graphics.lineStyle(1, SCOUT_RANGE_BOUNDARY_COLOR, SCOUT_RANGE_BOUNDARY_ALPHA);
+  for (const tileKey of scoutRangeTileKeys) {
+    const [xText, yText] = String(tileKey).split(",");
+    const x = Number(xText);
+    const y = Number(yText);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
+    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, x, y, wrapEnabled);
+    for (const neighbor of neighbors) {
+      // 索敵範囲内で接する辺は描かず、範囲外との境界だけを残す。
+      if (scoutRangeTileKeys.has(coordKey(neighbor.x, neighbor.y))) continue;
+      for (const offset of wrapOffsets) {
+        if (!shouldDrawWrappedTileCopy(x, y, offset, data.w, data.h)) continue;
+        const segment = resolveSharedHexEdgePoints(x, y, neighbor.x, neighbor.y, offset?.x || 0, offset?.y || 0);
+        if (!segment) continue;
+        graphics.lineBetween(segment[0].x, segment[0].y, segment[1].x, segment[1].y);
+      }
+    }
+  }
+}
+
 function rebuildVisibleTiles(data) {
   if (!data?.grid) {
     visibleTileKeys = new Set();
     currentVisionTileKeys = new Set();
-    return;
+    return new Set();
   }
+  const dynamicVisible = buildCurrentScoutRangeTileSet(data);
   if (shouldDisableFog(data)) {
     const all = new Set();
     for (let y = 0; y < data.h; y += 1) {
@@ -5294,23 +7310,14 @@ function rebuildVisibleTiles(data) {
     }
     visibleTileKeys = all;
     currentVisionTileKeys = all;
-    return;
-  }
-
-  const dynamicVisible = new Set();
-  const v = villageState.value;
-  if (v?.placed && Number.isFinite(v.x) && Number.isFinite(v.y)) {
-    addVisionRangeKeys(data, v.x, v.y, BASE_VILLAGE_SCOUT_RANGE, dynamicVisible);
-  }
-  for (const unit of unitList.value) {
-    if (!Number.isFinite(unit?.x) || !Number.isFinite(unit?.y) || unit.x < 0 || unit.y < 0) continue;
-    addVisionRangeKeys(data, unit.x, unit.y, resolveUnitVisionRange(unit), dynamicVisible);
+    return dynamicVisible;
   }
   for (const key of dynamicVisible) {
     exploredTileKeys.add(key);
   }
   currentVisionTileKeys = dynamicVisible;
   visibleTileKeys = new Set(exploredTileKeys);
+  return dynamicVisible;
 }
 
 function isTileVisible(tileKey, data) {
@@ -5325,7 +7332,7 @@ function isTileInCurrentVision(tileKey, data) {
   return currentVisionTileKeys.has(tileKey);
 }
 
-function buildReachableTileSet(data, sx, sy, maxDistance) {
+function buildReachableTileSet(data, sx, sy, maxDistance, moveUnit = null) {
   const reachable = new Set();
   if (!data?.grid) return reachable;
   if (!Number.isFinite(sx) || !Number.isFinite(sy)) return reachable;
@@ -5349,7 +7356,8 @@ function buildReachableTileSet(data, sx, sy, maxDistance) {
     for (const n of neighbors) {
       const key = coordKey(n.x, n.y);
       if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
-      const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y);
+      const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y, moveUnit);
+      if (!Number.isFinite(stepCost) || stepCost < 0) continue;
       const nextCost = cur.cost + stepCost;
       if (nextCost > safeDistance) continue;
       const best = minCostByKey.get(key);
@@ -5362,7 +7370,7 @@ function buildReachableTileSet(data, sx, sy, maxDistance) {
   return reachable;
 }
 
-function findPathWithinDistance(data, sx, sy, tx, ty, maxDistance) {
+function findPathWithinDistance(data, sx, sy, tx, ty, maxDistance, moveUnit = null) {
   if (!data?.grid) return null;
   if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(tx) || !Number.isFinite(ty)) return null;
   if (tx < 0 || ty < 0 || tx >= data.w || ty >= data.h) return null;
@@ -5390,7 +7398,8 @@ function findPathWithinDistance(data, sx, sy, tx, ty, maxDistance) {
     for (const n of neighbors) {
       const key = coordKey(n.x, n.y);
       if (!isPassableTerrain(data.grid[n.y][n.x])) continue;
-      const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y);
+      const stepCost = movementStepCost(data, cur.x, cur.y, n.x, n.y, moveUnit);
+      if (!Number.isFinite(stepCost) || stepCost < 0) continue;
       const nextCost = cur.cost + stepCost;
       if (nextCost > safeDistance) continue;
       const best = minCostByKey.get(key);
@@ -5990,17 +7999,40 @@ function buildEnemyCharacterStatusFromRules(raceRow, classRow, level, options = 
   });
 }
 
+function isForestCoreSpawnTile(data, x, y) {
+  if (nonEmptyText(data?.grid?.[y]?.[x]) !== "森") return false;
+  const neighbors = getHexNeighborCoordsBySize(
+    toSafeNumber(data?.w, 0),
+    toSafeNumber(data?.h, 0),
+    x,
+    y,
+    resolveWorldWrapEnabled(data)
+  );
+  if (!neighbors.length) return false;
+  const forestAround = neighbors.reduce((sum, n) => (
+    sum + (nonEmptyText(data?.grid?.[n.y]?.[n.x]) === "森" ? 1 : 0)
+  ), 0);
+  // 森モンスターは「周囲が森」の内部タイルを優先する。
+  return forestAround >= neighbors.length;
+}
+
 function collectEnemySpawnTerrainKeys(data, x, y) {
   const set = new Set();
   const terrain = nonEmptyText(data?.grid?.[y]?.[x]);
   if (terrain) set.add(terrain);
   const relief = nonEmptyText(data?.reliefMap?.[y]?.[x]);
-  if (relief === "山岳") set.add("山岳");
+  if (relief && relief !== terrain) set.add(relief);
   const special = nonEmptyText(data?.specialMap?.[y]?.[x]);
   if (special) set.add(special);
   const key = coordKey(x, y);
-  if (data?.riverData?.riverSet?.has(key)) set.add("河川");
-  if (data?.lavaMap?.[y]?.[x]) set.add("溶岩");
+  const riverTouchSet = resolveRiverTouchSet(data);
+  if (data?.riverData?.riverSet?.has?.(key) || riverTouchSet?.has?.(key)) set.add("河川");
+  const waterfallTouchSet = resolveWaterfallTouchSet(data);
+  if (data?.riverData?.waterfallSet?.has?.(key) || waterfallTouchSet?.has?.(key)) set.add("滝");
+  if (hasLavaTouchAt(data, x, y)) set.add("溶岩");
+  if (set.has("森") && !isForestCoreSpawnTile(data, x, y)) {
+    set.delete("森");
+  }
   return Array.from(set);
 }
 
@@ -6017,6 +8049,17 @@ function resolveEnemySpawnCountByTile(rule) {
   const min = Math.max(1, Math.floor(toSafeNumber(rule?.spawnCountMin, 1)));
   const max = Math.max(min, Math.floor(toSafeNumber(rule?.spawnCountMax, min)));
   return randomInt(min, max);
+}
+
+function resolveEnemySwarmTerritoryRadiusForRule(rule, fallback = ENEMY_SWARM_TERRITORY_RADIUS_MIN) {
+  const explicitMax = Math.max(1, Math.floor(toSafeNumber(rule?.spawnCountMax, 1)));
+  const base = explicitMax + ENEMY_SWARM_TERRITORY_RADIUS_BASE_OFFSET;
+  const safeFallback = Math.max(ENEMY_SWARM_TERRITORY_RADIUS_MIN, Math.floor(toSafeNumber(fallback, ENEMY_SWARM_TERRITORY_RADIUS_MIN)));
+  return clampNumber(
+    Math.max(base, safeFallback),
+    ENEMY_SWARM_TERRITORY_RADIUS_MIN,
+    ENEMY_SWARM_TERRITORY_RADIUS_MAX
+  );
 }
 
 function levelDistanceFromRange(level, min, max) {
@@ -6041,6 +8084,28 @@ function pickEnemyRule(candidates, baseLevel, preferClosestRange = false) {
     }
   }
   return randomPick(near, randomPick(candidates, null));
+}
+
+function resolveTerrainMonsterDangerByKey(terrainKey) {
+  const key = nonEmptyText(terrainKey);
+  if (!key) return 0;
+  const row = terrainYieldMap.value.get(key);
+  const danger = toSafeNumber(row?.モンスター危険度, Number.NaN);
+  if (!Number.isFinite(danger)) return 0;
+  return clampNumber(danger, 0, 1);
+}
+
+function filterCandidatesByHighestTerrainDanger(candidates) {
+  if (!Array.isArray(candidates) || !candidates.length) return [];
+  let maxDanger = Number.NEGATIVE_INFINITY;
+  const scored = candidates.map(row => {
+    const danger = resolveTerrainMonsterDangerByKey(row?.matchedTerrain || row?.terrainKey);
+    if (danger > maxDanger) maxDanger = danger;
+    return { row, danger };
+  });
+  return scored
+    .filter(entry => entry.danger === maxDanger)
+    .map(entry => entry.row);
 }
 
 function clampEnemyLevel(levelRaw) {
@@ -6164,6 +8229,344 @@ function resolveActiveTerritoryOwnerId() {
   return "player";
 }
 
+function clearEnemyPresenceAtTile(data, x, y, options = {}) {
+  if (!data || !Array.isArray(data?.enemySpawnMap)) return false;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const tx = Math.floor(x);
+  const ty = Math.floor(y);
+  if (tx < 0 || ty < 0 || tx >= data.w || ty >= data.h) return false;
+  if (!Array.isArray(data.enemySpawnMap[ty])) data.enemySpawnMap[ty] = [];
+  const hadEnemies = Array.isArray(data.enemySpawnMap[ty][tx]) && data.enemySpawnMap[ty][tx].length > 0;
+  if (hadEnemies) data.enemySpawnMap[ty][tx] = [];
+  const tileKey = coordKey(tx, ty);
+  spottedEnemyTileKeys.delete(tileKey);
+  alertedEnemyTileKeys.delete(tileKey);
+  if (options.clearSpottedMemory !== false) {
+    spottedEnemyNamesByTile.delete(tileKey);
+  }
+  return hadEnemies;
+}
+
+function rebuildEnemyUnitToLevel(enemyRaw, levelRaw) {
+  const enemy = enemyRaw && typeof enemyRaw === "object" ? enemyRaw : null; // 再計算対象の敵ユニット
+  if (!enemy) return enemyRaw;
+  const safeLevel = clampEnemyLevel(levelRaw); // 上下限を含めた最終適用レベル
+  const raceName = nonEmptyText(enemy?.race); // 種族名（成長表参照キー）
+  const className = nonEmptyText(enemy?.className); // クラス名（成長表参照キー）
+  const raceRow = raceName ? findClassRowByName(raceName) : null; // 種族データ行
+  const classRow = className ? findClassRowByName(className) : null; // クラスデータ行
+  if (!raceRow) {
+    return {
+      ...enemy,
+      level: safeLevel,
+      targetLevel: safeLevel,
+      baseLevel: Math.min(safeLevel, Math.max(1, Math.floor(toSafeNumber(enemy?.baseLevel, safeLevel))))
+    };
+  }
+  const progression = classRow // レベルに対する種族Lv/クラスLvの配分
+    ? resolveGrowthLevelsForUnitLevel(raceRow, safeLevel, ENEMY_LEVEL_MAX)
+    : { raceLevels: safeLevel, classLevels: 0 };
+  const raceLevels = Math.max(0, Math.floor(toSafeNumber(progression?.raceLevels, safeLevel))); // 種族Lv
+  const classLevels = Math.max(0, Math.floor(toSafeNumber(progression?.classLevels, 0))); // クラスLv
+  const built = buildEnemyCharacterStatusFromRules(raceRow, classRow || {}, safeLevel, { // ステータス再構築結果
+    raceLevels,
+    classLevels
+  });
+  const skillLevels = buildUnitSkillLevelsFromClass(raceRow, classRow || {}, built.raceLevels, built.classLevels); // スキルLv再計算
+  const skills = buildUnitSkillsForProgression({ // 習得スキル再計算
+    raceRow,
+    classRow: classRow || {},
+    raceLevels: built.raceLevels,
+    classLevels: built.classLevels
+  });
+  const resistances = buildUnitResistances(raceRow, classRow || {}); // 耐性再計算
+  return {
+    ...enemy,
+    level: built.level,
+    targetLevel: safeLevel,
+    baseLevel: Math.min(safeLevel, Math.max(1, Math.floor(toSafeNumber(enemy?.baseLevel, safeLevel)))),
+    status: built.status,
+    skillLevels,
+    skills,
+    resistances,
+    growthRule: {
+      ...(enemy?.growthRule && typeof enemy.growthRule === "object" ? enemy.growthRule : {}),
+      raceLevels: built.raceLevels,
+      classLevels: built.classLevels
+    }
+  };
+}
+
+function applyStartVillageSafetyZone(data, villageXRaw, villageYRaw, options = {}) {
+  if (!data || !Array.isArray(data?.enemySpawnMap)) {
+    return { applied: false, clearedTiles: 0, lowLevelTiles: 0, lowLevelUnits: 0, zeroedDangerTiles: 0 };
+  }
+  const villageX = Math.floor(toSafeNumber(villageXRaw, Number.NaN)); // 村中心X
+  const villageY = Math.floor(toSafeNumber(villageYRaw, Number.NaN)); // 村中心Y
+  if (!Number.isFinite(villageX) || !Number.isFinite(villageY)) {
+    return { applied: false, clearedTiles: 0, lowLevelTiles: 0, lowLevelUnits: 0, zeroedDangerTiles: 0 };
+  }
+  const clearRadius = Math.max(0, Math.floor(toSafeNumber(options?.clearRadius, START_VILLAGE_SAFE_NO_ENEMY_RADIUS))); // 完全排除半径
+  const lowLevelRadius = Math.max(clearRadius, Math.floor(toSafeNumber(options?.lowLevelRadius, START_VILLAGE_LOW_LEVEL_RADIUS))); // 低レベル化半径
+  const levelCap = Math.max(1, Math.floor(toSafeNumber(options?.levelCap, START_VILLAGE_LOW_LEVEL_CAP))); // 近傍敵レベル上限
+  const dangerMap = ensureEnemyDangerMap(data); // 危険度マップ（0化に使用）
+  let clearedTiles = 0;
+  let lowLevelTiles = 0;
+  let lowLevelUnits = 0;
+  let zeroedDangerTiles = 0;
+  let changed = false; // 変更有無（統計再計算トリガ）
+
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const distance = hexDistance({ x, y }, { x: villageX, y: villageY }); // 村からの距離
+      if (!Number.isFinite(distance)) continue;
+      if (distance <= clearRadius) {
+        const beforeDanger = Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0)))); // 変更前危険度
+        if (beforeDanger > 0) {
+          dangerMap[y][x] = 0;
+          zeroedDangerTiles += 1;
+          changed = true;
+        }
+        const cleared = clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true }); // 敵削除
+        if (cleared) {
+          clearedTiles += 1;
+          changed = true;
+        }
+        continue;
+      }
+      if (distance > lowLevelRadius) continue;
+      const enemies = Array.isArray(data.enemySpawnMap?.[y]?.[x]) ? data.enemySpawnMap[y][x] : []; // このマスの敵一覧
+      if (!enemies.length) continue;
+      let tileChanged = false; // このマスでレベル上限適用が発生したか
+      const nextEnemies = enemies.map(enemy => {
+        const currentLevel = clampEnemyLevel( // 現在レベル（補助値含む）
+          toSafeNumber(enemy?.level, toSafeNumber(enemy?.targetLevel, toSafeNumber(enemy?.baseLevel, 1)))
+        );
+        if (currentLevel <= levelCap) return enemy;
+        tileChanged = true;
+        lowLevelUnits += 1;
+        return rebuildEnemyUnitToLevel(enemy, levelCap); // Lv上限で再構築
+      });
+      if (tileChanged) {
+        data.enemySpawnMap[y][x] = nextEnemies;
+        lowLevelTiles += 1;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap); // 集計値更新
+  }
+  return {
+    applied: changed,
+    clearedTiles,
+    lowLevelTiles,
+    lowLevelUnits,
+    zeroedDangerTiles,
+    clearRadius,
+    lowLevelRadius,
+    levelCap
+  };
+}
+
+function collectActiveSurveyTileKeys(data) {
+  const keys = new Set();
+  const inBounds = (x, y) => (
+    Number.isFinite(x)
+    && Number.isFinite(y)
+    && x >= 0
+    && y >= 0
+    && x < toSafeNumber(data?.w, 0)
+    && y < toSafeNumber(data?.h, 0)
+  );
+  const pushFromUnits = (units) => {
+    if (!Array.isArray(units)) return;
+    for (const unit of units) {
+      const task = resolveUnitSurveyTask(unit);
+      if (!task) continue;
+      const tx = Math.floor(toSafeNumber(task?.x, Number.NaN));
+      const ty = Math.floor(toSafeNumber(task?.y, Number.NaN));
+      if (!inBounds(tx, ty)) continue;
+      keys.add(coordKey(tx, ty));
+    }
+  };
+  // 現在アクティブ勢力
+  pushFromUnits(unitList.value);
+  // テストマルチ時は他勢力の調査中タイルも除外対象にする
+  for (const slot of testPlayerSlots.value || []) {
+    pushFromUnits(slot?.factionState?.units);
+  }
+  return keys;
+}
+
+function applyDangerRulesByTerritory(data, options = {}) {
+  if (!data || data.shapeOnly || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) {
+    return { applied: false, ownZeroedTiles: 0, increasedTiles: 0, clearedEnemyTiles: 0, periodicApplied: false };
+  }
+  const dangerMap = ensureEnemyDangerMap(data);
+  ensureClaimedTerritoryMap(data);
+  rebuildTerritorySets(data);
+  const turnNumber = Math.max(0, Math.floor(toSafeNumber(data?.turnState?.turnNumber, 0)));
+  const periodicApplied = options?.applyUnownedIncrease === true
+    && turnNumber > 0
+    && (turnNumber % TILE_DANGER_UNOWNED_INCREASE_INTERVAL_TURNS) === 0;
+  let ownZeroedTiles = 0;
+  let increasedTiles = 0;
+  let clearedEnemyTiles = 0;
+  let enemyMapChanged = false;
+  const enemySpawnMap = Array.isArray(data?.enemySpawnMap) ? data.enemySpawnMap : null;
+  const activeSurveyTileKeys = collectActiveSurveyTileKeys(data);
+
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const tileKey = coordKey(x, y);
+      const ownerId = nonEmptyText(territoryOwnerByTile.get(tileKey));
+      const ownedByAny = !!ownerId;
+      const ownedByPlayer = territorySets.player.has(tileKey);
+      const beforeDanger = Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0))));
+      let nextDanger = beforeDanger;
+
+      // 領土化されているタイル（自勢力/他勢力を問わず）は危険度0%を維持する。
+      if (ownedByAny && nextDanger > 0) {
+        nextDanger = 0;
+        if (ownedByPlayer) ownZeroedTiles += 1;
+      }
+
+      // 調査中タイルは危険度の自然回復（時間経過上昇）を停止する。
+      if (periodicApplied && !ownedByAny && !activeSurveyTileKeys.has(tileKey)) {
+        const raised = Math.min(TILE_DANGER_MAX_PERCENT, nextDanger + TILE_DANGER_UNOWNED_INCREASE_PERCENT);
+        if (raised !== nextDanger) {
+          nextDanger = raised;
+          increasedTiles += 1;
+        }
+      }
+
+      if (nextDanger !== beforeDanger) {
+        dangerMap[y][x] = nextDanger;
+      }
+
+      if (nextDanger <= 0) {
+        const enemyList = enemySpawnMap?.[y]?.[x];
+        const hasEnemyOnTile = Array.isArray(enemyList) && enemyList.length > 0;
+        const hasEnemyMemory = spottedEnemyTileKeys.has(tileKey)
+          || alertedEnemyTileKeys.has(tileKey)
+          || spottedEnemyNamesByTile.has(tileKey);
+        const needCleanup = beforeDanger > 0 || hasEnemyOnTile || hasEnemyMemory;
+        if (needCleanup) {
+          const cleared = clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+          if (cleared) {
+            clearedEnemyTiles += 1;
+            enemyMapChanged = true;
+          }
+        }
+      }
+    }
+  }
+
+  if (enemyMapChanged) {
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+  }
+
+  return {
+    applied: true,
+    ownZeroedTiles,
+    increasedTiles,
+    clearedEnemyTiles,
+    periodicApplied
+  };
+}
+
+function syncDangerRulesForCurrentMap(options = {}) {
+  if (!currentData.value || currentData.value.shapeOnly) return;
+  rebuildTerritorySets(currentData.value);
+  applyDangerRulesByTerritory(currentData.value, {
+    applyUnownedIncrease: options?.applyUnownedIncrease === true
+  });
+}
+
+function claimTerritoryByVillageRange(data, village, ownerIdRaw = "") {
+  if (!data || data.shapeOnly) return 0;
+  const ownerId = nonEmptyText(ownerIdRaw) || resolveActiveTerritoryOwnerId();
+  if (!ownerId) return 0;
+  const set = buildVillageRangeTileSet(data, village?.x, village?.y, { passableOnly: false });
+  if (!set.size) return 0;
+  const claimedMap = ensureClaimedTerritoryMap(data);
+  let applied = 0;
+  for (const key of set) {
+    const [sx, sy] = String(key || "").split(",");
+    const x = Math.floor(toSafeNumber(sx, NaN));
+    const y = Math.floor(toSafeNumber(sy, NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (x < 0 || y < 0 || x >= data.w || y >= data.h) continue;
+    if (claimedMap[y][x] === ownerId) continue;
+    claimedMap[y][x] = ownerId;
+    applied += 1;
+  }
+  return applied;
+}
+
+function forceZeroDangerForVillageTerritory(data, village, ownerIdRaw = "") {
+  if (!data || data.shapeOnly) return { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 };
+  const ownerId = nonEmptyText(ownerIdRaw) || resolveActiveTerritoryOwnerId();
+  if (!ownerId) return { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 };
+  const set = buildVillageRangeTileSet(data, village?.x, village?.y, { passableOnly: false });
+  if (!set.size) return { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 };
+  const claimedMap = ensureClaimedTerritoryMap(data);
+  const dangerMap = ensureEnemyDangerMap(data);
+  let zeroedTiles = 0;
+  let claimedTiles = 0;
+  let clearedEnemyTiles = 0;
+  let enemyMapChanged = false;
+  for (const key of set) {
+    const [sx, sy] = String(key || "").split(",");
+    const x = Math.floor(toSafeNumber(sx, Number.NaN));
+    const y = Math.floor(toSafeNumber(sy, Number.NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (x < 0 || y < 0 || x >= data.w || y >= data.h) continue;
+    if (claimedMap?.[y]?.[x] !== ownerId) {
+      claimedMap[y][x] = ownerId;
+      claimedTiles += 1;
+    }
+    const beforeDanger = Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0))));
+    if (beforeDanger > 0) {
+      dangerMap[y][x] = 0;
+      zeroedTiles += 1;
+    }
+    const cleared = clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+    if (cleared) {
+      clearedEnemyTiles += 1;
+      enemyMapChanged = true;
+    }
+  }
+  if (enemyMapChanged) {
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+  }
+  return {
+    appliedTiles: set.size,
+    zeroedTiles,
+    claimedTiles,
+    clearedEnemyTiles
+  };
+}
+
+function forceZeroDangerForAllPlacedFactionTerritories(data) {
+  if (!data || data.shapeOnly) return { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 };
+  if (Array.isArray(testPlayerSlots.value) && testPlayerSlots.value.length > 1) {
+    return testPlayerSlots.value.reduce((acc, slot) => {
+      const ownerId = nonEmptyText(slot?.id);
+      const village = slot?.factionState?.village;
+      const result = forceZeroDangerForVillageTerritory(data, village, ownerId);
+      acc.appliedTiles += Math.max(0, Math.floor(toSafeNumber(result?.appliedTiles, 0)));
+      acc.zeroedTiles += Math.max(0, Math.floor(toSafeNumber(result?.zeroedTiles, 0)));
+      acc.claimedTiles += Math.max(0, Math.floor(toSafeNumber(result?.claimedTiles, 0)));
+      acc.clearedEnemyTiles += Math.max(0, Math.floor(toSafeNumber(result?.clearedEnemyTiles, 0)));
+      return acc;
+    }, { appliedTiles: 0, zeroedTiles: 0, claimedTiles: 0, clearedEnemyTiles: 0 });
+  }
+  return forceZeroDangerForVillageTerritory(data, villageState.value, "player");
+}
+
 function buildEnemySpawnDataForMap(data) {
   if (!data || data.shapeOnly || !Number.isFinite(data?.w) || !Number.isFinite(data?.h) || !Array.isArray(data?.grid)) {
     return {
@@ -6204,18 +8607,77 @@ function buildEnemySpawnDataForMap(data) {
   }
 
   const enemySpawnMap = Array.from({ length: data.h }, () => Array.from({ length: data.w }, () => null));
+  const occupiedSwarmTerritories = [];
+  const resolveStrongScoutBlockRadius = enemies => {
+    const list = Array.isArray(enemies) ? enemies : [];
+    if (!list.length) return 1;
+    const maxScout = list.reduce((maxValue, enemy) => {
+      const scout = Math.max(0, roundTo1(toSafeNumber(enemy?.skillLevels?.索敵, 0)));
+      return Math.max(maxValue, scout);
+    }, 0);
+    const baseRadius = 1 + Math.floor(Math.max(0, maxScout - 1) / ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE);
+    return Math.max(1, baseRadius + Math.max(0, Math.floor(toSafeNumber(ENEMY_STRONG_SCOUT_BLOCK_BUFFER, 0))));
+  };
   const stats = {
     total: 0,
     totalUnits: 0,
     strongTileCount: 0,
     byTerrain: {}
   };
+  const normalSpawnTileRate = Math.max(0, Math.min(1, toSafeNumber(ENEMY_SPAWN_TILE_RATE_NORMAL, 0.4)));
+  const resolveTileMonsterDangerScale = (data, x, y) => {
+    const keys = collectEnemySpawnTerrainKeys(data, x, y);
+    if (!keys.length) return 1;
+    let maxDanger = Number.NaN;
+    for (const key of keys) {
+      const row = terrainYieldMap.value.get(key);
+      const value = toSafeNumber(row?.モンスター危険度, Number.NaN);
+      if (!Number.isFinite(value)) continue;
+      if (!Number.isFinite(maxDanger)) {
+        maxDanger = value;
+        continue;
+      }
+      maxDanger = Math.max(maxDanger, value);
+    }
+    if (!Number.isFinite(maxDanger)) return 1;
+    return clampNumber(maxDanger, 0, 1);
+  };
+  const resolveNormalSpawnTileChance = (data, x, y) => {
+    const dangerScale = resolveTileMonsterDangerScale(data, x, y);
+    return Math.max(0, Math.min(1, normalSpawnTileRate * dangerScale));
+  };
 
+  const spawnTileOrder = [];
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
+      spawnTileOrder.push({
+        x,
+        y,
+        strong: data?.strongMonsterMap?.[y]?.[x] === "強敵候補",
+        dangerScale: resolveTileMonsterDangerScale(data, x, y)
+      });
+    }
+  }
+  spawnTileOrder.sort((a, b) => {
+    const strongDiff = Number(b.strong) - Number(a.strong);
+    if (strongDiff !== 0) return strongDiff;
+    const dangerDiff = toSafeNumber(b.dangerScale, 0) - toSafeNumber(a.dangerScale, 0);
+    if (dangerDiff !== 0) return dangerDiff;
+    if (a.y !== b.y) return a.y - b.y;
+    return a.x - b.x;
+  });
+
+  for (const tile of spawnTileOrder) {
+    const x = tile.x;
+    const y = tile.y;
       const terrainKeys = collectEnemySpawnTerrainKeys(data, x, y);
       if (!terrainKeys.length) continue;
       const isStrongTile = data?.strongMonsterMap?.[y]?.[x] === "強敵候補";
+      if (!isStrongTile) {
+        const tileChance = resolveNormalSpawnTileChance(data, x, y);
+        if (tileChance <= 0 || Math.random() > tileChance) continue;
+      }
+      const strongInfo = data?.strongMonsterInfoMap?.[y]?.[x] || null;
       const baseLevel = resolveEnemyBaseLevelByTile(data, x, y, isStrongTile);
       const terrainCandidates = [];
       const candidates = [];
@@ -6228,16 +8690,43 @@ function buildEnemySpawnDataForMap(data) {
           candidates.push(merged);
         }
       }
-      let picked = pickEnemyRule(candidates, baseLevel, false);
+      const prioritizedCandidates = filterCandidatesByHighestTerrainDanger(candidates);
+      const prioritizedTerrainCandidates = filterCandidatesByHighestTerrainDanger(terrainCandidates);
+      let picked = pickEnemyRule(
+        prioritizedCandidates.length ? prioritizedCandidates : candidates,
+        baseLevel,
+        false
+      );
       if (!picked && isStrongTile) {
-        picked = pickEnemyRule(terrainCandidates, baseLevel, true);
+        picked = pickEnemyRule(
+          prioritizedTerrainCandidates.length ? prioritizedTerrainCandidates : terrainCandidates,
+          baseLevel,
+          true
+        );
       }
       if (!picked && isStrongTile) {
         const globalFallback = rows.map(row => ({ ...row, matchedTerrain: row.terrainKey }));
-        picked = pickEnemyRule(globalFallback, baseLevel, true);
+        const prioritizedGlobalFallback = filterCandidatesByHighestTerrainDanger(globalFallback);
+        picked = pickEnemyRule(
+          prioritizedGlobalFallback.length ? prioritizedGlobalFallback : globalFallback,
+          baseLevel,
+          true
+        );
+      }
+      if (!picked && isStrongTile) {
+        const fallbackRow = filterCandidatesByHighestTerrainDanger(rows)
+          .find(row => !!findClassRowByName(row?.raceName))
+          || rows.find(row => !!findClassRowByName(row?.raceName));
+        if (fallbackRow) {
+          picked = {
+            ...fallbackRow,
+            matchedTerrain: nonEmptyText(fallbackRow?.terrainKey) || (terrainKeys[0] || "")
+          };
+        }
       }
       if (!picked) continue;
-      const spawnCount = resolveEnemySpawnCountByTile(picked);
+      let spawnCount = resolveEnemySpawnCountByTile(picked);
+      if (isStrongTile) spawnCount = Math.max(1, spawnCount);
       if (spawnCount <= 0) continue;
 
       let raceRow = findClassRowByName(picked.raceName);
@@ -6253,9 +8742,42 @@ function buildEnemySpawnDataForMap(data) {
           raceRow = findClassRowByName(picked.raceName);
         }
       }
+      if (!raceRow && isStrongTile) {
+        const fallbackRow = filterCandidatesByHighestTerrainDanger(rows)
+          .find(row => !!findClassRowByName(row?.raceName))
+          || rows.find(row => !!findClassRowByName(row?.raceName));
+        if (fallbackRow) {
+          picked = {
+            ...fallbackRow,
+            matchedTerrain: nonEmptyText(fallbackRow?.terrainKey) || nonEmptyText(picked?.matchedTerrain) || (terrainKeys[0] || "")
+          };
+          raceRow = findClassRowByName(picked.raceName);
+        }
+      }
       if (!raceRow) continue;
       const classRow = picked.className ? findClassRowByName(picked.className) : null;
       const tileEnemies = [];
+      const isSwarmTerritoryOverlapped = radius => occupiedSwarmTerritories.some(territory => {
+        const distance = hexDistance({ x, y }, territory);
+        const threshold = Math.max(1, Math.floor(toSafeNumber(radius, 1)) + Math.max(1, territory.radius));
+        return distance <= threshold;
+      });
+      let swarmRuleEnabled = picked?.spawnCountExplicit === true || isStrongTile;
+      let territoryId = "";
+      let territoryRadius = 0;
+      if (swarmRuleEnabled) {
+        territoryId = isStrongTile
+          ? nonEmptyText(strongInfo?.territoryId) || `swarm-strong-${x}-${y}`
+          : `swarm-${x}-${y}`;
+        territoryRadius = isStrongTile
+          ? clampNumber(
+            Math.floor(toSafeNumber(strongInfo?.territoryRadius, ENEMY_SWARM_TERRITORY_RADIUS_MIN + 1)),
+            ENEMY_SWARM_TERRITORY_RADIUS_MIN,
+            ENEMY_SWARM_TERRITORY_RADIUS_MAX
+          )
+          : resolveEnemySwarmTerritoryRadiusForRule(picked, ENEMY_SWARM_TERRITORY_RADIUS_MIN);
+        if (!isStrongTile && isSwarmTerritoryOverlapped(territoryRadius)) continue;
+      }
 
       const tileMaxRuleLevel = terrainCandidates.length
         ? terrainCandidates.reduce((maxLv, row) => Math.max(maxLv, Math.max(1, Math.floor(toSafeNumber(row?.lvMax, baseLevel)))), Math.max(1, baseLevel))
@@ -6283,12 +8805,14 @@ function buildEnemySpawnDataForMap(data) {
           id: `enemy-${x}-${y}-${index}`,
           name: picked.displayName || picked.raceName,
           imageName: nonEmptyText(picked?.imageName),
+          nestName: nonEmptyText(picked?.nestName),
           race: nonEmptyText(raceRow?.名前) || picked.raceName,
           className: classRow ? nonEmptyText(classRow?.名前) : "",
           level: built.level,
           baseLevel: roleBaseLevel,
           targetLevel: enemyLevel,
           matchedTerrain: picked.matchedTerrain,
+          aggressive: picked?.aggressive === true,
           strong: isStrongTile,
           strongRole: role,
           strongGroupSize: groupCount,
@@ -6300,6 +8824,15 @@ function buildEnemySpawnDataForMap(data) {
           resistances,
           spawnCount: groupCount,
           spawnIndex: index + 1,
+          behaviorAction: "",
+          behaviorPattern: [],
+          behaviorActionCandidates: MONSTER_BEHAVIOR_ACTION_KEYS,
+          swarmRule: swarmRuleEnabled,
+          territoryId,
+          territoryCenterX: swarmRuleEnabled ? x : null,
+          territoryCenterY: swarmRuleEnabled ? y : null,
+          territoryRadius,
+          isBoss: role === "leader",
           growthRule: {
             raceLevels: built.raceLevels,
             classLevels: built.classLevels,
@@ -6318,6 +8851,13 @@ function buildEnemySpawnDataForMap(data) {
         const followerLevel = clampEnemyLevel(Math.floor(tileMaxRuleLevel * ENEMY_STRONG_FOLLOWER_LEVEL_SCALE));
         const followerCount = randomInt(ENEMY_STRONG_FOLLOWER_MIN, ENEMY_STRONG_FOLLOWER_MAX);
         const groupCount = 1 + followerCount;
+        if (!swarmRuleEnabled && groupCount >= 2) {
+          const strongSwarmRadius = resolveEnemySwarmTerritoryRadiusForRule(picked, groupCount);
+          if (isSwarmTerritoryOverlapped(strongSwarmRadius)) continue;
+          swarmRuleEnabled = true;
+          territoryId = `swarm-strong-${x}-${y}`;
+          territoryRadius = strongSwarmRadius;
+        }
         pushEnemyRecord(leaderLevel, 0, "leader", groupCount, leaderLevel);
         for (let i = 0; i < followerCount; i += 1) {
           pushEnemyRecord(followerLevel, i + 1, "follower", groupCount, followerLevel);
@@ -6329,32 +8869,105 @@ function buildEnemySpawnDataForMap(data) {
         }
       }
       enemySpawnMap[y][x] = tileEnemies;
+      if (swarmRuleEnabled) {
+        occupiedSwarmTerritories.push({ x, y, radius: territoryRadius });
+      }
 
       stats.total += 1;
       stats.totalUnits += tileEnemies.length;
       if (isStrongTile) stats.strongTileCount += 1;
       stats.byTerrain[picked.matchedTerrain] = Math.max(0, Math.floor(toSafeNumber(stats.byTerrain[picked.matchedTerrain], 0))) + tileEnemies.length;
+  }
+
+  const strongScoutZones = [];
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const tileEnemies = Array.isArray(enemySpawnMap?.[y]?.[x]) ? enemySpawnMap[y][x] : [];
+      if (!tileEnemies.length) continue;
+      const strongEnemies = tileEnemies.filter(enemy => enemy?.strong === true);
+      if (!strongEnemies.length) continue;
+      strongScoutZones.push({
+        x,
+        y,
+        radius: resolveStrongScoutBlockRadius(strongEnemies)
+      });
     }
   }
+  if (strongScoutZones.length) {
+    for (let y = 0; y < data.h; y += 1) {
+      for (let x = 0; x < data.w; x += 1) {
+        const tileEnemies = Array.isArray(enemySpawnMap?.[y]?.[x]) ? enemySpawnMap[y][x] : [];
+        if (!tileEnemies.length) continue;
+        if (tileEnemies.some(enemy => enemy?.strong === true)) continue;
+        const blockedByStrongScout = strongScoutZones.some(zone => {
+          const distance = hexDistance({ x, y }, zone);
+          return distance <= Math.max(1, Math.floor(toSafeNumber(zone?.radius, 1)));
+        });
+        if (!blockedByStrongScout) continue;
+        enemySpawnMap[y][x] = [];
+      }
+    }
+  }
+  const finalStats = buildEnemySpawnStatsFromMap(enemySpawnMap);
 
   return {
     enemySpawnMap,
-    enemySpawnStats: stats,
+    enemySpawnStats: finalStats,
     enemyDangerMap: buildInitialEnemyDangerMap(data, rulesByTerrain),
     claimedTerritoryMap: buildEmptyClaimedTerritoryMap(data)
   };
 }
 
+function resolveTileDangerPercent(data, x, y) {
+  if (!data || !Number.isFinite(x) || !Number.isFinite(y)) return 0;
+  const tx = Math.floor(toSafeNumber(x, Number.NaN));
+  const ty = Math.floor(toSafeNumber(y, Number.NaN));
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return 0;
+  // 重い ensureEnemyDangerMap() をホットパスで呼ばない。
+  // enemyDangerMap は applyMapData / 生成時に正規化済み前提で軽量参照する。
+  const dangerMap = Array.isArray(data?.enemyDangerMap) ? data.enemyDangerMap : null;
+  const row = Array.isArray(dangerMap?.[ty]) ? dangerMap[ty] : null;
+  const raw = row?.[tx];
+  return Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(raw, 0))));
+}
+
+function configuredEnemiesAt(x, y, data = currentData.value) {
+  const tx = Math.floor(toSafeNumber(x, Number.NaN));
+  const ty = Math.floor(toSafeNumber(y, Number.NaN));
+  if (!data || !Number.isFinite(tx) || !Number.isFinite(ty)) return [];
+  const list = data?.enemySpawnMap?.[ty]?.[tx];
+  if (!Array.isArray(list) || !list.length) return [];
+  return list;
+}
+
 function enemiesAt(x, y, data = currentData.value) {
-  const list = data?.enemySpawnMap?.[y]?.[x];
-  if (!Array.isArray(list)) return [];
-  return list.filter(Boolean);
+  const tx = Math.floor(toSafeNumber(x, Number.NaN));
+  const ty = Math.floor(toSafeNumber(y, Number.NaN));
+  if (!data || !Number.isFinite(tx) || !Number.isFinite(ty)) return [];
+  const list = configuredEnemiesAt(tx, ty, data);
+  if (!list.length) return [];
+  const dangerPercent = resolveTileDangerPercent(data, tx, ty);
+  if (dangerPercent <= 0) return [];
+  let hasFalsy = false;
+  for (let i = 0; i < list.length; i += 1) {
+    if (!list[i]) {
+      hasFalsy = true;
+      break;
+    }
+  }
+  if (!hasFalsy) return list;
+  const compact = [];
+  for (let i = 0; i < list.length; i += 1) {
+    if (list[i]) compact.push(list[i]);
+  }
+  return compact;
 }
 
 function clearCharacterGenerationState() {
   applyingTestPlayerState = true;
   villageState.value = null;
   unitList.value = [];
+  deadUnitReserve.value = [];
   selectedUnitId.value = "";
   nationLogsBySovereign.value = {};
   activeNationLogKey.value = "";
@@ -6578,7 +9191,9 @@ function createUnitRecord({
     x: -1,
     y: -1,
     moveRange,
-    moveRemaining: moveRange,
+    actionPointMax: UNIT_ACTION_POINT_MAX,
+    actionPoint: UNIT_ACTION_POINT_MAX,
+    moveRemaining: UNIT_ACTION_POINT_MAX,
     scoutRange: 4,
     squadCount: 0,
     squads: [],
@@ -7155,7 +9770,9 @@ function buildFactionStateWithVillagePlacement(slot, data, placement) {
       ...unit,
       x: placement.x,
       y: placement.y,
-      moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit?.moveRange, 0)))
+      actionPointMax: resolveUnitActionPointMax(unit),
+      actionPoint: resolveUnitActionPointMax(unit),
+      moveRemaining: resolveUnitActionPointMax(unit)
     }))
     : [];
   const tileKey = coordKey(placement.x, placement.y);
@@ -7165,7 +9782,7 @@ function buildFactionStateWithVillagePlacement(slot, data, placement) {
     units,
     selectedUnitId: units[0]?.id || "",
     villagePlacementMode: false,
-    unitMoveMode: false,
+    moveCommandUnitId: "",
     visibility: {
       exploredTileKeys: [tileKey],
       visibleTileKeys: [tileKey],
@@ -7208,7 +9825,7 @@ function buildFactionStateWithPendingVillage(slot) {
     ...baseState,
     village: nextVillage,
     villagePlacementMode: true,
-    unitMoveMode: false,
+    moveCommandUnitId: "",
     visibility: {
       exploredTileKeys: [],
       visibleTileKeys: [],
@@ -7225,6 +9842,19 @@ function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
   if (!slots.length) return { autoPlacedCount: 0, manualPlayerCount: 0 };
   const assignmentBySlot = plan?.assignmentBySlot instanceof Map ? plan.assignmentBySlot : new Map();
   const activeBefore = nonEmptyText(activeTestPlayerId.value);
+  // 開始時の危険度/敵配置クリアは、描画・進行で参照中の currentData を優先して更新する。
+  const liveMapData = (
+    currentData.value
+    && Number.isFinite(currentData.value?.w)
+    && Number.isFinite(currentData.value?.h)
+    && Number.isFinite(data?.w)
+    && Number.isFinite(data?.h)
+    && currentData.value.w === data.w
+    && currentData.value.h === data.h
+    && Array.isArray(currentData.value?.grid)
+  )
+    ? currentData.value
+    : data;
 
   const nextSlots = slots.map((slot, idx) => {
     const entry = resolveFactionEntryForSlot(slot, idx, placementConfig);
@@ -7265,13 +9895,16 @@ function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
 
   if (firstManualPlayer) {
     villagePlacementMode.value = true;
-    unitMoveMode.value = false;
+    clearMoveCommandState({ clearCandidate: true });
     showMoveUnitModal.value = false;
     mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
     updateUnitInfoText(`${firstManualPlayer.label} は手動配置モードです。初期村の配置先をクリックしてください。`);
   }
-  rebuildTerritorySets(data);
-  rebuildVisibleTiles(data);
+  rebuildTerritorySets(liveMapData);
+  forceZeroDangerForAllPlacedFactionTerritories(liveMapData);
+  rebuildTerritorySets(liveMapData);
+  applyDangerRulesByTerritory(liveMapData, { applyUnownedIncrease: false });
+  rebuildVisibleTiles(liveMapData);
   renderMapWithPhaser();
 
   const autoPlacedCount = nextSlots.reduce((sum, slot) => {
@@ -7290,6 +9923,7 @@ function applyFactionPlacementsToSlots(data, plan, placementConfig = {}) {
 
 function generateTerrainMapForGameStart(entries, placementConfig = {}) {
   const { w, h } = parseMapSizeValue(mapSize.value);
+  applyLargeMapPerformanceDefaults(w, h);
   const islandCustomSettings = buildIslandCustomSettings();
   const attemptCount = Math.max(6, Math.min(20, 6 + (entries.length * 2)));
   let best = null;
@@ -7426,6 +10060,233 @@ function canPlaceVillageOnTile(picked) {
   return true;
 }
 
+function resolveCityBlockPlacementTypeDef(type = cityBlockPlacementType.value) {
+  const safeType = nonEmptyText(type);
+  return CITY_BLOCK_PLACEMENT_TYPE_DEFS[safeType] || CITY_BLOCK_PLACEMENT_TYPE_DEFS[CITY_BLOCK_PLACEMENT_TYPE_CITY];
+}
+
+function buildCityBlockPlacementCells(anchorX, anchorY, placementType = cityBlockPlacementType.value) {
+  const ax = Math.floor(toSafeNumber(anchorX, Number.NaN));
+  const ay = Math.floor(toSafeNumber(anchorY, Number.NaN));
+  if (!Number.isFinite(ax) || !Number.isFinite(ay)) return [];
+  const typeDef = resolveCityBlockPlacementTypeDef(placementType);
+  if (typeDef.key === CITY_BLOCK_PLACEMENT_TYPE_TOWN) {
+    return [
+      { x: ax, y: ay },
+      { x: ax + 1, y: ay }
+    ];
+  }
+  if (typeDef.key === CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS) {
+    const isOddRow = ay % 2 === 1;
+    const deltas = isOddRow
+      ? [[-1, 0], [1, 0], [0, -1], [1, -1], [0, 1], [1, 1]]
+      : [[-1, 0], [1, 0], [-1, -1], [0, -1], [-1, 1], [0, 1]];
+    return [
+      { x: ax, y: ay },
+      ...deltas.map(([dx, dy]) => ({ x: ax + dx, y: ay + dy }))
+    ];
+  }
+  const isOddRow = ay % 2 === 1;
+  // △形: 頂点(anchor) + 下段2マス
+  const baseLeft = isOddRow ? { x: ax, y: ay + 1 } : { x: ax - 1, y: ay + 1 };
+  const baseRight = isOddRow ? { x: ax + 1, y: ay + 1 } : { x: ax, y: ay + 1 };
+  const cells = [
+    { x: ax, y: ay },
+    baseLeft,
+    baseRight
+  ];
+  return cells;
+}
+
+function resolveCityBlockPlacementPreview(anchorX, anchorY, data = currentData.value, placementType = cityBlockPlacementType.value) {
+  const typeDef = resolveCityBlockPlacementTypeDef(placementType);
+  const cells = buildCityBlockPlacementCells(anchorX, anchorY, typeDef.key);
+  if (!data || data.shapeOnly || !cells.length) {
+    return {
+      valid: false,
+      reason: "マップ生成後に配置できます。",
+      type: typeDef.key,
+      anchorX,
+      anchorY,
+      cells: [],
+      tileKeys: []
+    };
+  }
+  const occupied = new Set();
+  for (const placement of cityBlockPlacements.value) {
+    for (const key of placement?.tileKeys || []) occupied.add(nonEmptyText(key));
+  }
+  for (const cell of cells) {
+    if (cell.x < 0 || cell.y < 0 || cell.x >= data.w || cell.y >= data.h) {
+      return {
+        valid: false,
+        reason: `${typeDef.tileCount}マスがマップ範囲外です。`,
+        type: typeDef.key,
+        anchorX,
+        anchorY,
+        cells,
+        tileKeys: cells.map(pos => coordKey(pos.x, pos.y))
+      };
+    }
+    const terrain = nonEmptyText(data?.grid?.[cell.y]?.[cell.x]);
+    if (!terrain || !isPassableTerrain(terrain) || terrain === "火山") {
+      return {
+        valid: false,
+        reason: "海/湖/火山を含むため配置できません。",
+        type: typeDef.key,
+        anchorX,
+        anchorY,
+        cells,
+        tileKeys: cells.map(pos => coordKey(pos.x, pos.y))
+      };
+    }
+    const tileKey = coordKey(cell.x, cell.y);
+    if (occupied.has(tileKey)) {
+      return {
+        valid: false,
+        reason: "既に土地配置がある範囲です。",
+        type: typeDef.key,
+        anchorX,
+        anchorY,
+        cells,
+        tileKeys: cells.map(pos => coordKey(pos.x, pos.y))
+      };
+    }
+  }
+  return {
+    valid: true,
+    reason: "",
+    type: typeDef.key,
+    anchorX,
+    anchorY,
+    cells,
+    tileKeys: cells.map(pos => coordKey(pos.x, pos.y))
+  };
+}
+
+function closeCityBlockPlacementConfirmModal(options = {}) {
+  const keepPreview = options?.keepPreview === true;
+  showCityBlockPlacementConfirmModal.value = false;
+  cityBlockPlacementPending.value = null;
+  if (!keepPreview) cityBlockPlacementPreview.value = null;
+}
+
+function cancelCityBlockPlacementMode(options = {}) {
+  closeCityBlockPlacementConfirmModal({ keepPreview: false });
+  const currentTypeDef = resolveCityBlockPlacementTypeDef(cityBlockPlacementType.value);
+  cityBlockPlacementMode.value = false;
+  if (options?.announce !== false) {
+    updateUnitInfoText(`${currentTypeDef.modeLabel}の配置モードを終了しました。`);
+  }
+  emitCharacterStateChange();
+}
+
+function startCityBlockPlacementMode(nextType = CITY_BLOCK_PLACEMENT_TYPE_CITY) {
+  const typeDef = resolveCityBlockPlacementTypeDef(nextType);
+  if (!currentData.value || currentData.value.shapeOnly) {
+    updateUnitInfoText(`${typeDef.modeLabel}はマップ生成後に配置できます。`);
+    return;
+  }
+  if (cityBlockPlacementMode.value && cityBlockPlacementType.value === typeDef.key) {
+    cancelCityBlockPlacementMode({ announce: true });
+    requestMapRender();
+    return;
+  }
+  clearHousingUpgradeSelectionState();
+  clearMoveCommandState({ clearCandidate: true });
+  villagePlacementMode.value = false;
+  showMoveUnitModal.value = false;
+  cityBlockPlacementMode.value = true;
+  cityBlockPlacementType.value = typeDef.key;
+  cityBlockPlacementPreview.value = null;
+  closeCityBlockPlacementConfirmModal({ keepPreview: false });
+  updateUnitInfoText(typeDef.placementGuideText);
+  mapClickInfo.value = typeDef.clickGuideText;
+  emitCharacterStateChange();
+  requestMapRender();
+}
+
+function syncCityBlockPlacementHoverPreview(picked) {
+  if (!cityBlockPlacementMode.value || showCityBlockPlacementConfirmModal.value) return false;
+  const nextPreview = picked
+    ? resolveCityBlockPlacementPreview(picked.x, picked.y, currentData.value, cityBlockPlacementType.value)
+    : null;
+  const prevPreview = cityBlockPlacementPreview.value;
+  const changed = (
+    !prevPreview
+    || !nextPreview
+    || nonEmptyText(prevPreview.type) !== nonEmptyText(nextPreview.type)
+    || prevPreview.anchorX !== nextPreview.anchorX
+    || prevPreview.anchorY !== nextPreview.anchorY
+    || !!prevPreview.valid !== !!nextPreview.valid
+    || nonEmptyText(prevPreview.reason) !== nonEmptyText(nextPreview.reason)
+  );
+  if (!changed) return false;
+  cityBlockPlacementPreview.value = nextPreview;
+  return true;
+}
+
+function handleCityBlockPlacementTileClick(picked) {
+  if (!cityBlockPlacementMode.value || !picked) return false;
+  const preview = resolveCityBlockPlacementPreview(picked.x, picked.y, currentData.value, cityBlockPlacementType.value);
+  const typeDef = resolveCityBlockPlacementTypeDef(preview.type);
+  cityBlockPlacementPreview.value = preview;
+  if (!preview.valid) {
+    updateMapClickInfo(picked);
+    mapClickInfo.value += ` / ${typeDef.modeLabel}: ${preview.reason}`;
+    updateUnitInfoText(`${typeDef.modeLabel}: ${preview.reason}`);
+    closeCityBlockPlacementConfirmModal({ keepPreview: true });
+    return true;
+  }
+  cityBlockPlacementPending.value = preview;
+  showCityBlockPlacementConfirmModal.value = true;
+  updateMapClickInfo(picked);
+  mapClickInfo.value += ` / ${typeDef.modeLabel}候補: (${preview.anchorX}, ${preview.anchorY}) ${typeDef.anchorLabel}`;
+  updateUnitInfoText(`${typeDef.modeLabel}候補: (${preview.anchorX}, ${preview.anchorY}) ${typeDef.anchorLabel} / 「設置」で確定`);
+  return true;
+}
+
+function confirmCityBlockPlacement() {
+  const pending = cityBlockPlacementPending.value;
+  if (!pending) return;
+  const latest = resolveCityBlockPlacementPreview(
+    pending.anchorX,
+    pending.anchorY,
+    currentData.value,
+    pending.type || cityBlockPlacementType.value
+  );
+  const typeDef = resolveCityBlockPlacementTypeDef(latest.type);
+  if (!latest.valid) {
+    cityBlockPlacementPreview.value = latest;
+    showCityBlockPlacementConfirmModal.value = false;
+    cityBlockPlacementPending.value = null;
+    updateUnitInfoText(`${typeDef.modeLabel}: ${latest.reason}`);
+    requestMapRender();
+    return;
+  }
+  const id = `city-block-${typeDef.key}-${latest.anchorX}-${latest.anchorY}-${Date.now()}`;
+  cityBlockPlacements.value = [
+    ...cityBlockPlacements.value,
+    {
+      id,
+      type: typeDef.key,
+      anchorX: latest.anchorX,
+      anchorY: latest.anchorY,
+      cells: latest.cells.map(cell => ({ x: cell.x, y: cell.y })),
+      tileKeys: [...latest.tileKeys],
+      iconName: typeDef.iconName
+    }
+  ];
+  showCityBlockPlacementConfirmModal.value = false;
+  cityBlockPlacementPending.value = null;
+  cityBlockPlacementPreview.value = null;
+  kickOffBgm();
+  audio.playSe("confirm");
+  updateUnitInfoText(`${typeDef.modeLabel}を設置: ${typeDef.anchorLabel} (${latest.anchorX}, ${latest.anchorY})`);
+  pushNationLog(`${typeDef.modeLabel}を設置: ${typeDef.anchorLabel} (${latest.anchorX}, ${latest.anchorY})`);
+  requestMapRender();
+}
+
 function placeVillageAt(x, y) {
   clearHousingUpgradeSelectionState();
   const selectedRaceName = resolveActiveFactionRace();
@@ -7462,28 +10323,55 @@ function placeVillageAt(x, y) {
     ...unit,
     x,
     y,
-    moveRemaining: Math.max(0, Math.floor(toSafeNumber(unit.moveRange, 0)))
+    actionPointMax: resolveUnitActionPointMax(unit),
+    actionPoint: resolveUnitActionPointMax(unit),
+    moveRemaining: resolveUnitActionPointMax(unit)
   }));
   if (unitList.value.length) {
     selectedUnitId.value = unitList.value[0].id;
   }
   villagePlacementMode.value = false;
-  unitMoveMode.value = false;
+  clearMoveCommandState({ clearCandidate: true });
   showMoveUnitModal.value = false;
   markTileExplored(x, y);
+  let startSafetyResult = null;
   if (currentData.value) {
+    // マルチ勢力作成中は、配置直後の村情報を先にアクティブ勢力スロットへ反映してから
+    // 領土再計算を行わないと、中心1マスだけが領土扱いになることがある。
+    syncActiveTestPlayerSlotFromLiveState();
+    rebuildTerritorySets(currentData.value);
+    forceZeroDangerForVillageTerritory(currentData.value, villageState.value, resolveActiveTerritoryOwnerId());
     rebuildTerritorySets(currentData.value);
     villageState.value = ensureTerritoryTileModeDefaultsForOwnedSet(villageState.value, territorySets.player, {
       forceHomeSettlement: true,
       homeKey: coordKey(x, y)
     });
+    applyDangerRulesByTerritory(currentData.value, { applyUnownedIncrease: false });
+    startSafetyResult = applyStartVillageSafetyZone(currentData.value, x, y);
   }
   updateVillageInfoText();
-  updateUnitInfoText(`初期村を配置: (${x}, ${y})`);
+  const safetyText = startSafetyResult
+    ? ` / 開始保護: 半径${startSafetyResult.clearRadius}敵排除${startSafetyResult.clearedTiles}マス・Lv${startSafetyResult.levelCap}以下化${startSafetyResult.lowLevelUnits}体`
+    : "";
+  updateUnitInfoText(`初期村を配置: (${x}, ${y})${safetyText}`);
   pushNationLog(`初期村を配置: (${x}, ${y}) ${villageState.value?.name || ""}`);
   pushNationLog(`初期資源設定: 領土収入(${initialStock.tiles}マス)x3 / 食料 ${formatFoodResourceBag(defaultFoodByType)} / 資材 ${formatMaterialResourceBag(defaultMaterialByType)}`);
-  syncActiveTestPlayerSlotFromLiveState();
+  if (startSafetyResult && startSafetyResult.applied) {
+    pushNationLog(
+      `開始保護: 半径${startSafetyResult.clearRadius}敵排除${startSafetyResult.clearedTiles}マス / 周辺半径${startSafetyResult.lowLevelRadius}をLv${startSafetyResult.levelCap}以下化 ${startSafetyResult.lowLevelUnits}体`
+    );
+  }
   emitCharacterStateChange();
+  // 初期配置直後は親→子の同期順で領土判定が一時的にズレるケースがあるため、
+  // 次Tickでもう一度危険度同期を掛けて開始時の危険度を確定させる。
+  nextTick(() => {
+    forceZeroDangerForVillageTerritory(currentData.value, villageState.value, resolveActiveTerritoryOwnerId());
+    syncDangerRulesForCurrentMap({ applyUnownedIncrease: false });
+    if (currentData.value) {
+      applyStartVillageSafetyZone(currentData.value, x, y);
+    }
+    renderMapWithPhaser();
+  });
 }
 
 function startVillagePlacementMode() {
@@ -7493,9 +10381,14 @@ function startVillagePlacementMode() {
     return;
   }
   if (!currentData.value || currentData.value.shapeOnly) return;
+  cityBlockPlacementMode.value = false;
+  cityBlockPlacementType.value = CITY_BLOCK_PLACEMENT_TYPE_CITY;
+  cityBlockPlacementPreview.value = null;
+  cityBlockPlacementPending.value = null;
+  showCityBlockPlacementConfirmModal.value = false;
   villagePlacementMode.value = true;
   clearHousingUpgradeSelectionState();
-  unitMoveMode.value = false;
+  clearMoveCommandState({ clearCandidate: true });
   showMoveUnitModal.value = false;
   mapClickInfo.value = "クリック座標: 初期村の配置先タイルをクリックしてください。";
   emitCharacterStateChange();
@@ -7539,14 +10432,17 @@ function emitCharacterStateChange() {
         skills: Array.isArray(unit?.skills) ? [...unit.skills] : []
       };
     }),
+    deadUnitReserve: normalizeDeadUnitReserveRows(deadUnitReserve.value),
     selectedUnitId: selectedUnitId.value || "",
     squads: buildSquadSummaryList(unitList.value),
     villagePlacementMode: villagePlacementMode.value,
-    unitMoveMode: unitMoveMode.value,
+    unitMoveMode: isMoveCommandPendingForSelectedUnit.value,
+    moveCommandUnitId: moveCommandUnitId.value || "",
     villageScale,
     namedLimit,
     namedCount,
-    ruleText: unitRulesInfoText.value || ""
+    ruleText: unitRulesInfoText.value || "",
+    squadFormationEnabled: squadFormationEnabled.value
   });
 }
 
@@ -7611,7 +10507,8 @@ function buildMapSnapshotForSave() {
       topLayerMap: deepCloneJsonValue(data?.topLayerMap, []),
       reliefMap: deepCloneJsonValue(data?.reliefMap, []),
       coastTypeMap: deepCloneJsonValue(data?.coastTypeMap, []),
-      specialMap: deepCloneJsonValue(data?.specialMap, [])
+      specialMap: deepCloneJsonValue(data?.specialMap, []),
+      caveCoastAnchorMap: deepCloneJsonValue(data?.caveCoastAnchorMap, [])
     },
     dynamic: {
       lavaMap: deepCloneJsonValue(data?.lavaMap, []),
@@ -7626,9 +10523,14 @@ function buildMapSnapshotForSave() {
         branchMap: buildBinaryMapFromCoordSet(riverData?.branchSet, w, h),
         mouthMap: buildBinaryMapFromCoordSet(riverData?.mouthSet, w, h),
         waterLinkMap: buildBinaryMapFromCoordSet(riverData?.waterLinkSet, w, h),
+        waterLinkEdgeList: Array.from(riverData?.waterLinkSet || []).map(v => String(v || "")),
+        cornerEdgeList: Array.from(riverData?.cornerEdgeSet || []).map(v => String(v || "")),
+        cornerWaterLinkList: Array.from(riverData?.cornerWaterLinkSet || []).map(v => String(v || "")),
+        meshCenterMap: buildBinaryMapFromCoordSet(riverData?.meshCenterSet || riverData?.largeRiverSet, w, h),
         waterfallMap: buildBinaryMapFromCoordSet(riverData?.waterfallSet, w, h),
         edgeList: Array.from(riverData?.edgeSet || []).map(v => String(v || "")),
-        waterfallEdgeList: Array.from(riverData?.waterfallEdgeSet || []).map(v => String(v || ""))
+        waterfallEdgeList: Array.from(riverData?.waterfallEdgeSet || []).map(v => String(v || "")),
+        cornerWaterfallEdgeList: Array.from(riverData?.cornerWaterfallEdgeSet || []).map(v => String(v || ""))
       }
     },
     visibility: {
@@ -7645,6 +10547,7 @@ function buildMapSnapshotForSave() {
     },
     multiplayer: {
       activePlayerId: nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID,
+      diplomacyRelations: deepCloneJsonValue(diplomacyRelations.value, {}),
       players: testPlayerSlots.value.map(slot => ({
         id: nonEmptyText(slot?.id),
         label: nonEmptyText(slot?.label),
@@ -7676,18 +10579,44 @@ function restoreRiverDataFromSaveSnapshot(snapshot, w, h) {
   const sourceSet = buildCoordSetFromBinaryMap(snapshot.sourceMap, w, h);
   const branchSet = buildCoordSetFromBinaryMap(snapshot.branchMap, w, h);
   const mouthSet = buildCoordSetFromBinaryMap(snapshot.mouthMap, w, h);
-  const waterLinkSet = buildCoordSetFromBinaryMap(snapshot.waterLinkMap, w, h);
+  const waterLinkSet = new Set(
+    (Array.isArray(snapshot.waterLinkEdgeList) ? snapshot.waterLinkEdgeList : [])
+      .map(v => String(v || ""))
+      .filter(v => v.includes("|"))
+  );
+  if (!waterLinkSet.size) {
+    const fallbackWaterLinkCoords = buildCoordSetFromBinaryMap(snapshot.waterLinkMap, w, h);
+    for (const key of fallbackWaterLinkCoords) {
+      if (String(key || "").includes("|")) waterLinkSet.add(String(key || ""));
+    }
+  }
   const waterfallSet = buildCoordSetFromBinaryMap(snapshot.waterfallMap, w, h);
   const edgeSet = new Set(
     (Array.isArray(snapshot.edgeList) ? snapshot.edgeList : [])
       .map(v => String(v || ""))
       .filter(Boolean)
   );
+  const cornerEdgeSet = new Set(
+    (Array.isArray(snapshot.cornerEdgeList) ? snapshot.cornerEdgeList : [])
+      .map(v => String(v || ""))
+      .filter(v => v.includes("|"))
+  );
+  const cornerWaterLinkSet = new Set(
+    (Array.isArray(snapshot.cornerWaterLinkList) ? snapshot.cornerWaterLinkList : [])
+      .map(v => String(v || ""))
+      .filter(v => v.includes("|"))
+  );
   const waterfallEdgeSet = new Set(
     (Array.isArray(snapshot.waterfallEdgeList) ? snapshot.waterfallEdgeList : [])
       .map(v => String(v || ""))
       .filter(Boolean)
   );
+  const cornerWaterfallEdgeSet = new Set(
+    (Array.isArray(snapshot.cornerWaterfallEdgeList) ? snapshot.cornerWaterfallEdgeList : [])
+      .map(v => String(v || ""))
+      .filter(v => v.includes("|"))
+  );
+  const meshCenterSet = buildCoordSetFromBinaryMap(snapshot.meshCenterMap, w, h);
   return {
     riverSet,
     sourceSet,
@@ -7695,8 +10624,14 @@ function restoreRiverDataFromSaveSnapshot(snapshot, w, h) {
     mouthSet,
     edgeSet,
     waterLinkSet,
+    cornerEdgeSet,
+    cornerWaterLinkSet,
+    meshCenterSet,
+    largeRiverSet: new Set(meshCenterSet),
+    riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet, cornerEdgeSet, cornerWaterLinkSet }, w, h),
     waterfallSet,
-    waterfallEdgeSet
+    waterfallEdgeSet,
+    cornerWaterfallEdgeSet
   };
 }
 
@@ -7723,6 +10658,7 @@ function buildMapDataFromSaveSnapshot(snapshot) {
     reliefMap: deepCloneJsonValue(snapshot?.base?.reliefMap, []),
     coastTypeMap: deepCloneJsonValue(snapshot?.base?.coastTypeMap, []),
     specialMap: deepCloneJsonValue(snapshot?.base?.specialMap, []),
+    caveCoastAnchorMap: deepCloneJsonValue(snapshot?.base?.caveCoastAnchorMap, []),
     lavaMap: deepCloneJsonValue(snapshot?.dynamic?.lavaMap, []),
     lavaFlowData: deepCloneJsonValue(snapshot?.dynamic?.lavaFlowData, null),
     enemySpawnMap: cloneEnemySpawnMapForSave(snapshot?.dynamic?.enemySpawnMap),
@@ -7758,9 +10694,10 @@ function normalizeFactionStateFromSave(raw, fallbackVisibility = {}) {
   return {
     village,
     units,
+    deadUnitReserve: normalizeDeadUnitReserveRows(raw?.deadUnitReserve),
     selectedUnitId: selected,
     villagePlacementMode: !!raw?.villagePlacementMode,
-    unitMoveMode: !!raw?.unitMoveMode,
+    moveCommandUnitId: nonEmptyText(raw?.moveCommandUnitId) || (raw?.unitMoveMode ? selected : ""),
     nationLogKey,
     visibility: normalizeVisibilitySnapshot(raw?.visibility, fallbackVisibility)
   };
@@ -7778,9 +10715,11 @@ function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) 
     const state = {
       village: deepCloneJsonValue(stateRaw?.village, null),
       units: Array.isArray(stateRaw?.units) ? stateRaw.units.map(unit => deepCloneJsonValue(unit, {})) : [],
+      deadUnitReserve: normalizeDeadUnitReserveRows(stateRaw?.deadUnitReserve),
       selectedUnitId: nonEmptyText(stateRaw?.selectedUnitId),
       villagePlacementMode: !!stateRaw?.villagePlacementMode,
-      unitMoveMode: !!stateRaw?.unitMoveMode,
+      moveCommandUnitId: nonEmptyText(stateRaw?.moveCommandUnitId)
+        || (stateRaw?.unitMoveMode ? nonEmptyText(stateRaw?.selectedUnitId) : ""),
       nationLogKey: nonEmptyText(stateRaw?.nationLogKey) || `nation-${id}`,
       visibility: normalizeVisibilitySnapshot(stateRaw?.visibility, fallbackVisibility)
     };
@@ -7807,6 +10746,7 @@ function applyLoadedSaveState(payload) {
   const fallbackFactionState = normalizeFactionStateFromSave(saveFaction, fallbackVisibility);
   const loadedSlots = normalizeTestPlayersFromSave(mapSnapshot?.multiplayer?.players, fallbackVisibility);
   const loadedActiveId = nonEmptyText(mapSnapshot?.multiplayer?.activePlayerId);
+  diplomacyRelations.value = deepCloneJsonValue(mapSnapshot?.multiplayer?.diplomacyRelations, {});
 
   applyMapData(nextData, {
     resetClock: false,
@@ -7972,6 +10912,66 @@ function scaleCraftCostByCount(craftCost, count = 1) {
   };
 }
 
+function rerollMobUnitEquipmentRarity(unitId, rarityKeyRaw) {
+  const targetId = nonEmptyText(unitId);
+  if (!targetId) return { ok: false, reason: "対象ユニットが未指定です。" };
+  const idx = unitList.value.findIndex(unit => unit?.id === targetId);
+  if (idx < 0) return { ok: false, reason: "対象ユニットが見つかりません。" };
+  const target = unitList.value[idx];
+  if (!isMobUnit(target)) {
+    return { ok: false, reason: "固定プリセットのレア度一新はモブ専用です。" };
+  }
+  const village = ensureVillageStateShape(villageState.value, props.selectedRace);
+  if (!village?.placed) {
+    return { ok: false, reason: "装備変更には都市（初期村）の配置が必要です。" };
+  }
+  const className = nonEmptyText(target?.className);
+  const classRow = findClassRowByName(className);
+  if (!classRow) {
+    return { ok: false, reason: `クラスデータが見つかりません: ${className || "未設定"}` };
+  }
+  const raceName = nonEmptyText(target?.race) || nonEmptyText(props.selectedRace);
+  const raceRow = findClassRowByName(resolveRaceBaseClassName(raceName))
+    || findClassRowByName(raceName)
+    || null;
+  const rarity = normalizeEquipmentRarity(rarityKeyRaw, "common");
+  const equipmentSlots = resolveUnitEquipmentSlots(target);
+  const loadout = chooseEquipmentForClass(classRow, false, equipmentSlots, rarity);
+  if (!loadout.length) {
+    return { ok: false, reason: "固定プリセット装備を生成できませんでした。" };
+  }
+  const equipmentCount = resolveEquipmentRequiredCountForUnit(target, 1);
+  const applied = applyAutoEquipForCreatedUnit(
+    { ...target, equipment: loadout },
+    raceRow,
+    classRow,
+    village,
+    { strict: true, preferCraft: true, equipmentCount }
+  );
+  if (!applied?.ok || !applied?.unit || !applied?.village) {
+    return { ok: false, reason: applied?.reason || "レア度一新に失敗しました。" };
+  }
+  const materialCost = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
+  for (const item of normalizeEquipmentList(applied.unit?.equipment)) {
+    const row = findEquipmentRowByName(item?.name);
+    if (!row) continue;
+    const craftCost = buildEquipmentCraftMaterialCost(row, item?.quality || item?.qualityLabel || rarity);
+    const count = Math.max(1, Math.floor(toSafeNumber(item?.unitCount, equipmentCount)));
+    const scaled = multiplyResourceBag(craftCost.material, count, MATERIAL_RESOURCE_KEYS);
+    addToResourceBag(materialCost, scaled, MATERIAL_RESOURCE_KEYS);
+  }
+  unitList.value[idx] = applied.unit;
+  villageState.value = applied.village;
+  return {
+    ok: true,
+    sourceType: "rerollRarity",
+    rarity,
+    equipmentCount: Math.max(1, Math.floor(toSafeNumber(applied?.equipmentCount, equipmentCount))),
+    generated: Math.max(0, Math.floor(toSafeNumber(applied?.generated, 0))),
+    craftCostMaterial: normalizeMaterialStockBag(materialCost)
+  };
+}
+
 function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slotKeyRaw = "") {
   const targetId = nonEmptyText(unitId);
   const eqName = nonEmptyText(equipmentName);
@@ -7986,6 +10986,9 @@ function updateUnitEquipment(unitId, slotIndexRaw, equipmentName, rarityKey, slo
   const slotIndex = Math.max(0, Math.floor(toSafeNumber(slotIndexRaw, 0)));
   const slotKey = normalizeEquipmentSlotKey(slotKeyRaw) || slotKeyFromIndex(slotIndex);
   const equipmentSlots = resolveUnitEquipmentSlots(target);
+  if (isMobUnit(target)) {
+    return { ok: false, reason: "モブは個別装備変更できません。レア度一新を使ってください。" };
+  }
   if (equipmentSlots[slotKey] === false) {
     return { ok: false, reason: `このユニットは ${EQUIPMENT_SLOT_LABELS[slotKey] || slotKey} を装備できません。` };
   }
@@ -8283,6 +11286,17 @@ function applyCharacterCommand(command) {
 
   const unitId = nonEmptyText(command?.unitId);
   if (!unitId) return;
+  if (!squadFormationEnabled.value && (
+    type === "createSquad"
+    || type === "renameSquad"
+    || type === "updateSquadIcon"
+    || type === "dissolveSquad"
+    || type === "toggleSquad"
+  )) {
+    updateUnitInfoText("チーム編成機能が設定でOFFになっています。");
+    pushNationLog("チーム編成機能OFF中のため、部隊操作を中止しました。");
+    return;
+  }
 
   if (type === "promoteNamed") {
     const result = promoteMobToNamed(unitId);
@@ -8310,7 +11324,22 @@ function applyCharacterCommand(command) {
       updateUnitInfoText(`Lv変更失敗: ${result.reason || "更新不可"}`);
       pushNationLog(`Lv変更失敗: ${result.reason || "更新不可"}`);
     } else {
-      unitList.value[idx] = result.unit;
+      const raceCategory = resolveExpRaceCategoryForUnit(unit);
+      const levelBaseTotalExp = resolveUnitTotalExpForLevel(result.level, raceCategory);
+      const nextNeed = Math.max(1, Math.floor(toSafeNumber(resolveUnitExpNeedForNextLevel(result.level, raceCategory), 1)));
+      const carryExp = Math.max(0, Math.floor(toSafeNumber(unit?.exp, toSafeNumber(unit?.status?.exp, 0))));
+      const nextExp = Math.max(0, Math.min(nextNeed - 1, carryExp));
+      const nextTotalExp = Math.max(0, Math.floor(levelBaseTotalExp + nextExp));
+      const nextStatus = withExpStatus(result.unit?.status, nextExp, nextTotalExp);
+      unitList.value[idx] = {
+        ...result.unit,
+        status: nextStatus,
+        exp: nextExp,
+        totalExp: nextTotalExp,
+        expPeakLevel: result.level,
+        expPenaltyLevel: 0,
+        expPenaltyRate: 0
+      };
       const secondary = nonEmptyText(result.secondaryClassName);
       const extra = secondary ? ` / 第2クラス:${secondary}` : "";
       updateUnitInfoText(`Lv変更: ${result.unit.name} -> Lv${result.level} (種族Lv${result.raceLevels} / クラスLv${result.classLevels})${extra}`);
@@ -8456,16 +11485,29 @@ function applyCharacterCommand(command) {
   }
 
   if (type === "updateEquipment") {
+    const mode = nonEmptyText(command?.mode);
     const slotIndex = toSafeNumber(command?.slotIndex, 0);
     const slotKey = nonEmptyText(command?.slotKey);
     const equipmentName = nonEmptyText(command?.equipmentName);
     const rarity = nonEmptyText(command?.rarity);
-    const result = updateUnitEquipment(unitId, slotIndex, equipmentName, rarity, slotKey);
+    const result = mode === "rerollRarity"
+      ? rerollMobUnitEquipmentRarity(unitId, rarity)
+      : updateUnitEquipment(unitId, slotIndex, equipmentName, rarity, slotKey);
     if (!result.ok) {
       updateUnitInfoText(`装備変更失敗: ${result.reason || "変更不可"}`);
       pushNationLog(`装備変更失敗: ${result.reason || "変更不可"}`);
     } else {
       const target = unitList.value.find(unit => unit.id === unitId) || null;
+      if (result.sourceType === "rerollRarity") {
+        const rarityText = formatEquipmentRarityLabel(result?.rarity || rarity);
+        const craftCostText = formatMaterialPositiveResourceBag(result?.craftCostMaterial);
+        updateVillageInfoText();
+        updateUnitInfoText(`モブ装備一新: ${target?.name || "ユニット"} / ${rarityText} / 素材 ${craftCostText}`);
+        pushNationLog(`モブ装備一新: ${target?.name || "ユニット"} / ${rarityText} / 素材 ${craftCostText}`);
+        emitCharacterStateChange();
+        renderMapWithPhaser();
+        return;
+      }
       const item = result.equipment;
       const slotLabel = EQUIPMENT_SLOT_LABELS[result.slotKey] || `Slot${result.slotIndex + 1}`;
       const perUnitText = Math.max(1, Math.floor(toSafeNumber(result?.equipmentCount, 1))) > 1
@@ -8941,22 +11983,25 @@ function updateUnitInfoText(extra = "") {
     : "";
   const memberTag = squadLeaderName ? ` / 隊員(${squadLeaderName})` : "";
   const sovereignTag = isSovereignUnit(unit) ? " / 統治者" : "";
-  const moveRemaining = Math.max(0, Math.floor(toSafeNumber(unit.moveRemaining, unit.moveRange)));
+  const actionPoint = resolveUnitActionPoint(unit);
   const squadCount = Math.max(0, Math.floor(toSafeNumber(unit.squadCount, 0)));
   const lock = resolveEncounterMoveLock(unit.id);
   const lockTag = lock ? ` / ${formatEncounterMoveLockReason(lock)}` : "";
   const surveyTask = resolveUnitSurveyTask(unit)
     || resolveUnitSurveyTask(unitList.value.find(row => row?.id === nonEmptyText(unit?.squadLeaderId)));
-  const surveyTag = surveyTask
-    ? ` / 調査中(${surveyTask.remainingTurns}/${surveyTask.totalTurns}T)`
+  const surveyDangerPercent = surveyTask
+    ? Math.max(0, Math.floor(toSafeNumber(surveyTask?.progressPercent, 0)))
+    : null;
+  const surveyTag = Number.isFinite(surveyDangerPercent)
+    ? ` / 調査中(危険度${surveyDangerPercent}%)`
     : "";
   const level = clampUnitLevel(unit?.level, INITIAL_LEVEL_MIN);
-  unitInfoText.value = `選択ユニット: ${unit.name}(${role})${sovereignTag}${leaderTag}${memberTag} / Lv${level} / 種族:${unit.race} / クラス:${unit.className} / 位置(${unit.x}, ${unit.y}) / 移動${unit.moveRange} 残${moveRemaining} / 索敵${unit.scoutRange} / 部隊${squadCount}${lockTag}${surveyTag} / 装備:${eqText}${note}`;
+  unitInfoText.value = `選択ユニット: ${unit.name}(${role})${sovereignTag}${leaderTag}${memberTag} / Lv${level} / 種族:${unit.race} / クラス:${unit.className} / 位置(${unit.x}, ${unit.y}) / 移動${unit.moveRange} / AP${actionPoint}/100 / 索敵${unit.scoutRange} / 部隊${squadCount}${lockTag}${surveyTag} / 装備:${eqText}${note}`;
 }
 
 function resolveTileTerrainForYield(data, x, y) {
   if (!data?.grid || !Number.isFinite(x) || !Number.isFinite(y)) return "";
-  if (data.lavaMap?.[y]?.[x]) return "溶岩";
+  if (data?.lavaMap?.[y]?.[x]) return "溶岩";
   const special = nonEmptyText(data.specialMap?.[y]?.[x]);
   if (special) return special;
   return nonEmptyText(data.grid?.[y]?.[x]);
@@ -9080,15 +12125,250 @@ function resolveUnitCurrentHpValue(unit, maxHp = resolveUnitMaxHpValue(unit)) {
   return Math.max(0, Math.min(maxHp, rawCurrent));
 }
 
+function resolveUnitActionPointMax(unit) {
+  return Math.max(1, Math.floor(toSafeNumber(unit?.actionPointMax, UNIT_ACTION_POINT_MAX)));
+}
+
+function resolveUnitActionPoint(unit) {
+  const max = resolveUnitActionPointMax(unit);
+  return Math.max(0, Math.min(max, Math.floor(toSafeNumber(unit?.actionPoint, max))));
+}
+
+function resolveSkillActionPointCost(skillRow, fallback = DEFAULT_ATTACK_ACTION_POINT_COST) {
+  const raw = skillRow?.AP消費;
+  if (raw === null || raw === undefined || String(raw).trim() === "") return Math.max(0, Math.floor(fallback));
+  return Math.max(0, Math.ceil(toSafeNumber(raw, fallback)));
+}
+
+function spendUnitActionPoint(unitId, amount) {
+  const cost = Math.max(0, Math.ceil(toSafeNumber(amount, 0)));
+  const index = unitList.value.findIndex(unit => unit?.id === unitId);
+  if (index < 0) return false;
+  const unit = unitList.value[index];
+  const current = resolveUnitActionPoint(unit);
+  if (cost > current) return false;
+  unitList.value[index] = {
+    ...unit,
+    actionPointMax: resolveUnitActionPointMax(unit),
+    actionPoint: current - cost,
+    moveRemaining: current - cost
+  };
+  return true;
+}
+
+function resolveUnitLifeStateLabelFromHp(currentHpRaw = 0) {
+  const hp = Math.floor(toSafeNumber(currentHpRaw, 0));
+  return hp <= 0 ? DEAD_UNIT_STATE_LABEL : "";
+}
+
+function resolveClockRuntimeNowMs() {
+  return Math.max(0, Math.floor(toSafeNumber(clockNowMs.value, Date.now())));
+}
+
+function resolveDeadUnitExpireAtMs(unit, nowMs = resolveClockRuntimeNowMs()) {
+  const deadAt = Math.max(0, Math.floor(toSafeNumber(unit?.deadAtMs, nowMs)));
+  const explicitExpire = Math.floor(toSafeNumber(unit?.deadExpireAtMs, 0));
+  if (explicitExpire > 0) return explicitExpire;
+  return deadAt + DEAD_UNIT_FIELD_TIMEOUT_MS;
+}
+
+function isUnitDeadState(unit) {
+  if (!unit || typeof unit !== "object") return false;
+  if (unit?.isDead === true) return true;
+  const maxHp = resolveUnitMaxHpValue(unit);
+  const hp = resolveUnitCurrentHpValue(unit, maxHp);
+  return hp <= 0;
+}
+
+function applyUnitLifeState(target, currentHpRaw = target?.currentHp) {
+  if (!target || typeof target !== "object") return target;
+  const statusBase = target?.status && typeof target.status === "object"
+    ? target.status
+    : {};
+  const stateLabel = resolveUnitLifeStateLabelFromHp(currentHpRaw);
+  if (stateLabel) {
+    const nowMs = resolveClockRuntimeNowMs();
+    const deadAt = Math.max(0, Math.floor(toSafeNumber(target?.deadAtMs, nowMs)));
+    target.status = {
+      ...statusBase,
+      状態: stateLabel
+    };
+    target.isDead = true;
+    target.deadAtMs = deadAt;
+    target.deadExpireAtMs = resolveDeadUnitExpireAtMs(target, nowMs);
+    target.actionPoint = 0;
+    target.moveRemaining = 0;
+    return target;
+  }
+  if (Object.prototype.hasOwnProperty.call(statusBase, "状態")) {
+    const { 状態: _removedState, ...restStatus } = statusBase;
+    target.status = restStatus;
+  } else if (!(target?.status && typeof target.status === "object")) {
+    target.status = statusBase;
+  }
+  target.isDead = false;
+  if (Object.prototype.hasOwnProperty.call(target, "deadAtMs")) delete target.deadAtMs;
+  if (Object.prototype.hasOwnProperty.call(target, "deadExpireAtMs")) delete target.deadExpireAtMs;
+  return target;
+}
+
 function normalizeUnitHpRuntime(unit) {
   if (!unit || typeof unit !== "object") return unit;
   const maxHp = resolveUnitMaxHpValue(unit);
   const currentHp = resolveUnitCurrentHpValue(unit, maxHp);
-  return {
+  return applyUnitLifeState({
     ...unit,
     maxHp,
-    currentHp
+    currentHp,
+    actionPointMax: resolveUnitActionPointMax(unit),
+    actionPoint: resolveUnitActionPoint(unit),
+    moveRemaining: resolveUnitActionPoint(unit)
+  }, currentHp);
+}
+
+function normalizeDeadUnitReserveRows(rows = deadUnitReserve.value) {
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const unit = row?.unit && typeof row.unit === "object" ? deepCloneJsonValue(row.unit, null) : null;
+    const unitId = nonEmptyText(row?.unitId) || nonEmptyText(unit?.id);
+    if (!unit || !unitId || seen.has(unitId)) continue;
+    seen.add(unitId);
+    out.push({
+      unitId,
+      unit,
+      reason: nonEmptyText(row?.reason) || "回収",
+      storedAtMs: Math.max(0, Math.floor(toSafeNumber(row?.storedAtMs, resolveClockRuntimeNowMs()))),
+      storedAtTurn: Math.max(0, Math.floor(toSafeNumber(row?.storedAtTurn, mapTurnNumber.value)))
+    });
+  }
+  return out;
+}
+
+function pushDeadUnitToReserve(unit, options = {}) {
+  const safeUnit = unit && typeof unit === "object" ? deepCloneJsonValue(unit, null) : null;
+  const unitId = nonEmptyText(safeUnit?.id);
+  if (!safeUnit || !unitId) return false;
+  const nowMs = Math.max(0, Math.floor(toSafeNumber(options?.nowMs, resolveClockRuntimeNowMs())));
+  const reason = nonEmptyText(options?.reason) || "回収";
+  const reserve = normalizeDeadUnitReserveRows(deadUnitReserve.value);
+  const nextEntry = {
+    unitId,
+    unit: safeUnit,
+    reason,
+    storedAtMs: nowMs,
+    storedAtTurn: Math.max(0, Math.floor(toSafeNumber(options?.turn, mapTurnNumber.value)))
   };
+  const idx = reserve.findIndex(row => nonEmptyText(row?.unitId) === unitId);
+  if (idx >= 0) {
+    reserve[idx] = nextEntry;
+  } else {
+    reserve.push(nextEntry);
+  }
+  deadUnitReserve.value = reserve;
+  return true;
+}
+
+function reviveUnitFromDeadReserve(unitIdRaw, options = {}) {
+  const unitId = nonEmptyText(unitIdRaw);
+  if (!unitId) return { ok: false, reason: "蘇生対象IDが未指定です。" };
+  const reserve = normalizeDeadUnitReserveRows(deadUnitReserve.value);
+  const idx = reserve.findIndex(row => nonEmptyText(row?.unitId) === unitId);
+  if (idx < 0) return { ok: false, reason: "死亡枠に対象がいません。" };
+  if (unitList.value.some(unit => nonEmptyText(unit?.id) === unitId)) {
+    return { ok: false, reason: "既にフィールド上に存在します。" };
+  }
+  const source = deepCloneJsonValue(reserve[idx]?.unit, null);
+  if (!source || typeof source !== "object") return { ok: false, reason: "死亡枠データが不正です。" };
+  const maxHp = resolveUnitMaxHpValue(source);
+  const reviveHp = Math.max(1, Math.min(maxHp, Math.floor(toSafeNumber(options?.hp, maxHp))));
+  const reviveX = Number.isFinite(options?.x) ? Math.floor(options.x) : Math.floor(toSafeNumber(source?.x, 0));
+  const reviveY = Number.isFinite(options?.y) ? Math.floor(options.y) : Math.floor(toSafeNumber(source?.y, 0));
+  const revived = applyUnitLifeState({
+    ...source,
+    x: reviveX,
+    y: reviveY,
+    currentHp: reviveHp,
+    hp: reviveHp
+  }, reviveHp);
+  unitList.value = [...unitList.value, revived];
+  reserve.splice(idx, 1);
+  deadUnitReserve.value = reserve;
+  pushNationLog(`蘇生: ${nonEmptyText(revived?.name) || unitId} / HP${reviveHp}`);
+  emitCharacterStateChange();
+  requestMapRender();
+  return { ok: true, unit: revived };
+}
+
+function runDeadUnitLifecycleTick() {
+  if (!Array.isArray(unitList.value) || !unitList.value.length) return;
+  const nowMs = resolveClockRuntimeNowMs();
+  const aliveTileSet = new Set();
+  for (const unit of unitList.value) {
+    if (!unit || typeof unit !== "object") continue;
+    if (isUnitDeadState(unit)) continue;
+    const x = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const y = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    aliveTileSet.add(coordKey(x, y));
+  }
+
+  const removedIds = [];
+  const nextUnits = [];
+  let collectedCount = 0;
+  let expiredCount = 0;
+  for (const unitRaw of unitList.value) {
+    if (!unitRaw || typeof unitRaw !== "object") continue;
+    const unit = normalizeUnitHpRuntime(unitRaw);
+    if (!isUnitDeadState(unit)) {
+      nextUnits.push(unit);
+      continue;
+    }
+    const unitId = nonEmptyText(unit?.id);
+    const unitName = nonEmptyText(unit?.name) || unitId || "ユニット";
+    const x = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const y = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    const tileKey = (Number.isFinite(x) && Number.isFinite(y)) ? coordKey(x, y) : "";
+    const hasCollector = !!tileKey && aliveTileSet.has(tileKey);
+    const expireAtMs = resolveDeadUnitExpireAtMs(unit, nowMs);
+    if (hasCollector) {
+      const stored = pushDeadUnitToReserve(unit, { reason: "回収", nowMs });
+      if (stored) {
+        collectedCount += 1;
+        removedIds.push(unitId);
+        pushNationLog(`死亡回収: ${unitName} (${x}, ${y}) -> 死亡枠`);
+        continue;
+      }
+    }
+    if (nowMs >= expireAtMs) {
+      expiredCount += 1;
+      removedIds.push(unitId);
+      pushNationLog(`死亡消滅: ${unitName} (${x}, ${y}) / ${DEAD_UNIT_FIELD_TIMEOUT_SECONDS}秒経過`);
+      continue;
+    }
+    nextUnits.push(unit);
+  }
+
+  if (!removedIds.length) {
+    unitList.value = nextUnits;
+    return;
+  }
+  let strippedUnits = nextUnits;
+  for (const removedId of removedIds) {
+    strippedUnits = stripRemovedUnitFromSquads(strippedUnits, removedId);
+  }
+  unitList.value = strippedUnits;
+  if (!unitList.value.some(unit => nonEmptyText(unit?.id) === nonEmptyText(selectedUnitId.value))) {
+    selectedUnitId.value = unitList.value[0]?.id || "";
+  }
+  const notes = [];
+  if (collectedCount > 0) notes.push(`回収 ${collectedCount}`);
+  if (expiredCount > 0) notes.push(`消滅 ${expiredCount}`);
+  updateUnitInfoText(`死亡処理: ${notes.join(" / ")}`);
+  emitCharacterStateChange();
+  requestMapRender();
 }
 
 function recordUnitDeathCorruptionAtTile(x, y, amount = VILLAGE_CORRUPTION_PER_UNIT_DEATH, options = {}) {
@@ -9168,24 +12448,34 @@ function applyVillageTilePurificationTurn(village, options = {}) {
 function applyVillageTileRecoveryTurn(village, units = unitList.value) {
   const safeUnits = Array.isArray(units) ? units : [];
   const recoveryMap = resolveVillageTileRecoveryMap(village);
+  const campMap = normalizeVillageTileCampMap(village?.[VILLAGE_TILE_CAMP_MAP_KEY]);
+  const managedTileKeys = resolveVillageManagedTileKeys(village);
+  const territoryRecoveryBonus = resolveVillageTerritoryRecoveryBonus(village, recoveryMap);
   let healedTotal = 0;
   let healedUnits = 0;
   const nextUnits = safeUnits.map(unit => {
     if (!unit || typeof unit !== "object") return unit;
     const normalized = normalizeUnitHpRuntime(unit);
+    const regenerationRecovery = resolveUnitRegenerationPerTurn(normalized);
     const x = Math.floor(toSafeNumber(normalized?.x, Number.NaN));
     const y = Math.floor(toSafeNumber(normalized?.y, Number.NaN));
-    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
-      return normalized;
-    }
-    if (!isOwnTerritoryTile(x, y)) {
-      return normalized;
-    }
-    const tileKey = coordKey(x, y);
-    const baseRecovery = Math.max(0, resolveVillageTileRecoveryValue(village, tileKey, recoveryMap));
-    const regenerationRecovery = resolveUnitRegenerationPerTurn(normalized);
-    const churchRecovery = hasChurchFacilityOnTile(village, tileKey) ? 5 : 0;
-    const totalBaseRecovery = Math.max(0, baseRecovery + regenerationRecovery + churchRecovery);
+    const hasValidTile = Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0;
+    const tileKey = hasValidTile ? coordKey(x, y) : "";
+    const managedOwnTile = hasValidTile && managedTileKeys.has(tileKey);
+    const onVillageCenter = hasValidTile && !!(
+      village?.placed
+      && Math.floor(toSafeNumber(village?.x, Number.NaN)) === x
+      && Math.floor(toSafeNumber(village?.y, Number.NaN)) === y
+    );
+    const canApplyTerritoryRecovery = hasValidTile
+      && (isOwnTerritoryTile(x, y) || managedOwnTile || onVillageCenter);
+    const baseRecovery = canApplyTerritoryRecovery
+      ? territoryRecoveryBonus
+      : 0;
+    const hasCamp = !!(tileKey && campMap[tileKey]);
+    const campRecovery = hasCamp ? regenerationRecovery : 0;
+    const churchRecovery = canApplyTerritoryRecovery && hasChurchFacilityOnTile(village, tileKey) ? 5 : 0;
+    const totalBaseRecovery = Math.max(0, regenerationRecovery + baseRecovery + campRecovery + churchRecovery);
     if (totalBaseRecovery <= 0 || normalized.currentHp >= normalized.maxHp) {
       return normalized;
     }
@@ -9198,10 +12488,11 @@ function applyVillageTileRecoveryTurn(village, units = unitList.value) {
     if (nextHp <= normalized.currentHp) return normalized;
     healedUnits += 1;
     healedTotal += (nextHp - normalized.currentHp);
-    return {
+    return applyUnitLifeState({
       ...normalized,
+      hp: nextHp,
       currentHp: nextHp
-    };
+    }, nextHp);
   });
   const notes = [];
   if (healedTotal > 0) {
@@ -9494,6 +12785,13 @@ function resolveEnemyIconName(enemy) {
   return "";
 }
 
+function resolveEnemyNestIconName(nestName) {
+  const rawName = nonEmptyText(nestName);
+  if (!rawName) return "";
+  const aliasName = ENEMY_NEST_ICON_NAME_ALIAS_MAP[rawName] || rawName;
+  return resolveAvailableIconName(aliasName, rawName);
+}
+
 function moveUnitIconSrc(unit) {
   const iconName = resolveAvailableIconName(
     unit?.subIconName,
@@ -9568,6 +12866,86 @@ function ensureRaceMarkerTexture(iconName, options = {}) {
   };
   image.onerror = () => {
     raceMarkerTexturePending.delete(pendingKey);
+  };
+  image.src = src;
+  return "";
+}
+
+function enemyIllustrationTextureKey(imageName, variant = "default") {
+  const normalized = normalizeEnemyImageLookupKey(imageName);
+  if (!normalized) return "";
+  return `enemy-illust:${variant}:${normalized}`;
+}
+
+function unitIllustrationTextureKey(imageName, variant = "default") {
+  const normalized = normalizeUnitImageLookupKey(imageName);
+  if (!normalized) return "";
+  return `unit-illust:${variant}:${normalized}`;
+}
+
+function ensureUnitIllustrationTexture(imageName, options = {}) {
+  const name = nonEmptyText(imageName);
+  if (!name || !scene?.textures) return "";
+  const src = resolveUnitIllustrationSrc(name);
+  if (!src) return "";
+  const variant = options?.removeWhiteBg ? "chroma" : "default";
+  const textureKey = unitIllustrationTextureKey(name, variant);
+  if (!textureKey) return "";
+  if (scene.textures.exists(textureKey)) return textureKey;
+  const pendingKey = `${variant}:${normalizeUnitImageLookupKey(name)}`;
+  if (unitIllustrationTexturePending.has(pendingKey)) return "";
+  unitIllustrationTexturePending.add(pendingKey);
+  const image = new Image();
+  image.decoding = "async";
+  image.onload = () => {
+    unitIllustrationTexturePending.delete(pendingKey);
+    if (!scene?.textures) return;
+    if (!scene.textures.exists(textureKey)) {
+      const sourceImage = options?.removeWhiteBg
+        ? removeWhiteBackgroundForMarker(image)
+        : image;
+      scene.textures.addImage(textureKey, sourceImage);
+    }
+    if (currentData.value) {
+      renderMapWithPhaser();
+    }
+  };
+  image.onerror = () => {
+    unitIllustrationTexturePending.delete(pendingKey);
+  };
+  image.src = src;
+  return "";
+}
+
+function ensureEnemyIllustrationTexture(imageName, options = {}) {
+  const name = nonEmptyText(imageName);
+  if (!name || !scene?.textures) return "";
+  const src = resolveEnemyIllustrationSrc(name);
+  if (!src) return "";
+  const variant = options?.removeWhiteBg ? "chroma" : "default";
+  const textureKey = enemyIllustrationTextureKey(name, variant);
+  if (!textureKey) return "";
+  if (scene.textures.exists(textureKey)) return textureKey;
+  const pendingKey = `${variant}:${normalizeEnemyImageLookupKey(name)}`;
+  if (enemyIllustrationTexturePending.has(pendingKey)) return "";
+  enemyIllustrationTexturePending.add(pendingKey);
+  const image = new Image();
+  image.decoding = "async";
+  image.onload = () => {
+    enemyIllustrationTexturePending.delete(pendingKey);
+    if (!scene?.textures) return;
+    if (!scene.textures.exists(textureKey)) {
+      const sourceImage = options?.removeWhiteBg
+        ? removeWhiteBackgroundForMarker(image)
+        : image;
+      scene.textures.addImage(textureKey, sourceImage);
+    }
+    if (currentData.value) {
+      renderMapWithPhaser();
+    }
+  };
+  image.onerror = () => {
+    enemyIllustrationTexturePending.delete(pendingKey);
   };
   image.src = src;
   return "";
@@ -9784,7 +13162,7 @@ function buildEnemyEncounterGroups(data = currentData.value) {
         y,
         scout: sense.scout,
         stealth: sense.stealth,
-        aggressive: true,
+        aggressive: enemies.some(enemy => enemy?.aggressive === true),
         visionRange: resolveEncounterVisionRangeByScout(sense.scout),
         count: enemies.length,
         strong: enemies.some(enemy => !!enemy?.strong),
@@ -9880,14 +13258,22 @@ function formatOpposingFactionUnitsAtTile(x, y, options = {}) {
   const map = options?.tileMap instanceof Map
     ? options.tileMap
     : buildOpposingFactionUnitsByTile(currentData.value);
+  const awarenessSuffix = nonEmptyText(options?.awarenessSuffix);
   const key = coordKey(x, y);
   const bucket = map.get(key);
   if (!bucket || !Array.isArray(bucket.units) || !bucket.units.length) return "なし";
   return bucket.units.map(unit => {
     const name = nonEmptyText(unit?.name) || nonEmptyText(unit?.race) || "勢力ユニット";
     const lv = Math.max(1, Math.floor(toSafeNumber(unit?.level, 1)));
-    return `${name}(Lv${lv})`;
+    return `${name}(Lv${lv})${awarenessSuffix}`;
   }).join(", ");
+}
+
+function buildEnemyAwarenessSuffix(spotted, alerted) {
+  const tags = [];
+  if (spotted) tags.push("発見");
+  if (alerted) tags.push("視線");
+  return tags.length ? `[${tags.join("/")}]` : "";
 }
 
 function resolveEncounterDistance(playerGroup, enemyGroup) {
@@ -9967,7 +13353,7 @@ function resolveHostileGroupsAtTileForMove(data, x, y, options = {}) {
       scout: sense.scout,
       stealth: sense.stealth,
       label: tileEnemies[0]?.name || tileEnemies[0]?.race || "敵",
-      aggressive: true
+      aggressive: tileEnemies.some(enemy => enemy?.aggressive === true)
     });
   }
   const tileKey = coordKey(x, y);
@@ -10012,10 +13398,15 @@ function runHostilePassStealthCheckAtTile(options = {}) {
     const chancePercent = resolveEncounterSurveyDetectChancePercent(hostile.scout, playerSense.stealth);
     const detected = chancePercent >= 100 ? true : (Math.random() < (chancePercent / 100));
     if (!detected) continue;
+    const tileKey = coordKey(x, y);
+    const discoveredByPlayer = hostile.kind === "faction"
+      ? spottedFactionTileKeys.has(tileKey)
+      : spottedEnemyTileKeys.has(tileKey);
+    if (!discoveredByPlayer) continue;
     const enemyLabel = hostile.kind === "faction"
       ? `${hostile.label}部隊`
       : hostile.label;
-    const aggressive = hostile?.aggressive !== false;
+    const aggressive = hostile?.aggressive === true;
     let lockApplied = false;
     if (aggressive) {
       const lockResult = applyEncounterMoveLock(moveGroup.participantIds, {
@@ -10049,6 +13440,13 @@ function runHostilePassStealthCheckAtTile(options = {}) {
 function rerollEnemySpawnAtTile(data, x, y) {
   if (!data || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return [];
   if (!Array.isArray(data?.enemySpawnMap)) return [];
+  const dangerMap = ensureEnemyDangerMap(data);
+  const currentDanger = Math.max(0, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0)));
+  if (currentDanger <= 0) {
+    clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+    return [];
+  }
   const regenerated = buildEnemySpawnDataForMap({
     ...data,
     enemySpawnMap: null,
@@ -10076,25 +13474,13 @@ function clearMonsterTileByAmbush(data, x, y) {
   const beforeDanger = Math.max(0, Math.min(TILE_DANGER_MAX_PERCENT, Math.floor(toSafeNumber(dangerMap?.[y]?.[x], 0))));
   let afterDanger = Math.max(0, beforeDanger - TILE_DANGER_REDUCE_PER_CLEAR_PERCENT);
   dangerMap[y][x] = afterDanger;
-  data.enemySpawnMap[y][x] = [];
-  const tileKey = coordKey(x, y);
-  spottedEnemyTileKeys.delete(tileKey);
-  alertedEnemyTileKeys.delete(tileKey);
-  alertedFactionTileKeys.delete(tileKey);
+  clearEnemyPresenceAtTile(data, x, y, { clearSpottedMemory: true });
+  alertedFactionTileKeys.delete(coordKey(x, y));
   let claimed = false;
-  let respawnCount = 0;
+  const respawnCount = 0;
   if (afterDanger <= 0) {
     claimedMap[y][x] = resolveActiveTerritoryOwnerId();
     claimed = true;
-  } else {
-    const rerolled = rerollEnemySpawnAtTile(data, x, y);
-    respawnCount = Array.isArray(rerolled) ? rerolled.length : 0;
-    if (respawnCount <= 0) {
-      afterDanger = 0;
-      dangerMap[y][x] = 0;
-      claimedMap[y][x] = resolveActiveTerritoryOwnerId();
-      claimed = true;
-    }
   }
   data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
   rebuildTerritorySets(data);
@@ -10131,6 +13517,10 @@ function reduceTileDangerBySurvey(data, x, y, options = {}) {
   dangerMap[ty][tx] = afterDanger;
   let claimed = false;
   if (afterDanger <= 0) {
+    const cleared = clearEnemyPresenceAtTile(data, tx, ty, { clearSpottedMemory: true });
+    if (cleared) {
+      data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+    }
     claimedMap[ty][tx] = resolveActiveTerritoryOwnerId();
     claimed = true;
     rebuildTerritorySets(data);
@@ -10170,9 +13560,7 @@ function runEnemyEncounterCheck(options = {}) {
   for (const player of playerGroups) {
     for (const enemy of hostileGroups) {
       const kind = nonEmptyText(enemy?.kind) || "spawn";
-      const enemyAggressive = kind === "faction"
-        ? !!enemy?.aggressive
-        : enemy?.aggressive !== false;
+      const enemyAggressive = enemy?.aggressive === true;
       const distance = resolveEncounterDistance(player, enemy);
       if (!Number.isFinite(distance)) continue;
       const playerVisionRange = Math.max(0, Math.floor(toSafeNumber(player?.visionRange, UNIT_VISION_BASE_RANGE)));
@@ -10184,8 +13572,9 @@ function runEnemyEncounterCheck(options = {}) {
       const alreadySpottedEnemy = kind === "faction"
         ? spottedFactionTileKeys.has(enemyTileKey)
         : spottedEnemyTileKeys.has(enemyTileKey);
-      const playerEffectiveScout = roundTo1(player.scout - (distance * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE));
-      const enemyEffectiveScout = roundTo1(enemy.scout - (distance * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE));
+      const scoutDistancePenalty = Math.max(0, distance - 1) * ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE;
+      const playerEffectiveScout = roundTo1(player.scout - scoutDistancePenalty);
+      const enemyEffectiveScout = roundTo1(enemy.scout - scoutDistancePenalty);
       const playerDetectResult = resolveEncounterDetectionByContext(context, playerInRange, playerEffectiveScout, enemy.stealth);
       const enemyDetectResult = resolveEncounterDetectionByContext(context, enemyInRange, enemyEffectiveScout, player.stealth);
       const playerDetectChance = playerDetectResult.chance;
@@ -10194,7 +13583,7 @@ function runEnemyEncounterCheck(options = {}) {
       const enemyDetectRoll = enemyDetectResult.roll;
       const playerFoundEnemy = playerDetectResult.found;
       const enemyFoundPlayer = enemyDetectResult.found;
-      if (!playerFoundEnemy && !enemyFoundPlayer) continue;
+      if (!playerFoundEnemy && !enemyFoundPlayer && !alreadySpottedEnemy) continue;
       const enemyHeadLabel = kind === "faction"
         ? `${nonEmptyText(enemy?.factionLabel) || "他勢力"}部隊`
         : (enemy.names?.[0] || "敵");
@@ -10215,7 +13604,34 @@ function runEnemyEncounterCheck(options = {}) {
       const lockType = playerFoundEnemy && enemyFoundPlayer
         ? "mutual"
         : (playerFoundEnemy ? "detected" : "spotted");
-      const shouldApplyMoveLock = !!enemyFoundPlayer && !!enemyAggressive;
+      const discoveredByPlayer = !!alreadySpottedEnemy || !!playerFoundEnemy;
+      const enemyCanActByKnown = discoveredByPlayer && context === "move";
+      const isSameTile = distance <= 0;
+      const isAdjacentOrSame = distance <= 1;
+
+      let enemyAttack = false;
+      let ambushByFumble = false;
+      let stealthAmbush = false;
+      let attackChance = 0;
+      let attackRoll = null;
+      let fumbleRoll = null;
+      const playerAmbush = context === "survey" && distance === 0 && playerFoundEnemy && !enemyFoundPlayer;
+      let ambushClearResult = null;
+      let ambushMoveCostSpent = false;
+      let ambushBlockedByMovePoint = false;
+      if (enemyCanActByKnown) {
+        if (enemyAggressive && isAdjacentOrSame) {
+          attackChance = 1;
+          attackRoll = 0;
+          enemyAttack = true;
+        } else if (!enemyAggressive && isSameTile) {
+          attackChance = ENCOUNTER_NON_AGGRESSIVE_SAME_TILE_ATTACK_CHANCE;
+          attackRoll = Math.random();
+          enemyAttack = attackRoll < attackChance;
+        }
+      }
+
+      const shouldApplyMoveLock = context === "move" && !!enemyAttack;
       const moveLockResult = shouldApplyMoveLock
         ? applyEncounterMoveLock(player.unitIds, {
           enemyLabel: enemyHeadLabel,
@@ -10231,39 +13647,6 @@ function runEnemyEncounterCheck(options = {}) {
       const moveLockActive = moveLockApplied || player.unitIds.some(unitId => !!resolveEncounterMoveLock(unitId));
       if (moveLockApplied) {
         didApplyMoveLock = true;
-      }
-
-      let enemyAttack = false;
-      let ambushByFumble = false;
-      let stealthAmbush = false;
-      let attackChance = 0;
-      let attackRoll = null;
-      let fumbleRoll = null;
-      const playerAmbush = context === "survey" && distance === 0 && playerFoundEnemy && !enemyFoundPlayer;
-      let ambushClearResult = null;
-      let ambushMoveCostSpent = false;
-      let ambushBlockedByMovePoint = false;
-      if (enemyFoundPlayer && enemyAggressive) {
-        if (context === "move" && distance === 0 && !playerFoundEnemy) {
-          stealthAmbush = true;
-          enemyAttack = true;
-          attackChance = 1;
-          attackRoll = 0;
-        } else {
-          fumbleRoll = Math.random();
-          if (fumbleRoll < ENCOUNTER_FUMBLE_CHANCE) {
-            ambushByFumble = true;
-            enemyAttack = true;
-          } else {
-            attackChance = clampNumber(
-              ENCOUNTER_ATTACK_BASE_CHANCE + ((enemyEffectiveScout - player.stealth) * ENCOUNTER_ATTACK_DIFF_FACTOR),
-              ENCOUNTER_ATTACK_MIN_CHANCE,
-              ENCOUNTER_ATTACK_MAX_CHANCE
-            );
-            attackRoll = Math.random();
-            enemyAttack = attackRoll < attackChance;
-          }
-        }
       }
 
       entries.push({
@@ -10306,6 +13689,7 @@ function runEnemyEncounterCheck(options = {}) {
         distance,
         enemyTileKey,
         alreadySpottedEnemy,
+        discoveredByPlayer,
         newlySpottedEnemy,
         playerEffectiveScout,
         enemyEffectiveScout,
@@ -10363,14 +13747,20 @@ function runEnemyEncounterCheck(options = {}) {
           ? `被発見(${Math.round(entry.enemyDetectChance * 100)}%)`
           : `未発見(${Math.round(entry.enemyDetectChance * 100)}%)`);
       let attackText = "接敵なし";
-      if (entry.enemyFoundPlayer) {
-        if (entry.ambushByFumble) {
-          attackText = "不意打ち被弾(ファンブル)";
-        } else if (entry.enemyAttack) {
-          attackText = `襲撃判定成功(${Math.round(entry.attackChance * 100)}%)`;
-        } else {
-          attackText = `襲撃判定失敗(${Math.round(entry.attackChance * 100)}%)`;
-        }
+      if (!entry.discoveredByPlayer) {
+        attackText = "未発見(攻撃なし)";
+      } else if (entry.enemyAttack) {
+        attackText = entry.enemyAggressive
+          ? "好戦:隣接即攻撃"
+          : `非好戦:同マス襲撃成功(${Math.round(entry.attackChance * 100)}%)`;
+      } else if (!entry.enemyAggressive && entry.context === "move" && entry.distance === 0) {
+        attackText = `非好戦:同マス襲撃失敗(${Math.round(entry.attackChance * 100)}%)`;
+      } else if (!entry.enemyAggressive) {
+        attackText = "非好戦:攻撃なし";
+      } else if (entry.context === "move" && entry.distance <= 1) {
+        attackText = "好戦:攻撃条件成立";
+      } else {
+        attackText = "好戦:条件外";
       }
       let ambushText = "奇襲不可";
       if (entry.playerAmbush) {
@@ -10382,7 +13772,9 @@ function runEnemyEncounterCheck(options = {}) {
           const claimedText = entry.ambushClearResult.claimed ? " / 領地化" : "";
           const respawnText = entry.ambushClearResult.claimed
             ? ""
-            : ` / 再抽選:${entry.ambushClearResult.respawnCount}体`;
+            : (entry.ambushClearResult.respawnCount > 0
+              ? ` / 再抽選:${entry.ambushClearResult.respawnCount}体`
+              : "");
           const moveCostText = entry.ambushMoveCostSpent ? ` / 移動-${ENCOUNTER_ACTION_MOVE_COST}` : "";
           ambushText = `奇襲撃破:${entry.ambushClearResult.defeatedCount}体 / 危険度${entry.ambushClearResult.beforeDanger}%→${entry.ambushClearResult.afterDanger}%${respawnText}${claimedText}${moveCostText}`;
         } else {
@@ -10410,7 +13802,9 @@ function runEnemyEncounterCheck(options = {}) {
     }
   }
 
-  console.log("[EncounterCheck]", { context, entries, notes });
+  if (showTestControls.value) {
+    console.log("[EncounterCheck]", { context, entries, notes });
+  }
   for (const note of notes) {
     pushNationLog(note);
   }
@@ -10445,6 +13839,16 @@ function normalizeCustomIslandSettings() {
   const isletRange = normalizeIntRange(customIsletCountMin.value, customIsletCountMax.value, 0, 12, 1, 4);
   customIsletCountMin.value = isletRange.min;
   customIsletCountMax.value = isletRange.max;
+  const riverRange = normalizeIntRange(
+    customRiverPerContinentMin.value,
+    customRiverPerContinentMax.value,
+    1,
+    12,
+    3,
+    4
+  );
+  customRiverPerContinentMin.value = riverRange.min;
+  customRiverPerContinentMax.value = riverRange.max;
   const gapRange = normalizeIntRange(customLargeIslandMinGap.value, customLargeIslandMinGap.value, 2, 12, 6, 6);
   customLargeIslandMinGap.value = gapRange.min;
   const ratioRaw = Number.isFinite(customTargetLandPercent.value)
@@ -10465,6 +13869,10 @@ function nudgeCustomIslandInt(key, delta) {
     customIsletCountMin.value = Number(customIsletCountMin.value) + step;
   } else if (key === "isletCountMax") {
     customIsletCountMax.value = Number(customIsletCountMax.value) + step;
+  } else if (key === "riverPerContinentMin") {
+    customRiverPerContinentMin.value = Number(customRiverPerContinentMin.value) + step;
+  } else if (key === "riverPerContinentMax") {
+    customRiverPerContinentMax.value = Number(customRiverPerContinentMax.value) + step;
   }
   normalizeCustomIslandSettings();
 }
@@ -10473,13 +13881,18 @@ function applyDisplaySettingChange(payload) {
   if (!payload || !payload.key) return;
   const { key, value } = payload;
   if (key === "section_display" || key === "section_audio") return;
-  if (key === "showHeightNumbers") showHeightNumbers.value = !!value;
+  if (key === "gameViewPreset") {
+    // 解像度は固定運用。既存データ互換のため入力は受けるが反映しない。
+    return;
+  } else if (key === "showHeightNumbers") showHeightNumbers.value = !!value;
   else if (key === "useHeightShading") useHeightShading.value = !!value;
   else if (key === "useFiveResourceMode") useFiveResourceMode.value = !!value;
   else if (key === "showSpecialTilesAlways") showSpecialTilesAlways.value = !!value;
   else if (key === "showWaterfallEffects") showWaterfallEffects.value = !!value;
   else if (key === "showStrongEnemyMarkers") showStrongEnemyMarkers.value = !!value;
+  else if (key === "lowPowerMode") lowPowerMode.value = !!value;
   else if (key === "focusCameraOnTileClick") focusCameraOnTileClick.value = !!value;
+  else if (key === "squadFormationEnabled") setSquadFormationEnabled(!!value, { playSe: false });
   else if (key === "mountainMode") mountainMode.value = String(value || "random");
   else if (key === "heightNumberFontSize") {
     const raw = Number(value);
@@ -10509,13 +13922,14 @@ function applyDisplaySettingChange(payload) {
 }
 
 function buildIslandCustomSettings() {
-  if (!useIslandCustomSettings.value) return null;
   normalizeCustomIslandSettings();
   return {
-    enabled: true,
+    enabled: !!useIslandCustomSettings.value,
     largeIslandCount: customLargeIslandCount.value,
     isletCountMin: customIsletCountMin.value,
     isletCountMax: customIsletCountMax.value,
+    riverPerContinentMin: customRiverPerContinentMin.value,
+    riverPerContinentMax: customRiverPerContinentMax.value,
     targetLandRatio: customTargetLandPercent.value / 100,
     largeIslandMinGap: customLargeIslandMinGap.value,
     worldWrapEnabled: !!customWorldWrapEnabled.value
@@ -10523,9 +13937,13 @@ function buildIslandCustomSettings() {
 }
 
 function mapPixelSize(w, h) {
+  const tileW = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.width, 40));
+  const tileH = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.height, 48));
+  const rowStep = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.rowStep, 36));
+  const oddRowOffsetX = toSafeNumber(HEX_TILE_CONFIG?.oddRowOffsetX, tileW / 2);
   return {
-    width: (w * 40) + 20,
-    height: ((h - 1) * 36) + 48
+    width: (w * tileW) + oddRowOffsetX,
+    height: ((h - 1) * rowStep) + tileH
   };
 }
 
@@ -10557,8 +13975,8 @@ function clampCameraScroll(camera, worldW, worldH, viewW, viewH, options = {}) {
 function resolveMinZoomPercent(dataLike = currentData.value) {
   return resolveMinZoomPercentUtil(dataLike, {
     mapPixelSize,
-    gameViewWidth: GAME_VIEW_WIDTH,
-    gameViewHeight: GAME_VIEW_HEIGHT,
+    gameViewWidth: gameViewWidth.value,
+    gameViewHeight: gameViewHeight.value,
     wrapDragMultiplierX: WRAP_DRAG_VIEW_RANGE_MULTIPLIER_X,
     wrapDragMultiplierY: WRAP_DRAG_VIEW_RANGE_MULTIPLIER_Y,
     resolveMaxZoomPercent,
@@ -10578,6 +13996,16 @@ function resolveMaxZoomPercent(dataLike = currentData.value) {
   return Math.round(clampNumber(scaled, 400, 1200));
 }
 
+function resolveZoomStepPercent(dataLike = currentData.value) {
+  const w = Number(dataLike?.w);
+  const h = Number(dataLike?.h);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 25;
+  const baseSize = Math.max(w, h);
+  const scaled = 25 * (baseSize / 36);
+  const stepped = Math.round(scaled / 5) * 5;
+  return Math.round(clampNumber(stepped, 25, 100));
+}
+
 function normalizeZoomPercent(value, dataLike = currentData.value) {
   return normalizeZoomPercentUtil(value, dataLike, {
     resolveMinZoomPercent,
@@ -10589,12 +14017,14 @@ function normalizeZoomPercent(value, dataLike = currentData.value) {
 const zoomController = createMapZoomController({
   getCurrentData: () => currentData.value,
   getVillageState: () => villageState.value,
+  getSelectedTileCoord: () => parseCoordKey(selectedTileKey),
   getZoomPercent: () => zoomPercent.value,
   setZoomPercentValue: value => {
     zoomPercent.value = value;
   },
   normalizeZoomPercent,
   resolveMinZoomPercent,
+  resolveZoomStepPercent,
   toSafeNumber,
   nonEmptyText,
   normalizeFocusPoint,
@@ -10702,6 +14132,21 @@ function shadeColorByHeight(hex, level) {
   return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
 }
 
+function shadeSeaColorByDepth(hex, level) {
+  if (!hex || !hex.startsWith("#") || !Number.isFinite(level)) return hex;
+  const raw = Number.parseInt(hex.slice(1), 16);
+  const r = (raw >> 16) & 0xff;
+  const g = (raw >> 8) & 0xff;
+  const b = raw & 0xff;
+  const depth = Math.max(0, -Math.floor(level));
+  const darkenRate = Math.min(0.62, depth * 0.09);
+  const brightness = 1 - darkenRate;
+  const nr = Math.max(0, Math.min(255, Math.round(r * brightness)));
+  const ng = Math.max(0, Math.min(255, Math.round(g * brightness)));
+  const nb = Math.max(0, Math.min(255, Math.round(b * brightness)));
+  return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
+}
+
 function blendHexColors(hexA, hexB, ratio = 0.5) {
   if (!hexA?.startsWith("#")) return hexB;
   if (!hexB?.startsWith("#")) return hexA;
@@ -10721,16 +14166,64 @@ function blendHexColors(hexA, hexB, ratio = 0.5) {
 }
 
 function buildHexPoints(x, y) {
-  const offsetX = (y % 2 === 1) ? 20 : 0;
-  const left = (x * 40) + offsetX;
-  const top = y * 36;
+  const tileW = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.width, 40));
+  const tileH = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.height, 48));
+  const rowStep = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.rowStep, 36));
+  const oddRowOffsetX = toSafeNumber(HEX_TILE_CONFIG?.oddRowOffsetX, tileW / 2);
+  const halfW = tileW / 2;
+  const upperY = tileH - rowStep;
+  const lowerY = rowStep;
+  const offsetX = (y % 2 === 1) ? oddRowOffsetX : 0;
+  const left = (x * tileW) + offsetX;
+  const top = y * rowStep;
   return [
-    { x: left + 20, y: top + 0 },
-    { x: left + 40, y: top + 12 },
-    { x: left + 40, y: top + 36 },
-    { x: left + 20, y: top + 48 },
-    { x: left + 0, y: top + 36 },
-    { x: left + 0, y: top + 12 }
+    { x: left + halfW, y: top + 0 },
+    { x: left + tileW, y: top + upperY },
+    { x: left + tileW, y: top + lowerY },
+    { x: left + halfW, y: top + tileH },
+    { x: left + 0, y: top + lowerY },
+    { x: left + 0, y: top + upperY }
+  ];
+}
+
+function pointCoordKey(point) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return "";
+  return `${Math.round(point.x * 1000) / 1000},${Math.round(point.y * 1000) / 1000}`;
+}
+
+function resolveSharedHexEdgePoints(ax, ay, bx, by, offsetX = 0, offsetY = 0) {
+  const aPoints = buildHexPoints(ax, ay);
+  const bPoints = buildHexPoints(bx, by);
+  const bSet = new Set(bPoints.map(pointCoordKey));
+  const shared = aPoints
+    .filter(p => bSet.has(pointCoordKey(p)))
+    .map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
+  if (shared.length < 2) return null;
+  if (shared.length === 2) return [shared[0], shared[1]];
+  let bestPair = null;
+  let bestDistance = -1;
+  for (let i = 0; i < shared.length; i += 1) {
+    for (let j = i + 1; j < shared.length; j += 1) {
+      const dx = shared[j].x - shared[i].x;
+      const dy = shared[j].y - shared[i].y;
+      const dist = (dx * dx) + (dy * dy);
+      if (dist > bestDistance) {
+        bestDistance = dist;
+        bestPair = [shared[i], shared[j]];
+      }
+    }
+  }
+  return bestPair;
+}
+
+function resolveFlowSegmentByTilePair(ax, ay, bx, by, offsetX = 0, offsetY = 0) {
+  const edge = resolveSharedHexEdgePoints(ax, ay, bx, by, offsetX, offsetY);
+  if (edge) return edge;
+  const ca = hexCenter(ax, ay);
+  const cb = hexCenter(bx, by);
+  return [
+    { x: ca.cx + offsetX, y: ca.cy + offsetY },
+    { x: cb.cx + offsetX, y: cb.cy + offsetY }
   ];
 }
 
@@ -10751,6 +14244,150 @@ function drawSplitHex(graphics, points, leftHexColor, rightHexColor) {
 function offsetHexPoints(points, offsetX = 0, offsetY = 0) {
   if (!Array.isArray(points) || (!offsetX && !offsetY)) return points;
   return points.map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
+}
+
+function expandPolygonPoints(points, outsetPx = 0) {
+  if (!Array.isArray(points) || !points.length) return points;
+  const delta = Number(outsetPx) || 0;
+  if (Math.abs(delta) < 0.001) return points;
+  let cx = 0;
+  let cy = 0;
+  let count = 0;
+  for (const p of points) {
+    if (!Number.isFinite(p?.x) || !Number.isFinite(p?.y)) continue;
+    cx += p.x;
+    cy += p.y;
+    count += 1;
+  }
+  if (!count) return points;
+  cx /= count;
+  cy /= count;
+  return points.map(p => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const len = Math.hypot(dx, dy);
+    if (!Number.isFinite(len) || len < 0.0001) return { x: p.x, y: p.y };
+    const scale = (len + delta) / len;
+    return {
+      x: cx + (dx * scale),
+      y: cy + (dy * scale)
+    };
+  });
+}
+
+function hasEnemySwarmRule(enemy) {
+  return enemy?.swarmRule === true;
+}
+
+function hasEnemyBossRole(enemy) {
+  return enemy?.isBoss === true || nonEmptyText(enemy?.strongRole) === "leader";
+}
+
+function runEnemySwarmFreeRoamTurn(data = currentData.value) {
+  if (!data || data.shapeOnly || !Number.isFinite(data?.w) || !Number.isFinite(data?.h) || !Array.isArray(data?.enemySpawnMap)) {
+    return { movedGroups: 0, notes: [] };
+  }
+  const notes = [];
+  const groups = [];
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const enemies = enemiesAt(x, y, data);
+      if (!enemies.length) continue;
+      if (!enemies.some(hasEnemySwarmRule)) continue;
+      const first = enemies[0];
+      groups.push({
+        x,
+        y,
+        enemies,
+        territoryId: nonEmptyText(first?.territoryId) || `swarm-${x}-${y}`,
+        centerX: Math.floor(toSafeNumber(first?.territoryCenterX, x)),
+        centerY: Math.floor(toSafeNumber(first?.territoryCenterY, y)),
+        radius: clampNumber(
+          Math.floor(toSafeNumber(first?.territoryRadius, ENEMY_SWARM_TERRITORY_RADIUS_MIN)),
+          ENEMY_SWARM_TERRITORY_RADIUS_MIN,
+          ENEMY_SWARM_TERRITORY_RADIUS_MAX
+        ),
+        hasBoss: enemies.some(hasEnemyBossRole)
+      });
+    }
+  }
+  if (!groups.length) return { movedGroups: 0, notes };
+
+  let movedGroups = 0;
+  let changed = false;
+  const movedTerritoryIds = new Set();
+  const wrapEnabled = resolveWorldWrapEnabled(data);
+  for (const group of groups) {
+    if (!group || !group.territoryId || movedTerritoryIds.has(group.territoryId)) continue;
+    movedTerritoryIds.add(group.territoryId);
+    // 群れルールは出現数設定ありの場合のみ適用。ボス不在時のみテリトリー内フリー移動。
+    if (group.hasBoss) continue;
+    if (Math.random() > ENEMY_SWARM_FREE_ROAM_MOVE_CHANCE) continue;
+    const candidates = getHexNeighborCoordsBySize(data.w, data.h, group.x, group.y, wrapEnabled).filter(next => {
+      if (!next || !Number.isFinite(next.x) || !Number.isFinite(next.y)) return false;
+      if (!isPassableTerrain(data.grid?.[next.y]?.[next.x])) return false;
+      if (hexDistance({ x: next.x, y: next.y }, { x: group.centerX, y: group.centerY }) > group.radius) return false;
+      const targetEnemies = enemiesAt(next.x, next.y, data);
+      if (targetEnemies.length > 0) return false;
+      return true;
+    });
+    if (!candidates.length) continue;
+    const to = randomPick(candidates, null);
+    if (!to) continue;
+    const fromX = group.x;
+    const fromY = group.y;
+    const fromKey = coordKey(fromX, fromY);
+    const toKey = coordKey(to.x, to.y);
+    const wasSpotted = spottedEnemyTileKeys.has(fromKey);
+    const wasAlerted = alertedEnemyTileKeys.has(fromKey);
+    const spottedNames = Array.isArray(spottedEnemyNamesByTile.get(fromKey))
+      ? [...spottedEnemyNamesByTile.get(fromKey)]
+      : [];
+    const movedEnemies = group.enemies.map((enemy, index) => ({
+      ...enemy,
+      id: nonEmptyText(enemy?.id) || `enemy-${to.x}-${to.y}-${index}`,
+      territoryId: group.territoryId,
+      territoryCenterX: group.centerX,
+      territoryCenterY: group.centerY,
+      territoryRadius: group.radius
+    }));
+    if (!Array.isArray(data.enemySpawnMap[fromY])) data.enemySpawnMap[fromY] = [];
+    if (!Array.isArray(data.enemySpawnMap[to.y])) data.enemySpawnMap[to.y] = [];
+    data.enemySpawnMap[fromY][fromX] = [];
+    data.enemySpawnMap[to.y][to.x] = movedEnemies;
+    spottedEnemyTileKeys.delete(fromKey);
+    alertedEnemyTileKeys.delete(fromKey);
+    spottedEnemyNamesByTile.delete(fromKey);
+    if (wasSpotted) {
+      spottedEnemyTileKeys.add(toKey);
+      if (spottedNames.length) spottedEnemyNamesByTile.set(toKey, spottedNames);
+    }
+    if (wasAlerted) {
+      alertedEnemyTileKeys.add(toKey);
+    }
+    movedGroups += 1;
+    changed = true;
+    const groupLabel = nonEmptyText(group.enemies?.[0]?.name) || nonEmptyText(group.enemies?.[0]?.race) || "群れ";
+    notes.push(`群れ移動: ${groupLabel} (${fromX}, ${fromY}) -> (${to.x}, ${to.y})`);
+  }
+
+  if (changed) {
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+  }
+  return { movedGroups, notes };
+}
+
+function strokeClosedPolygon(graphics, points) {
+  if (!graphics || !Array.isArray(points) || points.length < 2) return;
+  const first = points[0];
+  graphics.beginPath();
+  graphics.moveTo(first.x, first.y);
+  for (let i = 1; i < points.length; i += 1) {
+    graphics.lineTo(points[i].x, points[i].y);
+  }
+  graphics.lineTo(first.x, first.y);
+  graphics.closePath();
+  graphics.strokePath();
 }
 
 function buildWrapOffsets(data) {
@@ -10966,6 +14603,7 @@ function buildStatsText(data) {
   if (riverData?.riverSet) {
     lines.push(`川(重なり): ${riverData.riverSet.size} (${((riverData.riverSet.size / (w * h)) * 100).toFixed(1)}%)`);
     lines.push(`源流: ${riverData.sourceSet.size} / 分岐: ${riverData.branchSet.size} / 終点: ${riverData.mouthSet.size}`);
+    lines.push(`大河中心: ${riverData.meshCenterSet?.size || riverData.largeRiverSet?.size || 0}タイル`);
     lines.push(`滝: ${riverData.waterfallSet?.size || 0}タイル / 滝経路: ${riverData.waterfallEdgeSet?.size || 0}`);
   }
   if (specialCounts) {
@@ -11019,216 +14657,530 @@ function buildStatsText(data) {
   return lines.join("\n");
 }
 
+function resolveRiverCornerLevelMap(data) {
+  const w = Math.max(0, Math.floor(toSafeNumber(data?.w, 0)));
+  const h = Math.max(0, Math.floor(toSafeNumber(data?.h, 0)));
+  const heightLevelMap = data?.heightLevelMap;
+  if (!Array.isArray(heightLevelMap) || !heightLevelMap.length || w <= 0 || h <= 0) {
+    return EMPTY_CORNER_LEVEL_MAP;
+  }
+  const cached = RIVER_CORNER_LEVEL_CACHE.get(heightLevelMap);
+  if (cached && cached.w === w && cached.h === h && cached.cornerLevelMap instanceof Map) {
+    return cached.cornerLevelMap;
+  }
+  const cornerLevelBuckets = new Map();
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const lv = Number(heightLevelMap?.[y]?.[x]);
+      if (!Number.isFinite(lv)) continue;
+      const points = buildHexPoints(x, y);
+      for (const point of points) {
+        const pKey = pointCoordKey(point);
+        if (!pKey) continue;
+        if (!cornerLevelBuckets.has(pKey)) cornerLevelBuckets.set(pKey, []);
+        cornerLevelBuckets.get(pKey).push(lv);
+      }
+    }
+  }
+  const cornerLevelMap = new Map();
+  for (const [pKey, values] of cornerLevelBuckets.entries()) {
+    if (!Array.isArray(values) || !values.length) continue;
+    cornerLevelMap.set(pKey, Math.min(...values));
+  }
+  RIVER_CORNER_LEVEL_CACHE.set(heightLevelMap, { w, h, cornerLevelMap });
+  return cornerLevelMap;
+}
+
 function drawRiverOverlay(data, visibleKeys = null, wrapOffsets = [{ x: 0, y: 0 }]) {
   if (!riverLayer) return;
   riverLayer.clear();
   const riverData = data.riverData;
   if (!riverData) return;
-  const riverSet = riverData.riverSet || new Set();
+
   const isVisibleKey = key => !visibleKeys || visibleKeys.has(key);
+  const totalTiles = Math.max(0, Math.floor(toSafeNumber(data?.w, 0)) * Math.floor(toSafeNumber(data?.h, 0)));
+  const showRiverMicroDetails = totalTiles <= RIVER_DETAIL_TILE_THRESHOLD;
+  const cornerPointMap = new Map();
+  const flowArrowQueue = [];
+  const cornerLevelMap = resolveRiverCornerLevelMap(data);
 
-  const levelOfKey = key => {
-    const p = parseCoordKey(key);
-    return data.heightLevelMap?.[p.y]?.[p.x];
+  const pushCornerPoint = point => {
+    if (!showRiverMicroDetails) return;
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+    const key = `${Math.round(point.x * 1000) / 1000},${Math.round(point.y * 1000) / 1000}`;
+    if (!cornerPointMap.has(key)) cornerPointMap.set(key, { x: point.x, y: point.y });
   };
 
-  const riverAdj = new Map();
-  for (const key of riverSet) {
-    riverAdj.set(key, new Set());
-  }
-  for (const ek of riverData.edgeSet || []) {
-    const [a, b] = ek.split("|");
-    if (!riverAdj.has(a)) riverAdj.set(a, new Set());
-    if (!riverAdj.has(b)) riverAdj.set(b, new Set());
-    riverAdj.get(a).add(b);
-    riverAdj.get(b).add(a);
-  }
-
-  const mouthDistance = new Map();
-  const queue = [];
-  const pushMouthSeed = key => {
-    if (!riverSet.has(key) || mouthDistance.has(key)) return;
-    mouthDistance.set(key, 0);
-    queue.push(key);
-  };
-  for (const key of riverData.mouthSet || []) pushMouthSeed(key);
-  for (const wk of riverData.waterLinkSet || []) {
-    const [a, b] = wk.split("|");
-    if (riverSet.has(a) && !riverSet.has(b)) pushMouthSeed(a);
-    if (riverSet.has(b) && !riverSet.has(a)) pushMouthSeed(b);
-  }
-  while (queue.length) {
-    const cur = queue.shift();
-    const curDist = mouthDistance.get(cur) || 0;
-    for (const nx of riverAdj.get(cur) || []) {
-      if (mouthDistance.has(nx)) continue;
-      mouthDistance.set(nx, curDist + 1);
-      queue.push(nx);
+  const queueFlowArrowByCornerLevel = (start, end) => {
+    if (!showRiverMicroDetails) return;
+    const startLv = cornerLevelMap.get(pointCoordKey(start));
+    const endLv = cornerLevelMap.get(pointCoordKey(end));
+    if (!Number.isFinite(startLv) || !Number.isFinite(endLv)) return;
+    if (Math.abs(startLv - endLv) < 0.0001) return;
+    if (startLv > endLv) {
+      flowArrowQueue.push({ from: start, to: end });
+    } else {
+      flowArrowQueue.push({ from: end, to: start });
     }
-  }
-
-  const directedPair = (a, b) => {
-    const da = mouthDistance.get(a);
-    const db = mouthDistance.get(b);
-    if (Number.isFinite(da) && Number.isFinite(db) && da !== db) {
-      return da > db ? [a, b] : [b, a];
-    }
-
-    const al = levelOfKey(a);
-    const bl = levelOfKey(b);
-    if (Number.isFinite(al) && Number.isFinite(bl) && al !== bl) {
-      return al > bl ? [a, b] : [b, a];
-    }
-    return null;
   };
 
-  const drawFlowArrow = (fromKey, toKey, color, alpha = 0.95) => {
-    const pa = parseCoordKey(fromKey);
-    const pb = parseCoordKey(toKey);
-    const ca = hexCenter(pa.x, pa.y);
-    const cb = hexCenter(pb.x, pb.y);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
-      if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      const fromX = ca.cx + ox;
-      const fromY = ca.cy + oy;
-      const toX = cb.cx + ox;
-      const toY = cb.cy + oy;
-      const dx = toX - fromX;
-      const dy = toY - fromY;
+  const drawFlowArrowByPoints = (from, to, color, alpha = 0.95) => {
+    if (!from || !to) return;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 7) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    const px = -uy;
+    const py = ux;
+    const tip = {
+      x: from.x + ux * Math.min(len - 1.2, len * 0.62),
+      y: from.y + uy * Math.min(len - 1.2, len * 0.62)
+    };
+    const headLen = 3.4;
+    const wing = 1.9;
+    const base = { x: tip.x - ux * headLen, y: tip.y - uy * headLen };
+    const p2 = { x: base.x + px * wing, y: base.y + py * wing };
+    const p3 = { x: base.x - px * wing, y: base.y - py * wing };
+    riverLayer.fillStyle(color, alpha);
+    riverLayer.fillPoints([tip, p2, p3], true);
+  };
+
+  const parseEdgePoints = edgeKeyRaw => {
+    const [a, b] = String(edgeKeyRaw || "").split("|");
+    if (!a || !b) return null;
+    const pa = parseCoordKey(a);
+    const pb = parseCoordKey(b);
+    if (!Number.isFinite(pa?.x) || !Number.isFinite(pa?.y) || !Number.isFinite(pb?.x) || !Number.isFinite(pb?.y)) return null;
+    return [pa, pb];
+  };
+
+  const drawConnectedRiverSegments = (segments, width, color, alpha = 1) => {
+    if (!Array.isArray(segments) || !segments.length) return;
+    const safeWidth = Math.max(0.8, Number(width) || 1);
+    const half = safeWidth * 0.5;
+    const colorInt = Number.isFinite(color) ? color : 0x9ed3ff;
+    const safeAlpha = clampNumber(Number(alpha), 0, 1);
+    const endpointMap = new Map();
+    const endpointDegree = new Map();
+    const addEndpoint = point => {
+      const key = pointCoordKey(point);
+      if (!key) return;
+      endpointMap.set(key, point);
+      endpointDegree.set(key, (endpointDegree.get(key) || 0) + 1);
+    };
+    for (const seg of segments) {
+      addEndpoint(seg.start);
+      addEndpoint(seg.end);
+    }
+
+    riverLayer.fillStyle(colorInt, safeAlpha);
+    for (const seg of segments) {
+      const start = seg.start;
+      const end = seg.end;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
       const len = Math.hypot(dx, dy);
-      if (len < 8) continue;
-
+      if (!Number.isFinite(len) || len < 0.001) continue;
       const ux = dx / len;
       const uy = dy / len;
       const px = -uy;
       const py = ux;
-      const tip = {
-        x: fromX + ux * Math.min(len - 2, len * 0.62),
-        y: fromY + uy * Math.min(len - 2, len * 0.62)
-      };
-      const headLen = 6.2;
-      const wing = 3.1;
-      const base = { x: tip.x - ux * headLen, y: tip.y - uy * headLen };
-      const p2 = { x: base.x + px * wing, y: base.y + py * wing };
-      const p3 = { x: base.x - px * wing, y: base.y - py * wing };
-      riverLayer.fillStyle(color, alpha);
-      riverLayer.fillPoints([tip, p2, p3], true);
+      const body = [
+        new Phaser.Math.Vector2(start.x + (px * half), start.y + (py * half)),
+        new Phaser.Math.Vector2(end.x + (px * half), end.y + (py * half)),
+        new Phaser.Math.Vector2(end.x - (px * half), end.y - (py * half)),
+        new Phaser.Math.Vector2(start.x - (px * half), start.y - (py * half))
+      ];
+      riverLayer.fillPoints(body, true);
+    }
+
+    const joinRadius = Math.max(0.8, (half * RIVER_EDGE_JOIN_RADIUS_RATIO) + RIVER_EDGE_JOIN_RADIUS_EXTRA_PX);
+    for (const [key, point] of endpointMap.entries()) {
+      if ((endpointDegree.get(key) || 0) < 2) continue;
+      riverLayer.fillCircle(point.x, point.y, joinRadius);
+    }
+
+    const capLen = Math.max(RIVER_EDGE_POINTED_CAP_MIN_PX, safeWidth * RIVER_EDGE_POINTED_CAP_LENGTH_RATIO);
+    for (const seg of segments) {
+      const start = seg.start;
+      const end = seg.end;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(len) || len < 0.001) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+
+      const startKey = pointCoordKey(start);
+      if ((endpointDegree.get(startKey) || 0) === 1) {
+        const tip = new Phaser.Math.Vector2(start.x - (ux * capLen), start.y - (uy * capLen));
+        const s1 = new Phaser.Math.Vector2(start.x + (px * half), start.y + (py * half));
+        const s2 = new Phaser.Math.Vector2(start.x - (px * half), start.y - (py * half));
+        riverLayer.fillPoints([s1, s2, tip], true);
+      }
+
+      const endKey = pointCoordKey(end);
+      if ((endpointDegree.get(endKey) || 0) === 1) {
+        const tip = new Phaser.Math.Vector2(end.x + (ux * capLen), end.y + (uy * capLen));
+        const e1 = new Phaser.Math.Vector2(end.x + (px * half), end.y + (py * half));
+        const e2 = new Phaser.Math.Vector2(end.x - (px * half), end.y - (py * half));
+        riverLayer.fillPoints([e1, e2, tip], true);
+      }
     }
   };
 
-  riverLayer.lineStyle(5, 0x9ed3ff, 0.95);
-  for (const ek of riverData.edgeSet || []) {
-    const [a, b] = ek.split("|");
-    if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-    const pa = parseCoordKey(a);
-    const pb = parseCoordKey(b);
-    const ca = hexCenter(pa.x, pa.y);
-    const cb = hexCenter(pb.x, pb.y);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
-      if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      riverLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy));
+  const drawCornerSegments = (edgeIterable, width, color, alpha = 1) => {
+    const segments = [];
+    for (const edgeKeyRaw of edgeIterable || []) {
+      const points = parseEdgePoints(edgeKeyRaw);
+      if (!points) continue;
+      const [startBase, endBase] = points;
+      for (const offset of wrapOffsets) {
+        const ox = offset?.x || 0;
+        const oy = offset?.y || 0;
+        const start = { x: startBase.x + ox, y: startBase.y + oy };
+        const end = { x: endBase.x + ox, y: endBase.y + oy };
+        segments.push({ start, end });
+        pushCornerPoint(start);
+        pushCornerPoint(end);
+        queueFlowArrowByCornerLevel(start, end);
+      }
     }
-  }
-
-  riverLayer.lineStyle(3.4, 0x6ab7ff, 0.82);
-  for (const wk of riverData.waterLinkSet || []) {
-    const [a, b] = wk.split("|");
-    if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-    const pa = parseCoordKey(a);
-    const pb = parseCoordKey(b);
-    const ca = hexCenter(pa.x, pa.y);
-    const cb = hexCenter(pb.x, pb.y);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
-      if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      riverLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy));
-    }
-  }
-
-  for (const ek of riverData.edgeSet || []) {
-    const [a, b] = ek.split("|");
-    if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-    const dir = directedPair(a, b);
-    if (dir) drawFlowArrow(dir[0], dir[1], 0xf4fbff, 0.94);
-  }
-  for (const wk of riverData.waterLinkSet || []) {
-    const [a, b] = wk.split("|");
-    if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-    const aRiver = riverSet.has(a);
-    const bRiver = riverSet.has(b);
-    if (aRiver && !bRiver) drawFlowArrow(a, b, 0xcbeaff, 0.9);
-    else if (bRiver && !aRiver) drawFlowArrow(b, a, 0xcbeaff, 0.9);
-    else {
-      const dir = directedPair(a, b);
-      if (dir) drawFlowArrow(dir[0], dir[1], 0xcbeaff, 0.9);
-    }
-  }
-
-  const drawNode = (key, radius, color) => {
-    if (!isVisibleKey(key)) return;
-    const p = parseCoordKey(key);
-    const c = hexCenter(p.x, p.y);
-    riverLayer.fillStyle(color, 1);
-    for (const offset of wrapOffsets) {
-      if (!shouldDrawWrappedTileCopy(p.x, p.y, offset, data.w, data.h)) continue;
-      const ox = offset?.x || 0;
-      const oy = offset?.y || 0;
-      riverLayer.fillCircle(c.cx + ox, c.cy + oy, radius);
-    }
+    drawConnectedRiverSegments(segments, width, color, alpha);
   };
 
-  for (const key of riverData.riverSet || []) drawNode(key, 3.1, 0xb9e2ff);
-  for (const key of riverData.sourceSet || []) drawNode(key, 4.4, 0xd7f0ff);
-  for (const key of riverData.branchSet || []) drawNode(key, 3.9, 0x9ed3ff);
-  for (const key of riverData.mouthSet || []) drawNode(key, 3.9, 0x6ab7ff);
-
-  if (showWaterfallEffects.value) {
-    riverLayer.lineStyle(6.1, 0xf8fcff, 0.74);
-    for (const ek of riverData.waterfallEdgeSet || []) {
-      const [a, b] = ek.split("|");
+  const drawTileEdgeSegments = (edgeIterable, width, color, alpha = 1) => {
+    const segments = [];
+    for (const edgeKeyRaw of edgeIterable || []) {
+      const [a, b] = String(edgeKeyRaw || "").split("|");
+      if (!a || !b) continue;
       if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
       const pa = parseCoordKey(a);
       const pb = parseCoordKey(b);
-      const ca = hexCenter(pa.x, pa.y);
-      const cb = hexCenter(pb.x, pb.y);
+      if (!Number.isFinite(pa?.x) || !Number.isFinite(pa?.y) || !Number.isFinite(pb?.x) || !Number.isFinite(pb?.y)) continue;
       for (const offset of wrapOffsets) {
         if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
         if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
         const ox = offset?.x || 0;
         const oy = offset?.y || 0;
-        riverLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy));
+        const segment = resolveSharedHexEdgePoints(pa.x, pa.y, pb.x, pb.y, ox, oy);
+        if (!segment) continue;
+        const [start, end] = segment;
+        segments.push({ start, end });
+        pushCornerPoint(start);
+        pushCornerPoint(end);
+        queueFlowArrowByCornerLevel(start, end);
       }
     }
+    drawConnectedRiverSegments(segments, width, color, alpha);
+  };
 
-    riverLayer.lineStyle(3.4, 0x8bd6ff, 0.95);
-    for (const ek of riverData.waterfallEdgeSet || []) {
-      const [a, b] = ek.split("|");
-      if (!isVisibleKey(a) || !isVisibleKey(b)) continue;
-      const pa = parseCoordKey(a);
-      const pb = parseCoordKey(b);
-      const ca = hexCenter(pa.x, pa.y);
-      const cb = hexCenter(pb.x, pb.y);
+  const drawLargeRiverCenters = meshCenterIterable => {
+    if (!meshCenterIterable) return;
+    for (const keyRaw of meshCenterIterable) {
+      const pos = parseCoordKey(String(keyRaw || ""));
+      if (!Number.isFinite(pos?.x) || !Number.isFinite(pos?.y)) continue;
+      const tx = Math.floor(pos.x);
+      const ty = Math.floor(pos.y);
+      const tileKey = coordKey(tx, ty);
+      if (!isVisibleKey(tileKey)) continue;
       for (const offset of wrapOffsets) {
-        if (!shouldDrawWrappedTileCopy(pa.x, pa.y, offset, data.w, data.h)) continue;
-        if (!shouldDrawWrappedTileCopy(pb.x, pb.y, offset, data.w, data.h)) continue;
+        if (!shouldDrawWrappedTileCopy(tx, ty, offset, data.w, data.h)) continue;
         const ox = offset?.x || 0;
         const oy = offset?.y || 0;
-        riverLayer.strokeLineShape(new Phaser.Geom.Line(ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy));
+        const points = buildHexPoints(tx, ty).map(p => ({ x: p.x + ox, y: p.y + oy }));
+        riverLayer.fillStyle(0x78bae8, 0.24);
+        riverLayer.fillPoints(points, true);
+        riverLayer.lineStyle(1.5, 0xaee6ff, 0.58);
+        riverLayer.strokePoints(points, true);
       }
     }
+  };
 
-    for (const key of riverData.waterfallSet || []) {
-      drawNode(key, 4.4, 0xf7fbff);
-      drawNode(key, 2.4, 0x87d0ff);
+  const hasCornerEdges = (riverData.cornerEdgeSet?.size || 0) + (riverData.cornerWaterLinkSet?.size || 0) > 0;
+  drawLargeRiverCenters(riverData.meshCenterSet || riverData.largeRiverSet);
+
+  if (hasCornerEdges) {
+    drawCornerSegments(riverData.cornerEdgeSet, 5, 0x9ed3ff, 0.95);
+    drawCornerSegments(riverData.cornerWaterLinkSet, 3.4, 0x6ab7ff, 0.82);
+    if (showWaterfallEffects.value) {
+      drawCornerSegments(riverData.cornerWaterfallEdgeSet, 6.1, 0xf8fcff, 0.74);
+      drawCornerSegments(riverData.cornerWaterfallEdgeSet, 3.4, 0x8bd6ff, 0.95);
     }
+  } else {
+    drawTileEdgeSegments(riverData.edgeSet, 5, 0x9ed3ff, 0.95);
+    drawTileEdgeSegments(riverData.waterLinkSet, 3.4, 0x6ab7ff, 0.82);
+    if (showWaterfallEffects.value) {
+      drawTileEdgeSegments(riverData.waterfallEdgeSet, 6.1, 0xf8fcff, 0.74);
+      drawTileEdgeSegments(riverData.waterfallEdgeSet, 3.4, 0x8bd6ff, 0.95);
+    }
+  }
+
+  if (showRiverMicroDetails) {
+    for (const flow of flowArrowQueue) {
+      drawFlowArrowByPoints(flow.from, flow.to, 0xf4fbff, 0.9);
+    }
+    riverLayer.fillStyle(0xb9e2ff, 0.96);
+    for (const point of cornerPointMap.values()) {
+      riverLayer.fillCircle(point.x, point.y, 2.2);
+    }
+  }
+}
+
+function drawHeightDiffBordersForTile(data, x, y, wrapOffset, tileVisible = true, collector = null) {
+  if (!baseLayer || !data?.heightLevelMap || !tileVisible) return;
+  const sourceLevel = Number(data.heightLevelMap?.[y]?.[x]);
+  if (!Number.isFinite(sourceLevel)) return;
+  const sourceKey = coordKey(x, y);
+  const worldWrapEnabled = resolveWorldWrapEnabled(data);
+  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, x, y, worldWrapEnabled);
+  const offX = wrapOffset?.x || 0;
+  const offY = wrapOffset?.y || 0;
+  for (const n of neighbors) {
+    if (!Number.isFinite(n?.x) || !Number.isFinite(n?.y)) continue;
+    if (!shouldDrawWrappedTileCopy(n.x, n.y, wrapOffset, data.w, data.h)) continue;
+    const targetKey = coordKey(n.x, n.y);
+    if (sourceKey >= targetKey) continue;
+    if (!isTileVisible(targetKey, data)) continue;
+    const targetLevel = Number(data.heightLevelMap?.[n.y]?.[n.x]);
+    if (!Number.isFinite(targetLevel)) continue;
+    const diff = Math.abs(targetLevel - sourceLevel);
+    if (diff <= 1) continue;
+    const segment = resolveSharedHexEdgePoints(x, y, n.x, n.y, offX, offY);
+    if (!segment) continue;
+    const sourceCenter = hexCenter(x, y);
+    const targetCenter = hexCenter(n.x, n.y);
+    const sourceCenterWithOffset = { x: sourceCenter.cx + offX, y: sourceCenter.cy + offY };
+    const targetCenterWithOffset = { x: targetCenter.cx + offX, y: targetCenter.cy + offY };
+    const isSourceHigher = sourceLevel >= targetLevel;
+    const higherCenter = isSourceHigher ? sourceCenterWithOffset : targetCenterWithOffset;
+    const stage = Math.max(0, Math.floor(diff) - 2);
+    const widthPx = Math.min(
+      HEIGHT_DIFF_CLIFF_WIDTH_MAX_PX,
+      HEIGHT_DIFF_CLIFF_WIDTH_BASE_PX + (stage * HEIGHT_DIFF_CLIFF_WIDTH_STEP_PX)
+    );
+    const insetPx = HEIGHT_DIFF_CLIFF_INSET_BASE_PX + (widthPx * HEIGHT_DIFF_CLIFF_INSET_WIDTH_RATIO);
+    const insetSegment = insetHexEdgeSegmentTowardPoint(segment[0], segment[1], higherCenter, insetPx);
+    if (!insetSegment) continue;
+    const darkenRatio = clampNumber(
+      HEIGHT_DIFF_CLIFF_DARKEN_BASE + (stage * HEIGHT_DIFF_CLIFF_DARKEN_STEP),
+      HEIGHT_DIFF_CLIFF_DARKEN_BASE,
+      0.86
+    );
+    const highX = isSourceHigher ? x : n.x;
+    const highY = isSourceHigher ? y : n.y;
+    const highTileColor = resolveTileDisplayColor(data, highX, highY);
+    const edgeColor = toColorInt(blendHexColors(highTileColor, "#000000", darkenRatio));
+    if (Array.isArray(collector)) {
+      collector.push({
+        start: insetSegment[0],
+        end: insetSegment[1],
+        width: widthPx,
+        color: edgeColor,
+        alpha: HEIGHT_DIFF_CLIFF_ALPHA
+      });
+    } else {
+      drawTrapezoidCliffSegment(baseLayer, insetSegment[0], insetSegment[1], widthPx, edgeColor, HEIGHT_DIFF_CLIFF_ALPHA);
+    }
+  }
+}
+
+function resolveTileDisplayColor(data, x, y) {
+  const rawKey = data?.grid?.[y]?.[x] || "";
+  const reliefKey = data?.reliefMap?.[y]?.[x] || "";
+  const mixedForestRelief = rawKey === "森" && (reliefKey === "丘陵" || reliefKey === "山岳");
+  const baseTerrainKey = mixedForestRelief ? reliefKey : rawKey;
+  const baseVisual = tileVisual(baseTerrainKey, data.shapeOnly);
+  const level = Number(data?.heightLevelMap?.[y]?.[x]);
+  if (!useHeightShading.value || !Number.isFinite(level)) return baseVisual.color;
+  if (baseTerrainKey === "海") return shadeSeaColorByDepth(baseVisual.color, level);
+  return shadeColorByHeight(baseVisual.color, level);
+}
+
+function insetHexEdgeSegmentTowardPoint(start, end, targetPoint, insetPx) {
+  if (!start || !end || !targetPoint) return null;
+  const sx = Number(start.x);
+  const sy = Number(start.y);
+  const ex = Number(end.x);
+  const ey = Number(end.y);
+  const tx = Number(targetPoint.x);
+  const ty = Number(targetPoint.y);
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(ex) || !Number.isFinite(ey)) return null;
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+  const mx = (sx + ex) * 0.5;
+  const my = (sy + ey) * 0.5;
+  let vx = tx - mx;
+  let vy = ty - my;
+  const vLen = Math.hypot(vx, vy);
+  if (!Number.isFinite(vLen) || vLen < 0.001) return [{ x: sx, y: sy }, { x: ex, y: ey }];
+  vx /= vLen;
+  vy /= vLen;
+  const shift = Math.max(0, Number(insetPx) || 0);
+  return [
+    { x: sx + (vx * shift), y: sy + (vy * shift) },
+    { x: ex + (vx * shift), y: ey + (vy * shift) }
+  ];
+}
+
+function drawTrapezoidCliffSegment(graphics, start, end, widthPx, color, alpha = 1) {
+  if (!graphics || !start || !end) return;
+  const width = Math.max(0.5, Number(widthPx) || 1);
+  const colorInt = Number.isFinite(color) ? color : 0x1c2430;
+  const safeAlpha = clampNumber(Number(alpha), 0, 1);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.hypot(dx, dy);
+  if (!Number.isFinite(len) || len < 0.001) return;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+
+  graphics.lineStyle(width, colorInt, safeAlpha);
+  graphics.strokeLineShape(new Phaser.Geom.Line(start.x, start.y, end.x, end.y));
+
+  const capLen = Math.max(0.8, width * HEIGHT_DIFF_CLIFF_TRAPEZOID_CAP_LENGTH_RATIO);
+  const halfWide = width * 0.5;
+  const halfNarrow = Math.max(0.4, halfWide * HEIGHT_DIFF_CLIFF_TRAPEZOID_CAP_NARROW_RATIO);
+  graphics.fillStyle(colorInt, safeAlpha);
+  const startTrap = [
+    new Phaser.Math.Vector2(start.x + (px * halfWide), start.y + (py * halfWide)),
+    new Phaser.Math.Vector2(start.x - (px * halfWide), start.y - (py * halfWide)),
+    new Phaser.Math.Vector2(start.x - (ux * capLen) - (px * halfNarrow), start.y - (uy * capLen) - (py * halfNarrow)),
+    new Phaser.Math.Vector2(start.x - (ux * capLen) + (px * halfNarrow), start.y - (uy * capLen) + (py * halfNarrow))
+  ];
+  const endTrap = [
+    new Phaser.Math.Vector2(end.x + (px * halfWide), end.y + (py * halfWide)),
+    new Phaser.Math.Vector2(end.x - (px * halfWide), end.y - (py * halfWide)),
+    new Phaser.Math.Vector2(end.x + (ux * capLen) - (px * halfNarrow), end.y + (uy * capLen) - (py * halfNarrow)),
+    new Phaser.Math.Vector2(end.x + (ux * capLen) + (px * halfNarrow), end.y + (uy * capLen) + (py * halfNarrow))
+  ];
+  graphics.fillPoints(startTrap, true);
+  graphics.fillPoints(endTrap, true);
+}
+
+function drawConnectedHeightDiffSegments(graphics, rawSegments = []) {
+  if (!graphics || !Array.isArray(rawSegments) || !rawSegments.length) return;
+
+  const styleGroups = new Map();
+  for (const seg of rawSegments) {
+    const start = seg?.start;
+    const end = seg?.end;
+    const width = Math.max(0.8, Number(seg?.width) || 1);
+    const color = Number.isFinite(seg?.color) ? seg.color : 0x1c2430;
+    const alpha = clampNumber(Number(seg?.alpha), 0, 1);
+    if (!start || !end) continue;
+    const styleKey = `${Math.round(width * 100) / 100}|${color}|${Math.round(alpha * 1000) / 1000}`;
+    if (!styleGroups.has(styleKey)) {
+      styleGroups.set(styleKey, { width, color, alpha, segments: [] });
+    }
+    styleGroups.get(styleKey).segments.push({ start, end });
+  }
+
+  for (const group of styleGroups.values()) {
+    const width = group.width;
+    const half = width * 0.5;
+    const color = group.color;
+    const alpha = group.alpha;
+    const segments = group.segments;
+    const endpointMap = new Map();
+    const endpointDegree = new Map();
+    const addEndpoint = point => {
+      const key = pointCoordKey(point);
+      if (!key) return;
+      endpointMap.set(key, point);
+      endpointDegree.set(key, (endpointDegree.get(key) || 0) + 1);
+    };
+
+    for (const seg of segments) {
+      addEndpoint(seg.start);
+      addEndpoint(seg.end);
+    }
+
+    graphics.fillStyle(color, alpha);
+    for (const seg of segments) {
+      const dx = seg.end.x - seg.start.x;
+      const dy = seg.end.y - seg.start.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(len) || len < 0.001) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+      const body = [
+        new Phaser.Math.Vector2(seg.start.x + (px * half), seg.start.y + (py * half)),
+        new Phaser.Math.Vector2(seg.end.x + (px * half), seg.end.y + (py * half)),
+        new Phaser.Math.Vector2(seg.end.x - (px * half), seg.end.y - (py * half)),
+        new Phaser.Math.Vector2(seg.start.x - (px * half), seg.start.y - (py * half))
+      ];
+      graphics.fillPoints(body, true);
+    }
+
+    const joinRadius = Math.max(0.8, (half * RIVER_EDGE_JOIN_RADIUS_RATIO) + RIVER_EDGE_JOIN_RADIUS_EXTRA_PX);
+    for (const [key, point] of endpointMap.entries()) {
+      if ((endpointDegree.get(key) || 0) < 2) continue;
+      graphics.fillCircle(point.x, point.y, joinRadius);
+    }
+
+    const capLen = Math.max(RIVER_EDGE_POINTED_CAP_MIN_PX, width * RIVER_EDGE_POINTED_CAP_LENGTH_RATIO);
+    for (const seg of segments) {
+      const dx = seg.end.x - seg.start.x;
+      const dy = seg.end.y - seg.start.y;
+      const len = Math.hypot(dx, dy);
+      if (!Number.isFinite(len) || len < 0.001) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+
+      const startKey = pointCoordKey(seg.start);
+      if ((endpointDegree.get(startKey) || 0) === 1) {
+        const tip = new Phaser.Math.Vector2(seg.start.x - (ux * capLen), seg.start.y - (uy * capLen));
+        const s1 = new Phaser.Math.Vector2(seg.start.x + (px * half), seg.start.y + (py * half));
+        const s2 = new Phaser.Math.Vector2(seg.start.x - (px * half), seg.start.y - (py * half));
+        graphics.fillPoints([s1, s2, tip], true);
+      }
+
+      const endKey = pointCoordKey(seg.end);
+      if ((endpointDegree.get(endKey) || 0) === 1) {
+        const tip = new Phaser.Math.Vector2(seg.end.x + (ux * capLen), seg.end.y + (uy * capLen));
+        const e1 = new Phaser.Math.Vector2(seg.end.x + (px * half), seg.end.y + (py * half));
+        const e2 = new Phaser.Math.Vector2(seg.end.x - (px * half), seg.end.y - (py * half));
+        graphics.fillPoints([e1, e2, tip], true);
+      }
+    }
+  }
+}
+
+function drawOwnTerritoryBoundaryEdgesForTile(data, x, y, wrapOffset, tileVisible = true) {
+  if (!baseLayer || !tileVisible) return;
+  const owner = tileOwnerAt(x, y);
+  if (owner !== "player") return;
+  const ownerFactionId = tileFactionOwnerIdAt(x, y);
+  const style = borderStyleForOwner(owner, ownerFactionId);
+  const worldWrapEnabled = resolveWorldWrapEnabled(data);
+  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, x, y, worldWrapEnabled);
+  const offX = wrapOffset?.x || 0;
+  const offY = wrapOffset?.y || 0;
+  for (const n of neighbors) {
+    if (!Number.isFinite(n?.x) || !Number.isFinite(n?.y)) continue;
+    if (!shouldDrawWrappedTileCopy(n.x, n.y, wrapOffset, data.w, data.h)) continue;
+    const neighborOwner = tileOwnerAt(n.x, n.y);
+    const neighborFactionId = tileFactionOwnerIdAt(n.x, n.y);
+    if (neighborOwner === owner && neighborFactionId === ownerFactionId) continue;
+    const segment = resolveSharedHexEdgePoints(x, y, n.x, n.y, offX, offY);
+    if (!segment) continue;
+    baseLayer.lineStyle(style.width, style.color, style.alpha);
+    baseLayer.strokeLineShape(new Phaser.Geom.Line(
+      segment[0].x,
+      segment[0].y,
+      segment[1].x,
+      segment[1].y
+    ));
   }
 }
 
@@ -11392,6 +15344,100 @@ function drawPlannedMovePathOverlay(data, pathNodes = [], wrapOffsets = [{ x: 0,
   }
 }
 
+function collectActiveMoveRoutePathNodes(units = unitList.value) {
+  const source = Array.isArray(units) ? units : [];
+  const uniqueMap = new Map();
+  for (const unit of source) {
+    const rawPath = Array.isArray(unit?.moveRoutePathNodes) ? unit.moveRoutePathNodes : [];
+    if (rawPath.length < 2) continue;
+    const normalizedPath = [];
+    for (const node of rawPath) {
+      const x = Number(node?.x);
+      const y = Number(node?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      normalizedPath.push({ x: Math.floor(x), y: Math.floor(y) });
+    }
+    if (normalizedPath.length < 2) continue;
+    const key = normalizedPath.map(node => coordKey(node.x, node.y)).join(">");
+    if (!key || uniqueMap.has(key)) continue;
+    uniqueMap.set(key, normalizedPath);
+  }
+  return [...uniqueMap.values()];
+}
+
+function strokeDashedLineShape(layer, fromX, fromY, toX, toY, dashLength = 9, gapLength = 6) {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const distance = Math.hypot(dx, dy);
+  if (!Number.isFinite(distance) || distance <= 0.5) return;
+  const ux = dx / distance;
+  const uy = dy / distance;
+  let cursor = 0;
+  while (cursor < distance) {
+    const start = cursor;
+    const end = Math.min(distance, start + dashLength);
+    const sx = fromX + (ux * start);
+    const sy = fromY + (uy * start);
+    const ex = fromX + (ux * end);
+    const ey = fromY + (uy * end);
+    layer.strokeLineShape(new Phaser.Geom.Line(sx, sy, ex, ey));
+    cursor += (dashLength + gapLength);
+  }
+}
+
+function drawActiveMoveRouteOverlay(data, routePaths = [], wrapOffsets = [{ x: 0, y: 0 }]) {
+  if (!markerLayer || !data?.grid) return;
+  const paths = Array.isArray(routePaths) ? routePaths : [];
+  if (!paths.length) return;
+  markerLayer.lineStyle(4.4, 0x12374f, 0.52);
+  for (const path of paths) {
+    if (!Array.isArray(path) || path.length < 2) continue;
+    for (let i = 1; i < path.length; i += 1) {
+      const a = path[i - 1];
+      const b = path[i];
+      if (!Number.isFinite(a?.x) || !Number.isFinite(a?.y) || !Number.isFinite(b?.x) || !Number.isFinite(b?.y)) continue;
+      const ca = hexCenter(a.x, a.y);
+      const cb = hexCenter(b.x, b.y);
+      for (const offset of wrapOffsets) {
+        if (!shouldDrawWrappedTileCopy(a.x, a.y, offset, data.w, data.h)) continue;
+        if (!shouldDrawWrappedTileCopy(b.x, b.y, offset, data.w, data.h)) continue;
+        const ox = offset?.x || 0;
+        const oy = offset?.y || 0;
+        strokeDashedLineShape(markerLayer, ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy, 10, 6);
+      }
+    }
+  }
+  markerLayer.lineStyle(2.4, 0x8cdfff, 0.96);
+  for (const path of paths) {
+    if (!Array.isArray(path) || path.length < 2) continue;
+    for (let i = 1; i < path.length; i += 1) {
+      const a = path[i - 1];
+      const b = path[i];
+      if (!Number.isFinite(a?.x) || !Number.isFinite(a?.y) || !Number.isFinite(b?.x) || !Number.isFinite(b?.y)) continue;
+      const ca = hexCenter(a.x, a.y);
+      const cb = hexCenter(b.x, b.y);
+      for (const offset of wrapOffsets) {
+        if (!shouldDrawWrappedTileCopy(a.x, a.y, offset, data.w, data.h)) continue;
+        if (!shouldDrawWrappedTileCopy(b.x, b.y, offset, data.w, data.h)) continue;
+        const ox = offset?.x || 0;
+        const oy = offset?.y || 0;
+        strokeDashedLineShape(markerLayer, ca.cx + ox, ca.cy + oy, cb.cx + ox, cb.cy + oy, 7, 6);
+      }
+    }
+    const nextNode = path[1];
+    if (Number.isFinite(nextNode?.x) && Number.isFinite(nextNode?.y)) {
+      const center = hexCenter(nextNode.x, nextNode.y);
+      for (const offset of wrapOffsets) {
+        if (!shouldDrawWrappedTileCopy(nextNode.x, nextNode.y, offset, data.w, data.h)) continue;
+        const ox = offset?.x || 0;
+        const oy = offset?.y || 0;
+        markerLayer.fillStyle(0xd5f2ff, 0.95);
+        markerLayer.fillCircle(center.cx + ox, center.cy + oy, 2.1);
+      }
+    }
+  }
+}
+
 function clearLabels() {
   labelTexts.forEach(t => t.destroy());
   labelTexts = [];
@@ -11399,11 +15445,19 @@ function clearLabels() {
 
 function renderMapWithPhaser() {
   if (!scene || !baseLayer || !gameRoot.value || !currentData.value) return;
+  if (isPageHidden.value) return;
+  const nowMs = Date.now();
+  const minIntervalMs = lowPowerMode.value ? MAP_RENDER_INTERVAL_LOW_POWER_MS : 0;
+  if (minIntervalMs > 0 && (nowMs - lastMapRenderAtMs) < minIntervalMs) {
+    requestMapRender();
+    return;
+  }
+  lastMapRenderAtMs = nowMs;
 
   const data = currentData.value;
   const { width: worldW, height: worldH } = mapPixelSize(data.w, data.h);
-  const viewW = GAME_VIEW_WIDTH;
-  const viewH = GAME_VIEW_HEIGHT;
+  const viewW = Math.max(1, Math.floor(Number(gameViewWidth.value) || GAME_VIEW_WIDTH));
+  const viewH = Math.max(1, Math.floor(Number(gameViewHeight.value) || GAME_VIEW_HEIGHT));
   const normalizedZoomPercent = normalizeZoomPercent(zoomPercent.value, data);
   const wrapEnabled = resolveWorldWrapEnabled(data);
 
@@ -11472,7 +15526,7 @@ function renderMapWithPhaser() {
   hitAreas = [];
   hitAreaMap = new Map();
   rebuildTerritorySets(data);
-  rebuildVisibleTiles(data);
+  const scoutRangeTileKeys = rebuildVisibleTiles(data);
   const opposingFactionTileMap = buildOpposingFactionUnitsByTile(data);
 
   baseLayer.fillStyle(0x101623, 1);
@@ -11484,10 +15538,8 @@ function renderMapWithPhaser() {
   const autoShrink = totalCells > 2000 ? 2 : totalCells > 1200 ? 1 : 0;
   const numberFontSize = Math.max(8, Number(heightNumberFontSize.value || 0) - autoShrink);
   const outlineWidth = Math.max(0, Number(heightNumberOutlineWidth.value || 0));
-  const seaVisual = tileVisual("海", data.shapeOnly);
-  const seaSplitColor = useHeightShading.value ? shadeColorByHeight(seaVisual.color, -2) : seaVisual.color;
   const moveContext = (() => {
-    if (!unitMoveMode.value || !selectedUnit.value) {
+    if (!isMoveCommandPendingForSelectedUnit.value || !selectedUnit.value) {
       return { reachableSet: new Set(), startKey: "" };
     }
     const moveGroup = resolveMoveGroupForUnit(selectedUnit.value);
@@ -11497,13 +15549,17 @@ function renderMapWithPhaser() {
     const unit = moveGroup.leader;
     const moveRemaining = Math.max(0, Math.floor(toSafeNumber(moveGroup.minMoveRemaining, 0)));
     return {
-      reachableSet: buildReachableTileSet(data, unit.x, unit.y, moveRemaining),
+      reachableSet: buildReachableTileSet(data, unit.x, unit.y, moveRemaining, unit),
       startKey: coordKey(unit.x, unit.y)
     };
   })();
   const moveBlinkPhase = (clockNowMs.value % 1000) / 1000;
   const moveBlinkAlpha = 0.38 + ((Math.sin(moveBlinkPhase * Math.PI * 2) + 1) * 0.24);
   const fogHiddenAlpha = showTestControls.value ? FOG_HIDDEN_ALPHA_TEST : FOG_HIDDEN_ALPHA;
+  const riverTouchSet = resolveRiverTouchSet(data);
+  const waterfallTouchSet = resolveWaterfallTouchSet(data);
+  const forestTileIconName = resolveAvailableIconName("森", "森林");
+  const forestTileIconTextureKey = forestTileIconName ? ensureRaceMarkerTexture(forestTileIconName) : "";
   const waterfallTextureKey = ensureRaceMarkerTexture(resolveWaterfallIconName());
   const settlementMarkerTextureByLevel = new Map();
   for (const levelKey of TERRITORY_RESIDENTIAL_LEVEL_ORDER) {
@@ -11528,8 +15584,64 @@ function renderMapWithPhaser() {
   const housingSelectionCenterKey = nonEmptyText(housingSelection?.centerKey);
   const housingSelectionCandidateSet = new Set(housingSelection?.candidateAttachmentKeys || []);
   const housingSelectionSelectedSet = new Set(housingSelection?.selectedAttachmentKeys || []);
+  const cityBlockPreview = cityBlockPlacementPreview.value;
+  const cityBlockPreviewTileKeySet = new Set(cityBlockPreview?.tileKeys || []);
+  const cityBlockPreviewValid = !!cityBlockPreview?.valid;
+  const cityBlockPlacedTileKeySet = new Set();
+  for (const placement of cityBlockPlacements.value) {
+    for (const tileKey of placement?.tileKeys || []) {
+      const key = nonEmptyText(tileKey);
+      if (key) cityBlockPlacedTileKeySet.add(key);
+    }
+  }
+  const cityBlockTextureByIconName = new Map();
+  const cityBlockVisualEntries = [];
+  for (const placement of cityBlockPlacements.value) {
+    const cells = Array.isArray(placement?.cells)
+      ? placement.cells.filter(cell => Number.isFinite(cell?.x) && Number.isFinite(cell?.y))
+      : [];
+    if (!cells.length) continue;
+    const typeDef = resolveCityBlockPlacementTypeDef(placement?.type);
+    cityBlockVisualEntries.push({
+      cells,
+      iconName: nonEmptyText(placement?.iconName) || typeDef.iconName,
+      alpha: CITY_BLOCK_PLACED_ALPHA
+    });
+  }
+  if (cityBlockPlacementMode.value && Array.isArray(cityBlockPreview?.cells) && cityBlockPreview.cells.length) {
+    const previewCells = cityBlockPreview.cells.filter(cell => Number.isFinite(cell?.x) && Number.isFinite(cell?.y));
+    if (previewCells.length) {
+      const typeDef = resolveCityBlockPlacementTypeDef(cityBlockPreview?.type || cityBlockPlacementType.value);
+      cityBlockVisualEntries.push({
+        cells: previewCells,
+        iconName: typeDef.iconName,
+        alpha: CITY_BLOCK_PREVIEW_ALPHA
+      });
+    }
+  }
   const terrainResourceIconCache = new Map();
+  const drawnEnemyTerritoryIds = new Set();
+  const drawnEnemyTerritoryAnchors = [];
+  const drawnEnemyNestTerritoryIds = new Set();
+  const drawnEnemyNestTerritoryAnchors = [];
   const boundsAcc = createBoundsAccumulator();
+  const heightDiffSegments = [];
+  // フィールド画像の重なり順（数値が大きいほど手前）
+  // 要件: パネル < 森 < 滝 < 特殊(洞窟/沼地/峡谷)
+  const fieldVisualDepth = {
+    panel: 0,
+    forest: 1,
+    waterfall: 2,
+    special: 3,
+    monster: 100
+  };
+  const pushLabelWithDepth = (label, depth) => {
+    if (!label) return;
+    if (Number.isFinite(depth) && typeof label.setDepth === "function") {
+      label.setDepth(depth);
+    }
+    labelTexts.push(label);
+  };
 
   const wrapOffsets = buildWrapOffsets(data);
   for (const wrapOffset of wrapOffsets) {
@@ -11549,7 +15661,7 @@ function renderMapWithPhaser() {
         const special = specialVisual(data.specialMap?.[y]?.[x], caveScale);
         const tileVisible = isTileVisible(tileKey, data);
         const revealSpecial = tileVisible && !!special && (showSpecialTilesAlways.value || selectedTileKey === tileKey);
-        const isWaterfall = !data.shapeOnly && !!data.riverData?.waterfallSet?.has(tileKey);
+        const isWaterfall = !data.shapeOnly && hasWaterfallTouchAt(data, x, y, waterfallTouchSet);
         const isLava = !data.shapeOnly && !!data.lavaMap?.[y]?.[x];
         const coastType = !data.shapeOnly ? (data.coastTypeMap?.[y]?.[x] || "") : "";
         const isCoastTile = coastType === "direct";
@@ -11561,26 +15673,16 @@ function renderMapWithPhaser() {
           && rawKey === "森"
           && (reliefKey === "丘陵" || reliefKey === "山岳")
         );
+        const baseTerrainKey = mixedForestRelief ? reliefKey : rawKey;
 
-        if (mixedForestRelief) {
-          const reliefVisual = tileVisual(reliefKey, false);
-          const forestColor = useHeightShading.value ? shadeColorByHeight(visual.color, level) : visual.color;
-          const reliefColor = useHeightShading.value ? shadeColorByHeight(reliefVisual.color, level) : reliefVisual.color;
-          if (isCoastTile) {
-            const mixedLandColor = blendHexColors(forestColor, reliefColor, 0.5);
-            drawSplitHex(baseLayer, points, mixedLandColor, seaSplitColor);
-          } else {
-            drawSplitHex(baseLayer, points, forestColor, reliefColor);
-          }
-        } else {
-          const tileColor = useHeightShading.value ? shadeColorByHeight(visual.color, level) : visual.color;
-          if (isCoastTile) {
-            drawSplitHex(baseLayer, points, tileColor, seaSplitColor);
-          } else {
-            baseLayer.fillStyle(toColorInt(tileColor), 1);
-            baseLayer.fillPoints(points, true);
-          }
-        }
+        const baseVisual = tileVisual(baseTerrainKey, data.shapeOnly);
+        const tileColor = useHeightShading.value
+          ? (baseTerrainKey === "海"
+            ? shadeSeaColorByDepth(baseVisual.color, level)
+            : shadeColorByHeight(baseVisual.color, level))
+          : baseVisual.color;
+        baseLayer.fillStyle(toColorInt(tileColor), 1);
+        baseLayer.fillPoints(points, true);
         if (!tileVisible) {
           baseLayer.fillStyle(FOG_HIDDEN_FILL, fogHiddenAlpha);
           baseLayer.fillPoints(points, true);
@@ -11590,11 +15692,14 @@ function renderMapWithPhaser() {
           baseLayer.fillPoints(points, true);
         }
         const owner = tileVisible ? tileOwnerAt(x, y) : "";
-        const factionOwnerId = tileVisible ? tileFactionOwnerIdAt(x, y) : "";
-        const borderStyle = tileVisible ? borderStyleForOwner(owner, factionOwnerId) : FOG_HIDDEN_BORDER;
-        baseLayer.lineStyle(borderStyle.width, borderStyle.color, borderStyle.alpha);
-        baseLayer.strokePoints(points, true);
-        if (tileVisible && moveContext.reachableSet.has(tileKey) && tileKey !== moveContext.startKey) {
+        if (!tileVisible) {
+          baseLayer.lineStyle(FOG_HIDDEN_BORDER.width, FOG_HIDDEN_BORDER.color, FOG_HIDDEN_BORDER.alpha);
+          baseLayer.strokePoints(points, true);
+        } else {
+          drawHeightDiffBordersForTile(data, x, y, wrapOffset, true, heightDiffSegments);
+          drawOwnTerritoryBoundaryEdgesForTile(data, x, y, wrapOffset, true);
+        }
+        if (moveContext.reachableSet.has(tileKey) && tileKey !== moveContext.startKey) {
           baseLayer.lineStyle(2.35, 0x6cff79, moveBlinkAlpha);
           baseLayer.strokePoints(points, true);
         }
@@ -11610,12 +15715,37 @@ function renderMapWithPhaser() {
             baseLayer.strokePoints(points, true);
           }
         }
+        if (cityBlockPlacedTileKeySet.has(tileKey)) {
+          baseLayer.lineStyle(2.9, 0xffd065, 0.9);
+          baseLayer.strokePoints(points, true);
+        }
+        if (cityBlockPlacementMode.value && cityBlockPreviewTileKeySet.has(tileKey)) {
+          baseLayer.lineStyle(3.3, cityBlockPreviewValid ? 0x65ffd5 : 0xff7676, 0.95);
+          baseLayer.strokePoints(points, true);
+        }
 
         const baseCenter = hexCenter(x, y);
         const center = { cx: baseCenter.cx + offX, cy: baseCenter.cy + offY };
         const symbolShouldDraw = tileVisible && (drawTerrainSymbol || revealSpecial);
         let specialIconRendered = false;
         if (revealSpecial) {
+          const caveAnchorKey = special.key === "洞窟"
+            ? nonEmptyText(data?.caveCoastAnchorMap?.[y]?.[x])
+            : "";
+          let specialIconCx = center.cx;
+          let specialIconCy = center.cy + MAP_SPECIAL_ICON_CONFIG.offsetY;
+          if (caveAnchorKey) {
+            const caveAnchor = parseCoordKey(caveAnchorKey);
+            if (Number.isFinite(caveAnchor?.x) && Number.isFinite(caveAnchor?.y)) {
+              const anchorBaseCenter = hexCenter(caveAnchor.x, caveAnchor.y);
+              const anchorCenter = { cx: anchorBaseCenter.cx + offX, cy: anchorBaseCenter.cy + offY };
+              specialIconCx = center.cx + ((anchorCenter.cx - center.cx) * MAP_CAVE_COAST_ICON_BIAS);
+              specialIconCy = center.cy + ((anchorCenter.cy - center.cy) * MAP_CAVE_COAST_ICON_BIAS) + MAP_SPECIAL_ICON_CONFIG.offsetY;
+            }
+          }
+          if (special.key === "洞窟" && rawKey === "森") {
+            specialIconCy -= (MAP_SPECIAL_ICON_CONFIG.caveSize * 0.22);
+          }
           const specialIconName = resolveSpecialOverlayIconName(special.key);
           const specialIconTextureKey = ensureRaceMarkerTexture(specialIconName);
           if (specialIconTextureKey && scene.textures.exists(specialIconTextureKey)) {
@@ -11623,17 +15753,46 @@ function renderMapWithPhaser() {
               ? MAP_SPECIAL_ICON_CONFIG.caveSize
               : MAP_SPECIAL_ICON_CONFIG.defaultSize;
             const specialIcon = scene.add.image(
-              center.cx,
-              center.cy + MAP_SPECIAL_ICON_CONFIG.offsetY,
+              specialIconCx,
+              specialIconCy,
               specialIconTextureKey
             );
             specialIcon.setDisplaySize(iconSize, iconSize);
             specialIcon.setOrigin(0.5);
-            labelTexts.push(specialIcon);
+            pushLabelWithDepth(specialIcon, fieldVisualDepth.special);
+            specialIconRendered = true;
+          } else {
+            const specialLabel = scene.add.text(specialIconCx, specialIconCy, special.short, {
+              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+              fontStyle: "700",
+              fontSize: `${special.key === "洞窟"
+                ? MAP_SPECIAL_ICON_CONFIG.fallbackCaveTextFontSizePx
+                : MAP_SPECIAL_ICON_CONFIG.fallbackTextFontSizePx}px`,
+              color: special.textColor
+            });
+            specialLabel.setOrigin(0.5);
+            pushLabelWithDepth(specialLabel, fieldVisualDepth.special);
             specialIconRendered = true;
           }
         }
-        if (symbolShouldDraw && !specialIconRendered) {
+        let forestIconRendered = false;
+        if (
+          tileVisible
+          && rawKey === "森"
+          && forestTileIconTextureKey
+          && scene.textures.exists(forestTileIconTextureKey)
+        ) {
+          const forestIcon = scene.add.image(
+            center.cx,
+            center.cy + MAP_FOREST_ICON_CONFIG.offsetY,
+            forestTileIconTextureKey
+          );
+          forestIcon.setDisplaySize(MAP_FOREST_ICON_CONFIG.size, MAP_FOREST_ICON_CONFIG.size);
+          forestIcon.setOrigin(0.5);
+          pushLabelWithDepth(forestIcon, fieldVisualDepth.forest);
+          forestIconRendered = true;
+        }
+        if (symbolShouldDraw && !specialIconRendered && !forestIconRendered) {
           const terrainShort = mixedForestRelief
             ? (reliefKey === "山岳" ? "森山" : "森丘")
             : visual.short;
@@ -11650,7 +15809,7 @@ function renderMapWithPhaser() {
           labelTexts.push(symbolLabel);
         }
 
-        if (tileVisible && showWaterfallEffects.value && isWaterfall) {
+        if (tileVisible && isWaterfall) {
           const fallY = symbolShouldDraw
             ? center.cy + MAP_WATERFALL_ICON_CONFIG.yOffsetWhenTerrainSymbolVisible
             : center.cy + MAP_WATERFALL_ICON_CONFIG.yOffsetWhenTerrainSymbolHidden;
@@ -11658,7 +15817,7 @@ function renderMapWithPhaser() {
             const fallIcon = scene.add.image(center.cx, fallY, waterfallTextureKey);
             fallIcon.setDisplaySize(MAP_WATERFALL_ICON_CONFIG.size, MAP_WATERFALL_ICON_CONFIG.size);
             fallIcon.setOrigin(0.5);
-            labelTexts.push(fallIcon);
+            pushLabelWithDepth(fallIcon, fieldVisualDepth.waterfall);
           } else {
             const fallLabel = scene.add.text(center.cx, fallY, "滝", {
               fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
@@ -11669,9 +15828,10 @@ function renderMapWithPhaser() {
             fallLabel.setStroke("#153a52", 3);
             fallLabel.setShadow(0, 0, "#000000", 3, false, true);
             fallLabel.setOrigin(0.5);
-            labelTexts.push(fallLabel);
+            pushLabelWithDepth(fallLabel, fieldVisualDepth.waterfall);
           }
         }
+
         if (tileVisible && owner === "player" && activeVillageState) {
           const tileMode = resolveTerritoryTileModeAt(activeVillageState, tileKey);
           const pendingConversion = activeVillageConversionMap?.[tileKey];
@@ -11719,7 +15879,7 @@ function renderMapWithPhaser() {
                 settlementIcon.setDisplaySize(displaySize, displaySize);
                 settlementIcon.setAlpha(displayAlpha);
                 settlementIcon.setOrigin(0.5);
-                labelTexts.push(settlementIcon);
+                pushLabelWithDepth(settlementIcon, fieldVisualDepth.panel);
               } else {
                 const settlementLabel = scene.add.text(center.cx, center.cy, residentialDef?.label || "村", {
                   fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
@@ -11730,7 +15890,7 @@ function renderMapWithPhaser() {
                 settlementLabel.setOrigin(0.5);
                 settlementLabel.setStroke("#fff7df", 2);
                 if (isAttachedTile) settlementLabel.setAlpha(displayAlpha);
-                labelTexts.push(settlementLabel);
+                pushLabelWithDepth(settlementLabel, fieldVisualDepth.panel);
               }
             }
           } else if (tileMode === TERRITORY_TILE_MODE_RESOURCE || pendingResource) {
@@ -11743,19 +15903,23 @@ function renderMapWithPhaser() {
             if (resourceIconName) {
               const resourceTextureKey = ensureRaceMarkerTexture(resourceIconName);
               if (resourceTextureKey && scene.textures.exists(resourceTextureKey)) {
-                const resourceIcon = scene.add.image(center.cx, center.cy, resourceTextureKey);
+                const resourceIcon = scene.add.image(
+                  center.cx + toSafeNumber(MAP_RESOURCE_TILE_MARKER_CONFIG.offsetX, 0),
+                  center.cy + toSafeNumber(MAP_RESOURCE_TILE_MARKER_CONFIG.offsetY, 0),
+                  resourceTextureKey
+                );
                 resourceIcon.setDisplaySize(
                   MAP_RESOURCE_TILE_MARKER_CONFIG.iconSize,
                   MAP_RESOURCE_TILE_MARKER_CONFIG.iconSize
                 );
                 resourceIcon.setOrigin(0.5);
-                labelTexts.push(resourceIcon);
+                pushLabelWithDepth(resourceIcon, fieldVisualDepth.panel);
               }
             }
           }
         }
 
-        if (tileVisible && showStrongEnemyMarkers.value && strongInfo) {
+        if (tileVisible && (showTestControls.value || showStrongEnemyMarkers.value) && strongInfo) {
           baseLayer.fillStyle(0xa83232, 0.94);
           baseLayer.fillCircle(center.cx + 13, center.cy - 14, 4.3);
           baseLayer.lineStyle(1.2, 0xffe8d6, 0.9);
@@ -11771,44 +15935,199 @@ function renderMapWithPhaser() {
           labelTexts.push(eliteLabel);
         }
 
-        const hasTileEnemy = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) && data.enemySpawnMap[y][x].length > 0;
+        const tileEnemyNestList = tileVisible ? configuredEnemiesAt(x, y, data) : [];
+        if (tileEnemyNestList.length > 0) {
+          const leadNestEnemy = tileEnemyNestList[0];
+          const isCaveTile = rawKey === "洞窟" || nonEmptyText(data?.specialMap?.[y]?.[x]) === "洞窟";
+          const enemyTerritoryId = nonEmptyText(leadNestEnemy?.territoryId);
+          const enemyTerritoryCenterX = Math.floor(toSafeNumber(leadNestEnemy?.territoryCenterX, x));
+          const enemyTerritoryCenterY = Math.floor(toSafeNumber(leadNestEnemy?.territoryCenterY, y));
+          const enemyTerritoryRadius = Math.max(
+            1,
+            Math.floor(toSafeNumber(leadNestEnemy?.territoryRadius, ENEMY_SWARM_TERRITORY_RADIUS_MIN))
+          );
+          const enemyNestIconName = resolveEnemyNestIconNameForMap(leadNestEnemy, tileEnemyNestList);
+          const enemyGroupSize = Math.max(
+            tileEnemyNestList.length,
+            Math.floor(toSafeNumber(leadNestEnemy?.strongGroupSize, tileEnemyNestList.length))
+          );
+          const hasSwarmLikeMetadata = hasEnemySwarmRule(leadNestEnemy)
+            || leadNestEnemy?.strong === true
+            || enemyGroupSize >= 2
+            || Number.isFinite(leadNestEnemy?.territoryCenterX)
+            || Number.isFinite(leadNestEnemy?.territoryCenterY);
+          const fallbackTerritoryId = `nest-${enemyTerritoryCenterX}-${enemyTerritoryCenterY}-${enemyNestIconName}`;
+          const nestTerritoryId = enemyTerritoryId || fallbackTerritoryId;
+          const shouldDrawNestIcon = hasSwarmLikeMetadata
+            && !!enemyNestIconName
+            && (leadNestEnemy?.strong === true || enemyGroupSize >= 2 || hasEnemySwarmRule(leadNestEnemy))
+            && !isCaveTile;
+          const nestDrawnByTerritory = !!nestTerritoryId && drawnEnemyNestTerritoryIds.has(nestTerritoryId);
+          const nestDrawnByTerritoryOverlap = drawnEnemyNestTerritoryAnchors.some(anchor => (
+            hexDistance(
+              { x: enemyTerritoryCenterX, y: enemyTerritoryCenterY },
+              { x: anchor.x, y: anchor.y }
+            ) <= (enemyTerritoryRadius + Math.max(1, anchor.radius))
+          ));
+          if (shouldDrawNestIcon && !nestDrawnByTerritory && !nestDrawnByTerritoryOverlap) {
+            const nestTextureKey = ensureRaceMarkerTexture(enemyNestIconName, { removeWhiteBg: true });
+            if (nestTextureKey && scene.textures.exists(nestTextureKey)) {
+              const nestCenter = hexCenter(enemyTerritoryCenterX, enemyTerritoryCenterY);
+              const nestSprite = scene.add.image(nestCenter.cx, nestCenter.cy, nestTextureKey);
+              nestSprite.setDisplaySize(MAP_ENEMY_NEST_MARKER_SIZE_PX, MAP_ENEMY_NEST_MARKER_SIZE_PX);
+              nestSprite.setOrigin(0.5);
+              nestSprite.setAlpha(0.96);
+              pushLabelWithDepth(nestSprite, Math.max(0, fieldVisualDepth.monster - 0.1));
+            }
+            if (nestTerritoryId) {
+              drawnEnemyNestTerritoryIds.add(nestTerritoryId);
+            }
+            drawnEnemyNestTerritoryAnchors.push({
+              x: enemyTerritoryCenterX,
+              y: enemyTerritoryCenterY,
+              radius: enemyTerritoryRadius
+            });
+          }
+        }
+
         const hasFactionEnemy = opposingFactionTileMap.has(tileKey);
         const tileInCurrentVision = isTileInCurrentVision(tileKey, data);
-        const spottedEnemyVisible = tileInCurrentVision && hasTileEnemy && spottedEnemyTileKeys.has(tileKey);
+        const enemySpottedOnVision = (showTestControls.value === true) || (tileInCurrentVision && spottedEnemyTileKeys.has(tileKey));
+        const tileEnemyList = enemySpottedOnVision ? enemiesAt(x, y, data) : [];
+        const spottedEnemyVisible = enemySpottedOnVision && tileEnemyList.length > 0;
         const spottedFactionVisible = tileInCurrentVision && hasFactionEnemy && spottedFactionTileKeys.has(tileKey);
         if (spottedEnemyVisible) {
-          const tileEnemyList = Array.isArray(data?.enemySpawnMap?.[y]?.[x]) ? data.enemySpawnMap[y][x] : [];
           const leadEnemy = tileEnemyList.length ? tileEnemyList[0] : null;
-          const enemyMarkerIconName = resolveEnemyIconName(leadEnemy);
-          const enemyMarkerTextureKey = ensureRaceMarkerTexture(enemyMarkerIconName, { removeWhiteBg: true });
-          const enemyMx = center.cx + MAP_ENEMY_MARKER_CONFIG.offsetX;
-          const enemyMy = center.cy + MAP_ENEMY_MARKER_CONFIG.offsetY;
-          if (enemyMarkerTextureKey && scene.textures.exists(enemyMarkerTextureKey)) {
-            const enemyIconSprite = scene.add.image(enemyMx, enemyMy, enemyMarkerTextureKey);
-            enemyIconSprite.setDisplaySize(MAP_ENEMY_MARKER_CONFIG.iconSize, MAP_ENEMY_MARKER_CONFIG.iconSize);
-            enemyIconSprite.setOrigin(0.5);
-            labelTexts.push(enemyIconSprite);
-          } else {
-            const enemyMarker = scene.add.text(enemyMx, enemyMy, "敵", {
-              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-              fontStyle: "700",
-              fontSize: "9px",
-              color: "#fff2da"
-            });
-            enemyMarker.setOrigin(0.5);
-            enemyMarker.setStroke("#3f0f0f", 2);
-            labelTexts.push(enemyMarker);
+          const nonAggressiveOnlyInTile = tileEnemyList.length > 0
+            && tileEnemyList.every(enemy => enemy?.aggressive !== true);
+          const enemyMarkerAlpha = (showTestControls.value && nonAggressiveOnlyInTile)
+            ? 0.5
+            : 1;
+          let enemyHpMaxTotal = 0;
+          let enemyHpNowTotal = 0;
+          let enemyRecentDamageTotal = 0;
+          for (const enemy of tileEnemyList) {
+            const enemyId = nonEmptyText(enemy?.id);
+            const hpMax = Math.max(
+              1,
+              Math.floor(toSafeNumber(enemy?.maxHp, toSafeNumber(enemy?.currentHp, toSafeNumber(enemy?.hp, 1))))
+            );
+            const hpNow = Math.max(0, Math.floor(toSafeNumber(enemy?.currentHp, toSafeNumber(enemy?.hp, hpMax))));
+            enemyHpMaxTotal += hpMax;
+            enemyHpNowTotal += Math.min(hpNow, hpMax);
+            if (enemyId) {
+              enemyRecentDamageTotal += resolveRecentDamageForUnit(`spawn:${enemyId}`);
+            }
           }
-          if (alertedEnemyTileKeys.has(tileKey)) {
-            const alertLabel = scene.add.text(enemyMx, enemyMy - Math.max(10, MAP_ENEMY_MARKER_CONFIG.iconSize * 0.55), "!", {
-              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
-              fontStyle: "700",
-              fontSize: "16px",
-              color: "#ffdede"
-            });
-            alertLabel.setOrigin(0.5);
-            alertLabel.setStroke("#8b1111", 3);
-            labelTexts.push(alertLabel);
+          const enemyHpRatio = enemyHpMaxTotal > 0
+            ? Math.max(0, Math.min(1, enemyHpNowTotal / enemyHpMaxTotal))
+            : 0;
+          const enemyHpPrevTotal = Math.max(0, Math.min(enemyHpMaxTotal, enemyHpNowTotal + enemyRecentDamageTotal));
+          const enemyHpPrevRatio = enemyHpMaxTotal > 0
+            ? Math.max(enemyHpRatio, Math.min(1, enemyHpPrevTotal / enemyHpMaxTotal))
+            : enemyHpRatio;
+          const enemyTerritoryId = nonEmptyText(leadEnemy?.territoryId);
+          const enemyTerritoryCenterX = Math.floor(toSafeNumber(leadEnemy?.territoryCenterX, x));
+          const enemyTerritoryCenterY = Math.floor(toSafeNumber(leadEnemy?.territoryCenterY, y));
+          const enemyTerritoryRadius = Math.max(
+            1,
+            Math.floor(toSafeNumber(leadEnemy?.territoryRadius, ENEMY_SWARM_TERRITORY_RADIUS_MIN))
+          );
+          const useEnemyIllustrationOnMap = enemySpottedOnVision;
+          const shouldSkipByTerritory = useEnemyIllustrationOnMap
+            && !!enemyTerritoryId
+            && drawnEnemyTerritoryIds.has(enemyTerritoryId);
+          const shouldSkipByTerritoryOverlap = useEnemyIllustrationOnMap
+            && drawnEnemyTerritoryAnchors.some(anchor => (
+              hexDistance(
+                { x: enemyTerritoryCenterX, y: enemyTerritoryCenterY },
+                { x: anchor.x, y: anchor.y }
+              ) <= (enemyTerritoryRadius + Math.max(1, anchor.radius))
+            ));
+          if (!shouldSkipByTerritory && !shouldSkipByTerritoryOverlap) {
+            const enemyMx = center.cx;
+            const enemyMy = center.cy;
+            let drawnEnemyMarkerWidth = MAP_ENEMY_MARKER_CONFIG.iconSize;
+            let drawnEnemyMarkerHeight = MAP_ENEMY_MARKER_CONFIG.iconSize;
+            let enemyMarkerTextureKey = "";
+            let useIllustTexture = false;
+            if (useEnemyIllustrationOnMap) {
+              const imageName = resolveEnemyIllustrationNameForMap(leadEnemy, tileEnemyList);
+              enemyMarkerTextureKey = ensureEnemyIllustrationTexture(imageName, { removeWhiteBg: true });
+              useIllustTexture = !!enemyMarkerTextureKey;
+            }
+            if (!enemyMarkerTextureKey) {
+              const enemyMarkerIconName = resolveEnemyIconName(leadEnemy);
+              enemyMarkerTextureKey = ensureRaceMarkerTexture(enemyMarkerIconName, { removeWhiteBg: true });
+            }
+            if (enemyMarkerTextureKey && scene.textures.exists(enemyMarkerTextureKey)) {
+              const enemyIconSprite = scene.add.image(enemyMx, enemyMy, enemyMarkerTextureKey);
+              const markerHeight = useIllustTexture
+                ? MAP_ENEMY_ILLUST_MARKER_SIZE_PX
+                : MAP_ENEMY_MARKER_CONFIG.iconSize;
+              const markerWidth = useIllustTexture
+                ? (markerHeight * MAP_ENEMY_ILLUST_ASPECT_WIDTH) / MAP_ENEMY_ILLUST_ASPECT_HEIGHT
+                : markerHeight;
+              drawnEnemyMarkerWidth = markerWidth;
+              drawnEnemyMarkerHeight = markerHeight;
+              enemyIconSprite.setDisplaySize(markerWidth, markerHeight);
+              enemyIconSprite.setOrigin(0.5);
+              enemyIconSprite.setAlpha(enemyMarkerAlpha);
+              pushLabelWithDepth(enemyIconSprite, fieldVisualDepth.monster);
+            } else {
+              const enemyMarker = scene.add.text(enemyMx, enemyMy, "敵", {
+                fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+                fontStyle: "700",
+                fontSize: "9px",
+                color: "#fff2da"
+              });
+              enemyMarker.setOrigin(0.5);
+              enemyMarker.setStroke("#3f0f0f", 2);
+              enemyMarker.setAlpha(enemyMarkerAlpha);
+              pushLabelWithDepth(enemyMarker, fieldVisualDepth.monster);
+            }
+            if (enemyRecentDamageTotal > 0 && enemyHpMaxTotal > 0) {
+              const hpBarWidth = Math.max(18, Math.round(drawnEnemyMarkerWidth * 0.68));
+              const hpBarHeight = 4;
+              const hpBarX = Math.round(enemyMx - (hpBarWidth * 0.5));
+              const hpBarY = Math.round(enemyMy + (drawnEnemyMarkerHeight * 0.5 + 3));
+              markerLayer.fillStyle(0x101010, 0.82 * enemyMarkerAlpha);
+              markerLayer.fillRoundedRect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, 2);
+              markerLayer.lineStyle(1, 0xf0d8ae, 0.74 * enemyMarkerAlpha);
+              markerLayer.strokeRoundedRect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, 2);
+              const hpFillWidth = Math.max(0, Math.floor(hpBarWidth * enemyHpRatio));
+              if (hpFillWidth > 0) {
+                markerLayer.fillStyle(0x53d476, 0.9 * enemyMarkerAlpha);
+                markerLayer.fillRoundedRect(hpBarX, hpBarY, hpFillWidth, hpBarHeight, 2);
+              }
+              const hpPrevFillWidth = Math.max(0, Math.floor(hpBarWidth * enemyHpPrevRatio));
+              const hpDamageWidth = Math.max(0, hpPrevFillWidth - hpFillWidth);
+              if (hpDamageWidth > 0) {
+                markerLayer.fillStyle(0xe04a4a, 0.9 * enemyMarkerAlpha);
+                markerLayer.fillRoundedRect(hpBarX + hpFillWidth, hpBarY, hpDamageWidth, hpBarHeight, 2);
+              }
+            }
+            if (alertedEnemyTileKeys.has(tileKey)) {
+              const alertLabel = scene.add.text(enemyMx, enemyMy - Math.max(10, MAP_ENEMY_MARKER_CONFIG.iconSize * 0.55), "!", {
+                fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+                fontStyle: "700",
+                fontSize: "16px",
+                color: "#ffdede"
+              });
+              alertLabel.setOrigin(0.5);
+              alertLabel.setStroke("#8b1111", 3);
+              pushLabelWithDepth(alertLabel, fieldVisualDepth.monster);
+            }
+            if (useEnemyIllustrationOnMap && enemyTerritoryId) {
+              drawnEnemyTerritoryIds.add(enemyTerritoryId);
+            }
+            if (useEnemyIllustrationOnMap) {
+              drawnEnemyTerritoryAnchors.push({
+                x: enemyTerritoryCenterX,
+                y: enemyTerritoryCenterY,
+                radius: enemyTerritoryRadius
+              });
+            }
           }
         }
         if (spottedFactionVisible) {
@@ -11859,7 +16178,7 @@ function renderMapWithPhaser() {
 
         if (!isBase) continue;
         const polygon = new Phaser.Geom.Polygon(basePoints);
-        const river = !data.shapeOnly && !!data.riverData?.riverSet?.has(tileKey);
+        const river = !data.shapeOnly && hasRiverTouchAt(data, x, y, riverTouchSet);
         const waterfall = isWaterfall;
         hitAreas.push({
           x,
@@ -11885,10 +16204,62 @@ function renderMapWithPhaser() {
     }
   }
   renderedHexBounds = finalizeBounds(boundsAcc, worldW, worldH);
+  drawScoutRangeBoundaryOverlay(data, scoutRangeTileKeys, baseLayer, wrapOffsets);
+  drawConnectedHeightDiffSegments(baseLayer, heightDiffSegments);
+
+  for (const placement of cityBlockVisualEntries) {
+    const iconName = nonEmptyText(placement?.iconName);
+    if (!iconName) continue;
+    if (!cityBlockTextureByIconName.has(iconName)) {
+      cityBlockTextureByIconName.set(iconName, ensureRaceMarkerTexture(iconName));
+    }
+    const textureKey = cityBlockTextureByIconName.get(iconName);
+    if (!textureKey || !scene.textures.exists(textureKey)) continue;
+    const cells = placement?.cells || [];
+    const visibleCells = cells.filter(cell => isTileVisible(coordKey(cell.x, cell.y), data));
+    if (!visibleCells.length) continue;
+    for (const offset of wrapOffsets) {
+      if (!shouldDrawWrappedTileCopy(visibleCells[0].x, visibleCells[0].y, offset, data.w, data.h)) continue;
+      const ox = offset?.x || 0;
+      const oy = offset?.y || 0;
+      let minCx = Number.POSITIVE_INFINITY;
+      let maxCx = Number.NEGATIVE_INFINITY;
+      let minCy = Number.POSITIVE_INFINITY;
+      let maxCy = Number.NEGATIVE_INFINITY;
+      let sumCx = 0;
+      let sumCy = 0;
+      let count = 0;
+      for (const cell of visibleCells) {
+        const c = hexCenter(cell.x, cell.y);
+        const cx = c.cx + ox;
+        const cy = c.cy + oy;
+        minCx = Math.min(minCx, cx);
+        maxCx = Math.max(maxCx, cx);
+        minCy = Math.min(minCy, cy);
+        maxCy = Math.max(maxCy, cy);
+        sumCx += cx;
+        sumCy += cy;
+        count += 1;
+      }
+      if (!count) continue;
+      const icon = scene.add.image(sumCx / count, sumCy / count, textureKey);
+      icon.setDisplaySize(
+        Math.max(54, (maxCx - minCx) + 56),
+        Math.max(54, (maxCy - minCy) + 56)
+      );
+      icon.setAlpha(toSafeNumber(placement?.alpha, CITY_BLOCK_PLACED_ALPHA));
+      icon.setOrigin(0.5);
+      pushLabelWithDepth(icon, fieldVisualDepth.panel);
+    }
+  }
 
   drawRiverOverlay(data, visibleTileKeys, wrapOffsets);
   drawLavaOverlay(data, visibleTileKeys, wrapOffsets);
-  if (unitMoveMode.value && plannedMovePathNodes.value.length >= 2) {
+  const activeMoveRoutePaths = collectActiveMoveRoutePathNodes(unitList.value);
+  if (activeMoveRoutePaths.length) {
+    drawActiveMoveRouteOverlay(data, activeMoveRoutePaths, wrapOffsets);
+  }
+  if (isMoveCommandPendingForSelectedUnit.value && plannedMovePathNodes.value.length >= 2) {
     drawPlannedMovePathOverlay(data, plannedMovePathNodes.value, wrapOffsets);
   }
 
@@ -11923,7 +16294,7 @@ function renderMapWithPhaser() {
       if (villageMarkerTextureKey && scene.textures.exists(villageMarkerTextureKey)) {
         const villageIcon = scene.add.image(center.cx, center.cy, villageMarkerTextureKey);
         villageIcon.setDisplaySize(villageMarkerSize, villageMarkerSize);
-        labelTexts.push(villageIcon);
+        pushLabelWithDepth(villageIcon, fieldVisualDepth.panel);
       } else {
         const villageLabel = scene.add.text(center.cx, center.cy, homeResidentialDef?.label || (villageScaleLabel === "村" ? "村" : "町"), {
           fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
@@ -11933,7 +16304,7 @@ function renderMapWithPhaser() {
         });
         villageLabel.setOrigin(0.5);
         villageLabel.setStroke("#fff7df", 2);
-        labelTexts.push(villageLabel);
+        pushLabelWithDepth(villageLabel, fieldVisualDepth.panel);
       }
     }
   }
@@ -11955,11 +16326,19 @@ function renderMapWithPhaser() {
     unitsByTile.get(tileKey).push(unit);
   }
 
+  const blinkNowMs = Date.now();
   for (const [, members] of unitsByTile.entries()) {
     if (!members.length) continue;
     const lead = members[0];
+    const memberUnitIds = members.map(unit => nonEmptyText(unit?.id)).filter(Boolean);
+    const unitBlinkAlpha = resolveUnitDamageBlinkAlphaByIds(memberUnitIds, blinkNowMs);
     const baseCenter = hexCenter(lead.x, lead.y);
     const iconColor = resolveRaceMarkerColor(lead.race);
+    const unitIllustrationName = resolveUnitIllustrationNameForMap(lead);
+    const unitIllustrationTextureKey = unitIllustrationName
+      ? ensureUnitIllustrationTexture(unitIllustrationName, { removeWhiteBg: true })
+      : "";
+    const useUnitIllustration = !!(unitIllustrationTextureKey && scene.textures.exists(unitIllustrationTextureKey));
     const squadMarkerIconName = members
       .map(unit => nonEmptyText(unit?.squadIconName))
       .find(name => name.length > 0) || "";
@@ -11972,6 +16351,9 @@ function renderMapWithPhaser() {
     const surveyTask = members
       .map(unit => resolveUnitSurveyTask(unit))
       .find(task => !!task);
+    const battleMember = members.find(unit => isUnitInBattleState(unit)) || null;
+    const battleIconName = resolveAvailableIconName("攻撃");
+    const battleTextureKey = battleIconName ? ensureRaceMarkerTexture(battleIconName) : "";
     for (const offset of wrapOffsets) {
       if (!shouldDrawWrappedTileCopy(lead.x, lead.y, offset, data.w, data.h)) continue;
       const ox = offset?.x || 0;
@@ -11979,16 +16361,41 @@ function renderMapWithPhaser() {
       const center = { cx: baseCenter.cx + ox, cy: baseCenter.cy + oy };
       const unitMx = center.cx + MAP_UNIT_MARKER_CONFIG.offsetX;
       const unitMy = center.cy + MAP_UNIT_MARKER_CONFIG.offsetY;
-      markerLayer.fillStyle(iconColor, 0.92);
-      markerLayer.fillCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
-      markerLayer.lineStyle(1.5, 0xe8f3ff, 0.95);
-      markerLayer.strokeCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
-      if (markerTextureKey && scene.textures.exists(markerTextureKey)) {
+      const markerHeight = MAP_UNIT_ILLUST_MARKER_SIZE_PX;
+      const markerWidth = (markerHeight * MAP_UNIT_ILLUST_ASPECT_WIDTH) / MAP_UNIT_ILLUST_ASPECT_HEIGHT;
+      const hpMax = Math.max(1, resolveUnitMaxHpValue(lead));
+      const hpNow = Math.max(0, resolveUnitCurrentHpValue(lead, hpMax));
+      const isUnitDead = hpNow <= 0;
+      const unitMarkerAlpha = unitBlinkAlpha * (isUnitDead ? 0.72 : 1);
+      const hpRatio = Math.max(0, Math.min(1, hpNow / hpMax));
+      const recentDamage = resolveRecentDamageForUnit(nonEmptyText(lead?.id), blinkNowMs);
+      const hpPrev = Math.max(0, Math.min(hpMax, hpNow + recentDamage));
+      const hpPrevRatio = Math.max(hpRatio, Math.min(1, hpPrev / hpMax));
+      if (useUnitIllustration) {
+        const illustSprite = scene.add.image(unitMx, unitMy, unitIllustrationTextureKey);
+        illustSprite.setDisplaySize(markerWidth, markerHeight);
+        illustSprite.setOrigin(0.5);
+        illustSprite.setAlpha(unitMarkerAlpha);
+        if (isUnitDead) {
+          illustSprite.setTint(0x8f8f8f);
+        }
+        pushLabelWithDepth(illustSprite, fieldVisualDepth.monster);
+      } else {
+        markerLayer.fillStyle(iconColor, 0.92 * unitMarkerAlpha);
+        markerLayer.fillCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
+        markerLayer.lineStyle(1.5, 0xe8f3ff, 0.95 * unitMarkerAlpha);
+        markerLayer.strokeCircle(unitMx, unitMy, MAP_UNIT_MARKER_CONFIG.radius);
+      }
+      if (!useUnitIllustration && markerTextureKey && scene.textures.exists(markerTextureKey)) {
         const raceIconSprite = scene.add.image(unitMx, unitMy, markerTextureKey);
         raceIconSprite.setDisplaySize(MAP_UNIT_MARKER_CONFIG.iconSize, MAP_UNIT_MARKER_CONFIG.iconSize);
         raceIconSprite.setOrigin(0.5);
-        labelTexts.push(raceIconSprite);
-      } else {
+        raceIconSprite.setAlpha(unitMarkerAlpha);
+        if (isUnitDead) {
+          raceIconSprite.setTint(0x8f8f8f);
+        }
+        pushLabelWithDepth(raceIconSprite, fieldVisualDepth.monster);
+      } else if (!useUnitIllustration) {
         const raceGlyphText = scene.add.text(unitMx, unitMy, glyph, {
           fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
           fontStyle: "700",
@@ -11997,9 +16404,34 @@ function renderMapWithPhaser() {
         });
         raceGlyphText.setOrigin(0.5);
         raceGlyphText.setStroke("#12202f", 2);
-        labelTexts.push(raceGlyphText);
+        raceGlyphText.setAlpha(unitMarkerAlpha);
+        if (isUnitDead) {
+          raceGlyphText.setColor("#a5aab2");
+        }
+        pushLabelWithDepth(raceGlyphText, fieldVisualDepth.monster);
       }
 
+      if (recentDamage > 0) {
+        const hpBarWidth = Math.max(18, Math.round((useUnitIllustration ? markerWidth : (MAP_UNIT_MARKER_CONFIG.radius * 2.2)) * 0.68));
+        const hpBarHeight = 4;
+        const hpBarX = Math.round(unitMx - (hpBarWidth * 0.5));
+        const hpBarY = Math.round(unitMy + (useUnitIllustration ? (markerHeight * 0.5 + 3) : (MAP_UNIT_MARKER_CONFIG.radius + 3)));
+        markerLayer.fillStyle(0x101010, 0.82 * unitMarkerAlpha);
+        markerLayer.fillRoundedRect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, 2);
+        markerLayer.lineStyle(1, 0xf0d8ae, 0.74 * unitMarkerAlpha);
+        markerLayer.strokeRoundedRect(hpBarX, hpBarY, hpBarWidth, hpBarHeight, 2);
+        const hpFillWidth = Math.max(0, Math.floor(hpBarWidth * hpRatio));
+        if (hpFillWidth > 0) {
+          markerLayer.fillStyle(0x53d476, 0.9 * unitMarkerAlpha);
+          markerLayer.fillRoundedRect(hpBarX, hpBarY, hpFillWidth, hpBarHeight, 2);
+        }
+        const hpPrevFillWidth = Math.max(0, Math.floor(hpBarWidth * hpPrevRatio));
+        const hpDamageWidth = Math.max(0, hpPrevFillWidth - hpFillWidth);
+        if (hpDamageWidth > 0) {
+          markerLayer.fillStyle(0xe04a4a, 0.9 * unitMarkerAlpha);
+          markerLayer.fillRoundedRect(hpBarX + hpFillWidth, hpBarY, hpDamageWidth, hpBarHeight, 2);
+        }
+      }
       if (members.length > 1) {
         const countText = scene.add.text(
           unitMx + MAP_UNIT_MARKER_CONFIG.radius * 0.66,
@@ -12015,23 +16447,54 @@ function renderMapWithPhaser() {
         countText.setOrigin(0.5);
         countText.setStroke("#09111f", 1);
         countText.setResolution(2);
-        labelTexts.push(countText);
+        countText.setAlpha(unitBlinkAlpha);
+        pushLabelWithDepth(countText, fieldVisualDepth.monster);
       }
       if (surveyTask) {
+        const surveySeconds = resolveSurveyDurationSeconds(surveyTask);
+        const surveyLabelText = Number.isFinite(surveySeconds) ? `🔍${surveySeconds}秒` : "🔍";
         const surveyLabel = scene.add.text(
           unitMx,
           unitMy - (MAP_UNIT_MARKER_CONFIG.radius + 12),
-          "🔍",
+          surveyLabelText,
           {
             fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
             fontStyle: "700",
-            fontSize: "12px",
+            fontSize: "11px",
             color: "#eaf5ff"
           }
         );
         surveyLabel.setOrigin(0.5);
         surveyLabel.setStroke("#0b1f35", 3);
-        labelTexts.push(surveyLabel);
+        surveyLabel.setAlpha(unitBlinkAlpha);
+        pushLabelWithDepth(surveyLabel, fieldVisualDepth.monster);
+      }
+      if (battleMember) {
+        const battleX = unitMx + (MAP_UNIT_MARKER_CONFIG.radius + 7);
+        const battleY = unitMy - (MAP_UNIT_MARKER_CONFIG.radius + 9);
+        if (battleTextureKey && scene.textures.exists(battleTextureKey)) {
+          const battleIcon = scene.add.image(battleX, battleY, battleTextureKey);
+          battleIcon.setOrigin(0.5);
+          battleIcon.setDisplaySize(13, 13);
+          battleIcon.setAlpha(unitBlinkAlpha);
+          pushLabelWithDepth(battleIcon, fieldVisualDepth.monster);
+        } else {
+          const battleLabel = scene.add.text(
+            battleX,
+            battleY,
+            "⚔",
+            {
+              fontFamily: "Noto Sans JP, Hiragino Kaku Gothic ProN, Meiryo, sans-serif",
+              fontStyle: "800",
+              fontSize: "11px",
+              color: "#ffd6d6"
+            }
+          );
+          battleLabel.setOrigin(0.5);
+          battleLabel.setStroke("#5a0b0b", 2);
+          battleLabel.setAlpha(unitBlinkAlpha);
+          pushLabelWithDepth(battleLabel, fieldVisualDepth.monster);
+        }
       }
       if (attackLeaderId && nonEmptyText(lead?.id) === attackLeaderId) {
         const attackLabel = scene.add.text(
@@ -12047,17 +16510,128 @@ function renderMapWithPhaser() {
         );
         attackLabel.setOrigin(0.5);
         attackLabel.setStroke("#5a0b0b", 3);
-        labelTexts.push(attackLabel);
+        attackLabel.setAlpha(unitBlinkAlpha);
+        pushLabelWithDepth(attackLabel, fieldVisualDepth.monster);
       }
     }
   }
 
   if (tileAttackSelectionMode.value) {
-    const attackMoveGroup = selectedUnit.value
-      ? resolveMoveGroupForUnit(selectedUnit.value, { allowMemberAsLeader: true })
-      : null;
-    const leader = attackMoveGroup?.ok ? attackMoveGroup.leader : null;
+    const attackState = resolveSelectedTileAttackActionState();
+    const leader = attackState?.moveGroup?.leader || null;
     if (Number.isFinite(leader?.x) && Number.isFinite(leader?.y)) {
+      const leaderKey = coordKey(leader.x, leader.y);
+      const rangeKeySet = buildAttackPatternTileKeySet(data, leader, "circle", tileAttackRange.value);
+      rangeKeySet.delete(leaderKey);
+      const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+      let previewKeySet = attackState?.patternTileKeys instanceof Set
+        ? new Set(attackState.patternTileKeys)
+        : buildAttackPatternTileKeySet(data, leader, effectivePatternKey, tileAttackRange.value);
+      previewKeySet.delete(leaderKey);
+      const normalizedPattern = normalizeTileAttackPatternKey(effectivePatternKey);
+      if (normalizedPattern === "single") {
+        const singleTargetSet = new Set();
+        const candidateKeys = [nonEmptyText(hoveredTileKey), nonEmptyText(selectedTileKey)].filter(Boolean);
+        for (const key of candidateKeys) {
+          if (!rangeKeySet.has(key) || key === leaderKey) continue;
+          singleTargetSet.add(key);
+          break;
+        }
+        previewKeySet = singleTargetSet;
+      }
+      const splashSpec = resolveSelectedTileAttackSplashSpec();
+      const splashAnchorKey = resolveTileAttackPreviewAnchorKey(rangeKeySet, previewKeySet, leader);
+      const splashPreviewSets = buildSplashPreviewTileKeySets(data, splashAnchorKey, splashSpec);
+      for (const rangeKey of rangeKeySet) {
+        const rangeTile = hitAreaMap.get(rangeKey);
+        if (!rangeTile) continue;
+        for (const offset of wrapOffsets) {
+          if (!shouldDrawWrappedTileCopy(rangeTile.x, rangeTile.y, offset, data.w, data.h)) continue;
+          const ox = offset?.x || 0;
+          const oy = offset?.y || 0;
+          const points = (ox || oy) ? offsetHexPoints(rangeTile.polygon.points, ox, oy) : rangeTile.polygon.points;
+          markerLayer.lineStyle(2.1, TILE_ATTACK_PREVIEW_COLOR_RANGE, 0.92);
+          markerLayer.strokePoints(points, true);
+          markerLayer.fillStyle(TILE_ATTACK_PREVIEW_COLOR_RANGE, 0.12);
+          markerLayer.fillPoints(points, true);
+        }
+      }
+      for (const previewKey of previewKeySet) {
+        const previewTile = hitAreaMap.get(previewKey);
+        if (!previewTile) continue;
+        for (const offset of wrapOffsets) {
+          if (!shouldDrawWrappedTileCopy(previewTile.x, previewTile.y, offset, data.w, data.h)) continue;
+          const ox = offset?.x || 0;
+          const oy = offset?.y || 0;
+          const points = (ox || oy) ? offsetHexPoints(previewTile.polygon.points, ox, oy) : previewTile.polygon.points;
+          markerLayer.lineStyle(2.5, TILE_ATTACK_PREVIEW_COLOR_HIT, 0.98);
+          markerLayer.strokePoints(points, true);
+          markerLayer.fillStyle(TILE_ATTACK_PREVIEW_COLOR_HIT, 0.2);
+          markerLayer.fillPoints(points, true);
+        }
+      }
+      for (const splashKey of splashPreviewSets.fullKeySet) {
+        const splashTile = hitAreaMap.get(splashKey);
+        if (!splashTile) continue;
+        for (const offset of wrapOffsets) {
+          if (!shouldDrawWrappedTileCopy(splashTile.x, splashTile.y, offset, data.w, data.h)) continue;
+          const ox = offset?.x || 0;
+          const oy = offset?.y || 0;
+          const points = (ox || oy) ? offsetHexPoints(splashTile.polygon.points, ox, oy) : splashTile.polygon.points;
+          markerLayer.lineStyle(2.5, TILE_ATTACK_PREVIEW_COLOR_HIT, 0.92);
+          markerLayer.strokePoints(points, true);
+          markerLayer.fillStyle(TILE_ATTACK_PREVIEW_COLOR_HIT, 0.14);
+          markerLayer.fillPoints(points, true);
+        }
+      }
+      for (const splashKey of splashPreviewSets.falloffKeySet) {
+        const splashTile = hitAreaMap.get(splashKey);
+        if (!splashTile) continue;
+        for (const offset of wrapOffsets) {
+          if (!shouldDrawWrappedTileCopy(splashTile.x, splashTile.y, offset, data.w, data.h)) continue;
+          const ox = offset?.x || 0;
+          const oy = offset?.y || 0;
+          const points = (ox || oy) ? offsetHexPoints(splashTile.polygon.points, ox, oy) : splashTile.polygon.points;
+          markerLayer.lineStyle(2.4, TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF, 0.95);
+          markerLayer.strokePoints(points, true);
+          markerLayer.fillStyle(TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF, 0.16);
+          markerLayer.fillPoints(points, true);
+        }
+      }
+      if (!tileAttackDirectionLocked.value) {
+        const candidateAnchor = normalizeTileAttackDirectionAnchor(tileAttackDirectionCandidate.value, data, leader);
+        if (candidateAnchor) {
+          const candidateKey = coordKey(candidateAnchor.x, candidateAnchor.y);
+          const candidateTile = hitAreaMap.get(candidateKey);
+          if (candidateTile) {
+            for (const offset of wrapOffsets) {
+              if (!shouldDrawWrappedTileCopy(candidateTile.x, candidateTile.y, offset, data.w, data.h)) continue;
+              const ox = offset?.x || 0;
+              const oy = offset?.y || 0;
+              const points = (ox || oy) ? offsetHexPoints(candidateTile.polygon.points, ox, oy) : candidateTile.polygon.points;
+              markerLayer.lineStyle(2.8, 0xffc86a, 0.98);
+              markerLayer.strokePoints(points, true);
+            }
+          }
+        }
+      }
+      if (tileAttackDirectionLocked.value) {
+        const anchor = resolveAttackPatternAnchorCoord(data, leader, { lockOnly: true });
+        if (anchor) {
+          const anchorKey = coordKey(anchor.x, anchor.y);
+          const anchorTile = hitAreaMap.get(anchorKey);
+          if (anchorTile) {
+            for (const offset of wrapOffsets) {
+              if (!shouldDrawWrappedTileCopy(anchorTile.x, anchorTile.y, offset, data.w, data.h)) continue;
+              const ox = offset?.x || 0;
+              const oy = offset?.y || 0;
+              const points = (ox || oy) ? offsetHexPoints(anchorTile.polygon.points, ox, oy) : anchorTile.polygon.points;
+              markerLayer.lineStyle(3.1, 0xffdd7f, 0.98);
+              markerLayer.strokePoints(points, true);
+            }
+          }
+        }
+      }
       const attackKey = coordKey(leader.x, leader.y);
       const attackTile = hitAreaMap.get(attackKey);
       if (attackTile) {
@@ -12083,10 +16657,9 @@ function renderMapWithPhaser() {
         const ox = offset?.x || 0;
         const oy = offset?.y || 0;
         const points = (ox || oy) ? offsetHexPoints(match.polygon.points, ox, oy) : match.polygon.points;
-        markerLayer.lineStyle(2.8, 0xffe1a8, 1);
-        markerLayer.strokePoints(points, true);
-        markerLayer.fillStyle(0xffe1a8, 0.15);
-        markerLayer.fillPoints(points, true);
+        const expandedPoints = expandPolygonPoints(points, TILE_SELECTED_OUTSET_PX);
+        markerLayer.lineStyle(2.8, 0xffe1a8, TILE_SELECTED_HIGHLIGHT_ALPHA);
+        strokeClosedPolygon(markerLayer, expandedPoints);
       }
     }
   }
@@ -12094,6 +16667,11 @@ function renderMapWithPhaser() {
     hoveredTileKey = "";
   }
   drawHoverOverlay();
+  if (showMovePathConfirmModal.value) {
+    syncMovePathConfirmPopupStyle(plannedMoveTarget.value);
+  } else if (movePathConfirmPopupStyle.value) {
+    movePathConfirmPopupStyle.value = null;
+  }
   refreshMapCursor();
 }
 
@@ -12104,16 +16682,55 @@ function drawHoverOverlay() {
   const area = hitAreaMap.get(hoveredTileKey);
   const data = currentData.value;
   if (!area || !data) return;
+  let lineColor = 0xf8f0b8;
+  let lineAlpha = TILE_HOVER_HIGHLIGHT_ALPHA;
+  if (tileAttackSelectionMode.value) {
+    const attackState = resolveSelectedTileAttackActionState();
+    const leader = attackState?.moveGroup?.leader || null;
+    if (Number.isFinite(leader?.x) && Number.isFinite(leader?.y)) {
+      const leaderKey = coordKey(leader.x, leader.y);
+      const rangeKeySet = buildAttackPatternTileKeySet(data, leader, "circle", tileAttackRange.value);
+      rangeKeySet.delete(leaderKey);
+      const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+      let previewKeySet = attackState?.patternTileKeys instanceof Set
+        ? new Set(attackState.patternTileKeys)
+        : buildAttackPatternTileKeySet(data, leader, effectivePatternKey, tileAttackRange.value);
+      previewKeySet.delete(leaderKey);
+      const normalizedPattern = normalizeTileAttackPatternKey(effectivePatternKey);
+      if (normalizedPattern === "single") {
+        const singleTargetSet = new Set();
+        const candidateKeys = [nonEmptyText(hoveredTileKey), nonEmptyText(selectedTileKey)].filter(Boolean);
+        for (const key of candidateKeys) {
+          if (!rangeKeySet.has(key) || key === leaderKey) continue;
+          singleTargetSet.add(key);
+          break;
+        }
+        previewKeySet = singleTargetSet;
+      }
+      const splashSpec = resolveSelectedTileAttackSplashSpec();
+      const splashAnchorKey = resolveTileAttackPreviewAnchorKey(rangeKeySet, previewKeySet, leader);
+      const splashPreviewSets = buildSplashPreviewTileKeySets(data, splashAnchorKey, splashSpec);
+      if (splashPreviewSets.falloffKeySet.has(hoveredTileKey)) {
+        lineColor = TILE_ATTACK_PREVIEW_COLOR_SPLASH_FALLOFF;
+        lineAlpha = 0.97;
+      } else if (splashPreviewSets.fullKeySet.has(hoveredTileKey) || previewKeySet.has(hoveredTileKey)) {
+        lineColor = TILE_ATTACK_PREVIEW_COLOR_HIT;
+        lineAlpha = 0.98;
+      } else if (rangeKeySet.has(hoveredTileKey)) {
+        lineColor = TILE_ATTACK_PREVIEW_COLOR_RANGE;
+        lineAlpha = 0.92;
+      }
+    }
+  }
   const offsets = buildWrapOffsets(currentData.value);
   for (const offset of offsets) {
     if (!shouldDrawWrappedTileCopy(area.x, area.y, offset, data.w, data.h)) continue;
     const ox = offset?.x || 0;
     const oy = offset?.y || 0;
     const points = (ox || oy) ? offsetHexPoints(area.polygon.points, ox, oy) : area.polygon.points;
-    hoverLayer.lineStyle(3.2, 0xf8f0b8, 0.98);
-    hoverLayer.strokePoints(points, true);
-    hoverLayer.fillStyle(0xf8f0b8, 0.1);
-    hoverLayer.fillPoints(points, true);
+    const expandedPoints = expandPolygonPoints(points, TILE_HOVER_OUTSET_PX);
+    hoverLayer.lineStyle(3.2, lineColor, lineAlpha);
+    strokeClosedPolygon(hoverLayer, expandedPoints);
   }
 }
 
@@ -12149,7 +16766,7 @@ function runTurnForActiveFaction(data, options = {}) {
   clearEncounterMoveLocks();
   clearLastMoveStopState();
   resetAllUnitMoveRemaining();
-  pushNationLog("移動残量回復: 全ユニットの移動残を最大まで回復");
+  pushNationLog("AP回復: 全ユニットのAPを100まで回復");
   const economyResult = processVillageEconomyTurn(data, {
     raceFallback: nonEmptyText(options?.raceFallback),
     emitState: false
@@ -12159,9 +16776,11 @@ function runTurnForActiveFaction(data, options = {}) {
   });
   const heroNotes = Array.isArray(heroGrowthResult?.notes) ? heroGrowthResult.notes : [];
   const surveyResult = advanceSurveyTasksForTurn(data, {
-    allowBattleModal: options?.allowBattleModal !== false
+    allowBattleModal: (options?.allowBattleModal !== false) && FIELD_BATTLE_RESULT_MODAL_ENABLED
   });
   const surveyNotes = Array.isArray(surveyResult?.notes) ? surveyResult.notes : [];
+  const enemyRoamResult = runEnemySwarmFreeRoamTurn(data);
+  const enemyRoamNotes = Array.isArray(enemyRoamResult?.notes) ? enemyRoamResult.notes : [];
   const encounterResult = runEnemyEncounterCheck({ context: "turn" });
   return {
     economyResult,
@@ -12169,6 +16788,8 @@ function runTurnForActiveFaction(data, options = {}) {
     heroNotes,
     surveyResult,
     surveyNotes,
+    enemyRoamResult,
+    enemyRoamNotes,
     encounterResult
   };
 }
@@ -12179,6 +16800,7 @@ function runTurnForAllTestPlayers(data) {
   const allEconomyNotes = [];
   const allHeroNotes = [];
   const allSurveyNotes = [];
+  const allEnemyRoamNotes = [];
   const allEncounterNotes = [];
 
   for (const slot of slots) {
@@ -12193,10 +16815,12 @@ function runTurnForAllTestPlayers(data) {
     const economyLines = Array.isArray(result?.economyResult?.notes) ? result.economyResult.notes : [];
     const heroLines = Array.isArray(result?.heroNotes) ? result.heroNotes : [];
     const surveyLines = Array.isArray(result?.surveyNotes) ? result.surveyNotes : [];
+    const enemyRoamLines = Array.isArray(result?.enemyRoamNotes) ? result.enemyRoamNotes : [];
     const encounterLines = Array.isArray(result?.encounterResult?.notes) ? result.encounterResult.notes : [];
     allEconomyNotes.push(head, ...economyLines);
     allHeroNotes.push(head, ...heroLines);
     allSurveyNotes.push(head, ...surveyLines);
+    allEnemyRoamNotes.push(head, ...enemyRoamLines);
     allEncounterNotes.push(head, ...encounterLines);
   }
 
@@ -12214,6 +16838,7 @@ function runTurnForAllTestPlayers(data) {
     economyNotes: allEconomyNotes,
     heroNotes: allHeroNotes,
     surveyNotes: allSurveyNotes,
+    enemyRoamNotes: allEnemyRoamNotes,
     encounterNotes: allEncounterNotes
   };
 }
@@ -12221,10 +16846,13 @@ function runTurnForAllTestPlayers(data) {
 function runNextTurn(options = {}) {
   kickOffBgm();
   if (options?.playSe !== false) audio.playSe("confirm");
+  const showEventModalForThisTurn = options?.showEventModal !== false;
   if (!currentData.value || currentData.value.shapeOnly) {
     eventModalMessage.value = "地形マップ生成後にターンを進めてください。";
     eventModalNotes.value = ["「島形状のみ」ではターンイベントは動作しません。"];
-    showEventModal.value = true;
+    if (showEventModalForThisTurn) {
+      showEventModal.value = true;
+    }
     return;
   }
   ensureTestPlayerSlotsInitialized();
@@ -12243,29 +16871,39 @@ function runNextTurn(options = {}) {
     eventMode: mode
   });
   result.data.worldWrapEnabled = !!currentData.value?.worldWrapEnabled;
-  applyMapData(result.data, { resetClock: false, rebuildCharacters: false });
+  applyMapData(result.data, {
+    resetClock: false,
+    rebuildCharacters: false,
+    forceCenterOnInit: false,
+    focusPrimaryOnInit: false,
+    preserveCameraView: true,
+    preserveTileSelection: true,
+    applyUnownedDangerIncrease: true
+  });
   const turnRuntime = isTestMultiplayerActive.value
     ? runTurnForAllTestPlayers(result.data)
     : (() => {
       const singleResult = runTurnForActiveFaction(result.data);
-      return {
-        economyNotes: Array.isArray(singleResult?.economyResult?.notes) ? singleResult.economyResult.notes : [],
-        heroNotes: Array.isArray(singleResult?.heroNotes) ? singleResult.heroNotes : [],
-        surveyNotes: Array.isArray(singleResult?.surveyNotes) ? singleResult.surveyNotes : [],
-        encounterNotes: Array.isArray(singleResult?.encounterResult?.notes) ? singleResult.encounterResult.notes : [],
-        economyApplied: !!singleResult?.economyResult?.applied
-      };
-    })();
+        return {
+          economyNotes: Array.isArray(singleResult?.economyResult?.notes) ? singleResult.economyResult.notes : [],
+          heroNotes: Array.isArray(singleResult?.heroNotes) ? singleResult.heroNotes : [],
+          surveyNotes: Array.isArray(singleResult?.surveyNotes) ? singleResult.surveyNotes : [],
+          enemyRoamNotes: Array.isArray(singleResult?.enemyRoamNotes) ? singleResult.enemyRoamNotes : [],
+          encounterNotes: Array.isArray(singleResult?.encounterResult?.notes) ? singleResult.encounterResult.notes : [],
+          economyApplied: !!singleResult?.economyResult?.applied
+        };
+      })();
   const turn = Number(result.data?.turnState?.turnNumber || 0);
   eventModalMessage.value = formatTurnEventMessage(turn, result.events, mode);
   const baseNotes = formatTurnEventNotes(result.events);
   const economyNotes = Array.isArray(turnRuntime?.economyNotes) ? turnRuntime.economyNotes : [];
   const heroNotes = Array.isArray(turnRuntime?.heroNotes) ? turnRuntime.heroNotes : [];
   const surveyNotes = Array.isArray(turnRuntime?.surveyNotes) ? turnRuntime.surveyNotes : [];
+  const enemyRoamNotes = Array.isArray(turnRuntime?.enemyRoamNotes) ? turnRuntime.enemyRoamNotes : [];
   const encounterNotes = Array.isArray(turnRuntime?.encounterNotes) ? turnRuntime.encounterNotes : [];
   const economyApplied = turnRuntime?.economyApplied !== false;
   if (economyApplied) {
-    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 索敵処理 ----", ...encounterNotes];
+    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 群れ移動 ----", ...enemyRoamNotes, "---- 索敵処理 ----", ...encounterNotes];
     for (const line of economyNotes) {
       if (String(line || "").startsWith("--- ")) continue;
       pushNationLog(line);
@@ -12278,14 +16916,21 @@ function runNextTurn(options = {}) {
       if (String(line || "").startsWith("--- ")) continue;
       pushNationLog(line);
     }
+    for (const line of enemyRoamNotes) {
+      if (String(line || "").startsWith("--- ")) continue;
+      pushNationLog(line);
+    }
   } else {
-    eventModalNotes.value = [...baseNotes, ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 索敵処理 ----", ...encounterNotes];
+    eventModalNotes.value = [...baseNotes, ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 群れ移動 ----", ...enemyRoamNotes, "---- 索敵処理 ----", ...encounterNotes];
   }
   clearAllTestPlayerTurnReady();
   emitCharacterStateChange();
   renderMapWithPhaser();
   pushNationLog(`ターン進行: T${turn} / ${eventModeLabel(mode)} / イベント${result.events.length}件`);
-  showEventModal.value = true;
+  showTurnTicker(`ターン ${turn} 経過`, "progress");
+  if (showEventModalForThisTurn) {
+    showEventModal.value = true;
+  }
 }
 
 function runManagedEventTurn() {
@@ -12307,6 +16952,23 @@ function closeQuickSettingsModalFromMap() {
 function openDisplaySettingsFromQuickMenu() {
   showQuickSettingsModal.value = false;
   openSettingsModal();
+}
+
+function setSquadFormationEnabled(nextValue, options = {}) {
+  const nextEnabled = !!nextValue;
+  if (squadFormationEnabled.value === nextEnabled) return;
+  squadFormationEnabled.value = nextEnabled;
+  if (options?.playSe !== false) {
+    audio.playSe("change");
+  }
+  const label = nextEnabled ? "ON" : "OFF";
+  updateUnitInfoText(`チーム編成機能: ${label}`);
+  pushNationLog(`チーム編成機能: ${label}`);
+  emitCharacterStateChange();
+}
+
+function toggleSquadFormationEnabledFromQuickMenu(enabled) {
+  setSquadFormationEnabled(enabled, { playSe: true });
 }
 
 function buildSaveDownloadFileName() {
@@ -12466,36 +17128,346 @@ function handleOwnUnitNavigatorOpenCharacterStatus(payload = {}) {
   openCharacterStatusModalFromMap();
 }
 
-function handleOwnUnitNavigatorSelectMoveUnit(payload = {}) {
-  if (unitMoveMode.value) {
-    toggleUnitMoveMode();
-    return;
+function resolveNavigatorLeaderUnitById(unitIdRaw) {
+  const targetId = nonEmptyText(unitIdRaw);
+  if (!targetId) {
+    return { ok: false, reason: "ユニットが未指定です。", source: null, leader: null };
   }
-  const targetId = nonEmptyText(payload?.unitId);
-  if (!targetId) return;
   const source = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
   if (!source) {
-    updateUnitInfoText("移動対象の選択に失敗: ユニットが見つかりません。");
-    return;
+    return { ok: false, reason: "ユニットが見つかりません。", source: null, leader: null };
   }
   const leaderId = nonEmptyText(source?.squadLeaderId);
-  const target = leaderId
+  const leader = leaderId
     ? (unitList.value.find(unit => nonEmptyText(unit?.id) === leaderId) || source)
     : source;
+  return { ok: true, reason: "", source, leader };
+}
+
+function handleOwnUnitNavigatorSelectMoveUnit(payload = {}) {
+  const resolved = resolveNavigatorLeaderUnitById(payload?.unitId);
+  if (!resolved.ok || !resolved.leader) {
+    updateUnitInfoText(`移動対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
+    return;
+  }
+  const target = resolved.leader;
   if (!canUseUnitAsMoveCandidate(target)) {
     updateUnitInfoText(`${nonEmptyText(target?.name) || "ユニット"} は移動対象にできません。`);
     return;
   }
   kickOffBgm();
   audio.playSe("select");
+  if (tileAttackSelectionMode.value) {
+    cancelTileAttackSelectionMode(true);
+  }
   selectedUnitId.value = target.id;
-  moveUnitCandidateId.value = target.id;
-  unitMoveMode.value = true;
-  clearPlannedMovePath();
+  armMoveCommandForUnit(target.id, { syncCandidate: true, clearPlannedPath: true });
   showMoveUnitModal.value = false;
-  updateUnitInfoText(`${target.name} を移動対象に設定`);
+  updateUnitInfoText(`${target.name} の移動先を選択`);
   emitCharacterStateChange();
   renderMapWithPhaser();
+}
+
+function handleOwnUnitNavigatorSelectAttackUnit(payload = {}) {
+  const resolved = resolveNavigatorLeaderUnitById(payload?.unitId);
+  if (!resolved.ok || !resolved.leader) {
+    updateUnitInfoText(`攻撃対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
+    return;
+  }
+  const target = resolved.leader;
+  if (!target?.positioned) {
+    updateUnitInfoText(`${nonEmptyText(target?.name) || "ユニット"} は未配置のため攻撃できません。`);
+    return;
+  }
+  kickOffBgm();
+  audio.playSe("select");
+  selectedUnitId.value = target.id;
+  selectedTileAttackSkillName.value = "";
+  clearMoveCommandState({ clearCandidate: true });
+  if (tileAttackSelectionMode.value) {
+    cancelTileAttackSelectionMode(true);
+  }
+  toggleTileAttackSelectionMode();
+  showMoveUnitModal.value = false;
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+}
+
+function handleFooterSelectUnit(payload = {}) {
+  const targetId = nonEmptyText(payload?.unitId);
+  if (!targetId) return;
+  const target = unitList.value.find(unit => nonEmptyText(unit?.id) === targetId) || null;
+  if (!target) return;
+  selectedUnitId.value = target.id;
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+}
+
+function handleFooterMoveRequest(payload = {}) {
+  const resolved = resolveNavigatorLeaderUnitById(payload?.unitId);
+  if (!resolved.ok || !resolved.leader) {
+    updateUnitInfoText(`移動対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
+    return;
+  }
+  if (nonEmptyText(moveCommandUnitId.value)) {
+    clearMoveCommandState({ clearCandidate: false });
+    updateUnitInfoText("移動指示を解除しました。");
+    renderMapWithPhaser();
+    return;
+  }
+  handleOwnUnitNavigatorSelectMoveUnit(payload);
+}
+
+function handleFooterAttackRequest(payload = {}) {
+  const resolved = resolveNavigatorLeaderUnitById(payload?.unitId);
+  if (!resolved.ok || !resolved.leader) {
+    updateUnitInfoText(`攻撃対象の選択に失敗: ${resolved.reason || "ユニットが見つかりません。"}`);
+    suppressFooterSkillModalOnce.value = true;
+    return;
+  }
+  if (tileAttackSelectionMode.value || ownFactionPanelViewMode.value === "attack") {
+    closeOwnFactionAttackPanel({ cancelPreview: true });
+    suppressFooterSkillModalOnce.value = true;
+    return;
+  }
+  suppressFooterSkillModalOnce.value = false;
+  handleOwnUnitNavigatorSelectAttackUnit(payload);
+}
+
+function applyHpDeltaToUnitLike(target, deltaRaw = 0) {
+  if (!target || typeof target !== "object") return false;
+  const delta = Math.floor(toSafeNumber(deltaRaw, 0));
+  if (!delta) return false;
+  const maxHp = Math.max(
+    0,
+    Math.floor(
+      toSafeNumber(
+        target?.status?.HP,
+        toSafeNumber(target?.maxHp, toSafeNumber(target?.currentHp, toSafeNumber(target?.hp, 0)))
+      )
+    )
+  );
+  const currentHp = Math.max(
+    0,
+    Math.floor(toSafeNumber(target?.currentHp, toSafeNumber(target?.hp, maxHp)))
+  );
+  const upper = maxHp > 0 ? maxHp : Number.MAX_SAFE_INTEGER;
+  const nextHp = clampNumber(currentHp + delta, 0, upper);
+  if (nextHp === currentHp) return false;
+  target.currentHp = nextHp;
+  target.hp = nextHp;
+  if (!Number.isFinite(toSafeNumber(target?.maxHp, Number.NaN)) && maxHp > 0) {
+    target.maxHp = maxHp;
+  }
+  applyUnitLifeState(target, nextHp);
+  return true;
+}
+
+function handleFooterEnemyHpAdjust(payload = {}) {
+  const enemyIdRaw = nonEmptyText(payload?.enemyId);
+  const sep = enemyIdRaw.indexOf(":");
+  const prefix = sep >= 0 ? enemyIdRaw.slice(0, sep) : "";
+  const enemyId = sep >= 0 ? enemyIdRaw.slice(sep + 1) : enemyIdRaw;
+  const delta = Math.floor(toSafeNumber(payload?.delta, 0));
+  if (!enemyId || !delta) return;
+
+  let updated = false;
+  if (prefix === "spawn") {
+    const data = currentData.value;
+    if (data && Array.isArray(data.enemySpawnMap)) {
+      for (const row of data.enemySpawnMap) {
+        if (!Array.isArray(row)) continue;
+        for (const cell of row) {
+          if (!Array.isArray(cell)) continue;
+          const target = cell.find(enemy => nonEmptyText(enemy?.id) === enemyId) || null;
+          if (!target) continue;
+          updated = applyHpDeltaToUnitLike(target, delta) || updated;
+          if (updated) break;
+        }
+        if (updated) break;
+      }
+    }
+  } else if (prefix === "faction") {
+    for (const slot of testPlayerSlots.value) {
+      const units = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+      const target = units.find(unit => nonEmptyText(unit?.id) === enemyId) || null;
+      if (!target) continue;
+      updated = applyHpDeltaToUnitLike(target, delta) || updated;
+      if (updated) break;
+    }
+  } else {
+    const target = unitList.value.find(unit => nonEmptyText(unit?.id) === enemyId) || null;
+    if (target) {
+      updated = applyHpDeltaToUnitLike(target, delta) || updated;
+    }
+  }
+
+  if (!updated) return;
+  emitCharacterStateChange();
+  if (selectedTileKey) {
+    const picked = hitAreaMap.get(selectedTileKey);
+    if (picked) updateMapClickInfo(picked);
+  }
+  renderMapWithPhaser();
+}
+
+function setOwnFactionPanelViewMode(modeRaw = "navigator") {
+  const mode = nonEmptyText(modeRaw).toLowerCase() === "attack" ? "attack" : "navigator";
+  ownFactionPanelViewMode.value = mode;
+  if (mode === "attack" && !nonEmptyText(ownFactionAttackPanelUnitId.value) && selectedUnit.value) {
+    ownFactionAttackPanelUnitId.value = nonEmptyText(selectedUnit.value?.id);
+  }
+}
+
+function openOwnFactionAttackPanelForUnit(unitIdRaw = "") {
+  const previousUnitId = nonEmptyText(ownFactionAttackPanelUnitId.value);
+  const unitId = nonEmptyText(unitIdRaw);
+  const unit = unitId
+    ? (unitList.value.find(row => nonEmptyText(row?.id) === unitId) || null)
+    : (selectedUnit.value || null);
+  const resolvedUnitId = nonEmptyText(unit?.id);
+  if (resolvedUnitId) {
+    ownFactionAttackPanelUnitId.value = resolvedUnitId;
+    footerUnitSkillModalUnitId.value = resolvedUnitId;
+    if (resolvedUnitId !== previousUnitId) {
+      ownFactionAttackPanelSelectedSkillName.value = "";
+    }
+    if (selectedUnitId.value !== resolvedUnitId) {
+      selectedUnitId.value = resolvedUnitId;
+      emitCharacterStateChange();
+    }
+  }
+  setOwnFactionPanelViewMode("attack");
+  showFooterUnitSkillModal.value = false;
+}
+
+function closeOwnFactionAttackPanel(options = {}) {
+  const shouldCancelPreview = options?.cancelPreview !== false;
+  setOwnFactionPanelViewMode("navigator");
+  if (shouldCancelPreview && tileAttackSelectionMode.value) {
+    cancelTileAttackSelectionMode(true);
+  }
+  requestMapRender();
+}
+
+function handleOwnFactionAttackSkillSelect(payload = {}, options = {}) {
+  const skillName = nonEmptyText(payload?.name || payload?.skillName || payload);
+  if (!skillName) return;
+  const selectedRow = ownFactionAttackPanelSkillRows.value
+    .find(row => nonEmptyText(row?.name) === skillName) || null;
+  const actionPointCost = resolveSkillActionPointCost(selectedRow?.skillRowRef);
+  const actionPoint = resolveUnitActionPoint(ownFactionAttackPanelUnit.value);
+  if (actionPointCost > actionPoint) {
+    updateUnitInfoText(`AP不足: ${skillName} はAP${actionPointCost}必要です。残りAP${actionPoint}`);
+    return;
+  }
+  ownFactionAttackPanelSelectedSkillName.value = skillName;
+  footerUnitSkillModalSelectedSkillName.value = skillName;
+  selectedTileAttackSkillName.value = skillName;
+  const shouldActivatePreview = options?.activatePreview === true || payload?.activatePreview === true;
+  if (shouldActivatePreview) {
+    const unitId = nonEmptyText(ownFactionAttackPanelUnit.value?.id);
+    if (!unitId) {
+      updateUnitInfoText("攻撃ユニットを選択してください。");
+      requestMapRender();
+      return;
+    }
+    const activated = activateTileAttackPreviewByUnitSkill(unitId, skillName, { closeFooterModal: false });
+    if (!activated?.ok) {
+      updateUnitInfoText(`攻撃プレビュー開始失敗: ${skillName} / ${activated?.reason || "条件未達"}`);
+      requestMapRender();
+    }
+    return;
+  }
+  const applied = applyTileAttackSettingsBySkillName(skillName);
+  if (!applied.ok) {
+    updateUnitInfoText(`スキル適用失敗: ${skillName} / ${applied.reason || "定義不足"}`);
+    requestMapRender();
+    return;
+  }
+  updateUnitInfoText(`攻撃設定: ${skillName} / ${applied.patternKey} / 射程${applied.range}`);
+  requestMapRender();
+}
+
+function activateTileAttackPreviewByUnitSkill(unitIdRaw = "", skillNameRaw = "", options = {}) {
+  const skillName = nonEmptyText(skillNameRaw);
+  const unitId = nonEmptyText(unitIdRaw);
+  if (!skillName || !unitId) return { ok: false, reason: "missing-params" };
+  // 既存の「攻撃選択」導線と同じ経路を必ず通す
+  handleOwnUnitNavigatorSelectAttackUnit({ unitId });
+
+  const activeUnitId = nonEmptyText(selectedUnitId.value);
+  if (!activeUnitId) {
+    requestMapRender();
+    return { ok: false, reason: "attack-mode-start-failed" };
+  }
+
+  footerUnitSkillModalSelectedSkillName.value = skillName;
+  ownFactionAttackPanelSelectedSkillName.value = skillName;
+  selectedTileAttackSkillName.value = skillName;
+
+  const applied = applyTileAttackSettingsBySkillName(skillName);
+  if (!applied.ok) {
+    updateUnitInfoText(`スキル適用失敗: ${skillName} / ${applied.reason || "定義不足"}`);
+    requestMapRender();
+    return { ok: false, reason: "apply-failed", applied };
+  }
+
+  if (!tileAttackSelectionMode.value) {
+    toggleTileAttackSelectionMode();
+  }
+
+  const state = resolveSelectedTileAttackActionState();
+  if (state.enabled) {
+    updateUnitInfoText(`攻撃範囲: ${tileAttackPatternLabel.value} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`);
+  }
+
+  if (options?.closeFooterModal !== false) {
+    showFooterUnitSkillModal.value = false;
+  }
+  requestMapRender();
+  return { ok: true, applied };
+}
+
+function activateOwnFactionAttackPreview(payload = {}) {
+  const skillName = nonEmptyText(payload?.name || payload?.skillName || ownFactionAttackPanelSelectedSkillRow.value?.name);
+  if (!skillName) {
+    updateUnitInfoText("スキルを選択してください。");
+    return;
+  }
+  const unit = ownFactionAttackPanelUnit.value;
+  const unitId = nonEmptyText(unit?.id);
+  if (!unitId) {
+    updateUnitInfoText("ユニット未選択です。");
+    return;
+  }
+  kickOffBgm();
+  audio.playSe("select");
+  handleOwnFactionAttackSkillSelect({ name: skillName, activatePreview: true });
+}
+
+function openFooterUnitSkillModal(payload = {}) {
+  if (suppressFooterSkillModalOnce.value) {
+    suppressFooterSkillModalOnce.value = false;
+    return;
+  }
+  const targetId = nonEmptyText(payload?.unitId);
+  openOwnFactionAttackPanelForUnit(targetId);
+}
+
+function closeFooterUnitSkillModal() {
+  showFooterUnitSkillModal.value = false;
+  footerUnitSkillModalSelectedSkillName.value = "";
+}
+
+function handleFooterUnitSkillSelect(payload = {}) {
+  const skillName = nonEmptyText(payload?.name || payload?.skillName);
+  if (!skillName) return;
+  const modalUnit = footerUnitSkillModalUnit.value;
+  if (!modalUnit) return;
+  const modalUnitId = nonEmptyText(modalUnit?.id);
+  if (!modalUnitId) return;
+  activateTileAttackPreviewByUnitSkill(modalUnitId, skillName, { closeFooterModal: true });
 }
 
 function togglePinnedNationLogPanel() {
@@ -12906,10 +17878,14 @@ function handleCraftWeaponFromInventoryModal(payload = {}) {
   return { ok: true };
 }
 
-function openSkillTreeModalFromMap() {
+function openSkillTreeModalFromMap(categoryKey = "") {
   kickOffBgm();
   audio.playSe("open");
-  emit("open-modal", "skill", { categories: ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"] });
+  const key = nonEmptyText(categoryKey);
+  emit("open-modal", "skill", {
+    categories: ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"],
+    initialCategory: key
+  });
 }
 
 function openGameStartModalFromMap() {
@@ -12933,6 +17909,53 @@ function toggleTestControls() {
   }
 }
 
+function formatRuntimeMemoryBytes(bytes) {
+  const amount = Number(bytes);
+  if (!Number.isFinite(amount) || amount <= 0) return "-";
+  const megaBytes = amount / (1024 * 1024);
+  if (megaBytes >= 100) return `${megaBytes.toFixed(0)} MB`;
+  return `${megaBytes.toFixed(1)} MB`;
+}
+
+async function updateRuntimeMemoryText() {
+  if (typeof window === "undefined" || typeof performance === "undefined") {
+    runtimeMemoryText.value = "-";
+    return;
+  }
+  try {
+    const heapBytes = Number(performance?.memory?.usedJSHeapSize);
+    if (Number.isFinite(heapBytes) && heapBytes > 0) {
+      runtimeMemoryText.value = formatRuntimeMemoryBytes(heapBytes);
+      return;
+    }
+    if (typeof performance.measureUserAgentSpecificMemory === "function") {
+      const memoryResult = await performance.measureUserAgentSpecificMemory();
+      runtimeMemoryText.value = formatRuntimeMemoryBytes(memoryResult?.bytes);
+      return;
+    }
+    runtimeMemoryText.value = "N/A";
+  } catch (error) {
+    runtimeMemoryText.value = "N/A";
+  }
+}
+
+function stopRuntimeMemoryWatch() {
+  if (runtimeMemoryIntervalId) {
+    window.clearInterval(runtimeMemoryIntervalId);
+    runtimeMemoryIntervalId = null;
+  }
+}
+
+function startRuntimeMemoryWatch() {
+  if (typeof window === "undefined") return;
+  stopRuntimeMemoryWatch();
+  runtimeMemoryText.value = "計測中...";
+  void updateRuntimeMemoryText();
+  runtimeMemoryIntervalId = window.setInterval(() => {
+    void updateRuntimeMemoryText();
+  }, 1000);
+}
+
 function handleActiveTestPlayerSelection() {
   const targetId = nonEmptyText(activeTestPlayerId.value);
   if (!targetId) return;
@@ -12950,9 +17973,13 @@ function closeTurnActionModal() {
   showTurnActionModal.value = false;
 }
 
-function runNextTurnFromClock() {
+function toggleAutoTimeProgressFromClock() {
+  if (autoTimeRunning.value) {
+    stopAutoTimeProgress({ announce: true });
+  } else {
+    startAutoTimeProgress({ announce: true });
+  }
   showTurnActionModal.value = false;
-  runNextTurn({ playSe: false });
 }
 
 function openEventControlFromClock() {
@@ -12987,14 +18014,56 @@ function applyMapData(data, options = {}) {
   });
   zoomPercent.value = normalizeZoomPercent(zoomPercent.value, normalizedData);
   customWorldWrapEnabled.value = !!normalizedData.worldWrapEnabled;
+  const preserveTileSelection = options?.preserveTileSelection === true;
+  const preserveCameraView = options?.preserveCameraView === true;
+  const previousSelectedTileKey = nonEmptyText(selectedTileKey);
+  const previousSelectedTileDetail = selectedTileDetail.value;
   selectedTileKey = "";
   hoveredTileKey = "";
   selectedTileDetail.value = null;
+  if (preserveTileSelection && previousSelectedTileKey) {
+    const coord = parseCoordKey(previousSelectedTileKey);
+    const maxW = Math.max(0, Math.floor(toSafeNumber(normalizedData?.w, 0)));
+    const maxH = Math.max(0, Math.floor(toSafeNumber(normalizedData?.h, 0)));
+    if (
+      coord
+      && Number.isFinite(coord?.x)
+      && Number.isFinite(coord?.y)
+      && coord.x >= 0
+      && coord.y >= 0
+      && coord.x < maxW
+      && coord.y < maxH
+    ) {
+      selectedTileKey = previousSelectedTileKey;
+      selectedTileDetail.value = previousSelectedTileDetail && typeof previousSelectedTileDetail === "object"
+        ? {
+          ...previousSelectedTileDetail,
+          x: coord.x,
+          y: coord.y
+        }
+        : {
+          x: coord.x,
+          y: coord.y
+        };
+    }
+  }
+  cityBlockPlacementMode.value = false;
+  cityBlockPlacementType.value = CITY_BLOCK_PLACEMENT_TYPE_CITY;
+  cityBlockPlacements.value = [];
+  cityBlockPlacementPreview.value = null;
+  cityBlockPlacementPending.value = null;
+  showCityBlockPlacementConfirmModal.value = false;
   clearHousingUpgradeSelectionState();
   clearLastMoveStopState();
   showMoveUnitModal.value = false;
-  cameraInitialized = false;
-  forceMapCenterOnNextRender = options.forceCenterOnInit !== false;
+  if (preserveCameraView) {
+    // ターン更新は同じマップの状態差し替えなので、閲覧中の視点を維持する。
+    forceMapCenterOnNextRender = false;
+    centerMapOnNextZoom = false;
+  } else {
+    cameraInitialized = false;
+    forceMapCenterOnNextRender = options.forceCenterOnInit !== false;
+  }
   pendingClickFocusWorld = null;
   pendingClickFocusMode = "near";
   dragPointerId = null;
@@ -13017,10 +18086,21 @@ function applyMapData(data, options = {}) {
   } else {
     ensureTestPlayerSlotsInitialized();
   }
+  applyDangerRulesByTerritory(normalizedData, {
+    applyUnownedIncrease: options.applyUnownedDangerIncrease === true
+  });
+  if (!preserveCameraView && options.focusPrimaryOnInit === true) {
+    const focused = focusActiveFactionPrimaryTile({
+      village: villageState.value,
+      units: unitList.value
+    });
+    forceMapCenterOnNextRender = false;
+    if (!focused) {
+      centerMapOnNextZoom = false;
+    }
+  }
   if (options.resetClock !== false) {
-    mapClockStartMs.value = Date.now();
-    clockNowMs.value = mapClockStartMs.value;
-    resetClockTurnCycleIndex(clockNowMs.value);
+    resetClockRuntime(Date.now());
   }
   updateMeta(normalizedData);
   renderMapWithPhaser();
@@ -13032,6 +18112,7 @@ function generateShapeMap(options = {}) {
     audio.playSe("confirm");
   }
   const { w, h } = parseMapSizeValue(mapSize.value);
+  applyLargeMapPerformanceDefaults(w, h);
   const islandCustomSettings = buildIslandCustomSettings();
   const data = createIslandShapeData({
     w,
@@ -13050,6 +18131,7 @@ function generateTerrainMap(options = {}) {
     audio.playSe("confirm");
   }
   const { w, h } = parseMapSizeValue(mapSize.value);
+  applyLargeMapPerformanceDefaults(w, h);
   const islandCustomSettings = buildIslandCustomSettings();
   const data = createTerrainMapData({
     w,
@@ -13063,6 +18145,14 @@ function generateTerrainMap(options = {}) {
   applyMapData(data, { resetClock: true });
 }
 
+function resolvePlacementModeInfoText() {
+  const modeLabels = [];
+  if (villagePlacementMode.value) modeLabels.push("初期村");
+  if (cityBlockPlacementMode.value) modeLabels.push(resolveCityBlockPlacementTypeDef(cityBlockPlacementType.value).modeLabel);
+  if (!modeLabels.length) return "";
+  return ` / 配置モード: ${modeLabels.join("+")}`;
+}
+
 function updateMapClickInfo(picked) {
   if (!picked || !currentData.value) {
     mapClickInfo.value = "クリック座標: -";
@@ -13070,8 +18160,8 @@ function updateMapClickInfo(picked) {
     return;
   }
   if (!picked.fogVisible) {
-    const moveModeText = unitMoveMode.value ? " / 移動モード: ON" : "";
-    const placementModeText = villagePlacementMode.value ? " / 配置モード: ON" : "";
+    const moveModeText = resolveMoveCommandInfoText();
+    const placementModeText = resolvePlacementModeInfoText();
     const stopState = lastMoveStopState.value || {};
     const stopReason = (
       Number.isFinite(stopState?.x)
@@ -13087,6 +18177,12 @@ function updateMapClickInfo(picked) {
       y: picked.y,
       title: "未探索",
       terrain: "不明(未探索)",
+      terrainIconSrc: resolveUnitIconSrc("地形", DEFAULT_ICON_NAME),
+      terrainIconLabel: "未探索",
+      unitIconSrc: "",
+      unitIconGlyph: "",
+      unitName: "",
+      unitSummary: "不明",
       territory: "不明",
       danger: "-",
       coast: "-",
@@ -13100,7 +18196,16 @@ function updateMapClickInfo(picked) {
       village: "不明",
       units: "不明",
       enemies: "不明",
+      enemySense: "-",
+      monsterConfigured: showTestControls.value
+        ? (() => {
+          const configured = configuredEnemiesAt(picked.x, picked.y, currentData.value);
+          return formatConfiguredMonsterSummary(configured);
+        })()
+        : "-",
       development: "不明",
+      camp: "不明",
+      tileRecovery: "-",
       facilities: "不明",
       moveStopReason: stopReason || "-",
       canOpenVillageActions: false,
@@ -13137,6 +18242,11 @@ function updateMapClickInfo(picked) {
     : "-";
   const caveSize = picked.special === "洞窟" ? picked.caveSize : "-";
   const tileUnits = unitsAt(picked.x, picked.y);
+  const leadTileUnit = tileUnits.find(unit => nonEmptyText(unit?.id) === nonEmptyText(selectedUnitId.value))
+    || tileUnits[0]
+    || null;
+  const leadTileUnitIconSrc = leadTileUnit ? moveUnitIconSrc(leadTileUnit) : "";
+  const leadTileUnitGlyph = leadTileUnit ? moveUnitIconGlyph(leadTileUnit) : "";
   const unitText = tileUnits.length
     ? tileUnits.map(unit => {
       const tags = [];
@@ -13149,14 +18259,27 @@ function updateMapClickInfo(picked) {
       return `${unit.name}${tagText}(Lv${unit.level})`;
     }).join(", ")
     : "なし";
+  const tileUnitSummaryText = tileUnits.length
+    ? `${nonEmptyText(leadTileUnit?.name) || "ユニット"} / ${tileUnits.length}体`
+    : "ユニットなし";
   const tileEnemies = enemiesAt(picked.x, picked.y, currentData.value);
+  const configuredTileEnemies = configuredEnemiesAt(picked.x, picked.y, currentData.value);
   const tileKey = coordKey(picked.x, picked.y);
+  const monsterSpottedByDetection = spottedEnemyTileKeys.has(tileKey);
+  const monsterAlertedByDetection = alertedEnemyTileKeys.has(tileKey);
+  const monsterAwarenessSuffix = buildEnemyAwarenessSuffix(monsterSpottedByDetection, monsterAlertedByDetection);
   const opposingFactionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
   const hasOpposingFactionUnits = opposingFactionTileMap.has(tileKey);
+  const factionSpottedByDetection = spottedFactionTileKeys.has(tileKey);
+  const factionAlertedByDetection = alertedFactionTileKeys.has(tileKey);
+  const factionAwarenessSuffix = buildEnemyAwarenessSuffix(factionSpottedByDetection, factionAlertedByDetection);
   const factionSpotted = showTestControls.value || spottedFactionTileKeys.has(tileKey);
   const opposingFactionText = hasOpposingFactionUnits
     ? (factionSpotted
-      ? formatOpposingFactionUnitsAtTile(picked.x, picked.y, { tileMap: opposingFactionTileMap })
+      ? formatOpposingFactionUnitsAtTile(picked.x, picked.y, {
+        tileMap: opposingFactionTileMap,
+        awarenessSuffix: factionAwarenessSuffix
+      })
       : "未発見")
     : "なし";
   console.log("[EnemySpawn][TileSelect]", {
@@ -13170,21 +18293,52 @@ function updateMapClickInfo(picked) {
     opposingFactionCount: hasOpposingFactionUnits ? toSafeNumber(opposingFactionTileMap.get(tileKey)?.units?.length, 0) : 0,
     opposingFactionSpotted: factionSpotted
   });
+  const rememberedMonsterNames = nonEmptyText(spottedEnemyNamesByTile.get(tileKey));
   const monsterEnemyText = tileEnemies.length
     ? tileEnemies.map(enemy => {
       const parts = [];
       const name = nonEmptyText(enemy?.name) || nonEmptyText(enemy?.race) || "敵";
       const lv = Math.max(1, Math.floor(toSafeNumber(enemy?.level, 1)));
-      parts.push(`${name}(Lv${lv})`);
+      parts.push(`${name}(Lv${lv})${monsterAwarenessSuffix}`);
       const className = nonEmptyText(enemy?.className);
       if (className) parts.push(`/${className}`);
       if (enemy?.strong) parts.push("[強]");
       return parts.join("");
     }).join(", ")
-    : "なし";
-  const enemyText = hasOpposingFactionUnits || factionSpotted
+    : (rememberedMonsterNames ? `発見履歴:${rememberedMonsterNames}${monsterAwarenessSuffix}` : "なし");
+  const enemyText = hasOpposingFactionUnits || factionSpotted || !!rememberedMonsterNames
     ? `モンスター:${monsterEnemyText} / 他勢力:${opposingFactionText}`
     : monsterEnemyText;
+  const monsterEncounterSenseText = tileEnemies.length
+    ? (() => {
+      const monsterSense = resolveEncounterGroupSense(
+        tileEnemies.map(resolveEncounterScoutValueForEnemy),
+        tileEnemies.map(resolveEncounterStealthValueForEnemy)
+      );
+      return `モンスター 索敵${monsterSense.scout}/隠密${monsterSense.stealth}`;
+    })()
+    : "";
+  const factionEncounterSenseText = hasOpposingFactionUnits
+    ? (() => {
+      const factionUnits = Array.isArray(opposingFactionTileMap.get(tileKey)?.units)
+        ? opposingFactionTileMap.get(tileKey).units
+        : [];
+      if (!factionUnits.length) return "";
+      const factionSense = resolveEncounterGroupSense(
+        factionUnits.map(resolveEncounterScoutValueForUnit),
+        factionUnits.map(resolveEncounterStealthValueForUnit)
+      );
+      return `他勢力 索敵${factionSense.scout}/隠密${factionSense.stealth}`;
+    })()
+    : "";
+  const enemyEncounterSenseText = [monsterEncounterSenseText, factionEncounterSenseText]
+    .filter(Boolean)
+    .join(" / ") || "-";
+  const monsterConfiguredText = showTestControls.value
+    ? (() => {
+      return formatConfiguredMonsterSummary(configuredTileEnemies);
+    })()
+    : "-";
   const village = villageState.value?.placed && villageState.value?.x === picked.x && villageState.value?.y === picked.y ? "あり" : "なし";
   const villageDetailText = village === "あり"
     ? `${nonEmptyText(villageState.value?.name) || "村"} / ${resolveVillageScaleLabel(villageState.value)} / 人口${formatCompactNumber(villageState.value?.population)} / 能力:${formatCityAbilityLevels(villageState.value)} / 建設:${formatVillageBuildingList(villageState.value?.buildings)}`
@@ -13269,12 +18423,33 @@ function updateMapClickInfo(picked) {
       || tileMode === TERRITORY_TILE_MODE_RESOURCE
       || isVillageCenterTile
     );
-  const terrainTitleParts = [nonEmptyText(picked.terrain)];
-  if (picked.waterfall) terrainTitleParts.push("滝");
-  if (nonEmptyText(picked.special)) terrainTitleParts.push(nonEmptyText(picked.special));
-  const tileTitle = terrainTitleParts.filter(Boolean).join(" ");
+  const terrainName = nonEmptyText(picked.terrain);
+  const reliefName = nonEmptyText(relief);
+  const terrainFacetNames = [];
+  if (terrainName) terrainFacetNames.push(terrainName);
+  if (reliefName && reliefName !== "-" && reliefName !== terrainName) terrainFacetNames.push(reliefName);
+  if (picked.river) terrainFacetNames.push("川");
+  if (picked.waterfall) terrainFacetNames.push("滝");
+  if (nonEmptyText(picked.special)) terrainFacetNames.push(nonEmptyText(picked.special));
+  const terrainDisplayName = terrainFacetNames.length ? terrainFacetNames.join("/") : terrainName;
+  const tileTitle = terrainDisplayName || picked.terrain;
+  const terrainIconName = resolveTerrainIconName(picked, terrainDisplayName, reliefName, special);
+  const terrainIconSrc = resolveUnitIconSrc(terrainIconName, DEFAULT_ICON_NAME);
+  const campEntry = resolveVillageCampEntryAtTile(villageState.value, tileKey);
+  const campText = campEntry ? "あり" : "なし";
   const facilityNames = resolveVillageTileFacilityNames(villageState.value, tileKey);
+  if (campEntry) {
+    facilityNames.push("野営キャンプ");
+  }
   const facilitiesText = facilityNames.length ? facilityNames.join(", ") : "-";
+  const tileRecoveryValue = ownTerritoryTile
+    ? Math.max(0, roundTo1(resolveVillageTileRecoveryValue(villageState.value, tileKey)))
+    : 0;
+  const tileRecoveryText = (ownTerritoryTile || campEntry)
+    ? (campEntry
+      ? `${formatCompactNumber(tileRecoveryValue)} + 待機回復`
+      : formatCompactNumber(tileRecoveryValue))
+    : "-";
   const developmentSummary = ownTerritoryTile
     ? `${territoryDevelopmentText} / ${residentialText}`
     : "-";
@@ -13287,13 +18462,19 @@ function updateMapClickInfo(picked) {
   )
     ? nonEmptyText(stopState.reason)
     : "";
-  const placementModeText = villagePlacementMode.value ? " / 配置モード: ON" : "";
-  const moveModeText = unitMoveMode.value ? " / 移動モード: ON" : "";
+  const placementModeText = resolvePlacementModeInfoText();
+  const moveModeText = resolveMoveCommandInfoText();
   selectedTileDetail.value = {
     x: picked.x,
     y: picked.y,
-    terrain: picked.terrain,
+    terrain: terrainDisplayName || picked.terrain,
     title: tileTitle || picked.terrain,
+    terrainIconSrc,
+    terrainIconLabel: terrainDisplayName || picked.terrain,
+    unitIconSrc: leadTileUnitIconSrc || "",
+    unitIconGlyph: leadTileUnitIconSrc ? "" : leadTileUnitGlyph,
+    unitName: nonEmptyText(leadTileUnit?.name),
+    unitSummary: tileUnitSummaryText,
     territory: ownerText,
     danger: dangerText,
     coast,
@@ -13307,7 +18488,11 @@ function updateMapClickInfo(picked) {
     village: villageDetailText,
     units: unitText,
     enemies: enemyText,
+    enemySense: enemyEncounterSenseText,
+    monsterConfigured: monsterConfiguredText,
     development: developmentSummary,
+    camp: campText,
+    tileRecovery: tileRecoveryText,
     facilities: facilitiesText,
     moveStopReason: moveStopReason || "-",
     canOpenVillageActions: canOpenVillageActionsOnTile,
@@ -13342,11 +18527,17 @@ function refreshMapCursor() {
 function findHitAreaAtWorld(worldX, worldY) {
   const data = currentData.value;
   if (!data || !Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+  const tileW = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.width, 40));
+  const tileH = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.height, 48));
+  const rowStep = Math.max(1, toSafeNumber(HEX_TILE_CONFIG?.rowStep, 36));
+  const oddRowOffsetX = toSafeNumber(HEX_TILE_CONFIG?.oddRowOffsetX, tileW / 2);
+  const halfW = tileW / 2;
+  const halfH = tileH / 2;
   const findInBase = (baseWorldX, baseWorldY) => {
-    const roughY = clampNumber(Math.round((baseWorldY - 24) / 36), 0, data.h - 1);
+    const roughY = clampNumber(Math.round((baseWorldY - halfH) / rowStep), 0, data.h - 1);
     for (let y = Math.max(0, roughY - 1); y <= Math.min(data.h - 1, roughY + 1); y += 1) {
-      const offsetX = y % 2 === 1 ? 20 : 0;
-      const roughX = clampNumber(Math.round((baseWorldX - offsetX - 20) / 40), 0, data.w - 1);
+      const offsetX = y % 2 === 1 ? oddRowOffsetX : 0;
+      const roughX = clampNumber(Math.round((baseWorldX - offsetX - halfW) / tileW), 0, data.w - 1);
       for (let x = Math.max(0, roughX - 1); x <= Math.min(data.w - 1, roughX + 1); x += 1) {
         const area = hitAreaMap.get(coordKey(x, y));
         if (area && Phaser.Geom.Polygon.Contains(area.polygon, baseWorldX, baseWorldY)) {
@@ -13385,8 +18576,8 @@ function resolvePointerViewPosition(pointer) {
     const rect = canvas.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       const resolved = {
-        x: ((clientX - rect.left) / rect.width) * GAME_VIEW_WIDTH,
-        y: ((clientY - rect.top) / rect.height) * GAME_VIEW_HEIGHT
+        x: ((clientX - rect.left) / rect.width) * gameViewWidth.value,
+        y: ((clientY - rect.top) / rect.height) * gameViewHeight.value
       };
       if (pointerId !== undefined && pointerId !== null) {
         pointerViewCache.set(pointerId, resolved);
@@ -13418,6 +18609,973 @@ function resolvePointerWorldPosition(pointer) {
   return {
     x: Number(pointer?.worldX),
     y: Number(pointer?.worldY)
+  };
+}
+
+function resolveHexAreaCenterPoint(area) {
+  const points = Array.isArray(area?.polygon?.points) ? area.polygon.points : [];
+  if (!points.length) return null;
+  let sx = 0;
+  let sy = 0;
+  let count = 0;
+  for (const point of points) {
+    const px = Number(point?.x);
+    const py = Number(point?.y);
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+    sx += px;
+    sy += py;
+    count += 1;
+  }
+  if (!count) return null;
+  return { x: sx / count, y: sy / count };
+}
+
+function resolveViewPositionFromWorld(camera, worldX, worldY, viewW, viewH) {
+  if (!camera || !Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+  const base = camera.getWorldPoint(0, 0);
+  const plusX = camera.getWorldPoint(1, 0);
+  const plusY = camera.getWorldPoint(0, 1);
+  if (
+    !Number.isFinite(base?.x) || !Number.isFinite(base?.y)
+    || !Number.isFinite(plusX?.x) || !Number.isFinite(plusX?.y)
+    || !Number.isFinite(plusY?.x) || !Number.isFinite(plusY?.y)
+  ) {
+    return null;
+  }
+  const j11 = plusX.x - base.x;
+  const j21 = plusX.y - base.y;
+  const j12 = plusY.x - base.x;
+  const j22 = plusY.y - base.y;
+  const det = (j11 * j22) - (j12 * j21);
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-9) return null;
+  const dx = worldX - base.x;
+  const dy = worldY - base.y;
+  const sx = ((dx * j22) - (dy * j12)) / det;
+  const sy = ((-dx * j21) + (dy * j11)) / det;
+  return { x: sx, y: sy };
+}
+
+function resolveOverlayAnchorStyleByTileCoord(tileX, tileY, margin = 8) {
+  const tx = Math.floor(toSafeNumber(tileX, Number.NaN));
+  const ty = Math.floor(toSafeNumber(tileY, Number.NaN));
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+  const centerHex = hexCenter(tx, ty);
+  const camera = scene?.cameras?.main;
+  const hostEl = gameRoot.value;
+  const canvasEl = game?.canvas || hostEl?.querySelector?.("canvas");
+  if (!centerHex || !camera || !hostEl || !canvasEl) return null;
+
+  const hostRect = hostEl.getBoundingClientRect();
+  const canvasRect = canvasEl.getBoundingClientRect();
+  if (hostRect.width <= 0 || hostRect.height <= 0 || canvasRect.width <= 0 || canvasRect.height <= 0) {
+    return null;
+  }
+
+  const viewW = Math.max(1, toSafeNumber(gameViewWidth.value, game?.scale?.width || canvasEl.width || 1));
+  const viewH = Math.max(1, toSafeNumber(gameViewHeight.value, game?.scale?.height || canvasEl.height || 1));
+  const data = currentData.value;
+  const wrapEnabled = resolveWorldWrapEnabled(data);
+  const mapSize = data ? mapPixelSize(data.w, data.h) : { width: 0, height: 0 };
+  const cameraCenter = getCameraCenter(camera, viewW, viewH);
+  const worldX = wrapEnabled
+    ? wrapValueNear(centerHex.cx, cameraCenter.x, mapSize.width)
+    : centerHex.cx;
+  const worldY = wrapEnabled
+    ? wrapValueNear(centerHex.cy, cameraCenter.y, mapSize.height)
+    : centerHex.cy;
+  const viewPos = resolveViewPositionFromWorld(camera, worldX, worldY, viewW, viewH);
+  if (!viewPos) return null;
+  const cssX = (canvasRect.left - hostRect.left) + ((viewPos.x / viewW) * canvasRect.width);
+  const cssY = (canvasRect.top - hostRect.top) + ((viewPos.y / viewH) * canvasRect.height);
+  const clampedLeft = clampNumber(cssX, margin, Math.max(margin, hostRect.width - margin));
+  const clampedTop = clampNumber(cssY, margin, Math.max(margin, hostRect.height - margin));
+  return {
+    left: `${clampedLeft}px`,
+    top: `${clampedTop}px`
+  };
+}
+
+function resolveSelectedTileCoordForEffect() {
+  let tileCoord = parseCoordKey(selectedTileKey);
+  if (!tileCoord) {
+    const detail = selectedTileDetail.value;
+    if (detail && Number.isFinite(toSafeNumber(detail.x, Number.NaN)) && Number.isFinite(toSafeNumber(detail.y, Number.NaN))) {
+      tileCoord = {
+        x: Math.floor(toSafeNumber(detail.x, 0)),
+        y: Math.floor(toSafeNumber(detail.y, 0))
+      };
+    }
+  }
+  if (!tileCoord) return null;
+  return {
+    x: Math.floor(toSafeNumber(tileCoord.x, Number.NaN)),
+    y: Math.floor(toSafeNumber(tileCoord.y, Number.NaN))
+  };
+}
+
+function normalizeEffectTargetTileCoord(candidate) {
+  if (!candidate) return null;
+  if (typeof candidate === "string") {
+    const parsed = parseCoordKey(nonEmptyText(candidate));
+    if (!parsed) return null;
+    return {
+      x: Math.floor(toSafeNumber(parsed.x, Number.NaN)),
+      y: Math.floor(toSafeNumber(parsed.y, Number.NaN))
+    };
+  }
+  if (!Number.isFinite(toSafeNumber(candidate.x, Number.NaN)) || !Number.isFinite(toSafeNumber(candidate.y, Number.NaN))) {
+    return null;
+  }
+  return {
+    x: Math.floor(toSafeNumber(candidate.x, Number.NaN)),
+    y: Math.floor(toSafeNumber(candidate.y, Number.NaN))
+  };
+}
+
+function resolveEffectTargetTileCoord(payload) {
+  if (!payload) return null;
+  const candidates = [
+    payload?.tileCoord,
+    payload?.targetTileCoord,
+    payload?.targetTileKey,
+    payload?.tileKey,
+    payload?.targetTile,
+    payload?.target?.tileCoord,
+    payload?.target?.tileKey,
+    payload?.target
+  ];
+  if (Number.isFinite(toSafeNumber(payload?.tileX, Number.NaN)) && Number.isFinite(toSafeNumber(payload?.tileY, Number.NaN))) {
+    candidates.unshift({
+      x: Math.floor(toSafeNumber(payload.tileX, Number.NaN)),
+      y: Math.floor(toSafeNumber(payload.tileY, Number.NaN))
+    });
+  }
+  for (const candidate of candidates) {
+    const normalized = normalizeEffectTargetTileCoord(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function resolveEffectTargetWorldPos(payload) {
+  if (!payload) return null;
+  const candidates = [
+    payload?.worldPos,
+    payload?.world,
+    payload?.targetWorldPos,
+    payload?.target?.worldPos,
+    payload?.target?.world
+  ];
+  if (Number.isFinite(toSafeNumber(payload?.worldX, Number.NaN)) && Number.isFinite(toSafeNumber(payload?.worldY, Number.NaN))) {
+    candidates.unshift({
+      x: toSafeNumber(payload.worldX, Number.NaN),
+      y: toSafeNumber(payload.worldY, Number.NaN)
+    });
+  }
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const x = toSafeNumber(candidate.x, Number.NaN);
+    const y = toSafeNumber(candidate.y, Number.NaN);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y };
+    }
+  }
+  return null;
+}
+
+function resolveEffectSourceByPayload(payload) {
+  const src = nonEmptyText(payload?.src);
+  if (src) return src;
+  const nameCandidates = [
+    nonEmptyText(payload?.effectName),
+    nonEmptyText(payload?.name),
+    nonEmptyText(payload?.effect)
+  ].filter(Boolean);
+  for (const name of nameCandidates) {
+    const resolvedName = resolveKnownEffectName(name);
+    const found = nonEmptyText(effectSrcByName.get(resolvedName));
+    if (found) return found;
+  }
+  return "";
+}
+
+function normalizeEffectScalePercent(rawValue, fallback = 50) {
+  return clampNumber(toSafeNumber(rawValue, fallback), 10, 400);
+}
+
+function normalizeHalfWidthDigits(text) {
+  return nonEmptyText(text).replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+}
+
+function resolveKnownEffectName(rawName) {
+  const source = nonEmptyText(rawName).replace(/\.(webp|png|jpg|jpeg|avif|gif)$/i, "");
+  if (!source) return "";
+  const base = normalizeHalfWidthDigits(source);
+  const attempts = [];
+  const pushAttempt = value => {
+    const key = nonEmptyText(value);
+    if (!key || attempts.includes(key)) return;
+    attempts.push(key);
+  };
+  pushAttempt(base);
+  pushAttempt(base.replace(/\s+/g, ""));
+  const tailMatch = base.match(/^(.*?)(\d+)$/);
+  if (tailMatch) {
+    const head = nonEmptyText(tailMatch[1]);
+    const num = tailMatch[2];
+    pushAttempt(head);
+    pushAttempt(`${head}(${num})`);
+    pushAttempt(`${head} (${num})`);
+  }
+  for (const name of attempts) {
+    if (effectSrcByName.has(name)) return name;
+  }
+  return "";
+}
+
+function resolveSkillAnimationEffectNames(rawValue) {
+  const text = nonEmptyText(rawValue);
+  if (!text) return [];
+  const direct = resolveKnownEffectName(text);
+  if (direct) return [direct];
+  const candidates = text
+    .split(/[\s,，\/／|｜:：;；>＞]+/)
+    .map(part => resolveKnownEffectName(part))
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!effectSrcByName.has(candidate) || seen.has(candidate)) continue;
+    seen.add(candidate);
+    out.push(candidate);
+  }
+  return out;
+}
+
+function resolveSkillAnimationEffectName(rawValue) {
+  const names = resolveSkillAnimationEffectNames(rawValue);
+  return names[0] || "";
+}
+
+function resolveEffectSourceSequenceByPayload(payload) {
+  const directSequenceSources = Array.isArray(payload?.sequenceSources)
+    ? payload.sequenceSources.map(nonEmptyText).filter(Boolean)
+    : [];
+  if (directSequenceSources.length) return directSequenceSources;
+
+  const directSequenceNames = Array.isArray(payload?.sequenceNames)
+    ? payload.sequenceNames.map(nonEmptyText).filter(Boolean)
+    : [];
+  if (directSequenceNames.length) {
+    const mapped = directSequenceNames
+      .map(name => resolveKnownEffectName(name))
+      .map(name => nonEmptyText(effectSrcByName.get(name)))
+      .filter(Boolean);
+    if (mapped.length) return mapped;
+  }
+
+  const sequenceText = nonEmptyText(payload?.effectName || payload?.effect || payload?.name);
+  if (sequenceText) {
+    const sequenceNames = resolveSkillAnimationEffectNames(sequenceText);
+    const mapped = sequenceNames
+      .map(name => nonEmptyText(effectSrcByName.get(name)))
+      .filter(Boolean);
+    if (mapped.length) return mapped;
+  }
+
+  const single = resolveEffectSourceByPayload(payload);
+  return single ? [single] : [];
+}
+
+function resolveDefaultEffectSource() {
+  for (const name of effectNameCatalog) {
+    const src = nonEmptyText(effectSrcByName.get(name));
+    if (src) return src;
+  }
+  const iter = effectSrcByName.values().next();
+  return nonEmptyText(iter?.value);
+}
+
+function resolveDefaultAttackEffectSource() {
+  return nonEmptyText(effectSrcByName320.get(DEFAULT_ATTACK_EFFECT_NAME))
+    || nonEmptyText(effectSrcByName.get(DEFAULT_ATTACK_EFFECT_NAME))
+    || resolveDefaultEffectSource();
+}
+
+function rememberEffectPlaybackPreset(payload) {
+  if (!payload || typeof payload !== "object") return;
+  const resolvedSrc = resolveEffectSourceByPayload(payload);
+  if (!resolvedSrc) return;
+  const resolvedName = nonEmptyText(payload?.effectName || payload?.name || payload?.effect);
+  effectPlaybackPreset.value = {
+    name: resolvedName,
+    src: resolvedSrc,
+    angleDeg: resolveEffectAngleDegByPayload(payload),
+    scalePercent: normalizeEffectScalePercent(payload?.scalePercent, effectPlaybackPreset.value?.scalePercent ?? 50),
+    tint: resolveEffectTintByPayload(payload),
+    colorStrengthPercent: resolveEffectColorStrengthPercentByPayload(payload, effectPlaybackPreset.value?.colorStrengthPercent ?? 100),
+    hueAnimationDegPerFrame: resolveEffectHueAnimationDegPerFrameByPayload(payload, effectPlaybackPreset.value?.hueAnimationDegPerFrame ?? 0),
+    grayscaleBase: resolveEffectGrayscaleBaseByPayload(payload, effectPlaybackPreset.value?.grayscaleBase),
+    renderStyle: resolveEffectRenderStyleByPayload(payload, effectPlaybackPreset.value?.renderStyle),
+    frameOffsets: resolveEffectFrameOffsetsByPayload(payload),
+    showPreviousFrameGhost: !!payload?.showPreviousFrameGhost
+  };
+}
+
+function buildAttackEffectPlayPayloadBySkill(options = {}) {
+  const picked = options?.picked || null;
+  const splashSpec = options?.splashSpec || null;
+  const explicitSkillName = nonEmptyText(options?.skillName);
+  const fallbackSelectedSkillName = nonEmptyText(selectedTileAttackSkillName.value) || nonEmptyText(footerUnitSkillModalSelectedSkillName.value);
+  const skillName = explicitSkillName || fallbackSelectedSkillName;
+  const skillRow = options?.skillRow && typeof options.skillRow === "object"
+    ? options.skillRow
+    : resolveSkillInfoRowByName(skillName);
+  if (!picked) return null;
+  const skillEffectNames = resolveSkillAnimationEffectNames(skillRow?.アニメ);
+  const skillEffectSources = skillEffectNames
+    .map(name => nonEmptyText(effectSrcByName.get(name)))
+    .filter(Boolean);
+  const skillEffectName = nonEmptyText(skillEffectNames[0]);
+  const skillEffectSrc = nonEmptyText(skillEffectSources[0]);
+  const preset = effectPlaybackPreset.value || {};
+  const fallbackSrc = resolveDefaultAttackEffectSource() || nonEmptyText(preset?.src) || resolveDefaultEffectSource();
+  const src = skillEffectSrc || fallbackSrc;
+  if (!src) return null;
+  const splashValue = Math.max(0, toSafeNumber(splashSpec?.value, 0));
+  const scaleMultiplier = 1 + splashValue;
+  const baseScalePercent = normalizeEffectScalePercent(preset?.scalePercent, 50);
+  const scaledPercent = normalizeEffectScalePercent(Math.round(baseScalePercent * scaleMultiplier), baseScalePercent);
+  const payload = {
+    src,
+    tileX: Math.floor(toSafeNumber(picked.x, Number.NaN)),
+    tileY: Math.floor(toSafeNumber(picked.y, Number.NaN)),
+    scalePercent: scaledPercent,
+    angleDeg: resolveEffectAngleDegByPayload({ angleDeg: preset?.angleDeg }),
+    colorStrengthPercent: resolveEffectColorStrengthPercentByPayload({ colorStrengthPercent: preset?.colorStrengthPercent }),
+    hueAnimationDegPerFrame: resolveEffectHueAnimationDegPerFrameByPayload({ hueAnimationDegPerFrame: preset?.hueAnimationDegPerFrame }),
+    grayscaleBase: resolveEffectGrayscaleBaseByPayload({ grayscaleBase: preset?.grayscaleBase }),
+    renderStyle: resolveEffectRenderStyleByPayload({ renderStyle: preset?.renderStyle }),
+    frameOffsets: resolveEffectFrameOffsetsByPayload({ frameOffsets: preset?.frameOffsets }),
+    showPreviousFrameGhost: !!preset?.showPreviousFrameGhost,
+    rememberPreset: false
+  };
+  const effectName = skillEffectName || DEFAULT_ATTACK_EFFECT_NAME || nonEmptyText(preset?.name);
+  if (effectName) payload.name = effectName;
+  if (skillEffectSources.length > 1) {
+    payload.sequenceSources = [...skillEffectSources];
+    payload.sequenceNames = [...skillEffectNames];
+  }
+  const tint = preset?.tint;
+  if (tint !== null && tint !== undefined && tint !== "") {
+    payload.tint = tint;
+  }
+  return payload;
+}
+
+function buildTileAttackEffectPlayPayload(picked, leader, splashSpec) {
+  return buildAttackEffectPlayPayloadBySkill({
+    picked,
+    leader,
+    splashSpec
+  });
+}
+
+function resolveEffectAngleDegByPayload(payload) {
+  const explicitRaw = Number(payload?.angleDeg);
+  if (Number.isFinite(explicitRaw)) {
+    const normalized = explicitRaw % 360;
+    return normalized < 0 ? normalized + 360 : normalized;
+  }
+  const directionText = nonEmptyText(payload?.direction || payload?.dir || payload?.facing).toUpperCase();
+  const directionAliasMap = {
+    E: 0,
+    NE: 1,
+    NW: 2,
+    W: 3,
+    SW: 4,
+    SE: 5
+  };
+  if (directionText && Object.prototype.hasOwnProperty.call(directionAliasMap, directionText)) {
+    return normalizeAttackDirectionIndex(directionAliasMap[directionText]) * 60;
+  }
+  const dirRaw = toSafeNumber(payload?.directionIndex, Number.NaN);
+  if (Number.isFinite(dirRaw)) {
+    return normalizeAttackDirectionIndex(Math.floor(dirRaw)) * 60;
+  }
+  return 0;
+}
+
+function resolveEffectTintByPayload(payload) {
+  const raw = payload?.tint;
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (Number.isFinite(raw)) {
+    const num = Math.floor(Number(raw));
+    return clampNumber(num, 0x000000, 0xffffff);
+  }
+  const text = nonEmptyText(raw);
+  if (!text) return null;
+  const normalized = text.trim();
+  const hexBody = normalized.startsWith("#")
+    ? normalized.slice(1)
+    : normalized.toLowerCase().startsWith("0x")
+      ? normalized.slice(2)
+      : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(hexBody)) return null;
+  const parsed = Number.parseInt(hexBody, 16);
+  if (!Number.isFinite(parsed)) return null;
+  return clampNumber(parsed, 0x000000, 0xffffff);
+}
+
+function resolveEffectColorStrengthPercentByPayload(payload, fallback = 100) {
+  const raw = toSafeNumber(payload?.colorStrengthPercent, fallback);
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
+function resolveEffectHueAnimationDegPerFrameByPayload(payload, fallback = 0) {
+  const raw = toSafeNumber(payload?.hueAnimationDegPerFrame, fallback);
+  return Math.max(-180, Math.min(180, raw));
+}
+
+function resolveEffectGrayscaleBaseByPayload(payload, fallback = false) {
+  if (payload?.grayscaleBase === undefined || payload?.grayscaleBase === null) return !!fallback;
+  return !!payload.grayscaleBase;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, toSafeNumber(value, 0)));
+}
+
+function mixTintColorByStrength(color, strengthPercent) {
+  const strength = clamp01(toSafeNumber(strengthPercent, 100) / 100);
+  const source = Math.max(0, Math.min(0xffffff, Math.floor(toSafeNumber(color, 0xffffff))));
+  const r = (source >> 16) & 0xff;
+  const g = (source >> 8) & 0xff;
+  const b = source & 0xff;
+  const outR = Math.round((255 * (1 - strength)) + (r * strength));
+  const outG = Math.round((255 * (1 - strength)) + (g * strength));
+  const outB = Math.round((255 * (1 - strength)) + (b * strength));
+  return ((outR & 0xff) << 16) | ((outG & 0xff) << 8) | (outB & 0xff);
+}
+
+function rotateHexColorHue(color, hueShiftDegRaw = 0) {
+  const hueShiftDeg = toSafeNumber(hueShiftDegRaw, 0);
+  if (!Number.isFinite(hueShiftDeg) || Math.abs(hueShiftDeg) < 0.0001) {
+    return Math.max(0, Math.min(0xffffff, Math.floor(toSafeNumber(color, 0xffffff))));
+  }
+  const source = Math.max(0, Math.min(0xffffff, Math.floor(toSafeNumber(color, 0xffffff))));
+  let r = ((source >> 16) & 0xff) / 255;
+  let g = ((source >> 8) & 0xff) / 255;
+  let b = (source & 0xff) / 255;
+  const cMax = Math.max(r, g, b);
+  const cMin = Math.min(r, g, b);
+  const delta = cMax - cMin;
+  let h = 0;
+  if (delta !== 0) {
+    if (cMax === r) h = ((g - b) / delta) % 6;
+    else if (cMax === g) h = ((b - r) / delta) + 2;
+    else h = ((r - g) / delta) + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const l = (cMax + cMin) / 2;
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs((2 * l) - 1));
+  const nextHue = ((((h + hueShiftDeg) % 360) + 360) % 360) / 360;
+  const hue2rgb = (p, q, tRaw) => {
+    let t = tRaw;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < (1 / 6)) return p + ((q - p) * 6 * t);
+    if (t < (1 / 2)) return q;
+    if (t < (2 / 3)) return p + ((q - p) * ((2 / 3) - t) * 6);
+    return p;
+  };
+  if (s === 0) {
+    r = l;
+    g = l;
+    b = l;
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - (l * s);
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, nextHue + (1 / 3));
+    g = hue2rgb(p, q, nextHue);
+    b = hue2rgb(p, q, nextHue - (1 / 3));
+  }
+  const outR = Math.round(clamp01(r) * 255);
+  const outG = Math.round(clamp01(g) * 255);
+  const outB = Math.round(clamp01(b) * 255);
+  return ((outR & 0xff) << 16) | ((outG & 0xff) << 8) | (outB & 0xff);
+}
+
+function applyGrayscaleBaseToEffectImage(targetImage, enabled) {
+  if (!enabled || !targetImage) return;
+  try {
+    const fx = typeof targetImage?.postFX?.addColorMatrix === "function"
+      ? targetImage.postFX.addColorMatrix()
+      : typeof targetImage?.preFX?.addColorMatrix === "function"
+        ? targetImage.preFX.addColorMatrix()
+        : null;
+    if (fx && typeof fx.reset === "function" && typeof fx.grayscale === "function") {
+      fx.reset();
+      fx.grayscale(1, false);
+    }
+  } catch (_error) {
+    // FX が使えない環境では tint のみで継続
+  }
+}
+
+function resolveEffectRenderStyleByPayload(payload, fallback = EFFECT_RENDER_STYLE_SOFT) {
+  const raw = nonEmptyText(payload?.renderStyle || payload?.shape || payload?.maskStyle || payload?.style);
+  if (raw && EFFECT_RENDER_STYLE_SET.has(raw)) return raw;
+  return EFFECT_RENDER_STYLE_SET.has(fallback) ? fallback : EFFECT_RENDER_STYLE_SOFT;
+}
+
+function resolveEffectFrameOffsetsByPayload(payload) {
+  const source = payload?.frameOffsets;
+  if (!source || typeof source !== "object") return {};
+  const out = {};
+  for (const [indexText, offset] of Object.entries(source)) {
+    const frameIndex = Math.floor(toSafeNumber(indexText, Number.NaN));
+    if (!Number.isFinite(frameIndex) || frameIndex < 0) continue;
+    if (!offset || typeof offset !== "object") continue;
+    const x = toSafeNumber(offset.x, 0);
+    const y = toSafeNumber(offset.y, 0);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    out[frameIndex] = { x, y };
+  }
+  return out;
+}
+
+async function playEffectFromExternalRequest(payload) {
+  await handleEffectPlayerPlayRequest(payload);
+}
+
+function installExternalMapEffectBridge() {
+  if (typeof window === "undefined") return;
+  externalMapEffectPlayBridgeFn = payload => {
+    void playEffectFromExternalRequest(payload);
+  };
+  const bridge = window[MAP_EFFECT_BRIDGE_NAMESPACE] && typeof window[MAP_EFFECT_BRIDGE_NAMESPACE] === "object"
+    ? window[MAP_EFFECT_BRIDGE_NAMESPACE]
+    : {};
+  bridge.play = externalMapEffectPlayBridgeFn;
+  bridge.eventName = MAP_EFFECT_PLAY_EVENT_NAME;
+  window[MAP_EFFECT_BRIDGE_NAMESPACE] = bridge;
+  externalMapEffectPlayEventHandler = event => {
+    void playEffectFromExternalRequest(event?.detail);
+  };
+  window.addEventListener(MAP_EFFECT_PLAY_EVENT_NAME, externalMapEffectPlayEventHandler);
+}
+
+function uninstallExternalMapEffectBridge() {
+  if (typeof window === "undefined") return;
+  if (externalMapEffectPlayEventHandler) {
+    window.removeEventListener(MAP_EFFECT_PLAY_EVENT_NAME, externalMapEffectPlayEventHandler);
+    externalMapEffectPlayEventHandler = null;
+  }
+  const bridge = window[MAP_EFFECT_BRIDGE_NAMESPACE];
+  if (bridge && typeof bridge === "object" && bridge.play === externalMapEffectPlayBridgeFn) {
+    delete bridge.play;
+  }
+  externalMapEffectPlayBridgeFn = null;
+}
+
+function clearActiveTileEffectPlayback() {
+  if (activeTileEffectFrameTimerId) {
+    clearInterval(activeTileEffectFrameTimerId);
+    activeTileEffectFrameTimerId = null;
+  }
+  if (activeTileEffectHideTimerId) {
+    clearTimeout(activeTileEffectHideTimerId);
+    activeTileEffectHideTimerId = null;
+  }
+  if (activeTileEffectImage) {
+    if (typeof activeTileEffectImage.clearMask === "function") {
+      activeTileEffectImage.clearMask(true);
+    }
+    activeTileEffectImage.destroy();
+    activeTileEffectImage = null;
+  }
+  if (activeTileEffectPrevGhostImage) {
+    if (typeof activeTileEffectPrevGhostImage.clearMask === "function") {
+      activeTileEffectPrevGhostImage.clearMask(true);
+    }
+    activeTileEffectPrevGhostImage.destroy();
+    activeTileEffectPrevGhostImage = null;
+  }
+  if (activeTileEffectMaskImage) {
+    activeTileEffectMaskImage.destroy();
+    activeTileEffectMaskImage = null;
+  }
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`effect image load failed: ${src}`));
+    img.src = src;
+  });
+}
+
+async function ensureEffectTextureKey(src) {
+  const textureKey = `tile-effect:${src}`;
+  const textureManager = scene?.textures;
+  if (!textureManager) return null;
+  if (textureManager.exists(textureKey)) return textureKey;
+  const image = await loadImageElement(src);
+  if (!scene?.textures) return null;
+  if (scene.textures.exists(textureKey)) return textureKey;
+  scene.textures.addImage(textureKey, image);
+  return textureKey;
+}
+
+function ensureEffectSoftMaskTextureKey() {
+  const textureManager = scene?.textures;
+  if (!textureManager) return null;
+  if (textureManager.exists(EFFECT_SOFT_MASK_TEXTURE_KEY)) {
+    return EFFECT_SOFT_MASK_TEXTURE_KEY;
+  }
+  const size = Math.max(32, Math.floor(EFFECT_SOFT_MASK_TEXTURE_SIZE));
+  const texture = textureManager.createCanvas(EFFECT_SOFT_MASK_TEXTURE_KEY, size, size);
+  if (!texture?.context) return null;
+  const ctx = texture.context;
+  const cx = size * 0.5;
+  const cy = size * 0.5;
+  const outerR = Math.max(1, size * 0.5);
+  const innerR = Math.max(0, outerR * clampNumber(EFFECT_SOFT_MASK_INNER_RATIO, 0, 0.98));
+  ctx.clearRect(0, 0, size, size);
+  const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  texture.refresh();
+  return EFFECT_SOFT_MASK_TEXTURE_KEY;
+}
+
+function resolveEffectWorldPosition(tileX, tileY) {
+  const centerHex = hexCenter(tileX, tileY);
+  if (!centerHex) return null;
+  const camera = scene?.cameras?.main;
+  const data = currentData.value;
+  if (!camera || !data || !resolveWorldWrapEnabled(data)) {
+    return { x: centerHex.cx, y: centerHex.cy };
+  }
+  const { width: worldW, height: worldH } = mapPixelSize(data.w, data.h);
+  const viewW = Math.max(1, Math.floor(Number(gameViewWidth.value) || GAME_VIEW_WIDTH));
+  const viewH = Math.max(1, Math.floor(Number(gameViewHeight.value) || GAME_VIEW_HEIGHT));
+  const center = getCameraCenter(camera, viewW, viewH);
+  return {
+    x: wrapValueNear(centerHex.cx, center.x, worldW),
+    y: wrapValueNear(centerHex.cy, center.y, worldH)
+  };
+}
+
+async function playSingleEffectAtWorldPos(src, payload, worldPos, requestId) {
+  if (!src || !worldPos || requestId !== activeTileEffectPlaybackRequestId) return false;
+  const textureKey = await ensureEffectTextureKey(src);
+  if (!textureKey || !scene || !currentData.value || requestId !== activeTileEffectPlaybackRequestId) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: texture-or-scene-invalid`, {
+      textureKey,
+      hasScene: !!scene,
+      hasMap: !!currentData.value
+    });
+    return false;
+  }
+  const texture = scene.textures.get(textureKey);
+  const sourceImage = texture?.getSourceImage?.();
+  const sourceW = Number(sourceImage?.width) || 0;
+  const sourceH = Number(sourceImage?.height) || 0;
+  if (sourceW <= 0 || sourceH <= 0) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: invalid-source-size`, { sourceW, sourceH, textureKey });
+    return false;
+  }
+
+  clearActiveTileEffectPlayback();
+  const isHorizontal = sourceW > sourceH;
+  const isFixed320VerticalSplit = sourceW === EFFECT_VERTICAL_SPLIT_TARGET_WIDTH
+    && sourceH >= (EFFECT_VERTICAL_SPLIT_FRAME_HEIGHT * 2);
+  const useHorizontalFrames = isFixed320VerticalSplit ? false : isHorizontal;
+  let frameCount = 1;
+  if (isFixed320VerticalSplit) {
+    frameCount = Math.max(1, Math.floor(sourceH / EFFECT_VERTICAL_SPLIT_FRAME_HEIGHT));
+  } else if (useHorizontalFrames) {
+    if (sourceH > 0 && (sourceW % sourceH) === 0) {
+      frameCount = Math.max(1, Math.floor(sourceW / sourceH));
+    } else {
+      frameCount = Math.max(1, Math.floor(sourceW / EFFECT_SPRITE_UNIT));
+    }
+  } else {
+    if (sourceW > 0 && (sourceH % sourceW) === 0) {
+      frameCount = Math.max(1, Math.floor(sourceH / sourceW));
+    } else {
+      frameCount = Math.max(1, Math.floor(sourceH / EFFECT_SPRITE_UNIT));
+    }
+  }
+  const frameW = useHorizontalFrames
+    ? Math.max(1, Math.floor(sourceW / frameCount))
+    : Math.max(1, sourceW);
+  const frameH = useHorizontalFrames
+    ? Math.max(1, sourceH)
+    : (isFixed320VerticalSplit
+      ? EFFECT_VERTICAL_SPLIT_FRAME_HEIGHT
+      : Math.max(1, Math.floor(sourceH / frameCount)));
+  const angle = resolveEffectAngleDegByPayload(payload);
+  const angleRad = (angle * Math.PI) / 180;
+  const angleCos = Math.cos(angleRad);
+  const angleSin = Math.sin(angleRad);
+  const tintColor = resolveEffectTintByPayload(payload);
+  const colorStrengthPercent = resolveEffectColorStrengthPercentByPayload(payload, effectPlaybackPreset.value?.colorStrengthPercent ?? 100);
+  const hueAnimationDegPerFrame = resolveEffectHueAnimationDegPerFrameByPayload(payload, effectPlaybackPreset.value?.hueAnimationDegPerFrame ?? 0);
+  const grayscaleBase = resolveEffectGrayscaleBaseByPayload(payload, effectPlaybackPreset.value?.grayscaleBase);
+  const renderStyle = resolveEffectRenderStyleByPayload(payload, effectPlaybackPreset.value?.renderStyle);
+  const frameOffsets = resolveEffectFrameOffsetsByPayload(payload);
+  const showPreviousFrameGhost = !!payload?.showPreviousFrameGhost;
+  const scalePercent = normalizeEffectScalePercent(payload?.scalePercent, 50);
+  const scaleFactor = scalePercent / EFFECT_SCALE_BASE_PERCENT;
+  const sourceScaleMultiplier = animation1EffectSrcSet.has(nonEmptyText(src)) ? 2 : 1;
+  const effectiveScaleFactor = scaleFactor * sourceScaleMultiplier;
+  const anchorX = worldPos.x;
+  const anchorY = worldPos.y;
+  const displayFrameW = frameW * effectiveScaleFactor;
+  const displayFrameH = frameH * effectiveScaleFactor;
+
+  function resolveFramePlacement(frameIndexRaw = 0) {
+    const frameIndex = Math.max(0, Math.min(frameCount - 1, Math.floor(toSafeNumber(frameIndexRaw, 0))));
+    const cropX = useHorizontalFrames ? (frameIndex * frameW) : 0;
+    const cropY = useHorizontalFrames ? 0 : (frameIndex * frameH);
+    const frameOffset = frameOffsets[frameIndex] || { x: 0, y: 0 };
+    const localOffsetX = ((sourceW * 0.5) - cropX - (frameW * 0.5)) * effectiveScaleFactor;
+    const localOffsetY = ((sourceH * 0.5) - cropY - (frameH * 0.5)) * effectiveScaleFactor;
+    const rotatedOffsetX = (localOffsetX * angleCos) - (localOffsetY * angleSin);
+    const rotatedOffsetY = (localOffsetX * angleSin) + (localOffsetY * angleCos);
+    const fixedX = anchorX + rotatedOffsetX + toSafeNumber(frameOffset?.x, 0);
+    const fixedY = anchorY + rotatedOffsetY + toSafeNumber(frameOffset?.y, 0);
+    return { cropX, cropY, fixedX, fixedY };
+  }
+
+  function applyFramePlacement(targetImage, placement) {
+    if (!targetImage || !placement) return;
+    targetImage.setCrop(placement.cropX, placement.cropY, frameW, frameH);
+    targetImage.setPosition(placement.fixedX, placement.fixedY);
+  }
+
+  function applyFrameTint(targetImage, frameIndexRaw = 0) {
+    if (!targetImage) return;
+    if (tintColor === null) {
+      targetImage.clearTint();
+      return;
+    }
+    const frameIndex = Math.max(0, Math.floor(toSafeNumber(frameIndexRaw, 0)));
+    const hueShiftDeg = hueAnimationDegPerFrame * frameIndex;
+    const shifted = rotateHexColorHue(tintColor, hueShiftDeg);
+    const mixed = mixTintColorByStrength(shifted, colorStrengthPercent);
+    targetImage.setTint(mixed);
+  }
+
+  activeTileEffectImage = scene.add.image(worldPos.x, worldPos.y, textureKey);
+  activeTileEffectImage.setOrigin(0.5, 0.5);
+  activeTileEffectImage.setScale(effectiveScaleFactor);
+  activeTileEffectImage.setDepth(EFFECT_PLAYBACK_DEPTH);
+  activeTileEffectImage.setAngle(angle);
+  applyGrayscaleBaseToEffectImage(activeTileEffectImage, grayscaleBase);
+  applyFrameTint(activeTileEffectImage, 0);
+  activeTileEffectImage.setBlendMode(Phaser.BlendModes.SCREEN);
+  if (showPreviousFrameGhost && frameCount > 1) {
+    activeTileEffectPrevGhostImage = scene.add.image(worldPos.x, worldPos.y, textureKey);
+    activeTileEffectPrevGhostImage.setOrigin(0.5, 0.5);
+    activeTileEffectPrevGhostImage.setScale(effectiveScaleFactor);
+    activeTileEffectPrevGhostImage.setDepth(EFFECT_PLAYBACK_DEPTH - 1);
+    activeTileEffectPrevGhostImage.setAngle(angle);
+    activeTileEffectPrevGhostImage.setAlpha(0.35);
+    applyGrayscaleBaseToEffectImage(activeTileEffectPrevGhostImage, grayscaleBase);
+    applyFrameTint(activeTileEffectPrevGhostImage, 0);
+    activeTileEffectPrevGhostImage.setBlendMode(Phaser.BlendModes.SCREEN);
+  }
+  if (renderStyle === EFFECT_RENDER_STYLE_SOFT) {
+    const softMaskTextureKey = ensureEffectSoftMaskTextureKey();
+    if (softMaskTextureKey) {
+      activeTileEffectMaskImage = scene.make.image({ x: anchorX, y: anchorY, key: softMaskTextureKey, add: false });
+    }
+    if (activeTileEffectMaskImage) {
+      const isEllipse = displayFrameW > (displayFrameH * EFFECT_ELLIPSE_RATIO_THRESHOLD);
+      const maskW = isEllipse ? displayFrameW : Math.min(displayFrameW, displayFrameH);
+      const maskH = isEllipse ? displayFrameH : Math.min(displayFrameW, displayFrameH);
+      activeTileEffectMaskImage.setOrigin(0.5, 0.5);
+      activeTileEffectMaskImage.setDisplaySize(Math.max(1, maskW), Math.max(1, maskH));
+      activeTileEffectMaskImage.setAngle(angle);
+      activeTileEffectImage.setMask(activeTileEffectMaskImage.createBitmapMask());
+    }
+  }
+  console.info(`${EFFECT_DEBUG_PREFIX} playback-started`, {
+    textureKey,
+    worldPos,
+    scalePercent,
+    sourceScaleMultiplier,
+    angle,
+    frameCount,
+    useHorizontalFrames,
+    isFixed320VerticalSplit,
+    renderStyle,
+    showPreviousFrameGhost,
+    colorStrengthPercent,
+    hueAnimationDegPerFrame,
+    grayscaleBase
+  });
+  applyFramePlacement(activeTileEffectImage, resolveFramePlacement(0));
+  applyFrameTint(activeTileEffectImage, 0);
+  if (activeTileEffectPrevGhostImage) {
+    applyFramePlacement(activeTileEffectPrevGhostImage, resolveFramePlacement(0));
+    applyFrameTint(activeTileEffectPrevGhostImage, 0);
+  }
+
+  await new Promise(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve(true);
+    };
+    if (frameCount <= 1) {
+      activeTileEffectHideTimerId = setTimeout(() => {
+        if (requestId === activeTileEffectPlaybackRequestId) {
+          clearActiveTileEffectPlayback();
+        }
+        finish();
+      }, EFFECT_TOTAL_PLAYBACK_MS);
+      return;
+    }
+
+    const frameIntervalMs = Math.max(16, Math.floor(EFFECT_TOTAL_PLAYBACK_MS / Math.max(1, frameCount)));
+    let frameIndex = 0;
+    activeTileEffectFrameTimerId = setInterval(() => {
+      if (requestId !== activeTileEffectPlaybackRequestId) {
+        if (activeTileEffectFrameTimerId) {
+          clearInterval(activeTileEffectFrameTimerId);
+          activeTileEffectFrameTimerId = null;
+        }
+        finish();
+        return;
+      }
+      if (!activeTileEffectImage || !scene) return;
+      const placement = resolveFramePlacement(frameIndex);
+      applyFramePlacement(activeTileEffectImage, placement);
+      applyFrameTint(activeTileEffectImage, frameIndex);
+      if (activeTileEffectPrevGhostImage) {
+        const prevPlacement = resolveFramePlacement(Math.max(0, frameIndex - 1));
+        applyFramePlacement(activeTileEffectPrevGhostImage, prevPlacement);
+        applyFrameTint(activeTileEffectPrevGhostImage, Math.max(0, frameIndex - 1));
+      }
+      frameIndex += 1;
+      if (frameIndex >= frameCount) {
+        if (activeTileEffectFrameTimerId) {
+          clearInterval(activeTileEffectFrameTimerId);
+          activeTileEffectFrameTimerId = null;
+        }
+        if (requestId === activeTileEffectPlaybackRequestId) {
+          clearActiveTileEffectPlayback();
+        }
+        finish();
+      }
+    }, frameIntervalMs);
+  });
+  return true;
+}
+
+function waitMs(ms) {
+  const delay = Math.max(0, Math.floor(toSafeNumber(ms, 0)));
+  if (delay <= 0) return Promise.resolve();
+  return new Promise(resolve => {
+    setTimeout(resolve, delay);
+  });
+}
+
+async function handleEffectPlayerPlayRequest(payload) {
+  if (payload?.rememberPreset !== false) {
+    rememberEffectPlaybackPreset(payload);
+  }
+  console.info(`${EFFECT_DEBUG_PREFIX} handleEffectPlayerPlayRequest:start`, payload);
+
+  const sequenceSources = resolveEffectSourceSequenceByPayload(payload);
+  if (!sequenceSources.length || !scene || !currentData.value) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: missing-src-or-scene-or-map`, {
+      sequenceLength: sequenceSources.length,
+      hasScene: !!scene,
+      hasMap: !!currentData.value
+    });
+    return;
+  }
+  const explicitWorldPos = resolveEffectTargetWorldPos(payload);
+  const explicitTileCoord = resolveEffectTargetTileCoord(payload);
+  const selectedTileCoord = resolveSelectedTileCoordForEffect();
+  if (!explicitWorldPos && !explicitTileCoord && !selectedTileCoord) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: no-target-position`, {
+      explicitWorldPos,
+      explicitTileCoord,
+      selectedTileCoord
+    });
+    return;
+  }
+  const worldPos = explicitWorldPos || (() => {
+    const coord = explicitTileCoord || selectedTileCoord;
+    if (!coord) return null;
+    return resolveEffectWorldPosition(coord.x, coord.y);
+  })();
+  if (!worldPos) {
+    console.warn(`${EFFECT_DEBUG_PREFIX} stop: world-position-unresolved`, {
+      explicitWorldPos,
+      explicitTileCoord,
+      selectedTileCoord
+    });
+    return;
+  }
+
+  const requestId = ++activeTileEffectPlaybackRequestId;
+  for (let i = 0; i < sequenceSources.length; i += 1) {
+    if (requestId !== activeTileEffectPlaybackRequestId) break;
+    const src = sequenceSources[i];
+    console.info(`${EFFECT_DEBUG_PREFIX} sequence-step`, {
+      step: i + 1,
+      total: sequenceSources.length,
+      src
+    });
+    await playSingleEffectAtWorldPos(src, payload, worldPos, requestId);
+    if (i < sequenceSources.length - 1 && requestId === activeTileEffectPlaybackRequestId) {
+      await waitMs(EFFECT_SEQUENCE_GAP_MS);
+    }
+  }
+}
+
+function syncMovePathConfirmPopupStyle(target = plannedMoveTarget.value) {
+  if (!showMovePathConfirmModal.value) {
+    movePathConfirmPopupStyle.value = null;
+    return;
+  }
+  const tx = Math.floor(toSafeNumber(target?.x, Number.NaN));
+  const ty = Math.floor(toSafeNumber(target?.y, Number.NaN));
+  const anchorStyle = resolveOverlayAnchorStyleByTileCoord(tx, ty, 14);
+  if (!anchorStyle) {
+    movePathConfirmPopupStyle.value = null;
+    return;
+  }
+  const topNumeric = toSafeNumber(anchorStyle.top?.replace?.("px", ""), Number.NaN);
+  const margin = 14;
+  const approxPopupHeight = 128;
+  const hostEl = gameRoot.value;
+  const hostRect = hostEl?.getBoundingClientRect?.();
+  if (!hostRect) {
+    movePathConfirmPopupStyle.value = null;
+    return;
+  }
+  const clampedTop = clampNumber(
+    topNumeric,
+    margin + approxPopupHeight,
+    Math.max(margin + approxPopupHeight, hostRect.height - margin)
+  );
+  movePathConfirmPopupStyle.value = {
+    left: anchorStyle.left,
+    top: `${clampedTop}px`
   };
 }
 
@@ -13453,9 +19611,10 @@ function getActiveTouchPair() {
 
 function applyWheelStyleZoomStep(direction) {
   const stepDirection = direction > 0 ? 1 : -1;
-  const nextZoom = normalizeZoomPercent(zoomPercent.value + (stepDirection * 25));
+  const zoomStep = resolveZoomStepPercent(currentData.value);
+  const nextZoom = normalizeZoomPercent(zoomPercent.value + (stepDirection * zoomStep));
   if (nextZoom === zoomPercent.value) return false;
-  setZoomPercent(nextZoom, { centerMode: "village" });
+  setZoomPercent(nextZoom, { centerMode: "selected-or-village" });
   return true;
 }
 
@@ -13492,9 +19651,19 @@ function updateHoveredTileByPointer(pointer) {
   const world = resolvePointerWorldPosition(pointer);
   const picked = findHitAreaAtWorld(world.x, world.y);
   const nextKey = picked ? coordKey(picked.x, picked.y) : "";
-  if (nextKey === hoveredTileKey) return;
-  hoveredTileKey = nextKey;
-  drawHoverOverlay();
+  let needsRender = false;
+  if (nextKey !== hoveredTileKey) {
+    hoveredTileKey = nextKey;
+    drawHoverOverlay();
+    if (tileAttackSelectionMode.value) {
+      // 攻撃モード中はホバー位置で炸裂プレビューが変わるため、毎回マップ再描画する。
+      needsRender = true;
+    }
+  }
+  if (syncCityBlockPlacementHoverPreview(picked)) {
+    needsRender = true;
+  }
+  if (needsRender) requestMapRender();
 }
 
 function resolveEncounterEnemyHeadLabel(entry = null) {
@@ -13586,16 +19755,29 @@ function applyFieldBattleHpCostToUnits(unitIds = [], hpCost = FIELD_BATTLE_HP_CO
     const currentHp = Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, maxHp)));
     const nextHp = Math.max(0, currentHp - safeCost);
     appliedUnits += 1;
-    return {
+    return applyUnitLifeState({
       ...unit,
       maxHp,
+      hp: nextHp,
       currentHp: nextHp
-    };
+    }, nextHp);
   });
   return { appliedUnits, hpCost: safeCost };
 }
 
 function openFieldBattleResultSelection(payload = {}) {
+  if (!FIELD_BATTLE_RESULT_MODAL_ENABLED) {
+    const source = nonEmptyText(payload?.source) || "encounter";
+    const enemyLabel = nonEmptyText(payload?.enemyLabel) || "敵";
+    const summary = nonEmptyText(payload?.summary) || `戦闘(${source}): ${enemyLabel}`;
+    const x = Number.isFinite(payload?.x) ? Math.floor(payload.x) : null;
+    const y = Number.isFinite(payload?.y) ? Math.floor(payload.y) : null;
+    const coordText = Number.isFinite(x) && Number.isFinite(y) ? ` (${x}, ${y})` : "";
+    const skippedText = `戦闘モーダルOFF: ${summary}${coordText}`;
+    updateUnitInfoText(skippedText);
+    pushNationLog(skippedText);
+    return;
+  }
   const enemyLabel = nonEmptyText(payload?.enemyLabel) || "敵";
   const x = Number.isFinite(payload?.x) ? Math.floor(payload.x) : null;
   const y = Number.isFinite(payload?.y) ? Math.floor(payload.y) : null;
@@ -13621,6 +19803,11 @@ function openFieldBattleResultSelection(payload = {}) {
     || `${enemyLabel}と戦闘`;
   const summary = nonEmptyText(payload?.summary)
     || `戦闘(${source}): ${enemyLabel}`;
+  const surveyContext = payload?.surveyContext === true;
+  const surveyDangerBonusPercent = Math.max(
+    0,
+    Math.floor(toSafeNumber(payload?.surveyDangerBonusPercent, SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT))
+  );
   fieldBattleState.value = {
     source,
     enemyLabel,
@@ -13635,6 +19822,9 @@ function openFieldBattleResultSelection(payload = {}) {
     enemyRaceName,
     enemyRaceCategory,
     enemyImageSrc,
+    surveyContext,
+    allowRetreat: payload?.allowRetreat === true || surveyContext,
+    surveyDangerBonusPercent,
     onResolve: typeof payload?.onResolve === "function" ? payload.onResolve : null
   };
   showFieldBattleResultModal.value = true;
@@ -13708,30 +19898,52 @@ function applyFieldBattleExperienceToUnits(state = {}) {
   return { appliedUnits, totalGain, perUnitBase };
 }
 
-function applyFieldBattleResultV2(isVictory) {
+function applyFieldBattleResultV2(resultInput) {
   const state = fieldBattleState.value;
   if (!state) {
     closeFieldBattleResultModal();
     return;
   }
-  const win = !!isVictory;
-  const resultLabel = win ? "勝利" : "敗北";
-  const hpCostResult = applyFieldBattleHpCostToUnits(state?.attackerUnitIds, FIELD_BATTLE_HP_COST);
-  const expGainResult = win
-    ? applyFieldBattleExperienceToUnits(state)
-    : { appliedUnits: 0, totalGain: 0, perUnitBase: 0 };
+  const normalizedResult = typeof resultInput === "string"
+    ? nonEmptyText(resultInput).toLowerCase()
+    : (resultInput ? "victory" : "defeat");
+  const win = normalizedResult === "victory";
+  const retreat = normalizedResult === "retreat";
+  const resultLabel = retreat ? "逃走" : (win ? "勝利" : "敗北");
   if (typeof state.onResolve === "function") {
     try {
-      state.onResolve({ win, state });
+      state.onResolve({ result: normalizedResult, win, state });
     } catch (error) {
       console.warn("[FieldBattleResolve]", error);
     }
   }
+  if (retreat) {
+    const coordText = Number.isFinite(state.x) && Number.isFinite(state.y)
+      ? ` (${state.x}, ${state.y})`
+      : "";
+    const resultText = `${state.summary}${coordText} / ${resultLabel}`;
+    updateUnitInfoText(resultText);
+    pushNationLog(resultText);
+    emitCharacterStateChange();
+    closeFieldBattleResultModal();
+    requestMapRender();
+    return;
+  }
+  const hpCostResult = applyFieldBattleHpCostToUnits(state?.attackerUnitIds, FIELD_BATTLE_HP_COST);
+  const expGainResult = win
+    ? applyFieldBattleExperienceToUnits(state)
+    : { appliedUnits: 0, totalGain: 0, perUnitBase: 0 };
   if (win && Number.isFinite(state.x) && Number.isFinite(state.y) && currentData.value) {
     const autoTarget = resolveAttackTargetAtTile(state.x, state.y, { data: currentData.value });
     if (autoTarget.hasTarget) {
       applyFieldBattleVictoryAtTile(state.x, state.y, autoTarget);
     }
+  }
+  let surveyBonusResult = null;
+  if (win && state?.surveyContext && Number.isFinite(state.x) && Number.isFinite(state.y) && currentData.value) {
+    surveyBonusResult = reduceTileDangerBySurvey(currentData.value, state.x, state.y, {
+      reduceAmount: Math.max(1, Math.floor(toSafeNumber(state?.surveyDangerBonusPercent, SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT)))
+    });
   }
   const coordText = Number.isFinite(state.x) && Number.isFinite(state.y)
     ? ` (${state.x}, ${state.y})`
@@ -13742,7 +19954,10 @@ function applyFieldBattleResultV2(isVictory) {
   const expText = expGainResult.appliedUnits > 0
     ? ` / EXP+${expGainResult.totalGain} (${expGainResult.appliedUnits}体)`
     : "";
-  const resultText = `${state.summary}${coordText} / ${resultLabel}${hpCostText}`;
+  const surveyBonusText = (win && state?.surveyContext && surveyBonusResult?.reduced)
+    ? ` / 調査危険度${surveyBonusResult.beforeDanger}%→${surveyBonusResult.afterDanger}%`
+    : "";
+  const resultText = `${state.summary}${coordText} / ${resultLabel}${hpCostText}${surveyBonusText}`;
   updateUnitInfoText(resultText);
   pushNationLog(resultText);
   emitCharacterStateChange();
@@ -13886,41 +20101,1493 @@ function resolveAttackTargetAtTile(x, y, options = {}) {
   };
 }
 
+function resolveSkillInfoRowByName(skillNameRaw) {
+  const skillName = nonEmptyText(skillNameRaw);
+  if (!skillName) return null;
+  const skillInfo = SKILL_INFO_BY_NAME.get(skillName);
+  if (skillInfo) return skillInfo;
+  const normalized = normalizeSkillNameForLookup(skillName);
+  if (normalized) {
+    const normalizedRow = SKILL_INFO_BY_NORMALIZED_NAME.get(normalized);
+    if (normalizedRow) return normalizedRow;
+  }
+  const panelUnit = ownFactionAttackPanelUnit.value;
+  const selectedByPanel = resolveWeaponSkillRowByNameForUnit(skillName, panelUnit);
+  if (selectedByPanel) return selectedByPanel;
+  const selectedByCurrent = resolveWeaponSkillRowByNameForUnit(skillName, selectedUnit.value);
+  if (selectedByCurrent) return selectedByCurrent;
+  return null;
+}
+
+function normalizeSkillAreaText(areaRaw) {
+  return nonEmptyText(areaRaw).replace(/\s+/g, "").replace(/　+/g, "").toLowerCase();
+}
+
+function resolveTileAttackPatternKeyFromSkillArea(areaRaw) {
+  const normalizedArea = normalizeSkillAreaText(areaRaw);
+  if (!normalizedArea) return "single";
+  const exact = SKILL_AREA_PATTERN_ALIAS_MAP[normalizedArea];
+  if (exact) return normalizeTileAttackPatternKey(exact);
+  if (normalizedArea.includes("全体")) return "all";
+  if (normalizedArea.includes("放射") || normalizedArea.includes("扇") || normalizedArea.includes("散弾")) return "fan";
+  if (normalizedArea.includes("周囲") || normalizedArea.includes("周辺")) return "around";
+  if (normalizedArea.includes("前方")) return "front";
+  if (normalizedArea.includes("直線")) return "straight";
+  if (normalizedArea.includes("ライン") || normalizedArea.includes("列")) return "line";
+  if (normalizedArea.includes("円")) return "circle";
+  return "single";
+}
+
+function hasSkillAreaDefinition(skillRow) {
+  const normalizedArea = normalizeSkillAreaText(skillRow?.範囲);
+  if (!normalizedArea) return false;
+  if (normalizedArea === "-" || normalizedArea === "なし" || normalizedArea === "無し") return false;
+  if (normalizedArea === "null" || normalizedArea === "none") return false;
+  return true;
+}
+
+function resolveEffectiveTileAttackPatternKey(rawPatternKey = tileAttackPatternKey.value) {
+  const selectedSkillName = nonEmptyText(selectedTileAttackSkillName.value)
+    || nonEmptyText(footerUnitSkillModalSelectedSkillName.value);
+  if (!selectedSkillName) return normalizeTileAttackPatternKey(rawPatternKey);
+  const skillRow = resolveSkillInfoRowByName(selectedSkillName);
+  if (!hasSkillAreaDefinition(skillRow)) return "single";
+  return normalizeTileAttackPatternKey(rawPatternKey);
+}
+
+function parseSkillRangeValue(rawRange) {
+  if (rawRange === null || rawRange === undefined || rawRange === "") return null;
+  const numeric = Number(rawRange);
+  if (Number.isFinite(numeric)) return Math.round(numeric);
+  const match = String(rawRange).match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed);
+}
+
+function resolveSkillAttackRangeFromRow(skillRow, fallbackRange = TILE_ATTACK_RANGE_MIN, options = {}) {
+  const fallback = normalizeTileAttackRange(fallbackRange);
+  if (!skillRow || typeof skillRow !== "object") return fallback;
+  const parsed = parseSkillRangeValue(skillRow?.射程);
+  if (parsed !== null) return normalizeTileAttackRange(parsed);
+
+  if (isWeaponAttackStyleText(skillRow?.攻撃手段)) {
+    const primaryWeaponRow = options?.weaponRow && typeof options.weaponRow === "object"
+      ? options.weaponRow
+      : resolvePrimaryWeaponBaseSkillRowForUnit(options?.unit);
+    const weaponParsed = parseSkillRangeValue(primaryWeaponRow?.射程);
+    if (weaponParsed !== null) return normalizeTileAttackRange(weaponParsed);
+  }
+  return TILE_ATTACK_RANGE_MIN;
+}
+
+function parseSplashNumericValue(rawValue, keyword = "") {
+  if (rawValue === null || rawValue === undefined || rawValue === "") return Number.NaN;
+  const direct = Number(rawValue);
+  if (Number.isFinite(direct)) return direct;
+  const text = nonEmptyText(rawValue);
+  if (!text) return Number.NaN;
+  const compact = text.replace(/\s+/g, "");
+  const escapedKeyword = nonEmptyText(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (escapedKeyword) {
+    // キーワード指定時は「炸裂」の明示記述がある場合のみ値を採用する。
+    const withKeyword = new RegExp(`${escapedKeyword}[：:]?(-?\\d+(?:\\.\\d+)?)`, "i");
+    const match = compact.match(withKeyword);
+    if (!match) return Number.NaN;
+    const parsed = Number(match[1] ?? match[0]);
+    if (Number.isFinite(parsed)) return parsed;
+    return Number.NaN;
+  }
+  const match = compact.match(/(-?\d+(?:\.\d+)?)/);
+  if (!match) return Number.NaN;
+  const parsed = Number(match[1] ?? match[0]);
+  if (Number.isFinite(parsed)) return parsed;
+  return Number.NaN;
+}
+
+function resolveSkillSplashValueFromRow(skillRow) {
+  if (!skillRow || typeof skillRow !== "object") return 0;
+  const direct = parseSplashNumericValue(skillRow?.炸裂, "炸裂");
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const textFields = [skillRow?.効果, skillRow?.詳細];
+  for (const value of textFields) {
+    const parsed = parseSplashNumericValue(value, "炸裂");
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function buildSplashSpec(rawValue) {
+  const value = Math.max(0, toSafeNumber(rawValue, 0));
+  if (!(value > 0)) {
+    return {
+      enabled: false,
+      value: 0,
+      fullRadius: 0,
+      fractionalRadius: 0,
+      fractionalRatio: 0
+    };
+  }
+  const fullRadius = Math.max(0, Math.floor(value));
+  const fractionalRatio = Math.max(0, Math.round((value - fullRadius) * 1000) / 1000);
+  const fractionalRadius = fractionalRatio > 0 ? (fullRadius + 1) : 0;
+  const enabled = fullRadius > 0 || fractionalRatio > 0;
+  return {
+    enabled,
+    value,
+    fullRadius,
+    fractionalRadius,
+    fractionalRatio
+  };
+}
+
+function resolveSelectedTileAttackSplashSpec() {
+  const selectedSkillName = nonEmptyText(selectedTileAttackSkillName.value)
+    || nonEmptyText(footerUnitSkillModalSelectedSkillName.value);
+  if (!selectedSkillName) return buildSplashSpec(0);
+  const skillRow = resolveSkillInfoRowByName(selectedSkillName);
+  const splashValue = resolveSkillSplashValueFromRow(skillRow);
+  return buildSplashSpec(splashValue);
+}
+
+function cleanupUnitDamageBlinkState(nowMs = Date.now()) {
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  if (!(unitDamageBlinkUntilMsById instanceof Map) || unitDamageBlinkUntilMsById.size <= 0) return 0;
+  for (const [unitId, untilMs] of unitDamageBlinkUntilMsById.entries()) {
+    const safeUntil = Math.max(0, Math.floor(toSafeNumber(untilMs, 0)));
+    if (!unitId || safeUntil <= now) {
+      unitDamageBlinkUntilMsById.delete(unitId);
+    }
+  }
+  return unitDamageBlinkUntilMsById.size;
+}
+
+function cleanupRecentDamageState(nowMs = Date.now()) {
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  if (!(unitRecentDamageAmountById instanceof Map) || unitRecentDamageAmountById.size <= 0) return 0;
+  for (const [unitId, entry] of unitRecentDamageAmountById.entries()) {
+    const remain = resolveRecentDamageAmountFromEntry(entry, now);
+    if (!unitId || remain <= 0) {
+      unitRecentDamageAmountById.delete(unitId);
+    }
+  }
+  return unitRecentDamageAmountById.size;
+}
+
+function stopUnitDamageBlinkTicker() {
+  if (!unitDamageBlinkTimerId) return;
+  window.clearInterval(unitDamageBlinkTimerId);
+  unitDamageBlinkTimerId = null;
+}
+
+function ensureUnitDamageBlinkTicker() {
+  if (unitDamageBlinkTimerId) return;
+  unitDamageBlinkTimerId = window.setInterval(() => {
+    const now = Date.now();
+    const blinkRemain = cleanupUnitDamageBlinkState(now);
+    const recentRemain = cleanupRecentDamageState(now);
+    if (blinkRemain <= 0 && recentRemain <= 0) {
+      stopUnitDamageBlinkTicker();
+      requestMapRender();
+      return;
+    }
+    requestMapRender();
+  }, UNIT_DAMAGE_BLINK_INTERVAL_MS);
+}
+
+function triggerUnitDamageBlinkByIds(unitIds = []) {
+  const ids = Array.from(new Set((Array.isArray(unitIds) ? unitIds : [])
+    .map(id => nonEmptyText(id))
+    .filter(Boolean)));
+  if (!ids.length) return;
+  const now = Date.now();
+  const until = now + UNIT_DAMAGE_BLINK_DURATION_MS;
+  cleanupUnitDamageBlinkState(now);
+  for (const id of ids) {
+    const prev = Math.max(0, Math.floor(toSafeNumber(unitDamageBlinkUntilMsById.get(id), 0)));
+    unitDamageBlinkUntilMsById.set(id, Math.max(prev, until));
+  }
+  ensureUnitDamageBlinkTicker();
+  requestMapRender();
+}
+
+function resolveUnitDamageBlinkAlphaByIds(unitIds = [], nowMs = Date.now()) {
+  const ids = Array.isArray(unitIds) ? unitIds : [];
+  if (!ids.length) return 1;
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  let blinking = false;
+  for (const rawId of ids) {
+    const id = nonEmptyText(rawId);
+    if (!id) continue;
+    const until = Math.max(0, Math.floor(toSafeNumber(unitDamageBlinkUntilMsById.get(id), 0)));
+    if (until <= now) continue;
+    blinking = true;
+    break;
+  }
+  if (!blinking) return 1;
+  const phase = Math.floor(now / UNIT_DAMAGE_BLINK_INTERVAL_MS) % 2;
+  return phase === 0 ? 1 : UNIT_DAMAGE_BLINK_DIM_ALPHA;
+}
+
+function rememberRecentDamageForUnit(unitIdRaw, damageRaw, nowMs = Date.now()) {
+  const unitId = nonEmptyText(unitIdRaw);
+  const damage = Math.max(0, Math.floor(toSafeNumber(damageRaw, 0)));
+  if (!unitId || damage <= 0) return;
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  const prev = unitRecentDamageAmountById.get(unitId);
+  const prevDamage = resolveRecentDamageAmountFromEntry(prev, now);
+  const holdUntilMs = now + UNIT_HP_DAMAGE_HOLD_MS;
+  const fadeEndMs = holdUntilMs + UNIT_HP_DAMAGE_FADE_MS;
+  unitRecentDamageAmountById.set(unitId, {
+    damage: prevDamage + damage,
+    holdUntilMs,
+    fadeEndMs
+  });
+  ensureUnitDamageBlinkTicker();
+  requestMapRender();
+}
+
+function resolveRecentDamageAmountFromEntry(entry, nowMs = Date.now()) {
+  if (!entry || typeof entry !== "object") return 0;
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  const baseDamage = Math.max(0, Math.floor(toSafeNumber(entry?.damage, 0)));
+  if (baseDamage <= 0) return 0;
+  const holdUntilMs = Math.max(0, Math.floor(toSafeNumber(entry?.holdUntilMs, 0)));
+  const fadeEndMs = Math.max(0, Math.floor(toSafeNumber(entry?.fadeEndMs, 0)));
+  if (holdUntilMs > 0 && fadeEndMs > holdUntilMs) {
+    if (now <= holdUntilMs) return baseDamage;
+    if (now >= fadeEndMs) return 0;
+    const ratio = 1 - ((now - holdUntilMs) / Math.max(1, (fadeEndMs - holdUntilMs)));
+    return Math.max(0, Math.round(baseDamage * ratio));
+  }
+  // 互換: 旧形式 (untilMs) は固定表示のまま期限切れで消す。
+  const legacyUntilMs = Math.max(0, Math.floor(toSafeNumber(entry?.untilMs, 0)));
+  if (legacyUntilMs > now) return baseDamage;
+  return 0;
+}
+
+function resolveRecentDamageForUnit(unitIdRaw, nowMs = Date.now()) {
+  const unitId = nonEmptyText(unitIdRaw);
+  if (!unitId) return 0;
+  const now = Math.max(0, Math.floor(toSafeNumber(nowMs, Date.now())));
+  const entry = unitRecentDamageAmountById.get(unitId);
+  if (!entry) return 0;
+  const amount = resolveRecentDamageAmountFromEntry(entry, now);
+  if (amount <= 0) {
+    unitRecentDamageAmountById.delete(unitId);
+    return 0;
+  }
+  return amount;
+}
+
+function clearActiveDamagePopups() {
+  if (!(activeDamagePopupTexts instanceof Set) || activeDamagePopupTexts.size <= 0) {
+    activeDamagePopupTexts = new Set();
+    return;
+  }
+  for (const text of activeDamagePopupTexts) {
+    if (!text || !text.scene) continue;
+    if (typeof text.destroy === "function") text.destroy();
+  }
+  activeDamagePopupTexts = new Set();
+}
+
+function spawnDamagePopupAtTile(tileXRaw, tileYRaw, damageRaw, options = {}) {
+  if (!scene || !currentData.value) return;
+  const tileX = Math.floor(toSafeNumber(tileXRaw, Number.NaN));
+  const tileY = Math.floor(toSafeNumber(tileYRaw, Number.NaN));
+  if (!Number.isFinite(tileX) || !Number.isFinite(tileY)) return;
+  const damage = Math.max(0, Math.floor(toSafeNumber(damageRaw, 0)));
+  if (damage <= 0) return;
+  const worldPos = resolveEffectWorldPosition(tileX, tileY);
+  if (!worldPos) return;
+  const jitterX = Math.round((Math.random() * 22) - 11);
+  const popupLabel = nonEmptyText(options?.text) || `-${damage}`;
+  const popupColor = nonEmptyText(options?.color) || (options?.friendly ? "#ffd59a" : "#ffb3b3");
+  const delayMs = Math.max(0, Math.floor(toSafeNumber(options?.delayMs, 0)));
+  const popupText = scene.add.text(worldPos.x + jitterX, worldPos.y - 14, popupLabel, {
+    fontFamily: "Noto Sans JP, Meiryo, sans-serif",
+    fontStyle: "700",
+    fontSize: "20px",
+    color: popupColor,
+    stroke: "#200303",
+    strokeThickness: 4
+  });
+  popupText.setOrigin(0.5);
+  popupText.setDepth(DAMAGE_POPUP_DEPTH);
+  activeDamagePopupTexts.add(popupText);
+  if (!scene.tweens || typeof scene.tweens.add !== "function") return;
+  scene.tweens.add({
+    targets: popupText,
+    y: popupText.y - DAMAGE_POPUP_RISE_PX,
+    alpha: 0,
+    delay: delayMs,
+    duration: DAMAGE_POPUP_DURATION_MS,
+    ease: "Cubic.Out",
+    onComplete: () => {
+      activeDamagePopupTexts.delete(popupText);
+      if (popupText && popupText.scene && typeof popupText.destroy === "function") popupText.destroy();
+    }
+  });
+}
+
+function spawnDamagePopupCumulativeAtTile(tileXRaw, tileYRaw, hitDamagesRaw, options = {}) {
+  const hitDamages = Array.isArray(hitDamagesRaw)
+    ? hitDamagesRaw.map(v => Math.max(0, Math.floor(toSafeNumber(v, 0)))).filter(v => v > 0)
+    : [];
+  if (!hitDamages.length) {
+    spawnDamagePopupAtTile(tileXRaw, tileYRaw, 0, options);
+    return;
+  }
+  if (hitDamages.length === 1) {
+    spawnDamagePopupAtTile(tileXRaw, tileYRaw, hitDamages[0], options);
+    return;
+  }
+  let cumulative = 0;
+  for (let i = 0; i < hitDamages.length; i += 1) {
+    cumulative += hitDamages[i];
+    const isFinal = i === (hitDamages.length - 1);
+    spawnDamagePopupAtTile(tileXRaw, tileYRaw, cumulative, {
+      ...options,
+      text: `-${cumulative}`,
+      color: isFinal
+        ? (options?.friendly ? "#ffd59a" : "#ffb3b3")
+        : (options?.friendly ? "#fff3a6" : "#ffd36d"),
+      delayMs: i * DAMAGE_POPUP_STEP_DELAY_MS
+    });
+  }
+}
+
+function resolveSkillAttackHitCount(skillRow) {
+  const parsed = parseSkillRangeValue(skillRow?.攻撃回数);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return Math.max(1, Math.floor(parsed));
+}
+
+function resolveSkillDefenseStatKey(skillRow) {
+  const judge = nonEmptyText(skillRow?.判定).toLowerCase();
+  if (!judge) return "防御";
+  if (judge.includes("魔") || judge.includes("magic")) return "精神";
+  return "防御";
+}
+
+function resolveSkillResistanceKey(skillRow) {
+  if (!skillRow || typeof skillRow !== "object") return "物理耐性";
+  let pickedType = "";
+  let pickedValue = Number.NEGATIVE_INFINITY;
+  for (const key of ATTACK_DAMAGE_TYPE_KEYS) {
+    const value = toSafeNumber(skillRow?.[key], Number.NaN);
+    if (!Number.isFinite(value)) continue;
+    if (value <= 0) continue;
+    if (value <= pickedValue) continue;
+    pickedValue = value;
+    pickedType = key;
+  }
+  if (pickedType) return `${pickedType}耐性`;
+  const judge = nonEmptyText(skillRow?.判定).toLowerCase();
+  if (judge.includes("魔") || judge.includes("magic")) return "魔法耐性";
+  return "物理耐性";
+}
+
+function resolveUnitResistanceValue(unit, resistanceKey) {
+  const key = nonEmptyText(resistanceKey);
+  if (!key) return 0;
+  const direct = toSafeNumber(unit?.resistances?.[key], Number.NaN);
+  if (Number.isFinite(direct)) return Math.max(0, direct);
+  const fallback = toSafeNumber(unit?.status?.[key], Number.NaN);
+  if (Number.isFinite(fallback)) return Math.max(0, fallback);
+  return 0;
+}
+
+function resolveUnitLevelValue(unit) {
+  const raw = toSafeNumber(unit?.level, toSafeNumber(unit?.status?.Lv, 1));
+  if (!Number.isFinite(raw)) return 1;
+  return Math.max(1, Math.floor(raw));
+}
+
+function resolveSkillDamageRandomRate() {
+  const min = Math.min(SKILL_DAMAGE_RANDOM_RATE_A, SKILL_DAMAGE_RANDOM_RATE_B);
+  const max = Math.max(SKILL_DAMAGE_RANDOM_RATE_A, SKILL_DAMAGE_RANDOM_RATE_B);
+  if (max <= min) return min;
+  return min + ((max - min) * Math.random());
+}
+
+function computeSkillDamageAmount(options = {}) {
+  const breakdown = computeSkillDamageBreakdown(options);
+  return Math.max(0, Math.floor(toSafeNumber(breakdown?.total, 0)));
+}
+
+function computeSkillDamageBreakdown(options = {}) {
+  const power = Math.max(0, toSafeNumber(options?.power, 0));
+  if (!(power > 0)) return { total: 0, hits: [] };
+  const targetUnit = options?.targetUnit || null;
+  const defenseKey = nonEmptyText(options?.defenseKey) || "防御";
+  const defense = Math.max(0, toSafeNumber(targetUnit?.status?.[defenseKey], 0));
+  const resistanceKey = resolveSkillResistanceKey(options?.skillRow || null);
+  const resistanceValue = Math.max(0, resolveUnitResistanceValue(targetUnit, resistanceKey));
+  const resistanceRate = Math.max(0, Math.min(1, resistanceValue / 100));
+  const targetLevel = resolveUnitLevelValue(targetUnit);
+  const flatReduction = (targetLevel / 10) * resistanceValue;
+  const powerAfterLevelReduction = Math.max(0, power - flatReduction);
+  const splashScale = Math.max(0, toSafeNumber(options?.splashScale, 1));
+  const friendlyRate = Math.max(0, toSafeNumber(options?.friendlyRate, 1));
+  const attackCount = Math.max(1, Math.floor(toSafeNumber(options?.attackCount, 1)));
+  let totalDamage = 0;
+  const hits = [];
+  const hitSteps = [];
+  const damageAfterDefense = powerAfterLevelReduction / (1 + (defense / 100));
+  for (let i = 0; i < attackCount; i += 1) {
+    const randomRate = resolveSkillDamageRandomRate();
+    const damageAfterRandom = damageAfterDefense * randomRate;
+    const damageAfterResistanceRate = damageAfterRandom * (1 - resistanceRate);
+    const singleHitDamage = Math.max(0, Math.floor(damageAfterResistanceRate * splashScale * friendlyRate));
+    hits.push(singleHitDamage);
+    hitSteps.push({
+      hitIndex: i + 1,
+      randomRate,
+      damageAfterRandom,
+      damageAfterResistanceRate,
+      finalDamage: singleHitDamage
+    });
+    totalDamage += singleHitDamage;
+  }
+  return {
+    total: totalDamage,
+    hits,
+    debug: {
+      power,
+      defenseKey,
+      defense,
+      damageAfterDefense,
+      resistanceKey,
+      resistanceValue,
+      resistanceRate,
+      targetLevel,
+      flatReduction,
+      powerAfterLevelReduction,
+      splashScale,
+      friendlyRate,
+      attackCount,
+      hitSteps
+    }
+  };
+}
+
+function logDamageFormulaDebug(options = {}) {
+  const attacker = nonEmptyText(options?.attackerLabel) || "攻撃者";
+  const target = nonEmptyText(options?.targetLabel) || "対象";
+  const skillName = nonEmptyText(options?.skillName) || "通常攻撃";
+  const attackMethod = nonEmptyText(options?.attackMethod) || "通常";
+  const skillRow = options?.skillRow && typeof options.skillRow === "object" ? options.skillRow : null;
+  const attackerUnit = options?.attackerUnit || null;
+  const detail = options?.detail && typeof options.detail === "object" ? options.detail : {};
+  const debug = detail?.debug && typeof detail.debug === "object" ? detail.debug : {};
+  const attackCount = Math.max(1, Math.floor(toSafeNumber(debug?.attackCount, 1)));
+  const totalDamage = Math.max(0, Math.floor(toSafeNumber(detail?.total, 0)));
+  const hits = Array.isArray(detail?.hits) ? detail.hits.map(hit => Math.max(0, Math.floor(toSafeNumber(hit, 0)))) : [];
+  const judgeRaw = nonEmptyText(skillRow?.判定);
+  const judgeTokens = judgeRaw
+    .split(/[\s/／・,，]+/)
+    .map(nonEmptyText)
+    .filter(Boolean);
+  let judgeStatusName = "";
+  let judgeStatusValue = Number.NaN;
+  if (judgeRaw) {
+    const direct = Number(judgeRaw);
+    if (Number.isFinite(direct)) {
+      judgeStatusName = "固定値";
+      judgeStatusValue = direct;
+    } else {
+      const statusSource = attackerUnit?.status || null;
+      for (const token of judgeTokens) {
+        const value = toSafeNumber(statusSource?.[token], Number.NaN);
+        if (Number.isFinite(value) && value !== 0) {
+          judgeStatusName = token;
+          judgeStatusValue = value;
+          break;
+        }
+      }
+      if (!judgeStatusName && judgeTokens.length) {
+        const fallbackToken = judgeTokens[0];
+        judgeStatusName = fallbackToken;
+        judgeStatusValue = toSafeNumber(statusSource?.[fallbackToken], 0);
+      }
+    }
+  }
+  console.info("[ダメージ計算]", {
+    攻撃者: attacker,
+    対象: target,
+    技名: skillName,
+    攻撃手段: attackMethod,
+    計算威力: Math.max(0, Math.floor(toSafeNumber(debug?.power, 0))),
+    判定参照ステータス: judgeStatusName || "-",
+    判定値: Number.isFinite(judgeStatusValue) ? judgeStatusValue : "-",
+    耐性軽減割合: `${Math.max(0, Math.min(100, Math.round(toSafeNumber(debug?.resistanceRate, 0) * 1000) / 10))}%`,
+    Lv軽減値: Math.max(0, Math.round(toSafeNumber(debug?.flatReduction, 0) * 100) / 100),
+    攻撃回数: attackCount,
+    ヒットダメージ配列: hits,
+    合計ダメージ: totalDamage,
+    スキルデータ: skillRow || null
+  });
+}
+
+function resolveSkillAttackPowerValue(skillRow, attackerUnit, options = {}) {
+  const override = toSafeNumber(options?.powerOverride, Number.NaN);
+  if (Number.isFinite(override)) return Math.max(0, Math.floor(override));
+  if (!skillRow || typeof skillRow !== "object") {
+    return Math.max(0, Math.floor(toSafeNumber(attackerUnit?.status?.攻撃, 0)));
+  }
+  const statusSource = attackerUnit?.status || null;
+  const scaled = computeSkillScaledTriplet(skillRow, statusSource);
+  let power = Math.max(0, Math.floor(toSafeNumber(scaled?.power, 0)));
+  if (isWeaponAttackStyleText(skillRow?.攻撃手段)) {
+    const weaponRow = options?.weaponRow && typeof options.weaponRow === "object"
+      ? options.weaponRow
+      : resolvePrimaryWeaponBaseSkillRowForUnit(attackerUnit);
+    if (weaponRow) {
+      const weaponScaled = computeSkillScaledTriplet(weaponRow, statusSource);
+      power += Math.max(0, Math.floor(toSafeNumber(weaponScaled?.power, 0)));
+    }
+  }
+  return power;
+}
+
+function buildTileAttackDamageScaleMap(data, picked, splashSpec) {
+  const result = new Map();
+  const px = Math.floor(toSafeNumber(picked?.x, Number.NaN));
+  const py = Math.floor(toSafeNumber(picked?.y, Number.NaN));
+  if (!data || !Number.isFinite(px) || !Number.isFinite(py)) return result;
+  const anchorKey = coordKey(px, py);
+  result.set(anchorKey, 1);
+  if (!(splashSpec?.enabled)) return result;
+  const splashSets = buildSplashPreviewTileKeySets(data, anchorKey, splashSpec);
+  for (const key of splashSets.fullKeySet) {
+    result.set(key, Math.max(toSafeNumber(result.get(key), 0), 1));
+  }
+  const fractionalRatio = Math.max(0, toSafeNumber(splashSpec?.fractionalRatio, 0));
+  if (fractionalRatio > 0) {
+    for (const key of splashSets.falloffKeySet) {
+      result.set(key, Math.max(toSafeNumber(result.get(key), 0), fractionalRatio));
+    }
+  }
+  return result;
+}
+
+function collectFactionUnitsAtTile(x, y, data = currentData.value, options = {}) {
+  const out = [];
+  if (!data || !Number.isFinite(x) || !Number.isFinite(y)) return out;
+  const tx = Math.floor(x);
+  const ty = Math.floor(y);
+  const includeSpawnTargets = options?.includeSpawnTargets === true;
+  const activeId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  for (const unit of unitList.value) {
+    const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    if (ux !== tx || uy !== ty) continue;
+    out.push({
+      slotId: activeId,
+      unitId: nonEmptyText(unit?.id),
+      unit,
+      active: true
+    });
+  }
+  for (const slot of testPlayerSlots.value) {
+    const slotId = nonEmptyText(slot?.id);
+    if (!slotId || slotId === activeId) continue;
+    const units = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+    for (const unit of units) {
+      const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+      const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+      if (ux !== tx || uy !== ty) continue;
+      out.push({
+        slotId,
+        unitId: nonEmptyText(unit?.id),
+        unit,
+        active: false
+      });
+    }
+  }
+  if (includeSpawnTargets) {
+    const spawnEnemies = Array.isArray(data?.enemySpawnMap?.[ty]?.[tx]) ? data.enemySpawnMap[ty][tx] : [];
+    for (const enemy of spawnEnemies) {
+      const enemyId = nonEmptyText(enemy?.id);
+      if (!enemyId) continue;
+      out.push({
+        slotId: "__spawn__",
+        unitId: enemyId,
+        unit: enemy,
+        active: false,
+        targetType: "spawn"
+      });
+    }
+  }
+  return out;
+}
+
+function applySkillDamageToFactionUnits(options = {}) {
+  const data = options?.data || currentData.value;
+  const picked = options?.picked || null;
+  const attackerFactionId = nonEmptyText(options?.attackerFactionId);
+  const attackerUnit = options?.attackerUnit || null;
+  const attackerLabel = nonEmptyText(options?.attackerLabel) || nonEmptyText(attackerUnit?.name) || "攻撃者";
+  const skillName = nonEmptyText(options?.skillName) || "通常攻撃";
+  const skillRow = options?.skillRow && typeof options.skillRow === "object" ? options.skillRow : null;
+  const attackMethod = nonEmptyText(options?.attackMethod) || nonEmptyText(skillRow?.攻撃手段) || "通常";
+  const splashSpec = options?.splashSpec || buildSplashSpec(0);
+  const power = Math.max(0, Math.floor(resolveSkillAttackPowerValue(skillRow, attackerUnit, {
+    powerOverride: options?.powerOverride,
+    weaponRow: options?.weaponRow || null
+  })));
+  const includeSpawnTargets = options?.includeSpawnTargets === true;
+  const canDamageTarget = typeof options?.canDamageTarget === "function" ? options.canDamageTarget : null;
+  const attackCount = resolveSkillAttackHitCount(skillRow);
+  const defenseKey = resolveSkillDefenseStatKey(skillRow);
+  const tileScaleMap = buildTileAttackDamageScaleMap(data, picked, splashSpec);
+  if (!tileScaleMap.size || power <= 0) {
+    return { applied: false, hitCount: 0, totalDamage: 0, lines: [] };
+  }
+
+  const targetMap = new Map();
+  const totalDamageHitBreakdown = [];
+  for (const [tileKey, splashScaleRaw] of tileScaleMap.entries()) {
+    const point = parseCoordKey(tileKey);
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+    const splashScale = Math.max(0, toSafeNumber(splashScaleRaw, 0));
+    if (splashScale <= 0) continue;
+    const targets = collectFactionUnitsAtTile(point.x, point.y, data, { includeSpawnTargets });
+    for (const target of targets) {
+      if (canDamageTarget && !canDamageTarget(target)) continue;
+      const unitId = nonEmptyText(target?.unitId);
+      const slotId = nonEmptyText(target?.slotId);
+      if (!unitId || !slotId || !target?.unit) continue;
+      const mapKey = `${slotId}:${unitId}`;
+      const friendly = !!attackerFactionId && attackerFactionId === slotId;
+      const friendlyRate = friendly ? FRIENDLY_FIRE_DAMAGE_RATE : 1;
+      const damageBreakdown = computeSkillDamageBreakdown({
+        power,
+        defenseKey,
+        skillRow,
+        targetUnit: target.unit,
+        splashScale,
+        friendlyRate,
+        attackCount
+      });
+      const damage = Math.max(0, Math.floor(toSafeNumber(damageBreakdown?.total, 0)));
+      logDamageFormulaDebug({
+        attackerLabel,
+        targetLabel: nonEmptyText(target?.unit?.name) || nonEmptyText(target?.unit?.race) || "ユニット",
+        skillName,
+        attackMethod,
+        skillRow,
+        attackerUnit,
+        detail: damageBreakdown
+      });
+      if (damage <= 0) continue;
+      if (Array.isArray(damageBreakdown?.hits)) {
+        for (const raw of damageBreakdown.hits) {
+          const hitDamage = Math.max(0, Math.floor(toSafeNumber(raw, 0)));
+          if (hitDamage <= 0) continue;
+          totalDamageHitBreakdown.push(hitDamage);
+        }
+      }
+      if (!targetMap.has(mapKey)) {
+        const maxHp = Math.max(1, Math.floor(toSafeNumber(target.unit?.maxHp, resolveUnitMaxHpValue(target.unit))));
+        const currentHp = Math.max(0, Math.floor(toSafeNumber(target.unit?.currentHp, maxHp)));
+        targetMap.set(mapKey, {
+          slotId,
+          unitId,
+          name: nonEmptyText(target.unit?.name) || nonEmptyText(target.unit?.race) || "ユニット",
+          tileX: point.x,
+          tileY: point.y,
+          maxHp,
+          beforeHp: currentHp,
+          damage: 0,
+          hitDamages: [],
+          friendly,
+          targetType: nonEmptyText(target?.targetType) || "faction"
+        });
+      }
+      const entry = targetMap.get(mapKey);
+      entry.damage += damage;
+      if (Array.isArray(damageBreakdown?.hits) && damageBreakdown.hits.length > 0) {
+        for (const raw of damageBreakdown.hits) {
+          const hitDamage = Math.max(0, Math.floor(toSafeNumber(raw, 0)));
+          if (hitDamage <= 0) continue;
+          entry.hitDamages.push(hitDamage);
+        }
+      } else if (damage > 0) {
+        entry.hitDamages.push(damage);
+      }
+    }
+  }
+
+  if (!targetMap.size) {
+    return { applied: false, hitCount: 0, totalDamage: 0, lines: [] };
+  }
+
+  const activeId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const damageBySlot = new Map();
+  for (const entry of targetMap.values()) {
+    if (!damageBySlot.has(entry.slotId)) damageBySlot.set(entry.slotId, new Map());
+    damageBySlot.get(entry.slotId).set(entry.unitId, entry.damage);
+  }
+
+  const activeDamageMap = damageBySlot.get(activeId) || null;
+  if (activeDamageMap && activeDamageMap.size) {
+    unitList.value = unitList.value.map(unit => {
+      const unitId = nonEmptyText(unit?.id);
+      if (!unitId || !activeDamageMap.has(unitId)) return unit;
+      const maxHp = Math.max(1, Math.floor(toSafeNumber(unit?.maxHp, resolveUnitMaxHpValue(unit))));
+      const currentHp = Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, maxHp)));
+      const nextHp = Math.max(0, currentHp - Math.max(0, Math.floor(toSafeNumber(activeDamageMap.get(unitId), 0))));
+      return applyUnitLifeState({
+        ...unit,
+        maxHp,
+        hp: nextHp,
+        currentHp: nextHp
+      }, nextHp);
+    });
+  }
+
+  let slotsChanged = false;
+  const nextSlots = testPlayerSlots.value.map(slot => {
+    const slotId = nonEmptyText(slot?.id);
+    if (!slotId || slotId === activeId) return slot;
+    const slotDamageMap = damageBySlot.get(slotId);
+    if (!slotDamageMap || !slotDamageMap.size) return slot;
+    const prevUnits = Array.isArray(slot?.factionState?.units) ? slot.factionState.units : [];
+    const nextUnits = prevUnits.map(unit => {
+      const unitId = nonEmptyText(unit?.id);
+      if (!unitId || !slotDamageMap.has(unitId)) return unit;
+      const maxHp = Math.max(1, Math.floor(toSafeNumber(unit?.maxHp, resolveUnitMaxHpValue(unit))));
+      const currentHp = Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, maxHp)));
+      const nextHp = Math.max(0, currentHp - Math.max(0, Math.floor(toSafeNumber(slotDamageMap.get(unitId), 0))));
+      return applyUnitLifeState({
+        ...unit,
+        maxHp,
+        hp: nextHp,
+        currentHp: nextHp
+      }, nextHp);
+    });
+    slotsChanged = true;
+    return {
+      ...slot,
+      factionState: {
+        ...slot.factionState,
+        units: nextUnits
+      }
+    };
+  });
+  if (slotsChanged) {
+    testPlayerSlots.value = nextSlots;
+  }
+
+  const spawnDamageMap = new Map();
+  for (const entry of targetMap.values()) {
+    if (entry?.targetType !== "spawn") continue;
+    const enemyId = nonEmptyText(entry?.unitId);
+    if (!enemyId) continue;
+    spawnDamageMap.set(enemyId, Math.max(0, Math.floor(toSafeNumber(entry?.damage, 0))));
+  }
+  if (spawnDamageMap.size && Array.isArray(data?.enemySpawnMap)) {
+    for (const row of data.enemySpawnMap) {
+      if (!Array.isArray(row)) continue;
+      for (const cell of row) {
+        if (!Array.isArray(cell)) continue;
+        for (const enemy of cell) {
+          const enemyId = nonEmptyText(enemy?.id);
+          if (!enemyId || !spawnDamageMap.has(enemyId)) continue;
+          const damage = Math.max(0, Math.floor(toSafeNumber(spawnDamageMap.get(enemyId), 0)));
+          if (damage <= 0) continue;
+          applyHpDeltaToUnitLike(enemy, -damage);
+        }
+      }
+    }
+    data.enemySpawnStats = buildEnemySpawnStatsFromMap(data.enemySpawnMap);
+  }
+
+  const detailRows = [];
+  let totalDamage = 0;
+  let hitCount = 0;
+  let friendlyHits = 0;
+  const blinkTargetUnitIds = new Set();
+  const activeSlotId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const attackerUnitId = nonEmptyText(attackerUnit?.id);
+  if (attackerUnitId && attackerFactionId && attackerFactionId === activeSlotId) {
+    blinkTargetUnitIds.add(attackerUnitId);
+  }
+  for (const entry of targetMap.values()) {
+    const beforeHp = Math.max(0, Math.floor(toSafeNumber(entry?.beforeHp, 0)));
+    const dealt = Math.max(0, Math.floor(toSafeNumber(entry?.damage, 0)));
+    const afterHpRaw = beforeHp - dealt;
+    const afterHp = Math.max(0, afterHpRaw);
+    const hpLost = Math.max(0, beforeHp - afterHp);
+    if (dealt <= 0) continue;
+    totalDamage += dealt;
+    hitCount += 1;
+    if (entry.friendly) friendlyHits += 1;
+    if (entry?.targetType === "spawn") {
+      rememberRecentDamageForUnit(`spawn:${entry.unitId}`, hpLost);
+    }
+    if (entry.slotId === activeSlotId) {
+      blinkTargetUnitIds.add(nonEmptyText(entry.unitId));
+      rememberRecentDamageForUnit(entry.unitId, hpLost);
+    }
+    spawnDamagePopupCumulativeAtTile(entry.tileX, entry.tileY, entry.hitDamages, { friendly: entry.friendly });
+    detailRows.push(`${entry.name} HP ${beforeHp}→${afterHpRaw} (-${dealt})${entry.friendly ? " [同士討ち半減]" : ""}`);
+  }
+  const breakdownText = totalDamageHitBreakdown.length > 1
+    ? ` (${totalDamageHitBreakdown.join(",")})`
+    : "";
+  const summary = `戦闘: ${attackerLabel} / 手段:${attackMethod} / 技:${skillName} / ${hitCount}体 / 合計${totalDamage}${breakdownText}ダメージ${friendlyHits > 0 ? ` / 同士討ち ${friendlyHits}体` : ""}`;
+  if (blinkTargetUnitIds.size > 0) {
+    triggerUnitDamageBlinkByIds(Array.from(blinkTargetUnitIds));
+  }
+  return {
+    applied: hitCount > 0,
+    hitCount,
+    totalDamage,
+    summary,
+    lines: [summary, ...detailRows]
+  };
+}
+
+function resolveEnemyActionSkillRows(enemy) {
+  const out = [];
+  const seen = new Set();
+  const skillNames = Array.isArray(enemy?.skills) ? enemy.skills : [];
+  for (const raw of skillNames) {
+    const skillName = nonEmptyText(raw);
+    if (!skillName || seen.has(skillName)) continue;
+    const normalized = normalizeSkillNameForLookup(skillName);
+    const row = SKILL_INFO_BY_NAME.get(skillName)
+      || (normalized ? SKILL_INFO_BY_NORMALIZED_NAME.get(normalized) : null)
+      || null;
+    if (!row || typeof row !== "object") continue;
+    const action = nonEmptyText(row?.行動).toUpperCase();
+    if (!action || (action !== SKILL_ACTIVE_ACTION_CODE && action !== "A" && action !== "ACTION")) continue;
+    seen.add(skillName);
+    out.push({ skillName, skillRow: row });
+  }
+  return out;
+}
+
+function buildEnemyAutoAttackCandidate(data, enemyGroup, playerTargets) {
+  if (!enemyGroup || !Array.isArray(enemyGroup.enemies) || !enemyGroup.enemies.length) return null;
+  const attacker = randomPick(enemyGroup.enemies, enemyGroup.enemies[0] || null);
+  if (!attacker) return null;
+  const actionSkills = resolveEnemyActionSkillRows(attacker);
+  const choices = [];
+  for (const row of actionSkills) {
+    const range = resolveSkillAttackRangeFromRow(row.skillRow, TILE_ATTACK_RANGE_MIN);
+    const targets = playerTargets.filter(unit => {
+      const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+      const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+      if (!Number.isFinite(ux) || !Number.isFinite(uy)) return false;
+      return hexDistance({ x: enemyGroup.x, y: enemyGroup.y }, { x: ux, y: uy }) <= range;
+    });
+    if (!targets.length) continue;
+    choices.push({
+      skillName: row.skillName,
+      skillRow: row.skillRow,
+      targets
+    });
+  }
+  if (!choices.length) return null;
+  const pickedChoice = randomPick(choices, choices[0]);
+  const pickedTarget = randomPick(pickedChoice.targets, pickedChoice.targets[0] || null);
+  if (!pickedTarget) return null;
+  return {
+    attacker,
+    skillName: nonEmptyText(pickedChoice?.skillName) || "通常攻撃",
+    skillRow: pickedChoice?.skillRow || null,
+    picked: {
+      x: Math.floor(toSafeNumber(pickedTarget?.x, Number.NaN)),
+      y: Math.floor(toSafeNumber(pickedTarget?.y, Number.NaN))
+    }
+  };
+}
+
+function runEnemyAutoAttackTick(deltaMs = 0) {
+  if (isPageHidden.value) return;
+  if (!autoTimeRunning.value) return;
+  const data = currentData.value;
+  if (!data || data.shapeOnly || !Array.isArray(data?.enemySpawnMap)) return;
+  const addMs = Math.max(0, Math.floor(toSafeNumber(deltaMs, 0)));
+  enemyAutoAttackElapsedMs += addMs;
+  if (enemyAutoAttackElapsedMs < ENEMY_AUTO_ATTACK_INTERVAL_MS) return;
+  enemyAutoAttackElapsedMs = enemyAutoAttackElapsedMs % ENEMY_AUTO_ATTACK_INTERVAL_MS;
+  const alivePlayers = unitList.value.filter(unit => {
+    const ux = Math.floor(toSafeNumber(unit?.x, Number.NaN));
+    const uy = Math.floor(toSafeNumber(unit?.y, Number.NaN));
+    if (!Number.isFinite(ux) || !Number.isFinite(uy)) return false;
+    const maxHp = Math.max(1, Math.floor(toSafeNumber(unit?.maxHp, resolveUnitMaxHpValue(unit))));
+    const currentHp = Math.max(0, Math.floor(toSafeNumber(unit?.currentHp, maxHp)));
+    return currentHp > 0;
+  });
+  if (!alivePlayers.length) return;
+  const candidates = [];
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const tileEnemies = enemiesAt(x, y, data);
+      if (!tileEnemies.length || !tileEnemies.some(enemy => enemy?.aggressive === true)) continue;
+      const key = coordKey(x, y);
+      if (!spottedEnemyTileKeys.has(key) && !alertedEnemyTileKeys.has(key)) continue;
+      const candidate = buildEnemyAutoAttackCandidate(data, { x, y, enemies: tileEnemies }, alivePlayers);
+      if (!candidate) continue;
+      candidates.push(candidate);
+    }
+  }
+  if (!candidates.length) return;
+  const activeId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const chosen = randomPick(candidates, candidates[0]);
+  const splashSpec = buildSplashSpec(resolveSkillSplashValueFromRow(chosen.skillRow));
+  const enemyAttackEffectPayload = buildAttackEffectPlayPayloadBySkill({
+    picked: chosen.picked,
+    leader: chosen.attacker,
+    splashSpec,
+    skillName: chosen.skillName,
+    skillRow: chosen.skillRow
+  });
+  if (enemyAttackEffectPayload) {
+    console.info(`${EFFECT_DEBUG_PREFIX} enemy-precheck:ready`, {
+      skillName: chosen.skillName,
+      picked: chosen.picked,
+      splashValue: toSafeNumber(splashSpec?.value, 0),
+      payload: enemyAttackEffectPayload
+    });
+    void handleEffectPlayerPlayRequest(enemyAttackEffectPayload);
+  } else {
+    console.warn(`${EFFECT_DEBUG_PREFIX} enemy-precheck:failed`, {
+      skillName: chosen.skillName,
+      picked: chosen.picked,
+      splashValue: toSafeNumber(splashSpec?.value, 0)
+    });
+  }
+  const damageResult = applySkillDamageToFactionUnits({
+    data,
+    picked: chosen.picked,
+    splashSpec,
+    attackerFactionId: "__enemy__",
+    attackerUnit: chosen.attacker,
+    attackerLabel: nonEmptyText(chosen?.attacker?.name) || nonEmptyText(chosen?.attacker?.race) || "敵",
+    skillName: chosen.skillName,
+    skillRow: chosen.skillRow,
+    attackMethod: nonEmptyText(chosen?.skillRow?.攻撃手段) || "通常"
+  });
+  if (!damageResult.applied) return;
+  for (const line of damageResult.lines) {
+    pushNationLog(`敵攻撃: ${line}`);
+  }
+  const attackInfo = `${nonEmptyText(chosen?.attacker?.name) || nonEmptyText(chosen?.attacker?.race) || "敵"} の ${nonEmptyText(chosen?.skillRow?.攻撃手段) || "通常"} / ${chosen.skillName}`;
+  updateUnitInfoText(`敵攻撃(${activeId}): ${attackInfo}`);
+  emitCharacterStateChange();
+  requestMapRender();
+}
+
+function applyTileAttackSettingsBySkillName(skillNameRaw) {
+  const skillName = nonEmptyText(skillNameRaw);
+  if (!skillName) return { ok: false, reason: "スキル名が空です。" };
+  const skillRow = resolveSkillInfoRowByName(skillName);
+  const hasArea = nonEmptyText(skillRow?.範囲).length > 0;
+  const nextPattern = hasArea
+    ? resolveTileAttackPatternKeyFromSkillArea(skillRow?.範囲)
+    : "single";
+  const nextRange = resolveSkillAttackRangeFromRow(skillRow, TILE_ATTACK_RANGE_MIN, {
+    unit: ownFactionAttackPanelUnit.value || selectedUnit.value
+  });
+  tileAttackRange.value = nextRange;
+  setTileAttackPattern(nextPattern);
+  return {
+    ok: true,
+    skillName,
+    patternKey: nextPattern,
+    range: nextRange,
+    usedDefaultPattern: !hasArea
+  };
+}
+
+function normalizeTileAttackPatternKey(rawKey = "") {
+  const key = nonEmptyText(rawKey).toLowerCase();
+  return TILE_ATTACK_PATTERN_KEY_SET.has(key) ? key : "single";
+}
+
+function normalizeTileAttackRange(rawRange) {
+  const safe = Math.floor(toSafeNumber(rawRange, TILE_ATTACK_RANGE_MIN));
+  return clampNumber(safe, TILE_ATTACK_RANGE_MIN, TILE_ATTACK_RANGE_MAX);
+}
+
+function nudgeTileAttackRange(delta) {
+  const next = normalizeTileAttackRange(tileAttackRange.value + toSafeNumber(delta, 0));
+  if (next === tileAttackRange.value) return;
+  tileAttackRange.value = next;
+  if (tileAttackSelectionMode.value) {
+    const state = resolveSelectedTileAttackActionState();
+    const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+    const message = state.enabled
+      ? `攻撃範囲: ${resolveTileAttackPatternLabel(effectivePatternKey)} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`
+      : `攻撃範囲: ${resolveTileAttackPatternLabel(effectivePatternKey)} 射程${tileAttackRange.value} / ${state.reason || "対象なし"}`;
+    updateUnitInfoText(message);
+  }
+  requestMapRender();
+}
+
+function resolveTileAttackPatternLabel(patternKey = "") {
+  const key = normalizeTileAttackPatternKey(patternKey);
+  return TILE_ATTACK_PATTERN_LABEL_MAP.get(key) || "単体";
+}
+
+const tileAttackPatternLabel = computed(() => resolveTileAttackPatternLabel(resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value)));
+const tileAttackPatternDirectional = computed(() => DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS.has(resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value)));
+
+function isDirectionalTileAttackPattern(patternKey = "") {
+  return DIRECTIONAL_TILE_ATTACK_PATTERN_KEYS.has(normalizeTileAttackPatternKey(patternKey));
+}
+
+function clearTileAttackDirectionLock() {
+  tileAttackDirectionCandidate.value = null;
+  tileAttackDirectionAnchor.value = null;
+  tileAttackDirectionLocked.value = false;
+}
+
+function normalizeTileAttackDirectionAnchor(rawAnchor, data, leader) {
+  if (!rawAnchor || !data || !leader) return null;
+  let x = Math.floor(toSafeNumber(rawAnchor?.x, Number.NaN));
+  let y = Math.floor(toSafeNumber(rawAnchor?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (resolveWorldWrapEnabled(data)) {
+    x = normalizeWrappedCoord(x, data.w);
+    y = normalizeWrappedCoord(y, data.h);
+  } else if (x < 0 || y < 0 || x >= data.w || y >= data.h) {
+    return null;
+  }
+  if (x === leader.x && y === leader.y) return null;
+  return { x, y };
+}
+
+function normalizeAttackDirectionIndex(index) {
+  const n = Number.isFinite(index) ? Math.floor(index) : 0;
+  return ((n % 6) + 6) % 6;
+}
+
+function stepHexCoordByDirection(data, x, y, directionIndex) {
+  if (!data || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const dir = normalizeAttackDirectionIndex(directionIndex);
+  const odd = (y % 2) === 1;
+  let dx = 0;
+  let dy = 0;
+  switch (dir) {
+    case 0: // E
+      dx = 1;
+      dy = 0;
+      break;
+    case 1: // NE
+      dx = odd ? 1 : 0;
+      dy = -1;
+      break;
+    case 2: // NW
+      dx = odd ? 0 : -1;
+      dy = -1;
+      break;
+    case 3: // W
+      dx = -1;
+      dy = 0;
+      break;
+    case 4: // SW
+      dx = odd ? 0 : -1;
+      dy = 1;
+      break;
+    case 5: // SE
+      dx = odd ? 1 : 0;
+      dy = 1;
+      break;
+    default:
+      break;
+  }
+  let nx = x + dx;
+  let ny = y + dy;
+  if (resolveWorldWrapEnabled(data)) {
+    nx = normalizeWrappedCoord(nx, data.w);
+    ny = normalizeWrappedCoord(ny, data.h);
+  } else if (nx < 0 || ny < 0 || nx >= data.w || ny >= data.h) {
+    return null;
+  }
+  return { x: nx, y: ny };
+}
+
+function resolveAttackPatternAnchorCoord(data, leader, options = {}) {
+  const anchorOverride = normalizeTileAttackDirectionAnchor(options?.anchor, data, leader);
+  if (anchorOverride) return anchorOverride;
+  const lockOnly = options?.lockOnly === true;
+  const lockedAnchor = tileAttackDirectionLocked.value
+    ? normalizeTileAttackDirectionAnchor(tileAttackDirectionAnchor.value, data, leader)
+    : null;
+  if (lockedAnchor) return lockedAnchor;
+  if (!lockOnly) {
+    const candidateAnchor = normalizeTileAttackDirectionAnchor(tileAttackDirectionCandidate.value, data, leader);
+    if (candidateAnchor) return candidateAnchor;
+  }
+  if (lockOnly) return null;
+  const tryKeys = [selectedTileKey, hoveredTileKey];
+  for (const key of tryKeys) {
+    const text = nonEmptyText(key);
+    if (!text) continue;
+    const parsed = parseCoordKey(text);
+    if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y)) continue;
+    if (parsed.x < 0 || parsed.y < 0 || parsed.x >= data.w || parsed.y >= data.h) continue;
+    if (parsed.x === leader.x && parsed.y === leader.y) continue;
+    return { x: parsed.x, y: parsed.y };
+  }
+  return null;
+}
+
+function resolveAttackForwardDirectionIndex(data, leader, options = {}) {
+  if (Number.isFinite(options?.directionIndexOverride)) {
+    return normalizeAttackDirectionIndex(Math.floor(options.directionIndexOverride));
+  }
+  const anchor = resolveAttackPatternAnchorCoord(data, leader, options);
+  if (!anchor) return 0;
+  let bestDir = 0;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let dir = 0; dir < 6; dir += 1) {
+    const next = stepHexCoordByDirection(data, leader.x, leader.y, dir);
+    if (!next) continue;
+    const dist = hexDistance(next, anchor);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestDir = dir;
+    }
+  }
+  return bestDir;
+}
+
+function buildAttackPatternTileKeySet(data, leader, patternKey = "single", range = TILE_ATTACK_RANGE_MIN, options = {}) {
+  const out = new Set();
+  if (!data || !leader || !Number.isFinite(leader?.x) || !Number.isFinite(leader?.y)) return out;
+  const attackRange = normalizeTileAttackRange(range);
+  const originKey = coordKey(leader.x, leader.y);
+  const addCoord = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    let nx = Math.floor(x);
+    let ny = Math.floor(y);
+    if (resolveWorldWrapEnabled(data)) {
+      nx = normalizeWrappedCoord(nx, data.w);
+      ny = normalizeWrappedCoord(ny, data.h);
+    } else if (nx < 0 || ny < 0 || nx >= data.w || ny >= data.h) {
+      return false;
+    }
+    out.add(coordKey(nx, ny));
+    return true;
+  };
+  const addCoordObject = coord => addCoord(coord?.x, coord?.y);
+  const forwardDir = resolveAttackForwardDirectionIndex(data, leader, options);
+  const oppositeDir = normalizeAttackDirectionIndex(forwardDir + 3);
+  const key = normalizeTileAttackPatternKey(patternKey);
+  const origin = { x: leader.x, y: leader.y };
+  addCoordObject(origin);
+
+  if (key === "all") {
+    for (let y = 0; y < data.h; y += 1) {
+      for (let x = 0; x < data.w; x += 1) {
+        addCoord(x, y);
+      }
+    }
+    return out;
+  }
+
+  const ray = (start, dir, length) => {
+    let cursor = { x: start.x, y: start.y };
+    for (let i = 0; i < length; i += 1) {
+      const next = stepHexCoordByDirection(data, cursor.x, cursor.y, dir);
+      if (!next) break;
+      addCoordObject(next);
+      cursor = next;
+    }
+  };
+
+  const addCircle = radius => {
+    const queue = [{ x: origin.x, y: origin.y, d: 0 }];
+    const seen = new Set([coordKey(origin.x, origin.y)]);
+    while (queue.length) {
+      const cur = queue.shift();
+      addCoord(cur.x, cur.y);
+      if (cur.d >= radius) continue;
+      for (let dir = 0; dir < 6; dir += 1) {
+        const next = stepHexCoordByDirection(data, cur.x, cur.y, dir);
+        if (!next) continue;
+        const keyText = coordKey(next.x, next.y);
+        if (seen.has(keyText)) continue;
+        seen.add(keyText);
+        queue.push({ x: next.x, y: next.y, d: cur.d + 1 });
+      }
+    }
+  };
+
+  const isReachableWithinRange = (targetX, targetY, maxDistance) => {
+    const tx = Math.floor(toSafeNumber(targetX, Number.NaN));
+    const ty = Math.floor(toSafeNumber(targetY, Number.NaN));
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) return false;
+    const targetKey = coordKey(tx, ty);
+    if (targetKey === originKey) return true;
+    const queue = [{ x: origin.x, y: origin.y, d: 0 }];
+    const seen = new Set([originKey]);
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur.d >= maxDistance) continue;
+      for (let dir = 0; dir < 6; dir += 1) {
+        const next = stepHexCoordByDirection(data, cur.x, cur.y, dir);
+        if (!next) continue;
+        const nextKey = coordKey(next.x, next.y);
+        if (seen.has(nextKey)) continue;
+        if (nextKey === targetKey) return true;
+        seen.add(nextKey);
+        queue.push({ x: next.x, y: next.y, d: cur.d + 1 });
+      }
+    }
+    return false;
+  };
+
+  switch (key) {
+    case "single": {
+      const anchor = normalizeTileAttackDirectionAnchor(options?.anchor, data, leader);
+      if (anchor && isReachableWithinRange(anchor.x, anchor.y, attackRange)) {
+        out.clear();
+        addCoord(anchor.x, anchor.y);
+        break;
+      }
+      out.clear();
+      addCircle(attackRange);
+      out.delete(originKey);
+      break;
+    }
+    case "straight": {
+      ray(origin, forwardDir, attackRange);
+      break;
+    }
+    case "front": {
+      // 前方は「選択方向の1マス + その横1マス」の2マス固定。
+      const frontTile = stepHexCoordByDirection(data, origin.x, origin.y, forwardDir);
+      if (!frontTile) break;
+      addCoordObject(frontTile);
+      const sideDirA = normalizeAttackDirectionIndex(forwardDir - 1);
+      const sideDirB = normalizeAttackDirectionIndex(forwardDir + 1);
+      const sideTileA = stepHexCoordByDirection(data, origin.x, origin.y, sideDirA);
+      const sideTileB = stepHexCoordByDirection(data, origin.x, origin.y, sideDirB);
+      if (sideTileA && sideTileB) {
+        // 画像指定の「横並び2マス」になりやすいよう、前方タイルと同じ段に近い方を採用。
+        const frontDxA = Math.abs(sideTileA.x - frontTile.x);
+        const frontDxB = Math.abs(sideTileB.x - frontTile.x);
+        const frontDyA = Math.abs(sideTileA.y - frontTile.y);
+        const frontDyB = Math.abs(sideTileB.y - frontTile.y);
+        const scoreA = (frontDyA * 1000) + frontDxA;
+        const scoreB = (frontDyB * 1000) + frontDxB;
+        addCoordObject(scoreA <= scoreB ? sideTileA : sideTileB);
+      } else if (sideTileA || sideTileB) {
+        addCoordObject(sideTileA || sideTileB);
+      }
+      break;
+    }
+    case "fan": {
+      const first = stepHexCoordByDirection(data, origin.x, origin.y, forwardDir);
+      if (!first) break;
+      addCoordObject(first);
+      if (attackRange <= 1) break;
+      let frontier = [first];
+      const branchDirs = [normalizeAttackDirectionIndex(forwardDir - 1), forwardDir, normalizeAttackDirectionIndex(forwardDir + 1)];
+      for (let depth = 2; depth <= attackRange; depth += 1) {
+        const nextMap = new Map();
+        for (const node of frontier) {
+          for (const dir of branchDirs) {
+            const next = stepHexCoordByDirection(data, node.x, node.y, dir);
+            if (!next) continue;
+            const nextKey = coordKey(next.x, next.y);
+            if (nextMap.has(nextKey)) continue;
+            nextMap.set(nextKey, next);
+            addCoordObject(next);
+          }
+        }
+        frontier = Array.from(nextMap.values());
+        if (!frontier.length) break;
+      }
+      break;
+    }
+    case "around": {
+      out.clear();
+      for (let radius = 1; radius <= attackRange; radius += 1) {
+        const queue = [{ x: origin.x, y: origin.y, d: 0 }];
+        const seen = new Set([coordKey(origin.x, origin.y)]);
+        while (queue.length) {
+          const cur = queue.shift();
+          if (cur.d === radius) {
+            addCoord(cur.x, cur.y);
+            continue;
+          }
+          if (cur.d > radius) continue;
+          for (let dir = 0; dir < 6; dir += 1) {
+            const next = stepHexCoordByDirection(data, cur.x, cur.y, dir);
+            if (!next) continue;
+            const keyText = coordKey(next.x, next.y);
+            if (seen.has(keyText)) continue;
+            seen.add(keyText);
+            queue.push({ x: next.x, y: next.y, d: cur.d + 1 });
+          }
+        }
+      }
+      break;
+    }
+    case "circle": {
+      addCircle(attackRange);
+      break;
+    }
+    case "line": {
+      ray(origin, forwardDir, attackRange);
+      ray(origin, oppositeDir, attackRange);
+      break;
+    }
+    default:
+      break;
+  }
+  return out;
+}
+
+function resolveTileAttackPreviewAnchorKey(rangeKeySet, previewKeySet, leader) {
+  const leaderKey = Number.isFinite(leader?.x) && Number.isFinite(leader?.y)
+    ? coordKey(leader.x, leader.y)
+    : "";
+  const hoveredKey = nonEmptyText(hoveredTileKey);
+  if (hoveredKey && hoveredKey !== leaderKey) {
+    if (!(rangeKeySet instanceof Set) || rangeKeySet.has(hoveredKey)) {
+      return hoveredKey;
+    }
+  }
+  const selectedKey = nonEmptyText(selectedTileKey);
+  if (selectedKey && selectedKey !== leaderKey) {
+    if (!(rangeKeySet instanceof Set) || rangeKeySet.has(selectedKey)) {
+      if (!(previewKeySet instanceof Set) || previewKeySet.size <= 0 || previewKeySet.has(selectedKey)) {
+        return selectedKey;
+      }
+    }
+  }
+  if (previewKeySet instanceof Set && previewKeySet.size === 1) {
+    return Array.from(previewKeySet)[0] || "";
+  }
+  return "";
+}
+
+function buildSplashPreviewTileKeySets(data, anchorKey, splashSpec) {
+  const fullKeySet = new Set();
+  const falloffKeySet = new Set();
+  if (!data || !anchorKey || !(splashSpec?.enabled)) {
+    return { fullKeySet, falloffKeySet };
+  }
+  const anchor = parseCoordKey(anchorKey);
+  if (!Number.isFinite(anchor?.x) || !Number.isFinite(anchor?.y)) {
+    return { fullKeySet, falloffKeySet };
+  }
+  const fullRadius = Math.max(0, Math.floor(toSafeNumber(splashSpec?.fullRadius, 0)));
+  const fractionalRadius = Math.max(0, Math.floor(toSafeNumber(splashSpec?.fractionalRadius, 0)));
+  const maxRadius = Math.max(fullRadius, fractionalRadius);
+  if (maxRadius <= 0) return { fullKeySet, falloffKeySet };
+  const queue = [{ x: anchor.x, y: anchor.y, d: 0 }];
+  const seen = new Set([coordKey(anchor.x, anchor.y)]);
+  while (queue.length) {
+    const cur = queue.shift();
+    if (!cur) break;
+    if (cur.d > maxRadius) continue;
+    const key = coordKey(cur.x, cur.y);
+    if (cur.d > 0) {
+      if (cur.d <= fullRadius) {
+        fullKeySet.add(key);
+      } else if (fractionalRadius > 0 && cur.d === fractionalRadius) {
+        falloffKeySet.add(key);
+      }
+    }
+    if (cur.d >= maxRadius) continue;
+    for (let dir = 0; dir < 6; dir += 1) {
+      const next = stepHexCoordByDirection(data, cur.x, cur.y, dir);
+      if (!next) continue;
+      const nextKey = coordKey(next.x, next.y);
+      if (seen.has(nextKey)) continue;
+      seen.add(nextKey);
+      queue.push({ x: next.x, y: next.y, d: cur.d + 1 });
+    }
+  }
+  for (const key of fullKeySet) {
+    if (falloffKeySet.has(key)) falloffKeySet.delete(key);
+  }
+  return { fullKeySet, falloffKeySet };
+}
+
 function resolveSelectedTileAttackActionState() {
   const data = currentData.value;
   if (!data || data.shapeOnly) {
-    return { enabled: false, reason: "マップ生成後に攻撃できます。", moveGroup: null, targetCount: 0 };
-  }
-  if (isPathMoveInProgress.value) {
-    return { enabled: false, reason: "移動中は攻撃できません。", moveGroup: null, targetCount: 0 };
+    return { enabled: false, reason: "マップ生成後に攻撃できます。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   const unit = selectedUnit.value;
   if (!unit) {
-    return { enabled: false, reason: "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0 };
+    return { enabled: false, reason: "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   const moveGroup = resolveMoveGroupForUnit(unit, { allowMemberAsLeader: true });
   if (!moveGroup.ok || !moveGroup.leader) {
-    return { enabled: false, reason: moveGroup.reason || "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0 };
+    return { enabled: false, reason: moveGroup.reason || "攻撃ユニットを選択してください。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
+  }
+  if (isMoveGroupInProgress(moveGroup)) {
+    return { enabled: false, reason: "選択ユニットは移動中です。", moveGroup: null, targetCount: 0, patternTileKeys: new Set() };
   }
   const leader = moveGroup.leader;
+  const normalizedPattern = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+  const directional = isDirectionalTileAttackPattern(normalizedPattern);
+  let patternTileKeys = buildAttackPatternTileKeySet(data, leader, normalizedPattern, tileAttackRange.value);
+  if (directional && !tileAttackDirectionLocked.value) {
+    const directionCandidate = normalizeTileAttackDirectionAnchor(tileAttackDirectionCandidate.value, data, leader);
+    if (directionCandidate) {
+      patternTileKeys = buildAttackPatternTileKeySet(
+        data,
+        leader,
+        normalizedPattern,
+        tileAttackRange.value,
+        { anchor: directionCandidate }
+      );
+    } else {
+      const union = new Set();
+      for (let dir = 0; dir < 6; dir += 1) {
+        const candidate = buildAttackPatternTileKeySet(
+          data,
+          leader,
+          normalizedPattern,
+          tileAttackRange.value,
+          { directionIndexOverride: dir }
+        );
+        for (const key of candidate) union.add(key);
+      }
+      patternTileKeys = union;
+    }
+  }
   const factionTileMap = buildOpposingFactionUnitsByTile(data);
-  const currentTarget = resolveAttackTargetAtTile(leader.x, leader.y, { data, factionTileMap, requireSpotted: true });
-  const neighbors = getHexNeighborCoordsBySize(data.w, data.h, leader.x, leader.y, resolveWorldWrapEnabled(data));
   let targetCount = 0;
-  if (currentTarget.hasTarget) targetCount += 1;
-  for (const n of neighbors) {
-    const target = resolveAttackTargetAtTile(n.x, n.y, { data, factionTileMap, requireSpotted: true });
+  for (const key of patternTileKeys) {
+    const point = parseCoordKey(key);
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+    const target = resolveAttackTargetAtTile(point.x, point.y, { data, factionTileMap, requireSpotted: true });
     if (target.hasTarget) targetCount += 1;
   }
   if (targetCount <= 0) {
-    return { enabled: false, reason: "同マス/隣接マスに攻撃対象がいません。", moveGroup, targetCount: 0 };
+    return {
+      enabled: true,
+      reason: `${resolveTileAttackPatternLabel(normalizedPattern)} 射程${tileAttackRange.value} の範囲に攻撃対象がいません。`,
+      moveGroup,
+      targetCount: 0,
+      patternTileKeys
+    };
   }
-  return { enabled: true, reason: "", moveGroup, targetCount };
+  return { enabled: true, reason: "", moveGroup, targetCount, patternTileKeys };
 }
 
 function cancelTileAttackSelectionMode(silent = false) {
   if (!tileAttackSelectionMode.value) return;
   tileAttackSelectionMode.value = false;
+  clearTileAttackDirectionLock();
   refreshMapCursor();
   if (!silent) {
     updateUnitInfoText("攻撃モードを終了しました。");
@@ -13937,14 +21604,33 @@ function toggleTileAttackSelectionMode() {
     updateUnitInfoText(`攻撃モード開始不可: ${state.reason || "条件未達です。"}`);
     return;
   }
-  if (unitMoveMode.value) {
-    unitMoveMode.value = false;
-    clearPlannedMovePath();
+  if (isMoveCommandPendingForSelectedUnit.value) {
+    clearMoveCommandState({ clearCandidate: false });
   }
+  clearTileAttackDirectionLock();
   clearHousingUpgradeSelectionState();
   tileAttackSelectionMode.value = true;
   refreshMapCursor();
-  updateUnitInfoText("攻撃モード: 同マスまたは隣接マスを選択してください。");
+  const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+  const directionalHint = isDirectionalTileAttackPattern(effectivePatternKey)
+    ? "同じマスを2回クリックで方向固定→対象マスをクリック"
+    : "範囲内の対象マスを選択";
+  updateUnitInfoText(`攻撃モード(${resolveTileAttackPatternLabel(effectivePatternKey)} / 射程${tileAttackRange.value}): ${directionalHint}`);
+}
+
+function setTileAttackPattern(nextPatternKey) {
+  const normalized = normalizeTileAttackPatternKey(nextPatternKey);
+  if (tileAttackPatternKey.value === normalized) return;
+  tileAttackPatternKey.value = normalized;
+  clearTileAttackDirectionLock();
+  if (tileAttackSelectionMode.value) {
+    const state = resolveSelectedTileAttackActionState();
+    const message = state.enabled
+      ? `攻撃範囲: ${resolveTileAttackPatternLabel(normalized)} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`
+      : `攻撃範囲: ${resolveTileAttackPatternLabel(normalized)} 射程${tileAttackRange.value} / ${state.reason || "対象なし"}`;
+    updateUnitInfoText(message);
+  }
+  requestMapRender();
 }
 
 function startFieldBattleFromEncounter(payload = {}) {
@@ -13965,7 +21651,16 @@ function startFieldBattleFromEncounter(payload = {}) {
   const sourceLabel = payload?.context === "move"
     ? (stealthAmbush ? "ambush" : "move")
     : (payload?.context === "survey" && !!entry?.playerAmbush ? "ambush" : "encounter");
+  const surveyContext = payload?.surveyContext === true || payload?.context === "survey";
   const attackerLabel = resolveBattleParticipantLabel(payload);
+  const modalMessage = nonEmptyText(payload?.message) || `${attackerLabel}: ${message}`;
+  const modalSummary = nonEmptyText(payload?.summary) || `戦闘(${sourceLabel}): ${enemyLabel}`;
+  if (!FIELD_BATTLE_RESULT_MODAL_ENABLED) {
+    const skippedText = `戦闘モーダルOFF: ${modalSummary}`;
+    updateUnitInfoText(skippedText);
+    pushNationLog(skippedText);
+    return;
+  }
   openFieldBattleResultSelection({
     source: sourceLabel,
     x,
@@ -13978,8 +21673,12 @@ function startFieldBattleFromEncounter(payload = {}) {
     enemyRaceCategory: nonEmptyText(entry?.enemyGroup?.topRaceCategory),
     attackerLabel,
     attackerUnitIds: resolveBattleParticipantUnitIds(payload),
-    message: `${attackerLabel}: ${message}`,
-    summary: `戦闘(${sourceLabel}): ${enemyLabel}`
+    surveyContext,
+    surveyDangerBonusPercent: Math.max(0, Math.floor(toSafeNumber(payload?.surveyDangerBonusPercent, SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT))),
+    allowRetreat: payload?.allowRetreat === true,
+    message: modalMessage,
+    summary: modalSummary,
+    onResolve: typeof payload?.onResolve === "function" ? payload.onResolve : null
   });
 }
 
@@ -13992,12 +21691,126 @@ function handleTileAttackSelectionClick(picked) {
     return false;
   }
   const leader = state.moveGroup.leader;
-  const distance = hexDistance(
-    { x: leader.x, y: leader.y },
-    { x: picked.x, y: picked.y }
-  );
-  if (distance < 0 || distance > 1) {
-    updateUnitInfoText("攻撃対象は同マスまたは隣接マスのみ選択できます。");
+  const effectivePatternKey = resolveEffectiveTileAttackPatternKey(tileAttackPatternKey.value);
+  const directionalPattern = isDirectionalTileAttackPattern(effectivePatternKey);
+  if (directionalPattern && !tileAttackDirectionLocked.value) {
+    const anchor = normalizeTileAttackDirectionAnchor({ x: picked.x, y: picked.y }, currentData.value, leader);
+    if (!anchor) {
+      updateUnitInfoText("方向指定は自ユニット以外のマスを選択してください。");
+      return true;
+    }
+    const prevCandidate = normalizeTileAttackDirectionAnchor(tileAttackDirectionCandidate.value, currentData.value, leader);
+    const sameCandidate = !!prevCandidate && prevCandidate.x === anchor.x && prevCandidate.y === anchor.y;
+    tileAttackDirectionCandidate.value = anchor;
+    if (!sameCandidate) {
+      const updatedState = resolveSelectedTileAttackActionState();
+      const targetHint = updatedState.enabled
+        ? `対象${updatedState.targetCount}マス`
+        : (updatedState.reason || "対象なし");
+      updateUnitInfoText(`方向候補: (${anchor.x}, ${anchor.y}) / 同じマスをもう一度クリックで固定 (${targetHint})`);
+      return true;
+    }
+    tileAttackDirectionAnchor.value = anchor;
+    tileAttackDirectionLocked.value = true;
+    tileAttackDirectionCandidate.value = null;
+    const updatedState = resolveSelectedTileAttackActionState();
+    const targetHint = updatedState.enabled
+      ? `対象${updatedState.targetCount}マス`
+      : (updatedState.reason || "対象なし");
+    updateUnitInfoText(`方向固定: (${anchor.x}, ${anchor.y}) / 対象マスをクリックで攻撃 (${targetHint})`);
+    return true;
+  }
+  if (directionalPattern && tileAttackDirectionLocked.value && leader.x === picked.x && leader.y === picked.y) {
+    clearTileAttackDirectionLock();
+    updateUnitInfoText("方向固定を解除しました。同じマスを2回クリックで方向を再指定してください。");
+    return true;
+  }
+  const attackRangeSet = state.patternTileKeys instanceof Set
+    ? state.patternTileKeys
+    : buildAttackPatternTileKeySet(currentData.value, leader, effectivePatternKey, tileAttackRange.value);
+  const targetTileKey = coordKey(picked.x, picked.y);
+  if (!attackRangeSet.has(targetTileKey)) {
+    updateUnitInfoText(`${resolveTileAttackPatternLabel(effectivePatternKey)}範囲外のため攻撃できません。`);
+    return true;
+  }
+  const selectedSkillName = nonEmptyText(selectedTileAttackSkillName.value)
+    || nonEmptyText(footerUnitSkillModalSelectedSkillName.value)
+    || "通常攻撃";
+  const selectedSkillRow = resolveSkillInfoRowByName(selectedSkillName);
+  const selectedPanelRow = ownFactionAttackPanelSkillRows.value
+    .find(row => nonEmptyText(row?.name) === selectedSkillName) || null;
+  // 装備攻撃は同名のマスタースキルではなく、画面で選んだ生成済み行のAP消費を使う。
+  const selectedAttackSkillRow = selectedPanelRow?.skillRowRef || selectedSkillRow;
+  const actionPointCost = resolveSkillActionPointCost(selectedAttackSkillRow);
+  const actionPoint = resolveUnitActionPoint(leader);
+  if (actionPointCost > actionPoint) {
+    updateUnitInfoText(`AP不足: ${selectedSkillName} はAP${actionPointCost}必要です。残りAP${actionPoint}`);
+    return true;
+  }
+  const activeFactionId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
+  const targetAtPicked = resolveAttackTargetAtTile(picked.x, picked.y, {
+    data: currentData.value,
+    factionTileMap: buildOpposingFactionUnitsByTile(currentData.value),
+    requireSpotted: true
+  });
+  const undeclaredFactionId = (Array.isArray(targetAtPicked?.factionIds) ? targetAtPicked.factionIds : [])
+    .find(factionId => !canAttackOtherFaction(activeFactionId, factionId));
+  if (undeclaredFactionId) {
+    requestWarDeclaration(undeclaredFactionId);
+    updateUnitInfoText(`${resolveFactionLabelById(undeclaredFactionId) || "他勢力"}への攻撃には宣戦布告が必要です。`);
+    return true;
+  }
+  const splashSpec = resolveSelectedTileAttackSplashSpec();
+  const attackEffectPayload = buildTileAttackEffectPlayPayload(picked, leader, splashSpec);
+  if (attackEffectPayload) {
+    console.info(`${EFFECT_DEBUG_PREFIX} precheck:ready`, {
+      skillName: nonEmptyText(selectedTileAttackSkillName.value) || nonEmptyText(footerUnitSkillModalSelectedSkillName.value),
+      picked,
+      splashValue: toSafeNumber(splashSpec?.value, 0),
+      payload: attackEffectPayload
+    });
+    void handleEffectPlayerPlayRequest(attackEffectPayload);
+    closeOwnFactionAttackPanel({ cancelPreview: true });
+  } else {
+    console.warn(`${EFFECT_DEBUG_PREFIX} precheck:failed`, {
+      skillName: nonEmptyText(selectedTileAttackSkillName.value) || nonEmptyText(footerUnitSkillModalSelectedSkillName.value),
+      picked,
+      splashValue: toSafeNumber(splashSpec?.value, 0)
+    });
+  }
+  // ダメージの有無にかかわらず、攻撃の発動確定時にAPを消費する。
+  if (!spendUnitActionPoint(leader.id, actionPointCost)) {
+    updateUnitInfoText(`AP不足: ${selectedSkillName} はAP${actionPointCost}必要です。残りAP${resolveUnitActionPoint(leader)}`);
+    return true;
+  }
+  const damageResult = applySkillDamageToFactionUnits({
+    data: currentData.value,
+    picked,
+    splashSpec,
+    includeSpawnTargets: true,
+    attackerFactionId: activeFactionId,
+    attackerUnit: leader,
+    attackerLabel: nonEmptyText(leader?.name) || "ユニット",
+    skillName: selectedSkillName,
+    skillRow: selectedAttackSkillRow,
+    attackMethod: nonEmptyText(selectedPanelRow?.attackStyle) || nonEmptyText(selectedAttackSkillRow?.攻撃手段) || "通常",
+    powerOverride: toSafeNumber(selectedPanelRow?.power, Number.NaN),
+    weaponRow: resolvePrimaryWeaponBaseSkillRowForUnit(leader),
+    canDamageTarget: target => {
+      const targetFactionId = nonEmptyText(target?.slotId);
+      return !targetFactionId || targetFactionId === "__spawn__" || canAttackOtherFaction(activeFactionId, targetFactionId);
+    }
+  });
+  if (damageResult.applied) {
+    cancelTileAttackSelectionMode(true);
+    kickOffBgm();
+    audio.playSe("confirm");
+    updateUnitInfoText(`${damageResult.summary || "攻撃を実行しました。"} / AP-${actionPointCost} 残${Math.max(0, actionPoint - actionPointCost)}`);
+    for (const line of damageResult.lines || []) {
+      pushNationLog(line);
+    }
+    emitCharacterStateChange();
+    requestMapRender();
     return true;
   }
   const factionTileMap = buildOpposingFactionUnitsByTile(currentData.value);
@@ -14007,13 +21820,21 @@ function handleTileAttackSelectionClick(picked) {
     requireSpotted: true
   });
   if (!target.hasTarget) {
-    updateUnitInfoText("そのマスには攻撃対象がいません。");
+    updateUnitInfoText("そのマスには攻撃対象がいません。（エフェクトのみ発動）");
+    return true;
+  }
+  if (!target.hasSpawn) {
+    updateUnitInfoText("対象ユニットに有効ダメージを与えられませんでした。");
     return true;
   }
   cancelTileAttackSelectionMode(true);
   kickOffBgm();
   audio.playSe("confirm");
   const attackerName = nonEmptyText(leader?.name) || "ユニット";
+  const distance = hexDistance(
+    { x: leader.x, y: leader.y },
+    { x: picked.x, y: picked.y }
+  );
   const sourceLabel = distance === 0 ? "ambush" : "attack";
   openFieldBattleResultSelection({
     source: sourceLabel,
@@ -14487,6 +22308,100 @@ function startTerritoryTileModeConversion(targetMode) {
   renderMapWithPhaser();
 }
 
+function resolveSelectedTileCampActionState() {
+  const detail = selectedTileDetail.value;
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return { enabled: false, reason: "マスを選択してください。", x: null, y: null, key: "" };
+  }
+  const data = currentData.value;
+  if (!data || data.shapeOnly) {
+    return { enabled: false, reason: "マップ生成後に建設できます。", x, y, key: coordKey(x, y) };
+  }
+  const raceFallback = resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village?.placed) {
+    return { enabled: false, reason: "初期村配置後に建設できます。", x, y, key: coordKey(x, y) };
+  }
+  const key = coordKey(x, y);
+  if (hasCampOnTile(village, key)) {
+    return { enabled: false, reason: "既にキャンプがあります。", x, y, key };
+  }
+  const villageX = Math.floor(toSafeNumber(village?.x, Number.NaN));
+  const villageY = Math.floor(toSafeNumber(village?.y, Number.NaN));
+  if (!Number.isFinite(villageX) || !Number.isFinite(villageY)) {
+    return { enabled: false, reason: "村の位置が不正です。", x, y, key };
+  }
+  if (villageX === x && villageY === y) {
+    return { enabled: false, reason: "村中心には建設できません。", x, y, key };
+  }
+  const distance = Math.max(0, Math.floor(hexDistance({ x, y }, { x: villageX, y: villageY })));
+  if (distance < CAMP_MIN_DISTANCE_FROM_VILLAGE) {
+    return { enabled: false, reason: `村から${CAMP_MIN_DISTANCE_FROM_VILLAGE}マス以上離してください。`, x, y, key, distance };
+  }
+  const terrain = nonEmptyText(data?.grid?.[y]?.[x]);
+  if (!terrain || terrain === "海" || terrain === "湖" || terrain === "溶岩") {
+    return { enabled: false, reason: "この地形には建設できません。", x, y, key, distance };
+  }
+  const tileDangerPercent = Math.max(
+    0,
+    Math.min(
+      TILE_DANGER_MAX_PERCENT,
+      Math.floor(toSafeNumber(data?.enemyDangerMap?.[y]?.[x], 0))
+    )
+  );
+  if (tileDangerPercent > 0) {
+    return { enabled: false, reason: "危険度0%のマスで建設できます。", x, y, key, distance };
+  }
+  const ownUnitOnTile = unitsAt(x, y).some(unit => canUseUnitAsMoveCandidate(unit));
+  if (!ownUnitOnTile) {
+    return { enabled: false, reason: "自勢力ユニットがいるマスで建設できます。", x, y, key, distance };
+  }
+  return {
+    enabled: true,
+    reason: "",
+    x,
+    y,
+    key,
+    distance
+  };
+}
+
+function buildCampAtSelectedTile() {
+  const state = resolveSelectedTileCampActionState();
+  if (!state.enabled || !state.key) {
+    updateUnitInfoText(`キャンプ建設不可: ${state.reason || "条件未達です。"}`);
+    return;
+  }
+  const raceFallback = resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village?.placed) {
+    updateUnitInfoText("キャンプ建設失敗: 村データが不正です。");
+    return;
+  }
+  const campMap = normalizeVillageTileCampMap(village?.[VILLAGE_TILE_CAMP_MAP_KEY]);
+  campMap[state.key] = {
+    createdTurn: Math.max(0, Math.floor(toSafeNumber(mapTurnNumber.value, 0)))
+  };
+  const nextVillage = ensureVillageStateShape({
+    ...village,
+    [VILLAGE_TILE_CAMP_MAP_KEY]: campMap
+  }, raceFallback);
+  villageState.value = nextVillage;
+  updateVillageInfoText();
+  kickOffBgm();
+  audio.playSe("confirm");
+  updateUnitInfoText(`キャンプ建設: (${state.x}, ${state.y}) / 待機と同量の追加回復を付与`);
+  pushNationLog(`キャンプ建設: (${state.x}, ${state.y}) / 遠征拠点を設置`);
+  const latest = hitAreaMap.get(state.key);
+  if (latest) {
+    updateMapClickInfo(latest);
+  }
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+}
+
 function resolveSelectedTileSurveyStateV2() {
   const detail = selectedTileDetail.value;
   const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
@@ -14548,7 +22463,7 @@ function runSelectedTileSurveyV2() {
   kickOffBgm();
   audio.playSe("confirm");
   emitCharacterStateChange();
-  updateUnitInfoText(`調査開始: (${state.x}, ${state.y}) / 完了まで${SURVEY_ACTION_REQUIRED_TURNS}T`);
+  updateUnitInfoText(`調査開始: (${state.x}, ${state.y}) / 危険度0%で完了`);
   const latest = hitAreaMap.get(coordKey(state.x, state.y));
   if (latest) {
     updateMapClickInfo(latest);
@@ -14569,6 +22484,7 @@ function syncMapTileSelectionInfo(picked = null, explicitKey = "") {
   }
   if (picked && Number.isFinite(picked?.x) && Number.isFinite(picked?.y)) {
     updateMapClickInfo(picked);
+    return;
   }
 }
 
@@ -14584,6 +22500,11 @@ async function handleMapTileClick(pointer) {
     requestMapRender();
     syncMapTileSelectionInfo(picked, selectedTileKey);
     mapClickInfo.value += ` / ${resolveHousingUpgradeSelectionSummary()}`;
+    return;
+  }
+  if (handleCityBlockPlacementTileClick(picked)) {
+    requestMapRender();
+    syncMapTileSelectionInfo(picked, selectedTileKey);
     return;
   }
   if (villagePlacementMode.value) {
@@ -14604,13 +22525,16 @@ async function handleMapTileClick(pointer) {
     }
   }
   let movePlanResult = null;
-  if (unitMoveMode.value) {
+  if (isMoveCommandPendingForSelectedUnit.value) {
     movePlanResult = await queueMovePathPlanToTile(picked);
     if (movePlanResult?.reason) {
       setLastMoveStopState(movePlanResult.reason, picked.x, picked.y);
       updateUnitInfoText(`移動経路作成失敗: ${movePlanResult.reason}`);
     } else if (movePlanResult?.queued) {
-      updateUnitInfoText(`移動経路作成: ${movePlanResult.pathDistance}マス / 予測コスト${movePlanResult.estimatedCost}`);
+      const partialNote = nonEmptyText(movePlanResult.partialStopReason)
+        ? ` / ${movePlanResult.partialStopReason}`
+        : "";
+      updateUnitInfoText(`移動経路作成: ${movePlanResult.pathDistance}マス / 予測コスト${movePlanResult.estimatedCost}${partialNote}`);
     }
     requestMapRender();
     syncMapTileSelectionInfo(picked, selectedTileKey);
@@ -14732,6 +22656,10 @@ function handlePointerUp(pointer) {
 function handlePointerLeave() {
   hoveredTileKey = "";
   drawHoverOverlay();
+  if (cityBlockPlacementMode.value && !showCityBlockPlacementConfirmModal.value && cityBlockPlacementPreview.value) {
+    cityBlockPlacementPreview.value = null;
+    requestMapRender();
+  }
   if (dragPointerId !== null) resetDragState();
   pointerViewCache.clear();
   touchPointerViewMap.clear();
@@ -14750,6 +22678,7 @@ function handleCanvasWheel(event) {
 onMounted(async () => {
   await nextTick();
   if (!gameRoot.value) return;
+  applyLowPowerDisplayDefaults(lowPowerMode.value);
 
   firstGestureHandler = () => {
     kickOffBgm();
@@ -14761,12 +22690,23 @@ onMounted(async () => {
   };
   window.addEventListener("pointerdown", firstGestureHandler);
   window.addEventListener("keydown", firstGestureHandler);
+  installExternalMapEffectBridge();
 
-  resetClockTurnCycleIndex(Date.now());
+  resetClockRuntime(Date.now());
   clockIntervalId = window.setInterval(() => {
-    clockNowMs.value = Date.now();
+    if (isPageHidden.value) return;
+    const now = Date.now();
+    const prev = Math.max(0, Math.floor(toSafeNumber(clockLastTickRealMs.value, now)));
+    const delta = Math.max(0, now - prev);
+    clockLastTickRealMs.value = now;
+    if (autoTimeRunning.value) {
+      clockElapsedMs.value = Math.max(0, Math.floor(toSafeNumber(clockElapsedMs.value, 0) + delta));
+    }
+    clockNowMs.value = mapClockStartMs.value + clockElapsedMs.value;
     processClockTurnProgress();
-    if (unitMoveMode.value && currentData.value) {
+    runEnemyAutoAttackTick(delta);
+    runDeadUnitLifecycleTick();
+    if (isMoveCommandPendingForSelectedUnit.value && currentData.value) {
       requestMapRender();
     }
   }, 250);
@@ -14774,16 +22714,25 @@ onMounted(async () => {
   game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: gameRoot.value,
-    width: GAME_VIEW_WIDTH,
-    height: GAME_VIEW_HEIGHT,
-    // Improve clarity when the 1280x720 canvas is CSS-scaled on different displays.
-    resolution: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
-    antialias: true,
+    width: gameViewWidth.value,
+    height: gameViewHeight.value,
+    // Keep clarity when the canvas is CSS-scaled on different displays.
+    resolution: lowPowerMode.value
+      ? 0.75
+      : Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
+    antialias: !lowPowerMode.value,
     pixelArt: false,
+    render: {
+      powerPreference: lowPowerMode.value ? "low-power" : "high-performance"
+    },
+    fps: {
+      target: lowPowerMode.value ? PHASER_FPS_TARGET_LOW_POWER : PHASER_FPS_TARGET_NORMAL,
+      forceSetTimeOut: true
+    },
     scale: {
       mode: Phaser.Scale.NONE,
-      width: GAME_VIEW_WIDTH,
-      height: GAME_VIEW_HEIGHT
+      width: gameViewWidth.value,
+      height: gameViewHeight.value
     },
     transparent: true,
     scene: {
@@ -14814,12 +22763,36 @@ onMounted(async () => {
   });
 
   resizeHandler = () => {
+    headerResourceMenuLayoutVersion.value += 1;
     requestMapRender();
   };
   window.addEventListener("resize", resizeHandler);
+  if (typeof document !== "undefined") {
+    pageVisibilityHandler = () => {
+      isPageHidden.value = !!document.hidden;
+      if (isPageHidden.value) setCanvasCursor("default");
+      syncRuntimePowerSaveState();
+    };
+    document.addEventListener("visibilitychange", pageVisibilityHandler);
+    sidebarResourceOutsidePointerHandler = event => handleSidebarOutsidePointerDown(event);
+    document.addEventListener("pointerdown", sidebarResourceOutsidePointerHandler);
+    isPageHidden.value = !!document.hidden;
+  }
+  syncRuntimePowerSaveState();
 });
 
 onBeforeUnmount(() => {
+  if (turnTickerTimerId) {
+    window.clearTimeout(turnTickerTimerId);
+    turnTickerTimerId = null;
+  }
+  stopRuntimeMemoryWatch();
+  stopUnitDamageBlinkTicker();
+  unitDamageBlinkUntilMsById = new Map();
+  unitRecentDamageAmountById = new Map();
+  clearActiveDamagePopups();
+  clearActiveTileEffectPlayback();
+  uninstallExternalMapEffectBridge();
   mapRenderScheduler.dispose();
   pathfindingWorkerClient.dispose();
   if (resizeHandler) window.removeEventListener("resize", resizeHandler);
@@ -14827,6 +22800,14 @@ onBeforeUnmount(() => {
     window.removeEventListener("pointerdown", firstGestureHandler);
     window.removeEventListener("keydown", firstGestureHandler);
     firstGestureHandler = null;
+  }
+  if (pageVisibilityHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", pageVisibilityHandler);
+    pageVisibilityHandler = null;
+  }
+  if (sidebarResourceOutsidePointerHandler && typeof document !== "undefined") {
+    document.removeEventListener("pointerdown", sidebarResourceOutsidePointerHandler);
+    sidebarResourceOutsidePointerHandler = null;
   }
   if (clockIntervalId) {
     window.clearInterval(clockIntervalId);
@@ -14855,15 +22836,33 @@ onBeforeUnmount(() => {
   pinchStartDistance = 0;
   suppressTouchTapUntilRelease = false;
   raceMarkerTexturePending = new Set();
+  enemyIllustrationTexturePending = new Set();
+  unitIllustrationTexturePending = new Set();
   resetVisibilityState();
 });
 
+watch([gameViewPresetKey, gameViewWidth, gameViewHeight], () => {
+  emitGameViewSizeChange();
+}, { immediate: true });
+
 watch(showTestControls, visible => {
+  if (visible) {
+    startRuntimeMemoryWatch();
+  } else {
+    stopRuntimeMemoryWatch();
+    runtimeMemoryText.value = "-";
+  }
   emit("test-controls-change", !!visible);
   if (currentData.value) {
     rebuildVisibleTiles(currentData.value);
     requestMapRender();
   }
+}, { immediate: true });
+
+watch(lowPowerMode, enabled => {
+  applyLowPowerDisplayDefaults(!!enabled);
+  syncRuntimePowerSaveState();
+  requestMapRender();
 }, { immediate: true });
 
 watch(customWorldWrapEnabled, enabled => {
@@ -14893,21 +22892,84 @@ watch([showHeightNumbers, heightNumberFontSize, heightNumberOutlineWidth, useHei
   }
 });
 
-watch([currentData, selectedUnitId, villagePlacementMode, unitMoveMode], () => {
-  if (!canUseUnitMoveModeState.value && unitMoveMode.value) {
-    unitMoveMode.value = false;
-    clearPlannedMovePath();
+watch([currentData, selectedUnitId, villagePlacementMode, moveCommandUnitId, unitList], () => {
+  const armedUnitId = nonEmptyText(moveCommandUnitId.value);
+  const armedUnit = armedUnitId
+    ? (unitList.value.find(unit => nonEmptyText(unit?.id) === armedUnitId) || null)
+    : null;
+  const canKeepMoveCommand = !!(
+    armedUnitId
+    && armedUnit
+    && armedUnitId === nonEmptyText(selectedUnitId.value)
+    && currentData.value
+    && !currentData.value.shapeOnly
+    && !villagePlacementMode.value
+    && canUseUnitAsMoveCandidate(armedUnit)
+  );
+  if (armedUnitId && !canKeepMoveCommand) {
+    clearMoveCommandState({ clearCandidate: false });
     requestMapRender();
   }
   if (tileAttackSelectionMode.value) {
     const attackState = resolveSelectedTileAttackActionState();
-    if (!attackState.enabled || unitMoveMode.value || villagePlacementMode.value) {
+    if (!attackState.enabled || isMoveCommandPendingForSelectedUnit.value || villagePlacementMode.value) {
       cancelTileAttackSelectionMode(true);
     }
   }
-  if (plannedMovePathNodes.value.length && !unitMoveMode.value) {
+  if (plannedMovePathNodes.value.length && !isMoveCommandPendingForSelectedUnit.value) {
     clearPlannedMovePath();
   }
+  if (!tileAttackSelectionMode.value && tileAttackDirectionLocked.value) {
+    clearTileAttackDirectionLock();
+  }
+});
+
+watch([unitList, selectedTileDetail], () => {
+  const modalUnitId = nonEmptyText(footerUnitSkillModalUnitId.value);
+  if (!modalUnitId) return;
+  const modalUnit = unitList.value.find(unit => nonEmptyText(unit?.id) === modalUnitId) || null;
+  if (!modalUnit) {
+    showFooterUnitSkillModal.value = false;
+    footerUnitSkillModalUnitId.value = "";
+    footerUnitSkillModalSelectedSkillName.value = "";
+    return;
+  }
+  if (!showFooterUnitSkillModal.value) return;
+  const detail = selectedTileDetail.value;
+  if (!detail) return;
+  const x = Math.floor(toSafeNumber(detail?.x, Number.NaN));
+  const y = Math.floor(toSafeNumber(detail?.y, Number.NaN));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  if (modalUnit.x !== x || modalUnit.y !== y) {
+    showFooterUnitSkillModal.value = false;
+    footerUnitSkillModalSelectedSkillName.value = "";
+  }
+});
+
+watch(() => tileAttackPatternKey.value, next => {
+  tileAttackPatternKey.value = normalizeTileAttackPatternKey(next);
+  if (tileAttackSelectionMode.value) {
+    const state = resolveSelectedTileAttackActionState();
+    if (!state.enabled) {
+      cancelTileAttackSelectionMode(true);
+      updateUnitInfoText(`攻撃モード終了: ${state.reason || "条件未達です。"}`);
+    }
+  }
+  requestMapRender();
+});
+
+watch(() => tileAttackRange.value, next => {
+  tileAttackRange.value = normalizeTileAttackRange(next);
+  if (tileAttackSelectionMode.value) {
+    const state = resolveSelectedTileAttackActionState();
+    if (!state.enabled) {
+      cancelTileAttackSelectionMode(true);
+      updateUnitInfoText(`攻撃モード終了: ${state.reason || "条件未達です。"}`);
+    } else {
+      updateUnitInfoText(`攻撃範囲: ${tileAttackPatternLabel.value} 射程${tileAttackRange.value} / 対象${state.targetCount}マス`);
+    }
+  }
+  requestMapRender();
 });
 
 watch(() => props.gameSetupReady, ready => {
@@ -14958,84 +23020,152 @@ watch(() => props.characterCommand, command => {
   <section class="panel simulator map-top phaser-map-panel">
     <div class="phaser-stage">
         <div id="mapGrid" ref="gameRoot" class="phaser-map-canvas" :style="mapCanvasStyle">
+      <transition name="turn-ticker">
+        <div
+          v-if="turnTicker.text"
+          :key="turnTicker.key"
+          class="field-overlay-turn-ticker"
+          :class="`is-${turnTicker.kind}`"
+          role="status"
+          aria-live="polite"
+        >
+          {{ turnTicker.text }}
+        </div>
+      </transition>
       <header class="field-overlay-header" :class="{ minimized: headerMinimized }">
         <template v-if="!headerMinimized">
-        <div class="field-resource-chip field-resource-chip-food">
-          <span>食料</span>
-          <strong>{{ fieldResourceSummary.food }}</strong>
-          <small class="resource-icon-row">
-            <span
-              v-for="entry in fieldResourceSummary.foodEntries"
-              :key="`food-${entry.key}`"
-              class="resource-icon-entry"
-              :title="entry.key"
-            >
-              <img :src="entry.iconSrc" :alt="entry.key" />
-              <em>{{ entry.displayValue }}</em>
-            </span>
-          </small>
-        </div>
         <div
-          class="field-resource-chip field-resource-chip-material field-resource-chip-clickable field-resource-chip-inline-label"
-          role="button"
-          tabindex="0"
-          :aria-pressed="materialHeaderExpanded"
-          @click="toggleMaterialHeaderExpanded"
-          @keydown.enter.prevent="toggleMaterialHeaderExpanded"
-          @keydown.space.prevent="toggleMaterialHeaderExpanded"
+          class="field-header-research-wrap"
+          title="研究レベル（クリックで研究画面）"
+          @click="openSkillTreeModalFromMap"
         >
-          <span>資材</span>
-          <small v-if="!materialHeaderExpanded" class="resource-icon-row">
-            <span
-              v-for="entry in fieldResourceSummary.materialCollapsedEntries"
-              :key="`mat-collapsed-${entry.key}`"
-              class="resource-icon-entry material-resource-icon-entry"
-              :title="entry.label"
-            >
-              <img :src="entry.iconSrc" :alt="entry.label" />
-              <em>{{ entry.displayValue }}</em>
-            </span>
-          </small>
-          <small v-else class="material-rows">
-            <span
-              v-for="group in fieldResourceSummary.materialGroups"
-              :key="`mat-group-${group.label}`"
-              class="material-row"
+          <small class="field-header-research-list">
+            <button
+              v-for="row in headerResearchRows"
+              :key="`header-research-${row.key}`"
+              type="button"
+              class="field-header-research-chip"
+              :title="`${row.label} Lv${row.level} / EXP ${row.currentExp}/${row.requiredExp}`"
+              :aria-label="`${row.label} の研究画面を開く`"
+              @click.stop="openSkillTreeModalFromMap(row.key)"
             >
               <span
-                v-for="detail in group.details"
-                :key="`mat-detail-${group.label}-${detail.key}`"
-                class="material-token"
-                :title="detail.key"
+                class="field-header-research-gauge"
+                :class="{ completed: row.progressRatio >= 1 }"
+                :style="{
+                  '--research-progress-ratio': String(row.progressRatio),
+                  '--research-gauge-accent': row.gaugeColor
+                }"
               >
-                <img :src="detail.iconSrc" :alt="detail.key" />
-                <em>{{ detail.displayValue }}</em>
+                <img :src="row.iconSrc" :alt="`${row.label} アイコン`" />
               </span>
-            </span>
+            </button>
           </small>
         </div>
-        <div
-          class="field-resource-chip field-resource-chip-population field-resource-chip-clickable field-resource-chip-inline-label"
-          role="button"
-          tabindex="0"
-          :aria-pressed="populationHeaderExpanded"
-          @click="togglePopulationHeaderExpanded"
-          @keydown.enter.prevent="togglePopulationHeaderExpanded"
-          @keydown.space.prevent="togglePopulationHeaderExpanded"
-        >
-          <span>総人口</span>
-          <strong>{{ fieldResourceSummary.population }}</strong>
-          <small v-if="!populationHeaderExpanded">{{ fieldResourceSummary.populationDetail }}</small>
-          <small v-else class="population-rows">
-            <span
-              v-for="entry in fieldResourceSummary.populationEntries"
-              :key="`population-${entry.key}`"
-              class="population-token"
+        <div ref="headerResourceMenuRef" class="field-header-resource-menu-wrap">
+          <div class="sidebar-resource-menu header-resource-menu" role="menu" aria-label="資源収支">
+            <button
+              v-for="row in sidebarResourcePanelRows"
+              :key="`header-resource-${row.key}`"
+              type="button"
+              :ref="el => setHeaderResourceButtonRef(row.key, el)"
+              class="sidebar-resource-menu-item"
+              :class="{ active: row.isActive }"
+              @click="toggleSidebarResourcePanel(row.key)"
             >
-              <em>{{ entry.label }}</em>
-              <strong>{{ entry.value }}</strong>
+              <span class="sidebar-resource-menu-icon" :title="row.label">
+                <img :src="row.iconSrc" :alt="row.label" />
+              </span>
+              <span class="sidebar-resource-menu-values">
+                <span class="sidebar-resource-menu-total">{{ row.totalDisplay }}</span>
+                <span class="sidebar-resource-menu-delta" :class="row.deltaClass">{{ row.deltaDisplay }}</span>
+              </span>
+              <span class="sidebar-resource-menu-arrow">▶</span>
+            </button>
+          </div>
+          <transition name="sidebar-resource-panel-slide" mode="out-in">
+            <section
+              v-if="activeSidebarResourcePanel"
+              :key="activeSidebarResourcePanel.key"
+              class="sidebar-resource-detail-panel sidebar-resource-menu header-resource-detail-panel"
+              :style="headerResourceDetailPanelStyle"
+            >
+              <template v-if="activeSidebarResourcePanel.materialItems.length">
+                <ul class="sidebar-resource-detail-list">
+                  <li
+                    v-for="item in activeSidebarResourcePanel.materialItems"
+                    :key="`header-resource-detail-${item.key}`"
+                    class="sidebar-resource-menu-item sidebar-resource-detail-item"
+                  >
+                    <span class="sidebar-resource-menu-icon" :title="item.label">
+                      <img :src="item.iconSrc" :alt="item.label" />
+                    </span>
+                    <span class="sidebar-resource-menu-values">
+                      <span class="sidebar-resource-menu-total">{{ item.stockDisplay }}</span>
+                      <span class="sidebar-resource-menu-delta" :class="item.gainClass">{{ item.gainDisplay }}</span>
+                    </span>
+                  </li>
+                </ul>
+              </template>
+              <template v-if="activeSidebarResourcePanel.key === 'food'">
+                <ul class="sidebar-resource-detail-list">
+                  <li
+                    v-for="item in activeSidebarResourcePanel.foodItems"
+                    :key="`header-food-detail-${item.key}`"
+                    class="sidebar-resource-menu-item sidebar-resource-detail-item"
+                  >
+                    <span class="sidebar-resource-menu-icon" :title="item.label">
+                      <img :src="item.iconSrc" :alt="item.label" />
+                    </span>
+                    <span class="sidebar-resource-menu-values">
+                      <span class="sidebar-resource-menu-total">{{ item.stockDisplay }}</span>
+                      <span class="sidebar-resource-menu-delta" :class="item.gainClass">{{ item.gainDisplay }}</span>
+                    </span>
+                  </li>
+                </ul>
+              </template>
+            </section>
+          </transition>
+        </div>
+        <div ref="headerPopulationMenuRef" class="field-header-population-menu-wrap">
+          <div
+            class="field-resource-chip field-resource-chip-population field-resource-chip-inline-label field-resource-chip-clickable"
+            role="button"
+            tabindex="0"
+            :aria-pressed="populationHeaderExpanded"
+            @click="togglePopulationHeaderExpanded"
+            @keydown.enter.prevent="togglePopulationHeaderExpanded"
+            @keydown.space.prevent="togglePopulationHeaderExpanded"
+          >
+            <span class="field-resource-chip-label-with-icon">
+              <img :src="POPULATION_ICON_SRC" alt="人口" />
+              <em>人口</em>
             </span>
-          </small>
+            <strong>{{ headerPopulationDisplay }}</strong>
+            <small class="population-summary-inline">
+              <span class="population-token">
+                <em>幸福度</em>
+                <strong>{{ populationHappinessDisplay }}</strong>
+              </span>
+            </small>
+          </div>
+          <transition name="sidebar-resource-panel-slide" mode="out-in">
+            <section
+              v-if="populationHeaderExpanded"
+              class="sidebar-resource-detail-panel sidebar-resource-menu population-detail-panel"
+            >
+              <ul class="sidebar-resource-detail-list population-detail-list">
+                <li
+                  v-for="entry in populationExpandedRows"
+                  :key="`population-${entry.key}`"
+                  class="sidebar-resource-menu-item sidebar-resource-detail-item population-detail-item"
+                >
+                  <span class="population-detail-label">{{ entry.label }}</span>
+                  <span class="population-detail-value">{{ entry.value }}</span>
+                </li>
+              </ul>
+            </section>
+          </transition>
         </div>
         <div class="field-overlay-actions">
           <button
@@ -15046,15 +23176,6 @@ watch(() => props.characterCommand, command => {
             @click="openCharacterStatusModalFromMap"
           >
             <img class="overlay-action-icon" :src="sovereignHeaderActionIconSrc" alt="自キャラ（統治者）" />
-          </button>
-          <button
-            type="button"
-            class="overlay-action-btn icon-only"
-            title="研究"
-            aria-label="研究"
-            @click="openSkillTreeModalFromMap"
-          >
-            <img class="overlay-action-icon" :src="SKILL_TREE_ICON_SRC" alt="研究" />
           </button>
           <button
             type="button"
@@ -15108,10 +23229,14 @@ watch(() => props.characterCommand, command => {
           <span class="overlay-header-drawer-arrow" aria-hidden="true">{{ headerMinimized ? "▽" : "△" }}</span>
         </button>
       </header>
-      <section class="field-overlay-tile-detail" :class="{ minimized: tileDetailMinimized }">
+      <div v-if="showTestControls" class="field-overlay-memory-top-right" title="使用メモリ">
+        メモリ: {{ runtimeMemoryText }}
+      </div>
+      <section v-if="showLegacyTileDetailPanel" class="field-overlay-tile-detail" :class="{ minimized: tileDetailMinimized }">
         <div class="field-overlay-tile-head">
           <div class="field-overlay-tile-title">
             <span class="field-overlay-tile-title-main">{{ selectedTileDetail?.title || selectedTileDetail?.terrain || "選択マス詳細" }}</span>
+            <span v-if="selectedTileDetail" class="field-overlay-tile-title-sub">座標 ({{ selectedTileDetail.x }}, {{ selectedTileDetail.y }})</span>
           </div>
           <div class="field-overlay-tile-head-right">
             <div v-if="selectedTileDetail" class="field-overlay-tile-actions">
@@ -15119,7 +23244,7 @@ watch(() => props.characterCommand, command => {
                 type="button"
                 class="overlay-action-btn tile-action-icon-btn"
                 :disabled="!tileSurveyActionState.enabled"
-                :title="tileSurveyActionState.enabled ? `調査を開始 (${SURVEY_ACTION_REQUIRED_TURNS}T)` : `調査不可: ${tileSurveyActionState.reason}`"
+                :title="tileSurveyActionState.enabled ? '調査を開始 (危険度0%で完了)' : `調査不可: ${tileSurveyActionState.reason}`"
                 aria-label="調査"
                 @click="runSelectedTileSurveyV2"
               >
@@ -15131,9 +23256,13 @@ watch(() => props.characterCommand, command => {
                 :class="{ active: tileAttackSelectionMode }"
                 :disabled="!tileAttackActionState.enabled"
                 :title="tileAttackSelectionMode
-                  ? '攻撃モード中: 同マス/隣接マスを選択'
+                  ? (tileAttackPatternDirectional
+                    ? (tileAttackDirectionLocked
+                      ? `攻撃モード中(${tileAttackPatternLabel} / 射程${tileAttackRange}): 対象マスをクリックで攻撃`
+                      : `攻撃モード中(${tileAttackPatternLabel} / 射程${tileAttackRange}): 同じマスを2回クリックで方向固定`)
+                    : `攻撃モード中(${tileAttackPatternLabel} / 射程${tileAttackRange}): 範囲内の対象を選択`)
                   : (tileAttackActionState.enabled
-                    ? `攻撃モードON (対象${tileAttackActionState.targetCount}マス)`
+                    ? `攻撃モードON (${tileAttackPatternLabel} / 射程${tileAttackRange} / 対象${tileAttackActionState.targetCount}マス)`
                     : `攻撃不可: ${tileAttackActionState.reason}`)"
                 aria-label="攻撃"
                 @click="toggleTileAttackSelectionMode"
@@ -15188,6 +23317,15 @@ watch(() => props.characterCommand, command => {
               >
                 建設
               </button>
+              <button
+                type="button"
+                class="overlay-action-btn"
+                :disabled="!tileCampActionState.enabled"
+                :title="tileCampActionState.enabled ? '遠征用キャンプを建設' : `キャンプ不可: ${tileCampActionState.reason}`"
+                @click="buildCampAtSelectedTile"
+              >
+                キャンプ
+              </button>
             </div>
             <button
               type="button"
@@ -15201,12 +23339,96 @@ watch(() => props.characterCommand, command => {
           </div>
         </div>
         <div v-if="!tileDetailMinimized" class="field-overlay-tile-body">
+          <div v-if="selectedTileDetail && tileAttackSelectionMode" class="field-overlay-attack-pattern-list">
+            <button
+              v-for="pattern in TILE_ATTACK_PATTERN_OPTIONS"
+              :key="`tile-attack-pattern-${pattern.key}`"
+              type="button"
+              class="field-overlay-attack-pattern-btn"
+              :class="{ active: tileAttackPatternKey === pattern.key }"
+              @click="setTileAttackPattern(pattern.key)"
+            >
+              {{ pattern.label }}
+            </button>
+            <div class="field-overlay-attack-range-row">
+              <span class="field-overlay-attack-range-label">射程</span>
+              <div class="number-stepper field-overlay-attack-range-stepper">
+                <input
+                  v-model.number="tileAttackRange"
+                  type="number"
+                  class="field-overlay-attack-range-input"
+                  :min="TILE_ATTACK_RANGE_MIN"
+                  :max="TILE_ATTACK_RANGE_MAX"
+                  step="1"
+                />
+                <div class="step-stack">
+                  <button
+                    type="button"
+                    class="step-btn field-overlay-attack-range-btn"
+                    :disabled="tileAttackRange >= TILE_ATTACK_RANGE_MAX"
+                    @click="nudgeTileAttackRange(1)"
+                  >△</button>
+                  <button
+                    type="button"
+                    class="step-btn field-overlay-attack-range-btn"
+                    :disabled="tileAttackRange <= TILE_ATTACK_RANGE_MIN"
+                    @click="nudgeTileAttackRange(-1)"
+                  >▽</button>
+                </div>
+              </div>
+            </div>
+            <div v-if="tileAttackPatternDirectional" class="field-overlay-attack-direction-note">
+              {{ tileAttackDirectionLocked ? "方向固定済み: 対象マスをクリックで攻撃" : "方向未固定: 同じマスを2回クリックで方向固定" }}
+            </div>
+            <div class="field-overlay-attack-preview-summary">
+              <span class="field-overlay-attack-skill">{{ tileAttackPreviewSkillLabel }}</span>
+              <span>{{ tileAttackPatternLabel }} / 射程{{ tileAttackRange }}</span>
+            </div>
+            <div class="field-overlay-attack-legend">
+              <span class="field-overlay-attack-legend-item">
+                <i class="field-overlay-attack-legend-chip is-range"></i> 攻撃可能範囲
+              </span>
+              <span class="field-overlay-attack-legend-item">
+                <i class="field-overlay-attack-legend-chip is-pattern"></i> 攻撃範囲
+              </span>
+            </div>
+          </div>
+          <div v-if="selectedTileDetail" class="field-overlay-tile-preview">
+            <article
+              class="field-overlay-tile-preview-card terrain"
+              :title="`地形: ${selectedTileDetail.terrainIconLabel || selectedTileDetail.terrain || '-'}`"
+            >
+              <img :src="selectedTileDetail.terrainIconSrc" :alt="`${selectedTileDetail.terrainIconLabel || selectedTileDetail.terrain} タイル`" />
+            </article>
+            <article
+              class="field-overlay-tile-preview-card unit"
+              :title="selectedTileDetail.unitIconSrc || selectedTileDetail.unitName
+                ? `ユニット: ${selectedTileDetail.unitSummary || selectedTileDetail.unitName}`
+                : 'ユニットなし'"
+            >
+              <template v-if="selectedTileDetail.unitIconSrc || selectedTileDetail.unitName">
+                <img
+                  v-if="selectedTileDetail.unitIconSrc"
+                  :src="selectedTileDetail.unitIconSrc"
+                  :alt="`${selectedTileDetail.unitName || 'ユニット'} アイコン`"
+                />
+                <span v-else class="field-overlay-tile-preview-fallback">{{ selectedTileDetail.unitIconGlyph || "兵" }}</span>
+              </template>
+              <template v-else>
+                <span class="field-overlay-tile-preview-fallback">-</span>
+              </template>
+            </article>
+          </div>
           <div v-if="selectedTileDetail" class="field-overlay-tile-grid">
             <div><span>領土</span><strong>{{ selectedTileDetail.territory }}</strong></div>
             <div><span>危険度</span><strong>{{ selectedTileDetail.danger }}</strong></div>
             <div><span>高度</span><strong>Lv {{ selectedTileDetail.heightLevel }}</strong></div>
+            <div><span>キャンプ</span><strong>{{ selectedTileDetail.camp || "-" }}</strong></div>
+            <div class="wide"><span>敵</span><strong>{{ selectedTileDetail.enemies || "-" }}</strong></div>
+            <div v-if="showTestControls" class="wide"><span>敵索敵/隠密</span><strong>{{ selectedTileDetail.enemySense || "-" }}</strong></div>
             <div class="wide"><span>町状態</span><strong>{{ selectedTileDetail.village }}</strong></div>
             <div class="wide"><span>領土状態</span><strong>{{ selectedTileDetail.development }}</strong></div>
+            <div class="wide"><span>回復補正</span><strong>{{ selectedTileDetail.tileRecovery || "-" }}</strong></div>
             <div class="wide"><span>施設</span><strong>{{ selectedTileDetail.facilities || "-" }}</strong></div>
             <div class="wide"><span>ユニット</span><strong>{{ selectedTileDetail.units }}</strong></div>
             <div class="wide"><span>移動停止</span><strong>{{ selectedTileDetail.moveStopReason || "-" }}</strong></div>
@@ -15216,17 +23438,84 @@ watch(() => props.characterCommand, command => {
       </section>
       <aside class="field-overlay-own-faction-panel">
         <own-faction-navigator-modal
+          v-if="ownFactionPanelViewMode === 'navigator'"
+          class="field-overlay-own-faction-navigator-host"
           :squad-entries="ownSquadNavigatorEntries"
           :unit-entries="ownCharacterNavigatorEntries"
+          :selected-tile-coord="ownFactionSelectedTileCoord"
           :selected-unit-id="selectedUnitId"
           :can-use-move-mode="canUseUnitMoveModeState"
-          :move-mode-enabled="unitMoveMode"
           :reset-key="activeTestPlayerId"
           @focus-unit="handleOwnUnitNavigatorFocusUnit"
           @focus-squad="handleOwnUnitNavigatorFocusSquad"
           @open-character-status="handleOwnUnitNavigatorOpenCharacterStatus"
           @select-move-unit="handleOwnUnitNavigatorSelectMoveUnit"
+          @select-attack-unit="handleOwnUnitNavigatorSelectAttackUnit"
         />
+        <section v-else class="field-overlay-own-faction-attack-list-panel">
+          <div class="field-overlay-own-faction-attack-head">
+            <span>AP {{ ownFactionAttackPanelActionPoint }} / {{ ownFactionAttackPanelActionPointMax }}</span>
+          </div>
+          <div v-if="ownFactionAttackPanelSkillRows.length" class="field-overlay-own-faction-attack-list skill-table-wrap">
+            <button
+              v-for="row in ownFactionAttackPanelSkillRows"
+              :key="`own-faction-attack-skill-${row.rowKey || row.name}`"
+              type="button"
+              class="field-overlay-own-faction-attack-item"
+              :class="{
+                active: ownFactionAttackPanelSelectedSkillRow && ownFactionAttackPanelSelectedSkillRow.name === row.name,
+                'is-ap-insufficient': !isOwnFactionAttackRowAffordable(row)
+              }"
+              :disabled="!isOwnFactionAttackRowAffordable(row)"
+              @click="handleOwnFactionAttackSkillSelect({ name: row.name, activatePreview: true })"
+              @dblclick="activateOwnFactionAttackPreview({ name: row.name })"
+            >
+              <div class="skill-top" :class="`action-${row.actionType}`">
+                <span class="action-chip">{{ row.actionShort }}</span>
+                <span v-if="row.attackStyleIconSrc" class="skill-inline-icon-wrap">
+                  <img :src="row.attackStyleIconSrc" :alt="row.attackStyle" class="skill-inline-icon" />
+                </span>
+                <span v-else class="skill-inline-icon-fallback">{{ row.attackStyle !== '-' ? row.attackStyle.slice(0, 1) : "?" }}</span>
+                <span class="field-overlay-own-faction-attack-item-name">{{ row.name }}</span>
+                <span class="skill-family-chip">
+                  <span v-if="row.familyIconSrc" class="skill-inline-icon-wrap family-icon-wrap">
+                    <img :src="row.familyIconSrc" :alt="row.family" class="skill-inline-icon" />
+                  </span>
+                  <span>{{ row.family }}</span>
+                </span>
+              </div>
+              <div class="skill-bottom field-overlay-own-faction-attack-item-detail">
+                <span class="skill-meta-chip">
+                  威/状/守 {{ row.power }}/{{ row.state }}/{{ row.guard }}
+                </span>
+                <span class="skill-meta-chip">AP {{ row.apCost }}</span>
+                <span class="skill-meta-chip">CT {{ row.ct }}</span>
+                <span class="skill-meta-chip">射程 {{ row.range }}</span>
+                <span class="skill-meta-chip">効果 {{ row.duration }}</span>
+              </div>
+            </button>
+          </div>
+          <div v-else class="small field-overlay-own-faction-attack-empty">
+            攻撃スキルがありません。
+          </div>
+          <div v-if="ownFactionAttackPanelSelectedSkillRow" class="field-overlay-own-faction-attack-detail">
+            <div class="field-overlay-own-faction-attack-detail-title-row">
+              <div class="field-overlay-own-faction-attack-detail-title">{{ ownFactionAttackPanelSelectedSkillRow.name }}</div>
+              <button
+                type="button"
+                class="field-overlay-own-faction-attack-use-btn"
+                :disabled="!isOwnFactionAttackRowAffordable(ownFactionAttackPanelSelectedSkillRow)"
+                @click="handleOwnFactionAttackSkillSelect({ name: ownFactionAttackPanelSelectedSkillRow.name, activatePreview: true })"
+              >
+                使用
+              </button>
+            </div>
+            <div v-if="ownFactionAttackPanelSelectedSkillRow.detail !== '-'" class="field-overlay-own-faction-attack-detail-text">{{ ownFactionAttackPanelSelectedSkillRow.detail }}</div>
+          </div>
+          <div v-else class="small field-overlay-own-faction-attack-empty field-overlay-own-faction-attack-detail-empty">
+            スキルを選択すると詳細を表示します。
+          </div>
+        </section>
       </aside>
       <aside v-if="showPinnedNationLogPanel" class="field-overlay-live-log">
         <div class="field-overlay-live-log-head">
@@ -15243,17 +23532,60 @@ watch(() => props.characterCommand, command => {
           テスト: {{ showTestControls ? "ON" : "OFF" }}
         </button>
         <div class="field-overlay-clock">
-          <button type="button" class="turn-clock-button" :title="`次ターンまで ${turnClockRemainingSeconds}s`" @click="openTurnActionModal">
+          <button
+            type="button"
+            class="turn-clock-button"
+            :title="autoTimeRunning ? `次ターンまで ${turnClockRemainingSeconds}s` : '自動時間経過 停止中（時計から開始）'"
+            @click="openTurnActionModal"
+          >
             <div class="turn-clock-face">
-              <span class="turn-clock-mark mark-top"></span>
-              <span class="turn-clock-mark mark-right"></span>
-              <span class="turn-clock-mark mark-left"></span>
-              <div class="turn-clock-hand" :style="{ transform: `translateX(-50%) rotate(${turnClockHandDeg}deg)` }"></div>
+              <span
+                v-for="tick in turnClockTicks"
+                :key="`turn-clock-tick-${tick.index}`"
+                class="turn-clock-tick"
+                :class="{ major: tick.major }"
+                :style="{ transform: `translateX(-50%) rotate(${tick.deg}deg) translateY(-34px)` }"
+              ></span>
+              <span class="turn-clock-edge turn-clock-edge-left"></span>
+              <span class="turn-clock-edge turn-clock-edge-right"></span>
+              <div class="turn-clock-ring turn-clock-ring-outer"></div>
+              <div class="turn-clock-ring turn-clock-ring-inner"></div>
+              <div class="turn-clock-hand turn-clock-hand-outer" :style="{ transform: `translateX(-50%) rotate(${turnClockOuterHandDeg}deg)` }"></div>
+              <div class="turn-clock-hand turn-clock-hand-inner" :style="{ transform: `translateX(-50%) rotate(${turnClockInnerHandDeg}deg)` }"></div>
               <div class="turn-clock-center"></div>
             </div>
           </button>
-          <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s</div>
-          <div class="turn-clock-caption map-turn-caption">{{ mapTurnNumber }}T</div>
+          <div class="turn-clock-caption-row">
+            <div class="turn-clock-caption">次まで {{ turnClockRemainingSeconds }}s</div>
+            <div class="turn-clock-caption map-turn-caption">{{ mapTurnNumber }}T</div>
+          </div>
+        </div>
+      </div>
+      <field-footer-tabs-overlay
+        :selected-tile-detail="selectedTileDetail"
+        :tile-units="footerTileUnitRows"
+        :tile-enemy-units="footerTileEnemyRows"
+        :selected-unit-id="selectedUnitId"
+        :can-play-effect="hasSelectedTileForEffect"
+        :show-test-controls="showTestControls"
+        @play-effect="handleEffectPlayerPlayRequest"
+        @select-unit="handleFooterSelectUnit"
+        @move-request="handleFooterMoveRequest"
+        @attack-request="handleFooterAttackRequest"
+        @open-skill-request="openFooterUnitSkillModal"
+        @enemy-hp-adjust="handleFooterEnemyHpAdjust"
+      />
+      <div
+        v-if="showMovePathConfirmModal && movePathConfirmPopupStyle"
+        class="move-path-confirm-popup"
+        :style="movePathConfirmPopupStyle"
+      >
+        <div class="move-path-confirm-popup-head">移動経路確認</div>
+        <div class="move-path-confirm-popup-cost">{{ movePathConfirmPopupLabel }}</div>
+        <div class="small move-path-confirm-popup-summary">{{ plannedMoveSummaryText }}</div>
+        <div class="move-path-confirm-popup-actions">
+          <button type="button" class="secondary mini" @click="closeMovePathConfirmModal">キャンセル</button>
+          <button type="button" class="secondary mini" @click="confirmPlannedMovePath">OK</button>
         </div>
       </div>
       <aside v-if="showTestControls" class="in-canvas-test-panel">
@@ -15319,10 +23651,10 @@ watch(() => props.characterCommand, command => {
             class="secondary"
             type="button"
             :disabled="!canUseUnitMoveModeState"
-            :aria-pressed="unitMoveMode"
+            :aria-pressed="isMoveCommandPendingForSelectedUnit"
             @click="toggleUnitMoveMode"
           >
-            ユニット移動: {{ unitMoveMode ? "ON" : "OFF" }}
+            {{ isMoveCommandPendingForSelectedUnit ? "移動指示を解除" : "移動ユニット選択" }}
           </button>
           <button id="advanceTurnBtn" class="secondary" type="button" :disabled="isTestMultiplayerActive && activeTestPlayerReady" @click="runNextTurn">
             {{ isTestMultiplayerActive ? (activeTestPlayerReady ? "ターン終了済み" : "ターン終了") : "ターン経過" }}
@@ -15330,6 +23662,48 @@ watch(() => props.characterCommand, command => {
           <button id="eventManagerBtn" class="secondary" type="button" @click="showEventControlModal = true">イベント管理</button>
           <button id="createUnitBtn" class="secondary" type="button" :disabled="!canCreateAnyUnit" @click="openUnitCreateModal">ユニット作成</button>
           <button id="villageBuildBtn" class="secondary" type="button" :disabled="!canOpenVillageBuild" @click="openVillageBuildModal">建設</button>
+          <button
+            id="cityBlockPlacementBtn"
+            class="secondary"
+            type="button"
+            :disabled="!currentData || currentData.shapeOnly"
+            :aria-pressed="cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_CITY"
+            @click="startCityBlockPlacementMode(CITY_BLOCK_PLACEMENT_TYPE_CITY)"
+          >
+            {{
+              cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_CITY
+                ? resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_CITY).buttonActiveLabel
+                : resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_CITY).buttonLabel
+            }}
+          </button>
+          <button
+            id="townPlacementBtn"
+            class="secondary"
+            type="button"
+            :disabled="!currentData || currentData.shapeOnly"
+            :aria-pressed="cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_TOWN"
+            @click="startCityBlockPlacementMode(CITY_BLOCK_PLACEMENT_TYPE_TOWN)"
+          >
+            {{
+              cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_TOWN
+                ? resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_TOWN).buttonActiveLabel
+                : resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_TOWN).buttonLabel
+            }}
+          </button>
+          <button
+            id="metropolisPlacementBtn"
+            class="secondary"
+            type="button"
+            :disabled="!currentData || currentData.shapeOnly"
+            :aria-pressed="cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS"
+            @click="startCityBlockPlacementMode(CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS)"
+          >
+            {{
+              cityBlockPlacementMode && cityBlockPlacementType === CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS
+                ? resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS).buttonActiveLabel
+                : resolveCityBlockPlacementTypeDef(CITY_BLOCK_PLACEMENT_TYPE_METROPOLIS).buttonLabel
+            }}
+          </button>
           <button id="nationLogBtn" class="secondary" type="button" @click="openNationLogModal">統治者ログ</button>
           <div class="zoom-controls">
             <button type="button" class="secondary" @click="zoomOut">-</button>
@@ -15346,7 +23720,7 @@ watch(() => props.characterCommand, command => {
             <div>{{ unitInfoText }}</div>
             <div>{{ lastEconomySummary }}</div>
           </div>
-          <div class="small phaser-help">クリックで詳細表示 / ドラッグで移動 / ホイール・2本指ピンチで拡大縮小 / ユニット移動ONでクリック移動（緑点滅枠が移動可能範囲、高度変化マスは移動コスト+1）。</div>
+          <div class="small phaser-help">クリックで詳細表示 / ドラッグで移動 / ホイール・2本指ピンチで拡大縮小 / 移動指示中のユニットはクリックで経路確認（緑点滅枠が移動可能範囲、高度変化マスは移動コスト+1）。</div>
           <section class="generation-details">
             <div class="map-meta">
               <div id="mapSizeInfo">{{ mapSizeInfo }}</div>
@@ -15374,6 +23748,14 @@ watch(() => props.characterCommand, command => {
         <h3>設定メニュー</h3>
         <div class="quick-settings-grid">
           <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">音量/表示設定</button>
+          <label class="setting-row quick-settings-checkbox-row">
+            <input
+              type="checkbox"
+              :checked="squadFormationEnabled"
+              @change="toggleSquadFormationEnabledFromQuickMenu($event.target.checked)"
+            />
+            <span>チーム編成機能を有効にする</span>
+          </label>
           <button type="button" class="secondary" :disabled="saveExportInProgress" @click="downloadSaveDataFromQuickMenu">
             {{ saveExportInProgress ? "セーブ生成中..." : "セーブデータ保存" }}
           </button>
@@ -15396,10 +23778,35 @@ watch(() => props.characterCommand, command => {
         </div>
       </div>
     </div>
+    <div
+      v-if="showCityBlockPlacementConfirmModal"
+      class="settings-backdrop"
+      @click.self="closeCityBlockPlacementConfirmModal({ keepPreview: true })"
+    >
+      <div class="settings-modal city-block-placement-modal">
+        <h3>{{ resolveCityBlockPlacementTypeDef(cityBlockPlacementPending?.type).confirmTitle }}</h3>
+        <div class="setting-note">
+          {{ resolveCityBlockPlacementTypeDef(cityBlockPlacementPending?.type).anchorLabel }}:
+          ({{ cityBlockPlacementPending?.anchorX }}, {{ cityBlockPlacementPending?.anchorY }})<br>
+          {{ resolveCityBlockPlacementTypeDef(cityBlockPlacementPending?.type).confirmDescription }}
+        </div>
+        <div class="setting-actions city-block-placement-actions">
+          <button
+            type="button"
+            class="secondary"
+            @click="closeCityBlockPlacementConfirmModal({ keepPreview: true })"
+          >
+            キャンセル
+          </button>
+          <button type="button" class="secondary" @click="confirmCityBlockPlacement">設置</button>
+        </div>
+      </div>
+    </div>
 
     <equipment-inventory-modal
       :show="showEquipmentInventoryModal"
       :village="villageState"
+      :units="unitList"
       :smith-level="resolveSmithCraftCap(villageState)"
       :craft-usage-state="equipmentCraftUsageStateForModal"
       :enchant-usage-state="equipmentEnchantUsageStateForModal"
@@ -15411,6 +23818,30 @@ watch(() => props.characterCommand, command => {
       @craft-weapon="handleCraftWeaponFromInventoryModal"
       @apply-enchant="handleApplyEnchantFromInventoryModal"
     />
+
+    <div v-if="showFooterUnitSkillModal" class="settings-backdrop" @click.self="closeFooterUnitSkillModal">
+      <div class="settings-modal footer-unit-skill-modal">
+        <h3>{{ footerUnitSkillModalUnit?.name || "ユニット" }} スキル一覧</h3>
+        <skill-acquired-table
+          :skill-names="footerUnitSkillModalSkillNames"
+          :status-source="footerUnitSkillModalUnit?.status || null"
+          :show-title="false"
+          :compact="true"
+          :show-family-icon="true"
+          :selectable="true"
+          :selected-name="footerUnitSkillModalSelectedSkillName"
+          empty-text="このユニットはスキルを所持していません。"
+          @select-skill="handleFooterUnitSkillSelect"
+        />
+        <div v-if="footerUnitSkillModalSelectedSkillSummary" class="small">
+          選択中: {{ footerUnitSkillModalSelectedSkillSummary }}
+        </div>
+        <div class="small">スキルをクリックすると、射程/範囲を攻撃プレビューへ反映します。</div>
+        <div class="setting-actions">
+          <button type="button" class="secondary" @click="closeFooterUnitSkillModal">閉じる</button>
+        </div>
+      </div>
+    </div>
 
     <generic-modal
       :show="showEventModal"
@@ -15428,6 +23859,18 @@ watch(() => props.characterCommand, command => {
       @close="closeFieldBattleResultModal"
       @resolve="applyFieldBattleResultV2"
     />
+
+    <div v-if="warDeclarationPending" class="settings-backdrop" @click.self="closeWarDeclarationModal">
+      <div class="settings-modal war-declaration-modal" role="dialog" aria-modal="true" aria-label="宣戦布告の確認">
+        <h3>宣戦布告</h3>
+        <div class="small">{{ warDeclarationPending.targetLabel }}へ宣戦布告します。宣戦布告するまで、他勢力ユニットは攻撃できません。</div>
+        <div class="war-declaration-penalty">外交評価 {{ warDeclarationPending.penalty }} / {{ warDeclarationPending.penaltyTurns }}ターン</div>
+        <div class="setting-actions">
+          <button type="button" class="secondary" @click="closeWarDeclarationModal">中止</button>
+          <button type="button" @click="confirmWarDeclaration">宣戦布告する</button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="false && showFieldBattleResultModal" class="settings-backdrop" @click.self="closeFieldBattleResultModal">
       <div class="settings-modal battle-result-modal">
@@ -15483,17 +23926,31 @@ watch(() => props.characterCommand, command => {
           </button>
         </div>
         <div class="unit-create-count-picker">
-          <button type="button" class="secondary count-step-btn" :disabled="!canCreateSelectedUnitType" @click="nudgeUnitCreateBatchCount(-1)">-</button>
-          <input
-            v-model.number="unitCreateBatchCount"
-            type="number"
-            min="1"
-            :max="Math.max(1, selectedUnitCreateRemaining)"
-            step="1"
-            :disabled="!canCreateSelectedUnitType"
-            @change="normalizeUnitCreateBatchCount"
-          />
-          <button type="button" class="secondary count-step-btn" :disabled="!canCreateSelectedUnitType" @click="nudgeUnitCreateBatchCount(1)">+</button>
+          <div class="number-stepper unit-create-count-stepper">
+            <input
+              v-model.number="unitCreateBatchCount"
+              type="number"
+              min="1"
+              :max="Math.max(1, selectedUnitCreateRemaining)"
+              step="1"
+              :disabled="!canCreateSelectedUnitType"
+              @change="normalizeUnitCreateBatchCount"
+            />
+            <div class="step-stack">
+              <button
+                type="button"
+                class="step-btn"
+                :disabled="!canCreateSelectedUnitType || unitCreateBatchCount >= Math.max(1, selectedUnitCreateRemaining)"
+                @click="nudgeUnitCreateBatchCount(1)"
+              >△</button>
+              <button
+                type="button"
+                class="step-btn"
+                :disabled="!canCreateSelectedUnitType || unitCreateBatchCount <= 1"
+                @click="nudgeUnitCreateBatchCount(-1)"
+              >▽</button>
+            </div>
+          </div>
         </div>
         <div class="small">
           ヒーロー {{ heroUnitCount }}/{{ heroUnitCap }} (残り {{ heroCreateRemaining }} / 解放 {{ heroCreateUnlocked }}) /
@@ -15623,26 +24080,14 @@ watch(() => props.characterCommand, command => {
               <span>{{ row.roleLabel }}</span>
             </div>
             <div class="small">
-              Lv{{ row.level }} / 座標({{ row.x }}, {{ row.y }}) / 移動残 {{ row.moveRemaining }} / 索敵 {{ row.scoutRange }}
+              Lv{{ row.level }} / 座標({{ row.x }}, {{ row.y }}) / AP {{ row.moveRemaining }}/100 / 索敵 {{ row.scoutRange }}
             </div>
             <div class="small">部隊: {{ row.squadCount }} <span v-if="row.hasSquad">/ リーダー</span></div>
           </button>
         </div>
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeMoveUnitSelectModal">閉じる</button>
-          <button type="button" class="secondary" @click="confirmMoveUnitSelection">このユニットで移動開始</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showMovePathConfirmModal" class="settings-backdrop" @click.self="closeMovePathConfirmModal">
-      <div class="settings-modal move-path-confirm-modal">
-        <h3>移動経路確認</h3>
-        <div class="small move-unit-note">矢印で表示された経路に沿って、1マスごとに判定しながら進みます。途中で停止する場合があります。</div>
-        <div class="small move-path-summary">{{ plannedMoveSummaryText }}</div>
-        <div class="setting-actions">
-          <button type="button" class="secondary" @click="closeMovePathConfirmModal">キャンセル</button>
-          <button type="button" class="secondary" @click="confirmPlannedMovePath">OKで移動</button>
+          <button type="button" class="secondary" @click="confirmMoveUnitSelection">このユニットの移動先を選ぶ</button>
         </div>
       </div>
     </div>
@@ -15677,11 +24122,12 @@ watch(() => props.characterCommand, command => {
     <div v-if="showTurnActionModal" class="settings-backdrop" @click.self="closeTurnActionModal">
       <div class="settings-modal turn-action-modal">
         <h3>ターン操作</h3>
-        <div class="small turn-action-note">時計からターン進行やイベント管理を選択します。</div>
+        <div class="small turn-action-note">自動時間経過: {{ autoTimeStatusLabel }} / 1T={{ turnDurationSec }}秒 / 次停止まで {{ turnsUntilAutoPause }}T ({{ secondsUntilAutoPause }}秒)</div>
+        <div class="small turn-action-note">次ターンまで {{ turnClockRemainingSeconds }}秒</div>
         <div class="setting-actions">
           <button type="button" class="secondary" @click="closeTurnActionModal">閉じる</button>
           <button type="button" class="secondary" @click="openEventControlFromClock">イベント管理を開く</button>
-          <button type="button" class="secondary" @click="runNextTurnFromClock">ターン経過</button>
+          <button type="button" class="secondary" @click="toggleAutoTimeProgressFromClock">{{ autoTimeRunning ? "停止" : "開始" }}</button>
         </div>
       </div>
     </div>
@@ -15722,13 +24168,13 @@ watch(() => props.characterCommand, command => {
                   class="step-btn"
                   :disabled="!useIslandCustomSettings"
                   @click="nudgeCustomIslandInt('largeIslandCount', 1)"
-                >+</button>
+                >△</button>
                 <button
                   type="button"
                   class="step-btn"
                   :disabled="!useIslandCustomSettings"
                   @click="nudgeCustomIslandInt('largeIslandCount', -1)"
-                >-</button>
+                >▽</button>
               </div>
             </div>
             <small class="field-help">1〜8で設定。</small>
@@ -15751,13 +24197,13 @@ watch(() => props.characterCommand, command => {
                   class="step-btn"
                   :disabled="!useIslandCustomSettings"
                   @click="nudgeCustomIslandInt('largeIslandMinGap', 1)"
-                >+</button>
+                >△</button>
                 <button
                   type="button"
                   class="step-btn"
                   :disabled="!useIslandCustomSettings"
                   @click="nudgeCustomIslandInt('largeIslandMinGap', -1)"
-                >-</button>
+                >▽</button>
               </div>
             </div>
             <small class="field-help">島と島の間の海マス数目安。</small>
@@ -15781,13 +24227,13 @@ watch(() => props.characterCommand, command => {
                     class="step-btn"
                     :disabled="!useIslandCustomSettings"
                     @click="nudgeCustomIslandInt('isletCountMin', 1)"
-                  >+</button>
+                  >△</button>
                   <button
                     type="button"
                     class="step-btn"
                     :disabled="!useIslandCustomSettings"
                     @click="nudgeCustomIslandInt('isletCountMin', -1)"
-                  >-</button>
+                  >▽</button>
                 </div>
               </div>
               <span>〜</span>
@@ -15807,13 +24253,13 @@ watch(() => props.characterCommand, command => {
                     class="step-btn"
                     :disabled="!useIslandCustomSettings"
                     @click="nudgeCustomIslandInt('isletCountMax', 1)"
-                  >+</button>
+                  >△</button>
                   <button
                     type="button"
                     class="step-btn"
                     :disabled="!useIslandCustomSettings"
                     @click="nudgeCustomIslandInt('isletCountMax', -1)"
-                  >-</button>
+                  >▽</button>
                 </div>
               </div>
             </div>
@@ -15825,6 +24271,57 @@ watch(() => props.characterCommand, command => {
             <small class="field-help">25〜60%。マップサイズに応じて目標マス数を表示。</small>
           </label>
         </div>
+        <label class="setting-column island-field">
+          <span>大陸あたり川本数 (最小〜最大)</span>
+          <div class="inline-pair stepper-pair">
+            <div class="number-stepper">
+              <input
+                v-model.number="customRiverPerContinentMin"
+                type="number"
+                min="1"
+                max="12"
+                step="1"
+                @change="normalizeCustomIslandSettings"
+              />
+              <div class="step-stack">
+                <button
+                  type="button"
+                  class="step-btn"
+                  @click="nudgeCustomIslandInt('riverPerContinentMin', 1)"
+                >△</button>
+                <button
+                  type="button"
+                  class="step-btn"
+                  @click="nudgeCustomIslandInt('riverPerContinentMin', -1)"
+                >▽</button>
+              </div>
+            </div>
+            <span>〜</span>
+            <div class="number-stepper">
+              <input
+                v-model.number="customRiverPerContinentMax"
+                type="number"
+                min="1"
+                max="12"
+                step="1"
+                @change="normalizeCustomIslandSettings"
+              />
+              <div class="step-stack">
+                <button
+                  type="button"
+                  class="step-btn"
+                  @click="nudgeCustomIslandInt('riverPerContinentMax', 1)"
+                >△</button>
+                <button
+                  type="button"
+                  class="step-btn"
+                  @click="nudgeCustomIslandInt('riverPerContinentMax', -1)"
+                >▽</button>
+              </div>
+            </div>
+          </div>
+          <small class="field-help">デフォルト3〜4。島カスタムのON/OFFに関係なく適用されます。</small>
+        </label>
         <div class="setting-note">
           カスタムON時は、島形状パターンを土台にしつつ大島/孤島配置を上書きします。孤島サイズは孤島数に応じて自動調整し、目標陸地率(初期50%)に寄せて生成します。
         </div>

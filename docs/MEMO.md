@@ -228,4 +228,73 @@
   - モーダル内で比率レイアウトに戻していないか
   - 固定サイズ + overflow で収まる構成になっているか
 
+## UI実装メモ: 資源サイドバー表示ルール（固定）
+- 対象: フィールド左側の資源サイドバー（`sidebar-resource-menu` / 詳細パネル）。
+- 基本方針:
+  - 原則として文字ラベルを使わず、`アイコン + 数値` で表示する。
+  - サイドバー行は「カテゴリアイコン + 合計値 + 増減値」を表示する。
+  - 展開パネルは「資源アイコン + 保有値 + 増減値」を表示する。
+- 食料カテゴリ特例:
+  - `魂` と `死体` は `保有=0` かつ `増減=0` のとき非表示にする。
+- アイコンサイズ調整:
+  - メニュー行アイコン: `--sidebar-menu-icon-size`
+  - 展開パネルアイコン: `--sidebar-detail-icon-size`
+  - 以後、サイズ調整は上記CSS変数で行う（個別直書きで増やさない）。
+
+## UI参考メモ（2026-05-03 追加 / 添付画像ベース）
+- 参照画像: [ui_reference_civ_style_2026-05-03.png](./ui_reference_civ_style_2026-05-03.png)
+- HUD構成の参考:
+  - 上部: 資源を `アイコン + 在庫値 (+増減)` で横並び常時表示。
+  - 左側: 行動ボタンを縦スタック（`Sleep / Pillage / Explore / Wait` のような即押し導線）。
+  - 右側: 通知ログを縦積みオーバーレイで表示（マップを押し出さない）。
+  - 下部: 戦闘時は「攻撃側/防御側の要約 + 実行ボタン」を1枚のカードに集約。
+  - 右下: ミニマップを固定表示して視点移動の導線を残す。
+- 見た目方針:
+  - 半透明パネル + 高コントラスト数値で、地形の視認を優先する。
+  - 原則「文字よりアイコン優先」、必要最小限の文言のみ表示する。
+
+## マップエフェクト外部再生API（2026-05-06）
+- 実装先: `frontend/src/components/PhaserMapGeneratorPanel.vue`
+- 目的: 攻撃処理など別処理から、`向き / 角度 / 再生先` を指定してマップ上エフェクトを再生する。
+
+### 呼び出し方法1: windowブリッジ
+- `window.__fantasy_strategy_map_effect_bridge__.play(payload)`
+- イベント名は `window.__fantasy_strategy_map_effect_bridge__.eventName` に保持。
+
+### 呼び出し方法2: CustomEvent
+- `window.dispatchEvent(new CustomEvent("fantasy-strategy:play-map-effect", { detail: payload }))`
+
+### payload（主な指定）
+- 再生対象:
+  - `src`（直接画像URL）
+  - または `effectName` / `name`（`assets/effect/320×240/*.webp` のファイル名）
+- 角度:
+  - `angleDeg`（0〜360、優先）
+  - `directionIndex`（0:E, 1:NE, 2:NW, 3:W, 4:SW, 5:SE）
+  - `direction`（`"E" | "NE" | "NW" | "W" | "SW" | "SE"`）
+- 再生先:
+  - `worldX`, `worldY`（ワールド座標を直接指定）
+  - または `tileX`, `tileY` / `tileCoord` / `tileKey`（タイル座標指定）
+- 任意:
+  - `scalePercent`（10〜400）
+  - `tint`（色変更。`0xff0000` / `"#ff0000"` 形式）
+
+```js
+window.__fantasy_strategy_map_effect_bridge__.play({
+  effectName: "炎全体",
+  tileX: 22,
+  tileY: 14,
+  directionIndex: 1,
+  scalePercent: 60
+});
+```
+
+## 装備運用メモ（2026-05-10）
+- 装備変更UIの主対象は `ネームド/ヒーロー系ユニット` とする。
+- `モブ` は個別装備を直接編集しない運用にする。
+- モブの装備は固定プリセット参照のみ（クラスに紐づく既定構成を使う）。
+- アイテム一覧モーダルには、モブ向け装備は表示しない。
+- モブ装備で許可する更新は `レア度一新` のみ。
+- レア度一新時は、サイド作成時と同じ素材ルールで資材を消費する。
+
 

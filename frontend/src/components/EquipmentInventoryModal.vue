@@ -2,12 +2,14 @@
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
+import { isMobUnit as isMobUnitUtil } from "../composables/unitCoreUtils.js";
 import equipmentDb from "../../../data/source/export/json/装備.json";
 import consumptionDb from "../../../data/source/export/json/消費量.json";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
   village: { type: Object, default: null },
+  units: { type: Array, default: () => [] },
   smithLevel: { type: Number, default: 0 },
   craftUsageState: { type: Object, default: null },
   enchantUsageState: { type: Object, default: null },
@@ -109,6 +111,10 @@ function toSafeNumber(value, fallback = 0) {
   return Number.isFinite(num) ? num : fallback;
 }
 
+function isMobUnit(unit) {
+  return isMobUnitUtil(unit, { nonEmptyText });
+}
+
 function normalizeRarity(value) {
   const text = nonEmptyText(value);
   if (!text) return "common";
@@ -144,7 +150,28 @@ function equipmentInventoryKey(name, quality) {
   return `${eqName}::${normalizeRarity(quality)}`;
 }
 
-function normalizeInventoryRows(village) {
+function normalizeEquipmentList(unit) {
+  const source = Array.isArray(unit?.equipment) ? unit.equipment : [];
+  return source
+    .map(item => {
+      if (!item || typeof item !== "object") return null;
+      const name = nonEmptyText(item?.name);
+      if (!name) return null;
+      const quality = normalizeRarity(item?.quality || item?.qualityLabel);
+      const unitCount = Math.max(1, Math.floor(toSafeNumber(item?.unitCount, 1)));
+      return {
+        ...item,
+        name,
+        quality,
+        qualityLabel: rarityLabel(quality),
+        unitCount
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeInventoryRows(village, units = [], options = {}) {
+  const pickerMode = !!options?.pickerMode;
   const source = Array.isArray(village?.equipmentInventory) ? village.equipmentInventory : [];
   const map = new Map();
   for (const row of source) {
@@ -177,16 +204,91 @@ function normalizeInventoryRows(village) {
       quality,
       qualityLabel: rarityLabel(quality),
       count,
+      equippedCount: 0,
+      totalCount: count,
       item
     });
   }
+
+  const equippedUnits = Array.isArray(units) ? units : [];
+  for (const unit of equippedUnits) {
+    if (isMobUnit(unit)) continue;
+    const equipped = normalizeEquipmentList(unit);
+    for (const item of equipped) {
+      const name = nonEmptyText(item?.name);
+      if (!name) continue;
+      const quality = normalizeRarity(item?.quality || item?.qualityLabel);
+      const key = equipmentInventoryKey(name, quality);
+      if (!key) continue;
+      const equippedCount = Math.max(1, Math.floor(toSafeNumber(item?.unitCount, 1)));
+      const prev = map.get(key);
+      if (prev) {
+        prev.equippedCount = Math.max(0, Math.floor(toSafeNumber(prev.equippedCount, 0))) + equippedCount;
+        prev.totalCount = Math.max(0, Math.floor(toSafeNumber(prev.count, 0))) + prev.equippedCount;
+        if (!prev.item) {
+          prev.item = {
+            ...item,
+            name,
+            quality,
+            qualityLabel: rarityLabel(quality)
+          };
+        }
+        continue;
+      }
+      map.set(key, {
+        key,
+        name,
+        quality,
+        qualityLabel: rarityLabel(quality),
+        count: 0,
+        equippedCount,
+        totalCount: equippedCount,
+        item: {
+          ...item,
+          name,
+          quality,
+          qualityLabel: rarityLabel(quality)
+        }
+      });
+    }
+  }
+
   return Array.from(map.values())
-    .filter(row => row.count > 0)
+    .filter(row => (
+      pickerMode
+        ? Math.max(0, Math.floor(toSafeNumber(row?.count, 0))) > 0
+        : Math.max(0, Math.floor(toSafeNumber(row?.totalCount, row?.count))) > 0
+    ))
     .sort((a, b) => {
       const rarityDiff = RARITY_ORDER.indexOf(b.quality) - RARITY_ORDER.indexOf(a.quality);
       if (rarityDiff !== 0) return rarityDiff;
       return nonEmptyText(a.name).localeCompare(nonEmptyText(b.name), "ja");
     });
+}
+
+function rowDisplayCount(row, pickerMode = false) {
+  const item = row && typeof row === "object" ? row : {};
+  if (pickerMode) {
+    return Math.max(0, Math.floor(toSafeNumber(item?.count, 0)));
+  }
+  return Math.max(0, Math.floor(toSafeNumber(item?.totalCount, item?.count)));
+}
+
+function rowEquippedCount(row) {
+  const item = row && typeof row === "object" ? row : {};
+  return Math.max(0, Math.floor(toSafeNumber(item?.equippedCount, 0)));
+}
+
+function rowRemainingCount(row) {
+  const item = row && typeof row === "object" ? row : {};
+  return Math.max(0, Math.floor(toSafeNumber(item?.count, 0)));
+}
+
+function rowSlotCountLabel(row, pickerMode = false) {
+  if (pickerMode) return String(rowDisplayCount(row, true));
+  const equipped = rowEquippedCount(row);
+  if (equipped > 0) return `残${rowRemainingCount(row)}`;
+  return String(rowDisplayCount(row, false));
 }
 
 function slotCategory(row) {
@@ -402,8 +504,10 @@ function buildEquipmentDetailRows(item) {
   return rows;
 }
 
-const inventoryRows = computed(() => normalizeInventoryRows(props.village));
-const totalItemCount = computed(() => inventoryRows.value.reduce((sum, row) => sum + Math.max(0, Math.floor(toSafeNumber(row?.count, 0))), 0));
+const inventoryRows = computed(() => normalizeInventoryRows(props.village, props.units, { pickerMode: props.pickerMode }));
+const totalItemCount = computed(() => inventoryRows.value.reduce((sum, row) => (
+  sum + rowDisplayCount(row, props.pickerMode)
+), 0));
 const categoryRows = computed(() => filterRowsByCategory(inventoryRows.value, activeCategory.value));
 const slotFilteredRows = computed(() => {
   const slotKey = normalizeEquipmentSlotKey(props.filterSlotKey);
@@ -729,6 +833,7 @@ const enchantDisabledReason = computed(() => {
 const selectedItemPickable = computed(() => {
   const item = selectedItem.value;
   if (!item) return false;
+  if (props.pickerMode && Math.max(0, Math.floor(toSafeNumber(item?.count, 0))) <= 0) return false;
   return inventoryRowMatchesSlot(item, props.filterSlotKey);
 });
 
@@ -1014,7 +1119,7 @@ function submitEnchant() {
                 slot.item && selectedKey === slot.item.key ? 'active' : ''
               ]"
               :disabled="!slot.item"
-              :title="slot.item ? `${slot.item.name} [${rarityLabel(slot.item?.quality || slot.item?.qualityLabel)}] x${slot.item.count}` : ''"
+              :title="slot.item ? `${slot.item.name} [${rarityLabel(slot.item?.quality || slot.item?.qualityLabel)}] x${rowDisplayCount(slot.item, pickerMode)}${rowEquippedCount(slot.item) > 0 ? ` / 装備中x${rowEquippedCount(slot.item)} / 残りx${rowRemainingCount(slot.item)}` : ''}` : ''"
               @click="slot.item && (selectedKey = slot.item.key)"
             >
               <template v-if="slot.item">
@@ -1031,7 +1136,14 @@ function submitEnchant() {
                 >
                   {{ rarityShort(slot.item?.quality || slot.item?.qualityLabel) }}
                 </span>
-                <span class="inventory-slot-count">{{ slot.item.count }}</span>
+                <span
+                  v-if="rowEquippedCount(slot.item) > 0"
+                  class="inventory-slot-equipped-badge"
+                  title="装備済み"
+                >
+                  E{{ rowEquippedCount(slot.item) }}
+                </span>
+                <span class="inventory-slot-count">{{ rowSlotCountLabel(slot.item, pickerMode) }}</span>
               </template>
             </button>
           </div>
@@ -1089,7 +1201,14 @@ function submitEnchant() {
                   [{{ rarityShort(selectedItem?.quality || selectedItem?.qualityLabel) }}]
                 </span>
               </div>
-              <div class="small detail-count">在庫: x{{ selectedItem.count }}</div>
+              <div class="small detail-count">
+                <template v-if="pickerMode">
+                  在庫: x{{ rowDisplayCount(selectedItem, true) }}
+                </template>
+                <template v-else>
+                  在庫: x{{ selectedItem.count }} / 装備中: x{{ Math.max(0, Math.floor(toSafeNumber(selectedItem.equippedCount, 0))) }} / 合計: x{{ rowDisplayCount(selectedItem, false) }}
+                </template>
+              </div>
               <div v-if="selectedItemDetailRows.length" class="detail-grid">
                 <div
                   v-for="row in selectedItemDetailRows"
@@ -1530,6 +1649,25 @@ function submitEnchant() {
   line-height: 1.35;
   color: #1f1710;
   background: linear-gradient(180deg, rgba(244, 229, 198, 0.96), rgba(220, 197, 154, 0.94));
+}
+
+.inventory-slot-equipped-badge {
+  position: absolute;
+  right: 3px;
+  top: 2px;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.56rem;
+  line-height: 1;
+  font-weight: 800;
+  color: #142216;
+  background: linear-gradient(180deg, rgba(190, 244, 180, 0.98), rgba(118, 212, 141, 0.98));
+  border: 1px solid rgba(218, 255, 206, 0.95);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
 .inventory-detail-pane h4,
