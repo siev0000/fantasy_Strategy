@@ -33,9 +33,6 @@ jobs:
           set -e
 
           if [ "$MERGE_STATUS" -ne 0 ]; then
-            # Explicitly resolve the known rename/delete conflicts in favor of the
-            # new source-asset locations from 仕様調整, while keeping old build
-            # artifacts deleted on the fix branch.
             for f in \
               "assets/images/units/オーガ/オーガウィザード.webp" \
               "assets/images/units/只人/ナイト_bc.webp" \
@@ -69,10 +66,10 @@ jobs:
             exit 1
           fi
 
-          # Keep the bug-fix branch's intended squad cap and facility terrain validation.
+          # Verify the important fix-side behavior survived the merge.
           grep -q 'MAX_SQUAD_MEMBER_COUNT = 4' frontend/src/components/CharacterStatusModal.vue
           grep -q 'MAX_SQUAD_MEMBER_COUNT = 4' frontend/src/components/PhaserMapGeneratorPanel.vue
-          grep -q 'maxSquadMemberCount = 4' frontend/src/composables/unitCoreUtils.js
+          grep -q 'options?.maxSquadMemberCount || 4' frontend/src/composables/unitCoreUtils.js
           grep -q 'resolveFacilityTerrainConditionForSelectedTile' frontend/src/components/PhaserMapGeneratorPanel.vue
           grep -q 'hasTerrain' frontend/src/composables/useVillageBuildPanel.js
 
