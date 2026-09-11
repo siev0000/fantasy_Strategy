@@ -35,6 +35,13 @@ const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"
 const SAVE_FORMAT_VERSION = 1;
 const GAME_START_MAX_FACTIONS = 8;
 const MIN_UI_FONT_SIZE_PX = 15;
+const ROOM_CHAT_MAX_LENGTH = 240;
+
+function clampNumber(value, min, max) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return min;
+  return Math.min(max, Math.max(min, num));
+}
 
 function unitFromRace(race, side, id) {
   const base = RACES[race] || DEFAULT_RACE_STATS;
@@ -242,6 +249,7 @@ const showCharacterStatusModal = ref(false);
 const showCharacterNameModal = ref(false);
 const showGameStartSetupModal = ref(false);
 const skillTreeCategories = ref([...RESEARCH_CATEGORY_ORDER]);
+const skillTreeInitialCategory = ref("");
 const researchProgress = ref({
   targetExpMap: {},
   completedByCategoryLevel: {},
@@ -269,6 +277,7 @@ const mapCharacterState = ref({
   squads: [],
   selectedUnitId: "",
   unitMoveMode: false,
+  squadFormationEnabled: true,
   villageScale: "村",
   namedLimit: 2,
   namedCount: 0,
@@ -276,6 +285,8 @@ const mapCharacterState = ref({
 });
 const latestMapSaveSnapshot = ref(null);
 const appRootScale = ref(1);
+const gameViewWidth = ref(GAME_VIEW_WIDTH);
+const gameViewHeight = ref(GAME_VIEW_HEIGHT);
 const characterCount = computed(() => {
   return Array.isArray(mapCharacterState.value?.units) ? mapCharacterState.value.units.length : 0;
 });
@@ -327,6 +338,8 @@ const activeRoomId = ref("");
 const roomIdInput = ref("ROOM1");
 const playerNameInput = ref("Player");
 const players = ref([]);
+const roomChatLog = ref([]);
+const roomChatMessageInput = ref("");
 const sessionStatusText = ref("ローカルモード（1人プレイ）");
 const sessionStatusClass = ref("");
 const simResult = ref("ここに計算結果を表示");
@@ -377,6 +390,8 @@ const playersLabel = computed(() => {
 
 const appRootStyle = computed(() => ({
   "--game-root-scale": String(appRootScale.value),
+  "--game-view-width-px": `${Math.max(1, Math.floor(Number(gameViewWidth.value) || GAME_VIEW_WIDTH))}px`,
+  "--game-view-height-px": `${Math.max(1, Math.floor(Number(gameViewHeight.value) || GAME_VIEW_HEIGHT))}px`,
   "--ui-manual-clock-scale": String(UI_MANUAL_SCALE_CONFIG.clock),
   "--ui-manual-own-faction-panel-scale": String(UI_MANUAL_SCALE_CONFIG.ownFactionPanel)
 }));
@@ -390,7 +405,9 @@ function updateAppRootScale() {
     }
     return;
   }
-  const fitScale = Math.min(window.innerWidth / GAME_VIEW_WIDTH, window.innerHeight / GAME_VIEW_HEIGHT);
+  const baseWidth = Math.max(1, Number(gameViewWidth.value) || GAME_VIEW_WIDTH);
+  const baseHeight = Math.max(1, Number(gameViewHeight.value) || GAME_VIEW_HEIGHT);
+  const fitScale = Math.min(window.innerWidth / baseWidth, window.innerHeight / baseHeight);
   const nextScale = Number.isFinite(fitScale) ? fitScale : 1;
   appRootScale.value = Math.max(0.25, Math.min(3, Math.round(nextScale * 1000) / 1000));
   if (typeof document !== "undefined") {
@@ -471,6 +488,9 @@ function openModal(kind, payload = null) {
   } else if (kind === "skill" && !skillTreeCategories.value.length) {
     skillTreeCategories.value = [...RESEARCH_CATEGORY_ORDER];
   }
+  if (kind === "skill") {
+    skillTreeInitialCategory.value = String(payload?.initialCategory || "").trim();
+  }
 }
 
 function closeModal(kind) {
@@ -495,6 +515,18 @@ function closeAllModals() {
   showCharacterStatusModal.value = false;
   showCharacterNameModal.value = false;
   showGameStartSetupModal.value = false;
+}
+
+function handleGameViewSizeChange(payload) {
+  const nextWidth = Number(payload?.width);
+  const nextHeight = Number(payload?.height);
+  if (!Number.isFinite(nextWidth) || !Number.isFinite(nextHeight)) return;
+  const normalizedWidth = Math.max(1, Math.floor(nextWidth));
+  const normalizedHeight = Math.max(1, Math.floor(nextHeight));
+  if (normalizedWidth === gameViewWidth.value && normalizedHeight === gameViewHeight.value) return;
+  gameViewWidth.value = normalizedWidth;
+  gameViewHeight.value = normalizedHeight;
+  updateAppRootScale();
 }
 
 function setSessionStatus(text, cls = "") {
@@ -540,6 +572,19 @@ function normalizeGameStartCounts() {
   }
   gameStartPlayerCount.value = playerCount;
   gameStartOtherFactionCount.value = otherCount;
+}
+
+function nudgeGameStartCount(target = "player", delta = 0) {
+  const step = Math.floor(Number(delta) || 0);
+  if (!step) return;
+  if (target === "other") {
+    const nextOther = (Number(gameStartOtherFactionCount.value) || 0) + step;
+    gameStartOtherFactionCount.value = clampNumber(nextOther, 0, GAME_START_MAX_FACTIONS);
+  } else {
+    const nextPlayer = (Number(gameStartPlayerCount.value) || 1) + step;
+    gameStartPlayerCount.value = clampNumber(nextPlayer, 1, GAME_START_MAX_FACTIONS);
+  }
+  normalizeGameStartCounts();
 }
 
 function beginFactionSetupAt(index, options = {}) {
@@ -753,6 +798,7 @@ function handleCharacterStateChange(payload) {
     squads,
     selectedUnitId: String(payload?.selectedUnitId || ""),
     unitMoveMode: !!payload?.unitMoveMode,
+    squadFormationEnabled: payload?.squadFormationEnabled !== false,
     villageScale: String(payload?.villageScale || "村"),
     namedLimit: Number(payload?.namedLimit || 2),
     namedCount: Number(payload?.namedCount || 0),
@@ -871,15 +917,21 @@ function normalizeResearchSelection(raw) {
   if (!raw || typeof raw !== "object") return {};
   return Object.entries(raw).reduce((acc, [categoryKey, value]) => {
     const key = String(categoryKey || "").trim();
-    if (!key || !value || typeof value !== "object") return acc;
-    const selectedMap = Object.entries(value).reduce((selectedAcc, [levelKey, itemId]) => {
+    if (!key) return acc;
+    if (typeof value === "string" || typeof value === "number") {
+      const directId = String(value || "").trim();
+      if (directId) acc[key] = directId;
+      return acc;
+    }
+    if (!value || typeof value !== "object") return acc;
+    const selectedPairs = Object.entries(value).map(([levelKey, itemId]) => {
       const level = Math.max(1, Math.floor(Number(levelKey) || 1));
       const id = String(itemId || "").trim();
-      if (!id) return selectedAcc;
-      selectedAcc[level] = id;
-      return selectedAcc;
-    }, {});
-    acc[key] = selectedMap;
+      return { level, id };
+    }).filter(row => !!row.id);
+    selectedPairs.sort((a, b) => b.level - a.level);
+    const picked = selectedPairs[0]?.id || String(value?.itemId || value?.id || "").trim();
+    if (picked) acc[key] = picked;
     return acc;
   }, {});
 }
@@ -1112,6 +1164,7 @@ function requestPromoteUnit(payload) {
 }
 
 function requestToggleUnitSquad(payload) {
+  if (mapCharacterState.value?.squadFormationEnabled === false) return;
   const unitId = String(payload?.unitId || "").trim();
   if (!unitId) return;
   const memberIds = Array.isArray(payload?.memberIds)
@@ -1129,6 +1182,7 @@ function requestRemoveMob(payload) {
 }
 
 function requestCreateSquad(payload) {
+  if (mapCharacterState.value?.squadFormationEnabled === false) return;
   const leaderId = String(payload?.leaderId || "").trim();
   if (!leaderId) return;
   const memberIds = Array.isArray(payload?.memberIds)
@@ -1139,6 +1193,7 @@ function requestCreateSquad(payload) {
 }
 
 function requestRenameSquad(payload) {
+  if (mapCharacterState.value?.squadFormationEnabled === false) return;
   const leaderId = String(payload?.leaderId || "").trim();
   if (!leaderId) return;
   const squadName = String(payload?.squadName || "").trim();
@@ -1147,12 +1202,14 @@ function requestRenameSquad(payload) {
 }
 
 function requestDissolveSquad(payload) {
+  if (mapCharacterState.value?.squadFormationEnabled === false) return;
   const leaderId = String(payload?.leaderId || "").trim();
   if (!leaderId) return;
   sendCharacterCommand("dissolveSquad", leaderId);
 }
 
 function requestUpdateSquadIcon(payload) {
+  if (mapCharacterState.value?.squadFormationEnabled === false) return;
   const leaderId = String(payload?.leaderId || "").trim();
   if (!leaderId) return;
   const iconName = String(payload?.iconName || "").trim();
@@ -1163,12 +1220,14 @@ function requestUpdateSquadIcon(payload) {
 function requestUpdateUnitEquipment(payload) {
   const unitId = String(payload?.unitId || "").trim();
   if (!unitId) return;
+  const mode = String(payload?.mode || "").trim();
   const equipmentName = String(payload?.equipmentName || "").trim();
-  if (!equipmentName) return;
   const rarity = String(payload?.rarity || "").trim();
   const slotKey = String(payload?.slotKey || "").trim();
   const slotIndex = Number.isFinite(Number(payload?.slotIndex)) ? Math.max(0, Math.floor(Number(payload.slotIndex))) : 0;
+  if (mode === "rerollRarity" && !rarity) return;
   sendCharacterCommand("updateEquipment", unitId, {
+    mode,
     equipmentName,
     rarity,
     slotKey,
@@ -1209,6 +1268,43 @@ function createRoom() {
   socket.value.emit("room:create", { playerName });
 }
 
+function normalizeRoomChatMessage(raw) {
+  return String(raw || "")
+    .replace(/\r?\n/g, " ")
+    .trim()
+    .slice(0, ROOM_CHAT_MAX_LENGTH);
+}
+
+function normalizeRoomChatEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const id = String(entry.id || "").trim();
+  const sender = String(entry.sender || "").trim().slice(0, 20) || "Player";
+  const message = normalizeRoomChatMessage(entry.message);
+  const timestampNum = Number(entry.timestamp);
+  const timestamp = Number.isFinite(timestampNum) ? timestampNum : Date.now();
+  if (!message) return null;
+  return { id: id || `${timestamp}-${sender}`, sender, message, timestamp };
+}
+
+function applyRoomChatLog(rawChatLog) {
+  if (!Array.isArray(rawChatLog)) {
+    roomChatLog.value = [];
+    return;
+  }
+  roomChatLog.value = rawChatLog
+    .map(normalizeRoomChatEntry)
+    .filter(Boolean)
+    .slice(0, 120);
+}
+
+function sendRoomChat() {
+  if (!socket.value || !socketReady.value || !activeRoomId.value) return;
+  const message = normalizeRoomChatMessage(roomChatMessageInput.value);
+  if (!message) return;
+  socket.value.emit("room:chat:send", { roomId: activeRoomId.value, message });
+  roomChatMessageInput.value = "";
+}
+
 function joinRoom() {
   if (!socket.value || !socketReady.value) return;
   const roomId = normalizeRoomId(roomIdInput.value);
@@ -1229,6 +1325,8 @@ function leaveRoom() {
   activeRoomId.value = "";
   roomState.value = null;
   players.value = [];
+  roomChatLog.value = [];
+  roomChatMessageInput.value = "";
   setSessionStatus("ローカルモード（1人プレイ）");
 }
 
@@ -1393,13 +1491,21 @@ onMounted(() => {
     activeRoomId.value = payload.roomId || activeRoomId.value;
     roomState.value = payload.state;
     players.value = Array.isArray(payload.players) ? payload.players : players.value;
+    applyRoomChatLog(payload.chatLog);
     setSessionStatus(`ルーム ${activeRoomId.value} 参加中`, "ok");
+  });
+
+  socket.value.on("room:chat", payload => {
+    if (!payload || payload.roomId !== activeRoomId.value) return;
+    applyRoomChatLog(payload.chatLog);
   });
 
   socket.value.on("room:left", () => {
     activeRoomId.value = "";
     roomState.value = null;
     players.value = [];
+    roomChatLog.value = [];
+    roomChatMessageInput.value = "";
     setSessionStatus("ローカルモード（1人プレイ）");
   });
 
@@ -1475,6 +1581,7 @@ watch(gameOnlyMode, () => {
       :selected-character-name="selectedCharacterName"
       :selected-village-name="selectedVillageName"
       :research-progress="researchProgress"
+      :research-selection="researchSelection"
       :game-setup-ready="gameSetupReady"
       :game-setup-progress-text="gameSetupProgressText"
       :character-command="characterCommand"
@@ -1482,6 +1589,7 @@ watch(gameOnlyMode, () => {
       @character-state-change="handleCharacterStateChange"
       @save-snapshot="handleSaveSnapshot"
       @test-controls-change="handleTestControlsChange"
+      @game-view-size-change="handleGameViewSizeChange"
     />
 
     <room-modal
@@ -1493,12 +1601,16 @@ watch(gameOnlyMode, () => {
       :session-status-text="sessionStatusText"
       :session-status-class="sessionStatusClass"
       :players-label="playersLabel"
+      :chat-log="roomChatLog"
+      :chat-message-input="roomChatMessageInput"
       @close="closeModal('room')"
       @update:room-id-input="roomIdInput = $event"
       @update:player-name-input="playerNameInput = $event"
+      @update:chat-message-input="roomChatMessageInput = $event"
       @create-room="createRoom"
       @join-room="joinRoom"
       @leave-room="leaveRoom"
+      @send-chat="sendRoomChat"
     />
 
     <battle-modal
@@ -1522,6 +1634,7 @@ watch(gameOnlyMode, () => {
     <skill-tree-modal
       :show="showSkillTreeModal"
       :categories="skillTreeCategories"
+      :initial-category="skillTreeInitialCategory"
       :research-progress="researchProgress"
       :research-selection="researchSelection"
       @close="closeModal('skill')"
@@ -1535,25 +1648,57 @@ watch(gameOnlyMode, () => {
         <p class="game-start-note">最初にプレイヤー数と別勢力数を設定します。デフォルトはプレイヤー1 + 別勢力3（合計4勢力）です。</p>
         <label class="game-start-field">
           <span>プレイヤー数</span>
-          <input
-            v-model.number="gameStartPlayerCount"
-            type="number"
-            min="1"
-            :max="GAME_START_MAX_FACTIONS"
-            step="1"
-            @change="normalizeGameStartCounts"
-          />
+          <div class="game-start-number-stepper">
+            <input
+              v-model.number="gameStartPlayerCount"
+              type="number"
+              min="1"
+              :max="GAME_START_MAX_FACTIONS"
+              step="1"
+              @change="normalizeGameStartCounts"
+            />
+            <div class="game-start-step-stack">
+              <button
+                type="button"
+                class="game-start-step-btn"
+                :disabled="gameStartPlayerCount >= GAME_START_MAX_FACTIONS"
+                @click="nudgeGameStartCount('player', 1)"
+              >△</button>
+              <button
+                type="button"
+                class="game-start-step-btn"
+                :disabled="gameStartPlayerCount <= 1"
+                @click="nudgeGameStartCount('player', -1)"
+              >▽</button>
+            </div>
+          </div>
         </label>
         <label class="game-start-field">
           <span>別勢力数</span>
-          <input
-            v-model.number="gameStartOtherFactionCount"
-            type="number"
-            min="0"
-            :max="GAME_START_MAX_FACTIONS"
-            step="1"
-            @change="normalizeGameStartCounts"
-          />
+          <div class="game-start-number-stepper">
+            <input
+              v-model.number="gameStartOtherFactionCount"
+              type="number"
+              min="0"
+              :max="GAME_START_MAX_FACTIONS"
+              step="1"
+              @change="normalizeGameStartCounts"
+            />
+            <div class="game-start-step-stack">
+              <button
+                type="button"
+                class="game-start-step-btn"
+                :disabled="gameStartTotalFactions >= GAME_START_MAX_FACTIONS"
+                @click="nudgeGameStartCount('other', 1)"
+              >△</button>
+              <button
+                type="button"
+                class="game-start-step-btn"
+                :disabled="gameStartOtherFactionCount <= 0"
+                @click="nudgeGameStartCount('other', -1)"
+              >▽</button>
+            </div>
+          </div>
         </label>
         <label class="game-start-field game-start-check">
           <span>ランダム配置</span>
@@ -1614,6 +1759,7 @@ watch(gameOnlyMode, () => {
       :rule-text="mapCharacterState.ruleText"
       :default-selected-id="mapCharacterState.selectedUnitId"
       :test-mode="testControlsVisible"
+      :squad-feature-enabled="mapCharacterState.squadFormationEnabled !== false"
       @promote-unit="requestPromoteUnit"
       @toggle-squad="requestToggleUnitSquad"
       @remove-mob="requestRemoveMob"
@@ -1675,7 +1821,7 @@ watch(gameOnlyMode, () => {
   font-size: 0.86rem;
 }
 
-.game-start-field input {
+.game-start-field input:not([type="checkbox"]) {
   width: 100%;
   min-height: 34px;
   border: 1px solid rgba(220, 188, 133, 0.62);
@@ -1683,6 +1829,48 @@ watch(gameOnlyMode, () => {
   background: rgba(255, 248, 235, 0.93);
   color: #2f2417;
   padding: 4px 8px;
+}
+
+.game-start-number-stepper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.game-start-number-stepper input[type="number"] {
+  text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.game-start-number-stepper input[type="number"]::-webkit-outer-spin-button,
+.game-start-number-stepper input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.game-start-step-stack {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 4px;
+}
+
+.game-start-step-btn {
+  border: 1px solid rgba(215, 180, 118, 0.58);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(112, 80, 41, 0.88), rgba(62, 43, 22, 0.92));
+  color: #f8e9c2;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.game-start-step-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .game-start-field select {

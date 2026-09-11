@@ -1,37 +1,205 @@
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { TURN_SECONDS } from "../lib/phaser-map-panel-config.js";
 
 const props = defineProps({
   squadEntries: { type: Array, default: () => [] },
   unitEntries: { type: Array, default: () => [] },
   selectedUnitId: { type: String, default: "" },
+  selectedTileCoord: { type: Object, default: null },
   canUseMoveMode: { type: Boolean, default: false },
-  moveModeEnabled: { type: Boolean, default: false },
   resetKey: { type: String, default: "" }
 });
 
-const emit = defineEmits(["focus-unit", "focus-squad", "open-character-status", "select-move-unit"]);
+const emit = defineEmits(["focus-unit", "focus-squad", "open-character-status", "select-move-unit", "select-attack-unit"]);
 
-const activeTab = ref("units");
+const activeTab = ref("formation");
 const minimized = ref(false);
+const selectedGroupKey = ref("");
 const selectedLocalUnitId = ref("");
-const selectedLocalSquadId = ref("");
+const selectedLocalTileUnitId = ref("");
+const panelRef = ref(null);
+const actionPopupRef = ref(null);
+const actionPopupTop = ref(0);
+const actionPopupLeft = ref(-54);
+let actionPopupFrameId = 0;
+let windowResizeHandler = null;
 
-const unitCount = computed(() => (Array.isArray(props.unitEntries) ? props.unitEntries.length : 0));
+const unitByIdMap = computed(() => {
+  const map = new Map();
+  for (const entry of Array.isArray(props.unitEntries) ? props.unitEntries : []) {
+    const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+    if (!id) continue;
+    map.set(id, entry);
+  }
+  return map;
+});
+
+const normalizedTileCoord = computed(() => {
+  const x = Number(props?.selectedTileCoord?.x);
+  const y = Number(props?.selectedTileCoord?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return {
+    x: Math.floor(x),
+    y: Math.floor(y)
+  };
+});
+
+const sovereignEntry = computed(() => {
+  const list = Array.isArray(props.unitEntries) ? props.unitEntries : [];
+  return list.find(entry => !!entry?.isSovereign || entry?.roleLabel === "統治者") || null;
+});
+
 const squadCount = computed(() => (Array.isArray(props.squadEntries) ? props.squadEntries.length : 0));
 
-const selectedUnitEntry = computed(() => {
-  const id = (selectedLocalUnitId.value || props.selectedUnitId || "").trim();
+const soloEntries = computed(() => {
   const list = Array.isArray(props.unitEntries) ? props.unitEntries : [];
+  return list.filter(entry => {
+    if (!entry) return false;
+    if (entry.isSovereign || entry.roleLabel === "統治者") return false;
+    const squadName = typeof entry?.squadName === "string" ? entry.squadName.trim() : "";
+    return !squadName;
+  });
+});
+
+const formationRows = computed(() => {
+  const rows = [];
+  const sovereign = sovereignEntry.value;
+  if (sovereign) {
+    const sovereignMoveDisplay = resolveMoveDisplayValue(sovereign);
+    rows.push({
+      key: "governor",
+      type: "governor",
+      title: `統治者: ${sovereign.name}`,
+      badge: `Lv${sovereign.level || 1}`,
+      subText: sovereign.positioned ? `(${sovereign.x}, ${sovereign.y}) / 移動${sovereignMoveDisplay}` : "未配置",
+      iconSrc: sovereign.iconSrc || "",
+      iconGlyph: sovereign.iconGlyph || "統",
+      positioned: !!sovereign.positioned,
+      unitId: sovereign.id
+    });
+  }
+  const squads = Array.isArray(props.squadEntries) ? props.squadEntries : [];
+  for (const squad of squads) {
+    rows.push({
+      key: `squad:${squad.id || ""}`,
+      type: "squad",
+      title: squad.name || "部隊",
+      badge: `${Math.max(1, Number(squad.totalMemberCount) || 1)}体`,
+      subText: squad.positioned ? `(${squad.x}, ${squad.y}) / 索${squad.scoutValue} 隠${squad.stealthValue}` : "未配置",
+      iconSrc: squad.iconSrc || "",
+      iconGlyph: squad.iconGlyph || "隊",
+      positioned: !!squad.positioned,
+      squadId: squad.id || "",
+      leaderId: squad.leaderId || ""
+    });
+  }
+  const solo = soloEntries.value;
+  rows.push({
+    key: "solo",
+    type: "solo",
+    title: "単独",
+    badge: `${solo.length}体`,
+    subText: solo.length ? "部隊未所属キャラクター" : "部隊未所属キャラクターなし",
+    iconSrc: solo[0]?.iconSrc || "",
+    iconGlyph: solo[0]?.iconGlyph || "単",
+    positioned: solo.some(entry => !!entry?.positioned)
+  });
+  return rows;
+});
+
+const selectedFormationRow = computed(() => {
+  const rows = formationRows.value;
+  if (!rows.length) return null;
+  const key = (selectedGroupKey.value || "").trim();
+  const exactRow = rows.find(row => row.key === key);
+  if (exactRow) return exactRow;
+  const selectableRows = rows.filter(row => row?.type !== "governor");
+  return selectableRows[0] || rows[0];
+});
+
+function toDisplayUnitFromMember(member) {
+  const hpMax = Math.max(1, Math.floor(Number(member?.hpMax) || 1));
+  const hpCurrent = Math.max(0, Math.floor(Number(member?.hpCurrent) || hpMax));
+  return {
+    id: `${member?.id || member?.name || "member"}`,
+    name: member?.name || "メンバー",
+    roleLabel: member?.isLeader ? "リーダー" : "メンバー",
+    race: member?.race || "-",
+    className: member?.className || "-",
+    level: Math.max(1, Math.floor(Number(member?.level) || 1)),
+    hpCurrent,
+    hpMax,
+    moveRemaining: 0,
+    positioned: false,
+    iconSrc: "",
+    iconGlyph: "兵"
+  };
+}
+
+const selectedFormationUnits = computed(() => {
+  const row = selectedFormationRow.value;
+  if (!row) return [];
+  if (row.type === "governor") {
+    return sovereignEntry.value ? [sovereignEntry.value] : [];
+  }
+  if (row.type === "solo") {
+    return soloEntries.value;
+  }
+  if (row.type === "squad") {
+    const squad = (Array.isArray(props.squadEntries) ? props.squadEntries : []).find(entry => entry?.id === row.squadId) || null;
+    const members = Array.isArray(squad?.members) ? squad.members : [];
+    const map = unitByIdMap.value;
+    return members.map(member => {
+      const id = typeof member?.id === "string" ? member.id.trim() : "";
+      if (id && map.has(id)) return map.get(id);
+      return toDisplayUnitFromMember(member);
+    });
+  }
+  return [];
+});
+
+const selectedTileUnits = computed(() => {
+  const coord = normalizedTileCoord.value;
+  if (!coord) return [];
+  const list = Array.isArray(props.unitEntries) ? props.unitEntries : [];
+  return list.filter(entry => !!entry?.positioned && Number(entry?.x) === coord.x && Number(entry?.y) === coord.y);
+});
+
+const tileUnitCount = computed(() => selectedTileUnits.value.length);
+const unitCount = computed(() => (Array.isArray(props.unitEntries) ? props.unitEntries.length : 0));
+
+const selectedUnitEntry = computed(() => {
+  if (activeTab.value === "tile") {
+    const list = selectedTileUnits.value;
+    if (!list.length) return null;
+    const id = (selectedLocalTileUnitId.value || "").trim();
+    if (!id) return null;
+    return list.find(entry => (entry?.id || "") === id) || null;
+  }
+  const list = selectedFormationUnits.value;
   if (!list.length) return null;
-  return list.find(entry => (entry?.id || "") === id) || list[0];
+  const id = (selectedLocalUnitId.value || "").trim();
+  if (!id) return null;
+  return list.find(entry => (entry?.id || "") === id) || null;
+});
+
+const isActionPopupVisible = computed(() => {
+  const unitId = typeof selectedUnitEntry.value?.id === "string" ? selectedUnitEntry.value.id.trim() : "";
+  return !minimized.value && !!unitId;
+});
+
+const selectedDetailEntry = computed(() => {
+  const entry = selectedUnitEntry.value;
+  if (!entry) return null;
+  if (entry.isSovereign || entry.roleLabel === "統治者") return null;
+  return entry;
 });
 
 const selectedSquadEntry = computed(() => {
-  const id = (selectedLocalSquadId.value || "").trim();
-  const list = Array.isArray(props.squadEntries) ? props.squadEntries : [];
-  if (!list.length) return null;
-  return list.find(entry => (entry?.id || "") === id) || list[0];
+  const row = selectedFormationRow.value;
+  if (!row || row.type !== "squad") return null;
+  return (Array.isArray(props.squadEntries) ? props.squadEntries : []).find(entry => entry?.id === row.squadId) || null;
 });
 
 watch(
@@ -41,6 +209,38 @@ watch(
     const normalized = id.trim();
     if (!normalized) return;
     selectedLocalUnitId.value = normalized;
+    selectedLocalTileUnitId.value = normalized;
+  },
+  { immediate: true }
+);
+
+watch(
+  () => props.resetKey,
+  () => {
+    minimized.value = false;
+    activeTab.value = "formation";
+    selectedGroupKey.value = "";
+    selectedLocalUnitId.value = "";
+    selectedLocalTileUnitId.value = "";
+  }
+);
+
+watch(
+  formationRows,
+  rows => {
+    if (!rows.length) {
+      selectedGroupKey.value = "";
+      return;
+    }
+    const fallbackRow = rows.find(row => row?.type !== "governor") || rows[0];
+    if (!fallbackRow) {
+      selectedGroupKey.value = "";
+      return;
+    }
+    const key = (selectedGroupKey.value || "").trim();
+    if (!rows.some(row => row.key === key)) {
+      selectedGroupKey.value = fallbackRow.key;
+    }
   },
   { immediate: true }
 );
@@ -49,39 +249,41 @@ function toggleMinimized(event) {
   const target = event?.target;
   if (target && typeof target.closest === "function") {
     if (target.closest(".own-faction-tab-btn")) return;
-    if (target.closest(".own-faction-head-action-btn")) return;
   }
   minimized.value = !minimized.value;
 }
 
 function switchTab(tab, event) {
   event?.stopPropagation?.();
-  activeTab.value = tab === "squads" ? "squads" : "units";
-  if (activeTab.value === "squads" && !selectedLocalSquadId.value) {
-    selectedLocalSquadId.value = selectedSquadEntry.value?.id || "";
+  activeTab.value = tab === "tile" ? "tile" : "formation";
+}
+
+function onSelectFormationRow(row) {
+  if (!row) return;
+  selectedGroupKey.value = row.key || "";
+  if (row.type === "governor") {
+    selectedLocalUnitId.value = row?.unitId || "";
+    if (row.positioned && row.unitId) {
+      emit("focus-unit", { unitId: row.unitId });
+    }
+    return;
+  }
+  selectedGroupKey.value = row.key;
+  selectedLocalUnitId.value = "";
+  if (row.type === "squad" && row.positioned && row.leaderId) {
+    emit("focus-squad", { leaderId: row.leaderId });
+  } else if (row.type === "governor" && row.positioned && row.unitId) {
+    emit("focus-unit", { unitId: row.unitId });
   }
 }
 
-watch(
-  () => props.resetKey,
-  () => {
-    minimized.value = false;
-    activeTab.value = "units";
-    selectedLocalUnitId.value = "";
-    selectedLocalSquadId.value = "";
+function onSelectUnit(entry, source = "formation") {
+  if (!entry) return;
+  if (source === "tile") {
+    selectedLocalTileUnitId.value = entry.id || "";
+  } else {
+    selectedLocalUnitId.value = entry.id || "";
   }
-);
-
-function onFocusSquad(entry) {
-  if (!entry) return;
-  selectedLocalSquadId.value = entry.id || "";
-  if (!entry.positioned) return;
-  emit("focus-squad", { leaderId: entry.leaderId });
-}
-
-function onFocusUnit(entry) {
-  if (!entry) return;
-  selectedLocalUnitId.value = entry.id || "";
   if (!entry.positioned) return;
   emit("focus-unit", { unitId: entry.id });
 }
@@ -93,24 +295,148 @@ function openCharacterStatus(event) {
   emit("open-character-status", { unitId: target.id });
 }
 
-function selectMoveUnitFromHead(event) {
-  event?.stopPropagation?.();
-  if (activeTab.value === "squads") {
-    const squad = selectedSquadEntry.value;
-    const leaderId = (squad?.leaderId || "").trim();
-    if (!leaderId) return;
-    emit("select-move-unit", { unitId: leaderId });
-    return;
-  }
-  const target = selectedUnitEntry.value;
-  if (!target?.id) return;
-  emit("select-move-unit", { unitId: target.id });
+function canSelectMoveForEntry(entry) {
+  return !!entry?.id && !!props.canUseMoveMode;
 }
 
-function hpRate(entry) {
+function canSelectAttackForEntry(entry) {
+  return !!entry?.id && !!entry?.positioned;
+}
+
+function isActionTargetRow(entry) {
+  const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+  const selectedId = typeof selectedUnitEntry.value?.id === "string" ? selectedUnitEntry.value.id.trim() : "";
+  return !!id && !!selectedId && id === selectedId;
+}
+
+function updateActionPopupPosition() {
+  if (!isActionPopupVisible.value || minimized.value) return;
+  const root = panelRef.value;
+  const popup = actionPopupRef.value;
+  if (!root || !popup || typeof root.querySelector !== "function") return;
+  const selectedRow = root.querySelector(".own-faction-group-row.selected, .own-faction-unit-row.selected");
+  if (!selectedRow || typeof selectedRow.getBoundingClientRect !== "function") return;
+  const panelRect = root.getBoundingClientRect();
+  const rowRect = selectedRow.getBoundingClientRect();
+  const popupRect = popup.getBoundingClientRect();
+  const nextTop = Math.round(rowRect.top - panelRect.top + ((rowRect.height - popupRect.height) / 2));
+  const nextLeft = Math.round(rowRect.left - panelRect.left - popupRect.width - 6);
+  actionPopupTop.value = Math.max(4, nextTop);
+  actionPopupLeft.value = nextLeft;
+}
+
+function requestActionPopupPositionUpdate() {
+  if (actionPopupFrameId) {
+    window.cancelAnimationFrame(actionPopupFrameId);
+  }
+  actionPopupFrameId = window.requestAnimationFrame(() => {
+    actionPopupFrameId = 0;
+    nextTick(() => {
+      updateActionPopupPosition();
+    });
+  });
+}
+
+watch(
+  [() => selectedUnitEntry.value?.id || "", () => activeTab.value, () => minimized.value, () => selectedFormationRow.value?.key || "", () => selectedTileUnits.value.length, () => selectedFormationUnits.value.length],
+  () => {
+    requestActionPopupPositionUpdate();
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  windowResizeHandler = () => {
+    requestActionPopupPositionUpdate();
+  };
+  window.addEventListener("resize", windowResizeHandler);
+});
+
+onBeforeUnmount(() => {
+  if (actionPopupFrameId) {
+    window.cancelAnimationFrame(actionPopupFrameId);
+    actionPopupFrameId = 0;
+  }
+  if (windowResizeHandler) {
+    window.removeEventListener("resize", windowResizeHandler);
+    windowResizeHandler = null;
+  }
+});
+
+function selectMoveUnit(entry, event) {
+  event?.stopPropagation?.();
+  if (!canSelectMoveForEntry(entry)) return;
+  const unitId = typeof entry?.id === "string" ? entry.id.trim() : "";
+  if (!unitId) return;
+  emit("select-move-unit", { unitId });
+}
+
+function selectAttackUnit(entry, event) {
+  event?.stopPropagation?.();
+  if (!canSelectAttackForEntry(entry)) return;
+  const unitId = typeof entry?.id === "string" ? entry.id.trim() : "";
+  if (!unitId) return;
+  emit("select-attack-unit", { unitId });
+}
+
+function clamp01(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (n <= 0) return 0;
+  if (n >= 1) return 1;
+  return n;
+}
+
+function resolveHpHueByRatio(ratioRaw) {
+  const ratio = clamp01(ratioRaw);
+  if (ratio <= 0.2) return 0;
+  if (ratio <= 0.5) {
+    const t = (ratio - 0.2) / 0.3;
+    return Math.round(t * 60);
+  }
+  const t = (ratio - 0.5) / 0.5;
+  return Math.round(60 + (t * 60));
+}
+
+function hpFillStyle(entry) {
   const max = Math.max(1, Number(entry?.hpMax) || 1);
   const cur = Math.max(0, Number(entry?.hpCurrent) || 0);
-  return Math.max(0, Math.min(100, (cur / max) * 100));
+  const ratio = clamp01(cur / max);
+  const hue = resolveHpHueByRatio(ratio);
+  const start = `hsl(${hue} 82% 38%)`;
+  const end = `hsl(${hue} 90% 56%)`;
+  return {
+    width: `${Math.round(ratio * 1000) / 10}%`,
+    background: `linear-gradient(90deg, ${start}, ${end})`
+  };
+}
+
+function apFillStyle(entry) {
+  const max = Math.max(1, Number(entry?.actionPointMax) || 100);
+  const current = Math.max(0, Number(entry?.actionPoint) || 0);
+  return {
+    width: `${Math.round(clamp01(current / max) * 1000) / 10}%`,
+    background: "linear-gradient(90deg, #1779bb, #66c8ff)"
+  };
+}
+
+function resolveMoveDisplayValue(entry) {
+  if (!entry) return 0;
+  if (entry.isMoving && Number.isFinite(Number(entry?.moveTilesRemaining))) {
+    return Math.max(0, Math.floor(Number(entry.moveTilesRemaining)));
+  }
+  return Math.max(0, Math.floor(Number(entry?.moveRemaining) || 0));
+}
+
+function resolveSurveyRemainingText(entry) {
+  if (!entry?.isSurveying) return "";
+  if (Number.isFinite(Number(entry?.surveyTotalTurns))) {
+    const totalTurns = Math.max(0, Math.floor(Number(entry.surveyTotalTurns)));
+    return `${totalTurns * TURN_SECONDS}秒`;
+  }
+  return Number.isFinite(Number(entry?.surveyDangerPercent))
+    ? `${Math.max(0, Math.floor(Number(entry.surveyDangerPercent)))}%`
+    : "?";
 }
 
 function rowBackgroundStyle(entry) {
@@ -123,180 +449,282 @@ function rowBackgroundStyle(entry) {
 </script>
 
 <template>
-  <aside class="own-faction-panel" :class="{ minimized }">
+  <aside ref="panelRef" class="own-faction-panel" :class="{ minimized }">
     <header class="own-faction-panel-head" @click="toggleMinimized">
-      <!-- <strong>自陣営一覧</strong> -->
       <div class="own-faction-panel-tabs" @click.stop>
         <button
           type="button"
           class="own-faction-tab-btn"
-          :class="{ active: activeTab === 'units' }"
-          @click="switchTab('units', $event)"
+          :class="{ active: activeTab === 'formation' }"
+          @click="switchTab('formation', $event)"
         >
-          キャラ {{ unitCount }}
+          編成 {{ squadCount }}
         </button>
         <button
           type="button"
           class="own-faction-tab-btn"
-          :class="{ active: activeTab === 'squads' }"
-          @click="switchTab('squads', $event)"
+          :class="{ active: activeTab === 'tile' }"
+          @click="switchTab('tile', $event)"
         >
-          部隊 {{ squadCount }}
-        </button>
-      </div>
-      <div class="own-faction-panel-head-actions" @click.stop>
-        <button
-          type="button"
-          class="own-faction-head-action-btn"
-          :class="{ active: moveModeEnabled }"
-          :disabled="(activeTab === 'units' && (!selectedUnitEntry || !canUseMoveMode)) || (activeTab === 'squads' && !selectedSquadEntry?.leaderId)"
-          @click="selectMoveUnitFromHead"
-        >
-          {{ activeTab === "squads" ? "移動/隊" : "移動" }}
+          選択マス {{ tileUnitCount }}
         </button>
       </div>
       <span class="own-faction-panel-fold">{{ minimized ? "▽" : "△" }}</span>
     </header>
 
+    <div
+      v-if="false && isActionPopupVisible && !minimized"
+      ref="actionPopupRef"
+      class="own-faction-floating-action-popup"
+      :style="{ top: `${actionPopupTop}px`, left: `${actionPopupLeft}px` }"
+      @click.stop
+    >
+      <button
+        type="button"
+        class="own-faction-side-action-btn own-faction-side-action-attack"
+        :disabled="!canSelectAttackForEntry(selectedUnitEntry)"
+        @click="selectAttackUnit(selectedUnitEntry, $event)"
+      >
+        攻撃
+      </button>
+      <button
+        type="button"
+        class="own-faction-side-action-btn own-faction-side-action-move"
+        :disabled="!canSelectMoveForEntry(selectedUnitEntry)"
+        @click="selectMoveUnit(selectedUnitEntry, $event)"
+      >
+        移動
+      </button>
+    </div>
+
     <div v-if="!minimized" class="own-faction-panel-body">
-      <div v-if="activeTab === 'units'" class="own-faction-list">
+      <div class="own-faction-panel-main">
+      <template v-if="activeTab === 'formation'">
+        <div class="own-faction-list own-faction-group-list" @scroll.passive="updateActionPopupPosition">
+          <button
+            v-for="row in formationRows"
+            :key="`formation-row-${row.key}`"
+            type="button"
+            class="own-faction-group-row"
+            :class="[
+              row.type === 'governor' ? 'own-faction-unit-row own-faction-group-governor own-faction-unit-card' : 'own-faction-squad-row',
+              {
+                selected: row.type === 'governor'
+                  ? isActionTargetRow({ id: row.unitId })
+                  : (selectedFormationRow && selectedFormationRow.key === row.key)
+              }
+            ]"
+            @click="onSelectFormationRow(row)"
+          >
+            <div class="own-faction-row-head">
+              <span class="own-faction-unit-main">
+                <img v-if="row.iconSrc" :src="row.iconSrc" :alt="`${row.title} アイコン`" class="own-faction-icon" />
+                <span v-else class="own-faction-icon-fallback">{{ row.iconGlyph }}</span>
+                <strong>{{ row.title }}</strong>
+              </span>
+              <span class="own-faction-level-tag">{{ row.badge }}</span>
+            </div>
+            <span v-if="row.type === 'governor' && sovereignEntry" class="own-faction-vital-stack">
+              <span class="own-faction-hp-line">
+                <span class="own-faction-hp-label">HP:</span>
+                <span class="own-faction-hp-bar">
+                  <i :style="hpFillStyle(sovereignEntry)"></i>
+                  <b>{{ sovereignEntry.hpCurrent }} / {{ sovereignEntry.hpMax }}</b>
+                </span>
+              </span>
+              <span class="own-faction-hp-line own-faction-ap-line">
+                <span class="own-faction-hp-label">AP:</span>
+                <span class="own-faction-hp-bar own-faction-ap-bar">
+                  <i :style="apFillStyle(sovereignEntry)"></i>
+                  <b>{{ sovereignEntry.actionPoint }} / {{ sovereignEntry.actionPointMax }}</b>
+                </span>
+              </span>
+            </span>
+            <span class="own-faction-unit-sub">
+              {{ row.subText }}
+              <span v-if="row.type === 'governor' && sovereignEntry" class="own-faction-status-list">
+                <span
+                  v-if="sovereignEntry.isMoving"
+                  class="own-faction-status-chip own-faction-status-chip-move own-faction-moving-footprint"
+                  title="移動中"
+                  aria-label="移動中"
+                >👣</span>
+                <span
+                  v-if="sovereignEntry.isSurveying"
+                  class="own-faction-status-chip own-faction-status-chip-survey"
+                  :title="`調査時間 ${resolveSurveyRemainingText(sovereignEntry)}`"
+                  aria-label="調査中"
+                >🔍{{ resolveSurveyRemainingText(sovereignEntry) }}</span>
+                <img
+                  v-if="sovereignEntry.isInBattle && sovereignEntry.battleIconSrc"
+                  :src="sovereignEntry.battleIconSrc"
+                  alt="戦闘中"
+                  class="own-faction-battle-icon"
+                  title="戦闘中"
+                />
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <div class="own-faction-list own-faction-member-list" @scroll.passive="updateActionPopupPosition">
+          <button
+            v-for="entry in selectedFormationUnits"
+            :key="`formation-unit-${entry.id}`"
+            type="button"
+            class="own-faction-unit-row own-faction-unit-card"
+            :class="{ selected: selectedUnitEntry && selectedUnitEntry.id === entry.id }"
+            :style="rowBackgroundStyle(entry)"
+            :disabled="!entry.positioned"
+            @click="onSelectUnit(entry, 'formation')"
+          >
+            <div class="own-faction-row-head">
+              <span class="own-faction-unit-main">
+                <img v-if="entry.iconSrc" :src="entry.iconSrc" :alt="`${entry.name} アイコン`" class="own-faction-icon" />
+                <span v-else class="own-faction-icon-fallback">{{ entry.iconGlyph }}</span>
+                <strong>{{ entry.name }}</strong>
+              </span>
+              <span class="own-faction-level-tag">Lv{{ entry.level }}</span>
+            </div>
+            <span class="own-faction-vital-stack">
+              <span class="own-faction-hp-line">
+                <span class="own-faction-hp-label">HP:</span>
+                <span class="own-faction-hp-bar">
+                  <i :style="hpFillStyle(entry)"></i>
+                  <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
+                </span>
+              </span>
+              <span class="own-faction-hp-line own-faction-ap-line">
+                <span class="own-faction-hp-label">AP:</span>
+                <span class="own-faction-hp-bar own-faction-ap-bar">
+                  <i :style="apFillStyle(entry)"></i>
+                  <b>{{ entry.actionPoint }} / {{ entry.actionPointMax }}</b>
+                </span>
+              </span>
+            </span>
+            <span class="own-faction-unit-sub">
+              <template v-if="entry.positioned">
+                ({{ entry.x }}, {{ entry.y }}) / 移動{{ resolveMoveDisplayValue(entry) }}
+                <span class="own-faction-status-list">
+                  <span
+                    v-if="entry.isMoving"
+                    class="own-faction-status-chip own-faction-status-chip-move own-faction-moving-footprint"
+                    title="移動中"
+                    aria-label="移動中"
+                  >👣</span>
+                  <span
+                    v-if="entry.isSurveying"
+                    class="own-faction-status-chip own-faction-status-chip-survey"
+                    :title="`調査時間 ${resolveSurveyRemainingText(entry)}`"
+                    aria-label="調査中"
+                  >🔍{{ resolveSurveyRemainingText(entry) }}</span>
+                  <img
+                    v-if="entry.isInBattle && entry.battleIconSrc"
+                    :src="entry.battleIconSrc"
+                    alt="戦闘中"
+                    class="own-faction-battle-icon"
+                    title="戦闘中"
+                  />
+                </span>
+              </template>
+              <template v-else>未配置</template>
+            </span>
+          </button>
+          <div v-if="!selectedFormationUnits.length" class="own-faction-empty">表示対象なし</div>
+        </div>
+      </template>
+
+      <div v-else class="own-faction-list own-faction-member-list" @scroll.passive="updateActionPopupPosition">
         <button
-          v-for="entry in unitEntries"
-          :key="`unit-row-${entry.id}`"
+          v-for="entry in selectedTileUnits"
+          :key="`tile-unit-${entry.id}`"
           type="button"
-          class="own-faction-unit-row"
+          class="own-faction-unit-row own-faction-unit-card"
           :class="{ selected: selectedUnitEntry && selectedUnitEntry.id === entry.id }"
           :style="rowBackgroundStyle(entry)"
           :disabled="!entry.positioned"
-          @click="onFocusUnit(entry)"
+          @click="onSelectUnit(entry, 'tile')"
         >
           <div class="own-faction-row-head">
             <span class="own-faction-unit-main">
               <img v-if="entry.iconSrc" :src="entry.iconSrc" :alt="`${entry.name} アイコン`" class="own-faction-icon" />
               <span v-else class="own-faction-icon-fallback">{{ entry.iconGlyph }}</span>
               <strong>{{ entry.name }}</strong>
-              <img
-                v-if="entry.isMilitary && entry.militaryBadgeSrc"
-                :src="entry.militaryBadgeSrc"
-                alt="兵士"
-                class="own-faction-military-badge"
-                title="軍隊ユニット"
-              />
-              <span
-                v-else-if="entry.isMilitary"
-                class="own-faction-military-badge own-faction-military-badge-fallback"
-                title="軍隊ユニット"
-              >
-                兵
-              </span>
             </span>
             <span class="own-faction-level-tag">Lv{{ entry.level }}</span>
           </div>
-          <span class="own-faction-hp-line">
-            <span class="own-faction-hp-label">HP:</span>
-            <span class="own-faction-hp-bar">
-              <i :style="{ width: `${hpRate(entry)}%` }"></i>
-              <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
+          <span class="own-faction-vital-stack">
+            <span class="own-faction-hp-line">
+              <span class="own-faction-hp-label">HP:</span>
+              <span class="own-faction-hp-bar">
+                <i :style="hpFillStyle(entry)"></i>
+                <b>{{ entry.hpCurrent }} / {{ entry.hpMax }}</b>
+              </span>
+            </span>
+            <span class="own-faction-hp-line own-faction-ap-line">
+              <span class="own-faction-hp-label">AP:</span>
+              <span class="own-faction-hp-bar own-faction-ap-bar">
+                <i :style="apFillStyle(entry)"></i>
+                <b>{{ entry.actionPoint }} / {{ entry.actionPointMax }}</b>
+              </span>
             </span>
           </span>
           <span class="own-faction-unit-sub">
-            <template v-if="entry.squadName">所属: {{ entry.squadName }}</template>
-            <template v-if="entry.squadName && entry.positioned"> / </template>
-            <template v-if="entry.positioned">({{ entry.x }}, {{ entry.y }}) 移動{{ entry.moveRemaining }}</template>
+            ({{ entry.x }}, {{ entry.y }}) / 移動{{ resolveMoveDisplayValue(entry) }}
+            <span class="own-faction-status-list">
+              <span
+                v-if="entry.isMoving"
+                class="own-faction-status-chip own-faction-status-chip-move own-faction-moving-footprint"
+                title="移動中"
+                aria-label="移動中"
+              >👣</span>
+              <span
+                v-if="entry.isSurveying"
+                class="own-faction-status-chip own-faction-status-chip-survey"
+                :title="`調査時間 ${resolveSurveyRemainingText(entry)}`"
+                aria-label="調査中"
+              >🔍{{ resolveSurveyRemainingText(entry) }}</span>
+              <img
+                v-if="entry.isInBattle && entry.battleIconSrc"
+                :src="entry.battleIconSrc"
+                alt="戦闘中"
+                class="own-faction-battle-icon"
+                title="戦闘中"
+              />
+            </span>
           </span>
         </button>
-        <div v-if="!unitEntries.length" class="own-faction-empty">キャラなし</div>
+        <div v-if="!selectedTileUnits.length" class="own-faction-empty">このマスに自勢力ユニットはいません</div>
       </div>
 
-      <div v-else class="own-faction-list">
-        <button
-          v-for="entry in squadEntries"
-          :key="`squad-row-${entry.id}`"
-          type="button"
-          class="own-faction-squad-row"
-          :class="{ selected: selectedSquadEntry && selectedSquadEntry.id === entry.id }"
-          :style="rowBackgroundStyle(entry)"
-          @click="onFocusSquad(entry)"
-          >
-            <div class="own-faction-row-head">
-              <span class="own-faction-unit-main">
-                <img v-if="entry.iconSrc" :src="entry.iconSrc" :alt="`${entry.name} アイコン`" class="own-faction-icon" />
-                <span v-else class="own-faction-icon-fallback">{{ entry.iconGlyph || entry.leaderIconGlyph }}</span>
-                <strong>{{ entry.name }}</strong>
-              </span>
-              <span class="own-faction-level-tag">ΣLv{{ entry.totalLevel || 0 }}</span>
-            </div>
-          <span class="own-faction-unit-sub">
-            {{ entry.positioned ? `(${entry.x}, ${entry.y})` : "未配置" }} / {{ entry.totalMemberCount }}体 / 索{{ entry.scoutValue }} 隠{{ entry.stealthValue }}
-          </span>
-        </button>
-        <div v-if="!squadEntries.length" class="own-faction-empty">部隊なし</div>
-      </div>
-
-      <section v-if="selectedUnitEntry && activeTab === 'units'" class="own-faction-detail">
+      <section v-if="selectedDetailEntry" class="own-faction-detail">
         <button type="button" class="detail-icon-btn" title="詳細" aria-label="詳細" @click="openCharacterStatus">📝</button>
         <div class="own-faction-detail-grid">
-          <div><span>種族</span><b>{{ selectedUnitEntry.race }}</b></div>
-          <div><span>クラス</span><b>{{ selectedUnitEntry.className }}</b></div>
+          <div><span>種族</span><b>{{ selectedDetailEntry.race }}</b></div>
+          <div><span>クラス</span><b>{{ selectedDetailEntry.className }}</b></div>
           <div class="paired-stat-row">
-            <span class="paired-item"><span>Lv:</span><b>{{ selectedUnitEntry.level }}</b></span>
-            <span class="paired-item paired-item-text"><span>役割:</span><b>{{ selectedUnitEntry.roleLabel }}</b></span>
+            <span class="paired-item"><span>Lv:</span><b>{{ selectedDetailEntry.level }}</b></span>
+            <span class="paired-item paired-item-text"><span>役割:</span><b>{{ selectedDetailEntry.roleLabel }}</b></span>
           </div>
           <div class="paired-stat-row">
-            <span class="paired-item"><span>索敵:</span><b>{{ selectedUnitEntry.scoutValue }}</b></span>
-            <span class="paired-item"><span>隠密:</span><b>{{ selectedUnitEntry.stealthValue }}</b></span>
+            <span class="paired-item"><span>索敵:</span><b>{{ selectedDetailEntry.scoutValue }}</b></span>
+            <span class="paired-item"><span>隠密:</span><b>{{ selectedDetailEntry.stealthValue }}</b></span>
           </div>
           <div class="paired-stat-row">
-            <span class="paired-item"><span>攻撃:</span><b>{{ selectedUnitEntry.status?.攻撃 }}</b></span>
-            <span class="paired-item"><span>防御:</span><b>{{ selectedUnitEntry.status?.防御 }}</b></span>
+            <span class="paired-item"><span>攻撃:</span><b>{{ selectedDetailEntry.status?.攻撃 }}</b></span>
+            <span class="paired-item"><span>防御:</span><b>{{ selectedDetailEntry.status?.防御 }}</b></span>
           </div>
           <div class="paired-stat-row">
-            <span class="paired-item"><span>魔力:</span><b>{{ selectedUnitEntry.status?.魔力 }}</b></span>
-            <span class="paired-item"><span>精神:</span><b>{{ selectedUnitEntry.status?.精神 ?? "-" }}</b></span>
+            <span class="paired-item"><span>魔力:</span><b>{{ selectedDetailEntry.status?.魔力 }}</b></span>
+            <span class="paired-item"><span>精神:</span><b>{{ selectedDetailEntry.status?.精神 ?? "-" }}</b></span>
           </div>
           <div class="paired-stat-row">
-            <span class="paired-item"><span>命中:</span><b>{{ selectedUnitEntry.status?.命中 ?? "-" }}</b></span>
-            <span class="paired-item"><span>速度:</span><b>{{ selectedUnitEntry.status?.速度 }}</b></span>
+            <span class="paired-item"><span>命中:</span><b>{{ selectedDetailEntry.status?.命中 ?? "-" }}</b></span>
+            <span class="paired-item"><span>速度:</span><b>{{ selectedDetailEntry.status?.速度 }}</b></span>
           </div>
         </div>
       </section>
-
-      <section v-if="selectedSquadEntry && activeTab === 'squads'" class="own-faction-detail own-faction-squad-detail">
-        <div class="own-faction-squad-head">
-          <strong>{{ selectedSquadEntry.name }}</strong>
-          <span>{{ selectedSquadEntry.positioned ? `(${selectedSquadEntry.x}, ${selectedSquadEntry.y})` : "未配置" }}</span>
-        </div>
-        <div class="own-faction-squad-summary">
-          <span>人数: {{ selectedSquadEntry.totalMemberCount }}</span>
-          <span>合計Lv: {{ selectedSquadEntry.totalLevel || 0 }}</span>
-          <span>索敵: {{ selectedSquadEntry.scoutValue }}</span>
-          <span>隠密: {{ selectedSquadEntry.stealthValue }}</span>
-        </div>
-        <div class="own-faction-squad-member-list">
-          <div
-            v-for="(member, index) in selectedSquadEntry.members || []"
-            :key="`squad-member-${selectedSquadEntry.id}-${member.id || member.name}-${index}`"
-            class="own-faction-squad-member-row"
-          >
-            <div class="own-faction-squad-member-main">
-              <span class="member-name">{{ member.isLeader ? `★${member.name}` : member.name }}</span>
-              <span>{{ member.race || "-" }}</span>
-              <span>{{ member.className }}</span>
-            </div>
-            <div class="own-faction-squad-member-sub">
-              <span class="member-level">Lv {{ member.level }}</span>
-              <span class="own-faction-hp-line own-faction-hp-line-compact">
-                <span class="own-faction-hp-label">HP:</span>
-                <span class="own-faction-hp-bar">
-                  <i :style="{ width: `${Math.max(0, Math.min(100, Math.round((member.hpCurrent / Math.max(1, member.hpMax)) * 100)))}%` }"></i>
-                  <b>{{ member.hpCurrent }} / {{ member.hpMax }}</b>
-                </span>
-              </span>
-            </div>
-          </div>
-          <div v-if="!(selectedSquadEntry.members || []).length" class="own-faction-empty">メンバー情報なし</div>
-        </div>
-      </section>
+      </div>
     </div>
   </aside>
 </template>
@@ -315,12 +743,22 @@ function rowBackgroundStyle(entry) {
   box-shadow: inset 0 0 0 1px rgba(255, 236, 189, 0.1);
   color: #f7e8c3;
   pointer-events: auto;
+  position: relative;
   overflow: hidden;
+  height: 100%;
+  display: grid;
+  grid-template-rows: var(--own-faction-head-height) minmax(0, 1fr);
+}
+
+.own-faction-panel.minimized {
+  height: var(--own-faction-head-height);
+  min-height: var(--own-faction-head-height);
+  grid-template-rows: var(--own-faction-head-height);
 }
 
 .own-faction-panel-head {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 4px;
   height: var(--own-faction-head-height);
@@ -333,28 +771,17 @@ function rowBackgroundStyle(entry) {
   user-select: none;
 }
 
-.own-faction-panel-head strong {
-  font-size: 0.62rem;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  color: rgba(255, 245, 218, 0.98);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.72);
-}
-
 .own-faction-panel-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   min-width: 0;
-  width: 100%;
-  align-items: stretch;
 }
 
 .own-faction-tab-btn {
   border: 1px solid rgba(222, 193, 135, 0.44);
   border-radius: 7px;
   width: 100%;
-  min-width: 0;
   min-height: 22px;
   padding: 2px 4px;
   font-size: 0.62rem;
@@ -362,27 +789,13 @@ function rowBackgroundStyle(entry) {
   line-height: 1.15;
   color: rgba(247, 233, 201, 0.78);
   background: linear-gradient(180deg, rgba(33, 24, 17, 0.68), rgba(20, 15, 11, 0.7));
-  box-shadow: inset 0 0 0 1px rgba(255, 238, 203, 0.05);
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
-}
-
-.own-faction-tab-btn:hover {
-  border-color: rgba(169, 232, 245, 0.74);
-  color: #f5fdff;
 }
 
 .own-faction-tab-btn.active {
   color: #e9fbff;
   border-color: rgba(132, 239, 255, 0.96);
   background: linear-gradient(180deg, rgba(20, 88, 105, 0.92), rgba(14, 56, 70, 0.92));
-  box-shadow:
-    inset 0 0 0 1px rgba(190, 247, 255, 0.38),
-    0 0 8px rgba(71, 206, 238, 0.38);
-}
-
-.own-faction-tab-btn:not(.active) {
-  opacity: 0.82;
 }
 
 .own-faction-panel-fold {
@@ -390,70 +803,108 @@ function rowBackgroundStyle(entry) {
   color: rgba(238, 249, 255, 0.96);
 }
 
-.own-faction-panel-head-actions {
-  display: inline-flex;
-  align-items: center;
-}
-
-.own-faction-head-action-btn {
-  border: 1px solid rgba(199, 168, 114, 0.7);
-  border-radius: 7px;
-  min-height: 22px;
-  padding: 2px 6px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1.15;
-  color: rgba(255, 238, 203, 0.96);
-  background: linear-gradient(180deg, rgba(73, 54, 34, 0.85), rgba(51, 37, 24, 0.88));
-  box-shadow: inset 0 0 0 1px rgba(255, 236, 197, 0.08);
-  cursor: pointer;
-}
-
-.own-faction-head-action-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.own-faction-head-action-btn.active {
-  border-color: rgba(126, 237, 255, 0.96);
-  color: #eaffff;
-  background: linear-gradient(180deg, rgba(25, 96, 112, 0.94), rgba(17, 66, 82, 0.94));
-  box-shadow:
-    inset 0 0 0 1px rgba(191, 248, 255, 0.36),
-    0 0 8px rgba(74, 210, 242, 0.36);
-}
-
 .own-faction-panel-body {
   display: grid;
-  gap: 1px;
+  gap: 4px;
   padding: 5px;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
 }
 
+.own-faction-floating-action-popup {
+  position: absolute;
+  width: 46px;
+  display: grid;
+  grid-template-rows: repeat(2, 1fr);
+  gap: 3px;
+  z-index: 8;
+}
+
+.own-faction-side-action-btn {
+  min-width: 44px;
+  min-height: 24px;
+  border-radius: 8px;
+  border: 1px solid rgba(210, 176, 120, 0.65);
+  padding: 2px 2px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  color: #fff0c9;
+  text-align: center;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.own-faction-side-action-move {
+  background: linear-gradient(180deg, rgba(48, 95, 131, 0.9), rgba(23, 64, 96, 0.9));
+  border-color: rgba(137, 219, 255, 0.75);
+}
+
+.own-faction-side-action-attack {
+  background: linear-gradient(180deg, rgba(140, 60, 48, 0.9), rgba(96, 36, 29, 0.9));
+  border-color: rgba(255, 162, 140, 0.75);
+}
+
+.own-faction-side-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.own-faction-panel-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  min-height: 0;
+  grid-auto-rows: max-content;
+  align-content: start;
+}
+
 .own-faction-list {
   min-height: 0;
-  max-height: calc((var(--own-faction-row-height) * 4) + 4px);
-  overflow: auto;
+  max-height: none;
   display: grid;
-  gap: 1px;
+  gap: 2px;
+  grid-auto-rows: max-content;
+  align-content: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.own-faction-group-list {
+  max-height: none;
 }
 
 .own-faction-unit-row,
 .own-faction-squad-row {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
   border: 1px solid rgba(220, 188, 128, 0.26);
   border-radius: 8px;
   background: linear-gradient(170deg, rgba(24, 18, 12, 0.7), rgba(15, 12, 9, 0.72));
   color: #f7e8c3;
   text-align: left;
-  padding: 1px 2px;
+  padding: 2px 4px;
   min-height: var(--own-faction-row-height);
   display: grid;
   gap: 3px;
+  align-self: start;
   cursor: pointer;
+}
+
+.own-faction-unit-row {
+  overflow: visible;
+}
+
+.own-faction-squad-row {
+  overflow: hidden;
+}
+
+.own-faction-group-row {
+  min-height: 54px;
+}
+
+.own-faction-group-governor {
+  min-height: var(--own-faction-row-height);
 }
 
 .own-faction-unit-row::before,
@@ -466,7 +917,6 @@ function rowBackgroundStyle(entry) {
   background-position: right 5px center;
   background-size: var(--own-faction-sub-icon-size) var(--own-faction-sub-icon-size);
   opacity: var(--own-faction-sub-icon-opacity);
-  filter: saturate(0.9) brightness(0.95);
   pointer-events: none;
   z-index: 0;
 }
@@ -477,14 +927,15 @@ function rowBackgroundStyle(entry) {
   z-index: 1;
 }
 
-.own-faction-unit-row.selected {
-  border-color: rgba(110, 211, 255, 0.85);
-  box-shadow: 0 0 0 1px rgba(122, 221, 255, 0.36);
+.own-faction-unit-row.selected,
+.own-faction-squad-row.selected {
+  border-color: rgba(132, 232, 255, 0.98);
+  border-width: 2px;
+  box-shadow: 0 0 0 1px rgba(133, 222, 255, 0.52), 0 0 16px rgba(58, 172, 220, 0.38), inset 0 0 12px rgba(120, 228, 255, 0.12);
 }
 
-.own-faction-squad-row.selected {
-  border-color: rgba(110, 211, 255, 0.85);
-  box-shadow: 0 0 0 1px rgba(122, 221, 255, 0.36);
+.own-faction-unit-card.selected {
+  z-index: 2;
 }
 
 .own-faction-unit-row:disabled {
@@ -505,7 +956,6 @@ function rowBackgroundStyle(entry) {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
-  min-width: 0;
 }
 
 .own-faction-unit-main strong {
@@ -525,9 +975,7 @@ function rowBackgroundStyle(entry) {
   color: #f8ebc8;
   font-size: 0.62rem;
   font-weight: 800;
-  line-height: 1.2;
   text-align: center;
-  font-variant-numeric: tabular-nums;
 }
 
 .own-faction-icon,
@@ -535,8 +983,6 @@ function rowBackgroundStyle(entry) {
   width: var(--own-faction-icon-size);
   height: var(--own-faction-icon-size);
   border-radius: 4px;
-  /* border: 1px solid rgba(221, 185, 126, 0.62);
-  background: rgba(255, 255, 255, 0.44); */
 }
 
 .own-faction-icon {
@@ -550,27 +996,6 @@ function rowBackgroundStyle(entry) {
   color: #f5e9c8;
   font-size: 10px;
   font-weight: 700;
-  line-height: 1;
-}
-
-.own-faction-military-badge {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1px solid rgba(223, 188, 129, 0.86);
-  background: rgba(255, 250, 235, 0.92);
-  flex: 0 0 auto;
-}
-
-.own-faction-military-badge-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #4a2d10;
-  font-size: 0.56rem;
-  font-weight: 800;
-  line-height: 1;
 }
 
 .own-faction-hp-line {
@@ -582,8 +1007,7 @@ function rowBackgroundStyle(entry) {
 
 .own-faction-hp-label {
   flex: 0 0 auto;
-  font-size: 0.58rem;
-  line-height: 1;
+  font-size: 15px;
   color: rgba(247, 232, 195, 0.86);
 }
 
@@ -593,7 +1017,9 @@ function rowBackgroundStyle(entry) {
   min-width: 0;
   height: 14px;
   border-radius: 999px;
+  border: 1px solid rgba(239, 215, 166, 0.62);
   background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(24, 16, 10, 0.52);
   overflow: hidden;
 }
 
@@ -604,6 +1030,31 @@ function rowBackgroundStyle(entry) {
   background: linear-gradient(90deg, #3bb75d, #8ae58f);
 }
 
+.own-faction-ap-line {
+  margin-top: 0;
+}
+
+.own-faction-vital-stack {
+  display: grid;
+  gap: 0;
+}
+
+.own-faction-vital-stack .own-faction-hp-label {
+  font-size: 11px;
+}
+
+.own-faction-vital-stack .own-faction-hp-bar {
+  height: 8px;
+}
+
+.own-faction-vital-stack .own-faction-hp-bar b {
+  font-size: 9px;
+}
+
+.own-faction-hp-bar.own-faction-ap-bar i {
+  background: linear-gradient(90deg, #1779bb, #66c8ff);
+}
+
 .own-faction-hp-bar b {
   position: absolute;
   inset: 0;
@@ -612,12 +1063,9 @@ function rowBackgroundStyle(entry) {
   justify-content: center;
   padding: 0 6px;
   font-size: 0.58rem;
-  line-height: 1;
   font-weight: 700;
   color: #f6f0df;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.75);
-  white-space: nowrap;
-  pointer-events: none;
 }
 
 .own-faction-unit-sub {
@@ -626,6 +1074,68 @@ function rowBackgroundStyle(entry) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.own-faction-status-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.own-faction-status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 14px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.own-faction-status-chip-move {
+  color: #1f1206;
+  background: linear-gradient(180deg, rgba(255, 223, 134, 0.95), rgba(232, 158, 66, 0.95));
+  box-shadow: 0 0 0 1px rgba(255, 234, 176, 0.58), 0 0 8px rgba(255, 188, 88, 0.45);
+  text-shadow: none;
+}
+
+.own-faction-status-chip-survey {
+  color: #f5fff3;
+  background: rgba(27, 81, 38, 0.86);
+  box-shadow: 0 0 0 1px rgba(140, 243, 160, 0.34);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.own-faction-battle-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  image-rendering: auto;
+  filter: drop-shadow(0 0 2px rgba(255, 108, 78, 0.7));
+}
+
+.own-faction-moving-footprint {
+  display: inline-block;
+  margin-left: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 1px rgba(255, 245, 220, 0.95));
+  animation: own-faction-moving-footprint-blink 0.9s ease-in-out infinite;
+}
+
+@keyframes own-faction-moving-footprint-blink {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-0.5px);
+  }
 }
 
 .own-faction-empty {
@@ -638,16 +1148,8 @@ function rowBackgroundStyle(entry) {
   border: 1px solid rgba(220, 188, 128, 0.3);
   border-radius: 8px;
   background: rgba(13, 11, 9, 0.6);
-  padding: 3px 1px 2px;
+  padding: 3px 2px 2px;
   position: relative;
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  max-width: 100%;
-  max-height: 175px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  /* 一旦非表示に */
   display: none;
 }
 
@@ -663,26 +1165,17 @@ function rowBackgroundStyle(entry) {
   color: #2d2418;
   font-size: 12px;
   font-weight: 700;
-  line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   cursor: pointer;
-  z-index: 1;
 }
 
 .own-faction-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 3px 8px;
-  min-width: 0;
-}
-
-.own-faction-detail-grid div {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
 }
 
 .own-faction-detail-grid span {
@@ -694,10 +1187,6 @@ function rowBackgroundStyle(entry) {
   font-size: 12px;
   color: #fff4d2;
   font-weight: 700;
-  min-width: 0;
-  line-height: 1.25;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .own-faction-detail-grid .paired-stat-row {
@@ -713,18 +1202,10 @@ function rowBackgroundStyle(entry) {
   grid-template-columns: max-content var(--own-faction-detail-value-width);
   align-items: center;
   gap: 4px;
-  min-width: 0;
-}
-
-.own-faction-detail-grid .paired-item span,
-.own-faction-detail-grid .paired-item b {
-  white-space: nowrap;
-  min-width: 25px;
 }
 
 .own-faction-detail-grid .paired-item b {
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .own-faction-detail-grid .paired-item.paired-item-text {
@@ -733,98 +1214,5 @@ function rowBackgroundStyle(entry) {
 
 .own-faction-detail-grid .paired-item.paired-item-text b {
   text-align: left;
-  font-variant-numeric: normal;
-}
-
-.own-faction-squad-detail {
-  gap: 6px;
-}
-
-.own-faction-squad-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 0.7rem;
-}
-
-.own-faction-squad-head strong {
-  color: #fff4d2;
-}
-
-.own-faction-squad-summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 0.66rem;
-  color: rgba(241, 228, 193, 0.82);
-}
-
-.own-faction-squad-member-list {
-  display: grid;
-  gap: 4px;
-}
-
-.own-faction-squad-member-row {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  font-size: 0.66rem;
-  color: #f7e8c3;
-  border: 1px solid rgba(220, 188, 128, 0.22);
-  border-radius: 6px;
-  padding: 4px 6px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.own-faction-squad-member-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.7fr) minmax(0, 0.9fr);
-  align-items: center;
-  gap: 6px;
-}
-
-.own-faction-squad-member-main span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.own-faction-squad-member-row .member-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 700;
-}
-
-.own-faction-squad-member-sub {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-}
-
-.member-level {
-  min-width: 34px;
-  font-weight: 700;
-  color: rgba(240, 224, 178, 0.94);
-}
-
-.own-faction-hp-line-compact {
-  justify-content: flex-start;
-  gap: 4px;
-}
-
-.own-faction-hp-line-compact .own-faction-hp-label {
-  min-width: 16px;
-}
-
-.own-faction-hp-line-compact .own-faction-hp-bar {
-  width: 100%;
-  max-width: none;
 }
 </style>
