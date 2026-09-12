@@ -1,6 +1,7 @@
-/* Fullscreen game shell.
-   This file loads last and is the authoritative layout for the game screen.
-   Phaser owns only the dedicated field cell. Command UI is a separate grid cell. */
+/* Authoritative fullscreen game layout.
+   Important: FieldFooterTabsOverlay is still nested under .phaser-map-canvas in the
+   current Vue template, so the map root itself is the layout grid. The real Phaser
+   <canvas> occupies the field cell and the command UI occupies a different cell. */
 
 html,
 body,
@@ -20,9 +21,7 @@ body {
   inset: 0 !important;
 }
 
-#app {
-  position: relative !important;
-}
+#app { position: relative !important; }
 
 .app,
 .app.game-only {
@@ -37,29 +36,14 @@ body {
   margin: 0 !important;
   padding: 0 !important;
   transform: none !important;
-  transform-origin: initial !important;
   overflow: hidden !important;
   background: #0c1418 !important;
 }
 
 .app.game-only > .phaser-map-panel,
-.phaser-map-panel {
-  position: relative !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-width: none !important;
-  max-height: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  background: #0c1418 !important;
-}
-
+.phaser-map-panel,
 .phaser-map-panel .phaser-stage {
   position: relative !important;
-  display: grid !important;
   width: 100% !important;
   height: 100% !important;
   min-width: 0 !important;
@@ -72,8 +56,11 @@ body {
   background: #0c1418 !important;
 }
 
+/* The actual application layout lives here because header, Phaser canvas and
+   FieldFooterTabsOverlay are children of this element. */
 .phaser-map-panel .phaser-map-canvas {
   position: relative !important;
+  display: grid !important;
   width: 100% !important;
   height: 100% !important;
   min-width: 0 !important;
@@ -87,91 +74,73 @@ body {
   isolation: isolate !important;
 }
 
+/* Wide / desktop: header is a real first row, map left, command sidebar right. */
+.phaser-map-panel.responsive-landscape-layout .phaser-map-canvas {
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 460px) !important;
+  grid-template-rows: 56px minmax(0, 1fr) !important;
+  grid-template-areas:
+    "header header"
+    "field command" !important;
+}
+
+/* Narrow portrait: header, field, command are three actual rows. */
+.phaser-map-panel.responsive-portrait-layout .phaser-map-canvas {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: 94px minmax(0, 3fr) minmax(0, 2fr) !important;
+  grid-template-areas:
+    "header"
+    "field"
+    "command" !important;
+}
+
+/* Phaser-generated canvas is a normal grid item now, not an absolutely positioned
+   full-screen layer. This is the key separation between map and command UI. */
 .phaser-map-panel .phaser-map-canvas > canvas {
+  grid-area: field !important;
+  position: relative !important;
+  inset: auto !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
   display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
   max-width: none !important;
   max-height: none !important;
+  margin: 0 !important;
+  transform: none !important;
+  z-index: 1 !important;
 }
 
+/* Header is also a real grid item. */
 .phaser-map-panel .field-overlay-header {
-  position: absolute !important;
-  left: 0 !important;
-  right: 0 !important;
-  top: 0 !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
-  overflow: visible !important;
-  z-index: 60 !important;
-}
-
-.phaser-map-panel .field-header-research-wrap {
-  z-index: 55 !important;
-}
-
-.phaser-map-panel.responsive-landscape-layout .phaser-stage {
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 460px) !important;
-  grid-template-rows: minmax(0, 1fr) !important;
-  grid-template-areas: "field command" !important;
-}
-
-.phaser-map-panel.responsive-landscape-layout .phaser-map-canvas {
-  grid-area: field !important;
-}
-
-.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay {
-  grid-area: command !important;
+  grid-area: header !important;
   position: relative !important;
   inset: auto !important;
   left: auto !important;
   right: auto !important;
   top: auto !important;
-  bottom: auto !important;
   width: 100% !important;
   height: 100% !important;
+  min-height: 0 !important;
   max-width: none !important;
-  max-height: none !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  transform: none !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  border-top: 0 !important;
-  border-right: 0 !important;
-  border-bottom: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-}
-
-.phaser-map-panel.responsive-landscape-layout .field-footer-tab-row {
-  display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  gap: 4px !important;
-  height: auto !important;
-  padding: 6px !important;
+  box-sizing: border-box !important;
   overflow: visible !important;
+  z-index: 60 !important;
 }
 
-.phaser-map-panel.responsive-landscape-layout .field-footer-tab-body {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  height: auto !important;
-  max-height: none !important;
+/* Research rail hangs from the header into the field, but never into command UI. */
+.phaser-map-panel .field-header-research-wrap {
+  position: absolute !important;
+  left: 5px !important;
+  top: calc(100% + 6px) !important;
+  z-index: 55 !important;
 }
 
-.phaser-map-panel.responsive-portrait-layout .phaser-stage {
-  grid-template-columns: minmax(0, 1fr) !important;
-  grid-template-rows: minmax(0, 60%) minmax(0, 40%) !important;
-  grid-template-areas:
-    "field"
-    "command" !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .phaser-map-canvas {
-  grid-area: field !important;
-}
-
+/* Command UI is a real grid item. No top/right/bottom overlay positioning remains. */
+.phaser-map-panel .field-footer-tabs-overlay,
+.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay,
 .phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
   grid-area: command !important;
   position: relative !important;
@@ -180,21 +149,37 @@ body {
   right: auto !important;
   top: auto !important;
   bottom: auto !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
   width: 100% !important;
   height: 100% !important;
-  max-width: none !important;
-  max-height: none !important;
   min-width: 0 !important;
   min-height: 0 !important;
-  transform: none !important;
+  max-width: none !important;
+  max-height: none !important;
   margin: 0 !important;
-  border-left: 0 !important;
-  border-right: 0 !important;
-  border-bottom: 0 !important;
+  transform: none !important;
   border-radius: 0 !important;
+  overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
-  overflow: hidden !important;
+  z-index: 20 !important;
+}
+
+.phaser-map-panel.responsive-landscape-layout .field-footer-tab-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 6px !important;
+  overflow: visible !important;
+}
+
+.phaser-map-panel.responsive-landscape-layout .field-footer-tab-btn {
+  min-width: 0 !important;
+  width: 100% !important;
 }
 
 .phaser-map-panel.responsive-portrait-layout .field-footer-tab-row {
@@ -212,7 +197,7 @@ body {
   min-width: 72px !important;
 }
 
-.phaser-map-panel.responsive-portrait-layout .field-footer-tab-body {
+.phaser-map-panel .field-footer-tab-body {
   flex: 1 1 auto !important;
   min-height: 0 !important;
   height: auto !important;
@@ -220,13 +205,12 @@ body {
   overflow: auto !important;
 }
 
+/* Mobile header compaction. */
 .phaser-map-panel.responsive-portrait-layout {
   --v39-header-height: 94px !important;
 }
 
 .phaser-map-panel.responsive-portrait-layout .field-overlay-header {
-  min-height: 94px !important;
-  height: 94px !important;
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) auto !important;
   grid-template-rows: 48px 42px !important;
@@ -246,8 +230,8 @@ body {
 .phaser-map-panel.responsive-portrait-layout .sidebar-resource-menu.header-resource-menu {
   display: flex !important;
   width: 100% !important;
-  max-width: 100% !important;
   min-width: 0 !important;
+  max-width: 100% !important;
   overflow-x: auto !important;
   overflow-y: hidden !important;
   flex-wrap: nowrap !important;
@@ -292,15 +276,11 @@ body {
   bottom: -18px !important;
 }
 
-.phaser-map-panel.responsive-portrait-layout .field-header-research-wrap {
-  top: calc(var(--v39-header-height) + 6px) !important;
-  left: 5px !important;
-}
-
-.phaser-map-panel .field-overlay-bottom-right,
-.phaser-map-panel .field-overlay-live-log,
-.phaser-map-panel .field-overlay-turn-ticker {
-  max-width: calc(100% - 12px) !important;
+/* Map overlays are constrained to the field, not allowed to cover command UI. */
+.phaser-map-panel.responsive-landscape-layout .field-overlay-bottom-right,
+.phaser-map-panel.responsive-landscape-layout .field-overlay-live-log,
+.phaser-map-panel.responsive-landscape-layout .field-overlay-turn-ticker {
+  right: calc(clamp(320px, 31vw, 460px) + 8px) !important;
 }
 
 .phaser-map-panel *,
@@ -309,6 +289,7 @@ body {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
+
 .phaser-map-panel *::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
