@@ -49,6 +49,19 @@ function resolveShell(game) {
   return { root, canvas, header, footer };
 }
 
+function refreshPhaserInputBounds(game) {
+  const scale = game?.scale;
+  if (!scale) return;
+
+  // Phaser caches the canvas page bounds for pointer -> game-coordinate conversion.
+  // The v39 shell moves the canvas below the header with CSS, so refresh that cache
+  // after every layout change or taps are offset by the old canvas top position.
+  scale.updateBounds?.();
+
+  const inputManager = game?.input;
+  inputManager?.manager?.updateBounds?.();
+}
+
 function applyResponsivePhaserSize(game) {
   const shell = resolveShell(game);
   if (!shell || !game?.scale) return;
@@ -97,6 +110,11 @@ function applyResponsivePhaserSize(game) {
   canvas.style.setProperty("height", `${height}px`, "important");
   canvas.style.setProperty("max-width", "none", "important");
   canvas.style.setProperty("max-height", "none", "important");
+  canvas.style.setProperty("touch-action", "none", "important");
+  canvas.style.setProperty("overscroll-behavior", "none", "important");
+  canvas.style.setProperty("user-select", "none", "important");
+  canvas.style.setProperty("-webkit-user-select", "none", "important");
+  canvas.style.setProperty("-webkit-touch-callout", "none", "important");
 
   for (const { camera, center, zoom } of snapshots) {
     camera?.setSize?.(width, height);
@@ -106,6 +124,9 @@ function applyResponsivePhaserSize(game) {
       camera?.centerOn?.(corrected.x, corrected.y);
     }
   }
+
+  refreshPhaserInputBounds(game);
+  window.requestAnimationFrame(() => refreshPhaserInputBounds(game));
 }
 
 function scheduleResponsiveResize(game) {
@@ -142,8 +163,11 @@ function attachResponsiveResize(game) {
     if (stage instanceof HTMLElement) observer?.observe(stage);
 
     const onWindowResize = () => scheduleResponsiveResize(game);
+    const onViewportResize = () => scheduleResponsiveResize(game);
     window.addEventListener("resize", onWindowResize, { passive: true });
     window.addEventListener("orientationchange", onWindowResize, { passive: true });
+    window.visualViewport?.addEventListener?.("resize", onViewportResize, { passive: true });
+    window.visualViewport?.addEventListener?.("scroll", onViewportResize, { passive: true });
 
     observers.set(game, {
       observer,
@@ -151,12 +175,15 @@ function attachResponsiveResize(game) {
         observer?.disconnect();
         window.removeEventListener("resize", onWindowResize);
         window.removeEventListener("orientationchange", onWindowResize);
+        window.visualViewport?.removeEventListener?.("resize", onViewportResize);
+        window.visualViewport?.removeEventListener?.("scroll", onViewportResize);
       }
     });
 
     scheduleResponsiveResize(game);
     window.setTimeout(() => scheduleResponsiveResize(game), 80);
     window.setTimeout(() => scheduleResponsiveResize(game), 240);
+    window.setTimeout(() => scheduleResponsiveResize(game), 600);
   };
 
   tryAttach();
