@@ -15,6 +15,11 @@ export default defineConfig(({ mode }) => {
           tag: "script",
           attrs: { type: "module", src: `${base}assets/v39-field-runtime.js` },
           injectTo: "body"
+        },
+        {
+          tag: "script",
+          attrs: { type: "module", src: `${base}assets/v39-field-settings-entry.js` },
+          injectTo: "body"
         }
       ];
     }
@@ -43,7 +48,8 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         input: {
           index: resolve("frontend/index.html"),
-          "v39-field-runtime": resolve("frontend/src/v39-field-runtime.js")
+          "v39-field-runtime": resolve("frontend/src/v39-field-runtime.js"),
+          "v39-field-settings-entry": resolve("frontend/src/v39-field-settings-entry.js")
         },
         output: {
           entryFileNames: "assets/[name].js",
