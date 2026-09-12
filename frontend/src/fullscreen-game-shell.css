@@ -78,8 +78,75 @@ body {
 
 .phaser-map-panel .phaser-map-canvas > canvas {
   display: block !important;
+}
+
+/* Runtime mode is authoritative. Wide/square desktop windows keep the right sidebar
+   even when CSS orientation reports portrait. */
+.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay {
+  position: absolute !important;
+  left: auto !important;
+  right: 0 !important;
+  top: var(--v39-header-height, 56px) !important;
+  bottom: 0 !important;
+  width: clamp(320px, 31vw, 460px) !important;
+  height: auto !important;
+  max-height: none !important;
+  transform: none !important;
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-radius: 9px 0 0 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.phaser-map-panel.responsive-landscape-layout .field-footer-tab-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  height: auto !important;
+  padding: 6px !important;
+  overflow: visible !important;
+}
+
+.phaser-map-panel.responsive-landscape-layout .field-footer-tab-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: auto !important;
+  bottom: 0 !important;
   width: 100% !important;
-  height: 100% !important;
+  height: 40% !important;
+  max-height: 44% !important;
+  transform: none !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-radius: 10px 10px 0 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-footer-tab-row {
+  display: flex !important;
+  gap: 5px !important;
+  padding: 5px 6px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-footer-tab-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
 }
 
 /* Legacy scale variables remain for compatibility but no longer affect layout. */
