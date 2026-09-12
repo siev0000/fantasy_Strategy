@@ -234,27 +234,24 @@ function createViewer() {
 }
 
 async function bootDesignDocsViewer() {
-  const managePanel = await waitForManagePanel();
+  await waitForManagePanel();
   installStyles();
   const viewer = createViewer();
 
-  // The management runtime may have already created this button. That must not
-  // prevent the viewer/modal itself from being initialized.
-  let button = document.getElementById("v39-manage-design-docs");
+  // The button is part of the stable v39 HTML. This runtime only binds it.
+  const button = document.getElementById("v39-manage-design-docs");
   if (!(button instanceof HTMLButtonElement)) {
-    button = document.createElement("button");
-    button.type = "button";
-    button.id = "v39-manage-design-docs";
-    button.className = "manage-tile";
-    button.innerHTML = "<b>書</b><span>設計書</span>";
-    managePanel.appendChild(button);
+    throw new Error("#v39-manage-design-docs is missing from the stable v39 HTML");
   }
 
-  button.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    viewer.open();
-  });
+  if (button.dataset.v39DocsBound !== "1") {
+    button.dataset.v39DocsBound = "1";
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      viewer.open();
+    });
+  }
 
   window.openDesignDocsModal = viewer.open;
   window.closeDesignDocsModal = viewer.close;
