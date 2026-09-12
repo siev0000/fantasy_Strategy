@@ -1,14 +1,21 @@
 import Phaser from "phaser";
 
 const MIN_VIEW_SIZE = 120;
+const PORTRAIT_BOTTOM_PANEL_MAX_WIDTH = 900;
 const installedGames = new WeakSet();
 const observers = new WeakMap();
 const resizeRafIds = new WeakMap();
-const cameraUiCompensation = new WeakMap();
 
 function clampSize(value) {
   const num = Math.floor(Number(value) || 0);
   return Math.max(MIN_VIEW_SIZE, num);
+}
+
+function shouldUseBottomPanelLayout() {
+  if (typeof window === "undefined") return false;
+  const width = Math.max(1, window.innerWidth || 1);
+  const height = Math.max(1, window.innerHeight || 1);
+  return width <= PORTRAIT_BOTTOM_PANEL_MAX_WIDTH && height > width;
 }
 
 function forceViewportContainerChain(canvas) {
@@ -17,6 +24,7 @@ function forceViewportContainerChain(canvas) {
   const stage = mapRoot?.closest?.(".phaser-stage");
   const panel = mapRoot?.closest?.(".phaser-map-panel");
   const app = mapRoot?.closest?.(".app");
+  const useBottomPanel = shouldUseBottomPanelLayout();
 
   if (app instanceof HTMLElement) {
     app.style.setProperty("position", "fixed", "important");
@@ -33,6 +41,8 @@ function forceViewportContainerChain(canvas) {
   }
 
   if (panel instanceof HTMLElement) {
+    panel.classList.toggle("responsive-portrait-layout", useBottomPanel);
+    panel.classList.toggle("responsive-landscape-layout", !useBottomPanel);
     panel.style.setProperty("position", "absolute", "important");
     panel.style.setProperty("inset", "0", "important");
     panel.style.setProperty("width", "100%", "important");
@@ -75,17 +85,15 @@ function resolveViewportParts(game) {
   const commandPanel = root.querySelector(".field-footer-tabs-overlay");
   const headerRect = header instanceof HTMLElement ? header.getBoundingClientRect() : null;
   const panelRect = commandPanel instanceof HTMLElement ? commandPanel.getBoundingClientRect() : null;
-  const portrait = window.matchMedia?.("(orientation: portrait)")?.matches ?? (window.innerHeight > window.innerWidth);
+  const useBottomPanel = shouldUseBottomPanelLayout();
 
   const headerHeight = Math.max(0, Math.round(headerRect?.height || 0));
-  const fullMapWidth = clampSize(rootRect.width);
-  const fullMapHeight = clampSize(rootRect.height - headerHeight);
   let left = 0;
   let top = headerHeight;
-  let width = fullMapWidth;
-  let height = fullMapHeight;
+  let width = rootRect.width;
+  let height = rootRect.height - headerHeight;
 
-  if (portrait) {
+  if (useBottomPanel) {
     const panelHeight = Math.max(0, Math.round(panelRect?.height || 0));
     height -= panelHeight;
   } else {
@@ -93,36 +101,23 @@ function resolveViewportParts(game) {
     width -= panelWidth;
   }
 
-  width = clampSize(width);
-  height = clampSize(height);
-
-  // Compensation keeps roughly the same world area visible after UI reserves space.
-  // Landscape loses width to the sidebar; portrait loses height to the bottom panel.
-  const widthRatio = Math.min(1, width / Math.max(1, fullMapWidth));
-  const heightRatio = Math.min(1, height / Math.max(1, fullMapHeight));
-  const uiFitRatio = Math.max(0.1, Math.min(widthRatio, heightRatio));
-
   return {
     root,
     canvas,
     left,
     top,
-    width,
-    height,
-    fullMapWidth,
-    fullMapHeight,
-    uiFitRatio
+    width: clampSize(width),
+    height: clampSize(height)
   };
 }
 
 function captureCameraWorldCenter(camera) {
   if (!camera) return null;
-
   const worldView = camera.worldView;
-  const worldViewCenterX = Number(worldView?.centerX);
-  const worldViewCenterY = Number(worldView?.centerY);
-  if (Number.isFinite(worldViewCenterX) && Number.isFinite(worldViewCenterY)) {
-    return { x: worldViewCenterX, y: worldViewCenterY };
+  const centerX = Number(worldView?.centerX);
+  const centerY = Number(worldView?.centerY);
+  if (Number.isFinite(centerX) && Number.isFinite(centerY)) {
+    return { x: centerX, y: centerY };
   }
 
   const zoom = Math.max(0.0001, Number(camera.zoom) || 1);
@@ -141,20 +136,13 @@ function captureCameraWorldCenter(camera) {
       y: scrollY + (viewHeight / zoom) / 2
     };
   }
-
   return null;
-}
-
-function resolveBaseZoomWithoutUiCompensation(camera) {
-  const currentZoom = Math.max(0.0001, Number(camera?.zoom) || 1);
-  const previousRatio = Math.max(0.0001, Number(cameraUiCompensation.get(camera)) || 1);
-  return currentZoom / previousRatio;
 }
 
 function applyResponsivePhaserSize(game) {
   const parts = resolveViewportParts(game);
   if (!parts || !game?.scale) return;
-  const { canvas, left, top, width, height, uiFitRatio } = parts;
+  const { canvas, left, top, width, height } = parts;
 
   canvas.style.setProperty("position", "absolute", "important");
   canvas.style.setProperty("left", `${left}px`, "important");
@@ -172,16 +160,14 @@ function applyResponsivePhaserSize(game) {
       cameraSnapshots.push({
         camera,
         center: captureCameraWorldCenter(camera),
-        baseZoom: resolveBaseZoomWithoutUiCompensation(camera)
+        zoom: Math.max(0.0001, Number(camera?.zoom) || 1)
       });
     }
   }
 
   const currentWidth = Math.round(Number(game.scale.width || game.config?.width || 0));
   const currentHeight = Math.round(Number(game.scale.height || game.config?.height || 0));
-  const sizeChanged = currentWidth !== width || currentHeight !== height;
-
-  if (sizeChanged) {
+  if (currentWidth !== width || currentHeight !== height) {
     if (game.config) {
       game.config.width = width;
       game.config.height = height;
@@ -191,17 +177,11 @@ function applyResponsivePhaserSize(game) {
     }
   }
 
-  for (const { camera, center, baseZoom } of cameraSnapshots) {
+  for (const { camera, center, zoom } of cameraSnapshots) {
     camera?.setSize?.(width, height);
-
-    // Reduce zoom by the same ratio as the usable map viewport shrinks.
-    // This makes the former right/bottom world area remain visible instead of being cropped.
-    const targetZoom = Math.max(0.05, baseZoom * uiFitRatio);
-    if (Number.isFinite(targetZoom) && typeof camera?.setZoom === "function") {
-      camera.setZoom(targetZoom);
+    if (Number.isFinite(zoom) && typeof camera?.setZoom === "function") {
+      camera.setZoom(zoom);
     }
-    cameraUiCompensation.set(camera, uiFitRatio);
-
     if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
       camera?.centerOn?.(center.x, center.y);
     }
