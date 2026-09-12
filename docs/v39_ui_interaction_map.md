@@ -19,6 +19,51 @@ UI操作は必ず以下の流れを明示する。
 - スマホ・PCで同一機能への入口が複数ある場合、最終的に呼ぶメソッドは共通化する。
 - Phaserのフィールド操作とHTML UI操作はイベント領域を分ける。
 
+### 1.1 初期表示とDOM所有権
+
+**固定UIは初期HTMLに常駐させる。runtime JSから固定ボタン・固定タブを生成しない。**
+
+固定UIに含むもの:
+
+- 上部バー
+- 左サイド研究レール
+- 下部タブ `部隊 / 戦闘 / 土地 / 土地データ / 管理`
+- 管理タブ内の固定ボタン
+- `フィールド設定` ボタン
+- `設計書` ボタン
+- 既知の固定モーダル入口
+
+動的生成してよいもの:
+
+- マップ本体 / Phaser canvas
+- タイル・ユニット・経路・範囲表示
+- データ件数に応じて増減する一覧行 / カード
+- 研究ツリーのノード
+- ログ行
+- 設計書一覧・設計書本文
+
+### 1.2 禁止する初期化方式
+
+以下は使用しない。
+
+- `document.open()` / `document.write()` / `document.close()` による画面全体の再生成
+- マップ生成・再生成を契機とした固定UI DOMの作り直し
+- runtimeごとに同一固定ボタンを `createElement()` して競合させる実装
+
+初期表示は次の順序に固定する。
+
+```text
+index.html の固定DOMを一度だけ読み込む
+  ↓
+v39本体の既存UIイベントを初期化
+  ↓
+各runtimeが既存DOMへイベントを接続
+  ↓
+必要に応じてPhaserフィールドを生成 / 再生成
+```
+
+**Phaserフィールドを新規生成しても、固定HTML UIは破棄・再生成しない。**
+
 ---
 
 ## 2. 研究 UI
@@ -151,15 +196,14 @@ selectFooterTab(tabId)
 
 `管理タブ → フィールド設定`
 
-正本メソッド:
-
-```js
-openFieldSettingsModal()
-```
-
-開く画面:
-
-`#fieldSettingsModal`（IDは正式実装時にこの名前へ統一）
+| 項目 | 内容 |
+|---|---|
+| 管理タブ | `#footManage` |
+| 固定ボタン | `#v39-manage-field-settings.manage-tile` |
+| DOM生成元 | `frontend/index.html` |
+| イベント接続 | `frontend/src/v39-field-settings-entry.js` |
+| 正本メソッド | `openFieldSettingsModal()` |
+| 状態 | 仮モーダル実装中 |
 
 生成:
 
@@ -185,6 +229,8 @@ generateFieldFromSettings(settings)
 - `islandCustomSettings`
 - 河川 / 滝 / 特殊地形関連（既存仕様から順次追記）
 
+**フィールド生成・再生成によって `#v39-manage-field-settings` を作り直さない。**
+
 ---
 
 ## 6. 設計書ビューア
@@ -196,7 +242,8 @@ generateFieldFromSettings(settings)
 | 項目 | 内容 |
 |---|---|
 | 管理タブ | `#footManage` |
-| ボタン | `#v39-manage-design-docs.manage-tile` |
+| 固定ボタン | `#v39-manage-design-docs.manage-tile` |
+| DOM生成元 | `frontend/index.html` |
 | イベント | `click/tap` |
 | 正本メソッド | `openDesignDocsModal()` |
 | 現行公開メソッド | `window.openDesignDocsModal` |
@@ -225,6 +272,8 @@ import.meta.glob("../../docs/**/*.md", {
 
 **重要:** GitHub Pages上ではフォルダ列挙APIに依存しない。設計書一覧はビルド成果物に含める。
 
+**`#v39-manage-design-docs` 自体はruntimeで生成しない。runtimeは既存ボタンへイベントを接続するだけとする。**
+
 ---
 
 ## 7. 設計書更新ルール
@@ -247,7 +296,8 @@ import.meta.glob("../../docs/**/*.md", {
 
 ## 8. 現在の優先修正
 
-1. 左サイド研究レール → `openResearchModal(researchType)` を正式化。
-2. `#researchModal` のUIを「左サイド研究項目をタップした時に開く画面」として修正。
-3. 研究モーダル内部へ不要な研究カテゴリ一覧を複製しない。
-4. 以後、各UI機能をこの設計書へ追記してから修正する。
+1. `frontend/index.html` から `document.open/write/close` 方式を撤去し、v39固定DOMを通常HTMLとして常駐させる。
+2. 管理タブの `フィールド設定 / 設計書` を初期HTMLへ固定する。
+3. runtimeは固定ボタン生成をやめ、イベント接続だけにする。
+4. Phaserマップ生成・再生成と固定UI DOMを完全に分離する。
+5. その後、左サイド研究レール → `openResearchModal(researchType)` を正式化する。
