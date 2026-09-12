@@ -1,6 +1,7 @@
-/* v39-based game shell reset.
-   Structure follows the supplied prototype: topbar / playfield / footer.
-   Phaser owns only the playfield between header and footer. */
+/* Authoritative v39 shell.
+   Keep gameplay in Phaser, but make UI and field real layout regions instead of overlays.
+   The current Vue component keeps header/canvas/footer under the same parent, so CSS Grid
+   gives them independent rows exactly like the v39 prototype: topbar / playfield / footer. */
 
 :root {
   --v39-header-h: 56px;
@@ -47,8 +48,7 @@ body {
 
 .app.game-only > .phaser-map-panel,
 .phaser-map-panel,
-.phaser-map-panel .phaser-stage,
-.phaser-map-panel .phaser-map-canvas {
+.phaser-map-panel .phaser-stage {
   position: absolute !important;
   inset: 0 !important;
   width: 100% !important;
@@ -63,17 +63,48 @@ body {
   background: transparent !important;
 }
 
-/* v39 topbar */
-.phaser-map-panel .field-overlay-header {
+/* Real v39 structure: header / playfield / footer are separate layout rows. */
+.phaser-map-panel .phaser-map-canvas {
+  position: relative !important;
+  inset: auto !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: var(--v39-header-h) minmax(0, 1fr) var(--v39-footer-h) !important;
+  grid-template-areas:
+    "topbar"
+    "playfield"
+    "footer" !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  isolation: isolate !important;
+}
+
+/* Only these three children participate in grid sizing. Everything else is a map overlay. */
+.phaser-map-panel .phaser-map-canvas > :not(canvas):not(.field-overlay-header):not(.field-footer-tabs-overlay) {
   position: absolute !important;
-  left: 0 !important;
-  right: 0 !important;
-  top: 0 !important;
+}
+
+.phaser-map-panel .field-overlay-header {
+  grid-area: topbar !important;
+  position: relative !important;
+  inset: auto !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
   bottom: auto !important;
   width: 100% !important;
-  height: var(--v39-header-h) !important;
-  min-height: var(--v39-header-h) !important;
-  max-height: var(--v39-header-h) !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  box-sizing: border-box !important;
   margin: 0 !important;
   padding: 5px 7px !important;
   display: flex !important;
@@ -82,59 +113,54 @@ body {
   flex-wrap: nowrap !important;
   overflow-x: auto !important;
   overflow-y: hidden !important;
-  box-sizing: border-box !important;
   border-radius: 0 !important;
   border-bottom: 1px solid #3b494f !important;
   background: linear-gradient(180deg, rgba(18,29,34,.98), rgba(8,16,20,.96)) !important;
   z-index: 60 !important;
 }
 
-.phaser-map-panel .field-overlay-header::-webkit-scrollbar { display: none !important; }
-.phaser-map-panel .field-overlay-header { scrollbar-width: none !important; }
-
-/* Phaser playfield: exact region between topbar and footer. */
 .phaser-map-panel .phaser-map-canvas > canvas {
-  position: absolute !important;
-  left: 0 !important;
-  right: 0 !important;
-  top: var(--v39-header-h) !important;
-  bottom: var(--v39-footer-h) !important;
-  width: 100% !important;
-  height: calc(100% - var(--v39-header-h) - var(--v39-footer-h)) !important;
-  max-width: none !important;
-  max-height: none !important;
-  margin: 0 !important;
+  grid-area: playfield !important;
+  position: relative !important;
+  inset: auto !important;
   display: block !important;
-  transform: none !important;
-  transform-origin: top left !important;
-  z-index: 1 !important;
-}
-
-/* v39 research rail lives inside playfield. */
-.phaser-map-panel .field-header-research-wrap {
-  position: absolute !important;
-  left: 6px !important;
-  top: calc(var(--v39-header-h) + 6px) !important;
-  bottom: calc(var(--v39-footer-h) + 6px) !important;
-  z-index: 40 !important;
-  margin: 0 !important;
-}
-
-/* v39 footer: always horizontal, never a right sidebar. */
-.phaser-map-panel .field-footer-tabs-overlay,
-.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay,
-.phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
-  position: absolute !important;
-  left: 0 !important;
-  right: 0 !important;
-  top: auto !important;
-  bottom: 0 !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
   width: 100% !important;
-  height: var(--v39-footer-h) !important;
+  height: 100% !important;
   min-width: 0 !important;
   min-height: 0 !important;
   max-width: none !important;
-  max-height: var(--v39-footer-h) !important;
+  max-height: none !important;
+  margin: 0 !important;
+  transform: none !important;
+  transform-origin: top left !important;
+  touch-action: none !important;
+  overscroll-behavior: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+  z-index: 1 !important;
+}
+
+.phaser-map-panel .field-footer-tabs-overlay,
+.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay,
+.phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
+  grid-area: footer !important;
+  position: relative !important;
+  inset: auto !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
   margin: 0 !important;
   padding: 0 !important;
   transform: none !important;
@@ -147,7 +173,34 @@ body {
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
-  z-index: 50 !important;
+  z-index: 20 !important;
+}
+
+/* Research rail and map overlays belong to the playfield visually, not to the footer. */
+.phaser-map-panel .field-header-research-wrap {
+  position: absolute !important;
+  left: 6px !important;
+  top: calc(var(--v39-header-h) + 6px) !important;
+  bottom: calc(var(--v39-footer-h) + 6px) !important;
+  z-index: 40 !important;
+  margin: 0 !important;
+}
+
+.phaser-map-panel .field-overlay-bottom-right {
+  bottom: calc(var(--v39-footer-h) + 8px) !important;
+}
+
+.phaser-map-panel .field-overlay-live-log,
+.phaser-map-panel .field-overlay-tile-detail,
+.phaser-map-panel .field-overlay-own-faction-panel {
+  top: calc(var(--v39-header-h) + 8px) !important;
+  bottom: calc(var(--v39-footer-h) + 8px) !important;
+  max-height: none !important;
+}
+
+.phaser-map-panel .field-overlay-turn-ticker,
+.phaser-map-panel .field-overlay-memory-top-right {
+  top: calc(var(--v39-header-h) + 8px) !important;
 }
 
 .phaser-map-panel .field-footer-tab-row,
@@ -182,36 +235,28 @@ body {
   overflow: auto !important;
 }
 
-/* Keep map overlays inside the playfield instead of under the footer. */
-.phaser-map-panel .field-overlay-bottom-right {
-  bottom: calc(var(--v39-footer-h) + 8px) !important;
-}
-.phaser-map-panel .field-overlay-live-log,
-.phaser-map-panel .field-overlay-tile-detail,
-.phaser-map-panel .field-overlay-own-faction-panel {
-  max-height: calc(100% - var(--v39-header-h) - var(--v39-footer-h) - 12px) !important;
-}
-.phaser-map-panel .field-overlay-turn-ticker,
-.phaser-map-panel .field-overlay-memory-top-right {
-  top: calc(var(--v39-header-h) + 8px) !important;
-}
-
 .phaser-map-panel *,
 .phaser-map-panel *::before,
 .phaser-map-panel *::after {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
+
 .phaser-map-panel *::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
   display: none !important;
 }
 
-@media (max-width: 760px) {
+/* Smartphone portrait follows the supplied v39 ratio: playfield 3 / command UI 2. */
+@media (max-width: 760px) and (orientation: portrait) {
   :root {
     --v39-header-h: 96px;
-    --v39-footer-h: clamp(150px, 30svh, 220px);
+    --v39-footer-h: 0px;
+  }
+
+  .phaser-map-panel .phaser-map-canvas {
+    grid-template-rows: 96px minmax(0, 3fr) minmax(0, 2fr) !important;
   }
 
   .phaser-map-panel .field-overlay-header {
@@ -268,10 +313,22 @@ body {
     min-height: 34px !important;
   }
 
+  /* Footer height is a grid track on mobile, so overlay offsets use 40% of the remaining viewport. */
   .phaser-map-panel .field-header-research-wrap {
     left: 4px !important;
-    top: calc(var(--v39-header-h) + 4px) !important;
-    bottom: calc(var(--v39-footer-h) + 4px) !important;
+    top: 100px !important;
+    bottom: calc((100dvh - 96px) * 0.4 + 4px) !important;
+  }
+
+  .phaser-map-panel .field-overlay-bottom-right {
+    bottom: calc((100dvh - 96px) * 0.4 + 8px) !important;
+  }
+
+  .phaser-map-panel .field-overlay-live-log,
+  .phaser-map-panel .field-overlay-tile-detail,
+  .phaser-map-panel .field-overlay-own-faction-panel {
+    top: 104px !important;
+    bottom: calc((100dvh - 96px) * 0.4 + 8px) !important;
   }
 
   .phaser-map-panel .field-footer-tab-row {
