@@ -6,7 +6,7 @@ const MAP_W = 60;
 const MAP_H = 60;
 const PATTERN_ID = "realistic";
 const MOUNTAIN_MODE = "random";
-const MAX_ZOOM_FACTOR = 6;
+const MAX_ZOOM_FACTOR = 10;
 
 const terrainColorMap = new Map(
   (Array.isArray(terrainDefinitions) ? terrainDefinitions : []).map(row => [String(row?.key || ""), String(row?.color || "#607078")])
