@@ -1,6 +1,6 @@
 /* Fullscreen game shell.
-   The field and command UI are separate layout regions.
-   Phaser only owns the field region; the command panel never overlays the canvas. */
+   This file loads last and is the authoritative layout for the game screen.
+   Phaser owns only the dedicated field cell. Command UI is a separate grid cell. */
 
 html,
 body,
@@ -57,14 +57,9 @@ body {
   background: #0c1418 !important;
 }
 
-/* Stage is the real application layout.
-   Desktop/wide: field | command sidebar
-   Narrow portrait: field / command panel */
 .phaser-map-panel .phaser-stage {
   position: relative !important;
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 460px) !important;
-  grid-template-rows: minmax(0, 1fr) !important;
   width: 100% !important;
   height: 100% !important;
   min-width: 0 !important;
@@ -77,14 +72,8 @@ body {
   background: #0c1418 !important;
 }
 
-/* Phaser field gets its own grid cell and no longer shares space with the command UI. */
-.phaser-map-panel .phaser-stage > .phaser-map-canvas,
 .phaser-map-panel .phaser-map-canvas {
   position: relative !important;
-  grid-column: 1 !important;
-  grid-row: 1 !important;
-  align-self: stretch !important;
-  justify-self: stretch !important;
   width: 100% !important;
   height: 100% !important;
   min-width: 0 !important;
@@ -95,50 +84,67 @@ body {
   padding: 0 !important;
   overflow: hidden !important;
   background: #0c1418 !important;
+  isolation: isolate !important;
 }
 
 .phaser-map-panel .phaser-map-canvas > canvas {
   display: block !important;
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
   max-width: none !important;
   max-height: none !important;
-  margin: 0 !important;
 }
 
-/* Command UI is a true sibling layout region, never an overlay. */
-.phaser-map-panel .phaser-stage > .field-footer-tabs-overlay,
-.phaser-map-panel .field-footer-tabs-overlay {
+.phaser-map-panel .field-overlay-header {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  z-index: 60 !important;
+}
+
+.phaser-map-panel .field-header-research-wrap {
+  z-index: 55 !important;
+}
+
+.phaser-map-panel.responsive-landscape-layout .phaser-stage {
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 460px) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  grid-template-areas: "field command" !important;
+}
+
+.phaser-map-panel.responsive-landscape-layout .phaser-map-canvas {
+  grid-area: field !important;
+}
+
+.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay {
+  grid-area: command !important;
   position: relative !important;
   inset: auto !important;
   left: auto !important;
   right: auto !important;
   top: auto !important;
   bottom: auto !important;
-  grid-column: 2 !important;
-  grid-row: 1 !important;
-  align-self: stretch !important;
-  justify-self: stretch !important;
   width: 100% !important;
   height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
   max-width: none !important;
   max-height: none !important;
-  margin: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
   transform: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
   border-top: 0 !important;
   border-right: 0 !important;
   border-bottom: 0 !important;
-  border-radius: 0 !important;
   display: flex !important;
   flex-direction: column !important;
-  box-shadow: -3px 0 14px rgba(0, 0, 0, 0.36) !important;
+  overflow: hidden !important;
 }
 
-.phaser-map-panel .field-footer-tab-row {
+.phaser-map-panel.responsive-landscape-layout .field-footer-tab-row {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: 4px !important;
@@ -147,53 +153,162 @@ body {
   overflow: visible !important;
 }
 
-.phaser-map-panel .field-footer-tab-body {
+.phaser-map-panel.responsive-landscape-layout .field-footer-tab-body {
   flex: 1 1 auto !important;
   min-height: 0 !important;
   height: auto !important;
   max-height: none !important;
 }
 
-/* Phone portrait only: use a dedicated lower row instead of a right column. */
-@media (max-width: 900px) and (orientation: portrait) {
-  .phaser-map-panel .phaser-stage {
-    grid-template-columns: minmax(0, 1fr) !important;
-    grid-template-rows: minmax(0, 60fr) minmax(0, 40fr) !important;
-  }
-
-  .phaser-map-panel .phaser-stage > .phaser-map-canvas,
-  .phaser-map-panel .phaser-map-canvas {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-  }
-
-  .phaser-map-panel .phaser-stage > .field-footer-tabs-overlay,
-  .phaser-map-panel .field-footer-tabs-overlay {
-    grid-column: 1 !important;
-    grid-row: 2 !important;
-    width: 100% !important;
-    height: 100% !important;
-    border-left: 0 !important;
-    border-right: 0 !important;
-    border-bottom: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.36) !important;
-  }
-
-  .phaser-map-panel .field-footer-tab-row {
-    display: flex !important;
-    gap: 5px !important;
-    padding: 5px 6px !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-  }
+.phaser-map-panel.responsive-portrait-layout .phaser-stage {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 60%) minmax(0, 40%) !important;
+  grid-template-areas:
+    "field"
+    "command" !important;
 }
 
-/* Runtime classes only describe mode; they no longer reposition either region. */
-.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay,
+.phaser-map-panel.responsive-portrait-layout .phaser-map-canvas {
+  grid-area: field !important;
+}
+
 .phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
+  grid-area: command !important;
   position: relative !important;
   inset: auto !important;
+  left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  transform: none !important;
+  margin: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-radius: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-footer-tab-row {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  gap: 4px !important;
+  padding: 5px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  white-space: nowrap !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-footer-tab-btn {
+  flex: 1 0 auto !important;
+  min-width: 72px !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-footer-tab-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout {
+  --v39-header-height: 94px !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-overlay-header {
+  min-height: 94px !important;
+  height: 94px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-rows: 48px 42px !important;
+  gap: 2px 4px !important;
+  padding: 3px 5px !important;
+  align-items: center !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-header-resource-menu-wrap {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .sidebar-resource-menu.header-resource-menu {
+  display: flex !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  flex-wrap: nowrap !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item {
+  flex: 0 0 76px !important;
+  min-width: 76px !important;
+  max-width: 76px !important;
+  padding: 3px 4px !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-header-population-menu-wrap {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-overlay-actions {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  margin: 0 !important;
+  display: flex !important;
+  gap: 3px !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-overlay-actions .overlay-action-btn.icon-only {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .overlay-header-drawer-toggle {
+  position: absolute !important;
+  right: 2px !important;
+  bottom: -18px !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .field-header-research-wrap {
+  top: calc(var(--v39-header-height) + 6px) !important;
+  left: 5px !important;
+}
+
+.phaser-map-panel .field-overlay-bottom-right,
+.phaser-map-panel .field-overlay-live-log,
+.phaser-map-panel .field-overlay-turn-ticker {
+  max-width: calc(100% - 12px) !important;
+}
+
+.phaser-map-panel *,
+.phaser-map-panel *::before,
+.phaser-map-panel *::after {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.phaser-map-panel *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
 }
 
 :root {
