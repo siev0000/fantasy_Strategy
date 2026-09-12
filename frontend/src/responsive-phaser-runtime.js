@@ -4,6 +4,7 @@ const MIN_VIEW_SIZE = 120;
 const installedGames = new WeakSet();
 const observers = new WeakMap();
 const resizeRafIds = new WeakMap();
+const cameraUiCompensation = new WeakMap();
 
 function clampSize(value) {
   const num = Math.floor(Number(value) || 0);
@@ -77,10 +78,12 @@ function resolveViewportParts(game) {
   const portrait = window.matchMedia?.("(orientation: portrait)")?.matches ?? (window.innerHeight > window.innerWidth);
 
   const headerHeight = Math.max(0, Math.round(headerRect?.height || 0));
+  const fullMapWidth = clampSize(rootRect.width);
+  const fullMapHeight = clampSize(rootRect.height - headerHeight);
   let left = 0;
   let top = headerHeight;
-  let width = rootRect.width;
-  let height = rootRect.height - headerHeight;
+  let width = fullMapWidth;
+  let height = fullMapHeight;
 
   if (portrait) {
     const panelHeight = Math.max(0, Math.round(panelRect?.height || 0));
@@ -90,13 +93,25 @@ function resolveViewportParts(game) {
     width -= panelWidth;
   }
 
+  width = clampSize(width);
+  height = clampSize(height);
+
+  // Compensation keeps roughly the same world area visible after UI reserves space.
+  // Landscape loses width to the sidebar; portrait loses height to the bottom panel.
+  const widthRatio = Math.min(1, width / Math.max(1, fullMapWidth));
+  const heightRatio = Math.min(1, height / Math.max(1, fullMapHeight));
+  const uiFitRatio = Math.max(0.1, Math.min(widthRatio, heightRatio));
+
   return {
     root,
     canvas,
     left,
     top,
-    width: clampSize(width),
-    height: clampSize(height)
+    width,
+    height,
+    fullMapWidth,
+    fullMapHeight,
+    uiFitRatio
   };
 }
 
@@ -130,10 +145,16 @@ function captureCameraWorldCenter(camera) {
   return null;
 }
 
+function resolveBaseZoomWithoutUiCompensation(camera) {
+  const currentZoom = Math.max(0.0001, Number(camera?.zoom) || 1);
+  const previousRatio = Math.max(0.0001, Number(cameraUiCompensation.get(camera)) || 1);
+  return currentZoom / previousRatio;
+}
+
 function applyResponsivePhaserSize(game) {
   const parts = resolveViewportParts(game);
   if (!parts || !game?.scale) return;
-  const { canvas, left, top, width, height } = parts;
+  const { canvas, left, top, width, height, uiFitRatio } = parts;
 
   canvas.style.setProperty("position", "absolute", "important");
   canvas.style.setProperty("left", `${left}px`, "important");
@@ -150,7 +171,8 @@ function applyResponsivePhaserSize(game) {
     for (const camera of cameras) {
       cameraSnapshots.push({
         camera,
-        center: captureCameraWorldCenter(camera)
+        center: captureCameraWorldCenter(camera),
+        baseZoom: resolveBaseZoomWithoutUiCompensation(camera)
       });
     }
   }
@@ -169,8 +191,17 @@ function applyResponsivePhaserSize(game) {
     }
   }
 
-  for (const { camera, center } of cameraSnapshots) {
+  for (const { camera, center, baseZoom } of cameraSnapshots) {
     camera?.setSize?.(width, height);
+
+    // Reduce zoom by the same ratio as the usable map viewport shrinks.
+    // This makes the former right/bottom world area remain visible instead of being cropped.
+    const targetZoom = Math.max(0.05, baseZoom * uiFitRatio);
+    if (Number.isFinite(targetZoom) && typeof camera?.setZoom === "function") {
+      camera.setZoom(targetZoom);
+    }
+    cameraUiCompensation.set(camera, uiFitRatio);
+
     if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
       camera?.centerOn?.(center.x, center.y);
     }
