@@ -187,7 +187,47 @@ generateFieldFromSettings(settings)
 
 ---
 
-## 6. 設計書更新ルール
+## 6. 設計書ビューア
+
+入口:
+
+`管理タブ → 設計書`
+
+| 項目 | 内容 |
+|---|---|
+| 管理タブ | `#footManage` |
+| ボタン | `#v39-manage-design-docs.manage-tile` |
+| イベント | `click/tap` |
+| 正本メソッド | `openDesignDocsModal()` |
+| 現行公開メソッド | `window.openDesignDocsModal` |
+| 開くモーダル | `#v39-design-docs-modal` |
+| 実装ファイル | `frontend/src/v39-design-docs-viewer.js` |
+| 状態 | 実装済み |
+
+設計書の取得:
+
+```js
+import.meta.glob("../../docs/**/*.md", {
+  eager: true,
+  query: "?raw",
+  import: "default"
+})
+```
+
+動作:
+
+1. Viteビルド時に `docs/` 以下のすべての `.md` を収集する。
+2. モーダル左側（スマホでは上側）に設計書一覧を表示する。
+3. 一覧から選択したMarkdownを右側（スマホでは下側）へ表示する。
+4. ファイル名・Markdown内の先頭 `# 見出し` を検索対象とする。
+5. 新しい `.md` を `docs/` へ追加した場合、次回ビルド時に自動で一覧へ追加する。
+6. 初回表示時は `docs/v39_ui_interaction_map.md` が存在すれば優先して開く。
+
+**重要:** GitHub Pages上ではフォルダ列挙APIに依存しない。設計書一覧はビルド成果物に含める。
+
+---
+
+## 7. 設計書更新ルール
 
 新しいボタンや画面を実装するときは、最低限以下を記載する。
 
@@ -205,7 +245,7 @@ generateFieldFromSettings(settings)
 
 ---
 
-## 7. 現在の優先修正
+## 8. 現在の優先修正
 
 1. 左サイド研究レール → `openResearchModal(researchType)` を正式化。
 2. `#researchModal` のUIを「左サイド研究項目をタップした時に開く画面」として修正。
