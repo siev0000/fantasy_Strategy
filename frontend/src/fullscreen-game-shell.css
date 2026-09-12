@@ -1,6 +1,13 @@
-/* Authoritative fullscreen game layout.
-   Only three children participate in the main grid: header, Phaser canvas, command UI.
-   All other map overlays are removed from grid flow so they cannot collapse the field. */
+/* v39-based game shell reset.
+   Structure follows the supplied prototype: topbar / playfield / footer.
+   Phaser owns only the playfield between header and footer. */
+
+:root {
+  --v39-header-h: 56px;
+  --v39-footer-h: clamp(170px, 26svh, 250px);
+  --ui-app-root-scale: 1 !important;
+  --game-root-scale: 1 !important;
+}
 
 html,
 body,
@@ -12,7 +19,7 @@ body,
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
-  background: #0c1418 !important;
+  background: #03090c !important;
 }
 
 body {
@@ -20,11 +27,10 @@ body {
   inset: 0 !important;
 }
 
-#app { position: relative !important; }
-
+#app,
 .app,
 .app.game-only {
-  position: absolute !important;
+  position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
   height: 100dvh !important;
@@ -36,28 +42,15 @@ body {
   padding: 0 !important;
   transform: none !important;
   overflow: hidden !important;
-  background: #0c1418 !important;
+  background: radial-gradient(circle at 50% 35%, #172327 0, #081115 55%, #03080a 100%) !important;
 }
 
 .app.game-only > .phaser-map-panel,
 .phaser-map-panel,
-.phaser-map-panel .phaser-stage {
-  position: relative !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-width: none !important;
-  max-height: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  background: #0c1418 !important;
-}
-
+.phaser-map-panel .phaser-stage,
 .phaser-map-panel .phaser-map-canvas {
-  position: relative !important;
-  display: grid !important;
+  position: absolute !important;
+  inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
   min-width: 0 !important;
@@ -67,134 +60,118 @@ body {
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
-  background: #0c1418 !important;
-  isolation: isolate !important;
-  grid-auto-rows: 0 !important;
-  grid-auto-columns: 0 !important;
+  background: transparent !important;
 }
 
-/* Critical: every direct child except the three layout regions is an overlay and must
-   not participate in CSS Grid track sizing. */
-.phaser-map-panel .phaser-map-canvas > :not(canvas):not(.field-overlay-header):not(.field-footer-tabs-overlay) {
-  position: absolute !important;
-}
-
-/* Wide / desktop: header first row, map left, command sidebar right. */
-.phaser-map-panel.responsive-landscape-layout .phaser-map-canvas {
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 460px) !important;
-  grid-template-rows: 56px minmax(0, 1fr) !important;
-  grid-template-areas:
-    "header header"
-    "field command" !important;
-}
-
-/* Narrow portrait: explicit fixed header + 60/40 split of remaining height. */
-.phaser-map-panel.responsive-portrait-layout .phaser-map-canvas {
-  grid-template-columns: minmax(0, 1fr) !important;
-  grid-template-rows: 94px minmax(0, 3fr) minmax(0, 2fr) !important;
-  grid-template-areas:
-    "header"
-    "field"
-    "command" !important;
-}
-
-.phaser-map-panel .phaser-map-canvas > canvas {
-  grid-area: field !important;
-  position: relative !important;
-  inset: auto !important;
-  align-self: stretch !important;
-  justify-self: stretch !important;
-  display: block !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-width: none !important;
-  max-height: none !important;
-  margin: 0 !important;
-  transform: none !important;
-  z-index: 1 !important;
-}
-
+/* v39 topbar */
 .phaser-map-panel .field-overlay-header {
-  grid-area: header !important;
-  position: relative !important;
-  inset: auto !important;
-  left: auto !important;
-  right: auto !important;
-  top: auto !important;
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: auto !important;
   width: 100% !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  max-width: none !important;
+  height: var(--v39-header-h) !important;
+  min-height: var(--v39-header-h) !important;
+  max-height: var(--v39-header-h) !important;
+  margin: 0 !important;
+  padding: 5px 7px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
   box-sizing: border-box !important;
-  overflow: visible !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid #3b494f !important;
+  background: linear-gradient(180deg, rgba(18,29,34,.98), rgba(8,16,20,.96)) !important;
   z-index: 60 !important;
 }
 
-.phaser-map-panel .field-header-research-wrap {
-  position: absolute !important;
-  left: 5px !important;
-  top: calc(100% + 6px) !important;
-  z-index: 55 !important;
-}
+.phaser-map-panel .field-overlay-header::-webkit-scrollbar { display: none !important; }
+.phaser-map-panel .field-overlay-header { scrollbar-width: none !important; }
 
-.phaser-map-panel .field-footer-tabs-overlay,
-.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay,
-.phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
-  grid-area: command !important;
-  position: relative !important;
-  inset: auto !important;
-  left: auto !important;
-  right: auto !important;
-  top: auto !important;
-  bottom: auto !important;
-  align-self: stretch !important;
-  justify-self: stretch !important;
+/* Phaser playfield: exact region between topbar and footer. */
+.phaser-map-panel .phaser-map-canvas > canvas {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: var(--v39-header-h) !important;
+  bottom: var(--v39-footer-h) !important;
   width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
+  height: calc(100% - var(--v39-header-h) - var(--v39-footer-h)) !important;
   max-width: none !important;
   max-height: none !important;
   margin: 0 !important;
+  display: block !important;
   transform: none !important;
+  transform-origin: top left !important;
+  z-index: 1 !important;
+}
+
+/* v39 research rail lives inside playfield. */
+.phaser-map-panel .field-header-research-wrap {
+  position: absolute !important;
+  left: 6px !important;
+  top: calc(var(--v39-header-h) + 6px) !important;
+  bottom: calc(var(--v39-footer-h) + 6px) !important;
+  z-index: 40 !important;
+  margin: 0 !important;
+}
+
+/* v39 footer: always horizontal, never a right sidebar. */
+.phaser-map-panel .field-footer-tabs-overlay,
+.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay,
+.phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: auto !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: var(--v39-footer-h) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: var(--v39-footer-h) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
   border-radius: 0 !important;
+  background: rgba(11, 20, 24, .98) !important;
+  box-shadow: 0 -3px 14px rgba(0,0,0,.42) !important;
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
-  z-index: 20 !important;
+  z-index: 50 !important;
 }
 
-.phaser-map-panel.responsive-landscape-layout .field-footer-tab-row {
-  display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  gap: 4px !important;
-  flex: 0 0 auto !important;
-  min-height: 0 !important;
-  height: auto !important;
-  padding: 6px !important;
-  overflow: visible !important;
-}
-
-.phaser-map-panel.responsive-landscape-layout .field-footer-tab-btn {
-  min-width: 0 !important;
-  width: 100% !important;
-}
-
+.phaser-map-panel .field-footer-tab-row,
+.phaser-map-panel.responsive-landscape-layout .field-footer-tab-row,
 .phaser-map-panel.responsive-portrait-layout .field-footer-tab-row {
   display: flex !important;
   flex: 0 0 auto !important;
-  gap: 4px !important;
-  padding: 5px !important;
+  gap: 3px !important;
+  padding: 3px 6px !important;
+  min-height: 38px !important;
+  height: auto !important;
   overflow-x: auto !important;
   overflow-y: hidden !important;
   white-space: nowrap !important;
 }
 
+.phaser-map-panel .field-footer-tab-btn,
+.phaser-map-panel.responsive-landscape-layout .field-footer-tab-btn,
 .phaser-map-panel.responsive-portrait-layout .field-footer-tab-btn {
-  flex: 1 0 auto !important;
-  min-width: 72px !important;
+  flex: 0 0 auto !important;
+  min-width: 78px !important;
+  width: auto !important;
+  min-height: 36px !important;
+  padding: 5px 10px !important;
 }
 
 .phaser-map-panel .field-footer-tab-body {
@@ -205,80 +182,18 @@ body {
   overflow: auto !important;
 }
 
-.phaser-map-panel.responsive-portrait-layout {
-  --v39-header-height: 94px !important;
+/* Keep map overlays inside the playfield instead of under the footer. */
+.phaser-map-panel .field-overlay-bottom-right {
+  bottom: calc(var(--v39-footer-h) + 8px) !important;
 }
-
-.phaser-map-panel.responsive-portrait-layout .field-overlay-header {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) auto !important;
-  grid-template-rows: 48px 42px !important;
-  gap: 2px 4px !important;
-  padding: 3px 5px !important;
-  align-items: center !important;
+.phaser-map-panel .field-overlay-live-log,
+.phaser-map-panel .field-overlay-tile-detail,
+.phaser-map-panel .field-overlay-own-faction-panel {
+  max-height: calc(100% - var(--v39-header-h) - var(--v39-footer-h) - 12px) !important;
 }
-
-.phaser-map-panel.responsive-portrait-layout .field-header-resource-menu-wrap {
-  grid-column: 1 / -1 !important;
-  grid-row: 1 !important;
-  min-width: 0 !important;
-  width: 100% !important;
-  overflow: hidden !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .sidebar-resource-menu.header-resource-menu {
-  display: flex !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  flex-wrap: nowrap !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item {
-  flex: 0 0 76px !important;
-  min-width: 76px !important;
-  max-width: 76px !important;
-  padding: 3px 4px !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item:nth-child(3) .sidebar-resource-menu-icon::before {
-  content: "鉱石" !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .field-header-population-menu-wrap {
-  grid-column: 1 !important;
-  grid-row: 2 !important;
-  min-width: 0 !important;
-  overflow: hidden !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .field-overlay-actions {
-  grid-column: 2 !important;
-  grid-row: 2 !important;
-  margin: 0 !important;
-  display: flex !important;
-  gap: 3px !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .field-overlay-actions .overlay-action-btn.icon-only {
-  width: 34px !important;
-  height: 34px !important;
-  min-width: 34px !important;
-  min-height: 34px !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .overlay-header-drawer-toggle {
-  position: absolute !important;
-  right: 2px !important;
-  bottom: -18px !important;
-}
-
-.phaser-map-panel.responsive-landscape-layout .field-overlay-bottom-right,
-.phaser-map-panel.responsive-landscape-layout .field-overlay-live-log,
-.phaser-map-panel.responsive-landscape-layout .field-overlay-turn-ticker {
-  right: calc(clamp(320px, 31vw, 460px) + 8px) !important;
+.phaser-map-panel .field-overlay-turn-ticker,
+.phaser-map-panel .field-overlay-memory-top-right {
+  top: calc(var(--v39-header-h) + 8px) !important;
 }
 
 .phaser-map-panel *,
@@ -287,14 +202,85 @@ body {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
-
 .phaser-map-panel *::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
   display: none !important;
 }
 
-:root {
-  --ui-app-root-scale: 1 !important;
-  --game-root-scale: 1 !important;
+@media (max-width: 760px) {
+  :root {
+    --v39-header-h: 96px;
+    --v39-footer-h: clamp(150px, 30svh, 220px);
+  }
+
+  .phaser-map-panel .field-overlay-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-rows: 46px 42px !important;
+    gap: 2px 4px !important;
+    padding: 4px 5px !important;
+    overflow: visible !important;
+  }
+
+  .phaser-map-panel .field-header-resource-menu-wrap {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  .phaser-map-panel .sidebar-resource-menu.header-resource-menu {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    min-width: max-content !important;
+    width: max-content !important;
+  }
+
+  .phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item {
+    flex: 0 0 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    padding: 3px 5px !important;
+  }
+
+  .phaser-map-panel .field-header-population-menu-wrap {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .phaser-map-panel .field-overlay-actions {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    display: flex !important;
+    gap: 3px !important;
+    margin: 0 !important;
+  }
+
+  .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+  }
+
+  .phaser-map-panel .field-header-research-wrap {
+    left: 4px !important;
+    top: calc(var(--v39-header-h) + 4px) !important;
+    bottom: calc(var(--v39-footer-h) + 4px) !important;
+  }
+
+  .phaser-map-panel .field-footer-tab-row {
+    padding: 3px 5px !important;
+  }
+
+  .phaser-map-panel .field-footer-tab-btn {
+    min-width: 74px !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+  }
 }
