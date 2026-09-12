@@ -1,7 +1,6 @@
 /* Authoritative fullscreen game layout.
-   Important: FieldFooterTabsOverlay is still nested under .phaser-map-canvas in the
-   current Vue template, so the map root itself is the layout grid. The real Phaser
-   <canvas> occupies the field cell and the command UI occupies a different cell. */
+   Only three children participate in the main grid: header, Phaser canvas, command UI.
+   All other map overlays are removed from grid flow so they cannot collapse the field. */
 
 html,
 body,
@@ -56,8 +55,6 @@ body {
   background: #0c1418 !important;
 }
 
-/* The actual application layout lives here because header, Phaser canvas and
-   FieldFooterTabsOverlay are children of this element. */
 .phaser-map-panel .phaser-map-canvas {
   position: relative !important;
   display: grid !important;
@@ -72,9 +69,17 @@ body {
   overflow: hidden !important;
   background: #0c1418 !important;
   isolation: isolate !important;
+  grid-auto-rows: 0 !important;
+  grid-auto-columns: 0 !important;
 }
 
-/* Wide / desktop: header is a real first row, map left, command sidebar right. */
+/* Critical: every direct child except the three layout regions is an overlay and must
+   not participate in CSS Grid track sizing. */
+.phaser-map-panel .phaser-map-canvas > :not(canvas):not(.field-overlay-header):not(.field-footer-tabs-overlay) {
+  position: absolute !important;
+}
+
+/* Wide / desktop: header first row, map left, command sidebar right. */
 .phaser-map-panel.responsive-landscape-layout .phaser-map-canvas {
   grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 460px) !important;
   grid-template-rows: 56px minmax(0, 1fr) !important;
@@ -83,7 +88,7 @@ body {
     "field command" !important;
 }
 
-/* Narrow portrait: header, field, command are three actual rows. */
+/* Narrow portrait: explicit fixed header + 60/40 split of remaining height. */
 .phaser-map-panel.responsive-portrait-layout .phaser-map-canvas {
   grid-template-columns: minmax(0, 1fr) !important;
   grid-template-rows: 94px minmax(0, 3fr) minmax(0, 2fr) !important;
@@ -93,8 +98,6 @@ body {
     "command" !important;
 }
 
-/* Phaser-generated canvas is a normal grid item now, not an absolutely positioned
-   full-screen layer. This is the key separation between map and command UI. */
 .phaser-map-panel .phaser-map-canvas > canvas {
   grid-area: field !important;
   position: relative !important;
@@ -113,7 +116,6 @@ body {
   z-index: 1 !important;
 }
 
-/* Header is also a real grid item. */
 .phaser-map-panel .field-overlay-header {
   grid-area: header !important;
   position: relative !important;
@@ -130,7 +132,6 @@ body {
   z-index: 60 !important;
 }
 
-/* Research rail hangs from the header into the field, but never into command UI. */
 .phaser-map-panel .field-header-research-wrap {
   position: absolute !important;
   left: 5px !important;
@@ -138,7 +139,6 @@ body {
   z-index: 55 !important;
 }
 
-/* Command UI is a real grid item. No top/right/bottom overlay positioning remains. */
 .phaser-map-panel .field-footer-tabs-overlay,
 .phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay,
 .phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
@@ -205,7 +205,6 @@ body {
   overflow: auto !important;
 }
 
-/* Mobile header compaction. */
 .phaser-map-panel.responsive-portrait-layout {
   --v39-header-height: 94px !important;
 }
@@ -276,7 +275,6 @@ body {
   bottom: -18px !important;
 }
 
-/* Map overlays are constrained to the field, not allowed to cover command UI. */
 .phaser-map-panel.responsive-landscape-layout .field-overlay-bottom-right,
 .phaser-map-panel.responsive-landscape-layout .field-overlay-live-log,
 .phaser-map-panel.responsive-landscape-layout .field-overlay-turn-ticker {
