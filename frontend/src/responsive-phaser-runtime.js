@@ -17,123 +17,62 @@ function shouldUseBottomPanelLayout() {
   return width <= PORTRAIT_BOTTOM_PANEL_MAX_WIDTH && height > width;
 }
 
-function resolveFieldRoot(game) {
+function resolveMapRoot(game) {
   const canvas = game?.canvas;
   if (!(canvas instanceof HTMLCanvasElement)) return null;
   const root = canvas.parentElement;
   const panel = root?.closest?.(".phaser-map-panel");
   if (panel instanceof HTMLElement) {
-    const useBottomPanel = shouldUseBottomPanelLayout();
-    panel.classList.toggle("responsive-portrait-layout", useBottomPanel);
-    panel.classList.toggle("responsive-landscape-layout", !useBottomPanel);
+    const portrait = shouldUseBottomPanelLayout();
+    panel.classList.toggle("responsive-portrait-layout", portrait);
+    panel.classList.toggle("responsive-landscape-layout", !portrait);
   }
   return root instanceof HTMLElement ? root : null;
 }
 
 function captureCameraWorldCenter(camera) {
   if (!camera) return null;
-  const centerX = Number(camera.worldView?.centerX);
-  const centerY = Number(camera.worldView?.centerY);
-  if (Number.isFinite(centerX) && Number.isFinite(centerY)) {
-    return { x: centerX, y: centerY };
-  }
-  return null;
+  const x = Number(camera.worldView?.centerX);
+  const y = Number(camera.worldView?.centerY);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
-function resolveCameraBounds(camera) {
-  if (!camera) return null;
-  let raw = null;
-  if (typeof camera.getBounds === "function") {
-    try {
-      raw = camera.getBounds();
-    } catch {
-      raw = null;
-    }
-  }
-  if (!raw && camera._bounds) raw = camera._bounds;
-  if (!raw) return null;
+function clampCameraCenterToBounds(camera, center, width, height, zoom) {
+  if (!camera || !center) return center;
+  const bounds = camera.getBounds?.() || camera._bounds || null;
+  const bx = Number(bounds?.x);
+  const by = Number(bounds?.y);
+  const bw = Number(bounds?.width);
+  const bh = Number(bounds?.height);
+  if (![bx, by, bw, bh].every(Number.isFinite) || bw <= 0 || bh <= 0) return center;
 
-  const x = Number(raw.x);
-  const y = Number(raw.y);
-  const width = Number(raw.width);
-  const height = Number(raw.height);
-  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
-  return {
-    x,
-    y,
-    width,
-    height,
-    right: x + width,
-    bottom: y + height,
-    centerX: x + (width / 2),
-    centerY: y + (height / 2)
-  };
-}
+  const viewW = width / Math.max(0.0001, zoom);
+  const viewH = height / Math.max(0.0001, zoom);
+  const halfW = viewW / 2;
+  const halfH = viewH / 2;
 
-function clampCameraCenterToBounds(camera, previousCenter, viewportWidth, viewportHeight, zoom) {
-  const bounds = resolveCameraBounds(camera);
-  if (!bounds) return previousCenter;
-
-  const safeZoom = Math.max(0.0001, Number(zoom) || 1);
-  const viewWorldWidth = Math.max(1, Number(viewportWidth) / safeZoom);
-  const viewWorldHeight = Math.max(1, Number(viewportHeight) / safeZoom);
-  const halfW = viewWorldWidth / 2;
-  const halfH = viewWorldHeight / 2;
-
-  let x = Number(previousCenter?.x);
-  let y = Number(previousCenter?.y);
-  if (!Number.isFinite(x)) x = bounds.centerX;
-  if (!Number.isFinite(y)) y = bounds.centerY;
-
-  // If the world is smaller than the available field, keep it centered instead of
-  // pinning it to one edge and showing a large empty strip on the opposite side.
-  if (bounds.width <= viewWorldWidth) {
-    x = bounds.centerX;
-  } else {
-    x = Math.min(bounds.right - halfW, Math.max(bounds.x + halfW, x));
-  }
-
-  if (bounds.height <= viewWorldHeight) {
-    y = bounds.centerY;
-  } else {
-    y = Math.min(bounds.bottom - halfH, Math.max(bounds.y + halfH, y));
-  }
-
-  return { x, y };
-}
-
-function resolveFieldViewport(root) {
-  const rect = root.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
-
-  const header = root.querySelector(".field-overlay-header");
-  let headerHeight = 0;
-  if (header instanceof HTMLElement) {
-    const style = window.getComputedStyle(header);
-    if (style.display !== "none" && style.visibility !== "hidden") {
-      headerHeight = Math.max(0, Math.round(header.getBoundingClientRect().height || 0));
-    }
-  }
-
-  const width = clampSize(rect.width);
-  const availableHeight = Math.max(MIN_VIEW_SIZE, rect.height - headerHeight);
-  const height = clampSize(availableHeight);
+  const minX = bx + halfW;
+  const maxX = bx + bw - halfW;
+  const minY = by + halfH;
+  const maxY = by + bh - halfH;
 
   return {
-    width,
-    height,
-    top: Math.max(0, headerHeight)
+    x: minX > maxX ? bx + bw / 2 : Math.min(maxX, Math.max(minX, center.x)),
+    y: minY > maxY ? by + bh / 2 : Math.min(maxY, Math.max(minY, center.y))
   };
 }
 
 function applyResponsivePhaserSize(game) {
-  const root = resolveFieldRoot(game);
+  const root = resolveMapRoot(game);
   const canvas = game?.canvas;
   if (!(root instanceof HTMLElement) || !(canvas instanceof HTMLCanvasElement) || !game?.scale) return;
 
-  const viewport = resolveFieldViewport(root);
-  if (!viewport) return;
-  const { width, height, top } = viewport;
+  /* CSS Grid already placed the real Phaser canvas into the field cell. Measure that
+     cell directly instead of subtracting header/sidebar dimensions in JavaScript. */
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
+  const width = clampSize(rect.width);
+  const height = clampSize(rect.height);
 
   const snapshots = [];
   for (const scene of game.scene?.getScenes?.(true) || []) {
@@ -156,22 +95,21 @@ function applyResponsivePhaserSize(game) {
     game.scale.resize?.(width, height);
   }
 
-  canvas.style.setProperty("position", "absolute", "important");
-  canvas.style.setProperty("left", "0", "important");
-  canvas.style.setProperty("right", "0", "important");
-  canvas.style.setProperty("top", `${top}px`, "important");
-  canvas.style.setProperty("bottom", "auto", "important");
+  /* Phaser may inject inline canvas dimensions during resize. The CSS grid remains
+     authoritative for visual size. */
+  canvas.style.setProperty("position", "relative", "important");
+  canvas.style.setProperty("inset", "auto", "important");
   canvas.style.setProperty("width", "100%", "important");
-  canvas.style.setProperty("height", `${height}px`, "important");
+  canvas.style.setProperty("height", "100%", "important");
   canvas.style.setProperty("max-width", "none", "important");
   canvas.style.setProperty("max-height", "none", "important");
 
   for (const { camera, center, zoom } of snapshots) {
     camera?.setSize?.(width, height);
     camera?.setZoom?.(zoom);
-    const nextCenter = clampCameraCenterToBounds(camera, center, width, height, zoom);
-    if (nextCenter && Number.isFinite(nextCenter.x) && Number.isFinite(nextCenter.y)) {
-      camera?.centerOn?.(nextCenter.x, nextCenter.y);
+    if (center) {
+      const corrected = clampCameraCenterToBounds(camera, center, width, height, zoom);
+      camera?.centerOn?.(corrected.x, corrected.y);
     }
   }
 }
@@ -180,11 +118,11 @@ function scheduleResponsiveResize(game) {
   if (!game || typeof window === "undefined") return;
   const previous = resizeRafIds.get(game);
   if (previous) window.cancelAnimationFrame(previous);
-  const next = window.requestAnimationFrame(() => {
+  const id = window.requestAnimationFrame(() => {
     resizeRafIds.delete(game);
     applyResponsivePhaserSize(game);
   });
-  resizeRafIds.set(game, next);
+  resizeRafIds.set(game, id);
 }
 
 function attachResponsiveResize(game) {
@@ -192,8 +130,9 @@ function attachResponsiveResize(game) {
   installedGames.add(game);
 
   const tryAttach = () => {
-    const root = resolveFieldRoot(game);
-    if (!(root instanceof HTMLElement)) {
+    const root = resolveMapRoot(game);
+    const canvas = game?.canvas;
+    if (!(root instanceof HTMLElement) || !(canvas instanceof HTMLCanvasElement)) {
       window.requestAnimationFrame(tryAttach);
       return;
     }
@@ -202,11 +141,14 @@ function attachResponsiveResize(game) {
       ? new ResizeObserver(() => scheduleResponsiveResize(game))
       : null;
     observer?.observe(root);
+    observer?.observe(canvas);
 
     const stage = root.closest?.(".phaser-stage");
     if (stage instanceof HTMLElement) observer?.observe(stage);
 
+    const footer = root.querySelector(".field-footer-tabs-overlay");
     const header = root.querySelector(".field-overlay-header");
+    if (footer instanceof HTMLElement) observer?.observe(footer);
     if (header instanceof HTMLElement) observer?.observe(header);
 
     const onWindowResize = () => scheduleResponsiveResize(game);
