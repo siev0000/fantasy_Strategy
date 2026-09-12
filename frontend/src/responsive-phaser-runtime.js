@@ -100,6 +100,36 @@ function resolveViewportParts(game) {
   };
 }
 
+function captureCameraWorldCenter(camera) {
+  if (!camera) return null;
+
+  const worldView = camera.worldView;
+  const worldViewCenterX = Number(worldView?.centerX);
+  const worldViewCenterY = Number(worldView?.centerY);
+  if (Number.isFinite(worldViewCenterX) && Number.isFinite(worldViewCenterY)) {
+    return { x: worldViewCenterX, y: worldViewCenterY };
+  }
+
+  const zoom = Math.max(0.0001, Number(camera.zoom) || 1);
+  const scrollX = Number(camera.scrollX);
+  const scrollY = Number(camera.scrollY);
+  const viewWidth = Number(camera.width);
+  const viewHeight = Number(camera.height);
+  if (
+    Number.isFinite(scrollX)
+    && Number.isFinite(scrollY)
+    && Number.isFinite(viewWidth)
+    && Number.isFinite(viewHeight)
+  ) {
+    return {
+      x: scrollX + (viewWidth / zoom) / 2,
+      y: scrollY + (viewHeight / zoom) / 2
+    };
+  }
+
+  return null;
+}
+
 function applyResponsivePhaserSize(game) {
   const parts = resolveViewportParts(game);
   if (!parts || !game?.scale) return;
@@ -113,9 +143,23 @@ function applyResponsivePhaserSize(game) {
   canvas.style.setProperty("max-width", "none", "important");
   canvas.style.setProperty("max-height", "none", "important");
 
+  const scenes = game.scene?.getScenes?.(true) || [];
+  const cameraSnapshots = [];
+  for (const scene of scenes) {
+    const cameras = scene?.cameras?.cameras || [];
+    for (const camera of cameras) {
+      cameraSnapshots.push({
+        camera,
+        center: captureCameraWorldCenter(camera)
+      });
+    }
+  }
+
   const currentWidth = Math.round(Number(game.scale.width || game.config?.width || 0));
   const currentHeight = Math.round(Number(game.scale.height || game.config?.height || 0));
-  if (currentWidth !== width || currentHeight !== height) {
+  const sizeChanged = currentWidth !== width || currentHeight !== height;
+
+  if (sizeChanged) {
     if (game.config) {
       game.config.width = width;
       game.config.height = height;
@@ -125,11 +169,10 @@ function applyResponsivePhaserSize(game) {
     }
   }
 
-  const scenes = game.scene?.getScenes?.(true) || [];
-  for (const scene of scenes) {
-    const cameras = scene?.cameras?.cameras || [];
-    for (const camera of cameras) {
-      camera?.setSize?.(width, height);
+  for (const { camera, center } of cameraSnapshots) {
+    camera?.setSize?.(width, height);
+    if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
+      camera?.centerOn?.(center.x, center.y);
     }
   }
 }
