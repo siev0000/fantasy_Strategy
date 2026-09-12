@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
+import { resolve } from "node:path";
 
 export default defineConfig(({ mode }) => {
   const isTestOnMode = mode === "teston" || process.env.TEST_ON === "1";
@@ -12,7 +13,7 @@ export default defineConfig(({ mode }) => {
       return [
         {
           tag: "script",
-          attrs: { type: "module", src: "/src/v39-field-runtime.js" },
+          attrs: { type: "module", src: `${base}assets/v39-field-runtime.js` },
           injectTo: "body"
         }
       ];
@@ -40,7 +41,14 @@ export default defineConfig(({ mode }) => {
       outDir: "../web-vue-dist",
       emptyOutDir: !isWatchMode,
       rollupOptions: {
+        input: {
+          index: resolve("frontend/index.html"),
+          "v39-field-runtime": resolve("frontend/src/v39-field-runtime.js")
+        },
         output: {
+          entryFileNames: "assets/[name].js",
+          chunkFileNames: "assets/[name]-[hash].js",
+          assetFileNames: "assets/[name]-[hash][extname]",
           manualChunks(id) {
             if (!id.includes("node_modules")) return null;
             if (id.includes("phaser")) return "vendor-phaser";
