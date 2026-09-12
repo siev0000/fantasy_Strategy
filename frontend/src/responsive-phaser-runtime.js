@@ -1,7 +1,6 @@
 import Phaser from "phaser";
 
 const MIN_VIEW_SIZE = 120;
-const PORTRAIT_BOTTOM_PANEL_MAX_WIDTH = 900;
 const installedGames = new WeakSet();
 const observers = new WeakMap();
 const resizeRafIds = new WeakMap();
@@ -10,30 +9,9 @@ function clampSize(value) {
   return Math.max(MIN_VIEW_SIZE, Math.floor(Number(value) || 0));
 }
 
-function shouldUseBottomPanelLayout() {
-  if (typeof window === "undefined") return false;
-  const width = Math.max(1, window.innerWidth || 1);
-  const height = Math.max(1, window.innerHeight || 1);
-  return width <= PORTRAIT_BOTTOM_PANEL_MAX_WIDTH && height > width;
-}
-
-function resolveMapRoot(game) {
-  const canvas = game?.canvas;
-  if (!(canvas instanceof HTMLCanvasElement)) return null;
-  const root = canvas.parentElement;
-  const panel = root?.closest?.(".phaser-map-panel");
-  if (panel instanceof HTMLElement) {
-    const portrait = shouldUseBottomPanelLayout();
-    panel.classList.toggle("responsive-portrait-layout", portrait);
-    panel.classList.toggle("responsive-landscape-layout", !portrait);
-  }
-  return root instanceof HTMLElement ? root : null;
-}
-
 function captureCameraWorldCenter(camera) {
-  if (!camera) return null;
-  const x = Number(camera.worldView?.centerX);
-  const y = Number(camera.worldView?.centerY);
+  const x = Number(camera?.worldView?.centerX);
+  const y = Number(camera?.worldView?.centerY);
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
@@ -50,7 +28,6 @@ function clampCameraCenterToBounds(camera, center, width, height, zoom) {
   const viewH = height / Math.max(0.0001, zoom);
   const halfW = viewW / 2;
   const halfH = viewH / 2;
-
   const minX = bx + halfW;
   const maxX = bx + bw - halfW;
   const minY = by + halfH;
@@ -62,17 +39,33 @@ function clampCameraCenterToBounds(camera, center, width, height, zoom) {
   };
 }
 
-function applyResponsivePhaserSize(game) {
-  const root = resolveMapRoot(game);
+function resolveShell(game) {
   const canvas = game?.canvas;
-  if (!(root instanceof HTMLElement) || !(canvas instanceof HTMLCanvasElement) || !game?.scale) return;
+  if (!(canvas instanceof HTMLCanvasElement)) return null;
+  const root = canvas.parentElement;
+  if (!(root instanceof HTMLElement)) return null;
+  const header = root.querySelector(".field-overlay-header");
+  const footer = root.querySelector(".field-footer-tabs-overlay");
+  return { root, canvas, header, footer };
+}
 
-  /* CSS Grid already placed the real Phaser canvas into the field cell. Measure that
-     cell directly instead of subtracting header/sidebar dimensions in JavaScript. */
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return;
-  const width = clampSize(rect.width);
-  const height = clampSize(rect.height);
+function applyResponsivePhaserSize(game) {
+  const shell = resolveShell(game);
+  if (!shell || !game?.scale) return;
+  const { root, canvas, header, footer } = shell;
+
+  const rootRect = root.getBoundingClientRect();
+  if (rootRect.width <= 0 || rootRect.height <= 0) return;
+
+  const headerHeight = header instanceof HTMLElement
+    ? Math.max(0, Math.round(header.getBoundingClientRect().height || 0))
+    : 0;
+  const footerHeight = footer instanceof HTMLElement
+    ? Math.max(0, Math.round(footer.getBoundingClientRect().height || 0))
+    : 0;
+
+  const width = clampSize(rootRect.width);
+  const height = clampSize(rootRect.height - headerHeight - footerHeight);
 
   const snapshots = [];
   for (const scene of game.scene?.getScenes?.(true) || []) {
@@ -95,12 +88,13 @@ function applyResponsivePhaserSize(game) {
     game.scale.resize?.(width, height);
   }
 
-  /* Phaser may inject inline canvas dimensions during resize. The CSS grid remains
-     authoritative for visual size. */
-  canvas.style.setProperty("position", "relative", "important");
-  canvas.style.setProperty("inset", "auto", "important");
-  canvas.style.setProperty("width", "100%", "important");
-  canvas.style.setProperty("height", "100%", "important");
+  canvas.style.setProperty("position", "absolute", "important");
+  canvas.style.setProperty("left", "0", "important");
+  canvas.style.setProperty("right", "0", "important");
+  canvas.style.setProperty("top", `${headerHeight}px`, "important");
+  canvas.style.setProperty("bottom", `${footerHeight}px`, "important");
+  canvas.style.setProperty("width", `${width}px`, "important");
+  canvas.style.setProperty("height", `${height}px`, "important");
   canvas.style.setProperty("max-width", "none", "important");
   canvas.style.setProperty("max-height", "none", "important");
 
@@ -116,8 +110,8 @@ function applyResponsivePhaserSize(game) {
 
 function scheduleResponsiveResize(game) {
   if (!game || typeof window === "undefined") return;
-  const previous = resizeRafIds.get(game);
-  if (previous) window.cancelAnimationFrame(previous);
+  const oldId = resizeRafIds.get(game);
+  if (oldId) window.cancelAnimationFrame(oldId);
   const id = window.requestAnimationFrame(() => {
     resizeRafIds.delete(game);
     applyResponsivePhaserSize(game);
@@ -130,9 +124,8 @@ function attachResponsiveResize(game) {
   installedGames.add(game);
 
   const tryAttach = () => {
-    const root = resolveMapRoot(game);
-    const canvas = game?.canvas;
-    if (!(root instanceof HTMLElement) || !(canvas instanceof HTMLCanvasElement)) {
+    const shell = resolveShell(game);
+    if (!shell) {
       window.requestAnimationFrame(tryAttach);
       return;
     }
@@ -140,16 +133,13 @@ function attachResponsiveResize(game) {
     const observer = typeof ResizeObserver !== "undefined"
       ? new ResizeObserver(() => scheduleResponsiveResize(game))
       : null;
-    observer?.observe(root);
-    observer?.observe(canvas);
 
-    const stage = root.closest?.(".phaser-stage");
+    observer?.observe(shell.root);
+    if (shell.header instanceof HTMLElement) observer?.observe(shell.header);
+    if (shell.footer instanceof HTMLElement) observer?.observe(shell.footer);
+
+    const stage = shell.root.closest?.(".phaser-stage");
     if (stage instanceof HTMLElement) observer?.observe(stage);
-
-    const footer = root.querySelector(".field-footer-tabs-overlay");
-    const header = root.querySelector(".field-overlay-header");
-    if (footer instanceof HTMLElement) observer?.observe(footer);
-    if (header instanceof HTMLElement) observer?.observe(header);
 
     const onWindowResize = () => scheduleResponsiveResize(game);
     window.addEventListener("resize", onWindowResize, { passive: true });
