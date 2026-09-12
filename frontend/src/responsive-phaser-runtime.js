@@ -7,8 +7,7 @@ const observers = new WeakMap();
 const resizeRafIds = new WeakMap();
 
 function clampSize(value) {
-  const num = Math.floor(Number(value) || 0);
-  return Math.max(MIN_VIEW_SIZE, num);
+  return Math.max(MIN_VIEW_SIZE, Math.floor(Number(value) || 0));
 }
 
 function shouldUseBottomPanelLayout() {
@@ -18,146 +17,44 @@ function shouldUseBottomPanelLayout() {
   return width <= PORTRAIT_BOTTOM_PANEL_MAX_WIDTH && height > width;
 }
 
-function forceViewportContainerChain(canvas) {
+function resolveFieldRoot(game) {
+  const canvas = game?.canvas;
   if (!(canvas instanceof HTMLCanvasElement)) return null;
-  const mapRoot = canvas.parentElement;
-  const stage = mapRoot?.closest?.(".phaser-stage");
-  const panel = mapRoot?.closest?.(".phaser-map-panel");
-  const app = mapRoot?.closest?.(".app");
-  const useBottomPanel = shouldUseBottomPanelLayout();
-
-  if (app instanceof HTMLElement) {
-    app.style.setProperty("position", "fixed", "important");
-    app.style.setProperty("inset", "0", "important");
-    app.style.setProperty("left", "0", "important");
-    app.style.setProperty("top", "0", "important");
-    app.style.setProperty("right", "0", "important");
-    app.style.setProperty("bottom", "0", "important");
-    app.style.setProperty("width", "100vw", "important");
-    app.style.setProperty("height", "100dvh", "important");
-    app.style.setProperty("min-height", "100dvh", "important");
-    app.style.setProperty("max-height", "100dvh", "important");
-    app.style.setProperty("transform", "none", "important");
-  }
-
+  const root = canvas.parentElement;
+  const panel = root?.closest?.(".phaser-map-panel");
   if (panel instanceof HTMLElement) {
+    const useBottomPanel = shouldUseBottomPanelLayout();
     panel.classList.toggle("responsive-portrait-layout", useBottomPanel);
     panel.classList.toggle("responsive-landscape-layout", !useBottomPanel);
-    panel.style.setProperty("position", "absolute", "important");
-    panel.style.setProperty("inset", "0", "important");
-    panel.style.setProperty("width", "100%", "important");
-    panel.style.setProperty("height", "100%", "important");
-    panel.style.setProperty("min-height", "0", "important");
-    panel.style.setProperty("max-height", "none", "important");
-    panel.style.setProperty("margin", "0", "important");
   }
-
-  if (stage instanceof HTMLElement) {
-    stage.style.setProperty("position", "absolute", "important");
-    stage.style.setProperty("inset", "0", "important");
-    stage.style.setProperty("width", "100%", "important");
-    stage.style.setProperty("height", "100%", "important");
-    stage.style.setProperty("min-height", "0", "important");
-    stage.style.setProperty("max-height", "none", "important");
-  }
-
-  if (mapRoot instanceof HTMLElement) {
-    mapRoot.style.setProperty("position", "absolute", "important");
-    mapRoot.style.setProperty("inset", "0", "important");
-    mapRoot.style.setProperty("width", "100%", "important");
-    mapRoot.style.setProperty("height", "100%", "important");
-    mapRoot.style.setProperty("min-height", "0", "important");
-    mapRoot.style.setProperty("max-height", "none", "important");
-  }
-
-  return mapRoot instanceof HTMLElement ? mapRoot : null;
-}
-
-function resolveViewportParts(game) {
-  const canvas = game?.canvas;
-  const root = forceViewportContainerChain(canvas);
-  if (!(canvas instanceof HTMLCanvasElement) || !(root instanceof HTMLElement)) return null;
-
-  const rootRect = root.getBoundingClientRect();
-  if (rootRect.width <= 0 || rootRect.height <= 0) return null;
-
-  const header = root.querySelector(".field-overlay-header");
-  const commandPanel = root.querySelector(".field-footer-tabs-overlay");
-  const headerRect = header instanceof HTMLElement ? header.getBoundingClientRect() : null;
-  const panelRect = commandPanel instanceof HTMLElement ? commandPanel.getBoundingClientRect() : null;
-  const useBottomPanel = shouldUseBottomPanelLayout();
-
-  const headerHeight = Math.max(0, Math.round(headerRect?.height || 0));
-  let left = 0;
-  let top = headerHeight;
-  let width = rootRect.width;
-  let height = rootRect.height - headerHeight;
-
-  if (useBottomPanel) {
-    const panelHeight = Math.max(0, Math.round(panelRect?.height || 0));
-    height -= panelHeight;
-  } else {
-    const panelWidth = Math.max(0, Math.round(panelRect?.width || 0));
-    width -= panelWidth;
-  }
-
-  return {
-    root,
-    canvas,
-    left,
-    top,
-    width: clampSize(width),
-    height: clampSize(height)
-  };
+  return root instanceof HTMLElement ? root : null;
 }
 
 function captureCameraWorldCenter(camera) {
   if (!camera) return null;
-  const worldView = camera.worldView;
-  const centerX = Number(worldView?.centerX);
-  const centerY = Number(worldView?.centerY);
+  const centerX = Number(camera.worldView?.centerX);
+  const centerY = Number(camera.worldView?.centerY);
   if (Number.isFinite(centerX) && Number.isFinite(centerY)) {
     return { x: centerX, y: centerY };
-  }
-
-  const zoom = Math.max(0.0001, Number(camera.zoom) || 1);
-  const scrollX = Number(camera.scrollX);
-  const scrollY = Number(camera.scrollY);
-  const viewWidth = Number(camera.width);
-  const viewHeight = Number(camera.height);
-  if (
-    Number.isFinite(scrollX)
-    && Number.isFinite(scrollY)
-    && Number.isFinite(viewWidth)
-    && Number.isFinite(viewHeight)
-  ) {
-    return {
-      x: scrollX + (viewWidth / zoom) / 2,
-      y: scrollY + (viewHeight / zoom) / 2
-    };
   }
   return null;
 }
 
 function applyResponsivePhaserSize(game) {
-  const parts = resolveViewportParts(game);
-  if (!parts || !game?.scale) return;
-  const { canvas, left, top, width, height } = parts;
+  const root = resolveFieldRoot(game);
+  const canvas = game?.canvas;
+  if (!(root instanceof HTMLElement) || !(canvas instanceof HTMLCanvasElement) || !game?.scale) return;
 
-  canvas.style.setProperty("position", "absolute", "important");
-  canvas.style.setProperty("left", `${left}px`, "important");
-  canvas.style.setProperty("top", `${top}px`, "important");
-  canvas.style.setProperty("width", `${width}px`, "important");
-  canvas.style.setProperty("height", `${height}px`, "important");
-  canvas.style.setProperty("max-width", "none", "important");
-  canvas.style.setProperty("max-height", "none", "important");
+  const rect = root.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
 
-  const scenes = game.scene?.getScenes?.(true) || [];
-  const cameraSnapshots = [];
-  for (const scene of scenes) {
-    const cameras = scene?.cameras?.cameras || [];
-    for (const camera of cameras) {
-      cameraSnapshots.push({
+  const width = clampSize(rect.width);
+  const height = clampSize(rect.height);
+
+  const snapshots = [];
+  for (const scene of game.scene?.getScenes?.(true) || []) {
+    for (const camera of scene?.cameras?.cameras || []) {
+      snapshots.push({
         camera,
         center: captureCameraWorldCenter(camera),
         zoom: Math.max(0.0001, Number(camera?.zoom) || 1)
@@ -172,16 +69,19 @@ function applyResponsivePhaserSize(game) {
       game.config.width = width;
       game.config.height = height;
     }
-    if (typeof game.scale.resize === "function") {
-      game.scale.resize(width, height);
-    }
+    game.scale.resize?.(width, height);
   }
 
-  for (const { camera, center, zoom } of cameraSnapshots) {
+  canvas.style.setProperty("position", "absolute", "important");
+  canvas.style.setProperty("inset", "0", "important");
+  canvas.style.setProperty("width", "100%", "important");
+  canvas.style.setProperty("height", "100%", "important");
+  canvas.style.setProperty("max-width", "none", "important");
+  canvas.style.setProperty("max-height", "none", "important");
+
+  for (const { camera, center, zoom } of snapshots) {
     camera?.setSize?.(width, height);
-    if (Number.isFinite(zoom) && typeof camera?.setZoom === "function") {
-      camera.setZoom(zoom);
-    }
+    camera?.setZoom?.(zoom);
     if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
       camera?.centerOn?.(center.x, center.y);
     }
@@ -190,13 +90,13 @@ function applyResponsivePhaserSize(game) {
 
 function scheduleResponsiveResize(game) {
   if (!game || typeof window === "undefined") return;
-  const oldId = resizeRafIds.get(game);
-  if (oldId) window.cancelAnimationFrame(oldId);
-  const id = window.requestAnimationFrame(() => {
+  const previous = resizeRafIds.get(game);
+  if (previous) window.cancelAnimationFrame(previous);
+  const next = window.requestAnimationFrame(() => {
     resizeRafIds.delete(game);
     applyResponsivePhaserSize(game);
   });
-  resizeRafIds.set(game, id);
+  resizeRafIds.set(game, next);
 }
 
 function attachResponsiveResize(game) {
@@ -204,7 +104,7 @@ function attachResponsiveResize(game) {
   installedGames.add(game);
 
   const tryAttach = () => {
-    const root = forceViewportContainerChain(game?.canvas);
+    const root = resolveFieldRoot(game);
     if (!(root instanceof HTMLElement)) {
       window.requestAnimationFrame(tryAttach);
       return;
@@ -216,16 +116,7 @@ function attachResponsiveResize(game) {
     observer?.observe(root);
 
     const stage = root.closest?.(".phaser-stage");
-    const panelRoot = root.closest?.(".phaser-map-panel");
-    const appRoot = root.closest?.(".app");
     if (stage instanceof HTMLElement) observer?.observe(stage);
-    if (panelRoot instanceof HTMLElement) observer?.observe(panelRoot);
-    if (appRoot instanceof HTMLElement) observer?.observe(appRoot);
-
-    const header = root.querySelector(".field-overlay-header");
-    const panel = root.querySelector(".field-footer-tabs-overlay");
-    if (header instanceof HTMLElement) observer?.observe(header);
-    if (panel instanceof HTMLElement) observer?.observe(panel);
 
     const onWindowResize = () => scheduleResponsiveResize(game);
     window.addEventListener("resize", onWindowResize, { passive: true });
@@ -263,8 +154,7 @@ export function installResponsivePhaserRuntime() {
 
   const originalDestroy = proto.destroy;
   proto.destroy = function responsiveViewportDestroy(...args) {
-    const record = observers.get(this);
-    record?.dispose?.();
+    observers.get(this)?.dispose?.();
     observers.delete(this);
     const rafId = resizeRafIds.get(this);
     if (rafId && typeof window !== "undefined") window.cancelAnimationFrame(rafId);
