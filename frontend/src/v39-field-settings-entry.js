@@ -15,9 +15,8 @@ function waitForManagePanel() {
 function installFooterTabFallback() {
   const sections = {
     squad: "footSquad",
-    battle: "footBattle",
+    action: "footAction",
     tile: "footTile",
-    tileData: "footTileData",
     manage: "footManage"
   };
 
@@ -151,9 +150,102 @@ function createPlaceholderModal() {
   return { open, close };
 }
 
+const DISPLAY_SETTINGS_STORAGE_KEY = "v39-display-settings-v1";
+const DEFAULT_DISPLAY_SETTINGS = Object.freeze({
+  fontScalePercent: 100,
+  heightOutlineOnly: true,
+  heightShading: true,
+  showZoomControls: true,
+  reduceMotion: false
+});
+
+function loadDisplaySettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DISPLAY_SETTINGS_STORAGE_KEY) || "null");
+    return { ...DEFAULT_DISPLAY_SETTINGS, ...(saved && typeof saved === "object" ? saved : {}) };
+  } catch {
+    return { ...DEFAULT_DISPLAY_SETTINGS };
+  }
+}
+
+function saveDisplaySettings(settings) {
+  localStorage.setItem(DISPLAY_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+}
+
+function applyDisplaySettings(settings) {
+  const root = document.documentElement;
+  root.dataset.v39FontScale = String(settings.fontScalePercent / 100);
+  root.classList.toggle("v39-hide-map-zoom-controls", !settings.showZoomControls);
+  root.classList.toggle("v39-reduce-motion", settings.reduceMotion);
+  window.dispatchEvent(new CustomEvent("v39:display-settings-changed", { detail: { ...settings } }));
+  window.dispatchEvent(new Event("resize"));
+}
+
+function installDisplaySettings(managePanel) {
+  const menu = managePanel.querySelector("#v39-manage-menu");
+  const settingsPanel = managePanel.querySelector("#v39-display-settings-panel");
+  const openButton = managePanel.querySelector("#v39-manage-display-settings");
+  const backButton = managePanel.querySelector("#v39-display-settings-back");
+  const fontInput = managePanel.querySelector("#v39-font-size");
+  const fontOutput = managePanel.querySelector("#v39-font-size-value");
+  const outlineInput = managePanel.querySelector("#v39-height-outline-only");
+  const shadingInput = managePanel.querySelector("#v39-height-shading");
+  const zoomInput = managePanel.querySelector("#v39-show-zoom-controls");
+  const motionInput = managePanel.querySelector("#v39-reduce-motion");
+  const resetButton = managePanel.querySelector("#v39-display-settings-reset");
+  if (!(menu instanceof HTMLElement) || !(settingsPanel instanceof HTMLElement) || !(openButton instanceof HTMLButtonElement)) {
+    throw new Error("display settings elements are missing from #footManage");
+  }
+
+  let settings = loadDisplaySettings();
+  const syncControls = () => {
+    if (fontInput instanceof HTMLInputElement) fontInput.value = String(settings.fontScalePercent);
+    if (fontOutput instanceof HTMLOutputElement) fontOutput.value = `${settings.fontScalePercent}%`;
+    if (outlineInput instanceof HTMLInputElement) outlineInput.checked = settings.heightOutlineOnly;
+    if (shadingInput instanceof HTMLInputElement) shadingInput.checked = settings.heightShading;
+    if (zoomInput instanceof HTMLInputElement) zoomInput.checked = settings.showZoomControls;
+    if (motionInput instanceof HTMLInputElement) motionInput.checked = settings.reduceMotion;
+  };
+  const commit = patch => {
+    settings = { ...settings, ...patch };
+    saveDisplaySettings(settings);
+    syncControls();
+    applyDisplaySettings(settings);
+  };
+  const showSettings = () => {
+    menu.hidden = true;
+    settingsPanel.hidden = false;
+    settingsPanel.setAttribute("aria-hidden", "false");
+  };
+  const showMenu = () => {
+    menu.hidden = false;
+    settingsPanel.hidden = true;
+    settingsPanel.setAttribute("aria-hidden", "true");
+  };
+
+  openButton.addEventListener("click", showSettings);
+  backButton?.addEventListener("click", showMenu);
+  fontInput?.addEventListener("input", () => commit({ fontScalePercent: Number(fontInput.value) || 100 }));
+  outlineInput?.addEventListener("change", () => commit({ heightOutlineOnly: outlineInput.checked }));
+  shadingInput?.addEventListener("change", () => commit({ heightShading: shadingInput.checked }));
+  zoomInput?.addEventListener("change", () => commit({ showZoomControls: zoomInput.checked }));
+  motionInput?.addEventListener("change", () => commit({ reduceMotion: motionInput.checked }));
+  resetButton?.addEventListener("click", () => {
+    settings = { ...DEFAULT_DISPLAY_SETTINGS };
+    saveDisplaySettings(settings);
+    syncControls();
+    applyDisplaySettings(settings);
+  });
+
+  syncControls();
+  applyDisplaySettings(settings);
+  window.getV39DisplaySettings = () => ({ ...settings });
+}
+
 async function bootFieldSettingsEntry() {
   installFooterTabFallback();
-  await waitForManagePanel();
+  const managePanel = await waitForManagePanel();
+  installDisplaySettings(managePanel);
 
   // Fixed management buttons belong to the static v39 HTML. This runtime only
   // connects behavior and never recreates those buttons.

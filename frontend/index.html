@@ -4100,6 +4100,176 @@ html,body{
   }
 }
 
+/* v39 operation UI uses one visual format; only its position changes by viewport. */
+.faction-panel{display:none!important}
+.map-chip{max-width:calc(100% - 72px)!important}
+.footer{
+  grid-template-columns:52px minmax(0,1fr)!important;
+  grid-template-rows:minmax(0,1fr)!important;
+  font-size:14px!important;
+  overflow:hidden!important;
+}
+.footer-tabs{
+  min-width:0!important;
+  min-height:0!important;
+  padding:5px!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:flex-start!important;
+  gap:4px!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  border-right:1px solid #435158!important;
+  border-bottom:0!important;
+}
+.footer-tab.footer-text-tab{
+  width:100%!important;
+  min-width:0!important;
+  min-height:42px!important;
+  padding:5px 3px!important;
+  display:grid!important;
+  place-items:center!important;
+  font-size:11px!important;
+}
+.footer-tab.footer-text-tab .tab-text{display:block!important;font-size:11px!important;font-weight:700!important}
+.footer-tab.footer-text-tab .tab-icon{display:none!important}
+.footer-body{min-width:0!important;min-height:0!important;overflow:auto!important;padding:6px!important}
+
+#footSquad.mobile-squad-panel{
+  height:100%!important;min-height:0!important;overflow:hidden!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  grid-template-rows:auto minmax(0,1fr)!important;
+  gap:6px!important;align-items:stretch!important
+}
+.squad-selector{
+  min-width:0!important;display:flex!important;gap:5px!important;
+  overflow-x:auto!important;overflow-y:hidden!important;padding:0 1px 2px!important
+}
+.squad-select-btn{
+  min-width:86px!important;min-height:36px!important;padding:5px 9px!important;
+  display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important
+}
+.squad-select-btn b{font-size:11px!important}.squad-select-btn small{font-size:8px!important}
+.squad-content-split{
+  width:100%!important;height:100%!important;min-height:0!important;
+  display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  grid-template-rows:minmax(0,1fr)!important;gap:6px!important;overflow:hidden!important
+}
+#footSquad .squad-list-pane,
+#footSquad .squad-detail-pane{
+  height:100%!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important
+}
+#footSquad .squad-list-pane{display:grid!important;gap:6px!important;align-content:start!important;padding-right:4px!important}
+#footSquad .squad-detail-pane{
+  display:block!important;padding:8px 5px 8px 8px!important;
+  border:1px solid #45545c!important;border-radius:10px!important;
+  background:linear-gradient(180deg,#162127,#10181d)!important
+}
+#footSquad .squad-detail-pane>*+*{margin-top:9px!important}
+.squad-card{
+  width:100%!important;min-width:0!important;min-height:78px!important;
+  display:grid!important;grid-template-rows:auto auto!important;gap:6px!important;
+  padding:7px!important;border:1px solid #42525a!important;border-radius:10px!important;
+  background:linear-gradient(180deg,#142025,#0f181c)!important;text-align:left!important
+}
+.squad-card.selected{border-color:#7ad4e2!important;background:linear-gradient(180deg,#18333a,#111f24)!important}
+.squad-card-top,.squad-main{min-width:0!important;display:flex!important;align-items:flex-start!important;gap:7px!important}
+.squad-icon{width:28px!important;height:28px!important;font-size:18px!important;flex:0 0 auto!important}
+.squad-name{font-size:12px!important}.squad-pos{font-size:9px!important}
+.squad-bars{display:grid!important;grid-template-columns:1fr 1fr!important;gap:5px!important}
+.squad-stat{padding:5px 6px!important;display:grid!important;gap:2px!important}
+.squad-stat span{font-size:8px!important}.squad-stat b{font-size:11px!important}
+.squad-detail-minihead{display:flex!important;flex-wrap:wrap!important;gap:6px!important;align-items:center!important}
+.squad-detail-chip{min-height:24px!important;padding:4px 8px!important;font-size:10px!important}
+.squad-detail-section{display:grid!important;gap:6px!important}.squad-detail-section-title{font-size:10px!important}
+.squad-detail-stats{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:6px!important}
+.detail-stat{min-height:54px!important;padding:8px 6px!important;display:grid!important;gap:4px!important;place-items:center!important}
+.detail-stat span{font-size:9px!important}.detail-stat b{font-size:13px!important}
+.proficiency-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important}
+.proficiency-item{min-height:38px!important;padding:5px 6px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important}
+.proficiency-item span{font-size:9px!important}.proficiency-item b{font-size:12px!important}
+.technique-list{display:grid!important;gap:5px!important}
+.technique-card{padding:7px!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;grid-template-areas:"name cost" "meta meta"!important;gap:3px 6px!important}
+.technique-card b{font-size:10px!important}.technique-card small,.technique-card span{font-size:8px!important}
+
+#footAction.mobile-battle-panel{
+  height:100%!important;min-height:0!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  grid-template-rows:auto minmax(0,1fr) auto!important;gap:6px!important
+}
+.battle-primary-actions{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:5px!important}
+.battle-main{
+  min-height:38px!important;border:1px solid #45565d!important;border-radius:7px!important;
+  background:#172329!important;color:#e8efec!important;font-size:12px!important;font-weight:800!important
+}
+.battle-main.move{border-color:#579ec3!important}
+.battle-main.attack{border-color:#a65f50!important}
+.battle-main.active{background:#34251f!important}
+.battle-skill-strip{
+  min-height:0!important;display:flex!important;gap:6px!important;
+  overflow-x:auto!important;overflow-y:hidden!important;padding:0 0 2px!important
+}
+.battle-skill{
+  flex:0 0 118px!important;min-height:64px!important;border:1px solid #435159!important;
+  border-radius:8px!important;background:#172126!important;color:#e8efec!important;
+  padding:7px!important;text-align:left!important;scroll-snap-align:start!important
+}
+.battle-skill.active{border-color:#e7c466!important;background:#2b291c!important}
+.battle-skill b{display:block!important;font-size:11px!important}.battle-skill small{display:block!important;margin-top:5px!important;font-size:9px!important;color:#aab8ba!important}
+.battle-selection-summary{min-height:38px!important;display:grid!important;grid-template-columns:1fr 1fr 74px!important;align-items:center!important;gap:6px!important;font-size:10px!important}
+.battle-selection-summary .primary{min-height:36px!important}
+
+#footTile.land-panel{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;padding:6px!important}
+.land-item{padding:7px!important}.land-item span{font-size:9px!important}.land-item b{font-size:12px!important}
+.mobile-manage-panel{height:100%;min-height:0;overflow:hidden}
+#footManage.mobile-manage-panel{
+  grid-template-columns:minmax(0,1fr)!important;
+  grid-template-rows:minmax(0,1fr)!important;
+}
+.manage-menu-grid{
+  width:100%;min-width:0;min-height:0;
+  overflow:auto;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+  gap:7px;
+  align-content:start;
+}
+.manage-tile{
+  min-height:66px!important;padding:1px 6px!important;border:1px solid #405057!important;
+  border-radius:9px!important;background:#152126!important;color:#e8efec!important;
+  display:grid!important;place-items:center!important;align-content:center!important;gap:3px!important
+}
+.manage-tile b{font-size:22px!important;line-height:1!important}.manage-tile span{font-size:10px!important;font-weight:700!important}
+.display-settings-panel{
+  width:100%;min-width:0;height:100%;min-height:0;overflow:auto;
+  display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;
+}
+.display-settings-panel[hidden]{display:none!important}
+.display-settings-head{display:flex;align-items:center;gap:8px}
+.display-settings-back{
+  border:1px solid #4a6068;border-radius:7px;background:#17252a;color:#e8efec;
+  min-height:36px;padding:5px 10px;cursor:pointer
+}
+.display-settings-head strong{font-size:15px}
+.display-settings-grid{
+  min-height:0;overflow:auto;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;align-content:start
+}
+.display-setting{
+  min-width:0;border:1px solid #3b4d54;border-radius:8px;background:#142025;
+  padding:10px;display:grid;gap:7px
+}
+.display-setting-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;font-weight:700}
+.display-setting small{font-size:12px;line-height:1.45;color:#a8b6ba}
+.display-setting input[type="range"]{width:100%;accent-color:#72ccdc}
+.display-setting input[type="checkbox"]{width:22px;height:22px;accent-color:#5fc4d5}
+.display-setting-reset{border-color:#725f39;background:#2b2517;color:#f1d991;cursor:pointer}
+.v39-hide-map-zoom-controls #v39-map-camera-controls{display:none!important}
+.v39-reduce-motion *, .v39-reduce-motion *::before, .v39-reduce-motion *::after{
+  animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important
+}
+@media(max-width:520px) and (orientation:portrait){.display-settings-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -4221,17 +4391,14 @@ html,body{
 
   <footer class="footer">
     <div class="footer-tabs">
-      <button class="footer-tab active tappable footer-text-tab" data-foot="squad" data-tip="部隊"><span class="tab-text">部隊</span><span class="tab-icon">👥</span></button>
-      <button class="footer-tab tappable footer-text-tab" data-foot="battle" data-tip="戦闘"><span class="tab-text">戦闘</span><span class="tab-icon">⚔</span></button>
-      <button class="footer-tab tappable footer-text-tab" data-foot="tile" data-tip="土地"><span class="tab-text">土地</span><span class="tab-icon">⬢</span></button>
-      <button class="footer-tab tappable footer-text-tab" data-foot="tileData" data-tip="土地データ"><span class="tab-text">土地データ</span><span class="tab-icon">🗺</span></button>
-      <button class="footer-tab tappable footer-text-tab" data-foot="manage" data-tip="管理"><span class="tab-text">管理</span><span class="tab-icon">☰</span></button>
+      <button class="footer-tab active tappable footer-text-tab" data-foot="squad"><span class="tab-text">部隊</span><span class="tab-icon">👥</span></button>
+      <button class="footer-tab tappable footer-text-tab" data-foot="action"><span class="tab-text">行動</span><span class="tab-icon">⚔</span></button>
+      <button class="footer-tab tappable footer-text-tab" data-foot="tile"><span class="tab-text">土地</span><span class="tab-icon">⬢</span></button>
+      <button class="footer-tab tappable footer-text-tab" data-foot="manage"><span class="tab-text">管理</span><span class="tab-icon">☰</span></button>
     </div>
     <div class="footer-body">
       <section id="footTile" class="land-panel" style="display:none">
         <div class="land-item"><span>地形</span><b id="landTerrain">平地</b></div><div class="land-item"><span>領土</span><b id="landOwner">自領</b></div><div class="land-item"><span>危険度</span><b>12%</b></div><div class="land-item"><span>高度</span><b>Lv 0</b></div><div class="land-item"><span>施設</span><b>なし</b></div><div class="land-item"><span>ユニット</span><b id="landUnits">第1部隊</b></div>
-      </section>
-      <section id="footTileData" class="land-panel" style="display:none">
         <div class="land-item"><span>町状態</span><b>村 / 人口238</b></div><div class="land-item"><span>領土状態</span><b>居住地</b></div><div class="land-item"><span>回復補正</span><b>+0%</b></div><div class="land-item"><span>移動停止</span><b>-</b></div><div class="land-item"><span>川 / 滝</span><b>なし / なし</b></div><div class="land-item"><span>敵</span><b id="landEnemies">なし</b></div>
       </section>
       <section id="footSquad" class="mobile-squad-panel" style="display:grid">
@@ -4283,7 +4450,7 @@ html,body{
         </div>
       </section>
 
-      <section id="footBattle" class="mobile-battle-panel" style="display:none">
+      <section id="footAction" class="mobile-battle-panel" style="display:none">
         <div class="battle-primary-actions">
           <button class="battle-main move" id="mobileBattleMove">移動</button>
           <button class="battle-main attack active" id="mobileBattleAttack">攻撃</button>
@@ -4314,15 +4481,51 @@ html,body{
       </section>
 
       <section id="footManage" class="mobile-manage-panel" style="display:none">
-        <button class="manage-tile" data-open="character"><b>♟</b><span>自キャラ</span></button>
-        <button class="manage-tile" data-open="build"><b>⌂</b><span>都市・建設</span></button>
-        <button class="manage-tile" data-open="equipment"><b>⚒</b><span>装備</span></button>
-        <button class="manage-tile" id="resourceModeToggle" title="資源表示を詳細/簡易で切替" data-tip="資源表示切替"><b>⇄</b><span>資源表示: <em id="resourceModeLabel">詳細</em></span></button>
-        <button class="manage-tile" data-open="unitCreate"><b>✚</b><span>ユニット作成</span></button>
-        <button class="manage-tile" data-open="rulerLog"><b>☷</b><span>ログ</span></button>
-        <button class="manage-tile" data-open="settings"><b>⚙</b><span>設定</span></button>
-        <button class="manage-tile" id="v39-manage-field-settings"><b>⬢</b><span>フィールド設定</span></button>
-        <button class="manage-tile" id="v39-manage-design-docs"><b>書</b><span>設計書</span></button>
+        <div id="v39-manage-menu" class="manage-menu-grid">
+          <button class="manage-tile" data-open="character"><b>♟</b><span>自キャラ</span></button>
+          <button class="manage-tile" data-open="build"><b>⌂</b><span>都市・建設</span></button>
+          <button class="manage-tile" data-open="equipment"><b>⚒</b><span>装備</span></button>
+          <button class="manage-tile" id="resourceModeToggle" title="資源表示を詳細/簡易で切替" data-tip="資源表示切替"><b>⇄</b><span>資源表示: <em id="resourceModeLabel">詳細</em></span></button>
+          <button class="manage-tile" data-open="unitCreate"><b>✚</b><span>ユニット作成</span></button>
+          <button class="manage-tile" data-open="rulerLog"><b>☷</b><span>ログ</span></button>
+          <button class="manage-tile" data-open="settings"><b>⚙</b><span>ゲーム設定</span></button>
+          <button class="manage-tile" id="v39-manage-display-settings"><b>目</b><span>表示設定</span></button>
+          <button class="manage-tile" id="v39-manage-field-settings"><b>⬢</b><span>フィールド設定</span></button>
+          <button class="manage-tile" id="v39-manage-design-docs"><b>書</b><span>設計書</span></button>
+        </div>
+        <section id="v39-display-settings-panel" class="display-settings-panel" hidden aria-hidden="true">
+          <header class="display-settings-head">
+            <button type="button" id="v39-display-settings-back" class="display-settings-back">← 管理</button>
+            <strong>表示設定</strong>
+          </header>
+          <div class="display-settings-grid">
+            <label class="display-setting">
+              <span class="display-setting-title">文字の大きさ <output id="v39-font-size-value">100%</output></span>
+              <input type="range" id="v39-font-size" min="80" max="140" step="5" value="100">
+              <small>下部UIを含む画面内文字の倍率です。</small>
+            </label>
+            <label class="display-setting">
+              <span class="display-setting-title">高低差がある境界だけ表示 <input type="checkbox" id="v39-height-outline-only" checked></span>
+              <small>同じ高さ同士の黒いマス目線を隠します。</small>
+            </label>
+            <label class="display-setting">
+              <span class="display-setting-title">高度による色の濃淡 <input type="checkbox" id="v39-height-shading" checked></span>
+              <small>低地を明るく、高地と深い海を暗くします。</small>
+            </label>
+            <label class="display-setting">
+              <span class="display-setting-title">地図の拡大縮小ボタン <input type="checkbox" id="v39-show-zoom-controls" checked></span>
+              <small>地図左下の＋−ボタンを表示します。</small>
+            </label>
+            <label class="display-setting">
+              <span class="display-setting-title">画面の動きを減らす <input type="checkbox" id="v39-reduce-motion"></span>
+              <small>点滅や画面切替アニメーションを抑えます。</small>
+            </label>
+            <button type="button" id="v39-display-settings-reset" class="display-setting display-setting-reset">
+              <span class="display-setting-title">表示設定を初期値へ戻す</span>
+              <small>文字100%、高度濃淡ON、高低差境界のみONへ戻します。</small>
+            </button>
+          </div>
+        </section>
       </section>
     </div>
   </footer>
@@ -4452,6 +4655,9 @@ function applyViewportScale(){
     fontScale=Math.max(1.18,Math.min(1.52,w/1250));
     touchScale=Math.max(1.05,Math.min(1.25,w/1550));
   }
+
+  const userFontScale=Number(document.documentElement.dataset.v39FontScale||1);
+  fontScale*=Math.max(.8,Math.min(1.4,Number.isFinite(userFontScale)?userFontScale:1));
 
   document.documentElement.style.setProperty("--ui-scale",uiScale.toFixed(3));
   document.documentElement.style.setProperty("--font-scale",fontScale.toFixed(3));
@@ -4728,9 +4934,8 @@ document.getElementById("skillBack")?.addEventListener("click",closeAttackSkills
 document.querySelectorAll(".skill-row").forEach(b=>b.onclick=()=>{document.querySelectorAll(".skill-row").forEach(x=>x.classList.remove("active"));b.classList.add("active");selectedSkill={name:b.dataset.name,ap:+b.dataset.ap,range:+b.dataset.range,pattern:b.dataset.pattern}});
 const footerSections={
   squad:document.getElementById("footSquad"),
-  battle:document.getElementById("footBattle"),
+  action:document.getElementById("footAction"),
   tile:document.getElementById("footTile"),
-  tileData:document.getElementById("footTileData"),
   manage:document.getElementById("footManage")
 };
 document.querySelectorAll("[data-foot]").forEach(b=>b.onclick=()=>{
@@ -4749,7 +4954,8 @@ document.querySelectorAll(".inv[data-item]").forEach(b=>b.onclick=()=>{document.
 
 
 document.addEventListener("pointerdown",e=>{
-  if(!materialDrawer.classList.contains("show")) return;
+  const materialDrawer=document.getElementById("materialDrawer");
+  if(!materialDrawer?.classList.contains("show")) return;
   const materialSummaryBtn=document.getElementById("materialSummaryBtn");
   if(materialDrawer.contains(e.target) || materialSummaryBtn?.contains(e.target)) return;
   materialDrawer.classList.remove("show");

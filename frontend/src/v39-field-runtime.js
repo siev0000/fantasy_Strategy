@@ -250,16 +250,47 @@ function shadeSeaColorByDepth(hex, level) {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
-function drawTerrain(scene, data) {
-  const graphics = scene.add.graphics();
+function readMapDisplaySettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("v39-display-settings-v1") || "null");
+    return {
+      heightOutlineOnly: saved?.heightOutlineOnly !== false,
+      heightShading: saved?.heightShading !== false
+    };
+  } catch {
+    return { heightOutlineOnly: true, heightShading: true };
+  }
+}
+
+function hexEdgeDefinitions(x, y, points) {
+  const odd = y % 2 === 1;
+  return [
+    { neighbor: [x + (odd ? 1 : 0), y - 1], start: 0, end: 1 },
+    { neighbor: [x + 1, y], start: 1, end: 2 },
+    { neighbor: [x + (odd ? 1 : 0), y + 1], start: 2, end: 3 },
+    { neighbor: [x + (odd ? 0 : -1), y + 1], start: 3, end: 4 },
+    { neighbor: [x - 1, y], start: 4, end: 5 },
+    { neighbor: [x + (odd ? 0 : -1), y - 1], start: 5, end: 0 }
+  ].map(edge => ({
+    ...edge,
+    x1: points[edge.start * 2],
+    y1: points[(edge.start * 2) + 1],
+    x2: points[edge.end * 2],
+    y2: points[(edge.end * 2) + 1]
+  }));
+}
+
+function drawTerrain(scene, data, graphics = scene.add.graphics()) {
+  const settings = readMapDisplaySettings();
+  graphics.clear();
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
       const terrain = String(data.grid?.[y]?.[x] || "海");
       const baseColor = terrainColorMap.get(terrain) || "#607078";
       const heightLevel = Number(data.heightLevelMap?.[y]?.[x]);
-      const shadedColor = terrain === "海"
-        ? shadeSeaColorByDepth(baseColor, heightLevel)
-        : shadeColorByHeight(baseColor, heightLevel);
+      const shadedColor = settings.heightShading
+        ? (terrain === "海" ? shadeSeaColorByDepth(baseColor, heightLevel) : shadeColorByHeight(baseColor, heightLevel))
+        : baseColor;
       const fill = colorNumber(shadedColor);
       const points = hexPoints(x, y);
       graphics.fillStyle(fill, 1);
@@ -271,17 +302,34 @@ function drawTerrain(scene, data) {
         { x: points[8], y: points[9] },
         { x: points[10], y: points[11] }
       ], true);
-      graphics.lineStyle(1, 0x26353b, 0.95);
-      graphics.strokePoints([
-        { x: points[0], y: points[1] },
-        { x: points[2], y: points[3] },
-        { x: points[4], y: points[5] },
-        { x: points[6], y: points[7] },
-        { x: points[8], y: points[9] },
-        { x: points[10], y: points[11] }
-      ], true);
     }
   }
+  graphics.lineStyle(1, 0x26353b, 0.95);
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      const points = hexPoints(x, y);
+      if (!settings.heightOutlineOnly) {
+        graphics.strokePoints([
+          { x: points[0], y: points[1] },
+          { x: points[2], y: points[3] },
+          { x: points[4], y: points[5] },
+          { x: points[6], y: points[7] },
+          { x: points[8], y: points[9] },
+          { x: points[10], y: points[11] }
+        ], true);
+        continue;
+      }
+      const currentLevel = Number(data.heightLevelMap?.[y]?.[x]);
+      for (const edge of hexEdgeDefinitions(x, y, points)) {
+        const [neighborX, neighborY] = edge.neighbor;
+        if (neighborX < 0 || neighborY < 0 || neighborX >= data.w || neighborY >= data.h) continue;
+        const neighborLevel = Number(data.heightLevelMap?.[neighborY]?.[neighborX]);
+        if (!Number.isFinite(currentLevel) || !Number.isFinite(neighborLevel) || currentLevel === neighborLevel) continue;
+        graphics.lineBetween(edge.x1, edge.y1, edge.x2, edge.y2);
+      }
+    }
+  }
+  return graphics;
 }
 
 function drawRivers(scene, riverData) {
@@ -607,11 +655,16 @@ function createFieldGame(host, playfield, data) {
     },
     scene: {
       create() {
-        drawTerrain(this, data);
+        const terrainGraphics = drawTerrain(this, data);
         drawRivers(this, data.riverData);
         drawSpecialTerrain(this, data);
         fitCamera(this);
         installCameraControls(this, host, playfield, data);
+        const redrawTerrain = () => drawTerrain(this, data, terrainGraphics);
+        window.addEventListener("v39:display-settings-changed", redrawTerrain);
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+          window.removeEventListener("v39:display-settings-changed", redrawTerrain);
+        });
         lastW = this.scale.width;
         lastH = this.scale.height;
         this.scale.on("resize", gameSize => {
@@ -675,6 +728,8 @@ async function boot() {
     const playfieldHeight = playfield.getBoundingClientRect().height;
     const footerHeight = footer?.getBoundingClientRect().height || 0;
     const topRegionHeight = (topbar?.getBoundingClientRect().height || 0) + playfieldHeight;
+    const activeFooterTab = document.querySelector("[data-foot].active")?.getAttribute("data-foot") || "";
+    const displaySettingsPanel = document.getElementById("v39-display-settings-panel");
     return JSON.stringify({
       screen: "v39-field",
       coordinates: "world origin is top-left; x increases right; y increases down",
@@ -687,6 +742,11 @@ async function boot() {
         footerRatioExcludingHeader: Number((footerHeight / Math.max(1, playfieldHeight + footerHeight)).toFixed(3)),
         topRegionRatio: Number((topRegionHeight / Math.max(1, topRegionHeight + footerHeight)).toFixed(3)),
         footerRatio: Number((footerHeight / Math.max(1, topRegionHeight + footerHeight)).toFixed(3))
+      },
+      footer: {
+        activeTab: activeFooterTab,
+        displaySettingsOpen: displaySettingsPanel instanceof HTMLElement && !displaySettingsPanel.hidden,
+        displaySettings: typeof window.getV39DisplaySettings === "function" ? window.getV39DisplaySettings() : null
       },
       selectedTile: scene?.v39SelectedTile || null,
       camera: camera ? {
