@@ -8,10 +8,12 @@
   --v39-active: #71d1df;
   --v39-text: #edf3f2;
   --v39-muted: #93a4a7;
+  --v39-header-height: 56px;
 }
 
-/* Header */
+/* Header stays visible. The command sidebar starts below it. */
 .phaser-map-panel .field-overlay-header {
+  z-index: 50 !important;
   min-height: 50px !important;
   padding: 5px 7px !important;
   gap: 6px !important;
@@ -63,12 +65,40 @@
   color: #d8e1e0 !important;
 }
 
+/* Header resource category icons become text icons. */
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-icon {
+  min-width: 28px !important;
+  height: 28px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  border: 1px solid #40545a !important;
+  border-radius: 6px !important;
+  background: #16252a !important;
+  color: #dce8e7 !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  overflow: hidden !important;
+}
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-icon img {
+  display: none !important;
+}
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-icon::before {
+  content: attr(title);
+  display: block;
+  max-width: 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
 /* Top actions: v39 compact square controls. */
 .phaser-map-panel .field-overlay-actions {
   margin-left: auto !important;
   gap: 4px !important;
 }
 .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only {
+  position: relative !important;
   width: 40px !important;
   height: 40px !important;
   min-width: 40px !important;
@@ -77,17 +107,39 @@
   border: 1px solid #3f5258 !important;
   background: #142126 !important;
   box-shadow: none !important;
+  font-size: 0 !important;
 }
 .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:hover {
   border-color: var(--v39-active) !important;
   background: #19343c !important;
 }
 
-/* Research: move the existing real research controls to the v39-style left rail. */
+/* Keep only the character portrait image. Other chrome actions use text/glyph icons. */
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:not(:first-child) .overlay-action-icon,
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:nth-child(2) .overlay-action-emoji-icon {
+  display: none !important;
+}
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:not(:first-child)::before {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #e7efee;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:nth-child(2)::before { content: "記"; }
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:nth-child(3)::before { content: "兵+"; font-size: 12px; }
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:nth-child(4)::before { content: "道"; }
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:nth-child(5)::before { content: "⚙"; font-size: 18px; }
+
+/* Research: existing progress data stays real; image artwork is replaced with a text icon. */
 .phaser-map-panel .field-header-research-wrap {
   position: absolute !important;
   left: 6px !important;
-  top: 58px !important;
+  top: var(--v39-header-height) !important;
   z-index: 31 !important;
   order: initial !important;
   align-self: initial !important;
@@ -105,6 +157,7 @@
   overflow: visible !important;
 }
 .phaser-map-panel .field-header-research-chip {
+  position: relative !important;
   width: 44px !important;
   height: 52px !important;
   display: grid !important;
@@ -126,9 +179,20 @@
   box-shadow: none !important;
 }
 .phaser-map-panel .field-header-research-gauge img {
-  width: 28px !important;
-  height: 28px !important;
-  box-shadow: none !important;
+  display: none !important;
+}
+.phaser-map-panel .field-header-research-chip::after {
+  content: "研";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  color: #e6eeee;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* Old right character navigator is replaced by the command panel. */
@@ -161,19 +225,30 @@
 }
 
 @media (orientation: landscape) {
-  /* Reserve visual space conceptually for the right command panel; overlays should avoid it. */
+  /* Header remains across the full top; the right command bar starts below it. */
+  .phaser-map-panel .field-footer-tabs-overlay {
+    top: var(--v39-header-height) !important;
+    bottom: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    border-radius: 9px 0 0 0 !important;
+  }
   .phaser-map-panel .field-overlay-turn-ticker {
+    top: calc(var(--v39-header-height) + 12px) !important;
     max-width: calc(66% - 24px) !important;
   }
 }
 
 @media (orientation: portrait) {
+  .phaser-map-panel {
+    --v39-header-height: 52px;
+  }
   .phaser-map-panel .field-overlay-header {
     min-height: 48px !important;
     padding: 4px !important;
   }
   .phaser-map-panel .field-header-research-wrap {
-    top: 54px !important;
+    top: var(--v39-header-height) !important;
     left: 4px !important;
   }
   .phaser-map-panel .field-header-research-chip {
@@ -185,9 +260,8 @@
     width: 32px !important;
     height: 32px !important;
   }
-  .phaser-map-panel .field-header-research-gauge img {
-    width: 25px !important;
-    height: 25px !important;
+  .phaser-map-panel .field-header-research-chip::after {
+    font-size: 13px;
   }
   .phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item {
     min-width: 72px !important;
