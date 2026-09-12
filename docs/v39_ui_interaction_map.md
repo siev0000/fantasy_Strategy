@@ -1,284 +1,333 @@
 # v39 UI 操作・イベント設計書
 
-> このファイルを **v39画面のボタン / イベント / モーダル遷移の正本（Single Source of Truth）** とする。
+> このファイルを **v39画面の固定UI / ボタン / タブ / モーダル遷移の正本（Single Source of Truth）** とする。
 >
-> UI修正時は、実装前にこの設計書を確認し、イベント・ID・呼び出し先を変更した場合は **同じ変更単位でこの設計書も更新する**。
+> UIを変更する場合は、実装と同じ変更単位でこの設計書も更新する。
 
-## 1. 設計ルール
+## 1. 基本方針
 
-UI操作は必ず以下の流れを明示する。
+UI操作は以下の流れを明示する。
 
-`表示要素 → DOM識別子 → イベント → 呼び出しメソッド → 引数 → 表示先 → 更新状態`
+`表示要素 → DOM識別子 → イベント → 呼び出し処理 → 表示先 / 更新状態`
 
-### 必須ルール
+### 1.1 固定UIと動的UI
 
-- 同じ意味のボタンは、できるだけ同じ名前付きメソッドを呼ぶ。
-- `onclick = ()=> ...` のような匿名処理を増やさない。
-- モーダルを開く処理は `openXxxModal(...)`、閉じる処理は `closeXxxModal()` を基本命名とする。
-- ボタンの見た目だけで判定せず、`id` / `data-*` / class をこの設計書に記録する。
-- スマホ・PCで同一機能への入口が複数ある場合、最終的に呼ぶメソッドは共通化する。
-- Phaserのフィールド操作とHTML UI操作はイベント領域を分ける。
+固定UIは `frontend/index.html` に最初から存在させる。
 
-### 1.1 初期表示とDOM所有権
-
-**固定UIは初期HTMLに常駐させる。runtime JSから固定ボタン・固定タブを生成しない。**
-
-固定UIに含むもの:
+固定UI:
 
 - 上部バー
 - 左サイド研究レール
+- 下部操作UI
 - 下部タブ `部隊 / 行動 / 土地 / 管理`
-- 管理タブ内の固定ボタン
-- `フィールド設定` ボタン
-- `設計書` ボタン
+- 管理メニュー
+- `フィールド設定`
+- `設計書`
+- `表示設定`
 - 既知の固定モーダル入口
 
 動的生成してよいもの:
 
-- マップ本体 / Phaser canvas
-- タイル・ユニット・経路・範囲表示
-- データ件数に応じて増減する一覧行 / カード
-- 研究ツリーのノード
+- Phaser canvas
+- マップタイル / 選択表示 / 経路 / 範囲 / ユニット
+- データ件数で増減するカードや一覧
+- 研究ツリー / 研究項目
 - ログ行
-- 設計書一覧・設計書本文
+- 設計書一覧 / 設計書本文
 
-### 1.2 禁止する初期化方式
-
-以下は使用しない。
+### 1.2 禁止事項
 
 - `document.open()` / `document.write()` / `document.close()` による画面全体の再生成
-- マップ生成・再生成を契機とした固定UI DOMの作り直し
-- runtimeごとに同一固定ボタンを `createElement()` して競合させる実装
+- マップ生成を契機に固定UIを作り直す処理
+- 同じ固定ボタンを複数runtimeから `createElement()` する実装
+- Phaser再生成時にfooter / 管理 / 研究レールを破棄する実装
 
-初期表示は次の順序に固定する。
+### 1.3 現在の起動構成
 
 ```text
-index.html の固定DOMを一度だけ読み込む
+frontend/index.html
+  ↓ 固定v39 DOMを読み込む
+frontend/src/v39-bootstrap.js
   ↓
-v39本体の既存UIイベントを初期化
-  ↓
-各runtimeが既存DOMへイベントを接続
-  ↓
-必要に応じてPhaserフィールドを生成 / 再生成
+v39-field-runtime.js
+v39-field-settings-entry.js
+v39-research-ui.js
+v39-design-docs-viewer.js
 ```
 
-**Phaserフィールドを新規生成しても、固定HTML UIは破棄・再生成しない。**
+`v39-bootstrap.js` は機能モジュールを読み込むだけとし、画面本体DOMは生成しない。
 
 ---
 
-## 2. 研究 UI
+## 2. 下部操作UI
 
-### 2.1 左サイド研究レール
+### 2.1 固定タブ
 
-対象DOM:
+現在の正本:
+
+`部隊 / 行動 / 土地 / 管理`
+
+対応:
+
+| 表示 | data-foot | パネルID |
+|---|---|---|
+| 部隊 | `squad` | `#footSquad` |
+| 行動 | `action` | `#footAction` |
+| 土地 | `tile` | `#footTile` |
+| 管理 | `manage` | `#footManage` |
+
+旧 `戦闘` は `行動` へ変更済み。
+
+旧 `土地データ` は `土地` へ統合済み。地形・領土・危険度・町状態・回復補正・川・敵など、選択マスに属する情報は同じ土地パネルで扱う。
+
+### 2.2 レイアウト
+
+- タブは操作UI左側へ縦並び。
+- 内容パネルは右側だけ切り替える。
+- PC / スマホ縦では、フィールドと下部UIを上下に分離する。
+- スマホ横では操作UIを右側領域として配置する。
+- 画面サイズで変えてよいのは主に配置方向。
+- 操作UI内部のカード形式や機能構造をviewportごとに別物にしない。
+- 旧 `.faction-panel` は部隊 / 行動と重複するため非表示。
+
+### 2.3 タブ切替
+
+`frontend/src/v39-field-settings-entry.js` のfooter fallbackが、現在以下を切り替える。
+
+- `.footer-tab` のactive
+- 対応パネルの `hidden`
+- `aria-hidden`
+- `display:grid / none`
+
+マップ生成処理からfooterタブ状態を変更しない。
+
+---
+
+## 3. 研究UI
+
+### 3.1 左サイド研究レール
+
+入口:
 
 - 親: `#researchRail`
 - ボタン: `.research-rail-btn[data-research]`
 
-現在の研究項目:
+左サイドの研究項目をタップした場合に開く画面は **`#researchModal`**。
 
-| 表示 | DOM | data-research | 操作 | 呼ぶメソッド（正本） | 開く画面 | 備考 |
-|---|---|---:|---|---|---|---|
-| 鍛冶 | `.research-rail-btn` | `鍛冶` | click/tap | `openResearchModal("鍛冶")` | `#researchModal` | 左サイドの研究項目 |
-| 魔法 | `.research-rail-btn` | `魔法` | click/tap | `openResearchModal("魔法")` | `#researchModal` | 左サイドの研究項目 |
-| 信仰 | `.research-rail-btn` | `信仰` | click/tap | `openResearchModal("信仰")` | `#researchModal` | 左サイドの研究項目 |
-| 軍事 | `.research-rail-btn` | `軍事` | click/tap | `openResearchModal("軍事")` | `#researchModal` | 初期 active / 研究中 |
-| 経済 | `.research-rail-btn` | `経済` | click/tap | `openResearchModal("経済")` | `#researchModal` | 左サイドの研究項目 |
+研究カテゴリ例:
 
-### 2.2 研究レール押下時の処理順
+- 鍛冶
+- 魔法
+- 信仰
+- 軍事
+- 経済
+- 学術（UIメタ定義あり）
 
-`openResearchModal(researchType)` は以下を行う。
+### 3.2 研究モーダル
 
-1. `researchType` を選択中研究カテゴリとして保存する。
-2. `#researchRail .research-rail-btn` の `active` を全解除する。
-3. 対応する `[data-research="..."]` に `active` を付ける。
-4. `#researchModal` 内へ選択カテゴリを反映する。
-5. `#researchModal` に `open` class を付けて表示する。
-6. 必要なら研究詳細 / 研究ツリーを更新する。
+- backdrop: `#researchModal`
+- shell: `#researchModal > .modal`
+- close: 既存closeボタン
+- UI調整: `frontend/src/v39-research-ui.js`
 
-**重要:** 左サイド研究項目を押したときに開く画面は `#researchModal`。別の研究カテゴリ一覧画面ではない。
+現在の `v39-research-ui.js` は、既存モーダルDOMを破棄せず内容を整形する。
 
-### 2.3 現在の実装状態
+PC:
 
-現在の基準HTMLでは次の匿名click処理になっている。
+- 左: `.research-category-list`
+- 右: `.research-content`
+
+スマホ:
+
+- 上: 研究カテゴリ横スクロール
+- 下: 研究内容
+
+現在のモーダル内部には研究カテゴリ一覧が存在する。以前の「カテゴリ一覧をモーダルへ複製しない」という旧方針は、現実装には適用しない。
+
+### 3.3 研究表示状態
+
+選択中カテゴリは以下で示す。
+
+- `.research-rail-btn.active`
+- `.research-selected-chip`
+- `--research-accent`
+
+研究ツリー本体 / 研究内容は今後データ接続する領域として扱う。
+
+---
+
+## 4. 土地 / マップ選択連携
+
+Phaser上でタイルを選択すると、`v39-field-runtime.js` が選択情報を更新する。
+
+主な通知:
 
 ```js
-document.querySelectorAll(".research-rail-btn").forEach(b=>b.addEventListener("click",()=>{
-  document.querySelectorAll(".research-rail-btn").forEach(x=>x.classList.remove("active"));
-  b.classList.add("active");
-  document.getElementById("researchModal").classList.add("open");
-  say("研究対象を「"+b.dataset.research+"」に変更（仮）");
+window.dispatchEvent(new CustomEvent("v39:tile-selected", {
+  detail: {
+    x,
+    y,
+    terrain,
+    height,
+    special
+  }
 }));
 ```
 
-今後はこの処理を `openResearchModal(researchType)` に集約する。
+現行では土地表示の一部として `#landTerrain` も更新する。
 
-### 2.4 研究モーダル
+選択枠はPhaser側で描画し、固定HTMLの土地タブ自体は作り直さない。
 
-- ID: `#researchModal`
-- 種別: `.modal-backdrop`
-- 開くclass: `.open`
-- 閉じるボタン: `[data-close]`
-- タイトル: `研究`
-
-研究モーダル内に表示するもの:
-
-- 選択中研究カテゴリ名
-- 研究Lv / EXP
-- 研究項目または研究ツリー
-- 選択した研究項目の詳細
-- 研究開始 / 研究変更に必要な操作（実装時に追記）
-
-**設計上、左サイド研究レール自体をモーダル内部へ複製する必要はない。**
+詳細なマップ操作は `docs/v39_map_interaction_spec.md` を正本とする。
 
 ---
 
-## 3. 共通モーダル呼び出し
+## 5. 管理タブ
 
-基準HTMLには `data-open="xxx"` → `#xxxModal` という共通規則がある。
+親パネル:
 
-現行の共通処理:
+`#footManage`
 
-```js
-document.querySelectorAll("[data-open]").forEach(b => {
-  b.onclick = () => document.getElementById(b.dataset.open + "Modal").classList.add("open");
-});
-```
+### 5.1 管理メニュー
 
-設計上は、主要画面については個別の名前付きメソッドへ順次置き換える。
+通常メニュー:
 
-| 表示/機能 | DOM指定 | 現行data-open | 正本メソッド | 開くモーダル |
-|---|---|---|---|---|
-| 自キャラ / 部隊 | `[data-open="character"]` | `character` | `openCharacterModal()` | `#characterModal` |
-| 都市・建設 | `[data-open="build"]` | `build` | `openBuildModal()` | `#buildModal` |
-| 装備 | `[data-open="equipment"]` | `equipment` | `openEquipmentModal()` | `#equipmentModal` |
-| ユニット作成 | `[data-open="unitCreate"]` | `unitCreate` | `openUnitCreateModal()` | `#unitCreateModal` |
-| 統治者ログ | `[data-open="rulerLog"]` | `rulerLog` | `openRulerLogModal()` | `#rulerLogModal` |
-| 設定 | `[data-open="settings"]` | `settings` | `openSettingsModal()` | `#settingsModal` |
+`#v39-manage-menu`
 
-閉じる操作:
+固定入口の例:
 
-| DOM | イベント | 正本メソッド | 処理 |
-|---|---|---|---|
-| `[data-close]` | click/tap | `closeModal(button)` | 最寄り `.modal-backdrop` から `open` を外す |
-| Escape | keydown | `closeAllModals()` | 全 `.modal-backdrop` の `open` を外す |
+- 自キャラ
+- 都市・建設
+- 装備
+- ユニット作成
+- ログ
+- フィールド設定
+- 設計書
+- 表示設定
 
----
+固定入口ボタンは `frontend/index.html` 側に置く。
 
-## 4. 下部メインタブ
-
-固定タブ:
-
-`部隊 / 行動 / 土地 / 管理`
-
-※ 独立した「ユニット」タブは作らない。
-
-※ 旧「土地データ」は同じ選択マスを参照するため「土地」へ統合する。地形・領土・危険度などの基本情報と、町状態・回復補正・川・敵などの詳細情報を同じパネルへ表示する。
-
-- タブは下部UIの左側へ縦並びで固定する。
-- 選択したタブの内容は右側だけを切り替える。
-- スマホ横画面では、下部UI自体を右側コマンド領域として扱う既存構成を維持する。
-- 画面幅・向きで変更してよいのは、フィールドと操作UIの配置方向だけとする。
-- 操作UI内部の文字サイズ、ボタン寸法、カード形式、列構成は画面サイズで変更しない。
-- 旧右サイドの `.faction-panel` は下部の部隊・行動と重複するため全画面で非表示とし、操作入口を下部UIへ統一する。
-
-設計上の共通メソッド:
-
-```js
-selectFooterTab(tabId)
-```
-
-処理:
-
-1. 全 `.footer-tab` の active を解除。
-2. 選択したタブへ active を付与。
-3. 対応する footer body panel のみ表示。
-4. 画面ごとの初期描画処理が必要なら、その後に呼ぶ。
-
-詳細なID対応は実装確認後に追記する。
-
-### 4.1 管理内の表示設定
-
-入口: `管理タブ → 表示設定`
-
-表示設定はモーダルを開かず、`#footManage` 内で管理メニューと切り替えて表示する。
-
-| 設定 | 初期値 | 反映先 |
-|---|---:|---|
-| 文字の大きさ | 100% | `--font-scale` の画面別基準値に倍率適用 |
-| 高低差がある境界だけ表示 | ON | 同じ高度Lv同士の黒いヘックス境界を非表示 |
-| 高度による色の濃淡 | ON | 陸地高度・海深度の色補正 |
-| 地図の拡大縮小ボタン | ON | `#v39-map-camera-controls` |
-| 画面の動きを減らす | OFF | CSS animation / transition |
-
-設定は `localStorage` の `v39-display-settings-v1` に保存し、変更時に `v39:display-settings-changed` を通知する。
-
-下部だけで完結させる対象は、短時間で切り替える表示設定とする。キャラ・装備・建設など広い表示領域を必要とする管理機能は、現段階では既存モーダルを維持する。
-
----
-
-## 5. フィールド設定
+### 5.2 表示設定
 
 入口:
 
-`管理タブ → フィールド設定`
+`管理 → 表示設定`
 
-| 項目 | 内容 |
-|---|---|
-| 管理タブ | `#footManage` |
-| 固定ボタン | `#v39-manage-field-settings.manage-tile` |
-| DOM生成元 | `frontend/index.html` |
-| イベント接続 | `frontend/src/v39-field-settings-entry.js` |
-| 正本メソッド | `openFieldSettingsModal()` |
-| 状態 | 仮モーダル実装中 |
+表示設定はモーダルではなく `#footManage` 内で切り替える。
 
-生成:
+設定パネル:
 
-```js
-generateFieldFromSettings(settings)
+`#v39-display-settings-panel`
+
+主なDOM:
+
+| 設定 | DOM | 初期値 |
+|---|---|---:|
+| 文字の大きさ | `#v39-font-size` | 100% |
+| 高低差がある境界だけ表示 | `#v39-height-outline-only` | ON |
+| 高度による色の濃淡 | `#v39-height-shading` | ON |
+| 地図の拡大縮小ボタン | `#v39-show-zoom-controls` | ON |
+| 画面の動きを減らす | `#v39-reduce-motion` | OFF |
+| 初期値へ戻す | `#v39-display-settings-reset` | - |
+
+保存先:
+
+```text
+localStorage: v39-display-settings-v1
 ```
 
-処理:
+変更通知:
 
-1. カスタム設定画面で値を入力。
-2. 「生成」を押す。
-3. UI値を `settings` に正規化。
-4. `createTerrainMapData(settings)` を呼ぶ。
-5. Phaserフィールドを生成 / 再描画。
-6. 設定画面を閉じる。
+```js
+v39:display-settings-changed
+```
 
-主要設定値:
+現在の公開参照:
 
-- `w`
-- `h`
-- `patternId`
-- `mountainMode`
-- `islandCustomSettings`
-- 河川 / 滝 / 特殊地形関連（既存仕様から順次追記）
+```js
+window.getV39DisplaySettings()
+```
 
-**フィールド生成・再生成によって `#v39-manage-field-settings` を作り直さない。**
+表示設定変更でマップ生成データを作り直さない。必要な描画レイヤーだけ更新する。
 
 ---
 
-## 6. 設計書ビューア
+## 6. フィールド設定
 
 入口:
 
-`管理タブ → 設計書`
+`管理 → フィールド設定`
 
-| 項目 | 内容 |
-|---|---|
-| 管理タブ | `#footManage` |
-| 固定ボタン | `#v39-manage-design-docs.manage-tile` |
-| DOM生成元 | `frontend/index.html` |
-| イベント | `click/tap` |
-| 正本メソッド | `openDesignDocsModal()` |
-| 現行公開メソッド | `window.openDesignDocsModal` |
-| 開くモーダル | `#v39-design-docs-modal` |
-| 実装ファイル | `frontend/src/v39-design-docs-viewer.js` |
-| 状態 | 実装済み |
+固定ボタン:
 
-設計書の取得:
+`#v39-manage-field-settings.manage-tile`
+
+イベント接続:
+
+`frontend/src/v39-field-settings-entry.js`
+
+公開関数:
+
+```js
+window.openFieldSettingsModal()
+```
+
+### 現在の状態
+
+現時点では `#v39-field-settings-placeholder` を開く **仮画面**。
+
+未接続:
+
+- マップサイズ
+- 島構成
+- 山岳設定
+- 河川設定
+- 生成ボタン
+
+最終仕様:
+
+```text
+フィールド設定を開く
+  ↓
+既存カスタム設定値を入力
+  ↓
+生成
+  ↓
+createTerrainMapData(settings)
+  ↓
+Phaserフィールドのみ再生成
+```
+
+既存生成設定を再利用し、新しい独自ルールは作らない。
+
+---
+
+## 7. 設計書ビューア
+
+入口:
+
+`管理 → 設計書`
+
+固定ボタン:
+
+`#v39-manage-design-docs.manage-tile`
+
+実装:
+
+`frontend/src/v39-design-docs-viewer.js`
+
+公開関数:
+
+```js
+window.openDesignDocsModal()
+window.closeDesignDocsModal()
+```
+
+モーダル:
+
+`#v39-design-docs-modal`
+
+設計書取得:
 
 ```js
 import.meta.glob("../../docs/**/*.md", {
@@ -288,43 +337,76 @@ import.meta.glob("../../docs/**/*.md", {
 })
 ```
 
-動作:
+仕様:
 
-1. Viteビルド時に `docs/` 以下のすべての `.md` を収集する。
-2. モーダル左側（スマホでは上側）に設計書一覧を表示する。
-3. 一覧から選択したMarkdownを右側（スマホでは下側）へ表示する。
-4. ファイル名・Markdown内の先頭 `# 見出し` を検索対象とする。
-5. 新しい `.md` を `docs/` へ追加した場合、次回ビルド時に自動で一覧へ追加する。
-6. 初回表示時は `docs/v39_ui_interaction_map.md` が存在すれば優先して開く。
-
-**重要:** GitHub Pages上ではフォルダ列挙APIに依存しない。設計書一覧はビルド成果物に含める。
-
-**`#v39-manage-design-docs` 自体はruntimeで生成しない。runtimeは既存ボタンへイベントを接続するだけとする。**
+1. `docs/**/*.md` をビルド時に収集する。
+2. 一覧から設計書を選択する。
+3. Markdown本文をviewerへ表示する。
+4. ファイル名 / タイトルで検索できる。
+5. `v39_ui_interaction_map.md` があれば初期表示候補にする。
+6. GitHub Pages上でGitHub APIによるフォルダ列挙はしない。
 
 ---
 
-## 7. 設計書更新ルール
+## 8. 共通モーダル
 
-新しいボタンや画面を実装するときは、最低限以下を記載する。
+既存HTMLには `data-open` を使う入口がある。
 
-| 項目 | 必須内容 |
+主要画面について、最終的には名前付き関数へ寄せる。
+
+| 機能 | 正本メソッド名 | 表示先 |
+|---|---|---|
+| 自キャラ / 部隊 | `openCharacterModal()` | `#characterModal` |
+| 都市・建設 | `openBuildModal()` | `#buildModal` |
+| 装備 | `openEquipmentModal()` | `#equipmentModal` |
+| ユニット作成 | `openUnitCreateModal()` | `#unitCreateModal` |
+| 統治者ログ | `openRulerLogModal()` | `#rulerLogModal` |
+| 研究 | `openResearchModal(researchType)` | `#researchModal` |
+| フィールド設定 | `openFieldSettingsModal()` | `#v39-field-settings-placeholder`（現状） |
+| 設計書 | `openDesignDocsModal()` | `#v39-design-docs-modal` |
+
+Escape / closeボタンは対象モーダルを閉じる。
+
+---
+
+## 9. UI変更時の更新ルール
+
+新しいUI機能を追加・変更した場合は最低限以下をこの設計書へ追記する。
+
+| 項目 | 内容 |
 |---|---|
-| 表示名 | ユーザーが画面で見る名前 |
-| DOM | `id` / class / `data-*` |
-| イベント | click / pointerdown / change 等 |
-| メソッド | 呼び出す名前付き関数 |
-| 引数 | メソッドに渡す値 |
-| 表示先 | modal ID / panel ID / Phaser処理 |
-| 状態 | 更新するstate / dataset / selected値 |
-| 実装ファイル | 実際に処理があるファイル |
-| 状態 | 未実装 / 仮実装 / 実装済み |
+| 表示名 | 画面上の名称 |
+| DOM | id / class / data-* |
+| イベント | click / pointer / change 等 |
+| 呼び出し処理 | 関数 / runtime |
+| 表示先 | panel / modal / Phaser |
+| 更新状態 | localStorage / dataset / map state 等 |
+| 実装ファイル | 実ファイル |
+| 実装状態 | 実装済み / 仮 / 未実装 |
+
+特に以下を変更した場合は必ず同時更新する。
+
+- footerタブ数・名称
+- 管理メニュー
+- 研究入口 / 研究モーダル
+- マップ入力
+- 表示設定
+- 固定DOM ID
+- runtime公開関数
 
 ---
 
-## 8. 現在の優先修正
+## 10. 現在の実装状態まとめ
 
-1. `frontend/index.html` から `document.open/write/close` 方式を撤去し、v39固定DOMを通常HTMLとして常駐させる。
-2. 管理タブの `フィールド設定 / 設計書` を初期HTMLへ固定する。
-3. runtimeは固定ボタン生成をやめ、イベント接続だけにする。
-4. Phaserマップ生成・再生成と固定UI DOMを完全に分離する。
-5. その後、左サイド研究レール → `openResearchModal(researchType)` を正式化する。
+| 機能 | 状態 |
+|---|---|
+| 固定v39 HTML | 実装済み |
+| bootstrapでruntime読込 | 実装済み |
+| 4タブ `部隊 / 行動 / 土地 / 管理` | 実装済み |
+| 旧右サイド非表示 | 実装済み |
+| 表示設定 | 実装済み |
+| 設計書viewer | 実装済み |
+| 研究モーダルUI整形 | 実装済み |
+| Phaserマップ操作 | 実装進行済み（詳細はマップ設計書） |
+| フィールドカスタム設定 | 仮画面 / 未接続 |
+| 既存ゲーム全機能接続 | 進行中 |
