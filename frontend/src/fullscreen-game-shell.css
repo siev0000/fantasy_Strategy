@@ -101,7 +101,7 @@ body {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
-  overflow: hidden !important;
+  overflow: visible !important;
   z-index: 60 !important;
 }
 
@@ -258,6 +258,10 @@ body {
   min-width: 76px !important;
   max-width: 76px !important;
   padding: 3px 4px !important;
+}
+
+.phaser-map-panel.responsive-portrait-layout .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item:nth-child(3) .sidebar-resource-menu-icon::before {
+  content: "鉱石" !important;
 }
 
 .phaser-map-panel.responsive-portrait-layout .field-header-population-menu-wrap {
