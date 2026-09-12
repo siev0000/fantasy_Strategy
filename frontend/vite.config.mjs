@@ -5,8 +5,10 @@ import { visualizer } from "rollup-plugin-visualizer";
 export default defineConfig(({ mode }) => {
   const isTestOnMode = mode === "teston" || process.env.TEST_ON === "1";
   const isWatchMode = mode === "watch";
+  const base = String(process.env.VITE_BASE_PATH || "/").trim() || "/";
   return {
     root: "frontend",
+    base,
     plugins: [vue()],
     server: {
       host: true,
