@@ -30,8 +30,6 @@ function installFooterTabFallback() {
       const section = document.getElementById(id);
       if (!(section instanceof HTMLElement)) return;
       const isActive = key === normalized;
-      // The embedded v39 UI also assigns display styles, so use hidden and an
-      // important inline value to prevent inactive panels from remaining visible.
       section.hidden = !isActive;
       section.setAttribute("aria-hidden", String(!isActive));
       section.classList.toggle("v39-footer-panel-active", isActive);
@@ -144,14 +142,46 @@ function createPlaceholderModal() {
   return { open, close };
 }
 
+function installDesignDocsEntry(managePanel) {
+  if (document.getElementById("v39-manage-design-docs")) return;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "v39-manage-design-docs";
+  button.className = "manage-tile";
+  button.innerHTML = "<b>書</b><span>設計書</span>";
+  button.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const tryOpen = (remaining = 30) => {
+      if (typeof window.openDesignDocsModal === "function") {
+        window.openDesignDocsModal();
+        return;
+      }
+      if (remaining <= 0) {
+        console.error("[v39-field-settings-entry] design docs viewer is not ready");
+        return;
+      }
+      window.setTimeout(() => tryOpen(remaining - 1), 50);
+    };
+    tryOpen();
+  });
+  managePanel.appendChild(button);
+}
+
 async function bootFieldSettingsEntry() {
   installFooterTabFallback();
   const managePanel = await waitForManagePanel();
   removeWrongEntry();
+
+  // Management entries are registered from the same runtime so the buttons are
+  // present whenever the management tab itself is available.
+  installDesignDocsEntry(managePanel);
+
   if (document.getElementById("v39-manage-field-settings")) return;
 
   const modal = createPlaceholderModal();
-
   const button = document.createElement("button");
   button.type = "button";
   button.id = "v39-manage-field-settings";
@@ -162,7 +192,6 @@ async function bootFieldSettingsEntry() {
     event.stopPropagation();
     modal.open();
   });
-
   managePanel.appendChild(button);
 }
 
