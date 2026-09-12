@@ -14,21 +14,25 @@ function unpackEmbeddedV39(sourceHtml) {
 }
 
 function installStableManageEntries(sourceHtml) {
-  let html = sourceHtml;
-  const anchor = '<button class="manage-tile" data-toast="音量 / 表示設定"><b>⚙</b><span>設定</span></button>';
-  if (!html.includes(anchor)) {
-    throw new Error("v39 management panel anchor was not found");
+  if (sourceHtml.includes('id="v39-manage-field-settings"') && sourceHtml.includes('id="v39-manage-design-docs"')) {
+    return sourceHtml;
+  }
+
+  const match = sourceHtml.match(/(<section\s+id="footManage"[^>]*>)([\s\S]*?)(<\/section>)/i);
+  if (!match) {
+    throw new Error("#footManage section was not found in v39 HTML");
   }
 
   const additions = [];
-  if (!html.includes('id="v39-manage-field-settings"')) {
-    additions.push('<button class="manage-tile" id="v39-manage-field-settings"><b>⬢</b><span>フィールド設定</span></button>');
+  if (!sourceHtml.includes('id="v39-manage-field-settings"')) {
+    additions.push('        <button class="manage-tile" id="v39-manage-field-settings"><b>⬢</b><span>フィールド設定</span></button>');
   }
-  if (!html.includes('id="v39-manage-design-docs"')) {
-    additions.push('<button class="manage-tile" id="v39-manage-design-docs"><b>書</b><span>設計書</span></button>');
+  if (!sourceHtml.includes('id="v39-manage-design-docs"')) {
+    additions.push('        <button class="manage-tile" id="v39-manage-design-docs"><b>書</b><span>設計書</span></button>');
   }
-  if (!additions.length) return html;
-  return html.replace(anchor, `${anchor}\n        ${additions.join("\n        ")}`);
+
+  const replacement = `${match[1]}${match[2].replace(/\s*$/, "")}\n${additions.join("\n")}\n      ${match[3]}`;
+  return sourceHtml.replace(match[0], replacement);
 }
 
 export default defineConfig(({ mode }) => {
