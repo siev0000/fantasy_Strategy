@@ -6,6 +6,7 @@ const MAP_W = 60;
 const MAP_H = 60;
 const PATTERN_ID = "realistic";
 const MOUNTAIN_MODE = "random";
+const MAX_ZOOM_FACTOR = 6;
 
 const terrainColorMap = new Map(
   (Array.isArray(terrainDefinitions) ? terrainDefinitions : []).map(row => [String(row?.key || ""), String(row?.color || "#607078")])
@@ -144,6 +145,55 @@ function hexPoints(x, y) {
   ];
 }
 
+function tileCenter(x, y) {
+  const tileW = Number(HEX_TILE_CONFIG?.width) || 40;
+  const tileH = Number(HEX_TILE_CONFIG?.height) || 48;
+  const rowStep = Number(HEX_TILE_CONFIG?.rowStep) || 36;
+  const oddRowOffsetX = Number(HEX_TILE_CONFIG?.oddRowOffsetX) || tileW / 2;
+  return {
+    x: (x * tileW) + ((y % 2 === 1) ? oddRowOffsetX : 0) + tileW / 2,
+    y: (y * rowStep) + tileH / 2
+  };
+}
+
+function containsWorldPoint(points, worldX, worldY) {
+  let inside = false;
+  for (let i = 0, j = points.length - 2; i < points.length; j = i, i += 2) {
+    const xi = points[i];
+    const yi = points[i + 1];
+    const xj = points[j];
+    const yj = points[j + 1];
+    const intersects = ((yi > worldY) !== (yj > worldY))
+      && (worldX < ((xj - xi) * (worldY - yi)) / ((yj - yi) || Number.EPSILON) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function resolveTileAtWorldPoint(data, worldX, worldY) {
+  const tileW = Number(HEX_TILE_CONFIG?.width) || 40;
+  const rowStep = Number(HEX_TILE_CONFIG?.rowStep) || 36;
+  const oddRowOffsetX = Number(HEX_TILE_CONFIG?.oddRowOffsetX) || tileW / 2;
+  const estimatedRow = Math.floor(worldY / rowStep);
+  const candidates = [];
+
+  for (let y = estimatedRow - 1; y <= estimatedRow + 1; y += 1) {
+    if (y < 0 || y >= data.h) continue;
+    const offsetX = (y % 2 === 1) ? oddRowOffsetX : 0;
+    const estimatedColumn = Math.floor((worldX - offsetX) / tileW);
+    for (let x = estimatedColumn - 1; x <= estimatedColumn + 1; x += 1) {
+      if (x < 0 || x >= data.w) continue;
+      const points = hexPoints(x, y);
+      if (!containsWorldPoint(points, worldX, worldY)) continue;
+      const center = tileCenter(x, y);
+      candidates.push({ x, y, distance: Math.hypot(worldX - center.x, worldY - center.y) });
+    }
+  }
+
+  candidates.sort((a, b) => a.distance - b.distance);
+  return candidates[0] || null;
+}
+
 function parseCornerKey(raw) {
   const [xRaw, yRaw] = String(raw || "").split(",");
   const x = Number(xRaw);
@@ -177,12 +227,40 @@ function colorNumber(hex) {
   }
 }
 
+function shadeColorByHeight(hex, level) {
+  if (!hex || !hex.startsWith("#") || !Number.isFinite(level)) return hex;
+  const minLevel = -2;
+  const maxLevel = 8;
+  const t = Phaser.Math.Clamp((level - minLevel) / (maxLevel - minLevel), 0, 1);
+  const brightness = 1.18 + ((0.74 - 1.18) * t);
+  const raw = Number.parseInt(hex.slice(1), 16);
+  const r = Phaser.Math.Clamp(Math.round(((raw >> 16) & 0xff) * brightness), 0, 255);
+  const g = Phaser.Math.Clamp(Math.round(((raw >> 8) & 0xff) * brightness), 0, 255);
+  const b = Phaser.Math.Clamp(Math.round((raw & 0xff) * brightness), 0, 255);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+function shadeSeaColorByDepth(hex, level) {
+  if (!hex || !hex.startsWith("#") || !Number.isFinite(level)) return hex;
+  const raw = Number.parseInt(hex.slice(1), 16);
+  const brightness = 1 - Math.min(0.62, Math.max(0, -Math.floor(level)) * 0.09);
+  const r = Phaser.Math.Clamp(Math.round(((raw >> 16) & 0xff) * brightness), 0, 255);
+  const g = Phaser.Math.Clamp(Math.round(((raw >> 8) & 0xff) * brightness), 0, 255);
+  const b = Phaser.Math.Clamp(Math.round((raw & 0xff) * brightness), 0, 255);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 function drawTerrain(scene, data) {
   const graphics = scene.add.graphics();
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
       const terrain = String(data.grid?.[y]?.[x] || "海");
-      const fill = colorNumber(terrainColorMap.get(terrain) || "#607078");
+      const baseColor = terrainColorMap.get(terrain) || "#607078";
+      const heightLevel = Number(data.heightLevelMap?.[y]?.[x]);
+      const shadedColor = terrain === "海"
+        ? shadeSeaColorByDepth(baseColor, heightLevel)
+        : shadeColorByHeight(baseColor, heightLevel);
+      const fill = colorNumber(shadedColor);
       const points = hexPoints(x, y);
       graphics.fillStyle(fill, 1);
       graphics.fillPoints([
@@ -268,13 +346,252 @@ function drawSpecialTerrain(scene, data) {
 function fitCamera(scene) {
   const camera = scene.cameras.main;
   const size = worldSize();
-  camera.setBounds(0, 0, size.width, size.height);
+  camera.removeBounds();
   const fit = Math.min(camera.width / size.width, camera.height / size.height) * 0.97;
   camera.setZoom(Math.max(0.05, fit));
   camera.centerOn(size.width / 2, size.height / 2);
+  scene.v39FitZoom = camera.zoom;
+  scene.v39RequestedZoom = camera.zoom;
 }
 
-function createFieldGame(host, data) {
+function resizeCameraPreservingView(scene) {
+  const camera = scene.cameras.main;
+  const size = worldSize();
+  const currentZoom = Number(scene.v39RequestedZoom) || camera.zoom;
+  camera.removeBounds();
+  const fit = Math.max(0.05, Math.min(camera.width / size.width, camera.height / size.height) * 0.97);
+  scene.v39FitZoom = fit;
+  scene.v39RequestedZoom = Phaser.Math.Clamp(currentZoom, fit, fit * MAX_ZOOM_FACTOR);
+  camera.setZoom(scene.v39RequestedZoom);
+  clampCamera(camera);
+}
+
+function clampCamera(camera) {
+  camera.preRender();
+  const size = worldSize();
+  const topLeft = camera.getWorldPoint(0, 0);
+  const bottomRight = camera.getWorldPoint(camera.width, camera.height);
+  const visibleWidth = bottomRight.x - topLeft.x;
+  const visibleHeight = bottomRight.y - topLeft.y;
+  let adjustX = 0;
+  let adjustY = 0;
+
+  if (visibleWidth < size.width) {
+    if (topLeft.x < 0) adjustX = -topLeft.x;
+    else if (bottomRight.x > size.width) adjustX = size.width - bottomRight.x;
+  } else {
+    if (topLeft.x > 0) adjustX = -topLeft.x;
+    else if (bottomRight.x < size.width) adjustX = size.width - bottomRight.x;
+  }
+  if (visibleHeight < size.height) {
+    if (topLeft.y < 0) adjustY = -topLeft.y;
+    else if (bottomRight.y > size.height) adjustY = size.height - bottomRight.y;
+  } else {
+    if (topLeft.y > 0) adjustY = -topLeft.y;
+    else if (bottomRight.y < size.height) adjustY = size.height - bottomRight.y;
+  }
+
+  camera.scrollX += adjustX;
+  camera.scrollY += adjustY;
+  camera.preRender();
+}
+
+function clientToCameraPoint(camera, host, clientX, clientY) {
+  const rect = host.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: (clientX - rect.left) * (camera.width / rect.width),
+    y: (clientY - rect.top) * (camera.height / rect.height)
+  };
+}
+
+function cameraPointToWorld(camera, point) {
+  const world = camera.getWorldPoint(point.x, point.y);
+  return { x: world.x, y: world.y };
+}
+
+function worldToCameraPoint(camera, worldX, worldY) {
+  const origin = camera.getWorldPoint(0, 0);
+  const stepX = camera.getWorldPoint(1, 0);
+  const stepY = camera.getWorldPoint(0, 1);
+  const j11 = stepX.x - origin.x;
+  const j21 = stepX.y - origin.y;
+  const j12 = stepY.x - origin.x;
+  const j22 = stepY.y - origin.y;
+  const determinant = (j11 * j22) - (j12 * j21);
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-9) return null;
+  const dx = worldX - origin.x;
+  const dy = worldY - origin.y;
+  return {
+    x: ((dx * j22) - (dy * j12)) / determinant,
+    y: ((dy * j11) - (dx * j21)) / determinant
+  };
+}
+
+function installCameraControlStyles() {
+  if (document.getElementById("v39-map-camera-control-style")) return;
+  const style = document.createElement("style");
+  style.id = "v39-map-camera-control-style";
+  style.textContent = `
+#v39-map-camera-controls{position:absolute;left:74px;bottom:8px;z-index:24;display:grid;gap:4px}
+#v39-map-camera-controls button{width:38px;height:38px;padding:0;border:1px solid #597078;border-radius:7px;background:rgba(13,27,32,.94);color:#e8efec;font-size:23px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+#v39-map-camera-controls button:active{background:#21434c;border-color:#76cedd}
+@media(max-width:700px){#v39-map-camera-controls{left:6px;bottom:6px}#v39-map-camera-controls button{width:36px;height:36px}}
+`;
+  document.head.appendChild(style);
+}
+
+function installCameraControls(scene, host, playfield, data) {
+  installCameraControlStyles();
+  const camera = scene.cameras.main;
+  const pointers = new Map();
+  let dragged = false;
+  let lastTouchTap = null;
+  const selectionGraphics = scene.add.graphics().setDepth(20);
+
+  const selectTileAt = (clientX, clientY) => {
+    const cameraPoint = clientToCameraPoint(camera, host, clientX, clientY);
+    if (!cameraPoint) return null;
+    const worldPoint = cameraPointToWorld(camera, cameraPoint);
+    const tile = resolveTileAtWorldPoint(data, worldPoint.x, worldPoint.y);
+    if (!tile) return null;
+
+    const points = hexPoints(tile.x, tile.y);
+    selectionGraphics.clear();
+    selectionGraphics.lineStyle(4, 0xffdd72, 1);
+    selectionGraphics.strokePoints([
+      { x: points[0], y: points[1] },
+      { x: points[2], y: points[3] },
+      { x: points[4], y: points[5] },
+      { x: points[6], y: points[7] },
+      { x: points[8], y: points[9] },
+      { x: points[10], y: points[11] }
+    ], true);
+
+    const selected = {
+      x: tile.x,
+      y: tile.y,
+      terrain: String(data.grid?.[tile.y]?.[tile.x] || "海"),
+      height: Number(data.heightLevelMap?.[tile.y]?.[tile.x]) || 0,
+      special: String(data.specialMap?.[tile.y]?.[tile.x] || "")
+    };
+    scene.v39SelectedTile = selected;
+    const terrainLabel = document.getElementById("landTerrain");
+    if (terrainLabel) terrainLabel.textContent = selected.special || selected.terrain;
+    window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail: selected }));
+    return selected;
+  };
+
+  const zoomAt = (clientX, clientY, factor) => {
+    const cameraPoint = clientToCameraPoint(camera, host, clientX, clientY);
+    if (!cameraPoint) return;
+    const before = cameraPointToWorld(camera, cameraPoint);
+    const minZoom = Number(scene.v39FitZoom) || camera.zoom;
+    const currentZoom = Number(scene.v39RequestedZoom) || camera.zoom;
+    scene.v39RequestedZoom = Phaser.Math.Clamp(currentZoom * factor, minZoom, minZoom * MAX_ZOOM_FACTOR);
+    camera.setZoom(scene.v39RequestedZoom);
+    camera.preRender();
+    const after = cameraPointToWorld(camera, cameraPoint);
+    camera.scrollX += before.x - after.x;
+    camera.scrollY += before.y - after.y;
+    clampCamera(camera);
+  };
+
+  const zoomCenter = factor => {
+    const rect = host.getBoundingClientRect();
+    const topLeft = camera.getWorldPoint(0, 0);
+    const bottomRight = camera.getWorldPoint(camera.width, camera.height);
+    const size = worldSize();
+    const visibleLeft = Math.max(0, Math.min(topLeft.x, bottomRight.x));
+    const visibleRight = Math.min(size.width, Math.max(topLeft.x, bottomRight.x));
+    const visibleTop = Math.max(0, Math.min(topLeft.y, bottomRight.y));
+    const visibleBottom = Math.min(size.height, Math.max(topLeft.y, bottomRight.y));
+    const worldX = visibleRight >= visibleLeft ? (visibleLeft + visibleRight) / 2 : size.width / 2;
+    const worldY = visibleBottom >= visibleTop ? (visibleTop + visibleBottom) / 2 : size.height / 2;
+    const cameraPoint = worldToCameraPoint(camera, worldX, worldY);
+    if (!cameraPoint) return;
+    const clientX = rect.left + cameraPoint.x * (rect.width / camera.width);
+    const clientY = rect.top + cameraPoint.y * (rect.height / camera.height);
+    zoomAt(clientX, clientY, factor);
+  };
+
+  host.addEventListener("wheel", event => {
+    event.preventDefault();
+    zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1.16 : 1 / 1.16);
+  }, { passive: false });
+
+  host.addEventListener("pointerdown", event => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    host.setPointerCapture?.(event.pointerId);
+    dragged = false;
+  });
+
+  host.addEventListener("pointermove", event => {
+    const previous = pointers.get(event.pointerId);
+    if (!previous) return;
+    const oldPointers = [...pointers.values()];
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const nextPointers = [...pointers.values()];
+
+    if (nextPointers.length >= 2) {
+      const oldDistance = Math.hypot(oldPointers[0].x - oldPointers[1].x, oldPointers[0].y - oldPointers[1].y);
+      const nextDistance = Math.hypot(nextPointers[0].x - nextPointers[1].x, nextPointers[0].y - nextPointers[1].y);
+      if (oldDistance > 0 && nextDistance > 0) {
+        const centerX = (nextPointers[0].x + nextPointers[1].x) / 2;
+        const centerY = (nextPointers[0].y + nextPointers[1].y) / 2;
+        zoomAt(centerX, centerY, nextDistance / oldDistance);
+        dragged = true;
+      }
+      return;
+    }
+
+    const dx = event.clientX - previous.x;
+    const dy = event.clientY - previous.y;
+    if (Math.abs(dx) + Math.abs(dy) < 1) return;
+    camera.scrollX -= dx / camera.zoom;
+    camera.scrollY -= dy / camera.zoom;
+    clampCamera(camera);
+    dragged = true;
+  });
+
+  const finishPointer = event => {
+    const wasTouch = event.pointerType !== "mouse";
+    const shouldSelect = !dragged && pointers.size === 1;
+    pointers.delete(event.pointerId);
+    host.releasePointerCapture?.(event.pointerId);
+    if (shouldSelect) selectTileAt(event.clientX, event.clientY);
+    if (wasTouch && !dragged && pointers.size === 0) {
+      const now = performance.now();
+      if (lastTouchTap && now - lastTouchTap.time < 320 && Math.hypot(event.clientX - lastTouchTap.x, event.clientY - lastTouchTap.y) < 28) {
+        zoomAt(event.clientX, event.clientY, 1.5);
+        lastTouchTap = null;
+      } else {
+        lastTouchTap = { time: now, x: event.clientX, y: event.clientY };
+      }
+    }
+    if (!pointers.size) dragged = false;
+  };
+  host.addEventListener("pointerup", finishPointer);
+  host.addEventListener("pointercancel", finishPointer);
+  host.addEventListener("dblclick", event => {
+    event.preventDefault();
+    zoomAt(event.clientX, event.clientY, 1.5);
+  });
+
+  const controls = document.createElement("div");
+  controls.id = "v39-map-camera-controls";
+  controls.setAttribute("aria-label", "地図の拡大縮小");
+  controls.innerHTML = '<button type="button" data-map-zoom="in" aria-label="地図を拡大">＋</button><button type="button" data-map-zoom="out" aria-label="地図を縮小">−</button>';
+  controls.addEventListener("pointerdown", event => event.stopPropagation());
+  controls.querySelector('[data-map-zoom="in"]')?.addEventListener("click", () => zoomCenter(1.3));
+  controls.querySelector('[data-map-zoom="out"]')?.addEventListener("click", () => zoomCenter(1 / 1.3));
+  playfield.appendChild(controls);
+
+  scene.v39Input = { zoomAt, selectTileAt };
+}
+
+function createFieldGame(host, playfield, data) {
   let lastW = 0;
   let lastH = 0;
   const game = new Phaser.Game({
@@ -294,6 +611,7 @@ function createFieldGame(host, data) {
         drawRivers(this, data.riverData);
         drawSpecialTerrain(this, data);
         fitCamera(this);
+        installCameraControls(this, host, playfield, data);
         lastW = this.scale.width;
         lastH = this.scale.height;
         this.scale.on("resize", gameSize => {
@@ -302,7 +620,7 @@ function createFieldGame(host, data) {
           if (w === lastW && h === lastH) return;
           lastW = w;
           lastH = h;
-          fitCamera(this);
+          resizeCameraPreservingView(this);
         });
       }
     }
@@ -339,15 +657,48 @@ async function boot() {
     patternId: PATTERN_ID,
     mountainMode: MOUNTAIN_MODE
   });
-  createFieldGame(host, data);
+  const game = createFieldGame(host, playfield, data);
 
   window.__v39FieldRuntime = {
+    game,
     mapData: data,
     mapWidth: MAP_W,
     mapHeight: MAP_H,
     patternId: PATTERN_ID,
     mountainMode: MOUNTAIN_MODE
   };
+  window.render_game_to_text = () => {
+    const scene = game.scene.getScenes(true)[0];
+    const camera = scene?.cameras?.main;
+    const footer = document.querySelector(".footer");
+    const topbar = document.querySelector(".topbar");
+    const playfieldHeight = playfield.getBoundingClientRect().height;
+    const footerHeight = footer?.getBoundingClientRect().height || 0;
+    const topRegionHeight = (topbar?.getBoundingClientRect().height || 0) + playfieldHeight;
+    return JSON.stringify({
+      screen: "v39-field",
+      coordinates: "world origin is top-left; x increases right; y increases down",
+      map: { width: MAP_W, height: MAP_H, pattern: PATTERN_ID },
+      layout: {
+        topRegionHeight: Math.round(topRegionHeight),
+        playfieldHeight: Math.round(playfieldHeight),
+        footerHeight: Math.round(footerHeight),
+        playfieldRatioExcludingHeader: Number((playfieldHeight / Math.max(1, playfieldHeight + footerHeight)).toFixed(3)),
+        footerRatioExcludingHeader: Number((footerHeight / Math.max(1, playfieldHeight + footerHeight)).toFixed(3)),
+        topRegionRatio: Number((topRegionHeight / Math.max(1, topRegionHeight + footerHeight)).toFixed(3)),
+        footerRatio: Number((footerHeight / Math.max(1, topRegionHeight + footerHeight)).toFixed(3))
+      },
+      selectedTile: scene?.v39SelectedTile || null,
+      camera: camera ? {
+        zoom: Number(camera.zoom.toFixed(4)),
+        minZoom: Number((Number(scene.v39FitZoom) || camera.zoom).toFixed(4)),
+        maxZoom: Number(((Number(scene.v39FitZoom) || camera.zoom) * MAX_ZOOM_FACTOR).toFixed(4)),
+        x: Number(camera.scrollX.toFixed(2)),
+        y: Number(camera.scrollY.toFixed(2))
+      } : null
+    });
+  };
+  window.advanceTime = () => window.render_game_to_text();
 }
 
 boot().catch(error => {

@@ -2,78 +2,15 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { visualizer } from "rollup-plugin-visualizer";
 import { resolve } from "node:path";
-import { gunzipSync } from "node:zlib";
-
-function unpackEmbeddedV39(sourceHtml) {
-  if (!sourceHtml.includes("const gzipBase64=")) return sourceHtml;
-  const match = sourceHtml.match(/const\s+gzipBase64\s*=\s*"([A-Za-z0-9+/=]+)"\s*;/);
-  if (!match?.[1]) {
-    throw new Error("Embedded v39 HTML was not found in frontend/index.html");
-  }
-  return gunzipSync(Buffer.from(match[1], "base64")).toString("utf-8");
-}
-
-function installStableManageEntries(sourceHtml) {
-  if (sourceHtml.includes('id="v39-manage-field-settings"') && sourceHtml.includes('id="v39-manage-design-docs"')) {
-    return sourceHtml;
-  }
-
-  const match = sourceHtml.match(/(<section\s+id="footManage"[^>]*>)([\s\S]*?)(<\/section>)/i);
-  if (!match) {
-    throw new Error("#footManage section was not found in v39 HTML");
-  }
-
-  const additions = [];
-  if (!sourceHtml.includes('id="v39-manage-field-settings"')) {
-    additions.push('        <button class="manage-tile" id="v39-manage-field-settings"><b>⬢</b><span>フィールド設定</span></button>');
-  }
-  if (!sourceHtml.includes('id="v39-manage-design-docs"')) {
-    additions.push('        <button class="manage-tile" id="v39-manage-design-docs"><b>書</b><span>設計書</span></button>');
-  }
-
-  const replacement = `${match[1]}${match[2].replace(/\s*$/, "")}\n${additions.join("\n")}\n      ${match[3]}`;
-  return sourceHtml.replace(match[0], replacement);
-}
 
 export default defineConfig(({ mode }) => {
   const isTestOnMode = mode === "teston" || process.env.TEST_ON === "1";
   const isWatchMode = mode === "watch";
   const base = String(process.env.VITE_BASE_PATH || "/").trim() || "/";
-  const v39StaticUiPlugin = {
-    name: "v39-static-ui",
-    transformIndexHtml(sourceHtml) {
-      const html = installStableManageEntries(unpackEmbeddedV39(sourceHtml));
-      return {
-        html,
-        tags: [
-          {
-            tag: "script",
-            attrs: { type: "module", src: `${base}assets/v39-field-runtime.js` },
-            injectTo: "body"
-          },
-          {
-            tag: "script",
-            attrs: { type: "module", src: `${base}assets/v39-field-settings-entry.js` },
-            injectTo: "body"
-          },
-          {
-            tag: "script",
-            attrs: { type: "module", src: `${base}assets/v39-research-ui.js` },
-            injectTo: "body"
-          },
-          {
-            tag: "script",
-            attrs: { type: "module", src: `${base}assets/v39-design-docs-viewer.js` },
-            injectTo: "body"
-          }
-        ]
-      };
-    }
-  };
   return {
     root: "frontend",
     base,
-    plugins: [vue(), v39StaticUiPlugin],
+    plugins: [vue()],
     server: {
       host: true,
       port: 5173,
@@ -92,13 +29,7 @@ export default defineConfig(({ mode }) => {
       outDir: "../web-vue-dist",
       emptyOutDir: !isWatchMode,
       rollupOptions: {
-        input: {
-          index: resolve("frontend/index.html"),
-          "v39-field-runtime": resolve("frontend/src/v39-field-runtime.js"),
-          "v39-field-settings-entry": resolve("frontend/src/v39-field-settings-entry.js"),
-          "v39-research-ui": resolve("frontend/src/v39-research-ui.js"),
-          "v39-design-docs-viewer": resolve("frontend/src/v39-design-docs-viewer.js")
-        },
+        input: resolve("frontend/index.html"),
         output: {
           entryFileNames: "assets/[name].js",
           chunkFileNames: "assets/[name]-[hash].js",
