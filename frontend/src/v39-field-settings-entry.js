@@ -29,8 +29,24 @@ function installFooterTabFallback() {
     Object.entries(sections).forEach(([key, id]) => {
       const section = document.getElementById(id);
       if (!(section instanceof HTMLElement)) return;
-      section.style.display = key === normalized ? "grid" : "none";
+      const isActive = key === normalized;
+      // The embedded v39 UI also assigns display styles, so use hidden and an
+      // important inline value to prevent inactive panels from remaining visible.
+      section.hidden = !isActive;
+      section.setAttribute("aria-hidden", String(!isActive));
+      section.classList.toggle("v39-footer-panel-active", isActive);
+      section.style.setProperty("display", isActive ? "grid" : "none", "important");
     });
+  };
+
+  const applyInitialTab = () => {
+    const panelsReady = Object.values(sections).every(id => document.getElementById(id) instanceof HTMLElement);
+    if (!panelsReady) {
+      window.setTimeout(applyInitialTab, 30);
+      return;
+    }
+    const active = document.querySelector("[data-foot].active");
+    activate(active?.dataset?.foot || "squad");
   };
 
   document.addEventListener("click", event => {
@@ -43,10 +59,7 @@ function installFooterTabFallback() {
     activate(tabKey);
   }, true);
 
-  window.setTimeout(() => {
-    const active = document.querySelector("[data-foot].active");
-    activate(active?.dataset?.foot || "squad");
-  }, 0);
+  applyInitialTab();
 }
 
 function removeWrongEntry() {
