@@ -10,9 +10,61 @@ function clampSize(value) {
   return Math.max(MIN_VIEW_SIZE, num);
 }
 
+function forceViewportContainerChain(canvas) {
+  if (!(canvas instanceof HTMLCanvasElement)) return null;
+  const mapRoot = canvas.parentElement;
+  const stage = mapRoot?.closest?.(".phaser-stage");
+  const panel = mapRoot?.closest?.(".phaser-map-panel");
+  const app = mapRoot?.closest?.(".app");
+
+  if (app instanceof HTMLElement) {
+    app.style.setProperty("position", "fixed", "important");
+    app.style.setProperty("inset", "0", "important");
+    app.style.setProperty("left", "0", "important");
+    app.style.setProperty("top", "0", "important");
+    app.style.setProperty("right", "0", "important");
+    app.style.setProperty("bottom", "0", "important");
+    app.style.setProperty("width", "100vw", "important");
+    app.style.setProperty("height", "100dvh", "important");
+    app.style.setProperty("min-height", "100dvh", "important");
+    app.style.setProperty("max-height", "100dvh", "important");
+    app.style.setProperty("transform", "none", "important");
+  }
+
+  if (panel instanceof HTMLElement) {
+    panel.style.setProperty("position", "absolute", "important");
+    panel.style.setProperty("inset", "0", "important");
+    panel.style.setProperty("width", "100%", "important");
+    panel.style.setProperty("height", "100%", "important");
+    panel.style.setProperty("min-height", "0", "important");
+    panel.style.setProperty("max-height", "none", "important");
+    panel.style.setProperty("margin", "0", "important");
+  }
+
+  if (stage instanceof HTMLElement) {
+    stage.style.setProperty("position", "absolute", "important");
+    stage.style.setProperty("inset", "0", "important");
+    stage.style.setProperty("width", "100%", "important");
+    stage.style.setProperty("height", "100%", "important");
+    stage.style.setProperty("min-height", "0", "important");
+    stage.style.setProperty("max-height", "none", "important");
+  }
+
+  if (mapRoot instanceof HTMLElement) {
+    mapRoot.style.setProperty("position", "absolute", "important");
+    mapRoot.style.setProperty("inset", "0", "important");
+    mapRoot.style.setProperty("width", "100%", "important");
+    mapRoot.style.setProperty("height", "100%", "important");
+    mapRoot.style.setProperty("min-height", "0", "important");
+    mapRoot.style.setProperty("max-height", "none", "important");
+  }
+
+  return mapRoot instanceof HTMLElement ? mapRoot : null;
+}
+
 function resolveViewportParts(game) {
   const canvas = game?.canvas;
-  const root = canvas?.parentElement;
+  const root = forceViewportContainerChain(canvas);
   if (!(canvas instanceof HTMLCanvasElement) || !(root instanceof HTMLElement)) return null;
 
   const rootRect = root.getBoundingClientRect();
@@ -53,24 +105,24 @@ function applyResponsivePhaserSize(game) {
   if (!parts || !game?.scale) return;
   const { canvas, left, top, width, height } = parts;
 
-  canvas.style.position = "absolute";
-  canvas.style.left = `${left}px`;
-  canvas.style.top = `${top}px`;
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
-  canvas.style.maxWidth = "none";
-  canvas.style.maxHeight = "none";
+  canvas.style.setProperty("position", "absolute", "important");
+  canvas.style.setProperty("left", `${left}px`, "important");
+  canvas.style.setProperty("top", `${top}px`, "important");
+  canvas.style.setProperty("width", `${width}px`, "important");
+  canvas.style.setProperty("height", `${height}px`, "important");
+  canvas.style.setProperty("max-width", "none", "important");
+  canvas.style.setProperty("max-height", "none", "important");
 
   const currentWidth = Math.round(Number(game.scale.width || game.config?.width || 0));
   const currentHeight = Math.round(Number(game.scale.height || game.config?.height || 0));
-  if (currentWidth === width && currentHeight === height) return;
-
-  if (game.config) {
-    game.config.width = width;
-    game.config.height = height;
-  }
-  if (typeof game.scale.resize === "function") {
-    game.scale.resize(width, height);
+  if (currentWidth !== width || currentHeight !== height) {
+    if (game.config) {
+      game.config.width = width;
+      game.config.height = height;
+    }
+    if (typeof game.scale.resize === "function") {
+      game.scale.resize(width, height);
+    }
   }
 
   const scenes = game.scene?.getScenes?.(true) || [];
@@ -98,7 +150,7 @@ function attachResponsiveResize(game) {
   installedGames.add(game);
 
   const tryAttach = () => {
-    const root = game?.canvas?.parentElement;
+    const root = forceViewportContainerChain(game?.canvas);
     if (!(root instanceof HTMLElement)) {
       window.requestAnimationFrame(tryAttach);
       return;
@@ -108,6 +160,13 @@ function attachResponsiveResize(game) {
       ? new ResizeObserver(() => scheduleResponsiveResize(game))
       : null;
     observer?.observe(root);
+
+    const stage = root.closest?.(".phaser-stage");
+    const panelRoot = root.closest?.(".phaser-map-panel");
+    const appRoot = root.closest?.(".app");
+    if (stage instanceof HTMLElement) observer?.observe(stage);
+    if (panelRoot instanceof HTMLElement) observer?.observe(panelRoot);
+    if (appRoot instanceof HTMLElement) observer?.observe(appRoot);
 
     const header = root.querySelector(".field-overlay-header");
     const panel = root.querySelector(".field-footer-tabs-overlay");
