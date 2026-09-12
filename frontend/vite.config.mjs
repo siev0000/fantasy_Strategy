@@ -6,10 +6,22 @@ export default defineConfig(({ mode }) => {
   const isTestOnMode = mode === "teston" || process.env.TEST_ON === "1";
   const isWatchMode = mode === "watch";
   const base = String(process.env.VITE_BASE_PATH || "/").trim() || "/";
+  const v39FieldRuntimePlugin = {
+    name: "v39-field-runtime-inject",
+    transformIndexHtml() {
+      return [
+        {
+          tag: "script",
+          attrs: { type: "module", src: "/src/v39-field-runtime.js" },
+          injectTo: "body"
+        }
+      ];
+    }
+  };
   return {
     root: "frontend",
     base,
-    plugins: [vue()],
+    plugins: [vue(), v39FieldRuntimePlugin],
     server: {
       host: true,
       port: 5173,
