@@ -1,6 +1,6 @@
 /* Fullscreen game shell.
-   This file intentionally loads last and disables the legacy fixed-resolution root scale.
-   Phaser remains responsible for map rendering; Vue overlays use the real viewport. */
+   The field and command UI are separate layout regions.
+   Phaser only owns the field region; the command panel never overlays the canvas. */
 
 html,
 body,
@@ -28,10 +28,6 @@ body {
 .app.game-only {
   position: absolute !important;
   inset: 0 !important;
-  left: 0 !important;
-  top: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
   width: 100vw !important;
   height: 100dvh !important;
   min-width: 0 !important;
@@ -61,9 +57,34 @@ body {
   background: #0c1418 !important;
 }
 
-.phaser-map-panel .phaser-stage,
+/* Stage is the real application layout.
+   Desktop/wide: field | command sidebar
+   Narrow portrait: field / command panel */
+.phaser-map-panel .phaser-stage {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 31vw, 460px) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #0c1418 !important;
+}
+
+/* Phaser field gets its own grid cell and no longer shares space with the command UI. */
+.phaser-map-panel .phaser-stage > .phaser-map-canvas,
 .phaser-map-panel .phaser-map-canvas {
   position: relative !important;
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
   width: 100% !important;
   height: 100% !important;
   min-width: 0 !important;
@@ -78,29 +99,46 @@ body {
 
 .phaser-map-panel .phaser-map-canvas > canvas {
   display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
 }
 
-/* Runtime mode is authoritative. Wide/square desktop windows keep the right sidebar
-   even when CSS orientation reports portrait. */
-.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay {
-  position: absolute !important;
+/* Command UI is a true sibling layout region, never an overlay. */
+.phaser-map-panel .phaser-stage > .field-footer-tabs-overlay,
+.phaser-map-panel .field-footer-tabs-overlay {
+  position: relative !important;
+  inset: auto !important;
   left: auto !important;
-  right: 0 !important;
-  top: var(--v39-header-height, 56px) !important;
-  bottom: 0 !important;
-  width: clamp(320px, 31vw, 460px) !important;
-  height: auto !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: auto !important;
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  align-self: stretch !important;
+  justify-self: stretch !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
   max-height: none !important;
+  margin: 0 !important;
   transform: none !important;
   border-top: 0 !important;
   border-right: 0 !important;
   border-bottom: 0 !important;
-  border-radius: 9px 0 0 0 !important;
+  border-radius: 0 !important;
   display: flex !important;
   flex-direction: column !important;
+  box-shadow: -3px 0 14px rgba(0, 0, 0, 0.36) !important;
 }
 
-.phaser-map-panel.responsive-landscape-layout .field-footer-tab-row {
+.phaser-map-panel .field-footer-tab-row {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: 4px !important;
@@ -109,47 +147,55 @@ body {
   overflow: visible !important;
 }
 
-.phaser-map-panel.responsive-landscape-layout .field-footer-tab-body {
+.phaser-map-panel .field-footer-tab-body {
   flex: 1 1 auto !important;
   min-height: 0 !important;
   height: auto !important;
   max-height: none !important;
 }
 
+/* Phone portrait only: use a dedicated lower row instead of a right column. */
+@media (max-width: 900px) and (orientation: portrait) {
+  .phaser-map-panel .phaser-stage {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 60fr) minmax(0, 40fr) !important;
+  }
+
+  .phaser-map-panel .phaser-stage > .phaser-map-canvas,
+  .phaser-map-panel .phaser-map-canvas {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  .phaser-map-panel .phaser-stage > .field-footer-tabs-overlay,
+  .phaser-map-panel .field-footer-tabs-overlay {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: 0 -3px 14px rgba(0, 0, 0, 0.36) !important;
+  }
+
+  .phaser-map-panel .field-footer-tab-row {
+    display: flex !important;
+    gap: 5px !important;
+    padding: 5px 6px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+}
+
+/* Runtime classes only describe mode; they no longer reposition either region. */
+.phaser-map-panel.responsive-landscape-layout .field-footer-tabs-overlay,
 .phaser-map-panel.responsive-portrait-layout .field-footer-tabs-overlay {
-  position: absolute !important;
-  left: 0 !important;
-  right: 0 !important;
-  top: auto !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: 40% !important;
-  max-height: 44% !important;
-  transform: none !important;
-  border-left: 0 !important;
-  border-right: 0 !important;
-  border-bottom: 0 !important;
-  border-radius: 10px 10px 0 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
+  position: relative !important;
+  inset: auto !important;
 }
 
-.phaser-map-panel.responsive-portrait-layout .field-footer-tab-row {
-  display: flex !important;
-  gap: 5px !important;
-  padding: 5px 6px !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-}
-
-.phaser-map-panel.responsive-portrait-layout .field-footer-tab-body {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  height: auto !important;
-  max-height: none !important;
-}
-
-/* Legacy scale variables remain for compatibility but no longer affect layout. */
 :root {
   --ui-app-root-scale: 1 !important;
   --game-root-scale: 1 !important;
