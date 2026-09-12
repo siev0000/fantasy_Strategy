@@ -40,6 +40,68 @@ function captureCameraWorldCenter(camera) {
   return null;
 }
 
+function resolveCameraBounds(camera) {
+  if (!camera) return null;
+  let raw = null;
+  if (typeof camera.getBounds === "function") {
+    try {
+      raw = camera.getBounds();
+    } catch {
+      raw = null;
+    }
+  }
+  if (!raw && camera._bounds) raw = camera._bounds;
+  if (!raw) return null;
+
+  const x = Number(raw.x);
+  const y = Number(raw.y);
+  const width = Number(raw.width);
+  const height = Number(raw.height);
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+  return {
+    x,
+    y,
+    width,
+    height,
+    right: x + width,
+    bottom: y + height,
+    centerX: x + (width / 2),
+    centerY: y + (height / 2)
+  };
+}
+
+function clampCameraCenterToBounds(camera, previousCenter, viewportWidth, viewportHeight, zoom) {
+  const bounds = resolveCameraBounds(camera);
+  if (!bounds) return previousCenter;
+
+  const safeZoom = Math.max(0.0001, Number(zoom) || 1);
+  const viewWorldWidth = Math.max(1, Number(viewportWidth) / safeZoom);
+  const viewWorldHeight = Math.max(1, Number(viewportHeight) / safeZoom);
+  const halfW = viewWorldWidth / 2;
+  const halfH = viewWorldHeight / 2;
+
+  let x = Number(previousCenter?.x);
+  let y = Number(previousCenter?.y);
+  if (!Number.isFinite(x)) x = bounds.centerX;
+  if (!Number.isFinite(y)) y = bounds.centerY;
+
+  // If the world is smaller than the available field, keep it centered instead of
+  // pinning it to one edge and showing a large empty strip on the opposite side.
+  if (bounds.width <= viewWorldWidth) {
+    x = bounds.centerX;
+  } else {
+    x = Math.min(bounds.right - halfW, Math.max(bounds.x + halfW, x));
+  }
+
+  if (bounds.height <= viewWorldHeight) {
+    y = bounds.centerY;
+  } else {
+    y = Math.min(bounds.bottom - halfH, Math.max(bounds.y + halfH, y));
+  }
+
+  return { x, y };
+}
+
 function resolveFieldViewport(root) {
   const rect = root.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
@@ -107,8 +169,9 @@ function applyResponsivePhaserSize(game) {
   for (const { camera, center, zoom } of snapshots) {
     camera?.setSize?.(width, height);
     camera?.setZoom?.(zoom);
-    if (center && Number.isFinite(center.x) && Number.isFinite(center.y)) {
-      camera?.centerOn?.(center.x, center.y);
+    const nextCenter = clampCameraCenterToBounds(camera, center, width, height, zoom);
+    if (nextCenter && Number.isFinite(nextCenter.x) && Number.isFinite(nextCenter.y)) {
+      camera?.centerOn?.(nextCenter.x, nextCenter.y);
     }
   }
 }
