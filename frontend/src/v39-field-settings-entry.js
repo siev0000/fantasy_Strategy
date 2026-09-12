@@ -60,12 +60,21 @@ function installFooterTabFallback() {
   applyInitialTab();
 }
 
-function removeWrongEntry() {
-  document.getElementById("v39-open-field-settings")?.remove();
-  document.getElementById("v39-field-settings-placeholder")?.remove();
-}
-
 function createPlaceholderModal() {
+  const existing = document.getElementById("v39-field-settings-placeholder");
+  if (existing instanceof HTMLElement) {
+    return {
+      open() {
+        existing.style.display = "flex";
+        existing.setAttribute("aria-hidden", "false");
+      },
+      close() {
+        existing.style.display = "none";
+        existing.setAttribute("aria-hidden", "true");
+      }
+    };
+  }
+
   const overlay = document.createElement("div");
   overlay.id = "v39-field-settings-placeholder";
   overlay.setAttribute("aria-hidden", "true");
@@ -142,57 +151,28 @@ function createPlaceholderModal() {
   return { open, close };
 }
 
-function installDesignDocsEntry(managePanel) {
-  if (document.getElementById("v39-manage-design-docs")) return;
-
-  const button = document.createElement("button");
-  button.type = "button";
-  button.id = "v39-manage-design-docs";
-  button.className = "manage-tile";
-  button.innerHTML = "<b>書</b><span>設計書</span>";
-  button.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const tryOpen = (remaining = 30) => {
-      if (typeof window.openDesignDocsModal === "function") {
-        window.openDesignDocsModal();
-        return;
-      }
-      if (remaining <= 0) {
-        console.error("[v39-field-settings-entry] design docs viewer is not ready");
-        return;
-      }
-      window.setTimeout(() => tryOpen(remaining - 1), 50);
-    };
-    tryOpen();
-  });
-  managePanel.appendChild(button);
-}
-
 async function bootFieldSettingsEntry() {
   installFooterTabFallback();
-  const managePanel = await waitForManagePanel();
-  removeWrongEntry();
+  await waitForManagePanel();
 
-  // Management entries are registered from the same runtime so the buttons are
-  // present whenever the management tab itself is available.
-  installDesignDocsEntry(managePanel);
-
-  if (document.getElementById("v39-manage-field-settings")) return;
+  // Fixed management buttons belong to the static v39 HTML. This runtime only
+  // connects behavior and never recreates those buttons.
+  const button = document.getElementById("v39-manage-field-settings");
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error("#v39-manage-field-settings is missing from the stable v39 HTML");
+  }
 
   const modal = createPlaceholderModal();
-  const button = document.createElement("button");
-  button.type = "button";
-  button.id = "v39-manage-field-settings";
-  button.className = "manage-tile";
-  button.innerHTML = "<b>⬢</b><span>フィールド設定</span>";
-  button.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    modal.open();
-  });
-  managePanel.appendChild(button);
+  if (button.dataset.v39Bound !== "1") {
+    button.dataset.v39Bound = "1";
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      modal.open();
+    });
+  }
+
+  window.openFieldSettingsModal = modal.open;
 }
 
 bootFieldSettingsEntry().catch(error => {
