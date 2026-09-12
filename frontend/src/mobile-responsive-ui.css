@@ -1,11 +1,9 @@
 /* Responsive field UI port.
    Keep Phaser map/fog/scouting/territory rendering untouched; this file only reshapes overlay UI.
 
-   Important: the game root uses a fixed internal resolution and is CSS-scaled by App.vue.
-   Therefore viewport width alone is not a reliable mobile/desktop discriminator.
-   The command layout follows viewport orientation on every screen size:
-   - portrait  : bottom command panel
-   - landscape : right command sidebar
+   Layout rule shared with responsive-phaser-runtime.js:
+   - compact portrait (portrait AND <= 900px): bottom command panel
+   - everything else: right command sidebar
 */
 
 /* Scroll remains available, but scrollbars never consume layout width. */
@@ -39,8 +37,6 @@
   display: none !important;
 }
 
-/* Existing right character navigator overlaps the unified squad/command area.
-   Character/squad navigation will be consolidated into the responsive command UI. */
 .field-overlay-own-faction-panel {
   display: none !important;
 }
@@ -86,8 +82,8 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Portrait: field above, command/info panel at the bottom. */
-@media (orientation: portrait) {
+/* Compact portrait only: field above, command/info panel at the bottom. */
+@media (max-width: 900px) and (orientation: portrait) {
   .field-footer-tabs-overlay {
     position: absolute !important;
     left: 0 !important;
@@ -118,8 +114,8 @@
   }
 }
 
-/* Landscape: there is no bottom footer; command/info UI is a dedicated right sidebar. */
-@media (orientation: landscape) {
+/* Landscape, tablet and desktop portrait: dedicated right command sidebar. */
+@media (min-width: 901px), (orientation: landscape) {
   .field-footer-tabs-overlay {
     position: absolute !important;
     left: auto !important;
