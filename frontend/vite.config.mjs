@@ -25,6 +25,11 @@ export default defineConfig(({ mode }) => {
           tag: "script",
           attrs: { type: "module", src: `${base}assets/v39-research-ui.js` },
           injectTo: "body"
+        },
+        {
+          tag: "script",
+          attrs: { type: "module", src: `${base}assets/v39-design-docs-viewer.js` },
+          injectTo: "body"
         }
       ];
     }
@@ -55,7 +60,8 @@ export default defineConfig(({ mode }) => {
           index: resolve("frontend/index.html"),
           "v39-field-runtime": resolve("frontend/src/v39-field-runtime.js"),
           "v39-field-settings-entry": resolve("frontend/src/v39-field-settings-entry.js"),
-          "v39-research-ui": resolve("frontend/src/v39-research-ui.js")
+          "v39-research-ui": resolve("frontend/src/v39-research-ui.js"),
+          "v39-design-docs-viewer": resolve("frontend/src/v39-design-docs-viewer.js")
         },
         output: {
           entryFileNames: "assets/[name].js",
