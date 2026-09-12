@@ -12,6 +12,43 @@ function waitForManagePanel() {
   });
 }
 
+function installFooterTabFallback() {
+  const sections = {
+    squad: "footSquad",
+    battle: "footBattle",
+    tile: "footTile",
+    tileData: "footTileData",
+    manage: "footManage"
+  };
+
+  const activate = tabKey => {
+    const normalized = Object.prototype.hasOwnProperty.call(sections, tabKey) ? tabKey : "squad";
+    document.querySelectorAll("[data-foot]").forEach(button => {
+      button.classList.toggle("active", button.dataset.foot === normalized);
+    });
+    Object.entries(sections).forEach(([key, id]) => {
+      const section = document.getElementById(id);
+      if (!(section instanceof HTMLElement)) return;
+      section.style.display = key === normalized ? "grid" : "none";
+    });
+  };
+
+  document.addEventListener("click", event => {
+    const button = event.target instanceof Element ? event.target.closest("[data-foot]") : null;
+    if (!(button instanceof HTMLElement)) return;
+    const tabKey = String(button.dataset.foot || "");
+    if (!Object.prototype.hasOwnProperty.call(sections, tabKey)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    activate(tabKey);
+  }, true);
+
+  window.setTimeout(() => {
+    const active = document.querySelector("[data-foot].active");
+    activate(active?.dataset?.foot || "squad");
+  }, 0);
+}
+
 function removeWrongEntry() {
   document.getElementById("v39-open-field-settings")?.remove();
   document.getElementById("v39-field-settings-placeholder")?.remove();
@@ -95,6 +132,7 @@ function createPlaceholderModal() {
 }
 
 async function bootFieldSettingsEntry() {
+  installFooterTabFallback();
   const managePanel = await waitForManagePanel();
   removeWrongEntry();
   if (document.getElementById("v39-manage-field-settings")) return;
