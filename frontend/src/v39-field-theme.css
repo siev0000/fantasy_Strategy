@@ -1,0 +1,203 @@
+/* v39-inspired field shell. Visual-only overrides: map/fog/scouting logic stays untouched. */
+
+.phaser-map-panel {
+  --v39-bg: #0d1519;
+  --v39-bg-2: #121f24;
+  --v39-line: #34464c;
+  --v39-line-soft: rgba(90, 120, 129, 0.55);
+  --v39-active: #71d1df;
+  --v39-text: #edf3f2;
+  --v39-muted: #93a4a7;
+}
+
+/* Header */
+.phaser-map-panel .field-overlay-header {
+  min-height: 50px !important;
+  padding: 5px 7px !important;
+  gap: 6px !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid var(--v39-line-soft) !important;
+  background: linear-gradient(180deg, rgba(14, 24, 29, 0.98), rgba(9, 16, 20, 0.96)) !important;
+  box-shadow: 0 3px 12px rgba(0,0,0,.35) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+/* Resource groups: compact content, readable text. */
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu {
+  min-height: 40px !important;
+  padding: 3px 4px !important;
+  gap: 3px !important;
+  border: 1px solid var(--v39-line-soft) !important;
+  border-radius: 8px !important;
+  background: #111d22 !important;
+  box-shadow: none !important;
+}
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item {
+  min-width: 84px !important;
+  padding: 4px 8px !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  background: transparent !important;
+}
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item + .sidebar-resource-menu-item {
+  border-left-color: rgba(100, 130, 138, .28) !important;
+}
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item.active {
+  border-color: var(--v39-active) !important;
+  background: #18363e !important;
+  box-shadow: none !important;
+}
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-total {
+  font-size: 13px !important;
+  color: #eef4f3 !important;
+}
+.phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-delta {
+  font-size: 10px !important;
+  color: #74c88c !important;
+}
+.phaser-map-panel .resource-icon-entry em,
+.phaser-map-panel .material-token,
+.phaser-map-panel .material-token em {
+  font-size: 12px !important;
+  color: #d8e1e0 !important;
+}
+
+/* Top actions: v39 compact square controls. */
+.phaser-map-panel .field-overlay-actions {
+  margin-left: auto !important;
+  gap: 4px !important;
+}
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  border-radius: 7px !important;
+  border: 1px solid #3f5258 !important;
+  background: #142126 !important;
+  box-shadow: none !important;
+}
+.phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:hover {
+  border-color: var(--v39-active) !important;
+  background: #19343c !important;
+}
+
+/* Research: move the existing real research controls to the v39-style left rail. */
+.phaser-map-panel .field-header-research-wrap {
+  position: absolute !important;
+  left: 6px !important;
+  top: 58px !important;
+  z-index: 31 !important;
+  order: initial !important;
+  align-self: initial !important;
+  padding: 5px 4px !important;
+  border: 1px solid var(--v39-line-soft) !important;
+  border-radius: 9px !important;
+  background: rgba(12, 22, 27, .94) !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,.34) !important;
+}
+.phaser-map-panel .field-header-research-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 5px !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+.phaser-map-panel .field-header-research-chip {
+  width: 44px !important;
+  height: 52px !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid #36484e !important;
+  border-radius: 8px !important;
+  background: #122025 !important;
+}
+.phaser-map-panel .field-header-research-chip:hover {
+  border-color: var(--v39-active) !important;
+  background: #18333a !important;
+}
+.phaser-map-panel .field-header-research-gauge {
+  --_size: 36px !important;
+  --_thickness: 3px !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-color: #43565c !important;
+  box-shadow: none !important;
+}
+.phaser-map-panel .field-header-research-gauge img {
+  width: 28px !important;
+  height: 28px !important;
+  box-shadow: none !important;
+}
+
+/* Old right character navigator is replaced by the command panel. */
+.phaser-map-panel .field-overlay-own-faction-panel {
+  display: none !important;
+}
+
+/* Old fixed tile detail also duplicates the new 土地/土地データ tabs. */
+.phaser-map-panel .field-overlay-tile-detail {
+  display: none !important;
+}
+
+/* Common zero-width scrollbar policy. */
+.phaser-map-panel *,
+.phaser-map-panel *::before,
+.phaser-map-panel *::after {
+  scrollbar-width: none;
+}
+.phaser-map-panel *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Keep map canvas visually simple; tile rendering itself is still Phaser. */
+.phaser-map-panel .phaser-map-canvas {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #0c1418 !important;
+}
+
+@media (orientation: landscape) {
+  /* Reserve visual space conceptually for the right command panel; overlays should avoid it. */
+  .phaser-map-panel .field-overlay-turn-ticker {
+    max-width: calc(66% - 24px) !important;
+  }
+}
+
+@media (orientation: portrait) {
+  .phaser-map-panel .field-overlay-header {
+    min-height: 48px !important;
+    padding: 4px !important;
+  }
+  .phaser-map-panel .field-header-research-wrap {
+    top: 54px !important;
+    left: 4px !important;
+  }
+  .phaser-map-panel .field-header-research-chip {
+    width: 40px !important;
+    height: 46px !important;
+  }
+  .phaser-map-panel .field-header-research-gauge {
+    --_size: 32px !important;
+    width: 32px !important;
+    height: 32px !important;
+  }
+  .phaser-map-panel .field-header-research-gauge img {
+    width: 25px !important;
+    height: 25px !important;
+  }
+  .phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item {
+    min-width: 72px !important;
+    padding: 3px 6px !important;
+    font-size: 12px !important;
+  }
+  .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+  }
+}
