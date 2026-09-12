@@ -1,0 +1,89 @@
+/* Fullscreen game shell.
+   This file intentionally loads last and disables the legacy fixed-resolution root scale.
+   Phaser remains responsible for map rendering; Vue overlays use the real viewport. */
+
+html,
+body,
+#app {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #0c1418 !important;
+}
+
+body {
+  position: fixed !important;
+  inset: 0 !important;
+}
+
+#app {
+  position: relative !important;
+}
+
+.app,
+.app.game-only {
+  position: absolute !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  transform-origin: initial !important;
+  overflow: hidden !important;
+  background: #0c1418 !important;
+}
+
+.app.game-only > .phaser-map-panel,
+.phaser-map-panel {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #0c1418 !important;
+}
+
+.phaser-map-panel .phaser-stage,
+.phaser-map-panel .phaser-map-canvas {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #0c1418 !important;
+}
+
+.phaser-map-panel .phaser-map-canvas > canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Legacy scale variables remain for compatibility but no longer affect layout. */
+:root {
+  --ui-app-root-scale: 1 !important;
+  --game-root-scale: 1 !important;
+}
