@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-const MIN_VIEW_SIZE = 120;
+const MIN_VIEW_SIZE = 80;
 const installedGames = new WeakSet();
 const observers = new WeakMap();
 const resizeRafIds = new WeakMap();
@@ -50,35 +50,22 @@ function resolveShell(game) {
 }
 
 function refreshPhaserInputBounds(game) {
-  const scale = game?.scale;
-  if (!scale) return;
-
-  // Phaser caches the canvas page bounds for pointer -> game-coordinate conversion.
-  // The v39 shell moves the canvas below the header with CSS, so refresh that cache
-  // after every layout change or taps are offset by the old canvas top position.
-  scale.updateBounds?.();
-
-  const inputManager = game?.input;
-  inputManager?.manager?.updateBounds?.();
+  game?.scale?.updateBounds?.();
+  game?.input?.manager?.updateBounds?.();
 }
 
 function applyResponsivePhaserSize(game) {
   const shell = resolveShell(game);
   if (!shell || !game?.scale) return;
-  const { root, canvas, header, footer } = shell;
+  const { canvas } = shell;
 
-  const rootRect = root.getBoundingClientRect();
-  if (rootRect.width <= 0 || rootRect.height <= 0) return;
+  /* The v39 shell now gives Phaser a real, independent playfield row.
+     Measure only that row. Header/footer dimensions must never be subtracted here. */
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
 
-  const headerHeight = header instanceof HTMLElement
-    ? Math.max(0, Math.round(header.getBoundingClientRect().height || 0))
-    : 0;
-  const footerHeight = footer instanceof HTMLElement
-    ? Math.max(0, Math.round(footer.getBoundingClientRect().height || 0))
-    : 0;
-
-  const width = clampSize(rootRect.width);
-  const height = clampSize(rootRect.height - headerHeight - footerHeight);
+  const width = clampSize(rect.width);
+  const height = clampSize(rect.height);
 
   const snapshots = [];
   for (const scene of game.scene?.getScenes?.(true) || []) {
@@ -101,13 +88,10 @@ function applyResponsivePhaserSize(game) {
     game.scale.resize?.(width, height);
   }
 
-  canvas.style.setProperty("position", "absolute", "important");
-  canvas.style.setProperty("left", "0", "important");
-  canvas.style.setProperty("right", "0", "important");
-  canvas.style.setProperty("top", `${headerHeight}px`, "important");
-  canvas.style.setProperty("bottom", `${footerHeight}px`, "important");
-  canvas.style.setProperty("width", `${width}px`, "important");
-  canvas.style.setProperty("height", `${height}px`, "important");
+  canvas.style.setProperty("position", "relative", "important");
+  canvas.style.setProperty("inset", "auto", "important");
+  canvas.style.setProperty("width", "100%", "important");
+  canvas.style.setProperty("height", "100%", "important");
   canvas.style.setProperty("max-width", "none", "important");
   canvas.style.setProperty("max-height", "none", "important");
   canvas.style.setProperty("touch-action", "none", "important");
@@ -156,6 +140,7 @@ function attachResponsiveResize(game) {
       : null;
 
     observer?.observe(shell.root);
+    observer?.observe(shell.canvas);
     if (shell.header instanceof HTMLElement) observer?.observe(shell.header);
     if (shell.footer instanceof HTMLElement) observer?.observe(shell.footer);
 
