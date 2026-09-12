@@ -10,7 +10,6 @@ body,
   overflow: hidden;
 }
 
-/* Disable the old fixed-resolution root scaling. */
 .app.game-only {
   position: fixed !important;
   inset: 0 !important;
@@ -35,7 +34,6 @@ body,
   min-height: 0 !important;
 }
 
-/* The responsive Phaser runtime assigns the actual map viewport rect inline. */
 .app.game-only > .phaser-map-panel .phaser-map-canvas > canvas {
   margin: 0 !important;
   transform: none !important;
@@ -53,7 +51,6 @@ body,
   --v39-header-height: 56px;
 }
 
-/* Header stays visible. The command sidebar starts below it. */
 .phaser-map-panel .field-overlay-header {
   z-index: 50 !important;
   min-height: 50px !important;
@@ -66,7 +63,6 @@ body,
   backdrop-filter: blur(4px) !important;
 }
 
-/* Resource groups: compact content, readable text. */
 .phaser-map-panel .sidebar-resource-menu.header-resource-menu {
   min-height: 40px !important;
   padding: 3px 4px !important;
@@ -107,7 +103,6 @@ body,
   color: #d8e1e0 !important;
 }
 
-/* Header resource category icons become text icons. */
 .phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-icon {
   min-width: 28px !important;
   height: 28px !important;
@@ -134,7 +129,6 @@ body,
   text-overflow: clip;
 }
 
-/* Top actions: v39 compact square controls. */
 .phaser-map-panel .field-overlay-actions {
   margin-left: auto !important;
   gap: 4px !important;
@@ -155,8 +149,6 @@ body,
   border-color: var(--v39-active) !important;
   background: #19343c !important;
 }
-
-/* Keep only the character portrait image. Other chrome actions use text/glyph icons. */
 .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:not(:first-child) .overlay-action-icon,
 .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:nth-child(2) .overlay-action-emoji-icon {
   display: none !important;
@@ -177,7 +169,6 @@ body,
 .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:nth-child(4)::before { content: "道"; }
 .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only:nth-child(5)::before { content: "⚙"; font-size: 18px; }
 
-/* Research: existing progress data stays real; image artwork is replaced with a text icon. */
 .phaser-map-panel .field-header-research-wrap {
   position: absolute !important;
   left: 6px !important;
@@ -237,17 +228,13 @@ body,
   pointer-events: none;
 }
 
-/* Old right character navigator is replaced by the command panel. */
 .phaser-map-panel .field-overlay-own-faction-panel {
   display: none !important;
 }
-
-/* Old fixed tile detail also duplicates the new 土地/土地データ tabs. */
 .phaser-map-panel .field-overlay-tile-detail {
   display: none !important;
 }
 
-/* Common zero-width scrollbar policy. */
 .phaser-map-panel *,
 .phaser-map-panel *::before,
 .phaser-map-panel *::after {
@@ -259,15 +246,14 @@ body,
   display: none;
 }
 
-/* Keep map canvas visually simple; tile rendering itself is still Phaser. */
 .phaser-map-panel .phaser-map-canvas {
   border: 0 !important;
   border-radius: 0 !important;
   background: #0c1418 !important;
 }
 
-@media (orientation: landscape) {
-  /* Header remains across the full top; the right command bar starts below it. */
+/* Same breakpoint rule as mobile-responsive-ui.css and responsive-phaser-runtime.js. */
+@media (min-width: 901px), (orientation: landscape) {
   .phaser-map-panel .field-footer-tabs-overlay {
     top: var(--v39-header-height) !important;
     bottom: 0 !important;
@@ -281,7 +267,7 @@ body,
   }
 }
 
-@media (orientation: portrait) {
+@media (max-width: 900px) and (orientation: portrait) {
   .phaser-map-panel {
     --v39-header-height: 52px;
   }
