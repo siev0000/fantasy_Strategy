@@ -40,16 +40,38 @@ function captureCameraWorldCenter(camera) {
   return null;
 }
 
+function resolveFieldViewport(root) {
+  const rect = root.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  const header = root.querySelector(".field-overlay-header");
+  let headerHeight = 0;
+  if (header instanceof HTMLElement) {
+    const style = window.getComputedStyle(header);
+    if (style.display !== "none" && style.visibility !== "hidden") {
+      headerHeight = Math.max(0, Math.round(header.getBoundingClientRect().height || 0));
+    }
+  }
+
+  const width = clampSize(rect.width);
+  const availableHeight = Math.max(MIN_VIEW_SIZE, rect.height - headerHeight);
+  const height = clampSize(availableHeight);
+
+  return {
+    width,
+    height,
+    top: Math.max(0, headerHeight)
+  };
+}
+
 function applyResponsivePhaserSize(game) {
   const root = resolveFieldRoot(game);
   const canvas = game?.canvas;
   if (!(root instanceof HTMLElement) || !(canvas instanceof HTMLCanvasElement) || !game?.scale) return;
 
-  const rect = root.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return;
-
-  const width = clampSize(rect.width);
-  const height = clampSize(rect.height);
+  const viewport = resolveFieldViewport(root);
+  if (!viewport) return;
+  const { width, height, top } = viewport;
 
   const snapshots = [];
   for (const scene of game.scene?.getScenes?.(true) || []) {
@@ -73,9 +95,12 @@ function applyResponsivePhaserSize(game) {
   }
 
   canvas.style.setProperty("position", "absolute", "important");
-  canvas.style.setProperty("inset", "0", "important");
+  canvas.style.setProperty("left", "0", "important");
+  canvas.style.setProperty("right", "0", "important");
+  canvas.style.setProperty("top", `${top}px`, "important");
+  canvas.style.setProperty("bottom", "auto", "important");
   canvas.style.setProperty("width", "100%", "important");
-  canvas.style.setProperty("height", "100%", "important");
+  canvas.style.setProperty("height", `${height}px`, "important");
   canvas.style.setProperty("max-width", "none", "important");
   canvas.style.setProperty("max-height", "none", "important");
 
@@ -117,6 +142,9 @@ function attachResponsiveResize(game) {
 
     const stage = root.closest?.(".phaser-stage");
     if (stage instanceof HTMLElement) observer?.observe(stage);
+
+    const header = root.querySelector(".field-overlay-header");
+    if (header instanceof HTMLElement) observer?.observe(header);
 
     const onWindowResize = () => scheduleResponsiveResize(game);
     window.addEventListener("resize", onWindowResize, { passive: true });
