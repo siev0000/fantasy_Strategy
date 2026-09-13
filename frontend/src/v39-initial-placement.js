@@ -18,6 +18,12 @@ function getActivePlayer(state = getGameState()) {
   return state.players?.find(player => player.id === state.activePlayerId) || state.players?.[0] || null;
 }
 
+function getActiveFaction() {
+  return typeof window.getV39ActiveFactionState === "function"
+    ? window.getV39ActiveFactionState()
+    : getActivePlayer()?.factionState;
+}
+
 function isPassableTerrain(terrain) {
   return terrain !== "海" && terrain !== "湖";
 }
@@ -74,6 +80,7 @@ function beginInitialPlacement(options = {}) {
           ...row.factionState,
           village: null,
           villagePlacementMode: true,
+          moveCommandUnitId: "",
           units
         }
       }
@@ -152,23 +159,31 @@ function placeInitialBase(tile) {
 }
 
 function handleTileSelected(event) {
-  const faction = typeof window.getV39ActiveFactionState === "function"
-    ? window.getV39ActiveFactionState()
-    : getActivePlayer()?.factionState;
+  const faction = getActiveFaction();
   if (!faction?.villagePlacementMode) return;
   placeInitialBase(event.detail);
 }
 
 function syncPlacementMode() {
-  const faction = typeof window.getV39ActiveFactionState === "function"
-    ? window.getV39ActiveFactionState()
-    : getActivePlayer()?.factionState;
+  const faction = getActiveFaction();
   if (!faction) return;
   if (faction.villagePlacementMode) {
     showBanner("拠点を設置するマスを選択してください", true);
   } else if (faction.village?.placed) {
     hideBanner();
   }
+}
+
+function handleFieldGenerated() {
+  const faction = getActiveFaction();
+  if (!faction) return;
+
+  if (!faction.village?.placed) {
+    beginInitialPlacement({ force:true });
+    return;
+  }
+
+  syncPlacementMode();
 }
 
 function install() {
@@ -179,15 +194,15 @@ function install() {
 
   window.addEventListener("v39:tile-selected", handleTileSelected);
   window.addEventListener("v39:game-state-changed", syncPlacementMode);
+  window.addEventListener("v39:field-generated", handleFieldGenerated);
   window.beginV39InitialPlacement = beginInitialPlacement;
   window.placeV39InitialBase = placeInitialBase;
   window.canPlaceV39InitialBase = canPlaceBaseOnTile;
 
-  const faction = window.getV39ActiveFactionState?.();
-  if (faction && !faction.village?.placed) {
-    beginInitialPlacement();
+  if (window.__v39FieldRuntime?.mapData) {
+    handleFieldGenerated();
   } else {
-    syncPlacementMode();
+    hideBanner();
   }
 }
 
