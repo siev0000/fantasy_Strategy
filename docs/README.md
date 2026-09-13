@@ -1,6 +1,6 @@
 # ドキュメント案内 / 仕様書の優先順位
 
-最終整理: 2026-09-11
+最終整理: 2026-09-14
 
 このディレクトリには、現行仕様・実装ルール・将来設計・過去メモが混在している。
 今後はこのファイルを入口とし、下記の優先順位で参照する。
@@ -39,6 +39,9 @@
 
 - [`TERRAIN_RULES.md`](./TERRAIN_RULES.md)
   - 島・地形・湖・川などのマップ生成ルール。
+
+- [`DATA_DRIVEN_RULES.md`](./DATA_DRIVEN_RULES.md)
+  - `data/source/export/json` を正本にし、種類追加をJSON中心で行うための共通ルール。
 
 - [`map-screen-overview.md`](./map-screen-overview.md)
   - マップ画面、ズーム、ドラッグ、ワールドラップ表示。
