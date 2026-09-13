@@ -1,4 +1,6 @@
-// The v39 HTML is the initial screen. Feature modules only attach behavior to it.
+// Build the data-driven UI before attaching legacy interactions and field modules.
+import "./v39-operation-ui.js";
+import "./v39-legacy-ui.js";
 import "./v39-field-runtime-final.js";
 import "./v39-map-controls-layout.js";
 import "./v39-field-settings-entry.js";
@@ -14,3 +16,5 @@ import "./v39-readable-fonts.js";
 import "./v39-research-ui.js";
 import "./v39-design-docs-viewer.js";
 import "./v39-text-input-modal.js";
+
+document.querySelector(".footer")?.setAttribute("data-v39-ready", "true");

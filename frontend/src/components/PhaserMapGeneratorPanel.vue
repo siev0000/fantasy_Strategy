@@ -15,6 +15,7 @@ import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } fro
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import { RESEARCH_CATEGORY_ORDER as RESEARCH_CATEGORY_ORDER_CONFIG } from "../lib/research-tree-config.js";
 import { createOwnCharacterNavigatorEntries, createOwnSquadNavigatorEntries } from "../lib/own-faction-navigator.js";
+import { createPlayerFactionState, createPlayerRecord } from "../lib/player-state.js";
 import {
   clampCameraCenter as clampCameraCenterUtil,
   clampCameraScroll as clampCameraScrollUtil,
@@ -6094,7 +6095,7 @@ function applyEncounterMoveLock(unitIds = [], payload = {}) {
 }
 
 function buildLiveFactionStateSnapshot() {
-  return {
+  return createPlayerFactionState({
     village: deepCloneJsonValue(villageState.value, null),
     units: deepCloneJsonValue(unitList.value, []),
     deadUnitReserve: deepCloneJsonValue(normalizeDeadUnitReserveRows(deadUnitReserve.value), []),
@@ -6104,8 +6105,12 @@ function buildLiveFactionStateSnapshot() {
     moveCommandUnitId: nonEmptyText(moveCommandUnitId.value),
     nationLogKey: nonEmptyText(activeNationLogKey.value),
     encounterMoveLocks: deepCloneJsonValue(normalizeEncounterMoveLocks(encounterMoveLocks.value), {}),
-    visibility: buildVisibilitySnapshotFromLiveState()
-  };
+    visibility: buildVisibilitySnapshotFromLiveState(),
+    research: {
+      progress: deepCloneJsonValue(props.researchProgress, {}),
+      selection: deepCloneJsonValue(props.researchSelection, {})
+    }
+  });
 }
 
 function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
@@ -6147,7 +6152,7 @@ function applyFactionStateSnapshotToLiveState(snapshot, options = {}) {
 }
 
 function buildTestPlayerSlotFromLiveState(id, label, options = {}) {
-  return {
+  return createPlayerRecord({
     id: nonEmptyText(id) || DEFAULT_TEST_PLAYER_ID,
     label: nonEmptyText(label) || PRIMARY_TEST_PLAYER_LABEL,
     isPlayer: options?.isPlayer !== false,
@@ -6156,7 +6161,7 @@ function buildTestPlayerSlotFromLiveState(id, label, options = {}) {
     factionState: options?.factionState
       ? deepCloneJsonValue(options.factionState, buildLiveFactionStateSnapshot())
       : buildLiveFactionStateSnapshot()
-  };
+  });
 }
 
 function syncActiveTestPlayerSlotFromLiveState() {
@@ -6294,7 +6299,7 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label, options = {})
     materialStockByType: buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS),
     equipmentInventory: []
   }, raceName);
-  return {
+  return createPlayerFactionState({
     village,
     units: [sovereign],
     selectedUnitId: sovereign.id,
@@ -6308,8 +6313,9 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label, options = {})
       spottedFactionTileKeys: [],
       alertedEnemyTileKeys: [],
       alertedFactionTileKeys: []
-    }
-  };
+    },
+    research: {}
+  });
 }
 
 function switchActiveTestPlayer(playerId, options = {}) {
@@ -10691,7 +10697,7 @@ function normalizeFactionStateFromSave(raw, fallbackVisibility = {}) {
   const nationLogKey = nonEmptyText(raw?.factionId)
     || nonEmptyText(units.find(unit => isSovereignUnit(unit))?.id)
     || "nation-player";
-  return {
+  return createPlayerFactionState({
     village,
     units,
     deadUnitReserve: normalizeDeadUnitReserveRows(raw?.deadUnitReserve),
@@ -10699,8 +10705,9 @@ function normalizeFactionStateFromSave(raw, fallbackVisibility = {}) {
     villagePlacementMode: !!raw?.villagePlacementMode,
     moveCommandUnitId: nonEmptyText(raw?.moveCommandUnitId) || (raw?.unitMoveMode ? selected : ""),
     nationLogKey,
-    visibility: normalizeVisibilitySnapshot(raw?.visibility, fallbackVisibility)
-  };
+    visibility: normalizeVisibilitySnapshot(raw?.visibility, fallbackVisibility),
+    research: raw?.research
+  });
 }
 
 function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) {
@@ -10712,7 +10719,7 @@ function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) 
     const label = nonEmptyText(row?.label) || buildTestPlayerLabel(i + 1);
     const stateRaw = row?.factionState && typeof row.factionState === "object" ? row.factionState : null;
     if (!stateRaw) continue;
-    const state = {
+    const state = createPlayerFactionState({
       village: deepCloneJsonValue(stateRaw?.village, null),
       units: Array.isArray(stateRaw?.units) ? stateRaw.units.map(unit => deepCloneJsonValue(unit, {})) : [],
       deadUnitReserve: normalizeDeadUnitReserveRows(stateRaw?.deadUnitReserve),
@@ -10721,16 +10728,17 @@ function normalizeTestPlayersFromSave(snapshotPlayers, fallbackVisibility = {}) 
       moveCommandUnitId: nonEmptyText(stateRaw?.moveCommandUnitId)
         || (stateRaw?.unitMoveMode ? nonEmptyText(stateRaw?.selectedUnitId) : ""),
       nationLogKey: nonEmptyText(stateRaw?.nationLogKey) || `nation-${id}`,
-      visibility: normalizeVisibilitySnapshot(stateRaw?.visibility, fallbackVisibility)
-    };
-    out.push({
+      visibility: normalizeVisibilitySnapshot(stateRaw?.visibility, fallbackVisibility),
+      research: stateRaw?.research
+    });
+    out.push(createPlayerRecord({
       id,
       label,
       isPlayer: row?.isPlayer !== false,
       race: nonEmptyText(row?.race) || resolveRaceFromUnitList(state.units),
       ready: !!row?.ready,
       factionState: state
-    });
+    }, i));
   }
   return out;
 }

@@ -93,23 +93,47 @@ let selectedSquadKey = "squad1";
 let selectedUnitId = "";
 
 function getUnits() {
-  const state = typeof window.getV39GameState === "function" ? window.getV39GameState() : null;
-  return Array.isArray(state?.units) ? state.units : [];
+  const factionState = typeof window.getV39ActiveFactionState === "function"
+    ? window.getV39ActiveFactionState()
+    : null;
+  return Array.isArray(factionState?.units) ? factionState.units : [];
+}
+
+function getSquads() {
+  const factionState = typeof window.getV39ActiveFactionState === "function"
+    ? window.getV39ActiveFactionState()
+    : null;
+  const rows = Array.isArray(factionState?.squads) ? factionState.squads.filter(Boolean) : [];
+  if (rows.length) return rows;
+  const keys = [...new Set(getUnits().map(unit => squadKey(unit)))];
+  return keys.map(key => ({ id:key, label:key === "solo" ? "単独" : key, unitIds:[] }));
 }
 
 function unitsForSelectedSquad() {
-  return getUnits().filter(unit => squadKey(unit) === selectedSquadKey);
+  const units = getUnits();
+  const squad = getSquads().find(row => text(row?.id ?? row?.squadId ?? row?.key) === selectedSquadKey);
+  const unitIds = new Set(Array.isArray(squad?.unitIds) ? squad.unitIds.map(String) : []);
+  return unitIds.size
+    ? units.filter((unit, index) => unitIds.has(unitId(unit, index)))
+    : units.filter(unit => squadKey(unit) === selectedSquadKey);
 }
 
 function updateSelectorCounts() {
   const units = getUnits();
-  document.querySelectorAll("[data-squad-select]").forEach((btn) => {
-    const key = btn.dataset.squadSelect || "";
-    const count = units.filter(unit => squadKey(unit) === key).length;
-    const small = btn.querySelector("small");
-    if (small) small.textContent = `${count}体`;
-    btn.classList.toggle("active", key === selectedSquadKey);
-  });
+  const selector = document.getElementById("squadSelector");
+  const squads = getSquads();
+  if (!(selector instanceof HTMLElement)) return;
+  const keys = squads.map(row => text(row?.id ?? row?.squadId ?? row?.key)).filter(Boolean);
+  if (!keys.includes(selectedSquadKey)) selectedSquadKey = keys[0] || "";
+  selector.innerHTML = squads.map((squad, index) => {
+    const key = text(squad?.id ?? squad?.squadId ?? squad?.key, `squad-${index + 1}`);
+    const ids = new Set(Array.isArray(squad?.unitIds) ? squad.unitIds.map(String) : []);
+    const count = ids.size
+      ? units.filter((unit, unitIndex) => ids.has(unitId(unit, unitIndex))).length
+      : units.filter(unit => squadKey(unit) === key).length;
+    const label = text(squad?.label ?? squad?.name, key === "solo" ? "単独" : key);
+    return `<button class="squad-select-btn${key === selectedSquadKey ? " active" : ""}" data-squad-select="${key}"><b>${label}</b><small>${count}体</small></button>`;
+  }).join("");
 }
 
 function renderMemberList() {
@@ -213,7 +237,11 @@ function render() {
   }
 }
 
-function scheduleRender() {
+function scheduleRender(event) {
+  if (event?.detail?.reason === "active-player") {
+    selectedSquadKey = "";
+    selectedUnitId = "";
+  }
   requestAnimationFrame(render);
 }
 
@@ -250,7 +278,7 @@ function install() {
     return units.find((item, index) => unitId(item, index) === selectedUnitId) || units[0] || null;
   };
 
-  window.setTimeout(render, 0);
+  render();
 }
 
 install();

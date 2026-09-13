@@ -171,7 +171,10 @@ function formatFacilities(state, key) {
 }
 
 function formatUnits(state, detail) {
-  const rows = entitiesAt(state?.units, detail.x, detail.y);
+  const activeFaction = typeof window.getV39ActiveFactionState === "function"
+    ? window.getV39ActiveFactionState()
+    : null;
+  const rows = entitiesAt(activeFaction?.units, detail.x, detail.y);
   if (!rows.length) return "なし";
   return rows.map(row => {
     const name = text(row.name || row.unitName || row.squadName, "ユニット");

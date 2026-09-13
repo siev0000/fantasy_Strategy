@@ -1,0 +1,62 @@
+{
+  "activePlayerId": "player-1",
+  "players": [
+    {
+      "id": "player-1",
+      "label": "プレイヤー1",
+      "race": "只人",
+      "isPlayer": true,
+      "ready": true,
+      "factionState": {
+        "selectedUnitId": "leon",
+        "squads": [
+          { "id": "squad1", "label": "第1部隊", "unitIds": ["leon", "mireille", "soldierA", "soldierB", "soldierC"] },
+          { "id": "squad2", "label": "第2部隊", "unitIds": ["iris", "guard1", "scout1"] },
+          { "id": "solo", "label": "単独", "unitIds": ["wanderer", "engineer"] }
+        ],
+        "units": [
+          { "id": "leon", "name": "レオン", "icon": "⚔", "squadId": "squad1", "position": [9, 6], "race": "只人", "className": "ファイター", "level": 8, "role": "リーダー / 前衛", "movement": 5, "hpRate": 0.88, "ap": 100, "maxAp": 100, "equipment": [{ "slot": "武器1", "name": "剣" }, { "slot": "体", "name": "鎧" }, { "slot": "足", "name": "靴" }] },
+          { "id": "mireille", "name": "ミレイユ", "icon": "✦", "squadId": "squad1", "position": [9, 6], "race": "只人", "className": "ウィザード", "level": 7, "role": "メンバー / 魔導支援", "movement": 5, "hpRate": 1, "ap": 82, "maxAp": 90, "equipment": [{ "slot": "武器1", "name": "杖" }, { "slot": "体", "name": "法衣" }, { "slot": "足", "name": "靴" }] },
+          { "id": "soldierA", "name": "兵士A", "icon": "🛡", "squadId": "squad1", "position": [9, 6], "race": "只人", "className": "ナイト", "level": 5, "role": "メンバー / 盾役", "movement": 4, "hpRate": 0.95, "ap": 76, "maxAp": 80, "equipment": [{ "slot": "武器1", "name": "剣" }, { "slot": "武器2", "name": "盾" }, { "slot": "体", "name": "鎧" }] },
+          { "id": "soldierB", "name": "兵士B", "icon": "🏹", "squadId": "squad1", "position": [9, 6], "race": "只人", "className": "レンジャー", "level": 5, "role": "メンバー / 弓兵", "movement": 4, "hpRate": 0.89, "ap": 90, "maxAp": 90, "equipment": [{ "slot": "武器1", "name": "弓" }, { "slot": "体", "name": "服" }, { "slot": "足", "name": "靴" }] },
+          { "id": "soldierC", "name": "兵士C", "icon": "⚔", "squadId": "squad1", "position": [9, 6], "race": "只人", "className": "フェンサー", "level": 5, "role": "メンバー / 剣兵", "movement": 4, "hpRate": 0.94, "ap": 72, "maxAp": 80, "equipment": [{ "slot": "武器1", "name": "長剣" }, { "slot": "体", "name": "服" }, { "slot": "足", "name": "靴" }] },
+          { "id": "iris", "name": "アイリス", "icon": "☀", "squadId": "squad2", "position": [12, 8], "race": "只人", "className": "クレリック", "level": 6, "role": "リーダー / 神官", "movement": 4, "hpRate": 0.9, "ap": 88, "maxAp": 100, "equipment": [{ "slot": "武器1", "name": "杖" }, { "slot": "体", "name": "法衣" }, { "slot": "足", "name": "靴" }] },
+          { "id": "guard1", "name": "護衛A", "icon": "🛡", "squadId": "squad2", "position": [12, 8], "race": "只人", "className": "ナイト", "level": 5, "role": "メンバー / 護衛", "movement": 4, "hpRate": 0.94, "ap": 68, "maxAp": 80, "equipment": [{ "slot": "武器1", "name": "剣" }, { "slot": "武器2", "name": "盾" }, { "slot": "体", "name": "鎧" }] },
+          { "id": "scout1", "name": "斥候A", "icon": "👁", "squadId": "squad2", "position": [12, 8], "race": "只人", "className": "スカウト", "level": 5, "role": "メンバー / 斥候", "movement": 6, "hpRate": 0.93, "ap": 84, "maxAp": 90, "equipment": [{ "slot": "武器1", "name": "短剣" }, { "slot": "体", "name": "服" }, { "slot": "足", "name": "靴" }] },
+          { "id": "wanderer", "name": "放浪者", "icon": "◆", "squadId": "solo", "position": [6, 14], "race": "只人", "className": "ファイター", "level": 4, "role": "部隊未所属", "movement": 5, "hpRate": 0.88, "ap": 70, "maxAp": 80, "equipment": [{ "slot": "武器1", "name": "剣" }, { "slot": "体", "name": "服" }] },
+          { "id": "engineer", "name": "技師", "icon": "⚙", "squadId": "solo", "position": [4, 11], "race": "只人", "className": "アルケミスト", "level": 8, "role": "部隊未所属", "movement": 4, "hpRate": 0.88, "ap": 66, "maxAp": 80, "equipment": [{ "slot": "武器1", "name": "銃" }, { "slot": "頭", "name": "眼鏡" }, { "slot": "体", "name": "服" }] }
+        ]
+      }
+    },
+    {
+      "id": "player-2",
+      "label": "プレイヤー2",
+      "race": "オーガ",
+      "isPlayer": true,
+      "ready": true,
+      "factionState": {
+        "selectedUnitId": "player2-oga",
+        "squads": [
+          { "id": "squad1", "label": "第1部隊", "unitIds": ["player2-oga"] },
+          { "id": "squad2", "label": "第2部隊", "unitIds": [] },
+          { "id": "solo", "label": "単独", "unitIds": [] }
+        ],
+        "units": [
+          { "id": "player2-oga", "name": "ガルド", "icon": "◆", "squadId": "squad1", "position": [18, 14], "race": "オーガ", "className": "ファイター", "level": 7, "role": "リーダー / 前衛", "movement": 4, "hpRate": 1, "ap": 100, "maxAp": 100, "equipment": [{ "slot": "武器1", "name": "棍棒" }, { "slot": "体", "name": "鎧" }, { "slot": "足", "name": "重靴" }] }
+        ]
+      }
+    }
+  ],
+  "landInitial": {
+    "terrain": "平地",
+    "owner": "自領",
+    "heightLevel": 0,
+    "facility": "なし",
+    "unitLabel": "第1部隊",
+    "village": "村 / 人口238",
+    "territoryState": "居住地",
+    "river": "なし",
+    "waterfall": "なし",
+    "enemy": "なし"
+  }
+}

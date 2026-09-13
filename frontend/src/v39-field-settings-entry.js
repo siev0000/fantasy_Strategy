@@ -12,53 +12,6 @@ function waitForManagePanel() {
   });
 }
 
-function installFooterTabFallback() {
-  const sections = {
-    squad: "footSquad",
-    action: "footAction",
-    tile: "footTile",
-    manage: "footManage"
-  };
-
-  const activate = tabKey => {
-    const normalized = Object.prototype.hasOwnProperty.call(sections, tabKey) ? tabKey : "squad";
-    document.querySelectorAll("[data-foot]").forEach(button => {
-      button.classList.toggle("active", button.dataset.foot === normalized);
-    });
-    Object.entries(sections).forEach(([key, id]) => {
-      const section = document.getElementById(id);
-      if (!(section instanceof HTMLElement)) return;
-      const isActive = key === normalized;
-      section.hidden = !isActive;
-      section.setAttribute("aria-hidden", String(!isActive));
-      section.classList.toggle("v39-footer-panel-active", isActive);
-      section.style.setProperty("display", isActive ? "grid" : "none", "important");
-    });
-  };
-
-  const applyInitialTab = () => {
-    const panelsReady = Object.values(sections).every(id => document.getElementById(id) instanceof HTMLElement);
-    if (!panelsReady) {
-      window.setTimeout(applyInitialTab, 30);
-      return;
-    }
-    const active = document.querySelector("[data-foot].active");
-    activate(active?.dataset?.foot || "squad");
-  };
-
-  document.addEventListener("click", event => {
-    const button = event.target instanceof Element ? event.target.closest("[data-foot]") : null;
-    if (!(button instanceof HTMLElement)) return;
-    const tabKey = String(button.dataset.foot || "");
-    if (!Object.prototype.hasOwnProperty.call(sections, tabKey)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    activate(tabKey);
-  }, true);
-
-  applyInitialTab();
-}
-
 function createPlaceholderModal() {
   const existing = document.getElementById("v39-field-settings-placeholder");
   if (existing instanceof HTMLElement) {
@@ -243,7 +196,6 @@ function installDisplaySettings(managePanel) {
 }
 
 async function bootFieldSettingsEntry() {
-  installFooterTabFallback();
   const managePanel = await waitForManagePanel();
   installDisplaySettings(managePanel);
 

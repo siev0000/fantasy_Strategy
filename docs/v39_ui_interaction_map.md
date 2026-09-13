@@ -12,15 +12,13 @@ UI操作は以下の流れを明示する。
 
 ### 1.1 固定UIと動的UI
 
-固定UIは `frontend/index.html` に最初から存在させる。
+画面の固定領域は `frontend/index.html` に最初から存在させる。下部操作UIの内容は固定値をHTMLへ二重記載せず、`v39-operation-ui.js` の定義配列から初期描画する。
 
 固定UI:
 
 - 上部バー
 - 左サイド研究レール
-- 下部操作UI
-- 下部タブ `部隊 / 行動 / 土地 / 管理`
-- 管理メニュー
+- 下部操作UIの空マウント先 `.footer`
 - `フィールド設定`
 - `設計書`
 - `表示設定`
@@ -31,6 +29,8 @@ UI操作は以下の流れを明示する。
 - Phaser canvas
 - マップタイル / 選択表示 / 経路 / 範囲 / ユニット
 - データ件数で増減するカードや一覧
+- 下部タブ `部隊 / 行動 / 土地 / 管理` と各パネル
+- 管理メニュー
 - 研究ツリー / 研究項目
 - ログ行
 - 設計書一覧 / 設計書本文
@@ -46,16 +46,43 @@ UI操作は以下の流れを明示する。
 
 ```text
 frontend/index.html
-  ↓ 固定v39 DOMを読み込む
+  ↓ 固定領域と空の操作UIマウント先を読み込む
 frontend/src/v39-bootstrap.js
-  ↓
-v39-field-runtime.js
+  ↓ 定義配列から操作UIを初期描画
+v39-operation-ui.js
+  ↓ イベントを接続
+v39-legacy-ui.js
+v39-field-runtime-final.js
 v39-field-settings-entry.js
 v39-research-ui.js
 v39-design-docs-viewer.js
 ```
 
-`v39-bootstrap.js` は機能モジュールを読み込むだけとし、画面本体DOMは生成しない。
+`v39-bootstrap.js` は初期化順だけを管理する。操作UIは全機能の接続が終わるまで非表示とし、古い固定値や未初期化状態を一瞬表示しない。
+
+現在のv39画面で使用するテスト編成は `data/source/export/json/テストゲーム状態.json` に置く。このJSONではプレイヤー、所属部隊、配置座標、種族、クラス、Lv、装備、現在HP率、現在AP、土地の選択条件だけを指定する。`frontend/src/v39-test-data.js` はその指定からキャラクターと表示データを生成し、`v39-operation-ui.js` は画面構造だけを定義する。
+
+生成時は `クラス.json` からHP・基礎ステータス・技能・取得技、`スキル一覧.json` から技詳細、`装備.json` から装備性能、`地形.json` から土地性能を取得する。固定のHP・ステータス・技性能・装備性能・地形性能をJavaScriptへ重複定義しない。これはローカル画面確認用であり、通信済みまたは保存済みの本番ゲームデータとして扱わない。
+
+プレイヤー所有データはトップレベルへ平坦化せず、既存マップ保存形式と同じ構造で扱う。
+
+```text
+players[]
+  ├─ id / label / isPlayer / ready
+  └─ factionState
+       ├─ village
+       ├─ units[] / squads[] / deadUnitReserve[]
+       ├─ selectedUnitId
+       ├─ villagePlacementMode / moveCommandUnitId
+       ├─ nationLogKey / encounterMoveLocks
+       ├─ visibility
+       └─ research
+activePlayerId
+```
+
+部隊・キャラクターなどの操作UIは、`activePlayerId`に一致する`players[].factionState`だけを参照する。別プレイヤーのデータをトップレベルの単一`units[]`へ混在させない。
+
+1プレイヤー分の空状態と正規化処理は `frontend/src/lib/player-state.js` を唯一の生成元とする。必須項目の機械可読な定義は `config/player_state_schema.json` を参照する。旧 `config/entity_data_schema.json` は競合マーカーを含む旧設計資料のため、現行プレイヤー型の正本には使用しない。
 
 ### 1.4 下部UIとモーダルの使い分け
 
@@ -118,16 +145,16 @@ v39-design-docs-viewer.js
 - スマホ横では操作UIを右側領域として配置する。
 - 画面サイズで変えてよいのは主に配置方向。
 - 操作UI内部のカード形式や機能構造をviewportごとに別物にしない。
-- 旧 `.faction-panel` は部隊 / 行動と重複するため非表示。
+- 旧 `.faction-panel` は部隊 / 行動と重複するためDOM・専用処理ともに削除済み。
 
 ### 2.3 タブ切替
 
-`frontend/src/v39-field-settings-entry.js` のfooter fallbackが、現在以下を切り替える。
+`frontend/src/v39-operation-ui.js` の `activateFooterTab()` が、以下を切り替える。
 
 - `.footer-tab` のactive
 - 対応パネルの `hidden`
 - `aria-hidden`
-- `display:grid / none`
+- `.v39-footer-panel-active`
 
 マップ生成処理からfooterタブ状態を変更しない。
 

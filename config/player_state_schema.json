@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "player_state_schema.json",
+  "title": "1プレイヤーデータ",
+  "type": "object",
+  "required": ["id", "label", "isPlayer", "race", "ready", "factionState"],
+  "properties": {
+    "id": { "type": "string", "description": "通信・保存で共有するプレイヤーID" },
+    "label": { "type": "string", "description": "画面表示名" },
+    "isPlayer": { "type": "boolean", "description": "人間参加者かどうか" },
+    "race": { "type": "string", "description": "勢力の主種族" },
+    "ready": { "type": "boolean", "description": "ゲーム開始準備の完了状態" },
+    "factionState": { "$ref": "#/$defs/factionState" }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "factionState": {
+      "type": "object",
+      "required": [
+        "village",
+        "units",
+        "squads",
+        "deadUnitReserve",
+        "selectedUnitId",
+        "villagePlacementMode",
+        "moveCommandUnitId",
+        "nationLogKey",
+        "encounterMoveLocks",
+        "visibility",
+        "research"
+      ],
+      "properties": {
+        "village": { "type": ["object", "null"], "description": "都市・人口・資源・装備在庫" },
+        "units": { "type": "array", "items": { "type": "object" }, "description": "所有キャラクターと軍隊" },
+        "squads": { "type": "array", "items": { "type": "object" }, "description": "部隊IDと所属ユニットID" },
+        "deadUnitReserve": { "type": "array", "items": { "type": "object" }, "description": "回収済みの死亡者" },
+        "selectedUnitId": { "type": "string", "description": "現在選択中のユニットID" },
+        "villagePlacementMode": { "type": "boolean", "description": "初期村配置中かどうか" },
+        "moveCommandUnitId": { "type": "string", "description": "移動指定中のユニットID" },
+        "nationLogKey": { "type": "string", "description": "勢力別ログの識別子" },
+        "encounterMoveLocks": { "type": "object", "description": "接敵による移動停止状態" },
+        "visibility": { "$ref": "#/$defs/visibility" },
+        "research": { "$ref": "#/$defs/research" }
+      },
+      "additionalProperties": true
+    },
+    "visibility": {
+      "type": "object",
+      "required": [
+        "exploredTileKeys",
+        "visibleTileKeys",
+        "spottedEnemyTileKeys",
+        "spottedFactionTileKeys",
+        "alertedEnemyTileKeys",
+        "alertedFactionTileKeys"
+      ],
+      "properties": {
+        "exploredTileKeys": { "$ref": "#/$defs/tileKeys" },
+        "visibleTileKeys": { "$ref": "#/$defs/tileKeys" },
+        "spottedEnemyTileKeys": { "$ref": "#/$defs/tileKeys" },
+        "spottedFactionTileKeys": { "$ref": "#/$defs/tileKeys" },
+        "alertedEnemyTileKeys": { "$ref": "#/$defs/tileKeys" },
+        "alertedFactionTileKeys": { "$ref": "#/$defs/tileKeys" }
+      },
+      "additionalProperties": false
+    },
+    "tileKeys": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "research": {
+      "type": "object",
+      "required": ["progress", "selection"],
+      "properties": {
+        "progress": {
+          "type": "object",
+          "required": ["targetExpMap", "completedByCategoryLevel", "carryByCategory"],
+          "properties": {
+            "targetExpMap": { "type": "object" },
+            "completedByCategoryLevel": { "type": "object" },
+            "carryByCategory": { "type": "object" }
+          },
+          "additionalProperties": true
+        },
+        "selection": { "type": "object" }
+      },
+      "additionalProperties": true
+    }
+  }
+}
