@@ -1,3 +1,5 @@
+import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
+
 const EMPTY_STATE = Object.freeze({
   factionLabels: {},
   territoryOwnerByTile: {},
@@ -42,18 +44,24 @@ function normalizeEntityArray(value) {
   return Array.isArray(value) ? value.filter(Boolean).map(row => ({ ...row })) : [];
 }
 
+function normalizeUnitArray(value) {
+  return Array.isArray(value)
+    ? value.filter(Boolean).map(row => applyV39DerivedCharacterData(row))
+    : [];
+}
+
 function normalizeState(input = {}) {
   return {
     factionLabels: cloneRecord(input.factionLabels),
     territoryOwnerByTile: cloneRecord(input.territoryOwnerByTile),
     dangerPercentByTile: cloneRecord(input.dangerPercentByTile),
     facilitiesByTile: cloneRecord(input.facilitiesByTile),
-    units: normalizeEntityArray(input.units),
+    units: normalizeUnitArray(input.units),
     settlements: normalizeEntityArray(input.settlements),
     territoryStateByTile: cloneRecord(input.territoryStateByTile),
     recoveryPercentByTile: cloneRecord(input.recoveryPercentByTile),
     lastMoveStop: input.lastMoveStop && typeof input.lastMoveStop === "object" ? { ...input.lastMoveStop } : null,
-    enemies: normalizeEntityArray(input.enemies)
+    enemies: normalizeUnitArray(input.enemies)
   };
 }
 
@@ -63,6 +71,17 @@ function dispatchChange(reason = "update") {
   }));
 }
 
+function cloneUnit(row) {
+  return {
+    ...row,
+    status: row?.status ? { ...row.status } : row?.status,
+    skillLevels: row?.skillLevels ? { ...row.skillLevels } : row?.skillLevels,
+    acquiredSkillNames: Array.isArray(row?.acquiredSkillNames) ? [...row.acquiredSkillNames] : row?.acquiredSkillNames,
+    techniques: Array.isArray(row?.techniques) ? row.techniques.map(item => ({ ...item })) : row?.techniques,
+    derivedCharacter: row?.derivedCharacter ? { ...row.derivedCharacter } : row?.derivedCharacter
+  };
+}
+
 function getState() {
   return {
     ...state,
@@ -70,12 +89,12 @@ function getState() {
     territoryOwnerByTile: { ...state.territoryOwnerByTile },
     dangerPercentByTile: { ...state.dangerPercentByTile },
     facilitiesByTile: { ...state.facilitiesByTile },
-    units: state.units.map(row => ({ ...row })),
+    units: state.units.map(cloneUnit),
     settlements: state.settlements.map(row => ({ ...row })),
     territoryStateByTile: { ...state.territoryStateByTile },
     recoveryPercentByTile: { ...state.recoveryPercentByTile },
     lastMoveStop: state.lastMoveStop ? { ...state.lastMoveStop } : null,
-    enemies: state.enemies.map(row => ({ ...row }))
+    enemies: state.enemies.map(cloneUnit)
   };
 }
 
@@ -85,12 +104,12 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "territoryOwnerByTile")) next.territoryOwnerByTile = cloneRecord(patch.territoryOwnerByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "dangerPercentByTile")) next.dangerPercentByTile = cloneRecord(patch.dangerPercentByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "facilitiesByTile")) next.facilitiesByTile = cloneRecord(patch.facilitiesByTile);
-  if (Object.prototype.hasOwnProperty.call(patch, "units")) next.units = normalizeEntityArray(patch.units);
+  if (Object.prototype.hasOwnProperty.call(patch, "units")) next.units = normalizeUnitArray(patch.units);
   if (Object.prototype.hasOwnProperty.call(patch, "settlements")) next.settlements = normalizeEntityArray(patch.settlements);
   if (Object.prototype.hasOwnProperty.call(patch, "territoryStateByTile")) next.territoryStateByTile = cloneRecord(patch.territoryStateByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "recoveryPercentByTile")) next.recoveryPercentByTile = cloneRecord(patch.recoveryPercentByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "lastMoveStop")) next.lastMoveStop = patch.lastMoveStop && typeof patch.lastMoveStop === "object" ? { ...patch.lastMoveStop } : null;
-  if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = normalizeEntityArray(patch.enemies);
+  if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = normalizeUnitArray(patch.enemies);
   state = next;
   if (options.silent !== true) dispatchChange(options.reason || "set");
   return getState();
