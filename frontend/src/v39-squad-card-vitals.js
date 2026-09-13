@@ -15,10 +15,10 @@ function installStyles() {
     .squad-card .v39-card-vital{
       min-width:0!important;
       display:grid!important;
-      grid-template-columns:18px minmax(0,1fr)!important;
+      grid-template-columns:20px minmax(0,1fr)!important;
       align-items:center!important;
       gap:3px!important;
-      min-height:15px!important;
+      min-height:18px!important;
       padding:0!important;
       margin:0!important;
       border:0!important;
@@ -30,7 +30,7 @@ function installStyles() {
       margin-top:0!important;
     }
     .squad-card .v39-card-vital-label{
-      font-size:8px!important;
+      font-size:11px!important;
       font-weight:800!important;
       color:#a7b5b8!important;
       white-space:nowrap!important;
@@ -40,7 +40,7 @@ function installStyles() {
       display:block!important;
       min-width:0!important;
       width:100%!important;
-      height:13px!important;
+      height:16px!important;
       border-radius:4px!important;
       overflow:hidden!important;
       background:#263136!important;
@@ -72,7 +72,7 @@ function installStyles() {
       justify-content:center!important;
       padding:0 3px!important;
       margin:0!important;
-      font-size:8px!important;
+      font-size:12px!important;
       font-weight:800!important;
       line-height:1!important;
       color:#f4f8f6!important;
@@ -83,26 +83,28 @@ function installStyles() {
     }
     .squad-card{
       gap:2px!important;
-      padding:5px!important;
+      padding:4px!important;
     }
     .squad-card-top{
       margin:0!important;
     }
     @media(max-width:430px) and (orientation:portrait){
       .squad-card .v39-card-vital{
-        grid-template-columns:17px minmax(0,1fr)!important;
+        grid-template-columns:20px minmax(0,1fr)!important;
         gap:2px!important;
-        min-height:14px!important;
+        min-height:17px!important;
       }
-      .squad-card .v39-card-vital-label,
+      .squad-card .v39-card-vital-label{
+        font-size:10px!important;
+      }
       .squad-card .v39-card-vital-value{
-        font-size:7px!important;
+        font-size:12px!important;
       }
       .squad-card .v39-card-vital-track{
-        height:12px!important;
+        height:15px!important;
       }
       .squad-card{
-        padding:4px!important;
+        padding:3px!important;
         gap:1px!important;
       }
     }
