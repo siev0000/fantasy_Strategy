@@ -27,8 +27,8 @@ function squadKey(unit) {
   if (!raw) return "squad1";
   if (raw === "solo" || raw === "単独") return "solo";
   if (/^squad\d+$/i.test(raw)) return raw.toLowerCase();
-  const m = raw.match(/(\d+)/);
-  return m ? `squad${m[1]}` : raw;
+  const match = raw.match(/(\d+)/);
+  return match ? `squad${match[1]}` : raw;
 }
 
 function unitPosition(unit) {
@@ -70,7 +70,7 @@ function roleText(unit) {
 }
 
 function movementValue(unit) {
-  return unit?.movement ?? unit?.move ?? unit?.moveRange ?? unit?.移動 ?? "-";
+  return unit?.movement ?? unit?.status?.移動 ?? unit?.move ?? unit?.moveRange ?? unit?.移動 ?? "-";
 }
 
 function statusValue(unit, key) {
@@ -92,30 +92,79 @@ function techniqueEntries(unit) {
 let selectedSquadKey = "squad1";
 let selectedUnitId = "";
 
-function getUnits() {
-  const factionState = typeof window.getV39ActiveFactionState === "function"
+function getFactionState() {
+  return typeof window.getV39ActiveFactionState === "function"
     ? window.getV39ActiveFactionState()
     : null;
+}
+
+function getUnits() {
+  const factionState = getFactionState();
   return Array.isArray(factionState?.units) ? factionState.units : [];
 }
 
 function getSquads() {
-  const factionState = typeof window.getV39ActiveFactionState === "function"
-    ? window.getV39ActiveFactionState()
-    : null;
+  const factionState = getFactionState();
   const rows = Array.isArray(factionState?.squads) ? factionState.squads.filter(Boolean) : [];
   if (rows.length) return rows;
   const keys = [...new Set(getUnits().map(unit => squadKey(unit)))];
   return keys.map(key => ({ id:key, label:key === "solo" ? "単独" : key, unitIds:[] }));
 }
 
-function unitsForSelectedSquad() {
+function squadIdOf(row, index = 0) {
+  return text(row?.id ?? row?.squadId ?? row?.key, `squad-${index + 1}`);
+}
+
+function unitsForSquad(key) {
   const units = getUnits();
-  const squad = getSquads().find(row => text(row?.id ?? row?.squadId ?? row?.key) === selectedSquadKey);
+  const squad = getSquads().find((row, index) => squadIdOf(row, index) === key);
   const unitIds = new Set(Array.isArray(squad?.unitIds) ? squad.unitIds.map(String) : []);
   return unitIds.size
     ? units.filter((unit, index) => unitIds.has(unitId(unit, index)))
-    : units.filter(unit => squadKey(unit) === selectedSquadKey);
+    : units.filter(unit => squadKey(unit) === key);
+}
+
+function unitsForSelectedSquad() {
+  return unitsForSquad(selectedSquadKey);
+}
+
+function squadKeyForUnitId(targetUnitId) {
+  const id = text(targetUnitId);
+  if (!id) return "";
+  const squads = getSquads();
+  for (let index = 0; index < squads.length; index += 1) {
+    const squad = squads[index];
+    const ids = Array.isArray(squad?.unitIds) ? squad.unitIds.map(String) : [];
+    if (ids.includes(id)) return squadIdOf(squad, index);
+  }
+  const units = getUnits();
+  const unit = units.find((row, index) => unitId(row, index) === id);
+  return unit ? squadKey(unit) : "";
+}
+
+function findUnit(targetUnitId) {
+  const id = text(targetUnitId);
+  return getUnits().find((row, index) => unitId(row, index) === id) || null;
+}
+
+function syncSelectionFromGameState() {
+  const faction = getFactionState();
+  const authoritativeId = text(faction?.selectedUnitId);
+  if (!authoritativeId || !findUnit(authoritativeId)) return;
+  selectedUnitId = authoritativeId;
+  const key = squadKeyForUnitId(authoritativeId);
+  if (key) selectedSquadKey = key;
+}
+
+function persistSelectedUnit(targetUnitId, reason = "squad-unit-selected") {
+  const id = text(targetUnitId);
+  const unit = findUnit(id);
+  if (!id || !unit) return;
+  const faction = getFactionState();
+  if (text(faction?.selectedUnitId) !== id && typeof window.updateV39ActiveFactionState === "function") {
+    window.updateV39ActiveFactionState({ selectedUnitId:id }, { reason });
+  }
+  window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail:{ unitId:id, unit } }));
 }
 
 function updateSelectorCounts() {
@@ -123,10 +172,10 @@ function updateSelectorCounts() {
   const selector = document.getElementById("squadSelector");
   const squads = getSquads();
   if (!(selector instanceof HTMLElement)) return;
-  const keys = squads.map(row => text(row?.id ?? row?.squadId ?? row?.key)).filter(Boolean);
+  const keys = squads.map((row, index) => squadIdOf(row, index)).filter(Boolean);
   if (!keys.includes(selectedSquadKey)) selectedSquadKey = keys[0] || "";
   selector.innerHTML = squads.map((squad, index) => {
-    const key = text(squad?.id ?? squad?.squadId ?? squad?.key, `squad-${index + 1}`);
+    const key = squadIdOf(squad, index);
     const ids = new Set(Array.isArray(squad?.unitIds) ? squad.unitIds.map(String) : []);
     const count = ids.size
       ? units.filter((unit, unitIndex) => ids.has(unitId(unit, unitIndex))).length
@@ -219,7 +268,7 @@ function renderDetail() {
   if (tech) {
     const rows = techniqueEntries(unit);
     tech.innerHTML = rows.length
-      ? rows.map((row) => {
+      ? rows.map(row => {
           const cost = row.apCost != null ? `AP${row.apCost}` : (row.hpCost != null ? `HP${row.hpCost}` : "-");
           const meta = text(row.detail, row.range != null ? `射程${row.range}` : text(row.action, ""));
           return `<div class="technique-card"><b>${text(row.name, "名称未設定")}</b><small>${cost}</small><span>${meta}</span></div>`;
@@ -229,6 +278,7 @@ function renderDetail() {
 }
 
 function render() {
+  syncSelectionFromGameState();
   updateSelectorCounts();
   renderMemberList();
   renderDetail();
@@ -255,25 +305,31 @@ function install() {
 
   const active = selector.querySelector("[data-squad-select].active");
   selectedSquadKey = active?.dataset?.squadSelect || "squad1";
+  syncSelectionFromGameState();
 
-  selector.addEventListener("click", (event) => {
+  selector.addEventListener("click", event => {
     const btn = event.target instanceof Element ? event.target.closest("[data-squad-select]") : null;
     if (!btn) return;
     selectedSquadKey = btn.dataset.squadSelect || "squad1";
-    selectedUnitId = "";
-    window.setTimeout(scheduleRender, 0);
+    const first = unitsForSquad(selectedSquadKey)[0] || null;
+    selectedUnitId = first ? unitId(first, 0) : "";
+    if (selectedUnitId) persistSelectedUnit(selectedUnitId, "squad-selection-changed");
+    scheduleRender();
   }, true);
 
-  list.addEventListener("click", (event) => {
+  list.addEventListener("click", event => {
     const card = event.target instanceof Element ? event.target.closest("[data-v39-unit-id]") : null;
     if (!card) return;
     selectedUnitId = card.dataset.v39UnitId || "";
+    if (selectedUnitId) persistSelectedUnit(selectedUnitId, "squad-unit-selected");
     scheduleRender();
   }, true);
 
   window.addEventListener("v39:game-state-changed", scheduleRender);
+  window.addEventListener("v39:unit-selected", scheduleRender);
   window.refreshV39SquadDerivedUI = render;
   window.getV39SelectedSquadUnit = () => {
+    syncSelectionFromGameState();
     const units = unitsForSelectedSquad();
     return units.find((item, index) => unitId(item, index) === selectedUnitId) || units[0] || null;
   };
