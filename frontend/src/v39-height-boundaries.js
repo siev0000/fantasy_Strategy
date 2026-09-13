@@ -69,7 +69,8 @@ function drawEdge(graphics, p, edgeIndex, difference) {
   if (difference >= 2) {
     graphics.lineStyle(3, 0x0b171c, 0.98);
   } else {
-    graphics.lineStyle(1.5, 0x31434b, 0.92);
+    // A one-level step should be readable without visually fragmenting the map.
+    graphics.lineStyle(1.25, 0x60757e, 0.48);
   }
   graphics.lineBetween(ax, ay, bx, by);
 }
@@ -116,7 +117,7 @@ function renderHeightBoundaries() {
     rendered: true,
     differenceOneCount,
     differenceTwoPlusCount,
-    rule: "diff-1-normal-diff-2plus-strong"
+    rule: "diff-1-soft-diff-2plus-strong"
   };
   return true;
 }
