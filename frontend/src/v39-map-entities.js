@@ -1,8 +1,9 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
 
 const LAYER_DEPTH = 12;
+const BASE_TARGET_SCREEN_SCALE = 1.75;
 const MIN_READABLE_MARKER_SCALE = 1;
-const MAX_READABLE_MARKER_SCALE = 5.5;
+const MAX_READABLE_MARKER_SCALE = 24;
 let markerContainer = null;
 let refreshTimer = null;
 let markerScaleScene = null;
@@ -48,10 +49,10 @@ function finiteCoord(value) {
 
 function readableMarkerScale(scene) {
   const zoom = Number(scene?.cameras?.main?.zoom);
-  if (!Number.isFinite(zoom) || zoom <= 0) return MIN_READABLE_MARKER_SCALE;
+  if (!Number.isFinite(zoom) || zoom <= 0) return BASE_TARGET_SCREEN_SCALE;
   return Math.max(
     MIN_READABLE_MARKER_SCALE,
-    Math.min(MAX_READABLE_MARKER_SCALE, 1 / zoom)
+    Math.min(MAX_READABLE_MARKER_SCALE, BASE_TARGET_SCREEN_SCALE / zoom)
   );
 }
 
@@ -103,24 +104,24 @@ function drawBase(scene, container, village) {
   const marker = registerReadableMarker(scene, scene.add.container(c.x, c.y));
 
   const g = scene.add.graphics();
-  g.fillStyle(0x071014, 0.94);
-  g.lineStyle(2.5, 0xf0cf79, 1);
-  g.fillCircle(0, 0, 17);
-  g.strokeCircle(0, 0, 17);
+  g.fillStyle(0x071014, 0.96);
+  g.lineStyle(3, 0xf0cf79, 1);
+  g.fillCircle(0, 0, 22);
+  g.strokeCircle(0, 0, 22);
   g.fillStyle(0xf0cf79, 1);
-  g.fillTriangle(-10, 2, 0, -10, 10, 2);
-  g.fillRect(-7, 2, 14, 9);
+  g.fillTriangle(-13, 3, 0, -13, 13, 3);
+  g.fillRect(-9, 3, 18, 12);
   g.fillStyle(0x071014, 1);
-  g.fillRect(-2, 6, 4, 5);
+  g.fillRect(-3, 8, 6, 7);
 
-  const label = scene.add.text(0, 21, village.name || "拠点", {
-    fontSize: "11px",
+  const label = scene.add.text(0, 27, village.name || "拠点", {
+    fontSize: "14px",
     fontStyle: "bold",
     color: "#fff0bd",
     stroke: "#071014",
-    strokeThickness: 4,
+    strokeThickness: 5,
     backgroundColor: "#071014",
-    padding: { x: 3, y: 1 }
+    padding: { x: 4, y: 2 }
   }).setOrigin(0.5, 0);
 
   marker.add([g, label]);
