@@ -5,9 +5,28 @@ import {
 } from "./lib/map-entity-size-rules.js";
 
 const LAYER_DEPTH = 12;
-const TEST_UNIT_TEXTURE_KEY = "v39-test-unit-soldier";
-const TEST_UNIT_TEXTURE_URL = "/assets/images/units/只人/ソルジャー.webp";
-const TEST_UNIT_IMAGE_FILL = 0.95;
+const UNIT_IMAGE_FILL = 0.95;
+const HUMAN_RACE_NAME = "只人";
+const HUMAN_CLASS_IMAGE_FILES = Object.freeze({
+  "アーチャー": "アーチャー.webp",
+  "ウィザード": "ウィザード.webp",
+  "ウォーウィザード": "ウォーウィザード.webp",
+  "クレリック": "クレリック.webp",
+  "ソルジャー": "ソルジャー.webp",
+  "デスィード": "デスィード.webp",
+  "ナイト": "ナイト.png",
+  "ニンジャ": "ニンジャ.webp",
+  "ビルダー": "ビルダー.webp",
+  "ファイター": "ファイター.webp",
+  "ファーマー": "ファーマー.webp",
+  "フェンサー": "フェンサー.webp",
+  "ヘルパー": "ヘルパー.webp",
+  "ホーリーナイト": "ホーリーナイト.webp",
+  "モンク": "モンク.webp",
+  "レンジャー": "レンジャー.webp",
+  "ローグ": "ローグ.webp",
+  "武士の戦士": "武士の戦士.webp"
+});
 
 let markerContainer = null;
 let refreshTimer = null;
@@ -115,32 +134,53 @@ function representativeUnit(group, selectedUnitId) {
   return group.find(unit => unit?.id === selectedUnitId) || group[0];
 }
 
-function ensureTestUnitTexture(scene) {
-  if (scene?.textures?.exists?.(TEST_UNIT_TEXTURE_KEY)) return true;
-  if (!scene?.textures) return false;
+function unitArtwork(unit) {
+  if (String(unit?.race || "").trim() !== HUMAN_RACE_NAME) return null;
+  const className = String(unit?.className || "").trim();
+  const fileName = HUMAN_CLASS_IMAGE_FILES[className];
+  if (!fileName) return null;
+  return {
+    textureKey: `v39-unit-${HUMAN_RACE_NAME}-${className}`,
+    url: `/assets/images/units/${HUMAN_RACE_NAME}/${fileName}`
+  };
+}
 
-  const state = textureLoadState.get(scene);
+function sceneTextureStates(scene) {
+  let states = textureLoadState.get(scene);
+  if (!states) {
+    states = new Map();
+    textureLoadState.set(scene, states);
+  }
+  return states;
+}
+
+function ensureUnitTexture(scene, artwork) {
+  if (!artwork || !scene?.textures) return false;
+  if (scene.textures.exists?.(artwork.textureKey)) return true;
+
+  const states = sceneTextureStates(scene);
+  const state = states.get(artwork.textureKey);
   if (state === "loading" || state === "failed") return false;
 
-  textureLoadState.set(scene, "loading");
+  states.set(artwork.textureKey, "loading");
   const image = new Image();
   image.onload = () => {
     try {
-      if (!scene.textures.exists(TEST_UNIT_TEXTURE_KEY)) {
-        scene.textures.addImage(TEST_UNIT_TEXTURE_KEY, image);
+      if (!scene.textures.exists(artwork.textureKey)) {
+        scene.textures.addImage(artwork.textureKey, image);
       }
-      textureLoadState.set(scene, "loaded");
+      states.set(artwork.textureKey, "loaded");
       scheduleRefresh();
     } catch (error) {
-      textureLoadState.set(scene, "failed");
-      console.error("[v39-map-entities] test unit texture registration failed", error);
+      states.set(artwork.textureKey, "failed");
+      console.error("[v39-map-entities] unit texture registration failed", artwork.url, error);
     }
   };
   image.onerror = () => {
-    textureLoadState.set(scene, "failed");
-    console.error(`[v39-map-entities] failed to load ${TEST_UNIT_TEXTURE_URL}`);
+    states.set(artwork.textureKey, "failed");
+    console.error(`[v39-map-entities] failed to load ${artwork.url}`);
   };
-  image.src = TEST_UNIT_TEXTURE_URL;
+  image.src = artwork.url;
   return false;
 }
 
@@ -151,12 +191,14 @@ function addSelectionRing(scene, marker, radius, selected) {
   marker.add(ring);
 }
 
-function addTestUnitImage(scene, marker, diameter) {
-  if (!ensureTestUnitTexture(scene)) return false;
-  const image = scene.add.image(0, 0, TEST_UNIT_TEXTURE_KEY).setOrigin(0.5);
+function addUnitArtwork(scene, marker, unit, diameter) {
+  const artwork = unitArtwork(unit);
+  if (!artwork || !ensureUnitTexture(scene, artwork)) return false;
+
+  const image = scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
   const sourceWidth = Math.max(1, Number(image.width) || 1);
   const sourceHeight = Math.max(1, Number(image.height) || 1);
-  const target = diameter * TEST_UNIT_IMAGE_FILL;
+  const target = diameter * UNIT_IMAGE_FILL;
   const scale = Math.min(target / sourceWidth, target / sourceHeight);
   image.setScale(scale);
   marker.add(image);
@@ -178,7 +220,7 @@ function addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, select
   marker.add([bg, glyph]);
 }
 
-function drawUnitGroup(scene, container, group, selectedUnitId, testImageUnitId) {
+function drawUnitGroup(scene, container, group, selectedUnitId) {
   const unit = representativeUnit(group, selectedUnitId);
   if (!unit) return;
 
@@ -196,8 +238,7 @@ function drawUnitGroup(scene, container, group, selectedUnitId, testImageUnitId)
   // One tile renders only one icon. No count/name text is permanently attached to the map.
   // Unit markers stay in world-space and scale exactly with their tile.
   const marker = scene.add.container(center.x, center.y);
-  const useTestArtwork = unit.id === testImageUnitId;
-  const artworkAdded = useTestArtwork && addTestUnitImage(scene, marker, diameter);
+  const artworkAdded = addUnitArtwork(scene, marker, unit, diameter);
 
   if (artworkAdded) {
     addSelectionRing(scene, marker, radius, selected);
@@ -216,9 +257,8 @@ function drawUnitGroup(scene, container, group, selectedUnitId, testImageUnitId)
 
 function drawUnits(scene, container, units, selectedUnitId) {
   const list = Array.isArray(units) ? units : [];
-  const testImageUnitId = list[0]?.id || "";
   for (const group of unitGroupsByTile(list).values()) {
-    drawUnitGroup(scene, container, group, selectedUnitId, testImageUnitId);
+    drawUnitGroup(scene, container, group, selectedUnitId);
   }
 }
 
