@@ -1,14 +1,16 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import {
+  MAP_ENTITY_SIZE_RULES,
+  tileRelativePx,
+  readableEntityScale
+} from "./lib/map-entity-size-rules.js";
 
 const LAYER_DEPTH = 12;
-const BASE_TARGET_SCREEN_SCALE = 1.75;
-const MIN_READABLE_MARKER_SCALE = 1;
-const MAX_READABLE_MARKER_SCALE = 24;
 let markerContainer = null;
 let refreshTimer = null;
 let markerScaleScene = null;
 let markerScaleHandler = null;
-const readableMarkers = new Set();
+const readableMarkers = new Map();
 
 function tileMetrics() {
   const width = Number(HEX_TILE_CONFIG?.width) || 40;
@@ -47,28 +49,18 @@ function finiteCoord(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function readableMarkerScale(scene) {
-  const zoom = Number(scene?.cameras?.main?.zoom);
-  if (!Number.isFinite(zoom) || zoom <= 0) return BASE_TARGET_SCREEN_SCALE;
-  return Math.max(
-    MIN_READABLE_MARKER_SCALE,
-    Math.min(MAX_READABLE_MARKER_SCALE, BASE_TARGET_SCREEN_SCALE / zoom)
-  );
-}
-
 function refreshReadableMarkerScales(scene = markerScaleScene) {
   if (!scene) return;
-  const scale = readableMarkerScale(scene);
-  for (const marker of readableMarkers) {
+  for (const [marker, metrics] of readableMarkers) {
     if (!marker?.active || typeof marker.setScale !== "function") continue;
-    marker.setScale(scale);
+    marker.setScale(readableEntityScale(scene, metrics));
   }
 }
 
-function registerReadableMarker(scene, marker) {
+function registerReadableMarker(scene, marker, metrics) {
   if (!marker) return marker;
-  readableMarkers.add(marker);
-  marker.setScale?.(readableMarkerScale(scene));
+  readableMarkers.set(marker, metrics || {});
+  marker.setScale?.(readableEntityScale(scene, metrics));
   return marker;
 }
 
@@ -100,28 +92,45 @@ function drawBase(scene, container, village) {
   const y = finiteCoord(village.y);
   if (x === null || y === null) return;
 
+  const rule = MAP_ENTITY_SIZE_RULES.base;
+  const diameter = tileRelativePx(rule.diameterTiles);
+  const radius = diameter / 2;
+  const iconSize = tileRelativePx(rule.iconTiles);
+  const labelFontSize = tileRelativePx(rule.labelFontTiles);
+  const labelOffset = tileRelativePx(rule.labelOffsetTiles);
   const c = tileCenter(x, y);
-  const marker = registerReadableMarker(scene, scene.add.container(c.x, c.y));
+  const marker = registerReadableMarker(scene, scene.add.container(c.x, c.y), {
+    worldDiameterPx: diameter,
+    worldFontPx: labelFontSize,
+    minScreenDiameterPx: rule.minScreenDiameterPx,
+    minScreenFontPx: rule.minScreenFontPx
+  });
 
   const g = scene.add.graphics();
   g.fillStyle(0x071014, 0.96);
-  g.lineStyle(3, 0xf0cf79, 1);
-  g.fillCircle(0, 0, 22);
-  g.strokeCircle(0, 0, 22);
-  g.fillStyle(0xf0cf79, 1);
-  g.fillTriangle(-13, 3, 0, -13, 13, 3);
-  g.fillRect(-9, 3, 18, 12);
-  g.fillStyle(0x071014, 1);
-  g.fillRect(-3, 8, 6, 7);
+  g.lineStyle(Math.max(2, tileRelativePx(0.045)), 0xf0cf79, 1);
+  g.fillCircle(0, 0, radius);
+  g.strokeCircle(0, 0, radius);
 
-  const label = scene.add.text(0, 27, village.name || "拠点", {
-    fontSize: "14px",
+  const roofHalf = iconSize * 0.36;
+  const roofTop = -iconSize * 0.34;
+  const roofBottom = iconSize * 0.06;
+  const bodyHalfWidth = iconSize * 0.25;
+  const bodyHeight = iconSize * 0.31;
+  g.fillStyle(0xf0cf79, 1);
+  g.fillTriangle(-roofHalf, roofBottom, 0, roofTop, roofHalf, roofBottom);
+  g.fillRect(-bodyHalfWidth, roofBottom, bodyHalfWidth * 2, bodyHeight);
+  g.fillStyle(0x071014, 1);
+  g.fillRect(-iconSize * 0.07, roofBottom + bodyHeight * 0.42, iconSize * 0.14, bodyHeight * 0.58);
+
+  const label = scene.add.text(0, labelOffset, village.name || "拠点", {
+    fontSize: `${labelFontSize}px`,
     fontStyle: "bold",
     color: "#fff0bd",
     stroke: "#071014",
-    strokeThickness: 5,
+    strokeThickness: Math.max(4, tileRelativePx(0.08)),
     backgroundColor: "#071014",
-    padding: { x: 4, y: 2 }
+    padding: { x: Math.max(4, tileRelativePx(0.07)), y: Math.max(2, tileRelativePx(0.03)) }
   }).setOrigin(0.5, 0);
 
   marker.add([g, label]);
@@ -130,7 +139,8 @@ function drawBase(scene, container, village) {
 
 function clusterOffsets(count) {
   if (count <= 1) return [{ x: 0, y: 0 }];
-  const radius = count <= 4 ? 10 : 12;
+  const rule = MAP_ENTITY_SIZE_RULES.cluster;
+  const radius = tileRelativePx(count <= 4 ? rule.offsetTilesSmall : rule.offsetTilesLarge);
   return Array.from({ length: count }, (_, index) => {
     const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / count);
     return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
@@ -165,18 +175,31 @@ function drawUnits(scene, container, units, selectedUnitId) {
       const cx = center.x + offset.x;
       const cy = center.y + offset.y;
       const selected = unit.id === selectedUnitId;
+      const rule = MAP_ENTITY_SIZE_RULES.unit;
+      const diameter = tileRelativePx(selected ? rule.selectedDiameterTiles : rule.diameterTiles);
+      const radius = diameter / 2;
+      const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
 
-      const marker = scene.add.container(cx, cy);
-      const bg = scene.add.circle(0, 0, selected ? 8 : 7, selected ? 0x174653 : 0x152b34, 0.98)
-        .setStrokeStyle(selected ? 3 : 2, selected ? 0xffdd72 : 0x8bd5e4, 1);
+      const marker = registerReadableMarker(scene, scene.add.container(cx, cy), {
+        worldDiameterPx: diameter,
+        worldFontPx: glyphFontSize,
+        minScreenDiameterPx: rule.minScreenDiameterPx,
+        minScreenFontPx: rule.minScreenFontPx
+      });
+      const bg = scene.add.circle(0, 0, radius, selected ? 0x174653 : 0x152b34, 0.98)
+        .setStrokeStyle(
+          Math.max(selected ? 3 : 2, tileRelativePx(selected ? 0.055 : 0.04)),
+          selected ? 0xffdd72 : 0x8bd5e4,
+          1
+        );
       const glyph = scene.add.text(0, -0.5, String(unit.icon || unit.name || "人").slice(0, 2), {
-        fontSize: selected ? "9px" : "8px",
+        fontSize: `${glyphFontSize}px`,
         fontStyle: "bold",
         color: "#e8f7fb"
       }).setOrigin(0.5);
 
       marker.add([bg, glyph]);
-      marker.setSize(20, 20);
+      marker.setSize(diameter, diameter);
       marker.setInteractive({ useHandCursor: true });
       marker.on("pointerdown", (_pointer, _lx, _ly, event) => {
         event?.stopPropagation?.();
@@ -188,13 +211,18 @@ function drawUnits(scene, container, units, selectedUnitId) {
     if (group.length > visible.length) {
       const first = group[0];
       const center = tileCenter(finiteCoord(first.x), finiteCoord(first.y));
-      const more = scene.add.text(center.x + 12, center.y + 10, `+${group.length - visible.length}`, {
-        fontSize: "8px",
-        fontStyle: "bold",
-        color: "#ffffff",
-        backgroundColor: "#0b1519",
-        padding: { x: 2, y: 1 }
-      }).setOrigin(0.5);
+      const more = scene.add.text(
+        center.x + tileRelativePx(0.45),
+        center.y + tileRelativePx(0.45),
+        `+${group.length - visible.length}`,
+        {
+          fontSize: `${tileRelativePx(0.24)}px`,
+          fontStyle: "bold",
+          color: "#ffffff",
+          backgroundColor: "#0b1519",
+          padding: { x: 3, y: 2 }
+        }
+      ).setOrigin(0.5);
       container.add(more);
     }
   }
