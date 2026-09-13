@@ -1,8 +1,8 @@
 import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
 
-// マップ上の重要オブジェクトは「固定px」ではなくタイル寸法を基準にする。
-// タイル自体が小さく見えるズーム域では、重要情報だけ最低画面pxを保証する。
-// これにより HEX_TILE_CONFIG を変更しても、拠点・ユニット等の見た目比率が追従する。
+// マップ上オブジェクトの大きさはタイル寸法を基準にする。
+// 拠点は全体表示時にも判別できるよう最低画面サイズを保証するが、
+// ユニットは独立した逆ズーム補正を行わず、タイルと同じ倍率で拡大縮小する。
 export const MAP_ENTITY_SIZE_RULES = Object.freeze({
   base: Object.freeze({
     diameterTiles: 1.15,
@@ -13,15 +13,10 @@ export const MAP_ENTITY_SIZE_RULES = Object.freeze({
     minScreenFontPx: 16
   }),
   unit: Object.freeze({
+    // 1ユニットは1タイル内をほぼいっぱいに使う。
+    // 選択状態でも大きさは変えず、枠線だけで区別する。
     diameterTiles: 1.0,
-    selectedDiameterTiles: 1.08,
-    glyphFontTiles: 0.36,
-    minScreenDiameterPx: 24,
-    minScreenFontPx: 11
-  }),
-  cluster: Object.freeze({
-    offsetTilesSmall: 0.38,
-    offsetTilesLarge: 0.46
+    glyphFontTiles: 0.36
   }),
   scale: Object.freeze({
     min: 1,
@@ -37,6 +32,8 @@ export function tileRelativePx(tileRatio) {
   return mapTileReferencePx() * Math.max(0, Number(tileRatio) || 0);
 }
 
+// 拠点など「全体表示でも最低限読める必要があるもの」専用。
+// ユニットには使用しない。
 export function readableEntityScale(scene, {
   worldDiameterPx = 0,
   worldFontPx = 0,
