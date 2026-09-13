@@ -18,6 +18,9 @@ const SPECIAL_TERRAIN_ICONS = Object.freeze({
 const LEGACY_LABELS = new Set(["沼", "峡", "洞"]);
 const OVERLAY_NAME = "v39-terrain-icon-overlay";
 const TEXTURE_PREFIX = "v39-terrain-icon:";
+const SCENE_RETRY_MS = 16;
+const SCENE_RETRY_LIMIT = 180;
+let renderRequestId = 0;
 
 function tileCenter(x, y) {
   const width = Number(HEX_TILE_CONFIG?.width) || 40;
@@ -33,11 +36,11 @@ function tileCenter(x, y) {
 function activeScene() {
   const game = window.__v39FieldRuntime?.game;
   const scenes = game?.scene?.getScenes?.(true) || [];
-  return scenes[0] || null;
+  return scenes.find(scene => scene?.sys?.isActive?.() !== false) || scenes[0] || null;
 }
 
 function removeLegacySpecialLabels(scene) {
-  for (const child of scene?.children?.list || []) {
+  for (const child of [...(scene?.children?.list || [])]) {
     if (child?.type === "Text" && LEGACY_LABELS.has(String(child.text || ""))) {
       child.destroy();
     }
@@ -45,7 +48,7 @@ function removeLegacySpecialLabels(scene) {
 }
 
 function destroyOldOverlay(scene) {
-  for (const child of scene?.children?.list || []) {
+  for (const child of [...(scene?.children?.list || [])]) {
     if (child?.name === OVERLAY_NAME) child.destroy();
   }
 }
@@ -95,12 +98,14 @@ function renderTerrainIcons() {
   const runtime = window.__v39FieldRuntime;
   const data = runtime?.mapData;
   const scene = activeScene();
-  if (!data || !scene) return;
+  if (!data || !scene || !scene.add || !scene.textures) return false;
 
   destroyOldOverlay(scene);
   removeLegacySpecialLabels(scene);
 
   const container = scene.add.container(0, 0).setDepth(5).setName(OVERLAY_NAME);
+  let baseCount = 0;
+  let specialCount = 0;
 
   for (let y = 0; y < Number(data.h || 0); y += 1) {
     for (let x = 0; x < Number(data.w || 0); x += 1) {
@@ -109,18 +114,56 @@ function renderTerrainIcons() {
       const baseIcon = BASE_TERRAIN_ICONS[terrain];
       const specialIcon = SPECIAL_TERRAIN_ICONS[special];
 
-      if (baseIcon) addIconImage(scene, container, x, y, "base", terrain, baseIcon);
-      if (specialIcon) addIconImage(scene, container, x, y, "special", special, specialIcon);
+      if (baseIcon) {
+        addIconImage(scene, container, x, y, "base", terrain, baseIcon);
+        baseCount += 1;
+      }
+      if (specialIcon) {
+        addIconImage(scene, container, x, y, "special", special, specialIcon);
+        specialCount += 1;
+      }
     }
   }
+
+  window.__v39TerrainIconStatus = {
+    rendered: true,
+    baseCount,
+    specialCount,
+    mapWidth: Number(data.w || 0),
+    mapHeight: Number(data.h || 0)
+  };
+  return true;
+}
+
+function scheduleTerrainIconRender() {
+  const requestId = ++renderRequestId;
+  let attempt = 0;
+
+  const tryRender = () => {
+    if (requestId !== renderRequestId) return;
+    if (renderTerrainIcons()) return;
+
+    attempt += 1;
+    if (attempt < SCENE_RETRY_LIMIT && window.__v39FieldRuntime?.mapData) {
+      window.setTimeout(tryRender, SCENE_RETRY_MS);
+      return;
+    }
+
+    window.__v39TerrainIconStatus = {
+      rendered: false,
+      reason: window.__v39FieldRuntime?.mapData ? "scene-not-ready" : "field-not-generated",
+      attempts: attempt
+    };
+  };
+
+  tryRender();
 }
 
 function install() {
-  window.addEventListener("v39:field-generated", () => {
-    window.setTimeout(renderTerrainIcons, 0);
-  });
+  window.addEventListener("v39:field-generated", scheduleTerrainIconRender);
 
-  window.renderV39TerrainIcons = renderTerrainIcons;
+  window.renderV39TerrainIcons = scheduleTerrainIconRender;
+  window.getV39TerrainIconStatus = () => ({ ...(window.__v39TerrainIconStatus || {}) });
   window.getV39TerrainIconDefinitions = () => ({
     base: { ...BASE_TERRAIN_ICONS },
     special: { ...SPECIAL_TERRAIN_ICONS }
@@ -130,7 +173,7 @@ function install() {
     .map(([terrain, value]) => ({ terrain, temporarySymbol: value.symbol }));
 
   if (window.__v39FieldRuntime?.mapData) {
-    window.setTimeout(renderTerrainIcons, 0);
+    scheduleTerrainIconRender();
   }
 }
 
