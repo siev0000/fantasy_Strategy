@@ -9,6 +9,7 @@ import "./v39-field-settings-stabilizer.js";
 import "./v39-game-state-bridge.js";
 import "./v39-initial-placement.js";
 import "./v39-map-entities.js";
+import "./v39-unit-movement.js";
 import "./v39-land-detail.js";
 import "./v39-height-boundaries.js";
 import "./v39-terrain-icons.js";
