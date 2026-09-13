@@ -1,0 +1,278 @@
+import { resolveUnitScoutValue } from "./composables/unitCoreUtils.js";
+import {
+  BASE_VILLAGE_SCOUT_RANGE,
+  FACTION_BORDER_COLOR_PALETTE,
+  HEX_TILE_CONFIG
+} from "./lib/phaser-map-panel-config.js";
+
+const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
+const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";
+const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
+const UNIT_VISION_BASE_RANGE = 1;
+const UNIT_VISION_SCOUT_STEP = 75;
+const FOG_COLOR = 0x071014;
+const FOG_ALPHA = 0.76;
+const SCOUT_COLOR = 0x9edff2;
+const SCOUT_ALPHA = 0.35;
+const SCOUT_WIDTH = 1;
+const TERRITORY_ALPHA = 0.9;
+const TERRITORY_WIDTH = 2.4;
+const RETRY_MS = 20;
+const RETRY_LIMIT = 180;
+
+let renderRequestId = 0;
+let lastSnapshot = { exploredTileKeys: new Set(), currentVisionTileKeys: new Set() };
+
+function coordKey(x, y) {
+  return `${x},${y}`;
+}
+
+function tileMetrics() {
+  const width = Number(HEX_TILE_CONFIG?.width) || 40;
+  const height = Number(HEX_TILE_CONFIG?.height) || 48;
+  const rowStep = Number(HEX_TILE_CONFIG?.rowStep) || 36;
+  const oddRowOffsetX = Number(HEX_TILE_CONFIG?.oddRowOffsetX) || width / 2;
+  return { width, height, rowStep, oddRowOffsetX };
+}
+
+function hexPoints(x, y) {
+  const { width, height, rowStep, oddRowOffsetX } = tileMetrics();
+  const halfW = width / 2;
+  const upperY = height - rowStep;
+  const lowerY = rowStep;
+  const left = (x * width) + (y % 2 === 1 ? oddRowOffsetX : 0);
+  const top = y * rowStep;
+  return [
+    { x:left + halfW, y:top },
+    { x:left + width, y:top + upperY },
+    { x:left + width, y:top + lowerY },
+    { x:left + halfW, y:top + height },
+    { x:left, y:top + lowerY },
+    { x:left, y:top + upperY }
+  ];
+}
+
+function activeScene() {
+  const scenes = window.__v39FieldRuntime?.game?.scene?.getScenes?.(true) || [];
+  return scenes.find(scene => scene?.sys?.isActive?.() !== false) || scenes[0] || null;
+}
+
+function gameState() {
+  return typeof window.getV39GameState === "function" ? window.getV39GameState() : null;
+}
+
+function activePlayer(state) {
+  return state?.players?.find(player => player?.id === state.activePlayerId) || state?.players?.[0] || null;
+}
+
+function removeLayer(scene, name) {
+  for (const child of [...(scene?.children?.list || [])]) {
+    if (child?.name === name) child.destroy();
+  }
+}
+
+function wrappedCoord(value, size) {
+  return ((value % size) + size) % size;
+}
+
+function neighborEdges(data, x, y) {
+  const odd = y % 2 === 1;
+  const rows = odd
+    ? [
+        { dx:0, dy:-1, edge:5 }, { dx:1, dy:-1, edge:0 },
+        { dx:1, dy:0, edge:1 }, { dx:1, dy:1, edge:2 },
+        { dx:0, dy:1, edge:3 }, { dx:-1, dy:0, edge:4 }
+      ]
+    : [
+        { dx:-1, dy:-1, edge:5 }, { dx:0, dy:-1, edge:0 },
+        { dx:1, dy:0, edge:1 }, { dx:0, dy:1, edge:2 },
+        { dx:-1, dy:1, edge:3 }, { dx:-1, dy:0, edge:4 }
+      ];
+  return rows.map(row => {
+    let nx = x + row.dx;
+    let ny = y + row.dy;
+    const outside = nx < 0 || ny < 0 || nx >= data.w || ny >= data.h;
+    if (outside && data.worldWrapEnabled) {
+      nx = wrappedCoord(nx, data.w);
+      ny = wrappedCoord(ny, data.h);
+    }
+    return { x:nx, y:ny, edge:row.edge, outside:outside && !data.worldWrapEnabled };
+  });
+}
+
+function addVisionRange(data, sourceX, sourceY, range, output) {
+  if (sourceX === null || sourceX === undefined || sourceX === ""
+    || sourceY === null || sourceY === undefined || sourceY === "") return;
+  const sx = Math.floor(Number(sourceX));
+  const sy = Math.floor(Number(sourceY));
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx < 0 || sy < 0 || sx >= data.w || sy >= data.h) return;
+  const maxDistance = Math.max(0, Math.floor(Number(range) || 0));
+  const startKey = coordKey(sx, sy);
+  const visited = new Set([startKey]);
+  const queue = [{ x:sx, y:sy, distance:0 }];
+  output.add(startKey);
+  while (queue.length) {
+    const current = queue.shift();
+    if (current.distance >= maxDistance) continue;
+    for (const neighbor of neighborEdges(data, current.x, current.y)) {
+      if (neighbor.outside) continue;
+      const key = coordKey(neighbor.x, neighbor.y);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      output.add(key);
+      queue.push({ x:neighbor.x, y:neighbor.y, distance:current.distance + 1 });
+    }
+  }
+}
+
+function unitVisionRange(unit) {
+  const scout = Math.max(Number(unit?.scoutRange) || 0, resolveUnitScoutValue(unit));
+  return UNIT_VISION_BASE_RANGE + Math.max(0, Math.floor(scout / UNIT_VISION_SCOUT_STEP));
+}
+
+function livingUnit(unit) {
+  const hp = Number(unit?.currentHp ?? unit?.hp);
+  return unit?.state !== "死亡" && unit?.condition !== "死亡" && (!Number.isFinite(hp) || hp > 0);
+}
+
+function buildCurrentVision(data, faction) {
+  const visible = new Set();
+  const village = faction?.village;
+  if (village?.placed) addVisionRange(data, village.x, village.y, BASE_VILLAGE_SCOUT_RANGE, visible);
+  for (const unit of Array.isArray(faction?.units) ? faction.units : []) {
+    if (livingUnit(unit)) addVisionRange(data, unit.x, unit.y, unitVisionRange(unit), visible);
+  }
+  return visible;
+}
+
+function persistExploredTiles(faction, explored) {
+  const oldKeys = Array.isArray(faction?.visibility?.exploredTileKeys)
+    ? faction.visibility.exploredTileKeys.map(String)
+    : [];
+  if (oldKeys.length === explored.size && oldKeys.every(key => explored.has(key))) return;
+  window.updateV39ActiveFactionState?.({
+    visibility: {
+      ...faction.visibility,
+      exploredTileKeys: [...explored].sort()
+    }
+  }, { reason:"visibility-explored" });
+}
+
+function drawEdge(graphics, points, edgeIndex) {
+  const pair = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0]][edgeIndex];
+  graphics.lineBetween(
+    points[pair[0]].x,
+    points[pair[0]].y,
+    points[pair[1]].x,
+    points[pair[1]].y
+  );
+}
+
+function drawOuterBoundary(graphics, data, tileKeys, style) {
+  graphics.lineStyle(style.width, style.color, style.alpha);
+  for (const key of tileKeys) {
+    const [x, y] = key.split(",").map(Number);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
+    if (x < 0 || y < 0 || x >= data.w || y >= data.h) continue;
+    const points = hexPoints(x, y);
+    for (const neighbor of neighborEdges(data, x, y)) {
+      if (!neighbor.outside && tileKeys.has(coordKey(neighbor.x, neighbor.y))) continue;
+      drawEdge(graphics, points, neighbor.edge);
+    }
+  }
+}
+
+function renderVisibilityLayers() {
+  const runtime = window.__v39FieldRuntime;
+  const data = runtime?.mapData;
+  const scene = activeScene();
+  const state = gameState();
+  const player = activePlayer(state);
+  const faction = player?.factionState;
+  if (!data?.grid || !scene?.add || !faction) return false;
+
+  removeLayer(scene, FOG_LAYER_NAME);
+  removeLayer(scene, SCOUT_LAYER_NAME);
+  removeLayer(scene, TERRITORY_LAYER_NAME);
+
+  const currentVision = buildCurrentVision(data, faction);
+  const explored = new Set(
+    (Array.isArray(faction.visibility?.exploredTileKeys) ? faction.visibility.exploredTileKeys : []).map(String)
+  );
+  for (const key of currentVision) explored.add(key);
+  lastSnapshot = { exploredTileKeys:explored, currentVisionTileKeys:currentVision };
+
+  const fog = scene.add.graphics().setDepth(14).setName(FOG_LAYER_NAME);
+  fog.fillStyle(FOG_COLOR, FOG_ALPHA);
+  let unexploredCount = 0;
+  for (let y = 0; y < data.h; y += 1) {
+    for (let x = 0; x < data.w; x += 1) {
+      if (explored.has(coordKey(x, y))) continue;
+      fog.fillPoints(hexPoints(x, y), true);
+      unexploredCount += 1;
+    }
+  }
+
+  const scout = scene.add.graphics().setDepth(15).setName(SCOUT_LAYER_NAME);
+  drawOuterBoundary(scout, data, currentVision, {
+    width:SCOUT_WIDTH,
+    color:SCOUT_COLOR,
+    alpha:SCOUT_ALPHA
+  });
+
+  const ownTerritory = new Set(
+    Object.entries(state.territoryOwnerByTile || {})
+      .filter(([, ownerId]) => String(ownerId) === String(player.id))
+      .map(([key]) => key)
+  );
+  const playerIndex = Math.max(0, state.players.findIndex(row => row?.id === player.id));
+  const territory = scene.add.graphics().setDepth(16).setName(TERRITORY_LAYER_NAME);
+  drawOuterBoundary(territory, data, ownTerritory, {
+    width:TERRITORY_WIDTH,
+    color:FACTION_BORDER_COLOR_PALETTE[playerIndex % FACTION_BORDER_COLOR_PALETTE.length],
+    alpha:TERRITORY_ALPHA
+  });
+
+  window.__v39VisibilityStatus = {
+    rendered:true,
+    currentVisionCount:currentVision.size,
+    exploredCount:explored.size,
+    unexploredCount,
+    ownTerritoryCount:ownTerritory.size,
+    scoutRanges:(faction.units || []).filter(livingUnit).map(unit => ({
+      id:String(unit.id || ""),
+      range:unitVisionRange(unit)
+    }))
+  };
+  persistExploredTiles(faction, explored);
+  return true;
+}
+
+function scheduleRender() {
+  const requestId = ++renderRequestId;
+  let attempt = 0;
+  const tryRender = () => {
+    if (requestId !== renderRequestId) return;
+    if (renderVisibilityLayers()) return;
+    attempt += 1;
+    if (attempt < RETRY_LIMIT && window.__v39FieldRuntime?.mapData) {
+      window.setTimeout(tryRender, RETRY_MS);
+    }
+  };
+  tryRender();
+}
+
+window.getV39VisibilitySnapshot = () => ({
+  exploredTileKeys:new Set(lastSnapshot.exploredTileKeys),
+  currentVisionTileKeys:new Set(lastSnapshot.currentVisionTileKeys)
+});
+window.isV39TileExplored = (x, y) => lastSnapshot.exploredTileKeys.has(coordKey(x, y));
+window.isV39TileInCurrentVision = (x, y) => lastSnapshot.currentVisionTileKeys.has(coordKey(x, y));
+window.getV39VisibilityStatus = () => ({ ...(window.__v39VisibilityStatus || {}) });
+window.renderV39Visibility = scheduleRender;
+
+window.addEventListener("v39:field-generated", scheduleRender);
+window.addEventListener("v39:game-state-changed", scheduleRender);
+window.addEventListener("v39:initial-placement-complete", scheduleRender);
+
+if (window.__v39FieldRuntime?.mapData) scheduleRender();

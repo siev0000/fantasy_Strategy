@@ -62,6 +62,17 @@ function clearUnplacedUnitCoordinates(units) {
   }));
 }
 
+function emptyVisibilityState() {
+  return {
+    exploredTileKeys: [],
+    visibleTileKeys: [],
+    spottedEnemyTileKeys: [],
+    spottedFactionTileKeys: [],
+    alertedEnemyTileKeys: [],
+    alertedFactionTileKeys: []
+  };
+}
+
 function fieldMapData() {
   return window.__v39FieldRuntime?.mapData || null;
 }
@@ -86,6 +97,28 @@ function neighborCoords(x, y) {
 function unitCanStandAt(data, x, y) {
   const terrain = text(data?.grid?.[y]?.[x], "海");
   return isPassableTerrain(terrain) && terrain !== "火山";
+}
+
+function buildInitialTerritoryTiles(baseX, baseY) {
+  const data = fieldMapData();
+  const w = Math.max(1, Math.floor(Number(data?.w) || 0));
+  const h = Math.max(1, Math.floor(Number(data?.h) || 0));
+  if (!data?.grid || !w || !h) return [];
+
+  const wrap = worldWrapEnabled();
+  const candidates = [{ x:baseX, y:baseY }, ...neighborCoords(baseX, baseY)];
+  const result = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const x = normalizeCoord(candidate.x, w, wrap);
+    const y = normalizeCoord(candidate.y, h, wrap);
+    if (x === null || y === null || !unitCanStandAt(data, x, y)) continue;
+    const key = coordKey(x, y);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ x, y, key });
+  }
+  return result;
 }
 
 function buildInitialUnitPositions(baseX, baseY, count) {
@@ -140,7 +173,10 @@ function beginInitialPlacement(options = {}) {
           village: null,
           villagePlacementMode: true,
           moveCommandUnitId: "",
-          units
+          units,
+          visibility: options.keepVisibility === true
+            ? row.factionState.visibility
+            : emptyVisibilityState()
         }
       }
     : row);
@@ -166,6 +202,11 @@ function placeInitialBase(tile) {
   }
 
   const key = coordKey(x, y);
+  const centerOwnerId = text(state.territoryOwnerByTile?.[key]);
+  if (centerOwnerId && centerOwnerId !== player.id) {
+    showBanner("他勢力の領土には拠点を設置できません", true);
+    return false;
+  }
   const village = {
     id: `village-${x}-${y}`,
     name: "拠点",
@@ -207,23 +248,45 @@ function placeInitialBase(tile) {
     { ...village, type: "拠点", ownerPlayerId: player.id }
   ];
 
+  const previousOwnKeys = Object.entries(state.territoryOwnerByTile || {})
+    .filter(([, ownerId]) => String(ownerId) === String(player.id))
+    .map(([tileKey]) => tileKey);
+  const territoryOwnerByTile = { ...state.territoryOwnerByTile };
+  const facilitiesByTile = { ...state.facilitiesByTile };
+  const territoryStateByTile = { ...state.territoryStateByTile };
+  for (const tileKey of previousOwnKeys) {
+    delete territoryOwnerByTile[tileKey];
+    delete facilitiesByTile[tileKey];
+    delete territoryStateByTile[tileKey];
+  }
+
+  const territoryTiles = buildInitialTerritoryTiles(x, y).filter(tileData => {
+    const ownerId = text(territoryOwnerByTile[tileData.key]);
+    return !ownerId || ownerId === player.id;
+  });
+  for (const tileData of territoryTiles) {
+    territoryOwnerByTile[tileData.key] = player.id;
+    territoryStateByTile[tileData.key] = tileData.key === key ? "拠点" : "領土";
+  }
+  facilitiesByTile[key] = ["拠点"];
+
   window.setV39GameState?.({
     players,
     settlements,
     factionLabels: { ...state.factionLabels, [player.id]: text(player.label, player.id) },
-    territoryOwnerByTile: { ...state.territoryOwnerByTile, [key]: player.id },
-    facilitiesByTile: { ...state.facilitiesByTile, [key]: ["拠点"] },
-    territoryStateByTile: { ...state.territoryStateByTile, [key]: "拠点" }
+    territoryOwnerByTile,
+    facilitiesByTile,
+    territoryStateByTile
   }, { reason: "initial-placement-complete" });
 
-  const uniquePlaced = new Set(units.map(unit => coordKey(unit.x, unit.y))).size;
-  const spreadText = uniquePlaced === units.length ? "周辺マスへ1体ずつ配置" : "周辺の空きマスを優先して配置";
-  showBanner(`拠点を (${x}, ${y}) に設置し、キャラ${units.length}体を${spreadText}しました`);
+  showBanner(`拠点を (${x}, ${y}) に設置し、合計${territoryTiles.length}マスを領土にしました`);
   window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
     detail: {
       x,
       y,
       village,
+      territoryTileKeys: territoryTiles.map(tileData => tileData.key),
+      territoryTileCount: territoryTiles.length,
       unitIds: units.map(unit => unit.id).filter(Boolean),
       unitPositions: units.map(unit => ({ id: unit.id, x: unit.x, y: unit.y })),
       playerId: player.id

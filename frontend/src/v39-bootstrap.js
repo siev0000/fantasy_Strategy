@@ -10,6 +10,7 @@ import "./v39-field-settings-final.js";
 import "./v39-field-settings-stabilizer.js";
 import "./v39-game-state-bridge.js";
 import "./v39-initial-placement.js";
+import "./v39-map-visibility.js";
 import "./v39-map-entities.js";
 import "./v39-unit-movement.js";
 import "./v39-land-detail.js";
