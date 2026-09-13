@@ -6,6 +6,7 @@ import "./v39-field-settings-final.js";
 import "./v39-field-settings-stabilizer.js";
 import "./v39-game-state-bridge.js";
 import "./v39-land-detail.js";
+import "./v39-terrain-icons.js";
 import "./v39-research-ui.js";
 import "./v39-design-docs-viewer.js";
 import "./v39-text-input-modal.js";
