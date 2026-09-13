@@ -137,23 +137,13 @@ function drawBase(scene, container, village) {
   container.add(marker);
 }
 
-function clusterOffsets(count) {
-  if (count <= 1) return [{ x: 0, y: 0 }];
-  const rule = MAP_ENTITY_SIZE_RULES.cluster;
-  const radius = tileRelativePx(count <= 4 ? rule.offsetTilesSmall : rule.offsetTilesLarge);
-  return Array.from({ length: count }, (_, index) => {
-    const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / count);
-    return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
-  });
-}
-
 function selectUnit(unit) {
   if (!unit?.id || typeof window.updateV39ActiveFactionState !== "function") return;
   window.updateV39ActiveFactionState({ selectedUnitId: unit.id }, { reason: "map-unit-selected" });
   window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail: { unitId: unit.id, unit } }));
 }
 
-function drawUnits(scene, container, units, selectedUnitId) {
+function unitGroupsByTile(units) {
   const groups = new Map();
   for (const unit of Array.isArray(units) ? units : []) {
     const x = finiteCoord(unit?.x);
@@ -163,68 +153,77 @@ function drawUnits(scene, container, units, selectedUnitId) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(unit);
   }
+  return groups;
+}
 
-  for (const group of groups.values()) {
-    const visible = group.slice(0, 5);
-    const offsets = clusterOffsets(visible.length);
-    visible.forEach((unit, index) => {
-      const x = finiteCoord(unit.x);
-      const y = finiteCoord(unit.y);
-      const center = tileCenter(x, y);
-      const offset = offsets[index];
-      const cx = center.x + offset.x;
-      const cy = center.y + offset.y;
-      const selected = unit.id === selectedUnitId;
-      const rule = MAP_ENTITY_SIZE_RULES.unit;
-      const diameter = tileRelativePx(selected ? rule.selectedDiameterTiles : rule.diameterTiles);
-      const radius = diameter / 2;
-      const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
+function representativeUnit(group, selectedUnitId) {
+  if (!Array.isArray(group) || !group.length) return null;
+  return group.find(unit => unit?.id === selectedUnitId) || group[0];
+}
 
-      const marker = registerReadableMarker(scene, scene.add.container(cx, cy), {
-        worldDiameterPx: diameter,
-        worldFontPx: glyphFontSize,
-        minScreenDiameterPx: rule.minScreenDiameterPx,
-        minScreenFontPx: rule.minScreenFontPx
-      });
-      const bg = scene.add.circle(0, 0, radius, selected ? 0x174653 : 0x152b34, 0.98)
-        .setStrokeStyle(
-          Math.max(selected ? 3 : 2, tileRelativePx(selected ? 0.055 : 0.04)),
-          selected ? 0xffdd72 : 0x8bd5e4,
-          1
-        );
-      const glyph = scene.add.text(0, -0.5, String(unit.icon || unit.name || "人").slice(0, 2), {
-        fontSize: `${glyphFontSize}px`,
+function drawUnitGroup(scene, container, group, selectedUnitId) {
+  const unit = representativeUnit(group, selectedUnitId);
+  if (!unit) return;
+
+  const x = finiteCoord(unit.x);
+  const y = finiteCoord(unit.y);
+  if (x === null || y === null) return;
+
+  const selected = unit.id === selectedUnitId;
+  const rule = MAP_ENTITY_SIZE_RULES.unit;
+  const diameter = tileRelativePx(rule.diameterTiles);
+  const radius = diameter / 2;
+  const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
+  const center = tileCenter(x, y);
+
+  // Unit markers intentionally do NOT use readableEntityScale.
+  // They remain normal world-space objects and zoom exactly with their tile.
+  // One tile renders one representative marker; co-located units are summarized by a count badge.
+  const marker = scene.add.container(center.x, center.y);
+  const bg = scene.add.circle(0, 0, radius, selected ? 0x174653 : 0x152b34, 0.98)
+    .setStrokeStyle(
+      Math.max(selected ? 3 : 2, tileRelativePx(selected ? 0.055 : 0.04)),
+      selected ? 0xffdd72 : 0x8bd5e4,
+      1
+    );
+  const glyph = scene.add.text(0, -0.5, String(unit.icon || unit.name || "人").slice(0, 2), {
+    fontSize: `${glyphFontSize}px`,
+    fontStyle: "bold",
+    color: "#e8f7fb"
+  }).setOrigin(0.5);
+
+  marker.add([bg, glyph]);
+
+  if (group.length > 1) {
+    const badge = scene.add.text(
+      radius * 0.62,
+      radius * 0.62,
+      `×${group.length}`,
+      {
+        fontSize: `${tileRelativePx(0.22)}px`,
         fontStyle: "bold",
-        color: "#e8f7fb"
-      }).setOrigin(0.5);
+        color: "#ffffff",
+        backgroundColor: "#071014",
+        stroke: "#071014",
+        strokeThickness: Math.max(2, tileRelativePx(0.035)),
+        padding: { x: Math.max(2, tileRelativePx(0.035)), y: 1 }
+      }
+    ).setOrigin(0.5);
+    marker.add(badge);
+  }
 
-      marker.add([bg, glyph]);
-      marker.setSize(diameter, diameter);
-      marker.setInteractive({ useHandCursor: true });
-      marker.on("pointerdown", (_pointer, _lx, _ly, event) => {
-        event?.stopPropagation?.();
-        selectUnit(unit);
-      });
-      container.add(marker);
-    });
+  marker.setSize(diameter, diameter);
+  marker.setInteractive({ useHandCursor: true });
+  marker.on("pointerdown", (_pointer, _lx, _ly, event) => {
+    event?.stopPropagation?.();
+    selectUnit(unit);
+  });
+  container.add(marker);
+}
 
-    if (group.length > visible.length) {
-      const first = group[0];
-      const center = tileCenter(finiteCoord(first.x), finiteCoord(first.y));
-      const more = scene.add.text(
-        center.x + tileRelativePx(0.45),
-        center.y + tileRelativePx(0.45),
-        `+${group.length - visible.length}`,
-        {
-          fontSize: `${tileRelativePx(0.24)}px`,
-          fontStyle: "bold",
-          color: "#ffffff",
-          backgroundColor: "#0b1519",
-          padding: { x: 3, y: 2 }
-        }
-      ).setOrigin(0.5);
-      container.add(more);
-    }
+function drawUnits(scene, container, units, selectedUnitId) {
+  for (const group of unitGroupsByTile(units).values()) {
+    drawUnitGroup(scene, container, group, selectedUnitId);
   }
 }
 
