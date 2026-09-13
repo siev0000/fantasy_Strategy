@@ -15,11 +15,11 @@ function installStyles() {
     .squad-card .v39-card-vital{
       min-width:0!important;
       display:grid!important;
-      grid-template-columns:18px minmax(0,1fr) max-content!important;
+      grid-template-columns:18px minmax(0,1fr)!important;
       align-items:center!important;
-      gap:4px!important;
-      min-height:12px!important;
-      padding:1px 0!important;
+      gap:3px!important;
+      min-height:15px!important;
+      padding:0!important;
       margin:0!important;
       border:0!important;
       border-radius:0!important;
@@ -36,20 +36,26 @@ function installStyles() {
       white-space:nowrap!important;
     }
     .squad-card .v39-card-vital-track{
+      position:relative!important;
       display:block!important;
       min-width:0!important;
       width:100%!important;
-      height:7px!important;
-      border-radius:999px!important;
+      height:13px!important;
+      border-radius:4px!important;
       overflow:hidden!important;
       background:#263136!important;
-      box-shadow:inset 0 0 0 1px rgba(0,0,0,.28)!important;
+      box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)!important;
     }
     .squad-card .v39-card-vital-fill{
+      position:absolute!important;
+      left:0!important;
+      top:0!important;
+      bottom:0!important;
       display:block!important;
       height:100%!important;
       min-width:0!important;
       border-radius:inherit!important;
+      z-index:1!important;
     }
     .squad-card .v39-card-vital.hp .v39-card-vital-fill{
       background:linear-gradient(90deg,#3caa5b,#89df8e)!important;
@@ -58,28 +64,46 @@ function installStyles() {
       background:linear-gradient(90deg,#247dc2,#72caff)!important;
     }
     .squad-card .v39-card-vital-value{
-      font-size:8px!important;
-      font-weight:700!important;
-      color:#dbe5e2!important;
-      white-space:nowrap!important;
-      text-align:right!important;
+      position:absolute!important;
+      inset:0!important;
+      z-index:2!important;
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      padding:0 3px!important;
       margin:0!important;
+      font-size:8px!important;
+      font-weight:800!important;
+      line-height:1!important;
+      color:#f4f8f6!important;
+      white-space:nowrap!important;
+      text-align:center!important;
+      text-shadow:0 1px 2px rgba(0,0,0,.95), 1px 0 1px rgba(0,0,0,.8)!important;
+      pointer-events:none!important;
     }
     .squad-card{
-      gap:3px!important;
+      gap:2px!important;
+      padding:5px!important;
+    }
+    .squad-card-top{
+      margin:0!important;
     }
     @media(max-width:430px) and (orientation:portrait){
       .squad-card .v39-card-vital{
-        grid-template-columns:17px minmax(0,1fr) max-content!important;
-        gap:3px!important;
-        min-height:11px!important;
+        grid-template-columns:17px minmax(0,1fr)!important;
+        gap:2px!important;
+        min-height:14px!important;
       }
       .squad-card .v39-card-vital-label,
       .squad-card .v39-card-vital-value{
         font-size:7px!important;
       }
       .squad-card .v39-card-vital-track{
-        height:6px!important;
+        height:12px!important;
+      }
+      .squad-card{
+        padding:4px!important;
+        gap:1px!important;
       }
     }
   `;
@@ -100,10 +124,10 @@ function gaugeMarkup(kind, label, value) {
   return `
     <div class="v39-card-vital ${kind}">
       <span class="v39-card-vital-label">${label}</span>
-      <span class="v39-card-vital-track" aria-hidden="true">
+      <span class="v39-card-vital-track">
         <i class="v39-card-vital-fill" style="width:${value.percent.toFixed(2)}%"></i>
+        <b class="v39-card-vital-value">${value.current}/${value.max}</b>
       </span>
-      <b class="v39-card-vital-value">${value.current}/${value.max}</b>
     </div>`;
 }
 
