@@ -1,8 +1,13 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
 
 const LAYER_DEPTH = 12;
+const MIN_READABLE_MARKER_SCALE = 1;
+const MAX_READABLE_MARKER_SCALE = 5.5;
 let markerContainer = null;
 let refreshTimer = null;
+let markerScaleScene = null;
+let markerScaleHandler = null;
+const readableMarkers = new Set();
 
 function tileMetrics() {
   const width = Number(HEX_TILE_CONFIG?.width) || 40;
@@ -41,7 +46,49 @@ function finiteCoord(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function readableMarkerScale(scene) {
+  const zoom = Number(scene?.cameras?.main?.zoom);
+  if (!Number.isFinite(zoom) || zoom <= 0) return MIN_READABLE_MARKER_SCALE;
+  return Math.max(
+    MIN_READABLE_MARKER_SCALE,
+    Math.min(MAX_READABLE_MARKER_SCALE, 1 / zoom)
+  );
+}
+
+function refreshReadableMarkerScales(scene = markerScaleScene) {
+  if (!scene) return;
+  const scale = readableMarkerScale(scene);
+  for (const marker of readableMarkers) {
+    if (!marker?.active || typeof marker.setScale !== "function") continue;
+    marker.setScale(scale);
+  }
+}
+
+function registerReadableMarker(scene, marker) {
+  if (!marker) return marker;
+  readableMarkers.add(marker);
+  marker.setScale?.(readableMarkerScale(scene));
+  return marker;
+}
+
+function detachMarkerScaleUpdater() {
+  if (markerScaleScene?.events && markerScaleHandler) {
+    markerScaleScene.events.off("update", markerScaleHandler);
+  }
+  markerScaleScene = null;
+  markerScaleHandler = null;
+  readableMarkers.clear();
+}
+
+function attachMarkerScaleUpdater(scene) {
+  detachMarkerScaleUpdater();
+  markerScaleScene = scene;
+  markerScaleHandler = () => refreshReadableMarkerScales(scene);
+  scene.events.on("update", markerScaleHandler);
+}
+
 function clearMarkers() {
+  detachMarkerScaleUpdater();
   if (markerContainer?.destroy) markerContainer.destroy(true);
   markerContainer = null;
 }
@@ -53,24 +100,31 @@ function drawBase(scene, container, village) {
   if (x === null || y === null) return;
 
   const c = tileCenter(x, y);
-  const g = scene.add.graphics();
-  g.fillStyle(0x0b1519, 0.9);
-  g.lineStyle(2, 0xd8ba70, 1);
-  g.fillCircle(c.x, c.y, 13);
-  g.strokeCircle(c.x, c.y, 13);
-  g.fillStyle(0xd8ba70, 1);
-  g.fillTriangle(c.x - 7, c.y + 1, c.x, c.y - 7, c.x + 7, c.y + 1);
-  g.fillRect(c.x - 5, c.y + 1, 10, 7);
-  container.add(g);
+  const marker = registerReadableMarker(scene, scene.add.container(c.x, c.y));
 
-  const label = scene.add.text(c.x, c.y + 16, village.name || "拠点", {
-    fontSize: "8px",
+  const g = scene.add.graphics();
+  g.fillStyle(0x071014, 0.94);
+  g.lineStyle(2.5, 0xf0cf79, 1);
+  g.fillCircle(0, 0, 17);
+  g.strokeCircle(0, 0, 17);
+  g.fillStyle(0xf0cf79, 1);
+  g.fillTriangle(-10, 2, 0, -10, 10, 2);
+  g.fillRect(-7, 2, 14, 9);
+  g.fillStyle(0x071014, 1);
+  g.fillRect(-2, 6, 4, 5);
+
+  const label = scene.add.text(0, 21, village.name || "拠点", {
+    fontSize: "11px",
     fontStyle: "bold",
-    color: "#f7e4ad",
+    color: "#fff0bd",
     stroke: "#071014",
-    strokeThickness: 3
+    strokeThickness: 4,
+    backgroundColor: "#071014",
+    padding: { x: 3, y: 1 }
   }).setOrigin(0.5, 0);
-  container.add(label);
+
+  marker.add([g, label]);
+  container.add(marker);
 }
 
 function clusterOffsets(count) {
@@ -152,8 +206,10 @@ function renderMarkers() {
 
   clearMarkers();
   markerContainer = scene.add.container(0, 0).setDepth(LAYER_DEPTH);
+  attachMarkerScaleUpdater(scene);
   drawBase(scene, markerContainer, faction.village);
   drawUnits(scene, markerContainer, faction.units, faction.selectedUnitId);
+  refreshReadableMarkerScales(scene);
   return true;
 }
 
