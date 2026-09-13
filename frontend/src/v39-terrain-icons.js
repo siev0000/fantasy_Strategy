@@ -61,8 +61,9 @@ function ensureIconTexture(scene, kind, terrain, icon) {
   const key = textureKey(kind, terrain);
   if (scene.textures.exists(key)) return key;
 
-  const size = kind === "special" ? 34 : 30;
-  const fontSize = kind === "special" ? 22 : 20;
+  // Hex tiles are roughly 40×48. Keep terrain marks large enough to remain readable on mobile.
+  const size = kind === "special" ? 46 : 38;
+  const fontSize = kind === "special" ? 32 : 28;
   const texture = scene.textures.createCanvas(key, size, size);
   const context = texture.getContext();
 
@@ -71,8 +72,8 @@ function ensureIconTexture(scene, kind, terrain, icon) {
   context.textBaseline = "middle";
   context.font = `700 ${fontSize}px "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
   context.lineJoin = "round";
-  context.lineWidth = kind === "special" ? 5 : 3;
-  context.strokeStyle = "rgba(7, 16, 20, 0.95)";
+  context.lineWidth = kind === "special" ? 6 : 4;
+  context.strokeStyle = "rgba(7, 16, 20, 0.98)";
   context.strokeText(icon.symbol, size / 2, size / 2 + 1);
   context.fillStyle = "#fff4cf";
   context.fillText(icon.symbol, size / 2, size / 2 + 1);
@@ -129,6 +130,8 @@ function renderTerrainIcons() {
     rendered: true,
     baseCount,
     specialCount,
+    baseFontSize: 28,
+    specialFontSize: 32,
     mapWidth: Number(data.w || 0),
     mapHeight: Number(data.h || 0)
   };
