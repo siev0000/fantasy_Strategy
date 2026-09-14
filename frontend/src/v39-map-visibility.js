@@ -67,6 +67,10 @@ function activePlayer(state) {
   return state?.players?.find(player => player?.id === state.activePlayerId) || state?.players?.[0] || null;
 }
 
+function isTestMode() {
+  return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
+}
+
 function removeLayer(scene, name) {
   for (const child of [...(scene?.children?.list || [])]) {
     if (child?.name === name) child.destroy();
@@ -291,31 +295,36 @@ function renderVisibilityLayers() {
   for (const key of currentVision) explored.add(key);
   lastSnapshot = { exploredTileKeys:explored, currentVisionTileKeys:currentVision };
 
-  const fog = scene.add.graphics().setDepth(14).setName(FOG_LAYER_NAME);
-  fog.fillStyle(FOG_COLOR, FOG_ALPHA);
-  fog.lineStyle(1, 0x6d858d, 0.28);
-  let unexploredCount = 0;
-  for (let y = 0; y < data.h; y += 1) {
-    for (let x = 0; x < data.w; x += 1) {
-      if (explored.has(coordKey(x, y))) continue;
-      const points = hexPoints(x, y);
-      fog.fillPoints(points, true);
-      const centerX = (points[0].x + points[3].x) / 2;
-      const centerY = (points[0].y + points[3].y) / 2;
-      fog.beginPath();
-      fog.moveTo(centerX - 1.5, centerY);
-      fog.lineTo(centerX + 1.5, centerY);
-      fog.strokePath();
-      unexploredCount += 1;
-    }
-  }
+  const testMode = isTestMode();
+  let unexploredCount = Math.max(0, (Number(data.w) * Number(data.h)) - explored.size);
 
-  const scout = scene.add.graphics().setDepth(15).setName(SCOUT_LAYER_NAME);
-  drawOuterBoundary(scout, data, currentVision, {
-    width:SCOUT_WIDTH,
-    color:SCOUT_COLOR,
-    alpha:SCOUT_ALPHA
-  });
+  if (!testMode) {
+    const fog = scene.add.graphics().setDepth(14).setName(FOG_LAYER_NAME);
+    fog.fillStyle(FOG_COLOR, FOG_ALPHA);
+    fog.lineStyle(1, 0x6d858d, 0.28);
+    unexploredCount = 0;
+    for (let y = 0; y < data.h; y += 1) {
+      for (let x = 0; x < data.w; x += 1) {
+        if (explored.has(coordKey(x, y))) continue;
+        const points = hexPoints(x, y);
+        fog.fillPoints(points, true);
+        const centerX = (points[0].x + points[3].x) / 2;
+        const centerY = (points[0].y + points[3].y) / 2;
+        fog.beginPath();
+        fog.moveTo(centerX - 1.5, centerY);
+        fog.lineTo(centerX + 1.5, centerY);
+        fog.strokePath();
+        unexploredCount += 1;
+      }
+    }
+
+    const scout = scene.add.graphics().setDepth(15).setName(SCOUT_LAYER_NAME);
+    drawOuterBoundary(scout, data, currentVision, {
+      width:SCOUT_WIDTH,
+      color:SCOUT_COLOR,
+      alpha:SCOUT_ALPHA
+    });
+  }
 
   const ownTerritory = new Set(
     Object.entries(state.territoryOwnerByTile || {})
@@ -332,6 +341,7 @@ function renderVisibilityLayers() {
 
   window.__v39VisibilityStatus = {
     rendered:true,
+    testMode,
     currentVisionCount:currentVision.size,
     exploredCount:explored.size,
     unexploredCount,
@@ -372,5 +382,6 @@ window.addEventListener("v39:field-generated", resetVisibilityForNewField);
 window.addEventListener("v39:game-state-changed", scheduleRender);
 window.addEventListener("v39:initial-placement-complete", scheduleRender);
 window.addEventListener("v39:unit-moved", revealMovementPath);
+window.addEventListener("v39:display-settings-changed", scheduleRender);
 
 if (window.__v39FieldRuntime?.mapData) scheduleRender();
