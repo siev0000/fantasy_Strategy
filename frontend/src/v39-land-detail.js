@@ -1,3 +1,5 @@
+import { formatV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
+
 const PANEL_ID = "footTile";
 
 const LAND_FIELD_IDS = Object.freeze({
@@ -12,6 +14,8 @@ const LAND_FIELD_IDS = Object.freeze({
   "回復補正": "v39-land-recovery",
   "移動停止": "v39-land-move-stop",
   "川 / 滝": "v39-land-river-waterfall",
+  "火山 / 溶岩": "v39-land-volcano-lava",
+  "地形補正": "v39-land-modifiers",
   "敵": "v39-land-enemies"
 });
 
@@ -41,6 +45,13 @@ function bindFixedLandFields() {
     if (id && output instanceof HTMLElement) output.id = id;
   }
 
+  if (!document.getElementById("v39-land-modifiers")) {
+    const item = document.createElement("div");
+    item.className = "land-item";
+    item.innerHTML = '<span>地形補正</span><b id="v39-land-modifiers">なし</b>';
+    panel.appendChild(item);
+  }
+
   const firstLabel = panel.querySelector(".land-item span");
   if (firstLabel) firstLabel.textContent = "地形 / 座標";
   return panel;
@@ -64,6 +75,8 @@ function resetLandPanel(message = "マスを選択") {
   setField("v39-land-recovery", "+0%");
   setField("v39-land-move-stop", "-");
   setField("v39-land-river-waterfall", "なし / なし");
+  setField("v39-land-volcano-lava", "なし / なし");
+  setField("v39-land-modifiers", "なし");
   setField("v39-land-enemies", "なし");
 }
 
@@ -96,6 +109,10 @@ function resolveGeneratedTileDetail(selected) {
   const hasWaterfall = isSetLikeHas(riverData.waterfallSet, key);
   const isStrongCandidate = data.strongMonsterMap?.[y]?.[x] === "強敵候補";
   const strongInfo = data.strongMonsterInfoMap?.[y]?.[x] || null;
+  const dormant = data.volcanoData?.dormantMap?.[y]?.[x] === true;
+  const lava = data.lavaMap?.[y]?.[x] === true;
+  const eruptionRate = Math.max(0, Number(data.volcanoData?.eruptionRatePerTurn) || 0);
+  const recentEvent = (gameState()?.worldEnvironment?.lastTerrainEvents || []).find(event => event?.key === key || event?.sourceKey === key || event?.path?.some?.(point => point?.key === key));
 
   return {
     x,
@@ -110,6 +127,8 @@ function resolveGeneratedTileDetail(selected) {
     waterfall: hasWaterfall ? "あり" : "なし",
     isStrongCandidate,
     strongInfo
+    ,volcano:dormant ? `休火山 / 噴火${Math.round(eruptionRate * 100)}%` : (terrain === "火山" ? "活動火山" : "なし")
+    ,lava:lava ? `接触あり${recentEvent ? ` / T${recentEvent.turn}` : ""}` : "なし"
   };
 }
 
@@ -250,6 +269,8 @@ function buildFullDetail(selected) {
   if (!detail) return null;
   const state = gameState();
   const ownerLabel = resolveOwnerLabel(state, detail.key);
+  const activeFaction = typeof window.getV39ActiveFactionState === "function" ? window.getV39ActiveFactionState() : null;
+  const discoveredFeature = activeFaction?.exploration?.discoveredFeaturesByTile?.[detail.key] || null;
   return {
     ...detail,
     owner: ownerLabel,
@@ -260,7 +281,8 @@ function buildFullDetail(selected) {
     territoryState: formatTerritoryState(state, detail, ownerLabel),
     recovery: formatRecovery(state, detail.key),
     moveStop: formatMoveStop(state, detail),
-    enemies: formatEnemies(state, detail)
+    enemies: formatEnemies(state, detail),
+    discoveredFeature
   };
 }
 
@@ -283,6 +305,8 @@ function renderLandDetail(selected) {
   setField("v39-land-recovery", detail.recovery);
   setField("v39-land-move-stop", detail.moveStop);
   setField("v39-land-river-waterfall", `${detail.river} / ${detail.waterfall}`);
+  setField("v39-land-volcano-lava", `${detail.volcano} / ${detail.lava}`);
+  setField("v39-land-modifiers", formatV39TerrainModifiers(window.__v39FieldRuntime?.mapData, detail.x, detail.y));
   setField("v39-land-enemies", detail.enemies);
 
   const panel = document.getElementById(PANEL_ID);
@@ -309,6 +333,7 @@ function install() {
   resetLandPanel();
   window.addEventListener("v39:tile-selected", event => renderLandDetail(event.detail));
   window.addEventListener("v39:field-generated", () => resetLandPanel("マスを選択"));
+  window.addEventListener("v39:field-data-updated", refreshSelectedLand);
   window.addEventListener("v39:game-state-changed", refreshSelectedLand);
 
   window.getV39SelectedLandDetail = () => selectedCoord ? buildFullDetail(selectedCoord) : null;

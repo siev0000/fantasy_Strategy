@@ -1,374 +1,316 @@
+import {
+  RESEARCH_CATEGORY_ORDER,
+  normalizeResearchCategoryName,
+  researchTreeData
+} from "./lib/research-tree-config.js";
+import {
+  addResearchExperience,
+  isResearchCompleted,
+  isResearchLevelUnlocked,
+  normalizeResearchState,
+  researchExperiencePerTurn,
+  requiredResearchExp,
+  resolveCompletedResearchLevel,
+  selectResearch
+} from "./lib/research-progress.js";
+
 const CATEGORY_META = {
-  "鍛冶": { icon: "⚒", accent: "#d9b56b" },
-  "魔法": { icon: "✦", accent: "#a980de" },
-  "信仰": { icon: "✚", accent: "#e9de8b" },
-  "軍事": { icon: "⚔", accent: "#cf705e" },
-  "経済": { icon: "◆", accent: "#79c88f" },
-  "学術": { icon: "▣", accent: "#78b9d8" }
+  鍛冶Lv: { label:"鍛冶", icon:"⚒", accent:"#d9b56b" },
+  魔法Lv: { label:"魔法", icon:"✦", accent:"#a980de" },
+  信仰Lv: { label:"信仰", icon:"✚", accent:"#e9de8b" },
+  軍事Lv: { label:"軍事", icon:"⚔", accent:"#cf705e" },
+  経済Lv: { label:"経済", icon:"◆", accent:"#79c88f" }
 };
+
+let activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
+let inspectedItemId = "";
+
+const escapeHtml = value => String(value ?? "")
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;");
+
+function activeFaction() {
+  return window.getV39ActiveFactionState?.() || null;
+}
+
+function currentResearch() {
+  return normalizeResearchState(activeFaction()?.research);
+}
+
+function unitId(unit) {
+  return String(unit?.id ?? unit?.unitId ?? "");
+}
+
+function unitName(unit) {
+  return String(unit?.name ?? unit?.名前 ?? unit?.label ?? "名称未設定");
+}
+
+function aliveUnits() {
+  return (activeFaction()?.units || []).filter(unit => Number(unit?.hp ?? unit?.HP ?? 1) > 0 && unitId(unit));
+}
+
+function defaultAssignee(categoryKey, research = currentResearch()) {
+  const assignedId = String(research.assignedUnitIdByCategory?.[categoryKey] || "");
+  const units = aliveUnits();
+  return units.find(unit => unitId(unit) === assignedId)
+    || units.find(unit => unitId(unit) === String(activeFaction()?.selectedUnitId || ""))
+    || units.slice().sort((a, b) => Number(b?.level ?? b?.Lv ?? 0) - Number(a?.level ?? a?.Lv ?? 0))[0]
+    || null;
+}
+
+function categoryRows(categoryKey) {
+  return researchTreeData.categories?.[categoryKey]?.levels || [];
+}
+
+function firstInspectableId(categoryKey, research = currentResearch()) {
+  const selected = String(research.selection?.[categoryKey] || "");
+  if (selected) return selected;
+  const assignee = defaultAssignee(categoryKey, research);
+  const assigneeLevel = Number(assignee?.level ?? assignee?.Lv ?? assignee?.レベル) || 0;
+  const row = categoryRows(categoryKey).find(levelRow => isResearchLevelUnlocked(research, categoryKey, levelRow.level, assigneeLevel));
+  return String(row?.items?.[0]?.id || categoryRows(categoryKey)?.[0]?.items?.[0]?.id || "");
+}
+
+function updateFactionResearch(nextResearch, reason) {
+  if (!activeFaction()) return false;
+  window.updateV39ActiveFactionState?.({ research:normalizeResearchState(nextResearch) }, { reason });
+  return true;
+}
+
+function selectResearchForActivePlayer(categoryKey, itemId) {
+  const category = normalizeResearchCategoryName(categoryKey);
+  const research = currentResearch();
+  const result = selectResearch(research, category, itemId, defaultAssignee(category, research));
+  if (result.changed) {
+    inspectedItemId = String(itemId || "");
+    updateFactionResearch(result.state, "research-selection");
+    window.dispatchEvent(new CustomEvent("v39:research-selected", { detail:{ category, itemId } }));
+  }
+  renderAll();
+  return result;
+}
+
+function assignResearchUnit(categoryKey, assignedUnitId) {
+  const category = normalizeResearchCategoryName(categoryKey);
+  const unit = aliveUnits().find(row => unitId(row) === String(assignedUnitId || ""));
+  if (!unit) return false;
+  const research = currentResearch();
+  research.assignedUnitIdByCategory[category] = unitId(unit);
+  updateFactionResearch(research, "research-assignee");
+  renderAll();
+  return true;
+}
+
+function addExperienceForActivePlayer(categoryKey, amount) {
+  const category = normalizeResearchCategoryName(categoryKey);
+  const result = addResearchExperience(currentResearch(), category, amount);
+  if (result.changed) {
+    updateFactionResearch(result.state, "research-progress");
+    window.dispatchEvent(new CustomEvent("v39:research-progress", {
+      detail:{ category, amount:Math.floor(Number(amount) || 0), completed:result.completed === true }
+    }));
+  }
+  renderAll();
+  return result;
+}
+
+function categoryProgress(categoryKey, research) {
+  const selectedId = String(research.selection?.[categoryKey] || "");
+  if (!selectedId) return { current:0, required:requiredResearchExp(resolveCompletedResearchLevel(research, categoryKey) + 1), ratio:0 };
+  const item = categoryRows(categoryKey).flatMap(row => row.items || []).find(row => row.id === selectedId);
+  const current = Math.max(0, Number(research.progress.targetExpMap?.[selectedId]) || 0);
+  const required = requiredResearchExp(item?.level || 1);
+  return { current, required, ratio:Math.min(100, Math.round((current / Math.max(1, required)) * 100)) };
+}
+
+function renderRail() {
+  const rail = document.getElementById("researchRail");
+  if (!(rail instanceof HTMLElement)) return;
+  const research = currentResearch();
+  rail.innerHTML = '<div class="research-rail-title">研究<br>対象</div>' + RESEARCH_CATEGORY_ORDER
+    .filter(key => researchTreeData.categories[key])
+    .map(key => {
+      const meta = CATEGORY_META[key];
+      const progress = categoryProgress(key, research);
+      const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
+      const selected = research.selection?.[key] ? " active" : "";
+      return `<button class="research-rail-btn${selected}" data-v39-research-category="${key}" style="--p:${progress.ratio}%;--accent:${meta.accent}" title="${meta.label} Lv${level} / EXP ${progress.current}/${progress.required}"><span class="gauge"><b>${meta.icon}</b></span><small>${meta.label}</small><span class="lv">${level}</span></button>`;
+    }).join("");
+}
+
+function itemDetails(item) {
+  const details = (item?.details || []).map(row => `<li><span>${escapeHtml(row.key)}</span><b>${escapeHtml(row.value)}</b></li>`).join("");
+  return details ? `<ul class="v39-research-details">${details}</ul>` : "";
+}
+
+function renderModal() {
+  const backdrop = document.getElementById("researchModal");
+  const modal = backdrop?.querySelector(":scope > .modal");
+  if (!(backdrop instanceof HTMLElement) || !(modal instanceof HTMLElement)) return;
+  modal.classList.add("research-modal-shell");
+  const head = modal.querySelector(":scope > .modal-head");
+  const body = modal.querySelector(":scope > .modal-body");
+  if (!(head instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+  const heading = head.querySelector("h2");
+  if (heading) heading.textContent = "研究";
+
+  const research = currentResearch();
+  if (!researchTreeData.categories[activeCategory]) activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
+  if (!inspectedItemId || !categoryRows(activeCategory).some(row => (row.items || []).some(item => item.id === inspectedItemId))) {
+    inspectedItemId = firstInspectableId(activeCategory, research);
+  }
+  const assignee = defaultAssignee(activeCategory, research);
+  const assigneeLevel = Number(assignee?.level ?? assignee?.Lv ?? assignee?.レベル) || 0;
+  const inspected = categoryRows(activeCategory).flatMap(row => row.items || []).find(item => item.id === inspectedItemId) || null;
+  const selectedId = String(research.selection?.[activeCategory] || "");
+  const selected = inspected?.id === selectedId;
+  const completed = inspected ? isResearchCompleted(research, activeCategory, inspected.level, inspected.id) : false;
+  const unlocked = inspected ? isResearchLevelUnlocked(research, activeCategory, inspected.level, assigneeLevel) : false;
+  const currentExp = inspected ? Math.max(0, Number(research.progress.targetExpMap?.[inspected.id]) || 0) : 0;
+  const requiredExp = requiredResearchExp(inspected?.level || 1);
+  const progressRatio = Math.min(100, Math.round((currentExp / Math.max(1, requiredExp)) * 100));
+
+  const categoryButtons = RESEARCH_CATEGORY_ORDER.filter(key => researchTreeData.categories[key]).map(key => {
+    const meta = CATEGORY_META[key];
+    const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
+    const active = key === activeCategory;
+    return `<button class="v39-research-category${active ? " active" : ""}" data-research-category="${key}" style="--cat-accent:${meta.accent}" aria-pressed="${active}"><b>${meta.icon}</b><span>${meta.label}</span><small>Lv${level}${active ? " 選択中" : ""}</small></button>`;
+  }).join("");
+
+  const levels = categoryRows(activeCategory).map(levelRow => {
+    const levelUnlocked = isResearchLevelUnlocked(research, activeCategory, levelRow.level, assigneeLevel);
+    const unitRequirement = Number(researchTreeData.levelRequirements?.[levelRow.level]) || 0;
+    const cards = (levelRow.items || []).map(item => {
+      const done = isResearchCompleted(research, activeCategory, levelRow.level, item.id);
+      const picked = item.id === selectedId;
+      const active = item.id === inspectedItemId;
+      const exp = Math.max(0, Number(research.progress.targetExpMap?.[item.id]) || 0);
+      const required = requiredResearchExp(levelRow.level);
+      const ratio = Math.min(100, Math.round((exp / Math.max(1, required)) * 100));
+      const stateText = done ? "完了 100%" : !levelUnlocked ? `未解放 / ${exp}/${required}` : picked ? `研究中 / ${exp}/${required}` : active ? `選択中 / ${exp}/${required}` : `${exp}/${required}`;
+      return `<button class="v39-research-item${active ? " active" : ""}${picked ? " picked" : ""}${done ? " completed" : ""}" data-research-item="${escapeHtml(item.id)}" aria-pressed="${active}" ${levelUnlocked ? "" : "disabled"}><strong>${escapeHtml(item.name)}</strong><span class="v39-research-item-progress"><i style="width:${ratio}%"></i></span><small>${stateText}</small></button>`;
+    }).join("");
+    return `<section class="v39-research-level${levelUnlocked ? "" : " locked"}"><header><b>Lv${levelRow.level}</b><small>必要ユニットLv ${unitRequirement}</small></header><div>${cards}</div></section>`;
+  }).join("");
+
+  const actionLabel = completed ? "研究完了" : (selected ? "研究中" : "研究として選択");
+  const assigneeOptions = aliveUnits().map(unit => `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${Number(unit?.level ?? unit?.Lv ?? 0)}</option>`).join("");
+  const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory) : 0;
+  body.innerHTML = `<nav class="v39-research-categories">${categoryButtons}</nav><div class="v39-research-layout"><div class="v39-research-board">${levels || "研究データがありません。"}</div><aside class="v39-research-detail"><label class="v39-research-assignee">担当ユニット<select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>1ターン +${perTurn} EXP</small></label>${inspected ? `<div class="v39-research-detail-head"><div><b>${escapeHtml(inspected.name)}</b><small>${CATEGORY_META[activeCategory]?.label || activeCategory} Lv${inspected.level}</small></div><strong class="${completed ? "completed" : ""}">${completed ? "100%" : `${progressRatio}%`}</strong></div><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp}</span></div><p>${escapeHtml(inspected.desc || "-")}</p>${itemDetails(inspected)}<p class="v39-research-requirement">必要ユニットLv ${researchTreeData.levelRequirements?.[inspected.level] || "-"}<br>短縮技能: ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || "-")}</p><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? "disabled" : ""}>${actionLabel}</button>` : "研究項目を選択してください。"}</aside></div>`;
+}
+
+function renderAll() {
+  renderRail();
+  renderModal();
+}
+
+function openCategory(categoryKey) {
+  const category = normalizeResearchCategoryName(categoryKey);
+  if (!researchTreeData.categories[category]) return;
+  activeCategory = category;
+  inspectedItemId = firstInspectableId(category);
+  renderAll();
+  document.getElementById("researchModal")?.classList.add("open");
+}
+
+function installEvents() {
+  document.addEventListener("click", event => {
+    const railButton = event.target.closest?.("[data-v39-research-category]");
+    if (railButton) {
+      event.preventDefault();
+      openCategory(railButton.dataset.v39ResearchCategory);
+      return;
+    }
+    const categoryButton = event.target.closest?.("[data-research-category]");
+    if (categoryButton) {
+      activeCategory = normalizeResearchCategoryName(categoryButton.dataset.researchCategory);
+      inspectedItemId = firstInspectableId(activeCategory);
+      renderModal();
+      return;
+    }
+    const itemButton = event.target.closest?.("[data-research-item]");
+    if (itemButton) {
+      inspectedItemId = String(itemButton.dataset.researchItem || "");
+      renderModal();
+      return;
+    }
+    if (event.target.closest?.("[data-select-research]")) selectResearchForActivePlayer(activeCategory, inspectedItemId);
+  });
+  document.addEventListener("change", event => {
+    if (event.target.matches?.("[data-research-assignee]")) assignResearchUnit(activeCategory, event.target.value);
+  });
+  window.addEventListener("v39:game-state-changed", renderAll);
+  window.addEventListener("v39:turn-stage-research", advanceAllPlayerResearch);
+}
+
+function advanceAllPlayerResearch() {
+  const state = window.getV39GameState?.();
+  if (!state) return;
+  const turnNumber = Math.max(1, Math.floor(Number(state?.timeline?.turnNumber) || 1));
+  let changed = false;
+  const players = (state.players || []).map(player => {
+    let playerChanged = false;
+    let research = normalizeResearchState(player?.factionState?.research);
+    if (research.lastProcessedTurn >= turnNumber) return player;
+    const units = player?.factionState?.units || [];
+    for (const category of Object.keys(research.selection)) {
+      const assignedId = String(research.assignedUnitIdByCategory?.[category] || "");
+      const unit = units.find(row => unitId(row) === assignedId && Number(row?.hp ?? row?.HP ?? 1) > 0);
+      if (!unit) continue;
+      const result = addResearchExperience(research, category, researchExperiencePerTurn(unit, category));
+      research = result.state;
+      playerChanged ||= result.changed;
+      changed ||= result.changed;
+    }
+    research.lastProcessedTurn = turnNumber;
+    playerChanged = true;
+    changed = true;
+    return playerChanged ? { ...player, factionState:{ ...player.factionState, research } } : player;
+  });
+  if (changed) window.setV39GameState?.({ players }, { reason:"research-turn-progress" });
+}
 
 function installStyles() {
   if (document.getElementById("v39-research-ui-style")) return;
   const style = document.createElement("style");
   style.id = "v39-research-ui-style";
   style.textContent = `
-#researchModal{
-  --research-accent:#cf705e;
-  padding:max(8px,var(--safe-t,0px)) max(8px,var(--safe-r,0px)) max(8px,var(--safe-b,0px)) max(8px,var(--safe-l,0px));
-  background:rgba(2,7,10,.82);
-  backdrop-filter:blur(3px);
-}
-#researchModal .modal{
-  width:min(920px,calc(100vw - 20px));
-  height:min(690px,calc(100svh - 20px));
-  border:1px solid #46575e;
-  border-radius:10px;
-  background:linear-gradient(180deg,#111c20 0,#0a1216 100%);
-  box-shadow:0 18px 50px rgba(0,0,0,.62),inset 0 1px rgba(255,255,255,.025);
-  grid-template-rows:48px minmax(0,1fr);
-}
-#researchModal .modal-head{
-  min-height:48px;
-  padding:7px 9px 7px 12px;
-  border-bottom:1px solid #34444a;
-  background:linear-gradient(180deg,#152126,#0d171b);
-}
-#researchModal .modal-head h2{
-  display:flex;
-  align-items:baseline;
-  gap:9px;
-  margin:0;
-  font-size:15px;
-  letter-spacing:.04em;
-}
-#researchModal .modal-head h2::before{
-  content:"研";
-  display:grid;
-  place-items:center;
-  width:27px;
-  height:27px;
-  border:1px solid #51636a;
-  border-radius:7px;
-  background:#1b2a2f;
-  color:#dce8e7;
-  font-size:12px;
-}
-#researchModal .research-head-sub{
-  margin-left:1px;
-  color:#829499;
-  font-size:9px;
-  font-weight:500;
-  letter-spacing:0;
-}
-#researchModal .modal-head .close{
-  width:32px;
-  height:32px;
-  margin-left:auto;
-  padding:0;
-  border:1px solid #46575d;
-  border-radius:7px;
-  background:#172429;
-  color:#dce6e5;
-  font-size:20px;
-  line-height:1;
-}
-#researchModal .modal-body{
-  display:grid;
-  grid-template-columns:174px minmax(0,1fr);
-  grid-template-rows:minmax(0,1fr);
-  gap:0;
-  min-height:0;
-  padding:0;
-  overflow:hidden;
-}
-#researchModal .research-category-list{
-  display:flex;
-  flex-direction:column;
-  gap:5px;
-  min-width:0;
-  padding:8px;
-  overflow:auto;
-  border-right:1px solid #2f3f45;
-  background:rgba(7,14,17,.64);
-  scrollbar-width:none;
-}
-#researchModal .research-category-list::-webkit-scrollbar,
-#researchModal .research-content::-webkit-scrollbar{display:none;width:0;height:0}
-#researchModal .research-category-list::before{
-  content:"研究系統";
-  display:block;
-  padding:2px 4px 5px;
-  color:#788b90;
-  font-size:9px;
-  font-weight:700;
-  letter-spacing:.08em;
-}
-#researchModal .research-category-list .research-rail-btn{
-  --cat-accent:#72858b;
-  position:relative;
-  width:100%;
-  min-width:0;
-  height:auto;
-  min-height:52px;
-  margin:0;
-  padding:7px 8px 7px 42px;
-  display:block;
-  border:1px solid #35464c;
-  border-radius:7px;
-  background:linear-gradient(180deg,#172328,#111b1f);
-  color:#dbe5e4;
-  text-align:left;
-  box-shadow:none;
-  overflow:hidden;
-}
-#researchModal .research-category-list .research-rail-btn::before{
-  content:attr(data-research-icon);
-  position:absolute;
-  left:8px;
-  top:50%;
-  transform:translateY(-50%);
-  display:grid;
-  place-items:center;
-  width:27px;
-  height:27px;
-  border:1px solid color-mix(in srgb,var(--cat-accent) 58%,#38484e);
-  border-radius:50%;
-  background:#0c1519;
-  color:var(--cat-accent);
-  font-size:14px;
-}
-#researchModal .research-category-list .research-rail-btn::after{display:none!important}
-#researchModal .research-category-list .research-rail-btn span{
-  display:block;
-  color:#dce6e4;
-  font-size:12px;
-  font-weight:800;
-  line-height:1.2;
-}
-#researchModal .research-category-list .research-rail-btn b{
-  display:block;
-  margin-top:3px;
-  color:#829499;
-  font-size:9px;
-  font-weight:600;
-  white-space:nowrap;
-}
-#researchModal .research-category-list .research-rail-btn:hover{
-  border-color:#53656c;
-  background:#1a282d;
-}
-#researchModal .research-category-list .research-rail-btn.active{
-  border-color:var(--cat-accent);
-  background:linear-gradient(90deg,color-mix(in srgb,var(--cat-accent) 15%,#172328),#152126 62%);
-  box-shadow:inset 3px 0 var(--cat-accent),0 0 0 1px color-mix(in srgb,var(--cat-accent) 12%,transparent);
-}
-#researchModal .research-category-list .research-rail-btn.active span{color:#f1f5f2}
-#researchModal .research-content{
-  min-width:0;
-  min-height:0;
-  padding:10px;
-  overflow:auto;
-  scrollbar-width:none;
-}
-#researchModal .research-content-head{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  min-height:35px;
-  margin:0 0 8px;
-  padding:0 2px 7px;
-  border-bottom:1px solid #29383e;
-}
-#researchModal .research-content-head h3{
-  margin:0;
-  color:#e4ecea;
-  font-size:13px;
-}
-#researchModal .research-selected-chip{
-  flex:0 0 auto;
-  padding:3px 7px;
-  border:1px solid color-mix(in srgb,var(--research-accent) 62%,#405158);
-  border-radius:999px;
-  background:color-mix(in srgb,var(--research-accent) 10%,#10191d);
-  color:#cbd6d5;
-  font-size:9px;
-}
-#researchModal .research-content .detail-pane{
-  min-height:150px;
-  margin:0!important;
-  padding:12px;
-  border:1px solid #324249;
-  border-radius:8px;
-  background:linear-gradient(180deg,rgba(23,34,39,.88),rgba(14,23,27,.92));
-  overflow:auto;
-}
-#researchModal .research-content .detail-pane b{
-  color:#e3ebe9;
-  font-size:12px;
-}
-#researchModal .research-content .detail-pane p{
-  max-width:560px;
-  margin:7px 0 0;
-  color:#93a4a8;
-  font-size:10px;
-  line-height:1.65;
-}
-#researchModal .research-empty-visual{
-  display:grid;
-  place-items:center;
-  min-height:105px;
-  margin-top:10px;
-  border:1px dashed #2e4046;
-  border-radius:7px;
-  background:radial-gradient(circle at 50% 50%,rgba(92,126,133,.06),transparent 68%);
-  color:#566b71;
-  text-align:center;
-  font-size:10px;
-}
-#researchModal .research-empty-visual strong{
-  display:block;
-  margin-bottom:4px;
-  color:#70868b;
-  font-size:22px;
-  font-weight:500;
-}
-@media(max-width:700px){
-  #researchModal{
-    padding:max(4px,var(--safe-t,0px)) max(4px,var(--safe-r,0px)) max(4px,var(--safe-b,0px)) max(4px,var(--safe-l,0px));
-  }
-  #researchModal .modal{
-    width:100%;
-    height:100%;
-    max-width:none;
-    max-height:none;
-    border-radius:7px;
-    grid-template-rows:44px minmax(0,1fr);
-  }
-  #researchModal .modal-head{min-height:44px;padding:5px 7px 5px 9px}
-  #researchModal .modal-head h2{font-size:14px;gap:7px}
-  #researchModal .modal-head h2::before{width:25px;height:25px}
-  #researchModal .modal-body{
-    grid-template-columns:minmax(0,1fr);
-    grid-template-rows:auto minmax(0,1fr);
-  }
-  #researchModal .research-category-list{
-    flex-direction:row;
-    gap:4px;
-    padding:6px;
-    overflow-x:auto;
-    overflow-y:hidden;
-    border-right:0;
-    border-bottom:1px solid #2f3f45;
-  }
-  #researchModal .research-category-list::before{display:none}
-  #researchModal .research-category-list .research-rail-btn{
-    flex:0 0 112px;
-    width:112px;
-    min-height:44px;
-    padding:6px 6px 6px 35px;
-  }
-  #researchModal .research-category-list .research-rail-btn::before{
-    left:6px;
-    width:23px;
-    height:23px;
-    font-size:12px;
-  }
-  #researchModal .research-category-list .research-rail-btn span{font-size:11px}
-  #researchModal .research-category-list .research-rail-btn b{margin-top:2px;font-size:8px}
-  #researchModal .research-content{padding:8px}
-  #researchModal .research-content-head{min-height:31px;margin-bottom:6px;padding-bottom:5px}
-  #researchModal .research-content .detail-pane{min-height:130px;padding:10px}
-}
-@media(max-width:430px){
-  #researchModal .research-head-sub{display:none}
-  #researchModal .research-category-list .research-rail-btn{flex-basis:102px;width:102px}
-  #researchModal .research-content{padding:6px}
-}
+#researchModal .modal{width:min(1040px,94vw);height:min(720px,90vh);background:#0d171b;border:1px solid #53646a}
+#researchModal .modal-body{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;min-height:0;padding:10px;overflow:hidden}
+.v39-research-categories{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-bottom:8px}
+.v39-research-category{min-height:48px;display:flex;align-items:center;justify-content:center;gap:7px;color:#c9d4d5;background:#152226;border:1px solid #405057;border-radius:8px;font-size:15px;font-weight:800}
+.v39-research-category b{color:var(--cat-accent);font-size:21px}.v39-research-category small{font-size:12px;color:#91a1a5}
+.v39-research-category.active{border:2px solid var(--cat-accent);background:#243035;color:#fff}
+.v39-research-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:9px;min-height:0}
+.v39-research-board{display:flex;gap:8px;min-width:0;overflow:auto;padding:2px 2px 8px}
+.v39-research-level{flex:0 0 170px;border:1px solid #3d4e54;border-radius:8px;background:#111e22;padding:6px}
+.v39-research-level>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:#e8dcc1}.v39-research-level>header small{font-size:11px;color:#a6b3b5}
+.v39-research-level>div{display:grid;gap:6px}.v39-research-level.locked{opacity:.42}
+.v39-research-item{position:relative;min-height:86px;padding:8px;text-align:left;color:#d8e0e0;background:#17252a;border:1px solid #45575e;border-radius:7px}
+.v39-research-item strong{display:block;font-size:14px;line-height:1.25}.v39-research-item small{display:block;margin-top:4px;font-size:12px;color:#aab6b8}
+.v39-research-item-progress{display:block;height:7px;margin-top:11px;background:#091114;border:1px solid #435158;border-radius:8px;overflow:hidden}.v39-research-item-progress i{display:block;height:100%;background:#d1aa61}
+.v39-research-item.active{border:3px solid #f1d080;padding:6px;background:#2b2a20}.v39-research-item.picked{background:#27362f;box-shadow:inset 0 0 0 2px #78c894}.v39-research-item.completed{background:#173a2a;border-color:#63c184;color:#e7fff0}.v39-research-item.completed .v39-research-item-progress i{background:#62d18d}
+.v39-research-detail{min-width:0;overflow:auto;padding:12px;border:1px solid #44555b;border-radius:9px;background:#142126;color:#dce4e4}
+.v39-research-assignee{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:5px 8px;margin-bottom:12px;padding:8px;border:1px solid #3f5056;border-radius:7px;font-size:13px;font-weight:800}.v39-research-assignee select{min-width:0;height:32px;background:#0c171b;border:1px solid #52646a;border-radius:5px;color:#e5eded;padding:0 6px;font-size:13px}.v39-research-assignee small{grid-column:2;color:#77ce96}
+.v39-research-detail-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.v39-research-detail-head b{display:block;font-size:20px;color:#fff}.v39-research-detail-head small{display:block;margin-top:3px;color:#aebabc}.v39-research-detail-head>strong{font-size:20px;color:#e6c66e}.v39-research-detail-head>strong.completed{color:#69d18d}
+.v39-research-large-progress{position:relative;height:22px;margin:12px 0;background:#091216;border:1px solid #53656a;border-radius:7px;overflow:hidden}.v39-research-large-progress i{display:block;height:100%;background:linear-gradient(90deg,#9d7839,#e3c36a)}.v39-research-large-progress span{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;font-weight:900;color:#fff;text-shadow:0 1px 2px #000}
+.v39-research-detail p{font-size:15px;line-height:1.55}.v39-research-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:0;list-style:none}.v39-research-details li{display:flex;justify-content:space-between;gap:7px;padding:5px 7px;background:#1b2b30;border-radius:5px;font-size:13px}.v39-research-requirement{color:#aebabc!important;font-size:13px!important}
+.v39-research-select{width:100%;min-height:42px;margin-top:8px;border:1px solid #c7a856;border-radius:7px;background:#3b321d;color:#fff1be;font-size:15px;font-weight:900}.v39-research-select:disabled{opacity:.55}
+@media(max-width:760px){#researchModal .modal{width:98vw;height:94vh}.v39-research-categories{grid-template-columns:repeat(5,1fr)}.v39-research-category{min-height:42px;padding:3px;font-size:11px;gap:3px}.v39-research-category b{font-size:15px}.v39-research-category small{display:none}.v39-research-layout{grid-template-columns:minmax(0,1.45fr) minmax(200px,1fr)}.v39-research-level{flex-basis:145px}.v39-research-item{min-height:75px}.v39-research-detail{padding:8px}.v39-research-detail-head b{font-size:16px}}
 `;
   document.head.appendChild(style);
 }
 
-function normalizeResearchModal() {
-  const backdrop = document.getElementById("researchModal");
-  if (!(backdrop instanceof HTMLElement)) return false;
-  const modal = backdrop.querySelector(":scope > .modal");
-  const head = modal?.querySelector(":scope > .modal-head");
-  const body = modal?.querySelector(":scope > .modal-body");
-  if (!(modal instanceof HTMLElement) || !(head instanceof HTMLElement) || !(body instanceof HTMLElement)) return false;
-  if (modal.dataset.researchUiReady === "1") return true;
+installStyles();
+installEvents();
+renderAll();
 
-  modal.dataset.researchUiReady = "1";
-  modal.classList.add("research-modal-shell");
+window.openV39Research = openCategory;
+window.getV39ResearchState = currentResearch;
+window.selectV39Research = selectResearchForActivePlayer;
+window.addV39ResearchExperience = addExperienceForActivePlayer;
+window.assignV39ResearchUnit = assignResearchUnit;
 
-  const heading = head.querySelector("h2");
-  if (heading instanceof HTMLElement && !heading.querySelector(".research-head-sub")) {
-    const sub = document.createElement("span");
-    sub.className = "research-head-sub";
-    sub.textContent = "研究系統 / 研究項目";
-    heading.appendChild(sub);
-  }
-
-  const oldGrid = body.querySelector(":scope > .detail-grid");
-  const oldHeading = body.querySelector(":scope > h3");
-  const detailPane = body.querySelector(":scope > .detail-pane");
-  if (!(oldGrid instanceof HTMLElement) || !(detailPane instanceof HTMLElement)) return true;
-
-  oldGrid.classList.add("research-category-list");
-  oldGrid.classList.remove("detail-grid");
-
-  const content = document.createElement("section");
-  content.className = "research-content";
-
-  const contentHead = document.createElement("div");
-  contentHead.className = "research-content-head";
-  const title = document.createElement("h3");
-  title.textContent = oldHeading?.textContent?.trim() || "選択中の研究";
-  const selectedChip = document.createElement("span");
-  selectedChip.className = "research-selected-chip";
-  selectedChip.textContent = "軍事";
-  contentHead.append(title, selectedChip);
-
-  const emptyVisual = document.createElement("div");
-  emptyVisual.className = "research-empty-visual";
-  emptyVisual.innerHTML = "<div><strong>◇</strong>研究項目・研究ツリー表示領域</div>";
-
-  oldHeading?.remove();
-  content.append(contentHead, detailPane, emptyVisual);
-  body.appendChild(content);
-
-  const buttons = [...oldGrid.querySelectorAll(".research-rail-btn")];
-  for (const button of buttons) {
-    const key = String(button.dataset.research || button.querySelector("span")?.textContent || "").trim();
-    const meta = CATEGORY_META[key] || { icon: "◇", accent: "#72858b" };
-    button.dataset.researchIcon = meta.icon;
-    button.style.setProperty("--cat-accent", meta.accent);
-  }
-
-  const updateSelected = button => {
-    const key = String(button?.dataset?.research || "研究").trim();
-    const meta = CATEGORY_META[key] || { accent: "#72858b" };
-    selectedChip.textContent = key;
-    backdrop.style.setProperty("--research-accent", meta.accent);
-  };
-
-  oldGrid.addEventListener("click", event => {
-    const button = event.target.closest?.(".research-rail-btn");
-    if (button) updateSelected(button);
-  });
-
-  const initial = oldGrid.querySelector(".research-rail-btn.active") || oldGrid.querySelector(".research-rail-btn");
-  updateSelected(initial);
-  return true;
-}
-
-function boot() {
-  installStyles();
-  if (normalizeResearchModal()) return;
-  const observer = new MutationObserver(() => {
-    if (normalizeResearchModal()) observer.disconnect();
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-}
-
-boot();
+export { addExperienceForActivePlayer, openCategory, selectResearchForActivePlayer };

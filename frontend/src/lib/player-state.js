@@ -30,7 +30,27 @@ export function createEmptyResearchState(source = {}) {
       completedByCategoryLevel: cloneRecord(progress.completedByCategoryLevel),
       carryByCategory: cloneRecord(progress.carryByCategory)
     },
-    selection: cloneRecord(source?.selection)
+    selection: cloneRecord(source?.selection),
+    assignedUnitIdByCategory: cloneRecord(source?.assignedUnitIdByCategory),
+    lastProcessedTurn: Math.max(0, Math.floor(Number(source?.lastProcessedTurn) || 0))
+  };
+}
+
+export function createEmptyCombatRuntime(source = {}) {
+  return {
+    cooldownsByUnitId: cloneRecord(source?.cooldownsByUnitId),
+    activeEffectsByUnitId: cloneRecord(source?.activeEffectsByUnitId),
+    pendingActionsByUnitId: cloneRecord(source?.pendingActionsByUnitId),
+    lastEnemyActionAtMsById: cloneRecord(source?.lastEnemyActionAtMsById)
+  };
+}
+
+export function createEmptyExplorationState(source = {}) {
+  return {
+    discoveredFeaturesByTile: cloneRecord(source?.discoveredFeaturesByTile),
+    surveyedTileKeys: Array.isArray(source?.surveyedTileKeys) ? [...new Set(source.surveyedTileKeys.map(String).filter(Boolean))] : [],
+    history: cloneRows(source?.history),
+    lastProcessedTurn: Math.max(0, Math.floor(Number(source?.lastProcessedTurn) || 0))
   };
 }
 
@@ -41,13 +61,28 @@ export function createPlayerFactionState(source = {}) {
     units: cloneRows(source?.units),
     squads: cloneRows(source?.squads),
     deadUnitReserve: cloneRows(source?.deadUnitReserve),
+    deathHistory: cloneRows(source?.deathHistory),
     selectedUnitId: String(source?.selectedUnitId || ""),
     villagePlacementMode: !!source?.villagePlacementMode,
     moveCommandUnitId: String(source?.moveCommandUnitId || ""),
     nationLogKey: String(source?.nationLogKey || ""),
     encounterMoveLocks: cloneRecord(source?.encounterMoveLocks),
     visibility: createEmptyVisibilityState(source?.visibility),
-    research: createEmptyResearchState(source?.research)
+    research: createEmptyResearchState(source?.research),
+    exploration: createEmptyExplorationState(source?.exploration),
+    activityLog: cloneRows(source?.activityLog),
+    aiState: {
+      lastProcessedTurn: Math.max(0, Math.floor(Number(source?.aiState?.lastProcessedTurn) || 0)),
+      lastCommands: Array.isArray(source?.aiState?.lastCommands) ? source.aiState.lastCommands.map(String) : [],
+      history: cloneRows(source?.aiState?.history)
+    },
+    nationPolicy: {
+      governmentSelections: cloneRecord(source?.nationPolicy?.governmentSelections),
+      diplomacyStanceId: String(source?.nationPolicy?.diplomacyStanceId || ""),
+      organizationIds: Array.isArray(source?.nationPolicy?.organizationIds) ? source.nationPolicy.organizationIds.map(String).filter(Boolean) : [],
+      modifiers: cloneRecord(source?.nationPolicy?.modifiers)
+    },
+    combatRuntime: createEmptyCombatRuntime(source?.combatRuntime)
   };
 }
 
@@ -69,11 +104,17 @@ export const PLAYER_FACTION_STATE_KEYS = Object.freeze([
   "units",
   "squads",
   "deadUnitReserve",
+  "deathHistory",
   "selectedUnitId",
   "villagePlacementMode",
   "moveCommandUnitId",
   "nationLogKey",
   "encounterMoveLocks",
   "visibility",
-  "research"
+  "research",
+  "exploration",
+  "activityLog",
+  "aiState",
+  "nationPolicy",
+  "combatRuntime"
 ]);

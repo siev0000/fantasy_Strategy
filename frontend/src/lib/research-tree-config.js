@@ -1,4 +1,4 @@
-import researchDbRaw from "../../../data/source/export/json/研究.json";
+import { researchData as researchDbRaw } from "./game-data-registry.js";
 
 export const RESEARCH_CATEGORY_ORDER = ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"];
 
@@ -119,7 +119,7 @@ function buildExtraDetailEntries(row) {
 function buildCategoriesFromRows(rows) {
   const byCategory = new Map();
   const source = Array.isArray(rows) ? rows : [];
-  source.forEach((row, index) => {
+  source.forEach(row => {
     if (!row || typeof row !== "object") return;
     const core = pickResearchRowCore(row);
     if (isInvalidHeaderRow(core)) return;
@@ -135,7 +135,8 @@ function buildCategoriesFromRows(rows) {
     }
     const details = buildExtraDetailEntries(row);
     cat.levelsMap.get(core.level).push({
-      id: `${core.target}:${core.level}:${index}:${core.name}`,
+      // 行の追加・並べ替えで保存IDが変わらないよう、JSON上の意味からIDを作る。
+      id: `${core.target}:${core.level}:${core.name}`,
       name: core.name,
       desc: core.desc,
       level: core.level,

@@ -1,4 +1,5 @@
 import { resolveUnitScoutValue } from "./composables/unitCoreUtils.js";
+import { facilityDefinitions } from "./lib/v39-economy-rules.js";
 import {
   BASE_VILLAGE_SCOUT_RANGE,
   FACTION_BORDER_COLOR_PALETTE,
@@ -135,12 +136,20 @@ function livingUnit(unit) {
   return unit?.state !== "死亡" && unit?.condition !== "死亡" && (!Number.isFinite(hp) || hp > 0);
 }
 
-function buildCurrentVision(data, faction) {
+function buildCurrentVision(data, faction, state, playerId) {
   const visible = new Set();
   const village = faction?.village;
   if (village?.placed) addVisionRange(data, village.x, village.y, BASE_VILLAGE_SCOUT_RANGE, visible);
   for (const unit of Array.isArray(faction?.units) ? faction.units : []) {
     if (livingUnit(unit)) addVisionRange(data, unit.x, unit.y, unitVisionRange(unit), visible);
+  }
+  const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));
+  for (const [key, names] of Object.entries(faction?.village?.tileFacilityMap || {})) {
+    if (String(state?.territoryOwnerByTile?.[key] || "") !== String(playerId || "")) continue;
+    const scout = (Array.isArray(names) ? names : []).reduce((sum, name) => sum + Math.max(0, Number(definitions.get(String(name))?.effects?.索敵) || 0), 0);
+    if (scout <= 0) continue;
+    const [x, y] = key.split(",").map(Number);
+    addVisionRange(data, x, y, UNIT_VISION_BASE_RANGE + Math.floor(scout / UNIT_VISION_SCOUT_STEP), visible);
   }
   return visible;
 }
@@ -195,7 +204,7 @@ function renderVisibilityLayers() {
   removeLayer(scene, SCOUT_LAYER_NAME);
   removeLayer(scene, TERRITORY_LAYER_NAME);
 
-  const currentVision = buildCurrentVision(data, faction);
+  const currentVision = buildCurrentVision(data, faction, state, player.id);
   const explored = new Set(
     (Array.isArray(faction.visibility?.exploredTileKeys) ? faction.visibility.exploredTileKeys : []).map(String)
   );
@@ -204,11 +213,19 @@ function renderVisibilityLayers() {
 
   const fog = scene.add.graphics().setDepth(14).setName(FOG_LAYER_NAME);
   fog.fillStyle(FOG_COLOR, FOG_ALPHA);
+  fog.lineStyle(1, 0x6d858d, 0.28);
   let unexploredCount = 0;
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
       if (explored.has(coordKey(x, y))) continue;
-      fog.fillPoints(hexPoints(x, y), true);
+      const points = hexPoints(x, y);
+      fog.fillPoints(points, true);
+      const centerX = (points[0].x + points[3].x) / 2;
+      const centerY = (points[0].y + points[3].y) / 2;
+      fog.beginPath();
+      fog.moveTo(centerX - 1.5, centerY);
+      fog.lineTo(centerX + 1.5, centerY);
+      fog.strokePath();
       unexploredCount += 1;
     }
   }

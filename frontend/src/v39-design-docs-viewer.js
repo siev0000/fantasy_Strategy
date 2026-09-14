@@ -129,8 +129,8 @@ function installStyles() {
 #v39-design-docs-modal .v39-doc-modal{width:min(1100px,100%);height:min(820px,100%);min-height:0;display:grid;grid-template-rows:48px minmax(0,1fr);overflow:hidden;border:1px solid #45575e;border-radius:10px;background:linear-gradient(180deg,#111c21,#081115);box-shadow:0 20px 60px rgba(0,0,0,.65)}
 #v39-design-docs-modal .v39-doc-head{display:flex;align-items:center;gap:10px;padding:7px 9px 7px 12px;border-bottom:1px solid #34454b;background:#142126}
 #v39-design-docs-modal .v39-doc-head-title{min-width:0;flex:1}
-#v39-design-docs-modal .v39-doc-head-title b{display:block;font-size:14px}
-#v39-design-docs-modal .v39-doc-head-title span{display:block;margin-top:1px;color:#82959a;font-size:9px}
+#v39-design-docs-modal .v39-doc-head-title b{display:block;font-size:15px}
+#v39-design-docs-modal .v39-doc-head-title span{display:block;margin-top:1px;color:#82959a;font-size:13px}
 #v39-design-docs-modal .v39-doc-close{width:34px;height:32px;border:1px solid #485a61;border-radius:7px;background:#19272c;color:#e8efee;font-size:20px;cursor:pointer}
 #v39-design-docs-modal .v39-doc-body{min-height:0;display:grid;grid-template-columns:250px minmax(0,1fr)}
 #v39-design-docs-modal .v39-doc-sidebar{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:7px;padding:8px;border-right:1px solid #304147;background:rgba(5,12,15,.7)}
@@ -140,22 +140,22 @@ function installStyles() {
 #v39-design-docs-modal .v39-doc-item{display:block;width:100%;padding:8px 9px;border:1px solid #304047;border-radius:7px;background:#111c21;color:#dbe6e4;text-align:left;cursor:pointer}
 #v39-design-docs-modal .v39-doc-item.active{border-color:#6f8d95;background:#1b2c31;box-shadow:inset 3px 0 #7fa1aa}
 #v39-design-docs-modal .v39-doc-item b,#v39-design-docs-modal .v39-doc-item small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#v39-design-docs-modal .v39-doc-item b{font-size:11px}
-#v39-design-docs-modal .v39-doc-item small{margin-top:3px;color:#7f9297;font-size:8px}
+#v39-design-docs-modal .v39-doc-item b{font-size:15px}
+#v39-design-docs-modal .v39-doc-item small{margin-top:3px;color:#7f9297;font-size:13px}
 #v39-design-docs-modal .v39-doc-main{min-width:0;min-height:0;display:grid;grid-template-rows:42px minmax(0,1fr)}
 #v39-design-docs-modal .v39-doc-current{display:flex;align-items:center;gap:8px;padding:6px 11px;border-bottom:1px solid #2c3d43;background:#0e181c}
-#v39-design-docs-modal .v39-doc-current strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
-#v39-design-docs-modal .v39-doc-current code{margin-left:auto;color:#83979c;font-size:8px;white-space:nowrap}
+#v39-design-docs-modal .v39-doc-current strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
+#v39-design-docs-modal .v39-doc-current code{margin-left:auto;color:#83979c;font-size:13px;white-space:nowrap}
 #v39-design-docs-modal .v39-doc-reader{min-width:0;min-height:0;overflow:auto;padding:14px 18px 30px;line-height:1.7;scrollbar-width:none}
 #v39-design-docs-modal .v39-doc-reader h1{font-size:21px;margin:4px 0 14px;padding-bottom:8px;border-bottom:1px solid #33454b}
 #v39-design-docs-modal .v39-doc-reader h2{font-size:17px;margin:20px 0 9px;padding-bottom:5px;border-bottom:1px solid #2a3b41}
-#v39-design-docs-modal .v39-doc-reader h3{font-size:14px;margin:17px 0 7px}
-#v39-design-docs-modal .v39-doc-reader p,#v39-design-docs-modal .v39-doc-reader li,#v39-design-docs-modal .v39-doc-reader blockquote{font-size:11px;color:#c8d4d3}
+#v39-design-docs-modal .v39-doc-reader h3{font-size:16px;margin:17px 0 7px}
+#v39-design-docs-modal .v39-doc-reader p,#v39-design-docs-modal .v39-doc-reader li,#v39-design-docs-modal .v39-doc-reader blockquote{font-size:15px;color:#c8d4d3}
 #v39-design-docs-modal .v39-doc-reader p{margin:3px 0;white-space:pre-wrap;overflow-wrap:anywhere}
-#v39-design-docs-modal .v39-doc-reader pre{max-width:100%;overflow:auto;padding:10px;border:1px solid #2f4249;border-radius:7px;background:#071014;color:#cdd9d7;font-size:10px;line-height:1.55}
+#v39-design-docs-modal .v39-doc-reader pre{max-width:100%;overflow:auto;padding:10px;border:1px solid #2f4249;border-radius:7px;background:#071014;color:#cdd9d7;font-size:13px;line-height:1.55}
 #v39-design-docs-modal .v39-doc-reader code{padding:1px 4px;border-radius:4px;background:#101c21;color:#d7e5e3;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 #v39-design-docs-modal .v39-doc-spacer{height:6px}
-#v39-design-docs-modal .v39-doc-empty{display:grid;place-items:center;height:100%;min-height:120px;color:#71868b;text-align:center;font-size:11px}
+#v39-design-docs-modal .v39-doc-empty{display:grid;place-items:center;height:100%;min-height:120px;color:#71868b;text-align:center;font-size:15px}
 @media(max-width:700px){#v39-design-docs-modal{padding:4px}#v39-design-docs-modal .v39-doc-modal{width:100%;height:100%;border-radius:7px;grid-template-rows:44px minmax(0,1fr)}#v39-design-docs-modal .v39-doc-body{grid-template-columns:1fr;grid-template-rows:minmax(150px,34%) minmax(0,1fr)}#v39-design-docs-modal .v39-doc-sidebar{border-right:0;border-bottom:1px solid #304147;padding:6px;gap:5px}#v39-design-docs-modal .v39-doc-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:4px}#v39-design-docs-modal .v39-doc-main{grid-template-rows:36px minmax(0,1fr)}#v39-design-docs-modal .v39-doc-current code{display:none}#v39-design-docs-modal .v39-doc-reader{padding:10px 10px 24px}}
 `;
   document.head.appendChild(style);

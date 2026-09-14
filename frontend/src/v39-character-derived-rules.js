@@ -1,7 +1,8 @@
-import classDb from "../../data/source/export/json/クラス.json";
-import skillDb from "../../data/source/export/json/スキル一覧.json";
-import { RACE_CLASS_NAME_MAP, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "./constants/unitCommon.js";
-import { buildCharacterStatusFromRules, buildUnitSkillLevelsFromRules } from "./composables/unitStatusUtils.js";
+import { classData as classDb, skillData as skillDb } from "./lib/game-data-registry.js";
+import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "./constants/unitCommon.js";
+import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules } from "./composables/unitStatusUtils.js";
+import { applyMilitaryProfileToStatus } from "./composables/militaryUnitUtils.js";
+import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "./lib/v39-equipment-rules.js";
 
 const INITIAL_RACE_BONUS_LEVEL = 5;
 const STATUS_GROWTH_DIVISOR = 10;
@@ -137,6 +138,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     skillLevelFields: SKILL_LEVEL_FIELDS,
     statusGrowthDivisor: STATUS_GROWTH_DIVISOR
   });
+  const resistances = buildUnitResistances(raceRow, classRow, { resistanceFields:RESISTANCE_FIELDS });
 
   const acquiredNames = [
     ...collectSkills(raceRow, raceLevels),
@@ -151,7 +153,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
 
   const uniqueNames = [...new Set(acquiredNames.filter(Boolean))];
   const techniques = uniqueNames.map(techniqueFromName);
-  const status = statusResult.status || {};
+  const status = applyMilitaryProfileToStatus(statusResult.status || {}, unit?.combatProfile);
 
   return {
     ok: true,
@@ -165,6 +167,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     initialRaceBonusLevel: INITIAL_RACE_BONUS_LEVEL,
     status,
     skillLevels,
+    resistances,
     acquiredSkillNames: uniqueNames,
     techniques,
     uiStats: {
@@ -186,17 +189,31 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
 export function applyV39DerivedCharacterData(unit = {}) {
   const derived = deriveV39CharacterFromRaceClass(unit);
   if (!derived.ok) return { ...unit, derivedCharacter: derived };
+  const equipment = (Array.isArray(unit?.equipment) ? unit.equipment : [])
+    .map(normalizeV39EquipmentItem)
+    .filter(Boolean);
+  const equipmentResistances = buildV39EquipmentResistanceBonus(equipment);
+  const resistances = Object.fromEntries(RESISTANCE_FIELDS.map(key => [
+    key,
+    number(derived.resistances?.[key]) + number(equipmentResistances?.[key])
+  ]));
+  const status = { ...derived.status };
+  for (const item of equipment) for (const [key, value] of Object.entries(item?.enchantBonus || {})) {
+    if (Object.prototype.hasOwnProperty.call(status, key)) status[key] = number(status[key]) + number(value);
+  }
   return {
     ...unit,
     race: derived.race,
     className: derived.className,
     level: derived.level,
-    status: { ...derived.status },
+    status,
     skillLevels: { ...derived.skillLevels },
+    resistances: { ...resistances, ...(unit?.resistanceOverrides || {}) },
+    equipment,
     acquiredSkillNames: [...derived.acquiredSkillNames],
     techniques: derived.techniques.map(row => ({ ...row })),
     derivedCharacter: derived,
-    maxHp: derived.maxHp
+    maxHp: number(status.HP, derived.maxHp)
   };
 }
 

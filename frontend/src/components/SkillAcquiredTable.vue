@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from "vue";
-import skillInfoDb from "../../../data/source/export/json/スキル一覧.json";
+import { skillData as skillInfoDb } from "../lib/game-data-registry.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 

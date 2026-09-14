@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, r
 import { io } from "socket.io-client";
 import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH, UI_MANUAL_SCALE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./lib/research-tree-config.js";
-import raceSelectionDb from "../../data/source/export/json/種族.json";
+import { raceData as raceSelectionDb } from "./lib/game-data-registry.js";
 
 const PhaserMapGeneratorPanel = defineAsyncComponent(() => import("./components/PhaserMapGeneratorPanel.vue"));
 const RoomModal = defineAsyncComponent(() => import("./components/RoomModal.vue"));

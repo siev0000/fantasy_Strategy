@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import EffectPlayerOverlay from "./EffectPlayerOverlay.vue";
-import skillInfoDb from "../../../data/source/export/json/スキル一覧.json";
+import { skillData as skillInfoDb } from "../lib/game-data-registry.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 
 const TABS = [

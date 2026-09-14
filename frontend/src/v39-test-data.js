@@ -1,9 +1,12 @@
-import testGameDb from "../../data/source/export/json/テストゲーム状態.json";
-import equipmentDb from "../../data/source/export/json/装備.json";
-import terrainDb from "../../data/source/export/json/地形.json";
+import {
+  equipmentData as equipmentDb,
+  terrainData as terrainDb,
+  testGameData as testGameDb
+} from "./lib/game-data-registry.js";
 import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
 import { resolveSkillBasePower } from "./lib/skill-power.js";
 import { createPlayerRecord } from "./lib/player-state.js";
+import { createV39EquipmentEntry } from "./lib/v39-equipment-rules.js";
 
 const equipmentByName = new Map(
   (Array.isArray(equipmentDb) ? equipmentDb : [])
@@ -26,20 +29,7 @@ const resolveEquipment = definition => {
   const name = String(definition?.name || "").trim();
   const row = equipmentByName.get(name);
   if (!row) throw new Error(`装備.jsonに「${name}」がありません`);
-  return {
-    slot: String(definition?.slot || row.装備箇所 || "武器1"),
-    name: row.装備名,
-    power: optionalNumber(row.威力) ?? 0,
-    guard: optionalNumber(row.ガード) ?? 0,
-    attackAp: optionalNumber(row.攻撃AP) ?? 0,
-    magicAp: optionalNumber(row.魔法AP) ?? 0,
-    range: optionalNumber(row.射程),
-    criticalRate: optionalNumber(row.Cr率) ?? 0,
-    criticalPower: optionalNumber(row.Cr威力) ?? 0,
-    quality: "common",
-    qualityLabel: "通常",
-    source: row
-  };
+  return createV39EquipmentEntry(row, definition?.quality || "common", definition?.slot);
 };
 
 const createUnit = definition => {
@@ -55,6 +45,9 @@ const createUnit = definition => {
     className: definition.className,
     level: definition.level,
     role: definition.role,
+    isNamed:definition.isNamed === true,
+    isSovereign:definition.isSovereign === true,
+    unitType:definition.unitType || (definition.isNamed ? "ネームド" : "軍隊"),
     movement: definition.movement,
     equipment: (Array.isArray(definition.equipment) ? definition.equipment : []).map(resolveEquipment)
   });
@@ -139,6 +132,7 @@ export const V39_TEST_OPERATION_DATA = Object.freeze({
     { label: "回復補正", value: `${recoveryPercent >= 0 ? "+" : ""}${recoveryPercent}%` },
     { label: "移動停止", value: terrain.移動条件 || "-" },
     { label: "川 / 滝", value: `${landDefinition.river || "なし"} / ${landDefinition.waterfall || "なし"}` },
+    { label: "火山 / 溶岩", value: "なし / なし" },
     { label: "敵", value: landDefinition.enemy || "なし", valueId: "landEnemies" }
   ],
   actionSkills

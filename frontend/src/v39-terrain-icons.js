@@ -164,6 +164,7 @@ function scheduleTerrainIconRender() {
 
 function install() {
   window.addEventListener("v39:field-generated", scheduleTerrainIconRender);
+  window.addEventListener("v39:field-data-updated", scheduleTerrainIconRender);
 
   window.renderV39TerrainIcons = scheduleTerrainIconRender;
   window.getV39TerrainIconStatus = () => ({ ...(window.__v39TerrainIconStatus || {}) });

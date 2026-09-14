@@ -2,8 +2,7 @@
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
-import classDb from "../../../data/source/export/json/クラス.json";
-import skillDescDb from "../../../data/source/export/json/説明.json";
+import { classData as classDb, descriptionData as skillDescDb } from "../lib/game-data-registry.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 

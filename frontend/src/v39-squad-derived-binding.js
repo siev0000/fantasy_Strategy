@@ -1,3 +1,5 @@
+import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
+
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
   return out || fallback;
@@ -74,8 +76,11 @@ function movementValue(unit) {
 }
 
 function statusValue(unit, key) {
-  const value = unit?.status?.[key];
-  return Number.isFinite(Number(value)) ? Number(value) : "-";
+  const adjusted = applyV39TerrainModifiers(unit, window.__v39FieldRuntime?.mapData);
+  const value = adjusted?.status?.[key];
+  if (!Number.isFinite(Number(value))) return "-";
+  const modifier = num(adjusted?.terrainModifiers?.[key], 0);
+  return modifier ? `${Number(value)} (${modifier > 0 ? "+" : ""}${modifier})` : Number(value);
 }
 
 function skillEntries(unit) {

@@ -2,7 +2,7 @@ const DEFAULT_OPTIONS = Object.freeze({
   spriteUnit: 120,
   verticalSplitWidth: 320,
   verticalFrameHeight: 120,
-  totalDurationMs: 1500,
+  totalDurationMs: 4000,
   sequenceGapMs: 10,
   depth: 1000000,
   baseScalePercent: 100,
@@ -326,6 +326,7 @@ export class PhaserEffectPlayer {
       image.setAngle(angle);
       image.setAlpha(alpha);
       image.setBlendMode(request.blendMode ?? this.options.blendMode);
+      image.setName(String(request.displayName || "portable-effect-image"));
       this.applyGrayscale(image, !!request.grayscaleBase);
       return image;
     };

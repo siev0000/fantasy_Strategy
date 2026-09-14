@@ -132,10 +132,21 @@ function isPassableTerrain(terrain) {
   return terrain !== "海" && terrain !== "湖";
 }
 
+function canCrossLava(unit) {
+  const fireResistance = Number(unit?.status?.炎耐性 ?? unit?.resistances?.炎耐性) || 0;
+  const abilities = [unit?.acquiredSkillNames, unit?.abilities, unit?.traits].flat().map(value => String(value || ""));
+  return fireResistance >= 100 || abilities.some(value => value.includes("耐熱"));
+}
+
+function isPassableTile(data, x, y, unit = null) {
+  if (!isPassableTerrain(data?.grid?.[y]?.[x])) return false;
+  return !data?.lavaMap?.[y]?.[x] || canCrossLava(unit);
+}
+
 // Kept in sync with the active legacy PhaserMapGeneratorPanel movement rule.
 function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
   const terrain = data?.grid?.[toY]?.[toX];
-  if (!isPassableTerrain(terrain)) return Number.POSITIVE_INFINITY;
+  if (!isPassableTile(data, toX, toY, moveUnit)) return Number.POSITIVE_INFINITY;
 
   const fromLevel = tileHeightLevel(data, fromX, fromY);
   const toLevel = tileHeightLevel(data, toX, toY);
@@ -188,6 +199,43 @@ function getHexNeighborCoordsBySize(w, h, x, y, worldWrapEnabled = false) {
   return result;
 }
 
+function isWorldWrapEnabled(data) {
+  if (typeof data?.worldWrapEnabled === "boolean") return data.worldWrapEnabled;
+  return window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
+}
+
+function occupiedTileKeys(excludedUnitId = "") {
+  const state = window.getV39GameState?.();
+  const units = [
+    ...(state?.players || []).flatMap(player => player?.factionState?.units || []),
+    ...(state?.enemies || [])
+  ];
+  return new Set(units
+    .filter(unit => unitId(unit) !== excludedUnitId && unit?.state !== "死亡" && number(unit?.hp, unit?.currentHp) > 0)
+    .map(unit => coordKey(unit?.x, unit?.y)));
+}
+
+function hexDistance(a, b) {
+  const cube = point => {
+    const q = point.x - (point.y - (point.y & 1)) / 2;
+    return [q, -q - point.y, point.y];
+  };
+  const aa = cube(a);
+  const bb = cube(b);
+  return Math.max(...aa.map((value, index) => Math.abs(value - bb[index])));
+}
+
+function closestReachableTarget(plan, start, desired) {
+  const candidates = [];
+  for (const [key, cost] of plan.costs) {
+    if (key === coordKey(start.x, start.y)) continue;
+    const [x, y] = key.split(",").map(Number);
+    candidates.push({ x, y, cost, distance:hexDistance({ x, y }, desired) });
+  }
+  candidates.sort((a, b) => a.distance - b.distance || b.cost - a.cost || a.y - b.y || a.x - b.x);
+  return candidates[0] || null;
+}
+
 function buildReachablePlan(data, unit, apBudget) {
   const w = Math.max(0, integer(data?.w));
   const h = Math.max(0, integer(data?.h));
@@ -201,7 +249,8 @@ function buildReachablePlan(data, unit, apBudget) {
   const startKey = coordKey(sx, sy);
   costs.set(startKey, 0);
   const queue = [{ x:sx, y:sy, cost:0 }];
-  const worldWrapEnabled = !!data?.worldWrapEnabled;
+  const worldWrapEnabled = isWorldWrapEnabled(data);
+  const occupied = occupiedTileKeys(unitId(unit));
 
   while (queue.length) {
     let minIndex = 0;
@@ -214,7 +263,8 @@ function buildReachablePlan(data, unit, apBudget) {
     if (current.cost !== costs.get(currentKey)) continue;
 
     for (const next of getHexNeighborCoordsBySize(w, h, current.x, current.y, worldWrapEnabled)) {
-      if (!isPassableTerrain(data?.grid?.[next.y]?.[next.x])) continue;
+      if (!isPassableTile(data, next.x, next.y, unit)) continue;
+      if (occupied.has(coordKey(next.x, next.y))) continue;
       const stepCost = movementStepCost(data, current.x, current.y, next.x, next.y, unit);
       if (!Number.isFinite(stepCost) || stepCost < 0) continue;
       const nextCost = current.cost + stepCost;
@@ -332,6 +382,7 @@ function clearMoveMode(options = {}) {
   destroyGraphics();
   setMoveConfirm(false);
   setBanner("");
+  document.getElementById("mobileBattleMove")?.classList.remove("active");
   if (options.clearCommand !== false) {
     const faction = activeFaction();
     if (text(faction?.moveCommandUnitId) && (!previousUnitId || text(faction.moveCommandUnitId) === previousUnitId)) {
@@ -341,40 +392,50 @@ function clearMoveMode(options = {}) {
 }
 
 function startMove() {
+  if (moveSession) {
+    clearMoveMode({ reason:"move-command-cancelled" });
+    return false;
+  }
+  window.cancelV39SelectedUnitAttack?.("move-command-started");
   clearMoveMode({ clearCommand:false });
   const ctx = activeRuntime();
   if (!ctx) {
     showToast("フィールドを生成してから移動してください");
-    return;
+    return false;
   }
   const faction = activeFaction();
   const unit = selectedUnitFromFaction(faction);
   if (!unit) {
     showToast("移動するキャラクターを選択してください");
-    return;
+    return false;
+  }
+  if (unit?.state === "死亡" || number(unit?.hp, unit?.currentHp) <= 0) {
+    showToast("死亡したキャラクターは移動できません");
+    return false;
   }
 
   const x = integer(unit.x, -1);
   const y = integer(unit.y, -1);
   if (x < 0 || y < 0 || x >= ctx.data.w || y >= ctx.data.h) {
     showToast("選択キャラクターの位置が未確定です");
-    return;
+    return false;
   }
 
   const ap = resolveUnitAp(unit);
   if (ap <= 0) {
     showToast("APがありません。ターン経過で回復します");
-    return;
+    return false;
   }
 
   const plan = buildReachablePlan(ctx.data, unit, ap);
   if (plan.costs.size <= 1) {
     showToast("現在のAPでは移動可能なマスがありません");
-    return;
+    return false;
   }
 
   moveSession = {
     unitId:unitId(unit),
+    unit,
     start:{ x, y },
     availableAp:ap,
     plan,
@@ -382,17 +443,19 @@ function startMove() {
     path:[]
   };
   persistMoveCommand(moveSession.unitId, "move-command-armed");
+  document.getElementById("mobileBattleMove")?.classList.add("active");
   drawReachable(plan, moveSession.start);
   setMoveConfirm(false);
   setBanner(`${text(unit.name, "キャラクター")}：青枠から移動先を選択`);
+  return true;
 }
 
 function previewTarget(tile) {
   if (!moveSession) return;
-  const x = integer(tile?.x, Number.NaN);
-  const y = integer(tile?.y, Number.NaN);
+  let x = integer(tile?.x, Number.NaN);
+  let y = integer(tile?.y, Number.NaN);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-  const key = coordKey(x, y);
+  let key = coordKey(x, y);
   const startKey = coordKey(moveSession.start.x, moveSession.start.y);
 
   if (key === startKey) {
@@ -406,10 +469,16 @@ function previewTarget(tile) {
   }
 
   if (!moveSession.plan.costs.has(key)) {
-    setMoveConfirm(false);
-    const terrain = activeRuntime()?.data?.grid?.[y]?.[x];
-    showToast(!isPassableTerrain(terrain) ? "海・湖には移動できません" : "現在のAPでは到達できません");
-    return;
+    const fallback = closestReachableTarget(moveSession.plan, moveSession.start, { x, y });
+    if (!fallback) {
+      setMoveConfirm(false);
+      showToast("現在のAPでは移動可能なマスがありません");
+      return;
+    }
+    x = fallback.x;
+    y = fallback.y;
+    key = coordKey(x, y);
+    showToast("目的地へ到達できないため、手前で停止します");
   }
 
   const path = pathTo(moveSession.plan, moveSession.start, { x, y });
@@ -420,7 +489,9 @@ function previewTarget(tile) {
   moveSession.path = path;
   drawPath(path);
   setMoveConfirm(true, `距離 ${path.length - 1} / 消費AP ${cost} / 残AP ${remaining}`);
-  setBanner("経路を確認し、「移動確定」を押してください");
+  setBanner(key === coordKey(tile?.x, tile?.y)
+    ? "経路を確認し、「移動確定」を押してください"
+    : "目的地へ到達できないため、表示位置で停止します");
 }
 
 function applyMovement() {

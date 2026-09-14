@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { createTerrainMapData, terrainDefinitions } from "./lib/map-generator.js";
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { runWithSeededRandom } from "./lib/seeded-random.js";
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
 const terrainColorMap = new Map(
@@ -101,6 +102,7 @@ function readDisplaySettings() {
 
 function drawTerrain(scene, data, graphics = scene.add.graphics()) {
   const display = readDisplaySettings();
+  graphics.setName("v39-terrain-layer");
   graphics.clear();
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
@@ -138,7 +140,7 @@ function parseEdge(raw) {
   return pa && pb ? { a:pa, b:pb } : null;
 }
 function drawRivers(scene, riverData) {
-  const g = scene.add.graphics().setDepth(3);
+  const g = scene.add.graphics().setDepth(3).setName("v39-river-layer");
   g.lineStyle(3, 0x5aa9de, 0.95);
   const edges = new Set([
     ...(riverData?.cornerEdgeSet instanceof Set ? riverData.cornerEdgeSet : []),
@@ -163,8 +165,39 @@ function drawSpecialTerrain(scene, data) {
     if (!label) continue;
     const c = tileCenter(x, y);
     scene.add.text(c.x, c.y, label, { fontSize:"11px", fontStyle:"bold", color:"#f6f0d2", stroke:"#071014", strokeThickness:3 })
-      .setOrigin(0.5).setDepth(4);
+      .setOrigin(0.5).setDepth(4).setName("v39-special-terrain-item");
   }
+}
+
+function drawLava(scene, data, graphics = scene.add.graphics().setDepth(6)) {
+  graphics.setName("v39-lava-layer");
+  graphics.clear();
+  const nodes = Array.isArray(data?.lavaFlowData?.nodeKeys) ? data.lavaFlowData.nodeKeys : [];
+  const edges = Array.isArray(data?.lavaFlowData?.edgeKeys) ? data.lavaFlowData.edgeKeys : [];
+  graphics.lineStyle(7, 0x7b210d, 0.86);
+  for (const edgeKey of edges) {
+    const edge = parseEdge(edgeKey);
+    if (!edge) continue;
+    const a = tileCenter(edge.a.x, edge.a.y);
+    const b = tileCenter(edge.b.x, edge.b.y);
+    graphics.lineBetween(a.x, a.y, b.x, b.y);
+  }
+  graphics.lineStyle(4, 0xf06b2a, 0.96);
+  for (const edgeKey of edges) {
+    const edge = parseEdge(edgeKey);
+    if (!edge) continue;
+    const a = tileCenter(edge.a.x, edge.a.y);
+    const b = tileCenter(edge.b.x, edge.b.y);
+    graphics.lineBetween(a.x, a.y, b.x, b.y);
+  }
+  for (const key of nodes) {
+    const point = parsePoint(key);
+    if (!point) continue;
+    const center = tileCenter(point.x, point.y);
+    graphics.fillStyle(0xff9a47, 0.98).fillCircle(center.x, center.y, 4);
+    graphics.fillStyle(0xd83d17, 0.96).fillCircle(center.x, center.y, 2.3);
+  }
+  return graphics;
 }
 
 function fitCamera(scene) {
@@ -258,7 +291,12 @@ function installInput(scene, data) {
   };
 
   host.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false });
-  host.addEventListener("pointerdown", e => { if (e.pointerType==="mouse" && e.button!==0) return; pointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); host.setPointerCapture?.(e.pointerId); dragged=false; });
+  host.addEventListener("pointerdown", e => {
+    if (e.pointerType==="mouse" && e.button!==0) return;
+    pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    try { host.setPointerCapture?.(e.pointerId); } catch { /* Synthetic/cancelled pointers have no active capture. */ }
+    dragged=false;
+  });
   host.addEventListener("pointermove", e => {
     const prev=pointers.get(e.pointerId); if(!prev)return;
     const old=[...pointers.values()]; pointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); const next=[...pointers.values()];
@@ -266,9 +304,30 @@ function installInput(scene, data) {
     const dx=e.clientX-prev.x,dy=e.clientY-prev.y; if(Math.abs(dx)+Math.abs(dy)<1)return;
     camera.scrollX-=dx/camera.zoom; camera.scrollY-=dy/camera.zoom; clampCamera(scene); dragged=true;
   });
-  const finish=e=>{ const touch=e.pointerType!=="mouse", select=!dragged&&pointers.size===1; pointers.delete(e.pointerId); host.releasePointerCapture?.(e.pointerId); if(select)selectAt(e.clientX,e.clientY); if(touch&&!dragged&&!pointers.size){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
+  const finish=e=>{ const touch=e.pointerType!=="mouse", select=!dragged&&pointers.size===1; pointers.delete(e.pointerId); try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ } if(select)selectAt(e.clientX,e.clientY); if(touch&&!dragged&&!pointers.size){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
   host.addEventListener("pointerup",finish); host.addEventListener("pointercancel",finish);
   host.addEventListener("dblclick",e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,1.5);});
+  const handleKeyboard = e => {
+    const target = e.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable) return;
+    const rect = host.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    if (["+", "="].includes(e.key)) zoomAt(centerX, centerY, 1.16);
+    else if (["-", "_"].includes(e.key)) zoomAt(centerX, centerY, 1 / 1.16);
+    else if (e.key === "Enter") selectAt(centerX, centerY);
+    else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+      const step = 60 / camera.zoom;
+      if (e.key === "ArrowLeft") camera.scrollX -= step;
+      if (e.key === "ArrowRight") camera.scrollX += step;
+      if (e.key === "ArrowUp") camera.scrollY -= step;
+      if (e.key === "ArrowDown") camera.scrollY += step;
+      clampCamera(scene);
+    } else return;
+    e.preventDefault();
+  };
+  window.addEventListener("keydown", handleKeyboard);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener("keydown", handleKeyboard));
 
   document.getElementById("v39-map-camera-controls")?.remove();
   const controls=document.createElement("div"); controls.id="v39-map-camera-controls";
@@ -286,13 +345,30 @@ function createGame(data) {
     type:Phaser.AUTO,parent:host,transparent:false,backgroundColor:"#081115",
     scale:{mode:Phaser.Scale.RESIZE,width:Math.max(1,host.clientWidth),height:Math.max(1,host.clientHeight)},
     scene:{create(){
-      const terrainGraphics=drawTerrain(this,data); drawRivers(this,data.riverData); drawSpecialTerrain(this,data); fitCamera(this); installInput(this,data);
+      const terrainGraphics=drawTerrain(this,data); drawRivers(this,data.riverData); drawSpecialTerrain(this,data); const lavaGraphics=drawLava(this,data); fitCamera(this); installInput(this,data);
+      this.v39TerrainGraphics=terrainGraphics; this.v39LavaGraphics=lavaGraphics;
       const redraw=()=>drawTerrain(this,data,terrainGraphics); window.addEventListener("v39:display-settings-changed",redraw);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN,()=>window.removeEventListener("v39:display-settings-changed",redraw));
       this.scale.on("resize",()=>{const oldZoom=Number(this.v39RequestedZoom)||this.cameras.main.zoom;const size=worldSize(data);const fit=Math.max(.05,Math.min(this.cameras.main.width/size.width,this.cameras.main.height/size.height)*.97);this.v39FitZoom=fit;const max=fit*readDisplaySettings().maxZoomFactor;this.v39RequestedZoom=Phaser.Math.Clamp(oldZoom,fit,max);this.cameras.main.setZoom(this.v39RequestedZoom);clampCamera(this);});
     }}
   });
   return game;
+}
+
+export function updateV39FieldData(nextData, options = {}) {
+  if (!currentData || !nextData || typeof nextData !== "object") return false;
+  for (const key of Object.keys(currentData)) delete currentData[key];
+  Object.assign(currentData, nextData);
+  if (window.__v39FieldRuntime) window.__v39FieldRuntime.mapData = currentData;
+  const scene = game?.scene?.getScenes?.(true)?.[0];
+  if (scene) {
+    drawTerrain(scene, currentData, scene.v39TerrainGraphics);
+    drawLava(scene, currentData, scene.v39LavaGraphics);
+  }
+  if (options.silent !== true) {
+    window.dispatchEvent(new CustomEvent("v39:field-data-updated", { detail:{ mapData:currentData, reason:options.reason || "update" } }));
+  }
+  return true;
 }
 
 function normalizeSettings(input={}) {
@@ -335,6 +411,35 @@ export function generateFieldFromSettings(input={}) {
   return currentData;
 }
 
+export function generateV39TestFieldWithSeed(input={}, seed="v39-test-seed") {
+  return runWithSeededRandom(seed, () => {
+    const data = generateFieldFromSettings(input);
+    data.generationSeed = String(seed);
+    return data;
+  });
+}
+
+export function loadV39FieldSnapshot(mapData, inputSettings={}) {
+  if (!host || !mapData || typeof mapData !== "object" || !Array.isArray(mapData.grid)) {
+    throw new Error("復元できるフィールドデータがありません");
+  }
+  const settings=normalizeSettings({
+    ...inputSettings,
+    w:Number(mapData.w)||inputSettings.w,
+    h:Number(mapData.h)||inputSettings.h
+  });
+  currentSettings=settings;
+  currentData=mapData;
+  if(game){ game.destroy(true); game=null; host.replaceChildren(); }
+  document.getElementById("v39-map-camera-controls")?.remove();
+  createGame(currentData);
+  const chip=playfield.querySelector(".map-chip");
+  if(chip) chip.textContent=`${settings.w}×${settings.h} / ${settings.patternId} / 復元`;
+  window.__v39FieldRuntime={game,mapData:currentData,settings,mapWidth:settings.w,mapHeight:settings.h,patternId:settings.patternId,mountainMode:settings.mountainMode};
+  window.dispatchEvent(new CustomEvent("v39:field-generated",{detail:{settings,mapData:currentData,restored:true}}));
+  return currentData;
+}
+
 async function boot(){
   while(!(document.querySelector(".playfield") instanceof HTMLElement)||!document.getElementById("map")) await new Promise(r=>setTimeout(r,25));
   playfield=document.querySelector(".playfield"); referenceMap=document.getElementById("map");
@@ -343,6 +448,9 @@ async function boot(){
   referenceMap.style.visibility="hidden"; referenceMap.style.pointerEvents="none"; playfield.prepend(host);
   const chip=playfield.querySelector(".map-chip"); if(chip) chip.textContent="フィールド未生成 / 管理 → フィールド設定";
   window.generateFieldFromSettings=generateFieldFromSettings;
+  window.generateV39TestFieldWithSeed=generateV39TestFieldWithSeed;
+  window.loadV39FieldSnapshot=loadV39FieldSnapshot;
+  window.updateV39FieldData=updateV39FieldData;
   window.__v39FieldRuntime={game:null,mapData:null,settings:null};
   window.render_game_to_text=()=>JSON.stringify({screen:"v39-field",generated:!!currentData,settings:currentSettings,selectedTile:game?.scene?.getScenes(true)?.[0]?.v39SelectedTile||null});
   window.advanceTime=()=>window.render_game_to_text();

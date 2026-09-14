@@ -202,15 +202,17 @@ import {
   parseCoordKey,
   terrainDefinitions
 } from "../lib/map-generator.js";
-import classDb from "../../../data/source/export/json/クラス.json";
-import consumptionDb from "../../../data/source/export/json/消費量.json";
-import enemySpawnDb from "../../../data/source/export/json/出現敵.json";
-import equipmentDb from "../../../data/source/export/json/装備.json";
-import factionDb from "../../../data/source/export/json/勢力.json";
-import facilityDb from "../../../data/source/export/json/施設.json";
-import enchantDb from "../../../data/source/export/json/付与.json";
-import skillInfoDb from "../../../data/source/export/json/スキル一覧.json";
-import terrainYieldDb from "../../../data/source/export/json/地形.json";
+import {
+  classData as classDb,
+  consumptionData as consumptionDb,
+  enemySpawnData as enemySpawnDb,
+  enchantmentData as enchantDb,
+  equipmentData as equipmentDb,
+  facilityData as facilityDb,
+  factionData as factionDb,
+  skillData as skillInfoDb,
+  terrainData as terrainYieldDb
+} from "../lib/game-data-registry.js";
 import effectList320 from "../../../assets/effect/320×240/effect_list.json";
 import effectListAnimation1 from "../../../assets/effect/アニメーション1/effect_list.json";
 

@@ -13,6 +13,8 @@
     "dev:front:watch": "vite build --mode watch --watch --logLevel warn --config frontend/vite.config.mjs",
     "build:front": "vite build --config frontend/vite.config.mjs",
     "build:front:test-on": "vite build --mode teston --config frontend/vite.config.mjs",
+    "audit:data": "node scripts/audit-game-data-usage.mjs",
+    "benchmark:render": "node scripts/benchmark-v39-render-layers.mjs",
     "preview:front": "vite preview --config frontend/vite.config.mjs"
   },
   "engines": {

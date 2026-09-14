@@ -1,3 +1,5 @@
+import { createInitialV39Village } from "./lib/v39-economy-rules.js";
+
 const MODE_BANNER_ID = "modeBanner";
 
 function text(value, fallback = "") {
@@ -28,12 +30,34 @@ function isPassableTerrain(terrain) {
   return terrain !== "海" && terrain !== "湖";
 }
 
-function canPlaceBaseOnTile(tile) {
-  if (!tile) return false;
+function basePlacementIssue(tile) {
+  if (!tile) return "配置先がありません";
   const terrain = text(tile.terrain, "海");
-  if (!isPassableTerrain(terrain)) return false;
-  if (terrain === "火山") return false;
-  return true;
+  if (!isPassableTerrain(terrain) || terrain === "火山") return "海・湖・火山には配置できません";
+  const x = Math.floor(Number(tile.x));
+  const y = Math.floor(Number(tile.y));
+  const data = fieldMapData();
+  if (!data?.grid || !Number.isFinite(x) || !Number.isFinite(y)) return "";
+  const territoryTiles = buildInitialTerritoryTiles(x, y);
+  if (territoryTiles.length !== 7) return "周囲1マスを含む7マスすべてが陸地の場所を選んでください";
+  const keys = new Set(territoryTiles.map(row => row.key));
+  const state = getGameState();
+  const activeId = state?.activePlayerId;
+  if ([...keys].some(key => {
+    const ownerId = text(state?.territoryOwnerByTile?.[key]);
+    return ownerId && ownerId !== activeId;
+  })) return "周囲に他勢力の領土があります";
+  const occupied = [
+    ...(state?.players || []).filter(player => player.id !== activeId).flatMap(player => player?.factionState?.units || []),
+    ...(state?.enemies || [])
+  ].some(unit => unit?.x !== null && unit?.x !== undefined && unit?.y !== null && unit?.y !== undefined
+    && unit?.state !== "死亡" && Number(unit?.hp ?? unit?.currentHp ?? 1) > 0
+    && keys.has(coordKey(unit.x, unit.y)));
+  return occupied ? "周囲に他勢力のキャラクターまたは敵がいます" : "";
+}
+
+function canPlaceBaseOnTile(tile) {
+  return !basePlacementIssue(tile);
 }
 
 function showBanner(message, persistent = false) {
@@ -96,7 +120,7 @@ function neighborCoords(x, y) {
 
 function unitCanStandAt(data, x, y) {
   const terrain = text(data?.grid?.[y]?.[x], "海");
-  return isPassableTerrain(terrain) && terrain !== "火山";
+  return isPassableTerrain(terrain) && terrain !== "火山" && !data?.lavaMap?.[y]?.[x];
 }
 
 function buildInitialTerritoryTiles(baseX, baseY) {
@@ -197,7 +221,7 @@ function placeInitialBase(tile) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
 
   if (!canPlaceBaseOnTile(tile)) {
-    showBanner("この地形には拠点を設置できません（海・湖・火山は不可）", true);
+    showBanner(basePlacementIssue(tile), true);
     return false;
   }
 
@@ -207,14 +231,6 @@ function placeInitialBase(tile) {
     showBanner("他勢力の領土には拠点を設置できません", true);
     return false;
   }
-  const village = {
-    id: `village-${x}-${y}`,
-    name: "拠点",
-    x,
-    y,
-    placed: true
-  };
-
   const sourceUnits = Array.isArray(faction.units) ? faction.units : [];
   const positions = buildInitialUnitPositions(x, y, sourceUnits.length);
   const units = sourceUnits.map((unit, index) => {
@@ -228,25 +244,6 @@ function placeInitialBase(tile) {
     };
   });
   const selectedUnitId = text(faction.selectedUnitId, text(units[0]?.id));
-
-  const players = state.players.map(row => row.id === player.id
-    ? {
-        ...row,
-        factionState: {
-          ...row.factionState,
-          village,
-          villagePlacementMode: false,
-          selectedUnitId,
-          units
-        }
-      }
-    : row);
-
-  const existingSettlements = Array.isArray(state.settlements) ? state.settlements : [];
-  const settlements = [
-    ...existingSettlements.filter(row => row?.id !== village.id && row?.ownerPlayerId !== player.id),
-    { ...village, type: "拠点", ownerPlayerId: player.id }
-  ];
 
   const previousOwnKeys = Object.entries(state.territoryOwnerByTile || {})
     .filter(([, ownerId]) => String(ownerId) === String(player.id))
@@ -269,6 +266,40 @@ function placeInitialBase(tile) {
     territoryStateByTile[tileData.key] = tileData.key === key ? "拠点" : "領土";
   }
   facilitiesByTile[key] = ["拠点"];
+
+  const stateWithTerritory = { ...state, territoryOwnerByTile };
+  const village = createInitialV39Village({
+    x,
+    y,
+    name:text(faction.village?.name, "拠点"),
+    race:player.race,
+    state:stateWithTerritory,
+    player,
+    mapData:fieldMapData()
+  });
+  village.territoryTileModeMap = Object.fromEntries(territoryTiles.map(tileData => [
+    tileData.key,
+    tileData.key === key ? "settlement" : "resource"
+  ]));
+
+  const players = state.players.map(row => row.id === player.id
+    ? {
+        ...row,
+        factionState: {
+          ...row.factionState,
+          village,
+          villagePlacementMode: false,
+          selectedUnitId,
+          units
+        }
+      }
+    : row);
+
+  const existingSettlements = Array.isArray(state.settlements) ? state.settlements : [];
+  const settlements = [
+    ...existingSettlements.filter(row => row?.id !== village.id && row?.ownerPlayerId !== player.id),
+    { ...village, type: "村", ownerPlayerId: player.id }
+  ];
 
   window.setV39GameState?.({
     players,

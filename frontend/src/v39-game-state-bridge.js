@@ -9,18 +9,65 @@ const EMPTY_STATE = Object.freeze({
   dangerPercentByTile: {},
   facilitiesByTile: {},
   settlements: [],
+  neutralVillages: [],
+  wandererGroups: [],
   territoryStateByTile: {},
   recoveryPercentByTile: {},
+  explorationSitesByTile: {},
+  diplomacyRelations: {},
   lastMoveStop: null,
-  enemies: []
+  enemies: [],
+  worldEnvironment: {
+    processedTurn: 0,
+    volcanoData: null,
+    lavaState: { flows: [] },
+    lavaFlowData: { nodeKeys: [], edgeKeys: [], sourceKeys: [] },
+    lastTerrainEvents: []
+  },
+  enemyCombatRuntime: {
+    pendingActionsByEnemyId: {},
+    lastActionAtMsByEnemyId: {},
+    cooldownsByEnemyId: {},
+    activeEffectsByEnemyId: {}
+  },
+  timeline: {
+    turnNumber: 1,
+    paused: false,
+    elapsedMs: 0,
+    lastTurnAdvancedAtMs: 0,
+    lastResolvedTurn: 0,
+    lastStageSequence: []
+  }
 });
 
 function cloneRecord(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? { ...value } : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? cloneValue(value, {}) : {};
+}
+
+function cloneValue(value, fallback = null) {
+  if (value === undefined) return fallback;
+  try {
+    if (typeof structuredClone === "function") return structuredClone(value);
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return fallback;
+  }
+}
+
+const cloneJson = cloneValue;
+
+function normalizeWorldEnvironment(value = {}) {
+  return {
+    processedTurn:Math.max(0, Math.floor(Number(value?.processedTurn) || 0)),
+    volcanoData:cloneJson(value?.volcanoData, null),
+    lavaState:cloneJson(value?.lavaState, { flows:[] }),
+    lavaFlowData:cloneJson(value?.lavaFlowData, { nodeKeys:[], edgeKeys:[], sourceKeys:[] }),
+    lastTerrainEvents:cloneJson(value?.lastTerrainEvents, [])
+  };
 }
 
 function normalizeEntityArray(value) {
-  return Array.isArray(value) ? value.filter(Boolean).map(row => ({ ...row })) : [];
+  return Array.isArray(value) ? value.filter(Boolean).map(row => cloneValue(row, {})) : [];
 }
 
 function normalizeUnitArray(value) {
@@ -37,7 +84,8 @@ function normalizeFactionState(value = {}) {
     units: normalizeUnitArray(source.units),
     squads: normalizeEntityArray(source.squads),
     deadUnitReserve: normalizeEntityArray(source.deadUnitReserve),
-    village: source.village && typeof source.village === "object" ? { ...source.village } : null,
+    deathHistory: normalizeEntityArray(source.deathHistory),
+    village: source.village && typeof source.village === "object" ? cloneValue(source.village, null) : null,
     encounterMoveLocks: cloneRecord(source.encounterMoveLocks)
   };
 }
@@ -64,10 +112,29 @@ function normalizeState(input = {}) {
     dangerPercentByTile: cloneRecord(input.dangerPercentByTile),
     facilitiesByTile: cloneRecord(input.facilitiesByTile),
     settlements: normalizeEntityArray(input.settlements),
+    neutralVillages: normalizeEntityArray(input.neutralVillages),
+    wandererGroups: normalizeEntityArray(input.wandererGroups),
     territoryStateByTile: cloneRecord(input.territoryStateByTile),
     recoveryPercentByTile: cloneRecord(input.recoveryPercentByTile),
+    explorationSitesByTile: cloneJson(input.explorationSitesByTile, {}),
+    diplomacyRelations: cloneJson(input.diplomacyRelations, {}),
     lastMoveStop: input.lastMoveStop && typeof input.lastMoveStop === "object" ? { ...input.lastMoveStop } : null,
-    enemies: normalizeUnitArray(input.enemies)
+    enemies: normalizeUnitArray(input.enemies),
+    worldEnvironment: normalizeWorldEnvironment(input.worldEnvironment),
+    enemyCombatRuntime: {
+      pendingActionsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.pendingActionsByEnemyId),
+      lastActionAtMsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.lastActionAtMsByEnemyId),
+      cooldownsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.cooldownsByEnemyId),
+      activeEffectsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.activeEffectsByEnemyId)
+    },
+    timeline: {
+      turnNumber: Math.max(1, Math.floor(Number(input?.timeline?.turnNumber) || 1)),
+      paused: input?.timeline?.paused === true,
+      elapsedMs: Math.max(0, Number(input?.timeline?.elapsedMs) || 0),
+      lastTurnAdvancedAtMs: Math.max(0, Number(input?.timeline?.lastTurnAdvancedAtMs) || 0),
+      lastResolvedTurn:Math.max(0, Math.floor(Number(input?.timeline?.lastResolvedTurn) || 0)),
+      lastStageSequence:Array.isArray(input?.timeline?.lastStageSequence) ? input.timeline.lastStageSequence.map(String) : []
+    }
   };
 }
 
@@ -78,6 +145,7 @@ function cloneUnit(unit) {
     skillLevels: cloneRecord(unit?.skillLevels),
     acquiredSkillNames: Array.isArray(unit?.acquiredSkillNames) ? [...unit.acquiredSkillNames] : unit?.acquiredSkillNames,
     techniques: normalizeEntityArray(unit?.techniques),
+    equipment:Array.isArray(unit?.equipment) ? unit.equipment.map(row => ({ ...row, resistanceBonus:cloneRecord(row?.resistanceBonus), source:cloneRecord(row?.source) })) : [],
     derivedCharacter: cloneRecord(unit?.derivedCharacter)
   };
 }
@@ -89,7 +157,8 @@ function cloneFactionState(factionState = {}) {
     units: Array.isArray(factionState.units) ? factionState.units.map(cloneUnit) : [],
     squads: normalizeEntityArray(factionState.squads),
     deadUnitReserve: normalizeEntityArray(factionState.deadUnitReserve),
-    village: factionState.village && typeof factionState.village === "object" ? { ...factionState.village } : null,
+    deathHistory: normalizeEntityArray(factionState.deathHistory),
+    village: factionState.village && typeof factionState.village === "object" ? cloneValue(factionState.village, null) : null,
     encounterMoveLocks: cloneRecord(factionState.encounterMoveLocks)
   };
 }
@@ -109,10 +178,22 @@ function getState() {
     dangerPercentByTile: { ...state.dangerPercentByTile },
     facilitiesByTile: { ...state.facilitiesByTile },
     settlements: state.settlements.map(row => ({ ...row })),
+    neutralVillages: state.neutralVillages.map(row => ({ ...row })),
+    wandererGroups: state.wandererGroups.map(row => ({ ...row, discoveredByPlayerIds:Array.isArray(row?.discoveredByPlayerIds) ? [...row.discoveredByPlayerIds] : [] })),
     territoryStateByTile: { ...state.territoryStateByTile },
     recoveryPercentByTile: { ...state.recoveryPercentByTile },
+    explorationSitesByTile: cloneJson(state.explorationSitesByTile, {}),
+    diplomacyRelations: cloneJson(state.diplomacyRelations, {}),
     lastMoveStop: state.lastMoveStop ? { ...state.lastMoveStop } : null,
-    enemies: state.enemies.map(cloneUnit)
+    enemies: state.enemies.map(cloneUnit),
+    worldEnvironment: normalizeWorldEnvironment(state.worldEnvironment),
+    enemyCombatRuntime: {
+      pendingActionsByEnemyId:{ ...state.enemyCombatRuntime.pendingActionsByEnemyId },
+      lastActionAtMsByEnemyId:{ ...state.enemyCombatRuntime.lastActionAtMsByEnemyId },
+      cooldownsByEnemyId:{ ...state.enemyCombatRuntime.cooldownsByEnemyId },
+      activeEffectsByEnemyId:{ ...state.enemyCombatRuntime.activeEffectsByEnemyId }
+    },
+    timeline: { ...state.timeline }
   };
 }
 
@@ -138,10 +219,17 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "dangerPercentByTile")) next.dangerPercentByTile = cloneRecord(patch.dangerPercentByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "facilitiesByTile")) next.facilitiesByTile = cloneRecord(patch.facilitiesByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "settlements")) next.settlements = normalizeEntityArray(patch.settlements);
+  if (Object.prototype.hasOwnProperty.call(patch, "neutralVillages")) next.neutralVillages = normalizeEntityArray(patch.neutralVillages);
+  if (Object.prototype.hasOwnProperty.call(patch, "wandererGroups")) next.wandererGroups = normalizeEntityArray(patch.wandererGroups);
   if (Object.prototype.hasOwnProperty.call(patch, "territoryStateByTile")) next.territoryStateByTile = cloneRecord(patch.territoryStateByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "recoveryPercentByTile")) next.recoveryPercentByTile = cloneRecord(patch.recoveryPercentByTile);
+  if (Object.prototype.hasOwnProperty.call(patch, "explorationSitesByTile")) next.explorationSitesByTile = cloneJson(patch.explorationSitesByTile, {});
+  if (Object.prototype.hasOwnProperty.call(patch, "diplomacyRelations")) next.diplomacyRelations = cloneJson(patch.diplomacyRelations, {});
   if (Object.prototype.hasOwnProperty.call(patch, "lastMoveStop")) next.lastMoveStop = patch.lastMoveStop && typeof patch.lastMoveStop === "object" ? { ...patch.lastMoveStop } : null;
   if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = normalizeUnitArray(patch.enemies);
+  if (Object.prototype.hasOwnProperty.call(patch, "worldEnvironment")) next.worldEnvironment = normalizeWorldEnvironment(patch.worldEnvironment);
+  if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
+  if (Object.prototype.hasOwnProperty.call(patch, "timeline")) next.timeline = { ...state.timeline, ...patch.timeline };
   state = normalizeState(next);
   if (options.silent !== true) dispatchChange(options.reason || "set");
   return getState();

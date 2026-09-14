@@ -2,8 +2,7 @@
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
 import CharacterUnitDetailPanel from "./CharacterUnitDetailPanel.vue";
-import equipmentDb from "../../../data/source/export/json/装備.json";
-import classDb from "../../../data/source/export/json/クラス.json";
+import { classData as classDb, equipmentData as equipmentDb } from "../lib/game-data-registry.js";
 import { UNIT_CREATE_MODE_KEYS } from "../composables/militaryUnitUtils.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 import {

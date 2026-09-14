@@ -3,8 +3,7 @@ import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { isMobUnit as isMobUnitUtil } from "../composables/unitCoreUtils.js";
-import equipmentDb from "../../../data/source/export/json/装備.json";
-import consumptionDb from "../../../data/source/export/json/消費量.json";
+import { consumptionData as consumptionDb, equipmentData as equipmentDb } from "../lib/game-data-registry.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },

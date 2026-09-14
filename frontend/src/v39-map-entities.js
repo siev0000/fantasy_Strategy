@@ -15,6 +15,7 @@ const ENEMY_IMAGE_FILL = 0.95;
 
 let markerContainer = null;
 let refreshTimer = null;
+const markerByEntityId = new Map();
 const textureLoadState = new WeakMap();
 
 function tileMetrics() {
@@ -68,6 +69,7 @@ function finiteCoord(value) {
 function clearMarkers() {
   if (markerContainer?.destroy) markerContainer.destroy(true);
   markerContainer = null;
+  markerByEntityId.clear();
 }
 
 function drawBase(scene, container, village) {
@@ -77,13 +79,13 @@ function drawBase(scene, container, village) {
   if (x === null || y === null) return;
 
   const c = tileCenter(x, y);
-  const marker = scene.add.container(c.x, c.y);
+  const marker = scene.add.container(c.x, c.y).setName("v39-settlement-marker");
   const artwork = resolveSettlementArtwork(village);
   const oldSpecSize = Number(artwork?.sizePx) || tileRelativePx(MAP_ENTITY_SIZE_RULES.base.diameterTiles);
   if (artwork && ensureArtworkTexture(scene, artwork)) {
     marker.add(scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5).setDisplaySize(oldSpecSize, oldSpecSize));
   } else {
-    marker.add(scene.add.text(0, 0, "村", {
+    marker.add(scene.add.text(0, 0, "⌂", {
       fontSize: `${tileRelativePx(0.3)}px`,
       fontStyle: "bold",
       color: "#f0cf79",
@@ -103,7 +105,7 @@ function drawBases(scene, container, settlements, activeVillage) {
     if (x === null || y === null) continue;
     const key = `${x},${y}`;
     if (seen.has(key)) continue;
-    const isOwnBase = !settlement.ownerPlayerId || settlement.ownerPlayerId === gameState()?.activePlayerId;
+    const isOwnBase = settlement.id === activeVillage?.id || settlement.ownerPlayerId === gameState()?.activePlayerId;
     if (!isOwnBase && window.isV39TileExplored?.(x, y) === false) continue;
     seen.add(key);
     drawBase(scene, container, { ...settlement, placed: settlement.placed !== false });
@@ -155,6 +157,7 @@ function ensureArtworkTexture(scene, artwork) {
   const image = new Image();
   image.onload = () => {
     try {
+      if (!scene?.sys?.isActive?.() || !scene?.game?.renderer) return;
       if (!scene.textures.exists(artwork.textureKey)) {
         scene.textures.addImage(artwork.textureKey, image);
       }
@@ -190,8 +193,18 @@ function addUnitArtwork(scene, marker, unit, diameter) {
   const target = diameter * UNIT_IMAGE_FILL;
   const scale = Math.min(target / sourceWidth, target / sourceHeight);
   image.setScale(scale);
+  if (unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0) image.setTint(0x777f82).setAlpha(0.72);
   marker.add(image);
   return true;
+}
+
+function addDeadMark(scene, marker, unit, radius) {
+  const hp = Number(unit?.hp ?? unit?.currentHp);
+  if (unit?.state !== "死亡" && (!Number.isFinite(hp) || hp > 0)) return;
+  marker.add(scene.add.text(radius * 0.48, -radius * 0.48, "×", {
+    fontSize:`${Math.max(14, radius * 0.72)}px`, fontStyle:"bold", color:"#fff4f1",
+    stroke:"#681e1e", strokeThickness:Math.max(2, radius * 0.1)
+  }).setOrigin(0.5));
 }
 
 function addEnemyArtwork(scene, marker, enemy, diameter) {
@@ -202,18 +215,20 @@ function addEnemyArtwork(scene, marker, enemy, diameter) {
   const sourceHeight = Math.max(1, Number(image.height) || 1);
   const target = diameter * ENEMY_IMAGE_FILL;
   image.setScale(Math.min(target / sourceWidth, target / sourceHeight));
+  if (enemy?.state === "死亡" || Number(enemy?.hp ?? enemy?.currentHp) <= 0) image.setTint(0x777f82).setAlpha(0.72);
   marker.add(image);
   return true;
 }
 
 function addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, selected) {
-  const bg = scene.add.circle(0, 0, radius, selected ? 0x174653 : 0x152b34, 0.98)
+  const dead = unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0;
+  const bg = scene.add.circle(0, 0, radius, dead ? 0x555b5d : selected ? 0x174653 : 0x152b34, dead ? 0.72 : 0.98)
     .setStrokeStyle(
       Math.max(selected ? 3 : 2, tileRelativePx(selected ? 0.055 : 0.04)),
       selected ? 0xffdd72 : 0x8bd5e4,
       1
     );
-  const glyph = scene.add.text(0, -0.5, String(unit.icon || unit.name || "人").slice(0, 2), {
+  const glyph = scene.add.text(0, -0.5, String(unit.icon || "◆").slice(0, 2), {
     fontSize: `${glyphFontSize}px`,
     fontStyle: "bold",
     color: "#e8f7fb"
@@ -238,7 +253,11 @@ function drawUnitGroup(scene, container, group, selectedUnitId) {
 
   // One tile renders only one icon. No count/name text is permanently attached to the map.
   // Unit markers stay in world-space and scale exactly with their tile.
-  const marker = scene.add.container(center.x, center.y);
+  const marker = scene.add.container(center.x, center.y).setName("v39-player-unit-marker");
+  for (const member of group) {
+    const id = String(member?.id || "").trim();
+    if (id) markerByEntityId.set(id, marker);
+  }
   const artworkAdded = addUnitArtwork(scene, marker, unit, diameter);
 
   if (artworkAdded) {
@@ -246,6 +265,7 @@ function drawUnitGroup(scene, container, group, selectedUnitId) {
   } else {
     addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, selected);
   }
+  addDeadMark(scene, marker, unit, radius);
 
   marker.setSize(diameter, diameter);
   marker.setInteractive({ useHandCursor: true });
@@ -263,6 +283,41 @@ function drawUnits(scene, container, units, selectedUnitId) {
   }
 }
 
+function drawForeignUnits(scene, container, players, activePlayerId) {
+  const rule = MAP_ENTITY_SIZE_RULES.unit;
+  const diameter = tileRelativePx(rule.diameterTiles);
+  const radius = diameter / 2;
+  const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
+  for (const player of Array.isArray(players) ? players : []) {
+    if (player?.id === activePlayerId) continue;
+    for (const group of unitGroupsByTile(player?.factionState?.units).values()) {
+      const unit = representativeUnit(group, "");
+      const x = finiteCoord(unit?.x);
+      const y = finiteCoord(unit?.y);
+      if (!unit || x === null || y === null || window.isV39TileInCurrentVision?.(x, y) === false) continue;
+      const center = tileCenter(x, y);
+      const marker = scene.add.container(center.x, center.y).setName("v39-foreign-unit-marker");
+      for (const member of group) {
+        const id = String(member?.id || "").trim();
+        if (id) markerByEntityId.set(id, marker);
+      }
+      if (!addUnitArtwork(scene, marker, unit, diameter)) {
+        const dead = unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0;
+        const bg = scene.add.circle(0, 0, radius, dead ? 0x555b5d : 0x35252c, 0.96)
+          .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe19aaf, 1);
+        const glyph = scene.add.text(0, -0.5, String(unit?.icon || "◆").slice(0, 2), {
+          fontSize:`${glyphFontSize}px`, fontStyle:"bold", color:"#fff0f5"
+        }).setOrigin(0.5);
+        marker.add([bg, glyph]);
+      } else {
+        marker.add(scene.add.circle(0, 0, radius, 0x000000, 0).setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe19aaf, 0.9));
+      }
+      addDeadMark(scene, marker, unit, radius);
+      container.add(marker);
+    }
+  }
+}
+
 function drawEnemies(scene, container, enemies) {
   const rule = MAP_ENTITY_SIZE_RULES.unit;
   const diameter = tileRelativePx(rule.diameterTiles);
@@ -276,17 +331,39 @@ function drawEnemies(scene, container, enemies) {
     if (x === null || y === null) continue;
     if (window.isV39TileInCurrentVision?.(x, y) === false) continue;
     const center = tileCenter(x, y);
-    const marker = scene.add.container(center.x, center.y);
+    const marker = scene.add.container(center.x, center.y).setName("v39-enemy-marker");
+    for (const member of group) {
+      const id = String(member?.id || "").trim();
+      if (id) markerByEntityId.set(id, marker);
+    }
     if (!addEnemyArtwork(scene, marker, enemy, diameter)) {
       const bg = scene.add.circle(0, 0, radius, 0x3a1717, 0.98)
         .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe89090, 1);
-      const glyph = scene.add.text(0, -0.5, "敵", {
+      const glyph = scene.add.text(0, -0.5, "◆", {
         fontSize: `${glyphFontSize}px`,
         fontStyle: "bold",
         color: "#fff0e8"
       }).setOrigin(0.5);
       marker.add([bg, glyph]);
     }
+    addDeadMark(scene, marker, enemy, radius);
+    container.add(marker);
+  }
+}
+
+function drawWanderers(scene, container, groups, activePlayerId) {
+  const diameter = tileRelativePx(MAP_ENTITY_SIZE_RULES.unit.diameterTiles * 0.72);
+  for (const group of Array.isArray(groups) ? groups : []) {
+    const x = finiteCoord(group?.x);
+    const y = finiteCoord(group?.y);
+    if (x === null || y === null || !group?.discoveredByPlayerIds?.includes(activePlayerId) || window.isV39TileInCurrentVision?.(x, y) === false) continue;
+    const center = tileCenter(x, y);
+    const marker = scene.add.container(center.x, center.y).setName("v39-wanderer-marker");
+    marker.add([
+      scene.add.circle(0, 0, diameter / 2, 0x66552d, 0.96).setStrokeStyle(2, 0xf0d58a, 1),
+      scene.add.text(0, 0, "旅", { fontSize:`${tileRelativePx(0.27)}px`, fontStyle:"bold", color:"#fff0bd" }).setOrigin(0.5)
+    ]);
+    markerByEntityId.set(String(group.id || "").trim(), marker);
     container.add(marker);
   }
 }
@@ -298,10 +375,12 @@ function renderMarkers() {
   if (!scene || !faction) return false;
 
   clearMarkers();
-  markerContainer = scene.add.container(0, 0).setDepth(LAYER_DEPTH);
+  markerContainer = scene.add.container(0, 0).setDepth(LAYER_DEPTH).setName("v39-entity-layer");
   drawBases(scene, markerContainer, state?.settlements, faction.village);
   drawUnits(scene, markerContainer, faction.units, faction.selectedUnitId);
+  drawForeignUnits(scene, markerContainer, state?.players, state?.activePlayerId);
   drawEnemies(scene, markerContainer, state?.enemies);
+  drawWanderers(scene, markerContainer, state?.wandererGroups, state?.activePlayerId);
   return true;
 }
 
@@ -319,6 +398,7 @@ function install() {
   window.addEventListener("v39:initial-placement-complete", () => scheduleRefresh());
   window.addEventListener("v39:unit-selected", () => scheduleRefresh());
   window.refreshV39MapEntities = () => renderMarkers();
+  window.getV39MapEntityMarker = entityId => markerByEntityId.get(String(entityId || "").trim()) || null;
   scheduleRefresh(100);
 }
 

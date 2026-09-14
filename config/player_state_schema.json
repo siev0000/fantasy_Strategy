@@ -21,26 +21,77 @@
         "units",
         "squads",
         "deadUnitReserve",
+        "deathHistory",
         "selectedUnitId",
         "villagePlacementMode",
         "moveCommandUnitId",
         "nationLogKey",
         "encounterMoveLocks",
         "visibility",
-        "research"
+        "research",
+        "exploration",
+        "activityLog",
+        "aiState",
+        "nationPolicy",
+        "combatRuntime"
       ],
       "properties": {
         "village": { "type": ["object", "null"], "description": "都市・人口・資源・装備在庫" },
         "units": { "type": "array", "items": { "type": "object" }, "description": "所有キャラクターと軍隊" },
         "squads": { "type": "array", "items": { "type": "object" }, "description": "部隊IDと所属ユニットID" },
         "deadUnitReserve": { "type": "array", "items": { "type": "object" }, "description": "回収済みの死亡者" },
+        "deathHistory": { "type": "array", "items": { "type": "object" }, "description": "死亡、回収、消滅、蘇生の履歴" },
         "selectedUnitId": { "type": "string", "description": "現在選択中のユニットID" },
         "villagePlacementMode": { "type": "boolean", "description": "初期村配置中かどうか" },
         "moveCommandUnitId": { "type": "string", "description": "移動指定中のユニットID" },
         "nationLogKey": { "type": "string", "description": "勢力別ログの識別子" },
         "encounterMoveLocks": { "type": "object", "description": "接敵による移動停止状態" },
         "visibility": { "$ref": "#/$defs/visibility" },
-        "research": { "$ref": "#/$defs/research" }
+        "research": { "$ref": "#/$defs/research" },
+        "exploration": {
+          "type": "object",
+          "required": ["discoveredFeaturesByTile", "surveyedTileKeys", "history", "lastProcessedTurn"],
+          "properties": {
+            "discoveredFeaturesByTile": { "type": "object" },
+            "surveyedTileKeys": { "$ref": "#/$defs/tileKeys" },
+            "history": { "type": "array", "items": { "type": "object" } },
+            "lastProcessedTurn": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "activityLog": { "type": "array", "items": { "type": "object" } },
+        "aiState": {
+          "type": "object",
+          "required": ["lastProcessedTurn", "lastCommands", "history"],
+          "properties": {
+            "lastProcessedTurn": { "type": "integer", "minimum": 0 },
+            "lastCommands": { "type": "array", "items": { "type": "string" } },
+            "history": { "type": "array", "items": { "type": "object" } }
+          },
+          "additionalProperties": true
+        },
+        "nationPolicy": {
+          "type": "object",
+          "required": ["governmentSelections", "diplomacyStanceId", "organizationIds", "modifiers"],
+          "properties": {
+            "governmentSelections": { "type": "object" },
+            "diplomacyStanceId": { "type": "string" },
+            "organizationIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "modifiers": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
+        "combatRuntime": {
+          "type": "object",
+          "required": ["cooldownsByUnitId", "activeEffectsByUnitId", "pendingActionsByUnitId", "lastEnemyActionAtMsById"],
+          "properties": {
+            "cooldownsByUnitId": { "type": "object" },
+            "activeEffectsByUnitId": { "type": "object" },
+            "pendingActionsByUnitId": { "type": "object" },
+            "lastEnemyActionAtMsById": { "type": "object" }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": true
     },
@@ -83,7 +134,9 @@
           },
           "additionalProperties": true
         },
-        "selection": { "type": "object" }
+        "selection": { "type": "object" },
+        "assignedUnitIdByCategory": { "type": "object" },
+        "lastProcessedTurn": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": true
     }
