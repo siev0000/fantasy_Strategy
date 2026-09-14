@@ -12,6 +12,10 @@ const TERRAIN_LEVEL_BASE = 5;
 const TERRAIN_LEVEL_STEP = 5;
 const TERRAIN_LEVEL_VARIANCE = 5;
 const STRONG_TERRAIN_LEVEL_BONUS = 1;
+const STRONG_GROUP_CHANCE_WITHOUT_COUNT = 0.3;
+const STRONG_RANDOM_MINION_MIN = 2;
+const STRONG_RANDOM_MINION_MAX = 4;
+const DEFAULT_STRONG_TERRITORY_RADIUS = 3;
 
 const classNames = new Set(classData.map(row => text(row?.名前)).filter(Boolean));
 
@@ -199,7 +203,103 @@ function chooseEnemyLevel(selection, random) {
   return selection.minLevel + Math.floor(random() * ((selection.maxLevel - selection.minLevel) + 1));
 }
 
-function createEnemy(selection, position, level, index) {
+function parseMinionNames(value) {
+  if (Array.isArray(value)) return [...new Set(value.map(item => text(item)).filter(Boolean))];
+  const raw = text(value);
+  if (!raw) return [];
+  return [...new Set(raw.split(/[、,，;；|｜/\n]+/).map(item => text(item)).filter(Boolean))];
+}
+
+function configuredMinionCount(definition) {
+  const raw = definition?.row?.出現数;
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const parsed = integer(raw, Number.NaN);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function buildStrongGroupPlan(selection, random) {
+  const definition = selection?.definition;
+  if (!definition) return { groupType:"単独", minionCount:0, minionNames:[], countSource:"none" };
+
+  const explicitCount = configuredMinionCount(definition);
+  const minionNames = parseMinionNames(definition.row?.配下);
+  const resolvedNames = minionNames.length ? minionNames : [definition.name];
+
+  if (explicitCount !== null) {
+    return {
+      groupType:"群体",
+      minionCount:explicitCount,
+      minionNames:resolvedNames,
+      countSource:"出現数",
+      minionSource:minionNames.length ? "配下" : "同種"
+    };
+  }
+
+  if (random() >= STRONG_GROUP_CHANCE_WITHOUT_COUNT) {
+    return { groupType:"単独", minionCount:0, minionNames:[], countSource:"7:3抽選", minionSource:"none" };
+  }
+
+  const minionCount = STRONG_RANDOM_MINION_MIN
+    + Math.floor(random() * ((STRONG_RANDOM_MINION_MAX - STRONG_RANDOM_MINION_MIN) + 1));
+  return {
+    groupType:"群体",
+    minionCount,
+    minionNames:resolvedNames,
+    countSource:"7:3抽選",
+    minionSource:minionNames.length ? "配下" : "同種"
+  };
+}
+
+function strongTerritoryRadius(candidate) {
+  return Math.max(1, integer(candidate?.strongMonsterInfo?.territoryRadius, DEFAULT_STRONG_TERRITORY_RADIUS));
+}
+
+function buildStrongMinionCandidates(data, village, strongCandidate, minionNames, w, h, wrapEnabled, occupied) {
+  const desiredNames = new Set((Array.isArray(minionNames) ? minionNames : []).map(item => text(item)).filter(Boolean));
+  if (!desiredNames.size) return [];
+
+  const radius = strongTerritoryRadius(strongCandidate);
+  const center = { x:strongCandidate.x, y:strongCandidate.y };
+  const candidates = [];
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const key = coordKey(x, y);
+      if (occupied.has(key)) continue;
+      const distanceFromLeader = wrappedHexDistance(center, { x, y }, w, h, wrapEnabled);
+      if (distanceFromLeader <= 0 || distanceFromLeader > radius) continue;
+
+      const distanceFromBase = wrappedHexDistance(village, { x, y }, w, h, wrapEnabled);
+      if (distanceFromBase <= SAFE_DISTANCE_FROM_BASE) continue;
+
+      // 配下は強敵補正を受けず、その配置マスの通常敵Lv帯を使用する。
+      const levelRange = terrainLevelRange(data, x, y, distanceFromBase, false);
+      if (!levelRange) continue;
+
+      const eligibleDefinitions = definitionsForTile(data, x, y)
+        .filter(definition => desiredNames.has(definition.name))
+        .map(definition => intersectDefinitionLevel(definition, levelRange))
+        .filter(Boolean);
+      if (!eligibleDefinitions.length) continue;
+
+      candidates.push({
+        x,
+        y,
+        distance:distanceFromBase,
+        distanceFromLeader,
+        strong:false,
+        levelRange,
+        eligibleDefinitions,
+        strongMonsterInfo: strongCandidate.strongMonsterInfo
+      });
+    }
+  }
+
+  return candidates;
+}
+
+function createEnemy(selection, position, level, index, metadata = {}) {
   const definition = selection?.definition;
   if (!definition) return null;
   const derived = applyV39DerivedCharacterData({
@@ -218,6 +318,7 @@ function createEnemy(selection, position, level, index) {
   });
   if (!derived?.derivedCharacter?.ok) return null;
   const maxHp = Math.max(1, Math.round(number(derived.maxHp ?? derived.status?.HP, 1)));
+  const strongEnemy = metadata.strongEnemy === true || (metadata.strongEnemy !== false && position.strong === true);
   return {
     ...derived,
     hp:maxHp,
@@ -227,14 +328,82 @@ function createEnemy(selection, position, level, index) {
     currentAp:100,
     maxAp:100,
     state:"生存",
-    spawnType:position.strong ? "強敵" : "通常",
-    strongEnemy:position.strong === true,
+    spawnType:text(metadata.spawnType, strongEnemy ? "強敵" : "通常"),
+    strongEnemy,
+    strongMinion:metadata.strongMinion === true,
+    strongGroupId:text(metadata.strongGroupId) || null,
+    strongLeaderId:text(metadata.strongLeaderId) || null,
+    strongGroupType:text(metadata.strongGroupType) || null,
+    strongGroupExpectedMinionCount:Number.isFinite(Number(metadata.strongGroupExpectedMinionCount))
+      ? Math.max(0, integer(metadata.strongGroupExpectedMinionCount))
+      : null,
+    strongGroupCountSource:text(metadata.strongGroupCountSource) || null,
+    strongGroupMinionSource:text(metadata.strongGroupMinionSource) || null,
+    nestType:text(definition.row?.巣) || null,
     terrainHeightLevel:position.levelRange?.rawHeightLevel ?? 0,
     effectiveTerrainLevel:position.levelRange?.effectiveTerrainLevel ?? 0,
     terrainEnemyLevelMin:position.levelRange?.minLevel ?? level,
     terrainEnemyLevelMax:position.levelRange?.maxLevel ?? level,
     strongMonsterInfo:position.strongMonsterInfo ? { ...position.strongMonsterInfo } : null
   };
+}
+
+function spawnStrongGroup(data, village, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random) {
+  const plan = buildStrongGroupPlan(selection, random);
+  const groupId = `strong-group-${candidate.x}-${candidate.y}`;
+  const boss = createEnemy(selection, candidate, level, enemies.length, {
+    strongEnemy:true,
+    spawnType:"強敵",
+    strongGroupId:groupId,
+    strongGroupType:plan.groupType,
+    strongGroupExpectedMinionCount:plan.minionCount,
+    strongGroupCountSource:plan.countSource,
+    strongGroupMinionSource:plan.minionSource
+  });
+  if (!boss) return { boss:null, minionCount:0, expectedMinionCount:plan.minionCount };
+
+  enemies.push(boss);
+  occupied.add(coordKey(candidate.x, candidate.y));
+  if (plan.groupType !== "群体" || plan.minionCount <= 0) {
+    return { boss, minionCount:0, expectedMinionCount:0 };
+  }
+
+  const minionCandidates = shuffle(
+    buildStrongMinionCandidates(data, village, candidate, plan.minionNames, w, h, wrapEnabled, occupied),
+    random
+  );
+  let minionCount = 0;
+
+  for (const minionCandidate of minionCandidates) {
+    if (minionCount >= plan.minionCount) break;
+    if (occupied.has(coordKey(minionCandidate.x, minionCandidate.y))) continue;
+    const minionSelection = chooseEnemyDefinition(minionCandidate, random);
+    const minionLevel = chooseEnemyLevel(minionSelection, random);
+    if (minionLevel === null) continue;
+    const minion = createEnemy(minionSelection, minionCandidate, minionLevel, enemies.length, {
+      strongEnemy:false,
+      strongMinion:true,
+      spawnType:"強敵配下",
+      strongGroupId:groupId,
+      strongLeaderId:boss.id,
+      strongGroupType:"群体",
+      strongGroupExpectedMinionCount:plan.minionCount,
+      strongGroupCountSource:plan.countSource,
+      strongGroupMinionSource:plan.minionSource
+    });
+    if (!minion) continue;
+    enemies.push(minion);
+    occupied.add(coordKey(minionCandidate.x, minionCandidate.y));
+    minionCount += 1;
+  }
+
+  if (minionCount < plan.minionCount) {
+    console.warn(
+      `[v39-enemy-spawn] strong group ${boss.name} requested ${plan.minionCount} minions but placed ${minionCount}; matching terrain/level tiles were insufficient.`
+    );
+  }
+
+  return { boss, minionCount, expectedMinionCount:plan.minionCount };
 }
 
 function buildEnemies(data, village) {
@@ -260,30 +429,32 @@ function buildEnemies(data, village) {
     ? Math.max(1, Math.round(spawnableTileCount / tileDivisor))
     : 0;
   // 強敵候補はマップ生成側ですでに希少地点として抽選済みなので優先して実体化する。
-  // 通常敵数を差し引くことで、敵密度設定の総数目安を大きく崩さない。
+  // 敵密度設定は通常敵+強敵本体の基準数に使い、強敵の配下は群体構成として別枠で追加する。
   const desiredNormalCount = Math.max(0, desiredTotalCount - strongCandidates.length);
 
   const seed = (w * 73856093) ^ (h * 19349663) ^ (integer(village?.x) * 83492791) ^ integer(village?.y);
   const random = seededRandom(seed);
   const enemies = [];
+  const occupied = new Set();
 
   for (const candidate of shuffle(strongCandidates, random)) {
     const selection = chooseEnemyDefinition(candidate, random);
     const level = chooseEnemyLevel(selection, random);
     if (level === null) continue;
-    const enemy = createEnemy(selection, candidate, level, enemies.length);
-    if (enemy) enemies.push(enemy);
+    spawnStrongGroup(data, village, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random);
   }
 
   let normalSpawned = 0;
   for (const candidate of shuffle(normalCandidates, random)) {
     if (normalSpawned >= desiredNormalCount) break;
+    if (occupied.has(coordKey(candidate.x, candidate.y))) continue;
     const selection = chooseEnemyDefinition(candidate, random);
     const level = chooseEnemyLevel(selection, random);
     if (level === null) continue;
     const enemy = createEnemy(selection, candidate, level, enemies.length);
     if (!enemy) continue;
     enemies.push(enemy);
+    occupied.add(coordKey(candidate.x, candidate.y));
     normalSpawned += 1;
   }
 
@@ -298,12 +469,24 @@ function spawnForActivePlayer() {
   if (!data || !state || !village?.placed) return [];
   const enemies = buildEnemies(data, village);
   const strongCount = enemies.filter(enemy => enemy?.strongEnemy === true).length;
+  const strongMinionCount = enemies.filter(enemy => enemy?.strongMinion === true).length;
+  const strongGroupCount = new Set(
+    enemies.filter(enemy => enemy?.strongEnemy === true && enemy?.strongGroupType === "群体")
+      .map(enemy => enemy?.strongGroupId)
+      .filter(Boolean)
+  ).size;
   window.setV39GameState?.({
     enemies,
     enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionAtMsByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{} }
   }, { reason:"enemy-spawned" });
   window.dispatchEvent(new CustomEvent("v39:enemies-spawned", {
-    detail:{ count:enemies.length, strongCount, tileDivisor:enemySpawnTileDivisor() }
+    detail:{
+      count:enemies.length,
+      strongCount,
+      strongMinionCount,
+      strongGroupCount,
+      tileDivisor:enemySpawnTileDivisor()
+    }
   }));
   return enemies;
 }
@@ -331,6 +514,10 @@ window.getV39EnemySpawnRules = () => ({
   terrainLevelStep:TERRAIN_LEVEL_STEP,
   terrainLevelVariance:TERRAIN_LEVEL_VARIANCE,
   strongTerrainLevelBonus:STRONG_TERRAIN_LEVEL_BONUS,
+  strongGroupChanceWithoutCount:STRONG_GROUP_CHANCE_WITHOUT_COUNT,
+  strongRandomMinionMin:STRONG_RANDOM_MINION_MIN,
+  strongRandomMinionMax:STRONG_RANDOM_MINION_MAX,
+  defaultStrongTerritoryRadius:DEFAULT_STRONG_TERRITORY_RADIUS,
   useAbsoluteHeightLevel:true,
   validDefinitionCount:[...definitionsByTerrain.values()].reduce((sum, rows) => sum + rows.length, 0)
 });
