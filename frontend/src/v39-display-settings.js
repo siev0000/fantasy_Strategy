@@ -12,6 +12,7 @@ const DEFAULTS = Object.freeze({
   heightShading: true,
   showZoomControls: true,
   reduceMotion: false,
+  testMode: false,
   maxZoomFactor: MAP_CAMERA_ZOOM_RULES.defaultUserMaxFactor
 });
 
@@ -77,6 +78,20 @@ function ensureMaxZoomControl() {
   else grid.appendChild(label);
 }
 
+function ensureTestModeControl() {
+  if (document.getElementById("v39-test-mode")) return;
+  const grid = document.querySelector("#v39-display-settings-panel .display-settings-grid");
+  if (!(grid instanceof HTMLElement)) return;
+
+  const label = document.createElement("label");
+  label.className = "display-setting";
+  label.innerHTML = `
+    <span class="display-setting-title">テストモード</span>
+    <input type="checkbox" id="v39-test-mode">
+    <small>ON時は索敵外のFog・索敵枠を非表示にし、敵を索敵範囲外でも表示します。</small>`;
+  grid.appendChild(label);
+}
+
 function updateMaxZoomText() {
   const out = document.getElementById("v39-max-zoom-value");
   const note = document.getElementById("v39-max-zoom-note");
@@ -96,6 +111,7 @@ function updateMaxZoomText() {
 function applySettings({ emit = true } = {}) {
   document.documentElement.dataset.v39FontScale = String(settings.fontScalePercent / 100);
   document.documentElement.classList.toggle("v39-reduce-motion", !!settings.reduceMotion);
+  document.documentElement.classList.toggle("v39-test-mode", !!settings.testMode);
 
   const font = document.getElementById("v39-font-size");
   const fontOut = document.getElementById("v39-font-size-value");
@@ -103,6 +119,7 @@ function applySettings({ emit = true } = {}) {
   const shading = document.getElementById("v39-height-shading");
   const showZoom = document.getElementById("v39-show-zoom-controls");
   const reduceMotion = document.getElementById("v39-reduce-motion");
+  const testMode = document.getElementById("v39-test-mode");
   const maxZoom = document.getElementById("v39-max-zoom-factor");
 
   if (font) font.value = String(settings.fontScalePercent);
@@ -111,6 +128,7 @@ function applySettings({ emit = true } = {}) {
   if (shading) shading.checked = settings.heightShading !== false;
   if (showZoom) showZoom.checked = settings.showZoomControls !== false;
   if (reduceMotion) reduceMotion.checked = !!settings.reduceMotion;
+  if (testMode) testMode.checked = !!settings.testMode;
   if (maxZoom) maxZoom.value = String(settings.maxZoomFactor);
 
   const controls = document.getElementById("v39-map-camera-controls");
@@ -167,6 +185,9 @@ function bindControls() {
   document.getElementById("v39-reduce-motion")?.addEventListener("change", event => {
     updateSetting("reduceMotion", !!event.target.checked);
   });
+  document.getElementById("v39-test-mode")?.addEventListener("change", event => {
+    updateSetting("testMode", !!event.target.checked);
+  });
   document.getElementById("v39-max-zoom-factor")?.addEventListener("input", event => {
     updateSetting("maxZoomFactor", normalizeUserMaxZoomFactor(event.target.value));
   });
@@ -187,6 +208,7 @@ function installReduceMotionStyle() {
 
 function install() {
   ensureMaxZoomControl();
+  ensureTestModeControl();
   installReduceMotionStyle();
   bindPanelNavigation();
   bindControls();
@@ -198,6 +220,7 @@ function install() {
   });
 
   window.getV39DisplaySettings = () => ({ ...settings });
+  window.isV39TestMode = () => !!settings.testMode;
 }
 
 install();
