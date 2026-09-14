@@ -5,9 +5,9 @@ import { getSelectedSettlement } from "./lib/settlement-state.js";
 const SAFE_DISTANCE_FROM_BASE = 4;
 const LOW_LEVEL_DISTANCE_FROM_BASE = 10;
 const LOW_LEVEL_MAX = 10;
-const LAND_TILES_PER_ENEMY = 120;
-const MIN_ENEMY_COUNT = 8;
-const MAX_ENEMY_COUNT = 30;
+const DEFAULT_ENEMY_SPAWN_TILE_DIVISOR = 40;
+const MIN_ENEMY_SPAWN_TILE_DIVISOR = 20;
+const MAX_ENEMY_SPAWN_TILE_DIVISOR = 60;
 
 const classNames = new Set(classData.map(row => text(row?.名前)).filter(Boolean));
 
@@ -27,6 +27,17 @@ function integer(value, fallback = 0) {
 
 function coordKey(x, y) {
   return `${integer(x)},${integer(y)}`;
+}
+
+function enemySpawnTileDivisor() {
+  const runtimeValue = Number(window.__v39FieldRuntime?.settings?.enemySpawnTileDivisor);
+  const fieldSettingValue = Number(window.getV39FieldSettings?.()?.enemySpawnTileDivisor);
+  const configured = Number.isFinite(runtimeValue) ? runtimeValue : fieldSettingValue;
+  if (!Number.isFinite(configured)) return DEFAULT_ENEMY_SPAWN_TILE_DIVISOR;
+  return Math.max(
+    MIN_ENEMY_SPAWN_TILE_DIVISOR,
+    Math.min(MAX_ENEMY_SPAWN_TILE_DIVISOR, Math.round(configured))
+  );
 }
 
 function cubeCoord(x, y) {
@@ -165,7 +176,10 @@ function buildEnemies(data, village) {
     }
   }
 
-  const desiredCount = Math.max(MIN_ENEMY_COUNT, Math.min(MAX_ENEMY_COUNT, Math.round(candidates.length / LAND_TILES_PER_ENEMY)));
+  const tileDivisor = enemySpawnTileDivisor();
+  const desiredCount = candidates.length
+    ? Math.max(1, Math.round(candidates.length / tileDivisor))
+    : 0;
   const seed = (w * 73856093) ^ (h * 19349663) ^ (integer(village?.x) * 83492791) ^ integer(village?.y);
   const random = seededRandom(seed);
   const enemies = [];
@@ -192,7 +206,9 @@ function spawnForActivePlayer() {
     enemies,
     enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionAtMsByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{} }
   }, { reason:"enemy-spawned" });
-  window.dispatchEvent(new CustomEvent("v39:enemies-spawned", { detail:{ count:enemies.length } }));
+  window.dispatchEvent(new CustomEvent("v39:enemies-spawned", {
+    detail:{ count:enemies.length, tileDivisor:enemySpawnTileDivisor() }
+  }));
   return enemies;
 }
 
@@ -212,6 +228,8 @@ window.getV39EnemySpawnRules = () => ({
   safeDistanceFromBase:SAFE_DISTANCE_FROM_BASE,
   lowLevelDistanceFromBase:LOW_LEVEL_DISTANCE_FROM_BASE,
   lowLevelMax:LOW_LEVEL_MAX,
-  landTilesPerEnemy:LAND_TILES_PER_ENEMY,
+  enemySpawnTileDivisor:enemySpawnTileDivisor(),
+  enemySpawnTileDivisorMin:MIN_ENEMY_SPAWN_TILE_DIVISOR,
+  enemySpawnTileDivisorMax:MAX_ENEMY_SPAWN_TILE_DIVISOR,
   validDefinitionCount:[...definitionsByTerrain.values()].reduce((sum, rows) => sum + rows.length, 0)
 });
