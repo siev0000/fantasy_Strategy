@@ -1,3 +1,5 @@
+import { normalizeFactionSettlements } from "./settlement-state.js";
+
 const VISIBILITY_ARRAY_KEYS = Object.freeze([
   "exploredTileKeys",
   "visibleTileKeys",
@@ -54,10 +56,14 @@ export function createEmptyExplorationState(source = {}) {
   };
 }
 
-export function createPlayerFactionState(source = {}) {
+export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
+  const settlementState = normalizeFactionSettlements(source, ownerPlayerId);
+  const sourceWithoutLegacyVillage = { ...source };
+  delete sourceWithoutLegacyVillage.village;
   return {
-    ...source,
-    village: source?.village && typeof source.village === "object" ? { ...source.village } : null,
+    ...sourceWithoutLegacyVillage,
+    settlements: settlementState.settlements,
+    selectedSettlementId: settlementState.selectedSettlementId,
     units: cloneRows(source?.units),
     squads: cloneRows(source?.squads),
     deadUnitReserve: cloneRows(source?.deadUnitReserve),
@@ -95,12 +101,13 @@ export function createPlayerRecord(source = {}, index = 0) {
     isPlayer: source?.isPlayer !== false,
     race: String(source?.race || ""),
     ready: !!source?.ready,
-    factionState: createPlayerFactionState(source?.factionState)
+    factionState: createPlayerFactionState(source?.factionState, String(source?.id || `player-${playerNo}`))
   };
 }
 
 export const PLAYER_FACTION_STATE_KEYS = Object.freeze([
-  "village",
+  "settlements",
+  "selectedSettlementId",
   "units",
   "squads",
   "deadUnitReserve",

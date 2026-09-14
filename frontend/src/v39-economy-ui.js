@@ -9,6 +9,8 @@ import {
   normalizeV39Village,
   startV39Construction
 } from "./lib/v39-economy-rules.js";
+import { getSelectedSettlement } from "./lib/settlement-state.js";
+import { getVillageScaleDefinitions, resolveVillageScaleDefinition } from "./composables/villageCoreUtils.js";
 
 const modal = document.getElementById("buildModal");
 let selectedTile = null;
@@ -22,7 +24,7 @@ const formatNumber = value => number(value).toLocaleString("ja-JP", { maximumFra
 function activeContext() {
   const state = window.getV39GameState?.();
   const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
-  return { state, player, village:normalizeV39Village(player?.factionState?.village, player?.race) };
+  return { state, player, village:normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race) };
 }
 
 function targetTile(context = activeContext()) {
@@ -195,8 +197,10 @@ function refresh() {
 window.getV39ResourceSnapshot = currentResourceSnapshot;
 window.getV39SimpleResourceSnapshot = simpleResourceSnapshot;
 window.getV39FacilityDefinitions = facilityDefinitions;
-window.getV39FacilityEffectsAtTile = (tileKey, village = window.getV39ActiveFactionState?.()?.village) => resolveV39FacilityEffectsAtTile(village, tileKey);
-window.getV39FacilityYieldMultiplier = (tileKey, resourceKey, village = window.getV39ActiveFactionState?.()?.village) => resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey);
+window.getV39SettlementScaleDefinitions = getVillageScaleDefinitions;
+window.resolveV39SettlementScale = resolveVillageScaleDefinition;
+window.getV39FacilityEffectsAtTile = (tileKey, village = getSelectedSettlement(window.getV39ActiveFactionState?.())) => resolveV39FacilityEffectsAtTile(village, tileKey);
+window.getV39FacilityYieldMultiplier = (tileKey, resourceKey, village = getSelectedSettlement(window.getV39ActiveFactionState?.())) => resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey);
 window.inspectV39Construction = (facilityName, tile = targetTile()) => {
   const context = activeContext();
   const definition = facilityDefinitions().find(row => row.name === text(facilityName));

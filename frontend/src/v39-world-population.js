@@ -1,5 +1,6 @@
 import { getGameDataRows } from "./lib/game-data-registry.js";
 import { getHexNeighborCoords } from "./lib/hex-grid.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "./lib/settlement-state.js";
 
 const VILLAGE_TILES_PER_SITE = 450;
 const WANDERER_TILES_PER_GROUP = 300;
@@ -117,7 +118,7 @@ export function recruitV39Wanderer(state, playerId, groupId) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const group = state?.wandererGroups?.find(row => text(row?.id) === text(groupId));
   const faction = player?.factionState;
-  const village = faction?.village;
+  const village = getSelectedSettlement(faction);
   const selectedUnit = faction?.units?.find(row => text(row?.id) === text(faction?.selectedUnitId));
   const reasons = [];
   if (!player || !group || !village?.placed) reasons.push("対象データがありません");
@@ -137,7 +138,10 @@ export function recruitV39Wanderer(state, playerId, groupId) {
   const populationByRace = { ...(village.populationByRace || {}) };
   if (joined > 0) populationByRace[group.race] = Math.max(0, number(populationByRace[group.race])) + joined;
   const nextVillage = { ...village, populationByRace, population:Object.values(populationByRace).reduce((sum, value) => sum + number(value), 0) };
-  const players = state.players.map(row => row.id === player.id ? { ...row, factionState:{ ...row.factionState, village:nextVillage } } : row);
+  const players = state.players.map(row => row.id === player.id ? {
+    ...row,
+    factionState:replaceFactionSettlement(row.factionState, nextVillage, { ownerPlayerId:row.id })
+  } : row);
   const wandererGroups = state.wandererGroups.map(row => row.id !== group.id ? row : { ...row, population:remaining }).filter(row => number(row.population) > 0);
   const message = success ? `${group.race}の放浪者${joined}人が加入` : `${group.race}の放浪者の勧誘に失敗 / ${number(group.population) - remaining}人が離散`;
   return { ok:true, success, chance, roll:roll + 1, joined, remaining, message, state:{ ...state, players, wandererGroups } };

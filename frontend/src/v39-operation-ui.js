@@ -8,6 +8,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       { key: "squad", label: "部隊", icon: "👥" },
       { key: "action", label: "行動", icon: "⚔" },
       { key: "tile", label: "土地", icon: "⬢" },
+      { key: "settlement", label: "拠点", icon: "⌂" },
       { key: "manage", label: "管理", icon: "☰" }
     ],
     landItems: V39_TEST_OPERATION_DATA.landItems,
@@ -68,6 +69,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         <section id="footTile" class="land-panel" hidden aria-hidden="true">
           ${data.landItems.map(item => `<div class="land-item"><span>${item.label}</span><b${item.valueId ? ` id="${item.valueId}"` : ""}>${item.value}</b></div>`).join("")}
         </section>
+        <section id="footSettlement" class="settlement-panel" hidden aria-hidden="true"></section>
         <section id="footManage" class="mobile-manage-panel" hidden aria-hidden="true">
           <div id="v39-manage-menu" class="manage-menu-grid">${data.manageItems.map(item => `<button class="manage-tile" ${attributes(item)}><b>${item.icon}</b><span>${item.labelHtml || item.label}</span></button>`).join("")}</div>
           <section id="v39-display-settings-panel" class="display-settings-panel" hidden aria-hidden="true">

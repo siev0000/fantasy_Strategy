@@ -4,6 +4,7 @@ import { normalizeV39Village, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from 
 import { resolveUnitCreateModeCatalog, resolveUnitCreateMode } from "../composables/militaryUnitUtils.js";
 import { applyV39DerivedCharacterData } from "../v39-character-derived-rules.js";
 import { EQUIPMENT_SLOT_KEYS } from "../constants/unitCommon.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 
 const TEMP_UNIT_COST = Object.freeze({ 穀物:2, 野菜:2, 肉:2, 木材:2, 石材:2, 鉄:2 });
 const text = value => String(value ?? "").trim();
@@ -26,7 +27,7 @@ function limitFromValue(value, population, fallback) {
 }
 
 export function inspectV39UnitCreation(state, player, request = {}) {
-  const village = normalizeV39Village(player?.factionState?.village, player?.race);
+  const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const mode = resolveUnitCreateMode(request.mode || "army", Math.max(
     number(village?.cityLevels?.軍事Lv),
     resolveCompletedResearchLevel(player?.factionState?.research, "軍事")
@@ -86,6 +87,7 @@ function createUnit(player, check, name, index) {
     position:[village.x, village.y],
     movement:4,
     combatProfile:{ ...check.mode },
+    settlementId:text(village.settlementId || village.id),
     equipment
   });
   const maxHp = Math.max(1, number(unit.maxHp, number(unit?.status?.HP, 1)));
@@ -115,15 +117,17 @@ export function createV39Units(state, playerId, request = {}) {
     const name = nextUnitName([...existing, ...createdUnits], check.race, text(check.classRow.名前));
     createdUnits.push(createUnit(player, check, name, index));
   }
-  const players = state.players.map(row => row.id === player.id ? {
-    ...row,
-    factionState:{ ...row.factionState, village:nextVillage, units:[...existing, ...createdUnits], selectedUnitId:createdUnits[0].id }
-  } : row);
+  const factionState = replaceFactionSettlement({
+    ...player.factionState,
+    units:[...existing, ...createdUnits],
+    selectedUnitId:createdUnits[0].id
+  }, nextVillage, { ownerPlayerId:player.id });
+  const players = state.players.map(row => row.id === player.id ? { ...row, factionState } : row);
   return { ok:true, state:{ ...state, players }, createdUnits, check };
 }
 
 export function getV39UnitCreationOptions(player) {
-  const village = normalizeV39Village(player?.factionState?.village, player?.race);
+  const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const militaryLevel = Math.max(number(village?.cityLevels?.軍事Lv), resolveCompletedResearchLevel(player?.factionState?.research, "軍事"));
   return {
     races:Object.entries(village?.populationByRace || {}).filter(([, count]) => number(count) > 0).map(([race]) => race),

@@ -14,6 +14,7 @@ import {
 } from "./lib/v39-equipment-rules.js";
 import { EQUIPMENT_SLOT_KEYS } from "./constants/unitCommon.js";
 import { isMobUnit } from "./composables/unitCoreUtils.js";
+import { getSelectedSettlement } from "./lib/settlement-state.js";
 
 let activeTab = "inventory";
 let selectedInventoryKey = "";
@@ -53,7 +54,7 @@ function inventoryPanel(current) {
 }
 
 function compatibleOptions(current, slot) {
-  return normalizeV39EquipmentInventory(current?.factionState?.village?.equipmentInventory)
+  return normalizeV39EquipmentInventory(getSelectedSettlement(current?.factionState)?.equipmentInventory)
     .filter(row => getV39EquipmentSlotCandidates(row.item?.source || row.name).includes(slot))
     .map(row => `<option value="${escapeHtml(row.key)}">${escapeHtml(row.name)} [${escapeHtml(row.qualityLabel)}] 残${row.count}</option>`).join("");
 }

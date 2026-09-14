@@ -1,3 +1,5 @@
+import { getSelectedSettlement } from "./lib/settlement-state.js";
+
 const DEAD_UNIT_FIELD_TIMEOUT_MS = 30000;
 let lifecycleTimer = 0;
 
@@ -120,7 +122,7 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
   const source = entry.unit;
   const maxHp = Math.max(1, number(source?.maxHp, source?.status?.HP || 1));
   const hp = Math.max(1, Math.min(maxHp, Math.floor(number(options.hp, Math.ceil(maxHp * 0.25)))));
-  const village = player.factionState.village;
+  const village = getSelectedSettlement(player.factionState);
   const revived = {
     ...source,
     x:Math.floor(number(options.x, village?.x ?? source?.x)),

@@ -1,3 +1,5 @@
+import { getVillageScaleDefinitions } from "../composables/villageCoreUtils.js";
+
 // 村中心から領土として扱う半径。
 export const PLAYER_TERRITORY_RANGE = 1;
 
@@ -22,16 +24,13 @@ export const TERRITORY_TILE_MODE_CONVERSION_TURNS = 2;
 // 総収容人数 = 1マスあたり収容人数 × 使用マス数
 export const TERRITORY_RESIDENTIAL_LEVEL_LAND = "land";
 export const TERRITORY_RESIDENTIAL_LEVEL_ATTACHED = "attached";
-export const TERRITORY_RESIDENTIAL_LEVEL_VILLAGE = "village";
-export const TERRITORY_RESIDENTIAL_LEVEL_TOWN = "town";
-export const TERRITORY_RESIDENTIAL_LEVEL_CITY = "city";
-export const TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS = "metropolis";
-export const TERRITORY_RESIDENTIAL_LEVEL_ORDER = [
-  TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
-  TERRITORY_RESIDENTIAL_LEVEL_TOWN,
-  TERRITORY_RESIDENTIAL_LEVEL_CITY,
-  TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS
-];
+const SETTLEMENT_SCALE_DEFINITIONS = getVillageScaleDefinitions();
+const settlementScaleKeyAt = (level, fallback) => SETTLEMENT_SCALE_DEFINITIONS.find(row => row.level === level)?.key || fallback;
+export const TERRITORY_RESIDENTIAL_LEVEL_VILLAGE = settlementScaleKeyAt(1, "village");
+export const TERRITORY_RESIDENTIAL_LEVEL_TOWN = settlementScaleKeyAt(2, "town");
+export const TERRITORY_RESIDENTIAL_LEVEL_CITY = settlementScaleKeyAt(3, "city");
+export const TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS = settlementScaleKeyAt(4, "metropolis");
+export const TERRITORY_RESIDENTIAL_LEVEL_ORDER = SETTLEMENT_SCALE_DEFINITIONS.map(row => row.key).filter(Boolean);
 export const TERRITORY_RESIDENTIAL_LEVEL_CONFIG = {
   [TERRITORY_RESIDENTIAL_LEVEL_LAND]: {
     label: "土地",
@@ -47,34 +46,13 @@ export const TERRITORY_RESIDENTIAL_LEVEL_CONFIG = {
     iconName: "",
     markerIconSize: 0
   },
-  [TERRITORY_RESIDENTIAL_LEVEL_VILLAGE]: {
-    label: "村",
-    capacityPerTile: 20,
-    footprintTiles: 1,
-    iconName: "村",
-    markerIconSize: 60
-  },
-  [TERRITORY_RESIDENTIAL_LEVEL_TOWN]: {
-    label: "町",
-    capacityPerTile: 50,
-    footprintTiles: 2,
-    iconName: "町",
-    markerIconSize: 57
-  },
-  [TERRITORY_RESIDENTIAL_LEVEL_CITY]: {
-    label: "都市",
-    capacityPerTile: 100,
-    footprintTiles: 3,
-    iconName: "都市",
-    markerIconSize: 66
-  },
-  [TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS]: {
-    label: "大都市",
-    capacityPerTile: 150,
-    footprintTiles: 7,
-    iconName: "大都市",
-    markerIconSize: 78
-  }
+  ...Object.fromEntries(SETTLEMENT_SCALE_DEFINITIONS.map(row => [row.key, {
+    label:row.name,
+    capacityPerTile:row.capacityPerTile,
+    footprintTiles:row.footprintTiles,
+    iconName:row.imageName,
+    markerIconSize:row.displaySize
+  }]))
 };
 
 // 六角タイル枠線の見た目設定。

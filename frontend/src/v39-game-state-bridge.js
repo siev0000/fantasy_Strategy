@@ -1,5 +1,6 @@
 import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
 import { createPlayerFactionState, createPlayerRecord } from "./lib/player-state.js";
+import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "./lib/settlement-state.js";
 
 const EMPTY_STATE = Object.freeze({
   activePlayerId: "",
@@ -76,16 +77,23 @@ function normalizeUnitArray(value) {
     : [];
 }
 
-function normalizeFactionState(value = {}) {
+function normalizeFactionState(value = {}, ownerPlayerId = "") {
   const source = value && typeof value === "object" ? value : {};
-  const base = createPlayerFactionState(source);
+  const base = createPlayerFactionState(source, ownerPlayerId);
+  const settlementState = normalizeFactionSettlements(base, ownerPlayerId);
+  const selectedSettlement = settlementState.settlements.find(row => row.settlementId === settlementState.selectedSettlementId) || null;
+  const fallbackSettlementId = String(selectedSettlement?.settlementId || selectedSettlement?.id || "");
   return {
     ...base,
-    units: normalizeUnitArray(source.units),
+    units: normalizeUnitArray(source.units).map(unit => ({
+      ...unit,
+      settlementId:String(unit?.settlementId || fallbackSettlementId)
+    })),
     squads: normalizeEntityArray(source.squads),
     deadUnitReserve: normalizeEntityArray(source.deadUnitReserve),
     deathHistory: normalizeEntityArray(source.deathHistory),
-    village: source.village && typeof source.village === "object" ? cloneValue(source.village, null) : null,
+    settlements: normalizeEntityArray(settlementState.settlements),
+    selectedSettlementId: settlementState.selectedSettlementId,
     encounterMoveLocks: cloneRecord(source.encounterMoveLocks)
   };
 }
@@ -94,8 +102,20 @@ function normalizePlayers(value) {
   if (!Array.isArray(value)) return [];
   return value.filter(Boolean).map((player, index) => {
     const base = createPlayerRecord(player, index);
-    return { ...base, factionState:normalizeFactionState(player?.factionState) };
+    return { ...base, factionState:normalizeFactionState(player?.factionState, base.id) };
   });
+}
+
+function deriveWorldSettlements(players, sourceRows) {
+  const playerIds = new Set(players.map(player => String(player.id)));
+  const external = normalizeEntityArray(sourceRows).filter(row => !playerIds.has(String(row?.ownerPlayerId || "")));
+  const owned = players.flatMap(player => (player?.factionState?.settlements || []).map(row => ({
+    ...cloneValue(row, {}),
+    id:String(row?.settlementId || row?.id || ""),
+    settlementId:String(row?.settlementId || row?.id || ""),
+    ownerPlayerId:player.id
+  }))).filter(row => row.id);
+  return [...external, ...owned];
 }
 
 function normalizeState(input = {}) {
@@ -111,10 +131,11 @@ function normalizeState(input = {}) {
     territoryOwnerByTile: cloneRecord(input.territoryOwnerByTile),
     dangerPercentByTile: cloneRecord(input.dangerPercentByTile),
     facilitiesByTile: cloneRecord(input.facilitiesByTile),
-    settlements: normalizeEntityArray(input.settlements),
+    settlements: deriveWorldSettlements(players, input.settlements),
     neutralVillages: normalizeEntityArray(input.neutralVillages),
     wandererGroups: normalizeEntityArray(input.wandererGroups),
-    territoryStateByTile: cloneRecord(input.territoryStateByTile),
+    territoryStateByTile: Object.fromEntries(Object.entries(cloneRecord(input.territoryStateByTile))
+      .map(([key, value]) => [key, normalizeTerritoryStateRecord(value)])),
     recoveryPercentByTile: cloneRecord(input.recoveryPercentByTile),
     explorationSitesByTile: cloneJson(input.explorationSitesByTile, {}),
     diplomacyRelations: cloneJson(input.diplomacyRelations, {}),
@@ -158,7 +179,8 @@ function cloneFactionState(factionState = {}) {
     squads: normalizeEntityArray(factionState.squads),
     deadUnitReserve: normalizeEntityArray(factionState.deadUnitReserve),
     deathHistory: normalizeEntityArray(factionState.deathHistory),
-    village: factionState.village && typeof factionState.village === "object" ? cloneValue(factionState.village, null) : null,
+    settlements: normalizeEntityArray(base.settlements),
+    selectedSettlementId: base.selectedSettlementId,
     encounterMoveLocks: cloneRecord(factionState.encounterMoveLocks)
   };
 }
@@ -180,7 +202,8 @@ function getState() {
     settlements: state.settlements.map(row => ({ ...row })),
     neutralVillages: state.neutralVillages.map(row => ({ ...row })),
     wandererGroups: state.wandererGroups.map(row => ({ ...row, discoveredByPlayerIds:Array.isArray(row?.discoveredByPlayerIds) ? [...row.discoveredByPlayerIds] : [] })),
-    territoryStateByTile: { ...state.territoryStateByTile },
+    territoryStateByTile: Object.fromEntries(Object.entries(state.territoryStateByTile)
+      .map(([key, value]) => [key, { ...value }])),
     recoveryPercentByTile: { ...state.recoveryPercentByTile },
     explorationSitesByTile: cloneJson(state.explorationSitesByTile, {}),
     diplomacyRelations: cloneJson(state.diplomacyRelations, {}),
@@ -225,7 +248,9 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "settlements")) next.settlements = normalizeEntityArray(patch.settlements);
   if (Object.prototype.hasOwnProperty.call(patch, "neutralVillages")) next.neutralVillages = normalizeEntityArray(patch.neutralVillages);
   if (Object.prototype.hasOwnProperty.call(patch, "wandererGroups")) next.wandererGroups = normalizeEntityArray(patch.wandererGroups);
-  if (Object.prototype.hasOwnProperty.call(patch, "territoryStateByTile")) next.territoryStateByTile = cloneRecord(patch.territoryStateByTile);
+  if (Object.prototype.hasOwnProperty.call(patch, "territoryStateByTile")) next.territoryStateByTile = Object.fromEntries(
+    Object.entries(cloneRecord(patch.territoryStateByTile)).map(([key, value]) => [key, normalizeTerritoryStateRecord(value)])
+  );
   if (Object.prototype.hasOwnProperty.call(patch, "recoveryPercentByTile")) next.recoveryPercentByTile = cloneRecord(patch.recoveryPercentByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "explorationSitesByTile")) next.explorationSitesByTile = cloneJson(patch.explorationSitesByTile, {});
   if (Object.prototype.hasOwnProperty.call(patch, "diplomacyRelations")) next.diplomacyRelations = cloneJson(patch.diplomacyRelations, {});
@@ -269,7 +294,7 @@ function updateActiveFactionState(patch = {}, options = {}) {
   state = {
     ...state,
     players: state.players.map(player => player.id === activeId
-      ? { ...player, factionState:normalizeFactionState({ ...player.factionState, ...patch }) }
+      ? { ...player, factionState:normalizeFactionState({ ...player.factionState, ...patch }, player.id) }
       : player)
   };
   if (options.silent !== true) dispatchChange(options.reason || "active-faction");
@@ -288,7 +313,10 @@ function updateTileState(x, y, patch = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "owner")) state.territoryOwnerByTile = { ...state.territoryOwnerByTile, [key]:patch.owner };
   if (Object.prototype.hasOwnProperty.call(patch, "dangerPercent")) state.dangerPercentByTile = { ...state.dangerPercentByTile, [key]:patch.dangerPercent };
   if (Object.prototype.hasOwnProperty.call(patch, "facilities")) state.facilitiesByTile = { ...state.facilitiesByTile, [key]:patch.facilities };
-  if (Object.prototype.hasOwnProperty.call(patch, "territoryState")) state.territoryStateByTile = { ...state.territoryStateByTile, [key]:patch.territoryState };
+  if (Object.prototype.hasOwnProperty.call(patch, "territoryState")) state.territoryStateByTile = {
+    ...state.territoryStateByTile,
+    [key]:normalizeTerritoryStateRecord(patch.territoryState, patch.settlementId)
+  };
   if (Object.prototype.hasOwnProperty.call(patch, "recoveryPercent")) state.recoveryPercentByTile = { ...state.recoveryPercentByTile, [key]:patch.recoveryPercent };
   dispatchChange("tile");
   return getState();

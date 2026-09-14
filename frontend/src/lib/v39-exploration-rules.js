@@ -1,4 +1,5 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -121,6 +122,7 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
   const territoryStateByTile = { ...(state?.territoryStateByTile || {}) };
   const players = (state?.players || []).map(player => {
     const faction = player?.factionState || {};
+    const selectedSettlement = getSelectedSettlement(faction);
     const exploration = faction.exploration || { discoveredFeaturesByTile:{}, surveyedTileKeys:[], history:[], lastProcessedTurn:0 };
     if (number(exploration.lastProcessedTurn) >= turn) return player;
     const discoveredFeaturesByTile = { ...(exploration.discoveredFeaturesByTile || {}) };
@@ -150,7 +152,10 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
       const claimed = dangerPercentByTile[task.key] <= 0 && !territoryOwnerByTile[task.key] && !hasLivingEnemy;
       if (claimed) {
         territoryOwnerByTile[task.key] = player.id;
-        territoryStateByTile[task.key] = "領土";
+        territoryStateByTile[task.key] = {
+          status:"領土",
+          settlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id)
+        };
       }
       const foundText = feature ? feature.name : "異常なし";
       const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key:task.key, featureId:feature?.id || "", featureName:feature?.name || "", dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[task.key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${task.key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
@@ -158,10 +163,12 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
       const { surveyTask, ...rest } = unit;
       return rest;
     });
-    const territoryTileModeMap = { ...(faction?.village?.territoryTileModeMap || {}) };
+    const territoryTileModeMap = { ...(selectedSettlement?.territoryTileModeMap || {}) };
     for (const report of reports.filter(row => row.playerId === player.id && row.claimed)) territoryTileModeMap[report.key] = "resource";
-    const village = faction?.village ? { ...faction.village, territoryTileModeMap } : faction?.village;
-    return { ...player, factionState:{ ...faction, village, units, activityLog, exploration:{ discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } } };
+    const factionState = selectedSettlement
+      ? replaceFactionSettlement({ ...faction, units, activityLog, exploration:{ discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } }, { ...selectedSettlement, territoryTileModeMap }, { ownerPlayerId:player.id })
+      : { ...faction, units, activityLog, exploration:{ discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } };
+    return { ...player, factionState };
   });
   return { state:{ ...state, players, dangerPercentByTile, territoryOwnerByTile, territoryStateByTile }, reports };
 }

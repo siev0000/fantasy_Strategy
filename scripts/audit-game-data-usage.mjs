@@ -8,6 +8,10 @@ const sourceDir = path.join(root, "frontend", "src");
 const outputPath = path.join(root, "artifacts", "game-data-usage-report.json");
 const definitionOnlyTables = new Set(["効果", "災害", "都市基本データ"]);
 const provisionalTables = new Set(["都市"]);
+const reservedFieldReasons = new Map([
+  ["クラス.Tire", "上位クラス段階の実装時に使用する予約列"],
+  ["クラス.増加条件", "種族別人口増加方式の確定後に使用する予約列"]
+]);
 
 function hasDynamicReference(table, field) {
   if (table === "クラス" && /^(?:Skill|条件_|Lv_)\d+$/.test(field)) return true;
@@ -37,14 +41,15 @@ for (const file of jsonFiles) {
   const rows = Array.isArray(value) ? value : [value];
   const fields = [...new Set(rows.flatMap(row => row && typeof row === "object" ? Object.keys(row) : []))];
   const fieldStatus = fields.map(field => {
+    const reservedReason = reservedFieldReasons.get(`${table}.${field}`) || "";
     const literalUsed = sourceText.includes(field) || hasDynamicReference(table, field);
     const hasConfiguredValue = rows.some(row => row?.[field] !== null && row?.[field] !== undefined && String(row[field]).trim() !== "");
     const status = literalUsed
       ? "参照あり"
-      : !hasConfiguredValue || definitionOnlyTables.has(table) || provisionalTables.has(table)
+      : !hasConfiguredValue || reservedReason || definitionOnlyTables.has(table) || provisionalTables.has(table)
         ? "予約・定義のみ"
         : "未接続候補";
-    return { field, status, hasConfiguredValue };
+    return { field, status, hasConfiguredValue, ...(reservedReason ? { reservedReason } : {}) };
   });
   tables.push({
     table,

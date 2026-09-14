@@ -1,4 +1,5 @@
 import { formatV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
+import { getGameDataRows } from "./lib/game-data-registry.js";
 
 const PANEL_ID = "footTile";
 
@@ -7,6 +8,7 @@ const LAND_FIELD_IDS = Object.freeze({
   "領土": "v39-land-owner",
   "危険度": "v39-land-danger",
   "高度": "v39-land-height",
+  "開拓難易度": "v39-land-development-difficulty",
   "施設": "v39-land-facility",
   "ユニット": "v39-land-units",
   "町状態": "v39-land-settlement",
@@ -52,6 +54,13 @@ function bindFixedLandFields() {
     panel.appendChild(item);
   }
 
+  if (!document.getElementById("v39-land-development-difficulty")) {
+    const item = document.createElement("div");
+    item.className = "land-item";
+    item.innerHTML = '<span>開拓難易度</span><b id="v39-land-development-difficulty">-</b>';
+    panel.appendChild(item);
+  }
+
   const firstLabel = panel.querySelector(".land-item span");
   if (firstLabel) firstLabel.textContent = "地形 / 座標";
   return panel;
@@ -68,6 +77,7 @@ function resetLandPanel(message = "マスを選択") {
   setField("v39-land-owner", "未所属");
   setField("v39-land-danger", "-");
   setField("v39-land-height", "-");
+  setField("v39-land-development-difficulty", "-");
   setField("v39-land-facility", "なし");
   setField("v39-land-units", "なし");
   setField("v39-land-settlement", "なし");
@@ -223,7 +233,7 @@ function formatTerritoryState(state, detail, ownerLabel) {
   if (!raw) return ownerLabel === "未所属" ? "未所属" : "領土";
   if (typeof raw === "string") return raw;
   if (typeof raw === "object") {
-    const mode = text(raw.label || raw.modeLabel || raw.mode || raw.type, "");
+    const mode = text(raw.status || raw.state || raw.label || raw.modeLabel || raw.mode || raw.type, "");
     const progress = Number(raw.progressPercent ?? raw.progress);
     if (mode && Number.isFinite(progress)) return `${mode} / ${Math.round(progress)}%`;
     return mode || "領土";
@@ -286,6 +296,21 @@ function buildFullDetail(selected) {
   };
 }
 
+function developmentTerrainName(detail) {
+  if (detail.lava !== "なし") return "溶岩";
+  if (detail.special) return detail.special;
+  if (detail.river === "大河") return "大河";
+  if (detail.river === "あり") return "河川";
+  return detail.terrain;
+}
+
+function formatDevelopmentDifficulty(detail) {
+  const terrainName = developmentTerrainName(detail);
+  const definition = getGameDataRows("地形").find(row => text(row?.地形, "") === terrainName);
+  const difficulty = Number(definition?.開拓難易度);
+  return Number.isFinite(difficulty) ? String(difficulty) : "未設定";
+}
+
 function renderLandDetail(selected) {
   const detail = buildFullDetail(selected);
   if (!detail) {
@@ -298,6 +323,7 @@ function renderLandDetail(selected) {
   setField("v39-land-owner", detail.owner);
   setField("v39-land-danger", detail.danger);
   setField("v39-land-height", formatHeight(detail));
+  setField("v39-land-development-difficulty", formatDevelopmentDifficulty(detail));
   setField("v39-land-facility", detail.facilities);
   setField("v39-land-units", detail.units);
   setField("v39-land-settlement", detail.settlement);

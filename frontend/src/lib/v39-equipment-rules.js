@@ -1,6 +1,7 @@
 import { getGameDataRows } from "./game-data-registry.js";
 import { MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./v39-economy-rules.js";
 import { resolveCompletedResearchLevel } from "./research-progress.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, STATUS_FIELDS } from "../constants/unitCommon.js";
 import { isMobUnit } from "../composables/unitCoreUtils.js";
 
@@ -198,13 +199,24 @@ function takeInventoryItem(inventory, name, rarity, requestedKey = "") {
 }
 
 function researchLevel(player, field) {
-  return Math.max(number(player?.factionState?.village?.cityLevels?.[field]), resolveCompletedResearchLevel(player?.factionState?.research, field.replace(/Lv$/, "")));
+  return Math.max(number(getSelectedSettlement(player?.factionState)?.cityLevels?.[field]), resolveCompletedResearchLevel(player?.factionState?.research, field.replace(/Lv$/, "")));
+}
+
+function selectedVillage(player) {
+  return normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
+}
+
+function updateSelectedVillage(player, village, factionPatch = {}) {
+  return {
+    ...player,
+    factionState:replaceFactionSettlement({ ...player.factionState, ...factionPatch }, village, { ownerPlayerId:player.id })
+  };
 }
 
 export function craftV39Equipment(state, playerId, request = {}) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   if (!player) return { ok:false, reason:"プレイヤーが見つかりません", state };
-  const village = normalizeV39Village(player?.factionState?.village, player?.race);
+  const village = selectedVillage(player);
   if (!village?.placed) return { ok:false, reason:"装備作成には拠点配置が必要です", state };
   const count = Math.max(1, Math.min(99, Math.floor(number(request.count, 1))));
   const item = createV39EquipmentEntry(request.name, request.rarity);
@@ -217,7 +229,7 @@ export function craftV39Equipment(state, playerId, request = {}) {
   if (missing.length) return { ok:false, reason:`素材不足: ${missing.join("・")}`, state, cost };
   for (const [key, amount] of Object.entries(cost.material)) stock[key] = round1(Math.max(0, number(stock[key]) - number(amount)));
   const nextVillage = normalizeV39Village({ ...village, materialStockByType:stock, equipmentInventory:storeInventoryItem(village.equipmentInventory, item, count) }, player.race);
-  const nextState = updatePlayer(state, playerId, row => ({ ...row, factionState:{ ...row.factionState, village:nextVillage } }));
+  const nextState = updatePlayer(state, playerId, row => updateSelectedVillage(row, nextVillage));
   return { ok:true, state:nextState, item, count, cost };
 }
 
@@ -228,7 +240,7 @@ export function changeV39UnitEquipment(state, playerId, request = {}) {
   if (isMobUnit(unit)) return { ok:false, reason:"モブは固定装備です。レア度一新を使用してください", state };
   const slot = normalizeV39EquipmentSlot(request.slot);
   if (!slot) return { ok:false, reason:"装備部位が不正です", state };
-  const village = normalizeV39Village(player.factionState.village, player.race);
+  const village = selectedVillage(player);
   if (!village?.placed) return { ok:false, reason:"装備変更には拠点配置が必要です", state };
   const current = (unit.equipment || []).map(normalizeV39EquipmentItem).filter(Boolean);
   const oldItem = current.find(item => item.slot === slot) || null;
@@ -246,7 +258,9 @@ export function changeV39UnitEquipment(state, playerId, request = {}) {
   const equipment = current.filter(item => item.slot !== slot);
   if (nextItem) equipment.push(nextItem);
   const nextVillage = normalizeV39Village({ ...village, equipmentInventory:inventory }, player.race);
-  const nextState = updatePlayer(state, playerId, row => ({ ...row, factionState:{ ...row.factionState, village:nextVillage, units:row.factionState.units.map(entry => entry.id === unit.id ? { ...entry, equipment } : entry) } }));
+  const nextState = updatePlayer(state, playerId, row => updateSelectedVillage(row, nextVillage, {
+    units:row.factionState.units.map(entry => entry.id === unit.id ? { ...entry, equipment } : entry)
+  }));
   return { ok:true, state:nextState, item:nextItem, removed:oldItem, slot };
 }
 
@@ -260,7 +274,7 @@ export function rerollV39MobEquipment(state, playerId, request = {}) {
   const rarity = normalizeV39EquipmentRarity(request.rarity);
   const equipment = EQUIPMENT_SLOT_KEYS.map(slot => createV39EquipmentEntry(classRow?.[slot], rarity, slot)).filter(Boolean);
   if (!equipment.length) return { ok:false, reason:"固定装備が設定されていません", state };
-  const village = normalizeV39Village(player.factionState.village, player.race);
+  const village = selectedVillage(player);
   if (!village?.placed) return { ok:false, reason:"レア度一新には拠点配置が必要です", state };
   const totalCost = Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, 0]));
   for (const item of equipment) for (const key of MATERIAL_RESOURCE_KEYS) totalCost[key] = round1(totalCost[key] + number(item.craftCostMaterial?.[key]));
@@ -270,7 +284,9 @@ export function rerollV39MobEquipment(state, playerId, request = {}) {
   if (missing.length) return { ok:false, reason:`素材不足: ${missing.join("・")}`, state };
   for (const [key, amount] of Object.entries(totalCost)) stock[key] = round1(Math.max(0, number(stock[key]) - amount));
   const nextVillage = normalizeV39Village({ ...village, materialStockByType:stock }, player.race);
-  const nextState = updatePlayer(state, playerId, row => ({ ...row, factionState:{ ...row.factionState, village:nextVillage, units:row.factionState.units.map(entry => entry.id === unit.id ? { ...entry, equipment } : entry) } }));
+  const nextState = updatePlayer(state, playerId, row => updateSelectedVillage(row, nextVillage, {
+    units:row.factionState.units.map(entry => entry.id === unit.id ? { ...entry, equipment } : entry)
+  }));
   return { ok:true, state:nextState, equipment, cost:totalCost };
 }
 
@@ -279,7 +295,7 @@ export function getV39EquipmentCatalog() {
 }
 
 export function getV39EquipmentInventoryView(player) {
-  const village = normalizeV39Village(player?.factionState?.village, player?.race);
+  const village = selectedVillage(player);
   const stock = normalizeV39EquipmentInventory(village?.equipmentInventory);
   const equipped = new Map();
   for (const unit of player?.factionState?.units || []) {
@@ -354,7 +370,7 @@ function enchantUsageSpec(row, item) {
 }
 
 function enchantUsageState(player, row, item, turnNumber = 1) {
-  const village = normalizeV39Village(player?.factionState?.village, player?.race);
+  const village = selectedVillage(player);
   const turn = Math.max(1, Math.floor(number(turnNumber, 1)));
   const spec = enchantUsageSpec(row, item);
   const source = village?.equipmentActionUsage && number(village.equipmentActionUsage.turn, -1) === turn
@@ -368,7 +384,7 @@ function enchantUsageState(player, row, item, turnNumber = 1) {
 }
 
 export function getV39EnchantmentOptions(player, inventoryKeyValue, turnNumber = 1) {
-  const inventory = normalizeV39EquipmentInventory(player?.factionState?.village?.equipmentInventory);
+  const inventory = normalizeV39EquipmentInventory(getSelectedSettlement(player?.factionState)?.equipmentInventory);
   const target = inventory.find(entry => entry.key === text(inventoryKeyValue));
   if (!target) return [];
   return enchantmentRows.map(row => {
@@ -412,7 +428,7 @@ function applyEnchantment(item, row) {
 export function applyV39EquipmentEnchantment(state, playerId, request = {}) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   if (!player) return { ok:false, reason:"プレイヤーが見つかりません", state };
-  const village = normalizeV39Village(player?.factionState?.village, player?.race);
+  const village = selectedVillage(player);
   if (!village?.placed) return { ok:false, reason:"付与には拠点配置が必要です", state };
   const inventory = normalizeV39EquipmentInventory(village.equipmentInventory);
   const target = inventory.find(entry => entry.key === text(request.inventoryKey));
@@ -455,6 +471,6 @@ export function applyV39EquipmentEnchantment(state, playerId, request = {}) {
     equipmentInventory:storeInventoryItem(taken.inventory, item, 1),
     equipmentActionUsage
   }, player.race);
-  const nextState = updatePlayer(state, playerId, current => ({ ...current, factionState:{ ...current.factionState, village:nextVillage } }));
+  const nextState = updatePlayer(state, playerId, current => updateSelectedVillage(current, nextVillage));
   return { ok:true, state:nextState, item, cost, enchantment:row };
 }

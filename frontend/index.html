@@ -4234,6 +4234,38 @@ html,body{
 }
 .land-item{padding:7px!important}.land-item span{font-size:9px!important}.land-item b{font-size:12px!important}
 .mobile-manage-panel{height:100%;min-height:0;overflow:hidden}
+.settlement-panel{
+  box-sizing:border-box;width:100%;height:100%;min-height:0;overflow:hidden;
+  grid-template-rows:auto minmax(0,1fr);gap:6px
+}
+.settlement-tabs{
+  min-width:0;display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:0 1px 3px;
+  scrollbar-width:thin
+}
+.settlement-tab{
+  flex:0 0 auto;min-width:92px;min-height:34px;padding:5px 10px;border:1px solid #405158;
+  border-radius:7px;background:#132026;color:#e8efec;font-size:13px;font-weight:700;white-space:nowrap
+}
+.settlement-tab.active{border:2px solid #73d6e4;background:#18333a;color:#fff}
+.settlement-fold-list{min-height:0;overflow:auto;display:grid;align-content:start;gap:5px;padding-right:2px}
+.settlement-fold{border:1px solid #3d4e55;border-radius:7px;background:#121e23;color:#e4eeee}
+.settlement-fold summary{
+  min-height:34px;padding:6px 9px;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  cursor:pointer;font-size:14px;font-weight:700;list-style:none
+}
+.settlement-fold summary::-webkit-details-marker{display:none}
+.settlement-fold summary::before{content:"▷";flex:0 0 auto;color:#72cbd9}
+.settlement-fold[open] summary::before{content:"▽"}
+.settlement-fold summary span{margin-right:auto}.settlement-fold summary b{color:#a8e2bd;font-size:14px}
+.settlement-fold-body{padding:0 9px 8px}
+.settlement-value-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:5px}
+.settlement-value-grid>div{padding:6px;border-radius:5px;background:#19292f;display:flex;justify-content:space-between;gap:6px}
+.settlement-value-grid span,.settlement-inline-facts span,.settlement-empty{font-size:13px;color:#a9b7ba}
+.settlement-value-grid b,.settlement-inline-facts b{font-size:14px;color:#edf5f2}
+.settlement-chip-list,.settlement-inline-facts{display:flex;flex-wrap:wrap;gap:6px}
+.settlement-chip{padding:5px 8px;border:1px solid #40545b;border-radius:999px;background:#19282e;font-size:13px}
+.settlement-chip.building{border-color:#7d693a;color:#ead28e}
+.settlement-empty-state{place-self:center;color:#94a6aa;font-size:15px}
 #footManage.mobile-manage-panel{
   grid-template-columns:minmax(0,1fr)!important;
   grid-template-rows:minmax(0,1fr)!important;
@@ -4286,6 +4318,7 @@ html,body{
 .footer-body>#footSquad:not(.v39-footer-panel-active),
 .footer-body>#footAction:not(.v39-footer-panel-active),
 .footer-body>#footTile:not(.v39-footer-panel-active),
+.footer-body>#footSettlement:not(.v39-footer-panel-active),
 .footer-body>#footManage:not(.v39-footer-panel-active){display:none!important}
 
 </style>

@@ -1,5 +1,6 @@
 import { createInitialV39Village } from "./lib/v39-economy-rules.js";
 import { getHexOffsetNeighbors } from "./lib/hex-grid.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "./lib/settlement-state.js";
 
 const MODE_BANNER_ID = "modeBanner";
 
@@ -179,7 +180,7 @@ function beginInitialPlacement(options = {}) {
   const player = getActivePlayer(state);
   const faction = player?.factionState;
   if (!state || !player || !faction) return false;
-  if (faction.village?.placed && options.force !== true) return false;
+  if (getSelectedSettlement(faction)?.placed && options.force !== true) return false;
 
   const units = options.keepUnitCoordinates === true
     ? faction.units
@@ -190,7 +191,8 @@ function beginInitialPlacement(options = {}) {
         ...row,
         factionState: {
           ...row.factionState,
-          village: null,
+          settlements: [],
+          selectedSettlementId: "",
           villagePlacementMode: true,
           moveCommandUnitId: "",
           units,
@@ -229,7 +231,7 @@ function placeInitialBase(tile) {
   }
   const sourceUnits = Array.isArray(faction.units) ? faction.units : [];
   const positions = buildInitialUnitPositions(x, y, sourceUnits.length);
-  const units = sourceUnits.map((unit, index) => {
+  let units = sourceUnits.map((unit, index) => {
     const position = positions[index];
     return {
       ...unit,
@@ -259,7 +261,10 @@ function placeInitialBase(tile) {
   });
   for (const tileData of territoryTiles) {
     territoryOwnerByTile[tileData.key] = player.id;
-    territoryStateByTile[tileData.key] = tileData.key === key ? "拠点" : "領土";
+    territoryStateByTile[tileData.key] = {
+      status: tileData.key === key ? "拠点" : "領土",
+      settlementId: `village-${x}-${y}`
+    };
   }
   facilitiesByTile[key] = ["拠点"];
 
@@ -267,7 +272,7 @@ function placeInitialBase(tile) {
   const village = createInitialV39Village({
     x,
     y,
-    name:text(faction.village?.name, "拠点"),
+    name:text(getSelectedSettlement(faction)?.name, "拠点"),
     race:player.race,
     state:stateWithTerritory,
     player,
@@ -277,17 +282,19 @@ function placeInitialBase(tile) {
     tileData.key,
     tileData.key === key ? "settlement" : "resource"
   ]));
+  const settlementId = text(village.settlementId || village.id);
+  units = units.map(unit => ({ ...unit, settlementId }));
 
+  const factionState = replaceFactionSettlement({
+    ...faction,
+    villagePlacementMode: false,
+    selectedUnitId,
+    units
+  }, village, { ownerPlayerId:player.id });
   const players = state.players.map(row => row.id === player.id
     ? {
         ...row,
-        factionState: {
-          ...row.factionState,
-          village,
-          villagePlacementMode: false,
-          selectedUnitId,
-          units
-        }
+        factionState
       }
     : row);
 
@@ -333,7 +340,7 @@ function syncPlacementMode() {
   if (!faction) return;
   if (faction.villagePlacementMode) {
     showBanner("拠点を設置するマスを選択してください", true);
-  } else if (faction.village?.placed) {
+  } else if (getSelectedSettlement(faction)?.placed) {
     hideBanner();
   }
 }
@@ -342,7 +349,7 @@ function handleFieldGenerated() {
   const faction = getActiveFaction();
   if (!faction) return;
 
-  if (!faction.village?.placed) {
+  if (!getSelectedSettlement(faction)?.placed) {
     beginInitialPlacement({ force:true });
     return;
   }

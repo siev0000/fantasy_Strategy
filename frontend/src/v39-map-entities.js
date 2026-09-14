@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { getSelectedSettlement } from "./lib/settlement-state.js";
 import {
   MAP_ENTITY_SIZE_RULES,
   tileRelativePx
@@ -376,7 +377,7 @@ function renderMarkers() {
 
   clearMarkers();
   markerContainer = scene.add.container(0, 0).setDepth(LAYER_DEPTH).setName("v39-entity-layer");
-  drawBases(scene, markerContainer, state?.settlements, faction.village);
+  drawBases(scene, markerContainer, state?.settlements, getSelectedSettlement(faction));
   drawUnits(scene, markerContainer, faction.units, faction.selectedUnitId);
   drawForeignUnits(scene, markerContainer, state?.players, state?.activePlayerId);
   drawEnemies(scene, markerContainer, state?.enemies);

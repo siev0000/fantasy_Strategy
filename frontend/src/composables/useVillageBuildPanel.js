@@ -6,7 +6,6 @@ const FACILITY_REQUIREMENT_FIELD_TO_ABILITY_KEY = {
   鍛冶Lv: "鍛冶場"
 };
 const FACILITY_REQUIREMENT_FIELDS = RESEARCH_CATEGORY_ORDER;
-const SETTLEMENT_STAGE_FACILITY_NAMES = ["村", "町", "都市", "大都市"];
 const RESEARCH_CATEGORY_DISPLAY_NAME_MAP = {
   鍛冶Lv: "鍛冶",
   魔法Lv: "魔法",
@@ -202,7 +201,7 @@ export function useVillageBuildPanel(options = {}) {
     return rows.map((row, index) => {
       const name = nonEmptyText(row?.施設名) || `施設${index + 1}`;
       const conditionTerrain = nonEmptyText(row?.条件地形) || "なし";
-      const isSettlementStage = SETTLEMENT_STAGE_FACILITY_NAMES.includes(name);
+      const isSettlementStage = nonEmptyText(row?.分類) === "拠点規模";
       const cost = buildEmptyResourceBag(materialResourceKeys);
       for (const key of materialResourceKeys) {
         cost[key] = Math.max(0, toSafeNumber(row?.[key], 0));
@@ -302,7 +301,6 @@ export function useVillageBuildPanel(options = {}) {
     if (!defs.length) return null;
     const scaleLabel = nonEmptyText(resolveVillageScaleLabel(village));
     return defs.find(def => def.name === scaleLabel)
-      || defs.find(def => def.name === "大都市")
       || defs[defs.length - 1]
       || null;
   }

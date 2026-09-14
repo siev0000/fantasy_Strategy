@@ -4,11 +4,8 @@ import {
   getIconSrcByName,
   hasIconName
 } from "./icon-library.js";
-import {
-  MAP_SETTLEMENT_MARKER_CONFIG,
-  TERRITORY_RESIDENTIAL_LEVEL_CONFIG,
-  TERRITORY_RESIDENTIAL_LEVEL_VILLAGE
-} from "./phaser-map-panel-config.js";
+import { MAP_SETTLEMENT_MARKER_CONFIG } from "./phaser-map-panel-config.js";
+import { resolveVillageScaleDefinition } from "../composables/villageCoreUtils.js";
 
 const rawEnemyArtworkModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
   eager: true,
@@ -163,28 +160,13 @@ export function resolveEnemyArtwork(enemy) {
 }
 
 export function resolveSettlementArtwork(settlement) {
-  const rawLevel = text(
-    settlement?.residentialLevel
-    || settlement?.villageLevelKey
-    || settlement?.scale
-    || settlement?.scaleLabel
-  );
-  const levelAliases = {
-    "村": "village",
-    "町": "town",
-    "都市": "city",
-    "大都市": "metropolis"
-  };
-  const level = TERRITORY_RESIDENTIAL_LEVEL_CONFIG[rawLevel]
-    ? rawLevel
-    : (levelAliases[rawLevel] || TERRITORY_RESIDENTIAL_LEVEL_VILLAGE);
-  const definition = TERRITORY_RESIDENTIAL_LEVEL_CONFIG[level]
-    || TERRITORY_RESIDENTIAL_LEVEL_CONFIG[TERRITORY_RESIDENTIAL_LEVEL_VILLAGE];
-  const artwork = iconArtwork([definition?.iconName || "村"]);
+  const definition = resolveVillageScaleDefinition(settlement);
+  const imageName = text(definition?.imageName) || "村";
+  const artwork = iconArtwork([imageName]);
   return artwork ? {
     ...artwork,
     type: "settlement",
-    textureKey: `v39-settlement:${lookupKey(definition?.iconName || "村")}`,
-    sizePx: Number(definition?.markerIconSize) || MAP_SETTLEMENT_MARKER_CONFIG.iconSize
+    textureKey: `v39-settlement:${lookupKey(imageName)}`,
+    sizePx: Number(definition?.displaySize) || MAP_SETTLEMENT_MARKER_CONFIG.iconSize
   } : null;
 }

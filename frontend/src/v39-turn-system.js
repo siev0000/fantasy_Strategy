@@ -1,5 +1,6 @@
 import { getV39DiscoveredFeature } from "./lib/v39-exploration-rules.js";
 import { resolveV39FacilityEffectsAtTile } from "./lib/v39-economy-rules.js";
+import { getSettlementForTerritory } from "./lib/settlement-state.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
@@ -54,7 +55,8 @@ function recoverUnitHp(unit, faction, playerId, state) {
     : "";
   const featureRecovery = getV39DiscoveredFeature(faction, key)?.definition?.recoveryPercent || 0;
   const owned = key && String(state?.territoryOwnerByTile?.[key] || "") === String(playerId || "");
-  const facilityRecovery = owned ? number(resolveV39FacilityEffectsAtTile(faction?.village, key)?.回復) : 0;
+  const settlement = getSettlementForTerritory(faction, state?.territoryStateByTile?.[key]);
+  const facilityRecovery = owned ? number(resolveV39FacilityEffectsAtTile(settlement, key)?.回復) : 0;
   const recovered = Math.max(1, Math.floor(maxHp * ((5 + featureRecovery + facilityRecovery) / 100)));
   const nextHp = Math.min(maxHp, hp + recovered);
   return { ...unit, hp:nextHp, currentHp:nextHp };

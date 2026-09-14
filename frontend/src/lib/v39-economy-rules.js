@@ -11,9 +11,10 @@ import {
   normalizeResourceBag,
   sumResourceBag
 } from "../composables/resourceEconomyUtils.js";
-import { adjustVillagePopulationForTurn, resolveVillageScaleLabel } from "../composables/villageCoreUtils.js";
+import { adjustVillagePopulationForTurn, resolveVillageScaleDefinition, resolveVillageScaleLabel } from "../composables/villageCoreUtils.js";
 import { getHexDistance, getHexOffsetNeighbors } from "./hex-grid.js";
 import { RESEARCH_CATEGORY_ORDER } from "./research-tree-config.js";
+import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement, territorySettlementId } from "./settlement-state.js";
 
 const RESOURCE_DEFINITION_ROWS = getGameDataRows("都市基本データ")
   .filter(row => ["食料", "木材", "石材", "金属", "貴金属", "宝石", "特殊資源"].includes(String(row?.分類 || "").trim()));
@@ -38,10 +39,10 @@ const ECONOMY_GAIN_SCALE = 0.1;
 const ECONOMY_CONSUMPTION_SCALE = 0.1;
 const FOOD_SUBSTITUTE_MULTIPLIER = 1.2;
 const INITIAL_STOCK_TURNS = 3;
-const SETTLEMENT_NAMES = new Set(["村", "町", "都市", "大都市"]);
 const RESEARCH_FIELDS = RESEARCH_CATEGORY_ORDER;
 const FACILITY_NON_EFFECT_FIELDS = new Set([
-  "施設名", "条件地形", "詳細", "建築時間", "建築数", "影響範囲",
+  "施設名", "分類", "識別キー", "規模Lv", "規模下限人口", "ネームド上限", "表示画像", "表示サイズ", "1マス収容人数", "占有マス数",
+  "条件地形", "詳細", "建築時間", "建築数", "影響範囲",
   ...RESEARCH_FIELDS, ...MATERIAL_RESOURCE_KEYS, "死体", "魂"
 ]);
 
@@ -118,9 +119,13 @@ function resolveTileTerrain(data, x, y) {
   return text(data?.specialMap?.[y]?.[x]) || text(data?.grid?.[y]?.[x]);
 }
 
-function territoryKeysForPlayer(state, playerId) {
+function territoryKeysForPlayer(state, playerId, settlementId = "") {
   return Object.entries(state?.territoryOwnerByTile || {})
-    .filter(([, owner]) => text(owner) === text(playerId))
+    .filter(([key, owner]) => {
+      if (text(owner) !== text(playerId)) return false;
+      const assignedId = territorySettlementId(state?.territoryStateByTile?.[key]);
+      return !text(settlementId) || !assignedId || assignedId === text(settlementId);
+    })
     .map(([key]) => key);
 }
 
@@ -151,8 +156,8 @@ function collectDiscoveredFeatureIncome(raw, player, ownedSet, village) {
 }
 
 export function collectV39TerritoryIncome(state, player, mapData = window.__v39FieldRuntime?.mapData) {
-  const village = normalizeV39Village(player?.factionState?.village, player?.race);
-  const ownedSet = new Set(territoryKeysForPlayer(state, player?.id));
+  const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
+  const ownedSet = new Set(territoryKeysForPlayer(state, player?.id, village?.settlementId || village?.id));
   const terrainYieldMap = new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]));
   const raw = collectTerritoryIncome(mapData, ownedSet, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
     roundTo1:round1,
@@ -180,7 +185,11 @@ export function createInitialV39Village({ x, y, name = "拠点", race = "只人"
     populationByRace:{ [text(race) || "只人"]:initialPopulationForRace(race) },
     foodStockByType:{}, materialStockByType:{}, buildings:[], tileFacilityMap:{}, constructionQueue:{}
   }, race);
-  const sourcePlayer = { ...(player || {}), race, factionState:{ ...(player?.factionState || {}), village:base } };
+  const sourcePlayer = {
+    ...(player || {}),
+    race,
+    factionState:replaceFactionSettlement(player?.factionState || {}, base, { ownerPlayerId:player?.id })
+  };
   const income = collectV39TerritoryIncome(state, sourcePlayer, mapData);
   base.foodStockByType = multiplyResourceBag(income.food, INITIAL_STOCK_TURNS, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
   base.materialStockByType = multiplyResourceBag(income.material, INITIAL_STOCK_TURNS, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 });
@@ -195,7 +204,7 @@ function raceFoodProfile(race) {
 }
 
 export function facilityDefinitions() {
-  return getGameDataRows("施設").filter(row => text(row?.施設名) && !SETTLEMENT_NAMES.has(text(row?.施設名))).map(row => ({
+  return getGameDataRows("施設").filter(row => text(row?.施設名) && text(row?.分類) !== "拠点規模").map(row => ({
     id:`施設:${text(row.施設名)}`,
     name:text(row.施設名),
     description:text(row.詳細) || "説明なし",
@@ -265,13 +274,11 @@ function completedResearchLevels(research, cityLevels = {}) {
 }
 
 function settlementCapacity(village) {
-  const stage = resolveVillageScaleLabel(village);
-  const row = getGameDataRows("施設").find(item => text(item?.施設名) === stage);
-  return Math.max(1, Math.floor(number(row?.建築数, 3)));
+  return Math.max(1, resolveVillageScaleDefinition(village)?.buildingCapacity || 1);
 }
 
 export function inspectV39Construction(state, player, definition, tile, mapData = window.__v39FieldRuntime?.mapData) {
-  const village = normalizeV39Village(player?.factionState?.village, player?.race);
+  const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const key = coordKey(tile?.x, tile?.y);
   const reasons = [];
   if (!village?.placed) reasons.push("拠点未配置");
@@ -301,7 +308,10 @@ export function startV39Construction(state, playerId, facilityName, tile, mapDat
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
   const queueItem = { id:`construction-${player.id}-${definition.name}-${turn}-${check.key}`, facilityName:definition.name, tileKey:check.key, remainingTurns:definition.buildTurns, totalTurns:definition.buildTurns, startedTurn:turn };
   const nextVillage = normalizeV39Village({ ...village, materialStockByType, constructionQueue:[...village.constructionQueue, queueItem] }, player.race);
-  const players = state.players.map(row => row.id === player.id ? { ...row, factionState:{ ...row.factionState, village:nextVillage } } : row);
+  const players = state.players.map(row => row.id === player.id ? {
+    ...row,
+    factionState:replaceFactionSettlement(row.factionState, nextVillage, { ownerPlayerId:row.id })
+  } : row);
   return { ok:true, state:{ ...state, players }, queueItem, definition };
 }
 
@@ -338,49 +348,67 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
   let facilitiesByTile = { ...(state.facilitiesByTile || {}) };
   let settlements = Array.isArray(state.settlements) ? state.settlements.map(row => ({ ...row })) : [];
   const players = state.players.map(player => {
-    let village = normalizeV39Village(player?.factionState?.village, player?.race);
-    if (!village?.placed) return player;
     const currentTurn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
-    if (number(village?.lastEconomyDelta?.turn) >= currentTurn) return player;
-    const construction = advanceConstruction(village);
-    village = normalizeV39Village(construction.village, player.race);
-    for (const item of construction.completed) {
-      facilitiesByTile[item.tileKey] = [...new Set([...(facilitiesByTile[item.tileKey] || []), item.facilityName])];
-      completed.push({ ...item, playerId:player.id });
-    }
-    const territoryIncome = collectV39TerritoryIncome(state, { ...player, factionState:{ ...player.factionState, village } }, mapData);
-    const unitDemand = multiplyResourceBag(buildUnitUpkeepFoodDemand(
-      (player.factionState.units || []).filter(unit => number(unit?.hp ?? unit?.currentHp) > 0),
-      FOOD_RESOURCE_KEYS, raceFoodProfile, { roundTo1:round1 }
-    ), ECONOMY_CONSUMPTION_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
-    const populationDemand = multiplyResourceBag(buildPopulationFoodDemand(village, FOOD_RESOURCE_KEYS, raceFoodProfile, { roundTo1:round1 }), ECONOMY_CONSUMPTION_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
-    const beforeFood = { ...village.foodStockByType };
-    const beforeMaterial = { ...village.materialStockByType };
-    const core = applyVillageEconomyTurn(village, {
-      territoryIncome,
-      buildingIncome:{ food:buildEmptyResourceBag(FOOD_RESOURCE_KEYS), material:buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS), count:village.buildings.length },
-      unitUpkeepDemand:unitDemand,
-      populationDemand,
-      foodKeys:FOOD_RESOURCE_KEYS,
-      materialKeys:MATERIAL_RESOURCE_KEYS,
-      fallbackMultiplier:FOOD_SUBSTITUTE_MULTIPLIER,
-      adjustVillagePopulationForTurn:(target, shortage) => adjustVillagePopulationForTurn(target, shortage, {
-        selectedRaceFallback:player.race,
-        randomInt:(min, max) => shortage > 0 ? Math.min(-1, max) : Math.max(1, min)
-      })
-    }, { roundTo1:round1 });
-    village = normalizeV39Village(core.village, player.race);
-    village.lastEconomyDelta = {
-      food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, round1(number(village.foodStockByType[key]) - number(beforeFood[key]))])),
-      material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, round1(number(village.materialStockByType[key]) - number(beforeMaterial[key]))])),
-      population:core.populationDelta,
-      shortage:core.shortageTotal,
-      turn:state.timeline?.turnNumber
+    const originalSettlements = getFactionSettlements(player?.factionState);
+    const selectedId = text(player?.factionState?.selectedSettlementId) || text(originalSettlements[0]?.settlementId);
+    const nextSettlements = originalSettlements.map(sourceVillage => {
+      let village = normalizeV39Village(sourceVillage, player?.race);
+      if (!village?.placed || number(village?.lastEconomyDelta?.turn) >= currentTurn) return village;
+      const settlementId = text(village.settlementId || village.id);
+      const construction = advanceConstruction(village);
+      village = normalizeV39Village(construction.village, player.race);
+      for (const item of construction.completed) {
+        facilitiesByTile[item.tileKey] = [...new Set([...(facilitiesByTile[item.tileKey] || []), item.facilityName])];
+        completed.push({ ...item, playerId:player.id, settlementId });
+      }
+      const territoryIncome = collectV39TerritoryIncome(state, {
+        ...player,
+        factionState:replaceFactionSettlement(player.factionState, village, { ownerPlayerId:player.id })
+      }, mapData);
+      const assignedUnits = (player.factionState.units || []).filter(unit => {
+        if (number(unit?.hp ?? unit?.currentHp) <= 0) return false;
+        return text(unit?.settlementId || selectedId) === settlementId;
+      });
+      const unitDemand = multiplyResourceBag(buildUnitUpkeepFoodDemand(
+        assignedUnits,
+        FOOD_RESOURCE_KEYS, raceFoodProfile, { roundTo1:round1 }
+      ), ECONOMY_CONSUMPTION_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
+      const populationDemand = multiplyResourceBag(buildPopulationFoodDemand(village, FOOD_RESOURCE_KEYS, raceFoodProfile, { roundTo1:round1 }), ECONOMY_CONSUMPTION_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
+      const beforeFood = { ...village.foodStockByType };
+      const beforeMaterial = { ...village.materialStockByType };
+      const core = applyVillageEconomyTurn(village, {
+        territoryIncome,
+        buildingIncome:{ food:buildEmptyResourceBag(FOOD_RESOURCE_KEYS), material:buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS), count:village.buildings.length },
+        unitUpkeepDemand:unitDemand,
+        populationDemand,
+        foodKeys:FOOD_RESOURCE_KEYS,
+        materialKeys:MATERIAL_RESOURCE_KEYS,
+        fallbackMultiplier:FOOD_SUBSTITUTE_MULTIPLIER,
+        adjustVillagePopulationForTurn:(target, shortage) => adjustVillagePopulationForTurn(target, shortage, {
+          selectedRaceFallback:player.race,
+          randomInt:(min, max) => shortage > 0 ? Math.min(-1, max) : Math.max(1, min)
+        })
+      }, { roundTo1:round1 });
+      village = normalizeV39Village(core.village, player.race);
+      village.lastEconomyDelta = {
+        food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, round1(number(village.foodStockByType[key]) - number(beforeFood[key]))])),
+        material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, round1(number(village.materialStockByType[key]) - number(beforeMaterial[key]))])),
+        population:core.populationDelta,
+        shortage:core.shortageTotal,
+        turn:state.timeline?.turnNumber
+      };
+      const scale = resolveVillageScaleLabel(village);
+      settlements = settlements.map(row => text(row.id || row.settlementId) === settlementId
+        ? { ...row, type:scale, population:village.population }
+        : row);
+      reports.push({ playerId:player.id, settlementId, territoryIncome, shortage:core.shortageTotal, populationDelta:core.populationDelta, village });
+      return village;
+    }).filter(Boolean);
+    const selectedSettlement = nextSettlements.find(row => text(row.settlementId || row.id) === selectedId) || nextSettlements[0] || null;
+    return {
+      ...player,
+      factionState:{ ...player.factionState, settlements:nextSettlements, selectedSettlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id) }
     };
-    const scale = resolveVillageScaleLabel(village);
-    settlements = settlements.map(row => text(row.ownerPlayerId) === text(player.id) ? { ...row, type:scale, population:village.population } : row);
-    reports.push({ playerId:player.id, territoryIncome, shortage:core.shortageTotal, populationDelta:core.populationDelta, village });
-    return { ...player, factionState:{ ...player.factionState, village } };
   });
   return { state:{ ...state, players, facilitiesByTile, settlements }, reports, completed };
 }

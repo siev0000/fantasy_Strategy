@@ -1,5 +1,6 @@
 import { classData, enemySpawnData } from "./lib/game-data-registry.js";
 import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
+import { getSelectedSettlement } from "./lib/settlement-state.js";
 
 const SAFE_DISTANCE_FROM_BASE = 4;
 const LOW_LEVEL_DISTANCE_FROM_BASE = 10;
@@ -182,7 +183,7 @@ function spawnForActivePlayer() {
   const data = window.__v39FieldRuntime?.mapData;
   const state = window.getV39GameState?.();
   const faction = window.getV39ActiveFactionState?.();
-  const village = faction?.village;
+  const village = getSelectedSettlement(faction);
   if (!data || !state || !village?.placed) return [];
   const enemies = buildEnemies(data, village);
   window.setV39GameState?.({

@@ -3,6 +3,7 @@ import "./v39-operation-ui.js";
 import "./v39-feedback.js";
 import "./v39-game-state-bridge.js";
 import "./v39-economy-ui.js";
+import "./v39-settlement-ui.js";
 import "./v39-legacy-ui.js";
 import "./v39-field-runtime-final.js";
 import "./v39-map-controls-layout.js";
