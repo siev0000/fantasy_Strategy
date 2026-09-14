@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import { getIconSrcByName } from "../lib/icon-library.js";
+import { RESOURCE_GROUPS } from "../lib/v39-economy-rules.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -37,9 +38,9 @@ const perfMaterialComputeMs = ref(0);
 const perfMaterialRowCount = ref(0);
 
 const MATERIAL_GROUP_DEFS = [
-  { key: "woodStone", label: "木材&石", keys: ["木材", "黒木", "特木", "石材"] },
-  { key: "metal", label: "金属", keys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"] },
-  { key: "precious", label: "貴金属", keys: ["金", "銀", "宝石"] }
+  { key: "woodStone", label: "木材&石", keys: RESOURCE_GROUPS.wood.keys },
+  { key: "metal", label: RESOURCE_GROUPS.ore.title, keys: RESOURCE_GROUPS.ore.keys },
+  { key: "precious", label: RESOURCE_GROUPS.precious.title, keys: RESOURCE_GROUPS.precious.keys }
 ];
 const REQUIREMENT_ICON_NAME_MAP = {
   鍛冶Lv: "鍛冶",

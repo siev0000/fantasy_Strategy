@@ -1,13 +1,15 @@
-export const RACE_CLASS_NAME_MAP = Object.freeze({
-  "只人": "ヒューマン",
-  "エルフ": "エルフ",
-  "オーガ": "オーガ",
-  "ゴブリン": "ゴブリン",
-  "竜人": "ドラゴニュート",
-  "悪魔": "デヴィル",
-  "天使": "エンジェル",
-  "ヴァンパイア": "ヴァンパイア"
-});
+import { raceData } from "../lib/game-data-registry.js";
+
+const raceClassEntries = raceData
+  .map(row => [String(row?.key ?? "").trim(), String(row?.className ?? "").trim()])
+  .filter(([race, className]) => race && className);
+const racesWithoutClassName = raceData
+  .filter(row => String(row?.key ?? "").trim() && !String(row?.className ?? "").trim())
+  .map(row => String(row.key).trim());
+if (racesWithoutClassName.length) {
+  throw new Error(`[ゲームデータ] 種族.json: classNameがありません (${racesWithoutClassName.join("、")})`);
+}
+export const RACE_CLASS_NAME_MAP = Object.freeze(Object.fromEntries(raceClassEntries));
 
 export const STATUS_FIELDS = Object.freeze(["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"]);
 export const STATUS_GROWTH_FIELDS = Object.freeze(["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中"]);

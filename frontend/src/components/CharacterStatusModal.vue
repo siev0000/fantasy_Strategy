@@ -5,6 +5,11 @@ import CharacterUnitDetailPanel from "./CharacterUnitDetailPanel.vue";
 import { classData as classDb, equipmentData as equipmentDb } from "../lib/game-data-registry.js";
 import { UNIT_CREATE_MODE_KEYS } from "../composables/militaryUnitUtils.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from "../lib/v39-economy-rules.js";
+import {
+  getV39EquipmentSlotCandidates,
+  normalizeV39EquipmentRarity
+} from "../lib/v39-equipment-rules.js";
 import {
   EQUIPMENT_SLOT_KEYS,
   RACE_CLASS_NAME_MAP,
@@ -39,27 +44,11 @@ const emit = defineEmits([
   "assign-secondary-class"
 ]);
 
-const FOOD_KEYS = ["穀物", "野菜", "肉", "魚"];
-const MAT_KEYS = ["木材", "石材", "鉄"];
+const FOOD_KEYS = FOOD_RESOURCE_KEYS;
+const MAT_KEYS = MATERIAL_RESOURCE_KEYS;
 const FOOD_LABEL = { 穀物: "穀", 野菜: "野", 肉: "肉", 魚: "魚" };
 const MAT_LABEL = { 木材: "木", 石材: "石", 鉄: "鉄" };
 const MAX_SQUAD_MEMBER_COUNT = 4;
-const EQUIPMENT_RARITY_OPTIONS = [
-  { key: "common", label: "コモン" },
-  { key: "uncommon", label: "アンコモン" },
-  { key: "rare", label: "レア" },
-  { key: "epic", label: "エピック" },
-  { key: "legendary", label: "レジェンダリー" }
-];
-const EQUIPMENT_RARITY_ALIAS_MAP = {
-  コモン: "common",
-  アンコモン: "uncommon",
-  レア: "rare",
-  エピック: "epic",
-  レジェンダリー: "legendary"
-};
-const WEAPON_EQUIPMENT_NAMES = ["短剣", "剣", "長剣", "槍", "斧", "戦槌", "棍棒", "弓", "銃", "杖"];
-const SHIELD_EQUIPMENT_NAMES = ["盾", "大盾"];
 const SOLDIER_ICON_SRC = getIconSrcByName("兵士", "");
 const UNIT_EXP_LEVEL_CAP = 120;
 const UNIT_EXP_LEVEL_SPLIT = 15;
@@ -411,11 +400,7 @@ function signedValueText(value) {
 }
 
 function normalizeEquipmentRarity(value) {
-  const text = nonEmptyText(value);
-  if (!text) return "common";
-  const lower = text.toLowerCase();
-  if (EQUIPMENT_RARITY_OPTIONS.some(row => row.key === lower)) return lower;
-  return EQUIPMENT_RARITY_ALIAS_MAP[text] || "common";
+  return normalizeV39EquipmentRarity(value);
 }
 
 function normalizeEquipmentSlotKey(value) {
@@ -427,17 +412,7 @@ function normalizeEquipmentSlotKey(value) {
 }
 
 function resolveEquipmentSlotCandidates(row) {
-  const explicitSlot = normalizeEquipmentSlotKey(row?.装備部位);
-  if (explicitSlot === "武器1") return ["武器1", "武器2"];
-  if (explicitSlot) return [explicitSlot];
-  const name = nonEmptyText(row?.装備名);
-  if (SHIELD_EQUIPMENT_NAMES.includes(name)) return ["武器2"];
-  if (WEAPON_EQUIPMENT_NAMES.includes(name)) return ["武器1", "武器2"];
-  if (/(兜|ヘルム|帽|頭)/.test(name)) return ["頭"];
-  if (/(鎧|ローブ|服|法衣|胸当|体)/.test(name)) return ["体"];
-  if (/(靴|ブーツ|足)/.test(name)) return ["足"];
-  if (/(指輪|リング|首飾|首輪|護符|ペンダント|装飾)/.test(name)) return ["装飾1", "装飾2"];
-  return ["武器1"];
+  return getV39EquipmentSlotCandidates(row);
 }
 
 function equipmentRowMatchesSlot(row, slotKey) {

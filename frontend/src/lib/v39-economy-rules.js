@@ -24,6 +24,19 @@ const resourceKeysFor = categories => Object.freeze([...new Set(RESOURCE_DEFINIT
 
 export const FOOD_RESOURCE_KEYS = resourceKeysFor(["食料", "特殊資源"]);
 export const MATERIAL_RESOURCE_KEYS = resourceKeysFor(["木材", "石材", "金属", "貴金属", "宝石"]);
+const RESOURCE_MARKER_ROWS = RESOURCE_DEFINITION_ROWS
+  .filter(row => Number.isInteger(Number(row?.地図表示優先度)) && Number(row.地図表示優先度) > 0)
+  .sort((left, right) => Number(left.地図表示優先度) - Number(right.地図表示優先度));
+export const RESOURCE_MARKER_PRIORITY_KEYS = Object.freeze(RESOURCE_MARKER_ROWS
+  .map(row => String(row?.データ分類 || "").trim()).filter(Boolean));
+const RESOURCE_KEYS_WITHOUT_MARKER_PRIORITY = [...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS]
+  .filter(key => !RESOURCE_MARKER_PRIORITY_KEYS.includes(key));
+if (RESOURCE_KEYS_WITHOUT_MARKER_PRIORITY.length) {
+  throw new Error(`[ゲームデータ] 都市基本データ.json: 地図表示優先度がありません (${RESOURCE_KEYS_WITHOUT_MARKER_PRIORITY.join("、")})`);
+}
+if (new Set(RESOURCE_MARKER_ROWS.map(row => Number(row.地図表示優先度))).size !== RESOURCE_MARKER_ROWS.length) {
+  throw new Error("[ゲームデータ] 都市基本データ.json: 地図表示優先度が重複しています");
+}
 export const RESOURCE_GROUPS = Object.freeze({
   food:{ title:"食料", icon:"🌾", keys:resourceKeysFor(["食料", "特殊資源"]) },
   wood:{ title:"木材", icon:"🪵", keys:resourceKeysFor(["木材", "石材"]) },

@@ -52,7 +52,8 @@ const TABLE_KEY_FIELDS = Object.freeze({
 const REQUIRED_FIELDS = Object.freeze({
   クラス:["名前", "種類"], スキル一覧:["名前", "行動"], 装備:["装備名", "装備箇所"],
   地形:["地形"], 出現敵:["ID", "出現地形", "種族名"],
-  研究:["ID", "項目名", "技術対象", "Lv"], 災害:["ID", "カテゴリ名", "効果"], 範囲:["範囲タイプ", "処理タイプ"]
+  研究:["ID", "項目名", "技術対象", "Lv", "必要ユニットLv"], 災害:["ID", "カテゴリ名", "効果"],
+  種族:["key", "name", "className"], 勢力:["種族", "カナ", "マーカー文字", "マーカー色"], 範囲:["範囲タイプ", "処理タイプ"]
 });
 
 export const GAME_DATA_TABLE_METADATA = Object.freeze({

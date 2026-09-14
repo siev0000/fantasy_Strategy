@@ -4,6 +4,14 @@ import BaseModal from "./BaseModal.vue";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { isMobUnit as isMobUnitUtil } from "../composables/unitCoreUtils.js";
 import { consumptionData as consumptionDb, equipmentData as equipmentDb } from "../lib/game-data-registry.js";
+import { MATERIAL_RESOURCE_KEYS } from "../lib/v39-economy-rules.js";
+import {
+  DEFAULT_V39_EQUIPMENT_RARITY_KEY,
+  getV39EquipmentRarity,
+  getV39EquipmentSlotCandidates,
+  normalizeV39EquipmentRarity,
+  V39_EQUIPMENT_RARITIES
+} from "../lib/v39-equipment-rules.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -36,57 +44,20 @@ const CRAFT_TYPE_DEFS = [
   { key: "weapon", label: "武器" },
   { key: "armor", label: "防具" }
 ];
-const WEAPON_EQUIPMENT_NAMES = ["短剣", "剣", "長剣", "槍", "斧", "戦槌", "棍棒", "弓", "銃", "杖"];
-const SHIELD_EQUIPMENT_NAMES = ["盾", "大盾"];
-const RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
-const EQUIPMENT_LEVEL_BY_RARITY = {
-  common: 1,
-  uncommon: 2,
-  rare: 3,
-  epic: 4,
-  legendary: 5
-};
-const RARITY_REQUIRED_LEVEL = {
-  common: 1,
-  uncommon: 2,
-  rare: 3,
-  epic: 4,
-  legendary: 5
-};
-const RARITY_LABELS = {
-  common: "コモン",
-  uncommon: "アンコモン",
-  rare: "レア",
-  epic: "エピック",
-  legendary: "レジェンダリー"
-};
-const RARITY_MULTIPLIERS = {
-  common: 1.0,
-  uncommon: 1.25,
-  rare: 1.5,
-  epic: 1.75,
-  legendary: 2.0
-};
-const MATERIAL_RESOURCE_KEYS = ["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"];
-const EQUIPMENT_CRAFT_FALLBACK_BY_LEVEL = {
-  1: { 木材: 10, 黒木: 0, 特木: 0, 鉄: 10, 銀鉄: 0, 青金鋼: 0, 赤黒鋼: 0 },
-  2: { 木材: 20, 黒木: 0, 特木: 0, 鉄: 20, 銀鉄: 0, 青金鋼: 0, 赤黒鋼: 0 },
-  3: { 木材: 10, 黒木: 10, 特木: 0, 鉄: 10, 銀鉄: 10, 青金鋼: 0, 赤黒鋼: 0 },
-  4: { 木材: 10, 黒木: 20, 特木: 10, 鉄: 10, 銀鉄: 20, 青金鋼: 5, 赤黒鋼: 5 }
-};
-const RARITY_ALIAS_MAP = {
-  コモン: "common",
-  アンコモン: "uncommon",
-  レア: "rare",
-  エピック: "epic",
-  レジェンダリー: "legendary"
-};
+const RARITY_ORDER = Object.freeze(V39_EQUIPMENT_RARITIES.map(rarity => rarity.key));
+const EQUIPMENT_LEVEL_BY_RARITY = Object.freeze(Object.fromEntries(
+  V39_EQUIPMENT_RARITIES.map(rarity => [rarity.key, rarity.level])
+));
+const RARITY_REQUIRED_LEVEL = EQUIPMENT_LEVEL_BY_RARITY;
+const RARITY_MULTIPLIERS = Object.freeze(Object.fromEntries(
+  V39_EQUIPMENT_RARITIES.map(rarity => [rarity.key, rarity.multiplier])
+));
 
 const activeCategory = ref("all");
 const activeRightPane = ref("detail");
 const selectedKey = ref("");
 const selectedWeaponName = ref("");
-const selectedWeaponRarity = ref("common");
+const selectedWeaponRarity = ref(DEFAULT_V39_EQUIPMENT_RARITY_KEY);
 const weaponCraftCount = ref(1);
 const selectedCraftType = ref("weapon");
 const selectedEnchantName = ref("");
@@ -115,25 +86,15 @@ function isMobUnit(unit) {
 }
 
 function normalizeRarity(value) {
-  const text = nonEmptyText(value);
-  if (!text) return "common";
-  const lower = text.toLowerCase();
-  if (RARITY_ORDER.includes(lower)) return lower;
-  return RARITY_ALIAS_MAP[text] || "common";
+  return normalizeV39EquipmentRarity(value);
 }
 
 function rarityLabel(value) {
-  const key = normalizeRarity(value);
-  return RARITY_LABELS[key] || RARITY_LABELS.common;
+  return getV39EquipmentRarity(value).label;
 }
 
 function rarityShort(value) {
-  const key = normalizeRarity(value);
-  if (key === "legendary") return "L";
-  if (key === "epic") return "E";
-  if (key === "rare") return "R";
-  if (key === "uncommon") return "U";
-  return "C";
+  return getV39EquipmentRarity(value).short;
 }
 
 function normalizeEquipmentSlotKey(value) {
@@ -299,20 +260,7 @@ function slotCategory(row) {
 }
 
 function resolveEquipmentSlotCandidates(row) {
-  const explicit = normalizeEquipmentSlotKey(row?.装備部位);
-  if (explicit === "武器1") return ["武器1", "武器2"];
-  if (explicit) return [explicit];
-  const name = nonEmptyText(row?.装備名);
-  if (!name) return [];
-  if (SHIELD_EQUIPMENT_NAMES.includes(name)) return ["武器2"];
-  if (WEAPON_EQUIPMENT_NAMES.includes(name)) return ["武器1", "武器2"];
-  if (/(指輪|リング|首飾|首輪|護符|ペンダント|装飾)/.test(name)) {
-    return ["装飾1", "装飾2"];
-  }
-  if (/(兜|ヘルム|帽|頭)/.test(name)) return ["頭"];
-  if (/(鎧|ローブ|服|法衣|胸当|体)/.test(name)) return ["体"];
-  if (/(靴|ブーツ|足)/.test(name)) return ["足"];
-  return [];
+  return getV39EquipmentSlotCandidates(row);
 }
 
 function isWeaponEquipmentRow(row) {
@@ -471,9 +419,6 @@ function buildFallbackCraftMaterialCost(row, rarityKey, count = 1) {
     for (const key of oreKeys) {
       material[key] = roundTo1(Math.max(0, toSafeNumber(baseRow?.[key], 0) * oreScale));
     }
-  } else {
-    const fallbackLevel = Math.max(1, Math.min(4, level));
-    material = normalizeMaterialCostBag(EQUIPMENT_CRAFT_FALLBACK_BY_LEVEL[fallbackLevel]);
   }
   return multiplyMaterialCostBag(material, count);
 }
@@ -851,7 +796,7 @@ watch(
       selectedWeaponName.value = nonEmptyText(craftTargetRows.value[0]?.装備名);
     }
     if (!availableRarities.value.includes(selectedWeaponRarity.value)) {
-      selectedWeaponRarity.value = availableRarities.value[availableRarities.value.length - 1] || "common";
+      selectedWeaponRarity.value = availableRarities.value[availableRarities.value.length - 1] || DEFAULT_V39_EQUIPMENT_RARITY_KEY;
     }
     craftStatusText.value = "";
     enchantStatusText.value = "";
@@ -918,7 +863,7 @@ watch(
   rows => {
     const normalized = normalizeRarity(selectedWeaponRarity.value);
     if (!rows.includes(normalized)) {
-      selectedWeaponRarity.value = rows[rows.length - 1] || "common";
+      selectedWeaponRarity.value = rows[rows.length - 1] || DEFAULT_V39_EQUIPMENT_RARITY_KEY;
     }
   },
   { immediate: true }

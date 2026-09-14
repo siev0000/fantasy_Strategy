@@ -4,6 +4,7 @@ import { resolveCompletedResearchLevel } from "./research-progress.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, STATUS_FIELDS } from "../constants/unitCommon.js";
 import { isMobUnit } from "../composables/unitCoreUtils.js";
+import { RESEARCH_CATEGORY_ORDER } from "./research-tree-config.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -63,6 +64,7 @@ export function normalizeV39EquipmentSlot(value) {
 export function getV39EquipmentSlotCandidates(rowOrName) {
   const row = typeof rowOrName === "string" ? equipmentByName.get(text(rowOrName)) : rowOrName;
   const part = text(row?.装備箇所 ?? row?.装備部位);
+  if (part === "武器" && text(row?.武器分類) === "盾") return ["武器2"];
   if (part === "武器") return ["武器1", "武器2"];
   if (part === "頭") return ["頭"];
   if (part === "体" || part === "胴") return ["体"];
@@ -344,7 +346,7 @@ function enchantTargetMatches(row, item) {
 
 function enchantRequirements(player, row) {
   const failed = [];
-  for (const key of ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"]) {
+  for (const key of RESEARCH_CATEGORY_ORDER) {
     const required = Math.max(0, Math.floor(number(row?.[key])));
     const current = researchLevel(player, key);
     if (required > current) failed.push(`${key} ${current}/${required}`);

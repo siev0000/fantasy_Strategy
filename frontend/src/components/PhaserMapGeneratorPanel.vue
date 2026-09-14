@@ -95,6 +95,7 @@ import {
   createInitialFoodStockByType as createInitialFoodStockByTypeUtil,
   createInitialMaterialStockByType as createInitialMaterialStockByTypeUtil,
   resolveNamedLimit as resolveNamedLimitUtil,
+  resolveVillageScaleDefinition as resolveVillageScaleDefinitionUtil,
   resolveVillageScaleLabel as resolveVillageScaleLabelUtil
 } from "../composables/villageCoreUtils.js";
 import {
@@ -125,6 +126,7 @@ import {
   PRIMARY_TEST_PLAYER_LABEL
 } from "../lib/test-player-data.js";
 import {
+  DAMAGE_TYPE_FIELDS,
   EQUIPMENT_SLOT_KEYS,
   RACE_CLASS_NAME_MAP,
   RESISTANCE_FIELDS,
@@ -208,6 +210,7 @@ import {
   terrainDefinitions
 } from "../lib/map-generator.js";
 import {
+  cityBaseData as cityBaseDb,
   classData as classDb,
   consumptionData as consumptionDb,
   enemySpawnData as enemySpawnDb,
@@ -220,8 +223,15 @@ import {
 } from "../lib/game-data-registry.js";
 import {
   DEFAULT_V39_EQUIPMENT_RARITY_KEY,
+  getV39EquipmentSlotCandidates,
   V39_EQUIPMENT_RARITIES
 } from "../lib/v39-equipment-rules.js";
+import {
+  FOOD_RESOURCE_KEYS,
+  MATERIAL_RESOURCE_KEYS,
+  RESOURCE_MARKER_PRIORITY_KEYS,
+  RESOURCE_GROUPS
+} from "../lib/v39-economy-rules.js";
 import effectList320 from "../../../assets/effect/320×240/effect_list.json";
 import effectListAnimation1 from "../../../assets/effect/アニメーション1/effect_list.json";
 
@@ -2432,8 +2442,6 @@ const EQUIPMENT_SLOT_LABELS = {
   装飾1: "装飾1",
   装飾2: "装飾2"
 };
-const WEAPON_EQUIPMENT_NAMES = ["短剣", "剣", "長剣", "槍", "斧", "戦槌", "棍棒", "弓", "銃", "杖"];
-const SHIELD_EQUIPMENT_NAMES = ["盾", "大盾"];
 const VILLAGE_NAME_POOL = ["開拓村アスタ", "辺境村ノルド", "河畔村エイル", "森縁村リグナ", "丘陵村ブラム"];
 const INITIAL_LEVEL_MIN = 5;
 const INITIAL_LEVEL_MAX = 10;
@@ -2576,21 +2584,7 @@ const WAR_DECLARATION_DIPLOMACY_PENALTY = -20; // 宣戦布告時の外交評価
 const WAR_DECLARATION_PENALTY_TURNS = 20; // 宣戦布告ペナルティの継続ターン数
 const SKILL_DAMAGE_RANDOM_RATE_A = 0.5;
 const SKILL_DAMAGE_RANDOM_RATE_B = 0.4;
-const ATTACK_DAMAGE_TYPE_KEYS = Object.freeze([
-  "物理",
-  "魔法",
-  "射撃",
-  "切断",
-  "貫通",
-  "打撃",
-  "炎",
-  "氷",
-  "雷",
-  "毒",
-  "光",
-  "闇",
-  "精神"
-]);
+const ATTACK_DAMAGE_TYPE_KEYS = Object.freeze([...DAMAGE_TYPE_FIELDS, "精神"]);
 const ENEMY_AUTO_ATTACK_INTERVAL_MS = 12000;
 const UNIT_DAMAGE_BLINK_DURATION_MS = 720;
 const UNIT_DAMAGE_BLINK_INTERVAL_MS = 90;
@@ -2640,29 +2634,26 @@ const HERO_AUTO_GROWTH_ARMY_LV10_BONUS_PERCENT = 20;
 const HERO_AUTO_GROWTH_PER_SETTLEMENT_BONUS_PERCENT = 10;
 const HERO_AUTO_GROWTH_PER_CITY_STAGE_BONUS_PERCENT = 50;
 const HERO_AUTO_GROWTH_PER_CITY_STAGE_CAP_BONUS = 1;
-const VILLAGE_SCALE_STAGE_THRESHOLDS = [
-  { label: "村", minPopulation: 0, stage: 0 },
-  { label: "町", minPopulation: 160, stage: 1 },
-  { label: "都市", minPopulation: 260, stage: 2 },
-  { label: "大都市", minPopulation: 420, stage: 3 },
-  { label: "最大都市", minPopulation: 560, stage: 4 }
-];
-const CITY_SCALE_NAMED_LIMIT = {
-  村: 2,
-  町: 4,
-  都市: 7,
-  大都市: 10
-};
 const MAX_SQUAD_MEMBER_COUNT = 4;
-const CITY_ABILITY_KEYS = ["鍛冶場", "魔法", "信仰", "軍事", "経済"];
-const CITY_ABILITY_ACTIVE_CAP = 4;
+const cityAbilityKeyFromResearchKey = key => key === "鍛冶Lv" ? "鍛冶場" : nonEmptyText(key).replace(/Lv$/u, "");
+const CITY_ABILITY_KEYS = Object.freeze(RESEARCH_CATEGORY_ORDER_CONFIG.map(cityAbilityKeyFromResearchKey));
 const CITY_ABILITY_DEFINED_CAP = 7;
-const ECONOMY_GAIN_MULTIPLIER_BY_LEVEL = {
-  1: 1.0,
-  2: 1.15,
-  3: 1.3,
-  4: 1.5
-};
+const ECONOMY_GAIN_MULTIPLIER_ENTRIES = cityBaseDb
+  .filter(row => nonEmptyText(row?.分類) === "経済Lv倍率")
+  .map(row => [Math.floor(toSafeNumber(row?.データ分類, 0)), toSafeNumber(row?.収入倍率, 0)])
+  .filter(([level, multiplier]) => level > 0 && multiplier > 0);
+if (new Set(ECONOMY_GAIN_MULTIPLIER_ENTRIES.map(([level]) => level)).size !== ECONOMY_GAIN_MULTIPLIER_ENTRIES.length) {
+  throw new Error("[ゲームデータ] 都市基本データ.json: 経済Lv倍率のLvが重複しています");
+}
+const ECONOMY_GAIN_MULTIPLIER_BY_LEVEL = Object.freeze(Object.fromEntries(ECONOMY_GAIN_MULTIPLIER_ENTRIES));
+if (!Object.keys(ECONOMY_GAIN_MULTIPLIER_BY_LEVEL).length) {
+  throw new Error("[ゲームデータ] 都市基本データ.json: 経済Lv倍率がありません");
+}
+const ECONOMY_GAIN_LEVELS = Object.keys(ECONOMY_GAIN_MULTIPLIER_BY_LEVEL).map(Number).sort((a, b) => a - b);
+if (ECONOMY_GAIN_LEVELS.some((level, index) => level !== index + 1)) {
+  throw new Error("[ゲームデータ] 都市基本データ.json: 経済Lv倍率はLv1から連続して定義してください");
+}
+const CITY_ABILITY_ACTIVE_CAP = ECONOMY_GAIN_LEVELS.at(-1);
 const EQUIPMENT_LEVEL_BY_RARITY = Object.freeze(Object.fromEntries(
   V39_EQUIPMENT_RARITIES.map(rarity => [rarity.key, rarity.level])
 ));
@@ -2676,14 +2667,10 @@ const EQUIPMENT_RARITY_ALIAS_MAP = Object.freeze(Object.fromEntries(
     [rarity.short, rarity.key]
   ])
 ));
-const ENCHANT_REQUIREMENT_KEYS = ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"];
-const ENCHANT_REQUIREMENT_TO_CITY_ABILITY_KEY = {
-  鍛冶Lv: "鍛冶場",
-  魔法Lv: "魔法",
-  信仰Lv: "信仰",
-  軍事Lv: "軍事",
-  経済Lv: "経済"
-};
+const ENCHANT_REQUIREMENT_KEYS = RESEARCH_CATEGORY_ORDER_CONFIG;
+const ENCHANT_REQUIREMENT_TO_CITY_ABILITY_KEY = Object.freeze(Object.fromEntries(
+  ENCHANT_REQUIREMENT_KEYS.map(key => [key, cityAbilityKeyFromResearchKey(key)])
+));
 const ENCHANT_METADATA_KEYS = new Set([
   "付与能力",
   "ルビ",
@@ -2772,25 +2759,13 @@ const SKILL_AREA_PATTERN_ALIAS_MAP = Object.freeze({
   "全体": "all",
   "all": "all"
 });
-const FOOD_RESOURCE_KEYS = ["穀物", "野菜", "肉", "魚", "死体", "魂"];
 const FOOD_RESOURCE_SIMPLE_KEYS = ["食料", "魂"];
-const MATERIAL_RESOURCE_KEYS = ["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"];
 const MATERIAL_RESOURCE_LEGACY_KEYS = ["木材", "石材", "鉄"];
 const MATERIAL_RESOURCE_SIMPLE_KEYS = ["木材", "鉄", "金"];
-const MATERIAL_RESOURCE_SOURCE_KEYS = ["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"];
-const MATERIAL_SOURCE_TO_RESOURCE_MAP = {
-  木材: "木材",
-  黒木: "黒木",
-  特木: "特木",
-  石材: "石材",
-  鉄: "鉄",
-  銀鉄: "銀鉄",
-  青金鋼: "青金鋼",
-  赤黒鋼: "赤黒鋼",
-  金: "金",
-  銀: "銀",
-  宝石: "宝石"
-};
+const MATERIAL_RESOURCE_SOURCE_KEYS = MATERIAL_RESOURCE_KEYS;
+const MATERIAL_SOURCE_TO_RESOURCE_MAP = Object.freeze(Object.fromEntries(
+  MATERIAL_RESOURCE_KEYS.map(key => [key, key])
+));
 const FOOD_RESOURCE_LABELS = { 穀物: "穀", 野菜: "野", 肉: "肉", 魚: "魚", 死体: "死", 魂: "魂" };
 const FOOD_RESOURCE_SIMPLE_LABELS = { 食料: "食", 魂: "魂" };
 const MATERIAL_RESOURCE_LABELS = { 木材: "木", 黒木: "黒", 特木: "特", 石材: "石", 鉄: "鉄", 銀鉄: "銀鉄", 青金鋼: "青鋼", 赤黒鋼: "赤鋼", 金: "金", 銀: "銀", 宝石: "宝" };
@@ -2805,9 +2780,9 @@ const MATERIAL_RESOURCE_SIMPLE_WEIGHT_MAP = {
   金: { 金: 2, 銀: 1, 宝石: 2 }
 };
 const MATERIAL_HEADER_GROUP_DEFS = [
-  { label: "木材", keys: ["木材", "黒木", "特木", "石材"] },
-  { label: "金属", keys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"] },
-  { label: "貴金属", keys: ["金", "銀", "宝石"] }
+  { label: RESOURCE_GROUPS.wood.title, keys: RESOURCE_GROUPS.wood.keys },
+  { label: RESOURCE_GROUPS.ore.title, keys: RESOURCE_GROUPS.ore.keys },
+  { label: RESOURCE_GROUPS.precious.title, keys: RESOURCE_GROUPS.precious.keys }
 ];
 const MATERIAL_HEADER_GROUP_SIMPLE_DEFS = [
   { label: "木材", key: "木材" },
@@ -2815,10 +2790,10 @@ const MATERIAL_HEADER_GROUP_SIMPLE_DEFS = [
   { label: "金", key: "金" }
 ];
 const SIDEBAR_RESOURCE_PANEL_DEFS = [
-  { key: "food", label: "食料", detailKeys: FOOD_RESOURCE_KEYS, category: "food" },
-  { key: "wood", label: "木材", detailKeys: ["木材", "黒木", "特木", "石材"], category: "material" },
-  { key: "metal", label: "金属", detailKeys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"], category: "material" },
-  { key: "precious", label: "貴金属", detailKeys: ["金", "銀", "宝石"], category: "material" }
+  { key: "food", label: RESOURCE_GROUPS.food.title, detailKeys: RESOURCE_GROUPS.food.keys, category: "food" },
+  { key: "wood", label: RESOURCE_GROUPS.wood.title, detailKeys: RESOURCE_GROUPS.wood.keys, category: "material" },
+  { key: "metal", label: RESOURCE_GROUPS.ore.title, detailKeys: RESOURCE_GROUPS.ore.keys, category: "material" },
+  { key: "precious", label: RESOURCE_GROUPS.precious.title, detailKeys: RESOURCE_GROUPS.precious.keys, category: "material" }
 ];
 const SIDEBAR_RESOURCE_PANEL_DEF_MAP = Object.fromEntries(
   SIDEBAR_RESOURCE_PANEL_DEFS.map(def => [def.key, def])
@@ -2841,19 +2816,17 @@ const HEADER_RESEARCH_CATEGORY_GAUGE_COLOR_MAP = {
   軍事Lv: "#ff6f6f",
   経済Lv: "#6cff93"
 };
-const RESOURCE_TILE_MARKER_PRIORITY_KEYS = [
-  "赤黒鋼", "青金鋼", "銀鉄", "鉄", "宝石", "金", "銀",
-  "特木", "黒木", "木材", "石材",
-  "穀物", "野菜", "肉", "魚", "魂", "死体"
-];
-const UNIT_CREATION_COST_TEMP = {
-  food: { 穀物: 20, 野菜: 20, 肉: 20 },
-  material: { 木材: 20, 石材: 20, 鉄: 20 }
-};
+const UNIT_CREATION_COST_ROW = consumptionDb.find(row => nonEmptyText(row?.種別) === "ユニット作成" && Math.floor(toSafeNumber(row?.Lv, 0)) === 1);
+if (!UNIT_CREATION_COST_ROW) {
+  throw new Error("[ゲームデータ] 消費量.json: ユニット作成Lv1のコスト行がありません");
+}
+const UNIT_CREATION_COST = Object.freeze({
+  food:Object.freeze(Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, Math.max(0, toSafeNumber(UNIT_CREATION_COST_ROW?.[key], 0))]))),
+  material:Object.freeze(Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, Math.max(0, toSafeNumber(UNIT_CREATION_COST_ROW?.[key], 0))])))
+});
 const FOOD_SUBSTITUTE_MULTIPLIER = 1.2;
 const ECONOMY_GAIN_SCALE = 0.1;
 const ECONOMY_CONSUMPTION_SCALE = 0.1;
-const ECONOMY_COST_SCALE = 0.1;
 const TERRITORY_TILE_MODE_DEFAULT = TERRITORY_TILE_MODE_RESOURCE;
 const TERRITORY_TILE_MODE_HOME_DEFAULT = TERRITORY_TILE_MODE_SETTLEMENT;
 const TERRITORY_POPULATION_CAPACITY_FALLBACK = 30;
@@ -2870,46 +2843,6 @@ const RESEARCH_EXP_BASE = 100;
 const TERRITORY_RESIDENTIAL_UPGRADE_BASE_TURNS = 3;
 const TERRITORY_RESIDENTIAL_UPGRADE_MIN_TURNS = 1;
 const TERRITORY_RESIDENTIAL_UPGRADE_COST_SCALE = 1;
-const RACE_TO_FACTION_NAME_MAP = {
-  只人: "人間",
-  エルフ: "森人",
-  ドワーフ: "土人",
-  ビーストマン: "獣人",
-  竜人: "竜人",
-  オーガ: "大鬼",
-  ジャイアント: "巨人",
-  ゴブリン: "鬼妖",
-  悪魔: "悪魔",
-  天使: "天使",
-  ヴァンパイア: "吸血鬼"
-};
-const RACE_ICON_GLYPH_MAP = {
-  只人: "只",
-  エルフ: "森",
-  ドワーフ: "土",
-  ビーストマン: "獣",
-  竜人: "竜",
-  オーガ: "鬼",
-  ジャイアント: "巨",
-  ゴブリン: "妖",
-  悪魔: "魔",
-  天使: "天",
-  ヴァンパイア: "吸"
-};
-const RACE_ICON_COLOR_MAP = {
-  只人: 0x3e5d84,
-  エルフ: 0x4a7d3c,
-  ドワーフ: 0x7a5f3a,
-  ビーストマン: 0x8a6d2e,
-  竜人: 0x39687f,
-  オーガ: 0x7f3f2e,
-  ジャイアント: 0x6b5c4b,
-  ゴブリン: 0x5f7c3a,
-  悪魔: 0x6a2f4f,
-  天使: 0x5c6fa2,
-  ヴァンパイア: 0x662f4a
-};
-
 const classRows = computed(() => {
   if (!Array.isArray(classDb)) return [];
   return classDb.filter(row => nonEmptyText(row?.名前));
@@ -3142,9 +3075,9 @@ const {
 });
 
 const UNIT_CREATE_RARITY_COST_GROUP_DEFS = [
-  { key: "woodStone", label: "木材&石", keys: ["木材", "黒木", "特木", "石材"] },
-  { key: "metal", label: "金属", keys: ["鉄", "銀鉄", "青金鋼", "赤黒鋼"] },
-  { key: "precious", label: "貴金属", keys: ["金", "銀", "宝石"] }
+  { key: "woodStone", label: RESOURCE_GROUPS.wood.title, keys: RESOURCE_GROUPS.wood.keys },
+  { key: "metal", label: RESOURCE_GROUPS.ore.title, keys: RESOURCE_GROUPS.ore.keys },
+  { key: "precious", label: RESOURCE_GROUPS.precious.title, keys: RESOURCE_GROUPS.precious.keys }
 ];
 
 function formatUnitCreateCostAmount(value) {
@@ -3610,10 +3543,7 @@ function resolveVillageScaleLabel(village) {
 }
 
 function resolveNamedLimit(village) {
-  return resolveNamedLimitUtil(village, {
-    toSafeNumber,
-    namedLimitByScale: CITY_SCALE_NAMED_LIMIT
-  });
+  return resolveNamedLimitUtil(village, { toSafeNumber });
 }
 
 function resolveUnitCreateModeCatalog() {
@@ -3702,8 +3632,7 @@ function resolveCombinedAbilityLevel(village, cityAbilityKey, researchCategoryKe
 
 function resolveEconomyGainMultiplier(village) {
   const level = resolveVillageAbilityLevel(village, "経済", CITY_ABILITY_ACTIVE_CAP);
-  const byTable = toSafeNumber(ECONOMY_GAIN_MULTIPLIER_BY_LEVEL[level], 0);
-  const baseMultiplier = byTable > 0 ? byTable : roundTo1(1 + Math.max(0, level - 1) * 0.15);
+  const baseMultiplier = toSafeNumber(ECONOMY_GAIN_MULTIPLIER_BY_LEVEL[level], 1);
   const metrics = resolveVillagePopulationStatusMetrics(village, unitList.value);
   const maintenance = resolveVillageMaintenancePenalty(metrics);
   return roundTo1(baseMultiplier * Math.max(0, toSafeNumber(maintenance?.productionMultiplier, 1)));
@@ -3717,7 +3646,7 @@ function formatCityAbilityLevels(village) {
 }
 
 function resolveEquipmentCraftLevel(rarityKey) {
-  const rarity = normalizeEquipmentRarity(rarityKey, "common");
+  const rarity = normalizeEquipmentRarity(rarityKey, DEFAULT_V39_EQUIPMENT_RARITY_KEY);
   const level = toSafeNumber(EQUIPMENT_LEVEL_BY_RARITY[rarity], 1);
   return Math.max(1, Math.floor(level));
 }
@@ -3824,19 +3753,12 @@ function resolveArmorResistanceRatesForLevel(levelRaw) {
   };
 }
 
-function resolveArmorMagicBonusRateByRarity(rarityKey) {
-  const level = resolveEquipmentCraftLevel(rarityKey);
-  return Math.max(0, toSafeNumber(ARMOR_MAGIC_BONUS_RATE_BY_RARITY_LEVEL[level], 0));
-}
-
 function buildEquipmentCraftMaterialCost(row, rarityKey) {
   const level = resolveEquipmentCraftLevel(rarityKey);
   const consumptionRows = Array.isArray(consumptionDb) ? consumptionDb : [];
   const baseRow = consumptionRows.find(item => (
     nonEmptyText(item?.種別) === "装備" && Math.floor(toSafeNumber(item?.Lv, 0)) === level
   )) || null;
-  const fallbackLevel = Math.max(1, Math.min(4, level));
-  const fallbackBase = normalizeResourceBag(EQUIPMENT_CRAFT_MATERIAL_COST_BY_LEVEL[fallbackLevel], MATERIAL_RESOURCE_KEYS);
   const base = buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS);
   if (baseRow) {
     const woodRatioRaw = Math.max(0, toSafeNumber(row?.木材, 0));
@@ -3857,8 +3779,6 @@ function buildEquipmentCraftMaterialCost(row, rarityKey) {
     base["金"] = 0;
     base["銀"] = 0;
     base["宝石"] = 0;
-  } else {
-    addToResourceBag(base, fallbackBase, MATERIAL_RESOURCE_KEYS);
   }
   const isMagic = isMagicEquipmentRow(row);
   const isFaith = isFaithEquipmentRow(row);
@@ -4915,7 +4835,7 @@ function roundTo1(value) {
   return Math.round(toSafeNumber(value, 0) * 10) / 10;
 }
 
-function normalizeEquipmentRarityKey(value, fallback = "common") {
+function normalizeEquipmentRarityKey(value, fallback = DEFAULT_V39_EQUIPMENT_RARITY_KEY) {
   const raw = nonEmptyText(value);
   if (!raw) return fallback;
   const lower = raw.toLowerCase();
@@ -4923,13 +4843,13 @@ function normalizeEquipmentRarityKey(value, fallback = "common") {
   return EQUIPMENT_RARITY_ALIAS_MAP[raw] || fallback;
 }
 
-function normalizeEquipmentRarity(value, fallback = "common") {
+function normalizeEquipmentRarity(value, fallback = DEFAULT_V39_EQUIPMENT_RARITY_KEY) {
   return normalizeEquipmentRarityKey(value, fallback);
 }
 
-function resolveEquipmentRarity(value, fallback = "common") {
+function resolveEquipmentRarity(value, fallback = DEFAULT_V39_EQUIPMENT_RARITY_KEY) {
   const key = normalizeEquipmentRarityKey(value, fallback);
-  const def = EQUIPMENT_RARITY_MAP[key] || EQUIPMENT_RARITY_MAP.common;
+  const def = EQUIPMENT_RARITY_MAP[key] || EQUIPMENT_RARITY_MAP[DEFAULT_V39_EQUIPMENT_RARITY_KEY];
   return { key, ...def };
 }
 
@@ -5222,7 +5142,7 @@ function resolveDominantTerrainResourceIconName(terrainRow) {
   const materialIncome = buildMaterialIncomeFromTerrainRow(terrainRow);
   let bestKey = "";
   let bestValue = 0;
-  for (const key of RESOURCE_TILE_MARKER_PRIORITY_KEYS) {
+  for (const key of RESOURCE_MARKER_PRIORITY_KEYS) {
     const value = FOOD_RESOURCE_KEYS.includes(key)
       ? toSafeNumber(terrainRow?.[key], 0)
       : toSafeNumber(materialIncome?.[key], 0);
@@ -5268,11 +5188,10 @@ function scaleResourceBagByFactor(bag, keys, factor = 1) {
 
 function buildUnitCreationCost(count = 1) {
   const safeCount = Math.max(1, Math.min(20, Math.floor(toSafeNumber(count, 1))));
-  const scaledCount = safeCount * ECONOMY_COST_SCALE;
   return {
     count: safeCount,
-    food: multiplyResourceBag(UNIT_CREATION_COST_TEMP.food, scaledCount, FOOD_RESOURCE_KEYS),
-    material: multiplyResourceBag(UNIT_CREATION_COST_TEMP.material, scaledCount, MATERIAL_RESOURCE_KEYS)
+    food: multiplyResourceBag(UNIT_CREATION_COST.food, safeCount, FOOD_RESOURCE_KEYS),
+    material: multiplyResourceBag(UNIT_CREATION_COST.material, safeCount, MATERIAL_RESOURCE_KEYS)
   };
 }
 
@@ -6712,13 +6631,15 @@ function borderStyleForOwner(owner, factionOwnerId = "") {
 
 function resolveFactionRowByRace(raceKey = "") {
   const race = nonEmptyText(raceKey);
-  const factionName = RACE_TO_FACTION_NAME_MAP[race] || race;
   const className = resolveRaceBaseClassName(race);
   const rows = factionRows.value;
   if (!rows.length) return null;
-  const byName = rows.find(row => nonEmptyText(row?.種族) === factionName);
+  const byName = rows.find(row => nonEmptyText(row?.種族) === race);
   if (byName) return byName;
-  const byKana = rows.find(row => nonEmptyText(row?.カナ) === className);
+  const byKana = rows.find(row => {
+    const kana = nonEmptyText(row?.カナ);
+    return kana === race || kana === className;
+  });
   if (byKana) return byKana;
   return null;
 }
@@ -6752,14 +6673,13 @@ function resolveFactionLimitFromRow(rawValue, population = 0, fallback = 0) {
 }
 
 function resolveVillageScaleStage(village) {
-  const population = Math.max(0, Math.floor(toSafeNumber(village?.population, 0)));
-  for (let i = VILLAGE_SCALE_STAGE_THRESHOLDS.length - 1; i >= 0; i -= 1) {
-    const row = VILLAGE_SCALE_STAGE_THRESHOLDS[i];
-    if (population >= row.minPopulation) {
-      return { ...row };
-    }
-  }
-  return { ...VILLAGE_SCALE_STAGE_THRESHOLDS[0] };
+  const definition = resolveVillageScaleDefinitionUtil(village, { toSafeNumber });
+  if (!definition) return { label:"村", minPopulation:0, stage:0 };
+  return {
+    label:definition.name,
+    minPopulation:definition.minPopulation,
+    stage:Math.max(0, definition.level - 1)
+  };
 }
 
 function resolveFactionArmyUnitCap(village, raceKey = "") {
@@ -7658,19 +7578,7 @@ function normalizeEquipmentSlotKey(value) {
 }
 
 function resolveEquipmentSlotCandidates(row) {
-  const explicitSlot = normalizeEquipmentSlotKey(row?.装備部位);
-  if (explicitSlot === "武器1") return ["武器1", "武器2"];
-  if (explicitSlot) return [explicitSlot];
-
-  const name = nonEmptyText(row?.装備名);
-  if (SHIELD_EQUIPMENT_NAMES.includes(name)) return ["武器2"];
-  if (/盾|シールド|バックラー/.test(name)) return ["武器2"];
-  if (WEAPON_EQUIPMENT_NAMES.includes(name)) return ["武器1", "武器2"];
-  if (/(兜|ヘルム|帽|頭)/.test(name)) return ["頭"];
-  if (/(鎧|ローブ|服|法衣|胸当|体)/.test(name)) return ["体"];
-  if (/(靴|ブーツ|足)/.test(name)) return ["足"];
-  if (/(指輪|リング|首飾|首輪|護符|ペンダント|装飾)/.test(name)) return ["装飾1", "装飾2"];
-  return ["武器1"];
+  return getV39EquipmentSlotCandidates(row);
 }
 
 function equipmentRowMatchesSlot(row, slotKey) {
@@ -11574,8 +11482,10 @@ function applyCharacterCommand(command) {
 }
 
 function pickEquipmentRarityForUnit(isNamed) {
-  if (isNamed) return randomPick(["rare", "epic", "legendary"], "rare");
-  return randomPick(["common", "uncommon"], "common");
+  const candidates = isNamed
+    ? EQUIPMENT_RARITY_KEYS.slice(-Math.min(3, EQUIPMENT_RARITY_KEYS.length))
+    : EQUIPMENT_RARITY_KEYS.slice(0, Math.min(2, EQUIPMENT_RARITY_KEYS.length));
+  return randomPick(candidates, candidates[0] || DEFAULT_V39_EQUIPMENT_RARITY_KEY);
 }
 
 function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = "") {
@@ -11601,8 +11511,6 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
   const armorBaseScaled = armorBaseResistance * multiplier;
   const armorPhysicalRes = Math.round(armorBaseScaled * armorResistanceRates.physicalRate);
   const armorMagicBaseRes = Math.round(armorBaseScaled * armorResistanceRates.magicRate);
-  const armorMagicBonusRate = resolveArmorMagicBonusRateByRarity(quality);
-  const armorMagicBonusFromPhysical = Math.round(armorPhysicalRes * armorMagicBonusRate);
   const resistanceBonus = {};
   for (const key of RESISTANCE_FIELDS) {
     resistanceBonus[key] = Math.round(toSafeNumber(row?.[key], 0) * multiplier);
@@ -11610,7 +11518,7 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
   if (isArmorEquipmentRow(row) && armorBaseResistance > 0) {
     resistanceBonus["物理耐性"] = Math.round(toSafeNumber(resistanceBonus["物理耐性"], 0) + armorPhysicalRes);
     resistanceBonus["魔法耐性"] = Math.round(
-      toSafeNumber(resistanceBonus["魔法耐性"], 0) + armorMagicBaseRes + armorMagicBonusFromPhysical
+      toSafeNumber(resistanceBonus["魔法耐性"], 0) + armorMagicBaseRes
     );
   }
   const traits = [row?.特性1, row?.特性2, row?.特性3, row?.特性4]
@@ -11736,7 +11644,9 @@ function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null, rarit
     const staffPool = pool.filter(row => nonEmptyText(row.装備名).includes("杖"));
     if (staffPool.length) pool = staffPool;
   } else if (atk > mag + 8) {
-    const meleePool = pool.filter(row => WEAPON_EQUIPMENT_NAMES.includes(nonEmptyText(row.装備名)));
+    const meleePool = pool.filter(row => (
+      nonEmptyText(row?.装備箇所) === "武器" && nonEmptyText(row?.武器分類) !== "盾"
+    ));
     if (meleePool.length) pool = meleePool;
   }
   const primaryPreset = findPresetEquipmentRowForSlot(classRow, "武器1");
@@ -11745,7 +11655,9 @@ function chooseEquipmentForClass(classRow, isNamed, equipmentSlots = null, rarit
   if (primaryRow && slots["武器1"] !== false) {
     loadout.push(createEquipmentEntry(primaryRow, isNamed, rarityOverride, "武器1"));
   }
-  const shieldPool = equipmentRows.value.filter(row => SHIELD_EQUIPMENT_NAMES.includes(nonEmptyText(row.装備名)));
+  const shieldPool = equipmentRows.value.filter(row => (
+    nonEmptyText(row?.装備箇所) === "武器" && nonEmptyText(row?.武器分類) === "盾"
+  ));
   const shieldChance = isNamed ? 0.65 : 0.35;
   const secondaryPreset = findPresetEquipmentRowForSlot(classRow, "武器2");
   if (slots["武器2"] !== false) {
@@ -12745,17 +12657,16 @@ function pushNationLog(text) {
 function resolveRaceGlyph(raceName) {
   const race = nonEmptyText(raceName);
   if (!race) return "兵";
-  if (Object.prototype.hasOwnProperty.call(RACE_ICON_GLYPH_MAP, race)) {
-    return RACE_ICON_GLYPH_MAP[race];
-  }
+  const glyph = nonEmptyText(resolveFactionRowByRace(race)?.マーカー文字);
+  if (glyph) return glyph;
   return race.slice(0, 1);
 }
 
 function resolveRaceMarkerColor(raceName) {
   const race = nonEmptyText(raceName);
-  if (Object.prototype.hasOwnProperty.call(RACE_ICON_COLOR_MAP, race)) {
-    return RACE_ICON_COLOR_MAP[race];
-  }
+  const colorText = nonEmptyText(resolveFactionRowByRace(race)?.マーカー色).replace(/^#|^0x/i, "");
+  const color = Number.parseInt(colorText, 16);
+  if (Number.isFinite(color) && color >= 0 && color <= 0xffffff) return color;
   return 0x4a617f;
 }
 

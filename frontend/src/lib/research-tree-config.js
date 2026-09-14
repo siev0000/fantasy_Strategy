@@ -1,27 +1,44 @@
-import { researchData as researchDbRaw } from "./game-data-registry.js";
+import { cityBaseData, researchData as researchDbRaw } from "./game-data-registry.js";
 
 const RESEARCH_TARGET_ORDER = [...new Set(researchDbRaw
   .map(row => String(row?.技術対象 ?? "").trim())
   .filter(target => target && target !== "技術対象"))];
 export const RESEARCH_CATEGORY_ORDER = Object.freeze(RESEARCH_TARGET_ORDER.map(target => `${target}Lv`));
 
-export const RESEARCH_LEVEL_UNIT_REQUIREMENTS = {
-  1: 5,
-  2: 15,
-  3: 25,
-  4: 35,
-  5: 45,
-  6: 55,
-  7: 65
-};
+const RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP = new Map();
+const RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT = [];
+for (const row of researchDbRaw) {
+  const level = Number(row?.Lv);
+  if (!Number.isInteger(level) || level <= 0) continue;
+  const requirement = Number(row?.必要ユニットLv);
+  if (!Number.isInteger(requirement) || requirement <= 0) {
+    RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT.push(String(row?.ID ?? row?.項目名 ?? `Lv${level}`));
+    continue;
+  }
+  const existing = RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP.get(level);
+  if (existing !== undefined && existing !== requirement) {
+    throw new Error(`[ゲームデータ] 研究.json: Lv${level}の必要ユニットLvが一致しません (${existing} / ${requirement})`);
+  }
+  RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP.set(level, requirement);
+}
+if (RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT.length) {
+  throw new Error(`[ゲームデータ] 研究.json: 必要ユニットLvがありません (${RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT.join("、")})`);
+}
+export const RESEARCH_LEVEL_UNIT_REQUIREMENTS = Object.freeze(Object.fromEntries(
+  [...RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP.entries()].sort((a, b) => a[0] - b[0])
+));
 
-export const RESEARCH_TIME_REDUCTION_SKILL_BY_CATEGORY = {
-  鍛冶Lv: "工業",
-  魔法Lv: "魔法技術",
-  信仰Lv: "信仰",
-  軍事Lv: "指揮",
-  経済Lv: "統治"
-};
+export const RESEARCH_TIME_REDUCTION_SKILL_BY_CATEGORY = Object.freeze(Object.fromEntries(
+  cityBaseData
+    .filter(row => String(row?.分類 ?? "").trim() === "研究Lv")
+    .map(row => [String(row?.データ分類 ?? "").trim(), String(row?.対応技能 ?? "").trim()])
+    .filter(([category, skill]) => RESEARCH_CATEGORY_ORDER.includes(category) && skill)
+));
+const RESEARCH_CATEGORIES_WITHOUT_REDUCTION_SKILL = RESEARCH_CATEGORY_ORDER
+  .filter(category => !RESEARCH_TIME_REDUCTION_SKILL_BY_CATEGORY[category]);
+if (RESEARCH_CATEGORIES_WITHOUT_REDUCTION_SKILL.length) {
+  throw new Error(`[ゲームデータ] 都市基本データ.json: 研究Lvの対応技能がありません (${RESEARCH_CATEGORIES_WITHOUT_REDUCTION_SKILL.join("、")})`);
+}
 
 const RESEARCH_CATEGORY_ALIAS = Object.freeze({
   ...Object.fromEntries(RESEARCH_TARGET_ORDER.flatMap(target => [[target, `${target}Lv`], [`${target}Lv`, `${target}Lv`]])),
@@ -97,7 +114,7 @@ function isInvalidHeaderRow(core) {
 
 function buildExtraDetailEntries(row) {
   if (!row || typeof row !== "object") return [];
-  const excludedKeys = new Set(["ID", "id", "項目名", "name", "名称", "技術対象", "カテゴリ", "category", "target", "Lv", "level", "tier", "詳細", "desc", "説明"]);
+  const excludedKeys = new Set(["ID", "id", "項目名", "name", "名称", "技術対象", "カテゴリ", "category", "target", "Lv", "level", "tier", "必要ユニットLv", "詳細", "desc", "説明"]);
   return Object.entries(row)
     .filter(([key, value]) => {
       if (excludedKeys.has(key)) return false;

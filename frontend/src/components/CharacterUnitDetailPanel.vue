@@ -367,7 +367,7 @@ function removeSelectedEquipment() {
     slotIndex: slot.index,
     slotKey: slot.key,
     equipmentName: "",
-    rarity: normalizeEquipmentRarity(slot?.item?.quality || slot?.item?.qualityLabel || "common")
+    rarity: normalizeEquipmentRarity(slot?.item?.quality || slot?.item?.qualityLabel || DEFAULT_V39_EQUIPMENT_RARITY_KEY)
   });
   equipmentActionStatus.value = `装備解除: ${slot.label}`;
 }
@@ -523,7 +523,7 @@ watch(
       showEquipmentPickerModal.value = false;
     }
     lastUnitId.value = currentUnitId;
-    const defaultRarity = normalizeEquipmentRarity(unitEquipmentAtSlot(unit, "武器1")?.quality || unitEquipmentAtSlot(unit, "武器1")?.qualityLabel || "common");
+    const defaultRarity = normalizeEquipmentRarity(unitEquipmentAtSlot(unit, "武器1")?.quality || unitEquipmentAtSlot(unit, "武器1")?.qualityLabel || DEFAULT_V39_EQUIPMENT_RARITY_KEY);
     mobRarityDraft.value = defaultRarity;
   },
   { immediate: true }
