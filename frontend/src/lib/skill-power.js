@@ -1,5 +1,7 @@
-const DAMAGE_SUM_KEYS = ["物理", "魔法", "射撃", "炎", "氷", "雷", "毒", "光", "闇"];
-export const SKILL_STATE_KEYS = ["精神", "盲目", "怯み", "出血", "拘束", "幻覚"];
+import { DAMAGE_TYPE_FIELDS, SKILL_STATE_KEYS } from "../constants/unitCommon.js";
+
+const DAMAGE_SUM_KEYS = DAMAGE_TYPE_FIELDS;
+export { SKILL_STATE_KEYS };
 
 export function toSafeNumber(value, fallback = null) {
   if (value === null || value === undefined || value === "") return fallback;
