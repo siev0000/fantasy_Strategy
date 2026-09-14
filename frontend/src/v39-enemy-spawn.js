@@ -71,7 +71,9 @@ function shuffle(list, random) {
 
 function validDefinition(row) {
   const name = text(row?.種族名);
-  const race = text(row?.種族, name);
+  const race = text(row?.種族);
+  // 種族未設定の行は制作途中として扱い、敵出現候補には含めない。
+  if (!race) return null;
   const className = text(row?.サブクラス, race);
   const terrain = text(row?.出現地形);
   const minLevel = integer(row?.Lv_Min, 0);
