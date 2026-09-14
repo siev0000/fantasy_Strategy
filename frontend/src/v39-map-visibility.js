@@ -178,6 +178,49 @@ function persistVisibilityTiles(faction, explored, currentVision) {
   }, { reason:"visibility-updated" });
 }
 
+function revealMovementPath(event) {
+  const data = window.__v39FieldRuntime?.mapData;
+  const path = Array.isArray(event?.detail?.path) ? event.detail.path : [];
+  if (!data?.grid || path.length <= 1) {
+    scheduleRender();
+    return;
+  }
+
+  const state = gameState();
+  const player = activePlayer(state);
+  const faction = player?.factionState;
+  const movedUnitId = String(event?.detail?.unitId || "");
+  const unit = (Array.isArray(faction?.units) ? faction.units : [])
+    .find(row => String(row?.id ?? row?.unitId ?? row?.characterId ?? "") === movedUnitId);
+  if (!faction || !unit || !livingUnit(unit)) {
+    scheduleRender();
+    return;
+  }
+
+  const explored = new Set(
+    (Array.isArray(faction.visibility?.exploredTileKeys) ? faction.visibility.exploredTileKeys : []).map(String)
+  );
+  const beforeSize = explored.size;
+  const visionRange = unitVisionRange(unit);
+
+  // Normal movement sends every traversed hex in path, so each step contributes its scouting range.
+  // Teleport-type movement can keep the jump behavior by sending no intermediate path nodes
+  // (or only source/destination), which deliberately leaves the skipped corridor unexplored.
+  for (const node of path) addVisionRange(data, node?.x, node?.y, visionRange, explored);
+
+  if (explored.size === beforeSize) {
+    scheduleRender();
+    return;
+  }
+
+  window.updateV39ActiveFactionState?.({
+    visibility:{
+      ...faction.visibility,
+      exploredTileKeys:[...explored].sort()
+    }
+  }, { reason:"visibility-movement-path" });
+}
+
 function resetVisibilityForNewField(event) {
   if (event?.detail?.restored === true) {
     scheduleRender();
@@ -328,5 +371,6 @@ window.renderV39Visibility = scheduleRender;
 window.addEventListener("v39:field-generated", resetVisibilityForNewField);
 window.addEventListener("v39:game-state-changed", scheduleRender);
 window.addEventListener("v39:initial-placement-complete", scheduleRender);
+window.addEventListener("v39:unit-moved", revealMovementPath);
 
 if (window.__v39FieldRuntime?.mapData) scheduleRender();
