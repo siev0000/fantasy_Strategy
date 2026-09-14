@@ -4,6 +4,7 @@ const DEFAULT_FIELD_SETTINGS = Object.freeze({
   mapSize: "60x60",
   patternId: "realistic",
   mountainMode: "random",
+  enemySpawnTileDivisor: 40,
   islandCustomSettings: {
     enabled: false,
     largeIslandCount: 2,
@@ -110,6 +111,10 @@ function createModal() {
               <option value="mixed">混合 固定</option>
             </select>
           </label>
+          <label class="v39-field-setting-card"><span>敵出現密度</span>
+            <input id="v39-field-enemy-divisor" type="number" min="20" max="60" step="5">
+            <small>敵数 = 出現可能マス数 ÷ 設定値。20ほど多く、60ほど少なくなります。</small>
+          </label>
           <div class="v39-field-setting-card"><span>ワールド端接続</span><label><input type="checkbox" id="v39-field-wrap"> 左右上下の端を接続する</label><small>旧カスタム設定の worldWrapEnabled を使用します。</small></div>
         </div>
 
@@ -146,6 +151,7 @@ function boot() {
     get("v39-field-map-size").value = settings.mapSize;
     get("v39-field-pattern").value = settings.patternId;
     get("v39-field-mountain").value = settings.mountainMode;
+    get("v39-field-enemy-divisor").value = Math.round(clampNumber(settings.enemySpawnTileDivisor, 20, 60, 40));
     get("v39-field-custom-enabled").checked = !!settings.islandCustomSettings.enabled;
     get("v39-field-wrap").checked = settings.islandCustomSettings.worldWrapEnabled !== false;
     get("v39-field-large-islands").value = settings.islandCustomSettings.largeIslandCount;
@@ -167,6 +173,7 @@ function boot() {
       mapSize: get("v39-field-map-size").value,
       patternId: get("v39-field-pattern").value,
       mountainMode: get("v39-field-mountain").value,
+      enemySpawnTileDivisor: Math.round(clampNumber(get("v39-field-enemy-divisor").value, 20, 60, 40)),
       islandCustomSettings: {
         enabled: get("v39-field-custom-enabled").checked,
         worldWrapEnabled: get("v39-field-wrap").checked,
@@ -208,9 +215,19 @@ function boot() {
     }
     get("v39-field-settings-status").textContent = "生成中…";
     try {
-      window.generateFieldFromSettings({ w, h, patternId:next.patternId, mountainMode:next.mountainMode, islandCustomSettings:next.islandCustomSettings });
+      window.generateFieldFromSettings({
+        w,
+        h,
+        patternId:next.patternId,
+        mountainMode:next.mountainMode,
+        enemySpawnTileDivisor:next.enemySpawnTileDivisor,
+        islandCustomSettings:next.islandCustomSettings
+      });
+      if (window.__v39FieldRuntime?.settings) {
+        window.__v39FieldRuntime.settings.enemySpawnTileDivisor = next.enemySpawnTileDivisor;
+      }
       saveFieldSettings(next);
-      get("v39-field-settings-status").textContent = `${w}×${h} 生成完了`;
+      get("v39-field-settings-status").textContent = `${w}×${h} / 敵密度 ÷${next.enemySpawnTileDivisor} 生成完了`;
       close();
     } catch (error) {
       console.error("[v39-field-settings-final] generation failed", error);
