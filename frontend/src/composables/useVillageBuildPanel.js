@@ -1,13 +1,11 @@
 import { computed } from "vue";
+import { RESEARCH_CATEGORY_ORDER } from "../lib/research-tree-config.js";
 
 const FACILITY_REQUIREMENT_FIELD_TO_ABILITY_KEY = {
-  鍛冶Lv: "鍛冶場",
-  魔法Lv: "魔法",
-  信仰Lv: "信仰",
-  軍事Lv: "軍事",
-  経済Lv: "経済"
+  ...Object.fromEntries(RESEARCH_CATEGORY_ORDER.map(key => [key, key.replace(/Lv$/u, "")])),
+  鍛冶Lv: "鍛冶場"
 };
-const FACILITY_REQUIREMENT_FIELDS = Object.keys(FACILITY_REQUIREMENT_FIELD_TO_ABILITY_KEY);
+const FACILITY_REQUIREMENT_FIELDS = RESEARCH_CATEGORY_ORDER;
 const SETTLEMENT_STAGE_FACILITY_NAMES = ["村", "町", "都市", "大都市"];
 const RESEARCH_CATEGORY_DISPLAY_NAME_MAP = {
   鍛冶Lv: "鍛冶",

@@ -1,6 +1,8 @@
 import { researchData as researchDbRaw } from "./game-data-registry.js";
 
-const RESEARCH_TARGET_ORDER = [...new Set(researchDbRaw.map(row => String(row?.技術対象 ?? "").trim()).filter(Boolean))];
+const RESEARCH_TARGET_ORDER = [...new Set(researchDbRaw
+  .map(row => String(row?.技術対象 ?? "").trim())
+  .filter(target => target && target !== "技術対象"))];
 export const RESEARCH_CATEGORY_ORDER = Object.freeze(RESEARCH_TARGET_ORDER.map(target => `${target}Lv`));
 
 export const RESEARCH_LEVEL_UNIT_REQUIREMENTS = {

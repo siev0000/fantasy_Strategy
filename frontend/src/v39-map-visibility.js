@@ -154,17 +154,49 @@ function buildCurrentVision(data, faction, state, playerId) {
   return visible;
 }
 
-function persistExploredTiles(faction, explored) {
+function persistVisibilityTiles(faction, explored, currentVision) {
   const oldKeys = Array.isArray(faction?.visibility?.exploredTileKeys)
     ? faction.visibility.exploredTileKeys.map(String)
     : [];
-  if (oldKeys.length === explored.size && oldKeys.every(key => explored.has(key))) return;
+  const oldVisibleKeys = Array.isArray(faction?.visibility?.visibleTileKeys)
+    ? faction.visibility.visibleTileKeys.map(String)
+    : [];
+  const exploredUnchanged = oldKeys.length === explored.size && oldKeys.every(key => explored.has(key));
+  const visibleUnchanged = oldVisibleKeys.length === currentVision.size && oldVisibleKeys.every(key => currentVision.has(key));
+  if (exploredUnchanged && visibleUnchanged) return;
   window.updateV39ActiveFactionState?.({
     visibility: {
       ...faction.visibility,
-      exploredTileKeys: [...explored].sort()
+      exploredTileKeys: [...explored].sort(),
+      visibleTileKeys: [...currentVision].sort()
     }
-  }, { reason:"visibility-explored" });
+  }, { reason:"visibility-updated" });
+}
+
+function resetVisibilityForNewField(event) {
+  if (event?.detail?.restored === true) {
+    scheduleRender();
+    return;
+  }
+  const state = gameState();
+  if (!state?.players?.length) {
+    scheduleRender();
+    return;
+  }
+  const emptyVisibility = {
+    exploredTileKeys:[],
+    visibleTileKeys:[],
+    spottedEnemyTileKeys:[],
+    spottedFactionTileKeys:[],
+    alertedEnemyTileKeys:[],
+    alertedFactionTileKeys:[]
+  };
+  const players = state.players.map(player => ({
+    ...player,
+    factionState:{ ...player.factionState, visibility:emptyVisibility }
+  }));
+  window.setV39GameState?.({ players }, { reason:"visibility-new-field" });
+  scheduleRender();
 }
 
 function drawEdge(graphics, points, edgeIndex) {
@@ -261,7 +293,7 @@ function renderVisibilityLayers() {
       range:unitVisionRange(unit)
     }))
   };
-  persistExploredTiles(faction, explored);
+  persistVisibilityTiles(faction, explored, currentVision);
   return true;
 }
 
@@ -288,7 +320,7 @@ window.isV39TileInCurrentVision = (x, y) => lastSnapshot.currentVisionTileKeys.h
 window.getV39VisibilityStatus = () => ({ ...(window.__v39VisibilityStatus || {}) });
 window.renderV39Visibility = scheduleRender;
 
-window.addEventListener("v39:field-generated", scheduleRender);
+window.addEventListener("v39:field-generated", resetVisibilityForNewField);
 window.addEventListener("v39:game-state-changed", scheduleRender);
 window.addEventListener("v39:initial-placement-complete", scheduleRender);
 

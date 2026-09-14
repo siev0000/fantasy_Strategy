@@ -5,7 +5,7 @@ let lastRealTime = performance.now();
 let timerId = 0;
 
 function currentTimeline() {
-  const value = window.getV39GameState?.()?.timeline || {};
+  const value = window.getV39TimelineState?.() || window.getV39GameState?.()?.timeline || {};
   return {
     turnNumber: Math.max(1, Math.floor(Number(value.turnNumber) || 1)),
     paused: value.paused === true,
@@ -16,12 +16,17 @@ function currentTimeline() {
 
 export function advanceRuntimeTime(deltaMs, options = {}) {
   const delta = Math.max(0, Number(deltaMs) || 0);
-  const state = window.getV39GameState?.();
-  if (!state || delta <= 0) return currentTimeline().elapsedMs;
+  if ((typeof window.getV39TimelineState !== "function" && typeof window.getV39GameState !== "function") || delta <= 0) {
+    return currentTimeline().elapsedMs;
+  }
   const timeline = currentTimeline();
   if (timeline.paused && options.force !== true) return timeline.elapsedMs;
   const next = { ...timeline, elapsedMs:timeline.elapsedMs + delta };
-  window.setV39GameState?.({ timeline:next }, { silent:true, reason:"runtime-clock" });
+  if (typeof window.updateV39TimelineState === "function") {
+    window.updateV39TimelineState(next, { silent:true, reason:"runtime-clock" });
+  } else {
+    window.setV39GameState?.({ timeline:next }, { silent:true, reason:"runtime-clock" });
+  }
   window.dispatchEvent(new CustomEvent("v39:runtime-tick", {
     detail:{ deltaMs:delta, elapsedMs:next.elapsedMs, forced:options.force === true }
   }));

@@ -1,4 +1,5 @@
 import { createInitialV39Village } from "./lib/v39-economy-rules.js";
+import { getHexOffsetNeighbors } from "./lib/hex-grid.js";
 
 const MODE_BANNER_ID = "modeBanner";
 
@@ -111,12 +112,7 @@ function normalizeCoord(value, size, wrap) {
   return value >= 0 && value < size ? value : null;
 }
 
-function neighborCoords(x, y) {
-  const offsets = y % 2 === 1
-    ? [[-1, 0], [1, 0], [0, -1], [1, -1], [0, 1], [1, 1]]
-    : [[-1, 0], [1, 0], [-1, -1], [0, -1], [-1, 1], [0, 1]];
-  return offsets.map(([dx, dy]) => ({ x: x + dx, y: y + dy }));
-}
+const neighborCoords = getHexOffsetNeighbors;
 
 function unitCanStandAt(data, x, y) {
   const terrain = text(data?.grid?.[y]?.[x], "海");

@@ -99,7 +99,7 @@ function installStyles() {
   if (document.getElementById("v39-exploration-style")) return;
   const style = document.createElement("style");
   style.id = "v39-exploration-style";
-  style.textContent = `#v39-land-survey-actions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:6px;align-items:center;padding:6px;border:1px solid #3b5962;border-radius:7px;background:#132229}#v39-land-survey-actions div{min-width:0}#v39-land-survey-actions span,#v39-land-survey-actions b{display:block}#v39-land-survey-actions span{font-size:11px;color:#94a9ae}#v39-land-survey-actions b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#v39-land-survey-start{min-height:36px;border:1px solid #c39a3d;border-radius:6px;background:#352c15;color:#ffe4a0;font-size:14px;font-weight:800;cursor:pointer}#v39-land-survey-start:disabled{cursor:not-allowed;opacity:.45}`;
+  style.textContent = `#v39-land-survey-actions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:6px;align-items:center;padding:6px;border:1px solid #3b5962;border-radius:7px;background:#132229}#v39-land-survey-actions div{min-width:0}#v39-land-survey-actions span,#v39-land-survey-actions b{display:block}#v39-land-survey-actions span{font-size:13px;color:#94a9ae}#v39-land-survey-actions b{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#v39-land-survey-start{min-height:36px;border:1px solid #c39a3d;border-radius:6px;background:#352c15;color:#ffe4a0;font-size:15px;font-weight:800;cursor:pointer}#v39-land-survey-start:disabled{cursor:not-allowed;opacity:.45}`;
   document.head.appendChild(style);
 }
 

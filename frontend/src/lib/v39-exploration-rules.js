@@ -1,12 +1,21 @@
 import { getGameDataRows } from "./game-data-registry.js";
 
-const FOOD_KEYS = Object.freeze(["穀物", "野菜", "肉", "魚"]);
-const RARE_KEYS = Object.freeze(["金", "銀", "宝石"]);
+const text = value => String(value ?? "").trim();
+const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const RESOURCE_ROWS = getGameDataRows("都市基本データ")
+  .filter(row => text(row?.データ分類) && text(row?.分類));
+const resourceKeysFor = categories => Object.freeze([...new Set(RESOURCE_ROWS
+  .filter(row => categories.includes(text(row?.分類)))
+  .map(row => text(row?.データ分類)))]);
+const FOOD_KEYS = resourceKeysFor(["食料"]);
+const RARE_KEYS = resourceKeysFor(["貴金属", "宝石", "特殊資源"]);
+const ALL_RESOURCE_KEYS = resourceKeysFor(["食料", "木材", "石材", "金属", "貴金属", "宝石", "特殊資源"]);
+const TERRAIN_DEFINITION_BY_NAME = new Map(getGameDataRows("地形")
+  .map(row => [text(row?.地形), row])
+  .filter(([name]) => name));
 const SITE_RATE = 0.02;
 const DANGER_REDUCTION_BASE = 15;
 
-const text = value => String(value ?? "").trim();
-const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const coordKey = (x, y) => `${Math.floor(number(x))},${Math.floor(number(y))}`;
 
 function hashText(value) {
@@ -29,7 +38,7 @@ export function v39ExplorationFeatureDefinitions() {
   return getGameDataRows("地形").filter(isFeatureDefinition).map(row => ({
     id:`地形:${text(row.地形)}`,
     name:text(row.地形),
-    yields:Object.fromEntries([...FOOD_KEYS, "木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", ...RARE_KEYS]
+    yields:Object.fromEntries(ALL_RESOURCE_KEYS
       .map(key => [key, Math.max(0, number(row?.[key]))]).filter(([, value]) => value > 0)),
     recoveryPercent:Math.max(0, number(row?.回復)),
     dangerPercent:Math.max(0, number(row?.モンスター危険度) * 100),
@@ -42,12 +51,13 @@ function isPassable(mapData, x, y) {
 }
 
 function terrainAffinity(feature, mapData, x, y) {
-  const terrain = `${text(mapData?.grid?.[y]?.[x])}/${text(mapData?.reliefMap?.[y]?.[x])}/${text(mapData?.specialMap?.[y]?.[x])}`;
-  const rocky = ["山", "丘", "峡谷", "洞窟", "火山"].some(label => terrain.includes(label));
-  const green = ["森", "平地", "湿地", "沼", "草原"].some(label => terrain.includes(label));
-  const hasRareOre = RARE_KEYS.some(key => number(feature?.yields?.[key]) > 0);
-  if (hasRareOre) return rocky ? 4 : 1;
-  return green ? 3 : 1;
+  const specialName = text(mapData?.specialMap?.[y]?.[x]);
+  const terrainName = specialName || text(mapData?.grid?.[y]?.[x]);
+  const terrainRow = TERRAIN_DEFINITION_BY_NAME.get(terrainName);
+  if (!terrainRow) return 1;
+  const matchingYield = Object.keys(feature?.yields || {})
+    .reduce((sum, key) => sum + Math.max(0, number(terrainRow?.[key])), 0);
+  return 1 + Math.min(3, Math.floor(matchingYield / 50));
 }
 
 export function generateV39ExplorationSites(mapData, options = {}) {

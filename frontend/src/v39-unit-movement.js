@@ -1,5 +1,6 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { showV39Feedback } from "./v39-feedback.js";
+import { getHexDistance, getHexNeighborCoords } from "./lib/hex-grid.js";
 
 const UNIT_ACTION_POINT_MAX = 100;
 const RANGE_DEPTH = 9;
@@ -169,35 +170,7 @@ function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
   return Math.max(0, Math.ceil(terrainCost * baseApCost));
 }
 
-function normalizeWrappedCoord(value, size) {
-  if (!Number.isFinite(value) || !Number.isFinite(size) || size <= 0) return 0;
-  const mod = value % size;
-  return mod < 0 ? mod + size : mod;
-}
-
-function getHexNeighborCoordsBySize(w, h, x, y, worldWrapEnabled = false) {
-  const isOddRow = y % 2 === 1;
-  const deltas = isOddRow
-    ? [[-1, 0], [1, 0], [0, -1], [1, -1], [0, 1], [1, 1]]
-    : [[-1, 0], [1, 0], [-1, -1], [0, -1], [-1, 1], [0, 1]];
-  const result = [];
-  const seen = new Set();
-  for (const [dx, dy] of deltas) {
-    let nx = x + dx;
-    let ny = y + dy;
-    if (worldWrapEnabled) {
-      nx = normalizeWrappedCoord(nx, w);
-      ny = normalizeWrappedCoord(ny, h);
-    } else if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
-      continue;
-    }
-    const key = coordKey(nx, ny);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push({ x:nx, y:ny });
-  }
-  return result;
-}
+const getHexNeighborCoordsBySize = getHexNeighborCoords;
 
 function isWorldWrapEnabled(data) {
   if (typeof data?.worldWrapEnabled === "boolean") return data.worldWrapEnabled;
@@ -215,15 +188,7 @@ function occupiedTileKeys(excludedUnitId = "") {
     .map(unit => coordKey(unit?.x, unit?.y)));
 }
 
-function hexDistance(a, b) {
-  const cube = point => {
-    const q = point.x - (point.y - (point.y & 1)) / 2;
-    return [q, -q - point.y, point.y];
-  };
-  const aa = cube(a);
-  const bb = cube(b);
-  return Math.max(...aa.map((value, index) => Math.abs(value - bb[index])));
-}
+const hexDistance = getHexDistance;
 
 function closestReachableTarget(plan, start, desired) {
   const candidates = [];

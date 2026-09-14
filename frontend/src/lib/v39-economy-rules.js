@@ -12,6 +12,8 @@ import {
   sumResourceBag
 } from "../composables/resourceEconomyUtils.js";
 import { adjustVillagePopulationForTurn, resolveVillageScaleLabel } from "../composables/villageCoreUtils.js";
+import { getHexDistance, getHexOffsetNeighbors } from "./hex-grid.js";
+import { RESEARCH_CATEGORY_ORDER } from "./research-tree-config.js";
 
 const RESOURCE_DEFINITION_ROWS = getGameDataRows("都市基本データ")
   .filter(row => ["食料", "木材", "石材", "金属", "貴金属", "宝石", "特殊資源"].includes(String(row?.分類 || "").trim()));
@@ -37,7 +39,7 @@ const ECONOMY_CONSUMPTION_SCALE = 0.1;
 const FOOD_SUBSTITUTE_MULTIPLIER = 1.2;
 const INITIAL_STOCK_TURNS = 3;
 const SETTLEMENT_NAMES = new Set(["村", "町", "都市", "大都市"]);
-const RESEARCH_FIELDS = Object.freeze(["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"]);
+const RESEARCH_FIELDS = RESEARCH_CATEGORY_ORDER;
 const FACILITY_NON_EFFECT_FIELDS = new Set([
   "施設名", "条件地形", "詳細", "建築時間", "建築数", "影響範囲",
   ...RESEARCH_FIELDS, ...MATERIAL_RESOURCE_KEYS, "死体", "魂"
@@ -237,16 +239,8 @@ export function resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey)
   return Math.max(0, 1 + (number(effects.生産力) + number(category ? effects[category] : 0)) / 100);
 }
 
-function hexDistance(a, b) {
-  const cube = point => { const q = point.x - (point.y - (point.y & 1)) / 2; return [q, -q - point.y, point.y]; };
-  const aa = cube(a), bb = cube(b);
-  return Math.max(...aa.map((value, index) => Math.abs(value - bb[index])));
-}
-
-function neighborCoords(x, y) {
-  const offsets = y % 2 ? [[-1,0],[1,0],[0,-1],[1,-1],[0,1],[1,1]] : [[-1,0],[1,0],[-1,-1],[0,-1],[-1,1],[0,1]];
-  return offsets.map(([dx, dy]) => ({ x:x + dx, y:y + dy }));
-}
+const hexDistance = getHexDistance;
+const neighborCoords = getHexOffsetNeighbors;
 
 function terrainConditionMet(condition, tile, mapData) {
   const expected = text(condition);

@@ -40,7 +40,7 @@ function installStyles() {
 }
 #${MODAL_ID} .v39-text-input-head h2{
   margin:0;
-  font-size:14px;
+  font-size:15px;
   color:#e8efec;
 }
 #${MODAL_ID} .v39-text-input-body{
@@ -51,7 +51,7 @@ function installStyles() {
 #${MODAL_ID} .v39-text-input-help{
   min-height:0;
   color:#92a2a6;
-  font-size:10px;
+  font-size:13px;
   line-height:1.5;
 }
 #${MODAL_ID} input,

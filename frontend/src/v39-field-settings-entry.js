@@ -61,14 +61,14 @@ function createPlaceholderModal() {
     <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid #34444a;position:sticky;top:0;background:#111c21;z-index:1">
       <div>
         <div id="v39-field-settings-title" style="font-weight:800;font-size:16px">フィールド設定</div>
-        <div style="margin-top:2px;font-size:11px;color:#92a2a6">カスタムフィールド生成（仮画面）</div>
+        <div style="margin-top:2px;font-size:13px;color:#92a2a6">カスタムフィールド生成（仮画面）</div>
       </div>
       <button type="button" id="v39-close-field-settings" style="border:1px solid #526269;border-radius:7px;background:#19262b;color:#e8efec;padding:7px 11px;cursor:pointer">閉じる</button>
     </header>
     <div style="padding:14px;display:grid;gap:12px">
       <div style="padding:12px;border:1px solid #34444a;border-radius:8px;background:rgba(255,255,255,.025)">
         <div style="font-size:13px;font-weight:700;margin-bottom:5px">現在は仮画面です</div>
-        <div style="font-size:12px;line-height:1.7;color:#b8c5c8">ここへ以前の画面で使用していたフィールドカスタム設定を移植します。設定後に「生成」を押して初めてフィールドを作成する流れにします。</div>
+        <div style="font-size:13px;line-height:1.7;color:#b8c5c8">ここへ以前の画面で使用していたフィールドカスタム設定を移植します。設定後に「生成」を押して初めてフィールドを作成する流れにします。</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
         <div style="padding:10px;border:1px solid #2f3f45;border-radius:7px;color:#9eacb0">マップサイズ（未接続）</div>

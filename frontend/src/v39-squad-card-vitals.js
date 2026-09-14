@@ -30,7 +30,7 @@ function installStyles() {
       margin-top:0!important;
     }
     .squad-card .v39-card-vital-label{
-      font-size:11px!important;
+      font-size:13px!important;
       font-weight:800!important;
       color:#a7b5b8!important;
       white-space:nowrap!important;
@@ -72,7 +72,7 @@ function installStyles() {
       justify-content:center!important;
       padding:0 3px!important;
       margin:0!important;
-      font-size:12px!important;
+      font-size:13px!important;
       font-weight:800!important;
       line-height:1!important;
       color:#f4f8f6!important;
@@ -95,10 +95,10 @@ function installStyles() {
         min-height:17px!important;
       }
       .squad-card .v39-card-vital-label{
-        font-size:10px!important;
+        font-size:13px!important;
       }
       .squad-card .v39-card-vital-value{
-        font-size:12px!important;
+        font-size:13px!important;
       }
       .squad-card .v39-card-vital-track{
         height:15px!important;

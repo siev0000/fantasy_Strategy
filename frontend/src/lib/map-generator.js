@@ -1,5 +1,6 @@
 import { generateIsland as generateRealisticIsland } from "./realistic-island.js";
 import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
+import { getHexNeighborCoords as getSharedHexNeighborCoords } from "./hex-grid.js";
 
 const 地形定義 = [
   { key: "平地", color: "#b6cc71", weight: 26, short: "平" },
@@ -339,35 +340,11 @@ export const terrainDefinitions = 地形定義;
 function getHexNeighbors(grid, x, y) {
   const h = grid.length;
   const w = grid[0].length;
-  const isOddRow = y % 2 === 1;
-  const deltas = isOddRow
-    ? [[-1, 0], [1, 0], [0, -1], [1, -1], [0, 1], [1, 1]]
-    : [[-1, 0], [1, 0], [-1, -1], [0, -1], [-1, 1], [0, 1]];
-  const result = [];
-  for (const [dx, dy] of deltas) {
-    const nx = x + dx;
-    const ny = y + dy;
-    if (ny >= 0 && ny < h && nx >= 0 && nx < w) {
-      result.push(grid[ny][nx]);
-    }
-  }
-  return result;
+  return getSharedHexNeighborCoords(w, h, x, y).map(point => grid[point.y][point.x]);
 }
 
 function getHexNeighborCoords(w, h, x, y) {
-  const isOddRow = y % 2 === 1;
-  const deltas = isOddRow
-    ? [[-1, 0], [1, 0], [0, -1], [1, -1], [0, 1], [1, 1]]
-    : [[-1, 0], [1, 0], [-1, -1], [0, -1], [-1, 1], [0, 1]];
-  const result = [];
-  for (const [dx, dy] of deltas) {
-    const nx = x + dx;
-    const ny = y + dy;
-    if (ny >= 0 && ny < h && nx >= 0 && nx < w) {
-      result.push({ x: nx, y: ny });
-    }
-  }
-  return result;
+  return getSharedHexNeighborCoords(w, h, x, y);
 }
 
 function isEdge(x, y, w, h) {

@@ -206,6 +206,10 @@ function getActiveFactionState() {
   return getActivePlayer()?.factionState || null;
 }
 
+function getTimelineState() {
+  return { ...state.timeline };
+}
+
 function dispatchChange(reason = "update") {
   window.dispatchEvent(new CustomEvent("v39:game-state-changed", { detail:{ reason, state:getState() } }));
 }
@@ -241,6 +245,23 @@ function setActivePlayer(playerId, options = {}) {
   state = { ...state, activePlayerId:id };
   if (options.silent !== true) dispatchChange("active-player");
   return getActivePlayer();
+}
+
+function updateTimelineState(patch = {}, options = {}) {
+  const source = { ...state.timeline, ...(patch && typeof patch === "object" ? patch : {}) };
+  state = {
+    ...state,
+    timeline:{
+      turnNumber:Math.max(1, Math.floor(Number(source.turnNumber) || 1)),
+      paused:source.paused === true,
+      elapsedMs:Math.max(0, Number(source.elapsedMs) || 0),
+      lastTurnAdvancedAtMs:Math.max(0, Number(source.lastTurnAdvancedAtMs) || 0),
+      lastResolvedTurn:Math.max(0, Math.floor(Number(source.lastResolvedTurn) || 0)),
+      lastStageSequence:Array.isArray(source.lastStageSequence) ? source.lastStageSequence.map(String) : []
+    }
+  };
+  if (options.silent !== true) dispatchChange(options.reason || "timeline");
+  return getTimelineState();
 }
 
 function updateActiveFactionState(patch = {}, options = {}) {
@@ -283,7 +304,9 @@ window.getV39GameState = getState;
 window.setV39GameState = setState;
 window.getV39ActivePlayer = getActivePlayer;
 window.getV39ActiveFactionState = getActiveFactionState;
+window.getV39TimelineState = getTimelineState;
 window.setV39ActivePlayer = setActivePlayer;
+window.updateV39TimelineState = updateTimelineState;
 window.updateV39ActiveFactionState = updateActiveFactionState;
 window.updateV39TileState = updateTileState;
 window.clearV39GameState = clearState;
@@ -295,7 +318,9 @@ export {
   setState,
   getActivePlayer,
   getActiveFactionState,
+  getTimelineState,
   setActivePlayer,
+  updateTimelineState,
   updateActiveFactionState,
   updateTileState,
   clearState,

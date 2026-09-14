@@ -1,4 +1,5 @@
 import { getGameDataRows } from "./lib/game-data-registry.js";
+import { getHexNeighborCoords } from "./lib/hex-grid.js";
 
 const VILLAGE_TILES_PER_SITE = 450;
 const WANDERER_TILES_PER_GROUP = 300;
@@ -88,8 +89,8 @@ export function generateV39WorldPopulation(state, mapData) {
 }
 
 function neighbors(mapData, x, y) {
-  const offsets = y % 2 ? [[-1,0],[1,0],[0,-1],[1,-1],[0,1],[1,1]] : [[-1,0],[1,0],[-1,-1],[0,-1],[-1,1],[0,1]];
-  return offsets.map(([dx, dy]) => ({ x:x+dx, y:y+dy })).filter(tile => tile.x >= 0 && tile.y >= 0 && tile.x < mapData.w && tile.y < mapData.h && !["海", "湖", "火山"].includes(text(mapData.grid?.[tile.y]?.[tile.x])) && !mapData?.lavaMap?.[tile.y]?.[tile.x]);
+  return getHexNeighborCoords(mapData.w, mapData.h, x, y, false)
+    .filter(tile => !["海", "湖", "火山"].includes(text(mapData.grid?.[tile.y]?.[tile.x])) && !mapData?.lavaMap?.[tile.y]?.[tile.x]);
 }
 
 export function advanceV39WorldPopulation(state, mapData, turnNumber) {
@@ -191,7 +192,7 @@ function installStyles() {
   if (document.getElementById("v39-world-population-style")) return;
   const style = document.createElement("style");
   style.id = "v39-world-population-style";
-  style.textContent = `#v39-world-contact-actions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:6px;align-items:center;padding:6px;border:1px solid #786542;border-radius:7px;background:#282515}#v39-world-contact-actions[hidden]{display:none}#v39-world-contact-actions span,#v39-world-contact-actions b{display:block}#v39-world-contact-actions span{font-size:11px;color:#c0aa77}#v39-world-contact-actions b{font-size:14px}#v39-world-contact-button{min-height:36px;border:1px solid #d4af58;border-radius:6px;background:#493a18;color:#ffe6a0;font-size:14px;font-weight:800}`;
+  style.textContent = `#v39-world-contact-actions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:6px;align-items:center;padding:6px;border:1px solid #786542;border-radius:7px;background:#282515}#v39-world-contact-actions[hidden]{display:none}#v39-world-contact-actions span,#v39-world-contact-actions b{display:block}#v39-world-contact-actions span{font-size:13px;color:#c0aa77}#v39-world-contact-actions b{font-size:15px}#v39-world-contact-button{min-height:36px;border:1px solid #d4af58;border-radius:6px;background:#493a18;color:#ffe6a0;font-size:15px;font-weight:800}`;
   document.head.appendChild(style);
 }
 
