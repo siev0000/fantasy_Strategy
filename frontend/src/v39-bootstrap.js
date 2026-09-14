@@ -1,5 +1,6 @@
 // Build the data-driven UI before attaching legacy interactions and field modules.
 import "./v39-operation-ui.js";
+import "./v39-feedback.js";
 import "./v39-game-state-bridge.js";
 import "./v39-economy-ui.js";
 import "./v39-legacy-ui.js";

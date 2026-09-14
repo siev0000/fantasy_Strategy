@@ -1,3 +1,5 @@
+import { showV39Feedback } from "./v39-feedback.js";
+
 function applyViewportScale(){
   const vv=window.visualViewport;
   const w=Math.max(320,Math.floor(vv?.width||window.innerWidth||1280));
@@ -39,7 +41,7 @@ function applyViewportScale(){
 applyViewportScale();
 window.addEventListener("resize",applyViewportScale);
 window.visualViewport?.addEventListener("resize",applyViewportScale);
-function say(t){const e=document.getElementById("toast");e.textContent=t;e.classList.add("show");clearTimeout(say.t);say.t=setTimeout(()=>e.classList.remove("show"),1400)}
+function say(t){showV39Feedback(t)}
 document.querySelectorAll("[data-char-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-char-tab]").forEach(x=>x.classList.toggle("active",x===b));document.getElementById("charCharacter").style.display=b.dataset.charTab==="character"?"grid":"none";document.getElementById("charSquad").style.display=b.dataset.charTab==="squad"?"grid":"none"});
 document.querySelectorAll("[data-equip-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-equip-tab]").forEach(x=>x.classList.toggle("active",x===b));document.getElementById("equipDetail").style.display=b.dataset.equipTab==="detail"?"block":"none";document.getElementById("equipCraft").style.display=b.dataset.equipTab==="craft"?"block":"none";document.getElementById("equipEnchant").style.display=b.dataset.equipTab==="enchant"?"block":"none"});
 document.querySelectorAll(".inv[data-item]").forEach(b=>b.onclick=()=>{document.querySelectorAll(".inv").forEach(x=>x.classList.remove("active"));b.classList.add("active");document.getElementById("equipName").textContent=b.dataset.item+" ["+b.dataset.rarity+"]"});

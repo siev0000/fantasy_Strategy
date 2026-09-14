@@ -26,6 +26,7 @@ const classByName = new Map(getGameDataRows("クラス").map(row => [text(row?.�
 const enchantmentRows = getGameDataRows("付与").filter(row => text(row?.付与能力));
 const enchantmentByName = new Map(enchantmentRows.map(row => [text(row.付与能力), row]));
 const SLOT_LABELS = Object.freeze({ 武器1:"武器1", 武器2:"武器2", 頭:"頭", 体:"体", 足:"足", 装飾1:"装飾1", 装飾2:"装飾2" });
+const EQUIPMENT_ACTION_POPULATION_STEP = 25;
 
 export function normalizeV39EquipmentRarity(value, fallback = "common") {
   return RARITY_ALIASES[text(value)] || RARITY_ALIASES[text(value).toLowerCase()] || fallback;
@@ -342,7 +343,31 @@ function enchantCapacity(item, row) {
   return usedLevel + Math.max(0, number(row?.Lv)) > limit ? `付与Lv合計は品質Lv${limit}までです` : "";
 }
 
-export function getV39EnchantmentOptions(player, inventoryKeyValue) {
+function enchantUsageSpec(row, item) {
+  const level = Math.max(1, Math.floor(number(row?.Lv, 1)));
+  const rarityLevel = getV39EquipmentRarity(item?.quality).level;
+  return {
+    key:number(row?.信仰Lv) > 0 ? "enchantFaithUsed" : "enchantMagicUsed",
+    label:number(row?.信仰Lv) > 0 ? "信仰" : "魔術",
+    cost:Math.max(1, level + Math.max(0, rarityLevel - 1))
+  };
+}
+
+function enchantUsageState(player, row, item, turnNumber = 1) {
+  const village = normalizeV39Village(player?.factionState?.village, player?.race);
+  const turn = Math.max(1, Math.floor(number(turnNumber, 1)));
+  const spec = enchantUsageSpec(row, item);
+  const source = village?.equipmentActionUsage && number(village.equipmentActionUsage.turn, -1) === turn
+    ? village.equipmentActionUsage
+    : {};
+  const populationMultiplier = Math.max(1, 1 + Math.floor(number(village?.population) / EQUIPMENT_ACTION_POPULATION_STEP));
+  const abilityField = spec.key === "enchantFaithUsed" ? "信仰Lv" : "魔法Lv";
+  const max = Math.max(1, researchLevel(player, abilityField)) * populationMultiplier;
+  const used = Math.max(0, Math.floor(number(source?.[spec.key])));
+  return { ...spec, turn, max, used, remaining:Math.max(0, max - used) };
+}
+
+export function getV39EnchantmentOptions(player, inventoryKeyValue, turnNumber = 1) {
   const inventory = normalizeV39EquipmentInventory(player?.factionState?.village?.equipmentInventory);
   const target = inventory.find(entry => entry.key === text(inventoryKeyValue));
   if (!target) return [];
@@ -350,12 +375,17 @@ export function getV39EnchantmentOptions(player, inventoryKeyValue) {
     const failed = enchantRequirements(player, row);
     const capacityReason = enchantCapacity(target.item, row);
     const targetOk = enchantTargetMatches(row, target.item);
+    const usage = enchantUsageState(player, row, target.item, turnNumber);
+    const usageReason = usage.remaining < usage.cost
+      ? `付与回数不足(${usage.label}): 残り ${usage.remaining}/${usage.max} (必要${usage.cost})`
+      : "";
     return {
       name:text(row.付与能力),
       row,
       cost:enchantCost(row),
-      available:targetOk && !failed.length && !capacityReason,
-      reason:!targetOk ? "対象外" : capacityReason || failed.join(" / ")
+      usage,
+      available:targetOk && !failed.length && !capacityReason && !usageReason,
+      reason:!targetOk ? "対象外" : capacityReason || failed.join(" / ") || usageReason
     };
   }).filter(option => enchantTargetMatches(option.row, target.item));
 }
@@ -394,6 +424,10 @@ export function applyV39EquipmentEnchantment(state, playerId, request = {}) {
   if (failed.length) return { ok:false, reason:`条件不足: ${failed.join(" / ")}`, state };
   const capacityReason = enchantCapacity(target.item, row);
   if (capacityReason) return { ok:false, reason:capacityReason, state };
+  const usage = enchantUsageState(player, row, target.item, state?.timeline?.turnNumber);
+  if (usage.remaining < usage.cost) {
+    return { ok:false, reason:`付与回数不足(${usage.label}): 残り ${usage.remaining}/${usage.max} (必要${usage.cost})`, state, usage };
+  }
   const cost = enchantCost(row);
   const material = { ...village.materialStockByType };
   const food = { ...village.foodStockByType };
@@ -404,7 +438,23 @@ export function applyV39EquipmentEnchantment(state, playerId, request = {}) {
   for (const [key, value] of Object.entries(cost.material)) material[key] = round1(Math.max(0, number(material[key]) - value));
   for (const [key, value] of Object.entries(cost.food)) food[key] = round1(Math.max(0, number(food[key]) - value));
   const item = applyEnchantment(taken.item, row);
-  const nextVillage = normalizeV39Village({ ...village, materialStockByType:material, foodStockByType:food, equipmentInventory:storeInventoryItem(taken.inventory, item, 1) }, player.race);
+  const previousUsage = village?.equipmentActionUsage && number(village.equipmentActionUsage.turn, -1) === usage.turn
+    ? village.equipmentActionUsage
+    : {};
+  const equipmentActionUsage = {
+    turn:usage.turn,
+    craftUsed:Math.max(0, Math.floor(number(previousUsage?.craftUsed))),
+    enchantMagicUsed:Math.max(0, Math.floor(number(previousUsage?.enchantMagicUsed))),
+    enchantFaithUsed:Math.max(0, Math.floor(number(previousUsage?.enchantFaithUsed))),
+    [usage.key]:usage.used + usage.cost
+  };
+  const nextVillage = normalizeV39Village({
+    ...village,
+    materialStockByType:material,
+    foodStockByType:food,
+    equipmentInventory:storeInventoryItem(taken.inventory, item, 1),
+    equipmentActionUsage
+  }, player.race);
   const nextState = updatePlayer(state, playerId, current => ({ ...current, factionState:{ ...current.factionState, village:nextVillage } }));
   return { ok:true, state:nextState, item, cost, enchantment:row };
 }

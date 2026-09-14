@@ -52,7 +52,7 @@ const TABLE_KEY_FIELDS = Object.freeze({
 const REQUIRED_FIELDS = Object.freeze({
   クラス:["名前", "種類"], スキル一覧:["名前", "行動"], 装備:["装備名", "装備箇所"],
   地形:["地形"], 出現敵:["出現地形", "種族名"],
-  研究:["項目名", "技術対象", "Lv"], 災害:["カテゴリ名", "効果"]
+  研究:["項目名", "技術対象", "Lv"], 災害:["カテゴリ名", "効果"], 範囲:["範囲タイプ", "処理タイプ"]
 });
 
 export const GAME_DATA_TABLE_METADATA = Object.freeze({
@@ -174,6 +174,9 @@ export function validateGameDataRegistry() {
         for (const field of ["武器", "副武器", "胴", "頭", "足", "装飾1", "装飾2"]) validateReference(issues, table.name, id, field, "装備", "装備名", row?.[field]);
       }
       if (table.name === "スキル一覧") validateReference(issues, table.name, id, "範囲", "範囲", "範囲タイプ", row?.範囲);
+      if (table.name === "範囲" && !["single", "line", "fan", "circle", "around", "front", "all"].includes(asText(row?.処理タイプ))) {
+        issues.push({ level:"error", type:"invalid-handler", table:table.name, recordId:id, field:"処理タイプ", value:asText(row?.処理タイプ) });
+      }
       if (table.name === "付与") {
         validateSkillReference(issues, table.name, id, "獲得スキル", row?.獲得スキル);
         validateReference(issues, table.name, id, "範囲", "範囲", "範囲タイプ", row?.範囲);

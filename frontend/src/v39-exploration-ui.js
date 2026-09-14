@@ -6,6 +6,7 @@ import {
   inspectV39Survey,
   startV39SurveyTask
 } from "./lib/v39-exploration-rules.js";
+import { showV39Feedback } from "./v39-feedback.js";
 
 let selectedTile = null;
 
@@ -20,13 +21,7 @@ function context() {
 }
 
 function showMessage(message) {
-  if (typeof window.showV39TurnBanner === "function") window.showV39TurnBanner(message);
-  const toast = document.getElementById("toast");
-  if (toast) {
-    toast.textContent = message;
-    toast.classList.add("show");
-    window.setTimeout(() => toast.classList.remove("show"), 1800);
-  }
+  showV39Feedback(message, { banner:true });
 }
 
 function ensureLandControls() {

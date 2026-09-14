@@ -191,11 +191,8 @@ export function resolveAreaType(skillRow) {
   if (!area || ["-", "なし", "無し", "単体"].includes(area)) return "single";
   const configured = text(findGameDataRow("範囲", "範囲タイプ", area)?.処理タイプ);
   if (["single", "line", "fan", "circle", "around", "front", "all"].includes(configured)) return configured;
-  if (area.includes("全体")) return "all";
-  if (area.includes("扇") || area.includes("散弾") || area.includes("放射")) return "fan";
-  if (area.includes("直線") || area.includes("ライン") || area.includes("縦") || area.includes("列")) return "line";
-  if (area.includes("周囲") || area.includes("周辺")) return "around";
-  return "circle";
+  console.error("[ゲームデータ] 範囲の処理タイプが未設定です", { テーブル:"範囲", 範囲タイプ:area, 項目:"処理タイプ" });
+  return "single";
 }
 
 function strongestDamageType(skillRow) {

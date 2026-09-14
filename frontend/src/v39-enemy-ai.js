@@ -1,4 +1,5 @@
 import { isV39SupportSkill, resolveActionSkillRows, resolveAttackApCost, resolveAttackRange } from "./lib/v39-combat-engine.js";
+import { getHexDistance, getHexNeighborCoords } from "./lib/hex-grid.js";
 
 const ENEMY_ATTACK_INTERVAL_MS = 12000;
 let lastProcessedSecond = -1;
@@ -7,17 +8,7 @@ const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const integer = (value, fallback = 0) => Math.floor(number(value, fallback));
 
-function cube(x, y) {
-  const q = integer(x) - ((integer(y) - (integer(y) & 1)) / 2);
-  const r = integer(y);
-  return { x:q, y:-q-r, z:r };
-}
-
-function distance(a, b) {
-  const ac = cube(a?.x, a?.y);
-  const bc = cube(b?.x, b?.y);
-  return Math.max(Math.abs(ac.x-bc.x), Math.abs(ac.y-bc.y), Math.abs(ac.z-bc.z));
-}
+const distance = getHexDistance;
 
 function isAlive(unit) {
   return number(unit?.hp, unit?.currentHp) > 0 && text(unit?.state, "生存") !== "死亡";
@@ -33,23 +24,8 @@ function coordKey(x, y) {
 }
 
 function mapNeighbors(mapData, unit) {
-  const y = integer(unit?.y);
-  const deltas = y % 2 ? [[-1,0],[1,0],[0,-1],[1,-1],[0,1],[1,1]] : [[-1,0],[1,0],[-1,-1],[0,-1],[-1,1],[0,1]];
   const wrap = mapData?.worldWrapEnabled !== false;
-  const result = [];
-  const seen = new Set();
-  for (const [dx, dy] of deltas) {
-    let x = integer(unit?.x) + dx;
-    let nextY = y + dy;
-    if (wrap) {
-      x = ((x % mapData.w) + mapData.w) % mapData.w;
-      nextY = ((nextY % mapData.h) + mapData.h) % mapData.h;
-    } else if (x < 0 || nextY < 0 || x >= mapData.w || nextY >= mapData.h) continue;
-    const key = coordKey(x, nextY);
-    if (!seen.has(key)) result.push({ x, y:nextY, key });
-    seen.add(key);
-  }
-  return result;
+  return getHexNeighborCoords(mapData.w, mapData.h, unit?.x, unit?.y, wrap);
 }
 
 function canCrossLava(unit) {

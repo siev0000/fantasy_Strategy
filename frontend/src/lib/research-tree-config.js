@@ -1,6 +1,7 @@
 import { researchData as researchDbRaw } from "./game-data-registry.js";
 
-export const RESEARCH_CATEGORY_ORDER = ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"];
+const RESEARCH_TARGET_ORDER = [...new Set(researchDbRaw.map(row => String(row?.技術対象 ?? "").trim()).filter(Boolean))];
+export const RESEARCH_CATEGORY_ORDER = Object.freeze(RESEARCH_TARGET_ORDER.map(target => `${target}Lv`));
 
 export const RESEARCH_LEVEL_UNIT_REQUIREMENTS = {
   1: 5,
@@ -20,19 +21,10 @@ export const RESEARCH_TIME_REDUCTION_SKILL_BY_CATEGORY = {
   経済Lv: "統治"
 };
 
-const RESEARCH_CATEGORY_ALIAS = {
-  鍛冶: "鍛冶Lv",
-  鍛冶場: "鍛冶Lv",
-  鍛冶Lv: "鍛冶Lv",
-  魔法: "魔法Lv",
-  魔法Lv: "魔法Lv",
-  信仰: "信仰Lv",
-  信仰Lv: "信仰Lv",
-  軍事: "軍事Lv",
-  軍事Lv: "軍事Lv",
-  経済: "経済Lv",
-  経済Lv: "経済Lv"
-};
+const RESEARCH_CATEGORY_ALIAS = Object.freeze({
+  ...Object.fromEntries(RESEARCH_TARGET_ORDER.flatMap(target => [[target, `${target}Lv`], [`${target}Lv`, `${target}Lv`]])),
+  鍛冶場:"鍛冶Lv"
+});
 
 const RESEARCH_ROW_NAME_FIELDS = ["項目名", "name", "名称"];
 const RESEARCH_ROW_TARGET_FIELDS = ["技術対象", "カテゴリ", "category", "target"];
@@ -177,7 +169,7 @@ export function resolveResearchTreeData(raw = researchDbRaw) {
   const maxImplementedLevel = allLevels.length ? Math.max(...allLevels) : 0;
   return {
     maxImplementedLevel,
-    maxDefinedLevel: 7,
+    maxDefinedLevel: maxImplementedLevel,
     levelRequirements: { ...RESEARCH_LEVEL_UNIT_REQUIREMENTS },
     timeReductionSkills: { ...RESEARCH_TIME_REDUCTION_SKILL_BY_CATEGORY },
     categories

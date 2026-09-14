@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { showV39Feedback } from "./v39-feedback.js";
 
 const UNIT_ACTION_POINT_MAX = 100;
 const RANGE_DEPTH = 9;
@@ -7,7 +8,6 @@ const PATH_DEPTH = 11;
 let moveSession = null;
 let rangeGraphics = null;
 let pathGraphics = null;
-let toastTimer = 0;
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -353,12 +353,7 @@ function setBanner(message = "") {
 }
 
 function showToast(message) {
-  const toast = document.getElementById("toast");
-  if (!(toast instanceof HTMLElement)) return;
-  toast.textContent = message;
-  toast.classList.add("show");
-  window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove("show"), 1600);
+  showV39Feedback(message);
 }
 
 function setMoveConfirm(visible, message = "") {

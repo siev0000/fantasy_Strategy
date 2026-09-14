@@ -15,6 +15,8 @@ import {
   resolveSplashSpec
 } from "./lib/v39-combat-engine.js";
 import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
+import { showV39Feedback } from "./v39-feedback.js";
+import { getHexNeighborCoords } from "./lib/hex-grid.js";
 
 const RANGE_DEPTH = 10;
 const AREA_DEPTH = 12;
@@ -22,7 +24,6 @@ let selectedSkillName = "";
 let attackSession = null;
 let rangeGraphics = null;
 let areaGraphics = null;
-let toastTimer = 0;
 let hoverFrame = 0;
 let lastTimingSecond = -1;
 
@@ -118,31 +119,9 @@ function tileCenter(x, y) {
   };
 }
 
-function normalizeCoord(value, size) {
-  const mod = value % size;
-  return mod < 0 ? mod + size : mod;
-}
-
 function neighbors(data, x, y) {
-  const odd = y % 2 === 1;
-  const deltas = odd
-    ? [[-1,0],[1,0],[0,-1],[1,-1],[0,1],[1,1]]
-    : [[-1,0],[1,0],[-1,-1],[0,-1],[-1,1],[0,1]];
   const wrap = window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
-  const result = [];
-  const seen = new Set();
-  for (const [dx, dy] of deltas) {
-    let nx = x + dx;
-    let ny = y + dy;
-    if (wrap) {
-      nx = normalizeCoord(nx, data.w);
-      ny = normalizeCoord(ny, data.h);
-    } else if (nx < 0 || ny < 0 || nx >= data.w || ny >= data.h) continue;
-    const key = coordKey(nx, ny);
-    if (!seen.has(key)) result.push({ x:nx, y:ny, key });
-    seen.add(key);
-  }
-  return result;
+  return getHexNeighborCoords(data.w, data.h, x, y, wrap);
 }
 
 function tilesWithin(data, origin, radius) {
@@ -201,7 +180,7 @@ function buildAreaScaleMap(data, attacker, target, skillRow) {
   } else if (type === "line") {
     result.clear();
     for (const tile of directionLine(data, attacker, target, resolveAttackRange(skillRow, attacker))) result.set(tile.key, 1);
-  } else if (type === "fan") {
+  } else if (type === "fan" || type === "front") {
     for (const tile of directionLine(data, attacker, target, resolveAttackRange(skillRow, attacker))) {
       result.set(tile.key, 1);
       for (const adjacent of neighbors(data, tile.x, tile.y)) result.set(adjacent.key, 1);
@@ -305,12 +284,7 @@ function setBanner(message = "") {
 }
 
 function showToast(message) {
-  const toast = document.getElementById("toast");
-  if (!toast) return;
-  toast.textContent = message;
-  toast.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove("show"), 1800);
+  showV39Feedback(message);
 }
 
 function cancelAttack(reason = "attack-cancelled") {
@@ -325,6 +299,19 @@ function cancelAttack(reason = "attack-cancelled") {
 function selectedAttackRow(unit) {
   const rows = resolveAttackRows(unit);
   return rows.find((row) => text(row?.名前) === selectedSkillName) || rows[0] || null;
+}
+
+function unavailableAttackReason(skillName) {
+  const faction = activeFaction();
+  const unit = selectedUnit(faction);
+  const row = resolveAttackRows(unit).find(item => text(item?.名前) === text(skillName));
+  if (!unit || !row) return "攻撃するキャラクターと技を選択してください";
+  if (text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0) return "死亡したキャラクターは攻撃できません";
+  if (currentAp(unit) < resolveAttackApCost(row)) return "APが不足しています";
+  const timing = unitRuntimeState(faction, unit, row);
+  if (timing.pending) return "別の行動を発動待機中です";
+  if (timing.cooldownRemainingMs > 0) return `CT中です。残り${Math.ceil(timing.cooldownRemainingMs / 1000)}秒`;
+  return "現在は使用できません";
 }
 
 function renderActionPanel() {
@@ -868,14 +855,16 @@ function install() {
   installStyles();
   bindCapture(strip, "click", (event) => {
     const button = event.target instanceof Element ? event.target.closest("[data-v39-attack-name]") : null;
-    if (!button || button.classList.contains("unavailable")) return;
+    if (!button) return;
+    if (button.classList.contains("unavailable")) return showToast(unavailableAttackReason(button.dataset.v39AttackName));
     selectedSkillName = text(button.dataset.v39AttackName);
     cancelAttack("skill-changed");
     renderActionPanel();
   });
   bindCapture(strip, "dblclick", (event) => {
     const button = event.target instanceof Element ? event.target.closest("[data-v39-attack-name]") : null;
-    if (!button || button.classList.contains("unavailable")) return;
+    if (!button) return;
+    if (button.classList.contains("unavailable")) return showToast(unavailableAttackReason(button.dataset.v39AttackName));
     selectedSkillName = text(button.dataset.v39AttackName);
     renderActionPanel();
     startAttack();

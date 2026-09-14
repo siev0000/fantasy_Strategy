@@ -13,20 +13,24 @@ import {
 } from "../composables/resourceEconomyUtils.js";
 import { adjustVillagePopulationForTurn, resolveVillageScaleLabel } from "../composables/villageCoreUtils.js";
 
-export const FOOD_RESOURCE_KEYS = Object.freeze(["穀物", "野菜", "肉", "魚", "死体", "魂"]);
-export const MATERIAL_RESOURCE_KEYS = Object.freeze(["木材", "黒木", "特木", "石材", "鉄", "銀鉄", "青金鋼", "赤黒鋼", "金", "銀", "宝石"]);
+const RESOURCE_DEFINITION_ROWS = getGameDataRows("都市基本データ")
+  .filter(row => ["食料", "木材", "石材", "金属", "貴金属", "宝石", "特殊資源"].includes(String(row?.分類 || "").trim()));
+const resourceKeysFor = categories => Object.freeze([...new Set(RESOURCE_DEFINITION_ROWS
+  .filter(row => categories.includes(String(row?.分類 || "").trim()))
+  .map(row => String(row?.データ分類 || "").trim()).filter(Boolean))]);
+
+export const FOOD_RESOURCE_KEYS = resourceKeysFor(["食料", "特殊資源"]);
+export const MATERIAL_RESOURCE_KEYS = resourceKeysFor(["木材", "石材", "金属", "貴金属", "宝石"]);
 export const RESOURCE_GROUPS = Object.freeze({
-  food:{ title:"食料", icon:"🌾", keys:FOOD_RESOURCE_KEYS },
-  wood:{ title:"木材", icon:"🪵", keys:["木材", "黒木", "特木", "石材"] },
-  ore:{ title:"金属", icon:"⛏", keys:["鉄", "銀鉄", "青金鋼", "赤黒鋼"] },
-  precious:{ title:"貴金属", icon:"💎", keys:["金", "銀", "宝石"] }
+  food:{ title:"食料", icon:"🌾", keys:resourceKeysFor(["食料", "特殊資源"]) },
+  wood:{ title:"木材", icon:"🪵", keys:resourceKeysFor(["木材", "石材"]) },
+  ore:{ title:"金属", icon:"⛏", keys:resourceKeysFor(["金属"]) },
+  precious:{ title:"貴金属", icon:"💎", keys:resourceKeysFor(["貴金属", "宝石"]) }
 });
 
-const RESOURCE_FACILITY_EFFECT = Object.freeze({
-  穀物:"農業", 野菜:"農業", 肉:"農業", 魚:"漁業",
-  木材:"林業", 黒木:"林業", 特木:"林業",
-  石材:"工業", 鉄:"工業", 銀鉄:"工業", 青金鋼:"工業", 赤黒鋼:"工業", 金:"工業", 銀:"工業", 宝石:"工業"
-});
+const RESOURCE_FACILITY_EFFECT = Object.freeze(Object.fromEntries(RESOURCE_DEFINITION_ROWS
+  .map(row => [String(row?.データ分類 || "").trim(), String(row?.対応技能 || "").trim()])
+  .filter(([name, skill]) => name && skill)));
 
 const ECONOMY_GAIN_SCALE = 0.1;
 const ECONOMY_CONSUMPTION_SCALE = 0.1;
@@ -394,6 +398,6 @@ export function buildV39ResourceSnapshot(village) {
   return Object.fromEntries(Object.entries(RESOURCE_GROUPS).map(([groupKey, group]) => [groupKey, {
     title:group.title,
     icon:group.icon,
-    items:group.keys.map(name => ({ name, icon:"◆", value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(delta.food?.[name] ?? delta.material?.[name]), rare:["死体","魂","特木","銀鉄","青金鋼","赤黒鋼","金","宝石"].includes(name) }))
+    items:group.keys.map(name => ({ name, icon:"◆", value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(delta.food?.[name] ?? delta.material?.[name]), rare:!["食料", "木材", "石材", "金属"].includes(String(RESOURCE_DEFINITION_ROWS.find(row => String(row?.データ分類 || "").trim() === name)?.分類 || "")) }))
   }]));
 }

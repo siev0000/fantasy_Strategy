@@ -1,9 +1,10 @@
 import { findGameDataRow } from "./game-data-registry.js";
+import { COMBAT_STATUS_FIELDS, SKILL_LEVEL_FIELDS } from "../constants/unitCommon.js";
 
 export const TERRAIN_STATUS_FIELDS = Object.freeze([
-  "HP", "MP", "ST", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ",
-  "指揮", "威圧", "看破", "早業", "技術", "隠密", "索敵", "農業", "林業", "漁業",
-  "工業", "統治", "交渉", "魔術", "信仰", "保有可能人数", "浄化", "穢れ", "回復"
+  ...COMBAT_STATUS_FIELDS,
+  ...SKILL_LEVEL_FIELDS,
+  "保有可能人数", "浄化", "穢れ", "回復"
 ]);
 
 const text = value => String(value ?? "").trim();
@@ -47,4 +48,9 @@ export function formatV39TerrainModifiers(mapData, x, y) {
   const terrain = getV39TerrainModifiers(mapData, x, y);
   const parts = Object.entries(terrain.modifiers).map(([key, value]) => `${key}${value > 0 ? "+" : ""}${value}`);
   return parts.length ? parts.join(" / ") : "なし";
+}
+
+if (typeof window !== "undefined") {
+  window.getV39TerrainModifiers = getV39TerrainModifiers;
+  window.applyV39TerrainModifiers = applyV39TerrainModifiers;
 }

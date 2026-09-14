@@ -9,6 +9,13 @@ const outputPath = path.join(root, "artifacts", "game-data-usage-report.json");
 const definitionOnlyTables = new Set(["効果", "災害", "都市基本データ"]);
 const provisionalTables = new Set(["都市"]);
 
+function hasDynamicReference(table, field) {
+  if (table === "クラス" && /^(?:Skill|条件_|Lv_)\d+$/.test(field)) return true;
+  // 施設の数値効果は固定列名ではなく、全フィールドを走査して適用する。
+  if (table === "施設" && field === "道路発展数") return true;
+  return false;
+}
+
 async function filesBelow(directory) {
   const entries = await readdir(directory, { withFileTypes:true });
   const nested = await Promise.all(entries.map(entry => {
@@ -30,13 +37,14 @@ for (const file of jsonFiles) {
   const rows = Array.isArray(value) ? value : [value];
   const fields = [...new Set(rows.flatMap(row => row && typeof row === "object" ? Object.keys(row) : []))];
   const fieldStatus = fields.map(field => {
-    const literalUsed = sourceText.includes(field);
+    const literalUsed = sourceText.includes(field) || hasDynamicReference(table, field);
+    const hasConfiguredValue = rows.some(row => row?.[field] !== null && row?.[field] !== undefined && String(row[field]).trim() !== "");
     const status = literalUsed
       ? "参照あり"
-      : definitionOnlyTables.has(table) || provisionalTables.has(table)
+      : !hasConfiguredValue || definitionOnlyTables.has(table) || provisionalTables.has(table)
         ? "予約・定義のみ"
         : "未接続候補";
-    return { field, status };
+    return { field, status, hasConfiguredValue };
   });
   tables.push({
     table,
@@ -50,7 +58,7 @@ for (const file of jsonFiles) {
 
 const report = {
   generatedAt:new Date().toISOString(),
-  note:"文字列参照による静的監査。未接続候補は実装確認が必要で、未使用確定を意味しない。",
+  note:"文字列参照と既知の動的列参照による静的監査。全行未設定の列は予約・定義のみ。値のある未接続候補は実装確認が必要で、未使用確定を意味しない。",
   tableCount:tables.length,
   fieldCount:tables.reduce((sum, table) => sum + table.fields.length, 0),
   referencedCount:tables.reduce((sum, table) => sum + table.referencedCount, 0),

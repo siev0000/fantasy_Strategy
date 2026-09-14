@@ -1,16 +1,10 @@
-let toastTimer = 0;
+import { showV39Feedback } from "./v39-feedback.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 function showMessage(message) {
-  window.showV39TurnBanner?.(message);
-  const toast = document.getElementById("toast");
-  if (!toast) return;
-  toast.textContent = message;
-  toast.classList.add("show");
-  window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove("show"), 1800);
+  showV39Feedback(message, { banner:true });
 }
 
 export function waitV39SelectedUnit() {
