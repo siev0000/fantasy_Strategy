@@ -207,7 +207,7 @@ function parseMinionNames(value) {
   if (Array.isArray(value)) return [...new Set(value.map(item => text(item)).filter(Boolean))];
   const raw = text(value);
   if (!raw) return [];
-  return [...new Set(raw.split(/[、,，;；|｜/\n]+/).map(item => text(item)).filter(Boolean))];
+  return [...new Set(raw.split(/[、,，;；|｜\/\n]+/).map(item => text(item)).filter(Boolean))];
 }
 
 function configuredMinionCount(definition) {
