@@ -5,31 +5,44 @@ import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-st
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, STATUS_FIELDS } from "../constants/unitCommon.js";
 import { isMobUnit } from "../composables/unitCoreUtils.js";
 
-export const V39_EQUIPMENT_RARITIES = Object.freeze([
-  Object.freeze({ key:"common", label:"コモン", short:"C", level:1, multiplier:1 }),
-  Object.freeze({ key:"uncommon", label:"アンコモン", short:"U", level:2, multiplier:1.25 }),
-  Object.freeze({ key:"rare", label:"レア", short:"R", level:3, multiplier:1.5 }),
-  Object.freeze({ key:"epic", label:"エピック", short:"E", level:4, multiplier:1.75 }),
-  Object.freeze({ key:"legendary", label:"レジェンダリー", short:"L", level:5, multiplier:2 })
-]);
-
-const RARITY_ALIASES = Object.freeze(Object.fromEntries(V39_EQUIPMENT_RARITIES.flatMap(row => [
-  [row.key, row.key], [row.label, row.key], [row.short, row.key]
-])));
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const round1 = value => Math.round(number(value) * 10) / 10;
 const optionalNumber = value => value === null || value === undefined || value === "" ? null : (Number.isFinite(Number(value)) ? Number(value) : null);
+const consumptionRows = getGameDataRows("消費量");
+
+export const V39_EQUIPMENT_RARITIES = Object.freeze(consumptionRows
+  .filter(row => text(row?.種別) === "装備" && text(row?.品質キー) && text(row?.品質名))
+  .map(row => Object.freeze({
+    key:text(row.品質キー),
+    label:text(row.品質名),
+    short:text(row.品質略称) || text(row.品質名).slice(0, 1),
+    level:Math.max(1, Math.floor(number(row.Lv, 1))),
+    multiplier:Math.max(0, number(row.品質倍率, 1))
+  }))
+  .sort((a, b) => a.level - b.level));
+
+if (!V39_EQUIPMENT_RARITIES.length) {
+  throw new Error("[装備品質] 消費量.json の装備行に品質定義がありません");
+}
+if (new Set(V39_EQUIPMENT_RARITIES.map(row => row.key)).size !== V39_EQUIPMENT_RARITIES.length) {
+  throw new Error("[装備品質] 消費量.json の品質キーが重複しています");
+}
+
+export const DEFAULT_V39_EQUIPMENT_RARITY_KEY = V39_EQUIPMENT_RARITIES[0].key;
+
+const RARITY_ALIASES = Object.freeze(Object.fromEntries(V39_EQUIPMENT_RARITIES.flatMap(row => [
+  [row.key, row.key], [row.label, row.key], [row.short, row.key]
+])));
 const equipmentRows = getGameDataRows("装備").filter(row => text(row?.装備名));
 const equipmentByName = new Map(equipmentRows.map(row => [text(row.装備名), row]));
-const consumptionRows = getGameDataRows("消費量");
 const classByName = new Map(getGameDataRows("クラス").map(row => [text(row?.名前), row]).filter(([name]) => name));
 const enchantmentRows = getGameDataRows("付与").filter(row => text(row?.付与能力));
 const enchantmentByName = new Map(enchantmentRows.map(row => [text(row.付与能力), row]));
 const SLOT_LABELS = Object.freeze({ 武器1:"武器1", 武器2:"武器2", 頭:"頭", 体:"体", 足:"足", 装飾1:"装飾1", 装飾2:"装飾2" });
 const EQUIPMENT_ACTION_POPULATION_STEP = 25;
 
-export function normalizeV39EquipmentRarity(value, fallback = "common") {
+export function normalizeV39EquipmentRarity(value, fallback = DEFAULT_V39_EQUIPMENT_RARITY_KEY) {
   return RARITY_ALIASES[text(value)] || RARITY_ALIASES[text(value).toLowerCase()] || fallback;
 }
 
@@ -67,7 +80,7 @@ function equipmentConsumptionRow(level) {
   return consumptionRows.find(row => text(row?.種別) === "装備" && Math.floor(number(row?.Lv)) === level) || null;
 }
 
-export function getV39EquipmentCraftCost(rowOrName, rarityValue = "common", countValue = 1) {
+export function getV39EquipmentCraftCost(rowOrName, rarityValue = DEFAULT_V39_EQUIPMENT_RARITY_KEY, countValue = 1) {
   const row = typeof rowOrName === "string" ? equipmentByName.get(text(rowOrName)) : rowOrName;
   if (!row) return { ok:false, reason:"装備データが見つかりません", material:{} };
   const rarity = getV39EquipmentRarity(rarityValue);
@@ -83,7 +96,7 @@ export function getV39EquipmentCraftCost(rowOrName, rarityValue = "common", coun
   return { ok:true, level:rarity.level, rarity, count, material };
 }
 
-export function createV39EquipmentEntry(rowOrName, rarityValue = "common", slotValue = "") {
+export function createV39EquipmentEntry(rowOrName, rarityValue = DEFAULT_V39_EQUIPMENT_RARITY_KEY, slotValue = "") {
   const row = typeof rowOrName === "string" ? equipmentByName.get(text(rowOrName)) : rowOrName;
   if (!row) return null;
   const rarity = getV39EquipmentRarity(rarityValue);

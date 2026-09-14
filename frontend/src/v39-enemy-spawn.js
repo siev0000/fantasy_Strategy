@@ -89,6 +89,7 @@ function shuffle(list, random) {
 }
 
 function validDefinition(row) {
+  const definitionId = text(row?.ID ?? row?.id);
   const name = text(row?.種族名);
   const race = text(row?.種族);
   // 種族未設定の行は制作途中として扱い、敵出現候補には含めない。
@@ -97,9 +98,9 @@ function validDefinition(row) {
   const terrain = text(row?.出現地形);
   const minLevel = integer(row?.Lv_Min, 0);
   const maxLevel = integer(row?.Lv_Max, 0);
-  if (!name || !terrain || minLevel <= 0 || maxLevel < minLevel) return null;
+  if (!definitionId || !name || !terrain || minLevel <= 0 || maxLevel < minLevel) return null;
   if (!classNames.has(race) || !classNames.has(className)) return null;
-  return { row, name, race, className, terrain, minLevel, maxLevel };
+  return { row, definitionId, name, race, className, terrain, minLevel, maxLevel };
 }
 
 const definitionsByTerrain = new Map();
@@ -314,7 +315,7 @@ function createEnemy(selection, position, level, index, metadata = {}) {
     image:text(definition.row?.画像),
     aggressive:definition.row?.好戦的 === true,
     spawnTerrain:definition.terrain,
-    sourceDefinition:{ ...definition.row }
+    sourceDefinitionId:definition.definitionId
   });
   if (!derived?.derivedCharacter?.ok) return null;
   const maxHp = Math.max(1, Math.round(number(derived.maxHp ?? derived.status?.HP, 1)));
@@ -340,6 +341,11 @@ function createEnemy(selection, position, level, index, metadata = {}) {
     strongGroupCountSource:text(metadata.strongGroupCountSource) || null,
     strongGroupMinionSource:text(metadata.strongGroupMinionSource) || null,
     nestType:text(definition.row?.巣) || null,
+    nestId:text(metadata.nestId) || null,
+    enemySquadId:text(metadata.enemySquadId) || null,
+    territoryCenterX:Number.isFinite(Number(metadata.territoryCenterX)) ? integer(metadata.territoryCenterX) : null,
+    territoryCenterY:Number.isFinite(Number(metadata.territoryCenterY)) ? integer(metadata.territoryCenterY) : null,
+    territoryRadius:Number.isFinite(Number(metadata.territoryRadius)) ? Math.max(1, integer(metadata.territoryRadius)) : null,
     terrainHeightLevel:position.levelRange?.rawHeightLevel ?? 0,
     effectiveTerrainLevel:position.levelRange?.effectiveTerrainLevel ?? 0,
     terrainEnemyLevelMin:position.levelRange?.minLevel ?? level,
@@ -351,6 +357,9 @@ function createEnemy(selection, position, level, index, metadata = {}) {
 function spawnStrongGroup(data, village, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random) {
   const plan = buildStrongGroupPlan(selection, random);
   const groupId = `strong-group-${candidate.x}-${candidate.y}`;
+  const nestId = `enemy-nest-${groupId}`;
+  const enemySquadId = `enemy-squad-${groupId}`;
+  const territoryRadius = strongTerritoryRadius(candidate);
   const boss = createEnemy(selection, candidate, level, enemies.length, {
     strongEnemy:true,
     spawnType:"強敵",
@@ -358,7 +367,12 @@ function spawnStrongGroup(data, village, candidate, selection, level, enemies, o
     strongGroupType:plan.groupType,
     strongGroupExpectedMinionCount:plan.minionCount,
     strongGroupCountSource:plan.countSource,
-    strongGroupMinionSource:plan.minionSource
+    strongGroupMinionSource:plan.minionSource,
+    nestId,
+    enemySquadId,
+    territoryCenterX:candidate.x,
+    territoryCenterY:candidate.y,
+    territoryRadius
   });
   if (!boss) return { boss:null, minionCount:0, expectedMinionCount:plan.minionCount };
 
@@ -389,7 +403,12 @@ function spawnStrongGroup(data, village, candidate, selection, level, enemies, o
       strongGroupType:"群体",
       strongGroupExpectedMinionCount:plan.minionCount,
       strongGroupCountSource:plan.countSource,
-      strongGroupMinionSource:plan.minionSource
+      strongGroupMinionSource:plan.minionSource,
+      nestId,
+      enemySquadId,
+      territoryCenterX:candidate.x,
+      territoryCenterY:candidate.y,
+      territoryRadius
     });
     if (!minion) continue;
     enemies.push(minion);
@@ -404,6 +423,53 @@ function spawnStrongGroup(data, village, candidate, selection, level, enemies, o
   }
 
   return { boss, minionCount, expectedMinionCount:plan.minionCount };
+}
+
+function buildEnemyNestAndSquadState(enemies) {
+  const groups = new Map();
+  for (const enemy of enemies) {
+    if (!text(enemy?.nestType)) continue;
+    const key = text(enemy?.strongGroupId) || `single-${text(enemy?.id)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(enemy);
+  }
+
+  const nests = [];
+  const enemySquads = [];
+  for (const [groupKey, members] of groups) {
+    const anchor = members.find(enemy => enemy?.strongEnemy === true) || members[0];
+    const nestId = text(anchor?.nestId) || `enemy-nest-${groupKey}`;
+    const enemySquadId = text(anchor?.enemySquadId) || `enemy-squad-${groupKey}`;
+    const x = Number.isFinite(Number(anchor?.territoryCenterX)) ? integer(anchor.territoryCenterX) : integer(anchor?.x);
+    const y = Number.isFinite(Number(anchor?.territoryCenterY)) ? integer(anchor.territoryCenterY) : integer(anchor?.y);
+    const territoryRadius = Math.max(1, integer(anchor?.territoryRadius, anchor?.strongEnemy ? DEFAULT_STRONG_TERRITORY_RADIUS : 1));
+    for (const member of members) {
+      member.nestId = nestId;
+      member.enemySquadId = enemySquadId;
+      member.territoryCenterX = x;
+      member.territoryCenterY = y;
+      member.territoryRadius = territoryRadius;
+    }
+    nests.push({
+      id:nestId,
+      nestType:text(anchor?.nestType),
+      x,
+      y,
+      territoryRadius,
+      population:members.length,
+      unitIds:members.map(member => text(member?.id)).filter(Boolean),
+      foodStockByType:{},
+      materialStockByType:{},
+      equipmentInventory:[]
+    });
+    enemySquads.push({
+      id:enemySquadId,
+      nestId,
+      unitIds:members.map(member => text(member?.id)).filter(Boolean),
+      cargo:{ resourcesByType:{}, equipmentInventory:[] }
+    });
+  }
+  return { enemyNests:nests, enemySquads };
 }
 
 function buildEnemies(data, village) {
@@ -468,6 +534,7 @@ function spawnForActivePlayer() {
   const village = getSelectedSettlement(faction);
   if (!data || !state || !village?.placed) return [];
   const enemies = buildEnemies(data, village);
+  const { enemyNests, enemySquads } = buildEnemyNestAndSquadState(enemies);
   const strongCount = enemies.filter(enemy => enemy?.strongEnemy === true).length;
   const strongMinionCount = enemies.filter(enemy => enemy?.strongMinion === true).length;
   const strongGroupCount = new Set(
@@ -477,11 +544,14 @@ function spawnForActivePlayer() {
   ).size;
   window.setV39GameState?.({
     enemies,
+    enemySquads,
+    enemyNests,
     enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionAtMsByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{} }
   }, { reason:"enemy-spawned" });
   window.dispatchEvent(new CustomEvent("v39:enemies-spawned", {
     detail:{
       count:enemies.length,
+      nestCount:enemyNests.length,
       strongCount,
       strongMinionCount,
       strongGroupCount,
@@ -493,9 +563,11 @@ function spawnForActivePlayer() {
 
 function clearEnemiesForNewField() {
   const state = window.getV39GameState?.();
-  if (!state || !state.enemies?.length) return;
+  if (!state || (!state.enemies?.length && !state.enemyNests?.length)) return;
   window.setV39GameState?.({
     enemies:[],
+    enemySquads:[],
+    enemyNests:[],
     enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionAtMsByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{} }
   }, { reason:"field-enemies-cleared" });
 }

@@ -43,6 +43,9 @@
 - [`DATA_DRIVEN_RULES.md`](./DATA_DRIVEN_RULES.md)
   - `data/source/export/json` を正本にし、種類追加をJSON中心で行うための共通ルール。
 
+- [`敵AI・巣・生態系仕様.md`](./%E6%95%B5AI%E3%83%BB%E5%B7%A3%E3%83%BB%E7%94%9F%E6%85%8B%E7%B3%BB%E4%BB%95%E6%A7%98.md)
+  - 敵の縄張り、巣拠点、逃走、自然回復、部隊運搬品と残留戦利品。
+
 - [`map-screen-overview.md`](./map-screen-overview.md)
   - マップ画面、ズーム、ドラッグ、ワールドラップ表示。
 

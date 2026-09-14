@@ -1,8 +1,9 @@
 import { advanceTerrainTurn } from "./lib/map-generator.js";
 import { runWithSeededRandom } from "./lib/seeded-random.js";
+import { resolveV39TerrainTurnDamageRule, resolveV39UnitCapabilityValue } from "./lib/v39-terrain-traversal.js";
 
 const asCount = value => Math.max(0, Math.floor(Number(value) || 0));
-const LAVA_DAMAGE_MAX_HP_RATE = 0.1;
+const LAVA_DAMAGE_RULE = resolveV39TerrainTurnDamageRule("溶岩");
 
 function unitOnLava(unit, lavaMap) {
   const x = Math.floor(Number(unit?.x));
@@ -14,8 +15,8 @@ function applyLavaDamageToUnit(unit, lavaMap, turnNumber, entries) {
   const hp = Math.max(0, Number(unit?.hp ?? unit?.currentHp) || 0);
   if (hp <= 0 || !unitOnLava(unit, lavaMap)) return unit;
   const maxHp = Math.max(1, Number(unit?.maxHp ?? unit?.status?.HP) || hp);
-  const fireResistance = Math.max(0, Math.min(100, Number(unit?.status?.炎耐性 ?? unit?.resistances?.炎耐性) || 0));
-  const damage = Math.max(0, Math.ceil(maxHp * LAVA_DAMAGE_MAX_HP_RATE * (1 - fireResistance / 100)));
+  const resistance = Math.max(0, Math.min(100, resolveV39UnitCapabilityValue(unit, LAVA_DAMAGE_RULE.resistanceName)));
+  const damage = Math.max(0, Math.ceil(maxHp * LAVA_DAMAGE_RULE.maxHpRate * (1 - resistance / 100)));
   if (!damage) return unit;
   const nextHp = Math.max(0, hp - damage);
   entries.push({ unitId:String(unit?.id || ""), targetId:String(unit?.id || ""), name:String(unit?.name || unit?.名前 || "ユニット"), x:Number(unit?.x), y:Number(unit?.y), hits:[damage], damage, beforeHp:hp, afterHp:nextHp });
@@ -112,6 +113,10 @@ window.addEventListener("v39:turn-stage-terrain", event => runV39TerrainTurn({ t
 window.runV39TerrainTurn = runV39TerrainTurn;
 window.runV39TerrainTurnWithSeed = runV39TerrainTurnWithSeed;
 window.forceV39TerrainEvent = eventMode => runV39TerrainTurn({ eventMode, force:true, forceTestEvent:true, markProcessed:false });
-window.getV39VolcanoRules = () => ({ lavaDamageMaxHpRate:LAVA_DAMAGE_MAX_HP_RATE, lavaPassRequirement:"炎耐性100以上 または 耐熱" });
+window.getV39VolcanoRules = () => ({
+  lavaDamageMaxHpRate:LAVA_DAMAGE_RULE.maxHpRate,
+  lavaDamageResistance:LAVA_DAMAGE_RULE.resistanceName,
+  lavaPassRequirement:"地形.jsonの移動条件"
+});
 
 if (window.__v39FieldRuntime?.mapData) initializeEnvironment();

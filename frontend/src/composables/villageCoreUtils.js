@@ -36,13 +36,21 @@ export function resolveVillageScaleDefinition(village, options = {}) {
     };
   const definitions = getVillageScaleDefinitions({ ...options, toSafeNumber });
   if (!definitions.length) return null;
+  const populationValue = village?.population;
+  const hasPopulation = populationValue !== null
+    && populationValue !== undefined
+    && nonEmptyText(populationValue) !== ""
+    && Number.isFinite(Number(populationValue));
+  if (hasPopulation) {
+    const population = Math.max(0, toSafeNumber(populationValue, 0));
+    return [...definitions].reverse().find(row => population >= row.minPopulation) || definitions[0];
+  }
   const explicit = nonEmptyText(village?.scaleLabel || village?.scale || village?.type || village?.residentialLevel || village?.villageLevelKey);
   const explicitDefinition = explicit
     ? definitions.find(row => row.name === explicit || row.key === explicit)
     : null;
   if (explicitDefinition) return explicitDefinition;
-  const population = Math.max(0, toSafeNumber(village?.population, 0));
-  return [...definitions].reverse().find(row => population >= row.minPopulation) || definitions[0];
+  return definitions[0];
 }
 
 export function resolveVillageScaleLabel(village, options = {}) {

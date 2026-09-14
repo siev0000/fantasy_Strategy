@@ -37,11 +37,11 @@
         "combatRuntime"
       ],
       "properties": {
-        "settlements": { "type": "array", "items": { "type": "object" }, "description": "所有拠点。人口・資源・施設・建設状態の正本" },
+        "settlements": { "type": "array", "items": { "$ref": "#/$defs/settlement" }, "description": "所有拠点。人口・資源・施設・建設状態の正本" },
         "selectedSettlementId": { "type": "string", "description": "現在操作対象の拠点ID" },
         "village": { "type": ["object", "null"], "description": "旧セーブ入力専用。読込時にsettlementsへ移行し、実行状態には保持しない" },
         "units": { "type": "array", "items": { "type": "object" }, "description": "所有キャラクターと軍隊" },
-        "squads": { "type": "array", "items": { "type": "object" }, "description": "部隊IDと所属ユニットID" },
+        "squads": { "type": "array", "items": { "$ref": "#/$defs/squad" }, "description": "部隊ID、所属ユニットID、運搬中の資源・戦利品" },
         "deadUnitReserve": { "type": "array", "items": { "type": "object" }, "description": "回収済みの死亡者" },
         "deathHistory": { "type": "array", "items": { "type": "object" }, "description": "死亡、回収、消滅、蘇生の履歴" },
         "selectedUnitId": { "type": "string", "description": "現在選択中のユニットID" },
@@ -97,6 +97,70 @@
         }
       },
       "additionalProperties": true
+    },
+    "settlement": {
+      "type": "object",
+      "required": [
+        "id",
+        "settlementId",
+        "ownerPlayerId",
+        "population",
+        "populationByRace",
+        "type",
+        "scaleKey",
+        "scaleLevel",
+        "foodStockByType",
+        "materialStockByType",
+        "buildings",
+        "tileFacilityMap",
+        "constructionQueue"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "settlementId": { "type": "string", "minLength": 1 },
+        "ownerPlayerId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "placed": { "type": "boolean" },
+        "population": { "type": "number", "minimum": 0 },
+        "populationByRace": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "type": { "type": "string", "description": "施設.jsonの分類=拠点規模から求める表示名" },
+        "scaleKey": { "type": "string", "description": "施設.jsonの識別キー" },
+        "scaleLevel": { "type": "integer", "minimum": 1, "description": "施設.jsonの規模Lv" },
+        "foodStock": { "type": "number", "minimum": 0 },
+        "materialStock": { "type": "number", "minimum": 0 },
+        "foodStockByType": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "materialStockByType": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "cityLevels": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "buildings": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "tileFacilityMap": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" }, "uniqueItems": true } },
+        "constructionQueue": { "type": "array", "items": { "type": "object" } },
+        "equipmentInventory": { "type": "array", "items": { "type": "object" } },
+        "autoRepair": { "type": "boolean" },
+        "lastEconomyDelta": { "type": ["object", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "squad": {
+      "type": "object",
+      "required": ["id", "unitIds", "cargo"],
+      "properties": {
+        "id": { "type": "string" },
+        "unitIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "cargo": { "$ref": "#/$defs/cargo" },
+        "cargoByUnitId": { "type": "object", "description": "単独枠に複数ユニットがいる場合の個体別運搬品", "additionalProperties": { "$ref": "#/$defs/cargo" } }
+      },
+      "additionalProperties": true
+    },
+    "cargo": {
+      "type": "object",
+      "required": ["resourcesByType", "equipmentInventory"],
+      "properties": {
+        "resourcesByType": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
+        "equipmentInventory": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": false
     },
     "visibility": {
       "type": "object",

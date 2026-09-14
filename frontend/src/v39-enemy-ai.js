@@ -1,5 +1,11 @@
 import { isV39SupportSkill, resolveActionSkillRows, resolveAttackApCost, resolveAttackRange } from "./lib/v39-combat-engine.js";
 import { getHexDistance, getHexNeighborCoords } from "./lib/hex-grid.js";
+import {
+  isDetectedByScout,
+  resolveDetectionGroupSense,
+  resolveDetectionScoutValue
+} from "./lib/v39-detection-rules.js";
+import { canUnitEnterV39Tile } from "./lib/v39-terrain-traversal.js";
 
 const ENEMY_ATTACK_INTERVAL_MS = 12000;
 let lastProcessedSecond = -1;
@@ -15,7 +21,7 @@ function isAlive(unit) {
 }
 
 function visionRadius(enemy) {
-  const search = Math.max(0, number(enemy?.status?.索敵 ?? enemy?.索敵));
+  const search = resolveDetectionScoutValue(enemy);
   return 1 + Math.floor(search / 75);
 }
 
@@ -28,15 +34,8 @@ function mapNeighbors(mapData, unit) {
   return getHexNeighborCoords(mapData.w, mapData.h, unit?.x, unit?.y, wrap);
 }
 
-function canCrossLava(unit) {
-  const resistance = number(unit?.status?.炎耐性, number(unit?.resistances?.炎耐性));
-  const abilities = [unit?.acquiredSkillNames, unit?.abilities, unit?.traits].flat().map(value => text(value));
-  return resistance >= 100 || abilities.some(value => value.includes("耐熱"));
-}
-
 function enemyMoveStepCost(mapData, enemy, tile) {
-  if (["海", "湖"].includes(text(mapData?.grid?.[tile.y]?.[tile.x]))) return Number.POSITIVE_INFINITY;
-  if (mapData?.lavaMap?.[tile.y]?.[tile.x] && !canCrossLava(enemy)) return Number.POSITIVE_INFINITY;
+  if (!canUnitEnterV39Tile(mapData, tile.x, tile.y, enemy)) return Number.POSITIVE_INFINITY;
   const fromHeight = number(mapData?.heightLevelMap?.[integer(enemy.y)]?.[integer(enemy.x)], Number.NaN);
   const toHeight = number(mapData?.heightLevelMap?.[tile.y]?.[tile.x], Number.NaN);
   const flight = Math.max(0, number(enemy?.status?.飛行, number(enemy?.飛行, number(enemy?.skillLevels?.飛行))));
@@ -47,32 +46,62 @@ function enemyMoveStepCost(mapData, enemy, tile) {
   return Math.max(0, Math.ceil(terrainCost * Math.max(1, number(enemy?.maxAp, 100)) / movement));
 }
 
-function moveEnemyToward(state, enemy, target, now) {
+function availableEnemyMoves(state, enemy) {
   const mapData = window.__v39FieldRuntime?.mapData;
-  if (!mapData?.grid || distance(enemy, target) <= 1) return false;
+  if (!mapData?.grid) return [];
   const occupied = new Set([
     ...(state.enemies || []).filter(row => text(row.id) !== text(enemy.id) && isAlive(row)),
     ...state.players.flatMap(player => player?.factionState?.units || []).filter(isAlive),
     ...(state.settlements || [])
   ].map(row => coordKey(row.x, row.y)));
-  const options = mapNeighbors(mapData, enemy)
+  return mapNeighbors(mapData, enemy)
     .filter(tile => !occupied.has(tile.key))
-    .map(tile => ({ ...tile, cost:enemyMoveStepCost(mapData, enemy, tile), targetDistance:distance(tile, target) }))
-    .filter(tile => Number.isFinite(tile.cost) && tile.cost <= number(enemy.ap) && tile.targetDistance < distance(enemy, target))
-    .sort((a, b) => a.targetDistance-b.targetDistance || a.cost-b.cost || a.key.localeCompare(b.key));
-  const next = options[0];
+    .map(tile => ({ ...tile, cost:enemyMoveStepCost(mapData, enemy, tile) }))
+    .filter(tile => Number.isFinite(tile.cost) && tile.cost <= number(enemy.ap));
+}
+
+function commitEnemyMove(state, enemy, next, now, behaviorPatch = {}) {
   if (!next) return false;
   const ap = Math.max(0, number(enemy.ap)-next.cost);
-  const enemies = state.enemies.map(row => text(row.id) !== text(enemy.id) ? row : { ...row, x:next.x, y:next.y, ap, currentAp:ap, actionPoint:ap });
+  const enemies = state.enemies.map(row => text(row.id) !== text(enemy.id)
+    ? row
+    : { ...row, ...behaviorPatch, x:next.x, y:next.y, ap, currentAp:ap, actionPoint:ap });
   const runtime = {
     ...(state.enemyCombatRuntime || {}),
     lastActionAtMsByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionAtMsByEnemyId || {}), [text(enemy.id)]:now }
   };
   window.setV39GameState?.({ enemies, enemyCombatRuntime:runtime }, { reason:"enemy-action-move" });
+  window.dispatchEvent(new CustomEvent("v39:enemy-moved", {
+    detail:{ enemyId:text(enemy.id), from:{ x:integer(enemy.x), y:integer(enemy.y) }, to:{ x:next.x, y:next.y } }
+  }));
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
     detail:{ summary:`${text(enemy.name)}：移動 (${integer(enemy.x)},${integer(enemy.y)})→(${next.x},${next.y}) / AP-${next.cost}`, attackerId:text(enemy.id), apCost:next.cost, enemyAction:true, entries:[] }
   }));
   return true;
+}
+
+function moveEnemyToward(state, enemy, target, now, stopDistance = 1, behaviorPatch = {}) {
+  if (distance(enemy, target) <= stopDistance) return false;
+  const currentDistance = distance(enemy, target);
+  const next = availableEnemyMoves(state, enemy)
+    .map(tile => ({ ...tile, targetDistance:distance(tile, target) }))
+    .filter(tile => tile.targetDistance < currentDistance)
+    .sort((a, b) => a.targetDistance-b.targetDistance || a.cost-b.cost || a.key.localeCompare(b.key))[0];
+  return commitEnemyMove(state, enemy, next, now, behaviorPatch);
+}
+
+function moveEnemyAway(state, enemy, target, now, behaviorPatch = {}) {
+  const currentDistance = distance(enemy, target);
+  const next = availableEnemyMoves(state, enemy)
+    .map(tile => ({ ...tile, targetDistance:distance(tile, target) }))
+    .filter(tile => tile.targetDistance > currentDistance)
+    .sort((a, b) => b.targetDistance-a.targetDistance || a.cost-b.cost || a.key.localeCompare(b.key))[0];
+  return commitEnemyMove(state, enemy, next, now, behaviorPatch);
+}
+
+function patchEnemyBehavior(state, enemyId, patch, reason) {
+  const enemies = state.enemies.map(enemy => text(enemy?.id) === text(enemyId) ? { ...enemy, ...patch } : enemy);
+  window.setV39GameState?.({ enemies }, { reason });
 }
 
 function chooseDeterministically(rows, enemyId, cycle) {
@@ -84,6 +113,47 @@ function chooseDeterministically(rows, enemyId, cycle) {
     hash = Math.imul(hash, 16777619);
   }
   return rows[(hash >>> 0) % rows.length];
+}
+
+function deterministicRatio(key) {
+  let hash = 2166136261;
+  for (const char of String(key || "")) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
+function nestFor(state, enemy) {
+  return (state?.enemyNests || []).find(nest => text(nest?.id) === text(enemy?.nestId)) || null;
+}
+
+function territoryCenter(enemy, nest) {
+  return {
+    x:integer(enemy?.territoryCenterX, integer(nest?.x, integer(enemy?.x))),
+    y:integer(enemy?.territoryCenterY, integer(nest?.y, integer(enemy?.y)))
+  };
+}
+
+function territoryRadius(enemy, nest) {
+  return Math.max(1, integer(enemy?.territoryRadius, integer(nest?.territoryRadius, 1)));
+}
+
+function pursuitLimit(enemy, nest) {
+  const outside = enemy?.aggressive === true
+    ? Math.max(1, integer(enemy?.status?.移動, integer(enemy?.移動, integer(enemy?.movement, 1))))
+    : 1;
+  return territoryRadius(enemy, nest) + outside;
+}
+
+function roamInsideTerritory(state, enemy, nest, now) {
+  const center = territoryCenter(enemy, nest);
+  const radius = territoryRadius(enemy, nest);
+  const candidates = availableEnemyMoves(state, enemy)
+    .filter(tile => distance(tile, center) <= radius)
+    .sort((a, b) => a.key.localeCompare(b.key));
+  const next = chooseDeterministically(candidates, enemy.id, Math.floor(now/ENEMY_ATTACK_INTERVAL_MS));
+  return commitEnemyMove(state, enemy, next, now, { fleeState:null });
 }
 
 function durationMs(value) {
@@ -165,19 +235,133 @@ function resolvePending(now) {
   return false;
 }
 
+function waitEnemy(state, enemyId, now, reason = "enemy-action-wait") {
+  const runtime = {
+    ...(state.enemyCombatRuntime || {}),
+    lastActionAtMsByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionAtMsByEnemyId || {}), [text(enemyId)]:now }
+  };
+  window.setV39GameState?.({ enemyCombatRuntime:runtime }, { reason });
+  return true;
+}
+
+function runFleeBehavior(state, enemy, targets, now) {
+  const hpRate = number(enemy?.hp, enemy?.currentHp) / Math.max(1, number(enemy?.maxHp, enemy?.status?.HP || 1));
+  const nest = nestFor(state, enemy);
+  const active = enemy?.fleeState?.active === true;
+  if (nest) {
+    const threshold = enemy?.aggressive === true ? 0.3 : 0.55;
+    if (!active && hpRate > threshold) return null;
+    if (distance(enemy, nest) <= 1) {
+      if (active) patchEnemyBehavior(state, enemy.id, { fleeState:null }, "enemy-flee-ended-at-nest");
+      return active ? true : null;
+    }
+    const patch = { fleeState:{ active:true, type:"nest", startedAtTurn:integer(state?.timeline?.turnNumber, 1) } };
+    return moveEnemyToward(state, enemy, nest, now, 1, patch) || waitEnemy(state, enemy.id, now, "enemy-flee-blocked");
+  }
+  if (!active && (hpRate > 0.3 || enemy?.fleeDecisionMade === true)) return null;
+  if (!active) {
+    const target = [...targets].sort((a, b) => distance(enemy, a)-distance(enemy, b))[0] || null;
+    const flee = deterministicRatio(`${text(enemy.id)}:flee`) < 0.3;
+    patchEnemyBehavior(state, enemy.id, {
+      fleeDecisionMade:true,
+      fleeState:flee && target ? { active:true, type:"open", targetUnitId:text(target.id), extraMoveRemaining:1 } : null
+    }, "enemy-flee-decided");
+    return true;
+  }
+  const target = targets.find(row => text(row?.id) === text(enemy?.fleeState?.targetUnitId));
+  if (!target) {
+    patchEnemyBehavior(state, enemy.id, { fleeState:null }, "enemy-flee-ended-no-target");
+    return true;
+  }
+  if (distance(enemy, target) <= visionRadius(enemy)) {
+    return moveEnemyAway(state, enemy, target, now, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:1 } })
+      || waitEnemy(state, enemy.id, now, "enemy-flee-blocked");
+  }
+  if (integer(enemy?.fleeState?.extraMoveRemaining) > 0) {
+    return moveEnemyAway(state, enemy, target, now, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:0 } })
+      || waitEnemy(state, enemy.id, now, "enemy-flee-blocked");
+  }
+  patchEnemyBehavior(state, enemy.id, { fleeState:null }, "enemy-flee-ended");
+  return true;
+}
+
+function selectEnemyTarget(state, enemy, targets) {
+  const nest = nestFor(state, enemy);
+  const center = territoryCenter(enemy, nest);
+  const limit = pursuitLimit(enemy, nest);
+  const inPursuitArea = target => distance(target, center) <= limit;
+  const defense = nest
+    ? targets.filter(target => distance(target, nest) <= 1).sort((a, b) => distance(enemy, a)-distance(enemy, b))[0]
+    : null;
+  if (defense) return defense;
+  const remembered = targets.find(target => text(target?.id) === text(enemy?.aggroTargetUnitId));
+  if (remembered && inPursuitArea(remembered)) return remembered;
+  const targetsByTile = new Map();
+  for (const target of targets) {
+    const key = coordKey(target?.x, target?.y);
+    if (!targetsByTile.has(key)) targetsByTile.set(key, []);
+    targetsByTile.get(key).push(target);
+  }
+  const enemyScout = resolveDetectionScoutValue(enemy);
+  const visible = [];
+  for (const group of targetsByTile.values()) {
+    const targetDistance = distance(enemy, group[0]);
+    const targetSense = resolveDetectionGroupSense(group);
+    if (!isDetectedByScout({
+      scout:enemyScout,
+      stealth:targetSense.stealth,
+      distance:targetDistance,
+      inRange:targetDistance <= visionRadius(enemy)
+    })) continue;
+    visible.push(...group);
+  }
+  const candidates = enemy?.aggressive === true
+    ? visible.filter(inPursuitArea)
+    : visible.filter(target => distance(target, center) <= territoryRadius(enemy, nest));
+  return candidates.sort((a, b) => distance(enemy, a)-distance(enemy, b))[0] || null;
+}
+
 function runEnemyAi(now = number(window.getV39RuntimeTimeMs?.())) {
   if (resolvePending(now)) return true;
   const state = window.getV39GameState?.();
   if (!state) return false;
   const targets = state.players.flatMap((player) => player?.factionState?.units || []).filter(isAlive);
-  for (const enemy of state.enemies.filter((row) => row?.aggressive === true && isAlive(row))) {
+  for (const enemy of state.enemies.filter(isAlive)) {
     const id = text(enemy.id);
     if (state.enemyCombatRuntime?.pendingActionsByEnemyId?.[id]) continue;
     const lastAction = number(state.enemyCombatRuntime?.lastActionAtMsByEnemyId?.[id]);
     if (now-lastAction < ENEMY_ATTACK_INTERVAL_MS) continue;
-    const visibleTargets = targets.filter((target) => distance(enemy, target) <= visionRadius(enemy));
-    if (!visibleTargets.length) continue;
-    const target = visibleTargets.sort((a,b) => distance(enemy,a)-distance(enemy,b))[0];
+    const fleeHandled = runFleeBehavior(state, enemy, targets, now);
+    if (fleeHandled !== null) return fleeHandled;
+    const target = selectEnemyTarget(state, enemy, targets);
+    if (!target) {
+      const lootTarget = Object.keys(state.groundLootByTile || {})
+        .map(key => {
+          const [x, y] = key.split(",").map(Number);
+          return { x, y, key, targetDistance:distance(enemy, { x, y }) };
+        })
+        .filter(row => Number.isFinite(row.x) && Number.isFinite(row.y) && row.targetDistance <= visionRadius(enemy))
+        .sort((a, b) => a.targetDistance-b.targetDistance || a.key.localeCompare(b.key))[0];
+      if (lootTarget?.targetDistance === 0) {
+        if (window.recoverV39GroundLootForEnemy?.(id, lootTarget.key)?.ok) {
+          updateEnemyRuntime((runtime) => {
+            runtime.lastActionAtMsByEnemyId[id] = now;
+            return runtime;
+          }, "enemy-ground-loot-recovered");
+          return true;
+        }
+        continue;
+      }
+      if (lootTarget && moveEnemyToward(state, enemy, lootTarget, now, 0)) return true;
+      const nest = nestFor(state, enemy);
+      const center = territoryCenter(enemy, nest);
+      if (distance(enemy, center) > territoryRadius(enemy, nest)) {
+        if (moveEnemyToward(state, enemy, center, now, 0, { aggroTargetUnitId:"" })) return true;
+      } else if (roamInsideTerritory(state, enemy, nest, now)) {
+        return true;
+      }
+      return waitEnemy(state, id, now);
+    }
     const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[id] || {};
     const candidates = resolveActionSkillRows(enemy).filter((skillRow) => {
       return !isV39SupportSkill(skillRow, enemy)
@@ -188,10 +372,7 @@ function runEnemyAi(now = number(window.getV39RuntimeTimeMs?.())) {
     const skillRow = chooseDeterministically(candidates, id, Math.floor(now/ENEMY_ATTACK_INTERVAL_MS));
     if (!skillRow) {
       if (moveEnemyToward(state, enemy, target, now)) return true;
-      updateEnemyRuntime((runtime) => {
-        runtime.lastActionAtMsByEnemyId[id] = now;
-        return runtime;
-      }, "enemy-action-wait");
+      waitEnemy(state, id, now);
       continue;
     }
     if (castMs(skillRow) > 0) queueEnemyAttack(enemy, target, skillRow, now);
@@ -199,6 +380,24 @@ function runEnemyAi(now = number(window.getV39RuntimeTimeMs?.())) {
     return true;
   }
   return false;
+}
+
+function installEnemyAggroTracking() {
+  window.addEventListener("v39:attack-resolved", event => {
+    const detail = event?.detail || {};
+    if (detail.attackerSide !== "player") return;
+    const targetIds = new Set((detail.entries || []).map(entry => text(entry?.targetId)).filter(Boolean));
+    if (!targetIds.size) return;
+    const state = window.getV39GameState?.();
+    if (!state) return;
+    let changed = false;
+    const enemies = state.enemies.map(enemy => {
+      if (!targetIds.has(text(enemy?.id))) return enemy;
+      changed = true;
+      return { ...enemy, aggroTargetUnitId:text(detail.attackerId) };
+    });
+    if (changed) window.setV39GameState?.({ enemies }, { reason:"enemy-attacked-aggro" });
+  });
 }
 
 window.addEventListener("v39:runtime-tick", (event) => {
@@ -209,4 +408,6 @@ window.addEventListener("v39:runtime-tick", (event) => {
 });
 
 window.runV39EnemyAi = runEnemyAi;
-window.getV39EnemyAiRules = () => ({ attackIntervalMs:ENEMY_ATTACK_INTERVAL_MS });
+window.getV39EnemyAiRules = () => ({ attackIntervalMs:ENEMY_ATTACK_INTERVAL_MS, aggressiveFleeHpRate:0.3, passiveFleeHpRate:0.55, noNestFleeChance:0.3 });
+
+installEnemyAggroTracking();

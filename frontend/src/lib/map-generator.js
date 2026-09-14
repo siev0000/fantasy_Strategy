@@ -1,20 +1,71 @@
 import { generateIsland as generateRealisticIsland } from "./realistic-island.js";
 import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
 import { getHexNeighborCoords as getSharedHexNeighborCoords } from "./hex-grid.js";
+import { getGameDataRows } from "./game-data-registry.js";
 
-const 地形定義 = [
-  { key: "平地", color: "#b6cc71", weight: 26, short: "平" },
-  { key: "荒野", color: "#d9c98b", weight: 12, short: "荒" },
-  { key: "森", color: "#7fa56a", weight: 18, short: "森" },
-  { key: "丘陵", color: "#a49367", weight: 12, short: "丘" },
-  { key: "山岳", color: "#8b847d", weight: 10, short: "山" },
-  { key: "雪原", color: "#cfdbe8", weight: 6, short: "雪" },
-  { key: "火山", color: "#7e4f45", weight: 4, short: "火" },
-  { key: "河川", color: "#78aed8", weight: 10, short: "川" },
-  { key: "湖", color: "#6ea5d1", weight: 8, short: "湖" },
-  { key: "海", color: "#4f88ba", weight: 7, short: "海" },
-  { key: "砂漠", color: "#d8be76", weight: 7, short: "砂" }
-];
+function jsonNumber(row, key, fallback) {
+  const value = Number(row?.[key]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+const 火山噴火データ = getGameDataRows("災害")
+  .find(row => String(row?.ID ?? "").trim() === "災害:火山噴火") || {};
+const 山岳地形データ = getGameDataRows("地形")
+  .find(row => String(row?.地形 ?? "").trim() === "山岳") || {};
+const 噴火基本率 = Math.max(0, Math.min(1, jsonNumber(火山噴火データ, "基本発生率", 0.01)));
+const 噴火地形補正 = jsonNumber(山岳地形データ, "噴火", 0);
+const 火山化設定 = Object.freeze({
+  休火山化率:Math.max(0, Math.min(1, jsonNumber(山岳地形データ, "休火山候補率", 0.2))),
+  噴火率毎ターン:Math.max(0, Math.min(1, 噴火基本率 * Math.max(0, 1 + 噴火地形補正))),
+  噴火基本率,
+  噴火地形補正,
+  初期噴火判定ターン数:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "初期判定ターン数", 1))),
+  溶岩流:{
+    最大進行マス:Math.max(1, Math.floor(jsonNumber(火山噴火データ, "溶岩最大進行マス", 3))),
+    停止確率:Math.max(0, Math.min(1, jsonNumber(火山噴火データ, "溶岩停止率", 0.35))),
+    方向維持角度度:Math.max(0, jsonNumber(火山噴火データ, "溶岩方向維持角度", 38))
+  },
+  噴火影響:{
+    影響半径:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "影響半径", 1))),
+    周囲産出倍率:Math.max(0, jsonNumber(火山噴火データ, "周囲産出倍率", 0.5)),
+    継続ターン:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "効果継続ターン", 2))),
+    人口減少最小:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "人口減少最小", 1))),
+    人口減少最大:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "人口減少最大", 3))),
+    治安減少:Math.max(0, jsonNumber(火山噴火データ, "治安減少", 10))
+  }
+});
+
+const 地形生成行 = getGameDataRows("地形")
+  .filter(row => row?.生成対象 === true)
+  .map(row => ({
+    key: String(row?.地形 ?? "").trim(),
+    color: String(row?.生成色 ?? "").trim(),
+    weight: jsonNumber(row, "生成重み", Number.NaN),
+    short: String(row?.生成略称 ?? "").trim(),
+    order: jsonNumber(row, "生成順", Number.NaN)
+  }))
+  .sort((left, right) => left.order - right.order);
+
+const 地形定義エラー = (() => {
+  if (地形生成行.length === 0) return "生成対象がありません";
+  const names = new Set();
+  const orders = new Set();
+  for (const definition of 地形生成行) {
+    if (!definition.key || !definition.color || !definition.short) return "地形・生成色・生成略称は必須です";
+    if (!Number.isFinite(definition.weight) || definition.weight < 0) return `${definition.key}: 生成重みが不正です`;
+    if (!Number.isInteger(definition.order) || definition.order < 1) return `${definition.key}: 生成順が不正です`;
+    if (names.has(definition.key)) return `${definition.key}: 生成対象が重複しています`;
+    if (orders.has(definition.order)) return `生成順${definition.order}: 生成対象が重複しています`;
+    names.add(definition.key);
+    orders.add(definition.order);
+  }
+  return "";
+})();
+if (地形定義エラー) {
+  throw new Error(`[ゲームデータ] 地形.json: ${地形定義エラー}`);
+}
+const 地形定義 = 地形生成行
+  .map(({ order: _order, ...definition }) => Object.freeze(definition));
 
 const 島パターン定義 = {
   balanced: { name: "標準諸島", landMin: 0.38, landMax: 0.50, growth: 0.58, smoothingPasses: 1, erosionChance: 0.02 },
@@ -168,22 +219,7 @@ const 地形生成設定 = {
   気候帯: {
     北端雪原帯行数: 2
   },
-  火山化: {
-    休火山化率: 0.2,
-    噴火率毎ターン: 0.01,
-    初期噴火判定ターン数: 1,
-    溶岩流: {
-      最大進行マス: 3,
-      停止確率: 0.35
-    },
-    噴火影響: {
-      周囲産出倍率: 0.5,
-      継続ターン: 2,
-      人口減少最小: 1,
-      人口減少最大: 3,
-      治安減少: 10
-    }
-  }
+  火山化: 火山化設定
 };
 
 const 地形比率プリセット定義 = {
@@ -700,18 +736,47 @@ function buildDormantVolcanoMap(grid, w, h, dormantRate = 0.2) {
   return { map, dormantSet };
 }
 
+function collectVolcanoAffectedCoords(w, h, x, y, radius = 1) {
+  const limit = Math.max(0, Math.floor(Number(radius) || 0));
+  if (limit <= 0) return [];
+  const startKey = coordKey(x, y);
+  const visited = new Set([startKey]);
+  const queue = [{ x, y, distance:0 }];
+  const affected = [];
+  while (queue.length) {
+    const current = queue.shift();
+    if (current.distance >= limit) continue;
+    for (const next of getHexNeighborCoords(w, h, current.x, current.y)) {
+      if (visited.has(next.key)) continue;
+      visited.add(next.key);
+      affected.push(next);
+      queue.push({ ...next, distance:current.distance + 1 });
+    }
+  }
+  return affected;
+}
+
+function resolveVolcanoEventEffects(volcanoRule) {
+  const effects = volcanoRule?.噴火影響 || {};
+  const populationLossMin = Number.isFinite(effects.人口減少最小) ? effects.人口減少最小 : 1;
+  const populationLossMax = Number.isFinite(effects.人口減少最大) ? effects.人口減少最大 : 3;
+  return {
+    radius:Number.isFinite(effects.影響半径) ? Math.max(0, Math.floor(effects.影響半径)) : 1,
+    yieldMultiplier:Number.isFinite(effects.周囲産出倍率) ? effects.周囲産出倍率 : 0.5,
+    durationTurns:Number.isFinite(effects.継続ターン) ? effects.継続ターン : 2,
+    populationLossMin,
+    populationLossMax,
+    securityLoss:Number.isFinite(effects.治安減少) ? effects.治安減少 : 10
+  };
+}
+
 function runVolcanoEruptionTurns(grid, w, h, dormantMap, volcanoRule) {
   if (!dormantMap || !dormantMap.length) {
     return { eruptedSet: new Set(), events: [] };
   }
   const perTurnRate = normalizeProbability(volcanoRule?.噴火率毎ターン, 0.01);
   const turnCount = Math.max(0, Math.floor(Number(volcanoRule?.初期噴火判定ターン数) || 0));
-  const effects = volcanoRule?.噴火影響 || {};
-  const popLossMin = Number.isFinite(effects.人口減少最小) ? effects.人口減少最小 : 1;
-  const popLossMax = Number.isFinite(effects.人口減少最大) ? effects.人口減少最大 : 3;
-  const yieldMultiplier = Number.isFinite(effects.周囲産出倍率) ? effects.周囲産出倍率 : 0.5;
-  const durationTurns = Number.isFinite(effects.継続ターン) ? effects.継続ターン : 2;
-  const securityLoss = Number.isFinite(effects.治安減少) ? effects.治安減少 : 10;
+  const effects = resolveVolcanoEventEffects(volcanoRule);
   const eruptedSet = new Set();
   const events = [];
 
@@ -724,7 +789,7 @@ function runVolcanoEruptionTurns(grid, w, h, dormantMap, volcanoRule) {
         grid[y][x] = "火山";
         const key = coordKey(x, y);
         eruptedSet.add(key);
-        const affectedCoords = getHexNeighborCoords(w, h, x, y);
+        const affectedCoords = collectVolcanoAffectedCoords(w, h, x, y, effects.radius);
         events.push({
           x,
           y,
@@ -732,10 +797,11 @@ function runVolcanoEruptionTurns(grid, w, h, dormantMap, volcanoRule) {
           turn: turn + 1,
           affectedCoords,
           effects: {
-            yieldMultiplier,
-            durationTurns,
-            populationLoss: randomInt(popLossMin, popLossMax),
-            securityLoss
+            radius:effects.radius,
+            yieldMultiplier:effects.yieldMultiplier,
+            durationTurns:effects.durationTurns,
+            populationLoss:randomInt(effects.populationLossMin, effects.populationLossMax),
+            securityLoss:effects.securityLoss
           }
         });
       }
@@ -762,6 +828,7 @@ function buildDormantMapFromGrid(grid, w, h) {
 
 function processVolcanoEruptionTurn(grid, w, h, dormantMap, heightLevelMap, volcanoRule, options = {}) {
   const perTurnRate = normalizeProbability(volcanoRule?.噴火率毎ターン, 0.01);
+  const effects = resolveVolcanoEventEffects(volcanoRule);
   const eruptedCells = [];
   const turnNumber = Number.isFinite(options?.turnNumber) ? Math.max(1, Math.floor(options.turnNumber)) : 1;
   const markEruption = (x, y, forced = false) => {
@@ -777,7 +844,15 @@ function processVolcanoEruptionTurn(grid, w, h, dormantMap, heightLevelMap, volc
       x,
       y,
       key: coordKey(x, y),
-      forced
+      forced,
+      affectedCoords:collectVolcanoAffectedCoords(w, h, x, y, effects.radius),
+      effects:{
+        radius:effects.radius,
+        yieldMultiplier:effects.yieldMultiplier,
+        durationTurns:effects.durationTurns,
+        populationLoss:randomInt(effects.populationLossMin, effects.populationLossMax),
+        securityLoss:effects.securityLoss
+      }
     });
     return true;
   };
@@ -4816,6 +4891,11 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
   const volcanoData = {
     dormantRate: normalizeProbability(地形生成設定.火山化?.休火山化率, 0.2),
     eruptionRatePerTurn: normalizeProbability(地形生成設定.火山化?.噴火率毎ターン, 0.01),
+    eruptionBaseRate:normalizeProbability(地形生成設定.火山化?.噴火基本率, 0.01),
+    eruptionTerrainModifier:Number(地形生成設定.火山化?.噴火地形補正) || 0,
+    eruptionEffects:{ ...(地形生成設定.火山化?.噴火影響 || {}) },
+    lavaFlowSettings:{ ...(地形生成設定.火山化?.溶岩流 || {}) },
+    ruleSourceId:"災害:火山噴火",
     initialTurnChecks: Math.max(0, Math.floor(Number(地形生成設定.火山化?.初期噴火判定ターン数) || 0)),
     dormantMap: dormantVolcanoData.map,
     dormantCount: dormantVolcanoData.dormantSet.size,

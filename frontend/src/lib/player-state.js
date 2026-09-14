@@ -1,4 +1,5 @@
 import { normalizeFactionSettlements } from "./settlement-state.js";
+import { normalizeV39SquadLogistics } from "./v39-logistics-state.js";
 
 const VISIBILITY_ARRAY_KEYS = Object.freeze([
   "exploredTileKeys",
@@ -65,7 +66,7 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
     settlements: settlementState.settlements,
     selectedSettlementId: settlementState.selectedSettlementId,
     units: cloneRows(source?.units),
-    squads: cloneRows(source?.squads),
+    squads: cloneRows(source?.squads).map(normalizeV39SquadLogistics),
     deadUnitReserve: cloneRows(source?.deadUnitReserve),
     deathHistory: cloneRows(source?.deathHistory),
     selectedUnitId: String(source?.selectedUnitId || ""),

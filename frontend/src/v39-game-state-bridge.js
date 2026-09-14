@@ -1,6 +1,8 @@
 import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
 import { createPlayerFactionState, createPlayerRecord } from "./lib/player-state.js";
 import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "./lib/settlement-state.js";
+import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "./lib/v39-logistics-state.js";
+import { normalizeV39Village } from "./lib/v39-economy-rules.js";
 
 const EMPTY_STATE = Object.freeze({
   activePlayerId: "",
@@ -18,6 +20,9 @@ const EMPTY_STATE = Object.freeze({
   diplomacyRelations: {},
   lastMoveStop: null,
   enemies: [],
+  enemySquads: [],
+  enemyNests: [],
+  groundLootByTile: {},
   worldEnvironment: {
     processedTurn: 0,
     volcanoData: null,
@@ -77,7 +82,7 @@ function normalizeUnitArray(value) {
     : [];
 }
 
-function normalizeFactionState(value = {}, ownerPlayerId = "") {
+function normalizeFactionState(value = {}, ownerPlayerId = "", race = "只人") {
   const source = value && typeof value === "object" ? value : {};
   const base = createPlayerFactionState(source, ownerPlayerId);
   const settlementState = normalizeFactionSettlements(base, ownerPlayerId);
@@ -89,10 +94,10 @@ function normalizeFactionState(value = {}, ownerPlayerId = "") {
       ...unit,
       settlementId:String(unit?.settlementId || fallbackSettlementId)
     })),
-    squads: normalizeEntityArray(source.squads),
+    squads: normalizeEntityArray(source.squads).map(normalizeV39SquadLogistics),
     deadUnitReserve: normalizeEntityArray(source.deadUnitReserve),
     deathHistory: normalizeEntityArray(source.deathHistory),
-    settlements: normalizeEntityArray(settlementState.settlements),
+    settlements: settlementState.settlements.map(row => normalizeV39Village(row, race)).filter(Boolean),
     selectedSettlementId: settlementState.selectedSettlementId,
     encounterMoveLocks: cloneRecord(source.encounterMoveLocks)
   };
@@ -102,7 +107,7 @@ function normalizePlayers(value) {
   if (!Array.isArray(value)) return [];
   return value.filter(Boolean).map((player, index) => {
     const base = createPlayerRecord(player, index);
-    return { ...base, factionState:normalizeFactionState(player?.factionState, base.id) };
+    return { ...base, factionState:normalizeFactionState(player?.factionState, base.id, base.race) };
   });
 }
 
@@ -141,6 +146,9 @@ function normalizeState(input = {}) {
     diplomacyRelations: cloneJson(input.diplomacyRelations, {}),
     lastMoveStop: input.lastMoveStop && typeof input.lastMoveStop === "object" ? { ...input.lastMoveStop } : null,
     enemies: normalizeUnitArray(input.enemies),
+    enemySquads:normalizeV39EnemySquads(input.enemySquads),
+    enemyNests:normalizeV39EnemyNests(input.enemyNests),
+    groundLootByTile:normalizeV39GroundLootByTile(input.groundLootByTile),
     worldEnvironment: normalizeWorldEnvironment(input.worldEnvironment),
     enemyCombatRuntime: {
       pendingActionsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.pendingActionsByEnemyId),
@@ -171,22 +179,22 @@ function cloneUnit(unit) {
   };
 }
 
-function cloneFactionState(factionState = {}) {
+function cloneFactionState(factionState = {}, race = "只人") {
   const base = createPlayerFactionState(factionState);
   return {
     ...base,
     units: Array.isArray(factionState.units) ? factionState.units.map(cloneUnit) : [],
-    squads: normalizeEntityArray(factionState.squads),
+    squads: normalizeEntityArray(factionState.squads).map(normalizeV39SquadLogistics),
     deadUnitReserve: normalizeEntityArray(factionState.deadUnitReserve),
     deathHistory: normalizeEntityArray(factionState.deathHistory),
-    settlements: normalizeEntityArray(base.settlements),
+    settlements: base.settlements.map(row => normalizeV39Village(row, race)).filter(Boolean),
     selectedSettlementId: base.selectedSettlementId,
     encounterMoveLocks: cloneRecord(factionState.encounterMoveLocks)
   };
 }
 
 function clonePlayer(player) {
-  return { ...player, factionState:cloneFactionState(player.factionState) };
+  return { ...player, factionState:cloneFactionState(player.factionState, player.race) };
 }
 
 let state = normalizeState(window.V39_INITIAL_GAME_STATE || EMPTY_STATE);
@@ -209,6 +217,9 @@ function getState() {
     diplomacyRelations: cloneJson(state.diplomacyRelations, {}),
     lastMoveStop: state.lastMoveStop ? { ...state.lastMoveStop } : null,
     enemies: state.enemies.map(cloneUnit),
+    enemySquads:normalizeV39EnemySquads(state.enemySquads),
+    enemyNests:normalizeV39EnemyNests(state.enemyNests),
+    groundLootByTile:normalizeV39GroundLootByTile(state.groundLootByTile),
     worldEnvironment: normalizeWorldEnvironment(state.worldEnvironment),
     enemyCombatRuntime: {
       pendingActionsByEnemyId:{ ...state.enemyCombatRuntime.pendingActionsByEnemyId },
@@ -256,6 +267,9 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "diplomacyRelations")) next.diplomacyRelations = cloneJson(patch.diplomacyRelations, {});
   if (Object.prototype.hasOwnProperty.call(patch, "lastMoveStop")) next.lastMoveStop = patch.lastMoveStop && typeof patch.lastMoveStop === "object" ? { ...patch.lastMoveStop } : null;
   if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = normalizeUnitArray(patch.enemies);
+  if (Object.prototype.hasOwnProperty.call(patch, "enemySquads")) next.enemySquads = normalizeV39EnemySquads(patch.enemySquads);
+  if (Object.prototype.hasOwnProperty.call(patch, "enemyNests")) next.enemyNests = normalizeV39EnemyNests(patch.enemyNests);
+  if (Object.prototype.hasOwnProperty.call(patch, "groundLootByTile")) next.groundLootByTile = normalizeV39GroundLootByTile(patch.groundLootByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "worldEnvironment")) next.worldEnvironment = normalizeWorldEnvironment(patch.worldEnvironment);
   if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
   if (Object.prototype.hasOwnProperty.call(patch, "timeline")) next.timeline = { ...state.timeline, ...patch.timeline };
@@ -294,7 +308,7 @@ function updateActiveFactionState(patch = {}, options = {}) {
   state = {
     ...state,
     players: state.players.map(player => player.id === activeId
-      ? { ...player, factionState:normalizeFactionState({ ...player.factionState, ...patch }, player.id) }
+      ? { ...player, factionState:normalizeFactionState({ ...player.factionState, ...patch }, player.id, player.race) }
       : player)
   };
   if (options.silent !== true) dispatchChange(options.reason || "active-faction");

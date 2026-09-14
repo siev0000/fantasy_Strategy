@@ -3,6 +3,12 @@ import { computed, ref, watch } from "vue";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 import { isMobUnit as isMobUnitUtil } from "../composables/unitCoreUtils.js";
+import {
+  DEFAULT_V39_EQUIPMENT_RARITY_KEY,
+  getV39EquipmentRarity,
+  normalizeV39EquipmentRarity,
+  V39_EQUIPMENT_RARITIES
+} from "../lib/v39-equipment-rules.js";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 
@@ -31,14 +37,7 @@ const LEFT_PANEL_TABS = [
   { key: "equipment", label: "装備" },
   { key: "role", label: "ロール" }
 ];
-const EQUIPMENT_RARITY_ALIAS_MAP = {
-  コモン: "common",
-  アンコモン: "uncommon",
-  レア: "rare",
-  エピック: "epic",
-  レジェンダリー: "legendary"
-};
-const EQUIPMENT_RARITY_KEYS = ["common", "uncommon", "rare", "epic", "legendary"];
+const EQUIPMENT_RARITY_KEYS = V39_EQUIPMENT_RARITIES.map(rarity => rarity.key);
 
 const iconOptions = computed(() => listIconOptions());
 const iconDraft = ref(DEFAULT_ICON_NAME);
@@ -47,7 +46,7 @@ const leftPanelView = ref("status");
 const selectedEquipSlotKey = ref("武器1");
 const showEquipmentPickerModal = ref(false);
 const equipmentActionStatus = ref("");
-const mobRarityDraft = ref("common");
+const mobRarityDraft = ref(DEFAULT_V39_EQUIPMENT_RARITY_KEY);
 const lastUnitId = ref("");
 
 function nonEmptyText(value) {
@@ -124,11 +123,7 @@ function resistanceValue(unit, key) {
 }
 
 function normalizeEquipmentRarity(value) {
-  const text = nonEmptyText(value);
-  if (!text) return "common";
-  const lower = text.toLowerCase();
-  if (["common", "uncommon", "rare", "epic", "legendary"].includes(lower)) return lower;
-  return EQUIPMENT_RARITY_ALIAS_MAP[text] || "common";
+  return normalizeV39EquipmentRarity(value);
 }
 
 function isMobUnit(unit) {
@@ -136,21 +131,11 @@ function isMobUnit(unit) {
 }
 
 function equipmentRarityShort(value) {
-  const key = normalizeEquipmentRarity(value);
-  if (key === "legendary") return "L";
-  if (key === "epic") return "E";
-  if (key === "rare") return "R";
-  if (key === "uncommon") return "U";
-  return "C";
+  return getV39EquipmentRarity(value).short;
 }
 
 function equipmentRarityLabel(value) {
-  const key = normalizeEquipmentRarity(value);
-  if (key === "legendary") return "レジェンダリー";
-  if (key === "epic") return "エピック";
-  if (key === "rare") return "レア";
-  if (key === "uncommon") return "アンコモン";
-  return "コモン";
+  return getV39EquipmentRarity(value).label;
 }
 
 function equipmentRarityClass(value) {

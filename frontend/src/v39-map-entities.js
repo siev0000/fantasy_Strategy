@@ -300,6 +300,7 @@ function drawForeignUnits(scene, container, players, activePlayerId) {
       const x = finiteCoord(unit?.x);
       const y = finiteCoord(unit?.y);
       if (!unit || x === null || y === null || window.isV39TileInCurrentVision?.(x, y) === false) continue;
+      if (!group.some(member => window.isV39EntityDetected?.(member) !== false)) continue;
       const center = tileCenter(x, y);
       const marker = scene.add.container(center.x, center.y).setName("v39-foreign-unit-marker");
       for (const member of group) {
@@ -336,6 +337,7 @@ function drawEnemies(scene, container, enemies) {
     const y = finiteCoord(enemy.y);
     if (x === null || y === null) continue;
     if (!revealAllEnemies && window.isV39TileInCurrentVision?.(x, y) === false) continue;
+    if (!revealAllEnemies && !group.some(member => window.isV39EntityDetected?.(member) !== false)) continue;
     const center = tileCenter(x, y);
     const marker = scene.add.container(center.x, center.y).setName("v39-enemy-marker");
     for (const member of group) {

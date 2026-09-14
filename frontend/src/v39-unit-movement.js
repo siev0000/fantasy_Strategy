@@ -1,6 +1,7 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { showV39Feedback } from "./v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords } from "./lib/hex-grid.js";
+import { canUnitEnterV39Tile } from "./lib/v39-terrain-traversal.js";
 
 const UNIT_ACTION_POINT_MAX = 100;
 const RANGE_DEPTH = 9;
@@ -129,24 +130,12 @@ function tileHeightLevel(data, x, y) {
   return Number.isFinite(Number(raw)) ? Math.floor(Number(raw)) : null;
 }
 
-function isPassableTerrain(terrain) {
-  return terrain !== "海" && terrain !== "湖";
-}
-
-function canCrossLava(unit) {
-  const fireResistance = Number(unit?.status?.炎耐性 ?? unit?.resistances?.炎耐性) || 0;
-  const abilities = [unit?.acquiredSkillNames, unit?.abilities, unit?.traits].flat().map(value => String(value || ""));
-  return fireResistance >= 100 || abilities.some(value => value.includes("耐熱"));
-}
-
 function isPassableTile(data, x, y, unit = null) {
-  if (!isPassableTerrain(data?.grid?.[y]?.[x])) return false;
-  return !data?.lavaMap?.[y]?.[x] || canCrossLava(unit);
+  return canUnitEnterV39Tile(data, x, y, unit);
 }
 
 // Kept in sync with the active legacy PhaserMapGeneratorPanel movement rule.
 function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
-  const terrain = data?.grid?.[toY]?.[toX];
   if (!isPassableTile(data, toX, toY, moveUnit)) return Number.POSITIVE_INFINITY;
 
   const fromLevel = tileHeightLevel(data, fromX, fromY);

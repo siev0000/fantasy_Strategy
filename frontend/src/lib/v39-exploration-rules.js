@@ -94,7 +94,10 @@ export function inspectV39Survey(state, playerId, unitId, tile) {
   if (unit && (number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡")) reasons.push("死亡したキャラクターは調査できません");
   if (unit && key && (Math.floor(number(unit.x, -1)) !== x || Math.floor(number(unit.y, -1)) !== y)) reasons.push("キャラクターと同じマスで実行してください");
   if (unit?.surveyTask) reasons.push("すでに調査中です");
-  if (faction?.exploration?.surveyedTileKeys?.includes(key)) reasons.push("調査済みです");
+  const groundLoot = state?.groundLootByTile?.[key];
+  const groundLootDiscovered = groundLoot?.discoveredByPlayerIds?.includes(text(playerId));
+  const hasUndiscoveredGroundLoot = !!groundLoot && !groundLootDiscovered;
+  if (faction?.exploration?.surveyedTileKeys?.includes(key) && !hasUndiscoveredGroundLoot) reasons.push("調査済みです");
   return { available:reasons.length === 0, reasons, player, faction, unit, x, y, key };
 }
 
@@ -120,6 +123,8 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
   const dangerPercentByTile = { ...(state?.dangerPercentByTile || {}) };
   const territoryOwnerByTile = { ...(state?.territoryOwnerByTile || {}) };
   const territoryStateByTile = { ...(state?.territoryStateByTile || {}) };
+  const groundLootByTile = Object.fromEntries(Object.entries(state?.groundLootByTile || {})
+    .map(([key, value]) => [key, { ...value, discoveredByPlayerIds:[...(value?.discoveredByPlayerIds || [])] }]));
   const players = (state?.players || []).map(player => {
     const faction = player?.factionState || {};
     const selectedSettlement = getSelectedSettlement(faction);
@@ -143,6 +148,11 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
       const site = state?.explorationSitesByTile?.[task.key] || null;
       const feature = site ? v39ExplorationFeatureDefinitions().find(row => row.id === site.featureId) : null;
       if (site && feature) discoveredFeaturesByTile[task.key] = { ...site, discoveredTurn:turn, discoveredByUnitId:unit.id };
+      const groundLoot = groundLootByTile[task.key];
+      const groundLootDiscovered = !!groundLoot;
+      if (groundLootDiscovered && !groundLoot.discoveredByPlayerIds.includes(text(player.id))) {
+        groundLoot.discoveredByPlayerIds.push(text(player.id));
+      }
       surveyed.add(task.key);
       const beforeDanger = Math.max(0, number(dangerPercentByTile[task.key]));
       const level = Math.max(1, Math.floor(number(unit.level, 1)));
@@ -157,8 +167,8 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
           settlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id)
         };
       }
-      const foundText = feature ? feature.name : "異常なし";
-      const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key:task.key, featureId:feature?.id || "", featureName:feature?.name || "", dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[task.key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${task.key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
+      const foundText = [feature?.name, groundLootDiscovered ? "残留品" : ""].filter(Boolean).join(" / ") || "異常なし";
+      const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key:task.key, featureId:feature?.id || "", featureName:feature?.name || "", groundLootDiscovered, dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[task.key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${task.key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
       reports.push(report); history.push(report); activityLog = appendLog({ activityLog }, report);
       const { surveyTask, ...rest } = unit;
       return rest;
@@ -170,7 +180,7 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
       : { ...faction, units, activityLog, exploration:{ discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } };
     return { ...player, factionState };
   });
-  return { state:{ ...state, players, dangerPercentByTile, territoryOwnerByTile, territoryStateByTile }, reports };
+  return { state:{ ...state, players, dangerPercentByTile, territoryOwnerByTile, territoryStateByTile, groundLootByTile }, reports };
 }
 
 export function getV39DiscoveredFeature(faction, key) {

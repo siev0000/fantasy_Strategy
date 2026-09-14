@@ -263,7 +263,9 @@ function formatStrongCandidate(detail) {
 }
 
 function formatEnemies(state, detail) {
-  const rows = entitiesAt(state?.enemies, detail.x, detail.y);
+  const revealAll = window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
+  const rows = entitiesAt(state?.enemies, detail.x, detail.y)
+    .filter(row => revealAll || window.isV39EntityDetected?.(row) !== false);
   const labels = rows.map(row => {
     const name = text(row.name || row.enemyName || row.type, "敵");
     const lv = Number(row.level ?? row.lv);

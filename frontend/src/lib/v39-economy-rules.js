@@ -84,6 +84,7 @@ export function normalizeV39Village(village, race = "只人") {
   const fallbackPopulation = initialPopulationForRace(race);
   const populationByRace = normalizePopulationByRace(village.populationByRace, race, number(village.population, fallbackPopulation));
   const population = Object.values(populationByRace).reduce((sum, value) => sum + number(value), 0);
+  const scaleDefinition = resolveVillageScaleDefinition({ ...village, population });
   const foodStockByType = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
   const materialStockByType = normalizeResourceBag(village.materialStockByType, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 });
   const constructionQueue = Array.isArray(village.constructionQueue)
@@ -101,6 +102,9 @@ export function normalizeV39Village(village, race = "只人") {
     ...village,
     population,
     populationByRace,
+    type:scaleDefinition?.name || text(village.type) || "村",
+    scaleKey:scaleDefinition?.key || text(village.scaleKey) || "village",
+    scaleLevel:Math.max(1, Math.floor(number(scaleDefinition?.level, village.scaleLevel || 1))),
     foodStockByType,
     materialStockByType,
     foodStock:sumResourceBag(foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
@@ -183,7 +187,7 @@ export function createInitialV39Village({ x, y, name = "拠点", race = "只人"
     name, x:Math.floor(number(x)), y:Math.floor(number(y)), placed:true,
     population:initialPopulationForRace(race),
     populationByRace:{ [text(race) || "只人"]:initialPopulationForRace(race) },
-    foodStockByType:{}, materialStockByType:{}, buildings:[], tileFacilityMap:{}, constructionQueue:{}
+    foodStockByType:{}, materialStockByType:{}, buildings:[], tileFacilityMap:{}, constructionQueue:[]
   }, race);
   const sourcePlayer = {
     ...(player || {}),

@@ -49,15 +49,36 @@ function render() {
   const feature = getV39DiscoveredFeature(faction, key);
   const surveyed = faction?.exploration?.surveyedTileKeys?.includes(key);
   const task = unit?.surveyTask;
-  output.textContent = feature?.definition?.name || (surveyed ? "異常なし" : task?.key === key ? `調査中 / 残${task.remainingTurns}T` : "未調査");
+  const groundLoot = state?.groundLootByTile?.[key];
+  const groundLootDiscovered = groundLoot?.discoveredByPlayerIds?.includes(text(player?.id));
+  const resourceCount = Object.values(groundLoot?.cargo?.resourcesByType || {}).reduce((sum, amount) => sum + Number(amount || 0), 0);
+  const equipmentCount = groundLoot?.cargo?.equipmentInventory?.length || 0;
+  const lootText = groundLootDiscovered ? `残留品 ${resourceCount + equipmentCount}` : "";
+  output.textContent = [feature?.definition?.name, lootText].filter(Boolean).join(" / ")
+    || (surveyed ? "異常なし" : task?.key === key ? `調査中 / 残${task.remainingTurns}T` : "未調査");
+  if (groundLootDiscovered) {
+    button.disabled = !unit || Math.floor(Number(unit.x)) !== Number(selectedTile.x) || Math.floor(Number(unit.y)) !== Number(selectedTile.y);
+    button.textContent = "残留品回収";
+    button.title = button.disabled ? "キャラクターと同じマスで実行してください" : "部隊所持品へ移す";
+    return;
+  }
   const check = inspectV39Survey(state, player?.id, unit?.id, selectedTile);
   button.disabled = !check.available;
-  button.textContent = task?.key === key ? "調査中" : surveyed ? "調査済み" : "調査開始";
+  button.textContent = task?.key === key ? "調査中" : groundLoot && surveyed ? "残留品探索" : surveyed ? "調査済み" : "調査開始";
   button.title = check.available ? "次のターン処理で完了" : check.reasons.join(" / ");
 }
 
 function runSurvey() {
   const { state, player, unit } = context();
+  const key = selectedTile ? `${Math.floor(Number(selectedTile.x))},${Math.floor(Number(selectedTile.y))}` : "";
+  const groundLoot = state?.groundLootByTile?.[key];
+  if (groundLoot?.discoveredByPlayerIds?.includes(text(player?.id))) {
+    const recovered = window.recoverV39GroundLoot?.(player?.id, unit?.id, key);
+    if (!recovered?.ok) showMessage(`回収不可: ${recovered?.reason || "実行できません"}`);
+    else showMessage(`${text(unit?.name) || "キャラクター"}: 残留品を回収`);
+    render();
+    return recovered;
+  }
   const result = startV39SurveyTask(state, player?.id, unit?.id, selectedTile);
   if (!result.ok) {
     showMessage(`調査不可: ${result.reason}`);
@@ -88,7 +109,7 @@ function advanceTurn(event) {
   const state = window.getV39GameState?.();
   if (!state) return;
   const result = advanceV39ExplorationTurn(state, event?.detail?.turnNumber);
-  window.setV39GameState?.({ players:result.state.players, dangerPercentByTile:result.state.dangerPercentByTile, territoryOwnerByTile:result.state.territoryOwnerByTile, territoryStateByTile:result.state.territoryStateByTile }, { reason:"exploration-turn" });
+  window.setV39GameState?.({ players:result.state.players, dangerPercentByTile:result.state.dangerPercentByTile, territoryOwnerByTile:result.state.territoryOwnerByTile, territoryStateByTile:result.state.territoryStateByTile, groundLootByTile:result.state.groundLootByTile }, { reason:"exploration-turn" });
   for (const report of result.reports) {
     window.dispatchEvent(new CustomEvent("v39:exploration-log", { detail:report }));
     showMessage(report.message);

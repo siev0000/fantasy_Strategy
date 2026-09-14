@@ -51,8 +51,8 @@ const TABLE_KEY_FIELDS = Object.freeze({
 
 const REQUIRED_FIELDS = Object.freeze({
   クラス:["名前", "種類"], スキル一覧:["名前", "行動"], 装備:["装備名", "装備箇所"],
-  地形:["地形"], 出現敵:["出現地形", "種族名"],
-  研究:["項目名", "技術対象", "Lv"], 災害:["カテゴリ名", "効果"], 範囲:["範囲タイプ", "処理タイプ"]
+  地形:["地形"], 出現敵:["ID", "出現地形", "種族名"],
+  研究:["ID", "項目名", "技術対象", "Lv"], 災害:["ID", "カテゴリ名", "効果"], 範囲:["範囲タイプ", "処理タイプ"]
 });
 
 export const GAME_DATA_TABLE_METADATA = Object.freeze({
@@ -90,13 +90,19 @@ function isHeaderRecord(name, row) {
   return name === "災害" && asText(row.カテゴリ名) === "災害種別";
 }
 
-export function getGameDataRecordId(name, row) {
+function getLegacyGameDataRecordId(name, row) {
   const tableName = asText(name).replace(/\.json$/i, "");
   if (isHeaderRecord(tableName, row)) return "";
   const fields = TABLE_KEY_FIELDS[tableName];
   if (!fields?.length) return "";
   const values = fields.map(field => asText(row?.[field]));
   return values.some(Boolean) ? `${tableName}:${values.join(":")}` : "";
+}
+
+export function getGameDataRecordId(name, row) {
+  const tableName = asText(name).replace(/\.json$/i, "");
+  if (isHeaderRecord(tableName, row)) return "";
+  return asText(row?.ID ?? row?.id) || getLegacyGameDataRecordId(tableName, row);
 }
 
 for (const [path, data] of Object.entries(rawGameDataModules)) {
@@ -130,7 +136,8 @@ export function findGameDataRow(name, field, value) {
 
 export function findGameDataRowById(name, recordId) {
   const expected = asText(recordId);
-  return getGameDataRows(name).find(row => getGameDataRecordId(name, row) === expected) || null;
+  return getGameDataRows(name).find(row => getGameDataRecordId(name, row) === expected
+    || getLegacyGameDataRecordId(name, row) === expected) || null;
 }
 
 function validateReference(issues, sourceTable, rowId, field, targetTable, targetField, value) {

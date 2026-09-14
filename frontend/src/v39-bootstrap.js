@@ -20,6 +20,8 @@ import "./v39-initial-placement.js";
 import "./v39-unit-create-ui.js";
 import "./v39-equipment-ui.js";
 import "./v39-enemy-spawn.js";
+import "./v39-logistics.js";
+import "./v39-turn-activity.js";
 import "./v39-map-visibility.js";
 import "./v39-map-entities.js";
 import "./v39-unit-movement.js";

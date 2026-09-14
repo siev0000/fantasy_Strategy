@@ -97,7 +97,7 @@ function isInvalidHeaderRow(core) {
 
 function buildExtraDetailEntries(row) {
   if (!row || typeof row !== "object") return [];
-  const excludedKeys = new Set(["項目名", "name", "名称", "技術対象", "カテゴリ", "category", "target", "Lv", "level", "tier", "詳細", "desc", "説明"]);
+  const excludedKeys = new Set(["ID", "id", "項目名", "name", "名称", "技術対象", "カテゴリ", "category", "target", "Lv", "level", "tier", "詳細", "desc", "説明"]);
   return Object.entries(row)
     .filter(([key, value]) => {
       if (excludedKeys.has(key)) return false;
@@ -129,8 +129,7 @@ function buildCategoriesFromRows(rows) {
     }
     const details = buildExtraDetailEntries(row);
     cat.levelsMap.get(core.level).push({
-      // 行の追加・並べ替えで保存IDが変わらないよう、JSON上の意味からIDを作る。
-      id: `${core.target}:${core.level}:${core.name}`,
+      id: asText(row.ID ?? row.id) || `${core.target}:${core.level}:${core.name}`,
       name: core.name,
       desc: core.desc,
       level: core.level,

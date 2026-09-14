@@ -22,6 +22,14 @@ const CATEGORY_META = {
   経済Lv: { label:"経済", icon:"◆", accent:"#79c88f" }
 };
 
+function categoryMeta(categoryKey) {
+  return CATEGORY_META[categoryKey] || {
+    label:String(categoryKey || "研究").replace(/Lv$/, ""),
+    icon:"◆",
+    accent:"#70b7c6"
+  };
+}
+
 let activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
 let inspectedItemId = "";
 
@@ -132,7 +140,7 @@ function renderRail() {
   rail.innerHTML = '<div class="research-rail-title">研究<br>対象</div>' + RESEARCH_CATEGORY_ORDER
     .filter(key => researchTreeData.categories[key])
     .map(key => {
-      const meta = CATEGORY_META[key];
+      const meta = categoryMeta(key);
       const progress = categoryProgress(key, research);
       const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
       const selected = research.selection?.[key] ? " active" : "";
@@ -173,7 +181,7 @@ function renderModal() {
   const progressRatio = Math.min(100, Math.round((currentExp / Math.max(1, requiredExp)) * 100));
 
   const categoryButtons = RESEARCH_CATEGORY_ORDER.filter(key => researchTreeData.categories[key]).map(key => {
-    const meta = CATEGORY_META[key];
+    const meta = categoryMeta(key);
     const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
     const active = key === activeCategory;
     return `<button class="v39-research-category${active ? " active" : ""}" data-research-category="${key}" style="--cat-accent:${meta.accent}" aria-pressed="${active}"><b>${meta.icon}</b><span>${meta.label}</span><small>Lv${level}${active ? " 選択中" : ""}</small></button>`;
@@ -198,7 +206,7 @@ function renderModal() {
   const actionLabel = completed ? "研究完了" : (selected ? "研究中" : "研究として選択");
   const assigneeOptions = aliveUnits().map(unit => `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${Number(unit?.level ?? unit?.Lv ?? 0)}</option>`).join("");
   const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory) : 0;
-  body.innerHTML = `<nav class="v39-research-categories">${categoryButtons}</nav><div class="v39-research-layout"><div class="v39-research-board">${levels || "研究データがありません。"}</div><aside class="v39-research-detail"><label class="v39-research-assignee">担当ユニット<select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>1ターン +${perTurn} EXP</small></label>${inspected ? `<div class="v39-research-detail-head"><div><b>${escapeHtml(inspected.name)}</b><small>${CATEGORY_META[activeCategory]?.label || activeCategory} Lv${inspected.level}</small></div><strong class="${completed ? "completed" : ""}">${completed ? "100%" : `${progressRatio}%`}</strong></div><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp}</span></div><p>${escapeHtml(inspected.desc || "-")}</p>${itemDetails(inspected)}<p class="v39-research-requirement">必要ユニットLv ${researchTreeData.levelRequirements?.[inspected.level] || "-"}<br>短縮技能: ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || "-")}</p><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? "disabled" : ""}>${actionLabel}</button>` : "研究項目を選択してください。"}</aside></div>`;
+  body.innerHTML = `<nav class="v39-research-categories">${categoryButtons}</nav><div class="v39-research-layout"><div class="v39-research-board">${levels || "研究データがありません。"}</div><aside class="v39-research-detail"><label class="v39-research-assignee">担当ユニット<select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>1ターン +${perTurn} EXP</small></label>${inspected ? `<div class="v39-research-detail-head"><div><b>${escapeHtml(inspected.name)}</b><small>${categoryMeta(activeCategory).label} Lv${inspected.level}</small></div><strong class="${completed ? "completed" : ""}">${completed ? "100%" : `${progressRatio}%`}</strong></div><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp}</span></div><p>${escapeHtml(inspected.desc || "-")}</p>${itemDetails(inspected)}<p class="v39-research-requirement">必要ユニットLv ${researchTreeData.levelRequirements?.[inspected.level] || "-"}<br>短縮技能: ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || "-")}</p><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? "disabled" : ""}>${actionLabel}</button>` : "研究項目を選択してください。"}</aside></div>`;
 }
 
 function renderAll() {

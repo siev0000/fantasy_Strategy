@@ -1,6 +1,10 @@
-import { resolveUnitScoutValue } from "./composables/unitCoreUtils.js";
 import { facilityDefinitions } from "./lib/v39-economy-rules.js";
 import { getFactionSettlements } from "./lib/settlement-state.js";
+import {
+  resolveDetectionGroupSense,
+  resolveDetectionScoutValue,
+  resolveEffectiveScoutAtDistance
+} from "./lib/v39-detection-rules.js";
 import {
   BASE_VILLAGE_SCOUT_RANGE,
   FACTION_BORDER_COLOR_PALETTE,
@@ -23,7 +27,12 @@ const RETRY_MS = 20;
 const RETRY_LIMIT = 180;
 
 let renderRequestId = 0;
-let lastSnapshot = { exploredTileKeys: new Set(), currentVisionTileKeys: new Set() };
+let lastSnapshot = {
+  exploredTileKeys:new Set(),
+  currentVisionTileKeys:new Set(),
+  detectedEntityIds:new Set(),
+  detectionByTile:new Map()
+};
 
 function coordKey(x, y) {
   return `${x},${y}`;
@@ -106,7 +115,7 @@ function neighborEdges(data, x, y) {
   });
 }
 
-function addVisionRange(data, sourceX, sourceY, range, output) {
+function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile = null, scoutValue = 0) {
   if (sourceX === null || sourceX === undefined || sourceX === ""
     || sourceY === null || sourceY === undefined || sourceY === "") return;
   const sx = Math.floor(Number(sourceX));
@@ -117,6 +126,13 @@ function addVisionRange(data, sourceX, sourceY, range, output) {
   const visited = new Set([startKey]);
   const queue = [{ x:sx, y:sy, distance:0 }];
   output.add(startKey);
+  if (detectionByTile instanceof Map) {
+    const previousScout = Number(detectionByTile.get(startKey));
+    detectionByTile.set(startKey, Math.max(
+      Number.isFinite(previousScout) ? previousScout : Number.NEGATIVE_INFINITY,
+      resolveEffectiveScoutAtDistance(scoutValue, 0)
+    ));
+  }
   while (queue.length) {
     const current = queue.shift();
     if (current.distance >= maxDistance) continue;
@@ -126,13 +142,21 @@ function addVisionRange(data, sourceX, sourceY, range, output) {
       if (visited.has(key)) continue;
       visited.add(key);
       output.add(key);
-      queue.push({ x:neighbor.x, y:neighbor.y, distance:current.distance + 1 });
+      const distance = current.distance + 1;
+      if (detectionByTile instanceof Map) {
+        const previousScout = Number(detectionByTile.get(key));
+        detectionByTile.set(key, Math.max(
+          Number.isFinite(previousScout) ? previousScout : Number.NEGATIVE_INFINITY,
+          resolveEffectiveScoutAtDistance(scoutValue, distance)
+        ));
+      }
+      queue.push({ x:neighbor.x, y:neighbor.y, distance });
     }
   }
 }
 
 function unitVisionRange(unit) {
-  const scout = Math.max(Number(unit?.scoutRange) || 0, resolveUnitScoutValue(unit));
+  const scout = resolveDetectionScoutValue(unit);
   return UNIT_VISION_BASE_RANGE + Math.max(0, Math.floor(scout / UNIT_VISION_SCOUT_STEP));
 }
 
@@ -141,14 +165,32 @@ function livingUnit(unit) {
   return unit?.state !== "死亡" && unit?.condition !== "死亡" && (!Number.isFinite(hp) || hp > 0);
 }
 
+function unitsByTile(units = [], { livingOnly = false } = {}) {
+  const groups = new Map();
+  for (const unit of Array.isArray(units) ? units : []) {
+    if (livingOnly && !livingUnit(unit)) continue;
+    const x = Math.floor(Number(unit?.x));
+    const y = Math.floor(Number(unit?.y));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const key = coordKey(x, y);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(unit);
+  }
+  return groups;
+}
+
 function buildCurrentVision(data, faction, state, playerId) {
   const visible = new Set();
+  const detectionByTile = new Map();
   const settlements = getFactionSettlements(faction);
   for (const settlement of settlements) {
-    if (settlement?.placed) addVisionRange(data, settlement.x, settlement.y, BASE_VILLAGE_SCOUT_RANGE, visible);
+    if (settlement?.placed) addVisionRange(data, settlement.x, settlement.y, BASE_VILLAGE_SCOUT_RANGE, visible, detectionByTile, 0);
   }
-  for (const unit of Array.isArray(faction?.units) ? faction.units : []) {
-    if (livingUnit(unit)) addVisionRange(data, unit.x, unit.y, unitVisionRange(unit), visible);
+  for (const units of unitsByTile(faction?.units, { livingOnly:true }).values()) {
+    const sense = resolveDetectionGroupSense(units);
+    const lead = units[0];
+    const range = units.reduce((max, unit) => Math.max(max, unitVisionRange(unit)), UNIT_VISION_BASE_RANGE);
+    addVisionRange(data, lead.x, lead.y, range, visible, detectionByTile, sense.scout);
   }
   const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));
   for (const settlement of settlements) {
@@ -157,10 +199,51 @@ function buildCurrentVision(data, faction, state, playerId) {
       const scout = (Array.isArray(names) ? names : []).reduce((sum, name) => sum + Math.max(0, Number(definitions.get(String(name))?.effects?.索敵) || 0), 0);
       if (scout <= 0) continue;
       const [x, y] = key.split(",").map(Number);
-      addVisionRange(data, x, y, UNIT_VISION_BASE_RANGE + Math.floor(scout / UNIT_VISION_SCOUT_STEP), visible);
+      addVisionRange(data, x, y, UNIT_VISION_BASE_RANGE + Math.floor(scout / UNIT_VISION_SCOUT_STEP), visible, detectionByTile, scout);
     }
   }
-  return visible;
+  return { visible, detectionByTile };
+}
+
+function detectedEntityIdsForGroups(groups, currentVision, detectionByTile) {
+  const detected = new Set();
+  for (const [key, units] of groups.entries()) {
+    if (!currentVision.has(key)) continue;
+    const observerScout = Number(detectionByTile.get(key));
+    if (!Number.isFinite(observerScout)) continue;
+    if (units.every(unit => !livingUnit(unit))) {
+      for (const unit of units) {
+        const id = String(unit?.id ?? unit?.unitId ?? unit?.characterId ?? "").trim();
+        if (id) detected.add(id);
+      }
+      continue;
+    }
+    const targetSense = resolveDetectionGroupSense(units);
+    if (observerScout < targetSense.stealth) continue;
+    for (const unit of units) {
+      const id = String(unit?.id ?? unit?.unitId ?? unit?.characterId ?? "").trim();
+      if (id) detected.add(id);
+    }
+  }
+  return detected;
+}
+
+function buildDetectedEntityIds(state, playerId, currentVision, detectionByTile) {
+  const detected = detectedEntityIdsForGroups(
+    unitsByTile(state?.enemies),
+    currentVision,
+    detectionByTile
+  );
+  for (const player of Array.isArray(state?.players) ? state.players : []) {
+    if (String(player?.id || "") === String(playerId || "")) continue;
+    const ids = detectedEntityIdsForGroups(
+      unitsByTile(player?.factionState?.units),
+      currentVision,
+      detectionByTile
+    );
+    for (const id of ids) detected.add(id);
+  }
+  return detected;
 }
 
 function persistVisibilityTiles(faction, explored, currentVision) {
@@ -288,12 +371,19 @@ function renderVisibilityLayers() {
   removeLayer(scene, SCOUT_LAYER_NAME);
   removeLayer(scene, TERRITORY_LAYER_NAME);
 
-  const currentVision = buildCurrentVision(data, faction, state, player.id);
+  const vision = buildCurrentVision(data, faction, state, player.id);
+  const currentVision = vision.visible;
+  const detectedEntityIds = buildDetectedEntityIds(state, player.id, currentVision, vision.detectionByTile);
   const explored = new Set(
     (Array.isArray(faction.visibility?.exploredTileKeys) ? faction.visibility.exploredTileKeys : []).map(String)
   );
   for (const key of currentVision) explored.add(key);
-  lastSnapshot = { exploredTileKeys:explored, currentVisionTileKeys:currentVision };
+  lastSnapshot = {
+    exploredTileKeys:explored,
+    currentVisionTileKeys:currentVision,
+    detectedEntityIds,
+    detectionByTile:vision.detectionByTile
+  };
 
   const testMode = isTestMode();
   let unexploredCount = Math.max(0, (Number(data.w) * Number(data.h)) - explored.size);
@@ -343,6 +433,7 @@ function renderVisibilityLayers() {
     rendered:true,
     testMode,
     currentVisionCount:currentVision.size,
+    detectedEntityCount:detectedEntityIds.size,
     exploredCount:explored.size,
     unexploredCount,
     ownTerritoryCount:ownTerritory.size,
@@ -371,10 +462,17 @@ function scheduleRender() {
 
 window.getV39VisibilitySnapshot = () => ({
   exploredTileKeys:new Set(lastSnapshot.exploredTileKeys),
-  currentVisionTileKeys:new Set(lastSnapshot.currentVisionTileKeys)
+  currentVisionTileKeys:new Set(lastSnapshot.currentVisionTileKeys),
+  detectedEntityIds:new Set(lastSnapshot.detectedEntityIds)
 });
 window.isV39TileExplored = (x, y) => lastSnapshot.exploredTileKeys.has(coordKey(x, y));
 window.isV39TileInCurrentVision = (x, y) => lastSnapshot.currentVisionTileKeys.has(coordKey(x, y));
+window.isV39EntityDetected = entityOrId => {
+  const id = typeof entityOrId === "object"
+    ? String(entityOrId?.id ?? entityOrId?.unitId ?? entityOrId?.characterId ?? "").trim()
+    : String(entityOrId ?? "").trim();
+  return !!id && lastSnapshot.detectedEntityIds.has(id);
+};
 window.getV39VisibilityStatus = () => ({ ...(window.__v39VisibilityStatus || {}) });
 window.renderV39Visibility = scheduleRender;
 

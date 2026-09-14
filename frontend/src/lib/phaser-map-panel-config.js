@@ -1,4 +1,5 @@
 import { getVillageScaleDefinitions } from "../composables/villageCoreUtils.js";
+import { getGameDataRows } from "./game-data-registry.js";
 
 // 村中心から領土として扱う半径。
 export const PLAYER_TERRITORY_RANGE = 1;
@@ -114,34 +115,37 @@ export const GAME_START_PLAYER_PLACEMENT_MODE_VALUES = new Set([
   GAME_START_PLAYER_PLACEMENT_MODE_PLAYER_CHOOSE
 ]);
 
-// 勢力データの地形名ゆれを正規化するマップ。
-export const FACTION_TERRAIN_ALIAS_MAP = {
-  平地: "平地",
-  荒: "荒野",
-  荒野: "荒野",
-  森: "森",
-  丘: "丘陵",
-  丘陵: "丘陵",
-  山: "山岳",
-  山岳: "山岳",
-  雪: "雪原",
-  雪原: "雪原",
-  火山: "火山",
-  湖: "湖",
-  砂漠: "砂漠",
-  河: "河川",
-  河川: "河川",
-  沼: "沼地",
-  沼地: "沼地",
-  洞: "洞窟",
-  洞窟: "洞窟",
-  渓谷: "峡谷",
-  峡谷: "峡谷"
-};
+const TERRAIN_DEFINITION_ROWS = getGameDataRows("地形")
+  .filter(row => String(row?.地形 ?? "").trim());
 
-// 生成・描画で使う地形カテゴリ。
-export const BASE_TERRAIN_KEYS = new Set(["平地", "荒野", "森", "丘陵", "山岳", "雪原", "火山", "湖", "砂漠", "河川"]);
-export const SPECIAL_TERRAIN_KEYS = new Set(["沼地", "洞窟", "峡谷"]);
+function splitTerrainAliases(value) {
+  if (Array.isArray(value)) {
+    return value.map(alias => String(alias ?? "").trim()).filter(Boolean);
+  }
+  return String(value ?? "")
+    .split(/[,、|/]/)
+    .map(alias => alias.trim())
+    .filter(Boolean);
+}
+
+// 勢力データの地形名ゆれは地形JSONの「別名」から正規名へ変換する。
+export const FACTION_TERRAIN_ALIAS_MAP = Object.freeze(Object.fromEntries(
+  TERRAIN_DEFINITION_ROWS.flatMap(row => {
+    const terrainName = String(row.地形).trim();
+    return [terrainName, ...splitTerrainAliases(row.別名)]
+      .map(alias => [alias, terrainName]);
+  })
+));
+
+// 勢力の優先配置先として使う地形カテゴリ。種類は地形JSONへ追加する。
+const FACTION_PLACEMENT_TERRAIN_ROWS = TERRAIN_DEFINITION_ROWS
+  .filter(row => String(row?.勢力配置区分 ?? "").trim());
+export const BASE_TERRAIN_KEYS = new Set(FACTION_PLACEMENT_TERRAIN_ROWS
+  .filter(row => String(row.勢力配置区分).trim() === "基本")
+  .map(row => String(row.地形).trim()));
+export const SPECIAL_TERRAIN_KEYS = new Set(FACTION_PLACEMENT_TERRAIN_ROWS
+  .filter(row => String(row.勢力配置区分).trim() === "特殊")
+  .map(row => String(row.地形).trim()));
 
 // ゲーム描画の解像度プリセット。
 export const GAME_VIEW_PRESET_CONFIG = Object.freeze({

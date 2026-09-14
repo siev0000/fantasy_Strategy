@@ -45,11 +45,14 @@ function restoreUnitForTurn(unit) {
   };
 }
 
-function recoverUnitHp(unit, faction, playerId, state) {
+function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide = false) {
   if (!unit || isDead(unit)) return { ...unit };
   const maxHp = Math.max(1, Math.floor(number(unit.maxHp ?? unit?.status?.HP, 1)));
   const hp = Math.max(0, Math.min(maxHp, Math.floor(number(unit.hp ?? unit.currentHp, maxHp))));
   if (hp >= maxHp) return { ...unit, hp, currentHp:hp };
+  if (number(unit?.lastMovedTurn) >= activityTurn || number(unit?.lastCombatTurn) >= activityTurn) {
+    return { ...unit, hp, currentHp:hp };
+  }
   const key = Number.isFinite(Number(unit?.x)) && Number.isFinite(Number(unit?.y))
     ? `${Math.floor(Number(unit.x))},${Math.floor(Number(unit.y))}`
     : "";
@@ -57,7 +60,12 @@ function recoverUnitHp(unit, faction, playerId, state) {
   const owned = key && String(state?.territoryOwnerByTile?.[key] || "") === String(playerId || "");
   const settlement = getSettlementForTerritory(faction, state?.territoryStateByTile?.[key]);
   const facilityRecovery = owned ? number(resolveV39FacilityEffectsAtTile(settlement, key)?.回復) : 0;
-  const recovered = Math.max(1, Math.floor(maxHp * ((5 + featureRecovery + facilityRecovery) / 100)));
+  const nest = enemySide && key
+    ? (state?.enemyNests || []).find(row => String(row?.id || "") === String(unit?.nestId || "")
+      && `${Math.floor(number(row?.x))},${Math.floor(number(row?.y))}` === key)
+    : null;
+  const nestRecovery = number(nest?.recoveryPercent ?? nest?.回復補正 ?? nest?.回復);
+  const recovered = Math.max(1, Math.floor(maxHp * ((5 + featureRecovery + facilityRecovery + nestRecovery) / 100)));
   const nextHp = Math.min(maxHp, hp + recovered);
   return { ...unit, hp:nextHp, currentHp:nextHp };
 }
@@ -158,9 +166,9 @@ export function advanceTurn() {
     const resolved = window.getV39GameState?.();
     const recoveredPlayers = (resolved?.players || []).map(player => ({
       ...player,
-      factionState:{ ...player.factionState, units:(player?.factionState?.units || []).map(unit => recoverUnitHp(unit, player.factionState, player.id, resolved)) }
-    }));
-    const recoveredEnemies = (resolved?.enemies || []).map(recoverUnitHp);
+        factionState:{ ...player.factionState, units:(player?.factionState?.units || []).map(unit => recoverUnitHp(unit, player.factionState, player.id, resolved, before.turnNumber)) }
+      }));
+    const recoveredEnemies = (resolved?.enemies || []).map(unit => recoverUnitHp(unit, null, "", resolved, before.turnNumber, true));
     const completedTimeline = {
       ...normalizeTimeline(resolved?.timeline),
       lastResolvedTurn:timeline.turnNumber,

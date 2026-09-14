@@ -13,6 +13,11 @@ import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
+import {
+  isDetectedByScout as isDetectedByScoutUtil,
+  resolveDetectionGroupSenseFromValues as resolveDetectionGroupSenseFromValuesUtil,
+  V39_SCOUT_DISTANCE_DECAY_PER_TILE
+} from "../lib/v39-detection-rules.js";
 import { RESEARCH_CATEGORY_ORDER as RESEARCH_CATEGORY_ORDER_CONFIG } from "../lib/research-tree-config.js";
 import { createOwnCharacterNavigatorEntries, createOwnSquadNavigatorEntries } from "../lib/own-faction-navigator.js";
 import { createPlayerFactionState, createPlayerRecord } from "../lib/player-state.js";
@@ -213,6 +218,10 @@ import {
   skillData as skillInfoDb,
   terrainData as terrainYieldDb
 } from "../lib/game-data-registry.js";
+import {
+  DEFAULT_V39_EQUIPMENT_RARITY_KEY,
+  V39_EQUIPMENT_RARITIES
+} from "../lib/v39-equipment-rules.js";
 import effectList320 from "../../../assets/effect/320×240/effect_list.json";
 import effectListAnimation1 from "../../../assets/effect/アニメーション1/effect_list.json";
 
@@ -2534,7 +2543,7 @@ function resolveSurveyDurationSeconds(task) {
 const ENCOUNTER_NON_AGGRESSIVE_SAME_TILE_ATTACK_CHANCE = 0.25;
 const ENCOUNTER_FUMBLE_CHANCE = 0.08;
 const ENCOUNTER_MAX_LOG_LINES = 12;
-const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = 50; // 索敵の距離減衰量（2マス目以降、1マスごと）
+const ENCOUNTER_SCOUT_DISTANCE_DECAY_PER_TILE = V39_SCOUT_DISTANCE_DECAY_PER_TILE; // 索敵の距離減衰量（2マス目以降、1マスごと）
 const MAP_CAVE_COAST_ICON_BIAS = 0.32; // 海岸高地条件で生成された洞窟アイコンを海側へ寄せる比率
 // 川/高低差エッジの接続見た目（台形ボディ＋接続ジョイント＋末端のみ尖り）。
 const RIVER_EDGE_JOIN_RADIUS_RATIO = 0.52; // 接続ジョイント半径の係数（halfWidth * ratio）
@@ -2654,39 +2663,19 @@ const ECONOMY_GAIN_MULTIPLIER_BY_LEVEL = {
   3: 1.3,
   4: 1.5
 };
-const EQUIPMENT_LEVEL_BY_RARITY = {
-  common: 1,
-  uncommon: 2,
-  rare: 3,
-  epic: 4,
-  legendary: 5
-};
-const ARMOR_MAGIC_BONUS_RATE_BY_RARITY_LEVEL = {
-  3: 0.15,
-  4: 0.3,
-  5: 0.5
-};
-const EQUIPMENT_CRAFT_MATERIAL_COST_BY_LEVEL = {
-  1: { 木材: 10, 黒木: 0, 特木: 0, 鉄: 10, 銀鉄: 0, 青金鋼: 0, 赤黒鋼: 0 },
-  2: { 木材: 20, 黒木: 0, 特木: 0, 鉄: 20, 銀鉄: 0, 青金鋼: 0, 赤黒鋼: 0 },
-  3: { 木材: 10, 黒木: 10, 特木: 0, 鉄: 10, 銀鉄: 10, 青金鋼: 0, 赤黒鋼: 0 },
-  4: { 木材: 10, 黒木: 20, 特木: 10, 鉄: 10, 銀鉄: 20, 青金鋼: 5, 赤黒鋼: 5 }
-};
-const EQUIPMENT_RARITY_MAP = {
-  common: { label: "コモン", multiplier: 1.0 },
-  uncommon: { label: "アンコモン", multiplier: 1.25 },
-  rare: { label: "レア", multiplier: 1.5 },
-  epic: { label: "エピック", multiplier: 1.75 },
-  legendary: { label: "レジェンダリー", multiplier: 2.0 }
-};
-const EQUIPMENT_RARITY_KEYS = ["common", "uncommon", "rare", "epic", "legendary"];
-const EQUIPMENT_RARITY_ALIAS_MAP = {
-  コモン: "common",
-  アンコモン: "uncommon",
-  レア: "rare",
-  エピック: "epic",
-  レジェンダリー: "legendary"
-};
+const EQUIPMENT_LEVEL_BY_RARITY = Object.freeze(Object.fromEntries(
+  V39_EQUIPMENT_RARITIES.map(rarity => [rarity.key, rarity.level])
+));
+const EQUIPMENT_RARITY_MAP = Object.freeze(Object.fromEntries(
+  V39_EQUIPMENT_RARITIES.map(rarity => [rarity.key, Object.freeze({ label:rarity.label, multiplier:rarity.multiplier })])
+));
+const EQUIPMENT_RARITY_KEYS = Object.freeze(V39_EQUIPMENT_RARITIES.map(rarity => rarity.key));
+const EQUIPMENT_RARITY_ALIAS_MAP = Object.freeze(Object.fromEntries(
+  V39_EQUIPMENT_RARITIES.flatMap(rarity => [
+    [rarity.label, rarity.key],
+    [rarity.short, rarity.key]
+  ])
+));
 const ENCHANT_REQUIREMENT_KEYS = ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"];
 const ENCHANT_REQUIREMENT_TO_CITY_ABILITY_KEY = {
   鍛冶Lv: "鍛冶場",
@@ -13072,21 +13061,7 @@ function resolveEncounterStealthValueForEnemy(enemy) {
 }
 
 function resolveEncounterGroupSense(scoutValues = [], stealthValues = []) {
-  const scouts = (Array.isArray(scoutValues) ? scoutValues : [])
-    .map(v => Math.max(0, roundTo1(toSafeNumber(v, 0))))
-    .sort((a, b) => b - a);
-  const steaths = (Array.isArray(stealthValues) ? stealthValues : [])
-    .map(v => Math.max(0, roundTo1(toSafeNumber(v, 0))));
-  const maxScout = scouts.length ? scouts[0] : 0;
-  const supportScout = scouts.slice(1).reduce((sum, value) => sum + (value / 5), 0);
-  const totalStealth = steaths.reduce((sum, value) => sum + value, 0);
-  const count = Math.max(1, steaths.length || scouts.length);
-  const stealthDivisor = count > 1 ? Math.max(1, count * 0.75) : 1;
-  return {
-    scout: roundTo1(maxScout + supportScout),
-    stealth: roundTo1(totalStealth / stealthDivisor),
-    count
-  };
+  return resolveDetectionGroupSenseFromValuesUtil(scoutValues, stealthValues);
 }
 
 function buildPlayerEncounterGroups() {
@@ -13333,7 +13308,7 @@ function resolveEncounterDetectionByContext(context, inRange, effectiveScout, ta
     };
   }
   return {
-    found: toSafeNumber(effectiveScout, 0) >= toSafeNumber(targetStealth, 0),
+    found:isDetectedByScoutUtil({ scout:effectiveScout, stealth:targetStealth, distance:0, inRange:true }),
     chance: 0,
     roll: null,
     deterministic: true
