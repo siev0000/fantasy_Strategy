@@ -61,6 +61,10 @@ function gameState() {
   }
 }
 
+function isTestMode() {
+  return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
+}
+
 function finiteCoord(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Math.floor(Number(value));
@@ -324,13 +328,14 @@ function drawEnemies(scene, container, enemies) {
   const diameter = tileRelativePx(rule.diameterTiles);
   const radius = diameter / 2;
   const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
+  const revealAllEnemies = isTestMode();
   for (const group of unitGroupsByTile(enemies).values()) {
     const enemy = representativeUnit(group, "");
     if (!enemy) continue;
     const x = finiteCoord(enemy.x);
     const y = finiteCoord(enemy.y);
     if (x === null || y === null) continue;
-    if (window.isV39TileInCurrentVision?.(x, y) === false) continue;
+    if (!revealAllEnemies && window.isV39TileInCurrentVision?.(x, y) === false) continue;
     const center = tileCenter(x, y);
     const marker = scene.add.container(center.x, center.y).setName("v39-enemy-marker");
     for (const member of group) {
@@ -398,6 +403,7 @@ function install() {
   window.addEventListener("v39:game-state-changed", () => scheduleRefresh());
   window.addEventListener("v39:initial-placement-complete", () => scheduleRefresh());
   window.addEventListener("v39:unit-selected", () => scheduleRefresh());
+  window.addEventListener("v39:display-settings-changed", () => scheduleRefresh());
   window.refreshV39MapEntities = () => renderMarkers();
   window.getV39MapEntityMarker = entityId => markerByEntityId.get(String(entityId || "").trim()) || null;
   scheduleRefresh(100);
