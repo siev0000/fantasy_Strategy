@@ -8,6 +8,10 @@ const LOW_LEVEL_MAX = 10;
 const DEFAULT_ENEMY_SPAWN_TILE_DIVISOR = 40;
 const MIN_ENEMY_SPAWN_TILE_DIVISOR = 20;
 const MAX_ENEMY_SPAWN_TILE_DIVISOR = 60;
+const TERRAIN_LEVEL_BASE = 5;
+const TERRAIN_LEVEL_STEP = 5;
+const TERRAIN_LEVEL_VARIANCE = 5;
+const STRONG_TERRAIN_LEVEL_BONUS = 1;
 
 const classNames = new Set(classData.map(row => text(row?.名前)).filter(Boolean));
 
@@ -122,16 +126,82 @@ function definitionsForTile(data, x, y) {
   return rows;
 }
 
-function chooseLevel(definition, distanceFromBase, random) {
-  let maxLevel = definition.maxLevel;
+function isStrongMonsterTile(data, x, y) {
+  return Boolean(data?.strongMonsterInfoMap?.[y]?.[x] || data?.strongMonsterMap?.[y]?.[x]);
+}
+
+function terrainLevelRange(data, x, y, distanceFromBase, strong = false) {
+  const rawHeightLevel = number(data?.heightLevelMap?.[y]?.[x], 0);
+  const absoluteHeightLevel = Math.abs(Math.trunc(rawHeightLevel));
+  const effectiveTerrainLevel = absoluteHeightLevel + (strong ? STRONG_TERRAIN_LEVEL_BONUS : 0);
+  const baseLevel = TERRAIN_LEVEL_BASE + (TERRAIN_LEVEL_STEP * effectiveTerrainLevel);
+  const minLevel = Math.max(1, baseLevel - TERRAIN_LEVEL_VARIANCE);
+  let maxLevel = baseLevel;
+
+  // 既存ルール: 初期拠点10マス以内はLv10以下。
   if (distanceFromBase <= LOW_LEVEL_DISTANCE_FROM_BASE) {
     maxLevel = Math.min(maxLevel, LOW_LEVEL_MAX);
   }
-  if (maxLevel < definition.minLevel) return null;
-  return definition.minLevel + Math.floor(random() * ((maxLevel - definition.minLevel) + 1));
+  if (maxLevel < minLevel) return null;
+
+  return {
+    rawHeightLevel,
+    absoluteHeightLevel,
+    effectiveTerrainLevel,
+    baseLevel,
+    minLevel,
+    maxLevel
+  };
 }
 
-function createEnemy(definition, position, level, index) {
+function intersectDefinitionLevel(definition, levelRange) {
+  if (!definition || !levelRange) return null;
+  const minLevel = Math.max(definition.minLevel, levelRange.minLevel);
+  const maxLevel = Math.min(definition.maxLevel, levelRange.maxLevel);
+  if (maxLevel < minLevel) return null;
+  return { definition, minLevel, maxLevel };
+}
+
+function buildSpawnCandidate(data, village, x, y, w, h, wrapEnabled) {
+  const definitions = definitionsForTile(data, x, y);
+  if (!definitions.length) return null;
+
+  const distance = wrappedHexDistance(village, { x, y }, w, h, wrapEnabled);
+  if (distance <= SAFE_DISTANCE_FROM_BASE) return null;
+
+  const strong = isStrongMonsterTile(data, x, y);
+  const levelRange = terrainLevelRange(data, x, y, distance, strong);
+  if (!levelRange) return null;
+
+  const eligibleDefinitions = definitions
+    .map(definition => intersectDefinitionLevel(definition, levelRange))
+    .filter(Boolean);
+  if (!eligibleDefinitions.length) return null;
+
+  return {
+    x,
+    y,
+    distance,
+    strong,
+    levelRange,
+    eligibleDefinitions,
+    strongMonsterInfo: strong ? (data?.strongMonsterInfoMap?.[y]?.[x] || null) : null
+  };
+}
+
+function chooseEnemyDefinition(candidate, random) {
+  if (!candidate?.eligibleDefinitions?.length) return null;
+  return candidate.eligibleDefinitions[Math.floor(random() * candidate.eligibleDefinitions.length)] || null;
+}
+
+function chooseEnemyLevel(selection, random) {
+  if (!selection) return null;
+  return selection.minLevel + Math.floor(random() * ((selection.maxLevel - selection.minLevel) + 1));
+}
+
+function createEnemy(selection, position, level, index) {
+  const definition = selection?.definition;
+  if (!definition) return null;
   const derived = applyV39DerivedCharacterData({
     id:`enemy-${index + 1}-${position.x}-${position.y}`,
     name:definition.name,
@@ -156,7 +226,14 @@ function createEnemy(definition, position, level, index) {
     ap:100,
     currentAp:100,
     maxAp:100,
-    state:"生存"
+    state:"生存",
+    spawnType:position.strong ? "強敵" : "通常",
+    strongEnemy:position.strong === true,
+    terrainHeightLevel:position.levelRange?.rawHeightLevel ?? 0,
+    effectiveTerrainLevel:position.levelRange?.effectiveTerrainLevel ?? 0,
+    terrainEnemyLevelMin:position.levelRange?.minLevel ?? level,
+    terrainEnemyLevelMax:position.levelRange?.maxLevel ?? level,
+    strongMonsterInfo:position.strongMonsterInfo ? { ...position.strongMonsterInfo } : null
   };
 }
 
@@ -165,33 +242,51 @@ function buildEnemies(data, village) {
   const h = Math.max(1, integer(data?.h, 1));
   const wrapEnabled = data?.worldWrapEnabled !== false
     && window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
-  const candidates = [];
+  const normalCandidates = [];
+  const strongCandidates = [];
+
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
-      const definitions = definitionsForTile(data, x, y);
-      if (!definitions.length) continue;
-      const distance = wrappedHexDistance(village, { x, y }, w, h, wrapEnabled);
-      if (distance <= SAFE_DISTANCE_FROM_BASE) continue;
-      candidates.push({ x, y, distance, definitions });
+      const candidate = buildSpawnCandidate(data, village, x, y, w, h, wrapEnabled);
+      if (!candidate) continue;
+      if (candidate.strong) strongCandidates.push(candidate);
+      else normalCandidates.push(candidate);
     }
   }
 
   const tileDivisor = enemySpawnTileDivisor();
-  const desiredCount = candidates.length
-    ? Math.max(1, Math.round(candidates.length / tileDivisor))
+  const spawnableTileCount = normalCandidates.length + strongCandidates.length;
+  const desiredTotalCount = spawnableTileCount
+    ? Math.max(1, Math.round(spawnableTileCount / tileDivisor))
     : 0;
+  // 強敵候補はマップ生成側ですでに希少地点として抽選済みなので優先して実体化する。
+  // 通常敵数を差し引くことで、敵密度設定の総数目安を大きく崩さない。
+  const desiredNormalCount = Math.max(0, desiredTotalCount - strongCandidates.length);
+
   const seed = (w * 73856093) ^ (h * 19349663) ^ (integer(village?.x) * 83492791) ^ integer(village?.y);
   const random = seededRandom(seed);
   const enemies = [];
-  for (const candidate of shuffle(candidates, random)) {
-    if (enemies.length >= desiredCount) break;
-    const validDefinitions = candidate.definitions.filter(definition => chooseLevel(definition, candidate.distance, () => 0) !== null);
-    if (!validDefinitions.length) continue;
-    const definition = validDefinitions[Math.floor(random() * validDefinitions.length)];
-    const level = chooseLevel(definition, candidate.distance, random);
-    const enemy = createEnemy(definition, candidate, level, enemies.length);
+
+  for (const candidate of shuffle(strongCandidates, random)) {
+    const selection = chooseEnemyDefinition(candidate, random);
+    const level = chooseEnemyLevel(selection, random);
+    if (level === null) continue;
+    const enemy = createEnemy(selection, candidate, level, enemies.length);
     if (enemy) enemies.push(enemy);
   }
+
+  let normalSpawned = 0;
+  for (const candidate of shuffle(normalCandidates, random)) {
+    if (normalSpawned >= desiredNormalCount) break;
+    const selection = chooseEnemyDefinition(candidate, random);
+    const level = chooseEnemyLevel(selection, random);
+    if (level === null) continue;
+    const enemy = createEnemy(selection, candidate, level, enemies.length);
+    if (!enemy) continue;
+    enemies.push(enemy);
+    normalSpawned += 1;
+  }
+
   return enemies;
 }
 
@@ -202,12 +297,13 @@ function spawnForActivePlayer() {
   const village = getSelectedSettlement(faction);
   if (!data || !state || !village?.placed) return [];
   const enemies = buildEnemies(data, village);
+  const strongCount = enemies.filter(enemy => enemy?.strongEnemy === true).length;
   window.setV39GameState?.({
     enemies,
     enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionAtMsByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{} }
   }, { reason:"enemy-spawned" });
   window.dispatchEvent(new CustomEvent("v39:enemies-spawned", {
-    detail:{ count:enemies.length, tileDivisor:enemySpawnTileDivisor() }
+    detail:{ count:enemies.length, strongCount, tileDivisor:enemySpawnTileDivisor() }
   }));
   return enemies;
 }
@@ -231,5 +327,10 @@ window.getV39EnemySpawnRules = () => ({
   enemySpawnTileDivisor:enemySpawnTileDivisor(),
   enemySpawnTileDivisorMin:MIN_ENEMY_SPAWN_TILE_DIVISOR,
   enemySpawnTileDivisorMax:MAX_ENEMY_SPAWN_TILE_DIVISOR,
+  terrainLevelBase:TERRAIN_LEVEL_BASE,
+  terrainLevelStep:TERRAIN_LEVEL_STEP,
+  terrainLevelVariance:TERRAIN_LEVEL_VARIANCE,
+  strongTerrainLevelBonus:STRONG_TERRAIN_LEVEL_BONUS,
+  useAbsoluteHeightLevel:true,
   validDefinitionCount:[...definitionsByTerrain.values()].reduce((sum, rows) => sum + rows.length, 0)
 });
