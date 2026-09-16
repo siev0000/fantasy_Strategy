@@ -7,9 +7,14 @@ import {
   mergeV39Cargo,
   normalizeV39Cargo
 } from "./lib/v39-logistics-state.js";
+import {
+  DEFAULT_CORPSE_FIELD_TURNS,
+  currentV39TurnNumber,
+  isV39TurnDeadlineReached,
+  resolveV39DeadlineTurn
+} from "./lib/v39-turn-timing.js";
 
-const DEAD_UNIT_FIELD_TIMEOUT_MS = 30000;
-let lifecycleTimer = 0;
+const DEAD_UNIT_FIELD_TIMEOUT_TURNS = DEFAULT_CORPSE_FIELD_TURNS;
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -25,7 +30,8 @@ function attachCargoToUnit(units, unitId, cargo) {
 
 function lastDeadMember(members) {
   return [...members].sort((left, right) =>
-    number(right?.diedAtMs) - number(left?.diedAtMs) || text(left?.id).localeCompare(text(right?.id), "ja"))[0] || null;
+    number(right?.diedAtTurn, right?.deathTurn) - number(left?.diedAtTurn, left?.deathTurn)
+      || text(left?.id).localeCompare(text(right?.id), "ja"))[0] || null;
 }
 
 function moveDefeatedPlayerCargoToCorpses(rawUnits, rawSquads) {
@@ -94,14 +100,15 @@ function addGroundLoot(groundLootByTile, key, cargo) {
   };
 }
 
-function historyEntry(unit, type, now) {
+function historyEntry(unit, type, turnNumber) {
+  const recordedAtMs = Date.now();
   return {
-    id:`death-${text(unit?.id)}-${now}-${type}`,
+    id:`death-${text(unit?.id)}-${recordedAtMs}-${type}`,
     unitId:text(unit?.id),
     unitName:text(unit?.name, text(unit?.id)),
     type,
-    atMs:now,
-    turn:Math.max(0, Math.floor(number(unit?.deathTurn, 0))),
+    atMs:recordedAtMs,
+    turn:Math.max(0, Math.floor(number(turnNumber, unit?.deathTurn))),
     x:Math.floor(number(unit?.x)),
     y:Math.floor(number(unit?.y)),
     cause:text(unit?.deathCause),
@@ -120,21 +127,23 @@ function historyEntry(unit, type, now) {
   };
 }
 
-function normalizeDeadUnit(unit, now) {
+function normalizeDeadUnit(unit, turnNumber) {
   if (!isDead(unit)) return unit;
+  const diedAtTurn = Math.max(1, Math.floor(number(unit?.diedAtTurn, unit?.deathTurn || turnNumber)));
   return {
     ...unit,
     hp:0,
     currentHp:0,
     state:"死亡",
-    diedAtMs:Math.max(0, number(unit?.diedAtMs, now)),
-    deadExpireAtMs:Math.max(0, number(unit?.deadExpireAtMs, now + DEAD_UNIT_FIELD_TIMEOUT_MS)),
+    diedAtTurn,
+    deathTurn:diedAtTurn,
+    deadExpireTurn:Math.max(diedAtTurn, Math.floor(number(unit?.deadExpireTurn,
+      resolveV39DeadlineTurn(diedAtTurn, DEAD_UNIT_FIELD_TIMEOUT_TURNS)))),
     deathPosition:unit?.deathPosition || { x:Math.floor(number(unit?.x)), y:Math.floor(number(unit?.y)) }
   };
 }
 
-export function runV39DeathLifecycle(now = Date.now()) {
-  if (document.hidden) return { collected:0, expired:0 };
+export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
   const state = window.getV39GameState?.();
   if (!state) return { collected:0, expired:0 };
   let collected = 0;
@@ -145,7 +154,7 @@ export function runV39DeathLifecycle(now = Date.now()) {
   let groundLootByTile = { ...(state.groundLootByTile || {}) };
   let players = state.players.map((player) => {
     let faction = player.factionState;
-    let sourceUnits = Array.isArray(faction?.units) ? faction.units.map((unit) => normalizeDeadUnit(unit, now)) : [];
+    let sourceUnits = Array.isArray(faction?.units) ? faction.units.map((unit) => normalizeDeadUnit(unit, turnNumber)) : [];
     const defeated = moveDefeatedPlayerCargoToCorpses(sourceUnits, Array.isArray(faction?.squads) ? faction.squads : []);
     sourceUnits = defeated.units;
     let squads = defeated.squads;
@@ -170,18 +179,18 @@ export function runV39DeathLifecycle(now = Date.now()) {
           }
         }
         const recoveredUnit = { ...unit, corpseCargo:normalizeV39Cargo() };
-        reserve.push({ unitId:text(unit.id), unit:recoveredUnit, reason:"回収", storedAtMs:now, storedAtTurn:number(unit.deathTurn, 0) });
-        history.push(historyEntry(unit, "回収", now));
+        reserve.push({ unitId:text(unit.id), unit:recoveredUnit, reason:"回収", storedAtMs:Date.now(), storedAtTurn:turnNumber });
+        history.push(historyEntry(unit, "回収", turnNumber));
         removedIds.add(text(unit.id));
         collected += 1;
         changed = true;
         continue;
       }
-      if (now >= number(unit.deadExpireAtMs, now + DEAD_UNIT_FIELD_TIMEOUT_MS)) {
+      if (isV39TurnDeadlineReached(unit.deadExpireTurn, turnNumber)) {
         const groundResult = addGroundLoot(groundLootByTile, coordKey(unit), unit?.corpseCargo);
         groundLootByTile = groundResult.value;
         if (groundResult.added) groundLootCreated += 1;
-        history.push(historyEntry(unit, "消滅", now));
+        history.push(historyEntry(unit, "消滅", turnNumber));
         removedIds.add(text(unit.id));
         expired += 1;
         changed = true;
@@ -199,7 +208,7 @@ export function runV39DeathLifecycle(now = Date.now()) {
       : text(units.find((unit) => !isDead(unit))?.id, text(units[0]?.id));
     return { ...player, factionState:{ ...faction, units, squads, deadUnitReserve:reserve, deathHistory:history, selectedUnitId } };
   });
-  const normalizedEnemies = state.enemies.map(rawEnemy => normalizeDeadUnit(rawEnemy, now));
+  const normalizedEnemies = state.enemies.map(rawEnemy => normalizeDeadUnit(rawEnemy, turnNumber));
   const defeatedEnemies = moveDefeatedEnemyCargoToCorpses(normalizedEnemies, Array.isArray(state.enemySquads) ? state.enemySquads : []);
   if (defeatedEnemies.moved) changed = true;
   const enemies = [];
@@ -221,7 +230,7 @@ export function runV39DeathLifecycle(now = Date.now()) {
       }
       collected += 1;
       changed = true;
-    } else if (isDead(enemy) && now >= number(enemy.deadExpireAtMs, now + DEAD_UNIT_FIELD_TIMEOUT_MS)) {
+    } else if (isDead(enemy) && isV39TurnDeadlineReached(enemy.deadExpireTurn, turnNumber)) {
       const groundResult = addGroundLoot(groundLootByTile, coordKey(enemy), enemy?.corpseCargo);
       groundLootByTile = groundResult.value;
       if (groundResult.added) groundLootCreated += 1;
@@ -238,9 +247,8 @@ export function runV39DeathLifecycle(now = Date.now()) {
   }));
   const enemyNests = (Array.isArray(state.enemyNests) ? state.enemyNests : []).map((nest) => {
     const unitIds = (Array.isArray(nest?.unitIds) ? nest.unitIds : []).map(text).filter((id) => livingEnemyIds.has(id));
-    if (unitIds.length !== (Array.isArray(nest?.unitIds) ? nest.unitIds.length : 0)
-      || number(nest?.population) !== unitIds.length) changed = true;
-    return { ...nest, unitIds, population:unitIds.length };
+    if (unitIds.length !== (Array.isArray(nest?.unitIds) ? nest.unitIds.length : 0)) changed = true;
+    return { ...nest, unitIds };
   });
   if (changed) {
     window.setV39GameState({ players, enemies, enemySquads, enemyNests, groundLootByTile }, { reason:"death-lifecycle" });
@@ -269,7 +277,7 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
     currentHp:hp,
     state:"生存"
   };
-  for (const key of ["diedAtMs", "deadExpireAtMs", "deathPosition", "deathCause", "deathTurn", "corpseCargo"]) delete revived[key];
+  for (const key of ["diedAtMs", "deadExpireAtMs", "diedAtTurn", "deadExpireTurn", "deathPosition", "deathCause", "deathTurn", "corpseCargo"]) delete revived[key];
   reserve.splice(index, 1);
   const history = Array.isArray(player.factionState.deathHistory) ? player.factionState.deathHistory : [];
   const players = state.players.map((row) => row.id !== player.id ? row : ({
@@ -287,11 +295,13 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
 }
 
 function install() {
-  window.clearInterval(lifecycleTimer);
-  lifecycleTimer = window.setInterval(() => runV39DeathLifecycle(), 500);
+  window.addEventListener("v39:turn-advanced", event => runV39DeathLifecycle(event?.detail?.turnNumber));
+  window.addEventListener("v39:unit-moved", () => runV39DeathLifecycle());
+  window.addEventListener("v39:enemy-moved", () => runV39DeathLifecycle());
+  window.addEventListener("v39:attack-resolved", () => runV39DeathLifecycle());
   window.runV39DeathLifecycle = runV39DeathLifecycle;
   window.reviveV39Unit = reviveV39Unit;
-  window.getV39DeathRules = () => ({ fieldTimeoutMs:DEAD_UNIT_FIELD_TIMEOUT_MS });
+  window.getV39DeathRules = () => ({ fieldTimeoutTurns:DEAD_UNIT_FIELD_TIMEOUT_TURNS });
 }
 
 install();

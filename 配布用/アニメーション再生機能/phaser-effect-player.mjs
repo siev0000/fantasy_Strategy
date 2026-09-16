@@ -2,7 +2,7 @@ const DEFAULT_OPTIONS = Object.freeze({
   spriteUnit: 120,
   verticalSplitWidth: 320,
   verticalFrameHeight: 120,
-  totalDurationMs: 4000,
+  totalDurationMs: 1500,
   sequenceGapMs: 10,
   depth: 1000000,
   baseScalePercent: 100,

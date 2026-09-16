@@ -1,6 +1,7 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import {
   computeAttackDamage,
+  applyV39GuardToDamage,
   applyV39ActiveCombatEffects,
   canTriggerMeleeCounter,
   isV39SupportSkill,
@@ -11,12 +12,21 @@ import {
   resolveAttackRows,
   resolveCounterAttackRow,
   resolveSkillHealing,
+  resolveSkillGuard,
   resolveSkillTimedModifiers,
   resolveSplashSpec
 } from "./lib/v39-combat-engine.js";
 import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
 import { showV39Feedback } from "./v39-feedback.js";
 import { getHexNeighborCoords } from "./lib/hex-grid.js";
+import {
+  DEFAULT_CORPSE_FIELD_TURNS,
+  DEFAULT_MAGIC_CAST_TURNS,
+  currentV39TurnNumber,
+  parseV39TurnCount,
+  remainingV39Turns,
+  resolveV39DeadlineTurn
+} from "./lib/v39-turn-timing.js";
 
 const RANGE_DEPTH = 10;
 const AREA_DEPTH = 12;
@@ -25,7 +35,6 @@ let attackSession = null;
 let rangeGraphics = null;
 let areaGraphics = null;
 let hoverFrame = 0;
-let lastTimingSecond = -1;
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -48,7 +57,17 @@ function terrainAdjusted(unit) {
   const effects = player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[text(unit?.id)]
     || state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[text(unit?.id)]
     || [];
-  return applyV39TerrainModifiers(applyV39ActiveCombatEffects(unit, effects), window.__v39FieldRuntime?.mapData);
+  const active = applyV39ActiveCombatEffects(unit, effects);
+  const penaltyRate = Math.max(0, Math.min(1, number(active?.starvationPenaltyRate)));
+  const starvationAdjusted = penaltyRate > 0 ? {
+    ...active,
+    status:Object.fromEntries(Object.entries(active?.status || {}).map(([key, value]) => [
+      key,
+      key === "HP" ? value : Math.floor(number(value) * (1 - penaltyRate))
+    ])),
+    skillLevels:Object.fromEntries(Object.entries(active?.skillLevels || {}).map(([key, value]) => [key, Math.floor(number(value) * (1 - penaltyRate))]))
+  } : active;
+  return applyV39TerrainModifiers(starvationAdjusted, window.__v39FieldRuntime?.mapData);
 }
 
 function selectedUnit(faction = activeFaction()) {
@@ -60,36 +79,30 @@ function currentAp(unit) {
   return Math.max(0, integer(unit?.ap, integer(unit?.currentAp, 0)));
 }
 
-function durationMs(value) {
-  if (value === null || value === undefined || value === "") return 0;
-  const match = String(value).match(/-?\d+(?:\.\d+)?/);
-  return Math.max(0, number(match?.[0], 0) * 1000);
+function guardStatePatch(unit, damage, grantedGuard = 0, turnNumber = currentV39TurnNumber()) {
+  const remaining = Math.max(0, integer(damage?.guardRemaining, integer(unit?.guard, 0)));
+  const granted = Math.max(0, integer(grantedGuard, 0));
+  const guard = remaining + granted;
+  return guard > 0
+    ? { guard, guardExpiresAtTurn:granted > 0 ? resolveV39DeadlineTurn(turnNumber, 1) : integer(unit?.guardExpiresAtTurn, turnNumber) }
+    : { guard:0, guardExpiresAtTurn:0 };
 }
 
-function castDurationMs(skillRow) {
-  const configured = durationMs(skillRow?.待機);
-  return text(skillRow?.攻撃手段) === "魔法" ? Math.max(6000, configured) : configured;
+function castDurationTurns(skillRow) {
+  const configured = parseV39TurnCount(skillRow?.待機, 0);
+  return text(skillRow?.攻撃手段) === "魔法" ? Math.max(DEFAULT_MAGIC_CAST_TURNS, configured) : configured;
 }
 
-function cooldownDurationMs(skillRow) {
-  return durationMs(skillRow?.CT);
-}
-
-function effectDurationMs(skillRow) {
-  return durationMs(skillRow?.効果時間);
-}
-
-function runtimeNow() {
-  return Math.max(0, number(window.getV39RuntimeTimeMs?.(), window.getV39GameState?.()?.timeline?.elapsedMs));
-}
+const cooldownDurationTurns = skillRow => parseV39TurnCount(skillRow?.CT, 0);
+const effectDurationTurns = skillRow => parseV39TurnCount(skillRow?.効果時間, 0);
 
 function unitRuntimeState(faction, unit, skillRow = null) {
   const unitKey = text(unit?.id);
   const runtime = faction?.combatRuntime || {};
   const cooldowns = runtime?.cooldownsByUnitId?.[unitKey] || {};
   const pending = runtime?.pendingActionsByUnitId?.[unitKey] || null;
-  const cooldownRemainingMs = Math.max(0, number(cooldowns?.[text(skillRow?.名前)]) - runtimeNow());
-  return { pending, cooldownRemainingMs };
+  const cooldownRemainingTurns = remainingV39Turns(cooldowns?.[text(skillRow?.名前)], currentV39TurnNumber());
+  return { pending, cooldownRemainingTurns };
 }
 
 function tileMetrics() {
@@ -310,7 +323,7 @@ function unavailableAttackReason(skillName) {
   if (currentAp(unit) < resolveAttackApCost(row)) return "APが不足しています";
   const timing = unitRuntimeState(faction, unit, row);
   if (timing.pending) return "別の行動を発動待機中です";
-  if (timing.cooldownRemainingMs > 0) return `CT中です。残り${Math.ceil(timing.cooldownRemainingMs / 1000)}秒`;
+  if (timing.cooldownRemainingTurns > 0) return `CT中です。残り${timing.cooldownRemainingTurns}ターン`;
   return "現在は使用できません";
 }
 
@@ -324,14 +337,16 @@ function renderActionPanel() {
     const name = text(row?.名前, `攻撃${index + 1}`);
     const ap = resolveAttackApCost(row);
     const timing = unitRuntimeState(activeFaction(), unit, row);
-    const disabled = currentAp(unit) < ap || text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0 || !!timing.pending || timing.cooldownRemainingMs > 0;
+    const disabled = currentAp(unit) < ap || text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0 || !!timing.pending || timing.cooldownRemainingTurns > 0;
     const power = resolveAttackPower(row, terrainAdjusted(unit));
     const healing = resolveSkillHealing(row, terrainAdjusted(unit));
+    const guard = resolveSkillGuard(row, terrainAdjusted(unit));
     const range = resolveAttackRange(row, unit);
-    const timingText = timing.pending ? " / 発動待機中" : timing.cooldownRemainingMs > 0 ? ` / CT${Math.ceil(timing.cooldownRemainingMs / 1000)}秒` : "";
+    const timingText = timing.pending ? " / 発動待機中" : timing.cooldownRemainingTurns > 0 ? ` / CT${timing.cooldownRemainingTurns}ターン` : "";
     const selected = name === selectedSkillName;
     const stateText = disabled ? " / 使用不可" : selected ? " / 選択中" : "";
-    return `<button class="battle-skill${selected ? " active" : ""}${disabled ? " unavailable" : ""}" data-v39-attack-name="${name.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}" aria-pressed="${selected}" ${disabled ? "aria-disabled=\"true\"" : ""}><b>${row?.装備攻撃 ? "⚔" : "◆"} ${name}</b><small>AP${ap} / ${healing > 0 ? `回${healing}` : `威${power}`} / 射${range}${timingText}${stateText}</small></button>`;
+    const output = healing > 0 ? `回${healing}` : power > 0 ? `威${power}` : guard > 0 ? `ガ${guard}` : "威0";
+    return `<button class="battle-skill${selected ? " active" : ""}${disabled ? " unavailable" : ""}" data-v39-attack-name="${name.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}" aria-pressed="${selected}" ${disabled ? "aria-disabled=\"true\"" : ""}><b>${row?.装備攻撃 ? "⚔" : "◆"} ${name}</b><small>AP${ap} / ${output} / 射${range}${timingText}${stateText}</small></button>`;
   }).join("") || '<div class="battle-skill-empty">使用できる行動Aがありません</div>';
   const label = document.getElementById("mobileSelectedSkill");
   if (label) label.textContent = selectedSkillName || "-";
@@ -341,7 +356,7 @@ function renderActionPanel() {
   document.getElementById("mobileBattleAttack")?.classList.toggle("active", !!attackSession);
   const row = selectedAttackRow(unit);
   const timing = unitRuntimeState(activeFaction(), unit, row);
-  if (use) use.disabled = !row || currentAp(unit) < resolveAttackApCost(row) || !!timing.pending || timing.cooldownRemainingMs > 0;
+  if (use) use.disabled = !row || currentAp(unit) < resolveAttackApCost(row) || !!timing.pending || timing.cooldownRemainingTurns > 0;
 }
 
 function startAttack() {
@@ -368,8 +383,8 @@ function startAttack() {
     showToast("別の行動を発動待機中です");
     return false;
   }
-  if (timing.cooldownRemainingMs > 0) {
-    showToast(`CT中です。残り${Math.ceil(timing.cooldownRemainingMs / 1000)}秒`);
+  if (timing.cooldownRemainingTurns > 0) {
+    showToast(`CT中です。残り${timing.cooldownRemainingTurns}ターン`);
     return false;
   }
   const range = resolveAttackRange(skillRow, unit);
@@ -390,6 +405,7 @@ function logDamage(attacker, target, skillRow, damage) {
     耐性軽減割合:`${Math.round(damage.detail.resistanceRate * 1000) / 10}%`, Lv軽減値:damage.detail.levelReduction,
     攻撃側地形補正:{ 地形:damage.detail.attackerTerrain, 補正:damage.detail.attackerTerrainModifiers },
     防御側地形補正:{ 地形:damage.detail.targetTerrain, 補正:damage.detail.targetTerrainModifiers },
+    ガード吸収前:damage.hitsBeforeGuard, ガード吸収値:damage.guardAbsorbed, ガード残量:damage.guardRemaining,
     適用パッシブ:damage.detail.appliedPassiveSkillNames,
     攻撃回数:damage.detail.attackCount, ヒットダメージ配列:damage.hits, 合計ダメージ:damage.total, スキルデータ:skillRow
   });
@@ -422,23 +438,23 @@ function executeAttack(target) {
     showToast("射程外です");
     return false;
   }
-  const delayMs = castDurationMs(session.skillRow);
-  if (delayMs <= 0) return performAttack(target, { ...session, playerId:player.id });
+  const delayTurns = castDurationTurns(session.skillRow);
+  if (delayTurns <= 0) return performAttack(target, { ...session, playerId:player.id });
   const apCost = resolveAttackApCost(session.skillRow);
   if (currentAp(attacker) < apCost) {
     showToast("APが不足しています");
     cancelAttack("ap-shortage");
     return false;
   }
-  const startedAtMs = runtimeNow();
+  const startedTurn = currentV39TurnNumber(state);
   const pending = {
     playerId:player.id,
     unitId:text(attacker.id),
     skillName:text(session.skillRow?.名前),
     skillRow:session.skillRow,
     target:{ x:integer(target.x), y:integer(target.y) },
-    startedAtMs,
-    resolvesAtMs:startedAtMs + delayMs,
+    startedTurn,
+    resolvesAtTurn:resolveV39DeadlineTurn(startedTurn, delayTurns),
     apCost
   };
   const runtime = player.factionState.combatRuntime || {};
@@ -457,11 +473,10 @@ function executeAttack(target) {
   });
   window.setV39GameState({ players }, { reason:"combat-cast-start" });
   window.dispatchEvent(new CustomEvent("v39:cast-started", { detail:pending }));
-  const seconds = Math.ceil(delayMs / 1000);
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
-    detail:{ summary:`${text(attacker.name)}：${pending.skillName} 発動待機 ${seconds}秒 / AP-${apCost}`, attackerId:text(attacker.id), skillName:pending.skillName, apCost, target:pending.target, entries:[] }
+    detail:{ summary:`${text(attacker.name)}：${pending.skillName} 発動待機 ${delayTurns}ターン / AP-${apCost}`, attackerId:text(attacker.id), skillName:pending.skillName, apCost, target:pending.target, entries:[] }
   }));
-  showToast(`${pending.skillName}：${seconds}秒後に発動`);
+  showToast(`${pending.skillName}：${delayTurns}ターン後に発動`);
   cancelAttack("cast-started");
   renderActionPanel();
   return true;
@@ -523,7 +538,7 @@ function performAttack(target, session = attackSession, options = {}) {
   for (const enemy of supportSkill ? [] : state.enemies) {
     const scale = areaScale.get(coordKey(enemy.x, enemy.y));
     if (scale === undefined || number(enemy?.hp, enemy?.currentHp) <= 0) continue;
-    const damage = computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(enemy), skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
+    const damage = applyV39GuardToDamage(enemy, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(enemy), skillRow:session.skillRow, scale, isCounter:!!options.isCounter }));
     damageById.set(text(enemy.id), damage);
     const beforeHp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
     combatLog.push({
@@ -538,7 +553,7 @@ function performAttack(target, session = attackSession, options = {}) {
     if (text(ally.id) === text(attacker.id)) continue;
     const scale = areaScale.get(coordKey(ally.x, ally.y));
     if (scale === undefined || number(ally?.hp, ally?.currentHp) <= 0) continue;
-    const damage = computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(ally), skillRow:session.skillRow, scale, friendly:true, isCounter:!!options.isCounter });
+    const damage = applyV39GuardToDamage(ally, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(ally), skillRow:session.skillRow, scale, friendly:true, isCounter:!!options.isCounter }));
     friendlyDamageById.set(text(ally.id), damage);
     const beforeHp = Math.max(0, number(ally?.hp, ally?.currentHp));
     combatLog.push({
@@ -554,7 +569,7 @@ function performAttack(target, session = attackSession, options = {}) {
     for (const foreignUnit of foreignPlayer?.factionState?.units || []) {
       const scale = areaScale.get(coordKey(foreignUnit.x, foreignUnit.y));
       if (scale === undefined || number(foreignUnit?.hp, foreignUnit?.currentHp) <= 0) continue;
-      const damage = computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(foreignUnit), skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
+      const damage = applyV39GuardToDamage(foreignUnit, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(foreignUnit), skillRow:session.skillRow, scale, isCounter:!!options.isCounter }));
       foreignDamageById.set(text(foreignUnit.id), damage);
       const beforeHp = Math.max(0, number(foreignUnit?.hp, foreignUnit?.currentHp));
       combatLog.push({
@@ -565,43 +580,44 @@ function performAttack(target, session = attackSession, options = {}) {
       logDamage(attacker, foreignUnit, session.skillRow, damage);
     }
   }
-  const deathNow = Date.now();
+  const deathTurn = currentV39TurnNumber(state);
   const deathPatch = (unit, hp) => {
     if (hp > 0 || text(unit?.state) === "死亡") return {};
     return {
       state:"死亡",
-      diedAtMs:deathNow,
-      deadExpireAtMs:deathNow + 30000,
+      diedAtTurn:deathTurn,
+      deadExpireTurn:resolveV39DeadlineTurn(deathTurn, DEFAULT_CORPSE_FIELD_TURNS),
       deathPosition:{ x:integer(unit?.x), y:integer(unit?.y) },
       deathCause:text(session.skillRow?.名前),
-      deathTurn:Math.max(1, integer(state?.timeline?.turnNumber, 1))
+      deathTurn
     };
   };
   const nextEnemies = state.enemies.map((enemy) => {
     const damage = damageById.get(text(enemy.id));
     if (!damage) return enemy;
     const hp = Math.max(0, number(enemy?.hp, enemy?.currentHp) - damage.total);
-    return { ...enemy, hp, currentHp:hp, state:hp <= 0 ? "死亡" : text(enemy?.state, "生存"), ...deathPatch(enemy, hp) };
+    return { ...enemy, hp, currentHp:hp, ...guardStatePatch(enemy, damage), state:hp <= 0 ? "死亡" : text(enemy?.state, "生存"), ...deathPatch(enemy, hp) };
   });
   const runtime = player.factionState.combatRuntime || {};
   const pendingActionsByUnitId = { ...(runtime.pendingActionsByUnitId || {}) };
   if (options.clearPending) delete pendingActionsByUnitId[text(attacker.id)];
   const cooldownsByUnitId = { ...(runtime.cooldownsByUnitId || {}) };
-  const cooldownMs = cooldownDurationMs(session.skillRow);
-  if (cooldownMs > 0) cooldownsByUnitId[text(attacker.id)] = {
+  const cooldownTurns = cooldownDurationTurns(session.skillRow);
+  if (cooldownTurns > 0) cooldownsByUnitId[text(attacker.id)] = {
     ...(cooldownsByUnitId[text(attacker.id)] || {}),
-    [text(session.skillRow?.名前)]:runtimeNow() + cooldownMs
+    [text(session.skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state), cooldownTurns)
   };
   const activeEffectsByUnitId = { ...(runtime.activeEffectsByUnitId || {}) };
-  const activeDurationMs = effectDurationMs(session.skillRow);
+  const activeDurationTurns = effectDurationTurns(session.skillRow);
   const timedModifiers = resolveSkillTimedModifiers(session.skillRow);
   const healing = resolveSkillHealing(session.skillRow, adjustedAttacker);
+  const grantedGuard = resolveSkillGuard(session.skillRow, adjustedAttacker, { isCounter:!!options.isCounter });
   const supportTargetIds = new Set(supportTargets.map(unit => text(unit.id)));
-  if (supportSkill && activeDurationMs > 0 && Object.keys(timedModifiers).length) for (const unitId of supportTargetIds) {
+  if (supportSkill && activeDurationTurns > 0 && Object.keys(timedModifiers).length) for (const unitId of supportTargetIds) {
     const active = Array.isArray(activeEffectsByUnitId[unitId]) ? activeEffectsByUnitId[unitId] : [];
     activeEffectsByUnitId[unitId] = [
       ...active.filter(effect => text(effect?.skillName) !== text(session.skillRow?.名前)),
-      { skillName:text(session.skillRow?.名前), expiresAtMs:runtimeNow() + activeDurationMs, modifiers:timedModifiers }
+      { skillName:text(session.skillRow?.名前), expiresAtTurn:resolveV39DeadlineTurn(currentV39TurnNumber(state), activeDurationTurns), modifiers:timedModifiers }
     ];
   }
   const nextPlayers = state.players.map((row) => ({
@@ -613,19 +629,21 @@ function performAttack(target, session = attackSession, options = {}) {
           const damage = foreignDamageById.get(text(unit.id));
           if (!damage) return unit;
           const hp = Math.max(0, number(unit?.hp, unit?.currentHp)-damage.total);
-          return { ...unit, hp, currentHp:hp, state:hp <= 0 ? "死亡" : text(unit?.state, "生存"), ...deathPatch(unit, hp) };
+          return { ...unit, hp, currentHp:hp, ...guardStatePatch(unit, damage), state:hp <= 0 ? "死亡" : text(unit?.state, "生存"), ...deathPatch(unit, hp) };
         }
         const own = text(unit.id) === text(attacker.id);
         const damage = friendlyDamageById.get(text(unit.id));
         const supportTarget = supportTargetIds.has(text(unit.id));
+        const guardTarget = supportSkill ? supportTarget : own;
         const maxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || unit?.hp));
         const hp = supportTarget && healing > 0
           ? Math.min(maxHp, number(unit?.hp, unit?.currentHp) + healing)
           : damage ? Math.max(0, number(unit?.hp, unit?.currentHp) - damage.total) : number(unit?.hp, unit?.currentHp);
-        if (!own && !damage && !supportTarget) return unit;
+        if (!own && !damage && !supportTarget && !guardTarget) return unit;
         const ap = own && !options.apPaid ? Math.max(0, currentAp(unit) - apCost) : currentAp(unit);
         return {
           ...unit, hp, currentHp:hp, ap, currentAp:ap,
+          ...guardStatePatch(unit, damage, guardTarget ? grantedGuard : 0),
           state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
           lastUsedAttack:text(session.skillRow?.名前),
           ...deathPatch(unit, hp)
@@ -641,7 +659,7 @@ function performAttack(target, session = attackSession, options = {}) {
   const hits = combatLog.flatMap((entry) => entry.hits);
   const supportCount = supportTargetIds.size;
   const summary = supportSkill
-    ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${healing > 0 ? `回復${healing} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
+    ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${healing > 0 ? `回復${healing} × ${supportCount}` : grantedGuard > 0 ? `ガード+${grantedGuard} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
     : `${text(attacker.name)}：${text(session.skillRow.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerId:text(attacker.id), skillName:text(session.skillRow.名前), apCost, target, entries:combatLog } }));
   if (!supportSkill && !options.isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
@@ -678,7 +696,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     for (const unit of player?.factionState?.units || []) {
       const scale = areaScale.get(coordKey(unit.x, unit.y));
       if (scale === undefined || number(unit?.hp, unit?.currentHp) <= 0) continue;
-      const damage = computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(unit), skillRow, scale, isCounter });
+    const damage = applyV39GuardToDamage(unit, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(unit), skillRow, scale, isCounter }));
       damageByUnitId.set(text(unit.id), damage);
       const beforeHp = Math.max(0, number(unit?.hp, unit?.currentHp));
       combatLog.push({
@@ -694,7 +712,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     if (text(enemy.id) === text(attacker.id)) continue;
     const scale = areaScale.get(coordKey(enemy.x, enemy.y));
     if (scale === undefined || number(enemy?.hp, enemy?.currentHp) <= 0) continue;
-    const damage = computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(enemy), skillRow, scale, friendly:true, isCounter });
+    const damage = applyV39GuardToDamage(enemy, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(enemy), skillRow, scale, friendly:true, isCounter }));
     friendlyDamageById.set(text(enemy.id), damage);
     const beforeHp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
     combatLog.push({
@@ -704,7 +722,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     });
     logDamage(attacker, enemy, skillRow, damage);
   }
-  const deathNow = Date.now();
+  const deathTurn = currentV39TurnNumber(state);
   const applyHp = (unit, damage) => {
     if (!damage) return unit;
     const hp = Math.max(0, number(unit?.hp, unit?.currentHp)-damage.total);
@@ -714,12 +732,13 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       hp,
       currentHp:hp,
       state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
+      ...guardStatePatch(unit, damage),
       ...(newlyDead ? {
-        diedAtMs:deathNow,
-        deadExpireAtMs:deathNow+30000,
+        diedAtTurn:deathTurn,
+        deadExpireTurn:resolveV39DeadlineTurn(deathTurn, DEFAULT_CORPSE_FIELD_TURNS),
         deathPosition:{ x:integer(unit?.x), y:integer(unit?.y) },
         deathCause:text(skillRow?.名前),
-        deathTurn:Math.max(1, integer(state?.timeline?.turnNumber, 1))
+        deathTurn
       } : {})
     };
   };
@@ -730,7 +749,8 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   const enemies = state.enemies.map((enemy) => {
     if (text(enemy.id) === text(attacker.id)) {
       const ap = apPaid ? currentAp(enemy) : Math.max(0, currentAp(enemy)-apCost);
-      return { ...enemy, ap, currentAp:ap, actionPoint:ap, lastUsedAttack:text(skillRow?.名前) };
+      const grantedGuard = resolveSkillGuard(skillRow, terrainAdjusted(attacker), { isCounter });
+      return { ...enemy, ap, currentAp:ap, actionPoint:ap, lastUsedAttack:text(skillRow?.名前), ...guardStatePatch(enemy, null, grantedGuard) };
     }
     return applyHp(enemy, friendlyDamageById.get(text(enemy.id)));
   });
@@ -782,22 +802,21 @@ function handleCounter(event) {
   });
 }
 
-function pruneCombatRuntime() {
+function pruneCombatRuntime(turnNumber = currentV39TurnNumber()) {
   const state = window.getV39GameState?.();
   if (!state) return;
-  const now = runtimeNow();
   let changed = false;
   const players = state.players.map((player) => {
     const runtime = player.factionState.combatRuntime || {};
     const cooldownsByUnitId = {};
     for (const [unitId, cooldowns] of Object.entries(runtime.cooldownsByUnitId || {})) {
-      const active = Object.fromEntries(Object.entries(cooldowns || {}).filter(([, expiresAtMs]) => number(expiresAtMs) > now));
+      const active = Object.fromEntries(Object.entries(cooldowns || {}).filter(([, expiresAtTurn]) => number(expiresAtTurn) > turnNumber));
       if (Object.keys(active).length) cooldownsByUnitId[unitId] = active;
       if (Object.keys(active).length !== Object.keys(cooldowns || {}).length) changed = true;
     }
     const activeEffectsByUnitId = {};
     for (const [unitId, effects] of Object.entries(runtime.activeEffectsByUnitId || {})) {
-      const active = (Array.isArray(effects) ? effects : []).filter((effect) => number(effect?.expiresAtMs) > now);
+      const active = (Array.isArray(effects) ? effects : []).filter((effect) => number(effect?.expiresAtTurn) > turnNumber);
       if (active.length) activeEffectsByUnitId[unitId] = active;
       if (active.length !== (Array.isArray(effects) ? effects.length : 0)) changed = true;
     }
@@ -809,12 +828,11 @@ function pruneCombatRuntime() {
   if (changed) window.setV39GameState({ players }, { reason:"combat-timing-expired" });
 }
 
-function resolvePendingActions() {
+function resolvePendingActions(turnNumber = currentV39TurnNumber()) {
   const state = window.getV39GameState?.();
-  const now = runtimeNow();
   for (const player of state?.players || []) {
     for (const pending of Object.values(player?.factionState?.combatRuntime?.pendingActionsByUnitId || {})) {
-      if (number(pending?.resolvesAtMs) > now) continue;
+      if (number(pending?.resolvesAtTurn) > turnNumber) continue;
       performAttack(pending.target, {
         playerId:player.id,
         unitId:text(pending.unitId),
@@ -887,12 +905,10 @@ function install() {
     if (event?.detail?.reason === "active-player") cancelAttack("active-player-changed");
     renderActionPanel();
   });
-  window.addEventListener("v39:runtime-tick", (event) => {
-    resolvePendingActions();
-    const second = Math.floor(number(event?.detail?.elapsedMs) / 1000);
-    if (second === lastTimingSecond) return;
-    lastTimingSecond = second;
-    pruneCombatRuntime();
+  window.addEventListener("v39:turn-advanced", (event) => {
+    const turnNumber = Math.max(1, integer(event?.detail?.turnNumber, currentV39TurnNumber()));
+    resolvePendingActions(turnNumber);
+    pruneCombatRuntime(turnNumber);
     renderActionPanel();
   });
   window.addEventListener("v39:attack-resolved", handleCounter);

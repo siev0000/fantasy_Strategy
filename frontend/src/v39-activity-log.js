@@ -26,7 +26,6 @@ export function appendV39ActivityLog(playerIds, category, message, detail = {}) 
     turn,
     category:text(category) || "システム",
     message:text(message),
-    createdAtMs:Math.max(0, number(state?.timeline?.elapsedMs)),
     detail:detail && typeof detail === "object" ? detail : {}
   };
   const players = state.players.map(player => targetIds.has(text(player?.id)) ? ({

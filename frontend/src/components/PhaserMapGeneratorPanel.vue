@@ -556,11 +556,8 @@ const EFFECT_RENDER_STYLE_SET = new Set([EFFECT_RENDER_STYLE_SOFT, EFFECT_RENDER
 const EFFECT_DEBUG_PREFIX = "[AttackEffect]";
 const MAP_EFFECT_PLAY_EVENT_NAME = "fantasy-strategy:play-map-effect";
 const MAP_EFFECT_BRIDGE_NAMESPACE = "__fantasy_strategy_map_effect_bridge__";
-// 死亡ユニットのフィールド残留時間（ms計算用の秒値）。
-// runDeadUnitLifecycleTick で、未回収死体を消滅させる判定に使う。
-const DEAD_UNIT_FIELD_TIMEOUT_SECONDS = 30;
-// DEAD_UNIT_FIELD_TIMEOUT_SECONDS をミリ秒化した実行時比較値。
-const DEAD_UNIT_FIELD_TIMEOUT_MS = DEAD_UNIT_FIELD_TIMEOUT_SECONDS * 1000;
+// 死亡ユニットを回収できるフィールド残留ターン数。
+const DEAD_UNIT_FIELD_TIMEOUT_TURNS = 30;
 // HP0以下になったユニットへ付与する状態ラベル。
 // UI表示と死亡判定フラグ同期に利用。
 const DEAD_UNIT_STATE_LABEL = "死亡";
@@ -1888,7 +1885,8 @@ const headerResearchRows = computed(() => {
 });
 
 const turnDurationSec = TURN_SECONDS;
-const autoTurnAdvanceByClock = true;
+// ゲーム進行はターン終了操作だけで進める。実時間による自動進行は廃止済み。
+const autoTurnAdvanceByClock = false;
 
 const elapsedSeconds = computed(() => {
   const elapsedSec = Math.floor(clockElapsedMs.value / 1000);
@@ -2543,9 +2541,8 @@ const SURVEY_DEFAULT_PROGRESS_PERCENT = 100;
 const SURVEY_NO_ENEMY_REDUCE_SCALE = 1.5;
 const SURVEY_BATTLE_VICTORY_EXTRA_REDUCE_PERCENT = 25;
 
-function resolveSurveyDurationSeconds(task) {
-  const totalTurns = Math.max(1, Math.floor(toSafeNumber(task?.totalTurns, SURVEY_ACTION_REQUIRED_TURNS)));
-  return totalTurns * TURN_SECONDS;
+function resolveSurveyDurationTurns(task) {
+  return Math.max(1, Math.floor(toSafeNumber(task?.totalTurns, SURVEY_ACTION_REQUIRED_TURNS)));
 }
 
 const ENCOUNTER_NON_AGGRESSIVE_SAME_TILE_ATTACK_CHANCE = 0.25;
@@ -12076,11 +12073,11 @@ function resolveClockRuntimeNowMs() {
   return Math.max(0, Math.floor(toSafeNumber(clockNowMs.value, Date.now())));
 }
 
-function resolveDeadUnitExpireAtMs(unit, nowMs = resolveClockRuntimeNowMs()) {
-  const deadAt = Math.max(0, Math.floor(toSafeNumber(unit?.deadAtMs, nowMs)));
-  const explicitExpire = Math.floor(toSafeNumber(unit?.deadExpireAtMs, 0));
+function resolveDeadUnitExpireTurn(unit, turnNumber = mapTurnNumber.value) {
+  const deadAt = Math.max(0, Math.floor(toSafeNumber(unit?.diedAtTurn, unit?.deathTurn ?? turnNumber)));
+  const explicitExpire = Math.floor(toSafeNumber(unit?.deadExpireTurn, 0));
   if (explicitExpire > 0) return explicitExpire;
-  return deadAt + DEAD_UNIT_FIELD_TIMEOUT_MS;
+  return deadAt + DEAD_UNIT_FIELD_TIMEOUT_TURNS;
 }
 
 function isUnitDeadState(unit) {
@@ -12098,15 +12095,15 @@ function applyUnitLifeState(target, currentHpRaw = target?.currentHp) {
     : {};
   const stateLabel = resolveUnitLifeStateLabelFromHp(currentHpRaw);
   if (stateLabel) {
-    const nowMs = resolveClockRuntimeNowMs();
-    const deadAt = Math.max(0, Math.floor(toSafeNumber(target?.deadAtMs, nowMs)));
+    const deadAt = Math.max(0, Math.floor(toSafeNumber(target?.diedAtTurn, target?.deathTurn ?? mapTurnNumber.value)));
     target.status = {
       ...statusBase,
       状態: stateLabel
     };
     target.isDead = true;
-    target.deadAtMs = deadAt;
-    target.deadExpireAtMs = resolveDeadUnitExpireAtMs(target, nowMs);
+    target.diedAtTurn = deadAt;
+    target.deathTurn = deadAt;
+    target.deadExpireTurn = resolveDeadUnitExpireTurn(target, mapTurnNumber.value);
     target.actionPoint = 0;
     target.moveRemaining = 0;
     return target;
@@ -12118,8 +12115,9 @@ function applyUnitLifeState(target, currentHpRaw = target?.currentHp) {
     target.status = statusBase;
   }
   target.isDead = false;
-  if (Object.prototype.hasOwnProperty.call(target, "deadAtMs")) delete target.deadAtMs;
-  if (Object.prototype.hasOwnProperty.call(target, "deadExpireAtMs")) delete target.deadExpireAtMs;
+  for (const key of ["deadAtMs", "deadExpireAtMs", "diedAtTurn", "deadExpireTurn", "deathTurn"]) {
+    if (Object.prototype.hasOwnProperty.call(target, key)) delete target[key];
+  }
   return target;
 }
 
@@ -12215,7 +12213,7 @@ function reviveUnitFromDeadReserve(unitIdRaw, options = {}) {
 
 function runDeadUnitLifecycleTick() {
   if (!Array.isArray(unitList.value) || !unitList.value.length) return;
-  const nowMs = resolveClockRuntimeNowMs();
+  const turnNumber = mapTurnNumber.value;
   const aliveTileSet = new Set();
   for (const unit of unitList.value) {
     if (!unit || typeof unit !== "object") continue;
@@ -12243,9 +12241,9 @@ function runDeadUnitLifecycleTick() {
     const y = Math.floor(toSafeNumber(unit?.y, Number.NaN));
     const tileKey = (Number.isFinite(x) && Number.isFinite(y)) ? coordKey(x, y) : "";
     const hasCollector = !!tileKey && aliveTileSet.has(tileKey);
-    const expireAtMs = resolveDeadUnitExpireAtMs(unit, nowMs);
+    const expireAtTurn = resolveDeadUnitExpireTurn(unit, turnNumber);
     if (hasCollector) {
-      const stored = pushDeadUnitToReserve(unit, { reason: "回収", nowMs });
+      const stored = pushDeadUnitToReserve(unit, { reason: "回収", turn: turnNumber });
       if (stored) {
         collectedCount += 1;
         removedIds.push(unitId);
@@ -12253,10 +12251,10 @@ function runDeadUnitLifecycleTick() {
         continue;
       }
     }
-    if (nowMs >= expireAtMs) {
+    if (turnNumber >= expireAtTurn) {
       expiredCount += 1;
       removedIds.push(unitId);
-      pushNationLog(`死亡消滅: ${unitName} (${x}, ${y}) / ${DEAD_UNIT_FIELD_TIMEOUT_SECONDS}秒経過`);
+      pushNationLog(`死亡消滅: ${unitName} (${x}, ${y}) / ${DEAD_UNIT_FIELD_TIMEOUT_TURNS}ターン経過`);
       continue;
     }
     nextUnits.push(unit);
@@ -16347,8 +16345,8 @@ function renderMapWithPhaser() {
         pushLabelWithDepth(countText, fieldVisualDepth.monster);
       }
       if (surveyTask) {
-        const surveySeconds = resolveSurveyDurationSeconds(surveyTask);
-        const surveyLabelText = Number.isFinite(surveySeconds) ? `🔍${surveySeconds}秒` : "🔍";
+        const surveyTurns = resolveSurveyDurationTurns(surveyTask);
+        const surveyLabelText = Number.isFinite(surveyTurns) ? `🔍${surveyTurns}T` : "🔍";
         const surveyLabel = scene.add.text(
           unitMx,
           unitMy - (MAP_UNIT_MARKER_CONFIG.radius + 12),
@@ -22599,8 +22597,7 @@ onMounted(async () => {
       clockElapsedMs.value = Math.max(0, Math.floor(toSafeNumber(clockElapsedMs.value, 0) + delta));
     }
     clockNowMs.value = mapClockStartMs.value + clockElapsedMs.value;
-    processClockTurnProgress();
-    runEnemyAutoAttackTick(delta);
+    // 時計は表示用。ターン進行・敵行動はターン終了処理からのみ実行する。
     runDeadUnitLifecycleTick();
     if (isMoveCommandPendingForSelectedUnit.value && currentData.value) {
       requestMapRender();

@@ -1,12 +1,12 @@
 import { getV39DiscoveredFeature } from "./lib/v39-exploration-rules.js";
 import { resolveV39FacilityEffectsAtTile } from "./lib/v39-economy-rules.js";
 import { getSettlementForTerritory } from "./lib/settlement-state.js";
+import { V39_TURN_PHASE } from "./lib/v39-turn-timing.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
+  phase: V39_TURN_PHASE.PLAYER,
   paused: false,
-  elapsedMs: 0,
-  lastTurnAdvancedAtMs: 0,
   lastResolvedTurn: 0,
   lastStageSequence: []
 });
@@ -26,9 +26,8 @@ function isDead(unit) {
 function normalizeTimeline(value = {}) {
   return {
     turnNumber: Math.max(1, Math.floor(number(value.turnNumber, DEFAULT_TIMELINE.turnNumber))),
+    phase:Object.values(V39_TURN_PHASE).includes(value.phase) ? value.phase : V39_TURN_PHASE.PLAYER,
     paused: value.paused === true,
-    elapsedMs: Math.max(0, number(value.elapsedMs, 0)),
-    lastTurnAdvancedAtMs: Math.max(0, number(value.lastTurnAdvancedAtMs, 0)),
     lastResolvedTurn:Math.max(0, Math.floor(number(value.lastResolvedTurn, 0))),
     lastStageSequence:Array.isArray(value.lastStageSequence) ? value.lastStageSequence.map(String) : []
   };
@@ -36,7 +35,9 @@ function normalizeTimeline(value = {}) {
 
 function restoreUnitForTurn(unit) {
   if (!unit || isDead(unit)) return { ...unit };
-  const maxAp = Math.max(0, Math.floor(number(unit.maxAp ?? unit.maxActionPoint, 100)));
+  const configuredMaxAp = Math.max(0, Math.floor(number(unit.maxAp ?? unit.maxActionPoint, 100)));
+  const starvationCap = Math.max(0, Math.floor(number(unit?.starvationApCap)));
+  const maxAp = starvationCap > 0 ? Math.min(configuredMaxAp, starvationCap) : configuredMaxAp;
   return {
     ...unit,
     ap: maxAp,
@@ -45,8 +46,14 @@ function restoreUnitForTurn(unit) {
   };
 }
 
+function clearExpiredGuard(unit, turnNumber) {
+  if (number(unit?.guard) <= 0 || number(unit?.guardExpiresAtTurn) > turnNumber) return { ...unit };
+  return { ...unit, guard:0, guardExpiresAtTurn:0 };
+}
+
 function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide = false) {
   if (!unit || isDead(unit)) return { ...unit };
+  if (number(unit?.starvationStage) >= 3) return { ...unit };
   const maxHp = Math.max(1, Math.floor(number(unit.maxHp ?? unit?.status?.HP, 1)));
   const hp = Math.max(0, Math.min(maxHp, Math.floor(number(unit.hp ?? unit.currentHp, maxHp))));
   if (hp >= maxHp) return { ...unit, hp, currentHp:hp };
@@ -72,6 +79,15 @@ function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide =
 
 function dispatchTurnStage(stage, turnNumber) {
   window.dispatchEvent(new CustomEvent(`v39:turn-stage-${stage}`, { detail:{ stage, turnNumber } }));
+}
+
+function setTurnPhase(state, timeline, phase, reason) {
+  const nextTimeline = { ...timeline, phase };
+  window.setV39GameState?.({ ...state, timeline:nextTimeline }, { reason });
+  window.dispatchEvent(new CustomEvent("v39:turn-phase-changed", {
+    detail:{ phase, turnNumber:nextTimeline.turnNumber }
+  }));
+  return nextTimeline;
 }
 
 function showBanner(message, persistent = false) {
@@ -147,37 +163,45 @@ export function advanceTurn() {
   advancing = true;
   try {
     const before = normalizeTimeline(state.timeline);
-    const timeline = {
-      ...before,
-      turnNumber: before.turnNumber + 1,
-      lastTurnAdvancedAtMs: before.elapsedMs
-    };
-    const players = (Array.isArray(state.players) ? state.players : []).map(player => ({
-      ...player,
-      factionState: {
-        ...player.factionState,
-        units: (Array.isArray(player?.factionState?.units) ? player.factionState.units : []).map(restoreUnitForTurn)
-      }
-    }));
-    const enemies = (Array.isArray(state.enemies) ? state.enemies : []).map(restoreUnitForTurn);
-    window.setV39GameState?.({ players, enemies, timeline }, { reason:"turn-start" });
+    if (before.phase !== V39_TURN_PHASE.PLAYER) return false;
+    const activeTurn = before.turnNumber;
+    const enemyTimeline = setTurnPhase({
+      ...state,
+      enemies:(Array.isArray(state.enemies) ? state.enemies : [])
+        .map(unit => clearExpiredGuard(unit, activeTurn))
+        .map(restoreUnitForTurn)
+    }, before, V39_TURN_PHASE.ENEMY, "enemy-turn-start");
+    showBanner(`エネミーターン ${activeTurn}`);
+    window.runV39EnemyTurn?.(activeTurn);
+    const afterEnemy = window.getV39GameState?.() || state;
+    const nextTurn = activeTurn + 1;
+    const resolvingTimeline = setTurnPhase(afterEnemy, enemyTimeline, V39_TURN_PHASE.RESOLUTION, "turn-resolution-start");
     const stages = ["terrain", "ai", "exploration", "world", "economy", "research", "diplomacy"];
-    for (const stage of stages) dispatchTurnStage(stage, timeline.turnNumber);
+    for (const stage of stages) dispatchTurnStage(stage, nextTurn);
     const resolved = window.getV39GameState?.();
     const recoveredPlayers = (resolved?.players || []).map(player => ({
       ...player,
-        factionState:{ ...player.factionState, units:(player?.factionState?.units || []).map(unit => recoverUnitHp(unit, player.factionState, player.id, resolved, before.turnNumber)) }
+        factionState:{
+          ...player.factionState,
+          units:(player?.factionState?.units || [])
+            .map(unit => recoverUnitHp(unit, player.factionState, player.id, resolved, activeTurn))
+            .map(unit => clearExpiredGuard(unit, nextTurn))
+            .map(restoreUnitForTurn)
+        }
       }));
-    const recoveredEnemies = (resolved?.enemies || []).map(unit => recoverUnitHp(unit, null, "", resolved, before.turnNumber, true));
+    const recoveredEnemies = (resolved?.enemies || []).map(unit => recoverUnitHp(unit, null, "", resolved, activeTurn, true));
     const completedTimeline = {
-      ...normalizeTimeline(resolved?.timeline),
-      lastResolvedTurn:timeline.turnNumber,
-      lastStageSequence:["turn-start", ...stages, "recovery", "turn-complete"]
+      ...normalizeTimeline(resolvingTimeline),
+      turnNumber:nextTurn,
+      phase:V39_TURN_PHASE.PLAYER,
+      lastResolvedTurn:activeTurn,
+      lastStageSequence:["player-turn", "enemy-turn", ...stages, "recovery", "turn-complete"]
     };
     window.setV39GameState?.({ players:recoveredPlayers, enemies:recoveredEnemies, timeline:completedTimeline }, { reason:"turn-complete" });
     renderControls();
-    showBanner(`ターン ${timeline.turnNumber} 開始`);
-    window.dispatchEvent(new CustomEvent("v39:turn-advanced", { detail:{ previousTurn:before.turnNumber, turnNumber:timeline.turnNumber, stages:completedTimeline.lastStageSequence } }));
+    showBanner(`プレイヤーターン ${nextTurn}`);
+    window.dispatchEvent(new CustomEvent("v39:turn-phase-changed", { detail:{ phase:V39_TURN_PHASE.PLAYER, turnNumber:nextTurn } }));
+    window.dispatchEvent(new CustomEvent("v39:turn-advanced", { detail:{ previousTurn:activeTurn, turnNumber:nextTurn, stages:completedTimeline.lastStageSequence } }));
     return true;
   } finally {
     advancing = false;

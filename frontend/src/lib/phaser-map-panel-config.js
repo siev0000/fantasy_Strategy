@@ -11,11 +11,13 @@ export const TERRITORY_TILE_MODE_CONFIG = {
   [TERRITORY_TILE_MODE_RESOURCE]: {
     label: "資源化",
     populationCapacityBonus: 5,
+    employmentSlots: 10,
     incomeMultiplier: 2.0 // 資源+100%
   },
   [TERRITORY_TILE_MODE_SETTLEMENT]: {
     label: "居住化",
     populationCapacityBonus: 15,
+    employmentSlots: 5,
     incomeMultiplier: 1.0
   }
 };

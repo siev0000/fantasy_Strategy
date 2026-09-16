@@ -6,15 +6,27 @@ import {
   resolveDetectionScoutValue
 } from "./lib/v39-detection-rules.js";
 import { canUnitEnterV39Tile } from "./lib/v39-terrain-traversal.js";
-
-const ENEMY_ATTACK_INTERVAL_MS = 12000;
-let lastProcessedSecond = -1;
+import {
+  DEFAULT_MAGIC_CAST_TURNS,
+  currentV39TurnNumber,
+  parseV39TurnCount,
+  remainingV39Turns,
+  resolveV39DeadlineTurn
+} from "./lib/v39-turn-timing.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const integer = (value, fallback = 0) => Math.floor(number(value, fallback));
 
 const distance = getHexDistance;
+const movedEnemyIdsThisTurn = new Set();
+
+function patchEnemyTurnState(patch, reason) {
+  if (window.patchV39EnemyTurnState?.(patch) === true) return;
+  window.setV39GameState?.(patch, { reason, silent:true });
+}
+
+const enemyTurnState = () => window.getV39EnemyTurnState?.() || window.getV39GameState?.();
 
 function isAlive(unit) {
   return number(unit?.hp, unit?.currentHp) > 0 && text(unit?.state, "生存") !== "死亡";
@@ -60,48 +72,43 @@ function availableEnemyMoves(state, enemy) {
     .filter(tile => Number.isFinite(tile.cost) && tile.cost <= number(enemy.ap));
 }
 
-function commitEnemyMove(state, enemy, next, now, behaviorPatch = {}) {
+function commitEnemyMove(state, enemy, next, turnNumber, behaviorPatch = {}) {
   if (!next) return false;
   const ap = Math.max(0, number(enemy.ap)-next.cost);
   const enemies = state.enemies.map(row => text(row.id) !== text(enemy.id)
     ? row
-    : { ...row, ...behaviorPatch, x:next.x, y:next.y, ap, currentAp:ap, actionPoint:ap });
+    : { ...row, ...behaviorPatch, x:next.x, y:next.y, ap, currentAp:ap, actionPoint:ap, lastMovedTurn:turnNumber });
   const runtime = {
     ...(state.enemyCombatRuntime || {}),
-    lastActionAtMsByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionAtMsByEnemyId || {}), [text(enemy.id)]:now }
+    lastActionTurnByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionTurnByEnemyId || {}), [text(enemy.id)]:turnNumber }
   };
-  window.setV39GameState?.({ enemies, enemyCombatRuntime:runtime }, { reason:"enemy-action-move" });
-  window.dispatchEvent(new CustomEvent("v39:enemy-moved", {
-    detail:{ enemyId:text(enemy.id), from:{ x:integer(enemy.x), y:integer(enemy.y) }, to:{ x:next.x, y:next.y } }
-  }));
-  window.dispatchEvent(new CustomEvent("v39:combat-log", {
-    detail:{ summary:`${text(enemy.name)}：移動 (${integer(enemy.x)},${integer(enemy.y)})→(${next.x},${next.y}) / AP-${next.cost}`, attackerId:text(enemy.id), apCost:next.cost, enemyAction:true, entries:[] }
-  }));
+  patchEnemyTurnState({ enemies, enemyCombatRuntime:runtime }, "enemy-action-move");
+  movedEnemyIdsThisTurn.add(text(enemy.id));
   return true;
 }
 
-function moveEnemyToward(state, enemy, target, now, stopDistance = 1, behaviorPatch = {}) {
+function moveEnemyToward(state, enemy, target, turnNumber, stopDistance = 1, behaviorPatch = {}) {
   if (distance(enemy, target) <= stopDistance) return false;
   const currentDistance = distance(enemy, target);
   const next = availableEnemyMoves(state, enemy)
     .map(tile => ({ ...tile, targetDistance:distance(tile, target) }))
     .filter(tile => tile.targetDistance < currentDistance)
     .sort((a, b) => a.targetDistance-b.targetDistance || a.cost-b.cost || a.key.localeCompare(b.key))[0];
-  return commitEnemyMove(state, enemy, next, now, behaviorPatch);
+  return commitEnemyMove(state, enemy, next, turnNumber, behaviorPatch);
 }
 
-function moveEnemyAway(state, enemy, target, now, behaviorPatch = {}) {
+function moveEnemyAway(state, enemy, target, turnNumber, behaviorPatch = {}) {
   const currentDistance = distance(enemy, target);
   const next = availableEnemyMoves(state, enemy)
     .map(tile => ({ ...tile, targetDistance:distance(tile, target) }))
     .filter(tile => tile.targetDistance > currentDistance)
     .sort((a, b) => b.targetDistance-a.targetDistance || a.cost-b.cost || a.key.localeCompare(b.key))[0];
-  return commitEnemyMove(state, enemy, next, now, behaviorPatch);
+  return commitEnemyMove(state, enemy, next, turnNumber, behaviorPatch);
 }
 
 function patchEnemyBehavior(state, enemyId, patch, reason) {
   const enemies = state.enemies.map(enemy => text(enemy?.id) === text(enemyId) ? { ...enemy, ...patch } : enemy);
-  window.setV39GameState?.({ enemies }, { reason });
+  patchEnemyTurnState({ enemies }, reason);
 }
 
 function chooseDeterministically(rows, enemyId, cycle) {
@@ -146,44 +153,47 @@ function pursuitLimit(enemy, nest) {
   return territoryRadius(enemy, nest) + outside;
 }
 
-function roamInsideTerritory(state, enemy, nest, now) {
+function roamInsideTerritory(state, enemy, nest, turnNumber) {
   const center = territoryCenter(enemy, nest);
   const radius = territoryRadius(enemy, nest);
   const candidates = availableEnemyMoves(state, enemy)
     .filter(tile => distance(tile, center) <= radius)
     .sort((a, b) => a.key.localeCompare(b.key));
-  const next = chooseDeterministically(candidates, enemy.id, Math.floor(now/ENEMY_ATTACK_INTERVAL_MS));
-  return commitEnemyMove(state, enemy, next, now, { fleeState:null });
+  const next = chooseDeterministically(candidates, enemy.id, turnNumber);
+  return commitEnemyMove(state, enemy, next, turnNumber, { fleeState:null });
 }
 
-function durationMs(value) {
-  const match = String(value ?? "").match(/-?\d+(?:\.\d+)?/);
-  return Math.max(0, number(match?.[0]) * 1000);
-}
-
-function castMs(skillRow) {
-  const wait = durationMs(skillRow?.待機);
-  return text(skillRow?.攻撃手段) === "魔法" ? Math.max(6000, wait) : wait;
+function castTurns(skillRow) {
+  const wait = parseV39TurnCount(skillRow?.待機);
+  return text(skillRow?.攻撃手段) === "魔法" ? Math.max(DEFAULT_MAGIC_CAST_TURNS, wait) : wait;
 }
 
 function updateEnemyRuntime(mutator, reason) {
-  const state = window.getV39GameState?.();
+  const state = enemyTurnState();
   if (!state) return null;
   const next = mutator({
     pendingActionsByEnemyId:{ ...(state.enemyCombatRuntime?.pendingActionsByEnemyId || {}) },
-    lastActionAtMsByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionAtMsByEnemyId || {}) },
+    lastActionTurnByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionTurnByEnemyId || {}) },
     cooldownsByEnemyId:{ ...(state.enemyCombatRuntime?.cooldownsByEnemyId || {}) },
     activeEffectsByEnemyId:{ ...(state.enemyCombatRuntime?.activeEffectsByEnemyId || {}) }
   }, state);
   if (!next) return null;
-  window.setV39GameState?.({ enemyCombatRuntime:next }, { reason });
+  patchEnemyTurnState({ enemyCombatRuntime:next }, reason);
   return next;
 }
 
-function queueEnemyAttack(enemy, target, skillRow, now) {
+function markEnemyTurnAction(enemyId, turnNumber, reason) {
+  updateEnemyRuntime((runtime) => {
+    runtime.lastActionTurnByEnemyId[text(enemyId)] = turnNumber;
+    return runtime;
+  }, reason);
+  return true;
+}
+
+function queueEnemyAttack(enemy, target, skillRow, turnNumber) {
   const apCost = resolveAttackApCost(skillRow);
-  const delay = castMs(skillRow);
-  const state = window.getV39GameState?.();
+  const delay = castTurns(skillRow);
+  const state = enemyTurnState();
   const enemies = state.enemies.map((row) => text(row.id) === text(enemy.id)
     ? { ...row, ap:Math.max(0, number(row.ap)-apCost), currentAp:Math.max(0, number(row.ap)-apCost) }
     : row);
@@ -193,39 +203,54 @@ function queueEnemyAttack(enemy, target, skillRow, now) {
       ...(state.enemyCombatRuntime?.pendingActionsByEnemyId || {}),
       [text(enemy.id)]:{
         enemyId:text(enemy.id), targetUnitId:text(target.id), skillRow, skillName:text(skillRow?.名前),
-        startedAtMs:now, resolvesAtMs:now+delay, apCost
+        startedTurn:turnNumber, resolvesAtTurn:resolveV39DeadlineTurn(turnNumber, delay), apCost
       }
     },
-    lastActionAtMsByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionAtMsByEnemyId || {}), [text(enemy.id)]:now }
+    lastActionTurnByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionTurnByEnemyId || {}), [text(enemy.id)]:turnNumber }
   };
-  window.setV39GameState?.({ enemies, enemyCombatRuntime:runtime }, { reason:"enemy-cast-start" });
+  patchEnemyTurnState({ enemies, enemyCombatRuntime:runtime }, "enemy-cast-start");
   window.dispatchEvent(new CustomEvent("v39:cast-started", { detail:{ unitId:text(enemy.id), enemyAction:true } }));
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
-    detail:{ summary:`${text(enemy.name)}：${text(skillRow?.名前)} 発動待機 ${Math.ceil(delay/1000)}秒 / AP-${apCost}`, attackerId:text(enemy.id), skillName:text(skillRow?.名前), apCost, entries:[], enemyAction:true }
+    detail:{ summary:`${text(enemy.name)}：${text(skillRow?.名前)} 発動待機 ${delay}ターン / AP-${apCost}`, attackerId:text(enemy.id), skillName:text(skillRow?.名前), apCost, entries:[], enemyAction:true }
   }));
 }
 
-function executeEnemyAttack(enemy, target, skillRow, now) {
+function setEnemyCooldown(enemyId, skillRow, turnNumber) {
+  const duration = parseV39TurnCount(skillRow?.CT);
+  if (duration <= 0) return;
   updateEnemyRuntime((runtime) => {
-    runtime.lastActionAtMsByEnemyId[text(enemy.id)] = now;
+    runtime.cooldownsByEnemyId[text(enemyId)] = {
+      ...(runtime.cooldownsByEnemyId[text(enemyId)] || {}),
+      [text(skillRow?.名前)]:resolveV39DeadlineTurn(turnNumber, duration)
+    };
     return runtime;
-  }, "enemy-action-start");
-  return window.executeV39EnemyCombatAction?.({ enemyId:text(enemy.id), targetUnitId:text(target.id), skillRow }) === true;
+  }, "enemy-cooldown-start");
 }
 
-function resolvePending(now) {
-  const state = window.getV39GameState?.();
+function executeEnemyAttack(enemy, target, skillRow, turnNumber) {
+  updateEnemyRuntime((runtime) => {
+    runtime.lastActionTurnByEnemyId[text(enemy.id)] = turnNumber;
+    return runtime;
+  }, "enemy-action-start");
+  const resolved = window.executeV39EnemyCombatAction?.({ enemyId:text(enemy.id), targetUnitId:text(target.id), skillRow }) === true;
+  if (resolved) setEnemyCooldown(enemy.id, skillRow, turnNumber);
+  return resolved;
+}
+
+function resolvePending(turnNumber) {
+  const state = enemyTurnState();
   for (const pending of Object.values(state?.enemyCombatRuntime?.pendingActionsByEnemyId || {})) {
-    if (number(pending?.resolvesAtMs) > now) continue;
+    if (remainingV39Turns(pending?.resolvesAtTurn, turnNumber) > 0) continue;
     const resolved = window.executeV39EnemyCombatAction?.({
       enemyId:text(pending.enemyId), targetUnitId:text(pending.targetUnitId), skillRow:pending.skillRow, apPaid:true
     }) === true;
     updateEnemyRuntime((runtime) => {
       delete runtime.pendingActionsByEnemyId[text(pending.enemyId)];
-      const cooldown = durationMs(pending?.skillRow?.CT);
+      runtime.lastActionTurnByEnemyId[text(pending.enemyId)] = turnNumber;
+      const cooldown = parseV39TurnCount(pending?.skillRow?.CT);
       if (resolved && cooldown > 0) runtime.cooldownsByEnemyId[text(pending.enemyId)] = {
         ...(runtime.cooldownsByEnemyId[text(pending.enemyId)] || {}),
-        [text(pending.skillName)]:now+cooldown
+        [text(pending.skillName)]:resolveV39DeadlineTurn(turnNumber, cooldown)
       };
       return runtime;
     }, resolved ? "enemy-cast-resolved" : "enemy-cast-cancelled");
@@ -235,16 +260,16 @@ function resolvePending(now) {
   return false;
 }
 
-function waitEnemy(state, enemyId, now, reason = "enemy-action-wait") {
+function waitEnemy(state, enemyId, turnNumber, reason = "enemy-action-wait") {
   const runtime = {
     ...(state.enemyCombatRuntime || {}),
-    lastActionAtMsByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionAtMsByEnemyId || {}), [text(enemyId)]:now }
+    lastActionTurnByEnemyId:{ ...(state.enemyCombatRuntime?.lastActionTurnByEnemyId || {}), [text(enemyId)]:turnNumber }
   };
-  window.setV39GameState?.({ enemyCombatRuntime:runtime }, { reason });
+  patchEnemyTurnState({ enemyCombatRuntime:runtime }, reason);
   return true;
 }
 
-function runFleeBehavior(state, enemy, targets, now) {
+function runFleeBehavior(state, enemy, targets, turnNumber) {
   const hpRate = number(enemy?.hp, enemy?.currentHp) / Math.max(1, number(enemy?.maxHp, enemy?.status?.HP || 1));
   const nest = nestFor(state, enemy);
   const active = enemy?.fleeState?.active === true;
@@ -253,10 +278,10 @@ function runFleeBehavior(state, enemy, targets, now) {
     if (!active && hpRate > threshold) return null;
     if (distance(enemy, nest) <= 1) {
       if (active) patchEnemyBehavior(state, enemy.id, { fleeState:null }, "enemy-flee-ended-at-nest");
-      return active ? true : null;
+      return active ? markEnemyTurnAction(enemy.id, turnNumber, "enemy-flee-ended-at-nest-turn") : null;
     }
     const patch = { fleeState:{ active:true, type:"nest", startedAtTurn:integer(state?.timeline?.turnNumber, 1) } };
-    return moveEnemyToward(state, enemy, nest, now, 1, patch) || waitEnemy(state, enemy.id, now, "enemy-flee-blocked");
+    return moveEnemyToward(state, enemy, nest, turnNumber, 1, patch) || waitEnemy(state, enemy.id, turnNumber, "enemy-flee-blocked");
   }
   if (!active && (hpRate > 0.3 || enemy?.fleeDecisionMade === true)) return null;
   if (!active) {
@@ -266,23 +291,23 @@ function runFleeBehavior(state, enemy, targets, now) {
       fleeDecisionMade:true,
       fleeState:flee && target ? { active:true, type:"open", targetUnitId:text(target.id), extraMoveRemaining:1 } : null
     }, "enemy-flee-decided");
-    return true;
+    return markEnemyTurnAction(enemy.id, turnNumber, "enemy-flee-decision-turn");
   }
   const target = targets.find(row => text(row?.id) === text(enemy?.fleeState?.targetUnitId));
   if (!target) {
     patchEnemyBehavior(state, enemy.id, { fleeState:null }, "enemy-flee-ended-no-target");
-    return true;
+    return markEnemyTurnAction(enemy.id, turnNumber, "enemy-flee-ended-no-target-turn");
   }
   if (distance(enemy, target) <= visionRadius(enemy)) {
-    return moveEnemyAway(state, enemy, target, now, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:1 } })
-      || waitEnemy(state, enemy.id, now, "enemy-flee-blocked");
+    return moveEnemyAway(state, enemy, target, turnNumber, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:1 } })
+      || waitEnemy(state, enemy.id, turnNumber, "enemy-flee-blocked");
   }
   if (integer(enemy?.fleeState?.extraMoveRemaining) > 0) {
-    return moveEnemyAway(state, enemy, target, now, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:0 } })
-      || waitEnemy(state, enemy.id, now, "enemy-flee-blocked");
+    return moveEnemyAway(state, enemy, target, turnNumber, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:0 } })
+      || waitEnemy(state, enemy.id, turnNumber, "enemy-flee-blocked");
   }
   patchEnemyBehavior(state, enemy.id, { fleeState:null }, "enemy-flee-ended");
-  return true;
+  return markEnemyTurnAction(enemy.id, turnNumber, "enemy-flee-ended-turn");
 }
 
 function selectEnemyTarget(state, enemy, targets) {
@@ -321,17 +346,19 @@ function selectEnemyTarget(state, enemy, targets) {
   return candidates.sort((a, b) => distance(enemy, a)-distance(enemy, b))[0] || null;
 }
 
-function runEnemyAi(now = number(window.getV39RuntimeTimeMs?.())) {
-  if (resolvePending(now)) return true;
-  const state = window.getV39GameState?.();
+function runEnemyAi(turnNumber = currentV39TurnNumber()) {
+  if (resolvePending(turnNumber)) return true;
+  const state = enemyTurnState();
   if (!state) return false;
   const targets = state.players.flatMap((player) => player?.factionState?.units || []).filter(isAlive);
-  for (const enemy of state.enemies.filter(isAlive)) {
+  const orderedEnemies = state.enemies.filter(isAlive)
+    .sort((left, right) => text(left?.id).localeCompare(text(right?.id), "ja", { numeric:true }));
+  for (const enemy of orderedEnemies) {
     const id = text(enemy.id);
     if (state.enemyCombatRuntime?.pendingActionsByEnemyId?.[id]) continue;
-    const lastAction = number(state.enemyCombatRuntime?.lastActionAtMsByEnemyId?.[id]);
-    if (now-lastAction < ENEMY_ATTACK_INTERVAL_MS) continue;
-    const fleeHandled = runFleeBehavior(state, enemy, targets, now);
+    const lastActionTurn = integer(state.enemyCombatRuntime?.lastActionTurnByEnemyId?.[id]);
+    if (lastActionTurn >= turnNumber) continue;
+    const fleeHandled = runFleeBehavior(state, enemy, targets, turnNumber);
     if (fleeHandled !== null) return fleeHandled;
     const target = selectEnemyTarget(state, enemy, targets);
     if (!target) {
@@ -345,41 +372,58 @@ function runEnemyAi(now = number(window.getV39RuntimeTimeMs?.())) {
       if (lootTarget?.targetDistance === 0) {
         if (window.recoverV39GroundLootForEnemy?.(id, lootTarget.key)?.ok) {
           updateEnemyRuntime((runtime) => {
-            runtime.lastActionAtMsByEnemyId[id] = now;
+            runtime.lastActionTurnByEnemyId[id] = turnNumber;
             return runtime;
           }, "enemy-ground-loot-recovered");
           return true;
         }
-        continue;
+        return waitEnemy(enemyTurnState() || state, id, turnNumber, "enemy-ground-loot-recovery-failed");
       }
-      if (lootTarget && moveEnemyToward(state, enemy, lootTarget, now, 0)) return true;
+      if (lootTarget && moveEnemyToward(state, enemy, lootTarget, turnNumber, 0)) return true;
       const nest = nestFor(state, enemy);
       const center = territoryCenter(enemy, nest);
       if (distance(enemy, center) > territoryRadius(enemy, nest)) {
-        if (moveEnemyToward(state, enemy, center, now, 0, { aggroTargetUnitId:"" })) return true;
-      } else if (roamInsideTerritory(state, enemy, nest, now)) {
+        if (moveEnemyToward(state, enemy, center, turnNumber, 0, { aggroTargetUnitId:"" })) return true;
+      } else if (roamInsideTerritory(state, enemy, nest, turnNumber)) {
         return true;
       }
-      return waitEnemy(state, id, now);
+      return waitEnemy(state, id, turnNumber);
     }
     const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[id] || {};
     const candidates = resolveActionSkillRows(enemy).filter((skillRow) => {
       return !isV39SupportSkill(skillRow, enemy)
         && resolveAttackApCost(skillRow) <= number(enemy.ap)
         && resolveAttackRange(skillRow, enemy) >= distance(enemy, target)
-        && number(cooldowns[text(skillRow?.名前)]) <= now;
+        && remainingV39Turns(cooldowns[text(skillRow?.名前)], turnNumber) <= 0;
     });
-    const skillRow = chooseDeterministically(candidates, id, Math.floor(now/ENEMY_ATTACK_INTERVAL_MS));
+    const skillRow = chooseDeterministically(candidates, id, turnNumber);
     if (!skillRow) {
-      if (moveEnemyToward(state, enemy, target, now)) return true;
-      waitEnemy(state, id, now);
+      if (moveEnemyToward(state, enemy, target, turnNumber)) return true;
+      waitEnemy(state, id, turnNumber);
       continue;
     }
-    if (castMs(skillRow) > 0) queueEnemyAttack(enemy, target, skillRow, now);
-    else executeEnemyAttack(enemy, target, skillRow, now);
+    if (castTurns(skillRow) > 0) queueEnemyAttack(enemy, target, skillRow, turnNumber);
+    else executeEnemyAttack(enemy, target, skillRow, turnNumber);
     return true;
   }
   return false;
+}
+
+function runEnemyTurn(turnNumber = currentV39TurnNumber()) {
+  movedEnemyIdsThisTurn.clear();
+  const actionLimit = Math.max(1, (enemyTurnState()?.enemies || []).filter(isAlive).length * 2);
+  let steps = 0;
+  while (steps < actionLimit && runEnemyAi(turnNumber)) steps += 1;
+  const finalState = enemyTurnState();
+  const unhandled = (finalState?.enemies || []).filter(enemy => isAlive(enemy)
+    && !finalState?.enemyCombatRuntime?.pendingActionsByEnemyId?.[text(enemy.id)]
+    && integer(finalState?.enemyCombatRuntime?.lastActionTurnByEnemyId?.[text(enemy.id)]) < turnNumber);
+  if (unhandled.length) console.warn("[敵ターン] 未処理の敵が残りました", { ターン:turnNumber, 敵ID:unhandled.map(enemy => text(enemy.id)) });
+  for (const enemyId of movedEnemyIdsThisTurn) {
+    window.recoverV39GroundLootForEnemy?.(enemyId);
+    window.depositV39EnemyCargo?.(enemyId);
+  }
+  return steps;
 }
 
 function installEnemyAggroTracking() {
@@ -400,14 +444,8 @@ function installEnemyAggroTracking() {
   });
 }
 
-window.addEventListener("v39:runtime-tick", (event) => {
-  const second = Math.floor(number(event?.detail?.elapsedMs)/1000);
-  if (second === lastProcessedSecond) return;
-  lastProcessedSecond = second;
-  runEnemyAi(number(event?.detail?.elapsedMs));
-});
-
 window.runV39EnemyAi = runEnemyAi;
-window.getV39EnemyAiRules = () => ({ attackIntervalMs:ENEMY_ATTACK_INTERVAL_MS, aggressiveFleeHpRate:0.3, passiveFleeHpRate:0.55, noNestFleeChance:0.3 });
+window.runV39EnemyTurn = runEnemyTurn;
+window.getV39EnemyAiRules = () => ({ actionsPerEnemyPerTurn:1, aggressiveFleeHpRate:0.3, passiveFleeHpRate:0.55, noNestFleeChance:0.3 });
 
 installEnemyAggroTracking();

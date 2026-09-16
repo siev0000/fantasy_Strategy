@@ -108,6 +108,10 @@ export function normalizeV39EnemyNest(nest = {}, index = 0) {
     y,
     territoryRadius:Math.max(1, Math.floor(number(nest?.territoryRadius, 1))),
     population:Math.max(0, Math.floor(number(nest?.population))),
+    populationByRace:Object.fromEntries(Object.entries(nest?.populationByRace || {})
+      .map(([race, value]) => [text(race), Math.max(0, Math.floor(number(value)))])
+      .filter(([race, value]) => race && value > 0)),
+    populationGrowthByRace:Object.fromEntries(Object.entries(nest?.populationGrowthByRace || {}).map(([race, value]) => [text(race), { ...(value || {}) }])),
     unitIds:[...new Set((Array.isArray(nest?.unitIds) ? nest.unitIds : []).map(text).filter(Boolean))],
     foodStockByType:normalizeV39ResourceCargo(nest?.foodStockByType),
     materialStockByType:normalizeV39ResourceCargo(nest?.materialStockByType),

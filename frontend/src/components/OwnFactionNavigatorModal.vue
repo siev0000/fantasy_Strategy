@@ -1,6 +1,5 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { TURN_SECONDS } from "../lib/phaser-map-panel-config.js";
 
 const props = defineProps({
   squadEntries: { type: Array, default: () => [] },
@@ -432,7 +431,7 @@ function resolveSurveyRemainingText(entry) {
   if (!entry?.isSurveying) return "";
   if (Number.isFinite(Number(entry?.surveyTotalTurns))) {
     const totalTurns = Math.max(0, Math.floor(Number(entry.surveyTotalTurns)));
-    return `${totalTurns * TURN_SECONDS}秒`;
+    return `${totalTurns}ターン`;
   }
   return Number.isFinite(Number(entry?.surveyDangerPercent))
     ? `${Math.max(0, Math.floor(Number(entry.surveyDangerPercent)))}%`

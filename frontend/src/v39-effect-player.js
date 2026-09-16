@@ -4,6 +4,7 @@ import effectListAnimation1 from "../../assets/effect/アニメーション1/eff
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
 
 const sources = new Map();
+const EFFECT_TOTAL_DURATION_MS = 1500;
 
 function assetUrl(folder, name) {
   return `/assets/effect/${encodeURIComponent(folder)}/${encodeURIComponent(name)}.webp`;
@@ -53,7 +54,7 @@ function effectPlayer() {
   if (player && playerScene === scene) return player;
   player?.destroy?.();
   playerScene = scene;
-  player = new PhaserEffectPlayer(scene, { totalDurationMs:4000, sequenceGapMs:10, depth:1000000 });
+  player = new PhaserEffectPlayer(scene, { totalDurationMs:EFFECT_TOTAL_DURATION_MS, sequenceGapMs:10, depth:1000000 });
   return player;
 }
 
@@ -97,7 +98,7 @@ export async function playV39MapEffect(request = {}) {
     grayscaleBase:request.grayscaleBase === true,
     renderStyle:text(request.renderStyle, "soft"),
     showPreviousFrameGhost:request.showPreviousFrameGhost !== false,
-    totalDurationMs:number(request.totalDurationMs, 4000),
+    totalDurationMs:number(request.totalDurationMs, EFFECT_TOTAL_DURATION_MS),
     sequenceGapMs:number(request.sequenceGapMs, 10),
     depth:number(request.depth, 1000000),
     displayName:"v39-effect-image"

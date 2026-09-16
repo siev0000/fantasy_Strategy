@@ -1,4 +1,4 @@
-import { computeSkillScaledTriplet, resolveSkillBasePower, toSafeNumber } from "./skill-power.js";
+import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { COMBAT_STATUS_FIELDS, DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS } from "../constants/unitCommon.js";
 
@@ -40,6 +40,7 @@ export function applyV39PassiveCombatSkills(attacker, skillRow, { isCounter = fa
   for (const passive of passiveRows) {
     for (const field of PASSIVE_STATUS_FIELDS) status[field] = number(status[field]) + number(passive?.[field]);
     for (const field of PASSIVE_ATTACK_FIELDS) adjustedSkill[field] = number(adjustedSkill[field]) + number(passive?.[field]);
+    adjustedSkill.ガード = number(adjustedSkill.ガード) + number(passive?.ガード);
   }
   return {
     attacker:{ ...attacker, status },
@@ -133,6 +134,11 @@ export function resolveSkillHealing(skillRow, attacker) {
   return Math.max(0, Math.round(base * (1 + bonus / 500)));
 }
 
+export function resolveSkillGuard(skillRow, attacker, options = {}) {
+  const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, options);
+  return Math.max(0, Math.floor(number(computeSkillScaledTriplet(adjusted.skillRow, adjusted.attacker?.status || {})?.guard)));
+}
+
 export function resolveSkillTimedModifiers(skillRow) {
   return Object.fromEntries(TIMED_EFFECT_FIELDS
     .map(key => [key, number(skillRow?.[key])])
@@ -153,7 +159,28 @@ export function applyV39ActiveCombatEffects(unit, effects) {
 
 export function isV39SupportSkill(skillRow, attacker) {
   return resolveSkillHealing(skillRow, attacker) > 0
-    || (resolveAttackPower(skillRow, attacker) <= 0 && Object.keys(resolveSkillTimedModifiers(skillRow)).length > 0);
+    || (resolveAttackPower(skillRow, attacker) <= 0
+      && (Object.keys(resolveSkillTimedModifiers(skillRow)).length > 0 || resolveSkillGuard(skillRow, attacker) > 0));
+}
+
+export function applyV39GuardToDamage(target, damage) {
+  let remaining = Math.max(0, Math.floor(number(target?.guard)));
+  const guardBefore = remaining;
+  const hitsBeforeGuard = Array.isArray(damage?.hits) ? damage.hits.map(value => Math.max(0, Math.floor(number(value)))) : [];
+  const hits = hitsBeforeGuard.map(value => {
+    const absorbed = Math.min(remaining, value);
+    remaining -= absorbed;
+    return value - absorbed;
+  });
+  return {
+    ...damage,
+    total:hits.reduce((sum, value) => sum + value, 0),
+    hits,
+    hitsBeforeGuard,
+    guardBefore,
+    guardAbsorbed:guardBefore - remaining,
+    guardRemaining:remaining
+  };
 }
 
 function primaryWeaponRow(unit) {
@@ -213,7 +240,11 @@ export function resolveAttackPower(skillRow, attacker, options = {}) {
   const effectiveAttacker = adjusted.attacker;
   const scaled = computeSkillScaledTriplet(effectiveSkill, effectiveAttacker?.status || {});
   let power = Math.max(0, number(scaled?.power, resolveSkillBasePower(effectiveSkill)));
-  if (text(effectiveSkill?.攻撃手段) === "武器" && effectiveSkill?.装備攻撃 !== true) {
+  const pureGuardSkill = number(effectiveSkill?.ガード) > 0
+    && resolveSkillBasePower(effectiveSkill) <= 0
+    && resolveSkillBaseState(effectiveSkill) <= 0
+    && number(effectiveSkill?.回復) <= 0;
+  if (text(effectiveSkill?.攻撃手段) === "武器" && effectiveSkill?.装備攻撃 !== true && !pureGuardSkill) {
     const weapon = primaryWeaponRow(effectiveAttacker);
     if (weapon) power += Math.max(0, number(computeSkillScaledTriplet(weapon, effectiveAttacker?.status || {})?.power, 0));
   }

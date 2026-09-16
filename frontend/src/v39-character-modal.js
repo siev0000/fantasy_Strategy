@@ -1,3 +1,5 @@
+import { currentV39TurnNumber, remainingV39Turns } from "./lib/v39-turn-timing.js";
+
 let activeTab = "character";
 let selectedId = "";
 
@@ -34,6 +36,7 @@ function statusCards(unit) {
     ["攻撃", unit?.status?.攻撃], ["防御", unit?.status?.防御], ["魔力", unit?.status?.魔力],
     ["精神", unit?.status?.精神], ["速度", unit?.status?.速度], ["命中", unit?.status?.命中]
   ];
+  if (number(unit?.guard) > 0) cards.splice(6, 0, ["ガード", Math.floor(number(unit.guard))]);
   return cards.map(([label, value]) => `<div class="detail-card"><span>${label}</span><b>${escapeHtml(value ?? "-")}</b></div>`).join("");
 }
 
@@ -41,11 +44,11 @@ function unitDetail(unit) {
   if (!unit) return '<div class="detail-pane"><p>表示対象がありません。</p></div>';
   const skills = (Array.isArray(unit?.techniques) ? unit.techniques : [])
     .map((entry) => text(entry?.name ?? entry?.名前 ?? entry?.source?.名前)).filter(Boolean);
-  const remainingMs = Math.max(0, number(unit?.deadExpireAtMs) - Date.now());
+  const remainingTurns = remainingV39Turns(unit?.deadExpireTurn, currentV39TurnNumber());
   return `<div class="detail-pane">
     <h3 style="margin:3px 0 8px">${escapeHtml(unit.name)} / ${escapeHtml(unit.role || unit.state || "キャラクター")}</h3>
     <div class="detail-grid">${statusCards(unit)}</div>
-    ${activeTab === "corpse" ? `<p>消滅まで ${Math.ceil(remainingMs / 1000)}秒 / 座標 (${number(unit.x)}, ${number(unit.y)})</p>` : ""}
+    ${activeTab === "corpse" ? `<p>消滅まで ${remainingTurns}ターン / 座標 (${number(unit.x)}, ${number(unit.y)})</p>` : ""}
     ${activeTab === "dead" ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}
     <h4>取得スキル</h4><div class="costs">${skills.map((name) => `<span class="cost">${escapeHtml(name)}</span>`).join("") || '<span class="cost">なし</span>'}</div>
   </div>`;

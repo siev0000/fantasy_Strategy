@@ -32,15 +32,14 @@ const EMPTY_STATE = Object.freeze({
   },
   enemyCombatRuntime: {
     pendingActionsByEnemyId: {},
-    lastActionAtMsByEnemyId: {},
+    lastActionTurnByEnemyId: {},
     cooldownsByEnemyId: {},
     activeEffectsByEnemyId: {}
   },
   timeline: {
     turnNumber: 1,
+    phase: "player",
     paused: false,
-    elapsedMs: 0,
-    lastTurnAdvancedAtMs: 0,
     lastResolvedTurn: 0,
     lastStageSequence: []
   }
@@ -152,15 +151,14 @@ function normalizeState(input = {}) {
     worldEnvironment: normalizeWorldEnvironment(input.worldEnvironment),
     enemyCombatRuntime: {
       pendingActionsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.pendingActionsByEnemyId),
-      lastActionAtMsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.lastActionAtMsByEnemyId),
+      lastActionTurnByEnemyId: cloneRecord(input?.enemyCombatRuntime?.lastActionTurnByEnemyId),
       cooldownsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.cooldownsByEnemyId),
       activeEffectsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.activeEffectsByEnemyId)
     },
     timeline: {
       turnNumber: Math.max(1, Math.floor(Number(input?.timeline?.turnNumber) || 1)),
+      phase:["player", "enemy", "resolution"].includes(input?.timeline?.phase) ? input.timeline.phase : "player",
       paused: input?.timeline?.paused === true,
-      elapsedMs: Math.max(0, Number(input?.timeline?.elapsedMs) || 0),
-      lastTurnAdvancedAtMs: Math.max(0, Number(input?.timeline?.lastTurnAdvancedAtMs) || 0),
       lastResolvedTurn:Math.max(0, Math.floor(Number(input?.timeline?.lastResolvedTurn) || 0)),
       lastStageSequence:Array.isArray(input?.timeline?.lastStageSequence) ? input.timeline.lastStageSequence.map(String) : []
     }
@@ -223,7 +221,7 @@ function getState() {
     worldEnvironment: normalizeWorldEnvironment(state.worldEnvironment),
     enemyCombatRuntime: {
       pendingActionsByEnemyId:{ ...state.enemyCombatRuntime.pendingActionsByEnemyId },
-      lastActionAtMsByEnemyId:{ ...state.enemyCombatRuntime.lastActionAtMsByEnemyId },
+      lastActionTurnByEnemyId:{ ...state.enemyCombatRuntime.lastActionTurnByEnemyId },
       cooldownsByEnemyId:{ ...state.enemyCombatRuntime.cooldownsByEnemyId },
       activeEffectsByEnemyId:{ ...state.enemyCombatRuntime.activeEffectsByEnemyId }
     },
@@ -278,6 +276,18 @@ function setState(patch = {}, options = {}) {
   return getState();
 }
 
+// Enemy turns can update dozens of units. Intermediate states are normalized once
+// by the normal turn-complete write instead of cloning the full state per enemy.
+function patchEnemyTurnState(patch = {}) {
+  const next = { ...state };
+  if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = patch.enemies;
+  if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) {
+    next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
+  }
+  state = next;
+  return true;
+}
+
 function setActivePlayer(playerId, options = {}) {
   const id = String(playerId || "");
   if (!state.players.some(player => player.id === id)) return getActivePlayer();
@@ -292,9 +302,8 @@ function updateTimelineState(patch = {}, options = {}) {
     ...state,
     timeline:{
       turnNumber:Math.max(1, Math.floor(Number(source.turnNumber) || 1)),
+      phase:["player", "enemy", "resolution"].includes(source.phase) ? source.phase : "player",
       paused:source.paused === true,
-      elapsedMs:Math.max(0, Number(source.elapsedMs) || 0),
-      lastTurnAdvancedAtMs:Math.max(0, Number(source.lastTurnAdvancedAtMs) || 0),
       lastResolvedTurn:Math.max(0, Math.floor(Number(source.lastResolvedTurn) || 0)),
       lastStageSequence:Array.isArray(source.lastStageSequence) ? source.lastStageSequence.map(String) : []
     }
@@ -344,6 +353,8 @@ function clearState(options = {}) {
 
 window.getV39GameState = getState;
 window.setV39GameState = setState;
+window.patchV39EnemyTurnState = patchEnemyTurnState;
+window.getV39EnemyTurnState = () => state;
 window.getV39ActivePlayer = getActivePlayer;
 window.getV39ActiveFactionState = getActiveFactionState;
 window.getV39TimelineState = getTimelineState;

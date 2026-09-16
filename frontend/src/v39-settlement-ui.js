@@ -24,6 +24,22 @@ function keyValueRows(record, emptyLabel = "なし") {
   return `<div class="settlement-value-grid">${rows.map(([key, value]) => `<div><span>${escapeHtml(key)}</span><b>${formatNumber(value)}</b></div>`).join("")}</div>`;
 }
 
+function populationRows(settlement) {
+  const growth = settlement?.populationGrowthByRace || {};
+  const rows = Object.entries(settlement?.populationByRace || {}).filter(([, value]) => number(value) > 0);
+  if (!rows.length) return `<span class="settlement-empty">なし</span>`;
+  return `<div class="settlement-value-grid">${rows.map(([race, population]) => {
+    const state = growth[race] || {};
+    const gauge = formatNumber(state.gauge);
+    const required = formatNumber(state.lastRequiredGauge);
+    const shortage = number(state.shortage);
+    const stage = Math.max(0, Math.floor(number(state.starvationStage)));
+    const detail = required !== "0" ? `${gauge}/${required}` : "-";
+    const alert = shortage > 0 ? ` / 不足${formatNumber(shortage)}` : stage > 0 ? ` / 飢餓${stage}` : "";
+    return `<div><span>${escapeHtml(race)} ${formatNumber(population)}人<br>${escapeHtml(state.condition || "-")}${alert}</span><b>${detail}</b></div>`;
+  }).join("")}</div>`;
+}
+
 function section(key, label, value, body) {
   return `<details class="settlement-fold" data-settlement-fold="${key}"${openSections.has(key) ? " open" : ""}>
     <summary><span>${label}</span>${value ? `<b>${value}</b>` : ""}</summary>
@@ -54,17 +70,19 @@ function render() {
     ...buildings.map(name => `<span class="settlement-chip">${escapeHtml(name)}</span>`),
     ...queue.map(item => `<span class="settlement-chip building">${escapeHtml(item.facilityName)} 残${Math.max(0, Math.floor(number(item.remainingTurns)))}T</span>`)
   ].join("") || `<span class="settlement-empty">なし</span>`;
+  const employmentRate = Math.max(0, Math.min(1, number(settlement.employmentRate)));
+  const populationSummary = `<div class="settlement-inline-facts"><span>人口許容 <b>${formatNumber(settlement.populationCapacity)}</b></span><span>雇用枠 <b>${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span></div>${populationRows(settlement)}`;
 
   panel.innerHTML = `
     <nav class="settlement-tabs" aria-label="所有拠点">
       ${settlements.map(row => `<button type="button" class="settlement-tab${text(row.settlementId) === settlementId ? " active" : ""}" data-settlement-id="${escapeHtml(row.settlementId)}">${escapeHtml(row.name || row.type || "拠点")}</button>`).join("")}
     </nav>
     <div class="settlement-fold-list">
-      ${section("population", "人口", formatNumber(settlement.population), keyValueRows(settlement.populationByRace))}
+      ${section("population", "人口", formatNumber(settlement.population), populationSummary)}
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
       ${section("material", "資材", formatNumber(settlement.materialStock), keyValueRows(settlement.materialStockByType))}
       ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}</div>`)}
-      ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
+      ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
       ${section("repair", "修復", damaged.length ? `${damaged.length}マス` : "なし", `<div class="settlement-inline-facts"><span>自動修復 <b>${settlement.autoRepair ? "ON" : "OFF"}</b></span><span>修復中 <b>${damaged.length}</b></span></div>`)}
     </div>`;
 }

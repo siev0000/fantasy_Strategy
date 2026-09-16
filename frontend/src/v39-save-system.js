@@ -1,7 +1,7 @@
 const SAVE_FORMAT = "fantasy-strategy-v39";
 import { getGameDataRows } from "./lib/game-data-registry.js";
 
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 const skillByName = new Map(getGameDataRows("スキル一覧").map(row => [String(row?.名前 || "").trim(), row]).filter(([name]) => name));
 
@@ -89,14 +89,106 @@ function validateSaveData(save) {
   return save;
 }
 
+const integer = (value, fallback = 0) => Number.isFinite(Number(value)) ? Math.floor(Number(value)) : fallback;
+const legacyRemainingTurns = (deadlineMs, currentMs) => Math.max(0, Math.ceil((Number(deadlineMs) - Number(currentMs)) / 1000) || 0);
+
+function migrateDeadlineRecord(record, currentMs, currentTurn) {
+  return Object.fromEntries(Object.entries(record || {}).map(([ownerId, deadlines]) => [ownerId,
+    Object.fromEntries(Object.entries(deadlines || {}).map(([name, deadlineMs]) => [name,
+      currentTurn + legacyRemainingTurns(deadlineMs, currentMs)]))
+  ]));
+}
+
+function migrateEffectRecord(record, currentMs, currentTurn) {
+  return Object.fromEntries(Object.entries(record || {}).map(([ownerId, effects]) => [ownerId,
+    (Array.isArray(effects) ? effects : []).map(effect => {
+      const { expiresAtMs, ...rest } = effect || {};
+      return { ...rest, expiresAtTurn:currentTurn + legacyRemainingTurns(expiresAtMs, currentMs) };
+    })
+  ]));
+}
+
+function migratePendingRecord(record, currentMs, currentTurn) {
+  return Object.fromEntries(Object.entries(record || {}).map(([ownerId, pending]) => {
+    if (!pending || typeof pending !== "object") return [ownerId, pending];
+    const { startedAtMs, resolvesAtMs, ...rest } = pending;
+    return [ownerId, {
+      ...rest,
+      startedTurn:currentTurn,
+      resolvesAtTurn:currentTurn + legacyRemainingTurns(resolvesAtMs, currentMs)
+    }];
+  }));
+}
+
+function migrateDeadUnit(unit, savedAtMs, currentTurn) {
+  if (!unit || typeof unit !== "object") return unit;
+  const { diedAtMs, deadAtMs, deadExpireAtMs, ...rest } = unit;
+  if (!deadExpireAtMs) return unit;
+  const diedAtTurn = Math.max(1, integer(unit?.deathTurn, currentTurn));
+  return {
+    ...rest,
+    deathTurn:diedAtTurn,
+    diedAtTurn,
+    deadExpireTurn:currentTurn + legacyRemainingTurns(deadExpireAtMs, savedAtMs)
+  };
+}
+
+function migrateGameStateTiming(gameState, savedAt) {
+  const timeline = gameState?.timeline || {};
+  const { elapsedMs:legacyElapsedMs, lastTurnAdvancedAtMs:_legacyTurnAdvancedAtMs, ...turnTimeline } = timeline;
+  const currentTurn = Math.max(1, integer(timeline.turnNumber, 1));
+  const currentMs = Math.max(0, Number(legacyElapsedMs) || 0);
+  const savedAtMs = Number.isFinite(Date.parse(savedAt || "")) ? Date.parse(savedAt) : Date.now();
+  const players = (gameState?.players || []).map(player => {
+    const faction = player?.factionState || {};
+    const runtime = faction.combatRuntime || {};
+    return {
+      ...player,
+      factionState:{
+        ...faction,
+        units:(faction.units || []).map(unit => migrateDeadUnit(unit, savedAtMs, currentTurn)),
+        deadUnitReserve:(faction.deadUnitReserve || []).map(entry => ({ ...entry, unit:migrateDeadUnit(entry?.unit, savedAtMs, currentTurn) })),
+        combatRuntime:{
+          ...runtime,
+          pendingActionsByUnitId:migratePendingRecord(runtime.pendingActionsByUnitId, currentMs, currentTurn),
+          cooldownsByUnitId:migrateDeadlineRecord(runtime.cooldownsByUnitId, currentMs, currentTurn),
+          activeEffectsByUnitId:migrateEffectRecord(runtime.activeEffectsByUnitId, currentMs, currentTurn)
+        }
+      }
+    };
+  });
+  const enemyRuntime = gameState?.enemyCombatRuntime || {};
+  const { lastActionAtMsByEnemyId:_legacyEnemyActions, ...turnEnemyRuntime } = enemyRuntime;
+  return {
+    ...gameState,
+    players,
+    enemies:(gameState?.enemies || []).map(unit => migrateDeadUnit(unit, savedAtMs, currentTurn)),
+    enemyCombatRuntime:{
+      ...turnEnemyRuntime,
+      pendingActionsByEnemyId:migratePendingRecord(enemyRuntime.pendingActionsByEnemyId, currentMs, currentTurn),
+      cooldownsByEnemyId:migrateDeadlineRecord(enemyRuntime.cooldownsByEnemyId, currentMs, currentTurn),
+      activeEffectsByEnemyId:migrateEffectRecord(enemyRuntime.activeEffectsByEnemyId, currentMs, currentTurn),
+      lastActionTurnByEnemyId:{}
+    },
+    timeline:{ ...turnTimeline, phase:"player" }
+  };
+}
+
 function migrateSaveData(save) {
   const sourceVersion = Math.max(1, Number(save?.version) || 1);
   let migrated = save;
-  if (sourceVersion === 1) {
+  if (Number(migrated.version) < 2) {
     migrated = {
       ...migrated,
       version:2,
       gameState:stripDefinitionSnapshots(migrated.gameState)
+    };
+  }
+  if (Number(migrated.version) < 3) {
+    migrated = {
+      ...migrated,
+      version:3,
+      gameState:migrateGameStateTiming(migrated.gameState, migrated.savedAt)
     };
   }
   return { save:migrated, sourceVersion };

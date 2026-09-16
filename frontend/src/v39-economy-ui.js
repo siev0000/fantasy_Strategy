@@ -178,7 +178,13 @@ function handleTurn() {
   processingTurn = true;
   try {
     const result = advanceV39EconomyTurn(state);
-    window.setV39GameState?.({ players:result.state.players, facilitiesByTile:result.state.facilitiesByTile, settlements:result.state.settlements }, { reason:"economy-turn" });
+    window.setV39GameState?.({
+      players:result.state.players,
+      enemies:result.state.enemies,
+      enemyNests:result.state.enemyNests,
+      facilitiesByTile:result.state.facilitiesByTile,
+      settlements:result.state.settlements
+    }, { reason:"economy-turn" });
     if (result.completed.length) {
       window.showV39TurnBanner?.(`建設完了: ${result.completed.map(row => row.facilityName).join("、")}`);
       window.dispatchEvent(new CustomEvent("v39:construction-completed", { detail:{ completed:result.completed } }));

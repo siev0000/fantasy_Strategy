@@ -1,20 +1,25 @@
 import { getGameDataRows } from "./game-data-registry.js";
 import { resolveCompletedResearchLevel } from "./research-progress.js";
 import {
-  addToResourceBag,
-  applyVillageEconomyTurn,
-  buildEmptyResourceBag,
-  buildPopulationFoodDemand,
-  buildUnitUpkeepFoodDemand,
   collectTerritoryIncome,
   multiplyResourceBag,
   normalizeResourceBag,
   sumResourceBag
 } from "../composables/resourceEconomyUtils.js";
-import { adjustVillagePopulationForTurn, resolveVillageScaleDefinition, resolveVillageScaleLabel } from "../composables/villageCoreUtils.js";
+import { resolveVillageScaleDefinition, resolveVillageScaleLabel } from "../composables/villageCoreUtils.js";
 import { getHexDistance, getHexOffsetNeighbors } from "./hex-grid.js";
+import {
+  TERRITORY_TILE_MODE_CONFIG,
+  TERRITORY_TILE_MODE_RESOURCE,
+  TERRITORY_TILE_MODE_SETTLEMENT
+} from "./phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./research-tree-config.js";
 import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement, territorySettlementId } from "./settlement-state.js";
+import {
+  advanceV39PopulationEconomy,
+  buildV39PopulationMaintenanceStock,
+  normalizeV39PopulationGrowthState
+} from "./v39-population-economy.js";
 
 const RESOURCE_DEFINITION_ROWS = getGameDataRows("都市基本データ")
   .filter(row => ["食料", "木材", "石材", "金属", "貴金属", "宝石", "特殊資源"].includes(String(row?.分類 || "").trim()));
@@ -24,6 +29,7 @@ const resourceKeysFor = categories => Object.freeze([...new Set(RESOURCE_DEFINIT
 
 export const FOOD_RESOURCE_KEYS = resourceKeysFor(["食料", "特殊資源"]);
 export const MATERIAL_RESOURCE_KEYS = resourceKeysFor(["木材", "石材", "金属", "貴金属", "宝石"]);
+export const NORMAL_FOOD_RESOURCE_KEYS = resourceKeysFor(["食料"]);
 const RESOURCE_MARKER_ROWS = RESOURCE_DEFINITION_ROWS
   .filter(row => Number.isInteger(Number(row?.地図表示優先度)) && Number(row.地図表示優先度) > 0)
   .sort((left, right) => Number(left.地図表示優先度) - Number(right.地図表示優先度));
@@ -49,8 +55,6 @@ const RESOURCE_FACILITY_EFFECT = Object.freeze(Object.fromEntries(RESOURCE_DEFIN
   .filter(([name, skill]) => name && skill)));
 
 const ECONOMY_GAIN_SCALE = 0.1;
-const ECONOMY_CONSUMPTION_SCALE = 0.1;
-const FOOD_SUBSTITUTE_MULTIPLIER = 1.2;
 const INITIAL_STOCK_TURNS = 3;
 const RESEARCH_FIELDS = RESEARCH_CATEGORY_ORDER;
 const FACILITY_NON_EFFECT_FIELDS = new Set([
@@ -68,14 +72,6 @@ function factionDefinition(race) {
   const target = text(race);
   return getGameDataRows("勢力").find(row => text(row?.種族) === target || text(row?.カナ) === target)
     || (target === "只人" ? getGameDataRows("勢力").find(row => text(row?.種族) === "人間") : null);
-}
-
-function classDefinitionForRace(race) {
-  const target = text(race);
-  const factionRace = text(factionDefinition(target)?.種族);
-  return getGameDataRows("クラス").find(row => text(row?.名前) === target)
-    || getGameDataRows("クラス").find(row => text(row?.名前) === factionRace)
-    || null;
 }
 
 function normalizePopulationByRace(raw, race, fallbackPopulation) {
@@ -127,6 +123,10 @@ export function normalizeV39Village(village, race = "只人") {
     tileFacilityMap,
     constructionQueue,
     equipmentInventory:Array.isArray(village.equipmentInventory) ? village.equipmentInventory.map(row => ({ ...row, item:row?.item && typeof row.item === "object" ? { ...row.item } : row?.item })) : [],
+    populationGrowthByRace:normalizeV39PopulationGrowthState(populationByRace, village.populationGrowthByRace),
+    populationCapacity:Math.max(0, Math.floor(number(village.populationCapacity))),
+    employmentSlots:Math.max(0, Math.floor(number(village.employmentSlots))),
+    employmentRate:Math.max(0, Math.min(1, number(village.employmentRate))),
     lastEconomyDelta:village.lastEconomyDelta && typeof village.lastEconomyDelta === "object" ? { ...village.lastEconomyDelta } : null
   };
 }
@@ -148,18 +148,37 @@ function territoryKeysForPlayer(state, playerId, settlementId = "") {
 
 function tileModeMultiplier(village, key) {
   const homeKey = village?.placed ? coordKey(village.x, village.y) : "";
-  const mode = text(village?.territoryTileModeMap?.[key]) || (key === homeKey ? "settlement" : "resource");
-  return mode === "settlement" ? 1 : 2;
+  const mode = text(village?.territoryTileModeMap?.[key]) || (key === homeKey ? TERRITORY_TILE_MODE_SETTLEMENT : TERRITORY_TILE_MODE_RESOURCE);
+  return number(TERRITORY_TILE_MODE_CONFIG[mode]?.incomeMultiplier, 1);
 }
 
-function collectDiscoveredFeatureIncome(raw, player, ownedSet, village) {
+function tileModeDefinition(village, key) {
+  const homeKey = village?.placed ? coordKey(village.x, village.y) : "";
+  const mode = text(village?.territoryTileModeMap?.[key]) || (key === homeKey ? TERRITORY_TILE_MODE_SETTLEMENT : TERRITORY_TILE_MODE_RESOURCE);
+  return TERRITORY_TILE_MODE_CONFIG[mode] || TERRITORY_TILE_MODE_CONFIG[TERRITORY_TILE_MODE_RESOURCE];
+}
+
+export function resolveV39SettlementLabor(state, player, village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race)) {
+  const ownedKeys = territoryKeysForPlayer(state, player?.id, village?.settlementId || village?.id);
+  const populationCapacity = ownedKeys.reduce((sum, key) => sum + Math.max(0, number(tileModeDefinition(village, key)?.populationCapacityBonus)), 0);
+  const employmentSlots = ownedKeys.reduce((sum, key) => sum + Math.max(0, number(tileModeDefinition(village, key)?.employmentSlots)), 0);
+  const population = Math.max(0, number(village?.population));
+  return {
+    ownedKeys,
+    populationCapacity:Math.floor(populationCapacity),
+    employmentSlots:Math.floor(employmentSlots),
+    employmentRate:employmentSlots > 0 ? Math.min(1, population / employmentSlots) : 0
+  };
+}
+
+function collectDiscoveredFeatureIncome(raw, player, ownedSet, village, employmentRate) {
   const discovered = player?.factionState?.exploration?.discoveredFeaturesByTile || {};
   const terrainYieldMap = new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]));
   for (const [key, site] of Object.entries(discovered)) {
     if (!ownedSet.has(key)) continue;
     const row = terrainYieldMap.get(text(site?.featureName));
     if (!row) continue;
-    const multiplier = tileModeMultiplier(village, key);
+    const multiplier = tileModeMultiplier(village, key) * employmentRate;
     for (const resourceKey of FOOD_RESOURCE_KEYS) {
       const value = number(row[resourceKey]);
       raw.food[resourceKey] = round1(number(raw.food[resourceKey]) + value * multiplier * (value > 0 ? resolveV39FacilityYieldMultiplier(village, key, resourceKey) : 1));
@@ -172,25 +191,124 @@ function collectDiscoveredFeatureIncome(raw, player, ownedSet, village) {
   return raw;
 }
 
+function nestTerritoryKeys(nest, mapData) {
+  const result = new Set();
+  const center = { x:Math.floor(number(nest?.x)), y:Math.floor(number(nest?.y)) };
+  const radius = Math.max(1, Math.floor(number(nest?.territoryRadius, 1)));
+  for (let y = 0; y < number(mapData?.h); y += 1) for (let x = 0; x < number(mapData?.w); x += 1) {
+    if (getHexDistance(center, { x, y }) <= radius) result.add(coordKey(x, y));
+  }
+  return result;
+}
+
+function collectV39NestTerritoryIncome(nest, mapData) {
+  const ownedSet = nestTerritoryKeys(nest, mapData);
+  const population = Math.max(0, number(nest?.population));
+  const employmentSlots = ownedSet.size * number(TERRITORY_TILE_MODE_CONFIG[TERRITORY_TILE_MODE_RESOURCE]?.employmentSlots, 10);
+  const employmentRate = employmentSlots > 0 ? Math.min(1, population / employmentSlots) : 0;
+  const raw = collectTerritoryIncome(mapData, ownedSet, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
+    roundTo1:round1,
+    parseCoordKey:key => { const [x, y] = text(key).split(",").map(Number); return { x, y }; },
+    resolveTileTerrainForYield:resolveTileTerrain,
+    resolveTileYieldMultiplier:() => number(TERRITORY_TILE_MODE_CONFIG[TERRITORY_TILE_MODE_RESOURCE]?.incomeMultiplier, 2) * employmentRate,
+    resolveResourceYieldMultiplier:() => 1,
+    terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
+  });
+  return {
+    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+    material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
+    territoryTiles:ownedSet.size,
+    employmentSlots,
+    employmentRate
+  };
+}
+
+function advanceEnemyNestEconomy(state, mapData, currentTurn) {
+  const sourceEnemies = Array.isArray(state?.enemies) ? state.enemies : [];
+  const stageByEnemyId = new Map();
+  const enemyNests = (Array.isArray(state?.enemyNests) ? state.enemyNests : []).map(nest => {
+    if (number(nest?.lastEconomyTurn) >= currentTurn) return nest;
+    const members = sourceEnemies.filter(enemy => text(enemy?.nestId) === text(nest?.id));
+    const race = text(members[0]?.race || members[0]?.sourceRace || nest?.race);
+    const fallbackPopulation = Math.max(0, Math.floor(number(nest?.population)));
+    const existingPopulationEntries = Object.entries(nest?.populationByRace || {}).filter(([key, value]) => text(key) && number(value) > 0);
+    const populationByRace = Object.keys(nest?.populationByRace || {}).length
+      ? Object.fromEntries(existingPopulationEntries)
+      : nest?.economyInitialized === true || fallbackPopulation <= 0
+        ? {}
+        : { [race || "スネーク"]:fallbackPopulation };
+    const normalizedPopulation = Object.values(populationByRace).reduce((sum, value) => sum + Math.max(0, Math.floor(number(value))), 0);
+    const territoryIncome = collectV39NestTerritoryIncome({ ...nest, population:normalizedPopulation }, mapData);
+    const initializedStock = nest?.economyInitialized === true
+      ? nest.foodStockByType
+      : buildV39PopulationMaintenanceStock(populationByRace, members, FOOD_RESOURCE_KEYS, 4);
+    const result = advanceV39PopulationEconomy({
+      village:{ ...nest, population:normalizedPopulation, populationByRace, foodStockByType:initializedStock },
+      units:members,
+      income:territoryIncome.food,
+      resourceKeys:FOOD_RESOURCE_KEYS,
+      normalFoodKeys:NORMAL_FOOD_RESOURCE_KEYS,
+      populationCapacity:Number.POSITIVE_INFINITY
+    });
+    const materialStockByType = { ...(nest?.materialStockByType || {}) };
+    for (const key of MATERIAL_RESOURCE_KEYS) materialStockByType[key] = round1(number(materialStockByType[key]) + number(territoryIncome.material[key]));
+    for (const enemy of members) stageByEnemyId.set(text(enemy.id), result.populationGrowthByRace[text(enemy.race)] || {});
+    return {
+      ...nest,
+      race,
+      ...result,
+      materialStockByType,
+      territoryTiles:territoryIncome.territoryTiles,
+      employmentSlots:territoryIncome.employmentSlots,
+      employmentRate:territoryIncome.employmentRate,
+      economyInitialized:true,
+      lastEconomyTurn:currentTurn
+    };
+  });
+  const enemies = sourceEnemies.map(enemy => {
+    const growth = stageByEnemyId.get(text(enemy.id));
+    if (!growth) return enemy;
+    const starvationStage = Math.max(0, Math.min(4, Math.floor(number(growth.starvationStage))));
+    const exhausted = growth.remainingTurns === 0;
+    const maxHp = Math.max(1, number(enemy?.maxHp, enemy?.status?.HP || 1));
+    const hp = exhausted && number(enemy?.hp ?? enemy?.currentHp) > 0
+      ? Math.max(0, number(enemy?.hp ?? enemy?.currentHp, maxHp) - Math.max(1, Math.floor(maxHp * 0.05)))
+      : number(enemy?.hp ?? enemy?.currentHp, maxHp);
+    return {
+      ...enemy,
+      hp,
+      currentHp:hp,
+      starvationStage,
+      starvationApCap:starvationStage >= 4 ? 80 : 0,
+      starvationPenaltyRate:starvationStage >= 4 ? 0.15 : 0,
+      ...(exhausted ? { lastStarvationDamageTurn:currentTurn } : {}),
+      ...(hp <= 0 ? { state:"死亡", deathCause:"飢餓", deathTurn:currentTurn, diedAtTurn:currentTurn } : {})
+    };
+  });
+  return { enemyNests, enemies };
+}
+
 export function collectV39TerritoryIncome(state, player, mapData = window.__v39FieldRuntime?.mapData) {
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
-  const ownedSet = new Set(territoryKeysForPlayer(state, player?.id, village?.settlementId || village?.id));
+  const labor = resolveV39SettlementLabor(state, player, village);
+  const ownedSet = new Set(labor.ownedKeys);
   const terrainYieldMap = new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]));
   const raw = collectTerritoryIncome(mapData, ownedSet, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
     roundTo1:round1,
     parseCoordKey:key => { const [x, y] = text(key).split(",").map(Number); return { x, y }; },
     resolveTileTerrainForYield:resolveTileTerrain,
-    resolveTileYieldMultiplier:({ key }) => tileModeMultiplier(village, key),
+    resolveTileYieldMultiplier:({ key }) => tileModeMultiplier(village, key) * labor.employmentRate,
     resolveResourceYieldMultiplier:({ key, resourceKey, row }) => number(row?.[resourceKey]) > 0
       ? resolveV39FacilityYieldMultiplier(village, key, resourceKey)
       : 1,
     terrainYieldMap
   });
-  collectDiscoveredFeatureIncome(raw, player, ownedSet, village);
+  collectDiscoveredFeatureIncome(raw, player, ownedSet, village, labor.employmentRate);
   return {
     food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
-    tiles:raw.tiles
+    tiles:raw.tiles,
+    ...labor
   };
 }
 
@@ -210,14 +328,10 @@ export function createInitialV39Village({ x, y, name = "拠点", race = "只人"
   const income = collectV39TerritoryIncome(state, sourcePlayer, mapData);
   base.foodStockByType = multiplyResourceBag(income.food, INITIAL_STOCK_TURNS, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
   base.materialStockByType = multiplyResourceBag(income.material, INITIAL_STOCK_TURNS, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 });
+  base.populationCapacity = income.populationCapacity;
+  base.employmentSlots = income.employmentSlots;
+  base.employmentRate = income.employmentRate;
   return normalizeV39Village(base, race);
-}
-
-function raceFoodProfile(race) {
-  const row = classDefinitionForRace(race);
-  const profile = buildEmptyResourceBag(FOOD_RESOURCE_KEYS);
-  for (const key of FOOD_RESOURCE_KEYS) profile[key] = round1(Math.max(0, number(row?.[key]) / 10));
-  return profile;
 }
 
 export function facilityDefinitions() {
@@ -366,12 +480,14 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
   let settlements = Array.isArray(state.settlements) ? state.settlements.map(row => ({ ...row })) : [];
   const players = state.players.map(player => {
     const currentTurn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
+    const processedSettlementIds = new Set();
     const originalSettlements = getFactionSettlements(player?.factionState);
     const selectedId = text(player?.factionState?.selectedSettlementId) || text(originalSettlements[0]?.settlementId);
     const nextSettlements = originalSettlements.map(sourceVillage => {
       let village = normalizeV39Village(sourceVillage, player?.race);
       if (!village?.placed || number(village?.lastEconomyDelta?.turn) >= currentTurn) return village;
       const settlementId = text(village.settlementId || village.id);
+      processedSettlementIds.add(settlementId);
       const construction = advanceConstruction(village);
       village = normalizeV39Village(construction.village, player.race);
       for (const item of construction.completed) {
@@ -386,48 +502,72 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         if (number(unit?.hp ?? unit?.currentHp) <= 0) return false;
         return text(unit?.settlementId || selectedId) === settlementId;
       });
-      const unitDemand = multiplyResourceBag(buildUnitUpkeepFoodDemand(
-        assignedUnits,
-        FOOD_RESOURCE_KEYS, raceFoodProfile, { roundTo1:round1 }
-      ), ECONOMY_CONSUMPTION_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
-      const populationDemand = multiplyResourceBag(buildPopulationFoodDemand(village, FOOD_RESOURCE_KEYS, raceFoodProfile, { roundTo1:round1 }), ECONOMY_CONSUMPTION_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
       const beforeFood = { ...village.foodStockByType };
       const beforeMaterial = { ...village.materialStockByType };
-      const core = applyVillageEconomyTurn(village, {
-        territoryIncome,
-        buildingIncome:{ food:buildEmptyResourceBag(FOOD_RESOURCE_KEYS), material:buildEmptyResourceBag(MATERIAL_RESOURCE_KEYS), count:village.buildings.length },
-        unitUpkeepDemand:unitDemand,
-        populationDemand,
-        foodKeys:FOOD_RESOURCE_KEYS,
-        materialKeys:MATERIAL_RESOURCE_KEYS,
-        fallbackMultiplier:FOOD_SUBSTITUTE_MULTIPLIER,
-        adjustVillagePopulationForTurn:(target, shortage) => adjustVillagePopulationForTurn(target, shortage, {
-          selectedRaceFallback:player.race,
-          randomInt:(min, max) => shortage > 0 ? Math.min(-1, max) : Math.max(1, min)
-        })
-      }, { roundTo1:round1 });
-      village = normalizeV39Village(core.village, player.race);
+      const populationResult = advanceV39PopulationEconomy({
+        village,
+        units:assignedUnits,
+        income:territoryIncome.food,
+        resourceKeys:FOOD_RESOURCE_KEYS,
+        normalFoodKeys:NORMAL_FOOD_RESOURCE_KEYS,
+        populationCapacity:territoryIncome.populationCapacity
+      });
+      const materialStockByType = { ...village.materialStockByType };
+      for (const key of MATERIAL_RESOURCE_KEYS) materialStockByType[key] = round1(number(materialStockByType[key]) + number(territoryIncome.material[key]));
+      village = normalizeV39Village({
+        ...village,
+        ...populationResult,
+        materialStockByType,
+        populationCapacity:territoryIncome.populationCapacity,
+        employmentSlots:territoryIncome.employmentSlots,
+        employmentRate:territoryIncome.employmentRate
+      }, player.race);
       village.lastEconomyDelta = {
         food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, round1(number(village.foodStockByType[key]) - number(beforeFood[key]))])),
         material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, round1(number(village.materialStockByType[key]) - number(beforeMaterial[key]))])),
-        population:core.populationDelta,
-        shortage:core.shortageTotal,
+        population:populationResult.populationDelta,
+        populationByRace:populationResult.populationChanges,
+        shortage:populationResult.shortageTotal,
+        employmentRate:territoryIncome.employmentRate,
         turn:state.timeline?.turnNumber
       };
       const scale = resolveVillageScaleLabel(village);
       settlements = settlements.map(row => text(row.id || row.settlementId) === settlementId
         ? { ...row, type:scale, population:village.population }
         : row);
-      reports.push({ playerId:player.id, settlementId, territoryIncome, shortage:core.shortageTotal, populationDelta:core.populationDelta, village });
+      reports.push({ playerId:player.id, settlementId, territoryIncome, shortage:populationResult.shortageTotal, populationDelta:populationResult.populationDelta, village });
       return village;
     }).filter(Boolean);
     const selectedSettlement = nextSettlements.find(row => text(row.settlementId || row.id) === selectedId) || nextSettlements[0] || null;
+    const settlementById = new Map(nextSettlements.map(row => [text(row.settlementId || row.id), row]));
+    const units = (player?.factionState?.units || []).map(unit => {
+      const settlementId = text(unit?.settlementId || selectedId);
+      const growth = settlementById.get(settlementId)?.populationGrowthByRace?.[text(unit?.race)] || {};
+      const starvationStage = Math.max(0, Math.min(4, Math.floor(number(growth?.starvationStage))));
+      const resourceExhausted = growth?.remainingTurns === 0;
+      if (!processedSettlementIds.has(settlementId) || !resourceExhausted || number(unit?.hp ?? unit?.currentHp) <= 0) {
+        return { ...unit, starvationStage, starvationApCap:starvationStage >= 4 ? 80 : 0, starvationPenaltyRate:starvationStage >= 4 ? 0.15 : 0 };
+      }
+      const maxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || 1));
+      const hp = Math.max(0, number(unit?.hp ?? unit?.currentHp, maxHp) - Math.max(1, Math.floor(maxHp * 0.05)));
+      return {
+        ...unit,
+        hp,
+        currentHp:hp,
+        starvationStage,
+        starvationApCap:starvationStage >= 4 ? 80 : 0,
+        starvationPenaltyRate:starvationStage >= 4 ? 0.15 : 0,
+        lastStarvationDamageTurn:currentTurn,
+        ...(hp <= 0 ? { state:"死亡", deathCause:"飢餓", deathTurn:currentTurn, diedAtTurn:currentTurn } : {})
+      };
+    });
     return {
       ...player,
-      factionState:{ ...player.factionState, settlements:nextSettlements, selectedSettlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id) }
+      factionState:{ ...player.factionState, units, settlements:nextSettlements, selectedSettlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id) }
     };
   });
-  return { state:{ ...state, players, facilitiesByTile, settlements }, reports, completed };
+  const enemyEconomy = advanceEnemyNestEconomy({ ...state, players }, mapData, Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1))));
+  return { state:{ ...state, players, facilitiesByTile, settlements, ...enemyEconomy }, reports, completed };
 }
 
 export function buildV39ResourceSnapshot(village) {
