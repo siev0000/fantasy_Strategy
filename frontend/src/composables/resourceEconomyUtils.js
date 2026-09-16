@@ -60,11 +60,12 @@ export function multiplyResourceBag(source, factor, keys, options = {}) {
 
 export function formatResourceBag(bag, keys, labels = {}, options = {}) {
   const toSafeNumber = typeof options?.toSafeNumber === "function" ? options.toSafeNumber : defaultToSafeNumber;
+  const roundTo1 = typeof options?.roundTo1 === "function" ? options.roundTo1 : defaultRoundTo1;
   const formatCompactNumber = typeof options?.formatCompactNumber === "function"
     ? options.formatCompactNumber
     : defaultFormatCompactNumber;
   const safeKeys = Array.isArray(keys) ? keys : [];
-  return safeKeys.map(key => `${labels[key] || key}${formatCompactNumber(toSafeNumber(bag?.[key], 0))}`).join(" ");
+  return safeKeys.map(key => `${labels[key] || key}${formatCompactNumber(roundTo1(toSafeNumber(bag?.[key], 0)))}`).join(" ");
 }
 
 export function formatPositiveResourceBag(bag, keys, labels = {}, options = {}) {
@@ -298,10 +299,10 @@ export function buildVillageEconomyTurnReport(params = {}, options = {}) {
   const materialLabels = params?.materialLabels || {};
 
   const formatResourceBagFn = typeof options?.formatResourceBag === "function"
-    ? options.formatResourceBag
+    ? ((bag, keys, labels) => options.formatResourceBag(normalizeResourceBag(bag, keys), keys, labels))
     : ((bag, keys, labels) => formatResourceBag(bag, keys, labels, options));
   const formatCompactNumberFn = typeof options?.formatCompactNumber === "function"
-    ? options.formatCompactNumber
+    ? (value => options.formatCompactNumber(defaultRoundTo1(value)))
     : defaultFormatCompactNumber;
   const formatVillageBuildingBonusFn = typeof options?.formatVillageBuildingBonus === "function"
     ? options.formatVillageBuildingBonus
