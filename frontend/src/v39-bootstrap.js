@@ -1,10 +1,10 @@
 // Load the v39 runtime in ordered groups so startup progress is visible without changing module order.
 const BOOTSTRAP_STAGES = Object.freeze([
-  { label:"基本システム", loadedModules:19, load:() => import("./v39-bootstrap-core.js") },
-  { label:"ゲームシステム", loadedModules:38, load:() => import("./v39-bootstrap-game.js") },
-  { label:"画面・地形UI", loadedModules:49, load:() => import("./v39-bootstrap-final.js") }
+  { label:"基本システム", loadedModules:20, load:() => import("./v39-bootstrap-core.js") },
+  { label:"ゲームシステム", loadedModules:40, load:() => import("./v39-bootstrap-game.js") },
+  { label:"画面・地形UI", loadedModules:51, load:() => import("./v39-bootstrap-final.js") }
 ]);
-const BOOTSTRAP_MODULE_COUNT = 49;
+const BOOTSTRAP_MODULE_COUNT = 51;
 
 function installLoadingOverlay() {
   if (!document.getElementById("v39-bootstrap-loading-style")) {
