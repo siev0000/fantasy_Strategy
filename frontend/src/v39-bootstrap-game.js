@@ -16,5 +16,6 @@ import "./v39-combat.js";
 import "./v39-unit-wait.js";
 import "./v39-combat-feedback.js";
 import "./v39-enemy-ai.js";
+import "./v39-enemy-ai-profiler.js";
 import "./v39-faction-ai.js";
 import "./v39-death-lifecycle.js";
