@@ -1,4 +1,6 @@
 // Core UI, state, field, settings, save, and turn systems.
+// Install the shared notification/chat rail before feedback and performance reporting.
+import "./v39-notification-rail.js";
 // Install performance listeners first so turn-stage event boundaries are measured before handlers run.
 import "./v39-performance-monitor.js";
 import "./v39-operation-ui.js";
