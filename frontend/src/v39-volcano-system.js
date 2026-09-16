@@ -91,10 +91,11 @@ function reducePopulationByRace(populationByRace, requestedLoss) {
     .filter(row => row.population > 0)
     .sort((left, right) => right.population - left.population || left.race.localeCompare(right.race, "ja"));
   const total = rows.reduce((sum, row) => sum + row.population, 0);
-  let remaining = Math.min(total, Math.max(0, Math.ceil(Number(requestedLoss) || 0)));
+  const requested = Math.max(0, Math.floor(Number(requestedLoss) || 0));
+  let remaining = Math.min(total, requested);
   const next = Object.fromEntries(rows.map(row => [row.race, row.population]));
   for (const row of rows) {
-    const decrease = Math.min(row.population, remaining, Math.floor(requestedLoss * row.population / Math.max(1, total)));
+    const decrease = Math.min(row.population, remaining, Math.floor(requested * row.population / Math.max(1, total)));
     next[row.race] -= decrease;
     remaining -= decrease;
   }
@@ -127,7 +128,7 @@ export function applyTerritoryHazardDamage(state, mapData, events, turnNumber) {
     const player = (state.players || []).find(row => text(row?.id) === ownerPlayerId);
     const settlement = getFactionSettlements(player?.factionState).find(row => text(row?.settlementId) === settlementId);
     const beforeCapacity = tilePopulationCapacity(settlement, target.key) * (beforeHp / maxHp);
-    const populationLoss = beforeCapacity * Math.min(1, target.damage / maxHp);
+    const populationLoss = Math.floor(beforeCapacity * Math.min(1, target.damage / maxHp));
     territoryStateByTile[target.key] = {
       ...territory,
       hp:afterHp,
