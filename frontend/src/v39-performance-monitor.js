@@ -13,6 +13,7 @@ const TURN_STAGE_KEYS = Object.freeze(["terrain", "ai", "exploration", "world", 
 
 let latestTurnPerformance = null;
 let activeTurnPerformance = null;
+let latestEnemyAiPerformance = null;
 let testModeAnnounced = false;
 
 function nowMs() {
@@ -87,6 +88,23 @@ function performanceSummary(performanceRow) {
   return `合計 ${Math.round(performanceRow.totalMs)}ms${slowest ? `\n${slowest}` : ""}`;
 }
 
+function enemyAiDetails(turnNumber) {
+  const row = latestEnemyAiPerformance;
+  if (!row || Math.floor(Number(row.turnNumber)) !== Math.floor(Number(turnNumber))) return "";
+  const timings = row.timings || {};
+  const counts = row.counts || {};
+  return [
+    `生存敵 ${Math.floor(Number(row.aliveEnemies) || 0)}体 / プレイヤー対象 ${Math.floor(Number(row.playerTargets) || 0)}体`,
+    `AIループ ${Math.floor(Number(row.aiPasses) || 0)}回 / 上限 ${Math.floor(Number(row.actionLimit) || 0)}回`,
+    `状態更新 ${Math.floor(Number(counts.state) || 0)}回: ${Math.round(Number(timings.state) || 0)}ms`,
+    `戦闘処理 ${Math.floor(Number(counts.combat) || 0)}回: ${Math.round(Number(timings.combat) || 0)}ms`,
+    `地上物資回収 ${Math.floor(Number(counts.loot) || 0)}回: ${Math.round(Number(timings.loot) || 0)}ms`,
+    `巣への搬入 ${Math.floor(Number(counts.deposit) || 0)}回: ${Math.round(Number(timings.deposit) || 0)}ms`,
+    `AI判断・探索など: ${Math.round(Number(row.otherAiMs) || 0)}ms`,
+    `移動した敵 ${Math.floor(Number(row.movedEnemies) || 0)}体 / 判断ログ +${Math.floor(Number(row.decisionLogsAdded) || 0)} / 発動待機 ${Math.floor(Number(row.pendingActions) || 0)}`
+  ].join("\n");
+}
+
 function completeTurnMeasurement(detail = {}) {
   if (!activeTurnPerformance) return;
   const finishedAt = nowMs();
@@ -97,15 +115,18 @@ function completeTurnMeasurement(detail = {}) {
     stages:activeTurnPerformance.stages
   };
   activeTurnPerformance = null;
+  const details = enemyAiDetails(latestTurnPerformance.turnNumber);
   window.pushV39SideRailMessage?.({
     channel:"notification",
     title:`T${latestTurnPerformance.turnNumber} ターン処理`,
     message:performanceSummary(latestTurnPerformance),
+    details,
+    collapsible:details.length > 0,
     meta:`メモリ ${formatMemory(performance?.memory?.usedJSHeapSize)}`,
     tone:latestTurnPerformance.totalMs >= 1000 ? "warn" : "debug",
     turn:latestTurnPerformance.turnNumber
   });
-  window.dispatchEvent(new CustomEvent("v39:turn-performance-measured", { detail:{ ...latestTurnPerformance } }));
+  window.dispatchEvent(new CustomEvent("v39:turn-performance-measured", { detail:{ ...latestTurnPerformance, enemyAi:details ? { ...latestEnemyAiPerformance } : null } }));
 }
 
 function installTurnMeasurement() {
@@ -116,6 +137,9 @@ function installTurnMeasurement() {
   for (const stage of TURN_STAGE_KEYS) {
     window.addEventListener(`v39:turn-stage-${stage}`, () => beginTurnStage(stage));
   }
+  window.addEventListener("v39:enemy-ai-performance", event => {
+    latestEnemyAiPerformance = event?.detail && typeof event.detail === "object" ? { ...event.detail } : null;
+  });
   window.addEventListener("v39:turn-advanced", event => completeTurnMeasurement(event?.detail));
   window.addEventListener("v39:display-settings-changed", announceTestModeIfNeeded);
   window.addEventListener("v39:operation-ui-ready", announceTestModeIfNeeded);
@@ -124,7 +148,8 @@ function installTurnMeasurement() {
 
 window.getV39LastTurnPerformance = () => latestTurnPerformance ? {
   ...latestTurnPerformance,
-  stages:latestTurnPerformance.stages.map(row => ({ ...row }))
+  stages:latestTurnPerformance.stages.map(row => ({ ...row })),
+  enemyAi:latestEnemyAiPerformance ? { ...latestEnemyAiPerformance } : null
 } : null;
 window.isV39TurnPerformanceEnabled = runtimeMeasurementEnabled;
 
