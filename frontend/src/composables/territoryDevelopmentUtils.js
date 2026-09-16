@@ -269,15 +269,18 @@ export function resolveTerritoryTileIncomeMultiplier(village, tileKey, options =
 export function resolveVillagePopulationCapacityByTerritory(village, ownedSet, options = {}) {
   const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
   const toSafeNumber = typeof options?.toSafeNumber === "function" ? options.toSafeNumber : defaultToSafeNumber;
+  const isTerritoryCapacityAvailable = typeof options?.isTerritoryCapacityAvailable === "function"
+    ? options.isTerritoryCapacityAvailable
+    : null;
   const residentialConfig = resolveResidentialLevelConfig(options);
   const hasResidentialRules = Object.keys(residentialConfig).length > 0;
-  const capacityFallback = Math.max(1, Math.floor(toSafeNumber(options?.capacityFallback, 30)));
+  const capacityFallback = Math.max(0, Math.floor(toSafeNumber(options?.capacityFallback, 30)));
   const base = Math.max(
-    1,
+    0,
     Math.floor(
       toSafeNumber(
         village?.basePopulationCapacity,
-        Math.max(capacityFallback, Math.floor(toSafeNumber(village?.population, 1)))
+        Math.max(capacityFallback, Math.floor(toSafeNumber(village?.population, 0)))
       )
     )
   );
@@ -287,31 +290,36 @@ export function resolveVillagePopulationCapacityByTerritory(village, ownedSet, o
     for (const keyRaw of ownedSet) {
       const key = nonEmptyText(keyRaw);
       if (!hasCoordDelimiter(key)) continue;
+      if (isTerritoryCapacityAvailable && isTerritoryCapacityAvailable(key, village) === false) continue;
       const add = resolveTerritoryResidentialCapacityAt(village, key, options);
       total += Number.isFinite(add) ? Math.max(0, add) : 0;
     }
-    return Math.max(1, Math.floor(total));
+    return Math.max(0, Math.floor(total));
   }
   let bonus = 0;
   for (const keyRaw of ownedSet) {
     const key = nonEmptyText(keyRaw);
     if (!hasCoordDelimiter(key)) continue;
+    if (isTerritoryCapacityAvailable && isTerritoryCapacityAvailable(key, village) === false) continue;
     const mode = resolveTerritoryTileModeAt(village, key, options);
     const add = Math.max(0, Math.floor(toSafeNumber(resolveTerritoryTileModeDef(mode, options)?.populationCapacityBonus, 0)));
     bonus += add;
   }
-  return Math.max(1, base + bonus);
+  return Math.max(0, base + bonus);
 }
 
+// 収容上限は派生値として同期する。上限不足だけでは住民を自動削除しない。
+// 強制的に人口を上限まで縮減する処理が必要な場合だけ clampPopulation: true を明示する。
 export function applyVillagePopulationCapacityClamp(village, populationCapacity, options = {}) {
   const toSafeNumber = typeof options?.toSafeNumber === "function" ? options.toSafeNumber : defaultToSafeNumber;
   const nonEmptyText = typeof options?.nonEmptyText === "function" ? options.nonEmptyText : defaultNonEmptyText;
   const fallbackRace = nonEmptyText(options?.fallbackRace || "只人") || "只人";
   if (!village || typeof village !== "object") return 0;
-  const cap = Math.max(1, Math.floor(toSafeNumber(populationCapacity, 1)));
-  const current = Math.max(1, Math.floor(toSafeNumber(village.population, 1)));
+  const cap = Math.max(0, Math.floor(toSafeNumber(populationCapacity, 0)));
+  const current = Math.max(0, Math.floor(toSafeNumber(village.population, 0)));
   village.populationCapacity = cap;
-  if (current <= cap) return 0;
+  village.populationOverCapacity = Math.max(0, current - cap);
+  if (options?.clampPopulation !== true || current <= cap) return 0;
 
   let overflow = current - cap;
   const entries = Object.entries(village.populationByRace || {})
@@ -323,15 +331,15 @@ export function applyVillagePopulationCapacityClamp(village, populationCapacity,
     .sort((a, b) => b.count - a.count);
   if (!entries.length) {
     village.population = cap;
-    village.populationByRace = { [fallbackRace]: cap };
+    village.populationByRace = cap > 0 ? { [fallbackRace]: cap } : {};
+    village.populationOverCapacity = 0;
     return current - cap;
   }
 
   let total = current;
   for (const row of entries) {
     if (overflow <= 0) break;
-    const keepMin = total - row.count <= 0 ? 1 : 0;
-    const reducible = Math.max(0, row.count - keepMin);
+    const reducible = Math.max(0, row.count);
     if (reducible <= 0) continue;
     const drop = Math.min(reducible, overflow);
     row.count -= drop;
@@ -339,18 +347,19 @@ export function applyVillagePopulationCapacityClamp(village, populationCapacity,
     overflow -= drop;
   }
   if (overflow > 0) {
-    total = Math.max(1, total - overflow);
+    total = Math.max(0, total - overflow);
   }
   const nextPopulationByRace = {};
   for (const row of entries) {
     if (row.count <= 0 || !row.race) continue;
     nextPopulationByRace[row.race] = row.count;
   }
-  if (!Object.keys(nextPopulationByRace).length) {
-    nextPopulationByRace[fallbackRace] = Math.max(1, total);
+  if (!Object.keys(nextPopulationByRace).length && total > 0) {
+    nextPopulationByRace[fallbackRace] = total;
   }
   village.populationByRace = nextPopulationByRace;
-  village.population = Math.max(1, total);
+  village.population = Math.max(0, total);
+  village.populationOverCapacity = Math.max(0, village.population - cap);
   return Math.max(0, current - village.population);
 }
 
