@@ -1,4 +1,6 @@
 // Core UI, state, field, settings, save, and turn systems.
+// Install performance listeners first so turn-stage event boundaries are measured before handlers run.
+import "./v39-performance-monitor.js";
 import "./v39-operation-ui.js";
 import "./v39-feedback.js";
 import "./v39-game-state-bridge.js";
@@ -15,7 +17,5 @@ import "./v39-field-settings-final.js";
 import "./v39-field-settings-stabilizer.js";
 import "./v39-save-system.js";
 import "./v39-nation-diplomacy-ui.js";
-// Install performance listeners before turn handlers so stage boundaries can be measured.
-import "./v39-performance-monitor.js";
 import "./v39-turn-system.js";
 import "./v39-runtime-clock.js";
