@@ -1,4 +1,6 @@
 const MAX_MESSAGES = 150;
+const DETAIL_COLLAPSE_CHAR_LIMIT = 120;
+const DETAIL_COLLAPSE_LINE_LIMIT = 4;
 
 let sequence = 0;
 let activeChannel = "notification";
@@ -22,13 +24,32 @@ function escapeHtml(value) {
   }[char]));
 }
 
+function multilineHtml(value) {
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
+function renderDetails(entry) {
+  const details = text(entry.details);
+  if (!details) return "";
+  const lineCount = details.split(/\r?\n/).length;
+  const shouldCollapse = entry.collapsible === true
+    || details.length >= DETAIL_COLLAPSE_CHAR_LIMIT
+    || lineCount >= DETAIL_COLLAPSE_LINE_LIMIT;
+  if (!shouldCollapse) return `<p class="v39-side-log-details-inline">${multilineHtml(details)}</p>`;
+  return `<details class="v39-side-log-details">
+    <summary><span>詳細</span></summary>
+    <p>${multilineHtml(details)}</p>
+  </details>`;
+}
+
 function renderMessage(entry) {
   const tone = ["info", "success", "warn", "danger", "debug"].includes(entry.tone) ? entry.tone : "info";
   const meta = entry.meta ? `<small>${escapeHtml(entry.meta)}</small>` : "";
   const turn = entry.turn ? `<span>T${entry.turn}</span>` : "";
   return `<article class="v39-side-log-entry ${tone}" data-v39-side-log-id="${escapeHtml(entry.id)}">
     <div class="v39-side-log-entry-head">${turn}<b>${escapeHtml(entry.title || (entry.channel === "chat" ? "チャット" : "通知"))}</b></div>
-    <p>${escapeHtml(entry.message).replace(/\n/g, "<br>")}</p>
+    <p>${multilineHtml(entry.message)}</p>
+    ${renderDetails(entry)}
     ${meta}
   </article>`;
 }
@@ -63,6 +84,8 @@ export function pushV39SideRailMessage(input, options = {}) {
     channel,
     title:text(source.title, channel === "chat" ? "チャット" : "通知"),
     message,
+    details:text(source.details ?? options.details),
+    collapsible:source.collapsible === true || options.collapsible === true,
     meta:text(source.meta),
     tone:text(source.tone, "info"),
     turn:Number.isFinite(Number(source.turn)) ? Math.max(1, Math.floor(Number(source.turn))) : currentTurn(),
@@ -83,7 +106,9 @@ export function updateV39SideRailMessage(id, patch = {}) {
     ...patch,
     id:messages[index].id,
     channel:normalizeChannel(patch.channel ?? messages[index].channel),
-    message:text(patch.message ?? messages[index].message)
+    message:text(patch.message ?? messages[index].message),
+    details:text(patch.details ?? messages[index].details),
+    collapsible:patch.collapsible === undefined ? messages[index].collapsible : patch.collapsible === true
   };
   render();
   return true;
@@ -123,6 +148,13 @@ function installStyles() {
     .v39-side-log-entry-head b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5d194;font-size:10px}
     .v39-side-log-entry p{margin:0;color:#e2e9e9;font-size:10px;line-height:1.35;word-break:break-word}
     .v39-side-log-entry small{color:#93a6aa;font-size:9px;line-height:1.25}
+    .v39-side-log-details-inline{padding-top:3px;border-top:1px solid rgba(78,102,111,.45);color:#b9c8ca!important}
+    .v39-side-log-details{margin-top:2px;border-top:1px solid rgba(78,102,111,.45);padding-top:3px}
+    .v39-side-log-details summary{list-style:none;cursor:pointer;color:#9cc9d0;font-size:9px;font-weight:800;user-select:none}
+    .v39-side-log-details summary::-webkit-details-marker{display:none}
+    .v39-side-log-details summary::before{content:"▷";display:inline-block;width:12px;color:#78cbd8}
+    .v39-side-log-details[open] summary::before{content:"▽"}
+    .v39-side-log-details p{margin-top:4px!important;color:#b9c8ca!important;font-size:9px!important;line-height:1.4!important}
     .v39-side-log-empty{padding:16px 8px;color:#82969b;font-size:10px;text-align:center}
     @media(max-width:700px){
       .playfield{--v39-side-log-width:min(42vw,220px)}
