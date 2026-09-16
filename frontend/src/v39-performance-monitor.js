@@ -1,5 +1,4 @@
 const ENABLED = import.meta.env.DEV || import.meta.env.MODE === "teston";
-const UPDATE_INTERVAL_MS = 1000;
 const TURN_STAGE_LABELS = Object.freeze({
   enemy:"敵",
   terrain:"地形",
@@ -12,7 +11,6 @@ const TURN_STAGE_LABELS = Object.freeze({
 });
 const TURN_STAGE_KEYS = Object.freeze(["terrain", "ai", "exploration", "world", "economy", "research", "diplomacy"]);
 
-let monitorElement = null;
 let latestTurnPerformance = null;
 let activeTurnPerformance = null;
 
@@ -54,6 +52,16 @@ function beginTurnStage(stage) {
   activeTurnPerformance.stageStartedAt = atMs;
 }
 
+function performanceSummary(performanceRow) {
+  if (!performanceRow) return "";
+  const slowest = [...performanceRow.stages]
+    .sort((left, right) => right.ms - left.ms)
+    .slice(0, 4)
+    .map(row => `${TURN_STAGE_LABELS[row.key] || row.key}:${Math.round(row.ms)}ms`)
+    .join(" / ");
+  return `合計 ${Math.round(performanceRow.totalMs)}ms${slowest ? `\n${slowest}` : ""}`;
+}
+
 function completeTurnMeasurement(detail = {}) {
   if (!activeTurnPerformance) return;
   const finishedAt = nowMs();
@@ -64,25 +72,19 @@ function completeTurnMeasurement(detail = {}) {
     stages:activeTurnPerformance.stages
   };
   activeTurnPerformance = null;
-  updateMonitor();
-}
-
-function formatTurnPerformance() {
-  if (!latestTurnPerformance) return "ターン計測: 未実行";
-  const slowest = [...latestTurnPerformance.stages]
-    .sort((left, right) => right.ms - left.ms)
-    .slice(0, 4)
-    .map(row => `${TURN_STAGE_LABELS[row.key] || row.key}:${Math.round(row.ms)}ms`)
-    .join(" / ");
-  return `T${latestTurnPerformance.turnNumber}: ${Math.round(latestTurnPerformance.totalMs)}ms\n${slowest || "内訳なし"}`;
-}
-
-function updateMonitor() {
-  if (!(monitorElement instanceof HTMLElement)) return;
-  monitorElement.textContent = `メモリ:${formatMemory(performance?.memory?.usedJSHeapSize)}\n${formatTurnPerformance()}`;
+  window.pushV39SideRailMessage?.({
+    channel:"notification",
+    title:`T${latestTurnPerformance.turnNumber} ターン処理`,
+    message:performanceSummary(latestTurnPerformance),
+    meta:`メモリ ${formatMemory(performance?.memory?.usedJSHeapSize)}`,
+    tone:latestTurnPerformance.totalMs >= 1000 ? "warn" : "debug",
+    turn:latestTurnPerformance.turnNumber
+  });
+  window.dispatchEvent(new CustomEvent("v39:turn-performance-measured", { detail:{ ...latestTurnPerformance } }));
 }
 
 function installTurnMeasurement() {
+  if (!ENABLED) return;
   window.addEventListener("v39:turn-phase-changed", event => {
     if (String(event?.detail?.phase || "") !== "enemy") return;
     beginTurnMeasurement(event?.detail?.turnNumber);
@@ -93,31 +95,9 @@ function installTurnMeasurement() {
   window.addEventListener("v39:turn-advanced", event => completeTurnMeasurement(event?.detail));
 }
 
-function install() {
-  if (!ENABLED || document.getElementById("v39-memory-monitor")) return;
-  const monitor = document.createElement("output");
-  monitor.id = "v39-memory-monitor";
-  monitor.setAttribute("aria-label", "パフォーマンス計測");
-  Object.assign(monitor.style, {
-    position:"fixed",
-    top:"4px",
-    right:"6px",
-    zIndex:"1000",
-    color:"#68e08c",
-    fontSize:"13px",
-    fontWeight:"800",
-    lineHeight:"1.3",
-    whiteSpace:"pre",
-    textAlign:"right",
-    pointerEvents:"none",
-    textShadow:"0 1px 2px #000"
-  });
-  document.body.appendChild(monitor);
-  monitorElement = monitor;
-  installTurnMeasurement();
-  updateMonitor();
-  const intervalId = window.setInterval(updateMonitor, UPDATE_INTERVAL_MS);
-  window.addEventListener("pagehide", () => window.clearInterval(intervalId), { once:true });
-}
+window.getV39LastTurnPerformance = () => latestTurnPerformance ? {
+  ...latestTurnPerformance,
+  stages:latestTurnPerformance.stages.map(row => ({ ...row }))
+} : null;
 
-install();
+installTurnMeasurement();
