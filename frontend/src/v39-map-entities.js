@@ -6,15 +6,18 @@ import {
 } from "./lib/map-entity-size-rules.js";
 import {
   resolveEnemyArtwork,
+  resolveNestArtwork,
   resolveSettlementArtwork,
   resolveUnitArtwork
 } from "./lib/map-entity-artwork.js";
 
-const LAYER_DEPTH = 12;
+const STRUCTURE_LAYER_DEPTH = 10;
+const UNIT_LAYER_DEPTH = 12;
 const UNIT_IMAGE_FILL = 0.95;
 const ENEMY_IMAGE_FILL = 0.95;
 
-let markerContainer = null;
+let structureContainer = null;
+let unitContainer = null;
 let refreshTimer = null;
 const markerByEntityId = new Map();
 const textureLoadState = new WeakMap();
@@ -72,8 +75,10 @@ function finiteCoord(value) {
 }
 
 function clearMarkers() {
-  if (markerContainer?.destroy) markerContainer.destroy(true);
-  markerContainer = null;
+  if (structureContainer?.destroy) structureContainer.destroy(true);
+  if (unitContainer?.destroy) unitContainer.destroy(true);
+  structureContainer = null;
+  unitContainer = null;
   markerByEntityId.clear();
 }
 
@@ -114,6 +119,39 @@ function drawBases(scene, container, settlements, activeVillage) {
     if (!isOwnBase && window.isV39TileExplored?.(x, y) === false) continue;
     seen.add(key);
     drawBase(scene, container, { ...settlement, placed: settlement.placed !== false });
+  }
+}
+
+function drawEnemyNests(scene, container, nests) {
+  const revealAll = isTestMode();
+  const rule = MAP_ENTITY_SIZE_RULES.nest;
+  const diameter = tileRelativePx(rule.diameterTiles);
+  const iconSize = tileRelativePx(rule.iconTiles);
+  for (const nest of Array.isArray(nests) ? nests : []) {
+    const x = finiteCoord(nest?.x);
+    const y = finiteCoord(nest?.y);
+    if (x === null || y === null) continue;
+    if (!revealAll && window.isV39TileInCurrentVision?.(x, y) === false) continue;
+
+    const center = tileCenter(x, y);
+    const marker = scene.add.container(center.x, center.y).setName("v39-enemy-nest-marker");
+    const artwork = resolveNestArtwork(nest);
+    if (artwork && ensureArtworkTexture(scene, artwork)) {
+      const image = scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5).setAlpha(0.92);
+      const scale = Math.min(iconSize / Math.max(1, Number(image.width)), iconSize / Math.max(1, Number(image.height)));
+      image.setScale(scale);
+      marker.add(image);
+    } else {
+      marker.add(scene.add.circle(0, 0, iconSize / 2, 0x54252a, 0.88));
+      marker.add(scene.add.text(0, 0, "巣", {
+        fontSize:`${tileRelativePx(rule.glyphFontTiles)}px`, fontStyle:"bold", color:"#ffe8cf",
+        stroke:"#351014", strokeThickness:3
+      }).setOrigin(0.5));
+    }
+    marker.add(scene.add.circle(0, 0, diameter / 2, 0x000000, 0)
+      .setStrokeStyle(Math.max(2, tileRelativePx(0.05)), 0xf0a06f, 0.95));
+    markerByEntityId.set(String(nest.id || "").trim(), marker);
+    container.add(marker);
   }
 }
 
@@ -383,12 +421,14 @@ function renderMarkers() {
   if (!scene || !faction) return false;
 
   clearMarkers();
-  markerContainer = scene.add.container(0, 0).setDepth(LAYER_DEPTH).setName("v39-entity-layer");
-  drawBases(scene, markerContainer, state?.settlements, getSelectedSettlement(faction));
-  drawUnits(scene, markerContainer, faction.units, faction.selectedUnitId);
-  drawForeignUnits(scene, markerContainer, state?.players, state?.activePlayerId);
-  drawEnemies(scene, markerContainer, state?.enemies);
-  drawWanderers(scene, markerContainer, state?.wandererGroups, state?.activePlayerId);
+  structureContainer = scene.add.container(0, 0).setDepth(STRUCTURE_LAYER_DEPTH).setName("v39-structure-layer");
+  unitContainer = scene.add.container(0, 0).setDepth(UNIT_LAYER_DEPTH).setName("v39-unit-layer");
+  drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction));
+  drawEnemyNests(scene, structureContainer, state?.enemyNests);
+  drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId);
+  drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId);
+  drawEnemies(scene, unitContainer, state?.enemies);
+  drawWanderers(scene, unitContainer, state?.wandererGroups, state?.activePlayerId);
   return true;
 }
 

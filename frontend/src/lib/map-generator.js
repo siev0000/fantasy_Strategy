@@ -845,6 +845,7 @@ function processVolcanoEruptionTurn(grid, w, h, dormantMap, heightLevelMap, volc
       y,
       key: coordKey(x, y),
       forced,
+      sourceHeightLevel:Number(heightLevelMap?.[y]?.[x]) || 0,
       affectedCoords:collectVolcanoAffectedCoords(w, h, x, y, effects.radius),
       effects:{
         radius:effects.radius,
@@ -856,6 +857,18 @@ function processVolcanoEruptionTurn(grid, w, h, dormantMap, heightLevelMap, volc
     });
     return true;
   };
+
+  const forcedCoord = options?.forceEruptionAt;
+  if (Number.isFinite(Number(forcedCoord?.x)) && Number.isFinite(Number(forcedCoord?.y))) {
+    const x = Math.floor(Number(forcedCoord.x));
+    const y = Math.floor(Number(forcedCoord.y));
+    if (x >= 0 && y >= 0 && x < w && y < h && !["海", "湖"].includes(grid[y][x])) {
+      dormantMap[y][x] = true;
+      grid[y][x] = "山岳";
+      markEruption(x, y, true);
+    }
+    return eruptedCells;
+  }
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
@@ -918,7 +931,10 @@ function cloneLavaState(state) {
       path: Array.isArray(flow.path) ? flow.path.map(p => ({
         x: Number(p.x),
         y: Number(p.y),
-        key: String(p.key || coordKey(Number(p.x), Number(p.y)))
+        key: String(p.key || coordKey(Number(p.x), Number(p.y))),
+        createdTurn:Number.isFinite(Number(p.createdTurn)) ? Math.floor(Number(p.createdTurn)) : 0,
+        coolAtTurn:Number.isFinite(Number(p.coolAtTurn)) ? Math.floor(Number(p.coolAtTurn)) : 0,
+        cooled:p.cooled === true
       })) : []
     }))
   };
@@ -965,9 +981,13 @@ function buildLavaFlowDataFromState(lavaState, w, h) {
     let prevKey = fromKey;
     for (const p of flow.path || []) {
       if (!p?.key) continue;
+      if (p.cooled === true) {
+        prevKey = null;
+        continue;
+      }
       nodeSet.add(p.key);
       lavaMap[p.y][p.x] = true;
-      edgeSet.add(lavaEdgeKey(prevKey, p.key));
+      if (prevKey) edgeSet.add(lavaEdgeKey(prevKey, p.key));
       prevKey = p.key;
     }
   }
@@ -1026,6 +1046,19 @@ function buildLavaFlowTurn(grid, heightLevelMap, w, h, volcanoRule, prevLavaStat
   const lavaState = cloneLavaState(prevLavaState);
   const events = [];
 
+  for (const flow of lavaState.flows) {
+    for (const node of flow.path || []) {
+      if (!node.coolAtTurn) {
+        node.createdTurn = turnNumber;
+        node.coolAtTurn = turnNumber + randomInt(2, 4);
+      }
+      if (node.cooled === true || !node.coolAtTurn || node.coolAtTurn > turnNumber) continue;
+      node.cooled = true;
+      if (grid[node.y]?.[node.x] && !["海", "湖", "火山"].includes(grid[node.y][node.x])) grid[node.y][node.x] = "荒野";
+      events.push({ type:"lava-cooled", turn:turnNumber, sourceKey:flow.sourceKey, x:node.x, y:node.y, key:node.key });
+    }
+  }
+
   if (options?.forceTestEvent === true) {
     let hasVolcano = false;
     for (let y = 0; y < h && !hasVolcano; y += 1) {
@@ -1072,7 +1105,14 @@ function buildLavaFlowTurn(grid, heightLevelMap, w, h, volcanoRule, prevLavaStat
         break;
       }
       const next = picked.step;
-      const stepNode = { x: next.x, y: next.y, key: next.key };
+      const stepNode = {
+        x:next.x,
+        y:next.y,
+        key:next.key,
+        createdTurn:turnNumber,
+        coolAtTurn:turnNumber + randomInt(2, 4),
+        cooled:false
+      };
       flow.path.push(stepNode);
       movedPath.push(stepNode);
       flow.headX = next.x;
@@ -1096,7 +1136,8 @@ function buildLavaFlowTurn(grid, heightLevelMap, w, h, volcanoRule, prevLavaStat
         length: movedPath.length,
         path: movedPath,
         stopped: flow.active === false,
-        stopReason: flow.stopReason || ""
+        stopReason:flow.stopReason || "",
+        sourceHeightLevel:Number(heightLevelMap?.[flow.sourceY]?.[flow.sourceX]) || 0
       });
     }
   }
@@ -1109,7 +1150,14 @@ function buildLavaFlowTurn(grid, heightLevelMap, w, h, volcanoRule, prevLavaStat
       const picked = pickNextLavaStep(activeFlow, grid, heightLevelMap, w, h, visited, maxTurnAngle);
       if (!picked.stopReason) {
         const next = picked.step;
-        const stepNode = { x: next.x, y: next.y, key: next.key };
+        const stepNode = {
+          x:next.x,
+          y:next.y,
+          key:next.key,
+          createdTurn:turnNumber,
+          coolAtTurn:turnNumber + randomInt(2, 4),
+          cooled:false
+        };
         activeFlow.path.push(stepNode);
         activeFlow.headX = next.x;
         activeFlow.headY = next.y;
@@ -1125,7 +1173,8 @@ function buildLavaFlowTurn(grid, heightLevelMap, w, h, volcanoRule, prevLavaStat
           path: [stepNode],
           stopped: false,
           stopReason: "",
-          forced: true
+          forced:true,
+          sourceHeightLevel:Number(heightLevelMap?.[activeFlow.sourceY]?.[activeFlow.sourceX]) || 0
         });
       } else {
         activeFlow.active = false;
@@ -1254,7 +1303,8 @@ function advanceTerrainTurn(data, options = {}) {
       volcanoRule,
       {
         turnNumber,
-        forceTestEvent: forceEruption || options?.forceTestEvent === true
+        forceTestEvent: forceEruption || options?.forceTestEvent === true,
+        forceEruptionAt:options?.forceEruptionAt
       }
     )
     : [];

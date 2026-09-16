@@ -34,7 +34,8 @@ const EMPTY_STATE = Object.freeze({
     pendingActionsByEnemyId: {},
     lastActionTurnByEnemyId: {},
     cooldownsByEnemyId: {},
-    activeEffectsByEnemyId: {}
+    activeEffectsByEnemyId: {},
+    decisionLogsByFactionId: {}
   },
   timeline: {
     turnNumber: 1,
@@ -153,7 +154,9 @@ function normalizeState(input = {}) {
       pendingActionsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.pendingActionsByEnemyId),
       lastActionTurnByEnemyId: cloneRecord(input?.enemyCombatRuntime?.lastActionTurnByEnemyId),
       cooldownsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.cooldownsByEnemyId),
-      activeEffectsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.activeEffectsByEnemyId)
+      activeEffectsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.activeEffectsByEnemyId),
+      decisionLogsByFactionId:Object.fromEntries(Object.entries(input?.enemyCombatRuntime?.decisionLogsByFactionId || {})
+        .map(([factionId, rows]) => [String(factionId), normalizeEntityArray(rows).slice(-200)]))
     },
     timeline: {
       turnNumber: Math.max(1, Math.floor(Number(input?.timeline?.turnNumber) || 1)),
@@ -223,7 +226,9 @@ function getState() {
       pendingActionsByEnemyId:{ ...state.enemyCombatRuntime.pendingActionsByEnemyId },
       lastActionTurnByEnemyId:{ ...state.enemyCombatRuntime.lastActionTurnByEnemyId },
       cooldownsByEnemyId:{ ...state.enemyCombatRuntime.cooldownsByEnemyId },
-      activeEffectsByEnemyId:{ ...state.enemyCombatRuntime.activeEffectsByEnemyId }
+      activeEffectsByEnemyId:{ ...state.enemyCombatRuntime.activeEffectsByEnemyId },
+      decisionLogsByFactionId:Object.fromEntries(Object.entries(state.enemyCombatRuntime.decisionLogsByFactionId || {})
+        .map(([factionId, rows]) => [factionId, normalizeEntityArray(rows)]))
     },
     timeline: { ...state.timeline }
   };

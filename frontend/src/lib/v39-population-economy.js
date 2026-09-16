@@ -207,6 +207,68 @@ function distributeGrowthResource(races, stock, growthPool, normalFoodKeys, capa
   return additions;
 }
 
+function applyOvercrowdingOutflow(populationByRace, growthByRace, populationCapacity) {
+  const total = Object.values(populationByRace).reduce((sum, value) => sum + Math.max(0, Math.floor(number(value))), 0);
+  const capacity = Number.isFinite(Number(populationCapacity))
+    ? Math.max(0, Math.floor(Number(populationCapacity)))
+    : total;
+  const excess = Math.max(0, total - capacity);
+  const outflow = excess > 0 ? Math.min(total, Math.ceil(excess * 0.1)) : 0;
+  let remaining = outflow;
+  const rows = Object.entries(populationByRace)
+    .map(([race, population]) => ({ race, population:Math.max(0, Math.floor(number(population))) }))
+    .sort((left, right) => right.population - left.population || left.race.localeCompare(right.race, "ja"));
+  for (const row of rows) {
+    const target = Math.floor(outflow * row.population / Math.max(1, total));
+    const decrease = Math.min(row.population, remaining, Math.max(0, target));
+    if (decrease <= 0) continue;
+    populationByRace[row.race] = row.population - decrease;
+    remaining -= decrease;
+  }
+  for (const row of rows) {
+    const growth = growthByRace[row.race];
+    if (!growth) continue;
+    const previousRequired = Math.max(0, number(growth.lastRequiredGauge));
+    const progressRate = previousRequired > 0 ? Math.max(0, number(growth.gauge) / previousRequired) : 0;
+    const current = Math.max(0, Math.floor(number(populationByRace[row.race])));
+    const required = growthRequired(current, resolvePopulationClassDefinition(row.race));
+    growthByRace[row.race] = {
+      ...growth,
+      gauge:round1(required * progressRate),
+      lastRequiredGauge:required,
+      lastPopulation:current
+    };
+  }
+  if (remaining > 0) {
+    while (remaining > 0) {
+      let changed = false;
+      for (const row of rows) {
+        if (remaining <= 0) break;
+        const current = Math.max(0, Math.floor(number(populationByRace[row.race])));
+        if (current <= 0) continue;
+        populationByRace[row.race] = current - 1;
+        remaining -= 1;
+        changed = true;
+      }
+      if (!changed) break;
+    }
+  }
+  const actualOutflow = outflow - remaining;
+  const remainingPopulation = total - actualOutflow;
+  const remainingExcess = Math.max(0, remainingPopulation - capacity);
+  const rate = remainingExcess > 0
+    ? (capacity > 0 ? remainingExcess / capacity : 1)
+    : 0;
+  return {
+    totalPopulation:remainingPopulation,
+    excess:remainingExcess,
+    rate,
+    outflow:actualOutflow,
+    happinessPenalty:-rate * 10,
+    securityPenalty:-rate * 10
+  };
+}
+
 export function advanceV39PopulationEconomy({ village, units = [], income = {}, resourceKeys = [], normalFoodKeys = [], populationCapacity = Number.POSITIVE_INFINITY } = {}) {
   const populationByRace = Object.fromEntries(Object.entries(village?.populationByRace || {})
     .map(([race, count]) => [text(race), Math.max(0, Math.floor(number(count)))])
@@ -293,6 +355,13 @@ export function advanceV39PopulationEconomy({ village, units = [], income = {}, 
     };
   }
 
+  const populationBeforeOutflow = { ...populationByRace };
+  const overcrowding = applyOvercrowdingOutflow(populationByRace, growthByRace, populationCapacity);
+  for (const [race, current] of Object.entries(populationByRace)) {
+    populationChanges[race] = number(populationChanges[race]) - Math.max(0, number(populationBeforeOutflow[race]) - current);
+  }
+  totalPopulation = overcrowding.totalPopulation;
+
   return {
     populationByRace,
     population:totalPopulation,
@@ -302,6 +371,11 @@ export function advanceV39PopulationEconomy({ village, units = [], income = {}, 
     shortageTotal:round1(Object.values(growthByRace).reduce((sum, row) => sum + number(row.shortage), 0)),
     populationDelta:Object.values(populationChanges).reduce((sum, value) => sum + value, 0),
     populationChanges,
-    capacityReached:totalPopulation >= populationCapacity
+    capacityReached:totalPopulation >= populationCapacity,
+    overcrowdingPopulation:overcrowding.excess,
+    overcrowdingRate:overcrowding.rate,
+    overcrowdingHappinessPenalty:overcrowding.happinessPenalty,
+    overcrowdingSecurityPenalty:overcrowding.securityPenalty,
+    lastPopulationOutflow:overcrowding.outflow
   };
 }

@@ -546,7 +546,7 @@ function spawnForActivePlayer() {
     enemies,
     enemySquads,
     enemyNests,
-    enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionTurnByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{} }
+    enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionTurnByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{}, decisionLogsByFactionId:{} }
   }, { reason:"enemy-spawned" });
   window.dispatchEvent(new CustomEvent("v39:enemies-spawned", {
     detail:{
@@ -568,7 +568,7 @@ function clearEnemiesForNewField() {
     enemies:[],
     enemySquads:[],
     enemyNests:[],
-    enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionTurnByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{} }
+    enemyCombatRuntime:{ pendingActionsByEnemyId:{}, lastActionTurnByEnemyId:{}, cooldownsByEnemyId:{}, activeEffectsByEnemyId:{}, decisionLogsByFactionId:{} }
   }, { reason:"field-enemies-cleared" });
 }
 

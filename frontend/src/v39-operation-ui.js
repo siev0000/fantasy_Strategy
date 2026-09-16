@@ -28,6 +28,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       { icon: "旗", label: "国家・外交", id: "v39-manage-nation" },
       { icon: "⚙", label: "ゲーム設定", open: "settings" },
       { icon: "目", label: "表示設定", id: "v39-manage-display-settings" },
+      { icon: "試", label: "テスト操作", id: "v39-manage-test-tools" },
       { icon: "⬢", label: "フィールド設定", id: "v39-manage-field-settings" },
       { icon: "書", label: "設計書", id: "v39-manage-design-docs" }
     ]

@@ -170,3 +170,14 @@ export function resolveSettlementArtwork(settlement) {
     sizePx: Number(definition?.displaySize) || MAP_SETTLEMENT_MARKER_CONFIG.iconSize
   } : null;
 }
+
+export function resolveNestArtwork(nest) {
+  const imageName = text(nest?.imageName || nest?.image || nest?.画像 || nest?.nestType || nest?.type);
+  if (!imageName || !hasIconName(imageName)) return null;
+  const artwork = iconArtwork([imageName]);
+  return artwork ? {
+    ...artwork,
+    type:"nest",
+    textureKey:`v39-nest:${lookupKey(imageName)}`
+  } : null;
+}

@@ -20,6 +20,7 @@ const integer = (value, fallback = 0) => Math.floor(number(value, fallback));
 
 const distance = getHexDistance;
 const movedEnemyIdsThisTurn = new Set();
+const MAX_AI_LOGS_PER_FACTION = 200;
 
 function patchEnemyTurnState(patch, reason) {
   if (window.patchV39EnemyTurnState?.(patch) === true) return;
@@ -135,6 +136,54 @@ function nestFor(state, enemy) {
   return (state?.enemyNests || []).find(nest => text(nest?.id) === text(enemy?.nestId)) || null;
 }
 
+function enemyAiFaction(state, enemy) {
+  const nest = nestFor(state, enemy);
+  if (nest) return {
+    id:`nest:${text(nest.id)}`,
+    label:`${text(nest.nestType, "敵の巣")} (${integer(nest.x)},${integer(nest.y)})`,
+    type:"enemy-nest",
+    sourceId:text(nest.id)
+  };
+  return {
+    id:`enemy:${text(enemy?.id)}`,
+    label:`巣なし: ${text(enemy?.name, enemy?.id)}`,
+    type:"nestless-enemy",
+    sourceId:text(enemy?.id)
+  };
+}
+
+function appendEnemyAiDecisionLog(enemy, inspection, overrides = {}) {
+  const state = enemyTurnState();
+  if (!state || !enemy || !inspection) return null;
+  const currentEnemy = (state.enemies || []).find(row => text(row?.id) === text(enemy?.id)) || enemy;
+  const faction = enemyAiFaction(state, currentEnemy);
+  const logsByFaction = { ...(state.enemyCombatRuntime?.decisionLogsByFactionId || {}) };
+  const current = Array.isArray(logsByFaction[faction.id]) ? logsByFaction[faction.id] : [];
+  const turn = currentV39TurnNumber();
+  const entry = {
+    id:`ai:${turn}:${text(enemy.id)}:${current.length + 1}`,
+    turn,
+    factionId:faction.id,
+    factionLabel:faction.label,
+    factionType:faction.type,
+    actorId:text(currentEnemy.id),
+    actorName:text(currentEnemy.name, currentEnemy.id),
+    decision:text(overrides.decision, inspection.decision),
+    reason:text(overrides.reason, inspection.reason),
+    targetId:text(inspection.targetId),
+    targetName:text(inspection.targetName),
+    x:integer(currentEnemy.x),
+    y:integer(currentEnemy.y),
+    detail:{ ...inspection, ...(overrides.detail || {}) }
+  };
+  logsByFaction[faction.id] = [...current, entry].slice(-MAX_AI_LOGS_PER_FACTION);
+  patchEnemyTurnState({
+    enemyCombatRuntime:{ ...(state.enemyCombatRuntime || {}), decisionLogsByFactionId:logsByFaction }
+  }, "enemy-ai-decision-log");
+  window.dispatchEvent(new CustomEvent("v39:ai-log-added", { detail:{ faction, entry } }));
+  return entry;
+}
+
 function territoryCenter(enemy, nest) {
   return {
     x:integer(enemy?.territoryCenterX, integer(nest?.x, integer(enemy?.x))),
@@ -241,6 +290,8 @@ function resolvePending(turnNumber) {
   const state = enemyTurnState();
   for (const pending of Object.values(state?.enemyCombatRuntime?.pendingActionsByEnemyId || {})) {
     if (remainingV39Turns(pending?.resolvesAtTurn, turnNumber) > 0) continue;
+    const enemy = state.enemies.find(row => text(row?.id) === text(pending.enemyId));
+    const inspection = enemy ? inspectEnemyAi(enemy.id) : null;
     const resolved = window.executeV39EnemyCombatAction?.({
       enemyId:text(pending.enemyId), targetUnitId:text(pending.targetUnitId), skillRow:pending.skillRow, apPaid:true
     }) === true;
@@ -255,6 +306,10 @@ function resolvePending(turnNumber) {
       return runtime;
     }, resolved ? "enemy-cast-resolved" : "enemy-cast-cancelled");
     window.dispatchEvent(new CustomEvent("v39:cast-ended", { detail:{ unitId:text(pending.enemyId), enemyAction:true, reason:resolved ? "resolved" : "cancelled" } }));
+    if (enemy && inspection) appendEnemyAiDecisionLog(enemy, inspection, {
+      decision:resolved ? `発動完了: ${text(pending.skillName)}` : `発動中止: ${text(pending.skillName)}`,
+      reason:resolved ? "待機ターンが終了したため攻撃を解決しました" : "対象または発動条件を満たせず中止しました"
+    });
     return true;
   }
   return false;
@@ -346,6 +401,93 @@ function selectEnemyTarget(state, enemy, targets) {
   return candidates.sort((a, b) => distance(enemy, a)-distance(enemy, b))[0] || null;
 }
 
+function inspectEnemyAi(enemyId) {
+  const state = enemyTurnState();
+  const enemy = (state?.enemies || []).find(row => text(row?.id) === text(enemyId));
+  if (!state || !enemy) return null;
+
+  const turnNumber = currentV39TurnNumber();
+  const nest = nestFor(state, enemy);
+  const center = territoryCenter(enemy, nest);
+  const radius = territoryRadius(enemy, nest);
+  const limit = pursuitLimit(enemy, nest);
+  const targets = state.players.flatMap(player => player?.factionState?.units || []).filter(isAlive);
+  const target = selectEnemyTarget(state, enemy, targets);
+  const hp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
+  const maxHp = Math.max(1, number(enemy?.maxHp, enemy?.status?.HP || 1));
+  const hpRate = hp / maxHp;
+  const fleeThreshold = nest ? (enemy?.aggressive === true ? 0.3 : 0.55) : 0.3;
+  const runtime = state.enemyCombatRuntime || {};
+  const pending = runtime.pendingActionsByEnemyId?.[text(enemy.id)] || null;
+  const cooldowns = runtime.cooldownsByEnemyId?.[text(enemy.id)] || {};
+  const lastActionTurn = integer(runtime.lastActionTurnByEnemyId?.[text(enemy.id)]);
+  const targetDistance = target ? distance(enemy, target) : null;
+  const attackSkills = target ? resolveActionSkillRows(enemy).filter(skillRow => {
+    return !isV39SupportSkill(skillRow, enemy)
+      && resolveAttackApCost(skillRow) <= number(enemy.ap)
+      && resolveAttackRange(skillRow, enemy) >= targetDistance
+      && remainingV39Turns(cooldowns[text(skillRow?.名前)], turnNumber) <= 0;
+  }) : [];
+  const lootTarget = Object.keys(state.groundLootByTile || {})
+    .map(key => {
+      const [x, y] = key.split(",").map(Number);
+      return { x, y, key, targetDistance:distance(enemy, { x, y }) };
+    })
+    .filter(row => Number.isFinite(row.x) && Number.isFinite(row.y) && row.targetDistance <= visionRadius(enemy))
+    .sort((a, b) => a.targetDistance-b.targetDistance || a.key.localeCompare(b.key))[0] || null;
+
+  let decision = "待機";
+  let reason = "索敵対象、回収対象、帰還条件がありません";
+  if (!isAlive(enemy)) {
+    decision = "死亡";
+    reason = "HPが0または死亡状態です";
+  } else if (pending) {
+    decision = `発動待機: ${text(pending.skillName, "名称未設定")}`;
+    reason = `残り${remainingV39Turns(pending.resolvesAtTurn, turnNumber)}ターン`;
+  } else if (lastActionTurn >= turnNumber) {
+    decision = "行動済み";
+    reason = `ターン${lastActionTurn}の行動を完了しています`;
+  } else if (enemy?.fleeState?.active === true) {
+    decision = nest ? "巣へ逃走" : "敵対対象から逃走";
+    reason = `HP率${Math.round(hpRate*100)}% / 逃走基準${Math.round(fleeThreshold*100)}%`;
+  } else if (nest && hpRate <= fleeThreshold && distance(enemy, nest) > 1) {
+    decision = "巣へ逃走予定";
+    reason = `HP率が逃走基準${Math.round(fleeThreshold*100)}%以下です`;
+  } else if (!nest && hpRate <= fleeThreshold && enemy?.fleeDecisionMade !== true) {
+    decision = "逃走判定予定";
+    reason = "巣なし個体の逃走判定をまだ行っていません";
+  } else if (target && attackSkills.length) {
+    decision = `攻撃: ${text(chooseDeterministically(attackSkills, enemy.id, turnNumber)?.名前, "攻撃")}`;
+    reason = `${text(target.name, target.id)}が射程内、AP・CT条件を満たします`;
+  } else if (target) {
+    decision = targetDistance > 1 ? "標的へ追跡" : "攻撃できず待機";
+    reason = `${text(target.name, target.id)}を認識中ですが、射程・AP・CTを満たす行動Aがありません`;
+  } else if (lootTarget) {
+    decision = lootTarget.targetDistance === 0 ? "地上物資を回収" : "地上物資へ移動";
+    reason = `索敵内の残留品 ${lootTarget.key} を確認しています`;
+  } else if (distance(enemy, center) > radius) {
+    decision = "縄張りへ帰還";
+    reason = `縄張り中心から${distance(enemy, center)}マス、縄張り半径${radius}です`;
+  } else {
+    decision = "縄張り内を徘徊";
+    reason = "攻撃・逃走・回収・帰還の優先条件がありません";
+  }
+
+  return {
+    enemyId:text(enemy.id), name:text(enemy.name, enemy.id), level:integer(enemy.level, 1),
+    x:integer(enemy.x), y:integer(enemy.y), hp, maxHp, hpRate, ap:number(enemy.ap), maxAp:number(enemy.maxAp, 100),
+    aggressive:enemy?.aggressive === true, decision, reason,
+    visionRadius:visionRadius(enemy), scout:resolveDetectionScoutValue(enemy),
+    targetId:text(target?.id), targetName:text(target?.name, target?.id), targetDistance,
+    aggroTargetUnitId:text(enemy?.aggroTargetUnitId), attackSkillNames:attackSkills.map(row => text(row?.名前)).filter(Boolean),
+    nestId:text(nest?.id), nestName:text(nest?.name, nest?.id), nestDistance:nest ? distance(enemy, nest) : null,
+    territoryCenter:center, territoryRadius:radius, pursuitLimit:limit,
+    fleeThreshold, fleeState:enemy?.fleeState || null, fleeDecisionMade:enemy?.fleeDecisionMade === true,
+    lastActionTurn, pendingSkillName:text(pending?.skillName), pendingTurns:pending ? remainingV39Turns(pending.resolvesAtTurn, turnNumber) : 0,
+    cooldowns:Object.fromEntries(Object.entries(cooldowns).map(([name, deadline]) => [name, remainingV39Turns(deadline, turnNumber)]).filter(([, turns]) => turns > 0))
+  };
+}
+
 function runEnemyAi(turnNumber = currentV39TurnNumber()) {
   if (resolvePending(turnNumber)) return true;
   const state = enemyTurnState();
@@ -358,8 +500,13 @@ function runEnemyAi(turnNumber = currentV39TurnNumber()) {
     if (state.enemyCombatRuntime?.pendingActionsByEnemyId?.[id]) continue;
     const lastActionTurn = integer(state.enemyCombatRuntime?.lastActionTurnByEnemyId?.[id]);
     if (lastActionTurn >= turnNumber) continue;
+    const inspection = inspectEnemyAi(id);
+    const complete = (result, overrides = {}) => {
+      if (result && inspection) appendEnemyAiDecisionLog(enemy, inspection, overrides);
+      return result;
+    };
     const fleeHandled = runFleeBehavior(state, enemy, targets, turnNumber);
-    if (fleeHandled !== null) return fleeHandled;
+    if (fleeHandled !== null) return complete(fleeHandled);
     const target = selectEnemyTarget(state, enemy, targets);
     if (!target) {
       const lootTarget = Object.keys(state.groundLootByTile || {})
@@ -375,19 +522,19 @@ function runEnemyAi(turnNumber = currentV39TurnNumber()) {
             runtime.lastActionTurnByEnemyId[id] = turnNumber;
             return runtime;
           }, "enemy-ground-loot-recovered");
-          return true;
+          return complete(true, { decision:"地上物資を回収" });
         }
-        return waitEnemy(enemyTurnState() || state, id, turnNumber, "enemy-ground-loot-recovery-failed");
+        return complete(waitEnemy(enemyTurnState() || state, id, turnNumber, "enemy-ground-loot-recovery-failed"), { decision:"回収失敗で待機" });
       }
-      if (lootTarget && moveEnemyToward(state, enemy, lootTarget, turnNumber, 0)) return true;
+      if (lootTarget && moveEnemyToward(state, enemy, lootTarget, turnNumber, 0)) return complete(true, { decision:"地上物資へ移動" });
       const nest = nestFor(state, enemy);
       const center = territoryCenter(enemy, nest);
       if (distance(enemy, center) > territoryRadius(enemy, nest)) {
-        if (moveEnemyToward(state, enemy, center, turnNumber, 0, { aggroTargetUnitId:"" })) return true;
+        if (moveEnemyToward(state, enemy, center, turnNumber, 0, { aggroTargetUnitId:"" })) return complete(true, { decision:"縄張りへ帰還" });
       } else if (roamInsideTerritory(state, enemy, nest, turnNumber)) {
-        return true;
+        return complete(true, { decision:"縄張り内を徘徊" });
       }
-      return waitEnemy(state, id, turnNumber);
+      return complete(waitEnemy(state, id, turnNumber));
     }
     const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[id] || {};
     const candidates = resolveActionSkillRows(enemy).filter((skillRow) => {
@@ -398,12 +545,13 @@ function runEnemyAi(turnNumber = currentV39TurnNumber()) {
     });
     const skillRow = chooseDeterministically(candidates, id, turnNumber);
     if (!skillRow) {
-      if (moveEnemyToward(state, enemy, target, turnNumber)) return true;
-      waitEnemy(state, id, turnNumber);
+      if (moveEnemyToward(state, enemy, target, turnNumber)) return complete(true, { decision:"標的へ追跡" });
+      complete(waitEnemy(state, id, turnNumber), { decision:"攻撃できず待機" });
       continue;
     }
     if (castTurns(skillRow) > 0) queueEnemyAttack(enemy, target, skillRow, turnNumber);
     else executeEnemyAttack(enemy, target, skillRow, turnNumber);
+    complete(true, { decision:castTurns(skillRow) > 0 ? `発動開始: ${text(skillRow?.名前)}` : `攻撃: ${text(skillRow?.名前)}` });
     return true;
   }
   return false;
@@ -446,6 +594,7 @@ function installEnemyAggroTracking() {
 
 window.runV39EnemyAi = runEnemyAi;
 window.runV39EnemyTurn = runEnemyTurn;
+window.inspectV39EnemyAi = inspectEnemyAi;
 window.getV39EnemyAiRules = () => ({ actionsPerEnemyPerTurn:1, aggressiveFleeHpRate:0.3, passiveFleeHpRate:0.55, noNestFleeChance:0.3 });
 
 installEnemyAggroTracking();

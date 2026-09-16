@@ -235,8 +235,13 @@ function formatTerritoryState(state, detail, ownerLabel) {
   if (typeof raw === "object") {
     const mode = text(raw.status || raw.state || raw.label || raw.modeLabel || raw.mode || raw.type, "");
     const progress = Number(raw.progressPercent ?? raw.progress);
-    if (mode && Number.isFinite(progress)) return `${mode} / ${Math.round(progress)}%`;
-    return mode || "領土";
+    const hp = Number(raw.hp);
+    const maxHp = Number(raw.maxHp);
+    const hpText = Number.isFinite(hp) && Number.isFinite(maxHp) && maxHp > 0
+      ? `HP ${Math.max(0, Math.round(hp))}/${Math.round(maxHp)}`
+      : "";
+    if (mode && Number.isFinite(progress)) return [mode, `${Math.round(progress)}%`, hpText].filter(Boolean).join(" / ");
+    return [mode || "領土", hpText].filter(Boolean).join(" / ");
   }
   return "領土";
 }

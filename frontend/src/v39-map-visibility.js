@@ -14,6 +14,7 @@ import {
 const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
 const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";
 const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
+const NEST_TERRITORY_LAYER_NAME = "v39-nest-territory-boundary-layer";
 const UNIT_VISION_BASE_RANGE = 1;
 const UNIT_VISION_SCOUT_STEP = 75;
 const FOG_COLOR = 0x071014;
@@ -23,6 +24,9 @@ const SCOUT_ALPHA = 0.35;
 const SCOUT_WIDTH = 1;
 const TERRITORY_ALPHA = 0.9;
 const TERRITORY_WIDTH = 2.4;
+const NEST_TERRITORY_COLOR = 0xe67558;
+const NEST_TERRITORY_ALPHA = 0.78;
+const NEST_TERRITORY_WIDTH = 2.4;
 const RETRY_MS = 20;
 const RETRY_LIMIT = 180;
 
@@ -358,6 +362,13 @@ function drawOuterBoundary(graphics, data, tileKeys, style) {
   }
 }
 
+function nestTerritoryTileKeys(data, nest) {
+  const result = new Set();
+  const radius = Math.max(1, Math.floor(Number(nest?.territoryRadius) || 1));
+  addVisionRange(data, nest?.x, nest?.y, radius, result);
+  return result;
+}
+
 function renderVisibilityLayers() {
   const runtime = window.__v39FieldRuntime;
   const data = runtime?.mapData;
@@ -370,6 +381,7 @@ function renderVisibilityLayers() {
   removeLayer(scene, FOG_LAYER_NAME);
   removeLayer(scene, SCOUT_LAYER_NAME);
   removeLayer(scene, TERRITORY_LAYER_NAME);
+  removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
 
   const vision = buildCurrentVision(data, faction, state, player.id);
   const currentVision = vision.visible;
@@ -416,6 +428,19 @@ function renderVisibilityLayers() {
     });
   }
 
+  const visibleNests = (Array.isArray(state.enemyNests) ? state.enemyNests : []).filter(nest => {
+    const key = coordKey(Math.floor(Number(nest?.x)), Math.floor(Number(nest?.y)));
+    return testMode || currentVision.has(key);
+  });
+  const nestTerritory = scene.add.graphics().setDepth(13).setName(NEST_TERRITORY_LAYER_NAME);
+  for (const nest of visibleNests) {
+    drawOuterBoundary(nestTerritory, data, nestTerritoryTileKeys(data, nest), {
+      width:NEST_TERRITORY_WIDTH,
+      color:NEST_TERRITORY_COLOR,
+      alpha:NEST_TERRITORY_ALPHA
+    });
+  }
+
   const ownTerritory = new Set(
     Object.entries(state.territoryOwnerByTile || {})
       .filter(([, ownerId]) => String(ownerId) === String(player.id))
@@ -437,6 +462,7 @@ function renderVisibilityLayers() {
     exploredCount:explored.size,
     unexploredCount,
     ownTerritoryCount:ownTerritory.size,
+    visibleNestTerritoryCount:visibleNests.length,
     scoutRanges:(faction.units || []).filter(livingUnit).map(unit => ({
       id:String(unit.id || ""),
       range:unitVisionRange(unit)

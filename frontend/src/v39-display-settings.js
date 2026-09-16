@@ -88,7 +88,7 @@ function ensureTestModeControl() {
   label.innerHTML = `
     <span class="display-setting-title">テストモード</span>
     <input type="checkbox" id="v39-test-mode">
-    <small>ON時は索敵外のFog・索敵枠を非表示にし、敵を索敵範囲外でも表示します。</small>`;
+    <small>ON時はFog制限を解除し、管理タブからテスト操作を使用できます。</small>`;
   grid.appendChild(label);
 }
 

@@ -23,6 +23,9 @@ export const TERRITORY_TILE_MODE_CONFIG = {
 };
 export const TERRITORY_TILE_MODE_CONVERSION_TURNS = 2;
 
+// 暫定値。領土最大HPの正式値が確定したら、この設定だけを変更する。
+export const TERRITORY_TILE_MAX_HP = 100;
+
 // 領土タイルの住居区分（保有可能人数計算）。
 // 総収容人数 = 1マスあたり収容人数 × 使用マス数
 export const TERRITORY_RESIDENTIAL_LEVEL_LAND = "land";

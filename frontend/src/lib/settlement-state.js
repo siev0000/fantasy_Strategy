@@ -1,3 +1,5 @@
+import { TERRITORY_TILE_MAX_HP } from "./phaser-map-panel-config.js";
+
 const text = value => String(value ?? "").trim();
 
 function cloneSettlement(source) {
@@ -124,13 +126,22 @@ export function selectFactionSettlement(factionState, settlementId) {
 
 export function normalizeTerritoryStateRecord(value, fallbackSettlementId = "") {
   if (value && typeof value === "object" && !Array.isArray(value)) {
+    const maxHp = Math.max(1, Number(value.maxHp) || TERRITORY_TILE_MAX_HP);
+    const hp = Math.max(0, Math.min(maxHp, Number.isFinite(Number(value.hp)) ? Number(value.hp) : maxHp));
     return {
       ...value,
       status: text(value.status || value.state || value.type),
-      settlementId: text(value.settlementId || fallbackSettlementId)
+      settlementId: text(value.settlementId || fallbackSettlementId),
+      hp,
+      maxHp
     };
   }
-  return { status: text(value), settlementId: text(fallbackSettlementId) };
+  return {
+    status: text(value),
+    settlementId: text(fallbackSettlementId),
+    hp:TERRITORY_TILE_MAX_HP,
+    maxHp:TERRITORY_TILE_MAX_HP
+  };
 }
 
 export function territoryStatus(value) {

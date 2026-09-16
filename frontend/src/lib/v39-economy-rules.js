@@ -78,9 +78,9 @@ function normalizePopulationByRace(raw, race, fallbackPopulation) {
   const result = {};
   for (const [key, value] of Object.entries(raw || {})) {
     const count = Math.max(0, Math.floor(number(value)));
-    if (text(key) && count > 0) result[text(key)] = count;
+    if (text(key)) result[text(key)] = count;
   }
-  if (!Object.keys(result).length) result[text(race) || "只人"] = Math.max(1, Math.floor(number(fallbackPopulation, 1)));
+  if (!Object.keys(result).length) result[text(race) || "只人"] = Math.max(0, Math.floor(number(fallbackPopulation, 1)));
   return result;
 }
 
@@ -127,6 +127,11 @@ export function normalizeV39Village(village, race = "只人") {
     populationCapacity:Math.max(0, Math.floor(number(village.populationCapacity))),
     employmentSlots:Math.max(0, Math.floor(number(village.employmentSlots))),
     employmentRate:Math.max(0, Math.min(1, number(village.employmentRate))),
+    overcrowdingPopulation:Math.max(0, Math.floor(number(village.overcrowdingPopulation))),
+    overcrowdingRate:Math.max(0, number(village.overcrowdingRate)),
+    overcrowdingHappinessPenalty:Math.min(0, number(village.overcrowdingHappinessPenalty)),
+    overcrowdingSecurityPenalty:Math.min(0, number(village.overcrowdingSecurityPenalty)),
+    lastPopulationOutflow:Math.max(0, Math.floor(number(village.lastPopulationOutflow))),
     lastEconomyDelta:village.lastEconomyDelta && typeof village.lastEconomyDelta === "object" ? { ...village.lastEconomyDelta } : null
   };
 }
@@ -160,7 +165,12 @@ function tileModeDefinition(village, key) {
 
 export function resolveV39SettlementLabor(state, player, village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race)) {
   const ownedKeys = territoryKeysForPlayer(state, player?.id, village?.settlementId || village?.id);
-  const populationCapacity = ownedKeys.reduce((sum, key) => sum + Math.max(0, number(tileModeDefinition(village, key)?.populationCapacityBonus)), 0);
+  const populationCapacity = ownedKeys.reduce((sum, key) => {
+    const territory = state?.territoryStateByTile?.[key];
+    const maxHp = Math.max(1, number(territory?.maxHp, 100));
+    const hpRate = Math.max(0, Math.min(1, number(territory?.hp, maxHp) / maxHp));
+    return sum + Math.max(0, number(tileModeDefinition(village, key)?.populationCapacityBonus)) * hpRate;
+  }, 0);
   const employmentSlots = ownedKeys.reduce((sum, key) => sum + Math.max(0, number(tileModeDefinition(village, key)?.employmentSlots)), 0);
   const population = Math.max(0, number(village?.population));
   return {
@@ -527,6 +537,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, round1(number(village.materialStockByType[key]) - number(beforeMaterial[key]))])),
         population:populationResult.populationDelta,
         populationByRace:populationResult.populationChanges,
+        populationOutflow:populationResult.lastPopulationOutflow,
         shortage:populationResult.shortageTotal,
         employmentRate:territoryIncome.employmentRate,
         turn:state.timeline?.turnNumber

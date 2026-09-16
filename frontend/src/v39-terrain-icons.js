@@ -1,7 +1,8 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { getIconSrcByName, hasIconName } from "./lib/icon-library.js";
 
 const BASE_TERRAIN_ICONS = Object.freeze({
-  "森": { symbol: "🌲", imageCandidate: false },
+  "森": { symbol: "🌲", imageCandidate: true, imageName:"森" },
   "山岳": { symbol: "⛰", imageCandidate: false },
   "雪原": { symbol: "❄", imageCandidate: false },
   "火山": { symbol: "🌋", imageCandidate: false },
@@ -9,9 +10,9 @@ const BASE_TERRAIN_ICONS = Object.freeze({
 });
 
 const SPECIAL_TERRAIN_ICONS = Object.freeze({
-  "沼地": { symbol: "≈", imageCandidate: false },
+  "沼地": { symbol: "≈", imageCandidate: true, imageName:"沼" },
   "峡谷": { symbol: "峡", imageCandidate: false },
-  "洞窟": { symbol: "●", imageCandidate: true },
+  "洞窟": { symbol: "●", imageCandidate: true, imageName:"洞窟" },
   "遺跡": { symbol: "◇", imageCandidate: true }
 });
 
@@ -21,6 +22,7 @@ const TEXTURE_PREFIX = "v39-terrain-icon:";
 const SCENE_RETRY_MS = 16;
 const SCENE_RETRY_LIMIT = 180;
 let renderRequestId = 0;
+const imageTextureState = new WeakMap();
 
 function tileCenter(x, y) {
   const width = Number(HEX_TILE_CONFIG?.width) || 40;
@@ -62,8 +64,8 @@ function ensureIconTexture(scene, kind, terrain, icon) {
   if (scene.textures.exists(key)) return key;
 
   // Hex tiles are roughly 40×48. Keep terrain marks large enough to remain readable on mobile.
-  const size = kind === "special" ? 46 : 38;
-  const fontSize = kind === "special" ? 32 : 28;
+  const size = 48;
+  const fontSize = kind === "special" ? 36 : 38;
   const texture = scene.textures.createCanvas(key, size, size);
   const context = texture.getContext();
 
@@ -82,13 +84,40 @@ function ensureIconTexture(scene, kind, terrain, icon) {
   return key;
 }
 
+function ensureImageTexture(scene, kind, terrain, icon) {
+  if (!icon?.imageCandidate || !hasIconName(icon.imageName)) return "";
+  const key = textureKey(`${kind}-image`, terrain);
+  if (scene.textures.exists(key)) return key;
+  let states = imageTextureState.get(scene);
+  if (!states) {
+    states = new Map();
+    imageTextureState.set(scene, states);
+  }
+  if (states.has(key)) return "";
+  states.set(key, "loading");
+  const image = new Image();
+  image.onload = () => {
+    if (!scene?.sys?.isActive?.()) return;
+    if (!scene.textures.exists(key)) scene.textures.addImage(key, image);
+    states.set(key, "loaded");
+    scheduleTerrainIconRender();
+  };
+  image.onerror = () => states.set(key, "failed");
+  image.src = getIconSrcByName(icon.imageName);
+  return "";
+}
+
 function addIconImage(scene, container, x, y, kind, terrain, icon) {
   const center = tileCenter(x, y);
-  const key = ensureIconTexture(scene, kind, terrain, icon);
+  const key = ensureImageTexture(scene, kind, terrain, icon) || ensureIconTexture(scene, kind, terrain, icon);
   const image = scene.add.image(center.x, center.y, key)
     .setOrigin(0.5)
     .setName(`v39-${kind}-icon:${terrain}:${x},${y}`);
 
+  const width = Number(HEX_TILE_CONFIG?.width) || 40;
+  const height = Number(HEX_TILE_CONFIG?.height) || 48;
+  const fill = kind === "special" ? 0.82 : 0.94;
+  image.setScale(Math.min((width * fill) / Math.max(1, Number(image.width)), (height * fill) / Math.max(1, Number(image.height))));
   image.setData("terrain", terrain);
   image.setData("iconKind", kind);
   image.setData("imageCandidate", icon.imageCandidate === true);
@@ -104,7 +133,7 @@ function renderTerrainIcons() {
   destroyOldOverlay(scene);
   removeLegacySpecialLabels(scene);
 
-  const container = scene.add.container(0, 0).setDepth(5).setName(OVERLAY_NAME);
+  const container = scene.add.container(0, 0).setDepth(2).setName(OVERLAY_NAME);
   let baseCount = 0;
   let specialCount = 0;
 
@@ -130,8 +159,8 @@ function renderTerrainIcons() {
     rendered: true,
     baseCount,
     specialCount,
-    baseFontSize: 28,
-    specialFontSize: 32,
+    baseFontSize: 38,
+    specialFontSize: 36,
     mapWidth: Number(data.w || 0),
     mapHeight: Number(data.h || 0)
   };

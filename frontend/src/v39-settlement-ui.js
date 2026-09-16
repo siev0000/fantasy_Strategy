@@ -71,7 +71,11 @@ function render() {
     ...queue.map(item => `<span class="settlement-chip building">${escapeHtml(item.facilityName)} 残${Math.max(0, Math.floor(number(item.remainingTurns)))}T</span>`)
   ].join("") || `<span class="settlement-empty">なし</span>`;
   const employmentRate = Math.max(0, Math.min(1, number(settlement.employmentRate)));
-  const populationSummary = `<div class="settlement-inline-facts"><span>人口許容 <b>${formatNumber(settlement.populationCapacity)}</b></span><span>雇用枠 <b>${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span></div>${populationRows(settlement)}`;
+  const overcrowding = Math.max(0, Math.floor(number(settlement.overcrowdingPopulation)));
+  const overcrowdingText = overcrowding > 0
+    ? `<span>人口過多 <b>${formatNumber(overcrowding)}</b></span><span>流出 <b>-${formatNumber(settlement.lastPopulationOutflow)}</b></span><span>幸福/治安 <b>${formatNumber(settlement.overcrowdingHappinessPenalty)}</b></span>`
+    : "";
+  const populationSummary = `<div class="settlement-inline-facts"><span>人口許容 <b>${formatNumber(settlement.populationCapacity)}</b></span><span>雇用枠 <b>${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div>${populationRows(settlement)}`;
 
   panel.innerHTML = `
     <nav class="settlement-tabs" aria-label="所有拠点">

@@ -16,6 +16,12 @@ export const MAP_ENTITY_SIZE_RULES = Object.freeze({
     // 選択状態でも大きさは変えず、枠線だけで区別する。
     diameterTiles: 1.0,
     glyphFontTiles: 0.36
+  }),
+  nest: Object.freeze({
+    // ユニットの下に重なっても外周から巣を判別できる大きさにする。
+    diameterTiles: 1.22,
+    iconTiles: 1.12,
+    glyphFontTiles: 0.34
   })
 });
 
