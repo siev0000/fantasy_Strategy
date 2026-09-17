@@ -45,11 +45,37 @@ export function inspectV39TerritoryRepair(state, playerId, settlementId) {
   const targets = Object.entries(state?.territoryOwnerByTile || {})
     .filter(([key, ownerId]) => text(ownerId) === text(player.id)
       && text(territorySettlementId(state?.territoryStateByTile?.[key])) === text(settlementId))
-    .map(([key]) => ({ key, ...(state?.territoryStateByTile?.[key] || {}) }))
-    .filter(row => number(row.maxHp, 100) > 0 && number(row.hp, row.maxHp) < number(row.maxHp, 100))
+    .map(([key]) => {
+      const row = { key, ...(state?.territoryStateByTile?.[key] || {}) };
+      const damagedFacilities = Object.entries(settlement?.facilityStateByTile?.[key] || {})
+        .filter(([, facility]) => number(facility?.hp, facility?.maxHp) < number(facility?.maxHp, 100))
+        .map(([facilityName, facility]) => ({ facilityName, ...facility }));
+      return { ...row, damagedFacilities };
+    })
+    .filter(row => (number(row.maxHp, 100) > 0 && number(row.hp, row.maxHp) < number(row.maxHp, 100)) || row.damagedFacilities.length)
     .map(row => ({ ...row, blockedReason:occupied.has(row.key) ? "敵が存在" : lava.has(row.key) ? "溶岩" : "" }))
     .sort((left, right) => number(left.hp)/Math.max(1, number(left.maxHp, 100)) - number(right.hp)/Math.max(1, number(right.maxHp, 100)) || left.key.localeCompare(right.key));
   return { available:targets.some(row => !row.blockedReason), player, settlement, level, scaleLevel, maxTiles, healRate, targets };
+}
+
+function repairHpWithMaterials(material, currentHp, maxHp, healRate) {
+  const current = Math.max(0, number(currentHp));
+  const maximum = Math.max(1, number(maxHp, 100));
+  const wantedHeal = Math.min(maximum-current, Math.max(1, Math.floor(maximum*healRate)));
+  if (wantedHeal <= 0) return { heal:0, hp:current, cost:{} };
+  let affordableRate = 1;
+  for (const [resource, fullCost] of Object.entries(V39_TERRITORY_FULL_REPAIR_COST)) {
+    const wantedCost = fullCost * wantedHeal / maximum;
+    if (wantedCost > 0) affordableRate = Math.min(affordableRate, number(material[resource]) / wantedCost);
+  }
+  const heal = Math.max(0, Math.floor(wantedHeal * Math.min(1, affordableRate)));
+  if (heal <= 0) return { heal:0, hp:current, cost:{} };
+  const cost = {};
+  for (const [resource, fullCost] of Object.entries(V39_TERRITORY_FULL_REPAIR_COST)) {
+    cost[resource] = round1(fullCost * heal / maximum);
+    material[resource] = round1(Math.max(0, number(material[resource])-cost[resource]));
+  }
+  return { heal, hp:Math.min(maximum, current+heal), cost };
 }
 
 export function applyV39TerritoryRepair(state, playerId, settlementId, turnNumber) {
@@ -57,34 +83,34 @@ export function applyV39TerritoryRepair(state, playerId, settlementId, turnNumbe
   if (!inspection.player || !inspection.settlement) return { state, reports:[], ...inspection };
   const material = { ...(inspection.settlement.materialStockByType || {}) };
   const territoryStateByTile = { ...(state.territoryStateByTile || {}) };
+  const facilityStateByTile = { ...(inspection.settlement.facilityStateByTile || {}) };
   const reports = [];
   for (const target of inspection.targets.filter(row => !row.blockedReason).slice(0, inspection.maxTiles)) {
     if (number(target.lastRepairTurn) >= number(turnNumber)) continue;
     const maxHp = Math.max(1, number(target.maxHp, 100));
-    const wantedHeal = Math.min(maxHp-number(target.hp), Math.max(1, Math.floor(maxHp*inspection.healRate)));
-    let affordableRate = 1;
-    for (const [resource, fullCost] of Object.entries(V39_TERRITORY_FULL_REPAIR_COST)) {
-      const wantedCost = fullCost * wantedHeal / maxHp;
-      if (wantedCost > 0) affordableRate = Math.min(affordableRate, number(material[resource]) / wantedCost);
-    }
-    const heal = Math.max(0, Math.floor(wantedHeal * Math.min(1, affordableRate)));
-    if (heal <= 0) break;
-    const cost = {};
-    for (const [resource, fullCost] of Object.entries(V39_TERRITORY_FULL_REPAIR_COST)) {
-      cost[resource] = round1(fullCost * heal / maxHp);
-      material[resource] = round1(Math.max(0, number(material[resource])-cost[resource]));
-    }
-    const hp = Math.min(maxHp, number(target.hp)+heal);
-    territoryStateByTile[target.key] = {
-      ...target,
-      hp,
+    const territoryRepair = repairHpWithMaterials(material, target.hp, maxHp, inspection.healRate);
+    if (territoryRepair.heal > 0) {
+      const { damagedFacilities, blockedReason, ...territoryTarget } = target;
+      territoryStateByTile[target.key] = {
+      ...territoryTarget,
+      hp:territoryRepair.hp,
       lastRepairTurn:Math.max(1, Math.floor(number(turnNumber, 1))),
-      ...(hp > 0 ? { raided:false, raidedAtTurn:null, raidedByNestId:"" } : {})
+      ...(territoryRepair.hp > 0 ? { raided:false, raidedAtTurn:null, raidedByNestId:"" } : {})
     };
-    reports.push({ key:target.key, beforeHp:number(target.hp), hp, heal, cost });
+    }
+    const tileFacilities = { ...(facilityStateByTile[target.key] || {}) };
+    const facilityReports = [];
+    for (const facility of target.damagedFacilities || []) {
+      const repaired = repairHpWithMaterials(material, facility.hp, facility.maxHp, inspection.healRate);
+      if (repaired.heal <= 0) continue;
+      tileFacilities[facility.facilityName] = { ...facility, hp:repaired.hp, status:repaired.hp > 0 ? "稼働" : "損壊", lastRepairTurn:Math.max(1, Math.floor(number(turnNumber, 1))) };
+      facilityReports.push({ facilityName:facility.facilityName, beforeHp:number(facility.hp), hp:repaired.hp, heal:repaired.heal, cost:repaired.cost });
+    }
+    if (facilityReports.length) facilityStateByTile[target.key] = tileFacilities;
+    if (territoryRepair.heal > 0 || facilityReports.length) reports.push({ key:target.key, beforeHp:number(target.hp), hp:territoryRepair.hp, heal:territoryRepair.heal, cost:territoryRepair.cost, facilities:facilityReports });
   }
   if (!reports.length) return { state, reports, ...inspection };
-  const settlement = { ...inspection.settlement, materialStockByType:material };
+  const settlement = { ...inspection.settlement, materialStockByType:material, facilityStateByTile };
   const factionState = replaceFactionSettlement(inspection.player.factionState, settlement, { ownerPlayerId:inspection.player.id });
   const players = state.players.map(row => text(row?.id) === text(inspection.player.id) ? { ...row, factionState } : row);
   return { state:{ ...state, players, territoryStateByTile }, reports, ...inspection, settlement };

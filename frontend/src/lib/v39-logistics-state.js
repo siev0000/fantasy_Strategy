@@ -1,5 +1,6 @@
 import { normalizeV39NestExplorationState } from "./v39-enemy-exploration.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "./v39-nest-rules.js";
+import { V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -111,12 +112,16 @@ export function addV39CargoToFactionUnit(faction = {}, unitId = "", cargoToAdd =
 }
 
 export function normalizeV39SquadLogistics(squad = {}) {
+  const moveApMax = Math.max(1, Math.floor(number(squad?.moveApMax, V39_SQUAD_MOVEMENT_BALANCE.moveApMax)));
+  const moveAp = Math.max(0, Math.min(moveApMax, Math.floor(number(squad?.moveAp, moveApMax))));
   const cargoByUnitId = Object.fromEntries(Object.entries(squad?.cargoByUnitId || {})
     .map(([unitId, cargo]) => [text(unitId), normalizeV39Cargo(cargo)])
     .filter(([unitId, cargo]) => unitId
       && (Object.keys(cargo.resourcesByType).length || cargo.equipmentInventory.length)));
   return {
     ...squad,
+    moveApMax,
+    moveAp,
     cargo:normalizeV39Cargo(squad?.cargo),
     cargoByUnitId
   };
@@ -153,6 +158,7 @@ export function normalizeV39EnemyNest(nest = {}, index = 0) {
     x,
     y,
     territoryRadius:Math.max(1, Math.floor(number(nest?.territoryRadius, V39_INITIAL_NEST_TERRITORY_RADIUS))),
+    militaryLevel:Math.max(1, Math.floor(number(nest?.militaryLevel ?? nest?.軍事Lv, 1))),
     population:Math.max(0, Math.floor(number(nest?.population))),
     populationByRace:Object.fromEntries(Object.entries(nest?.populationByRace || {})
       .map(([race, value]) => [text(race), Math.max(0, Math.floor(number(value)))])

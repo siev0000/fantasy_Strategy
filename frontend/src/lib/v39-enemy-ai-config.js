@@ -2,7 +2,10 @@
 export const V39_ENEMY_AI_CONFIG = Object.freeze({
   aggressiveFleeHpRate:0.1,
   passiveFleeHpRate:0.3,
-  passiveRetaliatesWhenAttacked:true
+  passiveRetaliatesWhenAttacked:true,
+  // 平時の訓練頻度は暫定値。戦闘・防衛・食料探索・回収を常に優先する。
+  trainingTurnInterval:3,
+  trainingExpPerMilitaryLevel:10
 });
 
 export function resolveV39EnemyFleeHpRate(enemy) {

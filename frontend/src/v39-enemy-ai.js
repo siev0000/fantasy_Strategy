@@ -10,6 +10,7 @@ import { prepareV39EnemyExploration } from "./lib/v39-enemy-exploration.js";
 import { resolveV39ConsumableFoodKeys } from "./lib/v39-population-economy.js";
 import { V39_ENEMY_AI_CONFIG } from "./lib/v39-enemy-ai-config.js";
 import { resolveV39EnemySquadCargoStatus } from "./lib/v39-logistics-state.js";
+import { grantV39UnitExperience } from "./lib/v39-unit-experience.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -189,6 +190,19 @@ function applyEnemyPlan(plan, presentationEvents) {
         visible:window.isV39TileInCurrentVision?.(result.detail?.target?.x, result.detail?.target?.y) === true
       });
     }
+  } else if (plan.type === "train") {
+    const trained = grantV39UnitExperience(enemy, plan.expGain);
+    const enemies = (before.enemies || []).map(row => text(row?.id) === id ? trained.unit : row);
+    const enemyNests = (before.enemyNests || []).map(row => text(row?.id) === text(plan.nestId)
+      ? { ...row, lastTrainingTurn:plan.turnNumber }
+      : row);
+    patchEnemyTurnState({
+      enemies,
+      enemyNests,
+      enemyCombatRuntime:setRuntimeAction(before.enemyCombatRuntime, id, plan.turnNumber)
+    }, "enemy-training");
+    plan.decision = `訓練 EXP+${trained.amount}`;
+    plan.reason = `軍事Lv${plan.militaryLevel}${trained.leveledUp ? ` / Lv${trained.fromLevel}→${trained.toLevel}` : ""}`;
   } else return false;
   appendEnemyAiDecisionLog(enemy, plan.inspection, { decision:plan.decision, reason:plan.reason });
   return true;
@@ -341,7 +355,7 @@ function buildWorkerState(state = enemyTurnState()) {
       }
     })),
     settlements:(state?.settlements || []).map(row => ({ id:row?.id, x:row?.x, y:row?.y })),
-    enemyNests:(state?.enemyNests || []).map(row => ({ id:row?.id, name:row?.name, nestType:row?.nestType, x:row?.x, y:row?.y, territoryRadius:row?.territoryRadius, foodShortage:row?.foodShortage, explorationState:row?.explorationState })),
+    enemyNests:(state?.enemyNests || []).map(row => ({ id:row?.id, name:row?.name, nestType:row?.nestType, x:row?.x, y:row?.y, territoryRadius:row?.territoryRadius, militaryLevel:row?.militaryLevel, foodShortage:row?.foodShortage, explorationState:row?.explorationState })),
     groundLootByTile:Object.fromEntries(Object.entries(state?.groundLootByTile || {}).map(([key, value]) => [key, value])),
     territoryOwnerByTile:{ ...(state?.territoryOwnerByTile || {}) },
     territoryStateByTile:{ ...(state?.territoryStateByTile || {}) },

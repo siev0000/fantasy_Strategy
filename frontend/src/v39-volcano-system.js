@@ -12,13 +12,15 @@ import {
   replaceFactionSettlement,
   territorySettlementId
 } from "./lib/settlement-state.js";
-import { normalizeV39Village } from "./lib/v39-economy-rules.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./lib/v39-economy-rules.js";
 import { resolveV39TerrainTurnDamageRule, resolveV39UnitCapabilityValue } from "./lib/v39-terrain-traversal.js";
+import { V39_VOLCANO_DAMAGE_BALANCE } from "./lib/v39-gameplay-balance.js";
 
 const asCount = value => Math.max(0, Math.floor(Number(value) || 0));
 const LAVA_DAMAGE_RULE = resolveV39TerrainTurnDamageRule("溶岩");
 const text = value => String(value ?? "").trim();
 const tileKey = (x, y) => `${Math.floor(Number(x))},${Math.floor(Number(y))}`;
+const round1 = value => Math.round((Number(value) || 0) * 10) / 10;
 
 function unitOnLava(unit, lavaMap) {
   const x = Math.floor(Number(unit?.x));
@@ -113,10 +115,93 @@ function reducePopulationByRace(populationByRace, requestedLoss) {
   return next;
 }
 
+function reduceResourceBagByRate(source, keys, lossRate) {
+  const next = { ...(source || {}) };
+  const lost = {};
+  for (const key of keys) {
+    const before = Math.max(0, Number(next[key]) || 0);
+    const loss = Math.min(before, round1(before * lossRate));
+    next[key] = round1(before - loss);
+    if (loss > 0) lost[key] = loss;
+  }
+  return { next, lost };
+}
+
+function reduceEquipmentInventoryByRate(source, lossRate) {
+  let lostCount = 0;
+  const next = [];
+  for (const row of Array.isArray(source) ? source : []) {
+    const before = Math.max(0, Math.floor(Number(row?.count ?? row?.quantity) || 0));
+    const loss = Math.min(before, Math.ceil(before * lossRate));
+    lostCount += loss;
+    if (before > loss) next.push({ ...row, count:before - loss });
+  }
+  return { next, lostCount };
+}
+
+function applyStockLoss(stock, lossRate) {
+  const rate = Math.max(0, Math.min(1, Number(lossRate) || 0));
+  const food = reduceResourceBagByRate(stock?.foodStockByType, FOOD_RESOURCE_KEYS, rate);
+  const material = reduceResourceBagByRate(stock?.materialStockByType, MATERIAL_RESOURCE_KEYS, rate);
+  const equipment = reduceEquipmentInventoryByRate(stock?.equipmentInventory, rate);
+  return {
+    stock:{ ...stock, foodStockByType:food.next, materialStockByType:material.next, equipmentInventory:equipment.next },
+    lostFood:food.lost,
+    lostMaterial:material.lost,
+    lostEquipmentCount:equipment.lostCount
+  };
+}
+
+function applyInfrastructureDamage(settlement, target, turnNumber) {
+  let next = normalizeV39Village(settlement);
+  const facilityEntries = [];
+  const storageEntries = [];
+  const facilityStateByTile = { ...(next?.facilityStateByTile || {}) };
+  const tileStates = { ...(facilityStateByTile[target.key] || {}) };
+  for (const facilityName of next?.tileFacilityMap?.[target.key] || []) {
+    const source = tileStates[facilityName] || {};
+    const maxHp = Math.max(1, Number(source.maxHp) || V39_VOLCANO_DAMAGE_BALANCE.facilityMaxHp);
+    const beforeHp = Math.max(0, Math.min(maxHp, Number(source.hp ?? maxHp) || 0));
+    const requestedDamage = Math.max(0, target.damage * V39_VOLCANO_DAMAGE_BALANCE.facilityDamageMultiplier);
+    const damage = Math.min(beforeHp, requestedDamage);
+    const afterHp = Math.max(0, beforeHp - damage);
+    tileStates[facilityName] = {
+      ...source,
+      hp:afterHp,
+      maxHp,
+      status:afterHp <= 0 ? "損壊" : "稼働",
+      lastDamage:damage,
+      lastDamageTurn:turnNumber,
+      lastDamageCause:target.eventType === "eruption" ? "火山噴火" : "溶岩"
+    };
+    if (damage > 0) facilityEntries.push({ settlementId:text(next?.settlementId || next?.id), key:target.key, facilityName, beforeHp, afterHp, maxHp, damage });
+  }
+  if (Object.keys(tileStates).length) facilityStateByTile[target.key] = tileStates;
+  next = { ...next, facilityStateByTile };
+
+  const territoryDamage = Math.min(Math.max(0, Number(target.beforeHp) || 0), Math.max(0, Number(target.damage) || 0));
+  const lossRate = target.afterHp <= 0 ? 1 : Math.min(1, territoryDamage / Math.max(1, Number(target.maxHp) || 1));
+  const homeKey = next?.placed ? tileKey(next.x, next.y) : "";
+  if (target.key === homeKey && lossRate > 0) {
+    const loss = applyStockLoss(next, lossRate);
+    next = { ...next, ...loss.stock };
+    storageEntries.push({ settlementId:text(next?.settlementId || next?.id), key:target.key, storageType:"拠点中心", lossRate, lostFood:loss.lostFood, lostMaterial:loss.lostMaterial, lostEquipmentCount:loss.lostEquipmentCount });
+  }
+  if (next?.storageStockByTile?.[target.key] && lossRate > 0) {
+    const loss = applyStockLoss(next.storageStockByTile[target.key], lossRate);
+    next = { ...next, storageStockByTile:{ ...next.storageStockByTile, [target.key]:loss.stock } };
+    storageEntries.push({ settlementId:text(next?.settlementId || next?.id), key:target.key, storageType:"保管施設", lossRate, lostFood:loss.lostFood, lostMaterial:loss.lostMaterial, lostEquipmentCount:loss.lostEquipmentCount });
+  }
+  return { settlement:normalizeV39Village(next), facilityEntries, storageEntries };
+}
+
 export function applyTerritoryHazardDamage(state, mapData, events, turnNumber) {
   const territoryStateByTile = { ...(state?.territoryStateByTile || {}) };
   const populationLossBySettlement = new Map();
+  const settlementUpdates = new Map();
   const entries = [];
+  const facilityEntries = [];
+  const storageEntries = [];
   for (const target of territoryDamageTargets(events, mapData)) {
     const ownerPlayerId = text(state?.territoryOwnerByTile?.[target.key]);
     if (!ownerPlayerId) continue;
@@ -126,7 +211,9 @@ export function applyTerritoryHazardDamage(state, mapData, events, turnNumber) {
     const afterHp = Math.max(0, beforeHp - target.damage);
     const settlementId = territorySettlementId(territory);
     const player = (state.players || []).find(row => text(row?.id) === ownerPlayerId);
-    const settlement = getFactionSettlements(player?.factionState).find(row => text(row?.settlementId) === settlementId);
+    const updateKey = `${ownerPlayerId}:${settlementId}`;
+    const settlement = settlementUpdates.get(updateKey)
+      || getFactionSettlements(player?.factionState).find(row => text(row?.settlementId) === settlementId);
     const beforeCapacity = tilePopulationCapacity(settlement, target.key) * (beforeHp / maxHp);
     const populationLoss = Math.floor(beforeCapacity * Math.min(1, target.damage / maxHp));
     territoryStateByTile[target.key] = {
@@ -137,39 +224,73 @@ export function applyTerritoryHazardDamage(state, mapData, events, turnNumber) {
       lastDamageCause:target.eventType === "eruption" ? "火山噴火" : "溶岩",
       lastDamage:Math.min(beforeHp, target.damage)
     };
-    if (settlementId && populationLoss > 0) populationLossBySettlement.set(settlementId, (populationLossBySettlement.get(settlementId) || 0) + populationLoss);
-    entries.push({ ...target, ownerPlayerId, settlementId, beforeHp, afterHp, maxHp, populationLoss });
+    if (settlementId && populationLoss > 0) populationLossBySettlement.set(updateKey, (populationLossBySettlement.get(updateKey) || 0) + populationLoss);
+    const entry = { ...target, ownerPlayerId, settlementId, beforeHp, afterHp, maxHp, populationLoss };
+    if (settlement) {
+      const infrastructure = applyInfrastructureDamage(settlement, entry, turnNumber);
+      settlementUpdates.set(updateKey, infrastructure.settlement);
+      facilityEntries.push(...infrastructure.facilityEntries.map(row => ({ ...row, ownerPlayerId })));
+      storageEntries.push(...infrastructure.storageEntries.map(row => ({ ...row, ownerPlayerId })));
+    }
+    entries.push(entry);
   }
   const populationEntries = [];
   const players = (state.players || []).map(player => {
     let factionState = player.factionState;
     for (const settlement of getFactionSettlements(factionState)) {
       const settlementId = text(settlement?.settlementId || settlement?.id);
-      const requestedLoss = populationLossBySettlement.get(settlementId) || 0;
-      if (requestedLoss <= 0) continue;
-      const beforePopulation = Math.max(0, Math.floor(Number(settlement?.population) || 0));
-      const populationByRace = reducePopulationByRace(settlement.populationByRace, requestedLoss);
+      const updatedSettlement = settlementUpdates.get(`${text(player?.id)}:${settlementId}`) || settlement;
+      const requestedLoss = populationLossBySettlement.get(`${text(player?.id)}:${settlementId}`) || 0;
+      if (requestedLoss <= 0 && updatedSettlement === settlement) continue;
+      const beforePopulation = Math.max(0, Math.floor(Number(updatedSettlement?.population) || 0));
+      const populationByRace = requestedLoss > 0
+        ? reducePopulationByRace(updatedSettlement.populationByRace, requestedLoss)
+        : updatedSettlement.populationByRace;
       const afterPopulation = Object.values(populationByRace).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
-      const nextSettlement = normalizeV39Village({ ...settlement, populationByRace, population:afterPopulation }, player.race);
+      const nextSettlement = normalizeV39Village({ ...updatedSettlement, populationByRace, population:afterPopulation }, player.race);
       factionState = replaceFactionSettlement(factionState, nextSettlement, { ownerPlayerId:player.id, select:false });
-      populationEntries.push({ playerId:player.id, settlementId, beforePopulation, afterPopulation, damage:beforePopulation - afterPopulation });
+      if (beforePopulation > afterPopulation) populationEntries.push({ playerId:player.id, settlementId, beforePopulation, afterPopulation, damage:beforePopulation - afterPopulation });
     }
     return { ...player, factionState };
   });
-  return { players, territoryStateByTile, entries, populationEntries };
+  return { players, territoryStateByTile, entries, populationEntries, facilityEntries, storageEntries };
 }
 
-function environmentFromMap(mapData, processedTurn, events = []) {
+function resolveActiveTerrainEffects(previousEnvironment, events, turnNumber) {
+  const turn = Math.max(1, asCount(turnNumber));
+  const active = (previousEnvironment?.activeTerrainEffects || [])
+    .filter(effect => Math.max(0, asCount(effect?.expiresAtTurn)) >= turn)
+    .map(effect => ({ ...effect, tileKeys:[...(effect?.tileKeys || [])] }));
+  for (const event of events || []) {
+    if (event?.type !== "eruption") continue;
+    const durationTurns = Math.max(0, asCount(event?.effects?.durationTurns));
+    const yieldMultiplier = Math.max(0, Number(event?.effects?.yieldMultiplier));
+    if (!durationTurns || !Number.isFinite(yieldMultiplier)) continue;
+    const tileKeys = [...new Set([
+      text(event?.key) || tileKey(event?.x, event?.y),
+      ...(event?.affectedCoords || []).map(point => text(point?.key) || tileKey(point?.x, point?.y))
+    ].filter(key => key.includes(",")))];
+    const id = `eruption-yield:${text(event?.sourceKey || event?.key)}:${turn}`;
+    const next = { id, type:"噴火産出低下", startsAtTurn:turn, expiresAtTurn:turn + durationTurns - 1, yieldMultiplier, securityLoss:Math.max(0, Number(event?.effects?.securityLoss) || 0), tileKeys };
+    const index = active.findIndex(effect => text(effect?.id) === id);
+    if (index >= 0) active[index] = next;
+    else active.push(next);
+  }
+  return active;
+}
+
+function environmentFromMap(mapData, processedTurn, events = [], previousEnvironment = null) {
   return {
     processedTurn:asCount(processedTurn),
     volcanoData:mapData?.volcanoData || null,
     lavaState:mapData?.lavaState || { flows:[] },
     lavaFlowData:mapData?.lavaFlowData || { nodeKeys:[], edgeKeys:[], sourceKeys:[] },
-    lastTerrainEvents:Array.isArray(events) ? events : []
+    lastTerrainEvents:Array.isArray(events) ? events : [],
+    activeTerrainEffects:resolveActiveTerrainEffects(previousEnvironment, events, processedTurn)
   };
 }
 
-function eventSummary(events, damageEntries, turnNumber, territoryEntries = [], populationEntries = []) {
+function eventSummary(events, damageEntries, turnNumber, territoryEntries = [], populationEntries = [], facilityEntries = [], storageEntries = []) {
   const eruptions = events.filter(event => event?.type === "eruption").length;
   const lava = events.filter(event => event?.type === "lava").length;
   const cooled = events.filter(event => event?.type === "lava-cooled").length;
@@ -183,7 +304,9 @@ function eventSummary(events, damageEntries, turnNumber, territoryEntries = [], 
   const damageText = damageTotal ? ` / 溶岩被害 ${victims}${remainder ? `ほか${remainder}体` : ""}` : "";
   const territoryText = territoryEntries.length ? ` / 領土被害${territoryEntries.length}マス` : "";
   const populationLoss = populationEntries.reduce((sum, entry) => sum + asCount(entry?.damage), 0);
-  return `ターン${turnNumber} 噴火${eruptions} / 溶岩${lava} / 冷却${cooled}${territoryText}${populationLoss ? ` / 人口-${populationLoss}` : ""}${damageText}`;
+  const facilityText = facilityEntries.length ? ` / 施設被害${facilityEntries.length}件` : "";
+  const storageText = storageEntries.length ? ` / 在庫被害${storageEntries.length}か所` : "";
+  return `ターン${turnNumber} 噴火${eruptions} / 溶岩${lava} / 冷却${cooled}${territoryText}${facilityText}${storageText}${populationLoss ? ` / 人口-${populationLoss}` : ""}${damageText}`;
 }
 
 export function runV39TerrainTurn(options = {}) {
@@ -205,7 +328,7 @@ export function runV39TerrainTurn(options = {}) {
     forceEruptionAt:options.forceEruptionAt
   });
   window.updateV39FieldData?.(result.data, { reason:"terrain-turn" });
-  const environment = environmentFromMap(result.data, options.markProcessed === false ? alreadyProcessed : targetTurn, result.events);
+  const environment = environmentFromMap(result.data, options.markProcessed === false ? alreadyProcessed : targetTurn, result.events, state.worldEnvironment);
   const territoryDamage = applyTerritoryHazardDamage(state, result.data, result.events, targetTurn);
   const damage = applyLavaTurnDamage({ ...state, players:territoryDamage.players }, result.data, targetTurn);
   window.setV39GameState?.({
@@ -214,16 +337,16 @@ export function runV39TerrainTurn(options = {}) {
     players:damage.players,
     enemies:damage.enemies
   }, { reason:"terrain-turn" });
-  const summary = eventSummary(result.events, damage.entries, targetTurn, territoryDamage.entries, territoryDamage.populationEntries);
+  const summary = eventSummary(result.events, damage.entries, targetTurn, territoryDamage.entries, territoryDamage.populationEntries, territoryDamage.facilityEntries, territoryDamage.storageEntries);
   if (summary) window.showV39TurnBanner?.(summary);
   window.dispatchEvent(new CustomEvent("v39:terrain-turn-resolved", {
-    detail:{ turnNumber:targetTurn, events:result.events, damageEntries:damage.entries, territoryDamageEntries:territoryDamage.entries, populationDamageEntries:territoryDamage.populationEntries, mapData:result.data }
+    detail:{ turnNumber:targetTurn, events:result.events, damageEntries:damage.entries, territoryDamageEntries:territoryDamage.entries, populationDamageEntries:territoryDamage.populationEntries, facilityDamageEntries:territoryDamage.facilityEntries, storageDamageEntries:territoryDamage.storageEntries, mapData:result.data }
   }));
   if (damage.entries.length) window.dispatchEvent(new CustomEvent("v39:terrain-damage", { detail:{ turnNumber:targetTurn, entries:damage.entries } }));
   if (territoryDamage.entries.length) window.dispatchEvent(new CustomEvent("v39:territory-hazard-damage", {
-    detail:{ turnNumber:targetTurn, entries:territoryDamage.entries, populationEntries:territoryDamage.populationEntries }
+    detail:{ turnNumber:targetTurn, entries:territoryDamage.entries, populationEntries:territoryDamage.populationEntries, facilityEntries:territoryDamage.facilityEntries, storageEntries:territoryDamage.storageEntries }
   }));
-  return { ok:true, turnNumber:targetTurn, events:result.events, damageEntries:damage.entries, territoryDamageEntries:territoryDamage.entries, populationDamageEntries:territoryDamage.populationEntries, data:result.data };
+  return { ok:true, turnNumber:targetTurn, events:result.events, damageEntries:damage.entries, territoryDamageEntries:territoryDamage.entries, populationDamageEntries:territoryDamage.populationEntries, facilityDamageEntries:territoryDamage.facilityEntries, storageDamageEntries:territoryDamage.storageEntries, data:result.data };
 }
 
 export function runV39TerrainTurnWithSeed(seed, options = {}) {
@@ -247,7 +370,10 @@ window.forceV39TerrainEvent = eventMode => runV39TerrainTurn({ eventMode, force:
 window.getV39VolcanoRules = () => ({
   lavaDamageMaxHpRate:LAVA_DAMAGE_RULE.maxHpRate,
   lavaDamageResistance:LAVA_DAMAGE_RULE.resistanceName,
-  lavaPassRequirement:"地形.jsonの移動条件"
+  lavaPassRequirement:"地形.jsonの移動条件",
+  facilityMaxHp:V39_VOLCANO_DAMAGE_BALANCE.facilityMaxHp,
+  facilityDamageMultiplier:V39_VOLCANO_DAMAGE_BALANCE.facilityDamageMultiplier,
+  facilityEffectUsesHpRate:V39_VOLCANO_DAMAGE_BALANCE.facilityEffectUsesHpRate
 });
 
 if (window.__v39FieldRuntime?.mapData) initializeEnvironment();

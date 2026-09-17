@@ -66,8 +66,14 @@ function render() {
   });
   const buildings = Array.isArray(settlement.buildings) ? settlement.buildings : [];
   const queue = Array.isArray(settlement.constructionQueue) ? settlement.constructionQueue : [];
+  const facilityStateByName = new Map(Object.values(settlement.facilityStateByTile || {})
+    .flatMap(states => Object.entries(states || {})));
   const facilityBody = [
-    ...buildings.map(name => `<span class="settlement-chip">${escapeHtml(name)}</span>`),
+    ...buildings.map(name => {
+      const facility = facilityStateByName.get(name);
+      const damaged = facility && number(facility.hp) < number(facility.maxHp, 100);
+      return `<span class="settlement-chip${damaged ? " building" : ""}">${escapeHtml(name)}${damaged ? ` HP ${formatNumber(facility.hp)}/${formatNumber(facility.maxHp)}` : ""}</span>`;
+    }),
     ...queue.map(item => `<span class="settlement-chip building">${escapeHtml(item.facilityName)} 残${Math.max(0, Math.floor(number(item.remainingTurns)))}T</span>`)
   ].join("") || `<span class="settlement-empty">なし</span>`;
   const employmentRate = Math.max(0, Math.min(1, number(settlement.employmentRate)));
@@ -77,8 +83,10 @@ function render() {
     : "";
   const populationSummary = `<div class="settlement-inline-facts"><span>人口許容 <b>${formatNumber(settlement.populationCapacity)}</b></span><span>雇用枠 <b>${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div>${populationRows(settlement)}`;
   const repair = window.inspectV39TerritoryRepair?.(player?.id, settlementId);
-  const repairable = repair?.targets?.filter(row => !row.blockedReason).length || 0;
-  const repairBody = `<div class="settlement-inline-facts"><span>修復可能 <b>${repairable}/${damaged.length}</b></span><span>同時修復 <b>${repair?.maxTiles || 0}</b></span><span>回復率 <b>${Math.round(number(repair?.healRate)*100)}%</b></span><span>鍛冶Lv <b>${repair?.level || 0}</b></span></div><div class="settlement-chip-list"><button type="button" class="settlement-chip" data-territory-repair="${escapeHtml(settlementId)}"${repairable ? "" : " disabled"}>一斉修復</button><button type="button" class="settlement-chip${settlement.autoRepair ? " building" : ""}" data-territory-auto-repair="${escapeHtml(settlementId)}">自動修復 ${settlement.autoRepair ? "ON" : "OFF"}</button></div>`;
+  const repairTargets = repair?.targets || [];
+  const repairable = repairTargets.filter(row => !row.blockedReason).length;
+  const damagedFacilityCount = repairTargets.reduce((sum, row) => sum + (row.damagedFacilities?.length || 0), 0);
+  const repairBody = `<div class="settlement-inline-facts"><span>修復可能 <b>${repairable}/${repairTargets.length}</b></span><span>施設損壊 <b>${damagedFacilityCount}</b></span><span>同時修復 <b>${repair?.maxTiles || 0}</b></span><span>回復率 <b>${Math.round(number(repair?.healRate)*100)}%</b></span><span>鍛冶Lv <b>${repair?.level || 0}</b></span></div><div class="settlement-chip-list"><button type="button" class="settlement-chip" data-territory-repair="${escapeHtml(settlementId)}"${repairable ? "" : " disabled"}>一斉修復</button><button type="button" class="settlement-chip${settlement.autoRepair ? " building" : ""}" data-territory-auto-repair="${escapeHtml(settlementId)}">自動修復 ${settlement.autoRepair ? "ON" : "OFF"}</button></div>`;
   const civic = settlement.civicState || {};
   const civicBody = `<div class="settlement-inline-facts"><span>幸福度 <b>${formatNumber(civic.happiness)}</b></span><span>不満度 <b>${formatNumber(civic.dissatisfaction)}</b></span><span>治安 <b>${formatNumber(civic.security)}</b></span><span>産出補正 <b>${formatNumber(number(settlement.lastEconomyDelta?.civicProductionMultiplier || 1) * 100)}%</b></span></div>`;
 
@@ -93,7 +101,7 @@ function render() {
       ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}</div>`)}
       ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
       ${section("civic", "住民状態", `幸福${formatNumber(civic.happiness)}`, civicBody)}
-      ${section("repair", "修復", damaged.length ? `${damaged.length}マス` : "なし", repairBody)}
+      ${section("repair", "修復", repairTargets.length ? `${repairTargets.length}マス` : "なし", repairBody)}
     </div>`;
 }
 

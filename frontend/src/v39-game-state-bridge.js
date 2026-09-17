@@ -28,7 +28,8 @@ const EMPTY_STATE = Object.freeze({
     volcanoData: null,
     lavaState: { flows: [] },
     lavaFlowData: { nodeKeys: [], edgeKeys: [], sourceKeys: [] },
-    lastTerrainEvents: []
+    lastTerrainEvents: [],
+    activeTerrainEffects: []
   },
   enemyCombatRuntime: {
     pendingActionsByEnemyId: {},
@@ -68,7 +69,8 @@ function normalizeWorldEnvironment(value = {}) {
     volcanoData:cloneJson(value?.volcanoData, null),
     lavaState:cloneJson(value?.lavaState, { flows:[] }),
     lavaFlowData:cloneJson(value?.lavaFlowData, { nodeKeys:[], edgeKeys:[], sourceKeys:[] }),
-    lastTerrainEvents:cloneJson(value?.lastTerrainEvents, [])
+    lastTerrainEvents:cloneJson(value?.lastTerrainEvents, []),
+    activeTerrainEffects:cloneJson(value?.activeTerrainEffects, [])
   };
 }
 

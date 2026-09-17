@@ -464,6 +464,7 @@ function buildEnemyNestAndSquadState(enemies) {
       squadId:enemySquadId,
       scaleLevel:1,
       scaleName:"村",
+      militaryLevel:1,
       x,
       y,
       territoryRadius,

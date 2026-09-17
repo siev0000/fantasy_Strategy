@@ -2,6 +2,19 @@
 export const V39_HIT_RATE_MIN = 0.05;
 export const V39_HIT_RATE_MAX = 0.95;
 
+export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
+  // フィールド移動専用。各ユニットが持つ戦闘APとは分離する。
+  moveApMax:100
+});
+
+export const V39_VOLCANO_DAMAGE_BALANCE = Object.freeze({
+  // 暫定値。施設.jsonへ最大HP列を追加した場合はデータ参照へ置き換える。
+  facilityMaxHp:100,
+  facilityDamageMultiplier:3,
+  // 損傷中の施設効果は残HP率に比例し、HP0では停止する。
+  facilityEffectUsesHpRate:true
+});
+
 export const V39_CIVIC_BALANCE = Object.freeze({
   targetBase:50,
   initialHappiness:50,

@@ -2,6 +2,7 @@ import { getV39DiscoveredFeature } from "./lib/v39-exploration-rules.js";
 import { resolveV39FacilityEffectsAtTile } from "./lib/v39-economy-rules.js";
 import { getSettlementForTerritory } from "./lib/settlement-state.js";
 import { V39_TURN_PHASE } from "./lib/v39-turn-timing.js";
+import { restoreV39SquadMovementForTurn } from "./lib/v39-squad-movement-rules.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
@@ -179,16 +180,16 @@ export async function advanceTurn() {
     const stages = ["terrain", "ai", "exploration", "world", "economy", "research", "diplomacy"];
     for (const stage of stages) dispatchTurnStage(stage, nextTurn);
     const resolved = window.getV39GameState?.();
-    const recoveredPlayers = (resolved?.players || []).map(player => ({
-      ...player,
-        factionState:{
+    const recoveredPlayers = (resolved?.players || []).map(player => {
+      const factionState = {
           ...player.factionState,
           units:(player?.factionState?.units || [])
             .map(unit => recoverUnitHp(unit, player.factionState, player.id, resolved, activeTurn))
             .map(unit => clearExpiredGuard(unit, nextTurn))
             .map(restoreUnitForTurn)
-        }
-      }));
+      };
+      return { ...player, factionState:restoreV39SquadMovementForTurn(factionState) };
+    });
     const recoveredEnemies = (resolved?.enemies || []).map(unit => recoverUnitHp(unit, null, "", resolved, activeTurn, true));
     const completedTimeline = {
       ...normalizeTimeline(resolvingTimeline),

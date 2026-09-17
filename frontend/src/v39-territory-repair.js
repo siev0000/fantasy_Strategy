@@ -8,7 +8,11 @@ function commitRepair(playerId, settlementId, turnNumber, reason) {
   const result = applyV39TerritoryRepair(state, playerId, settlementId, turnNumber);
   if (!result.reports.length) return result;
   window.setV39GameState?.({ players:result.state.players, territoryStateByTile:result.state.territoryStateByTile }, { reason });
-  for (const report of result.reports) window.appendV39ActivityLog?.(playerId, "修復", `領土${report.key} HP ${report.beforeHp}→${report.hp}`, report);
+  for (const report of result.reports) {
+    const facilities = (report.facilities || []).map(row => `${text(row.facilityName)} ${row.beforeHp}→${row.hp}`).join("・");
+    const territory = report.heal > 0 ? `領土${report.key} HP ${report.beforeHp}→${report.hp}` : `領土${report.key}`;
+    window.appendV39ActivityLog?.(playerId, "修復", `${territory}${facilities ? ` / 施設 ${facilities}` : ""}`, report);
+  }
   window.dispatchEvent(new CustomEvent("v39:territory-repaired", { detail:{ playerId, settlementId, reports:result.reports } }));
   return result;
 }

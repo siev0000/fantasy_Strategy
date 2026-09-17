@@ -14,6 +14,12 @@ import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import {
+  resolveV39UnitExpNeed,
+  resolveV39UnitExpProgress,
+  resolveV39UnitLevelFromTotalExp,
+  resolveV39UnitTotalExpForLevel
+} from "../lib/v39-unit-experience.js";
+import {
   isDetectedByScout as isDetectedByScoutUtil,
   resolveDetectionGroupSenseFromValues as resolveDetectionGroupSenseFromValuesUtil,
   V39_SCOUT_DISTANCE_DECAY_PER_TILE
@@ -2593,7 +2599,6 @@ const DAMAGE_POPUP_STEP_DELAY_MS = 180;
 const DAMAGE_POPUP_RISE_PX = 26;
 const DAMAGE_POPUP_DEPTH = 1000200;
 const UNIT_EXP_LEVEL_CAP = 120;
-const UNIT_EXP_LEVEL_SPLIT = 15;
 const UNIT_EXP_GAIN_BASE_PER_ENEMY_LEVEL = 50;
 const UNIT_EXP_DIFF_SMALL_THRESHOLD = 5;
 const UNIT_EXP_DIFF_SMALL_RATE = 0.25;
@@ -8921,55 +8926,19 @@ function resolveExpRaceCategoryForUnit(unit) {
 }
 
 function resolveUnitExpNeedForNextLevel(levelRaw, raceCategoryRaw = "other") {
-  const level = Math.max(1, Math.floor(toSafeNumber(levelRaw, 1)));
-  const raceCategory = nonEmptyText(raceCategoryRaw) || "other";
-  const early = level < UNIT_EXP_LEVEL_SPLIT;
-  if (raceCategory === "human") {
-    return early ? (175 + level * 50) : (150 + level * 80);
-  }
-  if (raceCategory === "demi") {
-    return early ? (150 + level * 50) : (150 + level * 80);
-  }
-  if (raceCategory === "demon") {
-    return early ? (100 + level * 50) : (200 + level * 100);
-  }
-  const demiBase = early ? (150 + level * 50) : (150 + level * 80);
-  return Math.max(1, Math.floor(demiBase * 1.1));
+  return resolveV39UnitExpNeed(levelRaw, nonEmptyText(raceCategoryRaw) || "other");
 }
 
 function resolveUnitTotalExpForLevel(levelRaw, raceCategoryRaw = "other") {
-  const level = Math.max(1, Math.floor(toSafeNumber(levelRaw, 1)));
-  let total = 0;
-  for (let lv = 1; lv < level; lv += 1) {
-    total += resolveUnitExpNeedForNextLevel(lv, raceCategoryRaw);
-  }
-  return Math.max(0, Math.floor(total));
+  return resolveV39UnitTotalExpForLevel(levelRaw, nonEmptyText(raceCategoryRaw) || "other");
 }
 
 function resolveUnitLevelFromTotalExp(totalExpRaw, raceCategoryRaw = "other", maxLevelRaw = UNIT_EXP_LEVEL_CAP) {
-  const totalExp = Math.max(0, Math.floor(toSafeNumber(totalExpRaw, 0)));
-  const maxLevel = Math.max(1, Math.floor(toSafeNumber(maxLevelRaw, UNIT_EXP_LEVEL_CAP)));
-  let level = 1;
-  let accumulated = 0;
-  while (level < maxLevel) {
-    const nextNeed = Math.max(1, Math.floor(toSafeNumber(resolveUnitExpNeedForNextLevel(level, raceCategoryRaw), 1)));
-    if ((accumulated + nextNeed) > totalExp) break;
-    accumulated += nextNeed;
-    level += 1;
-  }
-  return Math.max(1, Math.min(maxLevel, level));
+  return resolveV39UnitLevelFromTotalExp(totalExpRaw, nonEmptyText(raceCategoryRaw) || "other", maxLevelRaw);
 }
 
 function resolveUnitExpProgressAtLevel(totalExpRaw, levelRaw, raceCategoryRaw = "other") {
-  const totalExp = Math.max(0, Math.floor(toSafeNumber(totalExpRaw, 0)));
-  const level = Math.max(1, Math.floor(toSafeNumber(levelRaw, 1)));
-  const consumed = resolveUnitTotalExpForLevel(level, raceCategoryRaw);
-  const nextNeed = Math.max(1, Math.floor(toSafeNumber(resolveUnitExpNeedForNextLevel(level, raceCategoryRaw), 1)));
-  const progress = Math.max(0, Math.min(nextNeed, totalExp - consumed));
-  return {
-    exp: progress,
-    totalExp
-  };
+  return resolveV39UnitExpProgress(totalExpRaw, levelRaw, nonEmptyText(raceCategoryRaw) || "other");
 }
 
 function withExpStatus(status, expRaw, totalExpRaw) {

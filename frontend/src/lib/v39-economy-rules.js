@@ -23,6 +23,7 @@ import {
 import { normalizeV39CivicState, resolveV39CivicProductionMultiplier, resolveV39CivicTurn } from "./v39-civic-rules.js";
 import { advanceV39Rebellions } from "./v39-rebellion-rules.js";
 import { resolveTerritoryGuardAtTile } from "../composables/militaryUnitUtils.js";
+import { V39_VOLCANO_DAMAGE_BALANCE } from "./v39-gameplay-balance.js";
 
 const RESOURCE_DEFINITION_ROWS = getGameDataRows("都市基本データ")
   .filter(row => ["食料", "木材", "石材", "金属", "貴金属", "宝石", "特殊資源"].includes(String(row?.分類 || "").trim()));
@@ -79,6 +80,13 @@ function disasterCivicPenaltyForSettlement(state, settlementId) {
     const affectedKeys = (event?.affectedCoords || []).map(point => text(point?.key) || coordKey(point?.x, point?.y));
     if (affectedKeys.some(key => territorySettlementId(state?.territoryStateByTile?.[key]) === settlementId)) penalty = Math.max(penalty, securityLoss);
   }
+  const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
+  for (const effect of state?.worldEnvironment?.activeTerrainEffects || []) {
+    if (turn < number(effect?.startsAtTurn, turn) || turn > number(effect?.expiresAtTurn, turn)) continue;
+    const securityLoss = Math.max(0, number(effect?.securityLoss));
+    if (securityLoss <= 0) continue;
+    if ((effect?.tileKeys || []).some(key => territorySettlementId(state?.territoryStateByTile?.[text(key)]) === settlementId)) penalty = Math.max(penalty, securityLoss);
+  }
   return penalty;
 }
 
@@ -109,6 +117,36 @@ function normalizePopulationByRace(raw, race, fallbackPopulation) {
 
 export function initialPopulationForRace(race) {
   return Math.max(1, Math.floor(number(factionDefinition(race)?.初期人数, 50)));
+}
+
+function normalizeFacilityStateByTile(raw, tileFacilityMap) {
+  const result = {};
+  for (const [key, names] of Object.entries(tileFacilityMap || {})) {
+    const states = {};
+    for (const name of Array.isArray(names) ? names : []) {
+      const facilityName = text(name);
+      if (!facilityName) continue;
+      const source = raw?.[key]?.[facilityName] || {};
+      const maxHp = Math.max(1, number(source.maxHp, V39_VOLCANO_DAMAGE_BALANCE.facilityMaxHp));
+      const hp = Math.max(0, Math.min(maxHp, number(source.hp, maxHp)));
+      states[facilityName] = { ...source, hp, maxHp, status:hp <= 0 ? "損壊" : "稼働" };
+    }
+    if (Object.keys(states).length) result[key] = states;
+  }
+  return result;
+}
+
+function normalizeStorageStockByTile(raw) {
+  return Object.fromEntries(Object.entries(raw || {})
+    .filter(([key, value]) => key.includes(",") && value && typeof value === "object")
+    .map(([key, value]) => [key, {
+      ...value,
+      foodStockByType:normalizeResourceBag(value.foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+      materialStockByType:normalizeResourceBag(value.materialStockByType, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
+      equipmentInventory:Array.isArray(value.equipmentInventory)
+        ? value.equipmentInventory.map(row => ({ ...row, item:row?.item && typeof row.item === "object" ? { ...row.item } : row?.item }))
+        : []
+    }]));
 }
 
 export function normalizeV39Village(village, race = "只人") {
@@ -144,6 +182,8 @@ export function normalizeV39Village(village, race = "只人") {
     cityLevels:{ 鍛冶Lv:0, 魔法Lv:0, 信仰Lv:0, 軍事Lv:0, 経済Lv:0, ...(village.cityLevels || {}) },
     buildings:[...new Set((Array.isArray(village.buildings) ? village.buildings : []).map(text).filter(Boolean))],
     tileFacilityMap,
+    facilityStateByTile:normalizeFacilityStateByTile(village.facilityStateByTile, tileFacilityMap),
+    storageStockByTile:normalizeStorageStockByTile(village.storageStockByTile),
     constructionQueue,
     equipmentInventory:Array.isArray(village.equipmentInventory) ? village.equipmentInventory.map(row => ({ ...row, item:row?.item && typeof row.item === "object" ? { ...row.item } : row?.item })) : [],
     populationGrowthByRace:normalizeV39PopulationGrowthState(populationByRace, village.populationGrowthByRace),
@@ -205,14 +245,14 @@ export function resolveV39SettlementLabor(state, player, village = normalizeV39V
   };
 }
 
-function collectDiscoveredFeatureIncome(raw, player, ownedSet, village, employmentRate) {
+function collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, employmentRate) {
   const discovered = player?.factionState?.exploration?.discoveredFeaturesByTile || {};
   const terrainYieldMap = new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]));
   for (const [key, site] of Object.entries(discovered)) {
     if (!ownedSet.has(key)) continue;
     const row = terrainYieldMap.get(text(site?.featureName));
     if (!row) continue;
-    const multiplier = tileModeMultiplier(village, key) * employmentRate;
+    const multiplier = tileModeMultiplier(village, key) * employmentRate * resolveV39HazardYieldMultiplier(state, key);
     for (const resourceKey of FOOD_RESOURCE_KEYS) {
       const value = number(row[resourceKey]);
       raw.food[resourceKey] = round1(number(raw.food[resourceKey]) + value * multiplier * (value > 0 ? resolveV39FacilityYieldMultiplier(village, key, resourceKey) : 1));
@@ -334,13 +374,13 @@ export function collectV39TerritoryIncome(state, player, mapData = window.__v39F
     roundTo1:round1,
     parseCoordKey:key => { const [x, y] = text(key).split(",").map(Number); return { x, y }; },
     resolveTileTerrainForYield:resolveTileTerrain,
-    resolveTileYieldMultiplier:({ key }) => tileModeMultiplier(village, key) * labor.employmentRate,
+    resolveTileYieldMultiplier:({ key }) => tileModeMultiplier(village, key) * labor.employmentRate * resolveV39HazardYieldMultiplier(state, key),
     resolveResourceYieldMultiplier:({ key, resourceKey, row }) => number(row?.[resourceKey]) > 0
       ? resolveV39FacilityYieldMultiplier(village, key, resourceKey)
       : 1,
     terrainYieldMap
   });
-  collectDiscoveredFeatureIncome(raw, player, ownedSet, village, labor.employmentRate);
+  collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, labor.employmentRate);
   return {
     food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
@@ -365,13 +405,13 @@ export function collectV39TerritoryTileIncome(state, ownerPlayerId, key, mapData
     roundTo1:round1,
     parseCoordKey:tileKey => { const [x, y] = text(tileKey).split(",").map(Number); return { x, y }; },
     resolveTileTerrainForYield:resolveTileTerrain,
-    resolveTileYieldMultiplier:({ key:tileKey }) => tileModeMultiplier(village, tileKey) * labor.employmentRate,
+    resolveTileYieldMultiplier:({ key:tileKey }) => tileModeMultiplier(village, tileKey) * labor.employmentRate * resolveV39HazardYieldMultiplier(state, tileKey),
     resolveResourceYieldMultiplier:({ key:tileKey, resourceKey, row }) => number(row?.[resourceKey]) > 0
       ? resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey)
       : 1,
     terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
   });
-  collectDiscoveredFeatureIncome(raw, player, ownedSet, village, labor.employmentRate);
+  collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, labor.employmentRate);
   return {
     food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 })
@@ -419,24 +459,45 @@ export function resolveV39FacilityEffectsAtTile(village, tileKey) {
   const key = text(tileKey);
   const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));
   const placedNames = new Set(Array.isArray(village?.tileFacilityMap?.[key]) ? village.tileFacilityMap[key].map(text).filter(Boolean) : []);
-  const globalNames = new Set();
-  for (const names of Object.values(village?.tileFacilityMap || {})) {
+  const globalNames = new Map();
+  for (const [placedKey, names] of Object.entries(village?.tileFacilityMap || {})) {
     for (const name of Array.isArray(names) ? names : []) {
       const definition = definitions.get(text(name));
-      if (definition?.scope === "全体") globalNames.add(definition.name);
+      if (definition?.scope === "全体" && !globalNames.has(definition.name)) globalNames.set(definition.name, placedKey);
     }
   }
   for (const name of Array.isArray(village?.buildings) ? village.buildings : []) {
     const definition = definitions.get(text(name));
-    if (definition?.scope === "全体") globalNames.add(definition.name);
+    if (definition?.scope === "全体" && !globalNames.has(definition.name)) globalNames.set(definition.name, "");
   }
   const effects = {};
-  for (const name of new Set([...globalNames, ...placedNames])) {
+  for (const name of new Set([...globalNames.keys(), ...placedNames])) {
     const definition = definitions.get(name);
     if (!definition || (definition.scope !== "全体" && !placedNames.has(name))) continue;
-    for (const [effect, value] of Object.entries(definition.effects || {})) effects[effect] = round1(number(effects[effect]) + number(value));
+    const placedKey = placedNames.has(name) ? key : globalNames.get(name);
+    const state = placedKey ? village?.facilityStateByTile?.[placedKey]?.[name] : null;
+    const maxHp = Math.max(1, number(state?.maxHp, V39_VOLCANO_DAMAGE_BALANCE.facilityMaxHp));
+    const hpRate = state ? Math.max(0, Math.min(1, number(state.hp, maxHp) / maxHp)) : 1;
+    const effectRate = V39_VOLCANO_DAMAGE_BALANCE.facilityEffectUsesHpRate ? hpRate : (hpRate > 0 ? 1 : 0);
+    for (const [effect, value] of Object.entries(definition.effects || {})) {
+      effects[effect] = round1(number(effects[effect]) + number(value) * effectRate);
+    }
   }
   return effects;
+}
+
+export function resolveV39HazardYieldMultiplier(state, tileKey, turnNumber = state?.timeline?.turnNumber) {
+  const key = text(tileKey);
+  const turn = Math.max(1, Math.floor(number(turnNumber, 1)));
+  let multiplier = 1;
+  for (const effect of state?.worldEnvironment?.activeTerrainEffects || []) {
+    const startsAt = Math.max(1, Math.floor(number(effect?.startsAtTurn, 1)));
+    const expiresAt = Math.max(startsAt, Math.floor(number(effect?.expiresAtTurn, startsAt)));
+    const tileKeys = Array.isArray(effect?.tileKeys) ? effect.tileKeys : [];
+    if (turn < startsAt || turn > expiresAt || !tileKeys.some(tile => text(tile) === key)) continue;
+    multiplier = Math.min(multiplier, Math.max(0, number(effect?.yieldMultiplier, 1)));
+  }
+  return multiplier;
 }
 
 export function resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey) {

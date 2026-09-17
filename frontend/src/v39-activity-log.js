@@ -147,7 +147,11 @@ window.addEventListener("v39:territory-hazard-damage", event => {
     const populationLoss = (event?.detail?.populationEntries || [])
       .filter(row => text(row?.playerId) === playerId)
       .reduce((sum, row) => sum + number(row?.damage), 0);
-    appendV39ActivityLog(playerId, "地形", `領土被害: ${entries.length}マス${populationLoss ? ` / 人口-${populationLoss}` : ""}`, { entries });
+    const facilities = (event?.detail?.facilityEntries || []).filter(row => text(row?.ownerPlayerId) === playerId);
+    const storages = (event?.detail?.storageEntries || []).filter(row => text(row?.ownerPlayerId) === playerId);
+    const facilityText = facilities.length ? ` / 施設${facilities.map(row => `${text(row.facilityName)} ${number(row.damage)}`).join("・")}` : "";
+    const storageText = storages.length ? ` / 在庫被害${storages.length}か所` : "";
+    appendV39ActivityLog(playerId, "地形", `領土被害: ${entries.length}マス${facilityText}${storageText}${populationLoss ? ` / 人口-${populationLoss}` : ""}`, { entries, facilities, storages });
   }
 });
 window.addEventListener("v39:construction-started", event => appendV39ActivityLog(window.getV39GameState?.()?.activePlayerId, "建設", `${text(event?.detail?.facilityName)}の建設を開始`));

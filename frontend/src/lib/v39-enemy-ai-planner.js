@@ -34,6 +34,19 @@ function chooseDeterministically(rows, enemyId, cycle) {
   return rows[(hash >>> 0) % rows.length];
 }
 
+function canTrainAtNest(enemy, nest, turnNumber) {
+  if (!nest || nest?.foodShortage === true || distance(enemy, nest) !== 0) return false;
+  const interval = Math.max(1, integer(V39_ENEMY_AI_CONFIG.trainingTurnInterval, 3));
+  const scheduledOffset = chooseDeterministically([...Array(interval).keys()], enemy?.id, 0);
+  return (Math.max(0, integer(turnNumber)) % interval) === scheduledOffset;
+}
+
+function trainingPlan(enemy, nest, turnNumber) {
+  const militaryLevel = Math.max(1, integer(nest?.militaryLevel ?? nest?.軍事Lv, 1));
+  const expGain = militaryLevel*Math.max(0, integer(V39_ENEMY_AI_CONFIG.trainingExpPerMilitaryLevel, 10));
+  return { type:"train", enemyId:text(enemy?.id), nestId:text(nest?.id), turnNumber, militaryLevel, expGain };
+}
+
 function nestFor(state, enemy) {
   return (state?.enemyNests || []).find(nest => text(nest?.id) === text(enemy?.nestId)) || null;
 }
@@ -374,6 +387,8 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
   const lootTarget = lootTargetFor(state, enemy);
   const explorer = normalizeV39EnemyExplorerState(enemy?.explorationState);
   const rebelTarget = rebelTerritoryTargetFor(state, enemy);
+  const militaryLevel = nest ? Math.max(1, integer(nest?.militaryLevel ?? nest?.軍事Lv, 1)) : 0;
+  const trainingEligible = canTrainAtNest(enemy, nest, turnNumber);
   let decision = "待機";
   let reason = "索敵対象、回収対象、帰還条件がありません";
   if (!isAliveEnemyAiUnit(enemy)) { decision="死亡"; reason="HPが0または死亡状態です"; }
@@ -389,6 +404,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
   else if (explorer.active && explorer.mode === "raid") { decision="食料領土を襲撃"; reason=`報告済みの食料候補 ${explorer.targetTileKey} へ向かいます`; }
   else if (explorer.active && explorer.mode === "return") { decision="探索報告のため帰還"; reason="食料候補の発見または食料不足解消により所属巣へ戻ります"; }
   else if (explorer.active) { decision="食料探索"; reason=`縄張り中心から最大${explorer.searchRadius}マスを探索します`; }
+  else if (trainingEligible) { decision="訓練"; reason=`平時訓練 / 軍事Lv${militaryLevel}`; }
   else if (distance(enemy, center) > radius) { decision="縄張りへ帰還"; reason=`縄張り中心から${distance(enemy, center)}マス、縄張り半径${radius}です`; }
   else { decision="縄張り内を徘徊"; reason="攻撃・逃走・回収・帰還の優先条件がありません"; }
   return {
@@ -403,6 +419,8 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
     targetId:text(target?.id), targetName:text(target?.name, target?.id), targetDistance,
     aggroTargetUnitId:text(enemy?.aggroTargetUnitId), attackSkillNames:attackSkills.map(row => text(row?.名前)).filter(Boolean),
     hasNest:!!nest, nestId:text(nest?.id), nestName:text(nest?.name, nest?.id), nestDistance:nest ? distance(enemy, nest) : null,
+    militaryLevel, trainingEligible,
+    trainingExp:trainingEligible ? militaryLevel*Math.max(0, integer(V39_ENEMY_AI_CONFIG.trainingExpPerMilitaryLevel, 10)) : 0,
     territoryCenter:center, territoryRadius:radius, pursuitLimit:limit,
     fleeThreshold, fleeState:enemy?.fleeState || null, fleeDecisionMade:enemy?.fleeDecisionMade === true,
     isRebel:enemy?.isRebel === true, neverFlee:enemy?.neverFlee === true, territoryAssaultOnly:enemy?.territoryAssaultOnly === true,
@@ -469,6 +487,7 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
     if (loot?.targetDistance === 0) action = { type:"recover-loot", enemyId:id, turnNumber, tileKey:loot.key, requiresSync:true };
     else if (loot) action = movePlan(state, mapData, enemy, loot, turnNumber, "toward", 0);
     if (!action && observedExplorerState) action = explorerMovePlan(state, mapData, enemy, nest, turnNumber, observedExplorerState);
+    if (!action && canTrainAtNest(enemy, nest, turnNumber)) action = trainingPlan(enemy, nest, turnNumber);
     if (!action) {
       const center = territoryCenter(enemy, nest);
       if (distance(enemy, center) > territoryRadius(enemy, nest)) action = movePlan(state, mapData, enemy, center, turnNumber, "toward", 0, { aggroTargetUnitId:"" });
@@ -502,6 +521,7 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
     move:inspection?.decision === "縄張り内を徘徊" ? "縄張り内を徘徊" : inspection?.decision,
     wait:"攻撃できず待機",
     "recover-loot":"地上物資を回収",
+    train:"訓練",
     "attack-territory":`領土攻撃: ${text(action?.skillName)}`,
     "queue-attack":`発動開始: ${text(action?.skillName)}`,
     attack:`攻撃: ${text(action?.skillName)}`
