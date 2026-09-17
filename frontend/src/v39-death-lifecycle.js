@@ -1,4 +1,5 @@
 import { getSelectedSettlement } from "./lib/settlement-state.js";
+import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
 import { FOOD_RESOURCE_KEYS } from "./lib/v39-economy-rules.js";
 import {
   addV39CargoToFactionUnit,
@@ -262,15 +263,20 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
   const player = state?.players?.find((row) => text(row.id) === text(playerId));
   if (!state || !player) return { ok:false, reason:"プレイヤーが見つかりません" };
   const reserve = [...player.factionState.deadUnitReserve];
-  const index = reserve.findIndex((entry) => text(entry?.unitId) === text(unitId));
-  if (index < 0) return { ok:false, reason:"死亡者一覧に対象がいません" };
-  const entry = reserve[index];
-  const source = entry.unit;
-  const maxHp = Math.max(1, number(source?.maxHp, source?.status?.HP || 1));
+  const reserveIndex = reserve.findIndex((entry) => text(entry?.unitId) === text(unitId));
+  const fieldIndex = player.factionState.units.findIndex((unit) => text(unit?.id) === text(unitId) && isDead(unit));
+  if (reserveIndex < 0 && fieldIndex < 0) return { ok:false, reason:"蘇生対象の死亡者がいません" };
+  const source = reserveIndex >= 0 ? reserve[reserveIndex].unit : player.factionState.units[fieldIndex];
+  const levelBefore = Math.max(1, Math.floor(number(source?.level, source?.Lv || 1)));
+  const levelLoss = Math.max(0, Math.floor(number(options.levelLoss)));
+  const levelAfter = levelBefore - levelLoss;
+  if (levelAfter <= 0) return { ok:false, reason:`Lv${levelBefore}から${levelLoss}低下すると0以下になるため蘇生できません` };
+  const recalculated = applyV39DerivedCharacterData({ ...source, level:levelAfter });
+  const maxHp = Math.max(1, number(recalculated?.maxHp, recalculated?.status?.HP || 1));
   const hp = Math.max(1, Math.min(maxHp, Math.floor(number(options.hp, Math.ceil(maxHp * 0.25)))));
   const village = getSelectedSettlement(player.factionState);
   const revived = {
-    ...source,
+    ...recalculated,
     x:Math.floor(number(options.x, village?.x ?? source?.x)),
     y:Math.floor(number(options.y, village?.y ?? source?.y)),
     hp,
@@ -278,20 +284,23 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
     state:"生存"
   };
   for (const key of ["diedAtMs", "deadExpireAtMs", "diedAtTurn", "deadExpireTurn", "deathPosition", "deathCause", "deathTurn", "corpseCargo"]) delete revived[key];
-  reserve.splice(index, 1);
+  if (reserveIndex >= 0) reserve.splice(reserveIndex, 1);
+  const units = reserveIndex >= 0
+    ? [...player.factionState.units, revived]
+    : player.factionState.units.map((unit, index) => index === fieldIndex ? revived : unit);
   const history = Array.isArray(player.factionState.deathHistory) ? player.factionState.deathHistory : [];
   const players = state.players.map((row) => row.id !== player.id ? row : ({
     ...row,
     factionState:{
       ...row.factionState,
-      units:[...row.factionState.units, revived],
+      units,
       deadUnitReserve:reserve,
-      deathHistory:[...history, historyEntry(revived, "蘇生", Date.now())],
-      selectedUnitId:text(revived.id)
+      deathHistory:[...history, historyEntry(revived, "蘇生", currentV39TurnNumber(state))],
+      selectedUnitId:options.select === false ? text(row.factionState.selectedUnitId) : text(revived.id)
     }
   }));
   window.setV39GameState({ players }, { reason:"unit-revived" });
-  return { ok:true, unit:revived };
+  return { ok:true, unit:revived, levelBefore, levelAfter, levelLoss, hp };
 }
 
 function install() {

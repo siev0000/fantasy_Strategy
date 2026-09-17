@@ -4,6 +4,7 @@ import "./v39-land-detail.js";
 import "./v39-height-boundaries.js";
 import "./v39-terrain-icons.js";
 import "./v39-volcano-system.js";
+import "./v39-leadership-lifecycle.js";
 import "./v39-squad-card-vitals.js";
 import "./v39-squad-derived-binding.js";
 import "./v39-readable-fonts.js";

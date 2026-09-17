@@ -14,7 +14,8 @@ import {
   resolveSkillHealing,
   resolveSkillGuard,
   resolveSkillTimedModifiers,
-  resolveSplashSpec
+  resolveSplashSpec,
+  resolveV39RevivalSpec
 } from "./lib/v39-combat-engine.js";
 import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
 import { showV39Feedback } from "./v39-feedback.js";
@@ -314,6 +315,20 @@ function selectedAttackRow(unit) {
   return rows.find((row) => text(row?.名前) === selectedSkillName) || rows[0] || null;
 }
 
+function resolveRevivalTarget(player, target, revivalSpec) {
+  if (!revivalSpec) return { ok:false, reason:"蘇生効果が設定されていません" };
+  const unit = (player?.factionState?.units || []).find((candidate) =>
+    (text(candidate?.state) === "死亡" || number(candidate?.hp, candidate?.currentHp) <= 0)
+      && integer(candidate?.x) === integer(target?.x)
+      && integer(candidate?.y) === integer(target?.y)
+  );
+  if (!unit) return { ok:false, reason:"対象位置に死亡した味方がいません" };
+  const levelBefore = Math.max(1, integer(unit?.level, integer(unit?.Lv, 1)));
+  const levelAfter = levelBefore - revivalSpec.levelLoss;
+  if (levelAfter <= 0) return { ok:false, reason:`Lv${levelBefore}から${revivalSpec.levelLoss}低下すると0以下になるため蘇生できません` };
+  return { ok:true, unit, levelBefore, levelAfter };
+}
+
 function unavailableAttackReason(skillName) {
   const faction = activeFaction();
   const unit = selectedUnit(faction);
@@ -340,12 +355,13 @@ function renderActionPanel() {
     const disabled = currentAp(unit) < ap || text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0 || !!timing.pending || timing.cooldownRemainingTurns > 0;
     const power = resolveAttackPower(row, terrainAdjusted(unit));
     const healing = resolveSkillHealing(row, terrainAdjusted(unit));
+    const revival = resolveV39RevivalSpec(row);
     const guard = resolveSkillGuard(row, terrainAdjusted(unit));
     const range = resolveAttackRange(row, unit);
     const timingText = timing.pending ? " / 発動待機中" : timing.cooldownRemainingTurns > 0 ? ` / CT${timing.cooldownRemainingTurns}ターン` : "";
     const selected = name === selectedSkillName;
     const stateText = disabled ? " / 使用不可" : selected ? " / 選択中" : "";
-    const output = healing > 0 ? `回${healing}` : power > 0 ? `威${power}` : guard > 0 ? `ガ${guard}` : "威0";
+    const output = revival ? `蘇生 Lv-${revival.levelLoss}` : healing > 0 ? `回${healing}` : power > 0 ? `威${power}` : guard > 0 ? `ガ${guard}` : "威0";
     return `<button class="battle-skill${selected ? " active" : ""}${disabled ? " unavailable" : ""}" data-v39-attack-name="${name.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}" aria-pressed="${selected}" ${disabled ? "aria-disabled=\"true\"" : ""}><b>${row?.装備攻撃 ? "⚔" : "◆"} ${name}</b><small>AP${ap} / ${output} / 射${range}${timingText}${stateText}</small></button>`;
   }).join("") || '<div class="battle-skill-empty">使用できる行動Aがありません</div>';
   const label = document.getElementById("mobileSelectedSkill");
@@ -402,6 +418,8 @@ function logDamage(attacker, target, skillRow, damage) {
     攻撃者:text(attacker?.name), 対象:text(target?.name), 技名:text(skillRow?.名前), 攻撃手段:text(skillRow?.攻撃手段),
     計算威力:damage.detail.power, 判定参照ステータス:text(skillRow?.判定, "-"),
     防御参照ステータス:damage.detail.defenseKey, 防御値:damage.detail.defense,
+    命中参照ステータス:damage.detail.accuracyKey, 命中値:damage.detail.accuracy,
+    回避値:damage.detail.evasion, 命中率:`${Math.round(damage.detail.hitRate * 1000) / 10}%`, Miss数:damage.missCount,
     耐性軽減割合:`${Math.round(damage.detail.resistanceRate * 1000) / 10}%`, Lv軽減値:damage.detail.levelReduction,
     攻撃側地形補正:{ 地形:damage.detail.attackerTerrain, 補正:damage.detail.attackerTerrainModifiers },
     防御側地形補正:{ 地形:damage.detail.targetTerrain, 補正:damage.detail.targetTerrainModifiers },
@@ -437,6 +455,14 @@ function executeAttack(target) {
   if (!session.rangeTiles.has(coordKey(target.x, target.y))) {
     showToast("射程外です");
     return false;
+  }
+  const revivalSpec = resolveV39RevivalSpec(session.skillRow);
+  if (revivalSpec) {
+    const validation = resolveRevivalTarget(player, target, revivalSpec);
+    if (!validation.ok) {
+      showToast(validation.reason);
+      return false;
+    }
   }
   const delayTurns = castDurationTurns(session.skillRow);
   if (delayTurns <= 0) return performAttack(target, { ...session, playerId:player.id });
@@ -482,6 +508,68 @@ function executeAttack(target) {
   return true;
 }
 
+function performRevival(target, session, options, state, player, attacker, revivalSpec, apCost) {
+  const validation = resolveRevivalTarget(player, target, revivalSpec);
+  if (!validation.ok) {
+    showToast(validation.reason);
+    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
+    return false;
+  }
+  const result = window.reviveV39Unit?.(player.id, validation.unit.id, {
+    hp:revivalSpec.reviveHp,
+    levelLoss:revivalSpec.levelLoss,
+    x:target.x,
+    y:target.y,
+    select:false
+  });
+  if (!result?.ok) {
+    showToast(text(result?.reason, "蘇生に失敗しました"));
+    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
+    return false;
+  }
+  const latestState = window.getV39GameState?.();
+  const latestPlayer = latestState?.players?.find((row) => row.id === player.id);
+  if (!latestState || !latestPlayer) return false;
+  const runtime = latestPlayer.factionState.combatRuntime || {};
+  const pendingActionsByUnitId = { ...(runtime.pendingActionsByUnitId || {}) };
+  if (options.clearPending) delete pendingActionsByUnitId[text(attacker.id)];
+  const cooldownsByUnitId = { ...(runtime.cooldownsByUnitId || {}) };
+  const cooldownTurns = cooldownDurationTurns(session.skillRow);
+  if (cooldownTurns > 0) cooldownsByUnitId[text(attacker.id)] = {
+    ...(cooldownsByUnitId[text(attacker.id)] || {}),
+    [text(session.skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(latestState), cooldownTurns)
+  };
+  const players = latestState.players.map((row) => row.id !== player.id ? row : ({
+    ...row,
+    factionState:{
+      ...row.factionState,
+      units:row.factionState.units.map((unit) => {
+        if (text(unit.id) !== text(attacker.id)) return unit;
+        const ap = options.apPaid ? currentAp(unit) : Math.max(0, currentAp(unit) - apCost);
+        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastUsedAttack:text(session.skillRow?.名前) };
+      }),
+      combatRuntime:{ ...runtime, pendingActionsByUnitId, cooldownsByUnitId }
+    }
+  }));
+  window.setV39GameState({ players }, { reason:"combat-revival" });
+  const effectName = text(session.skillRow?.アニメ);
+  if (effectName && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
+    effectName,
+    tileX:target.x,
+    tileY:target.y,
+    splash:resolveSplashSpec(session.skillRow).value
+  });
+  const summary = `${text(attacker.name)}：${text(session.skillRow?.名前)} / ${text(result.unit?.name)} Lv${result.levelBefore}→${result.levelAfter} / HP${result.hp} / AP-${apCost}`;
+  window.dispatchEvent(new CustomEvent("v39:combat-log", {
+    detail:{ summary, attackerId:text(attacker.id), skillName:text(session.skillRow?.名前), apCost, target, entries:[] }
+  }));
+  if (options.clearPending) window.dispatchEvent(new CustomEvent("v39:cast-ended", { detail:{ playerId:player.id, unitId:text(attacker.id), reason:"resolved" } }));
+  showToast(summary);
+  cancelAttack("revival-complete");
+  renderActionPanel();
+  return true;
+}
+
 function performAttack(target, session = attackSession, options = {}) {
   if (!session) return false;
   const ctx = activeRuntime();
@@ -497,6 +585,7 @@ function performAttack(target, session = attackSession, options = {}) {
     ? session.rangeTiles
     : tilesWithin(ctx.data, attacker, resolveAttackRange(session.skillRow, attacker));
   const adjustedAttacker = terrainAdjusted(attacker);
+  const revivalSpec = resolveV39RevivalSpec(session.skillRow);
   const supportSkill = isV39SupportSkill(session.skillRow, adjustedAttacker);
   if (!supportSkill) rangeTiles.delete(coordKey(attacker.x, attacker.y));
   if (!rangeTiles.has(targetKey)) {
@@ -517,6 +606,7 @@ function performAttack(target, session = attackSession, options = {}) {
     cancelAttack("ap-shortage");
     return false;
   }
+  if (revivalSpec) return performRevival(target, session, options, state, player, attacker, revivalSpec, apCost);
   const areaScale = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow);
   const supportTargets = supportSkill
     ? player.factionState.units.filter(unit => number(unit?.hp, unit?.currentHp) > 0 && areaScale.has(coordKey(unit.x, unit.y)))
@@ -656,7 +746,7 @@ function performAttack(target, session = attackSession, options = {}) {
   }));
   window.setV39GameState({ players:nextPlayers, enemies:nextEnemies }, { reason:"combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum + entry.total, 0);
-  const hits = combatLog.flatMap((entry) => entry.hits);
+  const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const supportCount = supportTargetIds.size;
   const summary = supportSkill
     ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${healing > 0 ? `回復${healing} × ${supportCount}` : grantedGuard > 0 ? `ガード+${grantedGuard} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
@@ -767,7 +857,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     : state.enemyNests;
   window.setV39GameState({ players, enemies, enemyNests }, { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
-  const hits = combatLog.flatMap((entry) => entry.hits);
+  const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const summary = `${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
   if (!isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {

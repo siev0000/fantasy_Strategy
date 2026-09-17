@@ -35,6 +35,12 @@ function setRuntimeAction(runtime, enemyId, turnNumber) {
 }
 
 function enemyAiFaction(state, enemy) {
+  if (enemy?.isRebel === true) return {
+    id:text(enemy?.rebelFactionId, `rebel:${text(enemy?.rebelPlayerId)}`),
+    label:text(enemy?.rebelFactionLabel, "反乱軍"),
+    type:"rebel",
+    sourceId:text(enemy?.rebelSettlementId)
+  };
   const nest = (state?.enemyNests || []).find(row => text(row?.id) === text(enemy?.nestId));
   if (nest) return {
     id:`nest:${text(nest.id)}`,
@@ -161,7 +167,10 @@ function applyEnemyPlan(plan, presentationEvents) {
       turnNumber:plan.turnNumber
     });
     const state = enemyTurnState() || before;
-    patchEnemyTurnState({ enemyCombatRuntime:setRuntimeAction(state.enemyCombatRuntime, id, plan.turnNumber) }, result?.ok ? "enemy-territory-raid-action" : "enemy-territory-raid-failed");
+    const enemies = enemy?.territoryAssaultOnly === true
+      ? (state.enemies || []).map(row => text(row?.id) === id ? { ...row, fleeState:null, fleeDecisionMade:true } : row)
+      : state.enemies;
+    patchEnemyTurnState({ enemies, enemyCombatRuntime:setRuntimeAction(state.enemyCombatRuntime, id, plan.turnNumber) }, result?.ok ? "enemy-territory-raid-action" : "enemy-territory-raid-failed");
     plan.decision = result?.completed ? "領土略奪完了" : result?.ok ? "領土を攻撃" : "領土攻撃失敗";
     plan.reason = result?.ok ? `${plan.tileKey} HP ${result.hpBefore} → ${result.hp}` : text(result?.reason, "領土を攻撃できませんでした");
   } else if (plan.type === "attack") {
@@ -296,7 +305,15 @@ function compactAiUnit(unit, enemySide = false) {
   return {
     ...compact,
     aggressive:unit?.aggressive,
+    race:unit?.race,
     nestId:unit?.nestId,
+    isRebel:unit?.isRebel,
+    neverFlee:unit?.neverFlee,
+    territoryAssaultOnly:unit?.territoryAssaultOnly,
+    rebelPlayerId:unit?.rebelPlayerId,
+    rebelSettlementId:unit?.rebelSettlementId,
+    rebelFactionId:unit?.rebelFactionId,
+    rebelFactionLabel:unit?.rebelFactionLabel,
     territoryCenterX:unit?.territoryCenterX,
     territoryCenterY:unit?.territoryCenterY,
     territoryRadius:unit?.territoryRadius,

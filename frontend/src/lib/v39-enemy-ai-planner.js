@@ -1,4 +1,4 @@
-import { isV39SupportSkill, resolveActionSkillRows, resolveAttackApCost, resolveAttackRange } from "./v39-combat-engine.js";
+import { isV39SupportSkill, resolveActionSkillRows, resolveAttackApCost, resolveAttackRange, resolveAttackRows } from "./v39-combat-engine.js";
 import { getHexDistance, getHexNeighborCoords } from "./hex-grid.js";
 import { isDetectedByScout, resolveDetectionGroupSense, resolveDetectionScoutValue } from "./v39-detection-rules.js";
 import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
@@ -175,6 +175,38 @@ function lootTargetFor(state, enemy) {
     .sort((a, b) => a.targetDistance-b.targetDistance || a.key.localeCompare(b.key))[0] || null;
 }
 
+function rebelTerritoryTargetFor(state, enemy) {
+  if (enemy?.territoryAssaultOnly !== true) return null;
+  const originalOwnerId = text(enemy?.rebelPlayerId);
+  return Object.entries(state?.territoryOwnerByTile || {})
+    .map(([key, ownerId]) => {
+      const [x, y] = key.split(",").map(Number);
+      const territory = state?.territoryStateByTile?.[key] || {};
+      return { key, ownerId:text(ownerId), x, y, hp:number(territory?.hp, territory?.maxHp || 100), raided:territory?.raided === true };
+    })
+    .filter(row => Number.isFinite(row.x) && Number.isFinite(row.y) && row.ownerId && row.hp > 0 && !row.raided)
+    .sort((left, right) => Number(right.ownerId === originalOwnerId)-Number(left.ownerId === originalOwnerId)
+      || distance(enemy, left)-distance(enemy, right)
+      || left.key.localeCompare(right.key))[0] || null;
+}
+
+function rebelTerritoryPlan(state, mapData, enemy, turnNumber) {
+  const target = rebelTerritoryTargetFor(state, enemy);
+  if (!target) return waitPlan(enemy, turnNumber, { fleeState:null, fleeDecisionMade:true });
+  if (distance(enemy, target) > 0) {
+    return movePlan(state, mapData, enemy, target, turnNumber, "toward", 0, { fleeState:null, fleeDecisionMade:true })
+      || waitPlan(enemy, turnNumber, { fleeState:null, fleeDecisionMade:true });
+  }
+  const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(enemy.id)] || {};
+  const skillRows = resolveAttackRows(enemy).filter(skillRow => !isV39SupportSkill(skillRow, enemy)
+    && resolveAttackApCost(skillRow) <= number(enemy?.ap)
+    && remainingV39Turns(cooldowns[text(skillRow?.名前)], turnNumber) <= 0);
+  const skillRow = chooseDeterministically(skillRows, enemy.id, turnNumber);
+  return skillRow
+    ? { type:"attack-territory", enemyId:text(enemy.id), turnNumber, tileKey:target.key, skillRow, skillName:text(skillRow?.名前), requiresSync:true, enemyPatch:{ fleeState:null, fleeDecisionMade:true } }
+    : waitPlan(enemy, turnNumber, { fleeState:null, fleeDecisionMade:true });
+}
+
 function terrainLabel(tile) {
   if (tile && typeof tile === "object") return text(tile.name || tile.type || tile.terrain || tile.key, "不明");
   return text(tile, "不明");
@@ -341,11 +373,13 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
   const attackSkills = target ? attackSkillsFor(state, enemy, target, turnNumber) : [];
   const lootTarget = lootTargetFor(state, enemy);
   const explorer = normalizeV39EnemyExplorerState(enemy?.explorationState);
+  const rebelTarget = rebelTerritoryTargetFor(state, enemy);
   let decision = "待機";
   let reason = "索敵対象、回収対象、帰還条件がありません";
   if (!isAliveEnemyAiUnit(enemy)) { decision="死亡"; reason="HPが0または死亡状態です"; }
   else if (pending) { decision=`発動待機: ${text(pending.skillName, "名称未設定")}`; reason=`残り${remainingV39Turns(pending.resolvesAtTurn, turnNumber)}ターン`; }
   else if (lastActionTurn >= turnNumber) { decision="行動済み"; reason=`ターン${lastActionTurn}の行動を完了しています`; }
+  else if (enemy?.territoryAssaultOnly === true) { decision=rebelTarget && distance(enemy, rebelTarget) === 0 ? "領土を攻撃" : rebelTarget ? "領土へ進軍" : "攻撃対象領土なし"; reason=rebelTarget ? `${rebelTarget.key}の領土を最優先します（逃走なし）` : "攻撃可能な領土がありません"; }
   else if (enemy?.fleeState?.active === true) { decision=nest ? "巣へ逃走" : "敵対対象から逃走"; reason=`HP率${Math.round(hpRate*100)}% / 逃走基準${Math.round(fleeThreshold*100)}%`; }
   else if (nest && hpRate <= fleeThreshold && distance(enemy, nest) > 1) { decision="巣へ逃走予定"; reason=`HP率が逃走基準${Math.round(fleeThreshold*100)}%以下です`; }
   else if (!nest && hpRate <= fleeThreshold && enemy?.fleeDecisionMade !== true) { decision="逃走予定"; reason=`HP率が逃走基準${Math.round(fleeThreshold*100)}%以下です`; }
@@ -371,6 +405,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
     hasNest:!!nest, nestId:text(nest?.id), nestName:text(nest?.name, nest?.id), nestDistance:nest ? distance(enemy, nest) : null,
     territoryCenter:center, territoryRadius:radius, pursuitLimit:limit,
     fleeThreshold, fleeState:enemy?.fleeState || null, fleeDecisionMade:enemy?.fleeDecisionMade === true,
+    isRebel:enemy?.isRebel === true, neverFlee:enemy?.neverFlee === true, territoryAssaultOnly:enemy?.territoryAssaultOnly === true,
     lastActionTurn, pendingSkillName:text(pending?.skillName), pendingTurns:pending ? remainingV39Turns(pending.resolvesAtTurn, turnNumber) : 0,
     cooldowns:Object.fromEntries(Object.entries(cooldowns).map(([name, deadline]) => [name, remainingV39Turns(deadline, turnNumber)]).filter(([, turns]) => turns > 0))
   };
@@ -394,14 +429,16 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
   const observedExplorerState = observeForExplorer(state, mapData, enemy, turnNumber);
   let action = null;
 
+  if (enemy?.territoryAssaultOnly === true) action = rebelTerritoryPlan(state, mapData, enemy, turnNumber);
+
   const fleeThreshold = resolveV39EnemyFleeHpRate(enemy);
-  if (nest && (activeFlee || hpRate <= fleeThreshold)) {
+  if (!action && enemy?.neverFlee !== true && nest && (activeFlee || hpRate <= fleeThreshold)) {
     if (distance(enemy, nest) <= 1) {
       if (activeFlee) action = waitPlan(enemy, turnNumber, { fleeState:null });
     } else {
       action = movePlan(state, mapData, enemy, nest, turnNumber, "toward", 1, { fleeState:{ active:true, type:"nest", startedAtTurn:turnNumber } }) || waitPlan(enemy, turnNumber);
     }
-  } else if (!nest && (activeFlee || hpRate <= fleeThreshold)) {
+  } else if (!action && enemy?.neverFlee !== true && !nest && (activeFlee || hpRate <= fleeThreshold)) {
     if (!activeFlee) {
       const target = [...targets].sort((a, b) => distance(enemy, a)-distance(enemy, b))[0] || null;
       action = target

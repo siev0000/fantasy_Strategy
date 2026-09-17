@@ -1,6 +1,7 @@
 import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { COMBAT_STATUS_FIELDS, DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS } from "../constants/unitCommon.js";
+import { V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
 
 const NATURAL_COUNTER_METHODS = new Set(["素手", "角", "牙", "爪", "翼", "尾", "針"]);
 const RANGED_WEAPON_NAMES = /弓|銃|砲|ボウ|ライフル|ピストル/;
@@ -134,6 +135,15 @@ export function resolveSkillHealing(skillRow, attacker) {
   return Math.max(0, Math.round(base * (1 + bonus / 500)));
 }
 
+export function resolveV39RevivalSpec(skillRow) {
+  const match = text(skillRow?.効果).match(/蘇生[_＿]?Lv-(\d+)/i);
+  if (!match) return null;
+  return {
+    levelLoss:Math.max(0, Math.floor(number(match[1]))),
+    reviveHp:Math.max(1, Math.floor(number(skillRow?.回復, 1)))
+  };
+}
+
 export function resolveSkillGuard(skillRow, attacker, options = {}) {
   const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, options);
   return Math.max(0, Math.floor(number(computeSkillScaledTriplet(adjusted.skillRow, adjusted.attacker?.status || {})?.guard)));
@@ -158,7 +168,8 @@ export function applyV39ActiveCombatEffects(unit, effects) {
 }
 
 export function isV39SupportSkill(skillRow, attacker) {
-  return resolveSkillHealing(skillRow, attacker) > 0
+  return !!resolveV39RevivalSpec(skillRow)
+    || resolveSkillHealing(skillRow, attacker) > 0
     || (resolveAttackPower(skillRow, attacker) <= 0
       && (Object.keys(resolveSkillTimedModifiers(skillRow)).length > 0 || resolveSkillGuard(skillRow, attacker) > 0));
 }
@@ -264,8 +275,20 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   const levelReduction = (targetLevel / 10) * resistance;
   const reducedPower = Math.max(0, power - levelReduction);
   const attackCount = Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)));
+  const magicalAttack = text(adjusted.skillRow?.攻撃手段) === "魔法" || magicalJudge;
+  const accuracyKey = magicalAttack ? "精神" : "命中";
+  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey]));
+  const evasion = Math.max(1, number(target?.status?.回避, number(target?.status?.速度, 1)));
+  const hitRate = Math.max(V39_HIT_RATE_MIN, Math.min(V39_HIT_RATE_MAX, (accuracy / evasion) * 0.75));
   const hits = [];
+  const hitResults = [];
   for (let index = 0; index < attackCount; index += 1) {
+    const hitRoll = Math.max(0, Math.min(1, number(random(), 1)));
+    if (hitRoll >= hitRate) {
+      hits.push(0);
+      hitResults.push({ hit:false, damage:0, hitRoll });
+      continue;
+    }
     const randomRate = 0.4 + (Math.max(0, Math.min(1, number(random(), 0.5))) * 0.1);
     const damage = Math.max(0, Math.floor(
       (reducedPower / (1 + defense / 100))
@@ -275,13 +298,16 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
       * (friendly ? 0.5 : 1)
     ));
     hits.push(damage);
+    hitResults.push({ hit:true, damage, hitRoll, randomRate });
   }
   return {
     total:hits.reduce((sum, value) => sum + value, 0),
     hits,
+    hitResults,
+    missCount:hitResults.filter(row => !row.hit).length,
     detail:{
       power, defenseKey, defense, resistanceKey, resistance, resistanceRate, targetLevel,
-      levelReduction, reducedPower, attackCount, scale, friendly,
+      levelReduction, reducedPower, attackCount, scale, friendly, accuracyKey, accuracy, evasion, hitRate,
       appliedPassiveSkillNames:adjusted.appliedPassiveSkillNames,
       attackerTerrain:text(attacker?.terrainModifierSource),
       attackerTerrainModifiers:{ ...(attacker?.terrainModifiers || {}) },

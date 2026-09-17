@@ -20,6 +20,9 @@ import {
   buildV39PopulationMaintenanceStock,
   normalizeV39PopulationGrowthState
 } from "./v39-population-economy.js";
+import { normalizeV39CivicState, resolveV39CivicProductionMultiplier, resolveV39CivicTurn } from "./v39-civic-rules.js";
+import { advanceV39Rebellions } from "./v39-rebellion-rules.js";
+import { resolveTerritoryGuardAtTile } from "../composables/militaryUnitUtils.js";
 
 const RESOURCE_DEFINITION_ROWS = getGameDataRows("都市基本データ")
   .filter(row => ["食料", "木材", "石材", "金属", "貴金属", "宝石", "特殊資源"].includes(String(row?.分類 || "").trim()));
@@ -67,6 +70,26 @@ const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const round1 = value => Math.round(number(value) * 10) / 10;
 const coordKey = (x, y) => `${Math.floor(number(x))},${Math.floor(number(y))}`;
+
+function disasterCivicPenaltyForSettlement(state, settlementId) {
+  let penalty = 0;
+  for (const event of state?.worldEnvironment?.lastTerrainEvents || []) {
+    const securityLoss = Math.max(0, number(event?.effects?.securityLoss));
+    if (securityLoss <= 0) continue;
+    const affectedKeys = (event?.affectedCoords || []).map(point => text(point?.key) || coordKey(point?.x, point?.y));
+    if (affectedKeys.some(key => territorySettlementId(state?.territoryStateByTile?.[key]) === settlementId)) penalty = Math.max(penalty, securityLoss);
+  }
+  return penalty;
+}
+
+function guardSecurityBonusForSettlement(state, playerId, village) {
+  const settlementId = text(village?.settlementId || village?.id);
+  const militaryLevel = number(village?.cityLevels?.軍事Lv, number(village?.militaryLevel, 1));
+  return Object.entries(state?.territoryOwnerByTile || {}).reduce((sum, [key, ownerId]) => {
+    if (text(ownerId) !== text(playerId) || territorySettlementId(state?.territoryStateByTile?.[key]) !== settlementId) return sum;
+    return sum + number(resolveTerritoryGuardAtTile(village, key, { militaryLevel }).securityBonus);
+  }, 0);
+}
 
 function factionDefinition(race) {
   const target = text(race);
@@ -132,6 +155,7 @@ export function normalizeV39Village(village, race = "只人") {
     overcrowdingHappinessPenalty:Math.min(0, number(village.overcrowdingHappinessPenalty)),
     overcrowdingSecurityPenalty:Math.min(0, number(village.overcrowdingSecurityPenalty)),
     lastPopulationOutflow:Math.max(0, Math.floor(number(village.lastPopulationOutflow))),
+    civicState:normalizeV39CivicState(village),
     lastEconomyDelta:village.lastEconomyDelta && typeof village.lastEconomyDelta === "object" ? { ...village.lastEconomyDelta } : null
   };
 }
@@ -536,10 +560,16 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         facilitiesByTile[item.tileKey] = [...new Set([...(facilitiesByTile[item.tileKey] || []), item.facilityName])];
         completed.push({ ...item, playerId:player.id, settlementId });
       }
-      const territoryIncome = collectV39TerritoryIncome(state, {
+      const rawTerritoryIncome = collectV39TerritoryIncome(state, {
         ...player,
         factionState:replaceFactionSettlement(player.factionState, village, { ownerPlayerId:player.id })
       }, mapData);
+      const civicProductionMultiplier = resolveV39CivicProductionMultiplier(village);
+      const territoryIncome = {
+        ...rawTerritoryIncome,
+        food:Object.fromEntries(Object.entries(rawTerritoryIncome.food || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier)])),
+        material:Object.fromEntries(Object.entries(rawTerritoryIncome.material || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier)]))
+      };
       const assignedUnits = (player.factionState.units || []).filter(unit => {
         if (number(unit?.hp ?? unit?.currentHp) <= 0) return false;
         return text(unit?.settlementId || selectedId) === settlementId;
@@ -562,8 +592,11 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         materialStockByType,
         populationCapacity:territoryIncome.populationCapacity,
         employmentSlots:territoryIncome.employmentSlots,
-        employmentRate:territoryIncome.employmentRate
+        employmentRate:territoryIncome.employmentRate,
+        disasterCivicPenalty:disasterCivicPenaltyForSettlement(state, settlementId),
+        guardSecurityBonus:guardSecurityBonusForSettlement(state, player.id, village)
       }, player.race);
+      village.civicState = resolveV39CivicTurn(village, currentTurn);
       village.lastEconomyDelta = {
         food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, round1(number(village.foodStockByType[key]) - number(beforeFood[key]))])),
         material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, round1(number(village.materialStockByType[key]) - number(beforeMaterial[key]))])),
@@ -572,6 +605,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         populationOutflow:populationResult.lastPopulationOutflow,
         shortage:populationResult.shortageTotal,
         employmentRate:territoryIncome.employmentRate,
+        civicProductionMultiplier,
         turn:state.timeline?.turnNumber
       };
       const scale = resolveVillageScaleLabel(village);
@@ -609,8 +643,10 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
       factionState:{ ...player.factionState, units, settlements:nextSettlements, selectedSettlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id) }
     };
   });
-  const enemyEconomy = advanceEnemyNestEconomy({ ...state, players }, mapData, Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1))));
-  return { state:{ ...state, players, facilitiesByTile, settlements, ...enemyEconomy }, reports, completed };
+  const currentTurn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
+  const enemyEconomy = advanceEnemyNestEconomy({ ...state, players }, mapData, currentTurn);
+  const rebellion = advanceV39Rebellions({ ...state, players, facilitiesByTile, settlements, ...enemyEconomy }, currentTurn);
+  return { state:rebellion.state, reports, completed, rebellions:rebellion.reports, civicOutflows:rebellion.outflows };
 }
 
 export function buildV39ResourceSnapshot(village) {

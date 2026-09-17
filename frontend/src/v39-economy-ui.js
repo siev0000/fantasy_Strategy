@@ -181,6 +181,7 @@ function handleTurn() {
     window.setV39GameState?.({
       players:result.state.players,
       enemies:result.state.enemies,
+      enemySquads:result.state.enemySquads,
       enemyNests:result.state.enemyNests,
       facilitiesByTile:result.state.facilitiesByTile,
       settlements:result.state.settlements
@@ -188,6 +189,15 @@ function handleTurn() {
     if (result.completed.length) {
       window.showV39TurnBanner?.(`建設完了: ${result.completed.map(row => row.facilityName).join("、")}`);
       window.dispatchEvent(new CustomEvent("v39:construction-completed", { detail:{ completed:result.completed } }));
+    }
+    for (const rebellion of result.rebellions || []) {
+      const message = `${rebellion.settlementName}で反乱発生: ${rebellion.race}${rebellion.population}人が敵対化`;
+      window.showV39TurnBanner?.(message);
+      window.appendV39ActivityLog?.(rebellion.playerId, "反乱", message, rebellion);
+    }
+    for (const outflow of result.civicOutflows || []) {
+      const message = `${outflow.settlementName}から不満・治安悪化により${outflow.population}人が流出`;
+      window.appendV39ActivityLog?.(outflow.playerId, "人口", message, outflow);
     }
     window.dispatchEvent(new CustomEvent("v39:economy-turn-resolved", { detail:{ reports:result.reports, turnNumber:state?.timeline?.turnNumber } }));
   } finally {

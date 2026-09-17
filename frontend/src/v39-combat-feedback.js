@@ -76,6 +76,13 @@ function lungeMarker(attackerId, target) {
 }
 
 function showDamagePopups(scene, entry, center) {
+  if (number(entry?.missCount) > 0 && number(entry?.missCount) >= (Array.isArray(entry?.hits) ? entry.hits.length : 1)) {
+    const label = scene.add.text(center.x, center.y - 24, "Miss", {
+      fontFamily:"Noto Sans JP, Meiryo, sans-serif", fontSize:"18px", fontStyle:"bold", color:"#bde8ff", stroke:"#102a38", strokeThickness:4
+    }).setOrigin(0.5).setDepth(POPUP_DEPTH);
+    scene.tweens.add({ targets:label, y:center.y-42, alpha:{ from:1, to:0 }, duration:1400, onComplete:() => label.destroy() });
+    return;
+  }
   const hits = (Array.isArray(entry?.hits) ? entry.hits : []).map((value) => Math.max(0, Math.floor(number(value))));
   if (!hits.length) return;
   let cumulative = 0;
@@ -104,6 +111,7 @@ function showDamagePopups(scene, entry, center) {
 }
 
 function showDelayedHpBar(scene, entry, center) {
+  if (number(entry?.total) <= 0) return;
   const maxHp = Math.max(1, number(entry?.maxHp, 1));
   const beforeRate = Math.max(0, Math.min(1, number(entry?.beforeHp) / maxHp));
   const afterRate = Math.max(0, Math.min(1, number(entry?.afterHp) / maxHp));

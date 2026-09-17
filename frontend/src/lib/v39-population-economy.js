@@ -89,6 +89,22 @@ function growthRequired(population, row) {
   return round1(Math.max(0, population) * (Math.max(0, number(row?.コスト)) / 10 * POPULATION_UPKEEP_SCALE) * 2);
 }
 
+export function rescaleV39PopulationGrowthForPopulationChange(populationByRace = {}, growthByRace = {}) {
+  return Object.fromEntries(Object.entries(populationByRace).map(([race, population]) => {
+    const growth = growthByRace?.[race] || {};
+    const previousRequired = Math.max(0, number(growth?.lastRequiredGauge));
+    const progressRate = previousRequired > 0 ? Math.max(0, number(growth?.gauge) / previousRequired) : 0;
+    const current = Math.max(0, Math.floor(number(population)));
+    const required = growthRequired(current, resolvePopulationClassDefinition(race));
+    return [race, {
+      ...growth,
+      gauge:round1(required * progressRate),
+      lastRequiredGauge:required,
+      lastPopulation:current
+    }];
+  }));
+}
+
 function normalizeGrowthState(source, population, row) {
   const required = growthRequired(population, row);
   const previousRequired = Math.max(0, number(source?.lastRequiredGauge, required));
