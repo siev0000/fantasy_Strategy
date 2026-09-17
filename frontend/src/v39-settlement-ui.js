@@ -76,6 +76,9 @@ function render() {
     ? `<span>人口過多 <b>${formatNumber(overcrowding)}</b></span><span>流出 <b>-${formatNumber(settlement.lastPopulationOutflow)}</b></span><span>幸福/治安 <b>${formatNumber(settlement.overcrowdingHappinessPenalty)}</b></span>`
     : "";
   const populationSummary = `<div class="settlement-inline-facts"><span>人口許容 <b>${formatNumber(settlement.populationCapacity)}</b></span><span>雇用枠 <b>${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div>${populationRows(settlement)}`;
+  const repair = window.inspectV39TerritoryRepair?.(player?.id, settlementId);
+  const repairable = repair?.targets?.filter(row => !row.blockedReason).length || 0;
+  const repairBody = `<div class="settlement-inline-facts"><span>修復可能 <b>${repairable}/${damaged.length}</b></span><span>同時修復 <b>${repair?.maxTiles || 0}</b></span><span>回復率 <b>${Math.round(number(repair?.healRate)*100)}%</b></span><span>鍛冶Lv <b>${repair?.level || 0}</b></span></div><div class="settlement-chip-list"><button type="button" class="settlement-chip" data-territory-repair="${escapeHtml(settlementId)}"${repairable ? "" : " disabled"}>一斉修復</button><button type="button" class="settlement-chip${settlement.autoRepair ? " building" : ""}" data-territory-auto-repair="${escapeHtml(settlementId)}">自動修復 ${settlement.autoRepair ? "ON" : "OFF"}</button></div>`;
 
   panel.innerHTML = `
     <nav class="settlement-tabs" aria-label="所有拠点">
@@ -87,7 +90,7 @@ function render() {
       ${section("material", "資材", formatNumber(settlement.materialStock), keyValueRows(settlement.materialStockByType))}
       ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}</div>`)}
       ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
-      ${section("repair", "修復", damaged.length ? `${damaged.length}マス` : "なし", `<div class="settlement-inline-facts"><span>自動修復 <b>${settlement.autoRepair ? "ON" : "OFF"}</b></span><span>修復中 <b>${damaged.length}</b></span></div>`)}
+      ${section("repair", "修復", damaged.length ? `${damaged.length}マス` : "なし", repairBody)}
     </div>`;
 }
 
@@ -101,6 +104,18 @@ panel?.addEventListener("toggle", event => {
 }, true);
 
 panel?.addEventListener("click", event => {
+  const repairButton = event.target instanceof Element ? event.target.closest("[data-territory-repair]") : null;
+  if (repairButton) {
+    const { player } = activeContext();
+    window.runV39TerritoryRepair?.(player?.id, repairButton.dataset.territoryRepair);
+    return;
+  }
+  const autoButton = event.target instanceof Element ? event.target.closest("[data-territory-auto-repair]") : null;
+  if (autoButton) {
+    const { player, settlement } = activeContext();
+    window.setV39TerritoryAutoRepair?.(player?.id, autoButton.dataset.territoryAutoRepair, settlement?.autoRepair !== true);
+    return;
+  }
   const button = event.target instanceof Element ? event.target.closest("[data-settlement-id]") : null;
   if (!button) return;
   const faction = window.getV39ActiveFactionState?.();

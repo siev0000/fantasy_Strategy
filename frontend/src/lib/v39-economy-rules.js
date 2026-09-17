@@ -14,7 +14,7 @@ import {
   TERRITORY_TILE_MODE_SETTLEMENT
 } from "./phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./research-tree-config.js";
-import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement, territorySettlementId } from "./settlement-state.js";
+import { getFactionSettlementById, getFactionSettlements, getSelectedSettlement, replaceFactionSettlement, territorySettlementId } from "./settlement-state.js";
 import {
   advanceV39PopulationEconomy,
   buildV39PopulationMaintenanceStock,
@@ -301,7 +301,10 @@ function advanceEnemyNestEconomy(state, mapData, currentTurn) {
 export function collectV39TerritoryIncome(state, player, mapData = window.__v39FieldRuntime?.mapData) {
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const labor = resolveV39SettlementLabor(state, player, village);
-  const ownedSet = new Set(labor.ownedKeys);
+  const ownedSet = new Set(labor.ownedKeys.filter(key => {
+    const territory = state?.territoryStateByTile?.[key];
+    return territory?.raided !== true && number(territory?.hp, territory?.maxHp || 100) > 0;
+  }));
   const terrainYieldMap = new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]));
   const raw = collectTerritoryIncome(mapData, ownedSet, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
     roundTo1:round1,
@@ -319,6 +322,35 @@ export function collectV39TerritoryIncome(state, player, mapData = window.__v39F
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
     tiles:raw.tiles,
     ...labor
+  };
+}
+
+export function collectV39TerritoryTileIncome(state, ownerPlayerId, key, mapData = window.__v39FieldRuntime?.mapData) {
+  const player = (state?.players || []).find(row => text(row?.id) === text(ownerPlayerId));
+  if (!player || text(state?.territoryOwnerByTile?.[key]) !== text(ownerPlayerId)) {
+    return { food:normalizeResourceBag({}, FOOD_RESOURCE_KEYS), material:normalizeResourceBag({}, MATERIAL_RESOURCE_KEYS) };
+  }
+  const settlementId = territorySettlementId(state?.territoryStateByTile?.[key]);
+  const village = normalizeV39Village(
+    getFactionSettlementById(player.factionState, settlementId) || getSelectedSettlement(player.factionState),
+    player.race
+  );
+  const labor = resolveV39SettlementLabor(state, player, village);
+  const ownedSet = new Set([text(key)]);
+  const raw = collectTerritoryIncome(mapData, ownedSet, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
+    roundTo1:round1,
+    parseCoordKey:tileKey => { const [x, y] = text(tileKey).split(",").map(Number); return { x, y }; },
+    resolveTileTerrainForYield:resolveTileTerrain,
+    resolveTileYieldMultiplier:({ key:tileKey }) => tileModeMultiplier(village, tileKey) * labor.employmentRate,
+    resolveResourceYieldMultiplier:({ key:tileKey, resourceKey, row }) => number(row?.[resourceKey]) > 0
+      ? resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey)
+      : 1,
+    terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
+  });
+  collectDiscoveredFeatureIncome(raw, player, ownedSet, village, labor.employmentRate);
+  return {
+    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+    material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 })
   };
 }
 

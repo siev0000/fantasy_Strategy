@@ -1,3 +1,6 @@
+import { normalizeV39NestExplorationState } from "./v39-enemy-exploration.js";
+import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "./v39-nest-rules.js";
+
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
@@ -36,6 +39,45 @@ export function mergeV39Cargo(left = {}, right = {}) {
     resourcesByType,
     equipmentInventory:[...a.equipmentInventory, ...b.equipmentInventory]
   };
+}
+
+export function resolveV39UnitCargoCapacity(unit) {
+  const size = Math.max(0, number(unit?.status?.SIZ, number(unit?.SIZ)));
+  return Math.max(0, Math.round((100 * size / 170) * 10) / 10);
+}
+
+export function resolveV39CargoLoad(value = {}) {
+  const cargo = normalizeV39Cargo(value);
+  const resourceLoad = Object.values(cargo.resourcesByType).reduce((sum, amount) => sum + Math.max(0, number(amount)), 0);
+  return Math.round((resourceLoad + cargo.equipmentInventory.length) * 10) / 10;
+}
+
+export function resolveV39EnemySquadCargoStatus(state, squad) {
+  const ids = new Set(getV39SquadUnitIds(squad));
+  const members = (state?.enemies || []).filter(unit => ids.has(text(unit?.id)) && number(unit?.hp ?? unit?.currentHp) > 0);
+  const capacity = Math.round(members.reduce((sum, unit) => sum + resolveV39UnitCargoCapacity(unit), 0) * 10) / 10;
+  const load = resolveV39CargoLoad(squad?.cargo);
+  return { capacity, load, remaining:Math.max(0, Math.round((capacity-load)*10)/10), full:capacity > 0 && load >= capacity };
+}
+
+export function fitV39CargoToCapacity(value = {}, capacity = 0) {
+  let remaining = Math.max(0, number(capacity));
+  const source = normalizeV39Cargo(value);
+  const accepted = { resourcesByType:{}, equipmentInventory:[] };
+  const overflow = { resourcesByType:{}, equipmentInventory:[] };
+  for (const [name, amount] of Object.entries(source.resourcesByType)) {
+    const take = Math.min(amount, remaining);
+    if (take > 0) accepted.resourcesByType[name] = Math.round(take*10)/10;
+    if (amount > take) overflow.resourcesByType[name] = Math.round((amount-take)*10)/10;
+    remaining = Math.max(0, Math.round((remaining-take)*10)/10);
+  }
+  for (const item of source.equipmentInventory) {
+    if (remaining >= 1) {
+      accepted.equipmentInventory.push(item);
+      remaining = Math.max(0, Math.round((remaining-1)*10)/10);
+    } else overflow.equipmentInventory.push(item);
+  }
+  return { accepted:normalizeV39Cargo(accepted), overflow:normalizeV39Cargo(overflow), remaining };
 }
 
 export function getV39SquadUnitIds(squad = {}) {
@@ -100,19 +142,25 @@ export function normalizeV39EnemyNest(nest = {}, index = 0) {
   const x = Math.floor(number(nest?.x));
   const y = Math.floor(number(nest?.y));
   const nestType = text(nest?.nestType || nest?.type);
+  const race = text(nest?.race, nestType || "モンスター");
+  const unitIds = [...new Set((Array.isArray(nest?.unitIds) ? nest.unitIds : []).map(text).filter(Boolean))];
   return {
     ...nest,
     id:text(nest?.id) || `enemy-nest-${index + 1}-${x}-${y}`,
+    name:text(nest?.name) || formatV39NestName(race, index + 1),
     nestType,
+    race,
     x,
     y,
-    territoryRadius:Math.max(1, Math.floor(number(nest?.territoryRadius, 1))),
+    territoryRadius:Math.max(1, Math.floor(number(nest?.territoryRadius, V39_INITIAL_NEST_TERRITORY_RADIUS))),
     population:Math.max(0, Math.floor(number(nest?.population))),
     populationByRace:Object.fromEntries(Object.entries(nest?.populationByRace || {})
       .map(([race, value]) => [text(race), Math.max(0, Math.floor(number(value)))])
       .filter(([race, value]) => race && value > 0)),
     populationGrowthByRace:Object.fromEntries(Object.entries(nest?.populationGrowthByRace || {}).map(([race, value]) => [text(race), { ...(value || {}) }])),
-    unitIds:[...new Set((Array.isArray(nest?.unitIds) ? nest.unitIds : []).map(text).filter(Boolean))],
+    explorationState:normalizeV39NestExplorationState(nest?.explorationState),
+    unitIds,
+    everHadUnits:nest?.everHadUnits === true || unitIds.length > 0,
     foodStockByType:normalizeV39ResourceCargo(nest?.foodStockByType),
     materialStockByType:normalizeV39ResourceCargo(nest?.materialStockByType),
     equipmentInventory:cloneRows(nest?.equipmentInventory)

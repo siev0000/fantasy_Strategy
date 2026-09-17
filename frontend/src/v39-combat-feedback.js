@@ -137,11 +137,17 @@ function showEntry(entry) {
   showDelayedHpBar(scene, entry, center);
 }
 
-window.addEventListener("v39:combat-log", (event) => {
-  if (event?.detail?.attackerId && (event?.detail?.entries?.length || 0) > 0) stopCastBlink(event.detail.attackerId);
-  if ((event?.detail?.entries?.length || 0) > 0) lungeMarker(event?.detail?.attackerId, event?.detail?.target);
-  for (const entry of Array.isArray(event?.detail?.entries) ? event.detail.entries : []) showEntry(entry);
+function showCombatFeedback(detail) {
+  if (detail?.attackerId && (detail?.entries?.length || 0) > 0) stopCastBlink(detail.attackerId);
+  if ((detail?.entries?.length || 0) > 0) lungeMarker(detail?.attackerId, detail?.target);
+  for (const entry of Array.isArray(detail?.entries) ? detail.entries : []) showEntry(entry);
+}
+
+window.addEventListener("v39:combat-log", event => {
+  if (window.__v39SuppressCombatEffects === true) return;
+  showCombatFeedback(event?.detail);
 });
+window.addEventListener("v39:combat-presentation", event => showCombatFeedback(event?.detail));
 window.addEventListener("v39:cast-started", (event) => startCastBlink(event?.detail?.unitId));
 window.addEventListener("v39:cast-ended", (event) => stopCastBlink(event?.detail?.unitId));
 window.addEventListener("v39:terrain-damage", (event) => {

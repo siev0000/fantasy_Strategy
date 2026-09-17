@@ -1,6 +1,7 @@
 import { classData, enemySpawnData } from "./lib/game-data-registry.js";
 import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
 import { getSelectedSettlement } from "./lib/settlement-state.js";
+import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "./lib/v39-nest-rules.js";
 
 const SAFE_DISTANCE_FROM_BASE = 4;
 const LOW_LEVEL_DISTANCE_FROM_BASE = 10;
@@ -15,7 +16,7 @@ const STRONG_TERRAIN_LEVEL_BONUS = 1;
 const STRONG_GROUP_CHANCE_WITHOUT_COUNT = 0.3;
 const STRONG_RANDOM_MINION_MIN = 2;
 const STRONG_RANDOM_MINION_MAX = 4;
-const DEFAULT_STRONG_TERRITORY_RADIUS = 3;
+const DEFAULT_STRONG_TERRITORY_RADIUS = V39_INITIAL_NEST_TERRITORY_RADIUS;
 
 const classNames = new Set(classData.map(row => text(row?.名前)).filter(Boolean));
 
@@ -436,6 +437,7 @@ function buildEnemyNestAndSquadState(enemies) {
 
   const nests = [];
   const enemySquads = [];
+  const sequenceByRace = new Map();
   for (const [groupKey, members] of groups) {
     const anchor = members.find(enemy => enemy?.strongEnemy === true) || members[0];
     const nestId = text(anchor?.nestId) || `enemy-nest-${groupKey}`;
@@ -443,6 +445,9 @@ function buildEnemyNestAndSquadState(enemies) {
     const x = Number.isFinite(Number(anchor?.territoryCenterX)) ? integer(anchor.territoryCenterX) : integer(anchor?.x);
     const y = Number.isFinite(Number(anchor?.territoryCenterY)) ? integer(anchor.territoryCenterY) : integer(anchor?.y);
     const territoryRadius = Math.max(1, integer(anchor?.territoryRadius, anchor?.strongEnemy ? DEFAULT_STRONG_TERRITORY_RADIUS : 1));
+    const race = text(anchor?.race || anchor?.sourceRace, anchor?.name || "モンスター");
+    const sequence = (sequenceByRace.get(race) || 0) + 1;
+    sequenceByRace.set(race, sequence);
     for (const member of members) {
       member.nestId = nestId;
       member.enemySquadId = enemySquadId;
@@ -452,12 +457,19 @@ function buildEnemyNestAndSquadState(enemies) {
     }
     nests.push({
       id:nestId,
+      name:formatV39NestName(race, sequence),
       nestType:text(anchor?.nestType),
+      race,
+      sourceDefinitionId:text(anchor?.sourceDefinitionId),
+      squadId:enemySquadId,
+      scaleLevel:1,
+      scaleName:"村",
       x,
       y,
       territoryRadius,
       population:members.length,
       unitIds:members.map(member => text(member?.id)).filter(Boolean),
+      everHadUnits:members.length > 0,
       foodStockByType:{},
       materialStockByType:{},
       equipmentInventory:[]

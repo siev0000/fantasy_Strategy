@@ -156,7 +156,7 @@ export function setTimePaused(paused) {
   return timeline.paused;
 }
 
-export function advanceTurn() {
+export async function advanceTurn() {
   if (advancing) return false;
   const state = window.getV39GameState?.();
   if (!state) return false;
@@ -172,7 +172,7 @@ export function advanceTurn() {
         .map(restoreUnitForTurn)
     }, before, V39_TURN_PHASE.ENEMY, "enemy-turn-start");
     showBanner(`エネミーターン ${activeTurn}`);
-    window.runV39EnemyTurn?.(activeTurn);
+    await window.runV39EnemyTurn?.(activeTurn);
     const afterEnemy = window.getV39GameState?.() || state;
     const nextTurn = activeTurn + 1;
     const resolvingTimeline = setTurnPhase(afterEnemy, enemyTimeline, V39_TURN_PHASE.RESOLUTION, "turn-resolution-start");

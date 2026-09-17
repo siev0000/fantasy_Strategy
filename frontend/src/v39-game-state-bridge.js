@@ -286,6 +286,7 @@ function setState(patch = {}, options = {}) {
 function patchEnemyTurnState(patch = {}) {
   const next = { ...state };
   if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = patch.enemies;
+  if (Object.prototype.hasOwnProperty.call(patch, "enemyNests")) next.enemyNests = patch.enemyNests;
   if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) {
     next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
   }

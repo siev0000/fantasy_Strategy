@@ -527,7 +527,7 @@ function performAttack(target, session = attackSession, options = {}) {
   }
   drawAttackArea(areaScale);
   const effectName = text(session.skillRow?.アニメ, supportSkill ? "" : "斬撃");
-  if (effectName) void window.playV39MapEffect?.({
+  if (effectName && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
     effectName,
     tileX:target.x,
     tileY:target.y,
@@ -672,24 +672,26 @@ function performAttack(target, session = attackSession, options = {}) {
   return true;
 }
 
-function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, isCounter = false } = {}) {
+function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, isCounter = false, suppressEffect = false } = {}) {
   const ctx = activeRuntime();
   const state = window.getV39GameState?.();
   const attacker = state?.enemies?.find((enemy) => text(enemy?.id) === text(enemyId));
-  const targetUnit = state?.players?.flatMap((player) => player?.factionState?.units || [])
+  const playerTarget = state?.players?.flatMap((player) => player?.factionState?.units || [])
     .find((unit) => text(unit?.id) === text(targetUnitId));
+  const enemyTarget = state?.enemies?.find((enemy) => text(enemy?.id) === text(targetUnitId));
+  const targetUnit = playerTarget || enemyTarget;
   if (!ctx || !state || !attacker || !targetUnit || number(attacker?.hp, attacker?.currentHp) <= 0 || number(targetUnit?.hp, targetUnit?.currentHp) <= 0) return false;
   const range = resolveAttackRange(skillRow, attacker);
   if (!tilesWithin(ctx.data, attacker, range).has(coordKey(targetUnit.x, targetUnit.y))) return false;
   const apCost = resolveAttackApCost(skillRow);
   if (!apPaid && currentAp(attacker) < apCost) return false;
   const areaScale = buildAreaScaleMap(ctx.data, attacker, targetUnit, skillRow);
-  void window.playV39MapEffect?.({
-    effectName:text(skillRow?.アニメ, "斬撃"),
-    tileX:targetUnit.x,
-    tileY:targetUnit.y,
-    splash:resolveSplashSpec(skillRow).value
-  });
+  if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
+      effectName:text(skillRow?.アニメ, "斬撃"),
+      tileX:targetUnit.x,
+      tileY:targetUnit.y,
+      splash:resolveSplashSpec(skillRow).value
+    });
   const combatLog = [];
   const damageByUnitId = new Map();
   for (const player of state.players) {
@@ -707,18 +709,19 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       logDamage(attacker, unit, skillRow, damage);
     }
   }
-  const friendlyDamageById = new Map();
+  const enemyDamageById = new Map();
   for (const enemy of state.enemies) {
     if (text(enemy.id) === text(attacker.id)) continue;
     const scale = areaScale.get(coordKey(enemy.x, enemy.y));
     if (scale === undefined || number(enemy?.hp, enemy?.currentHp) <= 0) continue;
-    const damage = applyV39GuardToDamage(enemy, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(enemy), skillRow, scale, friendly:true, isCounter }));
-    friendlyDamageById.set(text(enemy.id), damage);
+    const friendly = text(enemy?.nestId) === text(attacker?.nestId);
+    const damage = applyV39GuardToDamage(enemy, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(enemy), skillRow, scale, friendly, isCounter }));
+    enemyDamageById.set(text(enemy.id), damage);
     const beforeHp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
     combatLog.push({
       targetId:text(enemy.id), targetName:text(enemy.name), x:enemy.x, y:enemy.y,
       beforeHp, afterHp:Math.max(0, beforeHp-damage.total), maxHp:Math.max(1, number(enemy?.maxHp, beforeHp)),
-      friendly:true, ...damage
+      friendly, ...damage
     });
     logDamage(attacker, enemy, skillRow, damage);
   }
@@ -752,15 +755,23 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       const grantedGuard = resolveSkillGuard(skillRow, terrainAdjusted(attacker), { isCounter });
       return { ...enemy, ap, currentAp:ap, actionPoint:ap, lastUsedAttack:text(skillRow?.名前), ...guardStatePatch(enemy, null, grantedGuard) };
     }
-    return applyHp(enemy, friendlyDamageById.get(text(enemy.id)));
+    return applyHp(enemy, enemyDamageById.get(text(enemy.id)));
   });
-  window.setV39GameState({ players, enemies }, { reason:"enemy-combat-attack" });
+  const attackedNestId = enemyTarget && text(enemyTarget?.nestId) !== text(attacker?.nestId) ? text(enemyTarget?.nestId) : "";
+  const enemyNests = attackedNestId
+    ? (state.enemyNests || []).map(nest => text(nest?.id) === attackedNestId ? {
+      ...nest,
+      lastAttackedByNestId:text(attacker?.nestId),
+      lastNestCombatTurn:currentV39TurnNumber(state)
+    } : nest)
+    : state.enemyNests;
+  window.setV39GameState({ players, enemies, enemyNests }, { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => entry.hits);
   const summary = `${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
   if (!isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
-    detail:{ attackerSide:"enemy", attackerId:text(attacker.id), targetUnitId:text(targetUnit.id), target:{ x:targetUnit.x, y:targetUnit.y }, skillRow, entries:combatLog }
+    detail:{ attackerSide:"enemy", targetSide:enemyTarget ? "enemy" : "player", attackerId:text(attacker.id), targetUnitId:text(targetUnit.id), target:{ x:targetUnit.x, y:targetUnit.y }, skillRow, entries:combatLog }
   }));
   return true;
 }
@@ -770,9 +781,8 @@ function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
   const attacker = attackerSide === "enemy"
     ? state?.enemies?.find((unit) => text(unit.id) === text(attackerId))
     : state?.players?.flatMap((player) => player?.factionState?.units || []).find((unit) => text(unit.id) === text(attackerId));
-  const target = attackerSide === "enemy"
-    ? state?.players?.flatMap((player) => player?.factionState?.units || []).find((unit) => text(unit.id) === text(targetId))
-    : state?.enemies?.find((unit) => text(unit.id) === text(targetId));
+  const target = state?.enemies?.find((unit) => text(unit.id) === text(targetId))
+    || state?.players?.flatMap((player) => player?.factionState?.units || []).find((unit) => text(unit.id) === text(targetId));
   const skillRow = resolveCounterAttackRow(attacker);
   if (!attacker || !target || !skillRow || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
   if (attackerSide === "enemy") {

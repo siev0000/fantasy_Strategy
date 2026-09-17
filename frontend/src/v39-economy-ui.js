@@ -189,7 +189,7 @@ function handleTurn() {
       window.showV39TurnBanner?.(`建設完了: ${result.completed.map(row => row.facilityName).join("、")}`);
       window.dispatchEvent(new CustomEvent("v39:construction-completed", { detail:{ completed:result.completed } }));
     }
-    window.dispatchEvent(new CustomEvent("v39:economy-turn-resolved", { detail:{ reports:result.reports } }));
+    window.dispatchEvent(new CustomEvent("v39:economy-turn-resolved", { detail:{ reports:result.reports, turnNumber:state?.timeline?.turnNumber } }));
   } finally {
     processingTurn = false;
   }

@@ -73,7 +73,7 @@ function logGroups() {
   for (const nest of state?.enemyNests || []) {
     const id = `nest:${text(nest.id)}`;
     knownIds.add(id);
-    groups.push({ id, label:`${text(nest.nestType, "敵の巣")} (${Math.floor(number(nest.x))},${Math.floor(number(nest.y))})`, kind:"ai", rows:enemyLogs[id] || [] });
+    groups.push({ id, label:`${text(nest.name, nest.nestType || "敵の巣")} (${Math.floor(number(nest.x))},${Math.floor(number(nest.y))})`, kind:"ai", rows:enemyLogs[id] || [] });
   }
   for (const [id, rows] of Object.entries(enemyLogs)) {
     if (knownIds.has(id)) continue;

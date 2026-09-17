@@ -24,6 +24,14 @@ export function resolvePopulationClassDefinition(race) {
   return CLASS_ROWS.find(row => candidates.has(text(row?.名前))) || null;
 }
 
+export function resolveV39ConsumableFoodKeys(race, foodResourceKeys = [], normalFoodKeys = []) {
+  const definition = resolvePopulationClassDefinition(race);
+  const normalSet = new Set(normalFoodKeys.map(text));
+  const consumesNormalFood = foodResourceKeys.some(key => normalSet.has(text(key)) && number(definition?.[key]) > 0);
+  return foodResourceKeys.filter(key => (normalSet.has(text(key)) && consumesNormalFood)
+    || (!normalSet.has(text(key)) && number(definition?.[key]) > 0));
+}
+
 function growthCondition(row) {
   const condition = text(row?.増加条件);
   return ["食事", "魂", "死体"].includes(condition) ? condition : "食事";

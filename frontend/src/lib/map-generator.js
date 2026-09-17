@@ -309,7 +309,7 @@ const 強敵配置設定 = {
   基本Lv: 1,
   基本出現確率: 0.5,
   出現率倍率: 0.5,
-  テリトリー半径: 3,
+  テリトリー半径: 2,
   重複ルール許可: false,
   ルール: {
     森中央: {
@@ -3339,7 +3339,7 @@ function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, speci
   const baseLevel = Math.max(1, Math.floor(setting.基本Lv || 1));
   const spawnChanceScale = clamp(toSafeNumber(setting?.出現率倍率, 0.5), 0, 1);
   const baseChance = clamp(normalizeProbability(setting.基本出現確率, 0.5) * spawnChanceScale, 0, 1);
-  const territoryRadiusBase = Math.max(1, Math.floor(toSafeNumber(setting?.テリトリー半径, 3)));
+  const territoryRadiusBase = Math.max(1, Math.floor(toSafeNumber(setting?.テリトリー半径, 2)));
   const allowRuleOverlap = setting.重複ルール許可 === true;
   const rules = setting.ルール || {};
   const relief = reliefMap || grid;

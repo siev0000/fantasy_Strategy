@@ -81,7 +81,7 @@ function install() {
   const originalRunEnemyTurn = window.runV39EnemyTurn;
   if (typeof originalRunEnemyTurn !== "function" || originalRunEnemyTurn.__v39Profiled === true) return;
 
-  const profiledRunEnemyTurn = function(turnNumber, ...args) {
+  const profiledRunEnemyTurn = async function(turnNumber, ...args) {
     if (!runtimeEnabled()) return originalRunEnemyTurn.call(this, turnNumber, ...args);
 
     const beforeState = window.getV39EnemyTurnState?.() || window.getV39GameState?.() || {};
@@ -98,8 +98,14 @@ function install() {
 
     let result;
     try {
-      result = originalRunEnemyTurn.call(this, turnNumber, ...args);
-      profile.aiPasses = Math.max(0, Math.floor(number(result, 0)));
+      result = await originalRunEnemyTurn.call(this, turnNumber, ...args);
+      profile.aiPasses = Math.max(0, Math.floor(number(result?.aiPasses, result)));
+      profile.workerCalculationMs = Math.max(0, number(result?.workerCalculationMs));
+      profile.mainApplyMs = Math.max(0, number(result?.mainApplyMs));
+      profile.workerTotalMs = Math.max(0, number(result?.workerTotalMs));
+      profile.fallbackUsed = result?.fallbackUsed === true;
+      profile.actionEventCount = Math.max(0, Math.floor(number(result?.actionEventCount)));
+      profile.presentationEventCount = Math.max(0, Math.floor(number(result?.presentationEventCount)));
       return result;
     } finally {
       for (const restoreFunction of restore.reverse()) restoreFunction();
@@ -112,7 +118,7 @@ function install() {
       profile.decisionLogsAdded = Math.max(0, decisionLogCount(afterState) - beforeLogs);
       profile.pendingActions = pendingActionCount(afterState);
       const measuredExclusive = Object.values(profile.timings).reduce((sum, value) => sum + number(value), 0);
-      profile.otherAiMs = Math.max(0, profile.totalMs - measuredExclusive);
+      profile.otherAiMs = Math.max(0, profile.totalMs - measuredExclusive - number(profile.workerTotalMs));
       delete profile.stack;
       latestProfile = {
         ...profile,

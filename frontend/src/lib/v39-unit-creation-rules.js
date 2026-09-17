@@ -6,9 +6,17 @@ import { applyV39DerivedCharacterData } from "../v39-character-derived-rules.js"
 import { EQUIPMENT_SLOT_KEYS } from "../constants/unitCommon.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 
-const TEMP_UNIT_COST = Object.freeze({ 穀物:2, 野菜:2, 肉:2, 木材:2, 石材:2, 鉄:2 });
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+export function getV39UnitCreationCost(count = 1) {
+  const row = getGameDataRows("消費量").find(item => text(item?.種別) === "ユニット作成" && number(item?.Lv, 1) === 1) || {};
+  const resourceKeys = [...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS];
+  const multiplier = Math.max(1, Math.floor(number(count, 1)));
+  return Object.fromEntries(resourceKeys
+    .map(key => [key, Math.max(0, number(row?.[key])) * multiplier])
+    .filter(([, value]) => value > 0));
+}
 
 export function getV39InitialJobClasses() {
   return getGameDataRows("クラス").filter(row => text(row?.種類) === "職業" && text(row?.条件Lv) === "初期");
@@ -51,7 +59,7 @@ export function inspectV39UnitCreation(state, player, request = {}) {
   const populationCost = mode.populationCost * count;
   if (number(village?.populationByRace?.[race]) <= populationCost) reasons.push(`人口不足 必要${populationCost}人`);
   if (!isArmy && number(village?.heroBirthUnlock) < count) reasons.push(`英雄誕生枠不足 ${number(village?.heroBirthUnlock)}/${count}`);
-  const cost = Object.fromEntries(Object.entries(TEMP_UNIT_COST).map(([key, value]) => [key, value * count]));
+  const cost = getV39UnitCreationCost(count);
   for (const [key, value] of Object.entries(cost)) {
     const bag = FOOD_RESOURCE_KEYS.includes(key) ? village?.foodStockByType : village?.materialStockByType;
     if (number(bag?.[key]) < value) reasons.push(`${key}不足`);

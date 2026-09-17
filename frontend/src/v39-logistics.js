@@ -2,10 +2,12 @@ import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from 
 import { normalizeV39EquipmentInventory } from "./lib/v39-equipment-rules.js";
 import {
   addV39CargoToFactionUnit,
+  fitV39CargoToCapacity,
   getV39SquadUnitIds,
   isV39CargoEmpty,
   mergeV39Cargo,
-  normalizeV39Cargo
+  normalizeV39Cargo,
+  resolveV39EnemySquadCargoStatus
 } from "./lib/v39-logistics-state.js";
 import { getFactionSettlements, replaceFactionSettlement } from "./lib/settlement-state.js";
 
@@ -106,12 +108,26 @@ export function addV39CargoToEnemy(enemyId, cargoToAdd) {
   const state = window.getV39GameState?.();
   const enemy = state?.enemies?.find(row => text(row?.id) === text(enemyId));
   const squadId = text(enemy?.enemySquadId);
-  if (!state || !enemy || !squadId || cargoEmpty(cargoToAdd)) return { ok:false, reason:"敵部隊が見つかりません" };
+  const squad = state?.enemySquads?.find(row => text(row?.id) === squadId);
+  if (!state || !enemy || !squadId || !squad || cargoEmpty(cargoToAdd)) return { ok:false, reason:"敵部隊が見つかりません" };
+  const capacity = resolveV39EnemySquadCargoStatus(state, squad);
+  const fitted = fitV39CargoToCapacity(cargoToAdd, capacity.remaining);
+  if (cargoEmpty(fitted.accepted)) return { ok:false, reason:"運搬上限です", full:true, capacity, overflow:fitted.overflow };
   const enemySquads = state.enemySquads.map(squad => text(squad?.id) === squadId
-    ? { ...squad, cargo:mergeV39Cargo(squad?.cargo, cargoToAdd) }
+    ? { ...squad, cargo:mergeV39Cargo(squad?.cargo, fitted.accepted) }
     : squad);
   window.setV39GameState?.({ enemySquads }, { reason:"enemy-cargo-added" });
-  return { ok:true, squadId };
+  const acceptedLoad = Object.values(fitted.accepted.resourcesByType || {})
+    .reduce((sum, amount) => sum + Math.max(0, number(amount)), 0)
+    + (fitted.accepted.equipmentInventory || []).length;
+  return {
+    ok:true,
+    squadId,
+    accepted:fitted.accepted,
+    overflow:fitted.overflow,
+    capacity,
+    full:acceptedLoad >= capacity.remaining
+  };
 }
 
 export function depositV39PlayerCargo(playerId, movedUnitId = "") {
@@ -217,13 +233,18 @@ export function recoverV39GroundLootForEnemy(enemyId, rawTileKey = "") {
   if (!state || !enemy || number(enemy?.hp ?? enemy?.currentHp) <= 0 || !squadId) return { ok:false, reason:"回収する敵部隊がありません" };
   if (tileKey(enemy) !== key) return { ok:false, reason:"残留品と同じマスではありません" };
   if (!groundLoot || cargoEmpty(groundLoot.cargo)) return { ok:false, reason:"残留品がありません" };
-  const enemySquads = state.enemySquads.map(squad => text(squad?.id) === squadId
-    ? { ...squad, cargo:mergeV39Cargo(squad?.cargo, groundLoot.cargo) }
-    : squad);
+  const squad = state.enemySquads.find(row => text(row?.id) === squadId);
+  const capacity = resolveV39EnemySquadCargoStatus(state, squad);
+  const fitted = fitV39CargoToCapacity(groundLoot.cargo, capacity.remaining);
+  if (cargoEmpty(fitted.accepted)) return { ok:false, reason:"運搬上限です", full:true, capacity };
+  const enemySquads = state.enemySquads.map(row => text(row?.id) === squadId
+    ? { ...row, cargo:mergeV39Cargo(row?.cargo, fitted.accepted) }
+    : row);
   const groundLootByTile = { ...state.groundLootByTile };
-  delete groundLootByTile[key];
+  if (cargoEmpty(fitted.overflow)) delete groundLootByTile[key];
+  else groundLootByTile[key] = { ...groundLoot, cargo:fitted.overflow };
   window.setV39GameState?.({ enemySquads, groundLootByTile }, { reason:"ground-loot-recovered-by-enemy" });
-  const report = { enemyId:text(enemy.id), squadId, key, recovered:normalizeV39Cargo(groundLoot.cargo) };
+  const report = { enemyId:text(enemy.id), squadId, key, recovered:fitted.accepted, remaining:fitted.overflow, capacity };
   window.dispatchEvent(new CustomEvent("v39:ground-loot-recovered", { detail:{ ...report, enemyAction:true } }));
   return { ok:true, ...report };
 }

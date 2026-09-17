@@ -100,8 +100,11 @@ function enemyAiDetails(turnNumber) {
     `戦闘処理 ${Math.floor(Number(counts.combat) || 0)}回: ${Math.round(Number(timings.combat) || 0)}ms`,
     `地上物資回収 ${Math.floor(Number(counts.loot) || 0)}回: ${Math.round(Number(timings.loot) || 0)}ms`,
     `巣への搬入 ${Math.floor(Number(counts.deposit) || 0)}回: ${Math.round(Number(timings.deposit) || 0)}ms`,
+    `Worker計算: ${Math.round(Number(row.workerCalculationMs) || 0)}ms / メイン側反映: ${Math.round(Number(row.mainApplyMs) || 0)}ms`,
+    `Worker全体: ${Math.round(Number(row.workerTotalMs) || 0)}ms / フォールバック: ${row.fallbackUsed === true ? "あり" : "なし"}`,
     `AI判断・探索など: ${Math.round(Number(row.otherAiMs) || 0)}ms`,
-    `移動した敵 ${Math.floor(Number(row.movedEnemies) || 0)}体 / 判断ログ +${Math.floor(Number(row.decisionLogsAdded) || 0)} / 発動待機 ${Math.floor(Number(row.pendingActions) || 0)}`
+    `移動した敵 ${Math.floor(Number(row.movedEnemies) || 0)}体 / 判断ログ +${Math.floor(Number(row.decisionLogsAdded) || 0)} / 発動待機 ${Math.floor(Number(row.pendingActions) || 0)}`,
+    `行動イベント ${Math.floor(Number(row.actionEventCount) || 0)}件 / 索敵内演出 ${Math.floor(Number(row.presentationEventCount) || 0)}件`
   ].join("\n");
 }
 
