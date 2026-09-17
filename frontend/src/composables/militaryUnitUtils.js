@@ -62,6 +62,65 @@ if (missingUnitCreateModes.length) {
   throw new Error(`[ゲームデータ] 都市基本データ.json: ユニット作成種別がありません (${missingUnitCreateModes.join("、")})`);
 }
 
+const MILITARY_UNIT_LEVEL_PROFILE_DEFS = Object.freeze(
+  cityBaseData
+    .filter(row => nonEmptyText(row?.分類) === "軍隊Lv補正")
+    .map(row => Object.freeze({
+      militaryLevel:Math.max(1, Math.floor(toSafeNumber(row?.データ分類, 1))),
+      populationCost:Math.max(1, Math.floor(toSafeNumber(row?.人口消費, 1))),
+      hpMultiplier:Math.max(1, toSafeNumber(row?.HP倍率, 1)),
+      attackCount:Math.max(1, Math.floor(toSafeNumber(row?.攻撃回数, 1)))
+    }))
+    .sort((a, b) => a.militaryLevel - b.militaryLevel)
+);
+
+const eliteArmyRequiredMilitaryLevel = Math.max(
+  1,
+  Math.floor(toSafeNumber(MILITARY_UNIT_MODE_DEFS[UNIT_CREATE_MODE_KEYS.ELITE_ARMY]?.requiredMilitaryLevel, 1))
+);
+const standardArmyMaxProfileLevel = Math.max(1, eliteArmyRequiredMilitaryLevel - 1);
+const requiredArmyProfileLevels = Array.from({ length: standardArmyMaxProfileLevel }, (_, index) => index + 1);
+const definedArmyProfileLevels = new Set(MILITARY_UNIT_LEVEL_PROFILE_DEFS.map(row => row.militaryLevel));
+const missingArmyProfileLevels = requiredArmyProfileLevels.filter(level => !definedArmyProfileLevels.has(level));
+if (missingArmyProfileLevels.length) {
+  throw new Error(`[ゲームデータ] 都市基本データ.json: 軍隊Lv補正がありません (Lv${missingArmyProfileLevels.join("、Lv")})`);
+}
+
+function resolveMilitaryUnitLevelProfile(militaryLevel = 1) {
+  const requested = Math.max(1, Math.floor(toSafeNumber(militaryLevel, 1)));
+  const cappedLevel = Math.min(requested, standardArmyMaxProfileLevel);
+  const found = [...MILITARY_UNIT_LEVEL_PROFILE_DEFS]
+    .reverse()
+    .find(row => row.militaryLevel <= cappedLevel);
+  if (!found) return null;
+  return { ...found };
+}
+
+function applyMilitaryLevelProfile(modeDef, militaryLevel = 1) {
+  if (!modeDef || typeof modeDef !== "object") return null;
+  const base = { ...modeDef };
+  if (base.mode === UNIT_CREATE_MODE_KEYS.ARMY) {
+    const profile = resolveMilitaryUnitLevelProfile(militaryLevel);
+    if (!profile) return base;
+    return {
+      ...base,
+      formationMilitaryLevel: profile.militaryLevel,
+      memberCount: profile.populationCost,
+      populationCost: profile.populationCost,
+      hpMultiplier: profile.hpMultiplier,
+      attackCount: profile.attackCount
+    };
+  }
+  if (base.mode === UNIT_CREATE_MODE_KEYS.ELITE_ARMY) {
+    return {
+      ...base,
+      formationMilitaryLevel: Math.max(eliteArmyRequiredMilitaryLevel, Math.floor(toSafeNumber(militaryLevel, eliteArmyRequiredMilitaryLevel))),
+      memberCount: base.populationCost
+    };
+  }
+  return base;
+}
+
 function cloneObject(input) {
   if (!input || typeof input !== "object") return {};
   return { ...input };
@@ -196,12 +255,14 @@ export function resolveUnitCreateModeOptions(militaryLevel = 1) {
   const level = Math.max(1, Math.floor(toSafeNumber(militaryLevel, 1)));
   return Object.values(MILITARY_UNIT_MODE_DEFS)
     .filter(def => level >= def.requiredMilitaryLevel)
+    .map(def => applyMilitaryLevelProfile(def, level))
+    .filter(Boolean)
     .sort((a, b) => a.order - b.order || a.requiredMilitaryLevel - b.requiredMilitaryLevel);
 }
 
 export function resolveUnitCreateModeCatalog() {
   return Object.values(MILITARY_UNIT_MODE_DEFS)
-    .map(def => ({ ...def }))
+    .map(def => ({ ...def, memberCount: def.populationCost }))
     .sort((a, b) => a.order - b.order || a.requiredMilitaryLevel - b.requiredMilitaryLevel);
 }
 

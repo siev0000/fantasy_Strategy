@@ -18,6 +18,7 @@ export function useUnitCreatePanel(options = {}) {
   const selectedUnitId = options.selectedUnitId;
 
   const cityAbilityActiveCap = Math.max(1, Math.floor(Number(options.cityAbilityActiveCap ?? 1)));
+  const militaryResearchCategoryKey = "軍事Lv";
 
   const nonEmptyText = typeof options.nonEmptyText === "function"
     ? options.nonEmptyText
@@ -152,6 +153,25 @@ export function useUnitCreatePanel(options = {}) {
     unitCreateRarity.value = equipmentRarityKeys.includes(current) ? current : fallback;
   }
 
+  function researchLevelHasCompletion(raw) {
+    if (Array.isArray(raw)) return raw.some(value => nonEmptyText(value));
+    if (raw && typeof raw === "object") return Object.values(raw).some(value => nonEmptyText(value));
+    return !!nonEmptyText(raw);
+  }
+
+  function resolveResearchCurrentLevel(categoryKey, cap = 1) {
+    const safeCap = Math.max(1, Math.floor(toSafeNumber(cap, 1)));
+    const key = nonEmptyText(categoryKey);
+    const source = key ? props?.researchProgress?.completedByCategoryLevel?.[key] : null;
+    if (!source || typeof source !== "object") return 1;
+    let completedLevel = 0;
+    for (let level = 1; level < safeCap; level += 1) {
+      if (!researchLevelHasCompletion(source[level] ?? source[String(level)])) break;
+      completedLevel = level;
+    }
+    return Math.min(safeCap, completedLevel + 1);
+  }
+
   const canOpenUnitCreate = computed(() => {
     const village = villageState.value;
     return !!(village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y));
@@ -197,9 +217,18 @@ export function useUnitCreatePanel(options = {}) {
     return canOpenUnitCreate.value && (heroCreateAvailable.value > 0 || armyCreateRemaining.value > 0);
   });
 
+  const unitCreateMilitaryLevelCap = computed(() => {
+    const requiredLevels = resolveUnitCreateModeCatalog()
+      .map(mode => Math.max(1, Math.floor(toSafeNumber(mode?.requiredMilitaryLevel, 1))));
+    return Math.max(cityAbilityActiveCap, ...requiredLevels, 1);
+  });
+
   const unitCreateMilitaryLevel = computed(() => {
     const village = ensureVillageStateShape(villageState.value, props.selectedRace);
-    return resolveVillageAbilityLevel(village, "軍事", cityAbilityActiveCap);
+    const cap = unitCreateMilitaryLevelCap.value;
+    const cityLevel = resolveVillageAbilityLevel(village, "軍事", cap);
+    const researchLevel = resolveResearchCurrentLevel(militaryResearchCategoryKey, cap);
+    return Math.max(1, cityLevel, researchLevel);
   });
 
   const unitCreateModeOptions = computed(() => {

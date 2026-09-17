@@ -1,3 +1,5 @@
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from "./v39-economy-rules.js";
+
 const rawIconModules = import.meta.glob("../../../assets/images/アイコン/*.{png,jpg,jpeg,webp,svg}", {
   eager: true,
   import: "default"
@@ -14,6 +16,15 @@ function toText(value) {
   return String(value ?? "").trim();
 }
 
+function escapeXmlText(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 const iconOptions = Object.entries(rawIconModules)
   .map(([path, src]) => {
     const name = toText(basenameNoExt(path));
@@ -24,9 +35,23 @@ const iconOptions = Object.entries(rawIconModules)
   .sort((a, b) => a.name.localeCompare(b.name, "ja"));
 
 const iconMap = new Map(iconOptions.map(row => [row.name, row.src]));
+const resourceIconNameSet = new Set([...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS]);
+const resourceTextIconSrcMap = new Map();
 const FALLBACK_ICON_NAME = iconMap.has("肉体")
   ? "肉体"
   : (iconOptions[0]?.name || "");
+
+function buildResourceTextIconSrc(name) {
+  const resourceName = toText(name);
+  if (!resourceName) return "";
+  const cached = resourceTextIconSrcMap.get(resourceName);
+  if (cached) return cached;
+  const glyph = Array.from(resourceName)[0] || "?";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="${escapeXmlText(resourceName)}"><rect x="1" y="1" width="62" height="62" rx="10" fill="#1f2937" stroke="#d6b57a" stroke-width="2"/><text x="32" y="35" text-anchor="middle" dominant-baseline="middle" font-size="32" font-weight="700" font-family="sans-serif" fill="#fff0cf">${escapeXmlText(glyph)}</text></svg>`;
+  const src = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  resourceTextIconSrcMap.set(resourceName, src);
+  return src;
+}
 
 export const DEFAULT_ICON_NAME = FALLBACK_ICON_NAME;
 export const DEFAULT_ICON_SRC = iconMap.get(DEFAULT_ICON_NAME) || "";
@@ -49,6 +74,9 @@ export function hasIconName(name) {
 }
 
 export function getIconSrcByName(name, fallbackName = DEFAULT_ICON_NAME) {
-  const normalized = resolveIconName(name, fallbackName);
+  const target = toText(name);
+  if (target && iconMap.has(target)) return iconMap.get(target) || "";
+  if (target && resourceIconNameSet.has(target)) return buildResourceTextIconSrc(target);
+  const normalized = resolveIconName(target, fallbackName);
   return iconMap.get(normalized) || DEFAULT_ICON_SRC;
 }
