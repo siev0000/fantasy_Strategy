@@ -82,6 +82,13 @@ export function resolveCompletedResearchLevel(state, categoryKey, tree = researc
   return completedLevel;
 }
 
+export function resolveCurrentResearchLevel(state, categoryKey, tree = researchTreeData) {
+  const category = normalizeResearchCategoryName(categoryKey);
+  const levels = tree?.categories?.[category]?.levels || [];
+  const maxLevel = levels.reduce((max, row) => Math.max(max, Number(row?.level) || 0), 1);
+  return Math.max(1, Math.min(maxLevel, resolveCompletedResearchLevel(state, category, tree) + 1));
+}
+
 export function isResearchLevelUnlocked(state, categoryKey, level, maxUnitLevel = Infinity, tree = researchTreeData) {
   const category = normalizeResearchCategoryName(categoryKey);
   const lv = Math.max(1, Math.floor(Number(level) || 1));

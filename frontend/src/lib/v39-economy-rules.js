@@ -1,4 +1,5 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import { resolveV39ResourceIconGlyph } from "./resource-icon-glyphs.js";
 import { resolveCompletedResearchLevel } from "./research-progress.js";
 import {
   collectTerritoryIncome,
@@ -717,6 +718,6 @@ export function buildV39ResourceSnapshot(village) {
   return Object.fromEntries(Object.entries(RESOURCE_GROUPS).map(([groupKey, group]) => [groupKey, {
     title:group.title,
     icon:group.icon,
-    items:group.keys.map(name => ({ name, icon:"◆", value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(delta.food?.[name] ?? delta.material?.[name]), rare:!["食料", "木材", "石材", "金属"].includes(String(RESOURCE_DEFINITION_ROWS.find(row => String(row?.データ分類 || "").trim() === name)?.分類 || "")) }))
+    items:group.keys.map(name => ({ name, icon:resolveV39ResourceIconGlyph(name), value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(delta.food?.[name] ?? delta.material?.[name]), rare:!["食料", "木材", "石材", "金属"].includes(String(RESOURCE_DEFINITION_ROWS.find(row => String(row?.データ分類 || "").trim() === name)?.分類 || "")) }))
   }]));
 }

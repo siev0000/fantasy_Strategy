@@ -1,4 +1,5 @@
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from "./v39-economy-rules.js";
+import { resolveV39ResourceIconGlyph } from "./resource-icon-glyphs.js";
 
 const rawIconModules = import.meta.glob("../../../assets/images/アイコン/*.{png,jpg,jpeg,webp,svg}", {
   eager: true,
@@ -46,8 +47,8 @@ function buildResourceTextIconSrc(name) {
   if (!resourceName) return "";
   const cached = resourceTextIconSrcMap.get(resourceName);
   if (cached) return cached;
-  const glyph = Array.from(resourceName)[0] || "?";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="${escapeXmlText(resourceName)}"><rect x="1" y="1" width="62" height="62" rx="10" fill="#1f2937" stroke="#d6b57a" stroke-width="2"/><text x="32" y="35" text-anchor="middle" dominant-baseline="middle" font-size="32" font-weight="700" font-family="sans-serif" fill="#fff0cf">${escapeXmlText(glyph)}</text></svg>`;
+  const glyph = resolveV39ResourceIconGlyph(resourceName);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="${escapeXmlText(resourceName)}"><text x="32" y="34" text-anchor="middle" dominant-baseline="middle" font-size="42" font-family="Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,sans-serif">${escapeXmlText(glyph)}</text></svg>`;
   const src = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
   resourceTextIconSrcMap.set(resourceName, src);
   return src;
@@ -79,4 +80,9 @@ export function getIconSrcByName(name, fallbackName = DEFAULT_ICON_NAME) {
   if (target && resourceIconNameSet.has(target)) return buildResourceTextIconSrc(target);
   const normalized = resolveIconName(target, fallbackName);
   return iconMap.get(normalized) || DEFAULT_ICON_SRC;
+}
+
+export function getResourceIconSrc(name) {
+  const target = toText(name);
+  return target ? buildResourceTextIconSrc(target) : "";
 }

@@ -11,7 +11,7 @@ import FieldBattleResultModal from "./FieldBattleResultModal.vue";
 import FieldFooterTabsOverlay from "./FieldFooterTabsOverlay.vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
-import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
+import { DEFAULT_ICON_NAME, getIconSrcByName, getResourceIconSrc, hasIconName, resolveIconName } from "../lib/icon-library.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import {
   resolveV39UnitExpNeed,
@@ -3118,7 +3118,7 @@ const unitCreateRarityMaterialRows = computed(() => {
           return {
             key: resourceKey,
             label: resourceKey,
-            iconSrc: getIconSrcByName(resourceKey, resourceKey),
+            iconSrc: resolveResourceIconSrc(resourceKey),
             have,
             need,
             valueText: `${formatUnitCreateCostAmount(have)}/${formatUnitCreateCostAmount(need)}`,
@@ -5136,7 +5136,7 @@ function togglePopulationHeaderExpanded() {
 function resolveResourceIconSrc(resourceKey) {
   const key = nonEmptyText(resourceKey);
   const preferred = RESOURCE_ICON_NAME_MAP[key] || key;
-  return getIconSrcByName(preferred, DEFAULT_ICON_NAME);
+  return getResourceIconSrc(preferred);
 }
 
 function resolveDominantTerrainResourceIconName(terrainRow) {

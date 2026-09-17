@@ -1,6 +1,6 @@
 import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { showV39Feedback } from "./v39-feedback.js";
-import { getHexDistance, getHexNeighborCoords } from "./lib/hex-grid.js";
+import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "./lib/hex-grid.js";
 import { canUnitEnterV39Tile } from "./lib/v39-terrain-traversal.js";
 import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "./lib/v39-squad-movement-rules.js";
 import { V39_SQUAD_MOVEMENT_BALANCE } from "./lib/v39-gameplay-balance.js";
@@ -127,6 +127,7 @@ function isPassableTile(data, x, y, unit = null) {
 
 // Kept in sync with the active legacy PhaserMapGeneratorPanel movement rule.
 function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
+  if (fromX === toX && fromY === toY) return 0;
   if (!isPassableTile(data, toX, toY, moveUnit)) return Number.POSITIVE_INFINITY;
 
   const fromLevel = tileHeightLevel(data, fromX, fromY);
@@ -182,12 +183,45 @@ function closestReachableTarget(plan, start, desired) {
   return candidates[0] || null;
 }
 
-function movementStepCostForGroup(data, fromX, fromY, toX, toY, group) {
-  const members = Array.isArray(group?.participants) ? group.participants : [];
-  if (!members.length) return Number.POSITIVE_INFINITY;
+function moveFormationOneStep(data, formation, from, to, worldWrapEnabled, group, occupied) {
+  const w = Math.max(0, integer(data?.w));
+  const h = Math.max(0, integer(data?.h));
+  const directionIndex = getHexOffsetNeighbors(from.x, from.y).findIndex(raw => {
+    const x = worldWrapEnabled ? normalizeWrappedCoordinate(raw.x, w) : raw.x;
+    const y = worldWrapEnabled ? normalizeWrappedCoordinate(raw.y, h) : raw.y;
+    return x === to.x && y === to.y;
+  });
+  if (directionIndex < 0) return null;
+  const membersById = new Map((group?.participants || []).map(member => [unitId(member), member]));
+  const nextFormation = formation.map(position => {
+    const raw = getHexOffsetNeighbors(position.x, position.y)[directionIndex];
+    return {
+      id:position.id,
+      x:worldWrapEnabled ? normalizeWrappedCoordinate(raw.x, w) : raw.x,
+      y:worldWrapEnabled ? normalizeWrappedCoordinate(raw.y, h) : raw.y
+    };
+  });
+  const destinationKeys = new Set();
+  for (const position of nextFormation) {
+    const key = coordKey(position.x, position.y);
+    const member = membersById.get(position.id);
+    if (position.x < 0 || position.y < 0 || position.x >= w || position.y >= h) return null;
+    if (destinationKeys.has(key) || occupied.has(key) || !isPassableTile(data, position.x, position.y, member)) return null;
+    destinationKeys.add(key);
+  }
+  return nextFormation;
+}
+
+function movementStepCostForGroup(data, formation, nextFormation, group, occupied) {
+  const membersById = new Map((Array.isArray(group?.participants) ? group.participants : []).map(member => [unitId(member), member]));
+  if (!formation.length || formation.length !== nextFormation.length) return Number.POSITIVE_INFINITY;
   let cost = 0;
-  for (const member of members) {
-    const memberCost = movementStepCost(data, fromX, fromY, toX, toY, member);
+  for (let index = 0; index < formation.length; index += 1) {
+    const current = formation[index];
+    const next = nextFormation[index];
+    const member = membersById.get(current.id);
+    if (!member || occupied.has(coordKey(next.x, next.y))) return Number.POSITIVE_INFINITY;
+    const memberCost = movementStepCost(data, current.x, current.y, next.x, next.y, member);
     if (!Number.isFinite(memberCost)) return Number.POSITIVE_INFINITY;
     cost = Math.max(cost, memberCost);
   }
@@ -202,10 +236,12 @@ function buildReachablePlan(data, group, apBudget) {
   const budget = Math.max(0, Math.floor(number(apBudget, 0)));
   const costs = new Map();
   const parents = new Map();
-  if (!w || !h || sx < 0 || sy < 0 || sx >= w || sy >= h) return { costs, parents };
+  const formations = new Map();
+  if (!w || !h || sx < 0 || sy < 0 || sx >= w || sy >= h) return { costs, parents, formations };
 
   const startKey = coordKey(sx, sy);
   costs.set(startKey, 0);
+  formations.set(startKey, (group?.positions || []).map(row => ({ ...row })));
   const queue = [{ x:sx, y:sy, cost:0 }];
   const worldWrapEnabled = isWorldWrapEnabled(data);
   const occupied = occupiedTileKeys(group?.participantIds);
@@ -219,10 +255,12 @@ function buildReachablePlan(data, group, apBudget) {
     if (!current || current.cost > budget) continue;
     const currentKey = coordKey(current.x, current.y);
     if (current.cost !== costs.get(currentKey)) continue;
+    const currentFormation = formations.get(currentKey) || [];
 
     for (const next of getHexNeighborCoordsBySize(w, h, current.x, current.y, worldWrapEnabled)) {
-      if (occupied.has(coordKey(next.x, next.y))) continue;
-      const stepCost = movementStepCostForGroup(data, current.x, current.y, next.x, next.y, group);
+      const nextFormation = moveFormationOneStep(data, currentFormation, current, next, worldWrapEnabled, group, occupied);
+      if (!nextFormation) continue;
+      const stepCost = movementStepCostForGroup(data, currentFormation, nextFormation, group, occupied);
       if (!Number.isFinite(stepCost) || stepCost < 0) continue;
       const nextCost = current.cost + stepCost;
       if (nextCost > budget) continue;
@@ -231,11 +269,12 @@ function buildReachablePlan(data, group, apBudget) {
       if (Number.isFinite(best) && best <= nextCost) continue;
       costs.set(key, nextCost);
       parents.set(key, currentKey);
+      formations.set(key, nextFormation);
       queue.push({ x:next.x, y:next.y, cost:nextCost });
     }
   }
 
-  return { costs, parents };
+  return { costs, parents, formations };
 }
 
 function pathTo(plan, start, target) {
@@ -495,7 +534,8 @@ function applyMovement() {
 
   const path = pathTo(freshPlan, currentStart, session.target);
   const nextAp = Math.max(0, currentAp - freshCost);
-  const movement = applyV39SquadMovement(faction, currentGroup, session.target, freshCost);
+  const targetPositions = freshPlan.formations.get(targetKey) || [];
+  const movement = applyV39SquadMovement(faction, currentGroup, { ...session.target, positions:targetPositions }, freshCost);
   if (!movement.ok) {
     showToast(movement.reason || "部隊移動を反映できませんでした");
     clearMoveMode();
@@ -525,6 +565,7 @@ function applyMovement() {
       unitIds:[...currentGroup.participantIds],
       from:{ ...currentStart },
       to:{ x:session.target.x, y:session.target.y },
+      positions:targetPositions.map(row => ({ ...row })),
       path,
       distance:Math.max(0, path.length - 1),
       apCost:freshCost,

@@ -250,6 +250,30 @@ function addDeadMark(scene, marker, unit, radius) {
   }).setOrigin(0.5));
 }
 
+function militaryUnitMemberCount(unit) {
+  const mode = String(unit?.combatProfile?.mode || "").trim();
+  const type = `${unit?.unitType || ""} ${unit?.combatProfile?.unitTypeLabel || ""}`;
+  if (mode !== "army" && mode !== "elite_army" && !type.includes("軍隊")) return 0;
+  const memberCount = Math.floor(Number(unit?.combatProfile?.memberCount) || 0);
+  const populationCost = Math.floor(Number(unit?.combatProfile?.populationCost) || 0);
+  return Math.max(0, memberCount || populationCost);
+}
+
+function addMilitaryMemberCount(scene, marker, unit, radius) {
+  const memberCount = militaryUnitMemberCount(unit);
+  if (memberCount <= 0) return;
+  const label = scene.add.text(radius * 0.68, -radius * 0.68, String(memberCount), {
+    fontFamily:"Consolas, 'Courier New', monospace",
+    fontStyle:"800",
+    fontSize:`${Math.max(12, tileRelativePx(0.2))}px`,
+    color:"#ffffff",
+    stroke:"#09111f",
+    strokeThickness:Math.max(3, tileRelativePx(0.05))
+  }).setOrigin(0.5).setName("v39-military-unit-member-count");
+  label.setResolution(2);
+  marker.add(label);
+}
+
 function addEnemyArtwork(scene, marker, enemy, diameter) {
   const artwork = resolveEnemyArtwork(enemy);
   if (!artwork || !ensureArtworkTexture(scene, artwork)) return false;
@@ -309,6 +333,7 @@ function drawUnitGroup(scene, container, group, selectedUnitId) {
     addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, selected);
   }
   addDeadMark(scene, marker, unit, radius);
+  addMilitaryMemberCount(scene, marker, unit, radius);
 
   marker.setSize(diameter, diameter);
   marker.setInteractive({ useHandCursor: true });
@@ -357,6 +382,7 @@ function drawForeignUnits(scene, container, players, activePlayerId) {
         marker.add(scene.add.circle(0, 0, radius, 0x000000, 0).setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe19aaf, 0.9));
       }
       addDeadMark(scene, marker, unit, radius);
+      addMilitaryMemberCount(scene, marker, unit, radius);
       container.add(marker);
     }
   }
@@ -393,6 +419,7 @@ function drawEnemies(scene, container, enemies) {
       marker.add([bg, glyph]);
     }
     addDeadMark(scene, marker, enemy, radius);
+    addMilitaryMemberCount(scene, marker, enemy, radius);
     container.add(marker);
   }
 }

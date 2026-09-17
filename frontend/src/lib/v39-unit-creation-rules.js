@@ -1,5 +1,5 @@
 import { getGameDataRows } from "./game-data-registry.js";
-import { resolveCompletedResearchLevel } from "./research-progress.js";
+import { resolveCurrentResearchLevel } from "./research-progress.js";
 import { normalizeV39Village, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from "./v39-economy-rules.js";
 import { resolveUnitCreateModeCatalog, resolveUnitCreateMode } from "../composables/militaryUnitUtils.js";
 import { applyV39DerivedCharacterData } from "../v39-character-derived-rules.js";
@@ -38,7 +38,7 @@ export function inspectV39UnitCreation(state, player, request = {}) {
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const mode = resolveUnitCreateMode(request.mode || "army", Math.max(
     number(village?.cityLevels?.軍事Lv),
-    resolveCompletedResearchLevel(player?.factionState?.research, "軍事")
+    resolveCurrentResearchLevel(player?.factionState?.research, "軍事")
   ));
   const classRow = getV39InitialJobClasses().find(row => text(row?.名前) === text(request.className));
   const count = Math.max(1, Math.min(20, Math.floor(number(request.count, 1))));
@@ -47,7 +47,7 @@ export function inspectV39UnitCreation(state, player, request = {}) {
   if (!village?.placed) reasons.push("拠点未配置");
   if (!classRow) reasons.push("初期職業を選択してください");
   if (number(village?.populationByRace?.[race]) <= 0) reasons.push(`${race}の人口がいません`);
-  const militaryLevel = Math.max(number(village?.cityLevels?.軍事Lv), resolveCompletedResearchLevel(player?.factionState?.research, "軍事"));
+  const militaryLevel = Math.max(number(village?.cityLevels?.軍事Lv), resolveCurrentResearchLevel(player?.factionState?.research, "軍事"));
   if (militaryLevel < mode.requiredMilitaryLevel) reasons.push(`軍事Lv${mode.requiredMilitaryLevel}が必要`);
   const units = player?.factionState?.units || [];
   const isArmy = mode.mode !== "normal";
@@ -67,8 +67,9 @@ export function inspectV39UnitCreation(state, player, request = {}) {
   return { available:reasons.length === 0, reasons, village, mode, classRow, race, count, current, cap, populationCost, cost, militaryLevel };
 }
 
-function nextUnitName(units, race, className) {
-  const prefix = `${race}${className}`;
+function nextUnitName(units, race, classRow, isArmy) {
+  const classLabel = text(classRow?.ルビ) || text(classRow?.名前);
+  const prefix = `${race}${classLabel}${isArmy ? "軍" : ""}`;
   const used = new Set((units || []).map(unit => text(unit?.name)));
   let index = 1;
   while (used.has(`${prefix}${index}`)) index += 1;
@@ -122,7 +123,7 @@ export function createV39Units(state, playerId, request = {}) {
   const existing = player.factionState.units || [];
   const createdUnits = [];
   for (let index = 0; index < check.count; index += 1) {
-    const name = nextUnitName([...existing, ...createdUnits], check.race, text(check.classRow.名前));
+    const name = nextUnitName([...existing, ...createdUnits], check.race, check.classRow, check.mode.mode !== "normal");
     createdUnits.push(createUnit(player, check, name, index));
   }
   const factionState = replaceFactionSettlement({
@@ -136,7 +137,7 @@ export function createV39Units(state, playerId, request = {}) {
 
 export function getV39UnitCreationOptions(player) {
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
-  const militaryLevel = Math.max(number(village?.cityLevels?.軍事Lv), resolveCompletedResearchLevel(player?.factionState?.research, "軍事"));
+  const militaryLevel = Math.max(number(village?.cityLevels?.軍事Lv), resolveCurrentResearchLevel(player?.factionState?.research, "軍事"));
   return {
     races:Object.entries(village?.populationByRace || {}).filter(([, count]) => number(count) > 0).map(([race]) => race),
     classes:getV39InitialJobClasses(),
