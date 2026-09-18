@@ -1,5 +1,5 @@
 import { getGameDataRows } from "./game-data-registry.js";
-import { resolveV39ResourceIconGlyph } from "./resource-icon-glyphs.js";
+import { resolveV39ResourceIcon } from "./resource-icon-glyphs.js";
 import { resolveCompletedResearchLevel } from "./research-progress.js";
 import {
   collectTerritoryIncome,
@@ -48,12 +48,23 @@ if (RESOURCE_KEYS_WITHOUT_MARKER_PRIORITY.length) {
 if (new Set(RESOURCE_MARKER_ROWS.map(row => Number(row.地図表示優先度))).size !== RESOURCE_MARKER_ROWS.length) {
   throw new Error("[ゲームデータ] 都市基本データ.json: 地図表示優先度が重複しています");
 }
-export const RESOURCE_GROUPS = Object.freeze({
-  food:{ title:"食料", icon:"🌾", keys:resourceKeysFor(["食料", "特殊資源"]) },
-  wood:{ title:"木材", icon:"🪵", keys:resourceKeysFor(["木材", "石材"]) },
-  ore:{ title:"金属", icon:"⛏", keys:resourceKeysFor(["金属"]) },
-  precious:{ title:"貴金属", icon:"💎", keys:resourceKeysFor(["貴金属", "宝石"]) }
+const RESOURCE_GROUP_ICON_KEYS = Object.freeze({
+  food:"穀物",
+  wood:"木材",
+  ore:"鉄",
+  precious:"金"
 });
+export const RESOURCE_GROUPS = Object.freeze(Object.fromEntries(
+  Object.entries({
+    food:{ title:"食料", keys:resourceKeysFor(["食料", "特殊資源"]) },
+    wood:{ title:"木材", keys:resourceKeysFor(["木材", "石材"]) },
+    ore:{ title:"金属", keys:resourceKeysFor(["金属"]) },
+    precious:{ title:"貴金属", keys:resourceKeysFor(["貴金属", "宝石"]) }
+  }).map(([key, group]) => {
+    const icon = resolveV39ResourceIcon(RESOURCE_GROUP_ICON_KEYS[key]);
+    return [key, Object.freeze({ ...group, icon:icon.glyph, iconColor:icon.color })];
+  })
+));
 
 const RESOURCE_FACILITY_EFFECT = Object.freeze(Object.fromEntries(RESOURCE_DEFINITION_ROWS
   .map(row => [String(row?.データ分類 || "").trim(), String(row?.対応技能 || "").trim()])
@@ -718,6 +729,9 @@ export function buildV39ResourceSnapshot(village) {
   return Object.fromEntries(Object.entries(RESOURCE_GROUPS).map(([groupKey, group]) => [groupKey, {
     title:group.title,
     icon:group.icon,
-    items:group.keys.map(name => ({ name, icon:resolveV39ResourceIconGlyph(name), value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(delta.food?.[name] ?? delta.material?.[name]), rare:!["食料", "木材", "石材", "金属"].includes(String(RESOURCE_DEFINITION_ROWS.find(row => String(row?.データ分類 || "").trim() === name)?.分類 || "")) }))
+    items:group.keys.map(name => {
+      const icon = resolveV39ResourceIcon(name);
+      return { name, icon:icon.glyph, iconColor:icon.color, value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(delta.food?.[name] ?? delta.material?.[name]), rare:!["食料", "木材", "石材", "金属"].includes(String(RESOURCE_DEFINITION_ROWS.find(row => String(row?.データ分類 || "").trim() === name)?.分類 || "")) };
+    })
   }]));
 }
