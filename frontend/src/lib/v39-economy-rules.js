@@ -23,6 +23,7 @@ import {
 } from "./v39-population-economy.js";
 import { normalizeV39CivicState, resolveV39CivicProductionMultiplier, resolveV39CivicTurn } from "./v39-civic-rules.js";
 import { advanceV39Rebellions } from "./v39-rebellion-rules.js";
+import { resolveV39CitySpecializationModifiers, resolveV39CityTraits } from "./v39-city-specialization-rules.js";
 import { resolveTerritoryGuardAtTile } from "../composables/militaryUnitUtils.js";
 import { V39_VOLCANO_DAMAGE_BALANCE } from "./v39-gameplay-balance.js";
 
@@ -208,6 +209,8 @@ export function normalizeV39Village(village, race = "只人") {
     overcrowdingSecurityPenalty:Math.min(0, number(village.overcrowdingSecurityPenalty)),
     lastPopulationOutflow:Math.max(0, Math.floor(number(village.lastPopulationOutflow))),
     civicState:normalizeV39CivicState(village),
+    citySpecializationId:text(village.citySpecializationId),
+    cityTraits:resolveV39CityTraits({ ...village, scaleLevel:Math.max(1, Math.floor(number(scaleDefinition?.level, village.scaleLevel || 1))) }),
     lastEconomyDelta:village.lastEconomyDelta && typeof village.lastEconomyDelta === "object" ? { ...village.lastEconomyDelta } : null
   };
 }
@@ -638,10 +641,11 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         factionState:replaceFactionSettlement(player.factionState, village, { ownerPlayerId:player.id })
       }, mapData);
       const civicProductionMultiplier = resolveV39CivicProductionMultiplier(village);
+      const specialization = resolveV39CitySpecializationModifiers(village);
       const territoryIncome = {
         ...rawTerritoryIncome,
-        food:Object.fromEntries(Object.entries(rawTerritoryIncome.food || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier)])),
-        material:Object.fromEntries(Object.entries(rawTerritoryIncome.material || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier)]))
+        food:Object.fromEntries(Object.entries(rawTerritoryIncome.food || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier * specialization.foodMultiplier)])),
+        material:Object.fromEntries(Object.entries(rawTerritoryIncome.material || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier * specialization.materialMultiplier)]))
       };
       const assignedUnits = (player.factionState.units || []).filter(unit => {
         if (number(unit?.hp ?? unit?.currentHp) <= 0) return false;
@@ -667,7 +671,8 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         employmentSlots:territoryIncome.employmentSlots,
         employmentRate:territoryIncome.employmentRate,
         disasterCivicPenalty:disasterCivicPenaltyForSettlement(state, settlementId),
-        guardSecurityBonus:guardSecurityBonusForSettlement(state, player.id, village)
+        guardSecurityBonus:guardSecurityBonusForSettlement(state, player.id, village) + specialization.civicBonus,
+        cityDefenseBonus:specialization.defenseBonus
       }, player.race);
       village.civicState = resolveV39CivicTurn(village, currentTurn);
       village.lastEconomyDelta = {
@@ -679,6 +684,8 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         shortage:populationResult.shortageTotal,
         employmentRate:territoryIncome.employmentRate,
         civicProductionMultiplier,
+        citySpecializationId:village.citySpecializationId,
+        citySpecializationModifiers:specialization,
         turn:state.timeline?.turnNumber
       };
       const scale = resolveVillageScaleLabel(village);

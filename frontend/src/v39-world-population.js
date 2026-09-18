@@ -1,6 +1,17 @@
 import { getGameDataRows } from "./lib/game-data-registry.js";
 import { getHexNeighborCoords } from "./lib/hex-grid.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./lib/settlement-state.js";
+import {
+  acceptV39NeutralVillageQuest,
+  advanceV39NeutralVillages,
+  completeV39NeutralVillageQuest,
+  getV39NeutralVillageRelation,
+  getV39RelationLabel,
+  improveV39NeutralVillageRelation,
+  normalizeV39NeutralVillage,
+  raidV39NeutralVillage,
+  vassalizeV39NeutralVillage
+} from "./lib/v39-neutral-village-rules.js";
 
 const VILLAGE_TILES_PER_SITE = 450;
 const WANDERER_TILES_PER_GROUP = 300;
@@ -45,7 +56,7 @@ function farFromOwned(tile, state, minimum = 5) {
   return occupied.every(([x, y]) => Math.hypot(tile.x - x, tile.y - y) >= minimum);
 }
 
-function buildNeutralVillage(tile, index, races, classes) {
+function buildNeutralVillage(tile, index, races, classes, mapData) {
   const race = races[hash(`${tile.key}:race`) % races.length];
   const preferred = races.filter(row => tile.terrain.includes(row.preferredTerrain));
   const selectedRace = preferred.length ? preferred[hash(`${tile.key}:preferred`) % preferred.length] : race;
@@ -53,13 +64,13 @@ function buildNeutralVillage(tile, index, races, classes) {
   const population = Math.max(10, Math.floor(selectedRace.initialPopulation * (0.6 + (hash(`${tile.key}:population`) % 81) / 100)));
   const classRow = classes[hash(`${tile.key}:class`) % Math.max(1, classes.length)];
   const researchLevels = Object.fromEntries(["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"].map((name, levelIndex) => [name, hash(`${tile.key}:${levelIndex}`) % (villageLevel + 1)]));
-  return {
+  return normalizeV39NeutralVillage({
     id:`neutral-village-${index + 1}-${tile.key}`,
     name:`${selectedRace.race}の村`, type:"村", neutral:true, placed:true,
     x:tile.x, y:tile.y, race:selectedRace.race, population, level:villageLevel,
     className:text(classRow?.名前) || "ファイター", researchLevels,
     relationsByPlayerId:{}, vassalPlayerId:"", directlyRuledByPlayerId:""
-  };
+  }, mapData);
 }
 
 function buildWanderer(tile, index, races) {
@@ -80,7 +91,7 @@ export function generateV39WorldPopulation(state, mapData) {
   const neutralVillages = [];
   for (const tile of tiles) {
     if (neutralVillages.some(row => Math.hypot(row.x - tile.x, row.y - tile.y) < 7)) continue;
-    neutralVillages.push(buildNeutralVillage(tile, neutralVillages.length, races, classes));
+    neutralVillages.push(buildNeutralVillage(tile, neutralVillages.length, races, classes, mapData));
     if (neutralVillages.length >= villageCount) break;
   }
   const villageKeys = new Set(neutralVillages.map(row => keyOf(row.x, row.y)));
@@ -106,12 +117,7 @@ export function advanceV39WorldPopulation(state, mapData, turnNumber) {
     for (const player of state?.players || []) if ((player?.factionState?.units || []).some(unit => number(unit.hp ?? unit.currentHp) > 0 && keyOf(unit.x, unit.y) === keyOf(next.x, next.y))) discovered.add(player.id);
     return { ...group, x:next.x, y:next.y, discoveredByPlayerIds:[...discovered], lastMovedTurn:turn };
   });
-  const neutralVillages = (state?.neutralVillages || []).map(village => ({
-    ...village,
-    researchExp:Math.max(0, number(village.researchExp)) + 10,
-    lastProcessedTurn:turn
-  }));
-  return { ...state, neutralVillages, wandererGroups };
+  return advanceV39NeutralVillages({ ...state, wandererGroups }, mapData, turn).state;
 }
 
 export function recruitV39Wanderer(state, playerId, groupId) {
@@ -153,9 +159,9 @@ function ensureWorldActions() {
   const section = document.createElement("div");
   section.id = "v39-world-contact-actions";
   section.hidden = true;
-  section.innerHTML = `<div><span id="v39-world-contact-kind"></span><b id="v39-world-contact-detail"></b></div><button type="button" id="v39-world-contact-button"></button>`;
+  section.innerHTML = `<div class="v39-world-contact-copy"><span id="v39-world-contact-kind"></span><b id="v39-world-contact-detail"></b><small id="v39-world-contact-subdetail"></small></div><div id="v39-world-contact-buttons"></div>`;
   panel.appendChild(section);
-  section.querySelector("button")?.addEventListener("click", runContactAction);
+  section.addEventListener("click", runContactAction);
 }
 
 function renderWorldActions() {
@@ -163,32 +169,55 @@ function renderWorldActions() {
   const section = document.getElementById("v39-world-contact-actions");
   const kind = document.getElementById("v39-world-contact-kind");
   const detail = document.getElementById("v39-world-contact-detail");
-  const button = document.getElementById("v39-world-contact-button");
-  if (!section || !kind || !detail || !button || !selectedTile) { if (section) section.hidden = true; return; }
+  const subdetail = document.getElementById("v39-world-contact-subdetail");
+  const buttons = document.getElementById("v39-world-contact-buttons");
+  if (!section || !kind || !detail || !subdetail || !buttons || !selectedTile) { if (section) section.hidden = true; return; }
   const state = window.getV39GameState?.();
   const playerId = state?.activePlayerId;
   const key = keyOf(selectedTile.x, selectedTile.y);
   const wanderer = state?.wandererGroups?.find(row => keyOf(row.x, row.y) === key && row.discoveredByPlayerIds?.includes(playerId));
-  const village = state?.neutralVillages?.find(row => keyOf(row.x, row.y) === key);
+  const village = state?.neutralVillages?.find(row => keyOf(row.x, row.y) === key || row?.territoryTileKeys?.includes(key));
   section.hidden = !wanderer && !village;
   if (wanderer) {
-    section.dataset.action = "recruit"; section.dataset.targetId = wanderer.id;
-    kind.textContent = "放浪者"; detail.textContent = `${wanderer.race} / ${wanderer.population}人`; button.textContent = "勧誘"; button.hidden = false;
+    section.dataset.targetId = wanderer.id;
+    kind.textContent = "放浪者"; detail.textContent = `${wanderer.race} / ${wanderer.population}人`; subdetail.textContent = "";
+    buttons.innerHTML = `<button type="button" data-world-action="recruit">勧誘</button>`;
   } else if (village) {
-    section.dataset.action = "village"; section.dataset.targetId = village.id;
-    kind.textContent = "一般村"; detail.textContent = `${village.name} / Lv${village.level} / ${village.population}人`; button.hidden = true;
+    const relation = getV39NeutralVillageRelation(village, playerId);
+    const quest = village.questsByPlayerId?.[playerId];
+    section.dataset.targetId = village.id;
+    kind.textContent = "一般村";
+    detail.textContent = `${village.name} / Lv${village.level} / ${village.population}人 / ${getV39RelationLabel(relation)} ${relation}`;
+    subdetail.textContent = `${village.vassalPlayerId ? `属国: ${village.vassalPlayerId}` : "独立"} / 守備${(village.defenseUnits || []).reduce((sum, row) => sum + number(row.count), 0)}人${quest?.accepted && !quest.completed ? ` / 依頼: ${quest.label} ${quest.required}` : ""}`;
+    buttons.innerHTML = [
+      `<button type="button" data-world-action="relation">交流</button>`,
+      quest?.accepted && !quest.completed
+        ? `<button type="button" data-world-action="quest-complete">依頼完了</button>`
+        : `<button type="button" data-world-action="quest">依頼</button>`,
+      `<button type="button" data-world-action="vassal"${village.vassalPlayerId ? " disabled" : ""}>属国化</button>`,
+      `<button type="button" data-world-action="raid">襲撃</button>`
+    ].join("");
   }
 }
 
-function runContactAction() {
+function runContactAction(event) {
   const section = document.getElementById("v39-world-contact-actions");
-  if (section?.dataset.action !== "recruit") return;
+  const action = event?.target instanceof Element ? event.target.closest("[data-world-action]")?.dataset.worldAction : "";
+  if (!action) return;
   const state = window.getV39GameState?.();
-  const result = recruitV39Wanderer(state, state?.activePlayerId, section.dataset.targetId);
-  if (!result.ok) { window.showV39TurnBanner?.(`勧誘不可: ${result.reason}`); return; }
-  window.setV39GameState?.({ players:result.state.players, wandererGroups:result.state.wandererGroups }, { reason:"wanderer-recruited" });
+  const playerId = state?.activePlayerId;
+  let result;
+  if (action === "recruit") result = recruitV39Wanderer(state, playerId, section.dataset.targetId);
+  else if (action === "relation") result = improveV39NeutralVillageRelation(state, playerId, section.dataset.targetId);
+  else if (action === "quest") result = acceptV39NeutralVillageQuest(state, playerId, section.dataset.targetId);
+  else if (action === "quest-complete") result = completeV39NeutralVillageQuest(state, playerId, section.dataset.targetId);
+  else if (action === "vassal") result = vassalizeV39NeutralVillage(state, playerId, section.dataset.targetId);
+  else if (action === "raid") result = raidV39NeutralVillage(state, playerId, section.dataset.targetId);
+  if (!result) return;
+  if (!result.ok) { window.showV39TurnBanner?.(`実行不可: ${result.reason}`); return; }
+  window.setV39GameState?.(result.state, { reason:`world-contact-${action}` });
   window.showV39TurnBanner?.(result.message);
-  window.appendV39ActivityLog?.(state.activePlayerId, "放浪者", result.message, { chance:result.chance, roll:result.roll, joined:result.joined });
+  window.appendV39ActivityLog?.(state.activePlayerId, action === "recruit" ? "放浪者" : "一般村", result.message, { chance:result.chance, roll:result.roll, joined:result.joined });
   renderWorldActions();
 }
 
@@ -196,7 +225,7 @@ function installStyles() {
   if (document.getElementById("v39-world-population-style")) return;
   const style = document.createElement("style");
   style.id = "v39-world-population-style";
-  style.textContent = `#v39-world-contact-actions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:6px;align-items:center;padding:6px;border:1px solid #786542;border-radius:7px;background:#282515}#v39-world-contact-actions[hidden]{display:none}#v39-world-contact-actions span,#v39-world-contact-actions b{display:block}#v39-world-contact-actions span{font-size:13px;color:#c0aa77}#v39-world-contact-actions b{font-size:15px}#v39-world-contact-button{min-height:36px;border:1px solid #d4af58;border-radius:6px;background:#493a18;color:#ffe6a0;font-size:15px;font-weight:800}`;
+  style.textContent = `#v39-world-contact-actions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,1fr);gap:6px;align-items:center;padding:6px;border:1px solid #786542;border-radius:7px;background:#282515}#v39-world-contact-actions[hidden]{display:none}.v39-world-contact-copy span,.v39-world-contact-copy b,.v39-world-contact-copy small{display:block}.v39-world-contact-copy span,.v39-world-contact-copy small{font-size:13px;color:#c0aa77}.v39-world-contact-copy b{font-size:15px}#v39-world-contact-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}#v39-world-contact-buttons button{min-height:34px;border:1px solid #d4af58;border-radius:6px;background:#493a18;color:#ffe6a0;padding:4px 8px;font-size:13px;font-weight:800}#v39-world-contact-buttons button:disabled{opacity:.45}@media(max-width:620px){#v39-world-contact-actions{grid-template-columns:1fr}#v39-world-contact-buttons{justify-content:flex-start}}`;
   document.head.appendChild(style);
 }
 
@@ -226,8 +255,8 @@ function advance(event) {
   if (!state || !mapData) return;
   const next = advanceV39WorldPopulation(state, mapData, event?.detail?.turnNumber);
   const neutralById = new Map(next.neutralVillages.map(row => [row.id, row]));
-  const settlements = (state.settlements || []).map(row => neutralById.get(row.id) || row);
-  window.setV39GameState?.({ neutralVillages:next.neutralVillages, wandererGroups:next.wandererGroups, settlements }, { reason:"world-population-turn" });
+  const settlements = (next.settlements || state.settlements || []).map(row => neutralById.get(row.id) || row);
+  window.setV39GameState?.({ players:next.players, neutralVillages:next.neutralVillages, wandererGroups:next.wandererGroups, settlements }, { reason:"world-population-turn" });
 }
 
 window.addEventListener("v39:field-generated", clearForNewField);

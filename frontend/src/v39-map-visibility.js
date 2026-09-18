@@ -15,6 +15,7 @@ const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
 const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";
 const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
 const NEST_TERRITORY_LAYER_NAME = "v39-nest-territory-boundary-layer";
+const NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME = "v39-neutral-village-territory-boundary-layer";
 const UNIT_VISION_BASE_RANGE = 1;
 const UNIT_VISION_SCOUT_STEP = 75;
 const FOG_COLOR = 0x071014;
@@ -27,6 +28,9 @@ const TERRITORY_WIDTH = 2.4;
 const NEST_TERRITORY_COLOR = 0xe67558;
 const NEST_TERRITORY_ALPHA = 0.78;
 const NEST_TERRITORY_WIDTH = 2.4;
+const NEUTRAL_VILLAGE_TERRITORY_COLOR = 0xe7c66f;
+const NEUTRAL_VILLAGE_TERRITORY_ALPHA = 0.72;
+const NEUTRAL_VILLAGE_TERRITORY_WIDTH = 2;
 const RETRY_MS = 20;
 const RETRY_LIMIT = 180;
 
@@ -382,6 +386,7 @@ function renderVisibilityLayers() {
   removeLayer(scene, SCOUT_LAYER_NAME);
   removeLayer(scene, TERRITORY_LAYER_NAME);
   removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
+  removeLayer(scene, NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
 
   const vision = buildCurrentVision(data, faction, state, player.id);
   const currentVision = vision.visible;
@@ -441,6 +446,22 @@ function renderVisibilityLayers() {
     });
   }
 
+  const visibleVillages = (Array.isArray(state.neutralVillages) ? state.neutralVillages : []).filter(village => {
+    const key = coordKey(Math.floor(Number(village?.x)), Math.floor(Number(village?.y)));
+    return testMode || explored.has(key);
+  });
+  const villageTerritory = scene.add.graphics().setDepth(13).setName(NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
+  for (const village of visibleVillages) {
+    const tileKeys = new Set(Array.isArray(village?.territoryTileKeys) && village.territoryTileKeys.length
+      ? village.territoryTileKeys.map(String)
+      : nestTerritoryTileKeys(data, { ...village, territoryRadius:1 }));
+    drawOuterBoundary(villageTerritory, data, tileKeys, {
+      width:NEUTRAL_VILLAGE_TERRITORY_WIDTH,
+      color:NEUTRAL_VILLAGE_TERRITORY_COLOR,
+      alpha:NEUTRAL_VILLAGE_TERRITORY_ALPHA
+    });
+  }
+
   const ownTerritory = new Set(
     Object.entries(state.territoryOwnerByTile || {})
       .filter(([, ownerId]) => String(ownerId) === String(player.id))
@@ -463,6 +484,7 @@ function renderVisibilityLayers() {
     unexploredCount,
     ownTerritoryCount:ownTerritory.size,
     visibleNestTerritoryCount:visibleNests.length,
+    visibleNeutralVillageTerritoryCount:visibleVillages.length,
     scoutRanges:(faction.units || []).filter(livingUnit).map(unit => ({
       id:String(unit.id || ""),
       range:unitVisionRange(unit)

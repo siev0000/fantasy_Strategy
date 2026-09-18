@@ -1,4 +1,5 @@
 import { getFactionSettlements, selectFactionSettlement, territorySettlementId } from "./lib/settlement-state.js";
+import { inspectV39CitySpecializations, selectV39CitySpecialization } from "./lib/v39-city-specialization-rules.js";
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);
@@ -89,6 +90,8 @@ function render() {
   const repairBody = `<div class="settlement-inline-facts"><span>修復可能 <b>${repairable}/${repairTargets.length}</b></span><span>施設損壊 <b>${damagedFacilityCount}</b></span><span>同時修復 <b>${repair?.maxTiles || 0}</b></span><span>回復率 <b>${Math.round(number(repair?.healRate)*100)}%</b></span><span>鍛冶Lv <b>${repair?.level || 0}</b></span></div><div class="settlement-chip-list"><button type="button" class="settlement-chip" data-territory-repair="${escapeHtml(settlementId)}"${repairable ? "" : " disabled"}>一斉修復</button><button type="button" class="settlement-chip${settlement.autoRepair ? " building" : ""}" data-territory-auto-repair="${escapeHtml(settlementId)}">自動修復 ${settlement.autoRepair ? "ON" : "OFF"}</button></div>`;
   const civic = settlement.civicState || {};
   const civicBody = `<div class="settlement-inline-facts"><span>幸福度 <b>${formatNumber(civic.happiness)}</b></span><span>不満度 <b>${formatNumber(civic.dissatisfaction)}</b></span><span>治安 <b>${formatNumber(civic.security)}</b></span><span>産出補正 <b>${formatNumber(number(settlement.lastEconomyDelta?.civicProductionMultiplier || 1) * 100)}%</b></span></div>`;
+  const specializationOptions = inspectV39CitySpecializations(state, player, settlement);
+  const specializationBody = `<div class="settlement-inline-facts"><span>選択中 <b>${escapeHtml(settlement.citySpecializationId || "なし")}</b></span><span>都市特性 <b>${escapeHtml((settlement.cityTraits || []).join(" / ") || "なし")}</b></span><span>条件の正本 <b>都市.json</b></span></div><div class="settlement-chip-list">${specializationOptions.map(option => `<button type="button" class="settlement-chip${settlement.citySpecializationId === option.id ? " building" : ""}" data-city-specialization="${escapeHtml(option.id)}" title="${escapeHtml(option.reason)}"${option.available ? "" : " disabled"}>${escapeHtml(option.name)}${option.available ? "" : " ×"}</button>`).join("")}</div>`;
 
   panel.innerHTML = `
     <nav class="settlement-tabs" aria-label="所有拠点">
@@ -101,6 +104,7 @@ function render() {
       ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}</div>`)}
       ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
       ${section("civic", "住民状態", `幸福${formatNumber(civic.happiness)}`, civicBody)}
+      ${section("specialization", "都市専門化", escapeHtml(settlement.citySpecializationId || "未選択"), specializationBody)}
       ${section("repair", "修復", repairTargets.length ? `${repairTargets.length}マス` : "なし", repairBody)}
     </div>`;
 }
@@ -115,6 +119,17 @@ panel?.addEventListener("toggle", event => {
 }, true);
 
 panel?.addEventListener("click", event => {
+  const specializationButton = event.target instanceof Element ? event.target.closest("[data-city-specialization]") : null;
+  if (specializationButton) {
+    const { state, player, settlement } = activeContext();
+    const result = selectV39CitySpecialization(state, player?.id, settlement?.settlementId || settlement?.id, specializationButton.dataset.citySpecialization);
+    if (!result.ok) window.showV39TurnBanner?.(`選択不可: ${result.reason}`);
+    else {
+      window.setV39GameState?.({ players:result.state.players }, { reason:"city-specialization-selected" });
+      window.showV39TurnBanner?.(`${result.specialization.name}に専門化`);
+    }
+    return;
+  }
   const repairButton = event.target instanceof Element ? event.target.closest("[data-territory-repair]") : null;
   if (repairButton) {
     const { player } = activeContext();
