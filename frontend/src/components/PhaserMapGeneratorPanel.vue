@@ -5138,7 +5138,8 @@ function resolveResourceIconView(resourceKey) {
   const icon = resolveV39ResourceIcon(nonEmptyText(resourceKey));
   return {
     icon: icon.glyph,
-    iconColor: icon.color
+    iconColor: icon.color,
+    iconKind: icon.kind
   };
 }
 
@@ -22940,6 +22941,7 @@ watch(() => props.characterCommand, command => {
             >
               <span
                 class="sidebar-resource-menu-icon resource-glyph-icon"
+                :class="`is-${row.iconKind}`"
                 :title="row.label"
                 :style="{ color: row.iconColor || undefined }"
                 role="img"
@@ -22968,6 +22970,7 @@ watch(() => props.characterCommand, command => {
                   >
                     <span
                       class="sidebar-resource-menu-icon resource-glyph-icon"
+                :class="`is-${item.iconKind}`"
                       :title="item.label"
                       :style="{ color: item.iconColor || undefined }"
                       role="img"
@@ -22989,6 +22992,7 @@ watch(() => props.characterCommand, command => {
                   >
                     <span
                       class="sidebar-resource-menu-icon resource-glyph-icon"
+                :class="`is-${item.iconKind}`"
                       :title="item.label"
                       :style="{ color: item.iconColor || undefined }"
                       role="img"
@@ -23904,6 +23908,7 @@ watch(() => props.characterCommand, command => {
                   >
                     <span
                       class="unit-create-rarity-cost-icon resource-glyph-icon"
+                      :class="`is-${entry.iconKind}`"
                       :style="{ color: entry.iconColor || undefined }"
                       role="img"
                       :aria-label="`${entry.label} アイコン`"
