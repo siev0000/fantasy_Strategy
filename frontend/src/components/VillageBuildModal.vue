@@ -77,6 +77,7 @@ const groupedMaterialColumns = computed(() => {
           label: resourceKey,
           icon: icon.glyph,
           iconColor: icon.color,
+          iconKind: icon.kind,
           have,
           need,
           valueText: `${formatAmount(have)}/${formatAmount(need)}`,
@@ -226,6 +227,7 @@ watch(
                     >
                       <span
                         class="village-build-cost-icon resource-glyph-icon"
+                        :class="`is-${row.iconKind}`"
                         :style="{ color: row.iconColor || undefined }"
                         role="img"
                         :aria-label="`${row.label} アイコン`"
