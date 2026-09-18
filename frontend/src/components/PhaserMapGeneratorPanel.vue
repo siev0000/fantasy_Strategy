@@ -11,7 +11,8 @@ import FieldBattleResultModal from "./FieldBattleResultModal.vue";
 import FieldFooterTabsOverlay from "./FieldFooterTabsOverlay.vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
-import { DEFAULT_ICON_NAME, getIconSrcByName, getResourceIconSrc, hasIconName, resolveIconName } from "../lib/icon-library.js";
+import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
+import { resolveV39ResourceIcon } from "../lib/resource-icon-glyphs.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import {
   resolveV39UnitExpNeed,
@@ -1724,7 +1725,7 @@ const sidebarResourcePanelRows = computed(() => {
     return {
       key: def.key,
       label: def.label,
-      iconSrc: resolveResourceIconSrc(iconKey),
+      ...resolveResourceIconView(iconKey),
       totalDisplay: isFoodPanel
         ? formatFoodCompactNumber(entry?.total)
         : formatMaterialCompactNumber(entry?.total),
@@ -1750,7 +1751,7 @@ const activeSidebarResourcePanel = computed(() => {
       : def.detailKeys.map(resourceKey => ({
         key: resourceKey,
         label: resourceKey,
-        iconSrc: resolveResourceIconSrc(resourceKey),
+        ...resolveResourceIconView(resourceKey),
         stockDisplay: formatMaterialCompactNumber(toSafeNumber(entry?.detailStockBag?.[resourceKey], 0)),
         gainDisplay: formatSignedMaterialCompactNumber(toSafeNumber(entry?.detailDeltaBag?.[resourceKey], 0)),
         gainClass: toSafeNumber(entry?.detailDeltaBag?.[resourceKey], 0) > 0
@@ -1771,7 +1772,7 @@ const activeSidebarResourcePanel = computed(() => {
       .map(row => ({
         key: row.key,
         label: row.label,
-        iconSrc: resolveResourceIconSrc(row.key),
+        ...resolveResourceIconView(row.key),
         stockDisplay: formatFoodCompactNumber(row.stockValue),
         gainDisplay: formatSignedFoodCompactNumber(row.gainValue),
         gainClass: row.gainValue > 0 ? "positive" : (row.gainValue < 0 ? "negative" : "neutral")
@@ -3118,7 +3119,7 @@ const unitCreateRarityMaterialRows = computed(() => {
           return {
             key: resourceKey,
             label: resourceKey,
-            iconSrc: resolveResourceIconSrc(resourceKey),
+            ...resolveResourceIconView(resourceKey),
             have,
             need,
             valueText: `${formatUnitCreateCostAmount(have)}/${formatUnitCreateCostAmount(need)}`,
@@ -5053,7 +5054,7 @@ function buildMaterialCollapsedEntries(raw) {
     ];
     return defs.map(def => ({
       ...def,
-      iconSrc: resolveResourceIconSrc(def.iconKey),
+      ...resolveResourceIconView(def.iconKey),
       displayValue: formatMaterialCompactNumber(def.value)
     }));
   }
@@ -5078,7 +5079,7 @@ function buildMaterialCollapsedEntries(raw) {
   ];
   return defs.map(def => ({
     ...def,
-    iconSrc: resolveResourceIconSrc(def.iconKey),
+    ...resolveResourceIconView(def.iconKey),
     displayValue: formatMaterialCompactNumber(def.value)
   }));
 }
@@ -5097,7 +5098,7 @@ function buildMaterialHeaderGroupEntries(raw) {
           label: group.key,
           value,
           displayValue: formatMaterialCompactNumber(value),
-          iconSrc: resolveResourceIconSrc(group.key)
+          ...resolveResourceIconView(group.key)
         }]
       };
     });
@@ -5109,7 +5110,7 @@ function buildMaterialHeaderGroupEntries(raw) {
       label: key,
       value: roundTo1(toSafeNumber(bag?.[key], 0)),
       displayValue: formatMaterialCompactNumber(toSafeNumber(bag?.[key], 0)),
-      iconSrc: resolveResourceIconSrc(key)
+      ...resolveResourceIconView(key)
     }));
     const value = roundTo1(group.keys.reduce((sum, key) => sum + toSafeNumber(bag?.[key], 0), 0));
     return {
@@ -5133,10 +5134,12 @@ function togglePopulationHeaderExpanded() {
   populationHeaderExpanded.value = nextExpanded;
 }
 
-function resolveResourceIconSrc(resourceKey) {
-  const key = nonEmptyText(resourceKey);
-  const preferred = RESOURCE_ICON_NAME_MAP[key] || key;
-  return getResourceIconSrc(preferred);
+function resolveResourceIconView(resourceKey) {
+  const icon = resolveV39ResourceIcon(nonEmptyText(resourceKey));
+  return {
+    icon: icon.glyph,
+    iconColor: icon.color
+  };
 }
 
 function resolveDominantTerrainResourceIconName(terrainRow) {
@@ -5164,7 +5167,7 @@ function buildResourceSummaryEntries(bag, keys, numberFormatter = formatCompactN
       const displayValue = numberFormatter(rawValue);
       return {
         key,
-        iconSrc: resolveResourceIconSrc(key),
+        ...resolveResourceIconView(key),
         rawValue,
         displayValue
       };
@@ -22935,9 +22938,13 @@ watch(() => props.characterCommand, command => {
               :class="{ active: row.isActive }"
               @click="toggleSidebarResourcePanel(row.key)"
             >
-              <span class="sidebar-resource-menu-icon" :title="row.label">
-                <img :src="row.iconSrc" :alt="row.label" />
-              </span>
+              <span
+                class="sidebar-resource-menu-icon resource-glyph-icon"
+                :title="row.label"
+                :style="{ color: row.iconColor || undefined }"
+                role="img"
+                :aria-label="row.label"
+              >{{ row.icon }}</span>
               <span class="sidebar-resource-menu-values">
                 <span class="sidebar-resource-menu-total">{{ row.totalDisplay }}</span>
                 <span class="sidebar-resource-menu-delta" :class="row.deltaClass">{{ row.deltaDisplay }}</span>
@@ -22959,9 +22966,13 @@ watch(() => props.characterCommand, command => {
                     :key="`header-resource-detail-${item.key}`"
                     class="sidebar-resource-menu-item sidebar-resource-detail-item"
                   >
-                    <span class="sidebar-resource-menu-icon" :title="item.label">
-                      <img :src="item.iconSrc" :alt="item.label" />
-                    </span>
+                    <span
+                      class="sidebar-resource-menu-icon resource-glyph-icon"
+                      :title="item.label"
+                      :style="{ color: item.iconColor || undefined }"
+                      role="img"
+                      :aria-label="item.label"
+                    >{{ item.icon }}</span>
                     <span class="sidebar-resource-menu-values">
                       <span class="sidebar-resource-menu-total">{{ item.stockDisplay }}</span>
                       <span class="sidebar-resource-menu-delta" :class="item.gainClass">{{ item.gainDisplay }}</span>
@@ -22976,9 +22987,13 @@ watch(() => props.characterCommand, command => {
                     :key="`header-food-detail-${item.key}`"
                     class="sidebar-resource-menu-item sidebar-resource-detail-item"
                   >
-                    <span class="sidebar-resource-menu-icon" :title="item.label">
-                      <img :src="item.iconSrc" :alt="item.label" />
-                    </span>
+                    <span
+                      class="sidebar-resource-menu-icon resource-glyph-icon"
+                      :title="item.label"
+                      :style="{ color: item.iconColor || undefined }"
+                      role="img"
+                      :aria-label="item.label"
+                    >{{ item.icon }}</span>
                     <span class="sidebar-resource-menu-values">
                       <span class="sidebar-resource-menu-total">{{ item.stockDisplay }}</span>
                       <span class="sidebar-resource-menu-delta" :class="item.gainClass">{{ item.gainDisplay }}</span>
@@ -23887,7 +23902,12 @@ watch(() => props.characterCommand, command => {
                     class="unit-create-rarity-cost-entry"
                     :class="{ shortage: entry.shortage }"
                   >
-                    <img :src="entry.iconSrc" :alt="`${entry.label} アイコン`" class="unit-create-rarity-cost-icon">
+                    <span
+                      class="unit-create-rarity-cost-icon resource-glyph-icon"
+                      :style="{ color: entry.iconColor || undefined }"
+                      role="img"
+                      :aria-label="`${entry.label} アイコン`"
+                    >{{ entry.icon }}</span>
                     <span class="unit-create-rarity-cost-value">{{ entry.label }} {{ entry.valueText }}</span>
                   </div>
                   <div v-if="!group.rows.length" class="unit-create-rarity-cost-empty">-</div>
