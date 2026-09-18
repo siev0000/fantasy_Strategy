@@ -19,8 +19,17 @@
   --modal-normal-height: 620px;
   --modal-wide-width: 1140px;
   --modal-wide-height: 700px;
+  --game-symbol-font: "Noto Sans Symbols 2", "Noto Sans Symbols", "Noto Color Emoji", "Segoe UI Symbol", "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
 }
 * { box-sizing: border-box; }
+
+.resource-glyph-icon {
+  font-family: var(--game-symbol-font);
+  font-style: normal;
+  font-weight: 400;
+  font-variant-ligatures: none;
+  font-synthesis: none;
+}
 
 * {
   scrollbar-width: thin;
