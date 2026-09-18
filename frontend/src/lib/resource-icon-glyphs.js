@@ -7,7 +7,7 @@ const RESOURCE_ICON_DEFS = Object.freeze({
   肉:Object.freeze({ glyph:"🍖", color:"" }),
   魚:Object.freeze({ glyph:"🐟", color:"" }),
   木材:Object.freeze({ glyph:"🪵", color:"" }),
-  黒木:Object.freeze({ glyph:"▥", color:"#9b77b7" }),
+  黒木:Object.freeze({ glyph:"♣", color:"#8b6aa8" }),
   特木:Object.freeze({ glyph:"✥", color:"#58c98b" }),
   石材:Object.freeze({ glyph:"🪨", color:"" }),
   鉄:Object.freeze({ glyph:"▰", color:"#9ca3af" }),
