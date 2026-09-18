@@ -21,6 +21,9 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@fontsource/noto-color-emoji": "5.3.1",
+    "@fontsource/noto-sans-symbols": "5.3.0",
+    "@fontsource/noto-sans-symbols-2": "5.3.0",
     "chokidar": "^3.6.0",
     "express": "^4.21.2",
     "phaser": "^3.90.0",
