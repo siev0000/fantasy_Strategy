@@ -111,7 +111,7 @@ body,
   border: 1px solid #40545a !important;
   border-radius: 6px !important;
   background: #16252a !important;
-  color: #dce8e7 !important;
+  color: var(--resource-icon-color, #dce8e7) !important;
   font-size: 10px !important;
   font-weight: 800 !important;
   line-height: 1 !important;
@@ -120,13 +120,12 @@ body,
 .phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-icon img {
   display: none !important;
 }
+
+.phaser-map-panel .header-resource-detail-panel .resource-glyph-icon {
+  color: var(--resource-icon-color, #dce8e7) !important;
+}
 .phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-icon::before {
-  content: attr(title);
-  display: block;
-  max-width: 24px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: clip;
+  content: none !important;
 }
 
 .phaser-map-panel .field-overlay-actions {
