@@ -7,18 +7,18 @@ const RESOURCE_ICON_DEFS = Object.freeze({
   肉:Object.freeze({ glyph:"🍖", color:"" }),
   魚:Object.freeze({ glyph:"🐟", color:"" }),
   木材:Object.freeze({ glyph:"🪵", color:"" }),
-  黒木:Object.freeze({ glyph:"♣", color:"#8b6aa8" }),
+  黒木:Object.freeze({ glyph:"♣", color:"#5f6872" }),
   特木:Object.freeze({ glyph:"✥", color:"#58c98b" }),
   石材:Object.freeze({ glyph:"🪨", color:"" }),
-  鉄:Object.freeze({ glyph:"▰", color:"#9ca3af" }),
-  銀鉄:Object.freeze({ glyph:"▰", color:"#e5e7eb" }),
-  青金鋼:Object.freeze({ glyph:"▰", color:"#4da3ff" }),
-  赤黒鋼:Object.freeze({ glyph:"▰", color:"#c94747" }),
-  金:Object.freeze({ glyph:"●", color:"#e2b93b" }),
-  銀:Object.freeze({ glyph:"●", color:"#c8d0da" }),
+  鉄:Object.freeze({ glyph:"⬢", color:"#8f969e" }),
+  銀鉄:Object.freeze({ glyph:"⬢", color:"#dfe4e8" }),
+  青金鋼:Object.freeze({ glyph:"⬢", color:"#4d95ff" }),
+  赤黒鋼:Object.freeze({ glyph:"⬢", color:"#9e3030" }),
+  金:Object.freeze({ glyph:"●", color:"#d8ad32" }),
+  銀:Object.freeze({ glyph:"●", color:"#cbd2d9" }),
   宝石:Object.freeze({ glyph:"💎", color:"" }),
   死体:Object.freeze({ glyph:"🦴", color:"" }),
-  魂:Object.freeze({ glyph:"✦", color:"#76d7ff" })
+  魂:Object.freeze({ glyph:"✦", color:"#73d8ff" })
 });
 
 export function resolveV39ResourceIcon(name) {
