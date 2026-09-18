@@ -228,7 +228,7 @@ watch(
                       <span
                         class="village-build-cost-icon resource-glyph-icon"
                         :class="`is-${row.iconKind}`"
-                        :style="{ color: row.iconColor || undefined }"
+                        :style="{ '--resource-icon-color': row.iconColor || undefined }"
                         role="img"
                         :aria-label="`${row.label} アイコン`"
                       >{{ row.icon }}</span>
