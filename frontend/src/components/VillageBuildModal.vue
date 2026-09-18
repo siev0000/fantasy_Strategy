@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import { getIconSrcByName } from "../lib/icon-library.js";
+import { resolveV39ResourceIcon } from "../lib/resource-icon-glyphs.js";
 import { RESOURCE_GROUPS } from "../lib/v39-economy-rules.js";
 
 const props = defineProps({
@@ -70,10 +71,12 @@ const groupedMaterialColumns = computed(() => {
       .map(resourceKey => {
         const have = toSafeNumber(materialBag?.[resourceKey], 0);
         const need = toSafeNumber(costBag?.[resourceKey], 0);
+        const icon = resolveV39ResourceIcon(resourceKey);
         return {
           key: resourceKey,
           label: resourceKey,
-          iconSrc: getIconSrcByName(resourceKey, resourceKey),
+          icon: icon.glyph,
+          iconColor: icon.color,
           have,
           need,
           valueText: `${formatAmount(have)}/${formatAmount(need)}`,
@@ -221,7 +224,12 @@ watch(
                       class="village-build-cost-entry"
                       :class="{ shortage: row.shortage }"
                     >
-                      <img :src="row.iconSrc" :alt="`${row.label} アイコン`" class="village-build-cost-icon">
+                      <span
+                        class="village-build-cost-icon resource-glyph-icon"
+                        :style="{ color: row.iconColor || undefined }"
+                        role="img"
+                        :aria-label="`${row.label} アイコン`"
+                      >{{ row.icon }}</span>
                       <span class="village-build-cost-value">{{ row.label }} {{ row.valueText }}</span>
                     </div>
                     <div v-if="!group.rows.length" class="village-build-cost-empty">-</div>
