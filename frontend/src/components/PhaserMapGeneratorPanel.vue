@@ -22943,7 +22943,7 @@ watch(() => props.characterCommand, command => {
                 class="sidebar-resource-menu-icon resource-glyph-icon"
                 :class="`is-${row.iconKind}`"
                 :title="row.label"
-                :style="{ color: row.iconColor || undefined }"
+                :style="{ '--resource-icon-color': row.iconColor || undefined }"
                 role="img"
                 :aria-label="row.label"
               >{{ row.icon }}</span>
@@ -22972,7 +22972,7 @@ watch(() => props.characterCommand, command => {
                       class="sidebar-resource-menu-icon resource-glyph-icon"
                 :class="`is-${item.iconKind}`"
                       :title="item.label"
-                      :style="{ color: item.iconColor || undefined }"
+                      :style="{ '--resource-icon-color': item.iconColor || undefined }"
                       role="img"
                       :aria-label="item.label"
                     >{{ item.icon }}</span>
@@ -22994,7 +22994,7 @@ watch(() => props.characterCommand, command => {
                       class="sidebar-resource-menu-icon resource-glyph-icon"
                 :class="`is-${item.iconKind}`"
                       :title="item.label"
-                      :style="{ color: item.iconColor || undefined }"
+                      :style="{ '--resource-icon-color': item.iconColor || undefined }"
                       role="img"
                       :aria-label="item.label"
                     >{{ item.icon }}</span>
@@ -23909,7 +23909,7 @@ watch(() => props.characterCommand, command => {
                     <span
                       class="unit-create-rarity-cost-icon resource-glyph-icon"
                       :class="`is-${entry.iconKind}`"
-                      :style="{ color: entry.iconColor || undefined }"
+                      :style="{ '--resource-icon-color': entry.iconColor || undefined }"
                       role="img"
                       :aria-label="`${entry.label} アイコン`"
                     >{{ entry.icon }}</span>
