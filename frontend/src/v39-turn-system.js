@@ -117,13 +117,14 @@ function renderControls() {
 }
 
 function installUi() {
+  const header = document.querySelector(".topbar");
   const playfield = document.querySelector(".playfield");
-  if (!(playfield instanceof HTMLElement) || document.getElementById("v39-turn-controls")) return;
+  if (!(header instanceof HTMLElement) || !(playfield instanceof HTMLElement) || document.getElementById("v39-turn-controls")) return;
   const style = document.createElement("style");
   style.id = "v39-turn-system-style";
   style.textContent = `
     #v39-turn-controls{
-      position:absolute;right:max(8px,var(--safe-r,0px));top:8px;z-index:31;
+      position:relative;z-index:31;flex:0 0 42px;
       width:42px;height:42px;overflow:visible
     }
     #v39-turn-toggle{
@@ -161,7 +162,7 @@ function installUi() {
     #v39-turn-banner.show{transform:translate(-50%,0);opacity:1}
     #v39-turn-banner.persistent{border-color:#d8b65b;color:#ffe69a}
     @media(max-width:700px){
-      #v39-turn-controls{right:max(5px,var(--safe-r,0px));top:5px;width:38px;height:38px}
+      #v39-turn-controls{flex-basis:38px;width:38px;height:38px}
       #v39-turn-toggle{width:38px;height:38px;min-width:38px;min-height:38px}
       #v39-turn-label{font-size:10px}
       #v39-turn-menu{right:44px;width:140px;min-height:38px;padding:3px}
@@ -176,7 +177,8 @@ function installUi() {
   const banner = document.createElement("div");
   banner.id = "v39-turn-banner";
   banner.setAttribute("role", "status");
-  playfield.append(controls, banner);
+  header.appendChild(controls);
+  playfield.appendChild(banner);
   const toggle = controls.querySelector("#v39-turn-toggle");
   const menu = controls.querySelector("#v39-turn-menu");
   const setMenuOpen = open => {
