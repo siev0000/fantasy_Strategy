@@ -394,7 +394,10 @@ function renderDetail() {
           const details = techniqueDetailRows(row, source);
           const expanded = name === expandedTechniqueName;
           const detailHtml = details.length
-            ? details.map(([label, value]) => `<span class="technique-detail-row"><em>${escapeHtml(label)}</em><b>${escapeHtml(value)}</b></span>`).join("")
+            ? details.map(([label, value]) => {
+                const descriptionClass = label === "説明" ? " technique-detail-description" : "";
+                return `<span class="technique-detail-row${descriptionClass}"><em>${escapeHtml(label)}</em><b>${escapeHtml(value)}</b></span>`;
+              }).join("")
             : '<span class="technique-detail-empty">追加情報なし</span>';
           const attackAttr = action === "A" ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
           return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" data-v39-technique-name="${escapeHtml(name)}" aria-expanded="${expanded}"${attackAttr}>
