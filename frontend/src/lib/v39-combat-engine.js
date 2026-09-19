@@ -124,8 +124,11 @@ export function canTriggerMeleeCounter(skillRow, attacker) {
   return isMeleeCounterRow(skillRow, attacker);
 }
 
-export function resolveAttackApCost(skillRow) {
-  return Math.max(0, Math.floor(number(skillRow?.AP消費, 0)));
+export function resolveAttackApCost(skillRow, attacker = null) {
+  const skillAp = Math.max(0, Math.floor(number(skillRow?.AP消費, 0)));
+  if (skillRow?.装備攻撃 === true || text(skillRow?.攻撃手段) !== "武器") return skillAp;
+  const weaponAp = Math.max(0, Math.floor(number(primaryWeaponRow(attacker)?.AP消費, 0)));
+  return skillAp + weaponAp;
 }
 
 export function resolveSkillHealing(skillRow, attacker) {
