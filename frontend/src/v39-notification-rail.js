@@ -129,7 +129,7 @@ function installStyles() {
       box-shadow:0 8px 24px rgba(0,0,0,.22);overflow:hidden;
       backdrop-filter:blur(4px)
     }
-    #v39-side-log.collapsed{width:30px;grid-template-rows:auto 0;border-radius:7px}
+    #v39-side-log.collapsed{width:15px;grid-template-rows:auto 0;border-radius:5px}
     .v39-side-log-head{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:4px;padding:4px;border-bottom:1px solid rgba(52,71,78,.72);background:rgba(17,31,36,.68)}
     .v39-side-log-tabs{min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:3px}
     .v39-side-log-tabs button,.v39-side-log-collapse{
@@ -139,8 +139,8 @@ function installStyles() {
     .v39-side-log-tabs button.active{border-color:#70cbd9;background:rgba(26,59,67,.82);color:#f1fbfb}
     .v39-side-log-collapse{font-size:14px;padding:0}
     #v39-side-log.collapsed .v39-side-log-tabs{display:none}
-    #v39-side-log.collapsed .v39-side-log-head{grid-template-columns:1fr;gap:0;padding:2px;border-bottom:0;background:rgba(17,31,36,.58)}
-    #v39-side-log.collapsed .v39-side-log-collapse{width:24px;min-width:24px;min-height:24px;height:24px;border-radius:5px;font-size:12px}
+    #v39-side-log.collapsed .v39-side-log-head{grid-template-columns:1fr;gap:0;padding:1px;border-bottom:0;background:rgba(17,31,36,.58)}
+    #v39-side-log.collapsed .v39-side-log-collapse{width:13px;min-width:13px;min-height:24px;height:24px;border-radius:4px;font-size:10px}
     #v39-side-log-list{min-height:0;overflow-y:auto;overflow-x:hidden;padding:5px;display:grid;gap:5px;align-content:start;scrollbar-width:thin}
     #v39-side-log.collapsed #v39-side-log-list{display:none}
     .v39-side-log-entry{border:1px solid rgba(57,75,82,.82);border-left:3px solid #5eb8c6;border-radius:6px;background:rgba(18,31,36,.70);padding:6px 7px;display:grid;gap:3px}
