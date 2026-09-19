@@ -106,7 +106,7 @@ body {
   max-height: none !important;
   box-sizing: border-box !important;
   margin: 0 !important;
-  padding: 5px 7px !important;
+  padding: 5px 58px 5px 7px !important;
   display: flex !important;
   align-items: center !important;
   gap: 7px !important;
@@ -251,28 +251,26 @@ body {
 /* Smartphone portrait follows the supplied v39 ratio: playfield 3 / command UI 2. */
 @media (max-width: 760px) and (orientation: portrait) {
   :root {
-    --v39-header-h: 96px;
+    --v39-header-h: 50px;
     --v39-footer-h: 0px;
   }
 
   .phaser-map-panel .phaser-map-canvas {
-    grid-template-rows: 96px minmax(0, 3fr) minmax(0, 2fr) !important;
+    grid-template-rows: 50px minmax(0, 3fr) minmax(0, 2fr) !important;
   }
 
   .phaser-map-panel .field-overlay-header {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    grid-template-rows: 46px 42px !important;
-    gap: 2px 4px !important;
-    padding: 4px 5px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    padding: 4px 48px 4px 4px !important;
     overflow: visible !important;
   }
 
   .phaser-map-panel .field-header-resource-menu-wrap {
-    grid-column: 1 / -1 !important;
-    grid-row: 1 !important;
-    min-width: 0 !important;
-    width: 100% !important;
+    flex: 1 1 auto !important;
+    min-width: 64px !important;
+    width: auto !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
   }
@@ -282,53 +280,70 @@ body {
     flex-wrap: nowrap !important;
     min-width: max-content !important;
     width: max-content !important;
+    padding: 3px 4px !important;
   }
 
   .phaser-map-panel .sidebar-resource-menu.header-resource-menu .sidebar-resource-menu-item {
-    flex: 0 0 72px !important;
-    min-width: 72px !important;
-    max-width: 72px !important;
-    padding: 3px 5px !important;
+    flex: 0 0 64px !important;
+    min-width: 64px !important;
+    max-width: 64px !important;
+    padding: 2px 4px !important;
   }
 
   .phaser-map-panel .field-header-population-menu-wrap {
-    grid-column: 1 !important;
-    grid-row: 2 !important;
+    flex: 0 0 auto !important;
     min-width: 0 !important;
+    max-width: 90px !important;
     overflow: hidden !important;
   }
 
   .phaser-map-panel .field-overlay-actions {
-    grid-column: 2 !important;
-    grid-row: 2 !important;
+    flex: 0 0 auto !important;
     display: flex !important;
-    gap: 3px !important;
+    gap: 2px !important;
     margin: 0 !important;
+    max-width: 152px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
   }
 
   .phaser-map-panel .field-overlay-actions .overlay-action-btn.icon-only {
-    width: 34px !important;
-    min-width: 34px !important;
-    height: 34px !important;
-    min-height: 34px !important;
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+  }
+
+  .phaser-map-panel .field-header-turn-control {
+    top: 5px !important;
+    right: 5px !important;
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .phaser-map-panel .field-header-turn-toggle {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
   }
 
   /* Footer height is a grid track on mobile, so overlay offsets use 40% of the remaining viewport. */
   .phaser-map-panel .field-header-research-wrap {
     left: 4px !important;
-    top: 100px !important;
-    bottom: calc((100dvh - 96px) * 0.4 + 4px) !important;
+    top: 54px !important;
+    bottom: calc((100dvh - 50px) * 0.4 + 4px) !important;
   }
 
   .phaser-map-panel .field-overlay-bottom-right {
-    bottom: calc((100dvh - 96px) * 0.4 + 8px) !important;
+    bottom: calc((100dvh - 50px) * 0.4 + 8px) !important;
   }
 
   .phaser-map-panel .field-overlay-live-log,
   .phaser-map-panel .field-overlay-tile-detail,
   .phaser-map-panel .field-overlay-own-faction-panel {
-    top: 104px !important;
-    bottom: calc((100dvh - 96px) * 0.4 + 8px) !important;
+    top: 58px !important;
+    bottom: calc((100dvh - 50px) * 0.4 + 8px) !important;
   }
 
   .phaser-map-panel .field-footer-tab-row {
