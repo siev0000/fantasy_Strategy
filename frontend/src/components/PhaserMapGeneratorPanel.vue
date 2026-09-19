@@ -13,7 +13,13 @@ import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
 import { resolveV39ResourceIcon } from "../lib/resource-icon-glyphs.js";
-import { applyV39TileTransformEffect, resolveV39TileTransformEffect, validateV39TileTransformEffect } from "../lib/v39-tile-transform.js";
+import {
+  advanceV39TileTransformEffects,
+  queueV39TileTransformEffect,
+  resolveV39TileTransformEffect,
+  resolveV39TileTransformWaitTurns,
+  validateV39TileTransformEffect
+} from "../lib/v39-tile-transform.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import {
   resolveV39UnitExpNeed,
@@ -16755,6 +16761,8 @@ function runNextTurn(options = {}) {
     eventMode: mode
   });
   result.data.worldWrapEnabled = !!currentData.value?.worldWrapEnabled;
+  const tileTransformAdvance = advanceV39TileTransformEffects(result.data, terrainYieldDb);
+  result.data = tileTransformAdvance.data;
   applyMapData(result.data, {
     resetClock: false,
     rebuildCharacters: false,
@@ -16780,6 +16788,7 @@ function runNextTurn(options = {}) {
   const turn = Number(result.data?.turnState?.turnNumber || 0);
   eventModalMessage.value = formatTurnEventMessage(turn, result.events, mode);
   const baseNotes = formatTurnEventNotes(result.events);
+  const tileTransformNotes = Array.isArray(tileTransformAdvance?.notes) ? tileTransformAdvance.notes : [];
   const economyNotes = Array.isArray(turnRuntime?.economyNotes) ? turnRuntime.economyNotes : [];
   const heroNotes = Array.isArray(turnRuntime?.heroNotes) ? turnRuntime.heroNotes : [];
   const surveyNotes = Array.isArray(turnRuntime?.surveyNotes) ? turnRuntime.surveyNotes : [];
@@ -16787,7 +16796,10 @@ function runNextTurn(options = {}) {
   const encounterNotes = Array.isArray(turnRuntime?.encounterNotes) ? turnRuntime.encounterNotes : [];
   const economyApplied = turnRuntime?.economyApplied !== false;
   if (economyApplied) {
-    eventModalNotes.value = [...baseNotes, "---- 経済処理 ----", ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 群れ移動 ----", ...enemyRoamNotes, "---- 索敵処理 ----", ...encounterNotes];
+    eventModalNotes.value = [...baseNotes, ...(tileTransformNotes.length ? ["---- 地形変換魔法 ----", ...tileTransformNotes] : []), "---- 経済処理 ----", ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 群れ移動 ----", ...enemyRoamNotes, "---- 索敵処理 ----", ...encounterNotes];
+    for (const line of tileTransformNotes) {
+      pushNationLog(line);
+    }
     for (const line of economyNotes) {
       if (String(line || "").startsWith("--- ")) continue;
       pushNationLog(line);
@@ -16805,7 +16817,7 @@ function runNextTurn(options = {}) {
       pushNationLog(line);
     }
   } else {
-    eventModalNotes.value = [...baseNotes, ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 群れ移動 ----", ...enemyRoamNotes, "---- 索敵処理 ----", ...encounterNotes];
+    eventModalNotes.value = [...baseNotes, ...(tileTransformNotes.length ? ["---- 地形変換魔法 ----", ...tileTransformNotes] : []), ...economyNotes, "---- ヒーロー増加 ----", ...heroNotes, "---- 調査処理 ----", ...surveyNotes, "---- 群れ移動 ----", ...enemyRoamNotes, "---- 索敵処理 ----", ...encounterNotes];
   }
   clearAllTestPlayerTurnReady();
   emitCharacterStateChange();
@@ -21687,12 +21699,19 @@ function handleTileAttackSelectionClick(picked) {
     return true;
   }
   if (tileTransformSpec) {
-    const transformResult = applyV39TileTransformEffect(
+    const waitTurns = resolveV39TileTransformWaitTurns(selectedAttackSkillRow, 1);
+    const transformResult = queueV39TileTransformEffect(
       currentData.value,
       picked.x,
       picked.y,
       tileTransformSpec,
-      terrainYieldDb
+      terrainYieldDb,
+      {
+        waitTurns,
+        skillName: selectedSkillName,
+        casterId: leader.id,
+        casterName: nonEmptyText(leader?.name) || "ユニット"
+      }
     );
     if (!transformResult.ok) {
       updateUnitInfoText(`地形変換失敗: ${transformResult.reason || "変換できませんでした。"}`);
