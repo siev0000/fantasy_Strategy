@@ -1,6 +1,6 @@
 import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
 import { getIconSrcByName } from "./lib/icon-library.js";
-import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveSkillGuard, resolveSkillHealing } from "./lib/v39-combat-engine.js";
+import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "./lib/v39-combat-engine.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -349,7 +349,11 @@ function renderDetail() {
   const tech = document.getElementById("detailTechniqueList");
   if (tech) {
     const rows = techniqueEntries(unit);
-    const activeRows = rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() !== "P");
+    const weaponAttackRows = resolveAttackRows(unit).filter(row => row?.装備攻撃 === true);
+    const activeRows = [
+      ...weaponAttackRows,
+      ...rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() !== "P")
+    ];
     const passiveRows = rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() === "P");
     const adjustedUnit = applyV39TerrainModifiers(unit, window.__v39FieldRuntime?.mapData);
     const renderTechnique = row => {
@@ -397,9 +401,9 @@ function renderDetail() {
     const passiveHtml = passiveRows.length
       ? `<div class="technique-passive-divider">パッシブ</div>${passiveRows.map(renderTechnique).join("")}`
       : "";
-    tech.innerHTML = rows.length
+    tech.innerHTML = activeRows.length || passiveRows.length
       ? activeHtml + passiveHtml
-      : '<div class="squad-empty">技データなし</div>';
+      : '<div class="squad-empty">行動データなし</div>';
   }
   notifyDetailRendered(unit);
 }
