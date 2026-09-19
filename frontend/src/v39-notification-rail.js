@@ -119,7 +119,7 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-side-log-style";
   style.textContent = `
-    .playfield{--v39-side-log-width:clamp(190px,24vw,280px)}
+    .playfield{--v39-side-log-width:clamp(170px,21vw,250px)}
     #v39-side-log{
       position:absolute;right:max(8px,var(--safe-r,0px));top:50px;bottom:52px;z-index:29;
       width:var(--v39-side-log-width);min-width:0;
@@ -129,7 +129,7 @@ function installStyles() {
       box-shadow:0 8px 24px rgba(0,0,0,.22);overflow:hidden;
       backdrop-filter:blur(4px)
     }
-    #v39-side-log.collapsed{width:42px;grid-template-rows:auto 0;border-radius:8px}
+    #v39-side-log.collapsed{width:30px;grid-template-rows:auto 0;border-radius:7px}
     .v39-side-log-head{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:4px;padding:4px;border-bottom:1px solid rgba(52,71,78,.72);background:rgba(17,31,36,.68)}
     .v39-side-log-tabs{min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:3px}
     .v39-side-log-tabs button,.v39-side-log-collapse{
@@ -139,6 +139,8 @@ function installStyles() {
     .v39-side-log-tabs button.active{border-color:#70cbd9;background:rgba(26,59,67,.82);color:#f1fbfb}
     .v39-side-log-collapse{font-size:14px;padding:0}
     #v39-side-log.collapsed .v39-side-log-tabs{display:none}
+    #v39-side-log.collapsed .v39-side-log-head{grid-template-columns:1fr;gap:0;padding:2px;border-bottom:0;background:rgba(17,31,36,.58)}
+    #v39-side-log.collapsed .v39-side-log-collapse{width:24px;min-width:24px;min-height:24px;height:24px;border-radius:5px;font-size:12px}
     #v39-side-log-list{min-height:0;overflow-y:auto;overflow-x:hidden;padding:5px;display:grid;gap:5px;align-content:start;scrollbar-width:thin}
     #v39-side-log.collapsed #v39-side-log-list{display:none}
     .v39-side-log-entry{border:1px solid rgba(57,75,82,.82);border-left:3px solid #5eb8c6;border-radius:6px;background:rgba(18,31,36,.70);padding:6px 7px;display:grid;gap:3px}
@@ -159,7 +161,7 @@ function installStyles() {
     .v39-side-log-details p{margin-top:4px!important;color:#b9c8ca!important;font-size:9px!important;line-height:1.4!important}
     .v39-side-log-empty{padding:16px 8px;color:#82969b;font-size:10px;text-align:center}
     @media(max-width:700px){
-      .playfield{--v39-side-log-width:min(42vw,220px)}
+      .playfield{--v39-side-log-width:min(36vw,190px)}
       #v39-side-log{right:max(5px,var(--safe-r,0px));top:46px;bottom:48px}
       .v39-side-log-entry{padding:5px 6px}.v39-side-log-entry p{font-size:9px}.v39-side-log-entry-head b{font-size:9px}
     }
