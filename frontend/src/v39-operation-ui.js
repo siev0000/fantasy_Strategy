@@ -11,11 +11,6 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       { key: "manage", label: "管理", icon: "☰" }
     ],
     landItems: V39_TEST_OPERATION_DATA.landItems,
-    actionButtons: [
-      { label: "移動", className: "move", id: "mobileBattleMove" },
-      { label: "攻撃", className: "attack", id: "mobileBattleAttack" },
-      { label: "待機", className: "", id: "mobileBattleWait" }
-    ],
     manageItems: [
       { icon: "⚒", label: "装備", open: "equipment" },
       { icon: "⇄", labelHtml: '資源表示: <em id="resourceModeLabel">詳細</em>', id: "resourceModeToggle", title: "資源表示を詳細/簡易で切替", tip: "資源表示切替" },
@@ -106,20 +101,20 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         margin:4px 0 1px!important;padding:2px 3px!important;border-top:1px solid #405159!important;
         color:#8fa1a5!important;font-size:8px!important;font-weight:800!important;line-height:1.2!important
       }
-      #footSquad #footAction.mobile-battle-panel{
-        display:grid!important;grid-template-rows:auto!important;gap:0!important;
-        height:auto!important;min-height:0!important;margin:0 0 2px!important
+      #footSquad #detailTechniqueRows{display:contents!important}
+      #footSquad .system-action-card .technique-icon-system-move{
+        border-color:#579ec3!important;background:linear-gradient(135deg,#17445d 0%,#247fa2 100%)!important
       }
-      #footSquad #footAction .battle-primary-actions{
-        display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:2px!important
+      #footSquad .system-action-card .technique-icon-system-attack{
+        border-color:#c76a4b!important;background:linear-gradient(135deg,#7a2c24 0%,#bd542e 100%)!important
       }
-      #footSquad #footAction .battle-main{
-        min-width:0;min-height:34px;border:1px solid #45565d;border-radius:7px;background:#172329;
-        color:#e8efec;font:inherit;font-size:11px;font-weight:800
+      #footSquad .system-action-card .technique-icon-system-wait{
+        border-color:#8c8061!important;background:linear-gradient(135deg,#3f3827 0%,#6c6040 100%)!important
       }
-      #footSquad #footAction .battle-main.move{border-color:#579ec3}
-      #footSquad #footAction .battle-main.attack{border-color:#a65f50}
-      #footSquad #footAction .battle-main.active{background:#34251f}
+      #footSquad .system-action-card.active{
+        border-color:#e7c466!important;background:linear-gradient(180deg,#2b291c,#1b1a14)!important;
+        box-shadow:0 0 0 1px rgba(231,196,102,.18)
+      }
       #footSquad .technique-card.technique-select-card{
         width:100%!important;min-width:0!important;display:block!important;appearance:none;-webkit-appearance:none;
         padding:0!important;border:1px solid #46565d!important;border-radius:8px!important;
@@ -255,10 +250,46 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
                   <div class="squad-detail-section"><div class="squad-detail-section-title">技能</div><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></div>
                 </section>
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="action" role="tabpanel" hidden aria-hidden="true">
-                  <section id="footAction" class="mobile-battle-panel v39-detail-action-panel" aria-label="選択キャラクターの行動">
-                    <div class="battle-primary-actions">${data.actionButtons.map(item => `<button class="battle-main ${item.className}" id="${item.id}">${item.label}</button>`).join("")}</div>
-                  </section>
-                  <div class="technique-list" id="detailTechniqueList"></div>
+                  <div class="technique-list" id="detailTechniqueList">
+                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleMove" data-v39-technique-name="__system_move__" aria-expanded="false">
+                      <span class="technique-summary">
+                        <span class="technique-icon technique-icon-system-move"><span class="technique-icon-glyph" aria-hidden="true">➜</span></span>
+                        <b class="technique-name">移動</b>
+                        <small class="technique-ap" id="mobileMoveAp" hidden></small>
+                        <span class="technique-power" id="mobileMoveMeta" hidden></span>
+                        <span class="technique-range" id="mobileMoveRemain" hidden></span>
+                      </span>
+                      <span class="technique-detail">
+                        <span class="technique-detail-head"><b>説明</b></span>
+                        <span class="technique-detail-description">移動先を選択して移動します。1マスの基礎消費APは移動力で決まり、地形・高低差・飛行で補正されます。</span>
+                      </span>
+                    </button>
+                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleAttack" data-v39-technique-name="__system_attack__" aria-expanded="false">
+                      <span class="technique-summary">
+                        <span class="technique-icon technique-icon-system-attack"><span class="technique-icon-glyph" aria-hidden="true">⚔</span></span>
+                        <b class="technique-name">攻撃</b>
+                        <small class="technique-ap">選択技</small>
+                        <span class="technique-power">対象を指定</span>
+                      </span>
+                      <span class="technique-detail">
+                        <span class="technique-detail-head"><b>説明</b></span>
+                        <span class="technique-detail-description">選択中の武器攻撃または技を使用し、フィールド上で対象を指定します。</span>
+                      </span>
+                    </button>
+                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleWait" data-v39-technique-name="__system_wait__" aria-expanded="false">
+                      <span class="technique-summary">
+                        <span class="technique-icon technique-icon-system-wait"><span class="technique-icon-glyph" aria-hidden="true">◷</span></span>
+                        <b class="technique-name">待機</b>
+                        <small class="technique-ap">AP→0</small>
+                        <span class="technique-power">行動終了</span>
+                      </span>
+                      <span class="technique-detail">
+                        <span class="technique-detail-head"><b>説明</b></span>
+                        <span class="technique-detail-description">残りAPを0にして、このターンの行動を終了します。</span>
+                      </span>
+                    </button>
+                    <div id="detailTechniqueRows"></div>
+                  </div>
                 </section>
               </div>
             </section>
