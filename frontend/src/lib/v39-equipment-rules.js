@@ -108,6 +108,7 @@ export function createV39EquipmentEntry(rowOrName, rarityValue = DEFAULT_V39_EQU
   if (!slot) return null;
   const craft = getV39EquipmentCraftCost(row, rarity.key);
   const resistanceBonus = Object.fromEntries(RESISTANCE_FIELDS.map(key => [key, Math.round(number(row?.[key]) * rarity.multiplier)]));
+  const statusBonus = Object.fromEntries(STATUS_FIELDS.map(key => [key, Math.round(number(row?.[key]) * rarity.multiplier)]));
   const armorBase = Math.max(0, number(row?.耐性)) * rarity.multiplier;
   const consumption = equipmentConsumptionRow(rarity.level);
   if (!["武器1", "武器2", "装飾1", "装飾2"].includes(slot) && armorBase > 0) {
@@ -132,6 +133,7 @@ export function createV39EquipmentEntry(rowOrName, rarityValue = DEFAULT_V39_EQU
     criticalPower:scaleCriticalPower(row?.Cr威力, rarity.multiplier),
     range:optionalNumber(row?.射程) === null ? null : Math.round(optionalNumber(row?.射程)),
     penalty:Math.round(number(row?.ペナルティ)),
+    statusBonus,
     resistanceBonus,
     traits:[row?.特性1, row?.特性2, row?.特性3, row?.特性4].map(text).filter(Boolean),
     craftLevel:craft.level,
