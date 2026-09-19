@@ -94,6 +94,25 @@ function techniqueEntries(unit) {
   return Array.isArray(unit?.techniques) ? unit.techniques.filter(Boolean) : [];
 }
 
+function techniqueSource(technique) {
+  return technique?.source && typeof technique.source === "object" ? technique.source : technique;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function notifyDetailRendered(unit = null) {
+  window.dispatchEvent(new CustomEvent("v39:squad-detail-rendered", {
+    detail:{ unitId:unit ? unitId(unit) : "" }
+  }));
+}
+
 let selectedSquadKey = "squad1";
 let selectedUnitId = "";
 
@@ -239,6 +258,7 @@ function renderDetail() {
     const tech = document.getElementById("detailTechniqueList");
     if (prof) prof.innerHTML = '<div class="squad-empty">技能データなし</div>';
     if (tech) tech.innerHTML = '<div class="squad-empty">技データなし</div>';
+    notifyDetailRendered();
     return;
   }
   if (pane) delete pane.dataset.empty;
@@ -280,12 +300,22 @@ function renderDetail() {
     const rows = techniqueEntries(unit);
     tech.innerHTML = rows.length
       ? rows.map(row => {
-          const cost = row.apCost != null ? `AP${row.apCost}` : (row.hpCost != null ? `HP${row.hpCost}` : "-");
-          const meta = text(row.detail, row.range != null ? `射程${row.range}` : text(row.action, ""));
-          return `<div class="technique-card"><b>${text(row.name, "名称未設定")}</b><small>${cost}</small><span>${meta}</span></div>`;
+          const source = techniqueSource(row) || {};
+          const name = text(source?.名前 ?? row?.name, "名称未設定");
+          const action = text(source?.行動 ?? row?.action).toUpperCase();
+          const apCost = row?.apCost ?? source?.AP消費;
+          const hpCost = row?.hpCost ?? source?.HP消費;
+          const cost = apCost != null && apCost !== "" ? `AP${apCost}` : (hpCost != null && hpCost !== "" ? `HP${hpCost}` : "-");
+          const range = row?.range ?? source?.射程;
+          const meta = text(row?.detail, range != null && range !== "" ? `射程${range}` : text(source?.攻撃手段 ?? row?.action, ""));
+          const content = `<b>${escapeHtml(name)}</b><small>${escapeHtml(cost)}</small><span>${escapeHtml(meta)}</span>`;
+          return action === "A"
+            ? `<button type="button" class="technique-card action-technique" data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false">${content}</button>`
+            : `<div class="technique-card">${content}</div>`;
         }).join("")
       : '<div class="squad-empty">技データなし</div>';
   }
+  notifyDetailRendered(unit);
 }
 
 function render() {
