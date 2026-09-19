@@ -28,6 +28,14 @@ import {
   remainingV39Turns,
   resolveV39DeadlineTurn
 } from "./lib/v39-turn-timing.js";
+import { getGameDataRows } from "./lib/game-data-registry.js";
+import {
+  applyV39TileTransformEffect,
+  resolveV39TileTransformEffect,
+  validateV39TileTransformEffect
+} from "./lib/v39-tile-transform.js";
+
+const TERRAIN_DATA_ROWS = getGameDataRows("地形");
 
 const RANGE_DEPTH = 10;
 const AREA_DEPTH = 12;
@@ -464,6 +472,15 @@ function executeAttack(target) {
       return false;
     }
   }
+  const tileTransformSpec = resolveV39TileTransformEffect(session.skillRow, TERRAIN_DATA_ROWS);
+  if (tileTransformSpec) {
+    const ctx = activeRuntime();
+    const validation = validateV39TileTransformEffect(ctx?.data, target.x, target.y, tileTransformSpec, TERRAIN_DATA_ROWS);
+    if (!validation.ok) {
+      showToast(validation.reason || "このタイルは変換できません");
+      return false;
+    }
+  }
   const delayTurns = castDurationTurns(session.skillRow);
   if (delayTurns <= 0) return performAttack(target, { ...session, playerId:player.id });
   const apCost = resolveAttackApCost(session.skillRow, attacker);
@@ -570,6 +587,68 @@ function performRevival(target, session, options, state, player, attacker, reviv
   return true;
 }
 
+function performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx) {
+  const sourceMap = ctx?.data;
+  if (!sourceMap) {
+    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-map-missing");
+    return false;
+  }
+
+  const nextMap = {
+    ...sourceMap,
+    grid:Array.isArray(sourceMap.grid) ? sourceMap.grid.map(row => Array.isArray(row) ? [...row] : row) : sourceMap.grid,
+    specialMap:Array.isArray(sourceMap.specialMap) ? sourceMap.specialMap.map(row => Array.isArray(row) ? [...row] : row) : sourceMap.specialMap
+  };
+  const result = applyV39TileTransformEffect(nextMap, target.x, target.y, transformSpec, TERRAIN_DATA_ROWS);
+  if (!result.ok) {
+    showToast(result.reason || "地形変換に失敗しました");
+    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
+    return false;
+  }
+
+  if (window.updateV39FieldData?.(nextMap, { reason:"tile-transform" }) !== true) {
+    showToast("地形表示の更新に失敗しました");
+    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-map-update-failed");
+    return false;
+  }
+
+  const runtime = player.factionState.combatRuntime || {};
+  const pendingActionsByUnitId = { ...(runtime.pendingActionsByUnitId || {}) };
+  if (options.clearPending) delete pendingActionsByUnitId[text(attacker.id)];
+  const cooldownsByUnitId = { ...(runtime.cooldownsByUnitId || {}) };
+  const cooldownTurns = cooldownDurationTurns(session.skillRow);
+  if (cooldownTurns > 0) cooldownsByUnitId[text(attacker.id)] = {
+    ...(cooldownsByUnitId[text(attacker.id)] || {}),
+    [text(session.skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state), cooldownTurns)
+  };
+
+  const players = state.players.map(row => row.id !== player.id ? row : ({
+    ...row,
+    factionState:{
+      ...row.factionState,
+      units:row.factionState.units.map(unit => {
+        if (text(unit.id) !== text(attacker.id)) return unit;
+        const ap = options.apPaid ? currentAp(unit) : Math.max(0, currentAp(unit) - apCost);
+        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastUsedAttack:text(session.skillRow?.名前) };
+      }),
+      combatRuntime:{ ...runtime, pendingActionsByUnitId, cooldownsByUnitId }
+    }
+  }));
+  window.setV39GameState({ players }, { reason:"combat-tile-transform" });
+
+  const summary = `${text(attacker.name)}：${text(session.skillRow?.名前)} / ${result.before} → ${result.after} / AP-${apCost}`;
+  window.dispatchEvent(new CustomEvent("v39:combat-log", {
+    detail:{ summary, attackerId:text(attacker.id), skillName:text(session.skillRow?.名前), apCost, target, entries:[] }
+  }));
+  if (options.clearPending) window.dispatchEvent(new CustomEvent("v39:cast-ended", {
+    detail:{ playerId:player.id, unitId:text(attacker.id), reason:"resolved" }
+  }));
+  showToast(summary);
+  cancelAttack("tile-transform-complete");
+  renderActionPanel();
+  return true;
+}
+
 function performAttack(target, session = attackSession, options = {}) {
   if (!session) return false;
   const ctx = activeRuntime();
@@ -586,6 +665,7 @@ function performAttack(target, session = attackSession, options = {}) {
     : tilesWithin(ctx.data, attacker, resolveAttackRange(session.skillRow, attacker));
   const adjustedAttacker = terrainAdjusted(attacker);
   const revivalSpec = resolveV39RevivalSpec(session.skillRow);
+  const transformSpec = resolveV39TileTransformEffect(session.skillRow, TERRAIN_DATA_ROWS);
   const supportSkill = isV39SupportSkill(session.skillRow, adjustedAttacker);
   if (!supportSkill) rangeTiles.delete(coordKey(attacker.x, attacker.y));
   if (!rangeTiles.has(targetKey)) {
@@ -607,6 +687,7 @@ function performAttack(target, session = attackSession, options = {}) {
     return false;
   }
   if (revivalSpec) return performRevival(target, session, options, state, player, attacker, revivalSpec, apCost);
+  if (transformSpec) return performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx);
   const areaScale = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow);
   const supportTargets = supportSkill
     ? player.factionState.units.filter(unit => number(unit?.hp, unit?.currentHp) > 0 && areaScale.has(coordKey(unit.x, unit.y)))
