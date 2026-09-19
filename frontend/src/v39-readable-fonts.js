@@ -7,7 +7,7 @@ function installReadableFonts() {
   style.textContent = `
     /* Keep the operation UI readable without spending extra width on padding. */
     #footSquad .squad-name{font-size:15px!important;line-height:1.15!important}
-    #footSquad .squad-pos{font-size:13px!important;line-height:1!important}
+    #footSquad .squad-pos{font-size:11px!important;line-height:1!important}
     #footSquad .squad-select-btn b{font-size:15px!important}
     #footSquad .squad-select-btn small{font-size:13px!important}
 

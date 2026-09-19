@@ -320,7 +320,7 @@ function installStyles() {
 .research-rail{top:4px!important;width:36px!important;padding:3px 2px!important;gap:3px!important}
 .research-rail-btn{width:31px!important;height:38px!important;min-width:31px!important;min-height:38px!important;grid-template-rows:24px 9px!important}
 .research-rail-btn .gauge{width:23px!important;height:23px!important}
-.research-rail-btn .gauge b{font-size:12px!important}
+.research-rail-btn .gauge b{font-size:14px!important}
 .research-rail-btn .lv{font-size:8px!important;line-height:8px!important}
 #researchModal .modal{width:98vw;height:94vh}.v39-research-categories{grid-template-columns:repeat(5,1fr)}.v39-research-category{min-height:42px;padding:3px;font-size:13px;gap:3px}.v39-research-category b{font-size:15px}.v39-research-category small{display:none}.v39-research-layout{grid-template-columns:minmax(0,1.45fr) minmax(200px,1fr)}.v39-research-level{flex-basis:145px}.v39-research-item{min-height:75px}.v39-research-detail{padding:8px}.v39-research-detail-head b{font-size:16px}}
 `;
