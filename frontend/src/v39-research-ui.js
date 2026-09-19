@@ -1,5 +1,6 @@
 import {
   RESEARCH_CATEGORY_ORDER,
+  getResearchCategoryMeta,
   normalizeResearchCategoryName,
   researchTreeData
 } from "./lib/research-tree-config.js";
@@ -13,22 +14,6 @@ import {
   resolveCompletedResearchLevel,
   selectResearch
 } from "./lib/research-progress.js";
-
-const CATEGORY_META = {
-  鍛冶Lv: { label:"鍛冶", icon:"⚒", accent:"#d9b56b" },
-  魔法Lv: { label:"魔法", icon:"✦", accent:"#a980de" },
-  信仰Lv: { label:"信仰", icon:"✚", accent:"#e9de8b" },
-  軍事Lv: { label:"軍事", icon:"⚔", accent:"#cf705e" },
-  経済Lv: { label:"経済", icon:"◆", accent:"#79c88f" }
-};
-
-function categoryMeta(categoryKey) {
-  return CATEGORY_META[categoryKey] || {
-    label:String(categoryKey || "研究").replace(/Lv$/, ""),
-    icon:"◆",
-    accent:"#70b7c6"
-  };
-}
 
 let activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
 let inspectedItemId = "";
@@ -140,7 +125,7 @@ function renderRail() {
   rail.innerHTML = RESEARCH_CATEGORY_ORDER
     .filter(key => researchTreeData.categories[key])
     .map(key => {
-      const meta = categoryMeta(key);
+      const meta = getResearchCategoryMeta(key);
       const progress = categoryProgress(key, research);
       const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
       const selected = research.selection?.[key] ? " active" : "";
@@ -181,7 +166,7 @@ function renderModal() {
   const progressRatio = Math.min(100, Math.round((currentExp / Math.max(1, requiredExp)) * 100));
 
   const categoryButtons = RESEARCH_CATEGORY_ORDER.filter(key => researchTreeData.categories[key]).map(key => {
-    const meta = categoryMeta(key);
+    const meta = getResearchCategoryMeta(key);
     const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
     const active = key === activeCategory;
     return `<button class="v39-research-category${active ? " active" : ""}" data-research-category="${key}" style="--cat-accent:${meta.accent}" aria-pressed="${active}"><b>${meta.icon}</b><span>${meta.label}</span><small>Lv${level}${active ? " 選択中" : ""}</small></button>`;
@@ -322,7 +307,7 @@ function installStyles() {
   padding:2px!important;border-radius:7px!important;background:rgba(18,28,32,.78)!important
 }
 .research-rail-btn .gauge{width:24px!important;height:24px!important}
-.research-rail-btn .gauge b{font-size:13px!important;line-height:1!important}
+.research-rail-btn .gauge b{font-size:13px!important;line-height:1!important;color:var(--accent,#70b7c6)!important}
 .research-rail-btn small{display:none!important}
 .research-rail-btn .lv{
   position:static!important;inset:auto!important;min-width:0!important;width:auto!important;height:auto!important;
