@@ -334,7 +334,7 @@ function unavailableAttackReason(skillName) {
   const row = resolveAttackRows(unit).find(item => text(item?.名前) === text(skillName));
   if (!unit || !row) return "攻撃するキャラクターと技を選択してください";
   if (text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0) return "死亡したキャラクターは攻撃できません";
-  if (currentAp(unit) < resolveAttackApCost(row)) return "APが不足しています";
+  if (currentAp(unit) < resolveAttackApCost(row, unit)) return "APが不足しています";
   const timing = unitRuntimeState(faction, unit, row);
   if (timing.pending) return "別の行動を発動待機中です";
   if (timing.cooldownRemainingTurns > 0) return `CT中です。残り${timing.cooldownRemainingTurns}ターン`;
@@ -362,7 +362,7 @@ function renderActionPanel() {
     const row = rowByName.get(name) || null;
     const timing = unitRuntimeState(activeFaction(), unit, row);
     const disabled = !row
-      || currentAp(unit) < resolveAttackApCost(row)
+      || currentAp(unit) < resolveAttackApCost(row, unit)
       || text(unit?.state) === "死亡"
       || number(unit?.hp, unit?.currentHp) <= 0
       || !!timing.pending
@@ -390,7 +390,7 @@ function startAttack() {
     showToast("攻撃するキャラクターと技を選択してください");
     return false;
   }
-  const apCost = resolveAttackApCost(skillRow);
+  const apCost = resolveAttackApCost(skillRow, unit);
   if (currentAp(unit) < apCost) {
     showToast("APが不足しています");
     return false;
@@ -466,7 +466,7 @@ function executeAttack(target) {
   }
   const delayTurns = castDurationTurns(session.skillRow);
   if (delayTurns <= 0) return performAttack(target, { ...session, playerId:player.id });
-  const apCost = resolveAttackApCost(session.skillRow);
+  const apCost = resolveAttackApCost(session.skillRow, attacker);
   if (currentAp(attacker) < apCost) {
     showToast("APが不足しています");
     cancelAttack("ap-shortage");
@@ -593,7 +593,7 @@ function performAttack(target, session = attackSession, options = {}) {
     if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
     return false;
   }
-  const apCost = resolveAttackApCost(session.skillRow);
+  const apCost = resolveAttackApCost(session.skillRow, attacker);
   const targetFaction = !supportSkill && state.players.find((row) => row.id !== player.id && row?.factionState?.units?.some((unit) =>
     integer(unit?.x) === integer(target.x) && integer(unit?.y) === integer(target.y) && number(unit?.hp, unit?.currentHp) > 0
   ));
@@ -773,7 +773,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   if (!ctx || !state || !attacker || !targetUnit || number(attacker?.hp, attacker?.currentHp) <= 0 || number(targetUnit?.hp, targetUnit?.currentHp) <= 0) return false;
   const range = resolveAttackRange(skillRow, attacker);
   if (!tilesWithin(ctx.data, attacker, range).has(coordKey(targetUnit.x, targetUnit.y))) return false;
-  const apCost = resolveAttackApCost(skillRow);
+  const apCost = resolveAttackApCost(skillRow, attacker);
   if (!apPaid && currentAp(attacker) < apCost) return false;
   const areaScale = buildAreaScaleMap(ctx.data, attacker, targetUnit, skillRow);
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
