@@ -4,7 +4,7 @@ export const V39_TURN_PHASE = Object.freeze({
   RESOLUTION: "resolution"
 });
 
-export const DEFAULT_MAGIC_CAST_TURNS = 6;
+export const DEFAULT_MAGIC_CAST_TURNS = 1;
 export const DEFAULT_CORPSE_FIELD_TURNS = 30;
 
 const finiteNumber = (value, fallback = 0) => {
