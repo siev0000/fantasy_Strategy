@@ -137,14 +137,14 @@ function renderRail() {
   const rail = document.getElementById("researchRail");
   if (!(rail instanceof HTMLElement)) return;
   const research = currentResearch();
-  rail.innerHTML = '<div class="research-rail-title">研究<br>対象</div>' + RESEARCH_CATEGORY_ORDER
+  rail.innerHTML = RESEARCH_CATEGORY_ORDER
     .filter(key => researchTreeData.categories[key])
     .map(key => {
       const meta = categoryMeta(key);
       const progress = categoryProgress(key, research);
       const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
       const selected = research.selection?.[key] ? " active" : "";
-      return `<button class="research-rail-btn${selected}" data-v39-research-category="${key}" style="--p:${progress.ratio}%;--accent:${meta.accent}" title="${meta.label} Lv${level} / EXP ${progress.current}/${progress.required}"><span class="gauge"><b>${meta.icon}</b></span><small>${meta.label}</small><span class="lv">${level}</span></button>`;
+      return `<button class="research-rail-btn${selected}" data-v39-research-category="${key}" style="--p:${progress.ratio}%;--accent:${meta.accent}" title="${meta.label} Lv${level} / EXP ${progress.current}/${progress.required}" aria-label="${meta.label} Lv${level}"><span class="gauge"><b>${meta.icon}</b></span><span class="lv">${level}</span></button>`;
     }).join("");
 }
 
@@ -306,7 +306,38 @@ function installStyles() {
 .v39-research-large-progress{position:relative;height:22px;margin:12px 0;background:#091216;border:1px solid #53656a;border-radius:7px;overflow:hidden}.v39-research-large-progress i{display:block;height:100%;background:linear-gradient(90deg,#9d7839,#e3c36a)}.v39-research-large-progress span{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;font-weight:900;color:#fff;text-shadow:0 1px 2px #000}
 .v39-research-detail p{font-size:15px;line-height:1.55}.v39-research-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:0;list-style:none}.v39-research-details li{display:flex;justify-content:space-between;gap:7px;padding:5px 7px;background:#1b2b30;border-radius:5px;font-size:13px}.v39-research-requirement{color:#aebabc!important;font-size:13px!important}
 .v39-research-select{width:100%;min-height:42px;margin-top:8px;border:1px solid #c7a856;border-radius:7px;background:#3b321d;color:#fff1be;font-size:15px;font-weight:900}.v39-research-select:disabled{opacity:.55}
-@media(max-width:760px){#researchModal .modal{width:98vw;height:94vh}.v39-research-categories{grid-template-columns:repeat(5,1fr)}.v39-research-category{min-height:42px;padding:3px;font-size:13px;gap:3px}.v39-research-category b{font-size:15px}.v39-research-category small{display:none}.v39-research-layout{grid-template-columns:minmax(0,1.45fr) minmax(200px,1fr)}.v39-research-level{flex-basis:145px}.v39-research-item{min-height:75px}.v39-research-detail{padding:8px}.v39-research-detail-head b{font-size:16px}}
+
+/* Compact field research rail: screen-left, icon + level only. */
+.research-rail{
+  left:0!important;right:auto!important;top:6px!important;bottom:auto!important;
+  width:38px!important;display:grid!important;gap:3px!important;padding:4px 3px!important;
+  border-left:0!important;border-radius:0 8px 8px 0!important;
+  background:rgba(9,16,19,.68)!important;box-shadow:0 5px 16px rgba(0,0,0,.24)!important;
+  backdrop-filter:blur(4px)!important
+}
+.research-rail-title{display:none!important}
+.research-rail-btn{
+  width:32px!important;height:40px!important;min-width:32px!important;min-height:40px!important;
+  display:grid!important;grid-template-rows:25px 10px!important;place-items:center!important;gap:1px!important;
+  padding:2px!important;border-radius:7px!important;background:rgba(18,28,32,.78)!important
+}
+.research-rail-btn .gauge{width:24px!important;height:24px!important}
+.research-rail-btn .gauge b{font-size:13px!important;line-height:1!important}
+.research-rail-btn small{display:none!important}
+.research-rail-btn .lv{
+  position:static!important;inset:auto!important;min-width:0!important;width:auto!important;height:auto!important;
+  border:0!important;border-radius:0!important;background:transparent!important;
+  display:block!important;font-size:9px!important;font-weight:900!important;line-height:9px!important;color:#e8e4d5!important
+}
+.research-rail-btn.active::after{display:none!important}
+.research-rail-btn.active{border-color:#f0cf76!important;background:rgba(37,33,22,.86)!important}
+@media(max-width:760px){
+.research-rail{top:4px!important;width:36px!important;padding:3px 2px!important;gap:3px!important}
+.research-rail-btn{width:31px!important;height:38px!important;min-width:31px!important;min-height:38px!important;grid-template-rows:24px 9px!important}
+.research-rail-btn .gauge{width:23px!important;height:23px!important}
+.research-rail-btn .gauge b{font-size:12px!important}
+.research-rail-btn .lv{font-size:8px!important;line-height:8px!important}
+#researchModal .modal{width:98vw;height:94vh}.v39-research-categories{grid-template-columns:repeat(5,1fr)}.v39-research-category{min-height:42px;padding:3px;font-size:13px;gap:3px}.v39-research-category b{font-size:15px}.v39-research-category small{display:none}.v39-research-layout{grid-template-columns:minmax(0,1.45fr) minmax(200px,1fr)}.v39-research-level{flex-basis:145px}.v39-research-item{min-height:75px}.v39-research-detail{padding:8px}.v39-research-detail-head b{font-size:16px}}
 `;
   document.head.appendChild(style);
 }
