@@ -4,6 +4,10 @@ import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { runWithSeededRandom } from "./lib/seeded-random.js";
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
+const SNOW_RING_OUTER_INSET_RATIO = 0.06;
+const SNOW_RING_INNER_INSET_RATIO = 0.26;
+const SNOW_RING_COLOR = 0xf4f7fb;
+const SNOW_RING_ALPHA = 0.94;
 const terrainColorMap = new Map(
   (Array.isArray(terrainDefinitions) ? terrainDefinitions : []).map(row => [String(row?.key || ""), String(row?.color || "#607078")])
 );
@@ -14,6 +18,22 @@ let host = null;
 let game = null;
 let currentData = null;
 let currentSettings = null;
+
+function ensureBooleanGrid(data, key) {
+  if (!data || !Number.isFinite(Number(data.w)) || !Number.isFinite(Number(data.h))) return;
+  const w = Math.max(0, Math.floor(Number(data.w)));
+  const h = Math.max(0, Math.floor(Number(data.h)));
+  const source = Array.isArray(data[key]) ? data[key] : [];
+  data[key] = Array.from({ length:h }, (_, y) => (
+    Array.from({ length:w }, (_, x) => source?.[y]?.[x] === true)
+  ));
+}
+
+function ensureSnowStateMaps(data) {
+  ensureBooleanGrid(data, "snowCoverMap");
+  ensureBooleanGrid(data, "snowfallMap");
+  return data;
+}
 
 function tileMetrics() {
   const width = Number(HEX_TILE_CONFIG?.width) || 40;
@@ -139,6 +159,62 @@ function parseEdge(raw) {
   const pa = parsePoint(a); const pb = parsePoint(b);
   return pa && pb ? { a:pa, b:pb } : null;
 }
+function insetHexPoints(points, center, ratio) {
+  const safeRatio = Math.max(0, Math.min(0.49, Number(ratio) || 0));
+  const out = [];
+  for (let i = 0; i < points.length; i += 2) {
+    out.push(
+      points[i] + (center.x - points[i]) * safeRatio,
+      points[i + 1] + (center.y - points[i + 1]) * safeRatio
+    );
+  }
+  return out;
+}
+
+function drawSnowCover(scene, data, graphics = scene.add.graphics().setDepth(1)) {
+  graphics.setName("v39-snow-cover-layer");
+  graphics.clear();
+  for (let y = 0; y < Number(data?.h || 0); y += 1) {
+    for (let x = 0; x < Number(data?.w || 0); x += 1) {
+      if (data?.snowCoverMap?.[y]?.[x] !== true) continue;
+      const points = hexPoints(x, y);
+      const center = tileCenter(x, y);
+      const outer = insetHexPoints(points, center, SNOW_RING_OUTER_INSET_RATIO);
+      const inner = insetHexPoints(points, center, SNOW_RING_INNER_INSET_RATIO);
+      graphics.fillStyle(SNOW_RING_COLOR, SNOW_RING_ALPHA);
+      for (let side = 0; side < 6; side += 1) {
+        const next = (side + 1) % 6;
+        graphics.fillPoints([
+          { x:outer[side * 2], y:outer[side * 2 + 1] },
+          { x:outer[next * 2], y:outer[next * 2 + 1] },
+          { x:inner[next * 2], y:inner[next * 2 + 1] },
+          { x:inner[side * 2], y:inner[side * 2 + 1] }
+        ], true);
+      }
+    }
+  }
+  return graphics;
+}
+
+function drawSnowfall(scene, data) {
+  for (const child of [...(scene?.children?.list || [])]) {
+    if (child?.name === "v39-snowfall-item") child.destroy();
+  }
+  const { width, height } = tileMetrics();
+  for (let y = 0; y < Number(data?.h || 0); y += 1) {
+    for (let x = 0; x < Number(data?.w || 0); x += 1) {
+      if (data?.snowfallMap?.[y]?.[x] !== true) continue;
+      const center = tileCenter(x, y);
+      scene.add.text(
+        center.x + width * 0.22,
+        center.y - height * 0.20,
+        "❄",
+        { fontSize:"14px", fontStyle:"bold", color:"#f7fbff", stroke:"#38536a", strokeThickness:2 }
+      ).setOrigin(0.5).setDepth(5).setName("v39-snowfall-item");
+    }
+  }
+}
+
 function drawRivers(scene, riverData) {
   const g = scene.add.graphics().setDepth(3).setName("v39-river-layer");
   g.lineStyle(3, 0x5aa9de, 0.95);
@@ -354,8 +430,18 @@ function createGame(data) {
     type:Phaser.AUTO,parent:host,transparent:false,backgroundColor:"#081115",
     scale:{mode:Phaser.Scale.RESIZE,width:Math.max(1,host.clientWidth),height:Math.max(1,host.clientHeight)},
     scene:{create(){
-      const terrainGraphics=drawTerrain(this,data); drawRivers(this,data.riverData); drawSpecialTerrain(this,data); const lavaGraphics=drawLava(this,data); fitCamera(this); installInput(this,data);
-      this.v39TerrainGraphics=terrainGraphics; this.v39LavaGraphics=lavaGraphics;
+      ensureSnowStateMaps(data);
+      const terrainGraphics=drawTerrain(this,data);
+      const snowCoverGraphics=drawSnowCover(this,data);
+      drawRivers(this,data.riverData);
+      drawSpecialTerrain(this,data);
+      drawSnowfall(this,data);
+      const lavaGraphics=drawLava(this,data);
+      fitCamera(this);
+      installInput(this,data);
+      this.v39TerrainGraphics=terrainGraphics;
+      this.v39SnowCoverGraphics=snowCoverGraphics;
+      this.v39LavaGraphics=lavaGraphics;
       const redraw=()=>drawTerrain(this,data,terrainGraphics); window.addEventListener("v39:display-settings-changed",redraw);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN,()=>window.removeEventListener("v39:display-settings-changed",redraw));
       this.scale.on("resize",()=>{const oldZoom=Number(this.v39RequestedZoom)||this.cameras.main.zoom;const size=worldSize(data);const fit=Math.max(.05,Math.min(this.cameras.main.width/size.width,this.cameras.main.height/size.height)*.97);this.v39FitZoom=fit;const max=fit*readDisplaySettings().maxZoomFactor;this.v39RequestedZoom=Phaser.Math.Clamp(oldZoom,fit,max);this.cameras.main.setZoom(this.v39RequestedZoom);clampCamera(this);});
@@ -366,13 +452,16 @@ function createGame(data) {
 
 export function updateV39FieldData(nextData, options = {}) {
   if (!currentData || !nextData || typeof nextData !== "object") return false;
+  ensureSnowStateMaps(nextData);
   for (const key of Object.keys(currentData)) delete currentData[key];
   Object.assign(currentData, nextData);
   if (window.__v39FieldRuntime) window.__v39FieldRuntime.mapData = currentData;
   const scene = game?.scene?.getScenes?.(true)?.[0];
   if (scene) {
     drawTerrain(scene, currentData, scene.v39TerrainGraphics);
+    scene.v39SnowCoverGraphics = drawSnowCover(scene, currentData, scene.v39SnowCoverGraphics);
     drawSpecialTerrain(scene, currentData);
+    drawSnowfall(scene, currentData);
     drawLava(scene, currentData, scene.v39LavaGraphics);
     const selected = scene.v39SelectedTile;
     if (selected && Number.isFinite(Number(selected.x)) && Number.isFinite(Number(selected.y))) {
@@ -392,6 +481,29 @@ export function updateV39FieldData(nextData, options = {}) {
     window.dispatchEvent(new CustomEvent("v39:field-data-updated", { detail:{ mapData:currentData, reason:options.reason || "update" } }));
   }
   return true;
+}
+
+function setBooleanOverlayAt(mapKey, xRaw, yRaw, enabled, reason) {
+  if (!currentData) return false;
+  const x = Math.floor(Number(xRaw));
+  const y = Math.floor(Number(yRaw));
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= Number(currentData.w) || y >= Number(currentData.h)) {
+    return false;
+  }
+  const nextData = {
+    ...currentData,
+    [mapKey]:currentData[mapKey].map(row => [...row])
+  };
+  nextData[mapKey][y][x] = enabled === true;
+  return updateV39FieldData(nextData, { reason });
+}
+
+export function setV39SnowCoverAt(x, y, covered = true) {
+  return setBooleanOverlayAt("snowCoverMap", x, y, covered, "snow-cover");
+}
+
+export function setV39SnowfallAt(x, y, active = true) {
+  return setBooleanOverlayAt("snowfallMap", x, y, active, "snowfall");
 }
 
 function normalizeSettings(input={}) {
@@ -423,7 +535,7 @@ export function generateFieldFromSettings(input={}) {
   if (!host) throw new Error("v39 field host is not ready");
   const settings=normalizeSettings(input);
   currentSettings=settings;
-  currentData=createTerrainMapData(settings);
+  currentData=ensureSnowStateMaps(createTerrainMapData(settings));
   if(game){ game.destroy(true); game=null; host.replaceChildren(); }
   document.getElementById("v39-map-camera-controls")?.remove();
   createGame(currentData);
@@ -452,7 +564,7 @@ export function loadV39FieldSnapshot(mapData, inputSettings={}) {
     h:Number(mapData.h)||inputSettings.h
   });
   currentSettings=settings;
-  currentData=mapData;
+  currentData=ensureSnowStateMaps(mapData);
   if(game){ game.destroy(true); game=null; host.replaceChildren(); }
   document.getElementById("v39-map-camera-controls")?.remove();
   createGame(currentData);
@@ -474,6 +586,8 @@ async function boot(){
   window.generateV39TestFieldWithSeed=generateV39TestFieldWithSeed;
   window.loadV39FieldSnapshot=loadV39FieldSnapshot;
   window.updateV39FieldData=updateV39FieldData;
+  window.setV39SnowCoverAt=setV39SnowCoverAt;
+  window.setV39SnowfallAt=setV39SnowfallAt;
   window.__v39FieldRuntime={game:null,mapData:null,settings:null};
   window.render_game_to_text=()=>JSON.stringify({screen:"v39-field",generated:!!currentData,settings:currentSettings,selectedTile:game?.scene?.getScenes(true)?.[0]?.v39SelectedTile||null});
   window.advanceTime=()=>window.render_game_to_text();
