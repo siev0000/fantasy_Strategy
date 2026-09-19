@@ -352,7 +352,7 @@ function renderDetail() {
     moveApEl.hidden = false;
   }
   if (moveMetaEl) {
-    moveMetaEl.textContent = `移動 ${moveValue}`;
+    moveMetaEl.textContent = `移${moveValue}`;
     moveMetaEl.hidden = false;
   }
   if (moveRemainEl) {
@@ -396,11 +396,12 @@ function renderDetail() {
             : Math.max(0, num(source?.回復 ?? row?.healing, 0) || 0);
           const icon = techniqueIconMarkup(source);
           const iconAccent = techniqueAccentClass(powerValue, guardValue, healingValue);
-          const powerGuardParts = [
+          const combatValueParts = [
             Number(powerValue) > 0 ? `威${powerValue}` : "",
-            Number(guardValue) > 0 ? `守${guardValue}` : ""
+            Number(guardValue) > 0 ? `守${guardValue}` : "",
+            Number(healingValue) > 0 ? `回${healingValue}` : ""
           ].filter(Boolean);
-          const powerGuardText = powerGuardParts.join("/");
+          const combatValueText = combatValueParts.join("/");
           const durationLabel = techniqueDurationLabel(row, source);
           const description = techniqueDescription(row, source);
           const expanded = name === expandedTechniqueName;
@@ -412,7 +413,7 @@ function renderDetail() {
               <span class="technique-icon ${iconAccent}" data-attack-category="${escapeHtml(icon.category)}" title="${escapeHtml(icon.category)}">${icon.markup}</span>
               <b class="technique-name">${escapeHtml(name)}</b>
               <small class="technique-ap">AP ${apValue ?? "-"}</small>
-              ${powerGuardText ? `<span class="technique-power">${escapeHtml(powerGuardText)}</span>` : ""}
+              ${combatValueText ? `<span class="technique-power">${escapeHtml(combatValueText)}</span>` : ""}
               <span class="technique-range">射 ${rangeValue ?? "-"}</span>
             </span>
             <span class="technique-detail">${detailHtml}</span>
