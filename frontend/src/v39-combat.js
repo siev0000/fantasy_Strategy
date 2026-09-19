@@ -306,7 +306,6 @@ function cancelAttack(reason = "attack-cancelled") {
   attackSession = null;
   destroyGraphics();
   setBanner("");
-  document.getElementById("mobileBattleAttack")?.classList.remove("active");
   if (hadSession) window.dispatchEvent(new CustomEvent("v39:attack-cancelled", { detail:{ reason } }));
 }
 
@@ -375,7 +374,6 @@ function renderActionPanel() {
     button.setAttribute("aria-disabled", String(disabled));
   }
 
-  document.getElementById("mobileBattleAttack")?.classList.toggle("active", !!attackSession);
 }
 
 function startAttack() {
@@ -411,7 +409,6 @@ function startAttack() {
   if (!isV39SupportSkill(skillRow, terrainAdjusted(unit))) rangeTiles.delete(coordKey(unit.x, unit.y));
   attackSession = { unitId:text(unit.id), skillName:text(skillRow.名前), skillRow, range, rangeTiles };
   rangeGraphics = drawTiles(rangeTiles, 0xf3d84a, 0.20, RANGE_DEPTH, rangeGraphics);
-  document.getElementById("mobileBattleAttack")?.classList.add("active");
   setBanner(`${text(skillRow.名前)}：黄色が射程、対象位置を選択`);
   return true;
 }
@@ -966,8 +963,7 @@ function installStyles() {
 
 function install() {
   const techniqueList = document.getElementById("detailTechniqueList");
-  const attackButton = document.getElementById("mobileBattleAttack");
-  if (!(techniqueList instanceof HTMLElement) || !(attackButton instanceof HTMLElement)) {
+  if (!(techniqueList instanceof HTMLElement)) {
     window.setTimeout(install, 50);
     return;
   }
@@ -982,8 +978,8 @@ function install() {
     selectedSkillName = text(button.dataset.v39AttackName);
     cancelAttack("skill-changed");
     renderActionPanel();
+    startAttack();
   }, true);
-  bindCapture(attackButton, "click", startAttack);
 window.addEventListener("v39:tile-selected", (event) => {
     if (attackSession) executeAttack(event.detail);
   });
