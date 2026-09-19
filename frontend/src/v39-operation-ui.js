@@ -89,7 +89,27 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad .technique-icon{
         grid-area:icon!important;width:28px!important;height:28px!important;display:grid!important;place-items:center!important;
         border:1px solid #40545a!important;border-radius:7px!important;background:#1b2a30!important;
-        font-size:16px!important;line-height:1!important
+        font-size:16px!important;line-height:1!important;overflow:hidden!important
+      }
+      #footSquad .technique-icon-image{
+        width:20px!important;height:20px!important;display:block!important;object-fit:contain!important;
+        filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))
+      }
+      #footSquad .technique-icon-glyph{display:block!important;font-size:14px!important;line-height:1!important;color:#d5e0df!important}
+      #footSquad .technique-icon.technique-icon-power{
+        border-color:#d27245!important;
+        background:linear-gradient(135deg,#8f2f24 0%,#d86d2d 100%)!important
+      }
+      #footSquad .technique-icon.technique-icon-guard{
+        border-color:#5b9fd2!important;
+        background:linear-gradient(135deg,#17476d 0%,#2388bd 100%)!important
+      }
+      #footSquad .technique-icon.technique-icon-mixed{
+        border-color:#9d8b79!important;
+        background:linear-gradient(90deg,#bc4b29 0%,#d66b2f 45%,#277cac 55%,#18547c 100%)!important
+      }
+      #footSquad .technique-icon.technique-icon-neutral{
+        border-color:#40545a!important;background:#1b2a30!important
       }
       #footSquad .technique-name{
         grid-area:name!important;min-width:0!important;margin:0!important;font-size:10px!important;line-height:1.15!important;
