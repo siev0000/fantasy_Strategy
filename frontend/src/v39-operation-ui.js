@@ -103,7 +103,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       }
       #footSquad #detailTechniqueRows{display:contents!important}
       #footSquad .system-action-card .technique-icon-system-move{
-        border-color:#579ec3!important;background:linear-gradient(135deg,#17445d 0%,#247fa2 100%)!important
+        border-color:#a98b45!important;background:linear-gradient(135deg,#4a3a18 0%,#75601f 100%)!important
       }
       #footSquad .system-action-card .technique-icon-system-wait{
         border-color:#8c8061!important;background:linear-gradient(135deg,#3f3827 0%,#6c6040 100%)!important
