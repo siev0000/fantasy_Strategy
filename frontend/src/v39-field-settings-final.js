@@ -62,7 +62,7 @@ function createStyles() {
 #v39-field-settings-modal.open{display:grid}
 #v39-field-settings-dialog{width:min(860px,100%);height:min(760px,100%);max-height:calc(100svh - 16px);display:grid;grid-template-rows:48px minmax(0,1fr) auto;border:1px solid #46575e;border-radius:10px;background:linear-gradient(180deg,#111c20,#0a1216);box-shadow:0 18px 50px rgba(0,0,0,.62);overflow:hidden;color:#e8efec}
 .v39-field-settings-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #34444a;background:#111c21}.v39-field-settings-head h2{font-size:15px;margin:0}.v39-field-settings-head small{font-size:13px;color:#829499}.v39-field-settings-head button{margin-left:auto;width:34px;height:30px;border:1px solid #46575d;border-radius:7px;background:#172429;color:#e8efec}
-.v39-field-settings-body{min-height:0;overflow:auto;padding:10px;display:grid;gap:10px;align-content:start}.v39-field-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.v39-field-setting-card{padding:9px;border:1px solid #34444a;border-radius:8px;background:#111a1e;display:grid;gap:6px}.v39-field-setting-card>span,.v39-island-grid label>span{font-size:13px;color:#aebbbd;font-weight:700}.v39-field-setting-card select,.v39-field-setting-card input,.v39-island-grid input{width:100%;min-height:36px;border:1px solid #46575d;border-radius:7px;background:#162227;color:#e8efec;padding:6px 8px}.v39-field-setting-card small{font-size:13px;color:#7f9196;line-height:1.5}.v39-section-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800}.v39-section-title label{margin-left:auto;font-size:13px;font-weight:600}.v39-island-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.v39-island-grid label{display:grid;gap:4px;padding:7px;border:1px solid #2f3f45;border-radius:7px;background:#0e171b}.v39-island-grid.is-disabled{opacity:.45;pointer-events:none}.v39-range-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:5px;align-items:center}.v39-field-settings-actions{display:flex;gap:8px;padding:9px 10px;border-top:1px solid #34444a;background:#0d161a}.v39-field-settings-actions button{min-height:40px;border:1px solid #4c6067;border-radius:8px;background:#172329;color:#e8efec;padding:0 14px;font-weight:800}.v39-field-settings-actions .primary{margin-left:auto;border-color:#66b7c6;background:#17414a}.v39-field-settings-actions .danger{border-color:#66504b;background:#261b18}.v39-field-settings-status{font-size:13px;color:#91a4a9;align-self:center}
+.v39-field-settings-body{min-height:0;overflow:auto;padding:10px;display:grid;gap:10px;align-content:start}.v39-field-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.v39-field-setting-card{padding:9px;border:1px solid #34444a;border-radius:8px;background:#111a1e;display:grid;gap:6px}.v39-field-setting-card>span,.v39-island-grid label>span{font-size:13px;color:#aebbbd;font-weight:700}.v39-field-setting-card select,.v39-field-setting-card input,.v39-island-grid input{width:100%;min-height:36px;border:1px solid #46575d;border-radius:7px;background:#162227;color:#e8efec;padding:6px 8px}.v39-field-setting-card small{font-size:13px;color:#7f9196;line-height:1.5}.v39-field-load-save{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.v39-field-load-save button{min-height:38px;border:1px solid #5b7882;border-radius:8px;background:#173039;color:#edf5f3;padding:6px 12px;font-weight:800;cursor:pointer}.v39-field-load-save button:hover{background:#1d3c46}.v39-field-load-save-status{font-size:13px;color:#91a4a9}.v39-section-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800}.v39-section-title label{margin-left:auto;font-size:13px;font-weight:600}.v39-island-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.v39-island-grid label{display:grid;gap:4px;padding:7px;border:1px solid #2f3f45;border-radius:7px;background:#0e171b}.v39-island-grid.is-disabled{opacity:.45;pointer-events:none}.v39-range-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:5px;align-items:center}.v39-field-settings-actions{display:flex;gap:8px;padding:9px 10px;border-top:1px solid #34444a;background:#0d161a}.v39-field-settings-actions button{min-height:40px;border:1px solid #4c6067;border-radius:8px;background:#172329;color:#e8efec;padding:0 14px;font-weight:800}.v39-field-settings-actions .primary{margin-left:auto;border-color:#66b7c6;background:#17414a}.v39-field-settings-actions .danger{border-color:#66504b;background:#261b18}.v39-field-settings-status{font-size:13px;color:#91a4a9;align-self:center}
 @media(max-width:700px){#v39-field-settings-dialog{width:100%;height:100%;max-height:none;border-radius:6px}.v39-field-settings-grid{grid-template-columns:1fr}.v39-island-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v39-field-settings-actions{position:sticky;bottom:0}.v39-field-settings-head small{display:none}}
 `;
   document.head.appendChild(style);
@@ -82,6 +82,15 @@ function createModal() {
         <button type="button" data-field-close aria-label="閉じる">×</button>
       </header>
       <div class="v39-field-settings-body">
+        <section class="v39-field-setting-card">
+          <div class="v39-section-title">セーブデータから再開</div>
+          <small>保存済みのv39セーブデータを読み込み、マップ・勢力・ターン・研究・経済・戦闘状態・カメラ位置を復元します。</small>
+          <div class="v39-field-load-save">
+            <button type="button" id="v39-field-load-save">セーブデータをロード</button>
+            <input id="v39-field-save-file" type="file" accept="application/json,.json" hidden>
+            <span class="v39-field-load-save-status" id="v39-field-load-save-status">JSONファイルを選択</span>
+          </div>
+        </section>
         <div class="v39-field-settings-grid">
           <label class="v39-field-setting-card"><span>マップサイズ</span>
             <select id="v39-field-map-size">
@@ -206,6 +215,38 @@ function boot() {
     get("v39-field-custom-grid").classList.toggle("is-disabled", !settings.islandCustomSettings.enabled);
   });
   get("v39-field-settings-reset").addEventListener("click", () => { settings = deepClone(DEFAULT_FIELD_SETTINGS); sync(); });
+
+  const loadSaveButton = get("v39-field-load-save");
+  const loadSaveInput = get("v39-field-save-file");
+  const loadSaveStatus = get("v39-field-load-save-status");
+  loadSaveButton?.addEventListener("click", () => {
+    if (!(loadSaveInput instanceof HTMLInputElement)) return;
+    loadSaveInput.click();
+  });
+  loadSaveInput?.addEventListener("change", async () => {
+    const file = loadSaveInput.files?.[0];
+    if (!file) return;
+    try {
+      if (typeof window.importV39SaveJson !== "function") {
+        if (loadSaveStatus) loadSaveStatus.textContent = "セーブ機能を読み込み中です";
+        return;
+      }
+      if (loadSaveStatus) loadSaveStatus.textContent = `${file.name} を読込中…`;
+      get("v39-field-settings-status").textContent = "セーブデータ読込中…";
+      window.importV39SaveJson(await file.text());
+      if (loadSaveStatus) loadSaveStatus.textContent = `${file.name} を読み込みました`;
+      get("v39-field-settings-status").textContent = "セーブデータ読込完了";
+      close();
+    } catch (error) {
+      console.error("[v39-field-settings-final] save load failed", error);
+      const message = error instanceof Error ? error.message : "読込に失敗しました";
+      if (loadSaveStatus) loadSaveStatus.textContent = message;
+      get("v39-field-settings-status").textContent = "セーブデータ読込失敗";
+    } finally {
+      loadSaveInput.value = "";
+    }
+  });
+
   get("v39-field-generate").addEventListener("click", () => {
     const next = read();
     const { w, h } = parseMapSize(next.mapSize);
