@@ -1,6 +1,6 @@
 import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
 import { getIconSrcByName } from "./lib/icon-library.js";
-import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveSkillGuard } from "./lib/v39-combat-engine.js";
+import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveSkillGuard, resolveSkillHealing } from "./lib/v39-combat-engine.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -131,12 +131,14 @@ function techniqueIconMarkup(source = {}) {
   };
 }
 
-function techniqueAccentClass(power, guard) {
+function techniqueAccentClass(power, guard, healing) {
   const hasPower = Number(power) > 0;
   const hasGuard = Number(guard) > 0;
+  const hasHealing = Number(healing) > 0;
   if (hasPower && hasGuard) return "technique-icon-mixed";
   if (hasGuard) return "technique-icon-guard";
   if (hasPower) return "technique-icon-power";
+  if (hasHealing) return "technique-icon-heal";
   return "technique-icon-neutral";
 }
 
@@ -379,8 +381,11 @@ function renderDetail() {
           const guardValue = action === "A"
             ? resolveSkillGuard(source, adjustedUnit)
             : Math.max(0, num(source?.ガード ?? row?.guard, 0) || 0);
+          const healingValue = action === "A"
+            ? resolveSkillHealing(source, adjustedUnit)
+            : Math.max(0, num(source?.回復 ?? row?.healing, 0) || 0);
           const icon = techniqueIconMarkup(source);
-          const iconAccent = techniqueAccentClass(powerValue, guardValue);
+          const iconAccent = techniqueAccentClass(powerValue, guardValue, healingValue);
           const powerGuardParts = [
             Number(powerValue) > 0 ? `威${powerValue}` : "",
             Number(guardValue) > 0 ? `守${guardValue}` : ""
