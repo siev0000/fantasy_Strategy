@@ -16,7 +16,7 @@ const RESOURCE_ICON_DEFS = Object.freeze({
   赤黒鋼:Object.freeze({ glyph:"⬢︎", color:"#c64040", kind:"symbol" }),
   金:Object.freeze({ glyph:"●︎", color:"#d8ad32", kind:"symbol" }),
   銀:Object.freeze({ glyph:"●︎", color:"#cbd2d9", kind:"symbol" }),
-  宝石:Object.freeze({ glyph:"💎", color:"", kind:"emoji" }),
+  宝石:Object.freeze({ glyph:"💎", color:"#d8ad32", kind:"emoji" }),
   死体:Object.freeze({ glyph:"🦴", color:"", kind:"emoji" }),
   魂:Object.freeze({ glyph:"✦︎", color:"#73d8ff", kind:"symbol" })
 });

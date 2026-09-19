@@ -8,11 +8,13 @@ import {
 import {
   BASE_VILLAGE_SCOUT_RANGE,
   FACTION_BORDER_COLOR_PALETTE,
-  HEX_TILE_CONFIG
+  HEX_TILE_CONFIG,
+  MAP_BOUNDARY_DASH_CONFIG
 } from "./lib/phaser-map-panel-config.js";
 
 const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
 const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";
+const UNIT_SCOUT_LAYER_NAME = "v39-unit-scout-boundary-layer";
 const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
 const NEST_TERRITORY_LAYER_NAME = "v39-nest-territory-boundary-layer";
 const NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME = "v39-neutral-village-territory-boundary-layer";
@@ -342,14 +344,28 @@ function resetVisibilityForNewField(event) {
   scheduleRender();
 }
 
-function drawEdge(graphics, points, edgeIndex) {
+function drawEdge(graphics, points, edgeIndex, style) {
   const pair = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0]][edgeIndex];
-  graphics.lineBetween(
-    points[pair[0]].x,
-    points[pair[0]].y,
-    points[pair[1]].x,
-    points[pair[1]].y
-  );
+  const start = points[pair[0]];
+  const end = points[pair[1]];
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  const dashLength = Math.max(1, Number(style?.dashLength) || 1);
+  const gapLength = Math.max(0, Number(style?.gapLength) || 0);
+  if (gapLength <= 0 || length <= dashLength) {
+    graphics.lineBetween(start.x, start.y, end.x, end.y);
+    return;
+  }
+  for (let offset = 0; offset < length; offset += dashLength + gapLength) {
+    const dashEnd = Math.min(length, offset + dashLength);
+    graphics.lineBetween(
+      start.x + (dx * offset / length),
+      start.y + (dy * offset / length),
+      start.x + (dx * dashEnd / length),
+      start.y + (dy * dashEnd / length)
+    );
+  }
 }
 
 function drawOuterBoundary(graphics, data, tileKeys, style) {
@@ -361,9 +377,32 @@ function drawOuterBoundary(graphics, data, tileKeys, style) {
     const points = hexPoints(x, y);
     for (const neighbor of neighborEdges(data, x, y)) {
       if (!neighbor.outside && tileKeys.has(coordKey(neighbor.x, neighbor.y))) continue;
-      drawEdge(graphics, points, neighbor.edge);
+      drawEdge(graphics, points, neighbor.edge, style);
     }
   }
+}
+
+function drawUnitScoutBoundaries(graphics, data, units) {
+  // 同じマス・同じ索敵範囲の部隊員は1本の枠線にまとめる。
+  const renderedRanges = new Set();
+  for (const unit of Array.isArray(units) ? units : []) {
+    if (!livingUnit(unit)) continue;
+    const x = Math.floor(Number(unit?.x));
+    const y = Math.floor(Number(unit?.y));
+    const range = unitVisionRange(unit);
+    const identity = `${x},${y},${range}`;
+    if (!Number.isInteger(x) || !Number.isInteger(y) || renderedRanges.has(identity)) continue;
+    renderedRanges.add(identity);
+    const tileKeys = new Set();
+    addVisionRange(data, x, y, range, tileKeys);
+    drawOuterBoundary(graphics, data, tileKeys, {
+      width:SCOUT_WIDTH,
+      color:SCOUT_COLOR,
+      alpha:SCOUT_ALPHA,
+      ...MAP_BOUNDARY_DASH_CONFIG
+    });
+  }
+  return renderedRanges.size;
 }
 
 function nestTerritoryTileKeys(data, nest) {
@@ -384,6 +423,7 @@ function renderVisibilityLayers() {
 
   removeLayer(scene, FOG_LAYER_NAME);
   removeLayer(scene, SCOUT_LAYER_NAME);
+  removeLayer(scene, UNIT_SCOUT_LAYER_NAME);
   removeLayer(scene, TERRITORY_LAYER_NAME);
   removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
   removeLayer(scene, NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
@@ -405,6 +445,9 @@ function renderVisibilityLayers() {
   const testMode = isTestMode();
   let unexploredCount = Math.max(0, (Number(data.w) * Number(data.h)) - explored.size);
 
+  const unitScout = scene.add.graphics().setDepth(15).setName(UNIT_SCOUT_LAYER_NAME);
+  const unitScoutBoundaryCount = drawUnitScoutBoundaries(unitScout, data, faction.units);
+
   if (!testMode) {
     const fog = scene.add.graphics().setDepth(14).setName(FOG_LAYER_NAME);
     fog.fillStyle(FOG_COLOR, FOG_ALPHA);
@@ -425,11 +468,12 @@ function renderVisibilityLayers() {
       }
     }
 
-    const scout = scene.add.graphics().setDepth(15).setName(SCOUT_LAYER_NAME);
+    const scout = scene.add.graphics().setDepth(15.1).setName(SCOUT_LAYER_NAME);
     drawOuterBoundary(scout, data, currentVision, {
       width:SCOUT_WIDTH,
       color:SCOUT_COLOR,
-      alpha:SCOUT_ALPHA
+      alpha:SCOUT_ALPHA,
+      ...MAP_BOUNDARY_DASH_CONFIG
     });
   }
 
@@ -442,7 +486,8 @@ function renderVisibilityLayers() {
     drawOuterBoundary(nestTerritory, data, nestTerritoryTileKeys(data, nest), {
       width:NEST_TERRITORY_WIDTH,
       color:NEST_TERRITORY_COLOR,
-      alpha:NEST_TERRITORY_ALPHA
+      alpha:NEST_TERRITORY_ALPHA,
+      ...MAP_BOUNDARY_DASH_CONFIG
     });
   }
 
@@ -458,7 +503,8 @@ function renderVisibilityLayers() {
     drawOuterBoundary(villageTerritory, data, tileKeys, {
       width:NEUTRAL_VILLAGE_TERRITORY_WIDTH,
       color:NEUTRAL_VILLAGE_TERRITORY_COLOR,
-      alpha:NEUTRAL_VILLAGE_TERRITORY_ALPHA
+      alpha:NEUTRAL_VILLAGE_TERRITORY_ALPHA,
+      ...MAP_BOUNDARY_DASH_CONFIG
     });
   }
 
@@ -470,9 +516,10 @@ function renderVisibilityLayers() {
   const playerIndex = Math.max(0, state.players.findIndex(row => row?.id === player.id));
   const territory = scene.add.graphics().setDepth(16).setName(TERRITORY_LAYER_NAME);
   drawOuterBoundary(territory, data, ownTerritory, {
-    width:TERRITORY_WIDTH,
-    color:FACTION_BORDER_COLOR_PALETTE[playerIndex % FACTION_BORDER_COLOR_PALETTE.length],
-    alpha:TERRITORY_ALPHA
+      width:TERRITORY_WIDTH,
+      color:FACTION_BORDER_COLOR_PALETTE[playerIndex % FACTION_BORDER_COLOR_PALETTE.length],
+      alpha:TERRITORY_ALPHA,
+      ...MAP_BOUNDARY_DASH_CONFIG
   });
 
   window.__v39VisibilityStatus = {
@@ -485,6 +532,7 @@ function renderVisibilityLayers() {
     ownTerritoryCount:ownTerritory.size,
     visibleNestTerritoryCount:visibleNests.length,
     visibleNeutralVillageTerritoryCount:visibleVillages.length,
+    unitScoutBoundaryCount,
     scoutRanges:(faction.units || []).filter(livingUnit).map(unit => ({
       id:String(unit.id || ""),
       range:unitVisionRange(unit)

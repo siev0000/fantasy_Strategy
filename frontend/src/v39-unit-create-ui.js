@@ -3,7 +3,7 @@ import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } fro
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
 function ensurePanel() {
-  const host = document.getElementById("footManage");
+  const host = document.getElementById("footSquad");
   if (!host) return null;
   let panel = document.getElementById("v39-unit-create-panel");
   if (!panel) {
@@ -39,7 +39,7 @@ function render(statusText = "") {
   const count = Math.max(1, Math.min(20, previous.count || 1));
   const check = inspectV39UnitCreation(state, player, { race, className, mode, count });
   const cost = Object.entries(check.cost).map(([key, value]) => `${key}${value}`).join(" / ");
-  panel.innerHTML = `<header class="v39-unit-create-head"><button type="button" id="v39-unit-create-back">← 管理</button><strong>ユニット作成</strong><span>軍事Lv${options.militaryLevel}</span></header>
+  panel.innerHTML = `<header class="v39-unit-create-head"><button type="button" id="v39-unit-create-back">← 部隊</button><strong>ユニット作成</strong><span>軍事Lv${options.militaryLevel}</span></header>
     <div class="v39-unit-create-grid">
       <label><span>種族</span><select id="v39-unit-race">${options.races.map(value => `<option${value === race ? " selected" : ""}>${escapeHtml(value)}</option>`).join("")}</select></label>
       <label><span>初期職業</span><select id="v39-unit-class">${options.classes.map(row => `<option${row.名前 === className ? " selected" : ""}>${escapeHtml(row.名前)}</option>`).join("")}</select></label>
@@ -52,20 +52,25 @@ function render(statusText = "") {
 
 function open() {
   const panel = ensurePanel();
-  const menu = document.getElementById("v39-manage-menu");
-  if (!panel || !menu) return;
+  const squad = document.getElementById("footSquad");
+  if (!panel || !squad) return;
   document.getElementById("unitCreateModal")?.classList.remove("open");
-  menu.hidden = true;
+  window.activateV39FooterTab?.("squad");
+  document.getElementById("v39-squad-main")?.setAttribute("hidden", "");
+  document.getElementById("v39-squad-content")?.setAttribute("hidden", "");
+  squad.classList.add("is-unit-create-open");
   panel.hidden = false;
   render();
 }
 
 function close() {
   const panel = ensurePanel();
-  const menu = document.getElementById("v39-manage-menu");
-  if (!panel || !menu) return;
+  const squad = document.getElementById("footSquad");
+  if (!panel || !squad) return;
   panel.hidden = true;
-  menu.hidden = false;
+  document.getElementById("v39-squad-main")?.removeAttribute("hidden");
+  document.getElementById("v39-squad-content")?.removeAttribute("hidden");
+  squad.classList.remove("is-unit-create-open");
 }
 
 function create() {
@@ -89,9 +94,14 @@ function installStyles() {
 
 function install() {
   const panel = ensurePanel();
-  const button = document.querySelector('#v39-manage-menu [data-open="unitCreate"]');
   installStyles();
-  button?.addEventListener("click", event => { event.preventDefault(); event.stopImmediatePropagation(); open(); }, true);
+  document.addEventListener("click", event => {
+    const element = event.target instanceof Element ? event.target.closest("#v39-squad-unit-create, [data-open=\"unitCreate\"]") : null;
+    if (!element) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    open();
+  }, true);
   panel?.addEventListener("click", event => {
     const element = event.target instanceof Element ? event.target : null;
     if (element?.closest("#v39-unit-create-back")) close();

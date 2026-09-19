@@ -70,6 +70,12 @@ export const TILE_BORDER_ENEMY = { width: 2.25, color: 0xe25c5c, alpha: 0.98 };
 export const TILE_BORDER_FACTION_WIDTH = 2.25;
 export const TILE_BORDER_FACTION_ALPHA = 0.98;
 
+// 領土・巣・索敵範囲の外周を描く点線設定。長さと間隔はいずれもマップ上のpx。
+export const MAP_BOUNDARY_DASH_CONFIG = Object.freeze({
+  dashLength: 5,
+  gapLength: 3
+});
+
 // マルチ/テスト時に勢力境界へ順番に割り当てる色。
 export const FACTION_BORDER_COLOR_PALETTE = [
   0x5ad4ff, 0xff6b6b, 0x8bff7d, 0xffb86a, 0xc98cff,

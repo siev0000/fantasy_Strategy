@@ -34,13 +34,13 @@ function targetTile(context = activeContext()) {
   return selectedTile;
 }
 
-function formatCost(cost) {
-  const parts = MATERIAL_RESOURCE_KEYS.filter(key => number(cost?.[key]) > 0).map(key => `${key}${formatNumber(cost[key])}`);
+function formatCost(cost, stock = {}) {
+  const parts = MATERIAL_RESOURCE_KEYS.filter(key => number(cost?.[key]) > 0).map(key => `${key} ${formatNumber(stock?.[key])}/${formatNumber(cost[key])}`);
   return parts.length ? parts.join(" / ") : "なし";
 }
 
-function formatRequirements(requirements) {
-  const parts = Object.entries(requirements || {}).filter(([, value]) => number(value) > 0).map(([key, value]) => `${key}${value}`);
+function formatRequirements(requirements, levels = {}) {
+  const parts = Object.entries(requirements || {}).filter(([, value]) => number(value) > 0).map(([key, value]) => `${key} ${formatNumber(levels?.[key])}/${formatNumber(value)}`);
   return parts.length ? parts.join(" / ") : "なし";
 }
 
@@ -116,10 +116,11 @@ function renderBuildModal() {
   }).join("");
   const detail = modal.querySelector("#v39-build-detail");
   if (detail && selected) detail.innerHTML = `<h3>${selected.name}</h3><p>${selected.description}</p><div class="v39-build-facts">
-    <div class="v39-build-fact"><span>建設地形</span><b>${selected.terrainCondition}</b></div>
+    <div class="v39-build-fact"><span>地形 (対象/必要)</span><b>${text(target?.terrain || target?.special || "-")} / ${selected.terrainCondition}</b></div>
     <div class="v39-build-fact"><span>建築時間</span><b>${selected.buildTurns}ターン</b></div>
-    <div class="v39-build-fact"><span>研究条件</span><b>${formatRequirements(selected.requirements)}</b></div>
-    <div class="v39-build-fact"><span>必要資材</span><b>${formatCost(selected.cost)}</b></div>
+    <div class="v39-build-fact"><span>研究条件 (現在/必要)</span><b>${formatRequirements(selected.requirements, selectedCheck?.levels)}</b></div>
+    <div class="v39-build-fact"><span>必要資材 (所持/必要)</span><b>${formatCost(selected.cost, context.village?.materialStockByType)}</b></div>
+    <div class="v39-build-fact"><span>施設枠 (使用/上限)</span><b>${selectedCheck?.used || 0}/${selectedCheck?.capacity || 0}</b></div>
   </div><div class="v39-build-reasons">${selectedCheck?.available ? "建設可能" : (selectedCheck?.reasons || ["建設不可"]).join(" / ")}</div><button type="button" id="v39-build-start" ${selectedCheck?.available ? "" : "disabled"}>建設開始</button>`;
   const queue = modal.querySelector("#v39-build-queue");
   if (queue) queue.innerHTML = context.village?.constructionQueue?.length

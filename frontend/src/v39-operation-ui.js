@@ -19,11 +19,8 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
     ],
     actionSkills: V39_TEST_OPERATION_DATA.actionSkills,
     manageItems: [
-      { icon: "♟", label: "自キャラ", open: "character" },
-      { icon: "⌂", label: "都市・建設", open: "build" },
       { icon: "⚒", label: "装備", open: "equipment" },
       { icon: "⇄", labelHtml: '資源表示: <em id="resourceModeLabel">詳細</em>', id: "resourceModeToggle", title: "資源表示を詳細/簡易で切替", tip: "資源表示切替" },
-      { icon: "✚", label: "ユニット作成", open: "unitCreate" },
       { icon: "☷", label: "ログ", open: "rulerLog" },
       { icon: "旗", label: "国家・外交", id: "v39-manage-nation" },
       { icon: "⚙", label: "ゲーム設定", open: "settings" },
@@ -39,7 +36,31 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
     item.open ? `data-open="${item.open}"` : "",
     item.title ? `title="${item.title}"` : "",
     item.tip ? `data-tip="${item.tip}"` : ""
-  ].filter(Boolean).join(" ");
+    ].filter(Boolean).join(" ");
+
+  function installOperationStyles() {
+    if (document.getElementById("v39-operation-ui-style")) return;
+    const style = document.createElement("style");
+    style.id = "v39-operation-ui-style";
+    style.textContent = `
+      #footSquad .v39-squad-toolbar{display:flex;align-items:center;gap:6px;min-width:0}
+      #footSquad .v39-squad-shortcuts{display:flex;gap:5px;flex:0 0 auto}
+      .v39-footer-shortcut{min-height:30px;border:1px solid #4d747d;border-radius:7px;background:#173039;color:#e7f2f0;padding:4px 8px;font:inherit;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer}
+      .v39-footer-shortcut:hover{background:#1d424b;border-color:#77d8e7}
+      .v39-footer-shortcut:focus-visible{outline:2px solid #9de4ef;outline-offset:1px}
+      #footSquad .squad-selector{flex:1;min-width:0}
+      #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;gap:6px}
+      #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
+      #footSquad.is-unit-create-open{display:block!important}
+      #footSquad.is-unit-create-open .v39-unit-create-panel{height:100%}
+      @media(max-width:600px){
+        #footSquad .v39-squad-toolbar{gap:4px}
+        #footSquad .v39-squad-shortcuts{gap:4px}
+        .v39-footer-shortcut{min-height:30px;padding:4px 6px;font-size:11px}
+      }
+    `;
+    document.head.appendChild(style);
+  }
 
   function renderFooter(footer) {
     const selectedSkill = data.actionSkills[0];
@@ -49,8 +70,14 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       </div>
       <div class="footer-body">
         <section id="footSquad" class="mobile-squad-panel v39-footer-panel-active" aria-hidden="false">
-          <div class="squad-selector" id="squadSelector"></div>
-          <div class="squad-content-split">
+          <div class="v39-squad-toolbar" id="v39-squad-main">
+            <div class="v39-squad-shortcuts">
+              <button type="button" class="v39-footer-shortcut" data-open="character">♟ 自キャラ</button>
+              <button type="button" class="v39-footer-shortcut" id="v39-squad-unit-create">✚ ユニット作成</button>
+            </div>
+            <div class="squad-selector" id="squadSelector"></div>
+          </div>
+          <div class="squad-content-split" id="v39-squad-content">
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
               <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span><span class="squad-detail-chip" id="detailGuard" hidden></span></div>
@@ -68,6 +95,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
           <div class="battle-selection-summary"><span>選択: <b id="mobileSelectedSkill">${selectedSkill.name}</b></span><span>AP <b id="mobileBattleAp">100 / 100</b></span><button class="primary" id="mobileSkillUse">使用</button></div>
         </section>
         <section id="footTile" class="land-panel" hidden aria-hidden="true">
+          <div class="v39-land-shortcuts"><button type="button" class="v39-footer-shortcut" data-open="build">⌂ 建設</button></div>
           ${data.landItems.map(item => `<div class="land-item"><span>${item.label}</span><b${item.valueId ? ` id="${item.valueId}"` : ""}>${item.value}</b></div>`).join("")}
         </section>
         <section id="footSettlement" class="settlement-panel" hidden aria-hidden="true"></section>
@@ -105,6 +133,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
 
   const footer = document.querySelector(".footer");
   if (!(footer instanceof HTMLElement)) throw new Error("operation UI mount point is missing");
+  installOperationStyles();
   renderFooter(footer);
   footer.addEventListener("click", event => {
     const button = event.target instanceof Element ? event.target.closest("[data-foot]") : null;

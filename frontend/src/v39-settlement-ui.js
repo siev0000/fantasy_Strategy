@@ -1,5 +1,6 @@
 import { getFactionSettlements, selectFactionSettlement, territorySettlementId } from "./lib/settlement-state.js";
 import { inspectV39CitySpecializations, selectV39CitySpecialization } from "./lib/v39-city-specialization-rules.js";
+import { resolveV39SettlementProductionMetrics } from "./lib/v39-economy-rules.js";
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);
@@ -77,12 +78,14 @@ function render() {
     }),
     ...queue.map(item => `<span class="settlement-chip building">${escapeHtml(item.facilityName)} 残${Math.max(0, Math.floor(number(item.remainingTurns)))}T</span>`)
   ].join("") || `<span class="settlement-empty">なし</span>`;
-  const employmentRate = Math.max(0, Math.min(1, number(settlement.employmentRate)));
+  const production = resolveV39SettlementProductionMetrics(state, player, settlement);
+  // 領土に紐づく雇用枠から再計算した稼働率を表示する。
+  const employmentRate = Math.max(0, Math.min(1, number(production.employmentRate)));
   const overcrowding = Math.max(0, Math.floor(number(settlement.overcrowdingPopulation)));
   const overcrowdingText = overcrowding > 0
     ? `<span>人口過多 <b>${formatNumber(overcrowding)}</b></span><span>流出 <b>-${formatNumber(settlement.lastPopulationOutflow)}</b></span><span>幸福/治安 <b>${formatNumber(settlement.overcrowdingHappinessPenalty)}</b></span>`
     : "";
-  const populationSummary = `<div class="settlement-inline-facts"><span>人口許容 <b>${formatNumber(settlement.populationCapacity)}</b></span><span>雇用枠 <b>${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div>${populationRows(settlement)}`;
+  const populationSummary = `<div class="settlement-inline-facts"><span>人口許容 <b>${formatNumber(settlement.populationCapacity)}</b></span><span>雇用枠 <b>${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div><div class="settlement-inline-facts" title="各生産項目は、人口構成から求めた対応技能値を生産倍率表へ換算した値です。"><span>農業 <b>${formatNumber(production.productionMultipliers.農業 * 100)}%</b></span><span>林業 <b>${formatNumber(production.productionMultipliers.林業 * 100)}%</b></span><span>漁業 <b>${formatNumber(production.productionMultipliers.漁業 * 100)}%</b></span><span>工業 <b>${formatNumber(production.productionMultipliers.工業 * 100)}%</b></span></div>${populationRows(settlement)}`;
   const repair = window.inspectV39TerritoryRepair?.(player?.id, settlementId);
   const repairTargets = repair?.targets || [];
   const repairable = repairTargets.filter(row => !row.blockedReason).length;
@@ -102,7 +105,7 @@ function render() {
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
       ${section("material", "資材", formatNumber(settlement.materialStock), keyValueRows(settlement.materialStockByType))}
       ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}</div>`)}
-      ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(settlement.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
+      ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
       ${section("civic", "住民状態", `幸福${formatNumber(civic.happiness)}`, civicBody)}
       ${section("specialization", "都市専門化", escapeHtml(settlement.citySpecializationId || "未選択"), specializationBody)}
       ${section("repair", "修復", repairTargets.length ? `${repairTargets.length}マス` : "なし", repairBody)}

@@ -1,6 +1,7 @@
 import { getGameDataRows } from "./game-data-registry.js";
 import { resolveV39ResourceIcon } from "./resource-icon-glyphs.js";
-import { resolveCompletedResearchLevel } from "./research-progress.js";
+import { V39_SETTLEMENT_PRODUCTION_BALANCE, V39_VOLCANO_DAMAGE_BALANCE } from "./v39-gameplay-balance.js";
+import { resolveCurrentResearchLevel } from "./research-progress.js";
 import {
   collectTerritoryIncome,
   multiplyResourceBag,
@@ -25,7 +26,6 @@ import { normalizeV39CivicState, resolveV39CivicProductionMultiplier, resolveV39
 import { advanceV39Rebellions } from "./v39-rebellion-rules.js";
 import { resolveV39CitySpecializationModifiers, resolveV39CityTraits } from "./v39-city-specialization-rules.js";
 import { resolveTerritoryGuardAtTile } from "../composables/militaryUnitUtils.js";
-import { V39_VOLCANO_DAMAGE_BALANCE } from "./v39-gameplay-balance.js";
 
 const RESOURCE_DEFINITION_ROWS = getGameDataRows("都市基本データ")
   .filter(row => ["食料", "木材", "石材", "金属", "貴金属", "宝石", "特殊資源"].includes(String(row?.分類 || "").trim()));
@@ -70,6 +70,7 @@ export const RESOURCE_GROUPS = Object.freeze(Object.fromEntries(
 const RESOURCE_FACILITY_EFFECT = Object.freeze(Object.fromEntries(RESOURCE_DEFINITION_ROWS
   .map(row => [String(row?.データ分類 || "").trim(), String(row?.対応技能 || "").trim()])
   .filter(([name, skill]) => name && skill)));
+const POPULATION_PRODUCTION_SKILL_KEYS = Object.freeze(["農業", "林業", "漁業", "工業"]);
 
 const ECONOMY_GAIN_SCALE = 0.1;
 const INITIAL_STOCK_TURNS = 3;
@@ -84,6 +85,12 @@ const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const round1 = value => Math.round(number(value) * 10) / 10;
 const coordKey = (x, y) => `${Math.floor(number(x))},${Math.floor(number(y))}`;
+const RACE_CLASS_NAME_BY_RACE = Object.freeze(Object.fromEntries(getGameDataRows("種族")
+  .map(row => [text(row?.key || row?.name), text(row?.className)])
+  .filter(([race, className]) => race && className)));
+const CLASS_ROW_BY_NAME = new Map(getGameDataRows("クラス")
+  .map(row => [text(row?.名前), row])
+  .filter(([name]) => name));
 
 function disasterCivicPenaltyForSettlement(state, settlementId) {
   let penalty = 0;
@@ -257,6 +264,75 @@ export function resolveV39SettlementLabor(state, player, village = normalizeV39V
     populationCapacity:Math.floor(populationCapacity),
     employmentSlots:Math.floor(employmentSlots),
     employmentRate:employmentSlots > 0 ? Math.min(1, population / employmentSlots) : 0
+  };
+}
+
+// フィールド上のユニットは含めず、拠点人口だけを種族ごとに人口加重して技能を求める。
+export function resolveV39SettlementPopulationSkills(village, fallbackRace = "只人") {
+  const normalized = normalizeV39Village(village, fallbackRace);
+  const populationByRace = normalized?.populationByRace || {};
+  const rows = Object.entries(populationByRace)
+    .map(([race, count]) => ({ race:text(race), population:Math.max(0, number(count)) }))
+    .filter(row => row.race && row.population > 0);
+  const population = rows.reduce((sum, row) => sum + row.population, 0);
+  const weightedSkills = Object.fromEntries(POPULATION_PRODUCTION_SKILL_KEYS.map(skill => [skill, 0]));
+  const contributions = rows.map(row => {
+    const className = RACE_CLASS_NAME_BY_RACE[row.race] || row.race;
+    const classRow = CLASS_ROW_BY_NAME.get(className) || {};
+    const skills = Object.fromEntries(POPULATION_PRODUCTION_SKILL_KEYS.map(skill => [skill, number(classRow?.[skill])]));
+    for (const skill of POPULATION_PRODUCTION_SKILL_KEYS) weightedSkills[skill] += row.population * skills[skill];
+    return { ...row, className, skills };
+  });
+  const skills = Object.fromEntries(POPULATION_PRODUCTION_SKILL_KEYS.map(skill => [
+    skill,
+    population > 0 ? round1(weightedSkills[skill] / population) : 0
+  ]));
+  return { population, skills, contributions };
+}
+
+// 技能値の節点間は直線補間する。指定範囲を外れた場合は最低・最高倍率に固定する。
+export function resolveV39ProductionSkillMultiplier(skillValue) {
+  const steps = [...(V39_SETTLEMENT_PRODUCTION_BALANCE.skillMultiplierSteps || [])]
+    .sort((left, right) => number(left?.skill) - number(right?.skill));
+  if (!steps.length) return 1;
+  const skill = number(skillValue);
+  if (skill <= number(steps[0].skill)) return number(steps[0].multiplier, 1);
+  const last = steps[steps.length - 1];
+  if (skill >= number(last.skill)) return number(last.multiplier, 1);
+  for (let index = 1; index < steps.length; index += 1) {
+    const lower = steps[index - 1];
+    const upper = steps[index];
+    if (skill > number(upper.skill)) continue;
+    const span = Math.max(1, number(upper.skill) - number(lower.skill));
+    const ratio = (skill - number(lower.skill)) / span;
+    return number(lower.multiplier, 1) + (number(upper.multiplier, 1) - number(lower.multiplier, 1)) * ratio;
+  }
+  return number(last.multiplier, 1);
+}
+
+// 拠点ごとの生産項目倍率を求める。人数による稼働率はタイル収入の別段階で扱う。
+export function resolveV39SettlementProductionMetrics(state, player, village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race)) {
+  const normalized = normalizeV39Village(village, player?.race || "只人");
+  const populationSkills = resolveV39SettlementPopulationSkills(normalized, player?.race || "只人");
+  const labor = state && player
+    ? resolveV39SettlementLabor(state, player, normalized)
+    : {
+        employmentSlots:Math.max(0, number(normalized?.employmentSlots)),
+        employmentRate:Math.max(0, Math.min(1, number(normalized?.employmentRate)))
+      };
+  const employmentRate = Math.max(0, Math.min(1, number(labor.employmentRate)));
+  const workingPopulation = Math.min(populationSkills.population, Math.max(0, number(labor.employmentSlots)));
+  // 農業・林業・漁業・工業は生産項目として扱い、対応する技能値を倍率表で生産倍率へ換算する。
+  const productionMultipliers = Object.fromEntries(POPULATION_PRODUCTION_SKILL_KEYS.map(skill => [
+    skill,
+    resolveV39ProductionSkillMultiplier(populationSkills.skills[skill])
+  ]));
+  return {
+    ...populationSkills,
+    employmentRate,
+    employmentSlots:Math.max(0, Math.floor(number(labor.employmentSlots))),
+    workingPopulation,
+    productionMultipliers
   };
 }
 
@@ -539,10 +615,11 @@ function terrainConditionMet(condition, tile, mapData) {
   return terrain === expected || terrain === aliases[expected];
 }
 
-function completedResearchLevels(research, cityLevels = {}) {
+function currentResearchLevels(research, cityLevels = {}) {
   return Object.fromEntries(RESEARCH_FIELDS.map(field => {
     const category = field.replace(/Lv$/u, "");
-    return [field, Math.max(number(cityLevels?.[field]), resolveCompletedResearchLevel(research, category))];
+    // 研究画面・ユニット生成と同じく、次に選択できる研究Lvを施設の解放Lvとして扱う。
+    return [field, Math.max(number(cityLevels?.[field]), resolveCurrentResearchLevel(research, category))];
   }));
 }
 
@@ -557,8 +634,10 @@ export function inspectV39Construction(state, player, definition, tile, mapData 
   if (!village?.placed) reasons.push("拠点未配置");
   if (text(state?.territoryOwnerByTile?.[key]) !== text(player?.id)) reasons.push("自領ではない");
   if (!terrainConditionMet(definition?.terrainCondition, tile, mapData)) reasons.push(`地形条件: ${definition?.terrainCondition}`);
-  const levels = completedResearchLevels(player?.factionState?.research, village?.cityLevels);
-  for (const [field, required] of Object.entries(definition?.requirements || {})) if (number(levels[field]) < number(required)) reasons.push(`${field}${required}が必要`);
+  const levels = currentResearchLevels(player?.factionState?.research, village?.cityLevels);
+  for (const [field, required] of Object.entries(definition?.requirements || {})) {
+    if (number(levels[field]) < number(required)) reasons.push(`${field} ${number(levels[field])}/${number(required)}が必要`);
+  }
   const allNames = new Set([...(village?.buildings || []), ...(village?.constructionQueue || []).map(row => row.facilityName)]);
   if (allNames.has(definition?.name)) reasons.push("建設済みまたは建設中");
   const used = allNames.size;
@@ -736,6 +815,7 @@ export function buildV39ResourceSnapshot(village) {
   return Object.fromEntries(Object.entries(RESOURCE_GROUPS).map(([groupKey, group]) => [groupKey, {
     title:group.title,
     icon:group.icon,
+    iconColor:group.iconColor,
     items:group.keys.map(name => {
       const icon = resolveV39ResourceIcon(name);
       return { name, icon:icon.glyph, iconColor:icon.color, value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(delta.food?.[name] ?? delta.material?.[name]), rare:!["食料", "木材", "石材", "金属"].includes(String(RESOURCE_DEFINITION_ROWS.find(row => String(row?.データ分類 || "").trim() === name)?.分類 || "")) };

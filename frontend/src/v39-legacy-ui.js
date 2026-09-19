@@ -65,6 +65,11 @@ function currentSimpleResourceData(){return window.getV39SimpleResourceSnapshot?
 
 function fmtNum(v){return Number(v).toLocaleString("ja-JP")}
 function signed(v){const n=Number(v)||0;return n>0?"+"+n:String(n)}
+function resourceIconMarkup(icon,color,className){
+  const safeColor=/^#[0-9a-f]{3,8}$/i.test(String(color||"").trim())?String(color).trim():"";
+  const style=safeColor?` style="color:${safeColor}"`:"";
+  return `<span class="${className}"${style}>${icon||""}</span>`;
+}
 function detailGroupTotal(group){
   const g=currentResourceDetail()[group];
   return (g?.items||[]).reduce((s,i)=>s+i.value,0);
@@ -83,7 +88,7 @@ function renderResourceTop(){
       const b=document.createElement("button");
       b.className=`res-chip ${key==="food"?"food-group":key==="wood"?"wood-group":key==="ore"?"ore-group":"precious-group"} tappable resource-group-btn`;
       b.dataset.group=key;
-      b.innerHTML=`<span class="ico">${g.icon}</span><span><span class="resource-label">${g.title}</span><b class="value-main">${fmtNum(detailGroupTotal(key))}</b><small class="value-delta">${signed(detailGroupDelta(key))}</small></span>`;
+      b.innerHTML=`${resourceIconMarkup(g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.title}</span><b class="value-main">${fmtNum(detailGroupTotal(key))}</b><small class="value-delta">${signed(detailGroupDelta(key))}</small></span>`;
       b.title=`${g.title}の内訳を表示`;
       b.addEventListener("click",e=>{e.stopPropagation();openResourceGroup(key,b)});
       resourceSet.appendChild(b);
@@ -92,7 +97,7 @@ function renderResourceTop(){
     currentSimpleResourceData().forEach(g=>{
       const b=document.createElement("button");
       b.className=`res-chip ${g.cls} tappable`;
-      b.innerHTML=`<span class="ico">${g.icon}</span><span><span class="resource-label">${g.label}</span><b class="value-main">${fmtNum(g.value)}</b><small class="value-delta">${signed(g.delta)}</small></span>`;
+      b.innerHTML=`${resourceIconMarkup(g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.label}</span><b class="value-main">${fmtNum(g.value)}</b><small class="value-delta">${signed(g.delta)}</small></span>`;
       b.title=g.tip;
       b.addEventListener("click",()=>say(`${g.label}: ${fmtNum(g.value)}（簡易換算）`));
       resourceSet.appendChild(b);
@@ -109,7 +114,7 @@ function openResourceGroup(key,anchor){
   const body=document.getElementById("resourceDrawerBody");
   body.innerHTML=
     `<div class="resource-subgrid">`+
-      g.items.map(i=>`<div class="resource-sub ${i.rare?"rare":""}"><span><span class="sub-ico">${i.icon}</span><strong class="sub-label">${i.name}</strong></span><b>${fmtNum(i.value)}</b><small>${signed(i.delta)}</small></div>`).join("")+
+      g.items.map(i=>`<div class="resource-sub ${i.rare?"rare":""}"><span>${resourceIconMarkup(i.icon,i.iconColor,"sub-ico")}<strong class="sub-label">${i.name}</strong></span><b>${fmtNum(i.value)}</b><small>${signed(i.delta)}</small></div>`).join("")+
     `</div>`;
 
   resourceDrawer.classList.add("show");

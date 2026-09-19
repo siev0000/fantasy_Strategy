@@ -92,6 +92,22 @@ export const V39_CITY_SPECIALIZATION_BALANCE = Object.freeze({
   civicBonus:5
 });
 
+// 拠点人口の技能から算出する生産力の補正表。種族とクラスの対応は種族.json、技能値はクラス.jsonを正本にする。
+export const V39_SETTLEMENT_PRODUCTION_BALANCE = Object.freeze({
+  // 技能値と技能倍率の対応表。節点の間は直線補間し、範囲外は両端の倍率で固定する。
+  skillMultiplierSteps:Object.freeze([
+    Object.freeze({ skill:-25, multiplier:0.50 }),
+    Object.freeze({ skill:0, multiplier:0.65 }),
+    Object.freeze({ skill:15, multiplier:0.80 }),
+    Object.freeze({ skill:25, multiplier:0.90 }),
+    Object.freeze({ skill:35, multiplier:1.00 }),
+    Object.freeze({ skill:50, multiplier:1.15 }),
+    Object.freeze({ skill:75, multiplier:1.40 }),
+    Object.freeze({ skill:100, multiplier:1.65 }),
+    Object.freeze({ skill:125, multiplier:1.90 })
+  ])
+});
+
 // 一般村の交渉・依頼・襲撃で使用する暫定値。
 export const V39_NEUTRAL_VILLAGE_BALANCE = Object.freeze({
   // 村中心からの範囲。1 = 中心1マスと周囲6マス。
