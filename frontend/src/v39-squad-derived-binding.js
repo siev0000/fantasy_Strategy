@@ -150,7 +150,7 @@ function techniqueDurationLabel(row, source) {
 }
 
 function techniqueDescription(row, source) {
-  return text(source?.説明 ?? row?.description ?? source?.効果 ?? row?.effect);
+  return text(source?.詳細 ?? row?.detail ?? source?.説明 ?? row?.description);
 }
 
 function setExpandedTechnique(name = "") {
