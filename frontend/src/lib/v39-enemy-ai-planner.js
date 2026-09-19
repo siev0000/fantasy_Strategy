@@ -212,7 +212,7 @@ function rebelTerritoryPlan(state, mapData, enemy, turnNumber) {
   }
   const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(enemy.id)] || {};
   const skillRows = resolveAttackRows(enemy).filter(skillRow => !isV39SupportSkill(skillRow, enemy)
-    && resolveAttackApCost(skillRow) <= number(enemy?.ap)
+    && resolveAttackApCost(skillRow, enemy) <= number(enemy?.ap)
     && remainingV39Turns(cooldowns[text(skillRow?.名前)], turnNumber) <= 0);
   const skillRow = chooseDeterministically(skillRows, enemy.id, turnNumber);
   return skillRow
@@ -324,7 +324,7 @@ function explorerMovePlan(state, mapData, enemy, nest, turnNumber, explorerState
       return waitPlan(enemy, turnNumber, { explorationState:{ ...explorerState, mode:"search", targetTileKey:"" } });
     }
     if (distance(enemy, target) === 0) {
-      const skillRows = resolveActionSkillRows(enemy).filter(row => !isV39SupportSkill(row, enemy) && resolveAttackApCost(row) <= number(enemy?.ap));
+      const skillRows = resolveActionSkillRows(enemy).filter(row => !isV39SupportSkill(row, enemy) && resolveAttackApCost(row, enemy) <= number(enemy?.ap));
       const skillRow = chooseDeterministically(skillRows, enemy.id, turnNumber);
       return skillRow
         ? { type:"attack-territory", enemyId:text(enemy.id), turnNumber, tileKey:explorerState.targetTileKey, skillRow, skillName:text(skillRow?.名前), requiresSync:true, enemyPatch:{ explorationState:explorerState } }
@@ -360,7 +360,7 @@ function attackSkillsFor(state, enemy, target, turnNumber) {
   const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(enemy.id)] || {};
   const targetDistance = distance(enemy, target);
   return resolveActionSkillRows(enemy).filter(skillRow => !isV39SupportSkill(skillRow, enemy)
-    && resolveAttackApCost(skillRow) <= number(enemy.ap)
+    && resolveAttackApCost(skillRow, enemy) <= number(enemy.ap)
     && resolveAttackRange(skillRow, enemy) >= targetDistance
     && remainingV39Turns(cooldowns[text(skillRow?.名前)], turnNumber) <= 0);
 }
@@ -512,7 +512,7 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
     else {
       const delay = castTurns(skillRow);
       action = delay > 0
-        ? { type:"queue-attack", enemyId:id, targetUnitId:text(target.id), turnNumber, skillRow, skillName:text(skillRow?.名前), delay, apCost:resolveAttackApCost(skillRow) }
+        ? { type:"queue-attack", enemyId:id, targetUnitId:text(target.id), turnNumber, skillRow, skillName:text(skillRow?.名前), delay, apCost:resolveAttackApCost(skillRow, enemy) }
         : { type:"attack", enemyId:id, targetUnitId:text(target.id), turnNumber, skillRow, skillName:text(skillRow?.名前), requiresSync:true };
     }
   }
