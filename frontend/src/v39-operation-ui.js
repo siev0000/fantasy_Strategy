@@ -105,9 +105,6 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad .system-action-card .technique-icon-system-move{
         border-color:#579ec3!important;background:linear-gradient(135deg,#17445d 0%,#247fa2 100%)!important
       }
-      #footSquad .system-action-card .technique-icon-system-attack{
-        border-color:#c76a4b!important;background:linear-gradient(135deg,#7a2c24 0%,#bd542e 100%)!important
-      }
       #footSquad .system-action-card .technique-icon-system-wait{
         border-color:#8c8061!important;background:linear-gradient(135deg,#3f3827 0%,#6c6040 100%)!important
       }
@@ -135,7 +132,11 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         width:20px!important;height:20px!important;display:block!important;object-fit:contain!important;
         filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))
       }
-      #footSquad .technique-icon-glyph{display:block!important;font-size:14px!important;line-height:1!important;color:#d5e0df!important}
+      #footSquad .technique-icon-glyph{
+        width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;
+        margin:0!important;padding:0!important;font-size:14px!important;line-height:1!important;color:#d5e0df!important;
+        transform:translateY(-1px)!important
+      }
       #footSquad .technique-icon.technique-icon-power{
         border-color:#d27245!important;
         background:linear-gradient(135deg,#8f2f24 0%,#d86d2d 100%)!important
@@ -262,18 +263,6 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
                       <span class="technique-detail">
                         <span class="technique-detail-head"><b>説明</b></span>
                         <span class="technique-detail-description">移動先を選択して移動します。1マスの基礎消費APは移動力で決まり、地形・高低差・飛行で補正されます。</span>
-                      </span>
-                    </button>
-                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleAttack" data-v39-technique-name="__system_attack__" aria-expanded="false">
-                      <span class="technique-summary">
-                        <span class="technique-icon technique-icon-system-attack"><span class="technique-icon-glyph" aria-hidden="true">⚔</span></span>
-                        <b class="technique-name">攻撃</b>
-                        <small class="technique-ap">選択技</small>
-                        <span class="technique-power">対象を指定</span>
-                      </span>
-                      <span class="technique-detail">
-                        <span class="technique-detail-head"><b>説明</b></span>
-                        <span class="technique-detail-description">選択中の武器攻撃または技を使用し、フィールド上で対象を指定します。</span>
                       </span>
                     </button>
                     <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleWait" data-v39-technique-name="__system_wait__" aria-expanded="false">
