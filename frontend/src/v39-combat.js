@@ -972,16 +972,17 @@ function install() {
     return;
   }
   installStyles();
-  bindCapture(techniqueList, "click", (event) => {
+  techniqueList.addEventListener("click", (event) => {
     const button = event.target instanceof Element ? event.target.closest("[data-v39-attack-name]") : null;
     if (!button) return;
     if (button.classList.contains("unavailable")) {
-      return showToast(unavailableAttackReason(button.dataset.v39AttackName));
+      showToast(unavailableAttackReason(button.dataset.v39AttackName));
+      return;
     }
     selectedSkillName = text(button.dataset.v39AttackName);
     cancelAttack("skill-changed");
     renderActionPanel();
-  });
+  }, true);
   bindCapture(attackButton, "click", startAttack);
 window.addEventListener("v39:tile-selected", (event) => {
     if (attackSession) executeAttack(event.detail);
