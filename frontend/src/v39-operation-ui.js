@@ -6,7 +6,6 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
   const data = Object.freeze({
     tabs: [
       { key: "squad", label: "部隊", icon: "👥" },
-      { key: "action", label: "行動", icon: "⚔" },
       { key: "tile", label: "土地", icon: "⬢" },
       { key: "settlement", label: "拠点", icon: "⌂" },
       { key: "manage", label: "管理", icon: "☰" }
@@ -17,7 +16,6 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       { label: "攻撃", className: "attack active", id: "mobileBattleAttack" },
       { label: "待機", className: "", id: "mobileBattleWait" }
     ],
-    actionSkills: V39_TEST_OPERATION_DATA.actionSkills,
     manageItems: [
       { icon: "⚒", label: "装備", open: "equipment" },
       { icon: "⇄", labelHtml: '資源表示: <em id="resourceModeLabel">詳細</em>', id: "resourceModeToggle", title: "資源表示を詳細/簡易で切替", tip: "資源表示切替" },
@@ -52,6 +50,47 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       .v39-footer-icon-shortcut::after{content:attr(data-tooltip);position:absolute;z-index:80;top:calc(100% + 6px);left:0;min-width:max-content;padding:5px 7px;border:1px solid #70bcc8;border-radius:5px;background:#0a171b;color:#efffff;font-size:12px;font-weight:800;line-height:1.1;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s ease,transform .12s ease}
       .v39-footer-icon-shortcut:hover::after,.v39-footer-icon-shortcut:focus-visible::after,.v39-footer-icon-shortcut:active::after{opacity:1;transform:translateY(0)}
       #footSquad .squad-selector{flex:1;min-width:0}
+      .squad-content-split{grid-template-columns:minmax(0,2fr) minmax(0,3fr)!important}
+      #footSquad .squad-detail-collapsible{display:block!important;min-width:0}
+      #footSquad .squad-detail-toggle{
+        list-style:none;display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;
+      }
+      #footSquad .squad-detail-toggle::-webkit-details-marker{display:none}
+      #footSquad .squad-detail-toggle::before{
+        content:"▷";display:inline-block;flex:0 0 auto;width:12px;color:#85d7e4;font-size:10px;line-height:1
+      }
+      #footSquad .squad-detail-collapsible[open]>.squad-detail-toggle::before{content:"▽"}
+      #footSquad .squad-detail-section-body{min-width:0;margin-top:6px}
+      #footSquad #footAction.mobile-battle-panel{
+        display:grid!important;grid-template-rows:auto auto auto!important;gap:6px!important;
+        height:auto!important;min-height:0!important;margin-top:7px!important
+      }
+      #footSquad #footAction .battle-primary-actions{
+        display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important
+      }
+      #footSquad #footAction .battle-main{
+        min-width:0;min-height:34px;border:1px solid #45565d;border-radius:7px;background:#172329;
+        color:#e8efec;font:inherit;font-size:11px;font-weight:800
+      }
+      #footSquad #footAction .battle-main.move{border-color:#579ec3}
+      #footSquad #footAction .battle-main.attack{border-color:#a65f50}
+      #footSquad #footAction .battle-main.active{background:#34251f}
+      #footSquad #footAction .battle-skill-strip{
+        min-height:0;display:flex!important;gap:5px;overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
+        scroll-snap-type:x proximity
+      }
+      #footSquad #footAction .battle-skill{
+        flex:0 0 118px;min-height:58px;border:1px solid #435159;border-radius:8px;background:#172126;
+        color:#e8efec;padding:6px;text-align:left;scroll-snap-align:start
+      }
+      #footSquad #footAction .battle-skill.active{border-color:#e7c466;background:#2b291c}
+      #footSquad #footAction .battle-skill b{display:block;font-size:10px}
+      #footSquad #footAction .battle-skill small{display:block;margin-top:4px;font-size:8px;color:#aab8ba}
+      #footSquad #footAction .battle-selection-summary{
+        min-height:34px;display:grid!important;grid-template-columns:minmax(0,1fr) auto 64px!important;
+        align-items:center;gap:5px;font-size:9px
+      }
+      #footSquad #footAction .battle-selection-summary .primary{min-height:32px}
       #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;gap:6px}
       #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
       #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
@@ -68,7 +107,6 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
   }
 
   function renderFooter(footer) {
-    const selectedSkill = data.actionSkills[0];
     footer.innerHTML = `
       <div class="footer-tabs">
         ${data.tabs.map((tab, index) => `<button class="footer-tab tappable footer-text-tab${index === 0 ? " active" : ""}" data-foot="${tab.key}"><span class="tab-text">${tab.label}</span><span class="tab-icon">${tab.icon}</span></button>`).join("")}
@@ -86,18 +124,20 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
               <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span><span class="squad-detail-chip" id="detailGuard" hidden></span></div>
-              <div class="squad-detail-section"><div class="squad-detail-section-title">各種ステータス</div><div class="squad-detail-stats">
+              <details class="squad-detail-section squad-detail-collapsible" open><summary class="squad-detail-section-title squad-detail-toggle">各種ステータス</summary><div class="squad-detail-section-body"><div class="squad-detail-stats">
                 ${[["攻撃","detailAtk"],["防御","detailDef"],["魔攻","detailMatk"],["魔防","detailMdef"],["速さ","detailSpd"],["命中","detailHit"],["SIZ","detailSiz"],["移動","detailMov"]].map(([label,id]) => `<div class="detail-stat"><span>${label}</span><b id="${id}"></b></div>`).join("")}
-              </div></div>
-              <div class="squad-detail-section"><div class="squad-detail-section-title">技能</div><div class="proficiency-grid" id="detailProficiencyList"></div></div>
-              <div class="squad-detail-section"><div class="squad-detail-section-title">技</div><div class="technique-list" id="detailTechniqueList"></div></div>
+              </div></div></details>
+              <details class="squad-detail-section squad-detail-collapsible" open><summary class="squad-detail-section-title squad-detail-toggle">技能</summary><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></details>
+              <details class="squad-detail-section squad-detail-collapsible" open><summary class="squad-detail-section-title squad-detail-toggle">技</summary><div class="squad-detail-section-body">
+                <div class="technique-list" id="detailTechniqueList"></div>
+                <section id="footAction" class="mobile-battle-panel v39-detail-action-panel" aria-label="選択キャラクターの行動">
+                  <div class="battle-primary-actions">${data.actionButtons.map(item => `<button class="battle-main ${item.className}" id="${item.id}">${item.label}</button>`).join("")}</div>
+                  <div class="battle-skill-strip"></div>
+                  <div class="battle-selection-summary"><span>選択: <b id="mobileSelectedSkill">-</b></span><span>AP <b id="mobileBattleAp">- / -</b></span><button class="primary" id="mobileSkillUse">使用</button></div>
+        </section>
+              </div></details>
             </section>
           </div>
-        </section>
-        <section id="footAction" class="mobile-battle-panel" hidden aria-hidden="true">
-          <div class="battle-primary-actions">${data.actionButtons.map(item => `<button class="battle-main ${item.className}" id="${item.id}">${item.label}</button>`).join("")}</div>
-          <div class="battle-skill-strip">${data.actionSkills.map((skill, index) => `<button class="battle-skill${index === 0 ? " active" : ""}" data-mobile-skill="${skill.key}"><b>${skill.icon} ${skill.name}</b><small>AP${skill.ap} / 威${skill.power} / ${skill.meta}</small></button>`).join("")}</div>
-          <div class="battle-selection-summary"><span>選択: <b id="mobileSelectedSkill">${selectedSkill.name}</b></span><span>AP <b id="mobileBattleAp">100 / 100</b></span><button class="primary" id="mobileSkillUse">使用</button></div>
         </section>
         <section id="footTile" class="land-panel" hidden aria-hidden="true">
           <div class="v39-land-shortcuts"><button type="button" class="v39-footer-shortcut" data-open="build">⌂ 建設</button></div>
