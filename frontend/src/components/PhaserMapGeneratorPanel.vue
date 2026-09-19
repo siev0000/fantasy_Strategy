@@ -405,6 +405,7 @@ const diplomacyRelations = ref({}); // 勢力ペアごとの戦争状態・外�
 const warDeclarationPending = ref(null);
 const headerMinimized = ref(false);
 const showTurnActionModal = ref(false);
+const showHeaderTurnMenu = ref(false);
 const clockNowMs = ref(Date.now());
 const mapClockStartMs = ref(Date.now());
 const clockElapsedMs = ref(0);
@@ -17829,6 +17830,17 @@ function handleActiveTestPlayerSelection() {
   switchActiveTestPlayer(targetId);
 }
 
+function toggleHeaderTurnMenu() {
+  kickOffBgm();
+  audio.playSe("open");
+  showHeaderTurnMenu.value = !showHeaderTurnMenu.value;
+}
+
+function runNextTurnFromHeader() {
+  showHeaderTurnMenu.value = false;
+  runNextTurn();
+}
+
 function openTurnActionModal() {
   kickOffBgm();
   audio.playSe("open");
@@ -23099,6 +23111,27 @@ watch(() => props.characterCommand, command => {
           </button>
         </div>
         </template>
+        <div class="field-header-turn-control" :class="{ open: showHeaderTurnMenu }">
+          <button
+            type="button"
+            class="field-header-turn-toggle"
+            :aria-expanded="showHeaderTurnMenu"
+            aria-label="ターン操作"
+            @click="toggleHeaderTurnMenu"
+          >
+            <span>T{{ mapTurnNumber || 1 }}</span>
+          </button>
+          <div v-if="showHeaderTurnMenu" class="field-header-turn-menu">
+            <button
+              type="button"
+              class="field-header-turn-end"
+              :disabled="isTestMultiplayerActive && activeTestPlayerReady"
+              @click="runNextTurnFromHeader"
+            >
+              {{ isTestMultiplayerActive ? (activeTestPlayerReady ? "ターン終了済み" : "ターン終了") : "ターン終了" }}
+            </button>
+          </div>
+        </div>
         <button
           type="button"
           class="overlay-header-drawer-toggle"
