@@ -142,24 +142,20 @@ function techniqueAccentClass(power, guard, healing) {
   return "technique-icon-neutral";
 }
 
-function techniqueDetailRows(row, source) {
-  const candidates = [
-    ["行動", source?.行動 ?? row?.action],
-    ["系統", source?.系統 ?? row?.system],
-    ["攻撃手段", source?.攻撃手段 ?? row?.attackMethod],
-    ["判定", source?.判定 ?? row?.judge],
-    ["範囲", source?.範囲 ?? row?.area],
-    ["炸裂", source?.炸裂 ?? row?.splash],
-    ["攻撃回数", source?.攻撃回数 ?? row?.attackCount],
-    ["ガード", source?.ガード ?? row?.guard],
-    ["待機", source?.待機 ?? row?.cast],
-    ["CT", source?.CT ?? row?.cooldown],
-    ["効果時間", source?.効果時間 ?? row?.duration],
-    ["効果", source?.効果 ?? row?.effect],
-    ["条件", source?.条件 ?? row?.condition],
-    ["説明", row?.detail ?? source?.詳細 ?? source?.説明]
-  ];
-  return candidates.filter(([, value]) => value !== null && value !== undefined && text(value) && text(value) !== "-");
+function techniqueDurationLabel(row, source) {
+  const raw = text(source?.効果時間 ?? row?.duration);
+  if (!raw) return "";
+  const match = raw.match(/^(\d+)\s*t$/i);
+  return match ? `${match[1]}ターン` : raw;
+}
+
+function techniqueDescription(row, source) {
+  const raw = text(row?.detail ?? source?.詳細 ?? source?.説明);
+  if (!raw) return "";
+  const duration = text(source?.効果時間 ?? row?.duration);
+  if (!duration) return raw;
+  const escaped = duration.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return raw.replace(new RegExp(`(?:効果時間|時間)\\s*[:：]\\s*${escaped}\\s*`, "i"), "").trim();
 }
 
 function setExpandedTechnique(name = "") {
@@ -391,14 +387,11 @@ function renderDetail() {
             Number(guardValue) > 0 ? `守${guardValue}` : ""
           ].filter(Boolean);
           const powerGuardText = powerGuardParts.join("/");
-          const details = techniqueDetailRows(row, source);
+          const durationLabel = techniqueDurationLabel(row, source);
+          const description = techniqueDescription(row, source);
           const expanded = name === expandedTechniqueName;
-          const detailHtml = details.length
-            ? details.map(([label, value]) => {
-                const descriptionClass = label === "説明" ? " technique-detail-description" : "";
-                return `<span class="technique-detail-row${descriptionClass}"><em>${escapeHtml(label)}</em><b>${escapeHtml(value)}</b></span>`;
-              }).join("")
-            : '<span class="technique-detail-empty">追加情報なし</span>';
+          const detailHtml = `<span class="technique-detail-head"><b>説明</b>${durationLabel ? `<small>${escapeHtml(durationLabel)}</small>` : ""}</span>
+            <span class="technique-detail-description">${description ? escapeHtml(description) : "説明なし"}</span>`;
           const attackAttr = action === "A" ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
           return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" data-v39-technique-name="${escapeHtml(name)}" aria-expanded="${expanded}"${attackAttr}>
             <span class="technique-summary">
