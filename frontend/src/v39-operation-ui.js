@@ -104,6 +104,10 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         border-color:#5b9fd2!important;
         background:linear-gradient(135deg,#17476d 0%,#2388bd 100%)!important
       }
+      #footSquad .technique-icon.technique-icon-heal{
+        border-color:#58b978!important;
+        background:linear-gradient(135deg,#1f6c3b 0%,#35a85f 100%)!important
+      }
       #footSquad .technique-icon.technique-icon-mixed{
         border-color:#9d8b79!important;
         background:linear-gradient(90deg,#bc4b29 0%,#d66b2f 45%,#277cac 55%,#18547c 100%)!important
