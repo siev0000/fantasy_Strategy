@@ -198,8 +198,13 @@ export function applyV39DerivedCharacterData(unit = {}) {
     number(derived.resistances?.[key]) + number(equipmentResistances?.[key])
   ]));
   const status = { ...derived.status };
-  for (const item of equipment) for (const [key, value] of Object.entries(item?.enchantBonus || {})) {
-    if (Object.prototype.hasOwnProperty.call(status, key)) status[key] = number(status[key]) + number(value);
+  for (const item of equipment) {
+    for (const [key, value] of Object.entries(item?.statusBonus || {})) {
+      if (Object.prototype.hasOwnProperty.call(status, key)) status[key] = number(status[key]) + number(value);
+    }
+    for (const [key, value] of Object.entries(item?.enchantBonus || {})) {
+      if (Object.prototype.hasOwnProperty.call(status, key)) status[key] = number(status[key]) + number(value);
+    }
   }
   return {
     ...unit,
