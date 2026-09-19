@@ -3,7 +3,7 @@ import { showV39Feedback } from "./v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "./lib/hex-grid.js";
 import { canUnitEnterV39Tile } from "./lib/v39-terrain-traversal.js";
 import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "./lib/v39-squad-movement-rules.js";
-import { V39_SQUAD_MOVEMENT_BALANCE } from "./lib/v39-gameplay-balance.js";
+import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE } from "./lib/v39-gameplay-balance.js";
 
 const UNIT_ACTION_POINT_MAX = V39_SQUAD_MOVEMENT_BALANCE.moveApMax;
 const RANGE_DEPTH = 9;
@@ -147,7 +147,7 @@ function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
   const flightReduction = Math.floor(flightValue / 30);
   terrainCost = Math.max(0, terrainCost - flightReduction);
   const moveStat = resolveUnitMoveValue(moveUnit);
-  const baseApCost = UNIT_ACTION_POINT_MAX / moveStat;
+  const baseApCost = resolveV39BaseMoveApCost(moveStat);
   return Math.max(0, Math.ceil(terrainCost * baseApCost));
 }
 
