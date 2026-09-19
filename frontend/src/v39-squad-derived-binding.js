@@ -356,9 +356,10 @@ function renderDetail() {
   const tech = document.getElementById("detailTechniqueList");
   if (tech) {
     const rows = techniqueEntries(unit);
+    const activeRows = rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() !== "P");
+    const passiveRows = rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() === "P");
     const adjustedUnit = applyV39TerrainModifiers(unit, window.__v39FieldRuntime?.mapData);
-    tech.innerHTML = rows.length
-      ? rows.map(row => {
+    const renderTechnique = row => {
           const source = techniqueSource(row) || {};
           const name = text(source?.名前 ?? row?.name, "名称未設定");
           const action = text(source?.行動 ?? row?.action).toUpperCase();
@@ -398,7 +399,13 @@ function renderDetail() {
             </span>
             <span class="technique-detail">${detailHtml}</span>
           </button>`;
-        }).join("")
+        };
+    const activeHtml = activeRows.map(renderTechnique).join("");
+    const passiveHtml = passiveRows.length
+      ? `<div class="technique-passive-divider">パッシブ</div>${passiveRows.map(renderTechnique).join("")}`
+      : "";
+    tech.innerHTML = rows.length
+      ? activeHtml + passiveHtml
       : '<div class="squad-empty">技データなし</div>';
   }
   notifyDetailRendered(unit);
