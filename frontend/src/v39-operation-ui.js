@@ -75,14 +75,59 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad #footAction .battle-main.move{border-color:#579ec3}
       #footSquad #footAction .battle-main.attack{border-color:#a65f50}
       #footSquad #footAction .battle-main.active{background:#34251f}
-      #footSquad .technique-card.action-technique{
-        width:100%;appearance:none;-webkit-appearance:none;color:inherit;font:inherit;text-align:left;cursor:pointer
+      #footSquad .technique-card.technique-select-card{
+        width:100%!important;min-width:0!important;display:block!important;appearance:none;-webkit-appearance:none;
+        padding:0!important;border:1px solid #46565d!important;border-radius:8px!important;
+        background:linear-gradient(180deg,#162126,#10181c)!important;color:inherit!important;
+        font:inherit!important;text-align:left!important;cursor:pointer!important;overflow:hidden!important
+      }
+      #footSquad .technique-summary{
+        display:grid!important;grid-template-columns:28px minmax(0,1fr) auto!important;
+        grid-template-areas:"icon name ap" "icon power range"!important;
+        align-items:center!important;gap:3px 7px!important;padding:7px 8px!important
+      }
+      #footSquad .technique-icon{
+        grid-area:icon!important;width:28px!important;height:28px!important;display:grid!important;place-items:center!important;
+        border:1px solid #40545a!important;border-radius:7px!important;background:#1b2a30!important;
+        font-size:16px!important;line-height:1!important
+      }
+      #footSquad .technique-name{
+        grid-area:name!important;min-width:0!important;margin:0!important;font-size:10px!important;line-height:1.15!important;
+        white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important
+      }
+      #footSquad .technique-ap{
+        grid-area:ap!important;margin:0!important;color:#d8c17f!important;font-size:8px!important;line-height:1!important;white-space:nowrap!important
+      }
+      #footSquad .technique-power{
+        grid-area:power!important;margin:0!important;color:#aebfc2!important;font-size:8px!important;line-height:1.1!important;white-space:nowrap!important
+      }
+      #footSquad .technique-range{
+        grid-area:range!important;margin:0!important;color:#aebfc2!important;font-size:8px!important;line-height:1.1!important;white-space:nowrap!important
+      }
+      #footSquad .technique-detail{
+        display:none!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important;
+        padding:7px 8px!important;border-top:1px solid #35464d!important;background:#0e171b!important
+      }
+      #footSquad .technique-card.is-expanded .technique-detail{display:grid!important}
+      #footSquad .technique-detail-row{
+        min-width:0!important;display:flex!important;align-items:center!important;justify-content:space-between!important;
+        gap:6px!important;padding:4px 5px!important;border:1px solid #314148!important;border-radius:6px!important;background:#121d21!important
+      }
+      #footSquad .technique-detail-row em{
+        min-width:0!important;color:#8fa1a5!important;font-size:8px!important;font-style:normal!important;white-space:nowrap!important
+      }
+      #footSquad .technique-detail-row b{
+        min-width:0!important;color:#eef4f2!important;font-size:8px!important;font-weight:700!important;text-align:right!important;
+        white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important
+      }
+      #footSquad .technique-detail-empty{
+        grid-column:1 / -1!important;color:#829397!important;font-size:8px!important;padding:3px 0!important
       }
       #footSquad .technique-card.action-technique.active{
         border-color:#e7c466!important;background:linear-gradient(180deg,#2b291c,#1b1a14)!important;
         box-shadow:0 0 0 1px rgba(231,196,102,.18)
       }
-      #footSquad .technique-card.action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed}
+      #footSquad .technique-card.action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed!important}
       #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;gap:6px}
       #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
       #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
