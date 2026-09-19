@@ -23,6 +23,15 @@ export function resolveV39TileTransformEffect(skillRow, terrainRows = []) {
   };
 }
 
+export function resolveV39TileTransformWaitTurns(skillRow, fallback = 1) {
+  const raw = skillRow?.待機 ?? skillRow?.待機時間;
+  const direct = Number(raw);
+  if (Number.isFinite(direct)) return Math.max(1, Math.floor(direct));
+  const match = text(raw).match(/(\d+)/);
+  if (match) return Math.max(1, Math.floor(Number(match[1]) || fallback));
+  return Math.max(1, Math.floor(Number(fallback) || 1));
+}
+
 function resolveCoord(data, xRaw, yRaw) {
   const x = Math.floor(Number(xRaw));
   const y = Math.floor(Number(yRaw));
@@ -116,5 +125,81 @@ export function applyV39TileTransformEffect(data, xRaw, yRaw, spec, terrainRows 
     before,
     after,
     summary: `地形変換: (${x}, ${y}) ${before || "不明"} → ${after}`
+  };
+}
+
+export function queueV39TileTransformEffect(data, xRaw, yRaw, spec, terrainRows = [], options = {}) {
+  const check = validateV39TileTransformEffect(data, xRaw, yRaw, spec, terrainRows);
+  if (!check.ok) return check;
+  const waitTurns = Math.max(1, Math.floor(Number(options?.waitTurns) || 1));
+  const queue = Array.isArray(data?.pendingTileTransformEffects)
+    ? data.pendingTileTransformEffects.map(row => ({ ...row }))
+    : [];
+  const id = text(options?.id)
+    || `tile-transform-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  const entry = {
+    id,
+    x: check.x,
+    y: check.y,
+    effect: spec.effect,
+    targetTerrain: spec.targetTerrain,
+    skillName: text(options?.skillName),
+    casterId: text(options?.casterId),
+    casterName: text(options?.casterName),
+    remainingTurns: waitTurns
+  };
+  queue.push(entry);
+  data.pendingTileTransformEffects = queue;
+  return {
+    ...check,
+    queued: true,
+    waitTurns,
+    entry,
+    summary: `地形変換詠唱: (${check.x}, ${check.y}) → ${spec.targetTerrain} / ${waitTurns}T後発動`
+  };
+}
+
+export function advanceV39TileTransformEffects(data, terrainRows = []) {
+  const queue = Array.isArray(data?.pendingTileTransformEffects)
+    ? data.pendingTileTransformEffects
+    : [];
+  if (!queue.length) {
+    if (data && !Array.isArray(data.pendingTileTransformEffects)) data.pendingTileTransformEffects = [];
+    return { data, notes: [], applied: 0, failed: 0, pending: 0 };
+  }
+
+  const nextQueue = [];
+  const notes = [];
+  let applied = 0;
+  let failed = 0;
+
+  for (const raw of queue) {
+    const row = raw && typeof raw === "object" ? raw : {};
+    const nextRemaining = Math.max(0, Math.floor(Number(row?.remainingTurns) || 0) - 1);
+    if (nextRemaining > 0) {
+      nextQueue.push({ ...row, remainingTurns: nextRemaining });
+      continue;
+    }
+    const effect = text(row?.effect) || `${text(row?.targetTerrain)}_変換`;
+    const spec = resolveV39TileTransformEffect({ 効果: effect }, terrainRows);
+    const result = applyV39TileTransformEffect(data, row?.x, row?.y, spec, terrainRows);
+    if (result.ok) {
+      applied += 1;
+      const skillLabel = text(row?.skillName);
+      notes.push(`${result.summary}${skillLabel ? ` / 技:${skillLabel}` : ""}`);
+    } else {
+      failed += 1;
+      const target = text(row?.targetTerrain) || "不明";
+      notes.push(`地形変換失敗: (${row?.x}, ${row?.y}) → ${target} / ${result.reason || "発動条件を満たしませんでした。"}`);
+    }
+  }
+
+  data.pendingTileTransformEffects = nextQueue;
+  return {
+    data,
+    notes,
+    applied,
+    failed,
+    pending: nextQueue.length
   };
 }
