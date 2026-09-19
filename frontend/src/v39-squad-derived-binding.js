@@ -381,6 +381,11 @@ function renderDetail() {
             : Math.max(0, num(source?.ガード ?? row?.guard, 0) || 0);
           const icon = techniqueIconMarkup(source);
           const iconAccent = techniqueAccentClass(powerValue, guardValue);
+          const powerGuardParts = [
+            Number(powerValue) > 0 ? `威${powerValue}` : "",
+            Number(guardValue) > 0 ? `守${guardValue}` : ""
+          ].filter(Boolean);
+          const powerGuardText = powerGuardParts.join("/");
           const details = techniqueDetailRows(row, source);
           const expanded = name === expandedTechniqueName;
           const detailHtml = details.length
@@ -392,7 +397,7 @@ function renderDetail() {
               <span class="technique-icon ${iconAccent}" data-attack-category="${escapeHtml(icon.category)}" title="${escapeHtml(icon.category)}">${icon.markup}</span>
               <b class="technique-name">${escapeHtml(name)}</b>
               <small class="technique-ap">AP ${apValue ?? "-"}</small>
-              <span class="technique-power">威力 ${powerValue ?? "-"}</span>
+              ${powerGuardText ? `<span class="technique-power">${escapeHtml(powerGuardText)}</span>` : ""}
               <span class="technique-range">射 ${rangeValue ?? "-"}</span>
             </span>
             <span class="technique-detail">${detailHtml}</span>
