@@ -944,14 +944,6 @@ function resolvePendingActions(turnNumber = currentV39TurnNumber()) {
   }
 }
 
-function bindCapture(target, type, handler) {
-  target.addEventListener(type, (event) => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    handler(event);
-  }, true);
-}
-
 function installStyles() {
   const style = document.createElement("style");
   style.textContent = `
