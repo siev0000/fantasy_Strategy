@@ -43,20 +43,25 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
     const style = document.createElement("style");
     style.id = "v39-operation-ui-style";
     style.textContent = `
-      #footSquad .v39-squad-toolbar{display:flex;align-items:center;gap:6px;min-width:0}
-      #footSquad .v39-squad-shortcuts{display:flex;gap:5px;flex:0 0 auto}
+      #footSquad .v39-squad-toolbar{display:flex;align-items:center;gap:6px;min-width:0;overflow:visible}
+      #footSquad .v39-squad-shortcuts{display:flex;gap:5px;flex:0 0 auto;overflow:visible}
       .v39-footer-shortcut{min-height:30px;border:1px solid #4d747d;border-radius:7px;background:#173039;color:#e7f2f0;padding:4px 8px;font:inherit;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer}
       .v39-footer-shortcut:hover{background:#1d424b;border-color:#77d8e7}
       .v39-footer-shortcut:focus-visible{outline:2px solid #9de4ef;outline-offset:1px}
+      .v39-footer-icon-shortcut{position:relative;width:32px;min-width:32px;height:30px;padding:0;font-size:17px;line-height:1}
+      .v39-footer-icon-shortcut::after{content:attr(data-tooltip);position:absolute;z-index:80;top:calc(100% + 6px);left:0;min-width:max-content;padding:5px 7px;border:1px solid #70bcc8;border-radius:5px;background:#0a171b;color:#efffff;font-size:12px;font-weight:800;line-height:1.1;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s ease,transform .12s ease}
+      .v39-footer-icon-shortcut:hover::after,.v39-footer-icon-shortcut:focus-visible::after,.v39-footer-icon-shortcut:active::after{opacity:1;transform:translateY(0)}
       #footSquad .squad-selector{flex:1;min-width:0}
       #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;gap:6px}
       #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
-      #footSquad.is-unit-create-open{display:block!important}
-      #footSquad.is-unit-create-open .v39-unit-create-panel{height:100%}
+      #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
+      #footSquad.is-unit-create-open>#v39-squad-main,#footSquad.is-unit-create-open>#v39-squad-content{display:none!important}
+      #footSquad.is-unit-create-open>.v39-unit-create-panel{display:grid;height:100%;min-height:0}
       @media(max-width:600px){
         #footSquad .v39-squad-toolbar{gap:4px}
         #footSquad .v39-squad-shortcuts{gap:4px}
         .v39-footer-shortcut{min-height:30px;padding:4px 6px;font-size:11px}
+        .v39-footer-icon-shortcut{width:30px;min-width:30px;padding:0;font-size:16px}
       }
     `;
     document.head.appendChild(style);
@@ -72,8 +77,8 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         <section id="footSquad" class="mobile-squad-panel v39-footer-panel-active" aria-hidden="false">
           <div class="v39-squad-toolbar" id="v39-squad-main">
             <div class="v39-squad-shortcuts">
-              <button type="button" class="v39-footer-shortcut" data-open="character">♟ 自キャラ</button>
-              <button type="button" class="v39-footer-shortcut" id="v39-squad-unit-create">✚ ユニット作成</button>
+              <button type="button" class="v39-footer-shortcut v39-footer-icon-shortcut" data-open="character" data-tooltip="自キャラ" aria-label="自キャラ" title="自キャラ">♟</button>
+              <button type="button" class="v39-footer-shortcut v39-footer-icon-shortcut" id="v39-squad-unit-create" data-tooltip="ユニット作成" aria-label="ユニット作成" title="ユニット作成">✚</button>
             </div>
             <div class="squad-selector" id="squadSelector"></div>
           </div>

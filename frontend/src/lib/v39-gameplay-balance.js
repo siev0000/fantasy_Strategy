@@ -10,6 +10,15 @@ export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   moveApMax:100
 });
 
+// 軍事Lvによる通常軍隊の編成補正。基本値は都市基本データ.jsonの分類=ユニット作成、army行を使う。
+// 現在は既存のarmy値を維持するため全倍率1。軍事Lvごとの差分を調整する時はここだけを変更する。
+export const V39_MILITARY_UNIT_LEVEL_BALANCE = Object.freeze({
+  armyProfiles:Object.freeze([
+    Object.freeze({ militaryLevel:1, memberCountMultiplier:1, hpMultiplier:1, attackCountMultiplier:1 }),
+    Object.freeze({ militaryLevel:2, memberCountMultiplier:1, hpMultiplier:1, attackCountMultiplier:1 })
+  ])
+});
+
 export const V39_VOLCANO_DAMAGE_BALANCE = Object.freeze({
   // 暫定値。施設.jsonへ最大HP列を追加した場合はデータ参照へ置き換える。
   // 施設1件の最大耐久値。単位はHP。

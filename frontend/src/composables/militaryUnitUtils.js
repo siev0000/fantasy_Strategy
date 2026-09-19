@@ -1,4 +1,5 @@
 import { cityBaseData } from "../lib/game-data-registry.js";
+import { V39_MILITARY_UNIT_LEVEL_BALANCE } from "../lib/v39-gameplay-balance.js";
 
 export const UNIT_CREATE_MODE_KEYS = {
   NORMAL: "normal",
@@ -63,13 +64,12 @@ if (missingUnitCreateModes.length) {
 }
 
 const MILITARY_UNIT_LEVEL_PROFILE_DEFS = Object.freeze(
-  cityBaseData
-    .filter(row => nonEmptyText(row?.分類) === "軍隊Lv補正")
+  (V39_MILITARY_UNIT_LEVEL_BALANCE.armyProfiles || [])
     .map(row => Object.freeze({
-      militaryLevel:Math.max(1, Math.floor(toSafeNumber(row?.データ分類, 1))),
-      populationCost:Math.max(1, Math.floor(toSafeNumber(row?.人口消費, 1))),
-      hpMultiplier:Math.max(1, toSafeNumber(row?.HP倍率, 1)),
-      attackCount:Math.max(1, Math.floor(toSafeNumber(row?.攻撃回数, 1)))
+      militaryLevel:Math.max(1, Math.floor(toSafeNumber(row?.militaryLevel, 1))),
+      memberCountMultiplier:Math.max(0, toSafeNumber(row?.memberCountMultiplier, 1)),
+      hpMultiplier:Math.max(0, toSafeNumber(row?.hpMultiplier, 1)),
+      attackCountMultiplier:Math.max(0, toSafeNumber(row?.attackCountMultiplier, 1))
     }))
     .sort((a, b) => a.militaryLevel - b.militaryLevel)
 );
@@ -79,13 +79,6 @@ const eliteArmyRequiredMilitaryLevel = Math.max(
   Math.floor(toSafeNumber(MILITARY_UNIT_MODE_DEFS[UNIT_CREATE_MODE_KEYS.ELITE_ARMY]?.requiredMilitaryLevel, 1))
 );
 const standardArmyMaxProfileLevel = Math.max(1, eliteArmyRequiredMilitaryLevel - 1);
-const requiredArmyProfileLevels = Array.from({ length: standardArmyMaxProfileLevel }, (_, index) => index + 1);
-const definedArmyProfileLevels = new Set(MILITARY_UNIT_LEVEL_PROFILE_DEFS.map(row => row.militaryLevel));
-const missingArmyProfileLevels = requiredArmyProfileLevels.filter(level => !definedArmyProfileLevels.has(level));
-if (missingArmyProfileLevels.length) {
-  throw new Error(`[ゲームデータ] 都市基本データ.json: 軍隊Lv補正がありません (Lv${missingArmyProfileLevels.join("、Lv")})`);
-}
-
 function resolveMilitaryUnitLevelProfile(militaryLevel = 1) {
   const requested = Math.max(1, Math.floor(toSafeNumber(militaryLevel, 1)));
   const cappedLevel = Math.min(requested, standardArmyMaxProfileLevel);
@@ -105,10 +98,10 @@ function applyMilitaryLevelProfile(modeDef, militaryLevel = 1) {
     return {
       ...base,
       formationMilitaryLevel: profile.militaryLevel,
-      memberCount: profile.populationCost,
-      populationCost: profile.populationCost,
-      hpMultiplier: profile.hpMultiplier,
-      attackCount: profile.attackCount
+      memberCount:Math.max(1, Math.round(base.populationCost * profile.memberCountMultiplier)),
+      populationCost:Math.max(1, Math.round(base.populationCost * profile.memberCountMultiplier)),
+      hpMultiplier:Math.max(1, base.hpMultiplier * profile.hpMultiplier),
+      attackCount:Math.max(1, Math.round(base.attackCount * profile.attackCountMultiplier))
     };
   }
   if (base.mode === UNIT_CREATE_MODE_KEYS.ELITE_ARMY) {
