@@ -338,13 +338,6 @@ function renderDetail() {
     const el = document.getElementById(id);
     if (el) el.textContent = String(value);
   });
-  const guard = Math.max(0, Math.floor(num(unit?.guard, 0)));
-  const guardChip = document.getElementById("detailGuard");
-  if (guardChip) {
-    guardChip.hidden = guard <= 0;
-    guardChip.textContent = guard > 0 ? `ガード ${guard}` : "";
-  }
-
   const prof = document.getElementById("detailProficiencyList");
   if (prof) {
     const rows = skillEntries(unit);
