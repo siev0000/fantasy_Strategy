@@ -1,5 +1,24 @@
 const DEFAULT_RESOURCE_ICON = Object.freeze({ glyph:"●︎", color:"#cbd5e1", kind:"symbol" });
 
+const SPECIAL_RESOURCE_ICON_CANDIDATES = Object.freeze({
+  キノコ:Object.freeze({ glyph:"🍄", kind:"emoji" }),
+  魔力キノコ:Object.freeze({ glyph:"🍄", kind:"emoji" }),
+  リンゴ:Object.freeze({ glyph:"🍎", kind:"emoji" }),
+  ブドウ:Object.freeze({ glyph:"🍇", kind:"emoji" }),
+  バナナ:Object.freeze({ glyph:"🍌", kind:"emoji" }),
+  キウイ:Object.freeze({ glyph:"🥝", kind:"emoji" }),
+  ベリー:Object.freeze({ glyph:"🫐", kind:"emoji" }),
+  ココナッツ:Object.freeze({ glyph:"🥥", kind:"emoji" }),
+  蜂の巣:Object.freeze({ glyph:"🐝", kind:"emoji" }),
+  蜂蜜:Object.freeze({ glyph:"🍯", kind:"emoji" }),
+  香辛料:Object.freeze({ glyph:"🌶️", kind:"emoji" }),
+  塩:Object.freeze({ glyph:"🧂", kind:"emoji" }),
+  薬草:Object.freeze({ glyph:"🌿", kind:"emoji" }),
+  魔力結晶:Object.freeze({ glyph:"🔮", kind:"emoji" }),
+  真珠:Object.freeze({ glyph:"🦪", kind:"emoji" }),
+  火薬原料:Object.freeze({ glyph:"🧨", kind:"emoji" })
+});
+
 const RESOURCE_ICON_DEFS = Object.freeze({
   食料:Object.freeze({ glyph:"🌾", color:"", kind:"emoji" }),
   穀物:Object.freeze({ glyph:"🌾", color:"", kind:"emoji" }),
@@ -39,4 +58,7 @@ export function resolveV39ResourceIconKind(name) {
   return resolveV39ResourceIcon(name).kind;
 }
 
-export { RESOURCE_ICON_DEFS as V39_RESOURCE_ICON_DEFS };
+export {
+  RESOURCE_ICON_DEFS as V39_RESOURCE_ICON_DEFS,
+  SPECIAL_RESOURCE_ICON_CANDIDATES as V39_SPECIAL_RESOURCE_ICON_CANDIDATES
+};
