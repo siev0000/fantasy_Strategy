@@ -5,6 +5,32 @@ const RESEARCH_TARGET_ORDER = [...new Set(researchDbRaw
   .filter(target => target && target !== "技術対象"))];
 export const RESEARCH_CATEGORY_ORDER = Object.freeze(RESEARCH_TARGET_ORDER.map(target => `${target}Lv`));
 
+const RESEARCH_CATEGORY_VISUAL_PRESETS = Object.freeze({
+  鍛冶:Object.freeze({ icon:"⚒", accent:"#d9b56b" }),
+  魔法:Object.freeze({ icon:"✦", accent:"#a980de" }),
+  信仰:Object.freeze({ icon:"✚", accent:"#e9de8b" }),
+  軍事:Object.freeze({ icon:"⚔", accent:"#cf705e" }),
+  経済:Object.freeze({ icon:"◆", accent:"#79c88f" })
+});
+const DEFAULT_RESEARCH_CATEGORY_VISUAL = Object.freeze({ icon:"◆", accent:"#70b7c6" });
+
+export const RESEARCH_CATEGORY_META = Object.freeze(Object.fromEntries(
+  RESEARCH_CATEGORY_ORDER.map(categoryKey => {
+    const label = String(categoryKey || "研究").replace(/Lv$/, "");
+    const visual = RESEARCH_CATEGORY_VISUAL_PRESETS[label] || DEFAULT_RESEARCH_CATEGORY_VISUAL;
+    return [categoryKey, Object.freeze({ label, icon:visual.icon, accent:visual.accent })];
+  })
+));
+
+export function getResearchCategoryMeta(categoryKey) {
+  const key = String(categoryKey || "").trim();
+  return RESEARCH_CATEGORY_META[key] || Object.freeze({
+    label:String(key || "研究").replace(/Lv$/, ""),
+    icon:DEFAULT_RESEARCH_CATEGORY_VISUAL.icon,
+    accent:DEFAULT_RESEARCH_CATEGORY_VISUAL.accent
+  });
+}
+
 const RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP = new Map();
 const RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT = [];
 for (const row of researchDbRaw) {
