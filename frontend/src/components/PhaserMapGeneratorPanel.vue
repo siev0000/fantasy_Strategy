@@ -13,6 +13,7 @@ import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
 import { resolveV39ResourceIcon } from "../lib/resource-icon-glyphs.js";
+import { applyV39TileTransformEffect, resolveV39TileTransformEffect, validateV39TileTransformEffect } from "../lib/v39-tile-transform.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import {
   resolveV39UnitExpNeed,
@@ -1316,6 +1317,20 @@ function resolveVillageTerritoryRecoveryBonus(village, recoveryMapOverride = nul
     return Math.max(0, roundTo1(summary.recovery / summary.tileCount));
   }
   return 0;
+}
+
+function resolveVillageTerrainRecoveryBonus(village, data = currentData.value) {
+  if (!data?.grid) return 0;
+  const managedKeys = resolveVillageManagedTileKeys(village);
+  let total = 0;
+  for (const key of managedKeys) {
+    const point = parseCoordKey(key);
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+    const terrainName = resolveTileTerrainForYield(data, point.x, point.y);
+    const row = terrainYieldMap.value.get(terrainName) || null;
+    total += Math.max(0, toSafeNumber(row?.回復, 0));
+  }
+  return Math.max(0, roundTo1(total));
 }
 
 function resolveVillageMaintenancePenalty(metrics) {
@@ -12334,6 +12349,7 @@ function applyVillageTileRecoveryTurn(village, units = unitList.value) {
   const campMap = normalizeVillageTileCampMap(village?.[VILLAGE_TILE_CAMP_MAP_KEY]);
   const managedTileKeys = resolveVillageManagedTileKeys(village);
   const territoryRecoveryBonus = resolveVillageTerritoryRecoveryBonus(village, recoveryMap);
+  const terrainRecoveryBonus = resolveVillageTerrainRecoveryBonus(village, currentData.value);
   let healedTotal = 0;
   let healedUnits = 0;
   const nextUnits = safeUnits.map(unit => {
@@ -12353,7 +12369,7 @@ function applyVillageTileRecoveryTurn(village, units = unitList.value) {
     const canApplyTerritoryRecovery = hasValidTile
       && (isOwnTerritoryTile(x, y) || managedOwnTile || onVillageCenter);
     const baseRecovery = canApplyTerritoryRecovery
-      ? territoryRecoveryBonus
+      ? (territoryRecoveryBonus + terrainRecoveryBonus)
       : 0;
     const hasCamp = !!(tileKey && campMap[tileKey]);
     const campRecovery = hasCamp ? regenerationRecovery : 0;
@@ -21620,10 +21636,18 @@ function handleTileAttackSelectionClick(picked) {
     .find(row => nonEmptyText(row?.name) === selectedSkillName) || null;
   // 装備攻撃は同名のマスタースキルではなく、画面で選んだ生成済み行のAP消費を使う。
   const selectedAttackSkillRow = selectedPanelRow?.skillRowRef || selectedSkillRow;
+  const tileTransformSpec = resolveV39TileTransformEffect(selectedAttackSkillRow, terrainYieldDb);
   const actionPointCost = resolveSkillActionPointCost(selectedAttackSkillRow);
   const actionPoint = resolveUnitActionPoint(leader);
   if (actionPointCost > actionPoint) {
     updateUnitInfoText(`AP不足: ${selectedSkillName} はAP${actionPointCost}必要です。残りAP${actionPoint}`);
+    return true;
+  }
+  const tileTransformCheck = tileTransformSpec
+    ? validateV39TileTransformEffect(currentData.value, picked.x, picked.y, tileTransformSpec, terrainYieldDb)
+    : null;
+  if (tileTransformCheck && !tileTransformCheck.ok) {
+    updateUnitInfoText(`地形変換不可: ${tileTransformCheck.reason || "対象を変換できません。"}`);
     return true;
   }
   const activeFactionId = nonEmptyText(activeTestPlayerId.value) || DEFAULT_TEST_PLAYER_ID;
@@ -21660,6 +21684,28 @@ function handleTileAttackSelectionClick(picked) {
   // ダメージの有無にかかわらず、攻撃の発動確定時にAPを消費する。
   if (!spendUnitActionPoint(leader.id, actionPointCost)) {
     updateUnitInfoText(`AP不足: ${selectedSkillName} はAP${actionPointCost}必要です。残りAP${resolveUnitActionPoint(leader)}`);
+    return true;
+  }
+  if (tileTransformSpec) {
+    const transformResult = applyV39TileTransformEffect(
+      currentData.value,
+      picked.x,
+      picked.y,
+      tileTransformSpec,
+      terrainYieldDb
+    );
+    if (!transformResult.ok) {
+      updateUnitInfoText(`地形変換失敗: ${transformResult.reason || "変換できませんでした。"}`);
+      return true;
+    }
+    cancelTileAttackSelectionMode(true);
+    kickOffBgm();
+    audio.playSe("confirm");
+    const summary = `${transformResult.summary} / 技:${selectedSkillName} / AP-${actionPointCost} 残${Math.max(0, actionPoint - actionPointCost)}`;
+    updateUnitInfoText(summary);
+    pushNationLog(summary);
+    emitCharacterStateChange();
+    requestMapRender();
     return true;
   }
   const damageResult = applySkillDamageToFactionUnits({
