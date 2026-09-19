@@ -121,7 +121,7 @@ function installStyles() {
   style.textContent = `
     .playfield{--v39-side-log-width:clamp(170px,21vw,250px)}
     #v39-side-log{
-      position:absolute;right:max(8px,var(--safe-r,0px));top:56px;bottom:52px;z-index:29;
+      position:absolute;right:max(8px,var(--safe-r,0px));top:6px;bottom:52px;z-index:29;
       width:var(--v39-side-log-width);min-width:0;
       display:grid;grid-template-rows:auto minmax(0,1fr);
       border:1px solid rgba(108,139,148,.62);border-radius:9px;
@@ -162,7 +162,7 @@ function installStyles() {
     .v39-side-log-empty{padding:16px 8px;color:#82969b;font-size:10px;text-align:center}
     @media(max-width:700px){
       .playfield{--v39-side-log-width:min(36vw,190px)}
-      #v39-side-log{right:max(5px,var(--safe-r,0px));top:49px;bottom:48px}
+      #v39-side-log{right:max(5px,var(--safe-r,0px));top:5px;bottom:48px}
       .v39-side-log-entry{padding:5px 6px}.v39-side-log-entry p{font-size:9px}.v39-side-log-entry-head b{font-size:9px}
     }
   `;
