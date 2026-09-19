@@ -123,8 +123,12 @@ function installUi() {
   const style = document.createElement("style");
   style.id = "v39-turn-system-style";
   style.textContent = `
+    .topbar{
+      position:relative!important;
+      padding-right:56px!important;
+    }
     #v39-turn-controls{
-      position:relative;z-index:31;flex:0 0 42px;
+      position:absolute;right:6px;top:5px;z-index:34;
       width:42px;height:42px;overflow:visible
     }
     #v39-turn-toggle{
@@ -162,7 +166,8 @@ function installUi() {
     #v39-turn-banner.show{transform:translate(-50%,0);opacity:1}
     #v39-turn-banner.persistent{border-color:#d8b65b;color:#ffe69a}
     @media(max-width:700px){
-      #v39-turn-controls{flex-basis:38px;width:38px;height:38px}
+      .topbar{padding-right:50px!important}
+      #v39-turn-controls{right:5px;top:4px;width:38px;height:38px}
       #v39-turn-toggle{width:38px;height:38px;min-width:38px;min-height:38px}
       #v39-turn-label{font-size:10px}
       #v39-turn-menu{right:44px;width:140px;min-height:38px;padding:3px}
