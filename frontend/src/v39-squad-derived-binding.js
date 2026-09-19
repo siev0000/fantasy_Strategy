@@ -1,4 +1,6 @@
 import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
+import { resolveV39BaseMoveApCost } from "./lib/v39-gameplay-balance.js";
+import { resolveV39SquadMovementGroup } from "./lib/v39-squad-movement-rules.js";
 import { getIconSrcByName } from "./lib/icon-library.js";
 import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "./lib/v39-combat-engine.js";
 
@@ -313,9 +315,9 @@ function renderDetail() {
   if (!unit) {
     if (pane) pane.dataset.empty = "1";
     const prof = document.getElementById("detailProficiencyList");
-    const tech = document.getElementById("detailTechniqueList");
+    const tech = document.getElementById("detailTechniqueRows");
     if (prof) prof.innerHTML = '<div class="squad-empty">技能データなし</div>';
-    if (tech) tech.innerHTML = '<div class="squad-empty">技データなし</div>';
+    if (tech) tech.innerHTML = '<div class="squad-empty">行動データなし</div>';
     notifyDetailRendered();
     return;
   }
@@ -338,6 +340,25 @@ function renderDetail() {
     const el = document.getElementById(id);
     if (el) el.textContent = String(value);
   });
+
+  const movementGroup = resolveV39SquadMovementGroup(getFactionState() || {}, selectedUnitId);
+  const moveValue = movementGroup?.ok ? Math.max(1, num(movementGroup.movement, 1)) : Math.max(1, num(movementValue(unit), 1));
+  const moveBaseAp = resolveV39BaseMoveApCost(moveValue);
+  const moveApEl = document.getElementById("mobileMoveAp");
+  const moveMetaEl = document.getElementById("mobileMoveMeta");
+  const moveRemainEl = document.getElementById("mobileMoveRemain");
+  if (moveApEl) {
+    moveApEl.textContent = `AP ${moveBaseAp}/マス`;
+    moveApEl.hidden = false;
+  }
+  if (moveMetaEl) {
+    moveMetaEl.textContent = `移動 ${moveValue}`;
+    moveMetaEl.hidden = false;
+  }
+  if (moveRemainEl) {
+    moveRemainEl.textContent = movementGroup?.ok ? `残 ${movementGroup.moveAp}` : "";
+    moveRemainEl.hidden = !movementGroup?.ok;
+  }
   const prof = document.getElementById("detailProficiencyList");
   if (prof) {
     const rows = skillEntries(unit);
@@ -346,7 +367,7 @@ function renderDetail() {
       : '<div class="squad-empty">技能データなし</div>';
   }
 
-  const tech = document.getElementById("detailTechniqueList");
+  const tech = document.getElementById("detailTechniqueRows");
   if (tech) {
     const rows = techniqueEntries(unit);
     const weaponAttackRows = resolveAttackRows(unit).filter(row => row?.装備攻撃 === true);
@@ -405,6 +426,7 @@ function renderDetail() {
       ? activeHtml + passiveHtml
       : '<div class="squad-empty">行動データなし</div>';
   }
+  setExpandedTechnique(expandedTechniqueName);
   notifyDetailRendered(unit);
 }
 
