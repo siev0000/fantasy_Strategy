@@ -37,7 +37,7 @@ function itemDetail(item) {
   const resistances = Object.entries(item.resistanceBonus || {}).filter(([, value]) => number(value) !== 0)
     .map(([key, value]) => `<span>${escapeHtml(key)} ${number(value) > 0 ? "+" : ""}${number(value)}</span>`).join("");
   return `<h3>${escapeHtml(item.name)} <small>[${escapeHtml(item.qualityLabel)}]</small></h3>
-    <div class="v39-equip-stats">${stat("威力", item.power)}${stat("ガード", item.guard)}${stat("攻撃AP", item.attackAp)}${stat("魔法AP", item.magicAp)}${stat("射撃", item.shot)}${stat("射程", item.range)}${stat("Cr率", item.criticalRate, "%")}${stat("Cr威力", item.criticalPower, "%")}${stat("ペナルティ", item.penalty)}</div>
+    <div class="v39-equip-stats">${stat("威力", item.power)}${stat("魔力", item.statusBonus?.魔力)}${stat("ガード", item.guard)}${stat("攻撃AP", item.attackAp)}${stat("魔法AP", item.magicAp)}${stat("射撃", item.shot)}${stat("射程", item.range)}${stat("Cr率", item.criticalRate, "%")}${stat("Cr威力", item.criticalPower, "%")}${stat("ペナルティ", item.penalty)}</div>
     ${resistances ? `<h4>耐性</h4><div class="v39-equip-chips">${resistances}</div>` : ""}
     ${(item.enchantments || []).length ? `<h4>付与</h4><div class="v39-equip-chips">${item.enchantments.map(value => `<span>${escapeHtml(value)}</span>`).join("")}</div>` : ""}
     ${traits ? `<h4>特性</h4><div class="v39-equip-chips">${traits}</div>` : ""}`;
