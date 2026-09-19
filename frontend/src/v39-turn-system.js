@@ -124,7 +124,7 @@ function installUi() {
   style.textContent = `
     #v39-turn-controls{
       position:absolute;right:max(8px,var(--safe-r,0px));top:8px;z-index:31;
-      width:var(--v39-side-log-width,clamp(190px,24vw,280px));min-width:0;
+      width:var(--v39-side-log-width,clamp(170px,21vw,250px));min-width:0;
       display:grid;grid-template-columns:auto minmax(0,.8fr) minmax(0,1.2fr);align-items:center;gap:4px;
       padding:4px;border:1px solid rgba(82,100,107,.76);border-radius:8px;
       background:rgba(8,17,21,.72);box-shadow:0 3px 12px rgba(0,0,0,.22);backdrop-filter:blur(3px)
@@ -138,7 +138,7 @@ function installUi() {
     #v39-turn-banner.show{transform:translate(-50%,0);opacity:1}
     #v39-turn-banner.persistent{border-color:#d8b65b;color:#ffe69a}
     @media(max-width:700px){
-      #v39-turn-controls{right:max(5px,var(--safe-r,0px));top:6px;width:min(42vw,220px);grid-template-columns:auto minmax(0,.75fr) minmax(0,1.25fr)}
+      #v39-turn-controls{right:max(5px,var(--safe-r,0px));top:6px;width:var(--v39-side-log-width,min(36vw,190px));grid-template-columns:auto minmax(0,.75fr) minmax(0,1.25fr)}
       #v39-turn-controls button,#v39-turn-label{min-height:28px;padding:3px 5px;font-size:10px}
       #v39-turn-label{min-width:34px}
       #v39-turn-banner{top:6px;max-width:72%;font-size:14px;padding:6px 12px}
