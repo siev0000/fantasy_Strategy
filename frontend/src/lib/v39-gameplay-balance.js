@@ -12,7 +12,7 @@ export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
 
 export function resolveV39BaseMoveApCost(movement = 1) {
   const moveValue = Math.max(1, Math.floor(Number(movement) || 1));
-  return Math.max(0, Math.ceil(V39_SQUAD_MOVEMENT_BALANCE.moveApMax / moveValue));
+  return V39_SQUAD_MOVEMENT_BALANCE.moveApMax / moveValue;
 }
 
 // 軍事Lvによる通常軍隊の編成補正。基本値は都市基本データ.jsonの分類=ユニット作成、army行を使う。
