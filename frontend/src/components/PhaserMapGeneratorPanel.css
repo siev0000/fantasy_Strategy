@@ -253,6 +253,102 @@
   overflow: visible;
 }
 
+.field-header-turn-control {
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  z-index: 35;
+  width: 42px;
+  height: 42px;
+}
+
+.field-header-turn-toggle {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(121, 161, 171, 0.9);
+  border-radius: 50%;
+  color: #a9e8bd;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(16, 32, 38, 0.96) 0 57%, rgba(9, 19, 23, 0.9) 59% 100%);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.field-header-turn-toggle::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(116, 199, 214, 0.58);
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(from -2deg, rgba(154, 211, 218, 0.48) 0 1deg, transparent 1deg 30deg);
+  pointer-events: none;
+}
+
+.field-header-turn-toggle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 2px;
+  height: 5px;
+  border-radius: 999px;
+  background: #d9c879;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.field-header-turn-toggle span {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.field-header-turn-control.open .field-header-turn-toggle {
+  border-color: #d9c879;
+  box-shadow: 0 0 0 2px rgba(217, 200, 121, 0.16), 0 3px 12px rgba(0, 0, 0, 0.3);
+}
+
+.field-header-turn-menu {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  width: 112px;
+  padding: 4px;
+  border: 1px solid rgba(82, 100, 107, 0.78);
+  border-radius: 8px;
+  background: rgba(8, 17, 21, 0.86);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(4px);
+}
+
+.field-header-turn-end {
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid #6b8e72;
+  border-radius: 6px;
+  color: #eaf4eb;
+  background: rgba(25, 48, 36, 0.96);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.field-header-turn-end:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .sidebar-resource-menu.header-resource-menu {
   width: auto;
   display: flex;
