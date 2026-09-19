@@ -58,21 +58,44 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         gap:2px!important;padding:0!important
       }
       #footSquad .squad-detail-pane{
-        padding:4px 2px 4px 4px!important
+        display:grid!important;grid-template-rows:auto auto minmax(0,1fr)!important;
+        gap:0!important;padding:3px 2px 3px 4px!important;overflow:hidden!important
       }
-      #footSquad .squad-detail-pane>*+*{margin-top:2px!important}
-      #footSquad .squad-detail-minihead{gap:2px!important}
+      #footSquad .squad-detail-pane>*+*{margin-top:0!important}
+      #footSquad .squad-detail-minihead{
+        position:relative!important;z-index:4!important;display:flex!important;align-items:center!important;
+        flex-wrap:wrap!important;gap:2px!important;padding:0 0 2px!important;background:#111b20!important
+      }
       #footSquad .squad-detail-chip{min-height:20px!important;padding:2px 5px!important}
-      #footSquad .squad-detail-section{gap:0!important}
-      #footSquad .squad-detail-collapsible{display:block!important;min-width:0}
-      #footSquad .squad-detail-toggle{
-        list-style:none;display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;
+      #footSquad .squad-detail-tabs{
+        position:relative!important;z-index:4!important;display:grid!important;grid-template-columns:1fr 1fr!important;
+        gap:0!important;padding:0!important;border:1px solid #394b52!important;border-radius:6px 6px 0 0!important;
+        overflow:hidden!important;background:#0d171b!important
       }
-      #footSquad .squad-detail-toggle::-webkit-details-marker{display:none}
-      #footSquad .squad-detail-toggle::before{
-        content:"▷";display:inline-block;flex:0 0 auto;width:12px;color:#85d7e4;font-size:10px;line-height:1
+      #footSquad .squad-detail-tab{
+        min-width:0!important;min-height:28px!important;border:0!important;border-right:1px solid #394b52!important;
+        background:#121d22!important;color:#93a5a9!important;font:inherit!important;font-size:9px!important;font-weight:800!important;
+        padding:3px 4px!important;cursor:pointer!important
       }
-      #footSquad .squad-detail-collapsible[open]>.squad-detail-toggle::before{content:"▽"}
+      #footSquad .squad-detail-tab:last-child{border-right:0!important}
+      #footSquad .squad-detail-tab.active{
+        background:#193038!important;color:#eff8f6!important;box-shadow:inset 0 -2px 0 #71cbd8!important
+      }
+      #footSquad .squad-detail-tab-content{
+        min-width:0!important;min-height:0!important;height:100%!important;overflow:hidden!important;
+        border:1px solid #394b52!important;border-top:0!important;border-radius:0 0 6px 6px!important;background:#10191d!important
+      }
+      #footSquad .squad-detail-tab-panel{
+        width:100%!important;height:100%!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;
+        padding:2px!important
+      }
+      #footSquad .squad-detail-tab-panel[hidden]{display:none!important}
+      #footSquad .squad-detail-section{display:block!important;min-width:0!important}
+      #footSquad .squad-detail-section+ .squad-detail-section{margin-top:4px!important}
+      #footSquad .squad-detail-section-title{
+        position:static!important;padding:2px 1px!important;background:transparent!important;font-size:9px!important;
+        color:#91a1a5!important;font-weight:800!important
+      }
       #footSquad .squad-detail-section-body{min-width:0;margin-top:1px}
       #footSquad .squad-detail-stats{gap:2px!important}
       #footSquad .detail-stat{min-height:42px!important;padding:4px 3px!important;gap:1px!important}
@@ -216,16 +239,24 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
               <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span><span class="squad-detail-chip" id="detailGuard" hidden></span></div>
-              <details class="squad-detail-section squad-detail-collapsible" open><summary class="squad-detail-section-title squad-detail-toggle">各種ステータス</summary><div class="squad-detail-section-body"><div class="squad-detail-stats">
-                ${[["攻撃","detailAtk"],["防御","detailDef"],["魔攻","detailMatk"],["魔防","detailMdef"],["速さ","detailSpd"],["命中","detailHit"],["SIZ","detailSiz"],["移動","detailMov"]].map(([label,id]) => `<div class="detail-stat"><span>${label}</span><b id="${id}"></b></div>`).join("")}
-              </div></div></details>
-              <details class="squad-detail-section squad-detail-collapsible" open><summary class="squad-detail-section-title squad-detail-toggle">技能</summary><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></details>
-              <details class="squad-detail-section squad-detail-collapsible" open><summary class="squad-detail-section-title squad-detail-toggle">技</summary><div class="squad-detail-section-body">
-                <section id="footAction" class="mobile-battle-panel v39-detail-action-panel" aria-label="選択キャラクターの行動">
-                  <div class="battle-primary-actions">${data.actionButtons.map(item => `<button class="battle-main ${item.className}" id="${item.id}">${item.label}</button>`).join("")}</div>
+              <div class="squad-detail-tabs" role="tablist" aria-label="キャラクター詳細">
+                <button type="button" class="squad-detail-tab active" data-squad-detail-tab="status" role="tab" aria-selected="true">ステータス技能</button>
+                <button type="button" class="squad-detail-tab" data-squad-detail-tab="action" role="tab" aria-selected="false">行動</button>
+              </div>
+              <div class="squad-detail-tab-content">
+                <section class="squad-detail-tab-panel" data-squad-detail-panel="status" role="tabpanel" aria-hidden="false">
+                  <div class="squad-detail-section"><div class="squad-detail-section-title">ステータス</div><div class="squad-detail-section-body"><div class="squad-detail-stats">
+                    ${[["攻撃","detailAtk"],["防御","detailDef"],["魔攻","detailMatk"],["魔防","detailMdef"],["速さ","detailSpd"],["命中","detailHit"],["SIZ","detailSiz"],["移動","detailMov"]].map(([label,id]) => `<div class="detail-stat"><span>${label}</span><b id="${id}"></b></div>`).join("")}
+                  </div></div></div>
+                  <div class="squad-detail-section"><div class="squad-detail-section-title">技能</div><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></div>
                 </section>
-                <div class="technique-list" id="detailTechniqueList"></div>
-              </div></details>
+                <section class="squad-detail-tab-panel" data-squad-detail-panel="action" role="tabpanel" hidden aria-hidden="true">
+                  <section id="footAction" class="mobile-battle-panel v39-detail-action-panel" aria-label="選択キャラクターの行動">
+                    <div class="battle-primary-actions">${data.actionButtons.map(item => `<button class="battle-main ${item.className}" id="${item.id}">${item.label}</button>`).join("")}</div>
+                  </section>
+                  <div class="technique-list" id="detailTechniqueList"></div>
+                </section>
+              </div>
             </section>
           </div>
         </section>
@@ -252,6 +283,20 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
     footer.dataset.v39Rendered = "true";
   }
 
+  function activateSquadDetailTab(tabKey) {
+    const normalized = tabKey === "action" ? "action" : "status";
+    document.querySelectorAll("[data-squad-detail-tab]").forEach(button => {
+      const active = button.dataset.squadDetailTab === normalized;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    document.querySelectorAll("[data-squad-detail-panel]").forEach(panel => {
+      const active = panel.dataset.squadDetailPanel === normalized;
+      panel.hidden = !active;
+      panel.setAttribute("aria-hidden", String(!active));
+    });
+  }
+
   function activateFooterTab(tabKey) {
     const normalized = data.tabs.some(tab => tab.key === tabKey) ? tabKey : data.tabs[0].key;
     document.querySelectorAll("[data-foot]").forEach(button => button.classList.toggle("active", button.dataset.foot === normalized));
@@ -271,7 +316,13 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
   installOperationStyles();
   renderFooter(footer);
   footer.addEventListener("click", event => {
-    const button = event.target instanceof Element ? event.target.closest("[data-foot]") : null;
+    const target = event.target instanceof Element ? event.target : null;
+    const detailTab = target?.closest("[data-squad-detail-tab]");
+    if (detailTab) {
+      activateSquadDetailTab(detailTab.dataset.squadDetailTab || "status");
+      return;
+    }
+    const button = target?.closest("[data-foot]");
     if (!button) return;
     activateFooterTab(button.dataset.foot || "squad");
   });
