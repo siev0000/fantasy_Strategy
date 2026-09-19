@@ -159,12 +159,21 @@ function drawRivers(scene, riverData) {
 }
 
 function drawSpecialTerrain(scene, data) {
-  const labels = { "沼地":"沼", "峡谷":"峡", "洞窟":"洞" };
+  for (const child of [...(scene?.children?.list || [])]) {
+    if (child?.name === "v39-special-terrain-item") child.destroy();
+  }
+  const labels = {
+    "沼地":"沼",
+    "湿地":"湿",
+    "薬草の群生地":"草",
+    "峡谷":"峡",
+    "洞窟":"洞"
+  };
   for (let y = 0; y < data.h; y += 1) for (let x = 0; x < data.w; x += 1) {
     const label = labels[String(data.specialMap?.[y]?.[x] || "")];
     if (!label) continue;
-    const c = tileCenter(x, y);
-    scene.add.text(c.x, c.y, label, { fontSize:"11px", fontStyle:"bold", color:"#f6f0d2", stroke:"#071014", strokeThickness:3 })
+    const center = tileCenter(x, y);
+    scene.add.text(center.x, center.y, label, { fontSize:"11px", fontStyle:"bold", color:"#f6f0d2", stroke:"#071014", strokeThickness:3 })
       .setOrigin(0.5).setDepth(4).setName("v39-special-terrain-item");
   }
 }
@@ -363,7 +372,21 @@ export function updateV39FieldData(nextData, options = {}) {
   const scene = game?.scene?.getScenes?.(true)?.[0];
   if (scene) {
     drawTerrain(scene, currentData, scene.v39TerrainGraphics);
+    drawSpecialTerrain(scene, currentData);
     drawLava(scene, currentData, scene.v39LavaGraphics);
+    const selected = scene.v39SelectedTile;
+    if (selected && Number.isFinite(Number(selected.x)) && Number.isFinite(Number(selected.y))) {
+      const x = Math.floor(Number(selected.x));
+      const y = Math.floor(Number(selected.y));
+      scene.v39SelectedTile = {
+        ...selected,
+        terrain:String(currentData.grid?.[y]?.[x] || "海"),
+        height:Number(currentData.heightLevelMap?.[y]?.[x]) || 0,
+        special:String(currentData.specialMap?.[y]?.[x] || "")
+      };
+      const landTerrain = document.getElementById("landTerrain");
+      if (landTerrain) landTerrain.textContent = scene.v39SelectedTile.special || scene.v39SelectedTile.terrain;
+    }
   }
   if (options.silent !== true) {
     window.dispatchEvent(new CustomEvent("v39:field-data-updated", { detail:{ mapData:currentData, reason:options.reason || "update" } }));
