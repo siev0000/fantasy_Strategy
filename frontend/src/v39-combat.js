@@ -344,35 +344,38 @@ function unavailableAttackReason(skillName) {
 
 function renderActionPanel() {
   const unit = selectedUnit();
-  const strip = document.querySelector("#footAction .battle-skill-strip");
-  if (!(strip instanceof HTMLElement)) return;
+  const list = document.getElementById("detailTechniqueList");
+  if (!(list instanceof HTMLElement)) return;
+
   const rows = resolveAttackRows(unit);
-  if (!rows.some((row) => text(row?.名前) === selectedSkillName)) selectedSkillName = text(rows[0]?.名前);
-  strip.innerHTML = rows.map((row, index) => {
-    const name = text(row?.名前, `攻撃${index + 1}`);
-    const ap = resolveAttackApCost(row);
+  const rowByName = new Map(rows.map(row => [text(row?.名前), row]).filter(([name]) => !!name));
+  const actionButtons = [...list.querySelectorAll("[data-v39-attack-name]")];
+  const visibleActionNames = actionButtons
+    .map(button => text(button?.dataset?.v39AttackName))
+    .filter(name => rowByName.has(name));
+
+  if (!rowByName.has(selectedSkillName)) {
+    selectedSkillName = visibleActionNames[0] || text(rows[0]?.名前);
+  }
+
+  for (const button of actionButtons) {
+    const name = text(button?.dataset?.v39AttackName);
+    const row = rowByName.get(name) || null;
     const timing = unitRuntimeState(activeFaction(), unit, row);
-    const disabled = currentAp(unit) < ap || text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0 || !!timing.pending || timing.cooldownRemainingTurns > 0;
-    const power = resolveAttackPower(row, terrainAdjusted(unit));
-    const healing = resolveSkillHealing(row, terrainAdjusted(unit));
-    const revival = resolveV39RevivalSpec(row);
-    const guard = resolveSkillGuard(row, terrainAdjusted(unit));
-    const range = resolveAttackRange(row, unit);
-    const timingText = timing.pending ? " / 発動待機中" : timing.cooldownRemainingTurns > 0 ? ` / CT${timing.cooldownRemainingTurns}ターン` : "";
-    const selected = name === selectedSkillName;
-    const stateText = disabled ? " / 使用不可" : selected ? " / 選択中" : "";
-    const output = revival ? `蘇生 Lv-${revival.levelLoss}` : healing > 0 ? `回${healing}` : power > 0 ? `威${power}` : guard > 0 ? `ガ${guard}` : "威0";
-    return `<button class="battle-skill${selected ? " active" : ""}${disabled ? " unavailable" : ""}" data-v39-attack-name="${name.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}" aria-pressed="${selected}" ${disabled ? "aria-disabled=\"true\"" : ""}><b>${row?.装備攻撃 ? "⚔" : "◆"} ${name}</b><small>AP${ap} / ${output} / 射${range}${timingText}${stateText}</small></button>`;
-  }).join("") || '<div class="battle-skill-empty">使用できる行動Aがありません</div>';
-  const label = document.getElementById("mobileSelectedSkill");
-  if (label) label.textContent = selectedSkillName || "-";
-  const ap = document.getElementById("mobileBattleAp");
-  if (ap) ap.textContent = `${currentAp(unit)} / ${Math.max(1, integer(unit?.maxAp, 100))}`;
-  const use = document.getElementById("mobileSkillUse");
+    const disabled = !row
+      || currentAp(unit) < resolveAttackApCost(row)
+      || text(unit?.state) === "死亡"
+      || number(unit?.hp, unit?.currentHp) <= 0
+      || !!timing.pending
+      || timing.cooldownRemainingTurns > 0;
+    const selected = !!row && name === selectedSkillName;
+    button.classList.toggle("active", selected);
+    button.classList.toggle("unavailable", disabled);
+    button.setAttribute("aria-pressed", String(selected));
+    button.setAttribute("aria-disabled", String(disabled));
+  }
+
   document.getElementById("mobileBattleAttack")?.classList.toggle("active", !!attackSession);
-  const row = selectedAttackRow(unit);
-  const timing = unitRuntimeState(activeFaction(), unit, row);
-  if (use) use.disabled = !row || currentAp(unit) < resolveAttackApCost(row) || !!timing.pending || timing.cooldownRemainingTurns > 0;
 }
 
 function startAttack() {
@@ -955,41 +958,32 @@ function bindCapture(target, type, handler) {
 function installStyles() {
   const style = document.createElement("style");
   style.textContent = `
-    #footAction .battle-skill.unavailable{opacity:.36;filter:saturate(.35);cursor:not-allowed}
-    #footAction .battle-skill-empty{padding:12px;color:#9caaad}
-    #mobileSkillUse:disabled{opacity:.35;cursor:not-allowed}
+    #detailTechniqueList .action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed}
+    #detailTechniqueList .action-technique.active{border-color:#e7c466}
   `;
   document.head.appendChild(style);
 }
 
 function install() {
-  const strip = document.querySelector("#footAction .battle-skill-strip");
+  const techniqueList = document.getElementById("detailTechniqueList");
   const attackButton = document.getElementById("mobileBattleAttack");
-  const useButton = document.getElementById("mobileSkillUse");
-  if (!(strip instanceof HTMLElement) || !(attackButton instanceof HTMLElement) || !(useButton instanceof HTMLElement)) {
+  if (!(techniqueList instanceof HTMLElement) || !(attackButton instanceof HTMLElement)) {
     window.setTimeout(install, 50);
     return;
   }
   installStyles();
-  bindCapture(strip, "click", (event) => {
+  bindCapture(techniqueList, "click", (event) => {
     const button = event.target instanceof Element ? event.target.closest("[data-v39-attack-name]") : null;
     if (!button) return;
-    if (button.classList.contains("unavailable")) return showToast(unavailableAttackReason(button.dataset.v39AttackName));
+    if (button.classList.contains("unavailable")) {
+      return showToast(unavailableAttackReason(button.dataset.v39AttackName));
+    }
     selectedSkillName = text(button.dataset.v39AttackName);
     cancelAttack("skill-changed");
     renderActionPanel();
   });
-  bindCapture(strip, "dblclick", (event) => {
-    const button = event.target instanceof Element ? event.target.closest("[data-v39-attack-name]") : null;
-    if (!button) return;
-    if (button.classList.contains("unavailable")) return showToast(unavailableAttackReason(button.dataset.v39AttackName));
-    selectedSkillName = text(button.dataset.v39AttackName);
-    renderActionPanel();
-    startAttack();
-  });
   bindCapture(attackButton, "click", startAttack);
-  bindCapture(useButton, "click", startAttack);
-  window.addEventListener("v39:tile-selected", (event) => {
+window.addEventListener("v39:tile-selected", (event) => {
     if (attackSession) executeAttack(event.detail);
   });
   window.addEventListener("pointermove", (event) => {
@@ -1001,6 +995,7 @@ function install() {
     });
   }, true);
   window.addEventListener("v39:unit-selected", () => { cancelAttack("unit-changed"); renderActionPanel(); });
+  window.addEventListener("v39:squad-detail-rendered", renderActionPanel);
   window.addEventListener("v39:game-state-changed", (event) => {
     if (event?.detail?.reason === "active-player") cancelAttack("active-player-changed");
     renderActionPanel();
