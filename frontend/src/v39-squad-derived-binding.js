@@ -150,12 +150,7 @@ function techniqueDurationLabel(row, source) {
 }
 
 function techniqueDescription(row, source) {
-  const raw = text(row?.detail ?? source?.詳細 ?? source?.説明);
-  if (!raw) return "";
-  const duration = text(source?.効果時間 ?? row?.duration);
-  if (!duration) return raw;
-  const escaped = duration.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return raw.replace(new RegExp(`(?:効果時間|時間)\\s*[:：]\\s*${escaped}\\s*`, "i"), "").trim();
+  return text(source?.説明 ?? row?.description ?? source?.効果 ?? row?.effect);
 }
 
 function setExpandedTechnique(name = "") {
