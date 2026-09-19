@@ -50,7 +50,20 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       .v39-footer-icon-shortcut::after{content:attr(data-tooltip);position:absolute;z-index:80;top:calc(100% + 6px);left:0;min-width:max-content;padding:5px 7px;border:1px solid #70bcc8;border-radius:5px;background:#0a171b;color:#efffff;font-size:12px;font-weight:800;line-height:1.1;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s ease,transform .12s ease}
       .v39-footer-icon-shortcut:hover::after,.v39-footer-icon-shortcut:focus-visible::after,.v39-footer-icon-shortcut:active::after{opacity:1;transform:translateY(0)}
       #footSquad .squad-selector{flex:1;min-width:0}
-      .squad-content-split{grid-template-columns:minmax(0,2fr) minmax(0,3fr)!important}
+      .squad-content-split{
+        grid-template-columns:minmax(0,2fr) minmax(0,3fr)!important;
+        gap:0!important
+      }
+      #footSquad .squad-list-pane{
+        gap:2px!important;padding:0!important
+      }
+      #footSquad .squad-detail-pane{
+        padding:4px 2px 4px 4px!important
+      }
+      #footSquad .squad-detail-pane>*+*{margin-top:2px!important}
+      #footSquad .squad-detail-minihead{gap:2px!important}
+      #footSquad .squad-detail-chip{min-height:20px!important;padding:2px 5px!important}
+      #footSquad .squad-detail-section{gap:0!important}
       #footSquad .squad-detail-collapsible{display:block!important;min-width:0}
       #footSquad .squad-detail-toggle{
         list-style:none;display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;
@@ -60,13 +73,18 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         content:"▷";display:inline-block;flex:0 0 auto;width:12px;color:#85d7e4;font-size:10px;line-height:1
       }
       #footSquad .squad-detail-collapsible[open]>.squad-detail-toggle::before{content:"▽"}
-      #footSquad .squad-detail-section-body{min-width:0;margin-top:6px}
+      #footSquad .squad-detail-section-body{min-width:0;margin-top:1px}
+      #footSquad .squad-detail-stats{gap:2px!important}
+      #footSquad .detail-stat{min-height:42px!important;padding:4px 3px!important;gap:1px!important}
+      #footSquad .proficiency-grid{gap:2px!important}
+      #footSquad .proficiency-item{min-height:30px!important;padding:3px 4px!important;gap:2px!important}
+      #footSquad .technique-list{gap:2px!important}
       #footSquad #footAction.mobile-battle-panel{
         display:grid!important;grid-template-rows:auto!important;gap:0!important;
-        height:auto!important;min-height:0!important;margin:0 0 7px!important
+        height:auto!important;min-height:0!important;margin:0 0 2px!important
       }
       #footSquad #footAction .battle-primary-actions{
-        display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important
+        display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:2px!important
       }
       #footSquad #footAction .battle-main{
         min-width:0;min-height:34px;border:1px solid #45565d;border-radius:7px;background:#172329;
@@ -84,7 +102,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad .technique-summary{
         display:grid!important;grid-template-columns:28px minmax(0,1fr) auto!important;
         grid-template-areas:"icon name ap" "icon power range"!important;
-        align-items:center!important;gap:3px 7px!important;padding:7px 8px!important
+        align-items:center!important;gap:1px 4px!important;padding:4px 5px!important
       }
       #footSquad .technique-icon{
         grid-area:icon!important;width:28px!important;height:28px!important;display:grid!important;place-items:center!important;
@@ -129,13 +147,13 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         grid-area:range!important;margin:0!important;color:#aebfc2!important;font-size:8px!important;line-height:1.1!important;white-space:nowrap!important
       }
       #footSquad .technique-detail{
-        display:none!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:5px!important;
-        padding:7px 8px!important;border-top:1px solid #35464d!important;background:#0e171b!important
+        display:none!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:2px!important;
+        padding:3px 4px!important;border-top:1px solid #35464d!important;background:#0e171b!important
       }
       #footSquad .technique-card.is-expanded .technique-detail{display:grid!important}
       #footSquad .technique-detail-row{
         min-width:0!important;display:flex!important;align-items:center!important;justify-content:space-between!important;
-        gap:6px!important;padding:4px 5px!important;border:1px solid #314148!important;border-radius:6px!important;background:#121d21!important
+        gap:3px!important;padding:2px 3px!important;border:1px solid #314148!important;border-radius:4px!important;background:#121d21!important
       }
       #footSquad .technique-detail-row em{
         min-width:0!important;color:#8fa1a5!important;font-size:8px!important;font-style:normal!important;white-space:nowrap!important
@@ -143,6 +161,14 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad .technique-detail-row b{
         min-width:0!important;color:#eef4f2!important;font-size:8px!important;font-weight:700!important;text-align:right!important;
         white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important
+      }
+      #footSquad .technique-detail-description{
+        grid-column:1 / -1!important;display:grid!important;grid-template-columns:auto minmax(0,1fr)!important;
+        align-items:start!important;justify-content:stretch!important
+      }
+      #footSquad .technique-detail-description b{
+        text-align:left!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;
+        overflow-wrap:anywhere!important;word-break:break-word!important;line-height:1.35!important
       }
       #footSquad .technique-detail-empty{
         grid-column:1 / -1!important;color:#829397!important;font-size:8px!important;padding:3px 0!important
