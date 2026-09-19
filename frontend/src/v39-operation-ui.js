@@ -102,6 +102,10 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad .proficiency-grid{gap:2px!important}
       #footSquad .proficiency-item{min-height:30px!important;padding:3px 4px!important;gap:2px!important}
       #footSquad .technique-list{gap:2px!important}
+      #footSquad .technique-passive-divider{
+        margin:4px 0 1px!important;padding:2px 3px!important;border-top:1px solid #405159!important;
+        color:#8fa1a5!important;font-size:8px!important;font-weight:800!important;line-height:1.2!important
+      }
       #footSquad #footAction.mobile-battle-panel{
         display:grid!important;grid-template-rows:auto!important;gap:0!important;
         height:auto!important;min-height:0!important;margin:0 0 2px!important
