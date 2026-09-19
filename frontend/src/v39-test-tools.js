@@ -168,6 +168,16 @@ function changeTerritoryHp(action) {
   setStatus(`領土HP ${Math.round(hp)}/${Math.round(maxHp)}`);
 }
 
+function setSelectedSnowState(kind, enabled) {
+  const { tile } = context();
+  const key = selectedTileKey(tile);
+  if (!key) return setStatus("積雪を変更するマスを選択してください");
+  const setter = kind === "falling" ? window.setV39SnowfallAt : window.setV39SnowCoverAt;
+  const changed = setter?.(tile.x, tile.y, enabled === true) === true;
+  const label = kind === "falling" ? "降雪" : "積雪";
+  setStatus(changed ? `${label} ${enabled ? "ON" : "OFF"}: ${key}` : `${label}を変更できませんでした`);
+}
+
 function forceTerrainEvent(mode) {
   const { tile } = context();
   if (!window.__v39FieldRuntime?.mapData) return setStatus("フィールドが未生成です");
@@ -201,7 +211,7 @@ function panelHtml() {
   return `
     <header class="v39-test-tools-head"><button type="button" id="v39-test-tools-back">← 管理</button><strong>テスト操作</strong><span>TEST</span></header>
     <div class="v39-test-tools-scroll">
-      <section><h3>フィールド</h3><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="turn">1ターン進行</button></div></section>
+      <section><h3>フィールド</h3><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></section>
       <section><h3>拠点・資源</h3><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></section>
       <section><h3>キャラクター</h3><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></section>
       <section><h3>敵AI診断</h3>${enemies.length ? `<div class="v39-test-form-row"><select id="v39-test-enemy-id">${enemyOptions}</select></div>${enemyDebug ? `<div class="v39-test-ai-grid"><span>判断</span><b>${escapeHtml(enemyDebug.decision)}</b><span>理由</span><b>${escapeHtml(enemyDebug.reason)}</b><span>好戦性</span><b>${enemyDebug.aggressive ? "好戦的" : enemyDebug.retaliating ? "反撃中（非好戦的）" : "非好戦的"}</b><span>位置</span><b>(${enemyDebug.x},${enemyDebug.y}) / Lv${enemyDebug.level}</b><span>HP / AP</span><b>${enemyDebug.hp}/${enemyDebug.maxHp} / ${enemyDebug.ap}/${enemyDebug.maxAp}</b><span>索敵</span><b>半径${enemyDebug.visionRadius} / 値${enemyDebug.scout}</b><span>認識標的</span><b>${escapeHtml(enemyDebug.targetName || "なし")}${enemyDebug.targetDistance == null ? "" : ` / 距離${enemyDebug.targetDistance}`}</b><span>敵対記憶</span><b>${escapeHtml(enemyDebug.aggroTargetUnitId || "なし")}</b><span>攻撃候補</span><b>${escapeHtml(enemyDebug.attackSkillNames.join(" / ") || "なし")}</b><span>所属巣</span><b>${escapeHtml(enemyDebug.nestName || "巣なし")}${enemyDebug.nestId ? ` / ${escapeHtml(enemyDebug.nestId)}` : ""}${enemyDebug.nestDistance == null ? "" : ` / 距離${enemyDebug.nestDistance}`}</b><span>縄張り</span><b>${enemyDebug.hasNest ? `中心(${enemyDebug.territoryCenter.x},${enemyDebug.territoryCenter.y}) / 半径${enemyDebug.territoryRadius} / 追跡限界${enemyDebug.pursuitLimit}` : "なし（巣なし個体）"}</b><span>逃走</span><b>基準${Math.round(enemyDebug.fleeThreshold*100)}% / ${enemyDebug.fleeState?.active ? "逃走中" : enemyDebug.fleeDecisionMade ? "判定済み" : "未発動"}</b><span>前回行動</span><b>T${enemyDebug.lastActionTurn || "-"}</b><span>発動待機 / CT</span><b>${escapeHtml(enemyDebug.pendingSkillName ? `${enemyDebug.pendingSkillName}:${enemyDebug.pendingTurns}T` : cooldownText || "なし")}</b></div>` : '<p>診断データを取得できません</p>'}` : '<p>生存している敵がいません</p>'}</section>
@@ -240,7 +250,10 @@ function closePanel() {
 function handleAction(action) {
   if (!testModeEnabled()) return closePanel();
   const handlers = {
-    eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"), turn:advanceTurn,
+    eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"),
+    "snow-on":() => setSelectedSnowState("cover", true), "snow-off":() => setSelectedSnowState("cover", false),
+    "snowfall-on":() => setSelectedSnowState("falling", true), "snowfall-off":() => setSelectedSnowState("falling", false),
+    turn:advanceTurn,
     "resource-minus":() => changeResource(-1), "resource-plus":() => changeResource(1), "resource-all":addAllResources,
     "population-minus":() => changePopulation(-10), "population-plus":() => changePopulation(10),
     "level-minus":() => changeUnitLevel(-1), "level-plus":() => changeUnitLevel(1), "level-plus10":() => changeUnitLevel(10),
