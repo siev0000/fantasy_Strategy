@@ -381,7 +381,7 @@ function renderDetail() {
           const source = techniqueSource(row) || {};
           const name = text(source?.名前 ?? row?.name, "名称未設定");
           const action = text(source?.行動 ?? row?.action).toUpperCase();
-          const apValue = action === "A" ? resolveAttackApCost(source) : num(row?.apCost ?? source?.AP消費, null);
+          const apValue = action === "A" ? resolveAttackApCost(source, unit) : num(row?.apCost ?? source?.AP消費, null);
           const powerValue = action === "A"
             ? resolveAttackPower(source, adjustedUnit)
             : num(source?.威力 ?? row?.power, null);
