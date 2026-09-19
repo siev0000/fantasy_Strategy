@@ -1,4 +1,5 @@
 import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
+import { resolveAttackApCost, resolveAttackPower, resolveAttackRange } from "./lib/v39-combat-engine.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -107,6 +108,40 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function techniqueIcon(row, source, action) {
+  return text(source?.アイコン ?? source?.icon ?? row?.icon ?? row?.glyph, action === "A" ? "⚔" : action === "P" ? "◇" : "◆");
+}
+
+function techniqueDetailRows(row, source) {
+  const candidates = [
+    ["行動", source?.行動 ?? row?.action],
+    ["系統", source?.系統 ?? row?.system],
+    ["攻撃手段", source?.攻撃手段 ?? row?.attackMethod],
+    ["判定", source?.判定 ?? row?.judge],
+    ["範囲", source?.範囲 ?? row?.area],
+    ["炸裂", source?.炸裂 ?? row?.splash],
+    ["攻撃回数", source?.攻撃回数 ?? row?.attackCount],
+    ["待機", source?.待機 ?? row?.cast],
+    ["CT", source?.CT ?? row?.cooldown],
+    ["効果時間", source?.効果時間 ?? row?.duration],
+    ["効果", source?.効果 ?? row?.effect],
+    ["条件", source?.条件 ?? row?.condition],
+    ["説明", row?.detail ?? source?.詳細 ?? source?.説明]
+  ];
+  return candidates.filter(([, value]) => value !== null && value !== undefined && text(value) && text(value) !== "-");
+}
+
+function setExpandedTechnique(name = "") {
+  expandedTechniqueName = text(name);
+  const list = document.getElementById("detailTechniqueList");
+  if (!(list instanceof HTMLElement)) return;
+  list.querySelectorAll("[data-v39-technique-name]").forEach(card => {
+    const expanded = text(card?.dataset?.v39TechniqueName) === expandedTechniqueName;
+    card.classList.toggle("is-expanded", expanded);
+    card.setAttribute("aria-expanded", String(expanded));
+  });
+}
+
 function notifyDetailRendered(unit = null) {
   window.dispatchEvent(new CustomEvent("v39:squad-detail-rendered", {
     detail:{ unitId:unit ? unitId(unit) : "" }
@@ -115,6 +150,7 @@ function notifyDetailRendered(unit = null) {
 
 let selectedSquadKey = "squad1";
 let selectedUnitId = "";
+let expandedTechniqueName = "";
 
 function getFactionState() {
   return typeof window.getV39ActiveFactionState === "function"
@@ -298,20 +334,36 @@ function renderDetail() {
   const tech = document.getElementById("detailTechniqueList");
   if (tech) {
     const rows = techniqueEntries(unit);
+    const adjustedUnit = applyV39TerrainModifiers(unit, window.__v39FieldRuntime?.mapData);
     tech.innerHTML = rows.length
       ? rows.map(row => {
           const source = techniqueSource(row) || {};
           const name = text(source?.名前 ?? row?.name, "名称未設定");
           const action = text(source?.行動 ?? row?.action).toUpperCase();
-          const apCost = row?.apCost ?? source?.AP消費;
-          const hpCost = row?.hpCost ?? source?.HP消費;
-          const cost = apCost != null && apCost !== "" ? `AP${apCost}` : (hpCost != null && hpCost !== "" ? `HP${hpCost}` : "-");
-          const range = row?.range ?? source?.射程;
-          const meta = text(row?.detail, range != null && range !== "" ? `射程${range}` : text(source?.攻撃手段 ?? row?.action, ""));
-          const content = `<b>${escapeHtml(name)}</b><small>${escapeHtml(cost)}</small><span>${escapeHtml(meta)}</span>`;
-          return action === "A"
-            ? `<button type="button" class="technique-card action-technique" data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false">${content}</button>`
-            : `<div class="technique-card">${content}</div>`;
+          const apValue = action === "A" ? resolveAttackApCost(source) : num(row?.apCost ?? source?.AP消費, null);
+          const powerValue = action === "A"
+            ? resolveAttackPower(source, adjustedUnit)
+            : num(source?.威力 ?? row?.power, null);
+          const rangeValue = action === "A"
+            ? resolveAttackRange(source, adjustedUnit)
+            : num(row?.range ?? source?.射程, null);
+          const icon = techniqueIcon(row, source, action);
+          const details = techniqueDetailRows(row, source);
+          const expanded = name === expandedTechniqueName;
+          const detailHtml = details.length
+            ? details.map(([label, value]) => `<span class="technique-detail-row"><em>${escapeHtml(label)}</em><b>${escapeHtml(value)}</b></span>`).join("")
+            : '<span class="technique-detail-empty">追加情報なし</span>';
+          const attackAttr = action === "A" ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
+          return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" data-v39-technique-name="${escapeHtml(name)}" aria-expanded="${expanded}"${attackAttr}>
+            <span class="technique-summary">
+              <span class="technique-icon" aria-hidden="true">${escapeHtml(icon)}</span>
+              <b class="technique-name">${escapeHtml(name)}</b>
+              <small class="technique-ap">AP ${apValue ?? "-"}</small>
+              <span class="technique-power">威力 ${powerValue ?? "-"}</span>
+              <span class="technique-range">射 ${rangeValue ?? "-"}</span>
+            </span>
+            <span class="technique-detail">${detailHtml}</span>
+          </button>`;
         }).join("")
       : '<div class="squad-empty">技データなし</div>';
   }
@@ -352,6 +404,7 @@ function install() {
     const btn = event.target instanceof Element ? event.target.closest("[data-squad-select]") : null;
     if (!btn) return;
     selectedSquadKey = btn.dataset.squadSelect || "squad1";
+    expandedTechniqueName = "";
     const first = unitsForSquad(selectedSquadKey)[0] || null;
     selectedUnitId = first ? unitId(first, 0) : "";
     if (selectedUnitId) persistSelectedUnit(selectedUnitId, "squad-selection-changed");
@@ -362,8 +415,17 @@ function install() {
     const card = event.target instanceof Element ? event.target.closest("[data-v39-unit-id]") : null;
     if (!card) return;
     selectedUnitId = card.dataset.v39UnitId || "";
+    expandedTechniqueName = "";
     if (selectedUnitId) persistSelectedUnit(selectedUnitId, "squad-unit-selected");
     scheduleRender();
+  }, true);
+
+  const techniqueList = document.getElementById("detailTechniqueList");
+  techniqueList?.addEventListener("click", event => {
+    const card = event.target instanceof Element ? event.target.closest("[data-v39-technique-name]") : null;
+    if (!card) return;
+    const name = text(card.dataset.v39TechniqueName);
+    setExpandedTechnique(expandedTechniqueName === name ? "" : name);
   }, true);
 
   window.addEventListener("v39:game-state-changed", scheduleRender);
