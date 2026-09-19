@@ -1,5 +1,6 @@
 import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
-import { resolveAttackApCost, resolveAttackPower, resolveAttackRange } from "./lib/v39-combat-engine.js";
+import { getIconSrcByName } from "./lib/icon-library.js";
+import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveSkillGuard } from "./lib/v39-combat-engine.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -108,8 +109,35 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function techniqueIcon(row, source, action) {
-  return text(source?.アイコン ?? source?.icon ?? row?.icon ?? row?.glyph, action === "A" ? "⚔" : action === "P" ? "◇" : "◆");
+const BODY_ATTACK_METHODS = new Set(["素手", "角", "牙", "爪", "翼", "尾", "吐息", "針"]);
+
+function techniqueAttackCategory(source = {}) {
+  const method = text(source?.攻撃手段);
+  if (method === "武器") return "武器";
+  if (method === "魔法") return "魔法";
+  if (BODY_ATTACK_METHODS.has(method)) return "肉体";
+  return "その他";
+}
+
+function techniqueIconMarkup(source = {}) {
+  const category = techniqueAttackCategory(source);
+  if (category === "その他") {
+    return { category, markup:'<span class="technique-icon-glyph" aria-hidden="true">◆</span>' };
+  }
+  const src = getIconSrcByName(category, "肉体");
+  return {
+    category,
+    markup:`<img class="technique-icon-image" src="${escapeHtml(src)}" alt="" aria-hidden="true">`
+  };
+}
+
+function techniqueAccentClass(power, guard) {
+  const hasPower = Number(power) > 0;
+  const hasGuard = Number(guard) > 0;
+  if (hasPower && hasGuard) return "technique-icon-mixed";
+  if (hasGuard) return "technique-icon-guard";
+  if (hasPower) return "technique-icon-power";
+  return "technique-icon-neutral";
 }
 
 function techniqueDetailRows(row, source) {
@@ -121,6 +149,7 @@ function techniqueDetailRows(row, source) {
     ["範囲", source?.範囲 ?? row?.area],
     ["炸裂", source?.炸裂 ?? row?.splash],
     ["攻撃回数", source?.攻撃回数 ?? row?.attackCount],
+    ["ガード", source?.ガード ?? row?.guard],
     ["待機", source?.待機 ?? row?.cast],
     ["CT", source?.CT ?? row?.cooldown],
     ["効果時間", source?.効果時間 ?? row?.duration],
@@ -347,7 +376,11 @@ function renderDetail() {
           const rangeValue = action === "A"
             ? resolveAttackRange(source, adjustedUnit)
             : num(row?.range ?? source?.射程, null);
-          const icon = techniqueIcon(row, source, action);
+          const guardValue = action === "A"
+            ? resolveSkillGuard(source, adjustedUnit)
+            : Math.max(0, num(source?.ガード ?? row?.guard, 0) || 0);
+          const icon = techniqueIconMarkup(source);
+          const iconAccent = techniqueAccentClass(powerValue, guardValue);
           const details = techniqueDetailRows(row, source);
           const expanded = name === expandedTechniqueName;
           const detailHtml = details.length
@@ -356,7 +389,7 @@ function renderDetail() {
           const attackAttr = action === "A" ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
           return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" data-v39-technique-name="${escapeHtml(name)}" aria-expanded="${expanded}"${attackAttr}>
             <span class="technique-summary">
-              <span class="technique-icon" aria-hidden="true">${escapeHtml(icon)}</span>
+              <span class="technique-icon ${iconAccent}" data-attack-category="${escapeHtml(icon.category)}" title="${escapeHtml(icon.category)}">${icon.markup}</span>
               <b class="technique-name">${escapeHtml(name)}</b>
               <small class="technique-ap">AP ${apValue ?? "-"}</small>
               <span class="technique-power">威力 ${powerValue ?? "-"}</span>
