@@ -3,9 +3,8 @@ import { showV39Feedback } from "./v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "./lib/hex-grid.js";
 import { canUnitEnterV39Tile } from "./lib/v39-terrain-traversal.js";
 import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "./lib/v39-squad-movement-rules.js";
-import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE } from "./lib/v39-gameplay-balance.js";
+import { resolveV39BaseMoveApCost } from "./lib/v39-gameplay-balance.js";
 
-const UNIT_ACTION_POINT_MAX = V39_SQUAD_MOVEMENT_BALANCE.moveApMax;
 const RANGE_DEPTH = 9;
 const PATH_DEPTH = 11;
 
