@@ -18,7 +18,7 @@ const SPECIAL_TERRAIN_ICONS = Object.freeze({
   "遺跡": { symbol: "◇", imageCandidate: true }
 });
 
-const LEGACY_LABELS = new Set(["沼", "峡", "洞"]);
+const LEGACY_LABELS = new Set(["沼", "湿", "草", "峡", "洞"]);
 const OVERLAY_NAME = "v39-terrain-icon-overlay";
 const TEXTURE_PREFIX = "v39-terrain-icon:";
 const SCENE_RETRY_MS = 16;
