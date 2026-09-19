@@ -343,7 +343,7 @@ function renderDetail() {
 
   const movementGroup = resolveV39SquadMovementGroup(getFactionState() || {}, selectedUnitId);
   const moveValue = movementGroup?.ok ? Math.max(1, num(movementGroup.movement, 1)) : Math.max(1, num(movementValue(unit), 1));
-  const moveBaseAp = resolveV39BaseMoveApCost(moveValue);
+  const moveBaseAp = Math.ceil(resolveV39BaseMoveApCost(moveValue));
   const moveApEl = document.getElementById("mobileMoveAp");
   const moveMetaEl = document.getElementById("mobileMoveMeta");
   const moveRemainEl = document.getElementById("mobileMoveRemain");
