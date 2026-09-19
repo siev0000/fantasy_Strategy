@@ -13,7 +13,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
     landItems: V39_TEST_OPERATION_DATA.landItems,
     actionButtons: [
       { label: "移動", className: "move", id: "mobileBattleMove" },
-      { label: "攻撃", className: "attack active", id: "mobileBattleAttack" },
+      { label: "攻撃", className: "attack", id: "mobileBattleAttack" },
       { label: "待機", className: "", id: "mobileBattleWait" }
     ],
     manageItems: [
