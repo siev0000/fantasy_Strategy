@@ -62,8 +62,8 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad .squad-detail-collapsible[open]>.squad-detail-toggle::before{content:"▽"}
       #footSquad .squad-detail-section-body{min-width:0;margin-top:6px}
       #footSquad #footAction.mobile-battle-panel{
-        display:grid!important;grid-template-rows:auto auto auto!important;gap:6px!important;
-        height:auto!important;min-height:0!important;margin-top:7px!important
+        display:grid!important;grid-template-rows:auto!important;gap:0!important;
+        height:auto!important;min-height:0!important;margin:0 0 7px!important
       }
       #footSquad #footAction .battle-primary-actions{
         display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important
@@ -75,22 +75,14 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad #footAction .battle-main.move{border-color:#579ec3}
       #footSquad #footAction .battle-main.attack{border-color:#a65f50}
       #footSquad #footAction .battle-main.active{background:#34251f}
-      #footSquad #footAction .battle-skill-strip{
-        min-height:0;display:flex!important;gap:5px;overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
-        scroll-snap-type:x proximity
+      #footSquad .technique-card.action-technique{
+        width:100%;appearance:none;-webkit-appearance:none;color:inherit;font:inherit;text-align:left;cursor:pointer
       }
-      #footSquad #footAction .battle-skill{
-        flex:0 0 118px;min-height:58px;border:1px solid #435159;border-radius:8px;background:#172126;
-        color:#e8efec;padding:6px;text-align:left;scroll-snap-align:start
+      #footSquad .technique-card.action-technique.active{
+        border-color:#e7c466!important;background:linear-gradient(180deg,#2b291c,#1b1a14)!important;
+        box-shadow:0 0 0 1px rgba(231,196,102,.18)
       }
-      #footSquad #footAction .battle-skill.active{border-color:#e7c466;background:#2b291c}
-      #footSquad #footAction .battle-skill b{display:block;font-size:10px}
-      #footSquad #footAction .battle-skill small{display:block;margin-top:4px;font-size:8px;color:#aab8ba}
-      #footSquad #footAction .battle-selection-summary{
-        min-height:34px;display:grid!important;grid-template-columns:minmax(0,1fr) auto 64px!important;
-        align-items:center;gap:5px;font-size:9px
-      }
-      #footSquad #footAction .battle-selection-summary .primary{min-height:32px}
+      #footSquad .technique-card.action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed}
       #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;gap:6px}
       #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
       #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
@@ -129,12 +121,10 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
               </div></div></details>
               <details class="squad-detail-section squad-detail-collapsible" open><summary class="squad-detail-section-title squad-detail-toggle">技能</summary><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></details>
               <details class="squad-detail-section squad-detail-collapsible" open><summary class="squad-detail-section-title squad-detail-toggle">技</summary><div class="squad-detail-section-body">
-                <div class="technique-list" id="detailTechniqueList"></div>
                 <section id="footAction" class="mobile-battle-panel v39-detail-action-panel" aria-label="選択キャラクターの行動">
                   <div class="battle-primary-actions">${data.actionButtons.map(item => `<button class="battle-main ${item.className}" id="${item.id}">${item.label}</button>`).join("")}</div>
-                  <div class="battle-skill-strip"></div>
-                  <div class="battle-selection-summary"><span>選択: <b id="mobileSelectedSkill">-</b></span><span>AP <b id="mobileBattleAp">- / -</b></span><button class="primary" id="mobileSkillUse">使用</button></div>
-        </section>
+                </section>
+                <div class="technique-list" id="detailTechniqueList"></div>
               </div></details>
             </section>
           </div>
