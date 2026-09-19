@@ -122,16 +122,27 @@ function installUi() {
   const style = document.createElement("style");
   style.id = "v39-turn-system-style";
   style.textContent = `
-    #v39-turn-controls{position:absolute;right:8px;top:8px;z-index:31;display:flex;align-items:center;gap:4px;padding:4px;border:1px solid #52646b;border-radius:8px;background:rgba(8,17,21,.9);box-shadow:0 3px 12px rgba(0,0,0,.28)}
-    #v39-turn-controls button,#v39-turn-label{min-height:30px;border:1px solid #455b63;border-radius:6px;background:#142329;color:#e7eeee;padding:4px 9px;font-size:13px;font-weight:700}
-    #v39-turn-label{display:grid;place-items:center;color:#8ee2ad;min-width:42px}
+    #v39-turn-controls{
+      position:absolute;right:max(8px,var(--safe-r,0px));top:8px;z-index:31;
+      width:var(--v39-side-log-width,clamp(190px,24vw,280px));min-width:0;
+      display:grid;grid-template-columns:auto minmax(0,.8fr) minmax(0,1.2fr);align-items:center;gap:4px;
+      padding:4px;border:1px solid rgba(82,100,107,.76);border-radius:8px;
+      background:rgba(8,17,21,.72);box-shadow:0 3px 12px rgba(0,0,0,.22);backdrop-filter:blur(3px)
+    }
+    #v39-turn-controls button,#v39-turn-label{min-width:0;min-height:30px;border:1px solid #455b63;border-radius:6px;background:rgba(20,35,41,.88);color:#e7eeee;padding:4px 7px;font-size:12px;font-weight:700;white-space:nowrap}
+    #v39-turn-label{display:grid;place-items:center;color:#8ee2ad;min-width:40px}
     #v39-turn-controls button{cursor:pointer}
     #v39-turn-controls button[aria-pressed="true"]{border-color:#dcba61;background:#382f18;color:#ffe7a2}
     #v39-turn-next{border-color:#6b8e72!important;background:#193024!important}
     #v39-turn-banner{position:absolute;left:50%;top:8px;z-index:32;min-width:180px;max-width:60%;transform:translate(-50%,-140%);opacity:0;padding:8px 20px;border:1px solid #74c7d6;border-radius:6px;background:rgba(7,22,27,.95);color:#edf7f5;text-align:center;font-size:16px;font-weight:800;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
     #v39-turn-banner.show{transform:translate(-50%,0);opacity:1}
     #v39-turn-banner.persistent{border-color:#d8b65b;color:#ffe69a}
-    @media(max-width:620px){#v39-turn-controls{top:42px}#v39-turn-banner{top:6px;max-width:72%;font-size:14px;padding:6px 12px}}
+    @media(max-width:700px){
+      #v39-turn-controls{right:max(5px,var(--safe-r,0px));top:6px;width:min(42vw,220px);grid-template-columns:auto minmax(0,.75fr) minmax(0,1.25fr)}
+      #v39-turn-controls button,#v39-turn-label{min-height:28px;padding:3px 5px;font-size:10px}
+      #v39-turn-label{min-width:34px}
+      #v39-turn-banner{top:6px;max-width:72%;font-size:14px;padding:6px 12px}
+    }
   `;
   document.head.appendChild(style);
   const controls = document.createElement("div");
