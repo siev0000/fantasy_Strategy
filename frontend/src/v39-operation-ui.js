@@ -242,7 +242,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
           <div class="squad-content-split" id="v39-squad-content">
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
-              <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span><span class="squad-detail-chip" id="detailGuard" hidden></span></div>
+              <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span></div>
               <div class="squad-detail-tabs" role="tablist" aria-label="キャラクター詳細">
                 <button type="button" class="squad-detail-tab active" data-squad-detail-tab="status" role="tab" aria-selected="true">ステータス技能</button>
                 <button type="button" class="squad-detail-tab" data-squad-detail-tab="action" role="tab" aria-selected="false">行動</button>
