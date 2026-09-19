@@ -152,19 +152,28 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       }
       #footSquad .technique-card.is-expanded .technique-detail{display:grid!important}
       #footSquad .technique-detail-head{
+        grid-area:auto!important;grid-column:1!important;grid-row:auto!important;
+        width:100%!important;min-width:0!important;
         display:flex!important;align-items:center!important;justify-content:space-between!important;gap:4px!important;
-        padding:3px 5px!important;border-bottom:1px solid #26373d!important;background:#121d21!important
+        padding:3px 5px!important;border-bottom:1px solid #26373d!important;background:#121d21!important;
+        white-space:normal!important;overflow:visible!important;text-overflow:clip!important
       }
       #footSquad .technique-detail-head b{
-        color:#9fb0b3!important;font-size:8px!important;font-weight:800!important
+        grid-area:auto!important;min-width:0!important;
+        color:#9fb0b3!important;font-size:8px!important;font-weight:800!important;
+        white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important
       }
       #footSquad .technique-detail-head small{
-        color:#d8c17f!important;font-size:8px!important;font-weight:700!important;white-space:nowrap!important
+        grid-area:auto!important;min-width:0!important;
+        color:#d8c17f!important;font-size:8px!important;font-weight:700!important;
+        white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important
       }
       #footSquad .technique-detail-description{
+        grid-area:auto!important;grid-column:1!important;grid-row:auto!important;
+        width:100%!important;min-width:0!important;
         display:block!important;padding:4px 5px!important;color:#eef4f2!important;font-size:9px!important;
         line-height:1.35!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;
-        overflow-wrap:anywhere!important;word-break:break-word!important
+        overflow-wrap:anywhere!important;word-break:normal!important
       }
       #footSquad .technique-detail-empty{
         grid-column:1 / -1!important;color:#829397!important;font-size:8px!important;padding:3px 0!important
