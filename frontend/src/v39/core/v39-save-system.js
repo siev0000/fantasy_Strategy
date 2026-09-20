@@ -1,5 +1,5 @@
 const SAVE_FORMAT = "fantasy-strategy-v39";
-import { getGameDataRows } from "./lib/game-data-registry.js";
+import { getGameDataRows } from "../../lib/game-data-registry.js";
 
 const SAVE_VERSION = 3;
 

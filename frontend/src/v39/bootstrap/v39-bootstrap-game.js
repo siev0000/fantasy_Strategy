@@ -1,0 +1,25 @@
+// Placement, entities, world simulation, combat, and AI systems.
+import "../map/v39-initial-placement.js";
+import "../unit/v39-unit-create-ui.js";
+import "../unit/v39-equipment-ui.js";
+import "../ai/v39-enemy-spawn.js";
+import "../unit/v39-logistics.js";
+import "../ai/v39-enemy-raiding.js";
+import "../world/v39-territory-repair.js";
+import "../ai/v39-enemy-nest-lifecycle.js";
+import "../core/v39-turn-activity.js";
+import "../map/v39-map-visibility.js";
+import "../map/v39-map-entities.js";
+import "../unit/v39-unit-movement.js";
+import "../world/v39-exploration-ui.js";
+import "../world/v39-world-population.js";
+import "../core/v39-activity-log.js";
+import "../combat/v39-effect-player.js";
+import "../combat/v39-combat.js";
+import "../unit/v39-unit-wait.js";
+import "../combat/v39-combat-feedback.js";
+import "../ai/v39-enemy-turn-presentation.js";
+import "../ai/v39-enemy-ai.js";
+import "../ai/v39-enemy-ai-profiler.js";
+import "../ai/v39-faction-ai.js";
+import "../combat/v39-death-lifecycle.js";

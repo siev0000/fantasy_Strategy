@@ -1,8 +1,8 @@
-import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
-import { createPlayerFactionState, createPlayerRecord } from "./lib/player-state.js";
-import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "./lib/settlement-state.js";
-import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "./lib/v39-logistics-state.js";
-import { normalizeV39Village } from "./lib/v39-economy-rules.js";
+import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import { createPlayerFactionState, createPlayerRecord } from "../../lib/player-state.js";
+import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "../../lib/settlement-state.js";
+import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
+import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 
 const EMPTY_STATE = Object.freeze({
   activePlayerId: "",

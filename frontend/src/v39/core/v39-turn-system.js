@@ -1,8 +1,8 @@
-import { getV39DiscoveredFeature } from "./lib/v39-exploration-rules.js";
-import { resolveV39FacilityEffectsAtTile } from "./lib/v39-economy-rules.js";
-import { getSettlementForTerritory } from "./lib/settlement-state.js";
-import { V39_TURN_PHASE } from "./lib/v39-turn-timing.js";
-import { restoreV39SquadMovementForTurn } from "./lib/v39-squad-movement-rules.js";
+import { getV39DiscoveredFeature } from "../../lib/v39-exploration-rules.js";
+import { resolveV39FacilityEffectsAtTile } from "../../lib/v39-economy-rules.js";
+import { getSettlementForTerritory } from "../../lib/settlement-state.js";
+import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
+import { restoreV39SquadMovementForTurn } from "../../lib/v39-squad-movement-rules.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
