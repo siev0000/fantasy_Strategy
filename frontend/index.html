@@ -150,11 +150,12 @@ button{color:inherit}
 .toast{display:none;max-width:min(620px,96%);background:#111b1f;border:1px solid #566970;border-radius:7px;padding:7px 12px;font-size:10px;text-align:center;box-shadow:var(--shadow);pointer-events:none}.toast.show{display:block}
 .tip{position:fixed;z-index:190;display:none;background:#0d171b;border:1px solid #60727a;border-radius:7px;padding:5px 8px;font-size:9px;pointer-events:none;max-width:220px}.tip.show{display:block}
 .ui-build-label{
-  position:fixed;left:max(3px,var(--safe-l));bottom:max(3px,var(--safe-b));z-index:260;
+  display:none;position:fixed;left:max(3px,var(--safe-l));bottom:max(3px,var(--safe-b));z-index:260;
   padding:1px 4px;border-radius:3px;background:rgba(3,9,12,.58);
   color:rgba(205,217,220,.68);font-size:7px;line-height:1.2;letter-spacing:.02em;
   pointer-events:none;user-select:none
 }
+.ui-build-label.show{display:block}
 @media (max-width:760px){
   .topbar{min-height:48px;padding:4px}.research-chip{width:36px;min-height:36px}.res-chip{min-height:36px;padding:2px 5px}.icon-btn{width:38px;min-height:36px}
   .playfield{--v39-feedback-left-clearance:44px;--v39-feedback-right-clearance:calc(var(--v39-side-log-width, 0px) + 12px)}
@@ -4468,7 +4469,13 @@ html,body{
 </div></div>
 
 <div class="tip" id="tip"></div>
-<div class="ui-build-label" id="uiBuildLabel" aria-label="UIビルド">UI 2026.09.21-01</div>
+<div class="ui-build-label" id="uiBuildLabel" aria-label="UIビルド">UI 2026.09.21-02</div>
+<script type="module">
+  const uiBuildLabel = document.getElementById("uiBuildLabel");
+  if (uiBuildLabel instanceof HTMLElement && typeof __V39_TEST_ON__ !== "undefined" && __V39_TEST_ON__ === true) {
+    uiBuildLabel.classList.add("show");
+  }
+</script>
 
 <div class="mobile-fab-menu" id="mobileFabMenu">
   <button class="fab-main tappable" id="mobileFabToggle" data-tip="管理メニュー" aria-expanded="false" aria-label="管理メニュー">☰</button>
