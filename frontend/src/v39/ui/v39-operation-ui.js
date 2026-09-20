@@ -1,4 +1,4 @@
-import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js";
+import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-data.js";
 
 (function initializeOperationUi() {
   "use strict";

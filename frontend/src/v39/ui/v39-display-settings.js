@@ -3,7 +3,7 @@ import {
   normalizeUserMaxZoomFactor,
   resolveAutoMaxZoomFactor,
   resolveEffectiveMaxZoomFactor
-} from "./lib/map-camera-zoom-rules.js";
+} from "../../lib/map-camera-zoom-rules.js";
 
 const STORAGE_KEY = "v39-display-settings-v1";
 const DEFAULTS = Object.freeze({

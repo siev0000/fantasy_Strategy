@@ -2,11 +2,11 @@ import {
   equipmentData as equipmentDb,
   terrainData as terrainDb,
   testGameData as testGameDb
-} from "./lib/game-data-registry.js";
-import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
-import { resolveSkillBasePower } from "./lib/skill-power.js";
-import { createPlayerRecord } from "./lib/player-state.js";
-import { createV39EquipmentEntry } from "./lib/v39-equipment-rules.js";
+} from "../../lib/game-data-registry.js";
+import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import { resolveSkillBasePower } from "../../lib/skill-power.js";
+import { createPlayerRecord } from "../../lib/player-state.js";
+import { createV39EquipmentEntry } from "../../lib/v39-equipment-rules.js";
 
 const equipmentByName = new Map(
   (Array.isArray(equipmentDb) ? equipmentDb : [])

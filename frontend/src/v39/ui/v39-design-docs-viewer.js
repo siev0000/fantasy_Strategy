@@ -1,4 +1,4 @@
-const DOC_MODULES = import.meta.glob("../../docs/**/*.md", {
+const DOC_MODULES = import.meta.glob("../../../../docs/**/*.md", {
   eager: true,
   query: "?raw",
   import: "default"

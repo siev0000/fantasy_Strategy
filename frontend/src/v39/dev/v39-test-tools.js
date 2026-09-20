@@ -1,7 +1,7 @@
-import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
-import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./lib/v39-economy-rules.js";
-import { addResearchExperience } from "./lib/research-progress.js";
-import { getSelectedSettlement, replaceFactionSettlement } from "./lib/settlement-state.js";
+import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { addResearchExperience } from "../../lib/research-progress.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 
 const RESOURCE_KEYS = [...new Set([...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS])];
 const CITY_LEVEL_KEYS = ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"];
