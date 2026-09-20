@@ -51,7 +51,7 @@ button{color:inherit}
 .playfield{
   position:relative;min-height:0;overflow:hidden;
   --v39-feedback-left-clearance:48px;
-  --v39-feedback-right-clearance:calc(var(--v39-side-log-width, 0px) + 18px);
+  --v39-feedback-right-clearance:calc(var(--v39-side-log-width, 0px) + var(--v39-side-log-tab-width, 0px) + 18px);
 }
 .v39-feedback-lane{
   position:absolute;top:6px;
@@ -151,7 +151,7 @@ button{color:inherit}
 .tip{position:fixed;z-index:190;display:none;background:#0d171b;border:1px solid #60727a;border-radius:7px;padding:5px 8px;font-size:9px;pointer-events:none;max-width:220px}.tip.show{display:block}
 @media (max-width:760px){
   .topbar{min-height:48px;padding:4px}.research-chip{width:36px;min-height:36px}.res-chip{min-height:36px;padding:2px 5px}.icon-btn{width:38px;min-height:36px}
-  .playfield{--v39-feedback-left-clearance:44px;--v39-feedback-right-clearance:calc(var(--v39-side-log-width, 0px) + 12px)}
+  .playfield{--v39-feedback-left-clearance:44px;--v39-feedback-right-clearance:calc(var(--v39-side-log-width, 0px) + var(--v39-side-log-tab-width, 0px) + 12px)}
   .v39-feedback-lane{top:5px;gap:4px}
   .faction-panel{width:min(45vw,230px);right:5px;top:5px;bottom:5px}
   .footer{height:clamp(132px,27svh,200px)}
