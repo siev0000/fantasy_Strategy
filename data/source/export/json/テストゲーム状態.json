@@ -90,8 +90,8 @@
             "role": "メンバー / 魔導支援",
             "movement": 5,
             "hpRate": 1,
-            "ap": 82,
-            "maxAp": 90,
+            "ap": 100,
+            "maxAp": 100,
             "equipment": [
               {
                 "slot": "武器1",
@@ -122,8 +122,8 @@
             "role": "メンバー / 盾役",
             "movement": 4,
             "hpRate": 0.95,
-            "ap": 76,
-            "maxAp": 80,
+            "ap": 100,
+            "maxAp": 100,
             "equipment": [
               {
                 "slot": "武器1",
@@ -154,8 +154,8 @@
             "role": "メンバー / 弓兵",
             "movement": 4,
             "hpRate": 0.89,
-            "ap": 90,
-            "maxAp": 90,
+            "ap": 100,
+            "maxAp": 100,
             "equipment": [
               {
                 "slot": "武器1",
@@ -186,8 +186,8 @@
             "role": "メンバー / 剣兵",
             "movement": 4,
             "hpRate": 0.94,
-            "ap": 72,
-            "maxAp": 80,
+            "ap": 100,
+            "maxAp": 100,
             "equipment": [
               {
                 "slot": "武器1",
@@ -219,7 +219,7 @@
             "role": "リーダー / 神官",
             "movement": 4,
             "hpRate": 0.9,
-            "ap": 88,
+            "ap": 100,
             "maxAp": 100,
             "equipment": [
               {
@@ -251,8 +251,8 @@
             "role": "メンバー / 護衛",
             "movement": 4,
             "hpRate": 0.94,
-            "ap": 68,
-            "maxAp": 80,
+            "ap": 100,
+            "maxAp": 100,
             "equipment": [
               {
                 "slot": "武器1",
@@ -283,8 +283,8 @@
             "role": "メンバー / 斥候",
             "movement": 6,
             "hpRate": 0.93,
-            "ap": 84,
-            "maxAp": 90,
+            "ap": 100,
+            "maxAp": 100,
             "equipment": [
               {
                 "slot": "武器1",
@@ -316,8 +316,8 @@
             "role": "部隊未所属",
             "movement": 5,
             "hpRate": 0.88,
-            "ap": 70,
-            "maxAp": 80,
+            "ap": 100,
+            "maxAp": 100,
             "equipment": [
               {
                 "slot": "武器1",
@@ -345,8 +345,8 @@
             "role": "部隊未所属",
             "movement": 4,
             "hpRate": 0.88,
-            "ap": 66,
-            "maxAp": 80,
+            "ap": 100,
+            "maxAp": 100,
             "equipment": [
               {
                 "slot": "武器1",
