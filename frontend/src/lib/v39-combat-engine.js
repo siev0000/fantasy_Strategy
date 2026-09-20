@@ -105,10 +105,11 @@ export function resolveCounterAttackRow(unit) {
   const lastUsed = text(unit?.lastUsedAttack);
   const selected = candidates.find((row) => text(row?.名前) === lastUsed) || candidates[0] || null;
   if (!selected) return null;
+  const counterApCost = Math.ceil(resolveAttackApCost(selected, unit) / 2);
   return {
     ...selected,
     名前:`${text(selected?.名前)}（反撃）`,
-    AP消費:0,
+    AP消費:counterApCost,
     射程:1,
     範囲:null,
     炸裂:null,
