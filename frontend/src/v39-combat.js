@@ -956,8 +956,10 @@ function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
     || state?.players?.flatMap((player) => player?.factionState?.units || []).find((unit) => text(unit.id) === text(targetId));
   const skillRow = resolveCounterAttackRow(attacker);
   if (!attacker || !target || !skillRow || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
+  const apCost = resolveAttackApCost(skillRow, attacker);
+  if (currentAp(attacker) < apCost) return false;
   if (attackerSide === "enemy") {
-    return performEnemyAttack({ enemyId:text(attacker.id), targetUnitId:text(target.id), skillRow, apPaid:true, isCounter:true });
+    return performEnemyAttack({ enemyId:text(attacker.id), targetUnitId:text(target.id), skillRow, apPaid:false, isCounter:true });
   }
   const player = state.players.find((row) => row?.factionState?.units?.some((unit) => text(unit.id) === text(attacker.id)));
   return performAttack({ x:target.x, y:target.y }, {
@@ -965,7 +967,7 @@ function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
     unitId:text(attacker.id),
     skillName:text(skillRow.名前),
     skillRow
-  }, { apPaid:true, isCounter:true });
+  }, { apPaid:false, isCounter:true });
 }
 
 function handleCounter(event) {
