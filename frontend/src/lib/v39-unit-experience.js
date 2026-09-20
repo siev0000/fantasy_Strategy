@@ -1,5 +1,5 @@
 import { classData } from "./game-data-registry.js";
-import { applyV39DerivedCharacterData } from "../v39-character-derived-rules.js";
+import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { RACE_CLASS_NAME_MAP } from "../constants/unitCommon.js";
 
 export const V39_UNIT_LEVEL_CAP = 120;

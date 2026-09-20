@@ -1,4 +1,4 @@
-import { applyV39DerivedCharacterData } from "../v39-character-derived-rules.js";
+import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { getGameDataRows } from "./game-data-registry.js";
 import { V39_CIVIC_BALANCE } from "./v39-gameplay-balance.js";
 import { rescaleV39PopulationGrowthForPopulationChange } from "./v39-population-economy.js";

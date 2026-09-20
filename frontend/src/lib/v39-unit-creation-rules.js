@@ -2,7 +2,7 @@ import { getGameDataRows } from "./game-data-registry.js";
 import { resolveCurrentResearchLevel } from "./research-progress.js";
 import { normalizeV39Village, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from "./v39-economy-rules.js";
 import { resolveUnitCreateModeCatalog, resolveUnitCreateMode } from "../composables/militaryUnitUtils.js";
-import { applyV39DerivedCharacterData } from "../v39-character-derived-rules.js";
+import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { EQUIPMENT_SLOT_KEYS } from "../constants/unitCommon.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 
