@@ -1,6 +1,9 @@
 const MAX_MESSAGES = 150;
 const DETAIL_COLLAPSE_CHAR_LIMIT = 120;
 const DETAIL_COLLAPSE_LINE_LIMIT = 4;
+const CHAT_PREVIEW_DURATION_MS = 4000;
+
+let chatPreviewTimer = 0;
 
 let sequence = 0;
 let activeChannel = "notification";
@@ -54,6 +57,34 @@ function renderMessage(entry) {
   </article>`;
 }
 
+function chatPreviewElement() {
+  return document.getElementById("v39-chat-preview");
+}
+
+function hideChatPreview() {
+  window.clearTimeout(chatPreviewTimer);
+  chatPreviewTimer = 0;
+  chatPreviewElement()?.classList.remove("show");
+}
+
+function showChatPreview(entry) {
+  if (!entry || entry.channel !== "chat") return;
+  if (!collapsed && activeChannel === "chat") {
+    hideChatPreview();
+    return;
+  }
+  const preview = chatPreviewElement();
+  if (!(preview instanceof HTMLElement)) return;
+  const title = text(entry.title, "チャット");
+  preview.innerHTML = `<strong>${escapeHtml(title)}</strong><p>${multilineHtml(entry.message)}</p>`;
+  preview.classList.add("show");
+  window.clearTimeout(chatPreviewTimer);
+  chatPreviewTimer = window.setTimeout(() => {
+    preview.classList.remove("show");
+    chatPreviewTimer = 0;
+  }, CHAT_PREVIEW_DURATION_MS);
+}
+
 function render() {
   const rail = document.getElementById("v39-side-log");
   const list = document.getElementById("v39-side-log-list");
@@ -100,6 +131,7 @@ export function pushV39SideRailMessage(input, options = {}) {
   messages.push(entry);
   if (messages.length > MAX_MESSAGES) messages.splice(0, messages.length - MAX_MESSAGES);
   render();
+  if (channel === "chat") showChatPreview(entry);
   window.dispatchEvent(new CustomEvent("v39:side-log-message", { detail:{ entry } }));
   return entry.id;
 }
@@ -169,6 +201,15 @@ function installStyles() {
     .v39-side-log-details[open] summary::before{content:"▽"}
     .v39-side-log-details p{margin-top:4px!important;color:#b9c8ca!important;font-size:9px!important;line-height:1.4!important}
     .v39-side-log-empty{padding:16px 8px;color:#82969b;font-size:10px;text-align:center}
+    .v39-chat-preview{
+      display:none;max-width:min(520px,96%);padding:8px 11px;
+      border:1px solid rgba(112,203,217,.86);border-radius:8px;
+      background:linear-gradient(180deg,rgba(18,42,49,.97),rgba(9,25,30,.97));
+      box-shadow:0 8px 22px rgba(0,0,0,.32);pointer-events:auto
+    }
+    .v39-chat-preview.show{display:grid;gap:3px}
+    .v39-chat-preview strong{font-size:10px;color:#8ee0ec}
+    .v39-chat-preview p{margin:0;font-size:10px;line-height:1.4;color:#eef6f6;word-break:break-word}
     @media(max-width:700px){
       .playfield{--v39-side-log-width:min(36vw,190px)}
       #v39-side-log{right:max(5px,var(--safe-r,0px));top:5px;bottom:48px}
@@ -192,6 +233,19 @@ function install() {
   playfield.appendChild(rail);
   playfield.classList.add("v39-has-side-log");
 
+  const feedbackLane = document.getElementById("v39FeedbackLane");
+  if (feedbackLane instanceof HTMLElement && !chatPreviewElement()) {
+    const preview = document.createElement("div");
+    preview.id = "v39-chat-preview";
+    preview.className = "v39-chat-preview";
+    preview.setAttribute("role", "status");
+    preview.setAttribute("aria-live", "polite");
+    feedbackLane.appendChild(preview);
+    for (const eventName of ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "click", "dblclick", "contextmenu"]) {
+      preview.addEventListener(eventName, event => event.stopPropagation());
+    }
+  }
+
   for (const eventName of ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick", "contextmenu"]) {
     rail.addEventListener(eventName, event => event.stopPropagation());
   }
@@ -205,10 +259,12 @@ function install() {
       collapsed = !collapsed;
       rail.querySelector(".v39-side-log-collapse").textContent = collapsed ? "‹" : "›";
       render();
+      if (!collapsed && activeChannel === "chat") hideChatPreview();
       return;
     }
     if (event.target instanceof Element && event.target.closest("[data-v39-side-channel-switch]")) {
       toggleChannel();
+      if (!collapsed && activeChannel === "chat") hideChatPreview();
     }
   });
   rail.addEventListener("keydown", event => {
@@ -217,6 +273,7 @@ function install() {
     event.preventDefault();
     event.stopPropagation();
     toggleChannel();
+    if (!collapsed && activeChannel === "chat") hideChatPreview();
   });
   render();
 }
