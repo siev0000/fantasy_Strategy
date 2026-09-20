@@ -61,16 +61,15 @@ function render() {
 
   rail.classList.toggle("collapsed", collapsed);
   rail.dataset.channel = activeChannel;
-  const channelToggle = rail.querySelector("[data-v39-side-channel-toggle]");
   const channelLabel = rail.querySelector("[data-v39-side-channel-label]");
+  const channelSwitch = rail.querySelector("[data-v39-side-channel-switch]");
   const activeLabel = activeChannel === "chat" ? "チャット" : "通知";
   const nextLabel = activeChannel === "chat" ? "通知" : "チャット";
-  if (channelToggle instanceof HTMLButtonElement) {
-    channelToggle.textContent = activeLabel;
-    channelToggle.setAttribute("aria-label", `${activeLabel}表示中。タップで${nextLabel}へ切り替え`);
-    channelToggle.title = `${nextLabel}へ切り替え`;
-  }
   if (channelLabel instanceof HTMLElement) channelLabel.textContent = activeLabel;
+  if (channelSwitch instanceof HTMLElement) {
+    channelSwitch.setAttribute("aria-label", `${activeLabel}表示中。ヘッダーをタップして${nextLabel}へ切り替え`);
+    channelSwitch.title = `${nextLabel}へ切り替え`;
+  }
 
   const rows = messages.filter(entry => entry.channel === activeChannel);
   if (!rows.length) {
@@ -126,29 +125,23 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-side-log-style";
   style.textContent = `
-    .playfield{--v39-side-log-width:clamp(170px,21vw,250px);--v39-side-log-tab-width:32px}
+    .playfield{--v39-side-log-width:clamp(170px,21vw,250px)}
     #v39-side-log{
       position:absolute;right:max(8px,var(--safe-r,0px));top:6px;bottom:52px;z-index:29;
       width:var(--v39-side-log-width);min-width:0;
       display:grid;grid-template-rows:auto minmax(0,1fr);
       border:1px solid rgba(108,139,148,.62);border-radius:9px;
       background:linear-gradient(180deg,rgba(10,20,24,.62),rgba(7,14,17,.52));
-      box-shadow:0 8px 24px rgba(0,0,0,.22);overflow:visible;
+      box-shadow:0 8px 24px rgba(0,0,0,.22);overflow:hidden;
       backdrop-filter:blur(4px);pointer-events:auto
     }
     #v39-side-log.collapsed{width:15px;grid-template-rows:auto 0;border-radius:5px}
-    .v39-side-log-channel-toggle{
-      position:absolute;left:calc(-1 * var(--v39-side-log-tab-width));top:-1px;
-      width:var(--v39-side-log-tab-width);height:78px;margin:0;padding:7px 4px;
-      border:1px solid rgba(108,139,148,.72);border-right:0;border-radius:8px 0 0 8px;
-      background:linear-gradient(180deg,rgba(19,40,47,.96),rgba(10,23,28,.96));color:#eaf4f5;
-      box-shadow:-5px 6px 14px rgba(0,0,0,.2);font-size:11px;font-weight:900;line-height:1;
-      writing-mode:vertical-rl;text-orientation:upright;letter-spacing:1px;cursor:pointer;touch-action:manipulation
+    .v39-side-log-head{
+      display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:4px;padding:4px;
+      border-bottom:1px solid rgba(52,71,78,.72);background:rgba(17,31,36,.68);
+      cursor:pointer;user-select:none;touch-action:manipulation
     }
-    #v39-side-log[data-channel="chat"] .v39-side-log-channel-toggle{
-      border-color:rgba(112,203,217,.9);background:linear-gradient(180deg,rgba(26,67,76,.98),rgba(13,38,45,.98))
-    }
-    .v39-side-log-head{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:4px;padding:4px;border-bottom:1px solid rgba(52,71,78,.72);background:rgba(17,31,36,.68)}
+    #v39-side-log[data-channel="chat"] .v39-side-log-head{background:rgba(19,45,52,.82)}
     .v39-side-log-channel-label{min-width:0;display:flex;align-items:center;padding:0 5px;color:#dce8e9;font-size:11px;font-weight:900}
     .v39-side-log-collapse{
       min-height:30px;border:1px solid rgba(65,85,93,.82);border-radius:6px;background:rgba(19,33,40,.72);color:#c9d7d9;
@@ -177,9 +170,8 @@ function installStyles() {
     .v39-side-log-details p{margin-top:4px!important;color:#b9c8ca!important;font-size:9px!important;line-height:1.4!important}
     .v39-side-log-empty{padding:16px 8px;color:#82969b;font-size:10px;text-align:center}
     @media(max-width:700px){
-      .playfield{--v39-side-log-width:min(36vw,190px);--v39-side-log-tab-width:30px}
+      .playfield{--v39-side-log-width:min(36vw,190px)}
       #v39-side-log{right:max(5px,var(--safe-r,0px));top:5px;bottom:48px}
-      .v39-side-log-channel-toggle{height:70px;padding:6px 3px;font-size:10px}
       .v39-side-log-entry{padding:5px 6px}.v39-side-log-entry p{font-size:9px}.v39-side-log-entry-head b{font-size:9px}
     }
   `;
@@ -193,8 +185,7 @@ function install() {
   const rail = document.createElement("aside");
   rail.id = "v39-side-log";
   rail.setAttribute("aria-label", "通知・チャットログ");
-  rail.innerHTML = `<button type="button" class="v39-side-log-channel-toggle" data-v39-side-channel-toggle aria-label="通知表示中。タップでチャットへ切り替え">通知</button>
-  <div class="v39-side-log-head">
+  rail.innerHTML = `<div class="v39-side-log-head" data-v39-side-channel-switch role="button" tabindex="0" aria-label="通知表示中。ヘッダーをタップしてチャットへ切り替え">
     <div class="v39-side-log-channel-label" data-v39-side-channel-label>通知</div>
     <button type="button" class="v39-side-log-collapse" aria-label="通知欄を折りたたむ">›</button>
   </div><div id="v39-side-log-list"></div>`;
@@ -204,18 +195,28 @@ function install() {
   for (const eventName of ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick", "contextmenu"]) {
     rail.addEventListener(eventName, event => event.stopPropagation());
   }
+  const toggleChannel = () => {
+    activeChannel = activeChannel === "chat" ? "notification" : "chat";
+    render();
+  };
   rail.addEventListener("click", event => {
     event.stopPropagation();
-    if (event.target instanceof Element && event.target.closest("[data-v39-side-channel-toggle]")) {
-      activeChannel = activeChannel === "chat" ? "notification" : "chat";
-      render();
-      return;
-    }
     if (event.target instanceof Element && event.target.closest(".v39-side-log-collapse")) {
       collapsed = !collapsed;
       rail.querySelector(".v39-side-log-collapse").textContent = collapsed ? "‹" : "›";
       render();
+      return;
     }
+    if (event.target instanceof Element && event.target.closest("[data-v39-side-channel-switch]")) {
+      toggleChannel();
+    }
+  });
+  rail.addEventListener("keydown", event => {
+    if (!(event.target instanceof Element) || !event.target.matches("[data-v39-side-channel-switch]")) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    toggleChannel();
   });
   render();
 }
