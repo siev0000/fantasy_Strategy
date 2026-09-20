@@ -124,11 +124,29 @@ export function canTriggerMeleeCounter(skillRow, attacker) {
   return isMeleeCounterRow(skillRow, attacker);
 }
 
+function equipmentMagicAp(item) {
+  if (!item || typeof item !== "object") return 0;
+  const source = item?.source && typeof item.source === "object" ? item.source : {};
+  return Math.floor(number(item?.magicAp, number(item?.魔法AP, number(source?.魔法AP, 0))));
+}
+
+export function resolveEquipmentMagicApCost(unit) {
+  const items = Array.isArray(unit?.equipment) ? unit.equipment : [];
+  return Math.max(0, items.reduce((sum, item) => sum + equipmentMagicAp(item), 0));
+}
+
 export function resolveAttackApCost(skillRow, attacker = null) {
   const skillAp = Math.max(0, Math.floor(number(skillRow?.AP消費, 0)));
-  if (skillRow?.装備攻撃 === true || text(skillRow?.攻撃手段) !== "武器") return skillAp;
-  const weaponAp = Math.max(0, Math.floor(number(primaryWeaponRow(attacker)?.AP消費, 0)));
-  return skillAp + weaponAp;
+  if (skillRow?.装備攻撃 === true) return skillAp;
+  const method = text(skillRow?.攻撃手段);
+  if (method === "武器") {
+    const weaponAp = Math.max(0, Math.floor(number(primaryWeaponRow(attacker)?.AP消費, 0)));
+    return skillAp + weaponAp;
+  }
+  if (method === "魔法") {
+    return Math.max(0, skillAp + resolveEquipmentMagicApCost(attacker));
+  }
+  return skillAp;
 }
 
 export function resolveSkillHealing(skillRow, attacker) {
