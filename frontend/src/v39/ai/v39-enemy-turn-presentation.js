@@ -1,4 +1,4 @@
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const delay = ms => new Promise(resolve => window.setTimeout(resolve, ms));

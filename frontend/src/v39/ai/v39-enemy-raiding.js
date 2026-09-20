@@ -1,7 +1,7 @@
-import { resolveAttackApCost, resolveAttackPower } from "./lib/v39-combat-engine.js";
-import { collectV39TerritoryTileIncome, FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS } from "./lib/v39-economy-rules.js";
-import { resolveV39ConsumableFoodKeys } from "./lib/v39-population-economy.js";
-import { normalizeTerritoryStateRecord } from "./lib/settlement-state.js";
+import { resolveAttackApCost, resolveAttackPower } from "../../lib/v39-combat-engine.js";
+import { collectV39TerritoryTileIncome, FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
+import { resolveV39ConsumableFoodKeys } from "../../lib/v39-population-economy.js";
+import { normalizeTerritoryStateRecord } from "../../lib/settlement-state.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;

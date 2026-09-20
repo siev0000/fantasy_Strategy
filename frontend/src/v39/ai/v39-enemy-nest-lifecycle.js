@@ -1,4 +1,4 @@
-import { advanceV39EnemyNestLifecycle } from "./lib/v39-enemy-nest-lifecycle-rules.js";
+import { advanceV39EnemyNestLifecycle } from "../../lib/v39-enemy-nest-lifecycle-rules.js";
 
 function run(turnNumber) {
   const state = window.getV39GameState?.();

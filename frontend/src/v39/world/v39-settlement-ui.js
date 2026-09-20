@@ -1,6 +1,6 @@
-import { getFactionSettlements, selectFactionSettlement, territorySettlementId } from "./lib/settlement-state.js";
-import { inspectV39CitySpecializations, selectV39CitySpecialization } from "./lib/v39-city-specialization-rules.js";
-import { resolveV39SettlementProductionMetrics } from "./lib/v39-economy-rules.js";
+import { getFactionSettlements, selectFactionSettlement, territorySettlementId } from "../../lib/settlement-state.js";
+import { inspectV39CitySpecializations, selectV39CitySpecialization } from "../../lib/v39-city-specialization-rules.js";
+import { resolveV39SettlementProductionMetrics } from "../../lib/v39-economy-rules.js";
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);

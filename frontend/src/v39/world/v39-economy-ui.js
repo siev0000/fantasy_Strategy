@@ -8,9 +8,9 @@ import {
   inspectV39Construction,
   normalizeV39Village,
   startV39Construction
-} from "./lib/v39-economy-rules.js";
-import { getSelectedSettlement } from "./lib/settlement-state.js";
-import { getVillageScaleDefinitions, resolveVillageScaleDefinition } from "./composables/villageCoreUtils.js";
+} from "../../lib/v39-economy-rules.js";
+import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import { getVillageScaleDefinitions, resolveVillageScaleDefinition } from "../../composables/villageCoreUtils.js";
 
 const modal = document.getElementById("buildModal");
 let selectedTile = null;

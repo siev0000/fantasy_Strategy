@@ -1,8 +1,8 @@
-import { startV39SurveyTask } from "./lib/v39-exploration-rules.js";
-import { facilityDefinitions, inspectV39Construction, startV39Construction } from "./lib/v39-economy-rules.js";
-import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "./lib/v39-unit-creation-rules.js";
-import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "./lib/research-tree-config.js";
-import { isResearchCompleted, isResearchLevelUnlocked, normalizeResearchState, selectResearch } from "./lib/research-progress.js";
+import { startV39SurveyTask } from "../../lib/v39-exploration-rules.js";
+import { facilityDefinitions, inspectV39Construction, startV39Construction } from "../../lib/v39-economy-rules.js";
+import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "../../lib/v39-unit-creation-rules.js";
+import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "../../lib/research-tree-config.js";
+import { isResearchCompleted, isResearchLevelUnlocked, normalizeResearchState, selectResearch } from "../../lib/research-progress.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;

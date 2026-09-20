@@ -1,5 +1,5 @@
-import { applyV39TerritoryRepair, inspectV39TerritoryRepair } from "./lib/v39-territory-repair-rules.js";
-import { getFactionSettlements, replaceFactionSettlement } from "./lib/settlement-state.js";
+import { applyV39TerritoryRepair, inspectV39TerritoryRepair } from "../../lib/v39-territory-repair-rules.js";
+import { getFactionSettlements, replaceFactionSettlement } from "../../lib/settlement-state.js";
 
 const text = value => String(value ?? "").trim();
 

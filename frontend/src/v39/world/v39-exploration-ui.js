@@ -5,8 +5,8 @@ import {
   getV39DiscoveredFeature,
   inspectV39Survey,
   startV39SurveyTask
-} from "./lib/v39-exploration-rules.js";
-import { showV39Feedback } from "./v39-feedback.js";
+} from "../../lib/v39-exploration-rules.js";
+import { showV39Feedback } from "../ui/v39-feedback.js";
 
 let selectedTile = null;
 

@@ -3,7 +3,7 @@ import {
   getResearchCategoryMeta,
   normalizeResearchCategoryName,
   researchTreeData
-} from "./lib/research-tree-config.js";
+} from "../../lib/research-tree-config.js";
 import {
   addResearchExperience,
   isResearchCompleted,
@@ -13,7 +13,7 @@ import {
   requiredResearchExp,
   resolveCompletedResearchLevel,
   selectResearch
-} from "./lib/research-progress.js";
+} from "../../lib/research-progress.js";
 
 let activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
 let inspectedItemId = "";

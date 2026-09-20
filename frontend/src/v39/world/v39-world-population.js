@@ -1,6 +1,6 @@
-import { getGameDataRows } from "./lib/game-data-registry.js";
-import { getHexNeighborCoords } from "./lib/hex-grid.js";
-import { getSelectedSettlement, replaceFactionSettlement } from "./lib/settlement-state.js";
+import { getGameDataRows } from "../../lib/game-data-registry.js";
+import { getHexNeighborCoords } from "../../lib/hex-grid.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import {
   acceptV39NeutralVillageQuest,
   advanceV39NeutralVillages,
@@ -11,7 +11,7 @@ import {
   normalizeV39NeutralVillage,
   raidV39NeutralVillage,
   vassalizeV39NeutralVillage
-} from "./lib/v39-neutral-village-rules.js";
+} from "../../lib/v39-neutral-village-rules.js";
 
 const VILLAGE_TILES_PER_SITE = 450;
 const WANDERER_TILES_PER_GROUP = 300;

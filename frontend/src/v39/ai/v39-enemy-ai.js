@@ -3,14 +3,14 @@ import {
   inspectEnemyAiState,
   isAliveEnemyAiUnit,
   planNextEnemyAction
-} from "./lib/v39-enemy-ai-planner.js";
-import { currentV39TurnNumber, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "./lib/v39-turn-timing.js";
-import { FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS } from "./lib/v39-economy-rules.js";
-import { prepareV39EnemyExploration } from "./lib/v39-enemy-exploration.js";
-import { resolveV39ConsumableFoodKeys } from "./lib/v39-population-economy.js";
-import { V39_ENEMY_AI_CONFIG } from "./lib/v39-enemy-ai-config.js";
-import { resolveV39EnemySquadCargoStatus } from "./lib/v39-logistics-state.js";
-import { grantV39UnitExperience } from "./lib/v39-unit-experience.js";
+} from "../../lib/v39-enemy-ai-planner.js";
+import { currentV39TurnNumber, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "../../lib/v39-turn-timing.js";
+import { FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
+import { prepareV39EnemyExploration } from "../../lib/v39-enemy-exploration.js";
+import { resolveV39ConsumableFoodKeys } from "../../lib/v39-population-economy.js";
+import { V39_ENEMY_AI_CONFIG } from "../../lib/v39-enemy-ai-config.js";
+import { resolveV39EnemySquadCargoStatus } from "../../lib/v39-logistics-state.js";
+import { grantV39UnitExperience } from "../../lib/v39-unit-experience.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -381,7 +381,7 @@ function buildWorkerMapData(mapData = window.__v39FieldRuntime?.mapData) {
 }
 
 async function runWorkerPlans(turnNumber, actionLimit, totalEnemies, presentationEvents, progressId) {
-  const worker = new Worker(new URL("./workers/v39-enemy-ai-worker.js", import.meta.url), { type:"module" });
+  const worker = new Worker(new URL("../../workers/v39-enemy-ai-worker.js", import.meta.url), { type:"module" });
   let processed = 0;
   let workerCalculationMs = 0;
   let mainApplyMs = 0;

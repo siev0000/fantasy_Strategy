@@ -1,7 +1,7 @@
-import { classData, enemySpawnData } from "./lib/game-data-registry.js";
-import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
-import { getSelectedSettlement } from "./lib/settlement-state.js";
-import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "./lib/v39-nest-rules.js";
+import { classData, enemySpawnData } from "../../lib/game-data-registry.js";
+import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/v39-nest-rules.js";
 
 const SAFE_DISTANCE_FROM_BASE = 4;
 const LOW_LEVEL_DISTANCE_FROM_BASE = 10;

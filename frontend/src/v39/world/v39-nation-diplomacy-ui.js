@@ -12,8 +12,8 @@ import {
   cancelV39Treaty,
   signV39Treaty,
   V39_TREATY_TYPES
-} from "./lib/v39-diplomacy-rules.js";
-import { getGameDataRecordId } from "./lib/game-data-registry.js";
+} from "../../lib/v39-diplomacy-rules.js";
+import { getGameDataRecordId } from "../../lib/game-data-registry.js";
 
 const escapeHtml = value => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
