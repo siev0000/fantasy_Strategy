@@ -129,7 +129,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
         font-size:16px!important;line-height:1!important;overflow:hidden!important
       }
       #footSquad .technique-icon-image{
-        width:20px!important;height:20px!important;display:block!important;object-fit:contain!important;
+        width:26px!important;height:26px!important;display:block!important;object-fit:contain!important;
         filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))
       }
       #footSquad .technique-icon-glyph{
