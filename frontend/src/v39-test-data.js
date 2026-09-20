@@ -52,7 +52,16 @@ const createUnit = definition => {
     equipment: (Array.isArray(definition.equipment) ? definition.equipment : []).map(resolveEquipment)
   });
   if (!derived?.derivedCharacter?.ok) {
-    throw new Error(`キャラクター生成に失敗しました: ${definition?.name || definition?.id || "名称未設定"}`);
+    const missing = derived?.derivedCharacter?.missing || {};
+    console.warn("[テストデータ] クラス定義がないユニットを除外しました", {
+      ユニット: definition?.name || definition?.id || "名称未設定",
+      種族: definition?.race || "",
+      クラス: definition?.className || "",
+      不足定義: Object.entries(missing)
+        .filter(([, isMissing]) => isMissing)
+        .map(([key]) => key)
+    });
+    return null;
   }
   const maxHp = Math.max(1, Math.round(optionalNumber(derived.maxHp) ?? optionalNumber(derived.status?.HP) ?? 1));
   const hpRate = Math.max(0, Math.min(1, optionalNumber(definition.hpRate) ?? 1));
@@ -73,7 +82,9 @@ const players = (Array.isArray(testGameDb?.players) ? testGameDb.players : []).m
   ...player,
   factionState: {
     ...player.factionState,
-    units: (Array.isArray(player?.factionState?.units) ? player.factionState.units : []).map(createUnit)
+    units: (Array.isArray(player?.factionState?.units) ? player.factionState.units : [])
+      .map(createUnit)
+      .filter(Boolean)
   }
 }, index));
 

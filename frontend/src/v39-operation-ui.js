@@ -121,7 +121,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "./v39-test-data.js
       #footSquad .technique-summary{
         display:grid!important;grid-template-columns:28px minmax(0,1fr) auto!important;
         grid-template-areas:"icon name ap" "icon power range"!important;
-        align-items:center!important;gap:1px 4px!important;padding:4px 5px!important
+        align-items:center!important;gap:1px 4px!important;padding:2px 3px!important
       }
       #footSquad .technique-icon{
         grid-area:icon!important;width:28px!important;height:28px!important;display:grid!important;place-items:center!important;
