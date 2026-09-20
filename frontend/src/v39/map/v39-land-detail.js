@@ -1,5 +1,5 @@
-import { formatV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
-import { getGameDataRows } from "./lib/game-data-registry.js";
+import { formatV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import { getGameDataRows } from "../../lib/game-data-registry.js";
 
 const PANEL_ID = "footTile";
 

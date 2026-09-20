@@ -1,4 +1,4 @@
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 
 const LAYER_NAME = "v39-height-boundary-layer";
 const RETRY_MS = 16;

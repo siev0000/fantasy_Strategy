@@ -1,15 +1,15 @@
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
-import { getSelectedSettlement } from "./lib/settlement-state.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { getSelectedSettlement } from "../../lib/settlement-state.js";
 import {
   MAP_ENTITY_SIZE_RULES,
   tileRelativePx
-} from "./lib/map-entity-size-rules.js";
+} from "../../lib/map-entity-size-rules.js";
 import {
   resolveEnemyArtwork,
   resolveNestArtwork,
   resolveSettlementArtwork,
   resolveUnitArtwork
-} from "./lib/map-entity-artwork.js";
+} from "../../lib/map-entity-artwork.js";
 
 const STRUCTURE_LAYER_DEPTH = 10;
 const UNIT_LAYER_DEPTH = 12;

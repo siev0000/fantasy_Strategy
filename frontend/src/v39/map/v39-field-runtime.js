@@ -1,6 +1,6 @@
 import Phaser from "phaser";
-import { createTerrainMapData, terrainDefinitions } from "./lib/map-generator.js";
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 
 const MAP_W = 60;
 const MAP_H = 60;

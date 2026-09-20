@@ -1,6 +1,6 @@
-import { createInitialV39Village } from "./lib/v39-economy-rules.js";
-import { getHexOffsetNeighbors } from "./lib/hex-grid.js";
-import { getSelectedSettlement, replaceFactionSettlement } from "./lib/settlement-state.js";
+import { createInitialV39Village } from "../../lib/v39-economy-rules.js";
+import { getHexOffsetNeighbors } from "../../lib/hex-grid.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 
 const MODE_BANNER_ID = "modeBanner";
 

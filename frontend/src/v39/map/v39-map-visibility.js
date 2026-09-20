@@ -1,16 +1,16 @@
-import { facilityDefinitions } from "./lib/v39-economy-rules.js";
-import { getFactionSettlements } from "./lib/settlement-state.js";
+import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
+import { getFactionSettlements } from "../../lib/settlement-state.js";
 import {
   resolveDetectionGroupSense,
   resolveDetectionScoutValue,
   resolveEffectiveScoutAtDistance
-} from "./lib/v39-detection-rules.js";
+} from "../../lib/v39-detection-rules.js";
 import {
   BASE_VILLAGE_SCOUT_RANGE,
   FACTION_BORDER_COLOR_PALETTE,
   HEX_TILE_CONFIG,
   MAP_BOUNDARY_DASH_CONFIG
-} from "./lib/phaser-map-panel-config.js";
+} from "../../lib/phaser-map-panel-config.js";
 
 const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
 const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";

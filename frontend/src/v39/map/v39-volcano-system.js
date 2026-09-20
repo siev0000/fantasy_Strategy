@@ -1,20 +1,20 @@
-import { advanceTerrainTurn } from "./lib/map-generator.js";
+import { advanceTerrainTurn } from "../../lib/map-generator.js";
 import {
   TERRITORY_TILE_MAX_HP,
   TERRITORY_TILE_MODE_CONFIG,
   TERRITORY_TILE_MODE_RESOURCE,
   TERRITORY_TILE_MODE_SETTLEMENT
-} from "./lib/phaser-map-panel-config.js";
-import { runWithSeededRandom } from "./lib/seeded-random.js";
+} from "../../lib/phaser-map-panel-config.js";
+import { runWithSeededRandom } from "../../lib/seeded-random.js";
 import {
   getFactionSettlements,
   normalizeTerritoryStateRecord,
   replaceFactionSettlement,
   territorySettlementId
-} from "./lib/settlement-state.js";
-import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./lib/v39-economy-rules.js";
-import { resolveV39TerrainTurnDamageRule, resolveV39UnitCapabilityValue } from "./lib/v39-terrain-traversal.js";
-import { V39_VOLCANO_DAMAGE_BALANCE } from "./lib/v39-gameplay-balance.js";
+} from "../../lib/settlement-state.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { resolveV39TerrainTurnDamageRule, resolveV39UnitCapabilityValue } from "../../lib/v39-terrain-traversal.js";
+import { V39_VOLCANO_DAMAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
 const asCount = value => Math.max(0, Math.floor(Number(value) || 0));
 const LAVA_DAMAGE_RULE = resolveV39TerrainTurnDamageRule("溶岩");

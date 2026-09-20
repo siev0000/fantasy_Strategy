@@ -1,7 +1,7 @@
 import Phaser from "phaser";
-import { createTerrainMapData, terrainDefinitions } from "./lib/map-generator.js";
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
-import { runWithSeededRandom } from "./lib/seeded-random.js";
+import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { runWithSeededRandom } from "../../lib/seeded-random.js";
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
 const SNOW_RING_OUTER_INSET_RATIO = 0.06;

@@ -1,5 +1,5 @@
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
-import { getIconSrcByName, hasIconName } from "./lib/icon-library.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { getIconSrcByName, hasIconName } from "../../lib/icon-library.js";
 
 const BASE_TERRAIN_ICONS = Object.freeze({
   "森": { symbol: "🌲", imageCandidate: true, imageName:"森" },

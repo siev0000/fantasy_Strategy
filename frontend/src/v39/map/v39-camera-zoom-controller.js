@@ -1,5 +1,5 @@
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
-import { resolveEffectiveMaxZoomFactor } from "./lib/map-camera-zoom-rules.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { resolveEffectiveMaxZoomFactor } from "../../lib/map-camera-zoom-rules.js";
 
 const pointers = new Map();
 let lastRelativeZoom = 1;
