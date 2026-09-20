@@ -1,4 +1,4 @@
-import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "./lib/v39-unit-creation-rules.js";
+import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "../../lib/v39-unit-creation-rules.js";
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 

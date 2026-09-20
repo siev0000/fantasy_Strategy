@@ -1,9 +1,9 @@
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
-import { showV39Feedback } from "./v39-feedback.js";
-import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "./lib/hex-grid.js";
-import { canUnitEnterV39Tile } from "./lib/v39-terrain-traversal.js";
-import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "./lib/v39-squad-movement-rules.js";
-import { resolveV39BaseMoveApCost } from "./lib/v39-gameplay-balance.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { showV39Feedback } from "../ui/v39-feedback.js";
+import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
+import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
+import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
+import { resolveV39BaseMoveApCost } from "../../lib/v39-gameplay-balance.js";
 
 const RANGE_DEPTH = 9;
 const PATH_DEPTH = 11;

@@ -1,8 +1,8 @@
-import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
-import { resolveV39BaseMoveApCost } from "./lib/v39-gameplay-balance.js";
-import { resolveV39SquadMovementGroup } from "./lib/v39-squad-movement-rules.js";
-import { getIconSrcByName } from "./lib/icon-library.js";
-import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "./lib/v39-combat-engine.js";
+import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import { resolveV39BaseMoveApCost } from "../../lib/v39-gameplay-balance.js";
+import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
+import { getIconSrcByName } from "../../lib/icon-library.js";
+import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "../../lib/v39-combat-engine.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();

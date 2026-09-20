@@ -11,10 +11,10 @@ import {
   normalizeV39EquipmentInventory,
   normalizeV39EquipmentItem,
   rerollV39MobEquipment
-} from "./lib/v39-equipment-rules.js";
-import { EQUIPMENT_SLOT_KEYS } from "./constants/unitCommon.js";
-import { isMobUnit } from "./composables/unitCoreUtils.js";
-import { getSelectedSettlement } from "./lib/settlement-state.js";
+} from "../../lib/v39-equipment-rules.js";
+import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
+import { isMobUnit } from "../../composables/unitCoreUtils.js";
+import { getSelectedSettlement } from "../../lib/settlement-state.js";
 
 let activeTab = "inventory";
 let selectedInventoryKey = "";

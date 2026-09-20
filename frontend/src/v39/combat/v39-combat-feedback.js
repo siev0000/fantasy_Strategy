@@ -1,4 +1,4 @@
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 
 const POPUP_DEPTH = 1000010;
 const BAR_DEPTH = 1000005;

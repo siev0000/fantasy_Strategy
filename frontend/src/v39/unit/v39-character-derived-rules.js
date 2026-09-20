@@ -1,8 +1,8 @@
-import { classData as classDb, skillData as skillDb } from "./lib/game-data-registry.js";
-import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "./constants/unitCommon.js";
-import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules } from "./composables/unitStatusUtils.js";
-import { applyMilitaryProfileToStatus } from "./composables/militaryUnitUtils.js";
-import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "./lib/v39-equipment-rules.js";
+import { classData as classDb, skillData as skillDb } from "../../lib/game-data-registry.js";
+import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "../../constants/unitCommon.js";
+import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules } from "../../composables/unitStatusUtils.js";
+import { applyMilitaryProfileToStatus } from "../../composables/militaryUnitUtils.js";
+import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
 
 const INITIAL_RACE_BONUS_LEVEL = 5;
 const STATUS_GROWTH_DIVISOR = 10;

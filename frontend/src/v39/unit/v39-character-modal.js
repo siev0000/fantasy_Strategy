@@ -1,4 +1,4 @@
-import { currentV39TurnNumber, remainingV39Turns } from "./lib/v39-turn-timing.js";
+import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
 
 let activeTab = "character";
 let selectedId = "";

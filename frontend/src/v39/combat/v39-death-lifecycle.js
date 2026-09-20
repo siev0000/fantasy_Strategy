@@ -1,19 +1,19 @@
-import { getSelectedSettlement } from "./lib/settlement-state.js";
-import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
-import { FOOD_RESOURCE_KEYS } from "./lib/v39-economy-rules.js";
+import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import { FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import {
   addV39CargoToFactionUnit,
   getV39SquadUnitIds,
   isV39CargoEmpty,
   mergeV39Cargo,
   normalizeV39Cargo
-} from "./lib/v39-logistics-state.js";
+} from "../../lib/v39-logistics-state.js";
 import {
   DEFAULT_CORPSE_FIELD_TURNS,
   currentV39TurnNumber,
   isV39TurnDeadlineReached,
   resolveV39DeadlineTurn
-} from "./lib/v39-turn-timing.js";
+} from "../../lib/v39-turn-timing.js";
 
 const DEAD_UNIT_FIELD_TIMEOUT_TURNS = DEFAULT_CORPSE_FIELD_TURNS;
 

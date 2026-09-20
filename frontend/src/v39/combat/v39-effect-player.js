@@ -1,7 +1,7 @@
-import { PhaserEffectPlayer } from "../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
-import effectList320 from "../../assets/effect/320×240/effect_list.json";
-import effectListAnimation1 from "../../assets/effect/アニメーション1/effect_list.json";
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { PhaserEffectPlayer } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
+import effectList320 from "../../../../assets/effect/320×240/effect_list.json";
+import effectListAnimation1 from "../../../../assets/effect/アニメーション1/effect_list.json";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 
 const sources = new Map();
 const EFFECT_TOTAL_DURATION_MS = 1500;

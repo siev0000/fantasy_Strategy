@@ -1,4 +1,4 @@
-import { HEX_TILE_CONFIG } from "./lib/phaser-map-panel-config.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import {
   computeAttackDamage,
   applyV39GuardToDamage,
@@ -16,10 +16,10 @@ import {
   resolveSkillTimedModifiers,
   resolveSplashSpec,
   resolveV39RevivalSpec
-} from "./lib/v39-combat-engine.js";
-import { applyV39TerrainModifiers } from "./lib/v39-terrain-modifiers.js";
-import { showV39Feedback } from "./v39-feedback.js";
-import { getHexNeighborCoords } from "./lib/hex-grid.js";
+} from "../../lib/v39-combat-engine.js";
+import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import { showV39Feedback } from "../ui/v39-feedback.js";
+import { getHexNeighborCoords } from "../../lib/hex-grid.js";
 import {
   DEFAULT_CORPSE_FIELD_TURNS,
   DEFAULT_MAGIC_CAST_TURNS,
@@ -27,13 +27,13 @@ import {
   parseV39TurnCount,
   remainingV39Turns,
   resolveV39DeadlineTurn
-} from "./lib/v39-turn-timing.js";
-import { getGameDataRows } from "./lib/game-data-registry.js";
+} from "../../lib/v39-turn-timing.js";
+import { getGameDataRows } from "../../lib/game-data-registry.js";
 import {
   applyV39TileTransformEffect,
   resolveV39TileTransformEffect,
   validateV39TileTransformEffect
-} from "./lib/v39-tile-transform.js";
+} from "../../lib/v39-tile-transform.js";
 
 const TERRAIN_DATA_ROWS = getGameDataRows("地形");
 

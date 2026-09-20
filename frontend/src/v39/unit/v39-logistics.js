@@ -1,5 +1,5 @@
-import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./lib/v39-economy-rules.js";
-import { normalizeV39EquipmentInventory } from "./lib/v39-equipment-rules.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { normalizeV39EquipmentInventory } from "../../lib/v39-equipment-rules.js";
 import {
   addV39CargoToFactionUnit,
   fitV39CargoToCapacity,
@@ -8,8 +8,8 @@ import {
   mergeV39Cargo,
   normalizeV39Cargo,
   resolveV39EnemySquadCargoStatus
-} from "./lib/v39-logistics-state.js";
-import { getFactionSettlements, replaceFactionSettlement } from "./lib/settlement-state.js";
+} from "../../lib/v39-logistics-state.js";
+import { getFactionSettlements, replaceFactionSettlement } from "../../lib/settlement-state.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;

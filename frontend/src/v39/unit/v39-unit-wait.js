@@ -1,4 +1,4 @@
-import { showV39Feedback } from "./v39-feedback.js";
+import { showV39Feedback } from "../ui/v39-feedback.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
