@@ -10,6 +10,9 @@ export default defineConfig(({ mode }) => {
   return {
     root: "frontend",
     base,
+    define: {
+      __V39_TEST_ON__: JSON.stringify(isTestOnMode)
+    },
     plugins: [vue()],
     server: {
       host: true,
