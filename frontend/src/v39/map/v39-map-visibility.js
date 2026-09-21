@@ -37,6 +37,7 @@ const RETRY_MS = 20;
 const RETRY_LIMIT = 180;
 
 let renderRequestId = 0;
+let renderPendingDuringBatch = false;
 let lastSnapshot = {
   exploredTileKeys:new Set(),
   currentVisionTileKeys:new Set(),
@@ -325,7 +326,7 @@ function persistVisibilityTiles(faction, explored, currentVision) {
       exploredTileKeys: [...explored].sort(),
       visibleTileKeys: [...currentVision].sort()
     }
-  }, { reason:"visibility-updated" });
+  }, { reason:"visibility-updated", silent:true });
 }
 
 function revealMovementPath(event) {
@@ -597,6 +598,11 @@ function renderVisibilityLayers() {
 }
 
 function scheduleRender() {
+  if (window.isV39MapRenderBatchActive?.() === true) {
+    renderPendingDuringBatch = true;
+    return false;
+  }
+  renderPendingDuringBatch = false;
   const requestId = ++renderRequestId;
   let attempt = 0;
   const tryRender = () => {
@@ -608,6 +614,7 @@ function scheduleRender() {
     }
   };
   tryRender();
+  return true;
 }
 
 window.getV39VisibilitySnapshot = () => ({
@@ -632,5 +639,8 @@ window.addEventListener("v39:game-state-changed", scheduleRender);
 window.addEventListener("v39:initial-placement-complete", scheduleRender);
 window.addEventListener("v39:unit-moved", revealMovementPath);
 window.addEventListener("v39:display-settings-changed", scheduleRender);
+window.addEventListener("v39:map-render-batch-ended", event => {
+  if (renderPendingDuringBatch || event?.detail?.force === true) scheduleRender();
+});
 
 if (window.__v39FieldRuntime?.mapData) scheduleRender();
