@@ -18,6 +18,59 @@ let host = null;
 let game = null;
 let currentData = null;
 let currentSettings = null;
+const mapRenderBatchTokens = new Set();
+const mapInputLockTokens = new Set();
+let mapRuntimeTokenSequence = 0;
+
+function nextMapRuntimeToken(prefix) {
+  mapRuntimeTokenSequence += 1;
+  return `${prefix}:${mapRuntimeTokenSequence}`;
+}
+
+function beginMapRenderBatch(reason = "batch") {
+  const token = nextMapRuntimeToken("render");
+  mapRenderBatchTokens.add(token);
+  window.dispatchEvent(new CustomEvent("v39:map-render-batch-started", {
+    detail:{ token, reason:String(reason || "batch"), depth:mapRenderBatchTokens.size }
+  }));
+  return token;
+}
+
+function endMapRenderBatch(token, options = {}) {
+  if (!token || !mapRenderBatchTokens.delete(token)) return false;
+  const depth = mapRenderBatchTokens.size;
+  if (depth === 0) {
+    window.dispatchEvent(new CustomEvent("v39:map-render-batch-ended", {
+      detail:{ reason:String(options.reason || "batch-complete"), force:options.force === true }
+    }));
+  }
+  return true;
+}
+
+function beginMapInputLock(reason = "lock") {
+  const token = nextMapRuntimeToken("input");
+  mapInputLockTokens.add(token);
+  window.dispatchEvent(new CustomEvent("v39:map-input-lock-changed", {
+    detail:{ locked:true, reason:String(reason || "lock"), depth:mapInputLockTokens.size }
+  }));
+  return token;
+}
+
+function endMapInputLock(token, reason = "unlock") {
+  if (!token || !mapInputLockTokens.delete(token)) return false;
+  window.dispatchEvent(new CustomEvent("v39:map-input-lock-changed", {
+    detail:{ locked:mapInputLockTokens.size > 0, reason:String(reason || "unlock"), depth:mapInputLockTokens.size }
+  }));
+  return true;
+}
+
+function waitForMapRenderSettled() {
+  return new Promise(resolve => {
+    window.setTimeout(() => {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+    }, 0);
+  });
+}
 
 function ensureBooleanGrid(data, key) {
   if (!data || !Number.isFinite(Number(data.w)) || !Number.isFinite(Number(data.h))) return;
@@ -345,6 +398,7 @@ function installInput(scene, data) {
     return { x:(cx-rect.left)*(camera.width/rect.width), y:(cy-rect.top)*(camera.height/rect.height) };
   };
   const zoomAt = (cx, cy, factor) => {
+    if (window.isV39MapInputLocked?.() === true) return;
     const p = clientPoint(cx, cy);
     const before = camera.getWorldPoint(p.x, p.y);
     const display = readDisplaySettings();
@@ -357,6 +411,7 @@ function installInput(scene, data) {
     clampCamera(scene);
   };
   const selectAt = (cx, cy) => {
+    if (window.isV39MapInputLocked?.() === true) return;
     const p = clientPoint(cx, cy); const w = camera.getWorldPoint(p.x, p.y);
     const tile = resolveTileAtWorld(data, w.x, w.y); if (!tile) return;
     const hp = hexPoints(tile.x, tile.y);
@@ -377,12 +432,14 @@ function installInput(scene, data) {
 
   host.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false });
   host.addEventListener("pointerdown", e => {
+    if (window.isV39MapInputLocked?.() === true) return;
     if (e.pointerType==="mouse" && e.button!==0) return;
     pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
     try { host.setPointerCapture?.(e.pointerId); } catch { /* Synthetic/cancelled pointers have no active capture. */ }
     dragged=false;
   });
   host.addEventListener("pointermove", e => {
+    if (window.isV39MapInputLocked?.() === true) return;
     const prev=pointers.get(e.pointerId); if(!prev)return;
     const old=[...pointers.values()]; pointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); const next=[...pointers.values()];
     if(next.length>=2){ const od=Math.hypot(old[0].x-old[1].x,old[0].y-old[1].y), nd=Math.hypot(next[0].x-next[1].x,next[0].y-next[1].y); if(od>0&&nd>0){zoomAt((next[0].x+next[1].x)/2,(next[0].y+next[1].y)/2,nd/od);dragged=true;} return; }
@@ -393,6 +450,7 @@ function installInput(scene, data) {
   host.addEventListener("pointerup",finish); host.addEventListener("pointercancel",finish);
   host.addEventListener("dblclick",e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,1.5);});
   const handleKeyboard = e => {
+    if (window.isV39MapInputLocked?.() === true) return;
     const target = e.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable) return;
     const rect = host.getBoundingClientRect();
@@ -588,6 +646,13 @@ async function boot(){
   window.updateV39FieldData=updateV39FieldData;
   window.setV39SnowCoverAt=setV39SnowCoverAt;
   window.setV39SnowfallAt=setV39SnowfallAt;
+  window.beginV39MapRenderBatch=beginMapRenderBatch;
+  window.endV39MapRenderBatch=endMapRenderBatch;
+  window.isV39MapRenderBatchActive=()=>mapRenderBatchTokens.size > 0;
+  window.beginV39MapInputLock=beginMapInputLock;
+  window.endV39MapInputLock=endMapInputLock;
+  window.isV39MapInputLocked=()=>mapInputLockTokens.size > 0;
+  window.waitForV39MapRenderSettled=waitForMapRenderSettled;
   window.__v39FieldRuntime={game:null,mapData:null,settings:null};
   window.render_game_to_text=()=>JSON.stringify({screen:"v39-field",generated:!!currentData,settings:currentSettings,selectedTile:game?.scene?.getScenes(true)?.[0]?.v39SelectedTile||null});
   window.advanceTime=()=>window.render_game_to_text();
