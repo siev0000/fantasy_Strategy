@@ -125,13 +125,17 @@ function drawBases(scene, container, settlements, activeVillage) {
 function drawEnemyNests(scene, container, nests) {
   const revealAll = isTestMode();
   const rule = MAP_ENTITY_SIZE_RULES.nest;
-  const diameter = tileRelativePx(rule.diameterTiles);
-  const iconSize = tileRelativePx(rule.iconTiles);
   for (const nest of Array.isArray(nests) ? nests : []) {
     const x = finiteCoord(nest?.x);
     const y = finiteCoord(nest?.y);
     if (x === null || y === null) continue;
     if (!revealAll && window.isV39TileInCurrentVision?.(x, y) === false) continue;
+
+    const memberCount = Array.isArray(nest?.unitIds) ? nest.unitIds.filter(Boolean).length : 0;
+    const nestScale = memberCount === 1 ? Number(rule.singleMemberScale) || 1 : 1;
+    const diameter = tileRelativePx(rule.diameterTiles * nestScale);
+    const iconSize = tileRelativePx(rule.iconTiles * nestScale);
+    const glyphFontSize = tileRelativePx(rule.glyphFontTiles * nestScale);
 
     const center = tileCenter(x, y);
     const marker = scene.add.container(center.x, center.y).setName("v39-enemy-nest-marker");
@@ -144,7 +148,7 @@ function drawEnemyNests(scene, container, nests) {
     } else {
       marker.add(scene.add.circle(0, 0, iconSize / 2, 0x54252a, 0.88));
       marker.add(scene.add.text(0, 0, "巣", {
-        fontSize:`${tileRelativePx(rule.glyphFontTiles)}px`, fontStyle:"bold", color:"#ffe8cf",
+        fontSize:`${glyphFontSize}px`, fontStyle:"bold", color:"#ffe8cf",
         stroke:"#351014", strokeThickness:3
       }).setOrigin(0.5));
     }
