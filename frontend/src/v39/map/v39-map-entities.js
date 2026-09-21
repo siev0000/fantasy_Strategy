@@ -20,6 +20,7 @@ const TEST_UNDISCOVERED_ENEMY_ALPHA = 0.4;
 let structureContainer = null;
 let unitContainer = null;
 let refreshTimer = null;
+let refreshPendingDuringBatch = false;
 const markerByEntityId = new Map();
 const textureLoadState = new WeakMap();
 
@@ -161,6 +162,7 @@ function drawEnemyNests(scene, container, nests) {
 }
 
 function selectUnit(unit) {
+  if (window.isV39MapInputLocked?.() === true) return;
   if (!unit?.id || typeof window.updateV39ActiveFactionState !== "function") return;
   window.updateV39ActiveFactionState({ selectedUnitId: unit.id }, { reason: "map-unit-selected" });
   window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail: { unitId: unit.id, unit } }));
@@ -468,11 +470,21 @@ function renderMarkers() {
 }
 
 function scheduleRefresh(delay = 0) {
+  if (window.isV39MapRenderBatchActive?.() === true) {
+    refreshPendingDuringBatch = true;
+    return false;
+  }
+  refreshPendingDuringBatch = false;
   window.clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => {
+    if (window.isV39MapRenderBatchActive?.() === true) {
+      refreshPendingDuringBatch = true;
+      return;
+    }
     if (renderMarkers()) return;
     refreshTimer = window.setTimeout(() => renderMarkers(), 80);
   }, delay);
+  return true;
 }
 
 function install() {
@@ -481,6 +493,9 @@ function install() {
   window.addEventListener("v39:initial-placement-complete", () => scheduleRefresh());
   window.addEventListener("v39:unit-selected", () => scheduleRefresh());
   window.addEventListener("v39:display-settings-changed", () => scheduleRefresh());
+  window.addEventListener("v39:map-render-batch-ended", event => {
+    if (refreshPendingDuringBatch || event?.detail?.force === true) scheduleRefresh();
+  });
   window.refreshV39MapEntities = () => renderMarkers();
   window.getV39MapEntityMarker = entityId => markerByEntityId.get(String(entityId || "").trim()) || null;
   scheduleRefresh(100);
