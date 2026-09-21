@@ -6,13 +6,14 @@ export const V39_HIT_RATE_MAX = 1.00;
 
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   // 移動コスト計算の基準値。APプールは戦闘と共通で、別の移動APは持たない。
-  // 1マスの基礎消費APは 100 / 移動値 で求める。
-  moveApMax:100
+  moveApMax:100,
+  // 移動値10を、AP100で平地を1マス移動できる基準とする。
+  moveStatPerTile:10
 });
 
 export function resolveV39BaseMoveApCost(movement = 1) {
-  const moveValue = Math.max(1, Math.floor(Number(movement) || 1));
-  return V39_SQUAD_MOVEMENT_BALANCE.moveApMax / moveValue;
+  const moveValue = Math.max(1, Number(movement) || 1);
+  return (V39_SQUAD_MOVEMENT_BALANCE.moveApMax * V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) / moveValue;
 }
 
 // 軍事Lvによる通常軍隊の編成補正。基本値は都市基本データ.jsonの分類=ユニット作成、army行を使う。
