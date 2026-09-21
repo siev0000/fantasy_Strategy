@@ -478,13 +478,13 @@ export async function runEnemyTurn(turnNumber = currentV39TurnNumber()) {
     if (unhandled.length) console.warn("[敵ターン] 未処理の敵が残りました", { ターン:turnNumber, 敵ID:unhandled.map(enemy => text(enemy.id)) });
     updateProgressMessage(progressId, metrics.processed, Math.max(aliveCount, metrics.processed), metrics.fallbackUsed ? "フォールバック完了" : "Worker完了");
 
+    presentationInputToken = window.beginV39MapInputLock?.("enemy-turn-presentation") || null;
     if (renderBatchToken) {
       window.endV39MapRenderBatch?.(renderBatchToken, { force:true, reason:"enemy-turn-calculation-complete" });
       renderBatchToken = null;
       await window.waitForV39MapRenderSettled?.();
     }
 
-    presentationInputToken = window.beginV39MapInputLock?.("enemy-turn-presentation") || null;
     const presentedEventCount = number(await window.playV39EnemyTurnPresentation?.(presentationEvents));
     if (presentationInputToken) {
       window.endV39MapInputLock?.(presentationInputToken, "enemy-turn-presentation-complete");
