@@ -4,6 +4,12 @@ export const V39_HIT_RATE_MIN = 0.25;
 // 攻撃の最大命中率。1.00 = 100%。
 export const V39_HIT_RATE_MAX = 1.00;
 
+// 戦闘ダメージの共通調整値。ダメージ式本体を変えずに全体バランスを調整する。
+export const V39_COMBAT_BALANCE = Object.freeze({
+  // 1ヒットごとの最終ダメージへ掛ける倍率。
+  damageMultiplier:3
+});
+
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   // 移動コスト計算の基準値。APプールは戦闘と共通で、別の移動APは持たない。
   moveApMax:100,
