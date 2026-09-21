@@ -35,6 +35,7 @@ import {
 import { RESEARCH_CATEGORY_ORDER as RESEARCH_CATEGORY_ORDER_CONFIG } from "../lib/research-tree-config.js";
 import { createOwnCharacterNavigatorEntries, createOwnSquadNavigatorEntries } from "../lib/own-faction-navigator.js";
 import { createPlayerFactionState, createPlayerRecord } from "../lib/player-state.js";
+import { normalizeGameStartSettings } from "../lib/game-start-settings.js";
 import {
   clampCameraCenter as clampCameraCenterUtil,
   clampCameraScroll as clampCameraScrollUtil,
@@ -381,6 +382,7 @@ const focusCameraOnTileClick = ref(false); // クリック時カメラフォー�
 const showSettingsModal = ref(false); // 表示設定モーダル表示
 const showQuickSettingsModal = ref(false); // 右上設定メニュー表示
 const squadFormationEnabled = ref(true); // チーム編成機能ON/OFF
+const gameStartSettings = ref(normalizeGameStartSettings()); // 開始時のターン進行設定
 const saveExportInProgress = ref(false); // セーブ出力中フラグ
 const saveLoadInProgress = ref(false); // セーブ読込中フラグ
 const saveLoadInput = ref(null); // セーブ読込用input
@@ -6132,7 +6134,20 @@ function ensureTestPlayerSlotsInitialized() {
   resetTestPlayerSlotsFromLiveState();
 }
 
+function applyGameStartSettings(settings = {}, options = {}) {
+  const normalized = normalizeGameStartSettings(settings);
+  gameStartSettings.value = normalized;
+  if (typeof window !== "undefined" && typeof window.setV39GameState === "function") {
+    window.setV39GameState(
+      { gameSettings: normalized },
+      { silent: options?.silent === true, reason: "game-settings" }
+    );
+  }
+  return normalized;
+}
+
 function initializeTestPlayerSlotsFromConfig(config = {}) {
+  const normalizedGameSettings = applyGameStartSettings(config?.gameSettings || {});
   const requestedPlayers = Math.max(1, Math.floor(toSafeNumber(config?.playerCount, 1)));
   const requestedOthers = Math.max(0, Math.floor(toSafeNumber(config?.otherFactionCount, 0)));
   const requestedTotalRaw = Math.max(1, Math.floor(toSafeNumber(config?.totalCount, requestedPlayers + requestedOthers)));
@@ -6171,7 +6186,7 @@ function initializeTestPlayerSlotsFromConfig(config = {}) {
     emitCharacterStateChange();
     if (currentData.value) renderMapWithPhaser();
   }
-  return { ok: true, total, playerCount, otherCount };
+  return { ok: true, total, playerCount, otherCount, gameSettings: normalizedGameSettings };
 }
 
 function resolveNextTestPlayerIdentity() {
@@ -10396,6 +10411,7 @@ function buildMapSnapshotForSave() {
       shapeOnly: !!data?.shapeOnly,
       terrainRatioProfile: deepCloneJsonValue(data?.terrainRatioProfile, null)
     },
+    gameSettings: deepCloneJsonValue(gameStartSettings.value, normalizeGameStartSettings()),
     turnState: deepCloneJsonValue(data?.turnState, { turnNumber: 0 }),
     base: {
       grid: deepCloneJsonValue(data?.grid, []),
@@ -10641,6 +10657,9 @@ function applyLoadedSaveState(payload) {
     return { ok: false, reason: "ロード失敗: マップデータ形式が不正です。" };
   }
   const fallbackVisibility = normalizeVisibilitySnapshot(mapSnapshot?.visibility, {});
+  applyGameStartSettings(
+    mapSnapshot?.gameSettings || payload?.gameSettings || payload?.saveData?.gameSettings || {}
+  );
   const saveFaction = payload?.faction || payload?.saveData?.factions?.[0] || null;
   const fallbackFactionState = normalizeFactionStateFromSave(saveFaction, fallbackVisibility);
   const loadedSlots = normalizeTestPlayersFromSave(mapSnapshot?.multiplayer?.players, fallbackVisibility);
@@ -11135,13 +11154,17 @@ function applyCharacterCommand(command) {
     const result = initializeTestPlayerSlotsFromConfig({
       playerCount: command?.playerCount,
       otherFactionCount: command?.otherFactionCount,
-      totalCount: command?.totalCount
+      totalCount: command?.totalCount,
+      gameSettings: command?.gameSettings
     });
     if (!result.ok) {
       updateUnitInfoText(result.reason || "勢力初期化に失敗しました。");
       return;
     }
-    updateUnitInfoText(`勢力を初期化: プレイヤー${result.playerCount} / 別勢力${result.otherCount} / 合計${result.total}`);
+    const modeLabel = result.gameSettings?.turnProgressionMode === "phased" ? "フェーズ方式" : "現行方式";
+    updateUnitInfoText(
+      `勢力を初期化: プレイヤー${result.playerCount} / 別勢力${result.otherCount} / 合計${result.total} / ${modeLabel} / 最大戦闘${result.gameSettings?.maxCombatTurnsPerWorldTurn || 1}T`
+    );
     return;
   }
 
