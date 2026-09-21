@@ -97,7 +97,7 @@ function createStyles() {
 .v39-section-summary-control input{width:18px;height:18px;accent-color:#66c6d6}
 .v39-setting-list{display:grid;padding:2px 10px 7px}
 .v39-setting-row{min-width:0;display:grid;grid-template-columns:minmax(150px,.8fr) minmax(190px,1.2fr);gap:6px 12px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(70,87,93,.42)}
-.v39-setting-row:last-child{border-bottom:0}
+.v39-setting-row:last-child{border-bottom:0}.v39-setting-row[hidden]{display:none}
 .v39-setting-row>span{font-size:12px;color:#b8c5c8;font-weight:700}
 .v39-setting-row select,.v39-setting-row input[type="number"]{width:100%;min-height:34px;border:1px solid #46575d;border-radius:6px;background:#162227;color:#e8efec;padding:5px 7px}
 .v39-setting-row input[type="checkbox"]{width:18px;height:18px;accent-color:#66c6d6}
@@ -136,7 +136,7 @@ function createModal() {
               <select id="v39-field-turn-mode"></select>
               <small id="v39-field-turn-mode-note"></small>
             </label>
-            <label class="v39-setting-row">
+            <label class="v39-setting-row" id="v39-field-max-combat-turns-row">
               <span>最大戦闘ターン数</span>
               <input id="v39-field-max-combat-turns" type="number" step="1">
               <small id="v39-field-max-combat-turns-note"></small>
@@ -258,6 +258,13 @@ function boot() {
       + "。上限到達時に未決着戦闘を次のワールドターンへ持ち越す想定です。";
   }
 
+  const syncTurnModeVisibility = gameSettings => {
+    const maxCombatTurnsRow = get("v39-field-max-combat-turns-row");
+    if (maxCombatTurnsRow instanceof HTMLElement) {
+      maxCombatTurnsRow.hidden = gameSettings?.turnProgressionMode !== "phased";
+    }
+  };
+
   const sync = () => {
     get("v39-field-map-size").value = settings.mapSize;
     get("v39-field-pattern").value = settings.patternId;
@@ -269,6 +276,7 @@ function boot() {
     get("v39-field-max-combat-turns").value = normalizedGameSettings.maxCombatTurnsPerWorldTurn;
     const selectedTurnMode = GAME_START_TURN_MODE_OPTIONS.find(row => row.value === normalizedGameSettings.turnProgressionMode);
     get("v39-field-turn-mode-note").textContent = selectedTurnMode?.description || "";
+    syncTurnModeVisibility(normalizedGameSettings);
     get("v39-field-custom-enabled").checked = !!settings.islandCustomSettings.enabled;
     get("v39-field-wrap").checked = settings.islandCustomSettings.worldWrapEnabled !== false;
     get("v39-field-large-islands").value = settings.islandCustomSettings.largeIslandCount;
@@ -337,6 +345,7 @@ function boot() {
     settings.gameSettings = next;
     const selected = GAME_START_TURN_MODE_OPTIONS.find(row => row.value === next.turnProgressionMode);
     get("v39-field-turn-mode-note").textContent = selected?.description || "";
+    syncTurnModeVisibility(next);
   });
   get("v39-field-max-combat-turns").addEventListener("change", () => {
     settings.gameSettings = normalizeGameStartSettings({
