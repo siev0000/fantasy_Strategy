@@ -5,8 +5,8 @@ export const V39_HIT_RATE_MIN = 0.25;
 export const V39_HIT_RATE_MAX = 1.00;
 
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
-  // フィールド移動専用。各ユニットが持つ戦闘APとは分離する。
-  // 部隊移動用の最大AP。戦闘用APとは別に、各プレイヤーターンで100へ回復する。
+  // 移動コスト計算の基準値。APプールは戦闘と共通で、別の移動APは持たない。
+  // 1マスの基礎消費APは 100 / 移動値 で求める。
   moveApMax:100
 });
 
