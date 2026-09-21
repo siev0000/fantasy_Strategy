@@ -59,6 +59,25 @@ export function canUnitEnterV39Tile(mapData, x, y, unit) {
   return inspectV39TerrainTraversal(unit, resolveV39TileTerrainName(mapData, x, y)).allowed;
 }
 
+export function resolveV39TerrainMoveCost(unit, terrainName) {
+  const name = text(terrainName);
+  const row = terrainByName.get(name) || null;
+  const rawCost = Math.max(1, number(row?.移動コスト) || 1);
+  const basePercent = 100 + Math.max(0, rawCost - 1) * 50;
+  const quickness = Math.max(0, resolveV39UnitCapabilityValue(unit, "早業"));
+  const reductionPoints = quickness * 0.5;
+  const finalPercent = Math.max(100, basePercent - reductionPoints);
+  return {
+    terrainName:name,
+    rawCost,
+    basePercent,
+    quickness,
+    reductionPoints,
+    finalPercent,
+    multiplier:finalPercent / 100
+  };
+}
+
 export function resolveV39TerrainTurnDamageRule(terrainName) {
   const name = text(terrainName);
   const row = terrainByName.get(name) || null;
@@ -70,5 +89,6 @@ export function resolveV39TerrainTurnDamageRule(terrainName) {
 if (typeof window !== "undefined") {
   window.inspectV39TerrainTraversal = inspectV39TerrainTraversal;
   window.canUnitEnterV39Tile = canUnitEnterV39Tile;
+  window.resolveV39TerrainMoveCost = resolveV39TerrainMoveCost;
   window.resolveV39TerrainTurnDamageRule = resolveV39TerrainTurnDamageRule;
 }
