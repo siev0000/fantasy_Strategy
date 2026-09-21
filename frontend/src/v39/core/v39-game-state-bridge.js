@@ -80,9 +80,32 @@ function normalizeEntityArray(value) {
   return Array.isArray(value) ? value.filter(Boolean).map(row => cloneValue(row, {})) : [];
 }
 
+function firstFiniteUnitNumber(values, fallback = 0) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function normalizeUnitCommonAp(unit = {}) {
+  const maxAp = Math.max(0, Math.floor(firstFiniteUnitNumber([
+    unit?.maxAp,
+    unit?.maxActionPoint,
+    unit?.status?.AP
+  ], 100)));
+  const ap = Math.max(0, Math.min(maxAp, Math.floor(firstFiniteUnitNumber([
+    unit?.ap,
+    unit?.currentAp,
+    unit?.actionPoint
+  ], maxAp))));
+  return { ...unit, maxAp, ap, currentAp:ap, actionPoint:ap };
+}
+
 function normalizeUnitArray(value) {
   return Array.isArray(value)
-    ? value.filter(Boolean).map(row => applyV39DerivedCharacterData(row))
+    ? value.filter(Boolean).map(row => normalizeUnitCommonAp(applyV39DerivedCharacterData(row)))
     : [];
 }
 
