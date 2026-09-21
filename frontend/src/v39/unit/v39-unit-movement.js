@@ -414,13 +414,13 @@ function startMove() {
 
   const ap = moveGroup.moveAp;
   if (ap <= 0) {
-    showToast("APがありません。ターン経過で回復します");
+    showToast(moveGroup?.apLimitedBy?.name ? `${moveGroup.apLimitedBy.name}のAPが0です` : "APがありません。ターン経過で回復します");
     return false;
   }
 
   const plan = buildReachablePlan(ctx.data, moveGroup, ap);
   if (plan.costs.size <= 1) {
-    showToast("現在のAPでは移動可能なマスがありません");
+    showToast(`現在のAPでは移動可能なマスがありません（残AP ${ap}）`);
     return false;
   }
 
