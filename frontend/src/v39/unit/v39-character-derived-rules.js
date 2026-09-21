@@ -207,7 +207,9 @@ export function applyV39DerivedCharacterData(unit = {}) {
       if (Object.prototype.hasOwnProperty.call(status, key)) status[key] = number(status[key]) + number(value);
     }
   }
-  const movement = resolveV39MovementStatFromStatus(status);
+  const movement = resolveV39MovementStatFromStatus(status, {
+    legCount: derived.raceRow?.脚数
+  });
   status.移動 = movement;
   return {
     ...unit,
