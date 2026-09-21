@@ -414,7 +414,7 @@ function startMove() {
 
   const ap = moveGroup.moveAp;
   if (ap <= 0) {
-    showToast("部隊移動APがありません。ターン経過で回復します");
+    showToast("APがありません。ターン経過で回復します");
     return false;
   }
 
@@ -575,7 +575,7 @@ function applyMovement() {
   const movedLabel = currentGroup.isSquad
     ? text(currentGroup.squad?.label || currentGroup.squad?.name, "部隊")
     : text(unit.name, "キャラクター");
-  showToast(`${movedLabel}：移動完了 / 移動AP ${nextAp}`);
+  showToast(`${movedLabel}：移動完了 / 残AP ${nextAp}`);
 }
 
 function bindCapturedClick(id, handler) {
