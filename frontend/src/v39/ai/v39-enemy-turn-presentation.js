@@ -22,6 +22,12 @@ function visibleTile(tile) {
   return tile && window.isV39TileInCurrentVision?.(Math.floor(number(tile.x)), Math.floor(number(tile.y))) !== false;
 }
 
+function visibleEnemyEvent(event) {
+  const enemyId = String(event?.enemyId || event?.attackerId || "").trim();
+  if (enemyId && window.isV39EntityDetected?.(enemyId) === false) return false;
+  return event?.visible === true || visibleTile(event?.to) || visibleTile(event?.target) || visibleTile(event?.from);
+}
+
 async function focusTile(tile, previousTile) {
   const scene = activeScene();
   const camera = scene?.cameras?.main;
@@ -65,8 +71,7 @@ async function playAttack(event) {
 export async function playV39EnemyTurnPresentation(events = []) {
   const visibleEvents = (Array.isArray(events) ? events : []).filter(event => {
     if (event?.type === "move" && event?.combatApproach !== true) return false;
-    if (event?.visible === true) return true;
-    return visibleTile(event?.to) || visibleTile(event?.target) || visibleTile(event?.from);
+    return visibleEnemyEvent(event);
   });
   let previousTile = null;
   for (const event of visibleEvents) {
