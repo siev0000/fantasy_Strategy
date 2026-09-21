@@ -7,6 +7,7 @@ import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rule
 import { resolveSkillBasePower } from "../../lib/skill-power.js";
 import { createPlayerRecord } from "../../lib/player-state.js";
 import { createV39EquipmentEntry } from "../../lib/v39-equipment-rules.js";
+import { resolveV39RangeTiles } from "../../lib/v39-gameplay-balance.js";
 
 const equipmentByName = new Map(
   (Array.isArray(equipmentDb) ? equipmentDb : [])
@@ -103,7 +104,7 @@ const actionSkills = (Array.isArray(activeUnit?.techniques) ? activeUnit.techniq
   .filter(technique => technique?.action === "A" && technique?.source)
   .map((technique, index) => {
     const row = technique.source;
-    const range = optionalNumber(row.射程) ?? 1;
+    const range = resolveV39RangeTiles(optionalNumber(row.射程), 1);
     const area = row.範囲 ?? row.炸裂 ?? null;
     return {
       key: `skill-${index}`,
