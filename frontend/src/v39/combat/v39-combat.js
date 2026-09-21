@@ -29,6 +29,7 @@ import {
   resolveV39DeadlineTurn
 } from "../../lib/v39-turn-timing.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import { isV39TestInstantDeathSkill } from "../../lib/v39-test-skill-rules.js";
 import {
   applyV39TileTransformEffect,
   resolveV39TileTransformEffect,
@@ -95,6 +96,33 @@ function guardStatePatch(unit, damage, grantedGuard = 0, turnNumber = currentV39
   return guard > 0
     ? { guard, guardExpiresAtTurn:granted > 0 ? resolveV39DeadlineTurn(turnNumber, 1) : integer(unit?.guardExpiresAtTurn, turnNumber) }
     : { guard:0, guardExpiresAtTurn:0 };
+}
+
+function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, isCounter = false }) {
+  const baseDamage = computeAttackDamage({
+    attacker:terrainAdjusted(attacker),
+    target:terrainAdjusted(target),
+    skillRow,
+    scale,
+    friendly,
+    isCounter
+  });
+  if (!isV39TestInstantDeathSkill(skillRow)) return applyV39GuardToDamage(target, baseDamage);
+
+  const hp = Math.max(0, Math.floor(number(target?.hp, target?.currentHp)));
+  const guardBefore = Math.max(0, Math.floor(number(target?.guard)));
+  return {
+    ...baseDamage,
+    total:hp,
+    hits:[hp],
+    hitResults:[{ hit:true, damage:hp, hitRoll:0, randomRate:1, testInstantDeath:true }],
+    missCount:0,
+    hitsBeforeGuard:[hp],
+    guardBefore,
+    guardAbsorbed:0,
+    guardRemaining:guardBefore,
+    detail:{ ...baseDamage.detail, testInstantDeath:true }
+  };
 }
 
 function castDurationTurns(skillRow) {
@@ -712,7 +740,7 @@ function performAttack(target, session = attackSession, options = {}) {
   for (const enemy of supportSkill ? [] : state.enemies) {
     const scale = areaScale.get(coordKey(enemy.x, enemy.y));
     if (scale === undefined || number(enemy?.hp, enemy?.currentHp) <= 0) continue;
-    const damage = applyV39GuardToDamage(enemy, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(enemy), skillRow:session.skillRow, scale, isCounter:!!options.isCounter }));
+    const damage = resolveAppliedAttackDamage({ attacker, target:enemy, skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
     damageById.set(text(enemy.id), damage);
     const beforeHp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
     combatLog.push({
@@ -727,7 +755,7 @@ function performAttack(target, session = attackSession, options = {}) {
     if (text(ally.id) === text(attacker.id)) continue;
     const scale = areaScale.get(coordKey(ally.x, ally.y));
     if (scale === undefined || number(ally?.hp, ally?.currentHp) <= 0) continue;
-    const damage = applyV39GuardToDamage(ally, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(ally), skillRow:session.skillRow, scale, friendly:true, isCounter:!!options.isCounter }));
+    const damage = resolveAppliedAttackDamage({ attacker, target:ally, skillRow:session.skillRow, scale, friendly:true, isCounter:!!options.isCounter });
     friendlyDamageById.set(text(ally.id), damage);
     const beforeHp = Math.max(0, number(ally?.hp, ally?.currentHp));
     combatLog.push({
@@ -743,7 +771,7 @@ function performAttack(target, session = attackSession, options = {}) {
     for (const foreignUnit of foreignPlayer?.factionState?.units || []) {
       const scale = areaScale.get(coordKey(foreignUnit.x, foreignUnit.y));
       if (scale === undefined || number(foreignUnit?.hp, foreignUnit?.currentHp) <= 0) continue;
-      const damage = applyV39GuardToDamage(foreignUnit, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(foreignUnit), skillRow:session.skillRow, scale, isCounter:!!options.isCounter }));
+      const damage = resolveAppliedAttackDamage({ attacker, target:foreignUnit, skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
       foreignDamageById.set(text(foreignUnit.id), damage);
       const beforeHp = Math.max(0, number(foreignUnit?.hp, foreignUnit?.currentHp));
       combatLog.push({
@@ -897,7 +925,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     for (const unit of player?.factionState?.units || []) {
       const scale = areaScale.get(coordKey(unit.x, unit.y));
       if (scale === undefined || number(unit?.hp, unit?.currentHp) <= 0) continue;
-    const damage = applyV39GuardToDamage(unit, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(unit), skillRow, scale, isCounter }));
+    const damage = resolveAppliedAttackDamage({ attacker, target:unit, skillRow, scale, isCounter });
       damageByUnitId.set(text(unit.id), damage);
       const beforeHp = Math.max(0, number(unit?.hp, unit?.currentHp));
       combatLog.push({
@@ -914,7 +942,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     const scale = areaScale.get(coordKey(enemy.x, enemy.y));
     if (scale === undefined || number(enemy?.hp, enemy?.currentHp) <= 0) continue;
     const friendly = text(enemy?.nestId) === text(attacker?.nestId);
-    const damage = applyV39GuardToDamage(enemy, computeAttackDamage({ attacker:terrainAdjusted(attacker), target:terrainAdjusted(enemy), skillRow, scale, friendly, isCounter }));
+    const damage = resolveAppliedAttackDamage({ attacker, target:enemy, skillRow, scale, friendly, isCounter });
     enemyDamageById.set(text(enemy.id), damage);
     const beforeHp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
     combatLog.push({
