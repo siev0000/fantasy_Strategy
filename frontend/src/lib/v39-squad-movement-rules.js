@@ -23,6 +23,14 @@ function unitMovement(unit) {
   return 1;
 }
 
+function unitCurrentAp(unit) {
+  return Math.max(0, integer(unit?.ap, integer(unit?.currentAp, integer(unit?.actionPoint, 0))));
+}
+
+function unitMaxAp(unit) {
+  return Math.max(0, integer(unit?.maxAp, integer(unit?.maxActionPoint, 100)));
+}
+
 function embeddedSquadMemberIds(unit) {
   return (Array.isArray(unit?.squads) ? unit.squads : [])
     .map(row => text(row?.memberId || row?.id))
@@ -105,14 +113,14 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "") 
   const squadId = isSquad
     ? text(squad?.id || selected?.squadId || participants[0]?.squadId, `squad-${unitId(participants[0])}`)
     : `solo:${selectedId}`;
-  const moveApMax = Math.max(1, integer(
-    isSquad ? squad?.moveApMax : selected?.fieldMoveApMax,
-    V39_SQUAD_MOVEMENT_BALANCE.moveApMax
-  ));
-  const moveAp = Math.max(0, Math.min(moveApMax, integer(
-    isSquad ? squad?.moveAp : selected?.fieldMoveAp,
-    moveApMax
-  )));
+  const moveApMax = participants.reduce(
+    (minimum, unit) => Math.min(minimum, unitMaxAp(unit)),
+    Number.POSITIVE_INFINITY
+  );
+  const moveAp = participants.reduce(
+    (minimum, unit) => Math.min(minimum, unitCurrentAp(unit)),
+    Number.POSITIVE_INFINITY
+  );
   const movement = participants.reduce((minimum, unit) => Math.min(minimum, unitMovement(unit)), Number.POSITIVE_INFINITY);
   return {
     ok:true,
@@ -127,8 +135,8 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "") 
     x,
     y,
     movement:Number.isFinite(movement) ? movement : 1,
-    moveApMax,
-    moveAp
+    moveApMax:Number.isFinite(moveApMax) ? moveApMax : V39_SQUAD_MOVEMENT_BALANCE.moveApMax,
+    moveAp:Number.isFinite(moveAp) ? moveAp : 0
   };
 }
 
@@ -156,18 +164,14 @@ export function applyV39SquadMovement(faction = {}, group = {}, target = {}, mov
   const units = (Array.isArray(faction?.units) ? faction.units : []).map(unit => {
     if (!participantSet.has(unitId(unit))) return unit;
     const position = targetPositionById.get(unitId(unit));
-    const next = { ...unit, x:position.x, y:position.y };
-    if (!group.isSquad) {
-      next.fieldMoveApMax = group.moveApMax;
-      next.fieldMoveAp = nextMoveAp;
-    }
-    return next;
+    const ap = Math.max(0, unitCurrentAp(unit) - cost);
+    return { ...unit, x:position.x, y:position.y, ap, currentAp:ap, actionPoint:ap };
   });
   let squadFound = false;
   const squads = (Array.isArray(faction?.squads) ? faction.squads : []).map(raw => {
     if (!group.isSquad || text(raw?.id || raw?.squadId) !== group.squadId) return raw;
     squadFound = true;
-    return normalizeV39SquadLogistics({ ...raw, x, y, moveApMax:group.moveApMax, moveAp:nextMoveAp });
+    return normalizeV39SquadLogistics({ ...raw, x, y });
   });
   if (group.isSquad && !squadFound) {
     squads.push(normalizeV39SquadLogistics({
@@ -175,28 +179,15 @@ export function applyV39SquadMovement(faction = {}, group = {}, target = {}, mov
       label:text(group?.leader?.squadName, group.squadId),
       unitIds:[...group.participantIds],
       x,
-      y,
-      moveApMax:group.moveApMax,
-      moveAp:nextMoveAp
+      y
     }));
   }
   return { ok:true, faction:{ ...faction, units, squads }, moveAp:nextMoveAp };
 }
 
 export function restoreV39SquadMovementForTurn(faction = {}) {
-  const squads = (Array.isArray(faction?.squads) ? faction.squads : []).map(raw => {
-    const squad = normalizeV39SquadLogistics(raw);
-    const id = text(squad?.id || squad?.squadId);
-    if (id === "solo" || id === "単独") return squad;
-    return { ...squad, moveAp:squad.moveApMax };
-  });
-  const units = (Array.isArray(faction?.units) ? faction.units : []).map(unit => {
-    const squadId = text(unit?.squadId);
-    if (squadId && squadId !== "solo" && squadId !== "単独") return unit;
-    const fieldMoveApMax = Math.max(1, integer(unit?.fieldMoveApMax, V39_SQUAD_MOVEMENT_BALANCE.moveApMax));
-    return { ...unit, fieldMoveApMax, fieldMoveAp:fieldMoveApMax };
-  });
-  return { ...faction, units, squads };
+  // 移動と戦闘は同じAPを使う。共通AP自体の回復はターン処理の restoreUnitForTurn が行う。
+  return { ...faction };
 }
 
 if (typeof window !== "undefined") {
