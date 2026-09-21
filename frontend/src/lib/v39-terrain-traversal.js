@@ -64,7 +64,12 @@ export function resolveV39TerrainMoveCost(unit, terrainName) {
   const row = terrainByName.get(name) || null;
   const rawCost = Math.max(1, number(row?.移動コスト) || 1);
   const basePercent = 100 + Math.max(0, rawCost - 1) * 50;
-  const quickness = Math.max(0, resolveV39UnitCapabilityValue(unit, "早業"));
+  const quickness = Math.max(
+    0,
+    number(unit?.早業),
+    number(unit?.status?.早業),
+    number(unit?.skillLevels?.早業)
+  );
   const reductionPoints = quickness * 0.5;
   const finalPercent = Math.max(100, basePercent - reductionPoints);
   return {
