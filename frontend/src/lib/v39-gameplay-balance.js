@@ -9,8 +9,13 @@ export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   moveApMax:100,
   // 移動値10を、AP100で平地を1マス移動できる基準とする。
   moveStatPerTile:10,
-  // 暫定バランス。SIZ補正後の速度を移動値へ変換する倍率。
-  movementFromSpeedMultiplier:0.6
+  // 脚0でも基礎1マス相当。脚1本ごとに移動値+5。
+  baseMovementStat:10,
+  movementPerLeg:5,
+  // 速度10ごとに移動値+1。速度は上限でクランプしない。
+  speedPerMovementStat:10,
+  // 脚数未設定の旧データは人型相当の2脚として扱う。
+  defaultLegCount:2
 });
 
 export function resolveV39SizSpeedModifierPercent(siz = 170) {
@@ -25,13 +30,19 @@ export function resolveV39MovementStatFromStatus(status = {}, options = {}) {
   const speed = Math.max(0, Number(status?.速度) || 0);
   const sizModifierPercent = resolveV39SizSpeedModifierPercent(status?.SIZ);
   const sizAdjustedSpeed = speed / Math.max(0.01, 1 + sizModifierPercent / 100);
-  const bodyTraitBonusPercent = Number.isFinite(Number(options?.bodyTraitBonusPercent))
-    ? Number(options.bodyTraitBonusPercent)
+
+  const legValue = Number(options?.legCount);
+  const legCount = Number.isFinite(legValue)
+    ? Math.max(0, Math.floor(legValue))
+    : V39_SQUAD_MOVEMENT_BALANCE.defaultLegCount;
+  const baseMovement = V39_SQUAD_MOVEMENT_BALANCE.baseMovementStat
+    + legCount * V39_SQUAD_MOVEMENT_BALANCE.movementPerLeg;
+  const speedMovement = sizAdjustedSpeed / V39_SQUAD_MOVEMENT_BALANCE.speedPerMovementStat;
+  const additionalMovement = Number.isFinite(Number(options?.additionalMovement))
+    ? Number(options.additionalMovement)
     : 0;
-  const traitAdjustedSpeed = sizAdjustedSpeed * Math.max(0, 1 + bodyTraitBonusPercent / 100);
-  return Math.max(1, Math.round(
-    traitAdjustedSpeed * V39_SQUAD_MOVEMENT_BALANCE.movementFromSpeedMultiplier
-  ));
+
+  return Math.max(1, Math.round(baseMovement + speedMovement + additionalMovement));
 }
 
 export function resolveV39BaseMoveApCost(movement = V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) {
