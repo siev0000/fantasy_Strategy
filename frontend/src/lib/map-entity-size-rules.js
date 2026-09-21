@@ -21,7 +21,9 @@ export const MAP_ENTITY_SIZE_RULES = Object.freeze({
     // ユニットの下に重なっても外周から巣を判別できる大きさにする。
     diameterTiles: 1.22,
     iconTiles: 1.12,
-    glyphFontTiles: 0.34
+    glyphFontTiles: 0.34,
+    // 所属個体が1体だけの巣は、通常巣より控えめに表示する。
+    singleMemberScale: 0.8
   })
 });
 
