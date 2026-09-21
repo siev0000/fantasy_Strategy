@@ -356,7 +356,7 @@ function renderDetail() {
     moveMetaEl.hidden = false;
   }
   if (moveRemainEl) {
-    moveRemainEl.textContent = movementGroup?.ok ? `残 ${movementGroup.moveAp}` : "";
+    moveRemainEl.textContent = movementGroup?.ok ? `残AP ${movementGroup.moveAp}` : "";
     moveRemainEl.hidden = !movementGroup?.ok;
   }
   const prof = document.getElementById("detailProficiencyList");
