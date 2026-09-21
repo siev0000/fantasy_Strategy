@@ -3,6 +3,7 @@ import { resolveV39BaseMoveApCost } from "../../lib/v39-gameplay-balance.js";
 import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { getIconSrcByName } from "../../lib/icon-library.js";
 import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "../../lib/v39-combat-engine.js";
+import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -95,7 +96,16 @@ function skillEntries(unit) {
 }
 
 function techniqueEntries(unit) {
-  return Array.isArray(unit?.techniques) ? unit.techniques.filter(Boolean) : [];
+  const normal = Array.isArray(unit?.techniques) ? unit.techniques.filter(Boolean) : [];
+  const rows = [...normal];
+  const names = new Set(normal.map(row => text(row?.name ?? row?.名前 ?? row?.source?.名前)).filter(Boolean));
+  for (const row of getV39UnitTestTechniques(unit)) {
+    const name = text(row?.name ?? row?.名前 ?? row?.source?.名前);
+    if (!name || names.has(name)) continue;
+    names.add(name);
+    rows.push(row);
+  }
+  return rows;
 }
 
 function techniqueSource(technique) {
