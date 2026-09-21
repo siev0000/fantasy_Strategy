@@ -8,8 +8,31 @@ export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   // 移動コスト計算の基準値。APプールは戦闘と共通で、別の移動APは持たない。
   moveApMax:100,
   // 移動値10を、AP100で平地を1マス移動できる基準とする。
-  moveStatPerTile:10
+  moveStatPerTile:10,
+  // 暫定バランス。SIZ補正後の速度を移動値へ変換する倍率。
+  movementFromSpeedMultiplier:0.6
 });
+
+export function resolveV39SizSpeedModifierPercent(siz = 170) {
+  const value = Number(siz);
+  if (!Number.isFinite(value) || value === 0) return 0;
+  if (value >= 180) return Math.round(value / 50 + 8);
+  if (value <= 150) return -Math.round((160 - value) / 3);
+  return 0;
+}
+
+export function resolveV39MovementStatFromStatus(status = {}, options = {}) {
+  const speed = Math.max(0, Number(status?.速度) || 0);
+  const sizModifierPercent = resolveV39SizSpeedModifierPercent(status?.SIZ);
+  const sizAdjustedSpeed = speed / Math.max(0.01, 1 + sizModifierPercent / 100);
+  const bodyTraitBonusPercent = Number.isFinite(Number(options?.bodyTraitBonusPercent))
+    ? Number(options.bodyTraitBonusPercent)
+    : 0;
+  const traitAdjustedSpeed = sizAdjustedSpeed * Math.max(0, 1 + bodyTraitBonusPercent / 100);
+  return Math.max(1, Math.round(
+    traitAdjustedSpeed * V39_SQUAD_MOVEMENT_BALANCE.movementFromSpeedMultiplier
+  ));
+}
 
 export function resolveV39BaseMoveApCost(movement = V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) {
   const moveValue = Math.max(1, Number(movement) || V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile);
