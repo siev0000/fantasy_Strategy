@@ -60,8 +60,8 @@ function createPlaceholderModal() {
   dialog.innerHTML = `
     <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid #34444a;position:sticky;top:0;background:#111c21;z-index:1">
       <div>
-        <div id="v39-field-settings-title" style="font-weight:800;font-size:16px">フィールド設定</div>
-        <div style="margin-top:2px;font-size:13px;color:#92a2a6">カスタムフィールド生成（仮画面）</div>
+        <div id="v39-field-settings-title" style="font-weight:800;font-size:16px">ゲーム開始設定</div>
+        <div style="margin-top:2px;font-size:13px;color:#92a2a6">マップ・ゲーム進行設定を読み込み中</div>
       </div>
       <button type="button" id="v39-close-field-settings" style="border:1px solid #526269;border-radius:7px;background:#19262b;color:#e8efec;padding:7px 11px;cursor:pointer">閉じる</button>
     </header>
