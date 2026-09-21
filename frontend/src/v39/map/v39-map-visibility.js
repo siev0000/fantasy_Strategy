@@ -215,7 +215,7 @@ function buildCurrentVision(data, faction, state, playerId) {
   return { visible, detectionByTile };
 }
 
-function detectedEntityIdsForGroups(groups, currentVision, detectionByTile) {
+function detectedEntityIdsForGroups(groups, currentVision, detectionByTile, turnNumber) {
   const detected = new Set();
   for (const [key, units] of groups.entries()) {
     if (!currentVision.has(key)) continue;
@@ -228,7 +228,7 @@ function detectedEntityIdsForGroups(groups, currentVision, detectionByTile) {
       }
       continue;
     }
-    const targetSense = resolveDetectionGroupSense(units);
+    const targetSense = resolveDetectionGroupSense(units, { turnNumber });
     if (observerScout < targetSense.stealth) continue;
     for (const unit of units) {
       const id = String(unit?.id ?? unit?.unitId ?? unit?.characterId ?? "").trim();
@@ -238,18 +238,20 @@ function detectedEntityIdsForGroups(groups, currentVision, detectionByTile) {
   return detected;
 }
 
-function buildDetectedEntityIds(state, playerId, currentVision, detectionByTile) {
+function buildDetectedEntityIds(state, playerId, currentVision, detectionByTile, turnNumber) {
   const detected = detectedEntityIdsForGroups(
     unitsByTile(state?.enemies),
     currentVision,
-    detectionByTile
+    detectionByTile,
+    turnNumber
   );
   for (const player of Array.isArray(state?.players) ? state.players : []) {
     if (String(player?.id || "") === String(playerId || "")) continue;
     const ids = detectedEntityIdsForGroups(
       unitsByTile(player?.factionState?.units),
       currentVision,
-      detectionByTile
+      detectionByTile,
+      turnNumber
     );
     for (const id of ids) detected.add(id);
   }
@@ -275,11 +277,16 @@ function inspectPlayerDetectionForEnemy(enemyOrId) {
   const detected = !!id && lastSnapshot.detectedEntityIds.has(id);
   const rawScout = Number(lastSnapshot.detectionByTile.get(key));
   const observerScout = Number.isFinite(rawScout) ? roundDetectionValue(rawScout) : null;
-  const targetStealth = roundDetectionValue(resolveDetectionGroupSense(group).stealth);
+  const turnNumber = Math.max(1, Math.floor(Number(state?.timeline?.turnNumber) || 1));
+  const targetStealth = roundDetectionValue(resolveDetectionGroupSense(group, { turnNumber }).stealth);
+  const exposedUnits = group.filter(unit => Math.floor(Number(unit?.lastStealthBreakTurn) || -1) === turnNumber);
+  const exposureReason = [...new Set(exposedUnits.map(unit => String(unit?.lastStealthBreakReason || "combat").trim()).filter(Boolean))].join(" / ");
   const reason = !inCurrentVision
     ? "索敵範囲外"
     : detected
-      ? `発見済み（有効索敵${observerScout ?? "-"} >= 隠密${targetStealth}）`
+      ? exposedUnits.length
+        ? `発見済み（戦闘露見: ${exposureReason || "combat"} / 有効隠密${targetStealth}）`
+        : `発見済み（有効索敵${observerScout ?? "-"} >= 隠密${targetStealth}）`
       : `未発見（有効索敵${observerScout ?? "-"} < 隠密${targetStealth}）`;
 
   return {
@@ -291,6 +298,8 @@ function inspectPlayerDetectionForEnemy(enemyOrId) {
     observerScout,
     targetStealth,
     groupSize:group.length,
+    stealthExposed:exposedUnits.length > 0,
+    stealthExposureReason:exposureReason,
     reason
   };
 }
@@ -474,7 +483,8 @@ function renderVisibilityLayers() {
 
   const vision = buildCurrentVision(data, faction, state, player.id);
   const currentVision = vision.visible;
-  const detectedEntityIds = buildDetectedEntityIds(state, player.id, currentVision, vision.detectionByTile);
+  const turnNumber = Math.max(1, Math.floor(Number(state?.timeline?.turnNumber) || 1));
+  const detectedEntityIds = buildDetectedEntityIds(state, player.id, currentVision, vision.detectionByTile, turnNumber);
   const explored = new Set(
     (Array.isArray(faction.visibility?.exploredTileKeys) ? faction.visibility.exploredTileKeys : []).map(String)
   );
