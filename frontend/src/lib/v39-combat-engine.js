@@ -1,7 +1,7 @@
 import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { COMBAT_STATUS_FIELDS, DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS } from "../constants/unitCommon.js";
-import { resolveV39RangeTiles, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
+import { resolveV39RangeTiles, V39_COMBAT_BALANCE, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
 
 const NATURAL_COUNTER_METHODS = new Set(["素手", "角", "牙", "爪", "翼", "尾", "針"]);
 const RANGED_WEAPON_NAMES = /弓|銃|砲|ボウ|ライフル|ピストル/;
@@ -318,6 +318,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
       * (1 - resistanceRate)
       * Math.max(0, number(scale, 1))
       * (friendly ? 0.5 : 1)
+      * Math.max(0, number(V39_COMBAT_BALANCE.damageMultiplier, 1))
     ));
     hits.push(damage);
     hitResults.push({ hit:true, damage, hitRoll, randomRate });
@@ -329,7 +330,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
     missCount:hitResults.filter(row => !row.hit).length,
     detail:{
       power, defenseKey, defense, resistanceKey, resistance, resistanceRate, targetLevel,
-      levelReduction, reducedPower, attackCount, scale, friendly, accuracyKey, accuracy, evasion, hitRate,
+      levelReduction, reducedPower, attackCount, scale, friendly, damageMultiplier:V39_COMBAT_BALANCE.damageMultiplier, accuracyKey, accuracy, evasion, hitRate,
       appliedPassiveSkillNames:adjusted.appliedPassiveSkillNames,
       attackerTerrain:text(attacker?.terrainModifierSource),
       attackerTerrainModifiers:{ ...(attacker?.terrainModifiers || {}) },
