@@ -1,3 +1,12 @@
+import {
+  GAME_START_DEFAULT_MAX_COMBAT_TURNS,
+  GAME_START_DEFAULT_TURN_MODE,
+  GAME_START_MAX_COMBAT_TURNS_MAX,
+  GAME_START_MAX_COMBAT_TURNS_MIN,
+  GAME_START_TURN_MODE_OPTIONS,
+  normalizeGameStartSettings
+} from "../../lib/game-start-settings.js";
+
 const FIELD_SETTINGS_STORAGE_KEY = "v39-field-settings-v1";
 
 const DEFAULT_FIELD_SETTINGS = Object.freeze({
@@ -5,6 +14,10 @@ const DEFAULT_FIELD_SETTINGS = Object.freeze({
   patternId: "realistic",
   mountainMode: "random",
   enemySpawnTileDivisor: 40,
+  gameSettings: normalizeGameStartSettings({
+    turnProgressionMode: GAME_START_DEFAULT_TURN_MODE,
+    maxCombatTurnsPerWorldTurn: GAME_START_DEFAULT_MAX_COMBAT_TURNS
+  }),
   islandCustomSettings: {
     enabled: false,
     largeIslandCount: 2,
@@ -29,6 +42,7 @@ function loadFieldSettings() {
     return {
       ...deepClone(DEFAULT_FIELD_SETTINGS),
       ...saved,
+      gameSettings: normalizeGameStartSettings(saved.gameSettings),
       islandCustomSettings: {
         ...deepClone(DEFAULT_FIELD_SETTINGS.islandCustomSettings),
         ...(saved.islandCustomSettings || {})
@@ -78,7 +92,7 @@ function createModal() {
   overlay.innerHTML = `
     <section id="v39-field-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="v39-field-settings-title">
       <header class="v39-field-settings-head">
-        <div><h2 id="v39-field-settings-title">フィールド設定</h2><small>旧フィールド生成ルールをそのまま使用</small></div>
+        <div><h2 id="v39-field-settings-title">ゲーム開始設定</h2><small>マップ生成とゲーム進行方式を設定</small></div>
         <button type="button" data-field-close aria-label="閉じる">×</button>
       </header>
       <div class="v39-field-settings-body">
@@ -89,6 +103,20 @@ function createModal() {
             <button type="button" id="v39-field-load-save">セーブデータをロード</button>
             <input id="v39-field-save-file" type="file" accept="application/json,.json" hidden>
             <span class="v39-field-load-save-status" id="v39-field-load-save-status">JSONファイルを選択</span>
+          </div>
+        </section>
+        <section class="v39-field-setting-card">
+          <div class="v39-section-title">ゲーム進行設定</div>
+          <small>ゲーム開始後のターン進行方式と、1ワールドターン内で戦闘を進める上限を設定します。</small>
+          <div class="v39-field-settings-grid">
+            <label class="v39-field-setting-card"><span>ターン進行方式</span>
+              <select id="v39-field-turn-mode"></select>
+              <small id="v39-field-turn-mode-note"></small>
+            </label>
+            <label class="v39-field-setting-card"><span>最大戦闘ターン数</span>
+              <input id="v39-field-max-combat-turns" type="number" step="1">
+              <small id="v39-field-max-combat-turns-note"></small>
+            </label>
           </div>
         </section>
         <div class="v39-field-settings-grid">
@@ -156,11 +184,38 @@ function boot() {
   const overlay = createModal();
   const get = id => document.getElementById(id);
 
+  const turnModeSelect = get("v39-field-turn-mode");
+  if (turnModeSelect instanceof HTMLSelectElement) {
+    turnModeSelect.replaceChildren(...GAME_START_TURN_MODE_OPTIONS.map(row => {
+      const option = document.createElement("option");
+      option.value = row.value;
+      option.textContent = row.label;
+      return option;
+    }));
+  }
+  const maxCombatTurnsInput = get("v39-field-max-combat-turns");
+  if (maxCombatTurnsInput instanceof HTMLInputElement) {
+    maxCombatTurnsInput.min = String(GAME_START_MAX_COMBAT_TURNS_MIN);
+    maxCombatTurnsInput.max = String(GAME_START_MAX_COMBAT_TURNS_MAX);
+  }
+  const maxCombatTurnsNote = get("v39-field-max-combat-turns-note");
+  if (maxCombatTurnsNote) {
+    maxCombatTurnsNote.textContent = "初期値 " + GAME_START_DEFAULT_MAX_COMBAT_TURNS
+      + "。設定範囲 " + GAME_START_MAX_COMBAT_TURNS_MIN + "〜" + GAME_START_MAX_COMBAT_TURNS_MAX
+      + "。上限到達時に未決着戦闘を次のワールドターンへ持ち越す想定です。";
+  }
+
   const sync = () => {
     get("v39-field-map-size").value = settings.mapSize;
     get("v39-field-pattern").value = settings.patternId;
     get("v39-field-mountain").value = settings.mountainMode;
     get("v39-field-enemy-divisor").value = Math.round(clampNumber(settings.enemySpawnTileDivisor, 20, 60, 40));
+    const normalizedGameSettings = normalizeGameStartSettings(settings.gameSettings);
+    settings.gameSettings = normalizedGameSettings;
+    get("v39-field-turn-mode").value = normalizedGameSettings.turnProgressionMode;
+    get("v39-field-max-combat-turns").value = normalizedGameSettings.maxCombatTurnsPerWorldTurn;
+    const selectedTurnMode = GAME_START_TURN_MODE_OPTIONS.find(row => row.value === normalizedGameSettings.turnProgressionMode);
+    get("v39-field-turn-mode-note").textContent = selectedTurnMode?.description || "";
     get("v39-field-custom-enabled").checked = !!settings.islandCustomSettings.enabled;
     get("v39-field-wrap").checked = settings.islandCustomSettings.worldWrapEnabled !== false;
     get("v39-field-large-islands").value = settings.islandCustomSettings.largeIslandCount;
@@ -183,6 +238,10 @@ function boot() {
       patternId: get("v39-field-pattern").value,
       mountainMode: get("v39-field-mountain").value,
       enemySpawnTileDivisor: Math.round(clampNumber(get("v39-field-enemy-divisor").value, 20, 60, 40)),
+      gameSettings: normalizeGameStartSettings({
+        turnProgressionMode: get("v39-field-turn-mode").value,
+        maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
+      }),
       islandCustomSettings: {
         enabled: get("v39-field-custom-enabled").checked,
         worldWrapEnabled: get("v39-field-wrap").checked,
@@ -199,6 +258,13 @@ function boot() {
   };
 
   const open = () => {
+    const generated = !!window.__v39FieldRuntime?.mapData;
+    const runtimeGameSettings = typeof window.getV39GameState === "function"
+      ? window.getV39GameState()?.gameSettings
+      : null;
+    if (generated && runtimeGameSettings) {
+      settings.gameSettings = normalizeGameStartSettings(runtimeGameSettings);
+    }
     sync();
     overlay.classList.add("open");
     overlay.setAttribute("aria-hidden", "false");
@@ -210,6 +276,22 @@ function boot() {
 
   overlay.querySelectorAll("[data-field-close]").forEach(button => button.addEventListener("click", close));
   overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+  get("v39-field-turn-mode").addEventListener("change", () => {
+    const next = normalizeGameStartSettings({
+      turnProgressionMode: get("v39-field-turn-mode").value,
+      maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
+    });
+    settings.gameSettings = next;
+    const selected = GAME_START_TURN_MODE_OPTIONS.find(row => row.value === next.turnProgressionMode);
+    get("v39-field-turn-mode-note").textContent = selected?.description || "";
+  });
+  get("v39-field-max-combat-turns").addEventListener("change", () => {
+    settings.gameSettings = normalizeGameStartSettings({
+      turnProgressionMode: get("v39-field-turn-mode").value,
+      maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
+    });
+    sync();
+  });
   get("v39-field-custom-enabled").addEventListener("change", () => {
     settings.islandCustomSettings.enabled = get("v39-field-custom-enabled").checked;
     get("v39-field-custom-grid").classList.toggle("is-disabled", !settings.islandCustomSettings.enabled);
@@ -256,6 +338,12 @@ function boot() {
     }
     get("v39-field-settings-status").textContent = "生成中…";
     try {
+      if (typeof window.setV39GameState === "function") {
+        window.setV39GameState(
+          { gameSettings: next.gameSettings },
+          { reason: "game-start-settings" }
+        );
+      }
       window.generateFieldFromSettings({
         w,
         h,
@@ -268,7 +356,11 @@ function boot() {
         window.__v39FieldRuntime.settings.enemySpawnTileDivisor = next.enemySpawnTileDivisor;
       }
       saveFieldSettings(next);
-      get("v39-field-settings-status").textContent = `${w}×${h} / 敵密度 ÷${next.enemySpawnTileDivisor} 生成完了`;
+      const modeLabel = GAME_START_TURN_MODE_OPTIONS.find(row => row.value === next.gameSettings.turnProgressionMode)?.label || next.gameSettings.turnProgressionMode;
+      get("v39-field-settings-status").textContent = w + "×" + h
+        + " / " + modeLabel
+        + " / 戦闘上限 " + next.gameSettings.maxCombatTurnsPerWorldTurn
+        + " / 生成完了";
       close();
     } catch (error) {
       console.error("[v39-field-settings-final] generation failed", error);
