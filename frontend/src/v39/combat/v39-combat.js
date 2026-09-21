@@ -690,6 +690,8 @@ function performAttack(target, session = attackSession, options = {}) {
   if (revivalSpec) return performRevival(target, session, options, state, player, attacker, revivalSpec, apCost);
   if (transformSpec) return performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx);
   const areaScale = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow);
+  const stealthBreakTurn = currentV39TurnNumber(state);
+  const exposesDirectTarget = resolveAreaType(session.skillRow) === "single" && resolveSplashSpec(session.skillRow).value <= 0;
   const supportTargets = supportSkill
     ? player.factionState.units.filter(unit => number(unit?.hp, unit?.currentHp) > 0 && areaScale.has(coordKey(unit.x, unit.y)))
     : [];
@@ -768,7 +770,18 @@ function performAttack(target, session = attackSession, options = {}) {
     const damage = damageById.get(text(enemy.id));
     if (!damage) return enemy;
     const hp = Math.max(0, number(enemy?.hp, enemy?.currentHp) - damage.total);
-    return { ...enemy, hp, currentHp:hp, ...guardStatePatch(enemy, damage), state:hp <= 0 ? "死亡" : text(enemy?.state, "生存"), ...deathPatch(enemy, hp) };
+    const directlyTargeted = exposesDirectTarget
+      && integer(enemy?.x) === integer(target?.x)
+      && integer(enemy?.y) === integer(target?.y);
+    return {
+      ...enemy,
+      hp,
+      currentHp:hp,
+      ...guardStatePatch(enemy, damage),
+      state:hp <= 0 ? "死亡" : text(enemy?.state, "生存"),
+      ...(directlyTargeted ? { lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"direct-target" } : {}),
+      ...deathPatch(enemy, hp)
+    };
   });
   const runtime = player.factionState.combatRuntime || {};
   const pendingActionsByUnitId = { ...(runtime.pendingActionsByUnitId || {}) };
@@ -801,7 +814,18 @@ function performAttack(target, session = attackSession, options = {}) {
           const damage = foreignDamageById.get(text(unit.id));
           if (!damage) return unit;
           const hp = Math.max(0, number(unit?.hp, unit?.currentHp)-damage.total);
-          return { ...unit, hp, currentHp:hp, ...guardStatePatch(unit, damage), state:hp <= 0 ? "死亡" : text(unit?.state, "生存"), ...deathPatch(unit, hp) };
+          const directlyTargeted = exposesDirectTarget
+            && integer(unit?.x) === integer(target?.x)
+            && integer(unit?.y) === integer(target?.y);
+          return {
+            ...unit,
+            hp,
+            currentHp:hp,
+            ...guardStatePatch(unit, damage),
+            state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
+            ...(directlyTargeted ? { lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"direct-target" } : {}),
+            ...deathPatch(unit, hp)
+          };
         }
         const own = text(unit.id) === text(attacker.id);
         const damage = friendlyDamageById.get(text(unit.id));
@@ -818,6 +842,7 @@ function performAttack(target, session = attackSession, options = {}) {
           ...guardStatePatch(unit, damage, guardTarget ? grantedGuard : 0),
           state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
           lastUsedAttack:text(session.skillRow?.名前),
+          ...(own && !supportSkill ? { lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"attack" } : {}),
           ...deathPatch(unit, hp)
         };
       }),
@@ -858,6 +883,8 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   const apCost = resolveAttackApCost(skillRow, attacker);
   if (!apPaid && currentAp(attacker) < apCost) return false;
   const areaScale = buildAreaScaleMap(ctx.data, attacker, targetUnit, skillRow);
+  const stealthBreakTurn = currentV39TurnNumber(state);
+  const exposesDirectTarget = resolveAreaType(skillRow) === "single" && resolveSplashSpec(skillRow).value <= 0;
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
       effectName:text(skillRow?.アニメ, "斬撃"),
       tileX:targetUnit.x,
@@ -898,7 +925,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     logDamage(attacker, enemy, skillRow, damage);
   }
   const deathTurn = currentV39TurnNumber(state);
-  const applyHp = (unit, damage) => {
+  const applyHp = (unit, damage, { directTarget = false } = {}) => {
     if (!damage) return unit;
     const hp = Math.max(0, number(unit?.hp, unit?.currentHp)-damage.total);
     const newlyDead = hp <= 0 && text(unit?.state) !== "死亡";
@@ -908,6 +935,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       currentHp:hp,
       state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
       ...guardStatePatch(unit, damage),
+      ...(directTarget ? { lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"direct-target" } : {}),
       ...(newlyDead ? {
         diedAtTurn:deathTurn,
         deadExpireTurn:resolveV39DeadlineTurn(deathTurn, DEFAULT_CORPSE_FIELD_TURNS),
@@ -919,15 +947,35 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   };
   const players = state.players.map((player) => ({
     ...player,
-    factionState:{ ...player.factionState, units:(player?.factionState?.units || []).map((unit) => applyHp(unit, damageByUnitId.get(text(unit.id)))) }
+    factionState:{
+      ...player.factionState,
+      units:(player?.factionState?.units || []).map((unit) => applyHp(
+        unit,
+        damageByUnitId.get(text(unit.id)),
+        { directTarget:exposesDirectTarget && text(unit?.id) === text(targetUnit?.id) }
+      ))
+    }
   }));
   const enemies = state.enemies.map((enemy) => {
     if (text(enemy.id) === text(attacker.id)) {
       const ap = apPaid ? currentAp(enemy) : Math.max(0, currentAp(enemy)-apCost);
       const grantedGuard = resolveSkillGuard(skillRow, terrainAdjusted(attacker), { isCounter });
-      return { ...enemy, ap, currentAp:ap, actionPoint:ap, lastUsedAttack:text(skillRow?.名前), ...guardStatePatch(enemy, null, grantedGuard) };
+      return {
+        ...enemy,
+        ap,
+        currentAp:ap,
+        actionPoint:ap,
+        lastUsedAttack:text(skillRow?.名前),
+        lastStealthBreakTurn:stealthBreakTurn,
+        lastStealthBreakReason:"attack",
+        ...guardStatePatch(enemy, null, grantedGuard)
+      };
     }
-    return applyHp(enemy, enemyDamageById.get(text(enemy.id)));
+    return applyHp(
+      enemy,
+      enemyDamageById.get(text(enemy.id)),
+      { directTarget:exposesDirectTarget && text(enemy?.id) === text(targetUnit?.id) }
+    );
   });
   const attackedNestId = enemyTarget && text(enemyTarget?.nestId) !== text(attacker?.nestId) ? text(enemyTarget?.nestId) : "";
   const enemyNests = attackedNestId
