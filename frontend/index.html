@@ -60,10 +60,6 @@ button{color:inherit}
   pointer-events:none;
 }
 #map{display:block;width:100%;height:100%;background:#0b1519}
-.map-chip{
-  position:absolute;top:7px;left:7px;z-index:10;padding:4px 7px;border-radius:7px;
-  background:rgba(9,16,19,.85);border:1px solid #3e4b50;font-size:9px;color:#bac7ca
-}
 .mode-banner{
   width:max-content;max-width:min(560px,96%);padding:6px 10px;
   border:1px solid #4c6168;border-radius:8px;
@@ -262,10 +258,6 @@ button{color:inherit}
 .playfield{
   background:#081115;
 }
-.map-chip{
-  max-width:calc(100% - 300px);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
-}
 .faction-panel{
   background:linear-gradient(165deg,rgba(16,25,32,.94),rgba(12,10,8,.93));
 }
@@ -340,9 +332,7 @@ button{color:inherit}
   .faction-panel{
     width:min(44vw,220px);
   }
-  .map-chip{
-    max-width:50%;
-  }
+  
 }
 @media (max-width:480px) and (orientation:portrait){
   .research-set{
@@ -621,12 +611,6 @@ body{
   left:auto!important;
   width:clamp(220px,29vw,300px);
 }
-.map-chip{
-  left:62px;
-  max-width:calc(100% - 380px);
-  font-size:10px;
-  padding:5px 8px;
-}
 .mode-banner{
   font-size:11px;
   line-height:1.35;
@@ -796,11 +780,7 @@ body{
     right:4px!important;
     width:min(45vw,225px);
   }
-  .map-chip{
-    left:53px;
-    max-width:46%;
-    font-size:9px;
-  }
+  
   .group-row,.member-row{
     padding:6px;
     min-height:54px;
@@ -839,11 +819,7 @@ body{
   .faction-panel{
     width:min(51vw,202px);
   }
-  .map-chip{
-    left:50px;
-    max-width:42%;
-    font-size:8px;
-  }
+  
   .footer{
     height:30svh;
   }
@@ -1090,13 +1066,6 @@ html,body{
   padding:calc(3px * var(--ui-scale)) calc(5px * var(--ui-scale));
 }
 
-.map-chip{
-  left:calc(64px * var(--ui-scale));
-  top:calc(8px * var(--ui-scale));
-  max-width:calc(100% - (410px * var(--ui-scale)));
-  font-size:calc(10px * var(--font-scale));
-  padding:calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
-}
 .mode-banner{
   top:calc(8px * var(--ui-scale));
   font-size:calc(11px * var(--font-scale));
@@ -1244,9 +1213,7 @@ html,body{
   .faction-panel{
     width:clamp(340px,22vw,430px);
   }
-  .map-chip{
-    max-width:calc(100% - 540px);
-  }
+  
 }
 @media (max-width:900px){
   .unit-footer{
@@ -1263,9 +1230,7 @@ html,body{
   .faction-panel{
     width:min(51vw,calc(210px * var(--ui-scale)));
   }
-  .map-chip{
-    max-width:42%;
-  }
+  
   .footer{
     height:30svh;
   }
@@ -2066,11 +2031,7 @@ html,body{
     font-size:12px!important;
   }
 
-  .map-chip{
-    left:53px!important;
-    max-width:42%!important;
-    font-size:9px!important;
-  }
+  
 
   .footer{
     height:clamp(210px,27svh,232px)!important;
@@ -2959,10 +2920,7 @@ html,body{
     bottom:auto!important;
   }
 
-  .map-chip{
-    left:54px!important;
-    max-width:calc(100% - 62px)!important;
-  }
+  
 
   .move-confirm{
     bottom:8px!important;
@@ -3053,10 +3011,7 @@ html,body{
     display:none;
   }
 
-  .map-chip{
-    left:54px!important;
-    max-width:calc(100% - 62px)!important;
-  }
+  
 }
 
 /* Extra narrow portrait phones */
@@ -4123,7 +4078,6 @@ html,body{
 /* v39 operation UI uses one visual format; only its position changes by viewport. */
 .faction-panel{display:none!important}
 #map{visibility:hidden!important;pointer-events:none!important}
-.map-chip{max-width:calc(100% - 72px)!important}
 .footer{
   grid-template-columns:52px minmax(0,1fr)!important;
   grid-template-rows:minmax(0,1fr)!important;
@@ -4375,7 +4329,6 @@ html,body{
     <aside class="research-rail" id="researchRail" aria-label="研究対象"></aside>
 
     <svg id="map" viewBox="0 0 1180 650" preserveAspectRatio="xMidYMid slice" aria-label="ヘックスマップ"></svg>
-    <div class="map-chip">T18　研究:軍事　自領:金枠　索敵:青破線</div>
     <div class="v39-feedback-lane" id="v39FeedbackLane" aria-live="polite">
       <div class="mode-banner" id="modeBanner"></div>
       <div class="move-confirm" id="moveConfirm">
@@ -4469,7 +4422,7 @@ html,body{
 </div></div>
 
 <div class="tip" id="tip"></div>
-<div class="ui-build-label show" id="uiBuildLabel" aria-label="UIビルド">UI 2026.09.21-04</div>
+<div class="ui-build-label show" id="uiBuildLabel" aria-label="UIビルド">UI 2026.09.21-05</div>
 
 <div class="mobile-fab-menu" id="mobileFabMenu">
   <button class="fab-main tappable" id="mobileFabToggle" data-tip="管理メニュー" aria-expanded="false" aria-label="管理メニュー">☰</button>
