@@ -11,9 +11,20 @@ export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   moveStatPerTile:10
 });
 
-export function resolveV39BaseMoveApCost(movement = 1) {
-  const moveValue = Math.max(1, Number(movement) || 1);
+export function resolveV39BaseMoveApCost(movement = V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) {
+  const moveValue = Math.max(1, Number(movement) || V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile);
   return (V39_SQUAD_MOVEMENT_BALANCE.moveApMax * V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) / moveValue;
+}
+
+export function resolveV39MovementTiles(movement = V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) {
+  const moveValue = Math.max(0, Number(movement) || 0);
+  return Math.max(1, Math.floor(moveValue / V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile));
+}
+
+export function resolveV39RangeTiles(rangeValue, fallbackTiles = 1) {
+  const raw = Number(rangeValue);
+  if (!Number.isFinite(raw)) return Math.max(1, Math.floor(Number(fallbackTiles) || 1));
+  return Math.max(1, Math.floor(raw / V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile));
 }
 
 // 軍事Lvによる通常軍隊の編成補正。基本値は都市基本データ.jsonの分類=ユニット作成、army行を使う。
