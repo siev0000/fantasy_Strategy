@@ -1,5 +1,6 @@
 import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
+import { getV39UnitTestSkillRows } from "./v39-test-skill-rules.js";
 import { COMBAT_STATUS_FIELDS, DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS } from "../constants/unitCommon.js";
 import { resolveV39RangeTiles, V39_COMBAT_BALANCE, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
 
@@ -15,9 +16,16 @@ const number = (value, fallback = 0) => {
 };
 
 export function resolveActionSkillRows(unit) {
-  return (Array.isArray(unit?.techniques) ? unit.techniques : [])
+  const rows = (Array.isArray(unit?.techniques) ? unit.techniques : [])
     .map((technique) => technique?.source || technique)
     .filter((row) => text(row?.名前) && text(row?.行動).toUpperCase() === "A");
+  const names = new Set(rows.map(row => text(row?.名前)));
+  for (const row of getV39UnitTestSkillRows(unit)) {
+    if (text(row?.行動).toUpperCase() !== "A" || names.has(text(row?.名前))) continue;
+    names.add(text(row?.名前));
+    rows.push(row);
+  }
+  return rows;
 }
 
 function passiveMatchesAttack(passive, skillRow, isCounter) {
