@@ -442,9 +442,20 @@ function buildEnemyNestAndSquadState(enemies) {
     const anchor = members.find(enemy => enemy?.strongEnemy === true) || members[0];
     const nestId = text(anchor?.nestId) || `enemy-nest-${groupKey}`;
     const enemySquadId = text(anchor?.enemySquadId) || `enemy-squad-${groupKey}`;
-    const x = Number.isFinite(Number(anchor?.territoryCenterX)) ? integer(anchor.territoryCenterX) : integer(anchor?.x);
-    const y = Number.isFinite(Number(anchor?.territoryCenterY)) ? integer(anchor.territoryCenterY) : integer(anchor?.y);
-    const territoryRadius = Math.max(1, integer(anchor?.territoryRadius, anchor?.strongEnemy ? DEFAULT_STRONG_TERRITORY_RADIUS : 1));
+    const hasCenterX = anchor?.territoryCenterX !== null
+      && anchor?.territoryCenterX !== undefined
+      && String(anchor.territoryCenterX).trim() !== ""
+      && Number.isFinite(Number(anchor.territoryCenterX));
+    const hasCenterY = anchor?.territoryCenterY !== null
+      && anchor?.territoryCenterY !== undefined
+      && String(anchor.territoryCenterY).trim() !== ""
+      && Number.isFinite(Number(anchor.territoryCenterY));
+    const x = hasCenterX ? integer(anchor.territoryCenterX) : integer(anchor?.x);
+    const y = hasCenterY ? integer(anchor.territoryCenterY) : integer(anchor?.y);
+    const territoryRadius = Math.max(
+      1,
+      integer(anchor?.territoryRadius, V39_INITIAL_NEST_TERRITORY_RADIUS)
+    );
     const race = text(anchor?.race || anchor?.sourceRace, anchor?.name || "モンスター");
     const sequence = (sequenceByRace.get(race) || 0) + 1;
     sequenceByRace.set(race, sequence);
