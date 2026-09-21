@@ -59,11 +59,13 @@ export function canUnitEnterV39Tile(mapData, x, y, unit) {
   return inspectV39TerrainTraversal(unit, resolveV39TileTerrainName(mapData, x, y)).allowed;
 }
 
-export function resolveV39TerrainMoveCost(unit, terrainName) {
+export function resolveV39TerrainMoveCost(unit, terrainName, additionalPenaltyPoints = 0) {
   const name = text(terrainName);
   const row = terrainByName.get(name) || null;
   const rawCost = Math.max(1, number(row?.移動コスト) || 1);
-  const basePercent = 100 + Math.max(0, rawCost - 1) * 50;
+  const terrainPercent = 100 + Math.max(0, rawCost - 1) * 50;
+  const extraPenaltyPoints = Math.max(0, number(additionalPenaltyPoints));
+  const basePercent = terrainPercent + extraPenaltyPoints;
   const quickness = Math.max(
     0,
     number(unit?.早業),
@@ -75,6 +77,8 @@ export function resolveV39TerrainMoveCost(unit, terrainName) {
   return {
     terrainName:name,
     rawCost,
+    terrainPercent,
+    extraPenaltyPoints,
     basePercent,
     quickness,
     reductionPoints,
