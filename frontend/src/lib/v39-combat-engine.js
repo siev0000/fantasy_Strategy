@@ -1,7 +1,7 @@
 import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { COMBAT_STATUS_FIELDS, DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS } from "../constants/unitCommon.js";
-import { V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
+import { resolveV39RangeTiles, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
 
 const NATURAL_COUNTER_METHODS = new Set(["素手", "角", "牙", "爪", "翼", "尾", "針"]);
 const RANGED_WEAPON_NAMES = /弓|銃|砲|ボウ|ライフル|ピストル/;
@@ -110,7 +110,7 @@ export function resolveCounterAttackRow(unit) {
     ...selected,
     名前:`${text(selected?.名前)}（反撃）`,
     AP消費:counterApCost,
-    射程:1,
+    射程:10,
     範囲:null,
     炸裂:null,
     攻撃回数:1,
@@ -225,10 +225,10 @@ function primaryWeaponRow(unit) {
 
 export function resolveAttackRange(skillRow, unit) {
   const explicit = toSafeNumber(skillRow?.射程, null);
-  if (explicit !== null) return Math.max(1, Math.floor(explicit));
+  if (explicit !== null) return resolveV39RangeTiles(explicit, 1);
   if (text(skillRow?.攻撃手段) === "武器") {
     const weaponRange = toSafeNumber(primaryWeaponRow(unit)?.射程, null);
-    if (weaponRange !== null) return Math.max(1, Math.floor(weaponRange));
+    if (weaponRange !== null) return resolveV39RangeTiles(weaponRange, 1);
   }
   return 1;
 }
