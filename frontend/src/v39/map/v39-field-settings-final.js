@@ -67,6 +67,16 @@ function clampNumber(value, min, max, fallback) {
   return Math.max(min, Math.min(max, Number.isFinite(n) ? n : fallback));
 }
 
+function enemyDivisorToAmount(value) {
+  const divisor = Math.round(clampNumber(value, 20, 60, 40));
+  return 80 - divisor;
+}
+
+function enemyAmountToDivisor(value) {
+  const amount = Math.round(clampNumber(value, 20, 60, 40));
+  return 80 - amount;
+}
+
 function createStyles() {
   if (document.getElementById("v39-field-settings-final-style")) return;
   const style = document.createElement("style");
@@ -169,9 +179,9 @@ function createModal() {
               </select>
             </label>
             <label class="v39-setting-row">
-              <span>敵出現密度</span>
-              <input id="v39-field-enemy-divisor" type="number" min="20" max="60" step="5">
-              <small>敵数 = 出現可能マス数 ÷ 設定値。20ほど多く、60ほど少なくなります。</small>
+              <span>敵出現量</span>
+              <input id="v39-field-enemy-amount" type="number" min="20" max="60" step="5">
+              <small>数値が大きいほど敵が多く出現します。20＝少ない / 40＝標準 / 60＝多い。</small>
             </label>
             <div class="v39-setting-row">
               <span>ワールド端接続</span>
@@ -252,7 +262,7 @@ function boot() {
     get("v39-field-map-size").value = settings.mapSize;
     get("v39-field-pattern").value = settings.patternId;
     get("v39-field-mountain").value = settings.mountainMode;
-    get("v39-field-enemy-divisor").value = Math.round(clampNumber(settings.enemySpawnTileDivisor, 20, 60, 40));
+    get("v39-field-enemy-amount").value = enemyDivisorToAmount(settings.enemySpawnTileDivisor);
     const normalizedGameSettings = normalizeGameStartSettings(settings.gameSettings);
     settings.gameSettings = normalizedGameSettings;
     get("v39-field-turn-mode").value = normalizedGameSettings.turnProgressionMode;
@@ -280,7 +290,7 @@ function boot() {
       mapSize: get("v39-field-map-size").value,
       patternId: get("v39-field-pattern").value,
       mountainMode: get("v39-field-mountain").value,
-      enemySpawnTileDivisor: Math.round(clampNumber(get("v39-field-enemy-divisor").value, 20, 60, 40)),
+      enemySpawnTileDivisor: enemyAmountToDivisor(get("v39-field-enemy-amount").value),
       gameSettings: normalizeGameStartSettings({
         turnProgressionMode: get("v39-field-turn-mode").value,
         maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
