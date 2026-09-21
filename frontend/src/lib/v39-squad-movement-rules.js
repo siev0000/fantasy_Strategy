@@ -18,9 +18,10 @@ function isLivingUnit(unit) {
 function unitMovement(unit) {
   const candidates = [unit?.status?.移動, unit?.移動, unit?.movement, unit?.moveRange, unit?.move];
   for (const value of candidates) {
-    if (Number.isFinite(Number(value))) return Math.max(1, integer(value, 1));
+    if (value === null || value === undefined || value === "") continue;
+    if (Number.isFinite(Number(value))) return Math.max(1, integer(value, V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile));
   }
-  return 1;
+  return V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile;
 }
 
 function firstFiniteApValue(values, fallback = 0) {
