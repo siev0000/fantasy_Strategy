@@ -256,6 +256,50 @@ function buildDetectedEntityIds(state, playerId, currentVision, detectionByTile)
   return detected;
 }
 
+function inspectPlayerDetectionForEnemy(enemyOrId) {
+  const state = gameState();
+  const id = typeof enemyOrId === "object"
+    ? String(enemyOrId?.id ?? enemyOrId?.unitId ?? enemyOrId?.characterId ?? "").trim()
+    : String(enemyOrId ?? "").trim();
+  const enemy = (Array.isArray(state?.enemies) ? state.enemies : [])
+    .find(row => String(row?.id ?? row?.unitId ?? row?.characterId ?? "").trim() === id);
+  if (!enemy) return null;
+
+  const x = Math.floor(Number(enemy?.x));
+  const y = Math.floor(Number(enemy?.y));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  const key = coordKey(x, y);
+  const group = unitsByTile(state?.enemies).get(key) || [enemy];
+  const inCurrentVision = lastSnapshot.currentVisionTileKeys.has(key);
+  const detected = !!id && lastSnapshot.detectedEntityIds.has(id);
+  const rawScout = Number(lastSnapshot.detectionByTile.get(key));
+  const observerScout = Number.isFinite(rawScout) ? roundDetectionValue(rawScout) : null;
+  const targetStealth = roundDetectionValue(resolveDetectionGroupSense(group).stealth);
+  const reason = !inCurrentVision
+    ? "索敵範囲外"
+    : detected
+      ? `発見済み（有効索敵${observerScout ?? "-"} >= 隠密${targetStealth}）`
+      : `未発見（有効索敵${observerScout ?? "-"} < 隠密${targetStealth}）`;
+
+  return {
+    enemyId:id,
+    x,
+    y,
+    inCurrentVision,
+    detected,
+    observerScout,
+    targetStealth,
+    groupSize:group.length,
+    reason
+  };
+}
+
+function roundDetectionValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.round(parsed * 10) / 10 : 0;
+}
+
 function persistVisibilityTiles(faction, explored, currentVision) {
   const oldKeys = Array.isArray(faction?.visibility?.exploredTileKeys)
     ? faction.visibility.exploredTileKeys.map(String)
@@ -570,6 +614,7 @@ window.isV39EntityDetected = entityOrId => {
   return !!id && lastSnapshot.detectedEntityIds.has(id);
 };
 window.getV39VisibilityStatus = () => ({ ...(window.__v39VisibilityStatus || {}) });
+window.inspectV39PlayerDetectionForEnemy = inspectPlayerDetectionForEnemy;
 window.renderV39Visibility = scheduleRender;
 
 window.addEventListener("v39:field-generated", resetVisibilityForNewField);
