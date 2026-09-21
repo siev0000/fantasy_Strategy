@@ -102,7 +102,7 @@ function targetsFor(state, enemy = null) {
   return [...players, ...competingEnemies];
 }
 
-function selectEnemyTarget(state, enemy, targets) {
+function selectEnemyTarget(state, enemy, targets, turnNumber) {
   const nest = nestFor(state, enemy);
   const center = territoryCenter(enemy, nest);
   const limit = pursuitLimit(enemy, nest);
@@ -127,7 +127,7 @@ function selectEnemyTarget(state, enemy, targets) {
   const visible = [];
   for (const group of targetsByTile.values()) {
     const targetDistance = distance(enemy, group[0]);
-    const targetSense = resolveDetectionGroupSense(group);
+    const targetSense = resolveDetectionGroupSense(group, { turnNumber });
     if (!isDetectedByScout({
       scout:enemyScout,
       stealth:targetSense.stealth,
@@ -291,7 +291,7 @@ function observeForExplorer(state, mapData, enemy, turnNumber) {
   }
   const visibleUnits = [];
   for (const group of unitsByTile.values()) {
-    const targetSense = resolveDetectionGroupSense(group);
+    const targetSense = resolveDetectionGroupSense(group, { turnNumber });
     if (isDetectedByScout({
       scout:resolveDetectionScoutValue(enemy),
       stealth:targetSense.stealth,
@@ -384,7 +384,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
   const radius = territoryRadius(enemy, nest);
   const limit = pursuitLimit(enemy, nest);
   const targets = targetsFor(state, enemy);
-  const target = selectEnemyTarget(state, enemy, targets);
+  const target = selectEnemyTarget(state, enemy, targets, turnNumber);
   const hp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
   const maxHp = Math.max(1, number(enemy?.maxHp, enemy?.status?.HP || 1));
   const hpRate = hp / maxHp;
@@ -492,7 +492,7 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
       : movePlan(state, mapData, enemy, nest, turnNumber, "toward", 0, { explorationState:returning }) || waitPlan(enemy, turnNumber, { explorationState:returning });
   }
 
-  const target = action ? null : selectEnemyTarget(state, enemy, targets);
+  const target = action ? null : selectEnemyTarget(state, enemy, targets, turnNumber);
   if (!action && !target) {
     const loot = lootTargetFor(state, enemy);
     if (loot?.targetDistance === 0) action = { type:"recover-loot", enemyId:id, turnNumber, tileKey:loot.key, requiresSync:true };
