@@ -23,12 +23,29 @@ function unitMovement(unit) {
   return 1;
 }
 
-function unitCurrentAp(unit) {
-  return Math.max(0, integer(unit?.ap, integer(unit?.currentAp, integer(unit?.actionPoint, 0))));
+function firstFiniteApValue(values, fallback = 0) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.floor(parsed);
+  }
+  return fallback;
 }
 
 function unitMaxAp(unit) {
-  return Math.max(0, integer(unit?.maxAp, integer(unit?.maxActionPoint, 100)));
+  return Math.max(0, firstFiniteApValue([
+    unit?.maxAp,
+    unit?.maxActionPoint,
+    unit?.status?.AP
+  ], 100));
+}
+
+function unitCurrentAp(unit) {
+  return Math.max(0, firstFiniteApValue([
+    unit?.ap,
+    unit?.currentAp,
+    unit?.actionPoint
+  ], unitMaxAp(unit)));
 }
 
 function embeddedSquadMemberIds(unit) {
@@ -117,9 +134,14 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "") 
     (minimum, unit) => Math.min(minimum, unitMaxAp(unit)),
     Number.POSITIVE_INFINITY
   );
-  const moveAp = participants.reduce(
-    (minimum, unit) => Math.min(minimum, unitCurrentAp(unit)),
+  const participantAp = participants.map(unit => ({ unit, ap:unitCurrentAp(unit) }));
+  const moveAp = participantAp.reduce(
+    (minimum, row) => Math.min(minimum, row.ap),
     Number.POSITIVE_INFINITY
+  );
+  const apLimitedBy = participantAp.reduce(
+    (limited, row) => !limited || row.ap < limited.ap ? row : limited,
+    null
   );
   const movement = participants.reduce((minimum, unit) => Math.min(minimum, unitMovement(unit)), Number.POSITIVE_INFINITY);
   return {
@@ -136,7 +158,12 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "") 
     y,
     movement:Number.isFinite(movement) ? movement : 1,
     moveApMax:Number.isFinite(moveApMax) ? moveApMax : V39_SQUAD_MOVEMENT_BALANCE.moveApMax,
-    moveAp:Number.isFinite(moveAp) ? moveAp : 0
+    moveAp:Number.isFinite(moveAp) ? moveAp : 0,
+    apLimitedBy:apLimitedBy ? {
+      unitId:unitId(apLimitedBy.unit),
+      name:text(apLimitedBy.unit?.name || apLimitedBy.unit?.displayName, unitId(apLimitedBy.unit)),
+      ap:apLimitedBy.ap
+    } : null
   };
 }
 
@@ -146,7 +173,13 @@ export function applyV39SquadMovement(faction = {}, group = {}, target = {}, mov
   const y = integer(target?.y, -1);
   const cost = Math.max(0, integer(moveApCost));
   if (x < 0 || y < 0) return { ok:false, faction, reason:"移動先が不正です。" };
-  if (cost > group.moveAp) return { ok:false, faction, reason:"部隊移動APが不足しています。" };
+  if (cost > group.moveAp) return {
+    ok:false,
+    faction,
+    reason:group?.apLimitedBy?.name
+      ? `${group.apLimitedBy.name}のAPが不足しています。`
+      : "APが不足しています。"
+  };
 
   const participantSet = new Set(group.participantIds);
   const targetPositions = Array.isArray(target?.positions) && target.positions.length
