@@ -428,15 +428,37 @@ function spawnStrongGroup(data, village, candidate, selection, level, enemies, o
 
 function buildEnemyNestAndSquadState(enemies) {
   const groups = new Map();
+  const nests = [];
+  const enemySquads = [];
+
   for (const enemy of enemies) {
-    if (!text(enemy?.nestType)) continue;
-    const key = text(enemy?.strongGroupId) || `single-${text(enemy?.id)}`;
+    const enemyId = text(enemy?.id);
+    if (!enemyId) continue;
+    const initialNestEligible = enemy?.strongEnemy === true
+      || enemy?.strongMinion === true
+      || !!text(enemy?.strongGroupId);
+
+    if (!initialNestEligible || !text(enemy?.nestType)) {
+      const enemySquadId = text(enemy?.enemySquadId) || `enemy-squad-single-${enemyId}`;
+      enemy.nestId = null;
+      enemy.enemySquadId = enemySquadId;
+      enemy.territoryCenterX = null;
+      enemy.territoryCenterY = null;
+      enemy.territoryRadius = null;
+      enemySquads.push({
+        id:enemySquadId,
+        nestId:"",
+        unitIds:[enemyId],
+        cargo:{ resourcesByType:{}, equipmentInventory:[] }
+      });
+      continue;
+    }
+
+    const key = text(enemy?.strongGroupId) || `single-${enemyId}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(enemy);
   }
 
-  const nests = [];
-  const enemySquads = [];
   const sequenceByRace = new Map();
   for (const [groupKey, members] of groups) {
     const anchor = members.find(enemy => enemy?.strongEnemy === true) || members[0];
