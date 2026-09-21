@@ -5,6 +5,7 @@ import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
 import { DEFAULT_MAGIC_CAST_TURNS, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "./v39-turn-timing.js";
 import { mergeV39EnemyExplorationInformation, normalizeV39EnemyExplorerState } from "./v39-enemy-exploration.js";
 import { resolveV39EnemyFleeHpRate, V39_ENEMY_AI_CONFIG } from "./v39-enemy-ai-config.js";
+import { resolveV39BaseMoveApCost, resolveV39MovementTiles, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -63,9 +64,19 @@ function territoryRadius(enemy, nest) {
   return nest ? Math.max(1, integer(nest?.territoryRadius, 1)) : 1;
 }
 
+function enemyMovementStat(enemy) {
+  const candidates = [enemy?.status?.移動, enemy?.移動, enemy?.movement, enemy?.moveRange, enemy?.move];
+  for (const value of candidates) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(1, Math.floor(parsed));
+  }
+  return V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile;
+}
+
 function pursuitLimit(enemy, nest) {
   const outside = enemy?.aggressive === true
-    ? Math.max(1, integer(enemy?.status?.移動, integer(enemy?.移動, integer(enemy?.movement, 1))))
+    ? resolveV39MovementTiles(enemyMovementStat(enemy))
     : 1;
   return territoryRadius(enemy, nest) + outside;
 }
@@ -139,8 +150,8 @@ function enemyMoveStepCost(mapData, enemy, tile) {
   if (Number.isFinite(fromHeight) && Number.isFinite(toHeight) && Math.abs(toHeight-fromHeight) > 1 && flight <= 0) return Number.POSITIVE_INFINITY;
   const climb = Number.isFinite(fromHeight) && Number.isFinite(toHeight) ? Math.max(0, toHeight-fromHeight) : 0;
   const terrainCost = Math.max(0, 1 + climb*2 - Math.floor(flight/30));
-  const movement = Math.max(1, integer(enemy?.status?.移動, integer(enemy?.移動, integer(enemy?.movement, 1))));
-  return Math.max(0, Math.ceil(terrainCost * Math.max(1, number(enemy?.maxAp, 100)) / movement));
+  const movement = enemyMovementStat(enemy);
+  return Math.max(0, Math.ceil(terrainCost * resolveV39BaseMoveApCost(movement)));
 }
 
 function availableEnemyMoves(state, mapData, enemy) {
