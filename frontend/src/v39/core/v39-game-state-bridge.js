@@ -3,6 +3,7 @@ import { createPlayerFactionState, createPlayerRecord } from "../../lib/player-s
 import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "../../lib/settlement-state.js";
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
 
 const EMPTY_STATE = Object.freeze({
   activePlayerId: "",
@@ -38,6 +39,7 @@ const EMPTY_STATE = Object.freeze({
     activeEffectsByEnemyId: {},
     decisionLogsByFactionId: {}
   },
+  gameSettings: normalizeGameStartSettings(),
   timeline: {
     turnNumber: 1,
     phase: "player",
@@ -160,6 +162,7 @@ function normalizeState(input = {}) {
       decisionLogsByFactionId:Object.fromEntries(Object.entries(input?.enemyCombatRuntime?.decisionLogsByFactionId || {})
         .map(([factionId, rows]) => [String(factionId), normalizeEntityArray(rows).slice(-200)]))
     },
+    gameSettings: normalizeGameStartSettings(input?.gameSettings),
     timeline: {
       turnNumber: Math.max(1, Math.floor(Number(input?.timeline?.turnNumber) || 1)),
       phase:["player", "enemy", "resolution"].includes(input?.timeline?.phase) ? input.timeline.phase : "player",
@@ -232,6 +235,7 @@ function getState() {
       decisionLogsByFactionId:Object.fromEntries(Object.entries(state.enemyCombatRuntime.decisionLogsByFactionId || {})
         .map(([factionId, rows]) => [factionId, normalizeEntityArray(rows)]))
     },
+    gameSettings: { ...state.gameSettings },
     timeline: { ...state.timeline }
   };
 }
@@ -277,6 +281,7 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "groundLootByTile")) next.groundLootByTile = normalizeV39GroundLootByTile(patch.groundLootByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "worldEnvironment")) next.worldEnvironment = normalizeWorldEnvironment(patch.worldEnvironment);
   if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
+  if (Object.prototype.hasOwnProperty.call(patch, "gameSettings")) next.gameSettings = normalizeGameStartSettings(patch.gameSettings);
   if (Object.prototype.hasOwnProperty.call(patch, "timeline")) next.timeline = { ...state.timeline, ...patch.timeline };
   state = normalizeState(next);
   if (options.silent !== true) dispatchChange(options.reason || "set");
