@@ -94,7 +94,7 @@ function createUnit(player, check, name, index) {
     x:village.x,
     y:village.y,
     position:[village.x, village.y],
-    movement:4,
+    movement:40,
     combatProfile:{ ...check.mode },
     settlementId:text(village.settlementId || village.id),
     equipment
