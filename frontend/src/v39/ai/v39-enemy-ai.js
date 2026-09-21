@@ -434,58 +434,82 @@ async function runFallbackPlans(turnNumber, actionLimit, totalEnemies, presentat
 
 export async function runEnemyTurn(turnNumber = currentV39TurnNumber()) {
   movedEnemyIdsThisTurn.clear();
-  const prepared = prepareV39EnemyExploration(enemyTurnState(), turnNumber);
-  patchEnemyTurnState({ enemies:prepared.enemies, enemyNests:prepared.enemyNests }, "enemy-exploration-prepared");
-  const presentationEvents = [];
-  const aliveCount = (enemyTurnState()?.enemies || []).filter(isAliveEnemyAiUnit).length;
-  const actionLimit = Math.max(1, aliveCount * 2);
-  const progressId = window.pushV39SideRailMessage?.({ channel:"notification", title:`T${turnNumber} 敵AI`, message:`敵AI計算 0 / ${aliveCount} (0%)`, tone:"debug", turn:turnNumber });
-  const totalStartedAt = nowMs();
-  let pendingCount = 0;
-  while (pendingCount < actionLimit && resolvePendingAction(turnNumber, presentationEvents)) pendingCount += 1;
-  let metrics;
+  let renderBatchToken = window.beginV39MapRenderBatch?.("enemy-turn-calculation") || null;
+  let presentationInputToken = null;
   try {
-    if (typeof Worker !== "function") throw new Error("Web Workerを利用できません");
-    metrics = await runWorkerPlans(turnNumber, actionLimit, aliveCount, presentationEvents, progressId);
-  } catch (error) {
-    console.error("[敵AI Worker] フォールバックへ切り替えます", error);
-    window.pushV39Notification?.(`敵AI Workerを使用できないため分割処理へ切り替えました: ${error.message}`, { title:"敵AI", tone:"warn", turn:turnNumber });
-    metrics = await runFallbackPlans(turnNumber, actionLimit, aliveCount, presentationEvents, progressId);
-  }
-  for (const enemyId of movedEnemyIdsThisTurn) {
-    const state = enemyTurnState();
-    const enemy = (state?.enemies || []).find(row => text(row?.id) === text(enemyId));
-    const key = enemy ? `${integer(enemy.x)},${integer(enemy.y)}` : "";
-    if (key && state?.groundLootByTile?.[key]) window.recoverV39GroundLootForEnemy?.(enemyId);
-    const latest = enemyTurnState();
-    const currentEnemy = (latest?.enemies || []).find(row => text(row?.id) === text(enemyId));
-    const nest = (latest?.enemyNests || []).find(row => text(row?.id) === text(currentEnemy?.nestId));
-    const squad = (latest?.enemySquads || []).find(row => (row?.unitIds || []).map(text).includes(text(enemyId)));
-    const cargo = squad?.cargo || {};
-    const hasCargo = Object.values(cargo.resourcesByType || {}).some(value => number(value) > 0)
-      || (cargo.equipmentInventory || []).length > 0;
-    if (hasCargo && nest && integer(currentEnemy?.x) === integer(nest.x) && integer(currentEnemy?.y) === integer(nest.y)) {
-      window.depositV39EnemyCargo?.(enemyId);
+    const prepared = prepareV39EnemyExploration(enemyTurnState(), turnNumber);
+    patchEnemyTurnState({ enemies:prepared.enemies, enemyNests:prepared.enemyNests }, "enemy-exploration-prepared");
+    const presentationEvents = [];
+    const aliveCount = (enemyTurnState()?.enemies || []).filter(isAliveEnemyAiUnit).length;
+    const actionLimit = Math.max(1, aliveCount * 2);
+    const progressId = window.pushV39SideRailMessage?.({ channel:"notification", title:`T${turnNumber} 敵AI`, message:`敵AI計算 0 / ${aliveCount} (0%)`, tone:"debug", turn:turnNumber });
+    const totalStartedAt = nowMs();
+    let pendingCount = 0;
+    while (pendingCount < actionLimit && resolvePendingAction(turnNumber, presentationEvents)) pendingCount += 1;
+    let metrics;
+    try {
+      if (typeof Worker !== "function") throw new Error("Web Workerを利用できません");
+      metrics = await runWorkerPlans(turnNumber, actionLimit, aliveCount, presentationEvents, progressId);
+    } catch (error) {
+      console.error("[敵AI Worker] フォールバックへ切り替えます", error);
+      window.pushV39Notification?.(`敵AI Workerを使用できないため分割処理へ切り替えました: ${error.message}`, { title:"敵AI", tone:"warn", turn:turnNumber });
+      metrics = await runFallbackPlans(turnNumber, actionLimit, aliveCount, presentationEvents, progressId);
+    }
+    for (const enemyId of movedEnemyIdsThisTurn) {
+      const state = enemyTurnState();
+      const enemy = (state?.enemies || []).find(row => text(row?.id) === text(enemyId));
+      const key = enemy ? `${integer(enemy.x)},${integer(enemy.y)}` : "";
+      if (key && state?.groundLootByTile?.[key]) window.recoverV39GroundLootForEnemy?.(enemyId);
+      const latest = enemyTurnState();
+      const currentEnemy = (latest?.enemies || []).find(row => text(row?.id) === text(enemyId));
+      const nest = (latest?.enemyNests || []).find(row => text(row?.id) === text(currentEnemy?.nestId));
+      const squad = (latest?.enemySquads || []).find(row => (row?.unitIds || []).map(text).includes(text(enemyId)));
+      const cargo = squad?.cargo || {};
+      const hasCargo = Object.values(cargo.resourcesByType || {}).some(value => number(value) > 0)
+        || (cargo.equipmentInventory || []).length > 0;
+      if (hasCargo && nest && integer(currentEnemy?.x) === integer(nest.x) && integer(currentEnemy?.y) === integer(nest.y)) {
+        window.depositV39EnemyCargo?.(enemyId);
+      }
+    }
+    const finalState = enemyTurnState();
+    const unhandled = (finalState?.enemies || []).filter(enemy => isAliveEnemyAiUnit(enemy)
+      && !finalState?.enemyCombatRuntime?.pendingActionsByEnemyId?.[text(enemy.id)]
+      && integer(finalState?.enemyCombatRuntime?.lastActionTurnByEnemyId?.[text(enemy.id)]) < turnNumber);
+    if (unhandled.length) console.warn("[敵ターン] 未処理の敵が残りました", { ターン:turnNumber, 敵ID:unhandled.map(enemy => text(enemy.id)) });
+    updateProgressMessage(progressId, metrics.processed, Math.max(aliveCount, metrics.processed), metrics.fallbackUsed ? "フォールバック完了" : "Worker完了");
+
+    if (renderBatchToken) {
+      window.endV39MapRenderBatch?.(renderBatchToken, { force:true, reason:"enemy-turn-calculation-complete" });
+      renderBatchToken = null;
+      await window.waitForV39MapRenderSettled?.();
+    }
+
+    presentationInputToken = window.beginV39MapInputLock?.("enemy-turn-presentation") || null;
+    const presentedEventCount = number(await window.playV39EnemyTurnPresentation?.(presentationEvents));
+    if (presentationInputToken) {
+      window.endV39MapInputLock?.(presentationInputToken, "enemy-turn-presentation-complete");
+      presentationInputToken = null;
+    }
+
+    const profile = {
+      turnNumber, aliveEnemies:aliveCount, playerTargets:(finalState?.players || []).flatMap(player => player?.factionState?.units || []).filter(isAliveEnemyAiUnit).length,
+      actionLimit, aiPasses:metrics.processed + pendingCount, movedEnemies:movedEnemyIdsThisTurn.size,
+      pendingActions:Object.keys(finalState?.enemyCombatRuntime?.pendingActionsByEnemyId || {}).length,
+      workerCalculationMs:metrics.workerCalculationMs, mainApplyMs:metrics.mainApplyMs,
+      workerTotalMs:Math.max(0, nowMs() - totalStartedAt), fallbackUsed:metrics.fallbackUsed,
+      actionEventCount:presentationEvents.length,
+      presentationEventCount:presentedEventCount
+    };
+    window.dispatchEvent(new CustomEvent("v39:enemy-ai-worker-performance", { detail:profile }));
+    return profile;
+  } finally {
+    if (renderBatchToken) {
+      window.endV39MapRenderBatch?.(renderBatchToken, { force:true, reason:"enemy-turn-calculation-aborted" });
+    }
+    if (presentationInputToken) {
+      window.endV39MapInputLock?.(presentationInputToken, "enemy-turn-presentation-aborted");
     }
   }
-  const finalState = enemyTurnState();
-  const unhandled = (finalState?.enemies || []).filter(enemy => isAliveEnemyAiUnit(enemy)
-    && !finalState?.enemyCombatRuntime?.pendingActionsByEnemyId?.[text(enemy.id)]
-    && integer(finalState?.enemyCombatRuntime?.lastActionTurnByEnemyId?.[text(enemy.id)]) < turnNumber);
-  if (unhandled.length) console.warn("[敵ターン] 未処理の敵が残りました", { ターン:turnNumber, 敵ID:unhandled.map(enemy => text(enemy.id)) });
-  updateProgressMessage(progressId, metrics.processed, Math.max(aliveCount, metrics.processed), metrics.fallbackUsed ? "フォールバック完了" : "Worker完了");
-  const presentedEventCount = number(await window.playV39EnemyTurnPresentation?.(presentationEvents));
-  const profile = {
-    turnNumber, aliveEnemies:aliveCount, playerTargets:(finalState?.players || []).flatMap(player => player?.factionState?.units || []).filter(isAliveEnemyAiUnit).length,
-    actionLimit, aiPasses:metrics.processed + pendingCount, movedEnemies:movedEnemyIdsThisTurn.size,
-    pendingActions:Object.keys(finalState?.enemyCombatRuntime?.pendingActionsByEnemyId || {}).length,
-    workerCalculationMs:metrics.workerCalculationMs, mainApplyMs:metrics.mainApplyMs,
-    workerTotalMs:Math.max(0, nowMs() - totalStartedAt), fallbackUsed:metrics.fallbackUsed,
-    actionEventCount:presentationEvents.length,
-    presentationEventCount:presentedEventCount
-  };
-  window.dispatchEvent(new CustomEvent("v39:enemy-ai-worker-performance", { detail:profile }));
-  return profile;
 }
 
 function runEnemyAi(turnNumber = currentV39TurnNumber()) {
