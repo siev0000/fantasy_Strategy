@@ -1,7 +1,7 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
-import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
+import { canUnitEnterV39Tile, resolveV39TerrainMoveCost, resolveV39TileTerrainName } from "../../lib/v39-terrain-traversal.js";
 import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
@@ -143,12 +143,15 @@ function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
 
   if (absDiff > 1 && !hasFlight) return Number.POSITIVE_INFINITY;
 
-  let terrainCost = 1 + (climbDiff * 2);
+  let heightCost = 1 + (climbDiff * 2);
   const flightReduction = Math.floor(flightValue / 30);
-  terrainCost = Math.max(0, terrainCost - flightReduction);
+  heightCost = Math.max(0, heightCost - flightReduction);
+
+  const terrainName = resolveV39TileTerrainName(data, toX, toY);
+  const terrainMoveCost = resolveV39TerrainMoveCost(moveUnit, terrainName);
   const moveStat = resolveUnitMoveValue(moveUnit);
   const baseApCost = resolveV39BaseMoveApCost(moveStat);
-  return Math.max(0, Math.ceil(terrainCost * baseApCost));
+  return Math.max(0, Math.ceil(heightCost * terrainMoveCost.multiplier * baseApCost));
 }
 
 const getHexNeighborCoordsBySize = getHexNeighborCoords;
