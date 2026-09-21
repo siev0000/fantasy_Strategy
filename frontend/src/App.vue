@@ -4,6 +4,14 @@ import { io } from "socket.io-client";
 import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH, UI_MANUAL_SCALE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./lib/research-tree-config.js";
 import { raceData as raceSelectionDb } from "./lib/game-data-registry.js";
+import {
+  GAME_START_DEFAULT_MAX_COMBAT_TURNS,
+  GAME_START_DEFAULT_TURN_MODE,
+  GAME_START_MAX_COMBAT_TURNS_MAX,
+  GAME_START_MAX_COMBAT_TURNS_MIN,
+  GAME_START_TURN_MODE_OPTIONS,
+  normalizeGameStartSettings
+} from "./lib/game-start-settings.js";
 
 const PhaserMapGeneratorPanel = defineAsyncComponent(() => import("./components/PhaserMapGeneratorPanel.vue"));
 const RoomModal = defineAsyncComponent(() => import("./components/RoomModal.vue"));
@@ -258,6 +266,8 @@ const researchProgress = ref({
 const researchSelection = ref({});
 const gameStartPlayerCount = ref(1);
 const gameStartOtherFactionCount = ref(3);
+const gameStartTurnProgressionMode = ref(GAME_START_DEFAULT_TURN_MODE);
+const gameStartMaxCombatTurns = ref(GAME_START_DEFAULT_MAX_COMBAT_TURNS);
 const gameStartRandomPlacementEnabled = ref(true);
 const gameStartPlayerPlacementMode = ref("all_random");
 const gameStartSetupSlotIds = ref([]);
@@ -310,6 +320,11 @@ const gameStartTotalFactions = computed(() => {
   const otherCount = Math.max(0, Math.floor(Number(gameStartOtherFactionCount.value) || 0));
   return Math.max(1, Math.min(GAME_START_MAX_FACTIONS, playerCount + otherCount));
 });
+const selectedGameStartTurnMode = computed(() => (
+  GAME_START_TURN_MODE_OPTIONS.find(row => row.value === gameStartTurnProgressionMode.value)
+  || GAME_START_TURN_MODE_OPTIONS[0]
+  || null
+));
 const gameSetupQueueActive = computed(() => gameStartSetupSlotIds.value.length > 0);
 const currentGameSetupSlotId = computed(() => {
   const idx = Math.max(0, Math.floor(Number(gameStartSetupSlotIndex.value) || 0));
@@ -452,6 +467,8 @@ function openModal(kind, payload = null) {
     showGameStartSetupModal.value = true;
     gameStartPlayerCount.value = 1;
     gameStartOtherFactionCount.value = 3;
+    gameStartTurnProgressionMode.value = GAME_START_DEFAULT_TURN_MODE;
+    gameStartMaxCombatTurns.value = GAME_START_DEFAULT_MAX_COMBAT_TURNS;
     gameStartRandomPlacementEnabled.value = true;
     gameStartPlayerPlacementMode.value = "all_random";
     gameStartSetupSlotIds.value = [];
@@ -587,6 +604,28 @@ function nudgeGameStartCount(target = "player", delta = 0) {
   normalizeGameStartCounts();
 }
 
+function normalizeGameStartRuleSettings() {
+  const normalized = normalizeGameStartSettings({
+    turnProgressionMode: gameStartTurnProgressionMode.value,
+    maxCombatTurnsPerWorldTurn: gameStartMaxCombatTurns.value
+  });
+  gameStartTurnProgressionMode.value = normalized.turnProgressionMode;
+  gameStartMaxCombatTurns.value = normalized.maxCombatTurnsPerWorldTurn;
+  return normalized;
+}
+
+function nudgeGameStartMaxCombatTurns(delta = 0) {
+  const step = Math.floor(Number(delta) || 0);
+  if (!step) return;
+  const nextValue = (Number(gameStartMaxCombatTurns.value) || GAME_START_DEFAULT_MAX_COMBAT_TURNS) + step;
+  gameStartMaxCombatTurns.value = clampNumber(
+    nextValue,
+    GAME_START_MAX_COMBAT_TURNS_MIN,
+    GAME_START_MAX_COMBAT_TURNS_MAX
+  );
+  normalizeGameStartRuleSettings();
+}
+
 function beginFactionSetupAt(index, options = {}) {
   if (!Array.isArray(gameStartSetupSlotIds.value) || !gameStartSetupSlotIds.value.length) return false;
   const idx = Math.max(0, Math.floor(Number(index) || 0));
@@ -612,6 +651,7 @@ function beginFactionSetupAt(index, options = {}) {
 
 function confirmGameStartSetup() {
   normalizeGameStartCounts();
+  const gameSettings = normalizeGameStartRuleSettings();
   const playerCount = Math.max(1, Math.floor(Number(gameStartPlayerCount.value) || 1));
   const otherFactionCount = Math.max(0, Math.floor(Number(gameStartOtherFactionCount.value) || 0));
   const totalFactions = Math.max(1, Math.min(GAME_START_MAX_FACTIONS, playerCount + otherFactionCount));
@@ -635,7 +675,8 @@ function confirmGameStartSetup() {
     type: "initTestPlayerSlots",
     playerCount,
     otherFactionCount,
-    totalCount: totalFactions
+    totalCount: totalFactions,
+    gameSettings
   }];
   if (perPlayerVillageSelectionMode.value) {
     initCommands.push({ type: "prepareGameStartMap" });
@@ -1700,6 +1741,51 @@ watch(gameOnlyMode, () => {
             </div>
           </div>
         </label>
+        <label class="game-start-field">
+          <span>ターン進行方式</span>
+          <select v-model="gameStartTurnProgressionMode" @change="normalizeGameStartRuleSettings">
+            <option
+              v-for="row in GAME_START_TURN_MODE_OPTIONS"
+              :key="`turn-mode-${row.value}`"
+              :value="row.value"
+            >
+              {{ row.label }}
+            </option>
+          </select>
+          <small v-if="selectedGameStartTurnMode?.description" class="game-start-setting-help">
+            {{ selectedGameStartTurnMode.description }}
+          </small>
+        </label>
+        <label class="game-start-field">
+          <span>1ワールドターンの最大戦闘ターン数</span>
+          <div class="game-start-number-stepper">
+            <input
+              v-model.number="gameStartMaxCombatTurns"
+              type="number"
+              :min="GAME_START_MAX_COMBAT_TURNS_MIN"
+              :max="GAME_START_MAX_COMBAT_TURNS_MAX"
+              step="1"
+              @change="normalizeGameStartRuleSettings"
+            />
+            <div class="game-start-step-stack">
+              <button
+                type="button"
+                class="game-start-step-btn"
+                :disabled="gameStartMaxCombatTurns >= GAME_START_MAX_COMBAT_TURNS_MAX"
+                @click="nudgeGameStartMaxCombatTurns(1)"
+              >△</button>
+              <button
+                type="button"
+                class="game-start-step-btn"
+                :disabled="gameStartMaxCombatTurns <= GAME_START_MAX_COMBAT_TURNS_MIN"
+                @click="nudgeGameStartMaxCombatTurns(-1)"
+              >▽</button>
+            </div>
+          </div>
+          <small class="game-start-setting-help">
+            デフォルト {{ GAME_START_DEFAULT_MAX_COMBAT_TURNS }}。未決着戦闘の持ち越し処理は今後この設定値を使用します。
+          </small>
+        </label>
         <label class="game-start-field game-start-check">
           <span>ランダム配置</span>
           <input
@@ -1881,6 +1967,11 @@ watch(gameOnlyMode, () => {
   background: rgba(255, 248, 235, 0.93);
   color: #2f2417;
   padding: 4px 8px;
+}
+
+.game-start-setting-help {
+  color: rgba(245, 233, 204, 0.76);
+  line-height: 1.4;
 }
 
 .game-start-field.game-start-check {
