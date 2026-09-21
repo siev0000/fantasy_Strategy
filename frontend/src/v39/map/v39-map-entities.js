@@ -15,6 +15,7 @@ const STRUCTURE_LAYER_DEPTH = 10;
 const UNIT_LAYER_DEPTH = 12;
 const UNIT_IMAGE_FILL = 0.95;
 const ENEMY_IMAGE_FILL = 0.95;
+const TEST_UNDISCOVERED_ENEMY_ALPHA = 0.4;
 
 let structureContainer = null;
 let unitContainer = null;
@@ -404,10 +405,13 @@ function drawEnemies(scene, container, enemies) {
     const x = finiteCoord(enemy.x);
     const y = finiteCoord(enemy.y);
     if (x === null || y === null) continue;
-    if (!revealAllEnemies && window.isV39TileInCurrentVision?.(x, y) === false) continue;
-    if (!revealAllEnemies && !group.some(member => window.isV39EntityDetected?.(member) !== false)) continue;
+    const inCurrentVision = window.isV39TileInCurrentVision?.(x, y) !== false;
+    const detected = group.some(member => window.isV39EntityDetected?.(member) !== false);
+    const visibleByNormalRules = inCurrentVision && detected;
+    if (!revealAllEnemies && !visibleByNormalRules) continue;
     const center = tileCenter(x, y);
     const marker = scene.add.container(center.x, center.y).setName("v39-enemy-marker");
+    if (revealAllEnemies && !visibleByNormalRules) marker.setAlpha(TEST_UNDISCOVERED_ENEMY_ALPHA);
     for (const member of group) {
       const id = String(member?.id || "").trim();
       if (id) markerByEntityId.set(id, marker);
