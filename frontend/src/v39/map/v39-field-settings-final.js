@@ -74,10 +74,32 @@ function createStyles() {
   style.textContent = `
 #v39-field-settings-modal{position:fixed;inset:0;z-index:10050;display:none;place-items:center;padding:max(8px,var(--safe-t,0px)) max(8px,var(--safe-r,0px)) max(8px,var(--safe-b,0px)) max(8px,var(--safe-l,0px));background:rgba(1,5,8,.82);backdrop-filter:blur(3px)}
 #v39-field-settings-modal.open{display:grid}
-#v39-field-settings-dialog{width:min(860px,100%);height:min(760px,100%);max-height:calc(100svh - 16px);display:grid;grid-template-rows:48px minmax(0,1fr) auto;border:1px solid #46575e;border-radius:10px;background:linear-gradient(180deg,#111c20,#0a1216);box-shadow:0 18px 50px rgba(0,0,0,.62);overflow:hidden;color:#e8efec}
-.v39-field-settings-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #34444a;background:#111c21}.v39-field-settings-head h2{font-size:15px;margin:0}.v39-field-settings-head small{font-size:13px;color:#829499}.v39-field-settings-head button{margin-left:auto;width:34px;height:30px;border:1px solid #46575d;border-radius:7px;background:#172429;color:#e8efec}
-.v39-field-settings-body{min-height:0;overflow:auto;padding:10px;display:grid;gap:10px;align-content:start}.v39-field-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.v39-field-setting-card{padding:9px;border:1px solid #34444a;border-radius:8px;background:#111a1e;display:grid;gap:6px}.v39-field-setting-card>span,.v39-island-grid label>span{font-size:13px;color:#aebbbd;font-weight:700}.v39-field-setting-card select,.v39-field-setting-card input,.v39-island-grid input{width:100%;min-height:36px;border:1px solid #46575d;border-radius:7px;background:#162227;color:#e8efec;padding:6px 8px}.v39-field-setting-card small{font-size:13px;color:#7f9196;line-height:1.5}.v39-field-load-save{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.v39-field-load-save button{min-height:38px;border:1px solid #5b7882;border-radius:8px;background:#173039;color:#edf5f3;padding:6px 12px;font-weight:800;cursor:pointer}.v39-field-load-save button:hover{background:#1d3c46}.v39-field-load-save-status{font-size:13px;color:#91a4a9}.v39-section-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800}.v39-section-title label{margin-left:auto;font-size:13px;font-weight:600}.v39-island-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.v39-island-grid label{display:grid;gap:4px;padding:7px;border:1px solid #2f3f45;border-radius:7px;background:#0e171b}.v39-island-grid.is-disabled{opacity:.45;pointer-events:none}.v39-range-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:5px;align-items:center}.v39-field-settings-actions{display:flex;gap:8px;padding:9px 10px;border-top:1px solid #34444a;background:#0d161a}.v39-field-settings-actions button{min-height:40px;border:1px solid #4c6067;border-radius:8px;background:#172329;color:#e8efec;padding:0 14px;font-weight:800}.v39-field-settings-actions .primary{margin-left:auto;border-color:#66b7c6;background:#17414a}.v39-field-settings-actions .danger{border-color:#66504b;background:#261b18}.v39-field-settings-status{font-size:13px;color:#91a4a9;align-self:center}
-@media(max-width:700px){#v39-field-settings-dialog{width:100%;height:100%;max-height:none;border-radius:6px}.v39-field-settings-grid{grid-template-columns:1fr}.v39-island-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v39-field-settings-actions{position:sticky;bottom:0}.v39-field-settings-head small{display:none}}
+#v39-field-settings-dialog{width:min(720px,100%);height:min(760px,100%);max-height:calc(100svh - 16px);display:grid;grid-template-rows:48px minmax(0,1fr) auto;border:1px solid #46575e;border-radius:10px;background:linear-gradient(180deg,#111c20,#0a1216);box-shadow:0 18px 50px rgba(0,0,0,.62);overflow:hidden;color:#e8efec}
+.v39-field-settings-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #34444a;background:#111c21}.v39-field-settings-head h2{font-size:15px;margin:0}.v39-field-settings-head small{font-size:12px;color:#829499}.v39-field-settings-head button{margin-left:auto;width:34px;height:30px;border:1px solid #46575d;border-radius:7px;background:#172429;color:#e8efec}
+.v39-field-settings-body{min-height:0;overflow:auto;padding:8px;display:grid;gap:7px;align-content:start}
+.v39-start-section{border:1px solid #34444a;border-radius:8px;background:#0f191d;overflow:hidden}
+.v39-start-section>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;min-height:40px;padding:8px 10px;background:#121f24;font-size:13px;font-weight:800;user-select:none}
+.v39-start-section>summary::-webkit-details-marker{display:none}
+.v39-start-section>summary::before{content:"▷";display:inline-block;width:14px;color:#7fc9d6;transition:transform .12s ease}
+.v39-start-section[open]>summary::before{transform:rotate(90deg)}
+.v39-start-section[open]>summary{border-bottom:1px solid #2f4046}
+.v39-section-summary-control{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#b9c6c9}
+.v39-section-summary-control input{width:18px;height:18px;accent-color:#66c6d6}
+.v39-setting-list{display:grid;padding:2px 10px 7px}
+.v39-setting-row{min-width:0;display:grid;grid-template-columns:minmax(150px,.8fr) minmax(190px,1.2fr);gap:6px 12px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(70,87,93,.42)}
+.v39-setting-row:last-child{border-bottom:0}
+.v39-setting-row>span{font-size:12px;color:#b8c5c8;font-weight:700}
+.v39-setting-row select,.v39-setting-row input[type="number"]{width:100%;min-height:34px;border:1px solid #46575d;border-radius:6px;background:#162227;color:#e8efec;padding:5px 7px}
+.v39-setting-row input[type="checkbox"]{width:18px;height:18px;accent-color:#66c6d6}
+.v39-setting-row .v39-inline-check{display:flex;align-items:center;gap:7px;min-height:34px}
+.v39-setting-row small{grid-column:2;font-size:11px;color:#809297;line-height:1.4;margin-top:-2px}
+.v39-range-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:5px;align-items:center}
+.v39-field-load-save{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.v39-field-load-save button{min-height:36px;border:1px solid #5b7882;border-radius:7px;background:#173039;color:#edf5f3;padding:5px 10px;font-weight:800;cursor:pointer}.v39-field-load-save button:hover{background:#1d3c46}
+.v39-field-load-save-status{font-size:11px;color:#91a4a9}
+#v39-field-custom-grid.is-disabled{opacity:.45;pointer-events:none}
+.v39-field-settings-actions{display:flex;gap:8px;padding:8px 10px;border-top:1px solid #34444a;background:#0d161a}.v39-field-settings-actions button{min-height:38px;border:1px solid #4c6067;border-radius:8px;background:#172329;color:#e8efec;padding:0 13px;font-weight:800}.v39-field-settings-actions .primary{margin-left:auto;border-color:#66b7c6;background:#17414a}.v39-field-settings-actions .danger{border-color:#66504b;background:#261b18}.v39-field-settings-status{font-size:12px;color:#91a4a9;align-self:center}
+@media(max-width:700px){#v39-field-settings-dialog{width:100%;height:100%;max-height:none;border-radius:6px}.v39-field-settings-body{padding:6px}.v39-setting-row{grid-template-columns:1fr;gap:4px;padding:7px 0}.v39-setting-row small{grid-column:1}.v39-field-settings-actions{position:sticky;bottom:0}.v39-field-settings-head small{display:none}}
 `;
   document.head.appendChild(style);
 }
@@ -96,76 +118,97 @@ function createModal() {
         <button type="button" data-field-close aria-label="閉じる">×</button>
       </header>
       <div class="v39-field-settings-body">
-        <section class="v39-field-setting-card">
-          <div class="v39-section-title">セーブデータから再開</div>
-          <small>保存済みのv39セーブデータを読み込み、マップ・勢力・ターン・研究・経済・戦闘状態・カメラ位置を復元します。</small>
-          <div class="v39-field-load-save">
-            <button type="button" id="v39-field-load-save">セーブデータをロード</button>
-            <input id="v39-field-save-file" type="file" accept="application/json,.json" hidden>
-            <span class="v39-field-load-save-status" id="v39-field-load-save-status">JSONファイルを選択</span>
-          </div>
-        </section>
-        <section class="v39-field-setting-card">
-          <div class="v39-section-title">ゲーム進行設定</div>
-          <small>ゲーム開始後のターン進行方式と、1ワールドターン内で戦闘を進める上限を設定します。</small>
-          <div class="v39-field-settings-grid">
-            <label class="v39-field-setting-card"><span>ターン進行方式</span>
+        <details class="v39-start-section" id="v39-start-game-section" open>
+          <summary>ゲーム進行</summary>
+          <div class="v39-setting-list">
+            <label class="v39-setting-row">
+              <span>ターン進行方式</span>
               <select id="v39-field-turn-mode"></select>
               <small id="v39-field-turn-mode-note"></small>
             </label>
-            <label class="v39-field-setting-card"><span>最大戦闘ターン数</span>
+            <label class="v39-setting-row">
+              <span>最大戦闘ターン数</span>
               <input id="v39-field-max-combat-turns" type="number" step="1">
               <small id="v39-field-max-combat-turns-note"></small>
             </label>
           </div>
-        </section>
-        <div class="v39-field-settings-grid">
-          <label class="v39-field-setting-card"><span>マップサイズ</span>
-            <select id="v39-field-map-size">
-              <option value="30x40">下限 30×40（1200マス）</option>
-              <option value="36x36">標準 36×36（1296マス / 推奨）</option>
-              <option value="48x48">大 48×48（2304マス）</option>
-              <option value="60x60">特大 60×60（3600マス）</option>
-              <option value="72x72">超特大 72×72（5184マス）</option>
-              <option value="83x83">最大 83×83（6889マス）</option>
-            </select>
-          </label>
-          <label class="v39-field-setting-card"><span>島形状パターン</span>
-            <select id="v39-field-pattern">
-              <option value="realistic">リアル島</option>
-              <option value="balanced">標準諸島</option>
-              <option value="continent">大陸型</option>
-              <option value="archipelago">多島海</option>
-              <option value="twins">双子島</option>
-              <option value="chain">列島型</option>
-            </select>
-          </label>
-          <label class="v39-field-setting-card"><span>山岳モード</span>
-            <select id="v39-field-mountain">
-              <option value="random">ランダム（単峰 / 群峰 / 混合）</option>
-              <option value="single">単峰 固定</option>
-              <option value="multi">群峰 固定</option>
-              <option value="mixed">混合 固定</option>
-            </select>
-          </label>
-          <label class="v39-field-setting-card"><span>敵出現密度</span>
-            <input id="v39-field-enemy-divisor" type="number" min="20" max="60" step="5">
-            <small>敵数 = 出現可能マス数 ÷ 設定値。20ほど多く、60ほど少なくなります。</small>
-          </label>
-          <div class="v39-field-setting-card"><span>ワールド端接続</span><label><input type="checkbox" id="v39-field-wrap"> 左右上下の端を接続する</label><small>旧カスタム設定の worldWrapEnabled を使用します。</small></div>
-        </div>
+        </details>
 
-        <section class="v39-field-setting-card">
-          <div class="v39-section-title">島カスタム設定 <label><input type="checkbox" id="v39-field-custom-enabled"> 使用する</label></div>
-          <small>ON時は島形状パターンを土台に、大島・孤島構成と目標陸地率を上書きします。</small>
-          <div class="v39-island-grid" id="v39-field-custom-grid">
-            <label><span>大島の数</span><input id="v39-field-large-islands" type="number" min="1" max="8" step="1"></label>
-            <label><span>大島間の最小距離</span><input id="v39-field-island-gap" type="number" min="2" max="12" step="1"></label>
-            <label><span>目標陸地率（%）</span><input id="v39-field-land-percent" type="number" min="25" max="60" step="1"></label>
-            <label><span>孤島数</span><div class="v39-range-pair"><input id="v39-field-islet-min" type="number" min="0" max="12" step="1"><b>〜</b><input id="v39-field-islet-max" type="number" min="0" max="12" step="1"></div></label>
-            <label><span>大陸あたり川本数</span><div class="v39-range-pair"><input id="v39-field-river-min" type="number" min="1" max="12" step="1"><b>〜</b><input id="v39-field-river-max" type="number" min="1" max="12" step="1"></div></label>
+        <details class="v39-start-section" id="v39-start-map-section" open>
+          <summary>マップ基本設定</summary>
+          <div class="v39-setting-list">
+            <label class="v39-setting-row">
+              <span>マップサイズ</span>
+              <select id="v39-field-map-size">
+                <option value="30x40">下限 30×40（1200マス）</option>
+                <option value="36x36">標準 36×36（1296マス / 推奨）</option>
+                <option value="48x48">大 48×48（2304マス）</option>
+                <option value="60x60">特大 60×60（3600マス）</option>
+                <option value="72x72">超特大 72×72（5184マス）</option>
+                <option value="83x83">最大 83×83（6889マス）</option>
+              </select>
+            </label>
+            <label class="v39-setting-row">
+              <span>島形状パターン</span>
+              <select id="v39-field-pattern">
+                <option value="realistic">リアル島</option>
+                <option value="balanced">標準諸島</option>
+                <option value="continent">大陸型</option>
+                <option value="archipelago">多島海</option>
+                <option value="twins">双子島</option>
+                <option value="chain">列島型</option>
+              </select>
+            </label>
+            <label class="v39-setting-row">
+              <span>山岳モード</span>
+              <select id="v39-field-mountain">
+                <option value="random">ランダム（単峰 / 群峰 / 混合）</option>
+                <option value="single">単峰 固定</option>
+                <option value="multi">群峰 固定</option>
+                <option value="mixed">混合 固定</option>
+              </select>
+            </label>
+            <label class="v39-setting-row">
+              <span>敵出現密度</span>
+              <input id="v39-field-enemy-divisor" type="number" min="20" max="60" step="5">
+              <small>敵数 = 出現可能マス数 ÷ 設定値。20ほど多く、60ほど少なくなります。</small>
+            </label>
+            <div class="v39-setting-row">
+              <span>ワールド端接続</span>
+              <label class="v39-inline-check"><input type="checkbox" id="v39-field-wrap">左右上下の端を接続する</label>
+              <small>旧カスタム設定の worldWrapEnabled を使用します。</small>
+            </div>
           </div>
-        </section>
+        </details>
+
+        <details class="v39-start-section" id="v39-start-island-section">
+          <summary>
+            <span>島カスタム設定</span>
+            <label class="v39-section-summary-control"><input type="checkbox" id="v39-field-custom-enabled">使用する</label>
+          </summary>
+          <div class="v39-setting-list" id="v39-field-custom-grid">
+            <div class="v39-setting-row"><span>大島の数</span><input id="v39-field-large-islands" type="number" min="1" max="8" step="1"></div>
+            <div class="v39-setting-row"><span>大島間の最小距離</span><input id="v39-field-island-gap" type="number" min="2" max="12" step="1"></div>
+            <div class="v39-setting-row"><span>目標陸地率（%）</span><input id="v39-field-land-percent" type="number" min="25" max="60" step="1"></div>
+            <div class="v39-setting-row"><span>孤島数</span><div class="v39-range-pair"><input id="v39-field-islet-min" type="number" min="0" max="12" step="1"><b>〜</b><input id="v39-field-islet-max" type="number" min="0" max="12" step="1"></div></div>
+            <div class="v39-setting-row"><span>大陸あたり川本数</span><div class="v39-range-pair"><input id="v39-field-river-min" type="number" min="1" max="12" step="1"><b>〜</b><input id="v39-field-river-max" type="number" min="1" max="12" step="1"></div></div>
+          </div>
+        </details>
+
+        <details class="v39-start-section" id="v39-start-load-section">
+          <summary>セーブデータから再開</summary>
+          <div class="v39-setting-list">
+            <div class="v39-setting-row">
+              <span>セーブデータ</span>
+              <div class="v39-field-load-save">
+                <button type="button" id="v39-field-load-save">セーブデータをロード</button>
+                <input id="v39-field-save-file" type="file" accept="application/json,.json" hidden>
+                <span class="v39-field-load-save-status" id="v39-field-load-save-status">JSONファイルを選択</span>
+              </div>
+              <small>マップ・勢力・ターン・研究・経済・戦闘状態・カメラ位置を復元します。</small>
+            </div>
+          </div>
+        </details>
       </div>
       <footer class="v39-field-settings-actions">
         <span class="v39-field-settings-status" id="v39-field-settings-status">未生成</span>
@@ -292,9 +335,16 @@ function boot() {
     });
     sync();
   });
+  const islandSection = get("v39-start-island-section");
+  get("v39-field-custom-enabled").addEventListener("click", event => {
+    event.stopPropagation();
+  });
   get("v39-field-custom-enabled").addEventListener("change", () => {
     settings.islandCustomSettings.enabled = get("v39-field-custom-enabled").checked;
     get("v39-field-custom-grid").classList.toggle("is-disabled", !settings.islandCustomSettings.enabled);
+    if (settings.islandCustomSettings.enabled && islandSection instanceof HTMLDetailsElement) {
+      islandSection.open = true;
+    }
   });
   get("v39-field-settings-reset").addEventListener("click", () => { settings = deepClone(DEFAULT_FIELD_SETTINGS); sync(); });
 
