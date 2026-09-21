@@ -3,6 +3,7 @@ import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROW
 import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules } from "../../composables/unitStatusUtils.js";
 import { applyMilitaryProfileToStatus } from "../../composables/militaryUnitUtils.js";
 import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
+import { resolveV39MovementStatFromStatus } from "../../lib/v39-gameplay-balance.js";
 
 const INITIAL_RACE_BONUS_LEVEL = 5;
 const STATUS_GROWTH_DIVISOR = 10;
@@ -206,11 +207,14 @@ export function applyV39DerivedCharacterData(unit = {}) {
       if (Object.prototype.hasOwnProperty.call(status, key)) status[key] = number(status[key]) + number(value);
     }
   }
+  const movement = resolveV39MovementStatFromStatus(status);
+  status.移動 = movement;
   return {
     ...unit,
     race: derived.race,
     className: derived.className,
     level: derived.level,
+    movement,
     status,
     skillLevels: { ...derived.skillLevels },
     resistances: { ...resistances, ...(unit?.resistanceOverrides || {}) },
