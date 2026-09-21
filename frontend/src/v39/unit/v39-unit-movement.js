@@ -143,15 +143,15 @@ function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
 
   if (absDiff > 1 && !hasFlight) return Number.POSITIVE_INFINITY;
 
-  let heightCost = 1 + (climbDiff * 2);
-  const flightReduction = Math.floor(flightValue / 30);
-  heightCost = Math.max(0, heightCost - flightReduction);
+  const climbPenaltyPoints = climbDiff * 25;
+  const flightReductionPoints = Math.floor(flightValue / 30) * 25;
+  const heightPenaltyPoints = Math.max(0, climbPenaltyPoints - flightReductionPoints);
 
   const terrainName = resolveV39TileTerrainName(data, toX, toY);
-  const terrainMoveCost = resolveV39TerrainMoveCost(moveUnit, terrainName);
+  const terrainMoveCost = resolveV39TerrainMoveCost(moveUnit, terrainName, heightPenaltyPoints);
   const moveStat = resolveUnitMoveValue(moveUnit);
   const baseApCost = resolveV39BaseMoveApCost(moveStat);
-  return Math.max(0, Math.ceil(heightCost * terrainMoveCost.multiplier * baseApCost));
+  return Math.max(0, Math.ceil(terrainMoveCost.multiplier * baseApCost));
 }
 
 const getHexNeighborCoordsBySize = getHexNeighborCoords;
