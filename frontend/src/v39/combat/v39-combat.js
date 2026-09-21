@@ -429,6 +429,7 @@ function logDamage(attacker, target, skillRow, damage) {
     命中参照ステータス:damage.detail.accuracyKey, 命中値:damage.detail.accuracy,
     回避値:damage.detail.evasion, 命中率:`${Math.round(damage.detail.hitRate * 1000) / 10}%`, Miss数:damage.missCount,
     耐性軽減割合:`${Math.round(damage.detail.resistanceRate * 1000) / 10}%`, Lv軽減値:damage.detail.levelReduction,
+    共通ダメージ倍率:damage.detail.damageMultiplier,
     攻撃側地形補正:{ 地形:damage.detail.attackerTerrain, 補正:damage.detail.attackerTerrainModifiers },
     防御側地形補正:{ 地形:damage.detail.targetTerrain, 補正:damage.detail.targetTerrainModifiers },
     ガード吸収前:damage.hitsBeforeGuard, ガード吸収値:damage.guardAbsorbed, ガード残量:damage.guardRemaining,
