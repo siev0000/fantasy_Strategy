@@ -24,7 +24,12 @@ export function resolveDetectionScoutValue(unit) {
   );
 }
 
-export function resolveDetectionStealthValue(unit) {
+export function resolveDetectionStealthValue(unit, { turnNumber = null } = {}) {
+  const currentTurn = Number(turnNumber);
+  if (Number.isFinite(currentTurn) && currentTurn > 0
+    && Math.floor(number(unit?.lastStealthBreakTurn, -1)) === Math.floor(currentTurn)) {
+    return 0;
+  }
   return Math.max(
     0,
     roundTo1(resolveUnitStealthValue(unit)),
@@ -33,11 +38,11 @@ export function resolveDetectionStealthValue(unit) {
   );
 }
 
-export function resolveDetectionGroupSense(units = []) {
+export function resolveDetectionGroupSense(units = [], options = {}) {
   const source = (Array.isArray(units) ? units : []).filter(Boolean);
   return resolveDetectionGroupSenseFromValues(
     source.map(resolveDetectionScoutValue),
-    source.map(resolveDetectionStealthValue)
+    source.map(unit => resolveDetectionStealthValue(unit, options))
   );
 }
 
