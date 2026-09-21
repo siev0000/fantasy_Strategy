@@ -19,7 +19,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
       { icon: "⚙", label: "ゲーム設定", open: "settings" },
       { icon: "目", label: "表示設定", id: "v39-manage-display-settings" },
       { icon: "試", label: "テスト操作", id: "v39-manage-test-tools" },
-      { icon: "⬢", label: "フィールド設定", id: "v39-manage-field-settings" },
+      { icon: "⬢", label: "ゲーム開始設定", id: "v39-manage-field-settings" },
       { icon: "書", label: "設計書", id: "v39-manage-design-docs" }
     ]
   });
