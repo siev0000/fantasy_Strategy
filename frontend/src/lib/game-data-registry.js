@@ -40,7 +40,7 @@ const tableMap = new Map();
 const sourcePathMap = new Map();
 
 const TABLE_KEY_FIELDS = Object.freeze({
-  クラス:["名前"], スキル一覧:["名前"], テストスキル:["名前"], テストゲーム状態:["activePlayerId"],
+  クラス:["名前"], テストクラス:["名前"], スキル一覧:["名前"], テストスキル:["名前"], テストゲーム状態:["activePlayerId"],
   外交姿勢:["項目カテゴリ", "項目名"], 研究:["技術対象", "Lv", "項目名"], 効果:["追加効果"],
   災害:["カテゴリ名"], 施設:["施設名"], 種族:["key"],
   出現敵:["出現地形", "種族名", "Lv_Min", "Lv_Max"], 消費量:["種別", "Lv"],
@@ -50,7 +50,7 @@ const TABLE_KEY_FIELDS = Object.freeze({
 });
 
 const REQUIRED_FIELDS = Object.freeze({
-  クラス:["名前", "種類"], スキル一覧:["名前", "行動"], テストスキル:["名前", "行動", "テスト専用"], 装備:["装備名", "装備箇所"],
+  クラス:["名前", "種類"], テストクラス:["名前", "種類", "テスト専用"], スキル一覧:["名前", "行動"], テストスキル:["名前", "行動", "テスト専用"], 装備:["装備名", "装備箇所"],
   地形:["地形"], 出現敵:["ID", "出現地形", "種族名"],
   研究:["ID", "項目名", "技術対象", "Lv", "必要ユニットLv"], 災害:["ID", "カテゴリ名", "効果"],
   種族:["key", "name", "className"], 勢力:["種族", "カナ", "マーカー文字", "マーカー色"], 範囲:["範囲タイプ", "処理タイプ"]
@@ -58,6 +58,7 @@ const REQUIRED_FIELDS = Object.freeze({
 
 export const GAME_DATA_TABLE_METADATA = Object.freeze({
   クラス:{ purpose:"種族・職業・敵クラスの能力、成長、装備、取得スキル", status:"connected" },
+  テストクラス:{ purpose:"テストモード専用キャラクターの能力と取得スキル", status:"test-only" },
   スキル一覧:{ purpose:"行動A、攻撃、回復、補助効果、射程、時間", status:"connected" },
   テストスキル:{ purpose:"テストモード専用の戦闘・死亡・蘇生などの動作確認スキル", status:"test-only" },
   テストゲーム状態:{ purpose:"ローカル確認用プレイヤー・部隊・配置", status:"connected" },
@@ -153,7 +154,7 @@ function validateReference(issues, sourceTable, rowId, field, targetTable, targe
 function validateSkillReference(issues, sourceTable, rowId, field, value) {
   const reference = asText(value);
   if (!reference || reference === "-" || reference === "なし" || reference === "0") return;
-  const isKnownSkill = getGameDataRows("スキル一覧").some(row => asText(row?.名前) === reference);
+  const isKnownSkill = [...getGameDataRows("スキル一覧"), ...getGameDataRows("テストスキル")].some(row => asText(row?.名前) === reference);
   const isKnownAbility = getGameDataRows("説明").some(row => asText(row?.技能名) === reference);
   const isClassTransition = getGameDataRows("クラス").some(row => asText(row?.名前) === reference);
   if (!isKnownSkill && !isKnownAbility && !isClassTransition) {
@@ -176,7 +177,7 @@ export function validateGameDataRegistry() {
       for (const field of REQUIRED_FIELDS[table.name] || []) {
         if (!asText(row?.[field])) issues.push({ level:"warning", type:"missing-required", table:table.name, recordId:id, field });
       }
-      if (table.name === "クラス") for (let index = 1; index <= 10; index += 1) validateSkillReference(issues, table.name, id, `Skill${index}`, row?.[`Skill${index}`]);
+      if (["クラス", "テストクラス"].includes(table.name)) for (let index = 1; index <= 10; index += 1) validateSkillReference(issues, table.name, id, `Skill${index}`, row?.[`Skill${index}`]);
       if (table.name === "出現敵") {
         validateReference(issues, table.name, id, "種族", "クラス", "名前", row?.種族);
         validateReference(issues, table.name, id, "サブクラス", "クラス", "名前", row?.サブクラス);
@@ -224,6 +225,7 @@ export function getGameDataRegistryStatus() {
 }
 
 export const classData = getGameDataRows("クラス");
+export const testClassData = getGameDataRows("テストクラス");
 export const skillData = getGameDataRows("スキル一覧");
 export const testSkillData = getGameDataRows("テストスキル");
 export const testGameData = getGameDataTable("テストゲーム状態", {});
