@@ -418,12 +418,11 @@ function renderDetail() {
     if (pane) pane.dataset.empty = "1";
     const prof = document.getElementById("detailProficiencyList");
     const equipment = document.getElementById("detailEquipmentList");
-    renderEquipment(unit);
-
-  const tech = document.getElementById("detailTechniqueRows");
+    const tech = document.getElementById("detailTechniqueRows");
     if (prof) prof.innerHTML = '<div class="squad-empty">技能データなし</div>';
     if (equipment) equipment.innerHTML = '<div class="equipment-empty">装備なし</div>';
     if (tech) tech.innerHTML = '<div class="squad-empty">行動データなし</div>';
+    expandedEquipmentKey = "";
     notifyDetailRendered();
     return;
   }
@@ -472,6 +471,8 @@ function renderDetail() {
       ? rows.map(([name, value]) => `<div class="proficiency-item"><span>${name}</span><b>${value}</b></div>`).join("")
       : '<div class="squad-empty">技能データなし</div>';
   }
+
+  renderEquipment(unit);
 
   const tech = document.getElementById("detailTechniqueRows");
   if (tech) {
