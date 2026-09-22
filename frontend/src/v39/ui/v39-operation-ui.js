@@ -36,6 +36,16 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
     const style = document.createElement("style");
     style.id = "v39-operation-ui-style";
     style.textContent = `
+      .footer-tab.footer-text-tab{
+        display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;
+        gap:1px!important;min-height:48px!important;padding:4px 3px!important;line-height:1!important
+      }
+      .footer-tab.footer-text-tab .tab-icon{
+        display:block!important;order:1!important;font-size:22px!important;line-height:1!important
+      }
+      .footer-tab.footer-text-tab .tab-text{
+        display:block!important;order:2!important;font-size:9px!important;font-weight:700!important;line-height:1.15!important
+      }
       #footSquad .v39-squad-toolbar{display:flex;align-items:center;gap:6px;min-width:0;overflow:visible}
       #footSquad .v39-squad-shortcuts{display:flex;gap:5px;flex:0 0 auto;overflow:visible}
       .v39-footer-shortcut{min-height:30px;border:1px solid #4d747d;border-radius:7px;background:#173039;color:#e7f2f0;padding:4px 8px;font:inherit;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer}
