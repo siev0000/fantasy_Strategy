@@ -2,6 +2,7 @@ import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rule
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { addResearchExperience } from "../../lib/research-progress.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
+import { getGameDataTable } from "../../lib/game-data-registry.js";
 import { getV39TestSkillRows } from "../../lib/v39-test-skill-rules.js";
 
 const RESOURCE_KEYS = [...new Set([...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS])];
@@ -19,6 +20,69 @@ function escapeHtml(value) {
 
 function testModeEnabled() {
   return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
+}
+
+function testCharacterTemplatesByPlayer() {
+  const source = getGameDataTable("テストゲーム状態", {});
+  return new Map((Array.isArray(source?.players) ? source.players : []).map(player => [
+    text(player?.id),
+    {
+      units:(Array.isArray(player?.factionState?.units) ? player.factionState.units : []).filter(unit => unit?.testOnly === true),
+      squads:Array.isArray(player?.factionState?.squads) ? player.factionState.squads : []
+    }
+  ]));
+}
+
+function syncTestCharacters(enabled = testModeEnabled()) {
+  const state = window.getV39GameState?.();
+  if (!state?.players?.length) return false;
+  const templatesByPlayer = testCharacterTemplatesByPlayer();
+  let changed = false;
+  const players = state.players.map(player => {
+    const faction = player?.factionState;
+    if (!faction) return player;
+    const templates = templatesByPlayer.get(text(player.id)) || { units:[], squads:[] };
+    let units = Array.isArray(faction.units) ? [...faction.units] : [];
+    let squads = Array.isArray(faction.squads) ? faction.squads.map(row => ({ ...row, unitIds:[...(row?.unitIds || [])] })) : [];
+    if (!enabled) {
+      const removedIds = new Set(units.filter(unit => unit?.testOnly === true).map(unit => text(unit?.id)).filter(Boolean));
+      if (!removedIds.size) return player;
+      units = units.filter(unit => !removedIds.has(text(unit?.id)));
+      squads = squads.map(squad => ({ ...squad, unitIds:(squad.unitIds || []).filter(id => !removedIds.has(text(id))) }));
+      const selectedUnitId = removedIds.has(text(faction.selectedUnitId))
+        ? text(units.find(unit => unit?.state !== "死亡" && number(unit?.hp, unit?.currentHp) > 0)?.id, text(units[0]?.id))
+        : text(faction.selectedUnitId);
+      changed = true;
+      return { ...player, factionState:{ ...faction, units, squads, selectedUnitId } };
+    }
+
+    const existingIds = new Set(units.map(unit => text(unit?.id)).filter(Boolean));
+    const added = templates.units.filter(unit => !existingIds.has(text(unit?.id))).map(unit => structuredClone(unit));
+    if (added.length) {
+      units.push(...added);
+      changed = true;
+    }
+    for (const templateSquad of templates.squads) {
+      const testUnitIds = (templateSquad?.unitIds || []).map(text).filter(id => templates.units.some(unit => text(unit?.id) === id));
+      if (!testUnitIds.length) continue;
+      const squadIndex = squads.findIndex(squad => text(squad?.id) === text(templateSquad?.id));
+      if (squadIndex < 0) {
+        squads.push({ ...structuredClone(templateSquad), unitIds:testUnitIds });
+        changed = true;
+        continue;
+      }
+      const currentIds = squads[squadIndex].unitIds || [];
+      const mergedIds = [...new Set([...currentIds, ...testUnitIds])];
+      if (mergedIds.length !== currentIds.length) {
+        squads[squadIndex] = { ...squads[squadIndex], unitIds:mergedIds };
+        changed = true;
+      }
+    }
+    return changed ? { ...player, factionState:{ ...faction, units, squads } } : player;
+  });
+  if (!changed) return false;
+  window.setV39GameState?.({ players }, { reason:enabled ? "test-characters-enabled" : "test-characters-disabled" });
+  return true;
 }
 
 function context() {
@@ -337,7 +401,9 @@ function install() {
     render();
   });
   window.addEventListener("v39:display-settings-changed", event => {
-    if (event.detail?.testMode !== true) closePanel();
+    const enabled = event.detail?.testMode === true;
+    syncTestCharacters(enabled);
+    if (!enabled) closePanel();
     else render();
   });
   window.addEventListener("v39:game-state-changed", render);
@@ -348,6 +414,7 @@ function install() {
     render();
   });
   window.openV39TestTools = openPanel;
+  syncTestCharacters(testModeEnabled());
 }
 
 install();
