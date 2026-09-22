@@ -36,7 +36,9 @@
             "unitIds": [
               "wanderer",
               "engineer",
-              "geomancer"
+              "geomancer",
+              "combat-tester",
+              "combat-subject"
             ]
           }
         ],
@@ -387,6 +389,46 @@
                 "name": "靴"
               }
             ]
+          },
+          {
+            "id": "combat-tester",
+            "name": "戦闘試験官",
+            "icon": "⚙",
+            "squadId": "solo",
+            "isNamed": true,
+            "testOnly": true,
+            "position": [
+              6,
+              11
+            ],
+            "race": "只人",
+            "className": "戦闘試験官",
+            "level": 10,
+            "role": "部隊未所属 / 戦闘テスト",
+            "hpRate": 1,
+            "ap": 100,
+            "maxAp": 100,
+            "equipment": []
+          },
+          {
+            "id": "combat-subject",
+            "name": "被験者",
+            "icon": "◇",
+            "squadId": "solo",
+            "isNamed": true,
+            "testOnly": true,
+            "position": [
+              7,
+              11
+            ],
+            "race": "只人",
+            "className": "ファイター",
+            "level": 10,
+            "role": "部隊未所属 / 被験者",
+            "hpRate": 1,
+            "ap": 100,
+            "maxAp": 100,
+            "equipment": []
           }
         ]
       }
