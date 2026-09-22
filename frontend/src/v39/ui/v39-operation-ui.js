@@ -102,12 +102,12 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
       #footSquad .squad-detail-section+ .squad-detail-section{margin-top:4px!important}
       #footSquad .squad-detail-section-title{
         position:static!important;min-height:24px!important;padding:4px 7px!important;background:#132126!important;
-        font-size:9px!important;color:#a8b8bc!important;font-weight:800!important;cursor:pointer!important;
+        font-size:12px!important;color:#c6d3d5!important;font-weight:800!important;cursor:pointer!important;
         display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;
         list-style:none!important;user-select:none!important
       }
       #footSquad .squad-detail-section-title::-webkit-details-marker{display:none!important}
-      #footSquad .squad-detail-section-title::after{content:"▾";font-size:9px;color:#6fc7d6;transition:transform .12s ease}
+      #footSquad .squad-detail-section-title::after{content:"▾";font-size:11px;color:#6fc7d6;transition:transform .12s ease}
       #footSquad .squad-detail-section:not([open])>.squad-detail-section-title::after{transform:rotate(-90deg)}
       #footSquad .squad-detail-section-body{min-width:0;margin-top:0;padding:3px!important}
       #footSquad .equipment-list{display:grid;gap:2px}
@@ -119,21 +119,25 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
         min-height:32px;display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;align-items:center;
         gap:5px;padding:4px 6px
       }
-      #footSquad .equipment-icon{font-size:16px;line-height:1;text-align:center}
-      #footSquad .equipment-name{min-width:0;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      #footSquad .equipment-slot,#footSquad .equipment-quality{font-size:8px;color:#98aaae;white-space:nowrap}
+      #footSquad .equipment-icon{font-size:19px;line-height:1;text-align:center}
+      #footSquad .equipment-name{min-width:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #footSquad .equipment-slot,#footSquad .equipment-quality{font-size:10px;color:#98aaae;white-space:nowrap}
       #footSquad .equipment-detail{display:none;border-top:1px solid #31434a;padding:5px 7px;background:#0d171b}
       #footSquad .equipment-card.is-expanded .equipment-detail{display:grid;gap:4px}
       #footSquad .equipment-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}
-      #footSquad .equipment-detail-grid span{min-width:0;padding:3px 5px;border-radius:4px;background:#16252a;font-size:8px;color:#b8c7ca}
-      #footSquad .equipment-detail-grid b{color:#edf5f2;font-size:9px}
-      #footSquad .equipment-detail-line{font-size:8px;line-height:1.4;color:#b6c5c8}
+      #footSquad .equipment-detail-grid span{min-width:0;padding:3px 5px;border-radius:4px;background:#16252a;font-size:10px;color:#c8d4d6}
+      #footSquad .equipment-detail-grid b{color:#edf5f2;font-size:11px}
+      #footSquad .equipment-detail-line{font-size:10px;line-height:1.5;color:#c4d0d2}
       #footSquad .equipment-detail-line b{color:#e8f0ed}
-      #footSquad .equipment-empty{padding:5px;color:#91a3a7;font-size:9px}
+      #footSquad .equipment-empty{padding:6px;color:#aebec1;font-size:11px}
       #footSquad .squad-detail-stats{gap:2px!important}
-      #footSquad .detail-stat{min-height:42px!important;padding:4px 3px!important;gap:1px!important}
+      #footSquad .detail-stat{min-height:48px!important;padding:5px 4px!important;gap:2px!important}
+      #footSquad .detail-stat span{font-size:11px!important}
+      #footSquad .detail-stat b{font-size:14px!important}
       #footSquad .proficiency-grid{gap:2px!important}
-      #footSquad .proficiency-item{min-height:30px!important;padding:3px 4px!important;gap:2px!important}
+      #footSquad .proficiency-item{min-height:34px!important;padding:4px 6px!important;gap:4px!important}
+      #footSquad .proficiency-item span{font-size:11px!important}
+      #footSquad .proficiency-item b{font-size:13px!important}
       #footSquad .technique-list{gap:2px!important}
       #footSquad .technique-passive-divider{
         margin:4px 0 1px!important;padding:2px 3px!important;border-top:1px solid #405159!important;
