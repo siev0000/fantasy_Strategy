@@ -4,6 +4,7 @@ import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "../.
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
+import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
 
 const EMPTY_STATE = Object.freeze({
   activePlayerId: "",
@@ -105,7 +106,10 @@ function normalizeUnitCommonAp(unit = {}) {
 
 function normalizeUnitArray(value) {
   return Array.isArray(value)
-    ? value.filter(Boolean).map(row => normalizeUnitCommonAp(applyV39DerivedCharacterData(row)))
+    ? value
+      .filter(Boolean)
+      .filter(row => row?.testOnly !== true || isV39TestSkillModeEnabled())
+      .map(row => normalizeUnitCommonAp(applyV39DerivedCharacterData(row)))
     : [];
 }
 
@@ -202,6 +206,7 @@ function cloneUnit(unit) {
     status: cloneRecord(unit?.status),
     skillLevels: cloneRecord(unit?.skillLevels),
     acquiredSkillNames: Array.isArray(unit?.acquiredSkillNames) ? [...unit.acquiredSkillNames] : unit?.acquiredSkillNames,
+    testSkillNames: Array.isArray(unit?.testSkillNames) ? [...unit.testSkillNames] : unit?.testSkillNames,
     techniques: normalizeEntityArray(unit?.techniques),
     equipment:Array.isArray(unit?.equipment) ? unit.equipment.map(row => ({ ...row, resistanceBonus:cloneRecord(row?.resistanceBonus), source:cloneRecord(row?.source) })) : [],
     derivedCharacter: cloneRecord(unit?.derivedCharacter)
