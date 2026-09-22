@@ -176,6 +176,97 @@ function setExpandedTechnique(name = "") {
   });
 }
 
+function equipmentKey(item, index) {
+  return text(item?.instanceId ?? item?.id, `${text(item?.slot, "slot")}-${index}`);
+}
+
+function equipmentIcon(item) {
+  const slot = text(item?.slot);
+  if (slot.startsWith("武器")) return "⚔";
+  if (slot === "頭") return "⛑";
+  if (slot === "体") return "🥋";
+  if (slot === "足") return "👢";
+  if (slot.startsWith("装飾")) return "💍";
+  return "⚒";
+}
+
+function nonZeroEntries(record = {}) {
+  return Object.entries(record && typeof record === "object" ? record : {})
+    .filter(([, value]) => Number.isFinite(Number(value)) && Number(value) !== 0);
+}
+
+function equipmentDetailMarkup(item) {
+  const metrics = [
+    ["威力", item?.power],
+    ["ガード", item?.guard],
+    ["攻撃AP", item?.attackAp],
+    ["魔法AP", item?.magicAp],
+    ["射撃", item?.shot],
+    ["Cr率", item?.criticalRate],
+    ["Cr威力", item?.criticalPower],
+    ["射程", item?.range],
+    ["ペナルティ", item?.penalty]
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "" && Number(value) !== 0);
+  const status = nonZeroEntries(item?.statusBonus);
+  const resistance = nonZeroEntries(item?.resistanceBonus);
+  const traits = Array.isArray(item?.traits) ? item.traits.map(text).filter(Boolean) : [];
+  const enchantments = Array.isArray(item?.enchantments) ? item.enchantments.map(text).filter(Boolean) : [];
+  const enchantedStatus = nonZeroEntries(item?.enchantBonus);
+  const enchantedResistance = nonZeroEntries(item?.enchantResistanceBonus);
+
+  const metricHtml = metrics.length
+    ? `<div class="equipment-detail-grid">${metrics.map(([label, value]) => `<span>${escapeHtml(label)} <b>${escapeHtml(value)}</b></span>`).join("")}</div>`
+    : "";
+  const line = (label, values) => values.length
+    ? `<div class="equipment-detail-line"><b>${escapeHtml(label)}</b> ${values.map(([name, value]) => `${escapeHtml(name)} ${Number(value) > 0 ? "+" : ""}${escapeHtml(value)}`).join(" / ")}</div>`
+    : "";
+  return [
+    metricHtml,
+    line("能力", status),
+    line("耐性", resistance),
+    traits.length ? `<div class="equipment-detail-line"><b>特性</b> ${traits.map(escapeHtml).join(" / ")}</div>` : "",
+    enchantments.length ? `<div class="equipment-detail-line"><b>付与</b> ${enchantments.map(escapeHtml).join(" / ")}</div>` : "",
+    line("付与能力", enchantedStatus),
+    line("付与耐性", enchantedResistance)
+  ].filter(Boolean).join("") || '<div class="equipment-empty">追加性能なし</div>';
+}
+
+function renderEquipment(unit) {
+  const host = document.getElementById("detailEquipmentList");
+  if (!(host instanceof HTMLElement)) return;
+  const equipment = Array.isArray(unit?.equipment) ? unit.equipment.filter(Boolean) : [];
+  if (!equipment.length) {
+    host.innerHTML = '<div class="equipment-empty">装備なし</div>';
+    expandedEquipmentKey = "";
+    return;
+  }
+  host.innerHTML = equipment.map((item, index) => {
+    const key = equipmentKey(item, index);
+    const expanded = key === expandedEquipmentKey;
+    const quality = text(item?.qualityLabel ?? item?.quality);
+    return `<button type="button" class="equipment-card${expanded ? " is-expanded" : ""}" data-v39-equipment-key="${escapeHtml(key)}" aria-expanded="${expanded}">
+      <span class="equipment-summary">
+        <span class="equipment-icon" aria-hidden="true">${equipmentIcon(item)}</span>
+        <b class="equipment-name">${escapeHtml(text(item?.name, "名称未設定"))}</b>
+        <small class="equipment-slot">${escapeHtml(text(item?.slotLabel ?? item?.slot, "-"))}</small>
+        <small class="equipment-quality">${escapeHtml(quality ? `[${quality}]` : "")}</small>
+      </span>
+      <span class="equipment-detail">${equipmentDetailMarkup(item)}</span>
+    </button>`;
+  }).join("");
+}
+
+function setExpandedEquipment(key = "") {
+  expandedEquipmentKey = text(key);
+  const list = document.getElementById("detailEquipmentList");
+  if (!(list instanceof HTMLElement)) return;
+  list.querySelectorAll("[data-v39-equipment-key]").forEach(card => {
+    const expanded = text(card?.dataset?.v39EquipmentKey) === expandedEquipmentKey;
+    card.classList.toggle("is-expanded", expanded);
+    card.setAttribute("aria-expanded", String(expanded));
+  });
+}
+
 function notifyDetailRendered(unit = null) {
   window.dispatchEvent(new CustomEvent("v39:squad-detail-rendered", {
     detail:{ unitId:unit ? unitId(unit) : "" }
@@ -185,6 +276,7 @@ function notifyDetailRendered(unit = null) {
 let selectedSquadKey = "squad1";
 let selectedUnitId = "";
 let expandedTechniqueName = "";
+let expandedEquipmentKey = "";
 
 function getFactionState() {
   return typeof window.getV39ActiveFactionState === "function"
@@ -325,8 +417,12 @@ function renderDetail() {
   if (!unit) {
     if (pane) pane.dataset.empty = "1";
     const prof = document.getElementById("detailProficiencyList");
-    const tech = document.getElementById("detailTechniqueRows");
+    const equipment = document.getElementById("detailEquipmentList");
+    renderEquipment(unit);
+
+  const tech = document.getElementById("detailTechniqueRows");
     if (prof) prof.innerHTML = '<div class="squad-empty">技能データなし</div>';
+    if (equipment) equipment.innerHTML = '<div class="equipment-empty">装備なし</div>';
     if (tech) tech.innerHTML = '<div class="squad-empty">行動データなし</div>';
     notifyDetailRendered();
     return;
@@ -476,6 +572,7 @@ function install() {
     if (!btn) return;
     selectedSquadKey = btn.dataset.squadSelect || "squad1";
     expandedTechniqueName = "";
+    expandedEquipmentKey = "";
     const first = unitsForSquad(selectedSquadKey)[0] || null;
     selectedUnitId = first ? unitId(first, 0) : "";
     if (selectedUnitId) persistSelectedUnit(selectedUnitId, "squad-selection-changed");
@@ -487,6 +584,7 @@ function install() {
     if (!card) return;
     selectedUnitId = card.dataset.v39UnitId || "";
     expandedTechniqueName = "";
+    expandedEquipmentKey = "";
     if (selectedUnitId) persistSelectedUnit(selectedUnitId, "squad-unit-selected");
     scheduleRender();
   }, true);
@@ -497,6 +595,14 @@ function install() {
     if (!card) return;
     const name = text(card.dataset.v39TechniqueName);
     setExpandedTechnique(expandedTechniqueName === name ? "" : name);
+  }, true);
+
+  const equipmentList = document.getElementById("detailEquipmentList");
+  equipmentList?.addEventListener("click", event => {
+    const card = event.target instanceof Element ? event.target.closest("[data-v39-equipment-key]") : null;
+    if (!card) return;
+    const key = text(card.dataset.v39EquipmentKey);
+    setExpandedEquipment(expandedEquipmentKey === key ? "" : key);
   }, true);
 
   window.addEventListener("v39:game-state-changed", scheduleRender);
