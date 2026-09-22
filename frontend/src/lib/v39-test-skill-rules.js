@@ -1,10 +1,22 @@
 import { getGameDataRows } from "./game-data-registry.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
+const TEST_MODE_STORAGE_KEY = "v39-display-settings-v1";
+
+function storedTestModeEnabled() {
+  if (typeof localStorage === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem(TEST_MODE_STORAGE_KEY) || "null")?.testMode === true;
+  } catch {
+    return false;
+  }
+}
 
 export function isV39TestSkillModeEnabled() {
   if (typeof window === "undefined") return false;
-  return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
+  if (typeof window.isV39TestMode === "function") return window.isV39TestMode() === true;
+  if (typeof window.getV39DisplaySettings === "function") return window.getV39DisplaySettings()?.testMode === true;
+  return storedTestModeEnabled();
 }
 
 export function getV39TestSkillRows() {
