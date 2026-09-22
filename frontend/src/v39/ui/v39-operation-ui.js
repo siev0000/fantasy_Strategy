@@ -95,13 +95,41 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
         padding:2px!important
       }
       #footSquad .squad-detail-tab-panel[hidden]{display:none!important}
-      #footSquad .squad-detail-section{display:block!important;min-width:0!important}
+      #footSquad .squad-detail-section{
+        display:block!important;min-width:0!important;border:1px solid #2f4148!important;border-radius:5px!important;
+        background:#0d171b!important;overflow:hidden!important
+      }
       #footSquad .squad-detail-section+ .squad-detail-section{margin-top:4px!important}
       #footSquad .squad-detail-section-title{
-        position:static!important;padding:2px 1px!important;background:transparent!important;font-size:9px!important;
-        color:#91a1a5!important;font-weight:800!important
+        position:static!important;min-height:24px!important;padding:4px 7px!important;background:#132126!important;
+        font-size:9px!important;color:#a8b8bc!important;font-weight:800!important;cursor:pointer!important;
+        display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;
+        list-style:none!important;user-select:none!important
       }
-      #footSquad .squad-detail-section-body{min-width:0;margin-top:1px}
+      #footSquad .squad-detail-section-title::-webkit-details-marker{display:none!important}
+      #footSquad .squad-detail-section-title::after{content:"▾";font-size:9px;color:#6fc7d6;transition:transform .12s ease}
+      #footSquad .squad-detail-section:not([open])>.squad-detail-section-title::after{transform:rotate(-90deg)}
+      #footSquad .squad-detail-section-body{min-width:0;margin-top:0;padding:3px!important}
+      #footSquad .equipment-list{display:grid;gap:2px}
+      #footSquad .equipment-card{
+        width:100%;min-width:0;border:1px solid #34484f;border-radius:5px;background:#121e23;color:#e8efec;
+        padding:0;text-align:left;cursor:pointer;overflow:hidden
+      }
+      #footSquad .equipment-summary{
+        min-height:32px;display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;align-items:center;
+        gap:5px;padding:4px 6px
+      }
+      #footSquad .equipment-icon{font-size:16px;line-height:1;text-align:center}
+      #footSquad .equipment-name{min-width:0;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #footSquad .equipment-slot,#footSquad .equipment-quality{font-size:8px;color:#98aaae;white-space:nowrap}
+      #footSquad .equipment-detail{display:none;border-top:1px solid #31434a;padding:5px 7px;background:#0d171b}
+      #footSquad .equipment-card.is-expanded .equipment-detail{display:grid;gap:4px}
+      #footSquad .equipment-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}
+      #footSquad .equipment-detail-grid span{min-width:0;padding:3px 5px;border-radius:4px;background:#16252a;font-size:8px;color:#b8c7ca}
+      #footSquad .equipment-detail-grid b{color:#edf5f2;font-size:9px}
+      #footSquad .equipment-detail-line{font-size:8px;line-height:1.4;color:#b6c5c8}
+      #footSquad .equipment-detail-line b{color:#e8f0ed}
+      #footSquad .equipment-empty{padding:5px;color:#91a3a7;font-size:9px}
       #footSquad .squad-detail-stats{gap:2px!important}
       #footSquad .detail-stat{min-height:42px!important;padding:4px 3px!important;gap:1px!important}
       #footSquad .proficiency-grid{gap:2px!important}
@@ -255,10 +283,11 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
               </div>
               <div class="squad-detail-tab-content">
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="status" role="tabpanel" aria-hidden="false">
-                  <div class="squad-detail-section"><div class="squad-detail-section-title">ステータス</div><div class="squad-detail-section-body"><div class="squad-detail-stats">
+                  <details class="squad-detail-section" open><summary class="squad-detail-section-title">ステータス</summary><div class="squad-detail-section-body"><div class="squad-detail-stats">
                     ${[["攻撃","detailAtk"],["防御","detailDef"],["魔攻","detailMatk"],["魔防","detailMdef"],["速さ","detailSpd"],["命中","detailHit"],["SIZ","detailSiz"],["移動","detailMov"]].map(([label,id]) => `<div class="detail-stat"><span>${label}</span><b id="${id}"></b></div>`).join("")}
-                  </div></div></div>
-                  <div class="squad-detail-section"><div class="squad-detail-section-title">技能</div><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></div>
+                  </div></div></details>
+                  <details class="squad-detail-section" open><summary class="squad-detail-section-title">技能</summary><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></details>
+                  <details class="squad-detail-section" open><summary class="squad-detail-section-title">装備</summary><div class="squad-detail-section-body"><div class="equipment-list" id="detailEquipmentList"></div></div></details>
                 </section>
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="action" role="tabpanel" hidden aria-hidden="true">
                   <div class="technique-list" id="detailTechniqueList">
