@@ -15,12 +15,12 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
       { icon: "⚒", label: "装備", open: "equipment" },
       { icon: "⇄", labelHtml: '資源表示: <em id="resourceModeLabel">詳細</em>', id: "resourceModeToggle", title: "資源表示を詳細/簡易で切替", tip: "資源表示切替" },
       { icon: "☷", label: "ログ", open: "rulerLog" },
-      { icon: "旗", label: "国家・外交", id: "v39-manage-nation" },
+      { icon: "🏳", label: "国家・外交", id: "v39-manage-nation" },
       { icon: "⚙", label: "ゲーム設定", open: "settings" },
       { icon: "目", label: "表示設定", id: "v39-manage-display-settings" },
       { icon: "試", label: "テスト操作", id: "v39-manage-test-tools" },
       { icon: "⬢", label: "ゲーム開始設定", id: "v39-manage-field-settings" },
-      { icon: "書", label: "設計書", id: "v39-manage-design-docs" }
+      { icon: "📝", label: "設計書", id: "v39-manage-design-docs" }
     ]
   });
 
