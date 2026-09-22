@@ -8,7 +8,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
       { key: "squad", label: "部隊", icon: "👥" },
       { key: "tile", label: "土地", icon: "⬢" },
       { key: "settlement", label: "拠点", icon: "⌂" },
-      { key: "manage", label: "管理", icon: "☰" }
+      { key: "manage", label: "管理", icon: "⚙" }
     ],
     landItems: V39_TEST_OPERATION_DATA.landItems,
     manageItems: [
