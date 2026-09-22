@@ -45,8 +45,13 @@ function syncTestCharacters(enabled = testModeEnabled()) {
     let units = Array.isArray(faction.units) ? [...faction.units] : [];
     let squads = Array.isArray(faction.squads) ? faction.squads.map(row => ({ ...row, unitIds:[...(row?.unitIds || [])] })) : [];
     if (!enabled) {
-      const removedIds = new Set(units.filter(unit => unit?.testOnly === true).map(unit => text(unit?.id)).filter(Boolean));
-      if (!removedIds.size) return player;
+      const removedIds = new Set([
+        ...units.filter(unit => unit?.testOnly === true).map(unit => text(unit?.id)),
+        ...templates.units.map(unit => text(unit?.id))
+      ].filter(Boolean));
+      const hasTestUnits = units.some(unit => removedIds.has(text(unit?.id)));
+      const hasTestSquadRefs = squads.some(squad => (squad?.unitIds || []).some(id => removedIds.has(text(id))));
+      if (!hasTestUnits && !hasTestSquadRefs) return player;
       units = units.filter(unit => !removedIds.has(text(unit?.id)));
       squads = squads.map(squad => ({ ...squad, unitIds:(squad.unitIds || []).filter(id => !removedIds.has(text(id))) }));
       const selectedUnitId = removedIds.has(text(faction.selectedUnitId))
