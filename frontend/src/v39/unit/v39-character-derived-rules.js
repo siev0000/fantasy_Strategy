@@ -1,4 +1,5 @@
-import { classData as classDb, skillData as skillDb } from "../../lib/game-data-registry.js";
+import { classData as classDb, skillData as skillDb, testClassData as testClassDb, testSkillData as testSkillDb } from "../../lib/game-data-registry.js";
+import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
 import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "../../constants/unitCommon.js";
 import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules } from "../../composables/unitStatusUtils.js";
 import { applyMilitaryProfileToStatus } from "../../composables/militaryUnitUtils.js";
@@ -24,8 +25,12 @@ function isPlaceholder(value) {
 
 const classRows = Array.isArray(classDb) ? classDb : [];
 const skillRows = Array.isArray(skillDb) ? skillDb : [];
+const testClassRows = Array.isArray(testClassDb) ? testClassDb : [];
+const testSkillRows = Array.isArray(testSkillDb) ? testSkillDb : [];
 const classByName = new Map(classRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
 const skillByName = new Map(skillRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
+const testClassByName = new Map(testClassRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
+const testSkillByName = new Map(testSkillRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
 
 function resolveRaceName(unit = {}) {
   return text(unit.race ?? unit.raceName ?? unit.種族);
@@ -75,8 +80,8 @@ function collectSkills(row, levels) {
   return out;
 }
 
-function techniqueFromName(name) {
-  const row = skillByName.get(name) || null;
+function techniqueFromName(name, { allowTest = false } = {}) {
+  const row = skillByName.get(name) || (allowTest ? testSkillByName.get(name) : null) || null;
   if (!row) return { name, apCost: null, hpCost: null, range: null, area: null, target: null, detail: "", action: "", source: null };
   return {
     name,
@@ -97,7 +102,8 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   const secondClassName = resolveSecondClassName(unit);
   const level = resolveLevel(unit);
   const raceRow = resolveRaceRow(race);
-  const classRow = classByName.get(className) || null;
+  const testMode = isV39TestSkillModeEnabled();
+  const classRow = classByName.get(className) || (testMode ? testClassByName.get(className) : null) || null;
 
   if (!race || !className || !raceRow || !classRow) {
     return {
@@ -153,7 +159,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const uniqueNames = [...new Set(acquiredNames.filter(Boolean))];
-  const techniques = uniqueNames.map(techniqueFromName);
+  const techniques = uniqueNames.map(name => techniqueFromName(name, { allowTest:testMode }));
   const status = applyMilitaryProfileToStatus(statusResult.status || {}, unit?.combatProfile);
 
   return {
