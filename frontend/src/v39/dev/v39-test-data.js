@@ -40,6 +40,7 @@ const createUnit = definition => {
     name: definition.name,
     icon: definition.icon,
     squadId: definition.squadId,
+    settlementId: definition.settlementId,
     x: optionalNumber(position[0]),
     y: optionalNumber(position[1]),
     race: definition.race,
