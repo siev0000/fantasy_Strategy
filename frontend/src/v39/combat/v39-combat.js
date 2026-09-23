@@ -896,9 +896,8 @@ function performAttack(target, session = attackSession, options = {}) {
         : row.factionState.combatRuntime
     }
   }));
-  const expPool = Math.max(0, Math.floor(expPoolRaw));
   const activeAfterCombat = nextPlayers.find(row => row.id === player.id) || player;
-  const expResult = distributeV39CombatExperience(activeAfterCombat.factionState, text(attacker.id), expPool);
+  const expResult = distributeV39CombatExperience(activeAfterCombat.factionState, text(attacker.id), expPoolRaw);
   const resolvedPlayers = nextPlayers.map(row => row.id === player.id
     ? { ...row, factionState:expResult.factionState }
     : row);
