@@ -10,6 +10,23 @@ export const V39_COMBAT_BALANCE = Object.freeze({
   damageMultiplier:3
 });
 
+// ユニット経験値の暫定調整値。必要EXP式は v39-unit-experience.js 側の確定式を使用する。
+export const V39_UNIT_EXP_BALANCE = Object.freeze({
+  // 相手Lv1あたり、HPを100%削った時に発生する基準EXP。
+  baseExpPerTargetLevel:15,
+  // 倒した相手側の種族カテゴリ倍率。
+  targetRaceMultipliers:Object.freeze({
+    human:1.0,
+    demi:1.25,
+    demon:1.5,
+    other:1.0
+  }),
+  // 部隊所属時は生存メンバーへ均等分配。soloは攻撃者だけが受け取る。
+  splitAmongLivingSquadMembers:true,
+  // 同じ対象を回復させて削り直すEXP稼ぎを防ぐため、1体から支払うのは最大HP100%分まで。
+  capRewardedDamageAtMaxHp:true
+});
+
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   // 移動コスト計算の基準値。APプールは戦闘と共通で、別の移動APは持たない。
   moveApMax:100,
