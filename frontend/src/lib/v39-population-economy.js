@@ -1,4 +1,5 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import { V39_CIVIC_BALANCE } from "./v39-gameplay-balance.js";
 
 export const POPULATION_UPKEEP_SCALE = 0.2;
 export const FOOD_SUBSTITUTE_MULTIPLIER = 1.2;
@@ -288,8 +289,8 @@ function applyOvercrowdingOutflow(populationByRace, growthByRace, populationCapa
     excess:remainingExcess,
     rate,
     outflow:actualOutflow,
-    happinessPenalty:-rate * 10,
-    securityPenalty:-rate * 10
+    happinessPenalty:-rate * V39_CIVIC_BALANCE.overcrowdingPenaltyPerRate,
+    securityPenalty:-rate * V39_CIVIC_BALANCE.overcrowdingPenaltyPerRate
   };
 }
 
