@@ -4,6 +4,7 @@ import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules
 import { getIconSrcByName } from "../../lib/icon-library.js";
 import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "../../lib/v39-combat-engine.js";
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
+import { resolveV39UnitExpDisplay } from "../../lib/v39-unit-experience.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -392,10 +393,14 @@ function renderMemberList() {
     const hp = hpValues(unit);
     const ap = apValues(unit);
     const icon = text(unit?.icon ?? unit?.glyph ?? unit?.symbol, "◆");
+    const exp = resolveV39UnitExpDisplay(unit);
+    const expTitle = `Lv${exp.level} EXP ${exp.exp}/${exp.need}`;
     return `<button class="squad-card ${selected ? "selected" : ""}" data-v39-unit-id="${id}">
       <div class="squad-card-top">
         <div class="squad-main">
-          <span class="squad-icon">${icon}</span>
+          <span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}">
+            <span class="squad-icon">${icon}</span>
+          </span>
           <div class="squad-name-wrap">
             <b class="squad-name">${unitName(unit, index)}</b>
             <small class="squad-pos">${unitPosition(unit)}</small>
