@@ -69,7 +69,7 @@
                 "name": "靴"
               }
             ],
-            "settlementId": "test-settlement-a"
+            "initialSettlementSlot": 0
           },
           {
             "id": "mireille",
@@ -102,7 +102,7 @@
                 "name": "靴"
               }
             ],
-            "settlementId": "test-settlement-a"
+            "initialSettlementSlot": 0
           },
           {
             "id": "soldierA",
@@ -134,7 +134,7 @@
                 "name": "鎧"
               }
             ],
-            "settlementId": "test-settlement-a"
+            "initialSettlementSlot": 0
           },
           {
             "id": "iris",
@@ -167,7 +167,7 @@
                 "name": "靴"
               }
             ],
-            "settlementId": "test-settlement-b"
+            "initialSettlementSlot": 1
           },
           {
             "id": "engineer",
@@ -200,7 +200,7 @@
                 "name": "服"
               }
             ],
-            "settlementId": "test-settlement-b"
+            "initialSettlementSlot": 1
           },
           {
             "id": "geomancer",
@@ -237,7 +237,7 @@
                 "name": "靴"
               }
             ],
-            "settlementId": "test-settlement-b"
+            "initialSettlementSlot": 1
           },
           {
             "id": "combat-tester",
@@ -258,7 +258,7 @@
             "ap": 100,
             "maxAp": 100,
             "equipment": [],
-            "settlementId": "test-settlement-b"
+            "initialSettlementSlot": 1
           },
           {
             "id": "combat-subject",
@@ -279,18 +279,15 @@
             "ap": 100,
             "maxAp": 100,
             "equipment": [],
-            "settlementId": "test-settlement-b"
+            "initialSettlementSlot": 1
           }
         ],
-        "settlements": [
+        "settlements": [],
+        "selectedSettlementId": "",
+        "villagePlacementMode": false,
+        "initialSettlementPlans": [
           {
-            "id": "test-settlement-a",
-            "settlementId": "test-settlement-a",
-            "ownerPlayerId": "player-1",
             "name": "第一試験拠点",
-            "x": 9,
-            "y": 6,
-            "placed": true,
             "populationByRace": {
               "只人": 12,
               "エルフ": 10,
@@ -310,17 +307,6 @@
             "buildings": [
               "学校"
             ],
-            "tileFacilityMap": {},
-            "constructionQueue": [],
-            "territoryTileModeMap": {
-              "9,6": "settlement",
-              "8,6": "resource",
-              "10,6": "resource",
-              "8,5": "resource",
-              "9,5": "resource",
-              "8,7": "resource",
-              "9,7": "resource"
-            },
             "civicState": {
               "happiness": 50,
               "dissatisfaction": 50,
@@ -329,17 +315,11 @@
             }
           },
           {
-            "id": "test-settlement-b",
-            "settlementId": "test-settlement-b",
-            "ownerPlayerId": "player-1",
             "name": "第二試験拠点",
-            "x": 12,
-            "y": 8,
-            "placed": true,
             "populationByRace": {
               "ゴブリン": 10,
-              "天使": 5,
-              "オーガ": 7
+              "オーガ": 7,
+              "天使": 5
             },
             "foodStockByType": {
               "穀物": 110,
@@ -353,17 +333,6 @@
               "鉄": 70
             },
             "buildings": [],
-            "tileFacilityMap": {},
-            "constructionQueue": [],
-            "territoryTileModeMap": {
-              "12,8": "settlement",
-              "11,8": "resource",
-              "13,8": "resource",
-              "11,7": "resource",
-              "12,7": "resource",
-              "11,9": "resource",
-              "12,9": "resource"
-            },
             "civicState": {
               "happiness": 50,
               "dissatisfaction": 50,
@@ -371,9 +340,7 @@
               "lastProcessedTurn": 0
             }
           }
-        ],
-        "selectedSettlementId": "test-settlement-a",
-        "villagePlacementMode": false
+        ]
       }
     },
     {
@@ -446,120 +413,10 @@
     "heightLevel": 0,
     "facility": "なし",
     "unitLabel": "第1部隊",
-    "village": "テスト拠点2件 / 種族別幸福度確認",
+    "village": "初期拠点2件 / 順番に手動配置",
     "territoryState": "居住地",
     "river": "なし",
     "waterfall": "なし",
     "enemy": "なし"
-  },
-  "territoryOwnerByTile": {
-    "9,6": "player-1",
-    "8,6": "player-1",
-    "10,6": "player-1",
-    "8,5": "player-1",
-    "9,5": "player-1",
-    "8,7": "player-1",
-    "9,7": "player-1",
-    "12,8": "player-1",
-    "11,8": "player-1",
-    "13,8": "player-1",
-    "11,7": "player-1",
-    "12,7": "player-1",
-    "11,9": "player-1",
-    "12,9": "player-1"
-  },
-  "territoryStateByTile": {
-    "9,6": {
-      "status": "拠点",
-      "settlementId": "test-settlement-a",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "8,6": {
-      "status": "領土",
-      "settlementId": "test-settlement-a",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "10,6": {
-      "status": "領土",
-      "settlementId": "test-settlement-a",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "8,5": {
-      "status": "領土",
-      "settlementId": "test-settlement-a",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "9,5": {
-      "status": "領土",
-      "settlementId": "test-settlement-a",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "8,7": {
-      "status": "領土",
-      "settlementId": "test-settlement-a",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "9,7": {
-      "status": "領土",
-      "settlementId": "test-settlement-a",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "12,8": {
-      "status": "拠点",
-      "settlementId": "test-settlement-b",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "11,8": {
-      "status": "領土",
-      "settlementId": "test-settlement-b",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "13,8": {
-      "status": "領土",
-      "settlementId": "test-settlement-b",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "11,7": {
-      "status": "領土",
-      "settlementId": "test-settlement-b",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "12,7": {
-      "status": "領土",
-      "settlementId": "test-settlement-b",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "11,9": {
-      "status": "領土",
-      "settlementId": "test-settlement-b",
-      "hp": 100,
-      "maxHp": 100
-    },
-    "12,9": {
-      "status": "領土",
-      "settlementId": "test-settlement-b",
-      "hp": 100,
-      "maxHp": 100
-    }
-  },
-  "facilitiesByTile": {
-    "9,6": [
-      "拠点"
-    ],
-    "12,8": [
-      "拠点"
-    ]
   }
 }
