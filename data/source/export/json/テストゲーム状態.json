@@ -16,25 +16,20 @@
             "unitIds": [
               "leon",
               "mireille",
-              "soldierA",
-              "soldierB",
-              "soldierC"
+              "soldierA"
             ]
           },
           {
             "id": "squad2",
             "label": "第2部隊",
             "unitIds": [
-              "iris",
-              "guard1",
-              "scout1"
+              "iris"
             ]
           },
           {
             "id": "solo",
             "label": "単独",
             "unitIds": [
-              "wanderer",
               "engineer",
               "geomancer",
               "combat-tester",
@@ -51,7 +46,7 @@
             "isNamed": true,
             "position": [
               9,
-              6
+              5
             ],
             "race": "只人",
             "className": "ファイター",
@@ -82,10 +77,10 @@
             "squadId": "squad1",
             "isNamed": true,
             "position": [
-              9,
+              8,
               6
             ],
-            "race": "只人",
+            "race": "エルフ",
             "className": "ウィザード",
             "level": 7,
             "role": "メンバー / 魔導支援",
@@ -113,10 +108,10 @@
             "icon": "🛡",
             "squadId": "squad1",
             "position": [
-              9,
+              10,
               6
             ],
-            "race": "只人",
+            "race": "ドワーフ",
             "className": "ナイト",
             "level": 5,
             "role": "メンバー / 盾役",
@@ -139,68 +134,6 @@
             ]
           },
           {
-            "id": "soldierB",
-            "name": "兵士B",
-            "icon": "🏹",
-            "squadId": "squad1",
-            "position": [
-              9,
-              6
-            ],
-            "race": "只人",
-            "className": "レンジャー",
-            "level": 5,
-            "role": "メンバー / 弓兵",
-            "hpRate": 0.89,
-            "ap": 100,
-            "maxAp": 100,
-            "equipment": [
-              {
-                "slot": "武器1",
-                "name": "弓"
-              },
-              {
-                "slot": "体",
-                "name": "服"
-              },
-              {
-                "slot": "足",
-                "name": "靴"
-              }
-            ]
-          },
-          {
-            "id": "soldierC",
-            "name": "兵士C",
-            "icon": "⚔",
-            "squadId": "squad1",
-            "position": [
-              9,
-              6
-            ],
-            "race": "只人",
-            "className": "フェンサー",
-            "level": 5,
-            "role": "メンバー / 剣兵",
-            "hpRate": 0.94,
-            "ap": 100,
-            "maxAp": 100,
-            "equipment": [
-              {
-                "slot": "武器1",
-                "name": "長剣"
-              },
-              {
-                "slot": "体",
-                "name": "服"
-              },
-              {
-                "slot": "足",
-                "name": "靴"
-              }
-            ]
-          },
-          {
             "id": "iris",
             "name": "アイリス",
             "icon": "☀",
@@ -208,9 +141,9 @@
             "isNamed": true,
             "position": [
               12,
-              8
+              7
             ],
-            "race": "只人",
+            "race": "天使",
             "className": "クレリック",
             "level": 6,
             "role": "リーダー / 神官",
@@ -233,106 +166,16 @@
             ]
           },
           {
-            "id": "guard1",
-            "name": "護衛A",
-            "icon": "🛡",
-            "squadId": "squad2",
-            "position": [
-              12,
-              8
-            ],
-            "race": "只人",
-            "className": "ナイト",
-            "level": 5,
-            "role": "メンバー / 護衛",
-            "hpRate": 0.94,
-            "ap": 100,
-            "maxAp": 100,
-            "equipment": [
-              {
-                "slot": "武器1",
-                "name": "剣"
-              },
-              {
-                "slot": "武器2",
-                "name": "盾"
-              },
-              {
-                "slot": "体",
-                "name": "鎧"
-              }
-            ]
-          },
-          {
-            "id": "scout1",
-            "name": "斥候A",
-            "icon": "👁",
-            "squadId": "squad2",
-            "position": [
-              12,
-              8
-            ],
-            "race": "只人",
-            "className": "スカウト",
-            "level": 5,
-            "role": "メンバー / 斥候",
-            "hpRate": 0.93,
-            "ap": 100,
-            "maxAp": 100,
-            "equipment": [
-              {
-                "slot": "武器1",
-                "name": "短剣"
-              },
-              {
-                "slot": "体",
-                "name": "服"
-              },
-              {
-                "slot": "足",
-                "name": "靴"
-              }
-            ]
-          },
-          {
-            "id": "wanderer",
-            "name": "放浪者",
-            "icon": "◆",
-            "squadId": "solo",
-            "isNamed": true,
-            "position": [
-              6,
-              14
-            ],
-            "race": "只人",
-            "className": "ファイター",
-            "level": 4,
-            "role": "部隊未所属",
-            "hpRate": 0.88,
-            "ap": 100,
-            "maxAp": 100,
-            "equipment": [
-              {
-                "slot": "武器1",
-                "name": "剣"
-              },
-              {
-                "slot": "体",
-                "name": "服"
-              }
-            ]
-          },
-          {
             "id": "engineer",
             "name": "技師",
             "icon": "⚙",
             "squadId": "solo",
             "isNamed": true,
             "position": [
-              4,
-              11
+              11,
+              8
             ],
-            "race": "只人",
+            "race": "ゴブリン",
             "className": "アルケミスト",
             "level": 8,
             "role": "部隊未所属",
@@ -361,10 +204,10 @@
             "squadId": "solo",
             "isNamed": true,
             "position": [
-              5,
-              11
+              13,
+              8
             ],
-            "race": "只人",
+            "race": "エルフ",
             "className": "ジオマンサー",
             "level": 10,
             "role": "部隊未所属 / 地形変換テスト",
@@ -398,8 +241,8 @@
             "isNamed": true,
             "testOnly": true,
             "position": [
-              6,
-              11
+              11,
+              9
             ],
             "race": "只人",
             "className": "戦闘試験官",
@@ -418,10 +261,10 @@
             "isNamed": true,
             "testOnly": true,
             "position": [
-              7,
-              11
+              12,
+              9
             ],
-            "race": "只人",
+            "race": "オーガ",
             "className": "ファイター",
             "level": 10,
             "role": "部隊未所属 / 被験者",
@@ -430,7 +273,99 @@
             "maxAp": 100,
             "equipment": []
           }
-        ]
+        ],
+        "settlements": [
+          {
+            "id": "test-settlement-a",
+            "settlementId": "test-settlement-a",
+            "ownerPlayerId": "player-1",
+            "name": "第一試験拠点",
+            "x": 9,
+            "y": 6,
+            "placed": true,
+            "populationByRace": {
+              "只人": 12,
+              "エルフ": 10,
+              "土人": 6
+            },
+            "foodStockByType": {
+              "穀物": 400,
+              "野菜": 320,
+              "肉": 220,
+              "魚": 160
+            },
+            "materialStockByType": {
+              "木材": 200,
+              "石材": 160,
+              "鉄": 100
+            },
+            "buildings": [
+              "学校"
+            ],
+            "tileFacilityMap": {},
+            "constructionQueue": [],
+            "territoryTileModeMap": {
+              "9,6": "settlement",
+              "8,6": "resource",
+              "10,6": "resource",
+              "8,5": "resource",
+              "9,5": "resource",
+              "8,7": "resource",
+              "9,7": "resource"
+            },
+            "civicState": {
+              "happiness": 50,
+              "dissatisfaction": 50,
+              "security": 50,
+              "lastProcessedTurn": 0
+            }
+          },
+          {
+            "id": "test-settlement-b",
+            "settlementId": "test-settlement-b",
+            "ownerPlayerId": "player-1",
+            "name": "第二試験拠点",
+            "x": 12,
+            "y": 8,
+            "placed": true,
+            "populationByRace": {
+              "ゴブリン": 10,
+              "大鬼": 7,
+              "天使": 5
+            },
+            "foodStockByType": {
+              "穀物": 110,
+              "野菜": 80,
+              "肉": 130,
+              "魚": 50
+            },
+            "materialStockByType": {
+              "木材": 120,
+              "石材": 100,
+              "鉄": 70
+            },
+            "buildings": [],
+            "tileFacilityMap": {},
+            "constructionQueue": [],
+            "territoryTileModeMap": {
+              "12,8": "settlement",
+              "11,8": "resource",
+              "13,8": "resource",
+              "11,7": "resource",
+              "12,7": "resource",
+              "11,9": "resource",
+              "12,9": "resource"
+            },
+            "civicState": {
+              "happiness": 50,
+              "dissatisfaction": 50,
+              "security": 50,
+              "lastProcessedTurn": 0
+            }
+          }
+        ],
+        "selectedSettlementId": "test-settlement-a",
+        "villagePlacementMode": false
       }
     },
     {
@@ -503,10 +438,120 @@
     "heightLevel": 0,
     "facility": "なし",
     "unitLabel": "第1部隊",
-    "village": "村 / 人口238",
+    "village": "テスト拠点2件 / 種族別幸福度確認",
     "territoryState": "居住地",
     "river": "なし",
     "waterfall": "なし",
     "enemy": "なし"
+  },
+  "territoryOwnerByTile": {
+    "9,6": "player-1",
+    "8,6": "player-1",
+    "10,6": "player-1",
+    "8,5": "player-1",
+    "9,5": "player-1",
+    "8,7": "player-1",
+    "9,7": "player-1",
+    "12,8": "player-1",
+    "11,8": "player-1",
+    "13,8": "player-1",
+    "11,7": "player-1",
+    "12,7": "player-1",
+    "11,9": "player-1",
+    "12,9": "player-1"
+  },
+  "territoryStateByTile": {
+    "9,6": {
+      "status": "拠点",
+      "settlementId": "test-settlement-a",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "8,6": {
+      "status": "領土",
+      "settlementId": "test-settlement-a",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "10,6": {
+      "status": "領土",
+      "settlementId": "test-settlement-a",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "8,5": {
+      "status": "領土",
+      "settlementId": "test-settlement-a",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "9,5": {
+      "status": "領土",
+      "settlementId": "test-settlement-a",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "8,7": {
+      "status": "領土",
+      "settlementId": "test-settlement-a",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "9,7": {
+      "status": "領土",
+      "settlementId": "test-settlement-a",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "12,8": {
+      "status": "拠点",
+      "settlementId": "test-settlement-b",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "11,8": {
+      "status": "領土",
+      "settlementId": "test-settlement-b",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "13,8": {
+      "status": "領土",
+      "settlementId": "test-settlement-b",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "11,7": {
+      "status": "領土",
+      "settlementId": "test-settlement-b",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "12,7": {
+      "status": "領土",
+      "settlementId": "test-settlement-b",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "11,9": {
+      "status": "領土",
+      "settlementId": "test-settlement-b",
+      "hp": 100,
+      "maxHp": 100
+    },
+    "12,9": {
+      "status": "領土",
+      "settlementId": "test-settlement-b",
+      "hp": 100,
+      "maxHp": 100
+    }
+  },
+  "facilitiesByTile": {
+    "9,6": [
+      "拠点"
+    ],
+    "12,8": [
+      "拠点"
+    ]
   }
 }
