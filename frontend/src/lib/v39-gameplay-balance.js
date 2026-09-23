@@ -97,6 +97,38 @@ export const V39_CIVIC_BALANCE = Object.freeze({
   initialSecurity:50,
   // 住民状態が基準値へ近づく1ターンごとの最大変化量。
   changePerTurn:5,
+  // 食料備蓄による安心感が加点を始める残りターン数。
+  foodReserveBonusStartTurns:4,
+  // この残りターン数以上なら食料備蓄の幸福度ボーナスを最大にする。
+  foodReserveBonusFullTurns:8,
+  // 食料備蓄が十分な時に加える幸福度の最大値。
+  foodReserveHappinessMaxBonus:5,
+  // 食料備蓄が十分な時に減らす不満度の最大値。
+  foodReserveDissatisfactionMaxReduction:5,
+  // 人口許容に対してこの使用率以下なら住環境の余裕ボーナスを最大にする。
+  housingComfortFullBonusRate:0.7,
+  // 人口許容に対してこの使用率以上なら住環境の余裕ボーナスを0にする。
+  housingComfortZeroBonusRate:1.0,
+  // 住環境に余裕がある時の幸福度最大ボーナス。
+  housingComfortMaxBonus:5,
+  // 住環境ボーナスを不満度低下へ反映する倍率。
+  housingComfortDissatisfactionScale:1,
+  // 単体マス施設の幸福度・治安系効果を拠点全体へ換算する暫定倍率。
+  localFacilityCivicScale:0.5,
+  // 施設の幸福度効果の全体倍率。
+  facilityHappinessScale:1,
+  // 施設の不満度低下効果の全体倍率。
+  facilityDissatisfactionScale:1,
+  // 施設の治安効果の全体倍率。
+  facilitySecurityScale:1,
+  // 人口過多率1.0あたりの幸福度・治安ペナルティ。
+  overcrowdingPenaltyPerRate:10,
+  // イベントから渡される幸福度補正の倍率。イベント側は符号付き値を渡す。
+  eventHappinessScale:1,
+  // イベントから渡される不満度補正の倍率。イベント側は符号付き値を渡す。
+  eventDissatisfactionScale:1,
+  // イベントから渡される治安補正の倍率。イベント側は符号付き値を渡す。
+  eventSecurityScale:1,
   // 飢餓段階1ごとに減らす幸福度。
   starvationHappinessPerStage:5,
   // 飢餓段階1ごとに増やす不満度。
