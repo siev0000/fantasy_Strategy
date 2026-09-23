@@ -4,6 +4,11 @@ import { addResearchExperience } from "../../lib/research-progress.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import { getGameDataTable } from "../../lib/game-data-registry.js";
 import { getV39TestSkillRows } from "../../lib/v39-test-skill-rules.js";
+import {
+  resolveV39UnitRaceCategory,
+  resolveV39UnitTotalExpForLevel,
+  V39_UNIT_LEVEL_CAP
+} from "../../lib/v39-unit-experience.js";
 
 const RESOURCE_KEYS = [...new Set([...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS])];
 const CITY_LEVEL_KEYS = ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"];
@@ -171,10 +176,20 @@ function changeUnitLevel(delta) {
   const changed = updateSelectedUnit(unit => {
     const oldMaxHp = Math.max(1, number(unit.maxHp ?? unit.status?.HP, 1));
     const hpRate = clamp(number(unit.hp ?? unit.currentHp, oldMaxHp) / oldMaxHp, 0, 1);
-    const next = applyV39DerivedCharacterData({ ...unit, level:clamp(Math.floor(number(unit.level, 1) + delta), 1, 999) });
+    const level = clamp(Math.floor(number(unit.level, 1) + delta), 1, V39_UNIT_LEVEL_CAP);
+    const next = applyV39DerivedCharacterData({ ...unit, level });
+    const category = resolveV39UnitRaceCategory(next);
+    const totalExp = resolveV39UnitTotalExpForLevel(level, category);
     const maxHp = Math.max(1, number(next.maxHp ?? next.status?.HP, oldMaxHp));
     const hp = Math.round(maxHp * hpRate);
-    return { ...next, hp, currentHp:hp };
+    return {
+      ...next,
+      exp:0,
+      totalExp,
+      status:{ ...(next.status || {}), exp:0, totalExp },
+      hp,
+      currentHp:hp
+    };
   }, "test-unit-level");
   setStatus(changed ? `キャラLv ${delta >= 0 ? "+" : ""}${delta}` : "キャラが選択されていません");
 }
