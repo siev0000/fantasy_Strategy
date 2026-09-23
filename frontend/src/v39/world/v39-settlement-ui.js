@@ -96,8 +96,8 @@ function render() {
   const raceHappinessRows = Object.entries(settlement.populationByRace || {})
     .filter(([, population]) => number(population) > 0)
     .map(([race, population]) => {
-      const current = civic.happinessByRace?.[race];
-      const target = civic.happinessTargetByRace?.[race];
+      const current = civic.happinessByRace?.[race] ?? civic.happiness ?? 50;
+      const target = civic.happinessTargetByRace?.[race] ?? current;
       const source = text(civic.happinessModifiersByRace?.[race]?.source);
       const sourceLabel = source === "クラス" ? "クラス" : source === "クラス+仮" ? "混合" : "仮";
       return `<div><span>${escapeHtml(race)} ${formatNumber(population)}人 <small>[${sourceLabel}]</small></span><b>${formatNumber(current)} → ${formatNumber(target)}</b></div>`;
