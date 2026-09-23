@@ -68,7 +68,8 @@
                 "slot": "足",
                 "name": "靴"
               }
-            ]
+            ],
+            "settlementId": "test-settlement-a"
           },
           {
             "id": "mireille",
@@ -100,7 +101,8 @@
                 "slot": "足",
                 "name": "靴"
               }
-            ]
+            ],
+            "settlementId": "test-settlement-a"
           },
           {
             "id": "soldierA",
@@ -131,7 +133,8 @@
                 "slot": "体",
                 "name": "鎧"
               }
-            ]
+            ],
+            "settlementId": "test-settlement-a"
           },
           {
             "id": "iris",
@@ -163,7 +166,8 @@
                 "slot": "足",
                 "name": "靴"
               }
-            ]
+            ],
+            "settlementId": "test-settlement-b"
           },
           {
             "id": "engineer",
@@ -195,7 +199,8 @@
                 "slot": "体",
                 "name": "服"
               }
-            ]
+            ],
+            "settlementId": "test-settlement-b"
           },
           {
             "id": "geomancer",
@@ -231,7 +236,8 @@
                 "slot": "足",
                 "name": "靴"
               }
-            ]
+            ],
+            "settlementId": "test-settlement-b"
           },
           {
             "id": "combat-tester",
@@ -251,7 +257,8 @@
             "hpRate": 1,
             "ap": 100,
             "maxAp": 100,
-            "equipment": []
+            "equipment": [],
+            "settlementId": "test-settlement-b"
           },
           {
             "id": "combat-subject",
@@ -271,7 +278,8 @@
             "hpRate": 1,
             "ap": 100,
             "maxAp": 100,
-            "equipment": []
+            "equipment": [],
+            "settlementId": "test-settlement-b"
           }
         ],
         "settlements": [
