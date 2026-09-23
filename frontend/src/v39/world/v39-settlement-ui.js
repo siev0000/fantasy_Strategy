@@ -1,6 +1,7 @@
 import { getFactionSettlements, selectFactionSettlement, territorySettlementId } from "../../lib/settlement-state.js";
 import { inspectV39CitySpecializations, selectV39CitySpecialization } from "../../lib/v39-city-specialization-rules.js";
 import { resolveV39SettlementProductionMetrics } from "../../lib/v39-economy-rules.js";
+import { getGameDataRows } from "../../lib/game-data-registry.js";
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);
@@ -10,6 +11,17 @@ const escapeHtml = value => text(value).replace(/[&<>"']/g, char => ({
   "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
 }[char]));
 const formatNumber = value => number(value).toLocaleString("ja-JP", { maximumFractionDigits:1 });
+const factionRows = getGameDataRows("勢力");
+
+function raceMarker(race) {
+  const target = text(race);
+  const row = factionRows.find(item => [item?.種族, item?.カナ].map(text).includes(target))
+    || (target === "只人" ? factionRows.find(item => text(item?.種族) === "人間") : null);
+  const marker = text(row?.マーカー文字) || target.slice(0, 1) || "人";
+  const rawColor = text(row?.マーカー色);
+  const color = /^#[0-9a-f]{3,8}$/i.test(rawColor) ? rawColor : "#405158";
+  return { marker, color };
+}
 
 function activeContext() {
   const state = window.getV39GameState?.();
@@ -30,15 +42,32 @@ function populationRows(settlement) {
   const growth = settlement?.populationGrowthByRace || {};
   const rows = Object.entries(settlement?.populationByRace || {}).filter(([, value]) => number(value) > 0);
   if (!rows.length) return `<span class="settlement-empty">なし</span>`;
-  return `<div class="settlement-value-grid">${rows.map(([race, population]) => {
+  return `<div class="settlement-value-grid settlement-population-grid">${rows.map(([race, population]) => {
     const state = growth[race] || {};
     const gauge = formatNumber(state.gauge);
     const required = formatNumber(state.lastRequiredGauge);
     const shortage = number(state.shortage);
     const stage = Math.max(0, Math.floor(number(state.starvationStage)));
-    const detail = required !== "0" ? `${gauge}/${required}` : "-";
-    const alert = shortage > 0 ? ` / 不足${formatNumber(shortage)}` : stage > 0 ? ` / 飢餓${stage}` : "";
-    return `<div><span>${escapeHtml(race)} ${formatNumber(population)}人<br>${escapeHtml(state.condition || "-")}${alert}</span><b>${detail}</b></div>`;
+    const progress = required !== "0" ? `${gauge} / ${required}` : "-";
+    const condition = text(state.condition);
+    const marker = raceMarker(race);
+    const alert = shortage > 0
+      ? `<span class="settlement-population-alert">不足 ${formatNumber(shortage)}</span>`
+      : stage > 0
+        ? `<span class="settlement-population-alert">飢餓 ${stage}</span>`
+        : "";
+    return `<div class="settlement-population-card">
+      <div class="settlement-population-head">
+        <span class="settlement-race-marker" style="--race-marker-color:${marker.color}">${escapeHtml(marker.marker)}</span>
+        <b>${formatNumber(population)}人</b>
+      </div>
+      <strong class="settlement-population-race">${escapeHtml(race)}</strong>
+      <div class="settlement-population-meta">
+        <span>増加 ${progress}</span>
+        ${condition ? `<span title="クラス.jsonの増加条件">増加条件: ${escapeHtml(condition)}</span>` : ""}
+        ${alert}
+      </div>
+    </div>`;
   }).join("")}</div>`;
 }
 
