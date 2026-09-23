@@ -13,12 +13,30 @@ const report = await page.evaluate(async () => {
   window.closeFieldSettingsModal?.();
   window.beginV39InitialPlacement({ force:true });
   let tile = null;
-  for (let y = 5; y < 55 && !tile; y += 1) for (let x = 5; x < 55; x += 1) {
-    const candidate = { x, y, terrain:data.grid[y][x] };
-    if (window.canPlaceV39InitialBase(candidate)) { tile = candidate; break; }
+  while (window.getV39ActiveFactionState?.()?.villagePlacementMode === true) {
+    let nextTile = null;
+    for (let y = 5; y < 55 && !nextTile; y += 1) for (let x = 5; x < 55; x += 1) {
+      const candidate = { x, y, terrain:data.grid[y][x] };
+      if (window.canPlaceV39InitialBase(candidate)) { nextTile = candidate; break; }
+    }
+    if (!nextTile || !window.placeV39InitialBase(nextTile)) throw new Error("初期拠点を配置できません");
+    tile ||= nextTile;
   }
-  window.placeV39InitialBase(tile);
   const state = window.getV39GameState();
+  const playerRaces = new Set(state.players.map(player => player.race === "人間" ? "只人" : String(player.race || "")));
+  const initialVillages = Array.isArray(state.neutralVillages) ? state.neutralVillages : [];
+  const noVillageResult = window.generateV39WorldPopulation(state, data, { neutralVillageCount:0 });
+  const threeVillageResult = window.generateV39WorldPopulation(state, data, { neutralVillageCount:3 });
+  const neutralVillageGeneration = {
+    count:initialVillages.length,
+    avoidsPlayerRaces:initialVillages.every(village => !playerRaces.has(String(village?.race || ""))),
+    zeroSettingCount:Array.isArray(noVillageResult?.neutralVillages) ? noVillageResult.neutralVillages.length : -1,
+    threeSettingCount:Array.isArray(threeVillageResult?.neutralVillages) ? threeVillageResult.neutralVillages.length : -1,
+    threeSettingAvoidsPlayerRaces:(threeVillageResult?.neutralVillages || []).every(village => !playerRaces.has(String(village?.race || "")))
+  };
+  window.openFieldSettingsModal?.();
+  const neutralVillageSettingValue = document.getElementById("v39-field-neutral-village-count")?.value ?? null;
+  window.closeFieldSettingsModal?.();
   const passableTiles = [];
   for (let y = 1; y < data.h - 1; y += 1) for (let x = 1; x < data.w - 1; x += 1) {
     if (!["海", "湖", "火山"].includes(data.grid[y][x])) passableTiles.push({ x, y });
@@ -76,11 +94,59 @@ const report = await page.evaluate(async () => {
   await new Promise(resolve => setTimeout(resolve, 2500));
   const scene = window.__v39FieldRuntime.game.scene.getScenes(true)[0];
   const rootObjects = () => [...scene.children.list];
-  const entityRoot = () => rootObjects().find(object => object.name === "v39-entity-layer");
-  const entityChildren = () => [...(entityRoot()?.list || [])];
+  const entityRoots = () => rootObjects().filter(object => ["v39-structure-layer", "v39-unit-layer"].includes(object.name));
+  const entityChildren = () => entityRoots().flatMap(root => [...(root?.list || [])]);
+  const originalTestModeResolver = window.isV39TestMode;
+  window.isV39TestMode = () => true;
+  window.dispatchEvent(new CustomEvent("v39:display-settings-changed", { detail:{ testMode:true } }));
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const neutralVillageMarkersInTestMode = entityChildren().filter(marker => marker.name === "v39-neutral-village-marker").length;
+  window.isV39TestMode = originalTestModeResolver;
+  window.dispatchEvent(new CustomEvent("v39:display-settings-changed", { detail:{ testMode:false } }));
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const terrainIconOverlay = () => rootObjects().find(object => object.name === "v39-terrain-icon-overlay") || null;
+  const terrainIconOverlayBeforeFieldUpdate = terrainIconOverlay();
+  window.updateV39FieldData({ ...window.__v39FieldRuntime.mapData }, { reason:"render-benchmark-same-terrain" });
+  await new Promise(resolve => setTimeout(resolve, 80));
+  const terrainIconsReusedForUnchangedField = terrainIconOverlay() === terrainIconOverlayBeforeFieldUpdate;
+  const fogCache = () => rootObjects().find(object => object.name === "v39-unexplored-fog-layer-cache") || null;
+  const visibilityVersion = () => Number(window.__v39VisibilityRenderVersion || 0);
+  const visibilityVersionBeforeUnrelatedUpdate = visibilityVersion();
+  const fogCacheBeforeUnrelatedUpdate = fogCache();
+  const unitLayerBeforeUnrelatedUpdate = entityRoots().find(root => root.name === "v39-unit-layer") || null;
+  window.dispatchEvent(new CustomEvent("v39:game-state-changed", { detail:{ reason:"render-benchmark-unrelated-update" } }));
+  await new Promise(resolve => setTimeout(resolve, 80));
+  const unrelatedUpdateSkipped = visibilityVersion() === visibilityVersionBeforeUnrelatedUpdate
+    && fogCache() === fogCacheBeforeUnrelatedUpdate;
+  const entityMarkersReusedForUnrelatedUpdate = entityRoots().find(root => root.name === "v39-unit-layer") === unitLayerBeforeUnrelatedUpdate;
+  const unitLayerBeforeSelection = entityRoots().find(root => root.name === "v39-unit-layer") || null;
+  const selectedUnitId = units[1]?.id || units[0]?.id || "";
+  window.updateV39ActiveFactionState({ selectedUnitId }, { reason:"render-benchmark-selection" });
+  await new Promise(resolve => setTimeout(resolve, 80));
+  const selectionRenderUpdated = entityRoots().find(root => root.name === "v39-unit-layer") !== unitLayerBeforeSelection;
+
+  const stateBeforeScoutChange = window.getV39GameState();
+  const activePlayerIndex = stateBeforeScoutChange.players.findIndex(player => player.id === stateBeforeScoutChange.activePlayerId);
+  const playerIndex = activePlayerIndex >= 0 ? activePlayerIndex : 0;
+  const updatedPlayers = stateBeforeScoutChange.players.map((player, index) => {
+    if (index !== playerIndex) return player;
+    const faction = player.factionState || {};
+    const updatedUnits = (faction.units || []).map((unit, unitIndex) => unitIndex === 0 ? { ...unit, scoutRange:0 } : unit);
+    return { ...player, factionState:{ ...faction, units:updatedUnits } };
+  });
+  const fogCacheBeforeScoutChange = fogCache();
+  const visibilityVersionBeforeScoutChange = visibilityVersion();
+  window.setV39GameState({ players:updatedPlayers }, { reason:"render-benchmark-scout-change" });
+  await new Promise(resolve => setTimeout(resolve, 80));
+  const scoutChangeRendered = visibilityVersion() > visibilityVersionBeforeScoutChange;
+  // Explored tiles remain explored after the unit's range changes, so the static Fog image is reused.
+  const fogCacheReusedForScoutChange = fogCache() === fogCacheBeforeScoutChange;
+  // 描画レイヤー計測は敵も十分に視界へ入る高索敵状態へ戻して行う。
+  window.setV39GameState({ players:stateBeforeScoutChange.players }, { reason:"render-benchmark-scout-restore" });
+  await new Promise(resolve => setTimeout(resolve, 80));
   const layerDefinitions = {
-    地形:{ root:["v39-terrain-layer", "v39-river-layer", "v39-special-terrain-item", "v39-lava-layer"] },
-    Fog:{ root:["v39-unexplored-fog-layer"] },
+    地形:{ root:["v39-terrain-layer", "v39-terrain-layer-cache", "v39-height-boundary-layer", "v39-height-boundary-layer-cache", "v39-river-layer", "v39-special-terrain-item", "v39-lava-layer"] },
+    Fog:{ root:["v39-unexplored-fog-layer", "v39-unexplored-fog-layer-cache"] },
     陣地:{ root:["v39-own-territory-boundary-layer"] },
     索敵:{ root:["v39-scout-boundary-layer"] },
     キャラ:{ entity:["v39-player-unit-marker", "v39-foreign-unit-marker", "v39-settlement-marker", "v39-wanderer-marker"] },
@@ -94,7 +160,7 @@ const report = await page.evaluate(async () => {
     const entityNames = new Set(definition?.entity || []);
     for (const object of rootObjects()) if (allNamedRoots.has(object.name)) object.setVisible(rootNames.has(object.name));
     const showEntities = entityNames.size > 0;
-    entityRoot()?.setVisible(showEntities);
+    for (const root of entityRoots()) root.setVisible(showEntities);
     for (const object of entityChildren()) if (allNamedEntities.has(object.name)) object.setVisible(entityNames.has(object.name));
   };
   const frameSample = frames => new Promise((resolve, reject) => {
@@ -133,6 +199,7 @@ const report = await page.evaluate(async () => {
     };
   }
   for (const object of rootObjects()) object.setVisible(true);
+  for (const root of entityRoots()) root.setVisible(true);
   for (const object of entityChildren()) object.setVisible(true);
   for (let index = 0; index < 6; index += 1) {
     const position = passableTiles[index * 3];
@@ -155,9 +222,13 @@ const report = await page.evaluate(async () => {
   return {
     map:{ width:data.w, height:data.h, tileCount:data.w * data.h },
     workload:{ friendlyUnits:units.length, enemies:enemies.length, lavaTiles:lavaTiles.length, simultaneousEffects:6 },
+    neutralVillageGeneration:{ ...neutralVillageGeneration, neutralVillageSettingValue, neutralVillageMarkersInTestMode },
     renderer:scene.game.renderer.type === 2 ? "WebGL" : "Canvas",
     textureCount:Object.keys(scene.textures.list || {}).length,
     heapMb:performance.memory ? Number((performance.memory.usedJSHeapSize / 1048576).toFixed(1)) : null,
+    visibilityCache:{ unrelatedUpdateSkipped, scoutChangeRendered, fogCacheReusedForScoutChange },
+    entityMarkers:{ entityMarkersReusedForUnrelatedUpdate, selectionRenderUpdated },
+    terrainIcons:{ terrainIconsReusedForUnchangedField },
     measurements
   };
 });
@@ -166,8 +237,22 @@ await writeFile("artifacts/v39-render-layer-benchmark.json", `${JSON.stringify(r
 console.log(JSON.stringify(result, null, 2));
 if (errors.length
   || report.map.tileCount !== 3600
+  || report.neutralVillageGeneration.count !== 2
+  || report.neutralVillageGeneration.avoidsPlayerRaces !== true
+  || report.neutralVillageGeneration.zeroSettingCount !== 0
+  || report.neutralVillageGeneration.threeSettingCount !== 3
+  || report.neutralVillageGeneration.threeSettingAvoidsPlayerRaces !== true
+  || report.neutralVillageGeneration.neutralVillageSettingValue !== "2"
+  || report.neutralVillageGeneration.neutralVillageMarkersInTestMode !== 2
   || Object.keys(report.measurements).length !== 8
+  || report.visibilityCache.unrelatedUpdateSkipped !== true
+  || report.visibilityCache.scoutChangeRendered !== true
+  || report.visibilityCache.fogCacheReusedForScoutChange !== true
+  || report.entityMarkers.entityMarkersReusedForUnrelatedUpdate !== true
+  || report.entityMarkers.selectionRenderUpdated !== true
+  || report.terrainIcons.terrainIconsReusedForUnchangedField !== true
   || report.measurements.キャラ.objectCount < 40
-  || report.measurements.敵.objectCount < 35
+  // 通常表示では未発見の敵を除外するため、40体投入時でも全員は描画されない。
+  || report.measurements.敵.objectCount < 20
   || report.measurements.全体.estimatedFps < 30) process.exitCode = 1;
 await browser.close();

@@ -11,6 +11,7 @@ import {
   HEX_TILE_CONFIG,
   MAP_BOUNDARY_DASH_CONFIG
 } from "../../lib/phaser-map-panel-config.js";
+import { cacheStaticGraphicsLayer, removeStaticGraphicsCache } from "./v39-static-graphics-cache.js";
 
 const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
 const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";
@@ -38,12 +39,44 @@ const RETRY_LIMIT = 180;
 
 let renderRequestId = 0;
 let renderPendingDuringBatch = false;
+let lastRenderSignature = null;
+let lastFogSignature = null;
+let visibilityRenderVersion = 0;
 let lastSnapshot = {
   exploredTileKeys:new Set(),
   currentVisionTileKeys:new Set(),
   detectedEntityIds:new Set(),
   detectionByTile:new Map()
 };
+
+function sortedSetSignature(values) {
+  return [...(values || [])].map(String).sort().join("|");
+}
+
+function livingUnitScoutSignature(units) {
+  return (Array.isArray(units) ? units : [])
+    .filter(livingUnit)
+    .map(unit => {
+      const id = String(unit?.id ?? unit?.unitId ?? unit?.characterId ?? "").trim();
+      return `${id}:${Math.floor(Number(unit?.x))},${Math.floor(Number(unit?.y))},${unitVisionRange(unit)}`;
+    })
+    .sort()
+    .join("|");
+}
+
+function nestSignature(nests) {
+  return (Array.isArray(nests) ? nests : [])
+    .map(nest => `${String(nest?.id || "")}:${Math.floor(Number(nest?.x))},${Math.floor(Number(nest?.y))},${Math.floor(Number(nest?.territoryRadius) || 1)}`)
+    .sort()
+    .join("|");
+}
+
+function villageSignature(villages) {
+  return (Array.isArray(villages) ? villages : [])
+    .map(village => `${String(village?.id || "")}:${Math.floor(Number(village?.x))},${Math.floor(Number(village?.y))},${sortedSetSignature(village?.territoryTileKeys)}`)
+    .sort()
+    .join("|");
+}
 
 function coordKey(x, y) {
   return `${x},${y}`;
@@ -95,6 +128,7 @@ function removeLayer(scene, name) {
   for (const child of [...(scene?.children?.list || [])]) {
     if (child?.name === name) child.destroy();
   }
+  removeStaticGraphicsCache(scene, name);
 }
 
 function wrappedCoord(value, size) {
@@ -136,6 +170,7 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
   const startKey = coordKey(sx, sy);
   const visited = new Set([startKey]);
   const queue = [{ x:sx, y:sy, distance:0 }];
+  let queueIndex = 0;
   output.add(startKey);
   if (detectionByTile instanceof Map) {
     const previousScout = Number(detectionByTile.get(startKey));
@@ -144,8 +179,9 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
       resolveEffectiveScoutAtDistance(scoutValue, 0)
     ));
   }
-  while (queue.length) {
-    const current = queue.shift();
+  while (queueIndex < queue.length) {
+    const current = queue[queueIndex];
+    queueIndex += 1;
     if (current.distance >= maxDistance) continue;
     for (const neighbor of neighborEdges(data, current.x, current.y)) {
       if (neighbor.outside) continue;
@@ -373,6 +409,8 @@ function revealMovementPath(event) {
 }
 
 function resetVisibilityForNewField(event) {
+  lastRenderSignature = null;
+  lastFogSignature = null;
   if (event?.detail?.restored === true) {
     scheduleRender();
     return;
@@ -475,13 +513,6 @@ function renderVisibilityLayers() {
   const faction = player?.factionState;
   if (!data?.grid || !scene?.add || !faction) return false;
 
-  removeLayer(scene, FOG_LAYER_NAME);
-  removeLayer(scene, SCOUT_LAYER_NAME);
-  removeLayer(scene, UNIT_SCOUT_LAYER_NAME);
-  removeLayer(scene, TERRITORY_LAYER_NAME);
-  removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
-  removeLayer(scene, NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
-
   const vision = buildCurrentVision(data, faction, state, player.id);
   const currentVision = vision.visible;
   const turnNumber = Math.max(1, Math.floor(Number(state?.timeline?.turnNumber) || 1));
@@ -498,12 +529,55 @@ function renderVisibilityLayers() {
   };
 
   const testMode = isTestMode();
-  let unexploredCount = Math.max(0, (Number(data.w) * Number(data.h)) - explored.size);
+  const visibleNests = (Array.isArray(state.enemyNests) ? state.enemyNests : []).filter(nest => {
+    const key = coordKey(Math.floor(Number(nest?.x)), Math.floor(Number(nest?.y)));
+    return testMode || currentVision.has(key);
+  });
+  const visibleVillages = (Array.isArray(state.neutralVillages) ? state.neutralVillages : []).filter(village => {
+    const key = coordKey(Math.floor(Number(village?.x)), Math.floor(Number(village?.y)));
+    return testMode || explored.has(key);
+  });
+  const ownTerritory = new Set(
+    Object.entries(state.territoryOwnerByTile || {})
+      .filter(([, ownerId]) => String(ownerId) === String(player.id))
+      .map(([key]) => key)
+  );
+  const playerIndex = Math.max(0, state.players.findIndex(row => row?.id === player.id));
+  const fogSignature = [
+    `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
+    testMode ? 1 : 0,
+    sortedSetSignature(explored)
+  ].join(";");
+  const renderSignature = [
+    `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
+    testMode ? 1 : 0,
+    sortedSetSignature(explored),
+    sortedSetSignature(currentVision),
+    sortedSetSignature(detectedEntityIds),
+    livingUnitScoutSignature(faction.units),
+    nestSignature(visibleNests),
+    villageSignature(visibleVillages),
+    sortedSetSignature(ownTerritory),
+    playerIndex
+  ].join(";");
+  persistVisibilityTiles(faction, explored, currentVision);
+  if (renderSignature === lastRenderSignature) return true;
+  lastRenderSignature = renderSignature;
+  const redrawFog = fogSignature !== lastFogSignature;
+  lastFogSignature = fogSignature;
 
+  if (redrawFog) removeLayer(scene, FOG_LAYER_NAME);
+  removeLayer(scene, SCOUT_LAYER_NAME);
+  removeLayer(scene, UNIT_SCOUT_LAYER_NAME);
+  removeLayer(scene, TERRITORY_LAYER_NAME);
+  removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
+  removeLayer(scene, NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
+
+  let unexploredCount = Math.max(0, (Number(data.w) * Number(data.h)) - explored.size);
   const unitScout = scene.add.graphics().setDepth(15).setName(UNIT_SCOUT_LAYER_NAME);
   const unitScoutBoundaryCount = drawUnitScoutBoundaries(unitScout, data, faction.units);
 
-  if (!testMode) {
+  if (!testMode && redrawFog) {
     const fog = scene.add.graphics().setDepth(14).setName(FOG_LAYER_NAME);
     fog.fillStyle(FOG_COLOR, FOG_ALPHA);
     fog.lineStyle(1, 0x6d858d, 0.28);
@@ -522,6 +596,10 @@ function renderVisibilityLayers() {
         unexploredCount += 1;
       }
     }
+    cacheStaticGraphicsLayer(scene, data, fog, {
+      name:FOG_LAYER_NAME,
+      depth:14
+    });
 
     const scout = scene.add.graphics().setDepth(15.1).setName(SCOUT_LAYER_NAME);
     drawOuterBoundary(scout, data, currentVision, {
@@ -532,10 +610,6 @@ function renderVisibilityLayers() {
     });
   }
 
-  const visibleNests = (Array.isArray(state.enemyNests) ? state.enemyNests : []).filter(nest => {
-    const key = coordKey(Math.floor(Number(nest?.x)), Math.floor(Number(nest?.y)));
-    return testMode || currentVision.has(key);
-  });
   const nestTerritory = scene.add.graphics().setDepth(13).setName(NEST_TERRITORY_LAYER_NAME);
   for (const nest of visibleNests) {
     drawOuterBoundary(nestTerritory, data, nestTerritoryTileKeys(data, nest), {
@@ -546,10 +620,6 @@ function renderVisibilityLayers() {
     });
   }
 
-  const visibleVillages = (Array.isArray(state.neutralVillages) ? state.neutralVillages : []).filter(village => {
-    const key = coordKey(Math.floor(Number(village?.x)), Math.floor(Number(village?.y)));
-    return testMode || explored.has(key);
-  });
   const villageTerritory = scene.add.graphics().setDepth(13).setName(NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
   for (const village of visibleVillages) {
     const tileKeys = new Set(Array.isArray(village?.territoryTileKeys) && village.territoryTileKeys.length
@@ -563,12 +633,6 @@ function renderVisibilityLayers() {
     });
   }
 
-  const ownTerritory = new Set(
-    Object.entries(state.territoryOwnerByTile || {})
-      .filter(([, ownerId]) => String(ownerId) === String(player.id))
-      .map(([key]) => key)
-  );
-  const playerIndex = Math.max(0, state.players.findIndex(row => row?.id === player.id));
   const territory = scene.add.graphics().setDepth(16).setName(TERRITORY_LAYER_NAME);
   drawOuterBoundary(territory, data, ownTerritory, {
       width:TERRITORY_WIDTH,
@@ -593,7 +657,11 @@ function renderVisibilityLayers() {
       range:unitVisionRange(unit)
     }))
   };
-  persistVisibilityTiles(faction, explored, currentVision);
+  visibilityRenderVersion += 1;
+  window.__v39VisibilityRenderVersion = visibilityRenderVersion;
+  window.dispatchEvent(new CustomEvent("v39:visibility-rendered", {
+    detail:{ version:visibilityRenderVersion }
+  }));
   return true;
 }
 
@@ -635,6 +703,10 @@ window.inspectV39PlayerDetectionForEnemy = inspectPlayerDetectionForEnemy;
 window.renderV39Visibility = scheduleRender;
 
 window.addEventListener("v39:field-generated", resetVisibilityForNewField);
+window.addEventListener("v39:field-data-updated", () => {
+  // 溶岩などの地形更新は視界形状に影響しない。署名比較で必要時だけ描画する。
+  scheduleRender();
+});
 window.addEventListener("v39:game-state-changed", scheduleRender);
 window.addEventListener("v39:initial-placement-complete", scheduleRender);
 window.addEventListener("v39:unit-moved", revealMovementPath);

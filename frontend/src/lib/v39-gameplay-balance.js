@@ -208,6 +208,10 @@ export const V39_SETTLEMENT_PRODUCTION_BALANCE = Object.freeze({
 
 // 一般村の交渉・依頼・襲撃で使用する暫定値。
 export const V39_NEUTRAL_VILLAGE_BALANCE = Object.freeze({
+  // 新規マップ開始時に配置する一般村の既定数。開始設定で0〜最大数へ変更できる。
+  initialVillageCount:2,
+  // 開始設定で指定できる一般村数の上限。配置できない地形しかない場合はこの値未満になる。
+  maxInitialVillageCount:8,
   // 村中心からの範囲。1 = 中心1マスと周囲6マス。
   territoryRadius:1,
   // 初めて出会う一般村との関係値。

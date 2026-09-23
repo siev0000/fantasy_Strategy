@@ -6,6 +6,7 @@ import {
   GAME_START_TURN_MODE_OPTIONS,
   normalizeGameStartSettings
 } from "../../lib/game-start-settings.js";
+import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
 const FIELD_SETTINGS_STORAGE_KEY = "v39-field-settings-v1";
 
@@ -14,6 +15,7 @@ const DEFAULT_FIELD_SETTINGS = Object.freeze({
   patternId: "realistic",
   mountainMode: "random",
   enemySpawnTileDivisor: 40,
+  neutralVillageCount: V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount,
   gameSettings: normalizeGameStartSettings({
     turnProgressionMode: GAME_START_DEFAULT_TURN_MODE,
     maxCombatTurnsPerWorldTurn: GAME_START_DEFAULT_MAX_COMBAT_TURNS
@@ -183,6 +185,11 @@ function createModal() {
               <input id="v39-field-enemy-amount" type="number" min="20" max="60" step="5">
               <small>数値が大きいほど敵が多く出現します。20＝少ない / 40＝標準 / 60＝多い。</small>
             </label>
+            <label class="v39-setting-row">
+              <span>一般村数</span>
+              <input id="v39-field-neutral-village-count" type="number" min="0" max="${V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount}" step="1">
+              <small>初期配置後に中立一般村を配置します。0で配置しません。既定は${V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount}。</small>
+            </label>
             <div class="v39-setting-row">
               <span>ワールド端接続</span>
               <label class="v39-inline-check"><input type="checkbox" id="v39-field-wrap">左右上下の端を接続する</label>
@@ -270,6 +277,7 @@ function boot() {
     get("v39-field-pattern").value = settings.patternId;
     get("v39-field-mountain").value = settings.mountainMode;
     get("v39-field-enemy-amount").value = enemyDivisorToAmount(settings.enemySpawnTileDivisor);
+    get("v39-field-neutral-village-count").value = settings.neutralVillageCount;
     const normalizedGameSettings = normalizeGameStartSettings(settings.gameSettings);
     settings.gameSettings = normalizedGameSettings;
     get("v39-field-turn-mode").value = normalizedGameSettings.turnProgressionMode;
@@ -299,6 +307,12 @@ function boot() {
       patternId: get("v39-field-pattern").value,
       mountainMode: get("v39-field-mountain").value,
       enemySpawnTileDivisor: enemyAmountToDivisor(get("v39-field-enemy-amount").value),
+      neutralVillageCount: Math.round(clampNumber(
+        get("v39-field-neutral-village-count").value,
+        0,
+        V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount,
+        V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount
+      )),
       gameSettings: normalizeGameStartSettings({
         turnProgressionMode: get("v39-field-turn-mode").value,
         maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
@@ -320,11 +334,20 @@ function boot() {
 
   const open = () => {
     const generated = !!window.__v39FieldRuntime?.mapData;
+    const runtimeFieldSettings = window.__v39FieldRuntime?.settings;
     const runtimeGameSettings = typeof window.getV39GameState === "function"
       ? window.getV39GameState()?.gameSettings
       : null;
     if (generated && runtimeGameSettings) {
       settings.gameSettings = normalizeGameStartSettings(runtimeGameSettings);
+    }
+    if (generated && runtimeFieldSettings) {
+      settings.neutralVillageCount = Math.round(clampNumber(
+        runtimeFieldSettings.neutralVillageCount,
+        0,
+        V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount,
+        V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount
+      ));
     }
     sync();
     overlay.classList.add("open");
@@ -419,6 +442,7 @@ function boot() {
         patternId:next.patternId,
         mountainMode:next.mountainMode,
         enemySpawnTileDivisor:next.enemySpawnTileDivisor,
+        neutralVillageCount:next.neutralVillageCount,
         islandCustomSettings:next.islandCustomSettings
       });
       if (window.__v39FieldRuntime?.settings) {

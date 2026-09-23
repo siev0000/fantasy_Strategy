@@ -12,16 +12,16 @@ import {
   raidV39NeutralVillage,
   vassalizeV39NeutralVillage
 } from "../../lib/v39-neutral-village-rules.js";
+import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
-const VILLAGE_TILES_PER_SITE = 450;
 const WANDERER_TILES_PER_GROUP = 300;
-const MAX_NEUTRAL_VILLAGES = 8;
 const MAX_WANDERER_GROUPS = 20;
 let selectedTile = null;
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const keyOf = (x, y) => `${Math.floor(number(x))},${Math.floor(number(y))}`;
+const normalizedRaceName = value => text(value) === "人間" ? "只人" : text(value);
 
 function hash(value) {
   let result = 0;
@@ -40,11 +40,32 @@ function passableTiles(mapData) {
 
 function raceDefinitions() {
   return getGameDataRows("勢力").filter(row => text(row?.種族)).map(row => ({
-    race:text(row.種族) === "人間" ? "只人" : text(row.種族),
+    race:normalizedRaceName(row.種族),
     dataName:text(row.種族),
     preferredTerrain:text(row.土地),
     initialPopulation:Math.max(1, Math.floor(number(row.初期人数, 50)))
   }));
+}
+
+function terrainMatchesRace(tile, race) {
+  const terrain = text(tile?.terrain);
+  const preferredTerrains = text(race?.preferredTerrain).split(",").map(text).filter(Boolean);
+  return preferredTerrains.some(preferred => terrain === preferred || terrain.includes(preferred) || preferred.includes(terrain));
+}
+
+function playerRaces(state) {
+  return new Set((Array.isArray(state?.players) ? state.players : [])
+    .map(player => normalizedRaceName(player?.race))
+    .filter(Boolean));
+}
+
+function selectVillageRace(tile, races, usedRaces) {
+  const unassigned = races.filter(race => !usedRaces.has(race.race));
+  const terrainMatches = races.filter(race => terrainMatchesRace(tile, race));
+  const candidates = unassigned.filter(race => terrainMatchesRace(tile, race)).length
+    ? unassigned.filter(race => terrainMatchesRace(tile, race))
+    : (unassigned.length ? unassigned : (terrainMatches.length ? terrainMatches : races));
+  return candidates[hash(`${tile.key}:race`) % candidates.length];
 }
 
 function initialClasses() {
@@ -56,10 +77,8 @@ function farFromOwned(tile, state, minimum = 5) {
   return occupied.every(([x, y]) => Math.hypot(tile.x - x, tile.y - y) >= minimum);
 }
 
-function buildNeutralVillage(tile, index, races, classes, mapData) {
-  const race = races[hash(`${tile.key}:race`) % races.length];
-  const preferred = races.filter(row => tile.terrain.includes(row.preferredTerrain));
-  const selectedRace = preferred.length ? preferred[hash(`${tile.key}:preferred`) % preferred.length] : race;
+function buildNeutralVillage(tile, index, races, classes, mapData, usedRaces) {
+  const selectedRace = selectVillageRace(tile, races, usedRaces);
   const villageLevel = 1 + (hash(`${tile.key}:level`) % 3);
   const population = Math.max(10, Math.floor(selectedRace.initialPopulation * (0.6 + (hash(`${tile.key}:population`) % 81) / 100)));
   const classRow = classes[hash(`${tile.key}:class`) % Math.max(1, classes.length)];
@@ -82,17 +101,23 @@ function buildWanderer(tile, index, races) {
   };
 }
 
-export function generateV39WorldPopulation(state, mapData) {
+export function generateV39WorldPopulation(state, mapData, options = {}) {
   const races = raceDefinitions();
   const classes = initialClasses();
   if (!races.length || !mapData?.grid) return { neutralVillages:[], wandererGroups:[] };
   const tiles = passableTiles(mapData).filter(tile => farFromOwned(tile, state)).sort((a, b) => hash(a.key) - hash(b.key));
-  const villageCount = Math.min(MAX_NEUTRAL_VILLAGES, Math.max(1, Math.floor(tiles.length / VILLAGE_TILES_PER_SITE)));
+  const configuredVillageCount = Math.max(0, Math.min(
+    V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount,
+    Math.floor(number(options?.neutralVillageCount, V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount))
+  ));
+  const usedRaces = playerRaces(state);
   const neutralVillages = [];
   for (const tile of tiles) {
+    if (neutralVillages.length >= configuredVillageCount) break;
     if (neutralVillages.some(row => Math.hypot(row.x - tile.x, row.y - tile.y) < 7)) continue;
-    neutralVillages.push(buildNeutralVillage(tile, neutralVillages.length, races, classes, mapData));
-    if (neutralVillages.length >= villageCount) break;
+    const village = buildNeutralVillage(tile, neutralVillages.length, races, classes, mapData, usedRaces);
+    neutralVillages.push(village);
+    usedRaces.add(village.race);
   }
   const villageKeys = new Set(neutralVillages.map(row => keyOf(row.x, row.y)));
   const wandererCount = Math.min(MAX_WANDERER_GROUPS, Math.max(1, Math.floor(tiles.length / WANDERER_TILES_PER_GROUP)));
@@ -234,7 +259,9 @@ function initialize(event) {
   const state = window.getV39GameState?.();
   const mapData = event?.detail?.mapData || window.__v39FieldRuntime?.mapData;
   if (!state || !mapData || state.neutralVillages?.length) return;
-  const generated = generateV39WorldPopulation(state, mapData);
+  const generated = generateV39WorldPopulation(state, mapData, {
+    neutralVillageCount:window.__v39FieldRuntime?.settings?.neutralVillageCount
+  });
   const settlements = [...(state.settlements || []).filter(row => !row?.neutral), ...generated.neutralVillages];
   window.setV39GameState?.({ ...generated, settlements }, { reason:"world-population-generated" });
   window.dispatchEvent(new CustomEvent("v39:world-population-generated", { detail:{ villages:generated.neutralVillages.length, wanderers:generated.wandererGroups.length } }));
@@ -266,6 +293,11 @@ window.addEventListener("v39:tile-selected", event => { selectedTile = event.det
 window.addEventListener("v39:game-state-changed", renderWorldActions);
 window.generateV39WorldPopulation = generateV39WorldPopulation;
 window.recruitV39Wanderer = groupId => { const state = window.getV39GameState?.(); return recruitV39Wanderer(state, state?.activePlayerId, groupId); };
-window.getV39WorldPopulationRules = () => ({ villageTilesPerSite:VILLAGE_TILES_PER_SITE, wandererTilesPerGroup:WANDERER_TILES_PER_GROUP, maxNeutralVillages:MAX_NEUTRAL_VILLAGES, maxWandererGroups:MAX_WANDERER_GROUPS });
+window.getV39WorldPopulationRules = () => ({
+  initialVillageCount:V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount,
+  maxNeutralVillages:V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount,
+  wandererTilesPerGroup:WANDERER_TILES_PER_GROUP,
+  maxWandererGroups:MAX_WANDERER_GROUPS
+});
 installStyles();
 ensureWorldActions();

@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { cacheStaticGraphicsLayer, removeStaticGraphicsCache } from "./v39-static-graphics-cache.js";
 
 const LAYER_NAME = "v39-height-boundary-layer";
 const RETRY_MS = 16;
@@ -40,6 +41,7 @@ function destroyOldLayer(scene) {
   for (const child of [...(scene?.children?.list || [])]) {
     if (child?.name === LAYER_NAME) child.destroy();
   }
+  removeStaticGraphicsCache(scene, LAYER_NAME);
 }
 
 function levelAt(data, x, y) {
@@ -112,6 +114,10 @@ function renderHeightBoundaries() {
       }
     }
   }
+  cacheStaticGraphicsLayer(scene, data, graphics, {
+    name:LAYER_NAME,
+    depth:2
+  });
 
   window.__v39HeightBoundaryStatus = {
     rendered: true,

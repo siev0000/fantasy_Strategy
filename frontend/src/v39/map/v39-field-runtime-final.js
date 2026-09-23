@@ -1,7 +1,9 @@
 import Phaser from "phaser";
 import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
+import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { runWithSeededRandom } from "../../lib/seeded-random.js";
+import { cacheStaticGraphicsLayer } from "./v39-static-graphics-cache.js";
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
 const SNOW_RING_OUTER_INSET_RATIO = 0.06;
@@ -200,6 +202,10 @@ function drawTerrain(scene, data, graphics = scene.add.graphics()) {
       }
     }
   }
+  cacheStaticGraphicsLayer(scene, data, graphics, {
+    name:"v39-terrain-layer",
+    depth:0
+  });
   return graphics;
 }
 
@@ -575,6 +581,11 @@ function normalizeSettings(input={}) {
     w,h,
     patternId:allowedPatterns.has(input.patternId)?input.patternId:"realistic",
     mountainMode:allowedMountains.has(input.mountainMode)?input.mountainMode:"random",
+    neutralVillageCount:Phaser.Math.Clamp(
+      Math.round(Number(input.neutralVillageCount ?? V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount)),
+      0,
+      V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount
+    ),
     islandCustomSettings:{
       enabled:!!custom.enabled,
       largeIslandCount:Phaser.Math.Clamp(Math.round(Number(custom.largeIslandCount)||2),1,8),

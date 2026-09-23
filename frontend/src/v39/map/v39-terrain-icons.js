@@ -24,6 +24,8 @@ const TEXTURE_PREFIX = "v39-terrain-icon:";
 const SCENE_RETRY_MS = 16;
 const SCENE_RETRY_LIMIT = 180;
 let renderRequestId = 0;
+let lastTerrainIconSignature = null;
+let terrainIconArtworkVersion = 0;
 const imageTextureState = new WeakMap();
 
 function tileCenter(x, y) {
@@ -55,6 +57,33 @@ function destroyOldOverlay(scene) {
   for (const child of [...(scene?.children?.list || [])]) {
     if (child?.name === OVERLAY_NAME) child.destroy();
   }
+}
+
+function hasActiveOverlay(scene) {
+  return (scene?.children?.list || []).some(child => child?.name === OVERLAY_NAME);
+}
+
+function collectIconEntries(data) {
+  const entries = [];
+  for (let y = 0; y < Number(data?.h || 0); y += 1) {
+    for (let x = 0; x < Number(data?.w || 0); x += 1) {
+      const terrain = String(data?.grid?.[y]?.[x] || "");
+      const special = String(data?.specialMap?.[y]?.[x] || "");
+      const baseIcon = BASE_TERRAIN_ICONS[terrain];
+      const specialIcon = SPECIAL_TERRAIN_ICONS[special];
+      if (baseIcon) entries.push({ x, y, kind:"base", terrain, icon:baseIcon });
+      if (specialIcon) entries.push({ x, y, kind:"special", terrain:special, icon:specialIcon });
+    }
+  }
+  return entries;
+}
+
+function terrainIconSignature(data, entries) {
+  return [
+    `${Number(data?.w) || 0}x${Number(data?.h) || 0}`,
+    terrainIconArtworkVersion,
+    entries.map(entry => `${entry.kind}:${entry.terrain}:${entry.x},${entry.y}`).join("|")
+  ].join(";");
 }
 
 function textureKey(kind, terrain) {
@@ -102,6 +131,7 @@ function ensureImageTexture(scene, kind, terrain, icon) {
     if (!scene?.sys?.isActive?.()) return;
     if (!scene.textures.exists(key)) scene.textures.addImage(key, image);
     states.set(key, "loaded");
+    terrainIconArtworkVersion += 1;
     scheduleTerrainIconRender();
   };
   image.onerror = () => states.set(key, "failed");
@@ -132,6 +162,11 @@ function renderTerrainIcons() {
   const scene = activeScene();
   if (!data || !scene || !scene.add || !scene.textures) return false;
 
+  const entries = collectIconEntries(data);
+  const signature = terrainIconSignature(data, entries);
+  if (signature === lastTerrainIconSignature && hasActiveOverlay(scene)) return true;
+  lastTerrainIconSignature = signature;
+
   destroyOldOverlay(scene);
   removeLegacySpecialLabels(scene);
 
@@ -139,22 +174,10 @@ function renderTerrainIcons() {
   let baseCount = 0;
   let specialCount = 0;
 
-  for (let y = 0; y < Number(data.h || 0); y += 1) {
-    for (let x = 0; x < Number(data.w || 0); x += 1) {
-      const terrain = String(data.grid?.[y]?.[x] || "");
-      const special = String(data.specialMap?.[y]?.[x] || "");
-      const baseIcon = BASE_TERRAIN_ICONS[terrain];
-      const specialIcon = SPECIAL_TERRAIN_ICONS[special];
-
-      if (baseIcon) {
-        addIconImage(scene, container, x, y, "base", terrain, baseIcon);
-        baseCount += 1;
-      }
-      if (specialIcon) {
-        addIconImage(scene, container, x, y, "special", special, specialIcon);
-        specialCount += 1;
-      }
-    }
+  for (const entry of entries) {
+    addIconImage(scene, container, entry.x, entry.y, entry.kind, entry.terrain, entry.icon);
+    if (entry.kind === "base") baseCount += 1;
+    else specialCount += 1;
   }
 
   window.__v39TerrainIconStatus = {
@@ -194,7 +217,10 @@ function scheduleTerrainIconRender() {
 }
 
 function install() {
-  window.addEventListener("v39:field-generated", scheduleTerrainIconRender);
+  window.addEventListener("v39:field-generated", () => {
+    lastTerrainIconSignature = null;
+    scheduleTerrainIconRender();
+  });
   window.addEventListener("v39:field-data-updated", scheduleTerrainIconRender);
 
   window.renderV39TerrainIcons = scheduleTerrainIconRender;

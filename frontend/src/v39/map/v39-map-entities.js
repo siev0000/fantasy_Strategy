@@ -21,6 +21,8 @@ let structureContainer = null;
 let unitContainer = null;
 let refreshTimer = null;
 let refreshPendingDuringBatch = false;
+let lastMarkerRenderSignature = null;
+let markerArtworkVersion = 0;
 const markerByEntityId = new Map();
 const textureLoadState = new WeakMap();
 
@@ -76,12 +78,75 @@ function finiteCoord(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function visualUnitSignature(unit) {
+  if (!unit || typeof unit !== "object") return "";
+  const profile = unit.combatProfile || {};
+  return [
+    unit.id ?? unit.unitId ?? unit.characterId,
+    unit.x, unit.y, unit.name, unit.race, unit.raceName, unit.className, unit.class,
+    unit.imageName, unit.image, unit.illustrationName, unit.画像,
+    unit.icon, unit.iconName, unit.subIconName,
+    unit.currentHp, unit.hp, unit.maxHp, unit.state, unit.condition,
+    unit.unitType, profile.mode, profile.unitTypeLabel, profile.memberCount, profile.populationCost,
+    unit.lastStealthBreakTurn, unit.lastStealthBreakReason
+  ].map(value => String(value ?? "")).join("~");
+}
+
+function visualSettlementSignature(settlement) {
+  if (!settlement || typeof settlement !== "object") return "";
+  return [
+    settlement.id, settlement.x, settlement.y, settlement.placed, settlement.ownerPlayerId,
+    settlement.scale, settlement.type, settlement.imageName, settlement.image, settlement.画像
+  ].map(value => String(value ?? "")).join("~");
+}
+
+function visualNestSignature(nest) {
+  if (!nest || typeof nest !== "object") return "";
+  return [
+    nest.id, nest.x, nest.y, nest.imageName, nest.image, nest.画像, nest.nestType, nest.type,
+    ...(Array.isArray(nest.unitIds) ? nest.unitIds : [])
+  ].map(value => String(value ?? "")).join("~");
+}
+
+function markerRenderSignature(faction, state) {
+  const players = Array.isArray(state?.players) ? state.players : [];
+  const activeSettlement = getSelectedSettlement(faction);
+  const playerUnits = Array.isArray(faction?.units) ? faction.units.map(visualUnitSignature).sort() : [];
+  const foreignUnits = players
+    .filter(player => String(player?.id || "") !== String(state?.activePlayerId || ""))
+    .flatMap(player => Array.isArray(player?.factionState?.units) ? player.factionState.units.map(visualUnitSignature) : [])
+    .sort();
+  return [
+    String(state?.activePlayerId || ""),
+    String(faction?.selectedUnitId || ""),
+    isTestMode() ? "test" : "normal",
+    String(window.__v39VisibilityRenderVersion || 0),
+    String(markerArtworkVersion),
+    [...(Array.isArray(state?.settlements) ? state.settlements : []), activeSettlement].map(visualSettlementSignature).sort().join("|"),
+    (Array.isArray(state?.enemyNests) ? state.enemyNests : []).map(visualNestSignature).sort().join("|"),
+    playerUnits.join("|"),
+    foreignUnits.join("|"),
+    (Array.isArray(state?.enemies) ? state.enemies : []).map(visualUnitSignature).sort().join("|"),
+    (Array.isArray(state?.wandererGroups) ? state.wandererGroups : []).map(group => [
+      group?.id, group?.x, group?.y, ...(Array.isArray(group?.discoveredByPlayerIds) ? group.discoveredByPlayerIds : [])
+    ].map(value => String(value ?? "")).join("~")).sort().join("|")
+  ].join(";");
+}
+
 function clearMarkers() {
   if (structureContainer?.destroy) structureContainer.destroy(true);
   if (unitContainer?.destroy) unitContainer.destroy(true);
   structureContainer = null;
   unitContainer = null;
   markerByEntityId.clear();
+}
+
+function hasActiveMarkerContainers(scene) {
+  const children = scene?.children?.list || [];
+  return structureContainer?.scene === scene
+    && unitContainer?.scene === scene
+    && children.includes(structureContainer)
+    && children.includes(unitContainer);
 }
 
 function drawBase(scene, container, village) {
@@ -91,7 +156,9 @@ function drawBase(scene, container, village) {
   if (x === null || y === null) return;
 
   const c = tileCenter(x, y);
-  const marker = scene.add.container(c.x, c.y).setName("v39-settlement-marker");
+  const marker = scene.add.container(c.x, c.y).setName(
+    village?.neutral === true ? "v39-neutral-village-marker" : "v39-settlement-marker"
+  );
   const artwork = resolveSettlementArtwork(village);
   const oldSpecSize = Number(artwork?.sizePx) || tileRelativePx(MAP_ENTITY_SIZE_RULES.base.diameterTiles);
   if (artwork && ensureArtworkTexture(scene, artwork)) {
@@ -118,7 +185,8 @@ function drawBases(scene, container, settlements, activeVillage) {
     const key = `${x},${y}`;
     if (seen.has(key)) continue;
     const isOwnBase = settlement.id === activeVillage?.id || settlement.ownerPlayerId === gameState()?.activePlayerId;
-    if (!isOwnBase && window.isV39TileExplored?.(x, y) === false) continue;
+    // 未探索の一般村はFogに隠す。ただしテストモードでは初期配置を確認できるよう全件表示する。
+    if (!isOwnBase && !isTestMode() && window.isV39TileExplored?.(x, y) === false) continue;
     seen.add(key);
     drawBase(scene, container, { ...settlement, placed: settlement.placed !== false });
   }
@@ -212,6 +280,7 @@ function ensureArtworkTexture(scene, artwork) {
         scene.textures.addImage(artwork.textureKey, image);
       }
       states.set(artwork.textureKey, "loaded");
+      markerArtworkVersion += 1;
       scheduleRefresh();
     } catch (error) {
       states.set(artwork.textureKey, "failed");
@@ -457,6 +526,10 @@ function renderMarkers() {
   const state = gameState();
   if (!scene || !faction) return false;
 
+  const signature = markerRenderSignature(faction, state);
+  if (signature === lastMarkerRenderSignature && hasActiveMarkerContainers(scene)) return true;
+  lastMarkerRenderSignature = signature;
+
   clearMarkers();
   structureContainer = scene.add.container(0, 0).setDepth(STRUCTURE_LAYER_DEPTH).setName("v39-structure-layer");
   unitContainer = scene.add.container(0, 0).setDepth(UNIT_LAYER_DEPTH).setName("v39-unit-layer");
@@ -488,11 +561,15 @@ function scheduleRefresh(delay = 0) {
 }
 
 function install() {
-  window.addEventListener("v39:field-generated", () => scheduleRefresh(60));
+  window.addEventListener("v39:field-generated", () => {
+    lastMarkerRenderSignature = null;
+    scheduleRefresh(60);
+  });
   window.addEventListener("v39:game-state-changed", () => scheduleRefresh());
   window.addEventListener("v39:initial-placement-complete", () => scheduleRefresh());
   window.addEventListener("v39:unit-selected", () => scheduleRefresh());
   window.addEventListener("v39:display-settings-changed", () => scheduleRefresh());
+  window.addEventListener("v39:visibility-rendered", () => scheduleRefresh());
   window.addEventListener("v39:map-render-batch-ended", event => {
     if (refreshPendingDuringBatch || event?.detail?.force === true) scheduleRefresh();
   });
