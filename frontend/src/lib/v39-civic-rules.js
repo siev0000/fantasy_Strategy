@@ -18,6 +18,7 @@ const approach = (current, target) => {
 
 const CLASS_ROWS = getGameDataRows("クラス");
 const RACE_ROWS = getGameDataRows("種族");
+const FACTION_ROWS = getGameDataRows("勢力");
 const TEMP_HAPPINESS_ROWS = getGameDataRows("種族幸福度仮");
 const RACE_HAPPINESS_FIELDS = Object.freeze([
   "幸福度基礎値",
@@ -80,8 +81,10 @@ function civicEventValue(village, key) {
 
 function classNameForRace(race) {
   const target = text(race);
-  const row = RACE_ROWS.find(item => [item?.key, item?.name].map(text).includes(target));
-  return text(row?.className) || target;
+  const raceRow = RACE_ROWS.find(item => [item?.key, item?.name].map(text).includes(target));
+  if (text(raceRow?.className)) return text(raceRow.className);
+  const factionRow = FACTION_ROWS.find(item => [item?.種族, item?.カナ].map(text).includes(target));
+  return text(factionRow?.カナ) || target;
 }
 
 function raceHappinessConfig(race) {
