@@ -133,6 +133,7 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1) {
     happinessByRace,
     modifiers:{
       starvationStage,
+      starvationHappiness:-starvationStage * V39_CIVIC_BALANCE.starvationHappinessPerStage,
       foodReserveTurns:foodTurns,
       foodComfort,
       housingComfort,
