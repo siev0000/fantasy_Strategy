@@ -160,9 +160,17 @@ export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
 }
 
 export function distributeV39CombatExperience(factionState = {}, attackerIdRaw = "", expPoolRaw = 0) {
-  const expPool = Math.max(0, Math.floor(number(expPoolRaw)));
+  const carriedRemainder = Math.max(0, number(factionState?.combatExpRemainder));
+  const availableExp = Math.max(0, number(expPoolRaw)) + carriedRemainder;
+  const expPool = Math.floor(availableExp);
+  const combatExpRemainder = availableExp-expPool;
   const recipientIds = resolveV39ExperienceRecipientIds(factionState, attackerIdRaw);
-  if (expPool <= 0 || !recipientIds.length) return { factionState, expPool:0, awards:[], levelUps:[] };
+  if (expPool <= 0 || !recipientIds.length) return {
+    factionState:{ ...factionState, combatExpRemainder },
+    expPool:0,
+    awards:[],
+    levelUps:[]
+  };
 
   const baseShare = Math.floor(expPool/recipientIds.length);
   let remainder = expPool-(baseShare*recipientIds.length);
@@ -187,7 +195,7 @@ export function distributeV39CombatExperience(factionState = {}, attackerIdRaw =
     return result.unit;
   });
   return {
-    factionState:{ ...factionState, units },
+    factionState:{ ...factionState, units, combatExpRemainder },
     expPool,
     awards,
     levelUps:awards.filter(row => row.leveledUp)
