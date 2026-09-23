@@ -2,6 +2,10 @@ import { getSelectedSettlement } from "../../lib/settlement-state.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import {
+  resolveV39UnitRaceCategory,
+  resolveV39UnitTotalExpForLevel
+} from "../../lib/v39-unit-experience.js";
+import {
   addV39CargoToFactionUnit,
   getV39SquadUnitIds,
   isV39CargoEmpty,
@@ -272,11 +276,16 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
   const levelAfter = levelBefore - levelLoss;
   if (levelAfter <= 0) return { ok:false, reason:`Lv${levelBefore}から${levelLoss}低下すると0以下になるため蘇生できません` };
   const recalculated = applyV39DerivedCharacterData({ ...source, level:levelAfter });
+  const expCategory = resolveV39UnitRaceCategory(recalculated);
+  const totalExp = resolveV39UnitTotalExpForLevel(levelAfter, expCategory);
   const maxHp = Math.max(1, number(recalculated?.maxHp, recalculated?.status?.HP || 1));
   const hp = Math.max(1, Math.min(maxHp, Math.floor(number(options.hp, Math.ceil(maxHp * 0.25)))));
   const village = getSelectedSettlement(player.factionState);
   const revived = {
     ...recalculated,
+    exp:0,
+    totalExp,
+    status:{ ...(recalculated?.status || {}), exp:0, totalExp },
     x:Math.floor(number(options.x, village?.x ?? source?.x)),
     y:Math.floor(number(options.y, village?.y ?? source?.y)),
     hp,
