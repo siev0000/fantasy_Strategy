@@ -97,7 +97,7 @@ function render() {
     ["食料", number(civicModifiers.foodComfort)],
     ["住居", number(civicModifiers.housingComfort)],
     ["施設", number(civicModifiers.facilityHappiness)],
-    ["飢餓", -Math.max(0, number(civicModifiers.starvationStage)) * 5],
+    ["飢餓", number(civicModifiers.starvationHappiness)],
     ["人口過多", number(civicModifiers.overcrowding)],
     ["災害", number(civicModifiers.disaster)],
     ["占領", number(civicModifiers.occupation)],
