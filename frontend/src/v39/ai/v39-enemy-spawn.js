@@ -1,6 +1,6 @@
 import { classData, enemySpawnData } from "../../lib/game-data-registry.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
-import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/v39-nest-rules.js";
 
 const SAFE_DISTANCE_FROM_BASE = 4;
@@ -70,6 +70,12 @@ function wrappedHexDistance(a, b, w, h, wrapEnabled) {
     }
   }
   return best;
+}
+
+function closestBaseDistance(settlements, point, w, h, wrapEnabled) {
+  const bases = (Array.isArray(settlements) ? settlements : []).filter(row => row?.placed);
+  if (!bases.length) return Number.POSITIVE_INFINITY;
+  return Math.min(...bases.map(base => wrappedHexDistance(base, point, w, h, wrapEnabled)));
 }
 
 function seededRandom(seedValue) {
@@ -168,11 +174,11 @@ function intersectDefinitionLevel(definition, levelRange) {
   return { definition, minLevel, maxLevel };
 }
 
-function buildSpawnCandidate(data, village, x, y, w, h, wrapEnabled) {
+function buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled) {
   const definitions = definitionsForTile(data, x, y);
   if (!definitions.length) return null;
 
-  const distance = wrappedHexDistance(village, { x, y }, w, h, wrapEnabled);
+  const distance = closestBaseDistance(settlements, { x, y }, w, h, wrapEnabled);
   if (distance <= SAFE_DISTANCE_FROM_BASE) return null;
 
   const strong = isStrongMonsterTile(data, x, y);
@@ -257,7 +263,7 @@ function strongTerritoryRadius(candidate) {
   return Math.max(1, integer(candidate?.strongMonsterInfo?.territoryRadius, DEFAULT_STRONG_TERRITORY_RADIUS));
 }
 
-function buildStrongMinionCandidates(data, village, strongCandidate, minionNames, w, h, wrapEnabled, occupied) {
+function buildStrongMinionCandidates(data, settlements, strongCandidate, minionNames, w, h, wrapEnabled, occupied) {
   const desiredNames = new Set((Array.isArray(minionNames) ? minionNames : []).map(item => text(item)).filter(Boolean));
   if (!desiredNames.size) return [];
 
@@ -272,7 +278,7 @@ function buildStrongMinionCandidates(data, village, strongCandidate, minionNames
       const distanceFromLeader = wrappedHexDistance(center, { x, y }, w, h, wrapEnabled);
       if (distanceFromLeader <= 0 || distanceFromLeader > radius) continue;
 
-      const distanceFromBase = wrappedHexDistance(village, { x, y }, w, h, wrapEnabled);
+      const distanceFromBase = closestBaseDistance(settlements, { x, y }, w, h, wrapEnabled);
       if (distanceFromBase <= SAFE_DISTANCE_FROM_BASE) continue;
 
       // 配下は強敵補正を受けず、その配置マスの通常敵Lv帯を使用する。
@@ -355,7 +361,7 @@ function createEnemy(selection, position, level, index, metadata = {}) {
   };
 }
 
-function spawnStrongGroup(data, village, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random) {
+function spawnStrongGroup(data, settlements, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random) {
   const plan = buildStrongGroupPlan(selection, random);
   const groupId = `strong-group-${candidate.x}-${candidate.y}`;
   const nestId = `enemy-nest-${groupId}`;
@@ -384,7 +390,7 @@ function spawnStrongGroup(data, village, candidate, selection, level, enemies, o
   }
 
   const minionCandidates = shuffle(
-    buildStrongMinionCandidates(data, village, candidate, plan.minionNames, w, h, wrapEnabled, occupied),
+    buildStrongMinionCandidates(data, settlements, candidate, plan.minionNames, w, h, wrapEnabled, occupied),
     random
   );
   let minionCount = 0;
@@ -518,7 +524,7 @@ function buildEnemyNestAndSquadState(enemies) {
   return { enemyNests:nests, enemySquads };
 }
 
-function buildEnemies(data, village) {
+function buildEnemies(data, settlements) {
   const w = Math.max(1, integer(data?.w, 1));
   const h = Math.max(1, integer(data?.h, 1));
   const wrapEnabled = data?.worldWrapEnabled !== false
@@ -528,7 +534,7 @@ function buildEnemies(data, village) {
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
-      const candidate = buildSpawnCandidate(data, village, x, y, w, h, wrapEnabled);
+      const candidate = buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled);
       if (!candidate) continue;
       if (candidate.strong) strongCandidates.push(candidate);
       else normalCandidates.push(candidate);
@@ -544,7 +550,12 @@ function buildEnemies(data, village) {
   // 敵密度設定は通常敵+強敵本体の基準数に使い、強敵の配下は群体構成として別枠で追加する。
   const desiredNormalCount = Math.max(0, desiredTotalCount - strongCandidates.length);
 
-  const seed = (w * 73856093) ^ (h * 19349663) ^ (integer(village?.x) * 83492791) ^ integer(village?.y);
+  const settlementSeed = (Array.isArray(settlements) ? settlements : []).reduce((seed, settlement, index) => (
+    seed
+    ^ Math.imul(integer(settlement?.x) + index + 1, 83492791)
+    ^ Math.imul(integer(settlement?.y) + index + 1, 19349663)
+  ), 0);
+  const seed = (w * 73856093) ^ (h * 19349663) ^ settlementSeed;
   const random = seededRandom(seed);
   const enemies = [];
   const occupied = new Set();
@@ -553,7 +564,7 @@ function buildEnemies(data, village) {
     const selection = chooseEnemyDefinition(candidate, random);
     const level = chooseEnemyLevel(selection, random);
     if (level === null) continue;
-    spawnStrongGroup(data, village, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random);
+    spawnStrongGroup(data, settlements, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random);
   }
 
   let normalSpawned = 0;
@@ -577,9 +588,9 @@ function spawnForActivePlayer() {
   const data = window.__v39FieldRuntime?.mapData;
   const state = window.getV39GameState?.();
   const faction = window.getV39ActiveFactionState?.();
-  const village = getSelectedSettlement(faction);
-  if (!data || !state || !village?.placed) return [];
-  const enemies = buildEnemies(data, village);
+  const settlements = getFactionSettlements(faction).filter(row => row?.placed);
+  if (!data || !state || !settlements.length) return [];
+  const enemies = buildEnemies(data, settlements);
   const { enemyNests, enemySquads } = buildEnemyNestAndSquadState(enemies);
   const strongCount = enemies.filter(enemy => enemy?.strongEnemy === true).length;
   const strongMinionCount = enemies.filter(enemy => enemy?.strongMinion === true).length;
@@ -601,7 +612,8 @@ function spawnForActivePlayer() {
       strongCount,
       strongMinionCount,
       strongGroupCount,
-      tileDivisor:enemySpawnTileDivisor()
+      tileDivisor:enemySpawnTileDivisor(),
+      baseCount:settlements.length
     }
   }));
   return enemies;
