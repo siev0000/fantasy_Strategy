@@ -31,6 +31,10 @@ import {
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import { isV39TestInstantDeathSkill } from "../../lib/v39-test-skill-rules.js";
 import {
+  distributeV39CombatExperience,
+  resolveV39DamageExpReward
+} from "../../lib/v39-unit-experience.js";
+import {
   applyV39TileTransformEffect,
   resolveV39TileTransformEffect,
   validateV39TileTransformEffect
@@ -736,6 +740,9 @@ function performAttack(target, session = attackSession, options = {}) {
     splash:resolveSplashSpec(session.skillRow).value
   });
   const damageById = new Map();
+  const enemyExpRewardedById = new Map();
+  const foreignExpRewardedById = new Map();
+  let expPoolRaw = 0;
   const combatLog = [];
   for (const enemy of supportSkill ? [] : state.enemies) {
     const scale = areaScale.get(coordKey(enemy.x, enemy.y));
@@ -743,10 +750,14 @@ function performAttack(target, session = attackSession, options = {}) {
     const damage = resolveAppliedAttackDamage({ attacker, target:enemy, skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
     damageById.set(text(enemy.id), damage);
     const beforeHp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
+    const afterHp = Math.max(0, beforeHp - damage.total);
+    const expReward = resolveV39DamageExpReward(enemy, beforeHp, afterHp);
+    expPoolRaw += expReward.rawExp;
+    enemyExpRewardedById.set(text(enemy.id), expReward.nextRewardedHpDamage);
     combatLog.push({
       targetId:text(enemy.id), targetName:text(enemy.name), x:enemy.x, y:enemy.y,
-      beforeHp, afterHp:Math.max(0, beforeHp - damage.total), maxHp:Math.max(1, number(enemy?.maxHp, beforeHp)),
-      friendly:false, ...damage
+      beforeHp, afterHp, maxHp:Math.max(1, number(enemy?.maxHp, beforeHp)),
+      expReward:expReward.rawExp, friendly:false, ...damage
     });
     logDamage(attacker, enemy, session.skillRow, damage);
   }
@@ -774,10 +785,14 @@ function performAttack(target, session = attackSession, options = {}) {
       const damage = resolveAppliedAttackDamage({ attacker, target:foreignUnit, skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
       foreignDamageById.set(text(foreignUnit.id), damage);
       const beforeHp = Math.max(0, number(foreignUnit?.hp, foreignUnit?.currentHp));
+      const afterHp = Math.max(0, beforeHp-damage.total);
+      const expReward = resolveV39DamageExpReward(foreignUnit, beforeHp, afterHp);
+      expPoolRaw += expReward.rawExp;
+      foreignExpRewardedById.set(text(foreignUnit.id), expReward.nextRewardedHpDamage);
       combatLog.push({
         targetId:text(foreignUnit.id), targetName:text(foreignUnit.name), targetPlayerId:foreignPlayer.id,
-        x:foreignUnit.x, y:foreignUnit.y, beforeHp, afterHp:Math.max(0, beforeHp-damage.total),
-        maxHp:Math.max(1, number(foreignUnit?.maxHp, beforeHp)), friendly:false, ...damage
+        x:foreignUnit.x, y:foreignUnit.y, beforeHp, afterHp,
+        maxHp:Math.max(1, number(foreignUnit?.maxHp, beforeHp)), expReward:expReward.rawExp, friendly:false, ...damage
       });
       logDamage(attacker, foreignUnit, session.skillRow, damage);
     }
@@ -805,6 +820,7 @@ function performAttack(target, session = attackSession, options = {}) {
       ...enemy,
       hp,
       currentHp:hp,
+      ...(enemyExpRewardedById.has(text(enemy.id)) ? { expRewardedHpDamage:enemyExpRewardedById.get(text(enemy.id)) } : {}),
       ...guardStatePatch(enemy, damage),
       state:hp <= 0 ? "死亡" : text(enemy?.state, "生存"),
       ...(directlyTargeted ? { lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"direct-target" } : {}),
@@ -849,6 +865,7 @@ function performAttack(target, session = attackSession, options = {}) {
             ...unit,
             hp,
             currentHp:hp,
+            ...(foreignExpRewardedById.has(text(unit.id)) ? { expRewardedHpDamage:foreignExpRewardedById.get(text(unit.id)) } : {}),
             ...guardStatePatch(unit, damage),
             state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
             ...(directlyTargeted ? { lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"direct-target" } : {}),
@@ -879,14 +896,39 @@ function performAttack(target, session = attackSession, options = {}) {
         : row.factionState.combatRuntime
     }
   }));
-  window.setV39GameState({ players:nextPlayers, enemies:nextEnemies }, { reason:"combat-attack" });
+  const expPool = Math.max(0, Math.floor(expPoolRaw));
+  const activeAfterCombat = nextPlayers.find(row => row.id === player.id) || player;
+  const expResult = distributeV39CombatExperience(activeAfterCombat.factionState, text(attacker.id), expPool);
+  const resolvedPlayers = nextPlayers.map(row => row.id === player.id
+    ? { ...row, factionState:expResult.factionState }
+    : row);
+  window.setV39GameState({ players:resolvedPlayers, enemies:nextEnemies }, { reason:"combat-attack" });
+  for (const levelUp of expResult.levelUps) {
+    window.dispatchEvent(new CustomEvent("v39:unit-level-up", { detail:levelUp }));
+  }
   const total = combatLog.reduce((sum, entry) => sum + entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const supportCount = supportTargetIds.size;
+  const expText = expResult.awards.length
+    ? ` / EXP ${expResult.awards.map(row => `${row.unitName}+${row.amount}`).join("・")}`
+    : "";
+  const levelUpText = expResult.levelUps.length
+    ? ` / LvUP ${expResult.levelUps.map(row => `${row.unitName} ${row.fromLevel}→${row.toLevel}`).join("・")}`
+    : "";
   const summary = supportSkill
     ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${healing > 0 ? `回復${healing} × ${supportCount}` : grantedGuard > 0 ? `ガード+${grantedGuard} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
-    : `${text(attacker.name)}：${text(session.skillRow.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
-  window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerId:text(attacker.id), skillName:text(session.skillRow.名前), apCost, target, entries:combatLog } }));
+    : `${text(attacker.name)}：${text(session.skillRow.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}${expText}${levelUpText}`;
+  window.dispatchEvent(new CustomEvent("v39:combat-log", {
+    detail:{
+      summary,
+      attackerId:text(attacker.id),
+      skillName:text(session.skillRow.名前),
+      apCost,
+      target,
+      entries:combatLog,
+      experience:{ pool:expResult.expPool, awards:expResult.awards, levelUps:expResult.levelUps }
+    }
+  }));
   if (!supportSkill && !options.isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
     detail:{ attackerSide:"player", attackerId:text(attacker.id), target, skillRow:session.skillRow, entries:combatLog }
   }));
