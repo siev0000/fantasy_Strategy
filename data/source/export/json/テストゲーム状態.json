@@ -338,8 +338,8 @@
             "placed": true,
             "populationByRace": {
               "ゴブリン": 10,
-              "大鬼": 7,
-              "天使": 5
+              "天使": 5,
+              "オーガ": 7
             },
             "foodStockByType": {
               "穀物": 110,
