@@ -128,7 +128,10 @@ const recoveryPercent = Math.round((optionalNumber(terrain.回復) ?? 0) * 100);
 
 export const V39_TEST_GAME_STATE = Object.freeze({
   activePlayerId: String(testGameDb?.activePlayerId || players[0]?.id || ""),
-  players
+  players,
+  territoryOwnerByTile:{ ...(testGameDb?.territoryOwnerByTile || {}) },
+  facilitiesByTile:{ ...(testGameDb?.facilitiesByTile || {}) },
+  territoryStateByTile:{ ...(testGameDb?.territoryStateByTile || {}) }
 });
 
 export const V39_TEST_OPERATION_DATA = Object.freeze({
