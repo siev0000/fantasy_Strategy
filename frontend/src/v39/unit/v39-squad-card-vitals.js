@@ -88,6 +88,41 @@ function installStyles() {
     .squad-card-top{
       margin:0!important;
     }
+
+    .squad-card .squad-exp-ring{
+      --v39-exp-progress:0%;
+      position:relative!important;
+      display:grid!important;
+      place-items:center!important;
+      width:34px!important;
+      height:34px!important;
+      flex:0 0 34px!important;
+      padding:3px!important;
+      border-radius:50%!important;
+      box-sizing:border-box!important;
+      background:conic-gradient(#e4c45d var(--v39-exp-progress),#334147 0)!important;
+      box-shadow:0 0 0 1px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.08)!important;
+    }
+    .squad-card .squad-exp-ring::before{
+      content:""!important;
+      position:absolute!important;
+      inset:3px!important;
+      border-radius:50%!important;
+      background:#10191d!important;
+      z-index:0!important;
+    }
+    .squad-card .squad-exp-ring .squad-icon{
+      position:relative!important;
+      z-index:1!important;
+      width:28px!important;
+      height:28px!important;
+      display:grid!important;
+      place-items:center!important;
+      margin:0!important;
+      border-radius:50%!important;
+      background:#17252b!important;
+      line-height:1!important;
+    }
     @media(max-width:430px) and (orientation:portrait){
       .squad-card .v39-card-vital{
         grid-template-columns:20px minmax(0,1fr)!important;
@@ -106,6 +141,17 @@ function installStyles() {
       .squad-card{
         padding:3px!important;
         gap:1px!important;
+      }
+
+      .squad-card .squad-exp-ring{
+        width:32px!important;
+        height:32px!important;
+        flex-basis:32px!important;
+        padding:3px!important;
+      }
+      .squad-card .squad-exp-ring .squad-icon{
+        width:26px!important;
+        height:26px!important;
       }
     }
   `;
