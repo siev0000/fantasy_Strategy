@@ -1,6 +1,6 @@
 import { getGameDataRows } from "./game-data-registry.js";
 import { resolveV39ResourceIcon } from "./resource-icon-glyphs.js";
-import { V39_SETTLEMENT_PRODUCTION_BALANCE, V39_VOLCANO_DAMAGE_BALANCE } from "./v39-gameplay-balance.js";
+import { V39_CIVIC_BALANCE, V39_SETTLEMENT_PRODUCTION_BALANCE, V39_VOLCANO_DAMAGE_BALANCE } from "./v39-gameplay-balance.js";
 import { resolveCurrentResearchLevel } from "./research-progress.js";
 import {
   collectTerritoryIncome,
@@ -667,13 +667,20 @@ export function startV39Construction(state, playerId, facilityName, tile, mapDat
   return { ok:true, state:{ ...state, players }, queueItem, definition };
 }
 
+const CIVIC_FACILITY_EFFECT_KEYS = new Set(["幸福度", "治安", "不満度低下"]);
+
 function facilityCityModifiers(buildings) {
   const byName = new Map(facilityDefinitions().map(def => [def.name, def]));
   const result = {};
   for (const name of buildings || []) {
     const definition = byName.get(name);
-    if (definition?.scope !== "全体") continue;
-    for (const [key, value] of Object.entries(definition.effects || {})) result[key] = round1(number(result[key]) + value);
+    if (!definition) continue;
+    const globalScope = definition.scope === "全体";
+    for (const [key, value] of Object.entries(definition.effects || {})) {
+      if (!globalScope && !CIVIC_FACILITY_EFFECT_KEYS.has(key)) continue;
+      const scale = globalScope ? 1 : V39_CIVIC_BALANCE.localFacilityCivicScale;
+      result[key] = round1(number(result[key]) + number(value) * scale);
+    }
   }
   return result;
 }
