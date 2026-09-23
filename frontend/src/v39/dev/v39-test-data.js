@@ -40,7 +40,6 @@ const createUnit = definition => {
     name: definition.name,
     icon: definition.icon,
     squadId: definition.squadId,
-    settlementId: definition.settlementId,
     x: optionalNumber(position[0]),
     y: optionalNumber(position[1]),
     race: definition.race,
@@ -71,6 +70,7 @@ const createUnit = definition => {
   const hp = Math.max(0, Math.min(maxHp, Math.round(maxHp * hpRate)));
   return {
     ...derived,
+    initialSettlementSlot:Math.max(0, Math.floor(optionalNumber(definition.initialSettlementSlot) ?? 0)),
     maxHp,
     hp,
     currentHp: hp,
