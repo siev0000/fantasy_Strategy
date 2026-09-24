@@ -296,6 +296,37 @@ function normalizePlayerName(raw) {
     .slice(0, 20) || "Player";
 }
 
+function normalizeV39DisplayName(raw) {
+  return String(raw || "")
+    .replace(/\r?\n/g, " ")
+    .trim()
+    .slice(0, 20);
+}
+
+function createUniqueV39DisplayName(room, rawName, fallbackName, excludeParticipantId = "") {
+  const requestedName = normalizeV39DisplayName(rawName);
+  const baseName = requestedName || normalizeV39DisplayName(fallbackName) || "プレイヤー1";
+  const usedNames = new Set();
+  if (room?.participants instanceof Map) {
+    for (const participant of room.participants.values()) {
+      if (participant.participantId === excludeParticipantId) continue;
+      const displayName = normalizeV39DisplayName(participant.displayName);
+      if (displayName) usedNames.add(displayName);
+    }
+  }
+  if (!usedNames.has(baseName)) return baseName;
+
+  const numberMatch = baseName.match(/^(.*?)(\d+)$/u);
+  const stem = (numberMatch ? numberMatch[1] : baseName) || "プレイヤー";
+  let suffixNumber = numberMatch ? Math.max(2, Number(numberMatch[2]) + 1) : 2;
+  while (true) {
+    const suffix = String(suffixNumber);
+    const candidate = `${stem.slice(0, Math.max(1, 20 - suffix.length))}${suffix}`;
+    if (!usedNames.has(candidate)) return candidate;
+    suffixNumber += 1;
+  }
+}
+
 function normalizeRoomChatMessage(raw) {
   return String(raw || "")
     .replace(/\r?\n/g, " ")
@@ -552,8 +583,10 @@ io.on("connection", socket => {
   socket.data.participantId = "";
 
   socket.on("room:create", payload => {
-    const playerName = normalizePlayerName(payload?.playerName);
     const isV39 = payload?.mode === "v39-world";
+    const playerName = isV39
+      ? createUniqueV39DisplayName(null, payload?.playerName, "ホストプレイヤー")
+      : normalizePlayerName(payload?.playerName);
     if (isV39 && payload?.protocolVersion !== V39_ROOM_PROTOCOL_VERSION) {
       emitV39RoomError(socket, "通信バージョンが一致しません。画面を更新してください。");
       return;
@@ -584,7 +617,14 @@ io.on("connection", socket => {
       room.settings = normalizeV39RoomSettings(room.settings, room);
       syncV39ParticipantAssignments(room);
       socket.data.participantId = participantId;
-      socket.emit("room:created", { roomId, roomName:room.roomName, participantId, reconnectToken, protocolVersion: V39_ROOM_PROTOCOL_VERSION });
+      socket.emit("room:created", {
+        roomId,
+        roomName:room.roomName,
+        participantId,
+        reconnectToken,
+        displayName:playerName,
+        protocolVersion: V39_ROOM_PROTOCOL_VERSION
+      });
       pushRoomChat(room, "System", `${playerName} がルームを作成。`);
       emitV39RoomSnapshot(room, socket);
       broadcastRoom(roomId);
@@ -598,7 +638,7 @@ io.on("connection", socket => {
 
   socket.on("room:join", payload => {
     const roomId = normalizeRoomId(payload?.roomId);
-    const playerName = normalizePlayerName(payload?.playerName);
+    const rawPlayerName = payload?.playerName;
     if (!roomId) {
       socket.emit("room:error", { message: "ルームIDが不正です。" });
       return;
@@ -625,7 +665,7 @@ io.on("connection", socket => {
     if (socket.data.roomId && socket.data.roomId !== roomId) detachSocketFromRoom(socket, { removeParticipant: true, silent: true });
     socket.join(roomId);
     socket.data.roomId = roomId;
-    room.players.set(socket.id, playerName);
+
     if (isV39) {
       const requestedParticipantId = String(payload?.participantId || "");
       const reconnectToken = String(payload?.reconnectToken || "");
@@ -633,18 +673,19 @@ io.on("connection", socket => {
       if (participant && participant.reconnectToken !== reconnectToken) {
         socket.leave(roomId);
         socket.data.roomId = "";
-        room.players.delete(socket.id);
         emitV39RoomError(socket, "再接続情報が一致しません。");
         return;
       }
+
+      let playerName = "";
       if (!participant) {
         if (room.participants.size >= V39_ROOM_PARTICIPANT_LIMIT) {
           socket.leave(roomId);
           socket.data.roomId = "";
-          room.players.delete(socket.id);
           emitV39RoomError(socket, `参加人数は最大${V39_ROOM_PARTICIPANT_LIMIT}人です。`);
           return;
         }
+        playerName = createUniqueV39DisplayName(room, rawPlayerName, "プレイヤー1");
         participant = {
           participantId: generateParticipantId(),
           reconnectToken: generateReconnectToken(),
@@ -666,22 +707,34 @@ io.on("connection", socket => {
           previousSocket.data.participantId = "";
           room.players.delete(previousSocket.id);
         }
+        playerName = createUniqueV39DisplayName(
+          room,
+          normalizeV39DisplayName(rawPlayerName) || participant.displayName,
+          participant.displayName || "プレイヤー1",
+          participant.participantId
+        );
         participant.displayName = playerName;
         participant.connected = true;
         participant.socketId = socket.id;
       }
+
+      room.players.set(socket.id, playerName);
       socket.data.participantId = participant.participantId;
       syncV39ParticipantAssignments(room);
       socket.emit("room:joined", {
         roomId,
         participantId: participant.participantId,
         reconnectToken: participant.reconnectToken,
+        displayName:playerName,
         protocolVersion: V39_ROOM_PROTOCOL_VERSION
       });
       emitV39RoomSnapshot(room, socket);
       broadcastRoom(roomId);
       return;
     }
+
+    const playerName = normalizePlayerName(rawPlayerName);
+    room.players.set(socket.id, playerName);
     pushRoomChat(room, "System", `${playerName} がルームに参加。`);
     pushLog(room.state, `${playerName} がルームに参加。`);
     broadcastRoom(roomId);
