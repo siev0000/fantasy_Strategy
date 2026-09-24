@@ -212,8 +212,36 @@ try {
     fail("ゲーム開始後の再接続で元参加者・ゲーム状態へ復帰できません。");
   }
 
+  const explicitLeaveNotice = nextEvent(guestAfterStart, "room:left");
+  const explicitLeaveDisconnected = nextEvent(host, "room:snapshot", snapshot => snapshot.participants.some(
+    participant => participant.participantId === guestCredentials.participantId && !participant.connected
+  ));
+  guestAfterStart.emit("room:leave");
+  const explicitLeavePayload = await explicitLeaveNotice;
+  await explicitLeaveDisconnected;
+  if (explicitLeavePayload?.reconnectable !== true || explicitLeavePayload?.roomId !== hostCredentials.roomId) {
+    fail("ゲーム中の切断で再参加情報が保持されません。");
+  }
+
+  const guestAfterExplicitLeave = await connectClient();
+  const explicitRejoinAccepted = nextEvent(guestAfterExplicitLeave, "room:joined");
+  const explicitRejoinSnapshot = nextEvent(guestAfterExplicitLeave, "game:snapshot");
+  guestAfterExplicitLeave.emit("room:join", {
+    roomId:hostCredentials.roomId,
+    playerName:"参加者",
+    mode:"v39-world",
+    protocolVersion:"v39-room-v1",
+    participantId:guestCredentials.participantId,
+    reconnectToken:guestCredentials.reconnectToken
+  });
+  const explicitRejoinCredentials = await explicitRejoinAccepted;
+  const explicitRejoinGameSnapshot = await explicitRejoinSnapshot;
+  if (explicitRejoinCredentials.participantId !== guestCredentials.participantId || explicitRejoinGameSnapshot.snapshotJson !== snapshotJson) {
+    fail("ゲーム中に明示切断した参加者が元ゲームへ再参加できません。");
+  }
+
   host.close();
-  guestAfterStart.close();
+  guestAfterExplicitLeave.close();
   console.log("v39 room lobby check passed");
 } finally {
   server.kill("SIGTERM");
