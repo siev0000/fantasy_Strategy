@@ -13,6 +13,7 @@ const DEV_MODE = process.env.NODE_ENV !== "production";
 const app = express();
 const server = http.createServer(app);
 const FRONTEND_DIST_DIR = path.join(__dirname, "web-vue-dist");
+const V39_GAME_SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024;
 const SOCKET_CORS_ORIGINS = (process.env.SOCKET_CORS_ORIGINS || "")
   .split(",")
   .map(origin => origin.trim())
@@ -28,6 +29,7 @@ const allowedSocketOrigins = new Set(
 );
 const allowAllSocketOriginsInDev = DEV_MODE && SOCKET_CORS_ORIGINS.length === 0;
 const io = new Server(server, {
+  maxHttpBufferSize: V39_GAME_SNAPSHOT_MAX_BYTES,
   cors: {
     origin(origin, callback) {
       if (allowAllSocketOriginsInDev || !origin || allowedSocketOrigins.has(origin)) {
@@ -369,7 +371,9 @@ function createRoom(roomId, mode = "legacy-battle", roomName = "") {
       gameSetup: null
     },
     createdAt: Date.now(),
-    stateRevision: 0
+    stateRevision: 0,
+    gameSnapshotJson: "",
+    startedAt: 0
   };
   rooms.set(roomId, room);
   return room;
@@ -459,7 +463,8 @@ function serializeV39RoomSnapshot(room) {
     hostParticipantId: room.hostParticipantId,
     participants: serializeV39Participants(room),
     settings: room.settings,
-    stateRevision: room.stateRevision
+    stateRevision: room.stateRevision,
+    startedAt: room.startedAt || 0
   };
 }
 
@@ -562,6 +567,36 @@ function emitV39RoomError(socket, message) {
   socket.emit("room:error", { message });
 }
 
+function validateV39GameSnapshotJson(snapshotJson, room) {
+  if (typeof snapshotJson !== "string" || !snapshotJson.trim()) return { ok:false, message:"ゲーム状態が空です。" };
+  if (Buffer.byteLength(snapshotJson, "utf8") > V39_GAME_SNAPSHOT_MAX_BYTES) {
+    return { ok:false, message:"ゲーム状態が大きすぎます。" };
+  }
+  try {
+    const parsed = JSON.parse(snapshotJson);
+    if (parsed?.format !== "fantasy-strategy-v39") return { ok:false, message:"v39ゲーム状態ではありません。" };
+    if (!parsed?.gameState || !Array.isArray(parsed.gameState.players)) return { ok:false, message:"プレイヤー状態がありません。" };
+    if (!parsed?.field || !Array.isArray(parsed.field?.mapData?.grid)) return { ok:false, message:"マップ状態がありません。" };
+    const expectedFactionCount = Math.max(1, Number(room?.settings?.factionCount) || 1);
+    if (parsed.gameState.players.length !== expectedFactionCount) {
+      return { ok:false, message:"ロビーの操作勢力数とゲーム状態の勢力数が一致しません。" };
+    }
+    return { ok:true };
+  } catch {
+    return { ok:false, message:"ゲーム状態JSONを読み取れませんでした。" };
+  }
+}
+
+function resetV39GameStartToLobby(room, message = "") {
+  if (!isV39WorldRoom(room)) return;
+  room.phase = "lobby";
+  room.gameSnapshotJson = "";
+  room.startedAt = 0;
+  room.stateRevision += 1;
+  emitV39RoomSnapshot(room);
+  if (message) io.to(room.roomId).emit("game:start-failed", { roomId:room.roomId, message });
+}
+
 function validateV39RoomSocket(socket, payload) {
   const roomId = normalizeRoomId(payload?.roomId);
   const room = rooms.get(roomId);
@@ -627,6 +662,13 @@ io.on("connection", socket => {
       });
       pushRoomChat(room, "System", `${playerName} がルームを作成。`);
       emitV39RoomSnapshot(room, socket);
+      if (room.phase === "playing" && room.gameSnapshotJson) {
+        socket.emit("game:snapshot", {
+          roomId,
+          snapshotJson:room.gameSnapshotJson,
+          stateRevision:room.stateRevision
+        });
+      }
       broadcastRoom(roomId);
       return;
     }
@@ -670,6 +712,12 @@ io.on("connection", socket => {
       const requestedParticipantId = String(payload?.participantId || "");
       const reconnectToken = String(payload?.reconnectToken || "");
       let participant = room.participants.get(requestedParticipantId);
+      if (!participant && room.phase !== "lobby") {
+        socket.leave(roomId);
+        socket.data.roomId = "";
+        emitV39RoomError(socket, "ゲーム開始後は新しい参加者として入室できません。再接続情報がある場合は同じ参加者として復帰してください。");
+        return;
+      }
       if (participant && participant.reconnectToken !== reconnectToken) {
         socket.leave(roomId);
         socket.data.roomId = "";
@@ -741,7 +789,9 @@ io.on("connection", socket => {
   });
 
   socket.on("room:leave", () => {
-    detachSocketFromRoom(socket, { removeParticipant: true });
+    const room = rooms.get(socket.data.roomId);
+    const removeParticipant = !isV39WorldRoom(room) || room.phase === "lobby";
+    detachSocketFromRoom(socket, { removeParticipant });
     socket.emit("room:left");
   });
 
@@ -772,6 +822,98 @@ io.on("connection", socket => {
     resetV39ReadyStates(context.room, context.participant.participantId);
     context.room.stateRevision += 1;
     emitV39RoomSnapshot(context.room);
+  });
+
+  socket.on("game:start", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    const { room, participant } = context;
+    if (room.hostParticipantId !== participant.participantId) {
+      emitV39RoomError(socket, "ゲームを開始できるのはホストだけです。");
+      return;
+    }
+    if (room.phase !== "lobby") {
+      emitV39RoomError(socket, "ゲーム開始処理はすでに進行しています。");
+      return;
+    }
+    if (!room.settings?.gameSetup) {
+      emitV39RoomError(socket, "ゲーム開始設定を先に保存してください。");
+      return;
+    }
+    const participants = [...room.participants.values()];
+    if (!participants.length || participants.some(row => !row.connected || !row.ready)) {
+      emitV39RoomError(socket, "接続中の参加者全員が準備完了になるまで開始できません。");
+      return;
+    }
+    syncV39ParticipantAssignments(room);
+    const factionCount = Math.max(1, Number(room.settings?.factionCount) || 1);
+    const assignments = room.settings?.playerParticipantAssignments || {};
+    for (let index = 1; index <= factionCount; index += 1) {
+      const participantId = String(assignments[`player-${index}`] || "");
+      if (!room.participants.has(participantId)) {
+        emitV39RoomError(socket, `勢力${index}の担当参加者が不正です。`);
+        return;
+      }
+    }
+    room.phase = "setup";
+    room.gameSnapshotJson = "";
+    room.startedAt = 0;
+    room.stateRevision += 1;
+    emitV39RoomSnapshot(room);
+    io.to(room.roomId).emit("game:starting", {
+      roomId:room.roomId,
+      stateRevision:room.stateRevision
+    });
+    socket.emit("game:start:host", {
+      roomId:room.roomId,
+      settings:room.settings,
+      participants:serializeV39Participants(room),
+      stateRevision:room.stateRevision
+    });
+  });
+
+  socket.on("game:snapshot", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    const { room, participant } = context;
+    if (room.hostParticipantId !== participant.participantId) {
+      emitV39RoomError(socket, "ゲーム状態を確定できるのはホストだけです。");
+      return;
+    }
+    if (room.phase !== "setup") {
+      emitV39RoomError(socket, "現在は初期ゲーム状態を受け付けていません。");
+      return;
+    }
+    const snapshotJson = String(payload?.snapshotJson || "");
+    const validation = validateV39GameSnapshotJson(snapshotJson, room);
+    if (!validation.ok) {
+      resetV39GameStartToLobby(room, validation.message);
+      return;
+    }
+    room.gameSnapshotJson = snapshotJson;
+    room.phase = "playing";
+    room.startedAt = Date.now();
+    room.stateRevision += 1;
+    emitV39RoomSnapshot(room);
+    socket.broadcast.to(room.roomId).emit("game:snapshot", {
+      roomId:room.roomId,
+      snapshotJson,
+      stateRevision:room.stateRevision
+    });
+    io.to(room.roomId).emit("game:started", {
+      roomId:room.roomId,
+      stateRevision:room.stateRevision,
+      startedAt:room.startedAt
+    });
+  });
+
+  socket.on("game:start-failed", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    const { room, participant } = context;
+    if (room.hostParticipantId !== participant.participantId || room.phase !== "setup") return;
+    const message = String(payload?.message || "ホスト側でゲーム開始に失敗しました。").slice(0, 240);
+    resetV39GameStartToLobby(room, message);
   });
 
   socket.on("battle:action", payload => {
