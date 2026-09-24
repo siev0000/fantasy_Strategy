@@ -151,8 +151,69 @@ try {
   await reconnected;
   if (rejoinedCredentials.participantId !== guestCredentials.participantId) fail("再接続時に参加者IDが変化しました。");
 
-  host.close();
+  const hostStartRequest = nextEvent(host, "game:start:host");
+  const guestStarting = nextEvent(rejoinedGuest, "game:starting");
+  host.emit("game:start", { roomId:hostCredentials.roomId });
+  const startPayload = await hostStartRequest;
+  await guestStarting;
+  if (startPayload.settings?.factionCount !== 2 || startPayload.participants?.length !== 2) fail("ゲーム開始要求にロビー設定が含まれていません。");
+
+  const snapshotJson = JSON.stringify({
+    format:"fantasy-strategy-v39",
+    version:4,
+    savedAt:new Date().toISOString(),
+    gameState:{
+      players:[
+        { id:"player-1", controllerParticipantId:hostCredentials.participantId },
+        { id:"player-2", controllerParticipantId:guestCredentials.participantId }
+      ],
+      sessionParticipants:[
+        { participantId:hostCredentials.participantId, assignedPlayerIds:["player-1"] },
+        { participantId:guestCredentials.participantId, assignedPlayerIds:["player-2"] }
+      ]
+    },
+    field:{ settings:{ w:1, h:1 }, mapData:{ w:1, h:1, grid:[["平原"]] } },
+    view:null
+  });
+  const guestGameSnapshot = nextEvent(rejoinedGuest, "game:snapshot");
+  const hostStarted = nextEvent(host, "game:started");
+  const guestStarted = nextEvent(rejoinedGuest, "game:started");
+  host.emit("game:snapshot", { roomId:hostCredentials.roomId, snapshotJson });
+  const receivedGameSnapshot = await guestGameSnapshot;
+  await Promise.all([hostStarted, guestStarted]);
+  if (receivedGameSnapshot.snapshotJson !== snapshotJson) fail("ホスト確定のゲーム状態が参加者へ配信されません。");
+
+  const lateJoiner = await connectClient();
+  const lateJoinRejected = nextEvent(lateJoiner, "room:error", payload => /ゲーム開始後/.test(String(payload?.message || "")));
+  lateJoiner.emit("room:join", {
+    roomId:hostCredentials.roomId,
+    playerName:"途中参加",
+    mode:"v39-world",
+    protocolVersion:"v39-room-v1"
+  });
+  await lateJoinRejected;
+  lateJoiner.close();
+
   rejoinedGuest.close();
+  const guestAfterStart = await connectClient();
+  const reconnectAfterStartAccepted = nextEvent(guestAfterStart, "room:joined");
+  const reconnectAfterStartSnapshot = nextEvent(guestAfterStart, "game:snapshot");
+  guestAfterStart.emit("room:join", {
+    roomId:hostCredentials.roomId,
+    playerName:"参加者",
+    mode:"v39-world",
+    protocolVersion:"v39-room-v1",
+    participantId:guestCredentials.participantId,
+    reconnectToken:guestCredentials.reconnectToken
+  });
+  const afterStartCredentials = await reconnectAfterStartAccepted;
+  const afterStartSnapshot = await reconnectAfterStartSnapshot;
+  if (afterStartCredentials.participantId !== guestCredentials.participantId || afterStartSnapshot.snapshotJson !== snapshotJson) {
+    fail("ゲーム開始後の再接続で元参加者・ゲーム状態へ復帰できません。");
+  }
+
+  host.close();
+  guestAfterStart.close();
   console.log("v39 room lobby check passed");
 } finally {
   server.kill("SIGTERM");
