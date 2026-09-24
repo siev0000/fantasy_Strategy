@@ -662,13 +662,6 @@ io.on("connection", socket => {
       });
       pushRoomChat(room, "System", `${playerName} がルームを作成。`);
       emitV39RoomSnapshot(room, socket);
-      if (room.phase === "playing" && room.gameSnapshotJson) {
-        socket.emit("game:snapshot", {
-          roomId,
-          snapshotJson:room.gameSnapshotJson,
-          stateRevision:room.stateRevision
-        });
-      }
       broadcastRoom(roomId);
       return;
     }
@@ -777,6 +770,13 @@ io.on("connection", socket => {
         protocolVersion: V39_ROOM_PROTOCOL_VERSION
       });
       emitV39RoomSnapshot(room, socket);
+      if (room.phase === "playing" && room.gameSnapshotJson) {
+        socket.emit("game:snapshot", {
+          roomId,
+          snapshotJson:room.gameSnapshotJson,
+          stateRevision:room.stateRevision
+        });
+      }
       broadcastRoom(roomId);
       return;
     }
