@@ -11,6 +11,7 @@ await page.waitForFunction(() => typeof window.startV39LocalSession === "functio
 
 const report = await page.evaluate(async () => {
   const assignedSession = window.startV39LocalSession(3, {
+    playMode:"single-test",
     participantCount:2,
     playerParticipantAssignments:{ "player-1":"local-1", "player-2":"local-2", "player-3":"local-2" }
   });
@@ -18,14 +19,21 @@ const report = await page.evaluate(async () => {
     participantCount:assignedSession.sessionParticipants.length,
     assignments:Object.fromEntries(assignedSession.players.map(player => [player.id, player.controllerParticipantId]))
   };
-  const maximumSession = window.startV39LocalSession(8);
+  const maximumSession = window.startV39LocalSession(8, { playMode:"single-test" });
   const maximumSessionCheck = {
     playerCount:maximumSession.players.length,
     assignedPlayerCount:maximumSession.sessionParticipants[0]?.assignedPlayerIds?.length || 0,
     uniqueUnitIds:new Set(maximumSession.players.flatMap(player => player.factionState.units.map(unit => unit.id))).size,
     unitCount:maximumSession.players.flatMap(player => player.factionState.units).length
   };
-  const source = window.startV39LocalSession(2);
+  const normalSession = window.startV39LocalSession(2, { playMode:"single-normal" });
+  const normalSessionCheck = {
+    playerCount:normalSession.players.length,
+    unitCount:normalSession.players.flatMap(player => player.factionState.units).length,
+    settlementCount:normalSession.players.flatMap(player => player.factionState.settlements).length,
+    races:normalSession.players.map(player => player.race)
+  };
+  const source = window.startV39LocalSession(2, { playMode:"single-test" });
   const field = window.generateV39TestFieldWithSeed({ w:36, h:36, patternId:"realistic" }, "local-session-check");
   window.closeFieldSettingsModal?.();
   const placedPlayerIds = [];
@@ -82,6 +90,7 @@ const report = await page.evaluate(async () => {
   return {
     assignedSessionCheck,
     maximumSessionCheck,
+    normalSessionCheck,
     sourcePlayers:source.players.length,
     sessionParticipants:source.sessionParticipants,
     uniqueUnitIds:new Set(source.players.flatMap(player => player.factionState.units.map(unit => unit.id))).size,
@@ -137,6 +146,10 @@ if (errors.length
   || report.maximumSessionCheck.playerCount !== 8
   || report.maximumSessionCheck.assignedPlayerCount !== 8
   || report.maximumSessionCheck.uniqueUnitIds !== report.maximumSessionCheck.unitCount
+  || report.normalSessionCheck.playerCount !== 2
+  || report.normalSessionCheck.unitCount !== 0
+  || report.normalSessionCheck.settlementCount !== 0
+  || report.normalSessionCheck.races.some(Boolean)
   || report.sourcePlayers !== 2
   || report.sessionParticipants.length !== 1
   || report.sessionParticipants[0]?.assignedPlayerIds?.length !== 2
