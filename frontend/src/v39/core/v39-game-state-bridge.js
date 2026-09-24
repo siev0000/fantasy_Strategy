@@ -473,6 +473,67 @@ function createLocalSessionParticipants(players, participantCount, assignments =
   return { players:normalizedPlayers, sessionParticipants:participants };
 }
 
+function createRemoteSessionParticipants(players, participantSource, assignments = {}) {
+  const source = Array.isArray(participantSource) ? participantSource.filter(Boolean) : [];
+  const participants = source.map((participant, index) => ({
+    participantId:String(participant?.participantId || "").trim() || `remote-${index + 1}`,
+    name:String(participant?.displayName || participant?.name || "").trim() || `参加者${index + 1}`,
+    controlMode:"remote",
+    assignedPlayerIds:[]
+  }));
+  if (!participants.length) {
+    return createLocalSessionParticipants(players, 1, assignments);
+  }
+  const participantIds = new Set(participants.map(participant => participant.participantId));
+  const normalizedPlayers = players.map((player, index) => {
+    const requested = String(assignments?.[player.id] || "");
+    const controllerParticipantId = participantIds.has(requested)
+      ? requested
+      : participants[index % participants.length].participantId;
+    participants.find(participant => participant.participantId === controllerParticipantId)?.assignedPlayerIds.push(player.id);
+    return { ...player, controllerParticipantId };
+  });
+  return { players:normalizedPlayers, sessionParticipants:participants };
+}
+
+function startMultiplayerSession(playerCount, options = {}) {
+  const count = normalizeV39LocalPlayerCount(playerCount);
+  const initialPlayers = createLocalSessionPlayers(count);
+  if (!initialPlayers.length) return getState();
+  const session = createRemoteSessionParticipants(
+    initialPlayers,
+    options?.participants,
+    options?.playerParticipantAssignments
+  );
+  const players = session.players;
+  const activePlayerId = players[0]?.id || "";
+  const gameSettings = normalizeGameStartSettings(options?.gameSettings || state.gameSettings);
+  state = normalizeState({
+    ...EMPTY_STATE,
+    gameSettings,
+    players,
+    activePlayerId,
+    sessionParticipants:session.sessionParticipants,
+    timeline:{
+      ...EMPTY_STATE.timeline,
+      playerTurnOrder:players.map(player => player.id),
+      activeTurnPlayerId:activePlayerId,
+      endedPlayerIds:[]
+    }
+  });
+  dispatchChange("multiplayer-session-started");
+  window.dispatchEvent(new CustomEvent("v39:multiplayer-session-started", {
+    detail:{
+      playerCount:count,
+      participantCount:session.sessionParticipants.length,
+      activePlayerId,
+      playerIds:players.map(player => player.id),
+      participantIds:session.sessionParticipants.map(participant => participant.participantId)
+    }
+  }));
+  return getState();
+}
+
 function startLocalSession(playerCount, options = {}) {
   const count = normalizeV39LocalPlayerCount(playerCount);
   const initialPlayers = createLocalSessionPlayers(count);
@@ -558,6 +619,7 @@ window.updateV39ActiveFactionState = updateActiveFactionState;
 window.updateV39TileState = updateTileState;
 window.clearV39GameState = clearState;
 window.startV39LocalSession = startLocalSession;
+window.startV39MultiplayerSession = startMultiplayerSession;
 window.__v39GameStateDefaults = normalizeState(window.V39_INITIAL_GAME_STATE || EMPTY_STATE);
 
 export {
@@ -572,5 +634,6 @@ export {
   updateActiveFactionState,
   updateTileState,
   clearState,
-  normalizeState
+  normalizeState,
+  startMultiplayerSession
 };
