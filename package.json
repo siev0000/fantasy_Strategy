@@ -15,6 +15,9 @@
     "build:front:test-on": "vite build --mode teston --config frontend/vite.config.mjs",
     "audit:data": "node scripts/audit-game-data-usage.mjs",
     "benchmark:render": "node scripts/benchmark-v39-render-layers.mjs",
+    "check:local-session": "node scripts/check-v39-local-session.mjs",
+    "check:friendly-skill-targeting": "node scripts/check-v39-friendly-skill-targeting.mjs",
+    "check:field-settings-scroll": "node scripts/check-v39-field-settings-scroll.mjs",
     "preview:front": "vite preview --config frontend/vite.config.mjs"
   },
   "engines": {

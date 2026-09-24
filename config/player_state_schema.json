@@ -3,11 +3,12 @@
   "$id": "player_state_schema.json",
   "title": "1プレイヤーデータ",
   "type": "object",
-  "required": ["id", "label", "isPlayer", "race", "ready", "factionState"],
+  "required": ["id", "label", "isPlayer", "controllerParticipantId", "race", "ready", "factionState"],
   "properties": {
     "id": { "type": "string", "description": "通信・保存で共有するプレイヤーID" },
     "label": { "type": "string", "description": "画面表示名" },
     "isPlayer": { "type": "boolean", "description": "人間参加者かどうか" },
+    "controllerParticipantId": { "type": "string", "description": "この勢力の操作を担当する参加者ID" },
     "race": { "type": "string", "description": "勢力の主種族" },
     "ready": { "type": "boolean", "description": "ゲーム開始準備の完了状態" },
     "factionState": { "$ref": "#/$defs/factionState" }

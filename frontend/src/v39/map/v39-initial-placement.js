@@ -40,6 +40,21 @@ function placedSettlements(faction) {
   return getFactionSettlements(faction).filter(row => row?.placed);
 }
 
+function needsInitialPlacement(player) {
+  const faction = player?.factionState;
+  return !!faction && placedSettlements(faction).length < initialSettlementPlans(faction).length;
+}
+
+function findNextPlayerNeedingInitialPlacement(state, afterPlayerId = "") {
+  const players = Array.isArray(state?.players) ? state.players : [];
+  const start = Math.max(-1, players.findIndex(player => player.id === afterPlayerId));
+  for (let offset = 1; offset <= players.length; offset += 1) {
+    const player = players[(start + offset + players.length) % players.length];
+    if (needsInitialPlacement(player)) return player;
+  }
+  return null;
+}
+
 function placementSlot(unit) {
   const value = Number(unit?.initialSettlementSlot);
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
@@ -389,7 +404,7 @@ function placeInitialBase(tile) {
     territoryOwnerByTile,
     facilitiesByTile,
     territoryStateByTile
-  }, { reason:complete ? "initial-placement-complete" : "initial-settlement-placed" });
+  }, { reason:"initial-settlement-placed" });
 
   const placedUnitIds = units.filter(unit => text(unit?.settlementId) === resolvedSettlementId)
     .map(unit => unit.id).filter(Boolean);
@@ -411,11 +426,17 @@ function placeInitialBase(tile) {
 
   if (complete) {
     showBanner(`初期拠点${plans.length}件の設置が完了しました`);
+    const stateAfterPlacement = getGameState();
+    const nextPlayer = findNextPlayerNeedingInitialPlacement(stateAfterPlacement, player.id);
+    if (nextPlayer) {
+      window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
+      window.setV39GameState?.({ activePlayerId:nextPlayer.id }, { reason:"initial-placement-player-switch" });
+      beginInitialPlacement({ force:true });
+      return true;
+    }
+    window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
     window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
-      detail:{
-        ...detail,
-        settlements:getFactionSettlements(factionState)
-      }
+      detail:{ ...detail, settlements:getFactionSettlements(factionState) }
     }));
   } else {
     showBanner(`拠点${placementIndex + 1}/${plans.length}を設置しました。続けて${placementBannerText(factionState)}`, true);

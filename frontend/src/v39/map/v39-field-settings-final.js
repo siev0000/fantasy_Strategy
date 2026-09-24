@@ -7,6 +7,11 @@ import {
   normalizeGameStartSettings
 } from "../../lib/game-start-settings.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import {
+  V39_LOCAL_SESSION_PLAYER_LIMIT,
+  normalizeV39LocalParticipantCount,
+  normalizeV39LocalPlayerCount
+} from "../../lib/v39-local-multiplayer-session.js";
 
 const FIELD_SETTINGS_STORAGE_KEY = "v39-field-settings-v1";
 
@@ -16,6 +21,9 @@ const DEFAULT_FIELD_SETTINGS = Object.freeze({
   mountainMode: "random",
   enemySpawnTileDivisor: 40,
   neutralVillageCount: V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount,
+  localPlayerCount: V39_LOCAL_SESSION_PLAYER_LIMIT.min,
+  localParticipantCount: V39_LOCAL_SESSION_PLAYER_LIMIT.min,
+  playerParticipantAssignments: {},
   gameSettings: normalizeGameStartSettings({
     turnProgressionMode: GAME_START_DEFAULT_TURN_MODE,
     maxCombatTurnsPerWorldTurn: GAME_START_DEFAULT_MAX_COMBAT_TURNS
@@ -86,9 +94,9 @@ function createStyles() {
   style.textContent = `
 #v39-field-settings-modal{position:fixed;inset:0;z-index:10050;display:none;place-items:center;padding:max(8px,var(--safe-t,0px)) max(8px,var(--safe-r,0px)) max(8px,var(--safe-b,0px)) max(8px,var(--safe-l,0px));background:rgba(1,5,8,.82);backdrop-filter:blur(3px)}
 #v39-field-settings-modal.open{display:grid}
-#v39-field-settings-dialog{width:min(720px,100%);height:min(760px,100%);max-height:calc(100svh - 16px);display:grid;grid-template-rows:48px minmax(0,1fr) auto;border:1px solid #46575e;border-radius:10px;background:linear-gradient(180deg,#111c20,#0a1216);box-shadow:0 18px 50px rgba(0,0,0,.62);overflow:hidden;color:#e8efec}
+#v39-field-settings-dialog{box-sizing:border-box;width:min(720px,100%);height:min(760px,100%);max-height:calc(100dvh - 16px);min-height:0;display:grid;grid-template-rows:48px minmax(0,1fr) auto;border:1px solid #46575e;border-radius:10px;background:linear-gradient(180deg,#111c20,#0a1216);box-shadow:0 18px 50px rgba(0,0,0,.62);overflow:hidden;color:#e8efec}
 .v39-field-settings-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #34444a;background:#111c21}.v39-field-settings-head h2{font-size:15px;margin:0}.v39-field-settings-head small{font-size:12px;color:#829499}.v39-field-settings-head button{margin-left:auto;width:34px;height:30px;border:1px solid #46575d;border-radius:7px;background:#172429;color:#e8efec}
-.v39-field-settings-body{min-height:0;overflow:auto;padding:8px;display:grid;gap:7px;align-content:start}
+.v39-field-settings-body{min-width:0;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:8px;display:grid;grid-auto-rows:max-content;gap:7px;align-content:start}
 .v39-start-section{border:1px solid #34444a;border-radius:8px;background:#0f191d;overflow:hidden}
 .v39-start-section>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;min-height:40px;padding:8px 10px;background:#121f24;font-size:13px;font-weight:800;user-select:none}
 .v39-start-section>summary::-webkit-details-marker{display:none}
@@ -106,12 +114,13 @@ function createStyles() {
 .v39-setting-row .v39-inline-check{display:flex;align-items:center;gap:7px;min-height:34px}
 .v39-setting-row small{grid-column:2;font-size:11px;color:#809297;line-height:1.4;margin-top:-2px}
 .v39-range-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:5px;align-items:center}
+.v39-player-assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.v39-player-assignment-list label{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:5px;font-size:12px;color:#b8c5c8}.v39-player-assignment-list select{min-width:0;min-height:30px;border:1px solid #46575d;border-radius:6px;background:#162227;color:#e8efec;padding:3px 5px}
 .v39-field-load-save{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .v39-field-load-save button{min-height:36px;border:1px solid #5b7882;border-radius:7px;background:#173039;color:#edf5f3;padding:5px 10px;font-weight:800;cursor:pointer}.v39-field-load-save button:hover{background:#1d3c46}
 .v39-field-load-save-status{font-size:11px;color:#91a4a9}
 #v39-field-custom-grid.is-disabled{opacity:.45;pointer-events:none}
 .v39-field-settings-actions{display:flex;gap:8px;padding:8px 10px;border-top:1px solid #34444a;background:#0d161a}.v39-field-settings-actions button{min-height:38px;border:1px solid #4c6067;border-radius:8px;background:#172329;color:#e8efec;padding:0 13px;font-weight:800}.v39-field-settings-actions .primary{margin-left:auto;border-color:#66b7c6;background:#17414a}.v39-field-settings-actions .danger{border-color:#66504b;background:#261b18}.v39-field-settings-status{font-size:12px;color:#91a4a9;align-self:center}
-@media(max-width:700px){#v39-field-settings-dialog{width:100%;height:100%;max-height:none;border-radius:6px}.v39-field-settings-body{padding:6px}.v39-setting-row{grid-template-columns:1fr;gap:4px;padding:7px 0}.v39-setting-row small{grid-column:1}.v39-field-settings-actions{position:sticky;bottom:0}.v39-field-settings-head small{display:none}}
+@media(max-width:700px){#v39-field-settings-dialog{width:100%;height:calc(100dvh - 16px);max-height:calc(100dvh - 16px);min-height:0;border-radius:6px}.v39-field-settings-body{padding:6px;overflow-y:auto;touch-action:pan-y}.v39-setting-row{grid-template-columns:1fr;gap:4px;padding:7px 0}.v39-setting-row small{grid-column:1}.v39-field-settings-actions{position:sticky;bottom:0}.v39-field-settings-head small{display:none}}
 `;
   document.head.appendChild(style);
 }
@@ -122,6 +131,7 @@ function createModal() {
 
   const overlay = document.createElement("div");
   overlay.id = "v39-field-settings-modal";
+  overlay.dataset.v39FinalSettings = "1";
   overlay.setAttribute("aria-hidden", "true");
   overlay.innerHTML = `
     <section id="v39-field-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="v39-field-settings-title">
@@ -143,6 +153,27 @@ function createModal() {
               <input id="v39-field-max-combat-turns" type="number" step="1">
               <small id="v39-field-max-combat-turns-note"></small>
             </label>
+            <label class="v39-setting-row">
+              <span>操作勢力数</span>
+              <input id="v39-field-local-player-count" type="number" min="${V39_LOCAL_SESSION_PLAYER_LIMIT.min}" max="${V39_LOCAL_SESSION_PLAYER_LIMIT.max}" step="1">
+              <small>1台で順番に操作する勢力数です。全勢力の終了後にエネミーと全体処理を実行します。</small>
+            </label>
+          </div>
+        </details>
+
+        <details class="v39-start-section" id="v39-start-participant-section" open>
+          <summary>参加者と担当勢力</summary>
+          <div class="v39-setting-list">
+            <label class="v39-setting-row">
+              <span>参加者数</span>
+              <input id="v39-field-local-participant-count" type="number" min="${V39_LOCAL_SESSION_PLAYER_LIMIT.min}" max="${V39_LOCAL_SESSION_PLAYER_LIMIT.max}" step="1">
+              <small>通信前の仮参加者です。将来はルーム参加者へ置き換えます。</small>
+            </label>
+            <div class="v39-setting-row">
+              <span>担当勢力</span>
+              <div class="v39-player-assignment-list" id="v39-field-player-assignments"></div>
+              <small>各勢力は必ず1人の参加者が担当します。1人で複数勢力を担当できます。</small>
+            </div>
           </div>
         </details>
 
@@ -272,12 +303,59 @@ function boot() {
     }
   };
 
+  const normalizeParticipantAssignments = () => {
+    const playerCount = normalizeV39LocalPlayerCount(settings.localPlayerCount);
+    const participantCount = normalizeV39LocalParticipantCount(settings.localParticipantCount, playerCount);
+    const source = settings.playerParticipantAssignments && typeof settings.playerParticipantAssignments === "object"
+      ? settings.playerParticipantAssignments
+      : {};
+    return Object.fromEntries(Array.from({ length:playerCount }, (_, index) => {
+      const playerId = `player-${index + 1}`;
+      const requested = String(source[playerId] || "");
+      const participantNumber = Number(requested.replace("local-", ""));
+      const fallback = `local-${(index % participantCount) + 1}`;
+      return [playerId, Number.isInteger(participantNumber) && participantNumber >= 1 && participantNumber <= participantCount ? requested : fallback];
+    }));
+  };
+
+  const syncPlayerAssignments = () => {
+    const playerCount = normalizeV39LocalPlayerCount(settings.localPlayerCount);
+    const participantCount = normalizeV39LocalParticipantCount(settings.localParticipantCount, playerCount);
+    settings.localPlayerCount = playerCount;
+    settings.localParticipantCount = participantCount;
+    settings.playerParticipantAssignments = normalizeParticipantAssignments();
+    const list = get("v39-field-player-assignments");
+    if (!(list instanceof HTMLElement)) return;
+    list.replaceChildren(...Array.from({ length:playerCount }, (_, index) => {
+      const playerId = `player-${index + 1}`;
+      const label = document.createElement("label");
+      const title = document.createElement("span");
+      title.textContent = `勢力${index + 1}`;
+      const select = document.createElement("select");
+      select.dataset.v39PlayerAssignment = playerId;
+      for (let participantIndex = 1; participantIndex <= participantCount; participantIndex += 1) {
+        const option = document.createElement("option");
+        option.value = `local-${participantIndex}`;
+        option.textContent = `参加者${participantIndex}`;
+        select.appendChild(option);
+      }
+      select.value = settings.playerParticipantAssignments[playerId];
+      label.append(title, select);
+      return label;
+    }));
+  };
+
   const sync = () => {
     get("v39-field-map-size").value = settings.mapSize;
     get("v39-field-pattern").value = settings.patternId;
     get("v39-field-mountain").value = settings.mountainMode;
     get("v39-field-enemy-amount").value = enemyDivisorToAmount(settings.enemySpawnTileDivisor);
     get("v39-field-neutral-village-count").value = settings.neutralVillageCount;
+    settings.localPlayerCount = normalizeV39LocalPlayerCount(settings.localPlayerCount);
+    get("v39-field-local-player-count").value = settings.localPlayerCount;
+    settings.localParticipantCount = normalizeV39LocalParticipantCount(settings.localParticipantCount, settings.localPlayerCount);
+    get("v39-field-local-participant-count").value = settings.localParticipantCount;
+    syncPlayerAssignments();
     const normalizedGameSettings = normalizeGameStartSettings(settings.gameSettings);
     settings.gameSettings = normalizedGameSettings;
     get("v39-field-turn-mode").value = normalizedGameSettings.turnProgressionMode;
@@ -302,6 +380,14 @@ function boot() {
     const isletB = clampNumber(get("v39-field-islet-max").value, 0, 12, 4);
     const riverA = clampNumber(get("v39-field-river-min").value, 1, 12, 3);
     const riverB = clampNumber(get("v39-field-river-max").value, 1, 12, 4);
+    const localPlayerCount = normalizeV39LocalPlayerCount(get("v39-field-local-player-count").value);
+    const localParticipantCount = normalizeV39LocalParticipantCount(
+      get("v39-field-local-participant-count").value,
+      localPlayerCount
+    );
+    const playerParticipantAssignments = Object.fromEntries([...document.querySelectorAll("[data-v39-player-assignment]")]
+      .map(select => [String(select.dataset.v39PlayerAssignment || ""), String(select.value || "")])
+      .filter(([playerId]) => playerId));
     settings = {
       mapSize: get("v39-field-map-size").value,
       patternId: get("v39-field-pattern").value,
@@ -313,6 +399,9 @@ function boot() {
         V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount,
         V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount
       )),
+      localPlayerCount,
+      localParticipantCount,
+      playerParticipantAssignments,
       gameSettings: normalizeGameStartSettings({
         turnProgressionMode: get("v39-field-turn-mode").value,
         maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
@@ -340,6 +429,13 @@ function boot() {
       : null;
     if (generated && runtimeGameSettings) {
       settings.gameSettings = normalizeGameStartSettings(runtimeGameSettings);
+    }
+    if (generated && typeof window.getV39GameState === "function") {
+      const gameState = window.getV39GameState();
+      const players = gameState?.players;
+      settings.localPlayerCount = normalizeV39LocalPlayerCount(Array.isArray(players) ? players.length : settings.localPlayerCount);
+      settings.localParticipantCount = normalizeV39LocalParticipantCount(gameState?.sessionParticipants?.length, settings.localPlayerCount);
+      settings.playerParticipantAssignments = Object.fromEntries((players || []).map(player => [player.id, player.controllerParticipantId]));
     }
     if (generated && runtimeFieldSettings) {
       settings.neutralVillageCount = Math.round(clampNumber(
@@ -375,6 +471,18 @@ function boot() {
       turnProgressionMode: get("v39-field-turn-mode").value,
       maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
     });
+    sync();
+  });
+  get("v39-field-local-player-count").addEventListener("change", () => {
+    settings.localPlayerCount = normalizeV39LocalPlayerCount(get("v39-field-local-player-count").value);
+    settings.localParticipantCount = normalizeV39LocalParticipantCount(settings.localParticipantCount, settings.localPlayerCount);
+    sync();
+  });
+  get("v39-field-local-participant-count").addEventListener("change", () => {
+    settings.localParticipantCount = normalizeV39LocalParticipantCount(
+      get("v39-field-local-participant-count").value,
+      settings.localPlayerCount
+    );
     sync();
   });
   const islandSection = get("v39-start-island-section");
@@ -431,10 +539,12 @@ function boot() {
     get("v39-field-settings-status").textContent = "生成中…";
     try {
       if (typeof window.setV39GameState === "function") {
-        window.setV39GameState(
-          { gameSettings: next.gameSettings },
-          { reason: "game-start-settings" }
-        );
+        window.startV39LocalSession?.(next.localPlayerCount, {
+          gameSettings:next.gameSettings,
+          participantCount:next.localParticipantCount,
+          playerParticipantAssignments:next.playerParticipantAssignments
+        });
+        window.setV39GameState({ gameSettings: next.gameSettings }, { reason: "game-start-settings" });
       }
       window.generateFieldFromSettings({
         w,
@@ -453,6 +563,8 @@ function boot() {
       get("v39-field-settings-status").textContent = w + "×" + h
         + " / " + modeLabel
         + " / 戦闘上限 " + next.gameSettings.maxCombatTurnsPerWorldTurn
+        + " / 操作勢力 " + next.localPlayerCount
+        + " / 参加者 " + next.localParticipantCount
         + " / 生成完了";
       close();
     } catch (error) {

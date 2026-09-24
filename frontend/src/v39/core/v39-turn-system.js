@@ -3,13 +3,17 @@ import { resolveV39FacilityEffectsAtTile } from "../../lib/v39-economy-rules.js"
 import { getSettlementForTerritory } from "../../lib/settlement-state.js";
 import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
 import { restoreV39SquadMovementForTurn } from "../../lib/v39-squad-movement-rules.js";
+import { normalizeV39PlayerTurnTimeline } from "../../lib/v39-local-multiplayer-session.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
   phase: V39_TURN_PHASE.PLAYER,
   paused: false,
   lastResolvedTurn: 0,
-  lastStageSequence: []
+  lastStageSequence: [],
+  playerTurnOrder: [],
+  activeTurnPlayerId: "",
+  endedPlayerIds: []
 });
 
 let advancing = false;
@@ -24,13 +28,14 @@ function isDead(unit) {
   return number(unit?.hp ?? unit?.currentHp, 0) <= 0 || String(unit?.state || unit?.statusName || "") === "死亡";
 }
 
-function normalizeTimeline(value = {}) {
+function normalizeTimeline(value = {}, players = [], fallbackActivePlayerId = "") {
   return {
     turnNumber: Math.max(1, Math.floor(number(value.turnNumber, DEFAULT_TIMELINE.turnNumber))),
     phase:Object.values(V39_TURN_PHASE).includes(value.phase) ? value.phase : V39_TURN_PHASE.PLAYER,
     paused: value.paused === true,
     lastResolvedTurn:Math.max(0, Math.floor(number(value.lastResolvedTurn, 0))),
-    lastStageSequence:Array.isArray(value.lastStageSequence) ? value.lastStageSequence.map(String) : []
+    lastStageSequence:Array.isArray(value.lastStageSequence) ? value.lastStageSequence.map(String) : [],
+    ...normalizeV39PlayerTurnTimeline(value, players, fallbackActivePlayerId)
   };
 }
 
@@ -106,7 +111,7 @@ function showBanner(message, persistent = false) {
 
 function renderControls() {
   const state = window.getV39GameState?.();
-  const timeline = normalizeTimeline(state?.timeline);
+  const timeline = normalizeTimeline(state?.timeline, state?.players, state?.activePlayerId);
   const label = document.getElementById("v39-turn-label");
   const pause = document.getElementById("v39-time-pause");
   if (label) label.textContent = `T${timeline.turnNumber}`;
@@ -232,8 +237,28 @@ export async function advanceTurn() {
   if (!state) return false;
   advancing = true;
   try {
-    const before = normalizeTimeline(state.timeline);
+    const before = normalizeTimeline(state.timeline, state.players, state.activePlayerId);
     if (before.phase !== V39_TURN_PHASE.PLAYER) return false;
+    const playerTimeline = normalizeV39PlayerTurnTimeline(before, state.players, state.activePlayerId);
+    const currentPlayerId = playerTimeline.activeTurnPlayerId || state.activePlayerId;
+    const endedPlayerIds = [...new Set([...playerTimeline.endedPlayerIds, currentPlayerId])];
+    const nextPlayerId = playerTimeline.playerTurnOrder.find(playerId => !endedPlayerIds.includes(playerId));
+    if (nextPlayerId) {
+      const nextTimeline = {
+        ...before,
+        ...playerTimeline,
+        activeTurnPlayerId:nextPlayerId,
+        endedPlayerIds
+      };
+      window.setV39GameState?.({ activePlayerId:nextPlayerId, timeline:nextTimeline }, { reason:"player-turn-switched" });
+      const nextPlayer = window.getV39GameState?.()?.players?.find(player => player.id === nextPlayerId);
+      showBanner(`${nextPlayer?.label || nextPlayerId}のターン ${before.turnNumber}`);
+      renderControls();
+      window.dispatchEvent(new CustomEvent("v39:player-turn-switched", {
+        detail:{ turnNumber:before.turnNumber, previousPlayerId:currentPlayerId, activePlayerId:nextPlayerId, endedPlayerIds }
+      }));
+      return true;
+    }
     const activeTurn = before.turnNumber;
     const enemyTimeline = setTurnPhase({
       ...state,
@@ -265,9 +290,17 @@ export async function advanceTurn() {
       turnNumber:nextTurn,
       phase:V39_TURN_PHASE.PLAYER,
       lastResolvedTurn:activeTurn,
-      lastStageSequence:["player-turn", "enemy-turn", ...stages, "recovery", "turn-complete"]
+      lastStageSequence:["player-turn", "enemy-turn", ...stages, "recovery", "turn-complete"],
+      playerTurnOrder:playerTimeline.playerTurnOrder,
+      activeTurnPlayerId:playerTimeline.playerTurnOrder[0] || "",
+      endedPlayerIds:[]
     };
-    window.setV39GameState?.({ players:recoveredPlayers, enemies:recoveredEnemies, timeline:completedTimeline }, { reason:"turn-complete" });
+    window.setV39GameState?.({
+      players:recoveredPlayers,
+      enemies:recoveredEnemies,
+      activePlayerId:completedTimeline.activeTurnPlayerId,
+      timeline:completedTimeline
+    }, { reason:"turn-complete" });
     renderControls();
     showBanner(`プレイヤーターン ${nextTurn}`);
     window.dispatchEvent(new CustomEvent("v39:turn-phase-changed", { detail:{ phase:V39_TURN_PHASE.PLAYER, turnNumber:nextTurn } }));

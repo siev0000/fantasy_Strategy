@@ -100,6 +100,8 @@ export function createPlayerRecord(source = {}, index = 0) {
     id: String(source?.id || `player-${playerNo}`),
     label: String(source?.label || source?.displayName || `プレイヤー${playerNo}`),
     isPlayer: source?.isPlayer !== false,
+    // 操作を担当する参加者。通信時も同じIDで命令の送信元を照合する。
+    controllerParticipantId: String(source?.controllerParticipantId || "local-1"),
     race: String(source?.race || ""),
     ready: !!source?.ready,
     factionState: createPlayerFactionState(source?.factionState, String(source?.id || `player-${playerNo}`))

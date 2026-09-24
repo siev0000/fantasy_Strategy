@@ -5,10 +5,17 @@ import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLoot
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
 import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
+import {
+  normalizeV39LocalPlayerCount,
+  normalizeV39LocalParticipantCount,
+  normalizeV39PlayerTurnTimeline,
+  normalizeV39SessionPlayers
+} from "../../lib/v39-local-multiplayer-session.js";
 
 const EMPTY_STATE = Object.freeze({
   activePlayerId: "",
   players: [],
+  sessionParticipants: [],
   factionLabels: {},
   territoryOwnerByTile: {},
   dangerPercentByTile: {},
@@ -46,7 +53,10 @@ const EMPTY_STATE = Object.freeze({
     phase: "player",
     paused: false,
     lastResolvedTurn: 0,
-    lastStageSequence: []
+    lastStageSequence: [],
+    playerTurnOrder: [],
+    activeTurnPlayerId: "",
+    endedPlayerIds: []
   }
 });
 
@@ -155,7 +165,9 @@ function deriveWorldSettlements(players, sourceRows) {
 }
 
 function normalizeState(input = {}) {
-  const players = normalizePlayers(input.players);
+  const initialPlayers = normalizePlayers(input.players);
+  const session = normalizeV39SessionPlayers(initialPlayers, input.sessionParticipants);
+  const players = session.players;
   const requestedActiveId = String(input.activePlayerId || "");
   const activePlayerId = players.some(player => player.id === requestedActiveId)
     ? requestedActiveId
@@ -163,6 +175,7 @@ function normalizeState(input = {}) {
   return {
     activePlayerId,
     players,
+    sessionParticipants:session.sessionParticipants,
     factionLabels: cloneRecord(input.factionLabels),
     territoryOwnerByTile: cloneRecord(input.territoryOwnerByTile),
     dangerPercentByTile: cloneRecord(input.dangerPercentByTile),
@@ -195,7 +208,8 @@ function normalizeState(input = {}) {
       phase:["player", "enemy", "resolution"].includes(input?.timeline?.phase) ? input.timeline.phase : "player",
       paused: input?.timeline?.paused === true,
       lastResolvedTurn:Math.max(0, Math.floor(Number(input?.timeline?.lastResolvedTurn) || 0)),
-      lastStageSequence:Array.isArray(input?.timeline?.lastStageSequence) ? input.timeline.lastStageSequence.map(String) : []
+      lastStageSequence:Array.isArray(input?.timeline?.lastStageSequence) ? input.timeline.lastStageSequence.map(String) : [],
+      ...normalizeV39PlayerTurnTimeline(input?.timeline, players, activePlayerId)
     }
   };
 }
@@ -231,12 +245,20 @@ function clonePlayer(player) {
   return { ...player, factionState:cloneFactionState(player.factionState, player.race) };
 }
 
+function cloneSessionParticipants(value) {
+  return (Array.isArray(value) ? value : []).map(row => ({
+    ...row,
+    assignedPlayerIds:Array.isArray(row?.assignedPlayerIds) ? [...row.assignedPlayerIds] : []
+  }));
+}
+
 let state = normalizeState(window.V39_INITIAL_GAME_STATE || EMPTY_STATE);
 
 function getState() {
   return {
     ...state,
     players: state.players.map(clonePlayer),
+    sessionParticipants:cloneSessionParticipants(state.sessionParticipants),
     factionLabels: { ...state.factionLabels },
     territoryOwnerByTile: { ...state.territoryOwnerByTile },
     dangerPercentByTile: { ...state.dangerPercentByTile },
@@ -288,6 +310,7 @@ function dispatchChange(reason = "update") {
 function setState(patch = {}, options = {}) {
   const next = { ...state };
   if (Object.prototype.hasOwnProperty.call(patch, "players")) next.players = normalizePlayers(patch.players);
+  if (Object.prototype.hasOwnProperty.call(patch, "sessionParticipants")) next.sessionParticipants = cloneSessionParticipants(patch.sessionParticipants);
   if (Object.prototype.hasOwnProperty.call(patch, "activePlayerId")) next.activePlayerId = String(patch.activePlayerId || "");
   if (Object.prototype.hasOwnProperty.call(patch, "factionLabels")) next.factionLabels = cloneRecord(patch.factionLabels);
   if (Object.prototype.hasOwnProperty.call(patch, "territoryOwnerByTile")) next.territoryOwnerByTile = cloneRecord(patch.territoryOwnerByTile);
@@ -346,11 +369,141 @@ function updateTimelineState(patch = {}, options = {}) {
       phase:["player", "enemy", "resolution"].includes(source.phase) ? source.phase : "player",
       paused:source.paused === true,
       lastResolvedTurn:Math.max(0, Math.floor(Number(source.lastResolvedTurn) || 0)),
-      lastStageSequence:Array.isArray(source.lastStageSequence) ? source.lastStageSequence.map(String) : []
+      lastStageSequence:Array.isArray(source.lastStageSequence) ? source.lastStageSequence.map(String) : [],
+      ...normalizeV39PlayerTurnTimeline(source, state.players, state.activePlayerId)
     }
   };
   if (options.silent !== true) dispatchChange(options.reason || "timeline");
   return getTimelineState();
+}
+
+function resetFactionForNewLocalSession(factionState = {}) {
+  const source = cloneValue(factionState, {});
+  return {
+    ...source,
+    settlements:[],
+    selectedSettlementId:"",
+    selectedUnitId:String(source?.selectedUnitId || ""),
+    villagePlacementMode:false,
+    moveCommandUnitId:"",
+    visibility:{
+      exploredTileKeys:[], visibleTileKeys:[], spottedEnemyTileKeys:[],
+      spottedFactionTileKeys:[], alertedEnemyTileKeys:[], alertedFactionTileKeys:[]
+    },
+    units:(Array.isArray(source?.units) ? source.units : []).map(unit => ({
+      ...unit,
+      x:null,
+      y:null,
+      settlementId:""
+    }))
+  };
+}
+
+function remapFactionIdentifiers(factionState = {}, playerId) {
+  const faction = cloneValue(factionState, {});
+  const unitIds = new Map((Array.isArray(faction.units) ? faction.units : []).map((unit, index) => {
+    const previousId = String(unit?.id || `unit-${index + 1}`);
+    return [previousId, `${playerId}-${previousId}`];
+  }));
+  const squadIds = new Map((Array.isArray(faction.squads) ? faction.squads : []).map((squad, index) => {
+    const previousId = String(squad?.id || `squad-${index + 1}`);
+    return [previousId, `${playerId}-${previousId}`];
+  }));
+  return {
+    ...faction,
+    selectedUnitId:unitIds.get(String(faction?.selectedUnitId || "")) || "",
+    nationLogKey:playerId,
+    units:(Array.isArray(faction.units) ? faction.units : []).map((unit, index) => {
+      const previousId = String(unit?.id || `unit-${index + 1}`);
+      return {
+        ...unit,
+        id:unitIds.get(previousId),
+        squadId:squadIds.get(String(unit?.squadId || "")) || ""
+      };
+    }),
+    squads:(Array.isArray(faction.squads) ? faction.squads : []).map((squad, index) => {
+      const previousId = String(squad?.id || `squad-${index + 1}`);
+      return {
+        ...squad,
+        id:squadIds.get(previousId),
+        unitIds:(Array.isArray(squad?.unitIds) ? squad.unitIds : [])
+          .map(unitId => unitIds.get(String(unitId || "")))
+          .filter(Boolean)
+      };
+    })
+  };
+}
+
+function createLocalSessionPlayers(count) {
+  const templates = window.__v39GameStateDefaults?.players?.length
+    ? window.__v39GameStateDefaults.players
+    : state.players;
+  if (!templates.length) return [];
+  return Array.from({ length:count }, (_, index) => {
+    const template = cloneValue(templates[index % templates.length], {});
+    const playerId = `player-${index + 1}`;
+    return createPlayerRecord({
+      ...template,
+      id:playerId,
+      label:`プレイヤー${index + 1}`,
+      isPlayer:true,
+      controllerParticipantId:"local-1",
+      factionState:resetFactionForNewLocalSession(remapFactionIdentifiers(template?.factionState, playerId))
+    }, index);
+  });
+}
+
+function createLocalSessionParticipants(players, participantCount, assignments = {}) {
+  const count = normalizeV39LocalParticipantCount(participantCount, players.length);
+  const participants = Array.from({ length:count }, (_, index) => ({
+    participantId:`local-${index + 1}`,
+    name:`参加者${index + 1}`,
+    controlMode:"local",
+    assignedPlayerIds:[]
+  }));
+  const participantIds = new Set(participants.map(participant => participant.participantId));
+  const normalizedPlayers = players.map((player, index) => {
+    const requested = String(assignments?.[player.id] || "");
+    const controllerParticipantId = participantIds.has(requested)
+      ? requested
+      : participants[index % participants.length].participantId;
+    participants.find(participant => participant.participantId === controllerParticipantId)?.assignedPlayerIds.push(player.id);
+    return { ...player, controllerParticipantId };
+  });
+  return { players:normalizedPlayers, sessionParticipants:participants };
+}
+
+function startLocalSession(playerCount, options = {}) {
+  const count = normalizeV39LocalPlayerCount(playerCount);
+  const initialPlayers = createLocalSessionPlayers(count);
+  if (!initialPlayers.length) return getState();
+  const session = createLocalSessionParticipants(
+    initialPlayers,
+    options?.participantCount,
+    options?.playerParticipantAssignments
+  );
+  const players = session.players;
+  const activePlayerId = players[0].id;
+  const activeTurnPlayerId = activePlayerId;
+  const gameSettings = normalizeGameStartSettings(options?.gameSettings || state.gameSettings);
+  state = normalizeState({
+    ...EMPTY_STATE,
+    gameSettings,
+    players,
+    activePlayerId,
+    sessionParticipants:session.sessionParticipants,
+    timeline:{
+      ...EMPTY_STATE.timeline,
+      playerTurnOrder:players.map(player => player.id),
+      activeTurnPlayerId,
+      endedPlayerIds:[]
+    }
+  });
+  dispatchChange("local-session-started");
+  window.dispatchEvent(new CustomEvent("v39:local-session-started", {
+    detail:{ playerCount:count, participantCount:session.sessionParticipants.length, activePlayerId, playerIds:players.map(player => player.id) }
+  }));
+  return getState();
 }
 
 function updateActiveFactionState(patch = {}, options = {}) {
@@ -404,6 +557,7 @@ window.updateV39TimelineState = updateTimelineState;
 window.updateV39ActiveFactionState = updateActiveFactionState;
 window.updateV39TileState = updateTileState;
 window.clearV39GameState = clearState;
+window.startV39LocalSession = startLocalSession;
 window.__v39GameStateDefaults = normalizeState(window.V39_INITIAL_GAME_STATE || EMPTY_STATE);
 
 export {

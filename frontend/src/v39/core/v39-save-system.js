@@ -1,7 +1,7 @@
 const SAVE_FORMAT = "fantasy-strategy-v39";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 
 const skillByName = new Map(getGameDataRows("スキル一覧").map(row => [String(row?.名前 || "").trim(), row]).filter(([name]) => name));
 
@@ -174,6 +174,30 @@ function migrateGameStateTiming(gameState, savedAt) {
   };
 }
 
+function migrateGameStateLocalSession(gameState) {
+  const players = Array.isArray(gameState?.players) ? gameState.players : [];
+  const playerIds = players.map(player => String(player?.id || "").trim()).filter(Boolean);
+  const activePlayerId = playerIds.includes(String(gameState?.activePlayerId || ""))
+    ? String(gameState.activePlayerId)
+    : (playerIds[0] || "");
+  const participantId = "local-1";
+  return {
+    ...gameState,
+    players:players.map(player => ({ ...player, controllerParticipantId:String(player?.controllerParticipantId || participantId) })),
+    sessionParticipants:Array.isArray(gameState?.sessionParticipants) && gameState.sessionParticipants.length
+      ? gameState.sessionParticipants
+      : [{ participantId, name:"参加者1", controlMode:"local", assignedPlayerIds:playerIds }],
+    timeline:{
+      ...(gameState?.timeline || {}),
+      playerTurnOrder:Array.isArray(gameState?.timeline?.playerTurnOrder) && gameState.timeline.playerTurnOrder.length
+        ? gameState.timeline.playerTurnOrder
+        : playerIds,
+      activeTurnPlayerId:String(gameState?.timeline?.activeTurnPlayerId || activePlayerId),
+      endedPlayerIds:Array.isArray(gameState?.timeline?.endedPlayerIds) ? gameState.timeline.endedPlayerIds : []
+    }
+  };
+}
+
 function migrateSaveData(save) {
   const sourceVersion = Math.max(1, Number(save?.version) || 1);
   let migrated = save;
@@ -189,6 +213,13 @@ function migrateSaveData(save) {
       ...migrated,
       version:3,
       gameState:migrateGameStateTiming(migrated.gameState, migrated.savedAt)
+    };
+  }
+  if (Number(migrated.version) < 4) {
+    migrated = {
+      ...migrated,
+      version:4,
+      gameState:migrateGameStateLocalSession(migrated.gameState)
     };
   }
   return { save:migrated, sourceVersion };

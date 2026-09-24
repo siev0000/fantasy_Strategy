@@ -206,6 +206,10 @@ async function bootFieldSettingsEntry() {
     throw new Error("#v39-manage-field-settings is missing from the stable v39 HTML");
   }
 
+  // v39-field-settings-final.js が最終画面と操作APIを担当する。
+  // 旧プレースホルダーは最終画面の同期処理を上書きしてしまうため接続しない。
+  if (document.getElementById("v39-field-settings-modal")?.dataset.v39FinalSettings === "1") return;
+
   const modal = createPlaceholderModal();
   if (button.dataset.v39Bound !== "1") {
     button.dataset.v39Bound = "1";

@@ -231,6 +231,14 @@ function drawEnemyNests(scene, container, nests) {
 
 function selectUnit(unit) {
   if (window.isV39MapInputLocked?.() === true) return;
+  const attackSession = window.getV39AttackSession?.();
+  const targetX = finiteCoord(unit?.x);
+  const targetY = finiteCoord(unit?.y);
+  if (attackSession && targetX !== null && targetY !== null) {
+    // During skill targeting, a friendly marker is a tile target, not a new actor selection.
+    window.executeV39AttackAt?.(targetX, targetY);
+    return;
+  }
   if (!unit?.id || typeof window.updateV39ActiveFactionState !== "function") return;
   window.updateV39ActiveFactionState({ selectedUnitId: unit.id }, { reason: "map-unit-selected" });
   window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail: { unitId: unit.id, unit } }));
