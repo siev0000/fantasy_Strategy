@@ -464,7 +464,7 @@ function createMultiplayerSessionPlayers(count, factionSelections = {}) {
       controllerParticipantId:"",
       race,
       ready:false,
-      factionState:createPlayerFactionState({}, playerId)
+      factionState:createPlayerFactionState({ nationLogKey:playerId }, playerId)
     }, index);
   });
 }
