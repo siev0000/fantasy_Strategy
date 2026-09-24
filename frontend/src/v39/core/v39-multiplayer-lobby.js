@@ -15,6 +15,7 @@ let credentials = loadCredentials();
 let autoJoinAttempted = false;
 let modal = null;
 let pendingGameSetupSave = false;
+let pendingGameStart = false;
 let lobbyEntryMode = "create";
 
 function text(value) {
@@ -115,9 +116,9 @@ function createStyles() {
   style.textContent = `
 #v39-multiplayer-lobby{position:fixed;inset:0;z-index:10120;display:none;place-items:center;padding:12px;background:rgba(1,5,8,.82);backdrop-filter:blur(3px)}
 #v39-multiplayer-lobby.open{display:grid}.v39-room-dialog{box-sizing:border-box;width:min(650px,100%);max-height:calc(100dvh - 24px);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border:1px solid #49636a;border-radius:11px;background:linear-gradient(180deg,#142126,#0a1216);box-shadow:0 20px 56px rgba(0,0,0,.6);color:#e8efec}
-.v39-room-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #34474d}.v39-room-head h2{margin:0;font-size:17px}.v39-room-head small{color:#93a6aa;font-size:12px}.v39-room-head button{margin-left:auto;width:34px;height:32px;border:1px solid #4b6269;border-radius:7px;background:#16252a;color:#e8efec;font-size:20px}
+.v39-room-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;padding:10px 12px;border-bottom:1px solid #34474d}.v39-room-head h2{margin:0;font-size:17px}.v39-room-head small{color:#93a6aa;font-size:12px}.v39-room-head>[data-v39-room-action="close"]{grid-column:2;grid-row:1;margin-left:auto;width:34px;height:32px;border:1px solid #4b6269;border-radius:7px;background:#16252a;color:#e8efec;font-size:20px}.v39-room-tabs{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.v39-room-tabs button{min-height:34px;border:1px solid #41575e;border-radius:7px;background:#101d22;color:#aebfc1;font-weight:800}.v39-room-tabs button[aria-selected="true"]{border-color:#6abfcf;background:#174650;color:#effafa}.v39-room-tabs[hidden]{display:none}
 .v39-room-body{min-height:0;overflow:auto;padding:10px;display:grid;gap:9px;align-content:start}.v39-room-section{display:grid;gap:7px;padding:9px;border:1px solid #32464c;border-radius:8px;background:#0e191d}.v39-room-section h3{margin:0;color:#c7d8d9;font-size:14px}.v39-room-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.v39-room-form label,.v39-room-assignment label{display:grid;gap:3px;color:#aebfc1;font-size:12px}.v39-room-form input,.v39-room-form select,.v39-room-assignment select{min-width:0;min-height:34px;border:1px solid #465d64;border-radius:6px;background:#152328;color:#edf4f1;padding:5px 7px;font:inherit}.v39-room-actions{display:flex;gap:7px;flex-wrap:wrap}.v39-room-actions button{min-height:34px;border:1px solid #52727a;border-radius:7px;background:#19343d;color:#edf6f3;padding:5px 10px;font-weight:800}.v39-room-actions button[data-v39-room-action="create"]{border-color:#6abfcf;background:#174650}.v39-room-actions button[data-v39-room-action="leave"]{margin-left:auto;border-color:#76544e;background:#291d1a}.v39-room-actions button:disabled{opacity:.45;cursor:not-allowed}.v39-room-status{min-height:18px;margin:0;color:#9aadb0;font-size:12px}.v39-room-status[data-kind="ok"]{color:#83d8a0}.v39-room-status[data-kind="error"]{color:#ed9684}.v39-room-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px;color:#aebfc1}.v39-room-id{font-family:monospace;font-size:14px;font-weight:800;color:#9ee5ef}.v39-room-participants{display:grid;gap:6px}.v39-room-participant{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;padding:7px 8px;border:1px solid #31454b;border-radius:7px;background:#111e23}.v39-room-participant.is-self{border-color:#4a9baa;background:#123039}.v39-room-participant-name{font-size:14px;font-weight:800}.v39-room-participant-info{margin-top:2px;color:#9fb2b5;font-size:11px}.v39-room-tags{display:flex;align-items:start;justify-content:end;gap:4px;flex-wrap:wrap}.v39-room-tag{padding:2px 5px;border:1px solid #466068;border-radius:999px;color:#b8cbd0;font-size:10px}.v39-room-tag.host{border-color:#b99855;color:#f0cf83}.v39-room-tag.ready{border-color:#4d8f66;color:#91dfaa}.v39-room-tag.offline{border-color:#735454;color:#e3a09a}.v39-room-host-settings{display:grid;gap:7px}.v39-room-assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.v39-room-note{margin:0;color:#91a4a8;font-size:11px;line-height:1.45}.v39-room-stage-note{margin:0;padding:8px;border-left:3px solid #c79d56;background:#211e16;color:#dcc99d;font-size:12px;line-height:1.45}
-.v39-room-join{display:grid;gap:7px}.v39-room-join summary{cursor:pointer;color:#b7dfe4;font-size:13px;font-weight:800}.v39-room-join label{display:grid;gap:3px;color:#aebfc1;font-size:12px}.v39-room-join input{min-width:0;min-height:34px;border:1px solid #465d64;border-radius:6px;background:#152328;color:#edf4f1;padding:5px 7px;font:inherit}.v39-room-join button{min-height:34px;border:1px solid #52727a;border-radius:7px;background:#19343d;color:#edf6f3;padding:5px 10px;font-weight:800}
+.v39-room-entry-panel{display:grid;gap:7px}.v39-room-entry-panel[hidden]{display:none}.v39-room-entry-panel label{display:grid;gap:3px;color:#aebfc1;font-size:12px}.v39-room-entry-panel input{min-width:0;min-height:34px;border:1px solid #465d64;border-radius:6px;background:#152328;color:#edf4f1;padding:5px 7px;font:inherit}.v39-room-entry-panel button{min-height:36px;border:1px solid #52727a;border-radius:7px;background:#19343d;color:#edf6f3;padding:5px 10px;font-weight:800}.v39-room-entry-panel[data-v39-room-panel="create"] button{border-color:#6abfcf;background:#174650}.v39-room-start{border-color:#72b985!important;background:#1d4a2b!important}.v39-room-start:disabled{opacity:.42!important}
 @media(max-width:600px){#v39-multiplayer-lobby{padding:7px}.v39-room-dialog{max-height:calc(100dvh - 14px);border-radius:7px}.v39-room-form,.v39-room-assignment-list{grid-template-columns:1fr}.v39-room-actions button{flex:1}.v39-room-actions button[data-v39-room-action="leave"]{margin-left:0}.v39-room-head small{display:none}}
 `;
   document.head.appendChild(style);
@@ -130,18 +131,27 @@ function createModal() {
   modal.setAttribute("aria-hidden", "true");
   modal.innerHTML = `
     <section class="v39-room-dialog" role="dialog" aria-modal="true" aria-labelledby="v39-room-title">
-      <header class="v39-room-head"><div><h2 id="v39-room-title">通信ルーム</h2><small>ホスト作成・参加者待機・担当勢力の確認</small></div><button type="button" data-v39-room-action="close" aria-label="閉じる">×</button></header>
+      <header class="v39-room-head">
+        <div><h2 id="v39-room-title">通信ルーム</h2><small>ルームを作成するか、共有されたIDで参加します</small></div>
+        <button type="button" data-v39-room-action="close" aria-label="閉じる">×</button>
+        <nav class="v39-room-tabs" data-v39-room-tabs aria-label="ルーム接続方法">
+          <button type="button" data-v39-room-tab="create" aria-selected="true">ルーム作成</button>
+          <button type="button" data-v39-room-tab="join" aria-selected="false">ルーム参加</button>
+        </nav>
+      </header>
       <div class="v39-room-body">
-        <section class="v39-room-section">
-          <h3>接続</h3>
-          <div class="v39-room-form">
-            <label>プレイヤー名（ロビー表示）<input data-v39-room-player-name maxlength="20" autocomplete="nickname"></label>
+        <section class="v39-room-section" data-v39-room-entry>
+          <label class="mp-label">プレイヤー名（ロビー表示）<input data-v39-room-player-name maxlength="20" autocomplete="nickname"></label>
+          <div class="v39-room-entry-panel" data-v39-room-panel="create">
             <label>ルーム名<input data-v39-room-name maxlength="40" placeholder="例: 週末テスト" autocomplete="off"></label>
+            <button type="button" data-v39-room-action="create">ルームを作成</button>
           </div>
-          <div class="v39-room-actions"><button type="button" data-v39-room-action="create">ルーム作成</button><button type="button" data-v39-room-action="leave">退出</button></div>
-          <details class="v39-room-join" data-v39-room-join-panel><summary>ルーム参加</summary><label>参加用ルームID<input data-v39-room-id inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="8桁の数字" autocomplete="off"></label><button type="button" data-v39-room-action="join">参加する</button></details>
-          <p class="v39-room-status" data-v39-room-status></p>
+          <div class="v39-room-entry-panel" data-v39-room-panel="join" hidden>
+            <label>参加用ルームID<input data-v39-room-id inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="8桁の数字" autocomplete="off"></label>
+            <button type="button" data-v39-room-action="join">ルームに参加</button>
+          </div>
         </section>
+        <p class="v39-room-status" data-v39-room-status></p>
         <section class="v39-room-section" data-v39-room-lobby hidden></section>
       </div>
     </section>`;
@@ -151,12 +161,6 @@ function createModal() {
   modal.addEventListener("input", event => {
     if (event.target instanceof HTMLInputElement && event.target.matches("[data-v39-room-player-name]")) saveDisplayName(event.target.value);
   });
-  const joinPanel = modal.querySelector("[data-v39-room-join-panel]");
-  if (joinPanel instanceof HTMLDetailsElement) {
-    joinPanel.addEventListener("toggle", () => {
-      applyEntryModeDisplayName(joinPanel.open ? "join" : "create");
-    });
-  }
   modal.addEventListener("click", event => { if (event.target === modal) closeLobby(); });
 }
 
@@ -182,6 +186,21 @@ function getRoomIdInput() {
   return modal?.querySelector("[data-v39-room-id]");
 }
 
+function setEntryMode(mode, options = {}) {
+  lobbyEntryMode = mode === "join" ? "join" : "create";
+  modal?.querySelectorAll("[data-v39-room-tab]").forEach(button => {
+    button.setAttribute("aria-selected", String(button.dataset.v39RoomTab === lobbyEntryMode));
+  });
+  modal?.querySelectorAll("[data-v39-room-panel]").forEach(panel => {
+    panel.hidden = panel.dataset.v39RoomPanel !== lobbyEntryMode;
+  });
+  applyEntryModeDisplayName(lobbyEntryMode);
+  if (options.focus === true) {
+    if (lobbyEntryMode === "join") getRoomIdInput()?.focus();
+    else getRoomNameInput()?.focus();
+  }
+}
+
 function isHost() {
   return !!roomSnapshot && roomSnapshot.hostParticipantId === getMyParticipantId();
 }
@@ -197,6 +216,88 @@ function formatGameSetupSummary(gameSetup) {
   return `${mapSize} / ${pattern}`;
 }
 
+function parseMapSize(mapSize) {
+  const match = String(mapSize || "").match(/^(\d+)x(\d+)$/i);
+  if (!match) return null;
+  const w = Math.max(1, Math.floor(Number(match[1])));
+  const h = Math.max(1, Math.floor(Number(match[2])));
+  return Number.isFinite(w) && Number.isFinite(h) ? { w, h } : null;
+}
+
+function buildSnapshotJsonForRoom() {
+  if (typeof window.exportV39SaveJson !== "function") throw new Error("ゲーム状態の書き出し機能が準備できていません。");
+  const parsed = JSON.parse(window.exportV39SaveJson(0));
+  parsed.view = null;
+  return JSON.stringify(parsed);
+}
+
+function startHostedGame(payload) {
+  if (!payload || !roomSnapshot || payload.roomId !== roomSnapshot.roomId || !isHost()) return;
+  const settings = payload.settings || roomSnapshot.settings || {};
+  const gameSetup = settings.gameSetup;
+  const size = parseMapSize(gameSetup?.mapSize);
+  if (!gameSetup || !size) {
+    socket?.emit("game:start-failed", { roomId:roomSnapshot.roomId, message:"共有ゲーム開始設定が不正です。" });
+    return;
+  }
+  try {
+    if (typeof window.startV39MultiplayerSession !== "function") throw new Error("マルチプレイ用ゲーム状態の初期化機能が準備できていません。");
+    if (typeof window.generateFieldFromSettings !== "function") throw new Error("フィールド生成機能が準備できていません。");
+    window.startV39MultiplayerSession(settings.factionCount, {
+      gameSettings:gameSetup.gameSettings,
+      participants:Array.isArray(payload.participants) ? payload.participants : roomSnapshot.participants,
+      playerParticipantAssignments:settings.playerParticipantAssignments
+    });
+    window.setV39GameState?.({ gameSettings:gameSetup.gameSettings }, { reason:"multiplayer-game-start-settings" });
+    window.generateFieldFromSettings({
+      w:size.w,
+      h:size.h,
+      patternId:gameSetup.patternId,
+      mountainMode:gameSetup.mountainMode,
+      enemySpawnTileDivisor:gameSetup.enemySpawnTileDivisor,
+      neutralVillageCount:gameSetup.neutralVillageCount,
+      islandCustomSettings:gameSetup.islandCustomSettings
+    });
+    pendingGameStart = true;
+    const snapshotJson = buildSnapshotJsonForRoom();
+    socket?.emit("game:snapshot", { roomId:roomSnapshot.roomId, snapshotJson });
+    setStatus("ワールド生成完了。参加者へ同期しています...", "ok");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ホスト側でゲーム開始に失敗しました。";
+    pendingGameStart = false;
+    setStatus(message, "error");
+    socket?.emit("game:start-failed", { roomId:roomSnapshot.roomId, message });
+  }
+}
+
+function importRoomGameSnapshot(payload) {
+  if (!payload || !roomSnapshot || payload.roomId !== roomSnapshot.roomId || typeof payload.snapshotJson !== "string") return;
+  try {
+    if (typeof window.importV39SaveJson !== "function") throw new Error("ゲーム状態の読込機能が準備できていません。");
+    window.importV39SaveJson(payload.snapshotJson);
+    setStatus("ワールド状態を受信しました。", "ok");
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "ワールド状態の同期に失敗しました。", "error");
+  }
+}
+
+function requestGameStart() {
+  if (!roomSnapshot || !isHost() || pendingGameStart) return;
+  const participants = Array.isArray(roomSnapshot.participants) ? roomSnapshot.participants : [];
+  const allReady = participants.length > 0 && participants.every(participant => participant.ready && participant.connected);
+  if (!roomSnapshot.settings?.gameSetup) {
+    setStatus("ゲーム開始設定を先に保存してください。", "error");
+    return;
+  }
+  if (!allReady) {
+    setStatus("参加者全員が準備完了になるまで開始できません。", "error");
+    return;
+  }
+  pendingGameStart = true;
+  setStatus("ゲーム開始を要求しています...");
+  socket?.emit("game:start", { roomId:roomSnapshot.roomId });
+}
+
 function renderLobby() {
   if (!modal) return;
   const nameInput = getDisplayNameInput();
@@ -208,10 +309,12 @@ function renderLobby() {
 
   const connected = socketReady;
   const hasRoom = isConnectedToRoom();
+  const entry = modal.querySelector("[data-v39-room-entry]");
+  const tabs = modal.querySelector("[data-v39-room-tabs]");
+  if (entry instanceof HTMLElement) entry.hidden = hasRoom;
+  if (tabs instanceof HTMLElement) tabs.hidden = hasRoom;
   modal.querySelectorAll("[data-v39-room-action=\"create\"],[data-v39-room-action=\"join\"]")
     .forEach(button => { button.disabled = !connected || hasRoom; });
-  const leaveButton = modal.querySelector("[data-v39-room-action=\"leave\"]");
-  if (leaveButton) leaveButton.disabled = !hasRoom;
 
   const lobby = modal.querySelector("[data-v39-room-lobby]");
   if (!(lobby instanceof HTMLElement)) return;
@@ -246,7 +349,10 @@ function renderLobby() {
   const hostSettings = isHost() ? `
     <section class="v39-room-host-settings">
       <h3>ホスト設定</h3>
-      <div class="v39-room-actions"><button type="button" data-v39-room-action="game-settings">ゲーム開始設定</button></div>
+      <div class="v39-room-actions">
+        <button type="button" data-v39-room-action="game-settings">ゲーム開始設定</button>
+        <button type="button" class="v39-room-start" data-v39-room-action="start-game"${(!allReady || !settings.gameSetup || roomSnapshot.phase !== "lobby" || pendingGameStart) ? " disabled" : ""}>ゲーム開始</button>
+      </div>
       <p class="v39-room-note">ゲーム設定: ${escapeHtml(formatGameSetupSummary(settings.gameSetup))}</p>
       <label class="v39-room-assignment">操作勢力数<select data-v39-room-faction-count>${Array.from({ length:8 }, (_, index) => `<option value="${index + 1}"${index + 1 === Number(settings.factionCount) ? " selected" : ""}>${index + 1}</option>`).join("")}</select></label>
       <div class="v39-room-assignment-list">${assignmentRows}</div>
@@ -254,10 +360,13 @@ function renderLobby() {
     </section>` : "";
   lobby.innerHTML = `
     <div class="v39-room-meta"><span>ルーム名</span><strong>${escapeHtml(roomSnapshot.roomName || "-")}</strong><span>ルームID</span><strong class="v39-room-id">${escapeHtml(roomSnapshot.roomId)}</strong><span>ホスト: ${escapeHtml(hostParticipant?.displayName || "-")}</span></div>
-    <div class="v39-room-actions"><button type="button" data-v39-room-action="ready">${mine?.ready ? "準備を解除" : "準備完了"}</button></div>
+    <div class="v39-room-actions">
+      <button type="button" data-v39-room-action="ready"${roomSnapshot.phase !== "lobby" ? " disabled" : ""}>${mine?.ready ? "準備を解除" : "準備完了"}</button>
+      <button type="button" data-v39-room-action="leave">退出</button>
+    </div>
     <div class="v39-room-participants">${participantRows}</div>
     ${hostSettings}
-    <p class="v39-room-stage-note">ロビー段階です。ゲーム開始設定はホストが共有保存します。全員準備完了後のゲーム開始・ワールド同期は次の実装段階で接続します。現在はローカルのゲーム状態を変更しません。</p>
+    <p class="v39-room-stage-note">${roomSnapshot.phase === "setup" ? "ホストがワールドを生成しています。完了後に同じワールド状態を受信します。" : (roomSnapshot.phase === "playing" ? "ゲームを開始しました。" : "ゲーム開始設定を確認し、全員が準備完了になったらホストがゲーム開始できます。")}</p>
     <p class="v39-room-note">参加者 ${participants.length}人 / ${allReady ? "全員準備完了" : "準備待ち"} / 接続 ${connected ? "正常" : "切断中"}</p>`;
 }
 
@@ -283,7 +392,9 @@ function ensureSocket() {
   });
   socket.on("room:error", payload => {
     pendingGameSetupSave = false;
+    pendingGameStart = false;
     setStatus(payload?.message || "ルーム操作に失敗しました。", "error");
+    renderLobby();
   });
   socket.on("room:created", payload => {
     if (!payload?.roomId || !payload?.participantId || !payload?.reconnectToken) return;
@@ -308,10 +419,34 @@ function ensureSocket() {
     }
     renderLobby();
   });
+  socket.on("game:starting", payload => {
+    if (!roomSnapshot || payload?.roomId !== roomSnapshot.roomId) return;
+    setStatus(isHost() ? "ワールドを生成します..." : "ホストがワールドを生成しています...");
+    renderLobby();
+  });
+  socket.on("game:start:host", payload => {
+    startHostedGame(payload);
+  });
+  socket.on("game:snapshot", payload => {
+    importRoomGameSnapshot(payload);
+  });
+  socket.on("game:started", payload => {
+    if (!roomSnapshot || payload?.roomId !== roomSnapshot.roomId) return;
+    pendingGameStart = false;
+    setStatus("ゲームを開始しました。", "ok");
+    renderLobby();
+    closeLobby();
+  });
+  socket.on("game:start-failed", payload => {
+    pendingGameStart = false;
+    setStatus(payload?.message || "ゲーム開始に失敗しました。", "error");
+    renderLobby();
+  });
   socket.on("room:left", () => {
     roomSnapshot = null;
     saveCredentials(null);
     autoJoinAttempted = false;
+    pendingGameStart = false;
     setStatus("ルームから退出しました。", "ok");
     renderLobby();
   });
@@ -412,6 +547,11 @@ function attemptStoredRejoin() {
 function handleClick(event) {
   const button = event.target instanceof Element ? event.target.closest("[data-v39-room-action]") : null;
   if (!(button instanceof HTMLElement)) return;
+  const tab = button.dataset.v39RoomTab;
+  if (tab) {
+    setEntryMode(tab, { focus:true });
+    return;
+  }
   const action = button.dataset.v39RoomAction;
   if (action === "close") closeLobby();
   if (action === "create") createRoom();
@@ -419,6 +559,7 @@ function handleClick(event) {
   if (action === "leave") leaveRoom();
   if (action === "ready") toggleReady();
   if (action === "game-settings") openLobbyGameSettings();
+  if (action === "start-game") requestGameStart();
 }
 
 function handleChange(event) {
@@ -433,16 +574,15 @@ function openLobby(options = {}) {
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");
   const entryMode = options.mode === "join" ? "join" : "create";
-  const joinPanel = modal?.querySelector("[data-v39-room-join-panel]");
-  if (joinPanel instanceof HTMLDetailsElement) joinPanel.open = entryMode === "join";
-  applyEntryModeDisplayName(entryMode);
+  setEntryMode(entryMode);
   const nameInput = getDisplayNameInput();
-  const roomIdInput = getRoomIdInput();
   ensureSocket();
   renderLobby();
   attemptStoredRejoin();
-  if (entryMode === "join") roomIdInput?.focus();
-  else nameInput?.focus();
+  if (!isConnectedToRoom()) {
+    if (entryMode === "join") getRoomIdInput()?.focus();
+    else nameInput?.focus();
+  }
 }
 
 function closeLobby() {
