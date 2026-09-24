@@ -24,6 +24,8 @@ function escapeHtml(value) {
 }
 
 function testModeEnabled() {
+  const playMode = typeof window.getV39PlayMode === "function" ? window.getV39PlayMode() : "";
+  if (playMode && playMode !== "single-test") return false;
   return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
 }
 
@@ -420,8 +422,8 @@ function install() {
     else return;
     render();
   });
-  window.addEventListener("v39:display-settings-changed", event => {
-    const enabled = event.detail?.testMode === true;
+  window.addEventListener("v39:display-settings-changed", () => {
+    const enabled = testModeEnabled();
     syncTestCharacters(enabled);
     if (!enabled) closePanel();
     else render();
