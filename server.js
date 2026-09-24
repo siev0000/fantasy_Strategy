@@ -6,6 +6,7 @@ const path = require("path");
 const crypto = require("crypto");
 const chokidar = require("chokidar");
 const { Server } = require("socket.io");
+const V39_RACE_DEFINITIONS = require("./data/source/export/json/種族.json");
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -66,6 +67,11 @@ const V39_ROOM_ID_LENGTH = 8;
 // v39ワールド用ロビーの上限。現行のゲーム開始設定と同じ最大勢力数に揃える。
 const V39_ROOM_PARTICIPANT_LIMIT = 8;
 const V39_ROOM_PROTOCOL_VERSION = "v39-room-v1";
+const V39_SELECTABLE_RACE_KEYS = new Set(
+  (Array.isArray(V39_RACE_DEFINITIONS) ? V39_RACE_DEFINITIONS : [])
+    .map(row => String(row?.key || "").trim())
+    .filter(Boolean)
+);
 // ロビー段階で共有するマップ設定JSONの最大サイズ。ワールド状態はまだ保存しない。
 const V39_LOBBY_GAME_SETUP_MAX_BYTES = 12 * 1024;
 const rooms = new Map();
@@ -368,6 +374,7 @@ function createRoom(roomId, mode = "legacy-battle", roomName = "") {
     settings: {
       factionCount: 1,
       playerParticipantAssignments: {},
+      playerFactionSelections: {},
       gameSetup: null
     },
     createdAt: Date.now(),
@@ -423,12 +430,22 @@ function normalizeV39RoomSettings(raw, room) {
       ? requestedParticipantId
       : fallbackParticipantId;
   }
+  const requestedFactionSelections = Object.prototype.hasOwnProperty.call(source, "playerFactionSelections")
+    ? source.playerFactionSelections
+    : room?.settings?.playerFactionSelections;
+  const playerFactionSelections = {};
+  for (let index = 1; index <= factionCount; index += 1) {
+    const playerId = `player-${index}`;
+    const raceKey = String(requestedFactionSelections?.[playerId] || "").trim();
+    if (V39_SELECTABLE_RACE_KEYS.has(raceKey)) playerFactionSelections[playerId] = raceKey;
+  }
   const requestedGameSetup = Object.prototype.hasOwnProperty.call(source, "gameSetup")
     ? source.gameSetup
     : room?.settings?.gameSetup;
   return {
     factionCount,
     playerParticipantAssignments,
+    playerFactionSelections,
     gameSetup:normalizeV39LobbyGameSetup(requestedGameSetup)
   };
 }
@@ -800,12 +817,58 @@ io.on("connection", socket => {
     socket.emit("room:left", { roomId, phase, reconnectable });
   });
 
+  socket.on("room:select-faction", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    const { room, participant } = context;
+    if (room.phase !== "lobby") {
+      emitV39RoomError(socket, "開始勢力を変更できるのはロビーだけです。");
+      return;
+    }
+    syncV39ParticipantAssignments(room);
+    const playerId = String(payload?.playerId || "").trim();
+    const factionCount = Math.max(1, Number(room.settings?.factionCount) || 1);
+    const playerIndex = Number(playerId.replace(/^player-/, ""));
+    if (!/^player-\d+$/.test(playerId) || !Number.isInteger(playerIndex) || playerIndex < 1 || playerIndex > factionCount) {
+      emitV39RoomError(socket, "開始勢力の対象が不正です。");
+      return;
+    }
+    if (String(room.settings?.playerParticipantAssignments?.[playerId] || "") !== participant.participantId) {
+      emitV39RoomError(socket, "担当している勢力だけ選択できます。");
+      return;
+    }
+    const raceKey = String(payload?.raceKey || "").trim();
+    if (raceKey && !V39_SELECTABLE_RACE_KEYS.has(raceKey)) {
+      emitV39RoomError(socket, "選択できない開始勢力です。");
+      return;
+    }
+    const nextSelections = { ...(room.settings?.playerFactionSelections || {}) };
+    if (raceKey) nextSelections[playerId] = raceKey;
+    else delete nextSelections[playerId];
+    room.settings = normalizeV39RoomSettings({
+      ...room.settings,
+      playerFactionSelections:nextSelections
+    }, room);
+    participant.ready = false;
+    room.stateRevision += 1;
+    emitV39RoomSnapshot(room);
+  });
+
   socket.on("room:ready", payload => {
     const context = validateV39RoomSocket(socket, payload);
     if (!context) return;
     if (context.room.phase !== "lobby") {
       emitV39RoomError(socket, "準備状態を変更できるのはロビーだけです。");
       return;
+    }
+    if (payload?.ready === true) {
+      syncV39ParticipantAssignments(context.room);
+      const selections = context.room.settings?.playerFactionSelections || {};
+      const missingPlayerId = context.participant.assignedPlayerIds.find(playerId => !V39_SELECTABLE_RACE_KEYS.has(String(selections[playerId] || "")));
+      if (missingPlayerId) {
+        emitV39RoomError(socket, "担当勢力の開始種族をすべて選択してから準備完了にしてください。");
+        return;
+      }
     }
     context.participant.ready = payload?.ready === true;
     context.room.stateRevision += 1;
@@ -823,8 +886,16 @@ io.on("connection", socket => {
       emitV39RoomError(socket, "ゲーム開始後はロビー設定を変更できません。");
       return;
     }
-    context.room.settings = normalizeV39RoomSettings(payload?.settings, context.room);
+    const previousAssignments = { ...(context.room.settings?.playerParticipantAssignments || {}) };
+    const nextSettings = normalizeV39RoomSettings(payload?.settings, context.room);
+    for (const playerId of Object.keys(nextSettings.playerFactionSelections || {})) {
+      if (String(previousAssignments[playerId] || "") !== String(nextSettings.playerParticipantAssignments?.[playerId] || "")) {
+        delete nextSettings.playerFactionSelections[playerId];
+      }
+    }
+    context.room.settings = nextSettings;
     resetV39ReadyStates(context.room, context.participant.participantId);
+    context.participant.ready = false;
     context.room.stateRevision += 1;
     emitV39RoomSnapshot(context.room);
   });
@@ -853,10 +924,16 @@ io.on("connection", socket => {
     syncV39ParticipantAssignments(room);
     const factionCount = Math.max(1, Number(room.settings?.factionCount) || 1);
     const assignments = room.settings?.playerParticipantAssignments || {};
+    const factionSelections = room.settings?.playerFactionSelections || {};
     for (let index = 1; index <= factionCount; index += 1) {
-      const participantId = String(assignments[`player-${index}`] || "");
+      const playerId = `player-${index}`;
+      const participantId = String(assignments[playerId] || "");
       if (!room.participants.has(participantId)) {
         emitV39RoomError(socket, `勢力${index}の担当参加者が不正です。`);
+        return;
+      }
+      if (!V39_SELECTABLE_RACE_KEYS.has(String(factionSelections[playerId] || ""))) {
+        emitV39RoomError(socket, `勢力${index}の開始種族を選択してください。`);
         return;
       }
     }
