@@ -545,7 +545,7 @@ function attemptStoredRejoin() {
 }
 
 function handleClick(event) {
-  const button = event.target instanceof Element ? event.target.closest("[data-v39-room-action]") : null;
+  const button = event.target instanceof Element ? event.target.closest("[data-v39-room-action],[data-v39-room-tab]") : null;
   if (!(button instanceof HTMLElement)) return;
   const tab = button.dataset.v39RoomTab;
   if (tab) {
