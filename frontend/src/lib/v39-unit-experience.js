@@ -69,15 +69,170 @@ export function resolveV39UnitExpDisplay(unit = {}) {
   return { ...progress, category, level, percent };
 }
 
-export function resolveV39TargetFullExpReward(target = {}) {
+const clamp01 = value => Math.max(0, Math.min(1, number(value)));
+
+export function resolveV39ActionBaseExp(action) {
+  return Math.max(0, number(V39_UNIT_EXP_BALANCE.baseExpByAction?.[text(action)]));
+}
+
+export function resolveV39StandardTurnDifficultyMultiplier(standardTurnsRaw = 1) {
+  const standardTurns = Math.max(1, number(standardTurnsRaw, 1));
+  return 1 + Math.max(0, standardTurns-1) * Math.max(0, number(V39_UNIT_EXP_BALANCE.standardTurnDifficultyPerExtraTurn));
+}
+
+export function resolveV39DevelopmentDifficultyMultiplier(difficultyRaw = 1) {
+  const difficulty = Math.max(1, number(difficultyRaw, 1));
+  return 1 + Math.max(0, difficulty-1) * Math.max(0, number(V39_UNIT_EXP_BALANCE.developmentDifficultyPerLevel));
+}
+
+export function resolveV39ThreatDifficultyMultiplier(threatRaw = 0) {
+  const threat = Math.max(0, number(threatRaw));
+  return 1 + threat * Math.max(0, number(V39_UNIT_EXP_BALANCE.threatDifficultyScale));
+}
+
+export function resolveV39AltitudeDifficultyMultiplier(heightLevelRaw = 0) {
+  const heightLevel = Math.max(0, number(heightLevelRaw));
+  return 1 + heightLevel * Math.max(0, number(V39_UNIT_EXP_BALANCE.altitudeDifficultyPerLevel));
+}
+
+export function resolveV39GenericDifficultyMultiplier(levelRaw = 1) {
+  const level = Math.max(1, number(levelRaw, 1));
+  return 1 + Math.max(0, level-1) * Math.max(0, number(V39_UNIT_EXP_BALANCE.genericDifficultyPerLevel));
+}
+
+export function resolveV39ResearchDifficultyMultiplier(researchLevelRaw = 1, requiredResearchExpRaw = null) {
+  const researchLevel = Math.max(1, number(researchLevelRaw, 1));
+  const reference = Math.max(1, number(V39_UNIT_EXP_BALANCE.researchExpReference, 100));
+  const fallbackNeed = reference * (2 ** Math.max(0, researchLevel-1));
+  const requiredResearchExp = Math.max(1, number(requiredResearchExpRaw, fallbackNeed));
+  const needMultiplier = Math.max(1, requiredResearchExp/reference);
+  const levelMultiplier = 1 + Math.max(0, researchLevel-1)
+    * Math.max(0, number(V39_UNIT_EXP_BALANCE.researchLevelDifficultyPerLevel));
+  return needMultiplier * levelMultiplier;
+}
+
+function expResult(action, multipliers = {}, progressRateRaw = 1) {
+  const baseExp = resolveV39ActionBaseExp(action);
+  const progressRate = clamp01(progressRateRaw);
+  const normalized = Object.fromEntries(Object.entries(multipliers).map(([key, value]) => [
+    key,
+    Math.max(0, number(value, 1))
+  ]));
+  const difficultyMultiplier = Object.values(normalized).reduce((product, value) => product * value, 1);
+  const rawExp = baseExp * difficultyMultiplier * progressRate;
+  return {
+    action:text(action),
+    baseExp,
+    progressRate,
+    difficultyMultiplier,
+    rawExp,
+    multipliers:normalized
+  };
+}
+
+export function resolveV39ConstructionExpReward({
+  standardTurns = 1,
+  progressRate = 1,
+  difficultyLevel = 1
+} = {}) {
+  return expResult("construction", {
+    standardTurns:resolveV39StandardTurnDifficultyMultiplier(standardTurns),
+    difficulty:resolveV39GenericDifficultyMultiplier(difficultyLevel)
+  }, progressRate);
+}
+
+export function resolveV39SurveyExpReward({
+  standardTurns = 1,
+  developmentDifficulty = 1,
+  threat = 0,
+  heightLevel = 0,
+  progressRate = 1
+} = {}) {
+  return expResult("survey", {
+    standardTurns:resolveV39StandardTurnDifficultyMultiplier(standardTurns),
+    development:resolveV39DevelopmentDifficultyMultiplier(developmentDifficulty),
+    threat:resolveV39ThreatDifficultyMultiplier(threat),
+    altitude:resolveV39AltitudeDifficultyMultiplier(heightLevel)
+  }, progressRate);
+}
+
+export function resolveV39TerritoryExpReward({
+  developmentDifficulty = 1,
+  threat = 0,
+  heightLevel = 0,
+  progressRate = 1
+} = {}) {
+  return expResult("territory", {
+    development:resolveV39DevelopmentDifficultyMultiplier(developmentDifficulty),
+    threat:resolveV39ThreatDifficultyMultiplier(threat),
+    altitude:resolveV39AltitudeDifficultyMultiplier(heightLevel)
+  }, progressRate);
+}
+
+export function resolveV39ResearchExpReward({
+  researchLevel = 1,
+  requiredResearchExp = null,
+  progressRate = 1
+} = {}) {
+  return expResult("research", {
+    research:resolveV39ResearchDifficultyMultiplier(researchLevel, requiredResearchExp)
+  }, progressRate);
+}
+
+export function resolveV39DiplomacyExpReward({
+  difficultyLevel = 1,
+  progressRate = 1
+} = {}) {
+  return expResult("diplomacy", {
+    difficulty:resolveV39GenericDifficultyMultiplier(difficultyLevel)
+  }, progressRate);
+}
+
+export function resolveV39TrainingExpReward({
+  difficultyLevel = 1,
+  progressRate = 1
+} = {}) {
+  return expResult("training", {
+    difficulty:resolveV39GenericDifficultyMultiplier(difficultyLevel)
+  }, progressRate);
+}
+
+export function resolveV39CombatExpReward({
+  targetLevel = 1,
+  targetCategory = "other",
+  threat = 0,
+  hpDamageRate = 1
+} = {}) {
+  const level = Math.max(1, number(targetLevel, 1));
+  const category = text(targetCategory, "other");
+  const raceMultiplier = Math.max(0, number(
+    V39_UNIT_EXP_BALANCE.targetRaceMultipliers?.[category],
+    V39_UNIT_EXP_BALANCE.targetRaceMultipliers?.other ?? 1
+  ));
+  const result = expResult("combat", {
+    targetLevel:level,
+    race:raceMultiplier,
+    threat:resolveV39ThreatDifficultyMultiplier(threat)
+  }, hpDamageRate);
+  return { ...result, targetLevel:level, targetCategory:category };
+}
+
+export function resolveV39TargetFullExpReward(target = {}, options = {}) {
   const level = Math.max(1, Math.floor(number(target?.level, target?.Lv || 1)));
   const category = resolveV39UnitRaceCategory(target);
-  const multiplier = Math.max(0, number(V39_UNIT_EXP_BALANCE.targetRaceMultipliers?.[category], V39_UNIT_EXP_BALANCE.targetRaceMultipliers?.other ?? 1));
+  const threat = Math.max(0, number(options?.threat));
+  const resolved = resolveV39CombatExpReward({
+    targetLevel:level,
+    targetCategory:category,
+    threat,
+    hpDamageRate:1
+  });
   return {
     level,
     category,
-    multiplier,
-    exp:Math.max(0, number(V39_UNIT_EXP_BALANCE.baseExpPerTargetLevel) * level * multiplier)
+    multiplier:resolved.multipliers.race,
+    threatMultiplier:resolved.multipliers.threat,
+    exp:resolved.rawExp
   };
 }
 
