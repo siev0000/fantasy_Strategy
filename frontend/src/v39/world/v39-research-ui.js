@@ -14,6 +14,7 @@ import {
   resolveCompletedResearchLevel,
   selectResearch
 } from "../../lib/research-progress.js";
+import { resolveV39ResearchExpReward } from "../../lib/v39-unit-experience.js";
 
 let activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
 let inspectedItemId = "";
@@ -38,6 +39,25 @@ function unitId(unit) {
 
 function unitName(unit) {
   return String(unit?.name ?? unit?.名前 ?? unit?.label ?? "名称未設定");
+}
+
+function formatExp(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+}
+
+function researchUnitExpPerTurn(unit, categoryKey, item) {
+  if (!unit || !item) return 0;
+  const level = Math.max(1, Math.floor(Number(item?.level) || 1));
+  const required = requiredResearchExp(level);
+  const researchPerTurn = Math.max(0, Number(researchExperiencePerTurn(unit, categoryKey)) || 0);
+  const progressRate = required > 0 ? researchPerTurn / required : 0;
+  return resolveV39ResearchExpReward({
+    researchLevel:level,
+    requiredResearchExp:required,
+    progressRate
+  }).rawExp;
 }
 
 function aliveUnits() {
@@ -158,6 +178,10 @@ function renderModal() {
   const assigneeLevel = Number(assignee?.level ?? assignee?.Lv ?? assignee?.レベル) || 0;
   const inspected = categoryRows(activeCategory).flatMap(row => row.items || []).find(item => item.id === inspectedItemId) || null;
   const selectedId = String(research.selection?.[activeCategory] || "");
+  const selectedResearchItem = categoryRows(activeCategory)
+    .flatMap(row => row.items || [])
+    .find(item => item.id === selectedId) || null;
+  const expPreviewItem = selectedResearchItem || inspected;
   const selected = inspected?.id === selectedId;
   const completed = inspected ? isResearchCompleted(research, activeCategory, inspected.level, inspected.id) : false;
   const unlocked = inspected ? isResearchLevelUnlocked(research, activeCategory, inspected.level, assigneeLevel) : false;
@@ -191,11 +215,12 @@ function renderModal() {
   const actionLabel = completed ? "研究完了" : (selected ? "研究中" : "研究として選択");
   const assigneeOptions = aliveUnits().map(unit => {
     const unitLevel = Number(unit?.level ?? unit?.Lv ?? 0);
-    const unitResearchExp = researchExperiencePerTurn(unit, activeCategory);
-    return `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${unitLevel}｜研究EXP +${unitResearchExp}/T</option>`;
+    const unitExpPerTurn = researchUnitExpPerTurn(unit, activeCategory, expPreviewItem);
+    return `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${unitLevel}｜ユニットEXP +${formatExp(unitExpPerTurn)}/T</option>`;
   }).join("");
   const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory) : 0;
-  body.innerHTML = `<nav class="v39-research-categories">${categoryButtons}</nav><div class="v39-research-layout"><div class="v39-research-board">${levels || "研究データがありません。"}</div><aside class="v39-research-detail"><label class="v39-research-assignee">担当ユニット<select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>研究EXP +${perTurn} / ターン</small></label>${inspected ? `<div class="v39-research-detail-head"><div><b>${escapeHtml(inspected.name)}</b><small>${getResearchCategoryMeta(activeCategory).label} Lv${inspected.level}</small></div><strong class="${completed ? "completed" : ""}">${completed ? "100%" : `${progressRatio}%`}</strong></div><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp}</span></div><p>${escapeHtml(inspected.desc || "-")}</p>${itemDetails(inspected)}<p class="v39-research-requirement">必要ユニットLv ${researchTreeData.levelRequirements?.[inspected.level] || "-"}<br>短縮技能: ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || "-")}</p><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? "disabled" : ""}>${actionLabel}</button>` : "研究項目を選択してください。"}</aside></div>`;
+  const assigneeUnitExpPerTurn = assignee ? researchUnitExpPerTurn(assignee, activeCategory, expPreviewItem) : 0;
+  body.innerHTML = `<nav class="v39-research-categories">${categoryButtons}</nav><div class="v39-research-layout"><div class="v39-research-board">${levels || "研究データがありません。"}</div><aside class="v39-research-detail"><label class="v39-research-assignee">担当ユニット<select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>研究EXP +${perTurn}/T ｜ ユニットEXP +${formatExp(assigneeUnitExpPerTurn)}/T</small></label>${inspected ? `<div class="v39-research-detail-head"><div><b>${escapeHtml(inspected.name)}</b><small>${getResearchCategoryMeta(activeCategory).label} Lv${inspected.level}</small></div><strong class="${completed ? "completed" : ""}">${completed ? "100%" : `${progressRatio}%`}</strong></div><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp}</span></div><p>${escapeHtml(inspected.desc || "-")}</p>${itemDetails(inspected)}<p class="v39-research-requirement">必要ユニットLv ${researchTreeData.levelRequirements?.[inspected.level] || "-"}<br>短縮技能: ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || "-")}</p><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? "disabled" : ""}>${actionLabel}</button>` : "研究項目を選択してください。"}</aside></div>`;
 }
 
 function renderAll() {
