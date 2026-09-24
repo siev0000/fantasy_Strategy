@@ -123,6 +123,13 @@ try {
   const gameSetupSnapshot = await gameSetupSaved;
   if (gameSetupSnapshot.settings.gameSetup?.patternId !== "balanced") fail("共有ゲーム設定が保存されません。");
 
+  const hostFactionSelected = nextEvent(host, "room:snapshot", snapshot => snapshot.settings?.playerFactionSelections?.["player-1"] === "只人");
+  host.emit("room:select-faction", { roomId:hostCredentials.roomId, playerId:"player-1", raceKey:"只人" });
+  await hostFactionSelected;
+  const guestFactionSelected = nextEvent(host, "room:snapshot", snapshot => snapshot.settings?.playerFactionSelections?.["player-2"] === "オーガ");
+  guest.emit("room:select-faction", { roomId:hostCredentials.roomId, playerId:"player-2", raceKey:"オーガ" });
+  await guestFactionSelected;
+
   const rejected = nextEvent(guest, "room:error", payload => /ホスト/.test(String(payload?.message || "")));
   guest.emit("room:update-settings", { roomId:hostCredentials.roomId, settings:{ factionCount:1 } });
   await rejected;
