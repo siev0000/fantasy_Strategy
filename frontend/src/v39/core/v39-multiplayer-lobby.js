@@ -4,6 +4,9 @@ import { io } from "socket.io-client";
 const PROTOCOL_VERSION = "v39-room-v1";
 const CREDENTIALS_STORAGE_KEY = "v39-multiplayer-room-credentials-v1";
 const DISPLAY_NAME_STORAGE_KEY = "v39-multiplayer-display-name-v1";
+const HOST_DEFAULT_DISPLAY_NAME = "ホストプレイヤー";
+const JOIN_DEFAULT_DISPLAY_NAME = "プレイヤー1";
+const LEGACY_DEFAULT_DISPLAY_NAME = "参加者";
 
 let socket = null;
 let socketReady = false;
@@ -12,6 +15,7 @@ let credentials = loadCredentials();
 let autoJoinAttempted = false;
 let modal = null;
 let pendingGameSetupSave = false;
+let lobbyEntryMode = "create";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -52,12 +56,36 @@ function saveCredentials(next) {
   }
 }
 
-function loadDisplayName() {
+function defaultDisplayNameForMode(mode = lobbyEntryMode) {
+  return mode === "join" ? JOIN_DEFAULT_DISPLAY_NAME : HOST_DEFAULT_DISPLAY_NAME;
+}
+
+function isAutomaticDisplayName(value) {
+  const name = text(value);
+  return !name
+    || name === LEGACY_DEFAULT_DISPLAY_NAME
+    || name === HOST_DEFAULT_DISPLAY_NAME
+    || name === JOIN_DEFAULT_DISPLAY_NAME;
+}
+
+function loadDisplayName(defaultName = defaultDisplayNameForMode()) {
   try {
-    return credentials?.displayName || text(localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)) || "";
+    const credentialName = text(credentials?.displayName);
+    if (credentialName && credentialName !== LEGACY_DEFAULT_DISPLAY_NAME) return credentialName;
+    const storedName = text(localStorage.getItem(DISPLAY_NAME_STORAGE_KEY));
+    if (storedName && storedName !== LEGACY_DEFAULT_DISPLAY_NAME) return storedName;
+    return defaultName;
   } catch {
-    return credentials?.displayName || "";
+    const credentialName = text(credentials?.displayName);
+    return credentialName && credentialName !== LEGACY_DEFAULT_DISPLAY_NAME ? credentialName : defaultName;
   }
+}
+
+function applyEntryModeDisplayName(mode) {
+  lobbyEntryMode = mode === "join" ? "join" : "create";
+  const nameInput = getDisplayNameInput();
+  if (!nameInput || isConnectedToRoom() || !isAutomaticDisplayName(nameInput.value)) return;
+  nameInput.value = loadDisplayName(defaultDisplayNameForMode(lobbyEntryMode));
 }
 
 function saveDisplayName(value) {
@@ -107,7 +135,7 @@ function createModal() {
         <section class="v39-room-section">
           <h3>接続</h3>
           <div class="v39-room-form">
-            <label>プレイヤー名（ロビー表示）<input data-v39-room-player-name maxlength="20" placeholder="未入力なら自動設定" autocomplete="nickname"></label>
+            <label>プレイヤー名（ロビー表示）<input data-v39-room-player-name maxlength="20" autocomplete="nickname"></label>
             <label>ルーム名<input data-v39-room-name maxlength="40" placeholder="例: 週末テスト" autocomplete="off"></label>
           </div>
           <div class="v39-room-actions"><button type="button" data-v39-room-action="create">ルーム作成</button><button type="button" data-v39-room-action="leave">退出</button></div>
@@ -123,6 +151,12 @@ function createModal() {
   modal.addEventListener("input", event => {
     if (event.target instanceof HTMLInputElement && event.target.matches("[data-v39-room-player-name]")) saveDisplayName(event.target.value);
   });
+  const joinPanel = modal.querySelector("[data-v39-room-join-panel]");
+  if (joinPanel instanceof HTMLDetailsElement) {
+    joinPanel.addEventListener("toggle", () => {
+      applyEntryModeDisplayName(joinPanel.open ? "join" : "create");
+    });
+  }
   modal.addEventListener("click", event => { if (event.target === modal) closeLobby(); });
 }
 
@@ -168,7 +202,7 @@ function renderLobby() {
   const nameInput = getDisplayNameInput();
   const roomNameInput = getRoomNameInput();
   const roomIdInput = getRoomIdInput();
-  if (nameInput && document.activeElement !== nameInput) nameInput.value = loadDisplayName();
+  if (nameInput && document.activeElement !== nameInput) nameInput.value = loadDisplayName(defaultDisplayNameForMode());
   if (roomNameInput && document.activeElement !== roomNameInput && roomSnapshot?.roomName) roomNameInput.value = roomSnapshot.roomName;
   if (roomIdInput && document.activeElement !== roomIdInput && !text(roomIdInput.value)) roomIdInput.value = credentials?.roomId || "";
 
@@ -292,8 +326,8 @@ function joinRoom(options = {}) {
   }
   const roomId = text(options.roomId || getRoomIdInput()?.value).replace(/\D/g, "").slice(0, 8);
   const displayName = Object.prototype.hasOwnProperty.call(options, "displayName")
-    ? text(options.displayName).slice(0, 20)
-    : saveDisplayName(getDisplayNameInput()?.value);
+    ? (text(options.displayName).slice(0, 20) || JOIN_DEFAULT_DISPLAY_NAME)
+    : (text(getDisplayNameInput()?.value).slice(0, 20) || JOIN_DEFAULT_DISPLAY_NAME);
   if (!roomId) {
     setStatus("ルームIDを入力してください。", "error");
     return;
@@ -316,7 +350,7 @@ function createRoom() {
     setStatus("通信サーバーへ接続中です。少し待ってから再度実行してください。", "error");
     return;
   }
-  const displayName = saveDisplayName(getDisplayNameInput()?.value);
+  const displayName = text(getDisplayNameInput()?.value).slice(0, 20) || HOST_DEFAULT_DISPLAY_NAME;
   const roomName = text(getRoomNameInput()?.value);
   if (!roomName) {
     setStatus("ルーム名を入力してください。", "error");
@@ -398,17 +432,17 @@ function openLobby(options = {}) {
   if (!modal) createModal();
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");
+  const entryMode = options.mode === "join" ? "join" : "create";
+  const joinPanel = modal?.querySelector("[data-v39-room-join-panel]");
+  if (joinPanel instanceof HTMLDetailsElement) joinPanel.open = entryMode === "join";
+  applyEntryModeDisplayName(entryMode);
   const nameInput = getDisplayNameInput();
-  if (nameInput && !text(nameInput.value)) nameInput.value = loadDisplayName();
   const roomIdInput = getRoomIdInput();
   ensureSocket();
   renderLobby();
   attemptStoredRejoin();
-  if (options.mode === "join") {
-    const joinPanel = modal?.querySelector("[data-v39-room-join-panel]");
-    if (joinPanel instanceof HTMLDetailsElement) joinPanel.open = true;
-    roomIdInput?.focus();
-  } else nameInput?.focus();
+  if (entryMode === "join") roomIdInput?.focus();
+  else nameInput?.focus();
 }
 
 function closeLobby() {
