@@ -31,6 +31,8 @@ export const V39_UNIT_EXP_BALANCE = Object.freeze({
     demon:1.5,
     other:1.0
   }),
+  // 調査の現行標準ターン。調査側に正本列が追加されるまでは1Tを元ターンとして使う。
+  defaultSurveyStandardTurns:1,
   // 標準必要ターンによる難易度。1T=1.0、2T=1.5、4T=2.5、8T=4.5。
   standardTurnDifficultyPerExtraTurn:0.5,
   // 地形.json の開拓難易度。難易度1を1.0とし、1段階ごとに+20%。
