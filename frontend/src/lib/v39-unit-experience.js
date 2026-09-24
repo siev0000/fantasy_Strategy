@@ -204,7 +204,7 @@ export function resolveV39CombatExpReward({
   hpDamageRate = 1
 } = {}) {
   const level = Math.max(1, number(targetLevel, 1));
-  const category = text(targetCategory, "other");
+  const category = text(targetCategory) || "other";
   const raceMultiplier = Math.max(0, number(
     V39_UNIT_EXP_BALANCE.targetRaceMultipliers?.[category],
     V39_UNIT_EXP_BALANCE.targetRaceMultipliers?.other ?? 1
