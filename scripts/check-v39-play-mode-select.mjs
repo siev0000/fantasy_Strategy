@@ -11,21 +11,31 @@ async function checkSelection(playMode) {
   await page.locator(`[data-v39-play-mode=${playMode}]`).click();
   const targetSelector = playMode === "multiplayer" ? "#v39-multiplayer-lobby.open" : "#v39-field-settings-modal.open";
   await page.locator(targetSelector).waitFor();
-  const subtitle = playMode === "single"
-    ? await page.locator("#v39-field-settings-subtitle").textContent()
-    : await page.locator("#v39-room-title").textContent();
+  const subtitle = playMode === "multiplayer"
+    ? await page.locator("#v39-room-title").textContent()
+    : await page.locator("#v39-field-settings-subtitle").textContent();
   const fieldSettingsOpen = await page.locator("#v39-field-settings-modal.open").count();
+  const selectedPlayMode = await page.evaluate(() => window.getV39PlayMode?.() || "");
+  const testMode = await page.evaluate(() => window.isV39TestMode?.() === true);
   await page.close();
-  return { playMode, subtitle, fieldSettingsOpen, errors };
+  return { playMode, selectedPlayMode, testMode, subtitle, fieldSettingsOpen, errors };
 }
 
 const browser = await chromium.launch({ headless:true });
 try {
-  const single = await checkSelection("single");
+  const singleNormal = await checkSelection("single-normal");
+  const singleTest = await checkSelection("single-test");
   const multiplayer = await checkSelection("multiplayer");
-  console.log(JSON.stringify({ single, multiplayer }, null, 2));
-  if (single.errors.length || multiplayer.errors.length
-    || !String(single.subtitle).includes("シングルプレイ")
+  console.log(JSON.stringify({ singleNormal, singleTest, multiplayer }, null, 2));
+  if (singleNormal.errors.length || singleTest.errors.length || multiplayer.errors.length
+    || singleNormal.selectedPlayMode !== "single-normal"
+    || singleTest.selectedPlayMode !== "single-test"
+    || multiplayer.selectedPlayMode !== "multiplayer"
+    || singleNormal.testMode !== false
+    || singleTest.testMode !== true
+    || multiplayer.testMode !== false
+    || !String(singleNormal.subtitle).includes("通常プレイ")
+    || !String(singleTest.subtitle).includes("テストプレイ")
     || !String(multiplayer.subtitle).includes("通信ルーム")
     || multiplayer.fieldSettingsOpen) process.exitCode = 1;
 } finally {
