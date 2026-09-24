@@ -276,6 +276,7 @@ function importRoomGameSnapshot(payload) {
     if (typeof window.importV39SaveJson !== "function") throw new Error("ゲーム状態の読込機能が準備できていません。");
     window.importV39SaveJson(payload.snapshotJson);
     setStatus("ワールド状態を受信しました。", "ok");
+    if (roomSnapshot?.phase === "playing") closeLobby();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "ワールド状態の同期に失敗しました。", "error");
   }
