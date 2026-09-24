@@ -16,11 +16,13 @@ import {
 const FIELD_SETTINGS_STORAGE_KEY = "v39-field-settings-v1";
 
 function normalizePlayMode(value) {
-  return value === "multiplayer" ? "multiplayer" : "single";
+  if (value === "multiplayer") return "multiplayer";
+  if (value === "single-test") return "single-test";
+  return "single-normal";
 }
 
 const DEFAULT_FIELD_SETTINGS = Object.freeze({
-  playMode: "single",
+  playMode: "single-normal",
   mapSize: "60x60",
   patternId: "realistic",
   mountainMode: "random",
@@ -372,7 +374,9 @@ function boot() {
     const subtitle = get("v39-field-settings-subtitle");
     if (subtitle) subtitle.textContent = settings.playMode === "multiplayer"
       ? "マルチプレイ用のマップ・ゲーム進行を設定"
-      : "シングルプレイ用のマップ・ゲーム進行を設定";
+      : settings.playMode === "single-test"
+        ? "シングル・テストプレイ用のマップ・ゲーム進行を設定"
+        : "シングル・通常プレイ用のマップ・ゲーム進行を設定";
     get("v39-field-map-size").value = settings.mapSize;
     get("v39-field-pattern").value = settings.patternId;
     get("v39-field-mountain").value = settings.mountainMode;
@@ -618,6 +622,7 @@ function boot() {
     try {
       if (typeof window.setV39GameState === "function") {
         window.startV39LocalSession?.(next.localPlayerCount, {
+          playMode:next.playMode,
           gameSettings:next.gameSettings,
           participantCount:next.localParticipantCount,
           playerParticipantAssignments:next.playerParticipantAssignments
