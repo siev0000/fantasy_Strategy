@@ -35,7 +35,13 @@ try {
   await page.locator("[data-v39-play-mode=multiplayer]").click();
   await page.locator("#v39-multiplayer-lobby.open").waitFor();
   if (await page.locator("#v39-field-settings-modal.open").count()) throw new Error("マルチ選択直後にゲーム開始設定が開いています。");
-  if (await page.locator("[data-v39-room-id]:visible").count()) throw new Error("ルーム作成画面に参加用ルームID入力が表示されています。");
+  if (await page.locator("[data-v39-room-id]:visible").count()) throw new Error("ルーム作成タブに参加用ルームID入力が表示されています。");
+  const tabLabels = await page.locator("[data-v39-room-tab]").allTextContents();
+  if (tabLabels.join("|") !== "ルーム作成|ルーム参加") throw new Error("ルーム作成・参加の2タブが表示されていません。");
+  await page.locator("[data-v39-room-tab=join]").click();
+  if (!(await page.locator("[data-v39-room-id]:visible").count())) throw new Error("ルーム参加タブへ切り替えてもルームID入力が表示されません。");
+  if (await page.locator("[data-v39-room-name]:visible").count()) throw new Error("ルーム参加タブにルーム名入力が残っています。");
+  await page.locator("[data-v39-room-tab=create]").click();
 
   await page.locator("[data-v39-room-player-name]").fill("ホスト");
   await page.locator("[data-v39-room-name]").fill("通信開始テスト");
@@ -44,6 +50,8 @@ try {
   await page.locator(".v39-room-id").waitFor();
   const roomId = await page.locator(".v39-room-id").textContent();
   if (!/^\d{8}$/.test(String(roomId))) throw new Error("作成されたルームIDが8桁の数字ではありません。");
+  if (await page.locator("[data-v39-room-entry]:visible").count()) throw new Error("入室後もルーム作成・参加フォームが残っています。");
+  if (await page.locator("[data-v39-room-tabs]:visible").count()) throw new Error("入室後もルーム作成・参加タブが残っています。");
   try {
     await page.locator("[data-v39-room-action=game-settings]").click({ timeout:5000 });
     await page.locator("#v39-field-settings-modal.open").waitFor({ timeout:5000 });
@@ -73,11 +81,38 @@ try {
   });
   await page.waitForFunction(() => document.querySelector(".v39-room-note")?.textContent?.includes("36x36"));
   const summary = await page.locator(".v39-room-note").filter({ hasText:"ゲーム設定" }).textContent();
-  const status = await page.locator("[data-v39-room-status]").textContent();
+  const statusAfterSettings = await page.locator("[data-v39-room-status]").textContent();
+  await page.locator("[data-v39-room-action=ready]").click();
+  await page.waitForFunction(() => !document.querySelector("[data-v39-room-action=start-game]")?.disabled);
+  await page.locator("[data-v39-room-action=start-game]").click();
+  await page.waitForFunction(() => {
+    const runtime = window.__v39FieldRuntime;
+    return runtime?.mapData?.w === 36 && runtime?.mapData?.h === 36;
+  }, null, { timeout:10000 });
+  await page.waitForFunction(() => !document.querySelector("#v39-multiplayer-lobby")?.classList.contains("open"), null, { timeout:10000 });
+  const multiplayerState = await page.evaluate(() => {
+    const state = window.getV39GameState?.();
+    return {
+      playerCount:state?.players?.length || 0,
+      participantCount:state?.sessionParticipants?.length || 0,
+      controllerParticipantId:state?.players?.[0]?.controllerParticipantId || "",
+      participantId:state?.sessionParticipants?.[0]?.participantId || "",
+      controlMode:state?.sessionParticipants?.[0]?.controlMode || "",
+      mapWidth:window.__v39FieldRuntime?.mapData?.w || 0,
+      mapHeight:window.__v39FieldRuntime?.mapData?.h || 0
+    };
+  });
+  if (multiplayerState.playerCount !== 1 || multiplayerState.participantCount !== 1
+    || !multiplayerState.participantId
+    || multiplayerState.controllerParticipantId !== multiplayerState.participantId
+    || multiplayerState.controlMode !== "remote"
+    || multiplayerState.mapWidth !== 36 || multiplayerState.mapHeight !== 36) {
+    throw new Error(`マルチプレイ開始状態が不正です: ${JSON.stringify(multiplayerState)}`);
+  }
   await page.screenshot({ path:"output/web-game/v39-multiplayer-start-flow.png" });
   await page.close();
-  console.log(JSON.stringify({ hiddenControls, primaryText, summary, status, errors }, null, 2));
-  if (errors.length || !String(summary).includes("36x36") || status !== "ゲーム開始設定を共有しました。") process.exitCode = 1;
+  console.log(JSON.stringify({ hiddenControls, primaryText, summary, statusAfterSettings, multiplayerState, errors }, null, 2));
+  if (errors.length || !String(summary).includes("36x36") || statusAfterSettings !== "ゲーム開始設定を共有しました。") process.exitCode = 1;
 } finally {
   await browser.close();
   server.kill("SIGTERM");
