@@ -71,6 +71,12 @@ export function resolveV39UnitExpDisplay(unit = {}) {
 
 const clamp01 = value => Math.max(0, Math.min(1, number(value)));
 
+export function resolveV39ExpProgressRate(completedRaw = 0, totalRaw = 1) {
+  const total = Math.max(0, number(totalRaw));
+  if (!(total > 0)) return 0;
+  return clamp01(Math.max(0, number(completedRaw)) / total);
+}
+
 export function resolveV39ActionBaseExp(action) {
   return Math.max(0, number(V39_UNIT_EXP_BALANCE.baseExpByAction?.[text(action)]));
 }
@@ -142,7 +148,7 @@ export function resolveV39ConstructionExpReward({
 }
 
 export function resolveV39SurveyExpReward({
-  standardTurns = 1,
+  standardTurns = V39_UNIT_EXP_BALANCE.defaultSurveyStandardTurns,
   developmentDifficulty = 1,
   threat = 0,
   heightLevel = 0,
