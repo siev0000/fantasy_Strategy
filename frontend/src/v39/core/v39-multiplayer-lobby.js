@@ -54,7 +54,7 @@ function saveCredentials(next) {
 
 function loadDisplayName() {
   try {
-    return text(localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)) || credentials?.displayName || "";
+    return credentials?.displayName || text(localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)) || "";
   } catch {
     return credentials?.displayName || "";
   }
