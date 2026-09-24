@@ -83,6 +83,12 @@ try {
   await page.waitForFunction(() => document.querySelector(".v39-room-note")?.textContent?.includes("36x36"));
   const summary = await page.locator(".v39-room-note").filter({ hasText:"ゲーム設定" }).textContent();
   const statusAfterSettings = await page.locator("[data-v39-room-status]").textContent();
+  const factionSelect = page.locator('[data-v39-room-faction-select="player-1"]');
+  if (!(await factionSelect.count()) || await factionSelect.isDisabled()) {
+    throw new Error("担当勢力の開始種族を選択できません。");
+  }
+  await factionSelect.selectOption("只人");
+  await page.waitForFunction(() => document.querySelector('[data-v39-room-faction-select="player-1"]')?.value === "只人");
   await page.locator("[data-v39-room-action=ready]").click();
   await page.waitForFunction(() => !document.querySelector("[data-v39-room-action=start-game]")?.disabled);
   await page.locator("[data-v39-room-action=start-game]").click();
@@ -99,6 +105,9 @@ try {
       controllerParticipantId:state?.players?.[0]?.controllerParticipantId || "",
       participantId:state?.sessionParticipants?.[0]?.participantId || "",
       controlMode:state?.sessionParticipants?.[0]?.controlMode || "",
+      race:state?.players?.[0]?.race || "",
+      unitCount:state?.players?.[0]?.factionState?.units?.length || 0,
+      settlementCount:state?.players?.[0]?.factionState?.settlements?.length || 0,
       mapWidth:window.__v39FieldRuntime?.mapData?.w || 0,
       mapHeight:window.__v39FieldRuntime?.mapData?.h || 0
     };
@@ -107,6 +116,9 @@ try {
     || !multiplayerState.participantId
     || multiplayerState.controllerParticipantId !== multiplayerState.participantId
     || multiplayerState.controlMode !== "remote"
+    || multiplayerState.race !== "只人"
+    || multiplayerState.unitCount !== 0
+    || multiplayerState.settlementCount !== 0
     || multiplayerState.mapWidth !== 36 || multiplayerState.mapHeight !== 36) {
     throw new Error(`マルチプレイ開始状態が不正です: ${JSON.stringify(multiplayerState)}`);
   }
