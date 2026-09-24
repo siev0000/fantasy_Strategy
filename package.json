@@ -18,6 +18,9 @@
     "check:local-session": "node scripts/check-v39-local-session.mjs",
     "check:friendly-skill-targeting": "node scripts/check-v39-friendly-skill-targeting.mjs",
     "check:field-settings-scroll": "node scripts/check-v39-field-settings-scroll.mjs",
+    "check:room-lobby": "node scripts/check-v39-room-lobby.mjs",
+    "check:play-mode-select": "node scripts/check-v39-play-mode-select.mjs",
+    "check:multiplayer-start-flow": "node scripts/check-v39-multiplayer-start-flow.mjs",
     "preview:front": "vite preview --config frontend/vite.config.mjs"
   },
   "engines": {

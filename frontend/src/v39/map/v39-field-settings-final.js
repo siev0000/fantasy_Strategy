@@ -15,7 +15,12 @@ import {
 
 const FIELD_SETTINGS_STORAGE_KEY = "v39-field-settings-v1";
 
+function normalizePlayMode(value) {
+  return value === "multiplayer" ? "multiplayer" : "single";
+}
+
 const DEFAULT_FIELD_SETTINGS = Object.freeze({
+  playMode: "single",
   mapSize: "60x60",
   patternId: "realistic",
   mountainMode: "random",
@@ -52,6 +57,7 @@ function loadFieldSettings() {
     return {
       ...deepClone(DEFAULT_FIELD_SETTINGS),
       ...saved,
+      playMode:normalizePlayMode(saved.playMode),
       gameSettings: normalizeGameStartSettings(saved.gameSettings),
       islandCustomSettings: {
         ...deepClone(DEFAULT_FIELD_SETTINGS.islandCustomSettings),
@@ -115,6 +121,7 @@ function createStyles() {
 .v39-setting-row small{grid-column:2;font-size:11px;color:#809297;line-height:1.4;margin-top:-2px}
 .v39-range-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:5px;align-items:center}
 .v39-player-assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.v39-player-assignment-list label{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:5px;font-size:12px;color:#b8c5c8}.v39-player-assignment-list select{min-width:0;min-height:30px;border:1px solid #46575d;border-radius:6px;background:#162227;color:#e8efec;padding:3px 5px}
+.v39-room-entry{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.v39-room-entry button{min-height:34px;border:1px solid #52747d;border-radius:7px;background:#18333b;color:#edf6f3;padding:5px 10px;font-weight:800}.v39-room-entry small{flex:1 1 200px}
 .v39-field-load-save{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .v39-field-load-save button{min-height:36px;border:1px solid #5b7882;border-radius:7px;background:#173039;color:#edf5f3;padding:5px 10px;font-weight:800;cursor:pointer}.v39-field-load-save button:hover{background:#1d3c46}
 .v39-field-load-save-status{font-size:11px;color:#91a4a9}
@@ -136,14 +143,14 @@ function createModal() {
   overlay.innerHTML = `
     <section id="v39-field-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="v39-field-settings-title">
       <header class="v39-field-settings-head">
-        <div><h2 id="v39-field-settings-title">ゲーム開始設定</h2><small>マップ生成とゲーム進行方式を設定</small></div>
+        <div><h2 id="v39-field-settings-title">ゲーム開始設定</h2><small id="v39-field-settings-subtitle">マップ生成とゲーム進行方式を設定</small></div>
         <button type="button" data-field-close aria-label="閉じる">×</button>
       </header>
       <div class="v39-field-settings-body">
         <details class="v39-start-section" id="v39-start-game-section" open>
           <summary>ゲーム進行</summary>
           <div class="v39-setting-list">
-            <label class="v39-setting-row">
+            <label class="v39-setting-row" id="v39-field-local-player-row">
               <span>ターン進行方式</span>
               <select id="v39-field-turn-mode"></select>
               <small id="v39-field-turn-mode-note"></small>
@@ -173,6 +180,20 @@ function createModal() {
               <span>担当勢力</span>
               <div class="v39-player-assignment-list" id="v39-field-player-assignments"></div>
               <small>各勢力は必ず1人の参加者が担当します。1人で複数勢力を担当できます。</small>
+            </div>
+          </div>
+        </details>
+
+        <details class="v39-start-section" id="v39-start-online-section">
+          <summary>通信ルーム</summary>
+          <div class="v39-setting-list">
+            <div class="v39-setting-row">
+              <span>ホスト・参加</span>
+              <div class="v39-room-entry">
+                <button type="button" data-open-v39-room="create">ルーム作成</button>
+                <button type="button" data-open-v39-room="join">ルーム参加</button>
+              </div>
+              <small>ルームIDを共有して参加します。現在はロビー段階で、ワールド同期・ゲーム開始はまだ接続しません。</small>
             </div>
           </div>
         </details>
@@ -272,6 +293,7 @@ function createModal() {
 function boot() {
   createStyles();
   let settings = loadFieldSettings();
+  let lobbyGameSettingsMode = false;
   const overlay = createModal();
   const get = id => document.getElementById(id);
 
@@ -346,6 +368,11 @@ function boot() {
   };
 
   const sync = () => {
+    settings.playMode = normalizePlayMode(settings.playMode);
+    const subtitle = get("v39-field-settings-subtitle");
+    if (subtitle) subtitle.textContent = settings.playMode === "multiplayer"
+      ? "マルチプレイ用のマップ・ゲーム進行を設定"
+      : "シングルプレイ用のマップ・ゲーム進行を設定";
     get("v39-field-map-size").value = settings.mapSize;
     get("v39-field-pattern").value = settings.patternId;
     get("v39-field-mountain").value = settings.mountainMode;
@@ -373,6 +400,34 @@ function boot() {
     get("v39-field-river-min").value = settings.islandCustomSettings.riverPerContinentMin;
     get("v39-field-river-max").value = settings.islandCustomSettings.riverPerContinentMax;
     get("v39-field-custom-grid").classList.toggle("is-disabled", !settings.islandCustomSettings.enabled);
+    ["v39-field-local-player-row", "v39-start-participant-section", "v39-start-load-section"]
+      .forEach(id => {
+        const element = get(id);
+        if (element instanceof HTMLElement) element.hidden = lobbyGameSettingsMode;
+      });
+    const onlineSection = get("v39-start-online-section");
+    if (onlineSection instanceof HTMLElement) onlineSection.hidden = true;
+    const primaryButton = get("v39-field-generate");
+    if (primaryButton) primaryButton.textContent = lobbyGameSettingsMode ? "ロビー設定を保存" : "生成";
+  };
+
+  const applyLobbyGameSetup = gameSetup => {
+    if (!gameSetup || typeof gameSetup !== "object" || Array.isArray(gameSetup)) return;
+    const source = gameSetup;
+    settings = {
+      ...settings,
+      playMode:"multiplayer",
+      mapSize:String(source.mapSize || settings.mapSize),
+      patternId:String(source.patternId || settings.patternId),
+      mountainMode:String(source.mountainMode || settings.mountainMode),
+      enemySpawnTileDivisor:source.enemySpawnTileDivisor ?? settings.enemySpawnTileDivisor,
+      neutralVillageCount:source.neutralVillageCount ?? settings.neutralVillageCount,
+      gameSettings:normalizeGameStartSettings(source.gameSettings || settings.gameSettings),
+      islandCustomSettings:{
+        ...settings.islandCustomSettings,
+        ...(source.islandCustomSettings && typeof source.islandCustomSettings === "object" ? source.islandCustomSettings : {})
+      }
+    };
   };
 
   const read = () => {
@@ -389,6 +444,7 @@ function boot() {
       .map(select => [String(select.dataset.v39PlayerAssignment || ""), String(select.value || "")])
       .filter(([playerId]) => playerId));
     settings = {
+      playMode:normalizePlayMode(settings.playMode),
       mapSize: get("v39-field-map-size").value,
       patternId: get("v39-field-pattern").value,
       mountainMode: get("v39-field-mountain").value,
@@ -421,23 +477,30 @@ function boot() {
     return settings;
   };
 
-  const open = () => {
+  const open = (options = {}) => {
+    // 管理メニューやテストから直接設定を開く場合、初期選択の遮蔽を残さない。
+    window.closeV39PlayModeSelection?.();
+    if (Object.prototype.hasOwnProperty.call(options, "playMode")) {
+      settings.playMode = normalizePlayMode(options.playMode);
+    }
+    lobbyGameSettingsMode = options.lobbyGameSettingsMode === true;
+    if (lobbyGameSettingsMode) applyLobbyGameSetup(options.lobbyGameSetup);
     const generated = !!window.__v39FieldRuntime?.mapData;
     const runtimeFieldSettings = window.__v39FieldRuntime?.settings;
     const runtimeGameSettings = typeof window.getV39GameState === "function"
       ? window.getV39GameState()?.gameSettings
       : null;
-    if (generated && runtimeGameSettings) {
+    if (!lobbyGameSettingsMode && generated && runtimeGameSettings) {
       settings.gameSettings = normalizeGameStartSettings(runtimeGameSettings);
     }
-    if (generated && typeof window.getV39GameState === "function") {
+    if (!lobbyGameSettingsMode && generated && typeof window.getV39GameState === "function") {
       const gameState = window.getV39GameState();
       const players = gameState?.players;
       settings.localPlayerCount = normalizeV39LocalPlayerCount(Array.isArray(players) ? players.length : settings.localPlayerCount);
       settings.localParticipantCount = normalizeV39LocalParticipantCount(gameState?.sessionParticipants?.length, settings.localPlayerCount);
       settings.playerParticipantAssignments = Object.fromEntries((players || []).map(player => [player.id, player.controllerParticipantId]));
     }
-    if (generated && runtimeFieldSettings) {
+    if (!lobbyGameSettingsMode && generated && runtimeFieldSettings) {
       settings.neutralVillageCount = Math.round(clampNumber(
         runtimeFieldSettings.neutralVillageCount,
         0,
@@ -531,6 +594,21 @@ function boot() {
 
   get("v39-field-generate").addEventListener("click", () => {
     const next = read();
+    if (lobbyGameSettingsMode) {
+      const gameSetup = {
+        mapSize:next.mapSize,
+        patternId:next.patternId,
+        mountainMode:next.mountainMode,
+        enemySpawnTileDivisor:next.enemySpawnTileDivisor,
+        neutralVillageCount:next.neutralVillageCount,
+        gameSettings:next.gameSettings,
+        islandCustomSettings:next.islandCustomSettings
+      };
+      window.dispatchEvent(new CustomEvent("v39:lobby-game-settings-saved", { detail:{ gameSetup } }));
+      get("v39-field-settings-status").textContent = "ロビー設定を保存しました";
+      close();
+      return;
+    }
     const { w, h } = parseMapSize(next.mapSize);
     if (typeof window.generateFieldFromSettings !== "function") {
       get("v39-field-settings-status").textContent = "フィールドruntime待機中";
@@ -589,7 +667,10 @@ function boot() {
   sync();
   const maybeOpenInitial = () => {
     const generated = !!window.__v39FieldRuntime?.mapData;
-    if (!generated) open();
+    if (!generated) {
+      if (typeof window.openV39PlayModeSelection === "function") window.openV39PlayModeSelection();
+      else open();
+    }
   };
   if (typeof window.generateFieldFromSettings === "function") maybeOpenInitial();
   else window.addEventListener("v39:field-runtime-ready", maybeOpenInitial, { once:true });

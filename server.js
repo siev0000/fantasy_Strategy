@@ -3,6 +3,7 @@ const express = require("express");
 const http = require("http");
 const os = require("os");
 const path = require("path");
+const crypto = require("crypto");
 const chokidar = require("chokidar");
 const { Server } = require("socket.io");
 
@@ -56,6 +57,15 @@ const ENEMY_ORDER = ["オーガ", "ゴブリン", "悪魔", "ヴァンパイア"
 const VALID_ACTIONS = new Set(["attack", "skill", "next", "reset"]);
 const ROOM_CHAT_MAX_ITEMS = 120;
 const ROOM_CHAT_MAX_LENGTH = 240;
+// v39ロビーで表示するルーム名の最大文字数。ルームIDとは別の表示用名称。
+const ROOM_NAME_MAX_LENGTH = 40;
+// 参加者へ共有するv39ルームID。既存ルームと重複した場合は再抽選する。
+const V39_ROOM_ID_LENGTH = 8;
+// v39ワールド用ロビーの上限。現行のゲーム開始設定と同じ最大勢力数に揃える。
+const V39_ROOM_PARTICIPANT_LIMIT = 8;
+const V39_ROOM_PROTOCOL_VERSION = "v39-room-v1";
+// ロビー段階で共有するマップ設定JSONの最大サイズ。ワールド状態はまだ保存しない。
+const V39_LOBBY_GAME_SETUP_MAX_BYTES = 12 * 1024;
 const rooms = new Map();
 const DEV_WATCH_TARGETS = ["web-vue-dist", "assets", "config", "data"].map(p => path.join(__dirname, p));
 const FRONTEND_INDEX_PATH = path.join(FRONTEND_DIST_DIR, "index.html");
@@ -293,29 +303,147 @@ function normalizeRoomChatMessage(raw) {
     .slice(0, ROOM_CHAT_MAX_LENGTH);
 }
 
+function normalizeRoomName(raw, fallbackPlayerName = "") {
+  const roomName = String(raw || "").replace(/\r?\n/g, " ").trim().slice(0, ROOM_NAME_MAX_LENGTH);
+  return roomName || `${normalizePlayerName(fallbackPlayerName)}のルーム`;
+}
+
 function generateRoomId() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let roomId = "";
   do {
-    let code = "";
-    for (let i = 0; i < 6; i += 1) {
-      code += chars[Math.floor(Math.random() * chars.length)];
-    }
-    roomId = `ROOM-${code}`;
+    roomId = String(crypto.randomInt(10 ** (V39_ROOM_ID_LENGTH - 1), 10 ** V39_ROOM_ID_LENGTH));
   } while (rooms.has(roomId));
   return roomId;
 }
 
-function getOrCreateRoom(roomId) {
-  if (!rooms.has(roomId)) {
-    rooms.set(roomId, {
-      roomId,
-      state: createInitialBattleState(),
-      players: new Map(),
-      chatLog: []
-    });
+function isV39RoomId(roomId) {
+  return new RegExp(`^\\d{${V39_ROOM_ID_LENGTH}}$`).test(roomId);
+}
+
+function createRoom(roomId, mode = "legacy-battle", roomName = "") {
+  const room = {
+    roomId,
+    roomName,
+    // legacy-battleは旧Vueの簡易戦闘用。v39-worldだけが下記ロビー状態を使う。
+    mode,
+    state: createInitialBattleState(),
+    players: new Map(),
+    chatLog: [],
+    participants: new Map(),
+    hostParticipantId: "",
+    phase: "lobby",
+    settings: {
+      factionCount: 1,
+      playerParticipantAssignments: {},
+      gameSetup: null
+    },
+    createdAt: Date.now(),
+    stateRevision: 0
+  };
+  rooms.set(roomId, room);
+  return room;
+}
+
+function getOrCreateRoom(roomId, mode = "legacy-battle", roomName = "") {
+  return rooms.get(roomId) || createRoom(roomId, mode, roomName);
+}
+
+function generateParticipantId() {
+  return `participant-${crypto.randomUUID()}`;
+}
+
+function generateReconnectToken() {
+  return crypto.randomBytes(24).toString("base64url");
+}
+
+function isV39WorldRoom(room) {
+  return room?.mode === "v39-world";
+}
+
+function normalizeV39LobbyGameSetup(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  try {
+    const encoded = JSON.stringify(raw);
+    if (Buffer.byteLength(encoded, "utf8") > V39_LOBBY_GAME_SETUP_MAX_BYTES) return null;
+    const cloned = JSON.parse(encoded);
+    return cloned && typeof cloned === "object" && !Array.isArray(cloned) ? cloned : null;
+  } catch {
+    return null;
   }
-  return rooms.get(roomId);
+}
+
+function normalizeV39RoomSettings(raw, room) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const factionCount = Math.max(1, Math.min(V39_ROOM_PARTICIPANT_LIMIT, Math.floor(Number(source.factionCount)) || 1));
+  const participantIds = new Set(room.participants.keys());
+  const fallbackParticipantId = room.hostParticipantId || room.participants.keys().next().value || "";
+  const requestedAssignments = source.playerParticipantAssignments && typeof source.playerParticipantAssignments === "object"
+    ? source.playerParticipantAssignments
+    : {};
+  const playerParticipantAssignments = {};
+  for (let index = 1; index <= factionCount; index += 1) {
+    const playerId = `player-${index}`;
+    const requestedParticipantId = String(requestedAssignments[playerId] || "");
+    playerParticipantAssignments[playerId] = participantIds.has(requestedParticipantId)
+      ? requestedParticipantId
+      : fallbackParticipantId;
+  }
+  const requestedGameSetup = Object.prototype.hasOwnProperty.call(source, "gameSetup")
+    ? source.gameSetup
+    : room?.settings?.gameSetup;
+  return {
+    factionCount,
+    playerParticipantAssignments,
+    gameSetup:normalizeV39LobbyGameSetup(requestedGameSetup)
+  };
+}
+
+function syncV39ParticipantAssignments(room) {
+  if (!isV39WorldRoom(room)) return;
+  room.settings = normalizeV39RoomSettings(room.settings, room);
+  for (const participant of room.participants.values()) participant.assignedPlayerIds = [];
+  for (const [playerId, participantId] of Object.entries(room.settings.playerParticipantAssignments)) {
+    room.participants.get(participantId)?.assignedPlayerIds.push(playerId);
+  }
+}
+
+function serializeV39Participants(room) {
+  return Array.from(room.participants.values()).map(participant => ({
+    participantId: participant.participantId,
+    displayName: participant.displayName,
+    connected: !!participant.connected,
+    ready: !!participant.ready,
+    assignedPlayerIds: [...participant.assignedPlayerIds],
+    joinedAt: participant.joinedAt
+  }));
+}
+
+function serializeV39RoomSnapshot(room) {
+  syncV39ParticipantAssignments(room);
+  return {
+    roomId: room.roomId,
+    roomName: room.roomName,
+    protocolVersion: V39_ROOM_PROTOCOL_VERSION,
+    phase: room.phase,
+    hostParticipantId: room.hostParticipantId,
+    participants: serializeV39Participants(room),
+    settings: room.settings,
+    stateRevision: room.stateRevision
+  };
+}
+
+function emitV39RoomSnapshot(room, socket = null) {
+  if (!isV39WorldRoom(room)) return;
+  const payload = serializeV39RoomSnapshot(room);
+  if (socket) socket.emit("room:snapshot", payload);
+  else io.to(room.roomId).emit("room:snapshot", payload);
+}
+
+function resetV39ReadyStates(room, exceptParticipantId = "") {
+  if (!isV39WorldRoom(room)) return;
+  for (const participant of room.participants.values()) {
+    if (participant.participantId !== exceptParticipantId) participant.ready = false;
+  }
 }
 
 function pushRoomChat(room, sender, message) {
@@ -343,14 +471,16 @@ function broadcastRoom(roomId) {
   const players = serializePlayers(room);
   io.to(roomId).emit("room:players", { roomId, players });
   io.to(roomId).emit("room:state", { roomId, state: room.state, players, chatLog: room.chatLog });
+  emitV39RoomSnapshot(room);
 }
 
-function leaveRoom(socket) {
+function detachSocketFromRoom(socket, options = {}) {
   const roomId = socket.data.roomId;
   if (!roomId) return;
   const room = rooms.get(roomId);
   if (!room) {
     socket.data.roomId = "";
+    socket.data.participantId = "";
     socket.leave(roomId);
     return;
   }
@@ -359,6 +489,33 @@ function leaveRoom(socket) {
   room.players.delete(socket.id);
   socket.leave(roomId);
   socket.data.roomId = "";
+  const participantId = String(socket.data.participantId || "");
+  socket.data.participantId = "";
+
+  if (isV39WorldRoom(room) && participantId) {
+    const participant = room.participants.get(participantId);
+    if (participant?.socketId === socket.id) {
+      participant.socketId = "";
+      participant.connected = false;
+    }
+    if (options.removeParticipant) {
+      room.participants.delete(participantId);
+      if (room.hostParticipantId === participantId) {
+        room.hostParticipantId = room.participants.keys().next().value || "";
+        resetV39ReadyStates(room);
+      }
+      syncV39ParticipantAssignments(room);
+    }
+    if (room.participants.size === 0) {
+      rooms.delete(roomId);
+      return;
+    }
+    if (!options.silent) {
+      pushRoomChat(room, "System", `${participant?.displayName || playerName} が${options.removeParticipant ? "ルームを退出" : "切断"}。`);
+    }
+    broadcastRoom(roomId);
+    return;
+  }
 
   if (room.players.size === 0) {
     rooms.delete(roomId);
@@ -370,18 +527,69 @@ function leaveRoom(socket) {
   broadcastRoom(roomId);
 }
 
+function emitV39RoomError(socket, message) {
+  socket.emit("room:error", { message });
+}
+
+function validateV39RoomSocket(socket, payload) {
+  const roomId = normalizeRoomId(payload?.roomId);
+  const room = rooms.get(roomId);
+  if (!roomId || socket.data.roomId !== roomId || !isV39WorldRoom(room)) {
+    emitV39RoomError(socket, "v39ワールドルームへ参加後に操作してください。");
+    return null;
+  }
+  const participantId = String(socket.data.participantId || "");
+  const participant = room.participants.get(participantId);
+  if (!participant || participant.socketId !== socket.id) {
+    emitV39RoomError(socket, "参加者の認証状態が一致しません。再参加してください。");
+    return null;
+  }
+  return { room, participant };
+}
+
 io.on("connection", socket => {
   socket.data.roomId = "";
+  socket.data.participantId = "";
 
   socket.on("room:create", payload => {
     const playerName = normalizePlayerName(payload?.playerName);
-    if (socket.data.roomId) leaveRoom(socket);
+    const isV39 = payload?.mode === "v39-world";
+    if (isV39 && payload?.protocolVersion !== V39_ROOM_PROTOCOL_VERSION) {
+      emitV39RoomError(socket, "通信バージョンが一致しません。画面を更新してください。");
+      return;
+    }
+    if (socket.data.roomId) detachSocketFromRoom(socket, { removeParticipant: true, silent: true });
 
     const roomId = generateRoomId();
-    const room = getOrCreateRoom(roomId);
+    const roomName = isV39 ? normalizeRoomName(payload?.roomName, playerName) : "";
+    const room = getOrCreateRoom(roomId, isV39 ? "v39-world" : "legacy-battle", roomName);
     socket.join(roomId);
     socket.data.roomId = roomId;
     room.players.set(socket.id, playerName);
+    if (isV39) {
+      const participantId = generateParticipantId();
+      const reconnectToken = generateReconnectToken();
+      const participant = {
+        participantId,
+        reconnectToken,
+        displayName: playerName,
+        connected: true,
+        socketId: socket.id,
+        ready: false,
+        assignedPlayerIds: [],
+        joinedAt: Date.now()
+      };
+      room.participants.set(participantId, participant);
+      room.hostParticipantId = participantId;
+      room.settings = normalizeV39RoomSettings(room.settings, room);
+      syncV39ParticipantAssignments(room);
+      socket.data.participantId = participantId;
+      socket.emit("room:created", { roomId, roomName:room.roomName, participantId, reconnectToken, protocolVersion: V39_ROOM_PROTOCOL_VERSION });
+      pushRoomChat(room, "System", `${playerName} がルームを作成。`);
+      emitV39RoomSnapshot(room, socket);
+      broadcastRoom(roomId);
+      return;
+    }
     pushRoomChat(room, "System", `${playerName} がルームを作成。`);
     pushLog(room.state, `${playerName} がルームを作成。`);
     socket.emit("room:created", { roomId });
@@ -395,24 +603,122 @@ io.on("connection", socket => {
       socket.emit("room:error", { message: "ルームIDが不正です。" });
       return;
     }
+    if (payload?.mode === "v39-world" && !isV39RoomId(roomId)) {
+      emitV39RoomError(socket, "参加用ルームIDは8桁の数字で入力してください。");
+      return;
+    }
     if (!rooms.has(roomId)) {
       socket.emit("room:error", { message: "ルームが存在しません。先に作成してください。" });
       return;
     }
 
-    if (socket.data.roomId && socket.data.roomId !== roomId) leaveRoom(socket);
     const room = getOrCreateRoom(roomId);
+    const isV39 = room.mode === "v39-world";
+    if (payload?.mode === "v39-world" && !isV39) {
+      emitV39RoomError(socket, "このルームはv39ワールド用ではありません。");
+      return;
+    }
+    if (isV39 && payload?.protocolVersion !== V39_ROOM_PROTOCOL_VERSION) {
+      emitV39RoomError(socket, "通信バージョンが一致しません。画面を更新してください。");
+      return;
+    }
+    if (socket.data.roomId && socket.data.roomId !== roomId) detachSocketFromRoom(socket, { removeParticipant: true, silent: true });
     socket.join(roomId);
     socket.data.roomId = roomId;
     room.players.set(socket.id, playerName);
+    if (isV39) {
+      const requestedParticipantId = String(payload?.participantId || "");
+      const reconnectToken = String(payload?.reconnectToken || "");
+      let participant = room.participants.get(requestedParticipantId);
+      if (participant && participant.reconnectToken !== reconnectToken) {
+        socket.leave(roomId);
+        socket.data.roomId = "";
+        room.players.delete(socket.id);
+        emitV39RoomError(socket, "再接続情報が一致しません。");
+        return;
+      }
+      if (!participant) {
+        if (room.participants.size >= V39_ROOM_PARTICIPANT_LIMIT) {
+          socket.leave(roomId);
+          socket.data.roomId = "";
+          room.players.delete(socket.id);
+          emitV39RoomError(socket, `参加人数は最大${V39_ROOM_PARTICIPANT_LIMIT}人です。`);
+          return;
+        }
+        participant = {
+          participantId: generateParticipantId(),
+          reconnectToken: generateReconnectToken(),
+          displayName: playerName,
+          connected: true,
+          socketId: socket.id,
+          ready: false,
+          assignedPlayerIds: [],
+          joinedAt: Date.now()
+        };
+        room.participants.set(participant.participantId, participant);
+        resetV39ReadyStates(room);
+        pushRoomChat(room, "System", `${playerName} がルームに参加。`);
+      } else {
+        const previousSocket = participant.socketId ? io.sockets.sockets.get(participant.socketId) : null;
+        if (previousSocket && previousSocket.id !== socket.id) {
+          previousSocket.leave(roomId);
+          previousSocket.data.roomId = "";
+          previousSocket.data.participantId = "";
+          room.players.delete(previousSocket.id);
+        }
+        participant.displayName = playerName;
+        participant.connected = true;
+        participant.socketId = socket.id;
+      }
+      socket.data.participantId = participant.participantId;
+      syncV39ParticipantAssignments(room);
+      socket.emit("room:joined", {
+        roomId,
+        participantId: participant.participantId,
+        reconnectToken: participant.reconnectToken,
+        protocolVersion: V39_ROOM_PROTOCOL_VERSION
+      });
+      emitV39RoomSnapshot(room, socket);
+      broadcastRoom(roomId);
+      return;
+    }
     pushRoomChat(room, "System", `${playerName} がルームに参加。`);
     pushLog(room.state, `${playerName} がルームに参加。`);
     broadcastRoom(roomId);
   });
 
   socket.on("room:leave", () => {
-    leaveRoom(socket);
+    detachSocketFromRoom(socket, { removeParticipant: true });
     socket.emit("room:left");
+  });
+
+  socket.on("room:ready", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    if (context.room.phase !== "lobby") {
+      emitV39RoomError(socket, "準備状態を変更できるのはロビーだけです。");
+      return;
+    }
+    context.participant.ready = payload?.ready === true;
+    context.room.stateRevision += 1;
+    emitV39RoomSnapshot(context.room);
+  });
+
+  socket.on("room:update-settings", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    if (context.room.hostParticipantId !== context.participant.participantId) {
+      emitV39RoomError(socket, "ゲーム開始設定を変更できるのはホストだけです。");
+      return;
+    }
+    if (context.room.phase !== "lobby") {
+      emitV39RoomError(socket, "ゲーム開始後はロビー設定を変更できません。");
+      return;
+    }
+    context.room.settings = normalizeV39RoomSettings(payload?.settings, context.room);
+    resetV39ReadyStates(context.room, context.participant.participantId);
+    context.room.stateRevision += 1;
+    emitV39RoomSnapshot(context.room);
   });
 
   socket.on("battle:action", payload => {
@@ -462,7 +768,7 @@ io.on("connection", socket => {
   });
 
   socket.on("disconnect", () => {
-    leaveRoom(socket);
+    detachSocketFromRoom(socket);
   });
 });
 

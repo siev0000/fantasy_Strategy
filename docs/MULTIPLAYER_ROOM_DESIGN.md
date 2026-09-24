@@ -56,7 +56,14 @@
 - 参加者表示
 - ルームチャット
 
-現状の `room.state` は簡易戦闘用であり、v39ワールド状態とは未接続。
+`frontend/src/v39/core/v39-multiplayer-lobby.js`:
+- プレイ形式選択でマルチプレイを選ぶと開く通信ロビー
+- ルーム作成 / 参加 / 退出
+- ホスト、参加者の接続・準備状態、操作勢力数、担当勢力の表示と変更
+- ホストだけがロビーから共有ゲーム開始設定を保存
+- `participantId + reconnectToken` による再接続
+
+v39ロビーはStage 1まで実装済みであり、`room.state` の簡易戦闘状態およびv39ワールド状態とは未接続。v39の `room:snapshot` はロビー情報とホスト保存のゲーム開始設定だけを配信する。設定保存ではローカルのマップ生成を行わない。
 
 ---
 
@@ -185,6 +192,7 @@ reconnectToken
 ```text
 Room
 ├─ roomId
+├─ roomName
 ├─ phase
 ├─ hostParticipantId
 ├─ createdAt
@@ -222,7 +230,7 @@ room:create
 6. `room:created` を返す
 7. `room:snapshot` を配信
 
-現在の `ROOM-XXXXXX` 形式は継続利用可能。
+`roomId` はサーバーが既存ルームと重複しない8桁の数字を自動発行し、作成画面では入力させない。作成者は表示用の `roomName` だけを入力する。参加時だけ「ルーム参加」を開き、共有された8桁の `roomId` を使用する。`playerName` はロビーの参加者一覧へ表示するプレイヤー名である。
 
 ---
 
@@ -248,7 +256,7 @@ room:join
 
 ## 10. ロビーUI
 
-現在の `RoomModal.vue` をロビーUIへ拡張する。
+v39では `v39-multiplayer-lobby.js` のロビーUIを使用する。旧 `RoomModal.vue` は簡易戦闘用UIとして維持する。
 
 表示:
 - ルームID
@@ -352,7 +360,7 @@ unit1を x=10,y=20 へ移動したい
 
 ```json
 {
-  "roomId": "ROOM-7H4K2P",
+  "roomId": "12345678",
   "participantId": "participant-1",
   "playerId": "player-1",
   "clientSeq": 18,
@@ -612,15 +620,19 @@ room:host-changed
 
 ## 29. UI導線
 
-ゲーム開始画面:
+ゲーム開始前:
 
 ```text
-[1人プレイ]
-[ルームを作成]
-[ルームに参加]
+[シングルプレイ] / [マルチプレイ]
+  ├─ シングルプレイ → ゲーム開始設定 → ローカル生成
+  └─ マルチプレイ → [ルームを作成] / [ルームに参加]
+                         ↓
+                       通信ロビー
+                         ↓
+                 ホストのみゲーム開始設定を共有保存
 ```
 
-ルーム作成後は `RoomModal.vue` をロビーへ発展させる。
+参加者はロビーで共有設定を確認するだけで変更できない。設定保存後はロビーへ戻る。ゲーム開始・ワールド生成・同期はStage 2以降で接続する。
 
 ゲーム開始後もルーム情報確認用の入口は残す。
 
@@ -655,13 +667,15 @@ GitHub Pagesのような静的ファイル配信だけでは現行 `server.js` /
 ### Stage 1: ロビー
 
 既存簡易ルームへ追加・接続:
-- participantId
-- reconnectToken
-- hostParticipantId
-- room.phase
-- ready
-- sessionParticipants[] / players[].controllerParticipantId
-- game settings
+- [x] participantId
+- [x] reconnectToken
+- [x] hostParticipantId
+- [x] room.phase
+- [x] ready
+- [x] ロビー上の操作勢力数・担当勢力
+- [x] ホストだけが共有ゲーム開始設定を保存し、参加者へ配信する（ローカル生成なし）
+- [ ] `sessionParticipants[] / players[].controllerParticipantId` へのゲーム開始時接続
+- [ ] v39の共有設定からホストがワールドを生成し、ゲーム状態へ接続する
 
 まだワールド同期は行わない。
 
