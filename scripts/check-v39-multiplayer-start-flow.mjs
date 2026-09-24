@@ -52,6 +52,7 @@ try {
   if (!/^\d{8}$/.test(String(roomId))) throw new Error("作成されたルームIDが8桁の数字ではありません。");
   if (await page.locator("[data-v39-room-entry]:visible").count()) throw new Error("入室後もルーム作成・参加フォームが残っています。");
   if (await page.locator("[data-v39-room-tabs]:visible").count()) throw new Error("入室後もルーム作成・参加タブが残っています。");
+  if (!(await page.locator("[data-v39-room-action=start-game]:visible").count())) throw new Error("ホストのゲーム開始ボタンがロビー上部に表示されていません。");
   try {
     await page.locator("[data-v39-room-action=game-settings]").click({ timeout:5000 });
     await page.locator("#v39-field-settings-modal.open").waitFor({ timeout:5000 });
