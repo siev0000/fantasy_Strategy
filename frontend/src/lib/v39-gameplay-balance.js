@@ -12,7 +12,17 @@ export const V39_COMBAT_BALANCE = Object.freeze({
 
 // ユニット経験値の暫定調整値。必要EXP式は v39-unit-experience.js 側の確定式を使用する。
 export const V39_UNIT_EXP_BALANCE = Object.freeze({
-  // 相手Lv1あたり、HPを100%削った時に発生する基準EXP。
+  // 活動ごとの基本EXP。各行動はこの値へ難易度倍率と成果率を掛ける。
+  baseExpByAction:Object.freeze({
+    combat:15,
+    survey:10,
+    construction:10,
+    research:10,
+    territory:15,
+    diplomacy:15,
+    training:3
+  }),
+  // 互換用。戦闘は「対象Lv1あたり」の基本EXPとして同じ15を使う。
   baseExpPerTargetLevel:15,
   // 倒した相手側の種族カテゴリ倍率。
   targetRaceMultipliers:Object.freeze({
@@ -21,6 +31,22 @@ export const V39_UNIT_EXP_BALANCE = Object.freeze({
     demon:1.5,
     other:1.0
   }),
+  // 調査の現行標準ターン。調査側に正本列が追加されるまでは1Tを元ターンとして使う。
+  defaultSurveyStandardTurns:1,
+  // 標準必要ターンによる難易度。1T=1.0、2T=1.5、4T=2.5、8T=4.5。
+  standardTurnDifficultyPerExtraTurn:0.5,
+  // 地形.json の開拓難易度。難易度1を1.0とし、1段階ごとに+20%。
+  developmentDifficultyPerLevel:0.2,
+  // 地形.json のモンスター危険度。危険度1.0あたり+50%。
+  threatDifficultyScale:0.5,
+  // マップ高度Lv。0以下は1.0、正の高度1段階ごとに+5%。
+  altitudeDifficultyPerLevel:0.05,
+  // 一般的な整数難易度Lvを使う処理向け。Lv1を1.0、1段階ごとに+25%。
+  genericDifficultyPerLevel:0.25,
+  // 研究の必要EXPを難易度へ変換する基準。現行研究Lv1の必要EXP=100。
+  researchExpReference:100,
+  // 研究Lvそのものによる追加難易度。Lv1を1.0、1段階ごとに+50%。
+  researchLevelDifficultyPerLevel:0.5,
   // 部隊所属時は生存メンバーへ均等分配。soloは攻撃者だけが受け取る。
   splitAmongLivingSquadMembers:true,
   // 同じ対象を回復させて削り直すEXP稼ぎを防ぐため、1体から支払うのは最大HP100%分まで。

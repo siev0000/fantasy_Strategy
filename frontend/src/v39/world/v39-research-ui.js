@@ -14,6 +14,7 @@ import {
   resolveCompletedResearchLevel,
   selectResearch
 } from "../../lib/research-progress.js";
+import { resolveV39ResearchExpReward } from "../../lib/v39-unit-experience.js";
 
 let activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
 let inspectedItemId = "";
@@ -38,6 +39,25 @@ function unitId(unit) {
 
 function unitName(unit) {
   return String(unit?.name ?? unit?.名前 ?? unit?.label ?? "名称未設定");
+}
+
+function formatExp(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+}
+
+function researchUnitExpPerTurn(unit, categoryKey, item) {
+  if (!unit || !item) return 0;
+  const level = Math.max(1, Math.floor(Number(item?.level) || 1));
+  const required = requiredResearchExp(level);
+  const researchPerTurn = Math.max(0, Number(researchExperiencePerTurn(unit, categoryKey)) || 0);
+  const progressRate = required > 0 ? researchPerTurn / required : 0;
+  return resolveV39ResearchExpReward({
+    researchLevel:level,
+    requiredResearchExp:required,
+    progressRate
+  }).rawExp;
 }
 
 function aliveUnits() {
@@ -158,6 +178,10 @@ function renderModal() {
   const assigneeLevel = Number(assignee?.level ?? assignee?.Lv ?? assignee?.レベル) || 0;
   const inspected = categoryRows(activeCategory).flatMap(row => row.items || []).find(item => item.id === inspectedItemId) || null;
   const selectedId = String(research.selection?.[activeCategory] || "");
+  const selectedResearchItem = categoryRows(activeCategory)
+    .flatMap(row => row.items || [])
+    .find(item => item.id === selectedId) || null;
+  const expPreviewItem = selectedResearchItem || inspected;
   const selected = inspected?.id === selectedId;
   const completed = inspected ? isResearchCompleted(research, activeCategory, inspected.level, inspected.id) : false;
   const unlocked = inspected ? isResearchLevelUnlocked(research, activeCategory, inspected.level, assigneeLevel) : false;
@@ -189,9 +213,14 @@ function renderModal() {
   }).join("");
 
   const actionLabel = completed ? "研究完了" : (selected ? "研究中" : "研究として選択");
-  const assigneeOptions = aliveUnits().map(unit => `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${Number(unit?.level ?? unit?.Lv ?? 0)}</option>`).join("");
+  const assigneeOptions = aliveUnits().map(unit => {
+    const unitLevel = Number(unit?.level ?? unit?.Lv ?? 0);
+    const unitExpPerTurn = researchUnitExpPerTurn(unit, activeCategory, expPreviewItem);
+    return `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${unitLevel}｜ユニットEXP +${formatExp(unitExpPerTurn)}/T</option>`;
+  }).join("");
   const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory) : 0;
-  body.innerHTML = `<nav class="v39-research-categories">${categoryButtons}</nav><div class="v39-research-layout"><div class="v39-research-board">${levels || "研究データがありません。"}</div><aside class="v39-research-detail"><label class="v39-research-assignee">担当ユニット<select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>1ターン +${perTurn} EXP</small></label>${inspected ? `<div class="v39-research-detail-head"><div><b>${escapeHtml(inspected.name)}</b><small>${getResearchCategoryMeta(activeCategory).label} Lv${inspected.level}</small></div><strong class="${completed ? "completed" : ""}">${completed ? "100%" : `${progressRatio}%`}</strong></div><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp}</span></div><p>${escapeHtml(inspected.desc || "-")}</p>${itemDetails(inspected)}<p class="v39-research-requirement">必要ユニットLv ${researchTreeData.levelRequirements?.[inspected.level] || "-"}<br>短縮技能: ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || "-")}</p><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? "disabled" : ""}>${actionLabel}</button>` : "研究項目を選択してください。"}</aside></div>`;
+  const assigneeUnitExpPerTurn = assignee ? researchUnitExpPerTurn(assignee, activeCategory, expPreviewItem) : 0;
+  body.innerHTML = `<nav class="v39-research-categories">${categoryButtons}</nav><div class="v39-research-layout"><div class="v39-research-board">${levels || "研究データがありません。"}</div><aside class="v39-research-detail"><label class="v39-research-assignee">担当ユニット<select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>研究EXP +${perTurn}/T ｜ ユニットEXP +${formatExp(assigneeUnitExpPerTurn)}/T</small></label>${inspected ? `<div class="v39-research-detail-head"><div><b>${escapeHtml(inspected.name)}</b><small>${getResearchCategoryMeta(activeCategory).label} Lv${inspected.level}</small></div><strong class="${completed ? "completed" : ""}">${completed ? "100%" : `${progressRatio}%`}</strong></div><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp}</span></div><p>${escapeHtml(inspected.desc || "-")}</p>${itemDetails(inspected)}<p class="v39-research-requirement">必要ユニットLv ${researchTreeData.levelRequirements?.[inspected.level] || "-"}<br>短縮技能: ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || "-")}</p><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? "disabled" : ""}>${actionLabel}</button>` : "研究項目を選択してください。"}</aside></div>`;
 }
 
 function renderAll() {
@@ -322,7 +351,71 @@ function installStyles() {
 .research-rail-btn .gauge{width:23px!important;height:23px!important}
 .research-rail-btn .gauge b{font-size:14px!important}
 .research-rail-btn .lv{font-size:8px!important;line-height:8px!important}
-#researchModal .modal{width:98vw;height:94vh}.v39-research-categories{grid-template-columns:repeat(5,1fr)}.v39-research-category{min-height:42px;padding:3px;font-size:13px;gap:3px}.v39-research-category b{font-size:15px}.v39-research-category small{display:none}.v39-research-layout{grid-template-columns:minmax(0,1.45fr) minmax(200px,1fr)}.v39-research-level{flex-basis:145px}.v39-research-item{min-height:75px}.v39-research-detail{padding:8px}.v39-research-detail-head b{font-size:16px}}
+#researchModal .modal{width:98vw;height:96svh;max-height:96svh}
+#researchModal .modal-body{padding:7px;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+.v39-research-categories{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-bottom:6px}
+.v39-research-category{min-width:0;min-height:42px;padding:3px 2px;font-size:13px;gap:3px;overflow:hidden}
+.v39-research-category b{font-size:15px;flex:0 0 auto}
+.v39-research-category span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v39-research-category small{display:none}
+.v39-research-layout{
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:minmax(250px,42%) minmax(0,1fr);
+  gap:7px;
+  min-width:0;
+  min-height:0;
+  overflow:hidden
+}
+.v39-research-board{
+  min-width:0;
+  min-height:0;
+  width:100%;
+  gap:7px;
+  overflow-x:auto;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scroll-snap-type:x proximity;
+  padding:2px 2px 7px
+}
+.v39-research-level{
+  flex:0 0 clamp(185px,46vw,220px);
+  min-width:0;
+  padding:6px;
+  scroll-snap-align:start
+}
+.v39-research-level>header{gap:6px}
+.v39-research-level>header small{font-size:12px;text-align:right}
+.v39-research-item{min-height:75px;padding:7px}
+.v39-research-item strong{font-size:14px}
+.v39-research-item small{font-size:12px}
+.v39-research-detail{
+  width:100%;
+  min-width:0;
+  min-height:0;
+  padding:9px;
+  overflow:auto;
+  overscroll-behavior:contain
+}
+.v39-research-assignee{margin-bottom:9px;padding:7px;grid-template-columns:auto minmax(0,1fr)}
+.v39-research-detail-head b{font-size:17px}
+.v39-research-detail-head>strong{font-size:18px}
+.v39-research-detail p{font-size:14px;line-height:1.45}
+.v39-research-details{grid-template-columns:1fr}
+.v39-research-details li{font-size:12px}
+}
+@media(max-width:520px){
+#researchModal .modal{width:100vw;height:100svh;max-height:100svh;border-radius:0}
+#researchModal .modal-body{padding:6px}
+.v39-research-categories{gap:3px}
+.v39-research-category{min-height:40px;font-size:12px}
+.v39-research-category b{font-size:14px}
+.v39-research-layout{grid-template-rows:minmax(270px,44%) minmax(0,1fr);gap:6px}
+.v39-research-level{flex-basis:clamp(190px,48vw,215px)}
+.v39-research-detail{padding:8px}
+.v39-research-assignee{font-size:12px;gap:4px 6px}
+.v39-research-assignee select{height:30px;font-size:12px}
+.v39-research-assignee small{font-size:11px}
+}
 `;
   document.head.appendChild(style);
 }
