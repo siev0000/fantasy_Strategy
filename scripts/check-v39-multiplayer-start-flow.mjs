@@ -108,6 +108,7 @@ try {
       race:state?.players?.[0]?.race || "",
       unitCount:state?.players?.[0]?.factionState?.units?.length || 0,
       settlementCount:state?.players?.[0]?.factionState?.settlements?.length || 0,
+      villagePlacementMode:!!state?.players?.[0]?.factionState?.villagePlacementMode,
       mapWidth:window.__v39FieldRuntime?.mapData?.w || 0,
       mapHeight:window.__v39FieldRuntime?.mapData?.h || 0
     };
@@ -119,6 +120,7 @@ try {
     || multiplayerState.race !== "只人"
     || multiplayerState.unitCount !== 0
     || multiplayerState.settlementCount !== 0
+    || multiplayerState.villagePlacementMode !== false
     || multiplayerState.mapWidth !== 36 || multiplayerState.mapHeight !== 36) {
     throw new Error(`マルチプレイ開始状態が不正です: ${JSON.stringify(multiplayerState)}`);
   }
