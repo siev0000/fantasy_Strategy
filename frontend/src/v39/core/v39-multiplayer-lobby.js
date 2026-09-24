@@ -352,18 +352,22 @@ function renderLobby() {
       <h3>ホスト設定</h3>
       <div class="v39-room-actions">
         <button type="button" data-v39-room-action="game-settings">ゲーム開始設定</button>
-        <button type="button" class="v39-room-start" data-v39-room-action="start-game"${(!allReady || !settings.gameSetup || roomSnapshot.phase !== "lobby" || pendingGameStart) ? " disabled" : ""}>ゲーム開始</button>
       </div>
       <p class="v39-room-note">ゲーム設定: ${escapeHtml(formatGameSetupSummary(settings.gameSetup))}</p>
       <label class="v39-room-assignment">操作勢力数<select data-v39-room-faction-count>${Array.from({ length:8 }, (_, index) => `<option value="${index + 1}"${index + 1 === Number(settings.factionCount) ? " selected" : ""}>${index + 1}</option>`).join("")}</select></label>
       <div class="v39-room-assignment-list">${assignmentRows}</div>
       <p class="v39-room-note">設定変更時は、他参加者の準備完了を解除します。</p>
     </section>` : "";
+  const startButton = isHost() && roomSnapshot.phase === "lobby"
+    ? `<button type="button" class="v39-room-start" data-v39-room-action="start-game"${(!allReady || !settings.gameSetup || pendingGameStart) ? " disabled" : ""}>ゲーム開始</button>`
+    : "";
+  const leaveLabel = roomSnapshot.phase === "lobby" ? "退出" : "ゲームから切断";
   lobby.innerHTML = `
     <div class="v39-room-meta"><span>ルーム名</span><strong>${escapeHtml(roomSnapshot.roomName || "-")}</strong><span>ルームID</span><strong class="v39-room-id">${escapeHtml(roomSnapshot.roomId)}</strong><span>ホスト: ${escapeHtml(hostParticipant?.displayName || "-")}</span></div>
     <div class="v39-room-actions">
       <button type="button" data-v39-room-action="ready"${roomSnapshot.phase !== "lobby" ? " disabled" : ""}>${mine?.ready ? "準備を解除" : "準備完了"}</button>
-      <button type="button" data-v39-room-action="leave">退出</button>
+      ${startButton}
+      <button type="button" data-v39-room-action="leave">${leaveLabel}</button>
     </div>
     <div class="v39-room-participants">${participantRows}</div>
     ${hostSettings}
@@ -443,12 +447,22 @@ function ensureSocket() {
     setStatus(payload?.message || "ゲーム開始に失敗しました。", "error");
     renderLobby();
   });
-  socket.on("room:left", () => {
+  socket.on("room:left", payload => {
+    const reconnectable = payload?.reconnectable === true
+      && !!credentials?.participantId
+      && credentials?.roomId === text(payload?.roomId);
     roomSnapshot = null;
-    saveCredentials(null);
+    if (!reconnectable) saveCredentials(null);
     autoJoinAttempted = false;
     pendingGameStart = false;
-    setStatus("ルームから退出しました。", "ok");
+    if (reconnectable) {
+      setEntryMode("join");
+      const roomIdInput = getRoomIdInput();
+      if (roomIdInput) roomIdInput.value = credentials?.roomId || "";
+      setStatus("ゲームから切断しました。同じルームIDで再参加できます。", "ok");
+    } else {
+      setStatus("ルームから退出しました。", "ok");
+    }
     renderLobby();
   });
   return socket;
