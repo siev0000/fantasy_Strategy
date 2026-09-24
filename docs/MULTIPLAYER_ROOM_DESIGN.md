@@ -98,26 +98,42 @@ Socket.IOサーバー:
 
 マルチプレイ専用の別勢力状態を新規作成しない。
 
-既存の以下をそのまま基盤として使用する。
+通信前のローカル複数勢力実装で、すでに参加者と勢力を分離した状態構造が導入されている。通信マルチプレイではこれをそのまま基盤として使用する。
 
 ```text
+sessionParticipants[]
 players[]
-activePlayerId
+players[].controllerParticipantId
 players[].factionState
+activePlayerId
+timeline.playerTurnOrder
+timeline.activeTurnPlayerId
+timeline.endedPlayerIds
 ```
 
-`config/player_state_schema.json` のプレイヤー構造:
+`config/player_state_schema.json` の勢力プレイヤー構造:
 
 ```text
 id
 label
 isPlayer
+controllerParticipantId
 race
 ready
 factionState
 ```
 
-通信参加者と `players[].id` を対応付ける。
+用語は次のように固定する。
+
+- `participantId`: 実際の参加者・接続クライアントを識別するID。
+- `playerId`: `players[].id` と同じ、ゲーム内の担当勢力ID。
+- `controllerParticipantId`: その勢力を担当する参加者ID。
+- `activePlayerId`: 現在画面へ表示している勢力ID。
+- `activeTurnPlayerId`: 現在のローカル順番制で操作中の勢力ID。
+
+現在のローカル順番制では `activePlayerId` と `activeTurnPlayerId` を揃えて1勢力ずつ操作する。通信マルチプレイでは全参加者が同じプレイヤーフェーズ中に同時操作するため、`activeTurnPlayerId` をサーバー側の操作権限判定には使用せず、`participantId -> assignedPlayerIds / controllerParticipantId` で担当勢力を検証する。
+
+詳細は `ローカル複数勢力ターン設計.md` を参照する。
 
 ---
 
@@ -138,25 +154,27 @@ factionState
 
 ---
 
-## 6. プレイヤー識別
+## 6. 参加者識別
 
-`socket.id` は再接続で変化するため、永続的なプレイヤーIDとして使用しない。
+`socket.id` は再接続で変化するため、永続的な参加者IDとして使用しない。
 
 最低限:
 
 ```text
-playerId
+participantId
 connectionId(socket.id)
 displayName
 connected
 ready
-assignedFactionId
+assignedPlayerIds
 reconnectToken
 ```
 
 を分離する。
 
-`playerId + reconnectToken` により切断後も同じプレイヤースロットへ戻れるようにする。
+`participantId + reconnectToken` により切断後も同じ参加者スロットへ戻れるようにする。
+
+ゲーム内の `playerId` は勢力IDとして扱い、接続そのものの識別には流用しない。
 
 ---
 
@@ -168,7 +186,7 @@ reconnectToken
 Room
 ├─ roomId
 ├─ phase
-├─ hostPlayerId
+├─ hostParticipantId
 ├─ createdAt
 ├─ settings
 ├─ players
@@ -198,8 +216,8 @@ room:create
 サーバー:
 1. roomId生成
 2. Room生成
-3. playerId登録
-4. hostPlayerId設定
+3. participantId登録
+4. hostParticipantId設定
 5. Socket.IO roomへ参加
 6. `room:created` を返す
 7. `room:snapshot` を配信
@@ -221,7 +239,7 @@ room:join
 - room.phase
 - 人数上限
 - ゲームバージョン
-- playerId / reconnectToken
+- participantId / reconnectToken
 - 重複参加
 
 成功後は `room:snapshot` を返す。
@@ -269,7 +287,7 @@ game:start
 ```
 
 サーバー確認:
-- 送信者が hostPlayerId
+- 送信者が hostParticipantId
 - 全プレイヤー準備済み
 - 設定値正常
 - 勢力数上限内
@@ -335,6 +353,7 @@ unit1を x=10,y=20 へ移動したい
 ```json
 {
   "roomId": "ROOM-7H4K2P",
+  "participantId": "participant-1",
   "playerId": "player-1",
   "clientSeq": 18,
   "targetRound": 12,
@@ -350,9 +369,9 @@ unit1を x=10,y=20 へ移動したい
 
 ## 16. 重複実行防止
 
-プレイヤーごとに `lastClientSeq` を保持する。
+参加者ごとに `lastClientSeq` を保持する。
 
-同じ `playerId + clientSeq` は再実行しない。
+同じ `participantId + clientSeq` は再実行しない。
 
 再送・再接続が発生しても同じ操作が二重適用されない構造にする。
 
@@ -472,7 +491,7 @@ connected = false
 
 へ変更する。
 
-同じ `playerId + reconnectToken` で戻った場合、元のスロットへ復帰する。
+同じ `participantId + reconnectToken` で戻った場合、元の参加者スロットへ復帰する。
 
 切断・放置時の自動ターン終了はゲーム設定で ON/OFF を持つ。
 
@@ -577,8 +596,9 @@ room:host-changed
 サーバーで最低限確認する。
 
 - ルーム所属
+- participantId
 - playerId
-- 担当勢力
+- participantId がその playerId を担当しているか
 - 現在phase
 - ターン終了済みか
 - clientSeq重複
@@ -634,19 +654,20 @@ GitHub Pagesのような静的ファイル配信だけでは現行 `server.js` /
 
 ### Stage 1: ロビー
 
-既存簡易ルームへ追加:
-- playerId
+既存簡易ルームへ追加・接続:
+- participantId
 - reconnectToken
-- hostPlayerId
+- hostParticipantId
 - room.phase
 - ready
+- sessionParticipants[] / players[].controllerParticipantId
 - game settings
 
 まだワールド同期は行わない。
 
 ### Stage 2: ゲーム開始
 
-ルーム参加者を `players[]` へ割り当て、ホストだけゲーム開始可能にする。
+ルーム参加者を `sessionParticipants[]` へ登録し、担当勢力を `players[].controllerParticipantId` へ接続する。ホストだけゲーム開始可能にする。
 
 ### Stage 3: ワールドスナップショット
 
@@ -678,7 +699,7 @@ GitHub Pagesのような静的ファイル配信だけでは現行 `server.js` /
 
 ### Stage 6: 再接続
 
-`playerId + reconnectToken` による復帰。
+`participantId + reconnectToken` による復帰。
 
 ### Stage 7: ホスト移譲
 
