@@ -328,7 +328,7 @@ function renderLobby() {
   const settings = roomSnapshot.settings || { factionCount:1, playerParticipantAssignments:{}, gameSetup:null };
   const hostParticipant = getParticipantById(roomSnapshot.hostParticipantId);
   const mine = getParticipantById(getMyParticipantId());
-  const allReady = participants.length > 0 && participants.every(participant => participant.ready);
+  const allReady = participants.length > 0 && participants.every(participant => participant.ready && participant.connected);
   const participantRows = participants.map(participant => {
     const assigned = Array.isArray(participant.assignedPlayerIds) && participant.assignedPlayerIds.length
       ? `担当: ${participant.assignedPlayerIds.map(id => id.replace("player-", "勢力")).join(" / ")}`
