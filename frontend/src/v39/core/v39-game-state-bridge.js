@@ -252,7 +252,7 @@ function cloneSessionParticipants(value) {
   }));
 }
 
-let state = normalizeState(window.V39_INITIAL_GAME_STATE || EMPTY_STATE);
+let state = normalizeState(EMPTY_STATE);
 
 function getState() {
   return {
@@ -434,10 +434,8 @@ function remapFactionIdentifiers(factionState = {}, playerId) {
   };
 }
 
-function createLocalSessionPlayers(count) {
-  const templates = window.__v39GameStateDefaults?.players?.length
-    ? window.__v39GameStateDefaults.players
-    : state.players;
+function createTestLocalSessionPlayers(count) {
+  const templates = normalizeState(window.V39_TEST_GAME_STATE || EMPTY_STATE).players;
   if (!templates.length) return [];
   return Array.from({ length:count }, (_, index) => {
     const template = cloneValue(templates[index % templates.length], {});
@@ -449,6 +447,21 @@ function createLocalSessionPlayers(count) {
       isPlayer:true,
       controllerParticipantId:"local-1",
       factionState:resetFactionForNewLocalSession(remapFactionIdentifiers(template?.factionState, playerId))
+    }, index);
+  });
+}
+
+function createNormalLocalSessionPlayers(count) {
+  return Array.from({ length:count }, (_, index) => {
+    const playerId = `player-${index + 1}`;
+    return createPlayerRecord({
+      id:playerId,
+      label:`プレイヤー${index + 1}`,
+      isPlayer:true,
+      controllerParticipantId:"local-1",
+      race:"",
+      ready:false,
+      factionState:createPlayerFactionState({ nationLogKey:playerId }, playerId)
     }, index);
   });
 }
@@ -557,7 +570,10 @@ function startMultiplayerSession(playerCount, options = {}) {
 
 function startLocalSession(playerCount, options = {}) {
   const count = normalizeV39LocalPlayerCount(playerCount);
-  const initialPlayers = createLocalSessionPlayers(count);
+  const playMode = options?.playMode === "single-test" ? "single-test" : "single-normal";
+  const initialPlayers = playMode === "single-test"
+    ? createTestLocalSessionPlayers(count)
+    : createNormalLocalSessionPlayers(count);
   if (!initialPlayers.length) return getState();
   const session = createLocalSessionParticipants(
     initialPlayers,
@@ -583,7 +599,7 @@ function startLocalSession(playerCount, options = {}) {
   });
   dispatchChange("local-session-started");
   window.dispatchEvent(new CustomEvent("v39:local-session-started", {
-    detail:{ playerCount:count, participantCount:session.sessionParticipants.length, activePlayerId, playerIds:players.map(player => player.id) }
+    detail:{ playMode, playerCount:count, participantCount:session.sessionParticipants.length, activePlayerId, playerIds:players.map(player => player.id) }
   }));
   return getState();
 }
@@ -641,7 +657,8 @@ window.updateV39TileState = updateTileState;
 window.clearV39GameState = clearState;
 window.startV39LocalSession = startLocalSession;
 window.startV39MultiplayerSession = startMultiplayerSession;
-window.__v39GameStateDefaults = normalizeState(window.V39_INITIAL_GAME_STATE || EMPTY_STATE);
+window.__v39GameStateDefaults = normalizeState(window.V39_TEST_GAME_STATE || EMPTY_STATE);
+window.__v39TestGameStateDefaults = window.__v39GameStateDefaults;
 
 export {
   coordKey,
