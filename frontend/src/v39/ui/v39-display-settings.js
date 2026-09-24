@@ -108,10 +108,17 @@ function updateMaxZoomText() {
   }
 }
 
+function effectiveTestMode() {
+  const playMode = typeof window.getV39PlayMode === "function" ? window.getV39PlayMode() : "";
+  if (playMode && playMode !== "single-test") return false;
+  return settings.testMode === true;
+}
+
 function applySettings({ emit = true } = {}) {
+  const testModeEnabled = effectiveTestMode();
   document.documentElement.dataset.v39FontScale = String(settings.fontScalePercent / 100);
   document.documentElement.classList.toggle("v39-reduce-motion", !!settings.reduceMotion);
-  document.documentElement.classList.toggle("v39-test-mode", !!settings.testMode);
+  document.documentElement.classList.toggle("v39-test-mode", testModeEnabled);
 
   const font = document.getElementById("v39-font-size");
   const fontOut = document.getElementById("v39-font-size-value");
@@ -128,7 +135,11 @@ function applySettings({ emit = true } = {}) {
   if (shading) shading.checked = settings.heightShading !== false;
   if (showZoom) showZoom.checked = settings.showZoomControls !== false;
   if (reduceMotion) reduceMotion.checked = !!settings.reduceMotion;
-  if (testMode) testMode.checked = !!settings.testMode;
+  if (testMode) {
+    const playMode = typeof window.getV39PlayMode === "function" ? window.getV39PlayMode() : "";
+    testMode.checked = testModeEnabled;
+    testMode.disabled = !!playMode && playMode !== "single-test";
+  }
   if (maxZoom) maxZoom.value = String(settings.maxZoomFactor);
 
   const controls = document.getElementById("v39-map-camera-controls");
@@ -137,7 +148,7 @@ function applySettings({ emit = true } = {}) {
   updateMaxZoomText();
   if (emit) {
     window.dispatchEvent(new CustomEvent("v39:display-settings-changed", {
-      detail: { ...settings, ...currentMapSize() }
+      detail: { ...settings, testMode:testModeEnabled, ...currentMapSize() }
     }));
     window.dispatchEvent(new Event("resize"));
   }
@@ -219,8 +230,9 @@ function install() {
     requestAnimationFrame(() => applySettings({ emit: false }));
   });
 
-  window.getV39DisplaySettings = () => ({ ...settings });
-  window.isV39TestMode = () => !!settings.testMode;
+  window.getV39DisplaySettings = () => ({ ...settings, testMode:effectiveTestMode() });
+  window.isV39TestMode = () => effectiveTestMode();
+  window.setV39TestMode = enabled => updateSetting("testMode", enabled === true);
 }
 
 install();
