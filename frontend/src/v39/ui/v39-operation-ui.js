@@ -395,7 +395,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
   });
 
   window.V39_OPERATION_UI_DATA = data;
-  window.V39_INITIAL_GAME_STATE = V39_TEST_GAME_STATE;
+  window.V39_TEST_GAME_STATE = V39_TEST_GAME_STATE;
   window.activateV39FooterTab = activateFooterTab;
   window.dispatchEvent(new Event("v39:operation-ui-ready"));
 })();
