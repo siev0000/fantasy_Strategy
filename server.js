@@ -789,10 +789,15 @@ io.on("connection", socket => {
   });
 
   socket.on("room:leave", () => {
-    const room = rooms.get(socket.data.roomId);
+    const roomId = String(socket.data.roomId || "");
+    const room = rooms.get(roomId);
+    const reconnectable = isV39WorldRoom(room)
+      && room.phase !== "lobby"
+      && !!String(socket.data.participantId || "");
+    const phase = String(room?.phase || "");
     const removeParticipant = !isV39WorldRoom(room) || room.phase === "lobby";
     detachSocketFromRoom(socket, { removeParticipant });
-    socket.emit("room:left");
+    socket.emit("room:left", { roomId, phase, reconnectable });
   });
 
   socket.on("room:ready", payload => {
