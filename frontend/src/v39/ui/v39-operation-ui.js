@@ -1,7 +1,23 @@
-import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-data.js";
+import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
 
 (function initializeOperationUi() {
   "use strict";
+
+  const EMPTY_LAND_ITEMS = Object.freeze([
+    { label:"地形", value:"-", valueId:"landTerrain" },
+    { label:"領土", value:"-", valueId:"landOwner" },
+    { label:"危険度", value:"-" },
+    { label:"高度", value:"-", valueId:"landHeight" },
+    { label:"施設", value:"-" },
+    { label:"ユニット", value:"-", valueId:"landUnits" },
+    { label:"町状態", value:"-" },
+    { label:"領土状態", value:"-" },
+    { label:"回復補正", value:"-" },
+    { label:"移動停止", value:"-" },
+    { label:"川 / 滝", value:"-" },
+    { label:"火山 / 溶岩", value:"-" },
+    { label:"敵", value:"-", valueId:"landEnemies" }
+  ]);
 
   const data = Object.freeze({
     tabs: [
@@ -10,7 +26,7 @@ import { V39_TEST_GAME_STATE, V39_TEST_OPERATION_DATA } from "../dev/v39-test-da
       { key: "settlement", label: "拠点", icon: "⌂" },
       { key: "manage", label: "管理", icon: "⚙" }
     ],
-    landItems: V39_TEST_OPERATION_DATA.landItems,
+    landItems: EMPTY_LAND_ITEMS,
     manageItems: [
       { icon: "⚒", label: "装備", open: "equipment" },
       { icon: "⇄", labelHtml: '資源表示: <em id="resourceModeLabel">詳細</em>', id: "resourceModeToggle", title: "資源表示を詳細/簡易で切替", tip: "資源表示切替" },
