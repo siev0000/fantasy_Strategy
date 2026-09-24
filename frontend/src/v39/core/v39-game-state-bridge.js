@@ -453,6 +453,22 @@ function createLocalSessionPlayers(count) {
   });
 }
 
+function createMultiplayerSessionPlayers(count, factionSelections = {}) {
+  return Array.from({ length:count }, (_, index) => {
+    const playerId = `player-${index + 1}`;
+    const race = String(factionSelections?.[playerId] || "").trim();
+    return createPlayerRecord({
+      id:playerId,
+      label:`プレイヤー${index + 1}`,
+      isPlayer:true,
+      controllerParticipantId:"",
+      race,
+      ready:false,
+      factionState:createPlayerFactionState({}, playerId)
+    }, index);
+  });
+}
+
 function createLocalSessionParticipants(players, participantCount, assignments = {}) {
   const count = normalizeV39LocalParticipantCount(participantCount, players.length);
   const participants = Array.from({ length:count }, (_, index) => ({
@@ -482,7 +498,7 @@ function createRemoteSessionParticipants(players, participantSource, assignments
     assignedPlayerIds:[]
   }));
   if (!participants.length) {
-    return createLocalSessionParticipants(players, 1, assignments);
+    return { players:[], sessionParticipants:[] };
   }
   const participantIds = new Set(participants.map(participant => participant.participantId));
   const normalizedPlayers = players.map((player, index) => {
@@ -498,13 +514,18 @@ function createRemoteSessionParticipants(players, participantSource, assignments
 
 function startMultiplayerSession(playerCount, options = {}) {
   const count = normalizeV39LocalPlayerCount(playerCount);
-  const initialPlayers = createLocalSessionPlayers(count);
-  if (!initialPlayers.length) return getState();
+  const initialPlayers = createMultiplayerSessionPlayers(count, options?.playerFactionSelections);
+  if (initialPlayers.some(player => !String(player?.race || "").trim())) {
+    throw new Error("開始勢力が未選択のプレイヤーがいます。");
+  }
   const session = createRemoteSessionParticipants(
     initialPlayers,
     options?.participants,
     options?.playerParticipantAssignments
   );
+  if (!session.players.length || !session.sessionParticipants.length) {
+    throw new Error("通信参加者がゲーム状態へ接続されていません。");
+  }
   const players = session.players;
   const activePlayerId = players[0]?.id || "";
   const gameSettings = normalizeGameStartSettings(options?.gameSettings || state.gameSettings);
