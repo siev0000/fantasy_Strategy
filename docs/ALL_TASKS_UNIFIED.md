@@ -709,6 +709,9 @@ v39研究画面は `研究.json` から生成し、プレイヤー別の担当�
 
 Socket.IOは簡易戦闘ルーム用途に存在するが、ワールドマップ全体同期は未接続。
 
+詳細設計: `MULTIPLAYER_ROOM_DESIGN.md`  
+通信前に実装済みの参加者・担当勢力・ローカル順番制の状態構造: `ローカル複数勢力ターン設計.md`
+
 - [x] `sessionParticipants[]`、`players[].controllerParticipantId`、`timeline.playerTurnOrder / activeTurnPlayerId / endedPlayerIds` をセーブ可能な正本状態へ追加
 - [x] 開始設定で仮参加者数と勢力ごとの担当を指定し、1〜8勢力を順番に操作するローカル順番制を追加。全勢力の初期配置完了後だけ敵・一般村を生成する
 - [x] 全勢力のターン終了後だけエネミーターン・全体終了処理を実行し、次ラウンドで先頭勢力へ戻す
