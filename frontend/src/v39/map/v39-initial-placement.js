@@ -1,5 +1,6 @@
 import { createInitialV39Village, normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { getHexOffsetNeighbors } from "../../lib/hex-grid.js";
+import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 
 const MODE_BANNER_ID = "modeBanner";
@@ -40,9 +41,15 @@ function placedSettlements(faction) {
   return getFactionSettlements(faction).filter(row => row?.placed);
 }
 
+function hasSovereign(faction) {
+  return Array.isArray(faction?.units) && faction.units.some(unit => isSovereignUnit(unit));
+}
+
 function needsInitialPlacement(player) {
   const faction = player?.factionState;
-  return !!faction && placedSettlements(faction).length < initialSettlementPlans(faction).length;
+  return !!faction
+    && hasSovereign(faction)
+    && placedSettlements(faction).length < initialSettlementPlans(faction).length;
 }
 
 function findNextPlayerNeedingInitialPlacement(state, afterPlayerId = "") {
@@ -223,6 +230,12 @@ function beginInitialPlacement(options = {}) {
   const player = getActivePlayer(state);
   const faction = player?.factionState;
   if (!state || !player || !faction) return false;
+  if (!hasSovereign(faction)) {
+    window.dispatchEvent(new CustomEvent("v39:initial-sovereign-required", {
+      detail:{ playerId:player.id, race:player.race }
+    }));
+    return false;
+  }
   if (placedSettlements(faction).length && options.force !== true) return false;
 
   const units = options.keepUnitCoordinates === true
@@ -461,8 +474,17 @@ function syncPlacementMode() {
 }
 
 function handleFieldGenerated() {
-  const faction = getActiveFaction();
+  const state = getGameState();
+  const player = getActivePlayer(state);
+  const faction = player?.factionState;
   if (!faction) return;
+  if (!hasSovereign(faction)) {
+    hideBanner();
+    window.dispatchEvent(new CustomEvent("v39:initial-sovereign-required", {
+      detail:{ playerId:player?.id || "", race:player?.race || "" }
+    }));
+    return;
+  }
 
   const targetCount = initialSettlementPlans(faction).length;
   const currentCount = placedSettlements(faction).length;
