@@ -109,9 +109,8 @@ function updateMaxZoomText() {
 }
 
 function effectiveTestMode() {
-  const playMode = typeof window.getV39PlayMode === "function" ? window.getV39PlayMode() : "";
-  if (playMode && playMode !== "single-test") return false;
-  return settings.testMode === true;
+  if (typeof window.getV39PlayMode !== "function") return false;
+  return window.getV39PlayMode() === "single-test" && settings.testMode === true;
 }
 
 function applySettings({ emit = true } = {}) {
