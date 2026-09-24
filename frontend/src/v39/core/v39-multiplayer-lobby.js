@@ -1,4 +1,5 @@
 import { io } from "socket.io-client";
+import { raceData } from "../../lib/game-data-registry.js";
 
 // Socket.IO側のv39ロビー識別子。旧簡易戦闘ルームとは混在させない。
 const PROTOCOL_VERSION = "v39-room-v1";
@@ -7,6 +8,13 @@ const DISPLAY_NAME_STORAGE_KEY = "v39-multiplayer-display-name-v1";
 const HOST_DEFAULT_DISPLAY_NAME = "ホストプレイヤー";
 const JOIN_DEFAULT_DISPLAY_NAME = "プレイヤー1";
 const LEGACY_DEFAULT_DISPLAY_NAME = "参加者";
+const SELECTABLE_RACES = (Array.isArray(raceData) ? raceData : [])
+  .map(row => ({
+    key:String(row?.key || "").trim(),
+    name:String(row?.name || row?.key || "").trim()
+  }))
+  .filter(row => row.key);
+const SELECTABLE_RACE_KEYS = new Set(SELECTABLE_RACES.map(row => row.key));
 
 let socket = null;
 let socketReady = false;
@@ -246,7 +254,8 @@ function startHostedGame(payload) {
     window.startV39MultiplayerSession(settings.factionCount, {
       gameSettings:gameSetup.gameSettings,
       participants:Array.isArray(payload.participants) ? payload.participants : roomSnapshot.participants,
-      playerParticipantAssignments:settings.playerParticipantAssignments
+      playerParticipantAssignments:settings.playerParticipantAssignments,
+      playerFactionSelections:settings.playerFactionSelections
     });
     window.setV39GameState?.({ gameSettings:gameSetup.gameSettings }, { reason:"multiplayer-game-start-settings" });
     window.generateFieldFromSettings({
@@ -290,6 +299,14 @@ function requestGameStart() {
     setStatus("ゲーム開始設定を先に保存してください。", "error");
     return;
   }
+  const factionCount = Math.max(1, Number(roomSnapshot.settings?.factionCount) || 1);
+  const factionSelections = roomSnapshot.settings?.playerFactionSelections || {};
+  const allFactionsSelected = Array.from({ length:factionCount }, (_, index) => `player-${index + 1}`)
+    .every(playerId => SELECTABLE_RACE_KEYS.has(text(factionSelections[playerId])));
+  if (!allFactionsSelected) {
+    setStatus("全勢力の開始種族を選択してください。", "error");
+    return;
+  }
   if (!allReady) {
     setStatus("参加者全員が準備完了になるまで開始できません。", "error");
     return;
@@ -326,9 +343,20 @@ function renderLobby() {
   }
   lobby.hidden = false;
   const participants = Array.isArray(roomSnapshot.participants) ? roomSnapshot.participants : [];
-  const settings = roomSnapshot.settings || { factionCount:1, playerParticipantAssignments:{}, gameSetup:null };
+  const settings = roomSnapshot.settings || {
+    factionCount:1,
+    playerParticipantAssignments:{},
+    playerFactionSelections:{},
+    gameSetup:null
+  };
   const hostParticipant = getParticipantById(roomSnapshot.hostParticipantId);
   const mine = getParticipantById(getMyParticipantId());
+  const factionCount = Math.max(1, Number(settings.factionCount) || 1);
+  const factionSelections = settings.playerFactionSelections || {};
+  const playerIds = Array.from({ length:factionCount }, (_, index) => `player-${index + 1}`);
+  const allFactionsSelected = playerIds.every(playerId => SELECTABLE_RACE_KEYS.has(text(factionSelections[playerId])));
+  const myAssignedPlayerIds = Array.isArray(mine?.assignedPlayerIds) ? mine.assignedPlayerIds : [];
+  const myFactionsSelected = myAssignedPlayerIds.every(playerId => SELECTABLE_RACE_KEYS.has(text(factionSelections[playerId])));
   const allReady = participants.length > 0 && participants.every(participant => participant.ready && participant.connected);
   const participantRows = participants.map(participant => {
     const assigned = Array.isArray(participant.assignedPlayerIds) && participant.assignedPlayerIds.length
@@ -341,11 +369,21 @@ function renderLobby() {
     ].join("");
     return `<article class="v39-room-participant${participant.participantId === getMyParticipantId() ? " is-self" : ""}"><div><div class="v39-room-participant-name">${escapeHtml(participant.displayName)}</div><div class="v39-room-participant-info">${escapeHtml(assigned)}</div></div><div class="v39-room-tags">${tags}</div></article>`;
   }).join("");
-  const assignmentRows = Array.from({ length:Math.max(1, Number(settings.factionCount) || 1) }, (_, index) => {
-    const playerId = `player-${index + 1}`;
+  const assignmentRows = playerIds.map((playerId, index) => {
     const assignedId = text(settings.playerParticipantAssignments?.[playerId]);
     const options = participants.map(participant => `<option value="${escapeHtml(participant.participantId)}"${participant.participantId === assignedId ? " selected" : ""}>${escapeHtml(participant.displayName)}</option>`).join("");
     return `<label>勢力${index + 1}<select data-v39-room-assignment="${playerId}">${options}</select></label>`;
+  }).join("");
+  const factionSelectionRows = playerIds.map((playerId, index) => {
+    const assignedId = text(settings.playerParticipantAssignments?.[playerId]);
+    const assignedParticipant = participants.find(participant => participant.participantId === assignedId);
+    const selectedRace = text(factionSelections[playerId]);
+    const canEdit = roomSnapshot.phase === "lobby" && assignedId === getMyParticipantId();
+    const options = [
+      '<option value="">未選択</option>',
+      ...SELECTABLE_RACES.map(race => `<option value="${escapeHtml(race.key)}"${race.key === selectedRace ? " selected" : ""}>${escapeHtml(race.name || race.key)}</option>`)
+    ].join("");
+    return `<label>勢力${index + 1} / ${escapeHtml(assignedParticipant?.displayName || "担当未設定")}<select data-v39-room-faction-select="${playerId}"${canEdit ? "" : " disabled"}>${options}</select></label>`;
   }).join("");
   const hostSettings = isHost() ? `
     <section class="v39-room-host-settings">
@@ -359,19 +397,24 @@ function renderLobby() {
       <p class="v39-room-note">設定変更時は、他参加者の準備完了を解除します。</p>
     </section>` : "";
   const startButton = isHost() && roomSnapshot.phase === "lobby"
-    ? `<button type="button" class="v39-room-start" data-v39-room-action="start-game"${(!allReady || !settings.gameSetup || pendingGameStart) ? " disabled" : ""}>ゲーム開始</button>`
+    ? `<button type="button" class="v39-room-start" data-v39-room-action="start-game"${(!allReady || !allFactionsSelected || !settings.gameSetup || pendingGameStart) ? " disabled" : ""}>ゲーム開始</button>`
     : "";
   const leaveLabel = roomSnapshot.phase === "lobby" ? "退出" : "ゲームから切断";
   lobby.innerHTML = `
     <div class="v39-room-meta"><span>ルーム名</span><strong>${escapeHtml(roomSnapshot.roomName || "-")}</strong><span>ルームID</span><strong class="v39-room-id">${escapeHtml(roomSnapshot.roomId)}</strong><span>ホスト: ${escapeHtml(hostParticipant?.displayName || "-")}</span></div>
     <div class="v39-room-actions">
-      <button type="button" data-v39-room-action="ready"${roomSnapshot.phase !== "lobby" ? " disabled" : ""}>${mine?.ready ? "準備を解除" : "準備完了"}</button>
+      <button type="button" data-v39-room-action="ready"${(roomSnapshot.phase !== "lobby" || (!mine?.ready && !myFactionsSelected)) ? " disabled" : ""}>${mine?.ready ? "準備を解除" : "準備完了"}</button>
       ${startButton}
       <button type="button" data-v39-room-action="leave">${leaveLabel}</button>
     </div>
     <div class="v39-room-participants">${participantRows}</div>
+    <section class="v39-room-host-settings">
+      <h3>開始勢力</h3>
+      <div class="v39-room-assignment-list">${factionSelectionRows}</div>
+      <p class="v39-room-note">各プレイヤーは自分の担当勢力の開始種族を選択します。選択肢は 種族.json を使用します。</p>
+    </section>
     ${hostSettings}
-    <p class="v39-room-stage-note">${roomSnapshot.phase === "setup" ? "ホストがワールドを生成しています。完了後に同じワールド状態を受信します。" : (roomSnapshot.phase === "playing" ? "ゲームを開始しました。" : "ゲーム開始設定を確認し、全員が準備完了になったらホストがゲーム開始できます。")}</p>
+    <p class="v39-room-stage-note">${roomSnapshot.phase === "setup" ? "ホストがワールドを生成しています。完了後に同じワールド状態を受信します。" : (roomSnapshot.phase === "playing" ? "ゲームを開始しました。" : (allFactionsSelected ? "開始勢力を確認し、全員が準備完了になったらホストがゲーム開始できます。" : "まず各プレイヤーが担当勢力の開始種族を選択してください。"))}</p>
     <p class="v39-room-note">参加者 ${participants.length}人 / ${allReady ? "全員準備完了" : "準備待ち"} / 接続 ${connected ? "正常" : "切断中"}</p>`;
 }
 
@@ -519,7 +562,25 @@ function leaveRoom() {
 function toggleReady() {
   const mine = getParticipantById(getMyParticipantId());
   if (!mine || !roomSnapshot) return;
+  if (!mine.ready) {
+    const selections = roomSnapshot.settings?.playerFactionSelections || {};
+    const missing = (Array.isArray(mine.assignedPlayerIds) ? mine.assignedPlayerIds : [])
+      .some(playerId => !SELECTABLE_RACE_KEYS.has(text(selections[playerId])));
+    if (missing) {
+      setStatus("担当勢力の開始種族をすべて選択してください。", "error");
+      return;
+    }
+  }
   socket?.emit("room:ready", { roomId:roomSnapshot.roomId, ready:!mine.ready });
+}
+
+function selectStartingFaction(playerId, raceKey) {
+  if (!roomSnapshot || roomSnapshot.phase !== "lobby") return;
+  socket?.emit("room:select-faction", {
+    roomId:roomSnapshot.roomId,
+    playerId:text(playerId),
+    raceKey:text(raceKey)
+  });
 }
 
 function updateSettings() {
@@ -580,6 +641,10 @@ function handleClick(event) {
 function handleChange(event) {
   const target = event.target;
   if (!(target instanceof HTMLSelectElement)) return;
+  if (target.matches("[data-v39-room-faction-select]")) {
+    selectStartingFaction(target.dataset.v39RoomFactionSelect, target.value);
+    return;
+  }
   if (target.matches("[data-v39-room-faction-count],[data-v39-room-assignment]")) updateSettings();
 }
 
