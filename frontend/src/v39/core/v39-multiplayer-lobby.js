@@ -54,15 +54,18 @@ function saveCredentials(next) {
 
 function loadDisplayName() {
   try {
-    return text(localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)) || credentials?.displayName || "参加者";
+    return text(localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)) || credentials?.displayName || "";
   } catch {
-    return credentials?.displayName || "参加者";
+    return credentials?.displayName || "";
   }
 }
 
 function saveDisplayName(value) {
-  const displayName = text(value).slice(0, 20) || "参加者";
-  try { localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName); } catch { /* no-op */ }
+  const displayName = text(value).slice(0, 20);
+  try {
+    if (displayName) localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName);
+    else localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
+  } catch { /* no-op */ }
   return displayName;
 }
 
@@ -104,7 +107,7 @@ function createModal() {
         <section class="v39-room-section">
           <h3>接続</h3>
           <div class="v39-room-form">
-            <label>プレイヤー名（ロビー表示）<input data-v39-room-player-name maxlength="20" autocomplete="nickname"></label>
+            <label>プレイヤー名（ロビー表示）<input data-v39-room-player-name maxlength="20" placeholder="未入力なら自動設定" autocomplete="nickname"></label>
             <label>ルーム名<input data-v39-room-name maxlength="40" placeholder="例: 週末テスト" autocomplete="off"></label>
           </div>
           <div class="v39-room-actions"><button type="button" data-v39-room-action="create">ルーム作成</button><button type="button" data-v39-room-action="leave">退出</button></div>
@@ -250,14 +253,14 @@ function ensureSocket() {
   });
   socket.on("room:created", payload => {
     if (!payload?.roomId || !payload?.participantId || !payload?.reconnectToken) return;
-    saveCredentials({ ...payload, displayName:loadDisplayName() });
+    saveCredentials({ ...payload, displayName:text(payload.displayName) || loadDisplayName() });
     autoJoinAttempted = true;
     setStatus(`ルーム「${payload.roomName || ""}」を作成しました。`, "ok");
     renderLobby();
   });
   socket.on("room:joined", payload => {
     if (!payload?.roomId || !payload?.participantId || !payload?.reconnectToken) return;
-    saveCredentials({ ...payload, displayName:loadDisplayName() });
+    saveCredentials({ ...payload, displayName:text(payload.displayName) || loadDisplayName() });
     autoJoinAttempted = true;
     setStatus(`ルーム ${payload.roomId} に参加しました。`, "ok");
     renderLobby();
@@ -288,7 +291,9 @@ function joinRoom(options = {}) {
     return;
   }
   const roomId = text(options.roomId || getRoomIdInput()?.value).replace(/\D/g, "").slice(0, 8);
-  const displayName = saveDisplayName(options.displayName || getDisplayNameInput()?.value);
+  const displayName = Object.prototype.hasOwnProperty.call(options, "displayName")
+    ? text(options.displayName).slice(0, 20)
+    : saveDisplayName(getDisplayNameInput()?.value);
   if (!roomId) {
     setStatus("ルームIDを入力してください。", "error");
     return;
