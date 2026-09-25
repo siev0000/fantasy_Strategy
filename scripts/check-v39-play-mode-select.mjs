@@ -31,6 +31,9 @@ async function checkSingleSovereignSetup() {
   await page.locator("#v39-field-settings-modal.open").waitFor();
   await page.locator("#v39-field-generate").click();
   await page.locator('[data-v39-race-option="只人"]').waitFor({ timeout:10000 });
+  if (!(await page.locator(".vue-modal-backdrop.open:visible").count())) {
+    throw new Error("共通Vueモーダルが表示状態になっていません。");
+  }
   if (await page.locator("#v39-initial-sovereign-modal.open").count()) {
     throw new Error("旧v39初期統治者UIが開いています。");
   }
