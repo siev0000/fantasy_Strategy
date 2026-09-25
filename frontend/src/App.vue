@@ -279,6 +279,7 @@ const selectedVillageName = ref("はじまりの村");
 const gameSetupReady = ref(false);
 const gameFlowStep = ref("idle");
 const multiplayerSetupTarget = ref(null);
+const multiplayerRaceSelectionTarget = ref(null);
 const characterCommand = ref(null);
 const testControlsVisible = ref(false);
 const gameOnlyMode = computed(() => true);
@@ -348,6 +349,9 @@ const gameSetupProgressText = computed(() => {
     : `別勢力${Math.max(1, (idx + 1) - playerCount)}`;
   return `${slotLabel} (${idx + 1}/${total})`;
 });
+const raceSelectionProgressText = computed(() => (
+  multiplayerRaceSelectionTarget.value?.label || gameSetupProgressText.value
+));
 const localState = ref(createInitialBattleState());
 const roomState = ref(null);
 const activeRoomId = ref("");
@@ -376,6 +380,7 @@ const sim = reactive({
 });
 
 let globalKeyHandler = null;
+let multiplayerRaceSelectionRequestHandler = null;
 let multiplayerSovereignRequiredHandler = null;
 let multiplayerGameStartedHandler = null;
 let saveSnapshotWaiters = [];
@@ -513,7 +518,22 @@ function openModal(kind, payload = null) {
   }
 }
 
+function cancelMultiplayerRaceSelection() {
+  const target = multiplayerRaceSelectionTarget.value;
+  if (!target) return false;
+  selectedRace.value = String(target.previousSelectedRace || "");
+  multiplayerRaceSelectionTarget.value = null;
+  showRaceModal.value = false;
+  window.dispatchEvent(new CustomEvent("v39:multiplayer-race-selection-cancelled"));
+  setSessionStatus("開始種族の選択をキャンセルしました。", "");
+  return true;
+}
+
 function closeModal(kind) {
+  if (kind === "race" && multiplayerRaceSelectionTarget.value) {
+    cancelMultiplayerRaceSelection();
+    return;
+  }
   if (multiplayerSetupTarget.value && (kind === "class" || kind === "name" || kind === "race")) {
     setSessionStatus("マルチプレイ開始には統治者設定が必要です。", "warn");
     return;
@@ -530,6 +550,7 @@ function closeModal(kind) {
 }
 
 function closeAllModals() {
+  if (multiplayerRaceSelectionTarget.value) cancelMultiplayerRaceSelection();
   showRoomModal.value = false;
   showBattleModal.value = false;
   showSimModal.value = false;
@@ -717,6 +738,18 @@ function applySelectedRace(raceKey) {
   const key = String(raceKey || "").trim();
   if (!Object.prototype.hasOwnProperty.call(RACES, key)) return;
   selectedRace.value = key;
+
+  if (multiplayerRaceSelectionTarget.value) {
+    const target = multiplayerRaceSelectionTarget.value;
+    multiplayerRaceSelectionTarget.value = null;
+    showRaceModal.value = false;
+    window.dispatchEvent(new CustomEvent("v39:multiplayer-race-selected", {
+      detail:{ playerId:target.playerId, raceKey:key }
+    }));
+    setSessionStatus(`${target.label || target.playerId} の開始種族を ${key} に設定しました。`, "ok");
+    return;
+  }
+
   setSessionStatus(`開始種族を ${key} に設定。次にクラスを選択してください。`, "ok");
   showRaceModal.value = false;
   showClassModal.value = true;
@@ -1523,6 +1556,22 @@ function renderGameStateToText() {
 }
 
 onMounted(() => {
+  multiplayerRaceSelectionRequestHandler = event => {
+    const playerId = String(event?.detail?.playerId || "").trim();
+    const currentRace = String(event?.detail?.currentRace || "").trim();
+    const label = String(event?.detail?.label || playerId).trim();
+    if (!playerId) return;
+    multiplayerRaceSelectionTarget.value = {
+      playerId,
+      label,
+      previousSelectedRace:selectedRace.value
+    };
+    selectedRace.value = Object.prototype.hasOwnProperty.call(RACES, currentRace) ? currentRace : "";
+    showClassModal.value = false;
+    showCharacterNameModal.value = false;
+    showRaceModal.value = true;
+    setSessionStatus(`${label} の開始種族を選択してください。`, "warn");
+  };
   multiplayerSovereignRequiredHandler = event => {
     const playerId = String(event?.detail?.playerId || "").trim();
     const race = String(event?.detail?.race || "").trim();
@@ -1547,6 +1596,7 @@ onMounted(() => {
     showCharacterNameModal.value = false;
     setSessionStatus("初期設定が完了しました。ゲームを開始します。", "ok");
   };
+  window.addEventListener("v39:multiplayer-race-select-request", multiplayerRaceSelectionRequestHandler);
   window.addEventListener("v39:multiplayer-sovereign-required", multiplayerSovereignRequiredHandler);
   window.addEventListener("v39:multiplayer-game-started", multiplayerGameStartedHandler);
 
@@ -1636,6 +1686,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (multiplayerRaceSelectionRequestHandler) {
+    window.removeEventListener("v39:multiplayer-race-select-request", multiplayerRaceSelectionRequestHandler);
+    multiplayerRaceSelectionRequestHandler = null;
+  }
   if (multiplayerSovereignRequiredHandler) {
     window.removeEventListener("v39:multiplayer-sovereign-required", multiplayerSovereignRequiredHandler);
     multiplayerSovereignRequiredHandler = null;
@@ -1878,7 +1932,7 @@ watch(gameOnlyMode, () => {
     <race-select-modal
       :show="showRaceModal"
       :selected-race="selectedRace"
-      :setup-progress-text="gameSetupProgressText"
+      :setup-progress-text="raceSelectionProgressText"
       @close="closeModal('race')"
       @confirm="applySelectedRace"
     />
