@@ -93,13 +93,18 @@ async function checkSingleSovereignSetup() {
   await page.locator('[data-v39-race-option="只人"]').click();
 
   const raceTabs = page.locator(".operation-detail-tabs button");
-  if (await raceTabs.count() !== 3) throw new Error("開始種族画面が3タブ表示になっていません。");
+  if (await raceTabs.count() !== 2) throw new Error("開始種族画面が2タブ表示になっていません。");
+  if ((await raceTabs.nth(0).textContent())?.trim() !== "ステータス技能") {
+    throw new Error("開始種族画面の先頭タブが「ステータス技能」ではありません。");
+  }
+  if ((await raceTabs.nth(1).textContent())?.trim() !== "スキル") {
+    throw new Error("開始種族画面の2番目タブが「スキル」ではありません。");
+  }
   const raceStatusText = await page.locator(".operation-detail-content").textContent();
-  if (!raceStatusText?.includes("HP") || !raceStatusText?.includes("攻撃") || !raceStatusText?.includes("防御")) {
-    throw new Error("開始種族画面にステータス詳細が表示されていません。");
+  if (!raceStatusText?.includes("HP") || !raceStatusText?.includes("攻撃") || !raceStatusText?.includes("防御") || !raceStatusText?.includes("技能")) {
+    throw new Error("開始種族画面のステータス技能タブに両方の詳細が表示されていません。");
   }
 
-  await raceTabs.filter({ hasText:"技能" }).click();
   const proficiencyLayout = await page.locator(".operation-proficiency-item").evaluateAll(items => {
     const first = items[0]?.getBoundingClientRect();
     const second = items[1]?.getBoundingClientRect();
@@ -157,7 +162,11 @@ async function checkSingleSovereignSetup() {
   await page.locator('[data-v39-class-option="ファイター"]').click();
 
   const classTabs = page.locator(".operation-detail-tabs button");
-  if (await classTabs.count() !== 3) throw new Error("クラス選択画面が3タブ表示になっていません。");
+  if (await classTabs.count() !== 2) throw new Error("クラス選択画面が2タブ表示になっていません。");
+  if ((await classTabs.nth(0).textContent())?.trim() !== "ステータス技能"
+    || (await classTabs.nth(1).textContent())?.trim() !== "スキル") {
+    throw new Error("クラス選択画面の詳細タブ構成が参考元と一致していません。");
+  }
   await page.locator(".class-actions button").filter({ hasText:"このクラスで決定" }).click();
 
   await page.locator(".name-form").waitFor({ timeout:5000 });
