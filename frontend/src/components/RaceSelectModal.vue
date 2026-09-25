@@ -288,9 +288,11 @@ function confirmRace() {
             @click="selectRaceCategory(category)"
           >
             <strong>{{ category }}</strong>
-            <span v-if="activeRaceCategory === category">{{ raceCategoryDescriptionMap.get(category) || "" }}</span>
           </button>
         </nav>
+        <div v-if="activeRaceCategory" class="race-category-description">
+          {{ raceCategoryDescriptionMap.get(activeRaceCategory) || "" }}
+        </div>
       </section>
 
       <section class="race-main-pane">
@@ -360,6 +362,9 @@ function confirmRace() {
 
 .race-category-pane {
   min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 7px;
   padding: 8px;
   border: 1px solid var(--picker-line);
   border-radius: 8px;
@@ -385,16 +390,15 @@ function confirmRace() {
 
 .race-category-tabs button {
   min-width: 0;
-  min-height: 72px;
+  min-height: 40px;
   display: grid;
-  align-content: center;
-  gap: 5px;
-  padding: 9px 10px;
+  place-items: center;
+  padding: 6px 10px;
   border: 1px solid #385159;
   border-radius: 7px;
   background: #122126;
   color: #a9babc;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
 }
 
@@ -404,11 +408,20 @@ function confirmRace() {
   font-weight: 900;
 }
 
-.race-category-tabs button span {
-  color: #91a5a8;
-  font-size: 11px;
+.race-category-description {
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid #294047;
+  border-radius: 7px;
+  background: #101f24;
+  color: #a9babc;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.45;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .race-category-tabs button:hover {
@@ -425,10 +438,6 @@ function confirmRace() {
 
 .race-category-tabs button.active strong {
   color: #f4fbfa;
-}
-
-.race-category-tabs button.active span {
-  color: #bfe8ed;
 }
 
 .race-list {
@@ -743,19 +752,19 @@ function confirmRace() {
   }
 
   .race-category-tabs button {
-    min-height: 0;
-    height: 100%;
-    align-content: start;
-    padding: 8px 7px;
+    min-height: 38px;
+    height: auto;
+    padding: 6px 7px;
   }
 
   .race-category-tabs button strong {
     font-size: 14px;
   }
 
-  .race-category-tabs button span {
-    font-size: 10px;
-    line-height: 1.35;
+  .race-category-description {
+    padding: 7px 8px;
+    font-size: 11px;
+    line-height: 1.4;
   }
 
   .race-main-pane {
@@ -857,16 +866,15 @@ function confirmRace() {
   }
 
   .race-category-tabs button {
-    padding: 7px 5px;
+    padding: 6px 5px;
   }
 
   .race-category-tabs button strong {
     font-size: 13px;
   }
 
-  .race-category-tabs button span {
-    font-size: 9px;
-    line-height: 1.3;
+  .race-category-description {
+    font-size: 10px;
   }
 
   .race-item {
