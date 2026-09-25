@@ -230,7 +230,7 @@ function handleSkillRowKeydown(event, row) {
 <style scoped>
 .operation-technique-list {
   display:grid;
-  gap:5px;
+  gap:2px;
 }
 
 .operation-technique-card {
@@ -317,7 +317,7 @@ function handleSkillRowKeydown(event, row) {
 
 .operation-technique-detail {
   display:grid;
-  gap:3px;
+  gap:0;
   padding:4px 5px;
   border-top:1px solid #35464d;
   background:#0e171b;
