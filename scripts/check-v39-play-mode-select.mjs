@@ -124,9 +124,38 @@ async function checkSingleSovereignSetup() {
 
   await page.locator("[data-v39-race-confirm]").click();
 
-  await page.locator(".class-item").filter({ hasText:"ファイター" }).waitFor({ timeout:5000 });
+  await page.locator('[data-v39-class-category="戦士系"]').waitFor({ timeout:5000 });
   await page.screenshot({ path:"output/web-game/v39-sovereign-class-select.png" });
-  await page.locator(".class-item").filter({ hasText:"ファイター" }).click();
+
+  const classCategories = await page.locator("[data-v39-class-category] strong").allTextContents();
+  if (classCategories.map(value => value.trim()).join("/") !== "戦士系/狩人系/魔法系/信仰系/その他") {
+    throw new Error(`クラス系統タブが画像ID分類どおりに表示されていません: ${classCategories.join("/")}`);
+  }
+
+  if ((await page.locator(".class-item.active").getAttribute("data-v39-class-option")) !== "ファイター") {
+    throw new Error("戦士系の初回表示でファイターが自動選択されていません。");
+  }
+
+  await page.locator('[data-v39-class-category="魔法系"]').click();
+  await page.locator('[data-v39-class-option="ウィザード"]').waitFor({ timeout:3000 });
+  if ((await page.locator(".class-item.active").getAttribute("data-v39-class-option")) !== "ウィザード") {
+    throw new Error("魔法系の初回表示でウィザードが自動選択されていません。");
+  }
+
+  await page.locator('[data-v39-class-option="アルケミスト"]').click();
+  await page.locator('[data-v39-class-category="狩人系"]').click();
+  if ((await page.locator(".class-item.active").getAttribute("data-v39-class-option")) !== "シーフ") {
+    throw new Error("狩人系の初回表示でシーフが自動選択されていません。");
+  }
+
+  await page.locator('[data-v39-class-category="魔法系"]').click();
+  if ((await page.locator(".class-item.active").getAttribute("data-v39-class-option")) !== "アルケミスト") {
+    throw new Error("魔法系へ戻った際に前回選択したアルケミストが復元されていません。");
+  }
+
+  await page.locator('[data-v39-class-category="戦士系"]').click();
+  await page.locator('[data-v39-class-option="ファイター"]').click();
+
   const classTabs = page.locator(".operation-detail-tabs button");
   if (await classTabs.count() !== 3) throw new Error("クラス選択画面が3タブ表示になっていません。");
   await page.locator(".class-actions button").filter({ hasText:"このクラスで決定" }).click();
