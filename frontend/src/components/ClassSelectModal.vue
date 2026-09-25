@@ -202,7 +202,7 @@ function confirmClass() {
       <section v-if="activeClass" class="class-detail">
         <header class="class-title">
           <h3>{{ activeClass.名前 }}</h3>
-          <div class="class-title-sub">種別: {{ activeClass.種類 }} / 合計: {{ activeClass.合計 || "-" }}</div>
+          <div class="class-title-sub">種別: {{ activeClass.種類 }}</div>
           <p class="class-text">{{ activeClass.詳細 || "詳細説明は未設定です。" }}</p>
         </header>
 
@@ -274,16 +274,20 @@ function confirmClass() {
 <style scoped>
 .class-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 290px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .class-list {
   min-width: 0;
-  max-height: 650px;
+  min-height: 0;
+  height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   gap: 6px;
   align-content: start;
@@ -388,7 +392,7 @@ function confirmClass() {
 .class-detail {
   min-width: 0;
   min-height: 0;
-  max-height: 650px;
+  height: 100%;
   overflow: hidden;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -457,6 +461,7 @@ function confirmClass() {
 .detail-tab-panel {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #405b63 transparent;
 }
@@ -602,11 +607,13 @@ function confirmClass() {
 @media (max-width: 760px) {
   .class-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(120px, 32%) minmax(0, 1fr);
+    height: 100%;
   }
 
   .class-list {
-    max-height: 190px;
+    max-height: none;
+    height: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -627,6 +634,7 @@ function confirmClass() {
   }
 
   .class-detail {
+    height: 100%;
     max-height: none;
   }
 
