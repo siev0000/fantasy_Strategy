@@ -36,7 +36,7 @@ function confirmName() {
 </script>
 
 <template>
-  <base-modal :show="show" title="キャラ名設定" :subtitle="setupProgressText" :close-on-backdrop="false" @close="$emit('close')">
+  <base-modal :show="show" title="名前設定" :subtitle="setupProgressText" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
     <div class="name-form">
       <label class="name-label">
         <span>キャラ名 (20文字まで)</span>
@@ -74,24 +74,82 @@ function confirmName() {
 <style scoped>
 .name-form {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 4px 0;
 }
 
 .name-label {
   display: grid;
-  gap: 6px;
+  gap: 5px;
+}
+
+.name-label span {
+  color: #b7c7c9;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .name-label input {
-  border: 1px solid #c8ad81;
-  border-radius: 6px;
-  padding: 8px;
-  font-size: 0.95rem;
-  background: #fff;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #3d5961;
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: #101f24;
+  color: #edf3f2;
+  font-size: 14px;
+  outline: none;
+}
+
+.name-label input::placeholder {
+  color: #677d82;
+}
+
+.name-label input:focus {
+  border-color: var(--picker-active);
+  box-shadow: 0 0 0 2px rgba(113, 209, 223, .12);
+  background: #13262c;
 }
 
 .name-actions {
   display: flex;
   justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.name-actions button {
+  min-width: 120px;
+  min-height: 38px;
+  padding: 6px 14px;
+  border: 1px solid var(--picker-active);
+  border-radius: 7px;
+  background: #1a4b55;
+  color: #f2fbfa;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.name-actions button:hover:not(:disabled) {
+  background: #205964;
+}
+
+.name-actions button:disabled {
+  border-color: #344b52;
+  background: #111d22;
+  color: #64777b;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .name-form {
+    width: 100%;
+  }
+
+  .name-actions button {
+    width: 100%;
+  }
 }
 </style>
