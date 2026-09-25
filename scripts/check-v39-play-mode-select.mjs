@@ -43,6 +43,18 @@ async function checkSingleSovereignSetup() {
   }
   await page.screenshot({ path:"output/web-game/v39-sovereign-race-select.png" });
 
+  const raceCategories = await page.locator("[data-v39-race-category]").allTextContents();
+  if (raceCategories.map(value => value.trim()).join("/") !== "人族/亜人/魔族") {
+    throw new Error(`種族分類タブがクラス種類どおりに表示されていません: ${raceCategories.join("/")}`);
+  }
+  await page.locator('[data-v39-race-category="亜人"]').click();
+  await page.locator('[data-v39-race-option="オーガ"]').waitFor({ timeout:3000 });
+  if (await page.locator('[data-v39-race-option="只人"]').count()) {
+    throw new Error("亜人タブで人族の種族が残っています。");
+  }
+  await page.locator('[data-v39-race-category="人族"]').click();
+  await page.locator('[data-v39-race-option="只人"]').waitFor({ timeout:3000 });
+
   await page.locator('[data-v39-race-option="只人"]').click();
   const raceTabs = page.locator(".detail-tabs button");
   if (await raceTabs.count() !== 3) throw new Error("開始種族画面が3タブ表示になっていません。");
