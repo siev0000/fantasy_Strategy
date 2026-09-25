@@ -34,6 +34,8 @@ try {
   await page.locator("#v39-play-mode-select.open").waitFor();
   await page.locator("[data-v39-play-mode=multiplayer]").click();
   await page.locator("#v39-multiplayer-lobby.open").waitFor();
+  await page.evaluate(() => document.getElementById("v39-multiplayer-lobby")?.dispatchEvent(new MouseEvent("click", { bubbles:true })));
+  if (!(await page.locator("#v39-multiplayer-lobby.open").count())) throw new Error("通信ロビーが背景クリックで閉じています。");
   if (await page.locator("#v39-field-settings-modal.open").count()) throw new Error("マルチ選択直後にゲーム開始設定が開いています。");
   if (await page.locator("[data-v39-room-id]:visible").count()) throw new Error("ルーム作成タブに参加用ルームID入力が表示されています。");
   const tabLabels = await page.locator("[data-v39-room-tab]").allTextContents();
@@ -56,6 +58,8 @@ try {
   try {
     await page.locator("[data-v39-room-action=game-settings]").click({ timeout:5000 });
     await page.locator("#v39-field-settings-modal.open").waitFor({ timeout:5000 });
+    await page.evaluate(() => document.getElementById("v39-field-settings-modal")?.dispatchEvent(new MouseEvent("click", { bubbles:true })));
+    if (!(await page.locator("#v39-field-settings-modal.open").count())) throw new Error("通信ルームのゲーム開始設定が背景クリックで閉じています。");
   } catch (error) {
     const modalState = await page.evaluate(() => ({
       fieldSettingsOpen:document.querySelector("#v39-field-settings-modal")?.className,
