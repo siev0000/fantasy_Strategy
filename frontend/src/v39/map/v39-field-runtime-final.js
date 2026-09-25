@@ -394,6 +394,8 @@ function resolveTileAtWorld(data, wx, wy) {
 
 function installInput(scene, data) {
   const camera = scene.cameras.main;
+  const inputController = new AbortController();
+  const inputSignal = inputController.signal;
   const pointers = new Map();
   const selection = scene.add.graphics().setDepth(20);
   let dragged = false;
@@ -436,14 +438,14 @@ function installInput(scene, data) {
     window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:selected }));
   };
 
-  host.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false });
+  host.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false, signal:inputSignal });
   host.addEventListener("pointerdown", e => {
     if (window.isV39MapInputLocked?.() === true) return;
     if (e.pointerType==="mouse" && e.button!==0) return;
     pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
     try { host.setPointerCapture?.(e.pointerId); } catch { /* Synthetic/cancelled pointers have no active capture. */ }
     dragged=false;
-  });
+  }, { signal:inputSignal });
   host.addEventListener("pointermove", e => {
     if (window.isV39MapInputLocked?.() === true) return;
     const prev=pointers.get(e.pointerId); if(!prev)return;
@@ -451,10 +453,10 @@ function installInput(scene, data) {
     if(next.length>=2){ const od=Math.hypot(old[0].x-old[1].x,old[0].y-old[1].y), nd=Math.hypot(next[0].x-next[1].x,next[0].y-next[1].y); if(od>0&&nd>0){zoomAt((next[0].x+next[1].x)/2,(next[0].y+next[1].y)/2,nd/od);dragged=true;} return; }
     const dx=e.clientX-prev.x,dy=e.clientY-prev.y; if(Math.abs(dx)+Math.abs(dy)<1)return;
     camera.scrollX-=dx/camera.zoom; camera.scrollY-=dy/camera.zoom; clampCamera(scene); dragged=true;
-  });
+  }, { signal:inputSignal });
   const finish=e=>{ const touch=e.pointerType!=="mouse", select=!dragged&&pointers.size===1; pointers.delete(e.pointerId); try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ } if(select)selectAt(e.clientX,e.clientY); if(touch&&!dragged&&!pointers.size){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
-  host.addEventListener("pointerup",finish); host.addEventListener("pointercancel",finish);
-  host.addEventListener("dblclick",e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,1.5);});
+  host.addEventListener("pointerup",finish,{ signal:inputSignal }); host.addEventListener("pointercancel",finish,{ signal:inputSignal });
+  host.addEventListener("dblclick",e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,1.5);},{ signal:inputSignal });
   const handleKeyboard = e => {
     if (window.isV39MapInputLocked?.() === true) return;
     const target = e.target;
@@ -475,8 +477,11 @@ function installInput(scene, data) {
     } else return;
     e.preventDefault();
   };
-  window.addEventListener("keydown", handleKeyboard);
-  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener("keydown", handleKeyboard));
+  window.addEventListener("keydown", handleKeyboard, { signal:inputSignal });
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    inputController.abort();
+    pointers.clear();
+  });
 
   document.getElementById("v39-map-camera-controls")?.remove();
   const controls=document.createElement("div"); controls.id="v39-map-camera-controls";
