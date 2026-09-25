@@ -368,6 +368,8 @@ function importRoomGameSnapshot(payload, options = {}) {
   try {
     if (typeof window.importV39SaveJson !== "function") throw new Error("ゲーム状態の読込機能が準備できていません。");
     window.importV39SaveJson(payload.snapshotJson);
+    const ownPlayerId = localAssignedPlayerIds()[0] || "";
+    if (ownPlayerId) window.setV39ActivePlayer?.(ownPlayerId);
     setStatus(options.setup === true ? "初期設定状態を同期しました。" : "ワールド状態を受信しました。", "ok");
     if (options.setup === true) {
       window.setTimeout(continueLocalInitialSetup, 0);
