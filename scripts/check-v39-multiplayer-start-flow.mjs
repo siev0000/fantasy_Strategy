@@ -95,14 +95,64 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-v39-room-faction-select="player-1"]')?.value === "只人");
   await page.locator("[data-v39-room-action=ready]").click();
   await page.waitForFunction(() => !document.querySelector("[data-v39-room-action=start-game]")?.disabled);
+
+  // ゲーム開始設定だけを変更しても準備完了は維持する。
+  await page.locator("[data-v39-room-action=game-settings]").click();
+  await page.locator("#v39-field-settings-modal.open").waitFor();
+  await page.locator("#v39-field-neutral-village-count").fill("3");
+  await page.locator("#v39-field-generate").click();
+  await page.waitForFunction(() => document.querySelector("[data-v39-room-action=ready]")?.textContent?.includes("準備を解除"));
+  await page.waitForFunction(() => !document.querySelector("[data-v39-room-action=start-game]")?.disabled);
+
   await page.locator("[data-v39-room-action=start-game]").click();
   await page.waitForFunction(() => {
     const runtime = window.__v39FieldRuntime;
     return runtime?.mapData?.w === 36 && runtime?.mapData?.h === 36;
   }, null, { timeout:10000 });
-  await page.waitForFunction(() => !document.querySelector("#v39-multiplayer-lobby")?.classList.contains("open"), null, { timeout:10000 });
+
+  // ワールド生成後はplayingへ直行せず、既存のクラス・名前UIで統治者を作る。
+  await page.locator(".class-item").filter({ hasText:"ファイター" }).waitFor({ timeout:10000 });
+  await page.locator(".class-item").filter({ hasText:"ファイター" }).click();
+  await page.locator(".class-actions button").filter({ hasText:"このクラスで決定" }).click();
+  await page.locator(".name-form").waitFor({ timeout:5000 });
+  const nameInputs = page.locator(".name-form input");
+  await nameInputs.nth(0).fill("テスト統治者");
+  await nameInputs.nth(1).fill("テスト拠点");
+  await page.locator(".name-actions button").filter({ hasText:"決定" }).click();
+
+  await page.waitForFunction(() => {
+    const faction = window.getV39GameState?.()?.players?.[0]?.factionState;
+    return faction?.units?.some(unit => unit?.isSovereign === true) && faction?.villagePlacementMode === true;
+  }, null, { timeout:10000 });
+
+  const placementTile = await page.evaluate(() => {
+    const field = window.__v39FieldRuntime?.mapData;
+    if (!field) return null;
+    for (let y = 3; y < field.h - 3; y += 1) {
+      for (let x = 3; x < field.w - 3; x += 1) {
+        const tile = { x, y, terrain:field.grid[y][x] };
+        if (window.canPlaceV39InitialBase?.(tile)) return tile;
+      }
+    }
+    return null;
+  });
+  if (!placementTile) throw new Error("初期拠点を配置できる候補マスが見つかりません。");
+  await page.evaluate(tile => {
+    window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:tile }));
+  }, placementTile);
+
+  await page.waitForFunction(() => {
+    const state = window.getV39GameState?.();
+    const faction = state?.players?.[0]?.factionState;
+    return faction?.settlements?.some(row => row?.placed === true)
+      && faction?.villagePlacementMode === false
+      && window.isV39MultiplayerSetup?.() === false;
+  }, null, { timeout:10000 });
+
   const multiplayerState = await page.evaluate(() => {
     const state = window.getV39GameState?.();
+    const sovereign = state?.players?.[0]?.factionState?.units?.find(unit => unit?.isSovereign === true);
+    const settlement = state?.players?.[0]?.factionState?.settlements?.find(row => row?.placed === true);
     return {
       playerCount:state?.players?.length || 0,
       participantCount:state?.sessionParticipants?.length || 0,
@@ -111,7 +161,10 @@ try {
       controlMode:state?.sessionParticipants?.[0]?.controlMode || "",
       race:state?.players?.[0]?.race || "",
       unitCount:state?.players?.[0]?.factionState?.units?.length || 0,
+      sovereignName:sovereign?.name || "",
+      sovereignClass:sovereign?.className || "",
       settlementCount:state?.players?.[0]?.factionState?.settlements?.length || 0,
+      settlementName:settlement?.name || "",
       villagePlacementMode:!!state?.players?.[0]?.factionState?.villagePlacementMode,
       mapWidth:window.__v39FieldRuntime?.mapData?.w || 0,
       mapHeight:window.__v39FieldRuntime?.mapData?.h || 0
@@ -122,8 +175,11 @@ try {
     || multiplayerState.controllerParticipantId !== multiplayerState.participantId
     || multiplayerState.controlMode !== "remote"
     || multiplayerState.race !== "只人"
-    || multiplayerState.unitCount !== 0
-    || multiplayerState.settlementCount !== 0
+    || multiplayerState.unitCount !== 1
+    || multiplayerState.sovereignName !== "テスト統治者"
+    || multiplayerState.sovereignClass !== "ファイター"
+    || multiplayerState.settlementCount !== 1
+    || multiplayerState.settlementName !== "テスト拠点"
     || multiplayerState.villagePlacementMode !== false
     || multiplayerState.mapWidth !== 36 || multiplayerState.mapHeight !== 36) {
     throw new Error(`マルチプレイ開始状態が不正です: ${JSON.stringify(multiplayerState)}`);
