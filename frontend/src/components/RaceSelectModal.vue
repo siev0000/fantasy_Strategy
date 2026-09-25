@@ -118,10 +118,11 @@ const skillDescMap = computed(() => {
 });
 
 const activeRaceKey = ref("");
+const activeDetailTab = ref("status");
 
 const activeRace = computed(() => {
-  if (!filteredRaces.value.length) return null;
-  return filteredRaces.value.find(item => item.key === activeRaceKey.value) || filteredRaces.value[0];
+  if (!filteredRaces.value.length || !activeRaceKey.value) return null;
+  return filteredRaces.value.find(item => item.key === activeRaceKey.value) || null;
 });
 
 const activeRaceClassRow = computed(() => {
@@ -174,7 +175,11 @@ const raceLv5SkillNames = computed(() => {
 watch(
   [() => props.show, filteredRaces, () => props.selectedRace],
   ([isOpen, allowedRows, selectedRace]) => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      activeRaceKey.value = "";
+      activeDetailTab.value = "status";
+      return;
+    }
     const list = Array.isArray(allowedRows) ? allowedRows : [];
     if (!list.length) {
       activeRaceKey.value = "";
@@ -187,7 +192,7 @@ watch(
     }
     const current = list.find(item => item.key === activeRaceKey.value);
     if (current) return;
-    activeRaceKey.value = list[0]?.key || "";
+    activeRaceKey.value = "";
   },
   { immediate: true }
 );
@@ -231,53 +236,60 @@ function confirmRace() {
           <p class="race-description">{{ activeRace.detail }}</p>
         </header>
 
-        <div class="race-body-split">
-          <section class="race-left-pane">
-            <section class="detail-block">
-              <h4>ステータス</h4>
-              <div class="status-rows">
-                <div v-for="row in statusRowGroups" :key="row.key" class="status-row">
-                  <div v-for="item in row.fields" :key="item.key" class="status-chip">
-                    <span>{{ item.key }}</span>
-                    <strong>{{ item.value ?? "-" }}</strong>
-                  </div>
-                </div>
-              </div>
-            </section>
+        <nav class="detail-tabs" role="tablist" aria-label="種族詳細">
+          <button type="button" role="tab" :aria-selected="activeDetailTab === 'status'" :class="{ active: activeDetailTab === 'status' }" @click="activeDetailTab = 'status'">ステータス</button>
+          <button type="button" role="tab" :aria-selected="activeDetailTab === 'skills'" :class="{ active: activeDetailTab === 'skills' }" @click="activeDetailTab = 'skills'">技能</button>
+          <button type="button" role="tab" :aria-selected="activeDetailTab === 'abilities'" :class="{ active: activeDetailTab === 'abilities' }" @click="activeDetailTab = 'abilities'">スキル</button>
+        </nav>
 
-            <section class="detail-block">
-              <h4>技能</h4>
-              <div v-if="skillRows.length" class="skill-value-grid">
-                <div
-                  v-for="item in skillRows"
-                  :key="item.key"
-                  class="skill-value-chip"
-                  :title="item.desc || `${item.label}: 詳細なし`"
-                >
-                  <span>{{ item.label }}</span>
-                  <strong>{{ item.value }}</strong>
+        <div class="detail-tab-panel">
+          <section v-if="activeDetailTab === 'status'" class="detail-block">
+            <h4>ステータス</h4>
+            <div class="status-rows">
+              <div v-for="row in statusRowGroups" :key="row.key" class="status-row">
+                <div v-for="item in row.fields" :key="item.key" class="status-chip">
+                  <span>{{ item.key }}</span>
+                  <strong>{{ item.value ?? "-" }}</strong>
                 </div>
               </div>
-              <div v-else class="small note-text">技能データなし</div>
-            </section>
+            </div>
           </section>
 
-          <section class="race-right-pane">
-            <section class="detail-block skill-detail-block">
-              <h4>種族スキル (Lv1-5)</h4>
-              <skill-acquired-table
-                :skill-names="raceLv5SkillNames"
-                :status-source="activeRaceClassRow"
-                :show-title="false"
-                empty-text="種族スキルなし"
-              />
-            </section>
+          <section v-else-if="activeDetailTab === 'skills'" class="detail-block">
+            <h4>技能</h4>
+            <div v-if="skillRows.length" class="skill-value-grid">
+              <div
+                v-for="item in skillRows"
+                :key="item.key"
+                class="skill-value-chip"
+                :title="item.desc || `${item.label}: 詳細なし`"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+            </div>
+            <div v-else class="small note-text">技能データなし</div>
+          </section>
+
+          <section v-else class="detail-block skill-detail-block">
+            <h4>種族スキル (Lv1-5)</h4>
+            <skill-acquired-table
+              :skill-names="raceLv5SkillNames"
+              :status-source="activeRaceClassRow"
+              :show-title="false"
+              empty-text="種族スキルなし"
+            />
           </section>
         </div>
 
         <div class="race-actions">
           <button type="button" @click="confirmRace">この種族で決定</button>
         </div>
+      </section>
+
+      <section v-else class="race-detail race-detail-empty">
+        <strong>種族を選択してください</strong>
+        <span>一覧から種族を選ぶと、ステータス・技能・スキルの詳細を確認できます。</span>
       </section>
     </div>
 
@@ -376,6 +388,7 @@ function confirmRace() {
   background: linear-gradient(170deg, rgba(27, 19, 13, 0.86), rgba(17, 12, 8, 0.9));
   padding: 12px;
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 10px;
   min-width: 0;
   max-height: 760px;
@@ -410,21 +423,49 @@ function confirmRace() {
   line-height: 1.45;
 }
 
-.race-body-split {
+.detail-tabs {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-  min-height: 0;
-  overflow: hidden;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
-.race-left-pane,
-.race-right-pane {
+.detail-tabs button {
+  min-height: 38px;
+  border: 1px solid rgba(213, 181, 123, 0.34);
+  border-radius: 7px;
+  background: rgba(43, 31, 20, 0.72);
+  color: #d8c29b;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.detail-tabs button.active {
+  border-color: rgba(246, 212, 147, 0.9);
+  background: linear-gradient(180deg, rgba(132, 87, 43, 0.96), rgba(82, 53, 28, 0.96));
+  color: #fff3d2;
+  box-shadow: 0 0 0 1px rgba(255, 229, 174, 0.22) inset;
+}
+
+.detail-tab-panel {
   min-height: 0;
   overflow: auto;
-  display: grid;
-  gap: 10px;
-  align-content: start;
+}
+
+.race-detail-empty {
+  grid-template-rows: 1fr;
+  place-content: center;
+  text-align: center;
+  color: #e8d4aa;
+}
+
+.race-detail-empty strong {
+  color: #fff0c9;
+  font-size: 20px;
+}
+
+.race-detail-empty span {
+  margin-top: 6px;
+  font-size: 14px;
 }
 
 .detail-block {
@@ -510,13 +551,22 @@ function confirmRace() {
   font-size: 16px;
 }
 
-@media (max-width: 1px) {
+@media (max-width: 760px) {
   .race-layout {
     grid-template-columns: 1fr;
   }
 
-  .race-body-split {
-    grid-template-columns: 1fr;
+  .race-list {
+    max-height: 210px;
+  }
+
+  .race-detail {
+    max-height: min(58dvh, 620px);
+  }
+
+  .status-row,
+  .skill-value-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>
