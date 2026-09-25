@@ -604,6 +604,9 @@ function ensureSocket() {
     setupProfilePendingPlayerId = "";
     setupPlacementPendingPlayerId = "";
     setStatus("初期設定が完了しました。ゲームを開始しました。", "ok");
+    window.dispatchEvent(new CustomEvent("v39:multiplayer-game-started", {
+      detail:{ roomId:roomSnapshot.roomId }
+    }));
     renderLobby();
     closeLobby();
   });
