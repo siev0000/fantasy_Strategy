@@ -833,8 +833,8 @@ io.on("connection", socket => {
         protocolVersion: V39_ROOM_PROTOCOL_VERSION
       });
       emitV39RoomSnapshot(room, socket);
-      if (room.phase === "playing" && room.gameSnapshotJson) {
-        socket.emit("game:snapshot", {
+      if (room.gameSnapshotJson) {
+        socket.emit(room.phase === "setup" ? "game:setup-snapshot" : "game:snapshot", {
           roomId,
           snapshotJson:room.gameSnapshotJson,
           stateRevision:room.stateRevision
