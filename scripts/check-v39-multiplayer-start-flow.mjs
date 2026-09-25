@@ -88,27 +88,39 @@ try {
     .some(note => note.textContent?.includes("ゲーム設定: 36x36")));
   const summary = await page.locator(".v39-room-note").filter({ hasText:"ゲーム設定" }).textContent();
   const statusAfterSettings = await page.locator("[data-v39-room-status]").textContent();
-  const factionSelect = page.locator('[data-v39-room-faction-select="player-1"]');
-  if (!(await factionSelect.count()) || await factionSelect.isDisabled()) {
+  const factionSelectButton = page.locator('[data-v39-room-action="select-faction"][data-v39-room-player-id="player-1"]');
+  if (!(await factionSelectButton.count()) || await factionSelectButton.isDisabled()) {
     throw new Error("担当勢力の開始種族を選択できません。");
   }
-  await factionSelect.selectOption("只人");
-  await page.waitForFunction(() => document.querySelector('[data-v39-room-faction-select="player-1"]')?.value === "只人");
+  await factionSelectButton.click();
+  await page.locator('[data-v39-race-option="只人"]').waitFor({ timeout:5000 });
+  if (await page.locator("#v39-multiplayer-lobby.open").count()) {
+    throw new Error("共通種族選択画面を開いている間も通信ロビーが前面に残っています。");
+  }
 
-  const factionDetailTabs = page.locator('[data-v39-faction-detail-player="player-1"]');
-  if (await factionDetailTabs.count() !== 3) throw new Error("開始勢力の詳細がステータス・技能・スキルの3タブ表示になっていません。");
-  const statusBodyText = await page.locator(".v39-faction-detail-body").first().textContent();
+  await page.locator('[data-v39-race-option="只人"]').click();
+  const sharedRaceTabs = page.locator(".detail-tabs button");
+  if (await sharedRaceTabs.count() !== 3) {
+    throw new Error("共通種族選択画面がステータス・技能・スキルの3タブ表示になっていません。");
+  }
+  const statusBodyText = await page.locator(".detail-tab-panel").textContent();
   if (!statusBodyText?.includes("HP") || !statusBodyText?.includes("攻撃") || !statusBodyText?.includes("防御")) {
-    throw new Error("開始勢力のステータス詳細が表示されていません。");
+    throw new Error("共通種族選択画面のステータス詳細が表示されていません。");
   }
-  await page.locator('[data-v39-faction-detail-tab="skills"][data-v39-faction-detail-player="player-1"]').click();
-  if (!(await page.locator('[data-v39-faction-detail-tab="skills"][data-v39-faction-detail-player="player-1"]').getAttribute("aria-selected"))?.includes("true")) {
-    throw new Error("開始勢力の技能タブへ切り替えられません。");
+  await sharedRaceTabs.filter({ hasText:"技能" }).click();
+  if ((await sharedRaceTabs.filter({ hasText:"技能" }).getAttribute("aria-selected")) !== "true") {
+    throw new Error("共通種族選択画面の技能タブへ切り替えられません。");
   }
-  await page.locator('[data-v39-faction-detail-tab="abilities"][data-v39-faction-detail-player="player-1"]').click();
-  if (!(await page.locator('[data-v39-faction-detail-tab="abilities"][data-v39-faction-detail-player="player-1"]').getAttribute("aria-selected"))?.includes("true")) {
-    throw new Error("開始勢力のスキルタブへ切り替えられません。");
+  await sharedRaceTabs.filter({ hasText:"スキル" }).click();
+  if ((await sharedRaceTabs.filter({ hasText:"スキル" }).getAttribute("aria-selected")) !== "true") {
+    throw new Error("共通種族選択画面のスキルタブへ切り替えられません。");
   }
+  await page.locator("[data-v39-race-confirm]").click();
+  await page.locator("#v39-multiplayer-lobby.open").waitFor({ timeout:5000 });
+  await page.waitForFunction(() => {
+    const card = document.querySelector('[data-v39-room-action="select-faction"][data-v39-room-player-id="player-1"]')?.closest(".v39-faction-select-card");
+    return card?.textContent?.includes("開始種族: 只人");
+  });
 
   await page.locator("[data-v39-room-action=ready]").click();
   await page.waitForFunction(() => !document.querySelector("[data-v39-room-action=start-game]")?.disabled);
