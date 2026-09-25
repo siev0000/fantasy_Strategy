@@ -102,24 +102,23 @@ function setTab(tab) {
 .operation-detail-tabs {
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:3px;
-  padding:3px;
-  border:1px solid #394b52;
-  border-radius:7px 7px 0 0;
-  background:#0d171b;
+  gap:4px;
+  padding:4px 7px;
+  border-bottom:1px solid #2f3b3f;
+  background:#0c1417;
 }
 
 .operation-detail-tabs button {
   min-width:0;
-  min-height:40px;
+  min-height:30px;
   border:1px solid #425159;
   border-radius:7px;
   background:#172126;
   color:#93a5a9;
-  padding:4px 5px;
+  padding:3px 10px;
   font:inherit;
-  font-size:13px;
-  font-weight:800;
+  font-size:12px;
+  font-weight:700;
   cursor:pointer;
 }
 
@@ -171,14 +170,15 @@ function setTab(tab) {
 }
 
 .operation-detail-section-title {
-  min-height:30px;
+  min-height:24px;
   display:flex;
   align-items:center;
-  padding:4px 7px;
+  padding:3px 5px;
   background:#132126;
-  color:#c6d3d5;
-  font-size:13px;
+  color:#91a1a5;
+  font-size:10px;
   font-weight:800;
+  letter-spacing:.03em;
 }
 
 .operation-detail-section-body {
@@ -189,17 +189,17 @@ function setTab(tab) {
 .operation-status-grid {
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:5px;
+  gap:2px;
 }
 
 .operation-detail-stat {
   min-width:0;
-  min-height:62px;
+  min-height:48px;
   display:grid;
   place-items:center;
   align-content:center;
-  gap:4px;
-  padding:7px 6px;
+  gap:2px;
+  padding:5px 4px;
   border:1px solid #3b4b52;
   border-radius:8px;
   background:#131c21;
@@ -209,30 +209,30 @@ function setTab(tab) {
 .operation-detail-stat span {
   min-width:0;
   color:#94a3a7;
-  font-size:12px;
-  line-height:1.1;
+  font-size:11px;
+  line-height:1;
 }
 
 .operation-detail-stat b {
   color:#f0f5f3;
-  font-size:18px;
+  font-size:14px;
   line-height:1.1;
 }
 
 .operation-proficiency-grid {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:5px;
+  gap:2px;
 }
 
 .operation-proficiency-item {
   min-width:0;
-  min-height:44px;
+  min-height:34px;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:8px;
-  padding:7px 8px;
+  gap:4px;
+  padding:4px 6px;
   border:1px solid #3d4d54;
   border-radius:7px;
   background:#121c20;
@@ -241,7 +241,7 @@ function setTab(tab) {
 .operation-proficiency-item span {
   min-width:0;
   color:#a7b4b7;
-  font-size:12px;
+  font-size:11px;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -250,75 +250,23 @@ function setTab(tab) {
 .operation-proficiency-item b {
   flex:0 0 auto;
   color:#f0f5f3;
-  font-size:15px;
+  font-size:13px;
 }
 
 .operation-empty {
-  padding:7px;
+  padding:6px;
   color:#829397;
-  font-size:12px;
-}
-
-@media (max-width:760px) {
-  .operation-detail-tabs button {
-    min-height:38px;
-    padding:5px 4px;
-    font-size:12px;
-  }
-
-  .operation-detail-section-title {
-    min-height:28px;
-    font-size:12px;
-  }
-
-  .operation-status-grid {
-    grid-template-columns:repeat(2,minmax(0,1fr));
-    gap:4px;
-  }
-
-  .operation-detail-stat {
-    min-height:56px;
-    padding:6px 5px;
-  }
-
-  .operation-detail-stat span {
-    font-size:11px;
-  }
-
-  .operation-detail-stat b {
-    font-size:17px;
-  }
-
-  .operation-proficiency-grid {
-    grid-template-columns:1fr;
-    gap:4px;
-  }
-
-  .operation-proficiency-item {
-    min-height:42px;
-    padding:6px 7px;
-  }
-
-  .operation-proficiency-item span {
-    font-size:11px;
-  }
-
-  .operation-proficiency-item b {
-    font-size:14px;
-  }
+  font-size:11px;
 }
 
 @media (max-width:430px) {
+  .operation-detail-tabs {
+    padding:4px;
+  }
+
   .operation-detail-tabs button {
-    font-size:11px;
-  }
-
-  .operation-detail-stat span {
-    font-size:10px;
-  }
-
-  .operation-detail-stat b {
-    font-size:16px;
+    padding:3px 5px;
+    font-size:12px;
   }
 }
 </style>
