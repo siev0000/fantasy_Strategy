@@ -52,8 +52,9 @@ async function checkSingleSovereignSetup() {
   if (initiallyActiveRace !== "只人") {
     throw new Error(`未選択時に人族の先頭種族が表示されていません: ${initiallyActiveRace}`);
   }
-  if (await page.locator('[data-v39-race-category="亜人"] span').count()) {
-    throw new Error("未選択の亜人カテゴリに説明が表示されています。");
+  const initialCategoryDescription = await page.locator(".race-category-description").textContent();
+  if (!initialCategoryDescription?.includes("あらゆる技能に優れる")) {
+    throw new Error("選択中の人族説明がタブ直下に表示されていません。");
   }
 
   await page.locator('[data-v39-race-option="エルフ"]').click();
@@ -69,12 +70,13 @@ async function checkSingleSovereignSetup() {
   if ((await page.locator(".race-item.active").getAttribute("data-v39-race-option")) !== "オーガ") {
     throw new Error("初回の亜人表示で先頭種族オーガが自動表示されていません。");
   }
-  const demiDescription = await page.locator('[data-v39-race-category="亜人"] span').textContent();
+  const demiDescription = await page.locator(".race-category-description").textContent();
   if (!demiDescription?.includes("ステータスに優れる") || !demiDescription?.includes("技能にペナルティ")) {
-    throw new Error("選択中の亜人カテゴリ説明が表示されていません。");
+    throw new Error("選択中の亜人カテゴリ説明がタブ直下に表示されていません。");
   }
-  if (await page.locator('[data-v39-race-category="人族"] span').count()) {
-    throw new Error("非選択の人族カテゴリに説明が残っています。");
+  const categoryButtonTexts = await page.locator("[data-v39-race-category]").allTextContents();
+  if (categoryButtonTexts.some(text => text.includes("ステータスに優れる") || text.includes("あらゆる技能に優れる") || text.includes("魔法に優れて"))) {
+    throw new Error("種族分類の説明文がタブ内に残っています。");
   }
 
   await page.locator('[data-v39-race-option="ゴブリン"]').click();
