@@ -31,6 +31,7 @@ let pendingGameSetupSave = false;
 let pendingGameStart = false;
 let setupProfilePendingPlayerId = "";
 let setupPlacementPendingPlayerId = "";
+let multiplayerInitialWorldFinalized = false;
 let lobbyEntryMode = "create";
 
 function text(value) {
@@ -350,6 +351,7 @@ function startHostedGame(payload) {
       islandCustomSettings:gameSetup.islandCustomSettings
     });
     pendingGameStart = true;
+    multiplayerInitialWorldFinalized = false;
     const snapshotJson = buildSnapshotJsonForRoom();
     socket?.emit("game:snapshot", { roomId:roomSnapshot.roomId, snapshotJson });
     setStatus("ワールド生成完了。統治者作成と初期拠点配置へ進みます。", "ok");
@@ -611,6 +613,12 @@ function ensureSocket() {
       return;
     }
     setupPlacementPendingPlayerId = "";
+    if (!multiplayerInitialWorldFinalized && isV39InitialSetupComplete(window.getV39GameState?.())) {
+      multiplayerInitialWorldFinalized = true;
+      window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
+        detail:{ multiplayer:true, playerId }
+      }));
+    }
     publishSetupSnapshot();
   });
   socket.on("game:setup-error", payload => {
