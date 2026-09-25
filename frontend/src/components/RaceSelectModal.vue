@@ -191,7 +191,6 @@ function confirmRace() {
       <section v-if="activeRace" class="race-detail">
         <header class="race-title">
           <h3>{{ activeRace.name }}</h3>
-          <div class="race-title-sub">基礎値: HP {{ activeRace.hp }} / ATK {{ activeRace.atk }}</div>
           <p class="race-summary">{{ activeRace.summary }}</p>
           <p class="race-description">{{ activeRace.detail }}</p>
         </header>
@@ -262,16 +261,20 @@ function confirmRace() {
 <style scoped>
 .race-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 290px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .race-list {
   min-width: 0;
-  max-height: 650px;
+  min-height: 0;
+  height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   gap: 6px;
   align-content: start;
@@ -357,7 +360,7 @@ function confirmRace() {
 .race-detail {
   min-width: 0;
   min-height: 0;
-  max-height: 650px;
+  height: 100%;
   overflow: hidden;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -377,13 +380,6 @@ function confirmRace() {
   color: var(--picker-text);
   font-size: 24px;
   line-height: 1.15;
-}
-
-.race-title-sub {
-  margin-top: 3px;
-  color: #90dce7;
-  font-size: 13px;
-  font-weight: 700;
 }
 
 .race-summary {
@@ -434,6 +430,7 @@ function confirmRace() {
 .detail-tab-panel {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #405b63 transparent;
 }
@@ -568,11 +565,13 @@ function confirmRace() {
 @media (max-width: 760px) {
   .race-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(120px, 32%) minmax(0, 1fr);
+    height: 100%;
   }
 
   .race-list {
-    max-height: 190px;
+    max-height: none;
+    height: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -589,6 +588,7 @@ function confirmRace() {
   }
 
   .race-detail {
+    height: 100%;
     max-height: none;
   }
 
