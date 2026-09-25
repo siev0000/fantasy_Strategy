@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { classData as classDb, descriptionData as skillDescDb } from "../lib/game-data-registry.js";
+import { getV39ClassSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 
@@ -133,45 +134,10 @@ const activeClass = computed(() => {
   return classCandidates.value.find(row => nonEmptyText(row.名前) === activeClassName.value) || null;
 });
 
-const statusRowGroups = computed(() => {
-  const row = activeClass.value;
-  if (!row) return [];
-  return STATUS_ROW_FIELDS.map((group, index) => ({
-    key: `status-row-${index}`,
-    fields: group.map((field) => ({
-      key: field,
-      value: toSafeNumber(row[field])
-    }))
-  }));
-});
-
-const skillRows = computed(() => {
-  const row = activeClass.value;
-  if (!row) return [];
-  return SKILL_FIELD_DEFS.map((field) => {
-    const value = resolveSkillFieldValue(row, field);
-    return {
-      key: field.key,
-      label: field.label || field.key,
-      value: value ?? 0,
-      desc: resolveSkillDescription(field)
-    };
-  }).filter(item => item.value > 0);
-});
-
-const classLv5SkillNames = computed(() => {
-  const row = activeClass.value;
-  if (!row) return [];
-  const out = [];
-  const seen = new Set();
-  for (const field of ACQUIRED_SKILL_FIELDS_LV5) {
-    const name = nonEmptyText(row[field]);
-    if (isPlaceholderSkillName(name) || seen.has(name)) continue;
-    seen.add(name);
-    out.push(name);
-  }
-  return out;
-});
+const activeSelectionDetail = computed(() => getV39ClassSelectionDetail(activeClass.value?.名前));
+const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
+const skillRows = computed(() => activeSelectionDetail.value?.skillRows || []);
+const classLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
 
 watch(
   [() => props.show, classCandidates, () => props.selectedClass],
