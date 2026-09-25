@@ -143,7 +143,20 @@ try {
   const bothReady = nextEvent(host, "room:snapshot", snapshot => snapshot.participants.length === 2 && snapshot.participants.every(participant => participant.ready));
   host.emit("room:ready", { roomId:hostCredentials.roomId, ready:true });
   guest.emit("room:ready", { roomId:hostCredentials.roomId, ready:true });
-  await bothReady;
+  const readySnapshot = await bothReady;
+
+  const gameSetupChangedWithoutUnready = nextEvent(host, "room:snapshot", snapshot =>
+    snapshot.settings?.gameSetup?.neutralVillageCount === 3
+    && snapshot.participants.every(participant => participant.ready)
+  );
+  host.emit("room:update-settings", {
+    roomId:hostCredentials.roomId,
+    settings:{
+      ...readySnapshot.settings,
+      gameSetup:{ ...readySnapshot.settings.gameSetup, neutralVillageCount:3 }
+    }
+  });
+  await gameSetupChangedWithoutUnready;
 
   const disconnected = nextEvent(host, "room:snapshot", snapshot => snapshot.participants.some(participant => participant.participantId === guestCredentials.participantId && !participant.connected));
   guest.close();
@@ -171,14 +184,58 @@ try {
   await guestStarting;
   if (startPayload.settings?.factionCount !== 2 || startPayload.participants?.length !== 2) fail("ゲーム開始要求にロビー設定が含まれていません。");
 
+  const setupSnapshotJson = JSON.stringify({
+    format:"fantasy-strategy-v39",
+    version:4,
+    savedAt:new Date().toISOString(),
+    gameState:{
+      players:[
+        { id:"player-1", race:"只人", controllerParticipantId:hostCredentials.participantId, factionState:{ units:[], settlements:[], villagePlacementMode:false } },
+        { id:"player-2", race:"オーガ", controllerParticipantId:guestCredentials.participantId, factionState:{ units:[], settlements:[], villagePlacementMode:false } }
+      ],
+      sessionParticipants:[
+        { participantId:hostCredentials.participantId, assignedPlayerIds:["player-1"] },
+        { participantId:guestCredentials.participantId, assignedPlayerIds:["player-2"] }
+      ]
+    },
+    field:{ settings:{ w:1, h:1 }, mapData:{ w:1, h:1, grid:[["平原"]] } },
+    view:null
+  });
+  const guestSetupSnapshot = nextEvent(rejoinedGuest, "game:setup-snapshot");
+  host.emit("game:snapshot", { roomId:hostCredentials.roomId, snapshotJson:setupSnapshotJson });
+  const receivedSetupSnapshot = await guestSetupSnapshot;
+  if (receivedSetupSnapshot.snapshotJson !== setupSnapshotJson) fail("初期設定スナップショットが参加者へ配信されません。");
+
+  const profileForwarded = nextEvent(host, "game:setup-profile:host", payload => payload?.profile?.playerId === "player-2");
+  rejoinedGuest.emit("game:setup-profile", {
+    roomId:hostCredentials.roomId,
+    playerId:"player-2",
+    className:"ファイター",
+    characterName:"ゲスト王",
+    villageName:"ゲスト村"
+  });
+  const forwardedProfile = await profileForwarded;
+  if (forwardedProfile.participantId !== guestCredentials.participantId) fail("統治者設定要求の参加者が一致しません。");
+
+  const placementForwarded = nextEvent(host, "game:setup-place:host", payload => payload?.playerId === "player-2");
+  rejoinedGuest.emit("game:setup-place", { roomId:hostCredentials.roomId, playerId:"player-2", x:0, y:0 });
+  const forwardedPlacement = await placementForwarded;
+  if (forwardedPlacement.x !== 0 || forwardedPlacement.y !== 0) fail("初期拠点配置要求がホストへ転送されません。");
+
   const snapshotJson = JSON.stringify({
     format:"fantasy-strategy-v39",
     version:4,
     savedAt:new Date().toISOString(),
     gameState:{
       players:[
-        { id:"player-1", controllerParticipantId:hostCredentials.participantId },
-        { id:"player-2", controllerParticipantId:guestCredentials.participantId }
+        {
+          id:"player-1", race:"只人", controllerParticipantId:hostCredentials.participantId,
+          factionState:{ units:[{ id:"s1", isSovereign:true }], settlements:[{ id:"v1", placed:true }], villagePlacementMode:false }
+        },
+        {
+          id:"player-2", race:"オーガ", controllerParticipantId:guestCredentials.participantId,
+          factionState:{ units:[{ id:"s2", isSovereign:true }], settlements:[{ id:"v2", placed:true }], villagePlacementMode:false }
+        }
       ],
       sessionParticipants:[
         { participantId:hostCredentials.participantId, assignedPlayerIds:["player-1"] },
@@ -191,10 +248,10 @@ try {
   const guestGameSnapshot = nextEvent(rejoinedGuest, "game:snapshot");
   const hostStarted = nextEvent(host, "game:started");
   const guestStarted = nextEvent(rejoinedGuest, "game:started");
-  host.emit("game:snapshot", { roomId:hostCredentials.roomId, snapshotJson });
+  host.emit("game:setup-complete", { roomId:hostCredentials.roomId, snapshotJson });
   const receivedGameSnapshot = await guestGameSnapshot;
   await Promise.all([hostStarted, guestStarted]);
-  if (receivedGameSnapshot.snapshotJson !== snapshotJson) fail("ホスト確定のゲーム状態が参加者へ配信されません。");
+  if (receivedGameSnapshot.snapshotJson !== snapshotJson) fail("初期配置完了後のゲーム状態が参加者へ配信されません。");
 
   const lateJoiner = await connectClient();
   const lateJoinRejected = nextEvent(lateJoiner, "room:error", payload => /ゲーム開始後/.test(String(payload?.message || "")));
