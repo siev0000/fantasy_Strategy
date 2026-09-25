@@ -522,7 +522,9 @@ function boot() {
   };
 
   overlay.querySelectorAll("[data-field-close]").forEach(button => button.addEventListener("click", close));
-  overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay && !lobbyGameSettingsMode) close();
+  });
   get("v39-field-turn-mode").addEventListener("change", () => {
     const next = normalizeGameStartSettings({
       turnProgressionMode: get("v39-field-turn-mode").value,
