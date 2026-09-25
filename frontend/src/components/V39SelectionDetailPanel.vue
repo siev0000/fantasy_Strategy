@@ -102,21 +102,19 @@ function setTab(tab) {
 .operation-detail-tabs {
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:0;
-  padding:0;
+  gap:3px;
+  padding:3px;
   border:1px solid #394b52;
-  border-radius:6px 6px 0 0;
-  overflow:hidden;
+  border-radius:7px 7px 0 0;
   background:#0d171b;
 }
 
 .operation-detail-tabs button {
   min-width:0;
   min-height:32px;
-  border:0;
-  border-right:1px solid #394b52;
-  border-radius:0;
-  background:#121d22;
+  border:1px solid #425159;
+  border-radius:7px;
+  background:#172126;
   color:#93a5a9;
   padding:4px 5px;
   font:inherit;
@@ -125,14 +123,15 @@ function setTab(tab) {
   cursor:pointer;
 }
 
-.operation-detail-tabs button:last-child {
-  border-right:0;
+.operation-detail-tabs button:hover {
+  border-color:#5c7780;
+  color:#dbe7e8;
 }
 
 .operation-detail-tabs button.active {
-  background:#193038;
+  border-color:#77d8e7;
+  background:#174653;
   color:#eff8f6;
-  box-shadow:inset 0 -2px 0 #71cbd8;
 }
 
 .operation-detail-content {
