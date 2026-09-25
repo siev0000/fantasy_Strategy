@@ -1100,6 +1100,22 @@ io.on("connection", socket => {
     }
   });
 
+  socket.on("game:setup-error", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    const { room, participant } = context;
+    if (room.hostParticipantId !== participant.participantId || room.phase !== "setup") return;
+    const targetParticipantId = String(payload?.participantId || "");
+    const target = room.participants.get(targetParticipantId);
+    if (!target?.socketId) return;
+    io.to(target.socketId).emit("game:setup-error", {
+      roomId:room.roomId,
+      playerId:String(payload?.playerId || ""),
+      step:String(payload?.step || ""),
+      message:String(payload?.message || "初期設定を確定できませんでした。").slice(0, 240)
+    });
+  });
+
   socket.on("game:setup-complete", payload => {
     const context = validateV39RoomSocket(socket, payload);
     if (!context) return;
