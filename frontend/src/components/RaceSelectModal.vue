@@ -5,7 +5,8 @@ import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import {
   classData as classDb,
   descriptionData as skillDescDb,
-  raceData as raceSelectionDb
+  raceData as raceSelectionDb,
+  raceCategoryData as raceCategoryDb
 } from "../lib/game-data-registry.js";
 import { getV39RaceSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
@@ -143,6 +144,20 @@ const categoryRaces = computed(() => {
   return filteredRaces.value.filter(race => resolveRaceCategory(race) === category);
 });
 
+const raceCategoryDescriptionMap = computed(() => {
+  const map = new Map();
+  for (const row of Array.isArray(raceCategoryDb) ? raceCategoryDb : []) {
+    const category = nonEmptyText(row?.種類);
+    if (!category) continue;
+    map.set(category, nonEmptyText(row?.説明));
+  }
+  return map;
+});
+
+const activeRaceCategoryDescription = computed(() => (
+  raceCategoryDescriptionMap.value.get(activeRaceCategory.value) || ""
+));
+
 const activeRace = computed(() => {
   if (!categoryRaces.value.length || !activeRaceKey.value) return null;
   return categoryRaces.value.find(item => item.key === activeRaceKey.value) || null;
@@ -217,7 +232,7 @@ function confirmRace() {
 <template>
   <base-modal :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
     <div v-if="filteredRaces.length" class="race-layout">
-      <section class="race-picker-pane">
+      <section class="race-category-pane">
         <nav class="race-category-tabs" role="tablist" aria-label="種族分類">
           <button
             v-for="category in raceCategories"
@@ -232,7 +247,13 @@ function confirmRace() {
             {{ category }}
           </button>
         </nav>
+        <div class="race-category-description">
+          <strong>{{ activeRaceCategory }}</strong>
+          <span>{{ activeRaceCategoryDescription }}</span>
+        </div>
+      </section>
 
+      <section class="race-main-pane">
         <aside class="race-list">
           <button
             v-for="race in categoryRaces"
@@ -250,9 +271,8 @@ function confirmRace() {
             </span>
           </button>
         </aside>
-      </section>
 
-      <section v-if="activeRace" class="race-detail">
+        <section v-if="activeRace" class="race-detail">
         <header class="race-title">
           <h3>{{ activeRace.name }}</h3>
           <p class="race-summary">{{ activeRace.summary }}</p>
@@ -310,9 +330,10 @@ function confirmRace() {
         </div>
       </section>
 
-      <section v-else class="race-detail race-detail-empty">
-        <strong>種族を選択してください</strong>
-        <span>一覧から種族を選ぶと、ステータス・技能・スキルの詳細を確認できます。</span>
+        <section v-else class="race-detail race-detail-empty">
+          <strong>種族を選択してください</strong>
+          <span>左の一覧から種族を選ぶと、ステータス・技能・スキルの詳細を確認できます。</span>
+        </section>
       </section>
     </div>
 
@@ -325,7 +346,7 @@ function confirmRace() {
 <style scoped>
 .race-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
   min-height: 0;
@@ -333,14 +354,46 @@ function confirmRace() {
   overflow: hidden;
 }
 
-.race-picker-pane {
+.race-category-pane {
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  padding: 8px;
+  border: 1px solid var(--picker-line);
+  border-radius: 8px;
+  background: #0d181c;
+}
+
+.race-main-pane {
   min-width: 0;
   min-height: 0;
-  height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 6px;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 10px;
   overflow: hidden;
+}
+
+.race-category-description {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 7px 9px;
+  border: 1px solid #294047;
+  border-radius: 7px;
+  background: #101f24;
+}
+
+.race-category-description strong {
+  color: #e8f4f3;
+  font-size: 15px;
+}
+
+.race-category-description span {
+  color: #9db0b3;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .race-category-tabs {
@@ -434,9 +487,9 @@ function confirmRace() {
 
 .race-item-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
 }
 
 .race-item-icon,
@@ -669,73 +722,155 @@ function confirmRace() {
 
 @media (max-width: 760px) {
   .race-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: 118px minmax(0, 1fr);
-    height: 100%;
+    grid-template-rows: 29% minmax(0, 71%);
+    gap: 7px;
   }
 
-  .race-picker-pane {
-    grid-template-rows: 34px minmax(0, 1fr);
+  .race-category-pane {
+    min-height: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: 40px minmax(0, 1fr);
+    gap: 6px;
+    padding: 6px;
+    overflow: hidden;
+  }
+
+  .race-category-tabs {
+    min-width: 0;
   }
 
   .race-category-tabs button {
-    min-height: 34px;
+    min-height: 40px;
     padding: 4px 6px;
+    font-size: 13px;
+  }
+
+  .race-category-description {
+    min-height: 0;
+    align-content: start;
+    overflow: auto;
+    padding: 7px 8px;
+  }
+
+  .race-category-description strong {
+    font-size: 16px;
+  }
+
+  .race-category-description span {
     font-size: 12px;
+  }
+
+  .race-main-pane {
+    grid-template-columns: minmax(104px, 32%) minmax(0, 68%);
+    gap: 7px;
   }
 
   .race-list {
     max-height: none;
     height: 100%;
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    overflow-x: auto;
-    overflow-y: hidden;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-content: start;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 5px;
   }
 
   .race-item {
-    width: auto;
-    min-width: 128px;
-    flex: 0 0 128px;
+    width: 100%;
+    min-width: 0;
+    min-height: 58px;
+    padding: 5px;
+    font-size: 12px;
   }
 
-  .race-item {
-    min-height: 42px;
-    padding: 5px 7px;
-    font-size: 13px;
+  .race-item-main {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
   }
 
   .race-item-icon,
   .race-item-icon-fallback {
-    width: 30px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
+  }
+
+  .race-item-name {
+    width: 100%;
+    font-size: 11px;
+    text-align: center;
   }
 
   .race-detail {
     height: 100%;
     max-height: none;
+    gap: 6px;
+    padding: 7px;
   }
 
   .race-title h3 {
-    font-size: 20px;
+    font-size: 18px;
+  }
+
+  .race-summary {
+    margin-top: 4px;
+    font-size: 12px;
+  }
+
+  .race-description {
+    font-size: 11px;
+  }
+
+  .detail-tabs button {
+    min-height: 34px;
+    padding: 4px 2px;
+    font-size: 11px;
+  }
+
+  .detail-block {
+    padding: 6px;
   }
 
   .status-row,
   .skill-value-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .status-chip {
+    min-height: 40px;
+    padding: 4px 5px;
+  }
+
+  .race-actions button {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 430px) {
+  .race-main-pane {
+    grid-template-columns: minmax(96px, 31%) minmax(0, 69%);
+  }
+
+  .race-category-description span {
+    font-size: 11px;
+  }
+
   .race-item {
-    min-width: 116px;
-    flex-basis: 116px;
+    min-height: 56px;
+  }
+
+  .race-item-name {
+    font-size: 10px;
   }
 
   .detail-tabs button {
-    font-size: 12px;
+    font-size: 10px;
   }
 }
 </style>
