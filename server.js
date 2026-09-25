@@ -416,9 +416,15 @@ function normalizeV39LobbyGameSetup(raw) {
 
 function normalizeV39RoomSettings(raw, room) {
   const source = raw && typeof raw === "object" ? raw : {};
-  const factionCount = Math.max(1, Math.min(V39_ROOM_PARTICIPANT_LIMIT, Math.floor(Number(source.factionCount)) || 1));
-  const participantIds = new Set(room.participants.keys());
-  const fallbackParticipantId = room.hostParticipantId || room.participants.keys().next().value || "";
+  const participantOrder = Array.from(room.participants.keys());
+  const participantIds = new Set(participantOrder);
+  const participantMinimum = Math.max(1, participantOrder.length);
+  const requestedFactionCount = Math.floor(Number(source.factionCount)) || 1;
+  const factionCount = Math.max(
+    participantMinimum,
+    Math.min(V39_ROOM_PARTICIPANT_LIMIT, requestedFactionCount)
+  );
+  const fallbackParticipantId = room.hostParticipantId || participantOrder[0] || "";
   const requestedAssignments = source.playerParticipantAssignments && typeof source.playerParticipantAssignments === "object"
     ? source.playerParticipantAssignments
     : {};
@@ -426,9 +432,10 @@ function normalizeV39RoomSettings(raw, room) {
   for (let index = 1; index <= factionCount; index += 1) {
     const playerId = `player-${index}`;
     const requestedParticipantId = String(requestedAssignments[playerId] || "");
+    const automaticParticipantId = participantOrder[(index - 1) % participantOrder.length] || fallbackParticipantId;
     playerParticipantAssignments[playerId] = participantIds.has(requestedParticipantId)
       ? requestedParticipantId
-      : fallbackParticipantId;
+      : automaticParticipantId;
   }
   const requestedFactionSelections = Object.prototype.hasOwnProperty.call(source, "playerFactionSelections")
     ? source.playerFactionSelections
