@@ -126,10 +126,11 @@ const classCandidates = computed(() => {
 });
 
 const activeClassName = ref("");
+const activeDetailTab = ref("status");
 
 const activeClass = computed(() => {
-  if (!classCandidates.value.length) return null;
-  return classCandidates.value.find(row => nonEmptyText(row.名前) === activeClassName.value) || classCandidates.value[0];
+  if (!classCandidates.value.length || !activeClassName.value) return null;
+  return classCandidates.value.find(row => nonEmptyText(row.名前) === activeClassName.value) || null;
 });
 
 const statusRowGroups = computed(() => {
@@ -175,7 +176,11 @@ const classLv5SkillNames = computed(() => {
 watch(
   [() => props.show, classCandidates, () => props.selectedClass],
   ([isOpen, candidates, selectedClass]) => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      activeClassName.value = "";
+      activeDetailTab.value = "status";
+      return;
+    }
     const selected = nonEmptyText(selectedClass);
     if (selected && candidates.some(row => nonEmptyText(row.名前) === selected)) {
       activeClassName.value = selected;
@@ -185,7 +190,8 @@ watch(
       activeClassName.value = "";
       return;
     }
-    activeClassName.value = nonEmptyText(candidates[0].名前);
+    if (candidates.some(row => nonEmptyText(row.名前) === activeClassName.value)) return;
+    activeClassName.value = "";
   },
   { immediate: true }
 );
@@ -238,51 +244,49 @@ function confirmClass() {
           <p class="class-text">{{ activeClass.詳細 || "詳細説明は未設定です。" }}</p>
         </header>
 
-        <div class="class-body-split">
-          <section class="class-left-pane">
-            <div class="class-left-scroll">
-              <section class="detail-block">
-                <h4>ステータス</h4>
-                <div class="status-rows">
-                  <div v-for="row in statusRowGroups" :key="row.key" class="status-row">
-                    <div v-for="item in row.fields" :key="item.key" class="status-chip">
-                      <span>{{ item.key }}</span>
-                      <strong>{{ item.value ?? "-" }}</strong>
-                    </div>
-                  </div>
-                </div>
-              </section>
+        <nav class="detail-tabs" role="tablist" aria-label="クラス詳細">
+          <button type="button" role="tab" :aria-selected="activeDetailTab === 'status'" :class="{ active: activeDetailTab === 'status' }" @click="activeDetailTab = 'status'">ステータス</button>
+          <button type="button" role="tab" :aria-selected="activeDetailTab === 'skills'" :class="{ active: activeDetailTab === 'skills' }" @click="activeDetailTab = 'skills'">技能</button>
+          <button type="button" role="tab" :aria-selected="activeDetailTab === 'abilities'" :class="{ active: activeDetailTab === 'abilities' }" @click="activeDetailTab = 'abilities'">スキル</button>
+        </nav>
 
-              <section class="detail-block">
-                <h4>技能</h4>
-                <div v-if="skillRows.length" class="skill-value-grid">
-                  <div
-                    v-for="item in skillRows"
-                    :key="item.key"
-                    class="skill-value-chip"
-                    :title="item.desc || `${item.label}: 詳細なし`"
-                  >
-                    <span>{{ item.label }}</span>
-                    <strong>{{ item.value }}</strong>
-                  </div>
+        <div class="detail-tab-panel">
+          <section v-if="activeDetailTab === 'status'" class="detail-block">
+            <h4>ステータス</h4>
+            <div class="status-rows">
+              <div v-for="row in statusRowGroups" :key="row.key" class="status-row">
+                <div v-for="item in row.fields" :key="item.key" class="status-chip">
+                  <span>{{ item.key }}</span>
+                  <strong>{{ item.value ?? "-" }}</strong>
                 </div>
-                <div v-else class="small note-text">技能データなし</div>
-              </section>
+              </div>
             </div>
           </section>
 
-          <section class="class-right-pane">
-            <div class="class-right-scroll">
-              <section class="detail-block skill-detail-block">
-                <h4>クラススキル (Lv1-5)</h4>
-                <skill-acquired-table
-                  :skill-names="classLv5SkillNames"
-                  :status-source="activeClass"
-                  :show-title="false"
-                  empty-text="クラススキルなし"
-                />
-              </section>
+          <section v-else-if="activeDetailTab === 'skills'" class="detail-block">
+            <h4>技能</h4>
+            <div v-if="skillRows.length" class="skill-value-grid">
+              <div
+                v-for="item in skillRows"
+                :key="item.key"
+                class="skill-value-chip"
+                :title="item.desc || `${item.label}: 詳細なし`"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
             </div>
+            <div v-else class="small note-text">技能データなし</div>
+          </section>
+
+          <section v-else class="detail-block skill-detail-block">
+            <h4>クラススキル (Lv1-5)</h4>
+            <skill-acquired-table
+              :skill-names="classLv5SkillNames"
+              :status-source="activeClass"
+              :show-title="false"
+              empty-text="クラススキルなし"
+            />
           </section>
         </div>
 
@@ -290,6 +294,11 @@ function confirmClass() {
           <button type="button" class="secondary" @click="$emit('back')">種族へ戻る</button>
           <button type="button" @click="confirmClass">このクラスで決定</button>
         </div>
+      </section>
+
+      <section v-else class="class-detail class-detail-empty">
+        <strong>クラスを選択してください</strong>
+        <span>一覧からクラスを選ぶと、ステータス・技能・スキルの詳細を確認できます。</span>
       </section>
     </div>
 
@@ -425,13 +434,14 @@ function confirmClass() {
   background: linear-gradient(170deg, rgba(27, 19, 13, 0.86), rgba(17, 12, 8, 0.9));
   padding: 12px;
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 10px;
   min-width: 0;
   max-height: 590px;
   overflow: hidden;
 }
 .class-title {
-  height: 130px;
+  min-height: 0;
 }
 .class-title h3 {
   margin: 0;
@@ -454,31 +464,49 @@ function confirmClass() {
   line-height: 1.45;
 }
 
-.class-body-split {
+.detail-tabs {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-  min-height: 0;
-  overflow: hidden;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
-.class-left-pane,
-.class-right-pane {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  display: block;
+.detail-tabs button {
+  min-height: 38px;
+  border: 1px solid rgba(213, 181, 123, 0.34);
+  border-radius: 7px;
+  background: rgba(43, 31, 20, 0.72);
+  color: #d8c29b;
+  font-size: 15px;
+  font-weight: 700;
 }
 
-.class-left-scroll,
-.class-right-scroll {
-  height: 100%;
+.detail-tabs button.active {
+  border-color: rgba(246, 212, 147, 0.9);
+  background: linear-gradient(180deg, rgba(132, 87, 43, 0.96), rgba(82, 53, 28, 0.96));
+  color: #fff3d2;
+  box-shadow: 0 0 0 1px rgba(255, 229, 174, 0.22) inset;
+}
+
+.detail-tab-panel {
   min-height: 0;
-  max-height: 100%;
   overflow: auto;
-  display: grid;
-  gap: 10px;
-  align-content: start;
+}
+
+.class-detail-empty {
+  grid-template-rows: 1fr;
+  place-content: center;
+  text-align: center;
+  color: #e8d4aa;
+}
+
+.class-detail-empty strong {
+  color: #fff0c9;
+  font-size: 20px;
+}
+
+.class-detail-empty span {
+  margin-top: 6px;
+  font-size: 14px;
 }
 
 .detail-block {
@@ -567,13 +595,22 @@ function confirmClass() {
   font-size: 16px;
 }
 
-@media (max-width: 1px) {
+@media (max-width: 760px) {
   .class-layout {
     grid-template-columns: 1fr;
   }
 
-  .class-body-split {
-    grid-template-columns: 1fr;
+  .class-list {
+    max-height: 210px;
+  }
+
+  .class-detail {
+    max-height: min(58dvh, 560px);
+  }
+
+  .status-row,
+  .skill-value-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>
