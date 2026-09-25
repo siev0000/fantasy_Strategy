@@ -478,7 +478,7 @@ function confirmRace() {
   height: 100%;
   overflow: hidden;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 9px;
   padding: 10px;
   border: 1px solid var(--picker-line);
