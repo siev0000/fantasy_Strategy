@@ -66,6 +66,30 @@ async function checkSingleSovereignSetup() {
   if (!raceStatusText?.includes("HP") || !raceStatusText?.includes("攻撃") || !raceStatusText?.includes("防御")) {
     throw new Error("開始種族画面にステータス詳細が表示されていません。");
   }
+
+  await raceTabs.filter({ hasText:"技能" }).click();
+  const proficiencyLayout = await page.locator(".operation-proficiency-item").evaluateAll(items => {
+    const first = items[0]?.getBoundingClientRect();
+    const second = items[1]?.getBoundingClientRect();
+    const grid = items[0]?.parentElement ? getComputedStyle(items[0].parentElement) : null;
+    return {
+      count:items.length,
+      columns:grid?.gridTemplateColumns || "",
+      firstTop:first?.top ?? null,
+      secondTop:second?.top ?? null,
+      firstLeft:first?.left ?? null,
+      secondLeft:second?.left ?? null
+    };
+  });
+  if (proficiencyLayout.count >= 2) {
+    if (Math.abs((proficiencyLayout.firstTop ?? 0) - (proficiencyLayout.secondTop ?? 9999)) > 2) {
+      throw new Error(`技能が実表示で2列になっていません: ${JSON.stringify(proficiencyLayout)}`);
+    }
+    if (!((proficiencyLayout.secondLeft ?? 0) > (proficiencyLayout.firstLeft ?? 0))) {
+      throw new Error(`技能2列目が右側に配置されていません: ${JSON.stringify(proficiencyLayout)}`);
+    }
+  }
+
   await page.locator("[data-v39-race-confirm]").click();
 
   await page.locator(".class-item").filter({ hasText:"ファイター" }).waitFor({ timeout:5000 });
