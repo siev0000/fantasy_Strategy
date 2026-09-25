@@ -36,6 +36,50 @@ function toOptionalText(value) {
   return text || "";
 }
 
+function toOptionalNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function joinDisplayParts(parts) {
+  return parts.map(nonEmptyText).filter(Boolean).join(" / ");
+}
+
+function operationPowerText(scaled) {
+  const parts = [];
+  const power = toOptionalNumber(scaled?.power);
+  const state = toOptionalNumber(scaled?.state);
+  const guard = toOptionalNumber(scaled?.guard);
+  if (power !== null && power !== 0) parts.push(`威力 ${power}`);
+  if (state !== null && state !== 0) parts.push(`状態 ${state}`);
+  if (guard !== null && guard !== 0) parts.push(`ガード ${guard}`);
+  return parts.length ? parts.join(" / ") : "威力 -";
+}
+
+function operationRangeText(row) {
+  const parts = [];
+  const range = toOptionalText(row?.射程);
+  const area = toOptionalText(row?.範囲);
+  const target = toOptionalText(row?.対象);
+  if (range) parts.push(`射程 ${range}`);
+  if (area) parts.push(`範囲 ${area}`);
+  if (target) parts.push(`対象 ${target}`);
+  return parts.length ? parts.join(" / ") : "射程 -";
+}
+
+function operationDetailMeta(row, actionShort) {
+  const parts = [];
+  const family = toOptionalText(row?.系統);
+  const ct = toOptionalText(row?.CT);
+  const duration = toOptionalText(row?.効果時間);
+  if (family) parts.push(`系統 ${family}`);
+  if (ct) parts.push(`CT ${ct}`);
+  if (duration) parts.push(`効果時間 ${duration}`);
+  parts.push(actionShort === "P" ? "パッシブ" : "アクション");
+  return joinDisplayParts(parts);
+}
+
 function resolveActionType(value) {
   const text = nonEmptyText(value).toUpperCase();
   if (text === "P" || text === "PASSIVE" || text === "パッシブ") return "passive";
@@ -93,18 +137,22 @@ const detailRows = computed(() => {
     const familyRaw = toDisplayValue(row?.系統);
     const actionType = resolveActionType(row?.行動);
     const scaled = computeSkillScaledTriplet(row, props.statusSource);
+    const actionShort = actionType === "passive" ? "P" : "A";
     return {
       name,
       ruby: toOptionalText(row?.ルビ),
       family: familyRaw,
       actionType,
-      actionShort: actionType === "passive" ? "P" : "A",
+      actionShort,
       apCost: toDisplayValue(row?.AP消費),
       ct: toDisplayValue(row?.CT),
       duration: toDisplayValue(row?.効果時間),
       power: toDisplayValue(scaled.power),
       state: toDisplayValue(scaled.state),
       guard: toDisplayValue(scaled.guard),
+      operationPowerText: operationPowerText(scaled),
+      operationRangeText: operationRangeText(row),
+      operationDetailMeta: operationDetailMeta(row, actionShort),
       detail: toDisplayValue(row?.詳細),
       attackStyle: attackStyleRaw,
       attackStyleIconSrc: iconSrcFromText(attackStyleRaw),
@@ -165,11 +213,15 @@ function handleSkillRowKeydown(event, row) {
           </span>
           <b class="operation-technique-name">{{ row.name }}</b>
           <small class="operation-technique-ap">AP {{ row.apCost }}</small>
-          <span class="operation-technique-meta">威/状/守 {{ row.power }}/{{ row.state }}/{{ row.guard }} · {{ row.family }} · CT {{ row.ct }}</span>
+          <span class="operation-technique-power">{{ row.operationPowerText }}</span>
+          <span class="operation-technique-range">{{ row.operationRangeText }}</span>
         </div>
         <div v-if="expandedOperationSkill === row.name" class="operation-technique-detail">
-          <span>{{ row.detail }}</span>
-          <small>効果 {{ row.duration }} / {{ row.actionShort }}</small>
+          <div class="operation-technique-detail-head">
+            <b>説明</b>
+            <small>{{ row.operationDetailMeta }}</small>
+          </div>
+          <span class="operation-technique-detail-description">{{ row.detail }}</span>
         </div>
       </article>
     </div>
@@ -255,10 +307,10 @@ function handleSkillRowKeydown(event, row) {
   grid-template-columns:28px minmax(0,1fr) auto;
   grid-template-areas:
     "icon name ap"
-    "icon meta meta";
+    "icon power range";
   align-items:center;
-  gap:1px 4px;
-  padding:2px 3px;
+  gap:2px 5px;
+  padding:3px 4px;
 }
 
 .operation-technique-icon {
@@ -304,31 +356,64 @@ function handleSkillRowKeydown(event, row) {
   white-space:nowrap;
 }
 
-.operation-technique-meta {
-  grid-area:meta;
+.operation-technique-power,
+.operation-technique-range {
   min-width:0;
-  color:#aebfc2;
-  font-size:8px;
-  line-height:1.1;
+  color:#b7c6c9;
+  font-size:10px;
+  line-height:1.2;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
 
+.operation-technique-power {
+  grid-area:power;
+}
+
+.operation-technique-range {
+  grid-area:range;
+  text-align:right;
+}
+
 .operation-technique-detail {
   display:grid;
   gap:0;
-  padding:4px 5px;
   border-top:1px solid #35464d;
   background:#0e171b;
   color:#eef4f2;
-  font-size:9px;
-  line-height:1.35;
 }
 
-.operation-technique-detail small {
+.operation-technique-detail-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  padding:4px 6px;
+  border-bottom:1px solid #26373d;
+  background:#121d21;
+}
+
+.operation-technique-detail-head b {
   color:#9fb0b3;
-  font-size:8px;
+  font-size:10px;
+}
+
+.operation-technique-detail-head small {
+  min-width:0;
+  color:#d8c17f;
+  font-size:9px;
+  text-align:right;
+  white-space:normal;
+}
+
+.operation-technique-detail-description {
+  display:block;
+  padding:6px;
+  color:#eef4f2;
+  font-size:10px;
+  line-height:1.4;
+  overflow-wrap:anywhere;
 }
 
 .skill-table-root h4 {
