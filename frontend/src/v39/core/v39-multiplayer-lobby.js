@@ -577,6 +577,13 @@ function ensureSocket() {
     const result = applyV39InitialSovereignProfile(window.getV39GameState?.(), payload?.profile || {});
     if (!result.ok) {
       setStatus(result.reason || "統治者を作成できませんでした。", "error");
+      socket?.emit("game:setup-error", {
+        roomId:roomSnapshot.roomId,
+        participantId:text(payload?.participantId),
+        playerId:text(payload?.profile?.playerId),
+        step:"profile",
+        message:result.reason || "統治者を作成できませんでした。"
+      });
       return;
     }
     window.setV39GameState?.(result.state, { reason:"multiplayer-initial-sovereign" });
@@ -592,11 +599,27 @@ function ensureSocket() {
     window.setV39ActivePlayer?.(playerId);
     const placed = window.placeV39InitialBase?.({ x, y, terrain:mapData.grid[y][x] }, { advanceToNextPlayer:false }) === true;
     if (!placed) {
+      socket?.emit("game:setup-error", {
+        roomId:roomSnapshot.roomId,
+        participantId:text(payload?.participantId),
+        playerId,
+        step:"placement",
+        message:"そのマスには初期拠点を配置できません。別のマスを選択してください。"
+      });
       publishSetupSnapshot();
       return;
     }
     setupPlacementPendingPlayerId = "";
     publishSetupSnapshot();
+  });
+  socket.on("game:setup-error", payload => {
+    if (!roomSnapshot || payload?.roomId !== roomSnapshot.roomId) return;
+    const playerId = text(payload?.playerId);
+    if (payload?.step === "profile") setupProfilePendingPlayerId = "";
+    if (payload?.step === "placement") setupPlacementPendingPlayerId = "";
+    setStatus(payload?.message || "初期設定を確定できませんでした。", "error");
+    window.showV39TurnBanner?.(payload?.message || "初期設定をやり直してください。");
+    window.setTimeout(continueLocalInitialSetup, 0);
   });
   socket.on("game:started", payload => {
     if (!roomSnapshot || payload?.roomId !== roomSnapshot.roomId) return;
