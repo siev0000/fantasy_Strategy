@@ -52,6 +52,10 @@ async function checkSingleSovereignSetup() {
   if (await page.locator('[data-v39-race-option="只人"]').count()) {
     throw new Error("亜人タブで人族の種族が残っています。");
   }
+  const demiDescription = await page.locator(".race-category-description").textContent();
+  if (!demiDescription?.includes("ステータスに優れる") || !demiDescription?.includes("技能にペナルティ")) {
+    throw new Error("亜人カテゴリ説明が表示されていません。");
+  }
   await page.locator('[data-v39-race-category="人族"]').click();
   await page.locator('[data-v39-race-option="只人"]').waitFor({ timeout:3000 });
 
