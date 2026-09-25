@@ -43,24 +43,54 @@ async function checkSingleSovereignSetup() {
   }
   await page.screenshot({ path:"output/web-game/v39-sovereign-race-select.png" });
 
-  const raceCategories = await page.locator("[data-v39-race-category]").allTextContents();
+  const raceCategories = await page.locator("[data-v39-race-category] strong").allTextContents();
   if (raceCategories.map(value => value.trim()).join("/") !== "人族/亜人/魔族") {
     throw new Error(`種族分類タブがクラス種類どおりに表示されていません: ${raceCategories.join("/")}`);
   }
+
+  const initiallyActiveRace = await page.locator(".race-item.active").getAttribute("data-v39-race-option");
+  if (initiallyActiveRace !== "只人") {
+    throw new Error(`未選択時に人族の先頭種族が表示されていません: ${initiallyActiveRace}`);
+  }
+  if (await page.locator('[data-v39-race-category="亜人"] span').count()) {
+    throw new Error("未選択の亜人カテゴリに説明が表示されています。");
+  }
+
+  await page.locator('[data-v39-race-option="エルフ"]').click();
+  if ((await page.locator(".race-item.active").getAttribute("data-v39-race-option")) !== "エルフ") {
+    throw new Error("人族でエルフを選択できません。");
+  }
+
   await page.locator('[data-v39-race-category="亜人"]').click();
   await page.locator('[data-v39-race-option="オーガ"]').waitFor({ timeout:3000 });
   if (await page.locator('[data-v39-race-option="只人"]').count()) {
     throw new Error("亜人タブで人族の種族が残っています。");
   }
-  const demiDescription = await page.locator('[data-v39-race-category="亜人"]').textContent();
+  if ((await page.locator(".race-item.active").getAttribute("data-v39-race-option")) !== "オーガ") {
+    throw new Error("初回の亜人表示で先頭種族オーガが自動表示されていません。");
+  }
+  const demiDescription = await page.locator('[data-v39-race-category="亜人"] span').textContent();
   if (!demiDescription?.includes("ステータスに優れる") || !demiDescription?.includes("技能にペナルティ")) {
-    throw new Error("亜人カテゴリ説明が表示されていません。");
+    throw new Error("選択中の亜人カテゴリ説明が表示されていません。");
+  }
+  if (await page.locator('[data-v39-race-category="人族"] span').count()) {
+    throw new Error("非選択の人族カテゴリに説明が残っています。");
+  }
+
+  await page.locator('[data-v39-race-option="ゴブリン"]').click();
+  await page.locator('[data-v39-race-category="人族"]').click();
+  await page.locator('[data-v39-race-option="エルフ"]').waitFor({ timeout:3000 });
+  if ((await page.locator(".race-item.active").getAttribute("data-v39-race-option")) !== "エルフ") {
+    throw new Error("人族へ戻った際に前回選択したエルフが復元されていません。");
+  }
+  await page.locator('[data-v39-race-category="亜人"]').click();
+  if ((await page.locator(".race-item.active").getAttribute("data-v39-race-option")) !== "ゴブリン") {
+    throw new Error("亜人へ戻った際に前回選択したゴブリンが復元されていません。");
   }
   await page.locator('[data-v39-race-category="人族"]').click();
-  await page.locator('[data-v39-race-option="只人"]').waitFor({ timeout:3000 });
-
   await page.locator('[data-v39-race-option="只人"]').click();
-  const raceTabs = page.locator(".detail-tabs button");
+
+  const raceTabs = page.locator(".operation-detail-tabs button");
   if (await raceTabs.count() !== 3) throw new Error("開始種族画面が3タブ表示になっていません。");
   const raceStatusText = await page.locator(".operation-detail-content").textContent();
   if (!raceStatusText?.includes("HP") || !raceStatusText?.includes("攻撃") || !raceStatusText?.includes("防御")) {
@@ -95,7 +125,7 @@ async function checkSingleSovereignSetup() {
   await page.locator(".class-item").filter({ hasText:"ファイター" }).waitFor({ timeout:5000 });
   await page.screenshot({ path:"output/web-game/v39-sovereign-class-select.png" });
   await page.locator(".class-item").filter({ hasText:"ファイター" }).click();
-  const classTabs = page.locator(".detail-tabs button");
+  const classTabs = page.locator(".operation-detail-tabs button");
   if (await classTabs.count() !== 3) throw new Error("クラス選択画面が3タブ表示になっていません。");
   await page.locator(".class-actions button").filter({ hasText:"このクラスで決定" }).click();
 
