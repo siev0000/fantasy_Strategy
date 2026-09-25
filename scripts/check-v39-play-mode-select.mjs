@@ -62,7 +62,7 @@ async function checkSingleSovereignSetup() {
   await page.locator('[data-v39-race-option="只人"]').click();
   const raceTabs = page.locator(".detail-tabs button");
   if (await raceTabs.count() !== 3) throw new Error("開始種族画面が3タブ表示になっていません。");
-  const raceStatusText = await page.locator(".detail-tab-panel").textContent();
+  const raceStatusText = await page.locator(".operation-detail-content").textContent();
   if (!raceStatusText?.includes("HP") || !raceStatusText?.includes("攻撃") || !raceStatusText?.includes("防御")) {
     throw new Error("開始種族画面にステータス詳細が表示されていません。");
   }
