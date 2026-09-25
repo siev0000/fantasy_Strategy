@@ -1,5 +1,6 @@
 import { io } from "socket.io-client";
 import { raceData } from "../../lib/game-data-registry.js";
+import { getV39RaceSelectionDetail } from "../../lib/v39-selection-detail.js";
 import {
   applyV39InitialSovereignProfile,
   getV39InitialSetupProgress,
@@ -33,6 +34,7 @@ let setupProfilePendingPlayerId = "";
 let setupPlacementPendingPlayerId = "";
 let multiplayerInitialWorldFinalized = false;
 let lobbyEntryMode = "create";
+const factionDetailTabs = new Map();
 
 function text(value) {
   return String(value ?? "").trim();
@@ -42,6 +44,67 @@ function escapeHtml(value) {
   return text(value).replace(/[&<>"']/g, char => ({
     "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;"
   })[char]);
+}
+
+function normalizeFactionDetailTab(value) {
+  return value === "skills" || value === "abilities" ? value : "status";
+}
+
+function renderFactionStatus(detail) {
+  const cells = (detail?.statusRows || []).flatMap(row => row.fields || []).map(item =>
+    `<div class="v39-faction-stat"><span>${escapeHtml(item.key)}</span><strong>${item.value ?? "-"}</strong></div>`
+  ).join("");
+  return `<div class="v39-faction-stat-grid">${cells || '<span class="v39-room-note">ステータスデータなし</span>'}</div>`;
+}
+
+function renderFactionSkills(detail) {
+  const rows = (detail?.skillRows || []).map(item =>
+    `<div class="v39-faction-skill-value" title="${escapeHtml(item.desc || `${item.label}: 詳細なし`)}"><span>${escapeHtml(item.label)}</span><strong>${item.value}</strong></div>`
+  ).join("");
+  return rows
+    ? `<div class="v39-faction-skill-grid">${rows}</div>`
+    : '<span class="v39-room-note">技能データなし</span>';
+}
+
+function renderFactionAbilities(detail) {
+  const rows = (detail?.acquiredSkillRows || []).map(row => `
+    <article class="v39-faction-ability">
+      <div class="v39-faction-ability-main">
+        <strong>${escapeHtml(row.name)}</strong>
+        <span class="v39-faction-ability-family">${escapeHtml(row.family)}</span>
+        <span class="v39-faction-ability-action">${escapeHtml(row.actionShort)}</span>
+      </div>
+      <div class="v39-faction-ability-meta">威/状/守 ${escapeHtml(row.power)}/${escapeHtml(row.state)}/${escapeHtml(row.guard)}　AP ${escapeHtml(row.apCost)}　CT ${escapeHtml(row.ct)}　効果 ${escapeHtml(row.duration)}</div>
+      <div class="v39-faction-ability-detail">${escapeHtml(row.detail)}</div>
+    </article>`
+  ).join("");
+  return rows || '<span class="v39-room-note">取得スキルなし</span>';
+}
+
+function renderFactionSelectionDetail(playerId, raceKey) {
+  const detail = getV39RaceSelectionDetail(raceKey);
+  if (!detail) return '<div class="v39-faction-detail-empty">開始勢力を選択すると、ステータス・技能・スキルを確認できます。</div>';
+  const tab = normalizeFactionDetailTab(factionDetailTabs.get(playerId));
+  factionDetailTabs.set(playerId, tab);
+  const body = tab === "skills"
+    ? renderFactionSkills(detail)
+    : tab === "abilities"
+      ? renderFactionAbilities(detail)
+      : renderFactionStatus(detail);
+  return `
+    <section class="v39-faction-detail">
+      <header class="v39-faction-detail-head">
+        <strong>${escapeHtml(detail.name)}</strong>
+        <span>${escapeHtml(detail.summary)}</span>
+        <small>${escapeHtml(detail.description)}</small>
+      </header>
+      <nav class="v39-faction-detail-tabs" role="tablist" aria-label="${escapeHtml(detail.name)}の詳細">
+        <button type="button" data-v39-faction-detail-tab="status" data-v39-faction-detail-player="${escapeHtml(playerId)}" aria-selected="${tab === "status"}">ステータス</button>
+        <button type="button" data-v39-faction-detail-tab="skills" data-v39-faction-detail-player="${escapeHtml(playerId)}" aria-selected="${tab === "skills"}">技能</button>
+        <button type="button" data-v39-faction-detail-tab="abilities" data-v39-faction-detail-player="${escapeHtml(playerId)}" aria-selected="${tab === "abilities"}">スキル</button>
+      </nav>
+      <div class="v39-faction-detail-body">${body}</div>
+    </section>`;
 }
 
 function loadCredentials() {
@@ -131,12 +194,12 @@ function createStyles() {
   style.id = "v39-multiplayer-lobby-style";
   style.textContent = `
 #v39-multiplayer-lobby{position:fixed;inset:0;z-index:10120;display:none;place-items:center;padding:12px;background:rgba(1,5,8,.82);backdrop-filter:blur(3px)}
-#v39-multiplayer-lobby.open{display:grid}.v39-room-dialog{box-sizing:border-box;width:min(650px,100%);max-height:calc(100dvh - 24px);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border:1px solid #49636a;border-radius:11px;background:linear-gradient(180deg,#142126,#0a1216);box-shadow:0 20px 56px rgba(0,0,0,.6);color:#e8efec}
+#v39-multiplayer-lobby.open{display:grid}.v39-room-dialog{box-sizing:border-box;width:min(820px,100%);max-height:calc(100dvh - 24px);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border:1px solid #49636a;border-radius:11px;background:linear-gradient(180deg,#142126,#0a1216);box-shadow:0 20px 56px rgba(0,0,0,.6);color:#e8efec}
 .v39-room-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;padding:10px 12px;border-bottom:1px solid #34474d}.v39-room-head h2{margin:0;font-size:17px}.v39-room-head small{color:#93a6aa;font-size:12px}.v39-room-head>[data-v39-room-action="close"]{grid-column:2;grid-row:1;margin-left:auto;width:34px;height:32px;border:1px solid #4b6269;border-radius:7px;background:#16252a;color:#e8efec;font-size:20px}.v39-room-tabs{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.v39-room-tabs button{min-height:34px;border:1px solid #41575e;border-radius:7px;background:#101d22;color:#aebfc1;font-weight:800}.v39-room-tabs button[aria-selected="true"]{border-color:#6abfcf;background:#174650;color:#effafa}.v39-room-tabs[hidden]{display:none}
-.v39-room-body{min-height:0;overflow:auto;padding:10px;display:grid;gap:9px;align-content:start}.v39-room-section{display:grid;gap:7px;padding:9px;border:1px solid #32464c;border-radius:8px;background:#0e191d}.v39-room-section[hidden]{display:none}.v39-room-section h3{margin:0;color:#c7d8d9;font-size:14px}.v39-room-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.v39-room-form label,.v39-room-assignment label{display:grid;gap:3px;color:#aebfc1;font-size:12px}.v39-room-form input,.v39-room-form select,.v39-room-assignment select{min-width:0;min-height:34px;border:1px solid #465d64;border-radius:6px;background:#152328;color:#edf4f1;padding:5px 7px;font:inherit}.v39-room-actions{display:flex;gap:7px;flex-wrap:wrap}.v39-room-actions button{min-height:34px;border:1px solid #52727a;border-radius:7px;background:#19343d;color:#edf6f3;padding:5px 10px;font-weight:800}.v39-room-actions button[data-v39-room-action="create"]{border-color:#6abfcf;background:#174650}.v39-room-actions button[data-v39-room-action="leave"]{margin-left:auto;border-color:#76544e;background:#291d1a}.v39-room-actions button:disabled{opacity:.45;cursor:not-allowed}.v39-room-status{min-height:18px;margin:0;color:#9aadb0;font-size:12px}.v39-room-status[data-kind="ok"]{color:#83d8a0}.v39-room-status[data-kind="error"]{color:#ed9684}.v39-room-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px;color:#aebfc1}.v39-room-id{font-family:monospace;font-size:14px;font-weight:800;color:#9ee5ef}.v39-room-participants{display:grid;gap:6px}.v39-room-participant{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;padding:7px 8px;border:1px solid #31454b;border-radius:7px;background:#111e23}.v39-room-participant.is-self{border-color:#4a9baa;background:#123039}.v39-room-participant-name{font-size:14px;font-weight:800}.v39-room-participant-info{margin-top:2px;color:#9fb2b5;font-size:11px}.v39-room-tags{display:flex;align-items:start;justify-content:end;gap:4px;flex-wrap:wrap}.v39-room-tag{padding:2px 5px;border:1px solid #466068;border-radius:999px;color:#b8cbd0;font-size:10px}.v39-room-tag.self{border-color:#4a9baa;color:#9ee5ef}.v39-room-tag.host{border-color:#b99855;color:#f0cf83}.v39-room-tag.ready{border-color:#4d8f66;color:#91dfaa}.v39-room-tag.offline{border-color:#735454;color:#e3a09a}.v39-room-host-settings{display:grid;gap:7px}.v39-room-assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.v39-room-note{margin:0;color:#91a4a8;font-size:11px;line-height:1.45}.v39-room-stage-note{margin:0;padding:8px;border-left:3px solid #c79d56;background:#211e16;color:#dcc99d;font-size:12px;line-height:1.45}
+.v39-room-body{min-height:0;overflow:auto;padding:10px;display:grid;gap:9px;align-content:start}.v39-room-section{display:grid;gap:7px;padding:9px;border:1px solid #32464c;border-radius:8px;background:#0e191d}.v39-room-section[hidden]{display:none}.v39-room-section h3{margin:0;color:#c7d8d9;font-size:14px}.v39-room-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.v39-room-form label,.v39-room-assignment label{display:grid;gap:3px;color:#aebfc1;font-size:12px}.v39-room-form input,.v39-room-form select,.v39-room-assignment select{min-width:0;min-height:34px;border:1px solid #465d64;border-radius:6px;background:#152328;color:#edf4f1;padding:5px 7px;font:inherit}.v39-room-actions{display:flex;gap:7px;flex-wrap:wrap}.v39-room-actions button{min-height:34px;border:1px solid #52727a;border-radius:7px;background:#19343d;color:#edf6f3;padding:5px 10px;font-weight:800}.v39-room-actions button[data-v39-room-action="create"]{border-color:#6abfcf;background:#174650}.v39-room-actions button[data-v39-room-action="leave"]{margin-left:auto;border-color:#76544e;background:#291d1a}.v39-room-actions button:disabled{opacity:.45;cursor:not-allowed}.v39-room-status{min-height:18px;margin:0;color:#9aadb0;font-size:12px}.v39-room-status[data-kind="ok"]{color:#83d8a0}.v39-room-status[data-kind="error"]{color:#ed9684}.v39-room-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px;color:#aebfc1}.v39-room-id{font-family:monospace;font-size:14px;font-weight:800;color:#9ee5ef}.v39-room-participants{display:grid;gap:6px}.v39-room-participant{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;padding:7px 8px;border:1px solid #31454b;border-radius:7px;background:#111e23}.v39-room-participant.is-self{border-color:#4a9baa;background:#123039}.v39-room-participant-name{font-size:14px;font-weight:800}.v39-room-participant-info{margin-top:2px;color:#9fb2b5;font-size:11px}.v39-room-tags{display:flex;align-items:start;justify-content:end;gap:4px;flex-wrap:wrap}.v39-room-tag{padding:2px 5px;border:1px solid #466068;border-radius:999px;color:#b8cbd0;font-size:10px}.v39-room-tag.self{border-color:#4a9baa;color:#9ee5ef}.v39-room-tag.host{border-color:#b99855;color:#f0cf83}.v39-room-tag.ready{border-color:#4d8f66;color:#91dfaa}.v39-room-tag.offline{border-color:#735454;color:#e3a09a}.v39-room-host-settings{display:grid;gap:7px}.v39-room-assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.v39-faction-selection-list{display:grid;gap:8px}.v39-faction-select-card{display:grid;gap:7px;padding:8px;border:1px solid #314950;border-radius:8px;background:#101d22}.v39-faction-select-label{display:grid;gap:3px;color:#b9cbcd;font-size:12px}.v39-faction-select-label select{min-width:0;min-height:34px;border:1px solid #465d64;border-radius:6px;background:#152328;color:#edf4f1;padding:5px 7px;font:inherit}.v39-faction-detail{display:grid;gap:7px}.v39-faction-detail-head{display:grid;gap:2px}.v39-faction-detail-head strong{font-size:18px;color:#eff9f6}.v39-faction-detail-head span{font-size:12px;font-weight:800;color:#b9dde1}.v39-faction-detail-head small{font-size:11px;line-height:1.45;color:#98adb0}.v39-faction-detail-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.v39-faction-detail-tabs button{min-height:34px;border:1px solid #405c64;border-radius:6px;background:#12252b;color:#a9bec1;font-weight:800}.v39-faction-detail-tabs button[aria-selected="true"]{border-color:#76cad7;background:#174650;color:#f3fbfa}.v39-faction-detail-body{min-height:74px;padding:7px;border:1px solid #2d444b;border-radius:7px;background:#0b171b}.v39-faction-detail-empty{padding:9px;border:1px dashed #36545d;border-radius:7px;color:#8fa6aa;font-size:11px}.v39-faction-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.v39-faction-stat{display:grid;gap:1px;padding:5px 6px;border-left:2px solid #4b95a2;background:#102329}.v39-faction-stat span{font-size:10px;color:#93a9ad}.v39-faction-stat strong{font-size:15px;color:#eef7f5}.v39-faction-skill-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.v39-faction-skill-value{display:flex;justify-content:space-between;gap:6px;padding:5px 6px;border:1px solid #29454d;border-radius:5px;background:#102329;color:#c9dcde;font-size:11px}.v39-faction-skill-value strong{color:#f0f8f6}.v39-faction-ability{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:4px 8px;padding:6px 0;border-bottom:1px solid #294047;font-size:11px}.v39-faction-ability:last-child{border-bottom:none}.v39-faction-ability-main{display:flex;align-items:center;gap:5px;min-width:0}.v39-faction-ability-main strong{color:#eef6f3}.v39-faction-ability-family,.v39-faction-ability-action{padding:1px 5px;border:1px solid #38545c;border-radius:999px;color:#b5c9cc;font-size:9px}.v39-faction-ability-meta{color:#9eb2b6}.v39-faction-ability-detail{grid-column:2;color:#aebfc1}.v39-room-note{margin:0;color:#91a4a8;font-size:11px;line-height:1.45}.v39-room-stage-note{margin:0;padding:8px;border-left:3px solid #c79d56;background:#211e16;color:#dcc99d;font-size:12px;line-height:1.45}
 .v39-multiplayer-identity{flex:0 0 auto;display:grid;gap:1px;max-width:180px;min-height:38px;padding:4px 7px;border:1px solid #41636b;border-radius:7px;background:#102329;white-space:nowrap}.v39-multiplayer-identity[hidden]{display:none}.v39-multiplayer-identity strong{max-width:164px;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:#a8e9f1}.v39-multiplayer-identity small{max-width:164px;overflow:hidden;text-overflow:ellipsis;font-size:9px;color:#9fb2b5}
 .v39-room-section>.mp-label,.v39-room-entry-panel label{display:grid;gap:3px;color:#aebfc1;font-size:12px}.v39-room-section>.mp-label input,.v39-room-entry-panel input{min-width:0;min-height:34px;border:1px solid #465d64;border-radius:6px;background:#152328;color:#edf4f1;padding:5px 7px;font:inherit}.v39-room-entry-panel{display:grid;gap:7px}.v39-room-entry-panel[hidden]{display:none}.v39-room-entry-panel button{min-height:36px;border:1px solid #52727a;border-radius:7px;background:#19343d;color:#edf6f3;padding:5px 10px;font-weight:800}.v39-room-entry-panel[data-v39-room-panel="create"] button{border-color:#6abfcf;background:#174650}.v39-room-start{border-color:#72b985!important;background:#1d4a2b!important}.v39-room-start:disabled{opacity:.42!important}
-@media(max-width:600px){#v39-multiplayer-lobby{padding:7px}.v39-room-dialog{max-height:calc(100dvh - 14px);border-radius:7px}.v39-room-form,.v39-room-assignment-list{grid-template-columns:1fr}.v39-room-actions button{flex:1}.v39-room-actions button[data-v39-room-action="leave"]{margin-left:0}.v39-room-head small{display:none}}
+@media(max-width:600px){#v39-multiplayer-lobby{padding:7px}.v39-room-dialog{max-height:calc(100dvh - 14px);border-radius:7px}.v39-room-form,.v39-room-assignment-list{grid-template-columns:1fr}.v39-room-actions button{flex:1}.v39-room-actions button[data-v39-room-action="leave"]{margin-left:0}.v39-room-head small{display:none}.v39-faction-stat-grid,.v39-faction-skill-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v39-faction-ability{grid-template-columns:1fr}.v39-faction-ability-detail{grid-column:1}}
 `;
   document.head.appendChild(style);
 }
@@ -509,7 +572,13 @@ function renderLobby() {
       '<option value="">未選択</option>',
       ...SELECTABLE_RACES.map(race => `<option value="${escapeHtml(race.key)}"${race.key === selectedRace ? " selected" : ""}>${escapeHtml(race.name || race.key)}</option>`)
     ].join("");
-    return `<label>勢力${index + 1} / ${escapeHtml(assignedParticipant?.displayName || "担当未設定")}<select data-v39-room-faction-select="${playerId}"${canEdit ? "" : " disabled"}>${options}</select></label>`;
+    return `
+      <article class="v39-faction-select-card">
+        <label class="v39-faction-select-label">勢力${index + 1} / ${escapeHtml(assignedParticipant?.displayName || "担当未設定")}
+          <select data-v39-room-faction-select="${playerId}"${canEdit ? "" : " disabled"}>${options}</select>
+        </label>
+        ${renderFactionSelectionDetail(playerId, selectedRace)}
+      </article>`;
   }).join("");
   const hostSettings = isHost() ? `
     <section class="v39-room-host-settings">
@@ -540,7 +609,7 @@ function renderLobby() {
     <div class="v39-room-participants">${participantRows}</div>
     <section class="v39-room-host-settings">
       <h3>開始勢力</h3>
-      <div class="v39-room-assignment-list">${factionSelectionRows}</div>
+      <div class="v39-faction-selection-list">${factionSelectionRows}</div>
       <p class="v39-room-note">各プレイヤーは自分の担当勢力の開始種族を選択します。選択肢は 種族.json を使用します。</p>
     </section>
     ${hostSettings}
@@ -814,8 +883,17 @@ function attemptStoredRejoin() {
 }
 
 function handleClick(event) {
-  const button = event.target instanceof Element ? event.target.closest("[data-v39-room-action],[data-v39-room-tab]") : null;
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-v39-room-action],[data-v39-room-tab],[data-v39-faction-detail-tab]")
+    : null;
   if (!(button instanceof HTMLElement)) return;
+  const factionDetailTab = button.dataset.v39FactionDetailTab;
+  if (factionDetailTab) {
+    const playerId = text(button.dataset.v39FactionDetailPlayer);
+    if (playerId) factionDetailTabs.set(playerId, normalizeFactionDetailTab(factionDetailTab));
+    renderLobby();
+    return;
+  }
   const tab = button.dataset.v39RoomTab;
   if (tab) {
     setEntryMode(tab, { focus:true });
