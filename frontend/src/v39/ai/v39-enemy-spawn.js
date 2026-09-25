@@ -587,8 +587,8 @@ function buildEnemies(data, settlements) {
 function spawnForActivePlayer() {
   const data = window.__v39FieldRuntime?.mapData;
   const state = window.getV39GameState?.();
-  const faction = window.getV39ActiveFactionState?.();
-  const settlements = getFactionSettlements(faction).filter(row => row?.placed);
+  const settlements = (state?.players || [])
+    .flatMap(player => getFactionSettlements(player?.factionState).filter(row => row?.placed));
   if (!data || !state || !settlements.length) return [];
   const enemies = buildEnemies(data, settlements);
   const { enemyNests, enemySquads } = buildEnemyNestAndSquadState(enemies);
