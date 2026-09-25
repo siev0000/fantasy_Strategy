@@ -20,6 +20,7 @@ let host = null;
 let game = null;
 let currentData = null;
 let currentSettings = null;
+let activeFieldInputController = null;
 const mapRenderBatchTokens = new Set();
 const mapInputLockTokens = new Set();
 let mapRuntimeTokenSequence = 0;
@@ -392,9 +393,19 @@ function resolveTileAtWorld(data, wx, wy) {
   return null;
 }
 
+function disposeFieldInput() {
+  if (activeFieldInputController) {
+    activeFieldInputController.abort();
+    activeFieldInputController = null;
+  }
+  document.getElementById("v39-map-camera-controls")?.remove();
+}
+
 function installInput(scene, data) {
+  disposeFieldInput();
   const camera = scene.cameras.main;
   const inputController = new AbortController();
+  activeFieldInputController = inputController;
   const inputSignal = inputController.signal;
   const pointers = new Map();
   const selection = scene.add.graphics().setDepth(20);
@@ -480,6 +491,7 @@ function installInput(scene, data) {
   window.addEventListener("keydown", handleKeyboard, { signal:inputSignal });
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
     inputController.abort();
+    if (activeFieldInputController === inputController) activeFieldInputController = null;
     pointers.clear();
   });
 
@@ -610,8 +622,8 @@ export function generateFieldFromSettings(input={}) {
   const settings=normalizeSettings(input);
   currentSettings=settings;
   currentData=ensureSnowStateMaps(createTerrainMapData(settings));
+  disposeFieldInput();
   if(game){ game.destroy(true); game=null; host.replaceChildren(); }
-  document.getElementById("v39-map-camera-controls")?.remove();
   createGame(currentData);
   const chip=playfield.querySelector(".map-chip");
   if(chip) chip.textContent=`${settings.w}×${settings.h} / ${settings.patternId} / ${settings.mountainMode}`;
@@ -639,8 +651,8 @@ export function loadV39FieldSnapshot(mapData, inputSettings={}) {
   });
   currentSettings=settings;
   currentData=ensureSnowStateMaps(mapData);
+  disposeFieldInput();
   if(game){ game.destroy(true); game=null; host.replaceChildren(); }
-  document.getElementById("v39-map-camera-controls")?.remove();
   createGame(currentData);
   const chip=playfield.querySelector(".map-chip");
   if(chip) chip.textContent=`${settings.w}×${settings.h} / ${settings.patternId} / 復元`;
