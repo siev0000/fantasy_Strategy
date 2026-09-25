@@ -54,7 +54,7 @@ function handleBackdropClick() {
 }
 
 .vue-modal-backdrop-v39 {
-  padding: max(10px, var(--safe-t, 0px)) max(10px, var(--safe-r, 0px)) max(10px, var(--safe-b, 0px)) max(10px, var(--safe-l, 0px));
+  padding: max(4px, var(--safe-t, 0px)) max(4px, var(--safe-r, 0px)) max(4px, var(--safe-b, 0px)) max(4px, var(--safe-l, 0px));
   background: rgba(3, 9, 12, 0.82);
   backdrop-filter: blur(4px);
 }
@@ -85,9 +85,9 @@ function handleBackdropClick() {
 }
 
 .v39-vue-modal-card.modal-card-wide {
-  width: calc(100vw - 12px);
-  height: calc(100dvh - 12px);
-  max-height: calc(100dvh - 12px);
+  width: calc(100vw - 8px);
+  height: calc(100dvh - 8px);
+  max-height: calc(100dvh - 8px);
 }
 
 .v39-vue-modal-head {
@@ -127,15 +127,19 @@ function handleBackdropClick() {
 
 @media (max-width: 760px) {
   .vue-modal-backdrop-v39 {
-    padding: 6px;
+    padding: 4px;
   }
 
-  .v39-vue-modal-card,
+  .v39-vue-modal-card {
+    width: 100%;
+    max-height: calc(100dvh - 8px);
+    border-radius: 7px;
+  }
+
   .v39-vue-modal-card.modal-card-wide {
     width: 100%;
-    height: calc(100dvh - 12px);
-    max-height: calc(100dvh - 12px);
-    border-radius: 7px;
+    height: calc(100dvh - 8px);
+    max-height: calc(100dvh - 8px);
   }
 
   .v39-vue-modal-head {
