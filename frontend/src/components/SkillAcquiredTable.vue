@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { skillData as skillInfoDb } from "../lib/game-data-registry.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
@@ -13,7 +13,8 @@ const props = defineProps({
   showFamilyIcon: { type: Boolean, default: false },
   statusSource: { type: Object, default: null },
   selectable: { type: Boolean, default: false },
-  selectedName: { type: String, default: "" }
+  selectedName: { type: String, default: "" },
+  variant: { type: String, default: "default" }
 });
 const emit = defineEmits(["select-skill"]);
 
@@ -113,6 +114,17 @@ const detailRows = computed(() => {
 });
 
 const normalizedSelectedName = computed(() => nonEmptyText(props.selectedName));
+const expandedOperationSkill = ref("");
+
+function isOperationVariant() {
+  return props.variant === "operation";
+}
+
+function toggleOperationSkill(row) {
+  const name = nonEmptyText(row?.name);
+  if (!name) return;
+  expandedOperationSkill.value = expandedOperationSkill.value === name ? "" : name;
+}
 
 function handleSkillRowClick(row) {
   if (!props.selectable) return;
@@ -133,7 +145,36 @@ function handleSkillRowKeydown(event, row) {
 <template>
   <section class="skill-table-root" :class="{ compact }">
     <h4 v-if="showTitle">{{ title }}</h4>
-    <div v-if="detailRows.length" class="skill-table-wrap">
+    <div v-if="detailRows.length && isOperationVariant()" class="operation-technique-list">
+      <article
+        v-for="(row, index) in detailRows"
+        :key="`operation-skill-${row.name}-${index}`"
+        class="operation-technique-card"
+        :class="{ expanded: expandedOperationSkill === row.name }"
+        role="button"
+        tabindex="0"
+        :aria-expanded="expandedOperationSkill === row.name"
+        @click="toggleOperationSkill(row)"
+        @keydown.enter.prevent="toggleOperationSkill(row)"
+        @keydown.space.prevent="toggleOperationSkill(row)"
+      >
+        <div class="operation-technique-summary">
+          <span class="operation-technique-icon">
+            <img v-if="row.attackStyleIconSrc" :src="row.attackStyleIconSrc" :alt="row.attackStyle" />
+            <span v-else>{{ row.attackStyle !== '-' ? row.attackStyle.slice(0, 1) : "?" }}</span>
+          </span>
+          <b class="operation-technique-name">{{ row.name }}</b>
+          <small class="operation-technique-ap">AP {{ row.apCost }}</small>
+          <span class="operation-technique-meta">威/状/守 {{ row.power }}/{{ row.state }}/{{ row.guard }} · {{ row.family }} · CT {{ row.ct }}</span>
+        </div>
+        <div v-if="expandedOperationSkill === row.name" class="operation-technique-detail">
+          <span>{{ row.detail }}</span>
+          <small>効果 {{ row.duration }} / {{ row.actionShort }}</small>
+        </div>
+      </article>
+    </div>
+
+    <div v-else-if="detailRows.length" class="skill-table-wrap">
       <div class="skill-list">
         <article
           v-for="(row, index) in detailRows"
@@ -187,6 +228,109 @@ function handleSkillRowKeydown(event, row) {
 </template>
 
 <style scoped>
+.operation-technique-list {
+  display:grid;
+  gap:5px;
+}
+
+.operation-technique-card {
+  min-width:0;
+  border:1px solid #46565d;
+  border-radius:8px;
+  background:linear-gradient(180deg,#162126,#10181c);
+  color:#e8efec;
+  cursor:pointer;
+  overflow:hidden;
+}
+
+.operation-technique-card:hover,
+.operation-technique-card:focus-visible {
+  border-color:#6ab8c6;
+  outline:none;
+}
+
+.operation-technique-summary {
+  min-width:0;
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr) auto;
+  grid-template-areas:
+    "icon name ap"
+    "icon meta meta";
+  align-items:center;
+  gap:1px 4px;
+  padding:3px 4px;
+}
+
+.operation-technique-icon {
+  grid-area:icon;
+  width:28px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  border:1px solid #40545a;
+  border-radius:7px;
+  background:#1b2a30;
+  color:#d5e0df;
+  font-size:14px;
+  line-height:1;
+  overflow:hidden;
+}
+
+.operation-technique-icon img {
+  width:26px;
+  height:26px;
+  object-fit:contain;
+  filter:drop-shadow(0 1px 1px rgba(0,0,0,.55));
+}
+
+.operation-technique-name {
+  grid-area:name;
+  min-width:0;
+  margin:0;
+  color:#edf4f3;
+  font-size:10px;
+  line-height:1.15;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.operation-technique-ap {
+  grid-area:ap;
+  margin:0;
+  color:#d8c17f;
+  font-size:8px;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.operation-technique-meta {
+  grid-area:meta;
+  min-width:0;
+  color:#aebfc2;
+  font-size:8px;
+  line-height:1.15;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.operation-technique-detail {
+  display:grid;
+  gap:3px;
+  padding:5px 6px;
+  border-top:1px solid #35464d;
+  background:#0e171b;
+  color:#eef4f2;
+  font-size:9px;
+  line-height:1.4;
+}
+
+.operation-technique-detail small {
+  color:#9fb0b3;
+  font-size:8px;
+}
+
 .skill-table-root h4 {
   margin: 0 0 7px;
   color: #dce8e7;
