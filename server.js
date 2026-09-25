@@ -605,10 +605,49 @@ function validateV39GameSnapshotJson(snapshotJson, room) {
     if (parsed.gameState.players.length !== expectedFactionCount) {
       return { ok:false, message:"ロビーの操作勢力数とゲーム状態の勢力数が一致しません。" };
     }
-    return { ok:true };
+    const assignments = room?.settings?.playerParticipantAssignments || {};
+    const selections = room?.settings?.playerFactionSelections || {};
+    for (let index = 1; index <= expectedFactionCount; index += 1) {
+      const playerId = `player-${index}`;
+      const player = parsed.gameState.players.find(row => String(row?.id || "") === playerId);
+      if (!player) return { ok:false, message:`勢力${index}のゲーム状態がありません。` };
+      if (String(player?.controllerParticipantId || "") !== String(assignments[playerId] || "")) {
+        return { ok:false, message:`勢力${index}の担当参加者がロビー設定と一致しません。` };
+      }
+      if (String(player?.race || "") !== String(selections[playerId] || "")) {
+        return { ok:false, message:`勢力${index}の開始種族がロビー設定と一致しません。` };
+      }
+    }
+    return { ok:true, parsed };
   } catch {
     return { ok:false, message:"ゲーム状態JSONを読み取れませんでした。" };
   }
+}
+
+function validateV39CompletedSetupSnapshotJson(snapshotJson, room) {
+  const validation = validateV39GameSnapshotJson(snapshotJson, room);
+  if (!validation.ok) return validation;
+  for (const [index, player] of validation.parsed.gameState.players.entries()) {
+    const faction = player?.factionState || {};
+    const sovereign = (Array.isArray(faction.units) ? faction.units : []).find(unit => unit?.isSovereign === true);
+    if (!sovereign) return { ok:false, message:`勢力${index + 1}の統治者作成が完了していません。` };
+    const placed = (Array.isArray(faction.settlements) ? faction.settlements : []).some(row => row?.placed === true);
+    if (!placed) return { ok:false, message:`勢力${index + 1}の初期拠点配置が完了していません。` };
+    if (faction.villagePlacementMode === true) return { ok:false, message:`勢力${index + 1}の初期拠点配置が継続中です。` };
+  }
+  return validation;
+}
+
+function participantControlsV39Player(room, participantId, playerId) {
+  syncV39ParticipantAssignments(room);
+  return String(room?.settings?.playerParticipantAssignments?.[String(playerId || "")] || "") === String(participantId || "");
+}
+
+function emitToV39Host(room, event, payload) {
+  const host = room?.participants?.get(room?.hostParticipantId);
+  if (!host?.socketId) return false;
+  io.to(host.socketId).emit(event, payload);
+  return true;
 }
 
 function resetV39GameStartToLobby(room, message = "") {
@@ -893,16 +932,23 @@ io.on("connection", socket => {
       emitV39RoomError(socket, "ゲーム開始後はロビー設定を変更できません。");
       return;
     }
-    const previousAssignments = { ...(context.room.settings?.playerParticipantAssignments || {}) };
+    const previousSettings = context.room.settings || {};
+    const previousAssignments = { ...(previousSettings.playerParticipantAssignments || {}) };
     const nextSettings = normalizeV39RoomSettings(payload?.settings, context.room);
-    for (const playerId of Object.keys(nextSettings.playerFactionSelections || {})) {
+    let assignmentChanged = false;
+    for (let index = 1; index <= Math.max(Number(previousSettings.factionCount) || 1, Number(nextSettings.factionCount) || 1); index += 1) {
+      const playerId = `player-${index}`;
       if (String(previousAssignments[playerId] || "") !== String(nextSettings.playerParticipantAssignments?.[playerId] || "")) {
+        assignmentChanged = true;
         delete nextSettings.playerFactionSelections[playerId];
       }
     }
+    const factionCountChanged = Number(previousSettings.factionCount) !== Number(nextSettings.factionCount);
     context.room.settings = nextSettings;
-    resetV39ReadyStates(context.room, context.participant.participantId);
-    context.participant.ready = false;
+    if (assignmentChanged || factionCountChanged) {
+      resetV39ReadyStates(context.room, context.participant.participantId);
+      context.participant.ready = false;
+    }
     context.room.stateRevision += 1;
     emitV39RoomSnapshot(context.room);
   });
@@ -970,7 +1016,7 @@ io.on("connection", socket => {
       return;
     }
     if (room.phase !== "setup") {
-      emitV39RoomError(socket, "現在は初期ゲーム状態を受け付けていません。");
+      emitV39RoomError(socket, "現在は初期設定中のゲーム状態を受け付けていません。");
       return;
     }
     const snapshotJson = String(payload?.snapshotJson || "");
@@ -980,11 +1026,97 @@ io.on("connection", socket => {
       return;
     }
     room.gameSnapshotJson = snapshotJson;
+    room.stateRevision += 1;
+    emitV39RoomSnapshot(room);
+    io.to(room.roomId).emit("game:setup-snapshot", {
+      roomId:room.roomId,
+      snapshotJson,
+      stateRevision:room.stateRevision
+    });
+  });
+
+  socket.on("game:setup-profile", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    const { room, participant } = context;
+    if (room.phase !== "setup") {
+      emitV39RoomError(socket, "統治者を設定できるのはゲーム開始準備中だけです。");
+      return;
+    }
+    const playerId = String(payload?.playerId || "").trim();
+    if (!participantControlsV39Player(room, participant.participantId, playerId)) {
+      emitV39RoomError(socket, "担当勢力の統治者だけ設定できます。");
+      return;
+    }
+    const profile = {
+      playerId,
+      race:String(room.settings?.playerFactionSelections?.[playerId] || ""),
+      className:String(payload?.className || "").trim().slice(0, 40),
+      characterName:String(payload?.characterName || "").trim().slice(0, 20),
+      villageName:String(payload?.villageName || "").trim().slice(0, 20)
+    };
+    if (!profile.className || !profile.characterName || !profile.villageName) {
+      emitV39RoomError(socket, "統治者のクラス・名前・拠点名を入力してください。");
+      return;
+    }
+    if (!emitToV39Host(room, "game:setup-profile:host", {
+      roomId:room.roomId,
+      participantId:participant.participantId,
+      profile,
+      stateRevision:room.stateRevision
+    })) {
+      emitV39RoomError(socket, "ホストへ統治者設定を送信できません。");
+    }
+  });
+
+  socket.on("game:setup-place", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    const { room, participant } = context;
+    if (room.phase !== "setup") {
+      emitV39RoomError(socket, "初期拠点を配置できるのはゲーム開始準備中だけです。");
+      return;
+    }
+    const playerId = String(payload?.playerId || "").trim();
+    if (!participantControlsV39Player(room, participant.participantId, playerId)) {
+      emitV39RoomError(socket, "担当勢力の初期拠点だけ配置できます。");
+      return;
+    }
+    const x = Math.floor(Number(payload?.x));
+    const y = Math.floor(Number(payload?.y));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      emitV39RoomError(socket, "初期拠点の座標が不正です。");
+      return;
+    }
+    if (!emitToV39Host(room, "game:setup-place:host", {
+      roomId:room.roomId,
+      participantId:participant.participantId,
+      playerId,
+      x,
+      y,
+      stateRevision:room.stateRevision
+    })) {
+      emitV39RoomError(socket, "ホストへ初期拠点配置を送信できません。");
+    }
+  });
+
+  socket.on("game:setup-complete", payload => {
+    const context = validateV39RoomSocket(socket, payload);
+    if (!context) return;
+    const { room, participant } = context;
+    if (room.hostParticipantId !== participant.participantId || room.phase !== "setup") return;
+    const snapshotJson = String(payload?.snapshotJson || "");
+    const validation = validateV39CompletedSetupSnapshotJson(snapshotJson, room);
+    if (!validation.ok) {
+      emitV39RoomError(socket, validation.message);
+      return;
+    }
+    room.gameSnapshotJson = snapshotJson;
     room.phase = "playing";
     room.startedAt = Date.now();
     room.stateRevision += 1;
     emitV39RoomSnapshot(room);
-    socket.broadcast.to(room.roomId).emit("game:snapshot", {
+    io.to(room.roomId).emit("game:snapshot", {
       roomId:room.roomId,
       snapshotJson,
       stateRevision:room.stateRevision
