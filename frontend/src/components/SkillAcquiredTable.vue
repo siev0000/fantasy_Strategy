@@ -252,33 +252,33 @@ function handleSkillRowKeydown(event, row) {
 .operation-technique-summary {
   min-width:0;
   display:grid;
-  grid-template-columns:38px minmax(0,1fr) auto;
+  grid-template-columns:28px minmax(0,1fr) auto;
   grid-template-areas:
     "icon name ap"
     "icon meta meta";
   align-items:center;
-  gap:3px 7px;
-  padding:6px 7px;
+  gap:1px 4px;
+  padding:2px 3px;
 }
 
 .operation-technique-icon {
   grid-area:icon;
-  width:38px;
-  height:38px;
+  width:28px;
+  height:28px;
   display:grid;
   place-items:center;
   border:1px solid #40545a;
   border-radius:7px;
   background:#1b2a30;
   color:#d5e0df;
-  font-size:18px;
+  font-size:16px;
   line-height:1;
   overflow:hidden;
 }
 
 .operation-technique-icon img {
-  width:36px;
-  height:36px;
+  width:26px;
+  height:26px;
   object-fit:contain;
   filter:drop-shadow(0 1px 1px rgba(0,0,0,.55));
 }
@@ -288,7 +288,7 @@ function handleSkillRowKeydown(event, row) {
   min-width:0;
   margin:0;
   color:#edf4f3;
-  font-size:13px;
+  font-size:10px;
   line-height:1.15;
   white-space:nowrap;
   overflow:hidden;
@@ -299,7 +299,7 @@ function handleSkillRowKeydown(event, row) {
   grid-area:ap;
   margin:0;
   color:#d8c17f;
-  font-size:11px;
+  font-size:8px;
   line-height:1;
   white-space:nowrap;
 }
@@ -308,8 +308,8 @@ function handleSkillRowKeydown(event, row) {
   grid-area:meta;
   min-width:0;
   color:#aebfc2;
-  font-size:10px;
-  line-height:1.3;
+  font-size:8px;
+  line-height:1.1;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -318,69 +318,17 @@ function handleSkillRowKeydown(event, row) {
 .operation-technique-detail {
   display:grid;
   gap:3px;
-  padding:8px 9px;
+  padding:4px 5px;
   border-top:1px solid #35464d;
   background:#0e171b;
   color:#eef4f2;
-  font-size:12px;
-  line-height:1.4;
+  font-size:9px;
+  line-height:1.35;
 }
 
 .operation-technique-detail small {
   color:#9fb0b3;
-  font-size:10px;
-}
-
-@media (max-width:760px) {
-  .operation-technique-list {
-    gap:6px;
-  }
-
-  .operation-technique-summary {
-    grid-template-columns:36px minmax(0,1fr) auto;
-    gap:3px 6px;
-    padding:6px;
-  }
-
-  .operation-technique-icon {
-    width:36px;
-    height:36px;
-    font-size:17px;
-  }
-
-  .operation-technique-icon img {
-    width:34px;
-    height:34px;
-  }
-
-  .operation-technique-name {
-    font-size:12px;
-    white-space:normal;
-    overflow:visible;
-    text-overflow:clip;
-  }
-
-  .operation-technique-ap {
-    font-size:10px;
-  }
-
-  .operation-technique-meta {
-    font-size:10px;
-    line-height:1.3;
-    white-space:normal;
-    overflow:visible;
-    text-overflow:clip;
-  }
-
-  .operation-technique-detail {
-    padding:7px 8px;
-    font-size:11px;
-    line-height:1.5;
-  }
-
-  .operation-technique-detail small {
-    font-size:9px;
-  }
+  font-size:8px;
 }
 
 .skill-table-root h4 {
