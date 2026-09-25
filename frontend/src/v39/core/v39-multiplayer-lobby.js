@@ -169,7 +169,6 @@ function createModal() {
   modal.addEventListener("input", event => {
     if (event.target instanceof HTMLInputElement && event.target.matches("[data-v39-room-player-name]")) saveDisplayName(event.target.value);
   });
-  modal.addEventListener("click", event => { if (event.target === modal) closeLobby(); });
 }
 
 function getMyParticipantId() {
