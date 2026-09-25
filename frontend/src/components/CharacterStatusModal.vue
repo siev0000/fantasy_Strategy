@@ -1324,11 +1324,6 @@ watch(
               <span class="char-list-unit-main">
                 <span class="char-list-unit-name-row">
                   <strong>{{ unit.name }}<span v-if="isSovereign(unit)"> ◆</span></strong>
-                  <span class="char-list-level">Lv{{ unitLevel(unit) }}</span>
-                </span>
-                <span class="char-list-role-row">
-                  <span class="char-list-role">{{ unitRoleLabel(unit) }}</span>
-                  <span class="char-list-next-exp">{{ unitNextLevelExpText(unit) }}</span>
                 </span>
               </span>
             </div>
@@ -1343,7 +1338,40 @@ watch(
         >
           <header class="char-title">
             <div class="char-title-top">
-              <h3>{{ activeUnit.name }}</h3>
+              <div class="char-title-main">
+                <h3>{{ activeUnit.name }}</h3>
+                <div class="char-title-meta-grid">
+                  <div class="char-title-meta-item">
+                    <span>Lv</span>
+                    <strong>{{ activeUnit.level || "-" }}</strong>
+                  </div>
+                  <div class="char-title-meta-item">
+                    <span>種族</span>
+                    <strong>{{ activeUnit.race || "-" }}</strong>
+                  </div>
+                  <div class="char-title-meta-item">
+                    <span>クラス</span>
+                    <strong>{{ activeUnit.className || "-" }}</strong>
+                  </div>
+                  <div class="char-title-meta-item">
+                    <span>役割</span>
+                    <strong>
+                      {{ unitRoleLabel(activeUnit) }}
+                      <template v-if="isSovereign(activeUnit)"> / 統治者</template>
+                      <template v-if="hasSquad(activeUnit)"> / リーダー</template>
+                      <template v-else-if="activeUnit.squadLeaderId"> / 隊員</template>
+                    </strong>
+                  </div>
+                </div>
+                <div v-if="combatProfileSummaryParts(activeUnit).length" class="char-title-combat-summary">
+                  <span
+                    v-for="(part, index) in combatProfileSummaryParts(activeUnit)"
+                    :key="`combat-summary-${activeUnit.id}-${index}`"
+                  >
+                    {{ part }}
+                  </span>
+                </div>
+              </div>
               <button
                 type="button"
                 class="char-title-subicon-btn"
@@ -1355,12 +1383,6 @@ watch(
                 <img v-if="subIconSrcForUnit(activeUnit)" :src="subIconSrcForUnit(activeUnit)" :alt="`${activeUnit.name} サブアイコン`" class="char-title-subicon-image" />
                 <span v-else class="char-title-subicon-fallback">{{ iconGlyphForUnit(activeUnit) }}</span>
               </button>
-            </div>
-            <div class="small char-title-meta">
-              {{ unitRoleLabel(activeUnit) }}<span v-if="isSovereign(activeUnit)"> / 統治者</span><span v-if="hasSquad(activeUnit)"> / リーダー</span><span v-else-if="activeUnit.squadLeaderId"> / 隊員</span> / Lv{{ activeUnit.level || "-" }} / {{ activeUnit.race || "-" }} / {{ activeUnit.className || "-" }}
-              <template v-for="(part, index) in combatProfileSummaryParts(activeUnit)" :key="`combat-summary-${activeUnit.id}-${index}`">
-                / {{ part }}
-              </template>
             </div>
             <div class="small char-actions-inline">
               <button type="button" :disabled="!canPromote(activeUnit)" @click="promoteActiveUnit">ネームドに昇格</button>
@@ -1743,8 +1765,8 @@ watch(
 .squad-layout {
   display: grid;
   grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
-  gap: 0px;
-  align-items: start;
+  gap: 8px;
+  align-items: stretch;
   overflow: hidden;
 }
 
@@ -1898,18 +1920,72 @@ watch(
 }
 
 .char-title-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  position: relative;
-  padding-right: 110px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 100px;
+  align-items:start;
+  gap:10px;
+  position:relative;
 }
 
-.char-title-meta {
-  color: #2f2314;
-  font-weight: 700;
-  line-height: 1.35;
+.char-title-main {
+  min-width:0;
+  display:grid;
+  gap:7px;
+}
+
+.char-title-main h3 {
+  min-width:0;
+  overflow-wrap:anywhere;
+  line-height:1.15;
+}
+
+.char-title-meta-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:5px;
+}
+
+.char-title-meta-item {
+  min-width:0;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:6px;
+  align-items:baseline;
+  padding:5px 6px;
+  border:1px solid rgba(206,180,135,.62);
+  border-radius:7px;
+  background:rgba(255,255,255,.78);
+}
+
+.char-title-meta-item span {
+  color:#6f5932;
+  font-size:11px;
+  font-weight:700;
+  white-space:nowrap;
+}
+
+.char-title-meta-item strong {
+  min-width:0;
+  color:#2f2314;
+  font-size:12px;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+
+.char-title-combat-summary {
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+}
+
+.char-title-combat-summary span {
+  padding:3px 6px;
+  border:1px solid rgba(206,180,135,.62);
+  border-radius:999px;
+  background:rgba(255,255,255,.7);
+  color:#5f4b2b;
+  font-size:10px;
+  font-weight:700;
 }
 
 .char-title-subicon-btn {
@@ -1919,14 +1995,12 @@ watch(
   width: 100px;
   height: 100px;
   padding: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  position:static;
+  z-index:2;
 }
 
 .char-title-subicon-btn:disabled {
@@ -2167,17 +2241,16 @@ watch(
 }
 
 .char-list-unit-name-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+  display:block;
+  min-width:0;
 }
 
 .char-list-unit-name-row strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width:0;
+  display:block;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.2;
 }
 
 .char-list-name-with-icon {
@@ -2360,18 +2433,112 @@ watch(
   gap: 6px;
 }
 
-@media (max-width: 1px) {
-  .char-layout,
-  .squad-layout {
-    grid-template-columns: 1fr;
+@media (max-width: 760px) {
+  .char-layout {
+    grid-template-columns:minmax(130px,35%) minmax(0,65%);
+    gap:7px;
+    height:100%;
+  }
+
+  .char-list {
+    height:100%;
+    padding:5px;
+    overflow-x:hidden;
+    overflow-y:auto;
+  }
+
+  .char-list-item {
+    min-height:52px;
+    padding:6px;
+  }
+
+  .char-list-unit-line {
+    grid-template-columns:32px minmax(0,1fr);
+    gap:6px;
+  }
+
+  .char-list-icon-stack,
+  .char-list-icon,
+  .char-list-icon-fallback {
+    width:32px;
+  }
+
+  .char-list-icon,
+  .char-list-icon-fallback {
+    height:32px;
+  }
+
+  .char-list-unit-name-row strong {
+    font-size:11px;
+  }
+
+  .char-detail {
+    padding:7px;
+    gap:7px;
+  }
+
+  .char-title-top {
+    grid-template-columns:minmax(0,1fr) 58px;
+    gap:7px;
+  }
+
+  .char-title-subicon-btn {
+    width:58px;
+    height:58px;
+  }
+
+  .char-title-main h3 {
+    font-size:18px;
+  }
+
+  .char-title-meta-grid {
+    grid-template-columns:1fr;
+    gap:3px;
+  }
+
+  .char-title-meta-item {
+    grid-template-columns:38px minmax(0,1fr);
+    padding:3px 5px;
+    gap:4px;
+  }
+
+  .char-title-meta-item span {
+    font-size:9px;
+  }
+
+  .char-title-meta-item strong {
+    font-size:10px;
+  }
+
+  .char-title-combat-summary span {
+    font-size:9px;
   }
 
   .squad-rename-row {
-    grid-template-columns: 1fr;
+    grid-template-columns:1fr;
   }
 
   .equipment-read-list {
-    grid-template-columns: 1fr;
+    grid-template-columns:1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .char-layout {
+    grid-template-columns:minmax(126px,36%) minmax(0,64%);
+  }
+
+  .char-title-top {
+    grid-template-columns:minmax(0,1fr) 50px;
+  }
+
+  .char-title-subicon-btn {
+    width:50px;
+    height:50px;
+  }
+
+  .char-title-main h3 {
+    font-size:16px;
   }
 }
 </style>
