@@ -30,14 +30,33 @@ async function checkSingleSovereignSetup() {
   await page.locator("[data-v39-play-mode=single-normal]").click();
   await page.locator("#v39-field-settings-modal.open").waitFor();
   await page.locator("#v39-field-generate").click();
-  await page.locator("#v39-initial-sovereign-modal.open").waitFor({ timeout:10000 });
+  await page.locator('[data-v39-race-option="只人"]').waitFor({ timeout:10000 });
+  if (await page.locator("#v39-initial-sovereign-modal.open").count()) {
+    throw new Error("旧v39初期統治者UIが開いています。");
+  }
   await page.screenshot({ path:"output/web-game/v39-sovereign-race-select.png" });
-  await page.locator('[data-v39-sovereign-race-card="只人"]').click();
+
+  await page.locator('[data-v39-race-option="只人"]').click();
+  const raceTabs = page.locator(".detail-tabs button");
+  if (await raceTabs.count() !== 3) throw new Error("開始種族画面が3タブ表示になっていません。");
+  const raceStatusText = await page.locator(".detail-tab-panel").textContent();
+  if (!raceStatusText?.includes("HP") || !raceStatusText?.includes("攻撃") || !raceStatusText?.includes("防御")) {
+    throw new Error("開始種族画面にステータス詳細が表示されていません。");
+  }
+  await page.locator("[data-v39-race-confirm]").click();
+
+  await page.locator(".class-item").filter({ hasText:"ファイター" }).waitFor({ timeout:5000 });
   await page.screenshot({ path:"output/web-game/v39-sovereign-class-select.png" });
-  await page.locator('[data-v39-sovereign-class-card="ファイター"]').click();
-  await page.locator("[data-v39-sovereign-name]").fill("通常統治者");
-  await page.locator("[data-v39-sovereign-village]").fill("通常拠点");
-  await page.locator("[data-v39-sovereign-confirm]").click();
+  await page.locator(".class-item").filter({ hasText:"ファイター" }).click();
+  const classTabs = page.locator(".detail-tabs button");
+  if (await classTabs.count() !== 3) throw new Error("クラス選択画面が3タブ表示になっていません。");
+  await page.locator(".class-actions button").filter({ hasText:"このクラスで決定" }).click();
+
+  await page.locator(".name-form").waitFor({ timeout:5000 });
+  const inputs = page.locator(".name-form input");
+  await inputs.nth(0).fill("通常統治者");
+  await inputs.nth(1).fill("通常拠点");
+  await page.locator(".name-actions button").filter({ hasText:"決定" }).click();
   await page.waitForFunction(() => {
     const player = window.getV39GameState?.()?.players?.[0];
     return player?.race === "只人"
