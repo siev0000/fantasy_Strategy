@@ -188,17 +188,18 @@ function handleSkillRowKeydown(event, row) {
 
 <style scoped>
 .skill-table-root h4 {
-  margin: 0 0 8px;
-  color: #f0ddad;
-  font-size: 0.85rem;
+  margin: 0 0 7px;
+  color: #dce8e7;
+  font-size: 13px;
 }
 
 .skill-table-wrap {
-  overflow-x: hidden;
-  overflow-y: auto;
-  border: 1px solid rgba(218, 186, 128, 0.24);
-  border-radius: 8px;
-  background: rgba(28, 20, 13, 0.45);
+  overflow: auto;
+  border: 1px solid #294047;
+  border-radius: 7px;
+  background: #0c171b;
+  scrollbar-width: thin;
+  scrollbar-color: #405b63 transparent;
 }
 
 .skill-list {
@@ -209,9 +210,10 @@ function handleSkillRowKeydown(event, row) {
 .skill-row {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  border-bottom: 1px solid rgba(218, 186, 128, 0.22);
-  color: #eadab3;
-  font-size: 13px;
+  border-bottom: 1px solid #253b42;
+  background: #0f1d22;
+  color: #c9d7d8;
+  font-size: 12px;
 }
 
 .skill-row:last-child {
@@ -223,16 +225,17 @@ function handleSkillRowKeydown(event, row) {
 }
 
 .skill-row.selectable:hover {
-  filter: brightness(1.08);
+  background: #13262c;
 }
 
 .skill-row.selectable.selected {
-  outline: 2px solid rgba(255, 214, 142, 0.96);
-  outline-offset: -2px;
+  outline: 1px solid #71d1df;
+  outline-offset: -1px;
+  background: #16343c;
 }
 
 .skill-left {
-  padding: 5px 2px;
+  padding: 6px 7px;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -242,12 +245,12 @@ function handleSkillRowKeydown(event, row) {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 20px;
+  min-height: 22px;
 }
 
 .skill-name-wrap {
-  color: #f5e5bd;
-  font-weight: 700;
+  color: #edf4f3;
+  font-weight: 800;
 }
 
 .skill-name-wrap ruby {
@@ -255,8 +258,8 @@ function handleSkillRowKeydown(event, row) {
 }
 
 .skill-name-wrap rt {
-  font-size: 0.56rem;
-  color: rgba(242, 227, 191, 0.76);
+  color: #82979b;
+  font-size: 9px;
   line-height: 1;
 }
 
@@ -265,123 +268,126 @@ function handleSkillRowKeydown(event, row) {
   align-items: center;
   gap: 3px;
   padding: 1px 6px;
-  border: 1px solid rgba(216, 186, 132, 0.4);
+  border: 1px solid #365159;
   border-radius: 999px;
-  color: #e8d6ad;
-  background: rgba(52, 39, 24, 0.62);
+  background: #13252b;
+  color: #a9bec1;
+  font-size: 10px;
 }
 
 .family-icon-wrap {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 4px;
 }
 
 .action-chip {
   margin-left: auto;
-  min-width: 19px;
-  height: 19px;
-  border-radius: 50%;
+  min-width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.65rem;
-  font-weight: 800;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid #4a626a;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .action-action .action-chip {
-  background: rgba(182, 95, 42, 0.72);
-  color: #fff2dd;
+  border-color: #8b6751;
+  background: #5c3427;
+  color: #ffe2d7;
 }
 
 .action-passive .action-chip {
-  background: rgba(44, 117, 161, 0.72);
-  color: #e5f7ff;
+  border-color: #47758a;
+  background: #214a5b;
+  color: #dff4fb;
 }
 
 .action-action .skill-left {
-  background: linear-gradient(90deg, rgba(90, 49, 28, 0.36), rgba(90, 49, 28, 0.06));
+  border-left: 2px solid #8d5b49;
 }
 
 .action-passive .skill-left {
-  background: linear-gradient(90deg, rgba(35, 77, 95, 0.35), rgba(35, 77, 95, 0.06));
+  border-left: 2px solid #4b879d;
 }
 
 .skill-bottom {
   display: flex;
   flex-wrap: wrap;
-  gap: 0px 0px;
+  gap: 3px;
 }
 
 .skill-meta-chip {
-  padding: 1px 6px;
-  border-radius: 5px;
-  border: 1px solid rgba(218, 186, 128, 0.24);
-  background: rgba(17, 12, 7, 0.48);
-  color: #e9dbb9;
+  padding: 1px 5px;
+  border: 1px solid #314951;
+  border-radius: 4px;
+  background: #0c181c;
+  color: #9fb2b5;
   line-height: 1.35;
+  font-size: 10px;
 }
 
 .skill-detail {
   padding: 7px 8px;
-  border-left: 1px solid rgba(218, 186, 128, 0.16);
-  color: #eadfca;
+  border-left: 1px solid #294047;
+  color: #b5c5c7;
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.45;
 }
 
-.skill-inline-icon-wrap {
-  width: 18px;
-  height: 18px;
+.skill-inline-icon-wrap,
+.skill-inline-icon-fallback {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 1px solid #45616a;
   border-radius: 5px;
-  border: 1px solid rgba(232, 201, 145, 0.64);
-  background: rgba(255, 255, 255, 0.14);
+  background: #17282e;
+}
+
+.skill-inline-icon-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
 }
 
 .skill-inline-icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
 }
 
 .skill-inline-icon-fallback {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  border: 1px solid rgba(232, 201, 145, 0.48);
-  background: rgba(255, 255, 255, 0.08);
-  color: #f2e3bf;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.62rem;
+  color: #9ce8f1;
+  font-size: 10px;
+  font-weight: 800;
   line-height: 1;
-  flex: 0 0 auto;
 }
 
 .compact .skill-row {
-  font-size: 0.7rem;
+  font-size: 11px;
 }
 
 .compact .skill-left,
 .compact .skill-detail {
-  padding: 6px 7px;
+  padding: 5px 6px;
 }
 
-@media (max-width: 1px) {
+@media (max-width: 760px) {
   .skill-row {
     grid-template-columns: 1fr;
   }
 
   .skill-detail {
     border-left: none;
-    border-top: 1px solid rgba(218, 186, 128, 0.16);
+    border-top: 1px solid #294047;
   }
 }
 </style>
