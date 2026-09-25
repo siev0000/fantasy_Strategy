@@ -1,5 +1,10 @@
 import { io } from "socket.io-client";
 import { raceData } from "../../lib/game-data-registry.js";
+import {
+  applyV39InitialSovereignProfile,
+  getV39InitialSetupProgress,
+  isV39InitialSetupComplete
+} from "./v39-initial-sovereign.js";
 
 // Socket.IO側のv39ロビー識別子。旧簡易戦闘ルームとは混在させない。
 const PROTOCOL_VERSION = "v39-room-v1";
@@ -24,6 +29,8 @@ let autoJoinAttempted = false;
 let modal = null;
 let pendingGameSetupSave = false;
 let pendingGameStart = false;
+let setupProfilePendingPlayerId = "";
+let setupPlacementPendingPlayerId = "";
 let lobbyEntryMode = "create";
 
 function text(value) {
@@ -238,6 +245,82 @@ function buildSnapshotJsonForRoom() {
   return JSON.stringify(parsed);
 }
 
+function publishSetupSnapshot() {
+  if (!roomSnapshot || roomSnapshot.phase !== "setup" || !isHost()) return false;
+  const snapshotJson = buildSnapshotJsonForRoom();
+  socket?.emit("game:snapshot", { roomId:roomSnapshot.roomId, snapshotJson });
+  if (isV39InitialSetupComplete(window.getV39GameState?.())) {
+    socket?.emit("game:setup-complete", { roomId:roomSnapshot.roomId, snapshotJson });
+  }
+  return true;
+}
+
+function localAssignedPlayerIds() {
+  const mine = getParticipantById(getMyParticipantId());
+  return Array.isArray(mine?.assignedPlayerIds) ? mine.assignedPlayerIds.map(text).filter(Boolean) : [];
+}
+
+function continueLocalInitialSetup() {
+  if (!roomSnapshot || roomSnapshot.phase !== "setup") return;
+  const state = window.getV39GameState?.();
+  if (!state?.players?.length) return;
+  const assignedIds = localAssignedPlayerIds();
+  const progressById = new Map(getV39InitialSetupProgress(state).map(row => [row.playerId, row]));
+  const targetId = assignedIds.find(playerId => !progressById.get(playerId)?.complete);
+  if (!targetId) {
+    setupProfilePendingPlayerId = "";
+    setupPlacementPendingPlayerId = "";
+    closeLobby();
+    window.showV39TurnBanner?.("あなたの初期設定は完了しました。他プレイヤーの配置完了を待っています。");
+    return;
+  }
+  const player = state.players.find(row => text(row?.id) === targetId);
+  const progress = progressById.get(targetId);
+  if (!player || !progress) return;
+
+  if (!progress.sovereignReady) {
+    setupPlacementPendingPlayerId = "";
+    if (setupProfilePendingPlayerId === targetId) return;
+    setupProfilePendingPlayerId = targetId;
+    closeLobby();
+    window.dispatchEvent(new CustomEvent("v39:multiplayer-sovereign-required", {
+      detail:{ playerId:targetId, race:text(player.race) }
+    }));
+    return;
+  }
+
+  setupProfilePendingPlayerId = "";
+  setupPlacementPendingPlayerId = targetId;
+  closeLobby();
+  window.setV39ActivePlayer?.(targetId);
+  window.showV39TurnBanner?.("初期拠点を設置するマスを選択してください。");
+}
+
+function submitMultiplayerSovereignProfile(detail = {}) {
+  if (!roomSnapshot || roomSnapshot.phase !== "setup") return;
+  const playerId = text(detail.playerId);
+  if (!localAssignedPlayerIds().includes(playerId)) return;
+  setStatus("統治者設定をホストへ送信しています...");
+  socket?.emit("game:setup-profile", {
+    roomId:roomSnapshot.roomId,
+    playerId,
+    className:text(detail.className),
+    characterName:text(detail.characterName),
+    villageName:text(detail.villageName)
+  });
+}
+
+function requestMultiplayerInitialPlacement(detail = {}) {
+  if (!roomSnapshot || roomSnapshot.phase !== "setup") return;
+  const playerId = text(detail.playerId);
+  if (!localAssignedPlayerIds().includes(playerId)) return;
+  const x = Math.floor(Number(detail.x));
+  const y = Math.floor(Number(detail.y));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  setupPlacementPendingPlayerId = playerId;
+  socket?.emit("game:setup-place", { roomId:roomSnapshot.roomId, playerId, x, y });
+}
+
 function startHostedGame(payload) {
   if (!payload || !roomSnapshot || payload.roomId !== roomSnapshot.roomId || !isHost()) return;
   const settings = payload.settings || roomSnapshot.settings || {};
@@ -269,7 +352,7 @@ function startHostedGame(payload) {
     pendingGameStart = true;
     const snapshotJson = buildSnapshotJsonForRoom();
     socket?.emit("game:snapshot", { roomId:roomSnapshot.roomId, snapshotJson });
-    setStatus("ワールド生成完了。参加者へ同期しています...", "ok");
+    setStatus("ワールド生成完了。統治者作成と初期拠点配置へ進みます。", "ok");
   } catch (error) {
     const message = error instanceof Error ? error.message : "ホスト側でゲーム開始に失敗しました。";
     pendingGameStart = false;
@@ -278,13 +361,17 @@ function startHostedGame(payload) {
   }
 }
 
-function importRoomGameSnapshot(payload) {
+function importRoomGameSnapshot(payload, options = {}) {
   if (!payload || !roomSnapshot || payload.roomId !== roomSnapshot.roomId || typeof payload.snapshotJson !== "string") return;
   try {
     if (typeof window.importV39SaveJson !== "function") throw new Error("ゲーム状態の読込機能が準備できていません。");
     window.importV39SaveJson(payload.snapshotJson);
-    setStatus("ワールド状態を受信しました。", "ok");
-    if (roomSnapshot?.phase === "playing") closeLobby();
+    setStatus(options.setup === true ? "初期設定状態を同期しました。" : "ワールド状態を受信しました。", "ok");
+    if (options.setup === true) {
+      window.setTimeout(continueLocalInitialSetup, 0);
+    } else if (roomSnapshot?.phase === "playing") {
+      closeLobby();
+    }
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "ワールド状態の同期に失敗しました。", "error");
   }
@@ -398,7 +485,7 @@ function renderLobby() {
       }).join("")}</select></label>
       <div class="v39-room-assignment-list">${assignmentRows}</div>
       <p class="v39-room-note">操作勢力数は参加者数以上です。参加者が増えると自動で勢力枠を追加し、新しい参加者へ担当を割り当てます。</p>
-      <p class="v39-room-note">設定変更時は、他参加者の準備完了を解除します。</p>
+      <p class="v39-room-note">ゲーム開始設定だけを変更しても準備完了は維持します。勢力数・担当者を変更した場合は準備を解除します。</p>
     </section>` : "";
   const startButton = isHost() && roomSnapshot.phase === "lobby"
     ? `<button type="button" class="v39-room-start" data-v39-room-action="start-game"${(!allReady || !allFactionsSelected || !settings.gameSetup || pendingGameStart) ? " disabled" : ""}>ゲーム開始</button>`
@@ -479,13 +566,44 @@ function ensureSocket() {
   socket.on("game:start:host", payload => {
     startHostedGame(payload);
   });
+  socket.on("game:setup-snapshot", payload => {
+    importRoomGameSnapshot(payload, { setup:true });
+  });
   socket.on("game:snapshot", payload => {
     importRoomGameSnapshot(payload);
+  });
+  socket.on("game:setup-profile:host", payload => {
+    if (!isHost() || !roomSnapshot || roomSnapshot.phase !== "setup" || payload?.roomId !== roomSnapshot.roomId) return;
+    const result = applyV39InitialSovereignProfile(window.getV39GameState?.(), payload?.profile || {});
+    if (!result.ok) {
+      setStatus(result.reason || "統治者を作成できませんでした。", "error");
+      return;
+    }
+    window.setV39GameState?.(result.state, { reason:"multiplayer-initial-sovereign" });
+    publishSetupSnapshot();
+  });
+  socket.on("game:setup-place:host", payload => {
+    if (!isHost() || !roomSnapshot || roomSnapshot.phase !== "setup" || payload?.roomId !== roomSnapshot.roomId) return;
+    const playerId = text(payload?.playerId);
+    const mapData = window.__v39FieldRuntime?.mapData;
+    const x = Math.floor(Number(payload?.x));
+    const y = Math.floor(Number(payload?.y));
+    if (!mapData?.grid?.[y] || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    window.setV39ActivePlayer?.(playerId);
+    const placed = window.placeV39InitialBase?.({ x, y, terrain:mapData.grid[y][x] }, { advanceToNextPlayer:false }) === true;
+    if (!placed) {
+      publishSetupSnapshot();
+      return;
+    }
+    setupPlacementPendingPlayerId = "";
+    publishSetupSnapshot();
   });
   socket.on("game:started", payload => {
     if (!roomSnapshot || payload?.roomId !== roomSnapshot.roomId) return;
     pendingGameStart = false;
-    setStatus("ゲームを開始しました。", "ok");
+    setupProfilePendingPlayerId = "";
+    setupPlacementPendingPlayerId = "";
+    setStatus("初期設定が完了しました。ゲームを開始しました。", "ok");
     renderLobby();
     closeLobby();
   });
@@ -687,8 +805,16 @@ function boot() {
   window.addEventListener("v39:lobby-game-settings-saved", event => {
     saveLobbyGameSettings(event.detail?.gameSetup);
   });
+  window.addEventListener("v39:multiplayer-sovereign-profile-submitted", event => {
+    submitMultiplayerSovereignProfile(event.detail || {});
+  });
+  window.addEventListener("v39:multiplayer-initial-placement-request", event => {
+    requestMultiplayerInitialPlacement(event.detail || {});
+  });
   window.openV39MultiplayerLobby = openLobby;
   window.closeV39MultiplayerLobby = closeLobby;
+  window.isV39MultiplayerSetup = () => roomSnapshot?.phase === "setup" && isConnectedToRoom();
+  window.getV39MultiplayerParticipantId = () => getMyParticipantId();
 }
 
 boot();
