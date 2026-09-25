@@ -110,8 +110,30 @@ try {
     return runtime?.mapData?.w === 36 && runtime?.mapData?.h === 36;
   }, null, { timeout:10000 });
 
-  // ワールド生成後はplayingへ直行せず、既存のクラス・名前UIで統治者を作る。
+  // セットアップスナップショット読込でPhaserが再生成された後も、破棄済みCameraの入力が残らないことを確認する。
   await page.locator(".class-item").filter({ hasText:"ファイター" }).waitFor({ timeout:10000 });
+  await page.evaluate(() => {
+    const host = document.getElementById("v39-phaser-field");
+    if (!(host instanceof HTMLElement)) throw new Error("Phaserフィールドが見つかりません。");
+    const rect = host.getBoundingClientRect();
+    const init = {
+      bubbles:true,
+      pointerId:91,
+      pointerType:"mouse",
+      button:0,
+      buttons:1,
+      clientX:rect.left + rect.width / 2,
+      clientY:rect.top + rect.height / 2
+    };
+    host.dispatchEvent(new PointerEvent("pointerdown", init));
+    host.dispatchEvent(new PointerEvent("pointerup", { ...init, buttons:0 }));
+  });
+  await page.waitForTimeout(50);
+  if (errors.some(message => message.includes("getWorldPoint") || message.includes("reading '0'"))) {
+    throw new Error(`Phaser再生成後のマップ入力で例外が発生しました: ${errors.join(" | ")}`);
+  }
+
+  // ワールド生成後はplayingへ直行せず、既存のクラス・名前UIで統治者を作る。
   await page.locator(".class-item").filter({ hasText:"ファイター" }).click();
   await page.locator(".class-actions button").filter({ hasText:"このクラスで決定" }).click();
   await page.locator(".name-form").waitFor({ timeout:5000 });
