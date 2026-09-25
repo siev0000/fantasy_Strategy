@@ -117,11 +117,35 @@ const skillDescMap = computed(() => {
 });
 
 const activeRaceKey = ref("");
+const activeRaceCategory = ref("");
 const activeDetailTab = ref("status");
 
+function resolveRaceCategory(race) {
+  const detail = getV39RaceSelectionDetail(race?.key);
+  return nonEmptyText(detail?.sourceRow?.種類);
+}
+
+const raceCategories = computed(() => {
+  const out = [];
+  const seen = new Set();
+  for (const race of filteredRaces.value) {
+    const category = resolveRaceCategory(race);
+    if (!category || seen.has(category)) continue;
+    seen.add(category);
+    out.push(category);
+  }
+  return out;
+});
+
+const categoryRaces = computed(() => {
+  const category = nonEmptyText(activeRaceCategory.value);
+  if (!category) return filteredRaces.value;
+  return filteredRaces.value.filter(race => resolveRaceCategory(race) === category);
+});
+
 const activeRace = computed(() => {
-  if (!filteredRaces.value.length || !activeRaceKey.value) return null;
-  return filteredRaces.value.find(item => item.key === activeRaceKey.value) || null;
+  if (!categoryRaces.value.length || !activeRaceKey.value) return null;
+  return categoryRaces.value.find(item => item.key === activeRaceKey.value) || null;
 });
 
 const activeSelectionDetail = computed(() => getV39RaceSelectionDetail(activeRace.value?.key));
@@ -136,25 +160,48 @@ watch(
   ([isOpen, allowedRows, selectedRace]) => {
     if (!isOpen) {
       activeRaceKey.value = "";
+      activeRaceCategory.value = "";
       activeDetailTab.value = "status";
       return;
     }
     const list = Array.isArray(allowedRows) ? allowedRows : [];
     if (!list.length) {
       activeRaceKey.value = "";
+      activeRaceCategory.value = "";
       return;
     }
+
     const selected = list.find(item => item.key === selectedRace);
     if (selected) {
+      activeRaceCategory.value = resolveRaceCategory(selected);
       activeRaceKey.value = selected.key;
       return;
     }
-    const current = list.find(item => item.key === activeRaceKey.value);
+
+    const categories = raceCategories.value;
+    if (!categories.includes(activeRaceCategory.value)) {
+      activeRaceCategory.value = categories[0] || "";
+      activeRaceKey.value = "";
+      return;
+    }
+
+    const current = list.find(item =>
+      item.key === activeRaceKey.value
+      && resolveRaceCategory(item) === activeRaceCategory.value
+    );
     if (current) return;
     activeRaceKey.value = "";
   },
   { immediate: true }
 );
+
+function selectRaceCategory(category) {
+  const next = nonEmptyText(category);
+  if (!next || next === activeRaceCategory.value) return;
+  activeRaceCategory.value = next;
+  activeRaceKey.value = "";
+  activeDetailTab.value = "status";
+}
 
 function selectRace(key) {
   if (allowedRaceSet.value.size && !allowedRaceSet.value.has(key)) return;
@@ -170,23 +217,40 @@ function confirmRace() {
 <template>
   <base-modal :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
     <div v-if="filteredRaces.length" class="race-layout">
-      <aside class="race-list">
-        <button
-          v-for="race in filteredRaces"
-          :key="race.key"
-          type="button"
-          class="race-item"
-          :class="{ active: activeRace?.key === race.key }"
-          :data-v39-race-option="race.key"
-          @click="selectRace(race.key)"
-        >
-          <span class="race-item-main">
-            <img v-if="raceListIconSrc(race)" :src="raceListIconSrc(race)" :alt="`${race.name} アイコン`" class="race-item-icon" />
-            <span v-else class="race-item-icon-fallback">{{ String(race.name || "?").slice(0, 1) }}</span>
-            <span class="race-item-name">{{ race.name }}</span>
-          </span>
-        </button>
-      </aside>
+      <section class="race-picker-pane">
+        <nav class="race-category-tabs" role="tablist" aria-label="種族分類">
+          <button
+            v-for="category in raceCategories"
+            :key="category"
+            type="button"
+            role="tab"
+            :aria-selected="activeRaceCategory === category"
+            :class="{ active: activeRaceCategory === category }"
+            :data-v39-race-category="category"
+            @click="selectRaceCategory(category)"
+          >
+            {{ category }}
+          </button>
+        </nav>
+
+        <aside class="race-list">
+          <button
+            v-for="race in categoryRaces"
+            :key="race.key"
+            type="button"
+            class="race-item"
+            :class="{ active: activeRace?.key === race.key }"
+            :data-v39-race-option="race.key"
+            @click="selectRace(race.key)"
+          >
+            <span class="race-item-main">
+              <img v-if="raceListIconSrc(race)" :src="raceListIconSrc(race)" :alt="`${race.name} アイコン`" class="race-item-icon" />
+              <span v-else class="race-item-icon-fallback">{{ String(race.name || "?").slice(0, 1) }}</span>
+              <span class="race-item-name">{{ race.name }}</span>
+            </span>
+          </button>
+        </aside>
+      </section>
 
       <section v-if="activeRace" class="race-detail">
         <header class="race-title">
@@ -267,6 +331,47 @@ function confirmRace() {
   min-height: 0;
   height: 100%;
   overflow: hidden;
+}
+
+.race-picker-pane {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  overflow: hidden;
+}
+
+.race-category-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 5px;
+}
+
+.race-category-tabs button {
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 1px solid #385159;
+  border-radius: 6px;
+  background: #122126;
+  color: #a9babc;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.race-category-tabs button:hover {
+  border-color: #4e7580;
+  color: #dbe8e8;
+}
+
+.race-category-tabs button.active {
+  border-color: var(--picker-active);
+  background: var(--picker-active-bg);
+  color: #f4fbfa;
+  box-shadow: 0 0 0 1px rgba(113, 209, 223, .13) inset;
 }
 
 .race-list {
@@ -565,14 +670,35 @@ function confirmRace() {
 @media (max-width: 760px) {
   .race-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(120px, 32%) minmax(0, 1fr);
+    grid-template-rows: 118px minmax(0, 1fr);
     height: 100%;
+  }
+
+  .race-picker-pane {
+    grid-template-rows: 34px minmax(0, 1fr);
+  }
+
+  .race-category-tabs button {
+    min-height: 34px;
+    padding: 4px 6px;
+    font-size: 12px;
   }
 
   .race-list {
     max-height: none;
     height: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 5px;
+  }
+
+  .race-item {
+    width: auto;
+    min-width: 128px;
+    flex: 0 0 128px;
   }
 
   .race-item {
@@ -603,9 +729,9 @@ function confirmRace() {
 }
 
 @media (max-width: 430px) {
-  .race-list {
-    grid-template-columns: 1fr;
-    max-height: 160px;
+  .race-item {
+    min-width: 116px;
+    flex-basis: 116px;
   }
 
   .detail-tabs button {
