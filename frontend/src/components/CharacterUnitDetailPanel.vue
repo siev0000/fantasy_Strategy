@@ -32,17 +32,18 @@ const STATUS_FIELD_ROWS = [
   ["攻撃", "魔力", "命中"],
   ["防御", "精神", "速度"]
 ];
-const LEFT_PANEL_TABS = [
-  { key: "status", label: "ステータス" },
+const DETAIL_TABS = [
+  { key: "status", label: "ステータス技能" },
+  { key: "skills", label: "スキル" },
   { key: "equipment", label: "装備" },
-  { key: "role", label: "ロール" }
+  { key: "growth", label: "成長" }
 ];
 const EQUIPMENT_RARITY_KEYS = V39_EQUIPMENT_RARITIES.map(rarity => rarity.key);
 
 const iconOptions = computed(() => listIconOptions());
 const iconDraft = ref(DEFAULT_ICON_NAME);
 const iconPickerOpen = ref(false);
-const leftPanelView = ref("status");
+const detailView = ref("status");
 const selectedEquipSlotKey = ref("武器1");
 const showEquipmentPickerModal = ref(false);
 const equipmentActionStatus = ref("");
@@ -584,22 +585,23 @@ watch(
       </section>
     </template>
 
-    <section class="detail-split">
-      <div class="detail-left-pane">
-        <div class="detail-view-tabs" role="tablist" aria-label="左パネル切替">
-          <button
-            v-for="tab in LEFT_PANEL_TABS"
-            :key="`left-tab-${tab.key}`"
-            type="button"
-            class="detail-view-tab-btn"
-            :class="{ active: leftPanelView === tab.key }"
-            @click="leftPanelView = tab.key"
-          >
-            {{ tab.label }}
-          </button>
-        </div>
+    <section class="detail-content">
+      <nav class="detail-view-tabs" role="tablist" aria-label="キャラクター詳細切替">
+        <button
+          v-for="tab in DETAIL_TABS"
+          :key="`detail-tab-${tab.key}`"
+          type="button"
+          class="detail-view-tab-btn"
+          :class="{ active: detailView === tab.key }"
+          :aria-selected="detailView === tab.key"
+          @click="detailView = tab.key"
+        >
+          {{ tab.label }}
+        </button>
+      </nav>
 
-        <template v-if="leftPanelView === 'status'">
+      <div class="detail-tab-panel">
+        <template v-if="detailView === 'status'">
           <div class="detail-status-scroll">
             <section class="char-block">
               <h4>ステータス</h4>
@@ -648,7 +650,21 @@ watch(
           </div>
         </template>
 
-        <template v-else-if="leftPanelView === 'equipment'">
+        <template v-else-if="detailView === 'skills'">
+          <section class="char-block detail-skills-pane">
+            <h4>スキル</h4>
+            <skill-acquired-table
+              :skill-names="acquiredSkills"
+              :status-source="unit?.status"
+              :show-title="false"
+              empty-text="取得スキルなし"
+              :compact="compact"
+              variant="operation"
+            />
+          </section>
+        </template>
+
+        <template v-else-if="detailView === 'equipment'">
           <section class="char-block">
             <div class="equipment-head-row">
               <h4>装備一覧</h4>
@@ -659,17 +675,11 @@ watch(
                       {{ equipmentRarityLabel(rarity) }}
                     </option>
                   </select>
-                  <button type="button" class="secondary" @click="applyMobEquipmentRarityRefresh">
-                    レア度一新
-                  </button>
+                  <button type="button" class="secondary" @click="applyMobEquipmentRarityRefresh">レア度一新</button>
                 </template>
                 <template v-else>
-                  <button type="button" class="secondary" :disabled="!selectedEquipSlotKey" @click="openEquipmentPickerModal">
-                    スロットを変更
-                  </button>
-                  <button type="button" class="secondary" :disabled="!canRemoveSelectedEquipment" @click="removeSelectedEquipment">
-                    外す
-                  </button>
+                  <button type="button" class="secondary" :disabled="!selectedEquipSlotKey" @click="openEquipmentPickerModal">スロットを変更</button>
+                  <button type="button" class="secondary" :disabled="!canRemoveSelectedEquipment" @click="removeSelectedEquipment">外す</button>
                 </template>
               </div>
             </div>
@@ -684,16 +694,8 @@ watch(
                 @click="selectEquipmentSlot(slot.key)"
               >
                 <div class="equipment-edit-main">
-                  <div
-                    class="equipment-edit-icon-wrap"
-                    :class="slot.item ? equipmentRarityClass(slot.item?.quality || slot.item?.qualityLabel) : ''"
-                  >
-                    <img
-                      v-if="slot.item && equipmentItemIconSrc(slot.item)"
-                      :src="equipmentItemIconSrc(slot.item)"
-                      :alt="slot.item?.name || slot.label"
-                      class="equipment-edit-icon"
-                    />
+                  <div class="equipment-edit-icon-wrap" :class="slot.item ? equipmentRarityClass(slot.item?.quality || slot.item?.qualityLabel) : ''">
+                    <img v-if="slot.item && equipmentItemIconSrc(slot.item)" :src="equipmentItemIconSrc(slot.item)" :alt="slot.item?.name || slot.label" class="equipment-edit-icon" />
                     <span v-else class="equipment-edit-icon-fallback">{{ slot.item ? equipmentItemGlyph(slot.item) : "-" }}</span>
                     <span
                       v-if="slot.item"
@@ -709,14 +711,10 @@ watch(
                       <strong>{{ slot.label }}</strong>
                       <span>
                         <template v-if="!slot.enabled">× 装備不可</template>
-                        <template v-else>
-                          {{ slot.item?.name || "-" }}
-                        </template>
+                        <template v-else>{{ slot.item?.name || "-" }}</template>
                       </span>
                     </div>
-                    <div class="small" v-if="slot.item && equipmentStatPartsText(slot.item)">
-                      {{ equipmentStatPartsText(slot.item) }}
-                    </div>
+                    <div v-if="slot.item && equipmentStatPartsText(slot.item)" class="small">{{ equipmentStatPartsText(slot.item) }}</div>
                   </div>
                 </div>
               </article>
@@ -728,33 +726,18 @@ watch(
 
         <template v-else>
           <section class="char-block role-growth-block">
-            <h4>ロール</h4>
+            <h4>成長</h4>
             <div v-if="roleGrowthRows.length" class="role-growth-list">
-              <div
-                v-for="row in roleGrowthRows"
-                :key="`role-growth-${unit.id}-${row.key}`"
-                class="role-growth-row"
-              >
+              <div v-for="row in roleGrowthRows" :key="`role-growth-${unit.id}-${row.key}`" class="role-growth-row">
                 <span class="role-growth-name">{{ row.label }}</span>
                 <span class="role-growth-level">Lv{{ row.level }}</span>
                 <span class="role-growth-skills">{{ roleRowSkillsText(row) }}</span>
               </div>
             </div>
-            <div v-else class="small">ロールデータなし</div>
+            <div v-else class="small">成長データなし</div>
           </section>
         </template>
       </div>
-
-      <section class="char-block detail-right-pane">
-        <h4>スキル一覧</h4>
-        <skill-acquired-table
-          :skill-names="acquiredSkills"
-          :status-source="unit?.status"
-          :show-title="false"
-          empty-text="取得スキルなし"
-          :compact="compact"
-        />
-      </section>
     </section>
   </section>
 
@@ -780,23 +763,21 @@ watch(
   gap: 8px;
 }
 
-.detail-split {
+.detail-content {
+  min-width: 0;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr);
-  gap: 8px;
-  align-items: start;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 5px;
 }
 
-.detail-left-pane {
-  display: grid;
-  gap: 5px;
+.detail-tab-panel {
   min-width: 0;
-  min-height: 420px;
-  align-content: start;
+  min-height: 0;
 }
 
 .detail-status-scroll {
-  height: 420px;
+  max-height: min(520px, 58vh);
   overflow-y: auto;
   overflow-x: hidden;
   display: grid;
@@ -804,17 +785,17 @@ watch(
   padding-right: 2px;
 }
 
-.detail-right-pane {
+.detail-skills-pane {
   min-width: 0;
-  display: grid;
-  align-content: start;
-  min-height: 0;
+  max-height: min(520px, 58vh);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .detail-view-tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
 }
 
 .detail-view-tab-btn {
@@ -1074,16 +1055,13 @@ watch(
   gap: 6px;
 }
 
-.detail-right-pane :deep(.skill-table-root) {
+.detail-skills-pane :deep(.skill-table-root) {
   min-height: 0;
   display: grid;
 }
 
-.detail-right-pane :deep(.skill-table-wrap) {
-  min-height: 0;
-  height: 405px;
-  overflow-y: auto;
-  overflow-x: hidden;
+.detail-skills-pane :deep(.operation-technique-list) {
+  min-width: 0;
 }
 
 .role-growth-block {
@@ -1123,9 +1101,51 @@ watch(
   word-break: break-word;
 }
 
-@media (max-width: 1px) {
-  .detail-split {
-    grid-template-columns: 1fr;
+@media (max-width: 760px) {
+  .detail-root {
+    gap: 5px;
+  }
+
+  .detail-view-tabs {
+    gap: 3px;
+  }
+
+  .detail-view-tab-btn {
+    min-width: 0;
+    padding: 5px 3px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .detail-status-scroll,
+  .detail-skills-pane {
+    max-height: min(560px, 62vh);
+  }
+
+  .char-skill-grid,
+  .char-resist-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .equipment-head-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .equipment-head-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .role-growth-row {
+    grid-template-columns: minmax(76px, 100px) 46px minmax(0, 1fr);
+    gap: 5px;
+  }
+}
+
+@media (max-width: 430px) {
+  .detail-view-tab-btn {
+    font-size: 0.62rem;
   }
 }
 </style>
