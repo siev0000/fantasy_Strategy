@@ -16,16 +16,23 @@ function handleBackdropClick() {
 </script>
 
 <template>
-  <div v-if="show" class="modal-backdrop" @click.self="handleBackdropClick">
-    <article class="panel modal-card" :class="{ 'modal-card-wide': wide }" role="dialog" aria-modal="true">
-      <div class="modal-body">
-        <slot />
-      </div>
-    </article>
-  </div>
+  <teleport to="body">
+    <div v-if="show" class="modal-backdrop open vue-modal-backdrop" @click.self="handleBackdropClick">
+      <article class="panel modal-card" :class="{ 'modal-card-wide': wide }" role="dialog" aria-modal="true">
+        <div class="modal-body">
+          <slot />
+        </div>
+      </article>
+    </div>
+  </teleport>
 </template>
 
 <style scoped>
+.vue-modal-backdrop {
+  display: grid;
+  z-index: 10200;
+}
+
 .modal-title-wrap {
   display: grid;
   gap: 2px;
