@@ -120,6 +120,7 @@ const skillDescMap = computed(() => {
 const activeRaceKey = ref("");
 const activeRaceCategory = ref("");
 const activeDetailTab = ref("status");
+const rememberedRaceByCategory = ref({});
 
 function resolveRaceCategory(race) {
   const detail = getV39RaceSelectionDetail(race?.key);
@@ -159,6 +160,37 @@ const activeRace = computed(() => {
   return categoryRaces.value.find(item => item.key === activeRaceKey.value) || null;
 });
 
+function racesForCategory(category, list = filteredRaces.value) {
+  const key = nonEmptyText(category);
+  const source = Array.isArray(list) ? list : [];
+  if (!key) return [];
+  return source.filter(race => resolveRaceCategory(race) === key);
+}
+
+function rememberRace(category, raceKey) {
+  const categoryKey = nonEmptyText(category);
+  const key = nonEmptyText(raceKey);
+  if (!categoryKey || !key) return;
+  rememberedRaceByCategory.value = {
+    ...rememberedRaceByCategory.value,
+    [categoryKey]: key
+  };
+}
+
+function selectRememberedOrFirstRace(category, list = filteredRaces.value) {
+  const categoryKey = nonEmptyText(category);
+  const rows = racesForCategory(categoryKey, list);
+  if (!rows.length) {
+    activeRaceKey.value = "";
+    return;
+  }
+  const rememberedKey = nonEmptyText(rememberedRaceByCategory.value?.[categoryKey]);
+  const remembered = rows.find(row => row.key === rememberedKey);
+  const next = remembered || rows[0];
+  activeRaceKey.value = next.key;
+  rememberRace(categoryKey, next.key);
+}
+
 const activeSelectionDetail = computed(() => getV39RaceSelectionDetail(activeRace.value?.key));
 
 const activeRaceClassRow = computed(() => activeSelectionDetail.value?.sourceRow || null);
@@ -173,26 +205,31 @@ watch(
       activeRaceKey.value = "";
       activeRaceCategory.value = "";
       activeDetailTab.value = "status";
+      rememberedRaceByCategory.value = {};
       return;
     }
+
     const list = Array.isArray(allowedRows) ? allowedRows : [];
     if (!list.length) {
       activeRaceKey.value = "";
       activeRaceCategory.value = "";
+      rememberedRaceByCategory.value = {};
       return;
     }
 
     const selected = list.find(item => item.key === selectedRace);
     if (selected) {
-      activeRaceCategory.value = resolveRaceCategory(selected);
+      const selectedCategory = resolveRaceCategory(selected);
+      activeRaceCategory.value = selectedCategory;
       activeRaceKey.value = selected.key;
+      rememberRace(selectedCategory, selected.key);
       return;
     }
 
     const categories = raceCategories.value;
     if (!categories.includes(activeRaceCategory.value)) {
       activeRaceCategory.value = categories[0] || "";
-      activeRaceKey.value = "";
+      selectRememberedOrFirstRace(activeRaceCategory.value, list);
       return;
     }
 
@@ -200,8 +237,12 @@ watch(
       item.key === activeRaceKey.value
       && resolveRaceCategory(item) === activeRaceCategory.value
     );
-    if (current) return;
-    activeRaceKey.value = "";
+    if (current) {
+      rememberRace(activeRaceCategory.value, current.key);
+      return;
+    }
+
+    selectRememberedOrFirstRace(activeRaceCategory.value, list);
   },
   { immediate: true }
 );
@@ -209,14 +250,20 @@ watch(
 function selectRaceCategory(category) {
   const next = nonEmptyText(category);
   if (!next || next === activeRaceCategory.value) return;
+  if (activeRaceCategory.value && activeRaceKey.value) {
+    rememberRace(activeRaceCategory.value, activeRaceKey.value);
+  }
   activeRaceCategory.value = next;
-  activeRaceKey.value = "";
+  selectRememberedOrFirstRace(next);
   activeDetailTab.value = "status";
 }
 
 function selectRace(key) {
   if (allowedRaceSet.value.size && !allowedRaceSet.value.has(key)) return;
+  const race = filteredRaces.value.find(item => item.key === key);
+  if (!race) return;
   activeRaceKey.value = key;
+  rememberRace(resolveRaceCategory(race), key);
 }
 
 function confirmRace() {
@@ -241,7 +288,7 @@ function confirmRace() {
             @click="selectRaceCategory(category)"
           >
             <strong>{{ category }}</strong>
-            <span>{{ raceCategoryDescriptionMap.get(category) || "" }}</span>
+            <span v-if="activeRaceCategory === category">{{ raceCategoryDescriptionMap.get(category) || "" }}</span>
           </button>
         </nav>
       </section>
