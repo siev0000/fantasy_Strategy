@@ -179,6 +179,7 @@ function confirmRace() {
           type="button"
           class="race-item"
           :class="{ active: activeRace?.key === race.key }"
+          :data-v39-race-option="race.key"
           @click="selectRace(race.key)"
         >
           <span class="race-item-main">
@@ -244,7 +245,7 @@ function confirmRace() {
         </div>
 
         <div class="race-actions">
-          <button type="button" @click="confirmRace">この種族で決定</button>
+          <button type="button" data-v39-race-confirm @click="confirmRace">この種族で決定</button>
         </div>
       </section>
 
