@@ -278,6 +278,7 @@ const selectedCharacterName = ref("主人公");
 const selectedVillageName = ref("はじまりの村");
 const gameSetupReady = ref(false);
 const gameFlowStep = ref("idle");
+const multiplayerSetupTarget = ref(null);
 const characterCommand = ref(null);
 const testControlsVisible = ref(false);
 const gameOnlyMode = computed(() => true);
@@ -375,6 +376,8 @@ const sim = reactive({
 });
 
 let globalKeyHandler = null;
+let multiplayerSovereignRequiredHandler = null;
+let multiplayerGameStartedHandler = null;
 let saveSnapshotWaiters = [];
 let appResizeHandler = null;
 let minUiFontObserver = null;
@@ -511,6 +514,10 @@ function openModal(kind, payload = null) {
 }
 
 function closeModal(kind) {
+  if (multiplayerSetupTarget.value && (kind === "class" || kind === "name" || kind === "race")) {
+    setSessionStatus("マルチプレイ開始には統治者設定が必要です。", "warn");
+    return;
+  }
   if (kind === "room") showRoomModal.value = false;
   if (kind === "battle") showBattleModal.value = false;
   if (kind === "sim") showSimModal.value = false;
@@ -527,10 +534,12 @@ function closeAllModals() {
   showBattleModal.value = false;
   showSimModal.value = false;
   showSkillTreeModal.value = false;
-  showRaceModal.value = false;
-  showClassModal.value = false;
+  if (!multiplayerSetupTarget.value) {
+    showRaceModal.value = false;
+    showClassModal.value = false;
+    showCharacterNameModal.value = false;
+  }
   showCharacterStatusModal.value = false;
-  showCharacterNameModal.value = false;
   showGameStartSetupModal.value = false;
 }
 
@@ -723,6 +732,10 @@ function applySelectedClass(payload) {
 }
 
 function backToRaceFromClass() {
+  if (multiplayerSetupTarget.value) {
+    setSessionStatus("マルチプレイの開始種族はロビーで確定済みです。クラスを選択してください。", "warn");
+    return;
+  }
   showClassModal.value = false;
   showRaceModal.value = true;
   setSessionStatus("種族を選び直してください。", "warn");
@@ -741,6 +754,24 @@ function applyCharacterName(payload) {
   gameSetupReady.value = false;
   gameFlowStep.value = "sovereign";
   showCharacterNameModal.value = false;
+
+  if (multiplayerSetupTarget.value) {
+    const target = multiplayerSetupTarget.value;
+    multiplayerSetupTarget.value = null;
+    gameFlowStep.value = "village";
+    setSessionStatus("統治者設定をホストへ送信しました。同期後に初期拠点を選択します。", "warn");
+    window.dispatchEvent(new CustomEvent("v39:multiplayer-sovereign-profile-submitted", {
+      detail:{
+        playerId:target.playerId,
+        race:target.race,
+        className:selectedClass.value,
+        characterName,
+        villageName
+      }
+    }));
+    return;
+  }
+
   const profileCommand = {
     type: "applySovereignProfile",
     slotId: currentGameSetupSlotId.value || "player-1",
@@ -1492,6 +1523,33 @@ function renderGameStateToText() {
 }
 
 onMounted(() => {
+  multiplayerSovereignRequiredHandler = event => {
+    const playerId = String(event?.detail?.playerId || "").trim();
+    const race = String(event?.detail?.race || "").trim();
+    if (!playerId || !Object.prototype.hasOwnProperty.call(RACES, race)) return;
+    multiplayerSetupTarget.value = { playerId, race };
+    selectedRace.value = race;
+    selectedClass.value = "";
+    selectedCharacterName.value = "主人公";
+    selectedVillageName.value = "はじまりの村";
+    gameSetupReady.value = false;
+    gameFlowStep.value = "sovereign";
+    showRaceModal.value = false;
+    showCharacterNameModal.value = false;
+    showClassModal.value = true;
+    setSessionStatus(`${race}勢力の統治者クラスを選択してください。`, "warn");
+  };
+  multiplayerGameStartedHandler = () => {
+    multiplayerSetupTarget.value = null;
+    gameSetupReady.value = true;
+    gameFlowStep.value = "ready";
+    showClassModal.value = false;
+    showCharacterNameModal.value = false;
+    setSessionStatus("初期設定が完了しました。ゲームを開始します。", "ok");
+  };
+  window.addEventListener("v39:multiplayer-sovereign-required", multiplayerSovereignRequiredHandler);
+  window.addEventListener("v39:multiplayer-game-started", multiplayerGameStartedHandler);
+
   globalKeyHandler = event => {
     if (event.key === "Escape") closeAllModals();
   };
@@ -1578,6 +1636,14 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (multiplayerSovereignRequiredHandler) {
+    window.removeEventListener("v39:multiplayer-sovereign-required", multiplayerSovereignRequiredHandler);
+    multiplayerSovereignRequiredHandler = null;
+  }
+  if (multiplayerGameStartedHandler) {
+    window.removeEventListener("v39:multiplayer-game-started", multiplayerGameStartedHandler);
+    multiplayerGameStartedHandler = null;
+  }
   if (appResizeHandler) {
     window.removeEventListener("resize", appResizeHandler);
     appResizeHandler = null;
