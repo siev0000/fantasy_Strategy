@@ -111,14 +111,14 @@ function setTab(tab) {
 
 .operation-detail-tabs button {
   min-width:0;
-  min-height:32px;
+  min-height:40px;
   border:1px solid #425159;
   border-radius:7px;
   background:#172126;
   color:#93a5a9;
   padding:4px 5px;
   font:inherit;
-  font-size:10px;
+  font-size:13px;
   font-weight:800;
   cursor:pointer;
 }
@@ -171,13 +171,13 @@ function setTab(tab) {
 }
 
 .operation-detail-section-title {
-  min-height:24px;
+  min-height:30px;
   display:flex;
   align-items:center;
   padding:4px 7px;
   background:#132126;
   color:#c6d3d5;
-  font-size:11px;
+  font-size:13px;
   font-weight:800;
 }
 
@@ -189,17 +189,17 @@ function setTab(tab) {
 .operation-status-grid {
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:2px;
+  gap:5px;
 }
 
 .operation-detail-stat {
   min-width:0;
-  min-height:48px;
+  min-height:62px;
   display:grid;
   place-items:center;
   align-content:center;
-  gap:2px;
-  padding:5px 4px;
+  gap:4px;
+  padding:7px 6px;
   border:1px solid #3b4b52;
   border-radius:8px;
   background:#131c21;
@@ -209,30 +209,30 @@ function setTab(tab) {
 .operation-detail-stat span {
   min-width:0;
   color:#94a3a7;
-  font-size:10px;
-  line-height:1;
+  font-size:12px;
+  line-height:1.1;
 }
 
 .operation-detail-stat b {
   color:#f0f5f3;
-  font-size:13px;
+  font-size:18px;
   line-height:1.1;
 }
 
 .operation-proficiency-grid {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:2px;
+  gap:5px;
 }
 
 .operation-proficiency-item {
   min-width:0;
-  min-height:34px;
+  min-height:44px;
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:4px;
-  padding:4px 6px;
+  gap:8px;
+  padding:7px 8px;
   border:1px solid #3d4d54;
   border-radius:7px;
   background:#121c20;
@@ -241,7 +241,7 @@ function setTab(tab) {
 .operation-proficiency-item span {
   min-width:0;
   color:#a7b4b7;
-  font-size:10px;
+  font-size:12px;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -250,56 +250,75 @@ function setTab(tab) {
 .operation-proficiency-item b {
   flex:0 0 auto;
   color:#f0f5f3;
-  font-size:12px;
+  font-size:15px;
 }
 
 .operation-empty {
   padding:7px;
   color:#829397;
-  font-size:10px;
+  font-size:12px;
 }
 
 @media (max-width:760px) {
   .operation-detail-tabs button {
-    min-height:28px;
-    padding:3px 3px;
-    font-size:9px;
-  }
-
-  .operation-status-grid {
-    grid-template-columns:repeat(3,minmax(0,1fr));
-  }
-
-  .operation-detail-stat {
-    min-height:44px;
-    padding:4px 3px;
-  }
-
-  .operation-detail-stat span {
-    font-size:8px;
-  }
-
-  .operation-detail-stat b {
+    min-height:38px;
+    padding:5px 4px;
     font-size:12px;
   }
 
+  .operation-detail-section-title {
+    min-height:28px;
+    font-size:12px;
+  }
+
+  .operation-status-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:4px;
+  }
+
+  .operation-detail-stat {
+    min-height:56px;
+    padding:6px 5px;
+  }
+
+  .operation-detail-stat span {
+    font-size:11px;
+  }
+
+  .operation-detail-stat b {
+    font-size:17px;
+  }
+
+  .operation-proficiency-grid {
+    grid-template-columns:1fr;
+    gap:4px;
+  }
+
   .operation-proficiency-item {
-    min-height:32px;
-    padding:4px 5px;
+    min-height:42px;
+    padding:6px 7px;
   }
 
   .operation-proficiency-item span {
-    font-size:8px;
+    font-size:11px;
   }
 
   .operation-proficiency-item b {
-    font-size:11px;
+    font-size:14px;
   }
 }
 
 @media (max-width:430px) {
-  .operation-status-grid {
-    grid-template-columns:repeat(2,minmax(0,1fr));
+  .operation-detail-tabs button {
+    font-size:11px;
+  }
+
+  .operation-detail-stat span {
+    font-size:10px;
+  }
+
+  .operation-detail-stat b {
+    font-size:16px;
   }
 }
 </style>
