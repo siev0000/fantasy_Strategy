@@ -154,10 +154,6 @@ const raceCategoryDescriptionMap = computed(() => {
   return map;
 });
 
-const activeRaceCategoryDescription = computed(() => (
-  raceCategoryDescriptionMap.value.get(activeRaceCategory.value) || ""
-));
-
 const activeRace = computed(() => {
   if (!categoryRaces.value.length || !activeRaceKey.value) return null;
   return categoryRaces.value.find(item => item.key === activeRaceKey.value) || null;
@@ -244,13 +240,10 @@ function confirmRace() {
             :data-v39-race-category="category"
             @click="selectRaceCategory(category)"
           >
-            {{ category }}
+            <strong>{{ category }}</strong>
+            <span>{{ raceCategoryDescriptionMap.get(category) || "" }}</span>
           </button>
         </nav>
-        <div class="race-category-description">
-          <strong>{{ activeRaceCategory }}</strong>
-          <span>{{ activeRaceCategoryDescription }}</span>
-        </div>
       </section>
 
       <section class="race-main-pane">
@@ -355,14 +348,12 @@ function confirmRace() {
 }
 
 .race-category-pane {
-  display: grid;
-  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
-  gap: 8px;
   min-height: 0;
   padding: 8px;
   border: 1px solid var(--picker-line);
   border-radius: 8px;
   background: #0d181c;
+  overflow: hidden;
 }
 
 .race-main-pane {
@@ -374,45 +365,39 @@ function confirmRace() {
   overflow: hidden;
 }
 
-.race-category-description {
-  min-width: 0;
-  display: grid;
-  align-content: center;
-  gap: 4px;
-  padding: 7px 9px;
-  border: 1px solid #294047;
-  border-radius: 7px;
-  background: #101f24;
-}
-
-.race-category-description strong {
-  color: #e8f4f3;
-  font-size: 15px;
-}
-
-.race-category-description span {
-  color: #9db0b3;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
 .race-category-tabs {
+  height: 100%;
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .race-category-tabs button {
-  min-height: 36px;
-  padding: 5px 8px;
+  min-width: 0;
+  min-height: 72px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 9px 10px;
   border: 1px solid #385159;
-  border-radius: 6px;
+  border-radius: 7px;
   background: #122126;
   color: #a9babc;
-  font-size: 13px;
-  font-weight: 900;
+  text-align: left;
   cursor: pointer;
+}
+
+.race-category-tabs button strong {
+  color: #dfe9e8;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.race-category-tabs button span {
+  color: #91a5a8;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .race-category-tabs button:hover {
@@ -425,6 +410,14 @@ function confirmRace() {
   background: var(--picker-active-bg);
   color: #f4fbfa;
   box-shadow: 0 0 0 1px rgba(113, 209, 223, .13) inset;
+}
+
+.race-category-tabs button.active strong {
+  color: #f4fbfa;
+}
+
+.race-category-tabs button.active span {
+  color: #bfe8ed;
 }
 
 .race-list {
@@ -728,40 +721,34 @@ function confirmRace() {
 
   .race-category-pane {
     min-height: 0;
-    grid-template-columns: 1fr;
-    grid-template-rows: 40px minmax(0, 1fr);
-    gap: 6px;
     padding: 6px;
     overflow: hidden;
   }
 
   .race-category-tabs {
     min-width: 0;
+    height: 100%;
+    gap: 5px;
   }
 
   .race-category-tabs button {
-    min-height: 40px;
-    padding: 4px 6px;
-    font-size: 13px;
-  }
-
-  .race-category-description {
     min-height: 0;
+    height: 100%;
     align-content: start;
-    overflow: auto;
-    padding: 7px 8px;
+    padding: 8px 7px;
   }
 
-  .race-category-description strong {
-    font-size: 16px;
+  .race-category-tabs button strong {
+    font-size: 14px;
   }
 
-  .race-category-description span {
-    font-size: 12px;
+  .race-category-tabs button span {
+    font-size: 10px;
+    line-height: 1.35;
   }
 
   .race-main-pane {
-    grid-template-columns: minmax(104px, 32%) minmax(0, 68%);
+    grid-template-columns: minmax(130px, 35%) minmax(0, 65%);
     gap: 7px;
   }
 
@@ -779,29 +766,30 @@ function confirmRace() {
   .race-item {
     width: 100%;
     min-width: 0;
-    min-height: 58px;
-    padding: 5px;
+    min-height: 52px;
+    padding: 6px;
     font-size: 12px;
   }
 
   .race-item-main {
     width: 100%;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 4px;
-    text-align: center;
+    gap: 6px;
+    text-align: left;
   }
 
   .race-item-icon,
   .race-item-icon-fallback {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
   }
 
   .race-item-name {
-    width: 100%;
+    width: auto;
+    flex: 1 1 auto;
     font-size: 11px;
-    text-align: center;
+    text-align: left;
   }
 
   .race-detail {
@@ -854,15 +842,24 @@ function confirmRace() {
 
 @media (max-width: 430px) {
   .race-main-pane {
-    grid-template-columns: minmax(96px, 31%) minmax(0, 69%);
+    grid-template-columns: minmax(126px, 36%) minmax(0, 64%);
   }
 
-  .race-category-description span {
-    font-size: 11px;
+  .race-category-tabs button {
+    padding: 7px 5px;
+  }
+
+  .race-category-tabs button strong {
+    font-size: 13px;
+  }
+
+  .race-category-tabs button span {
+    font-size: 9px;
+    line-height: 1.3;
   }
 
   .race-item {
-    min-height: 56px;
+    min-height: 50px;
   }
 
   .race-item-name {
