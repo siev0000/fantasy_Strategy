@@ -55,11 +55,16 @@ function setTab(tab) {
         <section class="operation-detail-section">
           <header class="operation-detail-section-title">技能</header>
           <div class="operation-detail-section-body">
-            <div v-if="skillRows.length" class="operation-proficiency-grid">
+            <div
+              v-if="skillRows.length"
+              class="operation-proficiency-grid"
+              style="display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;"
+            >
               <div
                 v-for="item in skillRows"
                 :key="item.key"
                 class="operation-proficiency-item"
+                style="grid-column:auto !important;width:auto !important;"
                 :title="item.desc || `${item.label}: 詳細なし`"
               >
                 <span>{{ item.label }}</span>
@@ -220,9 +225,15 @@ function setTab(tab) {
 }
 
 .operation-proficiency-grid {
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  grid-auto-flow:row !important;
   gap:2px;
+}
+
+.operation-proficiency-grid > .operation-proficiency-item {
+  grid-column:auto !important;
+  width:auto !important;
 }
 
 .operation-proficiency-item {
