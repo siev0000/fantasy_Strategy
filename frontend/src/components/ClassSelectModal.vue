@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
-import SkillAcquiredTable from "./SkillAcquiredTable.vue";
+import V39SelectionDetailPanel from "./V39SelectionDetailPanel.vue";
 import { classData as classDb, descriptionData as skillDescDb } from "../lib/game-data-registry.js";
 import { getV39ClassSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
@@ -206,51 +206,15 @@ function confirmClass() {
           <p class="class-text">{{ activeClass.詳細 || "詳細説明は未設定です。" }}</p>
         </header>
 
-        <nav class="detail-tabs" role="tablist" aria-label="クラス詳細">
-          <button type="button" role="tab" :aria-selected="activeDetailTab === 'status'" :class="{ active: activeDetailTab === 'status' }" @click="activeDetailTab = 'status'">ステータス</button>
-          <button type="button" role="tab" :aria-selected="activeDetailTab === 'skills'" :class="{ active: activeDetailTab === 'skills' }" @click="activeDetailTab = 'skills'">技能</button>
-          <button type="button" role="tab" :aria-selected="activeDetailTab === 'abilities'" :class="{ active: activeDetailTab === 'abilities' }" @click="activeDetailTab = 'abilities'">スキル</button>
-        </nav>
-
-        <div class="detail-tab-panel">
-          <section v-if="activeDetailTab === 'status'" class="detail-block">
-            <h4>ステータス</h4>
-            <div class="status-rows">
-              <div v-for="row in statusRowGroups" :key="row.key" class="status-row">
-                <div v-for="item in row.fields" :key="item.key" class="status-chip">
-                  <span>{{ item.key }}</span>
-                  <strong>{{ item.value ?? "-" }}</strong>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section v-else-if="activeDetailTab === 'skills'" class="detail-block">
-            <h4>技能</h4>
-            <div v-if="skillRows.length" class="skill-value-grid">
-              <div
-                v-for="item in skillRows"
-                :key="item.key"
-                class="skill-value-chip"
-                :title="item.desc || `${item.label}: 詳細なし`"
-              >
-                <span>{{ item.label }}</span>
-                <strong>{{ item.value }}</strong>
-              </div>
-            </div>
-            <div v-else class="small note-text">技能データなし</div>
-          </section>
-
-          <section v-else class="detail-block skill-detail-block">
-            <h4>クラススキル (Lv1-5)</h4>
-            <skill-acquired-table
-              :skill-names="classLv5SkillNames"
-              :status-source="activeClass"
-              :show-title="false"
-              empty-text="クラススキルなし"
-            />
-          </section>
-        </div>
+        <v39-selection-detail-panel
+          :status-rows="statusRowGroups"
+          :skill-rows="skillRows"
+          :skill-names="classLv5SkillNames"
+          :status-source="activeClass"
+          :active-tab="activeDetailTab"
+          skill-title="クラススキル (Lv1-5)"
+          @update:active-tab="activeDetailTab = $event"
+        />
 
         <div class="class-actions">
           <button type="button" class="secondary" @click="$emit('back')">種族へ戻る</button>
