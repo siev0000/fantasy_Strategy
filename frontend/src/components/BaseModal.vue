@@ -71,8 +71,8 @@ function handleBackdropClick() {
   --picker-muted: #93a4a7;
   --picker-positive: #7bd293;
   box-sizing: border-box;
-  width: min(720px, calc(100vw - 20px));
-  max-height: calc(100dvh - 20px);
+  width: min(720px, calc(100vw - 12px));
+  max-height: calc(100dvh - 12px);
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -85,7 +85,9 @@ function handleBackdropClick() {
 }
 
 .v39-vue-modal-card.modal-card-wide {
-  width: min(1080px, calc(100vw - 20px));
+  width: calc(100vw - 12px);
+  height: calc(100dvh - 12px);
+  max-height: calc(100dvh - 12px);
 }
 
 .v39-vue-modal-head {
@@ -118,11 +120,9 @@ function handleBackdropClick() {
 
 .v39-vue-modal-body {
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   padding: 10px;
   background: #0b1418;
-  scrollbar-width: thin;
-  scrollbar-color: #405b63 transparent;
 }
 
 @media (max-width: 760px) {
@@ -133,6 +133,7 @@ function handleBackdropClick() {
   .v39-vue-modal-card,
   .v39-vue-modal-card.modal-card-wide {
     width: 100%;
+    height: calc(100dvh - 12px);
     max-height: calc(100dvh - 12px);
     border-radius: 7px;
   }
