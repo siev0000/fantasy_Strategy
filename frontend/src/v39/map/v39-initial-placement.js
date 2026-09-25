@@ -440,23 +440,23 @@ function placeInitialBase(tile, options = {}) {
   if (complete) {
     showBanner(`初期拠点${plans.length}件の設置が完了しました`);
     const stateAfterPlacement = getGameState();
+    if (options.advanceToNextPlayer === false) {
+      window.dispatchEvent(new CustomEvent("v39:initial-player-placement-complete", {
+        detail:{ ...detail, settlements:getFactionSettlements(factionState) }
+      }));
+      return true;
+    }
     const nextPlayer = findNextPlayerNeedingInitialPlacement(stateAfterPlacement, player.id);
-    if (nextPlayer && options.advanceToNextPlayer !== false) {
+    if (nextPlayer) {
       window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
       window.setV39GameState?.({ activePlayerId:nextPlayer.id }, { reason:"initial-placement-player-switch" });
       beginInitialPlacement({ force:true });
       return true;
     }
-    if (!nextPlayer) {
-      window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
-      window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
-        detail:{ ...detail, settlements:getFactionSettlements(factionState) }
-      }));
-    } else {
-      window.dispatchEvent(new CustomEvent("v39:initial-player-placement-complete", {
-        detail:{ ...detail, settlements:getFactionSettlements(factionState) }
-      }));
-    }
+    window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
+    window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
+      detail:{ ...detail, settlements:getFactionSettlements(factionState) }
+    }));
   } else {
     showBanner(`拠点${placementIndex + 1}/${plans.length}を設置しました。続けて${placementBannerText(factionState)}`, true);
   }
