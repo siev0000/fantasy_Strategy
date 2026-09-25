@@ -284,7 +284,7 @@ function beginInitialPlacement(options = {}) {
   return true;
 }
 
-function placeInitialBase(tile) {
+function placeInitialBase(tile, options = {}) {
   const state = getGameState();
   const player = getActivePlayer(state);
   const faction = player?.factionState;
@@ -441,16 +441,22 @@ function placeInitialBase(tile) {
     showBanner(`初期拠点${plans.length}件の設置が完了しました`);
     const stateAfterPlacement = getGameState();
     const nextPlayer = findNextPlayerNeedingInitialPlacement(stateAfterPlacement, player.id);
-    if (nextPlayer) {
+    if (nextPlayer && options.advanceToNextPlayer !== false) {
       window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
       window.setV39GameState?.({ activePlayerId:nextPlayer.id }, { reason:"initial-placement-player-switch" });
       beginInitialPlacement({ force:true });
       return true;
     }
-    window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
-    window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
-      detail:{ ...detail, settlements:getFactionSettlements(factionState) }
-    }));
+    if (!nextPlayer) {
+      window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
+      window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
+        detail:{ ...detail, settlements:getFactionSettlements(factionState) }
+      }));
+    } else {
+      window.dispatchEvent(new CustomEvent("v39:initial-player-placement-complete", {
+        detail:{ ...detail, settlements:getFactionSettlements(factionState) }
+      }));
+    }
   } else {
     showBanner(`拠点${placementIndex + 1}/${plans.length}を設置しました。続けて${placementBannerText(factionState)}`, true);
   }
@@ -460,6 +466,21 @@ function placeInitialBase(tile) {
 function handleTileSelected(event) {
   const faction = getActiveFaction();
   if (!faction?.villagePlacementMode) return;
+  if (window.isV39MultiplayerSetup?.() === true) {
+    const player = getActivePlayer();
+    const x = Math.floor(Number(event?.detail?.x));
+    const y = Math.floor(Number(event?.detail?.y));
+    if (!player?.id || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!canPlaceBaseOnTile(event.detail)) {
+      showBanner(basePlacementIssue(event.detail), true);
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("v39:multiplayer-initial-placement-request", {
+      detail:{ playerId:player.id, x, y }
+    }));
+    showBanner("初期拠点の配置をホストへ確認しています...", true);
+    return;
+  }
   placeInitialBase(event.detail);
 }
 
