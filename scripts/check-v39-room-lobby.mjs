@@ -93,18 +93,24 @@ try {
   const guestCredentials = await guestJoined;
   const joinedSnapshot = await hostAfterJoin;
   if (joinedSnapshot.participants.some(participant => !participant.connected)) fail("参加者の接続状態が不正です。");
+  if (joinedSnapshot.settings?.factionCount !== 2) fail("2人目参加時に操作勢力数が2へ自動増加しません。");
+  if (joinedSnapshot.settings?.playerParticipantAssignments?.["player-1"] !== hostCredentials.participantId
+    || joinedSnapshot.settings?.playerParticipantAssignments?.["player-2"] !== guestCredentials.participantId) {
+    fail("参加人数に応じた担当勢力の自動割当が不正です。");
+  }
+  const guestEntry = joinedSnapshot.participants.find(participant => participant.participantId === guestCredentials.participantId);
+  if (!guestEntry?.assignedPlayerIds.includes("player-2")) fail("自動追加された勢力が参加者へ反映されません。");
 
-  const settingsUpdated = nextEvent(host, "room:snapshot", snapshot => snapshot.settings.factionCount === 2);
+  const minimumFactionSnapshotPromise = nextEvent(host, "room:snapshot", snapshot =>
+    snapshot.settings?.factionCount === 2
+    && snapshot.settings?.playerParticipantAssignments?.["player-2"] === guestCredentials.participantId
+  );
   host.emit("room:update-settings", {
     roomId:hostCredentials.roomId,
-    settings:{
-      factionCount:2,
-      playerParticipantAssignments:{ "player-1":hostCredentials.participantId, "player-2":guestCredentials.participantId }
-    }
+    settings:{ ...joinedSnapshot.settings, factionCount:1 }
   });
-  const settingsSnapshot = await settingsUpdated;
-  const guestEntry = settingsSnapshot.participants.find(participant => participant.participantId === guestCredentials.participantId);
-  if (!guestEntry?.assignedPlayerIds.includes("player-2")) fail("担当勢力が参加者へ反映されません。");
+  const settingsSnapshot = await minimumFactionSnapshotPromise;
+  if (settingsSnapshot.settings.factionCount !== 2) fail("操作勢力数を参加者数未満へ減らせてしまいます。");
 
   const sharedGameSetup = {
     mapSize:"36x36",
