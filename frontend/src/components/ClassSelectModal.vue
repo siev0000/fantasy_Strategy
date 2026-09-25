@@ -24,6 +24,19 @@ const STATUS_ROW_FIELDS = [
 
 const ACQUIRED_SKILL_FIELDS_LV5 = ["Skill1", "Skill2", "Skill3", "Skill4", "Skill5"];
 
+const CLASS_CATEGORY_ORDER = ["戦士系", "狩人系", "魔法系", "信仰系", "その他"];
+const CLASS_CATEGORY_BY_IMAGE_ID = Object.freeze({
+  "戦士":"戦士系",
+  "狩人":"狩人系",
+  "魔導士":"魔法系",
+  "神官":"信仰系"
+});
+
+// TODO: クラス.json に正式な分類列を追加したら、画像ID判定をその列参照へ置き換える。
+function resolveClassCategory(row) {
+  return CLASS_CATEGORY_BY_IMAGE_ID[nonEmptyText(row?.画像ID)] || "その他";
+}
+
 function toSafeNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const num = Number(value);
@@ -127,12 +140,57 @@ const classCandidates = computed(() => {
 });
 
 const activeClassName = ref("");
+const activeClassCategory = ref("");
 const activeDetailTab = ref("status");
+const rememberedClassByCategory = ref({});
+
+const classCategories = computed(() => (
+  CLASS_CATEGORY_ORDER.filter(category =>
+    classCandidates.value.some(row => resolveClassCategory(row) === category)
+  )
+));
+
+const categoryClasses = computed(() => {
+  const category = nonEmptyText(activeClassCategory.value);
+  if (!category) return classCandidates.value;
+  return classCandidates.value.filter(row => resolveClassCategory(row) === category);
+});
 
 const activeClass = computed(() => {
-  if (!classCandidates.value.length || !activeClassName.value) return null;
-  return classCandidates.value.find(row => nonEmptyText(row.名前) === activeClassName.value) || null;
+  if (!categoryClasses.value.length || !activeClassName.value) return null;
+  return categoryClasses.value.find(row => nonEmptyText(row.名前) === activeClassName.value) || null;
 });
+
+function classesForCategory(category, list = classCandidates.value) {
+  const key = nonEmptyText(category);
+  const source = Array.isArray(list) ? list : [];
+  if (!key) return [];
+  return source.filter(row => resolveClassCategory(row) === key);
+}
+
+function rememberClass(category, className) {
+  const categoryKey = nonEmptyText(category);
+  const name = nonEmptyText(className);
+  if (!categoryKey || !name) return;
+  rememberedClassByCategory.value = {
+    ...rememberedClassByCategory.value,
+    [categoryKey]:name
+  };
+}
+
+function selectRememberedOrFirstClass(category, list = classCandidates.value) {
+  const categoryKey = nonEmptyText(category);
+  const rows = classesForCategory(categoryKey, list);
+  if (!rows.length) {
+    activeClassName.value = "";
+    return;
+  }
+  const rememberedName = nonEmptyText(rememberedClassByCategory.value?.[categoryKey]);
+  const remembered = rows.find(row => nonEmptyText(row.名前) === rememberedName);
+  const next = remembered || rows[0];
+  activeClassName.value = nonEmptyText(next?.名前);
+  rememberClass(categoryKey, activeClassName.value);
+}
 
 const activeSelectionDetail = computed(() => getV39ClassSelectionDetail(activeClass.value?.名前));
 const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
@@ -144,26 +202,69 @@ watch(
   ([isOpen, candidates, selectedClass]) => {
     if (!isOpen) {
       activeClassName.value = "";
+      activeClassCategory.value = "";
       activeDetailTab.value = "status";
+      rememberedClassByCategory.value = {};
       return;
     }
-    const selected = nonEmptyText(selectedClass);
-    if (selected && candidates.some(row => nonEmptyText(row.名前) === selected)) {
-      activeClassName.value = selected;
-      return;
-    }
-    if (!candidates.length) {
+
+    const list = Array.isArray(candidates) ? candidates : [];
+    if (!list.length) {
       activeClassName.value = "";
+      activeClassCategory.value = "";
+      rememberedClassByCategory.value = {};
       return;
     }
-    if (candidates.some(row => nonEmptyText(row.名前) === activeClassName.value)) return;
-    activeClassName.value = "";
+
+    const selected = nonEmptyText(selectedClass);
+    const selectedRow = selected
+      ? list.find(row => nonEmptyText(row.名前) === selected)
+      : null;
+    if (selectedRow) {
+      const category = resolveClassCategory(selectedRow);
+      activeClassCategory.value = category;
+      activeClassName.value = selected;
+      rememberClass(category, selected);
+      return;
+    }
+
+    const categories = classCategories.value;
+    if (!categories.includes(activeClassCategory.value)) {
+      activeClassCategory.value = categories[0] || "";
+      selectRememberedOrFirstClass(activeClassCategory.value, list);
+      return;
+    }
+
+    const current = list.find(row =>
+      nonEmptyText(row.名前) === activeClassName.value
+      && resolveClassCategory(row) === activeClassCategory.value
+    );
+    if (current) {
+      rememberClass(activeClassCategory.value, activeClassName.value);
+      return;
+    }
+
+    selectRememberedOrFirstClass(activeClassCategory.value, list);
   },
-  { immediate: true }
+  { immediate:true }
 );
 
+function selectClassCategory(category) {
+  const next = nonEmptyText(category);
+  if (!next || next === activeClassCategory.value) return;
+  if (activeClassCategory.value && activeClassName.value) {
+    rememberClass(activeClassCategory.value, activeClassName.value);
+  }
+  activeClassCategory.value = next;
+  selectRememberedOrFirstClass(next);
+  activeDetailTab.value = "status";
+}
+
 function selectClass(name) {
-  activeClassName.value = name;
+  const row = classCandidates.value.find(item => nonEmptyText(item?.名前) === nonEmptyText(name));
+  if (!row) return;
+  activeClassName.value = nonEmptyText(row.名前);
+  rememberClass(resolveClassCategory(row), activeClassName.value);
 }
 
 function confirmClass() {
@@ -180,26 +281,44 @@ function confirmClass() {
 <template>
   <base-modal :show="show" title="クラス選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
     <div v-if="selectedRace && classCandidates.length" class="class-layout">
-      <aside class="class-list">
-        <div class="class-list-head">種族: {{ selectedRace }}</div>
-        <button
-          v-for="row in classCandidates"
-          :key="row.名前"
-          type="button"
-          class="class-item"
-          :class="{ active: activeClass?.名前 === row.名前 }"
-          @click="selectClass(row.名前)"
-        >
-          <span class="class-item-main">
-            <img v-if="classIconSrcFromRow(row)" :src="classIconSrcFromRow(row)" :alt="`${row.名前} アイコン`" class="class-item-icon" />
-            <span v-else class="class-item-icon-fallback">{{ String(row.名前 || "?").slice(0, 1) }}</span>
-            <span class="class-item-name">{{ row.名前 }}</span>
-          </span>
-          <span class="class-kind">{{ row.種類 }}</span>
-        </button>
-      </aside>
+      <section class="class-category-pane">
+        <nav class="class-category-tabs" role="tablist" aria-label="クラス系統">
+          <button
+            v-for="category in classCategories"
+            :key="category"
+            type="button"
+            role="tab"
+            :aria-selected="activeClassCategory === category"
+            :class="{ active: activeClassCategory === category }"
+            :data-v39-class-category="category"
+            @click="selectClassCategory(category)"
+          >
+            <strong>{{ category }}</strong>
+          </button>
+        </nav>
+      </section>
 
-      <section v-if="activeClass" class="class-detail">
+      <section class="class-main-pane">
+        <aside class="class-list">
+          <div class="class-list-head">種族: {{ selectedRace }}</div>
+          <button
+            v-for="row in categoryClasses"
+            :key="row.名前"
+            type="button"
+            class="class-item"
+            :class="{ active: activeClass?.名前 === row.名前 }"
+            :data-v39-class-option="row.名前"
+            @click="selectClass(row.名前)"
+          >
+            <span class="class-item-main">
+              <img v-if="classIconSrcFromRow(row)" :src="classIconSrcFromRow(row)" :alt="`${row.名前} アイコン`" class="class-item-icon" />
+              <span v-else class="class-item-icon-fallback">{{ String(row.名前 || "?").slice(0, 1) }}</span>
+              <span class="class-item-name">{{ row.名前 }}</span>
+            </span>
+          </button>
+        </aside>
+
+        <section v-if="activeClass" class="class-detail">
         <header class="class-title">
           <h3>{{ activeClass.名前 }}</h3>
           <div class="class-title-sub">種別: {{ activeClass.種類 }}</div>
@@ -222,9 +341,10 @@ function confirmClass() {
         </div>
       </section>
 
-      <section v-else class="class-detail class-detail-empty">
-        <strong>クラスを選択してください</strong>
-        <span>一覧からクラスを選ぶと、ステータス・技能・スキルの詳細を確認できます。</span>
+        <section v-else class="class-detail class-detail-empty">
+          <strong>クラスを選択してください</strong>
+          <span>左の一覧からクラスを選ぶと、ステータス・技能・スキルの詳細を確認できます。</span>
+        </section>
       </section>
     </div>
 
@@ -237,393 +357,384 @@ function confirmClass() {
 
 <style scoped>
 .class-layout {
-  display: grid;
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+  gap:10px;
+  min-width:0;
+  min-height:0;
+  height:100%;
+  overflow:hidden;
+}
+
+.class-category-pane {
+  min-height:0;
+  padding:8px;
+  border:1px solid var(--picker-line);
+  border-radius:8px;
+  background:#0d181c;
+  overflow:hidden;
+}
+
+.class-category-tabs {
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:7px;
+}
+
+.class-category-tabs button {
+  min-width:0;
+  min-height:40px;
+  display:grid;
+  place-items:center;
+  padding:6px 8px;
+  border:1px solid #385159;
+  border-radius:7px;
+  background:#122126;
+  color:#a9babc;
+  text-align:center;
+  cursor:pointer;
+}
+
+.class-category-tabs button strong {
+  color:#dfe9e8;
+  font-size:14px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+.class-category-tabs button:hover {
+  border-color:#4e7580;
+  color:#dbe8e8;
+}
+
+.class-category-tabs button.active {
+  border-color:var(--picker-active);
+  background:var(--picker-active-bg);
+  color:#f4fbfa;
+  box-shadow:0 0 0 1px rgba(113,209,223,.13) inset;
+}
+
+.class-category-tabs button.active strong {
+  color:#f4fbfa;
+}
+
+.class-main-pane {
+  min-width:0;
+  min-height:0;
+  display:grid;
+  grid-template-columns:minmax(220px,300px) minmax(0,1fr);
+  gap:10px;
+  overflow:hidden;
 }
 
 .class-list {
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  padding: 7px;
-  border: 1px solid var(--picker-line);
-  border-radius: 8px;
-  background: #0d181c;
-  scrollbar-width: thin;
-  scrollbar-color: #405b63 transparent;
+  min-width:0;
+  min-height:0;
+  height:100%;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  display:grid;
+  gap:6px;
+  align-content:start;
+  padding:7px;
+  border:1px solid var(--picker-line);
+  border-radius:8px;
+  background:#0d181c;
+  scrollbar-width:thin;
+  scrollbar-color:#405b63 transparent;
 }
 
 .class-list-head {
-  padding: 4px 3px 6px;
-  color: #9fb1b4;
-  font-size: 12px;
-  font-weight: 800;
+  padding:4px 3px 6px;
+  color:#9fb1b4;
+  font-size:12px;
+  font-weight:800;
 }
 
 .class-item {
-  width: 100%;
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid #30464d;
-  border-radius: 7px;
-  background: #122126;
-  color: #dce7e6;
-  font-size: 15px;
-  font-weight: 700;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color .12s ease, background .12s ease, transform .12s ease;
+  width:100%;
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 8px;
+  border:1px solid #30464d;
+  border-radius:7px;
+  background:#122126;
+  color:#dce7e6;
+  font-size:15px;
+  font-weight:700;
+  text-align:left;
+  cursor:pointer;
+  transition:border-color .12s ease,background .12s ease,transform .12s ease;
 }
 
 .class-item:hover {
-  border-color: #4f7580;
-  background: #162a30;
+  border-color:#4f7580;
+  background:#162a30;
 }
 
 .class-item:active {
-  transform: translateY(1px);
+  transform:translateY(1px);
 }
 
 .class-item.active {
-  border-color: var(--picker-active);
-  background: var(--picker-active-bg);
-  color: #f3fbfa;
-  box-shadow: 0 0 0 1px rgba(113, 209, 223, .16) inset;
+  border-color:var(--picker-active);
+  background:var(--picker-active-bg);
+  color:#f3fbfa;
+  box-shadow:0 0 0 1px rgba(113,209,223,.16) inset;
 }
 
 .class-item-main {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
 }
 
 .class-item-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.2;
 }
 
 .class-item-icon,
 .class-item-icon-fallback {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  border: 1px solid #45616a;
-  border-radius: 6px;
-  background: #17282e;
+  width:34px;
+  height:34px;
+  flex:0 0 auto;
+  border:1px solid #45616a;
+  border-radius:6px;
+  background:#17282e;
 }
 
 .class-item-icon {
-  object-fit: cover;
+  object-fit:cover;
 }
 
 .class-item-icon-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #9ce8f1;
-  font-size: 16px;
-  font-weight: 900;
-}
-
-.class-kind {
-  flex: 0 0 auto;
-  padding: 2px 6px;
-  border: 1px solid #3b565e;
-  border-radius: 999px;
-  color: #91a7aa;
-  background: #0e1b1f;
-  font-size: 10px;
-  font-weight: 800;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  color:#9ce8f1;
+  font-size:16px;
+  font-weight:900;
 }
 
 .class-detail {
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 9px;
-  padding: 10px;
-  border: 1px solid var(--picker-line);
-  border-radius: 8px;
-  background: linear-gradient(180deg, #101d22, #0c171b);
+  min-width:0;
+  min-height:0;
+  height:100%;
+  overflow:hidden;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr) auto;
+  gap:9px;
+  padding:10px;
+  border:1px solid var(--picker-line);
+  border-radius:8px;
+  background:linear-gradient(180deg,#101d22,#0c171b);
 }
 
 .class-title {
-  min-width: 0;
+  min-width:0;
 }
 
 .class-title h3 {
-  margin: 0;
-  color: var(--picker-text);
-  font-size: 24px;
-  line-height: 1.15;
+  margin:0;
+  color:var(--picker-text);
+  font-size:24px;
+  line-height:1.15;
 }
 
 .class-title-sub {
-  margin-top: 3px;
-  color: #90dce7;
-  font-size: 13px;
-  font-weight: 700;
+  margin-top:3px;
+  color:#90dce7;
+  font-size:13px;
+  font-weight:700;
 }
 
 .class-text {
-  margin: 6px 0 0;
-  color: var(--picker-muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.detail-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
-}
-
-.detail-tabs button {
-  min-height: 36px;
-  padding: 5px 8px;
-  border: 1px solid #385159;
-  border-radius: 6px;
-  background: #122126;
-  color: #a9babc;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.detail-tabs button:hover {
-  border-color: #4e7580;
-  color: #dbe8e8;
-}
-
-.detail-tabs button.active {
-  border-color: var(--picker-active);
-  background: var(--picker-active-bg);
-  color: #f4fbfa;
-  box-shadow: 0 0 0 1px rgba(113, 209, 223, .13) inset;
-}
-
-.detail-tab-panel {
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: #405b63 transparent;
-}
-
-.detail-block {
-  padding: 9px;
-  border: 1px solid var(--picker-line-soft);
-  border-radius: 7px;
-  background: #0c171b;
-}
-
-.detail-block h4 {
-  margin: 0 0 7px;
-  color: #dce8e7;
-  font-size: 13px;
-}
-
-.status-rows {
-  display: grid;
-  gap: 5px;
-}
-
-.status-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-}
-
-.status-chip {
-  min-height: 44px;
-  display: grid;
-  align-content: center;
-  gap: 2px;
-  padding: 5px 7px;
-  border-left: 2px solid #4d98a5;
-  background: #102126;
-}
-
-.status-chip span {
-  color: #8fa4a7;
-  font-size: 10px;
-}
-
-.status-chip strong {
-  color: #eff6f5;
-  font-size: 16px;
-  line-height: 1;
-}
-
-.skill-value-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
-}
-
-.skill-value-chip {
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 7px;
-  padding: 5px 7px;
-  border: 1px solid #29454d;
-  border-radius: 5px;
-  background: #102126;
-  color: #aebfc1;
-  font-size: 12px;
-}
-
-.skill-value-chip strong {
-  color: #eef6f5;
-  font-size: 14px;
-}
-
-.note-text,
-.class-detail-empty,
-.class-empty {
-  color: var(--picker-muted);
-}
-
-.skill-detail-block :deep(.skill-table-wrap) {
-  max-height: 480px;
+  margin:6px 0 0;
+  color:var(--picker-muted);
+  font-size:13px;
+  line-height:1.5;
 }
 
 .class-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
 }
 
 .class-actions button {
-  min-height: 38px;
-  padding: 6px 14px;
-  border: 1px solid var(--picker-active);
-  border-radius: 7px;
-  background: #1a4b55;
-  color: #f2fbfa;
-  font-size: 13px;
-  font-weight: 900;
-  cursor: pointer;
+  min-height:38px;
+  padding:6px 14px;
+  border:1px solid var(--picker-active);
+  border-radius:7px;
+  background:#1a4b55;
+  color:#f2fbfa;
+  font-size:13px;
+  font-weight:900;
+  cursor:pointer;
 }
 
 .class-actions button:hover {
-  background: #205964;
+  background:#205964;
 }
 
 .class-actions button.secondary {
-  border-color: #42585f;
-  background: #132126;
-  color: #b8c7c9;
+  border-color:#42585f;
+  background:#132126;
+  color:#b8c7c9;
 }
 
 .class-actions button.secondary:hover {
-  border-color: #5c7982;
-  background: #182b31;
-  color: #e2eceb;
+  border-color:#5c7982;
+  background:#182b31;
+  color:#e2eceb;
 }
 
 .class-detail-empty {
-  grid-template-rows: 1fr;
-  place-content: center;
-  text-align: center;
+  grid-template-rows:1fr;
+  place-content:center;
+  text-align:center;
+  color:var(--picker-muted);
 }
 
 .class-detail-empty strong {
-  color: #dce8e7;
-  font-size: 18px;
+  color:#dce8e7;
+  font-size:18px;
 }
 
 .class-detail-empty span {
-  margin-top: 5px;
-  font-size: 12px;
+  margin-top:5px;
+  font-size:12px;
 }
 
 .class-empty {
-  padding: 12px;
-  border: 1px dashed #3d5961;
-  border-radius: 8px;
-  background: #0e1a1e;
-  font-size: 13px;
+  padding:12px;
+  border:1px dashed #3d5961;
+  border-radius:8px;
+  background:#0e1a1e;
+  color:var(--picker-muted);
+  font-size:13px;
 }
 
-@media (max-width: 760px) {
+@media (max-width:760px) {
   .class-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(120px, 32%) minmax(0, 1fr);
-    height: 100%;
+    grid-template-rows:54px minmax(0,1fr);
+    gap:7px;
+  }
+
+  .class-category-pane {
+    padding:6px;
+  }
+
+  .class-category-tabs {
+    height:100%;
+    gap:4px;
+  }
+
+  .class-category-tabs button {
+    min-height:0;
+    height:100%;
+    padding:4px 3px;
+  }
+
+  .class-category-tabs button strong {
+    font-size:11px;
+  }
+
+  .class-main-pane {
+    grid-template-columns:minmax(130px,35%) minmax(0,65%);
+    gap:7px;
   }
 
   .class-list {
-    max-height: none;
-    height: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height:none;
+    height:100%;
+    display:grid;
+    grid-template-columns:1fr;
+    align-content:start;
+    overflow-x:hidden;
+    overflow-y:auto;
+    padding:5px;
   }
 
   .class-list-head {
-    grid-column: 1 / -1;
+    padding:3px 2px 5px;
+    font-size:10px;
   }
 
   .class-item {
-    min-height: 42px;
-    padding: 5px 7px;
-    font-size: 13px;
+    width:100%;
+    min-width:0;
+    min-height:52px;
+    padding:6px;
+    font-size:12px;
+  }
+
+  .class-item-main {
+    width:100%;
+    gap:6px;
   }
 
   .class-item-icon,
   .class-item-icon-fallback {
-    width: 30px;
-    height: 30px;
+    width:32px;
+    height:32px;
+  }
+
+  .class-item-name {
+    flex:1 1 auto;
+    font-size:11px;
   }
 
   .class-detail {
-    height: 100%;
-    max-height: none;
+    height:100%;
+    max-height:none;
+    gap:6px;
+    padding:7px;
   }
 
   .class-title h3 {
-    font-size: 20px;
+    font-size:18px;
   }
 
-  .status-row,
-  .skill-value-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 430px) {
-  .class-list {
-    grid-template-columns: 1fr;
-    max-height: 160px;
+  .class-title-sub {
+    font-size:11px;
   }
 
-  .detail-tabs button {
-    font-size: 12px;
+  .class-text {
+    margin-top:4px;
+    font-size:11px;
   }
 
   .class-actions button {
-    flex: 1 1 0;
+    flex:1 1 0;
+    min-width:0;
+    min-height:36px;
+    padding:5px 6px;
+    font-size:11px;
+  }
+}
+
+@media (max-width:430px) {
+  .class-main-pane {
+    grid-template-columns:minmax(126px,36%) minmax(0,64%);
+  }
+
+  .class-category-tabs button strong {
+    font-size:10px;
+  }
+
+  .class-item {
+    min-height:50px;
+  }
+
+  .class-item-name {
+    font-size:10px;
   }
 }
 </style>
