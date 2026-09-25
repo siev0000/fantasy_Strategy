@@ -147,6 +147,30 @@ try {
     return faction?.units?.some(unit => unit?.isSovereign === true) && faction?.villagePlacementMode === true;
   }, null, { timeout:10000 });
 
+  // 統治者確定後のsetup snapshotでもPhaserは再生成される。ここで古いCameraの入力が残っていないことを再確認する。
+  const errorsBeforePlacementInput = errors.length;
+  await page.evaluate(() => {
+    const host = document.getElementById("v39-phaser-field");
+    if (!(host instanceof HTMLElement)) throw new Error("Phaserフィールドが見つかりません。");
+    const rect = host.getBoundingClientRect();
+    const init = {
+      bubbles:true,
+      pointerId:92,
+      pointerType:"mouse",
+      button:0,
+      buttons:1,
+      clientX:rect.left - 40,
+      clientY:rect.top - 40
+    };
+    host.dispatchEvent(new PointerEvent("pointerdown", init));
+    host.dispatchEvent(new PointerEvent("pointerup", { ...init, buttons:0 }));
+  });
+  await page.waitForTimeout(50);
+  const placementInputErrors = errors.slice(errorsBeforePlacementInput);
+  if (placementInputErrors.some(message => message.includes("getWorldPoint") || message.includes("reading '0'"))) {
+    throw new Error(`統治者確定後のマップ入力で破棄済みCameraが参照されました: ${placementInputErrors.join(" | ")}`);
+  }
+
   const placementTile = await page.evaluate(() => {
     const field = window.__v39FieldRuntime?.mapData;
     if (!field) return null;
