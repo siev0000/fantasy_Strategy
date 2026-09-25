@@ -6,6 +6,7 @@ import "../dev/v39-performance-monitor.js";
 import "../ui/v39-operation-ui.js";
 import "../ui/v39-feedback.js";
 import "../core/v39-game-state-bridge.js";
+import "../core/v39-initial-sovereign-vue-bridge.js";
 import "../world/v39-economy-ui.js";
 import "../world/v39-settlement-ui.js";
 import "../ui/v39-legacy-ui.js";

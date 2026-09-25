@@ -71,8 +71,6 @@ function resolveSkillDescription(field) {
 }
 
 function raceListIconSrc(race) {
-  const icon = nonEmptyText(race?.icon);
-  if (icon) return icon;
   const iconName = nonEmptyText(race?.画像ID);
   if (iconName && hasIconName(iconName)) {
     return getIconSrcByName(iconName, iconName);

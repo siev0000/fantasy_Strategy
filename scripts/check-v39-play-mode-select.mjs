@@ -9,11 +9,17 @@ async function checkSelection(playMode) {
   await page.locator("#v39-play-mode-select.open").waitFor();
   if (await page.locator("#v39-field-settings-modal.open").count()) throw new Error("形式選択より先にゲーム開始設定が開いています。");
   await page.locator(`[data-v39-play-mode=${playMode}]`).click();
-  const targetSelector = playMode === "multiplayer" ? "#v39-multiplayer-lobby.open" : "#v39-field-settings-modal.open";
+  const targetSelector = playMode === "multiplayer"
+    ? "#v39-multiplayer-lobby.open"
+    : playMode === "single-normal"
+      ? '[data-v39-race-option="只人"]'
+      : "#v39-field-settings-modal.open";
   await page.locator(targetSelector).waitFor();
   const subtitle = playMode === "multiplayer"
     ? await page.locator("#v39-room-title").textContent()
-    : await page.locator("#v39-field-settings-subtitle").textContent();
+    : playMode === "single-normal"
+      ? await page.locator(".race-layout").textContent()
+      : await page.locator("#v39-field-settings-subtitle").textContent();
   const fieldSettingsOpen = await page.locator("#v39-field-settings-modal.open").count();
   const selectedPlayMode = await page.evaluate(() => window.getV39PlayMode?.() || "");
   const testMode = await page.evaluate(() => window.isV39TestMode?.() === true);
@@ -28,8 +34,6 @@ async function checkSingleSovereignSetup() {
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
   await page.locator("[data-v39-play-mode=single-normal]").click();
-  await page.locator("#v39-field-settings-modal.open").waitFor();
-  await page.locator("#v39-field-generate").click();
   await page.locator('[data-v39-race-option="只人"]').waitFor({ timeout:10000 });
   if (!(await page.locator(".vue-modal-backdrop.open:visible").count())) {
     throw new Error("共通Vueモーダルが表示状態になっていません。");
@@ -60,6 +64,8 @@ async function checkSingleSovereignSetup() {
   await inputs.nth(0).fill("通常統治者");
   await inputs.nth(1).fill("通常拠点");
   await page.locator(".name-actions button").filter({ hasText:"決定" }).click();
+  await page.locator("#v39-field-settings-modal.open").waitFor({ timeout:5000 });
+  await page.locator("#v39-field-generate").click();
   await page.waitForFunction(() => {
     const player = window.getV39GameState?.()?.players?.[0];
     return player?.race === "只人"
@@ -89,7 +95,7 @@ try {
     || singleNormal.testMode !== false
     || singleTest.testMode !== true
     || multiplayer.testMode !== false
-    || !String(singleNormal.subtitle).includes("通常プレイ")
+    || !String(singleNormal.subtitle).includes("只人")
     || !String(singleTest.subtitle).includes("テストプレイ")
     || !String(multiplayer.subtitle).includes("通信ルーム")
     || multiplayer.fieldSettingsOpen

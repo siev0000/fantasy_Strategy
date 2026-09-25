@@ -629,6 +629,10 @@ function boot() {
           participantCount:next.localParticipantCount,
           playerParticipantAssignments:next.playerParticipantAssignments
         });
+        if (next.playMode === "single-normal" && window.__v39PendingInitialSovereignProfile) {
+          const profileResult = window.consumeV39PendingInitialSovereignProfile?.();
+          if (!profileResult?.ok) throw new Error(profileResult?.reason || "開始統治者を作成できませんでした");
+        }
         window.setV39GameState({ gameSettings: next.gameSettings }, { reason: "game-start-settings" });
       }
       window.generateFieldFromSettings({

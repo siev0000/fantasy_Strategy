@@ -78,6 +78,9 @@ function selectPlayMode(value) {
     window.openV39MultiplayerLobby?.({ mode:"create" });
     return;
   }
+  if (playMode === "single-normal" && window.openV39PreMapSovereignSetup?.({ playMode, playerId:"player-1" })) {
+    return;
+  }
   window.openFieldSettingsModal?.({ playMode });
 }
 

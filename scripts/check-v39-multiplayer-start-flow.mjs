@@ -140,7 +140,7 @@ try {
   }, null, { timeout:10000 });
 
   // セットアップスナップショット読込でPhaserが再生成された後も、破棄済みCameraの入力が残らないことを確認する。
-  await page.locator("#v39-initial-sovereign-modal.open").waitFor({ timeout:10000 });
+  await page.locator(".class-item").filter({ hasText:"ファイター" }).waitFor({ timeout:10000 });
   await page.evaluate(() => {
     const host = document.getElementById("v39-phaser-field");
     if (!(host instanceof HTMLElement)) throw new Error("Phaserフィールドが見つかりません。");
@@ -162,11 +162,15 @@ try {
     throw new Error(`Phaser再生成後のマップ入力で例外が発生しました: ${errors.join(" | ")}`);
   }
 
-  // ワールド生成後はplayingへ直行せず、v39統治者作成UIで統治者を作る。
-  await page.locator('[data-v39-sovereign-class-card="ファイター"]').click();
-  await page.locator("[data-v39-sovereign-name]").fill("テスト統治者");
-  await page.locator("[data-v39-sovereign-village]").fill("テスト拠点");
-  await page.locator("[data-v39-sovereign-confirm]").click();
+  // ワールド生成後はplayingへ直行せず、共通Vueモーダルで統治者を作る。
+  await page.locator(".class-item").filter({ hasText:"ファイター" }).waitFor({ timeout:10000 });
+  await page.locator(".class-item").filter({ hasText:"ファイター" }).click();
+  await page.locator(".class-actions button").filter({ hasText:"このクラスで決定" }).click();
+  await page.locator(".name-form").waitFor({ timeout:5000 });
+  const nameInputs = page.locator(".name-form input");
+  await nameInputs.nth(0).fill("テスト統治者");
+  await nameInputs.nth(1).fill("テスト拠点");
+  await page.locator(".name-actions button").filter({ hasText:"決定" }).click();
 
   await page.waitForFunction(() => {
     const faction = window.getV39GameState?.()?.players?.[0]?.factionState;
