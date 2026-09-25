@@ -350,7 +350,8 @@ function renderLobby() {
   };
   const hostParticipant = getParticipantById(roomSnapshot.hostParticipantId);
   const mine = getParticipantById(getMyParticipantId());
-  const factionCount = Math.max(1, Number(settings.factionCount) || 1);
+  const participantMinimumFactionCount = Math.max(1, participants.length);
+  const factionCount = Math.max(participantMinimumFactionCount, Number(settings.factionCount) || participantMinimumFactionCount);
   const factionSelections = settings.playerFactionSelections || {};
   const playerIds = Array.from({ length:factionCount }, (_, index) => `player-${index + 1}`);
   const allFactionsSelected = playerIds.every(playerId => SELECTABLE_RACE_KEYS.has(text(factionSelections[playerId])));
@@ -391,8 +392,12 @@ function renderLobby() {
         <button type="button" data-v39-room-action="game-settings">ゲーム開始設定</button>
       </div>
       <p class="v39-room-note">ゲーム設定: ${escapeHtml(formatGameSetupSummary(settings.gameSetup))}</p>
-      <label class="v39-room-assignment">操作勢力数<select data-v39-room-faction-count>${Array.from({ length:8 }, (_, index) => `<option value="${index + 1}"${index + 1 === Number(settings.factionCount) ? " selected" : ""}>${index + 1}</option>`).join("")}</select></label>
+      <label class="v39-room-assignment">操作勢力数<select data-v39-room-faction-count>${Array.from({ length:8 - participantMinimumFactionCount + 1 }, (_, index) => {
+        const count = participantMinimumFactionCount + index;
+        return `<option value="${count}"${count === Number(settings.factionCount) ? " selected" : ""}>${count}</option>`;
+      }).join("")}</select></label>
       <div class="v39-room-assignment-list">${assignmentRows}</div>
+      <p class="v39-room-note">操作勢力数は参加者数以上です。参加者が増えると自動で勢力枠を追加し、新しい参加者へ担当を割り当てます。</p>
       <p class="v39-room-note">設定変更時は、他参加者の準備完了を解除します。</p>
     </section>` : "";
   const startButton = isHost() && roomSnapshot.phase === "lobby"
