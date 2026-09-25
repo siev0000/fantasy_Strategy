@@ -4,6 +4,7 @@ import { io } from "socket.io-client";
 import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH, UI_MANUAL_SCALE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./lib/research-tree-config.js";
 import { raceData as raceSelectionDb } from "./lib/game-data-registry.js";
+import { applyV39InitialSovereignProfile } from "./v39/core/v39-initial-sovereign.js";
 import {
   GAME_START_DEFAULT_MAX_COMBAT_TURNS,
   GAME_START_DEFAULT_TURN_MODE,
@@ -278,6 +279,7 @@ const selectedCharacterName = ref("主人公");
 const selectedVillageName = ref("はじまりの村");
 const gameSetupReady = ref(false);
 const gameFlowStep = ref("idle");
+const localV39SovereignSetupTarget = ref(null);
 const multiplayerSetupTarget = ref(null);
 const multiplayerRaceSelectionTarget = ref(null);
 const characterCommand = ref(null);
@@ -380,6 +382,7 @@ const sim = reactive({
 });
 
 let globalKeyHandler = null;
+let localInitialSovereignRequiredHandler = null;
 let multiplayerRaceSelectionRequestHandler = null;
 let multiplayerSovereignRequiredHandler = null;
 let multiplayerGameStartedHandler = null;
@@ -530,6 +533,10 @@ function cancelMultiplayerRaceSelection() {
 }
 
 function closeModal(kind) {
+  if (localV39SovereignSetupTarget.value && (kind === "race" || kind === "class" || kind === "name")) {
+    setSessionStatus("ゲーム開始には統治者設定が必要です。", "warn");
+    return;
+  }
   if (kind === "race" && multiplayerRaceSelectionTarget.value) {
     cancelMultiplayerRaceSelection();
     return;
@@ -550,6 +557,10 @@ function closeModal(kind) {
 }
 
 function closeAllModals() {
+  if (localV39SovereignSetupTarget.value) {
+    setSessionStatus("ゲーム開始には統治者設定が必要です。", "warn");
+    return;
+  }
   if (multiplayerRaceSelectionTarget.value) cancelMultiplayerRaceSelection();
   showRoomModal.value = false;
   showBattleModal.value = false;
@@ -787,6 +798,38 @@ function applyCharacterName(payload) {
   gameSetupReady.value = false;
   gameFlowStep.value = "sovereign";
   showCharacterNameModal.value = false;
+
+  if (localV39SovereignSetupTarget.value) {
+    const target = localV39SovereignSetupTarget.value;
+    const state = window.getV39GameState?.();
+    const players = Array.isArray(state?.players) ? state.players : [];
+    const stateWithRace = {
+      ...state,
+      players:players.map(player => String(player?.id || "") === target.playerId
+        ? { ...player, race:selectedRace.value }
+        : player)
+    };
+    const result = applyV39InitialSovereignProfile(stateWithRace, {
+      playerId:target.playerId,
+      race:selectedRace.value,
+      className:selectedClass.value,
+      characterName,
+      villageName
+    });
+    if (!result.ok) {
+      setSessionStatus(result.reason || "統治者を作成できませんでした。", "error");
+      showCharacterNameModal.value = true;
+      return;
+    }
+    localV39SovereignSetupTarget.value = null;
+    window.setV39GameState?.(result.state, { reason:"initial-sovereign-vue" });
+    window.setV39ActivePlayer?.(target.playerId);
+    gameSetupReady.value = true;
+    gameFlowStep.value = "village";
+    setSessionStatus("統治者設定が完了しました。初期拠点を配置してください。", "warn");
+    window.setTimeout(() => window.beginV39InitialPlacement?.({ force:true }), 0);
+    return;
+  }
 
   if (multiplayerSetupTarget.value) {
     const target = multiplayerSetupTarget.value;
@@ -1556,6 +1599,23 @@ function renderGameStateToText() {
 }
 
 onMounted(() => {
+  localInitialSovereignRequiredHandler = event => {
+    if (window.getV39PlayMode?.() === "multiplayer" || window.isV39MultiplayerSetup?.() === true) return;
+    const playerId = String(event?.detail?.playerId || "").trim();
+    const race = String(event?.detail?.race || "").trim();
+    if (!playerId) return;
+    localV39SovereignSetupTarget.value = { playerId };
+    selectedRace.value = Object.prototype.hasOwnProperty.call(RACES, race) ? race : "";
+    selectedClass.value = "";
+    selectedCharacterName.value = "主人公";
+    selectedVillageName.value = "はじまりの村";
+    gameSetupReady.value = false;
+    gameFlowStep.value = "sovereign";
+    showClassModal.value = false;
+    showCharacterNameModal.value = false;
+    showRaceModal.value = true;
+    setSessionStatus("開始種族を選択してください。", "warn");
+  };
   multiplayerRaceSelectionRequestHandler = event => {
     const playerId = String(event?.detail?.playerId || "").trim();
     const currentRace = String(event?.detail?.currentRace || "").trim();
@@ -1596,6 +1656,7 @@ onMounted(() => {
     showCharacterNameModal.value = false;
     setSessionStatus("初期設定が完了しました。ゲームを開始します。", "ok");
   };
+  window.addEventListener("v39:initial-sovereign-required", localInitialSovereignRequiredHandler);
   window.addEventListener("v39:multiplayer-race-select-request", multiplayerRaceSelectionRequestHandler);
   window.addEventListener("v39:multiplayer-sovereign-required", multiplayerSovereignRequiredHandler);
   window.addEventListener("v39:multiplayer-game-started", multiplayerGameStartedHandler);
@@ -1686,6 +1747,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (localInitialSovereignRequiredHandler) {
+    window.removeEventListener("v39:initial-sovereign-required", localInitialSovereignRequiredHandler);
+    localInitialSovereignRequiredHandler = null;
+  }
   if (multiplayerRaceSelectionRequestHandler) {
     window.removeEventListener("v39:multiplayer-race-select-request", multiplayerRaceSelectionRequestHandler);
     multiplayerRaceSelectionRequestHandler = null;
