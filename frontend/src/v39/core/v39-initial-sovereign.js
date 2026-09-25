@@ -31,14 +31,19 @@ function isInitialUnlockedClass(row) {
   return true;
 }
 
-function resolveAllowedClass(race, className) {
+export function getV39InitialSovereignClassCandidates(race) {
   const raceDefinition = raceByKey.get(text(race));
-  const row = classByName.get(text(className)) || null;
-  if (!raceDefinition || !row) return null;
+  if (!raceDefinition) return [];
   const raceClassName = text(raceDefinition.className);
-  if (text(row?.名前) === raceClassName && text(row?.種類) !== "人族") return row;
-  if (text(row?.種類) === "職業" && isInitialUnlockedClass(row)) return row;
-  return null;
+  return classRows.filter(row => {
+    if (text(row?.名前) === raceClassName && text(row?.種類) !== "人族") return true;
+    return text(row?.種類) === "職業" && isInitialUnlockedClass(row);
+  });
+}
+
+function resolveAllowedClass(race, className) {
+  return getV39InitialSovereignClassCandidates(race)
+    .find(row => text(row?.名前) === text(className)) || null;
 }
 
 function equipmentSlotEnabled(value) {

@@ -18,6 +18,7 @@ import "../map/v39-field-settings-entry.js";
 import "../core/v39-play-mode-select.js";
 import "../map/v39-field-settings-final.js";
 import "../map/v39-field-settings-stabilizer.js";
+import "../core/v39-initial-sovereign-ui.js";
 import "../core/v39-multiplayer-lobby.js";
 import "../core/v39-save-system.js";
 import "../world/v39-nation-diplomacy-ui.js";

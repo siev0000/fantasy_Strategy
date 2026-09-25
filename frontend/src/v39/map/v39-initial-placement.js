@@ -489,7 +489,7 @@ function syncPlacementMode() {
   if (!faction) return;
   if (faction.villagePlacementMode) {
     showBanner(placementBannerText(faction), true);
-  } else if (getSelectedSettlement(faction)?.placed) {
+  } else {
     hideBanner();
   }
 }

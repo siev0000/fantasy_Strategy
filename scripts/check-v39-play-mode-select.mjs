@@ -21,12 +21,45 @@ async function checkSelection(playMode) {
   return { playMode, selectedPlayMode, testMode, subtitle, fieldSettingsOpen, errors };
 }
 
+async function checkSingleSovereignSetup() {
+  const page = await browser.newPage({ viewport:{ width:430, height:760 }, isMobile:true, hasTouch:true });
+  const errors = [];
+  page.on("pageerror", error => errors.push(String(error)));
+  page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
+  await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+  await page.locator("[data-v39-play-mode=single-normal]").click();
+  await page.locator("#v39-field-settings-modal.open").waitFor();
+  await page.locator("#v39-field-generate").click();
+  await page.locator("#v39-initial-sovereign-modal.open").waitFor({ timeout:10000 });
+  await page.screenshot({ path:"output/web-game/v39-sovereign-race-select.png" });
+  await page.locator('[data-v39-sovereign-race-card="只人"]').click();
+  await page.screenshot({ path:"output/web-game/v39-sovereign-class-select.png" });
+  await page.locator('[data-v39-sovereign-class-card="ファイター"]').click();
+  await page.locator("[data-v39-sovereign-name]").fill("通常統治者");
+  await page.locator("[data-v39-sovereign-village]").fill("通常拠点");
+  await page.locator("[data-v39-sovereign-confirm]").click();
+  await page.waitForFunction(() => {
+    const player = window.getV39GameState?.()?.players?.[0];
+    return player?.race === "只人"
+      && player.factionState?.units?.some(unit => unit?.isSovereign === true)
+      && player.factionState?.villagePlacementMode === true;
+  }, null, { timeout:10000 });
+  const state = await page.evaluate(() => {
+    const player = window.getV39GameState?.()?.players?.[0];
+    const sovereign = player?.factionState?.units?.find(unit => unit?.isSovereign === true);
+    return { race:player?.race, name:sovereign?.name, className:sovereign?.className };
+  });
+  await page.close();
+  return { state, errors };
+}
+
 const browser = await chromium.launch({ headless:true });
 try {
   const singleNormal = await checkSelection("single-normal");
   const singleTest = await checkSelection("single-test");
   const multiplayer = await checkSelection("multiplayer");
-  console.log(JSON.stringify({ singleNormal, singleTest, multiplayer }, null, 2));
+  const singleSovereign = await checkSingleSovereignSetup();
+  console.log(JSON.stringify({ singleNormal, singleTest, multiplayer, singleSovereign }, null, 2));
   if (singleNormal.errors.length || singleTest.errors.length || multiplayer.errors.length
     || singleNormal.selectedPlayMode !== "single-normal"
     || singleTest.selectedPlayMode !== "single-test"
@@ -37,7 +70,11 @@ try {
     || !String(singleNormal.subtitle).includes("通常プレイ")
     || !String(singleTest.subtitle).includes("テストプレイ")
     || !String(multiplayer.subtitle).includes("通信ルーム")
-    || multiplayer.fieldSettingsOpen) process.exitCode = 1;
+    || multiplayer.fieldSettingsOpen
+    || singleSovereign.errors.length
+    || singleSovereign.state.race !== "只人"
+    || singleSovereign.state.name !== "通常統治者"
+    || singleSovereign.state.className !== "ファイター") process.exitCode = 1;
 } finally {
   await browser.close();
 }

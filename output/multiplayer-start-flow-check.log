@@ -1,0 +1,16 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+locator.waitFor: Timeout 10000ms exceeded.
+Call log:
+[2m  - waiting for locator('.class-item').filter({ hasText: 'ファイター' }) to be visible[22m
+
+    at C:\Users\skkt3\ドキュメント\Github\fantasy_Strategy\scripts\check-v39-multiplayer-start-flow.mjs:116:65 {
+  log: [
+    "  - waiting for locator('.class-item').filter({ hasText: 'ファイター' }) to be visible"
+  ],
+  name: 'TimeoutError'
+}
+
+Node.js v22.20.0
