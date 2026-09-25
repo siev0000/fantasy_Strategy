@@ -94,6 +94,22 @@ try {
   }
   await factionSelect.selectOption("只人");
   await page.waitForFunction(() => document.querySelector('[data-v39-room-faction-select="player-1"]')?.value === "只人");
+
+  const factionDetailTabs = page.locator('[data-v39-faction-detail-player="player-1"]');
+  if (await factionDetailTabs.count() !== 3) throw new Error("開始勢力の詳細がステータス・技能・スキルの3タブ表示になっていません。");
+  const statusBodyText = await page.locator(".v39-faction-detail-body").first().textContent();
+  if (!statusBodyText?.includes("HP") || !statusBodyText?.includes("攻撃") || !statusBodyText?.includes("防御")) {
+    throw new Error("開始勢力のステータス詳細が表示されていません。");
+  }
+  await page.locator('[data-v39-faction-detail-tab="skills"][data-v39-faction-detail-player="player-1"]').click();
+  if (!(await page.locator('[data-v39-faction-detail-tab="skills"][data-v39-faction-detail-player="player-1"]').getAttribute("aria-selected"))?.includes("true")) {
+    throw new Error("開始勢力の技能タブへ切り替えられません。");
+  }
+  await page.locator('[data-v39-faction-detail-tab="abilities"][data-v39-faction-detail-player="player-1"]').click();
+  if (!(await page.locator('[data-v39-faction-detail-tab="abilities"][data-v39-faction-detail-player="player-1"]').getAttribute("aria-selected"))?.includes("true")) {
+    throw new Error("開始勢力のスキルタブへ切り替えられません。");
+  }
+
   await page.locator("[data-v39-room-action=ready]").click();
   await page.waitForFunction(() => !document.querySelector("[data-v39-room-action=start-game]")?.disabled);
 
