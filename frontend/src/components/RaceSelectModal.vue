@@ -7,6 +7,7 @@ import {
   descriptionData as skillDescDb,
   raceData as raceSelectionDb
 } from "../lib/game-data-registry.js";
+import { getV39RaceSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 
@@ -125,52 +126,12 @@ const activeRace = computed(() => {
   return filteredRaces.value.find(item => item.key === activeRaceKey.value) || null;
 });
 
-const activeRaceClassRow = computed(() => {
-  const raceKey = nonEmptyText(activeRace.value?.key);
-  if (!raceKey) return null;
-  const raceClassName = RACE_CLASS_NAME_MAP[raceKey] || raceKey;
-  return classRows.value.find(row => nonEmptyText(row.名前) === raceClassName) || null;
-});
+const activeSelectionDetail = computed(() => getV39RaceSelectionDetail(activeRace.value?.key));
 
-const statusRowGroups = computed(() => {
-  const row = activeRaceClassRow.value;
-  if (!row) return [];
-  return STATUS_ROW_FIELDS.map((group, index) => ({
-    key: `status-row-${index}`,
-    fields: group.map(field => ({
-      key: field,
-      value: toSafeNumber(row[field])
-    }))
-  }));
-});
-
-const skillRows = computed(() => {
-  const row = activeRaceClassRow.value;
-  if (!row) return [];
-  return SKILL_FIELD_DEFS.map((field) => {
-    const value = resolveSkillFieldValue(row, field);
-    return {
-      key: field.key,
-      label: field.label || field.key,
-      value,
-      desc: resolveSkillDescription(field)
-    };
-  }).filter(item => item.value > 0);
-});
-
-const raceLv5SkillNames = computed(() => {
-  const row = activeRaceClassRow.value;
-  if (!row) return [];
-  const out = [];
-  const seen = new Set();
-  for (const field of ACQUIRED_SKILL_FIELDS_LV5) {
-    const name = nonEmptyText(row[field]);
-    if (isPlaceholderSkillName(name) || seen.has(name)) continue;
-    seen.add(name);
-    out.push(name);
-  }
-  return out;
-});
+const activeRaceClassRow = computed(() => activeSelectionDetail.value?.sourceRow || null);
+const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
+const skillRows = computed(() => activeSelectionDetail.value?.skillRows || []);
+const raceLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
 
 watch(
   [() => props.show, filteredRaces, () => props.selectedRace],
