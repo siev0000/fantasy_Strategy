@@ -13,9 +13,10 @@ const props = defineProps({
 
 const emit = defineEmits(["update:activeTab"]);
 
-const normalizedTab = computed(() => (
-  ["status", "skills", "abilities"].includes(props.activeTab) ? props.activeTab : "status"
-));
+const normalizedTab = computed(() => {
+  if (props.activeTab === "abilities") return "abilities";
+  return "status";
+});
 
 const flatStatusRows = computed(() => (
   (Array.isArray(props.statusRows) ? props.statusRows : [])
@@ -23,7 +24,7 @@ const flatStatusRows = computed(() => (
 ));
 
 function setTab(tab) {
-  if (!["status", "skills", "abilities"].includes(tab)) return;
+  if (!["status", "abilities"].includes(tab)) return;
   emit("update:activeTab", tab);
 }
 </script>
@@ -31,8 +32,7 @@ function setTab(tab) {
 <template>
   <section class="selection-detail-panel">
     <nav class="detail-tabs operation-detail-tabs" role="tablist" aria-label="選択詳細">
-      <button type="button" role="tab" :aria-selected="normalizedTab === 'status'" :class="{ active: normalizedTab === 'status' }" @click="setTab('status')">ステータス</button>
-      <button type="button" role="tab" :aria-selected="normalizedTab === 'skills'" :class="{ active: normalizedTab === 'skills' }" @click="setTab('skills')">技能</button>
+      <button type="button" role="tab" :aria-selected="normalizedTab === 'status'" :class="{ active: normalizedTab === 'status' }" @click="setTab('status')">ステータス技能</button>
       <button type="button" role="tab" :aria-selected="normalizedTab === 'abilities'" :class="{ active: normalizedTab === 'abilities' }" @click="setTab('abilities')">スキル</button>
     </nav>
 
@@ -49,9 +49,7 @@ function setTab(tab) {
             </div>
           </div>
         </section>
-      </section>
 
-      <section v-else-if="normalizedTab === 'skills'" class="operation-detail-panel" role="tabpanel">
         <section class="operation-detail-section">
           <header class="operation-detail-section-title">技能</header>
           <div class="operation-detail-section-body">
@@ -106,7 +104,7 @@ function setTab(tab) {
 
 .operation-detail-tabs {
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:4px;
   padding:4px 7px;
   border-bottom:1px solid #2f3b3f;
@@ -153,6 +151,9 @@ function setTab(tab) {
   width:100%;
   height:100%;
   min-height:0;
+  display:grid;
+  align-content:start;
+  gap:3px;
   overflow-y:auto;
   overflow-x:hidden;
   overscroll-behavior:contain;
