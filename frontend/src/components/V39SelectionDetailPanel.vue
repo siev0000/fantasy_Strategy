@@ -123,7 +123,12 @@ function signedValue(value) {
           </button>
           <div v-if="!collapsedSections.resistances" class="operation-detail-section-body">
             <div v-if="resistanceRows.length" class="operation-resistance-grid">
-              <div v-for="item in resistanceRows" :key="item.key" class="operation-resistance-item">
+              <div
+                v-for="item in resistanceRows"
+                :key="item.key"
+                class="operation-resistance-item"
+                :class="{ positive: Number(item.value) > 0, negative: Number(item.value) < 0 }"
+              >
                 <span>{{ item.key }}</span>
                 <b>{{ signedValue(item.value) }}</b>
               </div>
@@ -338,6 +343,24 @@ button.operation-detail-section-title:hover {
   flex:0 0 auto;
   color:#f0f5f3;
   font-size:13px;
+}
+
+.operation-resistance-item.positive {
+  border-color:rgba(104, 205, 139, .5);
+  background:rgba(25, 59, 39, .72);
+}
+
+.operation-resistance-item.positive b {
+  color:#7de0a0;
+}
+
+.operation-resistance-item.negative {
+  border-color:rgba(224, 116, 99, .52);
+  background:rgba(67, 31, 29, .72);
+}
+
+.operation-resistance-item.negative b {
+  color:#f08f7f;
 }
 
 .operation-proficiency-grid {
