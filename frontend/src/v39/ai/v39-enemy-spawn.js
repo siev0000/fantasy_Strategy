@@ -525,7 +525,7 @@ function buildEnemyNestAndSquadState(enemies) {
   return { enemyNests:nests, enemySquads };
 }
 
-function buildEnemies(data, settlements) {
+function collectEnemySpawnPlan(data, settlements) {
   const w = Math.max(1, integer(data?.w, 1));
   const h = Math.max(1, integer(data?.h, 1));
   const wrapEnabled = data?.worldWrapEnabled !== false
@@ -582,7 +582,27 @@ function buildEnemies(data, settlements) {
     normalSpawned += 1;
   }
 
-  return enemies;
+  return {
+    enemies,
+    diagnostics:{
+      width:w,
+      height:h,
+      settlementCount:Array.isArray(settlements) ? settlements.length : 0,
+      normalCandidateCount:normalCandidates.length,
+      strongCandidateCount:strongCandidates.length,
+      spawnableTileCount,
+      tileDivisor,
+      desiredTotalCount,
+      desiredNormalCount,
+      spawnedCount:enemies.length,
+      strongSpawnedCount:enemies.filter(enemy => enemy?.strongEnemy === true).length,
+      normalSpawnedCount:enemies.filter(enemy => enemy?.spawnType === "通常").length
+    }
+  };
+}
+
+function buildEnemies(data, settlements) {
+  return collectEnemySpawnPlan(data, settlements).enemies;
 }
 
 function initialSettlementTargetCount(faction) {
@@ -638,7 +658,8 @@ function spawnForActivePlayer() {
   const settlements = (state?.players || [])
     .flatMap(player => getFactionSettlements(player?.factionState).filter(row => row?.placed));
   if (!data || !state || !settlements.length) return [];
-  const enemies = buildEnemies(data, settlements);
+  const spawnPlan = collectEnemySpawnPlan(data, settlements);
+  const enemies = spawnPlan.enemies;
   const { enemyNests, enemySquads } = buildEnemyNestAndSquadState(enemies);
   const strongCount = enemies.filter(enemy => enemy?.strongEnemy === true).length;
   const strongMinionCount = enemies.filter(enemy => enemy?.strongMinion === true).length;
@@ -661,7 +682,8 @@ function spawnForActivePlayer() {
       strongMinionCount,
       strongGroupCount,
       tileDivisor:enemySpawnTileDivisor(),
-      baseCount:settlements.length
+      baseCount:settlements.length,
+      diagnostics:spawnPlan.diagnostics
     }
   }));
   return enemies;
@@ -684,6 +706,21 @@ window.addEventListener("v39:initial-settlement-placed", () => ensureInitialEnem
 window.addEventListener("v39:bootstrap-complete", () => ensureInitialEnemiesSpawned("bootstrap-complete"));
 window.spawnV39Enemies = spawnForActivePlayer;
 window.ensureV39InitialEnemiesSpawned = ensureInitialEnemiesSpawned;
+window.inspectV39EnemySpawn = () => {
+  const data = window.__v39FieldRuntime?.mapData;
+  const state = window.getV39GameState?.();
+  const settlements = (state?.players || [])
+    .flatMap(player => getFactionSettlements(player?.factionState).filter(row => row?.placed));
+  if (!data || !state) return { ok:false, reason:"field-or-state-missing" };
+  const plan = collectEnemySpawnPlan(data, settlements);
+  return {
+    ok:true,
+    allInitialPlacementsComplete:allInitialPlacementsComplete(state),
+    currentEnemyCount:Array.isArray(state.enemies) ? state.enemies.length : 0,
+    validDefinitionCount:[...definitionsByTerrain.values()].reduce((sum, rows) => sum + rows.length, 0),
+    ...plan.diagnostics
+  };
+};
 window.getV39EnemySpawnRules = () => ({
   safeDistanceFromBase:SAFE_DISTANCE_FROM_BASE,
   lowLevelDistanceFromBase:LOW_LEVEL_DISTANCE_FROM_BASE,
