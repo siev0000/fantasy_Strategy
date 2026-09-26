@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
-import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../lib/resistance-display.js";
+import ResistanceIndicator from "./ResistanceIndicator.vue";
 
 const props = defineProps({
   statusRows: { type:Array, default:() => [] },
@@ -118,23 +118,13 @@ function toggleSection(key) {
           </button>
           <div v-if="!collapsedSections.resistances" class="operation-detail-section-body">
             <div v-if="resistanceRows.length" class="operation-resistance-grid">
-              <div
+              <resistance-indicator
                 v-for="item in resistanceRows"
                 :key="item.key"
-                class="operation-resistance-item"
-                :class="resistanceValueTone(item.value)"
-              >
-                <span class="operation-resistance-label">
-                  <img
-                    v-if="getResistanceIconSrc(item.key)"
-                    :src="getResistanceIconSrc(item.key)"
-                    :alt="`${item.key} アイコン`"
-                    class="operation-resistance-icon"
-                  />
-                  <span>{{ item.key }}</span>
-                </span>
-                <b>{{ formatResistanceValue(item.value) }}</b>
-              </div>
+                :resistance-key="item.key"
+                :value="item.value"
+                variant="dark"
+              />
             </div>
             <div v-else class="operation-empty">耐性補正なし</div>
           </div>
@@ -318,67 +308,6 @@ button.operation-detail-section-title:hover {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:2px;
-}
-
-.operation-resistance-item {
-  min-width:0;
-  min-height:34px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:4px;
-  padding:4px 6px;
-  border:1px solid #3d4d54;
-  border-radius:7px;
-  background:#121c20;
-}
-
-.operation-resistance-label {
-  min-width:0;
-  display:flex;
-  align-items:center;
-  gap:5px;
-}
-
-.operation-resistance-label > span {
-  min-width:0;
-  color:#a7b4b7;
-  font-size:11px;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-.operation-resistance-icon {
-  width:20px;
-  height:20px;
-  flex:0 0 auto;
-  object-fit:contain;
-  border-radius:4px;
-}
-
-.operation-resistance-item b {
-  flex:0 0 auto;
-  color:#f0f5f3;
-  font-size:13px;
-}
-
-.operation-resistance-item.positive {
-  border-color:rgba(104, 205, 139, .5);
-  background:rgba(25, 59, 39, .72);
-}
-
-.operation-resistance-item.positive b {
-  color:#7de0a0;
-}
-
-.operation-resistance-item.negative {
-  border-color:rgba(224, 116, 99, .52);
-  background:rgba(67, 31, 29, .72);
-}
-
-.operation-resistance-item.negative b {
-  color:#f08f7f;
 }
 
 .operation-proficiency-grid {
