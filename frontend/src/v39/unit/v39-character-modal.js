@@ -232,8 +232,8 @@ function installStyles() {
     #characterModal .v39-char-skill-grid,#characterModal .v39-char-resistance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
     #characterModal .v39-char-skill-row,#characterModal .v39-char-resistance-row,#characterModal .v39-char-equipment-row,#characterModal .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #31464d;border-radius:6px;background:#17252a;padding:7px 9px;min-width:0}
     #characterModal .v39-char-skill-row span,#characterModal .v39-char-resistance-row span,#characterModal .v39-char-equipment-row span,#characterModal .v39-char-growth-row span{color:#a8b8ba}
-    #characterModal .v39-char-resistance-row{font:inherit;color:#a8b8ba;cursor:default;outline:none}
-    #characterModal .v39-char-resistance-icon,#characterModal .v39-char-resistance-icon-fallback{width:20px;height:20px;flex:0 0 auto;border-radius:4px}
+    #characterModal .v39-char-resistance-row{font:inherit;color:#a8b8ba;cursor:default;outline:none;padding:1px 9px}
+    #characterModal .v39-char-resistance-icon,#characterModal .v39-char-resistance-icon-fallback{width:28px;height:28px;flex:0 0 auto;border-radius:4px}
     #characterModal .v39-char-resistance-icon{object-fit:contain}
     #characterModal .v39-char-resistance-icon-fallback{display:inline-flex;align-items:center;justify-content:center;background:#223138;color:#dce8e7;font-size:11px;font-weight:900}
     #characterModal .v39-char-resistance-name{min-width:0;max-width:0;opacity:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;transition:max-width .14s ease,opacity .14s ease}
@@ -267,7 +267,8 @@ function installStyles() {
       #characterModal .v39-char-unit-head h3{font-size:19px}
       #characterModal .v39-char-detail-tabs{gap:3px}
       #characterModal .v39-char-detail-tabs button{font-size:11px;min-height:36px}
-      #characterModal .v39-char-skill-row,#characterModal .v39-char-resistance-row{padding:6px}
+      #characterModal .v39-char-skill-row{padding:6px}
+      #characterModal .v39-char-resistance-row{padding:1px 6px}
     }`;
   document.head.appendChild(style);
 }
