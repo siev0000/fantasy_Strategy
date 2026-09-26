@@ -1,6 +1,9 @@
+import { getGameDataRows } from "./game-data-registry.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "./v39-gameplay-balance.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
+import { UNIT_CREATE_MODE_KEYS, resolveUnitCreateMode } from "../composables/militaryUnitUtils.js";
+import { buildV39ClassEquipment, buildV39UnitEntity } from "./v39-unit-creation-rules.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -36,32 +39,232 @@ export function getV39RelationLabel(value) {
   return "中立";
 }
 
-function defenders(village) {
-  const militaryLevel = Math.max(1, integer(village?.researchLevels?.軍事Lv ?? village?.militaryLevel, 1));
-  const count = Math.max(2, militaryLevel * V39_NEUTRAL_VILLAGE_BALANCE.defendersPerMilitaryLevel);
-  return [{
-    id:`${text(village?.id)}-guard`,
-    name:`${text(village?.race) || "村"}の守備隊`,
-    className:text(village?.className) || "ファイター",
-    level:militaryLevel,
-    count,
-    strength:count * (8 + militaryLevel * 2)
-  }];
+const FACTION_ROWS = getGameDataRows("勢力");
+const RACE_ROWS = getGameDataRows("種族");
+const CLASS_ROWS = getGameDataRows("クラス");
+const CLASS_BY_NAME = new Map(CLASS_ROWS.map(row => [text(row?.名前), row]).filter(([name]) => name));
+const DEFENSE_CLASS_NAMES = Object.freeze(["ファイター", "フェンサー"]);
+
+function ratio(value) {
+  const raw = number(value);
+  const normalized = raw > 1 ? raw / 100 : raw;
+  return Math.max(0, Math.min(1, normalized));
 }
 
-export function normalizeV39NeutralVillage(village, mapData) {
+function factionRowForVillage(village) {
+  const candidates = new Set([
+    text(village?.factionDataName),
+    text(village?.race),
+    text(village?.combatRaceName)
+  ].filter(Boolean));
+  let row = FACTION_ROWS.find(item => candidates.has(text(item?.種族)) || candidates.has(text(item?.カナ))) || null;
+  if (row) return row;
+
+  const raceRow = RACE_ROWS.find(item => (
+    candidates.has(text(item?.key))
+    || candidates.has(text(item?.name))
+    || candidates.has(text(item?.className))
+  )) || null;
+  if (!raceRow) return null;
+  return FACTION_ROWS.find(item => text(item?.カナ) === text(raceRow?.className)) || null;
+}
+
+function combatRaceNameForVillage(village, factionRow = factionRowForVillage(village)) {
+  return text(village?.combatRaceName)
+    || text(factionRow?.カナ)
+    || text(village?.race);
+}
+
+function villageMilitaryLevel(village) {
+  return Math.max(0, integer(village?.researchLevels?.軍事Lv ?? village?.militaryLevel, 0));
+}
+
+function passableDefenseTile(mapData, x, y) {
+  if (!mapData?.grid) return false;
+  const terrain = text(mapData?.grid?.[y]?.[x]);
+  if (!terrain || ["海", "湖", "火山"].includes(terrain)) return false;
+  if (mapData?.lavaMap?.[y]?.[x]) return false;
+  return true;
+}
+
+function buildDefensePositions(village, mapData, count, occupiedTileKeys = null) {
+  const needed = Math.max(0, integer(count));
+  if (!needed || !mapData?.grid) return [];
+
+  const occupied = occupiedTileKeys instanceof Set
+    ? new Set([...occupiedTileKeys].map(text).filter(Boolean))
+    : new Set();
+  const center = { x:integer(village?.x), y:integer(village?.y) };
+  occupied.add(keyOf(center.x, center.y));
+
+  const queue = [center];
+  const visited = new Set([keyOf(center.x, center.y)]);
+  const result = [];
+
+  while (queue.length && result.length < needed) {
+    const current = queue.shift();
+    for (const next of getHexNeighborCoords(
+      mapData?.w,
+      mapData?.h,
+      current.x,
+      current.y,
+      mapData?.worldWrapEnabled === true
+    )) {
+      const key = keyOf(next.x, next.y);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      queue.push({ x:next.x, y:next.y });
+      if (!passableDefenseTile(mapData, next.x, next.y) || occupied.has(key)) continue;
+      result.push({ x:next.x, y:next.y, key });
+      occupied.add(key);
+      if (result.length >= needed) break;
+    }
+  }
+  return result;
+}
+
+function militaryProfilesForVillage(village, militaryPopulationCap) {
+  const militaryLevel = villageMilitaryLevel(village);
+  const profileLevel = Math.max(1, militaryLevel);
+  const normal = resolveUnitCreateMode(UNIT_CREATE_MODE_KEYS.ARMY, profileLevel);
+  const elite = resolveUnitCreateMode(UNIT_CREATE_MODE_KEYS.ELITE_ARMY, profileLevel);
+  const normalMembers = Math.max(1, integer(normal?.memberCount ?? normal?.populationCost, 4));
+  const eliteMembers = Math.max(1, integer(elite?.memberCount ?? elite?.populationCost, 5));
+  let remaining = Math.max(0, integer(militaryPopulationCap));
+  const profiles = [];
+
+  const eliteAvailable = militaryLevel >= 3 && text(elite?.mode) === UNIT_CREATE_MODE_KEYS.ELITE_ARMY;
+  const previousLevelThreeFormationCost = normalMembers * 2 + eliteMembers;
+  if (eliteAvailable && remaining >= previousLevelThreeFormationCost) {
+    profiles.push({ ...normal }, { ...normal }, { ...elite });
+    remaining -= previousLevelThreeFormationCost;
+  }
+
+  while (remaining >= normalMembers) {
+    profiles.push({ ...normal });
+    remaining -= normalMembers;
+  }
+
+  return { profiles, reservePopulation:remaining };
+}
+
+function preserveDefenseRuntime(existing, next) {
+  if (!existing || !next) return next;
+  const oldMaxHp = Math.max(1, number(existing?.maxHp ?? existing?.status?.HP, 1));
+  const oldHp = Math.max(0, number(existing?.hp ?? existing?.currentHp, oldMaxHp));
+  const hpRatio = Math.max(0, Math.min(1, oldHp / oldMaxHp));
+  const nextMaxHp = Math.max(1, number(next?.maxHp ?? next?.status?.HP, 1));
+  const hp = Math.round(nextMaxHp * hpRatio);
+  return {
+    ...next,
+    hp,
+    currentHp:hp,
+    ap:Math.max(0, number(existing?.ap ?? existing?.currentAp, next?.ap)),
+    currentAp:Math.max(0, number(existing?.currentAp ?? existing?.ap, next?.currentAp)),
+    state:hp > 0 ? text(existing?.state) || "生存" : "死亡",
+    lastMovedTurn:integer(existing?.lastMovedTurn),
+    lastCombatTurn:integer(existing?.lastCombatTurn)
+  };
+}
+
+export function buildV39NeutralVillageDefenseUnits(village, mapData, options = {}) {
+  const factionRow = factionRowForVillage(village);
+  const armyRate = ratio(village?.armyRate ?? factionRow?.軍隊);
+  const population = Math.max(0, integer(village?.population));
+  const militaryPopulationCap = Math.max(0, Math.floor(population * armyRate));
+  const militaryLevel = villageMilitaryLevel(village);
+  const combatRaceName = combatRaceNameForVillage(village, factionRow);
+  const formation = militaryProfilesForVillage(village, militaryPopulationCap);
+  const positions = buildDefensePositions(
+    village,
+    mapData,
+    formation.profiles.length,
+    options?.occupiedTileKeys
+  );
+  const existingById = new Map(
+    (Array.isArray(village?.defenseUnits) ? village.defenseUnits : [])
+      .map(row => [text(row?.id), row])
+      .filter(([id]) => id)
+  );
+  const units = [];
+
+  for (let index = 0; index < Math.min(formation.profiles.length, positions.length); index += 1) {
+    const profile = formation.profiles[index];
+    const position = positions[index];
+    const memberCount = Math.max(1, integer(profile?.memberCount ?? profile?.populationCost, 1));
+    const className = DEFENSE_CLASS_NAMES[hash(text(village?.id) + ":defense-class:" + index) % DEFENSE_CLASS_NAMES.length];
+    const classRow = CLASS_BY_NAME.get(className) || CLASS_BY_NAME.get("ファイター") || {};
+    const id = text(village?.id) + "-defense-" + (index + 1);
+    const label = text(classRow?.ルビ) || className || "戦士";
+    const built = buildV39UnitEntity({
+      id,
+      name:(text(village?.name) || text(village?.race) || "一般村") + " " + label + "軍" + (index + 1),
+      race:combatRaceName,
+      className,
+      level:Math.max(1, militaryLevel),
+      unitType:text(profile?.unitTypeLabel) || "軍隊",
+      isMob:true,
+      isNamed:false,
+      role:"一般村守備 / " + (text(profile?.unitTypeLabel) || "軍隊"),
+      squadId:text(village?.id) + "-defense",
+      x:position.x,
+      y:position.y,
+      combatProfile:profile,
+      settlementId:text(village?.id),
+      equipment:buildV39ClassEquipment(classRow)
+    });
+    const strength = memberCount * (8 + Math.max(1, militaryLevel) * 2);
+    units.push(preserveDefenseRuntime(existingById.get(id), {
+      ...built,
+      neutral:true,
+      isNeutralVillageGuard:true,
+      neutralVillageId:text(village?.id),
+      ownerNeutralVillageId:text(village?.id),
+      count:memberCount,
+      militaryPopulation:memberCount,
+      strength
+    }));
+  }
+
+  const militaryPopulationUsed = units.reduce(
+    (sum, unit) => sum + Math.max(0, integer(unit?.combatProfile?.memberCount ?? unit?.count)),
+    0
+  );
+  return {
+    units,
+    factionDataName:text(village?.factionDataName) || text(factionRow?.種族),
+    combatRaceName,
+    armyRate,
+    militaryPopulationCap,
+    militaryPopulationUsed,
+    militaryPopulationReserve:Math.max(0, militaryPopulationCap - militaryPopulationUsed)
+  };
+}
+
+export function normalizeV39NeutralVillage(village, mapData, options = {}) {
   const territoryTileKeys = Array.isArray(village?.territoryTileKeys) && village.territoryTileKeys.length
     ? [...new Set(village.territoryTileKeys.map(text).filter(Boolean))]
     : buildV39NeutralVillageTerritory(mapData, village?.x, village?.y);
-  return {
+  const base = {
     ...village,
     territoryRadius:V39_NEUTRAL_VILLAGE_BALANCE.territoryRadius,
     territoryTileKeys,
     relationsByPlayerId:{ ...(village?.relationsByPlayerId || {}) },
     questsByPlayerId:{ ...(village?.questsByPlayerId || {}) },
-    defenseUnits:Array.isArray(village?.defenseUnits) && village.defenseUnits.length ? village.defenseUnits.map(row => ({ ...row })) : defenders(village),
+    defenseUnits:Array.isArray(village?.defenseUnits) ? village.defenseUnits.map(row => ({ ...row })) : [],
     vassalPlayerId:text(village?.vassalPlayerId),
     raidState:village?.raidState && typeof village.raidState === "object" ? { ...village.raidState } : null
+  };
+  const defense = buildV39NeutralVillageDefenseUnits(base, mapData, options);
+  return {
+    ...base,
+    factionDataName:defense.factionDataName,
+    combatRaceName:defense.combatRaceName,
+    armyRate:defense.armyRate,
+    militaryPopulationCap:defense.militaryPopulationCap,
+    militaryPopulationUsed:defense.militaryPopulationUsed,
+    militaryPopulationReserve:defense.militaryPopulationReserve,
+    defenseUnits:defense.units
   };
 }
 
@@ -159,7 +362,7 @@ export function raidV39NeutralVillage(state, playerId, villageId) {
   const unit = player?.factionState?.units?.find(row => row.id === player?.factionState?.selectedUnitId);
   if (!source || !unit) return { ok:false, reason:"襲撃するユニットを選択してください", state };
   if (!(source.territoryTileKeys || []).includes(keyOf(unit.x, unit.y))) return { ok:false, reason:"村の範囲内にユニットがいません", state };
-  const defenseStrength = (source.defenseUnits || defenders(source)).reduce((sum, row) => sum + number(row.strength), 0);
+  const defenseStrength = (source.defenseUnits || []).reduce((sum, row) => sum + number(row.strength), 0);
   const attackStrength = Math.max(1, number(unit?.status?.攻撃 ?? unit?.attack, 1) + number(unit?.level) * 5);
   const success = attackStrength >= defenseStrength;
   let village = changeRelation(source, playerId, -V39_NEUTRAL_VILLAGE_BALANCE.raidRelationLoss);
