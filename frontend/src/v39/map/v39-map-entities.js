@@ -314,7 +314,10 @@ function addUnitArtwork(scene, marker, unit, diameter) {
   const artwork = resolveUnitArtwork(unit);
   if (!artwork || !ensureArtworkTexture(scene, artwork)) return false;
 
-  const image = scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
+  const frameKey = ensureArtworkSheetFrame(scene, artwork);
+  const image = frameKey
+    ? scene.add.image(0, 0, artwork.textureKey, frameKey).setOrigin(0.5)
+    : scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
   const sourceWidth = Math.max(1, Number(image.width) || 1);
   const sourceHeight = Math.max(1, Number(image.height) || 1);
   const target = diameter * UNIT_IMAGE_FILL;
@@ -365,7 +368,10 @@ function ensureArtworkSheetFrame(scene, artwork) {
   const texture = scene.textures.get(artwork.textureKey);
   if (!texture) return "";
 
-  const frameKey = `slot-${frame.sheetNumber}-${frame.slotNumber}`;
+  const frameKey = String(
+    frame.frameKey
+    || `slot-${frame.sheetNumber ?? "sheet"}-${frame.slotNumber ?? 0}`
+  );
   const hasFrame = typeof texture.has === "function"
     ? texture.has(frameKey)
     : Boolean(texture.frames?.[frameKey]);
