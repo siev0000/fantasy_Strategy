@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../lib/resistance-display.js";
 
 const props = defineProps({
@@ -8,19 +8,85 @@ const props = defineProps({
   variant: { type:String, default:"dark" }
 });
 
+const buttonRef = ref(null);
+const hovered = ref(false);
+const focused = ref(false);
+const tappedOpen = ref(false);
+const popupPosition = ref({ left:0, top:0, placement:"top" });
+
 const iconSrc = computed(() => getResistanceIconSrc(props.resistanceKey));
 const valueText = computed(() => formatResistanceValue(props.value));
 const tone = computed(() => resistanceValueTone(props.value));
 const ariaLabel = computed(() => `${props.resistanceKey} ${valueText.value}`);
+const popupVisible = computed(() => hovered.value || focused.value || tappedOpen.value);
+const popupStyle = computed(() => ({
+  left:`${popupPosition.value.left}px`,
+  top:`${popupPosition.value.top}px`
+}));
+
+function updatePopupPosition() {
+  const button = buttonRef.value;
+  if (!(button instanceof HTMLElement)) return;
+  const rect = button.getBoundingClientRect();
+  const useBottom = rect.top < 52;
+  popupPosition.value = {
+    left:Math.max(12, Math.min(window.innerWidth - 12, rect.left + rect.width / 2)),
+    top:useBottom ? rect.bottom + 7 : rect.top - 7,
+    placement:useBottom ? "bottom" : "top"
+  };
+}
+
+function showHover() {
+  hovered.value = true;
+  nextTick(updatePopupPosition);
+}
+
+function hideHover() {
+  hovered.value = false;
+}
+
+function handleFocus() {
+  focused.value = true;
+  nextTick(updatePopupPosition);
+}
+
+function handleBlur() {
+  focused.value = false;
+  tappedOpen.value = false;
+}
+
+function toggleTap() {
+  tappedOpen.value = !tappedOpen.value;
+  nextTick(updatePopupPosition);
+}
+
+function handleWindowChange() {
+  if (popupVisible.value) updatePopupPosition();
+}
+
+onMounted(() => {
+  window.addEventListener("resize", handleWindowChange);
+  window.addEventListener("scroll", handleWindowChange, true);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", handleWindowChange);
+  window.removeEventListener("scroll", handleWindowChange, true);
+});
 </script>
 
 <template>
   <button
+    ref="buttonRef"
     type="button"
     class="resistance-indicator"
     :class="[tone, `variant-${variant}`]"
     :aria-label="ariaLabel"
-    :title="resistanceKey"
+    @mouseenter="showHover"
+    @mouseleave="hideHover"
+    @focus="handleFocus"
+    @blur="handleBlur"
+    @click="toggleTap"
   >
     <img
       v-if="iconSrc"
@@ -30,16 +96,27 @@ const ariaLabel = computed(() => `${props.resistanceKey} ${valueText.value}`);
       aria-hidden="true"
     />
     <span v-else class="resistance-indicator-icon-fallback" aria-hidden="true">?</span>
-    <span class="resistance-indicator-name">{{ resistanceKey }}</span>
     <strong>{{ valueText }}</strong>
   </button>
+
+  <teleport to="body">
+    <div
+      v-if="popupVisible"
+      class="resistance-name-popover"
+      :class="`placement-${popupPosition.placement}`"
+      :style="popupStyle"
+      role="tooltip"
+    >
+      {{ resistanceKey }}
+    </div>
+  </teleport>
 </template>
 
 <style scoped>
 .resistance-indicator {
   width:100%;
   min-width:0;
-  min-height:34px;
+  min-height:32px;
   display:flex;
   align-items:center;
   gap:6px;
@@ -47,7 +124,7 @@ const ariaLabel = computed(() => `${props.resistanceKey} ${valueText.value}`);
   border-radius:7px;
   font:inherit;
   text-align:left;
-  cursor:default;
+  cursor:pointer;
   outline:none;
 }
 
@@ -71,27 +148,35 @@ const ariaLabel = computed(() => `${props.resistanceKey} ${valueText.value}`);
   font-weight:900;
 }
 
-.resistance-indicator-name {
-  min-width:0;
-  max-width:0;
-  opacity:0;
-  overflow:hidden;
-  white-space:nowrap;
-  text-overflow:ellipsis;
-  transition:max-width .14s ease, opacity .14s ease;
-}
-
-.resistance-indicator:hover .resistance-indicator-name,
-.resistance-indicator:focus .resistance-indicator-name,
-.resistance-indicator:focus-visible .resistance-indicator-name {
-  max-width:110px;
-  opacity:1;
-}
-
 .resistance-indicator strong {
   margin-left:auto;
   flex:0 0 auto;
   font-size:13px;
+}
+
+.resistance-name-popover {
+  position:fixed;
+  z-index:100000;
+  max-width:min(220px, calc(100vw - 24px));
+  padding:5px 9px;
+  border:1px solid rgba(112, 144, 153, .9);
+  border-radius:6px;
+  background:#0d171b;
+  color:#eef7f6;
+  box-shadow:0 5px 16px rgba(0,0,0,.36);
+  font-size:12px;
+  font-weight:800;
+  line-height:1.2;
+  white-space:nowrap;
+  pointer-events:none;
+}
+
+.resistance-name-popover.placement-top {
+  transform:translate(-50%, -100%);
+}
+
+.resistance-name-popover.placement-bottom {
+  transform:translate(-50%, 0);
 }
 
 .variant-dark {
