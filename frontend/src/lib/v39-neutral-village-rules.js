@@ -372,11 +372,35 @@ export function raidV39NeutralVillage(state, playerId, villageId) {
   return { ok:true, success, state:next, village, message:success ? "襲撃成功 / 資材を獲得" : "襲撃失敗 / 守備隊に阻止されました" };
 }
 
+function syncNeutralVillageDefensesForState(state, mapData, rows) {
+  const villages = Array.isArray(rows) ? rows : [];
+  const occupied = new Set();
+  const add = row => {
+    if (!row || !Number.isFinite(Number(row?.x)) || !Number.isFinite(Number(row?.y))) return;
+    occupied.add(keyOf(row.x, row.y));
+  };
+
+  for (const player of state?.players || []) for (const unit of player?.factionState?.units || []) add(unit);
+  for (const enemy of state?.enemies || []) add(enemy);
+  for (const wanderer of state?.wandererGroups || []) add(wanderer);
+  for (const nest of state?.enemyNests || []) add(nest);
+  for (const settlement of state?.settlements || []) if (settlement?.neutral !== true) add(settlement);
+  for (const village of villages) add(village);
+
+  const normalized = [];
+  for (const source of villages) {
+    const village = normalizeV39NeutralVillage(source, mapData, { occupiedTileKeys:occupied });
+    normalized.push(village);
+    for (const unit of village.defenseUnits || []) add(unit);
+  }
+  return normalized;
+}
+
 export function advanceV39NeutralVillages(state, mapData, turnNumber) {
   let working = { ...state };
   const reports = [];
   const turn = Math.max(1, integer(turnNumber, state?.timeline?.turnNumber || 1));
-  let villages = (state?.neutralVillages || []).map(row => normalizeV39NeutralVillage(row, mapData));
+  let villages = syncNeutralVillageDefensesForState(state, mapData, state?.neutralVillages || []);
   for (let index = 0; index < villages.length; index += 1) {
     let village = villages[index];
     if (integer(village.lastProcessedTurn) >= turn) continue;
@@ -398,6 +422,7 @@ export function advanceV39NeutralVillages(state, mapData, turnNumber) {
     }
     villages[index] = { ...village, researchExp:Math.max(0, number(village.researchExp)) + 10, lastProcessedTurn:turn };
   }
+  villages = syncNeutralVillageDefensesForState({ ...working, neutralVillages:villages }, mapData, villages);
   const byId = new Map(villages.map(row => [row.id, row]));
   return {
     state:{ ...working, neutralVillages:villages, settlements:(working.settlements || []).map(row => byId.get(row.id) || row) },
