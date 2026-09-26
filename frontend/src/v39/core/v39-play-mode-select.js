@@ -1,7 +1,7 @@
 // 初回の開始導線だけを担当する。ゲーム状態・通信状態はここでは変更しない。
 const PLAY_MODE_OPTIONS = Object.freeze({
   "single-normal":{ label:"通常プレイ", description:"テストデータを使わず、新規ゲームとして開始します。" },
-  "single-test":{ label:"テストプレイ", description:"テストゲーム状態とテスト操作を使って確認します。" },
+  "single-test":{ label:"テストプレイ", description:"通常プレイと同じ流れ・ルールで開始し、テストデータとテスト操作を追加します。" },
   multiplayer:{ label:"通常プレイ", description:"ルームを作成または参加し、テストデータなしで開始します。" }
 });
 
