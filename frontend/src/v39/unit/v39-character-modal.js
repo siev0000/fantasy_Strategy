@@ -62,13 +62,11 @@ function statusPanel(unit) {
     .map(([key, value]) => {
       const iconSrc = getResistanceIconSrc(key);
       const tone = resistanceValueTone(value);
-      return `<div class="v39-char-resistance-row ${tone}">
-        <span class="v39-char-resistance-label">
-          ${iconSrc ? `<img src="${escapeHtml(iconSrc)}" alt="${escapeHtml(key)} アイコン" class="v39-char-resistance-icon">` : ""}
-          <span>${escapeHtml(key)}</span>
-        </span>
+      return `<button type="button" class="v39-char-resistance-row ${tone}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}" title="${escapeHtml(key)}">
+        ${iconSrc ? `<img src="${escapeHtml(iconSrc)}" alt="" aria-hidden="true" class="v39-char-resistance-icon">` : '<span class="v39-char-resistance-icon-fallback" aria-hidden="true">?</span>'}
+        <span class="v39-char-resistance-name">${escapeHtml(key)}</span>
         <b>${escapeHtml(formatResistanceValue(value))}</b>
-      </div>`;
+      </button>`;
     }).join("");
   return `<div class="v39-char-detail-scroll">
     <h4>ステータス</h4>
@@ -234,9 +232,13 @@ function installStyles() {
     #characterModal .v39-char-skill-grid,#characterModal .v39-char-resistance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
     #characterModal .v39-char-skill-row,#characterModal .v39-char-resistance-row,#characterModal .v39-char-equipment-row,#characterModal .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #31464d;border-radius:6px;background:#17252a;padding:7px 9px;min-width:0}
     #characterModal .v39-char-skill-row span,#characterModal .v39-char-resistance-row span,#characterModal .v39-char-equipment-row span,#characterModal .v39-char-growth-row span{color:#a8b8ba}
-    #characterModal .v39-char-resistance-label{min-width:0;display:flex;align-items:center;gap:6px}
-    #characterModal .v39-char-resistance-label>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    #characterModal .v39-char-resistance-icon{width:20px;height:20px;flex:0 0 auto;object-fit:contain;border-radius:4px}
+    #characterModal .v39-char-resistance-row{font:inherit;color:#a8b8ba;cursor:default;outline:none}
+    #characterModal .v39-char-resistance-icon,#characterModal .v39-char-resistance-icon-fallback{width:20px;height:20px;flex:0 0 auto;border-radius:4px}
+    #characterModal .v39-char-resistance-icon{object-fit:contain}
+    #characterModal .v39-char-resistance-icon-fallback{display:inline-flex;align-items:center;justify-content:center;background:#223138;color:#dce8e7;font-size:11px;font-weight:900}
+    #characterModal .v39-char-resistance-name{min-width:0;max-width:0;opacity:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;transition:max-width .14s ease,opacity .14s ease}
+    #characterModal .v39-char-resistance-row:hover .v39-char-resistance-name,#characterModal .v39-char-resistance-row:focus .v39-char-resistance-name,#characterModal .v39-char-resistance-row:focus-visible .v39-char-resistance-name{max-width:110px;opacity:1}
+    #characterModal .v39-char-resistance-row b{margin-left:auto}
     #characterModal .v39-char-resistance-row.positive{border-color:rgba(104,205,139,.5);background:rgba(25,59,39,.72)}
     #characterModal .v39-char-resistance-row.positive b{color:#7de0a0}
     #characterModal .v39-char-resistance-row.negative{border-color:rgba(224,116,99,.52);background:rgba(67,31,29,.72)}
