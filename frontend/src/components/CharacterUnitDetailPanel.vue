@@ -10,7 +10,7 @@ import {
   V39_EQUIPMENT_RARITIES
 } from "../lib/v39-equipment-rules.js";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
-import ResistanceIndicator from "./ResistanceIndicator.vue";
+import ResistanceGrid from "./ResistanceGrid.vue";
 import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 
 const props = defineProps({
@@ -633,15 +633,7 @@ watch(
 
             <section class="char-block">
               <h4>耐性</h4>
-              <div v-if="resistanceRows.length" class="char-resist-grid">
-                <resistance-indicator
-                  v-for="row in resistanceRows"
-                  :key="`resist-${unit.id}-${row.key}`"
-                  :resistance-key="row.key"
-                  :value="row.value"
-                  variant="light"
-                />
-              </div>
+              <resistance-grid v-if="resistanceRows.length" :rows="resistanceRows" variant="light" />
               <div v-else class="small">耐性データなし</div>
             </section>
           </div>
