@@ -6,6 +6,7 @@ import {
 } from "./icon-library.js";
 import { MAP_SETTLEMENT_MARKER_CONFIG } from "./phaser-map-panel-config.js";
 import { resolveVillageScaleDefinition } from "../composables/villageCoreUtils.js";
+import { resolveFactionUnitArtworkName } from "../constants/factionUnitArtwork.js";
 
 const rawEnemyArtworkModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
   eager: true,
@@ -112,7 +113,7 @@ function iconArtwork(candidates) {
   };
 }
 
-export function resolveUnitArtwork(unit) {
+export function resolveUnitImageArtwork(unit) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
   const className = text(unit?.className || unit?.class || unit?.クラス);
   const explicitNames = unique([
@@ -121,16 +122,27 @@ export function resolveUnitArtwork(unit) {
     unit?.illustrationName,
     unit?.画像
   ]);
+  const factionArtworkName = resolveFactionUnitArtworkName(className);
   const generatedNames = unique([
+    factionArtworkName,
+    raceName && factionArtworkName ? `${raceName}_${factionArtworkName}` : "",
+    raceName && factionArtworkName ? `${raceName}${factionArtworkName}` : "",
     raceName && className ? `${raceName}_${className}` : "",
     raceName && className ? `${raceName}${className}` : "",
+    raceName === "只人" ? factionArtworkName : "",
     raceName === "只人" ? className : "",
     raceName
   ]);
   const row = raceName
     ? findUnitByRaceAndName(raceName, [...explicitNames, ...generatedNames])
     : (findByStem(unitArtworkRows, explicitNames) || findByStem(unitArtworkRows, generatedNames));
-  return result(row, "unit") || iconArtwork([
+  return result(row, "unit");
+}
+
+export function resolveUnitArtwork(unit) {
+  const raceName = text(unit?.race || unit?.raceName || unit?.種族);
+  const className = text(unit?.className || unit?.class || unit?.クラス);
+  return resolveUnitImageArtwork(unit) || iconArtwork([
     unit?.iconName,
     unit?.subIconName,
     className,

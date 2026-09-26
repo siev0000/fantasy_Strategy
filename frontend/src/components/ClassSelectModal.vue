@@ -5,6 +5,7 @@ import V39SelectionDetailPanel from "./V39SelectionDetailPanel.vue";
 import { classData as classDb, descriptionData as skillDescDb } from "../lib/game-data-registry.js";
 import { getV39ClassSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
+import { resolveFactionUnitSheetFrame } from "../lib/unit-sheet-artwork.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 
 const props = defineProps({
@@ -200,6 +201,39 @@ const equipmentRows = computed(() => activeSelectionDetail.value?.equipmentRows 
 const equipmentMode = computed(() => activeSelectionDetail.value?.equipmentMode || "");
 const equipmentTitle = computed(() => activeSelectionDetail.value?.equipmentTitle || "");
 const classLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
+const activeClassSheetFrame = computed(() => {
+  const race = nonEmptyText(props.selectedRace);
+  const className = nonEmptyText(activeClass.value?.名前);
+  if (!race || !className) return null;
+  return resolveFactionUnitSheetFrame({ race, className });
+});
+const activeClassSheetSourceIndex = ref(0);
+const activeClassSheetLoadFailed = ref(false);
+const activeClassSheetSrc = computed(() => {
+  if (activeClassSheetLoadFailed.value) return "";
+  const candidates = activeClassSheetFrame.value?.srcCandidates;
+  if (!Array.isArray(candidates) || !candidates.length) return "";
+  return candidates[activeClassSheetSourceIndex.value] || "";
+});
+const activeClassSheetImageStyle = computed(() => activeClassSheetFrame.value?.imageStyle || {});
+
+watch(
+  [() => props.selectedRace, activeClassName],
+  () => {
+    activeClassSheetSourceIndex.value = 0;
+    activeClassSheetLoadFailed.value = false;
+  }
+);
+
+function handleClassSheetImageError() {
+  const candidates = activeClassSheetFrame.value?.srcCandidates;
+  if (!Array.isArray(candidates)) return;
+  if (activeClassSheetSourceIndex.value < candidates.length - 1) {
+    activeClassSheetSourceIndex.value += 1;
+    return;
+  }
+  activeClassSheetLoadFailed.value = true;
+}
 
 watch(
   [() => props.show, classCandidates, () => props.selectedClass],
@@ -284,7 +318,31 @@ function confirmClass() {
 
 <template>
   <base-modal :show="show" title="クラス選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
-    <div v-if="selectedRace && classCandidates.length" class="class-layout">
+    <div v-if="selectedRace && classCandidates.length" class="class-screen-layout">
+      <section class="class-preview-frame" aria-label="選択中クラスのユニット画像">
+        <div class="class-preview-inner">
+          <div
+            v-if="activeClassSheetSrc"
+            class="class-preview-sprite"
+            role="img"
+            :aria-label="`${selectedRace} ${activeClass?.名前 || ''} ユニット画像`"
+          >
+            <img
+              :key="activeClassSheetSrc"
+              :src="activeClassSheetSrc"
+              :alt="`${selectedRace} ${activeClass?.名前 || ''} ユニットシート`"
+              :style="activeClassSheetImageStyle"
+              @error="handleClassSheetImageError"
+            />
+          </div>
+          <div v-else class="class-preview-empty">
+            <strong>画像未設定</strong>
+            <span>{{ selectedRace }} / {{ activeClass?.名前 || "-" }}</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="class-layout">
       <section class="class-category-pane">
         <nav class="class-category-tabs" role="tablist" aria-label="クラス系統">
           <button
@@ -354,6 +412,7 @@ function confirmClass() {
           <span>左の一覧からクラスを選ぶと、ステータス・技能・スキルの詳細を確認できます。</span>
         </section>
       </section>
+      </div>
     </div>
 
     <div v-else class="class-empty">
@@ -364,6 +423,75 @@ function confirmClass() {
 </template>
 
 <style scoped>
+.class-screen-layout {
+  min-width:0;
+  min-height:0;
+  height:100%;
+  display:grid;
+  grid-template-rows:minmax(144px,1fr) minmax(0,4fr);
+  gap:10px;
+  overflow:hidden;
+}
+
+.class-preview-frame {
+  min-width:0;
+  min-height:0;
+  display:grid;
+  place-items:center;
+  padding:7px;
+  border:1px solid var(--picker-line);
+  border-radius:8px;
+  background:linear-gradient(180deg,#101d22,#0c171b);
+  overflow:hidden;
+}
+
+.class-preview-inner {
+  width:100%;
+  height:100%;
+  min-height:0;
+  display:grid;
+  place-items:center;
+}
+
+.class-preview-sprite {
+  position:relative;
+  width:128px;
+  height:128px;
+  max-width:100%;
+  max-height:100%;
+  flex:0 0 auto;
+  overflow:hidden;
+  border:1px solid #314950;
+  border-radius:7px;
+  background:#091216;
+}
+
+.class-preview-sprite img {
+  position:absolute;
+  display:block;
+  max-width:none;
+  max-height:none;
+  object-fit:fill;
+  pointer-events:none;
+}
+
+.class-preview-empty {
+  display:grid;
+  gap:4px;
+  place-items:center;
+  color:var(--picker-muted);
+  text-align:center;
+}
+
+.class-preview-empty strong {
+  color:#dce8e7;
+  font-size:14px;
+}
+
+.class-preview-empty span {
+  font-size:11px;
+}
+
 .class-layout {
   display:grid;
   grid-template-rows:auto minmax(0,1fr);
@@ -630,6 +758,15 @@ function confirmClass() {
 }
 
 @media (max-width:760px) {
+  .class-screen-layout {
+    grid-template-rows:minmax(136px,1fr) minmax(0,4fr);
+    gap:7px;
+  }
+
+  .class-preview-frame {
+    padding:4px;
+  }
+
   .class-layout {
     grid-template-rows:54px minmax(0,1fr);
     gap:7px;
