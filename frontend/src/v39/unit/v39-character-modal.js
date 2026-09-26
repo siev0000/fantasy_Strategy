@@ -168,7 +168,11 @@ function render() {
   const modal = document.getElementById("characterModal");
   const body = modal?.querySelector(".modal-body");
   const current = faction();
-  if (!(body instanceof HTMLElement) || !current) return;
+  if (!(body instanceof HTMLElement)) return false;
+  if (!current) {
+    body.innerHTML = '<div class="detail-pane v39-char-empty-panel"><p class="v39-char-empty">ゲーム開始後にキャラクター情報を表示します。</p></div>';
+    return false;
+  }
   const rows = rowsForTab(current);
   const idFor = (row, index) => text(row?.id, `row-${index}`);
   if (!rows.some((row, index) => idFor(row, index) === selectedId)) selectedId = idFor(rows[0], 0);
@@ -186,6 +190,15 @@ function render() {
       }).join("") || '<div class="char-row">該当なし</div>'}</div>
       ${activeTab === "squad" ? squadDetail(selected, current) : unitDetail(selected)}
     </div>`;
+  return true;
+}
+
+function openCharacterModal() {
+  const modal = document.getElementById("characterModal");
+  if (!(modal instanceof HTMLElement)) return false;
+  modal.classList.add("open");
+  render();
+  return true;
 }
 
 function installStyles() {
@@ -193,7 +206,7 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-character-modal-style";
   style.textContent = `
-    #characterModal .v39-char-unit-detail{display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0;overflow:hidden}
+    #characterModal .v39-char-unit-detail{display:grid;grid-template-rows:auto auto minmax(0,1fr);height:100%;min-height:0;overflow:hidden}
     #characterModal .v39-char-unit-head{padding-bottom:8px}
     #characterModal .v39-char-unit-head h3{margin:3px 0 8px;font-size:22px}
     #characterModal .v39-char-unit-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
@@ -203,7 +216,7 @@ function installStyles() {
     #characterModal .v39-char-detail-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin:0 0 7px}
     #characterModal .v39-char-detail-tabs button{min-width:0;min-height:38px;border:1px solid #41565d;border-radius:6px;background:#17242a;color:#dce6e5;padding:5px 4px;font-size:14px;font-weight:700}
     #characterModal .v39-char-detail-tabs button.active{border-color:#65d4e6;background:#17323a;color:#f3ffff}
-    #characterModal .v39-char-detail-panel{min-height:0;overflow:hidden;border:1px solid #31464d;border-radius:7px;background:#0f191d}
+    #characterModal .v39-char-detail-panel{height:100%;min-height:0;overflow:hidden;border:1px solid #31464d;border-radius:7px;background:#0f191d}
     #characterModal .v39-char-detail-scroll{height:100%;overflow:auto;padding:8px}
     #characterModal .v39-char-detail-scroll h4{margin:5px 0 7px}
     #characterModal .v39-char-status-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -213,6 +226,7 @@ function installStyles() {
     #characterModal .v39-char-equipment-list,#characterModal .v39-char-growth-list{display:grid;gap:6px}
     #characterModal .v39-char-equipment-row b{overflow-wrap:anywhere;text-align:right}
     #characterModal .v39-char-note,#characterModal .v39-char-empty{color:#9eafb2;font-size:13px}
+    #characterModal .v39-char-empty-panel{display:grid;place-items:center;min-height:160px}
     #characterModal .v39-char-technique-list{display:grid;align-content:start;gap:7px}
     #characterModal .v39-char-technique-card{border:1px solid #3a5057;border-radius:7px;background:#17252a;padding:8px}
     #characterModal .v39-char-technique-card header{display:flex;justify-content:space-between;gap:8px;align-items:center}
@@ -223,7 +237,7 @@ function installStyles() {
     #characterModal .v39-char-technique-meta small{color:#91a3a7}
     #characterModal .v39-char-technique-card p{margin:7px 0 0;color:#d5dfde;line-height:1.45}
     @media(max-width:760px){
-      #characterModal .character-layout{grid-template-columns:minmax(92px,28%) minmax(0,1fr)}
+      #characterModal .character-layout{grid-template-columns:minmax(92px,28%) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
       #characterModal .v39-char-unit-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
       #characterModal .v39-char-detail-tabs button{font-size:12px;padding:4px 2px}
       #characterModal .v39-char-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -242,7 +256,10 @@ function install() {
   installStyles();
   document.addEventListener("click", (event) => {
     const element = event.target instanceof Element ? event.target : null;
-    if (element?.closest('[data-open="character"]')) window.setTimeout(render, 0);
+    if (element?.closest('[data-open="character"]')) {
+      window.setTimeout(openCharacterModal, 0);
+      return;
+    }
     const tab = element?.closest("[data-v39-character-tab]");
     if (tab) {
       activeTab = text(tab.dataset.v39CharacterTab, "character");
@@ -267,6 +284,7 @@ function install() {
   window.addEventListener("v39:game-state-changed", () => {
     if (document.getElementById("characterModal")?.classList.contains("open")) render();
   });
+  window.openV39CharacterModal = openCharacterModal;
   window.renderV39CharacterModal = render;
 }
 

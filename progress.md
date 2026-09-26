@@ -1168,3 +1168,4 @@ pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整�
 - シングル通常プレイの初回統治者設定を、マップ生成後ではなくゲーム開始設定の前へ移動した。v39起動ページでは全体の`App.vue`を重ねず、`RaceSelectModal.vue`、`ClassSelectModal.vue`、`CharacterNameModal.vue`だけを`V39InitialSovereignFlow.vue`として独立マウントする。
 - 選択済みプロフィールはゲーム開始設定の生成時に`player-1`へ反映してからフィールドを生成する。2勢力目以降の統治者作成は、既存の初期配置フローから同じVueモーダルを開く。
 - マルチプレイのロビー種族選択とゲーム開始後のクラス・名前選択も同じVueモーダルへ接続した。`npm run check:play-mode-select` と `npm run check:multiplayer-start-flow` で、通常・テスト・通信導線、統治者作成、初期拠点配置、ブラウザー例外0件を確認した。
+- `#characterModal` は `v39-character-modal.js` が `innerHTML` で描画する実画面であることを確認。`window.openV39CharacterModal()` を表示APIとして追加し、ヘッダー・モバイルメニューのキャラクターボタンから必ず再描画して開くようにした。ゲーム状態未初期化時も空白にせず案内を表示する。

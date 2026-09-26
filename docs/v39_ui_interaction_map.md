@@ -509,7 +509,7 @@ const value = await openTextInputModal({
 
 | 機能 | 正本メソッド名 | 表示先 |
 |---|---|---|
-| 自キャラ / 部隊 | `openCharacterModal()` | `#characterModal` |
+| 自キャラ / 部隊 | `window.openV39CharacterModal()` | `#characterModal` |
 | 都市・建設 | `openBuildModal()` | `#buildModal` |
 | 装備 | `openEquipmentModal()` | `#equipmentModal` |
 | ユニット作成 | `openUnitCreateModal()` | `#unitCreateModal` |

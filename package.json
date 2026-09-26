@@ -21,6 +21,7 @@
     "check:room-lobby": "node scripts/check-v39-room-lobby.mjs",
     "check:play-mode-select": "node scripts/check-v39-play-mode-select.mjs",
     "check:multiplayer-start-flow": "node scripts/check-v39-multiplayer-start-flow.mjs",
+    "check:character-modal": "node scripts/check-v39-character-modal.mjs",
     "preview:front": "vite preview --config frontend/vite.config.mjs"
   },
   "engines": {
