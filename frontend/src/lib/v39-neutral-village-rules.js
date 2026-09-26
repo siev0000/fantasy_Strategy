@@ -70,8 +70,8 @@ function factionRowForVillage(village) {
 }
 
 function combatRaceNameForVillage(village, factionRow = factionRowForVillage(village)) {
-  return text(village?.combatRaceName)
-    || text(factionRow?.カナ)
+  return text(factionRow?.カナ)
+    || text(village?.combatRaceName)
     || text(village?.race);
 }
 
@@ -169,7 +169,7 @@ function preserveDefenseRuntime(existing, next) {
 
 export function buildV39NeutralVillageDefenseUnits(village, mapData, options = {}) {
   const factionRow = factionRowForVillage(village);
-  const armyRate = ratio(village?.armyRate ?? factionRow?.軍隊);
+  const armyRate = ratio(factionRow?.軍隊 ?? village?.armyRate);
   const population = Math.max(0, integer(village?.population));
   const militaryPopulationCap = Math.max(0, Math.floor(population * armyRate));
   const militaryLevel = villageMilitaryLevel(village);
