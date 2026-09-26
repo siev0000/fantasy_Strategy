@@ -283,9 +283,10 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         box-shadow:0 0 0 1px rgba(231,196,102,.18)
       }
       #footSquad .technique-card.action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed!important}
+      .footer-body{min-height:0!important;overflow:hidden!important}
       html:not(.v39-test-mode) [data-foot="test"]{display:none!important}
       html:not(.v39-test-mode) #footTest{display:none!important}
-      #footTest{min-width:0;min-height:0;overflow:visible;display:flex;flex-direction:column}
+      #footTest{min-width:0;min-height:0;height:100%;max-height:100%;overflow:hidden;display:flex;flex:1 1 0;flex-direction:column}
       #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;gap:6px}
       #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
       #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
