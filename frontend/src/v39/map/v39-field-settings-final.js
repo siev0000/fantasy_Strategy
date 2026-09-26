@@ -629,7 +629,7 @@ function boot() {
           participantCount:next.localParticipantCount,
           playerParticipantAssignments:next.playerParticipantAssignments
         });
-        if (next.playMode === "single-normal" && window.__v39PendingInitialSovereignProfile) {
+        if (next.playMode !== "multiplayer" && window.__v39PendingInitialSovereignProfile) {
           const profileResult = window.consumeV39PendingInitialSovereignProfile?.();
           if (!profileResult?.ok) throw new Error(profileResult?.reason || "開始統治者を作成できませんでした");
         }

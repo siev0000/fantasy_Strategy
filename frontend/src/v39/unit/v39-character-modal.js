@@ -1,9 +1,11 @@
 import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../../constants/unitCommon.js";
+import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 
 let activeTab = "character";
 let selectedId = "";
 let detailTab = "status";
+let pinnedResistanceElement = null;
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -58,7 +60,14 @@ function statusPanel(unit) {
   const resistanceHtml = RESISTANCE_FIELDS
     .map((key) => [key, Number(unit?.resistances?.[key])])
     .filter(([, value]) => Number.isFinite(value) && value !== 0)
-    .map(([key, value]) => `<div class="v39-char-resistance-row"><span>${escapeHtml(key)}</span><b>${value > 0 ? "+" : ""}${Math.round(value)}</b></div>`).join("");
+    .map(([key, value]) => {
+      const iconSrc = getResistanceIconSrc(key);
+      const tone = resistanceValueTone(value);
+      return `<button type="button" class="v39-char-resistance-row ${tone}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}" data-v39-resistance-label="${escapeHtml(key)}">
+        ${iconSrc ? `<img src="${escapeHtml(iconSrc)}" alt="" aria-hidden="true" class="v39-char-resistance-icon">` : '<span class="v39-char-resistance-icon-fallback" aria-hidden="true">?</span>'}
+        <b>${escapeHtml(formatResistanceValue(value))}</b>
+      </button>`;
+    }).join("");
   return `<div class="v39-char-detail-scroll">
     <h4>ステータス</h4>
     <div class="detail-grid v39-char-status-grid">${statusHtml}</div>
@@ -223,6 +232,16 @@ function installStyles() {
     #characterModal .v39-char-skill-grid,#characterModal .v39-char-resistance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
     #characterModal .v39-char-skill-row,#characterModal .v39-char-resistance-row,#characterModal .v39-char-equipment-row,#characterModal .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #31464d;border-radius:6px;background:#17252a;padding:7px 9px;min-width:0}
     #characterModal .v39-char-skill-row span,#characterModal .v39-char-resistance-row span,#characterModal .v39-char-equipment-row span,#characterModal .v39-char-growth-row span{color:#a8b8ba}
+    #characterModal .v39-char-resistance-row{font:inherit;color:#a8b8ba;cursor:default;outline:none;padding:1px 9px}
+    #characterModal .v39-char-resistance-icon,#characterModal .v39-char-resistance-icon-fallback{width:28px;height:28px;flex:0 0 auto;border-radius:4px}
+    #characterModal .v39-char-resistance-icon{object-fit:contain}
+    #characterModal .v39-char-resistance-icon-fallback{display:inline-flex;align-items:center;justify-content:center;background:#223138;color:#dce8e7;font-size:11px;font-weight:900}
+    #characterModal .v39-char-resistance-row b{margin-left:auto}
+    #v39ResistancePopover{position:fixed;z-index:100000;display:none;max-width:min(220px,calc(100vw - 24px));padding:5px 9px;border:1px solid rgba(112,144,153,.9);border-radius:6px;background:#0d171b;color:#eef7f6;box-shadow:0 5px 16px rgba(0,0,0,.36);font-size:12px;font-weight:800;line-height:1.2;white-space:nowrap;pointer-events:none;transform:translate(-50%,-100%)}
+    #characterModal .v39-char-resistance-row.positive{border-color:rgba(104,205,139,.5);background:rgba(25,59,39,.72)}
+    #characterModal .v39-char-resistance-row.positive b{color:#7de0a0}
+    #characterModal .v39-char-resistance-row.negative{border-color:rgba(224,116,99,.52);background:rgba(67,31,29,.72)}
+    #characterModal .v39-char-resistance-row.negative b{color:#f08f7f}
     #characterModal .v39-char-equipment-list,#characterModal .v39-char-growth-list{display:grid;gap:6px}
     #characterModal .v39-char-equipment-row b{overflow-wrap:anywhere;text-align:right}
     #characterModal .v39-char-note,#characterModal .v39-char-empty{color:#9eafb2;font-size:13px}
@@ -247,15 +266,88 @@ function installStyles() {
       #characterModal .v39-char-unit-head h3{font-size:19px}
       #characterModal .v39-char-detail-tabs{gap:3px}
       #characterModal .v39-char-detail-tabs button{font-size:11px;min-height:36px}
-      #characterModal .v39-char-skill-row,#characterModal .v39-char-resistance-row{padding:6px}
+      #characterModal .v39-char-skill-row{padding:6px}
+      #characterModal .v39-char-resistance-row{padding:1px 6px}
     }`;
   document.head.appendChild(style);
 }
 
+function resistancePopoverElement() {
+  let popover = document.getElementById("v39ResistancePopover");
+  if (popover instanceof HTMLElement) return popover;
+  popover = document.createElement("div");
+  popover.id = "v39ResistancePopover";
+  popover.setAttribute("role", "tooltip");
+  document.body.appendChild(popover);
+  return popover;
+}
+
+function showResistancePopover(element) {
+  if (!(element instanceof HTMLElement)) return;
+  const label = text(element.dataset.v39ResistanceLabel);
+  if (!label) return;
+  const popover = resistancePopoverElement();
+  const rect = element.getBoundingClientRect();
+  const useBottom = rect.top < 52;
+  popover.textContent = label;
+  popover.style.left = `${Math.max(12, Math.min(window.innerWidth - 12, rect.left + rect.width / 2))}px`;
+  popover.style.top = `${useBottom ? rect.bottom + 7 : rect.top - 7}px`;
+  popover.style.transform = useBottom ? "translate(-50%,0)" : "translate(-50%,-100%)";
+  popover.style.display = "block";
+}
+
+function hideResistancePopover() {
+  const popover = document.getElementById("v39ResistancePopover");
+  if (popover instanceof HTMLElement) popover.style.display = "none";
+}
+
 function install() {
   installStyles();
+
+  document.addEventListener("pointerover", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (resistance && resistance !== pinnedResistanceElement) showResistancePopover(resistance);
+  });
+
+  document.addEventListener("pointerout", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (!resistance || resistance === pinnedResistanceElement) return;
+    const next = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+    if (next && resistance.contains(next)) return;
+    hideResistancePopover();
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (resistance) showResistancePopover(resistance);
+  });
+
+  document.addEventListener("focusout", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (resistance && resistance !== pinnedResistanceElement) hideResistancePopover();
+  });
+
   document.addEventListener("click", (event) => {
     const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (resistance) {
+      if (pinnedResistanceElement === resistance) {
+        pinnedResistanceElement = null;
+        hideResistancePopover();
+      } else {
+        pinnedResistanceElement = resistance;
+        showResistancePopover(resistance);
+      }
+      return;
+    }
+    if (pinnedResistanceElement) {
+      pinnedResistanceElement = null;
+      hideResistancePopover();
+    }
     if (element?.closest('[data-open="character"]')) {
       window.setTimeout(openCharacterModal, 0);
       return;

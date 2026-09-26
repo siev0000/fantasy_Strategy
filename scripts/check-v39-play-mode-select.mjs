@@ -11,15 +11,11 @@ async function checkSelection(playMode) {
   await page.locator(`[data-v39-play-mode=${playMode}]`).click();
   const targetSelector = playMode === "multiplayer"
     ? "#v39-multiplayer-lobby.open"
-    : playMode === "single-normal"
-      ? '[data-v39-race-option="只人"]'
-      : "#v39-field-settings-modal.open";
+    : '[data-v39-race-option="只人"]';
   await page.locator(targetSelector).waitFor();
   const subtitle = playMode === "multiplayer"
     ? await page.locator("#v39-room-title").textContent()
-    : playMode === "single-normal"
-      ? await page.locator(".race-layout").textContent()
-      : await page.locator("#v39-field-settings-subtitle").textContent();
+    : await page.locator(".race-layout").textContent();
   const fieldSettingsOpen = await page.locator("#v39-field-settings-modal.open").count();
   const selectedPlayMode = await page.evaluate(() => window.getV39PlayMode?.() || "");
   const testMode = await page.evaluate(() => window.isV39TestMode?.() === true);
@@ -206,7 +202,7 @@ try {
     || singleTest.testMode !== true
     || multiplayer.testMode !== false
     || !String(singleNormal.subtitle).includes("只人")
-    || !String(singleTest.subtitle).includes("テストプレイ")
+    || !String(singleTest.subtitle).includes("只人")
     || !String(multiplayer.subtitle).includes("通信ルーム")
     || multiplayer.fieldSettingsOpen
     || singleSovereign.errors.length

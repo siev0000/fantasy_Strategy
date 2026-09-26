@@ -4,6 +4,8 @@
 
 Before changing game behavior, read `docs/README.md` and follow its documentation priority.
 
+For unit portrait / unit image generation or editing, read `docs/UNIT_PORTRAIT_GENERATION_RULES.md` before generating any image. Do not substitute older side-scroller pixel-art rules unless the user explicitly asks for side-scroller or pixel-art output.
+
 When specifications conflict, use this order:
 
 1. Current code / `data` / `config`

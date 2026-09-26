@@ -195,6 +195,10 @@ function selectRememberedOrFirstClass(category, list = classCandidates.value) {
 const activeSelectionDetail = computed(() => getV39ClassSelectionDetail(activeClass.value?.名前));
 const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
 const skillRows = computed(() => activeSelectionDetail.value?.skillRows || []);
+const resistanceRows = computed(() => activeSelectionDetail.value?.resistanceRows || []);
+const equipmentRows = computed(() => activeSelectionDetail.value?.equipmentRows || []);
+const equipmentMode = computed(() => activeSelectionDetail.value?.equipmentMode || "");
+const equipmentTitle = computed(() => activeSelectionDetail.value?.equipmentTitle || "");
 const classLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
 
 watch(
@@ -328,6 +332,10 @@ function confirmClass() {
         <v39-selection-detail-panel
           :status-rows="statusRowGroups"
           :skill-rows="skillRows"
+          :resistance-rows="resistanceRows"
+          :equipment-rows="equipmentRows"
+          :equipment-mode="equipmentMode"
+          :equipment-title="equipmentTitle"
           :skill-names="classLv5SkillNames"
           :status-source="activeClass"
           :active-tab="activeDetailTab"

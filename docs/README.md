@@ -37,6 +37,10 @@
 - [`CHARACTER_STATUS_RULES.md`](./CHARACTER_STATUS_RULES.md)
   - キャラLv、種族Lv、クラスLv、ステータス、技能、取得スキル。
 
+- [`UNIT_PORTRAIT_GENERATION_RULES.md`](./UNIT_PORTRAIT_GENERATION_RULES.md)
+  - ゲーム内ユニット立ち絵の画像生成ルール。画風、全身表示、背景透過、種族体格、128×128px前提、生成前後の確認手順を定義する。
+  - 「ユニット立ち絵」「ユニット画像」「キャラクター立ち絵」を生成・修正する場合は、画像生成前に必ずこの資料を確認する。
+
 - [`TERRAIN_RULES.md`](./TERRAIN_RULES.md)
   - 島・地形・湖・川などのマップ生成ルール。
 

@@ -10,6 +10,7 @@ import {
   V39_EQUIPMENT_RARITIES
 } from "../lib/v39-equipment-rules.js";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
+import ResistanceGrid from "./ResistanceGrid.vue";
 import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 
 const props = defineProps({
@@ -91,13 +92,6 @@ function statusValue(unit, key) {
   const raw = Number(unit?.status?.[key]);
   if (!Number.isFinite(raw)) return "-";
   return Math.round(raw);
-}
-
-function signedValueText(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "-";
-  const rounded = Math.round(num);
-  return rounded > 0 ? `+${rounded}` : String(rounded);
 }
 
 function resolveSkillFieldKeys(field) {
@@ -639,12 +633,7 @@ watch(
 
             <section class="char-block">
               <h4>耐性</h4>
-              <div v-if="resistanceRows.length" class="char-resist-grid">
-                <div v-for="row in resistanceRows" :key="`resist-${unit.id}-${row.key}`" class="char-resist-chip">
-                  <span>{{ row.key }}</span>
-                  <strong>{{ signedValueText(row.value) }}</strong>
-                </div>
-              </div>
+              <resistance-grid v-if="resistanceRows.length" :rows="resistanceRows" variant="light" />
               <div v-else class="small">耐性データなし</div>
             </section>
           </div>

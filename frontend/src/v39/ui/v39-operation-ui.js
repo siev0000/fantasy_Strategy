@@ -154,6 +154,25 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       #footSquad .proficiency-item{min-height:34px!important;padding:4px 6px!important;gap:4px!important}
       #footSquad .proficiency-item span{font-size:11px!important}
       #footSquad .proficiency-item b{font-size:13px!important}
+      #footSquad .v39-resistance-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:2px!important}
+      #footSquad .v39-resistance-indicator{
+        width:100%!important;min-width:0!important;min-height:32px!important;display:flex!important;align-items:center!important;
+        gap:6px!important;padding:1px 7px!important;border:1px solid #3d4d54!important;border-radius:7px!important;
+        background:#121c20!important;color:#a7b4b7!important;font:inherit!important;text-align:left!important;cursor:pointer!important
+      }
+      #footSquad .v39-resistance-icon,#footSquad .v39-resistance-icon-fallback{
+        width:28px!important;height:28px!important;flex:0 0 auto!important;border-radius:4px!important
+      }
+      #footSquad .v39-resistance-icon{object-fit:contain!important}
+      #footSquad .v39-resistance-icon-fallback{
+        display:inline-flex!important;align-items:center!important;justify-content:center!important;background:#223138!important;
+        color:#dce8e7!important;font-size:11px!important;font-weight:900!important
+      }
+      #footSquad .v39-resistance-indicator b{margin-left:auto!important;flex:0 0 auto!important;font-size:13px!important}
+      #footSquad .v39-resistance-indicator.positive{border-color:rgba(104,205,139,.5)!important;background:rgba(25,59,39,.72)!important}
+      #footSquad .v39-resistance-indicator.positive b{color:#7de0a0!important}
+      #footSquad .v39-resistance-indicator.negative{border-color:rgba(224,116,99,.52)!important;background:rgba(67,31,29,.72)!important}
+      #footSquad .v39-resistance-indicator.negative b{color:#f08f7f!important}
       #footSquad .technique-list{gap:2px!important}
       #footSquad .technique-passive-divider{
         margin:4px 0 1px!important;padding:2px 3px!important;border-top:1px solid #405159!important;
@@ -307,6 +326,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
                     ${[["攻撃","detailAtk"],["防御","detailDef"],["魔攻","detailMatk"],["魔防","detailMdef"],["速さ","detailSpd"],["命中","detailHit"],["SIZ","detailSiz"],["移動","detailMov"]].map(([label,id]) => `<div class="detail-stat"><span>${label}</span><b id="${id}"></b></div>`).join("")}
                   </div></div></details>
                   <details class="squad-detail-section" open><summary class="squad-detail-section-title">技能</summary><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></details>
+                  <details class="squad-detail-section" open><summary class="squad-detail-section-title">耐性</summary><div class="squad-detail-section-body"><div class="v39-resistance-grid" id="detailResistanceList"></div></div></details>
                   <details class="squad-detail-section" open><summary class="squad-detail-section-title">装備</summary><div class="squad-detail-section-body"><div class="equipment-list" id="detailEquipmentList"></div></div></details>
                 </section>
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="action" role="tabpanel" hidden aria-hidden="true">

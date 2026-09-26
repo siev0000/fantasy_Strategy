@@ -12,6 +12,24 @@ import { getV39RaceSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 
+const raceBackgroundModules = import.meta.glob("../../../assets/images/background/*.{png,jpg,jpeg,webp}", {
+  eager: true,
+  import: "default"
+});
+
+function backgroundBasename(path) {
+  const normalized = String(path || "").replace(/\\\\/g, "/");
+  const fileName = normalized.split("/").pop() || "";
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+}
+
+const raceBackgroundByCategory = new Map(
+  Object.entries(raceBackgroundModules)
+    .map(([path, src]) => [backgroundBasename(path), String(src || "")])
+    .filter(([name, src]) => name && src)
+);
+
 const props = defineProps({
   show: { type: Boolean, default: false },
   selectedRace: { type: String, default: "" },
@@ -160,6 +178,15 @@ const activeRace = computed(() => {
   return categoryRaces.value.find(item => item.key === activeRaceKey.value) || null;
 });
 
+const activeRaceBackgroundSrc = computed(() => (
+  raceBackgroundByCategory.get(nonEmptyText(activeRaceCategory.value)) || ""
+));
+
+const raceLayoutStyle = computed(() => {
+  const src = activeRaceBackgroundSrc.value;
+  return src ? { "--race-background-image": `url("${src}")` } : {};
+});
+
 function racesForCategory(category, list = filteredRaces.value) {
   const key = nonEmptyText(category);
   const source = Array.isArray(list) ? list : [];
@@ -196,6 +223,10 @@ const activeSelectionDetail = computed(() => getV39RaceSelectionDetail(activeRac
 const activeRaceClassRow = computed(() => activeSelectionDetail.value?.sourceRow || null);
 const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
 const skillRows = computed(() => activeSelectionDetail.value?.skillRows || []);
+const resistanceRows = computed(() => activeSelectionDetail.value?.resistanceRows || []);
+const equipmentRows = computed(() => activeSelectionDetail.value?.equipmentRows || []);
+const equipmentMode = computed(() => activeSelectionDetail.value?.equipmentMode || "");
+const equipmentTitle = computed(() => activeSelectionDetail.value?.equipmentTitle || "");
 const raceLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
 
 watch(
@@ -275,7 +306,7 @@ function confirmRace() {
 <template>
   <base-modal :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
     <div v-if="filteredRaces.length" class="race-layout">
-      <section class="race-category-pane">
+      <section class="race-category-pane" :style="raceLayoutStyle">
         <nav class="race-category-tabs" role="tablist" aria-label="種族分類">
           <button
             v-for="category in raceCategories"
@@ -324,6 +355,10 @@ function confirmRace() {
         <v39-selection-detail-panel
           :status-rows="statusRowGroups"
           :skill-rows="skillRows"
+          :resistance-rows="resistanceRows"
+          :equipment-rows="equipmentRows"
+          :equipment-mode="equipmentMode"
+          :equipment-title="equipmentTitle"
           :skill-names="raceLv5SkillNames"
           :status-source="activeRaceClassRow"
           :active-tab="activeDetailTab"
@@ -368,7 +403,12 @@ function confirmRace() {
   padding: 8px;
   border: 1px solid var(--picker-line);
   border-radius: 8px;
-  background: #0d181c;
+  background-image:
+    linear-gradient(rgba(4, 10, 12, .28), rgba(4, 10, 12, .5)),
+    var(--race-background-image, none);
+  background-position:center;
+  background-size:cover;
+  background-repeat:no-repeat;
   overflow: hidden;
 }
 
@@ -396,7 +436,7 @@ function confirmRace() {
   padding: 6px 10px;
   border: 1px solid #385159;
   border-radius: 7px;
-  background: #122126;
+  background: rgba(18, 33, 38, .82);
   color: #a9babc;
   text-align: center;
   cursor: pointer;
@@ -415,7 +455,7 @@ function confirmRace() {
   padding: 8px 10px;
   border: 1px solid #294047;
   border-radius: 7px;
-  background: #101f24;
+  background: rgba(16, 31, 36, .82);
   color: #a9babc;
   font-size: 12px;
   font-weight: 600;

@@ -4,7 +4,7 @@ import {
   raceData,
   skillData
 } from "./game-data-registry.js";
-import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
+import { EQUIPMENT_SLOT_KEYS, RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 import { computeSkillScaledTriplet } from "./skill-power.js";
 
 export const V39_SELECTION_STATUS_ROWS = Object.freeze([
@@ -27,6 +27,34 @@ function numberOrNull(value) {
 function placeholderSkill(value) {
   const valueText = text(value).toLowerCase();
   return !valueText || valueText === "0" || valueText === "-" || valueText === "－" || valueText === "なし" || valueText === "null";
+}
+
+function equipmentSlotDisabled(value) {
+  const valueText = text(value).toLowerCase();
+  if (!valueText) return false;
+  return valueText.includes("×") || valueText === "x" || valueText.includes("不可");
+}
+
+function buildEquipmentSlotRows(row) {
+  return EQUIPMENT_SLOT_KEYS.map(key => ({
+    key,
+    label:key,
+    enabled:!equipmentSlotDisabled(row?.[key])
+  }));
+}
+
+function buildEquipmentAdditionRows(row) {
+  return EQUIPMENT_SLOT_KEYS
+    .map(key => {
+      const value = text(row?.[key]);
+      if (!value || equipmentSlotDisabled(value)) return null;
+      return {
+        key,
+        label:key,
+        value
+      };
+    })
+    .filter(Boolean);
 }
 
 function fieldKeys(field) {
@@ -130,6 +158,9 @@ export function buildV39SelectionDetailFromClassRow(row) {
       value:skillValue(row, field),
       desc:skillDescription(field)
     })).filter(item => item.value > 0),
+    resistanceRows:RESISTANCE_FIELDS
+      .map(key => ({ key, value:numberOrNull(row?.[key]) }))
+      .filter(item => item.value !== null && item.value !== 0),
     acquiredSkillNames:names,
     acquiredSkillRows:buildAcquiredSkillRows(names, row)
   };
@@ -149,7 +180,10 @@ export function getV39RaceSelectionDetail(raceKey) {
     description:text(race?.detail),
     icon:text(race?.icon),
     className,
-    ...buildV39SelectionDetailFromClassRow(classRow)
+    ...buildV39SelectionDetailFromClassRow(classRow),
+    equipmentMode:"slots",
+    equipmentTitle:"装備箇所",
+    equipmentRows:buildEquipmentSlotRows(classRow)
   };
 }
 
@@ -157,13 +191,18 @@ export function getV39ClassSelectionDetail(className) {
   const name = text(className);
   const classRow = classByName.get(name);
   if (!classRow) return null;
+  const classType = text(classRow?.種類);
+  const isJobClass = classType === "職業";
   return {
     kind:"class",
     key:name,
     name,
-    classType:text(classRow?.種類),
+    classType,
     description:text(classRow?.詳細),
     total:classRow?.合計 ?? "",
-    ...buildV39SelectionDetailFromClassRow(classRow)
+    ...buildV39SelectionDetailFromClassRow(classRow),
+    equipmentMode:isJobClass ? "additions" : "slots",
+    equipmentTitle:isJobClass ? "装備追加" : "装備箇所",
+    equipmentRows:isJobClass ? buildEquipmentAdditionRows(classRow) : buildEquipmentSlotRows(classRow)
   };
 }

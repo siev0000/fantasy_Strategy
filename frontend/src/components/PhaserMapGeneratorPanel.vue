@@ -7586,10 +7586,10 @@ function allowsEquipmentBySlotCell(value) {
   return true;
 }
 
-function buildEquipmentSlotsFromClassRow(row) {
+function buildEquipmentSlotsFromRaceRow(raceRow) {
   const out = {};
   for (const slotKey of EQUIPMENT_SLOT_KEYS) {
-    out[slotKey] = allowsEquipmentBySlotCell(row?.[slotKey]);
+    out[slotKey] = allowsEquipmentBySlotCell(raceRow?.[slotKey]);
   }
   return out;
 }
@@ -9072,7 +9072,7 @@ function createUnitRecord({
     !!isNamed && !isSovereign
   );
   const finalStatus = applyMilitaryProfileToStatus(namedBonus.status, militaryProfile);
-  const equipmentSlots = buildEquipmentSlotsFromClassRow(classRow || raceRow || {});
+  const equipmentSlots = buildEquipmentSlotsFromRaceRow(raceRow || {});
   const equipment = chooseEquipmentForClass(classRow, isNamed || isSovereign, equipmentSlots, equipmentRarity);
   const baseResistances = buildUnitResistances(raceRow, classRow);
   const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(equipment));
