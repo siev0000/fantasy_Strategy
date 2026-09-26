@@ -207,15 +207,28 @@ const activeClassSheetFrame = computed(() => {
   if (!race || !className) return null;
   return resolveFactionUnitSheetFrame({ race, className });
 });
-const activeClassPreviewStyle = computed(() => {
-  const frame = activeClassSheetFrame.value;
-  if (!frame?.src) return null;
-  return {
-    backgroundImage:`url("${frame.src}")`,
-    backgroundSize:frame.backgroundSize,
-    backgroundPosition:frame.backgroundPosition
-  };
+const activeClassSheetSourceIndex = ref(0);
+const activeClassSheetSrc = computed(() => {
+  const candidates = activeClassSheetFrame.value?.srcCandidates;
+  if (!Array.isArray(candidates) || !candidates.length) return "";
+  return candidates[activeClassSheetSourceIndex.value] || "";
 });
+const activeClassSheetImageStyle = computed(() => activeClassSheetFrame.value?.imageStyle || {});
+
+watch(
+  [() => props.selectedRace, activeClassName],
+  () => {
+    activeClassSheetSourceIndex.value = 0;
+  }
+);
+
+function handleClassSheetImageError() {
+  const candidates = activeClassSheetFrame.value?.srcCandidates;
+  if (!Array.isArray(candidates)) return;
+  if (activeClassSheetSourceIndex.value < candidates.length - 1) {
+    activeClassSheetSourceIndex.value += 1;
+  }
+}
 
 watch(
   [() => props.show, classCandidates, () => props.selectedClass],
@@ -304,12 +317,19 @@ function confirmClass() {
       <section class="class-preview-frame" aria-label="選択中クラスのユニット画像">
         <div class="class-preview-inner">
           <div
-            v-if="activeClassPreviewStyle"
+            v-if="activeClassSheetSrc"
             class="class-preview-sprite"
-            :style="activeClassPreviewStyle"
             role="img"
             :aria-label="`${selectedRace} ${activeClass?.名前 || ''} ユニット画像`"
-          />
+          >
+            <img
+              :key="activeClassSheetSrc"
+              :src="activeClassSheetSrc"
+              :alt="`${selectedRace} ${activeClass?.名前 || ''} ユニットシート`"
+              :style="activeClassSheetImageStyle"
+              @error="handleClassSheetImageError"
+            />
+          </div>
           <div v-else class="class-preview-empty">
             <strong>画像未設定</strong>
             <span>{{ selectedRace }} / {{ activeClass?.名前 || "-" }}</span>
@@ -429,15 +449,25 @@ function confirmClass() {
 }
 
 .class-preview-sprite {
+  position:relative;
   width:128px;
   height:128px;
   max-width:100%;
   max-height:100%;
   flex:0 0 auto;
+  overflow:hidden;
   border:1px solid #314950;
   border-radius:7px;
-  background-repeat:no-repeat;
-  background-color:#091216;
+  background:#091216;
+}
+
+.class-preview-sprite img {
+  position:absolute;
+  display:block;
+  max-width:none;
+  max-height:none;
+  object-fit:fill;
+  pointer-events:none;
 }
 
 .class-preview-empty {
