@@ -4,6 +4,8 @@ import { addResearchExperience } from "../../lib/research-progress.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import { getGameDataTable } from "../../lib/game-data-registry.js";
 import { getV39TestSkillRows } from "../../lib/v39-test-skill-rules.js";
+import { getHexDistance } from "../../lib/hex-grid.js";
+import { getV39NeutralVillageRelation, getV39RelationLabel } from "../../lib/v39-neutral-village-rules.js";
 import {
   resolveV39UnitRaceCategory,
   resolveV39UnitTotalExpForLevel,
@@ -18,6 +20,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 let statusMessage = "テスト対象を選択してください";
 let selectedEnemyId = "";
 let selectedTestSkillName = "";
+let panelCollapsed = false;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
@@ -308,6 +311,117 @@ function advanceTurn() {
   setStatus(ok ? "1ターン進めました" : "ターンを進められません");
 }
 
+
+function sumBag(bag) {
+  return Object.values(bag && typeof bag === "object" ? bag : {})
+    .reduce((sum, value) => sum + Math.max(0, number(value)), 0);
+}
+
+function playerLabel(state, playerId) {
+  const player = (state?.players || []).find(row => text(row?.id) === text(playerId));
+  return text(player?.label || player?.name || player?.id) || text(playerId) || "-";
+}
+
+function selectedTileBaseInfo(state, tile) {
+  const key = selectedTileKey(tile);
+  if (!state || !key) return [];
+
+  const entries = [];
+  const territoryState = state?.territoryStateByTile?.[key] || null;
+  const territorySettlementId = text(territoryState?.settlementId);
+
+  const neutralVillage = (state?.neutralVillages || []).find(village => (
+    selectedTileKey(village) === key
+    || (Array.isArray(village?.territoryTileKeys) && village.territoryTileKeys.map(text).includes(key))
+  )) || null;
+
+  const ownedSettlement = (state?.settlements || []).find(settlement => {
+    if (settlement?.neutral === true) return false;
+    const id = text(settlement?.settlementId || settlement?.id);
+    return selectedTileKey(settlement) === key || (!!territorySettlementId && id === territorySettlementId);
+  }) || null;
+
+  if (ownedSettlement) {
+    const ownerPlayerId = text(ownedSettlement?.ownerPlayerId || state?.territoryOwnerByTile?.[key]);
+    const owner = (state?.players || []).find(row => text(row?.id) === ownerPlayerId);
+    const cityLevels = ownedSettlement?.cityLevels || {};
+    entries.push({
+      kind:"所有拠点",
+      name:text(ownedSettlement?.name || ownedSettlement?.type) || "拠点",
+      lines:[
+        "所有: " + playerLabel(state, ownerPlayerId) + " / 種族: " + (text(owner?.race) || "-"),
+        "中心: (" + Math.floor(number(ownedSettlement?.x)) + "," + Math.floor(number(ownedSettlement?.y)) + ") / 選択マス: " + key,
+        "規模: " + (text(ownedSettlement?.type || ownedSettlement?.scaleName) || "村") + " / Lv" + Math.max(1, Math.floor(number(ownedSettlement?.scaleLevel, 1))) + " / 人口 " + Math.floor(number(ownedSettlement?.population)),
+        "技能: 鍛冶" + Math.floor(number(cityLevels?.鍛冶Lv)) + " / 魔法" + Math.floor(number(cityLevels?.魔法Lv)) + " / 信仰" + Math.floor(number(cityLevels?.信仰Lv)) + " / 軍事" + Math.floor(number(cityLevels?.軍事Lv)) + " / 経済" + Math.floor(number(cityLevels?.経済Lv)),
+        "備蓄: 食料 " + Math.round(sumBag(ownedSettlement?.foodStockByType)) + " / 資材 " + Math.round(sumBag(ownedSettlement?.materialStockByType)),
+        "選択土地: " + (text(territoryState?.status) || "-") + " / HP " + Math.round(number(territoryState?.hp, territoryState?.maxHp || 100)) + "/" + Math.round(number(territoryState?.maxHp, 100))
+      ]
+    });
+  }
+
+  if (neutralVillage) {
+    const militaryLevel = Math.max(0, Math.floor(number(neutralVillage?.researchLevels?.軍事Lv ?? neutralVillage?.militaryLevel)));
+    const defenders = Array.isArray(neutralVillage?.defenseUnits) ? neutralVillage.defenseUnits : [];
+    const defenseCount = defenders.reduce((sum, row) => sum + Math.max(0, Math.floor(number(row?.count))), 0);
+    const defenseStrength = defenders.reduce((sum, row) => sum + Math.max(0, number(row?.strength)), 0);
+    const activePlayerId = text(state?.activePlayerId);
+    const relation = getV39NeutralVillageRelation(neutralVillage, activePlayerId);
+    entries.push({
+      kind:"一般村",
+      name:text(neutralVillage?.name) || "一般村",
+      lines:[
+        "種族: " + (text(neutralVillage?.race) || "-") + " / クラス: " + (text(neutralVillage?.className) || "-"),
+        "中心: (" + Math.floor(number(neutralVillage?.x)) + "," + Math.floor(number(neutralVillage?.y)) + ") / 選択マス: " + key,
+        "村Lv" + Math.max(1, Math.floor(number(neutralVillage?.level, 1))) + " / 人口 " + Math.floor(number(neutralVillage?.population)) + " / 軍事Lv" + militaryLevel,
+        "守備: " + defenseCount + "人 / 戦力 " + Math.round(defenseStrength),
+        "関係: " + getV39RelationLabel(relation) + " " + relation + " / " + (neutralVillage?.vassalPlayerId ? "属国: " + text(neutralVillage.vassalPlayerId) : "独立"),
+        "最近の襲撃: " + (neutralVillage?.raidState ? "T" + Math.floor(number(neutralVillage.raidState.turn)) + " / " + (neutralVillage.raidState.defended ? "防衛成功" : "防衛失敗") : "なし")
+      ]
+    });
+  }
+
+  const tilePoint = { x:Math.floor(number(tile?.x)), y:Math.floor(number(tile?.y)) };
+  const nestRows = (state?.enemyNests || [])
+    .map(nest => ({
+      nest,
+      distance:getHexDistance(tilePoint, { x:nest?.x, y:nest?.y }),
+      radius:Math.max(0, Math.floor(number(nest?.territoryRadius)))
+    }))
+    .filter(row => row.distance <= row.radius)
+    .sort((a, b) => a.distance - b.distance);
+  const nestRow = nestRows[0] || null;
+
+  if (nestRow?.nest) {
+    const nest = nestRow.nest;
+    const memberCount = Array.isArray(nest?.unitIds) ? nest.unitIds.filter(Boolean).length : 0;
+    entries.push({
+      kind:"敵巣",
+      name:text(nest?.name) || text(nest?.id) || "敵巣",
+      lines:[
+        "種族: " + (text(nest?.race) || "-") + " / 中心: (" + Math.floor(number(nest?.x)) + "," + Math.floor(number(nest?.y)) + ")",
+        "選択マス: " + key + " / 中心距離 " + nestRow.distance + " / 縄張り半径 " + nestRow.radius,
+        "規模: " + (text(nest?.scaleName) || "-") + " / Lv" + Math.max(1, Math.floor(number(nest?.scaleLevel, 1))) + " / 軍事Lv" + Math.max(1, Math.floor(number(nest?.militaryLevel, 1))),
+        "人口 " + Math.floor(number(nest?.population)) + " / 所属ユニット " + memberCount,
+        "備蓄: 食料 " + Math.round(sumBag(nest?.foodStockByType)) + " / 資材 " + Math.round(sumBag(nest?.materialStockByType))
+      ]
+    });
+  }
+
+  return entries;
+}
+
+function selectedTileBaseInfoHtml(state, tile) {
+  const entries = selectedTileBaseInfo(state, tile);
+  if (!selectedTileKey(tile)) return '<p class="v39-test-empty">マスを選択してください</p>';
+  if (!entries.length) return '<p class="v39-test-empty">選択マスに関連する拠点はありません</p>';
+  return entries.map(entry => (
+    '<article class="v39-test-base-card">'
+      + '<header><span>' + escapeHtml(entry.kind) + '</span><strong>' + escapeHtml(entry.name) + '</strong></header>'
+      + '<div>' + entry.lines.map(line => '<p>' + escapeHtml(line) + '</p>').join("") + '</div>'
+    + '</article>'
+  )).join("");
+}
+
 function panelHtml() {
   const { state, settlement, unit, tile } = context();
   const resource = selectedResourceKey();
@@ -331,8 +445,9 @@ function panelHtml() {
     : "判定データなし";
   const enemyOptions = enemies.map(enemy => `<option value="${escapeHtml(enemy.id)}"${text(enemy.id) === selectedEnemyId ? " selected" : ""}>${escapeHtml(enemy.name || enemy.id)} (${Math.floor(number(enemy.x))},${Math.floor(number(enemy.y))})</option>`).join("");
   return `
-    <header class="v39-test-tools-head"><button type="button" id="v39-test-tools-back">← 管理</button><strong>テスト操作</strong><span>TEST</span></header>
+    <header class="v39-test-tools-head"><button type="button" id="v39-test-tools-toggle" data-test-panel-toggle aria-expanded="${!panelCollapsed}" aria-label="${panelCollapsed ? "テスト操作を開く" : "テスト操作を閉じる"}">${panelCollapsed ? "▷" : "◁"}</button><strong>テスト操作</strong><span>TEST</span></header>
     <div class="v39-test-tools-scroll">
+      <section><h3>選択マスの拠点情報</h3><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></section>
       <section><h3>フィールド</h3><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></section>
       <section><h3>拠点・資源</h3><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></section>
       <section><h3>キャラクター</h3><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></section>
@@ -346,28 +461,21 @@ function panelHtml() {
 
 function render() {
   const panel = document.getElementById("v39-test-tools-panel");
-  if (!(panel instanceof HTMLElement) || panel.hidden) return;
+  if (!(panel instanceof HTMLElement)) return;
+  panel.classList.toggle("is-collapsed", panelCollapsed);
   panel.innerHTML = panelHtml();
 }
 
 function openPanel() {
   if (!testModeEnabled()) return;
-  const menu = document.getElementById("v39-manage-menu");
-  const panel = document.getElementById("v39-test-tools-panel");
-  if (!menu || !panel) return;
-  menu.hidden = true;
-  panel.hidden = false;
-  panel.setAttribute("aria-hidden", "false");
+  panelCollapsed = false;
+  window.activateV39FooterTab?.("test");
   render();
 }
 
 function closePanel() {
-  const menu = document.getElementById("v39-manage-menu");
-  const panel = document.getElementById("v39-test-tools-panel");
-  if (!menu || !panel) return;
-  panel.hidden = true;
-  panel.setAttribute("aria-hidden", "true");
-  menu.hidden = false;
+  panelCollapsed = true;
+  render();
 }
 
 function handleAction(action) {
