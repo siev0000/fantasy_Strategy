@@ -4,7 +4,7 @@ import {
   raceData,
   skillData
 } from "./game-data-registry.js";
-import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
+import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 import { computeSkillScaledTriplet } from "./skill-power.js";
 
 export const V39_SELECTION_STATUS_ROWS = Object.freeze([
@@ -130,6 +130,9 @@ export function buildV39SelectionDetailFromClassRow(row) {
       value:skillValue(row, field),
       desc:skillDescription(field)
     })).filter(item => item.value > 0),
+    resistanceRows:RESISTANCE_FIELDS
+      .map(key => ({ key, value:numberOrNull(row?.[key]) }))
+      .filter(item => item.value !== null && item.value !== 0),
     acquiredSkillNames:names,
     acquiredSkillRows:buildAcquiredSkillRows(names, row)
   };
