@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
+import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../lib/resistance-display.js";
 
 const props = defineProps({
   statusRows: { type:Array, default:() => [] },
@@ -43,12 +44,6 @@ function toggleSection(key) {
   };
 }
 
-function signedValue(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "-";
-  const rounded = Math.round(num);
-  return rounded > 0 ? `+${rounded}` : String(rounded);
-}
 </script>
 
 <template>
@@ -127,10 +122,18 @@ function signedValue(value) {
                 v-for="item in resistanceRows"
                 :key="item.key"
                 class="operation-resistance-item"
-                :class="{ positive: Number(item.value) > 0, negative: Number(item.value) < 0 }"
+                :class="resistanceValueTone(item.value)"
               >
-                <span>{{ item.key }}</span>
-                <b>{{ signedValue(item.value) }}</b>
+                <span class="operation-resistance-label">
+                  <img
+                    v-if="getResistanceIconSrc(item.key)"
+                    :src="getResistanceIconSrc(item.key)"
+                    :alt="`${item.key} アイコン`"
+                    class="operation-resistance-icon"
+                  />
+                  <span>{{ item.key }}</span>
+                </span>
+                <b>{{ formatResistanceValue(item.value) }}</b>
               </div>
             </div>
             <div v-else class="operation-empty">耐性補正なし</div>
@@ -330,13 +333,28 @@ button.operation-detail-section-title:hover {
   background:#121c20;
 }
 
-.operation-resistance-item span {
+.operation-resistance-label {
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:5px;
+}
+
+.operation-resistance-label > span {
   min-width:0;
   color:#a7b4b7;
   font-size:11px;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+}
+
+.operation-resistance-icon {
+  width:20px;
+  height:20px;
+  flex:0 0 auto;
+  object-fit:contain;
+  border-radius:4px;
 }
 
 .operation-resistance-item b {
