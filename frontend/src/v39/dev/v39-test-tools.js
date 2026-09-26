@@ -373,7 +373,8 @@ function selectedTileBaseInfo(state, tile) {
         "種族: " + (text(neutralVillage?.race) || "-") + " / クラス: " + (text(neutralVillage?.className) || "-"),
         "中心: (" + Math.floor(number(neutralVillage?.x)) + "," + Math.floor(number(neutralVillage?.y)) + ") / 選択マス: " + key,
         "村Lv" + Math.max(1, Math.floor(number(neutralVillage?.level, 1))) + " / 人口 " + Math.floor(number(neutralVillage?.population)) + " / 軍事Lv" + militaryLevel,
-        "守備: " + defenseCount + "人 / 戦力 " + Math.round(defenseStrength),
+        "軍隊人口: " + Math.floor(number(neutralVillage?.militaryPopulationUsed, defenseCount)) + "/" + Math.floor(number(neutralVillage?.militaryPopulationCap, defenseCount)) + "人 / 軍隊率 " + Math.round(number(neutralVillage?.armyRate) * 100) + "%",
+        "守備: " + (neutralVillage?.defenseUnits || []).length + "隊 / " + defenseCount + "人 / 戦力 " + Math.round(defenseStrength),
         "関係: " + getV39RelationLabel(relation) + " " + relation + " / " + (neutralVillage?.vassalPlayerId ? "属国: " + text(neutralVillage.vassalPlayerId) : "独立"),
         "最近の襲撃: " + (neutralVillage?.raidState ? "T" + Math.floor(number(neutralVillage.raidState.turn)) + " / " + (neutralVillage.raidState.defended ? "防衛成功" : "防衛失敗") : "なし")
       ]
