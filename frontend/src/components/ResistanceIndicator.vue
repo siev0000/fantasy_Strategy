@@ -43,7 +43,7 @@ const ariaLabel = computed(() => `${props.resistanceKey} ${valueText.value}`);
   display:flex;
   align-items:center;
   gap:6px;
-  padding:4px 7px;
+  padding:1px 7px;
   border-radius:7px;
   font:inherit;
   text-align:left;
@@ -53,8 +53,8 @@ const ariaLabel = computed(() => `${props.resistanceKey} ${valueText.value}`);
 
 .resistance-indicator-icon,
 .resistance-indicator-icon-fallback {
-  width:20px;
-  height:20px;
+  width:28px;
+  height:28px;
   flex:0 0 auto;
   border-radius:4px;
 }
