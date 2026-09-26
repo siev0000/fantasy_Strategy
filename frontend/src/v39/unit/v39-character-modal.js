@@ -1,5 +1,6 @@
 import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../../constants/unitCommon.js";
+import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 
 let activeTab = "character";
 let selectedId = "";
@@ -58,7 +59,17 @@ function statusPanel(unit) {
   const resistanceHtml = RESISTANCE_FIELDS
     .map((key) => [key, Number(unit?.resistances?.[key])])
     .filter(([, value]) => Number.isFinite(value) && value !== 0)
-    .map(([key, value]) => `<div class="v39-char-resistance-row"><span>${escapeHtml(key)}</span><b>${value > 0 ? "+" : ""}${Math.round(value)}</b></div>`).join("");
+    .map(([key, value]) => {
+      const iconSrc = getResistanceIconSrc(key);
+      const tone = resistanceValueTone(value);
+      return `<div class="v39-char-resistance-row ${tone}">
+        <span class="v39-char-resistance-label">
+          ${iconSrc ? `<img src="${escapeHtml(iconSrc)}" alt="${escapeHtml(key)} アイコン" class="v39-char-resistance-icon">` : ""}
+          <span>${escapeHtml(key)}</span>
+        </span>
+        <b>${escapeHtml(formatResistanceValue(value))}</b>
+      </div>`;
+    }).join("");
   return `<div class="v39-char-detail-scroll">
     <h4>ステータス</h4>
     <div class="detail-grid v39-char-status-grid">${statusHtml}</div>
@@ -223,6 +234,13 @@ function installStyles() {
     #characterModal .v39-char-skill-grid,#characterModal .v39-char-resistance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
     #characterModal .v39-char-skill-row,#characterModal .v39-char-resistance-row,#characterModal .v39-char-equipment-row,#characterModal .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #31464d;border-radius:6px;background:#17252a;padding:7px 9px;min-width:0}
     #characterModal .v39-char-skill-row span,#characterModal .v39-char-resistance-row span,#characterModal .v39-char-equipment-row span,#characterModal .v39-char-growth-row span{color:#a8b8ba}
+    #characterModal .v39-char-resistance-label{min-width:0;display:flex;align-items:center;gap:6px}
+    #characterModal .v39-char-resistance-label>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #characterModal .v39-char-resistance-icon{width:20px;height:20px;flex:0 0 auto;object-fit:contain;border-radius:4px}
+    #characterModal .v39-char-resistance-row.positive{border-color:rgba(104,205,139,.5);background:rgba(25,59,39,.72)}
+    #characterModal .v39-char-resistance-row.positive b{color:#7de0a0}
+    #characterModal .v39-char-resistance-row.negative{border-color:rgba(224,116,99,.52);background:rgba(67,31,29,.72)}
+    #characterModal .v39-char-resistance-row.negative b{color:#f08f7f}
     #characterModal .v39-char-equipment-list,#characterModal .v39-char-growth-list{display:grid;gap:6px}
     #characterModal .v39-char-equipment-row b{overflow-wrap:anywhere;text-align:right}
     #characterModal .v39-char-note,#characterModal .v39-char-empty{color:#9eafb2;font-size:13px}
