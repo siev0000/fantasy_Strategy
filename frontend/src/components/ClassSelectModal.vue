@@ -208,7 +208,9 @@ const activeClassSheetFrame = computed(() => {
   return resolveFactionUnitSheetFrame({ race, className });
 });
 const activeClassSheetSourceIndex = ref(0);
+const activeClassSheetLoadFailed = ref(false);
 const activeClassSheetSrc = computed(() => {
+  if (activeClassSheetLoadFailed.value) return "";
   const candidates = activeClassSheetFrame.value?.srcCandidates;
   if (!Array.isArray(candidates) || !candidates.length) return "";
   return candidates[activeClassSheetSourceIndex.value] || "";
@@ -219,6 +221,7 @@ watch(
   [() => props.selectedRace, activeClassName],
   () => {
     activeClassSheetSourceIndex.value = 0;
+    activeClassSheetLoadFailed.value = false;
   }
 );
 
@@ -227,7 +230,9 @@ function handleClassSheetImageError() {
   if (!Array.isArray(candidates)) return;
   if (activeClassSheetSourceIndex.value < candidates.length - 1) {
     activeClassSheetSourceIndex.value += 1;
+    return;
   }
+  activeClassSheetLoadFailed.value = true;
 }
 
 watch(
