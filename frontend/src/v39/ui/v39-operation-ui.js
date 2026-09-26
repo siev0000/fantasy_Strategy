@@ -24,6 +24,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       { key: "squad", label: "部隊", icon: "👥" },
       { key: "tile", label: "土地", icon: "⬢" },
       { key: "settlement", label: "拠点", icon: "⌂" },
+      { key: "test", label: "テスト", icon: "試" },
       { key: "manage", label: "管理", icon: "⚙" }
     ],
     landItems: EMPTY_LAND_ITEMS,
@@ -34,7 +35,6 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       { icon: "🏳", label: "国家・外交", id: "v39-manage-nation" },
       { icon: "⚙", label: "ゲーム設定", open: "settings" },
       { icon: "目", label: "表示設定", id: "v39-manage-display-settings" },
-      { icon: "試", label: "テスト操作", id: "v39-manage-test-tools" },
       { icon: "⬢", label: "ゲーム開始設定", id: "v39-manage-field-settings" },
       { icon: "📝", label: "設計書", id: "v39-manage-design-docs" }
     ]
@@ -283,6 +283,9 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         box-shadow:0 0 0 1px rgba(231,196,102,.18)
       }
       #footSquad .technique-card.action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed!important}
+      html:not(.v39-test-mode) [data-foot="test"]{display:none!important}
+      html:not(.v39-test-mode) #footTest{display:none!important}
+      #footTest{min-width:0;min-height:0;height:100%;overflow:hidden}
       #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;gap:6px}
       #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
       #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
@@ -368,6 +371,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
           ${data.landItems.map(item => `<div class="land-item"><span>${item.label}</span><b${item.valueId ? ` id="${item.valueId}"` : ""}>${item.value}</b></div>`).join("")}
         </section>
         <section id="footSettlement" class="settlement-panel" hidden aria-hidden="true"></section>
+        <section id="footTest" class="v39-test-footer-panel" hidden aria-hidden="true"></section>
         <section id="footManage" class="mobile-manage-panel" hidden aria-hidden="true">
           <div id="v39-manage-menu" class="manage-menu-grid">${data.manageItems.map(item => `<button class="manage-tile" ${attributes(item)}><b>${item.icon}</b><span>${item.labelHtml || item.label}</span></button>`).join("")}</div>
           <section id="v39-display-settings-panel" class="display-settings-panel" hidden aria-hidden="true">
@@ -401,7 +405,9 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
   }
 
   function activateFooterTab(tabKey) {
-    const normalized = data.tabs.some(tab => tab.key === tabKey) ? tabKey : data.tabs[0].key;
+    const testEnabled = window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
+    const requested = tabKey === "test" && !testEnabled ? "squad" : tabKey;
+    const normalized = data.tabs.some(tab => tab.key === requested) ? requested : data.tabs[0].key;
     document.querySelectorAll("[data-foot]").forEach(button => button.classList.toggle("active", button.dataset.foot === normalized));
     data.tabs.forEach(tab => {
       const panel = document.getElementById(`foot${tab.key[0].toUpperCase()}${tab.key.slice(1)}`);
@@ -418,6 +424,14 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
   if (!(footer instanceof HTMLElement)) throw new Error("operation UI mount point is missing");
   installOperationStyles();
   renderFooter(footer);
+  window.addEventListener("v39:display-settings-changed", event => {
+    const enabled = event?.detail?.testMode === true
+      || window.isV39TestMode?.() === true
+      || window.getV39DisplaySettings?.().testMode === true;
+    const activeTest = document.querySelector('[data-foot="test"]')?.classList.contains("active");
+    if (!enabled && activeTest) activateFooterTab("squad");
+  });
+
   footer.addEventListener("click", event => {
     const target = event.target instanceof Element ? event.target : null;
     const detailTab = target?.closest("[data-squad-detail-tab]");
