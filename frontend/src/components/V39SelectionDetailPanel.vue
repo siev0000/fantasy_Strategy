@@ -1,12 +1,15 @@
 <script setup>
 import { computed, ref } from "vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
-import ResistanceIndicator from "./ResistanceIndicator.vue";
+import ResistanceGrid from "./ResistanceGrid.vue";
 
 const props = defineProps({
   statusRows: { type:Array, default:() => [] },
   skillRows: { type:Array, default:() => [] },
   resistanceRows: { type:Array, default:() => [] },
+  equipmentRows: { type:Array, default:() => [] },
+  equipmentMode: { type:String, default:"" },
+  equipmentTitle: { type:String, default:"" },
   skillNames: { type:Array, default:() => [] },
   statusSource: { type:Object, default:null },
   activeTab: { type:String, default:"status" },
@@ -18,7 +21,8 @@ const emit = defineEmits(["update:activeTab"]);
 const collapsedSections = ref({
   status:false,
   skills:false,
-  resistances:false
+  resistances:false,
+  equipment:false
 });
 
 const normalizedTab = computed(() => {
@@ -117,16 +121,35 @@ function toggleSection(key) {
             <span class="operation-section-toggle">{{ collapsedSections.resistances ? "▸" : "▾" }}</span>
           </button>
           <div v-if="!collapsedSections.resistances" class="operation-detail-section-body">
-            <div v-if="resistanceRows.length" class="operation-resistance-grid">
-              <resistance-indicator
-                v-for="item in resistanceRows"
-                :key="item.key"
-                :resistance-key="item.key"
-                :value="item.value"
-                variant="dark"
-              />
-            </div>
+            <resistance-grid v-if="resistanceRows.length" :rows="resistanceRows" variant="dark" />
             <div v-else class="operation-empty">耐性補正なし</div>
+          </div>
+        </section>
+
+        <section v-if="equipmentTitle" class="operation-detail-section">
+          <button
+            type="button"
+            class="operation-detail-section-title"
+            :aria-expanded="!collapsedSections.equipment"
+            @click="toggleSection('equipment')"
+          >
+            <span>{{ equipmentTitle }}</span>
+            <span class="operation-section-toggle">{{ collapsedSections.equipment ? "▸" : "▾" }}</span>
+          </button>
+          <div v-if="!collapsedSections.equipment" class="operation-detail-section-body">
+            <div v-if="equipmentRows.length" class="operation-equipment-grid">
+              <div
+                v-for="item in equipmentRows"
+                :key="item.key"
+                class="operation-equipment-item"
+                :class="{ disabled: equipmentMode === 'slots' && item.enabled === false }"
+              >
+                <span>{{ item.label }}</span>
+                <b v-if="equipmentMode === 'slots'">{{ item.enabled === false ? "×" : "可" }}</b>
+                <b v-else>{{ item.value || "-" }}</b>
+              </div>
+            </div>
+            <div v-else class="operation-empty">{{ equipmentMode === "additions" ? "装備追加なし" : "装備データなし" }}</div>
           </div>
         </section>
       </section>
@@ -315,10 +338,52 @@ button.operation-detail-section-title:hover {
   line-height:1.1;
 }
 
-.operation-resistance-grid {
+.operation-equipment-grid {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:2px;
+}
+
+.operation-equipment-item {
+  min-width:0;
+  min-height:34px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  padding:4px 7px;
+  border:1px solid #3d4d54;
+  border-radius:7px;
+  background:#121c20;
+}
+
+.operation-equipment-item span {
+  min-width:0;
+  color:#a7b4b7;
+  font-size:11px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.operation-equipment-item b {
+  min-width:0;
+  color:#f0f5f3;
+  font-size:12px;
+  text-align:right;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.operation-equipment-item.disabled {
+  border-color:#563a3a;
+  background:#241719;
+}
+
+.operation-equipment-item.disabled span,
+.operation-equipment-item.disabled b {
+  color:#d78d84;
 }
 
 .operation-proficiency-grid {
