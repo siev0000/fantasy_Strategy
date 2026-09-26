@@ -224,6 +224,9 @@ const activeRaceClassRow = computed(() => activeSelectionDetail.value?.sourceRow
 const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
 const skillRows = computed(() => activeSelectionDetail.value?.skillRows || []);
 const resistanceRows = computed(() => activeSelectionDetail.value?.resistanceRows || []);
+const equipmentRows = computed(() => activeSelectionDetail.value?.equipmentRows || []);
+const equipmentMode = computed(() => activeSelectionDetail.value?.equipmentMode || "");
+const equipmentTitle = computed(() => activeSelectionDetail.value?.equipmentTitle || "");
 const raceLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
 
 watch(
@@ -353,6 +356,9 @@ function confirmRace() {
           :status-rows="statusRowGroups"
           :skill-rows="skillRows"
           :resistance-rows="resistanceRows"
+          :equipment-rows="equipmentRows"
+          :equipment-mode="equipmentMode"
+          :equipment-title="equipmentTitle"
           :skill-names="raceLv5SkillNames"
           :status-source="activeRaceClassRow"
           :active-tab="activeDetailTab"
