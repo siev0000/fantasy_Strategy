@@ -109,8 +109,7 @@ function updateMaxZoomText() {
 }
 
 function effectiveTestMode() {
-  if (typeof window.getV39PlayMode !== "function") return false;
-  return window.getV39PlayMode() === "single-test" && settings.testMode === true;
+  return settings.testMode === true;
 }
 
 function applySettings({ emit = true } = {}) {
@@ -135,9 +134,8 @@ function applySettings({ emit = true } = {}) {
   if (showZoom) showZoom.checked = settings.showZoomControls !== false;
   if (reduceMotion) reduceMotion.checked = !!settings.reduceMotion;
   if (testMode) {
-    const playMode = typeof window.getV39PlayMode === "function" ? window.getV39PlayMode() : "";
     testMode.checked = testModeEnabled;
-    testMode.disabled = !!playMode && playMode !== "single-test";
+    testMode.disabled = false;
   }
   if (maxZoom) maxZoom.value = String(settings.maxZoomFactor);
 
