@@ -155,7 +155,13 @@ function neighbors(mapData, x, y) {
 export function advanceV39WorldPopulation(state, mapData, turnNumber) {
   const turn = Math.max(1, Math.floor(number(turnNumber, state?.timeline?.turnNumber || 1)));
   const occupied = new Set((state?.enemies || []).map(row => keyOf(row.x, row.y)));
-  for (const village of state?.neutralVillages || []) occupied.add(keyOf(village.x, village.y));
+  for (const player of state?.players || []) {
+    for (const unit of player?.factionState?.units || []) occupied.add(keyOf(unit.x, unit.y));
+  }
+  for (const village of state?.neutralVillages || []) {
+    occupied.add(keyOf(village.x, village.y));
+    for (const unit of village?.defenseUnits || []) occupied.add(keyOf(unit.x, unit.y));
+  }
   const wandererGroups = (state?.wandererGroups || []).map(group => {
     const options = neighbors(mapData, group.x, group.y).filter(tile => !occupied.has(keyOf(tile.x, tile.y)));
     const next = options.length ? options[hash(`${group.id}:T${turn}`) % options.length] : group;
