@@ -5,7 +5,7 @@ import V39SelectionDetailPanel from "./V39SelectionDetailPanel.vue";
 import { classData as classDb, descriptionData as skillDescDb } from "../lib/game-data-registry.js";
 import { getV39ClassSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
-import { resolveUnitImageArtwork } from "../lib/map-entity-artwork.js";
+import { resolveFactionUnitSheetFrame } from "../lib/unit-sheet-artwork.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 
 const props = defineProps({
@@ -201,13 +201,21 @@ const equipmentRows = computed(() => activeSelectionDetail.value?.equipmentRows 
 const equipmentMode = computed(() => activeSelectionDetail.value?.equipmentMode || "");
 const equipmentTitle = computed(() => activeSelectionDetail.value?.equipmentTitle || "");
 const classLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
-const activeClassArtwork = computed(() => {
+const activeClassSheetFrame = computed(() => {
   const race = nonEmptyText(props.selectedRace);
   const className = nonEmptyText(activeClass.value?.名前);
   if (!race || !className) return null;
-  return resolveUnitImageArtwork({ race, className });
+  return resolveFactionUnitSheetFrame({ race, className });
 });
-const activeClassArtworkSrc = computed(() => nonEmptyText(activeClassArtwork.value?.src));
+const activeClassPreviewStyle = computed(() => {
+  const frame = activeClassSheetFrame.value;
+  if (!frame?.src) return null;
+  return {
+    backgroundImage:`url("${frame.src}")`,
+    backgroundSize:frame.backgroundSize,
+    backgroundPosition:frame.backgroundPosition
+  };
+});
 
 watch(
   [() => props.show, classCandidates, () => props.selectedClass],
@@ -295,11 +303,12 @@ function confirmClass() {
     <div v-if="selectedRace && classCandidates.length" class="class-screen-layout">
       <section class="class-preview-frame" aria-label="選択中クラスのユニット画像">
         <div class="class-preview-inner">
-          <img
-            v-if="activeClassArtworkSrc"
-            :src="activeClassArtworkSrc"
-            :alt="`${selectedRace} ${activeClass?.名前 || ''} ユニット画像`"
-            class="class-preview-image"
+          <div
+            v-if="activeClassPreviewStyle"
+            class="class-preview-sprite"
+            :style="activeClassPreviewStyle"
+            role="img"
+            :aria-label="`${selectedRace} ${activeClass?.名前 || ''} ユニット画像`"
           />
           <div v-else class="class-preview-empty">
             <strong>画像未設定</strong>
@@ -419,12 +428,16 @@ function confirmClass() {
   place-items:center;
 }
 
-.class-preview-image {
+.class-preview-sprite {
   width:128px;
   height:128px;
   max-width:100%;
   max-height:100%;
-  object-fit:contain;
+  flex:0 0 auto;
+  border:1px solid #314950;
+  border-radius:7px;
+  background-repeat:no-repeat;
+  background-color:#091216;
 }
 
 .class-preview-empty {
