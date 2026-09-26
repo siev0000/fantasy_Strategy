@@ -6,6 +6,7 @@ import {
 } from "./icon-library.js";
 import { MAP_SETTLEMENT_MARKER_CONFIG } from "./phaser-map-panel-config.js";
 import { resolveVillageScaleDefinition } from "../composables/villageCoreUtils.js";
+import { resolveFactionUnitArtworkName } from "../constants/factionUnitArtwork.js";
 
 const rawEnemyArtworkModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
   eager: true,
@@ -121,9 +122,14 @@ export function resolveUnitArtwork(unit) {
     unit?.illustrationName,
     unit?.画像
   ]);
+  const factionArtworkName = resolveFactionUnitArtworkName(className);
   const generatedNames = unique([
+    factionArtworkName,
+    raceName && factionArtworkName ? `${raceName}_${factionArtworkName}` : "",
+    raceName && factionArtworkName ? `${raceName}${factionArtworkName}` : "",
     raceName && className ? `${raceName}_${className}` : "",
     raceName && className ? `${raceName}${className}` : "",
+    raceName === "只人" ? factionArtworkName : "",
     raceName === "只人" ? className : "",
     raceName
   ]);
