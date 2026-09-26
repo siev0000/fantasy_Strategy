@@ -250,10 +250,14 @@ function signedValue(value) {
   font-weight:800;
   letter-spacing:.03em;
   text-align:left;
+  cursor:default;
+}
+
+button.operation-detail-section-title {
   cursor:pointer;
 }
 
-.operation-detail-section-title:hover {
+button.operation-detail-section-title:hover {
   background:#17282e;
   color:#d7e3e3;
 }
