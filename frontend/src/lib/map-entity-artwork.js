@@ -7,6 +7,7 @@ import {
 import { MAP_SETTLEMENT_MARKER_CONFIG } from "./phaser-map-panel-config.js";
 import { resolveVillageScaleDefinition } from "../composables/villageCoreUtils.js";
 import { resolveFactionUnitArtworkName } from "../constants/factionUnitArtwork.js";
+import { resolveMonsterSheetArtwork } from "./monster-sheet-artwork.js";
 
 const rawEnemyArtworkModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
   eager: true,
@@ -152,6 +153,9 @@ export function resolveUnitArtwork(unit) {
 }
 
 export function resolveEnemyArtwork(enemy) {
+  const sheetArtwork = resolveMonsterSheetArtwork(enemy);
+  if (sheetArtwork) return sheetArtwork;
+
   const row = findByStem(enemyArtworkRows, [
     enemy?.imageName,
     enemy?.image,
