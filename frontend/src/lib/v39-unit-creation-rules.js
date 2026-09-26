@@ -76,11 +76,64 @@ function nextUnitName(units, race, classRow, isArmy) {
   return `${prefix}${index}`;
 }
 
+export function buildV39ClassEquipment(classRow = {}) {
+  return EQUIPMENT_SLOT_KEYS.map(slot => ({ slot, name:text(classRow?.[slot]) }))
+    .filter(row => row.name && row.name !== "×" && row.name !== "0" && row.name !== "-");
+}
+
+export function buildV39UnitEntity({
+  id,
+  name,
+  race,
+  className,
+  level = 1,
+  unitType = "ヒーロー",
+  isMob = false,
+  isNamed = !isMob,
+  role = "",
+  squadId = "solo",
+  x = null,
+  y = null,
+  combatProfile = null,
+  settlementId = "",
+  equipment = []
+} = {}) {
+  const unit = applyV39DerivedCharacterData({
+    id:text(id),
+    name:text(name),
+    race:text(race),
+    className:text(className),
+    level:Math.max(1, Math.floor(number(level, 1))),
+    unitType:text(unitType),
+    isMob:isMob === true,
+    isNamed:isNamed === true,
+    role:text(role),
+    squadId:text(squadId) || "solo",
+    x:Number.isFinite(Number(x)) ? Math.floor(Number(x)) : null,
+    y:Number.isFinite(Number(y)) ? Math.floor(Number(y)) : null,
+    position:Number.isFinite(Number(x)) && Number.isFinite(Number(y))
+      ? [Math.floor(Number(x)), Math.floor(Number(y))]
+      : null,
+    combatProfile:combatProfile && typeof combatProfile === "object" ? { ...combatProfile } : null,
+    settlementId:text(settlementId),
+    equipment:Array.isArray(equipment) ? equipment.map(row => ({ ...row })) : []
+  });
+  const maxHp = Math.max(1, number(unit.maxHp, number(unit?.status?.HP, 1)));
+  return {
+    ...unit,
+    hp:maxHp,
+    currentHp:maxHp,
+    maxHp,
+    ap:100,
+    currentAp:100,
+    maxAp:100,
+    state:"生存"
+  };
+}
+
 function createUnit(player, check, name, index) {
   const village = check.village;
-  const equipment = EQUIPMENT_SLOT_KEYS.map(slot => ({ slot, name:text(check.classRow?.[slot]) }))
-    .filter(row => row.name && row.name !== "×" && row.name !== "0" && row.name !== "-");
-  const unit = applyV39DerivedCharacterData({
+  return buildV39UnitEntity({
     id:`unit-${player.id}-${Date.now()}-${index}`,
     name,
     race:check.race,
@@ -93,13 +146,10 @@ function createUnit(player, check, name, index) {
     squadId:"solo",
     x:village.x,
     y:village.y,
-    position:[village.x, village.y],
-    combatProfile:{ ...check.mode },
+    combatProfile:check.mode,
     settlementId:text(village.settlementId || village.id),
-    equipment
+    equipment:buildV39ClassEquipment(check.classRow)
   });
-  const maxHp = Math.max(1, number(unit.maxHp, number(unit?.status?.HP, 1)));
-  return { ...unit, hp:maxHp, currentHp:maxHp, maxHp, ap:100, currentAp:100, maxAp:100, state:"生存" };
 }
 
 export function createV39Units(state, playerId, request = {}) {
