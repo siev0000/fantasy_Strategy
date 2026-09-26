@@ -195,6 +195,7 @@ function selectRememberedOrFirstClass(category, list = classCandidates.value) {
 const activeSelectionDetail = computed(() => getV39ClassSelectionDetail(activeClass.value?.名前));
 const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
 const skillRows = computed(() => activeSelectionDetail.value?.skillRows || []);
+const resistanceRows = computed(() => activeSelectionDetail.value?.resistanceRows || []);
 const classLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
 
 watch(
@@ -328,6 +329,7 @@ function confirmClass() {
         <v39-selection-detail-panel
           :status-rows="statusRowGroups"
           :skill-rows="skillRows"
+          :resistance-rows="resistanceRows"
           :skill-names="classLv5SkillNames"
           :status-source="activeClass"
           :active-tab="activeDetailTab"
