@@ -2,6 +2,7 @@ import { classData, enemySpawnData } from "../../lib/game-data-registry.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/v39-nest-rules.js";
+import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 
 const SAFE_DISTANCE_FROM_BASE = 4;
 const LOW_LEVEL_DISTANCE_FROM_BASE = 10;
@@ -584,6 +585,53 @@ function buildEnemies(data, settlements) {
   return enemies;
 }
 
+function initialSettlementTargetCount(faction) {
+  const plans = Array.isArray(faction?.initialSettlementPlans)
+    ? faction.initialSettlementPlans.filter(row => row && typeof row === "object")
+    : [];
+  return Math.max(1, integer(faction?.initialSettlementCount, plans.length || 1));
+}
+
+function playerHasSovereign(player) {
+  return Array.isArray(player?.factionState?.units)
+    && player.factionState.units.some(unit => isSovereignUnit(unit));
+}
+
+function allInitialPlacementsComplete(state) {
+  const players = (Array.isArray(state?.players) ? state.players : []).filter(playerHasSovereign);
+  if (!players.length) return false;
+  return players.every(player => {
+    const faction = player?.factionState;
+    const placedCount = getFactionSettlements(faction).filter(row => row?.placed).length;
+    return placedCount >= initialSettlementTargetCount(faction);
+  });
+}
+
+let ensureSpawnTimer = null;
+
+function ensureInitialEnemiesSpawned(reason = "initial-placement-check") {
+  window.clearTimeout(ensureSpawnTimer);
+  ensureSpawnTimer = window.setTimeout(() => {
+    const data = window.__v39FieldRuntime?.mapData;
+    const state = window.getV39GameState?.();
+    if (!data || !state) return;
+    if (Array.isArray(state.enemies) && state.enemies.length > 0) return;
+    if (!allInitialPlacementsComplete(state)) return;
+
+    const enemies = spawnForActivePlayer();
+    if (!enemies.length) {
+      console.warn("[v39-enemy-spawn] 初期配置完了後も敵を生成できませんでした", {
+        reason,
+        validDefinitionCount:[...definitionsByTerrain.values()].reduce((sum, rows) => sum + rows.length, 0),
+        settlementCount:(state.players || []).flatMap(player =>
+          getFactionSettlements(player?.factionState).filter(row => row?.placed)
+        ).length,
+        mapSize:[data?.w, data?.h]
+      });
+    }
+  }, 0);
+}
+
 function spawnForActivePlayer() {
   const data = window.__v39FieldRuntime?.mapData;
   const state = window.getV39GameState?.();
@@ -631,8 +679,11 @@ function clearEnemiesForNewField() {
 }
 
 window.addEventListener("v39:field-generated", clearEnemiesForNewField);
-window.addEventListener("v39:initial-placement-complete", spawnForActivePlayer);
+window.addEventListener("v39:initial-placement-complete", () => ensureInitialEnemiesSpawned("initial-placement-complete"));
+window.addEventListener("v39:initial-settlement-placed", () => ensureInitialEnemiesSpawned("initial-settlement-placed"));
+window.addEventListener("v39:bootstrap-complete", () => ensureInitialEnemiesSpawned("bootstrap-complete"));
 window.spawnV39Enemies = spawnForActivePlayer;
+window.ensureV39InitialEnemiesSpawned = ensureInitialEnemiesSpawned;
 window.getV39EnemySpawnRules = () => ({
   safeDistanceFromBase:SAFE_DISTANCE_FROM_BASE,
   lowLevelDistanceFromBase:LOW_LEVEL_DISTANCE_FROM_BASE,
