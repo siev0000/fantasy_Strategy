@@ -49,17 +49,26 @@ const monsterSheetByNumber = new Map(
 );
 
 const monsterSheetReferenceByName = new Map();
+const monsterSheetReferenceByDefinitionId = new Map();
 
 for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
   const name = text(row?.種族名);
+  const definitionId = text(row?.ID);
   const sheetNumber = integer(row?.画像シート);
   const slotNumber = integer(row?.画像番号);
-  if (!name || sheetNumber === null || slotNumber === null) continue;
+  if (sheetNumber === null || slotNumber === null) continue;
   if (slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) continue;
 
+  const reference = { sheetNumber, slotNumber };
+
+  if (definitionId) {
+    monsterSheetReferenceByDefinitionId.set(definitionId, reference);
+  }
+
+  if (!name) continue;
   const existing = monsterSheetReferenceByName.get(name);
   if (!existing) {
-    monsterSheetReferenceByName.set(name, { sheetNumber, slotNumber });
+    monsterSheetReferenceByName.set(name, reference);
     continue;
   }
 
@@ -67,7 +76,7 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
     console.warn(
       `[monster-sheet-artwork] 出現敵.json の画像指定が競合しています: ${name}`,
       existing,
-      { sheetNumber, slotNumber }
+      reference
     );
   }
 }
@@ -88,16 +97,40 @@ function resolveReferenceFromEnemy(enemy) {
     return { sheetNumber:directSheetNumber, slotNumber:directSlotNumber };
   }
 
+  const definitionIds = [
+    enemy?.sourceDefinitionId,
+    enemy?.definitionId,
+    enemy?.spawnDefinitionId,
+    enemy?.ID
+  ].map(text).filter(Boolean);
+
+  for (const definitionId of definitionIds) {
+    const reference = monsterSheetReferenceByDefinitionId.get(definitionId);
+    if (reference) return reference;
+  }
+
   const names = [
     enemy?.種族名,
+    enemy?.speciesName,
+    enemy?.enemyName,
     enemy?.name,
     enemy?.displayName,
     enemy?.raceName,
-    enemy?.race
+    enemy?.race,
+    enemy?.imageName,
+    enemy?.image,
+    enemy?.画像
   ].map(text).filter(Boolean);
 
   for (const name of names) {
     const reference = monsterSheetReferenceByName.get(name);
+    if (reference) return reference;
+  }
+
+  for (const definitionId of definitionIds) {
+    const parts = definitionId.split(":");
+    const name = parts[0] === "出現敵" ? text(parts[2]) : "";
+    const reference = name ? monsterSheetReferenceByName.get(name) : null;
     if (reference) return reference;
   }
   return null;
