@@ -5,6 +5,7 @@ import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from
 let activeTab = "character";
 let selectedId = "";
 let detailTab = "status";
+let pinnedResistanceElement = null;
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -62,9 +63,8 @@ function statusPanel(unit) {
     .map(([key, value]) => {
       const iconSrc = getResistanceIconSrc(key);
       const tone = resistanceValueTone(value);
-      return `<button type="button" class="v39-char-resistance-row ${tone}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}" title="${escapeHtml(key)}">
+      return `<button type="button" class="v39-char-resistance-row ${tone}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}" data-v39-resistance-label="${escapeHtml(key)}">
         ${iconSrc ? `<img src="${escapeHtml(iconSrc)}" alt="" aria-hidden="true" class="v39-char-resistance-icon">` : '<span class="v39-char-resistance-icon-fallback" aria-hidden="true">?</span>'}
-        <span class="v39-char-resistance-name">${escapeHtml(key)}</span>
         <b>${escapeHtml(formatResistanceValue(value))}</b>
       </button>`;
     }).join("");
@@ -236,9 +236,8 @@ function installStyles() {
     #characterModal .v39-char-resistance-icon,#characterModal .v39-char-resistance-icon-fallback{width:28px;height:28px;flex:0 0 auto;border-radius:4px}
     #characterModal .v39-char-resistance-icon{object-fit:contain}
     #characterModal .v39-char-resistance-icon-fallback{display:inline-flex;align-items:center;justify-content:center;background:#223138;color:#dce8e7;font-size:11px;font-weight:900}
-    #characterModal .v39-char-resistance-name{min-width:0;max-width:0;opacity:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;transition:max-width .14s ease,opacity .14s ease}
-    #characterModal .v39-char-resistance-row:hover .v39-char-resistance-name,#characterModal .v39-char-resistance-row:focus .v39-char-resistance-name,#characterModal .v39-char-resistance-row:focus-visible .v39-char-resistance-name{max-width:110px;opacity:1}
     #characterModal .v39-char-resistance-row b{margin-left:auto}
+    #v39ResistancePopover{position:fixed;z-index:100000;display:none;max-width:min(220px,calc(100vw - 24px));padding:5px 9px;border:1px solid rgba(112,144,153,.9);border-radius:6px;background:#0d171b;color:#eef7f6;box-shadow:0 5px 16px rgba(0,0,0,.36);font-size:12px;font-weight:800;line-height:1.2;white-space:nowrap;pointer-events:none;transform:translate(-50%,-100%)}
     #characterModal .v39-char-resistance-row.positive{border-color:rgba(104,205,139,.5);background:rgba(25,59,39,.72)}
     #characterModal .v39-char-resistance-row.positive b{color:#7de0a0}
     #characterModal .v39-char-resistance-row.negative{border-color:rgba(224,116,99,.52);background:rgba(67,31,29,.72)}
@@ -273,10 +272,82 @@ function installStyles() {
   document.head.appendChild(style);
 }
 
+function resistancePopoverElement() {
+  let popover = document.getElementById("v39ResistancePopover");
+  if (popover instanceof HTMLElement) return popover;
+  popover = document.createElement("div");
+  popover.id = "v39ResistancePopover";
+  popover.setAttribute("role", "tooltip");
+  document.body.appendChild(popover);
+  return popover;
+}
+
+function showResistancePopover(element) {
+  if (!(element instanceof HTMLElement)) return;
+  const label = text(element.dataset.v39ResistanceLabel);
+  if (!label) return;
+  const popover = resistancePopoverElement();
+  const rect = element.getBoundingClientRect();
+  const useBottom = rect.top < 52;
+  popover.textContent = label;
+  popover.style.left = `${Math.max(12, Math.min(window.innerWidth - 12, rect.left + rect.width / 2))}px`;
+  popover.style.top = `${useBottom ? rect.bottom + 7 : rect.top - 7}px`;
+  popover.style.transform = useBottom ? "translate(-50%,0)" : "translate(-50%,-100%)";
+  popover.style.display = "block";
+}
+
+function hideResistancePopover() {
+  const popover = document.getElementById("v39ResistancePopover");
+  if (popover instanceof HTMLElement) popover.style.display = "none";
+}
+
 function install() {
   installStyles();
+
+  document.addEventListener("pointerover", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (resistance && resistance !== pinnedResistanceElement) showResistancePopover(resistance);
+  });
+
+  document.addEventListener("pointerout", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (!resistance || resistance === pinnedResistanceElement) return;
+    const next = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+    if (next && resistance.contains(next)) return;
+    hideResistancePopover();
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (resistance) showResistancePopover(resistance);
+  });
+
+  document.addEventListener("focusout", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (resistance && resistance !== pinnedResistanceElement) hideResistancePopover();
+  });
+
   document.addEventListener("click", (event) => {
     const element = event.target instanceof Element ? event.target : null;
+    const resistance = element?.closest("[data-v39-resistance-label]");
+    if (resistance) {
+      if (pinnedResistanceElement === resistance) {
+        pinnedResistanceElement = null;
+        hideResistancePopover();
+      } else {
+        pinnedResistanceElement = resistance;
+        showResistancePopover(resistance);
+      }
+      return;
+    }
+    if (pinnedResistanceElement) {
+      pinnedResistanceElement = null;
+      hideResistancePopover();
+    }
     if (element?.closest('[data-open="character"]')) {
       window.setTimeout(openCharacterModal, 0);
       return;
