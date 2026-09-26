@@ -51,15 +51,15 @@ function equipmentSlotEnabled(value) {
   return !(valueText.includes("×") || valueText === "x" || valueText.includes("不可"));
 }
 
-function buildInitialEquipment(classRow) {
+function buildInitialEquipment(classRow, equipmentSlots = {}) {
   return EQUIPMENT_SLOT_KEYS
-    .filter(slot => equipmentSlotEnabled(classRow?.[slot]))
+    .filter(slot => equipmentSlots?.[slot] !== false)
     .map(slot => createV39EquipmentEntry(classRow?.[slot], DEFAULT_V39_EQUIPMENT_RARITY_KEY, slot))
     .filter(Boolean);
 }
 
-function buildEquipmentSlots(classRow) {
-  return Object.fromEntries(EQUIPMENT_SLOT_KEYS.map(slot => [slot, equipmentSlotEnabled(classRow?.[slot])]));
+function buildEquipmentSlots(raceRow) {
+  return Object.fromEntries(EQUIPMENT_SLOT_KEYS.map(slot => [slot, equipmentSlotEnabled(raceRow?.[slot])]));
 }
 
 function randomInitialLevel() {
@@ -82,6 +82,8 @@ export function createV39InitialSovereign(profile = {}) {
   if (!classRow) return { ok:false, reason:"開始時に選択できないクラスです。" };
   if (!name) return { ok:false, reason:"統治者名を入力してください。" };
 
+  const raceRow = classByName.get(text(raceDefinition?.className)) || classByName.get(race) || null;
+  const equipmentSlots = buildEquipmentSlots(raceRow);
   const level = randomInitialLevel();
   const base = {
     id:uniqueUnitId(playerId),
@@ -98,8 +100,8 @@ export function createV39InitialSovereign(profile = {}) {
     initialSettlementSlot:0,
     iconName:text(classRow?.画像ID || raceDefinition?.name || race),
     iconSrc:text(raceDefinition?.icon),
-    equipmentSlots:buildEquipmentSlots(classRow),
-    equipment:buildInitialEquipment(classRow),
+    equipmentSlots,
+    equipment:buildInitialEquipment(classRow, equipmentSlots),
     maxAp:100,
     ap:100,
     currentAp:100,
@@ -147,14 +149,30 @@ export function applyV39InitialSovereignProfile(state, profile = {}) {
   }
   const created = createV39InitialSovereign(profile);
   if (!created.ok) return { ...created, state };
+
+  const existingUnits = Array.isArray(target?.factionState?.units)
+    ? target.factionState.units.filter(unit => !isSovereignUnit(unit))
+    : [];
+  const existingPlans = Array.isArray(target?.factionState?.initialSettlementPlans)
+    ? target.factionState.initialSettlementPlans.map(plan => ({ ...(plan || {}) }))
+    : [];
+  const initialSettlementPlans = existingPlans.length
+    ? existingPlans.map((plan, index) => index === 0 ? { ...plan, name:villageName } : plan)
+    : [{ name:villageName }];
+  const initialSettlementCount = Math.max(
+    1,
+    Math.floor(Number(target?.factionState?.initialSettlementCount) || 0),
+    initialSettlementPlans.length
+  );
+
   const factionState = createPlayerFactionState({
     ...target.factionState,
-    units:[created.unit],
+    units:[created.unit, ...existingUnits],
     selectedUnitId:created.unit.id,
     villagePlacementMode:true,
     nationLogKey:created.unit.id,
-    initialSettlementCount:1,
-    initialSettlementPlans:[{ name:villageName }]
+    initialSettlementCount,
+    initialSettlementPlans
   }, playerId);
   return {
     ok:true,
