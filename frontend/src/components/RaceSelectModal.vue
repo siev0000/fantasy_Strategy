@@ -223,6 +223,7 @@ const activeSelectionDetail = computed(() => getV39RaceSelectionDetail(activeRac
 const activeRaceClassRow = computed(() => activeSelectionDetail.value?.sourceRow || null);
 const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
 const skillRows = computed(() => activeSelectionDetail.value?.skillRows || []);
+const resistanceRows = computed(() => activeSelectionDetail.value?.resistanceRows || []);
 const raceLv5SkillNames = computed(() => activeSelectionDetail.value?.acquiredSkillNames || []);
 
 watch(
@@ -301,8 +302,8 @@ function confirmRace() {
 
 <template>
   <base-modal :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
-    <div v-if="filteredRaces.length" class="race-layout" :style="raceLayoutStyle">
-      <section class="race-category-pane">
+    <div v-if="filteredRaces.length" class="race-layout">
+      <section class="race-category-pane" :style="raceLayoutStyle">
         <nav class="race-category-tabs" role="tablist" aria-label="種族分類">
           <button
             v-for="category in raceCategories"
@@ -351,6 +352,7 @@ function confirmRace() {
         <v39-selection-detail-panel
           :status-rows="statusRowGroups"
           :skill-rows="skillRows"
+          :resistance-rows="resistanceRows"
           :skill-names="raceLv5SkillNames"
           :status-source="activeRaceClassRow"
           :active-tab="activeDetailTab"
@@ -385,13 +387,6 @@ function confirmRace() {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  border-radius: 10px;
-  background-image:
-    linear-gradient(rgba(4, 10, 12, .45), rgba(4, 10, 12, .62)),
-    var(--race-background-image, none);
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
 }
 
 .race-category-pane {
@@ -402,8 +397,12 @@ function confirmRace() {
   padding: 8px;
   border: 1px solid var(--picker-line);
   border-radius: 8px;
-  background: rgba(13, 24, 28, .82);
-  backdrop-filter: blur(2px);
+  background-image:
+    linear-gradient(rgba(4, 10, 12, .28), rgba(4, 10, 12, .5)),
+    var(--race-background-image, none);
+  background-position:center;
+  background-size:cover;
+  background-repeat:no-repeat;
   overflow: hidden;
 }
 
