@@ -116,6 +116,9 @@ function markerRenderSignature(faction, state) {
     .filter(player => String(player?.id || "") !== String(state?.activePlayerId || ""))
     .flatMap(player => Array.isArray(player?.factionState?.units) ? player.factionState.units.map(visualUnitSignature) : [])
     .sort();
+  const neutralVillageUnits = (Array.isArray(state?.neutralVillages) ? state.neutralVillages : [])
+    .flatMap(village => Array.isArray(village?.defenseUnits) ? village.defenseUnits.map(visualUnitSignature) : [])
+    .sort();
   return [
     String(state?.activePlayerId || ""),
     String(faction?.selectedUnitId || ""),
@@ -126,6 +129,7 @@ function markerRenderSignature(faction, state) {
     (Array.isArray(state?.enemyNests) ? state.enemyNests : []).map(visualNestSignature).sort().join("|"),
     playerUnits.join("|"),
     foreignUnits.join("|"),
+    neutralVillageUnits.join("|"),
     (Array.isArray(state?.enemies) ? state.enemies : []).map(visualUnitSignature).sort().join("|"),
     (Array.isArray(state?.wandererGroups) ? state.wandererGroups : []).map(group => [
       group?.id, group?.x, group?.y, ...(Array.isArray(group?.discoveredByPlayerIds) ? group.discoveredByPlayerIds : [])
@@ -509,6 +513,49 @@ function drawForeignUnits(scene, container, players, activePlayerId) {
   }
 }
 
+function drawNeutralVillageUnits(scene, container, villages) {
+  const rule = MAP_ENTITY_SIZE_RULES.unit;
+  const diameter = tileRelativePx(rule.diameterTiles);
+  const radius = diameter / 2;
+  const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
+  const revealAll = isTestMode();
+  const units = (Array.isArray(villages) ? villages : [])
+    .flatMap(village => Array.isArray(village?.defenseUnits) ? village.defenseUnits : []);
+
+  for (const group of unitGroupsByTile(units).values()) {
+    const unit = representativeUnit(group, "");
+    const x = finiteCoord(unit?.x);
+    const y = finiteCoord(unit?.y);
+    if (!unit || x === null || y === null) continue;
+    if (!revealAll && window.isV39TileInCurrentVision?.(x, y) === false) continue;
+
+    const center = tileCenter(x, y);
+    const marker = scene.add.container(center.x, center.y).setName("v39-neutral-village-unit-marker");
+    for (const member of group) {
+      const id = String(member?.id || "").trim();
+      if (id) markerByEntityId.set(id, marker);
+    }
+
+    if (!addUnitArtwork(scene, marker, unit, diameter)) {
+      marker.add([
+        scene.add.circle(0, 0, radius, 0x4a4021, 0.97)
+          .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe0c46c, 1),
+        scene.add.text(0, -0.5, "兵", {
+          fontSize:`${glyphFontSize}px`,
+          fontStyle:"bold",
+          color:"#fff1b6"
+        }).setOrigin(0.5)
+      ]);
+    } else {
+      marker.add(scene.add.circle(0, 0, radius, 0x000000, 0)
+        .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe0c46c, 0.95));
+    }
+    addDeadMark(scene, marker, unit, radius);
+    addMilitaryMemberCount(scene, marker, unit, radius);
+    container.add(marker);
+  }
+}
+
 function drawEnemies(scene, container, enemies) {
   const rule = MAP_ENTITY_SIZE_RULES.unit;
   const diameter = tileRelativePx(rule.diameterTiles);
@@ -582,6 +629,7 @@ function renderMarkers() {
   drawEnemyNests(scene, structureContainer, state?.enemyNests);
   drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId);
   drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId);
+  drawNeutralVillageUnits(scene, unitContainer, state?.neutralVillages);
   drawEnemies(scene, unitContainer, state?.enemies);
   drawWanderers(scene, unitContainer, state?.wandererGroups, state?.activePlayerId);
   return true;
