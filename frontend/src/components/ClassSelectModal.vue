@@ -6,6 +6,7 @@ import { classData as classDb, descriptionData as skillDescDb } from "../lib/gam
 import { getV39ClassSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { resolveFactionUnitSheetFrame } from "../lib/unit-sheet-artwork.js";
+import { resolveUnitImageArtwork } from "../lib/map-entity-artwork.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 
 const props = defineProps({
@@ -207,33 +208,23 @@ const activeClassSheetFrame = computed(() => {
   if (!race || !className) return null;
   return resolveFactionUnitSheetFrame({ race, className });
 });
-const activeClassSheetSourceIndex = ref(0);
-const activeClassSheetLoadFailed = ref(false);
-const activeClassSheetSrc = computed(() => {
-  if (activeClassSheetLoadFailed.value) return "";
-  const candidates = activeClassSheetFrame.value?.srcCandidates;
-  if (!Array.isArray(candidates) || !candidates.length) return "";
-  return candidates[activeClassSheetSourceIndex.value] || "";
+const activeClassSheetStyle = computed(() => {
+  const frame = activeClassSheetFrame.value;
+  if (!frame?.src) return null;
+  return {
+    backgroundImage:`url("${frame.src}")`,
+    backgroundSize:frame.backgroundSize,
+    backgroundPosition:frame.backgroundPosition
+  };
 });
-const activeClassSheetImageStyle = computed(() => activeClassSheetFrame.value?.imageStyle || {});
-
-watch(
-  [() => props.selectedRace, activeClassName],
-  () => {
-    activeClassSheetSourceIndex.value = 0;
-    activeClassSheetLoadFailed.value = false;
-  }
-);
-
-function handleClassSheetImageError() {
-  const candidates = activeClassSheetFrame.value?.srcCandidates;
-  if (!Array.isArray(candidates)) return;
-  if (activeClassSheetSourceIndex.value < candidates.length - 1) {
-    activeClassSheetSourceIndex.value += 1;
-    return;
-  }
-  activeClassSheetLoadFailed.value = true;
-}
+const activeClassIndividualArtwork = computed(() => {
+  if (activeClassSheetFrame.value) return null;
+  const race = nonEmptyText(props.selectedRace);
+  const className = nonEmptyText(activeClass.value?.名前);
+  if (!race || !className) return null;
+  return resolveUnitImageArtwork({ race, className });
+});
+const activeClassIndividualSrc = computed(() => nonEmptyText(activeClassIndividualArtwork.value?.src));
 
 watch(
   [() => props.show, classCandidates, () => props.selectedClass],
@@ -322,19 +313,18 @@ function confirmClass() {
       <section class="class-preview-frame" aria-label="選択中クラスのユニット画像">
         <div class="class-preview-inner">
           <div
-            v-if="activeClassSheetSrc"
+            v-if="activeClassSheetStyle"
             class="class-preview-sprite"
+            :style="activeClassSheetStyle"
             role="img"
             :aria-label="`${selectedRace} ${activeClass?.名前 || ''} ユニット画像`"
-          >
-            <img
-              :key="activeClassSheetSrc"
-              :src="activeClassSheetSrc"
-              :alt="`${selectedRace} ${activeClass?.名前 || ''} ユニットシート`"
-              :style="activeClassSheetImageStyle"
-              @error="handleClassSheetImageError"
-            />
-          </div>
+          />
+          <img
+            v-else-if="activeClassIndividualSrc"
+            :src="activeClassIndividualSrc"
+            :alt="`${selectedRace} ${activeClass?.名前 || ''} ユニット画像`"
+            class="class-preview-image"
+          />
           <div v-else class="class-preview-empty">
             <strong>画像未設定</strong>
             <span>{{ selectedRace }} / {{ activeClass?.名前 || "-" }}</span>
@@ -466,13 +456,12 @@ function confirmClass() {
   background:#091216;
 }
 
-.class-preview-sprite img {
-  position:absolute;
-  display:block;
-  max-width:none;
-  max-height:none;
-  object-fit:fill;
-  pointer-events:none;
+.class-preview-image {
+  width:128px;
+  height:128px;
+  max-width:100%;
+  max-height:100%;
+  object-fit:contain;
 }
 
 .class-preview-empty {
