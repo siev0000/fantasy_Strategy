@@ -24,8 +24,6 @@ function escapeHtml(value) {
 }
 
 function testModeEnabled() {
-  const playMode = typeof window.getV39PlayMode === "function" ? window.getV39PlayMode() : "";
-  if (playMode && playMode !== "single-test") return false;
   return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
 }
 
