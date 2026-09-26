@@ -430,7 +430,7 @@ function confirmRace() {
   padding: 6px 10px;
   border: 1px solid #385159;
   border-radius: 7px;
-  background: #122126;
+  background: rgba(18, 33, 38, .82);
   color: #a9babc;
   text-align: center;
   cursor: pointer;
@@ -486,8 +486,7 @@ function confirmRace() {
   padding: 7px;
   border: 1px solid var(--picker-line);
   border-radius: 8px;
-  background: rgba(13, 24, 28, .82);
-  backdrop-filter: blur(2px);
+  background: #0d181c;
   scrollbar-width: thin;
   scrollbar-color: #405b63 transparent;
 }
@@ -574,8 +573,7 @@ function confirmRace() {
   padding: 10px;
   border: 1px solid var(--picker-line);
   border-radius: 8px;
-  background: linear-gradient(180deg, rgba(16, 29, 34, .88), rgba(12, 23, 27, .9));
-  backdrop-filter: blur(2px);
+  background: linear-gradient(180deg, #101d22, #0c171b);
 }
 
 .race-title {
