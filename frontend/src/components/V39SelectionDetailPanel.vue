@@ -1,10 +1,11 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 
 const props = defineProps({
   statusRows: { type:Array, default:() => [] },
   skillRows: { type:Array, default:() => [] },
+  resistanceRows: { type:Array, default:() => [] },
   skillNames: { type:Array, default:() => [] },
   statusSource: { type:Object, default:null },
   activeTab: { type:String, default:"status" },
@@ -12,6 +13,12 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:activeTab"]);
+
+const collapsedSections = ref({
+  status:false,
+  skills:false,
+  resistances:false
+});
 
 const normalizedTab = computed(() => {
   if (props.activeTab === "abilities") return "abilities";
@@ -27,6 +34,21 @@ function setTab(tab) {
   if (!["status", "abilities"].includes(tab)) return;
   emit("update:activeTab", tab);
 }
+
+function toggleSection(key) {
+  if (!Object.prototype.hasOwnProperty.call(collapsedSections.value, key)) return;
+  collapsedSections.value = {
+    ...collapsedSections.value,
+    [key]:!collapsedSections.value[key]
+  };
+}
+
+function signedValue(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
+  const rounded = Math.round(num);
+  return rounded > 0 ? `+${rounded}` : String(rounded);
+}
 </script>
 
 <template>
@@ -39,8 +61,16 @@ function setTab(tab) {
     <div class="operation-detail-content">
       <section v-if="normalizedTab === 'status'" class="operation-detail-panel" role="tabpanel">
         <section class="operation-detail-section">
-          <header class="operation-detail-section-title">ステータス</header>
-          <div class="operation-detail-section-body">
+          <button
+            type="button"
+            class="operation-detail-section-title"
+            :aria-expanded="!collapsedSections.status"
+            @click="toggleSection('status')"
+          >
+            <span>ステータス</span>
+            <span class="operation-section-toggle">{{ collapsedSections.status ? "▸" : "▾" }}</span>
+          </button>
+          <div v-if="!collapsedSections.status" class="operation-detail-section-body">
             <div class="operation-status-grid">
               <div v-for="item in flatStatusRows" :key="item.key" class="operation-detail-stat">
                 <span>{{ item.key }}</span>
@@ -51,8 +81,16 @@ function setTab(tab) {
         </section>
 
         <section class="operation-detail-section">
-          <header class="operation-detail-section-title">技能</header>
-          <div class="operation-detail-section-body">
+          <button
+            type="button"
+            class="operation-detail-section-title"
+            :aria-expanded="!collapsedSections.skills"
+            @click="toggleSection('skills')"
+          >
+            <span>技能</span>
+            <span class="operation-section-toggle">{{ collapsedSections.skills ? "▸" : "▾" }}</span>
+          </button>
+          <div v-if="!collapsedSections.skills" class="operation-detail-section-body">
             <div
               v-if="skillRows.length"
               class="operation-proficiency-grid"
@@ -70,6 +108,27 @@ function setTab(tab) {
               </div>
             </div>
             <div v-else class="operation-empty">技能データなし</div>
+          </div>
+        </section>
+
+        <section class="operation-detail-section">
+          <button
+            type="button"
+            class="operation-detail-section-title"
+            :aria-expanded="!collapsedSections.resistances"
+            @click="toggleSection('resistances')"
+          >
+            <span>耐性</span>
+            <span class="operation-section-toggle">{{ collapsedSections.resistances ? "▸" : "▾" }}</span>
+          </button>
+          <div v-if="!collapsedSections.resistances" class="operation-detail-section-body">
+            <div v-if="resistanceRows.length" class="operation-resistance-grid">
+              <div v-for="item in resistanceRows" :key="item.key" class="operation-resistance-item">
+                <span>{{ item.key }}</span>
+                <b>{{ signedValue(item.value) }}</b>
+              </div>
+            </div>
+            <div v-else class="operation-empty">耐性補正なし</div>
           </div>
         </section>
       </section>
@@ -176,15 +235,33 @@ function setTab(tab) {
 }
 
 .operation-detail-section-title {
+  width:100%;
   min-height:24px;
   display:flex;
   align-items:center;
+  justify-content:space-between;
+  gap:6px;
   padding:3px 5px;
+  border:0;
   background:#132126;
   color:#91a1a5;
+  font:inherit;
   font-size:10px;
   font-weight:800;
   letter-spacing:.03em;
+  text-align:left;
+  cursor:pointer;
+}
+
+.operation-detail-section-title:hover {
+  background:#17282e;
+  color:#d7e3e3;
+}
+
+.operation-section-toggle {
+  flex:0 0 auto;
+  color:#77d8e7;
+  font-size:12px;
 }
 
 .operation-detail-section-body {
@@ -223,6 +300,40 @@ function setTab(tab) {
   color:#f0f5f3;
   font-size:14px;
   line-height:1.1;
+}
+
+.operation-resistance-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:2px;
+}
+
+.operation-resistance-item {
+  min-width:0;
+  min-height:34px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:4px;
+  padding:4px 6px;
+  border:1px solid #3d4d54;
+  border-radius:7px;
+  background:#121c20;
+}
+
+.operation-resistance-item span {
+  min-width:0;
+  color:#a7b4b7;
+  font-size:11px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.operation-resistance-item b {
+  flex:0 0 auto;
+  color:#f0f5f3;
+  font-size:13px;
 }
 
 .operation-proficiency-grid {
