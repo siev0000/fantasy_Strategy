@@ -4,11 +4,55 @@ import {
   resolveFactionUnitArtworkSlot
 } from "../constants/factionUnitArtwork.js";
 
-const UNIT_SHEET_BASE_PATH = "/assets/images/units/1ファイルまとめ";
-const UNIT_SHEET_EXTENSIONS = Object.freeze(["png", "webp", "jpg", "jpeg", "avif", "gif"]);
+const rawUnitSheetModules = import.meta.glob(
+  "../../../assets/images/units/1ファイルまとめ/*.{png,jpg,jpeg,webp,avif,gif}",
+  {
+    eager:true,
+    import:"default"
+  }
+);
 
 function text(value) {
   return String(value ?? "").trim();
+}
+
+function normalizedPath(value) {
+  return text(value).replace(/\\/g, "/");
+}
+
+function pathStem(value) {
+  const path = normalizedPath(value);
+  const fileName = path.split("/").pop() || "";
+  const dot = fileName.lastIndexOf(".");
+  return dot > 0 ? fileName.slice(0, dot) : fileName;
+}
+
+function lookupKey(value) {
+  return text(value)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s　_\-・=./\\]+/g, "");
+}
+
+const unitSheetRows = Object.entries(rawUnitSheetModules).map(([path, src]) => ({
+  path,
+  src,
+  stem:pathStem(path),
+  key:lookupKey(pathStem(path))
+}));
+
+function resolveRaceSheet(raceName) {
+  const raceKey = lookupKey(raceName);
+  if (!raceKey) return null;
+
+  const exact = unitSheetRows.find(row => row.key === raceKey);
+  if (exact) return exact;
+
+  return unitSheetRows.find(row =>
+    row.key.startsWith(raceKey)
+    || row.key.endsWith(raceKey)
+    || row.key.includes(raceKey)
+  ) || null;
 }
 
 function positionPercent(index, count) {
@@ -16,21 +60,13 @@ function positionPercent(index, count) {
   return (index / (count - 1)) * 100;
 }
 
-function raceSheetSourceCandidates(raceName) {
-  const race = text(raceName);
-  if (!race) return [];
-  const encodedRace = encodeURIComponent(race);
-  return UNIT_SHEET_EXTENSIONS.map(extension =>
-    `${UNIT_SHEET_BASE_PATH}/${encodedRace}.${extension}`
-  );
-}
-
 export function resolveFactionUnitSheetFrame(unit = {}) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
   const className = text(unit?.className || unit?.class || unit?.クラス);
   const slot = resolveFactionUnitArtworkSlot(className);
+  const sheet = resolveRaceSheet(raceName);
 
-  if (!slot || !raceName) return null;
+  if (!slot || !sheet) return null;
 
   const sheetIndex = Number(slot.sheetIndex);
   const maxFrames = FACTION_UNIT_ARTWORK_SHEET_COLUMNS * FACTION_UNIT_ARTWORK_SHEET_ROWS;
@@ -40,6 +76,8 @@ export function resolveFactionUnitSheetFrame(unit = {}) {
   const row = Math.floor(sheetIndex / FACTION_UNIT_ARTWORK_SHEET_COLUMNS);
 
   return {
+    src:sheet.src,
+    sourcePath:sheet.path,
     raceName,
     className,
     artworkName:slot.artworkName,
@@ -48,14 +86,11 @@ export function resolveFactionUnitSheetFrame(unit = {}) {
     row,
     columns:FACTION_UNIT_ARTWORK_SHEET_COLUMNS,
     rows:FACTION_UNIT_ARTWORK_SHEET_ROWS,
-    srcCandidates:raceSheetSourceCandidates(raceName),
-    imageStyle:{
-      width:`${FACTION_UNIT_ARTWORK_SHEET_COLUMNS * 100}%`,
-      height:`${FACTION_UNIT_ARTWORK_SHEET_ROWS * 100}%`,
-      left:`-${column * 100}%`,
-      top:`-${row * 100}%`
-    },
     backgroundSize:`${FACTION_UNIT_ARTWORK_SHEET_COLUMNS * 100}% ${FACTION_UNIT_ARTWORK_SHEET_ROWS * 100}%`,
     backgroundPosition:`${positionPercent(column, FACTION_UNIT_ARTWORK_SHEET_COLUMNS)}% ${positionPercent(row, FACTION_UNIT_ARTWORK_SHEET_ROWS)}%`
   };
+}
+
+export function hasFactionUnitSheets() {
+  return unitSheetRows.length > 0;
 }
