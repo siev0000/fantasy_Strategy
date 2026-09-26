@@ -42,6 +42,8 @@ function raceDefinitions() {
   return getGameDataRows("勢力").filter(row => text(row?.種族)).map(row => ({
     race:normalizedRaceName(row.種族),
     dataName:text(row.種族),
+    combatRaceName:text(row?.カナ) || normalizedRaceName(row.種族),
+    armyRate:Math.max(0, Math.min(1, number(row?.軍隊) > 1 ? number(row?.軍隊) / 100 : number(row?.軍隊))),
     preferredTerrain:text(row.土地),
     initialPopulation:Math.max(1, Math.floor(number(row.初期人数, 50)))
   }));
@@ -77,7 +79,20 @@ function farFromOwned(tile, state, minimum = 5) {
   return occupied.every(([x, y]) => Math.hypot(tile.x - x, tile.y - y) >= minimum);
 }
 
-function buildNeutralVillage(tile, index, races, classes, mapData, usedRaces) {
+function initialOccupiedUnitTiles(state) {
+  const occupied = new Set();
+  const add = row => {
+    if (!row || !Number.isFinite(Number(row?.x)) || !Number.isFinite(Number(row?.y))) return;
+    occupied.add(keyOf(row.x, row.y));
+  };
+  for (const player of state?.players || []) for (const unit of player?.factionState?.units || []) add(unit);
+  for (const enemy of state?.enemies || []) add(enemy);
+  for (const nest of state?.enemyNests || []) add(nest);
+  for (const settlement of state?.settlements || []) add(settlement);
+  return occupied;
+}
+
+function buildNeutralVillage(tile, index, races, classes, mapData, usedRaces, occupiedTileKeys) {
   const selectedRace = selectVillageRace(tile, races, usedRaces);
   const villageLevel = 1 + (hash(`${tile.key}:level`) % 3);
   const population = Math.max(10, Math.floor(selectedRace.initialPopulation * (0.6 + (hash(`${tile.key}:population`) % 81) / 100)));
@@ -87,9 +102,12 @@ function buildNeutralVillage(tile, index, races, classes, mapData, usedRaces) {
     id:`neutral-village-${index + 1}-${tile.key}`,
     name:`${selectedRace.race}の村`, type:"村", neutral:true, placed:true,
     x:tile.x, y:tile.y, race:selectedRace.race, population, level:villageLevel,
+    factionDataName:selectedRace.dataName,
+    combatRaceName:selectedRace.combatRaceName,
+    armyRate:selectedRace.armyRate,
     className:text(classRow?.名前) || "ファイター", researchLevels,
     relationsByPlayerId:{}, vassalPlayerId:"", directlyRuledByPlayerId:""
-  }, mapData);
+  }, mapData, { occupiedTileKeys });
 }
 
 function buildWanderer(tile, index, races) {
@@ -111,12 +129,16 @@ export function generateV39WorldPopulation(state, mapData, options = {}) {
     Math.floor(number(options?.neutralVillageCount, V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount))
   ));
   const usedRaces = playerRaces(state);
+  const occupiedTileKeys = initialOccupiedUnitTiles(state);
   const neutralVillages = [];
   for (const tile of tiles) {
     if (neutralVillages.length >= configuredVillageCount) break;
     if (neutralVillages.some(row => Math.hypot(row.x - tile.x, row.y - tile.y) < 7)) continue;
-    const village = buildNeutralVillage(tile, neutralVillages.length, races, classes, mapData, usedRaces);
+    if (occupiedTileKeys.has(tile.key)) continue;
+    occupiedTileKeys.add(tile.key);
+    const village = buildNeutralVillage(tile, neutralVillages.length, races, classes, mapData, usedRaces, occupiedTileKeys);
     neutralVillages.push(village);
+    for (const unit of village.defenseUnits || []) occupiedTileKeys.add(keyOf(unit.x, unit.y));
     usedRaces.add(village.race);
   }
   const villageKeys = new Set(neutralVillages.map(row => keyOf(row.x, row.y)));
