@@ -501,23 +501,26 @@ function installStyles() {
   if (document.getElementById("v39-test-tools-style")) return;
   const style = document.createElement("style");
   style.id = "v39-test-tools-style";
-  style.textContent = `html:not(.v39-test-mode) #v39-manage-test-tools{display:none!important}.v39-test-tools-panel{width:100%;height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:6px;color:#e7efed}.v39-test-tools-panel[hidden]{display:none!important}.v39-test-tools-head{display:flex;align-items:center;gap:8px}.v39-test-tools-head button,.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{min-height:34px;border:1px solid #49626a;border-radius:6px;background:#14242a;color:#edf3f1;padding:5px 9px;font-size:15px;font-weight:700}.v39-test-tools-head span{margin-left:auto;color:#f1c96f}.v39-test-tools-scroll{min-height:0;overflow:auto;display:grid;gap:7px;align-content:start}.v39-test-tools-scroll section{border:1px solid #354a51;border-radius:7px;background:#101c21;padding:7px;display:grid;gap:5px}.v39-test-tools-scroll h3,.v39-test-tools-scroll p{margin:0;font-size:15px}.v39-test-tools-scroll p{color:#aebdc0}.v39-test-button-row,.v39-test-form-row{display:flex;flex-wrap:wrap;gap:5px}.v39-test-form-row select{min-width:130px}.v39-test-form-row input{width:100px}.v39-test-ai-grid{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 9px;font-size:15px}.v39-test-ai-grid span{color:#91a5aa}.v39-test-ai-grid b{min-width:0;overflow-wrap:anywhere}.v39-test-log-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}.v39-test-log-tabs button{flex:0 0 auto}.v39-test-log-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-test-log-tabs small{color:#a9bbc0}.v39-test-ai-log{max-height:220px;overflow:auto;border:1px solid #293c42;border-radius:6px}.v39-test-ai-log article{display:grid;grid-template-columns:38px minmax(90px,auto) minmax(120px,1fr);gap:5px 8px;padding:7px;border-bottom:1px solid #293c42;font-size:15px}.v39-test-ai-log article span{color:#78d19a}.v39-test-ai-log article strong{color:#f0d17b}.v39-test-ai-log article p{grid-column:2/-1}.v39-test-tools-panel button:active{background:#28505a}.v39-test-tools-panel output{min-height:30px;padding:6px 9px;border:1px solid #735f2f;border-radius:6px;background:#2c2616;color:#ffe29a;font-size:15px;font-weight:700}@media(max-width:620px){.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{font-size:14px;padding:4px 7px}.v39-test-tools-scroll section{padding:6px}.v39-test-ai-grid,.v39-test-ai-log article{font-size:14px}.v39-test-ai-log article{grid-template-columns:34px minmax(80px,auto) minmax(100px,1fr)}}`;
+  style.textContent = `.v39-test-tools-panel{width:100%;height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:6px;color:#e7efed}.v39-test-tools-panel[hidden]{display:none!important}.v39-test-tools-panel.is-collapsed{grid-template-rows:auto;align-content:start}.v39-test-tools-panel.is-collapsed .v39-test-tools-scroll,.v39-test-tools-panel.is-collapsed>output{display:none!important}.v39-test-tools-head{display:flex;align-items:center;gap:8px}.v39-test-tools-head button,.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{min-height:34px;border:1px solid #49626a;border-radius:6px;background:#14242a;color:#edf3f1;padding:5px 9px;font-size:15px;font-weight:700}.v39-test-tools-head span{margin-left:auto;color:#f1c96f}.v39-test-tools-scroll{min-height:0;overflow:auto;display:grid;gap:7px;align-content:start}.v39-test-tools-scroll section{border:1px solid #354a51;border-radius:7px;background:#101c21;padding:7px;display:grid;gap:5px}.v39-test-base-list{display:grid;gap:6px}.v39-test-base-card{display:grid;gap:5px;padding:7px;border:1px solid #3e565e;border-radius:7px;background:#0d171b}.v39-test-base-card header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.v39-test-base-card header span{padding:2px 6px;border:1px solid #5f858f;border-radius:999px;color:#9fe1eb;font-size:11px;font-weight:900}.v39-test-base-card header strong{color:#eef7f5;font-size:14px}.v39-test-base-card p{margin:0!important;font-size:12px!important;color:#b7c7ca!important;line-height:1.4}.v39-test-empty{color:#82979c!important}.v39-test-tools-scroll h3,.v39-test-tools-scroll p{margin:0;font-size:15px}.v39-test-tools-scroll p{color:#aebdc0}.v39-test-button-row,.v39-test-form-row{display:flex;flex-wrap:wrap;gap:5px}.v39-test-form-row select{min-width:130px}.v39-test-form-row input{width:100px}.v39-test-ai-grid{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 9px;font-size:15px}.v39-test-ai-grid span{color:#91a5aa}.v39-test-ai-grid b{min-width:0;overflow-wrap:anywhere}.v39-test-log-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}.v39-test-log-tabs button{flex:0 0 auto}.v39-test-log-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-test-log-tabs small{color:#a9bbc0}.v39-test-ai-log{max-height:220px;overflow:auto;border:1px solid #293c42;border-radius:6px}.v39-test-ai-log article{display:grid;grid-template-columns:38px minmax(90px,auto) minmax(120px,1fr);gap:5px 8px;padding:7px;border-bottom:1px solid #293c42;font-size:15px}.v39-test-ai-log article span{color:#78d19a}.v39-test-ai-log article strong{color:#f0d17b}.v39-test-ai-log article p{grid-column:2/-1}.v39-test-tools-panel button:active{background:#28505a}.v39-test-tools-panel output{min-height:30px;padding:6px 9px;border:1px solid #735f2f;border-radius:6px;background:#2c2616;color:#ffe29a;font-size:15px;font-weight:700}@media(max-width:620px){.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{font-size:14px;padding:4px 7px}.v39-test-tools-scroll section{padding:6px}.v39-test-ai-grid,.v39-test-ai-log article{font-size:14px}.v39-test-ai-log article{grid-template-columns:34px minmax(80px,auto) minmax(100px,1fr)}}`;
   document.head.appendChild(style);
 }
 
 function install() {
-  const host = document.getElementById("footManage");
+  const host = document.getElementById("footTest");
   if (!(host instanceof HTMLElement)) return window.setTimeout(install, 30);
   installStyles();
   const panel = document.createElement("section");
   panel.id = "v39-test-tools-panel";
   panel.className = "v39-test-tools-panel";
-  panel.hidden = true;
-  panel.setAttribute("aria-hidden", "true");
+  panel.hidden = false;
+  panel.setAttribute("aria-hidden", "false");
   host.appendChild(panel);
-  document.getElementById("v39-manage-test-tools")?.addEventListener("click", openPanel);
   panel.addEventListener("click", event => {
-    if (event.target instanceof Element && event.target.closest("#v39-test-tools-back")) return closePanel();
+    if (event.target instanceof Element && event.target.closest("[data-test-panel-toggle]")) {
+      panelCollapsed = !panelCollapsed;
+      render();
+      return;
+    }
     const button = event.target instanceof Element ? event.target.closest("[data-test-action]") : null;
     if (button) handleAction(button.dataset.testAction);
   });
@@ -531,8 +534,11 @@ function install() {
   window.addEventListener("v39:display-settings-changed", () => {
     const enabled = testModeEnabled();
     syncTestCharacters(enabled);
-    if (!enabled) closePanel();
-    else render();
+    if (!enabled) panelCollapsed = true;
+    render();
+  });
+  window.addEventListener("v39:footer-tab-changed", event => {
+    if (event?.detail?.tab === "test") render();
   });
   window.addEventListener("v39:game-state-changed", render);
   window.addEventListener("v39:tile-selected", event => {
@@ -542,7 +548,9 @@ function install() {
     render();
   });
   window.openV39TestTools = openPanel;
+  window.closeV39TestTools = closePanel;
   syncTestCharacters(testModeEnabled());
+  render();
 }
 
 install();
