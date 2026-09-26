@@ -5,6 +5,8 @@ import { getIconSrcByName } from "../../lib/icon-library.js";
 import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "../../lib/v39-combat-engine.js";
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
 import { resolveV39UnitExpDisplay } from "../../lib/v39-unit-experience.js";
+import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
+import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -94,6 +96,31 @@ function skillEntries(unit) {
   return Object.entries(source)
     .map(([name, value]) => [name, Number(value)])
     .filter(([, value]) => Number.isFinite(value) && value !== 0);
+}
+
+function resistanceEntries(unit) {
+  const source = unit?.resistances && typeof unit.resistances === "object" ? unit.resistances : {};
+  return RESISTANCE_FIELDS
+    .map(key => [key, Number(source?.[key])])
+    .filter(([, value]) => Number.isFinite(value) && value !== 0);
+}
+
+function renderResistance(unit) {
+  const host = document.getElementById("detailResistanceList");
+  if (!(host instanceof HTMLElement)) return;
+  const rows = resistanceEntries(unit);
+  if (!rows.length) {
+    host.innerHTML = '<div class="squad-empty">耐性データなし</div>';
+    return;
+  }
+  host.innerHTML = rows.map(([key, value]) => {
+    const iconSrc = getResistanceIconSrc(key);
+    const tone = resistanceValueTone(value);
+    return `<button type="button" class="v39-resistance-indicator ${tone}" data-v39-resistance-label="${escapeHtml(key)}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}">
+      ${iconSrc ? `<img src="${escapeHtml(iconSrc)}" alt="" aria-hidden="true" class="v39-resistance-icon">` : '<span class="v39-resistance-icon-fallback" aria-hidden="true">?</span>'}
+      <b>${escapeHtml(formatResistanceValue(value))}</b>
+    </button>`;
+  }).join("");
 }
 
 function techniqueEntries(unit) {
@@ -422,9 +449,11 @@ function renderDetail() {
   if (!unit) {
     if (pane) pane.dataset.empty = "1";
     const prof = document.getElementById("detailProficiencyList");
+    const resistance = document.getElementById("detailResistanceList");
     const equipment = document.getElementById("detailEquipmentList");
     const tech = document.getElementById("detailTechniqueRows");
     if (prof) prof.innerHTML = '<div class="squad-empty">技能データなし</div>';
+    if (resistance) resistance.innerHTML = '<div class="squad-empty">耐性データなし</div>';
     if (equipment) equipment.innerHTML = '<div class="equipment-empty">装備なし</div>';
     if (tech) tech.innerHTML = '<div class="squad-empty">行動データなし</div>';
     expandedEquipmentKey = "";
@@ -477,6 +506,7 @@ function renderDetail() {
       : '<div class="squad-empty">技能データなし</div>';
   }
 
+  renderResistance(unit);
   renderEquipment(unit);
 
   const tech = document.getElementById("detailTechniqueRows");
