@@ -65,7 +65,7 @@ function toggleSection(key) {
             <span>ステータス</span>
             <span class="operation-section-toggle">{{ collapsedSections.status ? "▸" : "▾" }}</span>
           </button>
-          <div v-if="!collapsedSections.status" class="operation-detail-section-body operation-detail-section-scroll">
+          <div v-if="!collapsedSections.status" class="operation-detail-section-body">
             <div class="operation-status-grid">
               <div v-for="item in flatStatusRows" :key="item.key" class="operation-detail-stat">
                 <span>{{ item.key }}</span>
@@ -85,7 +85,7 @@ function toggleSection(key) {
             <span>技能</span>
             <span class="operation-section-toggle">{{ collapsedSections.skills ? "▸" : "▾" }}</span>
           </button>
-          <div v-if="!collapsedSections.skills" class="operation-detail-section-body operation-detail-section-scroll">
+          <div v-if="!collapsedSections.skills" class="operation-detail-section-body">
             <div
               v-if="skillRows.length"
               class="operation-proficiency-grid"
@@ -116,7 +116,7 @@ function toggleSection(key) {
             <span>耐性</span>
             <span class="operation-section-toggle">{{ collapsedSections.resistances ? "▸" : "▾" }}</span>
           </button>
-          <div v-if="!collapsedSections.resistances" class="operation-detail-section-body operation-detail-section-scroll">
+          <div v-if="!collapsedSections.resistances" class="operation-detail-section-body">
             <div v-if="resistanceRows.length" class="operation-resistance-grid">
               <resistance-indicator
                 v-for="item in resistanceRows"
@@ -208,20 +208,31 @@ function toggleSection(key) {
   width:100%;
   height:100%;
   min-height:0;
-  display:grid;
-  align-content:start;
-  gap:3px;
+  display:block;
   overflow-y:auto;
   overflow-x:hidden;
   overscroll-behavior:contain;
-  padding:3px;
-  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+  padding:3px 5px 3px 3px;
+  scrollbar-width:thin;
+  scrollbar-color:#405b63 transparent;
 }
 
 .operation-detail-panel::-webkit-scrollbar {
-  display:none;
-  width:0;
-  height:0;
+  width:6px;
+}
+
+.operation-detail-panel::-webkit-scrollbar-thumb {
+  border-radius:999px;
+  background:#405b63;
+}
+
+.operation-detail-panel::-webkit-scrollbar-track {
+  background:transparent;
+}
+
+.operation-detail-panel > .operation-detail-section + .operation-detail-section {
+  margin-top:6px;
 }
 
 .operation-detail-section {
@@ -269,28 +280,6 @@ button.operation-detail-section-title:hover {
 .operation-detail-section-body {
   min-width:0;
   padding:3px;
-}
-
-.operation-detail-section-scroll {
-  max-height:min(220px, 30vh);
-  overflow-y:auto;
-  overflow-x:hidden;
-  overscroll-behavior:contain;
-  scrollbar-width:thin;
-  scrollbar-color:#405b63 transparent;
-}
-
-.operation-detail-section-scroll::-webkit-scrollbar {
-  width:6px;
-}
-
-.operation-detail-section-scroll::-webkit-scrollbar-thumb {
-  border-radius:999px;
-  background:#405b63;
-}
-
-.operation-detail-section-scroll::-webkit-scrollbar-track {
-  background:transparent;
 }
 
 .operation-status-grid {
@@ -379,10 +368,6 @@ button.operation-detail-section-title:hover {
 }
 
 @media (max-width:430px) {
-  .operation-detail-section-scroll {
-    max-height:min(170px, 28vh);
-  }
-
   .operation-detail-tabs {
     padding:4px;
   }
