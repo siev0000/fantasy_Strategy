@@ -113,7 +113,7 @@ function iconArtwork(candidates) {
   };
 }
 
-export function resolveUnitArtwork(unit) {
+export function resolveUnitImageArtwork(unit) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
   const className = text(unit?.className || unit?.class || unit?.クラス);
   const explicitNames = unique([
@@ -136,7 +136,13 @@ export function resolveUnitArtwork(unit) {
   const row = raceName
     ? findUnitByRaceAndName(raceName, [...explicitNames, ...generatedNames])
     : (findByStem(unitArtworkRows, explicitNames) || findByStem(unitArtworkRows, generatedNames));
-  return result(row, "unit") || iconArtwork([
+  return result(row, "unit");
+}
+
+export function resolveUnitArtwork(unit) {
+  const raceName = text(unit?.race || unit?.raceName || unit?.種族);
+  const className = text(unit?.className || unit?.class || unit?.クラス);
+  return resolveUnitImageArtwork(unit) || iconArtwork([
     unit?.iconName,
     unit?.subIconName,
     className,
