@@ -358,10 +358,41 @@ function addMilitaryMemberCount(scene, marker, unit, radius) {
   marker.add(label);
 }
 
+function ensureArtworkSheetFrame(scene, artwork) {
+  const frame = artwork?.sheetFrame;
+  if (!frame || !scene?.textures?.exists?.(artwork.textureKey)) return "";
+
+  const texture = scene.textures.get(artwork.textureKey);
+  if (!texture) return "";
+
+  const frameKey = `slot-${frame.sheetNumber}-${frame.slotNumber}`;
+  const hasFrame = typeof texture.has === "function"
+    ? texture.has(frameKey)
+    : Boolean(texture.frames?.[frameKey]);
+  if (hasFrame) return frameKey;
+
+  const source = texture.source?.[0];
+  const sourceWidth = Math.max(1, Number(source?.width) || 1);
+  const sourceHeight = Math.max(1, Number(source?.height) || 1);
+  const columns = Math.max(1, Number(frame.columns) || 1);
+  const rows = Math.max(1, Number(frame.rows) || 1);
+  const width = sourceWidth / columns;
+  const height = sourceHeight / rows;
+  const x = Math.max(0, Number(frame.column) || 0) * width;
+  const y = Math.max(0, Number(frame.row) || 0) * height;
+
+  texture.add(frameKey, 0, x, y, width, height);
+  return frameKey;
+}
+
 function addEnemyArtwork(scene, marker, enemy, diameter) {
   const artwork = resolveEnemyArtwork(enemy);
   if (!artwork || !ensureArtworkTexture(scene, artwork)) return false;
-  const image = scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
+
+  const frameKey = ensureArtworkSheetFrame(scene, artwork);
+  const image = frameKey
+    ? scene.add.image(0, 0, artwork.textureKey, frameKey).setOrigin(0.5)
+    : scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
   const sourceWidth = Math.max(1, Number(image.width) || 1);
   const sourceHeight = Math.max(1, Number(image.height) || 1);
   const target = diameter * ENEMY_IMAGE_FILL;
