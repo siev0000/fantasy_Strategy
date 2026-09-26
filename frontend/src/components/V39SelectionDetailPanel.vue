@@ -65,7 +65,7 @@ function toggleSection(key) {
             <span>ステータス</span>
             <span class="operation-section-toggle">{{ collapsedSections.status ? "▸" : "▾" }}</span>
           </button>
-          <div v-if="!collapsedSections.status" class="operation-detail-section-body">
+          <div v-if="!collapsedSections.status" class="operation-detail-section-body operation-detail-section-scroll">
             <div class="operation-status-grid">
               <div v-for="item in flatStatusRows" :key="item.key" class="operation-detail-stat">
                 <span>{{ item.key }}</span>
@@ -85,7 +85,7 @@ function toggleSection(key) {
             <span>技能</span>
             <span class="operation-section-toggle">{{ collapsedSections.skills ? "▸" : "▾" }}</span>
           </button>
-          <div v-if="!collapsedSections.skills" class="operation-detail-section-body">
+          <div v-if="!collapsedSections.skills" class="operation-detail-section-body operation-detail-section-scroll">
             <div
               v-if="skillRows.length"
               class="operation-proficiency-grid"
@@ -116,7 +116,7 @@ function toggleSection(key) {
             <span>耐性</span>
             <span class="operation-section-toggle">{{ collapsedSections.resistances ? "▸" : "▾" }}</span>
           </button>
-          <div v-if="!collapsedSections.resistances" class="operation-detail-section-body">
+          <div v-if="!collapsedSections.resistances" class="operation-detail-section-body operation-detail-section-scroll">
             <div v-if="resistanceRows.length" class="operation-resistance-grid">
               <resistance-indicator
                 v-for="item in resistanceRows"
@@ -271,6 +271,28 @@ button.operation-detail-section-title:hover {
   padding:3px;
 }
 
+.operation-detail-section-scroll {
+  max-height:min(220px, 30vh);
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scrollbar-color:#405b63 transparent;
+}
+
+.operation-detail-section-scroll::-webkit-scrollbar {
+  width:6px;
+}
+
+.operation-detail-section-scroll::-webkit-scrollbar-thumb {
+  border-radius:999px;
+  background:#405b63;
+}
+
+.operation-detail-section-scroll::-webkit-scrollbar-track {
+  background:transparent;
+}
+
 .operation-status-grid {
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -357,6 +379,10 @@ button.operation-detail-section-title:hover {
 }
 
 @media (max-width:430px) {
+  .operation-detail-section-scroll {
+    max-height:min(170px, 28vh);
+  }
+
   .operation-detail-tabs {
     padding:4px;
   }
