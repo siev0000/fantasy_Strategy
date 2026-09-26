@@ -3,6 +3,7 @@ import {
   FACTION_UNIT_ARTWORK_SHEET_ROWS,
   resolveFactionUnitArtworkSlot
 } from "../constants/factionUnitArtwork.js";
+import { RACE_CLASS_NAME_MAP } from "../constants/unitCommon.js";
 
 const rawUnitSheetModules = import.meta.glob(
   "../../../assets/images/units/1ファイルまとめ/*.{png,jpg,jpeg,webp,avif,gif}",
@@ -41,18 +42,32 @@ const unitSheetRows = Object.entries(rawUnitSheetModules).map(([path, src]) => (
   key:lookupKey(pathStem(path))
 }));
 
-function resolveRaceSheet(raceName) {
-  const raceKey = lookupKey(raceName);
-  if (!raceKey) return null;
+function findRaceSheetByName(value) {
+  const key = lookupKey(value);
+  if (!key) return null;
 
-  const exact = unitSheetRows.find(row => row.key === raceKey);
+  const exact = unitSheetRows.find(row => row.key === key);
   if (exact) return exact;
 
   return unitSheetRows.find(row =>
-    row.key.startsWith(raceKey)
-    || row.key.endsWith(raceKey)
-    || row.key.includes(raceKey)
+    row.key.startsWith(key)
+    || row.key.endsWith(key)
+    || row.key.includes(key)
   ) || null;
+}
+
+function resolveRaceSheet(raceName) {
+  const race = text(raceName);
+  if (!race) return null;
+
+  const sheetRaceName = text(RACE_CLASS_NAME_MAP[race]);
+  const candidates = [...new Set([sheetRaceName, race].filter(Boolean))];
+
+  for (const candidate of candidates) {
+    const sheet = findRaceSheetByName(candidate);
+    if (sheet) return sheet;
+  }
+  return null;
 }
 
 function positionPercent(index, count) {
