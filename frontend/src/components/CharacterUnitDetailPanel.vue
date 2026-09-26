@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
-import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../lib/resistance-display.js";
 import { isMobUnit as isMobUnitUtil } from "../composables/unitCoreUtils.js";
 import {
   DEFAULT_V39_EQUIPMENT_RARITY_KEY,
@@ -11,6 +10,7 @@ import {
   V39_EQUIPMENT_RARITIES
 } from "../lib/v39-equipment-rules.js";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
+import ResistanceIndicator from "./ResistanceIndicator.vue";
 import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 
 const props = defineProps({
@@ -634,23 +634,13 @@ watch(
             <section class="char-block">
               <h4>耐性</h4>
               <div v-if="resistanceRows.length" class="char-resist-grid">
-                <div
+                <resistance-indicator
                   v-for="row in resistanceRows"
                   :key="`resist-${unit.id}-${row.key}`"
-                  class="char-resist-chip"
-                  :class="resistanceValueTone(row.value)"
-                >
-                  <span class="char-resist-label">
-                    <img
-                      v-if="getResistanceIconSrc(row.key)"
-                      :src="getResistanceIconSrc(row.key)"
-                      :alt="`${row.key} アイコン`"
-                      class="char-resist-icon"
-                    />
-                    <span>{{ row.key }}</span>
-                  </span>
-                  <strong>{{ formatResistanceValue(row.value) }}</strong>
-                </div>
+                  :resistance-key="row.key"
+                  :value="row.value"
+                  variant="light"
+                />
               </div>
               <div v-else class="small">耐性データなし</div>
             </section>
@@ -935,50 +925,6 @@ watch(
 
 .char-status-row.cols-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.char-resist-chip {
-  gap: 6px;
-}
-
-.char-resist-label {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.char-resist-label > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.char-resist-icon {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  object-fit: contain;
-  border-radius: 4px;
-}
-
-.char-resist-chip.positive {
-  border-color: rgba(78, 164, 101, 0.72);
-  background: rgba(229, 247, 233, 0.9);
-}
-
-.char-resist-chip.positive strong {
-  color: #25723b;
-}
-
-.char-resist-chip.negative {
-  border-color: rgba(185, 86, 72, 0.72);
-  background: rgba(252, 232, 228, 0.9);
-}
-
-.char-resist-chip.negative strong {
-  color: #a13e31;
 }
 
 .equipment-edit-item.active {
