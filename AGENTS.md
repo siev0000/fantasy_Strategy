@@ -4,6 +4,8 @@
 
 Before changing game behavior, read `docs/README.md` and follow its documentation priority.
 
+When changing spreadsheet-managed game data, read `docs/SPREADSHEET_DATA_WORKFLOW.md` before editing generated JSON. For these datasets, `@game_data` is the editing source and `data/source/export/json` is generated runtime data. Do not preserve legacy JSON-only fields that no longer exist in the spreadsheet.
+
 For unit portrait / unit image generation or editing, read `docs/UNIT_PORTRAIT_GENERATION_RULES.md` before generating any image. Do not substitute older side-scroller pixel-art rules unless the user explicitly asks for side-scroller or pixel-art output.
 
 When specifications conflict, use this order:
