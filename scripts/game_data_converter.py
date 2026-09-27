@@ -28,7 +28,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 import xml.etree.ElementTree as ET
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 DOC_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 DEFAULT_OUTPUT_DIR = Path("data/source/export/json")
@@ -239,7 +239,7 @@ def is_repeated_header_row(pairs):
     return len(nonempty) >= 2 and all(str(v).strip() == h for h, v in nonempty)
 
 
-def convert_sheet(reader, sheet_name, output_name, strict_formula_cache):
+def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=False):
     result = SheetResult(sheet_name, output_name)
     rows = list(reader.sheet_rows(sheet_name))
     if not rows:
@@ -287,7 +287,7 @@ def convert_sheet(reader, sheet_name, output_name, strict_formula_cache):
                         "header": h,
                         "formula": cell.formula,
                     }
-                    (result.errors if strict_formula_cache else result.warnings).append(issue)
+                    (result.warnings if allow_missing_formula_cache else result.errors).append(issue)
 
                 raw = cell.value
                 if isinstance(raw, dict) and "__xlsx_error__" in raw:
@@ -385,9 +385,9 @@ def parse_args():
     p.add_argument("--sheet", action="append", default=[], help="変換するシート。複数指定可")
     p.add_argument("--dry-run", action="store_true", help="検証だけ行い JSON を更新しない")
     p.add_argument(
-        "--strict-formula-cache",
+        "--allow-missing-formula-cache",
         action="store_true",
-        help="計算済み値がない数式セルをエラーにする",
+        help="診断用途のみ: 計算済み値がない数式セルをエラーではなく警告にする",
     )
     p.add_argument("--compact", action="store_true", help="JSON を1行形式で出力")
     p.add_argument("--list", action="store_true", help="シートと変換対象を表示")
@@ -422,7 +422,7 @@ def main():
                 raise ValueError(f"XLSXに存在しないシート: {', '.join(missing)}")
 
             results = [
-                convert_sheet(reader, s, SHEET_TO_JSON[s], args.strict_formula_cache)
+                convert_sheet(reader, s, SHEET_TO_JSON[s], args.allow_missing_formula_cache)
                 for s in selected
             ]
 
@@ -431,6 +431,7 @@ def main():
             "input": str(args.input),
             "output_dir": str(args.output_dir),
             "dry_run": bool(args.dry_run),
+            "allow_missing_formula_cache": bool(args.allow_missing_formula_cache),
             "converted_sheets": selected,
             "excluded_workbook_sheets": [s for s in workbook_sheets if s not in SHEET_TO_JSON],
             "summary": {
