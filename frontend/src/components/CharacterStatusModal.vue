@@ -5,6 +5,7 @@ import CharacterUnitDetailPanel from "./CharacterUnitDetailPanel.vue";
 import { classData as classDb, equipmentData as equipmentDb } from "../lib/game-data-registry.js";
 import { UNIT_CREATE_MODE_KEYS } from "../composables/militaryUnitUtils.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
+import { getRaceIconSrc } from "../lib/race-icon-library.js";
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from "../lib/v39-economy-rules.js";
 import {
   getV39EquipmentSlotCandidates,
@@ -466,15 +467,7 @@ function iconNameForUnit(unit) {
 }
 
 function raceIconSrcForUnit(unit) {
-  const race = nonEmptyText(unit?.race);
-  if (!race) return "";
-  if (hasIconName(race)) {
-    return getIconSrcByName(race, race);
-  }
-  const raceClassName = nonEmptyText(RACE_CLASS_NAME_MAP[race] || race);
-  const imageId = nonEmptyText(classImageIdByName.value[raceClassName] || classImageIdByName.value[race]);
-  if (!imageId) return "";
-  return getIconSrcByName(imageId, imageId);
+  return getRaceIconSrc(nonEmptyText(unit?.race));
 }
 
 function iconSrcForUnit(unit) {
