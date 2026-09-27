@@ -47,6 +47,9 @@
 - [`DATA_DRIVEN_RULES.md`](./DATA_DRIVEN_RULES.md)
   - `data/source/export/json` を正本にし、種類追加をJSON中心で行うための共通ルール。
 
+- [`SPREADSHEET_DATA_WORKFLOW.md`](./SPREADSHEET_DATA_WORKFLOW.md)
+  - Google スプレッドシート `@game_data` を編集原本として、`scripts/game_data_converter.py` で JSON を再生成する運用ルール。シートにない旧 JSON 項目は保持しない。
+
 - [`人口成長・食料不足ルール.md`](./%E4%BA%BA%E5%8F%A3%E6%88%90%E9%95%B7%E3%83%BB%E9%A3%9F%E6%96%99%E4%B8%8D%E8%B6%B3%E3%83%AB%E3%83%BC%E3%83%AB.md)
   - プレイヤー拠点と敵の巣で共通利用する人口成長ゲージ、人口増加、食料不足時のゲージ減少・飢餓接続ルール。
 
