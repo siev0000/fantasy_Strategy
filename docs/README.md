@@ -45,7 +45,7 @@
   - 島・地形・湖・川などのマップ生成ルール。
 
 - [`DATA_DRIVEN_RULES.md`](./DATA_DRIVEN_RULES.md)
-  - `data/source/export/json` を正本にし、種類追加をJSON中心で行うための共通ルール。
+  - `@game_data` から生成された `data/source/export/json` をゲーム実行時に参照し、種類・数値をコードへ重複定義しないための共通ルール。
 
 - [`SPREADSHEET_DATA_WORKFLOW.md`](./SPREADSHEET_DATA_WORKFLOW.md)
   - Google スプレッドシート `@game_data` を編集原本として、`scripts/game_data_converter.py` で JSON を再生成する運用ルール。シートにない旧 JSON 項目は保持しない。
