@@ -9,7 +9,7 @@ import {
   raceCategoryData as raceCategoryDb
 } from "../lib/game-data-registry.js";
 import { getV39RaceSelectionDetail } from "../lib/v39-selection-detail.js";
-import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
+import { getRaceIconSrc } from "../lib/race-icon-library.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 
 const raceBackgroundModules = import.meta.glob("../../../assets/images/background/*.{png,jpg,jpeg,webp}", {
@@ -90,11 +90,7 @@ function resolveSkillDescription(field) {
 }
 
 function raceListIconSrc(race) {
-  const iconName = nonEmptyText(race?.画像ID);
-  if (iconName && hasIconName(iconName)) {
-    return getIconSrcByName(iconName, iconName);
-  }
-  return "";
+  return getRaceIconSrc(race?.key || race?.name);
 }
 
 const races = computed(() => {
