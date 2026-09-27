@@ -282,9 +282,7 @@ export const V39_NEUTRAL_VILLAGE_BALANCE = Object.freeze({
   // 外部襲撃を1ターンごとに判定する確率。0.08 = 8%。
   raidChancePerTurn:0.08,
   // 外部襲撃を防げなかった時に失う村人口の割合。0.08 = 8%。
-  raidPopulationLossRate:0.08,
-  // 村の軍事Lv1ごとの守備隊人数。
-  defendersPerMilitaryLevel:2
+  raidPopulationLossRate:0.08
 });
 
 // 外交友好度・条約・AI判断の暫定値。確定後はこの定義だけを差し替える。

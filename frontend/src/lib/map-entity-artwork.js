@@ -7,6 +7,8 @@ import {
 import { MAP_SETTLEMENT_MARKER_CONFIG } from "./phaser-map-panel-config.js";
 import { resolveVillageScaleDefinition } from "../composables/villageCoreUtils.js";
 import { resolveFactionUnitArtworkName } from "../constants/factionUnitArtwork.js";
+import { resolveMonsterSheetArtwork } from "./monster-sheet-artwork.js";
+import { resolveFactionUnitSheetFrame } from "./unit-sheet-artwork.js";
 
 const rawEnemyArtworkModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
   eager: true,
@@ -113,6 +115,28 @@ function iconArtwork(candidates) {
   };
 }
 
+function resolveUnitSheetArtwork(unit) {
+  const frame = resolveFactionUnitSheetFrame(unit);
+  if (!frame?.src) return null;
+
+  const sheetKey = lookupKey(frame.sourcePath || frame.raceName || "unit-sheet");
+  return {
+    type:"unit-sheet",
+    src:frame.src,
+    textureKey:`v39-unit-sheet:${sheetKey}`,
+    name:frame.artworkName || frame.className || frame.raceName,
+    sourcePath:frame.sourcePath,
+    sheetFrame:{
+      frameKey:`unit-${sheetKey}-${frame.sheetIndex}`,
+      slotNumber:Number(frame.sheetIndex) + 1,
+      column:frame.column,
+      row:frame.row,
+      columns:frame.columns,
+      rows:frame.rows
+    }
+  };
+}
+
 export function resolveUnitImageArtwork(unit) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
   const className = text(unit?.className || unit?.class || unit?.クラス);
@@ -142,16 +166,21 @@ export function resolveUnitImageArtwork(unit) {
 export function resolveUnitArtwork(unit) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
   const className = text(unit?.className || unit?.class || unit?.クラス);
-  return resolveUnitImageArtwork(unit) || iconArtwork([
-    unit?.iconName,
-    unit?.subIconName,
-    className,
-    raceName,
-    unit?.name
-  ]);
+  return resolveUnitSheetArtwork(unit)
+    || resolveUnitImageArtwork(unit)
+    || iconArtwork([
+      unit?.iconName,
+      unit?.subIconName,
+      className,
+      raceName,
+      unit?.name
+    ]);
 }
 
 export function resolveEnemyArtwork(enemy) {
+  const sheetArtwork = resolveMonsterSheetArtwork(enemy);
+  if (sheetArtwork) return sheetArtwork;
+
   const row = findByStem(enemyArtworkRows, [
     enemy?.imageName,
     enemy?.image,
