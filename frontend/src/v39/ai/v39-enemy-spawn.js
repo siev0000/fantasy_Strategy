@@ -362,6 +362,50 @@ function createEnemy(selection, position, level, index, metadata = {}) {
   };
 }
 
+// 地形別の出現敵定義を持たないイベント用。能力計算は通常敵と同じ派生処理へ統一する。
+export function createV39EventEnemy({ id, name, race, className, level, x, y, metadata = {} } = {}) {
+  const derived = applyV39DerivedCharacterData({
+    id:text(id) || `event-enemy-${Date.now()}`,
+    name:text(name) || text(className) || "イベント敵",
+    race:text(race),
+    className:text(className),
+    level:Math.max(1, integer(level, 1)),
+    x:integer(x),
+    y:integer(y),
+    role:"敵",
+    image:text(metadata?.image),
+    aggressive:metadata?.aggressive !== false,
+    spawnTerrain:text(metadata?.spawnTerrain),
+    sourceDefinitionId:text(metadata?.sourceDefinitionId)
+  });
+  if (!derived?.derivedCharacter?.ok) return null;
+  const maxHp = Math.max(1, Math.round(number(derived.maxHp ?? derived.status?.HP, 1)));
+  return {
+    ...derived,
+    hp:maxHp,
+    currentHp:maxHp,
+    maxHp,
+    ap:100,
+    currentAp:100,
+    maxAp:100,
+    state:"生存",
+    spawnType:text(metadata?.spawnType, "イベント"),
+    aggressive:metadata?.aggressive !== false,
+    strongEnemy:false,
+    strongMinion:false,
+    nestType:null,
+    nestId:null,
+    enemySquadId:text(metadata?.enemySquadId),
+    territoryCenterX:null,
+    territoryCenterY:null,
+    territoryRadius:null,
+    sourceDefinitionId:text(metadata?.sourceDefinitionId),
+    naturalSource:text(metadata?.naturalSource),
+    naturalSpawnTurn:integer(metadata?.naturalSpawnTurn),
+    isUndead:metadata?.isUndead === true
+  };
+}
+
 function spawnStrongGroup(data, settlements, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random) {
   const plan = buildStrongGroupPlan(selection, random);
   const groupId = `strong-group-${candidate.x}-${candidate.y}`;

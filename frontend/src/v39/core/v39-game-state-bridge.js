@@ -38,7 +38,11 @@ const EMPTY_STATE = Object.freeze({
     lavaState: { flows: [] },
     lavaFlowData: { nodeKeys: [], edgeKeys: [], sourceKeys: [] },
     lastTerrainEvents: [],
-    activeTerrainEffects: []
+    activeTerrainEffects: [],
+    // 火山以外を含む自然災害の保存用。個別の継続効果はactiveTerrainEffectsへも展開する。
+    lastDisasterEvents: [],
+    activeDisasters: [],
+    lastNaturalEventTurn: 0
   },
   enemyCombatRuntime: {
     pendingActionsByEnemyId: {},
@@ -83,7 +87,10 @@ function normalizeWorldEnvironment(value = {}) {
     lavaState:cloneJson(value?.lavaState, { flows:[] }),
     lavaFlowData:cloneJson(value?.lavaFlowData, { nodeKeys:[], edgeKeys:[], sourceKeys:[] }),
     lastTerrainEvents:cloneJson(value?.lastTerrainEvents, []),
-    activeTerrainEffects:cloneJson(value?.activeTerrainEffects, [])
+    activeTerrainEffects:cloneJson(value?.activeTerrainEffects, []),
+    lastDisasterEvents:cloneJson(value?.lastDisasterEvents, []),
+    activeDisasters:cloneJson(value?.activeDisasters, []),
+    lastNaturalEventTurn:Math.max(0, Math.floor(Number(value?.lastNaturalEventTurn) || 0))
   };
 }
 

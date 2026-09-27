@@ -1,11 +1,13 @@
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { buildV39PopulationMaintenanceStock } from "../../lib/v39-population-economy.js";
 import { addResearchExperience } from "../../lib/research-progress.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
-import { getGameDataTable } from "../../lib/game-data-registry.js";
+import { disasterData, getGameDataTable } from "../../lib/game-data-registry.js";
 import { getV39TestSkillRows } from "../../lib/v39-test-skill-rules.js";
 import { getHexDistance } from "../../lib/hex-grid.js";
 import { getV39NeutralVillageRelation, getV39RelationLabel } from "../../lib/v39-neutral-village-rules.js";
+import { V39_UNDEAD_SPAWN_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import {
   resolveV39UnitRaceCategory,
   resolveV39UnitTotalExpForLevel,
@@ -20,6 +22,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 let statusMessage = "テスト対象を選択してください";
 let selectedEnemyId = "";
 let selectedTestSkillName = "";
+let selectedDisasterId = "";
 const collapsedSectionKeys = new Set();
 
 function escapeHtml(value) {
@@ -281,6 +284,24 @@ function forceTerrainEvent(mode) {
   setStatus(result?.ok ? `${mode === "eruption" ? "選択マスを噴火" : "溶岩を進行"}: ${result.events?.length || 0}件` : `実行失敗: ${result?.reason || "不明"}`);
 }
 
+function forceDisasterAtSelectedTile() {
+  const { tile } = context();
+  if (!selectedTileKey(tile)) return setStatus("災害を発生させるマスを選択してください");
+  if (!selectedDisasterId) return setStatus("災害種別を選択してください");
+  const result = window.forceV39Disaster?.(selectedDisasterId, { x:tile.x, y:tile.y });
+  if (!result?.ok) return setStatus("災害を発生できません: " + text(result?.reason, "処理未接続"));
+  setStatus(`${result.disasters?.[0]?.name || "災害"}を発生しました`);
+}
+
+function forceUndeadAtSelectedTile() {
+  const { tile } = context();
+  if (!selectedTileKey(tile)) return setStatus("アンデッドを発生させるマスを選択してください");
+  const result = window.forceV39UndeadSpawn?.({ x:tile.x, y:tile.y });
+  if (!result?.ok) return setStatus("アンデッドを発生できません: " + text(result?.reason, "処理未接続"));
+  const enemy = result.undead?.[0]?.enemy;
+  setStatus(enemy ? `${enemy.name}を発生しました` : "アンデッドを発生できません: マスが埋まっています");
+}
+
 function selectedTestSkill() {
   const rows = getV39TestSkillRows();
   if (!rows.some(row => text(row?.名前) === selectedTestSkillName)) {
@@ -317,6 +338,13 @@ function sumBag(bag) {
     .reduce((sum, value) => sum + Math.max(0, number(value)), 0);
 }
 
+function formatRequiredResources(bag) {
+  const rows = Object.entries(bag && typeof bag === "object" ? bag : {})
+    .filter(([, value]) => number(value) > 0)
+    .map(([key, value]) => `${key}${Math.round(number(value) * 10) / 10}`);
+  return rows.length ? rows.join(" / ") : "なし";
+}
+
 function playerLabel(state, playerId) {
   const player = (state?.players || []).find(row => text(row?.id) === text(playerId));
   return text(player?.label || player?.name || player?.id) || text(playerId) || "-";
@@ -335,6 +363,15 @@ function selectedTileBaseInfo(state, tile) {
     || (Array.isArray(village?.territoryTileKeys) && village.territoryTileKeys.map(text).includes(key))
   )) || null;
 
+  const naturalUndeadAt = unit => {
+    const metadata = unit?.metadata || {};
+    return metadata?.isUndead === true && text(metadata?.spawnType) === "アンデッド自然発生";
+  };
+  const naturalUndeadForKeys = keys => (state?.enemies || []).filter(unit => (
+    naturalUndeadAt(unit) && keys.includes(selectedTileKey(unit))
+  ));
+  const naturalUndead = naturalUndeadForKeys(neutralVillage?.territoryTileKeys || [key]);
+
   const ownedSettlement = (state?.settlements || []).find(settlement => {
     if (settlement?.neutral === true) return false;
     const id = text(settlement?.settlementId || settlement?.id);
@@ -345,6 +382,11 @@ function selectedTileBaseInfo(state, tile) {
     const ownerPlayerId = text(ownedSettlement?.ownerPlayerId || state?.territoryOwnerByTile?.[key]);
     const owner = (state?.players || []).find(row => text(row?.id) === ownerPlayerId);
     const cityLevels = ownedSettlement?.cityLevels || {};
+    const settlementId = text(ownedSettlement?.settlementId || ownedSettlement?.id);
+    const ownedTerritoryKeys = Object.entries(state?.territoryStateByTile || {})
+      .filter(([, value]) => text(value?.settlementId) === settlementId)
+      .map(([territoryKey]) => territoryKey);
+    const ownedNaturalUndead = naturalUndeadForKeys(ownedTerritoryKeys);
     entries.push({
       kind:"所有拠点",
       name:text(ownedSettlement?.name || ownedSettlement?.type) || "拠点",
@@ -354,6 +396,7 @@ function selectedTileBaseInfo(state, tile) {
         "規模: " + (text(ownedSettlement?.type || ownedSettlement?.scaleName) || "村") + " / Lv" + Math.max(1, Math.floor(number(ownedSettlement?.scaleLevel, 1))) + " / 人口 " + Math.floor(number(ownedSettlement?.population)),
         "技能: 鍛冶" + Math.floor(number(cityLevels?.鍛冶Lv)) + " / 魔法" + Math.floor(number(cityLevels?.魔法Lv)) + " / 信仰" + Math.floor(number(cityLevels?.信仰Lv)) + " / 軍事" + Math.floor(number(cityLevels?.軍事Lv)) + " / 経済" + Math.floor(number(cityLevels?.経済Lv)),
         "備蓄: 食料 " + Math.round(sumBag(ownedSettlement?.foodStockByType)) + " / 資材 " + Math.round(sumBag(ownedSettlement?.materialStockByType)),
+        "自然アンデッド脅威: " + ownedNaturalUndead.length + "体" + (ownedNaturalUndead.length ? " / " + ownedNaturalUndead.map(unit => text(unit?.name) || "不明").join("、") : ""),
         "選択土地: " + (text(territoryState?.status) || "-") + " / HP " + Math.round(number(territoryState?.hp, territoryState?.maxHp || 100)) + "/" + Math.round(number(territoryState?.maxHp, 100))
       ]
     });
@@ -366,6 +409,12 @@ function selectedTileBaseInfo(state, tile) {
     const defenseStrength = defenders.reduce((sum, row) => sum + Math.max(0, number(row?.strength)), 0);
     const activePlayerId = text(state?.activePlayerId);
     const relation = getV39NeutralVillageRelation(neutralVillage, activePlayerId);
+    const maintenance = buildV39PopulationMaintenanceStock(
+      { [text(neutralVillage?.race)]:Math.max(0, Math.floor(number(neutralVillage?.population))) },
+      defenders,
+      FOOD_RESOURCE_KEYS,
+      1
+    );
     entries.push({
       kind:"一般村",
       name:text(neutralVillage?.name) || "一般村",
@@ -375,6 +424,9 @@ function selectedTileBaseInfo(state, tile) {
         "村Lv" + Math.max(1, Math.floor(number(neutralVillage?.level, 1))) + " / 人口 " + Math.floor(number(neutralVillage?.population)) + " / 軍事Lv" + militaryLevel,
         "軍隊人口: " + Math.floor(number(neutralVillage?.militaryPopulationUsed, defenseCount)) + "/" + Math.floor(number(neutralVillage?.militaryPopulationCap, defenseCount)) + "人 / 軍隊率 " + Math.round(number(neutralVillage?.armyRate) * 100) + "%",
         "守備: " + (neutralVillage?.defenseUnits || []).length + "隊 / " + defenseCount + "人 / 戦力 " + Math.round(defenseStrength),
+        "必要物資(1T): " + formatRequiredResources(maintenance),
+        "自然アンデッド脅威: " + naturalUndead.length + "体" + (naturalUndead.length ? " / " + naturalUndead.map(unit => text(unit?.name) || "不明").join("、") : ""),
+        "直近の災害被害: " + (neutralVillage?.disasterState ? "T" + Math.floor(number(neutralVillage.disasterState.turn)) + " / 人口 -" + Math.floor(number(neutralVillage.disasterState.populationLoss)) : "なし"),
         "関係: " + getV39RelationLabel(relation) + " " + relation + " / " + (neutralVillage?.vassalPlayerId ? "属国: " + text(neutralVillage.vassalPlayerId) : "独立"),
         "最近の襲撃: " + (neutralVillage?.raidState ? "T" + Math.floor(number(neutralVillage.raidState.turn)) + " / " + (neutralVillage.raidState.defended ? "防衛成功" : "防衛失敗") : "なし")
       ]
@@ -408,6 +460,22 @@ function selectedTileBaseInfo(state, tile) {
     });
   }
 
+  const wanderers = (state?.wandererGroups || []).filter(group => selectedTileKey(group) === key);
+  for (const wanderer of wanderers) {
+    const nearbyUndead = (state?.enemies || []).filter(unit => (
+      naturalUndeadAt(unit)
+      && getHexDistance(tilePoint, { x:unit?.x, y:unit?.y }) <= V39_UNDEAD_SPAWN_BALANCE.threatRangeTiles
+    ));
+    entries.push({
+      kind:"放浪者",
+      name:text(wanderer?.name || wanderer?.race) || "放浪者",
+      lines:[
+        "人数: " + Math.max(0, Math.floor(number(wanderer?.population ?? wanderer?.count, 1))),
+        "自然アンデッド脅威: " + nearbyUndead.length + "体" + (nearbyUndead.length ? " / " + nearbyUndead.map(unit => text(unit?.name) || "不明").join("、") : "")
+      ]
+    });
+  }
+
   return entries;
 }
 
@@ -433,6 +501,9 @@ function panelHtml() {
   const cityLevel = text(document.getElementById("v39-test-city-level-key")?.value) || CITY_LEVEL_KEYS[0];
   const tileKey = selectedTileKey(tile);
   const testSkills = getV39TestSkillRows();
+  const disasters = (Array.isArray(disasterData) ? disasterData : []).filter(row => text(row?.ID) && text(row?.ID) !== "災害:火山噴火");
+  if (!disasters.some(row => text(row?.ID) === selectedDisasterId)) selectedDisasterId = text(disasters[0]?.ID);
+  const disasterOptions = disasters.map(row => `<option value="${escapeHtml(text(row.ID))}"${text(row.ID) === selectedDisasterId ? " selected" : ""}>${escapeHtml(text(row.カテゴリ名))}</option>`).join("");
   if (!testSkills.some(row => text(row?.名前) === selectedTestSkillName)) selectedTestSkillName = text(testSkills[0]?.名前);
   const assignedTestSkills = Array.isArray(unit?.testSkillNames) ? unit.testSkillNames.map(text).filter(Boolean) : [];
   const testSkillOptions = testSkills.map(row => {
@@ -453,7 +524,7 @@ function panelHtml() {
     <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
     <div class="v39-test-tools-scroll">
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
-      <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
+       <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで災害</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
       <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
       <details class="v39-test-section" data-test-section="test-skills"${testSectionOpenAttribute("test-skills")}><summary>テストスキル</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / 付与中: ${assignedTestSkills.length ? assignedTestSkills.map(escapeHtml).join(" / ") : "なし"}</p><div class="v39-test-form-row"><select id="v39-test-skill-name">${testSkillOptions || '<option value="">テストスキルなし</option>'}</select><button data-test-action="test-skill-add">選択を付与</button><button data-test-action="test-skill-all">即死・蘇生を付与</button><button data-test-action="test-skill-clear">全解除</button></div></div></details>
@@ -483,7 +554,7 @@ function closePanel() {
 function handleAction(action) {
   if (!testModeEnabled()) return closePanel();
   const handlers = {
-    eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"),
+    eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"), disaster:forceDisasterAtSelectedTile, undead:forceUndeadAtSelectedTile,
     "snow-on":() => setSelectedSnowState("cover", true), "snow-off":() => setSelectedSnowState("cover", false),
     "snowfall-on":() => setSelectedSnowState("falling", true), "snowfall-off":() => setSelectedSnowState("falling", false),
     turn:advanceTurn,
@@ -535,6 +606,7 @@ function install() {
     if (!(event.target instanceof HTMLSelectElement)) return;
     if (event.target.id === "v39-test-enemy-id") selectedEnemyId = text(event.target.value);
     else if (event.target.id === "v39-test-skill-name") selectedTestSkillName = text(event.target.value);
+    else if (event.target.id === "v39-test-disaster-id") selectedDisasterId = text(event.target.value);
     else return;
     render();
   });

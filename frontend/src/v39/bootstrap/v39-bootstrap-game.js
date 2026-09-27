@@ -13,6 +13,7 @@ import "../map/v39-map-entities.js";
 import "../unit/v39-unit-movement.js";
 import "../world/v39-exploration-ui.js";
 import "../world/v39-world-population.js";
+import "../world/v39-natural-events.js";
 import "../core/v39-activity-log.js";
 import "../combat/v39-effect-player.js";
 import "../combat/v39-combat.js";

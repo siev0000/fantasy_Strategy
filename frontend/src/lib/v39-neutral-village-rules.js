@@ -1,5 +1,5 @@
-import { getGameDataRows } from "./game-data-registry.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
+import { getGameDataRows } from "./game-data-registry.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "./v39-gameplay-balance.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { UNIT_CREATE_MODE_KEYS, resolveUnitCreateMode } from "../composables/militaryUnitUtils.js";
@@ -10,6 +10,8 @@ const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(
 const integer = (value, fallback = 0) => Math.floor(number(value, fallback));
 const keyOf = (x, y) => `${integer(x)},${integer(y)}`;
 const clampRelation = value => Math.max(V39_NEUTRAL_VILLAGE_BALANCE.relationMin, Math.min(V39_NEUTRAL_VILLAGE_BALANCE.relationMax, integer(value)));
+const VILLAGE_UNDEAD_QUEST = getGameDataRows("イベント_一般村")
+  .find(row => text(row?.ID) === "VILLAGE_FIELD_EXTERMINATE_UNDEAD") || null;
 
 function hash(value) {
   let result = 0;
@@ -312,6 +314,20 @@ export function improveV39NeutralVillageRelation(state, playerId, villageId) {
 }
 
 function createQuest(village, playerId, turn) {
+  const undeadEnemyIds = [...new Set((village?.naturalUndeadThreat?.enemyIds || []).map(text).filter(Boolean))];
+  if (undeadEnemyIds.length && VILLAGE_UNDEAD_QUEST) {
+    return {
+      id:`${village.id}-${playerId}-T${turn}`,
+      eventId:text(VILLAGE_UNDEAD_QUEST.ID),
+      type:"hunt",
+      label:text(VILLAGE_UNDEAD_QUEST.名前, "アンデッドの駆除"),
+      required:undeadEnemyIds.length,
+      targetEnemyIds:undeadEnemyIds,
+      accepted:true,
+      createdTurn:turn,
+      completed:false
+    };
+  }
   const material = hash(`${village.id}:${playerId}:quest`) % 2 === 1;
   return {
     id:`${village.id}-${playerId}-T${turn}`,
@@ -327,6 +343,9 @@ function createQuest(village, playerId, turn) {
 export function acceptV39NeutralVillageQuest(state, playerId, villageId) {
   const source = state?.neutralVillages?.find(row => row.id === villageId);
   if (!source) return { ok:false, reason:"一般村がありません", state };
+  if (source?.questsByPlayerId?.[playerId]?.accepted && !source.questsByPlayerId[playerId].completed) {
+    return { ok:false, reason:"既に依頼を受注しています", state };
+  }
   const turn = Math.max(1, integer(state?.timeline?.turnNumber, 1));
   const village = { ...source, questsByPlayerId:{ ...(source.questsByPlayerId || {}), [playerId]:createQuest(source, playerId, turn) } };
   return { ok:true, state:updateVillageState(state, village), village, quest:village.questsByPlayerId[playerId], message:"依頼を受注しました" };
@@ -336,10 +355,21 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId) {
   const source = state?.neutralVillages?.find(row => row.id === villageId);
   const quest = source?.questsByPlayerId?.[playerId];
   if (!source || !quest?.accepted || quest.completed) return { ok:false, reason:"受注中の依頼がありません", state };
-  const payment = changeSettlementResource(state, playerId, quest.type, -number(quest.required));
-  if (!payment.ok) return payment;
-  const rewardType = quest.type === "material" ? "food" : "material";
-  const reward = changeSettlementResource(payment.state, playerId, rewardType, V39_NEUTRAL_VILLAGE_BALANCE.questReward);
+  let reward;
+  if (quest.type === "hunt") {
+    const livingTargetIds = new Set((state?.enemies || [])
+      .filter(enemy => number(enemy?.hp ?? enemy?.currentHp) > 0 && text(enemy?.state) !== "死亡")
+      .map(enemy => text(enemy?.id)));
+    const remaining = (quest.targetEnemyIds || []).filter(id => livingTargetIds.has(text(id)));
+    if (remaining.length) return { ok:false, reason:`討伐対象が残っています (${remaining.length}/${quest.required})`, state };
+    reward = changeSettlementResource(state, playerId, "food", V39_NEUTRAL_VILLAGE_BALANCE.questReward);
+  } else {
+    const payment = changeSettlementResource(state, playerId, quest.type, -number(quest.required));
+    if (!payment.ok) return payment;
+    const rewardType = quest.type === "material" ? "food" : "material";
+    reward = changeSettlementResource(payment.state, playerId, rewardType, V39_NEUTRAL_VILLAGE_BALANCE.questReward);
+  }
+  if (!reward.ok) return reward;
   let village = changeRelation(source, playerId, V39_NEUTRAL_VILLAGE_BALANCE.questRelationGain);
   village = { ...village, questsByPlayerId:{ ...village.questsByPlayerId, [playerId]:{ ...quest, completed:true, completedTurn:integer(state?.timeline?.turnNumber, 1) } } };
   return { ok:true, state:updateVillageState(reward.state, village), village, message:`依頼完了 / 関係 +${V39_NEUTRAL_VILLAGE_BALANCE.questRelationGain} / 謝礼 ${reward.resourceName} ${V39_NEUTRAL_VILLAGE_BALANCE.questReward}` };

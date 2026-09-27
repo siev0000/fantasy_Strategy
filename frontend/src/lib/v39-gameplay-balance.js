@@ -285,6 +285,74 @@ export const V39_NEUTRAL_VILLAGE_BALANCE = Object.freeze({
   raidPopulationLossRate:0.08
 });
 
+// 災害.jsonへ発生条件・範囲・継続効果の列を追加するまでの暫定定義。
+// キーは災害.jsonのIDであり、災害名を処理本体の分岐には使わない。
+// JSON側へ同名列が追加された場合は、v39-natural-events.jsがその値を優先する。
+export const V39_PROVISIONAL_DISASTER_BALANCE = Object.freeze({
+  // 1ターンに自然発生を試行する最大件数。強制発生はこの制限を受けない。
+  maximumNaturalEventsPerTurn:1,
+  // 同じ災害種別を同一マスで再発生させない暫定待機ターン。
+  sameTileCooldownTurns:4,
+  // 地形.jsonの既存災害相性列と災害IDの対応。未対応の災害は補正なし(1.0倍)で判定する。
+  // 列値0.20は発生率を1.20倍、-0.10は0.90倍として扱う。
+  terrainAffinityFieldByDisasterId:Object.freeze({
+    "災害:洪水":"洪水",
+    "災害:暴風":"台風",
+    "災害:地震":"地震",
+    "災害:落雷嵐":"雷嵐",
+    "災害:大寒波":"吹雪"
+  }),
+  // JSONに数値列がない災害の仮定義。targetTerrainは地形名の部分一致。
+  rulesById:Object.freeze({
+    "災害:山火事":Object.freeze({ icon:"火", chance:0.012, targetTerrain:["森林", "森"], radius:1, duration:2, yieldMultiplier:0.5, securityLoss:5, unitDamageRate:0.10 }),
+    "災害:洪水":Object.freeze({ icon:"水", chance:0.010, targetTerrain:["河川", "海", "湖", "湿地", "沼"], radius:1, duration:2, yieldMultiplier:0.5, securityLoss:4, unitDamageRate:0.06 }),
+    "災害:干ばつ":Object.freeze({ icon:"乾", chance:0.010, targetTerrain:["平地", "草原", "荒野", "砂漠"], radius:2, duration:3, yieldMultiplier:0.5, securityLoss:3 }),
+    "災害:暴風":Object.freeze({ icon:"風", chance:0.008, targetTerrain:[], radius:2, duration:2, yieldMultiplier:0.8, securityLoss:2 }),
+    "災害:地震":Object.freeze({ icon:"震", chance:0.006, targetTerrain:["山", "岩", "丘"], radius:1, duration:1, yieldMultiplier:0.7, securityLoss:7, unitDamageRate:0.12 }),
+    "災害:落雷嵐":Object.freeze({ icon:"雷", chance:0.006, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.9, securityLoss:3, unitDamageRate:0.15 }),
+    "災害:大寒波":Object.freeze({ icon:"冷", chance:0.006, targetTerrain:["雪", "氷", "山"], radius:2, duration:2, yieldMultiplier:0.7, securityLoss:3 }),
+    "災害:熱波":Object.freeze({ icon:"熱", chance:0.006, targetTerrain:["平地", "草原", "荒野", "砂漠"], radius:2, duration:2, yieldMultiplier:0.5, securityLoss:3 }),
+    "災害:土砂崩れ":Object.freeze({ icon:"崩", chance:0.008, targetTerrain:["山", "岩", "丘"], radius:1, duration:1, yieldMultiplier:0.6, securityLoss:5, unitDamageRate:0.08 }),
+    "災害:闇侵食":Object.freeze({ icon:"闇", chance:0.004, targetTerrain:["死の霧", "呪"], radius:1, duration:3, yieldMultiplier:0.7, securityLoss:5, undeadBonus:true }),
+    "災害:聖光暴発":Object.freeze({ icon:"聖", chance:0.003, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.9, securityLoss:2, unitDamageRate:0.10 }),
+    "災害:重力異常":Object.freeze({ icon:"重", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.8, securityLoss:2 }),
+    "災害:時間歪曲":Object.freeze({ icon:"時", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.9, securityLoss:1 }),
+    "災害:空間歪曲":Object.freeze({ icon:"空", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.9, securityLoss:1 }),
+    "災害:魂嵐":Object.freeze({ icon:"魂", chance:0.004, targetTerrain:["死の霧", "呪"], radius:1, duration:2, yieldMultiplier:0.8, securityLoss:4, unitDamageRate:0.10, undeadBonus:true }),
+    "災害:瘴気":Object.freeze({ icon:"瘴", chance:0.005, targetTerrain:["沼", "湿地", "死の霧"], radius:1, duration:2, yieldMultiplier:0.7, securityLoss:4, unitDamageRate:0.08 }),
+    "災害:疫病":Object.freeze({ icon:"病", chance:0.005, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.8, securityLoss:6 }),
+    "災害:反乱":Object.freeze({ icon:"乱", chance:0.003, targetMode:"settlement", radius:0, duration:2, yieldMultiplier:0.8, securityLoss:8 }),
+    "災害:飢饉":Object.freeze({ icon:"飢", chance:0.005, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.6, securityLoss:6 }),
+    "災害:資源枯渇":Object.freeze({ icon:"枯", chance:0.004, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.5, securityLoss:2 }),
+    "災害:信仰崩壊":Object.freeze({ icon:"信", chance:0.003, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.9, securityLoss:5 }),
+    "災害:経済恐慌":Object.freeze({ icon:"恐", chance:0.003, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.7, securityLoss:3 }),
+    "災害:魔獣暴走":Object.freeze({ icon:"獣", chance:0.004, targetTerrain:[], radius:1, duration:1, yieldMultiplier:1, securityLoss:4, spawnEnemy:true }),
+    "災害:流星落下":Object.freeze({ icon:"星", chance:0.002, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.5, securityLoss:8, unitDamageRate:0.25 })
+  })
+});
+
+// アンデッド自然発生の暫定値。正式な出現敵タグ・発生条件列が追加されるまで使用する。
+export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
+  // 死の霧マスに毎ターン行う自然発生判定。0.02 = 2%。
+  deathMistChancePerTile:0.02,
+  // 死体資源を含む地上戦利品のマスに毎ターン行う稀な補助発生判定。0.01 = 1%。
+  corpseChancePerTile:0.01,
+  // 闇侵食・魂嵐など、undeadBonusを持つ災害中の追加判定。
+  disasterBonusChancePerTile:0.05,
+  // 1ターンの自然発生上限。強制発生はこの制限を受けない。
+  maximumSpawnCountPerTurn:2,
+  // 同じマスで再発生させない待機ターン。
+  sameTileCooldownTurns:5,
+  // TEST ONで放浪者の周辺脅威として数えるヘックス距離。将来の救援・駆除依頼も同じ範囲を使う。
+  threatRangeTiles:1,
+  // 出現するクラスとLv帯。クラス.jsonの名前を参照する。
+  candidates:Object.freeze([
+    Object.freeze({ race:"ゾンビ", className:"ゾンビ", levelMin:1, levelMax:3, weight:5 }),
+    Object.freeze({ race:"スケルトン", className:"スケルトン", levelMin:1, levelMax:4, weight:3 }),
+    Object.freeze({ race:"ゴースト", className:"ゴースト", levelMin:2, levelMax:5, weight:2 })
+  ])
+});
+
 // 外交友好度・条約・AI判断の暫定値。確定後はこの定義だけを差し替える。
 export const V39_DIPLOMACY_BALANCE = Object.freeze({
   // 勢力間友好度の下限。
