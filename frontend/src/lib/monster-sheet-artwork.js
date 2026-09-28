@@ -3,6 +3,11 @@ import { enemySpawnData } from "./game-data-registry.js";
 const MONSTER_SHEET_COLUMNS = 4;
 const MONSTER_SHEET_ROWS = 3;
 const MONSTER_SHEET_SLOT_COUNT = MONSTER_SHEET_COLUMNS * MONSTER_SHEET_ROWS;
+const MONSTER_ARTWORK_LEVEL_SIZE_THRESHOLDS = Object.freeze({
+  medium:15,
+  large:30,
+  extraLarge:45
+});
 
 const rawMonsterSheetModules = import.meta.glob(
   "../../../assets/images/units/1ファイルまとめ/*.{png,jpg,jpeg,webp,avif,gif}",
@@ -19,6 +24,14 @@ function text(value) {
 function integer(value) {
   const number = Number(value);
   return Number.isInteger(number) ? number : null;
+}
+
+function levelSizeOffset(levelValue) {
+  const level = Math.max(1, integer(levelValue) ?? 1);
+  if (level >= MONSTER_ARTWORK_LEVEL_SIZE_THRESHOLDS.extraLarge) return 3;
+  if (level >= MONSTER_ARTWORK_LEVEL_SIZE_THRESHOLDS.large) return 2;
+  if (level >= MONSTER_ARTWORK_LEVEL_SIZE_THRESHOLDS.medium) return 1;
+  return 0;
 }
 
 function normalizedPath(value) {
@@ -81,11 +94,12 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
   const legacySheetNumber = integer(row?.画像シート);
   const slotNumber = integer(row?.画像番号);
   const fileName = directFileName || (legacySheetNumber !== null ? legacySheetFileName(legacySheetNumber) : "");
+  const sizeByLevel = row?.画像サイズ連動 === true;
 
   if (!fileName || slotNumber === null) continue;
   if (slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) continue;
 
-  const reference = { fileName, slotNumber };
+  const reference = { fileName, slotNumber, sizeByLevel };
 
   if (definitionId) {
     monsterSheetReferenceByDefinitionId.set(definitionId, reference);
@@ -125,9 +139,10 @@ function resolveReferenceFromEnemy(enemy) {
   );
 
   if (directSlotNumber !== null) {
-    if (directFileName) return { fileName:directFileName, slotNumber:directSlotNumber };
+    const sizeByLevel = enemy?.画像サイズ連動 === true || enemy?.sizeArtworkByLevel === true;
+    if (directFileName) return { fileName:directFileName, slotNumber:directSlotNumber, sizeByLevel };
     if (legacySheetNumber !== null) {
-      return { fileName:legacySheetFileName(legacySheetNumber), slotNumber:directSlotNumber };
+      return { fileName:legacySheetFileName(legacySheetNumber), slotNumber:directSlotNumber, sizeByLevel };
     }
   }
 
@@ -170,10 +185,14 @@ function resolveReferenceFromEnemy(enemy) {
   return null;
 }
 
-function resolveReferenceArtwork(reference) {
+function resolveReferenceArtwork(reference, enemy = null) {
   if (!reference) return null;
-  const slotNumber = integer(reference.slotNumber);
-  if (slotNumber === null || slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) return null;
+  const baseSlotNumber = integer(reference.slotNumber);
+  if (baseSlotNumber === null || baseSlotNumber < 1 || baseSlotNumber > MONSTER_SHEET_SLOT_COUNT) return null;
+  const slotNumber = reference.sizeByLevel === true
+    ? baseSlotNumber + levelSizeOffset(enemy?.level)
+    : baseSlotNumber;
+  if (slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) return null;
 
   const sheet = findSheet(reference.fileName);
   if (!sheet) {
@@ -205,7 +224,7 @@ function resolveReferenceArtwork(reference) {
 }
 
 export function resolveMonsterSheetArtwork(enemy = {}) {
-  return resolveReferenceArtwork(resolveReferenceFromEnemy(enemy));
+  return resolveReferenceArtwork(resolveReferenceFromEnemy(enemy), enemy);
 }
 
 export function resolveMonsterSheetFrame(fileNameOrSheetNumber, slotNumberValue) {
