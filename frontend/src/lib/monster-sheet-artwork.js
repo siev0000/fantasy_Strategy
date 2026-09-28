@@ -5,7 +5,7 @@ const MONSTER_SHEET_ROWS = 3;
 const MONSTER_SHEET_SLOT_COUNT = MONSTER_SHEET_COLUMNS * MONSTER_SHEET_ROWS;
 
 const rawMonsterSheetModules = import.meta.glob(
-  "../../../assets/images/units/1ファイルまとめ/魔獣_ユニット集*.{png,jpg,jpeg,webp,avif,gif}",
+  "../../../assets/images/units/1ファイルまとめ/*.{png,jpg,jpeg,webp,avif,gif}",
   {
     eager:true,
     import:"default"
@@ -25,28 +25,51 @@ function normalizedPath(value) {
   return text(value).replace(/\\/g, "/");
 }
 
-function pathStem(value) {
+function pathFileName(value) {
   const path = normalizedPath(value);
-  const fileName = path.split("/").pop() || "";
+  return path.split("/").pop() || "";
+}
+
+function pathStem(value) {
+  const fileName = pathFileName(value);
   const dot = fileName.lastIndexOf(".");
   return dot > 0 ? fileName.slice(0, dot) : fileName;
 }
 
-function sheetNumberFromPath(path) {
-  const match = pathStem(path).match(/^魔獣_ユニット集(\d+)$/);
-  return match ? integer(match[1]) : null;
+function lookupKey(value) {
+  return text(value)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s　_\-・=./\\]+/g, "");
 }
 
-const monsterSheetByNumber = new Map(
-  Object.entries(rawMonsterSheetModules)
-    .map(([path, src]) => ({
-      sheetNumber:sheetNumberFromPath(path),
-      src:text(src),
-      sourcePath:path
-    }))
-    .filter(row => row.sheetNumber !== null && row.src)
-    .map(row => [row.sheetNumber, row])
+function legacySheetFileName(sheetNumber) {
+  return `魔獣_ユニット集${sheetNumber}.webp`;
+}
+
+const monsterSheets = Object.entries(rawMonsterSheetModules)
+  .map(([path, src]) => ({
+    src:text(src),
+    sourcePath:path,
+    fileName:pathFileName(path),
+    stem:pathStem(path)
+  }))
+  .filter(row => row.src && row.fileName);
+
+const monsterSheetByFileName = new Map(
+  monsterSheets.map(row => [lookupKey(row.fileName), row])
 );
+const monsterSheetByStem = new Map(
+  monsterSheets.map(row => [lookupKey(row.stem), row])
+);
+
+function findSheet(fileNameValue) {
+  const value = text(fileNameValue);
+  if (!value) return null;
+  return monsterSheetByFileName.get(lookupKey(value))
+    || monsterSheetByStem.get(lookupKey(pathStem(value)))
+    || null;
+}
 
 const monsterSheetReferenceByName = new Map();
 const monsterSheetReferenceByDefinitionId = new Map();
@@ -54,12 +77,15 @@ const monsterSheetReferenceByDefinitionId = new Map();
 for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
   const name = text(row?.種族名);
   const definitionId = text(row?.ID);
-  const sheetNumber = integer(row?.画像シート);
+  const directFileName = text(row?.画像ファイル);
+  const legacySheetNumber = integer(row?.画像シート);
   const slotNumber = integer(row?.画像番号);
-  if (sheetNumber === null || slotNumber === null) continue;
+  const fileName = directFileName || (legacySheetNumber !== null ? legacySheetFileName(legacySheetNumber) : "");
+
+  if (!fileName || slotNumber === null) continue;
   if (slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) continue;
 
-  const reference = { sheetNumber, slotNumber };
+  const reference = { fileName, slotNumber };
 
   if (definitionId) {
     monsterSheetReferenceByDefinitionId.set(definitionId, reference);
@@ -72,7 +98,7 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
     continue;
   }
 
-  if (existing.sheetNumber !== sheetNumber || existing.slotNumber !== slotNumber) {
+  if (lookupKey(existing.fileName) !== lookupKey(fileName) || existing.slotNumber !== slotNumber) {
     console.warn(
       `[monster-sheet-artwork] 出現敵.json の画像指定が競合しています: ${name}`,
       existing,
@@ -82,7 +108,12 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
 }
 
 function resolveReferenceFromEnemy(enemy) {
-  const directSheetNumber = integer(
+  const directFileName = text(
+    enemy?.画像ファイル
+    ?? enemy?.imageFile
+    ?? enemy?.sheetFile
+  );
+  const legacySheetNumber = integer(
     enemy?.画像シート
     ?? enemy?.imageSheet
     ?? enemy?.sheetNumber
@@ -93,8 +124,11 @@ function resolveReferenceFromEnemy(enemy) {
     ?? enemy?.slotNumber
   );
 
-  if (directSheetNumber !== null && directSlotNumber !== null) {
-    return { sheetNumber:directSheetNumber, slotNumber:directSlotNumber };
+  if (directSlotNumber !== null) {
+    if (directFileName) return { fileName:directFileName, slotNumber:directSlotNumber };
+    if (legacySheetNumber !== null) {
+      return { fileName:legacySheetFileName(legacySheetNumber), slotNumber:directSlotNumber };
+    }
   }
 
   const definitionIds = [
@@ -136,28 +170,31 @@ function resolveReferenceFromEnemy(enemy) {
   return null;
 }
 
-export function resolveMonsterSheetArtwork(enemy = {}) {
-  const reference = resolveReferenceFromEnemy(enemy);
+function resolveReferenceArtwork(reference) {
   if (!reference) return null;
+  const slotNumber = integer(reference.slotNumber);
+  if (slotNumber === null || slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) return null;
 
-  const { sheetNumber, slotNumber } = reference;
-  if (slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) return null;
-
-  const sheet = monsterSheetByNumber.get(sheetNumber);
-  if (!sheet) return null;
+  const sheet = findSheet(reference.fileName);
+  if (!sheet) {
+    console.warn(`[monster-sheet-artwork] 画像シートが見つかりません: ${reference.fileName}`);
+    return null;
+  }
 
   const zeroBasedIndex = slotNumber - 1;
   const column = zeroBasedIndex % MONSTER_SHEET_COLUMNS;
   const row = Math.floor(zeroBasedIndex / MONSTER_SHEET_COLUMNS);
+  const sheetKey = lookupKey(sheet.fileName);
 
   return {
     type:"enemy-sheet",
     src:sheet.src,
-    textureKey:`v39-enemy-sheet:${sheetNumber}`,
-    name:`魔獣_ユニット集${sheetNumber}#${slotNumber}`,
+    textureKey:`v39-enemy-sheet:${sheetKey}`,
+    name:`${sheet.stem}#${slotNumber}`,
     sourcePath:sheet.sourcePath,
     sheetFrame:{
-      sheetNumber,
+      frameKey:`monster-${sheetKey}-${slotNumber}`,
+      fileName:sheet.fileName,
       slotNumber,
       column,
       row,
@@ -167,9 +204,17 @@ export function resolveMonsterSheetArtwork(enemy = {}) {
   };
 }
 
-export function resolveMonsterSheetFrame(sheetNumberValue, slotNumberValue) {
-  return resolveMonsterSheetArtwork({
-    画像シート:sheetNumberValue,
-    画像番号:slotNumberValue
+export function resolveMonsterSheetArtwork(enemy = {}) {
+  return resolveReferenceArtwork(resolveReferenceFromEnemy(enemy));
+}
+
+export function resolveMonsterSheetFrame(fileNameOrSheetNumber, slotNumberValue) {
+  const legacySheetNumber = integer(fileNameOrSheetNumber);
+  const fileName = legacySheetNumber !== null
+    ? legacySheetFileName(legacySheetNumber)
+    : text(fileNameOrSheetNumber);
+  return resolveReferenceArtwork({
+    fileName,
+    slotNumber:slotNumberValue
   });
 }
