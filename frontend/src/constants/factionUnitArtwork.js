@@ -1,6 +1,11 @@
 export const FACTION_UNIT_ARTWORK_SHEET_COLUMNS = 4;
 export const FACTION_UNIT_ARTWORK_SHEET_ROWS = 3;
 
+export const FACTION_UNIT_ARTWORK_SHEET_NAME_OVERRIDES = Object.freeze({
+  "獣人":"ウルフマン",
+  "ビーストマン":"ウルフマン"
+});
+
 export const FACTION_UNIT_ARTWORK_SLOTS = Object.freeze([
   Object.freeze({ sheetIndex:0, artworkName:"戦士", aliases:Object.freeze(["戦士", "ファイター"]) }),
   Object.freeze({ sheetIndex:1, artworkName:"騎士", aliases:Object.freeze(["騎士", "ナイト"]) }),
