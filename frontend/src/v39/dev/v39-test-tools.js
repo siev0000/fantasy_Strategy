@@ -345,6 +345,35 @@ function formatRequiredResources(bag) {
   return rows.length ? rows.join(" / ") : "なし";
 }
 
+function livingUnit(unit) {
+  return number(unit?.hp ?? unit?.currentHp) > 0 && text(unit?.state, "生存") !== "死亡";
+}
+
+function villageGuardDiagnostic(state, unitId) {
+  for (const village of state?.neutralVillages || []) {
+    const unit = (village?.defenseUnits || []).find(row => text(row?.id) === text(unitId));
+    if (!unit) continue;
+    const skills = Array.isArray(unit?.skills) ? unit.skills : (Array.isArray(unit?.skillNames) ? unit.skillNames : []);
+    return {
+      isVillageGuard:true,
+      guardVillageName:text(village?.name, "一般村"),
+      decision:"村防衛",
+      reason:"一般村の守備軍。現時点では敵巣AIの個別行動対象ではありません。",
+      aggressive:false,
+      retaliating:false,
+      x:Math.floor(number(unit?.x)), y:Math.floor(number(unit?.y)), level:Math.max(1, Math.floor(number(unit?.level, 1))),
+      hp:Math.floor(number(unit?.hp ?? unit?.currentHp)), maxHp:Math.floor(number(unit?.maxHp ?? unit?.status?.HP)),
+      ap:Math.floor(number(unit?.ap ?? unit?.currentAp)), maxAp:Math.floor(number(unit?.maxAp, 100)),
+      visionRadius:Math.max(0, Math.floor(number(unit?.visionRadius))), scout:Math.floor(number(unit?.status?.索敵 ?? unit?.scout)),
+      targetName:"", targetDistance:null, aggroTargetUnitId:"", attackSkillNames:skills.map(row => text(row?.名前 ?? row)).filter(Boolean),
+      nestName:"", nestId:"", nestDistance:null, hasNest:false, territoryCenter:null, territoryRadius:0, pursuitLimit:0,
+      fleeThreshold:0, fleeState:null, fleeDecisionMade:false, lastActionTurn:0, pendingSkillName:"", pendingTurns:0, cooldowns:{},
+      militaryPopulation:Math.max(0, Math.floor(number(unit?.militaryPopulation ?? unit?.count))), strength:Math.round(number(unit?.strength))
+    };
+  }
+  return null;
+}
+
 function playerLabel(state, playerId) {
   const player = (state?.players || []).find(row => text(row?.id) === text(playerId));
   return text(player?.label || player?.name || player?.id) || text(playerId) || "-";
@@ -510,16 +539,23 @@ function panelHtml() {
     const name = text(row?.名前);
     return `<option value="${escapeHtml(name)}"${name === selectedTestSkillName ? " selected" : ""}>${escapeHtml(name)}</option>`;
   }).join("");
-  const enemies = (state?.enemies || []).filter(enemy => number(enemy?.hp, enemy?.currentHp) > 0 && text(enemy?.state, "生存") !== "死亡");
-  const enemiesOnTile = tileKey ? enemies.filter(enemy => selectedTileKey(enemy) === tileKey) : [];
-  if (!enemies.some(enemy => text(enemy?.id) === selectedEnemyId)) selectedEnemyId = text(enemiesOnTile[0]?.id || enemies[0]?.id);
-  const enemyDebug = window.inspectV39EnemyAi?.(selectedEnemyId) || null;
-  const playerDetection = enemyDebug ? window.inspectV39PlayerDetectionForEnemy?.(selectedEnemyId) || null : null;
+  const enemies = (state?.enemies || []).filter(livingUnit).map(enemy => ({ ...enemy, diagnosticKind:"enemy", diagnosticLabel:text(enemy?.name || enemy?.id) }));
+  const villageGuards = (state?.neutralVillages || []).flatMap(village => (village?.defenseUnits || [])
+    .filter(livingUnit)
+    .map(unit => ({ ...unit, diagnosticKind:"village-guard", diagnosticLabel:`${text(village?.name, "一般村")} / ${text(unit?.name || unit?.id)}` })));
+  const diagnosticUnits = [...enemies, ...villageGuards];
+  const unitsOnTile = tileKey ? diagnosticUnits.filter(unit => selectedTileKey(unit) === tileKey) : [];
+  if (!diagnosticUnits.some(unit => text(unit?.id) === selectedEnemyId)) selectedEnemyId = text(unitsOnTile[0]?.id || diagnosticUnits[0]?.id);
+  const selectedDiagnosticUnit = diagnosticUnits.find(unit => text(unit?.id) === selectedEnemyId) || null;
+  const enemyDebug = selectedDiagnosticUnit?.diagnosticKind === "village-guard"
+    ? villageGuardDiagnostic(state, selectedEnemyId)
+    : window.inspectV39EnemyAi?.(selectedEnemyId) || null;
+  const playerDetection = enemyDebug && !enemyDebug.isVillageGuard ? window.inspectV39PlayerDetectionForEnemy?.(selectedEnemyId) || null : null;
   const cooldownText = enemyDebug ? Object.entries(enemyDebug.cooldowns || {}).map(([name, turns]) => `${name}:${turns}T`).join(" / ") : "";
   const playerDetectionText = playerDetection
     ? `${playerDetection.detected ? "発見済み" : "未発見"} / ${playerDetection.inCurrentVision ? "索敵範囲内" : "索敵範囲外"} / 有効索敵${playerDetection.observerScout ?? "-"} / 隠密${playerDetection.targetStealth} / ${playerDetection.reason}`
     : "判定データなし";
-  const enemyOptions = enemies.map(enemy => `<option value="${escapeHtml(enemy.id)}"${text(enemy.id) === selectedEnemyId ? " selected" : ""}>${escapeHtml(enemy.name || enemy.id)} (${Math.floor(number(enemy.x))},${Math.floor(number(enemy.y))})</option>`).join("");
+  const enemyOptions = diagnosticUnits.map(unit => `<option value="${escapeHtml(unit.id)}"${text(unit.id) === selectedEnemyId ? " selected" : ""}>${escapeHtml(unit.diagnosticLabel)} (${Math.floor(number(unit.x))},${Math.floor(number(unit.y))})</option>`).join("");
   return `
     <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
     <div class="v39-test-tools-scroll">
@@ -528,7 +564,7 @@ function panelHtml() {
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
       <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
       <details class="v39-test-section" data-test-section="test-skills"${testSectionOpenAttribute("test-skills")}><summary>テストスキル</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / 付与中: ${assignedTestSkills.length ? assignedTestSkills.map(escapeHtml).join(" / ") : "なし"}</p><div class="v39-test-form-row"><select id="v39-test-skill-name">${testSkillOptions || '<option value="">テストスキルなし</option>'}</select><button data-test-action="test-skill-add">選択を付与</button><button data-test-action="test-skill-all">即死・蘇生を付与</button><button data-test-action="test-skill-clear">全解除</button></div></div></details>
-      <details class="v39-test-section" data-test-section="enemy-ai"${testSectionOpenAttribute("enemy-ai")}><summary>敵AI診断</summary><div class="v39-test-section-body">${enemies.length ? `<div class="v39-test-form-row"><select id="v39-test-enemy-id">${enemyOptions}</select></div>${enemyDebug ? `<div class="v39-test-ai-grid"><span>判断</span><b>${escapeHtml(enemyDebug.decision)}</b><span>理由</span><b>${escapeHtml(enemyDebug.reason)}</b><span>好戦性</span><b>${enemyDebug.aggressive ? "好戦的" : enemyDebug.retaliating ? "反撃中（非好戦的）" : "非好戦的"}</b><span>位置</span><b>(${enemyDebug.x},${enemyDebug.y}) / Lv${enemyDebug.level}</b><span>HP / AP</span><b>${enemyDebug.hp}/${enemyDebug.maxHp} / ${enemyDebug.ap}/${enemyDebug.maxAp}</b><span>索敵</span><b>半径${enemyDebug.visionRadius} / 値${enemyDebug.scout}</b><span>プレイヤー発見</span><b>${escapeHtml(playerDetectionText)}</b><span>認識標的</span><b>${escapeHtml(enemyDebug.targetName || "なし")}${enemyDebug.targetDistance == null ? "" : ` / 距離${enemyDebug.targetDistance}`}</b><span>敵対記憶</span><b>${escapeHtml(enemyDebug.aggroTargetUnitId || "なし")}</b><span>攻撃候補</span><b>${escapeHtml(enemyDebug.attackSkillNames.join(" / ") || "なし")}</b><span>所属巣</span><b>${escapeHtml(enemyDebug.nestName || "巣なし")}${enemyDebug.nestId ? ` / ${escapeHtml(enemyDebug.nestId)}` : ""}${enemyDebug.nestDistance == null ? "" : ` / 距離${enemyDebug.nestDistance}`}</b><span>縄張り</span><b>${enemyDebug.hasNest ? `中心(${enemyDebug.territoryCenter.x},${enemyDebug.territoryCenter.y}) / 半径${enemyDebug.territoryRadius} / 追跡限界${enemyDebug.pursuitLimit}` : "なし（巣なし個体）"}</b><span>逃走</span><b>基準${Math.round(enemyDebug.fleeThreshold*100)}% / ${enemyDebug.fleeState?.active ? "逃走中" : enemyDebug.fleeDecisionMade ? "判定済み" : "未発動"}</b><span>前回行動</span><b>T${enemyDebug.lastActionTurn || "-"}</b><span>発動待機 / CT</span><b>${escapeHtml(enemyDebug.pendingSkillName ? `${enemyDebug.pendingSkillName}:${enemyDebug.pendingTurns}T` : cooldownText || "なし")}</b></div>` : '<p>診断データを取得できません</p>'}` : '<p>生存している敵がいません</p>'}</div></details>
+      <details class="v39-test-section" data-test-section="enemy-ai"${testSectionOpenAttribute("enemy-ai")}><summary>敵AI診断</summary><div class="v39-test-section-body">${diagnosticUnits.length ? `<div class="v39-test-form-row"><select id="v39-test-enemy-id">${enemyOptions}</select></div>${enemyDebug ? `<div class="v39-test-ai-grid"><span>種別</span><b>${enemyDebug.isVillageGuard ? `一般村守備 / ${escapeHtml(enemyDebug.guardVillageName)}` : "敵AI"}</b><span>判断</span><b>${escapeHtml(enemyDebug.decision)}</b><span>理由</span><b>${escapeHtml(enemyDebug.reason)}</b><span>好戦性</span><b>${enemyDebug.isVillageGuard ? "村防衛" : enemyDebug.aggressive ? "好戦的" : enemyDebug.retaliating ? "反撃中（非好戦的）" : "非好戦的"}</b><span>位置</span><b>(${enemyDebug.x},${enemyDebug.y}) / Lv${enemyDebug.level}</b><span>HP / AP</span><b>${enemyDebug.hp}/${enemyDebug.maxHp} / ${enemyDebug.ap}/${enemyDebug.maxAp}</b>${enemyDebug.isVillageGuard ? `<span>軍隊人口 / 戦力</span><b>${enemyDebug.militaryPopulation}人 / ${enemyDebug.strength}</b>` : `<span>索敵</span><b>半径${enemyDebug.visionRadius} / 値${enemyDebug.scout}</b><span>プレイヤー発見</span><b>${escapeHtml(playerDetectionText)}</b><span>認識標的</span><b>${escapeHtml(enemyDebug.targetName || "なし")}${enemyDebug.targetDistance == null ? "" : ` / 距離${enemyDebug.targetDistance}`}</b><span>敵対記憶</span><b>${escapeHtml(enemyDebug.aggroTargetUnitId || "なし")}</b><span>所属巣</span><b>${escapeHtml(enemyDebug.nestName || "巣なし")}${enemyDebug.nestId ? ` / ${escapeHtml(enemyDebug.nestId)}` : ""}${enemyDebug.nestDistance == null ? "" : ` / 距離${enemyDebug.nestDistance}`}</b><span>縄張り</span><b>${enemyDebug.hasNest ? `中心(${enemyDebug.territoryCenter.x},${enemyDebug.territoryCenter.y}) / 半径${enemyDebug.territoryRadius} / 追跡限界${enemyDebug.pursuitLimit}` : "なし（巣なし個体）"}</b><span>逃走</span><b>基準${Math.round(enemyDebug.fleeThreshold*100)}% / ${enemyDebug.fleeState?.active ? "逃走中" : enemyDebug.fleeDecisionMade ? "判定済み" : "未発動"}</b><span>前回行動</span><b>T${enemyDebug.lastActionTurn || "-"}</b><span>発動待機 / CT</span><b>${escapeHtml(enemyDebug.pendingSkillName ? `${enemyDebug.pendingSkillName}:${enemyDebug.pendingTurns}T` : cooldownText || "なし")}</b>`}<span>攻撃候補</span><b>${escapeHtml(enemyDebug.attackSkillNames.join(" / ") || "なし")}</b></div>` : '<p>診断データを取得できません</p>'}` : '<p>生存している敵または一般村守備軍がいません</p>'}</div></details>
       <details class="v39-test-section" data-test-section="city-research"${testSectionOpenAttribute("city-research")}><summary>拠点技能・研究</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><select id="v39-test-city-level-key">${CITY_LEVEL_KEYS.map(key => `<option value="${key}"${key === cityLevel ? " selected" : ""}>${key}</option>`).join("")}</select><button data-test-action="city-level-minus">-1</button><button data-test-action="city-level-plus">+1</button><input id="v39-test-research-exp" type="number" min="1" step="10" value="100"><button data-test-action="research-exp">選択研究EXP+</button></div></div></details>
       <details class="v39-test-section" data-test-section="territory"${testSectionOpenAttribute("territory")}><summary>選択領土</summary><div class="v39-test-section-body"><div class="v39-test-button-row"><button data-test-action="territory-minus">HP-25</button><button data-test-action="territory-zero">HP0</button><button data-test-action="territory-full">HP全快</button></div></div></details>
     </div>
@@ -621,8 +657,12 @@ function install() {
   window.addEventListener("v39:game-state-changed", render);
   window.addEventListener("v39:tile-selected", event => {
     const key = selectedTileKey(event?.detail);
-    const enemy = (window.getV39GameState?.()?.enemies || []).find(row => selectedTileKey(row) === key && number(row?.hp, row?.currentHp) > 0);
-    if (enemy) selectedEnemyId = text(enemy.id);
+    const state = window.getV39GameState?.();
+    const enemy = (state?.enemies || []).find(row => selectedTileKey(row) === key && livingUnit(row));
+    const villageGuard = (state?.neutralVillages || []).flatMap(village => village?.defenseUnits || [])
+      .find(row => selectedTileKey(row) === key && livingUnit(row));
+    const target = enemy || villageGuard;
+    if (target) selectedEnemyId = text(target.id);
     render();
   });
   window.openV39TestTools = openPanel;
