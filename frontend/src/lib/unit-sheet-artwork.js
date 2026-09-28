@@ -1,6 +1,7 @@
 import {
   FACTION_UNIT_ARTWORK_SHEET_COLUMNS,
   FACTION_UNIT_ARTWORK_SHEET_ROWS,
+  FACTION_UNIT_ARTWORK_SHEET_NAME_OVERRIDES,
   resolveFactionUnitArtworkSlot
 } from "../constants/factionUnitArtwork.js";
 import { RACE_CLASS_NAME_MAP } from "../constants/unitCommon.js";
@@ -61,7 +62,11 @@ function resolveRaceSheet(raceName) {
   if (!race) return null;
 
   const sheetRaceName = text(RACE_CLASS_NAME_MAP[race]);
-  const candidates = [...new Set([sheetRaceName, race].filter(Boolean))];
+  const overrideSheetName = text(
+    FACTION_UNIT_ARTWORK_SHEET_NAME_OVERRIDES[race]
+    || FACTION_UNIT_ARTWORK_SHEET_NAME_OVERRIDES[sheetRaceName]
+  );
+  const candidates = [...new Set([overrideSheetName, sheetRaceName, race].filter(Boolean))];
 
   for (const candidate of candidates) {
     const sheet = findRaceSheetByName(candidate);
