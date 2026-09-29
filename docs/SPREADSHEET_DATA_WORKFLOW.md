@@ -1,6 +1,6 @@
 # @game_data スプレッドシート → JSON 変換運用
 
-最終更新: 2026-09-27
+最終更新: 2026-09-28
 
 ## 1. 目的
 
@@ -14,6 +14,19 @@
 - **ゲームコード**: Google Sheets を直接参照せず、生成済み JSON だけを読む
 
 Notion はこの変換運用の正本にしない。同じルール本文を Notion と GitHub に二重管理しない。
+
+### 参照先を取り違えないための固定表
+
+| 確認・変更したい対象 | 正しい参照先 / 操作 | 直接変更してはいけないもの |
+| --- | --- | --- |
+| 種類、数値、説明、条件、画像名を追加・変更する | Google スプレッドシート `@game_data` の対応シートを編集する | `data/source/export/json/*.json` |
+| ゲームが現在使う値を確認する | `data/source/export/json/*.json` と現行コードを確認する | Google Sheets の未エクスポート変更だけで判断すること |
+| シートの変更をゲームへ反映する | 最新の `.xlsx` エクスポートを変換器へ渡し、JSON差分を確認する | `.xlsm` を直接入力として使うこと |
+| シートにない固定のテストデータを変更する | 対象外JSONと、その専用仕様書を確認する | 管理対象JSONへJSONだけの列を追加すること |
+
+このリポジトリに一時的に存在する `data/source/game_data.xlsm`、`~$game_data.xlsm`、手元へ保存した `.xlsx` は、Google スプレッドシート `@game_data` の編集原本ではない。変換確認用のローカルコピーとして扱い、通常のゲームデータ変更の正本にしない。
+
+ゲームコードは Google Sheets やローカル表計算ファイルを直接読まない。実行時の定義は必ず `data/source/export/json` を通す。
 
 ---
 
@@ -45,6 +58,8 @@ Notion はこの変換運用の正本にしない。同じルール本文を Not
 
 生成後 JSON だけを直接変更して、スプレッドシート側へ反映しない運用は行わない。
 
+緊急調査でJSONを一時変更する場合も、原因確認後に同じ変更を `@game_data` へ反映して再生成するか、JSON変更を取り消す。JSONだけの変更をコミットして編集原本との差分を恒久化しない。
+
 ---
 
 ## 3. 現在の自動変換対象
@@ -69,6 +84,7 @@ Notion はこの変換運用の正本にしない。同じルール本文を Not
 | 施設 | `施設.json` |
 | 研究 | `研究.json` |
 | 付与 | `付与.json` |
+| 勝利対象土地 | `勝利対象土地.json` |
 | 消費量 | `消費量.json` |
 | 装備 | `装備.json` |
 
@@ -161,6 +177,17 @@ python scripts/game_data_converter.py --input path/to/game_data.xlsx --dry-run -
 
 `data/source/export/json`
 
+正式反映時の確認コマンド:
+
+```bash
+python scripts/game_data_converter.py --input path/to/game_data.xlsx --dry-run
+python scripts/game_data_converter.py --input path/to/game_data.xlsx
+git diff -- data/source/export/json
+npm run audit:data
+```
+
+変換後は、意図しないJSONファイル・列・行の削除がないことを `git diff` で確認する。変換器レポートまたは `npm run audit:data` にエラーがある状態で、生成JSONを正本として扱わない。
+
 ---
 
 ## 7. ChatGPT からデータを修正するときの流れ
@@ -169,14 +196,15 @@ python scripts/game_data_converter.py --input path/to/game_data.xlsx --dry-run -
 
 1. 現在の作業ブランチを確認する。
 2. `AGENTS.md`、`docs/README.md`、この文書、対象データの仕様書を確認する。
-3. 元の Google スプレッドシート `@game_data` の現在値を確認する。
-4. 指定されたシート・セルを `@game_data` 側で編集する。
-5. 編集後の最新データを XLSX として取得する。
-6. `game_data_converter.py --dry-run` で検証する。
-7. エラーがなければ JSON を生成する。
-8. 生成された JSON の差分を確認する。
-9. 現在の作業ブランチへ必要な変更を反映する。
-10. ユーザーの許可なく `main` へマージしない。
+3. 対象JSONが自動変換対象か、対象外の専用JSONかをこの文書の一覧で判定する。
+4. 元の Google スプレッドシート `@game_data` の現在値を確認する。
+5. 指定されたシート・セルを `@game_data` 側で編集する。
+6. 編集後の最新データを `.xlsx` として取得する。ローカルの `.xlsm` を編集原本へ戻さない。
+7. `game_data_converter.py --dry-run` で検証する。
+8. エラーがなければ JSON を生成する。
+9. 生成された JSON の差分と `npm run audit:data` を確認する。
+10. 現在の作業ブランチへ必要な変更を反映する。
+11. ユーザーの許可なく `main` へマージしない。
 
 Google Sheets の編集だけで終わらせず、ユーザーが「ゲームデータへ反映」「JSONまで反映」などを求めた場合は変換後 JSON まで更新する。
 

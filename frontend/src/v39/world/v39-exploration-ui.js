@@ -6,6 +6,7 @@ import {
   inspectV39Survey,
   startV39SurveyTask
 } from "../../lib/v39-exploration-rules.js";
+import { generateV39VictoryLandmarks } from "../../lib/v39-victory-landmarks.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 
 let selectedTile = null;
@@ -96,13 +97,18 @@ function initializeSites(event) {
   const state = window.getV39GameState?.();
   const mapData = event?.detail?.mapData || window.__v39FieldRuntime?.mapData;
   if (!state || !mapData || event?.detail?.restored) return;
-  const explorationSitesByTile = generateV39ExplorationSites(mapData, { seed:`${mapData.w}x${mapData.h}:${mapData.patternId || "map"}` });
+  const patternId = event?.detail?.settings?.patternId || window.__v39FieldRuntime?.settings?.patternId || mapData.patternId || "realistic";
+  const seed = `${mapData.w}x${mapData.h}:${patternId}`;
+  const victoryLandmarksByTile = generateV39VictoryLandmarks(mapData, { seed, patternId });
+  const normalSitesByTile = generateV39ExplorationSites(mapData, { seed, reservedTileKeys:Object.keys(victoryLandmarksByTile) });
+  // Survey dispatch stays in one map; the dedicated record keeps landmark state queryable without type inference.
+  const explorationSitesByTile = { ...normalSitesByTile, ...victoryLandmarksByTile };
   const players = state.players.map(player => ({
     ...player,
     factionState:{ ...player.factionState, exploration:{ discoveredFeaturesByTile:{}, surveyedTileKeys:[], history:[], lastProcessedTurn:0 } }
   }));
-  window.setV39GameState?.({ explorationSitesByTile, players }, { reason:"exploration-sites-generated" });
-  window.dispatchEvent(new CustomEvent("v39:exploration-sites-generated", { detail:{ count:Object.keys(explorationSitesByTile).length } }));
+  window.setV39GameState?.({ explorationSitesByTile, victoryLandmarksByTile, players }, { reason:"exploration-sites-generated" });
+  window.dispatchEvent(new CustomEvent("v39:exploration-sites-generated", { detail:{ count:Object.keys(explorationSitesByTile).length, landmarkCount:Object.keys(victoryLandmarksByTile).length } }));
 }
 
 function advanceTurn(event) {

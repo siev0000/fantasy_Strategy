@@ -9,6 +9,7 @@ import {
   resolveAttackApCost,
   resolveAttackPower,
   resolveAttackRange,
+  resolveActionSkillRows,
   resolveAttackRows,
   resolveCounterAttackRow,
   resolveSkillHealing,
@@ -19,7 +20,7 @@ import {
 } from "../../lib/v39-combat-engine.js";
 import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
-import { getHexNeighborCoords } from "../../lib/hex-grid.js";
+import { getHexDistance, getHexNeighborCoords } from "../../lib/hex-grid.js";
 import {
   DEFAULT_CORPSE_FIELD_TURNS,
   DEFAULT_MAGIC_CAST_TURNS,
@@ -126,6 +127,43 @@ function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, fri
     guardAbsorbed:0,
     guardRemaining:guardBefore,
     detail:{ ...baseDamage.detail, testInstantDeath:true }
+  };
+}
+
+function neutralVillageGuards(state) {
+  return (state?.neutralVillages || []).flatMap(village => (village?.defenseUnits || []).map(unit => ({
+    ...unit,
+    neutralVillageId:text(village?.id),
+    ownerNeutralVillageId:text(village?.id)
+  })));
+}
+
+function replaceNeutralVillageGuards(state, transform) {
+  return (state?.neutralVillages || []).map(village => ({
+    ...village,
+    defenseUnits:(village?.defenseUnits || []).map(unit => transform(unit, village))
+  }));
+}
+
+function applyDirectDamage(unit, damage, skillRow, { directTarget = false } = {}) {
+  if (!damage) return unit;
+  const hp = Math.max(0, number(unit?.hp, unit?.currentHp)-damage.total);
+  const newlyDead = hp <= 0 && text(unit?.state) !== "死亡";
+  const deathTurn = currentV39TurnNumber();
+  return {
+    ...unit,
+    hp,
+    currentHp:hp,
+    state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
+    ...guardStatePatch(unit, damage),
+    ...(directTarget ? { lastStealthBreakTurn:deathTurn, lastStealthBreakReason:"direct-target" } : {}),
+    ...(newlyDead ? {
+      diedAtTurn:deathTurn,
+      deadExpireTurn:resolveV39DeadlineTurn(deathTurn, DEFAULT_CORPSE_FIELD_TURNS),
+      deathPosition:{ x:integer(unit?.x), y:integer(unit?.y) },
+      deathCause:text(skillRow?.名前),
+      deathTurn
+    } : {})
   };
 }
 
@@ -945,7 +983,8 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   const playerTarget = state?.players?.flatMap((player) => player?.factionState?.units || [])
     .find((unit) => text(unit?.id) === text(targetUnitId));
   const enemyTarget = state?.enemies?.find((enemy) => text(enemy?.id) === text(targetUnitId));
-  const targetUnit = playerTarget || enemyTarget;
+  const villageTarget = neutralVillageGuards(state).find((unit) => text(unit?.id) === text(targetUnitId));
+  const targetUnit = playerTarget || enemyTarget || villageTarget;
   if (!ctx || !state || !attacker || !targetUnit || number(attacker?.hp, attacker?.currentHp) <= 0 || number(targetUnit?.hp, targetUnit?.currentHp) <= 0) return false;
   const range = resolveAttackRange(skillRow, attacker);
   if (!tilesWithin(ctx.data, attacker, range).has(coordKey(targetUnit.x, targetUnit.y))) return false;
@@ -992,6 +1031,20 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       friendly, ...damage
     });
     logDamage(attacker, enemy, skillRow, damage);
+  }
+  const villageDamageByUnitId = new Map();
+  for (const guard of neutralVillageGuards(state)) {
+    const scale = areaScale.get(coordKey(guard.x, guard.y));
+    if (scale === undefined || number(guard?.hp, guard?.currentHp) <= 0) continue;
+    const damage = resolveAppliedAttackDamage({ attacker, target:guard, skillRow, scale, isCounter });
+    villageDamageByUnitId.set(text(guard.id), damage);
+    const beforeHp = Math.max(0, number(guard?.hp, guard?.currentHp));
+    combatLog.push({
+      targetId:text(guard.id), targetName:text(guard.name), x:guard.x, y:guard.y,
+      beforeHp, afterHp:Math.max(0, beforeHp-damage.total), maxHp:Math.max(1, number(guard?.maxHp, beforeHp)),
+      friendly:false, ...damage
+    });
+    logDamage(attacker, guard, skillRow, damage);
   }
   const deathTurn = currentV39TurnNumber(state);
   const applyHp = (unit, damage, { directTarget = false } = {}) => {
@@ -1046,6 +1099,12 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       { directTarget:exposesDirectTarget && text(enemy?.id) === text(targetUnit?.id) }
     );
   });
+  const neutralVillages = replaceNeutralVillageGuards(state, guard => applyDirectDamage(
+    guard,
+    villageDamageByUnitId.get(text(guard.id)),
+    skillRow,
+    { directTarget:exposesDirectTarget && text(guard?.id) === text(targetUnit?.id) }
+  ));
   const attackedNestId = enemyTarget && text(enemyTarget?.nestId) !== text(attacker?.nestId) ? text(enemyTarget?.nestId) : "";
   const enemyNests = attackedNestId
     ? (state.enemyNests || []).map(nest => text(nest?.id) === attackedNestId ? {
@@ -1054,15 +1113,73 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       lastNestCombatTurn:currentV39TurnNumber(state)
     } : nest)
     : state.enemyNests;
-  window.setV39GameState({ players, enemies, enemyNests }, { reason:"enemy-combat-attack" });
+  window.setV39GameState({ players, enemies, neutralVillages, enemyNests }, { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const summary = `${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
   if (!isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
-    detail:{ attackerSide:"enemy", targetSide:enemyTarget ? "enemy" : "player", attackerId:text(attacker.id), targetUnitId:text(targetUnit.id), target:{ x:targetUnit.x, y:targetUnit.y }, skillRow, entries:combatLog }
+    detail:{ attackerSide:"enemy", targetSide:enemyTarget ? "enemy" : villageTarget ? "neutral-village" : "player", attackerId:text(attacker.id), targetUnitId:text(targetUnit.id), target:{ x:targetUnit.x, y:targetUnit.y }, skillRow, entries:combatLog }
   }));
   return true;
+}
+
+function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, skillRow, suppressEffect = false } = {}) {
+  const ctx = activeRuntime();
+  const state = window.getV39GameState?.();
+  const village = (state?.neutralVillages || []).find(row => text(row?.id) === text(villageId));
+  const attacker = (village?.defenseUnits || []).find(unit => text(unit?.id) === text(guardId));
+  const target = state?.enemies?.find(enemy => text(enemy?.id) === text(targetEnemyId));
+  if (!ctx || !state || !village || !attacker || !target || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
+  if (getHexDistance(attacker, target) > resolveAttackRange(skillRow, attacker)) return false;
+  const damage = resolveAppliedAttackDamage({ attacker, target, skillRow });
+  const beforeHp = Math.max(0, number(target?.hp, target?.currentHp));
+  const enemies = state.enemies.map(enemy => text(enemy?.id) === text(target.id)
+    ? { ...applyDirectDamage(enemy, damage, skillRow, { directTarget:true }), lastCombatTurn:currentV39TurnNumber() }
+    : enemy);
+  const neutralVillages = replaceNeutralVillageGuards(state, (guard, sourceVillage) => (
+    text(sourceVillage?.id) === text(villageId) && text(guard?.id) === text(guardId)
+      ? { ...guard, lastCombatTurn:currentV39TurnNumber() }
+      : guard
+  ));
+  if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
+    effectName:text(skillRow?.アニメ, "斬撃"), tileX:target.x, tileY:target.y, splash:0
+  });
+  logDamage(attacker, target, skillRow, damage);
+  const entry = {
+    targetId:text(target.id), targetName:text(target.name), x:target.x, y:target.y,
+    beforeHp, afterHp:Math.max(0, beforeHp-damage.total), maxHp:Math.max(1, number(target?.maxHp, beforeHp)),
+    friendly:false, ...damage
+  };
+  window.setV39GameState({ enemies, neutralVillages }, { reason:"neutral-village-defense-attack" });
+  const hits = (damage.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss");
+  window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{
+    summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${damage.total}${hits.length ? ` (${hits.join(",")})` : ""}`,
+    attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:0, target:{ x:target.x, y:target.y }, entries:[entry], villageAction:true
+  } }));
+  window.dispatchEvent(new CustomEvent("v39:attack-resolved", { detail:{
+    attackerSide:"neutral-village", targetSide:"enemy", attackerId:text(attacker.id), targetUnitId:text(target.id), target:{ x:target.x, y:target.y }, skillRow, entries:[entry]
+  } }));
+  return true;
+}
+
+function runNeutralVillageDefenseTurn() {
+  const state = window.getV39GameState?.();
+  if (!state) return { attacks:0 };
+  let attacks = 0;
+  for (const village of state.neutralVillages || []) {
+    for (const guard of village?.defenseUnits || []) {
+      if (number(guard?.hp, guard?.currentHp) <= 0 || text(guard?.state) === "死亡") continue;
+      const skillRow = resolveActionSkillRows(guard).find(row => !isV39SupportSkill(row, guard));
+      if (!skillRow) continue;
+      const target = (window.getV39GameState?.()?.enemies || [])
+        .filter(enemy => number(enemy?.hp, enemy?.currentHp) > 0 && text(enemy?.state) !== "死亡")
+        .filter(enemy => getHexDistance(guard, enemy) <= resolveAttackRange(skillRow, guard))
+        .sort((left, right) => getHexDistance(guard, left)-getHexDistance(guard, right) || text(left?.id).localeCompare(text(right?.id), "ja"))[0];
+      if (target && performNeutralVillageGuardAttack({ villageId:village.id, guardId:guard.id, targetEnemyId:target.id, skillRow })) attacks += 1;
+    }
+  }
+  return { attacks };
 }
 
 function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
@@ -1209,6 +1326,8 @@ window.addEventListener("v39:tile-selected", (event) => {
     target:terrainAdjusted(params?.target)
   });
   window.executeV39EnemyCombatAction = performEnemyAttack;
+  window.executeV39NeutralVillageGuardCombatAction = performNeutralVillageGuardAttack;
+  window.runV39NeutralVillageDefenseTurn = runNeutralVillageDefenseTurn;
   window.executeV39CounterAction = executeCounterAction;
   window.buildV39AttackAreaScaleMap = (attacker, target, skillRow) => {
     const ctx = activeRuntime();

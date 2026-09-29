@@ -463,6 +463,41 @@ function placeInitialBase(tile, options = {}) {
   return true;
 }
 
+function findInitialBaseCandidate() {
+  const data = fieldMapData();
+  const width = Math.max(0, Math.floor(Number(data?.w)));
+  const height = Math.max(0, Math.floor(Number(data?.h)));
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const tile = { x, y, terrain:text(data?.grid?.[y]?.[x], "海") };
+    if (canPlaceBaseOnTile(tile)) return tile;
+  }
+  return null;
+}
+
+// TEST ONの追加勢力も、手動配置と同一の配置可否・領土生成処理を通す。
+function autoPlaceInitialBases(playerId) {
+  const initialState = getGameState();
+  const previousActivePlayerId = text(initialState?.activePlayerId);
+  const player = initialState?.players?.find(row => text(row?.id) === text(playerId));
+  if (!player || !fieldMapData()) return { ok:false, reason:"勢力またはフィールドがありません" };
+  window.setV39GameState?.({ activePlayerId:player.id }, { reason:"initial-placement-auto-select" });
+  if (!beginInitialPlacement({ force:true })) {
+    window.setV39GameState?.({ activePlayerId:previousActivePlayerId }, { reason:"initial-placement-auto-restore" });
+    return { ok:false, reason:"初期配置を開始できません" };
+  }
+  while (needsInitialPlacement(getActivePlayer())) {
+    const tile = findInitialBaseCandidate();
+    if (!tile || !placeInitialBase(tile, { advanceToNextPlayer:false })) {
+      window.setV39GameState?.({ activePlayerId:previousActivePlayerId }, { reason:"initial-placement-auto-restore" });
+      return { ok:false, reason:"配置可能な初期拠点マスがありません" };
+    }
+  }
+  if (previousActivePlayerId && getGameState()?.players?.some(row => text(row?.id) === previousActivePlayerId)) {
+    window.setV39GameState?.({ activePlayerId:previousActivePlayerId }, { reason:"initial-placement-auto-complete" });
+  }
+  return { ok:true, playerId:player.id };
+}
+
 function handleTileSelected(event) {
   const faction = getActiveFaction();
   if (!faction?.villagePlacementMode) return;
@@ -532,6 +567,7 @@ function install() {
   window.addEventListener("v39:field-generated", handleFieldGenerated);
   window.beginV39InitialPlacement = beginInitialPlacement;
   window.placeV39InitialBase = placeInitialBase;
+  window.autoPlaceV39InitialBases = autoPlaceInitialBases;
   window.canPlaceV39InitialBase = canPlaceBaseOnTile;
 
   if (window.__v39FieldRuntime?.mapData) {

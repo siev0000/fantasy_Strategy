@@ -1,5 +1,5 @@
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
-import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy, normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { buildV39PopulationMaintenanceStock } from "../../lib/v39-population-economy.js";
 import { addResearchExperience } from "../../lib/research-progress.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
@@ -23,6 +23,7 @@ let statusMessage = "テスト対象を選択してください";
 let selectedEnemyId = "";
 let selectedTestSkillName = "";
 let selectedDisasterId = "";
+let selectedTile = null;
 const collapsedSectionKeys = new Set();
 
 function escapeHtml(value) {
@@ -108,7 +109,8 @@ function context() {
   const settlement = getSelectedSettlement(faction);
   const unit = (faction?.units || []).find(row => text(row?.id) === text(faction?.selectedUnitId)) || faction?.units?.[0] || null;
   const scene = window.__v39FieldRuntime?.game?.scene?.getScenes?.(true)?.[0];
-  const tile = scene?.v39SelectedTile || null;
+  // Phaserの選択状態を優先し、テスト自動操作やUI再描画直後は選択イベントの座標を使う。
+  const tile = scene?.v39SelectedTile || selectedTile || null;
   return { state, player, faction, settlement, unit, tile };
 }
 
@@ -332,6 +334,15 @@ function advanceTurn() {
   setStatus(ok ? "1ターン進めました" : "ターンを進められません");
 }
 
+function addTestFaction(kind) {
+  const result = window.addV39TestFaction?.(kind);
+  if (!result?.ok) return setStatus(`勢力を追加できません: ${text(result?.reason, "処理未接続")}`);
+  const placement = window.autoPlaceV39InitialBases?.(result.player.id);
+  setStatus(placement?.ok
+    ? `${text(result.player.label)}を追加し、初期拠点を配置しました`
+    : `${text(result.player.label)}を追加しましたが、初期配置に失敗しました: ${text(placement?.reason)}`);
+}
+
 
 function sumBag(bag) {
   return Object.values(bag && typeof bag === "object" ? bag : {})
@@ -444,6 +455,11 @@ function selectedTileBaseInfo(state, tile) {
       FOOD_RESOURCE_KEYS,
       1
     );
+    const economyDiagnostic = inspectV39NeutralVillageEconomy(neutralVillage, window.__v39FieldRuntime?.mapData);
+    const estimatedIncome = [
+      formatRequiredResources(economyDiagnostic.income?.food),
+      formatRequiredResources(economyDiagnostic.income?.material)
+    ].filter(value => value !== "なし").join(" / ") || "なし";
     entries.push({
       kind:"一般村",
       name:text(neutralVillage?.name) || "一般村",
@@ -454,6 +470,9 @@ function selectedTileBaseInfo(state, tile) {
         "軍隊人口: " + Math.floor(number(neutralVillage?.militaryPopulationUsed, defenseCount)) + "/" + Math.floor(number(neutralVillage?.militaryPopulationCap, defenseCount)) + "人 / 軍隊率 " + Math.round(number(neutralVillage?.armyRate) * 100) + "%",
         "守備: " + (neutralVillage?.defenseUnits || []).length + "隊 / " + defenseCount + "人 / 戦力 " + Math.round(defenseStrength),
         "必要物資(1T): " + formatRequiredResources(maintenance),
+        "推定産出(1T): " + estimatedIncome + " / 稼働 " + Math.round(number(economyDiagnostic.employmentRate) * 100) + "% (" + economyDiagnostic.tiles + "マス)",
+        "不足候補(1T): " + formatRequiredResources(economyDiagnostic.shortageByType),
+        "得意資源: " + (economyDiagnostic.favorableResourceKeys?.join(" / ") || "なし"),
         "自然アンデッド脅威: " + naturalUndead.length + "体" + (naturalUndead.length ? " / " + naturalUndead.map(unit => text(unit?.name) || "不明").join("、") : ""),
         "直近の災害被害: " + (neutralVillage?.disasterState ? "T" + Math.floor(number(neutralVillage.disasterState.turn)) + " / 人口 -" + Math.floor(number(neutralVillage.disasterState.populationLoss)) : "なし"),
         "関係: " + getV39RelationLabel(relation) + " " + relation + " / " + (neutralVillage?.vassalPlayerId ? "属国: " + text(neutralVillage.vassalPlayerId) : "独立"),
@@ -559,6 +578,7 @@ function panelHtml() {
   return `
     <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
     <div class="v39-test-tools-scroll">
+      <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
        <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで災害</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
@@ -593,6 +613,7 @@ function handleAction(action) {
     eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"), disaster:forceDisasterAtSelectedTile, undead:forceUndeadAtSelectedTile,
     "snow-on":() => setSelectedSnowState("cover", true), "snow-off":() => setSelectedSnowState("cover", false),
     "snowfall-on":() => setSelectedSnowState("falling", true), "snowfall-off":() => setSelectedSnowState("falling", false),
+    "faction-player":() => addTestFaction("player"), "faction-npc":() => addTestFaction("npc"),
     turn:advanceTurn,
     "resource-minus":() => changeResource(-1), "resource-plus":() => changeResource(1), "resource-all":addAllResources,
     "population-minus":() => changePopulation(-10), "population-plus":() => changePopulation(10),
@@ -656,7 +677,11 @@ function install() {
   });
   window.addEventListener("v39:game-state-changed", render);
   window.addEventListener("v39:tile-selected", event => {
-    const key = selectedTileKey(event?.detail);
+    const point = event?.detail;
+    if (Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y))) {
+      selectedTile = { x:Math.floor(number(point.x)), y:Math.floor(number(point.y)) };
+    }
+    const key = selectedTileKey(point);
     const state = window.getV39GameState?.();
     const enemy = (state?.enemies || []).find(row => selectedTileKey(row) === key && livingUnit(row));
     const villageGuard = (state?.neutralVillages || []).flatMap(village => village?.defenseUnits || [])

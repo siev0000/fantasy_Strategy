@@ -355,6 +355,10 @@ function buildWorkerState(state = enemyTurnState()) {
       }
     })),
     settlements:(state?.settlements || []).map(row => ({ id:row?.id, x:row?.x, y:row?.y })),
+    neutralVillages:(state?.neutralVillages || []).map(village => ({
+      id:village?.id,
+      defenseUnits:(village?.defenseUnits || []).map(unit => compactAiUnit(unit, false))
+    })),
     enemyNests:(state?.enemyNests || []).map(row => ({ id:row?.id, name:row?.name, nestType:row?.nestType, x:row?.x, y:row?.y, territoryRadius:row?.territoryRadius, militaryLevel:row?.militaryLevel, foodShortage:row?.foodShortage, explorationState:row?.explorationState })),
     groundLootByTile:Object.fromEntries(Object.entries(state?.groundLootByTile || {}).map(([key, value]) => [key, value])),
     territoryOwnerByTile:{ ...(state?.territoryOwnerByTile || {}) },
@@ -471,6 +475,7 @@ export async function runEnemyTurn(turnNumber = currentV39TurnNumber()) {
         window.depositV39EnemyCargo?.(enemyId);
       }
     }
+    const villageDefenseReport = window.runV39NeutralVillageDefenseTurn?.(turnNumber) || { attacks:0 };
     const finalState = enemyTurnState();
     const unhandled = (finalState?.enemies || []).filter(enemy => isAliveEnemyAiUnit(enemy)
       && !finalState?.enemyCombatRuntime?.pendingActionsByEnemyId?.[text(enemy.id)]
@@ -498,7 +503,8 @@ export async function runEnemyTurn(turnNumber = currentV39TurnNumber()) {
       workerCalculationMs:metrics.workerCalculationMs, mainApplyMs:metrics.mainApplyMs,
       workerTotalMs:Math.max(0, nowMs() - totalStartedAt), fallbackUsed:metrics.fallbackUsed,
       actionEventCount:presentationEvents.length,
-      presentationEventCount:presentedEventCount
+      presentationEventCount:presentedEventCount,
+      villageDefenseAttacks:number(villageDefenseReport.attacks)
     };
     window.dispatchEvent(new CustomEvent("v39:enemy-ai-worker-performance", { detail:profile }));
     return profile;

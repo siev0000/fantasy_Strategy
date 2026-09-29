@@ -1,5 +1,6 @@
 import { getGameDataRows } from "./game-data-registry.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
+import { getV39VictoryLandmarkDefinition, isV39VictoryLandmark } from "./v39-victory-landmarks.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -64,9 +65,10 @@ function terrainAffinity(feature, mapData, x, y) {
 export function generateV39ExplorationSites(mapData, options = {}) {
   const definitions = v39ExplorationFeatureDefinitions();
   if (!definitions.length || !mapData?.grid) return {};
+  const reservedTileKeys = new Set(Array.isArray(options?.reservedTileKeys) ? options.reservedTileKeys.map(text) : []);
   const candidates = [];
   for (let y = 0; y < number(mapData.h); y += 1) for (let x = 0; x < number(mapData.w); x += 1) {
-    if (!isPassable(mapData, x, y) || mapData?.lavaMap?.[y]?.[x]) continue;
+    if (!isPassable(mapData, x, y) || mapData?.lavaMap?.[y]?.[x] || reservedTileKeys.has(coordKey(x, y))) continue;
     const key = coordKey(x, y);
     candidates.push({ x, y, key, score:hashText(`${options.seed || "v39"}:${key}:${text(mapData.grid[y][x])}`) });
   }
@@ -79,6 +81,11 @@ export function generateV39ExplorationSites(mapData, options = {}) {
     sites[tile.key] = { id:`site:${tile.key}`, key:tile.key, x:tile.x, y:tile.y, featureId:definition.id, featureName:definition.name };
   }
   return sites;
+}
+
+function resolveExplorationSiteDefinition(site) {
+  if (isV39VictoryLandmark(site)) return getV39VictoryLandmarkDefinition(site?.landmarkId || site?.featureId);
+  return v39ExplorationFeatureDefinitions().find(row => row.id === site?.featureId);
 }
 
 export function inspectV39Survey(state, playerId, unitId, tile) {
@@ -146,7 +153,7 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
         return rest;
       }
       const site = state?.explorationSitesByTile?.[task.key] || null;
-      const feature = site ? v39ExplorationFeatureDefinitions().find(row => row.id === site.featureId) : null;
+      const feature = site ? resolveExplorationSiteDefinition(site) : null;
       if (site && feature) discoveredFeaturesByTile[task.key] = { ...site, discoveredTurn:turn, discoveredByUnitId:unit.id };
       const groundLoot = groundLootByTile[task.key];
       const groundLootDiscovered = !!groundLoot;
@@ -186,7 +193,7 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
 export function getV39DiscoveredFeature(faction, key) {
   const site = faction?.exploration?.discoveredFeaturesByTile?.[text(key)];
   if (!site) return null;
-  const definition = v39ExplorationFeatureDefinitions().find(row => row.id === site.featureId || row.name === site.featureName);
+  const definition = resolveExplorationSiteDefinition(site);
   return definition ? { ...site, definition } : null;
 }
 

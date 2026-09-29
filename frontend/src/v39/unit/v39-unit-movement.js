@@ -1,9 +1,8 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
-import { canUnitEnterV39Tile, resolveV39TerrainMoveCost, resolveV39TileTerrainName } from "../../lib/v39-terrain-traversal.js";
+import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
 import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
-import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
 const RANGE_DEPTH = 9;
 const PATH_DEPTH = 11;
@@ -90,68 +89,12 @@ function selectedUnitFromFaction(faction = activeFaction()) {
   return units.find(unit => unitId(unit) === id) || null;
 }
 
-function resolveUnitMoveValue(unit) {
-  const candidates = [
-    unit?.status?.移動,
-    unit?.移動,
-    unit?.movement,
-    unit?.moveRange,
-    unit?.move
-  ];
-  for (const value of candidates) {
-    if (value === null || value === undefined || value === "") continue;
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return Math.max(1, Math.floor(parsed));
-  }
-  return V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile;
-}
-
-function resolveUnitFlightValue(unit) {
-  if (!unit || typeof unit !== "object") return 0;
-  const candidates = [unit?.status?.飛行, unit?.飛行, unit?.skillLevels?.飛行];
-  for (const value of candidates) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return Math.max(0, Math.floor(parsed));
-  }
-  return 0;
-}
-
-function tileHeightLevel(data, x, y) {
-  const raw = data?.heightLevelMap?.[y]?.[x];
-  return Number.isFinite(Number(raw)) ? Math.floor(Number(raw)) : null;
-}
-
 function isPassableTile(data, x, y, unit = null) {
   return canUnitEnterV39Tile(data, x, y, unit);
 }
 
-// Kept in sync with the active legacy PhaserMapGeneratorPanel movement rule.
 function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
-  if (fromX === toX && fromY === toY) return 0;
-  if (!isPassableTile(data, toX, toY, moveUnit)) return Number.POSITIVE_INFINITY;
-
-  const fromLevel = tileHeightLevel(data, fromX, fromY);
-  const toLevel = tileHeightLevel(data, toX, toY);
-  const absDiff = Number.isFinite(fromLevel) && Number.isFinite(toLevel)
-    ? Math.abs(toLevel - fromLevel)
-    : 0;
-  const climbDiff = Number.isFinite(fromLevel) && Number.isFinite(toLevel)
-    ? Math.max(0, toLevel - fromLevel)
-    : 0;
-  const flightValue = resolveUnitFlightValue(moveUnit);
-  const hasFlight = flightValue > 0;
-
-  if (absDiff > 1 && !hasFlight) return Number.POSITIVE_INFINITY;
-
-  const climbPenaltyPoints = climbDiff * 25;
-  const flightReductionPoints = Math.floor(flightValue / 30) * 25;
-  const heightPenaltyPoints = Math.max(0, climbPenaltyPoints - flightReductionPoints);
-
-  const terrainName = resolveV39TileTerrainName(data, toX, toY);
-  const terrainMoveCost = resolveV39TerrainMoveCost(moveUnit, terrainName, heightPenaltyPoints);
-  const moveStat = resolveUnitMoveValue(moveUnit);
-  const baseApCost = resolveV39BaseMoveApCost(moveStat);
-  return Math.max(0, Math.ceil(terrainMoveCost.multiplier * baseApCost));
+  return resolveV39UnitMovementStepCost(data, fromX, fromY, toX, toY, moveUnit);
 }
 
 const getHexNeighborCoordsBySize = getHexNeighborCoords;

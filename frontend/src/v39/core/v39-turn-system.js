@@ -235,6 +235,10 @@ export async function advanceTurn() {
   if (advancing) return false;
   const state = window.getV39GameState?.();
   if (!state) return false;
+  if (state?.victory?.completed === true) {
+    showBanner("勝利済みです", true);
+    return false;
+  }
   advancing = true;
   try {
     const before = normalizeTimeline(state.timeline, state.players, state.activePlayerId);

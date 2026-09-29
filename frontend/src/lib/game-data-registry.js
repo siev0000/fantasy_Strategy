@@ -46,14 +46,16 @@ const TABLE_KEY_FIELDS = Object.freeze({
   出現敵:["出現地形", "種族名", "Lv_Min", "Lv_Max"], 消費量:["種別", "Lv"],
   勢力:["種族"], 説明:["技能名"], 組織:["項目名"], 装備:["装備名"],
   体制:["項目カテゴリ", "項目名"], 地形:["地形"], 都市:["項目名", "レア度"],
-  都市基本データ:["データ分類", "分類", "詳細"], 範囲:["範囲タイプ"], 付与:["付与能力", "Lv"]
+  都市基本データ:["データ分類", "分類", "詳細"], 範囲:["範囲タイプ"], 付与:["付与能力", "Lv"],
+  勝利対象土地:["ID"]
 });
 
 const REQUIRED_FIELDS = Object.freeze({
   クラス:["名前", "種類"], テストクラス:["名前", "種類", "テスト専用"], スキル一覧:["名前", "行動"], テストスキル:["名前", "行動", "テスト専用"], 装備:["装備名", "装備箇所"],
   地形:["地形"], 出現敵:["ID", "出現地形", "種族名"],
   研究:["ID", "項目名", "技術対象", "Lv", "必要ユニットLv"], 災害:["ID", "カテゴリ名", "効果"],
-  種族:["key", "name", "className"], 種族分類:["種類", "説明"], 種族幸福度仮:["名前"], 勢力:["種族", "カナ", "マーカー文字", "マーカー色"], 範囲:["範囲タイプ", "処理タイプ"]
+  種族:["key", "name", "className"], 種族分類:["種類", "説明"], 勢力:["種族", "カナ", "マーカー文字", "マーカー色"], 範囲:["範囲タイプ", "処理タイプ"],
+  勝利対象土地:["ID", "名称", "配置地形", "発見方法"]
 });
 
 export const GAME_DATA_TABLE_METADATA = Object.freeze({
@@ -81,7 +83,8 @@ export const GAME_DATA_TABLE_METADATA = Object.freeze({
   都市:{ purpose:"都市特性候補。仮条件・仮効果の確定待ち", status:"provisional" },
   都市基本データ:{ purpose:"都市項目の分類・説明・対応技能", status:"definition-only" },
   範囲:{ purpose:"スキル範囲名と対象抽出処理タイプ", status:"connected" },
-  付与:{ purpose:"装備付与、条件、費用、能力・耐性・攻撃属性", status:"connected" }
+  付与:{ purpose:"装備付与、条件、費用、能力・耐性・攻撃属性", status:"connected" },
+  勝利対象土地:{ purpose:"勝利条件へ接続する特別土地のID、配置地形、発見方法。勝利判定の詳細は未実装", status:"connected" }
 });
 
 const asText = value => String(value ?? "").trim();
@@ -250,6 +253,7 @@ export const cityData = getGameDataRows("都市");
 export const cityBaseData = getGameDataRows("都市基本データ");
 export const rangeData = getGameDataRows("範囲");
 export const enchantmentData = getGameDataRows("付与");
+export const victoryLandmarkData = getGameDataRows("勝利対象土地");
 
 if (typeof window !== "undefined") {
   window.getGameDataTable = getGameDataTable;

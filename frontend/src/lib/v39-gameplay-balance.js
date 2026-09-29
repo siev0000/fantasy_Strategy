@@ -129,6 +129,29 @@ export const V39_VOLCANO_DAMAGE_BALANCE = Object.freeze({
   facilityEffectUsesHpRate:true
 });
 
+// 勝利対象土地の生成設定。通常は島形状に対応する1件だけを配置する。
+export const V39_VICTORY_LANDMARK_BALANCE = Object.freeze({
+  // 1なら島形状に対応する対象を1件だけ配置。複数を試す時だけこの値を増やす。
+  landmarkCount:1,
+  // 島形状ごとの優先対象ID。配置地形がない場合は次の候補へ移る。
+  landmarkIdsByPattern:Object.freeze({
+    realistic:Object.freeze(["勝利対象:太陽の山"]),
+    balanced:Object.freeze(["勝利対象:黄昏の樹"]),
+    continent:Object.freeze(["勝利対象:太陽の山"]),
+    archipelago:Object.freeze(["勝利対象:宇宙の海"]),
+    twins:Object.freeze(["勝利対象:黄昏の樹"]),
+    chain:Object.freeze(["勝利対象:星の火口"])
+  })
+});
+
+// 勝利対象土地の暫定勝利条件。守護ボス・勢力滅亡条件が確定するまではここだけで調整する。
+export const V39_VICTORY_CONDITION_BALANCE = Object.freeze({
+  // 通常生成数が1件のため、暫定では1地点の支配で勝利候補になる。
+  requiredLandmarkCount:1,
+  // 支配を維持する必要ターン数。1なら支配を得たターンの判定で達成する。
+  requiredHoldTurns:1
+});
+
 export const V39_CIVIC_BALANCE = Object.freeze({
   // 幸福度・不満度・治安が戻ろうとする基準値。
   targetBase:50,

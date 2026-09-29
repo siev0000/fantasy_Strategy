@@ -1,4 +1,5 @@
 import { getGameDataRows, normalizeGameDataReference, readGameDataNumber } from "./game-data-registry.js";
+import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
 
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -57,6 +58,49 @@ export function resolveV39TileTerrainName(mapData, x, y) {
 
 export function canUnitEnterV39Tile(mapData, x, y, unit) {
   return inspectV39TerrainTraversal(unit, resolveV39TileTerrainName(mapData, x, y)).allowed;
+}
+
+// 移動値は旧データの表記揺れも受ける。AIとプレイヤー操作で同じAP計算を使う。
+export function resolveV39UnitMovementValue(unit) {
+  const candidates = [unit?.status?.移動, unit?.移動, unit?.movement, unit?.moveRange, unit?.move];
+  for (const value of candidates) {
+    if (value === null || value === undefined || value === "") continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(1, Math.floor(parsed));
+  }
+  return V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile;
+}
+
+function resolveV39UnitFlightValue(unit) {
+  const candidates = [unit?.status?.飛行, unit?.飛行, unit?.skillLevels?.飛行];
+  for (const value of candidates) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(0, Math.floor(parsed));
+  }
+  return 0;
+}
+
+// 1ヘックス移動の共通AP。高低差、飛行、地形移動コストをここで一元判定する。
+export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, unit = null) {
+  const fromXValue = Math.floor(Number(fromX));
+  const fromYValue = Math.floor(Number(fromY));
+  const toXValue = Math.floor(Number(toX));
+  const toYValue = Math.floor(Number(toY));
+  if (![fromXValue, fromYValue, toXValue, toYValue].every(Number.isFinite)) return Number.POSITIVE_INFINITY;
+  if (fromXValue === toXValue && fromYValue === toYValue) return 0;
+  if (!canUnitEnterV39Tile(mapData, toXValue, toYValue, unit)) return Number.POSITIVE_INFINITY;
+
+  const fromLevel = Number(mapData?.heightLevelMap?.[fromYValue]?.[fromXValue]);
+  const toLevel = Number(mapData?.heightLevelMap?.[toYValue]?.[toXValue]);
+  const hasHeight = Number.isFinite(fromLevel) && Number.isFinite(toLevel);
+  const absDiff = hasHeight ? Math.abs(toLevel - fromLevel) : 0;
+  const climbDiff = hasHeight ? Math.max(0, toLevel - fromLevel) : 0;
+  const flightValue = resolveV39UnitFlightValue(unit);
+  if (absDiff > 1 && flightValue <= 0) return Number.POSITIVE_INFINITY;
+
+  const heightPenaltyPoints = Math.max(0, (climbDiff * 25) - (Math.floor(flightValue / 30) * 25));
+  const terrain = resolveV39TerrainMoveCost(unit, resolveV39TileTerrainName(mapData, toXValue, toYValue), heightPenaltyPoints);
+  return Math.max(0, Math.ceil(terrain.multiplier * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))));
 }
 
 export function resolveV39TerrainMoveCost(unit, terrainName, additionalPenaltyPoints = 0) {

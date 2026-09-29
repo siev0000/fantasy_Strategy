@@ -51,6 +51,8 @@ export function normalizeV39SessionPlayers(players, participantSource) {
   const defaultParticipantId = participants[0]?.participantId || "local-1";
   const normalizedPlayers = sourcePlayers.map(player => {
     const id = text(player?.id);
+    // NPC勢力は参加者に割り当てず、勢力AIが操作する。
+    if (player?.isPlayer === false) return { ...player, controllerParticipantId:"" };
     const requested = text(player?.controllerParticipantId);
     const controllerParticipantId = participants.some(row => row.participantId === requested)
       ? requested
@@ -60,7 +62,7 @@ export function normalizeV39SessionPlayers(players, participantSource) {
   const normalizedParticipants = participants.map(participant => ({
     ...participant,
     assignedPlayerIds:normalizedPlayers
-      .filter(player => player.controllerParticipantId === participant.participantId)
+      .filter(player => player?.isPlayer !== false && player.controllerParticipantId === participant.participantId)
       .map(player => text(player.id))
   }));
   return { players:normalizedPlayers, sessionParticipants:normalizedParticipants };

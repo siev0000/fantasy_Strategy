@@ -4,6 +4,8 @@ import "../map/v39-land-detail.js";
 import "../map/v39-height-boundaries.js";
 import "../map/v39-terrain-icons.js";
 import "../map/v39-disaster-icons.js";
+import "../map/v39-victory-landmark-icons.js";
+import "../core/v39-victory-system.js";
 import "../map/v39-volcano-system.js";
 import "../unit/v39-leadership-lifecycle.js";
 import "../unit/v39-squad-card-vitals.js";

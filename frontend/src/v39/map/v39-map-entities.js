@@ -487,10 +487,12 @@ function drawForeignUnits(scene, container, players, activePlayerId) {
       const unit = representativeUnit(group, "");
       const x = finiteCoord(unit?.x);
       const y = finiteCoord(unit?.y);
-      if (!unit || x === null || y === null || window.isV39TileInCurrentVision?.(x, y) === false) continue;
-      if (!group.some(member => window.isV39EntityDetected?.(member) !== false)) continue;
+      if (!unit || x === null || y === null) continue;
+      const normallyVisible = window.isV39TileInCurrentVision?.(x, y) !== false && group.some(member => window.isV39EntityDetected?.(member) !== false);
+      if (!isTestMode() && !normallyVisible) continue;
       const center = tileCenter(x, y);
       const marker = scene.add.container(center.x, center.y).setName("v39-foreign-unit-marker");
+      if (isTestMode() && !normallyVisible) marker.setAlpha(TEST_UNDISCOVERED_ENEMY_ALPHA);
       for (const member of group) {
         const id = String(member?.id || "").trim();
         if (id) markerByEntityId.set(id, marker);
@@ -527,10 +529,12 @@ function drawNeutralVillageUnits(scene, container, villages) {
     const x = finiteCoord(unit?.x);
     const y = finiteCoord(unit?.y);
     if (!unit || x === null || y === null) continue;
-    if (!revealAll && window.isV39TileInCurrentVision?.(x, y) === false) continue;
+    const normallyVisible = window.isV39TileInCurrentVision?.(x, y) !== false && group.some(member => window.isV39EntityDetected?.(member) !== false);
+    if (!revealAll && !normallyVisible) continue;
 
     const center = tileCenter(x, y);
     const marker = scene.add.container(center.x, center.y).setName("v39-neutral-village-unit-marker");
+    if (revealAll && !normallyVisible) marker.setAlpha(TEST_UNDISCOVERED_ENEMY_ALPHA);
     for (const member of group) {
       const id = String(member?.id || "").trim();
       if (id) markerByEntityId.set(id, marker);

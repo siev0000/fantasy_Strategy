@@ -95,11 +95,16 @@ function nestsAreCompeting(state, attacker, target) {
 
 function targetsFor(state, enemy = null) {
   const players = (state?.players || []).flatMap(player => player?.factionState?.units || []).filter(isAliveEnemyAiUnit);
-  if (!enemy) return players;
+  const villageGuards = (state?.neutralVillages || []).flatMap(village => (village?.defenseUnits || []).map(unit => ({
+    ...unit,
+    neutralVillageId:text(village?.id),
+    ownerNeutralVillageId:text(village?.id)
+  }))).filter(isAliveEnemyAiUnit);
+  if (!enemy) return [...players, ...villageGuards];
   const competingEnemies = (state?.enemies || []).filter(target => text(target?.id) !== text(enemy?.id)
     && isAliveEnemyAiUnit(target)
     && nestsAreCompeting(state, enemy, target));
-  return [...players, ...competingEnemies];
+  return [...players, ...villageGuards, ...competingEnemies];
 }
 
 function selectEnemyTarget(state, enemy, targets, turnNumber) {
@@ -159,6 +164,7 @@ function availableEnemyMoves(state, mapData, enemy) {
   const occupied = new Set([
     ...(state.enemies || []).filter(row => text(row.id) !== text(enemy.id) && isAliveEnemyAiUnit(row)),
     ...(state.players || []).flatMap(player => player?.factionState?.units || []).filter(isAliveEnemyAiUnit),
+    ...(state.neutralVillages || []).flatMap(village => village?.defenseUnits || []).filter(isAliveEnemyAiUnit),
     ...(state.settlements || [])
   ].map(row => coordKey(row.x, row.y)));
   return getHexNeighborCoords(mapData.w, mapData.h, enemy?.x, enemy?.y, mapData?.worldWrapEnabled !== false)

@@ -1,5 +1,19 @@
 Original prompt: 全体を整理してほしい。メモと地形ランダム生成だけは消さないで vueファイルにできるところはVueファイルに
 
+- 2026-09-29: NPCは自勢力の`discoveredFeaturesByTile`に保存された勝利対象土地だけを目的化し、未発見時は探索、発見後は対象へ近づく移動を優先する。目的は`factionState.aiState.objective`とAIログへ保存する。他勢力攻略・守護ボス攻略は未接続。検証: `node scripts/check-v39-faction-ai-objective.mjs`。
+
+- 2026-09-29: 勝利対象土地の共通勝利判定を追加。暫定で`V39_VICTORY_CONDITION_BALANCE`の`1地点 / 1ターン支配`を満たすと、プレイヤー・NPC共通の`gameState.victory`へ勝者・達成ターン・進捗を保存してターン終了を停止する。守護ボス、複数地点、勢力滅亡、奪還時の取消は未確定の後続仕様。検証: `node scripts/check-v39-victory-conditions.mjs`。
+
+- 2026-09-29: NPC勢力の最小Botループを完了。各NPCは既存の調査・建設・ユニット生成・研究ルールを順に使い、未調査の現在地を調査後、同じ地形・高低差・飛行・AP計算で未調査の隣接マスへ部隊単位で探索移動する。探索先の選択に勝利対象土地、敵、他勢力の未発見座標は使わない。移動AP計算は`v39-terrain-traversal.js`へ共通化し、プレイヤー操作も同じ関数を使用する。検証: `node scripts/check-v39-faction-ai-exploration.mjs`、`node scripts/check-v39-test-npc-faction.mjs`、`node scripts/check-v39-victory-landmarks.mjs`、`node scripts/check-v39-neutral-village-defense.mjs`、`npm run build:front`、`npm run audit:data` 成功。データ監査の未接続14項目は既知の `イベント_一般村` 9件と`テストクラス`5件。
+
+- 2026-09-28: 勝利対象土地は発見後に既存画像を地形上へ表示するようにし、TEST ON時は未発見でも透明度40%で確認表示する。敵・他勢力ユニットと一般村守備軍も、通常時は視界内かつ発見判定を通過したものだけ、TEST ON時は未発見を透明度40%で描画する。一般村守備軍を敵AIの攻撃対象へ加え、敵ターン後に射程内の一般生物へ守備軍が行動Aで1回反撃するよう接続した。検証: `node scripts/check-v39-victory-landmarks.mjs`、`node scripts/check-v39-neutral-village-defense.mjs`、`npm run build:front`。
+
+- 2026-09-28: 勝利対象土地は4種同時配置を廃止し、島形状ごとの対象を通常1件だけ配置する方式へ変更。対象数は `V39_VICTORY_LANDMARK_BALANCE.landmarkCount` で複数化できる。リアル島・大陸型=太陽の山、標準諸島・双子島=黄昏の樹、列島型=星の火口、多島海=宇宙の海。
+
+- 2026-09-28: TEST ONの勢力追加へ `プレイヤー勢力 / NPC勢力` を追加した。追加勢力は既存の `players[] / factionState` を再採番して複製し、NPCは`isPlayer=false`、参加者割当なし、手動ターン順外として扱う。初期拠点・領土・人口・研究・ユニットは既存の初期配置規則で自動配置し、通常のセーブJSONに保持する。検証: `node scripts/check-v39-test-npc-faction.mjs`、`npm run build:front` 成功。
+
+- 2026-09-28: `@game_data` の `勝利対象土地` シートを追加し、`勝利対象土地.json` を生成対象へ登録した。太陽の山・黄昏の樹・星の火口・宇宙の海は指定地形（不在時は代替地形）へ決定的に各1件配置する。未発見時はFog下へ隠し、同じマスでの調査を完了した勢力だけが名称・説明・マーカーを見られる。配置と勢力別発見状態はセーブ/ロードされる。勝利判定、守護敵、支配条件は後続タスクとする。検証: `node scripts/check-v39-victory-landmarks.mjs`、`npm run build:front` 成功。
+
 - 2026-09-28: 自然イベントのアンデッド発生を、`死の霧_変換`で作られた死の霧を主経路、地上の死体を1%の稀な補助経路へ整理した。死の霧は特殊地形のため、Excelの地形シートで死の霧行へ`変換レイヤー=特殊`を設定して再出力する必要がある。発生中の火山以外の災害は各影響マスに小アイコンを表示し、`災害.json.アイコン`が未設定の間は共通暫定設定のアイコンを表示する。`地形.json`の既存災害相性列は、洪水・暴風・地震・落雷嵐・大寒波の発生率補正へ接続した。災害の最大HP割合ダメージは一般村の守備軍へ通常ユニットと同じ処理で、村人口へも同じ割合で反映する。TEST ONでは一般村・所有領土・放浪者の自然アンデッド脅威を確認でき、一般村には将来の自動駆除依頼用の敵ID一覧を保存する。対象がある一般村は、既存の`イベント_一般村.json`定義からアンデッド討伐依頼を生成し、対象全滅後に完了できる。通常軍は初期3人編成へ戻し、Excelの都市基本データと出力JSONを同期した。
 
 - 2026-09-25: Excel出力済みの `勢力.json` に `詳細` 列がない間だけ、`data/manual/勢力詳細.json` を表示用の仮データとして追加した。`勢力.json.詳細` が存在する場合は必ずそちらを優先するため、Excelへ詳細列を追加して再出力後もコード変更は不要。検証: `npm run build:front`、`npm run check:play-mode-select`、`npm run check:multiplayer-start-flow`成功。種族選択画面で仮JSONの詳細表示とブラウザー例外0件を確認。
@@ -1173,3 +1187,5 @@ pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整�
 - `#characterModal` は `v39-character-modal.js` が `innerHTML` で描画する実画面であることを確認。`window.openV39CharacterModal()` を表示APIとして追加し、ヘッダー・モバイルメニューのキャラクターボタンから必ず再描画して開くようにした。ゲーム状態未初期化時も空白にせず案内を表示する。
 
 - 2026-09-28: 火山以外の災害とアンデッド自然発生の暫定ターン処理を追加した。災害は `災害.json` のIDをキーにし、正式な数値列が未追加の間は `V39_PROVISIONAL_DISASTER_BALANCE` を使用する。発生中の災害、継続効果、発生履歴は `worldEnvironment` に保存し、セーブ・ロードで復元する。TEST ONでは選択マスへ災害またはアンデッドを強制発生できる。一般村の選択マス情報には、住民と守備軍を含む `必要物資(1T)` の確認表示を追加した。検証: `npm run build:front`、`npm run audit:data`、`git diff --check`。
+
+- 2026-09-29: 人口構成から算出する農業・林業・漁業・工業の技能倍率を、通常土地・発見資源・単体土地の収入へ接続した。対応技能は`都市基本データ.json`の資源行を正本とし、稼働率と施設補正に乗算する。TEST ONの一般村拠点情報へ、7マスの推定産出、必要物資、不足候補、得意資源を追加した。一般村の実在庫・消費・人口変動は変更していない。選択イベントの座標をテストツールでも保持するよう修正し、再描画後の選択情報が消える経路を解消した。検証: `npm run build:front`、`node scripts/check-v39-neutral-village-economy.mjs`、一般村守備・勝利条件回帰試験。

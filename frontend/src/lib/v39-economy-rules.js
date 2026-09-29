@@ -336,7 +336,7 @@ export function resolveV39SettlementProductionMetrics(state, player, village = n
   };
 }
 
-function collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, employmentRate) {
+function collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, employmentRate, productionMetrics) {
   const discovered = player?.factionState?.exploration?.discoveredFeaturesByTile || {};
   const terrainYieldMap = new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]));
   for (const [key, site] of Object.entries(discovered)) {
@@ -346,11 +346,15 @@ function collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, e
     const multiplier = tileModeMultiplier(village, key) * employmentRate * resolveV39HazardYieldMultiplier(state, key);
     for (const resourceKey of FOOD_RESOURCE_KEYS) {
       const value = number(row[resourceKey]);
-      raw.food[resourceKey] = round1(number(raw.food[resourceKey]) + value * multiplier * (value > 0 ? resolveV39FacilityYieldMultiplier(village, key, resourceKey) : 1));
+      raw.food[resourceKey] = round1(number(raw.food[resourceKey]) + value * multiplier * (value > 0
+        ? resolveV39FacilityYieldMultiplier(village, key, resourceKey) * resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
+        : 1));
     }
     for (const resourceKey of MATERIAL_RESOURCE_KEYS) {
       const value = number(row[resourceKey]);
-      raw.material[resourceKey] = round1(number(raw.material[resourceKey]) + value * multiplier * (value > 0 ? resolveV39FacilityYieldMultiplier(village, key, resourceKey) : 1));
+      raw.material[resourceKey] = round1(number(raw.material[resourceKey]) + value * multiplier * (value > 0
+        ? resolveV39FacilityYieldMultiplier(village, key, resourceKey) * resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
+        : 1));
     }
   }
   return raw;
@@ -456,6 +460,7 @@ function advanceEnemyNestEconomy(state, mapData, currentTurn) {
 export function collectV39TerritoryIncome(state, player, mapData = window.__v39FieldRuntime?.mapData) {
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const labor = resolveV39SettlementLabor(state, player, village);
+  const productionMetrics = resolveV39SettlementProductionMetrics(state, player, village);
   const ownedSet = new Set(labor.ownedKeys.filter(key => {
     const territory = state?.territoryStateByTile?.[key];
     return territory?.raided !== true && number(territory?.hp, territory?.maxHp || 100) > 0;
@@ -467,16 +472,17 @@ export function collectV39TerritoryIncome(state, player, mapData = window.__v39F
     resolveTileTerrainForYield:resolveTileTerrain,
     resolveTileYieldMultiplier:({ key }) => tileModeMultiplier(village, key) * labor.employmentRate * resolveV39HazardYieldMultiplier(state, key),
     resolveResourceYieldMultiplier:({ key, resourceKey, row }) => number(row?.[resourceKey]) > 0
-      ? resolveV39FacilityYieldMultiplier(village, key, resourceKey)
+      ? resolveV39FacilityYieldMultiplier(village, key, resourceKey) * resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
       : 1,
     terrainYieldMap
   });
-  collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, labor.employmentRate);
+  collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, labor.employmentRate, productionMetrics);
   return {
     food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
     tiles:raw.tiles,
-    ...labor
+    ...labor,
+    productionMetrics
   };
 }
 
@@ -491,6 +497,7 @@ export function collectV39TerritoryTileIncome(state, ownerPlayerId, key, mapData
     player.race
   );
   const labor = resolveV39SettlementLabor(state, player, village);
+  const productionMetrics = resolveV39SettlementProductionMetrics(state, player, village);
   const ownedSet = new Set([text(key)]);
   const raw = collectTerritoryIncome(mapData, ownedSet, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
     roundTo1:round1,
@@ -498,14 +505,75 @@ export function collectV39TerritoryTileIncome(state, ownerPlayerId, key, mapData
     resolveTileTerrainForYield:resolveTileTerrain,
     resolveTileYieldMultiplier:({ key:tileKey }) => tileModeMultiplier(village, tileKey) * labor.employmentRate * resolveV39HazardYieldMultiplier(state, tileKey),
     resolveResourceYieldMultiplier:({ key:tileKey, resourceKey, row }) => number(row?.[resourceKey]) > 0
-      ? resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey)
+      ? resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey) * resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
       : 1,
     terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
   });
-  collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, labor.employmentRate);
+  collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, labor.employmentRate, productionMetrics);
   return {
     food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 })
+  };
+}
+
+// 一般村はまだ実在庫を消費・保存しないため、7マス領域の生活可能性を確認する専用の読み取り診断。
+// プレイヤー拠点と同じ地形産出、稼働率、人口構成の対応技能倍率を使用する。
+export function inspectV39NeutralVillageEconomy(village, mapData) {
+  const race = text(village?.race) || "只人";
+  const population = Math.max(0, Math.floor(number(village?.population)));
+  const normalized = normalizeV39Village({
+    ...village,
+    population,
+    populationByRace:village?.populationByRace || { [race]:population }
+  }, race);
+  const territoryKeys = new Set((Array.isArray(village?.territoryTileKeys) ? village.territoryTileKeys : [])
+    .map(text).filter(key => key.includes(",")));
+  const employmentSlots = territoryKeys.size * number(TERRITORY_TILE_MODE_CONFIG[TERRITORY_TILE_MODE_RESOURCE]?.employmentSlots, 10);
+  const employmentRate = employmentSlots > 0 ? Math.min(1, population / employmentSlots) : 0;
+  const productionMetrics = resolveV39SettlementProductionMetrics(null, null, {
+    ...normalized,
+    employmentSlots,
+    employmentRate
+  });
+  const raw = collectTerritoryIncome(mapData, territoryKeys, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
+    roundTo1:round1,
+    parseCoordKey:key => { const [x, y] = text(key).split(",").map(Number); return { x, y }; },
+    resolveTileTerrainForYield:resolveTileTerrain,
+    resolveTileYieldMultiplier:() => number(TERRITORY_TILE_MODE_CONFIG[TERRITORY_TILE_MODE_RESOURCE]?.incomeMultiplier, 2) * employmentRate,
+    resolveResourceYieldMultiplier:({ resourceKey, row }) => number(row?.[resourceKey]) > 0
+      ? resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
+      : 1,
+    terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
+  });
+  const income = {
+    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+    material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 })
+  };
+  const maintenance = buildV39PopulationMaintenanceStock(
+    normalized.populationByRace,
+    Array.isArray(village?.defenseUnits) ? village.defenseUnits : [],
+    FOOD_RESOURCE_KEYS,
+    1
+  );
+  const shortageByType = Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key,
+    round1(Math.max(0, number(maintenance[key]) - number(income.food[key])))
+  ]));
+  const favorableResourceKeys = [...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS]
+    .map(key => ({ key, value:number(income.food[key], income.material[key]) }))
+    .filter(row => row.value > 0)
+    .sort((left, right) => right.value - left.value || left.key.localeCompare(right.key))
+    .slice(0, 3)
+    .map(row => row.key);
+  return {
+    tiles:raw.tiles,
+    employmentSlots,
+    employmentRate,
+    productionMetrics,
+    income,
+    maintenance,
+    shortageByType,
+    shortageTotal:round1(Object.values(shortageByType).reduce((sum, value) => sum + number(value), 0)),
+    favorableResourceKeys
   };
 }
 
@@ -595,6 +663,13 @@ export function resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey)
   const effects = resolveV39FacilityEffectsAtTile(village, tileKey);
   const category = RESOURCE_FACILITY_EFFECT[text(resourceKey)];
   return Math.max(0, 1 + (number(effects.生産力) + number(category ? effects[category] : 0)) / 100);
+}
+
+// 資源の対応技能（都市基本データ.json）を人口構成から求めた倍率へ変換する。
+// 対応技能が未設定の資源は生産項目の影響を受けない。
+export function resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey) {
+  const category = RESOURCE_FACILITY_EFFECT[text(resourceKey)];
+  return Math.max(0, number(category ? productionMetrics?.productionMultipliers?.[category] : 1, 1));
 }
 
 const hexDistance = getHexDistance;

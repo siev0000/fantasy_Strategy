@@ -18,7 +18,8 @@ const LAND_FIELD_IDS = Object.freeze({
   "川 / 滝": "v39-land-river-waterfall",
   "火山 / 溶岩": "v39-land-volcano-lava",
   "地形補正": "v39-land-modifiers",
-  "敵": "v39-land-enemies"
+  "敵": "v39-land-enemies",
+  "勝利対象": "v39-land-victory-landmark"
 });
 
 let selectedCoord = null;
@@ -61,6 +62,13 @@ function bindFixedLandFields() {
     panel.appendChild(item);
   }
 
+  if (!document.getElementById("v39-land-victory-landmark")) {
+    const item = document.createElement("div");
+    item.className = "land-item";
+    item.innerHTML = '<span>勝利対象</span><b id="v39-land-victory-landmark">未発見</b>';
+    panel.appendChild(item);
+  }
+
   const firstLabel = panel.querySelector(".land-item span");
   if (firstLabel) firstLabel.textContent = "地形 / 座標";
   return panel;
@@ -88,6 +96,7 @@ function resetLandPanel(message = "マスを選択") {
   setField("v39-land-volcano-lava", "なし / なし");
   setField("v39-land-modifiers", "なし");
   setField("v39-land-enemies", "なし");
+  setField("v39-land-victory-landmark", "未発見");
 }
 
 function gameState() {
@@ -281,6 +290,11 @@ function formatEnemies(state, detail) {
   return labels.length ? labels.join(" / ") : "なし";
 }
 
+function formatVictoryLandmark(discoveredFeature) {
+  if (text(discoveredFeature?.kind, "") !== "victory-landmark") return "未発見";
+  return [text(discoveredFeature?.name || discoveredFeature?.featureName, "勝利対象"), text(discoveredFeature?.detail, "")].filter(Boolean).join(" / ");
+}
+
 function buildFullDetail(selected) {
   const detail = resolveGeneratedTileDetail(selected);
   if (!detail) return null;
@@ -299,7 +313,8 @@ function buildFullDetail(selected) {
     recovery: formatRecovery(state, detail.key),
     moveStop: formatMoveStop(state, detail),
     enemies: formatEnemies(state, detail),
-    discoveredFeature
+    discoveredFeature,
+    victoryLandmark:formatVictoryLandmark(discoveredFeature)
   };
 }
 
@@ -341,6 +356,7 @@ function renderLandDetail(selected) {
   setField("v39-land-volcano-lava", `${detail.volcano} / ${detail.lava}`);
   setField("v39-land-modifiers", formatV39TerrainModifiers(window.__v39FieldRuntime?.mapData, detail.x, detail.y));
   setField("v39-land-enemies", detail.enemies);
+  setField("v39-land-victory-landmark", detail.victoryLandmark);
 
   const panel = document.getElementById(PANEL_ID);
   if (panel) {

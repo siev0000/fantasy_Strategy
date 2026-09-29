@@ -26,6 +26,8 @@ const EMPTY_STATE = Object.freeze({
   territoryStateByTile: {},
   recoveryPercentByTile: {},
   explorationSitesByTile: {},
+  victoryLandmarksByTile: {},
+  victory: { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} },
   diplomacyRelations: {},
   lastMoveStop: null,
   enemies: [],
@@ -194,6 +196,8 @@ function normalizeState(input = {}) {
       .map(([key, value]) => [key, normalizeTerritoryStateRecord(value)])),
     recoveryPercentByTile: cloneRecord(input.recoveryPercentByTile),
     explorationSitesByTile: cloneJson(input.explorationSitesByTile, {}),
+    victoryLandmarksByTile: cloneJson(input.victoryLandmarksByTile, {}),
+    victory:cloneJson(input.victory, { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} }),
     diplomacyRelations: cloneJson(input.diplomacyRelations, {}),
     lastMoveStop: input.lastMoveStop && typeof input.lastMoveStop === "object" ? { ...input.lastMoveStop } : null,
     enemies: normalizeUnitArray(input.enemies),
@@ -216,7 +220,7 @@ function normalizeState(input = {}) {
       paused: input?.timeline?.paused === true,
       lastResolvedTurn:Math.max(0, Math.floor(Number(input?.timeline?.lastResolvedTurn) || 0)),
       lastStageSequence:Array.isArray(input?.timeline?.lastStageSequence) ? input.timeline.lastStageSequence.map(String) : [],
-      ...normalizeV39PlayerTurnTimeline(input?.timeline, players, activePlayerId)
+      ...normalizeV39PlayerTurnTimeline(input?.timeline, players.filter(player => player?.isPlayer !== false), activePlayerId)
     }
   };
 }
@@ -277,6 +281,8 @@ function getState() {
       .map(([key, value]) => [key, { ...value }])),
     recoveryPercentByTile: { ...state.recoveryPercentByTile },
     explorationSitesByTile: cloneJson(state.explorationSitesByTile, {}),
+    victoryLandmarksByTile: cloneJson(state.victoryLandmarksByTile, {}),
+    victory:cloneJson(state.victory, { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} }),
     diplomacyRelations: cloneJson(state.diplomacyRelations, {}),
     lastMoveStop: state.lastMoveStop ? { ...state.lastMoveStop } : null,
     enemies: state.enemies.map(cloneUnit),
@@ -331,6 +337,8 @@ function setState(patch = {}, options = {}) {
   );
   if (Object.prototype.hasOwnProperty.call(patch, "recoveryPercentByTile")) next.recoveryPercentByTile = cloneRecord(patch.recoveryPercentByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "explorationSitesByTile")) next.explorationSitesByTile = cloneJson(patch.explorationSitesByTile, {});
+  if (Object.prototype.hasOwnProperty.call(patch, "victoryLandmarksByTile")) next.victoryLandmarksByTile = cloneJson(patch.victoryLandmarksByTile, {});
+  if (Object.prototype.hasOwnProperty.call(patch, "victory")) next.victory = cloneJson(patch.victory, { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} });
   if (Object.prototype.hasOwnProperty.call(patch, "diplomacyRelations")) next.diplomacyRelations = cloneJson(patch.diplomacyRelations, {});
   if (Object.prototype.hasOwnProperty.call(patch, "lastMoveStop")) next.lastMoveStop = patch.lastMoveStop && typeof patch.lastMoveStop === "object" ? { ...patch.lastMoveStop } : null;
   if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = normalizeUnitArray(patch.enemies);
@@ -377,7 +385,7 @@ function updateTimelineState(patch = {}, options = {}) {
       paused:source.paused === true,
       lastResolvedTurn:Math.max(0, Math.floor(Number(source.lastResolvedTurn) || 0)),
       lastStageSequence:Array.isArray(source.lastStageSequence) ? source.lastStageSequence.map(String) : [],
-      ...normalizeV39PlayerTurnTimeline(source, state.players, state.activePlayerId)
+      ...normalizeV39PlayerTurnTimeline(source, state.players.filter(player => player?.isPlayer !== false), state.activePlayerId)
     }
   };
   if (options.silent !== true) dispatchChange(options.reason || "timeline");
@@ -471,6 +479,46 @@ function createNormalLocalSessionPlayers(count) {
       factionState:createPlayerFactionState({ nationLogKey:playerId }, playerId)
     }, index);
   });
+}
+
+function nextFactionId(prefix) {
+  let suffix = 1;
+  const ids = new Set(state.players.map(player => String(player?.id || "")));
+  while (ids.has(`${prefix}-${suffix}`)) suffix += 1;
+  return `${prefix}-${suffix}`;
+}
+
+function createTestFaction(kind = "player") {
+  const isPlayer = kind !== "npc";
+  const templates = normalizeState(window.V39_TEST_GAME_STATE || EMPTY_STATE).players;
+  // 開始済みゲームでは統治者を含む現行勢力を優先し、初期配置可能な編成を複製する。
+  const template = state.players.find(player => player?.factionState?.units?.some(unit => unit?.isSovereign === true))
+    || templates.find(player => player?.factionState?.units?.some(unit => unit?.isSovereign === true))
+    || state.players[0]
+    || templates[0]
+    || null;
+  if (!template) return { ok:false, reason:"勢力テンプレートがありません" };
+
+  const prefix = isPlayer ? "player" : "npc";
+  const id = nextFactionId(prefix);
+  const factionNumber = state.players.filter(player => player?.isPlayer === isPlayer).length + 1;
+  const factionState = resetFactionForNewLocalSession(remapFactionIdentifiers(template.factionState, id));
+  const player = createPlayerRecord({
+    ...cloneValue(template, {}),
+    id,
+    label:isPlayer ? `プレイヤー勢力${factionNumber}` : `NPC勢力${factionNumber}`,
+    isPlayer,
+    ready:true,
+    controllerParticipantId:isPlayer ? "local-1" : "",
+    factionState
+  }, state.players.length);
+  state = normalizeState({
+    ...state,
+    players:[...state.players, player],
+    factionLabels:{ ...state.factionLabels, [id]:player.label }
+  });
+  dispatchChange("test-faction-added");
+  return { ok:true, player:clonePlayer(player), state:getState() };
 }
 
 function createMultiplayerSessionPlayers(count, factionSelections = {}) {
@@ -664,6 +712,7 @@ window.updateV39TileState = updateTileState;
 window.clearV39GameState = clearState;
 window.startV39LocalSession = startLocalSession;
 window.startV39MultiplayerSession = startMultiplayerSession;
+window.addV39TestFaction = createTestFaction;
 window.__v39GameStateDefaults = normalizeState(window.V39_TEST_GAME_STATE || EMPTY_STATE);
 window.__v39TestGameStateDefaults = window.__v39GameStateDefaults;
 
