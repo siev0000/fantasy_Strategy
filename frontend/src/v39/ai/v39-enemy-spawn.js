@@ -760,7 +760,7 @@ function spawnForActivePlayer() {
       diagnostics:spawnPlan.diagnostics
     }
   }));
-  return enemies;
+  return initialEnemies;
 }
 
 function clearEnemiesForNewField() {
