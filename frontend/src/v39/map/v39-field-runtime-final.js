@@ -4,6 +4,7 @@ import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { runWithSeededRandom } from "../../lib/seeded-random.js";
 import { cacheStaticGraphicsLayer } from "./v39-static-graphics-cache.js";
+import { createV39VictoryLandmarkPlan } from "../../lib/v39-victory-landmarks.js";
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
 const SNOW_RING_OUTER_INSET_RATIO = 0.06;
@@ -588,8 +589,8 @@ export function setV39SnowfallAt(x, y, active = true) {
 }
 
 function normalizeSettings(input={}) {
-  const w=Phaser.Math.Clamp(Math.round(Number(input.w)||60),30,83);
-  const h=Phaser.Math.Clamp(Math.round(Number(input.h)||60),30,83);
+  const w=Phaser.Math.Clamp(Math.round(Number(input.w)||60),30,100);
+  const h=Phaser.Math.Clamp(Math.round(Number(input.h)||60),30,100);
   const allowedPatterns=new Set(["realistic","balanced","continent","archipelago","twins","chain"]);
   const allowedMountains=new Set(["random","single","multi","mixed"]);
   const custom=input.islandCustomSettings&&typeof input.islandCustomSettings==="object"?input.islandCustomSettings:{};
@@ -621,7 +622,8 @@ export function generateFieldFromSettings(input={}) {
   if (!host) throw new Error("v39 field host is not ready");
   const settings=normalizeSettings(input);
   currentSettings=settings;
-  currentData=ensureSnowStateMaps(createTerrainMapData(settings));
+  const victoryLandmarkPlan=createV39VictoryLandmarkPlan(settings,{patternId:settings.patternId});
+  currentData=ensureSnowStateMaps(createTerrainMapData({ ...settings, victoryLandmarkPlan }));
   disposeFieldInput();
   if(game){ game.destroy(true); game=null; host.replaceChildren(); }
   createGame(currentData);

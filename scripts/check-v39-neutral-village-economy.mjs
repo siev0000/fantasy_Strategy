@@ -22,15 +22,19 @@ try {
       x:10, y:10, race:"只人", population:50, level:1, defenseUnits:[],
       territoryTileKeys:["10,10", "11,10", "9,10", "10,9", "10,11", "11,9", "9,11"]
     };
+    const enemy = { id:"neutral-village-threat-enemy", name:"検証敵", x:10, y:10, hp:10, currentHp:10, maxHp:10, state:"生存" };
+    const nest = { id:"neutral-village-threat-nest", name:"検証敵巣", x:11, y:10, territoryRadius:1, unitIds:[enemy.id] };
     window.setV39GameState({
       neutralVillages:[village],
-      settlements:[...(before?.settlements || []).filter(row => !row?.neutral), village]
+      settlements:[...(before?.settlements || []).filter(row => !row?.neutral), village],
+      enemies:[enemy],
+      enemyNests:[nest]
     }, { reason:"neutral-village-economy-check" });
     window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:{ x:village.x, y:village.y } }));
     window.openV39TestTools?.();
     await new Promise(resolve => window.setTimeout(resolve, 50));
     const text = document.getElementById("v39-test-tools-panel")?.textContent || "";
-    for (const label of ["必要物資(1T)", "推定産出(1T)", "不足候補(1T)", "得意資源"]) {
+    for (const label of ["必要物資(1T)", "推定産出(1T)", "不足候補(1T)", "得意資源", "実敵脅威(領域内): 1体", "重複する敵巣縄張り: 1件"]) {
       if (!text.includes(label)) throw new Error(`一般村診断の表示がありません: ${label} / ${text.slice(0, 500)}`);
     }
     return { village:village.name, x:village.x, y:village.y, hasDiagnostics:true };

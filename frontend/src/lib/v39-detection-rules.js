@@ -4,6 +4,10 @@ import {
 } from "../composables/unitCoreUtils.js";
 
 export const V39_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
+// ユニットは最低1マスを見通す。索敵75ごとに可視範囲を1マス広げる。
+// フィールドFogと勢力AIで同じ視界計算を使う。
+export const V39_UNIT_VISION_BASE_RANGE = 1;
+export const V39_UNIT_VISION_SCOUT_STEP = 75;
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -22,6 +26,11 @@ export function resolveDetectionScoutValue(unit) {
     roundTo1(number(unit?.索敵)),
     roundTo1(number(unit?.scoutRange))
   );
+}
+
+export function resolveV39UnitVisionRange(unit) {
+  const scout = resolveDetectionScoutValue(unit);
+  return V39_UNIT_VISION_BASE_RANGE + Math.max(0, Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP));
 }
 
 export function resolveDetectionStealthValue(unit, { turnNumber = null } = {}) {

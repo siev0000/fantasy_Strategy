@@ -18,13 +18,25 @@ try {
     document.querySelector("#v39-play-mode-select")?.remove();
     window.generateV39TestFieldWithSeed({ w:60, h:60, patternId:"realistic" }, "victory-condition-check");
     await new Promise(resolve => window.setTimeout(resolve, 100));
+    const beforePlacement = window.getV39GameState();
+    const initialPlayer = beforePlacement.players.find(row => row.id === beforePlacement.activePlayerId);
+    window.setV39GameState({ players:beforePlacement.players.map(row => row.id !== initialPlayer.id ? row : ({
+      ...row,
+      factionState:{ ...row.factionState, settlements:[{ id:"victory-condition-start", settlementId:"victory-condition-start", placed:true, x:2, y:2 }], selectedSettlementId:"victory-condition-start" }
+    })) }, { reason:"victory-condition-test-initial-placement" });
+    window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", { detail:{ mapData:window.__v39FieldRuntime?.mapData } }));
+    await new Promise(resolve => window.setTimeout(resolve, 80));
     const before = window.getV39GameState();
     const playerId = before.activePlayerId;
     const landmarkKey = Object.keys(before.victoryLandmarksByTile || {})[0];
     if (!playerId || !landmarkKey) throw new Error("勝利判定用の勢力または対象土地がありません");
+    const landmark = before.victoryLandmarksByTile[landmarkKey];
+    const occupiedTileKeys = landmark?.occupiedTileKeys?.length ? landmark.occupiedTileKeys : [landmarkKey];
+    const territoryOwnerByTile = { ...before.territoryOwnerByTile };
+    for (const key of occupiedTileKeys) territoryOwnerByTile[key] = playerId;
 
     window.setV39GameState({
-      territoryOwnerByTile:{ ...before.territoryOwnerByTile, [landmarkKey]:playerId },
+      territoryOwnerByTile,
       timeline:{ ...before.timeline, turnNumber:3 }
     }, { reason:"victory-condition-check" });
     window.dispatchEvent(new CustomEvent("v39:turn-stage-exploration", { detail:{ turnNumber:3 } }));

@@ -131,9 +131,12 @@ function captureEnemyAttack(plan, options = {}) {
 }
 
 function applyEnemyPlan(plan, presentationEvents) {
+  // Worker返信や途中で失効した計画は、敵ターン全体を止めずに破棄する。
+  if (!plan || typeof plan !== "object") return false;
   const before = enemyTurnState();
-  const enemy = (before?.enemies || []).find(row => text(row?.id) === text(plan?.enemyId));
-  if (!before || !enemy || !plan) return false;
+  if (!before) return false;
+  const enemy = (before.enemies || []).find(row => text(row?.id) === text(plan.enemyId));
+  if (!enemy) return false;
   const id = text(enemy.id);
 
   if (["move", "wait", "queue-attack"].includes(plan.type)) {

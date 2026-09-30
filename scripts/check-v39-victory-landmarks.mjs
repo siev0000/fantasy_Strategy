@@ -17,11 +17,26 @@ try {
     if (vueBackdrop instanceof HTMLElement) vueBackdrop.style.display = "none";
     window.generateV39TestFieldWithSeed({ w:60, h:60, patternId:"realistic" }, "victory-landmark-check");
     await new Promise(resolve => window.setTimeout(resolve, 100));
+    const generatedBeforePlacement = window.getV39GameState();
+    const playerBeforePlacement = generatedBeforePlacement.players.find(row => row.id === generatedBeforePlacement.activePlayerId);
+    window.setV39GameState({ players:generatedBeforePlacement.players.map(row => row.id !== playerBeforePlacement.id ? row : ({
+      ...row,
+      factionState:{
+        ...row.factionState,
+        settlements:[{ id:"victory-test-start", settlementId:"victory-test-start", placed:true, x:2, y:2 }],
+        selectedSettlementId:"victory-test-start"
+      }
+    })) }, { reason:"victory-landmark-check-initial-placement" });
+    window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", { detail:{ mapData:window.__v39FieldRuntime?.mapData } }));
+    await new Promise(resolve => window.setTimeout(resolve, 100));
     const generated = window.getV39GameState();
     const landmarks = Object.values(generated.victoryLandmarksByTile || {});
-    if (landmarks.length !== 1) throw new Error(`勝利対象土地が1地点配置されません: ${landmarks.length}`);
+    if (landmarks.length !== 2) throw new Error(`60x60の勝利対象候補が2地点配置されません: ${landmarks.length}`);
     const target = landmarks[0];
     if (target.name !== "太陽の山") throw new Error(`リアル島の勝利対象が不正です: ${target.name}`);
+    if (!Number.isFinite(target?.placement?.regionSize) || target.placement.regionSize < 14 || target.placement.heightLevel < 2 || target.placement.startDistance < 17) {
+      throw new Error(`勝利対象が広い高地・開始地点からの距離条件を満たしません: ${JSON.stringify(target.placement)}`);
+    }
     const player = generated.players.find(row => row.id === generated.activePlayerId);
     const unit = player?.factionState?.units?.[0];
     if (!unit) throw new Error("調査用ユニットがありません");
@@ -75,10 +90,11 @@ try {
       markerCount:window.getV39VictoryLandmarkIconStatus?.()?.markerCount || 0,
       alpha:overlay?.alpha,
       childTypes:(overlay?.list || []).map(child => child?.type),
-      hasImage:(overlay?.list || []).some(child => child?.type === "Image")
+      hasImage:(overlay?.list || []).some(child => child?.type === "Image"),
+      hasTestHighlight:(overlay?.list || []).some(child => child?.name === "v39-victory-landmark-test-highlight")
     };
   });
-  if (displayReport.markerCount !== 1 || displayReport.alpha !== 0.4 || !displayReport.hasImage) {
+  if (displayReport.markerCount !== 2 || displayReport.alpha !== 1 || !displayReport.hasImage || !displayReport.hasTestHighlight) {
     throw new Error(`未発見勝利対象のTEST表示が不正です: ${JSON.stringify(displayReport)}`);
   }
   await page.addStyleTag({ content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}" });

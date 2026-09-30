@@ -1,6 +1,7 @@
 import { getHexNeighborCoords } from "./hex-grid.js";
 import { getGameDataRows } from "./game-data-registry.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "./v39-gameplay-balance.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy } from "./v39-economy-rules.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { UNIT_CREATE_MODE_KEYS, resolveUnitCreateMode } from "../composables/militaryUnitUtils.js";
 import { buildV39ClassEquipment, buildV39UnitEntity } from "./v39-unit-creation-rules.js";
@@ -10,8 +11,11 @@ const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(
 const integer = (value, fallback = 0) => Math.floor(number(value, fallback));
 const keyOf = (x, y) => `${integer(x)},${integer(y)}`;
 const clampRelation = value => Math.max(V39_NEUTRAL_VILLAGE_BALANCE.relationMin, Math.min(V39_NEUTRAL_VILLAGE_BALANCE.relationMax, integer(value)));
-const VILLAGE_UNDEAD_QUEST = getGameDataRows("イベント_一般村")
+const VILLAGE_EVENT_ROWS = getGameDataRows("イベント_一般村");
+const VILLAGE_UNDEAD_QUEST = VILLAGE_EVENT_ROWS
   .find(row => text(row?.ID) === "VILLAGE_FIELD_EXTERMINATE_UNDEAD") || null;
+const VILLAGE_SHORTAGE_SUPPLY_QUEST = VILLAGE_EVENT_ROWS
+  .find(row => text(row?.ID) === "VILLAGE_FIELD_SHORTAGE_SUPPLY") || null;
 
 function hash(value) {
   let result = 0;
@@ -253,6 +257,7 @@ export function normalizeV39NeutralVillage(village, mapData, options = {}) {
     territoryTileKeys,
     relationsByPlayerId:{ ...(village?.relationsByPlayerId || {}) },
     questsByPlayerId:{ ...(village?.questsByPlayerId || {}) },
+    eventCompletedTurnByPlayerId:{ ...(village?.eventCompletedTurnByPlayerId || {}) },
     defenseUnits:Array.isArray(village?.defenseUnits) ? village.defenseUnits.map(row => ({ ...row })) : [],
     vassalPlayerId:text(village?.vassalPlayerId),
     raidState:village?.raidState && typeof village.raidState === "object" ? { ...village.raidState } : null
@@ -286,14 +291,17 @@ function updateVillageState(state, village) {
   return { ...state, neutralVillages, settlements };
 }
 
-function changeSettlementResource(state, playerId, kind, amount) {
+function changeSettlementResource(state, playerId, kind, amount, resourceKey = "") {
   const player = state.players?.find(row => row.id === playerId);
   const settlement = getSelectedSettlement(player?.factionState);
   if (!player || !settlement) return { ok:false, state };
   const bagKey = kind === "material" ? "materialStockByType" : "foodStockByType";
   const bag = { ...(settlement[bagKey] || {}) };
-  const preferred = kind === "material" ? ["木材", "石材", "鉄"] : ["穀物", "野菜", "肉", "魚"];
-  const key = preferred.find(name => number(bag[name]) >= Math.max(0, -amount)) || preferred[0];
+  const preferred = kind === "material" ? MATERIAL_RESOURCE_KEYS : FOOD_RESOURCE_KEYS;
+  const requested = text(resourceKey);
+  const key = preferred.includes(requested)
+    ? requested
+    : preferred.find(name => number(bag[name]) >= Math.max(0, -amount)) || preferred[0];
   if (amount < 0 && number(bag[key]) < -amount) return { ok:false, state, reason:`${key}が不足しています` };
   bag[key] = Math.max(0, Math.round((number(bag[key]) + amount) * 10) / 10);
   const nextSettlement = { ...settlement, [bagKey]:bag };
@@ -313,9 +321,79 @@ export function improveV39NeutralVillageRelation(state, playerId, villageId) {
   return { ok:true, state:updateVillageState(payment.state, village), village, message:`${village.name}との関係 +${V39_NEUTRAL_VILLAGE_BALANCE.improveRelationGain}` };
 }
 
-function createQuest(village, playerId, turn) {
+function eventConditions(row) {
+  const source = row?.発生条件;
+  if (Array.isArray(source)) return source.filter(item => item && typeof item === "object");
+  return source && typeof source === "object" ? [source] : [];
+}
+
+function eventEffects(row) {
+  const source = row?.完了効果;
+  if (Array.isArray(source)) return source.filter(item => item && typeof item === "object");
+  return source && typeof source === "object" ? [source] : [];
+}
+
+function conditionMatches(condition, village, player) {
+  const type = text(condition?.タイプ);
+  const comparison = text(condition?.比較);
+  const value = condition?.値;
+  if (type === "一般村友好度") {
+    const relation = getV39NeutralVillageRelation(village, player?.id);
+    if (comparison === ">=") return relation >= number(value);
+    if (comparison === "<=") return relation <= number(value);
+    if (comparison === "一致") return relation === number(value);
+    return false;
+  }
+  if (type === "プレイヤー種族") {
+    if (comparison !== "一致") return false;
+    return text(player?.race) === text(value);
+  }
+  // 建設支援など、まだ状態を持たない条件は依頼として提示しない。
+  return false;
+}
+
+function eventReadyForPlayer(row, village, player, turn) {
+  if (!row || !player) return false;
+  const cooldown = Math.max(0, integer(row?.クールダウン));
+  const lastTurn = integer(village?.eventCompletedTurnByPlayerId?.[player.id]?.[text(row?.ID)]);
+  if (cooldown && lastTurn && turn < lastTurn + cooldown) return false;
+  return eventConditions(row).every(condition => conditionMatches(condition, village, player));
+}
+
+function resolveVillageShortage(village, mapData) {
+  if (!mapData?.grid) return null;
+  const economy = inspectV39NeutralVillageEconomy(village, mapData);
+  const shortage = Object.entries(economy.shortageByType || {})
+    .map(([resourceKey, amount]) => ({ resourceKey, amount:number(amount) }))
+    .filter(row => row.amount > 0)
+    .sort((left, right) => right.amount - left.amount || left.resourceKey.localeCompare(right.resourceKey, "ja"))[0];
+  if (!shortage) return null;
+  return { ...shortage, economy };
+}
+
+function resolveVillageReward(village, mapData, row) {
+  if (!eventEffects(row).some(effect => text(effect?.タイプ) === "村産出資源受取")) return null;
+  const economy = inspectV39NeutralVillageEconomy(village, mapData);
+  const resourceKey = economy.favorableResourceKeys?.[0];
+  if (!resourceKey) return null;
+  return {
+    resourceKey,
+    stockKind:FOOD_RESOURCE_KEYS.includes(resourceKey) ? "food" : "material",
+    // 数量設定「村規模比例」の係数は未確定のため、既存の一般村依頼謝礼値を暫定係数として使用する。
+    amount:V39_NEUTRAL_VILLAGE_BALANCE.questReward * Math.max(1, integer(village?.level, 1))
+  };
+}
+
+function relationGainFromEvent(row) {
+  return eventEffects(row)
+    .filter(effect => text(effect?.タイプ) === "一般村友好度変更")
+    .reduce((sum, effect) => sum + number(effect?.設定?.値), 0);
+}
+
+function createQuest(state, village, playerId, turn, mapData) {
+  const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const undeadEnemyIds = [...new Set((village?.naturalUndeadThreat?.enemyIds || []).map(text).filter(Boolean))];
-  if (undeadEnemyIds.length && VILLAGE_UNDEAD_QUEST) {
+  if (undeadEnemyIds.length && eventReadyForPlayer(VILLAGE_UNDEAD_QUEST, village, player, turn)) {
     return {
       id:`${village.id}-${playerId}-T${turn}`,
       eventId:text(VILLAGE_UNDEAD_QUEST.ID),
@@ -328,26 +406,36 @@ function createQuest(village, playerId, turn) {
       completed:false
     };
   }
-  const material = hash(`${village.id}:${playerId}:quest`) % 2 === 1;
+  const shortage = resolveVillageShortage(village, mapData);
+  if (!shortage || !eventReadyForPlayer(VILLAGE_SHORTAGE_SUPPLY_QUEST, village, player, turn)) return null;
+  const reward = resolveVillageReward(village, mapData, VILLAGE_SHORTAGE_SUPPLY_QUEST);
   return {
     id:`${village.id}-${playerId}-T${turn}`,
-    type:material ? "material" : "food",
-    label:material ? "建材の提供" : "食料の提供",
+    eventId:text(VILLAGE_SHORTAGE_SUPPLY_QUEST.ID),
+    type:"delivery",
+    stockKind:FOOD_RESOURCE_KEYS.includes(shortage.resourceKey) ? "food" : "material",
+    resourceKey:shortage.resourceKey,
+    label:`${text(VILLAGE_SHORTAGE_SUPPLY_QUEST.名前, "不足物資の補給")} (${shortage.resourceKey})`,
     required:V39_NEUTRAL_VILLAGE_BALANCE.questBaseRequirement * Math.max(1, integer(village.level, 1)),
+    rewardResourceKey:text(reward?.resourceKey),
+    rewardStockKind:text(reward?.stockKind),
+    rewardAmount:number(reward?.amount),
     accepted:true,
     createdTurn:turn,
     completed:false
   };
 }
 
-export function acceptV39NeutralVillageQuest(state, playerId, villageId) {
+export function acceptV39NeutralVillageQuest(state, playerId, villageId, mapData = null) {
   const source = state?.neutralVillages?.find(row => row.id === villageId);
   if (!source) return { ok:false, reason:"一般村がありません", state };
   if (source?.questsByPlayerId?.[playerId]?.accepted && !source.questsByPlayerId[playerId].completed) {
     return { ok:false, reason:"既に依頼を受注しています", state };
   }
   const turn = Math.max(1, integer(state?.timeline?.turnNumber, 1));
-  const village = { ...source, questsByPlayerId:{ ...(source.questsByPlayerId || {}), [playerId]:createQuest(source, playerId, turn) } };
+  const quest = createQuest(state, source, playerId, turn, mapData);
+  if (!quest) return { ok:false, reason:"現在受注できる依頼がありません", state };
+  const village = { ...source, questsByPlayerId:{ ...(source.questsByPlayerId || {}), [playerId]:quest } };
   return { ok:true, state:updateVillageState(state, village), village, quest:village.questsByPlayerId[playerId], message:"依頼を受注しました" };
 }
 
@@ -355,24 +443,37 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId) {
   const source = state?.neutralVillages?.find(row => row.id === villageId);
   const quest = source?.questsByPlayerId?.[playerId];
   if (!source || !quest?.accepted || quest.completed) return { ok:false, reason:"受注中の依頼がありません", state };
-  let reward;
+  let working = state;
   if (quest.type === "hunt") {
     const livingTargetIds = new Set((state?.enemies || [])
       .filter(enemy => number(enemy?.hp ?? enemy?.currentHp) > 0 && text(enemy?.state) !== "死亡")
       .map(enemy => text(enemy?.id)));
     const remaining = (quest.targetEnemyIds || []).filter(id => livingTargetIds.has(text(id)));
     if (remaining.length) return { ok:false, reason:`討伐対象が残っています (${remaining.length}/${quest.required})`, state };
-    reward = changeSettlementResource(state, playerId, "food", V39_NEUTRAL_VILLAGE_BALANCE.questReward);
   } else {
-    const payment = changeSettlementResource(state, playerId, quest.type, -number(quest.required));
+    const payment = changeSettlementResource(state, playerId, quest.stockKind, -number(quest.required), quest.resourceKey);
     if (!payment.ok) return payment;
-    const rewardType = quest.type === "material" ? "food" : "material";
-    reward = changeSettlementResource(payment.state, playerId, rewardType, V39_NEUTRAL_VILLAGE_BALANCE.questReward);
+    working = payment.state;
   }
-  if (!reward.ok) return reward;
-  let village = changeRelation(source, playerId, V39_NEUTRAL_VILLAGE_BALANCE.questRelationGain);
-  village = { ...village, questsByPlayerId:{ ...village.questsByPlayerId, [playerId]:{ ...quest, completed:true, completedTurn:integer(state?.timeline?.turnNumber, 1) } } };
-  return { ok:true, state:updateVillageState(reward.state, village), village, message:`依頼完了 / 関係 +${V39_NEUTRAL_VILLAGE_BALANCE.questRelationGain} / 謝礼 ${reward.resourceName} ${V39_NEUTRAL_VILLAGE_BALANCE.questReward}` };
+  if (quest.rewardResourceKey && quest.rewardAmount > 0) {
+    const reward = changeSettlementResource(working, playerId, quest.rewardStockKind, quest.rewardAmount, quest.rewardResourceKey);
+    if (!reward.ok) return reward;
+    working = reward.state;
+  }
+  const row = VILLAGE_EVENT_ROWS.find(item => text(item?.ID) === text(quest.eventId)) || null;
+  const relationGain = relationGainFromEvent(row);
+  const completedTurn = integer(state?.timeline?.turnNumber, 1);
+  let village = changeRelation(source, playerId, relationGain);
+  village = {
+    ...village,
+    eventCompletedTurnByPlayerId:{
+      ...(village.eventCompletedTurnByPlayerId || {}),
+      [playerId]:{ ...(village.eventCompletedTurnByPlayerId?.[playerId] || {}), [text(quest.eventId)]:completedTurn }
+    },
+    questsByPlayerId:{ ...village.questsByPlayerId, [playerId]:{ ...quest, completed:true, completedTurn } }
+  };
+  const rewardText = quest.rewardResourceKey && quest.rewardAmount > 0 ? ` / 謝礼 ${quest.rewardResourceKey} ${quest.rewardAmount}` : "";
+  return { ok:true, state:updateVillageState(working, village), village, message:`依頼完了 / 関係 +${relationGain}${rewardText}` };
 }
 
 export function vassalizeV39NeutralVillage(state, playerId, villageId) {

@@ -2,8 +2,10 @@ import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import {
   resolveDetectionGroupSense,
-  resolveDetectionScoutValue,
-  resolveEffectiveScoutAtDistance
+  resolveEffectiveScoutAtDistance,
+  resolveV39UnitVisionRange,
+  V39_UNIT_VISION_BASE_RANGE,
+  V39_UNIT_VISION_SCOUT_STEP
 } from "../../lib/v39-detection-rules.js";
 import {
   BASE_VILLAGE_SCOUT_RANGE,
@@ -19,8 +21,6 @@ const UNIT_SCOUT_LAYER_NAME = "v39-unit-scout-boundary-layer";
 const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
 const NEST_TERRITORY_LAYER_NAME = "v39-nest-territory-boundary-layer";
 const NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME = "v39-neutral-village-territory-boundary-layer";
-const UNIT_VISION_BASE_RANGE = 1;
-const UNIT_VISION_SCOUT_STEP = 75;
 const FOG_COLOR = 0x071014;
 const FOG_ALPHA = 0.76;
 const SCOUT_COLOR = 0x9edff2;
@@ -203,8 +203,7 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
 }
 
 function unitVisionRange(unit) {
-  const scout = resolveDetectionScoutValue(unit);
-  return UNIT_VISION_BASE_RANGE + Math.max(0, Math.floor(scout / UNIT_VISION_SCOUT_STEP));
+  return resolveV39UnitVisionRange(unit);
 }
 
 function livingUnit(unit) {
@@ -236,7 +235,7 @@ function buildCurrentVision(data, faction, state, playerId) {
   for (const units of unitsByTile(faction?.units, { livingOnly:true }).values()) {
     const sense = resolveDetectionGroupSense(units);
     const lead = units[0];
-    const range = units.reduce((max, unit) => Math.max(max, unitVisionRange(unit)), UNIT_VISION_BASE_RANGE);
+    const range = units.reduce((max, unit) => Math.max(max, unitVisionRange(unit)), V39_UNIT_VISION_BASE_RANGE);
     addVisionRange(data, lead.x, lead.y, range, visible, detectionByTile, sense.scout);
   }
   const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));
@@ -246,7 +245,7 @@ function buildCurrentVision(data, faction, state, playerId) {
       const scout = (Array.isArray(names) ? names : []).reduce((sum, name) => sum + Math.max(0, Number(definitions.get(String(name))?.effects?.索敵) || 0), 0);
       if (scout <= 0) continue;
       const [x, y] = key.split(",").map(Number);
-      addVisionRange(data, x, y, UNIT_VISION_BASE_RANGE + Math.floor(scout / UNIT_VISION_SCOUT_STEP), visible, detectionByTile, scout);
+      addVisionRange(data, x, y, V39_UNIT_VISION_BASE_RANGE + Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP), visible, detectionByTile, scout);
     }
   }
   return { visible, detectionByTile };

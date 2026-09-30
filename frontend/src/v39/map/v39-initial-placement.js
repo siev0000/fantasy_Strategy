@@ -495,6 +495,16 @@ function autoPlaceInitialBases(playerId) {
   if (previousActivePlayerId && getGameState()?.players?.some(row => text(row?.id) === previousActivePlayerId)) {
     window.setV39GameState?.({ activePlayerId:previousActivePlayerId }, { reason:"initial-placement-auto-complete" });
   }
+  // TEST ONなどの自動配置も、手動配置と同じワールド初期化イベントを1回だけ通す。
+  const completedState = getGameState();
+  const allPlaced = !(completedState?.players || []).some(needsInitialPlacement);
+  const sitesGenerated = Object.keys(completedState?.explorationSitesByTile || {}).length > 0
+    || Object.keys(completedState?.victoryLandmarksByTile || {}).length > 0;
+  if (allPlaced && !sitesGenerated) {
+    window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
+      detail:{ playerId:player.id, auto:true, mapData:fieldMapData() }
+    }));
+  }
   return { ok:true, playerId:player.id };
 }
 

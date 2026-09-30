@@ -1326,6 +1326,23 @@ window.addEventListener("v39:tile-selected", (event) => {
     target:terrainAdjusted(params?.target)
   });
   window.executeV39EnemyCombatAction = performEnemyAttack;
+  // 操作中プレイヤーを切り替えず、NPC国家AIなどが既存の勢力戦闘処理を使う入口。
+  window.executeV39FactionCombatAction = ({ playerId, attackerId, targetUnitId, target, skillRow, apPaid = false } = {}) => {
+    const state = window.getV39GameState?.();
+    const targetUnit = state?.players?.flatMap(player => player?.factionState?.units || [])
+      .find(unit => text(unit?.id) === text(targetUnitId))
+      || state?.enemies?.find(unit => text(unit?.id) === text(targetUnitId));
+    const point = target && Number.isFinite(Number(target.x)) && Number.isFinite(Number(target.y))
+      ? target
+      : targetUnit ? { x:targetUnit.x, y:targetUnit.y } : null;
+    if (!point || !text(playerId) || !text(attackerId) || !skillRow) return false;
+    return performAttack(point, {
+      playerId:text(playerId),
+      unitId:text(attackerId),
+      skillName:text(skillRow?.名前),
+      skillRow
+    }, { apPaid });
+  };
   window.executeV39NeutralVillageGuardCombatAction = performNeutralVillageGuardAttack;
   window.runV39NeutralVillageDefenseTurn = runNeutralVillageDefenseTurn;
   window.executeV39CounterAction = executeCounterAction;

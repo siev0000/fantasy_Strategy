@@ -8,6 +8,7 @@ import {
 } from "./game-data-registry.js";
 import { V39_DIPLOMACY_BALANCE } from "./v39-gameplay-balance.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
+import { hasV39DiscoveredFaction } from "./v39-faction-intelligence-rules.js";
 
 export const WAR_DECLARATION_DIPLOMACY_PENALTY = -20;
 export const WAR_DECLARATION_PENALTY_TURNS = 20;
@@ -204,6 +205,8 @@ export function advanceV39DiplomacyTurn(state, turnNumber) {
     if (ai?.isPlayer !== false) continue;
     for (const target of working.players || []) {
       if (target.id === ai.id) continue;
+      // 未発見の勢力は外交判断の対象にしない。発見記録は索敵ルールからだけ作られる。
+      if (!hasV39DiscoveredFaction(ai, target.id)) continue;
       let relation = getV39DiplomacyRelation(working, ai.id, target.id);
       if (relation.status !== "war" && Number(relation.relationValue) <= V39_DIPLOMACY_BALANCE.hostileThreshold && !activeTreaty(relation, "nonAggression", turn) && !activeTreaty(relation, "alliance", turn)) {
         working = declareV39War(working, ai.id, target.id, turn);

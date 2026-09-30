@@ -23618,7 +23618,8 @@ watch(() => props.characterCommand, command => {
               <option value="48x48">大 (48x48 = 2304マス)</option>
               <option value="60x60">特大 (60x60 = 3600マス)</option>
               <option value="72x72">超特大 (72x72 = 5184マス)</option>
-              <option value="83x83">最大 (83x83 = 6889マス)</option>
+              <option value="83x83">最大級 (83x83 = 6889マス)</option>
+              <option value="100x100">最大 (100x100 = 10000マス)</option>
             </select>
           </label>
           <label>島形状パターン

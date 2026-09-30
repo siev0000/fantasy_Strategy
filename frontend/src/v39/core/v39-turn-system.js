@@ -29,13 +29,15 @@ function isDead(unit) {
 }
 
 function normalizeTimeline(value = {}, players = [], fallbackActivePlayerId = "") {
+  // NPC勢力はターン操作の担当者ではなく、解決フェーズの勢力AIで動かす。
+  const turnPlayers = (Array.isArray(players) ? players : []).filter(player => player?.isPlayer !== false);
   return {
     turnNumber: Math.max(1, Math.floor(number(value.turnNumber, DEFAULT_TIMELINE.turnNumber))),
     phase:Object.values(V39_TURN_PHASE).includes(value.phase) ? value.phase : V39_TURN_PHASE.PLAYER,
     paused: value.paused === true,
     lastResolvedTurn:Math.max(0, Math.floor(number(value.lastResolvedTurn, 0))),
     lastStageSequence:Array.isArray(value.lastStageSequence) ? value.lastStageSequence.map(String) : [],
-    ...normalizeV39PlayerTurnTimeline(value, players, fallbackActivePlayerId)
+    ...normalizeV39PlayerTurnTimeline(value, turnPlayers, fallbackActivePlayerId)
   };
 }
 
@@ -243,7 +245,11 @@ export async function advanceTurn() {
   try {
     const before = normalizeTimeline(state.timeline, state.players, state.activePlayerId);
     if (before.phase !== V39_TURN_PHASE.PLAYER) return false;
-    const playerTimeline = normalizeV39PlayerTurnTimeline(before, state.players, state.activePlayerId);
+    const playerTimeline = normalizeV39PlayerTurnTimeline(
+      before,
+      (state.players || []).filter(player => player?.isPlayer !== false),
+      state.activePlayerId
+    );
     const currentPlayerId = playerTimeline.activeTurnPlayerId || state.activePlayerId;
     const endedPlayerIds = [...new Set([...playerTimeline.endedPlayerIds, currentPlayerId])];
     const nextPlayerId = playerTimeline.playerTurnOrder.find(playerId => !endedPlayerIds.includes(playerId));

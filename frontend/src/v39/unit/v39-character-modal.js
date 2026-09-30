@@ -1,6 +1,7 @@
 import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../../constants/unitCommon.js";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
+import { resolveUnitArtwork } from "../../lib/map-entity-artwork.js";
 
 let activeTab = "character";
 let selectedId = "";
@@ -16,6 +17,39 @@ const escapeHtml = (value) => text(value)
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#39;");
 const isDead = (unit) => text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0;
+
+function percent(current, maximum) {
+  const max = Math.max(1, number(maximum, 1));
+  return Math.max(0, Math.min(100, (Math.max(0, number(current, 0)) / max) * 100));
+}
+
+function unitRowIcon(unit) {
+  const artwork = resolveUnitArtwork(unit);
+  // スプライトシート全体を縮小表示せず、単体画像または既存アイコンだけを使う。
+  if (artwork?.type !== "unit-sheet" && text(artwork?.src)) {
+    return `<img src="${escapeHtml(artwork.src)}" alt="" class="v39-char-row-icon">`;
+  }
+  const glyph = text(unit?.unitType).includes("軍隊") ? "兵" : "◆";
+  return `<span class="v39-char-row-icon v39-char-row-icon-fallback" aria-hidden="true">${glyph}</span>`;
+}
+
+function unitListRow(unit, id, selected) {
+  const hp = Math.max(0, number(unit?.hp, unit?.currentHp));
+  const maxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || 1));
+  const ap = Math.max(0, number(unit?.ap, unit?.currentAp));
+  const maxAp = Math.max(1, number(unit?.maxAp, 100));
+  const dead = isDead(unit);
+  const name = text(unit?.name || unit?.id, "名称不明");
+  const level = Math.max(1, Math.floor(number(unit?.level, 1)));
+  return `<button class="char-row v39-char-unit-row${selected ? " active" : ""}${dead ? " dead" : ""}" data-v39-character-row="${escapeHtml(id)}" title="${escapeHtml(name)} Lv${level}">
+    ${unitRowIcon(unit)}
+    <span class="v39-char-row-body">
+      <span class="v39-char-row-head"><strong>${escapeHtml(name)}</strong><b>Lv${level}</b></span>
+      <span class="v39-char-row-vital"><i>HP</i><span><em style="width:${percent(hp, maxHp)}%"></em><b>${Math.floor(hp)}/${Math.floor(maxHp)}</b></span></span>
+      <span class="v39-char-row-vital ap"><i>AP</i><span><em style="width:${percent(ap, maxAp)}%"></em><b>${Math.floor(ap)}/${Math.floor(maxAp)}</b></span></span>
+    </span>
+  </button>`;
+}
 
 function faction() {
   return window.getV39ActiveFactionState?.() || null;
@@ -192,9 +226,8 @@ function render() {
     <div class="character-layout">
       <div class="list-pane">${rows.map((row, index) => {
         const id = idFor(row, index);
-        const label = activeTab === "squad"
-          ? `${row.name || row.label || row.id}`
-          : `${row.name || row.id}　Lv${number(row.level, 1)}`;
+        if (activeTab !== "squad") return unitListRow(row, id, id === selectedId);
+        const label = `${row.name || row.label || row.id}`;
         return `<button class="char-row${id === selectedId ? " active" : ""}" data-v39-character-row="${escapeHtml(id)}">${escapeHtml(label)}</button>`;
       }).join("") || '<div class="char-row">該当なし</div>'}</div>
       ${activeTab === "squad" ? squadDetail(selected, current) : unitDetail(selected)}
@@ -255,8 +288,26 @@ function installStyles() {
     #characterModal .v39-char-technique-meta>span{display:grid;gap:1px;border:1px solid #31464d;border-radius:5px;padding:4px 6px}
     #characterModal .v39-char-technique-meta small{color:#91a3a7}
     #characterModal .v39-char-technique-card p{margin:7px 0 0;color:#d5dfde;line-height:1.45}
+    #characterModal .character-layout{grid-template-columns:minmax(150px,190px) minmax(0,1fr)}
+    #characterModal .list-pane{display:grid;grid-auto-rows:max-content;align-content:start;gap:4px;padding:4px;overflow:auto}
+    #characterModal .list-pane>.char-row{margin:0;min-height:0}
+    #characterModal .v39-char-unit-row{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;gap:5px;padding:4px;line-height:1;color:#e6efed}
+    #characterModal .v39-char-unit-row.active{border-width:1px;background:#17323a;box-shadow:inset 0 0 0 1px rgba(101,212,230,.26)}
+    #characterModal .v39-char-unit-row.dead{opacity:.65;border-color:rgba(184,104,96,.7)}
+    #characterModal .v39-char-row-icon{width:30px;height:30px;border:1px solid #41565d;border-radius:4px;background:#223138;object-fit:cover}
+    #characterModal .v39-char-row-icon-fallback{display:grid;place-items:center;color:#dce8e7;font-size:13px;font-weight:900}
+    #characterModal .v39-char-row-body{display:grid;gap:3px;min-width:0}
+    #characterModal .v39-char-row-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px;min-width:0}
+    #characterModal .v39-char-row-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+    #characterModal .v39-char-row-head b{padding:1px 3px;border:1px solid #536a70;border-radius:4px;color:#d8e5e2;font-size:9px;white-space:nowrap}
+    #characterModal .v39-char-row-vital{display:grid;grid-template-columns:15px minmax(0,1fr);align-items:center;gap:3px;min-width:0}
+    #characterModal .v39-char-row-vital>i{color:#a8b8ba;font-size:8px;font-style:normal;font-weight:800}
+    #characterModal .v39-char-row-vital>span{position:relative;display:block;height:8px;overflow:hidden;border:1px solid #566a70;border-radius:4px;background:#10191d}
+    #characterModal .v39-char-row-vital em{position:absolute;inset:0 auto 0 0;background:#54c689}
+    #characterModal .v39-char-row-vital.ap em{background:#60b9db}
+    #characterModal .v39-char-row-vital b{position:relative;z-index:1;display:block;color:#edf5f2;font-size:7px;font-weight:800;line-height:6px;text-align:center;white-space:nowrap}
     @media(max-width:760px){
-      #characterModal .character-layout{grid-template-columns:minmax(92px,28%) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+      #characterModal .character-layout{grid-template-columns:minmax(116px,30%) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
       #characterModal .v39-char-unit-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
       #characterModal .v39-char-detail-tabs button{font-size:12px;padding:4px 2px}
       #characterModal .v39-char-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}

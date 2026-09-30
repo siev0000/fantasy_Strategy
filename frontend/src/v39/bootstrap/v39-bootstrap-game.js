@@ -12,6 +12,8 @@ import "../map/v39-map-visibility.js";
 import "../map/v39-map-entities.js";
 import "../unit/v39-unit-movement.js";
 import "../world/v39-exploration-ui.js";
+import "../world/v39-victory-guard-spawn.js";
+import "../world/v39-faction-territory-assault.js";
 import "../world/v39-world-population.js";
 import "../world/v39-natural-events.js";
 import "../core/v39-activity-log.js";

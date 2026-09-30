@@ -1,6 +1,6 @@
 import { generateIsland as generateRealisticIsland } from "./realistic-island.js";
 import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
-import { getHexNeighborCoords as getSharedHexNeighborCoords } from "./hex-grid.js";
+import { getHexDistance, getHexNeighborCoords as getSharedHexNeighborCoords } from "./hex-grid.js";
 import { getGameDataRows } from "./game-data-registry.js";
 
 function jsonNumber(row, key, fallback) {
@@ -2476,6 +2476,291 @@ function ensureIslandRelief(grid, 高度マップ, minIslandSize, minReliefTiles
   return placed;
 }
 
+function collectVictorySupportTiles(grid, w, h, anchor, requiredCount, reservedKeys) {
+  const anchorKey = coordKey(anchor.x, anchor.y);
+  if (reservedKeys.has(anchorKey)) return [];
+  const queue = [anchor];
+  const visited = new Set([anchorKey]);
+  const tiles = [];
+  while (queue.length && tiles.length < requiredCount) {
+    const current = queue.shift();
+    const key = coordKey(current.x, current.y);
+    const terrain = grid[current.y]?.[current.x];
+    if (reservedKeys.has(key) || terrain === "海" || terrain === "湖" || terrain === "河川") continue;
+    tiles.push(current);
+    const neighbors = getHexNeighborCoords(w, h, current.x, current.y)
+      .filter(next => !visited.has(coordKey(next.x, next.y)))
+      .sort((left, right) => (
+        getHexDistance(left, anchor) - getHexDistance(right, anchor)
+        || left.y - right.y
+        || left.x - right.x
+      ));
+    for (const next of neighbors) {
+      visited.add(coordKey(next.x, next.y));
+      queue.push(next);
+    }
+  }
+  return tiles.length >= requiredCount ? tiles : [];
+}
+
+function collectIrregularVictorySupportTiles(grid, w, h, anchor, requiredCount, reservedKeys, coreRadius, minimumExtentRadius, maximumRadius) {
+  const coreCount = hexRegionTileCount(coreRadius);
+  const coreTiles = collectVictorySupportTiles(grid, w, h, anchor, coreCount, reservedKeys);
+  if (coreTiles.length !== coreCount || coreTiles.some(tile => getHexDistance(tile, anchor) > coreRadius)) return [];
+
+  const selected = new Map(coreTiles.map(tile => [coordKey(tile.x, tile.y), tile]));
+  const isEligible = tile => {
+    const key = coordKey(tile.x, tile.y);
+    const terrain = grid[tile.y]?.[tile.x];
+    return !selected.has(key)
+      && !reservedKeys.has(key)
+      && terrain !== "海"
+      && terrain !== "湖"
+      && terrain !== "河川"
+      && getHexDistance(tile, anchor) <= maximumRadius;
+  };
+
+  // 必要核から外へ張り出しを先に作り、同面積でも正六角形にならないことを保証する。
+  const boundary = coreTiles.filter(tile => getHexDistance(tile, anchor) === coreRadius);
+  let protrusion = boundary[Math.floor(Math.random() * boundary.length)];
+  while (protrusion && getHexDistance(protrusion, anchor) < minimumExtentRadius) {
+    const outward = getHexNeighborCoords(w, h, protrusion.x, protrusion.y)
+      .filter(isEligible)
+      .filter(tile => getHexDistance(tile, anchor) > getHexDistance(protrusion, anchor))
+      .sort(() => Math.random() - 0.5);
+    protrusion = outward[0];
+    if (!protrusion) return [];
+    selected.set(coordKey(protrusion.x, protrusion.y), protrusion);
+  }
+
+  const frontier = new Map();
+  const addFrontier = tile => {
+    const key = coordKey(tile.x, tile.y);
+    const terrain = grid[tile.y]?.[tile.x];
+    if (selected.has(key) || frontier.has(key) || reservedKeys.has(key)) return;
+    if (terrain === "海" || terrain === "湖" || terrain === "河川") return;
+    const distance = getHexDistance(tile, anchor);
+    if (distance > maximumRadius) return;
+    frontier.set(key, { ...tile, key, distance, randomWeight:Math.random() });
+  };
+  for (const tile of selected.values()) {
+    for (const neighbor of getHexNeighborCoords(w, h, tile.x, tile.y)) addFrontier(neighbor);
+  }
+
+  while (selected.size < requiredCount && frontier.size) {
+    const candidates = [...frontier.values()].map(tile => ({
+      ...tile,
+      selectedNeighbors:getHexNeighborCoords(w, h, tile.x, tile.y)
+        .filter(neighbor => selected.has(coordKey(neighbor.x, neighbor.y))).length
+    }));
+    candidates.sort((left, right) => (
+      left.distance - right.distance
+      || right.selectedNeighbors - left.selectedNeighbors
+      || left.randomWeight - right.randomWeight
+    ));
+    // 同じ距離の外縁では乱数を優先し、整った六角形になる前に外側へ枝を伸ばす。
+    const nearestDistance = candidates[0].distance;
+    const nearCandidates = candidates.filter(tile => tile.distance <= nearestDistance + 1);
+    nearCandidates.sort((left, right) => (
+      left.randomWeight - right.randomWeight
+      || right.selectedNeighbors - left.selectedNeighbors
+    ));
+    const chosen = nearCandidates[0];
+    frontier.delete(chosen.key);
+    selected.set(chosen.key, chosen);
+    for (const neighbor of getHexNeighborCoords(w, h, chosen.x, chosen.y)) addFrontier(neighbor);
+  }
+  return selected.size >= requiredCount ? [...selected.values()].slice(0, requiredCount) : [];
+}
+
+function hexRegionTileCount(radius) {
+  const safeRadius = Math.max(0, Math.floor(Number(radius) || 0));
+  return 1 + (3 * safeRadius * (safeRadius + 1));
+}
+
+// 勝利対象の種類を先に決め、対象が成立する連結地形帯を通常地形へ組み込む。
+// 初期拠点との距離は後段で判定するため、ここでは対象同士の分散だけを保証する。
+function applyVictoryLandmarkTerrainPlan(grid, reliefMap, 高度マップ, w, h, plan) {
+  const landmarks = Array.isArray(plan?.terrainCandidates) && plan.terrainCandidates.length
+    ? plan.terrainCandidates
+    : (Array.isArray(plan?.landmarks) ? plan.landmarks : []);
+  const minimumRegionSize = Math.max(1, Math.ceil(
+    (Number(plan?.minimumRegionSize) || 1) * (Number(plan?.supportRegionScale) || 1)
+  ));
+  const highlandRawHeight = clamp(Number(plan?.highlandRawHeight) || 82, 1, 100);
+  const minimumSeparation = Math.max(1, Math.ceil(
+    Math.max(w, h) * (Number(plan?.landmarkSeparationRate) || 0.24)
+  ));
+  const anchorRingRate = clamp(Number(plan?.anchorRingRate) || 0.28, 0, 0.45);
+  const generationRule = plan?.terrainGeneration || {};
+  const snowRows = clamp(Math.floor(Number(地形生成設定.気候帯?.北端雪原帯行数) || 0), 0, h);
+  const reservedKeys = new Set();
+  const anchors = [];
+  const regions = [];
+  const terrainKind = terrain => terrain !== "海" && terrain !== "湖" && terrain !== "河川";
+
+  const landCandidates = [];
+  for (let y = snowRows; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (!terrainKind(grid[y]?.[x])) continue;
+      landCandidates.push({
+        x,
+        y,
+        height:Number(高度マップ?.[y]?.[x]) || 0,
+        edgeDistance:Math.min(x, y, w - 1 - x, h - 1 - y)
+      });
+    }
+  }
+
+  const highlandPlans = landmarks.filter(row => ["mountain", "high-forest", "volcano"].includes(String(row?.profile?.generation || "")));
+  for (let index = 0; index < highlandPlans.length; index += 1) {
+    const landmark = highlandPlans[index];
+    const generation = String(landmark?.profile?.generation || "");
+    const supportRadius = generation === "high-forest"
+      ? Math.max(1, Math.floor(Number(generationRule.twilightForestRadius) || 7))
+      : generation === "volcano"
+        ? Math.max(1, Math.floor(Number(generationRule.starMountainRadius) || 3))
+        : Math.max(1, Math.floor(Number(generationRule.sunMountainRadius) || 3));
+    const compactRequiredCount = hexRegionTileCount(supportRadius);
+    const requiredCount = generation === "high-forest"
+      ? Math.max(minimumRegionSize, hexRegionTileCount(supportRadius))
+      : compactRequiredCount + Math.ceil(compactRequiredCount * Math.max(0, Number(generationRule.compactSupportExtraTileRate) || 0.5));
+    const angle = ((index + 0.5) / Math.max(1, highlandPlans.length)) * Math.PI * 2;
+    const target = {
+      x:(w - 1) * (0.5 + Math.cos(angle) * anchorRingRate),
+      y:(h - 1) * (0.5 + Math.sin(angle) * anchorRingRate)
+    };
+    const candidates = landCandidates
+      .filter(tile => anchors.every(anchor => getHexDistance(tile, anchor) >= minimumSeparation))
+      .sort((left, right) => {
+        const leftTargetDistance = Math.hypot(left.x - target.x, left.y - target.y);
+        const rightTargetDistance = Math.hypot(right.x - target.x, right.y - target.y);
+        return leftTargetDistance - rightTargetDistance
+          || right.edgeDistance - left.edgeDistance
+          || right.height - left.height
+          || left.y - right.y
+          || left.x - right.x;
+      });
+
+    let anchor = null;
+    let tiles = [];
+    for (const candidate of candidates) {
+      const coreRadius = Math.max(3, Math.floor(Number(generationRule.landmarkFootprintRadius) || 1) + Math.floor(Number(generationRule.requiredOuterRingRadius) || 2));
+      const collected = collectIrregularVictorySupportTiles(
+        grid,
+        w,
+        h,
+        candidate,
+        requiredCount,
+        reservedKeys,
+        coreRadius,
+        Math.min(supportRadius + 1, Math.max(coreRadius, supportRadius) + Math.max(0, Math.floor(Number(generationRule.supportIrregularExtraRadius) || 2))),
+        Math.max(coreRadius, supportRadius) + Math.max(0, Math.floor(Number(generationRule.supportIrregularExtraRadius) || 2))
+      );
+      if (!collected.length) continue;
+      anchor = candidate;
+      tiles = collected;
+      break;
+    }
+    if (!anchor) {
+      regions.push({ landmarkId:landmark.landmarkId, generation, generated:false, reason:"連結陸地不足" });
+      continue;
+    }
+
+    anchors.push(anchor);
+    for (const tile of tiles) {
+      const key = coordKey(tile.x, tile.y);
+      reservedKeys.add(key);
+      高度マップ[tile.y][tile.x] = Math.max(Number(高度マップ[tile.y][tile.x]) || 0, highlandRawHeight);
+      if (generation === "high-forest") {
+        grid[tile.y][tile.x] = "森";
+        reliefMap[tile.y][tile.x] = "丘陵";
+      } else {
+        grid[tile.y][tile.x] = "山岳";
+        reliefMap[tile.y][tile.x] = "山岳";
+      }
+    }
+    if (generation === "volcano") {
+      grid[anchor.y][anchor.x] = "火山";
+      reliefMap[anchor.y][anchor.x] = "山岳";
+      const tileKeys = new Set(tiles.map(tile => coordKey(tile.x, tile.y)));
+      const adjacentVolcanoes = getHexNeighborCoords(w, h, anchor.x, anchor.y)
+        .filter(tile => tileKeys.has(coordKey(tile.x, tile.y)))
+        .slice(0, Math.max(0, Math.floor(Number(generationRule.starAdjacentVolcanoCount) || 0)));
+      for (const tile of adjacentVolcanoes) {
+        grid[tile.y][tile.x] = "火山";
+        reliefMap[tile.y][tile.x] = "山岳";
+      }
+    }
+    regions.push({
+      landmarkId:landmark.landmarkId,
+      generation,
+      generated:true,
+      anchor:{ x:anchor.x, y:anchor.y },
+      radius:supportRadius,
+      extentRadius:Math.max(...tiles.map(tile => getHexDistance(tile, anchor))),
+      shape:"irregular",
+      size:tiles.length,
+      tileKeys:tiles.map(tile => coordKey(tile.x, tile.y)),
+      volcanoTileKeys:generation === "volcano"
+        ? tiles.filter(tile => grid[tile.y][tile.x] === "火山").map(tile => coordKey(tile.x, tile.y))
+        : []
+    });
+  }
+
+  for (const landmark of landmarks.filter(row => String(row?.profile?.generation || "") === "deep-sea")) {
+    regions.push({
+      landmarkId:landmark.landmarkId,
+      generation:"deep-sea",
+      generated:true,
+      source:"島生成時の海域"
+    });
+  }
+  return { minimumRegionSize, minimumSeparation, regions };
+}
+
+function applyVictoryLandmarkHeightOverrides(heightLevelMap, grid, victoryTerrainSupport, generationRule = {}) {
+  const regions = (victoryTerrainSupport?.regions || []).filter(row => row?.generated && row?.anchor && row?.generation !== "deep-sea");
+  const sunRegion = regions.find(row => row?.landmarkId === "勝利対象:太陽の山");
+  const sunAnchor = sunRegion?.anchor;
+  let maximumLevel = Number.NEGATIVE_INFINITY;
+  for (let y = 0; y < heightLevelMap.length; y += 1) {
+    for (let x = 0; x < (heightLevelMap[y]?.length || 0); x += 1) {
+      if (x === sunAnchor?.x && y === sunAnchor?.y) continue;
+      const level = Number(heightLevelMap[y][x]);
+      if (Number.isFinite(level)) maximumLevel = Math.max(maximumLevel, level);
+    }
+  }
+  const slopeStep = Math.max(1, Math.floor(Number(generationRule.heightSlopePerRing) || 1));
+  for (const region of regions) {
+    const anchor = region.anchor;
+    if (!Array.isArray(heightLevelMap?.[anchor.y])) continue;
+    const isSun = region.landmarkId === "勝利対象:太陽の山";
+    const currentPeak = Number(heightLevelMap[anchor.y][anchor.x]);
+    const peakLevel = isSun
+      ? (Number.isFinite(maximumLevel) ? maximumLevel : currentPeak || 0) + 1
+      : Math.max(3, Number.isFinite(currentPeak) ? currentPeak : 3);
+    const supportKeys = new Set(Array.isArray(region.tileKeys) ? region.tileKeys : []);
+    const slopeRadius = Math.max(Number(region.extentRadius) || Number(region.radius) || 0, Math.ceil((peakLevel + 1) / slopeStep));
+    for (let y = 0; y < heightLevelMap.length; y += 1) {
+      for (let x = 0; x < (heightLevelMap[y]?.length || 0); x += 1) {
+        if (["海", "湖"].includes(grid?.[y]?.[x])) continue;
+        const distance = getHexDistance({ x, y }, anchor);
+        if (distance > slopeRadius) continue;
+        const desiredLevel = Math.max(-1, peakLevel - (distance * slopeStep));
+        const key = coordKey(x, y);
+        heightLevelMap[y][x] = supportKeys.has(key)
+          ? desiredLevel
+          : Math.max(Number(heightLevelMap[y][x]) || 0, desiredLevel);
+      }
+    }
+    region.highestHeightLevel = peakLevel;
+    region.heightSlopePerRing = slopeStep;
+    region.heightSlopeRadius = slopeRadius;
+    if (isSun) region.heightBonus = 1;
+  }
+}
+
 function buildMountainProfile(山岳上限枚数, preferredMode = "random", mapW = 36, mapH = 36) {
   const rule = 地形生成設定.山岳塊;
   const candidates = Array.isArray(rule.モード候補) && rule.モード候補.length
@@ -4765,7 +5050,7 @@ function createIslandShapeData({ w, h, patternId = "balanced", islandCustomSetti
   };
 }
 
-function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "random", islandCustomSettings = null }) {
+function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "random", islandCustomSettings = null, victoryLandmarkPlan = null }) {
   const totalTiles = w * h;
   const grid = buildInitialGrid(w, h, "海");
   const { patternName, islandGenerationInfo } = generateIslands(grid, w, h, totalTiles, patternId, {
@@ -4953,10 +5238,21 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     dormantCount: dormantVolcanoData.dormantSet.size,
     eruptedCount: volcanoTurnResult.eruptedSet.size,
     eruptedEvents: volcanoTurnResult.events,
-    volcanoCount: listCoordsByTerrain(grid, "火山").length
+    volcanoCount:0
   };
 
+  const victoryTerrainSupport = applyVictoryLandmarkTerrainPlan(
+    grid,
+    reliefMap,
+    高度マップ,
+    w,
+    h,
+    victoryLandmarkPlan
+  );
+  volcanoData.volcanoCount = listCoordsByTerrain(grid, "火山").length;
+
   const 高度レベルマップ = buildHeightLevelMap(grid, 高度マップ, w, h);
+  applyVictoryLandmarkHeightOverrides(高度レベルマップ, grid, victoryTerrainSupport, victoryLandmarkPlan?.terrainGeneration);
   const riverRawData = generateRivers(
     grid,
     w,
@@ -4992,6 +5288,8 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     riverData,
     heightMap: 高度マップ,
     heightLevelMap: 高度レベルマップ,
+    victoryLandmarkPlan: victoryLandmarkPlan || null,
+    victoryTerrainSupport,
     terrainRatioProfile,
     reliefMap,
     strongMonsterMap,

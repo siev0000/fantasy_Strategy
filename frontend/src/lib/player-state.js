@@ -51,6 +51,8 @@ export function createEmptyCombatRuntime(source = {}) {
 export function createEmptyExplorationState(source = {}) {
   return {
     discoveredFeaturesByTile: cloneRecord(source?.discoveredFeaturesByTile),
+    // 索敵で確認した他勢力だけを保持する。未発見勢力はここへ追加しない。
+    discoveredFactionsByPlayerId: cloneRecord(source?.discoveredFactionsByPlayerId),
     surveyedTileKeys: Array.isArray(source?.surveyedTileKeys) ? [...new Set(source.surveyedTileKeys.map(String).filter(Boolean))] : [],
     history: cloneRows(source?.history),
     lastProcessedTurn: Math.max(0, Math.floor(Number(source?.lastProcessedTurn) || 0))
@@ -81,7 +83,8 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
     aiState: {
       lastProcessedTurn: Math.max(0, Math.floor(Number(source?.aiState?.lastProcessedTurn) || 0)),
       lastCommands: Array.isArray(source?.aiState?.lastCommands) ? source.aiState.lastCommands.map(String) : [],
-      history: cloneRows(source?.aiState?.history)
+      history: cloneRows(source?.aiState?.history),
+      objective: cloneRecord(source?.aiState?.objective)
     },
     nationPolicy: {
       governmentSelections: cloneRecord(source?.nationPolicy?.governmentSelections),

@@ -241,7 +241,9 @@ function renderWorldActions() {
     section.dataset.targetId = village.id;
     kind.textContent = "一般村";
     detail.textContent = `${village.name} / Lv${village.level} / ${village.population}人 / ${getV39RelationLabel(relation)} ${relation}`;
-    const questProgress = quest?.type === "hunt" ? ` / 討伐対象 ${quest.required}体` : (quest?.accepted && !quest.completed ? ` / 必要 ${quest.required}` : "");
+    const questProgress = quest?.type === "hunt"
+      ? ` / 討伐対象 ${quest.required}体`
+      : (quest?.accepted && !quest.completed ? ` / 必要 ${quest.resourceKey || "資源"} ${quest.required}` : "");
     subdetail.textContent = `${village.vassalPlayerId ? `属国: ${village.vassalPlayerId}` : "独立"} / 守備${(village.defenseUnits || []).reduce((sum, row) => sum + number(row.count), 0)}人${quest?.accepted && !quest.completed ? ` / 依頼: ${quest.label}${questProgress}` : ""}`;
     buttons.innerHTML = [
       `<button type="button" data-world-action="relation">交流</button>`,
@@ -263,7 +265,12 @@ function runContactAction(event) {
   let result;
   if (action === "recruit") result = recruitV39Wanderer(state, playerId, section.dataset.targetId);
   else if (action === "relation") result = improveV39NeutralVillageRelation(state, playerId, section.dataset.targetId);
-  else if (action === "quest") result = acceptV39NeutralVillageQuest(state, playerId, section.dataset.targetId);
+  else if (action === "quest") result = acceptV39NeutralVillageQuest(
+    state,
+    playerId,
+    section.dataset.targetId,
+    window.__v39FieldRuntime?.mapData || null
+  );
   else if (action === "quest-complete") result = completeV39NeutralVillageQuest(state, playerId, section.dataset.targetId);
   else if (action === "vassal") result = vassalizeV39NeutralVillage(state, playerId, section.dataset.targetId);
   else if (action === "raid") result = raidV39NeutralVillage(state, playerId, section.dataset.targetId);

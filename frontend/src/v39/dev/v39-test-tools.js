@@ -385,6 +385,22 @@ function villageGuardDiagnostic(state, unitId) {
   return null;
 }
 
+function villageThreatDiagnostic(state, village) {
+  const territoryKeys = new Set((village?.territoryTileKeys || []).map(text).filter(Boolean));
+  const invadingEnemies = (state?.enemies || []).filter(unit => (
+    livingUnit(unit) && territoryKeys.has(selectedTileKey(unit))
+  ));
+  const overlappingNests = (state?.enemyNests || []).filter(nest => {
+    const radius = Math.max(0, Math.floor(number(nest?.territoryRadius)));
+    return [...territoryKeys].some(key => {
+      const [x, y] = key.split(",").map(Number);
+      return Number.isFinite(x) && Number.isFinite(y)
+        && getHexDistance({ x, y }, { x:nest?.x, y:nest?.y }) <= radius;
+    });
+  });
+  return { invadingEnemies, overlappingNests };
+}
+
 function playerLabel(state, playerId) {
   const player = (state?.players || []).find(row => text(row?.id) === text(playerId));
   return text(player?.label || player?.name || player?.id) || text(playerId) || "-";
@@ -456,6 +472,7 @@ function selectedTileBaseInfo(state, tile) {
       1
     );
     const economyDiagnostic = inspectV39NeutralVillageEconomy(neutralVillage, window.__v39FieldRuntime?.mapData);
+    const threats = villageThreatDiagnostic(state, neutralVillage);
     const estimatedIncome = [
       formatRequiredResources(economyDiagnostic.income?.food),
       formatRequiredResources(economyDiagnostic.income?.material)
@@ -474,6 +491,8 @@ function selectedTileBaseInfo(state, tile) {
         "不足候補(1T): " + formatRequiredResources(economyDiagnostic.shortageByType),
         "得意資源: " + (economyDiagnostic.favorableResourceKeys?.join(" / ") || "なし"),
         "自然アンデッド脅威: " + naturalUndead.length + "体" + (naturalUndead.length ? " / " + naturalUndead.map(unit => text(unit?.name) || "不明").join("、") : ""),
+        "実敵脅威(領域内): " + threats.invadingEnemies.length + "体" + (threats.invadingEnemies.length ? " / " + threats.invadingEnemies.map(unit => text(unit?.name) || "不明").join("、") : ""),
+        "重複する敵巣縄張り: " + threats.overlappingNests.length + "件" + (threats.overlappingNests.length ? " / " + threats.overlappingNests.map(nest => text(nest?.name || nest?.id) || "不明").join("、") : ""),
         "直近の災害被害: " + (neutralVillage?.disasterState ? "T" + Math.floor(number(neutralVillage.disasterState.turn)) + " / 人口 -" + Math.floor(number(neutralVillage.disasterState.populationLoss)) : "なし"),
         "関係: " + getV39RelationLabel(relation) + " " + relation + " / " + (neutralVillage?.vassalPlayerId ? "属国: " + text(neutralVillage.vassalPlayerId) : "独立"),
         "最近の襲撃: " + (neutralVillage?.raidState ? "T" + Math.floor(number(neutralVillage.raidState.turn)) + " / " + (neutralVillage.raidState.defended ? "防衛成功" : "防衛失敗") : "なし")

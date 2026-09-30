@@ -20,6 +20,21 @@ const DANGER_REDUCTION_BASE = 15;
 
 const coordKey = (x, y) => `${Math.floor(number(x))},${Math.floor(number(y))}`;
 
+function occupiedFeatureKeys(feature, fallbackKey) {
+  if (!isV39VictoryLandmark(feature)) return [fallbackKey];
+  const keys = Array.isArray(feature?.occupiedTileKeys) ? feature.occupiedTileKeys.map(text).filter(Boolean) : [];
+  return [...new Set(keys.length ? keys : [fallbackKey])];
+}
+
+function claimFeatureTerritory(feature, fallbackKey, playerId, settlementId, territoryOwnerByTile, territoryStateByTile) {
+  const keys = occupiedFeatureKeys(feature, fallbackKey);
+  for (const key of keys) {
+    territoryOwnerByTile[key] = playerId;
+    territoryStateByTile[key] = { status:"領土", settlementId };
+  }
+  return keys;
+}
+
 function hashText(value) {
   let hash = 2166136261;
   for (const char of String(value || "")) {
@@ -167,24 +182,49 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
       dangerPercentByTile[task.key] = Math.max(0, beforeDanger - reduction);
       const hasLivingEnemy = (state?.enemies || []).some(enemy => number(enemy.hp ?? enemy.currentHp) > 0 && coordKey(enemy.x, enemy.y) === task.key);
       const claimed = dangerPercentByTile[task.key] <= 0 && !territoryOwnerByTile[task.key] && !hasLivingEnemy;
+      let claimedTileKeys = [];
       if (claimed) {
-        territoryOwnerByTile[task.key] = player.id;
-        territoryStateByTile[task.key] = {
-          status:"領土",
-          settlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id)
-        };
+        claimedTileKeys = claimFeatureTerritory(
+          site,
+          task.key,
+          player.id,
+          text(selectedSettlement?.settlementId || selectedSettlement?.id),
+          territoryOwnerByTile,
+          territoryStateByTile
+        );
       }
       const foundText = [feature?.name, groundLootDiscovered ? "残留品" : ""].filter(Boolean).join(" / ") || "異常なし";
-      const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key:task.key, featureId:feature?.id || "", featureName:feature?.name || "", groundLootDiscovered, dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[task.key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${task.key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
+      const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key:task.key, claimedTileKeys, featureId:feature?.id || "", featureName:feature?.name || "", groundLootDiscovered, dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[task.key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${task.key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
       reports.push(report); history.push(report); activityLog = appendLog({ activityLog }, report);
       const { surveyTask, ...rest } = unit;
       return rest;
     });
+    // 勝利対象は守護排除後に同じ地点へ再調査できないため、発見済み・到達済みなら通常領土化を再判定する。
+    const occupiedByLivingUnit = new Set(units
+      .filter(unit => number(unit?.hp ?? unit?.currentHp) > 0 && text(unit?.state || unit?.statusName) !== "死亡")
+      .map(unit => coordKey(unit?.x, unit?.y)));
+    for (const [key, feature] of Object.entries(discoveredFeaturesByTile)) {
+      if (!isV39VictoryLandmark(feature) || territoryOwnerByTile[key] || !occupiedByLivingUnit.has(key)) continue;
+      const hasLivingEnemy = (state?.enemies || []).some(enemy => number(enemy?.hp ?? enemy?.currentHp) > 0 && coordKey(enemy.x, enemy.y) === key);
+      if (number(dangerPercentByTile[key]) > 0 || hasLivingEnemy) continue;
+      const claimedTileKeys = claimFeatureTerritory(
+        feature,
+        key,
+        player.id,
+        text(selectedSettlement?.settlementId || selectedSettlement?.id),
+        territoryOwnerByTile,
+        territoryStateByTile
+      );
+      const report = { type:"victory-landmark-claimed", playerId:player.id, key, claimedTileKeys, featureId:feature?.id || "", featureName:feature?.name || "", claimed:true, turn, message:`勝利対象を領土化: ${text(feature?.name) || key}` };
+      reports.push(report); history.push(report); activityLog = appendLog({ activityLog }, report);
+    }
     const territoryTileModeMap = { ...(selectedSettlement?.territoryTileModeMap || {}) };
-    for (const report of reports.filter(row => row.playerId === player.id && row.claimed)) territoryTileModeMap[report.key] = "resource";
+    for (const report of reports.filter(row => row.playerId === player.id && row.claimed)) {
+      for (const key of (report.claimedTileKeys?.length ? report.claimedTileKeys : [report.key])) territoryTileModeMap[key] = "resource";
+    }
     const factionState = selectedSettlement
-      ? replaceFactionSettlement({ ...faction, units, activityLog, exploration:{ discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } }, { ...selectedSettlement, territoryTileModeMap }, { ownerPlayerId:player.id })
-      : { ...faction, units, activityLog, exploration:{ discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } };
+      ? replaceFactionSettlement({ ...faction, units, activityLog, exploration:{ ...exploration, discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } }, { ...selectedSettlement, territoryTileModeMap }, { ownerPlayerId:player.id })
+      : { ...faction, units, activityLog, exploration:{ ...exploration, discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } };
     return { ...player, factionState };
   });
   return { state:{ ...state, players, dangerPercentByTile, territoryOwnerByTile, territoryStateByTile, groundLootByTile }, reports };

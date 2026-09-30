@@ -7,6 +7,7 @@ import {
   startV39SurveyTask
 } from "../../lib/v39-exploration-rules.js";
 import { generateV39VictoryLandmarks } from "../../lib/v39-victory-landmarks.js";
+import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 
 let selectedTile = null;
@@ -93,14 +94,27 @@ function runSurvey() {
   return result;
 }
 
+function initialSettlementPositions(state) {
+  return (state?.players || []).flatMap(player => getFactionSettlements(player?.factionState)
+    .filter(settlement => settlement?.placed && Number.isFinite(Number(settlement?.x)) && Number.isFinite(Number(settlement?.y)))
+    .map(settlement => ({ x:Math.floor(Number(settlement.x)), y:Math.floor(Number(settlement.y)) })));
+}
+
 function initializeSites(event) {
   const state = window.getV39GameState?.();
   const mapData = event?.detail?.mapData || window.__v39FieldRuntime?.mapData;
   if (!state || !mapData || event?.detail?.restored) return;
   const patternId = event?.detail?.settings?.patternId || window.__v39FieldRuntime?.settings?.patternId || mapData.patternId || "realistic";
   const seed = `${mapData.w}x${mapData.h}:${patternId}`;
-  const victoryLandmarksByTile = generateV39VictoryLandmarks(mapData, { seed, patternId });
-  const normalSitesByTile = generateV39ExplorationSites(mapData, { seed, reservedTileKeys:Object.keys(victoryLandmarksByTile) });
+  const victoryLandmarksByTile = generateV39VictoryLandmarks(mapData, {
+    seed,
+    patternId,
+    startPositions:initialSettlementPositions(state)
+  });
+  const reservedTileKeys = Object.values(victoryLandmarksByTile)
+    .flatMap(landmark => Array.isArray(landmark?.occupiedTileKeys) ? landmark.occupiedTileKeys : [landmark?.key])
+    .filter(Boolean);
+  const normalSitesByTile = generateV39ExplorationSites(mapData, { seed, reservedTileKeys });
   // Survey dispatch stays in one map; the dedicated record keeps landmark state queryable without type inference.
   const explorationSitesByTile = { ...normalSitesByTile, ...victoryLandmarksByTile };
   const players = state.players.map(player => ({
@@ -109,6 +123,13 @@ function initializeSites(event) {
   }));
   window.setV39GameState?.({ explorationSitesByTile, victoryLandmarksByTile, players }, { reason:"exploration-sites-generated" });
   window.dispatchEvent(new CustomEvent("v39:exploration-sites-generated", { detail:{ count:Object.keys(explorationSitesByTile).length, landmarkCount:Object.keys(victoryLandmarksByTile).length } }));
+}
+
+function clearSitesForNewField(event) {
+  if (event?.detail?.restored) return;
+  const state = window.getV39GameState?.();
+  if (!state || (!Object.keys(state.explorationSitesByTile || {}).length && !Object.keys(state.victoryLandmarksByTile || {}).length)) return;
+  window.setV39GameState?.({ explorationSitesByTile:{}, victoryLandmarksByTile:{} }, { reason:"exploration-sites-cleared" });
 }
 
 function advanceTurn(event) {
@@ -130,7 +151,9 @@ function installStyles() {
   document.head.appendChild(style);
 }
 
-window.addEventListener("v39:field-generated", initializeSites);
+// 初期拠点の座標が確定してから、全開始地点から遠い候補地を生成する。
+window.addEventListener("v39:field-generated", clearSitesForNewField);
+window.addEventListener("v39:initial-placement-complete", initializeSites);
 window.addEventListener("v39:turn-stage-exploration", advanceTurn);
 window.addEventListener("v39:tile-selected", event => { selectedTile = event.detail || null; render(); });
 window.addEventListener("v39:game-state-changed", render);

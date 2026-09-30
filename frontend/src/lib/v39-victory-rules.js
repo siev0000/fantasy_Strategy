@@ -8,6 +8,14 @@ function landmarkKeys(state) {
   return Object.keys(state?.victoryLandmarksByTile || {}).sort();
 }
 
+function landmarkControlledBy(state, key, playerId) {
+  const landmark = state?.victoryLandmarksByTile?.[key];
+  const occupied = Array.isArray(landmark?.occupiedTileKeys) && landmark.occupiedTileKeys.length
+    ? landmark.occupiedTileKeys.map(text).filter(Boolean)
+    : [key];
+  return occupied.every(tileKey => text(state?.territoryOwnerByTile?.[tileKey]) === playerId);
+}
+
 function normalizeProgress(value = {}) {
   return {
     controlledLandmarkKeys:Array.isArray(value?.controlledLandmarkKeys) ? [...new Set(value.controlledLandmarkKeys.map(text).filter(Boolean))].sort() : [],
@@ -44,7 +52,7 @@ export function evaluateV39Victory(state, turnNumber = state?.timeline?.turnNumb
     const playerId = text(player?.id);
     if (!playerId) continue;
     const previous = normalizeProgress(current.progressByPlayerId?.[playerId]);
-    const controlled = keys.filter(key => text(state?.territoryOwnerByTile?.[key]) === playerId);
+    const controlled = keys.filter(key => landmarkControlledBy(state, key, playerId));
     const controlledSet = new Set(controlled);
     const controlStartedTurnByTile = {};
     for (const key of controlled) controlStartedTurnByTile[key] = previous.controlledLandmarkKeys.includes(key)

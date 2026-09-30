@@ -129,11 +129,69 @@ export const V39_VOLCANO_DAMAGE_BALANCE = Object.freeze({
   facilityEffectUsesHpRate:true
 });
 
-// 勝利対象土地の生成設定。通常は島形状に対応する1件だけを配置する。
+// 勝利対象土地の生成設定。
+// 候補地は開始拠点から離れた、対応地形が連続する地域にのみ置く。
+// 数値は勝利対象の正式データ列が追加されるまでの調整用暫定値。
 export const V39_VICTORY_LANDMARK_BALANCE = Object.freeze({
-  // 1なら島形状に対応する対象を1件だけ配置。複数を試す時だけこの値を増やす。
-  landmarkCount:1,
-  // 島形状ごとの優先対象ID。配置地形がない場合は次の候補へ移る。
+  // options.countを渡さない場合の、マップ長辺ごとの候補地数。
+  // 60x60以下は2件、72x72は3件、83x83以上では4種類すべてを候補にする。
+  candidateCountByMapMaxSide:Object.freeze([
+    Object.freeze({ maxSide:47, count:1 }),
+    Object.freeze({ maxSide:60, count:2 }),
+    Object.freeze({ maxSide:72, count:3 }),
+    Object.freeze({ maxSide:Infinity, count:4 })
+  ]),
+  // 各開始拠点から確保する最小ヘックス距離。厳格判定で候補がない時だけ緩和値を使う。
+  startDistanceRate:0.38,
+  relaxedStartDistanceRate:0.28,
+  // 同じ勝利対象候補同士を離す最小ヘックス距離。候補地が同一地域へ密集しないための値。
+  landmarkSeparationRate:0.24,
+  // 対応地形が連結している必要がある最小マス数。長辺別に緩く調整する。
+  minimumRegionTilesByMapMaxSide:Object.freeze([
+    Object.freeze({ maxSide:47, count:8 }),
+    Object.freeze({ maxSide:60, count:14 }),
+    Object.freeze({ maxSide:72, count:20 }),
+    Object.freeze({ maxSide:Infinity, count:28 })
+  ]),
+  // 地形別の高度条件。高地型は高度Lv3以上、低地型は高度Lv-1以下を要求する。
+  // 黄昏の樹も低地の森を避け、高地へ連続する広い森林を難所として使う。
+  terrainPlacementProfiles:Object.freeze({
+    "勝利対象:太陽の山":Object.freeze({ elevation:"high", generation:"mountain" }),
+    "勝利対象:黄昏の樹":Object.freeze({ elevation:"high", regionTerrain:"target", generation:"high-forest" }),
+    "勝利対象:星の火口":Object.freeze({ elevation:"high", generation:"volcano" }),
+    "勝利対象:宇宙の海":Object.freeze({ elevation:"low", generation:"deep-sea" })
+  }),
+  highElevationLevel:3,
+  lowElevationLevel:-1,
+  // マップ生成時に勝利対象用の地形帯を先に作るための暫定値。
+  terrainGeneration:Object.freeze({
+    highlandRawHeight:82,
+    supportRegionScale:1,
+    // 勝利対象用地形帯の中心を、マップ中心から長辺比でどれだけ離すか。
+    anchorRingRate:0.28,
+    // 勝利対象本体は大都市相当の半径1・7マス。その外側へ最低2リングを確保する。
+    landmarkFootprintRadius:1,
+    requiredOuterRingRadius:2,
+    // 太陽の山と星の火口を囲む最低地形帯。半径3は中心込み37マス。
+    sunMountainRadius:3,
+    starMountainRadius:3,
+    // 全勝利対象は必要核の外側も使い、整った六角形ではない不規則な外縁にする。
+    supportIrregularExtraRadius:2,
+    // 太陽の山・星の火口は最低37マスへこの割合の地形を追加して輪郭を崩す。
+    compactSupportExtraTileRate:0.5,
+    // 勝利対象の高度は中心から1マス離れるごとに1段ずつ下げ、進入不能な崖を作らない。
+    heightSlopePerRing:1,
+    // 星の火口の中心に隣接させる追加火山数。中心を含めると火山は4マスになる。
+    starAdjacentVolcanoCount:3,
+    // 黄昏の樹を囲む森林半径。半径7は直径15マス、中心込み169マス。
+    twilightForestRadiusByMapMaxSide:Object.freeze([
+      Object.freeze({ maxSide:47, radius:4 }),
+      Object.freeze({ maxSide:60, radius:5 }),
+      Object.freeze({ maxSide:72, radius:6 }),
+      Object.freeze({ maxSide:Infinity, radius:7 })
+    ])
+  }),
+  // 島形状ごとの優先対象ID。優先対象を先に評価し、残り候補数は他の勝利対象で補う。
   landmarkIdsByPattern:Object.freeze({
     realistic:Object.freeze(["勝利対象:太陽の山"]),
     balanced:Object.freeze(["勝利対象:黄昏の樹"]),
@@ -142,6 +200,17 @@ export const V39_VICTORY_LANDMARK_BALANCE = Object.freeze({
     twins:Object.freeze(["勝利対象:黄昏の樹"]),
     chain:Object.freeze(["勝利対象:星の火口"])
   })
+});
+
+// 勝利対象土地の守護編成。勝利対象土地.jsonに守護列が追加されるまでの暫定設定。
+// 敵種族・巣画像は出現敵.jsonから対象地形に合う最高Lv候補を使う。
+export const V39_VICTORY_GUARD_BALANCE = Object.freeze({
+  // 大都市相当の占有半径1と、その外側2リングを含む守護領域。
+  territoryRadius:3,
+  // ボスに加える同種配下の人数。0にすればボス単独へ変更できる。
+  minionCount:1,
+  // 配下LvをボスLvから下げる値。最低Lvは1。
+  minionLevelOffset:2
 });
 
 // 勝利対象土地の暫定勝利条件。守護ボス・勢力滅亡条件が確定するまではここだけで調整する。

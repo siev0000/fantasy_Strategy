@@ -211,7 +211,8 @@ function createModal() {
                 <option value="48x48">大 48×48（2304マス）</option>
                 <option value="60x60">特大 60×60（3600マス）</option>
                 <option value="72x72">超特大 72×72（5184マス）</option>
-                <option value="83x83">最大 83×83（6889マス）</option>
+                <option value="83x83">最大級 83×83（6889マス）</option>
+                <option value="100x100">最大 100×100（10000マス）</option>
               </select>
             </label>
             <label class="v39-setting-row">

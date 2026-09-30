@@ -519,10 +519,6 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
     if (!action) action = waitPlan(enemy, turnNumber);
   }
 
-  if (observedExplorerState) {
-    action.enemyPatch = { ...(action.enemyPatch || {}), explorationState:observedExplorerState };
-  }
-
   if (!action && target) {
     const skillRow = chooseDeterministically(attackSkillsFor(state, enemy, target, turnNumber), id, turnNumber);
     if (!skillRow) action = movePlan(state, mapData, enemy, target, turnNumber, "toward") || waitPlan(enemy, turnNumber);
@@ -533,6 +529,10 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
         : { type:"attack", enemyId:id, targetUnitId:text(target.id), turnNumber, skillRow, skillName:text(skillRow?.名前), requiresSync:true };
     }
   }
+
+  // 索敵情報は、攻撃・移動・待機のいずれかを決めてから行動計画へ載せる。
+  if (!action) action = waitPlan(enemy, turnNumber);
+  if (observedExplorerState) action.enemyPatch = { ...(action.enemyPatch || {}), explorationState:observedExplorerState };
 
   const decisionByType = {
     move:inspection?.decision === "縄張り内を徘徊" ? "縄張り内を徘徊" : inspection?.decision,
