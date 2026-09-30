@@ -18,6 +18,7 @@ const STRONG_GROUP_CHANCE_WITHOUT_COUNT = 0.3;
 const STRONG_RANDOM_MINION_MIN = 2;
 const STRONG_RANDOM_MINION_MAX = 4;
 const DEFAULT_STRONG_TERRITORY_RADIUS = V39_INITIAL_NEST_TERRITORY_RADIUS;
+const INITIAL_SPAWN_TYPES = new Set(["通常", "強敵", "強敵配下"]);
 
 const classNames = new Set(classData.map(row => text(row?.名前)).filter(Boolean));
 
@@ -37,6 +38,29 @@ function integer(value, fallback = 0) {
 
 function coordKey(x, y) {
   return `${integer(x)},${integer(y)}`;
+}
+
+function isInitialSpawnEnemy(enemy) {
+  return INITIAL_SPAWN_TYPES.has(text(enemy?.spawnType));
+}
+
+function hasInitialSpawnEnemies(state) {
+  return (Array.isArray(state?.enemies) ? state.enemies : []).some(isInitialSpawnEnemy);
+}
+
+function preserveNonInitialEnemyState(state) {
+  const enemies = (Array.isArray(state?.enemies) ? state.enemies : []).filter(enemy => !isInitialSpawnEnemy(enemy));
+  const enemyIds = new Set(enemies.map(enemy => text(enemy?.id)).filter(Boolean));
+  const enemyNests = (Array.isArray(state?.enemyNests) ? state.enemyNests : []).filter(nest => {
+    const unitIds = Array.isArray(nest?.unitIds) ? nest.unitIds.map(text).filter(Boolean) : [];
+    return unitIds.some(id => enemyIds.has(id)) || nest?.victoryGuard === true || !!text(nest?.victoryLandmarkKey);
+  });
+  const nestIds = new Set(enemyNests.map(nest => text(nest?.id)).filter(Boolean));
+  const enemySquads = (Array.isArray(state?.enemySquads) ? state.enemySquads : []).filter(squad => {
+    const unitIds = Array.isArray(squad?.unitIds) ? squad.unitIds.map(text).filter(Boolean) : [];
+    return unitIds.some(id => enemyIds.has(id)) || nestIds.has(text(squad?.nestId));
+  });
+  return { enemies, enemyNests, enemySquads };
 }
 
 function enemySpawnTileDivisor() {
@@ -679,7 +703,7 @@ function ensureInitialEnemiesSpawned(reason = "initial-placement-check") {
     const data = window.__v39FieldRuntime?.mapData;
     const state = window.getV39GameState?.();
     if (!data || !state) return;
-    if (Array.isArray(state.enemies) && state.enemies.length > 0) return;
+    if (hasInitialSpawnEnemies(state)) return;
     if (!allInitialPlacementsComplete(state)) return;
 
     const enemies = spawnForActivePlayer();
@@ -703,12 +727,16 @@ function spawnForActivePlayer() {
     .flatMap(player => getFactionSettlements(player?.factionState).filter(row => row?.placed));
   if (!data || !state || !settlements.length) return [];
   const spawnPlan = collectEnemySpawnPlan(data, settlements);
-  const enemies = spawnPlan.enemies;
-  const { enemyNests, enemySquads } = buildEnemyNestAndSquadState(enemies);
-  const strongCount = enemies.filter(enemy => enemy?.strongEnemy === true).length;
-  const strongMinionCount = enemies.filter(enemy => enemy?.strongMinion === true).length;
+  const initialEnemies = spawnPlan.enemies;
+  const initialState = buildEnemyNestAndSquadState(initialEnemies);
+  const preserved = preserveNonInitialEnemyState(state);
+  const enemies = [...preserved.enemies, ...initialEnemies];
+  const enemyNests = [...preserved.enemyNests, ...initialState.enemyNests];
+  const enemySquads = [...preserved.enemySquads, ...initialState.enemySquads];
+  const strongCount = initialEnemies.filter(enemy => enemy?.strongEnemy === true).length;
+  const strongMinionCount = initialEnemies.filter(enemy => enemy?.strongMinion === true).length;
   const strongGroupCount = new Set(
-    enemies.filter(enemy => enemy?.strongEnemy === true && enemy?.strongGroupType === "群体")
+    initialEnemies.filter(enemy => enemy?.strongEnemy === true && enemy?.strongGroupType === "群体")
       .map(enemy => enemy?.strongGroupId)
       .filter(Boolean)
   ).size;
@@ -720,7 +748,9 @@ function spawnForActivePlayer() {
   }, { reason:"enemy-spawned" });
   window.dispatchEvent(new CustomEvent("v39:enemies-spawned", {
     detail:{
-      count:enemies.length,
+      count:initialEnemies.length,
+      totalEnemyCount:enemies.length,
+      preservedEnemyCount:preserved.enemies.length,
       nestCount:enemyNests.length,
       strongCount,
       strongMinionCount,
@@ -761,6 +791,7 @@ window.inspectV39EnemySpawn = () => {
     ok:true,
     allInitialPlacementsComplete:allInitialPlacementsComplete(state),
     currentEnemyCount:Array.isArray(state.enemies) ? state.enemies.length : 0,
+    initialSpawnEnemyCount:(Array.isArray(state.enemies) ? state.enemies : []).filter(isInitialSpawnEnemy).length,
     validDefinitionCount:[...definitionsByTerrain.values()].reduce((sum, rows) => sum + rows.length, 0),
     ...plan.diagnostics
   };
