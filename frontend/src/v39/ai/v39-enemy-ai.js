@@ -11,6 +11,7 @@ import { resolveV39ConsumableFoodKeys } from "../../lib/v39-population-economy.j
 import { V39_ENEMY_AI_CONFIG } from "../../lib/v39-enemy-ai-config.js";
 import { resolveV39EnemySquadCargoStatus } from "../../lib/v39-logistics-state.js";
 import { grantV39UnitExperience } from "../../lib/v39-unit-experience.js";
+import EnemyAiWorker from "../../workers/v39-enemy-ai-worker.js?worker";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -388,7 +389,7 @@ function buildWorkerMapData(mapData = window.__v39FieldRuntime?.mapData) {
 }
 
 async function runWorkerPlans(turnNumber, actionLimit, totalEnemies, presentationEvents, progressId) {
-  const worker = new Worker(new URL("../../workers/v39-enemy-ai-worker.js", import.meta.url), { type:"module" });
+  const worker = new EnemyAiWorker();
   let processed = 0;
   let workerCalculationMs = 0;
   let mainApplyMs = 0;
