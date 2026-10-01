@@ -99,10 +99,11 @@ try {
           const current = queue.shift();
           if (hexDistance(current, region.anchor) > Number(region.extentRadius)) reachedOutside = true;
           const currentLevel = Number(mapData.heightLevelMap?.[current.y]?.[current.x]);
+          const diagonalLeft = current.y % 2 === 1 ? current.x : current.x - 1;
           const neighbors = [
-            [current.x, current.y - 1], [current.x + (current.y % 2), current.y - 1],
             [current.x - 1, current.y], [current.x + 1, current.y],
-            [current.x, current.y + 1], [current.x + (current.y % 2), current.y + 1]
+            [diagonalLeft, current.y - 1], [diagonalLeft + 1, current.y - 1],
+            [diagonalLeft, current.y + 1], [diagonalLeft + 1, current.y + 1]
           ];
           for (const [x, y] of neighbors) {
             const key = `${x},${y}`;

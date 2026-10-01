@@ -104,6 +104,21 @@ try {
   });
   await page.waitForTimeout(100);
   await page.screenshot({ path:"output/web-game/v39-victory-landmarks-field.png", fullPage:true });
+  for (const targetName of ["太陽の山", "黄昏の樹"]) {
+    const focused = await page.evaluate(name => {
+      const target = Object.values(window.getV39GameState()?.victoryLandmarksByTile || {}).find(row => row?.name === name);
+      const scene = window.__v39FieldRuntime?.game?.scene?.getScenes?.(true)?.[0];
+      const camera = scene?.cameras?.main;
+      if (!target || !camera) return false;
+      camera.setZoom(1.1);
+      camera.centerOn((target.x * 62) + (target.y % 2 === 1 ? 31 : 0) + 31, (target.y * 56) + 37);
+      return true;
+    }, targetName);
+    if (!focused) continue;
+    await page.waitForTimeout(100);
+    const suffix = targetName === "太陽の山" ? "sun" : "twilight";
+    await page.screenshot({ path:`output/web-game/v39-victory-landmarks-${suffix}.png`, fullPage:true });
+  }
   console.log(JSON.stringify({ report, displayReport, errors }, null, 2));
   if (errors.length) process.exitCode = 1;
 } finally {
