@@ -38,9 +38,8 @@ export function resolveVillageScaleDefinition(village, options = {}) {
   const definitions = getVillageScaleDefinitions({ ...options, toSafeNumber });
   if (!definitions.length) return null;
 
-  // 現行セーブでは明示状態を正本とする。人口は旧セーブ補完時だけ使用する。
-  const explicitKey = nonEmptyText(village?.scaleKey || village?.villageLevelKey || village?.residentialLevel);
-  const explicitLabel = nonEmptyText(village?.scaleLabel || village?.scale || village?.type);
+  // 現行セーブでは scaleKey / scaleLevel を正本とする。人口は旧セーブ補完時だけ使用する。
+  const explicitKey = nonEmptyText(village?.scaleKey);
   const explicitLevelRaw = village?.scaleLevel;
   const hasExplicitLevel = explicitLevelRaw !== null
     && explicitLevelRaw !== undefined
@@ -49,12 +48,11 @@ export function resolveVillageScaleDefinition(village, options = {}) {
   const explicitLevel = hasExplicitLevel ? Math.max(1, Math.floor(toSafeNumber(explicitLevelRaw, 1))) : 0;
   const explicitDefinition = definitions.find(row => (
     (explicitKey && row.key === explicitKey)
-    || (explicitLabel && (row.name === explicitLabel || row.key === explicitLabel))
     || (explicitLevel > 0 && row.level === explicitLevel)
   ));
   if (explicitDefinition) return explicitDefinition;
 
-  // 旧セーブ互換: 規模状態がまだ保存されていない場合のみ人口から一度だけ補完する。
+  // 旧セーブ互換: 正式な規模状態がまだ保存されていない場合のみ人口から一度だけ補完する。
   const populationValue = village?.population;
   const hasPopulation = populationValue !== null
     && populationValue !== undefined
@@ -64,7 +62,16 @@ export function resolveVillageScaleDefinition(village, options = {}) {
     const population = Math.max(0, toSafeNumber(populationValue, 0));
     return [...definitions].reverse().find(row => population >= row.minPopulation) || definitions[0];
   }
-  return definitions[0];
+
+  // 人口もない旧データだけ、従来の表示名・旧キーを最後の補助情報として使う。
+  const legacyExplicit = nonEmptyText(
+    village?.scaleLabel
+    || village?.scale
+    || village?.type
+    || village?.residentialLevel
+    || village?.villageLevelKey
+  );
+  return definitions.find(row => row.name === legacyExplicit || row.key === legacyExplicit) || definitions[0];
 }
 
 export function resolveVillageScaleLabel(village, options = {}) {
