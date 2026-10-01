@@ -581,6 +581,7 @@ export function createInitialV39Village({ x, y, name = "拠点", race = "只人"
   const base = normalizeV39Village({
     id:`village-${Math.floor(number(x))}-${Math.floor(number(y))}`,
     name, x:Math.floor(number(x)), y:Math.floor(number(y)), placed:true,
+    type:"村", scaleKey:"village", scaleLevel:1, developmentProject:null,
     population:initialPopulationForRace(race),
     populationByRace:{ [text(race) || "只人"]:initialPopulationForRace(race) },
     foodStockByType:{}, materialStockByType:{}, buildings:[], tileFacilityMap:{}, constructionQueue:[]
