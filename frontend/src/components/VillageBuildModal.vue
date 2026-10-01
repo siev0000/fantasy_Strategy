@@ -188,6 +188,10 @@ watch(
           </div>
         </div>
 
+        <div v-if="props.developmentState.nextLabel" class="small village-development-turns">
+          工事期間: {{ props.developmentState.buildTurns }}T
+        </div>
+
         <div v-if="props.developmentState.nextLabel" class="village-development-requirements">
           <div
             v-for="row in props.developmentState.requirementRows || []"
