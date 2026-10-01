@@ -34,13 +34,12 @@ DOC_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationship
 DEFAULT_OUTPUT_DIR = Path("data/source/export/json")
 DEFAULT_REPORT = Path("artifacts/game-data-converter-report.json")
 
-# 自動変換するシートだけを明示する。CS / 画面は補助シートなので対象外。
+# 通常変換するシートだけを明示する。CS / 画面は対象外。スキル一覧はCS専用変換器で生成する。
 SHEET_TO_JSON = {
     "クラス": "クラス.json",
     "種族": "種族.json",
     "勢力": "勢力.json",
     "説明": "説明.json",
-    "スキル一覧": "スキル一覧.json",
     "範囲": "範囲.json",
     "効果": "効果.json",
     "地形": "地形.json",
@@ -65,7 +64,6 @@ UNIQUE_KEYS = {
     "クラス": ("名前",),
     "勢力": ("種族",),
     "説明": ("技能名",),
-    "スキル一覧": ("名前",),
     "範囲": ("範囲タイプ",),
     "効果": ("追加効果",),
     "地形": ("地形",),
