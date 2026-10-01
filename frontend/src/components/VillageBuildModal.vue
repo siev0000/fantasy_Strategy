@@ -29,10 +29,14 @@ const props = defineProps({
     type: Object,
     default: () => ({})
   },
-  builtListText: { type: String, default: "なし" }
+  builtListText: { type: String, default: "なし" },
+  developmentState: {
+    type: Object,
+    default: null
+  }
 });
 
-const emit = defineEmits(["close", "apply", "select"]);
+const emit = defineEmits(["close", "apply", "select", "develop"]);
 const isPerfTestOn = import.meta.env.VITE_PERF_TEST === "1";
 const perfOpenToPaintMs = ref(0);
 const perfMaterialComputeMs = ref(0);
@@ -167,6 +171,52 @@ watch(
       <div v-if="isPerfTestOn" class="small village-build-perf">
         計測(open→paint): {{ formatPerfMs(perfOpenToPaintMs) }} / 資材計算: {{ formatPerfMs(perfMaterialComputeMs) }} / 資材行数: {{ perfMaterialRowCount }}
       </div>
+
+      <section v-if="props.developmentState" class="village-development-panel">
+        <div class="village-development-head">
+          <div>
+            <span class="small">拠点発展</span>
+            <strong>
+              現在規模: {{ props.developmentState.currentLabel || props.villageScaleLabel }}
+              <template v-if="props.developmentState.nextLabel">
+                / 次段階: {{ props.developmentState.nextLabel }}
+              </template>
+            </strong>
+          </div>
+          <div v-if="props.developmentState.project" class="village-development-progress">
+            工事中 {{ props.developmentState.project.remainingTurns }} / {{ props.developmentState.project.totalTurns }}T
+          </div>
+        </div>
+
+        <div v-if="props.developmentState.nextLabel" class="village-development-requirements">
+          <div
+            v-for="row in props.developmentState.requirementRows || []"
+            :key="`development-${row.key}`"
+            class="village-development-requirement"
+            :class="{ met: row.met, shortage: !row.met }"
+          >
+            <span>{{ row.label }}</span>
+            <strong>{{ row.currentText }} / {{ row.requiredText }}</strong>
+            <em>{{ row.met ? "達成" : "不足" }}</em>
+          </div>
+        </div>
+        <div v-else class="small village-development-max">現在が最大規模です。</div>
+
+        <div class="village-development-actions">
+          <span v-if="props.developmentState.reason" class="small village-development-reason">
+            {{ props.developmentState.reason }}
+          </span>
+          <button
+            v-if="props.developmentState.nextLabel"
+            type="button"
+            class="secondary village-development-button"
+            :disabled="!props.developmentState.canStart"
+            @click="emit('develop')"
+          >
+            {{ props.developmentState.project ? "発展工事中" : `${props.developmentState.nextLabel}へ発展` }}
+          </button>
+        </div>
+      </section>
 
       <div v-if="props.availableDefs.length" class="village-build-layout">
         <div class="village-build-list-pane">
