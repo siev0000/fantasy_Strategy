@@ -18,6 +18,7 @@
     "check:local-session": "node scripts/check-v39-local-session.mjs",
     "check:friendly-skill-targeting": "node scripts/check-v39-friendly-skill-targeting.mjs",
     "check:field-settings-scroll": "node scripts/check-v39-field-settings-scroll.mjs",
+    "check:test-tools-scroll": "node scripts/check-v39-test-tools-scroll.mjs",
     "check:room-lobby": "node scripts/check-v39-room-lobby.mjs",
     "check:play-mode-select": "node scripts/check-v39-play-mode-select.mjs",
     "check:multiplayer-start-flow": "node scripts/check-v39-multiplayer-start-flow.mjs",
@@ -27,6 +28,7 @@
     "check:neutral-village-sim": "node scripts/check-v39-neutral-village-sim.mjs",
     "check:neutral-village-sim:100": "set V39_VILLAGE_SIM_TURNS=100&& node scripts/check-v39-neutral-village-sim.mjs",
     "check:victory-landmark-placement": "node scripts/check-v39-victory-landmark-placement.mjs",
+    "check:archipelago-size": "node scripts/check-v39-archipelago-island-size.mjs",
     "check:faction-ai-territory-assault": "node scripts/check-v39-faction-ai-territory-assault.mjs",
     "preview:front": "vite preview --config frontend/vite.config.mjs"
   },

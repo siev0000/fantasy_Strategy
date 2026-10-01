@@ -25,6 +25,8 @@ let selectedTestSkillName = "";
 let selectedDisasterId = "";
 let selectedTile = null;
 const collapsedSectionKeys = new Set();
+let testToolsScrollTop = 0;
+let restoreScrollFrame = 0;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
@@ -613,7 +615,21 @@ function panelHtml() {
 function render() {
   const panel = document.getElementById("v39-test-tools-panel");
   if (!(panel instanceof HTMLElement)) return;
+  const currentScroll = panel.querySelector(".v39-test-tools-scroll");
+  if (currentScroll instanceof HTMLElement) testToolsScrollTop = currentScroll.scrollTop;
   panel.innerHTML = panelHtml();
+  const restoreScroll = () => {
+    const nextScroll = panel.querySelector(".v39-test-tools-scroll");
+    if (!(nextScroll instanceof HTMLElement)) return;
+    const maxScrollTop = Math.max(0, nextScroll.scrollHeight - nextScroll.clientHeight);
+    nextScroll.scrollTop = Math.min(testToolsScrollTop, maxScrollTop);
+  };
+  restoreScroll();
+  if (restoreScrollFrame) cancelAnimationFrame(restoreScrollFrame);
+  restoreScrollFrame = requestAnimationFrame(() => {
+    restoreScrollFrame = 0;
+    restoreScroll();
+  });
 }
 
 function openPanel() {
