@@ -46,11 +46,14 @@ export function resolveVillageScaleDefinition(village, options = {}) {
     && nonEmptyText(explicitLevelRaw) !== ""
     && Number.isFinite(Number(explicitLevelRaw));
   const explicitLevel = hasExplicitLevel ? Math.max(1, Math.floor(toSafeNumber(explicitLevelRaw, 1))) : 0;
-  const explicitDefinition = definitions.find(row => (
-    (explicitKey && row.key === explicitKey)
-    || (explicitLevel > 0 && row.level === explicitLevel)
-  ));
-  if (explicitDefinition) return explicitDefinition;
+  const explicitKeyDefinition = explicitKey
+    ? definitions.find(row => row.key === explicitKey)
+    : null;
+  if (explicitKeyDefinition) return explicitKeyDefinition;
+  const explicitLevelDefinition = explicitLevel > 0
+    ? definitions.find(row => row.level === explicitLevel)
+    : null;
+  if (explicitLevelDefinition) return explicitLevelDefinition;
 
   // 旧セーブ互換: 正式な規模状態がまだ保存されていない場合のみ人口から一度だけ補完する。
   const populationValue = village?.population;
