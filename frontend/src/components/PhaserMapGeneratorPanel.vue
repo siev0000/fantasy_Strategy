@@ -109,6 +109,7 @@ import {
   adjustVillagePopulationForTurn as adjustVillagePopulationForTurnUtil,
   createInitialFoodStockByType as createInitialFoodStockByTypeUtil,
   createInitialMaterialStockByType as createInitialMaterialStockByTypeUtil,
+  getVillageScaleDefinitions as getVillageScaleDefinitionsUtil,
   resolveNamedLimit as resolveNamedLimitUtil,
   resolveVillageScaleDefinition as resolveVillageScaleDefinitionUtil,
   resolveVillageScaleLabel as resolveVillageScaleLabelUtil
@@ -3295,6 +3296,8 @@ function resolveFacilityTerrainConditionForSelectedTile(conditionRaw) {
   };
 }
 
+const villageDevelopmentState = computed(() => resolveVillageDevelopmentState(villageState.value));
+
 const {
   canOpenVillageBuild,
   facilityBuildingDefs,
@@ -3569,6 +3572,10 @@ function isMilitaryUnit(unit) {
   if (mode && mode !== UNIT_CREATE_MODE_KEYS.NORMAL) return true;
   const typeText = `${nonEmptyText(unit?.unitType)} ${nonEmptyText(unit?.combatProfile?.unitTypeLabel)}`;
   return typeText.includes("軍隊");
+}
+
+function resolveVillageScaleDefinition(village) {
+  return resolveVillageScaleDefinitionUtil(village, { toSafeNumber });
 }
 
 function resolveVillageScaleLabel(village) {
@@ -6248,6 +6255,10 @@ function createDraftFactionStateForAdditionalPlayer(slotId, label, options = {})
     x: null,
     y: null,
     placed: false,
+    type: "村",
+    scaleKey: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+    scaleLevel: 1,
+    developmentProject: null,
     cityLevels: normalizeCityLevels({}),
     buildings: [],
     population: initialPopulation,
@@ -6954,6 +6965,36 @@ const formatTerritoryTileDevelopmentText = (village, x, y) => (
   formatTerritoryTileDevelopmentTextUtil(village, x, y, territoryDevOptions())
 );
 
+function normalizeVillageDevelopmentProject(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const definitions = getVillageScaleDefinitionsUtil({ toSafeNumber });
+  const targetKey = nonEmptyText(raw?.targetScaleKey);
+  const targetLevel = Math.max(0, Math.floor(toSafeNumber(raw?.targetScaleLevel, 0)));
+  const target = definitions.find(row => (
+    (targetKey && row.key === targetKey)
+    || (targetLevel > 0 && row.level === targetLevel)
+  ));
+  if (!target) return null;
+  const remainingTurns = Math.max(0, Math.floor(toSafeNumber(raw?.remainingTurns, 0)));
+  if (remainingTurns <= 0) return null;
+  const totalTurns = Math.max(remainingTurns, Math.floor(toSafeNumber(raw?.totalTurns, remainingTurns)));
+  const startedTurn = Math.max(0, Math.floor(toSafeNumber(raw?.startedTurn, 0)));
+  const residentialTileKeys = Array.from(new Set(
+    (Array.isArray(raw?.residentialTileKeys) ? raw.residentialTileKeys : [])
+      .map(value => nonEmptyText(value))
+      .filter(value => value.includes(","))
+  ));
+  return {
+    ...raw,
+    targetScaleKey: target.key,
+    targetScaleLevel: target.level,
+    remainingTurns,
+    totalTurns,
+    startedTurn,
+    residentialTileKeys
+  };
+}
+
 function ensureVillageStateShape(village, preferredRace = "") {
   if (!village || typeof village !== "object") return null;
   const baseRace = nonEmptyText(preferredRace) || nonEmptyText(props.selectedRace) || "只人";
@@ -7023,10 +7064,19 @@ function ensureVillageStateShape(village, preferredRace = "") {
     Math.floor(toSafeNumber(village.populationCapacity, basePopulationCapacity))
   );
   const heroBirthUnlock = resolveHeroCreateUnlockedCount(village);
+  const scaleDefinition = resolveVillageScaleDefinition({
+    ...village,
+    population: syncedPopulation
+  });
+  const developmentProject = normalizeVillageDevelopmentProject(village?.developmentProject);
   const shaped = {
     ...village,
     population: syncedPopulation,
     populationByRace,
+    type: scaleDefinition?.name || nonEmptyText(village?.type) || "村",
+    scaleKey: scaleDefinition?.key || nonEmptyText(village?.scaleKey) || TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+    scaleLevel: Math.max(1, Math.floor(toSafeNumber(scaleDefinition?.level, village?.scaleLevel || 1))),
+    developmentProject,
     cityLevels,
     buildings,
     foodStockByType,
@@ -12513,7 +12563,11 @@ function processVillageEconomyTurn(data, options = {}) {
   });
   const conversionResult = advanceVillageTerritoryTileConversions(villageWithTerritoryDefaults);
   const villageAfterConversion = conversionResult.village;
-  const residentialUpgradeResult = advanceVillageTerritoryResidentialUpgrades(villageAfterConversion, {
+  const developmentResult = advanceVillageDevelopmentProject(villageAfterConversion, {
+    raceFallback
+  });
+  const villageAfterDevelopment = developmentResult.village;
+  const residentialUpgradeResult = advanceVillageTerritoryResidentialUpgrades(villageAfterDevelopment, {
     raceFallback
   });
   const villageAfterResidentialUpgrade = residentialUpgradeResult.village;
@@ -12601,6 +12655,9 @@ function processVillageEconomyTurn(data, options = {}) {
   }
   if (Array.isArray(conversionResult?.notes) && conversionResult.notes.length) {
     lines.push(...conversionResult.notes);
+  }
+  if (Array.isArray(developmentResult?.notes) && developmentResult.notes.length) {
+    lines.push(...developmentResult.notes);
   }
   if (Array.isArray(residentialUpgradeResult?.notes) && residentialUpgradeResult.notes.length) {
     lines.push(...residentialUpgradeResult.notes);
@@ -16190,9 +16247,10 @@ function renderMapWithPhaser() {
     const baseCenter = hexCenter(v.x, v.y);
     const villageScaleLabel = resolveVillageScaleLabel(v);
     const homeTileKey = coordKey(v.x, v.y);
-    const homeResidentialLevel = resolveTerritoryResidentialLevelAt(v, homeTileKey, {
-      fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE
-    });
+    const homeResidentialLevel = resolveVillageScaleDefinition(v)?.key
+      || resolveTerritoryResidentialLevelAt(v, homeTileKey, {
+        fallbackLevel: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE
+      });
     const homeResidentialDef = resolveTerritoryResidentialLevelDef(homeResidentialLevel);
     const villageMarkerIconName = resolveTerritoryResidentialIconName(homeResidentialLevel)
       || resolveVillageMarkerIconNameByScale(villageScaleLabel);
@@ -21946,6 +22004,259 @@ function applyResidentialCenterUpgrade(village, centerKey, nextLevel, attachment
   });
 }
 
+function collectVillageDevelopmentResidentialTileKeys(village) {
+  const data = currentData.value;
+  if (!village?.placed || !data?.grid || !Number.isFinite(data?.w) || !Number.isFinite(data?.h)) return [];
+  const homeKey = coordKey(village.x, village.y);
+  if (resolveTerritoryTileModeAt(village, homeKey) !== TERRITORY_TILE_MODE_SETTLEMENT) return [];
+
+  const centerMap = normalizeTerritoryResidentialCenterMap(
+    village?.[TERRITORY_RESIDENTIAL_CENTER_MAP_KEY],
+    village
+  );
+  const accepted = new Set([homeKey]);
+  const queue = [homeKey];
+  const ordered = [homeKey];
+  while (queue.length) {
+    const currentKey = queue.shift();
+    const pos = parseCoordKey(currentKey);
+    if (!Number.isFinite(pos?.x) || !Number.isFinite(pos?.y)) continue;
+    const neighbors = getHexNeighborCoordsBySize(
+      Math.floor(toSafeNumber(data.w, 0)),
+      Math.floor(toSafeNumber(data.h, 0)),
+      pos.x,
+      pos.y,
+      resolveWorldWrapEnabled(data)
+    );
+    for (const neighbor of neighbors) {
+      const tileKey = coordKey(neighbor.x, neighbor.y);
+      if (accepted.has(tileKey)) continue;
+      if (!isOwnTerritoryTile(neighbor.x, neighbor.y)) continue;
+      if (resolveTerritoryTileModeAt(village, tileKey) !== TERRITORY_TILE_MODE_SETTLEMENT) continue;
+      const ownerCenter = nonEmptyText(centerMap?.[tileKey]);
+      if (ownerCenter && ownerCenter !== homeKey) continue;
+      accepted.add(tileKey);
+      ordered.push(tileKey);
+      queue.push(tileKey);
+    }
+  }
+  return ordered;
+}
+
+function resolveVillageDevelopmentState(villageInput = villageState.value) {
+  const raceFallback = resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageInput, raceFallback);
+  if (!village) return null;
+  const definitions = getVillageScaleDefinitionsUtil({ toSafeNumber });
+  const currentDef = resolveVillageScaleDefinition(village) || definitions[0] || null;
+  const nextDef = currentDef
+    ? definitions.find(row => row.level > currentDef.level) || null
+    : (definitions[0] || null);
+  const project = normalizeVillageDevelopmentProject(village?.developmentProject);
+  const currentLabel = currentDef?.name || resolveVillageScaleLabel(village);
+  const nextLabel = nextDef?.name || "";
+  const connectedResidentialTileKeys = collectVillageDevelopmentResidentialTileKeys(village);
+  const requirementRows = [];
+  let requirementsMet = true;
+
+  if (nextDef) {
+    const populationCurrent = Math.max(0, Math.floor(toSafeNumber(village.population, 0)));
+    const populationNeed = Math.max(0, Math.floor(toSafeNumber(nextDef.minPopulation, 0)));
+    const populationMet = populationCurrent >= populationNeed;
+    requirementRows.push({
+      key: "population",
+      label: "人口",
+      currentText: formatCompactNumber(populationCurrent),
+      requiredText: formatCompactNumber(populationNeed),
+      met: populationMet
+    });
+    requirementsMet = requirementsMet && populationMet;
+
+    const residentialCurrent = connectedResidentialTileKeys.length;
+    const residentialNeed = Math.max(1, Math.floor(toSafeNumber(nextDef.footprintTiles, 1)));
+    const residentialMet = residentialCurrent >= residentialNeed;
+    requirementRows.push({
+      key: "residentialTiles",
+      label: "居住マス",
+      currentText: String(residentialCurrent),
+      requiredText: String(residentialNeed),
+      met: residentialMet
+    });
+    requirementsMet = requirementsMet && residentialMet;
+
+    const foodBag = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS);
+    const materialBag = normalizeMaterialStockBag(village.materialStockByType);
+    for (const resourceKey of [...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS]) {
+      const need = Math.max(0, toSafeNumber(nextDef?.row?.[resourceKey], 0));
+      if (need <= 0) continue;
+      const isFood = FOOD_RESOURCE_KEYS.includes(resourceKey);
+      const have = Math.max(0, toSafeNumber(isFood ? foodBag?.[resourceKey] : materialBag?.[resourceKey], 0));
+      const met = have >= need;
+      requirementRows.push({
+        key: `resource:${resourceKey}`,
+        resourceKey,
+        resourceKind: isFood ? "food" : "material",
+        label: resourceKey,
+        currentText: formatCompactNumber(have),
+        requiredText: formatCompactNumber(need),
+        have,
+        need,
+        met
+      });
+      requirementsMet = requirementsMet && met;
+    }
+  }
+
+  const placementReady = !!(village.placed && Number.isFinite(village.x) && Number.isFinite(village.y));
+  const canStart = !!(nextDef && placementReady && !project && requirementsMet);
+  let reason = "";
+  if (project) {
+    const target = definitions.find(row => row.key === project.targetScaleKey);
+    reason = `${target?.name || project.targetScaleKey}へ発展工事中 (残り${project.remainingTurns}T)`;
+  } else if (!placementReady) {
+    reason = "拠点配置後に発展できます。";
+  } else if (nextDef && !requirementsMet) {
+    reason = requirementRows.filter(row => !row.met).map(row => `${row.label}不足`).join(" / ");
+  }
+
+  return {
+    currentKey: currentDef?.key || "",
+    currentLevel: currentDef?.level || 1,
+    currentLabel,
+    nextKey: nextDef?.key || "",
+    nextLevel: nextDef?.level || 0,
+    nextLabel,
+    buildTurns: nextDef?.buildTurns || 0,
+    requiredResidentialTiles: nextDef?.footprintTiles || 0,
+    connectedResidentialTileKeys,
+    requirementRows,
+    canStart,
+    reason,
+    project
+  };
+}
+
+function startVillageDevelopment() {
+  const state = resolveVillageDevelopmentState(villageState.value);
+  if (!state?.nextKey || !state?.nextLevel) {
+    updateUnitInfoText("拠点発展不可: 現在が最大規模です。");
+    return;
+  }
+  if (!state.canStart) {
+    updateUnitInfoText(`拠点発展不可: ${state?.reason || "条件未達です。"}`);
+    return;
+  }
+  const raceFallback = resolveActiveFactionRace();
+  const village = ensureVillageStateShape(villageState.value, raceFallback);
+  if (!village) {
+    updateUnitInfoText("拠点発展失敗: 拠点データが不正です。");
+    return;
+  }
+
+  const nextDef = getVillageScaleDefinitionsUtil({ toSafeNumber })
+    .find(row => row.key === state.nextKey && row.level === state.nextLevel);
+  if (!nextDef) {
+    updateUnitInfoText("拠点発展失敗: 発展先データが見つかりません。");
+    return;
+  }
+
+  const foodStockByType = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS);
+  const materialStockByType = normalizeMaterialStockBag(village.materialStockByType);
+  for (const resourceKey of FOOD_RESOURCE_KEYS) {
+    const need = Math.max(0, toSafeNumber(nextDef?.row?.[resourceKey], 0));
+    foodStockByType[resourceKey] = roundTo1(Math.max(0, toSafeNumber(foodStockByType[resourceKey], 0) - need));
+  }
+  for (const resourceKey of MATERIAL_RESOURCE_KEYS) {
+    const need = Math.max(0, toSafeNumber(nextDef?.row?.[resourceKey], 0));
+    materialStockByType[resourceKey] = roundTo1(Math.max(0, toSafeNumber(materialStockByType[resourceKey], 0) - need));
+  }
+
+  const totalTurns = Math.max(1, Math.floor(toSafeNumber(nextDef.buildTurns, 1)));
+  const residentialTileKeys = state.connectedResidentialTileKeys
+    .slice(0, Math.max(1, Math.floor(toSafeNumber(nextDef.footprintTiles, 1))));
+  const developmentProject = {
+    targetScaleKey: nextDef.key,
+    targetScaleLevel: nextDef.level,
+    remainingTurns: totalTurns,
+    totalTurns,
+    startedTurn: Math.max(0, Math.floor(toSafeNumber(mapTurnNumber.value, 0))),
+    residentialTileKeys
+  };
+  villageState.value = ensureVillageStateShape({
+    ...village,
+    foodStockByType,
+    materialStockByType,
+    developmentProject
+  }, raceFallback);
+  updateVillageInfoText();
+  updateUnitInfoText(`拠点発展開始: ${state.currentLabel} -> ${nextDef.name} / 完了まで${totalTurns}T`);
+  pushNationLog(`拠点発展開始: ${state.currentLabel} -> ${nextDef.name} / ${totalTurns}T`);
+  emitCharacterStateChange();
+  renderMapWithPhaser();
+}
+
+function advanceVillageDevelopmentProject(village, options = {}) {
+  const raceFallback = nonEmptyText(options?.raceFallback) || resolveActiveFactionRace();
+  const safeVillage = ensureVillageStateShape(village, raceFallback);
+  if (!safeVillage) return { village, notes: [], progressed: 0, completed: 0 };
+  const project = normalizeVillageDevelopmentProject(safeVillage?.developmentProject);
+  if (!project) return { village: safeVillage, notes: [], progressed: 0, completed: 0 };
+
+  const remainingTurns = Math.max(0, project.remainingTurns - 1);
+  const definitions = getVillageScaleDefinitionsUtil({ toSafeNumber });
+  const targetDef = definitions.find(row => (
+    row.key === project.targetScaleKey
+    || row.level === project.targetScaleLevel
+  ));
+  if (!targetDef) {
+    return {
+      village: ensureVillageStateShape({ ...safeVillage, developmentProject: null }, raceFallback),
+      notes: ["拠点発展中断: 発展先データが見つかりません。"],
+      progressed: 0,
+      completed: 0
+    };
+  }
+  if (remainingTurns > 0) {
+    return {
+      village: ensureVillageStateShape({
+        ...safeVillage,
+        developmentProject: { ...project, remainingTurns }
+      }, raceFallback),
+      notes: [],
+      progressed: 1,
+      completed: 0
+    };
+  }
+
+  const centerKey = safeVillage?.placed && Number.isFinite(safeVillage?.x) && Number.isFinite(safeVillage?.y)
+    ? coordKey(safeVillage.x, safeVillage.y)
+    : "";
+  const requiredTiles = Math.max(1, Math.floor(toSafeNumber(targetDef.footprintTiles, 1)));
+  const storedKeys = Array.from(new Set(
+    [centerKey, ...(Array.isArray(project.residentialTileKeys) ? project.residentialTileKeys : [])]
+      .map(value => nonEmptyText(value))
+      .filter(value => value.includes(","))
+  )).slice(0, requiredTiles);
+  const attachmentKeys = storedKeys.filter(key => key !== centerKey).slice(0, Math.max(0, requiredTiles - 1));
+  let completedVillage = safeVillage;
+  if (centerKey) {
+    completedVillage = applyResidentialCenterUpgrade(completedVillage, centerKey, targetDef.key, attachmentKeys);
+  }
+  completedVillage = ensureVillageStateShape({
+    ...completedVillage,
+    type: targetDef.name,
+    scaleKey: targetDef.key,
+    scaleLevel: targetDef.level,
+    developmentProject: null
+  }, raceFallback);
+  return {
+    village: completedVillage,
+    notes: [`拠点発展完了: ${targetDef.name}`],
+    progressed: 0,
+    completed: 1
+  };
+}
+
 function clearHousingUpgradeSelectionState() {
   housingUpgradeSelectionState.value = null;
   refreshMapCursor();
@@ -22026,6 +22337,18 @@ function resolveTerritoryHousingUpgradeActionState() {
     return { enabled: false, reason: "初期村配置後に拡張できます。", x, y };
   }
   const key = coordKey(x, y);
+  const homeKey = village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y)
+    ? coordKey(village.x, village.y)
+    : "";
+  if (homeKey && key === homeKey) {
+    return {
+      enabled: false,
+      reason: "拠点中心の規模変更は施設建設画面の「拠点発展」から行ってください。",
+      x,
+      y,
+      key
+    };
+  }
   const mode = resolveTerritoryTileModeAt(village, key);
   const pendingConversion = normalizeTerritoryTileConversionMap(village?.territoryTileConversionMap)?.[key];
   if (pendingConversion) {
@@ -24071,8 +24394,10 @@ watch(() => props.characterCommand, command => {
       :selected-availability="selectedVillageBuildingAvailability"
       :selected-preview-style="selectedVillageBuildingPreviewStyle"
       :built-list-text="formatVillageBuildingList(villageState?.buildings)"
+      :development-state="villageDevelopmentState"
       @close="closeVillageBuildModal"
       @apply="applyVillageConstruction"
+      @develop="startVillageDevelopment"
       @select="selectedVillageBuildingKey = $event"
     />
 
