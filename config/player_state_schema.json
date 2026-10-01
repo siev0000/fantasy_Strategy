@@ -129,6 +129,20 @@
         "type": { "type": "string", "description": "施設.jsonの分類=拠点規模から求める表示名" },
         "scaleKey": { "type": "string", "description": "施設.jsonの識別キー" },
         "scaleLevel": { "type": "integer", "minimum": 1, "description": "施設.jsonの規模Lv" },
+        "developmentProject": {
+          "type": ["object", "null"],
+          "description": "拠点規模の発展工事。開始時に資材を消費し、remainingTurnsが0になった時点で規模を更新する",
+          "properties": {
+            "targetScaleKey": { "type": "string" },
+            "targetScaleLevel": { "type": "integer", "minimum": 1 },
+            "remainingTurns": { "type": "integer", "minimum": 1 },
+            "totalTurns": { "type": "integer", "minimum": 1 },
+            "startedTurn": { "type": "integer", "minimum": 0 },
+            "residentialTileKeys": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+          },
+          "required": ["targetScaleKey", "remainingTurns", "totalTurns", "startedTurn"],
+          "additionalProperties": true
+        },
         "foodStock": { "type": "number", "minimum": 0 },
         "materialStock": { "type": "number", "minimum": 0 },
         "foodStockByType": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
