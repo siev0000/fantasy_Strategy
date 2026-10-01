@@ -22055,6 +22055,12 @@ function resolveVillageDevelopmentState(villageInput = villageState.value) {
     ? definitions.find(row => row.level > currentDef.level) || null
     : (definitions[0] || null);
   const project = normalizeVillageDevelopmentProject(village?.developmentProject);
+  const homeKey = village?.placed && Number.isFinite(village?.x) && Number.isFinite(village?.y)
+    ? coordKey(village.x, village.y)
+    : "";
+  const pendingHomeResidentialUpgrade = homeKey
+    ? resolveTerritoryResidentialUpgradeQueueEntryAtTile(village, homeKey)
+    : null;
   const currentLabel = currentDef?.name || resolveVillageScaleLabel(village);
   const nextLabel = nextDef?.name || "";
   const connectedResidentialTileKeys = collectVillageDevelopmentResidentialTileKeys(village);
@@ -22110,11 +22116,13 @@ function resolveVillageDevelopmentState(villageInput = villageState.value) {
   }
 
   const placementReady = !!(village.placed && Number.isFinite(village.x) && Number.isFinite(village.y));
-  const canStart = !!(nextDef && placementReady && !project && requirementsMet);
+  const canStart = !!(nextDef && placementReady && !project && !pendingHomeResidentialUpgrade && requirementsMet);
   let reason = "";
   if (project) {
     const target = definitions.find(row => row.key === project.targetScaleKey);
     reason = `${target?.name || project.targetScaleKey}へ発展工事中 (残り${project.remainingTurns}T)`;
+  } else if (pendingHomeResidentialUpgrade) {
+    reason = `住居拡張工事中です (残り${Math.max(0, Math.floor(toSafeNumber(pendingHomeResidentialUpgrade.remainingTurns, 0)))}T)`;
   } else if (!placementReady) {
     reason = "拠点配置後に発展できます。";
   } else if (nextDef && !requirementsMet) {
