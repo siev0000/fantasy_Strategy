@@ -1,5 +1,9 @@
 import { formatV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import {
+  inspectV39TerritoryTileConversion,
+  startV39TerritoryTileConversion
+} from "../../lib/v39-economy-rules.js";
 
 const PANEL_ID = "footTile";
 
@@ -97,6 +101,7 @@ function resetLandPanel(message = "マスを選択") {
   setField("v39-land-modifiers", "なし");
   setField("v39-land-enemies", "なし");
   setField("v39-land-victory-landmark", "未発見");
+  renderSettlementConversionAction();
 }
 
 function gameState() {
@@ -357,6 +362,7 @@ function renderLandDetail(selected) {
   setField("v39-land-modifiers", formatV39TerrainModifiers(window.__v39FieldRuntime?.mapData, detail.x, detail.y));
   setField("v39-land-enemies", detail.enemies);
   setField("v39-land-victory-landmark", detail.victoryLandmark);
+  renderSettlementConversionAction();
 
   const panel = document.getElementById(PANEL_ID);
   if (panel) {
@@ -366,6 +372,41 @@ function renderLandDetail(selected) {
   }
 
   window.dispatchEvent(new CustomEvent("v39:land-detail-updated", { detail }));
+}
+
+function activePlayer(state) {
+  return state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
+}
+
+function renderSettlementConversionAction() {
+  const button = document.getElementById("v39-land-settlement-convert");
+  const status = document.getElementById("v39-land-settlement-convert-status");
+  if (!(button instanceof HTMLButtonElement)) return;
+  const state = gameState();
+  const player = activePlayer(state);
+  const inspection = inspectV39TerritoryTileConversion(state, player?.id, selectedCoord);
+  button.disabled = !inspection.available;
+  button.textContent = inspection.pending
+    ? `居住化中 ${Math.max(0, Math.floor(Number(inspection.pending.remainingTurns) || 0))}T`
+    : "居住化";
+  button.title = inspection.available ? `居住化を開始 (${inspection.totalTurns}T)` : inspection.reason;
+  if (status) status.textContent = inspection.available ? `完了まで${inspection.totalTurns}T` : inspection.reason;
+}
+
+function startSelectedSettlementConversion() {
+  const state = gameState();
+  const player = activePlayer(state);
+  const result = startV39TerritoryTileConversion(state, player?.id, selectedCoord);
+  if (!result.ok) {
+    window.showV39TurnBanner?.(`居住化不可: ${result.reason}`);
+    renderSettlementConversionAction();
+    return result;
+  }
+  window.setV39GameState?.({ players:result.state.players }, { reason:"territory-settlement-conversion-started" });
+  window.showV39TurnBanner?.(`居住化開始: (${result.inspection.x}, ${result.inspection.y}) / ${result.inspection.totalTurns}T`);
+  window.appendV39ActivityLog?.(player.id, "領土", `居住化開始: (${result.inspection.x}, ${result.inspection.y})`, result.inspection);
+  renderSettlementConversionAction();
+  return result;
 }
 
 function refreshSelectedLand() {
@@ -384,9 +425,18 @@ function install() {
   window.addEventListener("v39:field-generated", () => resetLandPanel("マスを選択"));
   window.addEventListener("v39:field-data-updated", refreshSelectedLand);
   window.addEventListener("v39:game-state-changed", refreshSelectedLand);
+  document.getElementById("v39-land-settlement-convert")?.addEventListener("click", startSelectedSettlementConversion);
 
   window.getV39SelectedLandDetail = () => selectedCoord ? buildFullDetail(selectedCoord) : null;
   window.refreshV39LandDetail = refreshSelectedLand;
+  window.inspectV39SettlementConversion = tile => {
+    const state = gameState();
+    return inspectV39TerritoryTileConversion(state, activePlayer(state)?.id, tile || selectedCoord);
+  };
+  window.startV39SettlementConversion = tile => {
+    if (tile) selectedCoord = { x:Math.floor(Number(tile.x)), y:Math.floor(Number(tile.y)) };
+    return startSelectedSettlementConversion();
+  };
 }
 
 install();

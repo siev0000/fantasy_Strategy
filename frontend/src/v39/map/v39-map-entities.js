@@ -1,5 +1,6 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
-import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import { getFactionSettlements, getSelectedSettlement } from "../../lib/settlement-state.js";
+import { resolveVillageScaleDefinition } from "../../composables/villageCoreUtils.js";
 import {
   MAP_ENTITY_SIZE_RULES,
   tileRelativePx
@@ -78,6 +79,43 @@ function finiteCoord(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function settlementOccupiedTiles(village) {
+  const x = finiteCoord(village?.x);
+  const y = finiteCoord(village?.y);
+  if (x === null || y === null) return [];
+  const centerKey = `${x},${y}`;
+  const definition = resolveVillageScaleDefinition(village);
+  const required = Math.max(1, Math.floor(Number(definition?.footprintTiles) || 1));
+  const centerMap = village?.territoryResidentialCenterMap && typeof village.territoryResidentialCenterMap === "object"
+    ? village.territoryResidentialCenterMap
+    : {};
+  const keys = [centerKey, ...Object.entries(centerMap)
+    .filter(([tileKey, ownerKey]) => tileKey !== centerKey && String(ownerKey || "") === centerKey)
+    .map(([tileKey]) => tileKey)];
+  return [...new Set(keys)].slice(0, required).map(key => {
+    const [tileX, tileY] = key.split(",").map(Number);
+    return Number.isFinite(tileX) && Number.isFinite(tileY) ? { key, x:tileX, y:tileY } : null;
+  }).filter(Boolean);
+}
+
+function settlementVisualBounds(village, baseSize) {
+  const occupied = settlementOccupiedTiles(village);
+  const fallback = tileCenter(village.x, village.y);
+  if (occupied.length <= 1) {
+    return { x:fallback.x, y:fallback.y, width:baseSize, height:baseSize, occupied };
+  }
+  const centers = occupied.map(tile => tileCenter(tile.x, tile.y));
+  const xs = centers.map(point => point.x);
+  const ys = centers.map(point => point.y);
+  return {
+    x:xs.reduce((sum, value) => sum + value, 0) / xs.length,
+    y:ys.reduce((sum, value) => sum + value, 0) / ys.length,
+    width:(Math.max(...xs) - Math.min(...xs)) + baseSize,
+    height:(Math.max(...ys) - Math.min(...ys)) + baseSize,
+    occupied
+  };
+}
+
 function visualUnitSignature(unit) {
   if (!unit || typeof unit !== "object") return "";
   const profile = unit.combatProfile || {};
@@ -96,7 +134,13 @@ function visualSettlementSignature(settlement) {
   if (!settlement || typeof settlement !== "object") return "";
   return [
     settlement.id, settlement.x, settlement.y, settlement.placed, settlement.ownerPlayerId,
-    settlement.scale, settlement.type, settlement.imageName, settlement.image, settlement.画像
+    settlement.scaleKey, settlement.scaleLevel, settlement.scale, settlement.type,
+    settlement.imageName, settlement.image, settlement.画像,
+    ...Object.entries(settlement.territoryResidentialCenterMap || {}).sort().flat(),
+    ...Object.entries(settlement.territoryTileModeMap || {}).sort().flat(),
+    ...Object.entries(settlement.territoryTileConversionMap || {}).sort().flatMap(([key, value]) => [key, value?.targetMode, value?.remainingTurns]),
+    ...Object.entries(settlement.tileFacilityMap || {}).sort().flatMap(([key, names]) => [key, ...(Array.isArray(names) ? names : [])]),
+    ...(Array.isArray(settlement.constructionQueue) ? settlement.constructionQueue : []).flatMap(item => [item?.tileKey, item?.facilityName, item?.remainingTurns])
   ].map(value => String(value ?? "")).join("~");
 }
 
@@ -159,14 +203,19 @@ function drawBase(scene, container, village) {
   const y = finiteCoord(village.y);
   if (x === null || y === null) return;
 
-  const c = tileCenter(x, y);
-  const marker = scene.add.container(c.x, c.y).setName(
-    village?.neutral === true ? "v39-neutral-village-marker" : "v39-settlement-marker"
-  );
   const artwork = resolveSettlementArtwork(village);
   const oldSpecSize = Number(artwork?.sizePx) || tileRelativePx(MAP_ENTITY_SIZE_RULES.base.diameterTiles);
+  const bounds = settlementVisualBounds(village, oldSpecSize);
+  const marker = scene.add.container(bounds.x, bounds.y).setName(
+    village?.neutral === true ? "v39-neutral-village-marker" : "v39-settlement-marker"
+  );
+  marker.setData("settlementId", String(village?.settlementId || village?.id || ""));
+  marker.setData("scaleKey", String(village?.scaleKey || ""));
+  marker.setData("occupiedTileKeys", bounds.occupied.map(tile => tile.key));
+  marker.setData("displayWidth", bounds.width);
+  marker.setData("displayHeight", bounds.height);
   if (artwork && ensureArtworkTexture(scene, artwork)) {
-    marker.add(scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5).setDisplaySize(oldSpecSize, oldSpecSize));
+    marker.add(scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5).setDisplaySize(bounds.width, bounds.height));
   } else {
     marker.add(scene.add.text(0, 0, "⌂", {
       fontSize: `${tileRelativePx(0.3)}px`,
@@ -181,7 +230,8 @@ function drawBase(scene, container, village) {
 
 function drawBases(scene, container, settlements, activeVillage) {
   const seen = new Set();
-  for (const settlement of [...(Array.isArray(settlements) ? settlements : []), activeVillage]) {
+  // 選択中拠点は勢力状態側が正本。世界一覧に同座標の旧データが残っていても先に描画する。
+  for (const settlement of [activeVillage, ...(Array.isArray(settlements) ? settlements : [])]) {
     if (!settlement) continue;
     const x = finiteCoord(settlement.x);
     const y = finiteCoord(settlement.y);
@@ -230,6 +280,101 @@ function drawEnemyNests(scene, container, nests) {
       .setStrokeStyle(Math.max(2, tileRelativePx(0.05)), 0xf0a06f, 0.95));
     markerByEntityId.set(String(nest.id || "").trim(), marker);
     container.add(marker);
+  }
+}
+
+function firstCharacter(value, fallback = "施") {
+  return Array.from(String(value || "").trim())[0] || fallback;
+}
+
+function addTileTextMarker(scene, container, tileKey, label, options = {}) {
+  const [x, y] = String(tileKey || "").split(",").map(Number);
+  if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
+  const center = tileCenter(x, y);
+  const marker = scene.add.container(
+    center.x + (Number(options.offsetX) || 0),
+    center.y + (Number(options.offsetY) || 0)
+  ).setName(options.name || "v39-tile-text-marker");
+  marker.setData("tileKey", tileKey);
+  marker.setData("label", label);
+  const radius = tileRelativePx(options.radiusTiles || 0.16);
+  marker.add(scene.add.circle(0, 0, radius, options.fillColor || 0x28373b, options.fillAlpha ?? 0.96)
+    .setStrokeStyle(Math.max(1.5, tileRelativePx(0.025)), options.strokeColor || 0xf0d28a, 1));
+  marker.add(scene.add.text(0, options.subLabel ? -2 : 0, label, {
+    fontSize:`${tileRelativePx(options.fontTiles || 0.2)}px`,
+    fontStyle:"bold",
+    color:options.textColor || "#fff5d8",
+    stroke:"#071014",
+    strokeThickness:2
+  }).setOrigin(0.5));
+  if (options.subLabel) {
+    marker.add(scene.add.text(0, radius + 1, options.subLabel, {
+      fontSize:`${tileRelativePx(0.12)}px`,
+      fontStyle:"bold",
+      color:"#fff2cb",
+      stroke:"#071014",
+      strokeThickness:2
+    }).setOrigin(0.5, 0));
+  }
+  container.add(marker);
+  return marker;
+}
+
+function drawSettlementTileMarkers(scene, container, faction) {
+  const { width, height } = tileMetrics();
+  const completedOffsetX = width * 0.28;
+  const completedOffsetY = -height * 0.27;
+  const pendingOffsetX = -width * 0.28;
+  const pendingOffsetY = -height * 0.27;
+  for (const settlement of getFactionSettlements(faction)) {
+    for (const [tileKey, mode] of Object.entries(settlement?.territoryTileModeMap || {})) {
+      if (String(mode) !== "settlement") continue;
+      addTileTextMarker(scene, container, tileKey, "居", {
+        name:"v39-residential-tile-marker",
+        offsetX:width * 0.28,
+        offsetY:height * 0.27,
+        radiusTiles:0.115,
+        fontTiles:0.145,
+        fillColor:0x8a5725,
+        strokeColor:0xffd99a
+      });
+    }
+    for (const [tileKey, conversion] of Object.entries(settlement?.territoryTileConversionMap || {})) {
+      const targetMode = String(conversion?.targetMode || "");
+      addTileTextMarker(scene, container, tileKey, targetMode === "settlement" ? "居" : "資", {
+        name:"v39-tile-conversion-marker",
+        subLabel:`${Math.max(0, Math.floor(Number(conversion?.remainingTurns) || 0))}T`,
+        radiusTiles:0.17,
+        fontTiles:0.2,
+        fillColor:0xb45e24,
+        strokeColor:0xffd36d
+      });
+    }
+    for (const [tileKey, facilityNames] of Object.entries(settlement?.tileFacilityMap || {})) {
+      (Array.isArray(facilityNames) ? facilityNames : []).slice(0, 1).forEach(facilityName => {
+        addTileTextMarker(scene, container, tileKey, firstCharacter(facilityName), {
+          name:"v39-facility-marker",
+          offsetX:completedOffsetX,
+          offsetY:completedOffsetY,
+          radiusTiles:0.14,
+          fontTiles:0.18,
+          fillColor:0x234d43,
+          strokeColor:0xa9e2ba
+        })?.setData("facilityName", String(facilityName || ""));
+      });
+    }
+    for (const item of Array.isArray(settlement?.constructionQueue) ? settlement.constructionQueue : []) {
+      addTileTextMarker(scene, container, item?.tileKey, firstCharacter(item?.facilityName), {
+        name:"v39-facility-construction-marker",
+        subLabel:`${Math.max(0, Math.floor(Number(item?.remainingTurns) || 0))}T`,
+        offsetX:pendingOffsetX,
+        offsetY:pendingOffsetY,
+        radiusTiles:0.15,
+        fontTiles:0.18,
+        fillColor:0x8a5a24,
+        strokeColor:0xffd36d
+      })?.setData("facilityName", String(item?.facilityName || ""));
+    }
   }
 }
 
@@ -631,6 +776,7 @@ function renderMarkers() {
   unitContainer = scene.add.container(0, 0).setDepth(UNIT_LAYER_DEPTH).setName("v39-unit-layer");
   drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction));
   drawEnemyNests(scene, structureContainer, state?.enemyNests);
+  drawSettlementTileMarkers(scene, structureContainer, faction);
   drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId);
   drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId);
   drawNeutralVillageUnits(scene, unitContainer, state?.neutralVillages);

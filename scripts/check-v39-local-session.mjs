@@ -34,6 +34,18 @@ const report = await page.evaluate(async () => {
     races:normalSession.players.map(player => player.race)
   };
   const source = window.startV39LocalSession(2, { playMode:"single-test" });
+  window.setV39GameState({
+    players:window.getV39GameState().players.map(player => ({
+      ...player,
+      race:player.race || "只人",
+      factionState:{
+        ...player.factionState,
+        units:player.factionState.units.map((unit, index) => index === 0
+          ? { ...unit, isSovereign:true, unitType:"統治者" }
+          : unit)
+      }
+    }))
+  }, { reason:"local-session-check-sovereign-setup" });
   const field = window.generateV39TestFieldWithSeed({ w:36, h:36, patternId:"realistic" }, "local-session-check");
   window.closeFieldSettingsModal?.();
   const placedPlayerIds = [];

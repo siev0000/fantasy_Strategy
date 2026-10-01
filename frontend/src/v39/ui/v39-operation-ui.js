@@ -287,8 +287,9 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       html:not(.v39-test-mode) [data-foot="test"]{display:none!important}
       html:not(.v39-test-mode) #footTest{display:none!important}
       #footTest{min-width:0;min-height:0;height:100%;max-height:100%;overflow:hidden;display:flex;flex:1 1 0;flex-direction:column}
-      #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;gap:6px}
+      #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;align-items:center;gap:6px}
       #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
+      #v39-land-settlement-convert-status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9fb0b4;font-size:13px}
       #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
       #footSquad.is-unit-create-open>#v39-squad-main,#footSquad.is-unit-create-open>#v39-squad-content{display:none!important}
       #footSquad.is-unit-create-open>.v39-unit-create-panel{display:grid;height:100%;min-height:0}
@@ -368,7 +369,11 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
           </div>
         </section>
         <section id="footTile" class="land-panel" hidden aria-hidden="true">
-          <div class="v39-land-shortcuts"><button type="button" class="v39-footer-shortcut" data-open="build">⌂ 建設</button></div>
+          <div class="v39-land-shortcuts">
+            <button type="button" class="v39-footer-shortcut" data-open="build">⌂ 建設</button>
+            <button type="button" class="v39-footer-shortcut" id="v39-land-settlement-convert" disabled>居住化</button>
+            <span id="v39-land-settlement-convert-status" aria-live="polite">マスを選択</span>
+          </div>
           ${data.landItems.map(item => `<div class="land-item"><span>${item.label}</span><b${item.valueId ? ` id="${item.valueId}"` : ""}>${item.value}</b></div>`).join("")}
         </section>
         <section id="footSettlement" class="settlement-panel" hidden aria-hidden="true"></section>

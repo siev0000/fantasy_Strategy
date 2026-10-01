@@ -21,6 +21,7 @@ const UNIT_SCOUT_LAYER_NAME = "v39-unit-scout-boundary-layer";
 const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
 const NEST_TERRITORY_LAYER_NAME = "v39-nest-territory-boundary-layer";
 const NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME = "v39-neutral-village-territory-boundary-layer";
+const RESIDENTIAL_TILE_LAYER_NAME = "v39-residential-tile-layer";
 const FOG_COLOR = 0x071014;
 const FOG_ALPHA = 0.76;
 const SCOUT_COLOR = 0x9edff2;
@@ -34,6 +35,10 @@ const NEST_TERRITORY_WIDTH = 2.4;
 const NEUTRAL_VILLAGE_TERRITORY_COLOR = 0xe7c66f;
 const NEUTRAL_VILLAGE_TERRITORY_ALPHA = 0.72;
 const NEUTRAL_VILLAGE_TERRITORY_WIDTH = 2;
+const RESIDENTIAL_TILE_FILL = 0xd59a4a;
+const RESIDENTIAL_TILE_FILL_ALPHA = 0.46;
+const RESIDENTIAL_TILE_LINE = 0xf4d9a3;
+const RESIDENTIAL_TILE_LINE_ALPHA = 0.82;
 const RETRY_MS = 20;
 const RETRY_LIMIT = 180;
 
@@ -76,6 +81,21 @@ function villageSignature(villages) {
     .map(village => `${String(village?.id || "")}:${Math.floor(Number(village?.x))},${Math.floor(Number(village?.y))},${sortedSetSignature(village?.territoryTileKeys)}`)
     .sort()
     .join("|");
+}
+
+function residentialTileKeys(state, player, faction) {
+  const result = new Set();
+  for (const village of getFactionSettlements(faction)) {
+    if (!village?.placed) continue;
+    const homeKey = coordKey(Math.floor(Number(village.x)), Math.floor(Number(village.y)));
+    if (String(state?.territoryOwnerByTile?.[homeKey] || "") === String(player?.id || "")) result.add(homeKey);
+    for (const [key, mode] of Object.entries(village?.territoryTileModeMap || {})) {
+      if (String(mode) !== "settlement") continue;
+      if (String(state?.territoryOwnerByTile?.[key] || "") !== String(player?.id || "")) continue;
+      result.add(key);
+    }
+  }
+  return result;
 }
 
 function coordKey(x, y) {
@@ -473,6 +493,24 @@ function drawOuterBoundary(graphics, data, tileKeys, style) {
   }
 }
 
+function drawResidentialTiles(graphics, data, tileKeys) {
+  graphics.fillStyle(RESIDENTIAL_TILE_FILL, RESIDENTIAL_TILE_FILL_ALPHA);
+  graphics.lineStyle(1.25, RESIDENTIAL_TILE_LINE, RESIDENTIAL_TILE_LINE_ALPHA);
+  for (const key of tileKeys) {
+    const [x, y] = key.split(",").map(Number);
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= data.w || y >= data.h) continue;
+    const points = hexPoints(x, y);
+    graphics.fillPoints(points, true);
+    const centerX = (points[0].x + points[3].x) / 2;
+    const centerY = (points[0].y + points[3].y) / 2;
+    const inner = points.map(point => ({
+      x:centerX + ((point.x - centerX) * 0.72),
+      y:centerY + ((point.y - centerY) * 0.72)
+    }));
+    graphics.strokePoints(inner, true);
+  }
+}
+
 function drawUnitScoutBoundaries(graphics, data, units) {
   // 同じマス・同じ索敵範囲の部隊員は1本の枠線にまとめる。
   const renderedRanges = new Set();
@@ -541,6 +579,7 @@ function renderVisibilityLayers() {
       .filter(([, ownerId]) => String(ownerId) === String(player.id))
       .map(([key]) => key)
   );
+  const residentialTiles = residentialTileKeys(state, player, faction);
   const playerIndex = Math.max(0, state.players.findIndex(row => row?.id === player.id));
   const fogSignature = [
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
@@ -557,6 +596,7 @@ function renderVisibilityLayers() {
     nestSignature(visibleNests),
     villageSignature(visibleVillages),
     sortedSetSignature(ownTerritory),
+    sortedSetSignature(residentialTiles),
     playerIndex
   ].join(";");
   persistVisibilityTiles(faction, explored, currentVision);
@@ -571,6 +611,11 @@ function renderVisibilityLayers() {
   removeLayer(scene, TERRITORY_LAYER_NAME);
   removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
   removeLayer(scene, NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
+  removeLayer(scene, RESIDENTIAL_TILE_LAYER_NAME);
+
+  const residential = scene.add.graphics().setDepth(1.5).setName(RESIDENTIAL_TILE_LAYER_NAME);
+  drawResidentialTiles(residential, data, residentialTiles);
+  residential.setData("tileCount", residentialTiles.size);
 
   let unexploredCount = Math.max(0, (Number(data.w) * Number(data.h)) - explored.size);
   const unitScout = scene.add.graphics().setDepth(15).setName(UNIT_SCOUT_LAYER_NAME);
@@ -648,6 +693,7 @@ function renderVisibilityLayers() {
     exploredCount:explored.size,
     unexploredCount,
     ownTerritoryCount:ownTerritory.size,
+    residentialTileCount:residentialTiles.size,
     visibleNestTerritoryCount:visibleNests.length,
     visibleNeutralVillageTerritoryCount:visibleVillages.length,
     unitScoutBoundaryCount,

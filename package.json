@@ -29,6 +29,7 @@
     "check:neutral-village-sim": "node scripts/check-v39-neutral-village-sim.mjs",
     "check:neutral-village-sim:100": "set V39_VILLAGE_SIM_TURNS=100&& node scripts/check-v39-neutral-village-sim.mjs",
     "check:victory-landmark-placement": "node scripts/check-v39-victory-landmark-placement.mjs",
+    "check:settlement-development": "node scripts/check-v39-settlement-development.mjs",
     "check:archipelago-size": "node scripts/check-v39-archipelago-island-size.mjs",
     "check:faction-ai-territory-assault": "node scripts/check-v39-faction-ai-territory-assault.mjs",
     "preview:front": "vite preview --config frontend/vite.config.mjs"

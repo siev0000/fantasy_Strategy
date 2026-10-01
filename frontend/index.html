@@ -4212,10 +4212,16 @@ html,body{
   box-sizing:border-box;width:100%;height:100%;min-height:0;overflow:hidden;
   grid-template-rows:auto minmax(0,1fr);gap:6px
 }
+.settlement-toolbar{min-width:0;display:flex;align-items:center;gap:6px}
 .settlement-tabs{
-  min-width:0;display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:0 1px 3px;
+  flex:1;min-width:0;display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:0 1px 3px;
   scrollbar-width:thin
 }
+.settlement-development-open{
+  flex:0 0 auto;min-height:34px;padding:5px 11px;border:1px solid #73d6e4;border-radius:7px;
+  background:#17323a;color:#efffff;font-size:15px;font-weight:800;white-space:nowrap;cursor:pointer
+}
+.settlement-development-open:hover,.settlement-development-open:focus-visible{background:#20505a;border-color:#a3edf5}
 .settlement-tab{
   flex:0 0 auto;min-width:92px;min-height:34px;padding:5px 10px;border:1px solid #405158;
   border-radius:7px;background:#132026;color:#e8efec;font-size:13px;font-weight:700;white-space:nowrap

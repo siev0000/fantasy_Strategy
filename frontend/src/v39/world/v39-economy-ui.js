@@ -6,8 +6,10 @@ import {
   resolveV39FacilityEffectsAtTile,
   resolveV39FacilityYieldMultiplier,
   inspectV39Construction,
+  inspectV39SettlementDevelopment,
   normalizeV39Village,
-  startV39Construction
+  startV39Construction,
+  startV39SettlementDevelopment
 } from "../../lib/v39-economy-rules.js";
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
 import { getVillageScaleDefinitions, resolveVillageScaleDefinition } from "../../composables/villageCoreUtils.js";
@@ -20,6 +22,9 @@ let processingTurn = false;
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const formatNumber = value => number(value).toLocaleString("ja-JP", { maximumFractionDigits:1 });
+const escapeHtml = value => text(value).replace(/[&<>"']/g, char => ({
+  "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+}[char]));
 
 function activeContext() {
   const state = window.getV39GameState?.();
@@ -51,6 +56,7 @@ function ensureBuildModalShell() {
     <div class="modal-head"><h2>都市・建設</h2><button class="close" data-close>×</button></div>
     <div class="modal-body v39-build-body">
       <header class="v39-build-summary" id="v39-build-summary"></header>
+      <section class="v39-development" id="v39-development"></section>
       <div class="v39-build-layout">
         <div class="v39-build-list" id="v39-build-list"></div>
         <section class="v39-build-detail" id="v39-build-detail"></section>
@@ -66,6 +72,7 @@ function ensureBuildModalShell() {
       renderBuildModal();
       return;
     }
+    if (event.target instanceof Element && event.target.closest("#v39-development-start")) startSelectedDevelopment();
     if (event.target instanceof Element && event.target.closest("#v39-build-start")) startSelectedConstruction();
   });
   installStyles();
@@ -77,7 +84,7 @@ function installStyles() {
   style.id = "v39-economy-style";
   style.textContent = `
     .v39-build-modal{width:min(920px,94vw);height:min(680px,88vh)}
-    .v39-build-body{display:grid!important;grid-template-rows:auto minmax(0,1fr) auto;gap:8px;overflow:hidden!important}
+    .v39-build-body{display:grid!important;grid-template-rows:auto auto minmax(0,1fr) auto;gap:8px;overflow:hidden!important}
     .v39-build-summary{display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #3f555d;border-radius:8px;background:#101d22;font-size:15px}
     .v39-build-summary b{color:#88dfab}.v39-build-layout{display:grid;grid-template-columns:minmax(250px,42%) minmax(0,1fr);gap:8px;min-height:0}
     .v39-build-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:6px;overflow:auto;padding-right:3px}
@@ -89,6 +96,11 @@ function installStyles() {
     .v39-build-fact{padding:8px;border-radius:6px;background:#192a30}.v39-build-fact span,.v39-build-fact b{display:block}.v39-build-fact span{font-size:13px;color:#93a5aa}.v39-build-fact b{margin-top:2px;font-size:15px}
     #v39-build-start{width:100%;min-height:42px;margin-top:10px;border:1px solid #c29c45;border-radius:7px;background:#3c3217;color:#ffe6a0;font-size:16px;font-weight:800;cursor:pointer}
     #v39-build-start:disabled{cursor:not-allowed;opacity:.4}.v39-build-reasons{min-height:22px;margin-top:8px;color:#e89a89;font-size:13px}
+    .v39-development{display:grid;gap:7px;padding:9px;border:1px solid #477680;border-radius:8px;background:#102228;color:#e9f5f3}
+    .v39-development-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.v39-development-head strong{font-size:16px}.v39-development-head span{font-size:13px;color:#9bb0b4}
+    .v39-development-requirements{display:flex;flex-wrap:wrap;gap:5px}.v39-development-requirement{padding:5px 7px;border:1px solid #526268;border-radius:6px;background:#17282e;font-size:13px}.v39-development-requirement.met{border-color:#4d8b68;color:#bce7ca}.v39-development-requirement.shortage{border-color:#8c594f;color:#efb0a2}
+    .v39-development-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}.v39-development-reason{margin-right:auto;color:#e8aa91;font-size:13px}
+    #v39-development-start{min-height:36px;padding:6px 12px;border:1px solid #67cddd;border-radius:7px;background:#17343c;color:#efffff;font-size:15px;font-weight:800;cursor:pointer}#v39-development-start:disabled{opacity:.4;cursor:not-allowed}
     .v39-build-queue{display:flex;gap:6px;min-height:42px;overflow-x:auto}.v39-build-queue-item{flex:0 0 auto;padding:7px 10px;border:1px solid #53666c;border-radius:7px;background:#17252a;font-size:13px}.v39-build-queue-empty{color:#829397;font-size:13px;padding:8px}
     @media(max-width:680px){.v39-build-modal{height:92vh}.v39-build-layout{grid-template-columns:1fr;grid-template-rows:minmax(130px,42%) minmax(0,1fr)}.v39-build-list{grid-template-columns:1fr 1fr}.v39-build-facts{grid-template-columns:1fr}.v39-build-item{min-height:58px}}
   `;
@@ -109,6 +121,15 @@ function renderBuildModal() {
   if (summary) summary.innerHTML = context.village?.placed
     ? `<span>都市 <b>${text(context.village.name) || "拠点"}</b></span><span>人口 <b>${formatNumber(context.village.population)}</b></span><span>施設 <b>${selectedCheck?.used || 0}/${selectedCheck?.capacity || 0}</b></span><span>対象 <b>(${target?.x ?? "-"}, ${target?.y ?? "-"}) ${text(target?.special || target?.terrain)}</b></span>`
     : `<span>初期拠点を配置してください</span>`;
+  const development = inspectV39SettlementDevelopment(context.state, context.player?.id, context.village?.settlementId || context.village?.id);
+  const developmentPanel = modal.querySelector("#v39-development");
+  if (developmentPanel) {
+    const requirements = (development.requirements || []).map(row => `<span class="v39-development-requirement ${row.met ? "met" : "shortage"}">${escapeHtml(row.label)} <b>${formatNumber(row.current)}/${formatNumber(row.required)}</b></span>`).join("");
+    const project = development.project;
+    developmentPanel.innerHTML = `<div class="v39-development-head"><strong>拠点発展: ${escapeHtml(development.current?.name || context.village?.type || "-")} ${development.next ? `→ ${escapeHtml(development.next.name)}` : ""}</strong><span>${project ? `工事中 残り${project.remainingTurns}/${project.totalTurns}T` : (development.next ? `工期 ${development.next.buildTurns}T` : "最大規模")}</span></div>
+      ${requirements ? `<div class="v39-development-requirements">${requirements}</div>` : ""}
+      <div class="v39-development-actions"><span class="v39-development-reason">${escapeHtml(development.reason)}</span>${development.next ? `<button type="button" id="v39-development-start" ${development.available ? "" : "disabled"}>${project ? "発展工事中" : `${escapeHtml(development.next.name)}へ発展`}</button>` : ""}</div>`;
+  }
   const list = modal.querySelector("#v39-build-list");
   if (list) list.innerHTML = definitions.map(definition => {
     const check = checks.get(definition.name);
@@ -126,6 +147,21 @@ function renderBuildModal() {
   if (queue) queue.innerHTML = context.village?.constructionQueue?.length
     ? context.village.constructionQueue.map(item => `<div class="v39-build-queue-item"><b>${item.facilityName}</b> (${item.tileKey}) 残${item.remainingTurns}/${item.totalTurns}T</div>`).join("")
     : `<div class="v39-build-queue-empty">建設中の施設なし</div>`;
+}
+
+function startSelectedDevelopment() {
+  const context = activeContext();
+  const result = startV39SettlementDevelopment(context.state, context.player?.id, context.village?.settlementId || context.village?.id);
+  if (!result.ok) {
+    window.showV39TurnBanner?.(`発展不可: ${result.reason}`);
+    renderBuildModal();
+    return result;
+  }
+  window.setV39GameState?.({ players:result.state.players }, { reason:"settlement-development-started" });
+  window.showV39TurnBanner?.(`${context.village.name || "拠点"}: ${result.target.name}への発展を開始 (${result.village.developmentProject.totalTurns}T)`);
+  window.appendV39ActivityLog?.(context.player.id, "拠点", `${context.village.name || "拠点"}が${result.target.name}への発展を開始`, result.village.developmentProject);
+  renderBuildModal();
+  return result;
 }
 
 function startSelectedConstruction() {
@@ -191,6 +227,25 @@ function handleTurn() {
       window.showV39TurnBanner?.(`建設完了: ${result.completed.map(row => row.facilityName).join("、")}`);
       window.dispatchEvent(new CustomEvent("v39:construction-completed", { detail:{ completed:result.completed } }));
     }
+    if (result.developmentCompleted?.length) {
+      const labels = result.developmentCompleted.map(row => `${row.settlementName}が${row.scaleName}へ発展`);
+      window.showV39TurnBanner?.(labels.join(" / "));
+      for (const item of result.developmentCompleted) {
+        window.appendV39ActivityLog?.(item.playerId, "拠点", `${item.settlementName}が${item.scaleName}へ発展`, item);
+      }
+      window.dispatchEvent(new CustomEvent("v39:settlement-development-completed", {
+        detail:{ completed:result.developmentCompleted }
+      }));
+    }
+    if (result.territoryConversionCompleted?.length) {
+      for (const item of result.territoryConversionCompleted) {
+        const label = item.targetMode === "settlement" ? "居住化" : "資源化";
+        window.appendV39ActivityLog?.(item.playerId, "領土", `${label}完了: (${item.tileKey})`, item);
+      }
+      window.dispatchEvent(new CustomEvent("v39:territory-conversion-completed", {
+        detail:{ completed:result.territoryConversionCompleted }
+      }));
+    }
     for (const rebellion of result.rebellions || []) {
       const message = `${rebellion.settlementName}で反乱発生: ${rebellion.race}${rebellion.population}人が敵対化`;
       window.showV39TurnBanner?.(message);
@@ -227,6 +282,11 @@ window.startV39Construction = (facilityName, tile = targetTile()) => {
   selectedFacilityName = text(facilityName);
   selectedTile = tile;
   return startSelectedConstruction();
+};
+window.openV39SettlementDevelopment = () => {
+  renderBuildModal();
+  modal?.classList.add("open");
+  return modal instanceof HTMLElement;
 };
 window.getV39EconomyRules = () => ({ gainScale:0.1, consumptionScale:0.1, initialStockTurns:3, constructionUsesJsonTurns:true });
 

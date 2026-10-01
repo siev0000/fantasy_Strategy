@@ -114,7 +114,7 @@ function render() {
   const overcrowdingText = overcrowding > 0
     ? `<span>人口過多 <b>${formatNumber(overcrowding)}</b></span><span>流出 <b>-${formatNumber(settlement.lastPopulationOutflow)}</b></span><span>幸福/治安 <b>${formatNumber(settlement.overcrowdingHappinessPenalty)}</b></span>`
     : "";
-  const populationSummary = `<div class="settlement-inline-facts"><span>人口許容 <b>${formatNumber(settlement.populationCapacity)}</b></span><span>雇用枠 <b>${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div><div class="settlement-inline-facts" title="各生産項目は、人口構成から求めた対応技能値を生産倍率表へ換算した値です。"><span>農業 <b>${formatNumber(production.productionMultipliers.農業 * 100)}%</b></span><span>林業 <b>${formatNumber(production.productionMultipliers.林業 * 100)}%</b></span><span>漁業 <b>${formatNumber(production.productionMultipliers.漁業 * 100)}%</b></span><span>工業 <b>${formatNumber(production.productionMultipliers.工業 * 100)}%</b></span></div>${populationRows(settlement)}`;
+  const populationSummary = `<div class="settlement-inline-facts"><span title="土地用途の許容人数と拠点規模の収容力の合計です。">人口許容 <b>${formatNumber(production.populationCapacity)}</b> <small>(土地 ${formatNumber(production.landUsePopulationCapacity)} + 規模 ${formatNumber(production.settlementScalePopulationCapacity)})</small></span><span>雇用枠 <b>${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div><div class="settlement-inline-facts" title="各生産項目は、人口構成から求めた対応技能値を生産倍率表へ換算した値です。"><span>農業 <b>${formatNumber(production.productionMultipliers.農業 * 100)}%</b></span><span>林業 <b>${formatNumber(production.productionMultipliers.林業 * 100)}%</b></span><span>漁業 <b>${formatNumber(production.productionMultipliers.漁業 * 100)}%</b></span><span>工業 <b>${formatNumber(production.productionMultipliers.工業 * 100)}%</b></span></div>${populationRows(settlement)}`;
   const repair = window.inspectV39TerritoryRepair?.(player?.id, settlementId);
   const repairTargets = repair?.targets || [];
   const repairable = repairTargets.filter(row => !row.blockedReason).length;
@@ -153,9 +153,12 @@ function render() {
   const specializationBody = `<div class="settlement-inline-facts"><span>選択中 <b>${escapeHtml(settlement.citySpecializationId || "なし")}</b></span><span>都市特性 <b>${escapeHtml((settlement.cityTraits || []).join(" / ") || "なし")}</b></span><span>条件の正本 <b>都市.json</b></span></div><div class="settlement-chip-list">${specializationOptions.map(option => `<button type="button" class="settlement-chip${settlement.citySpecializationId === option.id ? " building" : ""}" data-city-specialization="${escapeHtml(option.id)}" title="${escapeHtml(option.reason)}"${option.available ? "" : " disabled"}>${escapeHtml(option.name)}${option.available ? "" : " ×"}</button>`).join("")}</div>`;
 
   panel.innerHTML = `
-    <nav class="settlement-tabs" aria-label="所有拠点">
-      ${settlements.map(row => `<button type="button" class="settlement-tab${text(row.settlementId) === settlementId ? " active" : ""}" data-settlement-id="${escapeHtml(row.settlementId)}">${escapeHtml(row.name || row.type || "拠点")}</button>`).join("")}
-    </nav>
+    <div class="settlement-toolbar">
+      <nav class="settlement-tabs" aria-label="所有拠点">
+        ${settlements.map(row => `<button type="button" class="settlement-tab${text(row.settlementId) === settlementId ? " active" : ""}" data-settlement-id="${escapeHtml(row.settlementId)}">${escapeHtml(row.name || row.type || "拠点")}</button>`).join("")}
+      </nav>
+      <button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button>
+    </div>
     <div class="settlement-fold-list">
       ${section("population", "人口", formatNumber(settlement.population), populationSummary)}
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
@@ -178,6 +181,11 @@ panel?.addEventListener("toggle", event => {
 }, true);
 
 panel?.addEventListener("click", event => {
+  const developmentButton = event.target instanceof Element ? event.target.closest("[data-settlement-development]") : null;
+  if (developmentButton) {
+    window.openV39SettlementDevelopment?.();
+    return;
+  }
   const specializationButton = event.target instanceof Element ? event.target.closest("[data-city-specialization]") : null;
   if (specializationButton) {
     const { state, player, settlement } = activeContext();
