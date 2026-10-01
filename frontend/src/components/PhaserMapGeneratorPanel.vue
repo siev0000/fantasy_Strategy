@@ -9431,6 +9431,10 @@ function createVillageAndInitialUnit(data) {
     x: null,
     y: null,
     placed: false,
+    type: "村",
+    scaleKey: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+    scaleLevel: 1,
+    developmentProject: null,
     cityLevels: normalizeCityLevels({}),
     buildings: [],
     population: pendingPopulation,
@@ -9782,6 +9786,10 @@ function buildFactionStateWithPendingVillage(slot) {
     x: null,
     y: null,
     placed: false,
+    type: "村",
+    scaleKey: TERRITORY_RESIDENTIAL_LEVEL_VILLAGE,
+    scaleLevel: 1,
+    developmentProject: null,
     population,
     populationByRace: {
       [baseRace]: population
@@ -22010,10 +22018,6 @@ function collectVillageDevelopmentResidentialTileKeys(village) {
   const homeKey = coordKey(village.x, village.y);
   if (resolveTerritoryTileModeAt(village, homeKey) !== TERRITORY_TILE_MODE_SETTLEMENT) return [];
 
-  const centerMap = normalizeTerritoryResidentialCenterMap(
-    village?.[TERRITORY_RESIDENTIAL_CENTER_MAP_KEY],
-    village
-  );
   const accepted = new Set([homeKey]);
   const queue = [homeKey];
   const ordered = [homeKey];
@@ -22033,8 +22037,6 @@ function collectVillageDevelopmentResidentialTileKeys(village) {
       if (accepted.has(tileKey)) continue;
       if (!isOwnTerritoryTile(neighbor.x, neighbor.y)) continue;
       if (resolveTerritoryTileModeAt(village, tileKey) !== TERRITORY_TILE_MODE_SETTLEMENT) continue;
-      const ownerCenter = nonEmptyText(centerMap?.[tileKey]);
-      if (ownerCenter && ownerCenter !== homeKey) continue;
       accepted.add(tileKey);
       ordered.push(tileKey);
       queue.push(tileKey);
