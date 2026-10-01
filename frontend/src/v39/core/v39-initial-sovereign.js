@@ -11,6 +11,7 @@ import {
 import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
+import { isV39BaseClassRow } from "../../lib/v39-class-rules.js";
 
 const INITIAL_LEVEL_MIN = 5;
 const INITIAL_LEVEL_MAX = 10;
@@ -19,25 +20,13 @@ const classRows = Array.isArray(classData) ? classData : [];
 const classByName = new Map(classRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
 const raceByKey = new Map((Array.isArray(raceData) ? raceData : []).map(row => [text(row?.key), row]).filter(([key]) => key));
 
-function isInitialUnlockedClass(row) {
-  if (!row) return false;
-  const conditionLv = text(row?.条件Lv);
-  if (conditionLv && !["初期", "0", "-", "なし"].includes(conditionLv)) return false;
-  for (let index = 1; index <= 4; index += 1) {
-    if (text(row?.[`条件_${index}`])) return false;
-    const level = Number(row?.[`Lv_${index}`]);
-    if (Number.isFinite(level) && level > 0) return false;
-  }
-  return true;
-}
-
 export function getV39InitialSovereignClassCandidates(race) {
   const raceDefinition = raceByKey.get(text(race));
   if (!raceDefinition) return [];
   const raceClassName = text(raceDefinition.className);
   return classRows.filter(row => {
     if (text(row?.名前) === raceClassName && text(row?.種類) !== "人族") return true;
-    return text(row?.種類) === "職業" && isInitialUnlockedClass(row);
+    return isV39BaseClassRow(row);
   });
 }
 

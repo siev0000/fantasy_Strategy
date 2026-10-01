@@ -1,5 +1,6 @@
 import { chromium } from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs";
 
+const baseUrl = process.env.V39_BASE_URL || "http://127.0.0.1:3000";
 const browser = await chromium.launch({ headless:true });
 const page = await browser.newPage({ viewport:{ width:1280, height:800 } });
 const errors = [];
@@ -7,7 +8,7 @@ page.on("pageerror", error => errors.push(String(error)));
 page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
 
 try {
-  await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+  await page.goto(baseUrl, { waitUntil:"networkidle" });
   await page.waitForFunction(() => typeof window.startV39LocalSession === "function" && typeof window.generateV39TestFieldWithSeed === "function");
   const report = await page.evaluate(async () => {
     window.startV39LocalSession(1, { playMode:"single-test" });
@@ -86,17 +87,44 @@ try {
     await new Promise(resolve => window.setTimeout(resolve, 1000));
     const scene = window.__v39FieldRuntime?.game?.scene?.getScenes?.(true)?.[0];
     const overlay = scene?.children?.list?.find(child => child?.name === "v39-victory-landmark-overlay");
+    const images = (overlay?.list || []).filter(child => child?.name === "v39-victory-landmark-image");
+    const hiddenTargetImage = images.find(child => child?.getData?.("victoryLandmarkName") === target.name);
     return {
       markerCount:window.getV39VictoryLandmarkIconStatus?.()?.markerCount || 0,
       alpha:overlay?.alpha,
       childTypes:(overlay?.list || []).map(child => child?.type),
-      hasImage:(overlay?.list || []).some(child => child?.type === "Image"),
+      hasImage:images.length > 0,
+      hiddenTargetImageAlpha:hiddenTargetImage?.alpha,
+      hiddenTargetImageWidth:hiddenTargetImage?.displayWidth,
+      hiddenTargetImageHeight:hiddenTargetImage?.displayHeight,
+      hiddenTargetTexture:hiddenTargetImage?.texture?.key || "",
       hasTestHighlight:(overlay?.list || []).some(child => child?.name === "v39-victory-landmark-test-highlight")
     };
   });
-  if (displayReport.markerCount !== 2 || displayReport.alpha !== 1 || !displayReport.hasImage || !displayReport.hasTestHighlight) {
+  if (
+    displayReport.markerCount !== 2
+    || displayReport.alpha !== 1
+    || !displayReport.hasImage
+    || displayReport.hiddenTargetImageAlpha !== 0.6
+    || displayReport.hiddenTargetImageWidth < 180
+    || displayReport.hiddenTargetImageHeight < 180
+    || displayReport.hiddenTargetTexture !== `v39-victory-landmark:${report.discoveredName}`
+    || !displayReport.hasTestHighlight
+  ) {
     throw new Error(`未発見勝利対象のTEST表示が不正です: ${JSON.stringify(displayReport)}`);
   }
+  const normalHiddenMarkerCount = await page.evaluate(async () => {
+    window.setV39TestMode?.(false);
+    window.renderV39VictoryLandmarkIcons?.();
+    await new Promise(resolve => window.setTimeout(resolve, 100));
+    return window.getV39VictoryLandmarkIconStatus?.()?.markerCount || 0;
+  });
+  if (normalHiddenMarkerCount !== 0) throw new Error(`通常プレイで未発見の勝利対象が表示されています: ${normalHiddenMarkerCount}`);
+  await page.evaluate(async () => {
+    window.setV39TestMode?.(true);
+    window.renderV39VictoryLandmarkIcons?.();
+    await new Promise(resolve => window.setTimeout(resolve, 100));
+  });
   await page.addStyleTag({ content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}" });
   await page.evaluate(() => {
     document.querySelector("#v39-play-mode-select")?.remove();

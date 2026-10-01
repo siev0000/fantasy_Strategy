@@ -23,6 +23,7 @@
     "check:play-mode-select": "node scripts/check-v39-play-mode-select.mjs",
     "check:multiplayer-start-flow": "node scripts/check-v39-multiplayer-start-flow.mjs",
     "check:character-modal": "node scripts/check-v39-character-modal.mjs",
+    "check:class-schema": "node scripts/check-v39-class-schema.mjs",
     "check:faction-ai-long-sim": "node scripts/check-v39-faction-ai-long-sim.mjs",
     "check:faction-ai-long-sim:100": "set V39_AI_SIM_TURNS=100&& node scripts/check-v39-faction-ai-long-sim.mjs",
     "check:neutral-village-sim": "node scripts/check-v39-neutral-village-sim.mjs",

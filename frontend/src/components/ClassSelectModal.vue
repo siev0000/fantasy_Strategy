@@ -8,6 +8,12 @@ import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { resolveFactionUnitSheetFrame } from "../lib/unit-sheet-artwork.js";
 import { resolveUnitImageArtwork } from "../lib/map-entity-artwork.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
+import {
+  isV39BaseClassRow,
+  isV39InvalidDataToken,
+  isV39ProfessionClassRow,
+  resolveV39ClassCategory
+} from "../lib/v39-class-rules.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -26,7 +32,7 @@ const STATUS_ROW_FIELDS = [
 
 const ACQUIRED_SKILL_FIELDS_LV5 = ["Skill1", "Skill2", "Skill3", "Skill4", "Skill5"];
 
-const CLASS_CATEGORY_ORDER = ["戦士系", "狩人系", "魔法系", "信仰系", "その他"];
+const CLASS_CATEGORY_ORDER = ["戦士系", "格闘系", "狩人系", "魔法系", "信仰系", "ドルイド系", "バード系", "その他"];
 const CLASS_CATEGORY_BY_IMAGE_ID = Object.freeze({
   "戦士":"戦士系",
   "狩人":"狩人系",
@@ -34,9 +40,8 @@ const CLASS_CATEGORY_BY_IMAGE_ID = Object.freeze({
   "神官":"信仰系"
 });
 
-// TODO: クラス.json に正式な分類列を追加したら、画像ID判定をその列参照へ置き換える。
 function resolveClassCategory(row) {
-  return CLASS_CATEGORY_BY_IMAGE_ID[nonEmptyText(row?.画像ID)] || "その他";
+  return resolveV39ClassCategory(row, CLASS_CATEGORY_BY_IMAGE_ID[nonEmptyText(row?.画像ID)] || "その他");
 }
 
 function toSafeNumber(value) {
@@ -51,9 +56,7 @@ function nonEmptyText(value) {
 }
 
 function isPlaceholderSkillName(value) {
-  const text = nonEmptyText(value).toLowerCase();
-  if (!text) return true;
-  return text === "0" || text === "-" || text === "－" || text === "なし" || text === "null";
+  return isV39InvalidDataToken(value);
 }
 
 function resolveSkillFieldKeys(field) {
@@ -80,20 +83,6 @@ function resolveSkillDescription(field) {
     if (desc) return desc;
   }
   return "";
-}
-
-function isClassInitialUnlocked(row) {
-  const conditionLv = nonEmptyText(row?.条件Lv);
-  if (conditionLv && conditionLv !== "初期" && conditionLv !== "0" && conditionLv !== "-" && conditionLv !== "なし") {
-    return false;
-  }
-  for (let i = 1; i <= 4; i += 1) {
-    const token = nonEmptyText(row?.[`条件_${i}`]);
-    const lvRaw = Number(row?.[`Lv_${i}`]);
-    if (token) return false;
-    if (Number.isFinite(lvRaw) && lvRaw > 0) return false;
-  }
-  return true;
 }
 
 function classIconSrcFromRow(row) {
@@ -126,9 +115,9 @@ const classCandidates = computed(() => {
   const raceClassName = RACE_CLASS_NAME_MAP[race] || race;
   const raceBase = allClasses.value.filter(row => nonEmptyText(row.名前) === raceClassName);
   const jobs = allClasses.value.filter((row) => {
-    if (nonEmptyText(row.種類) !== "職業") return false;
+    if (!isV39ProfessionClassRow(row)) return false;
     if (props.allowAdvancedClasses) return true;
-    return isClassInitialUnlocked(row);
+    return isV39BaseClassRow(row);
   });
   const merged = [...raceBase, ...jobs];
   const seen = new Set();

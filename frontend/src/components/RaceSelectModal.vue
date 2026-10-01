@@ -11,6 +11,7 @@ import {
 import { getV39RaceSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getRaceIconSrc } from "../lib/race-icon-library.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
+import { isV39InvalidDataToken } from "../lib/v39-class-rules.js";
 
 const raceBackgroundModules = import.meta.glob("../../../assets/images/background/*.{png,jpg,jpeg,webp}", {
   eager: true,
@@ -58,9 +59,7 @@ function toSafeNumber(value) {
 }
 
 function isPlaceholderSkillName(value) {
-  const text = nonEmptyText(value).toLowerCase();
-  if (!text) return true;
-  return text === "0" || text === "-" || text === "－" || text === "なし" || text === "null";
+  return isV39InvalidDataToken(value);
 }
 
 function resolveSkillFieldKeys(field) {

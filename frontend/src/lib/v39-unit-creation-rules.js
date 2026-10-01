@@ -5,6 +5,7 @@ import { resolveUnitCreateModeCatalog, resolveUnitCreateMode } from "../composab
 import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { EQUIPMENT_SLOT_KEYS } from "../constants/unitCommon.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
+import { isV39BaseClassRow } from "./v39-class-rules.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -19,7 +20,7 @@ export function getV39UnitCreationCost(count = 1) {
 }
 
 export function getV39InitialJobClasses() {
-  return getGameDataRows("クラス").filter(row => text(row?.種類) === "職業" && text(row?.条件Lv) === "初期");
+  return getGameDataRows("クラス").filter(isV39BaseClassRow);
 }
 
 function factionRow(race) {

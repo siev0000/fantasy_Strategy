@@ -18,6 +18,7 @@ import {
   SKILL_FIELD_DEFS,
   STATUS_FIELDS
 } from "../constants/unitCommon.js";
+import { isV39ProfessionClassRow } from "../lib/v39-class-rules.js";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -91,7 +92,7 @@ const equipmentRows = computed(() => {
 const jobClassNames = computed(() => {
   if (!Array.isArray(classDb)) return [];
   return classDb
-    .filter(row => nonEmptyText(row?.種類) === "職業")
+    .filter(isV39ProfessionClassRow)
     .map(row => nonEmptyText(row?.名前))
     .filter(Boolean);
 });

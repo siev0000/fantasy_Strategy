@@ -80,7 +80,6 @@ UNIQUE_KEYS = {
     "勝利対象土地": ("ID",),
 }
 
-
 @dataclass
 class CellValue:
     value: Any = None
@@ -98,6 +97,7 @@ class SheetResult:
     input_rows: int = 0
     skipped_blank_rows: int = 0
     skipped_repeated_header_rows: int = 0
+    skipped_missing_key_rows: int = 0
 
 
 class XlsxReader:
@@ -335,6 +335,11 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
         if is_repeated_header_row(pairs):
             result.skipped_repeated_header_rows += 1
             continue
+        # 一意キーがない行は、同じシート内の説明表・集計・区切りとしてJSONへ出力しない。
+        required_keys = UNIQUE_KEYS.get(sheet_name, ())
+        if required_keys and not all(key in record and not is_blank(record[key]) for key in required_keys):
+            result.skipped_missing_key_rows += 1
+            continue
         result.records.append(record)
 
     key_fields = UNIQUE_KEYS.get(sheet_name)
@@ -448,6 +453,7 @@ def main():
                     "records": len(r.records),
                     "skipped_blank_rows": r.skipped_blank_rows,
                     "skipped_repeated_header_rows": r.skipped_repeated_header_rows,
+                    "skipped_missing_key_rows": r.skipped_missing_key_rows,
                     "warnings": r.warnings,
                     "errors": r.errors,
                 }

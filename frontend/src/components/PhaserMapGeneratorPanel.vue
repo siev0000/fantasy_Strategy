@@ -247,6 +247,12 @@ import {
   RESOURCE_MARKER_PRIORITY_KEYS,
   RESOURCE_GROUPS
 } from "../lib/v39-economy-rules.js";
+import {
+  isV39BaseClassRow,
+  isV39ProfessionClassRow,
+  parseV39ClassCondition,
+  splitV39ClassCondition
+} from "../lib/v39-class-rules.js";
 import effectList320 from "../../../assets/effect/320×240/effect_list.json";
 import effectListAnimation1 from "../../../assets/effect/アニメーション1/effect_list.json";
 
@@ -3001,7 +3007,7 @@ const enemyNestNameByLabel = computed(() => {
 });
 
 const jobClassRows = computed(() => {
-  return classRows.value.filter(row => nonEmptyText(row?.種類) === "職業");
+  return classRows.value.filter(isV39ProfessionClassRow);
 });
 
 const initialJobClassRows = computed(() => {
@@ -7415,18 +7421,7 @@ function findClassRowByName(name) {
 }
 
 function isInitialClassRow(row) {
-  if (!row || typeof row !== "object") return false;
-  const conditionLv = nonEmptyText(row?.条件Lv);
-  if (conditionLv && conditionLv !== "初期" && conditionLv !== "0" && conditionLv !== "-" && conditionLv !== "なし") {
-    return false;
-  }
-  for (let i = 1; i <= 4; i += 1) {
-    const token = nonEmptyText(row?.[`条件_${i}`]);
-    const lvRaw = Number(row?.[`Lv_${i}`]);
-    if (token) return false;
-    if (Number.isFinite(lvRaw) && lvRaw > 0) return false;
-  }
-  return true;
+  return isV39BaseClassRow(row);
 }
 
 function normalizeClassConditionEntry(rawToken, rawLevel, fallbackToken = "") {
@@ -7434,18 +7429,7 @@ function normalizeClassConditionEntry(rawToken, rawLevel, fallbackToken = "") {
   const fallback = nonEmptyText(fallbackToken);
   if (!tokenText && !fallback) return null;
   const source = tokenText || fallback;
-  const lvInTokenMatch = source.match(/^(.+?)(?:Lv|LV|lv|レベル)\s*(\d+)$/);
-  if (lvInTokenMatch) {
-    return {
-      token: nonEmptyText(lvInTokenMatch[1]),
-      required: Math.max(1, Math.floor(toSafeNumber(lvInTokenMatch[2], 1)))
-    };
-  }
-  const requiredFromCell = Math.max(1, Math.floor(toSafeNumber(rawLevel, 1)));
-  return {
-    token: source,
-    required: requiredFromCell
-  };
+  return parseV39ClassCondition(source, rawLevel);
 }
 
 function resolveVillageBuildingDefinitionByToken(rawToken) {
@@ -7477,6 +7461,10 @@ function resolveUnitProgressLevelByConditionToken(unit, rawToken) {
   if (token === primaryClassName) {
     return { matched: true, current: Math.max(0, Math.floor(toSafeNumber(growth?.classLevels, 0))) };
   }
+  const primaryClassKind = nonEmptyText(findClassRowByName(primaryClassName)?.種類);
+  if (primaryClassKind && token === primaryClassKind) {
+    return { matched: true, current: Math.max(0, Math.floor(toSafeNumber(growth?.classLevels, 0))) };
+  }
   if (secondaryClassName && token === secondaryClassName) {
     return { matched: true, current: Math.max(0, Math.floor(toSafeNumber(growth?.secondaryClassLevels, 0))) };
   }
@@ -7498,9 +7486,26 @@ function evaluateClassUnlockRequirements(classRow, unit = null, village = villag
     const entry = normalizeClassConditionEntry(classRow?.[`条件_${i}`], classRow?.[`Lv_${i}`]);
     if (entry?.token) checks.push(entry);
   }
+  for (const token of splitV39ClassCondition(classRow?.条件クラス)) {
+    const entry = parseV39ClassCondition(token, 1);
+    if (entry?.token) checks.push(entry);
+  }
+  for (const token of splitV39ClassCondition(classRow?.条件施設)) {
+    checks.push({ token, required:1, facilityOnly:true });
+  }
   const failed = [];
   const nextVillage = ensureVillageStateShape(village, props.selectedRace);
   const builtBuildingSet = new Set(normalizeVillageBuildings(nextVillage?.buildings));
+  const requiredTotalLevel = Math.max(0, Math.floor(toSafeNumber(classRow?.合計Lv, 0)));
+  const currentTotalLevel = Math.max(0, Math.floor(toSafeNumber(unit?.level, 0)));
+  if (requiredTotalLevel > currentTotalLevel) failed.push(`合計Lv ${currentTotalLevel}/${requiredTotalLevel}`);
+  const acquiredSkillSet = new Set([
+    ...(Array.isArray(unit?.acquiredSkillNames) ? unit.acquiredSkillNames : []),
+    ...(Array.isArray(unit?.skills) ? unit.skills.map(skill => skill?.name || skill) : [])
+  ].map(nonEmptyText).filter(Boolean));
+  for (const skillName of splitV39ClassCondition(classRow?.条件スキル)) {
+    if (!acquiredSkillSet.has(skillName)) failed.push(`${skillName} 未取得`);
+  }
   for (const requirement of checks) {
     const token = nonEmptyText(requirement?.token);
     const required = Math.max(1, Math.floor(toSafeNumber(requirement?.required, 1)));
@@ -7519,6 +7524,10 @@ function evaluateClassUnlockRequirements(classRow, unit = null, village = villag
     if (buildingDef) {
       const current = builtBuildingSet.has(buildingDef.key) ? 1 : 0;
       if (current < required) failed.push(`${nonEmptyText(buildingDef.name) || token} ${current}/${required}`);
+      continue;
+    }
+    if (requirement.facilityOnly) {
+      failed.push(`${token} 未建設`);
       continue;
     }
     const unitProgress = resolveUnitProgressLevelByConditionToken(unit, token);
@@ -8935,7 +8944,7 @@ function clearCharacterGenerationState() {
 
 function pickClassRowForCharacter(raceRow) {
   let selected = choosePrimaryClassForGeneration();
-  if (raceIsHumanType(raceRow) && nonEmptyText(selected?.種類) !== "職業") {
+  if (raceIsHumanType(raceRow) && !isV39ProfessionClassRow(selected)) {
     selected = randomPick(initialJobClassRows.value, selected);
   }
   if (!selected) {

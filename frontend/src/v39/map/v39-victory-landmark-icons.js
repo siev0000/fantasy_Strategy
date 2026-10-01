@@ -1,12 +1,11 @@
 import {
-  HEX_TILE_CONFIG,
-  TERRITORY_RESIDENTIAL_LEVEL_CONFIG,
-  TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS
+  HEX_TILE_CONFIG
 } from "../../lib/phaser-map-panel-config.js";
 import { getIconSrcByName, hasIconName } from "../../lib/icon-library.js";
 
 const OVERLAY_NAME = "v39-victory-landmark-overlay";
 const OVERLAY_DEPTH = 11;
+const TEST_UNDISCOVERED_ALPHA = 0.6;
 let renderRequestId = 0;
 let lastSignature = null;
 
@@ -58,16 +57,41 @@ function visibleMarkers(state) {
 }
 
 function imageName(marker) {
-  // All landmark patterns use an existing image asset; the label identifies the unique site.
-  return ({
-    "太陽の山":"太陽",
-    "黄昏の樹":"森",
-    "星の火口":"星",
-    "宇宙の海":"宇宙"
-  })[text(marker?.name)] || "";
+  return text(marker?.name);
 }
 
-function addArtwork(scene, container, marker, center, radius) {
+function markerFootprintBounds(marker, center) {
+  const occupied = Array.isArray(marker?.occupiedTileKeys) && marker.occupiedTileKeys.length
+    ? marker.occupiedTileKeys
+    : [];
+  const points = occupied.flatMap(key => {
+    const [x, y] = String(key).split(",").map(Number);
+    return Number.isFinite(x) && Number.isFinite(y) ? tileHexPoints(x, y) : [];
+  });
+  if (points.length) {
+    const xs = points.map(point => point.x);
+    const ys = points.map(point => point.y);
+    return {
+      left:Math.min(...xs),
+      right:Math.max(...xs),
+      top:Math.min(...ys),
+      bottom:Math.max(...ys)
+    };
+  }
+
+  // 旧セーブに占有マス一覧がない場合も、中心＋周囲6マス相当で表示する。
+  const width = Number(HEX_TILE_CONFIG?.width) || 40;
+  const height = Number(HEX_TILE_CONFIG?.height) || 48;
+  const rowStep = Number(HEX_TILE_CONFIG?.rowStep) || 36;
+  return {
+    left:center.x - width * 1.5,
+    right:center.x + width * 1.5,
+    top:center.y - (rowStep + height / 2),
+    bottom:center.y + rowStep + height / 2
+  };
+}
+
+function addArtwork(scene, container, marker, center, bounds) {
   const name = imageName(marker);
   if (!name || !hasIconName(name)) return false;
   const key = `v39-victory-landmark:${name}`;
@@ -77,10 +101,14 @@ function addArtwork(scene, container, marker, center, radius) {
     image.src = getIconSrcByName(name);
     return false;
   }
-  const image = scene.add.image(center.x, center.y, key).setOrigin(0.5);
-  const metropolisSize = Number(TERRITORY_RESIDENTIAL_LEVEL_CONFIG?.[TERRITORY_RESIDENTIAL_LEVEL_METROPOLIS]?.markerIconSize);
-  const displaySize = Number.isFinite(metropolisSize) && metropolisSize > 0 ? metropolisSize : radius * 4;
-  image.setDisplaySize(displaySize, displaySize);
+  const displayWidth = Math.max(1, bounds.right - bounds.left);
+  const displayHeight = Math.max(1, bounds.bottom - bounds.top);
+  const image = scene.add.image(center.x, center.y, key)
+    .setOrigin(0.5)
+    .setName("v39-victory-landmark-image")
+    .setDisplaySize(displayWidth, displayHeight)
+    .setAlpha(marker.discovered ? 1 : TEST_UNDISCOVERED_ALPHA)
+    .setData("victoryLandmarkName", name);
   container.add(image);
   return true;
 }
@@ -111,16 +139,19 @@ function addTestHighlight(scene, container, marker) {
 function addMarker(scene, container, marker) {
   const center = tileCenter(Number(marker.x), Number(marker.y));
   const radius = Math.max(5, Math.min(Number(HEX_TILE_CONFIG?.width) || 40, Number(HEX_TILE_CONFIG?.height) || 48) * 0.16);
+  const bounds = markerFootprintBounds(marker, center);
   addTestHighlight(scene, container, marker);
-  const hasArtwork = addArtwork(scene, container, marker, center, radius);
-  if (!marker.discovered && hasArtwork) container.list.at(-1)?.setAlpha?.(0.72);
-  const ring = scene.add.circle(center.x, center.y, radius, 0x5a3c0d, 0.88)
-    .setStrokeStyle(Math.max(1, radius * 0.2), 0xffd56b, 1);
-  const label = scene.add.text(center.x, center.y - radius - 2, text(marker.name), {
-    fontFamily:"serif", fontSize:`${Math.max(9, Math.floor(radius * 1.3))}px`, fontStyle:"bold", color:"#fff3bd",
+  const hasArtwork = addArtwork(scene, container, marker, center, bounds);
+  if (!hasArtwork) {
+    const ring = scene.add.circle(center.x, center.y, radius, 0x5a3c0d, 0.88)
+      .setStrokeStyle(Math.max(1, radius * 0.2), 0xffd56b, 1);
+    container.add(ring);
+  }
+  const label = scene.add.text(center.x, bounds.top - 3, text(marker.name), {
+    fontFamily:"serif", fontSize:`${Math.max(12, Math.floor(radius * 1.5))}px`, fontStyle:"bold", color:"#fff3bd",
     stroke:"#1b1106", strokeThickness:2
   }).setOrigin(0.5, 1);
-  container.add([ring, label]);
+  container.add(label);
 }
 
 function render() {
@@ -128,7 +159,7 @@ function render() {
   const scene = activeScene();
   if (!state || !scene?.add) return false;
   const markers = visibleMarkers(state);
-  const signature = markers.map(marker => `${marker.id}:${marker.key}:${marker.name}:${marker.discovered}:${marker.testMode}`).join("|");
+  const signature = markers.map(marker => `${marker.id}:${marker.key}:${marker.name}:${marker.discovered}:${marker.testMode}:${(marker.occupiedTileKeys || []).join(",")}`).join("|");
   if (signature === lastSignature && (scene.children?.list || []).some(child => child?.name === OVERLAY_NAME)) return true;
   lastSignature = signature;
   destroyOverlay(scene);

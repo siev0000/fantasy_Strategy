@@ -13,6 +13,7 @@ import {
   vassalizeV39NeutralVillage
 } from "../../lib/v39-neutral-village-rules.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { isV39BaseClassRow } from "../../lib/v39-class-rules.js";
 
 const WANDERER_TILES_PER_GROUP = 300;
 const MAX_WANDERER_GROUPS = 20;
@@ -71,7 +72,7 @@ function selectVillageRace(tile, races, usedRaces) {
 }
 
 function initialClasses() {
-  return getGameDataRows("クラス").filter(row => text(row?.種類) === "職業" && text(row?.条件Lv) === "初期" && text(row?.名前));
+  return getGameDataRows("クラス").filter(isV39BaseClassRow);
 }
 
 function farFromOwned(tile, state, minimum = 5) {

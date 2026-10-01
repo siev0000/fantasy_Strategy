@@ -129,8 +129,8 @@ async function checkSingleSovereignSetup() {
   await page.screenshot({ path:"output/web-game/v39-sovereign-class-select.png" });
 
   const classCategories = await page.locator("[data-v39-class-category] strong").allTextContents();
-  if (classCategories.map(value => value.trim()).join("/") !== "戦士系/狩人系/魔法系/信仰系/その他") {
-    throw new Error(`クラス系統タブが画像ID分類どおりに表示されていません: ${classCategories.join("/")}`);
+  if (classCategories.map(value => value.trim()).join("/") !== "戦士系/格闘系/狩人系/魔法系/信仰系/ドルイド系") {
+    throw new Error(`クラス系統タブがクラス.jsonの種類どおりに表示されていません: ${classCategories.join("/")}`);
   }
 
   if ((await page.locator(".class-item.active").getAttribute("data-v39-class-option")) !== "ファイター") {

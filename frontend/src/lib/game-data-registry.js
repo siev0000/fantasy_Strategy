@@ -50,6 +50,14 @@ const TABLE_KEY_FIELDS = Object.freeze({
   勝利対象土地:["ID"]
 });
 
+const RUNTIME_ROW_KEY_FIELDS = Object.freeze({
+  クラス:["名前"], テストクラス:["名前"], スキル一覧:["名前"], テストスキル:["名前"],
+  種族:["key"], 勢力:["種族"], 説明:["技能名"], 範囲:["範囲タイプ"], 効果:["追加効果"],
+  地形:["地形"], 出現敵:["ID"], 災害:["ID"], 都市:["項目名"], 外交姿勢:["項目カテゴリ", "項目名"],
+  組織:["項目名"], 体制:["項目カテゴリ", "項目名"], 施設:["施設名"], 研究:["ID"],
+  付与:["付与能力", "Lv"], 消費量:["Lv", "種別"], 装備:["装備名"], 勝利対象土地:["ID"]
+});
+
 const REQUIRED_FIELDS = Object.freeze({
   クラス:["名前", "種類"], テストクラス:["名前", "種類", "テスト専用"], スキル一覧:["名前", "行動"], テストスキル:["名前", "行動", "テスト専用"], 装備:["装備名", "装備箇所"],
   地形:["地形"], 出現敵:["ID", "出現地形", "種族名"],
@@ -133,8 +141,12 @@ export function getGameDataTable(name, fallback = null) {
 }
 
 export function getGameDataRows(name) {
-  const value = getGameDataTable(name, []);
-  return Array.isArray(value) ? value : [];
+  const normalizedName = String(name || "").replace(/\.json$/i, "");
+  const value = getGameDataTable(normalizedName, []);
+  if (!Array.isArray(value)) return [];
+  const keyFields = RUNTIME_ROW_KEY_FIELDS[normalizedName];
+  if (!keyFields?.length) return value;
+  return value.filter(row => keyFields.every(field => asText(row?.[field])));
 }
 
 export function findGameDataRow(name, field, value) {
@@ -158,7 +170,7 @@ function validateReference(issues, sourceTable, rowId, field, targetTable, targe
 
 function validateSkillReference(issues, sourceTable, rowId, field, value) {
   const reference = asText(value);
-  if (!reference || reference === "-" || reference === "なし" || reference === "0") return;
+  if (!reference || reference === "-" || reference === "なし" || reference === "0" || reference.startsWith("#")) return;
   const isKnownSkill = [...getGameDataRows("スキル一覧"), ...getGameDataRows("テストスキル")].some(row => asText(row?.名前) === reference);
   const isKnownAbility = getGameDataRows("説明").some(row => asText(row?.技能名) === reference);
   const isClassTransition = getGameDataRows("クラス").some(row => asText(row?.名前) === reference);

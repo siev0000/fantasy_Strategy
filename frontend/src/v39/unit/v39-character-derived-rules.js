@@ -5,6 +5,7 @@ import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLeve
 import { applyMilitaryProfileToStatus } from "../../composables/militaryUnitUtils.js";
 import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
 import { resolveV39MovementStatFromStatus } from "../../lib/v39-gameplay-balance.js";
+import { isV39InvalidDataToken } from "../../lib/v39-class-rules.js";
 
 const INITIAL_RACE_BONUS_LEVEL = 5;
 const STATUS_GROWTH_DIVISOR = 10;
@@ -19,8 +20,7 @@ function number(value, fallback = 0) {
 }
 
 function isPlaceholder(value) {
-  const valueText = text(value).toLowerCase();
-  return !valueText || valueText === "0" || valueText === "-" || valueText === "－" || valueText === "なし" || valueText === "null";
+  return isV39InvalidDataToken(value);
 }
 
 const classRows = Array.isArray(classDb) ? classDb : [];

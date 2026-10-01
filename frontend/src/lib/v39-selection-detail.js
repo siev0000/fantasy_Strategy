@@ -6,6 +6,7 @@ import {
 } from "./game-data-registry.js";
 import { EQUIPMENT_SLOT_KEYS, RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 import { computeSkillScaledTriplet } from "./skill-power.js";
+import { isV39InvalidDataToken, isV39ProfessionClassRow } from "./v39-class-rules.js";
 
 export const V39_SELECTION_STATUS_ROWS = Object.freeze([
   Object.freeze(["HP", "攻撃", "防御", "魔力"]),
@@ -25,8 +26,7 @@ function numberOrNull(value) {
 }
 
 function placeholderSkill(value) {
-  const valueText = text(value).toLowerCase();
-  return !valueText || valueText === "0" || valueText === "-" || valueText === "－" || valueText === "なし" || valueText === "null";
+  return isV39InvalidDataToken(value);
 }
 
 function equipmentSlotDisabled(value) {
@@ -192,7 +192,7 @@ export function getV39ClassSelectionDetail(className) {
   const classRow = classByName.get(name);
   if (!classRow) return null;
   const classType = text(classRow?.種類);
-  const isJobClass = classType === "職業";
+  const isJobClass = isV39ProfessionClassRow(classRow);
   return {
     kind:"class",
     key:name,
