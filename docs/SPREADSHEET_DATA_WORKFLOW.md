@@ -1,6 +1,6 @@
 # @game_data スプレッドシート → JSON 変換運用
 
-最終更新: 2026-09-28
+最終更新: 2026-10-01
 
 ## 1. 目的
 
@@ -9,7 +9,8 @@
 役割は次のように固定する。
 
 - **Google スプレッドシート `@game_data`**: シート管理対象データの編集原本
-- **`scripts/game_data_converter.py`**: XLSX を検証して JSON へ変換する専用変換器
+- **`scripts/game_data_converter.py`**: 通常の対象シートを XLSX から検証して JSON へ変換する専用変換器
+- **`scripts/cs_skill_json_converter.py`**: `CS` シートから `スキル一覧.json` を生成するスキル専用変換器
 - **`data/source/export/json/*.json`**: GitHub に保存し、ゲームが実行時に読む生成済みデータ
 - **ゲームコード**: Google Sheets を直接参照せず、生成済み JSON だけを読む
 
@@ -70,7 +71,7 @@ Notion はこの変換運用の正本にしない。同じルール本文を Not
 | 種族 | `種族.json` |
 | 勢力 | `勢力.json` |
 | 説明 | `説明.json` |
-| スキル一覧 | `スキル一覧.json` |
+| CS（`出力確認=TRUE` の行のみ） | `スキル一覧.json`（`scripts/cs_skill_json_converter.py`） |
 | 範囲 | `範囲.json` |
 | 効果 | `効果.json` |
 | 地形 | `地形.json` |
@@ -90,7 +91,7 @@ Notion はこの変換運用の正本にしない。同じルール本文を Not
 
 ### 現在の対象外
 
-- `CS`: 作業・参照用。現在は `スキル一覧.json` の直接生成元にしない。
+- `CS`: スキル定義の編集元。`scripts/cs_skill_json_converter.py` を使用した場合のみ `スキル一覧.json` の生成元とする。通常の `game_data_converter.py` の一括変換対象には含めない。
 - `画面`: 補助計算用。ゲームデータ JSON として自動出力しない。
 - `テストクラス.json`
 - `テストスキル.json`
@@ -99,6 +100,28 @@ Notion はこの変換運用の正本にしない。同じルール本文を Not
 - `種族幸福度仮.json`
 
 対象外 JSON をスプレッドシート管理へ移す場合は、先にこの文書と変換器のマップを更新する。
+
+
+### スキル一覧の専用変換ルール
+
+`スキル一覧.json` は通常の `game_data_converter.py` ではなく、`scripts/cs_skill_json_converter.py` で `CS` シートから生成する。
+
+変換対象は、`CS` シート内の **「出力確認」列が TRUE の行だけ** とする。
+
+- 「出力確認」が TRUE: `スキル一覧.json` へ出力する。
+- 「出力確認」が FALSE、空欄、または TRUE 以外: 出力しない。
+- 「出力確認」列は固定列番号ではなく、ヘッダー名 `出力確認` で特定する。
+- 同名スキルは既定で先頭行を採用し、重複内容はレポートへ記録する。
+- H列「データ」はスキル専用変換器の規則に従って個別 JSON 項目へ展開する。
+- 生成後の `スキル一覧.json` を手作業で修正して CS と二重管理しない。
+
+実行例:
+
+```bash
+python scripts/cs_skill_json_converter.py path/to/game_data.xlsx -o data/source/export/json/スキル一覧.json
+```
+
+生成時は `スキル一覧.report.json` も確認し、除外行・重複・警告が意図どおりか確認する。
 
 ---
 
@@ -157,6 +180,12 @@ python scripts/game_data_converter.py --input path/to/game_data.xlsx
 
 ```bash
 python scripts/game_data_converter.py --input path/to/game_data.xlsx --sheet 種族 --sheet クラス
+```
+
+スキル一覧を CS から生成:
+
+```bash
+python scripts/cs_skill_json_converter.py path/to/game_data.xlsx -o data/source/export/json/スキル一覧.json
 ```
 
 XLSX 内のシートと変換対象を確認:
@@ -239,7 +268,7 @@ JSON キーも変更されるため、ゲームコード・仕様書・参照デ
 - ゲーム仕様: 対応する `docs/` の現行仕様書
 - 編集原本: `@game_data`
 - ゲーム実行時データ: `data/source/export/json`
-- 変換方法: この文書 + `scripts/game_data_converter.py`
+- 変換方法: この文書 + `scripts/game_data_converter.py`。スキル一覧のみ `scripts/cs_skill_json_converter.py`
 - ゲーム処理: 現行コード
 
 仕様とスプレッドシートの値が食い違っている場合は、根拠なくどちらかへ自動統一せず、現在の確定仕様を確認してから修正する。
