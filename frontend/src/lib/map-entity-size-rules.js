@@ -6,6 +6,20 @@ import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
 // 3. マップ上には基本的にアイコンだけを置き、名前・人数・説明などの文字は常設しない。
 // 4. 名称や詳細は、対象タイル/アイコンを選択した後の詳細UIで表示する。
 export const MAP_ENTITY_SIZE_RULES = Object.freeze({
+  construction: Object.freeze({
+    // 建築・居住化の残りターン文字。タイル幅の30%（初期12%の2.5倍）。
+    turnFontTiles: 0.30,
+    // 太い縁取りで文字が潰れないようにする。単位はワールドpx。
+    turnStrokePx: 1,
+    // 施設画像や領土線との重なりを避ける文字背景と余白。
+    turnBackground: "#071014",
+    turnPaddingPx: 2,
+    // 工事中の画像は半透明。ターン表示はマス中央よりタイル幅の12%上。
+    previewAlpha: 0.5,
+    turnOffsetUpTiles: 0.12,
+    // 文字テクスチャを高解像度で作り、拡大時のぼやけを抑える。
+    textResolution: 2
+  }),
   base: Object.freeze({
     // 拠点も1タイル内に収まるアイコンとして扱う。
     diameterTiles: 0.92,

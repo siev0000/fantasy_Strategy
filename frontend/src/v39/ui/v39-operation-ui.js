@@ -57,18 +57,18 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         gap:1px!important;min-height:48px!important;padding:4px 3px!important;line-height:1!important
       }
       .footer-tab.footer-text-tab .tab-icon{
-        display:block!important;order:1!important;font-size:22px!important;line-height:1!important
+        display:block!important;order:1!important;font-size:var(--font-size-22)!important;line-height:1!important
       }
       .footer-tab.footer-text-tab .tab-text{
-        display:block!important;order:2!important;font-size:9px!important;font-weight:700!important;line-height:1.15!important
+        display:block!important;order:2!important;font-size:var(--font-body)!important;font-weight:700!important;line-height:1.15!important
       }
       #footSquad .v39-squad-toolbar{display:flex;align-items:center;gap:6px;min-width:0;overflow:visible}
       #footSquad .v39-squad-shortcuts{display:flex;gap:5px;flex:0 0 auto;overflow:visible}
-      .v39-footer-shortcut{min-height:30px;border:1px solid #4d747d;border-radius:7px;background:#173039;color:#e7f2f0;padding:4px 8px;font:inherit;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer}
+      .v39-footer-shortcut{min-height:30px;border:1px solid #4d747d;border-radius:7px;background:#173039;color:#e7f2f0;padding:4px 8px;font:inherit;font-size:var(--font-compact);font-weight:800;white-space:nowrap;cursor:pointer}
       .v39-footer-shortcut:hover{background:#1d424b;border-color:#77d8e7}
       .v39-footer-shortcut:focus-visible{outline:2px solid #9de4ef;outline-offset:1px}
-      .v39-footer-icon-shortcut{position:relative;width:32px;min-width:32px;height:30px;padding:0;font-size:17px;line-height:1}
-      .v39-footer-icon-shortcut::after{content:attr(data-tooltip);position:absolute;z-index:80;top:calc(100% + 6px);left:0;min-width:max-content;padding:5px 7px;border:1px solid #70bcc8;border-radius:5px;background:#0a171b;color:#efffff;font-size:12px;font-weight:800;line-height:1.1;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s ease,transform .12s ease}
+      .v39-footer-icon-shortcut{position:relative;width:32px;min-width:32px;height:30px;padding:0;font-size:var(--font-size-17);line-height:1}
+      .v39-footer-icon-shortcut::after{content:attr(data-tooltip);position:absolute;z-index:80;top:calc(100% + 6px);left:0;min-width:max-content;padding:5px 7px;border:1px solid #70bcc8;border-radius:5px;background:#0a171b;color:#efffff;font-size:var(--font-compact);font-weight:800;line-height:1.1;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s ease,transform .12s ease}
       .v39-footer-icon-shortcut:hover::after,.v39-footer-icon-shortcut:focus-visible::after,.v39-footer-icon-shortcut:active::after{opacity:1;transform:translateY(0)}
       #footSquad .squad-selector{flex:1;min-width:0}
       .squad-content-split{
@@ -95,7 +95,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       }
       #footSquad .squad-detail-tab{
         min-width:0!important;min-height:28px!important;border:0!important;border-right:1px solid #394b52!important;
-        background:#121d22!important;color:#93a5a9!important;font:inherit!important;font-size:9px!important;font-weight:800!important;
+        background:#121d22!important;color:#93a5a9!important;font:inherit!important;font-size:var(--font-size-9)!important;font-weight:800!important;
         padding:3px 4px!important;cursor:pointer!important
       }
       #footSquad .squad-detail-tab:last-child{border-right:0!important}
@@ -118,12 +118,12 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       #footSquad .squad-detail-section+ .squad-detail-section{margin-top:4px!important}
       #footSquad .squad-detail-section-title{
         position:static!important;min-height:24px!important;padding:4px 7px!important;background:#132126!important;
-        font-size:12px!important;color:#c6d3d5!important;font-weight:800!important;cursor:pointer!important;
+        font-size:var(--font-compact)!important;color:#c6d3d5!important;font-weight:800!important;cursor:pointer!important;
         display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;
         list-style:none!important;user-select:none!important
       }
       #footSquad .squad-detail-section-title::-webkit-details-marker{display:none!important}
-      #footSquad .squad-detail-section-title::after{content:"▾";font-size:11px;color:#6fc7d6;transition:transform .12s ease}
+      #footSquad .squad-detail-section-title::after{content:"▾";font-size:var(--font-compact);color:#6fc7d6;transition:transform .12s ease}
       #footSquad .squad-detail-section:not([open])>.squad-detail-section-title::after{transform:rotate(-90deg)}
       #footSquad .squad-detail-section-body{min-width:0;margin-top:0;padding:3px!important}
       #footSquad .equipment-list{display:grid;gap:2px}
@@ -135,25 +135,25 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         min-height:32px;display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;align-items:center;
         gap:5px;padding:4px 6px
       }
-      #footSquad .equipment-icon{font-size:19px;line-height:1;text-align:center}
-      #footSquad .equipment-name{min-width:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      #footSquad .equipment-slot,#footSquad .equipment-quality{font-size:10px;color:#98aaae;white-space:nowrap}
+      #footSquad .equipment-icon{font-size:var(--font-size-19);line-height:1;text-align:center}
+      #footSquad .equipment-name{min-width:0;font-size:var(--font-compact);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #footSquad .equipment-slot,#footSquad .equipment-quality{font-size:var(--font-size-10);color:#98aaae;white-space:nowrap}
       #footSquad .equipment-detail{display:none;border-top:1px solid #31434a;padding:5px 7px;background:#0d171b}
       #footSquad .equipment-card.is-expanded .equipment-detail{display:grid;gap:4px}
       #footSquad .equipment-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}
-      #footSquad .equipment-detail-grid span{min-width:0;padding:3px 5px;border-radius:4px;background:#16252a;font-size:10px;color:#c8d4d6}
-      #footSquad .equipment-detail-grid b{color:#edf5f2;font-size:11px}
-      #footSquad .equipment-detail-line{font-size:10px;line-height:1.5;color:#c4d0d2}
+      #footSquad .equipment-detail-grid span{min-width:0;padding:3px 5px;border-radius:4px;background:#16252a;font-size:var(--font-size-10);color:#c8d4d6}
+      #footSquad .equipment-detail-grid b{color:#edf5f2;font-size:var(--font-size-11)}
+      #footSquad .equipment-detail-line{font-size:var(--font-size-10);line-height:1.5;color:#c4d0d2}
       #footSquad .equipment-detail-line b{color:#e8f0ed}
-      #footSquad .equipment-empty{padding:6px;color:#aebec1;font-size:11px}
+      #footSquad .equipment-empty{padding:6px;color:#aebec1;font-size:var(--font-size-11)}
       #footSquad .squad-detail-stats{gap:2px!important}
       #footSquad .detail-stat{min-height:48px!important;padding:5px 4px!important;gap:2px!important}
-      #footSquad .detail-stat span{font-size:11px!important}
-      #footSquad .detail-stat b{font-size:14px!important}
+      #footSquad .detail-stat span{font-size:var(--font-secondary)!important}
+      #footSquad .detail-stat b{font-size:var(--font-body)!important}
       #footSquad .proficiency-grid{gap:2px!important}
       #footSquad .proficiency-item{min-height:34px!important;padding:4px 6px!important;gap:4px!important}
-      #footSquad .proficiency-item span{font-size:11px!important}
-      #footSquad .proficiency-item b{font-size:13px!important}
+      #footSquad .proficiency-item span{font-size:var(--font-secondary)!important}
+      #footSquad .proficiency-item b{font-size:var(--font-body)!important}
       #footSquad .v39-resistance-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:2px!important}
       #footSquad .v39-resistance-indicator{
         width:100%!important;min-width:0!important;min-height:32px!important;display:flex!important;align-items:center!important;
@@ -166,9 +166,9 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       #footSquad .v39-resistance-icon{object-fit:contain!important}
       #footSquad .v39-resistance-icon-fallback{
         display:inline-flex!important;align-items:center!important;justify-content:center!important;background:#223138!important;
-        color:#dce8e7!important;font-size:11px!important;font-weight:900!important
+        color:#dce8e7!important;font-size:var(--font-size-11)!important;font-weight:900!important
       }
-      #footSquad .v39-resistance-indicator b{margin-left:auto!important;flex:0 0 auto!important;font-size:13px!important}
+      #footSquad .v39-resistance-indicator b{margin-left:auto!important;flex:0 0 auto!important;font-size:var(--font-secondary)!important}
       #footSquad .v39-resistance-indicator.positive{border-color:rgba(104,205,139,.5)!important;background:rgba(25,59,39,.72)!important}
       #footSquad .v39-resistance-indicator.positive b{color:#7de0a0!important}
       #footSquad .v39-resistance-indicator.negative{border-color:rgba(224,116,99,.52)!important;background:rgba(67,31,29,.72)!important}
@@ -176,7 +176,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       #footSquad .technique-list{gap:2px!important}
       #footSquad .technique-passive-divider{
         margin:4px 0 1px!important;padding:2px 3px!important;border-top:1px solid #405159!important;
-        color:#8fa1a5!important;font-size:8px!important;font-weight:800!important;line-height:1.2!important
+        color:#8fa1a5!important;font-size:var(--font-size-8)!important;font-weight:800!important;line-height:1.2!important
       }
       #footSquad #detailTechniqueRows{display:contents!important}
       #footSquad .system-action-card .technique-icon-system-move{
@@ -197,13 +197,13 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       }
       #footSquad .technique-summary{
         display:grid!important;grid-template-columns:28px minmax(0,1fr) auto!important;
-        grid-template-areas:"icon name ap" "icon power range"!important;
+        grid-template-areas:"icon name name" "icon power ap" "icon range range"!important;
         align-items:center!important;gap:1px 4px!important;padding:2px 3px!important
       }
       #footSquad .technique-icon{
         grid-area:icon!important;width:28px!important;height:28px!important;display:grid!important;place-items:center!important;
         border:1px solid #40545a!important;border-radius:7px!important;background:#1b2a30!important;
-        font-size:16px!important;line-height:1!important;overflow:hidden!important
+        font-size:var(--font-size-16)!important;line-height:1!important;overflow:hidden!important
       }
       #footSquad .technique-icon-image{
         width:26px!important;height:26px!important;display:block!important;object-fit:contain!important;
@@ -211,7 +211,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       }
       #footSquad .technique-icon-glyph{
         width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;
-        margin:0!important;padding:0!important;font-size:14px!important;line-height:1!important;color:#d5e0df!important;
+        margin:0!important;padding:0!important;font-size:var(--font-size-14)!important;line-height:1!important;color:#d5e0df!important;
         transform:translateY(-1px)!important
       }
       #footSquad .technique-icon.technique-icon-power{
@@ -234,17 +234,17 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         border-color:#40545a!important;background:#1b2a30!important
       }
       #footSquad .technique-name{
-        grid-area:name!important;min-width:0!important;margin:0!important;font-size:10px!important;line-height:1.15!important;
-        white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important
+        grid-area:name!important;min-width:0!important;margin:0!important;font-size:var(--font-body)!important;line-height:1.2!important;
+        white-space:normal!important;overflow-wrap:anywhere!important
       }
       #footSquad .technique-ap{
-        grid-area:ap!important;margin:0!important;color:#d8c17f!important;font-size:8px!important;line-height:1!important;white-space:nowrap!important
+        grid-area:ap!important;margin:0!important;color:#d8c17f!important;font-size:var(--font-size-8)!important;line-height:1!important;white-space:nowrap!important
       }
       #footSquad .technique-power{
-        grid-area:power!important;margin:0!important;color:#aebfc2!important;font-size:8px!important;line-height:1.1!important;white-space:nowrap!important
+        grid-area:power!important;margin:0!important;color:#aebfc2!important;font-size:var(--font-size-8)!important;line-height:1.1!important;white-space:nowrap!important
       }
       #footSquad .technique-range{
-        grid-area:range!important;margin:0!important;color:#aebfc2!important;font-size:8px!important;line-height:1.1!important;white-space:nowrap!important
+        grid-area:range!important;margin:0!important;color:#aebfc2!important;font-size:var(--font-size-8)!important;line-height:1.1!important;white-space:nowrap!important
       }
       #footSquad .technique-detail{
         display:none!important;grid-template-columns:1fr!important;gap:0!important;
@@ -260,44 +260,45 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       }
       #footSquad .technique-detail-head b{
         grid-area:auto!important;min-width:0!important;
-        color:#9fb0b3!important;font-size:8px!important;font-weight:800!important;
+        color:#9fb0b3!important;font-size:var(--font-size-8)!important;font-weight:800!important;
         white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important
       }
       #footSquad .technique-detail-head small{
         grid-area:auto!important;min-width:0!important;
-        color:#d8c17f!important;font-size:8px!important;font-weight:700!important;
+        color:#d8c17f!important;font-size:var(--font-size-8)!important;font-weight:700!important;
         white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important
       }
       #footSquad .technique-detail-description{
         grid-area:auto!important;grid-column:1!important;grid-row:auto!important;
         width:100%!important;min-width:0!important;
-        display:block!important;padding:4px 5px!important;color:#eef4f2!important;font-size:9px!important;
+        display:block!important;padding:4px 5px!important;color:#eef4f2!important;font-size:var(--font-size-9)!important;
         line-height:1.35!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;
         overflow-wrap:anywhere!important;word-break:normal!important
       }
       #footSquad .technique-detail-empty{
-        grid-column:1 / -1!important;color:#829397!important;font-size:8px!important;padding:3px 0!important
+        grid-column:1 / -1!important;color:#829397!important;font-size:var(--font-size-8)!important;padding:3px 0!important
       }
       #footSquad .technique-card.action-technique.active{
         border-color:#e7c466!important;background:linear-gradient(180deg,#2b291c,#1b1a14)!important;
         box-shadow:0 0 0 1px rgba(231,196,102,.18)
       }
       #footSquad .technique-card.action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed!important}
+      #footSquad .system-action-card.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed!important}
       .footer-body{min-height:0!important;overflow:hidden!important}
       html:not(.v39-test-mode) [data-foot="test"]{display:none!important}
       html:not(.v39-test-mode) #footTest{display:none!important}
       #footTest{min-width:0;min-height:0;height:100%;max-height:100%;overflow:hidden;display:flex;flex:1 1 0;flex-direction:column}
       #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;align-items:center;gap:6px}
       #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
-      #v39-land-settlement-convert-status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9fb0b4;font-size:13px}
+      #v39-land-settlement-convert-status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9fb0b4;font-size:var(--font-secondary)}
       #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
       #footSquad.is-unit-create-open>#v39-squad-main,#footSquad.is-unit-create-open>#v39-squad-content{display:none!important}
       #footSquad.is-unit-create-open>.v39-unit-create-panel{display:grid;height:100%;min-height:0}
       @media(max-width:600px){
         #footSquad .v39-squad-toolbar{gap:4px}
         #footSquad .v39-squad-shortcuts{gap:4px}
-        .v39-footer-shortcut{min-height:30px;padding:4px 6px;font-size:11px}
-        .v39-footer-icon-shortcut{width:30px;min-width:30px;padding:0;font-size:16px}
+        .v39-footer-shortcut{min-height:30px;padding:4px 6px;font-size:var(--font-size-11)}
+        .v39-footer-icon-shortcut{width:30px;min-width:30px;padding:0;font-size:var(--font-size-16)}
       }
     `;
     document.head.appendChild(style);
@@ -309,6 +310,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         ${data.tabs.map((tab, index) => `<button class="footer-tab tappable footer-text-tab${index === 0 ? " active" : ""}" data-foot="${tab.key}"><span class="tab-text">${tab.label}</span><span class="tab-icon">${tab.icon}</span></button>`).join("")}
       </div>
       <div class="footer-body">
+        <section id="footPlacement" hidden aria-hidden="true"></section>
         <section id="footSquad" class="mobile-squad-panel v39-footer-panel-active" aria-hidden="false">
           <div class="v39-squad-toolbar" id="v39-squad-main">
             <div class="v39-squad-shortcuts">
@@ -353,12 +355,33 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
                       <span class="technique-summary">
                         <span class="technique-icon technique-icon-system-wait"><span class="technique-icon-glyph" aria-hidden="true">◷</span></span>
                         <b class="technique-name">待機</b>
-                        <small class="technique-ap">AP→0</small>
+                        <small class="technique-ap">AP保持</small>
                         <span class="technique-power">行動終了</span>
                       </span>
                       <span class="technique-detail">
                         <span class="technique-detail-head"><b>説明</b></span>
-                        <span class="technique-detail-description">残りAPを0にして、このターンの行動を終了します。</span>
+                        <span class="technique-detail-description">APを消費せず、このターンの行動を終了します。次のターンに再び行動できます。</span>
+                      </span>
+                    </button>
+                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleSurvey" data-v39-technique-name="__system_survey__" aria-expanded="false">
+                      <span class="technique-summary">
+                        <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">⌕</span></span>
+                        <b class="technique-name">調査</b>
+                        <small class="technique-ap" id="mobileSurveyAp">残りAP全消費</small>
+                        <span class="technique-power" id="mobileSurveyProgress">未調査</span>
+                      </span>
+                      <span class="technique-detail"><span class="technique-detail-head"><b>説明</b></span>
+                        <span class="technique-detail-description">現在地を調査します。残りAPの分だけ進み、不足分は次ターン以降に継続できます。必要APに達するとターン終了時に結果が確定します。</span>
+                      </span>
+                    </button>
+                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleGather" data-v39-technique-name="__system_gather__" aria-expanded="false">
+                      <span class="technique-summary">
+                        <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">⛏</span></span>
+                        <b class="technique-name">採取</b><small class="technique-ap" id="mobileGatherAp"></small>
+                        <span class="technique-power" id="mobileGatherYield"></span>
+                      </span>
+                      <span class="technique-detail"><span class="technique-detail-head"><b>説明</b></span>
+                        <span class="technique-detail-description">現在地の森から木材、洞窟から鉱石を採取します。領土外で1マスにつき1ターン1回。荷物として運び、拠点へ戻って搬入します。</span>
                       </span>
                     </button>
                     <div id="detailTechniqueRows"></div>
@@ -388,6 +411,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
               <label class="display-setting"><span class="display-setting-title">高度による色の濃淡 <input type="checkbox" id="v39-height-shading" checked></span><small>低地を明るく、高地と深い海を暗くします。</small></label>
               <label class="display-setting"><span class="display-setting-title">地図の拡大縮小ボタン <input type="checkbox" id="v39-show-zoom-controls" checked></span><small>地図左下の＋−ボタンを表示します。</small></label>
               <label class="display-setting"><span class="display-setting-title">画面の動きを減らす <input type="checkbox" id="v39-reduce-motion"></span><small>点滅や画面切替アニメーションを抑えます。</small></label>
+              <label class="display-setting"><span class="display-setting-title">ターン終了時に未行動キャラを確認 <input type="checkbox" id="v39-focus-unacted-units" checked></span><small>未行動キャラを選択して地図を合わせます。待機済みは対象外。OFFならそのまま終了します。</small></label>
               <button type="button" id="v39-display-settings-reset" class="display-setting display-setting-reset"><span class="display-setting-title">表示設定を初期値へ戻す</span><small>文字100%、高度濃淡ON、高低差境界のみONへ戻します。</small></button>
             </div>
           </section>
@@ -413,9 +437,9 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
   function activateFooterTab(tabKey) {
     const testEnabled = window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
     const requested = tabKey === "test" && !testEnabled ? "squad" : tabKey;
-    const normalized = data.tabs.some(tab => tab.key === requested) ? requested : data.tabs[0].key;
+    const normalized = requested === "placement" || data.tabs.some(tab => tab.key === requested) ? requested : data.tabs[0].key;
     document.querySelectorAll("[data-foot]").forEach(button => button.classList.toggle("active", button.dataset.foot === normalized));
-    data.tabs.forEach(tab => {
+    [...data.tabs, { key:"placement" }].forEach(tab => {
       const panel = document.getElementById(`foot${tab.key[0].toUpperCase()}${tab.key.slice(1)}`);
       if (!panel) return;
       const active = tab.key === normalized;

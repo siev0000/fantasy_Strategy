@@ -54,6 +54,7 @@ export function createEmptyExplorationState(source = {}) {
     // 索敵で確認した他勢力だけを保持する。未発見勢力はここへ追加しない。
     discoveredFactionsByPlayerId: cloneRecord(source?.discoveredFactionsByPlayerId),
     surveyedTileKeys: Array.isArray(source?.surveyedTileKeys) ? [...new Set(source.surveyedTileKeys.map(String).filter(Boolean))] : [],
+    gatheredAtTurnByTile: cloneRecord(source?.gatheredAtTurnByTile),
     history: cloneRows(source?.history),
     lastProcessedTurn: Math.max(0, Math.floor(Number(source?.lastProcessedTurn) || 0))
   };

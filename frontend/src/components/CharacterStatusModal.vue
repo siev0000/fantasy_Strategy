@@ -1953,7 +1953,7 @@ watch(
 
 .char-title-meta-item span {
   color:#6f5932;
-  font-size:11px;
+  font-size:var(--font-size-11);
   font-weight:700;
   white-space:nowrap;
 }
@@ -1961,7 +1961,7 @@ watch(
 .char-title-meta-item strong {
   min-width:0;
   color:#2f2314;
-  font-size:12px;
+  font-size:var(--font-compact);
   line-height:1.25;
   overflow-wrap:anywhere;
 }
@@ -1978,7 +1978,7 @@ watch(
   border-radius:999px;
   background:rgba(255,255,255,.7);
   color:#5f4b2b;
-  font-size:10px;
+  font-size:var(--font-size-10);
   font-weight:700;
 }
 
@@ -2107,7 +2107,7 @@ watch(
 }
 
 .char-actions-inline button {
-  font-size: 12px;
+  font-size:var(--font-compact);
   line-height: 1.1;
   padding: 3px 8px;
 }
@@ -2463,7 +2463,7 @@ watch(
   }
 
   .char-list-unit-name-row strong {
-    font-size:11px;
+    font-size:var(--font-size-11);
   }
 
   .char-detail {
@@ -2482,7 +2482,7 @@ watch(
   }
 
   .char-title-main h3 {
-    font-size:18px;
+    font-size:var(--font-size-18);
   }
 
   .char-title-meta-grid {
@@ -2497,15 +2497,15 @@ watch(
   }
 
   .char-title-meta-item span {
-    font-size:9px;
+    font-size:var(--font-size-9);
   }
 
   .char-title-meta-item strong {
-    font-size:10px;
+    font-size:var(--font-size-10);
   }
 
   .char-title-combat-summary span {
-    font-size:9px;
+    font-size:var(--font-size-9);
   }
 
   .squad-rename-row {
@@ -2532,7 +2532,7 @@ watch(
   }
 
   .char-title-main h3 {
-    font-size:16px;
+    font-size:var(--font-size-16);
   }
 }
 </style>

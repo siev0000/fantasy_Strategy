@@ -113,10 +113,11 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "") 
   if (!selected) return { ok:false, reason:"移動対象が見つかりません。" };
   if (!isLivingUnit(selected)) return { ok:false, reason:"死亡したユニットは移動できません。" };
 
-  const squad = resolveSquadRecord(faction, selected);
-  const participantIds = resolveParticipantIds(faction, selected, squad);
+  const squad = selected.transportAssignment ? null : resolveSquadRecord(faction, selected);
+  const participantIds = selected.transportAssignment ? [selectedId] : resolveParticipantIds(faction, selected, squad);
   const participantSet = new Set(participantIds);
-  const participants = units.filter(unit => participantSet.has(unitId(unit)) && isLivingUnit(unit));
+  const participants = units.filter(unit => participantSet.has(unitId(unit)) && isLivingUnit(unit)
+    && (unitId(unit) === selectedId || !unit.transportAssignment));
   if (!participants.length) return { ok:false, reason:"移動可能な部隊員がいません。" };
 
   const leader = participants.find(unit => unitId(unit) === getV39SquadUnitIds(squad)[0]) || selected || participants[0];

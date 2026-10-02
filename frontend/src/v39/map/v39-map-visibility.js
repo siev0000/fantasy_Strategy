@@ -11,6 +11,7 @@ import {
   BASE_VILLAGE_SCOUT_RANGE,
   FACTION_BORDER_COLOR_PALETTE,
   HEX_TILE_CONFIG,
+  V39_FIELD_FOG_STYLE,
   MAP_BOUNDARY_DASH_CONFIG
 } from "../../lib/phaser-map-panel-config.js";
 import { cacheStaticGraphicsLayer, removeStaticGraphicsCache } from "./v39-static-graphics-cache.js";
@@ -22,8 +23,7 @@ const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
 const NEST_TERRITORY_LAYER_NAME = "v39-nest-territory-boundary-layer";
 const NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME = "v39-neutral-village-territory-boundary-layer";
 const RESIDENTIAL_TILE_LAYER_NAME = "v39-residential-tile-layer";
-const FOG_COLOR = 0x071014;
-const FOG_ALPHA = 0.76;
+const DEVELOPMENT_SELECTION_LAYER_NAME = "v39-development-selection-layer";
 const SCOUT_COLOR = 0x9edff2;
 const SCOUT_ALPHA = 0.35;
 const SCOUT_WIDTH = 1;
@@ -301,6 +301,12 @@ function buildDetectedEntityIds(state, playerId, currentVision, detectionByTile,
     detectionByTile,
     turnNumber
   );
+  for (const village of state?.neutralVillages || []) {
+    const ids = detectedEntityIdsForGroups(
+      unitsByTile(village?.defenseUnits), currentVision, detectionByTile, turnNumber
+    );
+    for (const id of ids) detected.add(id);
+  }
   for (const player of Array.isArray(state?.players) ? state.players : []) {
     if (String(player?.id || "") === String(playerId || "")) continue;
     const ids = detectedEntityIdsForGroups(
@@ -511,6 +517,21 @@ function drawResidentialTiles(graphics, data, tileKeys) {
   }
 }
 
+function drawDevelopmentSelection(graphics, data, selection) {
+  const candidates = new Set(selection?.candidateTileKeys || []);
+  const selected = new Set(selection?.selectedTileKeys || []);
+  for (const key of candidates) {
+    const [x, y] = key.split(",").map(Number);
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= data.w || y >= data.h) continue;
+    const points = hexPoints(x, y);
+    const isSelected = selected.has(key);
+    graphics.fillStyle(isSelected ? 0xf2c14f : 0x5ad4ff, isSelected ? 0.5 : 0.22);
+    graphics.lineStyle(isSelected ? 4 : 2, isSelected ? 0xffe08a : 0x9eeaff, isSelected ? 1 : 0.8);
+    graphics.fillPoints(points, true);
+    graphics.strokePoints(points, true);
+  }
+}
+
 function drawUnitScoutBoundaries(graphics, data, units) {
   // 同じマス・同じ索敵範囲の部隊員は1本の枠線にまとめる。
   const renderedRanges = new Set();
@@ -566,6 +587,7 @@ function renderVisibilityLayers() {
   };
 
   const testMode = isTestMode();
+  const initialPlacement = faction.villagePlacementMode === true;
   const visibleNests = (Array.isArray(state.enemyNests) ? state.enemyNests : []).filter(nest => {
     const key = coordKey(Math.floor(Number(nest?.x)), Math.floor(Number(nest?.y)));
     return testMode || currentVision.has(key);
@@ -580,15 +602,18 @@ function renderVisibilityLayers() {
       .map(([key]) => key)
   );
   const residentialTiles = residentialTileKeys(state, player, faction);
+  const developmentSelection = window.getV39SettlementDevelopmentSelection?.() || null;
   const playerIndex = Math.max(0, state.players.findIndex(row => row?.id === player.id));
   const fogSignature = [
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
     testMode ? 1 : 0,
+    initialPlacement ? 1 : 0,
     sortedSetSignature(explored)
   ].join(";");
   const renderSignature = [
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
     testMode ? 1 : 0,
+    initialPlacement ? 1 : 0,
     sortedSetSignature(explored),
     sortedSetSignature(currentVision),
     sortedSetSignature(detectedEntityIds),
@@ -597,6 +622,8 @@ function renderVisibilityLayers() {
     villageSignature(visibleVillages),
     sortedSetSignature(ownTerritory),
     sortedSetSignature(residentialTiles),
+    sortedSetSignature(developmentSelection?.candidateTileKeys),
+    sortedSetSignature(developmentSelection?.selectedTileKeys),
     playerIndex
   ].join(";");
   persistVisibilityTiles(faction, explored, currentVision);
@@ -612,18 +639,25 @@ function renderVisibilityLayers() {
   removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
   removeLayer(scene, NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
   removeLayer(scene, RESIDENTIAL_TILE_LAYER_NAME);
+  removeLayer(scene, DEVELOPMENT_SELECTION_LAYER_NAME);
 
   const residential = scene.add.graphics().setDepth(1.5).setName(RESIDENTIAL_TILE_LAYER_NAME);
   drawResidentialTiles(residential, data, residentialTiles);
   residential.setData("tileCount", residentialTiles.size);
+  if (developmentSelection) {
+    const selectionLayer = scene.add.graphics().setDepth(17).setName(DEVELOPMENT_SELECTION_LAYER_NAME);
+    drawDevelopmentSelection(selectionLayer, data, developmentSelection);
+    selectionLayer.setData("candidateCount", developmentSelection.candidateTileKeys?.length || 0);
+    selectionLayer.setData("selectedCount", developmentSelection.selectedTileKeys?.length || 0);
+  }
 
   let unexploredCount = Math.max(0, (Number(data.w) * Number(data.h)) - explored.size);
   const unitScout = scene.add.graphics().setDepth(15).setName(UNIT_SCOUT_LAYER_NAME);
   const unitScoutBoundaryCount = drawUnitScoutBoundaries(unitScout, data, faction.units);
 
-  if (!testMode && redrawFog) {
+  if (!testMode && !initialPlacement && redrawFog) {
     const fog = scene.add.graphics().setDepth(14).setName(FOG_LAYER_NAME);
-    fog.fillStyle(FOG_COLOR, FOG_ALPHA);
+    fog.fillStyle(V39_FIELD_FOG_STYLE.color, V39_FIELD_FOG_STYLE.alpha);
     fog.lineStyle(1, 0x6d858d, 0.28);
     unexploredCount = 0;
     for (let y = 0; y < data.h; y += 1) {
@@ -756,6 +790,7 @@ window.addEventListener("v39:game-state-changed", scheduleRender);
 window.addEventListener("v39:initial-placement-complete", scheduleRender);
 window.addEventListener("v39:unit-moved", revealMovementPath);
 window.addEventListener("v39:display-settings-changed", scheduleRender);
+window.addEventListener("v39:settlement-development-selection-changed", scheduleRender);
 window.addEventListener("v39:map-render-batch-ended", event => {
   if (renderPendingDuringBatch || event?.detail?.force === true) scheduleRender();
 });

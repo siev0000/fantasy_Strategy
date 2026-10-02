@@ -87,7 +87,7 @@ function confirmName() {
 
 .name-label span {
   color: #b7c7c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
   font-weight: 800;
 }
 
@@ -99,7 +99,7 @@ function confirmName() {
   padding: 8px 10px;
   background: #101f24;
   color: #edf3f2;
-  font-size: 14px;
+  font-size:var(--font-size-14);
   outline: none;
 }
 
@@ -127,7 +127,7 @@ function confirmName() {
   border-radius: 7px;
   background: #1a4b55;
   color: #f2fbfa;
-  font-size: 13px;
+  font-size:var(--font-secondary);
   font-weight: 900;
   cursor: pointer;
 }

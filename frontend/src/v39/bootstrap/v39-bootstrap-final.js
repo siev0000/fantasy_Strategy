@@ -10,7 +10,6 @@ import "../map/v39-volcano-system.js";
 import "../unit/v39-leadership-lifecycle.js";
 import "../unit/v39-squad-card-vitals.js";
 import "../unit/v39-squad-derived-binding.js";
-import "../ui/v39-readable-fonts.js";
 import "../world/v39-research-ui.js";
 import "../ui/v39-design-docs-viewer.js";
 import "../ui/v39-text-input-modal.js";

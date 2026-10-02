@@ -1,4 +1,6 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import { V39_SURVEY_BALANCE } from "./v39-gameplay-balance.js";
+import { isV39UnitWaiting } from "./v39-unit-action-rules.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { getV39VictoryLandmarkDefinition, isV39VictoryLandmark } from "./v39-victory-landmarks.js";
 
@@ -115,24 +117,29 @@ export function inspectV39Survey(state, playerId, unitId, tile) {
   if (!key) reasons.push("マスを選択してください");
   if (unit && (number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡")) reasons.push("死亡したキャラクターは調査できません");
   if (unit && key && (Math.floor(number(unit.x, -1)) !== x || Math.floor(number(unit.y, -1)) !== y)) reasons.push("キャラクターと同じマスで実行してください");
-  if (unit?.surveyTask) reasons.push("すでに調査中です");
+  const apCost = Math.max(0, number(unit?.ap ?? unit?.currentAp ?? unit?.actionPoint));
+  if (unit && apCost <= 0) reasons.push("APがありません");
+  if (unit && isV39UnitWaiting(unit, state?.timeline?.turnNumber)) reasons.push("このターンは待機済みです");
+  if (unit?.surveyTask && (unit.surveyTask.key !== key || number(unit.surveyTask.progressAp, V39_SURVEY_BALANCE.requiredAp) >= V39_SURVEY_BALANCE.requiredAp)) reasons.push("すでに調査中です");
   const groundLoot = state?.groundLootByTile?.[key];
   const groundLootDiscovered = groundLoot?.discoveredByPlayerIds?.includes(text(playerId));
   const hasUndiscoveredGroundLoot = !!groundLoot && !groundLootDiscovered;
   if (faction?.exploration?.surveyedTileKeys?.includes(key) && !hasUndiscoveredGroundLoot) reasons.push("調査済みです");
-  return { available:reasons.length === 0, reasons, player, faction, unit, x, y, key };
+  return { available:reasons.length === 0, reasons, player, faction, unit, x, y, key, apCost };
 }
 
 export function startV39SurveyTask(state, playerId, unitId, tile) {
   const check = inspectV39Survey(state, playerId, unitId, tile);
   if (!check.available) return { ok:false, reason:check.reasons.join(" / "), state };
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
-  const task = { key:check.key, x:check.x, y:check.y, startedTurn:turn, remainingTurns:1, totalTurns:1 };
+  const progressAp = Math.min(V39_SURVEY_BALANCE.requiredAp, number(check.unit.surveyTask?.progressAp) + check.apCost);
+  const task = { key:check.key, x:check.x, y:check.y, startedTurn:check.unit.surveyTask?.startedTurn ?? turn,
+    remainingTurns:1, totalTurns:1, progressAp, progressPercent:progressAp / V39_SURVEY_BALANCE.requiredAp * 100 };
   const players = state.players.map(player => player.id !== check.player.id ? player : ({
     ...player,
-    factionState:{ ...player.factionState, units:player.factionState.units.map(unit => unit.id === check.unit.id ? { ...unit, surveyTask:task } : unit) }
+    factionState:{ ...player.factionState, units:player.factionState.units.map(unit => unit.id === check.unit.id ? { ...unit, surveyTask:task, ap:0, currentAp:0, actionPoint:0, lastAction:"調査", lastActionTurn:turn } : unit) }
   }));
-  return { ok:true, state:{ ...state, players }, task, unit:check.unit };
+  return { ok:true, state:{ ...state, players }, task, unit:check.unit, apCost:check.apCost };
 }
 
 function appendLog(faction, entry) {
@@ -167,6 +174,8 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
         const { surveyTask, ...rest } = unit;
         return rest;
       }
+      // 旧セーブのAP項目がない1T調査は従来どおり完了する。
+      if (number(task.progressAp, V39_SURVEY_BALANCE.requiredAp) < V39_SURVEY_BALANCE.requiredAp) return unit;
       const site = state?.explorationSitesByTile?.[task.key] || null;
       const feature = site ? resolveExplorationSiteDefinition(site) : null;
       if (site && feature) discoveredFeaturesByTile[task.key] = { ...site, discoveredTurn:turn, discoveredByUnitId:unit.id };
@@ -237,4 +246,4 @@ export function getV39DiscoveredFeature(faction, key) {
   return definition ? { ...site, definition } : null;
 }
 
-export const V39_EXPLORATION_RULES = Object.freeze({ siteRate:SITE_RATE, requiredTurns:1, dangerReductionBase:DANGER_REDUCTION_BASE });
+export const V39_EXPLORATION_RULES = Object.freeze({ siteRate:SITE_RATE, requiredTurns:1, requiredAp:V39_SURVEY_BALANCE.requiredAp, dangerReductionBase:DANGER_REDUCTION_BASE });

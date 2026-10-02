@@ -183,6 +183,8 @@ function scheduleRender() {
 
 window.addEventListener("v39:field-generated", () => { lastSignature = null; scheduleRender(); });
 window.addEventListener("v39:game-state-changed", scheduleRender);
+window.addEventListener("v39:display-settings-changed", scheduleRender);
+window.addEventListener("v39:visibility-rendered", scheduleRender);
 window.addEventListener("v39:map-render-batch-ended", scheduleRender);
 window.renderV39VictoryLandmarkIcons = scheduleRender;
 window.getV39VictoryLandmarkIconStatus = () => ({ ...(window.__v39VictoryLandmarkIconStatus || {}) });

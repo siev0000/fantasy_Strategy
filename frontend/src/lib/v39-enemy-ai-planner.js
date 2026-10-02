@@ -13,7 +13,7 @@ const integer = (value, fallback = 0) => Math.floor(number(value, fallback));
 const distance = getHexDistance;
 
 export function isAliveEnemyAiUnit(unit) {
-  return number(unit?.hp, unit?.currentHp) > 0 && text(unit?.state, "生存") !== "死亡";
+  return number(unit?.hp, unit?.currentHp) > 0 && text(unit?.state || unit?.statusName, "生存") !== "死亡";
 }
 
 function coordKey(x, y) {
@@ -549,6 +549,7 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
 export function applyEnemyPlanToSimulation(state, plan) {
   if (!state || !plan) return state;
   const id = text(plan.enemyId);
+  if (!(state.enemies || []).some(enemy => text(enemy?.id) === id && isAliveEnemyAiUnit(enemy))) return state;
   const runtime = {
     ...(state.enemyCombatRuntime || {}),
     pendingActionsByEnemyId:{ ...(state.enemyCombatRuntime?.pendingActionsByEnemyId || {}) },

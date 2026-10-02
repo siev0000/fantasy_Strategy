@@ -15,13 +15,13 @@ function installLoadingOverlay() {
       #v39-bootstrap-loading.is-complete{opacity:0;pointer-events:none}
       .v39-bootstrap-loading-card{width:min(520px,88vw);display:grid;gap:12px;padding:18px 20px;border:1px solid #43565d;border-radius:12px;background:rgba(12,24,29,.96);box-shadow:0 18px 54px rgba(0,0,0,.48)}
       .v39-bootstrap-loading-head{display:flex;align-items:end;justify-content:space-between;gap:14px}
-      .v39-bootstrap-loading-head strong{font-size:18px}.v39-bootstrap-loading-head b{font-size:28px;color:#7bd7e6;font-variant-numeric:tabular-nums}
+      .v39-bootstrap-loading-head strong{font-size:var(--font-size-18)}.v39-bootstrap-loading-head b{font-size:var(--font-size-28);color:#7bd7e6;font-variant-numeric:tabular-nums}
       .v39-bootstrap-loading-track{height:14px;overflow:hidden;border:1px solid #50656d;border-radius:999px;background:#0a1317}
       .v39-bootstrap-loading-bar{height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,#3b8da0,#6ed3df);transition:width .22s ease}
-      .v39-bootstrap-loading-stage{margin:0;color:#aebec1;font-size:13px;line-height:1.45}
+      .v39-bootstrap-loading-stage{margin:0;color:#aebec1;font-size:var(--font-secondary);line-height:1.45}
       #v39-bootstrap-loading.is-error .v39-bootstrap-loading-head b{color:#ef8c7b}
       #v39-bootstrap-loading.is-error .v39-bootstrap-loading-bar{background:#c96a5d}
-      @media(max-width:520px){.v39-bootstrap-loading-card{width:min(92vw,420px);padding:15px}.v39-bootstrap-loading-head strong{font-size:16px}.v39-bootstrap-loading-head b{font-size:24px}}
+      @media(max-width:520px){.v39-bootstrap-loading-card{width:min(92vw,420px);padding:15px}.v39-bootstrap-loading-head strong{font-size:var(--font-size-16)}.v39-bootstrap-loading-head b{font-size:var(--font-size-24)}}
     `;
     document.head.appendChild(style);
   }

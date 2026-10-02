@@ -14,7 +14,7 @@
   --scrollbar-border: rgba(19, 74, 96, 0.88);
   --ui-app-root-scale: 1;
   --modal-min-text-size: 20px;
-  --modal-base-font-size: 20px;
+  --modal-base-font-size:var(--font-heading);
   --modal-normal-width: 880px;
   --modal-normal-height: 620px;
   --modal-wide-width: 1140px;
@@ -461,7 +461,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   position: absolute;
   top: 3px;
   right: 4px;
-  font-size: 9px;
+  font-size:var(--font-size-9);
   line-height: 1;
   color: #102331;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);

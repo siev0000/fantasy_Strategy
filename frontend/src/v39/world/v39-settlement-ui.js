@@ -2,6 +2,8 @@ import { getFactionSettlements, selectFactionSettlement, territorySettlementId }
 import { inspectV39CitySpecializations, selectV39CitySpecialization } from "../../lib/v39-city-specialization-rules.js";
 import { resolveV39SettlementProductionMetrics } from "../../lib/v39-economy-rules.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import { isV39ArmyTransportUnit, isV39UnitInsideSettlement, setV39UnitTransportAssignment,
+  configureV39TransportRoute, getV39TransportCargo, V39_TRANSPORT_RESOURCE_KEYS } from "../../lib/v39-transport-rules.js";
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);
@@ -76,6 +78,31 @@ function section(key, label, value, body) {
     <summary><span>${label}</span>${value ? `<b>${value}</b>` : ""}</summary>
     <div class="settlement-fold-body">${body}</div>
   </details>`;
+}
+
+function transportRows(player, settlement) {
+  const settlementId = text(settlement.settlementId || settlement.id);
+  const units = (player?.factionState?.units || []).filter(unit =>
+    text(unit.transportAssignment?.originSettlementId) === settlementId
+    || (isV39ArmyTransportUnit(unit) && isV39UnitInsideSettlement(unit, settlement)
+      && number(unit.hp ?? unit.currentHp) > 0 && text(unit.state || unit.statusName) !== "死亡"));
+  const body = units.length ? `<div class="settlement-transport-list">${units.map(unit => {
+    const assigned = text(unit.transportAssignment?.originSettlementId) === settlementId;
+    const otherAssignment = unit.transportAssignment && !assigned;
+    const route = unit.transportAssignment || {};
+    const destinations = getFactionSettlements(player.factionState).filter(row => row.placed && text(row.settlementId) !== settlementId);
+    const cargo = getV39TransportCargo(player.factionState, unit.id);
+    const status = ({ ready:"往復準備", delivering:"搬入中", returning:"帰還中", "waiting-stock":"在庫待ち", blocked:"通行待ち", paused:"停止", "awaiting-route":"経路未設定" })[route.status] || "";
+    const controls = !assigned ? "" : `<div class="settlement-transport-route" data-transport-row="${escapeHtml(unit.id)}">
+      <label>搬入先<select data-transport-destination${route.enabled ? " disabled" : ""}><option value="">選択</option>${destinations.map(row => `<option value="${escapeHtml(row.settlementId)}"${row.settlementId === route.destinationSettlementId ? " selected" : ""}>${escapeHtml(row.name || row.settlementId)}</option>`).join("")}</select></label>
+      <label>資源<select data-transport-resource${route.enabled ? " disabled" : ""}>${V39_TRANSPORT_RESOURCE_KEYS.map(name => `<option${name === route.resource ? " selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select></label>
+      <button type="button" class="settlement-chip" data-transport-route="${escapeHtml(unit.id)}"${destinations.length && number(unit.hp ?? unit.currentHp) > 0 ? "" : " disabled"}>${route.enabled ? "往復停止" : "往復開始"}</button>
+      <span class="settlement-transport-status">${escapeHtml(status)}${route.reason ? ` / ${escapeHtml(route.reason)}` : ""} / 積載 ${escapeHtml(Object.entries(cargo.resourcesByType).map(([name, amount]) => `${name} ${formatNumber(amount)}`).join("・") || "なし")}</span>
+    </div>`;
+    return `<div class="settlement-transport-entry"><div class="settlement-transport-unit"><span>${escapeHtml(unit.name || unit.id)}</span><button type="button" class="settlement-chip${assigned ? " building" : ""}" data-unit-transport="${escapeHtml(unit.id)}" data-transport-enable="${assigned ? "false" : "true"}"${otherAssignment ? ' disabled title="別の拠点で輸送指定中です"' : ""}>${assigned ? "輸送解除" : otherAssignment ? "他拠点で指定中" : "輸送に指定"}</button></div>${controls}</div>`;
+  }).join("")}</div>` : `<span class="settlement-empty">拠点内に軍隊ユニットがいません</span>`;
+  return section("transport", "輸送", `${units.filter(unit => text(unit.transportAssignment?.originSettlementId) === settlementId).length}体`,
+    `${body}<div class="settlement-empty">ターン終了時に搬入先へ運搬し、空荷で戻ります。在庫がなくなるまで繰り返します。</div>`);
 }
 
 function render() {
@@ -163,6 +190,7 @@ function render() {
       ${section("population", "人口", formatNumber(settlement.population), populationSummary)}
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
       ${section("material", "資材", formatNumber(settlement.materialStock), keyValueRows(settlement.materialStockByType))}
+      ${transportRows(player, settlement)}
       ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}</div>`)}
       ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
       ${section("civic", "住民状態", `幸福${formatNumber(civic.happiness)}`, civicBody)}
@@ -181,6 +209,39 @@ panel?.addEventListener("toggle", event => {
 }, true);
 
 panel?.addEventListener("click", event => {
+  const routeButton = event.target instanceof Element ? event.target.closest("[data-transport-route]") : null;
+  if (routeButton) {
+    const { state, player } = activeContext();
+    const unit = player.factionState.units.find(row => text(row.id) === text(routeButton.dataset.transportRoute));
+    const row = routeButton.closest("[data-transport-row]");
+    const result = configureV39TransportRoute(state, player.id, unit.id,
+      row.querySelector("[data-transport-destination]").value, row.querySelector("[data-transport-resource]").value,
+      unit.transportAssignment?.enabled !== true);
+    if (!result.ok) window.showV39TurnBanner?.(result.reason);
+    else {
+      window.cancelV39SelectedUnitMove?.(); window.cancelV39SelectedUnitAttack?.();
+      window.setV39GameState?.({ players:result.state.players }, { reason:"transport-route" });
+      if (unit.transportAssignment?.enabled) window.depositV39PlayerCargo?.(player.id, unit.id);
+      window.showV39TurnBanner?.(unit.transportAssignment?.enabled ? "自動往復を停止しました。積載物は保持します" : "自動往復を開始しました");
+    }
+    return;
+  }
+  const transportButton = event.target instanceof Element ? event.target.closest("[data-unit-transport]") : null;
+  if (transportButton) {
+    const { state, player, settlement } = activeContext();
+    const enabled = transportButton.dataset.transportEnable === "true";
+    const result = setV39UnitTransportAssignment(state, player?.id, settlement?.settlementId || settlement?.id, transportButton.dataset.unitTransport, enabled);
+    if (!result.ok) window.showV39TurnBanner?.(result.reason);
+    else {
+      window.cancelV39SelectedUnitMove?.();
+      window.cancelV39SelectedUnitAttack?.();
+      window.setV39GameState?.({ players:result.state.players }, { reason:"unit-transport-assignment" });
+      const unit = player.factionState.units.find(row => text(row.id) === text(transportButton.dataset.unitTransport));
+      window.appendV39ActivityLog?.(player.id, "物資", `${unit?.name || unit?.id}: ${enabled ? "輸送指定" : "輸送解除"}`);
+      window.showV39TurnBanner?.(enabled ? "輸送用に指定しました" : "輸送指定を解除しました");
+    }
+    return;
+  }
   const developmentButton = event.target instanceof Element ? event.target.closest("[data-settlement-development]") : null;
   if (developmentButton) {
     window.openV39SettlementDevelopment?.();

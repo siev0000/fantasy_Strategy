@@ -3,10 +3,11 @@ import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rule
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/v39-nest-rules.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
+import { V39_START_AREA_BALANCE, V39_ENEMY_LEVEL_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
-const SAFE_DISTANCE_FROM_BASE = 4;
-const LOW_LEVEL_DISTANCE_FROM_BASE = 10;
-const LOW_LEVEL_MAX = 10;
+const SAFE_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.safeRadius;
+const LOW_LEVEL_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.beginnerRadius;
+const LOW_LEVEL_MAX = V39_START_AREA_BALANCE.beginnerMaxLevel;
 const DEFAULT_ENEMY_SPAWN_TILE_DIVISOR = 40;
 const MIN_ENEMY_SPAWN_TILE_DIVISOR = 20;
 const MAX_ENEMY_SPAWN_TILE_DIVISOR = 60;
@@ -143,6 +144,11 @@ for (const row of enemySpawnData) {
   definitionsByTerrain.get(definition.terrain).push(definition);
 }
 
+// イベント敵も、通常敵と同じクラス・出現定義の検証結果を使う。
+export function getV39EnemySpawnDefinitions(terrain) {
+  return [...(definitionsByTerrain.get(text(terrain)) || [])];
+}
+
 function tileTerrainKeys(data, x, y) {
   const keys = new Set();
   const values = [data?.grid?.[y]?.[x], data?.reliefMap?.[y]?.[x], data?.specialMap?.[y]?.[x]];
@@ -172,12 +178,28 @@ function terrainLevelRange(data, x, y, distanceFromBase, strong = false) {
   const absoluteHeightLevel = Math.abs(Math.trunc(rawHeightLevel));
   const effectiveTerrainLevel = absoluteHeightLevel + (strong ? STRONG_TERRAIN_LEVEL_BONUS : 0);
   const baseLevel = TERRAIN_LEVEL_BASE + (TERRAIN_LEVEL_STEP * effectiveTerrainLevel);
-  const minLevel = Math.max(1, baseLevel - TERRAIN_LEVEL_VARIANCE);
+  let minLevel = Math.max(1, baseLevel - TERRAIN_LEVEL_VARIANCE);
   let maxLevel = baseLevel;
+  let sourceMinLevel = minLevel, sourceMaxLevel = maxLevel;
+  let levelBand = "normal";
 
-  // 既存ルール: 初期拠点10マス以内はLv10以下。
+  // 開始拠点周囲は、高度由来の最低Lvも含めて序盤帯へ置き換える。
   if (distanceFromBase <= LOW_LEVEL_DISTANCE_FROM_BASE) {
-    maxLevel = Math.min(maxLevel, LOW_LEVEL_MAX);
+    minLevel = V39_START_AREA_BALANCE.beginnerMinLevel;
+    maxLevel = LOW_LEVEL_MAX;
+    sourceMinLevel = minLevel; sourceMaxLevel = maxLevel;
+    levelBand = "beginner";
+  } else if (rawHeightLevel >= V39_ENEMY_LEVEL_BALANCE.extremeHighHeight
+    || rawHeightLevel <= V39_ENEMY_LEVEL_BALANCE.extremeLowHeight) {
+    minLevel = maxLevel = V39_ENEMY_LEVEL_BALANCE.extremeLevel;
+    levelBand = "extreme";
+  } else if (strong) {
+    minLevel = V39_ENEMY_LEVEL_BALANCE.bossMinLevel;
+    maxLevel = V39_ENEMY_LEVEL_BALANCE.bossMaxLevel;
+    levelBand = "boss";
+  } else {
+    minLevel = Math.min(minLevel, V39_ENEMY_LEVEL_BALANCE.normalMaxLevel);
+    maxLevel = Math.min(maxLevel, V39_ENEMY_LEVEL_BALANCE.normalMaxLevel);
   }
   if (maxLevel < minLevel) return null;
 
@@ -187,16 +209,43 @@ function terrainLevelRange(data, x, y, distanceFromBase, strong = false) {
     effectiveTerrainLevel,
     baseLevel,
     minLevel,
-    maxLevel
+    maxLevel,
+    sourceMinLevel,
+    sourceMaxLevel,
+    levelBand,
+    beginner:distanceFromBase <= LOW_LEVEL_DISTANCE_FROM_BASE
   };
 }
 
 function intersectDefinitionLevel(definition, levelRange) {
   if (!definition || !levelRange) return null;
-  const minLevel = Math.max(definition.minLevel, levelRange.minLevel);
-  const maxLevel = Math.min(definition.maxLevel, levelRange.maxLevel);
-  if (maxLevel < minLevel) return null;
+  const sourceMin = Math.max(definition.minLevel, levelRange.levelBand === "normal" ? levelRange.minLevel : levelRange.sourceMinLevel);
+  const sourceMax = Math.min(definition.maxLevel, levelRange.levelBand === "normal" ? levelRange.maxLevel : levelRange.sourceMaxLevel);
+  if (sourceMax < sourceMin) return null;
+  const minLevel = levelRange.levelBand === "normal" ? Math.min(sourceMin, levelRange.maxLevel)
+    : levelRange.levelBand === "beginner" ? sourceMin : levelRange.minLevel;
+  const maxLevel = levelRange.levelBand === "normal" ? Math.min(sourceMax, levelRange.maxLevel)
+    : levelRange.levelBand === "beginner" ? sourceMax : levelRange.maxLevel;
   return { definition, minLevel, maxLevel };
+}
+
+function eligibleForRange(definitions, levelRange) {
+  if (!levelRange) return [];
+  const regular = definitions.map(definition => intersectDefinitionLevel(definition, levelRange)).filter(Boolean);
+  if (!regular.length && definitions.length && ["boss", "extreme"].includes(levelRange.levelBand)) {
+    // 専用Lv帯がJSONにない場合も、同じ地形の元Lv帯に最も近い種族から個体を作る。
+    const gap = definition => Math.max(0, levelRange.sourceMinLevel - definition.maxLevel, definition.minLevel - levelRange.sourceMaxLevel);
+    const nearest = Math.min(...definitions.map(gap));
+    return definitions.filter(definition => gap(definition) === nearest).map(definition => ({
+      definition, minLevel:levelRange.minLevel, maxLevel:levelRange.maxLevel, levelAdjusted:true
+    }));
+  }
+  if (regular.length || !levelRange.beginner || !definitions.length) return regular;
+  // JSONの通常Lvは維持し、最低Lv帯の種族だけを序盤個体として生成する。
+  const lowest = Math.min(...definitions.map(row => row.minLevel));
+  return definitions.filter(row => row.minLevel === lowest).map(definition => ({
+    definition, minLevel:levelRange.minLevel, maxLevel:levelRange.maxLevel, beginnerAdjusted:true
+  }));
 }
 
 function buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled) {
@@ -206,13 +255,11 @@ function buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled) {
   const distance = closestBaseDistance(settlements, { x, y }, w, h, wrapEnabled);
   if (distance <= SAFE_DISTANCE_FROM_BASE) return null;
 
-  const strong = isStrongMonsterTile(data, x, y);
+  const strong = distance > LOW_LEVEL_DISTANCE_FROM_BASE && isStrongMonsterTile(data, x, y);
   const levelRange = terrainLevelRange(data, x, y, distance, strong);
   if (!levelRange) return null;
 
-  const eligibleDefinitions = definitions
-    .map(definition => intersectDefinitionLevel(definition, levelRange))
-    .filter(Boolean);
+  const eligibleDefinitions = eligibleForRange(definitions, levelRange);
   if (!eligibleDefinitions.length) return null;
 
   return {
@@ -310,10 +357,8 @@ function buildStrongMinionCandidates(data, settlements, strongCandidate, minionN
       const levelRange = terrainLevelRange(data, x, y, distanceFromBase, false);
       if (!levelRange) continue;
 
-      const eligibleDefinitions = definitionsForTile(data, x, y)
-        .filter(definition => desiredNames.has(definition.name))
-        .map(definition => intersectDefinitionLevel(definition, levelRange))
-        .filter(Boolean);
+      const eligibleDefinitions = eligibleForRange(definitionsForTile(data, x, y)
+        .filter(definition => desiredNames.has(definition.name)), levelRange);
       if (!eligibleDefinitions.length) continue;
 
       candidates.push({
@@ -354,6 +399,7 @@ function createEnemy(selection, position, level, index, metadata = {}) {
   const strongEnemy = metadata.strongEnemy === true || (metadata.strongEnemy !== false && position.strong === true);
   return {
     ...derived,
+    beginnerAdjusted:selection.beginnerAdjusted === true,
     hp:maxHp,
     currentHp:maxHp,
     maxHp,
@@ -382,6 +428,7 @@ function createEnemy(selection, position, level, index, metadata = {}) {
     effectiveTerrainLevel:position.levelRange?.effectiveTerrainLevel ?? 0,
     terrainEnemyLevelMin:position.levelRange?.minLevel ?? level,
     terrainEnemyLevelMax:position.levelRange?.maxLevel ?? level,
+    spawnLevelBand:position.levelRange?.levelBand || "normal",
     strongMonsterInfo:position.strongMonsterInfo ? { ...position.strongMonsterInfo } : null
   };
 }
@@ -807,6 +854,7 @@ window.getV39EnemySpawnRules = () => ({
   terrainLevelStep:TERRAIN_LEVEL_STEP,
   terrainLevelVariance:TERRAIN_LEVEL_VARIANCE,
   strongTerrainLevelBonus:STRONG_TERRAIN_LEVEL_BONUS,
+  levelBalance:{ ...V39_ENEMY_LEVEL_BALANCE },
   strongGroupChanceWithoutCount:STRONG_GROUP_CHANCE_WITHOUT_COUNT,
   strongRandomMinionMin:STRONG_RANDOM_MINION_MIN,
   strongRandomMinionMax:STRONG_RANDOM_MINION_MAX,
@@ -814,3 +862,30 @@ window.getV39EnemySpawnRules = () => ({
   useAbsoluteHeightLevel:true,
   validDefinitionCount:[...definitionsByTerrain.values()].reduce((sum, rows) => sum + rows.length, 0)
 });
+
+// 配置前の候補評価も、配置後と同じ種族・Lv選択を参照する。
+window.inspectV39InitialPlacementArea = tile => {
+  const data = window.__v39FieldRuntime?.mapData;
+  if (!data?.grid || !Number.isInteger(tile?.x) || !Number.isInteger(tile?.y)) return null;
+  const wrap = data.worldWrapEnabled !== false
+    && window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
+  const names = new Set(), outerLevels = [];
+  const bases = [...(window.getV39GameState?.()?.players || []).flatMap(player =>
+    getFactionSettlements(player.factionState).filter(row => row.placed)), tile];
+  for (let y = 0; y < data.h; y++) for (let x = 0; x < data.w; x++) {
+    const distance = wrappedHexDistance(tile, { x, y }, data.w, data.h, wrap);
+    if (distance <= SAFE_DISTANCE_FROM_BASE || distance > LOW_LEVEL_DISTANCE_FROM_BASE + 1) continue;
+    const definitions = definitionsForTile(data, x, y);
+    const baseDistance = closestBaseDistance(bases, { x, y }, data.w, data.h, wrap);
+    if (baseDistance <= SAFE_DISTANCE_FROM_BASE) continue;
+    const range = terrainLevelRange(data, x, y, baseDistance,
+      baseDistance > LOW_LEVEL_DISTANCE_FROM_BASE && isStrongMonsterTile(data, x, y));
+    for (const selection of eligibleForRange(definitions, range)) {
+      if (distance <= LOW_LEVEL_DISTANCE_FROM_BASE) names.add(selection.definition.name);
+      else outerLevels.push(selection.minLevel, selection.maxLevel);
+    }
+  }
+  return { ...V39_START_AREA_BALANCE, beginnerSpecies:[...names],
+    outerMinLevel:outerLevels.length ? Math.min(...outerLevels) : null,
+    outerMaxLevel:outerLevels.length ? Math.max(...outerLevels) : null };
+};

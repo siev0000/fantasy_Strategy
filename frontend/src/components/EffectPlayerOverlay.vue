@@ -348,7 +348,7 @@ const showAdvancedControls = computed(() => !props.inline);
   gap: 4px;
   min-width: min(320px, calc(100vw - 110px));
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-player-select-wrap select {
@@ -357,7 +357,7 @@ const showAdvancedControls = computed(() => !props.inline);
   border-radius: 7px;
   background: rgba(255, 247, 229, 0.92);
   color: #2f2517;
-  font-size: 12px;
+  font-size:var(--font-compact);
   padding: 4px 8px;
 }
 
@@ -366,7 +366,7 @@ const showAdvancedControls = computed(() => !props.inline);
   gap: 4px;
   width: 96px;
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-angle-wrap input {
@@ -375,7 +375,7 @@ const showAdvancedControls = computed(() => !props.inline);
   border-radius: 7px;
   background: rgba(255, 247, 229, 0.92);
   color: #2f2517;
-  font-size: 12px;
+  font-size:var(--font-compact);
   padding: 4px 8px;
 }
 
@@ -384,7 +384,7 @@ const showAdvancedControls = computed(() => !props.inline);
   gap: 4px;
   width: 96px;
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-scale-wrap input {
@@ -393,7 +393,7 @@ const showAdvancedControls = computed(() => !props.inline);
   border-radius: 7px;
   background: rgba(255, 247, 229, 0.92);
   color: #2f2517;
-  font-size: 12px;
+  font-size:var(--font-compact);
   padding: 4px 8px;
 }
 
@@ -402,7 +402,7 @@ const showAdvancedControls = computed(() => !props.inline);
   gap: 4px;
   width: 104px;
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-render-style-wrap select {
@@ -411,7 +411,7 @@ const showAdvancedControls = computed(() => !props.inline);
   border-radius: 7px;
   background: rgba(255, 247, 229, 0.92);
   color: #2f2517;
-  font-size: 12px;
+  font-size:var(--font-compact);
   padding: 4px 8px;
 }
 
@@ -421,7 +421,7 @@ const showAdvancedControls = computed(() => !props.inline);
   gap: 4px;
   width: 88px;
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-frame-index-wrap input,
@@ -431,7 +431,7 @@ const showAdvancedControls = computed(() => !props.inline);
   border-radius: 7px;
   background: rgba(255, 247, 229, 0.92);
   color: #2f2517;
-  font-size: 12px;
+  font-size:var(--font-compact);
   padding: 4px 8px;
 }
 
@@ -443,7 +443,7 @@ const showAdvancedControls = computed(() => !props.inline);
 
 .effect-frame-offset-actions small {
   color: #f2e6c9;
-  font-size: 11px;
+  font-size:var(--font-size-11);
 }
 
 .effect-prev-ghost-wrap {
@@ -451,7 +451,7 @@ const showAdvancedControls = computed(() => !props.inline);
   align-items: center;
   gap: 4px;
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-tint-wrap {
@@ -459,7 +459,7 @@ const showAdvancedControls = computed(() => !props.inline);
   gap: 4px;
   width: 72px;
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-tint-wrap input {
@@ -477,7 +477,7 @@ const showAdvancedControls = computed(() => !props.inline);
   gap: 4px;
   width: 124px;
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-color-strength-wrap input,
@@ -487,7 +487,7 @@ const showAdvancedControls = computed(() => !props.inline);
   border-radius: 7px;
   background: rgba(255, 247, 229, 0.92);
   color: #2f2517;
-  font-size: 12px;
+  font-size:var(--font-compact);
   padding: 4px 8px;
 }
 
@@ -496,12 +496,12 @@ const showAdvancedControls = computed(() => !props.inline);
   align-items: center;
   gap: 4px;
   color: #f2e6c9;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .effect-output-line {
   color: #f2e6c9;
-  font-size: 11px;
+  font-size:var(--font-size-11);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -529,7 +529,7 @@ const showAdvancedControls = computed(() => !props.inline);
   border-radius: 5px;
   background: rgba(255, 247, 229, 0.92);
   color: #2f2517;
-  font-size: 11px;
+  font-size:var(--font-size-11);
   padding: 2px 4px;
 }
 

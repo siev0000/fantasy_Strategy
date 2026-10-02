@@ -12,25 +12,22 @@ function applyViewportScale(){
   const compact=Math.min(widthScale,heightScale);
 
   let uiScale;
-  let fontScale;
   let touchScale;
 
   if(w<700){
     uiScale=Math.max(.84,Math.min(1.05,compact));
-    fontScale=Math.max(.92,Math.min(1.08,compact));
     touchScale=Math.max(.92,Math.min(1.06,compact));
   }else if(w<1200){
     uiScale=Math.max(1.00,Math.min(1.18,w/980));
-    fontScale=Math.max(1.08,Math.min(1.22,w/920));
     touchScale=Math.max(1.00,Math.min(1.10,w/1050));
   }else{
     uiScale=Math.max(1.10,Math.min(1.42,w/1450));
-    fontScale=Math.max(1.18,Math.min(1.52,w/1250));
     touchScale=Math.max(1.05,Math.min(1.25,w/1550));
   }
 
   const userFontScale=Number(document.documentElement.dataset.v39FontScale||1);
-  fontScale*=Math.max(.8,Math.min(1.4,Number.isFinite(userFontScale)?userFontScale:1));
+  // 基準文字サイズはCSSでPC15px・スマホ12px。設定倍率だけを掛ける。
+  const fontScale=Math.max(.8,Math.min(1.4,Number.isFinite(userFontScale)?userFontScale:1));
 
   document.documentElement.style.setProperty("--ui-scale",uiScale.toFixed(3));
   document.documentElement.style.setProperty("--font-scale",fontScale.toFixed(3));
@@ -64,7 +61,13 @@ function currentResourceDetail(){return window.getV39ResourceSnapshot?.()||{}}
 function currentSimpleResourceData(){return window.getV39SimpleResourceSnapshot?.()||[]}
 
 function fmtNum(v){return Number(v).toLocaleString("ja-JP")}
-function signed(v){const n=Number(v)||0;return n>0?"+"+n:String(n)}
+function signed(v){
+  const value=Number(v)||0;
+  // 表示だけを四捨五入する。負数も絶対値で丸め、-0は表示しない。
+  const rounded=Math.round(Math.abs(value));
+  const n=value<0?-rounded:rounded;
+  return n===0?"0":(n>0?"+":"")+fmtNum(n);
+}
 function resourceIconMarkup(icon,color,className){
   const safeColor=/^#[0-9a-f]{3,8}$/i.test(String(color||"").trim())?String(color).trim():"";
   const style=safeColor?` style="color:${safeColor}"`:"";

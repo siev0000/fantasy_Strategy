@@ -85,6 +85,8 @@ export const FACTION_BORDER_COLOR_PALETTE = [
 
 // 未探索/非可視タイル（Fog）の表示設定。
 export const FOG_HIDDEN_FILL = 0x7b818a;
+// 現行v39の索敵外・未探索表示。初期配置の選択範囲外も同じ色と透明度を使う。
+export const V39_FIELD_FOG_STYLE = Object.freeze({ color:0x071014, alpha:0.76 });
 export const FOG_HIDDEN_ALPHA = 0.5; // Fogタイルは半透明の塗りつぶしで、下の地形がうっすら見えるようにする。
 export const FOG_HIDDEN_ALPHA_TEST = 0.5;// Fogタイルの境界線は、Fogの下に薄く描いて、Fogが消えたときに自然に見えるようにする。
 export const FOG_HIDDEN_BORDER = { width: 1.15, color: 0x4b525e, alpha: 0.92 };

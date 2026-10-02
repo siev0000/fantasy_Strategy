@@ -1690,7 +1690,7 @@ function submitEnchant() {
 }
 
 .weapon-craft-row label {
-  font-size: 20px;
+  font-size:var(--font-heading);
   line-height: 1.25;
   color: rgba(236, 223, 192, 0.88);
 }
@@ -1707,7 +1707,7 @@ function submitEnchant() {
   border-radius: 7px;
   background: rgba(255, 247, 233, 0.92);
   color: #332515;
-  font-size: 20px;
+  font-size:var(--font-heading);
   padding: 6px 8px;
   line-height: 1.25;
 }
@@ -1741,7 +1741,7 @@ function submitEnchant() {
   border: 1px solid rgba(236, 200, 140, 0.68);
   border-radius: 7px;
   color: #2f2416;
-  font-size: 16px;
+  font-size:var(--font-size-16);
   font-weight: 800;
   line-height: 1;
   background: linear-gradient(180deg, rgba(246, 224, 184, 0.96), rgba(219, 191, 145, 0.94));
@@ -2030,7 +2030,7 @@ function submitEnchant() {
   color: #f7e6be;
   font-size: 0.76rem;
   font-weight: 700;
-  font-size: 20px;
+  font-size:var(--font-heading);
 }
 
 .enchant-cost-text {

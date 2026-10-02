@@ -78,15 +78,15 @@ function installCustomFieldSettingsPlaceholder() {
   dialog.innerHTML = `
     <header style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid #34444a;position:sticky;top:0;background:#111c21;z-index:1">
       <div>
-        <div id="v39-field-settings-title" style="font-weight:800;font-size:16px">フィールド設定</div>
-        <div style="margin-top:2px;font-size:13px;color:#92a2a6">カスタムフィールド生成（仮画面）</div>
+        <div id="v39-field-settings-title" style="font-weight:800;font-size:var(--font-size-16)">フィールド設定</div>
+        <div style="margin-top:2px;font-size:var(--font-secondary);color:#92a2a6">カスタムフィールド生成（仮画面）</div>
       </div>
       <button type="button" id="v39-close-field-settings" style="border:1px solid #526269;border-radius:7px;background:#19262b;color:#e8efec;padding:7px 11px;cursor:pointer">閉じる</button>
     </header>
     <div style="padding:14px;display:grid;gap:12px">
       <div style="padding:12px;border:1px solid #34444a;border-radius:8px;background:rgba(255,255,255,.025)">
-        <div style="font-size:13px;font-weight:700;margin-bottom:5px">現在は仮画面です</div>
-        <div style="font-size:13px;line-height:1.7;color:#b8c5c8">ここへ以前の画面で使用していたフィールドカスタム設定を、そのまま移植します。設定後に「生成」を押して初めてフィールドを作成する流れに変更します。</div>
+        <div style="font-size:var(--font-secondary);font-weight:700;margin-bottom:5px">現在は仮画面です</div>
+        <div style="font-size:var(--font-secondary);line-height:1.7;color:#b8c5c8">ここへ以前の画面で使用していたフィールドカスタム設定を、そのまま移植します。設定後に「生成」を押して初めてフィールドを作成する流れに変更します。</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
         <div style="padding:10px;border:1px solid #2f3f45;border-radius:7px;color:#9eacb0">マップサイズ（未接続）</div>
@@ -482,7 +482,7 @@ function installCameraControlStyles() {
   style.id = "v39-map-camera-control-style";
   style.textContent = `
 #v39-map-camera-controls{position:absolute;left:74px;bottom:8px;z-index:24;display:grid;gap:4px}
-#v39-map-camera-controls button{width:38px;height:38px;padding:0;border:1px solid #597078;border-radius:7px;background:rgba(13,27,32,.94);color:#e8efec;font-size:23px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+#v39-map-camera-controls button{width:38px;height:38px;padding:0;border:1px solid #597078;border-radius:7px;background:rgba(13,27,32,.94);color:#e8efec;font-size:var(--font-size-23);line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35)}
 #v39-map-camera-controls button:active{background:#21434c;border-color:#76cedd}
 @media(max-width:700px){#v39-map-camera-controls{left:6px;bottom:6px}#v39-map-camera-controls button{width:36px;height:36px}}
 `;

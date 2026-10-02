@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import {
   computeAttackDamage,
   applyV39GuardToDamage,
@@ -384,6 +385,7 @@ function cancelAttack(reason = "attack-cancelled") {
   attackSession = null;
   destroyGraphics();
   setBanner("");
+  renderActionPanel();
   if (hadSession) window.dispatchEvent(new CustomEvent("v39:attack-cancelled", { detail:{ reason } }));
 }
 
@@ -411,6 +413,7 @@ function unavailableAttackReason(skillName) {
   const unit = selectedUnit(faction);
   const row = resolveAttackRows(unit).find(item => text(item?.名前) === text(skillName));
   if (!unit || !row) return "攻撃するキャラクターと技を選択してください";
+  if (isV39UnitWaiting(unit, currentV39TurnNumber())) return "このターンは待機済みです";
   if (text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0) return "死亡したキャラクターは攻撃できません";
   if (currentAp(unit) < resolveAttackApCost(row, unit)) return "APが不足しています";
   const timing = unitRuntimeState(faction, unit, row);
@@ -440,12 +443,13 @@ function renderActionPanel() {
     const row = rowByName.get(name) || null;
     const timing = unitRuntimeState(activeFaction(), unit, row);
     const disabled = !row
+      || isV39UnitWaiting(unit, currentV39TurnNumber())
       || currentAp(unit) < resolveAttackApCost(row, unit)
       || text(unit?.state) === "死亡"
       || number(unit?.hp, unit?.currentHp) <= 0
       || !!timing.pending
       || timing.cooldownRemainingTurns > 0;
-    const selected = !!row && name === selectedSkillName;
+    const selected = !!row && attackSession?.skillName === name && attackSession?.unitId === text(unit?.id);
     button.classList.toggle("active", selected);
     button.classList.toggle("unavailable", disabled);
     button.setAttribute("aria-pressed", String(selected));
@@ -466,6 +470,10 @@ function startAttack() {
   window.cancelV39SelectedUnitMove?.("attack-command-started");
   if (!ctx || !unit || !skillRow) {
     showToast("攻撃するキャラクターと技を選択してください");
+    return false;
+  }
+  if (isV39UnitWaiting(unit, currentV39TurnNumber())) {
+    showToast("このターンは待機済みです");
     return false;
   }
   const apCost = resolveAttackApCost(skillRow, unit);
@@ -531,6 +539,11 @@ function executeAttack(target) {
   const player = state?.players?.find((row) => row.id === state.activePlayerId);
   const attacker = player?.factionState?.units?.find((unit) => text(unit?.id) === session.unitId);
   if (!state || !player || !attacker) return false;
+  if (isV39UnitWaiting(attacker, currentV39TurnNumber())) {
+    showToast("このターンは待機済みです");
+    cancelAttack("unit-waiting");
+    return false;
+  }
   if (!session.rangeTiles.has(coordKey(target.x, target.y))) {
     showToast("射程外です");
     return false;
@@ -580,7 +593,7 @@ function executeAttack(target) {
       units:row.factionState.units.map((unit) => {
         if (text(unit.id) !== text(attacker.id)) return unit;
         const ap = Math.max(0, currentAp(unit) - apCost);
-        return { ...unit, ap, currentAp:ap, actionPoint:ap };
+        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastActionTurn:currentV39TurnNumber() };
       }),
       combatRuntime:{ ...runtime, pendingActionsByUnitId }
     }
@@ -634,7 +647,7 @@ function performRevival(target, session, options, state, player, attacker, reviv
       units:row.factionState.units.map((unit) => {
         if (text(unit.id) !== text(attacker.id)) return unit;
         const ap = options.apPaid ? currentAp(unit) : Math.max(0, currentAp(unit) - apCost);
-        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastUsedAttack:text(session.skillRow?.名前) };
+        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastActionTurn:currentV39TurnNumber(), lastUsedAttack:text(session.skillRow?.名前) };
       }),
       combatRuntime:{ ...runtime, pendingActionsByUnitId, cooldownsByUnitId }
     }
@@ -700,7 +713,7 @@ function performTileTransform(target, session, options, state, player, attacker,
       units:row.factionState.units.map(unit => {
         if (text(unit.id) !== text(attacker.id)) return unit;
         const ap = options.apPaid ? currentAp(unit) : Math.max(0, currentAp(unit) - apCost);
-        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastUsedAttack:text(session.skillRow?.名前) };
+        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastActionTurn:currentV39TurnNumber(), lastUsedAttack:text(session.skillRow?.名前) };
       }),
       combatRuntime:{ ...runtime, pendingActionsByUnitId, cooldownsByUnitId }
     }
@@ -748,6 +761,10 @@ function performAttack(target, session = attackSession, options = {}) {
   const targetFaction = !supportSkill && state.players.find((row) => row.id !== player.id && row?.factionState?.units?.some((unit) =>
     integer(unit?.x) === integer(target.x) && integer(unit?.y) === integer(target.y) && number(unit?.hp, unit?.currentHp) > 0
   ));
+  if (!options.apPaid && isV39UnitWaiting(attacker, currentV39TurnNumber())) {
+    showToast("このターンは待機済みです");
+    return false;
+  }
   if (targetFaction && window.canV39AttackFaction?.(player.id, targetFaction.id) !== true) {
     showToast("宣戦していない勢力には攻撃できません");
     return false;
@@ -922,6 +939,7 @@ function performAttack(target, session = attackSession, options = {}) {
         const ap = own && !options.apPaid ? Math.max(0, currentAp(unit) - apCost) : currentAp(unit);
         return {
           ...unit, hp, currentHp:hp, ap, currentAp:ap,
+          ...(own ? { lastActionTurn:currentV39TurnNumber() } : {}),
           ...guardStatePatch(unit, damage, guardTarget ? grantedGuard : 0),
           state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
           lastUsedAttack:text(session.skillRow?.名前),
@@ -1279,16 +1297,24 @@ function install() {
   }
   installStyles();
   techniqueList.addEventListener("click", (event) => {
-    const button = event.target instanceof Element ? event.target.closest("[data-v39-attack-name]") : null;
-    if (!button) return;
+    const card = event.target instanceof Element ? event.target.closest("[data-v39-technique-name]") : null;
+    if (!card) return;
+    const button = card.matches("[data-v39-attack-name]") ? card : null;
+    if (!button) {
+      cancelAttack("other-action-selected");
+      return;
+    }
+    const name = text(button.dataset.v39AttackName);
+    const wasSelected = attackSession?.skillName === name;
+    cancelAttack(wasSelected ? "attack-command-cancelled" : "skill-changed");
+    if (wasSelected) return;
     if (button.classList.contains("unavailable")) {
       showToast(unavailableAttackReason(button.dataset.v39AttackName));
       return;
     }
-    selectedSkillName = text(button.dataset.v39AttackName);
-    cancelAttack("skill-changed");
-    renderActionPanel();
+    selectedSkillName = name;
     startAttack();
+    renderActionPanel();
   }, true);
 window.addEventListener("v39:tile-selected", (event) => {
     if (attackSession) executeAttack(event.detail);

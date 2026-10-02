@@ -144,14 +144,14 @@ onBeforeUnmount(() => {
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  font-size:11px;
+  font-size:var(--font-size-11);
   font-weight:900;
 }
 
 .resistance-indicator strong {
   margin-left:auto;
   flex:0 0 auto;
-  font-size:13px;
+  font-size:var(--font-secondary);
 }
 
 .resistance-name-popover {
@@ -164,7 +164,7 @@ onBeforeUnmount(() => {
   background:#0d171b;
   color:#eef7f6;
   box-shadow:0 5px 16px rgba(0,0,0,.36);
-  font-size:12px;
+  font-size:var(--font-compact);
   font-weight:800;
   line-height:1.2;
   white-space:nowrap;

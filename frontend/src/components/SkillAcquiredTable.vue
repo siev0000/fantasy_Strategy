@@ -323,7 +323,7 @@ function handleSkillRowKeydown(event, row) {
   border-radius:7px;
   background:#1b2a30;
   color:#d5e0df;
-  font-size:16px;
+  font-size:var(--font-size-16);
   line-height:1;
   overflow:hidden;
 }
@@ -340,7 +340,7 @@ function handleSkillRowKeydown(event, row) {
   min-width:0;
   margin:0;
   color:#edf4f3;
-  font-size:10px;
+  font-size:var(--font-size-10);
   line-height:1.15;
   white-space:nowrap;
   overflow:hidden;
@@ -351,7 +351,7 @@ function handleSkillRowKeydown(event, row) {
   grid-area:ap;
   margin:0;
   color:#d8c17f;
-  font-size:8px;
+  font-size:var(--font-size-8);
   line-height:1;
   white-space:nowrap;
 }
@@ -360,7 +360,7 @@ function handleSkillRowKeydown(event, row) {
 .operation-technique-range {
   min-width:0;
   color:#b7c6c9;
-  font-size:10px;
+  font-size:var(--font-size-10);
   line-height:1.2;
   white-space:nowrap;
   overflow:hidden;
@@ -396,13 +396,13 @@ function handleSkillRowKeydown(event, row) {
 
 .operation-technique-detail-head b {
   color:#9fb0b3;
-  font-size:10px;
+  font-size:var(--font-size-10);
 }
 
 .operation-technique-detail-head small {
   min-width:0;
   color:#d8c17f;
-  font-size:9px;
+  font-size:var(--font-size-9);
   text-align:right;
   white-space:normal;
 }
@@ -411,7 +411,7 @@ function handleSkillRowKeydown(event, row) {
   display:block;
   padding:6px;
   color:#eef4f2;
-  font-size:10px;
+  font-size:var(--font-size-10);
   line-height:1.4;
   overflow-wrap:anywhere;
 }
@@ -419,7 +419,7 @@ function handleSkillRowKeydown(event, row) {
 .skill-table-root h4 {
   margin: 0 0 7px;
   color: #dce8e7;
-  font-size: 13px;
+  font-size:var(--font-secondary);
 }
 
 .skill-table-wrap {
@@ -442,7 +442,7 @@ function handleSkillRowKeydown(event, row) {
   border-bottom: 1px solid #253b42;
   background: #0f1d22;
   color: #c9d7d8;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .skill-row:last-child {
@@ -488,7 +488,7 @@ function handleSkillRowKeydown(event, row) {
 
 .skill-name-wrap rt {
   color: #82979b;
-  font-size: 9px;
+  font-size:var(--font-size-9);
   line-height: 1;
 }
 
@@ -501,7 +501,7 @@ function handleSkillRowKeydown(event, row) {
   border-radius: 999px;
   background: #13252b;
   color: #a9bec1;
-  font-size: 10px;
+  font-size:var(--font-size-10);
 }
 
 .family-icon-wrap {
@@ -519,7 +519,7 @@ function handleSkillRowKeydown(event, row) {
   justify-content: center;
   border: 1px solid #4a626a;
   border-radius: 50%;
-  font-size: 10px;
+  font-size:var(--font-size-10);
   font-weight: 900;
 }
 
@@ -556,7 +556,7 @@ function handleSkillRowKeydown(event, row) {
   background: #0c181c;
   color: #9fb2b5;
   line-height: 1.35;
-  font-size: 10px;
+  font-size:var(--font-size-10);
 }
 
 .skill-detail {
@@ -595,13 +595,13 @@ function handleSkillRowKeydown(event, row) {
   align-items: center;
   justify-content: center;
   color: #9ce8f1;
-  font-size: 10px;
+  font-size:var(--font-size-10);
   font-weight: 800;
   line-height: 1;
 }
 
 .compact .skill-row {
-  font-size: 11px;
+  font-size:var(--font-size-11);
 }
 
 .compact .skill-left,

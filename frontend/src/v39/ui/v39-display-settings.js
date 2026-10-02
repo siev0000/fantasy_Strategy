@@ -12,6 +12,7 @@ const DEFAULTS = Object.freeze({
   heightShading: true,
   showZoomControls: true,
   reduceMotion: false,
+  focusUnactedUnits: true,
   testMode: false,
   maxZoomFactor: MAP_CAMERA_ZOOM_RULES.defaultUserMaxFactor
 });
@@ -133,6 +134,8 @@ function applySettings({ emit = true } = {}) {
   if (shading) shading.checked = settings.heightShading !== false;
   if (showZoom) showZoom.checked = settings.showZoomControls !== false;
   if (reduceMotion) reduceMotion.checked = !!settings.reduceMotion;
+  const focusUnacted = document.getElementById("v39-focus-unacted-units");
+  if (focusUnacted) focusUnacted.checked = settings.focusUnactedUnits !== false;
   if (testMode) {
     testMode.checked = testModeEnabled;
     testMode.disabled = false;
@@ -178,6 +181,9 @@ function bindPanelNavigation() {
 }
 
 function bindControls() {
+  document.getElementById("v39-focus-unacted-units")?.addEventListener("change", event => {
+    updateSetting("focusUnactedUnits", !!event.target.checked);
+  });
   document.getElementById("v39-font-size")?.addEventListener("input", event => {
     updateSetting("fontScalePercent", clamp(event.target.value, 80, 140, 100));
   });

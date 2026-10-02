@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
-import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { HEX_TILE_CONFIG, V39_FIELD_FOG_STYLE } from "../../lib/phaser-map-panel-config.js";
 import { runWithSeededRandom } from "../../lib/seeded-random.js";
 import { cacheStaticGraphicsLayer } from "./v39-static-graphics-cache.js";
 import { createV39VictoryLandmarkPlan } from "../../lib/v39-victory-landmarks.js";
@@ -410,6 +410,16 @@ function installInput(scene, data) {
   const inputSignal = inputController.signal;
   const pointers = new Map();
   const selection = scene.add.graphics().setDepth(20);
+  const placementArea = scene.add.graphics().setDepth(19);
+  const placementMask = scene.make.graphics({ x:0, y:0, add:false });
+  const placementShade = scene.add.graphics().setDepth(18.9).setName("v39-initial-placement-shade").setVisible(false);
+  const outsideMask = placementMask.createGeometryMask();
+  outsideMask.setInvertAlpha(true);
+  placementShade.setMask(outsideMask);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    placementShade.clearMask(true);
+    placementMask.destroy();
+  });
   let dragged = false;
   let lastTouchTap = null;
 
@@ -430,25 +440,63 @@ function installInput(scene, data) {
     camera.scrollX += before.x - after.x; camera.scrollY += before.y - after.y;
     clampCamera(scene);
   };
-  const selectAt = (cx, cy) => {
+  const selectTile = (tile, focus = false) => {
     if (window.isV39MapInputLocked?.() === true) return;
-    const p = clientPoint(cx, cy); const w = camera.getWorldPoint(p.x, p.y);
-    const tile = resolveTileAtWorld(data, w.x, w.y); if (!tile) return;
-    const hp = hexPoints(tile.x, tile.y);
-    selection.clear().lineStyle(4, 0xffdd72, 1).strokePoints([
-      {x:hp[0],y:hp[1]},{x:hp[2],y:hp[3]},{x:hp[4],y:hp[5]},
-      {x:hp[6],y:hp[7]},{x:hp[8],y:hp[9]},{x:hp[10],y:hp[11]}
-    ], true);
+    if (!Number.isInteger(tile?.x) || !Number.isInteger(tile?.y) || !data.grid?.[tile.y]?.[tile.x]) return;
     const selected = {
       x:tile.x, y:tile.y,
       terrain:String(data.grid?.[tile.y]?.[tile.x] || "海"),
       height:Number(data.heightLevelMap?.[tile.y]?.[tile.x]) || 0,
       special:String(data.specialMap?.[tile.y]?.[tile.x] || "")
     };
+    if (window.getV39ActiveFactionState?.()?.villagePlacementMode
+      && window.canPlaceV39InitialBase?.(selected) === false) return null;
+    const hp = hexPoints(tile.x, tile.y);
+    if (focus) {
+      const size = worldSize(data);
+      camera.centerOn(
+        camera.width / camera.zoom >= size.width ? size.width / 2 : (hp[0] + hp[6]) / 2,
+        camera.height / camera.zoom >= size.height ? size.height / 2 : (hp[1] + hp[7]) / 2
+      );
+      clampCamera(scene);
+    }
+    selection.clear().lineStyle(4, 0xffdd72, 1).strokePoints([
+      {x:hp[0],y:hp[1]},{x:hp[2],y:hp[3]},{x:hp[4],y:hp[5]},
+      {x:hp[6],y:hp[7]},{x:hp[8],y:hp[9]},{x:hp[10],y:hp[11]}
+    ], true);
     scene.v39SelectedTile = selected;
     const landTerrain = document.getElementById("landTerrain"); if (landTerrain) landTerrain.textContent = selected.special || selected.terrain;
     window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:selected }));
+    return selected;
   };
+  const selectAt = (cx, cy) => {
+    const p = clientPoint(cx, cy); const w = camera.getWorldPoint(p.x, p.y);
+    const tile = resolveTileAtWorld(data, w.x, w.y);
+    return tile ? selectTile(tile) : null;
+  };
+  const showPlacementTiles = (tiles, active = tiles.length > 0) => {
+    placementArea.clear();
+    placementMask.clear().fillStyle(0xffffff, 1);
+    placementShade.clear().setVisible(active);
+    placementShade.setData("allowedTileCount", tiles.length);
+    if (active) {
+      const size = worldSize(data);
+      placementShade.fillStyle(V39_FIELD_FOG_STYLE.color, V39_FIELD_FOG_STYLE.alpha)
+        .fillRect(0, 0, size.width, size.height);
+    }
+    placementArea.fillStyle(0x72cbd6, 0.18).lineStyle(2, 0x72cbd6, 0.75);
+    for (const tile of tiles) {
+      const points = hexPoints(tile.x, tile.y);
+      const polygon = Array.from({ length:6 }, (_, i) => ({ x:points[i * 2], y:points[i * 2 + 1] }));
+      placementArea.fillPoints(polygon, true).strokePoints(polygon, true);
+      placementMask.fillPoints(polygon, true);
+    }
+  };
+  scene.v39Input = { selectTile, selectTileAt:selectAt, zoomAt, showPlacementTiles };
+  // create中はまだアクティブシーン一覧へ載らないため、最初の更新後に配置範囲を描画する。
+  scene.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
+    window.dispatchEvent(new CustomEvent("v39:field-input-ready"));
+  });
 
   host.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false, signal:inputSignal });
   host.addEventListener("pointerdown", e => {

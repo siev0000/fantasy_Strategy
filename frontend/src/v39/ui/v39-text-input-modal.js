@@ -40,7 +40,7 @@ function installStyles() {
 }
 #${MODAL_ID} .v39-text-input-head h2{
   margin:0;
-  font-size:15px;
+  font-size:var(--font-body);
   color:#e8efec;
 }
 #${MODAL_ID} .v39-text-input-body{
@@ -51,7 +51,7 @@ function installStyles() {
 #${MODAL_ID} .v39-text-input-help{
   min-height:0;
   color:#92a2a6;
-  font-size:13px;
+  font-size:var(--font-secondary);
   line-height:1.5;
 }
 #${MODAL_ID} input,
@@ -64,7 +64,7 @@ function installStyles() {
   outline:none;
   background:#081115;
   color:#f2f6f5;
-  font-size:16px;
+  font-size:var(--font-size-16);
   line-height:1.45;
   caret-color:#79d6e6;
 }

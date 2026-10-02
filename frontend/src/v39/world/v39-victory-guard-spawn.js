@@ -1,7 +1,6 @@
-import { enemySpawnData } from "../../lib/game-data-registry.js";
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { V39_VICTORY_GUARD_BALANCE } from "../../lib/v39-gameplay-balance.js";
-import { createV39EventEnemy } from "../ai/v39-enemy-spawn.js";
+import { createV39EventEnemy, getV39EnemySpawnDefinitions } from "../ai/v39-enemy-spawn.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -11,10 +10,8 @@ const living = unit => number(unit?.hp ?? unit?.currentHp) > 0 && text(unit?.sta
 
 function guardDefinitionFor(landmark) {
   const terrain = text(landmark?.terrain);
-  return (enemySpawnData || [])
-    .filter(row => text(row?.出現地形) === terrain)
-    .filter(row => text(row?.種族) && text(row?.種族名 || row?.種族))
-    .filter(row => number(row?.Lv_Max) > 0)
+  return getV39EnemySpawnDefinitions(terrain)
+    .map(definition => definition.row)
     .sort((left, right) => number(right?.Lv_Max) - number(left?.Lv_Max)
       || text(left?.ID).localeCompare(text(right?.ID), "ja"))[0] || null;
 }
@@ -79,7 +76,7 @@ export function spawnV39VictoryLandmarkGuards(state, mapData) {
     const squadId = `victory-guard-squad:${landmark.id}`;
     const boss = createGuardUnit(landmark, definition, {
       id:`victory-guard:${landmark.id}:boss`, x:landmark.x, y:landmark.y,
-      level:Math.max(1, integer(definition?.Lv_Max, 1)), nestId, squadId
+      level:V39_VICTORY_GUARD_BALANCE.bossLevel, nestId, squadId
     });
     if (!boss) continue;
     const members = [boss];

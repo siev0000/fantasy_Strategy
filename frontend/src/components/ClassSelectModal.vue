@@ -463,11 +463,11 @@ function confirmClass() {
 
 .class-preview-empty strong {
   color:#dce8e7;
-  font-size:14px;
+  font-size:var(--font-size-14);
 }
 
 .class-preview-empty span {
-  font-size:11px;
+  font-size:var(--font-size-11);
 }
 
 .class-layout {
@@ -511,7 +511,7 @@ function confirmClass() {
 
 .class-category-tabs button strong {
   color:#dfe9e8;
-  font-size:14px;
+  font-size:var(--font-size-14);
   font-weight:900;
   white-space:nowrap;
 }
@@ -561,7 +561,7 @@ function confirmClass() {
 .class-list-head {
   padding:4px 3px 6px;
   color:#9fb1b4;
-  font-size:12px;
+  font-size:var(--font-compact);
   font-weight:800;
 }
 
@@ -576,7 +576,7 @@ function confirmClass() {
   border-radius:7px;
   background:#122126;
   color:#dce7e6;
-  font-size:15px;
+  font-size:var(--font-body);
   font-weight:700;
   text-align:left;
   cursor:pointer;
@@ -632,7 +632,7 @@ function confirmClass() {
   align-items:center;
   justify-content:center;
   color:#9ce8f1;
-  font-size:16px;
+  font-size:var(--font-size-16);
   font-weight:900;
 }
 
@@ -657,21 +657,21 @@ function confirmClass() {
 .class-title h3 {
   margin:0;
   color:var(--picker-text);
-  font-size:24px;
+  font-size:var(--font-size-24);
   line-height:1.15;
 }
 
 .class-title-sub {
   margin-top:3px;
   color:#90dce7;
-  font-size:13px;
+  font-size:var(--font-secondary);
   font-weight:700;
 }
 
 .class-text {
   margin:6px 0 0;
   color:var(--picker-muted);
-  font-size:13px;
+  font-size:var(--font-secondary);
   line-height:1.5;
 }
 
@@ -688,7 +688,7 @@ function confirmClass() {
   border-radius:7px;
   background:#1a4b55;
   color:#f2fbfa;
-  font-size:13px;
+  font-size:var(--font-secondary);
   font-weight:900;
   cursor:pointer;
 }
@@ -718,12 +718,12 @@ function confirmClass() {
 
 .class-detail-empty strong {
   color:#dce8e7;
-  font-size:18px;
+  font-size:var(--font-size-18);
 }
 
 .class-detail-empty span {
   margin-top:5px;
-  font-size:12px;
+  font-size:var(--font-compact);
 }
 
 .class-empty {
@@ -732,7 +732,7 @@ function confirmClass() {
   border-radius:8px;
   background:#0e1a1e;
   color:var(--picker-muted);
-  font-size:13px;
+  font-size:var(--font-secondary);
 }
 
 @media (max-width:760px) {
@@ -766,7 +766,7 @@ function confirmClass() {
   }
 
   .class-category-tabs button strong {
-    font-size:11px;
+    font-size:var(--font-size-11);
   }
 
   .class-main-pane {
@@ -787,7 +787,7 @@ function confirmClass() {
 
   .class-list-head {
     padding:3px 2px 5px;
-    font-size:10px;
+    font-size:var(--font-size-10);
   }
 
   .class-item {
@@ -795,7 +795,7 @@ function confirmClass() {
     min-width:0;
     min-height:52px;
     padding:6px;
-    font-size:12px;
+    font-size:var(--font-compact);
   }
 
   .class-item-main {
@@ -811,7 +811,7 @@ function confirmClass() {
 
   .class-item-name {
     flex:1 1 auto;
-    font-size:11px;
+    font-size:var(--font-size-11);
   }
 
   .class-detail {
@@ -822,16 +822,16 @@ function confirmClass() {
   }
 
   .class-title h3 {
-    font-size:18px;
+    font-size:var(--font-size-18);
   }
 
   .class-title-sub {
-    font-size:11px;
+    font-size:var(--font-size-11);
   }
 
   .class-text {
     margin-top:4px;
-    font-size:11px;
+    font-size:var(--font-size-11);
   }
 
   .class-actions button {
@@ -839,7 +839,7 @@ function confirmClass() {
     min-width:0;
     min-height:36px;
     padding:5px 6px;
-    font-size:11px;
+    font-size:var(--font-size-11);
   }
 }
 
@@ -849,7 +849,7 @@ function confirmClass() {
   }
 
   .class-category-tabs button strong {
-    font-size:10px;
+    font-size:var(--font-size-10);
   }
 
   .class-item {
@@ -857,7 +857,7 @@ function confirmClass() {
   }
 
   .class-item-name {
-    font-size:10px;
+    font-size:var(--font-size-10);
   }
 }
 </style>

@@ -36,6 +36,9 @@
 
 ### 個別ルール
 
+- [`UI_TYPOGRAPHY_RULES.md`](./UI_TYPOGRAPHY_RULES.md)
+  - UI文字サイズの共通変数、PC15px・スマホ12px、表示倍率、固定pxと後付け上書きを増やさないルール。
+
 - [`CHARACTER_STATUS_RULES.md`](./CHARACTER_STATUS_RULES.md)
   - キャラLv、種族Lv、クラスLv、ステータス、技能、取得スキル。
 

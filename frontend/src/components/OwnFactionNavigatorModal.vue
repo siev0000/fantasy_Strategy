@@ -993,7 +993,7 @@ function rowBackgroundStyle(entry) {
   align-items: center;
   justify-content: center;
   color: #f5e9c8;
-  font-size: 10px;
+  font-size:var(--font-size-10);
   font-weight: 700;
 }
 
@@ -1006,7 +1006,7 @@ function rowBackgroundStyle(entry) {
 
 .own-faction-hp-label {
   flex: 0 0 auto;
-  font-size: 15px;
+  font-size:var(--font-body);
   color: rgba(247, 232, 195, 0.86);
 }
 
@@ -1039,7 +1039,7 @@ function rowBackgroundStyle(entry) {
 }
 
 .own-faction-vital-stack .own-faction-hp-label {
-  font-size: 11px;
+  font-size:var(--font-size-11);
 }
 
 .own-faction-vital-stack .own-faction-hp-bar {
@@ -1047,7 +1047,7 @@ function rowBackgroundStyle(entry) {
 }
 
 .own-faction-vital-stack .own-faction-hp-bar b {
-  font-size: 9px;
+  font-size:var(--font-size-9);
 }
 
 .own-faction-hp-bar.own-faction-ap-bar i {
@@ -1162,7 +1162,7 @@ function rowBackgroundStyle(entry) {
   border-radius: 6px;
   background: linear-gradient(180deg, rgba(244, 223, 185, 0.92), rgba(213, 186, 143, 0.9));
   color: #2d2418;
-  font-size: 12px;
+  font-size:var(--font-compact);
   font-weight: 700;
   display: inline-flex;
   align-items: center;
@@ -1178,12 +1178,12 @@ function rowBackgroundStyle(entry) {
 }
 
 .own-faction-detail-grid span {
-  font-size: 12px;
+  font-size:var(--font-compact);
   color: rgba(241, 228, 193, 0.76);
 }
 
 .own-faction-detail-grid b {
-  font-size: 12px;
+  font-size:var(--font-compact);
   color: #fff4d2;
   font-weight: 700;
 }

@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
 import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
@@ -347,6 +348,10 @@ function startMove() {
     return false;
   }
   const moveGroup = resolveV39SquadMovementGroup(faction, unitId(unit));
+  if (moveGroup.participants?.some(member => isV39UnitWaiting(member, window.getV39GameState?.()?.timeline?.turnNumber))) {
+    showToast("部隊にこのターン待機済みのキャラクターがいます");
+    return false;
+  }
   if (!moveGroup.ok) {
     showToast(moveGroup.reason || "移動部隊を確定できません");
     return false;
@@ -498,7 +503,8 @@ function applyMovement() {
   setMoveConfirm(false);
   setBanner("");
   window.updateV39ActiveFactionState({
-    units:movement.faction.units,
+    units:movement.faction.units.map(member => currentGroup.participantIds.includes(unitId(member))
+      ? { ...member, lastActionTurn:window.getV39GameState?.()?.timeline?.turnNumber } : member),
     squads:movement.faction.squads,
     selectedUnitId:session.unitId,
     moveCommandUnitId:""

@@ -137,7 +137,7 @@ function applyEnemyPlan(plan, presentationEvents) {
   const before = enemyTurnState();
   if (!before) return false;
   const enemy = (before.enemies || []).find(row => text(row?.id) === text(plan.enemyId));
-  if (!enemy) return false;
+  if (!isAliveEnemyAiUnit(enemy)) return false;
   const id = text(enemy.id);
 
   if (["move", "wait", "queue-attack"].includes(plan.type)) {

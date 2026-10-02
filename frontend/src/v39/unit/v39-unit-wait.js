@@ -20,7 +20,8 @@ export function waitV39SelectedUnit() {
     showMessage("死亡したキャラクターは待機できません");
     return { ok:false, reason:"unit-dead" };
   }
-  const apCost = Math.max(0, number(unit?.ap, unit?.currentAp));
+  const apCost = 0;
+  const turnNumber = Math.max(1, number(state.timeline?.turnNumber, 1));
   window.cancelV39SelectedUnitMove?.("wait-command");
   window.cancelV39SelectedUnitAttack?.("wait-command");
   const players = state.players.map(row => row.id !== player.id ? row : ({
@@ -29,15 +30,14 @@ export function waitV39SelectedUnit() {
       ...row.factionState,
       units:row.factionState.units.map(member => member.id !== unit.id ? member : ({
         ...member,
-        ap:0,
-        currentAp:0,
-        actionPoint:0,
+        waitTurnNumber:turnNumber,
+        lastActionTurn:turnNumber,
         lastAction:"待機"
       }))
     }
   }));
   window.setV39GameState?.({ players }, { reason:"unit-wait" });
-  const summary = `${text(unit.name) || "キャラクター"}：待機 / AP-${apCost}`;
+  const summary = `${text(unit.name) || "キャラクター"}：待機 / このターンの行動終了（AP保持）`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
     detail:{ summary, attackerId:text(unit.id), skillName:"待機", apCost, entries:[] }
   }));

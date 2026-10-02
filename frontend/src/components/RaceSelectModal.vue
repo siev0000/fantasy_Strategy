@@ -439,7 +439,7 @@ function confirmRace() {
 
 .race-category-tabs button strong {
   color: #dfe9e8;
-  font-size: 15px;
+  font-size:var(--font-body);
   font-weight: 900;
 }
 
@@ -452,7 +452,7 @@ function confirmRace() {
   border-radius: 7px;
   background: rgba(16, 31, 36, .82);
   color: #a9babc;
-  font-size: 12px;
+  font-size:var(--font-compact);
   font-weight: 600;
   line-height: 1.45;
   overflow-y: auto;
@@ -503,7 +503,7 @@ function confirmRace() {
   border-radius: 7px;
   background: #122126;
   color: #dce7e6;
-  font-size: 15px;
+  font-size:var(--font-body);
   font-weight: 700;
   text-align: left;
   cursor: pointer;
@@ -559,7 +559,7 @@ function confirmRace() {
   align-items: center;
   justify-content: center;
   color: #9ce8f1;
-  font-size: 16px;
+  font-size:var(--font-size-16);
   font-weight: 900;
 }
 
@@ -584,14 +584,14 @@ function confirmRace() {
 .race-title h3 {
   margin: 0;
   color: var(--picker-text);
-  font-size: 24px;
+  font-size:var(--font-size-24);
   line-height: 1.15;
 }
 
 .race-summary {
   margin: 6px 0 0;
   color: #c7d5d6;
-  font-size: 14px;
+  font-size:var(--font-size-14);
   font-weight: 700;
   line-height: 1.4;
 }
@@ -599,7 +599,7 @@ function confirmRace() {
 .race-description {
   margin: 3px 0 0;
   color: var(--picker-muted);
-  font-size: 13px;
+  font-size:var(--font-secondary);
   line-height: 1.5;
 }
 
@@ -616,7 +616,7 @@ function confirmRace() {
   border-radius: 6px;
   background: #122126;
   color: #a9babc;
-  font-size: 13px;
+  font-size:var(--font-secondary);
   font-weight: 800;
   cursor: pointer;
 }
@@ -651,7 +651,7 @@ function confirmRace() {
 .detail-block h4 {
   margin: 0 0 7px;
   color: #dce8e7;
-  font-size: 13px;
+  font-size:var(--font-secondary);
 }
 
 .status-rows {
@@ -677,12 +677,12 @@ function confirmRace() {
 
 .status-chip span {
   color: #8fa4a7;
-  font-size: 10px;
+  font-size:var(--font-size-10);
 }
 
 .status-chip strong {
   color: #eff6f5;
-  font-size: 16px;
+  font-size:var(--font-size-16);
   line-height: 1;
 }
 
@@ -703,12 +703,12 @@ function confirmRace() {
   border-radius: 5px;
   background: #102126;
   color: #aebfc1;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .skill-value-chip strong {
   color: #eef6f5;
-  font-size: 14px;
+  font-size:var(--font-size-14);
 }
 
 .note-text,
@@ -735,7 +735,7 @@ function confirmRace() {
   border-radius: 7px;
   background: #1a4b55;
   color: #f2fbfa;
-  font-size: 13px;
+  font-size:var(--font-secondary);
   font-weight: 900;
   cursor: pointer;
 }
@@ -752,12 +752,12 @@ function confirmRace() {
 
 .race-detail-empty strong {
   color: #dce8e7;
-  font-size: 18px;
+  font-size:var(--font-size-18);
 }
 
 .race-detail-empty span {
   margin-top: 5px;
-  font-size: 12px;
+  font-size:var(--font-compact);
 }
 
 .race-empty {
@@ -765,7 +765,7 @@ function confirmRace() {
   border: 1px dashed #3d5961;
   border-radius: 8px;
   background: #0e1a1e;
-  font-size: 13px;
+  font-size:var(--font-secondary);
 }
 
 @media (max-width: 760px) {
@@ -793,12 +793,12 @@ function confirmRace() {
   }
 
   .race-category-tabs button strong {
-    font-size: 14px;
+    font-size:var(--font-size-14);
   }
 
   .race-category-description {
     padding: 7px 8px;
-    font-size: 11px;
+    font-size:var(--font-size-11);
     line-height: 1.4;
   }
 
@@ -823,7 +823,7 @@ function confirmRace() {
     min-width: 0;
     min-height: 52px;
     padding: 6px;
-    font-size: 12px;
+    font-size:var(--font-compact);
   }
 
   .race-item-main {
@@ -843,7 +843,7 @@ function confirmRace() {
   .race-item-name {
     width: auto;
     flex: 1 1 auto;
-    font-size: 11px;
+    font-size:var(--font-size-11);
     text-align: left;
   }
 
@@ -855,22 +855,22 @@ function confirmRace() {
   }
 
   .race-title h3 {
-    font-size: 18px;
+    font-size:var(--font-size-18);
   }
 
   .race-summary {
     margin-top: 4px;
-    font-size: 12px;
+    font-size:var(--font-compact);
   }
 
   .race-description {
-    font-size: 11px;
+    font-size:var(--font-size-11);
   }
 
   .detail-tabs button {
     min-height: 34px;
     padding: 4px 2px;
-    font-size: 11px;
+    font-size:var(--font-size-11);
   }
 
   .detail-block {
@@ -891,7 +891,7 @@ function confirmRace() {
     width: 100%;
     min-width: 0;
     min-height: 36px;
-    font-size: 12px;
+    font-size:var(--font-compact);
   }
 }
 
@@ -905,11 +905,11 @@ function confirmRace() {
   }
 
   .race-category-tabs button strong {
-    font-size: 13px;
+    font-size:var(--font-secondary);
   }
 
   .race-category-description {
-    font-size: 10px;
+    font-size:var(--font-size-10);
   }
 
   .race-item {
@@ -917,11 +917,11 @@ function confirmRace() {
   }
 
   .race-item-name {
-    font-size: 10px;
+    font-size:var(--font-size-10);
   }
 
   .detail-tabs button {
-    font-size: 10px;
+    font-size:var(--font-size-10);
   }
 }
 </style>

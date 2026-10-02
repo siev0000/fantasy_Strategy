@@ -4,6 +4,9 @@ import { getSettlementForTerritory } from "../../lib/settlement-state.js";
 import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
 import { restoreV39SquadMovementForTurn } from "../../lib/v39-squad-movement-rules.js";
 import { normalizeV39PlayerTurnTimeline } from "../../lib/v39-local-multiplayer-session.js";
+import { isV39UnitUnacted } from "../../lib/v39-unit-action-rules.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { advanceV39AutomaticTransport } from "../../lib/v39-transport-rules.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
@@ -48,6 +51,7 @@ function restoreUnitForTurn(unit) {
   const maxAp = starvationCap > 0 ? Math.min(configuredMaxAp, starvationCap) : configuredMaxAp;
   return {
     ...unit,
+    waitTurnNumber:0,
     ap: maxAp,
     currentAp: maxAp,
     actionPoint: maxAp
@@ -153,7 +157,7 @@ function installUi() {
       content:"";position:absolute;left:50%;top:3px;width:2px;height:5px;border-radius:999px;
       background:#d9c879;transform:translateX(-50%);pointer-events:none
     }
-    #v39-turn-label{position:relative;z-index:1;font-size:11px;font-weight:900;line-height:1;letter-spacing:-.2px}
+    #v39-turn-label{position:relative;z-index:1;font-size:var(--font-size-11);font-weight:900;line-height:1;letter-spacing:-.2px}
     #v39-turn-toggle[aria-expanded="true"]{border-color:#d9c879;box-shadow:0 0 0 2px rgba(217,200,121,.16),0 3px 12px rgba(0,0,0,.3)}
     #v39-turn-menu{
       position:absolute;right:48px;top:0;width:154px;min-height:42px;
@@ -164,22 +168,22 @@ function installUi() {
     #v39-turn-controls.open #v39-turn-menu{display:grid}
     #v39-turn-menu button{
       min-width:0;min-height:32px;border:1px solid #455b63;border-radius:6px;
-      background:rgba(20,35,41,.9);color:#e7eeee;padding:4px 7px;font-size:11px;font-weight:800;
+      background:rgba(20,35,41,.9);color:#e7eeee;padding:4px 7px;font-size:var(--font-size-11);font-weight:800;
       white-space:nowrap;cursor:pointer
     }
     #v39-turn-menu button[aria-pressed="true"]{border-color:#dcba61;background:#382f18;color:#ffe7a2}
     #v39-turn-next{border-color:#6b8e72!important;background:#193024!important}
-    #v39-turn-banner{position:absolute;left:50%;top:8px;z-index:32;min-width:180px;max-width:60%;transform:translate(-50%,-140%);opacity:0;padding:8px 20px;border:1px solid #74c7d6;border-radius:6px;background:rgba(7,22,27,.95);color:#edf7f5;text-align:center;font-size:16px;font-weight:800;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
+    #v39-turn-banner{position:absolute;left:50%;top:8px;z-index:32;min-width:180px;max-width:60%;transform:translate(-50%,-140%);opacity:0;padding:8px 20px;border:1px solid #74c7d6;border-radius:6px;background:rgba(7,22,27,.95);color:#edf7f5;text-align:center;font-size:var(--font-size-16);font-weight:800;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
     #v39-turn-banner.show{transform:translate(-50%,0);opacity:1}
     #v39-turn-banner.persistent{border-color:#d8b65b;color:#ffe69a}
     @media(max-width:700px){
       .topbar{padding-right:50px!important}
       #v39-turn-controls{right:5px;top:4px;width:38px;height:38px}
       #v39-turn-toggle{width:38px;height:38px;min-width:38px;min-height:38px}
-      #v39-turn-label{font-size:10px}
+      #v39-turn-label{font-size:var(--font-size-10)}
       #v39-turn-menu{right:44px;width:140px;min-height:38px;padding:3px}
-      #v39-turn-menu button{min-height:30px;padding:3px 5px;font-size:10px}
-      #v39-turn-banner{top:6px;max-width:72%;font-size:14px;padding:6px 12px}
+      #v39-turn-menu button{min-height:30px;padding:3px 5px;font-size:var(--font-size-10)}
+      #v39-turn-banner{top:6px;max-width:72%;font-size:var(--font-size-14);padding:6px 12px}
     }
   `;
   document.head.appendChild(style);
@@ -233,9 +237,29 @@ export function setTimePaused(paused) {
   return timeline.paused;
 }
 
-export async function advanceTurn() {
+function focusUnactedUnit(state, playerId, turnNumber) {
+  const player = state.players.find(row => row.id === playerId);
+  const unit = player?.factionState?.units?.find(row => isV39UnitUnacted(row, turnNumber)
+    && !player.factionState.combatRuntime?.pendingActionsByUnitId?.[row.id]);
+  if (!unit) return false;
+  window.cancelV39SelectedUnitMove?.("unacted-focus");
+  window.cancelV39SelectedUnitAttack?.("unacted-focus");
+  window.setV39GameState?.({ activePlayerId:playerId, players:state.players.map(row => row.id !== playerId ? row : ({
+    ...row, factionState:{ ...row.factionState, selectedUnitId:unit.id }
+  })) }, { reason:"unacted-unit-focus" });
+  window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail:{ unitId:unit.id, unit } }));
+  window.activateV39FooterTab?.("squad");
+  const camera = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0]?.cameras?.main;
+  const x = unit.x * HEX_TILE_CONFIG.width + (unit.y % 2 ? HEX_TILE_CONFIG.oddRowOffsetX : 0) + HEX_TILE_CONFIG.width / 2;
+  const y = unit.y * HEX_TILE_CONFIG.rowStep + HEX_TILE_CONFIG.height / 2;
+  camera?.centerOn(x, y);
+  showBanner(`${unit.name || "キャラクター"}は未行動です。行動または待機を選んでください`);
+  return true;
+}
+
+export async function advanceTurn(options = {}) {
   if (advancing) return false;
-  const state = window.getV39GameState?.();
+  let state = window.getV39GameState?.();
   if (!state) return false;
   if (state?.victory?.completed === true) {
     showBanner("勝利済みです", true);
@@ -251,6 +275,16 @@ export async function advanceTurn() {
       state.activePlayerId
     );
     const currentPlayerId = playerTimeline.activeTurnPlayerId || state.activePlayerId;
+    if (options.skipUnactedFocus !== true && window.getV39DisplaySettings?.()?.focusUnactedUnits !== false
+      && focusUnactedUnit(state, currentPlayerId, before.turnNumber)) return false;
+    const transport = advanceV39AutomaticTransport(state, currentPlayerId, window.__v39FieldRuntime?.mapData,
+      before.turnNumber, window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false);
+    if (transport.state !== state) {
+      window.setV39GameState?.({ players:transport.state.players }, { reason:"automatic-transport" });
+      for (const report of transport.reports) window.appendV39ActivityLog?.(currentPlayerId, "物資",
+        `${report.action}: ${report.resource} ${report.amount}`, report);
+      state = window.getV39GameState?.() || transport.state;
+    }
     const endedPlayerIds = [...new Set([...playerTimeline.endedPlayerIds, currentPlayerId])];
     const nextPlayerId = playerTimeline.playerTurnOrder.find(playerId => !endedPlayerIds.includes(playerId));
     if (nextPlayerId) {

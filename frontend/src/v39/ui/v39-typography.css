@@ -1,0 +1,41 @@
+/* 文字サイズの調整元。画面ごとの固定pxや後付け上書きを追加しない。 */
+:root {
+  --pc-base-font:15px; /* PCの通常文字 */
+  --mobile-base-font:12px; /* スマホの通常文字 */
+  --base-font:var(--pc-base-font);
+  --font-scale:1; /* 表示設定の倍率。JSから更新する。 */
+  --font-body:calc(var(--base-font) * var(--font-scale));
+  --pc-min-font:11px; /* 読ませる補助文字のPC下限 */
+  --mobile-min-font:10px; /* 読ませる補助文字のスマホ下限 */
+  --min-font:var(--pc-min-font);
+  --font-readable-min:calc(var(--min-font) * var(--font-scale));
+  /* 補助文字・見出し・小さなラベルは通常文字との比率で管理する。 */
+  --font-size-6:calc(var(--font-body) * 6 / 15);
+  --font-size-7:calc(var(--font-body) * 7 / 15);
+  --font-size-8:max(var(--font-readable-min), calc(var(--font-body) * 8 / 15));
+  --font-size-9:max(var(--font-readable-min), calc(var(--font-body) * 9 / 15));
+  --font-size-10:max(var(--font-readable-min), calc(var(--font-body) * 10 / 15));
+  --font-size-11:max(var(--font-readable-min), calc(var(--font-body) * 11 / 15));
+  --font-compact:max(var(--font-readable-min), calc(var(--font-body) * 12 / 15));
+  --font-secondary:max(var(--font-readable-min), calc(var(--font-body) * 13 / 15));
+  --font-size-14:calc(var(--font-body) * 14 / 15);
+  --font-size-16:calc(var(--font-body) * 16 / 15);
+  --font-size-17:calc(var(--font-body) * 17 / 15);
+  --font-size-18:calc(var(--font-body) * 18 / 15);
+  --font-size-19:calc(var(--font-body) * 19 / 15);
+  --font-heading:calc(var(--font-body) * 20 / 15);
+  --font-size-21:calc(var(--font-body) * 21 / 15);
+  --font-size-22:calc(var(--font-body) * 22 / 15);
+  --font-size-23:calc(var(--font-body) * 23 / 15);
+  --font-size-24:calc(var(--font-body) * 24 / 15);
+  --font-size-25:calc(var(--font-body) * 25 / 15);
+  --font-size-26:calc(var(--font-body) * 26 / 15);
+  --font-size-27:calc(var(--font-body) * 27 / 15);
+  --font-size-28:calc(var(--font-body) * 28 / 15);
+  --font-size-30:calc(var(--font-body) * 30 / 15);
+  --font-size-31:calc(var(--font-body) * 31 / 15);
+}
+@media (max-width:699px) {
+  :root { --base-font:var(--mobile-base-font); --min-font:var(--mobile-min-font); }
+}
+html, body { font-size:var(--font-body); }

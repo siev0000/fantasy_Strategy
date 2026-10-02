@@ -108,13 +108,13 @@ function handleBackdropClick() {
 .v39-vue-modal-title-wrap h2 {
   margin: 0;
   color: var(--picker-text);
-  font-size: 18px;
+  font-size:var(--font-size-18);
   line-height: 1.2;
 }
 
 .v39-vue-modal-title-wrap small {
   color: var(--picker-muted);
-  font-size: 12px;
+  font-size:var(--font-compact);
   line-height: 1.3;
 }
 

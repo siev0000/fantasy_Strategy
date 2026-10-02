@@ -1,9 +1,153 @@
 import { createInitialV39Village, normalizeV39Village } from "../../lib/v39-economy-rules.js";
-import { getHexOffsetNeighbors } from "../../lib/hex-grid.js";
+import { getHexOffsetNeighbors, getHexNeighborCoords, getHexDistance } from "../../lib/hex-grid.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
+import { V39_START_AREA_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
 const MODE_BANNER_ID = "modeBanner";
+let pendingPlacement = null;
+let candidateContext = null;
+
+function placementCandidates() {
+  const data = fieldMapData();
+  if (!data?.grid) return [];
+  const state = getGameState();
+  const center = { x:(data.w - 1) / 2, y:(data.h - 1) / 2 };
+  const margin = V39_START_AREA_BALANCE.placementRadius + 1;
+  const distance = (a, b) => worldWrapEnabled()
+    ? Math.min(...[-data.w, 0, data.w].flatMap(dx => [-data.h, 0, data.h]
+      .map(dy => getHexDistance(a, { x:b.x + dx, y:b.y + dy }))))
+    : getHexDistance(a, b);
+  const tiles = [];
+  for (let y = 0; y < data.h; y += 1) for (let x = 0; x < data.w; x += 1) {
+    if (!unitCanStandAt(data, x, y)) continue;
+    const height = Number(data.heightLevelMap?.[y]?.[x]) || 0;
+    const tile = { x, y, height, terrain:data.grid[y][x], special:data.specialMap?.[y]?.[x] || "" };
+    if (basePlacementIssue(tile, state)) continue;
+    tiles.push(tile);
+  }
+  const candidates = [];
+  const edgePenalty = tile => Math.max(0, margin - Math.min(tile.x, tile.y, data.w - 1 - tile.x, data.h - 1 - tile.y));
+  while (candidates.length < V39_START_AREA_BALANCE.candidateCount) {
+    // 選択範囲が端で切れにくい低地を優先。中央寄りから選び、候補同士の範囲は重ねない。
+    let best = null, bestScore = null;
+    for (const tile of tiles) {
+      const separation = candidates.length ? Math.min(...candidates.map(candidate => distance(candidate, tile))) : 0;
+      if (candidates.length && separation <= V39_START_AREA_BALANCE.placementRadius * 2) continue;
+      const score = [edgePenalty(tile), Math.abs(tile.height), getHexDistance(tile, center), -separation];
+      const difference = bestScore ? score.findIndex((value, index) => value !== bestScore[index]) : -1;
+      if (!best || (difference >= 0 && score[difference] < bestScore[difference])) {
+        best = tile; bestScore = score;
+      }
+    }
+    if (!best) break;
+    candidates.push(best);
+  }
+  return candidates;
+}
+
+function currentCandidateContext() {
+  const map = fieldMapData();
+  const playerId = getGameState()?.activePlayerId;
+  const count = placedSettlements(getActiveFaction()).length;
+  if (candidateContext?.map === map && candidateContext.playerId === playerId && candidateContext.count === count) return candidateContext;
+  const candidates = placementCandidates();
+  const tiles = new Map();
+  for (const candidate of candidates) {
+    const seen = new Set();
+    let ring = [candidate];
+    for (let distance = 0; distance <= V39_START_AREA_BALANCE.placementRadius; distance += 1) {
+      const next = [];
+      for (const tile of ring) {
+        const key = coordKey(tile.x, tile.y);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tiles.set(key, tile);
+        next.push(...getHexNeighborCoords(map.w, map.h, tile.x, tile.y, worldWrapEnabled()));
+      }
+      ring = next;
+    }
+  }
+  const state = getGameState();
+  const allowedTiles = [...tiles.values()].map(tile => ({ ...tile, terrain:map.grid[tile.y][tile.x] }))
+    .filter(tile => !basePlacementIssue(tile, state));
+  candidateContext = { map, playerId, count, candidates, allowedTiles, allowedKeys:new Set(allowedTiles.map(tile => coordKey(tile.x, tile.y))) };
+  return candidateContext;
+}
+
+function initialPlacementIssue(tile) {
+  return basePlacementIssue(tile) || (currentCandidateContext().allowedKeys.has(coordKey(tile?.x, tile?.y))
+    ? "" : `候補マスまたは周囲${V39_START_AREA_BALANCE.placementRadius}マスから選択してください`);
+}
+
+function ensurePlacementPanel() {
+  const host = document.getElementById("footPlacement");
+  if (!host) return null;
+  let panel = document.getElementById("v39-placement-preview");
+  if (!panel) {
+    if (!document.getElementById("v39-placement-preview-style")) {
+      const style = document.createElement("style");
+      style.id = "v39-placement-preview-style";
+      style.textContent = `#footPlacement{min-height:0;overflow:auto;align-content:start}#v39-placement-preview{display:grid;gap:8px;padding:8px;color:#e9f2ef;font-size:var(--font-body)}#v39-placement-preview[hidden]{display:none}#v39-placement-preview [data-placement-candidates]{display:flex;flex-wrap:wrap;gap:6px}#v39-placement-preview button{font-size:var(--font-body);padding:6px 10px;background:#15353d;color:#eaf2ee;border:1px solid #75cad9;border-radius:6px;cursor:pointer}#v39-placement-preview button:disabled{opacity:.4;cursor:not-allowed}`;
+      document.head.appendChild(style);
+    }
+    panel = document.createElement("div");
+    panel.id = "v39-placement-preview";
+    panel.innerHTML = `<strong>初期拠点の配置</strong><span>候補マスか周囲${V39_START_AREA_BALANCE.placementRadius}マスの色付き範囲から選択してください。</span><div data-placement-candidates></div><strong data-placement-location>配置先を選択してください</strong><span data-placement-level></span><span data-placement-species></span><span data-placement-outer></span><button type="button" data-placement-confirm disabled>ここに拠点を設置</button>`;
+    panel.querySelector("[data-placement-confirm]").addEventListener("click", () => {
+      const selected = pendingPlacement;
+      if (selected && selected.playerId === getGameState()?.activePlayerId) confirmPlacement(selected.tile);
+    });
+    host.appendChild(panel);
+  }
+  const context = currentCandidateContext();
+  if (panel.placementContext !== context) {
+    panel.placementContext = context;
+    pendingPlacement = null;
+    panel.querySelector("[data-placement-location]").textContent = "配置先を選択してください";
+    for (const name of ["level", "species", "outer"]) panel.querySelector(`[data-placement-${name}]`).textContent = "";
+    panel.querySelector("[data-placement-confirm]").disabled = true;
+    const list = panel.querySelector("[data-placement-candidates]");
+    list.replaceChildren();
+    context.candidates.forEach((tile, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `候補${index + 1} (${tile.x},${tile.y}) 高度${tile.height}`;
+      button.addEventListener("click", () => {
+        const scene = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
+        scene?.v39Input?.selectTile(tile, true);
+      });
+      list.appendChild(button);
+    });
+    if (!list.children.length) list.textContent = "配置可能な候補がありません。マップを再生成してください。";
+  }
+  const scene = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
+  if (scene?.v39Input?.showPlacementTiles && scene.v39PlacementContext !== context) {
+    scene.v39Input.showPlacementTiles(context.allowedTiles, true);
+    scene.v39PlacementContext = context;
+  }
+  panel.hidden = false;
+  return panel;
+}
+
+function showPlacementPreview(tile) {
+  if (!Number.isInteger(tile?.x) || !Number.isInteger(tile?.y)) return;
+  const panel = ensurePlacementPanel();
+  if (!panel) return;
+  window.activateV39FooterTab?.("placement");
+  const preview = window.inspectV39InitialPlacementArea?.(tile);
+  const issue = initialPlacementIssue(tile);
+  pendingPlacement = { tile:{ ...tile }, playerId:getGameState()?.activePlayerId };
+  panel.hidden = false;
+  panel.querySelector("[data-placement-location]").textContent = `(${tile.x},${tile.y}) ${tile.special || tile.terrain} / 高度 ${tile.height ?? 0}`;
+  panel.querySelector("[data-placement-level]").textContent = issue || (preview
+    ? `周囲${preview.safeRadius}マス: 初期敵なし / ${preview.safeRadius + 1}〜${preview.beginnerRadius}マス: Lv${preview.beginnerMinLevel}〜${preview.beginnerMaxLevel}` : "敵Lv目安を準備中");
+  panel.querySelector("[data-placement-species]").textContent = preview
+    ? `序盤の候補: ${preview.beginnerSpecies.slice(0, 4).join("・") || "なし"}${preview.beginnerSpecies.length > 4 ? " ほか" : ""}` : "";
+  panel.querySelector("[data-placement-outer]").textContent = preview?.outerMinLevel != null
+    ? `${preview.beginnerRadius + 1}マス付近の通常敵目安: Lv${preview.outerMinLevel}〜${preview.outerMaxLevel}（種族で強さは異なります）` : "";
+  panel.querySelector("[data-placement-confirm]").disabled = !!issue;
+}
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -79,7 +223,7 @@ function isPassableTerrain(terrain) {
   return terrain !== "海" && terrain !== "湖";
 }
 
-function basePlacementIssue(tile) {
+function basePlacementIssue(tile, state = getGameState()) {
   if (!tile) return "配置先がありません";
   const terrain = text(tile.terrain, "海");
   if (!isPassableTerrain(terrain) || terrain === "火山") return "海・湖・火山には配置できません";
@@ -90,7 +234,6 @@ function basePlacementIssue(tile) {
   const territoryTiles = buildInitialTerritoryTiles(x, y);
   if (territoryTiles.length !== 7) return "周囲1マスを含む7マスすべてが陸地の場所を選んでください";
   const keys = new Set(territoryTiles.map(row => row.key));
-  const state = getGameState();
   const activeId = state?.activePlayerId;
   if ([...keys].some(key => {
     const ownerId = text(state?.territoryOwnerByTile?.[key]);
@@ -109,7 +252,7 @@ function basePlacementIssue(tile) {
 }
 
 function canPlaceBaseOnTile(tile) {
-  return !basePlacementIssue(tile);
+  return !initialPlacementIssue(tile);
 }
 
 function showBanner(message, persistent = false) {
@@ -154,7 +297,8 @@ function fieldMapData() {
 }
 
 function worldWrapEnabled() {
-  return window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
+  return fieldMapData()?.worldWrapEnabled !== false
+    && window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
 }
 
 function normalizeCoord(value, size, wrap) {
@@ -237,6 +381,8 @@ function beginInitialPlacement(options = {}) {
     return false;
   }
   if (placedSettlements(faction).length && options.force !== true) return false;
+  candidateContext = null;
+  pendingPlacement = null;
 
   const units = options.keepUnitCoordinates === true
     ? faction.units
@@ -300,7 +446,7 @@ function placeInitialBase(tile, options = {}) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
 
   if (!canPlaceBaseOnTile(tile)) {
-    showBanner(basePlacementIssue(tile), true);
+    showBanner(initialPlacementIssue(tile), true);
     return false;
   }
 
@@ -464,14 +610,7 @@ function placeInitialBase(tile, options = {}) {
 }
 
 function findInitialBaseCandidate() {
-  const data = fieldMapData();
-  const width = Math.max(0, Math.floor(Number(data?.w)));
-  const height = Math.max(0, Math.floor(Number(data?.h)));
-  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
-    const tile = { x, y, terrain:text(data?.grid?.[y]?.[x], "海") };
-    if (canPlaceBaseOnTile(tile)) return tile;
-  }
-  return null;
+  return currentCandidateContext().candidates.find(canPlaceBaseOnTile) || null;
 }
 
 // TEST ONの追加勢力も、手動配置と同一の配置可否・領土生成処理を通す。
@@ -511,13 +650,18 @@ function autoPlaceInitialBases(playerId) {
 function handleTileSelected(event) {
   const faction = getActiveFaction();
   if (!faction?.villagePlacementMode) return;
+  showPlacementPreview(event.detail);
+}
+
+function confirmPlacement(tile) {
+  if (!getActiveFaction()?.villagePlacementMode) return;
   if (window.isV39MultiplayerSetup?.() === true) {
     const player = getActivePlayer();
-    const x = Math.floor(Number(event?.detail?.x));
-    const y = Math.floor(Number(event?.detail?.y));
+    const x = Math.floor(Number(tile?.x));
+    const y = Math.floor(Number(tile?.y));
     if (!player?.id || !Number.isFinite(x) || !Number.isFinite(y)) return;
-    if (!canPlaceBaseOnTile(event.detail)) {
-      showBanner(basePlacementIssue(event.detail), true);
+    if (!canPlaceBaseOnTile(tile)) {
+      showBanner(initialPlacementIssue(tile), true);
       return;
     }
     window.dispatchEvent(new CustomEvent("v39:multiplayer-initial-placement-request", {
@@ -526,20 +670,36 @@ function handleTileSelected(event) {
     showBanner("初期拠点の配置をホストへ確認しています...", true);
     return;
   }
-  placeInitialBase(event.detail);
+  placeInitialBase(tile);
 }
 
 function syncPlacementMode() {
   const faction = getActiveFaction();
   if (!faction) return;
+  if (!faction.villagePlacementMode || pendingPlacement?.playerId !== getGameState()?.activePlayerId) {
+    pendingPlacement = null;
+    const panel = document.getElementById("v39-placement-preview");
+    if (panel) panel.hidden = true;
+  }
   if (faction.villagePlacementMode) {
+    const panel = ensurePlacementPanel();
+    if (panel && !document.getElementById("footPlacement")?.classList.contains("v39-footer-panel-active")) window.activateV39FooterTab?.("placement");
     showBanner(placementBannerText(faction), true);
   } else {
+    candidateContext = null;
+    const scene = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
+    scene?.v39Input?.showPlacementTiles?.([]);
+    if (scene) scene.v39PlacementContext = null;
+    if (document.getElementById("footPlacement")?.classList.contains("v39-footer-panel-active")) window.activateV39FooterTab?.("squad");
     hideBanner();
   }
 }
 
 function handleFieldGenerated() {
+  pendingPlacement = null;
+  candidateContext = null;
+  const preview = document.getElementById("v39-placement-preview");
+  if (preview) preview.remove();
   const state = getGameState();
   const player = getActivePlayer(state);
   const faction = player?.factionState;
@@ -575,6 +735,8 @@ function install() {
   window.addEventListener("v39:tile-selected", handleTileSelected);
   window.addEventListener("v39:game-state-changed", syncPlacementMode);
   window.addEventListener("v39:field-generated", handleFieldGenerated);
+  window.addEventListener("v39:operation-ui-ready", syncPlacementMode);
+  window.addEventListener("v39:field-input-ready", syncPlacementMode);
   window.beginV39InitialPlacement = beginInitialPlacement;
   window.placeV39InitialBase = placeInitialBase;
   window.autoPlaceV39InitialBases = autoPlaceInitialBases;

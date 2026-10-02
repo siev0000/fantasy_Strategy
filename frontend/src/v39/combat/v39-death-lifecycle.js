@@ -44,7 +44,7 @@ function moveDefeatedPlayerCargoToCorpses(rawUnits, rawSquads) {
   const unitById = () => new Map(units.map(unit => [text(unit?.id), unit]));
   let moved = 0;
   const squads = rawSquads.map(squad => {
-    if (text(squad?.id) === "solo") {
+    {
       const cargoByUnitId = { ...(squad?.cargoByUnitId || {}) };
       for (const [unitId, cargo] of Object.entries(cargoByUnitId)) {
         const unit = unitById().get(text(unitId));
@@ -53,8 +53,9 @@ function moveDefeatedPlayerCargoToCorpses(rawUnits, rawSquads) {
         delete cargoByUnitId[unitId];
         moved += 1;
       }
-      return { ...squad, cargoByUnitId };
+      squad = { ...squad, cargoByUnitId };
     }
+    if (text(squad?.id) === "solo") return squad;
     const members = getV39SquadUnitIds(squad).map(id => unitById().get(id)).filter(Boolean);
     if (!members.length || members.some(unit => !isDead(unit)) || isV39CargoEmpty(squad?.cargo)) return squad;
     const carrier = lastDeadMember(members);

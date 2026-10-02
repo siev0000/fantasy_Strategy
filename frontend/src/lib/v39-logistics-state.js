@@ -99,7 +99,7 @@ export function addV39CargoToFactionUnit(faction = {}, unitId = "", cargoToAdd =
   const solo = text(squad.id) === "solo" || text(unit.squadId) === "solo";
   const nextSquads = squads.map(row => {
     if (text(row?.id) !== text(squad.id)) return row;
-    if (!solo) return { ...row, cargo:mergeV39Cargo(row?.cargo, cargoToAdd) };
+    if (!solo && !unit.transportAssignment) return { ...row, cargo:mergeV39Cargo(row?.cargo, cargoToAdd) };
     return {
       ...row,
       cargoByUnitId:{

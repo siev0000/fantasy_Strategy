@@ -307,7 +307,7 @@ function installSettingsUi() {
 
 function installStyles() {
   const style = document.createElement("style");
-  style.textContent = `.v39-save-settings{display:grid;gap:10px}.v39-save-settings section{border:1px solid #3b4d54;border-radius:8px;background:#121e23;padding:12px}.v39-save-settings h3{margin:0 0 6px;font-size:16px}.v39-save-settings p,.v39-save-settings output{font-size:15px;color:#afbec1}.v39-save-settings section>div{display:flex;gap:8px;margin:10px 0}.v39-save-settings button{min-height:40px;border:1px solid #54717a;border-radius:7px;background:#173039;color:#edf5f3;padding:6px 12px;font-size:15px;font-weight:700}`;
+  style.textContent = `.v39-save-settings{display:grid;gap:10px}.v39-save-settings section{border:1px solid #3b4d54;border-radius:8px;background:#121e23;padding:12px}.v39-save-settings h3{margin:0 0 6px;font-size:var(--font-size-16)}.v39-save-settings p,.v39-save-settings output{font-size:var(--font-body);color:#afbec1}.v39-save-settings section>div{display:flex;gap:8px;margin:10px 0}.v39-save-settings button{min-height:40px;border:1px solid #54717a;border-radius:7px;background:#173039;color:#edf5f3;padding:6px 12px;font-size:var(--font-body);font-weight:700}`;
   document.head.appendChild(style);
 }
 

@@ -1,4 +1,4 @@
-import { startV39SurveyTask } from "../../lib/v39-exploration-rules.js";
+import { inspectV39Survey, startV39SurveyTask } from "../../lib/v39-exploration-rules.js";
 import { facilityDefinitions, inspectV39Construction, startV39Construction } from "../../lib/v39-economy-rules.js";
 import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "../../lib/v39-unit-creation-rules.js";
 import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "../../lib/research-tree-config.js";
@@ -49,11 +49,9 @@ function decideAiObjective(state, player) {
 }
 
 function startAiSurvey(state, player) {
-  const surveyed = new Set(player?.factionState?.exploration?.surveyedTileKeys || []);
-  const unit = (player?.factionState?.units || []).filter(alive).find(candidate => {
-    const key = `${Math.floor(number(candidate?.x, -1))},${Math.floor(number(candidate?.y, -1))}`;
-    return !candidate?.surveyTask && !surveyed.has(key) && number(candidate?.x, -1) >= 0 && number(candidate?.y, -1) >= 0;
-  });
+  const unit = (player?.factionState?.units || []).filter(alive).find(candidate =>
+    number(candidate?.x, -1) >= 0 && number(candidate?.y, -1) >= 0
+    && inspectV39Survey(state, player.id, candidate.id, candidate).available);
   if (!unit) return null;
   const result = startV39SurveyTask(state, player.id, unit.id, { x:unit.x, y:unit.y });
   return result.ok ? { state:result.state, command:`調査:${result.task.key}` } : null;

@@ -15,6 +15,8 @@ try {
     && typeof window.advanceV39Turn === "function"
   ));
   const report = await page.evaluate(async () => {
+    const confirmations = [];
+    window.confirm = message => { confirmations.push(message); return true; };
     window.startV39LocalSession(1, { playMode:"single-test" });
     const field = window.generateV39TestFieldWithSeed({ w:36, h:36, patternId:"realistic" }, "settlement-development-check");
     const state = window.getV39GameState();
@@ -36,6 +38,7 @@ try {
     };
     const firstCenter = `${sourceVillage.x},${sourceVillage.y}`;
     const firstAttached = `${sourceVillage.x + 1},${sourceVillage.y}`;
+    field.grid[sourceVillage.y][sourceVillage.x + 1] = "海";
     const secondX = Math.min(field.w - 3, sourceVillage.x + 4);
     const secondY = sourceVillage.y;
     const secondCenter = `${secondX},${secondY}`;
@@ -120,6 +123,15 @@ try {
     const startButtonEnabled = startButton instanceof HTMLButtonElement && !startButton.disabled;
     startButton?.click();
     await new Promise(resolve => window.setTimeout(resolve, 50));
+    const selectionBefore = window.getV39SettlementDevelopmentSelection?.();
+    window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:{ x:sourceVillage.x + 1, y:sourceVillage.y } }));
+    await new Promise(resolve => window.setTimeout(resolve, 80));
+    const selectionAfter = window.getV39SettlementDevelopmentSelection?.();
+    const selectionScene = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
+    const selectionLayer = selectionScene?.children?.list?.find(child => child?.name === "v39-development-selection-layer");
+    const renderedSelectionCount = selectionLayer?.getData?.("selectedCount") ?? null;
+    document.querySelector('[data-development-selection-action="confirm"]')?.click();
+    await new Promise(resolve => window.setTimeout(resolve, 50));
     const startedState = window.getV39GameState();
     const startedVillage = startedState.players.find(row => row.id === player.id).factionState.settlements.find(row => row.settlementId === firstVillage.id);
     document.querySelector("#buildModal [data-close]")?.click();
@@ -189,18 +201,27 @@ try {
             ...village,
             lastEconomyDelta:null,
             territoryTileModeMap:{ ...village.territoryTileModeMap, [conversionKey]:"resource" },
+            buildings:[...village.buildings, "倉庫"],
+            tileFacilityMap:{ ...village.tileFacilityMap, [conversionKey]:["倉庫"] },
+            facilityStateByTile:{ ...village.facilityStateByTile, [conversionKey]:{ 倉庫:{ hp:100, maxHp:100 } } },
+            constructionQueue:[{ facilityName:"兵舎", tileKey:conversionKey, remainingTurns:5, totalTurns:5 }],
             territoryTileConversionMap:{}
           }))
         }
       })),
       territoryOwnerByTile:{ ...beforeConversion.territoryOwnerByTile, [conversionKey]:player.id },
       territoryStateByTile:{ ...beforeConversion.territoryStateByTile, [conversionKey]:{ settlementId:firstVillage.id } }
+      ,facilitiesByTile:{ ...beforeConversion.facilitiesByTile, [conversionKey]:["倉庫"] }
     }, { reason:"settlement-conversion-check-setup" });
     document.querySelector('[data-foot="tile"]')?.click();
     window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:{ x:firstCompleted.x, y:firstCompleted.y + 1 } }));
     await new Promise(resolve => window.setTimeout(resolve, 50));
     const conversionButton = document.getElementById("v39-land-settlement-convert");
     const conversionButtonEnabled = conversionButton instanceof HTMLButtonElement && !conversionButton.disabled;
+    window.confirm = message => { confirmations.push(message); return false; };
+    conversionButton?.click();
+    const conversionCancelled = !window.getV39GameState().players.find(row => row.id === player.id).factionState.settlements.find(row => row.settlementId === firstVillage.id).territoryTileConversionMap[conversionKey];
+    window.confirm = message => { confirmations.push(message); return true; };
     conversionButton?.click();
     await new Promise(resolve => window.setTimeout(resolve, 50));
     const conversionStartedState = window.getV39GameState();
@@ -210,6 +231,11 @@ try {
     const conversionStructure = conversionScene?.children?.list?.find(child => child?.name === "v39-structure-layer");
     const conversionMarker = conversionStructure?.list?.find(child => child?.name === "v39-tile-conversion-marker" && child?.getData?.("tileKey") === conversionKey);
     const conversionMarkerLabel = conversionMarker?.getData?.("label") || "";
+    const turnText = conversionMarker?.getData?.("turnLabel");
+    const turnFontSize = parseFloat(turnText?.style?.fontSize || "0");
+    const constructionPreview = conversionStructure?.list?.find(child => child.name === "v39-residential-construction-preview" && child.getData("tileKey") === conversionKey);
+    const constructionPreviewImage = constructionPreview?.list?.find(child => child.name === "v39-residential-village-image");
+    const pendingConstructionCheck = window.inspectV39Construction("教会", { x:firstCompleted.x, y:firstCompleted.y + 1 });
     window.runV39EnemyTurn = async () => {};
     await window.advanceV39Turn();
     const conversionFirstTurnState = window.getV39GameState();
@@ -223,6 +249,9 @@ try {
     const residentialLayer = latestScene?.children?.list?.find(child => child?.name === "v39-residential-tile-layer");
     const latestStructure = latestScene?.children?.list?.find(child => child?.name === "v39-structure-layer");
     const facilityMarker = latestStructure?.list?.find(child => child?.name === "v39-facility-marker" && child?.getData?.("facilityName") === "農場");
+    const facilityIcon = facilityMarker?.list?.find(child => child?.name === "v39-facility-icon-image");
+    const residentialVillageMarker = latestStructure?.list?.find(child => child?.name === "v39-residential-village-marker" && child?.getData?.("tileKey") === conversionKey);
+    const residentialVillageIcon = residentialVillageMarker?.list?.find(child => child?.name === "v39-residential-village-image");
     const latestTownMarker = (latestScene?.children?.list || [])
       .flatMap(child => Array.isArray(child?.list) ? child.list : [])
       .find(marker => marker?.name === "v39-settlement-marker"
@@ -268,8 +297,16 @@ try {
       turnNumber:completedState.timeline.turnNumber,
       started:{
         buttonEnabled:startButtonEnabled,
+        selectionBeforeCount:selectionBefore?.selectedTileKeys?.length || 0,
+        selectionAfterCount:selectionAfter?.selectedTileKeys?.length || 0,
+        selectionCandidateCount:selectionAfter?.candidateTileKeys?.length || 0,
+        selectedTerrain:field.grid[sourceVillage.y][sourceVillage.x + 1],
+        renderedSelectionCount,
         targetScaleKey:startedVillage?.developmentProject?.targetScaleKey || "",
         totalTurns:startedVillage?.developmentProject?.totalTurns || 0,
+        baseBuildTurns:startedVillage?.developmentProject?.baseBuildTurns || 0,
+        reusedResidentialTileCount:startedVillage?.developmentProject?.reusedResidentialTileCount || 0,
+        turnReduction:startedVillage?.developmentProject?.turnReduction || 0,
         wood:startedVillage?.materialStockByType?.木材
       },
       occupiedFacilityCheck:{
@@ -278,23 +315,109 @@ try {
       },
       ui:uiReport,
       conversion:{
+        cancelledWithoutChanges:conversionCancelled,
+        confirmationMentionsRemoval:confirmations.some(message => message.includes("倉庫") && message.includes("戻りません")),
+        tileKey:conversionKey,
+        facilityRemoved:!conversionCompletedVillage.tileFacilityMap[conversionKey] && !conversionCompletedVillage.facilityStateByTile[conversionKey] && !conversionCompletedVillage.buildings.includes("倉庫") && !conversionCompletedState.facilitiesByTile[conversionKey],
+        constructionRemoved:!conversionCompletedVillage.constructionQueue.some(item => item.tileKey === conversionKey),
+        constructionBlockedDuringConversion:pendingConstructionCheck.reasons.includes("土地用途を変更中です"),
         hasButton:conversionButton instanceof HTMLButtonElement,
         buttonEnabled:conversionButtonEnabled,
         startedRemaining:conversionStartedVillage?.territoryTileConversionMap?.[conversionKey]?.remainingTurns ?? null,
         startedMarkerLabel:conversionMarkerLabel,
+        turnFontSize,
+        turnLabel:turnText?.text,
+        turnAboveCenter:turnText?.y < conversionMarker?.y,
+        previewAlpha:constructionPreviewImage?.alpha,
         townCapacity:firstCompleted?.populationCapacity ?? null,
         resourceCapacity:conversionFirstTurnVillage?.populationCapacity ?? null,
         settlementCapacity:conversionCompletedVillage?.populationCapacity ?? null,
         completedMode:conversionCompletedVillage?.territoryTileModeMap?.[conversionKey] || "",
         hasQueue:!!conversionCompletedVillage?.territoryTileConversionMap?.[conversionKey],
         renderedResidentialTiles:residentialLayer?.getData?.("tileCount") ?? null,
-        facilityMarkerLabel:facilityMarker?.getData?.("label") || ""
+        facilityMarkerLabel:facilityMarker?.getData?.("label") || "",
+        facilityMarkerIconFrame:facilityMarker?.getData?.("iconFrame") || "",
+        facilityMarkerTextureKey:facilityIcon?.texture?.key || "",
+        facilityMarkerDisplaySize:Math.round(Math.max(Number(facilityIcon?.displayWidth) || 0, Number(facilityIcon?.displayHeight) || 0)),
+        residentialVillageTextureKey:residentialVillageIcon?.texture?.key || "",
+        residentialVillageDisplaySize:Math.round(Math.max(Number(residentialVillageIcon?.displayWidth) || 0, Number(residentialVillageIcon?.displayHeight) || 0))
       }
     };
   });
 
   await page.addStyleTag({ content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}" });
   await page.screenshot({ path:"output/web-game/v39-settlement-development.png", fullPage:true });
+  report.reversal = await page.evaluate(async tileKey => {
+    const [x, y] = tileKey.split(",").map(Number);
+    const constructionCheck = window.inspectV39Construction("教会", { x, y });
+    const confirmations = [];
+    const getVillage = () => {
+      const state = window.getV39GameState();
+      return state.players.find(row => row.id === state.activePlayerId).factionState.settlements.find(row => row.settlementId === "development-a");
+    };
+    const stockBefore = JSON.stringify(getVillage().materialStockByType);
+    window.confirm = message => { confirmations.push(message); return false; };
+    const cancelled = window.startV39Construction("兵舎", { x, y });
+    const cancelledWithoutChanges = cancelled.cancelled && JSON.stringify(getVillage().materialStockByType) === stockBefore && !getVillage().constructionQueue.length;
+    window.confirm = message => { confirmations.push(message); return true; };
+    const accepted = window.startV39Construction("兵舎", { x, y });
+    const originalEnemyTurn = window.runV39EnemyTurn;
+    window.runV39EnemyTurn = async () => {};
+    await window.advanceV39Turn();
+    await window.advanceV39Turn();
+    const completedFacility = getVillage().tileFacilityMap[tileKey]?.includes("兵舎");
+    window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:{ x, y } }));
+    await new Promise(resolve => setTimeout(resolve, 80));
+    document.getElementById("v39-land-settlement-convert").click();
+    await window.advanceV39Turn();
+    await window.advanceV39Turn();
+    const facilityRemovedAgain = !getVillage().tileFacilityMap[tileKey];
+    window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:{ x, y } }));
+    await new Promise(resolve => setTimeout(resolve, 80));
+    const button = document.getElementById("v39-land-settlement-convert");
+    const buttonText = button.textContent;
+    button.click();
+    try {
+      await window.advanceV39Turn();
+      await window.advanceV39Turn();
+    } finally {
+      window.runV39EnemyTurn = originalEnemyTurn;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const state = window.getV39GameState();
+    const village = state.players.find(row => row.id === state.activePlayerId).factionState.settlements.find(row => row.settlementId === "development-a");
+    const scene = window.__v39FieldRuntime.game.scene.getScenes(true)[0];
+    const structure = scene.children.list.find(child => child.name === "v39-structure-layer");
+    const villageMarkerRemaining = structure.list.some(child => child.name === "v39-residential-village-marker" && child.getData("tileKey") === tileKey);
+    window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:{ x:village.x, y:village.y } }));
+    await new Promise(resolve => setTimeout(resolve, 80));
+    return {
+      buttonText,
+      cancelledWithoutChanges,
+      replacementStarted:accepted.ok,
+      replacementCompleted:completedFacility,
+      facilityRemovedAgain,
+      confirmationMentionsReplacement:confirmations.some(message => message.includes("居住地を兵舎")),
+      farmMultiplier:window.getV39FacilityYieldMultiplier(`${village.x},${village.y}`, "穀物", village),
+      residentialReplacementAvailable:constructionCheck.available && constructionCheck.replacesResidential,
+      completedMode:village.territoryTileModeMap[tileKey],
+      villageMarkerRemaining,
+      occupiedReversalBlocked:document.getElementById("v39-land-settlement-convert").disabled
+    };
+  }, report.conversion.tileKey);
+  await page.evaluate(async tileKey => {
+    const state = window.getV39GameState();
+    window.setV39GameState({ players:state.players.map(player => ({
+      ...player, factionState:{ ...player.factionState, settlements:player.factionState.settlements.map(village => village.settlementId !== "development-a" ? village : ({
+        ...village, constructionQueue:[], territoryTileConversionMap:{ [tileKey]:{ targetMode:"settlement", remainingTurns:2, totalTurns:2, startedTurn:state.timeline.turnNumber } }
+      })) }
+    })) });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const scene = window.__v39FieldRuntime.game.scene.getScenes(true)[0];
+    const marker = scene.children.list.find(child => child.name === "v39-structure-layer").list.find(child => child.name === "v39-tile-conversion-marker" && child.getData("tileKey") === tileKey);
+    scene.cameras.main.centerOn(marker.x, marker.y).setZoom(1.8);
+  }, report.conversion.tileKey);
+  await page.screenshot({ path:"output/web-game/v39-construction-turn-label.png" });
   console.log(JSON.stringify({ report, errors }, null, 2));
 
   const firstTurnValid = report.afterOneTurn.length === 2
@@ -316,8 +439,16 @@ try {
     && report.ui.modalTitle === "都市・建設"
     && report.ui.modalText.includes("拠点発展");
   const startValid = report.started.buttonEnabled
+    && report.started.selectionBeforeCount === 1
+    && report.started.selectionAfterCount === 2
+    && report.started.selectionCandidateCount >= 2
+    && report.started.selectedTerrain === "海"
+    && report.started.renderedSelectionCount === 2
     && report.started.targetScaleKey === "town"
-    && report.started.totalTurns > 0
+    && report.started.totalTurns === 7
+    && report.started.baseBuildTurns === 8
+    && report.started.reusedResidentialTileCount === 1
+    && report.started.turnReduction === 1
     && report.started.wood < 1000;
   const occupiedFacilityValid = report.occupiedFacilityCheck.available === false
     && report.occupiedFacilityCheck.reasons.includes("このマスには既に施設があります");
@@ -325,14 +456,29 @@ try {
     && report.conversion.buttonEnabled
     && report.conversion.startedRemaining === 2
     && report.conversion.startedMarkerLabel === "居"
+    && report.conversion.turnFontSize >= 18
+    && report.conversion.turnLabel === "🔨2T"
+    && report.conversion.turnAboveCenter
+    && report.conversion.previewAlpha === 0.5
     && report.conversion.townCapacity === 130
-    && report.conversion.resourceCapacity === 135
+    && report.conversion.resourceCapacity === 145
     && report.conversion.settlementCapacity === 145
     && report.conversion.renderedResidentialTiles === 5
     && report.conversion.facilityMarkerLabel === "農"
+    && report.conversion.facilityMarkerIconFrame === "facility:農場"
+    && report.conversion.facilityMarkerTextureKey.includes("v39-facility-icon-sheet:1")
+    && report.conversion.facilityMarkerDisplaySize >= 50
+    && report.conversion.residentialVillageTextureKey.includes("v39-settlement:村")
+    && report.conversion.residentialVillageDisplaySize >= 50
+    && report.conversion.facilityRemoved
+    && report.conversion.cancelledWithoutChanges
+    && report.conversion.confirmationMentionsRemoval
+    && report.conversion.constructionRemoved
+    && report.conversion.constructionBlockedDuringConversion
     && report.conversion.completedMode === "settlement"
     && !report.conversion.hasQueue;
-  if (errors.length || !firstTurnValid || !completionValid || !residentialValid || !worldSettlementValid || !startValid || !occupiedFacilityValid || !uiValid || !conversionValid || report.completionCount !== 2 || report.turnNumber !== 3) {
+  const reversalValid = report.reversal.buttonText === "居住化解除" && report.reversal.residentialReplacementAvailable && report.reversal.cancelledWithoutChanges && report.reversal.replacementStarted && report.reversal.replacementCompleted && report.reversal.facilityRemovedAgain && report.reversal.confirmationMentionsReplacement && report.reversal.farmMultiplier === 2 && report.reversal.completedMode === "resource" && !report.reversal.villageMarkerRemaining && report.reversal.occupiedReversalBlocked;
+  if (errors.length || !firstTurnValid || !completionValid || !residentialValid || !worldSettlementValid || !startValid || !occupiedFacilityValid || !uiValid || !conversionValid || !reversalValid || report.completionCount !== 2 || report.turnNumber !== 3) {
     process.exitCode = 1;
   }
 } finally {

@@ -4,6 +4,43 @@ export const V39_HIT_RATE_MIN = 0.25;
 // 攻撃の最大命中率。1.00 = 100%。
 export const V39_HIT_RATE_MAX = 1.00;
 
+export const V39_SURVEY_BALANCE = Object.freeze({
+  // 調査完了に必要な累計AP。残りAPを全消費し、足りない分は次ターン以降に継続する。
+  requiredAp:100
+});
+
+export const V39_GATHER_BALANCE = Object.freeze({
+  // 暫定: 採取1回のAP。採取量は地形の基礎産出1ターン分で、技能・人数補正はまだ掛けない。
+  apCost:100
+});
+
+export const V39_START_AREA_BALANCE = Object.freeze({
+  // 初期配置画面で提示する低地候補の最大数。
+  candidateCount:20,
+  // 暫定: 候補中心から初期拠点を配置できる六角マス距離。0なら候補中心のみ。
+  placementRadius:2,
+  // 初期拠点中心からこの六角マス距離以内には初期の通常敵・強敵を置かない。
+  safeRadius:4,
+  // 初期拠点中心からこの距離までを序盤向けの敵Lv帯にする。
+  beginnerRadius:8,
+  // 暫定: 序盤個体のLv。JSONに該当Lvがない場合は地形の最低Lv帯の種族を使う。
+  beginnerMinLevel:1,
+  beginnerMaxLevel:3
+});
+
+// 初期生成の敵Lv調整。種族候補は出現敵JSONと従来の高度条件から選ぶ。
+export const V39_ENEMY_LEVEL_BALANCE = Object.freeze({
+  // 通常個体・通常の配下の初期Lv上限。成長後のLv上限ではない。
+  normalMaxLevel:15,
+  // ボス個体の初期Lv帯。
+  bossMinLevel:20,
+  bossMaxLevel:25,
+  // 暫定: 通常の高度幅-8〜8の両極端から1段内側までを難所とする。
+  extremeHighHeight:7,
+  extremeLowHeight:-7,
+  extremeLevel:30
+});
+
 // 戦闘ダメージの共通調整値。ダメージ式本体を変えずに全体バランスを調整する。
 export const V39_COMBAT_BALANCE = Object.freeze({
   // 1ヒットごとの最終ダメージへ掛ける倍率。
@@ -205,6 +242,8 @@ export const V39_VICTORY_LANDMARK_BALANCE = Object.freeze({
 // 勝利対象土地の守護編成。勝利対象土地.jsonに守護列が追加されるまでの暫定設定。
 // 敵種族・巣画像は出現敵.jsonから対象地形に合う最高Lv候補を使う。
 export const V39_VICTORY_GUARD_BALANCE = Object.freeze({
+  // 勝利対象土地の守護ボスの初期Lv。配下は下の差分設定を使う。
+  bossLevel:40,
   // 大都市相当の占有半径1と、その外側2リングを含む守護領域。
   territoryRadius:3,
   // ボスに加える同種配下の人数。0にすればボス単独へ変更できる。
@@ -443,6 +482,12 @@ export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
     Object.freeze({ race:"スケルトン", className:"スケルトン", levelMin:1, levelMax:4, weight:3 }),
     Object.freeze({ race:"ゴースト", className:"ゴースト", levelMin:2, levelMax:5, weight:2 })
   ])
+});
+
+// 拠点発展の調整値。既存の村・町区画を再利用したときの工期短縮に使う。
+export const V39_SETTLEMENT_DEVELOPMENT_BALANCE = Object.freeze({
+  // 発展先の占有マスに既存の村・町区画が1マス含まれるごとに短縮するターン数。
+  reusedResidentialTileTurnReduction:1
 });
 
 // 外交友好度・条約・AI判断の暫定値。確定後はこの定義だけを差し替える。

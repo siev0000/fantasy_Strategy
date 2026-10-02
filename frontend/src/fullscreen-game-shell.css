@@ -353,6 +353,6 @@ body {
   .phaser-map-panel .field-footer-tab-btn {
     min-width: 74px !important;
     padding: 4px 8px !important;
-    font-size: 12px !important;
+    font-size:var(--font-compact) !important;
   }
 }

@@ -27,6 +27,9 @@ let selectedTile = null;
 const collapsedSectionKeys = new Set();
 let testToolsScrollTop = 0;
 let restoreScrollFrame = 0;
+let bulkTurnCount = 10;
+let advancingTestTurns = false;
+let stopTestTurns = false;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
@@ -331,9 +334,39 @@ function clearTestSkills() {
   setStatus(changed ? "テストスキルを解除しました" : "キャラが選択されていません");
 }
 
-function advanceTurn() {
-  const ok = window.advanceV39Turn?.();
-  setStatus(ok ? "1ターン進めました" : "ターンを進められません");
+async function advanceTurn(count = 1) {
+  if (advancingTestTurns || !testModeEnabled()) return;
+  const startTurn = number(context().state?.timeline?.turnNumber, 1);
+  const targetTurn = startTurn + count;
+  advancingTestTurns = true;
+  stopTestTurns = false;
+  try {
+    while (number(context().state?.timeline?.turnNumber, 1) < targetTurn) {
+      if (stopTestTurns || !testModeEnabled()) break;
+      setStatus(`ターン進行中 ${number(context().state?.timeline?.turnNumber, 1) - startTurn}/${count}`);
+      // 複数プレイヤー時も、全員と敵の処理を終えた一巡を1ターンとして数える。
+      if (!await window.advanceV39Turn?.({ skipUnactedFocus:true })) break;
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  } catch (error) {
+    console.error("[テストターン進行]", error);
+  } finally {
+    advancingTestTurns = false;
+    setStatus(`${number(context().state?.timeline?.turnNumber, 1) - startTurn}ターン進行しました`);
+  }
+}
+
+function advanceProductionTurns() {
+  const { faction } = context();
+  const pending = (faction?.settlements || []).flatMap(village => [
+    ...(village.constructionQueue || []),
+    ...Object.values(village.territoryTileConversionMap || {}),
+    ...Object.values(village.territoryResidentialUpgradeQueueMap || {}),
+    village.developmentProject
+  ].filter(Boolean));
+  const turns = Math.max(0, ...pending.map(item => Math.ceil(number(item.remainingTurns))));
+  if (!turns) return setStatus("制作・建設待ちはありません");
+  return advanceTurn(turns);
 }
 
 function addTestFaction(kind) {
@@ -601,6 +634,7 @@ function panelHtml() {
     <div class="v39-test-tools-scroll">
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
+      <details class="v39-test-section" data-test-section="turns"${testSectionOpenAttribute("turns")}><summary>制作・ターン進行</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><input id="v39-test-turn-count" aria-label="進めるターン数" type="number" min="1" max="100" step="1" value="${bulkTurnCount}"${advancingTestTurns ? " disabled" : ""}><button data-test-action="turn-many"${advancingTestTurns ? " disabled" : ""}>指定ターン進行</button><button data-test-action="turn-production"${advancingTestTurns ? " disabled" : ""}>建設完了まで進行</button><button data-test-action="turn-stop"${advancingTestTurns ? "" : " disabled"}>停止</button></div><p>施設建設・拠点発展・土地用途変更の待ちターンをまとめて進行。収入・消費・敵AIも通常どおり進みます。</p></div></details>
        <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで災害</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
       <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
@@ -649,7 +683,10 @@ function handleAction(action) {
     "snow-on":() => setSelectedSnowState("cover", true), "snow-off":() => setSelectedSnowState("cover", false),
     "snowfall-on":() => setSelectedSnowState("falling", true), "snowfall-off":() => setSelectedSnowState("falling", false),
     "faction-player":() => addTestFaction("player"), "faction-npc":() => addTestFaction("npc"),
-    turn:advanceTurn,
+    turn:() => advanceTurn(),
+    "turn-many":() => advanceTurn(bulkTurnCount),
+    "turn-production":advanceProductionTurns,
+    "turn-stop":() => { stopTestTurns = true; },
     "resource-minus":() => changeResource(-1), "resource-plus":() => changeResource(1), "resource-all":addAllResources,
     "population-minus":() => changePopulation(-10), "population-plus":() => changePopulation(10),
     "level-minus":() => changeUnitLevel(-1), "level-plus":() => changeUnitLevel(1), "level-plus10":() => changeUnitLevel(10),
@@ -666,7 +703,7 @@ function installStyles() {
   if (document.getElementById("v39-test-tools-style")) return;
   const style = document.createElement("style");
   style.id = "v39-test-tools-style";
-  style.textContent = `.v39-test-tools-panel{width:100%;height:100%;max-height:100%;min-width:0;min-height:0;flex:1 1 0;display:flex;flex-direction:column;gap:6px;overflow:hidden;color:#e7efed}.v39-test-tools-panel[hidden]{display:none!important}.v39-test-tools-head{display:flex;align-items:center;gap:8px}.v39-test-tools-head button,.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{min-height:34px;border:1px solid #49626a;border-radius:6px;background:#14242a;color:#edf3f1;padding:5px 9px;font-size:15px;font-weight:700}.v39-test-tools-head span{margin-left:auto;color:#f1c96f}.v39-test-tools-scroll{min-width:0;min-height:0;max-height:100%;flex:1 1 0;overflow-x:hidden!important;overflow-y:auto!important;display:grid;grid-auto-rows:max-content;gap:7px;align-content:start;padding-bottom:12px;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}.v39-test-section{border:1px solid #354a51;border-radius:7px;background:#101c21;overflow:hidden}.v39-test-section>summary{min-height:34px;display:flex;align-items:center;gap:7px;padding:6px 8px;list-style:none;cursor:pointer;user-select:none;color:#e7efed;font-size:15px;font-weight:800;background:#14242a}.v39-test-section>summary::-webkit-details-marker{display:none}.v39-test-section>summary::before{content:"▷";display:inline-block;min-width:14px;color:#74d2df;font-size:13px;line-height:1}.v39-test-section[open]>summary::before{content:"▽"}.v39-test-section-body{display:grid;gap:5px;padding:7px}.v39-test-base-list{display:grid;gap:6px}.v39-test-base-card{display:grid;gap:5px;padding:7px;border:1px solid #3e565e;border-radius:7px;background:#0d171b}.v39-test-base-card header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.v39-test-base-card header span{padding:2px 6px;border:1px solid #5f858f;border-radius:999px;color:#9fe1eb;font-size:11px;font-weight:900}.v39-test-base-card header strong{color:#eef7f5;font-size:14px}.v39-test-base-card p{margin:0!important;font-size:12px!important;color:#b7c7ca!important;line-height:1.4}.v39-test-empty{color:#82979c!important}.v39-test-tools-scroll h3,.v39-test-tools-scroll p{margin:0;font-size:15px}.v39-test-tools-scroll p{color:#aebdc0}.v39-test-button-row,.v39-test-form-row{display:flex;flex-wrap:wrap;gap:5px}.v39-test-form-row select{min-width:130px}.v39-test-form-row input{width:100px}.v39-test-ai-grid{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 9px;font-size:15px}.v39-test-ai-grid span{color:#91a5aa}.v39-test-ai-grid b{min-width:0;overflow-wrap:anywhere}.v39-test-log-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}.v39-test-log-tabs button{flex:0 0 auto}.v39-test-log-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-test-log-tabs small{color:#a9bbc0}.v39-test-ai-log{max-height:220px;overflow:auto;border:1px solid #293c42;border-radius:6px}.v39-test-ai-log article{display:grid;grid-template-columns:38px minmax(90px,auto) minmax(120px,1fr);gap:5px 8px;padding:7px;border-bottom:1px solid #293c42;font-size:15px}.v39-test-ai-log article span{color:#78d19a}.v39-test-ai-log article strong{color:#f0d17b}.v39-test-ai-log article p{grid-column:2/-1}.v39-test-tools-panel button:active{background:#28505a}.v39-test-tools-panel output{min-height:30px;padding:6px 9px;border:1px solid #735f2f;border-radius:6px;background:#2c2616;color:#ffe29a;font-size:15px;font-weight:700}@media(max-width:620px){.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{font-size:14px;padding:4px 7px}.v39-test-section-body{padding:6px}.v39-test-ai-grid,.v39-test-ai-log article{font-size:14px}.v39-test-ai-log article{grid-template-columns:34px minmax(80px,auto) minmax(100px,1fr)}}`;
+  style.textContent = `.v39-test-tools-panel{width:100%;height:100%;max-height:100%;min-width:0;min-height:0;flex:1 1 0;display:flex;flex-direction:column;gap:6px;overflow:hidden;color:#e7efed}.v39-test-tools-panel[hidden]{display:none!important}.v39-test-tools-head{display:flex;align-items:center;gap:8px}.v39-test-tools-head button,.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{min-height:34px;border:1px solid #49626a;border-radius:6px;background:#14242a;color:#edf3f1;padding:5px 9px;font-size:var(--font-body);font-weight:700}.v39-test-tools-head span{margin-left:auto;color:#f1c96f}.v39-test-tools-scroll{min-width:0;min-height:0;max-height:100%;flex:1 1 0;overflow-x:hidden!important;overflow-y:auto!important;display:grid;grid-auto-rows:max-content;gap:7px;align-content:start;padding-bottom:12px;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}.v39-test-section{border:1px solid #354a51;border-radius:7px;background:#101c21;overflow:hidden}.v39-test-section>summary{min-height:34px;display:flex;align-items:center;gap:7px;padding:6px 8px;list-style:none;cursor:pointer;user-select:none;color:#e7efed;font-size:var(--font-body);font-weight:800;background:#14242a}.v39-test-section>summary::-webkit-details-marker{display:none}.v39-test-section>summary::before{content:"▷";display:inline-block;min-width:14px;color:#74d2df;font-size:var(--font-secondary);line-height:1}.v39-test-section[open]>summary::before{content:"▽"}.v39-test-section-body{display:grid;gap:5px;padding:7px}.v39-test-base-list{display:grid;gap:6px}.v39-test-base-card{display:grid;gap:5px;padding:7px;border:1px solid #3e565e;border-radius:7px;background:#0d171b}.v39-test-base-card header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.v39-test-base-card header span{padding:2px 6px;border:1px solid #5f858f;border-radius:999px;color:#9fe1eb;font-size:var(--font-size-11);font-weight:900}.v39-test-base-card header strong{color:#eef7f5;font-size:var(--font-size-14)}.v39-test-base-card p{margin:0!important;font-size:var(--font-compact)!important;color:#b7c7ca!important;line-height:1.4}.v39-test-empty{color:#82979c!important}.v39-test-tools-scroll h3,.v39-test-tools-scroll p{margin:0;font-size:var(--font-body)}.v39-test-tools-scroll p{color:#aebdc0}.v39-test-button-row,.v39-test-form-row{display:flex;flex-wrap:wrap;gap:5px}.v39-test-form-row select{min-width:130px}.v39-test-form-row input{width:100px}.v39-test-ai-grid{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 9px;font-size:var(--font-body)}.v39-test-ai-grid span{color:#91a5aa}.v39-test-ai-grid b{min-width:0;overflow-wrap:anywhere}.v39-test-log-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}.v39-test-log-tabs button{flex:0 0 auto}.v39-test-log-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-test-log-tabs small{color:#a9bbc0}.v39-test-ai-log{max-height:220px;overflow:auto;border:1px solid #293c42;border-radius:6px}.v39-test-ai-log article{display:grid;grid-template-columns:38px minmax(90px,auto) minmax(120px,1fr);gap:5px 8px;padding:7px;border-bottom:1px solid #293c42;font-size:var(--font-body)}.v39-test-ai-log article span{color:#78d19a}.v39-test-ai-log article strong{color:#f0d17b}.v39-test-ai-log article p{grid-column:2/-1}.v39-test-tools-panel button:active{background:#28505a}.v39-test-tools-panel output{min-height:30px;padding:6px 9px;border:1px solid #735f2f;border-radius:6px;background:#2c2616;color:#ffe29a;font-size:var(--font-body);font-weight:700}@media(max-width:620px){.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{padding:4px 7px}.v39-test-section-body{padding:6px}.v39-test-ai-log article{grid-template-columns:34px minmax(80px,auto) minmax(100px,1fr)}}`;
   document.head.appendChild(style);
 }
 
@@ -695,6 +732,11 @@ function install() {
     else collapsedSectionKeys.add(key);
   }, true);
   panel.addEventListener("change", event => {
+    if (event.target.id === "v39-test-turn-count") {
+      bulkTurnCount = clamp(Math.floor(number(event.target.value, 10)), 1, 100);
+      event.target.value = String(bulkTurnCount);
+      return;
+    }
     if (!(event.target instanceof HTMLSelectElement)) return;
     if (event.target.id === "v39-test-enemy-id") selectedEnemyId = text(event.target.value);
     else if (event.target.id === "v39-test-skill-name") selectedTestSkillName = text(event.target.value);

@@ -384,27 +384,46 @@ function renderSettlementConversionAction() {
   if (!(button instanceof HTMLButtonElement)) return;
   const state = gameState();
   const player = activePlayer(state);
-  const inspection = inspectV39TerritoryTileConversion(state, player?.id, selectedCoord);
+  const inspection = selectedSettlementConversion(state, player?.id);
+  const label = inspection.targetMode === "resource" ? "居住化解除" : "居住化";
   button.disabled = !inspection.available;
   button.textContent = inspection.pending
-    ? `居住化中 ${Math.max(0, Math.floor(Number(inspection.pending.remainingTurns) || 0))}T`
-    : "居住化";
-  button.title = inspection.available ? `居住化を開始 (${inspection.totalTurns}T)` : inspection.reason;
-  if (status) status.textContent = inspection.available ? `完了まで${inspection.totalTurns}T` : inspection.reason;
+    ? `${inspection.pending.targetMode === "resource" ? "解除" : "居住化"}中 ${Math.max(0, Math.floor(Number(inspection.pending.remainingTurns) || 0))}T`
+    : label;
+  button.title = inspection.available ? `${label}を開始 (${inspection.totalTurns}T)` : inspection.reason;
+  if (status) status.textContent = inspection.available ? `完了まで${inspection.totalTurns}T${inspection.targetMode === "settlement" && (inspection.village?.tileFacilityMap?.[inspection.tileKey]?.length || inspection.village?.constructionQueue?.some(item => item.tileKey === inspection.tileKey)) ? " / 完了時に施設を撤去" : ""}` : inspection.reason;
+}
+
+function selectedSettlementConversion(state, playerId) {
+  const inspection = inspectV39TerritoryTileConversion(state, playerId, selectedCoord);
+  return inspection.currentMode === "settlement"
+    ? inspectV39TerritoryTileConversion(state, playerId, selectedCoord, "resource")
+    : inspection;
 }
 
 function startSelectedSettlementConversion() {
   const state = gameState();
   const player = activePlayer(state);
-  const result = startV39TerritoryTileConversion(state, player?.id, selectedCoord);
+  const inspection = selectedSettlementConversion(state, player?.id);
+  const label = inspection.targetMode === "resource" ? "居住化解除" : "居住化";
+  if (inspection.available) {
+    const facilities = inspection.village?.tileFacilityMap?.[inspection.tileKey] || [];
+    const queued = (inspection.village?.constructionQueue || []).filter(item => item.tileKey === inspection.tileKey).map(item => item.facilityName);
+    const removal = inspection.targetMode === "settlement" && (facilities.length || queued.length)
+      ? `\n完了時に${[...new Set([...facilities, ...queued])].join("・")}を撤去し、施設効果を失います。建設に使った資材は戻りません。`
+      : "";
+    const change = inspection.targetMode === "resource" ? "村表示が消え、人口許容が減り、資源化へ戻ります。" : "村表示になり、施設を置く場合は居住地から施設への変更が必要になります。";
+    if (!window.confirm(`${label}しますか？\n${change}${removal}\n完了まで${inspection.totalTurns}ターン`)) return { ok:false, cancelled:true };
+  }
+  const result = startV39TerritoryTileConversion(state, player?.id, selectedCoord, inspection.targetMode);
   if (!result.ok) {
-    window.showV39TurnBanner?.(`居住化不可: ${result.reason}`);
+    window.showV39TurnBanner?.(`${label}不可: ${result.reason}`);
     renderSettlementConversionAction();
     return result;
   }
   window.setV39GameState?.({ players:result.state.players }, { reason:"territory-settlement-conversion-started" });
-  window.showV39TurnBanner?.(`居住化開始: (${result.inspection.x}, ${result.inspection.y}) / ${result.inspection.totalTurns}T`);
-  window.appendV39ActivityLog?.(player.id, "領土", `居住化開始: (${result.inspection.x}, ${result.inspection.y})`, result.inspection);
+  window.showV39TurnBanner?.(`${label}開始: (${result.inspection.x}, ${result.inspection.y}) / ${result.inspection.totalTurns}T`);
+  window.appendV39ActivityLog?.(player.id, "領土", `${label}開始: (${result.inspection.x}, ${result.inspection.y})`, result.inspection);
   renderSettlementConversionAction();
   return result;
 }

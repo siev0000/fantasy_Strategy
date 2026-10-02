@@ -10,6 +10,7 @@ import {
   resolveV39EnemySquadCargoStatus
 } from "../../lib/v39-logistics-state.js";
 import { getFactionSettlements, replaceFactionSettlement } from "../../lib/settlement-state.js";
+import { isV39UnitInsideSettlement } from "../../lib/v39-transport-rules.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -26,8 +27,7 @@ function squadUnitIds(squad) {
 }
 
 function settlementAt(faction, unit) {
-  const key = tileKey(unit);
-  return getFactionSettlements(faction).find(settlement => settlement?.placed !== false && tileKey(settlement) === key) || null;
+  return getFactionSettlements(faction).find(settlement => isV39UnitInsideSettlement(unit, settlement)) || null;
 }
 
 function allLivingSquadMembersAt(faction, squad, destination) {
@@ -141,21 +141,22 @@ export function depositV39PlayerCargo(playerId, movedUnitId = "") {
     const ids = squadUnitIds(squad);
     if (movedUnitId && !ids.includes(text(movedUnitId))) return squad;
     const solo = text(squad?.id) === "solo";
-    if (solo) {
+    {
       const cargoByUnitId = { ...(squad?.cargoByUnitId || {}) };
       for (const unitId of movedUnitId ? [text(movedUnitId)] : Object.keys(cargoByUnitId)) {
         const unit = faction.units.find(row => text(row?.id) === unitId);
         const settlement = unit && settlementAt(faction, unit);
-        if (!settlement || cargoEmpty(cargoByUnitId[unitId])) continue;
+        if (!settlement || unit.transportAssignment?.enabled || cargoEmpty(cargoByUnitId[unitId])) continue;
         const result = depositIntoSettlement(settlement, player.race, cargoByUnitId[unitId]);
-        faction = replaceFactionSettlement(faction, result.settlement, { ownerPlayerId:player.id });
+        faction = replaceFactionSettlement(faction, result.settlement, { ownerPlayerId:player.id, select:false });
         if (cargoEmpty(result.remainingCargo)) delete cargoByUnitId[unitId];
         else cargoByUnitId[unitId] = result.remainingCargo;
         reports.push({ playerId:player.id, unitId, squadId:text(squad.id), settlementId:text(settlement.settlementId || settlement.id), deposited:result.deposited });
         changed = true;
       }
-      return { ...squad, cargoByUnitId };
+      squad = { ...squad, cargoByUnitId };
     }
+    if (solo) return squad;
     const member = faction.units.find(unit => ids.includes(text(unit?.id)));
     const settlement = member && settlementAt(faction, member);
     if (!settlement || cargoEmpty(squad?.cargo) || !allLivingSquadMembersAt(faction, squad, settlement)) return squad;

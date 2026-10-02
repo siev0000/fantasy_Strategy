@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { isAliveEnemyAiUnit } from "../../lib/v39-enemy-ai-planner.js";
 
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const delay = ms => new Promise(resolve => window.setTimeout(resolve, ms));
@@ -24,6 +25,8 @@ function visibleTile(tile) {
 
 function visibleEnemyEvent(event) {
   const enemyId = String(event?.enemyId || event?.attackerId || "").trim();
+  // 計算後に死亡した敵の過去の移動演出で、死体を動かさない。
+  if (event?.type === "move" && !isAliveEnemyAiUnit((window.getV39GameState?.()?.enemies || []).find(enemy => String(enemy?.id) === enemyId))) return false;
   if (enemyId && window.isV39EntityDetected?.(enemyId) === false) return false;
   return event?.visible === true || visibleTile(event?.to) || visibleTile(event?.target) || visibleTile(event?.from);
 }
@@ -42,6 +45,7 @@ async function focusTile(tile, previousTile) {
 }
 
 async function playMove(event) {
+  if (!isAliveEnemyAiUnit((window.getV39GameState?.()?.enemies || []).find(enemy => String(enemy?.id) === String(event.enemyId)))) return;
   const marker = window.getV39MapEntityMarker?.(event.enemyId);
   if (!marker || !event.from || !event.to) return;
   const scene = activeScene();

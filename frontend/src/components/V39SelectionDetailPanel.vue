@@ -200,7 +200,7 @@ function toggleSection(key) {
   color:#93a5a9;
   padding:3px 10px;
   font:inherit;
-  font-size:12px;
+  font-size:var(--font-compact);
   font-weight:700;
   cursor:pointer;
 }
@@ -278,7 +278,7 @@ function toggleSection(key) {
   background:#132126;
   color:#91a1a5;
   font:inherit;
-  font-size:10px;
+  font-size:var(--font-size-10);
   font-weight:800;
   letter-spacing:.03em;
   text-align:left;
@@ -297,7 +297,7 @@ button.operation-detail-section-title:hover {
 .operation-section-toggle {
   flex:0 0 auto;
   color:#77d8e7;
-  font-size:12px;
+  font-size:var(--font-compact);
 }
 
 .operation-detail-section-body {
@@ -328,13 +328,13 @@ button.operation-detail-section-title:hover {
 .operation-detail-stat span {
   min-width:0;
   color:#94a3a7;
-  font-size:11px;
+  font-size:var(--font-size-11);
   line-height:1;
 }
 
 .operation-detail-stat b {
   color:#f0f5f3;
-  font-size:14px;
+  font-size:var(--font-size-14);
   line-height:1.1;
 }
 
@@ -360,7 +360,7 @@ button.operation-detail-section-title:hover {
 .operation-equipment-item span {
   min-width:0;
   color:#a7b4b7;
-  font-size:11px;
+  font-size:var(--font-size-11);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -369,7 +369,7 @@ button.operation-detail-section-title:hover {
 .operation-equipment-item b {
   min-width:0;
   color:#f0f5f3;
-  font-size:12px;
+  font-size:var(--font-compact);
   text-align:right;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -414,7 +414,7 @@ button.operation-detail-section-title:hover {
 .operation-proficiency-item span {
   min-width:0;
   color:#a7b4b7;
-  font-size:11px;
+  font-size:var(--font-size-11);
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -423,13 +423,13 @@ button.operation-detail-section-title:hover {
 .operation-proficiency-item b {
   flex:0 0 auto;
   color:#f0f5f3;
-  font-size:13px;
+  font-size:var(--font-secondary);
 }
 
 .operation-empty {
   padding:6px;
   color:#829397;
-  font-size:11px;
+  font-size:var(--font-size-11);
 }
 
 @media (max-width:430px) {
@@ -439,7 +439,7 @@ button.operation-detail-section-title:hover {
 
   .operation-detail-tabs button {
     padding:3px 5px;
-    font-size:12px;
+    font-size:var(--font-compact);
   }
 }
 </style>

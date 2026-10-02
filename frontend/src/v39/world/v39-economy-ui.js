@@ -13,11 +13,13 @@ import {
 } from "../../lib/v39-economy-rules.js";
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
 import { getVillageScaleDefinitions, resolveVillageScaleDefinition } from "../../composables/villageCoreUtils.js";
+import { getHexOffsetNeighbors } from "../../lib/hex-grid.js";
 
 const modal = document.getElementById("buildModal");
 let selectedTile = null;
 let selectedFacilityName = "";
 let processingTurn = false;
+let developmentSelection = null;
 
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -85,23 +87,25 @@ function installStyles() {
   style.textContent = `
     .v39-build-modal{width:min(920px,94vw);height:min(680px,88vh)}
     .v39-build-body{display:grid!important;grid-template-rows:auto auto minmax(0,1fr) auto;gap:8px;overflow:hidden!important}
-    .v39-build-summary{display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #3f555d;border-radius:8px;background:#101d22;font-size:15px}
+    .v39-build-summary{display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #3f555d;border-radius:8px;background:#101d22;font-size:var(--font-body)}
     .v39-build-summary b{color:#88dfab}.v39-build-layout{display:grid;grid-template-columns:minmax(250px,42%) minmax(0,1fr);gap:8px;min-height:0}
     .v39-build-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:6px;overflow:auto;padding-right:3px}
     .v39-build-item{min-height:66px;padding:7px;text-align:left;border:1px solid #40545b;border-radius:7px;background:#142329;color:#e5eeee;cursor:pointer}
-    .v39-build-item strong,.v39-build-item span{display:block}.v39-build-item strong{font-size:15px}.v39-build-item span{margin-top:3px;color:#9fb0b4;font-size:13px}
+    .v39-build-item strong,.v39-build-item span{display:block}.v39-build-item strong{font-size:var(--font-body)}.v39-build-item span{margin-top:3px;color:#9fb0b4;font-size:var(--font-secondary)}
     .v39-build-item.active{border:2px solid #67cddd;background:#17343c}.v39-build-item.unavailable{opacity:.48}
     .v39-build-detail{overflow:auto;padding:12px;border:1px solid #465b63;border-radius:8px;background:#111e23;color:#dae7e7}
-    .v39-build-detail h3{margin:0 0 8px;font-size:21px}.v39-build-detail p{font-size:15px;line-height:1.55}.v39-build-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-    .v39-build-fact{padding:8px;border-radius:6px;background:#192a30}.v39-build-fact span,.v39-build-fact b{display:block}.v39-build-fact span{font-size:13px;color:#93a5aa}.v39-build-fact b{margin-top:2px;font-size:15px}
-    #v39-build-start{width:100%;min-height:42px;margin-top:10px;border:1px solid #c29c45;border-radius:7px;background:#3c3217;color:#ffe6a0;font-size:16px;font-weight:800;cursor:pointer}
-    #v39-build-start:disabled{cursor:not-allowed;opacity:.4}.v39-build-reasons{min-height:22px;margin-top:8px;color:#e89a89;font-size:13px}
+    .v39-build-detail h3{margin:0 0 8px;font-size:var(--font-size-21)}.v39-build-detail p{font-size:var(--font-body);line-height:1.55}.v39-build-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+    .v39-build-fact{padding:8px;border-radius:6px;background:#192a30}.v39-build-fact span,.v39-build-fact b{display:block}.v39-build-fact span{font-size:var(--font-secondary);color:#93a5aa}.v39-build-fact b{margin-top:2px;font-size:var(--font-body)}
+    #v39-build-start{width:100%;min-height:42px;margin-top:10px;border:1px solid #c29c45;border-radius:7px;background:#3c3217;color:#ffe6a0;font-size:var(--font-size-16);font-weight:800;cursor:pointer}
+    #v39-build-start:disabled{cursor:not-allowed;opacity:.4}.v39-build-reasons{min-height:22px;margin-top:8px;color:#e89a89;font-size:var(--font-secondary)}
     .v39-development{display:grid;gap:7px;padding:9px;border:1px solid #477680;border-radius:8px;background:#102228;color:#e9f5f3}
-    .v39-development-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.v39-development-head strong{font-size:16px}.v39-development-head span{font-size:13px;color:#9bb0b4}
-    .v39-development-requirements{display:flex;flex-wrap:wrap;gap:5px}.v39-development-requirement{padding:5px 7px;border:1px solid #526268;border-radius:6px;background:#17282e;font-size:13px}.v39-development-requirement.met{border-color:#4d8b68;color:#bce7ca}.v39-development-requirement.shortage{border-color:#8c594f;color:#efb0a2}
-    .v39-development-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}.v39-development-reason{margin-right:auto;color:#e8aa91;font-size:13px}
-    #v39-development-start{min-height:36px;padding:6px 12px;border:1px solid #67cddd;border-radius:7px;background:#17343c;color:#efffff;font-size:15px;font-weight:800;cursor:pointer}#v39-development-start:disabled{opacity:.4;cursor:not-allowed}
-    .v39-build-queue{display:flex;gap:6px;min-height:42px;overflow-x:auto}.v39-build-queue-item{flex:0 0 auto;padding:7px 10px;border:1px solid #53666c;border-radius:7px;background:#17252a;font-size:13px}.v39-build-queue-empty{color:#829397;font-size:13px;padding:8px}
+    .v39-development-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.v39-development-head strong{font-size:var(--font-size-16)}.v39-development-head span{font-size:var(--font-secondary);color:#9bb0b4}
+    .v39-development-requirements{display:flex;flex-wrap:wrap;gap:5px}.v39-development-requirement{padding:5px 7px;border:1px solid #526268;border-radius:6px;background:#17282e;font-size:var(--font-secondary)}.v39-development-requirement.met{border-color:#4d8b68;color:#bce7ca}.v39-development-requirement.shortage{border-color:#8c594f;color:#efb0a2}
+    .v39-development-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}.v39-development-reason{margin-right:auto;color:#e8aa91;font-size:var(--font-secondary)}
+    #v39-development-start{min-height:36px;padding:6px 12px;border:1px solid #67cddd;border-radius:7px;background:#17343c;color:#efffff;font-size:var(--font-body);font-weight:800;cursor:pointer}#v39-development-start:disabled{opacity:.4;cursor:not-allowed}
+    .v39-development-selection-toolbar{position:fixed;top:76px;left:50%;z-index:6000;transform:translateX(-50%);display:flex;align-items:center;gap:8px;max-width:calc(100vw - 24px);padding:9px 11px;border:2px solid #67cddd;border-radius:9px;background:rgba(9,24,29,.97);box-shadow:0 5px 18px rgba(0,0,0,.4);color:#eaffff;font-size:var(--font-body);font-weight:700}
+    .v39-development-selection-toolbar button{min-height:34px;padding:5px 10px;border:1px solid #597078;border-radius:6px;background:#17282e;color:#e8f4f3;font-size:var(--font-body);font-weight:700;cursor:pointer}.v39-development-selection-toolbar button.confirm{border-color:#d2aa4c;background:#443716;color:#ffe69d}.v39-development-selection-toolbar button:disabled{opacity:.4;cursor:not-allowed}
+    .v39-build-queue{display:flex;gap:6px;min-height:42px;overflow-x:auto}.v39-build-queue-item{flex:0 0 auto;padding:7px 10px;border:1px solid #53666c;border-radius:7px;background:#17252a;font-size:var(--font-secondary)}.v39-build-queue-empty{color:#829397;font-size:var(--font-secondary);padding:8px}
     @media(max-width:680px){.v39-build-modal{height:92vh}.v39-build-layout{grid-template-columns:1fr;grid-template-rows:minmax(130px,42%) minmax(0,1fr)}.v39-build-list{grid-template-columns:1fr 1fr}.v39-build-facts{grid-template-columns:1fr}.v39-build-item{min-height:58px}}
   `;
   document.head.appendChild(style);
@@ -128,7 +132,7 @@ function renderBuildModal() {
     const project = development.project;
     developmentPanel.innerHTML = `<div class="v39-development-head"><strong>拠点発展: ${escapeHtml(development.current?.name || context.village?.type || "-")} ${development.next ? `→ ${escapeHtml(development.next.name)}` : ""}</strong><span>${project ? `工事中 残り${project.remainingTurns}/${project.totalTurns}T` : (development.next ? `工期 ${development.next.buildTurns}T` : "最大規模")}</span></div>
       ${requirements ? `<div class="v39-development-requirements">${requirements}</div>` : ""}
-      <div class="v39-development-actions"><span class="v39-development-reason">${escapeHtml(development.reason)}</span>${development.next ? `<button type="button" id="v39-development-start" ${development.available ? "" : "disabled"}>${project ? "発展工事中" : `${escapeHtml(development.next.name)}へ発展`}</button>` : ""}</div>`;
+      <div class="v39-development-actions"><span class="v39-development-reason">${escapeHtml(development.reason)}</span>${development.next ? `<button type="button" id="v39-development-start" ${development.available ? "" : "disabled"}>${project ? "発展工事中" : "拡張位置を選択"}</button>` : ""}</div>`;
   }
   const list = modal.querySelector("#v39-build-list");
   if (list) list.innerHTML = definitions.map(definition => {
@@ -149,24 +153,153 @@ function renderBuildModal() {
     : `<div class="v39-build-queue-empty">建設中の施設なし</div>`;
 }
 
-function startSelectedDevelopment() {
+function developmentSelectionKey(tile) {
+  const x = Math.floor(number(tile?.x));
+  const y = Math.floor(number(tile?.y));
+  return Number.isFinite(x) && Number.isFinite(y) ? `${x},${y}` : "";
+}
+
+function selectedKeysConnected(keys) {
+  const selected = new Set(keys);
+  if (!selected.size) return false;
+  const queue = [[...selected][0]];
+  const visited = new Set(queue);
+  while (queue.length) {
+    const [x, y] = queue.shift().split(",").map(Number);
+    for (const neighbor of getHexOffsetNeighbors(x, y)) {
+      const key = `${neighbor.x},${neighbor.y}`;
+      if (!selected.has(key) || visited.has(key)) continue;
+      visited.add(key);
+      queue.push(key);
+    }
+  }
+  return visited.size === selected.size;
+}
+
+function dispatchDevelopmentSelectionChanged() {
+  window.dispatchEvent(new CustomEvent("v39:settlement-development-selection-changed", {
+    detail:developmentSelection ? {
+      ...developmentSelection,
+      candidateTileKeys:[...developmentSelection.candidateTileKeys],
+      lockedTileKeys:[...developmentSelection.lockedTileKeys],
+      selectedTileKeys:[...developmentSelection.selectedTileKeys]
+    } : null
+  }));
+}
+
+function renderDevelopmentSelectionToolbar() {
+  document.getElementById("v39-development-selection-toolbar")?.remove();
+  if (!developmentSelection) return;
+  const toolbar = document.createElement("div");
+  toolbar.id = "v39-development-selection-toolbar";
+  toolbar.className = "v39-development-selection-toolbar";
+  const count = developmentSelection.selectedTileKeys.size;
+  toolbar.innerHTML = `<span>${escapeHtml(developmentSelection.targetName)}の範囲 ${count}/${developmentSelection.requiredTiles}マス</span><button type="button" data-development-selection-action="auto">自動選択</button><button type="button" class="confirm" data-development-selection-action="confirm"${count === developmentSelection.requiredTiles ? "" : " disabled"}>確定</button><button type="button" data-development-selection-action="cancel">キャンセル</button>`;
+  document.body.appendChild(toolbar);
+}
+
+function clearDevelopmentSelection({ reopen = false } = {}) {
+  developmentSelection = null;
+  renderDevelopmentSelectionToolbar();
+  dispatchDevelopmentSelectionChanged();
+  if (reopen) window.openV39SettlementDevelopment?.();
+}
+
+function beginDevelopmentSelection() {
   const context = activeContext();
-  const result = startV39SettlementDevelopment(context.state, context.player?.id, context.village?.settlementId || context.village?.id);
+  const inspection = inspectV39SettlementDevelopment(context.state, context.player?.id, context.village?.settlementId || context.village?.id);
+  if (!inspection.available) {
+    window.showV39TurnBanner?.(`発展不可: ${inspection.reason}`);
+    renderBuildModal();
+    return { ok:false, reason:inspection.reason, inspection };
+  }
+  const requiredTiles = Math.max(1, Math.floor(number(inspection.next?.footprintTiles, 1)));
+  developmentSelection = {
+    playerId:context.player.id,
+    settlementId:text(context.village?.settlementId || context.village?.id),
+    targetName:inspection.next.name,
+    requiredTiles,
+    candidateTileKeys:new Set(inspection.residentialTileKeys),
+    lockedTileKeys:new Set(inspection.lockedResidentialTileKeys),
+    selectedTileKeys:new Set(inspection.lockedResidentialTileKeys)
+  };
+  modal?.classList.remove("open");
+  renderDevelopmentSelectionToolbar();
+  dispatchDevelopmentSelectionChanged();
+  window.showV39TurnBanner?.(`発展先を${requiredTiles}マス選択してください`);
+  return { ok:true, inspection };
+}
+
+function confirmDevelopmentSelection() {
+  if (!developmentSelection || developmentSelection.selectedTileKeys.size !== developmentSelection.requiredTiles) return { ok:false, reason:"必要マス数を選択してください" };
+  const context = activeContext();
+  const result = startV39SettlementDevelopment(
+    context.state,
+    developmentSelection.playerId,
+    developmentSelection.settlementId,
+    { residentialTileKeys:[...developmentSelection.selectedTileKeys] }
+  );
   if (!result.ok) {
     window.showV39TurnBanner?.(`発展不可: ${result.reason}`);
-    renderBuildModal();
     return result;
   }
   window.setV39GameState?.({ players:result.state.players }, { reason:"settlement-development-started" });
   window.showV39TurnBanner?.(`${context.village.name || "拠点"}: ${result.target.name}への発展を開始 (${result.village.developmentProject.totalTurns}T)`);
   window.appendV39ActivityLog?.(context.player.id, "拠点", `${context.village.name || "拠点"}が${result.target.name}への発展を開始`, result.village.developmentProject);
-  renderBuildModal();
+  clearDevelopmentSelection();
   return result;
+}
+
+function toggleDevelopmentSelection(tile) {
+  if (!developmentSelection) return false;
+  const key = developmentSelectionKey(tile);
+  if (!developmentSelection.candidateTileKeys.has(key)) {
+    window.showV39TurnBanner?.("このマスは発展先に選択できません");
+    return true;
+  }
+  if (developmentSelection.lockedTileKeys.has(key)) {
+    window.showV39TurnBanner?.("現在の拠点マスは選択解除できません");
+    return true;
+  }
+  const next = new Set(developmentSelection.selectedTileKeys);
+  if (next.has(key)) next.delete(key);
+  else {
+    if (next.size >= developmentSelection.requiredTiles) {
+      window.showV39TurnBanner?.("必要数に達しています。別のマスを外してから選択してください");
+      return true;
+    }
+    next.add(key);
+  }
+  if (!selectedKeysConnected(next)) {
+    window.showV39TurnBanner?.("発展先は隣接するマスを連結して選択してください");
+    return true;
+  }
+  developmentSelection.selectedTileKeys = next;
+  renderDevelopmentSelectionToolbar();
+  dispatchDevelopmentSelectionChanged();
+  return true;
+}
+
+function autoSelectDevelopmentTiles() {
+  if (!developmentSelection) return;
+  developmentSelection.selectedTileKeys = new Set(
+    [...developmentSelection.candidateTileKeys].slice(0, developmentSelection.requiredTiles)
+  );
+  renderDevelopmentSelectionToolbar();
+  dispatchDevelopmentSelectionChanged();
+}
+
+function startSelectedDevelopment() {
+  return beginDevelopmentSelection();
 }
 
 function startSelectedConstruction() {
   const context = activeContext();
-  const result = startV39Construction(context.state, context.player?.id, selectedFacilityName, targetTile(context));
+  const tile = targetTile(context);
+  const definition = facilityDefinitions().find(row => row.name === selectedFacilityName);
+  const check = definition ? inspectV39Construction(context.state, context.player, definition, tile) : null;
+  if (check?.available && check.replacesResidential && !window.confirm(`居住地を${selectedFacilityName}へ変更しますか？\n村表示を施設に置き換え、建設資材を消費します。\n工期は${definition.buildTurns}ターンです。施設があるマスの基礎産出は土地用途の設定に従います。`)) return { ok:false, cancelled:true };
+  const result = startV39Construction(context.state, context.player?.id, selectedFacilityName, tile, window.__v39FieldRuntime?.mapData, { confirmResidentialReplacement:check?.replacesResidential === true });
   if (!result.ok) {
     window.showV39TurnBanner?.(`建設不可: ${result.reason}`);
     renderBuildModal();
@@ -288,12 +421,32 @@ window.openV39SettlementDevelopment = () => {
   modal?.classList.add("open");
   return modal instanceof HTMLElement;
 };
+window.getV39SettlementDevelopmentSelection = () => developmentSelection ? ({
+  ...developmentSelection,
+  candidateTileKeys:[...developmentSelection.candidateTileKeys],
+  lockedTileKeys:[...developmentSelection.lockedTileKeys],
+  selectedTileKeys:[...developmentSelection.selectedTileKeys]
+}) : null;
+window.confirmV39SettlementDevelopmentSelection = confirmDevelopmentSelection;
+window.cancelV39SettlementDevelopmentSelection = () => clearDevelopmentSelection({ reopen:true });
 window.getV39EconomyRules = () => ({ gainScale:0.1, consumptionScale:0.1, initialStockTurns:3, constructionUsesJsonTurns:true });
 
-window.addEventListener("v39:tile-selected", event => { selectedTile = event.detail || null; if (modal?.classList.contains("open")) renderBuildModal(); });
+window.addEventListener("v39:tile-selected", event => {
+  selectedTile = event.detail || null;
+  if (developmentSelection && toggleDevelopmentSelection(selectedTile)) return;
+  if (modal?.classList.contains("open")) renderBuildModal();
+});
 window.addEventListener("v39:turn-stage-economy", handleTurn);
 window.addEventListener("v39:game-state-changed", refresh);
 document.addEventListener("click", event => {
+  const selectionAction = event.target instanceof Element ? event.target.closest("[data-development-selection-action]") : null;
+  if (selectionAction) {
+    const action = text(selectionAction.dataset.developmentSelectionAction);
+    if (action === "auto") autoSelectDevelopmentTiles();
+    else if (action === "confirm") confirmDevelopmentSelection();
+    else if (action === "cancel") clearDevelopmentSelection({ reopen:true });
+    return;
+  }
   const buildButton = event.target instanceof Element ? event.target.closest('[data-open="build"]') : null;
   if (buildButton) window.requestAnimationFrame(renderBuildModal);
 });
