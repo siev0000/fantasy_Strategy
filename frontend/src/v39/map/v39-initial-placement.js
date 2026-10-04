@@ -3,15 +3,85 @@ import { getHexOffsetNeighbors, getHexNeighborCoords, getHexDistance } from "../
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import { V39_START_AREA_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { classData } from "../../lib/game-data-registry.js";
+import { RACE_CLASS_NAME_MAP } from "../../constants/unitCommon.js";
 
 const MODE_BANNER_ID = "modeBanner";
 let pendingPlacement = null;
 let candidateContext = null;
 
+function raceTerrainPreferences(race) {
+  const row = classData.find(row => row.名前 === (RACE_CLASS_NAME_MAP[race] || race));
+  const values = value => Array.isArray(value) ? value : String(value || "").split(/[、,/:：\s]+/).filter(Boolean);
+  return { preferred:new Set(values(row?.適正土地)), unfavorable:new Set(values(row?.苦手土地)) };
+}
+
+function tileTerrains(data, point) {
+  const key = coordKey(point.x, point.y);
+  const terrains = new Set([data.grid[point.y][point.x], data.specialMap?.[point.y]?.[point.x], data.reliefMap?.[point.y]?.[point.x]]);
+  if (data.riverData?.riverSet?.has(key) || data.riverData?.riverTouchSet?.has(key)) terrains.add("河川");
+  return terrains;
+}
+
+function preferredLowlandTiles(data, race) {
+  const { preferred } = raceTerrainPreferences(race);
+  if (!preferred.size) return [];
+  const eligible = new Map();
+  for (let y = 0; y < data.h; y += 1) for (let x = 0; x < data.w; x += 1) {
+    const point = { x, y };
+    if (!unitCanStandAt(data, x, y)
+      || Math.abs(Number(data.heightLevelMap?.[y]?.[x]) || 0) > V39_START_AREA_BALANCE.preferredLowlandMaxHeight
+      || ![...preferred].some(terrain => tileTerrains(data, point).has(terrain))) continue;
+    eligible.set(coordKey(x, y), point);
+  }
+  const result = [];
+  // マップ全体で連結成分を一度だけ数える。候補数の上限とは独立して広い適正低地を拾う。
+  while (eligible.size) {
+    const region = [eligible.values().next().value];
+    eligible.delete(coordKey(region[0].x, region[0].y));
+    for (let index = 0; index < region.length; index += 1) {
+      const point = region[index];
+      for (const neighbor of getHexNeighborCoords(data.w, data.h, point.x, point.y, worldWrapEnabled())) {
+        const key = coordKey(neighbor.x, neighbor.y);
+        if (!eligible.has(key)) continue;
+        region.push(eligible.get(key));
+        eligible.delete(key);
+      }
+    }
+    if (region.length >= V39_START_AREA_BALANCE.preferredLowlandMinTiles) result.push(...region);
+  }
+  return result;
+}
+
+function terrainPreferenceScore(data, tile, preferred, unfavorable) {
+  if (!preferred.size && !unfavorable.size) return [0, 0, 0];
+  const found = new Set(), seen = new Set();
+  let favorableCount = 0, unfavorableCount = 0, ring = [tile];
+  for (let distance = 0; distance <= V39_START_AREA_BALANCE.terrainPreferenceRadius; distance += 1) {
+    const next = [];
+    for (const point of ring) {
+      const key = coordKey(point.x, point.y);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const terrains = tileTerrains(data, point);
+      const matches = [...preferred].filter(terrain => terrains.has(terrain));
+      matches.forEach(terrain => found.add(terrain));
+      if (matches.length) favorableCount += 1;
+      if ([...unfavorable].some(terrain => terrains.has(terrain))) unfavorableCount += 1;
+      next.push(...getHexNeighborCoords(data.w, data.h, point.x, point.y, worldWrapEnabled()));
+    }
+    ring = next;
+  }
+  // 平地と河川など、異なる適正土地を併せ持つ場所と広い適正地帯を優先する。
+  return [-found.size, unfavorableCount, -favorableCount];
+}
+
 function placementCandidates() {
   const data = fieldMapData();
   if (!data?.grid) return [];
   const state = getGameState();
+  const race = getActivePlayer(state)?.race;
+  const { preferred, unfavorable } = raceTerrainPreferences(race);
   const center = { x:(data.w - 1) / 2, y:(data.h - 1) / 2 };
   const margin = V39_START_AREA_BALANCE.placementRadius + 1;
   const distance = (a, b) => worldWrapEnabled()
@@ -24,17 +94,17 @@ function placementCandidates() {
     const height = Number(data.heightLevelMap?.[y]?.[x]) || 0;
     const tile = { x, y, height, terrain:data.grid[y][x], special:data.specialMap?.[y]?.[x] || "" };
     if (basePlacementIssue(tile, state)) continue;
-    tiles.push(tile);
+    tiles.push({ ...tile, preference:terrainPreferenceScore(data, tile, preferred, unfavorable) });
   }
   const candidates = [];
   const edgePenalty = tile => Math.max(0, margin - Math.min(tile.x, tile.y, data.w - 1 - tile.x, data.h - 1 - tile.y));
   while (candidates.length < V39_START_AREA_BALANCE.candidateCount) {
-    // 選択範囲が端で切れにくい低地を優先。中央寄りから選び、候補同士の範囲は重ねない。
+    // 地図端を避け、種族の適正土地、低地、中央寄りの順で優先する。
     let best = null, bestScore = null;
     for (const tile of tiles) {
       const separation = candidates.length ? Math.min(...candidates.map(candidate => distance(candidate, tile))) : 0;
       if (candidates.length && separation <= V39_START_AREA_BALANCE.placementRadius * 2) continue;
-      const score = [edgePenalty(tile), Math.abs(tile.height), getHexDistance(tile, center), -separation];
+      const score = [edgePenalty(tile), ...tile.preference, Math.abs(tile.height), getHexDistance(tile, center), -separation];
       const difference = bestScore ? score.findIndex((value, index) => value !== bestScore[index]) : -1;
       if (!best || (difference >= 0 && score[difference] < bestScore[difference])) {
         best = tile; bestScore = score;
@@ -49,8 +119,9 @@ function placementCandidates() {
 function currentCandidateContext() {
   const map = fieldMapData();
   const playerId = getGameState()?.activePlayerId;
+  const race = getActivePlayer()?.race;
   const count = placedSettlements(getActiveFaction()).length;
-  if (candidateContext?.map === map && candidateContext.playerId === playerId && candidateContext.count === count) return candidateContext;
+  if (candidateContext?.map === map && candidateContext.playerId === playerId && candidateContext.race === race && candidateContext.count === count) return candidateContext;
   const candidates = placementCandidates();
   const tiles = new Map();
   for (const candidate of candidates) {
@@ -69,15 +140,16 @@ function currentCandidateContext() {
     }
   }
   const state = getGameState();
+  for (const tile of preferredLowlandTiles(map, race)) tiles.set(coordKey(tile.x, tile.y), tile);
   const allowedTiles = [...tiles.values()].map(tile => ({ ...tile, terrain:map.grid[tile.y][tile.x] }))
     .filter(tile => !basePlacementIssue(tile, state));
-  candidateContext = { map, playerId, count, candidates, allowedTiles, allowedKeys:new Set(allowedTiles.map(tile => coordKey(tile.x, tile.y))) };
+  candidateContext = { map, playerId, race, count, candidates, allowedTiles, allowedKeys:new Set(allowedTiles.map(tile => coordKey(tile.x, tile.y))) };
   return candidateContext;
 }
 
 function initialPlacementIssue(tile) {
   return basePlacementIssue(tile) || (currentCandidateContext().allowedKeys.has(coordKey(tile?.x, tile?.y))
-    ? "" : `候補マスまたは周囲${V39_START_AREA_BALANCE.placementRadius}マスから選択してください`);
+    ? "" : `候補マス・周囲${V39_START_AREA_BALANCE.placementRadius}マス・広い適正低地から選択してください`);
 }
 
 function ensurePlacementPanel() {
@@ -88,12 +160,12 @@ function ensurePlacementPanel() {
     if (!document.getElementById("v39-placement-preview-style")) {
       const style = document.createElement("style");
       style.id = "v39-placement-preview-style";
-      style.textContent = `#footPlacement{min-height:0;overflow:auto;align-content:start}#v39-placement-preview{display:grid;gap:8px;padding:8px;color:#e9f2ef;font-size:var(--font-body)}#v39-placement-preview[hidden]{display:none}#v39-placement-preview [data-placement-candidates]{display:flex;flex-wrap:wrap;gap:6px}#v39-placement-preview button{font-size:var(--font-body);padding:6px 10px;background:#15353d;color:#eaf2ee;border:1px solid #75cad9;border-radius:6px;cursor:pointer}#v39-placement-preview button:disabled{opacity:.4;cursor:not-allowed}`;
+      style.textContent = `#footPlacement{min-height:0;height:100%;overflow:hidden}#v39-placement-preview{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0;height:100%;box-sizing:border-box;gap:8px;padding:8px;color:#e9f2ef;font-size:var(--font-body)}#v39-placement-preview[hidden]{display:none}#v39-placement-preview [data-placement-details]{display:grid;align-content:start;gap:8px;min-height:0;overflow:auto;overscroll-behavior:contain}#v39-placement-preview [data-placement-details]>:empty{display:none}#v39-placement-preview button{font-size:var(--font-body);padding:6px 10px;background:#15353d;color:#eaf2ee;border:1px solid #75cad9;border-radius:6px;cursor:pointer}#v39-placement-preview button:disabled{opacity:.4;cursor:not-allowed}`;
       document.head.appendChild(style);
     }
     panel = document.createElement("div");
     panel.id = "v39-placement-preview";
-    panel.innerHTML = `<strong>初期拠点の配置</strong><span>候補マスか周囲${V39_START_AREA_BALANCE.placementRadius}マスの色付き範囲から選択してください。</span><div data-placement-candidates></div><strong data-placement-location>配置先を選択してください</strong><span data-placement-level></span><span data-placement-species></span><span data-placement-outer></span><button type="button" data-placement-confirm disabled>ここに拠点を設置</button>`;
+    panel.innerHTML = `<div data-placement-details><strong>初期拠点の配置</strong><span>明るい範囲のマスをタップし、配置先を確認してください。</span><strong data-placement-location>配置先を選択してください</strong><span data-placement-level></span><span data-placement-species></span><span data-placement-outer></span></div><button type="button" data-placement-confirm disabled>ここに拠点を設置（OK）</button>`;
     panel.querySelector("[data-placement-confirm]").addEventListener("click", () => {
       const selected = pendingPlacement;
       if (selected && selected.playerId === getGameState()?.activePlayerId) confirmPlacement(selected.tile);
@@ -107,19 +179,7 @@ function ensurePlacementPanel() {
     panel.querySelector("[data-placement-location]").textContent = "配置先を選択してください";
     for (const name of ["level", "species", "outer"]) panel.querySelector(`[data-placement-${name}]`).textContent = "";
     panel.querySelector("[data-placement-confirm]").disabled = true;
-    const list = panel.querySelector("[data-placement-candidates]");
-    list.replaceChildren();
-    context.candidates.forEach((tile, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = `候補${index + 1} (${tile.x},${tile.y}) 高度${tile.height}`;
-      button.addEventListener("click", () => {
-        const scene = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
-        scene?.v39Input?.selectTile(tile, true);
-      });
-      list.appendChild(button);
-    });
-    if (!list.children.length) list.textContent = "配置可能な候補がありません。マップを再生成してください。";
+    if (!context.candidates.length) panel.querySelector("[data-placement-level]").textContent = "配置可能な候補がありません。マップを再生成してください。";
   }
   const scene = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
   if (scene?.v39Input?.showPlacementTiles && scene.v39PlacementContext !== context) {

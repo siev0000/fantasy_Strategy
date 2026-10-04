@@ -7,7 +7,7 @@ page.on("pageerror", error => errors.push(String(error)));
 page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
 
 try {
-  await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+  await page.goto(process.env.V39_BASE_URL || "http://127.0.0.1:3021", { waitUntil:"networkidle" });
   await page.waitForFunction(() => typeof window.startV39LocalSession === "function" && typeof window.generateV39TestFieldWithSeed === "function");
   const report = await page.evaluate(async () => {
     window.startV39LocalSession(1, { playMode:"single-test" });
@@ -71,16 +71,19 @@ try {
   await page.addStyleTag({ content:".vue-modal-backdrop,#v39-initial-sovereign-modal,#v39-play-mode-select{display:none!important}" });
   await page.waitForTimeout(100);
   await page.screenshot({ path:"output/web-game/v39-archipelago-100-size.png", fullPage:true });
-  const control = await page.evaluate(() => {
-    const mapData = window.generateV39TestFieldWithSeed({ w:83, h:83, patternId:"archipelago" }, "archipelago-size-83-control");
+  const control = await page.evaluate(() => [30,36,60,83].map(size => {
+    const mapData = window.generateV39TestFieldWithSeed({ w:size, h:size, patternId:"archipelago" }, `archipelago-size-${size}-control`);
     const info = mapData.islandGenerationInfo || {};
-    return {
-      islandAreaScale:Number(info.islandAreaScale),
-      targetLandRatio:Number((Number(info.targetLandTiles) / (83 * 83)).toFixed(3))
-    };
-  });
-  if (control.islandAreaScale !== 1 || control.targetLandRatio < 0.28 || control.targetLandRatio > 0.40) {
-    throw new Error(`100×100以外の多島海へ面積倍率が適用されています: ${JSON.stringify(control)}`);
+    return { size, islandAreaScale:Number(info.islandAreaScale),seedCount:info.patternSeedCount,
+      effectiveAreaScale:Number(info.targetLandTiles)/Number(info.baseTargetLandTiles),
+      targetLandRatio:Number(info.targetLandTiles)/(size*size) };
+  }));
+  for (const info of control) {
+    if (info.islandAreaScale !== 1.2 || Math.abs(info.effectiveAreaScale-1.2)>0.005
+      || info.seedCount !== Math.max(2,Math.floor(info.size*info.size/140))+3
+      || info.targetLandRatio < 0.334 || info.targetLandRatio > 0.482) {
+      throw new Error(`多島海のサイズ共通補正が不正です: ${JSON.stringify(info)}`);
+    }
   }
   console.log(JSON.stringify({ report, control, errors }, null, 2));
   if (errors.length) process.exitCode = 1;

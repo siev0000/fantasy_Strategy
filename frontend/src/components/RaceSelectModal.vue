@@ -216,6 +216,11 @@ function selectRememberedOrFirstRace(category, list = filteredRaces.value) {
 const activeSelectionDetail = computed(() => getV39RaceSelectionDetail(activeRace.value?.key));
 
 const activeRaceClassRow = computed(() => activeSelectionDetail.value?.sourceRow || null);
+const terrainPreferences = computed(() => [
+  { label:"適正土地", kind:"preferred", lands:activeRaceClassRow.value?.適正土地 },
+  { label:"苦手土地", kind:"unfavorable", lands:activeRaceClassRow.value?.苦手土地 }
+].map(item => ({ ...item, lands:Array.isArray(item.lands) ? item.lands.map(nonEmptyText).filter(Boolean) : [nonEmptyText(item.lands)].filter(Boolean) }))
+  .filter(item => item.lands.length));
 const statusRowGroups = computed(() => activeSelectionDetail.value?.statusRows || []);
 const skillRows = computed(() => activeSelectionDetail.value?.skillRows || []);
 const resistanceRows = computed(() => activeSelectionDetail.value?.resistanceRows || []);
@@ -345,6 +350,12 @@ function confirmRace() {
           <h3>{{ activeRace.name }}</h3>
           <p class="race-summary">{{ activeRace.summary }}</p>
           <p class="race-description">{{ activeRace.detail }}</p>
+          <dl v-if="terrainPreferences.length" class="race-terrain-preferences">
+            <div v-for="item in terrainPreferences" :key="item.kind" :class="item.kind">
+              <dt>{{ item.label }}</dt>
+              <dd>{{ item.lands.join("・") }}</dd>
+            </div>
+          </dl>
         </header>
 
         <v39-selection-detail-panel
@@ -580,6 +591,32 @@ function confirmRace() {
 .race-title {
   min-width: 0;
 }
+
+.race-terrain-preferences {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  font-size: var(--font-body);
+}
+
+.race-terrain-preferences > div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.race-terrain-preferences dt {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.race-terrain-preferences dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.race-terrain-preferences .preferred { color: #9ce2be; }
+.race-terrain-preferences .unfavorable { color: #f1b8a1; }
 
 .race-title h3 {
   margin: 0;

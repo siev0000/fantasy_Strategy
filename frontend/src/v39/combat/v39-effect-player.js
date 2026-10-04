@@ -86,23 +86,26 @@ export async function playV39MapEffect(request = {}) {
     大きさ:`${scalePercent}%`,
     角度:number(request.angleDeg, 0)
   });
-  return targetPlayer.play({
-    x:position.x,
-    y:position.y,
-    sequenceSources:sequence.map((entry) => entry.source),
-    scalePercent,
-    angleDeg:number(request.angleDeg, 0),
-    tint:request.tint ?? null,
-    colorStrengthPercent:number(request.colorStrengthPercent, 100),
-    hueAnimationDegPerFrame:number(request.hueAnimationDegPerFrame, 0),
-    grayscaleBase:request.grayscaleBase === true,
-    renderStyle:text(request.renderStyle, "soft"),
-    showPreviousFrameGhost:request.showPreviousFrameGhost !== false,
-    totalDurationMs:number(request.totalDurationMs, EFFECT_TOTAL_DURATION_MS),
-    sequenceGapMs:number(request.sequenceGapMs, 10),
-    depth:number(request.depth, 1000000),
-    displayName:"v39-effect-image"
-  });
+  const endRender = activeScene()?.game?.v39BeginEffectRender?.();
+  try {
+    return await targetPlayer.play({
+      x:position.x,
+      y:position.y,
+      sequenceSources:sequence.map((entry) => entry.source),
+      scalePercent,
+      angleDeg:number(request.angleDeg, 0),
+      tint:request.tint ?? null,
+      colorStrengthPercent:number(request.colorStrengthPercent, 100),
+      hueAnimationDegPerFrame:number(request.hueAnimationDegPerFrame, 0),
+      grayscaleBase:request.grayscaleBase === true,
+      renderStyle:text(request.renderStyle, "soft"),
+      showPreviousFrameGhost:request.showPreviousFrameGhost !== false,
+      totalDurationMs:number(request.totalDurationMs, EFFECT_TOTAL_DURATION_MS),
+      sequenceGapMs:number(request.sequenceGapMs, 10),
+      depth:number(request.depth, 1000000),
+      displayName:"v39-effect-image"
+    });
+  } finally { endRender?.(); }
 }
 
 window.addEventListener("v39:field-generated", () => {

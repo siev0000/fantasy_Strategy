@@ -1,4 +1,5 @@
 import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
+import { hasV39CaveLineOfSight, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import {
   resolveDetectionGroupSense,
@@ -208,6 +209,7 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
       const key = coordKey(neighbor.x, neighbor.y);
       if (visited.has(key)) continue;
       visited.add(key);
+      if (!hasV39CaveLineOfSight(data,{x:sx,y:sy},neighbor,{showWall:true})) continue;
       output.add(key);
       const distance = current.distance + 1;
       if (detectionByTile instanceof Map) {
@@ -217,13 +219,13 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
           resolveEffectiveScoutAtDistance(scoutValue, distance)
         ));
       }
-      queue.push({ x:neighbor.x, y:neighbor.y, distance });
+      if (!data.isUnderground || data.grid[neighbor.y][neighbor.x] === "洞窟") queue.push({ x:neighbor.x, y:neighbor.y, distance });
     }
   }
 }
 
 function unitVisionRange(unit) {
-  return resolveV39UnitVisionRange(unit);
+  return resolveV39UnitVisionRange(unit, window.__v39FieldRuntime?.mapData);
 }
 
 function livingUnit(unit) {
@@ -248,11 +250,11 @@ function unitsByTile(units = [], { livingOnly = false } = {}) {
 function buildCurrentVision(data, faction, state, playerId) {
   const visible = new Set();
   const detectionByTile = new Map();
-  const settlements = getFactionSettlements(faction);
+  const settlements = data.isUnderground ? [] : getFactionSettlements(faction);
   for (const settlement of settlements) {
     if (settlement?.placed) addVisionRange(data, settlement.x, settlement.y, BASE_VILLAGE_SCOUT_RANGE, visible, detectionByTile, 0);
   }
-  for (const units of unitsByTile(faction?.units, { livingOnly:true }).values()) {
+  for (const units of unitsByTile((faction?.units||[]).filter(unit=>isV39UnitInWorld(unit,state.activeWorldId)), { livingOnly:true }).values()) {
     const sense = resolveDetectionGroupSense(units);
     const lead = units[0];
     const range = units.reduce((max, unit) => Math.max(max, unitVisionRange(unit)), V39_UNIT_VISION_BASE_RANGE);
@@ -310,7 +312,7 @@ function buildDetectedEntityIds(state, playerId, currentVision, detectionByTile,
   for (const player of Array.isArray(state?.players) ? state.players : []) {
     if (String(player?.id || "") === String(playerId || "")) continue;
     const ids = detectedEntityIdsForGroups(
-      unitsByTile(player?.factionState?.units),
+      unitsByTile((player?.factionState?.units||[]).filter(unit=>isV39UnitInWorld(unit,state.activeWorldId))),
       currentVision,
       detectionByTile,
       turnNumber
@@ -400,7 +402,7 @@ function revealMovementPath(event) {
 
   const state = gameState();
   const player = activePlayer(state);
-  const faction = player?.factionState;
+  const faction = player?.factionState ? {...player.factionState,units:(player.factionState.units||[]).filter(unit=>(unit.worldId||"surface")===(state.activeWorldId||"surface"))} : null;
   const movedUnitId = String(event?.detail?.unitId || "");
   const unit = (Array.isArray(faction?.units) ? faction.units : [])
     .find(row => String(row?.id ?? row?.unitId ?? row?.characterId ?? "") === movedUnitId);
@@ -786,7 +788,9 @@ window.addEventListener("v39:field-data-updated", () => {
   // 溶岩などの地形更新は視界形状に影響しない。署名比較で必要時だけ描画する。
   scheduleRender();
 });
-window.addEventListener("v39:game-state-changed", scheduleRender);
+window.addEventListener("v39:game-state-changed", event => {
+  if (event.detail?.reason !== "activity-log") scheduleRender();
+});
 window.addEventListener("v39:initial-placement-complete", scheduleRender);
 window.addEventListener("v39:unit-moved", revealMovementPath);
 window.addEventListener("v39:display-settings-changed", scheduleRender);

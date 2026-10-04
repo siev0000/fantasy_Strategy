@@ -1,8 +1,9 @@
 import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { getV39UnitTestSkillRows } from "./v39-test-skill-rules.js";
+import { resolveV39BodyWeaponAttackRows } from "./v39-body-weapon-rules.js";
 import { COMBAT_STATUS_FIELDS, DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS } from "../constants/unitCommon.js";
-import { resolveV39RangeTiles, V39_COMBAT_BALANCE, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
+import { resolveV39RangeTiles, V39_CAVE_BALANCE, V39_COMBAT_BALANCE, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
 
 const NATURAL_COUNTER_METHODS = new Set(["素手", "角", "牙", "爪", "翼", "尾", "針"]);
 const RANGED_WEAPON_NAMES = /弓|銃|砲|ボウ|ライフル|ピストル/;
@@ -97,7 +98,9 @@ export function resolveAttackRows(unit) {
   const weapons = (Array.isArray(unit?.equipment) ? unit.equipment : [])
     .filter((item) => ["武器1", "武器2"].includes(text(item?.slot)))
     .map(buildWeaponAttackRow);
-  return [...weapons, ...resolveActionSkillRows(unit)];
+  const bodyWeapons = resolveV39BodyWeaponAttackRows(unit);
+  const bodyNames = new Set(bodyWeapons.map(row => row.名前));
+  return [...weapons, ...bodyWeapons, ...resolveActionSkillRows(unit).filter(row => !bodyNames.has(row.名前))];
 }
 
 function isMeleeCounterRow(row, unit) {
@@ -118,7 +121,7 @@ export function resolveCounterAttackRow(unit) {
     ...selected,
     名前:`${text(selected?.名前)}（反撃）`,
     AP消費:counterApCost,
-    射程:10,
+    射程:0,
     範囲:null,
     炸裂:null,
     攻撃回数:1,
@@ -231,14 +234,12 @@ function primaryWeaponRow(unit) {
   return item ? buildWeaponAttackRow(item) : null;
 }
 
-export function resolveAttackRange(skillRow, unit) {
+export function resolveAttackRange(skillRow, unit, mapData = null) {
   const explicit = toSafeNumber(skillRow?.射程, null);
-  if (explicit !== null) return resolveV39RangeTiles(explicit, 1);
-  if (text(skillRow?.攻撃手段) === "武器") {
-    const weaponRange = toSafeNumber(primaryWeaponRow(unit)?.射程, null);
-    if (weaponRange !== null) return resolveV39RangeTiles(weaponRange, 1);
-  }
-  return 1;
+  const raw = explicit ?? (text(skillRow?.攻撃手段) === "武器"
+    ? toSafeNumber(primaryWeaponRow(unit)?.射程, null) : null);
+  const base = resolveV39RangeTiles(raw ?? 0, 1);
+  return raw > 0 && mapData?.isUnderground ? base * V39_CAVE_BALANCE.attackRangeMultiplier : base;
 }
 
 export function resolveSplashSpec(skillRow) {

@@ -1,4 +1,5 @@
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import {
@@ -165,13 +166,13 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
     sourceUnits = defeated.units;
     let squads = defeated.squads;
     if (defeated.moved) changed = true;
-    const aliveUnits = sourceUnits.filter((unit) => !isDead(unit));
+    const aliveUnits = sourceUnits.filter((unit) => !isDead(unit)&&isV39UnitInWorld(unit,state.activeWorldId));
     const units = [];
     const reserve = [...(Array.isArray(faction?.deadUnitReserve) ? faction.deadUnitReserve : [])];
     const history = [...(Array.isArray(faction?.deathHistory) ? faction.deathHistory : [])];
     const removedIds = new Set();
     for (const unit of sourceUnits) {
-      if (!isDead(unit)) {
+      if (!isDead(unit)||!isV39UnitInWorld(unit,state.activeWorldId)) {
         units.push(unit);
         continue;
       }
@@ -221,7 +222,7 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
   for (const enemy of defeatedEnemies.enemies) {
     const collector = isDead(enemy)
       ? players.flatMap(player => player.factionState.units
-        .filter(unit => !isDead(unit) && coordKey(unit) === coordKey(enemy))
+        .filter(unit => !isDead(unit) && isV39UnitInWorld(unit,state.activeWorldId) && coordKey(unit) === coordKey(enemy))
         .map(unit => ({ playerId:player.id, unit }))).at(0)
       : null;
     if (collector) {
@@ -314,7 +315,7 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
 }
 
 function install() {
-  window.addEventListener("v39:turn-advanced", event => runV39DeathLifecycle(event?.detail?.turnNumber));
+  window.addEventListener("v39:turn-advanced", event => {if(!event?.detail?.worldLifecycleResolved)runV39DeathLifecycle(event?.detail?.turnNumber);});
   window.addEventListener("v39:unit-moved", () => runV39DeathLifecycle());
   window.addEventListener("v39:enemy-moved", () => runV39DeathLifecycle());
   window.addEventListener("v39:attack-resolved", () => runV39DeathLifecycle());

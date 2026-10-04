@@ -1,0 +1,863 @@
+{
+  "results": [
+    {
+      "size": 60,
+      "setup": {
+        "ms": 3549.899999856949,
+        "enemies": 92,
+        "units": 7,
+        "worlds": 0,
+        "objects": 24,
+        "placed": true
+      },
+      "reads": {
+        "average": 6.340000009536743,
+        "max": 7.900000095367432
+      },
+      "readsAfterTurn": {
+        "average": 7.009999990463257,
+        "max": 8.5
+      },
+      "updates": {
+        "average": 147.20000004768372,
+        "max": 151.79999995231628
+      },
+      "updateDetail": {
+        "listeners": [
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-economy-ui.js:429:8",
+            "count": 3,
+            "total": 131.59999990463257,
+            "max": 48.799999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:229:8",
+            "count": 3,
+            "total": 85.90000009536743,
+            "max": 29.800000190734863
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/dev/v39-test-tools.js:755:10)",
+            "count": 3,
+            "total": 43.49999976158142,
+            "max": 15.099999904632568
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-settlement-ui.js:296:8",
+            "count": 3,
+            "total": 42.30000019073486,
+            "max": 15.400000095367432
+          },
+          {
+            "type": "v39:squad-detail-rendered",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:231:8",
+            "count": 1,
+            "total": 32.799999952316284,
+            "max": 32.799999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/unit/v39-leadership-lifecycle.js:67:8",
+            "count": 3,
+            "total": 18.399999856948853,
+            "max": 7
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-victory-landmark-icons.js:185:8",
+            "count": 3,
+            "total": 16.800000190734863,
+            "max": 6
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-turn-system.js?t=1791088212470:422:8",
+            "count": 3,
+            "total": 16,
+            "max": 6.1000001430511475
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-exploration-ui.js:225:8",
+            "count": 3,
+            "total": 15.700000286102295,
+            "max": 6.200000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-map-visibility.js?t=1791088003442:791:8",
+            "count": 3,
+            "total": 14.299999952316284,
+            "max": 6.1000001430511475
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/map/v39-disaster-icons.js:145:10)",
+            "count": 3,
+            "total": 14.299999713897705,
+            "max": 5.699999809265137
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js:266:10)",
+            "count": 3,
+            "total": 9.300000190734863,
+            "max": 3.700000047683716
+          }
+        ],
+        "events": [
+          "perf-noop",
+          "perf-noop",
+          "perf-noop"
+        ],
+        "longTasks": [
+          {
+            "start": 4907.300000190735,
+            "duration": 511
+          },
+          {
+            "start": 5418.600000143051,
+            "duration": 57
+          },
+          {
+            "start": 5476,
+            "duration": 497
+          }
+        ]
+      },
+      "logMs": 110.59999990463257,
+      "logDetail": {
+        "listeners": [
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-economy-ui.js:429:8",
+            "count": 1,
+            "total": 44.200000047683716,
+            "max": 44.200000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/dev/v39-test-tools.js:755:10)",
+            "count": 1,
+            "total": 11.299999952316284,
+            "max": 11.299999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-settlement-ui.js:296:8",
+            "count": 1,
+            "total": 10.799999952316284,
+            "max": 10.799999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-exploration-ui.js:225:8",
+            "count": 1,
+            "total": 5.700000047683716,
+            "max": 5.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/unit/v39-leadership-lifecycle.js:67:8",
+            "count": 1,
+            "total": 5.599999904632568,
+            "max": 5.599999904632568
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/map/v39-disaster-icons.js:145:10)",
+            "count": 1,
+            "total": 4.900000095367432,
+            "max": 4.900000095367432
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-turn-system.js?t=1791088212470:422:8",
+            "count": 1,
+            "total": 4.299999952316284,
+            "max": 4.299999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-victory-landmark-icons.js:185:8",
+            "count": 1,
+            "total": 4.299999952316284,
+            "max": 4.299999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js:266:10)",
+            "count": 1,
+            "total": 2.700000047683716,
+            "max": 2.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/map/v39-initial-placement.js:796:10)",
+            "count": 1,
+            "total": 0.5,
+            "max": 0.5
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:229:8",
+            "count": 1,
+            "total": 0,
+            "max": 0
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/world/v39-nation-diplomacy-ui.js:207:10)",
+            "count": 1,
+            "total": 0,
+            "max": 0
+          }
+        ],
+        "events": [
+          "activity-log"
+        ],
+        "longTasks": [
+          {
+            "start": 5984.600000143051,
+            "duration": 110
+          }
+        ]
+      },
+      "idle": {
+        "average": 16.48666666613685,
+        "max": 16.800000000000182,
+        "listeners": [],
+        "events": [],
+        "longTasks": []
+      },
+      "turnMs": 4365.299999952316,
+      "turn": {
+        "listeners": [
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-economy-ui.js:429:8",
+            "count": 4,
+            "total": 229.40000009536743,
+            "max": 80.5
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:229:8",
+            "count": 4,
+            "total": 106.90000009536743,
+            "max": 39
+          },
+          {
+            "type": "v39:squad-detail-rendered",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:231:8",
+            "count": 3,
+            "total": 106.09999990463257,
+            "max": 39
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/dev/v39-test-tools.js:755:10)",
+            "count": 4,
+            "total": 61.69999980926514,
+            "max": 19.299999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-settlement-ui.js:296:8",
+            "count": 4,
+            "total": 60.00000023841858,
+            "max": 21.800000190734863
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-turn-system.js?t=1791088212470:422:8",
+            "count": 4,
+            "total": 26.899999856948853,
+            "max": 8.399999856948853
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-exploration-ui.js:225:8",
+            "count": 4,
+            "total": 23.899999856948853,
+            "max": 6.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/map/v39-disaster-icons.js:145:10)",
+            "count": 4,
+            "total": 22.700000047683716,
+            "max": 6.1000001430511475
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-victory-landmark-icons.js:185:8",
+            "count": 4,
+            "total": 21,
+            "max": 6.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/unit/v39-leadership-lifecycle.js:67:8",
+            "count": 4,
+            "total": 19.49999976158142,
+            "max": 5.3999998569488525
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-map-visibility.js?t=1791088003442:791:8",
+            "count": 4,
+            "total": 16.59999990463257,
+            "max": 9.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js:266:10)",
+            "count": 4,
+            "total": 10.500000238418579,
+            "max": 2.9000000953674316
+          }
+        ],
+        "events": [
+          "enemy-turn-start",
+          "turn-resolution-start",
+          "turn-complete",
+          "activity-log"
+        ],
+        "longTasks": [
+          {
+            "start": 7735.200000047684,
+            "duration": 53
+          },
+          {
+            "start": 7801.300000190735,
+            "duration": 199
+          },
+          {
+            "start": 8000.600000143051,
+            "duration": 61
+          },
+          {
+            "start": 8694.5,
+            "duration": 105
+          },
+          {
+            "start": 8818.300000190735,
+            "duration": 89
+          },
+          {
+            "start": 8926.300000190735,
+            "duration": 88
+          },
+          {
+            "start": 9032.100000143051,
+            "duration": 96
+          },
+          {
+            "start": 9216.700000047684,
+            "duration": 326
+          },
+          {
+            "start": 9553.400000095367,
+            "duration": 667
+          },
+          {
+            "start": 10252.100000143051,
+            "duration": 284
+          },
+          {
+            "start": 10536.400000095367,
+            "duration": 60
+          },
+          {
+            "start": 10596.600000143051,
+            "duration": 93
+          },
+          {
+            "start": 10791.5,
+            "duration": 95
+          },
+          {
+            "start": 10902.900000095367,
+            "duration": 66
+          },
+          {
+            "start": 11022.200000047684,
+            "duration": 372
+          },
+          {
+            "start": 11395.100000143051,
+            "duration": 610
+          }
+        ],
+        "stages": {
+          "turnNumber": 2,
+          "enemy": {
+            "surface": {
+              "turnNumber": 1,
+              "aliveEnemies": 92,
+              "playerTargets": 7,
+              "actionLimit": 9292,
+              "aiPasses": 203,
+              "movedEnemies": 45,
+              "pendingActions": 0,
+              "workerCalculationMs": 215.59999918937683,
+              "mainApplyMs": 384.59999918937683,
+              "renderApplyMs": 737.2999999523163,
+              "presentationMs": 0.20000004768371582,
+              "workerTotalMs": 2304.0999999046326,
+              "fallbackUsed": false,
+              "actionEventCount": 112,
+              "presentationEventCount": 0,
+              "villageDefenseAttacks": 2
+            }
+          },
+          "terrain": 51.5,
+          "ai": 11.200000047683716,
+          "exploration": 34.09999990463257,
+          "world": 85.70000004768372,
+          "economy": 56.700000047683716,
+          "research": 18.200000047683716,
+          "diplomacy": 16.90000009536743,
+          "renderMs": 703.5999999046326
+        }
+      },
+      "memory": {
+        "used": 86400000,
+        "total": 139000000
+      }
+    },
+    {
+      "size": 100,
+      "setup": {
+        "ms": 18715.200000047684,
+        "enemies": 256,
+        "units": 7,
+        "worlds": 0,
+        "objects": 24,
+        "placed": true
+      },
+      "reads": {
+        "average": 12.7,
+        "max": 17.09999990463257
+      },
+      "readsAfterTurn": {
+        "average": 13.389999985694885,
+        "max": 15.199999809265137
+      },
+      "updates": {
+        "average": 265.3333333333333,
+        "max": 272.60000014305115
+      },
+      "updateDetail": {
+        "listeners": [
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-economy-ui.js:429:8",
+            "count": 3,
+            "total": 282.10000014305115,
+            "max": 101.29999995231628
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:229:8",
+            "count": 3,
+            "total": 124.40000009536743,
+            "max": 42.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/dev/v39-test-tools.js:755:10)",
+            "count": 3,
+            "total": 76.09999990463257,
+            "max": 28
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-settlement-ui.js:296:8",
+            "count": 3,
+            "total": 70,
+            "max": 24.700000047683716
+          },
+          {
+            "type": "v39:squad-detail-rendered",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:231:8",
+            "count": 1,
+            "total": 50,
+            "max": 50
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-map-visibility.js?t=1791088003442:791:8",
+            "count": 3,
+            "total": 31.299999713897705,
+            "max": 11.099999904632568
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-exploration-ui.js:225:8",
+            "count": 3,
+            "total": 31.200000047683716,
+            "max": 11.600000143051147
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-victory-landmark-icons.js:185:8",
+            "count": 3,
+            "total": 31.09999990463257,
+            "max": 10.799999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-turn-system.js?t=1791088212470:422:8",
+            "count": 3,
+            "total": 30.09999990463257,
+            "max": 10.400000095367432
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/unit/v39-leadership-lifecycle.js:67:8",
+            "count": 3,
+            "total": 29.899999856948853,
+            "max": 10.5
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/map/v39-disaster-icons.js:145:10)",
+            "count": 3,
+            "total": 29.700000047683716,
+            "max": 10.299999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js:266:10)",
+            "count": 3,
+            "total": 7,
+            "max": 2.5999999046325684
+          }
+        ],
+        "events": [
+          "perf-noop",
+          "perf-noop",
+          "perf-noop"
+        ],
+        "longTasks": [
+          {
+            "start": 31381.400000095367,
+            "duration": 933
+          },
+          {
+            "start": 32314.5,
+            "duration": 71
+          },
+          {
+            "start": 32393.10000014305,
+            "duration": 2911
+          }
+        ]
+      },
+      "logMs": 252.20000004768372,
+      "logDetail": {
+        "listeners": [
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-economy-ui.js:429:8",
+            "count": 1,
+            "total": 103.29999995231628,
+            "max": 103.29999995231628
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-settlement-ui.js:296:8",
+            "count": 1,
+            "total": 33.799999952316284,
+            "max": 33.799999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/dev/v39-test-tools.js:755:10)",
+            "count": 1,
+            "total": 32.700000047683716,
+            "max": 32.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-turn-system.js?t=1791088212470:422:8",
+            "count": 1,
+            "total": 10.700000047683716,
+            "max": 10.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/map/v39-disaster-icons.js:145:10)",
+            "count": 1,
+            "total": 10.5,
+            "max": 10.5
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-victory-landmark-icons.js:185:8",
+            "count": 1,
+            "total": 9.700000047683716,
+            "max": 9.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/unit/v39-leadership-lifecycle.js:67:8",
+            "count": 1,
+            "total": 9.600000143051147,
+            "max": 9.600000143051147
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-exploration-ui.js:225:8",
+            "count": 1,
+            "total": 9.299999952316284,
+            "max": 9.299999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js:266:10)",
+            "count": 1,
+            "total": 2.3999998569488525,
+            "max": 2.3999998569488525
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/map/v39-initial-placement.js:796:10)",
+            "count": 1,
+            "total": 0.2999999523162842,
+            "max": 0.2999999523162842
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:229:8",
+            "count": 1,
+            "total": 0,
+            "max": 0
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/world/v39-nation-diplomacy-ui.js:207:10)",
+            "count": 1,
+            "total": 0,
+            "max": 0
+          }
+        ],
+        "events": [
+          "activity-log"
+        ],
+        "longTasks": [
+          {
+            "start": 35314.10000014305,
+            "duration": 252
+          }
+        ]
+      },
+      "idle": {
+        "average": 16.554444442325135,
+        "max": 16.80000000000291,
+        "listeners": [],
+        "events": [],
+        "longTasks": []
+      },
+      "turnMs": 13043.699999809265,
+      "turn": {
+        "listeners": [
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-economy-ui.js:429:8",
+            "count": 4,
+            "total": 509,
+            "max": 134.20000004768372
+          },
+          {
+            "type": "v39:squad-detail-rendered",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:231:8",
+            "count": 3,
+            "total": 154.80000019073486,
+            "max": 52.799999952316284
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-cave-world.js?t=1791088003462:229:8",
+            "count": 4,
+            "total": 152.79999995231628,
+            "max": 55.200000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-settlement-ui.js:296:8",
+            "count": 4,
+            "total": 118.80000019073486,
+            "max": 30.5
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/dev/v39-test-tools.js:755:10)",
+            "count": 4,
+            "total": 117.69999980926514,
+            "max": 34
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/world/v39-exploration-ui.js:225:8",
+            "count": 4,
+            "total": 62.59999990463257,
+            "max": 22.399999856948853
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at install (http://127.0.0.1:3022/src/v39/map/v39-disaster-icons.js:145:10)",
+            "count": 4,
+            "total": 58,
+            "max": 19.5
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/core/v39-turn-system.js?t=1791088212470:422:8",
+            "count": 4,
+            "total": 54.19999980926514,
+            "max": 15.900000095367432
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-victory-landmark-icons.js:185:8",
+            "count": 4,
+            "total": 53.5,
+            "max": 14.700000047683716
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/unit/v39-leadership-lifecycle.js:67:8",
+            "count": 4,
+            "total": 51.40000009536743,
+            "max": 14.099999904632568
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at http://127.0.0.1:3022/src/v39/map/v39-map-visibility.js?t=1791088003442:791:8",
+            "count": 4,
+            "total": 31.200000047683716,
+            "max": 19.5
+          },
+          {
+            "type": "v39:game-state-changed",
+            "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js:266:10)",
+            "count": 4,
+            "total": 10.200000047683716,
+            "max": 2.9000000953674316
+          }
+        ],
+        "events": [
+          "enemy-turn-start",
+          "turn-resolution-start",
+          "turn-complete",
+          "activity-log"
+        ],
+        "longTasks": [
+          {
+            "start": 37218.40000009537,
+            "duration": 84
+          },
+          {
+            "start": 37317.5,
+            "duration": 355
+          },
+          {
+            "start": 37672.700000047684,
+            "duration": 73
+          },
+          {
+            "start": 40047.5,
+            "duration": 179
+          },
+          {
+            "start": 40235.5,
+            "duration": 3798
+          },
+          {
+            "start": 44057.90000009537,
+            "duration": 471
+          },
+          {
+            "start": 44529.300000190735,
+            "duration": 73
+          },
+          {
+            "start": 44608.200000047684,
+            "duration": 155
+          },
+          {
+            "start": 44819.5,
+            "duration": 85
+          },
+          {
+            "start": 44922,
+            "duration": 179
+          },
+          {
+            "start": 45117.60000014305,
+            "duration": 134
+          },
+          {
+            "start": 45332.200000047684,
+            "duration": 908
+          },
+          {
+            "start": 46240.800000190735,
+            "duration": 3841
+          },
+          {
+            "start": 50082.60000014305,
+            "duration": 70
+          },
+          {
+            "start": 50190.700000047684,
+            "duration": 80
+          }
+        ],
+        "stages": {
+          "turnNumber": 2,
+          "enemy": {
+            "surface": {
+              "turnNumber": 1,
+              "aliveEnemies": 256,
+              "playerTargets": 7,
+              "actionLimit": 25856,
+              "aiPasses": 626,
+              "movedEnemies": 161,
+              "pendingActions": 0,
+              "workerCalculationMs": 816.700001001358,
+              "mainApplyMs": 55.699997663497925,
+              "renderApplyMs": 3876.5,
+              "presentationMs": 0.10000014305114746,
+              "workerTotalMs": 6453.799999952316,
+              "fallbackUsed": false,
+              "actionEventCount": 380,
+              "presentationEventCount": 0,
+              "villageDefenseAttacks": 0
+            }
+          },
+          "terrain": 67.09999990463257,
+          "ai": 13.700000047683716,
+          "exploration": 76.70000004768372,
+          "world": 171.09999990463257,
+          "economy": 124.40000009536743,
+          "research": 39.09999990463257,
+          "diplomacy": 39.69999980926514,
+          "renderMs": 4003.9000000953674
+        }
+      },
+      "memory": {
+        "used": 86400000,
+        "total": 139000000
+      }
+    }
+  ],
+  "errors": []
+}

@@ -6,15 +6,14 @@ import {
 } from "../../lib/v39-equipment-rules.js";
 import {
   resolveV39UnitRaceCategory,
-  resolveV39UnitTotalExpForLevel
+  resolveV39UnitTotalExpForLevel,
+  resolveV39UnitInitialLevel
 } from "../../lib/v39-unit-experience.js";
 import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { isV39BaseClassRow } from "../../lib/v39-class-rules.js";
 
-const INITIAL_LEVEL_MIN = 5;
-const INITIAL_LEVEL_MAX = 10;
 const text = value => String(value ?? "").trim();
 const classRows = Array.isArray(classData) ? classData : [];
 const classByName = new Map(classRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
@@ -51,10 +50,6 @@ function buildEquipmentSlots(raceRow) {
   return Object.fromEntries(EQUIPMENT_SLOT_KEYS.map(slot => [slot, equipmentSlotEnabled(raceRow?.[slot])]));
 }
 
-function randomInitialLevel() {
-  return INITIAL_LEVEL_MIN + Math.floor(Math.random() * (INITIAL_LEVEL_MAX - INITIAL_LEVEL_MIN + 1));
-}
-
 function uniqueUnitId(playerId) {
   const uuid = globalThis.crypto?.randomUUID?.();
   return uuid ? `sovereign-${playerId}-${uuid}` : `sovereign-${playerId}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -73,7 +68,7 @@ export function createV39InitialSovereign(profile = {}) {
 
   const raceRow = classByName.get(text(raceDefinition?.className)) || classByName.get(race) || null;
   const equipmentSlots = buildEquipmentSlots(raceRow);
-  const level = randomInitialLevel();
+  const level = resolveV39UnitInitialLevel(race);
   const base = {
     id:uniqueUnitId(playerId),
     unitType:"統治者",

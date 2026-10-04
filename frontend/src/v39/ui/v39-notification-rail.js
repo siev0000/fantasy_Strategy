@@ -1,9 +1,13 @@
+import { V39_LOG_PREVIEW_BALANCE } from "../../lib/v39-gameplay-balance.js";
+
+const CHANNELS = ["notification", "battle", "chat"];
+const LABELS = { notification:"通知", battle:"戦闘", chat:"チャット" };
 const MAX_MESSAGES = 150;
 const DETAIL_COLLAPSE_CHAR_LIMIT = 120;
 const DETAIL_COLLAPSE_LINE_LIMIT = 4;
-const CHAT_PREVIEW_DURATION_MS = 4000;
 
 let chatPreviewTimer = 0;
+let previews = [];
 
 let sequence = 0;
 let activeChannel = "notification";
@@ -13,12 +17,34 @@ const messages = [];
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 
 function normalizeChannel(value) {
-  return String(value || "notification") === "chat" ? "chat" : "notification";
+  return CHANNELS.includes(value) ? value : "notification";
 }
 
 function currentTurn() {
-  const turn = Number(window.getV39GameState?.()?.timeline?.turnNumber);
+  const turn = Number(window.getV39TimelineState?.()?.turnNumber);
   return Number.isFinite(turn) ? Math.max(1, Math.floor(turn)) : null;
+}
+
+function canSeeMessage(entry) {
+  if (entry.channel !== "battle" || !entry.combatVisibility) return true;
+  if (window.isV39TestMode?.() === true) return true;
+  const state = window.getV39EnemyTurnState?.();
+  const visibility = entry.combatVisibility;
+  return visibility.observed && visibility.playerId === state?.activePlayerId
+    && visibility.worldId === (state?.activeWorldId || "surface");
+}
+
+// 発生時の索敵で判定。後で地図を探索しても過去の見えなかった戦闘は公開しない。
+function combatVisibility(detail) {
+  const state = window.getV39EnemyTurnState?.();
+  const units = (state?.players || []).flatMap(player => player.factionState?.units || []);
+  const guards = (state?.neutralVillages || []).flatMap(village => village.defenseUnits || []);
+  const attacker = [...units, ...(state?.enemies || []), ...guards].find(unit => String(unit.id) === String(detail.attackerId));
+  const points = [attacker, detail.target, ...(detail.entries || [])];
+  const observed = !window.__v39BackgroundWorldTurn && points.some(point =>
+    Number.isFinite(point?.x) && Number.isFinite(point?.y)
+      && window.isV39TileInCurrentVision?.(point.x, point.y) === true);
+  return { playerId:state?.activePlayerId, worldId:state?.activeWorldId || "surface", observed };
 }
 
 function escapeHtml(value) {
@@ -50,39 +76,39 @@ function renderMessage(entry) {
   const meta = entry.meta ? `<small>${escapeHtml(entry.meta)}</small>` : "";
   const turn = entry.turn ? `<span>T${entry.turn}</span>` : "";
   return `<article class="v39-side-log-entry ${tone}" data-v39-side-log-id="${escapeHtml(entry.id)}">
-    <div class="v39-side-log-entry-head">${turn}<b>${escapeHtml(entry.title || (entry.channel === "chat" ? "チャット" : "通知"))}</b></div>
+    <div class="v39-side-log-entry-head">${turn}<b>${escapeHtml(entry.title || LABELS[entry.channel])}</b></div>
     <p>${multilineHtml(entry.message)}</p>
     ${renderDetails(entry)}
     ${meta}
   </article>`;
 }
 
-function chatPreviewElement() {
-  return document.getElementById("v39-chat-preview");
+function hideChatPreview() {
+  previews = previews.filter(entry => entry.channel !== "chat");
+  renderPreviews();
 }
 
-function hideChatPreview() {
+function renderPreviews() {
   window.clearTimeout(chatPreviewTimer);
-  chatPreviewTimer = 0;
-  chatPreviewElement()?.classList.remove("show");
+  previews = previews.filter(entry => entry.expiresAt > Date.now() && canSeeMessage(entry));
+  for (const channel of ["chat", "battle"]) {
+    const preview = document.getElementById(`v39-${channel}-preview`);
+    if (!(preview instanceof HTMLElement)) continue;
+    const rows = previews.filter(entry => entry.channel === channel);
+    preview.innerHTML = rows.map(entry => `<button type="button" data-preview-channel="${entry.channel}"><strong>${escapeHtml(entry.title)}</strong><p>${multilineHtml(entry.message)}</p></button>`).join("");
+    preview.classList.toggle("show", rows.length > 0);
+  }
+  if (previews.length) chatPreviewTimer = window.setTimeout(renderPreviews, Math.max(1, Math.min(...previews.map(entry => entry.expiresAt)) - Date.now()));
 }
 
 function showChatPreview(entry) {
-  if (!entry || entry.channel !== "chat") return;
-  if (!collapsed && activeChannel === "chat") {
-    hideChatPreview();
-    return;
-  }
-  const preview = chatPreviewElement();
-  if (!(preview instanceof HTMLElement)) return;
-  const title = text(entry.title, "チャット");
-  preview.innerHTML = `<strong>${escapeHtml(title)}</strong><p>${multilineHtml(entry.message)}</p>`;
-  preview.classList.add("show");
-  window.clearTimeout(chatPreviewTimer);
-  chatPreviewTimer = window.setTimeout(() => {
-    preview.classList.remove("show");
-    chatPreviewTimer = 0;
-  }, CHAT_PREVIEW_DURATION_MS);
+  if (entry.channel !== "battle" && entry.channel !== "chat") return;
+  if (!canSeeMessage(entry)) return;
+  if (entry.channel === "chat" && !collapsed && activeChannel === "chat") return;
+  previews.push({ ...entry, expiresAt:Date.now() + V39_LOG_PREVIEW_BALANCE.durationMs });
+  const channelRows = previews.filter(row => row.channel === entry.channel).slice(-V39_LOG_PREVIEW_BALANCE.maxEntries);
+  previews = [...previews.filter(row => row.channel !== entry.channel), ...channelRows];
+  renderPreviews();
 }
 
 function render() {
@@ -94,17 +120,17 @@ function render() {
   rail.dataset.channel = activeChannel;
   const channelLabel = rail.querySelector("[data-v39-side-channel-label]");
   const channelSwitch = rail.querySelector("[data-v39-side-channel-switch]");
-  const activeLabel = activeChannel === "chat" ? "チャット" : "通知";
-  const nextLabel = activeChannel === "chat" ? "通知" : "チャット";
+  const activeLabel = LABELS[activeChannel];
+  const nextLabel = LABELS[CHANNELS[(CHANNELS.indexOf(activeChannel) + 1) % CHANNELS.length]];
   if (channelLabel instanceof HTMLElement) channelLabel.textContent = activeLabel;
   if (channelSwitch instanceof HTMLElement) {
     channelSwitch.setAttribute("aria-label", `${activeLabel}表示中。ヘッダーをタップして${nextLabel}へ切り替え`);
     channelSwitch.title = `${nextLabel}へ切り替え`;
   }
 
-  const rows = messages.filter(entry => entry.channel === activeChannel);
+  const rows = messages.filter(entry => entry.channel === activeChannel && canSeeMessage(entry));
   if (!rows.length) {
-    list.innerHTML = `<div class="v39-side-log-empty">${activeChannel === "chat" ? "チャットは未接続です" : "通知はまだありません"}</div>`;
+    list.innerHTML = `<div class="v39-side-log-empty">${activeLabel}はまだありません</div>`;
     return;
   }
   list.innerHTML = rows.map(renderMessage).join("");
@@ -119,7 +145,8 @@ export function pushV39SideRailMessage(input, options = {}) {
   const entry = {
     id:text(source.id) || `side-log:${Date.now()}:${sequence += 1}`,
     channel,
-    title:text(source.title, channel === "chat" ? "チャット" : "通知"),
+    combatVisibility:source.combatVisibility,
+    title:text(source.title, LABELS[channel]),
     message,
     details:text(source.details ?? options.details),
     collapsible:source.collapsible === true || options.collapsible === true,
@@ -131,7 +158,7 @@ export function pushV39SideRailMessage(input, options = {}) {
   messages.push(entry);
   if (messages.length > MAX_MESSAGES) messages.splice(0, messages.length - MAX_MESSAGES);
   render();
-  if (channel === "chat") showChatPreview(entry);
+  showChatPreview(entry);
   window.dispatchEvent(new CustomEvent("v39:side-log-message", { detail:{ entry } }));
   return entry.id;
 }
@@ -201,15 +228,16 @@ function installStyles() {
     .v39-side-log-details[open] summary::before{content:"▽"}
     .v39-side-log-details p{margin-top:4px!important;color:#b9c8ca!important;font-size:var(--font-size-9)!important;line-height:1.4!important}
     .v39-side-log-empty{padding:16px 8px;color:#82969b;font-size:var(--font-size-10);text-align:center}
-    .v39-chat-preview{
-      display:none;max-width:min(520px,96%);padding:8px 11px;
-      border:1px solid rgba(112,203,217,.86);border-radius:8px;
-      background:linear-gradient(180deg,rgba(18,42,49,.97),rgba(9,25,30,.97));
-      box-shadow:0 8px 22px rgba(0,0,0,.32);pointer-events:auto
+    .v39-log-preview{
+      display:none;width:min(520px,96%);pointer-events:auto
     }
-    .v39-chat-preview.show{display:grid;gap:3px}
-    .v39-chat-preview strong{font-size:var(--font-size-10);color:#8ee0ec}
-    .v39-chat-preview p{margin:0;font-size:var(--font-size-10);line-height:1.4;color:#eef6f6;word-break:break-word}
+    .v39-log-preview.show{display:grid;gap:5px}
+    #v39-chat-preview{position:absolute;right:6px;top:44px;bottom:52px;width:calc(var(--v39-side-log-width) - 6px);max-width:calc(100% - 12px);z-index:30;align-content:start;overflow-y:auto;overflow-x:hidden;pointer-events:none}
+    #v39-chat-preview button{pointer-events:auto}
+    .playfield:has(#v39-turn-banner.show) #v39-battle-preview{margin-top:calc(var(--font-size-16)*3 + 16px)}
+    .v39-log-preview button{min-width:0;padding:7px 10px;text-align:left;border:1px solid #70cbd9;border-radius:8px;background:rgba(9,25,30,.96);box-shadow:0 4px 12px #0005;cursor:pointer}
+    .v39-log-preview strong{font-size:var(--font-body);color:#8ee0ec}
+    .v39-log-preview p{margin:0;font-size:var(--font-body);line-height:1.4;color:#eef6f6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word}
     @media(max-width:700px){
       .playfield{--v39-side-log-width:min(36vw,190px)}
       #v39-side-log{right:0;top:5px;bottom:48px}
@@ -225,7 +253,7 @@ function install() {
   installStyles();
   const rail = document.createElement("aside");
   rail.id = "v39-side-log";
-  rail.setAttribute("aria-label", "通知・チャットログ");
+  rail.setAttribute("aria-label", "通知・戦闘・チャットログ");
   rail.innerHTML = `<div class="v39-side-log-head" data-v39-side-channel-switch role="button" tabindex="0" aria-label="通知表示中。ヘッダーをタップしてチャットへ切り替え">
     <div class="v39-side-log-channel-label" data-v39-side-channel-label>通知</div>
     <button type="button" class="v39-side-log-collapse" aria-label="通知欄を折りたたむ">›</button>
@@ -234,13 +262,22 @@ function install() {
   playfield.classList.add("v39-has-side-log");
 
   const feedbackLane = document.getElementById("v39FeedbackLane");
-  if (feedbackLane instanceof HTMLElement && !chatPreviewElement()) {
+  for (const [channel, parent] of [["chat", playfield], ["battle", feedbackLane]]) {
+    if (!(parent instanceof HTMLElement) || document.getElementById(`v39-${channel}-preview`)) continue;
     const preview = document.createElement("div");
-    preview.id = "v39-chat-preview";
-    preview.className = "v39-chat-preview";
+    preview.id = `v39-${channel}-preview`;
+    preview.className = "v39-log-preview";
     preview.setAttribute("role", "status");
     preview.setAttribute("aria-live", "polite");
-    feedbackLane.appendChild(preview);
+    parent.appendChild(preview);
+    preview.addEventListener("click", event => {
+      const button = event.target.closest("[data-preview-channel]");
+      if (!button) return;
+      activeChannel = button.dataset.previewChannel;collapsed = false;
+      rail.querySelector(".v39-side-log-collapse").textContent = "›";
+      render();
+      if (activeChannel === "chat") hideChatPreview();
+    });
     for (const eventName of ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "click", "dblclick", "contextmenu"]) {
       preview.addEventListener(eventName, event => event.stopPropagation());
     }
@@ -250,7 +287,7 @@ function install() {
     rail.addEventListener(eventName, event => event.stopPropagation());
   }
   const toggleChannel = () => {
-    activeChannel = activeChannel === "chat" ? "notification" : "chat";
+    activeChannel = CHANNELS[(CHANNELS.indexOf(activeChannel) + 1) % CHANNELS.length];
     render();
   };
   rail.addEventListener("click", event => {
@@ -282,6 +319,25 @@ window.pushV39SideRailMessage = pushV39SideRailMessage;
 window.pushV39Notification = (message, options = {}) => pushV39SideRailMessage({ ...options, channel:"notification", message });
 window.pushV39ChatMessage = (message, options = {}) => pushV39SideRailMessage({ ...options, channel:"chat", message });
 window.updateV39SideRailMessage = updateV39SideRailMessage;
-window.getV39SideRailMessages = () => messages.map(entry => ({ ...entry }));
+window.getV39SideRailMessages = () => messages.filter(canSeeMessage).map(entry => ({ ...entry }));
+
+window.addEventListener("v39:combat-log", event => {
+  if (!event.detail?.summary) return;
+  const map = window.__v39FieldRuntime?.mapData;
+  pushV39SideRailMessage({channel:"battle",title:map?.isUnderground ? `洞窟 ${map.caveFloor}階` : "戦闘",message:event.detail.summary,combatVisibility:combatVisibility(event.detail)});
+});
+
+let logViewKey = "";
+function refreshLogVisibility() {
+  if (window.__v39BackgroundWorldTurn) return;
+  const state = window.getV39EnemyTurnState?.();
+  const key = `${state?.activePlayerId}:${state?.activeWorldId}:${window.isV39TestMode?.() === true}`;
+  if (key === logViewKey) return;
+  logViewKey = key;
+  render();
+  renderPreviews();
+}
+window.addEventListener("v39:display-settings-changed", refreshLogVisibility);
+window.addEventListener("v39:game-state-changed", refreshLogVisibility);
 
 install();

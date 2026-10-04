@@ -19,6 +19,20 @@ const SPECIAL_RESOURCE_ICON_CANDIDATES = Object.freeze({
   火薬原料:Object.freeze({ glyph:"🧨", kind:"emoji" })
 });
 
+// Notion「UI文字アイコン候補」の保管用。候補追加は資源の正式追加を意味しない。
+export const V39_UI_ICON_CANDIDATES = Object.freeze({
+  洋梨:"🍐", オレンジ:"🍊", レモン:"🍋", イチゴ:"🍓", サクランボ:"🍒", モモ:"🍑",
+  マンゴー:"🥭", パイナップル:"🍍", スイカ:"🍉", メロン:"🍈", クリ:"🌰", ナッツ:"🥜", オリーブ:"🫒",
+  ニンジン:"🥕", 葉野菜:"🥬", ブロッコリー:"🥦", タマネギ:"🧅", ニンニク:"🧄", トマト:"🍅",
+  ナス:"🍆", キュウリ:"🥒", ピーマン:"🫑", トウモロコシ:"🌽", ジャガイモ:"🥔", 豆:"🫘",
+  エンドウ豆:"🫛", ショウガ:"🫚", 希少魚:"🐠", 毒魚:"🐡", エビ:"🦐", カニ:"🦀",
+  ロブスター:"🦞", イカ:"🦑", タコ:"🐙", カキ:"🦪", "カキ・貝":"🦪", 卵:"🥚", 乳:"🥛", チーズ:"🧀",
+  蜂蜜酒:"🍺", 果実酒:"🍷", 高級酒:"🥂", 保存食:"🥫", 薬品:"🧪", 火薬材料:"🧨",
+  希少酒原料:"🍇", 果物:"🍎", 果実:"🍎", 特産品:"🍄", 鉱石:"⬢", インゴット:"▰",
+  魔力加工品:"🔮", 羽毛:"🪶", 皮革:"🐾", 霊水:"💧", 遺物:"🏺", 魔力核:"⦿",
+  索敵:"👁", 攻撃:"⚔︎", 防御:"🛡︎", 建設:"⚒︎", 住宅:"⌂", 設定:"⚙︎", 一覧:"☷"
+});
+
 const RESOURCE_ICON_DEFS = Object.freeze({
   食料:Object.freeze({ glyph:"🌾", color:"", kind:"emoji" }),
   穀物:Object.freeze({ glyph:"🌾", color:"", kind:"emoji" }),
@@ -42,7 +56,8 @@ const RESOURCE_ICON_DEFS = Object.freeze({
 
 export function resolveV39ResourceIcon(name) {
   const key = String(name ?? "").trim();
-  const found = RESOURCE_ICON_DEFS[key] || DEFAULT_RESOURCE_ICON;
+  const found = RESOURCE_ICON_DEFS[key] || SPECIAL_RESOURCE_ICON_CANDIDATES[key]
+    || (V39_UI_ICON_CANDIDATES[key] ? { glyph:V39_UI_ICON_CANDIDATES[key], kind:"emoji" } : DEFAULT_RESOURCE_ICON);
   return { glyph:found.glyph, color:found.color, kind:found.kind };
 }
 

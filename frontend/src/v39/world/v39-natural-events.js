@@ -448,7 +448,7 @@ export function runV39NaturalEvents(options = {}) {
     forceDisasterId:text(options?.forceDisasterId),
     forceDisasterAt:options?.forceDisasterAt || null,
     forceUndeadAt:options?.forceUndeadAt || null,
-    skipNaturalDisasters:options?.skipNaturalDisasters === true
+    skipNaturalDisasters:mapData.isUnderground || options?.skipNaturalDisasters === true
   });
   window.setV39GameState?.({
     players:result.players,

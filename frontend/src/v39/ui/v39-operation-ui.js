@@ -64,6 +64,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       }
       #footSquad .v39-squad-toolbar{display:flex;align-items:center;gap:6px;min-width:0;overflow:visible}
       #footSquad .v39-squad-shortcuts{display:flex;gap:5px;flex:0 0 auto;overflow:visible}
+      #v39-cave-party-order[hidden]{display:none}
       .v39-footer-shortcut{min-height:30px;border:1px solid #4d747d;border-radius:7px;background:#173039;color:#e7f2f0;padding:4px 8px;font:inherit;font-size:var(--font-compact);font-weight:800;white-space:nowrap;cursor:pointer}
       .v39-footer-shortcut:hover{background:#1d424b;border-color:#77d8e7}
       .v39-footer-shortcut:focus-visible{outline:2px solid #9de4ef;outline-offset:1px}
@@ -371,7 +372,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
                         <span class="technique-power" id="mobileSurveyProgress">未調査</span>
                       </span>
                       <span class="technique-detail"><span class="technique-detail-head"><b>説明</b></span>
-                        <span class="technique-detail-description">現在地を調査します。残りAPの分だけ進み、不足分は次ターン以降に継続できます。必要APに達するとターン終了時に結果が確定します。</span>
+                        <span class="technique-detail-description">このキャラの索敵範囲全体を調査します。残りAPの分だけ進み、不足分は次ターン以降に継続できます。必要APに達するとターン終了時に特産品・鉱脈・残留品などが判明します。</span>
                       </span>
                     </button>
                     <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleGather" data-v39-technique-name="__system_gather__" aria-expanded="false">
@@ -435,8 +436,10 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
   }
 
   function activateFooterTab(tabKey) {
+    // 初期配置が終わるまで、通常タブで配置確認・決定ボタンを隠さない。
+    const placementActive = window.getV39ActiveFactionState?.()?.villagePlacementMode === true;
     const testEnabled = window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
-    const requested = tabKey === "test" && !testEnabled ? "squad" : tabKey;
+    const requested = placementActive ? "placement" : tabKey === "test" && !testEnabled ? "squad" : tabKey;
     const normalized = requested === "placement" || data.tabs.some(tab => tab.key === requested) ? requested : data.tabs[0].key;
     document.querySelectorAll("[data-foot]").forEach(button => button.classList.toggle("active", button.dataset.foot === normalized));
     [...data.tabs, { key:"placement" }].forEach(tab => {

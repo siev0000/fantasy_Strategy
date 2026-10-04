@@ -1,0 +1,418 @@
+{
+  "clicks": [
+    {
+      "key": "tile",
+      "ms": 6.400000095367432,
+      "exists": true
+    },
+    {
+      "key": "settlement",
+      "ms": 3.8000001907348633,
+      "exists": true
+    },
+    {
+      "key": "test",
+      "ms": 3.700000047683716,
+      "exists": true
+    },
+    {
+      "key": "manage",
+      "ms": 4.099999904632568,
+      "exists": true
+    },
+    {
+      "key": "squad",
+      "ms": 3.4000000953674316,
+      "exists": true
+    },
+    {
+      "key": "tile",
+      "ms": 3.799999952316284,
+      "exists": true
+    },
+    {
+      "key": "squad",
+      "ms": 4.5,
+      "exists": true
+    }
+  ],
+  "metrics": {
+    "listeners": [
+      {
+        "type": "click",
+        "source": "    at initializeOperationUi (http://127.0.0.1:3022/src/v39/ui/v39-operation-ui.js?t=1791089253781:468:10)",
+        "ms": 4.299999952316284
+      },
+      {
+        "type": "click",
+        "source": "    at initializeOperationUi (http://127.0.0.1:3022/src/v39/ui/v39-operation-ui.js?t=1791089253781:468:10)",
+        "ms": 4.099999904632568
+      },
+      {
+        "type": "click",
+        "source": "    at initializeOperationUi (http://127.0.0.1:3022/src/v39/ui/v39-operation-ui.js?t=1791089253781:468:10)",
+        "ms": 3.799999952316284
+      },
+      {
+        "type": "click",
+        "source": "    at initializeOperationUi (http://127.0.0.1:3022/src/v39/ui/v39-operation-ui.js?t=1791089253781:468:10)",
+        "ms": 3.5
+      },
+      {
+        "type": "click",
+        "source": "    at initializeOperationUi (http://127.0.0.1:3022/src/v39/ui/v39-operation-ui.js?t=1791089253781:468:10)",
+        "ms": 3.4000000953674316
+      },
+      {
+        "type": "click",
+        "source": "    at initializeOperationUi (http://127.0.0.1:3022/src/v39/ui/v39-operation-ui.js?t=1791089253781:468:10)",
+        "ms": 3.299999952316284
+      },
+      {
+        "type": "click",
+        "source": "    at initializeOperationUi (http://127.0.0.1:3022/src/v39/ui/v39-operation-ui.js?t=1791089253781:468:10)",
+        "ms": 3.200000047683716
+      },
+      {
+        "type": "click",
+        "source": "    at initializeOperationUi (http://127.0.0.1:3022/src/v39/ui/v39-operation-ui.js?t=1791089253781:468:10)",
+        "ms": 0.5999999046325684
+      },
+      {
+        "type": "click",
+        "source": "    at http://127.0.0.1:3022/src/v39/map/v39-camera-zoom-controller.js?t=1791089253781:157:10",
+        "ms": 0.40000009536743164
+      },
+      {
+        "type": "click",
+        "source": "    at boot (http://127.0.0.1:3022/src/v39/map/v39-field-settings-final.js:666:12)",
+        "ms": 0.2999999523162842
+      },
+      {
+        "type": "click",
+        "source": "    at installUi (http://127.0.0.1:3022/src/v39/core/v39-turn-system.js?t=1791089253781:223:12)",
+        "ms": 0.2999999523162842
+      },
+      {
+        "type": "click",
+        "source": "    at install (http://127.0.0.1:3022/src/v39/unit/v39-character-modal.js?t=1791089253781:386:12)",
+        "ms": 0.2999999523162842
+      },
+      {
+        "type": "click",
+        "source": "    at http://127.0.0.1:3022/src/v39/world/v39-economy-ui.js?t=1791089253781:430:10",
+        "ms": 0.20000004768371582
+      },
+      {
+        "type": "click",
+        "source": "    at http://127.0.0.1:3022/src/v39/world/v39-land-expansion-ui.js?t=1791089253781:55:10",
+        "ms": 0.20000004768371582
+      },
+      {
+        "type": "click",
+        "source": "    at http://127.0.0.1:3022/src/v39/map/v39-camera-zoom-controller.js?t=1791089253781:157:10",
+        "ms": 0.20000004768371582
+      },
+      {
+        "type": "click",
+        "source": "    at installUi (http://127.0.0.1:3022/src/v39/core/v39-turn-system.js?t=1791089253781:223:12)",
+        "ms": 0.20000004768371582
+      },
+      {
+        "type": "click",
+        "source": "    at http://127.0.0.1:3022/src/v39/core/v39-activity-log.js:172:10",
+        "ms": 0.10000014305114746
+      },
+      {
+        "type": "v39:footer-tab-changed",
+        "source": "    at http://127.0.0.1:3022/src/v39/world/v39-land-expansion-ui.js?t=1791089253781:91:8",
+        "ms": 0.10000014305114746
+      },
+      {
+        "type": "click",
+        "source": "    at boot (http://127.0.0.1:3022/src/v39/core/v39-multiplayer-lobby.js?t=1791089253781:893:12)",
+        "ms": 0.09999990463256836
+      },
+      {
+        "type": "click",
+        "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js?t=1791089253781:241:12)",
+        "ms": 0.09999990463256836
+      },
+      {
+        "type": "click",
+        "source": "    at boot (http://127.0.0.1:3022/src/v39/core/v39-multiplayer-lobby.js?t=1791089253781:893:12)",
+        "ms": 0.09999990463256836
+      },
+      {
+        "type": "click",
+        "source": "    at http://127.0.0.1:3022/src/v39/world/v39-land-expansion-ui.js?t=1791089253781:55:10",
+        "ms": 0.09999990463256836
+      },
+      {
+        "type": "v39:footer-tab-changed",
+        "source": "    at http://127.0.0.1:3022/src/v39/world/v39-land-expansion-ui.js?t=1791089253781:91:8",
+        "ms": 0.09999990463256836
+      },
+      {
+        "type": "click",
+        "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js?t=1791089253781:241:12)",
+        "ms": 0.09999990463256836
+      },
+      {
+        "type": "click",
+        "source": "    at installEvents (http://127.0.0.1:3022/src/v39/world/v39-research-ui.js?t=1791089253781:241:12)",
+        "ms": 0.09999990463256836
+      }
+    ],
+    "frames": {
+      "count": 304,
+      "average": 16.863815789787385,
+      "max": 66.70000000000437,
+      "over50": 1
+    },
+    "scrollTop": 225
+  },
+  "top": [
+    {
+      "ms": 4595.050000000001,
+      "functionName": "(idle)",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    },
+    {
+      "ms": 1371.4600000000005,
+      "functionName": "(program)",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    },
+    {
+      "ms": 13.866,
+      "functionName": "cloneUnit",
+      "scriptId": "14",
+      "url": "http://127.0.0.1:3022/src/v39/core/v39-game-state-bridge.js?t=1791089253781",
+      "lineNumber": 231,
+      "columnNumber": 18
+    },
+    {
+      "ms": 13.767000000000001,
+      "functionName": "batchSprite",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 104274,
+      "columnNumber": 39
+    },
+    {
+      "ms": 7.739,
+      "functionName": "render",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 101776,
+      "columnNumber": 34
+    },
+    {
+      "ms": 6.194,
+      "functionName": "batchQuad",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 99302,
+      "columnNumber": 37
+    },
+    {
+      "ms": 6.058,
+      "functionName": "evaluate",
+      "scriptId": "647",
+      "url": "",
+      "lineNumber": 296,
+      "columnNumber": 10
+    },
+    {
+      "ms": 4.679,
+      "functionName": "query",
+      "scriptId": "667",
+      "url": "",
+      "lineNumber": 5446,
+      "columnNumber": 20
+    },
+    {
+      "ms": 4.577,
+      "functionName": "step",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 16403,
+      "columnNumber": 45
+    },
+    {
+      "ms": 3.1260000000000003,
+      "functionName": "batchStrokePath",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 104665,
+      "columnNumber": 43
+    },
+    {
+      "ms": 3.099,
+      "functionName": "handler",
+      "scriptId": "4",
+      "url": "",
+      "lineNumber": 7,
+      "columnNumber": 36
+    },
+    {
+      "ms": 3.097,
+      "functionName": "structuredClone",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    },
+    {
+      "ms": 3.0869999999999997,
+      "functionName": "get",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 21590,
+      "columnNumber": 33
+    },
+    {
+      "ms": 3.052,
+      "functionName": "set",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 97319,
+      "columnNumber": 31
+    },
+    {
+      "ms": 3.044,
+      "functionName": "query",
+      "scriptId": "667",
+      "url": "",
+      "lineNumber": 5446,
+      "columnNumber": 20
+    },
+    {
+      "ms": 3.0140000000000002,
+      "functionName": "",
+      "scriptId": "667",
+      "url": "",
+      "lineNumber": 1,
+      "columnNumber": 9
+    },
+    {
+      "ms": 2.052,
+      "functionName": "updateMotion",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 60939,
+      "columnNumber": 40
+    },
+    {
+      "ms": 1.578,
+      "functionName": "get",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 25701,
+      "columnNumber": 33
+    },
+    {
+      "ms": 1.574,
+      "functionName": "bufferSubData",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    },
+    {
+      "ms": 1.569,
+      "functionName": "getAriaRole",
+      "scriptId": "667",
+      "url": "",
+      "lineNumber": 3158,
+      "columnNumber": 20
+    },
+    {
+      "ms": 1.555,
+      "functionName": "Path",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 30276,
+      "columnNumber": 35
+    },
+    {
+      "ms": 1.553,
+      "functionName": "",
+      "scriptId": "667",
+      "url": "",
+      "lineNumber": 5265,
+      "columnNumber": 116
+    },
+    {
+      "ms": 1.55,
+      "functionName": "ContainerWebGLRenderer",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 27718,
+      "columnNumber": 53
+    },
+    {
+      "ms": 1.55,
+      "functionName": "",
+      "scriptId": "60",
+      "url": "http://127.0.0.1:3022/src/lib/v39-population-economy.js",
+      "lineNumber": 131,
+      "columnNumber": 71
+    },
+    {
+      "ms": 1.549,
+      "functionName": "batchLine",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 104705,
+      "columnNumber": 37
+    },
+    {
+      "ms": 1.547,
+      "functionName": "click",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    },
+    {
+      "ms": 1.547,
+      "functionName": "querySelectorAll",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    },
+    {
+      "ms": 1.547,
+      "functionName": "updateInputPlugins",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 58132,
+      "columnNumber": 46
+    },
+    {
+      "ms": 1.546,
+      "functionName": "InjectedScript",
+      "scriptId": "697",
+      "url": "",
+      "lineNumber": 6554,
+      "columnNumber": 13
+    },
+    {
+      "ms": 1.543,
+      "functionName": "headlessStep",
+      "scriptId": "53",
+      "url": "http://127.0.0.1:3022/@fs/C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/.vite/deps/phaser.js?v=d448a207",
+      "lineNumber": 8650,
+      "columnNumber": 40
+    }
+  ],
+  "errors": []
+}

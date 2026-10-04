@@ -10,6 +10,7 @@ import { generateV39VictoryLandmarks } from "../../lib/v39-victory-landmarks.js"
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { inspectV39Gather, gatherV39Resources } from "../../lib/v39-gather-rules.js";
+import { generateV39Specialties } from "../../lib/v39-specialty-rules.js";
 
 let selectedTile = null;
 
@@ -73,10 +74,10 @@ function render() {
     action.disabled = false;
     action.setAttribute("aria-disabled", String(!check.available));
     action.classList.toggle("unavailable", !check.available);
-    action.title = check.available ? "現在地を調査 / 残りAP全消費" : check.reasons.join(" / ");
+    action.title = check.available ? `索敵範囲${check.tileKeys.length}マスを調査 / 残りAP全消費` : check.reasons.join(" / ");
     document.getElementById("mobileSurveyAp").textContent = `AP ${check.apCost}→0`;
     const progress = unit?.surveyTask?.progressPercent;
-    const surveyed = faction?.exploration?.surveyedTileKeys?.includes(check.key);
+    const surveyed = check.tileKeys.length > 0 && check.tileKeys.every(key => faction?.exploration?.surveyedTileKeys?.includes(key));
     document.getElementById("mobileSurveyProgress").textContent = unit?.surveyTask
       ? `${Math.round(progress ?? 100)}%${(progress ?? 100) >= 100 ? " / 結果待ち" : " / 継続"}` : surveyed ? "調査済み" : "未調査";
   }
@@ -99,6 +100,7 @@ function render() {
   const equipmentCount = groundLoot?.cargo?.equipmentInventory?.length || 0;
   const lootText = groundLootDiscovered ? `残留品 ${resourceCount + equipmentCount}` : "";
   output.textContent = [feature?.definition?.name, lootText].filter(Boolean).join(" / ")
+    || faction?.exploration?.discoveredSpecialtiesByTile?.[key]?.name
     || (surveyed ? "異常なし" : task?.key === key ? `調査中 / ${Math.round(task.progressPercent ?? 100)}%` : "未調査");
   button.hidden = !groundLootDiscovered;
   if (groundLootDiscovered) {
@@ -171,21 +173,25 @@ function initializeSites(event) {
     .flatMap(landmark => Array.isArray(landmark?.occupiedTileKeys) ? landmark.occupiedTileKeys : [landmark?.key])
     .filter(Boolean);
   const normalSitesByTile = generateV39ExplorationSites(mapData, { seed, reservedTileKeys });
+  const specialtiesByTile = generateV39Specialties(mapData, {
+    seed, reservedTileKeys,
+    playerCount:state.players.filter(player => player.isPlayer !== false).length,
+  });
   // Survey dispatch stays in one map; the dedicated record keeps landmark state queryable without type inference.
   const explorationSitesByTile = { ...normalSitesByTile, ...victoryLandmarksByTile };
   const players = state.players.map(player => ({
     ...player,
-    factionState:{ ...player.factionState, exploration:{ discoveredFeaturesByTile:{}, surveyedTileKeys:[], history:[], lastProcessedTurn:0 } }
+    factionState:{ ...player.factionState, exploration:{ discoveredFeaturesByTile:{}, discoveredSpecialtiesByTile:{}, surveyedTileKeys:[], history:[], lastProcessedTurn:0 } }
   }));
-  window.setV39GameState?.({ explorationSitesByTile, victoryLandmarksByTile, players }, { reason:"exploration-sites-generated" });
+  window.setV39GameState?.({ explorationSitesByTile, specialtiesByTile, victoryLandmarksByTile, players }, { reason:"exploration-sites-generated" });
   window.dispatchEvent(new CustomEvent("v39:exploration-sites-generated", { detail:{ count:Object.keys(explorationSitesByTile).length, landmarkCount:Object.keys(victoryLandmarksByTile).length } }));
 }
 
 function clearSitesForNewField(event) {
   if (event?.detail?.restored) return;
   const state = window.getV39GameState?.();
-  if (!state || (!Object.keys(state.explorationSitesByTile || {}).length && !Object.keys(state.victoryLandmarksByTile || {}).length)) return;
-  window.setV39GameState?.({ explorationSitesByTile:{}, victoryLandmarksByTile:{} }, { reason:"exploration-sites-cleared" });
+  if (!state || (!Object.keys(state.explorationSitesByTile || {}).length && !Object.keys(state.victoryLandmarksByTile || {}).length && !Object.keys(state.specialtiesByTile || {}).length)) return;
+  window.setV39GameState?.({ explorationSitesByTile:{}, specialtiesByTile:{}, victoryLandmarksByTile:{} }, { reason:"exploration-sites-cleared" });
 }
 
 function advanceTurn(event) {
@@ -195,7 +201,11 @@ function advanceTurn(event) {
   window.setV39GameState?.({ players:result.state.players, dangerPercentByTile:result.state.dangerPercentByTile, territoryOwnerByTile:result.state.territoryOwnerByTile, territoryStateByTile:result.state.territoryStateByTile, groundLootByTile:result.state.groundLootByTile }, { reason:"exploration-turn" });
   for (const report of result.reports) {
     window.dispatchEvent(new CustomEvent("v39:exploration-log", { detail:report }));
-    showMessage(report.message);
+  }
+  const ownReports = result.reports.filter(row => row.playerId === state.activePlayerId);
+  if (ownReports.length) {
+    const found = [...new Set(ownReports.flatMap(row => [row.featureName, row.specialtyName, row.groundLootDiscovered ? "残留品" : ""]).filter(Boolean))];
+    showMessage(`調査: ${ownReports.length}マス / ${found.join(" / ") || ownReports[0].message}`);
   }
 }
 

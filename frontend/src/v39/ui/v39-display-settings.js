@@ -4,6 +4,7 @@ import {
   resolveAutoMaxZoomFactor,
   resolveEffectiveMaxZoomFactor
 } from "../../lib/map-camera-zoom-rules.js";
+import { runV39FieldUpdate } from "./v39-field-update-loading.js";
 
 const STORAGE_KEY = "v39-display-settings-v1";
 const DEFAULTS = Object.freeze({
@@ -113,7 +114,7 @@ function effectiveTestMode() {
   return settings.testMode === true;
 }
 
-function applySettings({ emit = true } = {}) {
+function applySettings({ emit = true, changedKeys } = {}) {
   const testModeEnabled = effectiveTestMode();
   document.documentElement.dataset.v39FontScale = String(settings.fontScalePercent / 100);
   document.documentElement.classList.toggle("v39-reduce-motion", !!settings.reduceMotion);
@@ -138,7 +139,6 @@ function applySettings({ emit = true } = {}) {
   if (focusUnacted) focusUnacted.checked = settings.focusUnactedUnits !== false;
   if (testMode) {
     testMode.checked = testModeEnabled;
-    testMode.disabled = false;
   }
   if (maxZoom) maxZoom.value = String(settings.maxZoomFactor);
 
@@ -148,16 +148,40 @@ function applySettings({ emit = true } = {}) {
   updateMaxZoomText();
   if (emit) {
     window.dispatchEvent(new CustomEvent("v39:display-settings-changed", {
-      detail: { ...settings, testMode:testModeEnabled, ...currentMapSize() }
+      detail: { ...settings, testMode:testModeEnabled, ...currentMapSize(), changedKeys }
     }));
     window.dispatchEvent(new Event("resize"));
   }
 }
 
 function updateSetting(key, value) {
-  settings = { ...settings, [key]: value };
-  saveSettings();
-  applySettings();
+  return updateSettings({ [key]:value });
+}
+
+function reportUpdateError(error) {
+  console.error("[表示更新失敗]", error);
+  window.showV39TurnBanner?.("表示更新に失敗しました");
+}
+
+function updateControlSetting(key, value) {
+  void updateSetting(key, value).catch(reportUpdateError);
+}
+
+function updateSettings(patch) {
+  const changedKeys = Object.keys(patch).filter(key => settings[key] !== patch[key]);
+  if (!changedKeys.length) return Promise.resolve();
+  const apply = () => {
+    settings = { ...settings, ...patch };
+    saveSettings();
+    applySettings({ changedKeys });
+  };
+  if (changedKeys.some(key => ["testMode", "heightOutlineOnly", "heightShading"].includes(key))) {
+    return runV39FieldUpdate(apply, {
+      controls:[...document.querySelectorAll("#v39-display-settings-panel input, #v39-display-settings-panel select, #v39-display-settings-reset")]
+    });
+  }
+  apply();
+  return Promise.resolve();
 }
 
 function bindPanelNavigation() {
@@ -182,33 +206,31 @@ function bindPanelNavigation() {
 
 function bindControls() {
   document.getElementById("v39-focus-unacted-units")?.addEventListener("change", event => {
-    updateSetting("focusUnactedUnits", !!event.target.checked);
+    updateControlSetting("focusUnactedUnits", !!event.target.checked);
   });
   document.getElementById("v39-font-size")?.addEventListener("input", event => {
-    updateSetting("fontScalePercent", clamp(event.target.value, 80, 140, 100));
+    updateControlSetting("fontScalePercent", clamp(event.target.value, 80, 140, 100));
   });
   document.getElementById("v39-height-outline-only")?.addEventListener("change", event => {
-    updateSetting("heightOutlineOnly", !!event.target.checked);
+    updateControlSetting("heightOutlineOnly", !!event.target.checked);
   });
   document.getElementById("v39-height-shading")?.addEventListener("change", event => {
-    updateSetting("heightShading", !!event.target.checked);
+    updateControlSetting("heightShading", !!event.target.checked);
   });
   document.getElementById("v39-show-zoom-controls")?.addEventListener("change", event => {
-    updateSetting("showZoomControls", !!event.target.checked);
+    updateControlSetting("showZoomControls", !!event.target.checked);
   });
   document.getElementById("v39-reduce-motion")?.addEventListener("change", event => {
-    updateSetting("reduceMotion", !!event.target.checked);
+    updateControlSetting("reduceMotion", !!event.target.checked);
   });
   document.getElementById("v39-test-mode")?.addEventListener("change", event => {
-    updateSetting("testMode", !!event.target.checked);
+    updateControlSetting("testMode", !!event.target.checked);
   });
   document.getElementById("v39-max-zoom-factor")?.addEventListener("input", event => {
-    updateSetting("maxZoomFactor", normalizeUserMaxZoomFactor(event.target.value));
+    updateControlSetting("maxZoomFactor", normalizeUserMaxZoomFactor(event.target.value));
   });
   document.getElementById("v39-display-settings-reset")?.addEventListener("click", () => {
-    settings = { ...DEFAULTS };
-    saveSettings();
-    applySettings();
+    void updateSettings(DEFAULTS).catch(reportUpdateError);
   });
 }
 

@@ -1,4 +1,5 @@
 import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "../../lib/v39-unit-creation-rules.js";
+import { resolveV39UnitInitialLevel } from "../../lib/v39-unit-experience.js";
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
@@ -43,10 +44,10 @@ function render(statusText = "") {
     <div class="v39-unit-create-grid">
       <label><span>種族</span><select id="v39-unit-race">${options.races.map(value => `<option${value === race ? " selected" : ""}>${escapeHtml(value)}</option>`).join("")}</select></label>
       <label><span>初期職業</span><select id="v39-unit-class">${options.classes.map(row => `<option${row.名前 === className ? " selected" : ""}>${escapeHtml(row.名前)}</option>`).join("")}</select></label>
-      <label><span>種別</span><select id="v39-unit-mode">${options.modes.map(row => `<option value="${row.mode}"${row.mode === mode ? " selected" : ""}>${escapeHtml(row.label)} / 軍事Lv${row.requiredMilitaryLevel}</option>`).join("")}</select></label>
+      <label><span>種別</span><select id="v39-unit-mode">${options.modes.map(row => `<option value="${row.mode}"${row.mode === mode ? " selected" : ""}>${escapeHtml(row.label)} / 必要軍事Lv${row.requiredMilitaryLevel}</option>`).join("")}</select></label>
       <label><span>作成数</span><input id="v39-unit-count" type="number" min="1" max="20" value="${count}"></label>
     </div>
-    <div class="v39-unit-create-summary"><span>上限 ${check.current}/${check.cap}</span><span>人口 -${check.populationCost}</span><span>${escapeHtml(cost)}</span></div>
+    <div class="v39-unit-create-summary"><span>初期Lv${resolveV39UnitInitialLevel(race, mode !== "normal")}</span><span>上限 ${check.current}/${check.cap}</span><span>人口 -${check.populationCost}</span><span>${escapeHtml(cost)}</span></div>
     <footer><output id="v39-unit-create-status">${escapeHtml(statusText || (check.available ? "生成できます" : check.reasons.join(" / ")))}</output><button type="button" id="v39-unit-create-confirm" class="v39-unit-create-confirm"${check.available ? "" : " disabled"}>${check.available ? "生成" : "生成不可"}</button></footer>`;
 }
 

@@ -34,11 +34,9 @@ function unitName(unit, index) {
 function squadKey(unit) {
   if (unit?.solo === true || unit?.isSolo === true) return "solo";
   const raw = text(unit?.squadId ?? unit?.squadKey ?? unit?.groupId ?? unit?.partyId ?? unit?.squad);
-  if (!raw) return "squad1";
+  if (!raw) return "solo";
   if (raw === "solo" || raw === "単独") return "solo";
-  if (/^squad\d+$/i.test(raw)) return raw.toLowerCase();
-  const match = raw.match(/(\d+)/);
-  return match ? `squad${match[1]}` : raw;
+  return raw;
 }
 
 function unitPosition(unit) {
@@ -301,7 +299,7 @@ function notifyDetailRendered(unit = null) {
   }));
 }
 
-let selectedSquadKey = "squad1";
+let selectedSquadKey = "";
 let selectedUnitId = "";
 let expandedTechniqueName = "";
 let expandedEquipmentKey = "";
@@ -319,10 +317,25 @@ function getUnits() {
 
 function getSquads() {
   const factionState = getFactionState();
-  const rows = Array.isArray(factionState?.squads) ? factionState.squads.filter(Boolean) : [];
-  if (rows.length) return rows;
-  const keys = [...new Set(getUnits().map(unit => squadKey(unit)))];
-  return keys.map(key => ({ id:key, label:key === "solo" ? "単独" : key, unitIds:[] }));
+  const units = getUnits();
+  const liveIds = new Set(units.map(unitId));
+  const rows = (Array.isArray(factionState?.squads) ? factionState.squads : []).filter(Boolean)
+    .map(row => ({ ...row, unitIds:(Array.isArray(row.unitIds) ? row.unitIds : []).map(String).filter(id => liveIds.has(id)) }));
+  const assignedIds = new Set(rows.flatMap(row => row.unitIds));
+  // 部隊の明示所属を優先し、未登録ユニットも現在の所属IDから一覧へ補う。
+  units.forEach((unit, index) => {
+    const id = unitId(unit, index);
+    if (assignedIds.has(id)) return;
+    const key = squadKey(unit);
+    let row = rows.find((row, rowIndex) => squadIdOf(row, rowIndex) === key);
+    if (!row) {
+      row = { id:key, label:key === "solo" ? "単独" : key, unitIds:[] };
+      rows.push(row);
+    }
+    row.unitIds.push(id);
+    assignedIds.add(id);
+  });
+  return rows;
 }
 
 function squadIdOf(row, index = 0) {
@@ -333,9 +346,9 @@ function unitsForSquad(key) {
   const units = getUnits();
   const squad = getSquads().find((row, index) => squadIdOf(row, index) === key);
   const unitIds = new Set(Array.isArray(squad?.unitIds) ? squad.unitIds.map(String) : []);
-  return unitIds.size
-    ? units.filter((unit, index) => unitIds.has(unitId(unit, index)))
-    : units.filter(unit => squadKey(unit) === key);
+  const order=Array.from(unitIds);
+  return units.filter((unit, index) => unitIds.has(unitId(unit, index)))
+    .sort((a,b)=>order.indexOf(unitId(a))-order.indexOf(unitId(b)));
 }
 
 function unitsForSelectedSquad() {
@@ -391,9 +404,7 @@ function updateSelectorCounts() {
   selector.innerHTML = squads.map((squad, index) => {
     const key = squadIdOf(squad, index);
     const ids = new Set(Array.isArray(squad?.unitIds) ? squad.unitIds.map(String) : []);
-    const count = ids.size
-      ? units.filter((unit, unitIndex) => ids.has(unitId(unit, unitIndex))).length
-      : units.filter(unit => squadKey(unit) === key).length;
+    const count = units.filter((unit, unitIndex) => ids.has(unitId(unit, unitIndex))).length;
     const label = text(squad?.label ?? squad?.name, key === "solo" ? "単独" : key);
     return `<button class="squad-select-btn${key === selectedSquadKey ? " active" : ""}" data-squad-select="${key}"><b>${label}</b><small>${count}体</small></button>`;
   }).join("");
@@ -513,9 +524,11 @@ function renderDetail() {
   if (tech) {
     const rows = techniqueEntries(unit);
     const weaponAttackRows = resolveAttackRows(unit).filter(row => row?.装備攻撃 === true);
+    const bodyNames = new Set(weaponAttackRows.filter(row => row.身体武器).map(row => row.名前));
     const activeRows = [
       ...weaponAttackRows,
-      ...rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() !== "P")
+      ...rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() !== "P"
+        && !bodyNames.has(text(techniqueSource(row)?.名前 ?? row?.name)))
     ];
     const passiveRows = rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() === "P");
     const adjustedUnit = applyV39TerrainModifiers(unit, window.__v39FieldRuntime?.mapData);
@@ -528,7 +541,7 @@ function renderDetail() {
             ? resolveAttackPower(source, adjustedUnit)
             : num(source?.威力 ?? row?.power, null);
           const rangeValue = action === "A"
-            ? resolveAttackRange(source, adjustedUnit)
+            ? resolveAttackRange(source, adjustedUnit, window.__v39FieldRuntime?.mapData)
             : num(row?.range ?? source?.射程, null);
           const guardValue = action === "A"
             ? resolveSkillGuard(source, adjustedUnit)
@@ -583,12 +596,16 @@ function render() {
   }
 }
 
+let renderQueued = false;
 function scheduleRender(event) {
+  if (event?.detail?.reason === "activity-log") return;
   if (event?.detail?.reason === "active-player") {
     selectedSquadKey = "";
     selectedUnitId = "";
   }
-  requestAnimationFrame(render);
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(); });
 }
 
 function install() {
@@ -600,13 +617,13 @@ function install() {
   }
 
   const active = selector.querySelector("[data-squad-select].active");
-  selectedSquadKey = active?.dataset?.squadSelect || "squad1";
+  selectedSquadKey = active?.dataset?.squadSelect || "";
   syncSelectionFromGameState();
 
   selector.addEventListener("click", event => {
     const btn = event.target instanceof Element ? event.target.closest("[data-squad-select]") : null;
     if (!btn) return;
-    selectedSquadKey = btn.dataset.squadSelect || "squad1";
+    selectedSquadKey = btn.dataset.squadSelect || "";
     expandedTechniqueName = "";
     expandedEquipmentKey = "";
     const first = unitsForSquad(selectedSquadKey)[0] || null;

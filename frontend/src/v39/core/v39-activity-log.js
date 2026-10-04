@@ -19,7 +19,7 @@ function playerIdsForCombat(state, detail) {
 }
 
 export function appendV39ActivityLog(playerIds, category, message, detail = {}) {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const targetIds = new Set((Array.isArray(playerIds) ? playerIds : [playerIds]).map(text).filter(Boolean));
   if (!state || !targetIds.size || !text(message)) return null;
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
@@ -47,7 +47,7 @@ function testModeEnabled() {
 }
 
 function logGroups() {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const activePlayer = state?.players?.find(player => text(player?.id) === text(state?.activePlayerId)) || state?.players?.[0] || null;
   const groups = [{ id:`player:${text(activePlayer?.id, "active")}`, label:"自勢力", rows:activeLog(), kind:"activity" }];
   if (!testModeEnabled()) return groups;
@@ -123,12 +123,12 @@ function installStyles() {
 }
 
 window.addEventListener("v39:combat-log", event => {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const summary = text(event?.detail?.summary);
   if (state && summary) appendV39ActivityLog(playerIdsForCombat(state, event.detail), "戦闘", summary, event.detail);
 });
 window.addEventListener("v39:terrain-damage", event => {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   for (const player of state?.players || []) {
     const ids = new Set((player?.factionState?.units || []).map(unit => text(unit?.id)));
     const entries = (event?.detail?.entries || []).filter(row => ids.has(text(row?.targetId)));
@@ -154,12 +154,12 @@ window.addEventListener("v39:territory-hazard-damage", event => {
     appendV39ActivityLog(playerId, "地形", `領土被害: ${entries.length}マス${facilityText}${storageText}${populationLoss ? ` / 人口-${populationLoss}` : ""}`, { entries, facilities, storages });
   }
 });
-window.addEventListener("v39:construction-started", event => appendV39ActivityLog(window.getV39GameState?.()?.activePlayerId, "建設", `${text(event?.detail?.facilityName)}の建設を開始`));
+window.addEventListener("v39:construction-started", event => appendV39ActivityLog(window.getV39GameState?.({ includeWorlds:false })?.activePlayerId, "建設", `${text(event?.detail?.facilityName)}の建設を開始`));
 window.addEventListener("v39:construction-completed", event => {
   for (const row of event?.detail?.completed || []) appendV39ActivityLog(row.playerId, "建設", `${text(row.facilityName)}が完成`);
 });
-window.addEventListener("v39:research-completed", event => appendV39ActivityLog(event?.detail?.playerId || window.getV39GameState?.()?.activePlayerId, "研究", `${text(event?.detail?.itemName || event?.detail?.name)}を完了`));
-window.addEventListener("v39:turn-advanced", event => appendV39ActivityLog(window.getV39GameState?.()?.activePlayerId, "ターン", `ターン${event?.detail?.turnNumber}開始`));
+window.addEventListener("v39:research-completed", event => appendV39ActivityLog(event?.detail?.playerId || window.getV39GameState?.({ includeWorlds:false })?.activePlayerId, "研究", `${text(event?.detail?.itemName || event?.detail?.name)}を完了`));
+window.addEventListener("v39:turn-advanced", event => appendV39ActivityLog(window.getV39GameState?.({ includeWorlds:false })?.activePlayerId, "ターン", `ターン${event?.detail?.turnNumber}開始`));
 window.addEventListener("v39:game-state-changed", () => {
   if (document.getElementById("rulerLogModal")?.classList.contains("open")) renderLogModal();
 });

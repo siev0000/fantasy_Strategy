@@ -1,6 +1,8 @@
 import { getGameDataRows } from "./game-data-registry.js";
 import { V39_SURVEY_BALANCE } from "./v39-gameplay-balance.js";
 import { isV39UnitWaiting } from "./v39-unit-action-rules.js";
+import { resolveV39UnitVisionRange } from "./v39-detection-rules.js";
+import { getHexNeighborCoords } from "./hex-grid.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { getV39VictoryLandmarkDefinition, isV39VictoryLandmark } from "./v39-victory-landmarks.js";
 
@@ -105,7 +107,26 @@ function resolveExplorationSiteDefinition(site) {
   return v39ExplorationFeatureDefinitions().find(row => row.id === site?.featureId);
 }
 
-export function inspectV39Survey(state, playerId, unitId, tile) {
+export function getV39SurveyTileKeys(unit, map = window.__v39FieldRuntime?.mapData) {
+  const x = Math.floor(number(unit?.x, -1)), y = Math.floor(number(unit?.y, -1));
+  if (x < 0 || y < 0) return [];
+  const queue = [{ x, y, distance:0 }];
+  const visited = new Set([coordKey(x, y)]);
+  if (!map?.w || !map?.h) return [...visited];
+  if (x >= map.w || y >= map.h) return [];
+  const range = resolveV39UnitVisionRange(unit);
+  for (let i = 0; i < queue.length; i++) {
+    const current = queue[i];
+    if (current.distance >= range) continue;
+    for (const tile of getHexNeighborCoords(map.w, map.h, current.x, current.y, !!map.worldWrapEnabled)) {
+      if (visited.has(tile.key)) continue;
+      visited.add(tile.key); queue.push({ ...tile, distance:current.distance + 1 });
+    }
+  }
+  return [...visited];
+}
+
+export function inspectV39Survey(state, playerId, unitId, tile, map) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const faction = player?.factionState;
   const unit = faction?.units?.find(row => text(row?.id) === text(unitId));
@@ -124,16 +145,22 @@ export function inspectV39Survey(state, playerId, unitId, tile) {
   const groundLoot = state?.groundLootByTile?.[key];
   const groundLootDiscovered = groundLoot?.discoveredByPlayerIds?.includes(text(playerId));
   const hasUndiscoveredGroundLoot = !!groundLoot && !groundLootDiscovered;
-  if (faction?.exploration?.surveyedTileKeys?.includes(key) && !hasUndiscoveredGroundLoot) reasons.push("調査済みです");
-  return { available:reasons.length === 0, reasons, player, faction, unit, x, y, key, apCost };
+  const tileKeys = getV39SurveyTileKeys(unit, map);
+  const surveyed = new Set(faction?.exploration?.surveyedTileKeys || []);
+  const hasUnsurveyed = tileKeys.some(key => !surveyed.has(key)
+    || (state?.groundLootByTile?.[key] && !state.groundLootByTile[key].discoveredByPlayerIds?.includes(text(playerId)))
+    || (state?.specialtiesByTile?.[key] && !faction?.exploration?.discoveredSpecialtiesByTile?.[key]));
+  if (!hasUnsurveyed && !hasUndiscoveredGroundLoot) reasons.push("索敵範囲は調査済みです");
+  return { available:reasons.length === 0, reasons, player, faction, unit, x, y, key, apCost, tileKeys };
 }
 
-export function startV39SurveyTask(state, playerId, unitId, tile) {
-  const check = inspectV39Survey(state, playerId, unitId, tile);
+export function startV39SurveyTask(state, playerId, unitId, tile, map) {
+  const check = inspectV39Survey(state, playerId, unitId, tile, map);
   if (!check.available) return { ok:false, reason:check.reasons.join(" / "), state };
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
   const progressAp = Math.min(V39_SURVEY_BALANCE.requiredAp, number(check.unit.surveyTask?.progressAp) + check.apCost);
   const task = { key:check.key, x:check.x, y:check.y, startedTurn:check.unit.surveyTask?.startedTurn ?? turn,
+    tileKeys:check.unit.surveyTask?.tileKeys || check.tileKeys,
     remainingTurns:1, totalTurns:1, progressAp, progressPercent:progressAp / V39_SURVEY_BALANCE.requiredAp * 100 };
   const players = state.players.map(player => player.id !== check.player.id ? player : ({
     ...player,
@@ -160,6 +187,7 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
     const exploration = faction.exploration || { discoveredFeaturesByTile:{}, surveyedTileKeys:[], history:[], lastProcessedTurn:0 };
     if (number(exploration.lastProcessedTurn) >= turn) return player;
     const discoveredFeaturesByTile = { ...(exploration.discoveredFeaturesByTile || {}) };
+    const discoveredSpecialtiesByTile = { ...(exploration.discoveredSpecialtiesByTile || {}) };
     const surveyed = new Set(exploration.surveyedTileKeys || []);
     const history = [...(exploration.history || [])];
     let activityLog = [...(faction.activityLog || [])];
@@ -176,35 +204,42 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
       }
       // 旧セーブのAP項目がない1T調査は従来どおり完了する。
       if (number(task.progressAp, V39_SURVEY_BALANCE.requiredAp) < V39_SURVEY_BALANCE.requiredAp) return unit;
-      const site = state?.explorationSitesByTile?.[task.key] || null;
-      const feature = site ? resolveExplorationSiteDefinition(site) : null;
-      if (site && feature) discoveredFeaturesByTile[task.key] = { ...site, discoveredTurn:turn, discoveredByUnitId:unit.id };
-      const groundLoot = groundLootByTile[task.key];
-      const groundLootDiscovered = !!groundLoot;
-      if (groundLootDiscovered && !groundLoot.discoveredByPlayerIds.includes(text(player.id))) {
-        groundLoot.discoveredByPlayerIds.push(text(player.id));
+      // 開始時の索敵範囲を固定。途中で索敵値が変化しても進捗の対象を変えない。
+      for (const key of task.tileKeys?.length ? task.tileKeys : [task.key]) {
+        const site = state?.explorationSitesByTile?.[key] || null;
+        const feature = site ? resolveExplorationSiteDefinition(site) : null;
+        if (site && feature) discoveredFeaturesByTile[key] = { ...site, discoveredTurn:turn, discoveredByUnitId:unit.id };
+        const specialty = state?.specialtiesByTile?.[key];
+        if (specialty) discoveredSpecialtiesByTile[key] = { ...specialty, discoveredTurn:turn, discoveredByUnitId:unit.id };
+        const groundLoot = groundLootByTile[key];
+        const groundLootDiscovered = !!groundLoot;
+        if (groundLootDiscovered && !groundLoot.discoveredByPlayerIds.includes(text(player.id))) {
+          groundLoot.discoveredByPlayerIds.push(text(player.id));
+        }
+        const alreadySurveyed = surveyed.has(key);
+        surveyed.add(key);
+        const beforeDanger = Math.max(0, number(dangerPercentByTile[key]));
+        const level = Math.max(1, Math.floor(number(unit.level, 1)));
+        const reduction = Math.max(1, Math.round(DANGER_REDUCTION_BASE * level / Math.max(1, Math.ceil(beforeDanger / 10))));
+        dangerPercentByTile[key] = Math.max(0, beforeDanger - (alreadySurveyed ? 0 : reduction));
+        const hasLivingEnemy = (state?.enemies || []).some(enemy => number(enemy.hp ?? enemy.currentHp) > 0 && coordKey(enemy.x, enemy.y) === key);
+        // 通常土地の取得は拠点の開拓へ分離。勝利対象の専用獲得条件は維持する。
+        const claimed = key === task.key && isV39VictoryLandmark(site) && dangerPercentByTile[key] <= 0 && !territoryOwnerByTile[key] && !hasLivingEnemy;
+        let claimedTileKeys = [];
+        if (claimed) {
+          claimedTileKeys = claimFeatureTerritory(
+            site,
+            key,
+            player.id,
+            text(selectedSettlement?.settlementId || selectedSettlement?.id),
+            territoryOwnerByTile,
+            territoryStateByTile
+          );
+        }
+        const foundText = [feature?.name, specialty?.name, groundLootDiscovered ? "残留品" : ""].filter(Boolean).join(" / ") || "異常なし";
+        const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key, claimedTileKeys, specialtyName:specialty?.name || "", featureId:feature?.id || "", featureName:feature?.name || "", groundLootDiscovered, dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
+        reports.push(report); history.push(report); activityLog = appendLog({ activityLog }, report);
       }
-      surveyed.add(task.key);
-      const beforeDanger = Math.max(0, number(dangerPercentByTile[task.key]));
-      const level = Math.max(1, Math.floor(number(unit.level, 1)));
-      const reduction = Math.max(1, Math.round(DANGER_REDUCTION_BASE * level / Math.max(1, Math.ceil(beforeDanger / 10))));
-      dangerPercentByTile[task.key] = Math.max(0, beforeDanger - reduction);
-      const hasLivingEnemy = (state?.enemies || []).some(enemy => number(enemy.hp ?? enemy.currentHp) > 0 && coordKey(enemy.x, enemy.y) === task.key);
-      const claimed = dangerPercentByTile[task.key] <= 0 && !territoryOwnerByTile[task.key] && !hasLivingEnemy;
-      let claimedTileKeys = [];
-      if (claimed) {
-        claimedTileKeys = claimFeatureTerritory(
-          site,
-          task.key,
-          player.id,
-          text(selectedSettlement?.settlementId || selectedSettlement?.id),
-          territoryOwnerByTile,
-          territoryStateByTile
-        );
-      }
-      const foundText = [feature?.name, groundLootDiscovered ? "残留品" : ""].filter(Boolean).join(" / ") || "異常なし";
-      const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key:task.key, claimedTileKeys, featureId:feature?.id || "", featureName:feature?.name || "", groundLootDiscovered, dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[task.key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${task.key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
-      reports.push(report); history.push(report); activityLog = appendLog({ activityLog }, report);
       const { surveyTask, ...rest } = unit;
       return rest;
     });
@@ -232,8 +267,8 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
       for (const key of (report.claimedTileKeys?.length ? report.claimedTileKeys : [report.key])) territoryTileModeMap[key] = "resource";
     }
     const factionState = selectedSettlement
-      ? replaceFactionSettlement({ ...faction, units, activityLog, exploration:{ ...exploration, discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } }, { ...selectedSettlement, territoryTileModeMap }, { ownerPlayerId:player.id })
-      : { ...faction, units, activityLog, exploration:{ ...exploration, discoveredFeaturesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } };
+      ? replaceFactionSettlement({ ...faction, units, activityLog, exploration:{ ...exploration, discoveredFeaturesByTile, discoveredSpecialtiesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } }, { ...selectedSettlement, territoryTileModeMap }, { ownerPlayerId:player.id })
+      : { ...faction, units, activityLog, exploration:{ ...exploration, discoveredFeaturesByTile, discoveredSpecialtiesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } };
     return { ...player, factionState };
   });
   return { state:{ ...state, players, dangerPercentByTile, territoryOwnerByTile, territoryStateByTile, groundLootByTile }, reports };

@@ -3,7 +3,8 @@ import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
 import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
-import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
+import { advanceV39CaveFormation, applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
+import { V39_MOVEMENT_PRESENTATION_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
 const RANGE_DEPTH = 9;
 const PATH_DEPTH = 11;
@@ -109,7 +110,7 @@ function occupiedTileKeys(excludedUnitIds = []) {
   const excluded = new Set((Array.isArray(excludedUnitIds) ? excludedUnitIds : [excludedUnitIds]).map(text).filter(Boolean));
   const state = window.getV39GameState?.();
   const units = [
-    ...(state?.players || []).flatMap(player => player?.factionState?.units || []),
+    ...(state?.players || []).flatMap(player => player?.factionState?.units || []).filter(unit=>(unit.worldId||"surface")===(state.activeWorldId||"surface")),
     ...(state?.enemies || [])
   ];
   return new Set(units
@@ -131,6 +132,7 @@ function closestReachableTarget(plan, start, desired) {
 }
 
 function moveFormationOneStep(data, formation, from, to, worldWrapEnabled, group, occupied) {
+  if (data.isUnderground) return advanceV39CaveFormation(data, formation, to, group, occupied);
   const w = Math.max(0, integer(data?.w));
   const h = Math.max(0, integer(data?.h));
   const directionIndex = getHexOffsetNeighbors(from.x, from.y).findIndex(raw => {
@@ -330,6 +332,7 @@ function clearMoveMode(options = {}) {
 }
 
 function startMove() {
+  if (window.isV39MapInputLocked?.()) return;
   if (moveSession) {
     clearMoveMode({ reason:"move-command-cancelled" });
     return false;
@@ -347,7 +350,7 @@ function startMove() {
     showToast("移動するキャラクターを選択してください");
     return false;
   }
-  const moveGroup = resolveV39SquadMovementGroup(faction, unitId(unit));
+  const moveGroup = resolveV39SquadMovementGroup(faction, unitId(unit), { followSelected:ctx.data.isUnderground });
   if (moveGroup.participants?.some(member => isV39UnitWaiting(member, window.getV39GameState?.()?.timeline?.turnNumber))) {
     showToast("部隊にこのターン待機済みのキャラクターがいます");
     return false;
@@ -441,7 +444,33 @@ function previewTarget(tile) {
     : "目的地へ到達できないため、表示位置で停止します");
 }
 
-function applyMovement() {
+export async function playV39UnitMovementPath(scene, formations, data) {
+  const duration = Math.min(V39_MOVEMENT_PRESENTATION_BALANCE.stepMs,
+    V39_MOVEMENT_PRESENTATION_BALANCE.maxDurationMs / Math.max(1, formations.length - 1));
+  for (let i = 1; i < formations.length; i += 1) {
+    const usedMarkers = new Set();
+    await Promise.all(formations[i].map(position => {
+      const marker = window.getV39MapEntityMarker?.(position.id);
+      if (!marker?.scene || !scene?.tweens || usedMarkers.has(marker)) return;
+      usedMarkers.add(marker);
+      const previous = formations[i - 1].find(row => row.id === position.id);
+      const center = tileCenter(position.x, position.y);
+      // ワールド端をまたぐ1歩は画面全体を横切らせない。
+      if (previous && (Math.abs(position.x - previous.x) > data.w / 2 || Math.abs(position.y - previous.y) > data.h / 2)) {
+        marker.setPosition(center.x, center.y);
+        return;
+      }
+      return new Promise(resolve => {
+        scene.tweens.add({ targets:marker, x:center.x, y:center.y, duration, ease:"Linear", onComplete:resolve, onStop:resolve });
+        // シーン破棄時にも操作ロックが残らない。
+        window.setTimeout(resolve, duration + 100);
+      });
+    }));
+  }
+}
+
+async function applyMovement() {
+  if (window.isV39MapInputLocked?.()) return;
   if (!moveSession?.target) return;
   const ctx = activeRuntime();
   const faction = activeFaction();
@@ -460,7 +489,7 @@ function applyMovement() {
     return;
   }
 
-  const currentGroup = resolveV39SquadMovementGroup(faction, session.unitId);
+  const currentGroup = resolveV39SquadMovementGroup(faction, session.unitId, { followSelected:ctx.data.isUnderground });
   if (!currentGroup.ok) {
     showToast(currentGroup.reason || "移動部隊を再取得できませんでした");
     clearMoveMode();
@@ -502,33 +531,52 @@ function applyMovement() {
   destroyGraphics();
   setMoveConfirm(false);
   setBanner("");
-  window.updateV39ActiveFactionState({
-    units:movement.faction.units.map(member => currentGroup.participantIds.includes(unitId(member))
-      ? { ...member, lastActionTurn:window.getV39GameState?.()?.timeline?.turnNumber } : member),
-    squads:movement.faction.squads,
-    selectedUnitId:session.unitId,
-    moveCommandUnitId:""
-  }, { reason:"unit-moved" });
+  const inputToken = window.beginV39MapInputLock?.("unit-movement");
+  const app = document.getElementById("app");
+  const wasInert = app?.inert;
+  if (app) app.inert = true;
+  let batchToken = null;
+  try {
+    // 移動モード開始時に予約された再描画を済ませ、破棄前のマーカーへTweenを付けない。
+    await window.waitForV39MapRenderSettled?.();
+    window.refreshV39MapEntities?.();
+    batchToken = window.beginV39MapRenderBatch?.("unit-movement");
+    drawPath(path);
+    await playV39UnitMovementPath(activeRuntime()?.scene, path.map(node => freshPlan.formations.get(coordKey(node.x, node.y)) || []), ctx.data);
+    window.updateV39ActiveFactionState({
+      units:movement.faction.units.map(member => currentGroup.participantIds.includes(unitId(member))
+        ? { ...member, lastActionTurn:window.getV39GameState?.()?.timeline?.turnNumber } : member),
+      squads:movement.faction.squads,
+      selectedUnitId:session.unitId,
+      moveCommandUnitId:""
+    }, { reason:"unit-moved" });
 
-  window.dispatchEvent(new CustomEvent("v39:unit-moved", {
-    detail:{
-      unitId:session.unitId,
-      squadId:currentGroup.squadId,
-      unitIds:[...currentGroup.participantIds],
-      from:{ ...currentStart },
-      to:{ x:session.target.x, y:session.target.y },
-      positions:targetPositions.map(row => ({ ...row })),
-      path,
-      distance:Math.max(0, path.length - 1),
-      apCost:freshCost,
-      apRemaining:nextAp,
-      moveApRemaining:nextAp
-    }
-  }));
-  const movedLabel = currentGroup.isSquad
-    ? text(currentGroup.squad?.label || currentGroup.squad?.name, "部隊")
-    : text(unit.name, "キャラクター");
-  showToast(`${movedLabel}：移動完了 / 残AP ${nextAp}`);
+    window.dispatchEvent(new CustomEvent("v39:unit-moved", {
+      detail:{
+        unitId:session.unitId,
+        squadId:currentGroup.squadId,
+        unitIds:[...currentGroup.participantIds],
+        from:{ ...currentStart },
+        to:{ x:session.target.x, y:session.target.y },
+        positions:targetPositions.map(row => ({ ...row })),
+        path,
+        distance:Math.max(0, path.length - 1),
+        apCost:freshCost,
+        apRemaining:nextAp,
+        moveApRemaining:nextAp
+      }
+    }));
+    const movedLabel = currentGroup.isSquad
+      ? text(currentGroup.squad?.label || currentGroup.squad?.name, "部隊")
+      : text(unit.name, "キャラクター");
+    showToast(`${movedLabel}：移動完了 / 残AP ${nextAp}`);
+  } finally {
+    destroyGraphics();
+    window.endV39MapRenderBatch?.(batchToken, { force:true, reason:"unit-movement-complete" });
+    await window.waitForV39MapRenderSettled?.();
+    window.endV39MapInputLock?.(inputToken, "unit-movement-complete");
+    if (app) app.inert = wasInert;
+  }
 }
 
 function bindCapturedClick(id, handler) {

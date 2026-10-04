@@ -9,7 +9,7 @@ try {
   await page.evaluate(()=>{
     window.startV39LocalSession(1,{playMode:"single-test"});
     const state=window.getV39GameState();
-    window.setV39GameState({players:state.players.map(player=>({...player,factionState:{...player.factionState,
+    window.setV39GameState({players:state.players.map(player=>({...player,race:"エルフ",factionState:{...player.factionState,
       initialSettlementCount:1,initialSettlementPlans:[{name:"序盤村"}],
       units:player.factionState.units.map((unit,index)=>index!==0?unit:{...unit,isSovereign:true,unitType:"統治者"})}}))});
     window.generateV39TestFieldWithSeed({w:36,h:36,patternId:"realistic"},"start-area");
@@ -27,11 +27,19 @@ try {
   });
   await page.addStyleTag({content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}"});
   assert.equal(await page.locator('.footer-body #v39-placement-preview').count(),1);
-  const candidateCount=await page.locator('[data-placement-candidates] button').count();
+  assert.equal(await page.locator('[data-placement-candidates]').count(),0);
+  const candidateCount=await page.evaluate(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].v39PlacementContext.candidates.length);
   assert.ok(candidateCount>3&&candidateCount<=20);
   await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0]?.children.list
     .find(child=>child.name==="v39-initial-placement-shade")?.visible);
   assert.equal(await page.locator('[data-placement-confirm]').isDisabled(),true);
+  for (const key of ["squad","tile","settlement","test","manage"]) {
+    if (!await page.locator(`[data-foot="${key}"]`).isVisible()) continue;
+    await page.locator(`[data-foot="${key}"]`).click();
+    assert.ok(await page.locator('#v39-placement-preview').isVisible());
+    assert.ok(await page.locator('[data-placement-confirm]').isVisible());
+    assert.ok(await page.locator(`[data-foot="${key}"] .tab-text`).isVisible());
+  }
   assert.ok(await page.evaluate(()=>{
     const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
     return !scene.v39SelectedTile && scene.v39PlacementContext.candidates.every(tile=>tile.x>=3&&tile.y>=3&&tile.x<33&&tile.y<33);
@@ -40,7 +48,20 @@ try {
   await page.setViewportSize({width:440,height:900});
   await page.screenshot({path:"output/web-game/v39-start-area-before-selection-mobile.png"});
   await page.setViewportSize({width:1000,height:800});
-  await page.locator('[data-placement-candidates] button').first().click();
+  await page.evaluate(()=>{
+    const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
+    const tile=scene.v39PlacementContext.candidates[0];
+    scene.cameras.main.setZoom(2).centerOn(tile.x*62+(tile.y%2?31:0)+31,tile.y*56+37);
+  });
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const point=await page.evaluate(()=>{
+    const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0],camera=scene.cameras.main;
+    const tile=scene.v39PlacementContext.candidates[0];
+    const screen=camera.matrix.transformPoint(tile.x*62+(tile.y%2?31:0)+31-camera.scrollX,tile.y*56+37-camera.scrollY);
+    const canvas=window.__v39FieldRuntime.game.canvas.getBoundingClientRect();
+    return {x:canvas.left+screen.x,y:canvas.top+screen.y};
+  });
+  await page.mouse.click(point.x,point.y);
   assert.match(await page.locator('[data-placement-location]').textContent(),/高度 0/);
   assert.ok(await page.evaluate(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].v39SelectedTile));
   await page.evaluate(()=>{
@@ -78,12 +99,33 @@ try {
   assert.ok(await page.evaluate(()=>{
     const panel=document.getElementById("v39-placement-preview").getBoundingClientRect();
     const field=document.getElementById("v39-phaser-field").getBoundingClientRect();
-    return panel.top>=field.bottom;
+    const confirm=document.querySelector('[data-placement-confirm]').getBoundingClientRect();
+    const footer=document.querySelector('.footer-body').getBoundingClientRect();
+    return panel.top>=field.bottom && confirm.bottom<=Math.min(window.innerHeight,footer.bottom)+1 && confirm.top>=footer.top;
   }));
   await page.screenshot({path:"output/web-game/v39-start-area-mobile.png"});
+  for (const viewport of [{width:440,height:600},{width:320,height:568}]) {
+    await page.setViewportSize(viewport);
+    assert.ok(await page.evaluate(()=>{
+      const button=document.querySelector('[data-placement-confirm]').getBoundingClientRect();
+      const footer=document.querySelector('.footer-body').getBoundingClientRect();
+      return button.bottom<=Math.min(window.innerHeight,footer.bottom)+1 && button.top>=footer.top;
+    }));
+  }
+  await page.screenshot({path:"output/web-game/v39-start-area-small-mobile.png"});
+  for (const key of ["squad","tile","settlement","manage"]) {
+    await page.locator(`[data-foot="${key}"]`).click();
+    assert.ok(await page.locator('#v39-placement-preview').isVisible());
+    assert.match(await page.locator('[data-placement-location]').textContent(),/\(12,12\)/);
+    assert.equal(await page.locator('[data-placement-confirm]').isDisabled(),false);
+  }
   await page.locator('[data-placement-confirm]').click();
   assert.equal(await page.evaluate(()=>window.getV39GameState().players[0].factionState.settlements.filter(row=>row.placed).length),1);
   assert.equal(await page.locator('#v39-placement-preview').isVisible(),false);
+  for (const key of ["tile","settlement","manage","squad"]) {
+    await page.locator(`[data-foot="${key}"]`).click();
+    assert.equal(await page.locator('.footer-body>section.v39-footer-panel-active').getAttribute("id"),`foot${key[0].toUpperCase()}${key.slice(1)}`);
+  }
   await page.waitForFunction(()=>!window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list
     .find(child=>child.name==="v39-initial-placement-shade").visible);
   assert.ok(await page.evaluate(()=>{
@@ -108,14 +150,14 @@ try {
     }
     const enemies=window.spawnV39Enemies();
     return enemies.filter(enemy=>["通常","強敵","強敵配下"].includes(enemy.spawnType))
-      .map(enemy=>({name:enemy.name,level:enemy.level,distance:distance({x:12,y:12},enemy),strong:enemy.strongEnemy,adjusted:enemy.beginnerAdjusted}));
+      .map(enemy=>({name:enemy.name,level:enemy.level,distance:distance({x:12,y:12},enemy),strong:enemy.strongEnemy,adjusted:enemy.beginnerAdjusted,band:enemy.spawnLevelBand}));
   });
   assert.ok(generated.length>0);
   assert.ok(generated.every(enemy=>enemy.distance>4));
   const near=generated.filter(enemy=>enemy.distance<=8),far=generated.filter(enemy=>enemy.distance>8);
   assert.ok(near.length>0);assert.ok(far.length>0);
-  assert.ok(near.every(enemy=>enemy.level>=1&&enemy.level<=3&&!enemy.strong&&enemy.adjusted));
-  assert.ok(far.every(enemy=>enemy.level>=4));
+  assert.ok(near.every(enemy=>enemy.level>=1&&enemy.level<=3&&!enemy.strong));
+  assert.ok(far.every(enemy=>enemy.band!=="beginner"));
   const wrapped=await page.evaluate(()=>{
     const state=window.getV39GameState(),data=window.__v39FieldRuntime.mapData;
     data.worldWrapEnabled=true;

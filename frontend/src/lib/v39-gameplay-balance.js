@@ -4,6 +4,44 @@ export const V39_HIT_RATE_MIN = 0.25;
 // 攻撃の最大命中率。1.00 = 100%。
 export const V39_HIT_RATE_MAX = 1.00;
 
+export const V39_LAND_EXPANSION_BALANCE = Object.freeze({
+  // 暫定: 1件の開拓に回す拠点人口。食料消費は減らさず、生産要員からだけ外す。
+  workers:10,
+  // 暫定: 1マスの開拓工期と、1拠点で同時に進められる件数。
+  turns:2,
+  maxProjects:1,
+  // 水域の開拓は完成した船着き場・港の位置を起点にする。
+  waterRanges:Object.freeze({ 船着き場:1, 港:2 })
+});
+
+export const V39_MOVEMENT_PRESENTATION_BALANCE = Object.freeze({
+  // 1マスの移動演出時間。部隊員は同時に動かす。
+  stepMs:140,
+  // 全経路の最大再生時間。長距離では1歩の時間を短縮する。
+  maxDurationMs:1200
+});
+
+export const V39_BODY_WEAPON_BALANCE = Object.freeze({
+  // 種族・取得クラスの身体性能の最大値を、この値で割って身体武器Lvにする。
+  levelDivisor:10,
+  // 点の間は直線補間。小数Lvも保持し、レア度名とは独立して性能を上げる。
+  powerPoints:Object.freeze([
+    Object.freeze({ level:1, multiplier:1 }),
+    Object.freeze({ level:35, multiplier:2 }),
+    Object.freeze({ level:50, multiplier:3.5 })
+  ]) // 暫定: 最終点を超えるLvは最終点の倍率で頭打ち。
+});
+
+// プレイヤー・NPC勢力・一般村の新規ユニットLv。軍事研究Lvや編成人数とは別の値。
+export const V39_UNIT_INITIAL_LEVEL_BALANCE = Object.freeze({
+  // 人族: 統治者・通常ユニットLv7、軍隊・強化軍隊Lv3。
+  human:Object.freeze({ normal:7, army:3 }),
+  // 亜人: 人族より通常ユニット・軍隊ともにLv+3。
+  demi:Object.freeze({ normal:10, army:6 }),
+  // 魔族: 統治者・通常ユニットLv12、軍隊・強化軍隊Lv9。
+  demon:Object.freeze({ normal:12, army:9 })
+});
+
 export const V39_SURVEY_BALANCE = Object.freeze({
   // 調査完了に必要な累計AP。残りAPを全消費し、足りない分は次ターン以降に継続する。
   requiredAp:100
@@ -15,8 +53,14 @@ export const V39_GATHER_BALANCE = Object.freeze({
 });
 
 export const V39_START_AREA_BALANCE = Object.freeze({
-  // 初期配置画面で提示する低地候補の最大数。
+  // 初期配置画面で提示する種族向け候補の最大数。
   candidateCount:20,
+  // 暫定: 適正土地・苦手土地を評価する候補周囲の六角マス距離。
+  terrainPreferenceRadius:2,
+  // 暫定: 広い適正地帯として選択範囲に追加する、連続した低地マスの最低数。
+  preferredLowlandMinTiles:7,
+  // 暫定: 広い適正地帯の高度の絶対値上限。-1～1を低地として扱う。
+  preferredLowlandMaxHeight:1,
   // 暫定: 候補中心から初期拠点を配置できる六角マス距離。0なら候補中心のみ。
   placementRadius:2,
   // 初期拠点中心からこの六角マス距離以内には初期の通常敵・強敵を置かない。
@@ -59,8 +103,10 @@ export const V39_UNIT_EXP_BALANCE = Object.freeze({
     diplomacy:15,
     training:3
   }),
-  // 互換用。戦闘は「対象Lv1あたり」の基本EXPとして同じ15を使う。
+  // 旧式を参照する外部処理向けの互換値。
   baseExpPerTargetLevel:15,
+  // 同レベルの相手1体で約1Lv上がるよう、対象の次Lv必要EXPを報酬の基準にする。
+  combatLevelProgressRate:1,
   // 倒した相手側の種族カテゴリ倍率。
   targetRaceMultipliers:Object.freeze({
     human:1.0,
@@ -84,10 +130,18 @@ export const V39_UNIT_EXP_BALANCE = Object.freeze({
   researchExpReference:100,
   // 研究Lvそのものによる追加難易度。Lv1を1.0、1段階ごとに+50%。
   researchLevelDifficultyPerLevel:0.5,
-  // 部隊所属時は生存メンバーへ均等分配。soloは攻撃者だけが受け取る。
+  // 同じマップの生存部隊員にもEXPを与える。soloは攻撃者だけ。
   splitAmongLivingSquadMembers:true,
+  // falseなら各部隊員が同額を獲得。trueなら従来の人数による均等分割。
+  divideCombatExpAmongRecipients:false,
   // 同じ対象を回復させて削り直すEXP稼ぎを防ぐため、1体から支払うのは最大HP100%分まで。
   capRewardedDamageAtMaxHp:true
+});
+
+// 戦闘・閉じたチャットの新着ポップアップ。
+export const V39_LOG_PREVIEW_BALANCE = Object.freeze({
+  durationMs:4000, // 新着1件を表示する時間。
+  maxEntries:3 // 同時表示上限。連続攻撃でフィールド全体を覆わない。
 });
 
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
@@ -271,6 +325,8 @@ export const V39_CIVIC_BALANCE = Object.freeze({
   initialSecurity:50,
   // 住民状態が基準値へ近づく1ターンごとの最大変化量。
   changePerTurn:5,
+  // 暫定: 拠点中心・居住地がすべて苦手土地の場合の種族幸福度目標の低下量。苦手マス割合を掛ける。
+  unfavorableTerrainHappinessPenalty:30,
   // 食料備蓄による安心感が加点を始める残りターン数。
   foodReserveBonusStartTurns:4,
   // この残りターン数以上なら食料備蓄の幸福度ボーナスを最大にする。
@@ -488,6 +544,57 @@ export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
 export const V39_SETTLEMENT_DEVELOPMENT_BALANCE = Object.freeze({
   // 発展先の占有マスに既存の村・町区画が1マス含まれるごとに短縮するターン数。
   reusedResidentialTileTurnReduction:1
+});
+
+// 特産品の配置・幸福度の暫定値。正式な種類は特産品シート追加後に差し替える。
+export const V39_CAVE_BALANCE = Object.freeze({
+  // 地下限定: 通常の視界へ追加するマス数（索敵・隠密の能力値は変えない）。
+  visionBonusTiles:2,
+  // 地下限定: 正の射程の倍率。射程0・未記載は隣接1マスのまま。
+  attackRangeMultiplier:2,
+  surfaceEntranceLinkDistance:6, // 暫定：地上洞窟を同じ地下へ接続する中心からの距離。
+  maxSurfaceEntrances:4, // テンプレートの出入口数上限。超える入口は別グループにする。
+  tilesPerMonster:12, // 暫定：安全地帯を除いた通行可能12マスにつき敵1体。
+  entranceSafeDistance:2, // 暫定：出入口から2マス以内には敵を配置しない。
+  drakeWeight:3, // 暫定：洞窟のドレイク候補は他種の3倍の抽選重み。
+  maxTestLevel:15, // 洞窟テストで自動配置する通常敵の最大Lv。
+  partySize:3, // 洞窟探索テストの作成人数。
+  moveApPerTile:20, // 暫定：パーティー移動1マスにつき生存者全員が消費するAP。
+  visionDistance:6, // 暫定：洞窟探索の可視範囲。壁に遮られる通路距離。
+  enemyDetectDistance:7, // 暫定：好戦的な洞窟敵がパーティーを追う通路距離。
+  enemyMoveSteps:2, // 暫定：敵ターンで移動する最大マス数。
+  floorLevelStep:1, // 暫定：階層ごとの敵Lv増加。
+  adventureEnemyLevelCap:40, // 暫定：探索ゲームでの敵Lv上限。
+  logLimit:40, // 洞窟探索ログの保持件数。
+  followerStepMs:160, // 洞窟パーティーの追従表示で1マス移動にかける時間（ミリ秒）。
+  bossFloorInterval:5, // 暫定：5階層ごとにボス1体。0で配置を停止。
+  bossLevelBonus:5, // 暫定：洞窟候補の最大Lv＋階層補正へ加えるボスLv。
+  herbSites:1, // 暫定：階層ごとの薬草群生地数。
+  mushroomSites:1, // 暫定：階層ごとのキノコ群生地数。
+  oreSites:3, // 暫定：階層ごとの鉱石採取地点数。
+  gemSites:2, // 暫定：階層ごとの宝石採取地点数。
+  recoveryUses:3, // 暫定：群生地1地点で休息できる回数。
+  recoveryHpRate:0.25, // 暫定：1回の休息で生存者それぞれの最大HP25%を回復。
+  recoveryApCost:20, // 暫定：休息時に生存者全員が消費するAP。
+  miningApCost:30, // 暫定：採取担当キャラが1回で消費するAP。
+  oreDeposit:3, // 暫定：鉱石1地点の埋蔵数。1回の採取で1個。
+  gemDeposit:1, // 暫定：宝石1地点の埋蔵数。1回の採取で1個。
+});
+
+export const V39_SPECIALTY_BALANCE = Object.freeze({
+  minimumResourceSites:1, // 各特殊素材の全体最低地点数。操作プレイヤー数が多い場合はその人数を下限にする。
+  minimumResourceRegionTiles:8, // 暫定：適正地形が連続8マス以上の地域ごとに各素材1地点を確保。0で地域保証を停止。
+  harvestTurns:5, // 特殊資源1マスにつき1個を採取する基本周期（ターン）。
+  harvestAmount:1, // 1周期で在庫へ加算する基本個数。
+  researchSpeedPerLevel:0.2, // 暫定: 完了研究Lvごとの採取速度加算。周期進捗へ掛ける。
+  placementRate:0.12, // 配置可能なマスの12%に特産品を1種類配置する。
+  happinessPerType:2, // 発見済みの自領特産品1種類あたりの幸福度目標加算。
+  happinessCap:20, // 種類数による幸福度加算の上限。
+  markerSizeTiles:0.28, // マス幅に対する中央表示のアイコンの大きさ。
+  testUndiscoveredAlpha:0.6, // TEST ON時の未発見特産品の透明度。発見状態は変更しない。
+  occupiedMarkerSizeTiles:0.23, // ユニットがいるマスの右上アイコンの大きさ。
+  occupiedOffsetRightTiles:0.28, // マス中央から右へずらす量（マス幅の割合）。
+  occupiedOffsetUpTiles:0.28 // マス中央から上へずらす量（マス幅の割合）。
 });
 
 // 外交友好度・条約・AI判断の暫定値。確定後はこの定義だけを差し替える。

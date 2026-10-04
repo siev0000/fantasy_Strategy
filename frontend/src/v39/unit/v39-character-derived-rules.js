@@ -1,11 +1,12 @@
 import { classData as classDb, skillData as skillDb, testClassData as testClassDb, testSkillData as testSkillDb } from "../../lib/game-data-registry.js";
 import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
 import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "../../constants/unitCommon.js";
-import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules } from "../../composables/unitStatusUtils.js";
+import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules, rowStatusVector } from "../../composables/unitStatusUtils.js";
 import { applyMilitaryProfileToStatus } from "../../composables/militaryUnitUtils.js";
 import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
 import { resolveV39MovementStatFromStatus } from "../../lib/v39-gameplay-balance.js";
 import { isV39InvalidDataToken } from "../../lib/v39-class-rules.js";
+import { deriveV39BodyWeaponLevels } from "../../lib/v39-body-weapon-rules.js";
 
 const INITIAL_RACE_BONUS_LEVEL = 5;
 const STATUS_GROWTH_DIVISOR = 10;
@@ -121,7 +122,12 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const isHumanRace = text(raceRow.種類) === "人族";
-  const { raceLevels, classLevels } = internalLevels(level, isHumanRace);
+  const strongAnimalClassName = text(unit.strongAnimalClassName);
+  const strongAnimalClassRow = classByName.get(strongAnimalClassName) || null;
+  const strongAnimalClassLevel = strongAnimalClassRow
+    ? Math.max(0, Math.min(level - 1, Math.round(number(unit.strongAnimalClassLevel)))) : 0;
+  const baseLevel = level - strongAnimalClassLevel;
+  const { raceLevels, classLevels } = internalLevels(baseLevel, isHumanRace);
 
   const statusResult = buildCharacterStatusFromRules({
     raceRow,
@@ -147,10 +153,20 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   });
   const resistances = buildUnitResistances(raceRow, classRow, { resistanceFields:RESISTANCE_FIELDS });
 
+  if (strongAnimalClassRow && strongAnimalClassLevel > 0) {
+    const growth = rowStatusVector(strongAnimalClassRow, {statusGrowthFields:STATUS_GROWTH_FIELDS,statusGrowthDivisor:STATUS_GROWTH_DIVISOR});
+    for (const key of STATUS_GROWTH_FIELDS) statusResult.status[key] += growth[key] * strongAnimalClassLevel;
+    const skills = buildUnitSkillLevelsFromRules({classRow:strongAnimalClassRow,classLevels:strongAnimalClassLevel,
+      skillLevelFields:SKILL_LEVEL_FIELDS,statusGrowthDivisor:STATUS_GROWTH_DIVISOR});
+    for (const key of SKILL_LEVEL_FIELDS) skillLevels[key] += skills[key];
+    for (const key of RESISTANCE_FIELDS) resistances[key] += number(strongAnimalClassRow[key]);
+  }
+
   const acquiredNames = [
     ...collectSkills(raceRow, raceLevels),
     ...collectSkills(classRow, classLevels)
   ];
+  if (strongAnimalClassRow) acquiredNames.push(...collectSkills(strongAnimalClassRow, strongAnimalClassLevel));
 
   let secondClassRow = null;
   if (isHumanRace && level >= 10 && secondClassName && secondClassName !== className) {
@@ -171,12 +187,16 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     isHumanRace,
     raceLevels,
     classLevels,
+    baseLevel,
+    strongAnimalClassName:strongAnimalClassRow ? strongAnimalClassName : "",
+    strongAnimalClassLevel,
     initialRaceBonusLevel: INITIAL_RACE_BONUS_LEVEL,
     status,
     skillLevels,
     resistances,
     acquiredSkillNames: uniqueNames,
     techniques,
+    bodyWeaponLevels:deriveV39BodyWeaponLevels([raceRow, classRow, secondClassRow, strongAnimalClassRow]),
     uiStats: {
       atk: number(status.攻撃),
       def: number(status.防御),
@@ -229,6 +249,7 @@ export function applyV39DerivedCharacterData(unit = {}) {
     equipment,
     acquiredSkillNames: [...derived.acquiredSkillNames],
     techniques: derived.techniques.map(row => ({ ...row })),
+    bodyWeaponLevels: { ...derived.bodyWeaponLevels },
     derivedCharacter: derived,
     maxHp: number(status.HP, derived.maxHp)
   };

@@ -4,6 +4,7 @@ import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/v39-nest-rules.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { V39_START_AREA_BALANCE, V39_ENEMY_LEVEL_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { getStrongAnimalClassCandidates, 属性ホース名称 } from "../../lib/animal-artwork-config.js";
 
 const SAFE_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.safeRadius;
 const LOW_LEVEL_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.beginnerRadius;
@@ -377,14 +378,17 @@ function buildStrongMinionCandidates(data, settlements, strongCandidate, minionN
   return candidates;
 }
 
-function createEnemy(selection, position, level, index, metadata = {}) {
+function createEnemy(selection, position, level, index, metadata = {}, random = Math.random) {
   const definition = selection?.definition;
   if (!definition) return null;
+  const strongEnemy = metadata.strongEnemy === true || (metadata.strongEnemy !== false && position.strong === true);
+  const extraClass = strongEnemy ? chooseStrongAnimalClass(selection, position, level, random) : {};
   const derived = applyV39DerivedCharacterData({
     id:`enemy-${index + 1}-${position.x}-${position.y}`,
-    name:definition.name,
+    name:definition.race === "ホース" ? (属性ホース名称[extraClass.strongAnimalClassName] || definition.name) : definition.name,
     race:definition.race,
     className:definition.className,
+    ...extraClass,
     level,
     x:position.x,
     y:position.y,
@@ -396,7 +400,6 @@ function createEnemy(selection, position, level, index, metadata = {}) {
   });
   if (!derived?.derivedCharacter?.ok) return null;
   const maxHp = Math.max(1, Math.round(number(derived.maxHp ?? derived.status?.HP, 1)));
-  const strongEnemy = metadata.strongEnemy === true || (metadata.strongEnemy !== false && position.strong === true);
   return {
     ...derived,
     beginnerAdjusted:selection.beginnerAdjusted === true,
@@ -430,6 +433,23 @@ function createEnemy(selection, position, level, index, metadata = {}) {
     terrainEnemyLevelMax:position.levelRange?.maxLevel ?? level,
     spawnLevelBand:position.levelRange?.levelBand || "normal",
     strongMonsterInfo:position.strongMonsterInfo ? { ...position.strongMonsterInfo } : null
+  };
+}
+
+function chooseStrongAnimalClass(selection, position, level, random) {
+  const definition = selection.definition;
+  const candidates = getStrongAnimalClassCandidates(definition.race).filter(name => classNames.has(name) && name !== definition.className);
+  if (!candidates.length) return {};
+  // 同じ位置の通常Lv帯とJSONの出現Lvを交差させ、強敵化で増えた分だけを追加クラスへ配る。
+  const height = Math.abs(Math.trunc(position.levelRange?.rawHeightLevel || 0));
+  const normalMax = Math.min(TERRAIN_LEVEL_BASE + TERRAIN_LEVEL_STEP * height, V39_ENEMY_LEVEL_BALANCE.normalMaxLevel);
+  const normalMin = Math.max(1, Math.min(normalMax, TERRAIN_LEVEL_BASE + TERRAIN_LEVEL_STEP * height - TERRAIN_LEVEL_VARIANCE));
+  const min = Math.max(definition.minLevel, normalMin);
+  const max = Math.min(definition.maxLevel, normalMax);
+  const baseLevel = Math.min(level, min <= max ? min + Math.floor(random() * (max - min + 1)) : normalMax);
+  return {
+    strongAnimalClassName:candidates[Math.floor(random() * candidates.length)],
+    strongAnimalClassLevel:Math.max(0, level - baseLevel)
   };
 }
 
@@ -496,7 +516,7 @@ function spawnStrongGroup(data, settlements, candidate, selection, level, enemie
     territoryCenterX:candidate.x,
     territoryCenterY:candidate.y,
     territoryRadius
-  });
+  }, random);
   if (!boss) return { boss:null, minionCount:0, expectedMinionCount:plan.minionCount };
 
   enemies.push(boss);

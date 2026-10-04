@@ -161,6 +161,7 @@ function growthPanel(unit) {
     [`${text(unit?.className, "クラス")} Lv`, classLevel]
   ];
   if (secondClassName) rows.push([`${secondClassName} Lv`, 1]);
+  if (derived?.strongAnimalClassName) rows.push([`${derived.strongAnimalClassName} Lv`, derived.strongAnimalClassLevel]);
   return `<div class="v39-char-detail-scroll">
     <h4>成長</h4>
     <div class="v39-char-growth-list">${rows.map(([label, value]) => `<div class="v39-char-growth-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join("")}</div>

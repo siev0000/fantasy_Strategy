@@ -29,7 +29,7 @@ const escapeHtml = value => text(value).replace(/[&<>"']/g, char => ({
 }[char]));
 
 function activeContext() {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
   return { state, player, village:normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race) };
 }
@@ -317,33 +317,9 @@ function currentResourceSnapshot() {
   return buildV39ResourceSnapshot(activeContext().village || {});
 }
 
-function weightedResource(snapshot, weights) {
-  let value = 0;
-  let delta = 0;
-  for (const group of Object.values(snapshot || {})) for (const item of group.items || []) {
-    const weight = number(weights[item.name]);
-    value += number(item.value) * weight;
-    delta += number(item.delta) * weight;
-  }
-  return { value, delta };
-}
-
-function simpleResourceSnapshot() {
-  const snapshot = currentResourceSnapshot();
-  if (!snapshot) return null;
-  const defs = [
-    ["食料", "🌾", { 穀物:1, 野菜:1, 肉:1, 魚:1 }, "food-group"],
-    ["木材", "🪵", { 木材:1, 黒木:2, 特木:4 }, "wood-group"],
-    ["鉄", "⚙", { 鉄:1, 銀鉄:2, 青金鋼:4, 赤黒鋼:4 }, "ore-group"],
-    ["金", "🟡", { 金:2, 銀:1, 宝石:2 }, "precious-group"],
-    ["魂", "◉", { 死体:1, 魂:2 }, "soul-group"]
-  ];
-  return defs.map(([label, icon, weights, cls]) => ({ key:label, label, icon, cls, ...weightedResource(snapshot, weights), tip:Object.keys(weights).join("+") }));
-}
-
 function handleTurn() {
   if (processingTurn) return;
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   if (!state) return;
   processingTurn = true;
   try {
@@ -354,8 +330,16 @@ function handleTurn() {
       enemySquads:result.state.enemySquads,
       enemyNests:result.state.enemyNests,
       facilitiesByTile:result.state.facilitiesByTile,
-      settlements:result.state.settlements
+      settlements:result.state.settlements,
+      territoryOwnerByTile:result.state.territoryOwnerByTile,
+      territoryStateByTile:result.state.territoryStateByTile
     }, { reason:"economy-turn" });
+    for (const item of result.landExpansionCompleted || []) {
+      window.appendV39ActivityLog?.(item.playerId, "開拓", `${item.settlementName || "拠点"}: ${item.tileKey}を領土化`, item);
+    }
+    if (result.landExpansionCompleted?.length) {
+      window.showV39TurnBanner?.(`開拓完了: ${result.landExpansionCompleted.map(row => row.tileKey).join(" / ")}`);
+    }
     if (result.completed.length) {
       window.showV39TurnBanner?.(`建設完了: ${result.completed.map(row => row.facilityName).join("、")}`);
       window.dispatchEvent(new CustomEvent("v39:construction-completed", { detail:{ completed:result.completed } }));
@@ -400,7 +384,12 @@ function refresh() {
 }
 
 window.getV39ResourceSnapshot = currentResourceSnapshot;
-window.getV39SimpleResourceSnapshot = simpleResourceSnapshot;
+window.getV39SimpleResourceSnapshot = () => Object.entries(currentResourceSnapshot()).map(([key, group]) => ({
+  key, label:group.title, icon:group.icon, iconColor:group.iconColor, cls:group.className,
+  value:group.items.reduce((total, item) => total + item.value, 0),
+  delta:group.items.reduce((total, item) => total + item.delta, 0),
+  tip:group.items.map(item => item.name).join("・")
+}));
 window.getV39FacilityDefinitions = facilityDefinitions;
 window.getV39SettlementScaleDefinitions = getVillageScaleDefinitions;
 window.resolveV39SettlementScale = resolveVillageScaleDefinition;

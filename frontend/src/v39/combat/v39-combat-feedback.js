@@ -156,8 +156,9 @@ window.addEventListener("v39:combat-log", event => {
   showCombatFeedback(event?.detail);
 });
 window.addEventListener("v39:combat-presentation", event => showCombatFeedback(event?.detail));
-window.addEventListener("v39:cast-started", (event) => startCastBlink(event?.detail?.unitId));
+window.addEventListener("v39:cast-started", (event) => {if(!window.__v39BackgroundWorldTurn)startCastBlink(event?.detail?.unitId);});
 window.addEventListener("v39:cast-ended", (event) => stopCastBlink(event?.detail?.unitId));
 window.addEventListener("v39:terrain-damage", (event) => {
+  if(window.__v39BackgroundWorldTurn)return;
   for (const entry of Array.isArray(event?.detail?.entries) ? event.detail.entries : []) showEntry(entry);
 });

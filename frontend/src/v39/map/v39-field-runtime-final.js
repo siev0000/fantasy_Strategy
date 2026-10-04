@@ -4,6 +4,7 @@ import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { HEX_TILE_CONFIG, V39_FIELD_FOG_STYLE } from "../../lib/phaser-map-panel-config.js";
 import { runWithSeededRandom } from "../../lib/seeded-random.js";
 import { cacheStaticGraphicsLayer } from "./v39-static-graphics-cache.js";
+import { installV39IdleRender } from "./v39-idle-render.js";
 import { createV39VictoryLandmarkPlan } from "../../lib/v39-victory-landmarks.js";
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
@@ -184,7 +185,7 @@ function drawTerrain(scene, data, graphics = scene.add.graphics()) {
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
       const terrain = String(data.grid?.[y]?.[x] || "海");
-      const base = terrainColorMap.get(terrain) || "#607078";
+      const base = data.isUnderground ? (terrain==="岩壁"?"#26353b":"#929079") : terrainColorMap.get(terrain) || "#607078";
       const level = Number(data.heightLevelMap?.[y]?.[x]);
       const color = display.heightShading
         ? (terrain === "海" ? shadeSeaColorByDepth(base, level) : shadeColorByHeight(base, level))
@@ -558,6 +559,7 @@ function installInput(scene, data) {
 function createGame(data) {
   game = new Phaser.Game({
     type:Phaser.AUTO,parent:host,transparent:false,backgroundColor:"#081115",
+    callbacks:{postBoot:installV39IdleRender},
     scale:{mode:Phaser.Scale.RESIZE,width:Math.max(1,host.clientWidth),height:Math.max(1,host.clientHeight)},
     scene:{create(){
       ensureSnowStateMaps(data);
@@ -572,7 +574,10 @@ function createGame(data) {
       this.v39TerrainGraphics=terrainGraphics;
       this.v39SnowCoverGraphics=snowCoverGraphics;
       this.v39LavaGraphics=lavaGraphics;
-      const redraw=()=>drawTerrain(this,data,terrainGraphics); window.addEventListener("v39:display-settings-changed",redraw);
+      const redraw=event=>{
+        const keys=event.detail?.changedKeys;
+        if (!keys || keys.some(key=>key==="heightOutlineOnly" || key==="heightShading")) drawTerrain(this,data,terrainGraphics);
+      }; window.addEventListener("v39:display-settings-changed",redraw);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN,()=>window.removeEventListener("v39:display-settings-changed",redraw));
       this.scale.on("resize",()=>{const oldZoom=Number(this.v39RequestedZoom)||this.cameras.main.zoom;const size=worldSize(data);const fit=Math.max(.05,Math.min(this.cameras.main.width/size.width,this.cameras.main.height/size.height)*.97);this.v39FitZoom=fit;const max=fit*readDisplaySettings().maxZoomFactor;this.v39RequestedZoom=Phaser.Math.Clamp(oldZoom,fit,max);this.cameras.main.setZoom(this.v39RequestedZoom);clampCamera(this);});
     }}
@@ -690,7 +695,7 @@ export function generateV39TestFieldWithSeed(input={}, seed="v39-test-seed") {
   });
 }
 
-export function loadV39FieldSnapshot(mapData, inputSettings={}) {
+export function loadV39FieldSnapshot(mapData, inputSettings={}, options={}) {
   if (!host || !mapData || typeof mapData !== "object" || !Array.isArray(mapData.grid)) {
     throw new Error("復元できるフィールドデータがありません");
   }
@@ -699,6 +704,8 @@ export function loadV39FieldSnapshot(mapData, inputSettings={}) {
     w:Number(mapData.w)||inputSettings.w,
     h:Number(mapData.h)||inputSettings.h
   });
+  settings.w=Number(mapData.w);
+  settings.h=Number(mapData.h);
   currentSettings=settings;
   currentData=ensureSnowStateMaps(mapData);
   disposeFieldInput();
@@ -707,7 +714,10 @@ export function loadV39FieldSnapshot(mapData, inputSettings={}) {
   const chip=playfield.querySelector(".map-chip");
   if(chip) chip.textContent=`${settings.w}×${settings.h} / ${settings.patternId} / 復元`;
   window.__v39FieldRuntime={game,mapData:currentData,settings,mapWidth:settings.w,mapHeight:settings.h,patternId:settings.patternId,mountainMode:settings.mountainMode};
-  window.dispatchEvent(new CustomEvent("v39:field-generated",{detail:{settings,mapData:currentData,restored:true}}));
+  if(options.layerChange){
+    window.dispatchEvent(new CustomEvent("v39:field-layer-changed",{detail:{settings,mapData:currentData}}));
+    window.dispatchEvent(new CustomEvent("v39:field-data-updated",{detail:{mapData:currentData,reason:"world-layer"}}));
+  }else window.dispatchEvent(new CustomEvent("v39:field-generated",{detail:{settings,mapData:currentData,restored:true}}));
   return currentData;
 }
 

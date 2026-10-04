@@ -74,7 +74,7 @@ try {
       label.remove();
       const originalSnapshot = window.getV39ResourceSnapshot;
       const deltas = [-57.599999999999994, 17.6, -0.4, 8.5];
-      window.getV39ResourceSnapshot = () => Object.fromEntries(["food", "wood", "ore", "precious"].map((key, index) => [key, { title:key, icon:"", items:[{ name:key, value:100, delta:deltas[index] }] }]));
+      window.getV39ResourceSnapshot = () => Object.fromEntries(["food", "material", "money", "special"].map((key, index) => [key, { title:key, icon:"", items:[{ name:key, value:100, delta:deltas[index] }] }]));
       window.renderV39ResourceTop();
       result.roundedDeltas = [...document.querySelectorAll("#resourceSet .value-delta")].map(node => node.textContent);
       result.rawDeltas = deltas;

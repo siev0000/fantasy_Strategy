@@ -1,4 +1,5 @@
 import { showV39Feedback } from "./v39-feedback.js";
+import { renderV39SpecialtyHeader } from "./v39-specialty-ui.js";
 
 function applyViewportScale(){
   const vv=window.visualViewport;
@@ -58,7 +59,7 @@ let resourceMode="detail";
 const resourceSet=document.getElementById("resourceSet");
 const resourceDrawer=document.getElementById("resourceDrawer");
 function currentResourceDetail(){return window.getV39ResourceSnapshot?.()||{}}
-function currentSimpleResourceData(){return window.getV39SimpleResourceSnapshot?.()||[]}
+
 
 function fmtNum(v){return Number(v).toLocaleString("ja-JP")}
 function signed(v){
@@ -84,32 +85,22 @@ function detailGroupDelta(group){
 function renderResourceTop(){
   resourceSet.innerHTML="";
   resourceSet.classList.toggle("mode-simple",resourceMode==="simple");
-  if(resourceMode==="detail"){
-    ["food","wood","ore","precious"].forEach(key=>{
-      const g=currentResourceDetail()[key];
-      if(!g)return;
-      const b=document.createElement("button");
-      b.className=`res-chip ${key==="food"?"food-group":key==="wood"?"wood-group":key==="ore"?"ore-group":"precious-group"} tappable resource-group-btn`;
-      b.dataset.group=key;
-      b.innerHTML=`${resourceIconMarkup(g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.title}</span><b class="value-main">${fmtNum(detailGroupTotal(key))}</b><small class="value-delta">${signed(detailGroupDelta(key))}</small></span>`;
-      b.title=`${g.title}の内訳を表示`;
-      b.addEventListener("click",e=>{e.stopPropagation();openResourceGroup(key,b)});
-      resourceSet.appendChild(b);
-    });
-  }else{
-    currentSimpleResourceData().forEach(g=>{
-      const b=document.createElement("button");
-      b.className=`res-chip ${g.cls} tappable`;
-      b.innerHTML=`${resourceIconMarkup(g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.label}</span><b class="value-main">${fmtNum(g.value)}</b><small class="value-delta">${signed(g.delta)}</small></span>`;
-      b.title=g.tip;
-      b.addEventListener("click",()=>say(`${g.label}: ${fmtNum(g.value)}（簡易換算）`));
-      resourceSet.appendChild(b);
-    });
+  for(const [key,g] of Object.entries(currentResourceDetail())){
+    if(key==="special")continue;
+    const b=document.createElement("button");
+    b.className=`res-chip ${g.className} tappable resource-group-btn`;
+    b.dataset.group=key;
+    b.innerHTML=`${resourceIconMarkup(g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.title}</span><b class="value-main">${fmtNum(detailGroupTotal(key))}</b><small class="value-delta">${signed(detailGroupDelta(key))}</small></span>`;
+    b.title=`${g.title}の内訳を表示`;
+    b.setAttribute("aria-label",g.title);
+    b.addEventListener("click",e=>{e.stopPropagation();openResourceGroup(key,b)});
+    resourceSet.appendChild(b);
   }
+  renderV39SpecialtyHeader(resourceSet);
 }
 
 function openResourceGroup(key,anchor){
-  if(resourceMode!=="detail")return;
+
   const g=currentResourceDetail()[key];if(!g)return;
 
   const total=detailGroupTotal(key),delta=detailGroupDelta(key);
@@ -144,7 +135,7 @@ document.getElementById("resourceModeToggle").addEventListener("click",()=>{
   document.getElementById("resourceModeLabel").textContent=resourceMode==="detail"?"詳細":"簡易";
   resourceDrawer.classList.remove("show");
   renderResourceTop();
-  say(resourceMode==="detail"?"資源表示：詳細":"資源表示：簡易5分類");
+  say(resourceMode==="detail"?"資源表示：詳細":"資源表示：簡易4分類");
 });
 document.getElementById("resourceDrawerClose").addEventListener("click",e=>{e.stopPropagation();resourceDrawer.classList.remove("show")});
 document.addEventListener("pointerdown",e=>{

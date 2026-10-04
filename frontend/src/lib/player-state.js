@@ -51,6 +51,7 @@ export function createEmptyCombatRuntime(source = {}) {
 export function createEmptyExplorationState(source = {}) {
   return {
     discoveredFeaturesByTile: cloneRecord(source?.discoveredFeaturesByTile),
+    discoveredSpecialtiesByTile: cloneRecord(source?.discoveredSpecialtiesByTile),
     // 索敵で確認した他勢力だけを保持する。未発見勢力はここへ追加しない。
     discoveredFactionsByPlayerId: cloneRecord(source?.discoveredFactionsByPlayerId),
     surveyedTileKeys: Array.isArray(source?.surveyedTileKeys) ? [...new Set(source.surveyedTileKeys.map(String).filter(Boolean))] : [],

@@ -1,4 +1,6 @@
 import { inspectV39Survey, startV39SurveyTask } from "../../lib/v39-exploration-rules.js";
+import { getFactionSettlements } from "../../lib/settlement-state.js";
+import { getV39LandExpansionCandidates, startV39LandExpansion } from "../../lib/v39-land-expansion-rules.js";
 import { facilityDefinitions, inspectV39Construction, startV39Construction } from "../../lib/v39-economy-rules.js";
 import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "../../lib/v39-unit-creation-rules.js";
 import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "../../lib/research-tree-config.js";
@@ -168,7 +170,7 @@ function planAiCombat(state, player, objective) {
       .filter(row => !isV39SupportSkill(row, attacker))
       .filter(row => number(attacker?.ap ?? attacker?.currentAp) >= resolveAttackApCost(row, attacker));
     for (const skillRow of rows) {
-      const range = resolveAttackRange(skillRow, attacker);
+      const range = resolveAttackRange(skillRow, attacker, window.__v39FieldRuntime?.mapData);
       const foreignTargets = (state?.players || [])
         .filter(targetPlayer => targetPlayer?.id !== player?.id && canV39FactionAttack(state, player?.id, targetPlayer?.id))
         .flatMap(targetPlayer => (targetPlayer?.factionState?.units || []).map(unit => ({ ...unit, targetPlayerId:targetPlayer.id, targetType:"foreign-faction" })));
@@ -254,6 +256,16 @@ function storeAiResult(state, playerId, turn, commands, objective) {
   return { ...state, players };
 }
 
+function startAiLandExpansion(state, player, mapData) {
+  for (const settlement of getFactionSettlements(player.factionState)) {
+    const tile = getV39LandExpansionCandidates(state, player.id, settlement.settlementId, mapData)[0];
+    if (!tile) continue;
+    const result = startV39LandExpansion(state, player.id, settlement.settlementId, tile, mapData);
+    if (result.ok) return { state:result.state, command:`開拓:${result.project.tileKey}` };
+  }
+  return null;
+}
+
 export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__v39FieldRuntime?.mapData) {
   let state = sourceState;
   const turn = Math.max(1, Math.floor(number(turnNumber, state?.timeline?.turnNumber || 1)));
@@ -273,6 +285,7 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
     for (const action of [
       () => startAiSurvey(state, player),
       () => moveAiExplorer(state, player, mapData, objective),
+      () => startAiLandExpansion(state, player, mapData),
       () => startAiConstruction(state, player, mapData),
       () => startAiUnitCreation(state, player)
     ]) {

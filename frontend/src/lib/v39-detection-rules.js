@@ -2,6 +2,7 @@ import {
   resolveUnitScoutValue,
   resolveUnitStealthValue
 } from "../composables/unitCoreUtils.js";
+import { V39_CAVE_BALANCE } from "./v39-gameplay-balance.js";
 
 export const V39_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
 // ユニットは最低1マスを見通す。索敵75ごとに可視範囲を1マス広げる。
@@ -28,9 +29,10 @@ export function resolveDetectionScoutValue(unit) {
   );
 }
 
-export function resolveV39UnitVisionRange(unit) {
+export function resolveV39UnitVisionRange(unit, mapData = null) {
   const scout = resolveDetectionScoutValue(unit);
-  return V39_UNIT_VISION_BASE_RANGE + Math.max(0, Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP));
+  return V39_UNIT_VISION_BASE_RANGE + Math.max(0, Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP))
+    + (mapData?.isUnderground ? V39_CAVE_BALANCE.visionBonusTiles : 0);
 }
 
 export function resolveDetectionStealthValue(unit, { turnNumber = null } = {}) {

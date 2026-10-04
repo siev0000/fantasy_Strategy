@@ -2,6 +2,8 @@ import { getFactionSettlements, selectFactionSettlement, territorySettlementId }
 import { inspectV39CitySpecializations, selectV39CitySpecialization } from "../../lib/v39-city-specialization-rules.js";
 import { resolveV39SettlementProductionMetrics } from "../../lib/v39-economy-rules.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { renderV39LandExpansionControls } from "./v39-land-expansion-ui.js";
 import { isV39ArmyTransportUnit, isV39UnitInsideSettlement, setV39UnitTransportAssignment,
   configureV39TransportRoute, getV39TransportCargo, V39_TRANSPORT_RESOURCE_KEYS } from "../../lib/v39-transport-rules.js";
 
@@ -26,7 +28,7 @@ function raceMarker(race) {
 }
 
 function activeContext() {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
   const settlements = getFactionSettlements(player?.factionState);
   const selectedId = text(player?.factionState?.selectedSettlementId) || text(settlements[0]?.settlementId);
@@ -107,6 +109,8 @@ function transportRows(player, settlement) {
 
 function render() {
   if (!(panel instanceof HTMLElement)) return;
+  const scrollTop = panel.scrollTop;
+  const listScrollTop = panel.querySelector(".settlement-fold-list")?.scrollTop || 0;
   const { state, player, settlements, settlement } = activeContext();
   if (!settlement) {
     panel.innerHTML = `<div class="settlement-empty-state">拠点未配置</div>`;
@@ -170,6 +174,8 @@ function render() {
     ["災害", number(civicModifiers.disaster)],
     ["占領", number(civicModifiers.occupation)],
     ["異種族", number(civicModifiers.mixedRace)],
+    ["苦手土地", number(civicModifiers.unfavorableTerrain)],
+    ["特産品", number(civicModifiers.specialties)],
     ["イベント", number(civicModifiers.eventHappiness)]
   ].filter(([, value]) => Math.abs(value) >= 0.05);
   const civicModifierText = civicModifierEntries.length
@@ -193,10 +199,14 @@ function render() {
       ${transportRows(player, settlement)}
       ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}</div>`)}
       ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
+      ${section("expansion", "開拓", `${formatNumber(production.expansionWorkers)}人`, renderV39LandExpansionControls(state, player, settlement))}
       ${section("civic", "住民状態", `幸福${formatNumber(civic.happiness)}`, civicBody)}
       ${section("specialization", "都市専門化", escapeHtml(settlement.citySpecializationId || "未選択"), specializationBody)}
       ${section("repair", "修復", repairTargets.length ? `${repairTargets.length}マス` : "なし", repairBody)}
     </div>`;
+  panel.scrollTop = scrollTop;
+  const foldList = panel.querySelector(".settlement-fold-list");
+  if (foldList) foldList.scrollTop = listScrollTop;
 }
 
 panel?.addEventListener("toggle", event => {
@@ -275,11 +285,17 @@ panel?.addEventListener("click", event => {
   const faction = window.getV39ActiveFactionState?.();
   const next = selectFactionSettlement(faction, button.dataset.settlementId);
   window.updateV39ActiveFactionState?.(next, { reason:"settlement-selected" });
+  const settlement = next.settlements.find(row => text(row.settlementId) === next.selectedSettlementId);
+  if (!settlement?.placed || !Number.isFinite(settlement.x) || !Number.isFinite(settlement.y)) return;
+  const camera = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0]?.cameras?.main;
+  const x = settlement.x * HEX_TILE_CONFIG.width + (settlement.y % 2 ? HEX_TILE_CONFIG.oddRowOffsetX : 0) + HEX_TILE_CONFIG.width / 2;
+  const y = settlement.y * HEX_TILE_CONFIG.rowStep + HEX_TILE_CONFIG.height / 2;
+  camera?.centerOn(x, y);
 });
 
-window.addEventListener("v39:game-state-changed", render);
-window.addEventListener("v39:footer-tab-changed", event => {
-  if (event.detail?.tab === "settlement") render();
+// 状態更新で内容を準備済み。タブを開くだけでは再計算・DOM交換しない。
+window.addEventListener("v39:game-state-changed", event => {
+  if (event.detail?.reason !== "activity-log") render();
 });
 window.addEventListener("v39:operation-ui-ready", render);
 render();

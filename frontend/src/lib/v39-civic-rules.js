@@ -104,6 +104,7 @@ function raceHappinessConfig(race) {
   const classFieldCount = RACE_HAPPINESS_FIELDS.filter(field => optionalNumber(classRow?.[field]) !== null).length;
   return {
     className,
+    unfavorableTerrains:Array.isArray(classRow?.苦手土地) ? classRow.苦手土地.map(text).filter(Boolean) : [text(classRow?.苦手土地)].filter(Boolean),
     source:classFieldCount === 0 ? "仮" : classFieldCount === RACE_HAPPINESS_FIELDS.length ? "クラス" : "クラス+仮",
     base:read("幸福度基礎値", V39_CIVIC_BALANCE.targetBase),
     food:read("幸福度食料倍率", 1),
@@ -148,7 +149,7 @@ export function normalizeV39CivicState(village = {}) {
   };
 }
 
-export function resolveV39CivicTurn(village = {}, turnNumber = 1) {
+export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTerrains = [], specialties = { names:[], bonus:0 }) {
   const current = normalizeV39CivicState(village);
   if (current.lastProcessedTurn >= turnNumber) return current;
 
@@ -189,17 +190,22 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1) {
     const raceOccupation = occupation * config.occupation;
     const raceMixedRace = mixedRace * config.mixedRace;
     const raceEvent = eventHappiness * config.event;
+    const unfavorableTerrainRate = residentialTerrains.length
+      ? residentialTerrains.filter(terrain => config.unfavorableTerrains.includes(text(terrain))).length / residentialTerrains.length : 0;
+    const raceTerrainPenalty = unfavorableTerrainRate * V39_CIVIC_BALANCE.unfavorableTerrainHappinessPenalty;
     const target = clamp(
       config.base
       + raceFoodComfort
       + raceHousingComfort
       + raceFacilityHappiness
       + raceEvent
+      + number(specialties.bonus)
       - raceStarvation
       - raceOvercrowding
       - raceDisaster
       - raceOccupation
       - raceMixedRace
+      - raceTerrainPenalty
     );
     const previous = clamp(current.happinessByRace?.[race] ?? current.happiness ?? config.base);
     happinessTargetByRace[race] = target;
@@ -218,6 +224,9 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1) {
       occupation:-raceOccupation,
       mixedRace:-raceMixedRace,
       event:raceEvent,
+      specialties:number(specialties.bonus),
+      unfavorableTerrainRate,
+      unfavorableTerrain:-raceTerrainPenalty,
       target
     };
   }
@@ -264,6 +273,8 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1) {
     happinessTargetByRace,
     happinessModifiersByRace,
     modifiers:{
+      specialtyNames:[...(specialties.names || [])],
+      specialties:number(specialties.bonus),
       starvationStage,
       starvationHappiness:-starvationStage * V39_CIVIC_BALANCE.starvationHappinessPerStage,
       foodReserveTurns:foodTurns,
@@ -276,6 +287,9 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1) {
       disaster:-disaster,
       occupation:-occupation,
       mixedRace:-mixedRace,
+      unfavorableTerrain:Object.entries(populationByRace).reduce((sum, [race, count]) =>
+        sum + number(happinessModifiersByRace[race]?.unfavorableTerrain) * number(count), 0)
+        / Math.max(1, Object.values(populationByRace).reduce((sum, count) => sum + number(count), 0)),
       eventHappiness,
       eventDissatisfaction,
       eventSecurity,

@@ -26,6 +26,7 @@ const EMPTY_STATE = Object.freeze({
   territoryStateByTile: {},
   recoveryPercentByTile: {},
   explorationSitesByTile: {},
+  specialtiesByTile: {},
   victoryLandmarksByTile: {},
   victory: { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} },
   diplomacyRelations: {},
@@ -183,6 +184,8 @@ function normalizeState(input = {}) {
     : (players[0]?.id || "");
   return {
     activePlayerId,
+    activeWorldId:String(input.activeWorldId || "surface"),
+    explorationWorlds:cloneJson(input.explorationWorlds, {}),
     players,
     sessionParticipants:session.sessionParticipants,
     factionLabels: cloneRecord(input.factionLabels),
@@ -196,6 +199,7 @@ function normalizeState(input = {}) {
       .map(([key, value]) => [key, normalizeTerritoryStateRecord(value)])),
     recoveryPercentByTile: cloneRecord(input.recoveryPercentByTile),
     explorationSitesByTile: cloneJson(input.explorationSitesByTile, {}),
+    specialtiesByTile: cloneJson(input.specialtiesByTile, {}),
     victoryLandmarksByTile: cloneJson(input.victoryLandmarksByTile, {}),
     victory:cloneJson(input.victory, { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} }),
     diplomacyRelations: cloneJson(input.diplomacyRelations, {}),
@@ -265,9 +269,10 @@ function cloneSessionParticipants(value) {
 
 let state = normalizeState(EMPTY_STATE);
 
-function getState() {
+function getState({ includeWorlds = true } = {}) {
   return {
     ...state,
+    explorationWorlds:includeWorlds ? cloneJson(state.explorationWorlds, {}) : {},
     players: state.players.map(clonePlayer),
     sessionParticipants:cloneSessionParticipants(state.sessionParticipants),
     factionLabels: { ...state.factionLabels },
@@ -281,6 +286,7 @@ function getState() {
       .map(([key, value]) => [key, { ...value }])),
     recoveryPercentByTile: { ...state.recoveryPercentByTile },
     explorationSitesByTile: cloneJson(state.explorationSitesByTile, {}),
+    specialtiesByTile: cloneJson(state.specialtiesByTile, {}),
     victoryLandmarksByTile: cloneJson(state.victoryLandmarksByTile, {}),
     victory:cloneJson(state.victory, { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} }),
     diplomacyRelations: cloneJson(state.diplomacyRelations, {}),
@@ -317,11 +323,17 @@ function getTimelineState() {
 }
 
 function dispatchChange(reason = "update") {
-  window.dispatchEvent(new CustomEvent("v39:game-state-changed", { detail:{ reason, state:getState() } }));
+  // 旧購読者向けのstateは必要になった時だけ作る。同じ通知では1回だけ。
+  let snapshot;
+  const detail = { reason };
+  Object.defineProperty(detail, "state", { enumerable:true, get:() => snapshot ??= getState() });
+  window.dispatchEvent(new CustomEvent("v39:game-state-changed", { detail }));
 }
 
 function setState(patch = {}, options = {}) {
   const next = { ...state };
+  if (Object.prototype.hasOwnProperty.call(patch, "activeWorldId")) next.activeWorldId = String(patch.activeWorldId || "surface");
+  if (Object.prototype.hasOwnProperty.call(patch, "explorationWorlds")) next.explorationWorlds = cloneJson(patch.explorationWorlds, {});
   if (Object.prototype.hasOwnProperty.call(patch, "players")) next.players = normalizePlayers(patch.players);
   if (Object.prototype.hasOwnProperty.call(patch, "sessionParticipants")) next.sessionParticipants = cloneSessionParticipants(patch.sessionParticipants);
   if (Object.prototype.hasOwnProperty.call(patch, "activePlayerId")) next.activePlayerId = String(patch.activePlayerId || "");
@@ -337,6 +349,7 @@ function setState(patch = {}, options = {}) {
   );
   if (Object.prototype.hasOwnProperty.call(patch, "recoveryPercentByTile")) next.recoveryPercentByTile = cloneRecord(patch.recoveryPercentByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "explorationSitesByTile")) next.explorationSitesByTile = cloneJson(patch.explorationSitesByTile, {});
+  if (Object.prototype.hasOwnProperty.call(patch, "specialtiesByTile")) next.specialtiesByTile = cloneJson(patch.specialtiesByTile, {});
   if (Object.prototype.hasOwnProperty.call(patch, "victoryLandmarksByTile")) next.victoryLandmarksByTile = cloneJson(patch.victoryLandmarksByTile, {});
   if (Object.prototype.hasOwnProperty.call(patch, "victory")) next.victory = cloneJson(patch.victory, { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} });
   if (Object.prototype.hasOwnProperty.call(patch, "diplomacyRelations")) next.diplomacyRelations = cloneJson(patch.diplomacyRelations, {});
@@ -346,10 +359,13 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "enemyNests")) next.enemyNests = normalizeV39EnemyNests(patch.enemyNests);
   if (Object.prototype.hasOwnProperty.call(patch, "groundLootByTile")) next.groundLootByTile = normalizeV39GroundLootByTile(patch.groundLootByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "worldEnvironment")) next.worldEnvironment = normalizeWorldEnvironment(patch.worldEnvironment);
-  if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
+  if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) next.enemyCombatRuntime = {
+    ...(patch.activeWorldId && patch.activeWorldId !== state.activeWorldId ? {} : state.enemyCombatRuntime), ...patch.enemyCombatRuntime
+  };
   if (Object.prototype.hasOwnProperty.call(patch, "gameSettings")) next.gameSettings = normalizeGameStartSettings(patch.gameSettings);
   if (Object.prototype.hasOwnProperty.call(patch, "timeline")) next.timeline = { ...state.timeline, ...patch.timeline };
-  state = normalizeState(next);
+  // 保存済みマップは書込時に既に複製済み。無関係な更新で再複製しない。
+  state = { ...normalizeState({ ...next, explorationWorlds:{} }), explorationWorlds:next.explorationWorlds };
   if (options.silent !== true) dispatchChange(options.reason || "set");
   return getState();
 }
@@ -705,6 +721,7 @@ window.getV39EnemyTurnState = () => state;
 window.getV39ActivePlayer = getActivePlayer;
 window.getV39ActiveFactionState = getActiveFactionState;
 window.getV39TimelineState = getTimelineState;
+window.getV39ExplorationWorldIds = () => Object.keys(state.explorationWorlds).filter(id => state.explorationWorlds[id]?.map);
 window.setV39ActivePlayer = setActivePlayer;
 window.updateV39TimelineState = updateTimelineState;
 window.updateV39ActiveFactionState = updateActiveFactionState;

@@ -1,11 +1,13 @@
 import {
   applyEnemyPlanToSimulation,
+  finishEnemyApAction,
   inspectEnemyAiState,
   isAliveEnemyAiUnit,
   planNextEnemyAction
 } from "../../lib/v39-enemy-ai-planner.js";
 import { currentV39TurnNumber, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "../../lib/v39-turn-timing.js";
 import { FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
+import { updateV39TurnLoading } from "../ui/v39-turn-loading.js";
 import { prepareV39EnemyExploration } from "../../lib/v39-enemy-exploration.js";
 import { resolveV39ConsumableFoodKeys } from "../../lib/v39-population-economy.js";
 import { V39_ENEMY_AI_CONFIG } from "../../lib/v39-enemy-ai-config.js";
@@ -69,7 +71,8 @@ function appendEnemyAiDecisionLog(enemy, inspection, overrides = {}) {
     factionType:faction.type,
     sourceId:faction.sourceId,
     actorId:text(currentEnemy.id),
-    actorName:text(currentEnemy.name, currentEnemy.id),
+    actorName:`${text(currentEnemy.name, currentEnemy.id)} Lv${integer(currentEnemy.level, 1)}`,
+    actorLevel:integer(currentEnemy.level, 1),
     decision:text(overrides.decision, inspection.decision),
     reason:text(overrides.reason, inspection.reason),
     targetId:text(inspection.targetId),
@@ -154,7 +157,7 @@ function applyEnemyPlan(plan, presentationEvents) {
     } else if (plan.type === "queue-attack") {
       window.dispatchEvent(new CustomEvent("v39:cast-started", { detail:{ unitId:id, enemyAction:true } }));
       window.dispatchEvent(new CustomEvent("v39:combat-log", {
-        detail:{ summary:`${text(enemy.name)}：${text(plan.skillName)} 発動待機 ${plan.delay}ターン / AP-${plan.apCost}`, attackerId:id, skillName:text(plan.skillName), apCost:plan.apCost, entries:[], enemyAction:true }
+        detail:{ summary:`${text(enemy.name)} Lv${integer(enemy.level, 1)}：${text(plan.skillName)} 発動待機 ${plan.delay}ターン / AP-${plan.apCost}`, attackerId:id, skillName:text(plan.skillName), apCost:plan.apCost, entries:[], enemyAction:true }
       }));
     }
   } else if (plan.type === "recover-loot") {
@@ -208,6 +211,10 @@ function applyEnemyPlan(plan, presentationEvents) {
     plan.decision = `訓練 EXP+${trained.amount}`;
     plan.reason = `軍事Lv${plan.militaryLevel}${trained.leveledUp ? ` / Lv${trained.fromLevel}→${trained.toLevel}` : ""}`;
   } else return false;
+  if (["attack", "attack-territory"].includes(plan.type)) {
+    const after = enemyTurnState();
+    patchEnemyTurnState({ enemyCombatRuntime:finishEnemyApAction(before, after, plan) }, "enemy-ap-action-complete");
+  }
   appendEnemyAiDecisionLog(enemy, plan.inspection, { decision:plan.decision, reason:plan.reason });
   return true;
 }
@@ -218,7 +225,7 @@ function resolvePendingAction(turnNumber, presentationEvents) {
     .find(row => remainingV39Turns(row?.resolvesAtTurn, turnNumber) <= 0);
   if (!pending) return false;
   const enemy = state.enemies.find(row => text(row?.id) === text(pending.enemyId));
-  const inspection = enemy ? inspectEnemyAiState(state, enemy.id, turnNumber) : null;
+  const inspection = enemy ? inspectEnemyAiState(state, enemy.id, turnNumber, window.__v39FieldRuntime?.mapData) : null;
   const plan = { type:"attack", enemyId:text(pending.enemyId), targetUnitId:text(pending.targetUnitId), skillRow:pending.skillRow, skillName:text(pending.skillName), turnNumber, inspection };
   const result = captureEnemyAttack(plan, { apPaid:true });
   const latest = enemyTurnState() || state;
@@ -299,6 +306,7 @@ function compactEquipment(item) {
 function compactAiUnit(unit, enemySide = false) {
   const compact = {
     id:unit?.id,
+    worldId:unit?.worldId,
     name:unit?.name,
     x:unit?.x,
     y:unit?.y,
@@ -351,6 +359,7 @@ function buildWorkerState(state = enemyTurnState()) {
     .flatMap(squad => squad?.unitIds || []).map(text).filter(Boolean));
   return {
     enemies:(state?.enemies || []).map(unit => ({ ...compactAiUnit(unit, true), cargoFull:cargoFullEnemyIds.has(text(unit?.id)) })),
+    activeWorldId:state?.activeWorldId,
     players:(state?.players || []).map(player => ({
       id:player?.id,
       factionState:{
@@ -379,6 +388,7 @@ function buildWorkerState(state = enemyTurnState()) {
 function buildWorkerMapData(mapData = window.__v39FieldRuntime?.mapData) {
   return {
     w:mapData?.w,
+    isUnderground:mapData?.isUnderground,
     h:mapData?.h,
     worldWrapEnabled:mapData?.worldWrapEnabled,
     grid:mapData?.grid,
@@ -440,16 +450,18 @@ async function runFallbackPlans(turnNumber, actionLimit, totalEnemies, presentat
   return { processed, workerCalculationMs:calculationMs, mainApplyMs, fallbackUsed:true };
 }
 
-export async function runEnemyTurn(turnNumber = currentV39TurnNumber()) {
+export async function runEnemyTurn(turnNumber = currentV39TurnNumber(), {presentation=true}={}) {
   movedEnemyIdsThisTurn.clear();
-  let renderBatchToken = window.beginV39MapRenderBatch?.("enemy-turn-calculation") || null;
+  let renderBatchToken = presentation ? window.beginV39MapRenderBatch?.("enemy-turn-calculation") || null : null;
   let presentationInputToken = null;
   try {
     const prepared = prepareV39EnemyExploration(enemyTurnState(), turnNumber);
     patchEnemyTurnState({ enemies:prepared.enemies, enemyNests:prepared.enemyNests }, "enemy-exploration-prepared");
     const presentationEvents = [];
     const aliveCount = (enemyTurnState()?.enemies || []).filter(isAliveEnemyAiUnit).length;
-    const actionLimit = Math.max(1, aliveCount * 2);
+    // 有料行動は最低1AP、終了判断は各個体1回。残APから計算する上限。
+    const actionLimit = Math.max(1, (enemyTurnState()?.enemies || []).filter(isAliveEnemyAiUnit)
+      .reduce((total, enemy) => total + Math.ceil(Math.max(0, number(enemy.ap))) + 1, 0));
     const progressId = window.pushV39SideRailMessage?.({ channel:"notification", title:`T${turnNumber} 敵AI`, message:`敵AI計算 0 / ${aliveCount} (0%)`, tone:"debug", turn:turnNumber });
     const totalStartedAt = nowMs();
     let pendingCount = 0;
@@ -482,19 +494,26 @@ export async function runEnemyTurn(turnNumber = currentV39TurnNumber()) {
     const villageDefenseReport = window.runV39NeutralVillageDefenseTurn?.(turnNumber) || { attacks:0 };
     const finalState = enemyTurnState();
     const unhandled = (finalState?.enemies || []).filter(enemy => isAliveEnemyAiUnit(enemy)
+      && number(enemy.ap) > 0
       && !finalState?.enemyCombatRuntime?.pendingActionsByEnemyId?.[text(enemy.id)]
       && integer(finalState?.enemyCombatRuntime?.lastActionTurnByEnemyId?.[text(enemy.id)]) < turnNumber);
     if (unhandled.length) console.warn("[敵ターン] 未処理の敵が残りました", { ターン:turnNumber, 敵ID:unhandled.map(enemy => text(enemy.id)) });
     updateProgressMessage(progressId, metrics.processed, Math.max(aliveCount, metrics.processed), metrics.fallbackUsed ? "フォールバック完了" : "Worker完了");
 
-    presentationInputToken = window.beginV39MapInputLock?.("enemy-turn-presentation") || null;
+    presentationInputToken = presentation ? window.beginV39MapInputLock?.("enemy-turn-presentation") || null : null;
+    updateV39TurnLoading("AI結果を画面へ反映中…");
+    const renderStartedAt = nowMs();
     if (renderBatchToken) {
       window.endV39MapRenderBatch?.(renderBatchToken, { force:true, reason:"enemy-turn-calculation-complete" });
       renderBatchToken = null;
       await window.waitForV39MapRenderSettled?.();
     }
 
-    const presentedEventCount = number(await window.playV39EnemyTurnPresentation?.(presentationEvents));
+    const renderApplyMs = nowMs() - renderStartedAt;
+    updateV39TurnLoading("敵の行動を再生中…");
+    const presentationStartedAt = nowMs();
+    const presentedEventCount = presentation ? number(await window.playV39EnemyTurnPresentation?.(presentationEvents)) : 0;
+    const presentationMs = nowMs() - presentationStartedAt;
     if (presentationInputToken) {
       window.endV39MapInputLock?.(presentationInputToken, "enemy-turn-presentation-complete");
       presentationInputToken = null;
@@ -505,6 +524,7 @@ export async function runEnemyTurn(turnNumber = currentV39TurnNumber()) {
       actionLimit, aiPasses:metrics.processed + pendingCount, movedEnemies:movedEnemyIdsThisTurn.size,
       pendingActions:Object.keys(finalState?.enemyCombatRuntime?.pendingActionsByEnemyId || {}).length,
       workerCalculationMs:metrics.workerCalculationMs, mainApplyMs:metrics.mainApplyMs,
+      renderApplyMs, presentationMs,
       workerTotalMs:Math.max(0, nowMs() - totalStartedAt), fallbackUsed:metrics.fallbackUsed,
       actionEventCount:presentationEvents.length,
       presentationEventCount:presentedEventCount,
@@ -529,7 +549,7 @@ function runEnemyAi(turnNumber = currentV39TurnNumber()) {
 }
 
 function inspectEnemyAi(enemyId) {
-  return inspectEnemyAiState(enemyTurnState(), enemyId, currentV39TurnNumber());
+  return inspectEnemyAiState(enemyTurnState(), enemyId, currentV39TurnNumber(), window.__v39FieldRuntime?.mapData);
 }
 
 function installEnemyAggroTracking() {
@@ -554,6 +574,6 @@ function installEnemyAggroTracking() {
 window.runV39EnemyAi = runEnemyAi;
 window.runV39EnemyTurn = runEnemyTurn;
 window.inspectV39EnemyAi = inspectEnemyAi;
-window.getV39EnemyAiRules = () => ({ actionsPerEnemyPerTurn:1, ...V39_ENEMY_AI_CONFIG });
+window.getV39EnemyAiRules = () => ({ actionMode:"until-ap-exhausted", ...V39_ENEMY_AI_CONFIG });
 
 installEnemyAggroTracking();

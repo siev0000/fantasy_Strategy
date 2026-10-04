@@ -12,6 +12,8 @@ import {
   resolveUnitArtwork
 } from "../../lib/map-entity-artwork.js";
 import { resolveFacilityIconArtwork } from "../../lib/facility-icon-artwork.js";
+import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
+import { V39_SPECIALTY_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
 const STRUCTURE_LAYER_DEPTH = 10;
 const UNIT_LAYER_DEPTH = 12;
@@ -138,6 +140,7 @@ function visualSettlementSignature(settlement) {
     settlement.id, settlement.x, settlement.y, settlement.placed, settlement.ownerPlayerId,
     settlement.scaleKey, settlement.scaleLevel, settlement.scale, settlement.type,
     settlement.imageName, settlement.image, settlement.画像,
+    ...(settlement.landExpansionProjects || []).flatMap(project => [project.tileKey, project.remainingTurns, project.paused]),
     ...Object.entries(settlement.territoryResidentialCenterMap || {}).sort().flat(),
     ...Object.entries(settlement.territoryTileModeMap || {}).sort().flat(),
     ...Object.entries(settlement.territoryTileConversionMap || {}).sort().flatMap(([key, value]) => [key, value?.targetMode, value?.remainingTurns]),
@@ -171,6 +174,8 @@ function markerRenderSignature(faction, state) {
     isTestMode() ? "test" : "normal",
     String(window.__v39VisibilityRenderVersion || 0),
     String(markerArtworkVersion),
+    Object.entries(state?.specialtiesByTile || {}).map(([key, value]) => `${key}:${value.name}`).join("|"),
+    Object.keys(faction?.exploration?.discoveredSpecialtiesByTile || {}).sort().join("|"),
     [...(Array.isArray(state?.settlements) ? state.settlements : []), activeSettlement].map(visualSettlementSignature).sort().join("|"),
     (Array.isArray(state?.enemyNests) ? state.enemyNests : []).map(visualNestSignature).sort().join("|"),
     playerUnits.join("|"),
@@ -408,6 +413,12 @@ function drawSettlementTileMarkers(scene, container, faction) {
   const pendingOffsetY = 0;
   for (const settlement of getFactionSettlements(faction)) {
     const occupiedTileKeys = new Set(settlementOccupiedTiles(settlement).map(tile => tile.key));
+    for (const project of settlement.landExpansionProjects || []) {
+      addTileTextMarker(scene, container, project.tileKey, "開", {
+        name:"v39-land-expansion-marker", subLabel:project.paused ? "停止" : `${project.remainingTurns}T`,
+        radiusTiles:0.17, fontTiles:0.2, fillColor:0x33585f, strokeColor:0xe8cf58
+      });
+    }
     for (const [tileKey, mode] of Object.entries(settlement?.territoryTileModeMap || {})) {
       if (String(mode) !== "settlement") continue;
       if (!occupiedTileKeys.has(tileKey)) addResidentialVillageMarker(scene, container, tileKey);
@@ -484,6 +495,7 @@ function selectUnit(unit) {
 function unitGroupsByTile(units) {
   const groups = new Map();
   for (const unit of Array.isArray(units) ? units : []) {
+    if ((unit.worldId || "surface") !== (window.getV39GameState?.({ includeWorlds:false })?.activeWorldId || "surface") && !unit.isEnemy && String(unit.id).startsWith("cave-party")) continue;
     const x = finiteCoord(unit?.x);
     const y = finiteCoord(unit?.y);
     if (x === null || y === null) continue;
@@ -703,7 +715,8 @@ function drawUnitGroup(scene, container, group, selectedUnitId) {
 }
 
 function drawUnits(scene, container, units, selectedUnitId) {
-  const list = Array.isArray(units) ? units : [];
+  const worldId=window.getV39GameState?.({ includeWorlds:false })?.activeWorldId||"surface";
+  const list = (Array.isArray(units) ? units : []).filter(unit=>(unit.worldId||"surface")===worldId);
   for (const group of unitGroupsByTile(list).values()) {
     drawUnitGroup(scene, container, group, selectedUnitId);
   }
@@ -716,7 +729,7 @@ function drawForeignUnits(scene, container, players, activePlayerId) {
   const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
   for (const player of Array.isArray(players) ? players : []) {
     if (player?.id === activePlayerId) continue;
-    for (const group of unitGroupsByTile(player?.factionState?.units).values()) {
+    for (const group of unitGroupsByTile((player?.factionState?.units||[]).filter(unit=>(unit.worldId||"surface")===(window.getV39GameState?.({ includeWorlds:false })?.activeWorldId||"surface"))).values()) {
       const unit = representativeUnit(group, "");
       const x = finiteCoord(unit?.x);
       const y = finiteCoord(unit?.y);
@@ -872,6 +885,25 @@ function renderMarkers() {
   drawNeutralVillageUnits(scene, unitContainer, state?.neutralVillages);
   drawEnemies(scene, unitContainer, state?.enemies);
   drawWanderers(scene, unitContainer, state?.wandererGroups, state?.activePlayerId);
+  // 見えていない敵による位置変更で、その存在を漏らさない。
+  const occupiedCenters = new Set(unitContainer.list.map(marker => `${marker.x},${marker.y}`));
+  for (const [key, specialty] of Object.entries(state?.specialtiesByTile || {})) {
+    const discovered = !!faction?.exploration?.discoveredSpecialtiesByTile?.[key];
+    if (!discovered && !isTestMode()) continue;
+    const [x, y] = key.split(",").map(Number);
+    const center = tileCenter(x, y);
+    const occupied = occupiedCenters.has(`${center.x},${center.y}`);
+    const marker = addTileTextMarker(scene, unitContainer, key, resolveV39ResourceIconGlyph(specialty.name), {
+      name:"v39-specialty-marker", radiusTiles:occupied ? 0.15 : 0.19,
+      fontTiles:occupied ? V39_SPECIALTY_BALANCE.occupiedMarkerSizeTiles : V39_SPECIALTY_BALANCE.markerSizeTiles,
+      offsetX:occupied ? tileRelativePx(V39_SPECIALTY_BALANCE.occupiedOffsetRightTiles) : 0,
+      offsetY:occupied ? -tileRelativePx(V39_SPECIALTY_BALANCE.occupiedOffsetUpTiles) : 0,
+      fillColor:0x16322c, strokeColor:0x91c4a0
+    });
+    marker?.setAlpha(discovered ? 1 : V39_SPECIALTY_BALANCE.testUndiscoveredAlpha);
+    marker?.setData("discovered", discovered);
+    marker?.setData("occupied", occupied);
+  }
   return true;
 }
 
@@ -898,7 +930,9 @@ function install() {
     lastMarkerRenderSignature = null;
     scheduleRefresh(60);
   });
-  window.addEventListener("v39:game-state-changed", () => scheduleRefresh());
+  window.addEventListener("v39:game-state-changed", event => {
+    if (event.detail?.reason !== "activity-log") scheduleRefresh();
+  });
   window.addEventListener("v39:initial-placement-complete", () => scheduleRefresh());
   window.addEventListener("v39:unit-selected", () => scheduleRefresh());
   window.addEventListener("v39:display-settings-changed", () => scheduleRefresh());

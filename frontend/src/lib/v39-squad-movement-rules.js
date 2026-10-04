@@ -1,5 +1,7 @@
 import { V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
 import { getV39SquadUnitIds, normalizeV39SquadLogistics } from "./v39-logistics-state.js";
+import { getHexNeighborCoords } from "./hex-grid.js";
+import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -106,7 +108,7 @@ function resolveParticipantIds(faction, selected, squad) {
   return [...new Set((ids.length ? ids : [selectedId]).map(text).filter(Boolean))];
 }
 
-export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "") {
+export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", options = {}) {
   const units = Array.isArray(faction?.units) ? faction.units : [];
   const selectedId = text(selectedUnitId);
   const selected = units.find(unit => unitId(unit) === selectedId) || null;
@@ -117,10 +119,16 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "") 
   const participantIds = selected.transportAssignment ? [selectedId] : resolveParticipantIds(faction, selected, squad);
   const participantSet = new Set(participantIds);
   const participants = units.filter(unit => participantSet.has(unitId(unit)) && isLivingUnit(unit)
+    && (unit.worldId||"surface") === (selected.worldId||"surface")
     && (unitId(unit) === selectedId || !unit.transportAssignment));
   if (!participants.length) return { ok:false, reason:"移動可能な部隊員がいません。" };
 
-  const leader = participants.find(unit => unitId(unit) === getV39SquadUnitIds(squad)[0]) || selected || participants[0];
+  const leader = options.followSelected ? selected
+    : participants.find(unit => unitId(unit) === getV39SquadUnitIds(squad)[0]) || selected || participants[0];
+  if (options.followSelected) {
+    const order = [unitId(leader), ...participantIds.filter(id => id !== unitId(leader))];
+    participants.sort((left, right) => order.indexOf(unitId(left)) - order.indexOf(unitId(right)));
+  }
   const x = integer(leader?.x, -1);
   const y = integer(leader?.y, -1);
   if (x < 0 || y < 0) return { ok:false, reason:"部隊位置が未確定です。" };
@@ -167,6 +175,39 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "") 
       ap:apLimitedBy.ap
     } : null
   };
+}
+
+export function advanceV39CaveFormation(data, formation, destination, group, occupied = new Set()) {
+  const members = new Map(group.participants.map(unit => [unitId(unit), unit]));
+  const key = tile => `${tile.x},${tile.y}`;
+  const next = [{ ...formation[0], x:destination.x, y:destination.y }];
+  for (let index = 1; index < formation.length; index++) {
+    const current = formation[index], target = formation[index - 1];
+    const member = members.get(current.id);
+    const blocked = new Set([...occupied, ...next.map(key), ...formation.slice(index + 1).map(key)]);
+    const queue = [{ ...current, first:null }], visited = new Set([key(current)]);
+    let step = null;
+    // 離れている後続も壁を抜けず、前のキャラの旧位置へ通路沿いに1歩だけ合流する。
+    for (let cursor = 0; cursor < queue.length; cursor++) {
+      const node = queue[cursor];
+      if (key(node) === key(target)) { step = node.first || current; break; }
+      for (const tile of getHexNeighborCoords(data.w, data.h, node.x, node.y, false)) {
+        if (visited.has(key(tile)) || blocked.has(key(tile)) || !canUnitEnterV39Tile(data, tile.x, tile.y, member)) continue;
+        visited.add(key(tile));
+        queue.push({ ...tile, first:node.first || tile });
+      }
+    }
+    if (!step) return null;
+    next.push({ id:current.id, x:step.x, y:step.y });
+  }
+  const destinations = new Set();
+  for (const position of next) {
+    const tileKey = key(position);
+    if (destinations.has(tileKey) || occupied.has(tileKey)
+      || !canUnitEnterV39Tile(data, position.x, position.y, members.get(position.id))) return null;
+    destinations.add(tileKey);
+  }
+  return next;
 }
 
 export function applyV39SquadMovement(faction = {}, group = {}, target = {}, moveApCost = 0) {

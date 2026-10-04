@@ -1,4 +1,5 @@
 import { enemySpawnData } from "./game-data-registry.js";
+import { resolveAnimalArtworkReference } from "./animal-artwork-config.js";
 
 const MONSTER_SHEET_COLUMNS = 4;
 const MONSTER_SHEET_ROWS = 3;
@@ -145,6 +146,9 @@ function resolveReferenceFromEnemy(enemy) {
       return { fileName:legacySheetFileName(legacySheetNumber), slotNumber:directSlotNumber, sizeByLevel };
     }
   }
+
+  const animalReference = resolveAnimalArtworkReference(enemy);
+  if (animalReference) return animalReference;
 
   const definitionIds = [
     enemy?.sourceDefinitionId,

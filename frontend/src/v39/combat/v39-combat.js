@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { hasV39CaveLineOfSight, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import {
   computeAttackDamage,
@@ -68,7 +69,7 @@ function activeFaction() {
 }
 
 function terrainAdjusted(unit) {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const player = state?.players?.find(row => row?.factionState?.units?.some(item => text(item?.id) === text(unit?.id)));
   const effects = player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[text(unit?.id)]
     || state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[text(unit?.id)]
@@ -176,12 +177,12 @@ function castDurationTurns(skillRow) {
 const cooldownDurationTurns = skillRow => parseV39TurnCount(skillRow?.CT, 0);
 const effectDurationTurns = skillRow => parseV39TurnCount(skillRow?.効果時間, 0);
 
-function unitRuntimeState(faction, unit, skillRow = null) {
+function unitRuntimeState(faction, unit, skillRow = null, turnNumber = currentV39TurnNumber()) {
   const unitKey = text(unit?.id);
   const runtime = faction?.combatRuntime || {};
   const cooldowns = runtime?.cooldownsByUnitId?.[unitKey] || {};
   const pending = runtime?.pendingActionsByUnitId?.[unitKey] || null;
-  const cooldownRemainingTurns = remainingV39Turns(cooldowns?.[text(skillRow?.名前)], currentV39TurnNumber());
+  const cooldownRemainingTurns = remainingV39Turns(cooldowns?.[text(skillRow?.名前)], turnNumber);
   return { pending, cooldownRemainingTurns };
 }
 
@@ -213,7 +214,7 @@ function tileCenter(x, y) {
 }
 
 function neighbors(data, x, y) {
-  const wrap = window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
+  const wrap = data.worldWrapEnabled ?? (window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false);
   return getHexNeighborCoords(data.w, data.h, x, y, wrap);
 }
 
@@ -225,6 +226,7 @@ function tilesWithin(data, origin, radius) {
     for (const tile of frontier) {
       for (const neighbor of neighbors(data, tile.x, tile.y)) {
         if (found.has(neighbor.key)) continue;
+        if (!hasV39CaveLineOfSight(data, origin, neighbor)) continue;
         const value = { x:neighbor.x, y:neighbor.y, distance };
         found.set(neighbor.key, value);
         next.push(value);
@@ -241,7 +243,7 @@ function directionLine(data, from, target, length) {
     const score = Math.hypot(item.x - target.x, item.y - target.y);
     return !best || score < best.score ? { ...item, score } : best;
   }, null);
-  if (!current) return [];
+  if (!current || !hasV39CaveLineOfSight(data,from,current)) return [];
   const out = [current];
   let previous = from;
   while (out.length < length) {
@@ -252,7 +254,7 @@ function directionLine(data, from, target, length) {
       const score = Math.abs((item.x - current.x) - dx) + Math.abs((item.y - current.y) - dy);
       return !best || score < best.score ? { ...item, score } : best;
     }, null);
-    if (!next) break;
+    if (!next || !hasV39CaveLineOfSight(data,from,next)) break;
     previous = current;
     current = next;
     out.push(current);
@@ -267,20 +269,22 @@ function buildAreaScaleMap(data, attacker, target, skillRow) {
     for (const [key] of tilesWithin(data, target, 1)) result.set(key, 1);
   } else if (type === "around") {
     result.clear();
-    for (const [key, tile] of tilesWithin(data, attacker, resolveAttackRange(skillRow, attacker))) {
+    for (const [key, tile] of tilesWithin(data, attacker, resolveAttackRange(skillRow, attacker, data))) {
       if (tile.distance > 0) result.set(key, 1);
     }
   } else if (type === "line") {
     result.clear();
-    for (const tile of directionLine(data, attacker, target, resolveAttackRange(skillRow, attacker))) result.set(tile.key, 1);
+    for (const tile of directionLine(data, attacker, target, resolveAttackRange(skillRow, attacker, data))) result.set(tile.key, 1);
   } else if (type === "fan" || type === "front") {
-    for (const tile of directionLine(data, attacker, target, resolveAttackRange(skillRow, attacker))) {
+    for (const tile of directionLine(data, attacker, target, resolveAttackRange(skillRow, attacker, data))) {
       result.set(tile.key, 1);
-      for (const adjacent of neighbors(data, tile.x, tile.y)) result.set(adjacent.key, 1);
+      for (const adjacent of neighbors(data, tile.x, tile.y)) {
+        if(hasV39CaveLineOfSight(data,attacker,adjacent))result.set(adjacent.key, 1);
+      }
     }
   } else if (type === "all") {
     result.clear();
-    for (const [key, tile] of tilesWithin(data, attacker, resolveAttackRange(skillRow, attacker))) {
+    for (const [key, tile] of tilesWithin(data, attacker, resolveAttackRange(skillRow, attacker, data))) {
       if (tile.distance > 0) result.set(key, 1);
     }
   }
@@ -317,6 +321,7 @@ function drawTiles(map, color, alpha, depth, existing) {
 }
 
 function drawAttackArea(areaScale) {
+  if(window.__v39BackgroundWorldTurn)return;
   const ctx = activeRuntime();
   areaGraphics?.destroy?.();
   areaGraphics = null;
@@ -397,7 +402,8 @@ function selectedAttackRow(unit) {
 function resolveRevivalTarget(player, target, revivalSpec) {
   if (!revivalSpec) return { ok:false, reason:"蘇生効果が設定されていません" };
   const unit = (player?.factionState?.units || []).find((candidate) =>
-    (text(candidate?.state) === "死亡" || number(candidate?.hp, candidate?.currentHp) <= 0)
+    isV39UnitInWorld(candidate,window.getV39GameState?.({ includeWorlds:false })?.activeWorldId)
+      && (text(candidate?.state) === "死亡" || number(candidate?.hp, candidate?.currentHp) <= 0)
       && integer(candidate?.x) === integer(target?.x)
       && integer(candidate?.y) === integer(target?.y)
   );
@@ -422,8 +428,17 @@ function unavailableAttackReason(skillName) {
   return "現在は使用できません";
 }
 
+let actionPanelQueued = false;
+function scheduleActionPanel() {
+  if (actionPanelQueued) return;
+  actionPanelQueued = true;
+  window.requestAnimationFrame(() => { actionPanelQueued = false; renderActionPanel(); });
+}
+
 function renderActionPanel() {
-  const unit = selectedUnit();
+  const faction = activeFaction();
+  const unit = selectedUnit(faction);
+  const turnNumber = currentV39TurnNumber();
   const list = document.getElementById("detailTechniqueList");
   if (!(list instanceof HTMLElement)) return;
 
@@ -441,9 +456,9 @@ function renderActionPanel() {
   for (const button of actionButtons) {
     const name = text(button?.dataset?.v39AttackName);
     const row = rowByName.get(name) || null;
-    const timing = unitRuntimeState(activeFaction(), unit, row);
+    const timing = unitRuntimeState(faction, unit, row, turnNumber);
     const disabled = !row
-      || isV39UnitWaiting(unit, currentV39TurnNumber())
+      || isV39UnitWaiting(unit, turnNumber)
       || currentAp(unit) < resolveAttackApCost(row, unit)
       || text(unit?.state) === "死亡"
       || number(unit?.hp, unit?.currentHp) <= 0
@@ -490,7 +505,7 @@ function startAttack() {
     showToast(`CT中です。残り${timing.cooldownRemainingTurns}ターン`);
     return false;
   }
-  const range = resolveAttackRange(skillRow, unit);
+  const range = resolveAttackRange(skillRow, unit, ctx.data);
   const rangeTiles = tilesWithin(ctx.data, unit, range);
   if (!isV39SupportSkill(skillRow, terrainAdjusted(unit))) rangeTiles.delete(coordKey(unit.x, unit.y));
   attackSession = { unitId:text(unit.id), skillName:text(skillRow.名前), skillRow, range, rangeTiles };
@@ -517,7 +532,7 @@ function logDamage(attacker, target, skillRow, damage) {
 }
 
 function clearPendingAction(playerId, unitId, reason = "pending-cancelled") {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const player = state?.players?.find((row) => row.id === playerId);
   if (!state || !player) return;
   const runtime = player.factionState.combatRuntime || {};
@@ -535,7 +550,7 @@ function clearPendingAction(playerId, unitId, reason = "pending-cancelled") {
 function executeAttack(target) {
   if (!attackSession) return false;
   const session = attackSession;
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const player = state?.players?.find((row) => row.id === state.activePlayerId);
   const attacker = player?.factionState?.units?.find((unit) => text(unit?.id) === session.unitId);
   if (!state || !player || !attacker) return false;
@@ -628,7 +643,7 @@ function performRevival(target, session, options, state, player, attacker, reviv
     if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
     return false;
   }
-  const latestState = window.getV39GameState?.();
+  const latestState = window.getV39GameState?.({ includeWorlds:false });
   const latestPlayer = latestState?.players?.find((row) => row.id === player.id);
   if (!latestState || !latestPlayer) return false;
   const runtime = latestPlayer.factionState.combatRuntime || {};
@@ -736,17 +751,17 @@ function performTileTransform(target, session, options, state, player, attacker,
 function performAttack(target, session = attackSession, options = {}) {
   if (!session) return false;
   const ctx = activeRuntime();
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const player = state?.players?.find((row) => row.id === text(session.playerId, state?.activePlayerId));
   const attacker = player?.factionState?.units?.find((unit) => text(unit?.id) === session.unitId);
-  if (!ctx || !state || !player || !attacker || number(attacker?.hp, attacker?.currentHp) <= 0) {
+  if (!ctx || !state || !player || !attacker || !isV39UnitInWorld(attacker,state.activeWorldId) || number(attacker?.hp, attacker?.currentHp) <= 0) {
     if (options.clearPending) clearPendingAction(text(session?.playerId), text(session?.unitId), "cast-cancelled");
     return false;
   }
   const targetKey = coordKey(target.x, target.y);
   const rangeTiles = session.rangeTiles instanceof Map
     ? session.rangeTiles
-    : tilesWithin(ctx.data, attacker, resolveAttackRange(session.skillRow, attacker));
+    : tilesWithin(ctx.data, attacker, resolveAttackRange(session.skillRow, attacker, ctx.data));
   const adjustedAttacker = terrainAdjusted(attacker);
   const revivalSpec = resolveV39RevivalSpec(session.skillRow);
   const transformSpec = resolveV39TileTransformEffect(session.skillRow, TERRAIN_DATA_ROWS);
@@ -759,7 +774,7 @@ function performAttack(target, session = attackSession, options = {}) {
   }
   const apCost = resolveAttackApCost(session.skillRow, attacker);
   const targetFaction = !supportSkill && state.players.find((row) => row.id !== player.id && row?.factionState?.units?.some((unit) =>
-    integer(unit?.x) === integer(target.x) && integer(unit?.y) === integer(target.y) && number(unit?.hp, unit?.currentHp) > 0
+    isV39UnitInWorld(unit,state.activeWorldId) && integer(unit?.x) === integer(target.x) && integer(unit?.y) === integer(target.y) && number(unit?.hp, unit?.currentHp) > 0
   ));
   if (!options.apPaid && isV39UnitWaiting(attacker, currentV39TurnNumber())) {
     showToast("このターンは待機済みです");
@@ -780,7 +795,7 @@ function performAttack(target, session = attackSession, options = {}) {
   const stealthBreakTurn = currentV39TurnNumber(state);
   const exposesDirectTarget = resolveAreaType(session.skillRow) === "single" && resolveSplashSpec(session.skillRow).value <= 0;
   const supportTargets = supportSkill
-    ? player.factionState.units.filter(unit => number(unit?.hp, unit?.currentHp) > 0 && areaScale.has(coordKey(unit.x, unit.y)))
+    ? player.factionState.units.filter(unit => isV39UnitInWorld(unit,state.activeWorldId) && number(unit?.hp, unit?.currentHp) > 0 && areaScale.has(coordKey(unit.x, unit.y)))
     : [];
   if (supportSkill && !supportTargets.length) {
     showToast("対象位置に生存中の味方がいません");
@@ -810,7 +825,7 @@ function performAttack(target, session = attackSession, options = {}) {
     expPoolRaw += expReward.rawExp;
     enemyExpRewardedById.set(text(enemy.id), expReward.nextRewardedHpDamage);
     combatLog.push({
-      targetId:text(enemy.id), targetName:text(enemy.name), x:enemy.x, y:enemy.y,
+      targetId:text(enemy.id), targetName:`${text(enemy.name)} Lv${integer(enemy.level, 1)}`, x:enemy.x, y:enemy.y,
       beforeHp, afterHp, maxHp:Math.max(1, number(enemy?.maxHp, beforeHp)),
       expReward:expReward.rawExp, friendly:false, ...damage
     });
@@ -818,6 +833,7 @@ function performAttack(target, session = attackSession, options = {}) {
   }
   const friendlyDamageById = new Map();
   for (const ally of supportSkill ? [] : player.factionState.units) {
+    if (!isV39UnitInWorld(ally,state.activeWorldId)) continue;
     if (text(ally.id) === text(attacker.id)) continue;
     const scale = areaScale.get(coordKey(ally.x, ally.y));
     if (scale === undefined || number(ally?.hp, ally?.currentHp) <= 0) continue;
@@ -835,6 +851,7 @@ function performAttack(target, session = attackSession, options = {}) {
   for (const foreignPlayer of supportSkill ? [] : state.players) {
     if (foreignPlayer.id === player.id || window.canV39AttackFaction?.(player.id, foreignPlayer.id) !== true) continue;
     for (const foreignUnit of foreignPlayer?.factionState?.units || []) {
+      if (!isV39UnitInWorld(foreignUnit,state.activeWorldId)) continue;
       const scale = areaScale.get(coordKey(foreignUnit.x, foreignUnit.y));
       if (scale === undefined || number(foreignUnit?.hp, foreignUnit?.currentHp) <= 0) continue;
       const damage = resolveAppliedAttackDamage({ attacker, target:foreignUnit, skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
@@ -996,15 +1013,15 @@ function performAttack(target, session = attackSession, options = {}) {
 
 function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, isCounter = false, suppressEffect = false } = {}) {
   const ctx = activeRuntime();
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const attacker = state?.enemies?.find((enemy) => text(enemy?.id) === text(enemyId));
   const playerTarget = state?.players?.flatMap((player) => player?.factionState?.units || [])
-    .find((unit) => text(unit?.id) === text(targetUnitId));
+    .find((unit) => isV39UnitInWorld(unit,state.activeWorldId) && text(unit?.id) === text(targetUnitId));
   const enemyTarget = state?.enemies?.find((enemy) => text(enemy?.id) === text(targetUnitId));
   const villageTarget = neutralVillageGuards(state).find((unit) => text(unit?.id) === text(targetUnitId));
   const targetUnit = playerTarget || enemyTarget || villageTarget;
   if (!ctx || !state || !attacker || !targetUnit || number(attacker?.hp, attacker?.currentHp) <= 0 || number(targetUnit?.hp, targetUnit?.currentHp) <= 0) return false;
-  const range = resolveAttackRange(skillRow, attacker);
+  const range = resolveAttackRange(skillRow, attacker, ctx.data);
   if (!tilesWithin(ctx.data, attacker, range).has(coordKey(targetUnit.x, targetUnit.y))) return false;
   const apCost = resolveAttackApCost(skillRow, attacker);
   if (!apPaid && currentAp(attacker) < apCost) return false;
@@ -1021,6 +1038,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   const damageByUnitId = new Map();
   for (const player of state.players) {
     for (const unit of player?.factionState?.units || []) {
+      if (!isV39UnitInWorld(unit,state.activeWorldId)) continue;
       const scale = areaScale.get(coordKey(unit.x, unit.y));
       if (scale === undefined || number(unit?.hp, unit?.currentHp) <= 0) continue;
     const damage = resolveAppliedAttackDamage({ attacker, target:unit, skillRow, scale, isCounter });
@@ -1044,7 +1062,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     enemyDamageById.set(text(enemy.id), damage);
     const beforeHp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
     combatLog.push({
-      targetId:text(enemy.id), targetName:text(enemy.name), x:enemy.x, y:enemy.y,
+      targetId:text(enemy.id), targetName:`${text(enemy.name)} Lv${integer(enemy.level, 1)}`, x:enemy.x, y:enemy.y,
       beforeHp, afterHp:Math.max(0, beforeHp-damage.total), maxHp:Math.max(1, number(enemy?.maxHp, beforeHp)),
       friendly, ...damage
     });
@@ -1134,7 +1152,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   window.setV39GameState({ players, enemies, neutralVillages, enemyNests }, { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
-  const summary = `${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
+  const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
   if (!isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
     detail:{ attackerSide:"enemy", targetSide:enemyTarget ? "enemy" : villageTarget ? "neutral-village" : "player", attackerId:text(attacker.id), targetUnitId:text(targetUnit.id), target:{ x:targetUnit.x, y:targetUnit.y }, skillRow, entries:combatLog }
@@ -1144,12 +1162,12 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
 
 function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, skillRow, suppressEffect = false } = {}) {
   const ctx = activeRuntime();
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const village = (state?.neutralVillages || []).find(row => text(row?.id) === text(villageId));
   const attacker = (village?.defenseUnits || []).find(unit => text(unit?.id) === text(guardId));
   const target = state?.enemies?.find(enemy => text(enemy?.id) === text(targetEnemyId));
   if (!ctx || !state || !village || !attacker || !target || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
-  if (getHexDistance(attacker, target) > resolveAttackRange(skillRow, attacker)) return false;
+  if (getHexDistance(attacker, target) > resolveAttackRange(skillRow, attacker, ctx.data)) return false;
   const damage = resolveAppliedAttackDamage({ attacker, target, skillRow });
   const beforeHp = Math.max(0, number(target?.hp, target?.currentHp));
   const enemies = state.enemies.map(enemy => text(enemy?.id) === text(target.id)
@@ -1165,7 +1183,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
   });
   logDamage(attacker, target, skillRow, damage);
   const entry = {
-    targetId:text(target.id), targetName:text(target.name), x:target.x, y:target.y,
+    targetId:text(target.id), targetName:`${text(target.name)} Lv${integer(target.level, 1)}`, x:target.x, y:target.y,
     beforeHp, afterHp:Math.max(0, beforeHp-damage.total), maxHp:Math.max(1, number(target?.maxHp, beforeHp)),
     friendly:false, ...damage
   };
@@ -1182,7 +1200,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
 }
 
 function runNeutralVillageDefenseTurn() {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   if (!state) return { attacks:0 };
   let attacks = 0;
   for (const village of state.neutralVillages || []) {
@@ -1190,9 +1208,9 @@ function runNeutralVillageDefenseTurn() {
       if (number(guard?.hp, guard?.currentHp) <= 0 || text(guard?.state) === "死亡") continue;
       const skillRow = resolveActionSkillRows(guard).find(row => !isV39SupportSkill(row, guard));
       if (!skillRow) continue;
-      const target = (window.getV39GameState?.()?.enemies || [])
+      const target = (window.getV39GameState?.({ includeWorlds:false })?.enemies || [])
         .filter(enemy => number(enemy?.hp, enemy?.currentHp) > 0 && text(enemy?.state) !== "死亡")
-        .filter(enemy => getHexDistance(guard, enemy) <= resolveAttackRange(skillRow, guard))
+        .filter(enemy => getHexDistance(guard, enemy) <= resolveAttackRange(skillRow, guard, window.__v39FieldRuntime?.mapData))
         .sort((left, right) => getHexDistance(guard, left)-getHexDistance(guard, right) || text(left?.id).localeCompare(text(right?.id), "ja"))[0];
       if (target && performNeutralVillageGuardAttack({ villageId:village.id, guardId:guard.id, targetEnemyId:target.id, skillRow })) attacks += 1;
     }
@@ -1201,7 +1219,7 @@ function runNeutralVillageDefenseTurn() {
 }
 
 function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   const attacker = attackerSide === "enemy"
     ? state?.enemies?.find((unit) => text(unit.id) === text(attackerId))
     : state?.players?.flatMap((player) => player?.factionState?.units || []).find((unit) => text(unit.id) === text(attackerId));
@@ -1225,7 +1243,7 @@ function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
 
 function handleCounter(event) {
   const detail = event?.detail || {};
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   if (!state || !canTriggerMeleeCounter(detail.skillRow, detail.attackerSide === "enemy"
     ? state.enemies.find((unit) => text(unit.id) === text(detail.attackerId))
     : state.players.flatMap((player) => player?.factionState?.units || []).find((unit) => text(unit.id) === text(detail.attackerId)))) return;
@@ -1239,7 +1257,7 @@ function handleCounter(event) {
 }
 
 function pruneCombatRuntime(turnNumber = currentV39TurnNumber()) {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   if (!state) return;
   let changed = false;
   const players = state.players.map((player) => {
@@ -1265,17 +1283,17 @@ function pruneCombatRuntime(turnNumber = currentV39TurnNumber()) {
 }
 
 function resolvePendingActions(turnNumber = currentV39TurnNumber()) {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({ includeWorlds:false });
   for (const player of state?.players || []) {
     for (const pending of Object.values(player?.factionState?.combatRuntime?.pendingActionsByUnitId || {})) {
       if (number(pending?.resolvesAtTurn) > turnNumber) continue;
+      if(!player.factionState.units.some(unit=>text(unit.id)===text(pending.unitId)&&isV39UnitInWorld(unit,state.activeWorldId)))continue;
       performAttack(pending.target, {
         playerId:player.id,
         unitId:text(pending.unitId),
         skillName:text(pending.skillName),
         skillRow:pending.skillRow
       }, { apPaid:true, clearPending:true });
-      return;
     }
   }
 }
@@ -1327,15 +1345,16 @@ window.addEventListener("v39:tile-selected", (event) => {
       if (tile) previewAttackArea(tile);
     });
   }, true);
-  window.addEventListener("v39:unit-selected", () => { cancelAttack("unit-changed"); renderActionPanel(); });
-  window.addEventListener("v39:squad-detail-rendered", renderActionPanel);
+  window.addEventListener("v39:unit-selected", () => { cancelAttack("unit-changed"); scheduleActionPanel(); });
+  window.addEventListener("v39:squad-detail-rendered", scheduleActionPanel);
   window.addEventListener("v39:game-state-changed", (event) => {
+    if (event?.detail?.reason === "activity-log") return;
     if (event?.detail?.reason === "active-player") cancelAttack("active-player-changed");
-    renderActionPanel();
+    scheduleActionPanel();
   });
   window.addEventListener("v39:turn-advanced", (event) => {
     const turnNumber = Math.max(1, integer(event?.detail?.turnNumber, currentV39TurnNumber()));
-    resolvePendingActions(turnNumber);
+    if(event?.detail?.pendingActionsResolved!==true)resolvePendingActions(turnNumber);
     pruneCombatRuntime(turnNumber);
     renderActionPanel();
   });
@@ -1354,7 +1373,7 @@ window.addEventListener("v39:tile-selected", (event) => {
   window.executeV39EnemyCombatAction = performEnemyAttack;
   // 操作中プレイヤーを切り替えず、NPC国家AIなどが既存の勢力戦闘処理を使う入口。
   window.executeV39FactionCombatAction = ({ playerId, attackerId, targetUnitId, target, skillRow, apPaid = false } = {}) => {
-    const state = window.getV39GameState?.();
+    const state = window.getV39GameState?.({ includeWorlds:false });
     const targetUnit = state?.players?.flatMap(player => player?.factionState?.units || [])
       .find(unit => text(unit?.id) === text(targetUnitId))
       || state?.enemies?.find(unit => text(unit?.id) === text(targetUnitId));

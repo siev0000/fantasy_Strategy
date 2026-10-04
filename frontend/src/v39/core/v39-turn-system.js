@@ -7,6 +7,8 @@ import { normalizeV39PlayerTurnTimeline } from "../../lib/v39-local-multiplayer-
 import { isV39UnitUnacted } from "../../lib/v39-unit-action-rules.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { advanceV39AutomaticTransport } from "../../lib/v39-transport-rules.js";
+import { showV39TurnLoading, paintV39TurnLoading } from "../ui/v39-turn-loading.js";
+import { withV39WorldContext, v39TurnWorldIds } from "./v39-world-context.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
@@ -20,6 +22,7 @@ const DEFAULT_TIMELINE = Object.freeze({
 });
 
 let advancing = false;
+let latestTurnPerformance = null;
 let bannerTimer = 0;
 
 function number(value, fallback = 0) {
@@ -258,7 +261,7 @@ function focusUnactedUnit(state, playerId, turnNumber) {
 }
 
 export async function advanceTurn(options = {}) {
-  if (advancing) return false;
+  if (advancing || window.isV39MapInputLocked?.()) return false;
   let state = window.getV39GameState?.();
   if (!state) return false;
   if (state?.victory?.completed === true) {
@@ -266,6 +269,9 @@ export async function advanceTurn(options = {}) {
     return false;
   }
   advancing = true;
+  let inputToken = null;
+  let batchToken = null;
+  const timings = {};
   try {
     const before = normalizeTimeline(state.timeline, state.players, state.activePlayerId);
     if (before.phase !== V39_TURN_PHASE.PLAYER) return false;
@@ -277,14 +283,17 @@ export async function advanceTurn(options = {}) {
     const currentPlayerId = playerTimeline.activeTurnPlayerId || state.activePlayerId;
     if (options.skipUnactedFocus !== true && window.getV39DisplaySettings?.()?.focusUnactedUnits !== false
       && focusUnactedUnit(state, currentPlayerId, before.turnNumber)) return false;
-    const transport = advanceV39AutomaticTransport(state, currentPlayerId, window.__v39FieldRuntime?.mapData,
-      before.turnNumber, window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false);
-    if (transport.state !== state) {
-      window.setV39GameState?.({ players:transport.state.players }, { reason:"automatic-transport" });
-      for (const report of transport.reports) window.appendV39ActivityLog?.(currentPlayerId, "物資",
-        `${report.action}: ${report.resource} ${report.amount}`, report);
-      state = window.getV39GameState?.() || transport.state;
-    }
+    const transportWorld=v39TurnWorldIds().includes("surface")?"surface":state.activeWorldId;
+    await withV39WorldContext(transportWorld,()=>{
+      const scoped=window.getV39GameState();
+      const transport=advanceV39AutomaticTransport(scoped,currentPlayerId,window.__v39FieldRuntime?.mapData,
+        before.turnNumber,window.__v39FieldRuntime?.mapData?.worldWrapEnabled!==false);
+      if(transport.state!==scoped){
+        window.setV39GameState({players:transport.state.players},{reason:"automatic-transport"});
+        for(const report of transport.reports)window.appendV39ActivityLog?.(currentPlayerId,"物資",`${report.action}: ${report.resource} ${report.amount}`,report);
+      }
+    });
+    state=window.getV39GameState();
     const endedPlayerIds = [...new Set([...playerTimeline.endedPlayerIds, currentPlayerId])];
     const nextPlayerId = playerTimeline.playerTurnOrder.find(playerId => !endedPlayerIds.includes(playerId));
     if (nextPlayerId) {
@@ -304,6 +313,9 @@ export async function advanceTurn(options = {}) {
       return true;
     }
     const activeTurn = before.turnNumber;
+    inputToken = window.beginV39MapInputLock?.("turn-resolution");
+    showV39TurnLoading("敵AI処理中…");
+    await paintV39TurnLoading();
     const enemyTimeline = setTurnPhase({
       ...state,
       enemies:(Array.isArray(state.enemies) ? state.enemies : [])
@@ -311,24 +323,58 @@ export async function advanceTurn(options = {}) {
         .map(restoreUnitForTurn)
     }, before, V39_TURN_PHASE.ENEMY, "enemy-turn-start");
     showBanner(`エネミーターン ${activeTurn}`);
-    await window.runV39EnemyTurn?.(activeTurn);
+    const worldIds=v39TurnWorldIds(),visibleWorldId=state.activeWorldId||"surface";
+    timings.enemy={};
+    for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
+      await withV39WorldContext(worldId,async()=>{
+        const current=window.getV39GameState();
+        window.setV39GameState({enemies:current.enemies.map(unit=>clearExpiredGuard(unit,activeTurn)).map(restoreUnitForTurn)});
+        timings.enemy[worldId]=await window.runV39EnemyTurn?.(activeTurn,{presentation:worldId===visibleWorldId});
+      });
+    }
     const afterEnemy = window.getV39GameState?.() || state;
     const nextTurn = activeTurn + 1;
     const resolvingTimeline = setTurnPhase(afterEnemy, enemyTimeline, V39_TURN_PHASE.RESOLUTION, "turn-resolution-start");
     const stages = ["terrain", "ai", "exploration", "world", "economy", "research", "diplomacy"];
-    for (const stage of stages) dispatchTurnStage(stage, nextTurn);
+    const stageNames = { terrain:"地形", ai:"勢力AI", exploration:"調査", world:"住民", economy:"経済・建設", research:"研究", diplomacy:"外交" };
+    batchToken = window.beginV39MapRenderBatch?.("turn-resolution");
+    for (const stage of stages) {
+      showV39TurnLoading(`${stageNames[stage]}処理中…`);
+      await paintV39TurnLoading();
+      const startedAt = performance.now();
+      const targets=["exploration","world"].includes(stage)?worldIds
+        :[worldIds.includes("surface")?"surface":visibleWorldId];
+      for(const worldId of targets.length?targets:[visibleWorldId]){
+        // 地下に都市・天候はない。全体の研究・外交・消費は一度だけ進める。
+        if(worldId!=="surface"&&["terrain","ai"].includes(stage))continue;
+        await withV39WorldContext(worldId,()=>dispatchTurnStage(stage,nextTurn),{allUnits:["economy","research","diplomacy"].includes(stage)});
+      }
+      timings[stage] = performance.now() - startedAt;
+    }
+    for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
+      await withV39WorldContext(worldId,()=>{
+        window.resolveV39PendingCombatActions?.(nextTurn);
+        window.runV39DeathLifecycle?.(nextTurn);
+        const current=window.getV39GameState();
+        window.setV39GameState({enemies:current.enemies.map(unit=>recoverUnitHp(unit,null,"",current,activeTurn,true))});
+      });
+    }
     const resolved = window.getV39GameState?.();
     const recoveredPlayers = (resolved?.players || []).map(player => {
       const factionState = {
           ...player.factionState,
           units:(player?.factionState?.units || [])
-            .map(unit => recoverUnitHp(unit, player.factionState, player.id, resolved, activeTurn))
+            .map(unit => {
+              const worldId=unit.worldId||"surface";
+              const spatial=worldId===visibleWorldId?resolved:resolved.explorationWorlds?.[worldId]?.spatial;
+              return recoverUnitHp(unit,worldId==="surface"?player.factionState:null,player.id,spatial||{},activeTurn);
+            })
             .map(unit => clearExpiredGuard(unit, nextTurn))
             .map(restoreUnitForTurn)
       };
       return { ...player, factionState:restoreV39SquadMovementForTurn(factionState) };
     });
-    const recoveredEnemies = (resolved?.enemies || []).map(unit => recoverUnitHp(unit, null, "", resolved, activeTurn, true));
+    const recoveredEnemies = resolved?.enemies || [];
     const completedTimeline = {
       ...normalizeTimeline(resolvingTimeline),
       turnNumber:nextTurn,
@@ -348,9 +394,20 @@ export async function advanceTurn(options = {}) {
     renderControls();
     showBanner(`プレイヤーターン ${nextTurn}`);
     window.dispatchEvent(new CustomEvent("v39:turn-phase-changed", { detail:{ phase:V39_TURN_PHASE.PLAYER, turnNumber:nextTurn } }));
-    window.dispatchEvent(new CustomEvent("v39:turn-advanced", { detail:{ previousTurn:activeTurn, turnNumber:nextTurn, stages:completedTimeline.lastStageSequence } }));
+    window.dispatchEvent(new CustomEvent("v39:turn-advanced", { detail:{ previousTurn:activeTurn, turnNumber:nextTurn, pendingActionsResolved:true, worldLifecycleResolved:true, stages:completedTimeline.lastStageSequence } }));
+    showV39TurnLoading("画面へ反映中…");
+    const renderStartedAt = performance.now();
+    window.endV39MapRenderBatch?.(batchToken, { force:true, reason:"turn-resolution-complete" });
+    batchToken = null;
+    await window.waitForV39MapRenderSettled?.();
+    timings.renderMs = performance.now() - renderStartedAt;
+    latestTurnPerformance = { turnNumber:nextTurn, ...timings };
+    window.dispatchEvent(new CustomEvent("v39:turn-performance", { detail:{ turnNumber:nextTurn, ...timings } }));
     return true;
   } finally {
+    if (batchToken) window.endV39MapRenderBatch?.(batchToken, { force:true, reason:"turn-resolution-aborted" });
+    window.endV39MapInputLock?.(inputToken, "turn-resolution-complete");
+    showV39TurnLoading("");
     advancing = false;
   }
 }
@@ -358,6 +415,7 @@ export async function advanceTurn(options = {}) {
 window.advanceV39Turn = advanceTurn;
 window.setV39TimePaused = setTimePaused;
 window.getV39Timeline = () => normalizeTimeline(window.getV39GameState?.()?.timeline);
+window.getV39LatestTurnPerformance = () => latestTurnPerformance;
 window.showV39TurnBanner = showBanner;
 
 window.addEventListener("v39:operation-ui-ready", installUi, { once:true });

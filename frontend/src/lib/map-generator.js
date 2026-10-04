@@ -215,10 +215,8 @@ const 地形生成設定 = {
     },
     孤島試行回数: 36,
     島間海マス: 2,
-    // 100×100の多島海は島数を維持したまま、各島へ配る陸地目標を約20%増やす。
-    多島海100マス設定: {
-      適用最小幅: 100,
-      適用最小高さ: 100,
+    // 全サイズの多島海は島数を維持したまま、各島へ配る陸地目標を約20%増やす。
+    多島海設定: {
       平均島面積倍率: 1.2
     }
   },
@@ -1431,12 +1429,9 @@ function shuffledCopy(arr) {
   return [...arr].sort(() => Math.random() - 0.5);
 }
 
-function resolvePatternIslandAreaScale(patternId, w, h) {
-  const rule = 地形生成設定.島構成?.多島海100マス設定 || {};
+function resolvePatternIslandAreaScale(patternId) {
+  const rule = 地形生成設定.島構成?.多島海設定 || {};
   if (patternId !== "archipelago") return 1;
-  const minimumWidth = Math.max(1, Math.floor(Number(rule.適用最小幅) || 100));
-  const minimumHeight = Math.max(1, Math.floor(Number(rule.適用最小高さ) || 100));
-  if (Number(w) < minimumWidth || Number(h) < minimumHeight) return 1;
   return Math.max(1, Number(rule.平均島面積倍率) || 1.2);
 }
 
@@ -1876,7 +1871,7 @@ function addRandomIslets(grid, w, h, islandIdMap, startId, plannedCount, minSize
 function generateIslands(grid, w, h, totalTiles, patternId = "balanced", options = {}) {
   const cfg = 島パターン定義[patternId] || 島パターン定義.balanced;
   const basePatternTargetLand = Math.floor(totalTiles * (cfg.landMin + Math.random() * (cfg.landMax - cfg.landMin)));
-  const islandAreaScale = resolvePatternIslandAreaScale(patternId, w, h);
+  const islandAreaScale = resolvePatternIslandAreaScale(patternId);
   const patternTargetLand = clamp(
     Math.round(basePatternTargetLand * islandAreaScale),
     1,

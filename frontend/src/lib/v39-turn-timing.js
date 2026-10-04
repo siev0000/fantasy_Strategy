@@ -20,7 +20,7 @@ export function parseV39TurnCount(value, fallback = 0) {
   return Math.max(0, Math.ceil(finiteNumber(match?.[0], fallback)));
 }
 
-export function currentV39TurnNumber(state = window.getV39GameState?.()) {
+export function currentV39TurnNumber(state = { timeline:window.getV39TimelineState?.() || window.getV39GameState?.({ includeWorlds:false })?.timeline }) {
   return Math.max(1, Math.floor(finiteNumber(state?.timeline?.turnNumber, 1)));
 }
 

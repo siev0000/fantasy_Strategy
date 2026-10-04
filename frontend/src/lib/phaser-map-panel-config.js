@@ -280,3 +280,5 @@ export const OVERLAY_ICON_BUTTON_SIZE_PX = 65;
 export const OVERLAY_ICON_BUTTON_ICON_INSET_PX = 8;
 export const OVERLAY_ICON_BUTTON_EMOJI_SIZE_PX = 30;
 export const OVERLAY_ICON_BUTTON_PLUS_BADGE_SIZE_PX = 18;
+// 静止中の地図再描画間隔 / 地図入力後に連続描画する時間（ms）。
+export const MAP_IDLE_RENDER_CONFIG = { idleRedrawMs:1000, inputRedrawMs:120 };

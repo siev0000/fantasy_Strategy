@@ -1,5 +1,5 @@
-import { classData } from "./game-data-registry.js";
-import { V39_UNIT_EXP_BALANCE } from "./v39-gameplay-balance.js";
+import { classData, factionData } from "./game-data-registry.js";
+import { V39_UNIT_EXP_BALANCE, V39_UNIT_INITIAL_LEVEL_BALANCE } from "./v39-gameplay-balance.js";
 import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { RACE_CLASS_NAME_MAP } from "../constants/unitCommon.js";
 
@@ -12,12 +12,19 @@ const classByName = new Map((Array.isArray(classData) ? classData : []).map(row 
 
 export function resolveV39UnitRaceCategory(unit = {}) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
-  const row = classByName.get(RACE_CLASS_NAME_MAP[raceName] || raceName) || null;
+  const faction = factionData.find(row => [row?.種族, row?.カナ].some(value => text(value) === raceName));
+  const row = classByName.get(RACE_CLASS_NAME_MAP[raceName] || text(faction?.カナ) || raceName) || null;
   const kind = text(row?.種類);
   if (kind === "人族") return "human";
   if (kind === "亜人") return "demi";
   if (kind === "魔族") return "demon";
   return "other";
+}
+
+export function resolveV39UnitInitialLevel(race, isArmy = false) {
+  const category = resolveV39UnitRaceCategory({ race });
+  const levels = V39_UNIT_INITIAL_LEVEL_BALANCE[category] || V39_UNIT_INITIAL_LEVEL_BALANCE.human;
+  return levels[isArmy ? "army" : "normal"];
 }
 
 export function resolveV39UnitExpNeed(levelRaw, category = "other") {
@@ -117,8 +124,7 @@ export function resolveV39ResearchDifficultyMultiplier(researchLevelRaw = 1, req
   return needMultiplier * levelMultiplier;
 }
 
-function expResult(action, multipliers = {}, progressRateRaw = 1) {
-  const baseExp = resolveV39ActionBaseExp(action);
+function expResult(action, multipliers = {}, progressRateRaw = 1, baseExp = resolveV39ActionBaseExp(action)) {
   const progressRate = clamp01(progressRateRaw);
   const normalized = Object.fromEntries(Object.entries(multipliers).map(([key, value]) => [
     key,
@@ -216,10 +222,9 @@ export function resolveV39CombatExpReward({
     V39_UNIT_EXP_BALANCE.targetRaceMultipliers?.other ?? 1
   ));
   const result = expResult("combat", {
-    targetLevel:level,
     race:raceMultiplier,
     threat:resolveV39ThreatDifficultyMultiplier(threat)
-  }, hpDamageRate);
+  }, hpDamageRate, resolveV39UnitExpNeed(level, category) * V39_UNIT_EXP_BALANCE.combatLevelProgressRate);
   return { ...result, targetLevel:level, targetCategory:category };
 }
 
@@ -281,7 +286,7 @@ export function resolveV39ExperienceRecipientIds(factionState = {}, attackerIdRa
   if (!squad || squadId === "solo" || squadId === "単独") return [attackerId];
 
   const ids = new Set((Array.isArray(squad.unitIds) ? squad.unitIds : []).map(text).filter(Boolean));
-  const recipients = units.filter(unit => ids.has(text(unit?.id)) && isAlive(unit)).map(unit => text(unit.id));
+  const recipients = units.filter(unit => ids.has(text(unit?.id)) && isAlive(unit) && (unit.worldId || "surface") === (attacker.worldId || "surface")).map(unit => text(unit.id));
   return recipients.length ? recipients : [attackerId];
 }
 
@@ -333,8 +338,8 @@ export function distributeV39CombatExperience(factionState = {}, attackerIdRaw =
     levelUps:[]
   };
 
-  const baseShare = Math.floor(expPool/recipientIds.length);
-  let remainder = expPool-(baseShare*recipientIds.length);
+  const baseShare = V39_UNIT_EXP_BALANCE.divideCombatExpAmongRecipients ? Math.floor(expPool/recipientIds.length) : expPool;
+  let remainder = V39_UNIT_EXP_BALANCE.divideCombatExpAmongRecipients ? expPool-(baseShare*recipientIds.length) : 0;
   const awardById = new Map(recipientIds.map(id => {
     const amount = baseShare + (remainder > 0 ? 1 : 0);
     if (remainder > 0) remainder -= 1;

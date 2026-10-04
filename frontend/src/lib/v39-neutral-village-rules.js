@@ -5,6 +5,7 @@ import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEco
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { UNIT_CREATE_MODE_KEYS, resolveUnitCreateMode } from "../composables/militaryUnitUtils.js";
 import { buildV39ClassEquipment, buildV39UnitEntity } from "./v39-unit-creation-rules.js";
+import { resolveV39UnitInitialLevel } from "./v39-unit-experience.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -178,7 +179,6 @@ export function buildV39NeutralVillageDefenseUnits(village, mapData, options = {
   const armyRate = ratio(factionRow?.軍隊 ?? village?.armyRate);
   const population = Math.max(0, integer(village?.population));
   const militaryPopulationCap = Math.max(0, Math.floor(population * armyRate));
-  const militaryLevel = villageMilitaryLevel(village);
   const combatRaceName = combatRaceNameForVillage(village, factionRow);
   const formation = militaryProfilesForVillage(village, militaryPopulationCap);
   const positions = buildDefensePositions(
@@ -201,13 +201,15 @@ export function buildV39NeutralVillageDefenseUnits(village, mapData, options = {
     const className = DEFENSE_CLASS_NAMES[hash(text(village?.id) + ":defense-class:" + index) % DEFENSE_CLASS_NAMES.length];
     const classRow = CLASS_BY_NAME.get(className) || CLASS_BY_NAME.get("ファイター") || {};
     const id = text(village?.id) + "-defense-" + (index + 1);
+    const existing = existingById.get(id);
+    const level = existing ? Math.max(1, integer(existing.level, 1)) : resolveV39UnitInitialLevel(combatRaceName, true);
     const label = text(classRow?.ルビ) || className || "戦士";
     const built = buildV39UnitEntity({
       id,
       name:(text(village?.name) || text(village?.race) || "一般村") + " " + label + "軍" + (index + 1),
       race:combatRaceName,
       className,
-      level:Math.max(1, militaryLevel),
+      level,
       unitType:text(profile?.unitTypeLabel) || "軍隊",
       isMob:true,
       isNamed:false,
@@ -219,8 +221,8 @@ export function buildV39NeutralVillageDefenseUnits(village, mapData, options = {
       settlementId:text(village?.id),
       equipment:buildV39ClassEquipment(classRow)
     });
-    const strength = memberCount * (8 + Math.max(1, militaryLevel) * 2);
-    units.push(preserveDefenseRuntime(existingById.get(id), {
+    const strength = memberCount * (8 + level * 2);
+    units.push(preserveDefenseRuntime(existing, {
       ...built,
       neutral:true,
       isNeutralVillageGuard:true,

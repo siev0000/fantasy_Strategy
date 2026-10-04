@@ -35,11 +35,13 @@ function hydrateRuntimeDefinitions(gameState) {
       .filter(([, action]) => action));
     return { ...player, factionState:{ ...player.factionState, combatRuntime:{ ...runtime, pendingActionsByUnitId } } };
   });
-  const enemyRuntime = gameState?.enemyCombatRuntime || {};
-  const pendingActionsByEnemyId = Object.fromEntries(Object.entries(enemyRuntime.pendingActionsByEnemyId || {})
-    .map(([enemyId, action]) => [enemyId, hydratePendingAction(action, `敵:${enemyId}`)])
-    .filter(([, action]) => action));
-  return { ...gameState, players, enemyCombatRuntime:{ ...enemyRuntime, pendingActionsByEnemyId } };
+  const hydrateEnemyRuntime=(runtime={},worldId="active")=>({...runtime,
+    pendingActionsByEnemyId:Object.fromEntries(Object.entries(runtime.pendingActionsByEnemyId||{})
+      .map(([enemyId,action])=>[enemyId,hydratePendingAction(action,`${worldId}/敵:${enemyId}`)])
+      .filter(([,action])=>action))});
+  const explorationWorlds=Object.fromEntries(Object.entries(gameState?.explorationWorlds||{}).map(([id,world])=>[id,
+    {...world,spatial:{...world.spatial,enemyCombatRuntime:hydrateEnemyRuntime(world.spatial?.enemyCombatRuntime,id)}}]));
+  return { ...gameState, players, explorationWorlds, enemyCombatRuntime:hydrateEnemyRuntime(gameState?.enemyCombatRuntime) };
 }
 
 function encodeSpecialValues(_key, value) {
@@ -71,7 +73,7 @@ export function createV39SaveData() {
     format:SAVE_FORMAT,
     version:SAVE_VERSION,
     savedAt:new Date().toISOString(),
-    gameState:stripDefinitionSnapshots(state),
+    gameState:stripDefinitionSnapshots({...state,explorationWorlds:window.captureV39ExplorationWorlds?.()||state.explorationWorlds}),
     field:runtime?.mapData ? { settings:runtime.settings || {}, mapData:runtime.mapData } : null,
     view:activeViewSnapshot()
   };
@@ -255,7 +257,7 @@ export function importV39SaveJson(jsonText) {
   validateSaveData(save);
   const migration = migrateSaveData(save);
   save = validateSaveData(migration.save);
-  if (save.field) window.loadV39FieldSnapshot?.(save.field.mapData, save.field.settings || {});
+  if (save.field) window.loadV39FieldSnapshot?.(save.field.mapData, save.field.settings || {}, {layerChange:true});
   window.setV39GameState?.(hydrateRuntimeDefinitions(save.gameState), { reason:"save-loaded" });
   restoreView(save.view);
   window.dispatchEvent(new CustomEvent("v39:save-loaded", {

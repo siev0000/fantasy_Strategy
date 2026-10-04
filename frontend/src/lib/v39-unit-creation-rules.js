@@ -6,6 +6,7 @@ import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-
 import { EQUIPMENT_SLOT_KEYS } from "../constants/unitCommon.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { isV39BaseClassRow } from "./v39-class-rules.js";
+import { resolveV39UnitInitialLevel } from "./v39-unit-experience.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -139,7 +140,7 @@ function createUnit(player, check, name, index) {
     name,
     race:check.race,
     className:text(check.classRow.名前),
-    level:1,
+    level:resolveV39UnitInitialLevel(check.race, check.mode.mode !== "normal"),
     unitType:check.mode.unitTypeLabel,
     isMob:check.mode.mode !== "normal",
     isNamed:check.mode.mode === "normal",

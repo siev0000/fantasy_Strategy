@@ -66,10 +66,11 @@ const report = await page.evaluate(async () => {
   let enemyTurnCalls = 0;
   const originalEnemyTurn = window.runV39EnemyTurn;
   window.runV39EnemyTurn = async () => { enemyTurnCalls += 1; };
-  await window.advanceV39Turn();
+  // このテストは担当勢力の順番を検証する。未行動確認は専用テストで扱う。
+  await window.advanceV39Turn({ skipUnactedFocus:true });
   const afterFirstEnd = window.getV39GameState();
   const firstEndEnemyTurnCalls = enemyTurnCalls;
-  await window.advanceV39Turn();
+  await window.advanceV39Turn({ skipUnactedFocus:true });
   const afterRoundEnd = window.getV39GameState();
   window.runV39EnemyTurn = originalEnemyTurn;
   window.openFieldSettingsModal?.();

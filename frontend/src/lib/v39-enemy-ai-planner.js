@@ -1,6 +1,7 @@
 import { isV39SupportSkill, resolveActionSkillRows, resolveAttackApCost, resolveAttackRange, resolveAttackRows } from "./v39-combat-engine.js";
 import { getHexDistance, getHexNeighborCoords } from "./hex-grid.js";
-import { isDetectedByScout, resolveDetectionGroupSense, resolveDetectionScoutValue } from "./v39-detection-rules.js";
+import { hasV39CaveLineOfSight, isV39UnitInWorld } from "./v39-cave-spatial-rules.js";
+import { isDetectedByScout, resolveDetectionGroupSense, resolveDetectionScoutValue, resolveV39UnitVisionRange } from "./v39-detection-rules.js";
 import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
 import { DEFAULT_MAGIC_CAST_TURNS, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "./v39-turn-timing.js";
 import { mergeV39EnemyExplorationInformation, normalizeV39EnemyExplorerState } from "./v39-enemy-exploration.js";
@@ -20,8 +21,8 @@ function coordKey(x, y) {
   return `${integer(x)},${integer(y)}`;
 }
 
-function visionRadius(enemy) {
-  return 1 + Math.floor(resolveDetectionScoutValue(enemy) / 75);
+function visionRadius(enemy, mapData) {
+  return resolveV39UnitVisionRange(enemy, mapData);
 }
 
 function chooseDeterministically(rows, enemyId, cycle) {
@@ -94,7 +95,8 @@ function nestsAreCompeting(state, attacker, target) {
 }
 
 function targetsFor(state, enemy = null) {
-  const players = (state?.players || []).flatMap(player => player?.factionState?.units || []).filter(isAliveEnemyAiUnit);
+  const players = (state?.players || []).flatMap(player => player?.factionState?.units || [])
+    .filter(unit=>isAliveEnemyAiUnit(unit)&&isV39UnitInWorld(unit,state.activeWorldId));
   const villageGuards = (state?.neutralVillages || []).flatMap(village => (village?.defenseUnits || []).map(unit => ({
     ...unit,
     neutralVillageId:text(village?.id),
@@ -107,7 +109,7 @@ function targetsFor(state, enemy = null) {
   return [...players, ...villageGuards, ...competingEnemies];
 }
 
-function selectEnemyTarget(state, enemy, targets, turnNumber) {
+function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
   const nest = nestFor(state, enemy);
   const center = territoryCenter(enemy, nest);
   const limit = pursuitLimit(enemy, nest);
@@ -131,13 +133,14 @@ function selectEnemyTarget(state, enemy, targets, turnNumber) {
   const enemyScout = resolveDetectionScoutValue(enemy);
   const visible = [];
   for (const group of targetsByTile.values()) {
+    if(!hasV39CaveLineOfSight(mapData,enemy,group[0]))continue;
     const targetDistance = distance(enemy, group[0]);
     const targetSense = resolveDetectionGroupSense(group, { turnNumber });
     if (!isDetectedByScout({
       scout:enemyScout,
       stealth:targetSense.stealth,
       distance:targetDistance,
-      inRange:targetDistance <= visionRadius(enemy)
+      inRange:targetDistance <= visionRadius(enemy, mapData)
     })) continue;
     visible.push(...group);
   }
@@ -163,7 +166,7 @@ function availableEnemyMoves(state, mapData, enemy) {
   if (!mapData?.grid) return [];
   const occupied = new Set([
     ...(state.enemies || []).filter(row => text(row.id) !== text(enemy.id) && isAliveEnemyAiUnit(row)),
-    ...(state.players || []).flatMap(player => player?.factionState?.units || []).filter(isAliveEnemyAiUnit),
+    ...(state.players || []).flatMap(player => player?.factionState?.units || []).filter(unit=>isAliveEnemyAiUnit(unit)&&isV39UnitInWorld(unit,state.activeWorldId)),
     ...(state.neutralVillages || []).flatMap(village => village?.defenseUnits || []).filter(isAliveEnemyAiUnit),
     ...(state.settlements || [])
   ].map(row => coordKey(row.x, row.y)));
@@ -195,13 +198,13 @@ function waitPlan(enemy, turnNumber, enemyPatch = {}) {
   return { type:"wait", enemyId:text(enemy.id), turnNumber, enemyPatch };
 }
 
-function lootTargetFor(state, enemy) {
+function lootTargetFor(state, enemy, mapData) {
   return Object.keys(state.groundLootByTile || {})
     .map(key => {
       const [x, y] = key.split(",").map(Number);
       return { x, y, key, targetDistance:distance(enemy, { x, y }) };
     })
-    .filter(row => Number.isFinite(row.x) && Number.isFinite(row.y) && row.targetDistance <= visionRadius(enemy))
+    .filter(row => Number.isFinite(row.x) && Number.isFinite(row.y) && row.targetDistance <= visionRadius(enemy, mapData))
     .sort((a, b) => a.targetDistance-b.targetDistance || a.key.localeCompare(b.key))[0] || null;
 }
 
@@ -266,13 +269,13 @@ function factionFoodNames(state, enemy, ownerId) {
 function observeForExplorer(state, mapData, enemy, turnNumber) {
   const current = normalizeV39EnemyExplorerState(enemy?.explorationState);
   if (!current.active) return null;
-  const radius = visionRadius(enemy);
+  const radius = visionRadius(enemy, mapData);
   const terrainByTile = {};
   const territoryByTile = {};
   const foodCandidatesByTile = {};
   const visitedTileKeys = [];
   for (let y = 0; y < integer(mapData?.h); y += 1) for (let x = 0; x < integer(mapData?.w); x += 1) {
-    if (distance(enemy, { x, y }) > radius) continue;
+    if (distance(enemy, { x, y }) > radius || !hasV39CaveLineOfSight(mapData,enemy,{x,y},{showWall:true})) continue;
     const key = coordKey(x, y);
     visitedTileKeys.push(key);
     terrainByTile[key] = terrainLabel(mapData?.grid?.[y]?.[x]);
@@ -288,7 +291,7 @@ function observeForExplorer(state, mapData, enemy, turnNumber) {
   const nearbyUnits = [
     ...(state?.enemies || []).filter(row => text(row?.id) !== text(enemy?.id)),
     ...targetsFor(state)
-  ].filter(row => isAliveEnemyAiUnit(row) && distance(enemy, row) <= radius);
+  ].filter(row => isAliveEnemyAiUnit(row) && distance(enemy, row) <= radius && hasV39CaveLineOfSight(mapData,enemy,row));
   const unitsByTile = new Map();
   for (const unit of nearbyUnits) {
     const key = coordKey(unit?.x, unit?.y);
@@ -373,16 +376,17 @@ function explorerMovePlan(state, mapData, enemy, nest, turnNumber, explorerState
   };
 }
 
-function attackSkillsFor(state, enemy, target, turnNumber) {
+function attackSkillsFor(state, enemy, target, turnNumber, mapData) {
   const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(enemy.id)] || {};
   const targetDistance = distance(enemy, target);
   return resolveActionSkillRows(enemy).filter(skillRow => !isV39SupportSkill(skillRow, enemy)
     && resolveAttackApCost(skillRow, enemy) <= number(enemy.ap)
-    && resolveAttackRange(skillRow, enemy) >= targetDistance
+    && resolveAttackRange(skillRow, enemy, mapData) >= targetDistance
+    && hasV39CaveLineOfSight(mapData,enemy,target)
     && remainingV39Turns(cooldowns[text(skillRow?.名前)], turnNumber) <= 0);
 }
 
-export function inspectEnemyAiState(state, enemyId, turnNumber) {
+export function inspectEnemyAiState(state, enemyId, turnNumber, mapData = null) {
   const enemy = (state?.enemies || []).find(row => text(row?.id) === text(enemyId));
   if (!state || !enemy) return null;
   const nest = nestFor(state, enemy);
@@ -390,7 +394,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
   const radius = territoryRadius(enemy, nest);
   const limit = pursuitLimit(enemy, nest);
   const targets = targetsFor(state, enemy);
-  const target = selectEnemyTarget(state, enemy, targets, turnNumber);
+  const target = selectEnemyTarget(state, enemy, targets, turnNumber, mapData);
   const hp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
   const maxHp = Math.max(1, number(enemy?.maxHp, enemy?.status?.HP || 1));
   const hpRate = hp / maxHp;
@@ -400,8 +404,8 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
   const cooldowns = runtime.cooldownsByEnemyId?.[text(enemy.id)] || {};
   const lastActionTurn = integer(runtime.lastActionTurnByEnemyId?.[text(enemy.id)]);
   const targetDistance = target ? distance(enemy, target) : null;
-  const attackSkills = target ? attackSkillsFor(state, enemy, target, turnNumber) : [];
-  const lootTarget = lootTargetFor(state, enemy);
+  const attackSkills = target ? attackSkillsFor(state, enemy, target, turnNumber, mapData) : [];
+  const lootTarget = lootTargetFor(state, enemy, mapData);
   const explorer = normalizeV39EnemyExplorerState(enemy?.explorationState);
   const rebelTarget = rebelTerritoryTargetFor(state, enemy);
   const militaryLevel = nest ? Math.max(1, integer(nest?.militaryLevel ?? nest?.軍事Lv, 1)) : 0;
@@ -432,7 +436,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber) {
       && V39_ENEMY_AI_CONFIG.passiveRetaliatesWhenAttacked
       && !!text(enemy?.aggroTargetUnitId),
     decision, reason,
-    visionRadius:visionRadius(enemy), scout:resolveDetectionScoutValue(enemy),
+    visionRadius:visionRadius(enemy, mapData), scout:resolveDetectionScoutValue(enemy),
     targetId:text(target?.id), targetName:text(target?.name, target?.id), targetDistance,
     aggroTargetUnitId:text(enemy?.aggroTargetUnitId), attackSkillNames:attackSkills.map(row => text(row?.名前)).filter(Boolean),
     hasNest:!!nest, nestId:text(nest?.id), nestName:text(nest?.name, nest?.id), nestDistance:nest ? distance(enemy, nest) : null,
@@ -452,11 +456,12 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
   const enemy = ordered.find(row => {
     const id = text(row?.id);
     return !state.enemyCombatRuntime?.pendingActionsByEnemyId?.[id]
+      && number(row.ap) > 0
       && integer(state.enemyCombatRuntime?.lastActionTurnByEnemyId?.[id]) < turnNumber;
   });
   if (!enemy) return null;
   const id = text(enemy.id);
-  const inspection = inspectEnemyAiState(state, id, turnNumber);
+  const inspection = inspectEnemyAiState(state, id, turnNumber, mapData);
   const targets = targetsFor(state, enemy);
   const nest = nestFor(state, enemy);
   const hpRate = number(enemy?.hp, enemy?.currentHp) / Math.max(1, number(enemy?.maxHp, enemy?.status?.HP || 1));
@@ -483,7 +488,7 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
     } else {
       const target = targets.find(row => text(row?.id) === text(enemy?.fleeState?.targetUnitId));
       if (!target) action = waitPlan(enemy, turnNumber, { fleeState:null });
-      else if (distance(enemy, target) <= visionRadius(enemy)) action = movePlan(state, mapData, enemy, target, turnNumber, "away", 0, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:1 } }) || waitPlan(enemy, turnNumber);
+      else if (distance(enemy, target) <= visionRadius(enemy, mapData)) action = movePlan(state, mapData, enemy, target, turnNumber, "away", 0, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:1 } }) || waitPlan(enemy, turnNumber);
       else if (integer(enemy?.fleeState?.extraMoveRemaining) > 0) action = movePlan(state, mapData, enemy, target, turnNumber, "away", 0, { fleeState:{ ...enemy.fleeState, extraMoveRemaining:0 } }) || waitPlan(enemy, turnNumber);
       else action = waitPlan(enemy, turnNumber, { fleeState:null });
     }
@@ -498,9 +503,9 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
       : movePlan(state, mapData, enemy, nest, turnNumber, "toward", 0, { explorationState:returning }) || waitPlan(enemy, turnNumber, { explorationState:returning });
   }
 
-  const target = action ? null : selectEnemyTarget(state, enemy, targets, turnNumber);
+  const target = action ? null : selectEnemyTarget(state, enemy, targets, turnNumber, mapData);
   if (!action && !target) {
-    const loot = lootTargetFor(state, enemy);
+    const loot = lootTargetFor(state, enemy, mapData);
     if (loot?.targetDistance === 0) action = { type:"recover-loot", enemyId:id, turnNumber, tileKey:loot.key, requiresSync:true };
     else if (loot) action = movePlan(state, mapData, enemy, loot, turnNumber, "toward", 0);
     if (!action && observedExplorerState) action = explorerMovePlan(state, mapData, enemy, nest, turnNumber, observedExplorerState);
@@ -520,7 +525,7 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
   }
 
   if (!action && target) {
-    const skillRow = chooseDeterministically(attackSkillsFor(state, enemy, target, turnNumber), id, turnNumber);
+    const skillRow = chooseDeterministically(attackSkillsFor(state, enemy, target, turnNumber, mapData), id, turnNumber);
     if (!skillRow) action = movePlan(state, mapData, enemy, target, turnNumber, "toward") || waitPlan(enemy, turnNumber);
     else {
       const delay = castTurns(skillRow);
@@ -544,6 +549,22 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
     attack:`攻撃: ${text(action?.skillName)}`
   };
   return { ...action, inspection, decision:text(decisionByType[action?.type], inspection?.decision), reason:text(inspection?.reason) };
+}
+
+export function finishEnemyApAction(before, state, plan) {
+  const id = text(plan.enemyId);
+  const previous = (before.enemies || []).find(enemy => text(enemy.id) === id);
+  const current = (state.enemies || []).find(enemy => text(enemy.id) === id);
+  // APを消費した移動・攻撃だけ続行する。無料行動や失敗は無限反復しない。
+  const canContinue = ["move", "attack", "attack-territory"].includes(plan.type)
+    && isAliveEnemyAiUnit(current) && number(current.ap) > 0 && number(current.ap) < number(previous?.ap);
+  return {
+    ...state.enemyCombatRuntime,
+    lastActionTurnByEnemyId:{
+      ...state.enemyCombatRuntime?.lastActionTurnByEnemyId,
+      [id]:canContinue ? integer(before.enemyCombatRuntime?.lastActionTurnByEnemyId?.[id]) : plan.turnNumber
+    }
+  };
 }
 
 export function applyEnemyPlanToSimulation(state, plan) {
@@ -582,5 +603,7 @@ export function applyEnemyPlanToSimulation(state, plan) {
   if (!["move", "wait", "queue-attack"].includes(plan.type) && plan.enemyPatch) {
     enemies = enemies.map(enemy => text(enemy?.id) === id ? { ...enemy, ...plan.enemyPatch } : enemy);
   }
-  return { ...state, enemies, enemyCombatRuntime:runtime };
+  const result = { ...state, enemies, enemyCombatRuntime:runtime };
+  result.enemyCombatRuntime = finishEnemyApAction(state, result, plan);
+  return result;
 }

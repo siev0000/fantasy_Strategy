@@ -1,0 +1,388 @@
+
+> fantasy-strategy@0.1.0 build:front
+> vite build --config frontend/vite.config.mjs
+
+vite v6.4.1 building for production...
+transforming...
+✓ 684 modules transformed.
+rendering chunks...
+computing gzip size...
+../web-vue-dist/assets/剣使い-DVDFlZT-.webp                                  4.10 kB
+../web-vue-dist/assets/吐息-DPMvbVzR.webp                                   4.12 kB
+../web-vue-dist/assets/精神-COz8_wcX.webp                                   4.14 kB
+../web-vue-dist/assets/湖--FURooTF.webp                                    4.17 kB
+../web-vue-dist/assets/渓谷-BxYcGety.webp                                   4.21 kB
+../web-vue-dist/assets/銀-BwYaFKsz.webp                                    4.22 kB
+../web-vue-dist/assets/盾使い-eNEWda3e.webp                                  4.22 kB
+../web-vue-dist/assets/脚-BWGbcDi7.webp                                    4.22 kB
+../web-vue-dist/assets/穀物-cd8dBW1M.webp                                   4.24 kB
+../web-vue-dist/assets/宝石-gp4qW3fq.webp                                   4.34 kB
+../web-vue-dist/assets/銀鉄-DEyDXgS9.webp                                   4.37 kB
+../web-vue-dist/assets/金-DqHzs2wO.webp                                    4.51 kB
+../web-vue-dist/assets/握手-BYNg6YF-.webp                                   4.51 kB
+../web-vue-dist/assets/弓-Bf-5CkAl.webp                                    4.54 kB
+../web-vue-dist/assets/羽-oiYya1_9.webp                                    4.55 kB
+../web-vue-dist/assets/空間-CPc6vYGG.webp                                   4.55 kB
+../web-vue-dist/assets/本-CEu7XAPW.webp                                    4.64 kB
+../web-vue-dist/assets/雷-F33CVVvY.webp                                    4.66 kB
+../web-vue-dist/assets/投擲-PWA7WADI.webp                                   4.71 kB
+../web-vue-dist/assets/爪-BzTNsmae.webp                                    4.78 kB
+../web-vue-dist/assets/風2-BXOiKv7S.webp                                   4.91 kB
+../web-vue-dist/assets/肉体-BnP4rdUq.webp                                   4.91 kB
+../web-vue-dist/assets/村-DGXVd6pf.webp                                    4.92 kB
+../web-vue-dist/assets/赤黒鋼-BBPa3qSP.webp                                  5.02 kB
+../web-vue-dist/assets/木材-DDSZGVVt.webp                                   5.14 kB
+../web-vue-dist/assets/地-BYmhc5Y3.webp                                    5.18 kB
+../web-vue-dist/assets/力場-FBlLmupt.webp                                   5.21 kB
+../web-vue-dist/assets/水-x7ILLWYJ.webp                                    5.27 kB
+../web-vue-dist/assets/信仰-2dpmjSUj.webp                                   5.34 kB
+../web-vue-dist/assets/素手-DIoqM_ER.webp                                   5.34 kB
+../web-vue-dist/assets/魔道士-Ch9gjdIA.webp                                  5.34 kB
+../web-vue-dist/assets/都市-BeZ3jsPp.webp                                   5.37 kB
+../web-vue-dist/assets/戦士-CmlMZlXx.webp                                   5.39 kB
+../web-vue-dist/assets/人間-D0q2vw1i.webp                                   5.41 kB
+../web-vue-dist/assets/物質-gZII-rQS.webp                                   5.53 kB
+../web-vue-dist/assets/神官 - コピー-ChhbVxHb.webp                             5.54 kB
+../web-vue-dist/assets/死者-DxlJ3uxO.webp                                   5.55 kB
+../web-vue-dist/assets/牙-C6iR2p_g.webp                                    5.63 kB
+../web-vue-dist/assets/町-g90cVjxq.webp                                    5.67 kB
+../web-vue-dist/assets/森司祭-_Gycmxao.webp                                  5.68 kB
+../web-vue-dist/assets/滝-7xXMOt-5.webp                                    5.68 kB
+../web-vue-dist/assets/気功-Bl5Qh1w8.webp                                   5.72 kB
+../web-vue-dist/assets/毒-n9gZdMY4.webp                                    5.75 kB
+../web-vue-dist/assets/宇宙-1tl2-SXS.webp                                   5.77 kB
+../web-vue-dist/assets/太陽-BBY2ZgU3.webp                                   5.78 kB
+../web-vue-dist/assets/特木-C-dAwf2f.webp                                   5.81 kB
+../web-vue-dist/assets/獣人-Bo-BXL8m.webp                                   5.84 kB
+../web-vue-dist/assets/青金鋼-m9JtKNNG.webp                                  5.86 kB
+../web-vue-dist/assets/星 - コピー-QtFJVL5G.webp                              5.88 kB
+../web-vue-dist/assets/空間2-Bo_flkaO.webp                                  5.90 kB
+../web-vue-dist/assets/回復-CQoYeiuu.webp                                   5.93 kB
+../web-vue-dist/assets/城-Ddo6m6pZ.webp                                    5.95 kB
+../web-vue-dist/assets/呪い-DipCJeUK.webp                                   5.96 kB
+../web-vue-dist/assets/大都市-B-Xs8el8.webp                                  5.97 kB
+../web-vue-dist/assets/魔道士 - コピー-BrkiYbe5.webp                            5.99 kB
+../web-vue-dist/assets/追跡者-DyuWUBjt.webp                                  6.08 kB
+../web-vue-dist/assets/炎-BkH53amC.webp                                    6.17 kB
+../web-vue-dist/assets/強化-B8KhECYB.webp                                   6.22 kB
+../web-vue-dist/assets/巨人-2DkcoEy9.webp                                   6.26 kB
+../web-vue-dist/assets/悪魔-CjZlsmA6.webp                                   6.31 kB
+../web-vue-dist/assets/森-CQou9UKq.webp                                    6.32 kB
+../web-vue-dist/assets/対魔-B-rVtHGD.webp                                   6.34 kB
+../web-vue-dist/assets/兵士-CcXgm_ba.webp                                   6.35 kB
+../web-vue-dist/assets/重力2-BBExwm3u.webp                                  6.45 kB
+../web-vue-dist/assets/幽霊-Bg1e6JG6.webp                                   6.45 kB
+../web-vue-dist/assets/吸血鬼-Co2FiBzq.webp                                  6.50 kB
+../web-vue-dist/assets/月-B05Omvap.webp                                    6.54 kB
+../web-vue-dist/assets/蟲人-DHHGyu7e.webp                                   6.55 kB
+../web-vue-dist/assets/銃-BC_Ox6Fp.webp                                    6.61 kB
+../web-vue-dist/assets/風-48p3UwU9.webp                                    6.71 kB
+../web-vue-dist/assets/小人-CTzoAsCe.webp                                   6.72 kB
+../web-vue-dist/assets/音-BAA2Ra9i.webp                                    6.73 kB
+../web-vue-dist/assets/防御2-BMjuhBLn.webp                                  6.76 kB
+../web-vue-dist/assets/土人-C7aeW61x.webp                                   6.77 kB
+../web-vue-dist/assets/自然-ZANN3rb_.webp                                   6.77 kB
+../web-vue-dist/assets/弓使い - コピー-Cx2vtjK8.webp                            6.77 kB
+../web-vue-dist/assets/眼-DWS8kZAk.webp                                    6.80 kB
+../web-vue-dist/assets/鬼妖-CROlthP2.webp                                   6.81 kB
+../web-vue-dist/assets/地2-B2AqO6Os.webp                                   6.84 kB
+../web-vue-dist/assets/動死体-sYQX3SQ4.webp                                  6.87 kB
+../web-vue-dist/assets/妖精-C-imdsQ9.webp                                   6.88 kB
+../web-vue-dist/assets/海人-CmwkAURa.webp                                   6.91 kB
+../web-vue-dist/assets/戦士 - コピー-BwWS7C3f.webp                             6.94 kB
+../web-vue-dist/assets/時間-D2ZQ7dwU.webp                                   7.08 kB
+../web-vue-dist/assets/鍛冶-DzsMLW0u.webp                                   7.21 kB
+../web-vue-dist/assets/追跡者 - コピー-CqO5pkFD.webp                            7.22 kB
+../web-vue-dist/assets/幻覚-BKEOgyXs.webp                                   7.26 kB
+../web-vue-dist/assets/天使-DNQNsQL6.webp                                   7.27 kB
+../web-vue-dist/assets/魔法-cz5sk1cA.webp                                   7.32 kB
+../web-vue-dist/assets/悪魔2-DJca_cbb.webp                                  7.34 kB
+../web-vue-dist/assets/闇2-xQHrGNRd.webp                                   7.42 kB
+../web-vue-dist/assets/森司祭 - コピー-DHjffsLK.webp                            7.43 kB
+../web-vue-dist/assets/竜-r3kIg_0l.webp                                    7.48 kB
+../web-vue-dist/assets/防御-C2rrKkDT.webp                                   7.54 kB
+../web-vue-dist/assets/森人-DOoc0Gze.webp                                   7.65 kB
+../web-vue-dist/assets/魂導者-DXtOHVIR.webp                                  7.66 kB
+../web-vue-dist/assets/土-CcdX05kn.webp                                    7.76 kB
+../web-vue-dist/assets/重力-BoZzUwpk.webp                                   7.88 kB
+../web-vue-dist/assets/半悪魔-BKb5CnYp.webp                                  7.90 kB
+../web-vue-dist/assets/狩人 - コピー-8nA_YCH8.webp                             7.97 kB
+../web-vue-dist/assets/骸骨-DQLIElIb.webp                                   8.12 kB
+../web-vue-dist/assets/氷-BZQf-GTT.webp                                    8.20 kB
+../web-vue-dist/assets/念動力-CwnVQhmW.webp                                  8.29 kB
+../web-vue-dist/assets/魔術-BfCtaDJM.webp                                   8.41 kB
+../web-vue-dist/assets/動物-DvdDFXpX.webp                                   8.42 kB
+../web-vue-dist/assets/大鬼-DvwbRLrv.webp                                   8.45 kB
+../web-vue-dist/assets/光-DsSCVoS8.webp                                    8.48 kB
+../web-vue-dist/assets/半吸血鬼-CShOuQKQ.webp                                 8.69 kB
+../web-vue-dist/assets/エンジェル2-G9bi2yr1.webp                               8.77 kB
+../web-vue-dist/assets/木人-Cmo0PQG2.webp                                   8.97 kB
+../web-vue-dist/assets/食人鬼-CUFm9_xb.webp                                  9.04 kB
+../web-vue-dist/assets/半天使-miOIfmMK.webp                                  9.19 kB
+../web-vue-dist/assets/格闘家 - コピー-DZJ2VBik.webp                            9.32 kB
+../web-vue-dist/assets/印-b9OlEyH3.webp                                    9.47 kB
+../web-vue-dist/assets/闇-RGI62Bzf.webp                                    9.59 kB
+../web-vue-dist/assets/魂-CbgjKHOm.webp                                    9.69 kB
+../web-vue-dist/assets/精霊-BXKOzdPR.webp                                   9.99 kB
+../web-vue-dist/assets/竜人-CKJgJf98.webp                                  10.65 kB
+../web-vue-dist/assets/星-CUXRHjO1.webp                                   10.74 kB
+../web-vue-dist/assets/蟲-CaXmkc4j.webp                                   12.60 kB
+../web-vue-dist/assets/選択-BtjbAxWz.webp                                  12.75 kB
+../web-vue-dist/assets/粘体-Ca87h_di.webp                                  13.26 kB
+../web-vue-dist/assets/特鋼-DzIPV1gQ.webp                                  15.31 kB
+../web-vue-dist/assets/スライム-CzdaC6qG.webp                                16.67 kB
+../web-vue-dist/assets/レムレー-wfMu6a03.webp                                18.37 kB
+../web-vue-dist/assets/クレリック-C0i5qYnu.webp                               21.03 kB
+../web-vue-dist/assets/ファイター-4XvinNQz.webp                               21.25 kB
+../web-vue-dist/assets/闇の輪-u21XxBm_.webp                                 21.61 kB
+../web-vue-dist/assets/地の輪-D48Lj0Wv.webp                                 23.71 kB
+../web-vue-dist/assets/風の輪-BeGbZZjF.webp                                 24.58 kB
+../web-vue-dist/assets/バット-CRfuKNvw.webp                                 24.81 kB
+../web-vue-dist/assets/光の輪-CRIX1bx4.webp                                 26.84 kB
+../web-vue-dist/assets/地中生物の巣-CbJMvlzi.webp                              29.97 kB
+../web-vue-dist/assets/炎の輪-QtwqwKS9.webp                                 30.30 kB
+../web-vue-dist/assets/水の輪-PiTVSFht.webp                                 32.21 kB
+../web-vue-dist/assets/クアジット-Bgf2U8FM.webp                               37.55 kB
+../web-vue-dist/assets/死霊の巣-Bd-y9YpV.webp                                37.76 kB
+../web-vue-dist/assets/第二世代ver1-2-BrttKCMi.webp                          38.44 kB
+../web-vue-dist/assets/default-LipUgoBd.webp                             38.46 kB
+../web-vue-dist/assets/飛竜の巣-Bd0GcLcN.webp                                39.43 kB
+../web-vue-dist/assets/Bレイブン-CgKd5qPa.webp                               39.57 kB
+../web-vue-dist/assets/毒生成物の巣-DnwWcPEg.webp                              39.99 kB
+../web-vue-dist/assets/蟲系の巣-CwV14W7D.webp                                40.45 kB
+../web-vue-dist/assets/宇宙の海-DM4vh8vc.webp                                40.87 kB
+../web-vue-dist/assets/ニンジャ-DN0Jkzk3.webp                                40.89 kB
+../web-vue-dist/assets/ホーリーラビット-CiXXUdxx.webp                            41.44 kB
+../web-vue-dist/assets/鳥系生物の巣-BCDbWga7.webp                              41.71 kB
+../web-vue-dist/assets/グレムリン-BhjH4oss.webp                               42.78 kB
+../web-vue-dist/assets/スパイダー-DveSNs4V.webp                               43.57 kB
+../web-vue-dist/assets/風の精霊-CRPcJi3f.webp                                44.51 kB
+../web-vue-dist/assets/太陽の山-UgXfcSLb.webp                                44.84 kB
+../web-vue-dist/assets/植物生物の巣-DwlTftX2.webp                              46.08 kB
+../web-vue-dist/assets/肉食生物の巣-Bnl0CXne.webp                              46.48 kB
+../web-vue-dist/assets/スネーク-BrT5SOJp.webp                                47.91 kB
+../web-vue-dist/assets/プテラノドン-4EpYkYNi.webp                              47.95 kB
+../web-vue-dist/assets/ファングウルフ-jKj2H_M4.webp                             48.82 kB
+../web-vue-dist/assets/ソルジャー-BvBBEvjI.webp                               49.44 kB
+../web-vue-dist/assets/グール-BiyCpAzj.webp                                 49.58 kB
+../web-vue-dist/assets/ディスプレイサービースト-_DKvvVPQ.webp                        49.63 kB
+../web-vue-dist/assets/シャドウデヴィル-PdDIqfkb.webp                            51.31 kB
+../web-vue-dist/assets/神官-DkQQ_CJ0.webp                                  52.92 kB
+../web-vue-dist/assets/第2世代_小型 -CYJ4XMvK.webp                            53.02 kB
+../web-vue-dist/assets/ワイト-DZaFQTV5.webp                                 53.33 kB
+../web-vue-dist/assets/ゾンビ-CHTM_YPC.webp                                 53.98 kB
+../web-vue-dist/assets/ラット-BJzGYary.webp                                 54.63 kB
+../web-vue-dist/assets/第2世代-D4uTpmiI.webp                                55.45 kB
+../web-vue-dist/assets/アーマードデヴィル-B8wSdkRy.webp                           55.51 kB
+../web-vue-dist/assets/武士の戦士-DYp7zPY_.webp                               55.74 kB
+../web-vue-dist/assets/フェンサー-C9BidBDs.webp                               56.10 kB
+../web-vue-dist/assets/エレファント-Za0aAc3C.webp                              56.34 kB
+../web-vue-dist/assets/インプ-YWjTZ3FY.webp                                 56.63 kB
+../web-vue-dist/assets/地の精霊-nClcBERm.webp                                57.03 kB
+../web-vue-dist/assets/ゴースト-B9HPFL1r.webp                                58.29 kB
+../web-vue-dist/assets/星の火口-BBd-tIip.webp                                58.39 kB
+../web-vue-dist/assets/アーチャー-CifePcDk.webp                               58.60 kB
+../web-vue-dist/assets/ネクロマンサー-H6h-PWA9.webp                             58.65 kB
+../web-vue-dist/assets/ニーデル-bNescI-6.webp                                58.72 kB
+../web-vue-dist/assets/黄昏の樹-D1cebaxT.webp                                59.29 kB
+../web-vue-dist/assets/ワイバーン-fNuontBj.webp                               59.46 kB
+../web-vue-dist/assets/ユニコーン-CnXHWnPL.webp                               59.53 kB
+../web-vue-dist/assets/バイコーン-7Ogfrhzo.webp                               59.60 kB
+../web-vue-dist/assets/グレートホース-kXDmXVIC.webp                             60.15 kB
+../web-vue-dist/assets/ボーンデヴィル-homlo1cN.webp                             60.44 kB
+../web-vue-dist/assets/ヘルハウンド-CmEPswcJ.webp                              60.55 kB
+../web-vue-dist/assets/ローグ-UXZvjgTi.webp                                 61.51 kB
+../web-vue-dist/assets/ナイト_bc-BIp5ot0f.webp                              61.64 kB
+../web-vue-dist/assets/メッセンジャー-YXPo-i68.webp                             61.79 kB
+../web-vue-dist/assets/ウォーウィザード-CyzIDO5c.webp                            62.20 kB
+../web-vue-dist/assets/モンク-C3_ONZdw.webp                                 62.94 kB
+../web-vue-dist/assets/炎の精霊-DZldExf2.webp                                63.35 kB
+../web-vue-dist/assets/怨霊-Dv2QUtPQ.webp                                  63.40 kB
+../web-vue-dist/assets/骸骨兵-D_CryvoN.webp                                 63.88 kB
+../web-vue-dist/assets/グリフォン-Dadq4yHP.webp                               64.26 kB
+../web-vue-dist/assets/レンジャー-CvPvEPVZ.webp                               64.41 kB
+../web-vue-dist/assets/イーグル-CZb_2gsT.webp                                64.56 kB
+../web-vue-dist/assets/ヘルパー-DSNk2mnn.webp                                65.09 kB
+../web-vue-dist/assets/タイガー-CpGFtG-S.webp                                65.10 kB
+../web-vue-dist/assets/第3世代ver1-CSuo8KRB.webp                            66.36 kB
+../web-vue-dist/assets/ゴブリンスニーク-BxBDtsMB.webp                            66.59 kB
+../web-vue-dist/assets/エンジェル-G42EFxnD.webp                               66.86 kB
+../web-vue-dist/assets/ソフィア-DyuevV_W.webp                                68.06 kB
+../web-vue-dist/assets/クレリック-BeVos2eg.webp                               68.10 kB
+../web-vue-dist/assets/ビルダー-DZkBwVWE.webp                                68.37 kB
+../web-vue-dist/assets/パープルワーム-CsysC74I.webp                             68.75 kB
+../web-vue-dist/assets/デスィード-CuoJlYvb.webp                               69.63 kB
+../web-vue-dist/assets/アークデヴィル-DAzFHDqI.webp                             70.13 kB
+../web-vue-dist/assets/パイソンホール-CfMl9JW-.webp                             70.21 kB
+../web-vue-dist/assets/ラッシュベア-DEQVHxqw.webp                              70.66 kB
+../web-vue-dist/assets/マンティコア-CLy0oUvi.webp                              70.74 kB
+../web-vue-dist/assets/ポイズンラッド-soO-gRDu.webp                             71.40 kB
+../web-vue-dist/assets/ファントム-Cri0Cu_o.webp                               72.87 kB
+../web-vue-dist/assets/ファーマー-THVOfZ1e.webp                               72.90 kB
+../web-vue-dist/assets/デヴィル--9yHnGM1.webp                                72.94 kB
+../web-vue-dist/assets/ブラキオサウルス-BkSMLzlh.webp                            73.01 kB
+../web-vue-dist/assets/デスナイト-DBNptGQ6.webp                               73.10 kB
+../web-vue-dist/assets/水の精霊-Dl8dtmQx.webp                                74.14 kB
+../web-vue-dist/assets/スコーピオン-7gka0ed7.webp                              74.37 kB
+../web-vue-dist/assets/ニア_ヴェステリア-CchzoeEn.webp                           74.80 kB
+../web-vue-dist/assets/キマイラ-DammvgYv.webp                                75.50 kB
+../web-vue-dist/assets/ゼブブ-D8WhFzoE.webp                                 75.63 kB
+../web-vue-dist/assets/ウィザード-rEGpRKHD.webp                               76.17 kB
+../web-vue-dist/assets/スケルトン-GZbMJCzA.webp                               76.79 kB
+../web-vue-dist/assets/第四世代ver2-BTjIJIfM.webp                            77.31 kB
+../web-vue-dist/assets/トレント-BKugBoIC.webp                                78.07 kB
+../web-vue-dist/assets/デュラハン-CoTfzO6z.webp                               79.07 kB
+../web-vue-dist/assets/デスジェネラル-BPCfNN_z.webp                             79.15 kB
+../web-vue-dist/assets/アーチエンジェル-BLSBg9Hm.webp                            79.23 kB
+../web-vue-dist/assets/捕獲用ドローン-WFo8L_V_.webp                             79.77 kB
+../web-vue-dist/assets/エンジェルルナ-DrfiiCZk.webp                             79.92 kB
+../web-vue-dist/assets/骸骨戦士-B8f5X3oJ.webp                                79.94 kB
+../web-vue-dist/assets/ベルジェル-_2mUJuwg.webp                               80.56 kB
+../web-vue-dist/assets/ゴブリン-CtRZfIoY.webp                                81.48 kB
+../web-vue-dist/assets/プリンシパリティ_ヴィーナス-CCD_QZra.webp                      82.25 kB
+../web-vue-dist/assets/ゴブリンスカウト-DNhgYBpv.webp                            82.47 kB
+../web-vue-dist/assets/光の昇る存在-Jy6HDZbo.webp                              83.56 kB
+../web-vue-dist/assets/シャドウ-removebg-preview-qkCbOply.webp               84.07 kB
+../web-vue-dist/assets/オーガボス-CuMNyj7-.webp                               84.77 kB
+../web-vue-dist/assets/オーガウィザード-DAlQ_t4Y.webp                            84.89 kB
+../web-vue-dist/assets/断罪の悪魔-DYFLjdWQ.webp                               86.89 kB
+../web-vue-dist/assets/ソウルイーター-CDbb-uEZ.webp                             87.49 kB
+../web-vue-dist/assets/狩人-CMxMV2dL.webp                                  87.75 kB
+../web-vue-dist/assets/アークマーキュリー-BNN7VL1x.webp                           87.89 kB
+../web-vue-dist/assets/アイスデヴィル-BJXsWmf1.webp                             87.97 kB
+../web-vue-dist/assets/第二世代-BOwknLb7.webp                                88.08 kB
+../web-vue-dist/assets/オーガ-C_tY6CCk.webp                                 88.11 kB
+../web-vue-dist/assets/オーガ_ファイター-CgTAVJIm.webp                           88.51 kB
+../web-vue-dist/assets/セレス-QtU6TEpC.webp                                 88.84 kB
+../web-vue-dist/assets/ガスト-tKAMpRWJ.webp                                 89.14 kB
+../web-vue-dist/assets/アークエンジェル-Bg3t9smH.webp                            89.34 kB
+../web-vue-dist/assets/リッチ-DmYf53Wu.webp                                 90.43 kB
+../web-vue-dist/assets/ゴブリンボマー--cBTbjDX.webp                             91.10 kB
+../web-vue-dist/assets/ホーリーナイト-bPdgmbg6.webp                             91.10 kB
+../web-vue-dist/assets/制作-D9HljSsI.webp                                  92.02 kB
+../web-vue-dist/assets/セレス機体-zX9Cwed0.webp                               93.25 kB
+../web-vue-dist/assets/ドレッチ-Mi22JhVQ.webp                                94.37 kB
+../web-vue-dist/assets/こんどう-D7He62bn.webp                                94.88 kB
+../web-vue-dist/assets/バルゴラ-Bwm58zSe.webp                                95.27 kB
+../web-vue-dist/assets/ゴブリンボス-BXFGk7mF.webp                              97.22 kB
+../web-vue-dist/assets/第1世代-BL7OJh31.webp                                97.66 kB
+../web-vue-dist/assets/アウルベア-DZNW-n6M.webp                               97.81 kB
+../web-vue-dist/assets/レイジオーガ-CAlBbmPb.webp                              98.18 kB
+../web-vue-dist/assets/レディエント-CePaKlXf.webp                              99.20 kB
+../web-vue-dist/assets/ヘブンランサー-DNTQDWJc.webp                             99.47 kB
+../web-vue-dist/assets/刃のブラキオサウルス-BVRTc6Ii.webp                          99.89 kB
+../web-vue-dist/assets/スレイブ (新)-mnbufLVF.webp                           100.33 kB
+../web-vue-dist/assets/コウメイ-CW_2yxR-.webp                               100.75 kB
+../web-vue-dist/assets/第五世代-BVKx2ofI.webp                               100.93 kB
+../web-vue-dist/assets/パワードコロナティック-BzHeeKGI.webp                        101.32 kB
+../web-vue-dist/assets/第3.5世代ver2-C3Oro8ci.webp                         101.84 kB
+../web-vue-dist/assets/ピュリファイア・ジルク-CdDVxWwW.webp                        103.32 kB
+../web-vue-dist/assets/ピュリファイア_ジルク-RrETEU-J.webp                        105.43 kB
+../web-vue-dist/assets/シャドウ-DJiqrFuj.webp                               106.31 kB
+../web-vue-dist/assets/第四世代-DbZwIQee.webp                               111.00 kB
+../web-vue-dist/assets/ピュリファイア・ガラン-BxULIIzJ.webp                        113.19 kB
+../web-vue-dist/assets/第三世代-C5Z5m8vK.webp                               114.94 kB
+../web-vue-dist/assets/スレイブ-BFcU2gHw.webp                               117.09 kB
+../web-vue-dist/assets/クルーツェル-DC5XmcYM.webp                             118.01 kB
+../web-vue-dist/assets/レイブンver3-CdLoaJO0.webp                           122.96 kB
+../web-vue-dist/assets/ユーテェ-OCWqCD-S.webp                               123.05 kB
+../web-vue-dist/assets/ピュリファイア_ブランド-9Se29_V5.webp                       124.09 kB
+../web-vue-dist/assets/ブレイザーver (1)-CIyxEa5N.webp                       126.07 kB
+../web-vue-dist/assets/ゼルバーグ-D6d2ujaN.webp                              127.72 kB
+../web-vue-dist/index.html                                              129.38 kB │ gzip:  24.08 kB
+../web-vue-dist/assets/ラージトレント-CdxAYWaG.webp                            130.71 kB
+../web-vue-dist/assets/ピュリファイア_ガラン-DFx-ZUz2.webp                        134.03 kB
+../web-vue-dist/assets/ブレイザーver (2)-BebVQIbi.webp                       136.79 kB
+../web-vue-dist/assets/甲冑トリケラトプスの戦士-GZP7dV5h.webp                       137.33 kB
+../web-vue-dist/assets/ブレイザー2-BglOOv1T.webp                             137.75 kB
+../web-vue-dist/assets/T-REX-j2kCSIzo.webp                              140.97 kB
+../web-vue-dist/assets/格闘家-CSEYJTW7.webp                                141.29 kB
+../web-vue-dist/assets/ブレイザーver (3)-CHjVdtPK.webp                       142.45 kB
+../web-vue-dist/assets/ブレイザー-BqZt7p2x.webp                              144.29 kB
+../web-vue-dist/assets/雷鳴のプテラノドン-ColYupQ-.webp                          148.06 kB
+../web-vue-dist/assets/レイヴン2-BBfxAyiV.webp                              148.41 kB
+../web-vue-dist/assets/荒野の王-Modwvl5d.webp                               155.16 kB
+../web-vue-dist/assets/ルマティマ-DvLdFIxe.webp                              155.48 kB
+../web-vue-dist/assets/キャリバーver2-D1RriOOl.webp                          156.69 kB
+../web-vue-dist/assets/リコリス-CjFyWDFh.webp                               168.51 kB
+../web-vue-dist/assets/ヒューマン_ユニット集-1rIXF3qc.webp                        168.65 kB
+../web-vue-dist/assets/サハクィエル_フェイク-TV-5WMsc.webp                        171.52 kB
+../web-vue-dist/assets/第一世代-CIuf8gx-.webp                               172.98 kB
+../web-vue-dist/assets/ファンタジー帆船_ユニット一覧-BwsTaDX2.webp                    173.85 kB
+../web-vue-dist/assets/トリケラトプス-DzUNtZIV.webp                            177.74 kB
+../web-vue-dist/assets/コウメイ-DtO9woJL.png                                181.45 kB
+../web-vue-dist/assets/エルフ_ユニット集-BJAIh2Gt.webp                          182.53 kB
+../web-vue-dist/assets/影の竜-CV9KJL1P.webp                                185.07 kB
+../web-vue-dist/assets/スレイブ部隊2-ChjZvbKm.webp                            189.64 kB
+../web-vue-dist/assets/ドワーフ_ユニット集-DehPyyqz.webp                         189.93 kB
+../web-vue-dist/assets/キャリバー-CUATnP9s.webp                              191.43 kB
+../web-vue-dist/assets/リバイラム-Cc-xBy4l.webp                              193.17 kB
+../web-vue-dist/assets/ウルフマン_ユニット集-JkgWDT2J.webp                        196.12 kB
+../web-vue-dist/assets/ゼルバーグ-旧removebg-preview-IIlwjppV.webp            198.23 kB
+../web-vue-dist/assets/ゾンビ・スケルトン_ユニット集1-DUg5Opuz.webp                   198.54 kB
+../web-vue-dist/assets/ラビットマン_ユニット集-CYQAUNMM.webp                       200.99 kB
+../web-vue-dist/assets/建築_アイコン一覧2-aVceg0-O.webp                         204.62 kB
+../web-vue-dist/assets/モリエール-C-I66FDi.webp                              207.07 kB
+../web-vue-dist/assets/ヴァンパイア_ユニット集-CHN5WThB.webp                       210.21 kB
+../web-vue-dist/assets/ゾンビ・スケルトン_ユニット集2-DGRBdjjw.webp                   220.21 kB
+../web-vue-dist/assets/ラットマン_ユニット集-COqUxiFx.webp                        222.48 kB
+../web-vue-dist/assets/オーガ_ユニット集-B6pXwwm8.webp                          224.02 kB
+../web-vue-dist/assets/エレメンタル_ユニット集2-D53WrsPf.webp                      224.41 kB
+../web-vue-dist/assets/第五世代ver1-DelzYZ94.webp                           228.24 kB
+../web-vue-dist/assets/エイプマン_ユニット集-CMetIIu0.webp                        230.03 kB
+../web-vue-dist/assets/建築_アイコン一覧1-C3r-hGBV.webp                         230.11 kB
+../web-vue-dist/assets/蜥蜴・蛙_ユニット集-Bw2EXWCF.webp                         230.48 kB
+../web-vue-dist/assets/ゴブリン_ユニット集-CTQ6bxLL.webp                         230.76 kB
+../web-vue-dist/assets/自然災害_アイコン一覧-g1b-QZAd.webp                        231.11 kB
+../web-vue-dist/assets/狼・馬_ユニット集-B11p13EN.webp                          232.21 kB
+../web-vue-dist/assets/エレメンタル_ユニット集1-CJJ0R-J4.webp                      232.50 kB
+../web-vue-dist/assets/鼠・狐_ユニット集-CokHWkD7.webp                          233.17 kB
+../web-vue-dist/assets/エレメンタル_ユニット集3-BUFH-cPD.webp                      233.51 kB
+../web-vue-dist/assets/人族-Cz5KSeL1.webp                                 235.53 kB
+../web-vue-dist/assets/鴉・蝙蝠_ユニット集-DgL999qm.webp                         243.14 kB
+../web-vue-dist/assets/タイガーマン_ユニット集-D94SMWOr.webp                       247.61 kB
+../web-vue-dist/assets/ベア・ボア_ユニット集-DEoCcOhg.webp                        248.02 kB
+../web-vue-dist/assets/アンケグ・ジャイアントスコーピオン_ユニット一覧-D-DXfHyA.webp           248.57 kB
+../web-vue-dist/assets/ドラゴニュート_ユニット集-BCtR88uh.webp                      254.26 kB
+../web-vue-dist/assets/ワイバーン・ドレイク_ユニット集-CpNgf7Fx.webp                   255.10 kB
+../web-vue-dist/assets/飛行部隊-BA2Qj3rk.webp                               256.49 kB
+../web-vue-dist/assets/アンデッド・霊体系_ユニット一覧-BVB6xsgb.webp                   256.76 kB
+../web-vue-dist/assets/魔獣_ユニット集1-Cs5OMPam.webp                          262.60 kB
+../web-vue-dist/assets/第三世代強化体-DUf1Com-.webp                            266.37 kB
+../web-vue-dist/assets/デヴィル_ユニット集-CgNUHdcu.webp                         270.37 kB
+../web-vue-dist/assets/クロコダイル・タイガー_ユニット集-Cs8_mew6.webp                  270.83 kB
+../web-vue-dist/assets/ジャイアントスパイダー・ジャイアントセンチピード_ユニット一覧-rbKsEwO_.webp    270.98 kB
+../web-vue-dist/assets/都市_アイコン一覧1-C2vPUSbR.webp                         278.56 kB
+../web-vue-dist/assets/アンデッド・霊体系_ユニット集-CYo6RgHG.webp                    279.30 kB
+../web-vue-dist/assets/ジャイアント_ユニット集-CSl6O954.webp                       282.55 kB
+../web-vue-dist/assets/ジャイアントビートル・ジャイアントマンティス_ユニット一覧-DILlnwFx.webp      287.34 kB
+../web-vue-dist/assets/亜人-DfAoNI-4.webp                                 289.83 kB
+../web-vue-dist/assets/昆虫・甲殻・地中生物_ユニット一覧-qtZf_sRY.webp                  290.70 kB
+../web-vue-dist/assets/エンジェル_ユニット集-Drj0GMG_.webp                        295.59 kB
+../web-vue-dist/assets/ジャイアントアント・ジャイアントワスプ_ユニット一覧-BURcvsnB.webp         296.92 kB
+../web-vue-dist/assets/都市_アイコン一覧2-Db94oVpd.webp                         299.06 kB
+../web-vue-dist/assets/ホーク・スネーク_ユニット集-DavVSRjg.webp                     302.24 kB
+../web-vue-dist/assets/魔族-DbGEuUEu.webp                                 303.38 kB
+../web-vue-dist/assets/魔獣_ユニット集2-CWPfl9Ms.webp                          305.96 kB
+../web-vue-dist/assets/v39-enemy-ai-worker-DXzLO5RL.js                  373.82 kB
+../web-vue-dist/assets/index-CdLyxtak.css                                 1.76 kB │ gzip:   0.37 kB
+../web-vue-dist/assets/CaveTestModal-WYoVIQnL.css                         3.30 kB │ gzip:   1.08 kB
+../web-vue-dist/assets/v39-bootstrap-core-DN48VMpf.css                   33.43 kB │ gzip:   5.68 kB
+../web-vue-dist/assets/index.js                                           6.90 kB │ gzip:   2.95 kB
+../web-vue-dist/assets/CaveTestModal-DiNaB0r0.js                          9.69 kB │ gzip:   4.20 kB
+../web-vue-dist/assets/v39-terrain-modifiers-BBZTNs9M.js                 11.05 kB │ gzip:   4.27 kB
+../web-vue-dist/assets/vendor-socket-BB8AEGzm.js                         31.34 kB │ gzip:   9.76 kB
+../web-vue-dist/assets/v39-turn-loading-DDg3byXP.js                      88.09 kB │ gzip:  28.90 kB
+../web-vue-dist/assets/seeded-random-61qcpnNm.js                         97.04 kB │ gzip:  33.74 kB
+../web-vue-dist/assets/vendor-misc-Dkf2xiR6.js                          120.27 kB │ gzip:  46.46 kB
+../web-vue-dist/assets/v39-bootstrap-game-BMNHPIAb.js                   330.72 kB │ gzip:  98.84 kB
+../web-vue-dist/assets/v39-bootstrap-core-BorLx2ru.js                   421.83 kB │ gzip: 121.25 kB
+../web-vue-dist/assets/v39-squad-movement-rules-Cj_vq3kF.js             677.24 kB │ gzip: 194.32 kB
+../web-vue-dist/assets/v39-bootstrap-final-CHmLf9V_.js                  852.81 kB │ gzip: 275.18 kB
+../web-vue-dist/assets/vendor-phaser-B61OQUcB.js                      1,481.79 kB │ gzip: 339.86 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 6.14s
