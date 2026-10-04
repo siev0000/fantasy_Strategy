@@ -69,7 +69,7 @@ try {
     equipment:".v39-char-equipment-list",
     growth:".v39-char-growth-list"
   };
-  for (const [key, title] of [["status", "ステータス技能"], ["skills", "スキル"], ["equipment", "装備"], ["growth", "成長"]]) {
+  for (const [key, title] of [["status", "能力"], ["skills", "スキル"], ["equipment", "装備"], ["growth", "成長"]]) {
     await page.locator(`[data-v39-character-detail-tab="${key}"]`).click();
     const active = page.locator(`[data-v39-character-detail-tab="${key}"].active`);
     if (!(await active.count())) throw new Error(`${title} タブへ切り替えられません。`);

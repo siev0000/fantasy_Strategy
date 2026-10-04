@@ -123,6 +123,12 @@ function installStyles() {
       background:#17252b!important;
       line-height:1!important;
     }
+    .squad-card .squad-exp-ring .squad-level-number{
+      position:absolute;inset:3px;z-index:2;display:grid;place-items:center;
+      border-radius:50%;background:rgba(10,18,22,.85);color:#ffe09a;
+      font-size:var(--font-body);font-weight:900;line-height:1;
+      text-shadow:0 1px 2px #000;pointer-events:none;
+    }
     @media(max-width:430px) and (orientation:portrait){
       .squad-card .v39-card-vital{
         grid-template-columns:20px minmax(0,1fr)!important;

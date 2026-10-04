@@ -111,7 +111,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         width:100%!important;height:100%!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;
         padding:2px!important
       }
-      #footSquad .squad-detail-tab-panel[hidden]{display:none!important}
+      #footSquad .squad-detail-tab-panel[hidden],#footSquad #mobileBattleGather[hidden]{display:none!important}
       #footSquad .squad-detail-section{
         display:block!important;min-width:0!important;border:1px solid #2f4148!important;border-radius:5px!important;
         background:#0d171b!important;overflow:hidden!important
@@ -137,7 +137,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         gap:5px;padding:4px 6px
       }
       #footSquad .equipment-icon{font-size:var(--font-size-19);line-height:1;text-align:center}
-      #footSquad .equipment-name{min-width:0;font-size:var(--font-compact);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #footSquad .equipment-name{min-width:0;font-size:var(--font-compact);white-space:normal;overflow-wrap:anywhere}
       #footSquad .equipment-slot,#footSquad .equipment-quality{font-size:var(--font-size-10);color:#98aaae;white-space:nowrap}
       #footSquad .equipment-detail{display:none;border-top:1px solid #31434a;padding:5px 7px;background:#0d171b}
       #footSquad .equipment-card.is-expanded .equipment-detail{display:grid;gap:4px}
@@ -269,6 +269,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         color:#d8c17f!important;font-size:var(--font-size-8)!important;font-weight:700!important;
         white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important
       }
+      #footSquad [data-v39-system-use]{min-height:30px;padding:3px 12px;border:1px solid #c4a652;border-radius:5px;background:#342c17;color:#ffe5a0;font-size:var(--font-body);font-weight:800;cursor:pointer}
       #footSquad .technique-detail-description{
         grid-area:auto!important;grid-column:1!important;grid-row:auto!important;
         width:100%!important;min-width:0!important;
@@ -325,7 +326,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
             <section class="squad-detail-pane" id="squadDetailPane">
               <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span></div>
               <div class="squad-detail-tabs" role="tablist" aria-label="キャラクター詳細">
-                <button type="button" class="squad-detail-tab active" data-squad-detail-tab="status" role="tab" aria-selected="true">ステータス技能</button>
+                <button type="button" class="squad-detail-tab active" data-squad-detail-tab="status" role="tab" aria-selected="true">能力</button>
                 <button type="button" class="squad-detail-tab" data-squad-detail-tab="action" role="tab" aria-selected="false">行動</button>
               </div>
               <div class="squad-detail-tab-content">
@@ -352,7 +353,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
                         <span class="technique-detail-description">移動先を選択して移動します。1マスの基礎消費APは移動力で決まり、地形・高低差・飛行で補正されます。</span>
                       </span>
                     </button>
-                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleWait" data-v39-technique-name="__system_wait__" aria-expanded="false">
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleWait" data-v39-technique-name="__system_wait__" aria-expanded="false">
                       <span class="technique-summary">
                         <span class="technique-icon technique-icon-system-wait"><span class="technique-icon-glyph" aria-hidden="true">◷</span></span>
                         <b class="technique-name">待機</b>
@@ -360,31 +361,31 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
                         <span class="technique-power">行動終了</span>
                       </span>
                       <span class="technique-detail">
-                        <span class="technique-detail-head"><b>説明</b></span>
+                        <span class="technique-detail-head"><b>説明</b><button type="button" id="mobileBattleWaitUse" data-v39-system-use>使用</button></span>
                         <span class="technique-detail-description">APを消費せず、このターンの行動を終了します。次のターンに再び行動できます。</span>
                       </span>
-                    </button>
-                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleSurvey" data-v39-technique-name="__system_survey__" aria-expanded="false">
+                    </div>
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleSurvey" data-v39-technique-name="__system_survey__" aria-expanded="false">
                       <span class="technique-summary">
                         <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">⌕</span></span>
                         <b class="technique-name">調査</b>
                         <small class="technique-ap" id="mobileSurveyAp">残りAP全消費</small>
                         <span class="technique-power" id="mobileSurveyProgress">未調査</span>
                       </span>
-                      <span class="technique-detail"><span class="technique-detail-head"><b>説明</b></span>
+                      <span class="technique-detail"><span class="technique-detail-head"><b>説明</b><button type="button" id="mobileBattleSurveyUse" data-v39-system-use>使用</button></span>
                         <span class="technique-detail-description">このキャラの索敵範囲全体を調査します。残りAPの分だけ進み、不足分は次ターン以降に継続できます。必要APに達するとターン終了時に特産品・鉱脈・残留品などが判明します。</span>
                       </span>
-                    </button>
-                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleGather" data-v39-technique-name="__system_gather__" aria-expanded="false">
+                    </div>
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleGather" data-v39-technique-name="__system_gather__" aria-expanded="false">
                       <span class="technique-summary">
                         <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">⛏</span></span>
                         <b class="technique-name">採取</b><small class="technique-ap" id="mobileGatherAp"></small>
                         <span class="technique-power" id="mobileGatherYield"></span>
                       </span>
-                      <span class="technique-detail"><span class="technique-detail-head"><b>説明</b></span>
-                        <span class="technique-detail-description">現在地の森から木材、洞窟から鉱石を採取します。領土外で1マスにつき1ターン1回。荷物として運び、拠点へ戻って搬入します。</span>
+                      <span class="technique-detail"><span class="technique-detail-head"><b>説明</b><button type="button" id="mobileBattleGatherUse" data-v39-system-use>使用</button></span>
+                        <span class="technique-detail-description">地上では現在地の森・洞窟から採取します。洞窟内では周囲1マスの鉱石・宝石を選択して使用します。荷物として運び、拠点へ戻って搬入します。</span>
                       </span>
-                    </button>
+                    </div>
                     <div id="detailTechniqueRows"></div>
                   </div>
                 </section>

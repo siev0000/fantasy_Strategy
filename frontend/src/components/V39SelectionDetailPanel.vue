@@ -53,7 +53,7 @@ function toggleSection(key) {
 <template>
   <section class="selection-detail-panel">
     <nav class="detail-tabs operation-detail-tabs" role="tablist" aria-label="選択詳細">
-      <button type="button" role="tab" :aria-selected="normalizedTab === 'status'" :class="{ active: normalizedTab === 'status' }" @click="setTab('status')">ステータス技能</button>
+      <button type="button" role="tab" :aria-selected="normalizedTab === 'status'" :class="{ active: normalizedTab === 'status' }" @click="setTab('status')">能力</button>
       <button type="button" role="tab" :aria-selected="normalizedTab === 'abilities'" :class="{ active: normalizedTab === 'abilities' }" @click="setTab('abilities')">スキル</button>
     </nav>
 
@@ -361,9 +361,9 @@ button.operation-detail-section-title:hover {
   min-width:0;
   color:#a7b4b7;
   font-size:var(--font-size-11);
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  white-space:normal;overflow-wrap:anywhere;
+  overflow:visible;
+  text-overflow:clip;
 }
 
 .operation-equipment-item b {
@@ -371,9 +371,9 @@ button.operation-detail-section-title:hover {
   color:#f0f5f3;
   font-size:var(--font-compact);
   text-align:right;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;overflow-wrap:anywhere;
 }
 
 .operation-equipment-item.disabled {
@@ -415,9 +415,9 @@ button.operation-detail-section-title:hover {
   min-width:0;
   color:#a7b4b7;
   font-size:var(--font-size-11);
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  white-space:normal;overflow-wrap:anywhere;
+  overflow:visible;
+  text-overflow:clip;
 }
 
 .operation-proficiency-item b {

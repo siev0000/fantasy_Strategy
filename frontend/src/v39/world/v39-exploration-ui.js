@@ -11,6 +11,7 @@ import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { inspectV39Gather, gatherV39Resources } from "../../lib/v39-gather-rules.js";
 import { generateV39Specialties } from "../../lib/v39-specialty-rules.js";
+import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 
 let selectedTile = null;
 
@@ -42,27 +43,34 @@ function render() {
   ensureLandControls();
   const { state, player, faction, unit } = context();
   const gatherButton = document.getElementById("mobileBattleGather");
-  if (gatherButton instanceof HTMLButtonElement) {
+  if (gatherButton instanceof HTMLElement) {
     if (gatherButton.dataset.gatherBound !== "1") {
       gatherButton.dataset.gatherBound = "1";
-      gatherButton.addEventListener("click", event => {
+      document.getElementById("mobileBattleGatherUse").addEventListener("click", event => {
         event.preventDefault(); event.stopImmediatePropagation(); runGather();
       }, true);
     }
-    const check = inspectV39Gather(state, player?.id, unit?.id, window.__v39FieldRuntime?.mapData);
+    const cave = window.inspectV39CaveGather?.();
+    const check = cave || inspectV39Gather(state, player?.id, unit?.id, window.__v39FieldRuntime?.mapData);
+    const hasTarget = cave ? cave.hasTarget : !!unit && Object.keys(check.yields).length > 0 && !state?.territoryOwnerByTile?.[check.key];
+    gatherButton.hidden = !hasTarget;
+    renderGatherHint(cave ? null : hasTarget ? unit : null, check.available);
     gatherButton.classList.toggle("unavailable", !check.available);
+    document.getElementById("mobileBattleGatherUse").disabled = !check.available;
     gatherButton.setAttribute("aria-disabled", String(!check.available));
-    gatherButton.title = check.available ? "現在地の資源を運搬品へ積載" : check.reasons.join(" / ");
+    gatherButton.title = cave ? check.reason || "選択した鉱床から採取" : check.available ? "現在地の資源を運搬品へ積載" : check.reasons.join(" / ");
     document.getElementById("mobileGatherAp").textContent = `AP ${check.apCost}`;
-    document.getElementById("mobileGatherYield").textContent = check.available
+    document.getElementById("mobileGatherYield").textContent = cave
+      ? cave.site ? `${cave.site.icon} ${cave.site.name} (${cave.site.x},${cave.site.y}) / 残り${cave.site.remaining}${cave.reason ? ` / ${cave.reason}` : ""}` : cave.reason
+      : check.available
       ? Object.entries(check.accepted.resourcesByType).map(([name, amount]) => `${name} ${amount}`).join(" / ")
       : check.reasons[0];
   }
   const action = document.getElementById("mobileBattleSurvey");
-  if (action instanceof HTMLButtonElement) {
+  if (action instanceof HTMLElement) {
     if (action.dataset.surveyBound !== "1") {
       action.dataset.surveyBound = "1";
-      action.addEventListener("click", event => {
+      document.getElementById("mobileBattleSurveyUse").addEventListener("click", event => {
         event.preventDefault();
         event.stopImmediatePropagation();
         const current = context();
@@ -70,8 +78,8 @@ function render() {
       }, true);
     }
     const check = inspectV39Survey(state, player?.id, unit?.id, unit);
-    // 実行不可でもクリックを受け、攻撃解除と理由の表示を行う。
-    action.disabled = false;
+    // 詳細は実行不可でも開ける。使用ボタンだけを無効化する。
+    document.getElementById("mobileBattleSurveyUse").disabled = !check.available;
     action.setAttribute("aria-disabled", String(!check.available));
     action.classList.toggle("unavailable", !check.available);
     action.title = check.available ? `索敵範囲${check.tileKeys.length}マスを調査 / 残りAP全消費` : check.reasons.join(" / ");
@@ -111,9 +119,28 @@ function render() {
   }
 }
 
+function renderGatherHint(unit, available) {
+  const scene=window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
+  if(!scene)return;
+  scene.v39GatherHint?.destroy(true);
+  scene.v39GatherHint=null;
+  if(!unit)return;
+  const x=unit.x*HEX_TILE_CONFIG.width+(unit.y%2?HEX_TILE_CONFIG.oddRowOffsetX:0)+HEX_TILE_CONFIG.width*.78;
+  const y=unit.y*HEX_TILE_CONFIG.rowStep+HEX_TILE_CONFIG.height*.22;
+  const container=scene.add.container(x,y).setDepth(108);
+  const background=scene.add.graphics().fillStyle(0x172a30,.95).lineStyle(1,0xaed9dd,.8);
+  const size=HEX_TILE_CONFIG.width*.28;
+  background.fillRoundedRect(-size/2,-size/2,size,size,4).strokeRoundedRect(-size/2,-size/2,size,size,4);
+  background.fillTriangle(-size*.2,size/2,0,size*.7,size*.15,size/2);
+  const marker=scene.add.text(0,0,"⛏",{fontSize:`${size*.75}px`,color:"#ffe3a1"}).setOrigin(.5).setInteractive();
+  marker.on("pointerdown",()=>window.openV39ActionDetail?.("__system_gather__"));
+  container.add([background,marker]);container.setAlpha(available?1:.5);scene.v39GatherHint=container;
+}
+
 function runGather() {
   window.cancelV39SelectedUnitMove?.("gather-command");
   window.cancelV39SelectedUnitAttack?.("gather-command");
+  if(window.__v39FieldRuntime?.mapData?.isUnderground)return window.gatherV39SelectedCaveSite?.();
   const { state, player, unit } = context();
   const result = gatherV39Resources(state, player?.id, unit?.id, window.__v39FieldRuntime?.mapData);
   if (!result.ok) showMessage(`採取不可: ${result.reason}`);
@@ -225,6 +252,9 @@ window.addEventListener("v39:tile-selected", event => { selectedTile = event.det
 window.addEventListener("v39:game-state-changed", render);
 window.addEventListener("v39:unit-selected", render);
 window.addEventListener("v39:operation-ui-ready", render);
+window.addEventListener("v39:squad-detail-rendered", render);
+window.addEventListener("v39:cave-gather-target-changed", render);
+window.addEventListener("v39:field-layer-changed", render);
 window.getV39ExplorationRules = () => ({ ...V39_EXPLORATION_RULES });
 window.inspectV39Survey = tile => { const current = context(); return inspectV39Survey(current.state, current.player?.id, current.unit?.id, tile || selectedTile); };
 window.startV39Survey = tile => { if (tile) selectedTile = tile; return runSurvey(); };

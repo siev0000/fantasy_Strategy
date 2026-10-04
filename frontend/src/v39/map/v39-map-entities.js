@@ -130,7 +130,7 @@ function visualUnitSignature(unit) {
     unit.icon, unit.iconName, unit.subIconName,
     unit.currentHp, unit.hp, unit.maxHp, unit.state, unit.condition,
     unit.unitType, profile.mode, profile.unitTypeLabel, profile.memberCount, profile.populationCost,
-    unit.lastStealthBreakTurn, unit.lastStealthBreakReason
+    unit.lastStealthBreakTurn, unit.lastStealthBreakReason, unit.lastStealthAttackTurn
   ].map(value => String(value ?? "")).join("~");
 }
 

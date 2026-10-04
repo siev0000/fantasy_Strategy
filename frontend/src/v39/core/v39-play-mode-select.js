@@ -8,6 +8,7 @@ const PLAY_MODE_OPTIONS = Object.freeze({
 
 let modal = null;
 let selectedPlayMode = "";
+let loadingSave = false;
 
 function createStyles() {
   if (document.getElementById("v39-play-mode-select-style")) return;
@@ -29,6 +30,13 @@ function createModal() {
       <h2 id="v39-play-mode-title">プレイ形式を選択</h2>
       <p>ゲーム開始設定の前に、遊び方を選択してください。</p>
       <section class="v39-play-mode-group">
+        <div class="v39-play-mode-options multiplayer">
+          <button type="button" data-v39-start-load><strong>セーブデータから再開</strong><small>保存したゲームを読み込みます。</small></button>
+        </div>
+        <input id="v39-start-save-file" type="file" accept="application/json,.json" hidden>
+        <output id="v39-start-save-status" role="status"></output>
+      </section>
+      <section class="v39-play-mode-group">
         <h3>シングルプレイ</h3>
         <div class="v39-play-mode-options single">
           <button type="button" data-v39-play-mode="single-normal"><strong>${PLAY_MODE_OPTIONS["single-normal"].label}</strong><small>${PLAY_MODE_OPTIONS["single-normal"].description}</small></button>
@@ -44,7 +52,34 @@ function createModal() {
       </section>
     </section>`;
   document.body.appendChild(modal);
+  const saveInput = modal.querySelector("#v39-start-save-file");
+  saveInput.addEventListener("change", async () => {
+    const file = saveInput.files?.[0];
+    if (!file || loadingSave) return;
+    const status = modal.querySelector("#v39-start-save-status");
+    const buttons = [...modal.querySelectorAll("button")];
+    loadingSave = true;
+    buttons.forEach(button => { button.disabled = true; });
+    status.textContent = "セーブデータ読込中…";
+    try {
+      if (typeof window.importV39SaveJson !== "function") throw new Error("ゲームの準備中です。少し待ってから再度読み込んでください。");
+      window.importV39SaveJson(await file.text());
+      status.textContent = "セーブデータを読み込みました";
+      closePlayModeSelection();
+    } catch (error) {
+      status.textContent = error instanceof Error ? error.message : "読込に失敗しました";
+    } finally {
+      loadingSave = false;
+      saveInput.value = "";
+      buttons.forEach(button => { button.disabled = false; });
+    }
+  });
   modal.addEventListener("click", event => {
+    if (loadingSave) return;
+    if (event.target instanceof Element && event.target.closest("[data-v39-start-load]")) {
+      saveInput.click();
+      return;
+    }
     if (event.target instanceof Element && event.target.closest("[data-v39-cave-test]")) {
       closePlayModeSelection();
       window.dispatchEvent(new CustomEvent("v39:cave-test-requested"));

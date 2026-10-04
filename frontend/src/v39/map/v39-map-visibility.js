@@ -3,6 +3,7 @@ import { hasV39CaveLineOfSight, isV39UnitInWorld } from "../../lib/v39-cave-spat
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import {
   resolveDetectionGroupSense,
+  resolveDetectionStealthRecoveryRate,
   resolveEffectiveScoutAtDistance,
   resolveV39UnitVisionRange,
   V39_UNIT_VISION_BASE_RANGE,
@@ -343,8 +344,9 @@ function inspectPlayerDetectionForEnemy(enemyOrId) {
   const observerScout = Number.isFinite(rawScout) ? roundDetectionValue(rawScout) : null;
   const turnNumber = Math.max(1, Math.floor(Number(state?.timeline?.turnNumber) || 1));
   const targetStealth = roundDetectionValue(resolveDetectionGroupSense(group, { turnNumber }).stealth);
-  const exposedUnits = group.filter(unit => Math.floor(Number(unit?.lastStealthBreakTurn) || -1) === turnNumber);
-  const exposureReason = [...new Set(exposedUnits.map(unit => String(unit?.lastStealthBreakReason || "combat").trim()).filter(Boolean))].join(" / ");
+  const exposedUnits = group.filter(unit => resolveDetectionStealthRecoveryRate(unit, { turnNumber }) < 1);
+  const exposureReason = [...new Set(exposedUnits.map(unit => Math.floor(Number(unit?.lastStealthBreakTurn)) === turnNumber
+    ? String(unit?.lastStealthBreakReason || "combat").trim() : "attack-recovery"))].join(" / ");
   const reason = !inCurrentVision
     ? "索敵範囲外"
     : detected

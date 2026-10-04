@@ -124,9 +124,6 @@ function createStyles() {
 .v39-range-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:5px;align-items:center}
 .v39-player-assignment-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.v39-player-assignment-list label{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:5px;font-size:var(--font-compact);color:#b8c5c8}.v39-player-assignment-list select{min-width:0;min-height:30px;border:1px solid #46575d;border-radius:6px;background:#162227;color:#e8efec;padding:3px 5px}
 .v39-room-entry{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.v39-room-entry button{min-height:34px;border:1px solid #52747d;border-radius:7px;background:#18333b;color:#edf6f3;padding:5px 10px;font-weight:800}.v39-room-entry small{flex:1 1 200px}
-.v39-field-load-save{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.v39-field-load-save button{min-height:36px;border:1px solid #5b7882;border-radius:7px;background:#173039;color:#edf5f3;padding:5px 10px;font-weight:800;cursor:pointer}.v39-field-load-save button:hover{background:#1d3c46}
-.v39-field-load-save-status{font-size:var(--font-size-11);color:#91a4a9}
 #v39-field-custom-grid.is-disabled{opacity:.45;pointer-events:none}
 .v39-field-settings-actions{display:flex;gap:8px;padding:8px 10px;border-top:1px solid #34444a;background:#0d161a}.v39-field-settings-actions button{min-height:38px;border:1px solid #4c6067;border-radius:8px;background:#172329;color:#e8efec;padding:0 13px;font-weight:800}.v39-field-settings-actions .primary{margin-left:auto;border-color:#66b7c6;background:#17414a}.v39-field-settings-actions .danger{border-color:#66504b;background:#261b18}.v39-field-settings-status{font-size:var(--font-compact);color:#91a4a9;align-self:center}
 @media(max-width:700px){#v39-field-settings-dialog{width:100%;height:calc(100dvh - 16px);max-height:calc(100dvh - 16px);min-height:0;border-radius:6px}.v39-field-settings-body{padding:6px;overflow-y:auto;touch-action:pan-y}.v39-setting-row{grid-template-columns:1fr;gap:4px;padding:7px 0}.v39-setting-row small{grid-column:1}.v39-field-settings-actions{position:sticky;bottom:0}.v39-field-settings-head small{display:none}}
@@ -267,20 +264,7 @@ function createModal() {
           </div>
         </details>
 
-        <details class="v39-start-section" id="v39-start-load-section">
-          <summary>セーブデータから再開</summary>
-          <div class="v39-setting-list">
-            <div class="v39-setting-row">
-              <span>セーブデータ</span>
-              <div class="v39-field-load-save">
-                <button type="button" id="v39-field-load-save">セーブデータをロード</button>
-                <input id="v39-field-save-file" type="file" accept="application/json,.json" hidden>
-                <span class="v39-field-load-save-status" id="v39-field-load-save-status">JSONファイルを選択</span>
-              </div>
-              <small>マップ・勢力・ターン・研究・経済・戦闘状態・カメラ位置を復元します。</small>
-            </div>
-          </div>
-        </details>
+
       </div>
       <footer class="v39-field-settings-actions">
         <span class="v39-field-settings-status" id="v39-field-settings-status">未生成</span>
@@ -405,7 +389,7 @@ function boot() {
     get("v39-field-river-min").value = settings.islandCustomSettings.riverPerContinentMin;
     get("v39-field-river-max").value = settings.islandCustomSettings.riverPerContinentMax;
     get("v39-field-custom-grid").classList.toggle("is-disabled", !settings.islandCustomSettings.enabled);
-    ["v39-field-local-player-row", "v39-start-participant-section", "v39-start-load-section"]
+    ["v39-field-local-player-row", "v39-start-participant-section"]
       .forEach(id => {
         const element = get(id);
         if (element instanceof HTMLElement) element.hidden = lobbyGameSettingsMode;
@@ -567,37 +551,6 @@ function boot() {
     }
   });
   get("v39-field-settings-reset").addEventListener("click", () => { settings = deepClone(DEFAULT_FIELD_SETTINGS); sync(); });
-
-  const loadSaveButton = get("v39-field-load-save");
-  const loadSaveInput = get("v39-field-save-file");
-  const loadSaveStatus = get("v39-field-load-save-status");
-  loadSaveButton?.addEventListener("click", () => {
-    if (!(loadSaveInput instanceof HTMLInputElement)) return;
-    loadSaveInput.click();
-  });
-  loadSaveInput?.addEventListener("change", async () => {
-    const file = loadSaveInput.files?.[0];
-    if (!file) return;
-    try {
-      if (typeof window.importV39SaveJson !== "function") {
-        if (loadSaveStatus) loadSaveStatus.textContent = "セーブ機能を読み込み中です";
-        return;
-      }
-      if (loadSaveStatus) loadSaveStatus.textContent = `${file.name} を読込中…`;
-      get("v39-field-settings-status").textContent = "セーブデータ読込中…";
-      window.importV39SaveJson(await file.text());
-      if (loadSaveStatus) loadSaveStatus.textContent = `${file.name} を読み込みました`;
-      get("v39-field-settings-status").textContent = "セーブデータ読込完了";
-      close();
-    } catch (error) {
-      console.error("[v39-field-settings-final] save load failed", error);
-      const message = error instanceof Error ? error.message : "読込に失敗しました";
-      if (loadSaveStatus) loadSaveStatus.textContent = message;
-      get("v39-field-settings-status").textContent = "セーブデータ読込失敗";
-    } finally {
-      loadSaveInput.value = "";
-    }
-  });
 
   get("v39-field-generate").addEventListener("click", () => {
     const next = read();

@@ -49,14 +49,15 @@ try{
     const rootId=window.getV39GameState().activeWorldId,root=window.__v39FieldRuntime.mapData;
     check(root.entrances.filter(entry=>entry.surfaceEntrance).length===2,"two physical entrances");
     const selected=window.getV39SelectedSquadUnit().id;
-    document.querySelector('#v39-cave-party-order [aria-label="隊列を後ろへ"]').click();
+    document.querySelector(`#squadMemberList [data-v39-unit-id="${selected}"]`).dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:100,clientY:500}));
+    document.querySelector('#v39-cave-party-menu [aria-label="隊列を後ろへ"]').click();
     check(window.getV39ActiveFactionState().squads[0].unitIds[1]===selected,"registration order changed");
     await new Promise(resolve=>setTimeout(resolve,120));
     check(document.querySelectorAll('#squadMemberList [data-v39-unit-id]')[1].dataset.v39UnitId===selected,"visible order changed");
     const place=(tile)=>{const faction=window.getV39ActiveFactionState();window.updateV39ActiveFactionState({units:faction.units.map(unit=>unit.id===selected?{...unit,x:tile.x,y:tile.y}:unit)});};
     place(root.entrances[1]);window.leaveV39Cave();
     check(window.getV39GameState().activeWorldId==="surface","physical exit");
-    check(getComputedStyle(document.getElementById("v39-cave-party-order")).display==="none","no reorder toolbar on surface");
+    check(!document.getElementById("v39-cave-party-order")&&document.getElementById("v39-cave-party-menu").hidden,"no reorder toolbar/menu on surface");
     check(window.getV39SelectedSquadUnit().x===7&&window.getV39SelectedSquadUnit().y===3,"exit at other surface cave");
     window.enterV39Cave();check(window.getV39GameState().activeWorldId===rootId,"shared underground map");
     place(window.__v39FieldRuntime.mapData.stairsDown);window.descendV39Cave();

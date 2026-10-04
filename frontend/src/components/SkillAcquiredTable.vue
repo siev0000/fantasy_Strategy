@@ -342,9 +342,9 @@ function handleSkillRowKeydown(event, row) {
   color:#edf4f3;
   font-size:var(--font-size-10);
   line-height:1.15;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  white-space:normal;overflow-wrap:anywhere;
+  overflow:visible;
+  text-overflow:clip;
 }
 
 .operation-technique-ap {
@@ -362,9 +362,9 @@ function handleSkillRowKeydown(event, row) {
   color:#b7c6c9;
   font-size:var(--font-size-10);
   line-height:1.2;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  white-space:normal;overflow-wrap:anywhere;
+  overflow:visible;
+  text-overflow:clip;
 }
 
 .operation-technique-power {

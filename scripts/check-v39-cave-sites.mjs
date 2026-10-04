@@ -11,6 +11,7 @@ try {
   await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
   const report=await page.evaluate(async()=>{
     const c=await import("/src/lib/v39-cave-adventure.js"),p=await import("/src/lib/v39-cave-generator.js"),h=await import("/src/lib/hex-grid.js");
+    const {V39_CAVE_BALANCE:balance}=await import("/src/lib/v39-gameplay-balance.js");
     const checks=[];
     function check(name,result){if(!result)throw new Error(name);checks.push(name);}
     function rejects(work){try{work();return false;}catch{return true;}}
@@ -23,10 +24,24 @@ try {
         :game.map.grid[s.y][s.x]==="洞窟"&&!game.enemies.some(e=>e.x===s.x&&e.y===s.y)));
       check(`${template.id} repeat`,JSON.stringify(game.sites)===JSON.stringify(fresh(template.id).sites));
       check(`${template.id} normal floor no boss`,!game.enemies.some(e=>e.isCaveBoss));
-      game.floor=4;game.position={...game.map.entrances[1]};c.descendCave(game);
+      game.floor=balance.bossFloorInterval-1;game.position={...game.map.entrances[1]};c.descendCave(game);
       const bosses=game.enemies.filter(e=>e.isCaveBoss);
-      check(`${template.id} floor5 boss`,bosses.length===1&&bosses[0].derivedCharacter.ok&&bosses[0].aggressive&&bosses[0].level>game.enemies.filter(e=>!e.isCaveBoss).reduce((n,e)=>Math.max(n,e.level),0));
+      check(`${template.id} periodic boss`,bosses.length===1&&bosses[0].derivedCharacter.ok&&bosses[0].aggressive&&bosses[0].level>game.enemies.filter(e=>!e.isCaveBoss).reduce((n,e)=>Math.max(n,e.level),0));
       check(`${template.id} boss safety`,game.map.entrances.every(entry=>p.findV39CavePath(game.map,bosses[0],entry).length>3));
+    }
+    for(const floor of [1,2,3,4,5,6]) {
+      const generated=c.generateCaveFloor({seed:"boss-period",templateId:"chamber",floor});
+      check(`floor ${floor} boss interval`,generated.enemies.filter(enemy=>enemy.isCaveBoss).length===(floor%balance.bossFloorInterval===0?1:0));
+    }
+    const testFloors=Array.from({length:9},(_,i)=>c.generateCaveFloor({seed:"habitat",templateId:"chamber",floor:i+1,caveTest:true}));
+    for(let i=0;i<testFloors.length;i++) {
+      const generated=testFloors[i],height=Math.floor(i/balance.testFloorsPerHeight);
+      check(`floor ${i+1} difficulty height`,generated.map.caveDifficultyHeight===height);
+      check(`floor ${i+1} habitat enemies`,generated.enemies.every(enemy=>enemy.race===generated.map.caveHabitatRace));
+      const sameHabitat=i===0||generated.map.caveHabitatRace===testFloors[i-1].map.caveHabitatRace;
+      check(`floor ${i+1} habitat stable`,i===0||sameHabitat===(i%balance.testFloorsPerHeight!==0));
+      const repeated=c.generateCaveFloor({seed:"habitat",templateId:"chamber",floor:i+1,caveTest:true});
+      check(`floor ${i+1} habitat reproducible`,repeated.map.caveHabitatRace===generated.map.caveHabitatRace);
     }
     const game=fresh("chamber");game.enemies=[];
     const herb=game.sites.find(s=>s.kind==="herb");game.position={...herb};c.revealCave(game);
@@ -52,6 +67,32 @@ try {
     game.position={...game.map.entrances[1]};c.descendCave(game);
     check("floor keeps inventory",game.inventory.鉱石===3&&game.inventory.宝石===1);
     return {checks};
+  });
+  await page.locator("[data-v39-cave-test]").click();
+  await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
+  await page.getByRole("button",{name:"探索開始",exact:true}).click();
+  await page.waitForTimeout(700);
+  await page.evaluate(async()=>{
+    const {enterV39Cave}=await import("/src/v39/core/v39-cave-world.js");
+    enterV39Cave({seed:"boss-period-native",templateId:"chamber",floor:3,caveTest:true});
+    await window.setV39TestMode(true);
+    const bosses=window.getV39GameState({includeWorlds:false}).enemies.filter(enemy=>enemy.isCaveBoss);
+    if(bosses.length!==1)throw new Error("native floor3 boss missing");
+    const map=window.__v39FieldRuntime.mapData;
+    if(map.caveDifficultyHeight!==0||!map.heightLevelMap.every(row=>row.every(height=>height===0)))throw new Error("difficulty changed physical cave height");
+  });
+  await page.waitForTimeout(500);
+  await page.screenshot({path:"output/web-game/cave-sites/floor3-boss.png"});
+  await page.evaluate(async()=>{
+    const {descendV39Cave,enterV39Cave}=await import("/src/v39/core/v39-cave-world.js");
+    const map=window.__v39FieldRuntime.mapData,actor=window.getV39SelectedSquadUnit();
+    const faction=window.getV39ActiveFactionState();
+    window.updateV39ActiveFactionState({units:faction.units.map(unit=>unit.id===actor.id?{...unit,x:map.stairsDown.x,y:map.stairsDown.y}:unit)});
+    descendV39Cave();
+    const next=window.__v39FieldRuntime.mapData;
+    if(next.caveDifficultyHeight!==1||next.caveHabitatRace===map.caveHabitatRace||!next.caveTest)throw new Error("native floor4 habitat transition missing");
+    enterV39Cave({seed:"boss-period-native",templateId:"chamber",floor:3,caveTest:true});
+    if(window.__v39FieldRuntime.mapData.caveHabitatRace!==map.caveHabitatRace)throw new Error("revisit rerolled habitat");
   });
   assert.deepEqual(errors,[]);
   writeFileSync("output/web-game/cave-sites/report.json",JSON.stringify({report,errors,uiTest:"scripts/check-v39-cave-native.mjs"},null,2));

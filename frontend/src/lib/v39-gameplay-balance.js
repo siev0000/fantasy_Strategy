@@ -3,6 +3,28 @@
 export const V39_HIT_RATE_MIN = 0.25;
 // 攻撃の最大命中率。1.00 = 100%。
 export const V39_HIT_RATE_MAX = 1.00;
+// 攻撃後の隠密回復ターン数。直後0、1ターンごとに元の値の1/3ずつ回復する。
+export const V39_ATTACK_STEALTH_RECOVERY_TURNS = 3;
+
+export const V39_CAVE_EVENT_BALANCE = Object.freeze({
+  // 洞窟テスト専用の仮値。携帯金とイベント進捗は勢力/探索ごとに保存する。
+  initialGold:100,
+  npcLevel:10,
+  // 鍛冶師の画像番号（1始まり、4列×3行）と入口からの配置差分。
+  npcArtworkSlot:9,
+  npcOffsetX:1,
+  npcOffsetY:-2,
+  shopWeaponCount:6,
+  buyGold:30,
+  craftGold:10,
+  craftOre:2,
+  // クエスト種別ごとの必要数と金報酬。
+  oreDelivery:3, oreReward:30,
+  gemDelivery:1, gemReward:40,
+  kills:3, killReward:40,
+  habitatKills:2, habitatReward:30,
+  targetFloor:3, floorReward:50
+});
 
 export const V39_LAND_EXPANSION_BALANCE = Object.freeze({
   // 暫定: 1件の開拓に回す拠点人口。食料消費は減らさず、生産要員からだけ外す。
@@ -567,7 +589,10 @@ export const V39_CAVE_BALANCE = Object.freeze({
   adventureEnemyLevelCap:40, // 暫定：探索ゲームでの敵Lv上限。
   logLimit:40, // 洞窟探索ログの保持件数。
   followerStepMs:160, // 洞窟パーティーの追従表示で1マス移動にかける時間（ミリ秒）。
-  bossFloorInterval:5, // 暫定：5階層ごとにボス1体。0で配置を停止。
+  bossFloorInterval:3, // 洞窟の階層探索で3層ごとにボス1体。0で配置を停止。
+  testFloorsPerHeight:3, // テストの難易度高度区分。1〜3層=0、4〜6層=1。地形高度は変えない。
+  partyOrderLongPressMs:550, // 隊列変更メニューを開く長押し時間（ミリ秒）。
+  partyOrderCancelDistance:8, // 指がこの距離（px）以上動いたらスクロールとみなし長押しを取消。
   bossLevelBonus:5, // 暫定：洞窟候補の最大Lv＋階層補正へ加えるボスLv。
   herbSites:1, // 暫定：階層ごとの薬草群生地数。
   mushroomSites:1, // 暫定：階層ごとのキノコ群生地数。

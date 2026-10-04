@@ -34,7 +34,7 @@ const STATUS_FIELD_ROWS = [
   ["防御", "精神", "速度"]
 ];
 const DETAIL_TABS = [
-  { key: "status", label: "ステータス技能" },
+  { key: "status", label: "能力" },
   { key: "skills", label: "スキル" },
   { key: "equipment", label: "装備" },
   { key: "growth", label: "成長" }

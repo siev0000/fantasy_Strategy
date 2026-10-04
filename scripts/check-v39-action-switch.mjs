@@ -56,6 +56,7 @@ try {
   await start();
   await page.locator("#mobileBattleSurvey").click();
   assert.equal(await session(),null,"survey must cancel attack");
+  await page.locator("#mobileBattleSurveyUse").click();
   const survey = await page.evaluate(() => {
     const state = window.getV39GameState();
     const player = state.players.find(row => row.id === state.activePlayerId);
@@ -72,12 +73,14 @@ try {
   await start();
   await clickUnavailableSurvey();
   assert.equal(await session(),null,"unavailable survey must also cancel attack");
-  assert.match(await page.locator("body").innerText(),/調査不可:.*すでに調査中/);
+  assert.match(await page.locator("#mobileBattleSurvey").getAttribute("title"),/すでに調査中/);
+  assert.equal(await page.locator("#mobileBattleSurveyUse").isDisabled(),true);
   await start();
   await page.locator("#mobileBattleWait").click();
   assert.equal(await session(),null,"wait must cancel attack");
+  await page.locator("#mobileBattleWaitUse").click();
   await clickUnavailableSurvey();
-  assert.match(await page.locator("body").innerText(),/調査不可:.*待機済み/);
+  assert.match(await page.locator("#mobileBattleSurvey").getAttribute("title"),/待機済み/);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({ survey, toggleOff:true, moveCancels:true, surveyCancels:true, unavailableSurveyCancels:true, waitCancels:true, errors },null,2));
   await page.screenshot({ path:"output/web-game/v39-action-switch.png" });

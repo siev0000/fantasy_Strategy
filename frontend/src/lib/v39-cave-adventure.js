@@ -55,10 +55,24 @@ export function revealCave(game) {
 
 export function generateCaveFloor(game) {
   const map=generateV39CaveMap({seed:`${game.seed}:floor-${game.floor}`,templateId:game.templateId,entranceCount:game.entranceCount||2});
-  const factory = options => createV39EventEnemy({...options,level:Math.min(balance.adventureEnemyLevelCap,options.level+(game.floor-1)*balance.floorLevelStep)});
-  const enemies=populateV39CaveMonsters(map,getV39EnemySpawnDefinitions("洞窟"),factory);
+  let definitions=getV39EnemySpawnDefinitions("洞窟");
+  let levelBonus=(game.floor-1)*balance.floorLevelStep;
+  if(game.caveTest) {
+    const height=Math.floor((game.floor-1)/balance.testFloorsPerHeight);
+    const races=[...new Set(definitions.map(row=>row.race))].sort();
+    // 階層の生成順や再訪で抽選結果を変えず、区分が変わるたびに次の種へ切り替える。
+    const seedOffset=[...String(game.seed)].reduce((value,char)=>(Math.imul(value,31)+char.codePointAt(0))>>>0,0);
+    const race=races[(seedOffset+height)%races.length];
+    definitions=definitions.filter(row=>row.race===race);
+    map.caveTest=true;
+    map.caveDifficultyHeight=height;
+    map.caveHabitatRace=race;
+    levelBonus=height*window.getV39EnemySpawnRules().terrainLevelStep;
+  }
+  const factory = options => createV39EventEnemy({...options,level:Math.min(balance.adventureEnemyLevelCap,options.level+levelBonus)});
+  const enemies=populateV39CaveMonsters(map,definitions,factory);
   if(balance.bossFloorInterval>0&&game.floor%balance.bossFloorInterval===0) {
-    const definition=[...getV39EnemySpawnDefinitions("洞窟")].sort((a,b)=>b.maxLevel-a.maxLevel)[0];
+    const definition=[...definitions].sort((a,b)=>b.maxLevel-a.maxLevel)[0];
     const occupied=new Set([...enemies,...map.entrances].map(key));
     const exit=map.entrances[1];
     const candidates=map.grid.flatMap((line,y)=>line.flatMap((terrain,x)=>{
@@ -70,7 +84,7 @@ export function generateCaveFloor(game) {
     const tile=candidates[0];
     if(!tile)throw new Error("洞窟ボスの配置場所がありません");
     const boss=createV39EventEnemy({id:`${map.id}-boss`,name:`${definition.name}（ボス）`,race:definition.race,className:definition.className,
-      level:Math.min(balance.adventureEnemyLevelCap,definition.maxLevel+(game.floor-1)*balance.floorLevelStep+balance.bossLevelBonus),x:tile.x,y:tile.y,
+      level:Math.min(balance.adventureEnemyLevelCap,definition.maxLevel+levelBonus+balance.bossLevelBonus),x:tile.x,y:tile.y,
       metadata:{spawnTerrain:"洞窟",sourceDefinitionId:definition.definitionId,image:definition.row.画像,aggressive:true}});
     if(!boss)throw new Error("洞窟ボスの生成に失敗しました");
     enemies.push({...boss,isCaveBoss:true});

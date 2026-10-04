@@ -5,6 +5,7 @@ import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement 
 import { V39_START_AREA_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { classData } from "../../lib/game-data-registry.js";
 import { RACE_CLASS_NAME_MAP } from "../../constants/unitCommon.js";
+import { runV39FieldUpdate } from "../ui/v39-field-update-loading.js";
 
 const MODE_BANNER_ID = "modeBanner";
 let pendingPlacement = null;
@@ -730,7 +731,16 @@ function confirmPlacement(tile) {
     showBanner("初期拠点の配置をホストへ確認しています...", true);
     return;
   }
-  placeInitialBase(tile);
+  const button = document.querySelector("[data-placement-confirm]");
+  return runV39FieldUpdate(() => placeInitialBase(tile), { controls:button ? [button] : [] })
+    .finally(() => {
+      if (button) button.disabled = !pendingPlacement || !getActiveFaction()?.villagePlacementMode;
+    })
+    .catch(error => {
+      console.error("[初期拠点配置失敗]", error);
+      showBanner("初期拠点の配置に失敗しました", true);
+      return false;
+    });
 }
 
 function syncPlacementMode() {

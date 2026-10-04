@@ -217,7 +217,7 @@ function installStyles() {
     .v39-side-log-entry.success{border-left-color:#67c887}.v39-side-log-entry.warn{border-left-color:#d6b45f}.v39-side-log-entry.danger{border-left-color:#d87365}.v39-side-log-entry.debug{border-left-color:#9c87d8}
     .v39-side-log-entry-head{display:flex;align-items:center;gap:5px;min-width:0}
     .v39-side-log-entry-head span{flex:0 0 auto;color:#79d29b;font-size:var(--font-size-9);font-weight:800}
-    .v39-side-log-entry-head b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e5d194;font-size:var(--font-size-10)}
+    .v39-side-log-entry-head b{min-width:0;white-space:normal;overflow-wrap:anywhere;color:#e5d194;font-size:var(--font-size-10)}
     .v39-side-log-entry p{margin:0;color:#e2e9e9;font-size:var(--font-size-10);line-height:1.35;word-break:break-word}
     .v39-side-log-entry small{color:#93a6aa;font-size:var(--font-size-9);line-height:1.25}
     .v39-side-log-details-inline{padding-top:3px;border-top:1px solid rgba(78,102,111,.45);color:#b9c8ca!important}
@@ -229,15 +229,15 @@ function installStyles() {
     .v39-side-log-details p{margin-top:4px!important;color:#b9c8ca!important;font-size:var(--font-size-9)!important;line-height:1.4!important}
     .v39-side-log-empty{padding:16px 8px;color:#82969b;font-size:var(--font-size-10);text-align:center}
     .v39-log-preview{
-      display:none;width:min(520px,96%);pointer-events:auto
+      display:none;width:100%;pointer-events:auto
     }
     .v39-log-preview.show{display:grid;gap:5px}
-    #v39-chat-preview{position:absolute;right:6px;top:44px;bottom:52px;width:calc(var(--v39-side-log-width) - 6px);max-width:calc(100% - 12px);z-index:30;align-content:start;overflow-y:auto;overflow-x:hidden;pointer-events:none}
-    #v39-chat-preview button{pointer-events:auto}
-    .playfield:has(#v39-turn-banner.show) #v39-battle-preview{margin-top:calc(var(--font-size-16)*3 + 16px)}
+    #v39-log-previews{position:absolute;right:6px;top:44px;bottom:52px;width:calc(var(--v39-side-log-width) - 6px);max-width:calc(100% - 12px);z-index:30;display:flex;flex-direction:column;gap:5px;overflow-y:auto;overflow-x:hidden;pointer-events:none}
+    #v39-log-previews .v39-log-preview{flex:0 0 auto;pointer-events:none}
+    #v39-log-previews button{pointer-events:auto}
     .v39-log-preview button{min-width:0;padding:7px 10px;text-align:left;border:1px solid #70cbd9;border-radius:8px;background:rgba(9,25,30,.96);box-shadow:0 4px 12px #0005;cursor:pointer}
     .v39-log-preview strong{font-size:var(--font-body);color:#8ee0ec}
-    .v39-log-preview p{margin:0;font-size:var(--font-body);line-height:1.4;color:#eef6f6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word}
+    .v39-log-preview p{margin:0;font-size:var(--font-body);line-height:1.4;color:#eef6f6;word-break:break-word}
     @media(max-width:700px){
       .playfield{--v39-side-log-width:min(36vw,190px)}
       #v39-side-log{right:0;top:5px;bottom:48px}
@@ -261,15 +261,18 @@ function install() {
   playfield.appendChild(rail);
   playfield.classList.add("v39-has-side-log");
 
-  const feedbackLane = document.getElementById("v39FeedbackLane");
-  for (const [channel, parent] of [["chat", playfield], ["battle", feedbackLane]]) {
-    if (!(parent instanceof HTMLElement) || document.getElementById(`v39-${channel}-preview`)) continue;
+  // 戦闘イベントもチャットと同じ右側の枠へ。別々の絶対配置では重なってしまう。
+  const previewHost = document.createElement("div");
+  previewHost.id = "v39-log-previews";
+  playfield.appendChild(previewHost);
+  for (const channel of ["chat", "battle"]) {
+    if (document.getElementById(`v39-${channel}-preview`)) continue;
     const preview = document.createElement("div");
     preview.id = `v39-${channel}-preview`;
     preview.className = "v39-log-preview";
     preview.setAttribute("role", "status");
     preview.setAttribute("aria-live", "polite");
-    parent.appendChild(preview);
+    previewHost.appendChild(preview);
     preview.addEventListener("click", event => {
       const button = event.target.closest("[data-preview-channel]");
       if (!button) return;
@@ -323,8 +326,18 @@ window.getV39SideRailMessages = () => messages.filter(canSeeMessage).map(entry =
 
 window.addEventListener("v39:combat-log", event => {
   if (!event.detail?.summary) return;
+  const detail = event.detail;
+  const entries = (detail.entries || []).filter(entry => text(entry.targetName) && Number.isFinite(entry.total));
+  const message = entries.length
+    ? [`${text(detail.attackerName, detail.summary.split("：")[0])} / ${text(detail.skillName)}`,
+      ...entries.map(entry => {
+        const hits = (entry.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss");
+        const result = hits.length && hits.every(hit => hit === "Miss") ? "Miss" : `${entry.total}ダメージ`;
+        return `${text(entry.targetName)} ${result}${hits.length > 1 ? ` (${hits.join(",")})` : ""}`;
+      })].join("\n")
+    : detail.summary;
   const map = window.__v39FieldRuntime?.mapData;
-  pushV39SideRailMessage({channel:"battle",title:map?.isUnderground ? `洞窟 ${map.caveFloor}階` : "戦闘",message:event.detail.summary,combatVisibility:combatVisibility(event.detail)});
+  pushV39SideRailMessage({channel:"battle",title:map?.isUnderground ? `洞窟 ${map.caveFloor}階` : "戦闘",message,details:entries.length ? detail.summary : "",collapsible:true,combatVisibility:combatVisibility(detail)});
 });
 
 let logViewKey = "";

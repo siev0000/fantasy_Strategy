@@ -170,7 +170,7 @@ function growthPanel(unit) {
 }
 
 function detailTabs(unit) {
-  const tabs = [["status", "ステータス技能"], ["skills", "スキル"], ["equipment", "装備"], ["growth", "成長"]];
+  const tabs = [["status", "能力"], ["skills", "スキル"], ["equipment", "装備"], ["growth", "成長"]];
   const panel = detailTab === "skills" ? skillsPanel(unit)
     : detailTab === "equipment" ? equipmentPanel(unit)
     : detailTab === "growth" ? growthPanel(unit)
@@ -299,7 +299,7 @@ function installStyles() {
     #characterModal .v39-char-row-icon-fallback{display:grid;place-items:center;color:#dce8e7;font-size:var(--font-secondary);font-weight:900}
     #characterModal .v39-char-row-body{display:grid;gap:3px;min-width:0}
     #characterModal .v39-char-row-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px;min-width:0}
-    #characterModal .v39-char-row-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-compact)}
+    #characterModal .v39-char-row-head strong{min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:var(--font-compact)}
     #characterModal .v39-char-row-head b{padding:1px 3px;border:1px solid #536a70;border-radius:4px;color:#d8e5e2;font-size:var(--font-size-9);white-space:nowrap}
     #characterModal .v39-char-row-vital{display:grid;grid-template-columns:15px minmax(0,1fr);align-items:center;gap:3px;min-width:0}
     #characterModal .v39-char-row-vital>i{color:#a8b8ba;font-size:var(--font-size-8);font-style:normal;font-weight:800}

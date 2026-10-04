@@ -27,7 +27,7 @@ try {
     const button = document.getElementById("mobileBattleSurvey");
     window.dispatchEvent(new CustomEvent("v39:tile-selected",{ detail:{ x:8,y:8 } }));
     const landHasSurveyButton = [...document.querySelectorAll("#footTile button")].some(button => !button.hidden && button.textContent.includes("調査"));
-    button.click();
+    button.click(); document.getElementById("mobileBattleSurveyUse").click();
     const first = structuredClone(getUnit());
     const blocked = window.startV39Survey({ x:5,y:5 });
     window.dispatchEvent(new CustomEvent("v39:turn-stage-exploration", { detail:{ turnNumber:2 } }));
@@ -36,7 +36,7 @@ try {
     window.setV39GameState({ players:current.players.map(row => row.id !== player.id ? row : ({ ...row,
       factionState:{ ...row.factionState,units:row.factionState.units.map(unit => unit.id !== unitId ? unit : ({ ...unit,ap:70,currentAp:70,actionPoint:70 })) }
     })) });
-    button.click();
+    button.click(); document.getElementById("mobileBattleSurveyUse").click();
     const continued = structuredClone(getUnit());
     window.dispatchEvent(new CustomEvent("v39:turn-stage-exploration", { detail:{ turnNumber:3 } }));
     const complete = { task:getUnit().surveyTask || null, surveyed:getPlayer().factionState.exploration.surveyedTileKeys.includes("5,5"), ap:getUnit().ap };
@@ -44,7 +44,7 @@ try {
     window.setV39GameState({ players:final.players.map(row => row.id !== player.id ? row : ({ ...row,
       factionState:{ ...row.factionState, units:row.factionState.units.map(unit => unit.id !== unitId ? unit : ({ ...unit,x:6,y:5,ap:100,currentAp:100 })) }
     })) });
-    button.click();
+    button.click(); document.getElementById("mobileBattleSurveyUse").click();
     const full = structuredClone(getUnit());
     return { landHasSurveyButton, first:{ ap:first.ap,currentAp:first.currentAp,actionPoint:first.actionPoint,task:first.surveyTask },
       blocked:blocked.ok,partial,continued:{ ap:continued.ap,task:continued.surveyTask },complete,full:{ap:full.ap,task:full.surveyTask},buttonText:button.textContent };

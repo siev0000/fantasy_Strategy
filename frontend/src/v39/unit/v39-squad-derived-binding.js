@@ -438,6 +438,7 @@ function renderMemberList() {
         <div class="squad-main">
           <span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}">
             <span class="squad-icon">${icon}</span>
+            <span class="squad-level-number" aria-hidden="true">${exp.level}</span>
           </span>
           <div class="squad-name-wrap">
             <b class="squad-name">${unitName(unit, index)}</b>
@@ -644,11 +645,20 @@ function install() {
 
   const techniqueList = document.getElementById("detailTechniqueList");
   techniqueList?.addEventListener("click", event => {
+    if (event.target instanceof Element && event.target.closest("[data-v39-system-use]")) return;
     const card = event.target instanceof Element ? event.target.closest("[data-v39-technique-name]") : null;
     if (!card) return;
     const name = text(card.dataset.v39TechniqueName);
+    if (["__system_wait__", "__system_survey__", "__system_gather__"].includes(name) || name.startsWith("__cave_site_")) {
+      window.cancelV39SelectedUnitMove?.("system-action-preview");
+      window.cancelV39SelectedUnitAttack?.("system-action-preview");
+    }
     setExpandedTechnique(expandedTechniqueName === name ? "" : name);
   }, true);
+  techniqueList?.addEventListener("keydown", event => {
+    if (!(event.target instanceof HTMLElement) || !event.target.matches('.system-action-card[role="button"]')) return;
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.target.click(); }
+  });
 
   const equipmentList = document.getElementById("detailEquipmentList");
   equipmentList?.addEventListener("click", event => {
@@ -661,6 +671,15 @@ function install() {
   window.addEventListener("v39:game-state-changed", scheduleRender);
   window.addEventListener("v39:unit-selected", scheduleRender);
   window.refreshV39SquadDerivedUI = render;
+  window.openV39ActionDetail = name => {
+    window.cancelV39SelectedUnitMove?.("system-action-preview");
+    window.cancelV39SelectedUnitAttack?.("system-action-preview");
+    window.activateV39FooterTab?.("squad");
+    document.querySelector('[data-squad-detail-tab="action"]')?.click();
+    setExpandedTechnique(name);
+    const card = [...document.querySelectorAll("[data-v39-technique-name]")].find(row => row.dataset.v39TechniqueName === name);
+    card?.scrollIntoView({ block:"nearest" });
+  };
   window.getV39SelectedSquadUnit = () => {
     syncSelectionFromGameState();
     const units = unitsForSelectedSquad();

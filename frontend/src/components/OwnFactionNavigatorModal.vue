@@ -959,9 +959,9 @@ function rowBackgroundStyle(entry) {
 
 .own-faction-unit-main strong {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;overflow-wrap:anywhere;
 }
 
 .own-faction-level-tag {
@@ -1070,9 +1070,9 @@ function rowBackgroundStyle(entry) {
 .own-faction-unit-sub {
   font-size: 0.64rem;
   color: rgba(247, 232, 195, 0.84);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space:normal;overflow-wrap:anywhere;
+  overflow:visible;
+  text-overflow:clip;
 }
 
 .own-faction-status-list {

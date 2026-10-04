@@ -7,9 +7,13 @@ import { groupV39SurfaceCaves, isV39UnitInWorld } from "../../lib/v39-cave-spati
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
+import { syncV39CavePartyMenu } from "./v39-cave-party-menu.js";
+import { V39_CAVE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { createV39CaveEventNpc } from "./v39-cave-events.js";
 
 const spatialKeys=["enemies","enemySquads","enemyNests","enemyCombatRuntime","settlements","territoryOwnerByTile","territoryStateByTile","recoveryPercentByTile","dangerPercentByTile","facilitiesByTile","neutralVillages","wandererGroups","groundLootByTile","explorationSitesByTile","specialtiesByTile","victoryLandmarksByTile","worldEnvironment"];
 let switching=false;
+let selectedGatherTile=null;
 const clone=value=>structuredClone(value);
 
 function rememberWorld(state){
@@ -40,11 +44,12 @@ function activateWorld(state,worlds,id,players=state.players){
     },100);
   }finally{switching=false;}
   installActions();renderSites();
+  window.dispatchEvent(new CustomEvent("v39:cave-world-ready"));
   return id;
 }
 
 function createWorld(options){
-  const {map,enemies,sites}=generateCaveFloor({seed:options.seed||"expedition-1",templateId:options.templateId||"random",floor:options.floor||1,entranceCount:Math.max(2,options.surfaceEntrances?.length||2)});
+  const {map,enemies,sites}=generateCaveFloor({seed:options.seed||"expedition-1",templateId:options.templateId||"random",floor:options.floor||1,caveTest:options.caveTest===true,entranceCount:Math.max(2,options.surfaceEntrances?.length||2)});
   map.caveSites=sites;
   map.caveFloor=options.floor||1;
   map.caveSeed=options.seed||"expedition-1";
@@ -63,6 +68,16 @@ function createWorld(options){
   }
   map.stairsDown=map.entrances.find(entry=>entry!==map.entrances[0]&&!entry.surfaceEntrance)
     ||floorQueue.reverse().find(tile=>!reserved.has(`${tile.x},${tile.y}`));
+  createV39CaveEventNpc(map);
+  if(map.caveEventNpc){
+    const npc=map.caveEventNpc;
+    // NPCの固定位置に生成済みの敵・採取地点があれば、空いた通路へ移す。
+    for(const entity of [...enemies,...sites])if(entity.x===npc.x&&entity.y===npc.y){
+      const tile=floorQueue.find(tile=>!reserved.has(tile.key)&&tile!==map.stairsDown&&(tile.x!==npc.x||tile.y!==npc.y));
+      if(!tile)throw new Error("鍛冶師と重なる洞窟配置を移動できません");
+      Object.assign(entity,{x:tile.x,y:tile.y,key:tile.key});reserved.add(tile.key);
+    }
+  }
   return {map,spatial:{enemies,enemySquads:[],enemyNests:[],enemyCombatRuntime:{},settlements:[],neutralVillages:[],wandererGroups:[],territoryOwnerByTile:{},territoryStateByTile:{},recoveryPercentByTile:{},dangerPercentByTile:{},facilitiesByTile:{},groundLootByTile:{},explorationSitesByTile:{},specialtiesByTile:{},victoryLandmarksByTile:{},worldEnvironment:{}},visibility:{}};
 }
 
@@ -89,6 +104,7 @@ export function enterV39Cave(options={}){
   if(!leaderId)throw new Error("探索できる生存ユニットがいません。");
   entryOrder.splice(0,entryOrder.length,leaderId,...entryOrder.filter(id=>id!==leaderId));
   const occupied=new Set([...world.spatial.enemies,...state.players.flatMap(row=>row.factionState.units).filter(unit=>isV39UnitInWorld(unit,worldId)&&!ids.has(unit.id))].filter(unit=>Number(unit.hp??unit.currentHp)>0).map(unit=>`${unit.x},${unit.y}`));
+  if(world.map.caveEventNpc)occupied.add(`${world.map.caveEventNpc.x},${world.map.caveEventNpc.y}`);
   const queue=[...path.slice(0,entryOrder.length).reverse()],seen=new Set(queue.map(tile=>`${tile.x},${tile.y}`));
   if(!queue.length){queue.push(entry);seen.add(entry.key);}
   for(let i=0;i<queue.length;i++)for(const next of getHexNeighborCoords(world.map.w,world.map.h,queue[i].x,queue[i].y)){
@@ -152,7 +168,7 @@ export function descendV39Cave(){
   const map=window.__v39FieldRuntime?.mapData,unit=window.getV39SelectedSquadUnit?.();
   const exit=map?.stairsDown||map?.entrances?.[1];
   if(!map?.isUnderground||unit?.x!==exit?.x||unit?.y!==exit?.y)throw new Error("次の階層への入口に移動してください。");
-  return enterV39Cave({seed:map.caveSeed,templateId:map.templateId,floor:map.caveFloor+1,parentWorldId:window.getV39GameState().activeWorldId,parentExit:{x:exit.x,y:exit.y}});
+  return enterV39Cave({seed:map.caveSeed,templateId:map.templateId,floor:map.caveFloor+1,caveTest:map.caveTest===true,parentWorldId:window.getV39GameState().activeWorldId,parentExit:{x:exit.x,y:exit.y}});
 }
 
 // 開始画面のテストでも作成直後から通常ゲームのユニットとして登録する。
@@ -163,7 +179,7 @@ export function startV39CaveTest(profiles,options={}){
     const player=createPlayerRecord({id:"player-1",ready:true,factionState:{units,squads:[{id:"cave-party",label:"探索部隊",unitIds:units.map(unit=>unit.id)}],selectedUnitId:units[0].id,villagePlacementMode:false}});
     window.setV39GameState({players:[player],activePlayerId:player.id},{reason:"cave-test-characters-created"});
   }
-  return enterV39Cave(options);
+  return enterV39Cave({...options,caveTest:true});
 }
 
 function installActions(){
@@ -190,27 +206,11 @@ function installActions(){
   renderSiteActions();
 }
 
-function renderPartyOrder(){
-  const list=document.getElementById("squadMemberList");if(!list)return;
-  let toolbar=document.getElementById("v39-cave-party-order");
-  if(!toolbar){
-    toolbar=document.createElement("div");toolbar.id="v39-cave-party-order";toolbar.className="v39-squad-shortcuts";
-    for(const [delta,label] of [[-1,"隊列を前へ"],[1,"隊列を後ろへ"]]){
-      const button=document.createElement("button");button.type="button";button.textContent=delta<0?"↑":"↓";button.title=label;button.setAttribute("aria-label",label);button.className="v39-footer-shortcut v39-footer-icon-shortcut";button.dataset.tooltip=label;
-      button.addEventListener("click",()=>reorderV39CaveParty(delta));toolbar.appendChild(button);
-    }
-    document.querySelector("#v39-squad-main .v39-squad-shortcuts")?.appendChild(toolbar);
-  }
-  const state=window.getV39GameState(),actor=window.getV39SelectedSquadUnit?.();
-  const squad=state.players.find(player=>player.id===state.activePlayerId)?.factionState.squads.find(row=>row.unitIds?.includes(actor?.id));
-  toolbar.hidden=state.activeWorldId==="surface"||!squad;
-  const index=squad?.unitIds.indexOf(actor?.id)??-1;
-  [...toolbar.children].forEach((button,i)=>{button.disabled=!!window.isV39MapInputLocked?.()||index<0||(i===0?index===0:index===squad.unitIds.length-1);});
-}
+function renderPartyOrder(){ syncV39CavePartyMenu(); }
 
-export function reorderV39CaveParty(delta){
+export function reorderV39CaveParty(delta,unitId=window.getV39SelectedSquadUnit?.()?.id){
   if(window.isV39MapInputLocked?.()||window.getV39GameState().activeWorldId==="surface")return false;
-  const faction=window.getV39ActiveFactionState(),actor=window.getV39SelectedSquadUnit?.();
+  const faction=window.getV39ActiveFactionState(),actor=faction.units.find(unit=>unit.id===unitId);
   const squad=faction.squads.find(row=>row.unitIds?.includes(actor?.id)),index=squad?.unitIds.indexOf(actor?.id),next=index+delta;
   if(!squad||next<0||next>=squad.unitIds.length)return false;
   const order=[...squad.unitIds];[order[index],order[next]]=[order[next],order[index]];
@@ -253,10 +253,13 @@ function renderSites(){
     const x=site.x*HEX_TILE_CONFIG.width+(site.y%2?HEX_TILE_CONFIG.oddRowOffsetX:0)+HEX_TILE_CONFIG.width/2,y=site.y*HEX_TILE_CONFIG.rowStep+HEX_TILE_CONFIG.height/2;
     const marker=scene.add.text(x,y,site.icon,{fontSize:`${HEX_TILE_CONFIG.width*.4}px`}).setOrigin(.5).setInteractive();
     marker.setAlpha(site.remaining>0?1:.35);
-    marker.on("pointerdown",()=>{window.dispatchEvent(new CustomEvent("v39:tile-selected",{detail:{x:site.x,y:site.y,terrain:site.wall?"岩壁":"洞窟"}}));});
+    marker.on("pointerdown",()=>{
+      window.dispatchEvent(new CustomEvent("v39:tile-selected",{detail:{x:site.x,y:site.y,terrain:site.wall?"岩壁":"洞窟"}}));
+    });
     scene.v39CaveSites.add(marker);
   }
   renderSiteActions();
+  window.dispatchEvent(new CustomEvent("v39:cave-gather-target-changed"));
 }
 
 function siteGame(state,actor){
@@ -270,23 +273,42 @@ function siteGame(state,actor){
 function renderSiteActions(){
   const list=document.getElementById("detailTechniqueList"),map=window.__v39FieldRuntime?.mapData,actor=window.getV39SelectedSquadUnit?.();
   if(!list)return;
+  const expandedSite=list.querySelector('[data-v39-cave-site].is-expanded')?.dataset.v39CaveSite;
   list.querySelectorAll("[data-v39-cave-site]").forEach(button=>button.remove());
   if(!map?.isUnderground||!actor)return;
   const state=window.getV39GameState(),game=siteGame(state,actor);
-  const nearby=new Set(getHexNeighborCoords(map.w,map.h,actor.x,actor.y).map(tile=>tile.key));
   for(const site of map.caveSites||[]){
-    if(!site.discovered||!(site.wall?nearby.has(`${site.x},${site.y}`):site.x===actor.x&&site.y===actor.y))continue;
-    const button=document.createElement("button");button.type="button";button.className="technique-card system-action-card";button.dataset.v39CaveSite=site.id;
-    const reason=caveSiteUnavailable(game,site,game.party.find(unit=>unit.id===actor.id));
-    button.textContent=`${site.icon} ${site.wall?`${site.name}を採取` : "休息して回復"} 残り${site.remaining}`;
-    button.title=reason;button.disabled=!!reason||isV39UnitWaiting(actor,state.timeline.turnNumber)||!!window.isV39MapInputLocked?.();
-    button.addEventListener("click",()=>interactSite(site));list.appendChild(button);
+    if(site.wall)continue;
+    if(!site.discovered||site.remaining<=0||site.x!==actor.x||site.y!==actor.y)continue;
+    const button=document.createElement("div");button.setAttribute("role","button");button.tabIndex=0;
+    button.className="technique-card technique-select-card system-action-card";button.dataset.v39CaveSite=site.id;
+    button.dataset.v39TechniqueName=`__cave_site_${site.id}`;button.setAttribute("aria-expanded","false");
+    let reason=caveSiteUnavailable(game,site,game.party.find(unit=>unit.id===actor.id));
+    if(isV39UnitWaiting(actor,state.timeline.turnNumber))reason="このターンは待機済みです";
+    if(window.isV39MapInputLocked?.())reason="処理中です";
+    const summary=document.createElement("span");summary.className="technique-summary";
+    const icon=document.createElement("span");icon.className="technique-icon";icon.textContent=site.icon;
+    const name=document.createElement("b");name.className="technique-name";name.textContent="休息して回復";
+    const ap=document.createElement("small");ap.className="technique-ap";ap.textContent=`AP ${V39_CAVE_BALANCE.recoveryApCost}`;
+    const reserve=document.createElement("span");reserve.className="technique-power";reserve.textContent=`残り${site.remaining}`;
+    summary.append(icon,name,ap,reserve);
+    const detail=document.createElement("span");detail.className="technique-detail";
+    detail.innerHTML='<span class="technique-detail-head"><b>説明</b><button type="button" data-v39-system-use>使用</button></span>';
+    const description=document.createElement("span");description.className="technique-detail-description";
+    description.textContent=`${site.name}で仲間を回復 / AP ${V39_CAVE_BALANCE.recoveryApCost}${reason?` / ${reason}`:""}`;
+    detail.appendChild(description);button.append(summary,detail);
+    const use=detail.querySelector("button");
+    use.disabled=!!reason;
+    button.title=reason;button.classList.toggle("unavailable",use.disabled);
+    use.addEventListener("click",event=>{event.stopPropagation();interactSite(site);});
+    list.insertBefore(button,document.getElementById("detailTechniqueRows"));
+    if(expandedSite===site.id){button.classList.add("is-expanded");button.setAttribute("aria-expanded","true");}
   }
 }
 
 function interactSite(site){
   const state=window.getV39GameState(),player=state.players.find(row=>row.id===state.activePlayerId),actor=window.getV39SelectedSquadUnit?.();
-  if(!actor||window.isV39MapInputLocked?.()||isV39UnitWaiting(actor,state.timeline.turnNumber))return;
+  if(!actor||window.isV39MapInputLocked?.()||isV39UnitWaiting(actor,state.timeline.turnNumber))return {ok:false};
   const game=siteGame(state,actor);
   try{
     useCaveSite(game,site.id,actor.id);
@@ -303,7 +325,48 @@ function interactSite(site){
     window.appendV39ActivityLog?.(player.id,site.wall?"採取":"回復",message,{worldId:state.activeWorldId,siteId:site.id});
     window.pushV39Notification?.(message,{title:site.wall?"採取":"回復"});
     window.showV39TurnBanner?.(message);
-  }catch(error){window.showV39TurnBanner?.(error.message);}
+    return {ok:true,siteId:site.id};
+  }catch(error){window.showV39TurnBanner?.(error.message);return {ok:false,reason:error.message};}
 }
 
-window.addEventListener("v39:tile-selected",renderSiteActions);
+function inspectCaveGather(){
+  const map=window.__v39FieldRuntime?.mapData,actor=window.getV39SelectedSquadUnit?.();
+  if(!map?.isUnderground)return null;
+  const state=window.getV39GameState();
+  const nearby=new Set(actor?getHexNeighborCoords(map.w,map.h,actor.x,actor.y).map(tile=>tile.key):[]);
+  const hasTarget=map.caveSites?.some(row=>row.wall&&row.discovered&&row.remaining>0&&nearby.has(`${row.x},${row.y}`))||false;
+  const site=map.caveSites?.find(row=>row.wall&&row.discovered&&row.x===selectedGatherTile?.x&&row.y===selectedGatherTile?.y);
+  let reason="周囲1マスの鉱石・宝石を選択してください";
+  if(site&&actor){
+    const game=siteGame(state,actor);
+    reason=caveSiteUnavailable(game,site,game.party.find(unit=>unit.id===actor.id));
+    if(isV39UnitWaiting(actor,state.timeline.turnNumber))reason="このターンは待機済みです";
+    if(window.isV39MapInputLocked?.())reason="処理中です";
+  }
+  return {hasTarget,available:!!site&&!!actor&&!reason,reason,site,apCost:V39_CAVE_BALANCE.miningApCost};
+}
+
+window.inspectV39CaveGather=inspectCaveGather;
+window.gatherV39SelectedCaveSite=()=>{
+  const check=inspectCaveGather();
+  if(!check?.available){window.showV39TurnBanner?.(check?.reason);return {ok:false,reason:check?.reason};}
+  return interactSite(check.site);
+};
+window.addEventListener("v39:tile-selected",event=>{
+  selectedGatherTile=event.detail;renderSiteActions();
+  window.dispatchEvent(new CustomEvent("v39:cave-gather-target-changed"));
+  if(window.getV39AttackSession?.())return;
+  const map=window.__v39FieldRuntime?.mapData,actor=window.getV39SelectedSquadUnit?.();
+  if(!map?.isUnderground||!actor)return;
+  const site=map.caveSites?.find(row=>row.discovered&&row.remaining>0&&row.x===selectedGatherTile?.x&&row.y===selectedGatherTile?.y);
+  if(!site)return;
+  const nearby=getHexNeighborCoords(map.w,map.h,actor.x,actor.y).some(tile=>tile.x===site.x&&tile.y===site.y);
+  if(site.wall&&nearby)window.openV39ActionDetail?.("__system_gather__");
+  else if(!site.wall&&actor.x===site.x&&actor.y===site.y)window.openV39ActionDetail?.(`__cave_site_${site.id}`);
+});
+for(const type of ["v39:unit-selected","v39:field-layer-changed"]){
+  window.addEventListener(type,()=>{
+    selectedGatherTile=null;
+    window.dispatchEvent(new CustomEvent("v39:cave-gather-target-changed"));
+  });
+}

@@ -2,7 +2,7 @@ import {
   resolveUnitScoutValue,
   resolveUnitStealthValue
 } from "../composables/unitCoreUtils.js";
-import { V39_CAVE_BALANCE } from "./v39-gameplay-balance.js";
+import { V39_CAVE_BALANCE, V39_ATTACK_STEALTH_RECOVERY_TURNS } from "./v39-gameplay-balance.js";
 
 export const V39_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
 // ユニットは最低1マスを見通す。索敵75ごとに可視範囲を1マス広げる。
@@ -35,18 +35,26 @@ export function resolveV39UnitVisionRange(unit, mapData = null) {
     + (mapData?.isUnderground ? V39_CAVE_BALANCE.visionBonusTiles : 0);
 }
 
-export function resolveDetectionStealthValue(unit, { turnNumber = null } = {}) {
+export function resolveDetectionStealthRecoveryRate(unit, { turnNumber = null } = {}) {
   const currentTurn = Number(turnNumber);
   if (Number.isFinite(currentTurn) && currentTurn > 0
     && Math.floor(number(unit?.lastStealthBreakTurn, -1)) === Math.floor(currentTurn)) {
     return 0;
   }
-  return Math.max(
+  const attackTurn = number(unit?.lastStealthAttackTurn,
+    unit?.lastStealthBreakReason === "attack" ? number(unit?.lastStealthBreakTurn, -1) : -1);
+  if (!Number.isFinite(currentTurn) || currentTurn <= 0 || attackTurn < 1 || currentTurn < attackTurn) return 1;
+  return Math.min(1, Math.floor(currentTurn - attackTurn) / V39_ATTACK_STEALTH_RECOVERY_TURNS);
+}
+
+export function resolveDetectionStealthValue(unit, options = {}) {
+  const base = Math.max(
     0,
     roundTo1(resolveUnitStealthValue(unit)),
     roundTo1(number(unit?.status?.隠密)),
     roundTo1(number(unit?.隠密))
   );
+  return roundTo1(base * resolveDetectionStealthRecoveryRate(unit, options));
 }
 
 export function resolveDetectionGroupSense(units = [], options = {}) {

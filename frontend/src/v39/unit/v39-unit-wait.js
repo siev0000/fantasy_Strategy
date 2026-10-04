@@ -46,7 +46,7 @@ export function waitV39SelectedUnit() {
 }
 
 function install() {
-  const button = document.getElementById("mobileBattleWait");
+  const button = document.getElementById("mobileBattleWaitUse");
   if (!(button instanceof HTMLButtonElement)) {
     window.setTimeout(install, 50);
     return;

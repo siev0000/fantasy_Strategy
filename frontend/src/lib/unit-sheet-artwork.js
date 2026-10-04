@@ -88,7 +88,7 @@ export function resolveFactionUnitSheetFrame(unit = {}) {
 
   if (!slot || !sheet) return null;
 
-  const sheetIndex = Number(slot.sheetIndex);
+  const sheetIndex = unit.画像番号 != null ? Number(unit.画像番号) - 1 : Number(slot.sheetIndex);
   const maxFrames = FACTION_UNIT_ARTWORK_SHEET_COLUMNS * FACTION_UNIT_ARTWORK_SHEET_ROWS;
   if (!Number.isInteger(sheetIndex) || sheetIndex < 0 || sheetIndex >= maxFrames) return null;
 

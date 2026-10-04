@@ -960,7 +960,7 @@ function performAttack(target, session = attackSession, options = {}) {
           ...guardStatePatch(unit, damage, guardTarget ? grantedGuard : 0),
           state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
           lastUsedAttack:text(session.skillRow?.名前),
-          ...(own && !supportSkill ? { lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"attack" } : {}),
+          ...(own && !supportSkill ? { lastStealthAttackTurn:stealthBreakTurn, lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"attack" } : {}),
           ...deathPatch(unit, hp)
         };
       }),
@@ -993,6 +993,7 @@ function performAttack(target, session = attackSession, options = {}) {
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
     detail:{
       summary,
+      attackerName:text(attacker.name),
       attackerId:text(attacker.id),
       skillName:text(session.skillRow.名前),
       apCost,
@@ -1124,6 +1125,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
         currentAp:ap,
         actionPoint:ap,
         lastUsedAttack:text(skillRow?.名前),
+        lastStealthAttackTurn:stealthBreakTurn,
         lastStealthBreakTurn:stealthBreakTurn,
         lastStealthBreakReason:"attack",
         ...guardStatePatch(enemy, null, grantedGuard)
@@ -1153,7 +1155,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
-  window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
+  window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerName:`${text(attacker.name)} Lv${integer(attacker.level, 1)}`, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
   if (!isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
     detail:{ attackerSide:"enemy", targetSide:enemyTarget ? "enemy" : villageTarget ? "neutral-village" : "player", attackerId:text(attacker.id), targetUnitId:text(targetUnit.id), target:{ x:targetUnit.x, y:targetUnit.y }, skillRow, entries:combatLog }
   }));
@@ -1175,7 +1177,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
     : enemy);
   const neutralVillages = replaceNeutralVillageGuards(state, (guard, sourceVillage) => (
     text(sourceVillage?.id) === text(villageId) && text(guard?.id) === text(guardId)
-      ? { ...guard, lastCombatTurn:currentV39TurnNumber() }
+      ? { ...guard, lastCombatTurn:currentV39TurnNumber(), lastStealthAttackTurn:currentV39TurnNumber(), lastStealthBreakTurn:currentV39TurnNumber(), lastStealthBreakReason:"attack" }
       : guard
   ));
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
@@ -1191,7 +1193,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
   const hits = (damage.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss");
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{
     summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${damage.total}${hits.length ? ` (${hits.join(",")})` : ""}`,
-    attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:0, target:{ x:target.x, y:target.y }, entries:[entry], villageAction:true
+    attackerName:text(attacker.name), attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:0, target:{ x:target.x, y:target.y }, entries:[entry], villageAction:true
   } }));
   window.dispatchEvent(new CustomEvent("v39:attack-resolved", { detail:{
     attackerSide:"neutral-village", targetSide:"enemy", attackerId:text(attacker.id), targetUnitId:text(target.id), target:{ x:target.x, y:target.y }, skillRow, entries:[entry]
