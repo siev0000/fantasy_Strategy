@@ -144,7 +144,7 @@ function equipmentMagicAp(item) {
 
 export function resolveEquipmentMagicApCost(unit) {
   const items = Array.isArray(unit?.equipment) ? unit.equipment : [];
-  return Math.max(0, items.reduce((sum, item) => sum + equipmentMagicAp(item), 0));
+  return items.reduce((sum, item) => sum + equipmentMagicAp(item), 0);
 }
 
 export function resolveAttackApCost(skillRow, attacker = null) {
