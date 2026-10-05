@@ -1,0 +1,79 @@
+/*
+ * Keep action/technique entries on the v39 dark palette in desktop browsers.
+ * Some action entries are native <button> elements while others are role=button
+ * containers. Explicitly normalize the native controls so desktop UA/theme styles
+ * cannot paint only those entries with a light/white button face.
+ */
+
+#footSquad .technique-card.technique-select-card,
+#footSquad button.technique-card.technique-select-card {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  background-color: #10181c !important;
+  background-image: linear-gradient(180deg, #162126, #10181c) !important;
+  color: #e8efec !important;
+  -webkit-text-fill-color: #e8efec !important;
+  border-color: #46565d !important;
+}
+
+#footSquad .technique-card.technique-select-card.active,
+#footSquad .technique-card.technique-select-card.is-expanded,
+#footSquad .technique-card.action-technique.active,
+#footSquad .system-action-card.active {
+  background-color: #1b1a14 !important;
+  background-image: linear-gradient(180deg, #2b291c, #1b1a14) !important;
+  color: #eff8f6 !important;
+  -webkit-text-fill-color: #eff8f6 !important;
+}
+
+#footSquad .technique-card.technique-select-card:focus,
+#footSquad .technique-card.technique-select-card:focus-visible,
+#footSquad .technique-card.technique-select-card:hover {
+  background-color: #132126 !important;
+  background-image: linear-gradient(180deg, #1a292e, #111b1f) !important;
+  color: #eef6f4 !important;
+  -webkit-text-fill-color: #eef6f4 !important;
+}
+
+#footSquad .technique-card.technique-select-card.active:hover,
+#footSquad .technique-card.technique-select-card.is-expanded:hover,
+#footSquad .technique-card.action-technique.active:hover,
+#footSquad .system-action-card.active:hover {
+  background-color: #1b1a14 !important;
+  background-image: linear-gradient(180deg, #2b291c, #1b1a14) !important;
+}
+
+/* Legacy/alternate footer battle panel can still be mounted on desktop layouts. */
+.fs-panel .fs-actions button,
+.fs-panel .fs-tech button,
+.fs-panel .fs-enemies button,
+.fs-panel .fs-battle-side > button {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  color: #edf3f2 !important;
+  -webkit-text-fill-color: #edf3f2 !important;
+}
+
+.fs-panel .fs-actions button {
+  background-color: #173139 !important;
+}
+
+.fs-panel .fs-actions button.danger {
+  background-color: #472426 !important;
+}
+
+.fs-panel .fs-tech button {
+  background-color: #121d22 !important;
+}
+
+.fs-panel .fs-tech button.active {
+  background-color: #292617 !important;
+}
+
+.fs-panel .fs-enemies button {
+  background-color: #24181b !important;
+}
+
+.fs-panel .fs-battle-side > button.primary {
+  background-color: #6c5727 !important;
+}
