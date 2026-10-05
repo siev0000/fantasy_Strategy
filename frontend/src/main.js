@@ -7,6 +7,7 @@ import "@fontsource/noto-color-emoji/400.css";
 import "./styles.css";
 import "./v39/ui/v39-field-theme.css";
 import "./fullscreen-game-shell.css";
+import "./v39/ui/v39-action-card-pc-fix.css";
 
 installResponsivePhaserRuntime();
 createApp(App).mount("#app");
