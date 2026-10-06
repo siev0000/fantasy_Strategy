@@ -29,6 +29,7 @@ import {
   currentV39TurnNumber,
   parseV39TurnCount,
   remainingV39Turns,
+  resolveV39SkillCooldownTurns,
   resolveV39DeadlineTurn
 } from "../../lib/v39-turn-timing.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
@@ -174,7 +175,7 @@ function castDurationTurns(skillRow) {
   return text(skillRow?.攻撃手段) === "魔法" ? Math.max(DEFAULT_MAGIC_CAST_TURNS, configured) : configured;
 }
 
-const cooldownDurationTurns = skillRow => parseV39TurnCount(skillRow?.CT, 0);
+const cooldownDurationTurns = resolveV39SkillCooldownTurns;
 const effectDurationTurns = skillRow => parseV39TurnCount(skillRow?.効果時間, 0);
 
 function unitRuntimeState(faction, unit, skillRow = null, turnNumber = currentV39TurnNumber()) {
@@ -424,7 +425,7 @@ function unavailableAttackReason(skillName) {
   if (currentAp(unit) < resolveAttackApCost(row, unit)) return "APが不足しています";
   const timing = unitRuntimeState(faction, unit, row);
   if (timing.pending) return "別の行動を発動待機中です";
-  if (timing.cooldownRemainingTurns > 0) return `CT中です。残り${timing.cooldownRemainingTurns}ターン`;
+  if (timing.cooldownRemainingTurns > 0) return parseV39TurnCount(row.CT)<=1?"このターンは使用済みです":`CT中です。残り${timing.cooldownRemainingTurns}ターン`;
   return "現在は使用できません";
 }
 
@@ -469,6 +470,8 @@ function renderActionPanel() {
     button.classList.toggle("unavailable", disabled);
     button.setAttribute("aria-pressed", String(selected));
     button.setAttribute("aria-disabled", String(disabled));
+    if(timing.cooldownRemainingTurns>0)button.title=parseV39TurnCount(row?.CT)<=1?"このターンは使用済みです":`CT中：残り${timing.cooldownRemainingTurns}ターン`;
+    else button.removeAttribute("title");
   }
 
 }
@@ -502,7 +505,7 @@ function startAttack() {
     return false;
   }
   if (timing.cooldownRemainingTurns > 0) {
-    showToast(`CT中です。残り${timing.cooldownRemainingTurns}ターン`);
+    showToast(parseV39TurnCount(skillRow.CT)<=1?"このターンは使用済みです":`CT中です。残り${timing.cooldownRemainingTurns}ターン`);
     return false;
   }
   const range = resolveAttackRange(skillRow, unit, ctx.data);
@@ -759,6 +762,10 @@ function performAttack(target, session = attackSession, options = {}) {
     return false;
   }
   const targetKey = coordKey(target.x, target.y);
+  if (!options.isCounter && unitRuntimeState(player.factionState, attacker, session.skillRow).cooldownRemainingTurns > 0) {
+    showToast("使用済み、またはCT中のスキルです");
+    return false;
+  }
   const rangeTiles = session.rangeTiles instanceof Map
     ? session.rangeTiles
     : tilesWithin(ctx.data, attacker, resolveAttackRange(session.skillRow, attacker, ctx.data));
@@ -1022,6 +1029,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   const villageTarget = neutralVillageGuards(state).find((unit) => text(unit?.id) === text(targetUnitId));
   const targetUnit = playerTarget || enemyTarget || villageTarget;
   if (!ctx || !state || !attacker || !targetUnit || number(attacker?.hp, attacker?.currentHp) <= 0 || number(targetUnit?.hp, targetUnit?.currentHp) <= 0) return false;
+  if (!isCounter && remainingV39Turns(state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(attacker.id)]?.[text(skillRow?.名前)], currentV39TurnNumber(state)) > 0) return false;
   const range = resolveAttackRange(skillRow, attacker, ctx.data);
   if (!tilesWithin(ctx.data, attacker, range).has(coordKey(targetUnit.x, targetUnit.y))) return false;
   const apCost = resolveAttackApCost(skillRow, attacker);
@@ -1151,7 +1159,12 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       lastNestCombatTurn:currentV39TurnNumber(state)
     } : nest)
     : state.enemyNests;
-  window.setV39GameState({ players, enemies, neutralVillages, enemyNests }, { reason:"enemy-combat-attack" });
+  const runtime=state.enemyCombatRuntime||{};
+  const enemyCombatRuntime=isCounter?runtime:{...runtime,cooldownsByEnemyId:{...runtime.cooldownsByEnemyId,[text(attacker.id)]:{
+    ...runtime.cooldownsByEnemyId?.[text(attacker.id)],
+    [text(skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state),cooldownDurationTurns(skillRow))
+  }}};
+  window.setV39GameState({ players, enemies, neutralVillages, enemyNests, enemyCombatRuntime }, { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
@@ -1169,6 +1182,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
   const attacker = (village?.defenseUnits || []).find(unit => text(unit?.id) === text(guardId));
   const target = state?.enemies?.find(enemy => text(enemy?.id) === text(targetEnemyId));
   if (!ctx || !state || !village || !attacker || !target || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
+  if(remainingV39Turns(attacker.skillCooldownsByName?.[text(skillRow?.名前)],currentV39TurnNumber(state))>0)return false;
   if (getHexDistance(attacker, target) > resolveAttackRange(skillRow, attacker, ctx.data)) return false;
   const damage = resolveAppliedAttackDamage({ attacker, target, skillRow });
   const beforeHp = Math.max(0, number(target?.hp, target?.currentHp));
@@ -1177,7 +1191,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
     : enemy);
   const neutralVillages = replaceNeutralVillageGuards(state, (guard, sourceVillage) => (
     text(sourceVillage?.id) === text(villageId) && text(guard?.id) === text(guardId)
-      ? { ...guard, lastCombatTurn:currentV39TurnNumber(), lastStealthAttackTurn:currentV39TurnNumber(), lastStealthBreakTurn:currentV39TurnNumber(), lastStealthBreakReason:"attack" }
+      ? { ...guard, skillCooldownsByName:{...guard.skillCooldownsByName,[text(skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state),cooldownDurationTurns(skillRow))}, lastCombatTurn:currentV39TurnNumber(), lastStealthAttackTurn:currentV39TurnNumber(), lastStealthBreakTurn:currentV39TurnNumber(), lastStealthBreakReason:"attack" }
       : guard
   ));
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({

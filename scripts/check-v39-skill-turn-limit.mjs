@@ -1,0 +1,43 @@
+import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
+import { chromium } from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs";
+mkdirSync("output/web-game/skill-turn-limit",{recursive:true});
+const browser=await chromium.launch(),page=await browser.newPage(),errors=[];
+page.on("pageerror",error=>errors.push(String(error)));
+try{
+  await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+  await page.waitForFunction(()=>typeof window.executeV39FactionCombatAction==="function");
+  await page.locator("[data-v39-cave-test]").click();
+  await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
+  await page.getByRole("button",{name:"探索開始",exact:true}).click();
+  await page.waitForTimeout(600);
+  const report=await page.evaluate(async()=>{
+    const check=(ok,msg)=>{if(!ok)throw new Error(msg);};
+    const map=window.__v39FieldRuntime.mapData;
+    map.grid=map.grid.map(row=>row.map(()=>"洞窟"));map.heightLevelMap=map.grid.map(row=>row.map(()=>0));map.specialMap=[];map.lavaMap=[];
+    window.__v39SuppressCombatEffects=true;
+    const state=window.getV39GameState(),player=state.players[0],base=player.factionState.units[0];
+    const skill={名前:"ターン制限試験A",行動:"A",威力:1,判定:"攻撃",AP消費:0,射程:5,攻撃手段:"弓"};
+    const other={...skill,名前:"ターン制限試験B"},long={...skill,名前:"長CT試験",CT:3};
+    const units=[{...base,x:10,y:10},{...base,id:"second-test-unit",x:10,y:11}].map(unit=>({...unit,hp:1000,maxHp:1000,ap:100,currentAp:100,techniques:[skill,other,long].map(source=>({name:source.名前,source}))}));
+    const enemy={id:"skill-target",name:"試験対象",x:11,y:10,hp:100000,currentHp:100000,maxHp:100000,techniques:[],equipment:[],status:{防御:0,精神:0}};
+    window.setV39GameState({enemies:[enemy],enemyNests:[],enemySquads:[],neutralVillages:[],settlements:[],players:[{...player,factionState:{...player.factionState,units,selectedUnitId:units[0].id,villagePlacementMode:false,combatRuntime:{}}}]});
+    const attack=(row=skill,id=units[0].id)=>window.executeV39FactionCombatAction({playerId:player.id,attackerId:id,targetUnitId:enemy.id,skillRow:row});
+    check(attack(),"first skill use");
+    const before=window.getV39GameState().enemies[0].hp;
+    check(!attack(),"second same skill rejected");check(window.getV39GameState().enemies[0].hp===before,"rejected action has no damage");
+    check(attack(other),"other skill allowed");check(attack(skill,units[1].id),"another unit can use same skill");
+    check(attack(long),"long CT starts");
+    window.importV39SaveJson(window.exportV39SaveJson(0));
+    await new Promise(resolve=>setTimeout(resolve,500));
+    check(!attack(),"same turn restriction survives load");
+    const turn=window.getV39GameState().timeline.turnNumber;
+    window.updateV39TimelineState({turnNumber:turn+1});
+    check(attack(),`next turn skill usable ${JSON.stringify({timeline:window.getV39TimelineState(),runtime:window.getV39ActiveFactionState().combatRuntime,units:window.getV39ActiveFactionState().units.map(row=>({id:row.id,x:row.x,y:row.y,hp:row.hp,worldId:row.worldId})),enemies:window.getV39GameState().enemies.map(row=>({id:row.id,x:row.x,y:row.y,hp:row.hp}))})}`);check(!attack(long),"long CT not shortened");
+    window.updateV39TimelineState({turnNumber:turn+3});
+    check(attack(long),"long CT expires");
+    return {sameTurn:true,separateSkill:true,separateUnit:true,saveLoad:true,nextTurn:true,longCT:true};
+  });
+  await page.screenshot({path:"output/web-game/skill-turn-limit/result.png"});
+  assert.deepEqual(errors,[]);console.log("PASS",report);
+}finally{await browser.close();}

@@ -24,6 +24,11 @@ export function currentV39TurnNumber(state = { timeline:window.getV39TimelineSta
   return Math.max(1, Math.floor(finiteNumber(state?.timeline?.turnNumber, 1)));
 }
 
+// 同じユニットの同名スキルは1ターン1回。設定CTが長ければそちらを優先する。
+export function resolveV39SkillCooldownTurns(skillRow) {
+  return Math.max(1, parseV39TurnCount(skillRow?.CT));
+}
+
 export function resolveV39DeadlineTurn(startTurn, duration) {
   return currentV39TurnNumber({ timeline:{ turnNumber:startTurn } }) + parseV39TurnCount(duration);
 }

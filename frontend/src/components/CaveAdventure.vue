@@ -12,7 +12,7 @@ const categoryOptions=Object.freeze([
   Object.freeze({key:"demon",name:"魔族",partySize:1,startLevel:17})
 ]);
 const defaultClasses=["ファイター","アーチャー","クレリック"];
-const startCategory=ref("human"),activeProfileIndex=ref(0),seed=ref("expedition-1"),templateId=ref("random"),error=ref("");
+const startCategory=ref("human"),activeProfileIndex=ref(0),seed=ref(""),templateId=ref("random"),error=ref("");
 const hasUnits=!!window.getV39ActiveFactionState?.()?.units?.length;
 
 function categoryRule(key=startCategory.value){return categoryOptions.find(row=>row.key===key)||categoryOptions[0];}
@@ -87,7 +87,7 @@ function start(){
           </fieldset>
         </div>
       </template>
-      <div class="cave-settings"><label>形状<select v-model="templateId"><option value="random">ランダム</option><option v-for="row in V39_CAVE_TEMPLATES" :key="row.id" :value="row.id">{{ row.名前 }}</option></select></label><label>シード<input v-model="seed" required maxlength="100"></label></div>
+      <div class="cave-settings"><label>形状<select v-model="templateId"><option value="random">ランダム</option><option v-for="row in V39_CAVE_TEMPLATES" :key="row.id" :value="row.id">{{ row.名前 }}</option></select></label><label>シード<input v-model="seed" placeholder="空欄で毎回ランダム" maxlength="100"></label></div>
       <div class="cave-start-bar"><p v-if="error" role="alert">{{error}}</p><button class="cave-start-button" type="submit">探索開始</button></div>
     </form>
   </div>

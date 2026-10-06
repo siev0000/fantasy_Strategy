@@ -5,7 +5,7 @@ import {
   isAliveEnemyAiUnit,
   planNextEnemyAction
 } from "../../lib/v39-enemy-ai-planner.js";
-import { currentV39TurnNumber, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "../../lib/v39-turn-timing.js";
+import { currentV39TurnNumber, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn, resolveV39SkillCooldownTurns } from "../../lib/v39-turn-timing.js";
 import { FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import { updateV39TurnLoading } from "../ui/v39-turn-loading.js";
 import { prepareV39EnemyExploration } from "../../lib/v39-enemy-exploration.js";
@@ -90,7 +90,7 @@ function appendEnemyAiDecisionLog(enemy, inspection, overrides = {}) {
 }
 
 function setEnemyCooldown(enemyId, skillRow, turnNumber) {
-  const duration = parseV39TurnCount(skillRow?.CT);
+  const duration = resolveV39SkillCooldownTurns(skillRow);
   if (duration <= 0) return;
   const state = enemyTurnState();
   const runtime = state?.enemyCombatRuntime || {};
@@ -236,7 +236,7 @@ function resolvePendingAction(turnNumber, presentationEvents) {
     cooldownsByEnemyId:{ ...(latest.enemyCombatRuntime?.cooldownsByEnemyId || {}) }
   };
   delete runtime.pendingActionsByEnemyId[text(pending.enemyId)];
-  const cooldown = parseV39TurnCount(pending?.skillRow?.CT);
+  const cooldown = resolveV39SkillCooldownTurns(pending?.skillRow);
   if (result.resolved && cooldown > 0) runtime.cooldownsByEnemyId[text(pending.enemyId)] = {
     ...(runtime.cooldownsByEnemyId[text(pending.enemyId)] || {}),
     [text(pending.skillName)]:resolveV39DeadlineTurn(turnNumber, cooldown)

@@ -1,5 +1,5 @@
 import { createCaveCharacter, generateCaveFloor, useCaveSite, caveSiteUnavailable } from "../../lib/v39-cave-adventure.js";
-import { findV39CavePath } from "../../lib/v39-cave-generator.js";
+import { findV39CavePath, createV39CaveSeed } from "../../lib/v39-cave-generator.js";
 import { createPlayerRecord } from "../../lib/player-state.js";
 import { addV39CargoToFactionUnit } from "../../lib/v39-logistics-state.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
@@ -53,6 +53,8 @@ function createWorld(options){
   map.caveSites=sites;
   map.caveFloor=options.floor||1;
   map.caveSeed=options.seed||"expedition-1";
+  // 抽選結果のtemplateIdとは別に、階層ごとの抽選/指定設定を保持する。
+  map.caveTemplateMode=options.templateId||"random";
   map.isUnderground=true;
   map.heightLevelMap=map.grid.map(row=>row.map(()=>0));
   map.specialMap=map.grid.map(row=>row.map(()=>""));
@@ -168,7 +170,7 @@ export function descendV39Cave(){
   const map=window.__v39FieldRuntime?.mapData,unit=window.getV39SelectedSquadUnit?.();
   const exit=map?.stairsDown||map?.entrances?.[1];
   if(!map?.isUnderground||unit?.x!==exit?.x||unit?.y!==exit?.y)throw new Error("次の階層への入口に移動してください。");
-  return enterV39Cave({seed:map.caveSeed,templateId:map.templateId,floor:map.caveFloor+1,caveTest:map.caveTest===true,parentWorldId:window.getV39GameState().activeWorldId,parentExit:{x:exit.x,y:exit.y}});
+  return enterV39Cave({seed:map.caveSeed,templateId:map.caveTemplateMode||map.templateId,floor:map.caveFloor+1,caveTest:map.caveTest===true,parentWorldId:window.getV39GameState().activeWorldId,parentExit:{x:exit.x,y:exit.y}});
 }
 
 // 開始画面のテストでも作成直後から通常ゲームのユニットとして登録する。
@@ -179,7 +181,7 @@ export function startV39CaveTest(profiles,options={}){
     const player=createPlayerRecord({id:"player-1",ready:true,factionState:{units,squads:[{id:"cave-party",label:"探索部隊",unitIds:units.map(unit=>unit.id)}],selectedUnitId:units[0].id,villagePlacementMode:false}});
     window.setV39GameState({players:[player],activePlayerId:player.id},{reason:"cave-test-characters-created"});
   }
-  return enterV39Cave({...options,caveTest:true});
+  return enterV39Cave({...options,seed:String(options.seed||"").trim()||createV39CaveSeed(),caveTest:true});
 }
 
 function installActions(){

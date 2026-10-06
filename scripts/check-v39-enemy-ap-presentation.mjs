@@ -88,8 +88,8 @@ try {
       moveCount:moves.length, shown, hidden, tweenCount,
       aiNames:Object.values(attackState.enemyCombatRuntime.decisionLogsByFactionId).flat().map(log => log.actorName) };
   });
-  assert.equal(report.attackAp, 10, JSON.stringify(report));
-  assert.equal(report.attackEvents, 3);
+  assert.equal(report.attackAp, 70, JSON.stringify(report));
+  assert.equal(report.attackEvents, 1);
   assert.ok(report.logs.every(log => log.includes("Lv15")));
   assert.ok(report.aiNames.every(name => name.includes("Lv15")));
   assert.equal(report.freeAttackCount, 1);
@@ -97,7 +97,7 @@ try {
   assert.equal(report.insufficientAttackCount, 0);
   assert.equal(report.pendingCount, 1);
   assert.ok(report.fallback.fallbackUsed);
-  assert.equal(report.fallbackAp, 10);
+  assert.equal(report.fallbackAp, 70);
   assert.equal(report.deadActions, 0);
   assert.ok(report.moveCount > 1 && report.moveAp === 0, JSON.stringify(report));
   assert.equal(report.shown, report.moveCount);

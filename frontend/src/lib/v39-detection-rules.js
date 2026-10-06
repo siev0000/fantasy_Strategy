@@ -85,7 +85,8 @@ export function resolveDetectionGroupSenseFromValues(scoutValues = [], stealthVa
 
 export function resolveEffectiveScoutAtDistance(scout, distance) {
   const penalty = Math.max(0, Math.floor(number(distance)) - 1) * V39_SCOUT_DISTANCE_DECAY_PER_TILE;
-  return roundTo1(number(scout) - penalty);
+  // 視界内で隠密0の対象まで見失わないよう、距離減衰後も索敵の下限は0。
+  return Math.max(0, roundTo1(number(scout) - penalty));
 }
 
 export function isDetectedByScout({ scout = 0, stealth = 0, distance = 0, inRange = true } = {}) {

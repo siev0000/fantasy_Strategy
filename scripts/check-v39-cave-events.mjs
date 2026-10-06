@@ -86,6 +86,7 @@ try{
       const gold=c().gold;check(!window.performV39CaveEventAction("claim","gem").ok&&c().gold===gold,"reward once");
       const base=window.getV39GameState().enemies[0];window.__v39SuppressCombatEffects=true;
       for(let i=0;i<3;i++){
+        if(i>0)window.updateV39TimelineState({turnNumber:window.getV39TimelineState().turnNumber+1});
         const enemy={...base,id:`event-kill-${i}`,race:map.caveHabitatRace,x:actor.x+1,y:actor.y,hp:1,currentHp:1,maxHp:1};
         map.grid[enemy.y][enemy.x]="洞窟";
         window.setV39GameState({enemies:[enemy]}); const faction=window.getV39ActiveFactionState(); window.updateV39ActiveFactionState({units:faction.units.map(row=>row.id===actor.id?{...row,ap:100,currentAp:100,status:{...row.status,命中:99999}}:row)});

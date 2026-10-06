@@ -4,6 +4,11 @@ import { V39_CAVE_BALANCE } from "./v39-gameplay-balance.js";
 
 export const V39_CAVE_TEMPLATES = templates;
 
+export function createV39CaveSeed() {
+  const values=globalThis.crypto.getRandomValues(new Uint32Array(4));
+  return `cave-${Array.from(values,value=>value.toString(16).padStart(8,"0")).join("-")}`;
+}
+
 function randomFor(seed) {
   let state = 2166136261;
   for (const char of String(seed)) state = Math.imul(state ^ char.charCodeAt(0), 16777619);
