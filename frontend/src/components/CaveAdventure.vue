@@ -2,14 +2,14 @@
 import {computed,ref,watch} from "vue";
 import {V39_CAVE_TEMPLATES} from "../lib/v39-cave-generator.js";
 import {caveRaceOptions,caveClassOptions} from "../lib/v39-cave-adventure.js";
-import {resolveV39UnitInitialLevel,resolveV39UnitRaceCategory} from "../lib/v39-unit-experience.js";
+import {resolveV39UnitRaceCategory} from "../lib/v39-unit-experience.js";
 import {startV39CaveTest} from "../v39/core/v39-cave-world.js";
 
 const emit=defineEmits(["started"]);
 const categoryOptions=Object.freeze([
-  Object.freeze({key:"human",name:"人族",partySize:3}),
-  Object.freeze({key:"demi",name:"亜人",partySize:2}),
-  Object.freeze({key:"demon",name:"魔族",partySize:1})
+  Object.freeze({key:"human",name:"人族",partySize:3,startLevel:10}),
+  Object.freeze({key:"demi",name:"亜人",partySize:2,startLevel:13}),
+  Object.freeze({key:"demon",name:"魔族",partySize:1,startLevel:17})
 ]);
 const defaultClasses=["ファイター","アーチャー","クレリック"];
 const startCategory=ref("human"),activeProfileIndex=ref(0),seed=ref("expedition-1"),templateId=ref("random"),error=ref("");
@@ -27,8 +27,8 @@ function buildProfiles(key=startCategory.value){
       name:`探索者${index+1}`,
       race:race.key,
       className:caveClassOptions.find(row=>row.名前===preferredClass)?.名前||caveClassOptions[0]?.名前||"",
-      // 洞窟開始Lvは別途調整する。現段階では通常ユニット初期Lvを入力初期値として使うだけで固定しない。
-      level:resolveV39UnitInitialLevel(race.key)
+      // 洞窟へ来られる段階を想定したテスト開始値。最終調整前なので画面から変更できる。
+      level:rule.startLevel
     };
   });
 }
@@ -59,16 +59,16 @@ function start(){
         <div class="cave-category-section">
           <div class="cave-section-head">
             <strong>探索する種族系統</strong>
-            <small>系統で開始人数が決まります</small>
+            <small>系統で開始人数と基準Lvが決まります</small>
           </div>
           <div class="cave-category-grid" role="radiogroup" aria-label="洞窟探索の種族系統">
             <button v-for="row in categoryOptions" :key="row.key" type="button" role="radio"
               :aria-checked="startCategory===row.key" :class="['cave-category-button',{active:startCategory===row.key}]" @click="selectCategory(row.key)">
               <strong>{{ row.name }}</strong>
-              <span>{{ row.partySize }}人</span>
+              <span>{{ row.partySize }}人 / Lv{{ row.startLevel }}</span>
             </button>
           </div>
-          <p class="cave-category-summary"><strong>{{ activeRule.name }}</strong>で開始：{{ activeRule.partySize }}人</p>
+          <p class="cave-category-summary"><strong>{{ activeRule.name }}</strong>で開始：{{ activeRule.partySize }}人 / 基準Lv{{ activeRule.startLevel }}</p>
         </div>
 
         <div class="cave-unit-tabs" role="tablist" aria-label="洞窟探索ユニット">
