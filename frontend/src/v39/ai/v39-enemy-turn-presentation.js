@@ -28,8 +28,11 @@ function visibleEnemyEvent(event, livingIds) {
   const enemyId = String(event?.enemyId || event?.attackerId || "").trim();
   // 計算後に死亡した敵の過去の移動演出で、死体を動かさない。
   if (event?.type === "move" && !livingIds.has(enemyId)) return false;
-  if (enemyId && window.isV39EntityDetected?.(enemyId) === false) return false;
-  return event?.visible === true || visibleTile(event?.to) || visibleTile(event?.target) || visibleTile(event?.from);
+  const visibleAttackTarget = event?.type === "attack" && visibleTile(event?.target);
+  // 移動などは未発見の敵を見せない。攻撃だけは、攻撃先が視界内なら
+  // 攻撃者が未発見でも着弾エフェクトを描画し、被攻撃を視覚的に伝える。
+  if (enemyId && window.isV39EntityDetected?.(enemyId) === false && !visibleAttackTarget) return false;
+  return event?.visible === true || visibleAttackTarget || visibleTile(event?.to) || visibleTile(event?.target) || visibleTile(event?.from);
 }
 
 async function focusTile(tile, previousTile) {
