@@ -18,6 +18,7 @@ import "../world/v39-world-population.js";
 import "../world/v39-natural-events.js";
 import "../core/v39-activity-log.js";
 import "../combat/v39-effect-player.js";
+import "../combat/v39-deferred-effect-presentation.js";
 import "../combat/v39-combat.js";
 import "../unit/v39-unit-wait.js";
 import "../combat/v39-combat-feedback.js";
