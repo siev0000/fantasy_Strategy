@@ -491,6 +491,9 @@ export function createV39EventEnemy({ id, name, race, className, level, x, y, me
     territoryCenterY:null,
     territoryRadius:null,
     sourceDefinitionId:text(metadata?.sourceDefinitionId),
+    groupId:text(metadata?.groupId),
+    spawnForm:text(metadata?.spawnForm, "単独"),
+    encounterGroupSize:Math.max(1,integer(metadata?.encounterGroupSize,1)),
     naturalSource:text(metadata?.naturalSource),
     naturalSpawnTurn:integer(metadata?.naturalSpawnTurn),
     isUndead:metadata?.isUndead === true

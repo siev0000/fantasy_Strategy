@@ -28,13 +28,14 @@ try {
   });
   await page.addStyleTag({content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}"});
   await page.locator('#mobileBattleGather').click();
+  await page.locator('#mobileBattleGatherUse').click();
   const snapshot=()=>page.evaluate(()=>{
     const state=window.getV39GameState(),faction=state.players.find(row=>row.id===state.activePlayerId).factionState;
     return {unit:faction.units[0],cargo:faction.squads[0].cargo,individual:faction.squads[0].cargoByUnitId,
       stock:faction.settlements[0].materialStockByType,gathered:faction.exploration.gatheredAtTurnByTile};
   });
   const forest=await snapshot();
-  assert.deepEqual(forest.cargo.resourcesByType,{木材:10,黒木:7,特木:3});
+  assert.deepEqual(forest.cargo.resourcesByType,{木材:10});
   assert.equal(forest.unit.ap,0);assert.equal(forest.stock.木材,50);assert.equal(forest.gathered['5,5'],1);
   await page.evaluate(()=>{
     const state=window.getV39GameState();
@@ -75,7 +76,7 @@ try {
     window.__v39FieldRuntime.mapData.grid[5][5]="森";
   });
   assert.equal(await page.evaluate(()=>window.gatherV39SelectedUnit().ok),true);
-  assert.deepEqual((await snapshot()).individual['採取軍'].resourcesByType,{木材:10,黒木:7,特木:3});
+  assert.deepEqual((await snapshot()).individual['採取軍'].resourcesByType,{木材:10});
   await page.evaluate(()=>{
     const state=window.getV39GameState();window.setV39GameState({timeline:{...state.timeline,turnNumber:4},
       players:state.players.map(player=>({...player,factionState:{...player.factionState,

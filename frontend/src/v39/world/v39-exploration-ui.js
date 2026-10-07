@@ -138,6 +138,7 @@ function renderGatherHint(unit, available) {
 }
 
 function runGather() {
+  if(window.isV39MapInputLocked?.())return {ok:false,reason:"処理中です"};
   window.cancelV39SelectedUnitMove?.("gather-command");
   window.cancelV39SelectedUnitAttack?.("gather-command");
   if(window.__v39FieldRuntime?.mapData?.isUnderground)return window.gatherV39SelectedCaveSite?.();
@@ -154,6 +155,7 @@ function runGather() {
 }
 
 function runSurvey(tile = selectedTile, allowRecovery = true) {
+  if(window.isV39MapInputLocked?.())return {ok:false,reason:"処理中です"};
   window.cancelV39SelectedUnitMove?.("survey-command");
   window.cancelV39SelectedUnitAttack?.("survey-command");
   const { state, player, unit } = context();

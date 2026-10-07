@@ -51,7 +51,7 @@ function addVisionRange(mapData, sourceX, sourceY, range, visible, detectionByTi
     const previous = Number(detectionByTile.get(key));
     detectionByTile.set(key, Math.max(
       Number.isFinite(previous) ? previous : Number.NEGATIVE_INFINITY,
-      resolveEffectiveScoutAtDistance(scoutValue, current.distance)
+      resolveEffectiveScoutAtDistance(scoutValue, current.distance, mapData)
     ));
     if (current.distance >= maxDistance) continue;
     for (const neighbor of getHexNeighborCoords(width, height, current.x, current.y, mapData?.worldWrapEnabled === true)) {
@@ -76,7 +76,7 @@ export function collectV39FactionVision(state, playerId, mapData) {
   for (const units of unitsByTile(faction.units).values()) {
     const lead = units[0];
     const sense = resolveDetectionGroupSense(units);
-    const range = units.reduce((max, unit) => Math.max(max, resolveV39UnitVisionRange(unit)), V39_UNIT_VISION_BASE_RANGE);
+    const range = units.reduce((max, unit) => Math.max(max, resolveV39UnitVisionRange(unit, mapData)), V39_UNIT_VISION_BASE_RANGE);
     addVisionRange(mapData, lead.x, lead.y, range, visible, detectionByTile, sense.scout);
   }
   const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));

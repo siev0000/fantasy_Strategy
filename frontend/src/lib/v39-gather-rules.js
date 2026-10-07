@@ -4,6 +4,7 @@ import { ECONOMY_GAIN_SCALE } from "./v39-economy-rules.js";
 import { getV39DiscoveredFeature } from "./v39-exploration-rules.js";
 import { resolveV39TileTerrainName } from "./v39-terrain-traversal.js";
 import { isV39UnitWaiting } from "./v39-unit-action-rules.js";
+import { isV39UnitInWorld } from "./v39-cave-spatial-rules.js";
 import { addV39CargoToFactionUnit, getV39SquadUnitIds, normalizeV39Cargo,
   resolveV39UnitCargoCapacity, resolveV39CargoLoad, fitV39CargoToCapacity, isV39CargoEmpty } from "./v39-logistics-state.js";
 
@@ -36,6 +37,7 @@ export function inspectV39Gather(state, playerId, unitId, mapData) {
   const capacity = carriers.filter(Boolean).reduce((sum, item) => sum + resolveV39UnitCargoCapacity(item), 0);
   const fitted = fitV39CargoToCapacity({ resourcesByType:yields }, Math.max(0, capacity - resolveV39CargoLoad(cargo)));
   if (!unit || !squad) reasons.push("採取するキャラクターを選択してください");
+  if(unit&&!isV39UnitInWorld(unit,state?.activeWorldId))reasons.push("このキャラクターは別のマップにいます");
   if (state?.timeline?.phase && state.timeline.phase !== "player") reasons.push("操作ターンに実行してください");
   if (unit && (number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡")) reasons.push("死亡したキャラクターは採取できません");
   if (!mapData?.grid?.[unit?.y]?.[unit?.x]) reasons.push("フィールド上で実行してください");

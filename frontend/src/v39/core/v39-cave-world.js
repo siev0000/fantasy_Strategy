@@ -5,11 +5,16 @@ import { addV39CargoToFactionUnit } from "../../lib/v39-logistics-state.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { groupV39SurfaceCaves, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
-import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
+import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
+import { resolveV39MovementLeader, unitCurrentAp } from "../../lib/v39-squad-movement-rules.js";
+import { resolveV39CaveFormation, V39_CAVE_FORMATIONS } from "../../lib/v39-cave-formation-rules.js";
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import { syncV39CavePartyMenu } from "./v39-cave-party-menu.js";
 import { V39_CAVE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { createV39CaveEventNpc } from "./v39-cave-events.js";
+import { collectV39MovementOccupancy } from "../../lib/v39-movement-occupancy-rules.js";
+import { playV39UnitMovementPath } from "../unit/v39-unit-movement.js";
+import { showV39Feedback } from "../ui/v39-feedback.js";
 
 const spatialKeys=["enemies","enemySquads","enemyNests","enemyCombatRuntime","settlements","territoryOwnerByTile","territoryStateByTile","recoveryPercentByTile","dangerPercentByTile","facilitiesByTile","neutralVillages","wandererGroups","groundLootByTile","explorationSitesByTile","specialtiesByTile","victoryLandmarksByTile","worldEnvironment"];
 let switching=false;
@@ -100,11 +105,12 @@ export function enterV39Cave(options={}){
   worlds[worldId] ||= createWorld(options);
   const world=worlds[worldId],entry=world.map.entrances.find(tile=>tile.surfaceEntrance?.x===options.entrySurface?.x&&tile.surfaceEntrance?.y===options.entrySurface?.y)||world.map.entrances[0];
   const path=findV39CavePath(world.map,entry,world.map.stairsDown||world.map.entrances[1]);
-  const incoming=player.factionState.units.filter(unit=>ids.has(unit.id)&&isV39UnitInWorld(unit,state.activeWorldId)&&Number(unit.hp??unit.currentHp)>0);
-  const entryOrder=incoming.map(unit=>unit.id);
-  const leaderId=entryOrder.includes(selected?.id)?selected.id:entryOrder[0];
+  const members=player.factionState.units.filter(unit=>ids.has(unit.id)&&isV39UnitInWorld(unit,state.activeWorldId)&&Number(unit.hp??unit.currentHp)>0);
+  if(resolveV39MovementLeader(squad,members)?.movementHold)throw new Error("移動先頭がその場待機中です。解除するか先頭を変更してください。");
+  const incoming=members.filter(unit=>!unit.movementHold);
+  const leaderId=resolveV39MovementLeader(squad,incoming)?.id;
   if(!leaderId)throw new Error("探索できる生存ユニットがいません。");
-  entryOrder.splice(0,entryOrder.length,leaderId,...entryOrder.filter(id=>id!==leaderId));
+  const entryOrder=[leaderId,...(squad?.unitIds||incoming.map(unit=>unit.id)).filter(id=>id!==leaderId&&incoming.some(unit=>unit.id===id))];
   const occupied=new Set([...world.spatial.enemies,...state.players.flatMap(row=>row.factionState.units).filter(unit=>isV39UnitInWorld(unit,worldId)&&!ids.has(unit.id))].filter(unit=>Number(unit.hp??unit.currentHp)>0).map(unit=>`${unit.x},${unit.y}`));
   if(world.map.caveEventNpc)occupied.add(`${world.map.caveEventNpc.x},${world.map.caveEventNpc.y}`);
   const queue=[...path.slice(0,entryOrder.length).reverse()],seen=new Set(queue.map(tile=>`${tile.x},${tile.y}`));
@@ -121,8 +127,11 @@ export function enterV39Cave(options={}){
     if(!position)throw new Error("入口付近に部隊を配置できる空きマスがありません。");
     positions.set(id,position);occupied.add(`${position.x},${position.y}`);
   }
-  const players=state.players.map(row=>row.id!==player.id?row:{...row,factionState:{...row.factionState,selectedUnitId:leaderId,units:row.factionState.units.map(unit=>{
-    if(!ids.has(unit.id)||!isV39UnitInWorld(unit,state.activeWorldId)||Number(unit.hp??unit.currentHp)<=0)return unit;
+  const players=state.players.map(row=>row.id!==player.id?row:{...row,factionState:{...row.factionState,
+    selectedUnitId:incoming.some(unit=>unit.id===selected?.id)?selected.id:leaderId,
+    squads:row.factionState.squads.map(record=>record.id===squad?.id?{...record,movementLeaderId:leaderId,...resolveV39CaveFormation(record,[leaderId,...record.unitIds.filter(id=>id!==leaderId)])}:record),
+    units:row.factionState.units.map(unit=>{
+    if(!incoming.some(member=>member.id===unit.id))return unit;
     const position=positions.get(unit.id);
     return {...unit,worldId,locationsByWorld:{...unit.locationsByWorld,[state.activeWorldId||"surface"]:{x:unit.x,y:unit.y}},x:position.x,y:position.y};
   })}});
@@ -141,7 +150,9 @@ export function leaveV39Cave(){
   const faction=state.players.find(player=>player.id===state.activePlayerId)?.factionState;
   const squad=faction?.squads.find(row=>row.unitIds?.includes(actor?.id));
   const ids=new Set(squad?.unitIds||[actor?.id]);
-  const outgoing=faction.units.filter(unit=>ids.has(unit.id)&&isV39UnitInWorld(unit,state.activeWorldId)&&Number(unit.hp??unit.currentHp)>0);
+  const members=faction.units.filter(unit=>ids.has(unit.id)&&isV39UnitInWorld(unit,state.activeWorldId)&&Number(unit.hp??unit.currentHp)>0);
+  if(resolveV39MovementLeader(squad,members)?.movementHold)throw new Error("移動先頭がその場待機中です。解除するか先頭を変更してください。");
+  const outgoing=members.filter(unit=>!unit.movementHold);
   const anchor=map?.parentExit||exit?.surfaceEntrance;
   const occupied=new Set([...state.players.flatMap(player=>player.factionState.units).filter(unit=>isV39UnitInWorld(unit,destination)),...worlds[destination].spatial.enemies].filter(unit=>Number(unit.hp??unit.currentHp)>0).map(unit=>`${unit.x},${unit.y}`));
   const queue=anchor?[anchor]:[],positions=[];
@@ -158,7 +169,7 @@ export function leaveV39Cave(){
   outgoing.sort((a,b)=>Number(b.id===actor.id)-Number(a.id===actor.id));
   const exitPositions=new Map(outgoing.map((unit,index)=>[unit.id,positions[index]]));
   const players=state.players.map(player=>player.id!==state.activePlayerId?player:{...player,factionState:{...player.factionState,units:player.factionState.units.map(unit=>{
-    if(!ids.has(unit.id)||unit.worldId!==state.activeWorldId||Number(unit.hp??unit.currentHp)<=0)return unit;
+    if(!outgoing.some(member=>member.id===unit.id))return unit;
     const position=anchor?exitPositions.get(unit.id):unit.locationsByWorld?.[destination];
     if(!position)return unit;
     return {...unit,worldId:destination,locationsByWorld:{...unit.locationsByWorld,[state.activeWorldId]:{x:unit.x,y:unit.y}},x:position.x,y:position.y};
@@ -210,14 +221,88 @@ function installActions(){
 
 function renderPartyOrder(){ syncV39CavePartyMenu(); }
 
-export function reorderV39CaveParty(delta,unitId=window.getV39SelectedSquadUnit?.()?.id){
+async function applyCavePartyOrder(faction,squad,order,keepHeld=false){
+  const state=window.getV39GameState(),runtime=window.__v39FieldRuntime,map=runtime?.mapData;
+  const byId=new Map(faction.units.map(unit=>[unit.id,unit]));
+  // 先頭の明示変更では待機者を残す。前へ/後ろへの位置交換は解除してから行う。
+  const fixed=id=>keepHeld&&byId.get(id)?.movementHold;
+  const previous=squad.unitIds.filter(id=>!fixed(id)),next=order.filter(id=>!fixed(id));
+  const changed=next.map((id,index)=>({unit:byId.get(id),target:byId.get(previous[index])}))
+    .filter((row,index)=>next[index]!==previous[index]);
+  const unavailable=changed.some(({unit,target})=>!unit||!target||Number(unit.hp??unit.currentHp)<=0
+    ||!isV39UnitInWorld(unit,state.activeWorldId)||unit.movementHold);
+  if(unavailable){showV39Feedback("同じ階層の生存者で、その場待機を解除してから隊列を変更してください");return false;}
+  if(changed.some(({unit})=>isV39UnitWaiting(unit,state.timeline.turnNumber))){
+    showV39Feedback("このターン待機済みのキャラクターは隊列交換で移動できません");return false;
+  }
+  const {blocked}=collectV39MovementOccupancy(state,changed.map(row=>row.unit.id),map);
+  const routes=changed.map(({unit,target})=>findV39CavePath(map,unit,target,[...blocked]));
+  if(routes.some((path,index)=>!path.length||path.some(tile=>!canUnitEnterV39Tile(map,tile.x,tile.y,changed[index].unit)))){
+    showV39Feedback("交換先までの通路が塞がれているため隊列を変更できません");return false;
+  }
+  const costs=routes.map((path,index)=>path.slice(1).reduce((total,tile,step)=>total+
+    resolveV39UnitMovementStepCost(map,path[step].x,path[step].y,tile.x,tile.y,changed[index].unit),0));
+  const insufficient=changed.findIndex(({unit},index)=>unitCurrentAp(unit)<costs[index]);
+  if(insufficient>=0){showV39Feedback(`${changed[insufficient].unit.name}のAPが不足しています（隊列変更 ${costs[insufficient]}）`);return false;}
+  window.cancelV39SelectedUnitMove?.();window.cancelV39SelectedUnitAttack?.("party-order-changed");
+  const token=window.beginV39MapInputLock?.("party-order"),app=document.getElementById("app"),wasInert=app?.inert;
+  if(app)app.inert=true;
+  let batch=null;
+  try{
+    await window.waitForV39MapRenderSettled?.();
+    window.refreshV39MapEntities?.();batch=window.beginV39MapRenderBatch?.("party-order");
+    const length=Math.max(1,...routes.map(path=>path.length));
+    const frames=Array.from({length},(_,step)=>changed.map((row,index)=>({id:row.unit.id,...routes[index][Math.min(step,routes[index].length-1)]})));
+    await playV39UnitMovementPath(runtime.game?.scene?.getScenes(true)?.[0],frames,map);
+    const destinations=new Map(changed.map(({unit,target},index)=>{
+      const ap=unitCurrentAp(unit)-costs[index];
+      return [unit.id,{x:target.x,y:target.y,ap,currentAp:ap,actionPoint:ap,lastActionTurn:state.timeline.turnNumber}];
+    }));
+    window.updateV39ActiveFactionState({
+      units:faction.units.map(unit=>destinations.has(unit.id)?{...unit,...destinations.get(unit.id)}:unit),
+      squads:faction.squads.map(row=>row.id===squad.id?{...row,unitIds:order,movementLeaderId:order[0],...resolveV39CaveFormation(row,order)}:row)
+    },{reason:"party-order-changed"});
+    window.refreshV39SquadDerivedUI?.();return true;
+  }finally{
+    window.endV39MapRenderBatch?.(batch,{force:true,reason:"party-order-complete"});
+    await window.waitForV39MapRenderSettled?.();
+    window.endV39MapInputLock?.(token,"party-order-complete");if(app)app.inert=wasInert;renderPartyOrder();
+  }
+}
+
+export async function reorderV39CaveParty(delta,unitId=window.getV39SelectedSquadUnit?.()?.id){
   if(window.isV39MapInputLocked?.()||window.getV39GameState().activeWorldId==="surface")return false;
   const faction=window.getV39ActiveFactionState(),actor=faction.units.find(unit=>unit.id===unitId);
   const squad=faction.squads.find(row=>row.unitIds?.includes(actor?.id)),index=squad?.unitIds.indexOf(actor?.id),next=index+delta;
   if(!squad||next<0||next>=squad.unitIds.length)return false;
   const order=[...squad.unitIds];[order[index],order[next]]=[order[next],order[index]];
-  window.cancelV39SelectedUnitMove?.();window.cancelV39SelectedUnitAttack?.("party-order-changed");
-  window.updateV39ActiveFactionState({squads:faction.squads.map(row=>row.id===squad.id?{...row,unitIds:order}:row)});
+  return applyCavePartyOrder(faction,squad,order);
+}
+
+export async function setV39CaveMovementLeader(unitId){
+  if(window.isV39MapInputLocked?.()||window.getV39GameState().activeWorldId==="surface")return false;
+  const faction=window.getV39ActiveFactionState(),actor=faction.units.find(unit=>unit.id===unitId);
+  const squad=faction.squads.find(row=>row.unitIds?.includes(unitId));
+  if(!squad||!actor||Number(actor.hp??actor.currentHp)<=0)return false;
+  const order=[unitId,...squad.unitIds.filter(id=>id!==unitId)];
+  return applyCavePartyOrder(faction,squad,order,true);
+}
+
+export function setV39CaveFormation(unitId,formationType){
+  if(window.isV39MapInputLocked?.()||!Object.hasOwn(V39_CAVE_FORMATIONS,formationType)||window.getV39GameState().activeWorldId==="surface")return false;
+  const faction=window.getV39ActiveFactionState(),squad=faction.squads.find(row=>row.unitIds?.includes(unitId));
+  if(!squad)return false;
+  window.cancelV39SelectedUnitMove?.();
+  window.updateV39ActiveFactionState({squads:faction.squads.map(row=>row.id===squad.id?{...row,...resolveV39CaveFormation({...row,formationType})}:row)});
+  window.refreshV39SquadDerivedUI?.();renderPartyOrder();return true;
+}
+
+export function toggleV39CaveMovementHold(unitId){
+  if(window.isV39MapInputLocked?.()||window.getV39GameState().activeWorldId==="surface")return false;
+  const faction=window.getV39ActiveFactionState(),actor=faction.units.find(unit=>unit.id===unitId);
+  if(!actor||Number(actor.hp??actor.currentHp)<=0)return false;
+  window.cancelV39SelectedUnitMove?.();
+  window.updateV39ActiveFactionState({units:faction.units.map(unit=>unit.id===unitId?{...unit,movementHold:!unit.movementHold}:unit)});
   window.refreshV39SquadDerivedUI?.();renderPartyOrder();return true;
 }
 
@@ -226,6 +311,9 @@ window.enterV39Cave=enterV39Cave;
 window.leaveV39Cave=leaveV39Cave;
 window.descendV39Cave=descendV39Cave;
 window.reorderV39CaveParty=reorderV39CaveParty;
+window.setV39CaveMovementLeader=setV39CaveMovementLeader;
+window.setV39CaveFormation=setV39CaveFormation;
+window.toggleV39CaveMovementHold=toggleV39CaveMovementHold;
 // 他階層は不変の保存済みデータ。現在階層だけ新しいスナップショットにする。
 window.captureV39ExplorationWorlds=()=>rememberWorld(window.getV39EnemyTurnState());
 window.addEventListener("v39:game-state-changed",event=>{if(!switching&&event.detail?.reason!=="activity-log"){installActions();renderSites();}});
@@ -278,7 +366,8 @@ function renderSiteActions(){
   const expandedSite=list.querySelector('[data-v39-cave-site].is-expanded')?.dataset.v39CaveSite;
   list.querySelectorAll("[data-v39-cave-site]").forEach(button=>button.remove());
   if(!map?.isUnderground||!actor)return;
-  const state=window.getV39GameState(),game=siteGame(state,actor);
+  const state=window.getV39GameState();if(!isV39UnitInWorld(actor,state.activeWorldId))return;
+  const game=siteGame(state,actor);
   for(const site of map.caveSites||[]){
     if(site.wall)continue;
     if(!site.discovered||site.remaining<=0||site.x!==actor.x||site.y!==actor.y)continue;
@@ -310,7 +399,7 @@ function renderSiteActions(){
 
 function interactSite(site){
   const state=window.getV39GameState(),player=state.players.find(row=>row.id===state.activePlayerId),actor=window.getV39SelectedSquadUnit?.();
-  if(!actor||window.isV39MapInputLocked?.()||isV39UnitWaiting(actor,state.timeline.turnNumber))return {ok:false};
+  if(!actor||!isV39UnitInWorld(actor,state.activeWorldId)||window.isV39MapInputLocked?.()||isV39UnitWaiting(actor,state.timeline.turnNumber))return {ok:false};
   const game=siteGame(state,actor);
   try{
     useCaveSite(game,site.id,actor.id);
@@ -335,7 +424,7 @@ function inspectCaveGather(){
   const map=window.__v39FieldRuntime?.mapData,actor=window.getV39SelectedSquadUnit?.();
   if(!map?.isUnderground)return null;
   const state=window.getV39GameState();
-  const nearby=new Set(actor?getHexNeighborCoords(map.w,map.h,actor.x,actor.y).map(tile=>tile.key):[]);
+  const nearby=new Set(actor&&isV39UnitInWorld(actor,state.activeWorldId)?getHexNeighborCoords(map.w,map.h,actor.x,actor.y).map(tile=>tile.key):[]);
   const hasTarget=map.caveSites?.some(row=>row.wall&&row.discovered&&row.remaining>0&&nearby.has(`${row.x},${row.y}`))||false;
   const site=map.caveSites?.find(row=>row.wall&&row.discovered&&row.x===selectedGatherTile?.x&&row.y===selectedGatherTile?.y);
   let reason="周囲1マスの鉱石・宝石を選択してください";
@@ -343,6 +432,7 @@ function inspectCaveGather(){
     const game=siteGame(state,actor);
     reason=caveSiteUnavailable(game,site,game.party.find(unit=>unit.id===actor.id));
     if(isV39UnitWaiting(actor,state.timeline.turnNumber))reason="このターンは待機済みです";
+    if(!isV39UnitInWorld(actor,state.activeWorldId))reason="このキャラクターは別のマップにいます";
     if(window.isV39MapInputLocked?.())reason="処理中です";
   }
   return {hasTarget,available:!!site&&!!actor&&!reason,reason,site,apCost:V39_CAVE_BALANCE.miningApCost};

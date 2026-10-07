@@ -477,6 +477,7 @@ function renderActionPanel() {
 }
 
 function startAttack() {
+  if(window.isV39MapInputLocked?.())return false;
   const ctx = activeRuntime();
   const faction = activeFaction();
   const unit = selectedUnit(faction);
@@ -489,6 +490,11 @@ function startAttack() {
   if (!ctx || !unit || !skillRow) {
     showToast("攻撃するキャラクターと技を選択してください");
     return false;
+  }
+  const state=window.getV39GameState({includeWorlds:false});
+  if(state.timeline.phase!=="player")return false;
+  if(!isV39UnitInWorld(unit,state.activeWorldId)){
+    showToast("このキャラクターは別のマップにいます");return false;
   }
   if (isV39UnitWaiting(unit, currentV39TurnNumber())) {
     showToast("このターンは待機済みです");
@@ -511,7 +517,8 @@ function startAttack() {
   const range = resolveAttackRange(skillRow, unit, ctx.data);
   const rangeTiles = tilesWithin(ctx.data, unit, range);
   if (!isV39SupportSkill(skillRow, terrainAdjusted(unit))) rangeTiles.delete(coordKey(unit.x, unit.y));
-  attackSession = { unitId:text(unit.id), skillName:text(skillRow.名前), skillRow, range, rangeTiles };
+  attackSession = { playerId:state.activePlayerId,worldId:state.activeWorldId,turnNumber:state.timeline.turnNumber,
+    unitId:text(unit.id), skillName:text(skillRow.名前), skillRow, range, rangeTiles };
   rangeGraphics = drawTiles(rangeTiles, 0xf3d84a, 0.20, RANGE_DEPTH, rangeGraphics);
   setBanner(`${text(skillRow.名前)}：黄色が射程、対象位置を選択`);
   return true;
@@ -551,6 +558,7 @@ function clearPendingAction(playerId, unitId, reason = "pending-cancelled") {
 }
 
 function executeAttack(target) {
+  if(window.isV39MapInputLocked?.())return false;
   if (!attackSession) return false;
   const session = attackSession;
   const state = window.getV39GameState?.({ includeWorlds:false });
@@ -1365,7 +1373,12 @@ window.addEventListener("v39:tile-selected", (event) => {
   window.addEventListener("v39:squad-detail-rendered", scheduleActionPanel);
   window.addEventListener("v39:game-state-changed", (event) => {
     if (event?.detail?.reason === "activity-log") return;
-    if (event?.detail?.reason === "active-player") cancelAttack("active-player-changed");
+    if(attackSession){
+      const state=window.getV39GameState({includeWorlds:false});
+      if(state.activePlayerId!==attackSession.playerId||state.activeWorldId!==attackSession.worldId
+        ||state.timeline.turnNumber!==attackSession.turnNumber||state.timeline.phase!=="player")
+        cancelAttack("attack-context-changed");
+    }
     scheduleActionPanel();
   });
   window.addEventListener("v39:turn-advanced", (event) => {
@@ -1376,6 +1389,7 @@ window.addEventListener("v39:tile-selected", (event) => {
   });
   window.addEventListener("v39:attack-resolved", handleCounter);
   window.addEventListener("v39:field-generated", () => cancelAttack("field-regenerated"));
+  window.addEventListener("v39:save-loaded",()=>cancelAttack("attack-save-loaded"));
   window.addEventListener("keydown", (event) => { if (event.key === "Escape") cancelAttack(); }, true);
   window.startV39SelectedUnitAttack = startAttack;
   window.cancelV39SelectedUnitAttack = cancelAttack;

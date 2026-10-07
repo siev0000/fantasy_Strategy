@@ -3,6 +3,7 @@ import { V39_SURVEY_BALANCE } from "./v39-gameplay-balance.js";
 import { isV39UnitWaiting } from "./v39-unit-action-rules.js";
 import { resolveV39UnitVisionRange } from "./v39-detection-rules.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
+import { isV39UnitInWorld } from "./v39-cave-spatial-rules.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { getV39VictoryLandmarkDefinition, isV39VictoryLandmark } from "./v39-victory-landmarks.js";
 
@@ -135,6 +136,8 @@ export function inspectV39Survey(state, playerId, unitId, tile, map) {
   const key = Number.isFinite(x) && Number.isFinite(y) ? coordKey(x, y) : "";
   const reasons = [];
   if (!player || !unit) reasons.push("調査するキャラクターを選択してください");
+  if(unit&&!isV39UnitInWorld(unit,state?.activeWorldId))reasons.push("このキャラクターは別のマップにいます");
+  if(state?.timeline?.phase&&state.timeline.phase!=="player")reasons.push("操作ターンに実行してください");
   if (!key) reasons.push("マスを選択してください");
   if (unit && (number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡")) reasons.push("死亡したキャラクターは調査できません");
   if (unit && key && (Math.floor(number(unit.x, -1)) !== x || Math.floor(number(unit.y, -1)) !== y)) reasons.push("キャラクターと同じマスで実行してください");

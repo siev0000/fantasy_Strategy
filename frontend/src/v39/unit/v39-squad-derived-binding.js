@@ -442,7 +442,7 @@ function renderMemberList() {
           </span>
           <div class="squad-name-wrap">
             <b class="squad-name">${unitName(unit, index)}</b>
-            <small class="squad-pos">${unitPosition(unit)}</small>
+            <small class="squad-pos"${unit.movementHold ? ' title="その場待機中"' : ""}>${unitPosition(unit)}${unit.movementHold ? " ⏸" : ""}</small>
           </div>
         </div>
       </div>
@@ -492,7 +492,8 @@ function renderDetail() {
     if (el) el.textContent = String(value);
   });
 
-  const movementGroup = resolveV39SquadMovementGroup(getFactionState() || {}, selectedUnitId);
+  const movementGroup = resolveV39SquadMovementGroup(getFactionState() || {}, selectedUnitId,
+    {caveFormation:window.__v39FieldRuntime?.mapData?.isUnderground});
   const moveValue = movementGroup?.ok ? Math.max(1, num(movementGroup.movement, 1)) : Math.max(1, num(movementValue(unit), 1));
   const moveBaseAp = Math.ceil(resolveV39BaseMoveApCost(moveValue));
   const moveApEl = document.getElementById("mobileMoveAp");

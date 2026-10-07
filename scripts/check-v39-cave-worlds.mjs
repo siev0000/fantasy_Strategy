@@ -51,6 +51,7 @@ try{
     const selected=window.getV39SelectedSquadUnit().id;
     document.querySelector(`#squadMemberList [data-v39-unit-id="${selected}"]`).dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:100,clientY:500}));
     document.querySelector('#v39-cave-party-menu [aria-label="隊列を後ろへ"]').click();
+    while(window.isV39MapInputLocked())await new Promise(resolve=>setTimeout(resolve,30));
     check(window.getV39ActiveFactionState().squads[0].unitIds[1]===selected,"registration order changed");
     await new Promise(resolve=>setTimeout(resolve,120));
     check(document.querySelectorAll('#squadMemberList [data-v39-unit-id]')[1].dataset.v39UnitId===selected,"visible order changed");

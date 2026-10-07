@@ -2,6 +2,7 @@ import { V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
 import { getV39SquadUnitIds, normalizeV39SquadLogistics } from "./v39-logistics-state.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
 import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
+import { resolveV39CaveFormation, advanceV39RelativeCaveFormation, assignV39CaveFormationStep } from "./v39-cave-formation-rules.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -43,7 +44,7 @@ function unitMaxAp(unit) {
   ], 100));
 }
 
-function unitCurrentAp(unit) {
+export function unitCurrentAp(unit) {
   return Math.max(0, firstFiniteApValue([
     unit?.ap,
     unit?.currentAp,
@@ -108,6 +109,13 @@ function resolveParticipantIds(faction, selected, squad) {
   return [...new Set((ids.length ? ids : [selectedId]).map(text).filter(Boolean))];
 }
 
+// 選択キャラとは独立した移動先頭。旧セーブは登録順の先頭へ移行する。
+export function resolveV39MovementLeader(squad, participants = []) {
+  return participants.find(unit => unitId(unit) === text(squad?.movementLeaderId))
+    || getV39SquadUnitIds(squad).map(id => participants.find(unit => unitId(unit) === id)).find(Boolean)
+    || participants[0];
+}
+
 export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", options = {}) {
   const units = Array.isArray(faction?.units) ? faction.units : [];
   const selectedId = text(selectedUnitId);
@@ -123,9 +131,13 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", 
     && (unitId(unit) === selectedId || !unit.transportAssignment));
   if (!participants.length) return { ok:false, reason:"移動可能な部隊員がいません。" };
 
-  const leader = options.followSelected ? selected
+  const leader = options.caveFormation ? resolveV39MovementLeader(squad, participants)
     : participants.find(unit => unitId(unit) === getV39SquadUnitIds(squad)[0]) || selected || participants[0];
-  if (options.followSelected) {
+  if (options.caveFormation && leader?.movementHold) return {ok:false,reason:"移動先頭がその場待機中です。解除するか、先頭を変更してください。"};
+  if (options.caveFormation) {
+    for(let index=participants.length-1;index>=0;index--) if(participants[index].movementHold) participants.splice(index,1);
+  }
+  if (options.caveFormation) {
     const order = [unitId(leader), ...participantIds.filter(id => id !== unitId(leader))];
     participants.sort((left, right) => order.indexOf(unitId(left)) - order.indexOf(unitId(right)));
   }
@@ -161,6 +173,7 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", 
     isSquad,
     selected,
     leader,
+    ...(options.caveFormation ? resolveV39CaveFormation(squad,[unitId(leader),...participantIds.filter(id=>id!==unitId(leader))]) : {}),
     participants,
     participantIds:participants.map(unitId),
     positions:participants.map(unit => ({ id:unitId(unit), x:integer(unit?.x), y:integer(unit?.y) })),
@@ -178,6 +191,11 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", 
 }
 
 export function advanceV39CaveFormation(data, formation, destination, group, occupied = new Set()) {
+  if (group?.formationType) {
+    const relative=advanceV39RelativeCaveFormation(data,formation,destination,group,occupied);
+    if(relative)return relative;
+    // 曲がった1マス通路では直線の相対スロットが岩壁になるため、通路沿いの縦列へ縮める。
+  }
   const members = new Map(group.participants.map(unit => [unitId(unit), unit]));
   const key = tile => `${tile.x},${tile.y}`;
   const next = [{ ...formation[0], x:destination.x, y:destination.y }];
@@ -197,7 +215,9 @@ export function advanceV39CaveFormation(data, formation, destination, group, occ
         queue.push({ ...tile, first:node.first || tile });
       }
     }
-    if (!step) return null;
+    if (!step) return assignV39CaveFormationStep(data,formation,
+      [{...destination,id:formation[0].id},...formation.slice(1).map((position,index)=>({...formation[index],id:position.id}))],
+      group.participants,occupied);
     next.push({ id:current.id, x:step.x, y:step.y });
   }
   const destinations = new Set();

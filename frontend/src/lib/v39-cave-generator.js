@@ -1,6 +1,7 @@
 import templates from "../../../data/manual/洞窟テンプレート.json";
 import { getHexNeighborCoords } from "./hex-grid.js";
 import { V39_CAVE_BALANCE } from "./v39-gameplay-balance.js";
+import { createV39CaveLayout, isV39CaveRoomFloor } from "./v39-cave-layout.js";
 
 export const V39_CAVE_TEMPLATES = templates;
 
@@ -39,14 +40,20 @@ export function findV39CavePath(map, from, to, blocked = []) {
 
 export function generateV39CaveMap({ seed = "cave", templateId = "random", entranceCount = 2, surfaceEntrances = [] } = {}) {
   const random = randomFor(seed);
-  const template = templateId === "random" ? templates[Math.floor(random() * templates.length)] : templates.find(row => row.id === templateId);
-  if (!template) throw new Error(`洞窟テンプレートがありません: ${templateId}`);
+  const source = templateId === "random" ? templates[Math.floor(random() * templates.length)] : templates.find(row => row.id === templateId);
+  if (!source) throw new Error(`洞窟テンプレートがありません: ${templateId}`);
+  const template=createV39CaveLayout(source,random);
   const count = surfaceEntrances.length || Number(entranceCount);
   if (!Number.isInteger(count) || count < 2 || count > template.出入口.length) throw new Error("洞窟の出入口は2〜4か所で指定してください");
   const { 幅:w, 高さ:h } = template;
   const grid = Array.from({ length:h }, () => Array(w).fill("岩壁"));
   const carve = (x,y) => { if (x>0 && x<w-1 && y>0 && y<h-1) grid[y][x] = "洞窟"; };
-  for (const [cx,cy,rx,ry] of template.部屋) for (let y=cy-ry; y<=cy+ry; y++) for (let x=cx-rx; x<=cx+rx; x++) carve(x,y);
+  template.部屋.forEach((room,index)=>{
+    const [cx,cy,rx,ry]=room,outline=template.部屋輪郭?.[index];
+    for(let y=cy-ry-1;y<=cy+ry+1;y++)for(let x=cx-rx-1;x<=cx+rx+1;x++) {
+      if(outline?isV39CaveRoomFloor(x,y,room,outline):Math.abs(x-cx)<=rx&&Math.abs(y-cy)<=ry)carve(x,y);
+    }
+  });
   // 全マス通行可の仮グリッド上で六角形の最短経路を求め、通路だけを掘る。
   const diggingMap = { w,h,grid:Array.from({length:h},(_,y)=>Array.from({length:w},(_,x)=>x>0&&x<w-1&&y>0&&y<h-1?"洞窟":"岩壁")) };
   const resolvePoint = point => Array.isArray(point)?point:template.部屋接続口[point.部屋][point.接続口];
@@ -70,12 +77,25 @@ export function generateV39CaveMap({ seed = "cave", templateId = "random", entra
     }
     corridors.push({from:a,to:b,width,path,tiles:[...tiles]});
   };
-  for (const corridor of template.通路) for (let i=1; i<corridor.経路.length; i++) connect(corridor.経路[i-1],corridor.経路[i],corridor.幅);
+  // 輪郭を変えても全接続口と部屋中心を床でつなぎ、入口・出口の到達性を保つ。
+  if(template.部屋輪郭)template.部屋.forEach((room,index)=>{
+    for(const port of Object.values(template.部屋接続口[index]))connect(room.slice(0,2),port,1);
+  });
+  for (const corridor of template.通路) for (let i=1; i<corridor.経路.length; i++) {
+    const from=corridor.経路[i-1],to=corridor.経路[i],a=resolvePoint(from),b=resolvePoint(to);
+    if(template.部屋輪郭&&Math.hypot(b[0]-a[0],b[1]-a[1])>6&&random()<V39_CAVE_BALANCE.corridorBendRate) {
+      const jitter=()=>Math.round((random()*2-1)*V39_CAVE_BALANCE.roomPositionJitter);
+      const middle=[Math.max(1,Math.min(w-2,Math.round((a[0]+b[0])/2)+jitter())),
+        Math.max(1,Math.min(h-2,Math.round((a[1]+b[1])/2)+jitter()))];
+      connect(from,middle,corridor.幅);connect(middle,to,corridor.幅);
+    } else connect(from,to,corridor.幅);
+  }
   const entrances = template.出入口.slice(0,count).map(([x,y],index) => {
     connect([x,y],template.入口接続[index],template.入口通路幅[index]);
     return { id:`entrance-${index+1}`,x,y,key:`${x},${y}`,surfaceEntrance:surfaceEntrances[index] || null };
   });
-  return { id:`cave-${seed}-${template.id}`,seed:String(seed),templateId:template.id,templateName:template.名前,w,h,grid,entrances,corridors,worldWrapEnabled:false };
+  return { id:`cave-${seed}-${template.id}`,seed:String(seed),templateId:template.id,templateName:template.名前,w,h,grid,entrances,corridors,
+    rooms:template.部屋,roomOutlines:template.部屋輪郭||[],generationVersion:2,worldWrapEnabled:false };
 }
 
 export function populateV39CaveMonsters(map, definitions, createEnemy) {
@@ -103,13 +123,45 @@ export function populateV39CaveMonsters(map, definitions, createEnemy) {
   const count = Math.min(floor.length, Math.max(1, Math.ceil(floor.length / V39_CAVE_BALANCE.tilesPerMonster)));
   const weights = definitions.map(definition => definition.race === "ドレイク" ? V39_CAVE_BALANCE.drakeWeight : 1);
   const total = weights.reduce((sum,value)=>sum+value,0);
-  return floor.slice(0,count).map((tile,index)=>{
+  const available = new Map(floor.map(tile=>[`${tile.x},${tile.y}`,tile]));
+  const enemies=[];
+  let encounterIndex=0;
+  while(enemies.length<count && available.size) {
     let choice = random()*total;
     const definition = definitions.find((_,i)=>(choice-=weights[i])<0) || definitions.at(-1);
-    const level = Math.min(V39_CAVE_BALANCE.maxTestLevel,definition.minLevel+Math.floor(random()*(definition.maxLevel-definition.minLevel+1)));
-    const enemy = createEnemy({ id:`${map.id}-enemy-${index}`,name:definition.name,race:definition.race,className:definition.className,level,...tile,
-      metadata:{ spawnTerrain:"洞窟",sourceDefinitionId:definition.definitionId,image:definition.row.画像,aggressive:definition.row.好戦的===true } });
-    if (!enemy) throw new Error(`洞窟の敵生成に失敗しました: ${definition.name}`);
-    return enemy;
-  });
+    const spawnForm=["単独","小集団","群れ"].includes(definition.row.出現形態)?definition.row.出現形態:"単独";
+    const minimum=spawnForm==="単独"?1:Math.max(1,Math.floor(Number(definition.row.集団数_Min)||1));
+    const maximum=spawnForm==="単独"?1:Math.max(minimum,Math.floor(Number(definition.row.集団数_Max)||minimum));
+    const size=minimum+Math.floor(random()*(maximum-minimum+1));
+    const clusterAt=anchor=>{
+      const queue=[{...anchor,distance:0}],seen=new Set([`${anchor.x},${anchor.y}`]),positions=[];
+      for(let cursor=0;cursor<queue.length&&positions.length<size;cursor++) {
+        const tile=queue[cursor],tileKey=`${tile.x},${tile.y}`;
+        if(available.has(tileKey))positions.push(tile);
+        if(tile.distance>=V39_CAVE_BALANCE.encounterGroupRadius)continue;
+        for(const next of getHexNeighborCoords(map.w,map.h,tile.x,tile.y)) {
+          if(seen.has(next.key)||!available.has(next.key))continue;
+          seen.add(next.key);queue.push({...next,distance:tile.distance+1});
+        }
+      }
+      return positions;
+    };
+    let positions=[];
+    for(const anchor of available.values()) {
+      const cluster=clusterAt(anchor);
+      if(cluster.length>positions.length)positions=cluster;
+      if(positions.length>=size)break;
+    }
+    const groupId=`${map.id}-group-${encounterIndex++}`;
+    for(const tile of positions) {
+      available.delete(`${tile.x},${tile.y}`);
+      const level = Math.min(V39_CAVE_BALANCE.maxTestLevel,definition.minLevel+Math.floor(random()*(definition.maxLevel-definition.minLevel+1)));
+      const enemy = createEnemy({ id:`${map.id}-enemy-${enemies.length}`,name:definition.name,race:definition.race,className:definition.className,level,x:tile.x,y:tile.y,
+        metadata:{ spawnTerrain:"洞窟",sourceDefinitionId:definition.definitionId,image:definition.row.画像,aggressive:definition.row.好戦的===true,
+          groupId,spawnForm,encounterGroupSize:positions.length } });
+      if (!enemy) throw new Error(`洞窟の敵生成に失敗しました: ${definition.name}`);
+      enemies.push(enemy);
+    }
+  }
+  return enemies;
 }

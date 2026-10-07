@@ -5,7 +5,7 @@ import {
 import { V39_CAVE_BALANCE, V39_ATTACK_STEALTH_RECOVERY_TURNS } from "./v39-gameplay-balance.js";
 
 export const V39_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
-// ユニットは最低1マスを見通す。索敵75ごとに可視範囲を1マス広げる。
+// ユニットは最低1マスを見通す。地上は索敵75、地下は設定値37.5ごとに1マス広げる。
 // フィールドFogと勢力AIで同じ視界計算を使う。
 export const V39_UNIT_VISION_BASE_RANGE = 1;
 export const V39_UNIT_VISION_SCOUT_STEP = 75;
@@ -31,7 +31,8 @@ export function resolveDetectionScoutValue(unit) {
 
 export function resolveV39UnitVisionRange(unit, mapData = null) {
   const scout = resolveDetectionScoutValue(unit);
-  return V39_UNIT_VISION_BASE_RANGE + Math.max(0, Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP))
+  const scoutStep=mapData?.isUnderground?V39_CAVE_BALANCE.visionScoutStep:V39_UNIT_VISION_SCOUT_STEP;
+  return V39_UNIT_VISION_BASE_RANGE + Math.max(0, Math.floor(scout / scoutStep))
     + (mapData?.isUnderground ? V39_CAVE_BALANCE.visionBonusTiles : 0);
 }
 
@@ -83,12 +84,14 @@ export function resolveDetectionGroupSenseFromValues(scoutValues = [], stealthVa
   };
 }
 
-export function resolveEffectiveScoutAtDistance(scout, distance) {
-  const penalty = Math.max(0, Math.floor(number(distance)) - 1) * V39_SCOUT_DISTANCE_DECAY_PER_TILE;
+export function resolveEffectiveScoutAtDistance(scout, distance, mapData = null) {
+  const bonus=mapData?.isUnderground?V39_CAVE_BALANCE.visionBonusTiles:0;
+  const decayRate=mapData?.isUnderground?V39_CAVE_BALANCE.visionScoutStep/V39_UNIT_VISION_SCOUT_STEP:1;
+  const penalty = Math.max(0, Math.floor(number(distance)) - 1 - bonus) * V39_SCOUT_DISTANCE_DECAY_PER_TILE * decayRate;
   // 視界内で隠密0の対象まで見失わないよう、距離減衰後も索敵の下限は0。
   return Math.max(0, roundTo1(number(scout) - penalty));
 }
 
-export function isDetectedByScout({ scout = 0, stealth = 0, distance = 0, inRange = true } = {}) {
-  return inRange === true && resolveEffectiveScoutAtDistance(scout, distance) >= Math.max(0, number(stealth));
+export function isDetectedByScout({ scout = 0, stealth = 0, distance = 0, inRange = true, mapData = null } = {}) {
+  return inRange === true && resolveEffectiveScoutAtDistance(scout, distance, mapData) >= Math.max(0, number(stealth));
 }

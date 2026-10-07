@@ -37,7 +37,7 @@ try {
     const linked=cave.generateV39CaveMap({surfaceEntrances:[{id:"surface-a",x:4,y:9},{id:"surface-b",x:10,y:12}]});
     let invalidRejected=false;
     try { cave.generateV39CaveMap({entranceCount:5}); } catch { invalidRejected=true; }
-    const fixture={id:"width-fixture",名前:"幅テスト",幅:25,高さ:17,部屋:[[3,8,1,1],[20,8,1,1]],部屋接続口:[{右:[4,8],左:[2,8]},{左:[19,8],右:[21,8]}],通路:[],出入口:[[2,8],[21,8]],入口接続:[{部屋:0,接続口:"左"},{部屋:1,接続口:"右"}],入口通路幅:[1,1]};
+    const fixture={生成方式:"固定",id:"width-fixture",名前:"幅テスト",幅:25,高さ:17,部屋:[[3,8,1,1],[20,8,1,1]],部屋接続口:[{右:[4,8],左:[2,8]},{左:[19,8],右:[21,8]}],通路:[],出入口:[[2,8],[21,8]],入口接続:[{部屋:0,接続口:"左"},{部屋:1,接続口:"右"}],入口通路幅:[1,1]};
     const widths=[];
     cave.V39_CAVE_TEMPLATES.push(fixture);
     try{
@@ -71,8 +71,16 @@ try {
   await dialog.locator("[data-cave-enemy]").first().click();
   await dialog.locator("[data-cave-enemy-detail]").waitFor({state:"visible"});
   assert.match(await dialog.locator("[data-cave-enemy-detail]").innerText(),/HP/);
-  await dialog.locator('[data-cave-tile="2,3"]').click();
-  assert.match(await dialog.locator("footer").innerText(),/現在位置：2,3/);
+  const destination=await page.evaluate(async()=>{
+    const cave=await import("/src/lib/v39-cave-generator.js"),spawn=await import("/src/v39/ai/v39-enemy-spawn.js");
+    const map=cave.generateV39CaveMap({seed:"cave-1",templateId:"branch",entranceCount:4});
+    const enemies=cave.populateV39CaveMonsters(map,spawn.getV39EnemySpawnDefinitions("洞窟"),spawn.createV39EventEnemy);
+    const blocked=enemies.map(unit=>`${unit.x},${unit.y}`);
+    for(let y=0;y<map.h;y++)for(let x=0;x<map.w;x++)if(!blocked.includes(`${x},${y}`)&&cave.findV39CavePath(map,map.entrances[0],{x,y},blocked).length>1)return `${x},${y}`;
+    throw new Error("No reachable destination");
+  });
+  await dialog.locator(`[data-cave-tile="${destination}"]`).click();
+  assert.ok((await dialog.locator("footer").innerText()).includes(`現在位置：${destination}`));
   assert.equal(await dialog.locator(".cave-route").count(),1);
   await page.screenshot({path:"output/web-game/cave-test/desktop.png"});
   await dialog.getByRole("button",{name:"開始画面に戻る"}).click();

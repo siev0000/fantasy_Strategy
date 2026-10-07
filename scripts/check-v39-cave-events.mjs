@@ -18,13 +18,21 @@ try{
       const {resolveUnitArtwork}=await import("/src/lib/map-entity-artwork.js");
       const art=resolveUnitArtwork(npc);
       if(art.sheetFrame?.slotNumber!==9)throw new Error("NPC sheet slot failed");
-      const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
-      const image=scene.v39CaveNpc?.list.find(row=>row.type==="Image");
-      if(!image||image.frame.name!==art.sheetFrame.frameKey)throw new Error("NPC cropped frame not rendered");
       const tile=getHexNeighborCoords(map.w,map.h,npc.x,npc.y).find(row=>map.grid[row.y][row.x]==="洞窟");
       const faction=window.getV39ActiveFactionState(),actor=window.getV39SelectedSquadUnit();
       window.updateV39ActiveFactionState({units:faction.units.map(row=>row.id===actor.id?{...row,x:tile.x,y:tile.y}:row)});
+      window.renderV39Visibility();
       window.dispatchEvent(new CustomEvent("v39:visibility-rendered"));
+      await new Promise((resolve,reject)=>{
+        const deadline=Date.now()+5000;
+        const check=()=>{
+          const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
+          const image=scene.v39CaveNpc?.list.find(row=>row.type==="Image");
+          if(image?.frame.name===art.sheetFrame.frameKey)return resolve();
+          if(Date.now()>deadline)return reject(new Error("NPC cropped frame not rendered after discovery"));
+          setTimeout(check,30);
+        };check();
+      });
     });
     await page.locator('[data-squad-detail-tab="action"]').click();await page.locator("#v39-cave-talk").click();
     const layout=await page.evaluate(()=>{

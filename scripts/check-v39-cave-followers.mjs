@@ -23,16 +23,17 @@ try {
     const faction = window.getV39ActiveFactionState();
     const units = faction.units.map((unit,index) => ({ ...unit, ...trail[2-index], ap:100, currentAp:100 }));
     const squad = { ...faction.squads[0], unitIds:units.map(unit => unit.id) };
-    const fixture = { ...faction, units, squads:[squad], selectedUnitId:units[0].id };
-    const group = rules.resolveV39SquadMovementGroup(fixture, units[0].id, { followSelected:true });
+    const fixture = { ...faction, units, squads:[squad], selectedUnitId:units[1].id };
+    const group = rules.resolveV39SquadMovementGroup(fixture, units[0].id, { caveFormation:true });
     const first = rules.advanceV39CaveFormation(map, group.positions, trail[3], group);
     const second = rules.advanceV39CaveFormation(map, first, trail[4], group);
     const separated = [{ ...group.positions[0], ...trail[3] },
       { ...group.positions[1], ...trail[1] }, { ...group.positions[2], ...trail[0] }];
     const rejoining = rules.advanceV39CaveFormation(map, separated, trail[4], group);
     const blocked = rules.advanceV39CaveFormation(map, first, trail[4], group, new Set([`${trail[4].x},${trail[4].y}`]));
-    const deadGroup = rules.resolveV39SquadMovementGroup({ ...fixture, units:units.map((unit,index) => index===2 ? {...unit,hp:0,state:"死亡"}:unit) }, units[0].id, { followSelected:true });
-    const changedLeader = rules.resolveV39SquadMovementGroup(fixture, units[1].id, { followSelected:true });
+    const deadGroup = rules.resolveV39SquadMovementGroup({ ...fixture, units:units.map((unit,index) => index===2 ? {...unit,hp:0,state:"死亡"}:unit) }, units[0].id, { caveFormation:true });
+    const changedLeader = rules.resolveV39SquadMovementGroup(fixture, units[1].id, { caveFormation:true });
+    const explicitLeader = rules.resolveV39SquadMovementGroup({ ...fixture, squads:[{...squad,movementLeaderId:units[2].id}] }, units[1].id, { caveFormation:true });
     const groundGroup = rules.resolveV39SquadMovementGroup(fixture, units[1].id);
     window.loadV39FieldSnapshot(map, window.__v39FieldRuntime.settings, { layerChange:true });
     window.setV39GameState({ enemies:[], neutralVillages:[] });
@@ -51,7 +52,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 1600));
     const actual = window.getV39ActiveFactionState().units.map(unit => ({ id:unit.id,x:unit.x,y:unit.y,ap:unit.ap }));
     return { first, second, rejoining, blocked, deadCount:deadGroup.participants.length,
-      changedLeader:changedLeader.leader.id, groundLeader:groundGroup.leader.id,
+      changedLeader:changedLeader.leader.id, explicitLeader:explicitLeader.leader.id, groundLeader:groundGroup.leader.id,
       ids:units.map(unit=>unit.id), actual, moved, preview, unlocked:!window.isV39MapInputLocked() };
   });
   const coords = positions => positions.map(({x,y}) => ({x,y}));
@@ -60,9 +61,11 @@ try {
   assert.deepEqual(coords(report.rejoining), [{x:6,y:6},{x:5,y:5},{x:4,y:5}]);
   assert.equal(report.blocked, null);
   assert.equal(report.deadCount, 2);
-  assert.equal(report.changedLeader, report.ids[1]);
+  assert.equal(report.changedLeader, report.ids[0]);
+  assert.equal(report.explicitLeader, report.ids[2]);
   assert.equal(report.groundLeader, report.ids[0]);
   assert.deepEqual(coords(report.actual), coords(report.second), JSON.stringify(report));
+  assert.equal(report.moved.unitId, report.ids[1]);
   assert.ok(report.actual.every(unit=>unit.ap<100));
   assert.ok(report.unlocked);
   assert.deepEqual(errors, []);

@@ -140,6 +140,7 @@ function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
       scout:enemyScout,
       stealth:targetSense.stealth,
       distance:targetDistance,
+      mapData,
       inRange:targetDistance <= visionRadius(enemy, mapData)
     })) continue;
     visible.push(...group);
@@ -305,6 +306,7 @@ function observeForExplorer(state, mapData, enemy, turnNumber) {
       scout:resolveDetectionScoutValue(enemy),
       stealth:targetSense.stealth,
       distance:distance(enemy, group[0]),
+      mapData,
       inRange:true
     })) visibleUnits.push(...group);
   }

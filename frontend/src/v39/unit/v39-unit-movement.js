@@ -5,6 +5,9 @@ import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeW
 import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
 import { advanceV39CaveFormation, applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { V39_MOVEMENT_PRESENTATION_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { collectV39MovementOccupancy } from "../../lib/v39-movement-occupancy-rules.js";
+import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
+import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
 
 const RANGE_DEPTH = 9;
 const PATH_DEPTH = 11;
@@ -106,23 +109,12 @@ function isWorldWrapEnabled(data) {
   return window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
 }
 
-function occupiedTileKeys(excludedUnitIds = []) {
-  const excluded = new Set((Array.isArray(excludedUnitIds) ? excludedUnitIds : [excludedUnitIds]).map(text).filter(Boolean));
-  const state = window.getV39GameState?.();
-  const units = [
-    ...(state?.players || []).flatMap(player => player?.factionState?.units || []).filter(unit=>(unit.worldId||"surface")===(state.activeWorldId||"surface")),
-    ...(state?.enemies || [])
-  ];
-  return new Set(units
-    .filter(unit => !excluded.has(unitId(unit)) && unit?.state !== "死亡" && number(unit?.hp, unit?.currentHp) > 0)
-    .map(unit => coordKey(unit?.x, unit?.y)));
-}
-
 const hexDistance = getHexDistance;
 
 function closestReachableTarget(plan, start, desired) {
   const candidates = [];
   for (const [key, cost] of plan.costs) {
+    if(!plan.stops.has(key))continue;
     if (key === coordKey(start.x, start.y)) continue;
     const [x, y] = key.split(",").map(Number);
     candidates.push({ x, y, cost, distance:hexDistance({ x, y }, desired) });
@@ -164,15 +156,19 @@ function moveFormationOneStep(data, formation, from, to, worldWrapEnabled, group
 function movementStepCostForGroup(data, formation, nextFormation, group, occupied) {
   const membersById = new Map((Array.isArray(group?.participants) ? group.participants : []).map(member => [unitId(member), member]));
   if (!formation.length || formation.length !== nextFormation.length) return Number.POSITIVE_INFINITY;
-  let cost = 0;
-  for (let index = 0; index < formation.length; index += 1) {
-    const current = formation[index];
-    const next = nextFormation[index];
-    const member = membersById.get(current.id);
-    if (!member || occupied.has(coordKey(next.x, next.y))) return Number.POSITIVE_INFINITY;
-    const memberCost = movementStepCost(data, current.x, current.y, next.x, next.y, member);
-    if (!Number.isFinite(memberCost)) return Number.POSITIVE_INFINITY;
-    cost = Math.max(cost, memberCost);
+  let cost = 0, previous=formation;
+  for(const frame of nextFormation.transitionFrames||[nextFormation]) {
+    let frameCost=0;
+    for (let index = 0; index < previous.length; index += 1) {
+      const current = previous[index];
+      const next = frame[index];
+      const member = membersById.get(current.id);
+      if (!member || occupied.has(coordKey(next.x, next.y))) return Number.POSITIVE_INFINITY;
+      const memberCost = movementStepCost(data, current.x, current.y, next.x, next.y, member);
+      if (!Number.isFinite(memberCost)) return Number.POSITIVE_INFINITY;
+      frameCost = Math.max(frameCost, memberCost);
+    }
+    cost+=frameCost;previous=frame;
   }
   return cost;
 }
@@ -186,14 +182,15 @@ function buildReachablePlan(data, group, apBudget) {
   const costs = new Map();
   const parents = new Map();
   const formations = new Map();
-  if (!w || !h || sx < 0 || sy < 0 || sx >= w || sy >= h) return { costs, parents, formations };
+  const stops = new Set();
+  if (!w || !h || sx < 0 || sy < 0 || sx >= w || sy >= h) return { costs, parents, formations, stops };
 
   const startKey = coordKey(sx, sy);
   costs.set(startKey, 0);
   formations.set(startKey, (group?.positions || []).map(row => ({ ...row })));
   const queue = [{ x:sx, y:sy, cost:0 }];
   const worldWrapEnabled = isWorldWrapEnabled(data);
-  const occupied = occupiedTileKeys(group?.participantIds);
+  const {blocked:occupied,stopBlocked}=collectV39MovementOccupancy(window.getV39GameState?.(),group?.participantIds,data);
 
   while (queue.length) {
     let minIndex = 0;
@@ -207,9 +204,14 @@ function buildReachablePlan(data, group, apBudget) {
     const currentFormation = formations.get(currentKey) || [];
 
     for (const next of getHexNeighborCoordsBySize(w, h, current.x, current.y, worldWrapEnabled)) {
-      const nextFormation = moveFormationOneStep(data, currentFormation, current, next, worldWrapEnabled, group, occupied);
+      let nextFormation = moveFormationOneStep(data, currentFormation, current, next, worldWrapEnabled, group, occupied);
       if (!nextFormation) continue;
-      const stepCost = movementStepCostForGroup(data, currentFormation, nextFormation, group, occupied);
+      let stepCost = movementStepCostForGroup(data, currentFormation, nextFormation, group, occupied);
+      // 前2人への展開で追加APが足りない場合も、通常の1歩は進める。
+      if(current.cost+stepCost>budget&&nextFormation.transitionFrames){
+        nextFormation=nextFormation.transitionFrames[0];
+        stepCost=movementStepCostForGroup(data,currentFormation,nextFormation,group,occupied);
+      }
       if (!Number.isFinite(stepCost) || stepCost < 0) continue;
       const nextCost = current.cost + stepCost;
       if (nextCost > budget) continue;
@@ -223,7 +225,8 @@ function buildReachablePlan(data, group, apBudget) {
     }
   }
 
-  return { costs, parents, formations };
+  for(const [key,formation] of formations)if(formation.every(tile=>!stopBlocked.has(coordKey(tile.x,tile.y))))stops.add(key);
+  return { costs, parents, formations, stops };
 }
 
 function pathTo(plan, start, target) {
@@ -256,6 +259,7 @@ function drawReachable(plan, start) {
   if (rangeGraphics?.destroy) rangeGraphics.destroy();
   rangeGraphics = ctx.scene.add.graphics().setDepth(RANGE_DEPTH);
   for (const key of plan.costs.keys()) {
+    if(!plan.stops.has(key))continue;
     if (key === coordKey(start.x, start.y)) continue;
     const [x, y] = key.split(",").map(Number);
     const points = hexPoints(x, y);
@@ -308,25 +312,30 @@ function setMoveConfirm(visible, message = "") {
   confirm?.classList.toggle("show", !!visible);
 }
 
-function persistMoveCommand(unitIdValue, reason) {
+function persistMoveCommand(unitIdValue, reason, playerId) {
   if (typeof window.updateV39ActiveFactionState !== "function") return;
-  const faction = activeFaction();
+  const state=window.getV39GameState({includeWorlds:false}),ownerId=playerId||state.activePlayerId;
+  const faction=state.players.find(player=>player.id===ownerId)?.factionState;
   const nextId = text(unitIdValue);
   if (text(faction?.moveCommandUnitId) === nextId) return;
-  window.updateV39ActiveFactionState({ moveCommandUnitId:nextId }, { reason });
+  if(ownerId===state.activePlayerId)window.updateV39ActiveFactionState({moveCommandUnitId:nextId},{reason});
+  else window.setV39GameState({players:state.players.map(player=>player.id!==ownerId?player:
+    {...player,factionState:{...player.factionState,moveCommandUnitId:nextId}})},{reason});
 }
 
 function clearMoveMode(options = {}) {
   const previousUnitId = moveSession?.unitId || "";
+  const previousPlayerId=moveSession?.playerId;
   moveSession = null;
   destroyGraphics();
   setMoveConfirm(false);
   setBanner("");
   document.getElementById("mobileBattleMove")?.classList.remove("active");
   if (options.clearCommand !== false) {
-    const faction = activeFaction();
+    const state=window.getV39GameState({includeWorlds:false});
+    const faction=state.players.find(player=>player.id===(previousPlayerId||state.activePlayerId))?.factionState;
     if (text(faction?.moveCommandUnitId) && (!previousUnitId || text(faction.moveCommandUnitId) === previousUnitId)) {
-      persistMoveCommand("", options.reason || "move-command-cancelled");
+      persistMoveCommand("", options.reason || "move-command-cancelled",previousPlayerId);
     }
   }
 }
@@ -350,7 +359,12 @@ function startMove() {
     showToast("移動するキャラクターを選択してください");
     return false;
   }
-  const moveGroup = resolveV39SquadMovementGroup(faction, unitId(unit), { followSelected:ctx.data.isUnderground });
+  const state=window.getV39GameState?.({includeWorlds:false});
+  if(!isV39UnitInWorld(unit,state.activeWorldId)){
+    showToast("このキャラクターは別のマップにいます");return false;
+  }
+  if(state.timeline.phase!==V39_TURN_PHASE.PLAYER)return false;
+  const moveGroup = resolveV39SquadMovementGroup(faction, unitId(unit), { caveFormation:ctx.data.isUnderground });
   if (moveGroup.participants?.some(member => isV39UnitWaiting(member, window.getV39GameState?.()?.timeline?.turnNumber))) {
     showToast("部隊にこのターン待機済みのキャラクターがいます");
     return false;
@@ -374,12 +388,15 @@ function startMove() {
   }
 
   const plan = buildReachablePlan(ctx.data, moveGroup, ap);
-  if (plan.costs.size <= 1) {
+  if (plan.stops.size <= 1) {
     showToast(`現在のAPでは移動可能なマスがありません（残AP ${ap}）`);
     return false;
   }
 
   moveSession = {
+    playerId:state.activePlayerId,
+    worldId:state.activeWorldId,
+    turnNumber:state.timeline.turnNumber,
     unitId:unitId(unit),
     unit,
     squadId:moveGroup.squadId,
@@ -418,7 +435,7 @@ function previewTarget(tile) {
     return;
   }
 
-  if (!moveSession.plan.costs.has(key)) {
+  if (!moveSession.plan.stops.has(key)) {
     const fallback = closestReachableTarget(moveSession.plan, moveSession.start, { x, y });
     if (!fallback) {
       setMoveConfirm(false);
@@ -489,7 +506,7 @@ async function applyMovement() {
     return;
   }
 
-  const currentGroup = resolveV39SquadMovementGroup(faction, session.unitId, { followSelected:ctx.data.isUnderground });
+  const currentGroup = resolveV39SquadMovementGroup(faction, session.unitId, { caveFormation:ctx.data.isUnderground });
   if (!currentGroup.ok) {
     showToast(currentGroup.reason || "移動部隊を再取得できませんでした");
     clearMoveMode();
@@ -506,7 +523,7 @@ async function applyMovement() {
   const freshPlan = buildReachablePlan(ctx.data, currentGroup, currentAp);
   const targetKey = coordKey(session.target.x, session.target.y);
   const freshCost = freshPlan.costs.get(targetKey);
-  if (!Number.isFinite(freshCost)) {
+  if (!Number.isFinite(freshCost)||!freshPlan.stops.has(targetKey)) {
     showToast("現在の状態ではそのマスへ移動できません");
     clearMoveMode();
     return;
@@ -542,7 +559,10 @@ async function applyMovement() {
     window.refreshV39MapEntities?.();
     batchToken = window.beginV39MapRenderBatch?.("unit-movement");
     drawPath(path);
-    await playV39UnitMovementPath(activeRuntime()?.scene, path.map(node => freshPlan.formations.get(coordKey(node.x, node.y)) || []), ctx.data);
+    await playV39UnitMovementPath(activeRuntime()?.scene, path.flatMap(node => {
+      const formation=freshPlan.formations.get(coordKey(node.x,node.y))||[];
+      return formation.transitionFrames||[formation];
+    }), ctx.data);
     window.updateV39ActiveFactionState({
       units:movement.faction.units.map(member => currentGroup.participantIds.includes(unitId(member))
         ? { ...member, lastActionTurn:window.getV39GameState?.()?.timeline?.turnNumber } : member),
@@ -592,13 +612,12 @@ function bindCapturedClick(id, handler) {
 }
 
 function bindButtons() {
-  const ids = ["panelMove", "mobileBattleMove", "moveCancel", "moveOk"];
-  const found = ids.reduce((count, id) => count + (document.getElementById(id) ? 1 : 0), 0);
   bindCapturedClick("panelMove", startMove);
   bindCapturedClick("mobileBattleMove", startMove);
   bindCapturedClick("moveCancel", () => clearMoveMode({ reason:"move-command-cancelled" }));
   bindCapturedClick("moveOk", applyMovement);
-  return found >= 2;
+  // 取消・確定だけ先に存在しても、操作UIの移動ボタンができるまでは完了にしない。
+  return ["mobileBattleMove", "moveCancel", "moveOk"].every(id => document.getElementById(id));
 }
 
 function install() {
@@ -617,10 +636,13 @@ function install() {
     }
   });
   window.addEventListener("v39:game-state-changed", event => {
-    if (moveSession && event?.detail?.reason === "active-player") {
-      clearMoveMode({ reason:"active-player-changed" });
-    }
+    if(!moveSession)return;
+    const state=window.getV39GameState({includeWorlds:false});
+    if(state.activePlayerId!==moveSession.playerId||state.activeWorldId!==moveSession.worldId
+      ||state.timeline.turnNumber!==moveSession.turnNumber||state.timeline.phase!==V39_TURN_PHASE.PLAYER)
+      clearMoveMode({ reason:"move-context-changed" });
   });
+  window.addEventListener("v39:save-loaded",()=>clearMoveMode({reason:"move-save-loaded"}));
   window.addEventListener("keydown", event => {
     if (event.key === "Escape" && moveSession) clearMoveMode({ reason:"move-command-cancelled" });
   }, true);
@@ -633,8 +655,9 @@ function install() {
     unitIds:[...moveSession.participantIds],
     start:{ ...moveSession.start },
     target:moveSession.target ? { ...moveSession.target } : null,
-    reachable:[...moveSession.plan.costs.entries()].map(([key, cost]) => ({ key, cost }))
+    reachable:[...moveSession.plan.costs.entries()].filter(([key])=>moveSession.plan.stops.has(key)).map(([key, cost]) => ({ key, cost }))
   } : null;
 }
 
+window.addEventListener("v39:operation-ui-ready", bindButtons);
 install();

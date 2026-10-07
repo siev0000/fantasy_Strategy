@@ -26,13 +26,17 @@ export function syncV39CavePartyMenu(){
   if(!menu){
     menu=document.createElement("div");menu.id="v39-cave-party-menu";menu.hidden=true;
     menu.setAttribute("role","group");menu.setAttribute("aria-label","隊列変更");
-    menu.innerHTML='<button type="button" data-order="-1" aria-label="隊列を前へ">前へ</button><button type="button" data-order="1" aria-label="隊列を後ろへ">後ろへ</button>';
+    menu.innerHTML='<button type="button" data-movement-leader>移動先頭にする</button><button type="button" data-formation="column">縦列</button><button type="button" data-formation="front-two">前2人</button><button type="button" data-movement-hold>その場待機</button><button type="button" data-order="-1" aria-label="隊列を前へ">前へ</button><button type="button" data-order="1" aria-label="隊列を後ろへ">後ろへ</button>';
     const style=document.createElement("style");
     style.textContent='#v39-cave-party-menu{position:fixed;z-index:10300;display:grid;gap:4px;padding:5px;border:1px solid #73949c;border-radius:7px;background:#102027;box-shadow:0 5px 16px #0008}#v39-cave-party-menu[hidden]{display:none}#v39-cave-party-menu button{min-height:40px;padding:8px 20px;font-size:var(--font-body);color:#ecf4f1;background:#1c323a;border:1px solid #55727b;border-radius:5px}';
     document.head.appendChild(style);document.body.appendChild(menu);
-    menu.addEventListener("click",event=>{
-      const button=event.target.closest("[data-order]");if(!button||button.disabled)return;
-      const id=targetId;close();window.reorderV39CaveParty(Number(button.dataset.order),id);
+    menu.addEventListener("click",async event=>{
+      const button=event.target.closest("button");if(!button||button.disabled)return;
+      const id=targetId;close();
+      if(button.hasAttribute("data-movement-leader"))await window.setV39CaveMovementLeader(id);
+      else if(button.hasAttribute("data-formation"))window.setV39CaveFormation(id,button.dataset.formation);
+      else if(button.hasAttribute("data-movement-hold"))window.toggleV39CaveMovementHold(id);
+      else await window.reorderV39CaveParty(Number(button.dataset.order),id);
     });
     list.addEventListener("contextmenu",event=>{
       const card=cardFrom(event);if(!card)return;
@@ -70,5 +74,16 @@ export function syncV39CavePartyMenu(){
   if(!targetId)return;
   const squad=squadFor(targetId),index=squad?.unitIds.indexOf(targetId)??-1;
   if(index<0||window.isV39MapInputLocked?.()){close();return;}
-  [...menu.children].forEach(button=>{const next=index+Number(button.dataset.order);button.disabled=next<0||next>=squad.unitIds.length;});
+  const unit=window.getV39ActiveFactionState().units.find(row=>row.id===targetId);
+  [...menu.children].forEach(button=>{
+    if(button.hasAttribute("data-movement-leader")){
+      const leaderId=squad.movementLeaderId||squad.unitIds[0];
+      button.disabled=leaderId===targetId||Number(unit?.hp??unit?.currentHp)<=0;
+      button.textContent=leaderId===targetId?"移動先頭（現在）":"移動先頭にする";
+    }else if(button.hasAttribute("data-formation")){
+      button.disabled=false;button.setAttribute("aria-pressed",String((squad.formationType||"column")===button.dataset.formation));
+    }else if(button.hasAttribute("data-movement-hold")){
+      button.disabled=Number(unit?.hp??unit?.currentHp)<=0;button.textContent=unit?.movementHold?"その場待機を解除":"その場待機";
+    }else{const next=index+Number(button.dataset.order);button.disabled=next<0||next>=squad.unitIds.length;}
+  });
 }

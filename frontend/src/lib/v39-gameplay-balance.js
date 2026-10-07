@@ -570,13 +570,23 @@ export const V39_SETTLEMENT_DEVELOPMENT_BALANCE = Object.freeze({
 
 // 特産品の配置・幸福度の暫定値。正式な種類は特産品シート追加後に差し替える。
 export const V39_CAVE_BALANCE = Object.freeze({
+  mapWidth:25, // 暫定：洞窟の横マス数。地上HEXの描画寸法に合わせて高さと組み合わせる。
+  mapHeight:28, // 暫定：横62px・行間56pxで外形がほぼ正方形になる縦マス数。
+  roomPositionJitter:2, // 暫定：形状の接続構成を保ちながら部屋中心を動かす最大マス数。
+  irregularRoomRate:0.6, // 暫定：楕円ではなく波形の輪郭を持つ部屋の割合。
+  roomRadiusScaleMin:0.85, // 暫定：元の部屋半径に掛けるランダム倍率の下限。
+  roomRadiusScaleMax:1.25, // 暫定：部屋半径倍率の上限。
+  roomOutlineVariation:0.12, // 暫定：不規則な部屋輪郭の膨らみ・凹みの割合。
+  corridorBendRate:0.6, // 暫定：長い通路に曲がりを追加する割合。
   // 地下限定: 通常の視界へ追加するマス数（索敵・隠密の能力値は変えない）。
   visionBonusTiles:2,
+  visionScoutStep:37.5, // 地下限定：この索敵値ごとに視界を1マス増やす。地上は75。
   // 地下限定: 正の射程の倍率。射程0・未記載は隣接1マスのまま。
   attackRangeMultiplier:2,
   surfaceEntranceLinkDistance:6, // 暫定：地上洞窟を同じ地下へ接続する中心からの距離。
   maxSurfaceEntrances:4, // テンプレートの出入口数上限。超える入口は別グループにする。
   tilesPerMonster:12, // 暫定：安全地帯を除いた通行可能12マスにつき敵1体。
+  encounterGroupRadius:2, // 暫定：洞窟の同一遭遇グループをアンカーから通路2マス以内へ近接配置。
   entranceSafeDistance:2, // 暫定：出入口から2マス以内には敵を配置しない。
   drakeWeight:3, // 暫定：洞窟のドレイク候補は他種の3倍の抽選重み。
   maxTestLevel:15, // 洞窟テストで自動配置する通常敵の最大Lv。

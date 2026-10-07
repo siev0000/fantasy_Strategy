@@ -26,7 +26,7 @@ try {
       skillLevels: { 索敵: 0, 隠密: 0 }, status: { 攻撃: 100, 防御: 0, 索敵: 0, 隠密: 0 }, scoutRange: 0, 索敵: 0 };
     const enemy = { id: "visibility-target", name: "露見試験対象", x: 13, y: 10,
       hp: 10000, currentHp: 10000, maxHp: 10000, ap: 100, currentAp: 100,
-      skillLevels: { 隠密: 90, 索敵: 300 }, status: { 攻撃: 100, 防御: 0, 隠密: 90 }, techniques: [], equipment: [] };
+      skillLevels: { 隠密: 240, 索敵: 300 }, status: { 攻撃: 100, 防御: 0, 隠密: 240 }, techniques: [], equipment: [] };
     window.__v39SuppressCombatEffects = true;
     await window.setV39TestMode(false);
     window.setV39GameState({ testMode: false, enemies: [enemy], enemyNests: [], enemySquads: [], neutralVillages: [], settlements: [],

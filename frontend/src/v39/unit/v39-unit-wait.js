@@ -1,4 +1,5 @@
 import { showV39Feedback } from "../ui/v39-feedback.js";
+import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -8,7 +9,8 @@ function showMessage(message) {
 }
 
 export function waitV39SelectedUnit() {
-  const state = window.getV39GameState?.();
+  if(window.isV39MapInputLocked?.())return {ok:false,reason:"input-locked"};
+  const state = window.getV39GameState?.({includeWorlds:false});
   const player = state?.players?.find(row => row.id === state.activePlayerId);
   const faction = player?.factionState;
   const unit = faction?.units?.find(row => text(row?.id) === text(faction?.selectedUnitId));
@@ -16,9 +18,13 @@ export function waitV39SelectedUnit() {
     showMessage("待機するキャラクターを選択してください");
     return { ok:false, reason:"unit-not-selected" };
   }
+  if(state.timeline.phase!=="player")return {ok:false,reason:"not-player-turn"};
   if (text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0) {
     showMessage("死亡したキャラクターは待機できません");
     return { ok:false, reason:"unit-dead" };
+  }
+  if(!isV39UnitInWorld(unit,state.activeWorldId)){
+    showMessage("このキャラクターは別のマップにいます");return {ok:false,reason:"unit-other-world"};
   }
   const apCost = 0;
   const turnNumber = Math.max(1, number(state.timeline?.turnNumber, 1));

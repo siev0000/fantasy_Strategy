@@ -198,7 +198,7 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
     const previousScout = Number(detectionByTile.get(startKey));
     detectionByTile.set(startKey, Math.max(
       Number.isFinite(previousScout) ? previousScout : Number.NEGATIVE_INFINITY,
-      resolveEffectiveScoutAtDistance(scoutValue, 0)
+      resolveEffectiveScoutAtDistance(scoutValue, 0, data)
     ));
   }
   while (queueIndex < queue.length) {
@@ -217,7 +217,7 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
         const previousScout = Number(detectionByTile.get(key));
         detectionByTile.set(key, Math.max(
           Number.isFinite(previousScout) ? previousScout : Number.NEGATIVE_INFINITY,
-          resolveEffectiveScoutAtDistance(scoutValue, distance)
+          resolveEffectiveScoutAtDistance(scoutValue, distance, data)
         ));
       }
       if (!data.isUnderground || data.grid[neighbor.y][neighbor.x] === "洞窟") queue.push({ x:neighbor.x, y:neighbor.y, distance });
