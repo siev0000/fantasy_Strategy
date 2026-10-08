@@ -68,6 +68,10 @@ function resolveSequence(rawName) {
   return fallback ? [{ name:"斬撃", source:fallback }] : [];
 }
 
+function requestValue(request, key, fallback) {
+  return Object.prototype.hasOwnProperty.call(request, key) ? request[key] : fallback;
+}
+
 export async function playV39MapEffect(request = {}) {
   const targetPlayer = effectPlayer();
   if (!targetPlayer) return false;
@@ -86,16 +90,29 @@ export async function playV39MapEffect(request = {}) {
   const requestedScalePercent = Math.max(10, number(request.scalePercent, 50 * (1 + splash)));
   const scaleMultiplier = Math.max(0.1, number(playbackSettings.scaleMultiplierPercent, 100) / 100);
   const scalePercent = Math.max(10, requestedScalePercent * scaleMultiplier);
-  const tint = Object.prototype.hasOwnProperty.call(request, "tint")
-    ? request.tint
-    : playbackSettings.tint || null;
+  const tint = requestValue(request, "tint", playbackSettings.tint || null);
+  const gradientEnabled = requestValue(request, "gradientEnabled", playbackSettings.gradientEnabled === true) === true;
+  const gradientColorA = requestValue(request, "gradientColorA", playbackSettings.gradientColorA);
+  const gradientColorB = requestValue(request, "gradientColorB", playbackSettings.gradientColorB);
+  const gradientDirection = requestValue(request, "gradientDirection", playbackSettings.gradientDirection);
+  const gradientSpeedPercentPerSecond = requestValue(
+    request,
+    "gradientSpeedPercentPerSecond",
+    playbackSettings.gradientSpeedPercentPerSecond
+  );
   console.info("[エフェクト再生]", {
     元アニメーション:requestedEffectName,
     アニメーション:sequence.map((entry) => entry.name),
     対象座標:{ x, y },
     大きさ:`${scalePercent}%`,
     角度:number(request.angleDeg, 0),
-    tint
+    tint,
+    gradient:gradientEnabled ? {
+      colorA:gradientColorA,
+      colorB:gradientColorB,
+      direction:gradientDirection,
+      speedPercentPerSecond:gradientSpeedPercentPerSecond
+    } : null
   });
   const endRender = activeScene()?.game?.v39BeginEffectRender?.();
   try {
@@ -106,6 +123,11 @@ export async function playV39MapEffect(request = {}) {
       scalePercent,
       angleDeg:number(request.angleDeg, 0),
       tint,
+      gradientEnabled,
+      gradientColorA,
+      gradientColorB,
+      gradientDirection,
+      gradientSpeedPercentPerSecond:number(gradientSpeedPercentPerSecond, 0),
       colorStrengthPercent:number(request.colorStrengthPercent, 100),
       hueAnimationDegPerFrame:number(request.hueAnimationDegPerFrame, 0),
       grayscaleBase:request.grayscaleBase === true,
