@@ -68,6 +68,25 @@ function resolveSequence(rawName) {
   return fallback ? [{ name:"斬撃", source:fallback }] : [];
 }
 
+export function resolveV39EffectPlaybackDescriptor(rawName) {
+  const requestedEffectName = text(rawName, "斬撃");
+  const playbackSettings = resolveV39EffectPlaybackSettings(requestedEffectName);
+  const sequence = resolveSequence(playbackSettings.sequenceName);
+  if (!sequence.length) return null;
+  return {
+    requestedEffectName,
+    sequenceName:playbackSettings.sequenceName,
+    sequenceSources:sequence.map((entry) => ({ ...entry.source })),
+    tint:playbackSettings.tint || null,
+    gradientEnabled:playbackSettings.gradientEnabled === true,
+    gradientColorA:playbackSettings.gradientColorA,
+    gradientColorB:playbackSettings.gradientColorB,
+    gradientDirection:playbackSettings.gradientDirection,
+    gradientSpeedPercentPerSecond:number(playbackSettings.gradientSpeedPercentPerSecond, 0),
+    scaleMultiplierPercent:number(playbackSettings.scaleMultiplierPercent, 100)
+  };
+}
+
 function requestValue(request, key, fallback) {
   return Object.prototype.hasOwnProperty.call(request, key) ? request[key] : fallback;
 }
