@@ -1,8 +1,15 @@
 const STORAGE_KEY = "v39-effect-settings-v1";
 const SCHEMA_NAME = "v39-effect-settings";
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const SCALE_MIN = 10;
 const SCALE_MAX = 400;
+const GRADIENT_SPEED_MIN = 0;
+const GRADIENT_SPEED_MAX = 500;
+const GRADIENT_DIRECTIONS = Object.freeze(["up", "down", "left", "right"]);
+const DEFAULT_GRADIENT_COLOR_A = "#FF3B1F";
+const DEFAULT_GRADIENT_COLOR_B = "#FFD54A";
+const DEFAULT_GRADIENT_DIRECTION = "up";
+const DEFAULT_GRADIENT_SPEED = 80;
 
 let effectCatalog = [];
 let effectCatalogSet = new Set();
@@ -22,6 +29,15 @@ function clampNumber(value, min, max, fallback) {
 function normalizeTint(value) {
   const body = text(value).replace(/^#/, "");
   return /^[0-9a-f]{6}$/i.test(body) ? `#${body.toUpperCase()}` : "";
+}
+
+function normalizeGradientColor(value, fallback) {
+  return normalizeTint(value) || fallback;
+}
+
+function normalizeGradientDirection(value) {
+  const direction = text(value, DEFAULT_GRADIENT_DIRECTION).toLowerCase();
+  return GRADIENT_DIRECTIONS.includes(direction) ? direction : DEFAULT_GRADIENT_DIRECTION;
 }
 
 function loadState() {
@@ -52,6 +68,11 @@ function defaultSetting(effectName) {
     baseEffect:name,
     decorationEffect:"",
     tint:"",
+    gradientEnabled:false,
+    gradientColorA:DEFAULT_GRADIENT_COLOR_A,
+    gradientColorB:DEFAULT_GRADIENT_COLOR_B,
+    gradientDirection:DEFAULT_GRADIENT_DIRECTION,
+    gradientSpeedPercentPerSecond:DEFAULT_GRADIENT_SPEED,
     scaleMultiplierPercent:100,
     customized:false
   };
@@ -68,6 +89,16 @@ function normalizeSetting(effectName, rawSetting = {}) {
     baseEffect,
     decorationEffect,
     tint:normalizeTint(rawSetting?.tint),
+    gradientEnabled:rawSetting?.gradientEnabled === true,
+    gradientColorA:normalizeGradientColor(rawSetting?.gradientColorA, DEFAULT_GRADIENT_COLOR_A),
+    gradientColorB:normalizeGradientColor(rawSetting?.gradientColorB, DEFAULT_GRADIENT_COLOR_B),
+    gradientDirection:normalizeGradientDirection(rawSetting?.gradientDirection),
+    gradientSpeedPercentPerSecond:Math.round(clampNumber(
+      rawSetting?.gradientSpeedPercentPerSecond,
+      GRADIENT_SPEED_MIN,
+      GRADIENT_SPEED_MAX,
+      DEFAULT_GRADIENT_SPEED
+    )),
     scaleMultiplierPercent:Math.round(clampNumber(rawSetting?.scaleMultiplierPercent, SCALE_MIN, SCALE_MAX, 100)),
     customized:true
   };
@@ -77,7 +108,22 @@ function isDefaultSetting(setting) {
   return setting.baseEffect === setting.effectName
     && setting.decorationEffect === ""
     && setting.tint === ""
+    && setting.gradientEnabled !== true
     && setting.scaleMultiplierPercent === 100;
+}
+
+function serializableSetting(setting) {
+  return {
+    baseEffect:setting.baseEffect,
+    decorationEffect:setting.decorationEffect,
+    tint:setting.tint,
+    gradientEnabled:setting.gradientEnabled === true,
+    gradientColorA:setting.gradientColorA,
+    gradientColorB:setting.gradientColorB,
+    gradientDirection:setting.gradientDirection,
+    gradientSpeedPercentPerSecond:setting.gradientSpeedPercentPerSecond,
+    scaleMultiplierPercent:setting.scaleMultiplierPercent
+  };
 }
 
 function emitChanged(detail = {}) {
@@ -93,14 +139,7 @@ export function setV39EffectSettingsCatalog(names = []) {
   for (const [effectName, rawSetting] of Object.entries(state.effects || {})) {
     if (!effectCatalogSet.has(effectName)) continue;
     const normalized = normalizeSetting(effectName, rawSetting);
-    if (!isDefaultSetting(normalized)) {
-      sanitized[effectName] = {
-        baseEffect:normalized.baseEffect,
-        decorationEffect:normalized.decorationEffect,
-        tint:normalized.tint,
-        scaleMultiplierPercent:normalized.scaleMultiplierPercent
-      };
-    }
+    if (!isDefaultSetting(normalized)) sanitized[effectName] = serializableSetting(normalized);
   }
   state = { effects:sanitized };
   persistState();
@@ -126,12 +165,7 @@ export function updateV39EffectSetting(effectName, patch = {}) {
   const normalized = normalizeSetting(name, { ...current, ...patch });
   const nextEffects = { ...state.effects };
   if (isDefaultSetting(normalized)) delete nextEffects[name];
-  else nextEffects[name] = {
-    baseEffect:normalized.baseEffect,
-    decorationEffect:normalized.decorationEffect,
-    tint:normalized.tint,
-    scaleMultiplierPercent:normalized.scaleMultiplierPercent
-  };
+  else nextEffects[name] = serializableSetting(normalized);
   state = { effects:nextEffects };
   persistState();
   emitChanged({ effectName:name, setting:getV39EffectSetting(name), reason:"update" });
@@ -166,7 +200,7 @@ export function importV39EffectSettings(input) {
   if (parsed.schema && parsed.schema !== SCHEMA_NAME) {
     throw new TypeError(`対応していない設定形式です: ${parsed.schema}`);
   }
-  const version = Number(parsed.version ?? SCHEMA_VERSION);
+  const version = Number(parsed.version ?? 1);
   if (!Number.isFinite(version) || version > SCHEMA_VERSION) {
     throw new TypeError(`対応していないエフェクト設定バージョンです: ${parsed.version}`);
   }
@@ -185,12 +219,7 @@ export function importV39EffectSettings(input) {
     }
     const normalized = normalizeSetting(effectName, rawSetting);
     if (isDefaultSetting(normalized)) continue;
-    imported[effectName] = {
-      baseEffect:normalized.baseEffect,
-      decorationEffect:normalized.decorationEffect,
-      tint:normalized.tint,
-      scaleMultiplierPercent:normalized.scaleMultiplierPercent
-    };
+    imported[effectName] = serializableSetting(normalized);
     importedCount += 1;
   }
   state = { effects:imported };
@@ -206,6 +235,11 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
       requestedEffect:rawName,
       sequenceName:rawName,
       tint:"",
+      gradientEnabled:false,
+      gradientColorA:DEFAULT_GRADIENT_COLOR_A,
+      gradientColorB:DEFAULT_GRADIENT_COLOR_B,
+      gradientDirection:DEFAULT_GRADIENT_DIRECTION,
+      gradientSpeedPercentPerSecond:DEFAULT_GRADIENT_SPEED,
       scaleMultiplierPercent:100
     };
   }
@@ -214,6 +248,11 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
     requestedEffect:rawName,
     sequenceName:[setting.baseEffect, setting.decorationEffect].filter(Boolean).join(":"),
     tint:setting.tint,
+    gradientEnabled:setting.gradientEnabled,
+    gradientColorA:setting.gradientColorA,
+    gradientColorB:setting.gradientColorB,
+    gradientDirection:setting.gradientDirection,
+    gradientSpeedPercentPerSecond:setting.gradientSpeedPercentPerSecond,
     scaleMultiplierPercent:setting.scaleMultiplierPercent
   };
 }
@@ -223,3 +262,6 @@ export const V39_EFFECT_SETTINGS_SCHEMA = SCHEMA_NAME;
 export const V39_EFFECT_SETTINGS_VERSION = SCHEMA_VERSION;
 export const V39_EFFECT_SCALE_MIN = SCALE_MIN;
 export const V39_EFFECT_SCALE_MAX = SCALE_MAX;
+export const V39_EFFECT_GRADIENT_SPEED_MIN = GRADIENT_SPEED_MIN;
+export const V39_EFFECT_GRADIENT_SPEED_MAX = GRADIENT_SPEED_MAX;
+export const V39_EFFECT_GRADIENT_DIRECTIONS = GRADIENT_DIRECTIONS;
