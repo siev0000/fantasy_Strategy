@@ -82,6 +82,9 @@ export function resolveV39EffectPlaybackDescriptor(rawName) {
     gradientColorA:playbackSettings.gradientColorA,
     gradientColorB:playbackSettings.gradientColorB,
     gradientDirection:playbackSettings.gradientDirection,
+    gradientStartPercent:playbackSettings.gradientStartPercent,
+    gradientEndPercent:playbackSettings.gradientEndPercent,
+    colorStrengthPercent:playbackSettings.colorStrengthPercent,
     gradientSpeedPercentPerSecond:number(playbackSettings.gradientSpeedPercentPerSecond, 0),
     scaleMultiplierPercent:number(playbackSettings.scaleMultiplierPercent, 100)
   };
@@ -114,6 +117,8 @@ export async function playV39MapEffect(request = {}) {
   const gradientColorA = requestValue(request, "gradientColorA", playbackSettings.gradientColorA);
   const gradientColorB = requestValue(request, "gradientColorB", playbackSettings.gradientColorB);
   const gradientDirection = requestValue(request, "gradientDirection", playbackSettings.gradientDirection);
+  const gradientStartPercent = requestValue(request, "gradientStartPercent", playbackSettings.gradientStartPercent);
+  const gradientEndPercent = requestValue(request, "gradientEndPercent", playbackSettings.gradientEndPercent);
   const gradientSpeedPercentPerSecond = requestValue(
     request,
     "gradientSpeedPercentPerSecond",
@@ -146,8 +151,10 @@ export async function playV39MapEffect(request = {}) {
       gradientColorA,
       gradientColorB,
       gradientDirection,
+      gradientStartPercent,
+      gradientEndPercent,
       gradientSpeedPercentPerSecond:number(gradientSpeedPercentPerSecond, 0),
-      colorStrengthPercent:number(request.colorStrengthPercent, 100),
+      colorStrengthPercent:number(requestValue(request, "colorStrengthPercent", playbackSettings.colorStrengthPercent), 100),
       hueAnimationDegPerFrame:number(request.hueAnimationDegPerFrame, 0),
       grayscaleBase:request.grayscaleBase === true,
       renderStyle:text(request.renderStyle, "soft"),

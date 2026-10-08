@@ -160,6 +160,7 @@ export class PhaserEffectPlayer {
     this.instanceId = ++instanceSerial;
     this.requestId = 0;
     this.textureKeys = new Map();
+    this.gradientTextureKeys = new Set();
     this.effectImage = null;
     this.previousImage = null;
     this.maskImage = null;
@@ -203,9 +204,21 @@ export class PhaserEffectPlayer {
     this.clearActiveObjects();
   }
 
+  async showFrame(request = {}) {
+    if (this.destroyed || !this.scene) return false;
+    this.stop();
+    const source = this.resolveSources(request)[0];
+    if (!source) return false;
+    return this.playSingle(source, { ...request, staticFrame:true, showPreviousFrameGhost:false }, {
+      x:numberOr(request.x, 0), y:numberOr(request.y, 0)
+    }, this.requestId);
+  }
+
   destroy() {
     if (this.destroyed) return;
     this.stop();
+    for (const key of this.gradientTextureKeys) this.scene.textures.remove(key);
+    this.gradientTextureKeys.clear();
     this.destroyed = true;
     this.scene = null;
     this.textureKeys.clear();
@@ -319,6 +332,9 @@ export class PhaserEffectPlayer {
     const gradientColorB = normalizeTint(request.gradientColorB);
     const gradientEnabled = request.gradientEnabled === true && gradientColorA !== null && gradientColorB !== null;
     const gradientDirection = normalizeGradientDirection(request.gradientDirection);
+    const oldHeight = clamp(numberOr(request.gradientHeightPercent, 50), 0, 100);
+    const gradientStart = clamp(numberOr(request.gradientStartPercent, Math.max(0, oldHeight - 50)), 0, 100) / 100;
+    const gradientEnd = clamp(numberOr(request.gradientEndPercent, Math.min(100, oldHeight + 50)), gradientStart, 100) / 100;
     const gradientSpeed = clamp(numberOr(request.gradientSpeedPercentPerSecond, 0), 0, 1000);
     const frameOffsets = request.frameOffsets && typeof request.frameOffsets === "object" ? request.frameOffsets : {};
     const depth = numberOr(request.depth, this.options.depth);
@@ -349,19 +365,52 @@ export class PhaserEffectPlayer {
         return;
       }
 
-      const colorA = mixTintWithWhite(rotateHue(gradientColorA, hueShift), tintStrength);
-      const colorB = mixTintWithWhite(rotateHue(gradientColorB, hueShift), tintStrength);
+      const colorA = rotateHue(gradientColorA, hueShift);
+      const colorB = rotateHue(gradientColorB, hueShift);
       const phase = Math.max(0, numberOr(elapsedMs, 0)) / 1000 * (gradientSpeed / 100);
       const reverse = gradientDirection === "down" || gradientDirection === "right";
-      const startPosition = reverse ? -phase : phase;
-      const endPosition = startPosition + 1;
-      const startColor = mixColors(colorA, colorB, gradientWave(startPosition));
-      const endColor = mixColors(colorA, colorB, gradientWave(endPosition));
-      if (gradientDirection === "left" || gradientDirection === "right") {
-        image.setTint(startColor, endColor, startColor, endColor);
-      } else {
-        image.setTint(startColor, startColor, endColor, endColor);
+      const offset = (reverse ? -phase : phase) % 2;
+      const ratio = p => gradientEnd === gradientStart
+        ? (p >= gradientEnd ? 1 : 0)
+        : clamp((p - gradientStart) / (gradientEnd - gradientStart), 0, 1);
+      const stops = [{ p:0, ratio:ratio(gradientWave(offset)) }];
+      for (let cycle = -2; cycle <= 2; cycle++) {
+        const base = cycle * 2 - offset;
+        for (const [p, value] of [[base + gradientStart, 0], [base + gradientEnd, 1], [base + 2 - gradientEnd, 1], [base + 2 - gradientStart, 0]]) {
+          if (p > 0 && p < 1) stops.push({ p, ratio:value });
+        }
       }
+      stops.push({ p:1, ratio:ratio(gradientWave(1 + offset)) });
+      stops.sort((a, b) => a.p - b.p);
+
+      // Color only the selected frame; corner tints cannot represent a narrow band.
+      const key = `portable-effect-gradient-${this.instanceId}-${image === this.previousImage ? "previous" : "current"}`;
+      let texture = this.scene.textures.exists(key) ? this.scene.textures.get(key) : null;
+      if (!texture) {
+        texture = this.scene.textures.createCanvas(key, layout.frameWidth, layout.frameHeight);
+        this.gradientTextureKeys.add(key);
+      }
+      if (texture.width !== layout.frameWidth || texture.height !== layout.frameHeight) texture.setSize(layout.frameWidth, layout.frameHeight);
+      const context = texture.context;
+      const placement = resolvePlacement(frameIndex);
+      const horizontal = gradientDirection === "left" || gradientDirection === "right";
+      const gradient = context.createLinearGradient(0, 0, horizontal ? layout.frameWidth : 0, horizontal ? 0 : layout.frameHeight);
+      for (const stop of stops) gradient.addColorStop(stop.p, `#${mixColors(colorA, colorB, stop.ratio).toString(16).padStart(6, "0")}`);
+      const drawSource = () => context.drawImage(sourceImage, placement.cropX, placement.cropY, layout.frameWidth, layout.frameHeight, 0, 0, layout.frameWidth, layout.frameHeight);
+      context.globalCompositeOperation = "source-over";
+      context.clearRect(0, 0, layout.frameWidth, layout.frameHeight);
+      drawSource();
+      // source-atop preserves even partially transparent pixels at every strength.
+      context.globalCompositeOperation = "source-atop";
+      context.globalAlpha = tintStrength / 100;
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, layout.frameWidth, layout.frameHeight);
+      context.globalAlpha = 1;
+      context.globalCompositeOperation = "source-over";
+      texture.refresh();
+      image.setTexture(key).setCrop(0, 0, layout.frameWidth, layout.frameHeight).clearTint();
+      const frameOffset = frameOffsets[frameIndex] || frameOffsets[String(frameIndex)] || {};
+      image.setPosition(position.x + numberOr(frameOffset.x, 0), position.y + numberOr(frameOffset.y, 0));
     };
 
     const applyFrame = (image, frameIndex, elapsedMs = nowMs() - playbackStartedAt) => {
@@ -370,6 +419,11 @@ export class PhaserEffectPlayer {
       image.setCrop(placement.cropX, placement.cropY, layout.frameWidth, layout.frameHeight);
       image.setPosition(placement.x, placement.y);
       applyColor(image, frameIndex, elapsedMs);
+      if (image === this.effectImage) {
+        const offset = frameOffsets[frameIndex] || frameOffsets[String(frameIndex)] || {};
+        request.onFrame?.({ x:position.x + numberOr(offset.x, 0), y:position.y + numberOr(offset.y, 0),
+          width:layout.frameWidth * scale, height:layout.frameHeight * scale, frameIndex });
+      }
     };
 
     const createImage = (imageDepth, alpha = 1) => {
@@ -406,9 +460,10 @@ export class PhaserEffectPlayer {
       }
     }
 
-    let currentFrameIndex = 0;
-    applyFrame(this.effectImage, 0, 0);
+    let currentFrameIndex = request.staticFrame ? clamp(Math.floor(numberOr(request.frameIndex, 0)), 0, layout.frameCount - 1) : 0;
+    applyFrame(this.effectImage, currentFrameIndex, 0);
     applyFrame(this.previousImage, 0, 0);
+    if (request.staticFrame) return true;
     const duration = Math.max(16, Math.floor(numberOr(request.totalDurationMs, this.options.totalDurationMs)));
 
     if (gradientEnabled && gradientSpeed > 0) {

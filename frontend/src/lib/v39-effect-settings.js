@@ -1,6 +1,6 @@
 const STORAGE_KEY = "v39-effect-settings-v1";
 const SCHEMA_NAME = "v39-effect-settings";
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const SCALE_MIN = 10;
 const SCALE_MAX = 400;
 const GRADIENT_SPEED_MIN = 0;
@@ -72,6 +72,9 @@ function defaultSetting(effectName) {
     gradientColorA:DEFAULT_GRADIENT_COLOR_A,
     gradientColorB:DEFAULT_GRADIENT_COLOR_B,
     gradientDirection:DEFAULT_GRADIENT_DIRECTION,
+    gradientStartPercent:0,
+    gradientEndPercent:100,
+    colorStrengthPercent:100,
     gradientSpeedPercentPerSecond:DEFAULT_GRADIENT_SPEED,
     scaleMultiplierPercent:100,
     customized:false
@@ -84,6 +87,9 @@ function normalizeSetting(effectName, rawSetting = {}) {
   const rawDecoration = text(rawSetting?.decorationEffect);
   const baseEffect = effectCatalogSet.size > 0 && !effectCatalogSet.has(rawBase) ? defaults.baseEffect : rawBase;
   const decorationEffect = rawDecoration && effectCatalogSet.size > 0 && !effectCatalogSet.has(rawDecoration) ? "" : rawDecoration;
+  const oldHeight = clampNumber(rawSetting?.gradientHeightPercent, 0, 100, 50);
+  const start = clampNumber(rawSetting?.gradientStartPercent, 0, 100, Math.max(0, oldHeight - 50));
+  const end = clampNumber(rawSetting?.gradientEndPercent, 0, 100, Math.min(100, oldHeight + 50));
   return {
     effectName:defaults.effectName,
     baseEffect,
@@ -93,6 +99,9 @@ function normalizeSetting(effectName, rawSetting = {}) {
     gradientColorA:normalizeGradientColor(rawSetting?.gradientColorA, DEFAULT_GRADIENT_COLOR_A),
     gradientColorB:normalizeGradientColor(rawSetting?.gradientColorB, DEFAULT_GRADIENT_COLOR_B),
     gradientDirection:normalizeGradientDirection(rawSetting?.gradientDirection),
+    gradientStartPercent:Math.min(start, end),
+    gradientEndPercent:Math.max(start, end),
+    colorStrengthPercent:clampNumber(rawSetting?.colorStrengthPercent, 0, 100, 100),
     gradientSpeedPercentPerSecond:Math.round(clampNumber(
       rawSetting?.gradientSpeedPercentPerSecond,
       GRADIENT_SPEED_MIN,
@@ -109,6 +118,9 @@ function isDefaultSetting(setting) {
     && setting.decorationEffect === ""
     && setting.tint === ""
     && setting.gradientEnabled !== true
+    && setting.gradientStartPercent === 0
+    && setting.gradientEndPercent === 100
+    && setting.colorStrengthPercent === 100
     && setting.scaleMultiplierPercent === 100;
 }
 
@@ -121,6 +133,9 @@ function serializableSetting(setting) {
     gradientColorA:setting.gradientColorA,
     gradientColorB:setting.gradientColorB,
     gradientDirection:setting.gradientDirection,
+    gradientStartPercent:setting.gradientStartPercent,
+    gradientEndPercent:setting.gradientEndPercent,
+    colorStrengthPercent:setting.colorStrengthPercent,
     gradientSpeedPercentPerSecond:setting.gradientSpeedPercentPerSecond,
     scaleMultiplierPercent:setting.scaleMultiplierPercent
   };
@@ -239,6 +254,9 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
       gradientColorA:DEFAULT_GRADIENT_COLOR_A,
       gradientColorB:DEFAULT_GRADIENT_COLOR_B,
       gradientDirection:DEFAULT_GRADIENT_DIRECTION,
+      gradientStartPercent:0,
+      gradientEndPercent:100,
+      colorStrengthPercent:100,
       gradientSpeedPercentPerSecond:DEFAULT_GRADIENT_SPEED,
       scaleMultiplierPercent:100
     };
@@ -252,6 +270,9 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
     gradientColorA:setting.gradientColorA,
     gradientColorB:setting.gradientColorB,
     gradientDirection:setting.gradientDirection,
+    gradientStartPercent:setting.gradientStartPercent,
+    gradientEndPercent:setting.gradientEndPercent,
+    colorStrengthPercent:setting.colorStrengthPercent,
     gradientSpeedPercentPerSecond:setting.gradientSpeedPercentPerSecond,
     scaleMultiplierPercent:setting.scaleMultiplierPercent
   };

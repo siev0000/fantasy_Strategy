@@ -89,6 +89,7 @@ function openFromTitle() {
 
 function closeTitleSettings() {
   if (!titleMode) return false;
+  window.closeV39EffectSettings?.();
   const panel = element("v39-effect-settings-panel");
   const back = element("v39-effect-settings-back");
 
