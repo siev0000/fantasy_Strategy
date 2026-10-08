@@ -98,7 +98,7 @@ function installStyles() {
     .v39-effect-settings-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
     .v39-effect-settings-actions button{min-height:42px;border:1px solid #49646d;border-radius:7px;background:#173039;color:#eef8f5;padding:6px 8px;font:inherit;font-size:var(--font-secondary);font-weight:800;cursor:pointer}
     .v39-effect-settings-actions button:hover,.v39-effect-preview-replay:hover{background:#1d424b;border-color:#76cedb}
-    #v39-effect-settings-status{min-height:28px;margin:0;padding:5px 8px;border-top:1px solid #293b41;background:#0a1216;color:#a9bdc0;font-size:var(--font-secondary);line-height:1.4}
+    #v39-effect-settings-status{min-height:28px;margin:0;padding:5px 8px;border-top:1px solid #293b41;background:#0a1216;color:#a9bdc0;font-size:var(--font-secondary);line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
     #v39-effect-settings-status.is-error{color:#f3a092;background:#2c1715}
     @media(max-width:600px){
       .v39-effect-settings-head{min-height:40px;padding:4px 6px}
@@ -233,6 +233,18 @@ function setStatus(message, error = false) {
   status.classList.toggle("is-error", error);
 }
 
+function previewSourceUrl(descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName)) {
+  return descriptor?.sequenceSources?.[0]?.src || "不明";
+}
+
+function previewErrorMessage(error) {
+  return String(error?.message || error || "不明なエラー");
+}
+
+function showPreviewFailure(label, error, descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName)) {
+  setStatus(`${label}\nURL: ${previewSourceUrl(descriptor)}\n原因: ${previewErrorMessage(error)}`, true);
+}
+
 function switchSettingsTab(tabName) {
   const next = SETTINGS_TABS.includes(tabName) ? tabName : "basic";
   activeSettingsTab = next;
@@ -309,7 +321,13 @@ async function previewSources(descriptor) {
   const availableHeight = Math.max(1, height - PREVIEW_PADDING_PX * 2);
   const sources = [];
   for (const source of descriptor.sequenceSources) {
-    const key = await previewPlayer.loadTexture(source.src);
+    let key;
+    try {
+      key = await previewPlayer.loadTexture(source.src);
+    } catch (error) {
+      error.previewSource = source.src;
+      throw error;
+    }
     const image = previewGame.textures.get(key).getSourceImage();
     const layout = resolveEffectSheetLayout(image.width, image.height, previewPlayer.options);
     const scale = Math.min(PREVIEW_BASE_SIZE_PX / Math.max(layout.frameWidth, layout.frameHeight), availableWidth / layout.frameWidth, availableHeight / layout.frameHeight);
@@ -366,7 +384,7 @@ function playPanelPreview() {
     if (requestId !== previewRequestId || !previewPanelVisible()) return;
     if (!played || playbackError) {
       console.error("[エフェクト設定] 再生失敗", playbackError);
-      setStatus("エフェクト画像を読み込めませんでした。", true);
+      showPreviewFailure("エフェクト再生に失敗しました。", playbackError || new Error("再生処理が false を返しました。"), descriptor);
       return;
     }
     setStatus(`${selectedEffectName} の再生完了`);
@@ -375,7 +393,8 @@ function playPanelPreview() {
   }).catch(error => {
     if (requestId !== previewRequestId) return;
     console.error("[エフェクト設定] 画面内プレビュー失敗", error);
-    setStatus("画面内プレビューに失敗しました。", true);
+    const source = error?.previewSource || previewSourceUrl(descriptor);
+    setStatus(`画面内プレビューに失敗しました。\nURL: ${source}\n原因: ${previewErrorMessage(error)}`, true);
   });
   return true;
 }
@@ -387,10 +406,11 @@ function schedulePanelPreview(delay = 80) {
     if (playbackMode === "frame") void showPanelFrame();
     else if (previewPanelVisible() && ["color", "motion"].includes(activeSettingsTab)) {
       const requestId = previewRequestId;
+      const descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
       void ensurePreviewGame().then(() => {
-        if (requestId === previewRequestId && previewPanelVisible()) return previewSources(resolveV39EffectPlaybackDescriptor(selectedEffectName));
+        if (requestId === previewRequestId && previewPanelVisible()) return previewSources(descriptor);
       }).catch(error => {
-        if (requestId === previewRequestId) setStatus("基準位置を読み込めませんでした。", true);
+        if (requestId === previewRequestId) showPreviewFailure("基準位置を読み込めませんでした。", error, descriptor);
       });
     }
   }, Math.max(0, Number(delay) || 0));
@@ -405,10 +425,10 @@ function ensurePreviewGame() {
   previewBootPromise = import("phaser").then(module => {
     const Phaser = module.default || module;
     if (!document.body.contains(host)) return null;
-    // Game construction finishes before Scene.create; await the usable player.
+    // Settings preview uses Canvas intentionally. The main field game keeps its own renderer.
     return new Promise(resolve => {
       previewGame = new Phaser.Game({
-        type:Phaser.AUTO,
+        type:Phaser.CANVAS,
         parent:host,
         width:PREVIEW_WIDTH,
         height:PREVIEW_HEIGHT,
@@ -427,7 +447,7 @@ function ensurePreviewGame() {
   }).catch(error => {
     previewBootPromise = null;
     console.error("[エフェクト設定] プレビュー初期化失敗", error);
-    setStatus("プレビューの初期化に失敗しました。", true);
+    showPreviewFailure("プレビューの初期化に失敗しました。", error);
     return null;
   });
   return previewBootPromise;
@@ -454,10 +474,11 @@ function stopPanelPlayback() {
 
 async function showPanelFrame() {
   const requestId = ++previewRequestId;
+  let descriptor = null;
   try {
     await ensurePreviewGame();
     if (!previewPanelVisible() || requestId !== previewRequestId) return;
-    const descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
+    descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
     const frames = [];
     const sources = await previewSources(descriptor);
     if (requestId !== previewRequestId || !previewPanelVisible()) return;
@@ -484,7 +505,8 @@ async function showPanelFrame() {
   } catch (error) {
     if (requestId !== previewRequestId) return;
     console.error("[エフェクト設定] コマ表示失敗", error);
-    setStatus("コマを表示できませんでした。", true);
+    const source = error?.previewSource || previewSourceUrl(descriptor);
+    setStatus(`コマを表示できませんでした。\nURL: ${source}\n原因: ${previewErrorMessage(error)}`, true);
   }
 }
 
