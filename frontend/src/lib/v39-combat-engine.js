@@ -301,9 +301,11 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   const defense = Math.max(0, number(target?.status?.[defenseKey], 0));
   const resistanceKey = `${strongestDamageType(adjusted.skillRow)}耐性`;
   const resistance = Math.max(0, number(target?.status?.[resistanceKey], number(target?.resistances?.[resistanceKey], 0)));
-  const resistanceRate = Math.min(1, resistance / 100);
+  const resistancePenetration = Math.max(0, number(adjusted.attacker?.status?.耐性貫通, 0));
+  const effectiveResistance = Math.max(0, resistance - resistancePenetration);
+  const resistanceRate = Math.min(1, effectiveResistance / 100);
   const targetLevel = Math.max(1, Math.floor(number(target?.level, target?.status?.Lv || 1)));
-  const levelReduction = (targetLevel / 10) * resistance;
+  const levelReduction = (targetLevel / 10) * effectiveResistance;
   const reducedPower = Math.max(0, power - levelReduction);
   const attackCount = Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)));
   const magicalAttack = text(adjusted.skillRow?.攻撃手段) === "魔法" || magicalJudge;
@@ -338,7 +340,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
     hitResults,
     missCount:hitResults.filter(row => !row.hit).length,
     detail:{
-      power, defenseKey, defense, resistanceKey, resistance, resistanceRate, targetLevel,
+      power, defenseKey, defense, resistanceKey, resistance, resistancePenetration, effectiveResistance, resistanceRate, targetLevel,
       levelReduction, reducedPower, attackCount, scale, friendly, damageMultiplier:V39_COMBAT_BALANCE.damageMultiplier, accuracyKey, accuracy, evasion, hitRate,
       appliedPassiveSkillNames:adjusted.appliedPassiveSkillNames,
       attackerTerrain:text(attacker?.terrainModifierSource),
