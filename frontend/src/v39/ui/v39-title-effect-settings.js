@@ -66,14 +66,6 @@ function ensureHost() {
   return host;
 }
 
-function refreshPreviewAfterMount() {
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      window.refreshV39EffectSettingsPreview?.();
-    });
-  });
-}
-
 function openFromTitle() {
   const panel = element("v39-effect-settings-panel");
   const back = element("v39-effect-settings-back");
@@ -91,7 +83,6 @@ function openFromTitle() {
   if (back) back.textContent = "← タイトル";
   panel.hidden = false;
   panel.setAttribute("aria-hidden", "false");
-  refreshPreviewAfterMount();
   return true;
 }
 
