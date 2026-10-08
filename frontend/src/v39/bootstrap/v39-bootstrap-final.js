@@ -13,5 +13,6 @@ import "../unit/v39-squad-derived-binding.js";
 import "../world/v39-research-ui.js";
 import "../ui/v39-design-docs-viewer.js";
 import "../ui/v39-effect-settings.js";
+import "../ui/v39-effect-settings-static-preview.js";
 import "../ui/v39-title-effect-settings.js";
 import "../ui/v39-text-input-modal.js";
