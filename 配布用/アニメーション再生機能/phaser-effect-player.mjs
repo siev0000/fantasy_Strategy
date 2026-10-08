@@ -9,6 +9,7 @@ const DEFAULT_OPTIONS = Object.freeze({
   softMaskSize: 256,
   softMaskInnerRatio: 0.58,
   ellipseRatioThreshold: 1.15,
+  gradientRefreshMs: 50,
   blendMode: "SCREEN",
   crossOrigin: null
 });
@@ -81,9 +82,30 @@ function mixTintWithWhite(color, strengthPercent) {
     | mix(color & 0xff);
 }
 
+function mixColors(colorA, colorB, ratioRaw) {
+  const ratio = clamp(numberOr(ratioRaw, 0), 0, 1);
+  const mix = shift => Math.round(((colorA >> shift) & 0xff) + ((((colorB >> shift) & 0xff) - ((colorA >> shift) & 0xff)) * ratio));
+  return (mix(16) << 16) | (mix(8) << 8) | mix(0);
+}
+
+function gradientWave(positionRaw) {
+  const position = numberOr(positionRaw, 0);
+  const wrapped = ((position % 2) + 2) % 2;
+  return wrapped <= 1 ? wrapped : 2 - wrapped;
+}
+
+function normalizeGradientDirection(value) {
+  const direction = String(value || "up").trim().toLowerCase();
+  return ["up", "down", "left", "right"].includes(direction) ? direction : "up";
+}
+
 function wait(ms) {
   const delay = Math.max(0, Math.floor(numberOr(ms, 0)));
   return delay > 0 ? new Promise(resolve => setTimeout(resolve, delay)) : Promise.resolve();
+}
+
+function nowMs() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
 }
 
 export const EFFECT_PLAYER_DEFAULTS = DEFAULT_OPTIONS;
@@ -142,6 +164,7 @@ export class PhaserEffectPlayer {
     this.previousImage = null;
     this.maskImage = null;
     this.frameTimer = null;
+    this.colorTimer = null;
     this.hideTimer = null;
     this.finishActivePlayback = null;
     this.destroyed = false;
@@ -243,8 +266,10 @@ export class PhaserEffectPlayer {
 
   clearActiveObjects() {
     if (this.frameTimer) clearInterval(this.frameTimer);
+    if (this.colorTimer) clearInterval(this.colorTimer);
     if (this.hideTimer) clearTimeout(this.hideTimer);
     this.frameTimer = null;
+    this.colorTimer = null;
     this.hideTimer = null;
 
     const finish = this.finishActivePlayback;
@@ -290,9 +315,15 @@ export class PhaserEffectPlayer {
     const tint = normalizeTint(request.tint);
     const tintStrength = clamp(numberOr(request.colorStrengthPercent, 100), 0, 100);
     const huePerFrame = clamp(numberOr(request.hueAnimationDegPerFrame, 0), -360, 360);
+    const gradientColorA = normalizeTint(request.gradientColorA);
+    const gradientColorB = normalizeTint(request.gradientColorB);
+    const gradientEnabled = request.gradientEnabled === true && gradientColorA !== null && gradientColorB !== null;
+    const gradientDirection = normalizeGradientDirection(request.gradientDirection);
+    const gradientSpeed = clamp(numberOr(request.gradientSpeedPercentPerSecond, 0), 0, 1000);
     const frameOffsets = request.frameOffsets && typeof request.frameOffsets === "object" ? request.frameOffsets : {};
     const depth = numberOr(request.depth, this.options.depth);
     const renderStyle = ["soft", "rect", "none"].includes(request.renderStyle) ? request.renderStyle : "soft";
+    const playbackStartedAt = nowMs();
 
     const resolvePlacement = frameIndexRaw => {
       const frameIndex = clamp(Math.floor(numberOr(frameIndexRaw, 0)), 0, layout.frameCount - 1);
@@ -309,13 +340,36 @@ export class PhaserEffectPlayer {
       };
     };
 
-    const applyFrame = (image, frameIndex) => {
+    const applyColor = (image, frameIndex, elapsedMs) => {
+      if (!image) return;
+      const hueShift = huePerFrame * frameIndex;
+      if (!gradientEnabled) {
+        if (tint === null) image.clearTint?.();
+        else image.setTint(mixTintWithWhite(rotateHue(tint, hueShift), tintStrength));
+        return;
+      }
+
+      const colorA = mixTintWithWhite(rotateHue(gradientColorA, hueShift), tintStrength);
+      const colorB = mixTintWithWhite(rotateHue(gradientColorB, hueShift), tintStrength);
+      const phase = Math.max(0, numberOr(elapsedMs, 0)) / 1000 * (gradientSpeed / 100);
+      const reverse = gradientDirection === "down" || gradientDirection === "right";
+      const startPosition = reverse ? -phase : phase;
+      const endPosition = startPosition + 1;
+      const startColor = mixColors(colorA, colorB, gradientWave(startPosition));
+      const endColor = mixColors(colorA, colorB, gradientWave(endPosition));
+      if (gradientDirection === "left" || gradientDirection === "right") {
+        image.setTint(startColor, endColor, startColor, endColor);
+      } else {
+        image.setTint(startColor, startColor, endColor, endColor);
+      }
+    };
+
+    const applyFrame = (image, frameIndex, elapsedMs = nowMs() - playbackStartedAt) => {
       if (!image) return;
       const placement = resolvePlacement(frameIndex);
       image.setCrop(placement.cropX, placement.cropY, layout.frameWidth, layout.frameHeight);
       image.setPosition(placement.x, placement.y);
-      if (tint === null) image.clearTint?.();
-      else image.setTint(mixTintWithWhite(rotateHue(tint, huePerFrame * frameIndex), tintStrength));
+      applyColor(image, frameIndex, elapsedMs);
     };
 
     const createImage = (imageDepth, alpha = 1) => {
@@ -352,9 +406,20 @@ export class PhaserEffectPlayer {
       }
     }
 
-    applyFrame(this.effectImage, 0);
-    applyFrame(this.previousImage, 0);
+    let currentFrameIndex = 0;
+    applyFrame(this.effectImage, 0, 0);
+    applyFrame(this.previousImage, 0, 0);
     const duration = Math.max(16, Math.floor(numberOr(request.totalDurationMs, this.options.totalDurationMs)));
+
+    if (gradientEnabled && gradientSpeed > 0) {
+      const refreshMs = Math.max(16, Math.floor(numberOr(this.options.gradientRefreshMs, 50)));
+      this.colorTimer = setInterval(() => {
+        if (requestId !== this.requestId || !this.effectImage) return;
+        const elapsedMs = nowMs() - playbackStartedAt;
+        applyColor(this.effectImage, currentFrameIndex, elapsedMs);
+        applyColor(this.previousImage, Math.max(0, currentFrameIndex - 1), elapsedMs);
+      }, refreshMs);
+    }
 
     await new Promise(resolve => {
       let settled = false;
@@ -374,21 +439,21 @@ export class PhaserEffectPlayer {
       }
 
       const frameInterval = Math.max(16, Math.floor(duration / layout.frameCount));
-      let frameIndex = 0;
       this.frameTimer = setInterval(() => {
         if (requestId !== this.requestId || !this.effectImage) {
           this.clearActiveObjects();
           finish();
           return;
         }
-        frameIndex += 1;
-        if (frameIndex >= layout.frameCount) {
+        currentFrameIndex += 1;
+        if (currentFrameIndex >= layout.frameCount) {
           this.clearActiveObjects();
           finish();
           return;
         }
-        applyFrame(this.effectImage, frameIndex);
-        applyFrame(this.previousImage, Math.max(0, frameIndex - 1));
+        const elapsedMs = nowMs() - playbackStartedAt;
+        applyFrame(this.effectImage, currentFrameIndex, elapsedMs);
+        applyFrame(this.previousImage, Math.max(0, currentFrameIndex - 1), elapsedMs);
       }, frameInterval);
     });
     return true;
