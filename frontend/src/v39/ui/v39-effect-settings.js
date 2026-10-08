@@ -1,4 +1,6 @@
 import {
+  V39_EFFECT_GRADIENT_SPEED_MAX,
+  V39_EFFECT_GRADIENT_SPEED_MIN,
   V39_EFFECT_SCALE_MAX,
   V39_EFFECT_SCALE_MIN,
   getV39EffectSetting,
@@ -29,11 +31,15 @@ function installStyles() {
     .v39-effect-settings-body{min-height:0;overflow:auto;padding:7px;display:grid;gap:7px;align-content:start}
     .v39-effect-settings-note{margin:0;padding:6px 8px;border:1px solid #31464d;border-radius:7px;background:#101d22;color:#aebec1;font-size:var(--font-secondary);line-height:1.45}
     .v39-effect-setting-row{display:grid;grid-template-columns:minmax(105px,.7fr) minmax(0,1.3fr);align-items:center;gap:7px;padding:6px 8px;border:1px solid #33474e;border-radius:7px;background:#111d22}
-    .v39-effect-setting-row>span{font-size:var(--font-secondary);font-weight:800;color:#c7d4d5}
+    .v39-effect-setting-row>span:first-child{font-size:var(--font-secondary);font-weight:800;color:#c7d4d5}
     .v39-effect-setting-row select,.v39-effect-setting-row input[type="number"]{width:100%;min-width:0;min-height:30px;border:1px solid #50646b;border-radius:5px;background:#0d171b;color:#eef5f2;padding:3px 6px;font:inherit}
+    .v39-effect-setting-row input:disabled,.v39-effect-setting-row select:disabled{opacity:.45;cursor:not-allowed}
     .v39-effect-tint-controls{display:grid;grid-template-columns:auto 48px minmax(0,1fr);align-items:center;gap:6px}
     .v39-effect-tint-controls input[type="color"]{width:46px;height:30px;padding:2px;border:1px solid #50646b;border-radius:5px;background:#0d171b}
     .v39-effect-tint-code{color:#a9b8ba;font-size:var(--font-secondary);font-variant-numeric:tabular-nums}
+    .v39-effect-gradient-switch{display:flex;align-items:center;gap:7px;color:#dce8e6;font-size:var(--font-secondary);font-weight:800}
+    .v39-effect-gradient-speed{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px}
+    .v39-effect-gradient-speed small{color:#9fb0b3;font-size:var(--font-secondary);white-space:nowrap}
     .v39-effect-settings-actions{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0}
     .v39-effect-settings-actions button{min-height:32px;border:1px solid #49646d;border-radius:6px;background:#173039;color:#eef8f5;padding:5px 9px;font:inherit;font-size:var(--font-secondary);font-weight:800;cursor:pointer}
     .v39-effect-settings-actions button:hover{background:#1d424b;border-color:#76cedb}
@@ -91,11 +97,16 @@ function ensurePanel() {
       <strong>エフェクト設定</strong>
     </header>
     <div class="v39-effect-settings-body">
-      <p class="v39-effect-settings-note">実際のエフェクトカタログを編集します。変更はブラウザ内へ自動保存され、戦闘再生へ即時反映されます。</p>
+      <p class="v39-effect-settings-note">実際のエフェクトカタログを編集します。変更はブラウザ内へ自動保存され、戦闘再生へ即時反映されます。グラデーションON時は単色Tintよりグラデーションを優先します。</p>
       <label class="v39-effect-setting-row"><span>対象エフェクト</span><select id="v39-effect-setting-source"></select></label>
       <label class="v39-effect-setting-row"><span>基本形状</span><select id="v39-effect-setting-base"></select></label>
       <label class="v39-effect-setting-row"><span>追加装飾</span><select id="v39-effect-setting-decoration"></select></label>
-      <label class="v39-effect-setting-row"><span>Tint / 色調</span><span class="v39-effect-tint-controls"><input type="checkbox" id="v39-effect-setting-tint-enabled" aria-label="Tintを使用"><input type="color" id="v39-effect-setting-tint" value="#FFFFFF"><output id="v39-effect-setting-tint-code" class="v39-effect-tint-code">なし</output></span></label>
+      <label class="v39-effect-setting-row"><span>Tint / 単色</span><span class="v39-effect-tint-controls"><input type="checkbox" id="v39-effect-setting-tint-enabled" aria-label="Tintを使用"><input type="color" id="v39-effect-setting-tint" value="#FFFFFF"><output id="v39-effect-setting-tint-code" class="v39-effect-tint-code">なし</output></span></label>
+      <label class="v39-effect-setting-row"><span>グラデーション</span><span class="v39-effect-gradient-switch"><input type="checkbox" id="v39-effect-setting-gradient-enabled">2色グラデーションを使用</span></label>
+      <label class="v39-effect-setting-row"><span>グラデーション色A</span><span class="v39-effect-tint-controls"><span></span><input type="color" id="v39-effect-setting-gradient-a" value="#FF3B1F"><output id="v39-effect-setting-gradient-a-code" class="v39-effect-tint-code">#FF3B1F</output></span></label>
+      <label class="v39-effect-setting-row"><span>グラデーション色B</span><span class="v39-effect-tint-controls"><span></span><input type="color" id="v39-effect-setting-gradient-b" value="#FFD54A"><output id="v39-effect-setting-gradient-b-code" class="v39-effect-tint-code">#FFD54A</output></span></label>
+      <label class="v39-effect-setting-row"><span>移動方向</span><select id="v39-effect-setting-gradient-direction"><option value="up">上へ</option><option value="down">下へ</option><option value="left">左へ</option><option value="right">右へ</option></select></label>
+      <label class="v39-effect-setting-row"><span>移動速度</span><span class="v39-effect-gradient-speed"><input type="number" id="v39-effect-setting-gradient-speed" min="${V39_EFFECT_GRADIENT_SPEED_MIN}" max="${V39_EFFECT_GRADIENT_SPEED_MAX}" step="10" value="80"><small>% / 秒</small></span></label>
       <label class="v39-effect-setting-row"><span>基準Scale倍率</span><input type="number" id="v39-effect-setting-scale" min="${V39_EFFECT_SCALE_MIN}" max="${V39_EFFECT_SCALE_MAX}" step="5" value="100"></label>
       <div class="v39-effect-settings-actions">
         <button type="button" id="v39-effect-setting-preview">▶ 実マップでプレビュー</button>
@@ -121,6 +132,26 @@ function setStatus(message, error = false) {
   status.classList.toggle("is-error", error);
 }
 
+function applyColorControlState(setting) {
+  const gradientEnabled = setting?.gradientEnabled === true;
+  const tintEnabled = element("v39-effect-setting-tint-enabled");
+  const tint = element("v39-effect-setting-tint");
+  const tintCode = element("v39-effect-setting-tint-code");
+  if (tintEnabled) tintEnabled.disabled = gradientEnabled;
+  if (tint) tint.disabled = gradientEnabled || tintEnabled?.checked !== true;
+  if (tintCode && gradientEnabled) tintCode.textContent = "グラデーション優先";
+
+  for (const id of [
+    "v39-effect-setting-gradient-a",
+    "v39-effect-setting-gradient-b",
+    "v39-effect-setting-gradient-direction",
+    "v39-effect-setting-gradient-speed"
+  ]) {
+    const control = element(id);
+    if (control) control.disabled = !gradientEnabled;
+  }
+}
+
 function renderSetting() {
   const catalog = getV39EffectSettingsCatalog();
   if (!catalog.length) {
@@ -137,17 +168,29 @@ function renderSetting() {
     const tintEnabled = element("v39-effect-setting-tint-enabled");
     const tint = element("v39-effect-setting-tint");
     const tintCode = element("v39-effect-setting-tint-code");
+    const gradientEnabled = element("v39-effect-setting-gradient-enabled");
+    const gradientA = element("v39-effect-setting-gradient-a");
+    const gradientB = element("v39-effect-setting-gradient-b");
+    const gradientACode = element("v39-effect-setting-gradient-a-code");
+    const gradientBCode = element("v39-effect-setting-gradient-b-code");
+    const gradientDirection = element("v39-effect-setting-gradient-direction");
+    const gradientSpeed = element("v39-effect-setting-gradient-speed");
     const scale = element("v39-effect-setting-scale");
     if (source) source.value = selectedEffectName;
     if (base) base.value = setting.baseEffect;
     if (decoration) decoration.value = setting.decorationEffect;
     if (tintEnabled) tintEnabled.checked = !!setting.tint;
-    if (tint) {
-      tint.value = setting.tint || "#FFFFFF";
-      tint.disabled = !setting.tint;
-    }
+    if (tint) tint.value = setting.tint || "#FFFFFF";
     if (tintCode) tintCode.textContent = setting.tint || "なし";
+    if (gradientEnabled) gradientEnabled.checked = setting.gradientEnabled === true;
+    if (gradientA) gradientA.value = setting.gradientColorA;
+    if (gradientB) gradientB.value = setting.gradientColorB;
+    if (gradientACode) gradientACode.textContent = setting.gradientColorA;
+    if (gradientBCode) gradientBCode.textContent = setting.gradientColorB;
+    if (gradientDirection) gradientDirection.value = setting.gradientDirection;
+    if (gradientSpeed) gradientSpeed.value = String(setting.gradientSpeedPercentPerSecond);
     if (scale) scale.value = String(setting.scaleMultiplierPercent);
+    applyColorControlState(setting);
     setStatus(`自動保存: ON / 変更済み ${settingCount()}件`);
   } finally {
     rendering = false;
@@ -162,6 +205,11 @@ function saveCurrentSetting() {
     baseEffect:element("v39-effect-setting-base")?.value,
     decorationEffect:element("v39-effect-setting-decoration")?.value,
     tint:tintValue,
+    gradientEnabled:element("v39-effect-setting-gradient-enabled")?.checked === true,
+    gradientColorA:element("v39-effect-setting-gradient-a")?.value,
+    gradientColorB:element("v39-effect-setting-gradient-b")?.value,
+    gradientDirection:element("v39-effect-setting-gradient-direction")?.value,
+    gradientSpeedPercentPerSecond:element("v39-effect-setting-gradient-speed")?.value,
     scaleMultiplierPercent:element("v39-effect-setting-scale")?.value
   });
   renderSetting();
@@ -248,12 +296,13 @@ function bindControls() {
   });
   element("v39-effect-setting-base")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-decoration")?.addEventListener("change", saveCurrentSetting);
-  element("v39-effect-setting-tint-enabled")?.addEventListener("change", event => {
-    const tint = element("v39-effect-setting-tint");
-    if (tint) tint.disabled = !event.target.checked;
-    saveCurrentSetting();
-  });
+  element("v39-effect-setting-tint-enabled")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-tint")?.addEventListener("input", saveCurrentSetting);
+  element("v39-effect-setting-gradient-enabled")?.addEventListener("change", saveCurrentSetting);
+  element("v39-effect-setting-gradient-a")?.addEventListener("input", saveCurrentSetting);
+  element("v39-effect-setting-gradient-b")?.addEventListener("input", saveCurrentSetting);
+  element("v39-effect-setting-gradient-direction")?.addEventListener("change", saveCurrentSetting);
+  element("v39-effect-setting-gradient-speed")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-scale")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-preview")?.addEventListener("click", previewCurrentEffect);
   element("v39-effect-setting-reset")?.addEventListener("click", () => {
