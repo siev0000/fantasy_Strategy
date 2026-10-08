@@ -13,7 +13,7 @@ export const RACE_CLASS_NAME_MAP = Object.freeze(Object.fromEntries(raceClassEnt
 
 export const STATUS_FIELDS = Object.freeze(["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"]);
 export const STATUS_GROWTH_FIELDS = Object.freeze(["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中"]);
-export const COMBAT_STATUS_FIELDS = Object.freeze(["HP", "MP", "ST", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ", "Cr率", "Cr威力"]);
+export const COMBAT_STATUS_FIELDS = Object.freeze(["HP", "MP", "ST", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ", "Cr率", "Cr威力", "耐性貫通"]);
 export const DAMAGE_TYPE_FIELDS = Object.freeze(["物理", "魔法", "射撃", "切断", "貫通", "打撃", "炎", "氷", "雷", "毒", "光", "闇"]);
 export const SKILL_STATE_KEYS = Object.freeze(["精神", "盲目", "怯み", "出血", "拘束", "幻覚"]);
 
