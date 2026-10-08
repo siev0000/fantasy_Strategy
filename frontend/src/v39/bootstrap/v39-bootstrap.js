@@ -2,9 +2,9 @@
 const BOOTSTRAP_STAGES = Object.freeze([
   { label:"基本システム", loadedModules:20, load:() => import("./v39-bootstrap-core.js") },
   { label:"ゲームシステム", loadedModules:40, load:() => import("./v39-bootstrap-game.js") },
-  { label:"画面・地形UI", loadedModules:52, load:() => import("./v39-bootstrap-final.js") }
+  { label:"画面・地形UI", loadedModules:53, load:() => import("./v39-bootstrap-final.js") }
 ]);
-const BOOTSTRAP_MODULE_COUNT = 52;
+const BOOTSTRAP_MODULE_COUNT = 53;
 
 function installLoadingOverlay() {
   if (!document.getElementById("v39-bootstrap-loading-style")) {
