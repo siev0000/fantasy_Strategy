@@ -66,14 +66,6 @@ function ensureHost() {
   return host;
 }
 
-function refreshPreviewAfterMount() {
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      window.refreshV39EffectSettingsPreview?.();
-    });
-  });
-}
-
 function openFromTitle() {
   const panel = element("v39-effect-settings-panel");
   const back = element("v39-effect-settings-back");
@@ -85,13 +77,13 @@ function openFromTitle() {
     defaultBackLabel = back?.textContent || "← 管理";
   }
 
-  window.openV39EffectSettings();
+  // プレビューは実際に表示されるホストへ移動した後で初期化する。
+  // 非表示の管理領域上で Phaser を起動してから DOM を移動すると、
+  // タイトル画面ではプレビューCanvas/画像ロードが安定しない。
   ensureHost().appendChild(panel);
   titleMode = true;
   if (back) back.textContent = "← タイトル";
-  panel.hidden = false;
-  panel.setAttribute("aria-hidden", "false");
-  refreshPreviewAfterMount();
+  window.openV39EffectSettings();
   return true;
 }
 
