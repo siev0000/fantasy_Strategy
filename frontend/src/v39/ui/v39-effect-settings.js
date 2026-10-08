@@ -1,4 +1,4 @@
-import { PhaserEffectPlayer, resolveEffectSheetLayout } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
+import { PhaserEffectPlayer } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
 import { resolveV39EffectPlaybackDescriptor } from "../combat/v39-effect-player.js";
 import {
   V39_EFFECT_GRADIENT_SPEED_MAX,
@@ -16,40 +16,20 @@ import {
 const PREVIEW_WIDTH = 480;
 const PREVIEW_HEIGHT = 280;
 const PREVIEW_BASE_SCALE_PERCENT = 55;
-const PREVIEW_MODE_STORAGE_KEY = "v39-effect-preview-mode-v1";
-const PREVIEW_MODES = Object.freeze(["animation", "first-frame", "full-image"]);
 const SETTINGS_TABS = Object.freeze(["basic", "color", "motion", "data"]);
 
 let selectedEffectName = "";
 let activeSettingsTab = "basic";
-let previewMode = loadPreviewMode();
 let rendering = false;
 let previewGame = null;
+let previewScene = null;
 let previewPlayer = null;
 let previewBootPromise = null;
 let previewReplayTimer = null;
 let previewScheduleTimer = null;
-let previewPlaybackPromise = null;
-let previewPlaybackQueued = false;
-let previewGeneration = 0;
-const previewImageCache = new Map();
 
 function element(id) {
   return document.getElementById(id);
-}
-
-function loadPreviewMode() {
-  try {
-    const stored = localStorage.getItem(PREVIEW_MODE_STORAGE_KEY);
-    return PREVIEW_MODES.includes(stored) ? stored : "animation";
-  } catch {
-    return "animation";
-  }
-}
-
-function savePreviewMode(value) {
-  previewMode = PREVIEW_MODES.includes(value) ? value : "animation";
-  try { localStorage.setItem(PREVIEW_MODE_STORAGE_KEY, previewMode); } catch { /* noop */ }
 }
 
 function installStyles() {
@@ -63,17 +43,16 @@ function installStyles() {
     .v39-effect-settings-head strong{font-size:var(--font-body)}
     .v39-effect-settings-back{min-height:34px;border:1px solid #4b626b;border-radius:6px;background:#18282e;color:#e8f2f0;padding:4px 10px;font:inherit;font-weight:800;cursor:pointer}
     .v39-effect-preview-pane{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:7px;padding:7px;border-bottom:1px solid #354950;background:linear-gradient(180deg,#101b20,#0a1115)}
-    .v39-effect-preview-toolbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(132px,.55fr) auto;align-items:center;gap:7px;min-width:0}
-    .v39-effect-preview-selector{min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:7px;color:#c8d6d7;font-size:var(--font-secondary);font-weight:800}
-    .v39-effect-preview-selector select,.v39-effect-preview-mode{width:100%;min-width:0;min-height:38px;border:1px solid #536a72;border-radius:7px;background:#0b1519;color:#eef5f2;padding:4px 7px;font:inherit}
-    .v39-effect-preview-replay{min-height:38px;border:1px solid #4f6b74;border-radius:7px;background:#173039;color:#eef8f5;padding:4px 10px;font:inherit;font-weight:800;cursor:pointer}
+    .v39-effect-preview-toolbar{display:flex;align-items:center;gap:7px;min-width:0}
+    .v39-effect-preview-selector{min-width:0;flex:1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:7px;color:#c8d6d7;font-size:var(--font-secondary);font-weight:800}
+    .v39-effect-preview-selector select{width:100%;min-width:0;min-height:38px;border:1px solid #536a72;border-radius:7px;background:#0b1519;color:#eef5f2;padding:4px 7px;font:inherit}
+    .v39-effect-preview-replay{flex:0 0 auto;min-height:38px;border:1px solid #4f6b74;border-radius:7px;background:#173039;color:#eef8f5;padding:4px 10px;font:inherit;font-weight:800;cursor:pointer}
     #v39-effect-preview-stage{position:relative;min-height:0;overflow:hidden;border:1px solid #31464d;border-radius:10px;background:radial-gradient(circle at 50% 50%,rgba(50,76,84,.34),rgba(5,10,13,.98) 68%);box-shadow:inset 0 0 28px rgba(0,0,0,.5)}
     #v39-effect-preview-stage::before,#v39-effect-preview-stage::after{content:"";position:absolute;z-index:0;pointer-events:none;background:rgba(119,161,170,.1)}
     #v39-effect-preview-stage::before{left:50%;top:8%;bottom:8%;width:1px}
     #v39-effect-preview-stage::after{top:50%;left:8%;right:8%;height:1px}
-    #v39-effect-static-preview{position:absolute;z-index:1;inset:0;width:100%;height:100%;display:block}
-    #v39-effect-preview-stage canvas:not(#v39-effect-static-preview){position:absolute!important;z-index:2;inset:0;display:block!important;width:100%!important;height:100%!important;object-fit:contain;background:transparent!important}
-    .v39-effect-preview-placeholder{position:absolute;z-index:3;inset:0;display:grid;place-items:center;color:#83999d;font-size:var(--font-secondary);pointer-events:none}
+    #v39-effect-preview-stage canvas{position:absolute!important;z-index:1;inset:0;display:block!important;width:100%!important;height:100%!important;object-fit:contain}
+    .v39-effect-preview-placeholder{position:absolute;z-index:2;inset:0;display:grid;place-items:center;color:#83999d;font-size:var(--font-secondary);pointer-events:none}
     #v39-effect-preview-stage.is-ready .v39-effect-preview-placeholder{display:none}
     .v39-effect-settings-lower{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#0d161a}
     .v39-effect-settings-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid #354950;background:#111d22}
@@ -103,10 +82,8 @@ function installStyles() {
       #v39-effect-settings-panel{grid-template-rows:auto minmax(220px,42dvh) minmax(0,1fr)}
       .v39-effect-settings-head{min-height:40px;padding:4px 6px}
       .v39-effect-preview-pane{padding:5px;gap:5px}
-      .v39-effect-preview-toolbar{grid-template-columns:minmax(0,1fr) minmax(116px,.62fr);grid-template-areas:"effect mode" "replay replay"}
-      .v39-effect-preview-selector{grid-area:effect;grid-template-columns:1fr;gap:3px}.v39-effect-preview-selector>span{display:none}
-      .v39-effect-preview-mode{grid-area:mode}.v39-effect-preview-replay{grid-area:replay}
-      .v39-effect-preview-selector select,.v39-effect-preview-mode,.v39-effect-preview-replay{min-height:40px}
+      .v39-effect-preview-selector{grid-template-columns:1fr;gap:3px}.v39-effect-preview-selector>span{display:none}
+      .v39-effect-preview-selector select,.v39-effect-preview-replay{min-height:40px}
       .v39-effect-settings-tab{min-height:44px;font-size:var(--font-compact)}
       .v39-effect-settings-tabpanel{padding:6px}
       .v39-effect-setting-row{grid-template-columns:1fr;gap:5px;padding:7px}
@@ -163,17 +140,9 @@ function ensurePanel() {
     <section class="v39-effect-preview-pane" aria-label="エフェクトプレビュー">
       <div class="v39-effect-preview-toolbar">
         <label class="v39-effect-preview-selector"><span>対象</span><select id="v39-effect-setting-source" aria-label="対象エフェクト"></select></label>
-        <select id="v39-effect-preview-mode" class="v39-effect-preview-mode" aria-label="プレビュー表示方式">
-          <option value="animation">アニメ再生</option>
-          <option value="first-frame">1枚目固定</option>
-          <option value="full-image">元画像全体</option>
-        </select>
-        <button type="button" id="v39-effect-setting-preview-local" class="v39-effect-preview-replay">▶ 再生 / 更新</button>
+        <button type="button" id="v39-effect-setting-preview-local" class="v39-effect-preview-replay">▶ 再生</button>
       </div>
-      <div id="v39-effect-preview-stage">
-        <canvas id="v39-effect-static-preview" width="${PREVIEW_WIDTH}" height="${PREVIEW_HEIGHT}" aria-label="エフェクト静止プレビュー"></canvas>
-        <div class="v39-effect-preview-placeholder">プレビューを準備中…</div>
-      </div>
+      <div id="v39-effect-preview-stage"><div class="v39-effect-preview-placeholder">プレビューを準備中…</div></div>
     </section>
     <section class="v39-effect-settings-lower">
       <nav class="v39-effect-settings-tabs" aria-label="設定カテゴリ" role="tablist">
@@ -201,7 +170,7 @@ function ensurePanel() {
           <p class="v39-effect-settings-note">グラデーションがOFFの場合、移動方向と速度は無効になります。</p>
         </section>
         <section class="v39-effect-settings-tabpanel" data-v39-effect-panel="data" role="tabpanel" hidden>
-          <p class="v39-effect-settings-note">変更はブラウザ内へ自動保存され、戦闘再生へ即時反映されます。プレビュー表示方式は編集画面だけの設定で、ゲーム側のJSONには含めません。</p>
+          <p class="v39-effect-settings-note">変更はブラウザ内へ自動保存され、戦闘再生へ即時反映されます。上のプレビューはタイトル画面でも使用できます。</p>
           <div class="v39-effect-settings-actions">
             <button type="button" id="v39-effect-setting-preview">実マップで確認</button>
             <button type="button" id="v39-effect-settings-export">JSON書き出し</button>
@@ -246,7 +215,13 @@ function applyColorControlState(setting) {
   if (tintEnabled) tintEnabled.disabled = gradientEnabled;
   if (tint) tint.disabled = gradientEnabled || tintEnabled?.checked !== true;
   if (tintCode && gradientEnabled) tintCode.textContent = "グラデーション優先";
-  for (const id of ["v39-effect-setting-gradient-a","v39-effect-setting-gradient-b","v39-effect-setting-gradient-direction","v39-effect-setting-gradient-speed"]) {
+
+  for (const id of [
+    "v39-effect-setting-gradient-a",
+    "v39-effect-setting-gradient-b",
+    "v39-effect-setting-gradient-direction",
+    "v39-effect-setting-gradient-speed"
+  ]) {
     const control = element(id);
     if (control) control.disabled = !gradientEnabled;
   }
@@ -257,116 +232,15 @@ function previewPanelVisible() {
   return panel instanceof HTMLElement && panel.hidden === false && panel.getAttribute("aria-hidden") !== "true";
 }
 
-function hexToCss(value, fallback = "#ffffff") {
-  const text = String(value || "").trim();
-  return /^#[0-9a-f]{6}$/i.test(text) ? text : fallback;
-}
-
-function loadPreviewImage(src) {
-  if (!src) return Promise.reject(new Error("プレビュー画像URLがありません"));
-  if (previewImageCache.has(src)) return previewImageCache.get(src);
-  const promise = new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`プレビュー画像を読み込めません: ${src}`));
-    image.src = src;
-  });
-  previewImageCache.set(src, promise);
-  return promise;
-}
-
-function previewGradient(context, descriptor) {
-  const direction = descriptor.gradientDirection || "up";
-  if (direction === "left") return context.createLinearGradient(PREVIEW_WIDTH, 0, 0, 0);
-  if (direction === "right") return context.createLinearGradient(0, 0, PREVIEW_WIDTH, 0);
-  if (direction === "down") return context.createLinearGradient(0, 0, 0, PREVIEW_HEIGHT);
-  return context.createLinearGradient(0, PREVIEW_HEIGHT, 0, 0);
-}
-
-function applyStaticColor(context, descriptor) {
-  if (descriptor.gradientEnabled) {
-    context.globalCompositeOperation = "source-atop";
-    const gradient = previewGradient(context, descriptor);
-    gradient.addColorStop(0, hexToCss(descriptor.gradientColorA));
-    gradient.addColorStop(0.5, hexToCss(descriptor.gradientColorB));
-    gradient.addColorStop(1, hexToCss(descriptor.gradientColorA));
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-    context.globalCompositeOperation = "source-over";
-    return;
-  }
-  if (descriptor.tint) {
-    context.globalCompositeOperation = "source-atop";
-    context.fillStyle = hexToCss(descriptor.tint);
-    context.fillRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-    context.globalCompositeOperation = "source-over";
-  }
-}
-
-async function drawStaticPreview(mode = previewMode) {
-  const canvas = element("v39-effect-static-preview");
-  const host = element("v39-effect-preview-stage");
-  if (!(canvas instanceof HTMLCanvasElement) || !host || !selectedEffectName) return false;
-  const context = canvas.getContext("2d");
-  if (!context) return false;
+function playPanelPreview() {
+  if (!previewPanelVisible() || !previewPlayer || !selectedEffectName) return false;
   const descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
-  const source = descriptor?.sequenceSources?.[0];
-  if (!descriptor || !source?.src) {
+  if (!descriptor) {
     setStatus("プレビュー用エフェクトを解決できませんでした。", true);
     return false;
   }
-  try {
-    const image = await loadPreviewImage(source.src);
-    context.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-    const fullImage = mode === "full-image";
-    const layout = resolveEffectSheetLayout(image.naturalWidth || image.width, image.naturalHeight || image.height);
-    const sourceWidth = fullImage ? image.width : layout.frameWidth || image.width;
-    const sourceHeight = fullImage ? image.height : layout.frameHeight || image.height;
-    const padding = fullImage ? 18 : 28;
-    const fitScale = Math.min((PREVIEW_WIDTH - padding * 2) / sourceWidth, (PREVIEW_HEIGHT - padding * 2) / sourceHeight);
-    const effectScale = fullImage ? 1 : Math.max(0.1, Number(descriptor.scaleMultiplierPercent || 100) / 100);
-    const scale = Math.min(fitScale * effectScale * Math.max(0.01, Number(source.sourceScaleMultiplier || 1)), fitScale * 2.5);
-    const drawWidth = Math.max(1, sourceWidth * scale);
-    const drawHeight = Math.max(1, sourceHeight * scale);
-    context.drawImage(image, 0, 0, sourceWidth, sourceHeight, (PREVIEW_WIDTH - drawWidth) / 2, (PREVIEW_HEIGHT - drawHeight) / 2, drawWidth, drawHeight);
-    applyStaticColor(context, descriptor);
-    host.classList.add("is-ready");
-    return true;
-  } catch (error) {
-    console.error("[エフェクト設定] 静止プレビュー失敗", error);
-    setStatus(`静止プレビュー失敗: ${String(error?.message || error)}`, true);
-    return false;
-  }
-}
-
-function stopPreviewLoop() {
-  if (previewReplayTimer) window.clearInterval(previewReplayTimer);
-  previewReplayTimer = null;
-  previewGeneration += 1;
-  previewPlaybackQueued = false;
-  previewPlayer?.stop?.();
-}
-
-async function playPanelPreview() {
-  if (!previewPanelVisible() || !selectedEffectName) return false;
-  await drawStaticPreview(previewMode === "full-image" ? "full-image" : "first-frame");
-  if (previewMode !== "animation") {
-    if (previewGame?.canvas) previewGame.canvas.style.display = "none";
-    return true;
-  }
-  if (!previewPlayer) return false;
-  if (previewPlaybackPromise) {
-    previewPlaybackQueued = true;
-    return true;
-  }
-  if (previewGame?.canvas) previewGame.canvas.style.display = "block";
-  const descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
-  if (!descriptor) return false;
-
-  const generation = previewGeneration;
-  let playbackError = null;
   const scaleMultiplier = Math.max(0.1, Number(descriptor.scaleMultiplierPercent || 100) / 100);
-  previewPlaybackPromise = Promise.resolve(previewPlayer.play({
+  void Promise.resolve(previewPlayer.play({
     x:PREVIEW_WIDTH / 2,
     y:PREVIEW_HEIGHT / 2,
     sequenceSources:descriptor.sequenceSources,
@@ -384,39 +258,19 @@ async function playPanelPreview() {
     totalDurationMs:1500,
     sequenceGapMs:10,
     depth:10,
-    displayName:"v39-effect-settings-preview",
-    onError:error => { playbackError = error; }
-  })).then(played => {
-    if (generation !== previewGeneration || !previewPanelVisible() || previewMode !== "animation") return played;
-    if (!played && playbackError) {
-      const message = String(playbackError?.message || playbackError);
-      console.error("[エフェクト設定] 画面内プレビュー失敗", playbackError);
-      setStatus(`アニメ再生失敗: ${message} / 1枚目を表示中`, true);
-    } else if (!played) {
-      setStatus("アニメ再生がキャンセルされました。1枚目を表示しています。", false);
-    }
-    return played;
-  }).catch(error => {
-    if (generation !== previewGeneration) return false;
+    displayName:"v39-effect-settings-preview"
+  })).catch(error => {
     console.error("[エフェクト設定] 画面内プレビュー失敗", error);
-    setStatus(`アニメ再生失敗: ${String(error?.message || error)} / 1枚目を表示中`, true);
-    return false;
-  }).finally(() => {
-    previewPlaybackPromise = null;
-    if (previewPlaybackQueued && generation === previewGeneration && previewPanelVisible() && previewMode === "animation") {
-      previewPlaybackQueued = false;
-      schedulePanelPreview(40);
-    }
+    setStatus("画面内プレビューに失敗しました。", true);
   });
-
-  return previewPlaybackPromise;
+  return true;
 }
 
 function schedulePanelPreview(delay = 80) {
   if (previewScheduleTimer) window.clearTimeout(previewScheduleTimer);
   previewScheduleTimer = window.setTimeout(() => {
     previewScheduleTimer = null;
-    void refreshPreviewDisplay();
+    playPanelPreview();
   }, Math.max(0, Number(delay) || 0));
 }
 
@@ -425,52 +279,43 @@ function ensurePreviewGame() {
   if (previewBootPromise) return previewBootPromise;
   const host = element("v39-effect-preview-stage");
   if (!(host instanceof HTMLElement)) return Promise.resolve(null);
+
   previewBootPromise = import("phaser").then(module => {
     const Phaser = module.default || module;
     if (!document.body.contains(host)) return null;
     previewGame = new Phaser.Game({
-      type:Phaser.CANVAS,
-      transparent:true,
+      type:Phaser.AUTO,
       parent:host,
       width:PREVIEW_WIDTH,
       height:PREVIEW_HEIGHT,
+      backgroundColor:"#081014",
       render:{ antialias:true, pixelArt:false, roundPixels:false },
-      scene:{ create:function createEffectSettingsPreviewScene() {
-        previewPlayer = new PhaserEffectPlayer(this, { totalDurationMs:1500, sequenceGapMs:10, depth:10 });
-        if (previewGame?.canvas) previewGame.canvas.style.background = "transparent";
-      } }
+      scene:{
+        create:function createEffectSettingsPreviewScene() {
+          previewScene = this;
+          previewPlayer = new PhaserEffectPlayer(this, { totalDurationMs:1500, sequenceGapMs:10, depth:10 });
+          host.classList.add("is-ready");
+          schedulePanelPreview(0);
+        }
+      }
     });
     return previewGame;
   }).catch(error => {
     previewBootPromise = null;
-    console.error("[エフェクト設定] アニメプレビュー初期化失敗", error);
-    setStatus(`アニメプレビュー初期化失敗: ${String(error?.message || error)} / 静止表示は利用できます。`, true);
+    console.error("[エフェクト設定] プレビュー初期化失敗", error);
+    setStatus("プレビューの初期化に失敗しました。", true);
     return null;
   });
   return previewBootPromise;
 }
 
-async function refreshPreviewDisplay() {
-  if (!previewPanelVisible()) return;
-  const modeControl = element("v39-effect-preview-mode");
-  if (modeControl) modeControl.value = previewMode;
-  await drawStaticPreview(previewMode === "full-image" ? "full-image" : "first-frame");
-  if (previewMode !== "animation") {
-    if (previewGame?.canvas) previewGame.canvas.style.display = "none";
-    return;
-  }
-  await ensurePreviewGame();
-  await playPanelPreview();
-}
-
 function startPreviewLoop() {
-  stopPreviewLoop();
-  void refreshPreviewDisplay();
-  if (previewMode !== "animation") return;
+  if (previewReplayTimer) window.clearInterval(previewReplayTimer);
+  void ensurePreviewGame().then(() => schedulePanelPreview(0));
   previewReplayTimer = window.setInterval(() => {
-    if (document.visibilityState === "hidden" || !previewPanelVisible() || previewMode !== "animation") return;
-    void playPanelPreview();
-  }, 1900);
+    if (document.visibilityState === "hidden" || !previewPanelVisible()) return;
+    playPanelPreview();
+  }, 1800);
 }
 
 function renderSetting() {
@@ -511,8 +356,6 @@ function renderSetting() {
     if (gradientDirection) gradientDirection.value = setting.gradientDirection;
     if (gradientSpeed) gradientSpeed.value = String(setting.gradientSpeedPercentPerSecond);
     if (scale) scale.value = String(setting.scaleMultiplierPercent);
-    const mode = element("v39-effect-preview-mode");
-    if (mode) mode.value = previewMode;
     applyColorControlState(setting);
     switchSettingsTab(activeSettingsTab);
     setStatus(`自動保存: ON / 変更済み ${settingCount()}件`);
@@ -550,7 +393,13 @@ function previewCurrentEffectOnMap() {
   const x = Math.max(0, Math.floor(Number(map.w || 1) / 2));
   const y = Math.max(0, Math.floor(Number(map.h || 1) / 2));
   setStatus(`${selectedEffectName} をマップ中央で再生します。`);
-  void Promise.resolve(play({ effectName:selectedEffectName, tileX:x, tileY:y, allowInFog:true, scalePercent:50 })).catch(error => {
+  void Promise.resolve(play({
+    effectName:selectedEffectName,
+    tileX:x,
+    tileY:y,
+    allowInFog:true,
+    scalePercent:50
+  })).catch(error => {
     console.error("[エフェクト設定] 実マップ確認失敗", error);
     setStatus("実マップ確認に失敗しました。", true);
   });
@@ -604,7 +453,7 @@ function closePanel() {
   if (!menu || !panel) return;
   panel.hidden = true;
   panel.setAttribute("aria-hidden", "true");
-  stopPreviewLoop();
+  previewPlayer?.stop?.();
   menu.hidden = false;
 }
 
@@ -618,10 +467,6 @@ function bindControls() {
     selectedEffectName = event.target.value;
     renderSetting();
   });
-  element("v39-effect-preview-mode")?.addEventListener("change", event => {
-    savePreviewMode(event.target.value);
-    startPreviewLoop();
-  });
   element("v39-effect-setting-base")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-decoration")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-tint-enabled")?.addEventListener("change", saveCurrentSetting);
@@ -632,7 +477,9 @@ function bindControls() {
   element("v39-effect-setting-gradient-direction")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-gradient-speed")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-scale")?.addEventListener("change", saveCurrentSetting);
-  element("v39-effect-setting-preview-local")?.addEventListener("click", () => void refreshPreviewDisplay());
+  element("v39-effect-setting-preview-local")?.addEventListener("click", () => {
+    void ensurePreviewGame().then(() => playPanelPreview());
+  });
   element("v39-effect-setting-preview")?.addEventListener("click", previewCurrentEffectOnMap);
   element("v39-effect-setting-reset")?.addEventListener("click", () => {
     if (!selectedEffectName) return;
@@ -669,7 +516,9 @@ function install() {
   switchSettingsTab(activeSettingsTab);
   renderSetting();
   window.openV39EffectSettings = openPanel;
-  window.refreshV39EffectSettingsPreview = () => schedulePanelPreview(0);
+  window.refreshV39EffectSettingsPreview = () => {
+    void ensurePreviewGame().then(() => schedulePanelPreview(0));
+  };
 }
 
 install();
