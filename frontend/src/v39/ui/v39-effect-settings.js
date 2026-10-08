@@ -29,6 +29,9 @@ let previewPlayer = null;
 let previewBootPromise = null;
 let previewReplayTimer = null;
 let previewScheduleTimer = null;
+let previewPlaybackPromise = null;
+let previewPlaybackQueued = false;
+let previewGeneration = 0;
 const previewImageCache = new Map();
 
 function element(id) {
@@ -317,8 +320,6 @@ async function drawStaticPreview(mode = previewMode) {
     context.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
     const fullImage = mode === "full-image";
     const layout = resolveEffectSheetLayout(image.naturalWidth || image.width, image.naturalHeight || image.height);
-    const sourceX = 0;
-    const sourceY = 0;
     const sourceWidth = fullImage ? image.width : layout.frameWidth || image.width;
     const sourceHeight = fullImage ? image.height : layout.frameHeight || image.height;
     const padding = fullImage ? 18 : 28;
@@ -327,7 +328,7 @@ async function drawStaticPreview(mode = previewMode) {
     const scale = Math.min(fitScale * effectScale * Math.max(0.01, Number(source.sourceScaleMultiplier || 1)), fitScale * 2.5);
     const drawWidth = Math.max(1, sourceWidth * scale);
     const drawHeight = Math.max(1, sourceHeight * scale);
-    context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, (PREVIEW_WIDTH - drawWidth) / 2, (PREVIEW_HEIGHT - drawHeight) / 2, drawWidth, drawHeight);
+    context.drawImage(image, 0, 0, sourceWidth, sourceHeight, (PREVIEW_WIDTH - drawWidth) / 2, (PREVIEW_HEIGHT - drawHeight) / 2, drawWidth, drawHeight);
     applyStaticColor(context, descriptor);
     host.classList.add("is-ready");
     return true;
@@ -341,23 +342,31 @@ async function drawStaticPreview(mode = previewMode) {
 function stopPreviewLoop() {
   if (previewReplayTimer) window.clearInterval(previewReplayTimer);
   previewReplayTimer = null;
+  previewGeneration += 1;
+  previewPlaybackQueued = false;
   previewPlayer?.stop?.();
 }
 
-function playPanelPreview() {
+async function playPanelPreview() {
   if (!previewPanelVisible() || !selectedEffectName) return false;
-  void drawStaticPreview(previewMode === "full-image" ? "full-image" : "first-frame");
+  await drawStaticPreview(previewMode === "full-image" ? "full-image" : "first-frame");
   if (previewMode !== "animation") {
-    stopPreviewLoop();
     if (previewGame?.canvas) previewGame.canvas.style.display = "none";
     return true;
   }
   if (!previewPlayer) return false;
+  if (previewPlaybackPromise) {
+    previewPlaybackQueued = true;
+    return true;
+  }
   if (previewGame?.canvas) previewGame.canvas.style.display = "block";
   const descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
   if (!descriptor) return false;
+
+  const generation = previewGeneration;
+  let playbackError = null;
   const scaleMultiplier = Math.max(0.1, Number(descriptor.scaleMultiplierPercent || 100) / 100);
-  void Promise.resolve(previewPlayer.play({
+  previewPlaybackPromise = Promise.resolve(previewPlayer.play({
     x:PREVIEW_WIDTH / 2,
     y:PREVIEW_HEIGHT / 2,
     sequenceSources:descriptor.sequenceSources,
@@ -375,14 +384,32 @@ function playPanelPreview() {
     totalDurationMs:1500,
     sequenceGapMs:10,
     depth:10,
-    displayName:"v39-effect-settings-preview"
+    displayName:"v39-effect-settings-preview",
+    onError:error => { playbackError = error; }
   })).then(played => {
-    if (!played) setStatus("アニメ再生できませんでした。1枚目を表示しています。", true);
+    if (generation !== previewGeneration || !previewPanelVisible() || previewMode !== "animation") return played;
+    if (!played && playbackError) {
+      const message = String(playbackError?.message || playbackError);
+      console.error("[エフェクト設定] 画面内プレビュー失敗", playbackError);
+      setStatus(`アニメ再生失敗: ${message} / 1枚目を表示中`, true);
+    } else if (!played) {
+      setStatus("アニメ再生がキャンセルされました。1枚目を表示しています。", false);
+    }
+    return played;
   }).catch(error => {
+    if (generation !== previewGeneration) return false;
     console.error("[エフェクト設定] 画面内プレビュー失敗", error);
-    setStatus("アニメ再生に失敗しました。1枚目を表示しています。", true);
+    setStatus(`アニメ再生失敗: ${String(error?.message || error)} / 1枚目を表示中`, true);
+    return false;
+  }).finally(() => {
+    previewPlaybackPromise = null;
+    if (previewPlaybackQueued && generation === previewGeneration && previewPanelVisible() && previewMode === "animation") {
+      previewPlaybackQueued = false;
+      schedulePanelPreview(40);
+    }
   });
-  return true;
+
+  return previewPlaybackPromise;
 }
 
 function schedulePanelPreview(delay = 80) {
@@ -411,14 +438,13 @@ function ensurePreviewGame() {
       scene:{ create:function createEffectSettingsPreviewScene() {
         previewPlayer = new PhaserEffectPlayer(this, { totalDurationMs:1500, sequenceGapMs:10, depth:10 });
         if (previewGame?.canvas) previewGame.canvas.style.background = "transparent";
-        schedulePanelPreview(0);
       } }
     });
     return previewGame;
   }).catch(error => {
     previewBootPromise = null;
     console.error("[エフェクト設定] アニメプレビュー初期化失敗", error);
-    setStatus("アニメプレビューを初期化できません。静止表示は利用できます。", true);
+    setStatus(`アニメプレビュー初期化失敗: ${String(error?.message || error)} / 静止表示は利用できます。`, true);
     return null;
   });
   return previewBootPromise;
@@ -430,12 +456,11 @@ async function refreshPreviewDisplay() {
   if (modeControl) modeControl.value = previewMode;
   await drawStaticPreview(previewMode === "full-image" ? "full-image" : "first-frame");
   if (previewMode !== "animation") {
-    stopPreviewLoop();
     if (previewGame?.canvas) previewGame.canvas.style.display = "none";
     return;
   }
   await ensurePreviewGame();
-  playPanelPreview();
+  await playPanelPreview();
 }
 
 function startPreviewLoop() {
@@ -444,8 +469,8 @@ function startPreviewLoop() {
   if (previewMode !== "animation") return;
   previewReplayTimer = window.setInterval(() => {
     if (document.visibilityState === "hidden" || !previewPanelVisible() || previewMode !== "animation") return;
-    playPanelPreview();
-  }, 1800);
+    void playPanelPreview();
+  }, 1900);
 }
 
 function renderSetting() {
@@ -607,10 +632,7 @@ function bindControls() {
   element("v39-effect-setting-gradient-direction")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-gradient-speed")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-scale")?.addEventListener("change", saveCurrentSetting);
-  element("v39-effect-setting-preview-local")?.addEventListener("click", () => {
-    if (previewMode === "animation") void ensurePreviewGame().then(() => playPanelPreview());
-    else void drawStaticPreview(previewMode);
-  });
+  element("v39-effect-setting-preview-local")?.addEventListener("click", () => void refreshPreviewDisplay());
   element("v39-effect-setting-preview")?.addEventListener("click", previewCurrentEffectOnMap);
   element("v39-effect-setting-reset")?.addEventListener("click", () => {
     if (!selectedEffectName) return;
