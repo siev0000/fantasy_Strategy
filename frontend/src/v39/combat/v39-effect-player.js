@@ -2,6 +2,7 @@ import { PhaserEffectPlayer } from "../../../../配布用/アニメーション�
 import effectList320 from "../../../../assets/effect/320×240/effect_list.json";
 import effectListAnimation1 from "../../../../assets/effect/アニメーション1/effect_list.json";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { resolveV39EffectPlaybackSettings, setV39EffectSettingsCatalog } from "../../lib/v39-effect-settings.js";
 
 const sources = new Map();
 const EFFECT_TOTAL_DURATION_MS = 1500;
@@ -20,6 +21,7 @@ function registerSources(folder, names, sourceScaleMultiplier) {
 
 registerSources("320×240", effectList320, 1);
 registerSources("アニメーション1", effectListAnimation1, 2);
+setV39EffectSettingsCatalog([...sources.keys()]);
 
 let player = null;
 let playerScene = null;
@@ -76,15 +78,24 @@ export async function playV39MapEffect(request = {}) {
   const position = request.worldX !== undefined && request.worldY !== undefined
     ? { x:number(request.worldX), y:number(request.worldY) }
     : tileCenter(x, y);
-  const sequence = resolveSequence(request.effectName ?? request.name ?? request.animation);
+  const requestedEffectName = text(request.effectName ?? request.name ?? request.animation, "斬撃");
+  const playbackSettings = resolveV39EffectPlaybackSettings(requestedEffectName);
+  const sequence = resolveSequence(playbackSettings.sequenceName);
   if (!sequence.length) return false;
   const splash = Math.max(0, number(request.splash, 0));
-  const scalePercent = Math.max(10, number(request.scalePercent, 50 * (1 + splash)));
+  const requestedScalePercent = Math.max(10, number(request.scalePercent, 50 * (1 + splash)));
+  const scaleMultiplier = Math.max(0.1, number(playbackSettings.scaleMultiplierPercent, 100) / 100);
+  const scalePercent = Math.max(10, requestedScalePercent * scaleMultiplier);
+  const tint = Object.prototype.hasOwnProperty.call(request, "tint")
+    ? request.tint
+    : playbackSettings.tint || null;
   console.info("[エフェクト再生]", {
+    元アニメーション:requestedEffectName,
     アニメーション:sequence.map((entry) => entry.name),
     対象座標:{ x, y },
     大きさ:`${scalePercent}%`,
-    角度:number(request.angleDeg, 0)
+    角度:number(request.angleDeg, 0),
+    tint
   });
   const endRender = activeScene()?.game?.v39BeginEffectRender?.();
   try {
@@ -94,7 +105,7 @@ export async function playV39MapEffect(request = {}) {
       sequenceSources:sequence.map((entry) => entry.source),
       scalePercent,
       angleDeg:number(request.angleDeg, 0),
-      tint:request.tint ?? null,
+      tint,
       colorStrengthPercent:number(request.colorStrengthPercent, 100),
       hueAnimationDegPerFrame:number(request.hueAnimationDegPerFrame, 0),
       grayscaleBase:request.grayscaleBase === true,
