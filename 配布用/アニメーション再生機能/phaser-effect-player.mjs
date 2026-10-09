@@ -99,6 +99,11 @@ function normalizeGradientDirection(value) {
   return ["up", "down", "left", "right"].includes(direction) ? direction : "up";
 }
 
+function normalizeGradientMotionMode(value) {
+  const mode = String(value || "wave").trim().toLowerCase();
+  return ["fixed", "scroll", "wave"].includes(mode) ? mode : "wave";
+}
+
 function wait(ms) {
   const delay = Math.max(0, Math.floor(numberOr(ms, 0)));
   return delay > 0 ? new Promise(resolve => setTimeout(resolve, delay)) : Promise.resolve();
@@ -332,6 +337,7 @@ export class PhaserEffectPlayer {
     const gradientColorB = normalizeTint(request.gradientColorB);
     const gradientEnabled = request.gradientEnabled === true && gradientColorA !== null && gradientColorB !== null;
     const gradientDirection = normalizeGradientDirection(request.gradientDirection);
+    const gradientMotionMode = normalizeGradientMotionMode(request.gradientMotionMode);
     const oldHeight = clamp(numberOr(request.gradientHeightPercent, 50), 0, 100);
     const gradientStart = clamp(numberOr(request.gradientStartPercent, Math.max(0, oldHeight - 50)), 0, 100) / 100;
     const gradientEnd = clamp(numberOr(request.gradientEndPercent, Math.min(100, oldHeight + 50)), gradientStart, 100) / 100;
@@ -368,19 +374,40 @@ export class PhaserEffectPlayer {
       const colorA = rotateHue(gradientColorA, hueShift);
       const colorB = rotateHue(gradientColorB, hueShift);
       const phase = Math.max(0, numberOr(elapsedMs, 0)) / 1000 * (gradientSpeed / 100);
-      const reverse = gradientDirection === "down" || gradientDirection === "right";
-      const offset = (reverse ? -phase : phase) % 2;
-      const ratio = p => gradientEnd === gradientStart
-        ? (p >= gradientEnd ? 1 : 0)
-        : clamp((p - gradientStart) / (gradientEnd - gradientStart), 0, 1);
-      const stops = [{ p:0, ratio:ratio(gradientWave(offset)) }];
-      for (let cycle = -2; cycle <= 2; cycle++) {
-        const base = cycle * 2 - offset;
-        for (const [p, value] of [[base + gradientStart, 0], [base + gradientEnd, 1], [base + 2 - gradientEnd, 1], [base + 2 - gradientStart, 0]]) {
-          if (p > 0 && p < 1) stops.push({ p, ratio:value });
+      const ratioAt = (p, start = gradientStart, end = gradientEnd) => end === start
+        ? (p >= end ? 1 : 0)
+        : clamp((p - start) / (end - start), 0, 1);
+      let stops;
+
+      if (gradientMotionMode === "fixed" || gradientSpeed <= 0) {
+        stops = [
+          { p:0, ratio:ratioAt(0) },
+          { p:gradientStart, ratio:0 },
+          { p:gradientEnd, ratio:1 },
+          { p:1, ratio:ratioAt(1) }
+        ];
+      } else if (gradientMotionMode === "scroll") {
+        const directionSign = gradientDirection === "down" || gradientDirection === "right" ? 1 : -1;
+        const shiftedStart = gradientStart + (phase * directionSign);
+        const shiftedEnd = gradientEnd + (phase * directionSign);
+        stops = [
+          { p:0, ratio:ratioAt(0, shiftedStart, shiftedEnd) },
+          { p:clamp(shiftedStart, 0, 1), ratio:ratioAt(clamp(shiftedStart, 0, 1), shiftedStart, shiftedEnd) },
+          { p:clamp(shiftedEnd, 0, 1), ratio:ratioAt(clamp(shiftedEnd, 0, 1), shiftedStart, shiftedEnd) },
+          { p:1, ratio:ratioAt(1, shiftedStart, shiftedEnd) }
+        ];
+      } else {
+        const reverse = gradientDirection === "down" || gradientDirection === "right";
+        const offset = (reverse ? -phase : phase) % 2;
+        stops = [{ p:0, ratio:ratioAt(gradientWave(offset)) }];
+        for (let cycle = -2; cycle <= 2; cycle++) {
+          const base = cycle * 2 - offset;
+          for (const [p, value] of [[base + gradientStart, 0], [base + gradientEnd, 1], [base + 2 - gradientEnd, 1], [base + 2 - gradientStart, 0]]) {
+            if (p > 0 && p < 1) stops.push({ p, ratio:value });
+          }
         }
+        stops.push({ p:1, ratio:ratioAt(gradientWave(1 + offset)) });
       }
-      stops.push({ p:1, ratio:ratio(gradientWave(1 + offset)) });
       stops.sort((a, b) => a.p - b.p);
 
       // Color only the selected frame; corner tints cannot represent a narrow band.
@@ -395,7 +422,7 @@ export class PhaserEffectPlayer {
       const placement = resolvePlacement(frameIndex);
       const horizontal = gradientDirection === "left" || gradientDirection === "right";
       const gradient = context.createLinearGradient(0, 0, horizontal ? layout.frameWidth : 0, horizontal ? 0 : layout.frameHeight);
-      for (const stop of stops) gradient.addColorStop(stop.p, `#${mixColors(colorA, colorB, stop.ratio).toString(16).padStart(6, "0")}`);
+      for (const stop of stops) gradient.addColorStop(clamp(stop.p, 0, 1), `#${mixColors(colorA, colorB, stop.ratio).toString(16).padStart(6, "0")}`);
       const drawSource = () => context.drawImage(sourceImage, placement.cropX, placement.cropY, layout.frameWidth, layout.frameHeight, 0, 0, layout.frameWidth, layout.frameHeight);
       context.globalCompositeOperation = "source-over";
       context.clearRect(0, 0, layout.frameWidth, layout.frameHeight);
@@ -466,7 +493,7 @@ export class PhaserEffectPlayer {
     if (request.staticFrame) return true;
     const duration = Math.max(16, Math.floor(numberOr(request.totalDurationMs, this.options.totalDurationMs)));
 
-    if (gradientEnabled && gradientSpeed > 0) {
+    if (gradientEnabled && gradientMotionMode !== "fixed" && gradientSpeed > 0) {
       const refreshMs = Math.max(16, Math.floor(numberOr(this.options.gradientRefreshMs, 50)));
       this.colorTimer = setInterval(() => {
         if (requestId !== this.requestId || !this.effectImage) return;
