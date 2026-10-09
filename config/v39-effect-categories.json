@@ -1,0 +1,20 @@
+[
+  { "id": "slash", "group": "attack", "name": "斬撃", "defaultEffect": "斬撃" },
+  { "id": "thrust", "group": "attack", "name": "刺突", "defaultEffect": "刺突" },
+  { "id": "strike", "group": "attack", "name": "打撃", "defaultEffect": "打撃3" },
+  { "id": "claw_fang", "group": "attack", "name": "爪・牙", "defaultEffect": "爪" },
+  { "id": "projectile", "group": "attack", "name": "飛翔弾", "defaultEffect": "魔法の矢" },
+  { "id": "shot", "group": "attack", "name": "射撃", "defaultEffect": "射撃" },
+  { "id": "beam", "group": "attack", "name": "ビーム", "defaultEffect": "冷気光線" },
+  { "id": "sweep_breath", "group": "attack", "name": "波・薙ぎ払い / ブレス", "defaultEffect": "薙ぎ払い" },
+  { "id": "explosion", "group": "attack", "name": "爆発", "defaultEffect": "爆裂" },
+  { "id": "falling_lightning", "group": "attack", "name": "落下・落雷", "defaultEffect": "落雷" },
+  { "id": "rain_barrage", "group": "attack", "name": "雨・連続落下", "defaultEffect": "斬撃の雨" },
+  { "id": "area_burst", "group": "attack", "name": "範囲放射", "defaultEffect": "虹の波動" },
+  { "id": "heal", "group": "support", "name": "回復", "defaultEffect": "回復" },
+  { "id": "buff", "group": "support", "name": "強化", "defaultEffect": "強化" },
+  { "id": "debuff_curse", "group": "support", "name": "弱体・呪い", "defaultEffect": "闇" },
+  { "id": "status", "group": "support", "name": "状態異常", "defaultEffect": "催眠" },
+  { "id": "shield", "group": "support", "name": "シールド", "defaultEffect": "シールド" },
+  { "id": "summon_special", "group": "support", "name": "召喚・特殊", "defaultEffect": "魔法陣" }
+]
