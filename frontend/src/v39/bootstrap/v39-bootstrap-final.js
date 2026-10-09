@@ -17,6 +17,7 @@ import "../ui/v39-effect-settings.js";
 import "../ui/v39-effect-gradient-motion-mode.js";
 import "../ui/v39-effect-category-settings.js";
 import "../ui/v39-effect-settings-ui-state.js";
+import "../ui/v39-effect-settings-loop-controls.js";
 import "../ui/v39-effect-settings-static-preview.js";
 import "../ui/v39-title-effect-settings.js";
 import "../ui/v39-text-input-modal.js";
