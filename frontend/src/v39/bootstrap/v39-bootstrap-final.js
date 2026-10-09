@@ -12,6 +12,7 @@ import "../unit/v39-squad-card-vitals.js";
 import "../unit/v39-squad-derived-binding.js";
 import "../world/v39-research-ui.js";
 import "../ui/v39-design-docs-viewer.js";
+import "../combat/v39-effect-frame-timing.js";
 import "../ui/v39-effect-settings.js";
 import "../ui/v39-effect-gradient-motion-mode.js";
 import "../ui/v39-effect-category-settings.js";
