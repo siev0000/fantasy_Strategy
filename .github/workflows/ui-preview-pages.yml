@@ -36,6 +36,13 @@ jobs:
           VITE_BASE_PATH: /fantasy_Strategy/
         run: npm run build:front
 
+      - name: Copy runtime static files for GitHub Pages
+        run: |
+          mkdir -p web-vue-dist/assets web-vue-dist/config web-vue-dist/data
+          cp -a assets/. web-vue-dist/assets/
+          cp -a config/. web-vue-dist/config/
+          cp -a data/. web-vue-dist/data/
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
