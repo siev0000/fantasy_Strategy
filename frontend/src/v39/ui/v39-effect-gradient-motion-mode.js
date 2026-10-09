@@ -45,7 +45,7 @@ function syncControl() {
   const effectName = selectedEffectName();
   if (!(select instanceof HTMLSelectElement) || !effectName) return;
   const setting = getV39EffectSetting(effectName);
-  select.value = setting.gradientMotionMode || "wave";
+  select.value = setting.gradientMotionMode || "fixed";
   select.disabled = setting.gradientEnabled !== true;
 
   const fixed = select.value === "fixed";
