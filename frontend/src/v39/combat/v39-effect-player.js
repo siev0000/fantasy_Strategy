@@ -8,7 +8,9 @@ const sources = new Map();
 const EFFECT_TOTAL_DURATION_MS = 1500;
 
 function assetUrl(folder, name) {
-  return `/assets/effect/${encodeURIComponent(folder)}/${encodeURIComponent(name)}.webp`;
+  const baseUrl = String(import.meta.env.BASE_URL || "/");
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return `${normalizedBase}assets/effect/${encodeURIComponent(folder)}/${encodeURIComponent(name)}.webp`;
 }
 
 function registerSources(folder, names, sourceScaleMultiplier) {
