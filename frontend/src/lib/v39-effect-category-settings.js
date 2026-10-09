@@ -1,7 +1,8 @@
 import categoryDefaults from "../../../config/v39-effect-categories.json";
-import { getV39EffectSettingsCatalog } from "./v39-effect-settings.js";
 
 const STORAGE_KEY = "v39-effect-category-settings-v1";
+let effectCatalog = [];
+let effectCatalogSet = new Set();
 
 function readOverrides() {
   try {
@@ -34,17 +35,31 @@ function normalizedDefaults() {
     .filter(item => item.id && item.name);
 }
 
+function resolveEffectName(category, candidateRaw) {
+  const candidate = String(candidateRaw || "").trim();
+  if (candidate && effectCatalogSet.has(candidate)) return candidate;
+  if (effectCatalogSet.has(category.defaultEffect)) return category.defaultEffect;
+  return effectCatalog[0] || "";
+}
+
+export function setV39EffectCategoryCatalog(names = []) {
+  effectCatalog = [...new Set((Array.isArray(names) ? names : []).map(name => String(name || "").trim()).filter(Boolean))];
+  effectCatalogSet = new Set(effectCatalog);
+  const validIds = new Set(normalizedDefaults().map(category => category.id));
+  const sanitized = {};
+  for (const [id, effectName] of Object.entries(overrides)) {
+    if (!validIds.has(id) || !effectCatalogSet.has(effectName)) continue;
+    sanitized[id] = effectName;
+  }
+  overrides = sanitized;
+  persist();
+  return getV39EffectCategories();
+}
+
 export function getV39EffectCategories() {
-  const catalog = getV39EffectSettingsCatalog();
-  const catalogSet = new Set(catalog);
   return normalizedDefaults().map(category => {
     const override = String(overrides[category.id] || "").trim();
-    const candidate = override || category.defaultEffect;
-    const effectName = catalogSet.has(candidate)
-      ? candidate
-      : catalogSet.has(category.defaultEffect)
-        ? category.defaultEffect
-        : (catalog[0] || "");
+    const effectName = resolveEffectName(category, override || category.defaultEffect);
     return { ...category, effectName, customized:!!override && override !== category.defaultEffect };
   });
 }
@@ -59,8 +74,7 @@ export function updateV39EffectCategory(categoryId, effectName) {
   const effect = String(effectName || "").trim();
   const category = normalizedDefaults().find(item => item.id === id);
   if (!category) return null;
-  const catalogSet = new Set(getV39EffectSettingsCatalog());
-  if (!catalogSet.has(effect)) return getV39EffectCategory(id);
+  if (!effectCatalogSet.has(effect)) return getV39EffectCategory(id);
   const next = { ...overrides };
   if (effect === category.defaultEffect) delete next[id];
   else next[id] = effect;
@@ -78,16 +92,38 @@ export function resetV39EffectCategories() {
   return getV39EffectCategories();
 }
 
+export function getV39EffectCategoryAssignments() {
+  return Object.fromEntries(getV39EffectCategories().map(category => [category.id, category.effectName]));
+}
+
+export function importV39EffectCategoryAssignments(input = {}) {
+  const raw = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const next = {};
+  let importedCount = 0;
+  let skippedCount = 0;
+  for (const category of normalizedDefaults()) {
+    if (!Object.prototype.hasOwnProperty.call(raw, category.id)) continue;
+    const effectName = String(raw[category.id] || "").trim();
+    if (!effectCatalogSet.has(effectName)) {
+      skippedCount += 1;
+      continue;
+    }
+    if (effectName !== category.defaultEffect) next[category.id] = effectName;
+    importedCount += 1;
+  }
+  overrides = next;
+  persist();
+  window.dispatchEvent(new CustomEvent("v39:effect-category-settings-changed", {
+    detail:{ reason:"import", importedCount, skippedCount }
+  }));
+  return { importedCount, skippedCount };
+}
+
 export function getV39EffectCategorySettingsSnapshot() {
   return {
     schema:"v39-effect-category-settings",
     version:1,
-    categories:getV39EffectCategories().map(category => ({
-      id:category.id,
-      group:category.group,
-      name:category.name,
-      effectName:category.effectName
-    }))
+    assignments:getV39EffectCategoryAssignments()
   };
 }
 
