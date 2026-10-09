@@ -10,7 +10,7 @@ const GRADIENT_MOTION_MODES = Object.freeze(["fixed", "scroll", "wave"]);
 const DEFAULT_GRADIENT_COLOR_A = "#FF3B1F";
 const DEFAULT_GRADIENT_COLOR_B = "#FFD54A";
 const DEFAULT_GRADIENT_DIRECTION = "up";
-const DEFAULT_GRADIENT_MOTION_MODE = "wave";
+const DEFAULT_GRADIENT_MOTION_MODE = "fixed";
 const DEFAULT_GRADIENT_SPEED = 80;
 
 let effectCatalog = [];
