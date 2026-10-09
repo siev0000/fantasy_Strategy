@@ -1,14 +1,16 @@
 const STORAGE_KEY = "v39-effect-settings-v1";
 const SCHEMA_NAME = "v39-effect-settings";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const SCALE_MIN = 10;
 const SCALE_MAX = 400;
 const GRADIENT_SPEED_MIN = 0;
 const GRADIENT_SPEED_MAX = 500;
 const GRADIENT_DIRECTIONS = Object.freeze(["up", "down", "left", "right"]);
+const GRADIENT_MOTION_MODES = Object.freeze(["fixed", "scroll", "wave"]);
 const DEFAULT_GRADIENT_COLOR_A = "#FF3B1F";
 const DEFAULT_GRADIENT_COLOR_B = "#FFD54A";
 const DEFAULT_GRADIENT_DIRECTION = "up";
+const DEFAULT_GRADIENT_MOTION_MODE = "wave";
 const DEFAULT_GRADIENT_SPEED = 80;
 
 let effectCatalog = [];
@@ -38,6 +40,11 @@ function normalizeGradientColor(value, fallback) {
 function normalizeGradientDirection(value) {
   const direction = text(value, DEFAULT_GRADIENT_DIRECTION).toLowerCase();
   return GRADIENT_DIRECTIONS.includes(direction) ? direction : DEFAULT_GRADIENT_DIRECTION;
+}
+
+function normalizeGradientMotionMode(value) {
+  const mode = text(value, DEFAULT_GRADIENT_MOTION_MODE).toLowerCase();
+  return GRADIENT_MOTION_MODES.includes(mode) ? mode : DEFAULT_GRADIENT_MOTION_MODE;
 }
 
 function loadState() {
@@ -72,6 +79,7 @@ function defaultSetting(effectName) {
     gradientColorA:DEFAULT_GRADIENT_COLOR_A,
     gradientColorB:DEFAULT_GRADIENT_COLOR_B,
     gradientDirection:DEFAULT_GRADIENT_DIRECTION,
+    gradientMotionMode:DEFAULT_GRADIENT_MOTION_MODE,
     gradientStartPercent:0,
     gradientEndPercent:100,
     colorStrengthPercent:100,
@@ -99,6 +107,7 @@ function normalizeSetting(effectName, rawSetting = {}) {
     gradientColorA:normalizeGradientColor(rawSetting?.gradientColorA, DEFAULT_GRADIENT_COLOR_A),
     gradientColorB:normalizeGradientColor(rawSetting?.gradientColorB, DEFAULT_GRADIENT_COLOR_B),
     gradientDirection:normalizeGradientDirection(rawSetting?.gradientDirection),
+    gradientMotionMode:normalizeGradientMotionMode(rawSetting?.gradientMotionMode),
     gradientStartPercent:Math.min(start, end),
     gradientEndPercent:Math.max(start, end),
     colorStrengthPercent:clampNumber(rawSetting?.colorStrengthPercent, 0, 100, 100),
@@ -133,6 +142,7 @@ function serializableSetting(setting) {
     gradientColorA:setting.gradientColorA,
     gradientColorB:setting.gradientColorB,
     gradientDirection:setting.gradientDirection,
+    gradientMotionMode:setting.gradientMotionMode,
     gradientStartPercent:setting.gradientStartPercent,
     gradientEndPercent:setting.gradientEndPercent,
     colorStrengthPercent:setting.colorStrengthPercent,
@@ -254,6 +264,7 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
       gradientColorA:DEFAULT_GRADIENT_COLOR_A,
       gradientColorB:DEFAULT_GRADIENT_COLOR_B,
       gradientDirection:DEFAULT_GRADIENT_DIRECTION,
+      gradientMotionMode:DEFAULT_GRADIENT_MOTION_MODE,
       gradientStartPercent:0,
       gradientEndPercent:100,
       colorStrengthPercent:100,
@@ -270,6 +281,7 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
     gradientColorA:setting.gradientColorA,
     gradientColorB:setting.gradientColorB,
     gradientDirection:setting.gradientDirection,
+    gradientMotionMode:setting.gradientMotionMode,
     gradientStartPercent:setting.gradientStartPercent,
     gradientEndPercent:setting.gradientEndPercent,
     colorStrengthPercent:setting.colorStrengthPercent,
@@ -286,3 +298,4 @@ export const V39_EFFECT_SCALE_MAX = SCALE_MAX;
 export const V39_EFFECT_GRADIENT_SPEED_MIN = GRADIENT_SPEED_MIN;
 export const V39_EFFECT_GRADIENT_SPEED_MAX = GRADIENT_SPEED_MAX;
 export const V39_EFFECT_GRADIENT_DIRECTIONS = GRADIENT_DIRECTIONS;
+export const V39_EFFECT_GRADIENT_MOTION_MODES = GRADIENT_MOTION_MODES;
