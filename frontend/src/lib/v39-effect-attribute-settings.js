@@ -5,6 +5,33 @@ const SCHEMA = "v39-effect-attribute-settings";
 const VERSION = 1;
 const DEFAULT_GRADIENT_A = "#FFFFFF";
 const DEFAULT_GRADIENT_B = "#FFFFFF";
+const DEFAULT_COLOR_STRENGTH_PERCENT = 90;
+const ATTRIBUTE_DEFAULT_COLORS = Object.freeze({
+  "力場":["#7FD7FF", "#FFFFFF"],
+  "防御":["#7FA8FF", "#DDE8FF"],
+  "炎":["#FF3B1F", "#FFD54A"],
+  "氷":["#7FDBFF", "#FFFFFF"],
+  "雷":["#2F80FF", "#FFFFFF"],
+  "酸":["#A6FF00", "#3FAE2A"],
+  "音":["#D98CFF", "#FFFFFF"],
+  "闇":["#151020", "#8E44AD"],
+  "光":["#FFFFFF", "#FFD76A"],
+  "治癒":["#55D98B", "#FFFFFF"],
+  "風":["#B7F7D0", "#FFFFFF"],
+  "水":["#258DFF", "#8FE7FF"],
+  "地":["#8B5A2B", "#D0A35C"],
+  "魔術":["#8E5CFF", "#E3D5FF"],
+  "信仰":["#FFF3B0", "#FFFFFF"],
+  "自然":["#4CAF50", "#CDEB8B"],
+  "対魔":["#5B6470", "#D7DCE2"],
+  "時間":["#6E5CCB", "#F4D6FF"],
+  "空間":["#243B6B", "#9CCBFF"],
+  "幻覚":["#FF7EDB", "#7EEBFF"],
+  "呪い":["#4B1538", "#B33A7A"],
+  "精神":["#7A5CFA", "#E4D7FF"],
+  "物質":["#8C8C8C", "#E0E0E0"],
+  "強化":["#FF9E3D", "#FFF1A8"]
+});
 const DIRECTIONS = new Set(["up", "down", "left", "right"]);
 const MOTION_MODES = new Set(["fixed", "scroll", "wave"]);
 
@@ -26,24 +53,26 @@ function color(value, fallback = "") {
   return /^[0-9a-f]{6}$/i.test(body) ? `#${body.toUpperCase()}` : fallback;
 }
 
-function defaultSetting() {
+function defaultSetting(attributeName = "") {
+  const [gradientColorA, gradientColorB] = ATTRIBUTE_DEFAULT_COLORS[attributeName]
+    || [DEFAULT_GRADIENT_A, DEFAULT_GRADIENT_B];
   return {
     decorationEffect:"",
     tint:"",
     gradientEnabled:false,
-    gradientColorA:DEFAULT_GRADIENT_A,
-    gradientColorB:DEFAULT_GRADIENT_B,
+    gradientColorA,
+    gradientColorB,
     gradientDirection:"up",
     gradientMotionMode:"fixed",
     gradientStartPercent:0,
     gradientEndPercent:100,
-    colorStrengthPercent:100,
+    colorStrengthPercent:DEFAULT_COLOR_STRENGTH_PERCENT,
     gradientSpeedPercentPerSecond:80
   };
 }
 
-function normalizeSetting(raw = {}) {
-  const base = defaultSetting();
+function normalizeSetting(raw = {}, attributeName = "") {
+  const base = defaultSetting(attributeName);
   const catalog = new Set(getV39EffectSettingsCatalog());
   const rawDecoration = text(raw.decorationEffect);
   const start = clamp(raw.gradientStartPercent, 0, 100, base.gradientStartPercent);
@@ -54,13 +83,13 @@ function normalizeSetting(raw = {}) {
     decorationEffect:rawDecoration && catalog.size && !catalog.has(rawDecoration) ? "" : rawDecoration,
     tint:color(raw.tint, ""),
     gradientEnabled:raw.gradientEnabled === true,
-    gradientColorA:color(raw.gradientColorA, DEFAULT_GRADIENT_A),
-    gradientColorB:color(raw.gradientColorB, DEFAULT_GRADIENT_B),
+    gradientColorA:color(raw.gradientColorA, base.gradientColorA),
+    gradientColorB:color(raw.gradientColorB, base.gradientColorB),
     gradientDirection:DIRECTIONS.has(direction) ? direction : "up",
     gradientMotionMode:MOTION_MODES.has(motion) ? motion : "fixed",
     gradientStartPercent:Math.min(start, end),
     gradientEndPercent:Math.max(start, end),
-    colorStrengthPercent:Math.round(clamp(raw.colorStrengthPercent, 0, 100, 100)),
+    colorStrengthPercent:Math.round(clamp(raw.colorStrengthPercent, 0, 100, base.colorStrengthPercent)),
     gradientSpeedPercentPerSecond:Math.round(clamp(raw.gradientSpeedPercentPerSecond, 0, 500, 80))
   };
 }
@@ -129,8 +158,8 @@ export async function loadV39EffectAttributes() {
 
 export function getV39EffectAttributes() {
   return attributeNames.map(name => {
-    const standard = defaultSetting();
-    const setting = normalizeSetting(overrides[name] || standard);
+    const standard = defaultSetting(name);
+    const setting = normalizeSetting(overrides[name] || standard, name);
     return { name, ...setting, customized:!sameSetting(setting, standard) };
   });
 }
@@ -143,9 +172,9 @@ export function getV39EffectAttribute(attributeName) {
 export function updateV39EffectAttribute(attributeName, patch = {}) {
   const name = text(attributeName);
   if (!attributeNames.includes(name)) return null;
-  const current = getV39EffectAttribute(name) || { name, ...defaultSetting() };
-  const setting = normalizeSetting({ ...current, ...(patch || {}) });
-  const standard = defaultSetting();
+  const current = getV39EffectAttribute(name) || { name, ...defaultSetting(name) };
+  const setting = normalizeSetting({ ...current, ...(patch || {}) }, name);
+  const standard = defaultSetting(name);
   const next = { ...overrides };
   if (sameSetting(setting, standard)) delete next[name];
   else next[name] = setting;
@@ -202,8 +231,8 @@ export function importV39EffectAttributeSettings(input) {
       skippedCount += 1;
       continue;
     }
-    const setting = normalizeSetting(raw);
-    if (!sameSetting(setting, defaultSetting())) next[name] = setting;
+    const setting = normalizeSetting(raw, name);
+    if (!sameSetting(setting, defaultSetting(name))) next[name] = setting;
     importedCount += 1;
   }
   overrides = next;
