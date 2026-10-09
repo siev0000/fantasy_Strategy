@@ -51,6 +51,17 @@ function ensureFullImageMode() {
   }
 }
 
+function updateGradientSideLabels() {
+  const direction = element("v39-effect-setting-gradient-direction")?.value || "up";
+  const horizontal = direction === "left" || direction === "right";
+  const labelA = element("v39-effect-setting-gradient-a")?.closest("label")?.querySelector("span");
+  const labelB = element("v39-effect-setting-gradient-b")?.closest("label")?.querySelector("span");
+  if (labelA) labelA.textContent = horizontal ? "色A（左・0%側）" : "色A（上・0%側）";
+  if (labelB) labelB.textContent = horizontal ? "色B（右・100%側）" : "色B（下・100%側）";
+  const directionControl = element("v39-effect-setting-gradient-direction");
+  if (directionControl) directionControl.title = "移動方向は色が流れる方向です。A/Bの基準位置は反転しません。";
+}
+
 function loadImage(src) {
   if (imageCache.has(src)) return imageCache.get(src);
   const promise = new Promise((resolve, reject) => {
@@ -85,10 +96,12 @@ function applyFirstFrameColor(context, descriptor, x, y, width, height) {
   context.globalAlpha = strength;
   if (descriptor.gradientEnabled) {
     const horizontal = ["left", "right"].includes(descriptor.gradientDirection);
-    const reverse = ["up", "left"].includes(descriptor.gradientDirection);
+    // A/Bの基準位置は再生本体と同じく固定する。
+    // 縦: A=上(0%) / B=下(100%)、横: A=左(0%) / B=右(100%)。
+    // gradientDirection は色が流れる方向だけを表し、基準位置は反転しない。
     const gradient = horizontal
-      ? context.createLinearGradient(reverse ? x + width : x, y, reverse ? x : x + width, y)
-      : context.createLinearGradient(x, reverse ? y + height : y, x, reverse ? y : y + height);
+      ? context.createLinearGradient(x, y, x + width, y)
+      : context.createLinearGradient(x, y, x, y + height);
     const start = Math.max(0, Math.min(100, Number(descriptor.gradientStartPercent ?? 0))) / 100;
     const end = Math.max(start, Math.min(100, Number(descriptor.gradientEndPercent ?? 100))) / 100;
     gradient.addColorStop(0, hex(descriptor.gradientColorA));
@@ -175,17 +188,26 @@ function scheduleRestoreAfterOnce() {
 
 function bind() {
   ensureFullImageMode();
+  updateGradientSideLabels();
   const panel = element("v39-effect-settings-panel");
   if (panel instanceof HTMLElement) {
     new MutationObserver(() => {
-      if (panelVisible()) window.requestAnimationFrame(refreshIdlePreview);
+      if (panelVisible()) window.requestAnimationFrame(() => {
+        updateGradientSideLabels();
+        refreshIdlePreview();
+      });
       else hideIdlePreview();
     }).observe(panel, { attributes:true, attributeFilter:["hidden", "aria-hidden"] });
   }
 
   element("v39-effect-setting-source")?.addEventListener("change", () => window.setTimeout(refreshIdlePreview, 0));
   element("v39-effect-playback-mode")?.addEventListener("change", () => window.setTimeout(refreshIdlePreview, 0));
+  element("v39-effect-setting-gradient-direction")?.addEventListener("change", () => {
+    updateGradientSideLabels();
+    window.setTimeout(refreshIdlePreview, 0);
+  });
   window.addEventListener("v39:effect-settings-changed", () => {
+    updateGradientSideLabels();
     if (panelVisible()) window.setTimeout(refreshIdlePreview, 0);
   });
 
@@ -206,6 +228,7 @@ function bind() {
 function install() {
   ensureCanvas();
   ensureFullImageMode();
+  updateGradientSideLabels();
   bind();
 }
 
