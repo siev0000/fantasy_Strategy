@@ -3,11 +3,7 @@ import { getV39EffectSettingsCatalog } from "./v39-effect-settings.js";
 
 const STORAGE_KEY = "v39-effect-category-settings-v1";
 const SCHEMA = "v39-effect-category-settings";
-const VERSION = 2;
-const DEFAULT_GRADIENT_A = "#FF3B1F";
-const DEFAULT_GRADIENT_B = "#FFD54A";
-const DIRECTIONS = new Set(["up", "down", "left", "right"]);
-const MOTION_MODES = new Set(["fixed", "scroll", "wave"]);
+const VERSION = 3;
 
 function text(value, fallback = "") {
   return String(value ?? "").trim() || fallback;
@@ -17,11 +13,6 @@ function clamp(value, min, max, fallback) {
   const parsed = Number(value);
   const safe = Number.isFinite(parsed) ? parsed : fallback;
   return Math.max(min, Math.min(max, safe));
-}
-
-function color(value, fallback = "") {
-  const body = text(value).replace(/^#/, "");
-  return /^[0-9a-f]{6}$/i.test(body) ? `#${body.toUpperCase()}` : fallback;
 }
 
 function defaults() {
@@ -38,54 +29,35 @@ function defaults() {
 function defaultSetting(category) {
   return {
     baseEffect:category.defaultEffect,
-    decorationEffect:"",
-    tint:"",
-    gradientEnabled:false,
-    gradientColorA:DEFAULT_GRADIENT_A,
-    gradientColorB:DEFAULT_GRADIENT_B,
-    gradientDirection:"up",
-    gradientMotionMode:"fixed",
-    gradientStartPercent:0,
-    gradientEndPercent:100,
-    colorStrengthPercent:100,
-    gradientSpeedPercentPerSecond:80,
     scaleMultiplierPercent:100
   };
 }
 
 function normalizeSetting(category, raw = {}) {
-  const base = defaultSetting(category);
+  const standard = defaultSetting(category);
   const catalog = new Set(getV39EffectSettingsCatalog());
-  const start = clamp(raw.gradientStartPercent, 0, 100, base.gradientStartPercent);
-  const end = clamp(raw.gradientEndPercent, 0, 100, base.gradientEndPercent);
-  const rawBase = text(raw.baseEffect ?? raw.effectName, base.baseEffect);
-  const rawDecoration = text(raw.decorationEffect);
+  const rawBase = text(raw.baseEffect ?? raw.effectName, standard.baseEffect);
   return {
-    baseEffect:catalog.size && !catalog.has(rawBase) ? base.baseEffect : rawBase,
-    decorationEffect:rawDecoration && catalog.size && !catalog.has(rawDecoration) ? "" : rawDecoration,
-    tint:color(raw.tint, ""),
-    gradientEnabled:raw.gradientEnabled === true,
-    gradientColorA:color(raw.gradientColorA, DEFAULT_GRADIENT_A),
-    gradientColorB:color(raw.gradientColorB, DEFAULT_GRADIENT_B),
-    gradientDirection:DIRECTIONS.has(text(raw.gradientDirection).toLowerCase()) ? text(raw.gradientDirection).toLowerCase() : "up",
-    gradientMotionMode:MOTION_MODES.has(text(raw.gradientMotionMode).toLowerCase()) ? text(raw.gradientMotionMode).toLowerCase() : "fixed",
-    gradientStartPercent:Math.min(start, end),
-    gradientEndPercent:Math.max(start, end),
-    colorStrengthPercent:Math.round(clamp(raw.colorStrengthPercent, 0, 100, 100)),
-    gradientSpeedPercentPerSecond:Math.round(clamp(raw.gradientSpeedPercentPerSecond, 0, 500, 80)),
+    baseEffect:catalog.size && !catalog.has(rawBase) ? standard.baseEffect : rawBase,
     scaleMultiplierPercent:Math.round(clamp(raw.scaleMultiplierPercent, 10, 400, 100))
   };
 }
 
 function sameSetting(a, b) {
-  return Object.keys(a).every(key => a[key] === b[key]);
+  return a.baseEffect === b.baseEffect
+    && a.scaleMultiplierPercent === b.scaleMultiplierPercent;
 }
 
 function readState() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null");
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    if (parsed.settings && typeof parsed.settings === "object" && !Array.isArray(parsed.settings)) return { ...parsed.settings };
+    if (parsed.settings && typeof parsed.settings === "object" && !Array.isArray(parsed.settings)) {
+      return Object.fromEntries(Object.entries(parsed.settings).map(([id, raw]) => [id, {
+        baseEffect:raw?.baseEffect ?? raw?.effectName,
+        scaleMultiplierPercent:raw?.scaleMultiplierPercent
+      }]));
+    }
     if (parsed.assignments && typeof parsed.assignments === "object" && !Array.isArray(parsed.assignments)) {
       return Object.fromEntries(Object.entries(parsed.assignments).map(([id, baseEffect]) => [id, { baseEffect }]));
     }
@@ -165,17 +137,6 @@ export function getV39EffectCategorySettingsSnapshot() {
       group:category.group,
       name:category.name,
       baseEffect:category.baseEffect,
-      decorationEffect:category.decorationEffect,
-      tint:category.tint,
-      gradientEnabled:category.gradientEnabled,
-      gradientColorA:category.gradientColorA,
-      gradientColorB:category.gradientColorB,
-      gradientDirection:category.gradientDirection,
-      gradientMotionMode:category.gradientMotionMode,
-      gradientStartPercent:category.gradientStartPercent,
-      gradientEndPercent:category.gradientEndPercent,
-      colorStrengthPercent:category.colorStrengthPercent,
-      gradientSpeedPercentPerSecond:category.gradientSpeedPercentPerSecond,
       scaleMultiplierPercent:category.scaleMultiplierPercent
     };
   }
