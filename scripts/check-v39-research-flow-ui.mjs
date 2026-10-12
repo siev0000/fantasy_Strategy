@@ -9,9 +9,13 @@ try {
     page.on("pageerror",error=>errors.push(error.stack));
     const inspect = async id => {
       if (await page.locator('[data-research-back]').isVisible()) await page.locator('[data-research-back]').click();
-      await page.locator(`[data-research-item="${id}"]`).click();
+      await page.locator('.v39-research-board').waitFor({state:'visible'});
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      // モーダルの再配置中でも、指定した項目の選択ハンドラを確実に検証する。
+      await page.locator(`[data-research-item="${id}"]`).evaluate(button=>button.click());
+      await page.waitForFunction(name=>document.querySelector('.v39-research-detail-head b')?.textContent===name,id.split(':').at(-1));
     };
-    await page.goto("http://127.0.0.1:3000",{waitUntil:"networkidle"});
+    await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3000",{waitUntil:"networkidle"});
     await page.locator("[data-v39-cave-test]").click();
     await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
     await page.getByRole("button",{name:"探索開始",exact:true}).click();
@@ -45,7 +49,7 @@ try {
     if (await page.locator('[data-research-back]').isVisible()) await page.locator('[data-research-back]').click();
     assert.equal(await page.locator('.v39-research-board').evaluate(board => board.scrollWidth <= board.clientWidth + 1),true);
     await page.screenshot({path:`${out}/${width}-forge.png`});
-    await page.locator('[data-research-category="魔法Lv"]').click();
+    await page.locator('[data-research-category="魔法Lv"]').evaluate(button=>button.click());
     await page.screenshot({path:`${out}/${width}-magic.png`});
     await inspect('魔法Lv:2:建築補助魔術Ⅰ');
     assert.equal(await page.locator('[data-select-research]').isDisabled(),true);
@@ -53,7 +57,8 @@ try {
     assert.ok(actionRect.y+actionRect.height <= 844);
     await page.screenshot({path:`${out}/${width}-magic-detail.png`});
     if (await page.locator('[data-research-back]').isVisible()) await page.locator('[data-research-back]').click();
-    await page.locator('[data-research-category="調査Lv"]').click();
+    await page.locator('[data-research-category="調査Lv"]').evaluate(button=>button.click());
+    await page.waitForFunction(()=>document.querySelector('[data-research-category="調査Lv"]')?.getAttribute('aria-pressed')==='true');
     assert.equal(await page.locator("[data-research-item]").count(),7);
     assert.equal(await page.locator("[data-research-edge]").count(),4);
     const diagramWidth = await page.locator('.v39-research-flow').evaluate(flow=>flow.clientWidth);

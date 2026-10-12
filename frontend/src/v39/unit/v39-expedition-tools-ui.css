@@ -1,0 +1,27 @@
+#v39-mine-operations {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid #38535b;
+  border-radius: 8px;
+  background: #101f25;
+  color: #dcebee;
+}
+#v39-mine-operations[hidden] { display: none; }
+#v39-mine-operations b { overflow-wrap: anywhere; font-size: inherit; }
+#v39-mine-operations select,
+#v39-mine-operations button,
+[data-expedition-tool] .technique-detail button {
+  min-width: 0;
+  width: 100%;
+  padding: 4px;
+  border: 1px solid #527680;
+  border-radius: 6px;
+  background: #172d35;
+  color: #e1eff2;
+  font: inherit;
+}
+#v39-mine-operations button:disabled { opacity: .45; }
+[data-expedition-tool] .technique-summary { padding: 4px; }
+[data-expedition-tool] .technique-name { white-space: normal; overflow-wrap: anywhere; }

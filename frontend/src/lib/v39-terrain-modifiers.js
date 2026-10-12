@@ -2,6 +2,7 @@ import { findGameDataRow } from "./game-data-registry.js";
 import { COMBAT_STATUS_FIELDS, SKILL_LEVEL_FIELDS } from "../constants/unitCommon.js";
 import { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
 import { applyV39TerrainPassiveBonuses } from "./v39-passive-rules.js";
+import { applyV39SquadSupport } from "./v39-squad-support.js";
 export { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
 
 export const TERRAIN_STATUS_FIELDS = Object.freeze([
@@ -25,6 +26,7 @@ export function getV39TerrainModifiers(mapData, x, y) {
 
 export function applyV39TerrainModifiers(unit, mapData = globalThis.window?.__v39FieldRuntime?.mapData) {
   if (!unit || typeof unit !== "object") return unit;
+  unit=applyV39SquadSupport(unit);
   const terrain = getV39TerrainModifiers(mapData, unit.x, unit.y);
   // 再評価や移動時は前回の現在地補正だけ戻し、恒久能力は変更しない。
   const base={...unit,passiveContextSkillNames:[]};

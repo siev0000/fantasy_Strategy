@@ -1,27 +1,30 @@
-import { getHexDistance, getHexNeighborCoords } from "./hex-grid.js";
+import { getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "./hex-grid.js";
 import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
 
 export const V39_CAVE_FORMATIONS = Object.freeze({ column:"縦列", "front-two":"前2人" });
 const key = tile => `${tile.x},${tile.y}`;
 const axial = tile => ({ q:tile.x-(tile.y-(tile.y&1))/2, r:tile.y });
 const offset = ({q,r}) => ({ x:q+(r-(r&1))/2, y:r });
+const wraps = map => !map.isUnderground && map.worldWrapEnabled === true;
+const neighbors = (map,tile) => getHexNeighborCoords(map.w,map.h,tile.x,tile.y,wraps(map));
+const normalize = (map,tile) => wraps(map) ? {...tile,x:normalizeWrappedCoordinate(tile.x,map.w),y:normalizeWrappedCoordinate(tile.y,map.h)} : tile;
 
 // 入れ替え直後の狭路では、各員の隣接候補を一括割当てしてすれ違いを可能にする。
 export function assignV39CaveFormationStep(map, source, goals, participants, occupied=new Set()) {
   const members=new Map(participants.map(unit=>[unit.id,unit]));
   const passable=(tile,id)=>!occupied.has(key(tile))&&canUnitEnterV39Tile(map,tile.x,tile.y,members.get(id));
   const leader=goals[0];
-  if(!leader||!passable(leader,source[0].id)||getHexDistance(source[0],leader)>1)return null;
+  if(!leader||!passable(leader,source[0].id)||(key(source[0])!==key(leader)&&!neighbors(map,source[0]).some(tile=>key(tile)===key(leader))))return null;
   const candidates=source.map((current,index)=>{
     if(!index)return [leader];
     const goal=goals[index],distances=new Map(),queue=[goal];
     if(!passable(goal,current.id))return [];
     distances.set(key(goal),0);
-    for(let cursor=0;cursor<queue.length;cursor++)for(const tile of getHexNeighborCoords(map.w,map.h,queue[cursor].x,queue[cursor].y)) {
+    for(let cursor=0;cursor<queue.length;cursor++)for(const tile of neighbors(map,queue[cursor])) {
       if(distances.has(key(tile))||!passable(tile,current.id))continue;
       distances.set(key(tile),distances.get(key(queue[cursor]))+1);queue.push(tile);
     }
-    return [current,...getHexNeighborCoords(map.w,map.h,current.x,current.y)]
+    return [current,...neighbors(map,current)]
       .filter(tile=>key(tile)!==key(leader)&&passable(tile,current.id)&&distances.has(key(tile)))
       .sort((a,b)=>distances.get(key(a))-distances.get(key(b)));
   });
@@ -52,16 +55,17 @@ export function resolveV39CaveFormation(squad = {}, order = squad.unitIds || [])
 export function advanceV39RelativeCaveFormation(map, positions, target, group, occupied = new Set()) {
   if (!positions.length) return null;
   const members = new Map(group.participants.map(unit=>[unit.id,unit]));
-  const origin = axial(positions[0]), destination = axial(target);
+  const rawTarget=getHexOffsetNeighbors(positions[0].x,positions[0].y).find(tile=>key(normalize(map,tile))===key(target));
+  if(!rawTarget)return null;
+  const origin = axial(positions[0]), destination = axial(rawTarget);
   const forward = { q:destination.q-origin.q, r:destination.r-origin.r };
-  if (getHexDistance(positions[0],target) !== 1) return null;
   // 六角形の前衛2枠は進行方向に対して斜め横へ置く。
   const side = { q:-forward.q-forward.r, r:forward.q };
   const slots = new Map((group.formationSlots||[]).map(slot=>[slot.unitId,slot]));
   const desired = (columnOnly) => positions.map((position,index)=>{
     const slot = columnOnly ? {row:index,column:0} : slots.get(position.id)||{row:index,column:0};
-    return {id:position.id,...offset({q:destination.q-slot.row*forward.q+slot.column*side.q,
-      r:destination.r-slot.row*forward.r+slot.column*side.r})};
+    return normalize(map,{id:position.id,...offset({q:destination.q-slot.row*forward.q+slot.column*side.q,
+      r:destination.r-slot.row*forward.r+slot.column*side.r})});
   });
   const passable = (tile,id) => !occupied.has(key(tile)) && canUnitEnterV39Tile(map,tile.x,tile.y,members.get(id));
   const greedy = (goals,source=positions) => {
@@ -78,7 +82,7 @@ export function advanceV39RelativeCaveFormation(map, positions, target, group, o
       for(let cursor=0;cursor<queue.length;cursor++) {
         const node=queue[cursor];
         if(key(node)===key(goal)) {step=node.first;break;}
-        for(const tile of getHexNeighborCoords(map.w,map.h,node.x,node.y)) {
+        for(const tile of neighbors(map,node)) {
           if(visited.has(key(tile))||reserved.has(key(tile))||otherSlots.has(key(tile))||!passable(tile,current.id))continue;
           visited.add(key(tile));queue.push({...tile,first:cursor===0?tile:node.first});
         }

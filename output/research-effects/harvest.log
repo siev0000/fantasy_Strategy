@@ -1,0 +1,83 @@
+{
+  "report": {
+    "history": [
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    "gemHistory": [
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "gemRepeated": 1,
+    "gemRule": {
+      "turns": 5,
+      "amount": 1,
+      "speed": 1,
+      "category": "鍛冶",
+      "level": 0
+    },
+    "second": 1,
+    "other": 1,
+    "undiscovered": 0,
+    "repeated": 2,
+    "counts": [
+      [
+        "蜂蜜",
+        1
+      ]
+    ],
+    "paused": 1,
+    "lost": false,
+    "researchRule": {
+      "turns": 5,
+      "amount": 1,
+      "speed": 1.4,
+      "category": "経済",
+      "level": 2
+    },
+    "gained": 2,
+    "generated": 3
+  },
+  "saved": {
+    "5,5": {
+      "name": "黒木",
+      "progress": 0,
+      "lastTurn": 5
+    },
+    "6,5": {
+      "name": "黒木",
+      "progress": 0,
+      "lastTurn": 5
+    },
+    "6,6": {
+      "name": "宝石",
+      "progress": 0,
+      "lastTurn": 5
+    }
+  },
+  "midSaved": {
+    "5,5": {
+      "name": "黒木",
+      "progress": 3,
+      "lastTurn": 3
+    },
+    "6,5": {
+      "name": "黒木",
+      "progress": 3,
+      "lastTurn": 3
+    },
+    "6,6": {
+      "name": "宝石",
+      "progress": 3,
+      "lastTurn": 3
+    },
+    "countdown": "×2 ⌛2"
+  },
+  "errors": []
+}

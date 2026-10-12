@@ -9,6 +9,7 @@ import { getHexDistance, getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
 import { unitCurrentAp } from "../../lib/v39-squad-movement-rules.js";
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
+import { advanceV39CaveNestProgress } from "../../lib/v39-cave-nest-rules.js";
 
 const alive = unit => Number(unit?.hp ?? unit?.currentHp ?? 0) > 0;
 const key = unit => `${unit.x},${unit.y}`;
@@ -111,6 +112,35 @@ function spawnNest(map,state,plan,turnNumber){
 
 export function advanceV39CaveConquest(turnNumber){
   const map=window.__v39FieldRuntime?.mapData,state=window.getV39GameState();
+  if(map?.caveMine){
+    const entrants=state.enemies.filter(unit=>alive(unit)&&unit.lastCaveEntryTurn);
+    const race=entrants.find(unit=>entrants.filter(other=>other.race===unit.race).length>=rules.requiredSameRaceUnits)?.race;
+    const settlers=entrants.filter(unit=>unit.race===race).slice(0,rules.requiredSameRaceUnits);
+    const foodAmount=settlers.reduce((sum,unit)=>sum+(unit.caveArrivalFood||0),0);
+    const playerPresent=state.players.some(player=>player.factionState.units.some(unit=>alive(unit)&&(unit.worldId||"surface")===state.activeWorldId));
+    const requiresFood=race?resolveV39ConsumableFoodKeys(race,FOOD_RESOURCE_KEYS,NORMAL_FOOD_RESOURCE_KEYS).length>0:true;
+    const previous=map.caveMine.invasionProgress?.race===race?map.caveMine.invasionProgress:{};
+    const progress=advanceV39CaveNestProgress(previous,turnNumber,{playerPresent,canProgress:!!race&&(!rules.requireEnoughFood||!requiresFood||foodAmount>=rules.minimumArrivalFood)});
+    map.caveMine={...map.caveMine,invasionProgress:{...progress,race}};
+    if(progress.ready){
+      const original=settlers[0],level=Math.max(...settlers.map(unit=>unit.level||1));
+      const plan={race,className:original.className,name:original.name,image:original.image,level,bossLevel:Math.min(V39_CAVE_BALANCE.adventureEnemyLevelCap,level+V39_CAVE_BALANCE.bossLevelBonus),settlerCount:0,foodAmount,foodResource:original.caveArrivalFoodResource};
+      map.caveConquest ||= {generation:0};
+      const spawned=spawnNest(map,state,plan,turnNumber);
+      if(spawned){
+        const converted=settlers.map(unit=>({...unit,nestId:spawned.nest.id,enemySquadId:spawned.squad.id,isCaveBoss:false}));
+        spawned.nest.unitIds=[...converted.map(unit=>unit.id),...spawned.nest.unitIds];spawned.squad.unitIds=spawned.nest.unitIds;
+        map.caveBossIds=spawned.units.map(unit=>unit.id);map.caveBossRace=race;map.caveConquest={generation:spawned.generation,bossDefeated:false,activeNestId:spawned.nest.id,deferredByPlayerId:{}};
+        for(const [resource,amount] of Object.entries(map.caveMine.stockByResource || {})){
+          const name=V39_CAVE_MINE_BALANCE.stockResourceAliases[resource]||resource;
+          spawned.nest.materialStockByType={...spawned.nest.materialStockByType,[name]:(Number(spawned.nest.materialStockByType?.[name])||0)+amount};
+        }
+        delete map.caveMine;
+        window.setV39GameState({enemies:[...state.enemies.filter(unit=>!converted.some(other=>other.id===unit.id)),...converted,...spawned.units],enemyNests:[...state.enemyNests,spawned.nest],enemySquads:[...state.enemySquads,spawned.squad]},{reason:"mine-recolonized"});
+      }
+    }
+    return;
+  }
   const conquest=syncConquest(map,state);
   if(!conquest?.bossDefeated||map.caveMine||!rules.recolonizeUnclaimed||conquest.lastProcessedTurn>=turnNumber)return;
   // 背景ワールドではユニット一覧がその世界へ投影済み。表示世界ではworldIdを照合する。

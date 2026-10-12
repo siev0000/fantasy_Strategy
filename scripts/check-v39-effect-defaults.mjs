@@ -11,7 +11,7 @@ try {
     const page = await browser.newPage({ viewport:{ width, height:844 } });
     const errors = [];
     page.on("pageerror", error => errors.push(String(error)));
-    await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+    await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3000", { waitUntil:"networkidle" });
     await page.locator("#v39-title-effect-settings-open").click();
     await page.locator('[data-v39-effect-tab="data"]').click();
     const downloadPromise = page.waitForEvent("download");
@@ -46,6 +46,16 @@ try {
     await page.locator("#v39-effect-setting-preview-local").click();
     await page.waitForTimeout(500);
     assert.ok(!(await page.locator("#v39-effect-settings-status").textContent()).includes("失敗"));
+    assert.deepEqual(errors, []);
+    await page.evaluate(()=>localStorage.setItem("v39-effect-attribute-settings-v1",JSON.stringify({
+      version:1,settings:{"保存済み旧属性":{tint:"#123456"}}
+    })));
+    await page.reload({waitUntil:"networkidle"});
+    await page.locator("#v39-title-effect-settings-open").click();
+    await page.locator('#v39-effect-composite-mode [data-mode="attribute"]').click();
+    await page.locator("#v39-effect-composite-selector").selectOption("保存済み旧属性");
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem("v39-effect-attribute-settings-v1")).settings["保存済み旧属性"].tint),"#123456");
+    assert.ok(await page.locator('#v39-effect-composite-selector option[value="治癒"]').count());
     assert.deepEqual(errors, []);
     console.log(`${width}: all category/attribute defaults, playback, saved override, reset OK`);
     await page.close();

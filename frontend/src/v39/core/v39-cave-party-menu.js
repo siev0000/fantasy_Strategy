@@ -6,8 +6,7 @@ const close=()=>{if(menu)menu.hidden=true;targetId="";};
 const cardFrom=event=>event.target instanceof Element?event.target.closest("#squadMemberList [data-v39-unit-id]"):null;
 
 function squadFor(id){
-  if(window.getV39EnemyTurnState()?.activeWorldId==="surface")return null;
-  return window.getV39ActiveFactionState()?.squads.find(squad=>squad.unitIds?.includes(id));
+  return window.getV39ActiveFactionState()?.squads.find(squad=>squad.id!=="solo"&&squad.unitIds?.includes(id));
 }
 
 function open(card,x,y){

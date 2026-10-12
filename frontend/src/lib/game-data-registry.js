@@ -1,3 +1,4 @@
+import expeditionDefaults from "../../../config/v39-expedition-defaults.json";
 const rawGameDataModules = import.meta.glob("../../../data/source/export/json/*.json", {
   eager: true,
   import: "default"
@@ -134,6 +135,12 @@ for (const [path, data] of Object.entries(rawGameDataModules)) {
   tableMap.set(name, data);
   sourcePathMap.set(name, path);
 }
+
+// 未定義の試作職だけ補充する。原本に同名が追加されたら自動的に正式行を使う。
+const prototypeClasses = tableMap.get("クラス") || [];
+tableMap.set("クラス", [...prototypeClasses, ...expeditionDefaults.supportClasses
+  .filter(row => !prototypeClasses.some(source => source.名前 === row.名前))
+  .map(row => ({...prototypeClasses.find(source => source.名前 === row.基本クラス), ...row}))]);
 
 export function hasGameDataTable(name) {
   return tableMap.has(String(name || "").replace(/\.json$/i, ""));

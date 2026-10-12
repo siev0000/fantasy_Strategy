@@ -6,7 +6,7 @@ const errors = [];
 page.on("pageerror", error => errors.push(String(error)));
 page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
 
-await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3000", { waitUntil:"networkidle" });
 await page.waitForFunction(() => typeof window.startV39LocalSession === "function" && typeof window.generateV39TestFieldWithSeed === "function");
 
 const report = await page.evaluate(async () => {

@@ -28,7 +28,7 @@ try {
         plays.push(playback);
       }
     });
-    await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+    await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3000", { waitUntil:"networkidle" });
     await page.locator("#v39-title-effect-settings-open").click();
     await page.locator('[data-effect-picker-mode="images"]').click();
     const galleryChoice = page.locator('[data-effect-image="斬撃"]');

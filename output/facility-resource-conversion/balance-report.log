@@ -1,0 +1,564 @@
+{
+  "assumptions": "在庫0・取得済み自領・全地点の進捗0。資源ごとの採取待ちだけで、発見・研究・移動・運搬・通常資源の待ちを含まない。装備は現行の素材比率と小数1桁丸めを使用。",
+  "resources": [
+    {
+      "name": "銀鉄",
+      "turns": 5,
+      "amount": 1,
+      "research": "鍛冶",
+      "speedPerResearchLevel": 0.2
+    },
+    {
+      "name": "宝石",
+      "turns": 5,
+      "amount": 1,
+      "research": "鍛冶",
+      "speedPerResearchLevel": 0.2
+    },
+    {
+      "name": "黒木",
+      "turns": 5,
+      "amount": 1,
+      "research": "経済",
+      "speedPerResearchLevel": 0.2
+    },
+    {
+      "name": "特木",
+      "turns": 5,
+      "amount": 1,
+      "research": "経済",
+      "speedPerResearchLevel": 0.2
+    },
+    {
+      "name": "青金鋼",
+      "turns": 5,
+      "amount": 1,
+      "research": "鍛冶",
+      "speedPerResearchLevel": 0.2
+    },
+    {
+      "name": "赤黒鋼",
+      "turns": 5,
+      "amount": 1,
+      "research": "鍛冶",
+      "speedPerResearchLevel": 0.2
+    },
+    {
+      "name": "銀",
+      "turns": 5,
+      "amount": 1,
+      "research": "鍛冶",
+      "speedPerResearchLevel": 0.2
+    }
+  ],
+  "craftCosts": [
+    {
+      "item": "剣",
+      "quality": "コモン",
+      "cost": {
+        "黒木": 0,
+        "特木": 0,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0
+      },
+      "waits": {}
+    },
+    {
+      "item": "剣",
+      "quality": "アンコモン",
+      "cost": {
+        "黒木": 0,
+        "特木": 0,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0
+      },
+      "waits": {}
+    },
+    {
+      "item": "剣",
+      "quality": "レア",
+      "cost": {
+        "黒木": 0.1,
+        "特木": 0,
+        "銀鉄": 1,
+        "青金鋼": 0,
+        "赤黒鋼": 0
+      },
+      "waits": {
+        "銀鉄": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "黒木": {
+          "cost": 0.1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        }
+      }
+    },
+    {
+      "item": "剣",
+      "quality": "エピック",
+      "cost": {
+        "黒木": 0.2,
+        "特木": 0.1,
+        "銀鉄": 1,
+        "青金鋼": 1,
+        "赤黒鋼": 0
+      },
+      "waits": {
+        "銀鉄": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "黒木": {
+          "cost": 0.2,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "特木": {
+          "cost": 0.1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "青金鋼": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        }
+      }
+    },
+    {
+      "item": "剣",
+      "quality": "レジェンダリー",
+      "cost": {
+        "黒木": 0.2,
+        "特木": 0.2,
+        "銀鉄": 2,
+        "青金鋼": 1,
+        "赤黒鋼": 1
+      },
+      "waits": {
+        "銀鉄": {
+          "cost": 2,
+          "oneSite": 10,
+          "threeSites": 5,
+          "researchLv2": 8
+        },
+        "黒木": {
+          "cost": 0.2,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "特木": {
+          "cost": 0.2,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "青金鋼": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "赤黒鋼": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        }
+      }
+    },
+    {
+      "item": "弓",
+      "quality": "コモン",
+      "cost": {
+        "黒木": 0,
+        "特木": 0,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0
+      },
+      "waits": {}
+    },
+    {
+      "item": "弓",
+      "quality": "アンコモン",
+      "cost": {
+        "黒木": 0,
+        "特木": 0,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0
+      },
+      "waits": {}
+    },
+    {
+      "item": "弓",
+      "quality": "レア",
+      "cost": {
+        "黒木": 1.4,
+        "特木": 0,
+        "銀鉄": 0.2,
+        "青金鋼": 0,
+        "赤黒鋼": 0
+      },
+      "waits": {
+        "銀鉄": {
+          "cost": 0.2,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "黒木": {
+          "cost": 1.4,
+          "oneSite": 10,
+          "threeSites": 5,
+          "researchLv2": 8
+        }
+      }
+    },
+    {
+      "item": "弓",
+      "quality": "エピック",
+      "cost": {
+        "黒木": 2.8,
+        "特木": 1.4,
+        "銀鉄": 0.2,
+        "青金鋼": 0.2,
+        "赤黒鋼": 0
+      },
+      "waits": {
+        "銀鉄": {
+          "cost": 0.2,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "黒木": {
+          "cost": 2.8,
+          "oneSite": 15,
+          "threeSites": 5,
+          "researchLv2": 11
+        },
+        "特木": {
+          "cost": 1.4,
+          "oneSite": 10,
+          "threeSites": 5,
+          "researchLv2": 8
+        },
+        "青金鋼": {
+          "cost": 0.2,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        }
+      }
+    },
+    {
+      "item": "弓",
+      "quality": "レジェンダリー",
+      "cost": {
+        "黒木": 2.8,
+        "特木": 2.8,
+        "銀鉄": 0.4,
+        "青金鋼": 0.2,
+        "赤黒鋼": 0.2
+      },
+      "waits": {
+        "銀鉄": {
+          "cost": 0.4,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "黒木": {
+          "cost": 2.8,
+          "oneSite": 15,
+          "threeSites": 5,
+          "researchLv2": 11
+        },
+        "特木": {
+          "cost": 2.8,
+          "oneSite": 15,
+          "threeSites": 5,
+          "researchLv2": 11
+        },
+        "青金鋼": {
+          "cost": 0.2,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "赤黒鋼": {
+          "cost": 0.2,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        }
+      }
+    }
+  ],
+  "facilities": [
+    {
+      "name": "町",
+      "waits": {
+        "黒木": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        }
+      }
+    },
+    {
+      "name": "都市",
+      "waits": {
+        "銀鉄": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "黒木": {
+          "cost": 2,
+          "oneSite": 10,
+          "threeSites": 5,
+          "researchLv2": 8
+        },
+        "特木": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "銀": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        }
+      }
+    },
+    {
+      "name": "大都市",
+      "waits": {
+        "銀鉄": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "黒木": {
+          "cost": 4,
+          "oneSite": 20,
+          "threeSites": 10,
+          "researchLv2": 15
+        },
+        "特木": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "青金鋼": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "赤黒鋼": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "銀": {
+          "cost": 2,
+          "oneSite": 10,
+          "threeSites": 5,
+          "researchLv2": 8
+        }
+      }
+    },
+    {
+      "name": "城壁",
+      "waits": {
+        "銀鉄": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        },
+        "黒木": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        }
+      }
+    },
+    {
+      "name": "司令部",
+      "waits": {
+        "銀鉄": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        },
+        "黒木": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        }
+      }
+    },
+    {
+      "name": "結界装置",
+      "waits": {
+        "銀鉄": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        },
+        "黒木": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        }
+      }
+    },
+    {
+      "name": "大聖堂",
+      "waits": {
+        "銀鉄": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        },
+        "黒木": {
+          "cost": 10,
+          "oneSite": 50,
+          "threeSites": 20,
+          "researchLv2": 36
+        },
+        "特木": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        },
+        "青金鋼": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        }
+      }
+    },
+    {
+      "name": "温泉",
+      "waits": {
+        "銀鉄": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        },
+        "黒木": {
+          "cost": 5,
+          "oneSite": 25,
+          "threeSites": 10,
+          "researchLv2": 18
+        }
+      }
+    }
+  ],
+  "enchantment": [
+    {
+      "level": 1,
+      "waits": {}
+    },
+    {
+      "level": 2,
+      "waits": {}
+    },
+    {
+      "level": 3,
+      "waits": {}
+    },
+    {
+      "level": 4,
+      "waits": {
+        "銀": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        }
+      }
+    },
+    {
+      "level": 5,
+      "waits": {
+        "銀": {
+          "cost": 2,
+          "oneSite": 10,
+          "threeSites": 5,
+          "researchLv2": 8
+        }
+      }
+    },
+    {
+      "level": 6,
+      "waits": {
+        "宝石": {
+          "cost": 1,
+          "oneSite": 5,
+          "threeSites": 5,
+          "researchLv2": 4
+        },
+        "銀": {
+          "cost": 3,
+          "oneSite": 15,
+          "threeSites": 5,
+          "researchLv2": 11
+        }
+      }
+    },
+    {
+      "level": 7,
+      "waits": {
+        "宝石": {
+          "cost": 2,
+          "oneSite": 10,
+          "threeSites": 5,
+          "researchLv2": 8
+        },
+        "銀": {
+          "cost": 6,
+          "oneSite": 30,
+          "threeSites": 10,
+          "researchLv2": 22
+        }
+      }
+    }
+  ]
+}

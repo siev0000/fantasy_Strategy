@@ -1,0 +1,96 @@
+{
+  "report": {
+    "range": 19,
+    "ap": 0,
+    "progress": 40,
+    "surveyed": 19,
+    "found": 4,
+    "isolated": 0,
+    "bonus": {
+      "names": [
+        "蜂蜜",
+        "鉄"
+      ],
+      "bonus": 4
+    },
+    "targetDiff": 4,
+    "economyBonus": 4,
+    "generated": 21,
+    "repeat": true,
+    "bounded": 7,
+    "wrapped": 19,
+    "additionsValid": true,
+    "addedGlyphs": [
+      "🐙",
+      "🦀",
+      "🦐",
+      "🦪",
+      "🍎",
+      "🍊"
+    ],
+    "addedPlacementValid": true,
+    "minimumValid": true,
+    "regionsValid": true,
+    "notationValid": true,
+    "notationGenerated": true,
+    "heightValid": true,
+    "heightCount": 212,
+    "weightCounts": {
+      "多": 219,
+      "少": 36
+    },
+    "herbs": true,
+    "owned": 3,
+    "empty": 0
+  },
+  "saved": {
+    "tiles": 4,
+    "discovered": 4,
+    "markers": 4
+  },
+  "display": {
+    "preview": [
+      {
+        "key": "5,5",
+        "alpha": 0.6,
+        "occupied": false
+      },
+      {
+        "key": "6,5",
+        "alpha": 0.6,
+        "occupied": false
+      },
+      {
+        "key": "7,5",
+        "alpha": 0.6,
+        "occupied": false
+      },
+      {
+        "key": "5,7",
+        "alpha": 0.6,
+        "occupied": false
+      }
+    ],
+    "undiscoveredCount": 0,
+    "hidden": 0,
+    "occupied": {
+      "occupied": true,
+      "alpha": 1,
+      "x": 389.36,
+      "y": 299.64
+    },
+    "centered": {
+      "occupied": false,
+      "alpha": 1,
+      "x": 434,
+      "y": 317
+    },
+    "moved": {
+      "5,5": false,
+      "6,5": true,
+      "7,5": false,
+      "5,7": false
+    }
+  },
+  "errors": []
+}

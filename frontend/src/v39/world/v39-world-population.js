@@ -250,6 +250,7 @@ function renderWorldActions() {
     detail.textContent = `${village.name} / Lv${village.level} / ${village.population}人 / ${getV39RelationLabel(relation)} ${relation}`;
     const questProgress = quest?.type === "hunt"
       ? ` / 討伐 ${quest.required-(quest.targetEnemyIds||[]).filter(id=>state.enemies?.some(enemy=>enemy.id===id&&number(enemy.currentHp??enemy.hp)>0)).length}/${quest.required}体`
+      : ['watch','construction'].includes(quest?.type)?` / ${quest.progress||0}/${quest.required}${quest.type==='watch'?'ターン（村の周囲で警備）':'施設（受注後に新築）'}`
       : (quest?.accepted && !quest.completed ? ` / 必要 ${quest.resourceKey || "資源"} ${quest.required}` : "");
     subdetail.textContent = `${village.vassalPlayerId ? `属国: ${village.vassalPlayerId}` : "独立"} / 守備${(village.defenseUnits || []).reduce((sum, row) => sum + number(row.count), 0)}人${quest?.accepted && !quest.completed ? ` / 依頼: ${quest.label}${questProgress}` : ""}`;
     buttons.innerHTML = [

@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
 const browser=await chromium.launch(), page=await browser.newPage({viewport:{width:390,height:844}}), errors=[];
 page.on("pageerror", error=>errors.push(String(error)));
 try {
-  await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+  await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3022",{waitUntil:"networkidle"});
   await page.locator("[data-v39-cave-test]").click();
   await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
   await page.getByRole("button",{name:"探索開始",exact:true}).click();
@@ -50,6 +50,11 @@ try {
   await page.evaluate(()=>document.getElementById("v39-display-settings-reset").click());
   await page.waitForFunction(()=>!window.isV39FieldUpdating());
   assert.equal(await page.evaluate(()=>window.getV39DisplaySettings().heightOutlineOnly),true);
+  // 配布版には /src がない。実設定のロード・ロック・Fog確認は上記で行う。
+  if(process.env.V39_PRODUCTION_CHECK==='1'){
+    assert.deepEqual(errors,[]);
+    console.log("PASS production display toggles, loading locks, Fog, terrain skip",results);
+  }else{
   // 共通APIの非同期処理でも、フィールドだけ覆い、完了まで保持する。
   await page.evaluate(async()=>{
     const {runV39FieldUpdate}=await import("/src/v39/ui/v39-field-update-loading.js");
@@ -71,4 +76,5 @@ try {
   });
   assert.deepEqual(errors,[]);
   console.log("PASS field update loader, duplicate prevention, Fog, terrain skip, failure cleanup",results);
+  }
 } finally {await browser.close();}

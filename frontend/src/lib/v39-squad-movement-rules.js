@@ -117,27 +117,30 @@ export function resolveV39MovementLeader(squad, participants = []) {
 }
 
 export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", options = {}) {
+  const followFormation = options.followFormation ?? options.caveFormation ?? true;
   const units = Array.isArray(faction?.units) ? faction.units : [];
   const selectedId = text(selectedUnitId);
   const selected = units.find(unit => unitId(unit) === selectedId) || null;
   if (!selected) return { ok:false, reason:"移動対象が見つかりません。" };
   if (!isLivingUnit(selected)) return { ok:false, reason:"死亡したユニットは移動できません。" };
 
-  const squad = selected.transportAssignment ? null : resolveSquadRecord(faction, selected);
-  const participantIds = selected.transportAssignment ? [selectedId] : resolveParticipantIds(faction, selected, squad);
+  const instructors=new Set([...Object.values(faction.recruitInstructorByTile || {}),...Object.values(faction.recruitInstructorTransfers || {})].map(row=>row.unitId));
+  const automatic = unit => !!unit.transportAssignment || !!unit.caveDuty || instructors.has(unitId(unit));
+  const squad = automatic(selected) ? null : resolveSquadRecord(faction, selected);
+  const participantIds = automatic(selected) ? [selectedId] : resolveParticipantIds(faction, selected, squad);
   const participantSet = new Set(participantIds);
   const participants = units.filter(unit => participantSet.has(unitId(unit)) && isLivingUnit(unit)
     && (unit.worldId||"surface") === (selected.worldId||"surface")
-    && (unitId(unit) === selectedId || !unit.transportAssignment));
+    && (unitId(unit) === selectedId || !automatic(unit)));
   if (!participants.length) return { ok:false, reason:"移動可能な部隊員がいません。" };
 
-  const leader = options.caveFormation ? resolveV39MovementLeader(squad, participants)
+  const leader = followFormation ? resolveV39MovementLeader(squad, participants)
     : participants.find(unit => unitId(unit) === getV39SquadUnitIds(squad)[0]) || selected || participants[0];
-  if (options.caveFormation && leader?.movementHold) return {ok:false,reason:"移動先頭がその場待機中です。解除するか、先頭を変更してください。"};
-  if (options.caveFormation) {
+  if (followFormation && leader?.movementHold) return {ok:false,reason:"移動先頭がその場待機中です。解除するか、先頭を変更してください。"};
+  if (followFormation) {
     for(let index=participants.length-1;index>=0;index--) if(participants[index].movementHold) participants.splice(index,1);
   }
-  if (options.caveFormation) {
+  if (followFormation) {
     const order = [unitId(leader), ...participantIds.filter(id => id !== unitId(leader))];
     participants.sort((left, right) => order.indexOf(unitId(left)) - order.indexOf(unitId(right)));
   }
@@ -173,7 +176,8 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", 
     isSquad,
     selected,
     leader,
-    ...(options.caveFormation ? resolveV39CaveFormation(squad || {},[unitId(leader),...participantIds.filter(id=>id!==unitId(leader))]) : {}),
+    followFormation,
+    ...(followFormation ? resolveV39CaveFormation(squad || {},[unitId(leader),...participantIds.filter(id=>id!==unitId(leader))]) : {}),
     participants,
     participantIds:participants.map(unitId),
     positions:participants.map(unit => ({ id:unitId(unit), x:integer(unit?.x), y:integer(unit?.y) })),
@@ -209,7 +213,7 @@ export function advanceV39CaveFormation(data, formation, destination, group, occ
     for (let cursor = 0; cursor < queue.length; cursor++) {
       const node = queue[cursor];
       if (key(node) === key(target)) { step = node.first || current; break; }
-      for (const tile of getHexNeighborCoords(data.w, data.h, node.x, node.y, false)) {
+      for (const tile of getHexNeighborCoords(data.w, data.h, node.x, node.y, !data.isUnderground && data.worldWrapEnabled === true)) {
         if (visited.has(key(tile)) || blocked.has(key(tile)) || !canUnitEnterV39Tile(data, tile.x, tile.y, member)) continue;
         visited.add(key(tile));
         queue.push({ ...tile, first:node.first || tile });

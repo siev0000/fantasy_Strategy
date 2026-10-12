@@ -94,7 +94,7 @@ function transportRows(player, settlement) {
     const route = unit.transportAssignment || {};
     const destinations = getFactionSettlements(player.factionState).filter(row => row.placed && text(row.settlementId) !== settlementId);
     const cargo = getV39TransportCargo(player.factionState, unit.id);
-    const status = ({ ready:"往復準備", delivering:"搬入中", returning:"帰還中", "waiting-stock":"在庫待ち", blocked:"通行待ち", paused:"停止", "awaiting-route":"経路未設定" })[route.status] || "";
+    const status = ({ ready:"往復準備", delivering:"搬入中", returning:"帰還中", "waiting-stock":"在庫待ち", "waiting-unit":"味方の移動待ち", blocked:"通行待ち", paused:"停止", "awaiting-route":"経路未設定" })[route.status] || "";
     const controls = !assigned ? "" : `<div class="settlement-transport-route" data-transport-row="${escapeHtml(unit.id)}">
       <label>搬入先<select data-transport-destination${route.enabled ? " disabled" : ""}><option value="">選択</option>${destinations.map(row => `<option value="${escapeHtml(row.settlementId)}"${row.settlementId === route.destinationSettlementId ? " selected" : ""}>${escapeHtml(row.name || row.settlementId)}</option>`).join("")}</select></label>
       <label>資源<select data-transport-resource${route.enabled ? " disabled" : ""}>${V39_TRANSPORT_RESOURCE_KEYS.map(name => `<option${name === route.resource ? " selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select></label>

@@ -1,4 +1,15 @@
 // 仕様未確定の調整値はここへ集約し、確定後に処理本体を変えず差し替える。
+export const V39_RECRUIT_TRAINING_BALANCE = Object.freeze({
+  defaultInstructorFacilityName:"兵舎", // 暫定: 基礎職の教官を置く施設。上位職は徴兵施設を使う。
+  trainingSlotsPerFacility:1, // 1施設で同時に訓練できるユニット数。
+  basicTrainingSlots:3, // 訓練施設がない拠点で同時に訓練できる基礎職ユニット数。
+  minimumTrainingLevel:3, // 基礎職の訓練後総合Lvの最低値。上位職は前提職込みの最低Lvを優先。
+  maximumBasicClassLevel:10, // 基礎職の訓練で選べる職業Lv上限。亜人・魔族は種族の成長分も総合Lvへ含める。
+  baseExpPerTurn:200, // 教官なしの1ターン訓練EXP。安全な訓練は実戦より遅い育成を目指す。
+  instructorExpPerLevel:10, // 対象職を持つ教官の総合Lvごとの追加EXP。
+  instructorRewardExpPerTurn:25, // 暫定: 指導した教官自身のEXP。予約数によらず1ターン1回。
+  minimumTrainingExp:500 // Lv1も即時生成せず最低1ターン訓練する。
+});
 export const V39_SITE_DISCOVERY_BALANCE = Object.freeze({
   // 原本へ隠密列を追加するまでの初期値。原本/個別地点の値があればそちらを優先。
   defaultStealthByName:Object.freeze({ 洞窟:50, 薬草:50, 薬草の群生地:50 })
@@ -191,6 +202,7 @@ export const V39_LOG_PREVIEW_BALANCE = Object.freeze({
 });
 
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
+  maxMembers:5, // リーダー1体＋部隊員4体。軍隊ユニットも1体として数える。
   // 移動コスト計算の基準値。APプールは戦闘と共通で、別の移動APは持たない。
   moveApMax:100,
   // 移動値10を、AP100で平地を1マス移動できる基準とする。
@@ -652,6 +664,14 @@ export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
 });
 
 // 拠点発展の調整値。既存の村・町区画を再利用したときの工期短縮に使う。
+export const V39_CONSTRUCTION_MATERIAL_BALANCE = Object.freeze({
+  // 建設・拠点発展だけに適用。手持ちの特殊素材を優先し、不足分を通常素材で補う。
+  substitutes:Object.freeze({
+    黒木:Object.freeze({ resource:"木材", amount:100 }), // 黒木1個不足につき追加の木材100（暫定）。
+    銀鉄:Object.freeze({ resource:"鉄", amount:100 }) // 銀鉄1個不足につき追加の鉄100（暫定）。
+  })
+});
+
 export const V39_SETTLEMENT_DEVELOPMENT_BALANCE = Object.freeze({
   // 発展先の占有マスに既存の村・町区画が1マス含まれるごとに短縮するターン数。
   reusedResidentialTileTurnReduction:1
@@ -678,6 +698,10 @@ export const V39_CAVE_NEST_BALANCE = Object.freeze({
 
 // 奥地マップの鉱床化。正式なシート項目がないため、調整用の仮設定。
 export const V39_CAVE_MINE_BALANCE = Object.freeze({
+  crossingApCost:20, // 暫定：自動輸送・侵入で入口を通過するときのAP。
+  intrusionApproachRadius:3, // 暫定：無人鉱床の入口へ通常APで歩く地上生物の距離。
+  intrusionCombatPriorityRadius:2, // 暫定：この距離にプレイヤーがいる場合は通常の戦闘AIを優先。
+  stockResourceAliases:Object.freeze({鉱石:"鉄"}), // 暫定：既存洞窟の汎用鉱石を搬入するときの通常素材。
   requireAllEnemiesDefeated:true, // ボスだけでなく、その奥地マップの残敵も倒す。
   claimApCost:30, // 暫定：鉱床化を行うキャラのAP消費。
   harvestApCost:0, // 暫定：入口で現地在庫を回収するときのAP消費。

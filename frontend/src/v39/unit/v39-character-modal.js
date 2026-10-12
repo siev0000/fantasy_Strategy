@@ -107,6 +107,7 @@ function squadDetail(squad, current) {
   const ids = Array.isArray(squad.unitIds) ? squad.unitIds : Array.isArray(squad.memberIds) ? squad.memberIds : [];
   const members = current.units.filter((unit) => ids.includes(unit.id));
   return `<div class="detail-pane"><h3 style="margin:3px 0 8px">${escapeHtml(squad.name || squad.label || squad.id)}</h3>
+    ${squad.id !== "solo" && squad.id !== "単独" ? `<button type="button" class="v39-char-squad-action" data-v39-character-squad-edit="${escapeHtml(squad.id)}">編制変更</button>` : ""}
     <div class="detail-grid"><div class="detail-card"><span>人数</span><b>${members.length}</b></div><div class="detail-card"><span>ID</span><b>${escapeHtml(squad.id)}</b></div></div>
     <h4>メンバー</h4><div class="costs">${members.map((unit) => `<span class="cost">${escapeHtml(unit.name)}</span>`).join("") || '<span class="cost">なし</span>'}</div></div>`;
 }
@@ -128,7 +129,7 @@ function render() {
   body.innerHTML = `
     <div class="modal-tabs">${tabs.map(([key, label]) => `<button class="${key === activeTab ? "active" : ""}" data-v39-character-tab="${key}">${label}</button>`).join("")}</div>
     <div class="character-layout">
-      <div class="list-pane">${rows.map((row, index) => {
+      <div class="list-pane">${activeTab === "squad" ? '<button type="button" class="v39-char-squad-action" id="v39-squad-edit" data-v39-character-squad-edit="">新規部隊</button>' : ""}${rows.map((row, index) => {
         const id = idFor(row, index);
         if (activeTab !== "squad") return unitListRow(row, id, id === selectedId);
         const label = `${row.name || row.label || row.id}`;
@@ -153,6 +154,7 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-character-modal-style";
   style.textContent = `
+    #characterModal .v39-char-squad-action{font-size:var(--font-body);min-height:34px;padding:6px 10px;border:1px solid #53717c;border-radius:6px;background:#172d35;color:#e8efec;margin-bottom:6px}
     #characterModal .v39-char-unit-detail{display:grid;grid-template-rows:auto auto minmax(0,1fr);height:100%;min-height:0;overflow:hidden}
     #characterModal .v39-char-unit-head{padding-bottom:8px}
     #characterModal .modal{width:min(900px,96vw);height:min(780px,94svh)}
@@ -265,6 +267,12 @@ function install() {
     }
     if (element?.closest('[data-open="character"]')) {
       window.setTimeout(openCharacterModal, 0);
+      return;
+    }
+    const squadEdit = element?.closest("[data-v39-character-squad-edit]");
+    if (squadEdit) {
+      window.openV39SquadEditor?.({squadId:squadEdit.dataset.v39CharacterSquadEdit,
+        onClose:openCharacterModal});
       return;
     }
     const skill = element?.closest("[data-v39-character-skill]");

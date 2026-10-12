@@ -1,0 +1,118 @@
+{
+  "report": {
+    "afterOneTurn": [
+      {
+        "id": "development-a",
+        "scaleKey": "village",
+        "remainingTurns": 2
+      },
+      {
+        "id": "development-b",
+        "scaleKey": "village",
+        "remainingTurns": 2
+      }
+    ],
+    "completed": [
+      {
+        "id": "development-a",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "type": "村",
+        "hasProject": true
+      },
+      {
+        "id": "development-b",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "type": "村",
+        "hasProject": true
+      }
+    ],
+    "firstResidential": {
+      "center": "village"
+    },
+    "secondResidential": {
+      "center": "village"
+    },
+    "worldSettlement": {
+      "scaleKey": "",
+      "scaleLevel": 0,
+      "type": "村",
+      "occupiedCount": 0,
+      "markerTextureKey": "v39-settlement:町",
+      "markerWidth": 57,
+      "markerHeight": 57
+    },
+    "completionCount": 0,
+    "turnNumber": 1,
+    "started": {
+      "buttonEnabled": true,
+      "selectionBeforeCount": 1,
+      "selectionAfterCount": 2,
+      "selectionCandidateCount": 2,
+      "selectedTerrain": "海",
+      "renderedSelectionCount": 2,
+      "targetScaleKey": "town",
+      "totalTurns": 7,
+      "baseBuildTurns": 8,
+      "reusedResidentialTileCount": 1,
+      "turnReduction": 1,
+      "wood": 800
+    },
+    "occupiedFacilityCheck": {
+      "available": false,
+      "reasons": [
+        "拠点占有・発展工事中のマスには施設を建設できません",
+        "このマスには既に施設があります"
+      ]
+    },
+    "ui": {
+      "hasButton": true,
+      "buttonText": "拠点発展",
+      "modalVisible": true,
+      "modalTitle": "都市・建設",
+      "modalText": "\n    都市・建設×\n    \n      都市 発展試験A人口 150施設 1/3対象 (5, 4) \n      拠点発展: 村 → 町工事中 残り2/2T\n      人口 150/125居住マス 2/2木材 800/200黒木 999/1石材 800/200鉄 900/100\n      \n      townへ発展工事中 (残り2T)発展工事中\n      \n        兵舎なし / 2Tギルドなし / 4T射撃場なし / 2T鍛冶場なし / 2T防壁なし / 6T城壁なし / 6T見張り塔なし / 2T司令部なし / 2T学校なし / 3T魔導塔なし / 4T魔術工房なし / 3T結界装置なし / 8T修道院なし / 2T教会なし / 4T神殿なし / 8T大聖堂なし / 16T農場平地 / 2T伐採場森 / 2T採石場丘 / 2T鉱山山 / 2T港海辺 / 2T市場なし / 2T倉庫なし / 2T公衆浴場なし / 2T温泉火山:4マス以内 / 2T船着き場海辺 / 1T\n        兵舎歩兵系兵種を徴兵可能にする。Lv上昇で兵士上限と基礎訓練補正が上昇\n    地形 (対象/必要)- / なし\n    建築時間2ターン\n    研究条件 (現在/必要)軍事Lv 1/1\n    \n    必要資材 (所持/必要)木材 800/50 / 石材 800/50 / 鉄 900/20\n    施設枠 (使用/上限)1/3\n  拠点占有・発展工事中のマスには施設を建設できません建設開始\n      \n      建設中の施設なし\n    \n  "
+    },
+    "conversion": {
+      "cancelledWithoutChanges": true,
+      "confirmationMentionsRemoval": true,
+      "tileKey": "4,5",
+      "facilityRemoved": false,
+      "constructionRemoved": true,
+      "constructionBlockedDuringConversion": true,
+      "hasButton": true,
+      "buttonEnabled": true,
+      "startedRemaining": 2,
+      "startedMarkerLabel": "居",
+      "turnFontSize": 18.599999999999998,
+      "turnLabel": "🔨2T",
+      "turnAboveCenter": true,
+      "previewAlpha": 0.5,
+      "townCapacity": 0,
+      "resourceCapacity": 0,
+      "settlementCapacity": 0,
+      "completedMode": "resource",
+      "hasQueue": true,
+      "renderedResidentialTiles": 4,
+      "facilityMarkerLabel": "農",
+      "facilityMarkerIconFrame": "facility:農場",
+      "facilityMarkerTextureKey": "v39-facility-icon-sheet:1",
+      "facilityMarkerDisplaySize": 60,
+      "residentialVillageTextureKey": "",
+      "residentialVillageDisplaySize": 0
+    },
+    "reversal": {
+      "buttonText": "居住化中 2T",
+      "replacementStarted": false,
+      "replacementCompleted": false,
+      "facilityRemovedAgain": false,
+      "confirmationMentionsReplacement": false,
+      "farmMultiplier": 2,
+      "residentialReplacementAvailable": false,
+      "completedMode": "resource",
+      "villageMarkerRemaining": false,
+      "occupiedReversalBlocked": true
+    }
+  },
+  "errors": []
+}

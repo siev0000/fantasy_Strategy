@@ -14,14 +14,16 @@ try {
     const {researchTreeData} = await import("/src/lib/research-tree-config.js");
     const map={w:12,h:12,grid:Array.from({length:12},()=>Array(12).fill("森")),heightLevelMap:Array.from({length:12},()=>Array(12).fill(0))};
     const base=id=>economy.normalizeV39Village({id,settlementId:id,placed:true,x:5,y:5,population:50,populationByRace:{只人:50},foodStockByType:{穀物:100000}});
-    const sites={"5,5":{key:"5,5",x:5,y:5,name:"黒木"},"6,5":{key:"6,5",x:6,y:5,name:"黒木"},"7,5":{key:"7,5",x:7,y:5,name:"銀鉄"},"8,5":{key:"8,5",x:8,y:5,name:"特木"},"9,5":{key:"9,5",x:9,y:5,name:"銀"},"5,6":{key:"5,6",x:5,y:6,name:"蜂蜜"}};
-    const initial={activePlayerId:"p",timeline:{turnNumber:1},players:[{id:"p",race:"只人",factionState:{units:[],settlements:[base("a"),base("b")],selectedSettlementId:"a",research:{},exploration:{discoveredSpecialtiesByTile:Object.fromEntries(Object.entries(sites).filter(([key])=>key!=="8,5"))}}},{id:"q",race:"只人",factionState:{units:[],settlements:[base("c")],selectedSettlementId:"c",exploration:{discoveredSpecialtiesByTile:{"9,5":sites["9,5"]}}}}],territoryOwnerByTile:{"5,5":"p","6,5":"p","7,5":"p","8,5":"p","9,5":"q","5,6":"p"},territoryStateByTile:Object.fromEntries(Object.keys(sites).map(key=>[key,{settlementId:key==="7,5"?"b":key==="9,5"?"c":"a",hp:100}])),specialtiesByTile:sites,enemies:[],enemyNests:[],settlements:[]};
+    const sites={"5,5":{key:"5,5",x:5,y:5,name:"黒木"},"6,5":{key:"6,5",x:6,y:5,name:"黒木"},"7,5":{key:"7,5",x:7,y:5,name:"銀鉄"},"8,5":{key:"8,5",x:8,y:5,name:"特木"},"9,5":{key:"9,5",x:9,y:5,name:"銀"},"5,6":{key:"5,6",x:5,y:6,name:"蜂蜜"},"6,6":{key:"6,6",x:6,y:6,name:"宝石",category:"鉱石"}};
+    map.grid[6][6]="山岳";
+    const initial={activePlayerId:"p",timeline:{turnNumber:1},players:[{id:"p",race:"只人",factionState:{units:[],settlements:[base("a"),base("b")],selectedSettlementId:"a",research:{},exploration:{discoveredSpecialtiesByTile:Object.fromEntries(Object.entries(sites).filter(([key])=>key!=="8,5"))}}},{id:"q",race:"只人",factionState:{units:[],settlements:[base("c")],selectedSettlementId:"c",exploration:{discoveredSpecialtiesByTile:{"9,5":sites["9,5"]}}}}],territoryOwnerByTile:{"5,5":"p","6,5":"p","7,5":"p","8,5":"p","9,5":"q","5,6":"p","6,6":"p"},territoryStateByTile:Object.fromEntries(Object.keys(sites).map(key=>[key,{settlementId:key==="7,5"?"b":key==="9,5"?"c":"a",hp:100}])),specialtiesByTile:sites,enemies:[],enemyNests:[],settlements:[]};
     let state=structuredClone(initial);
-    const history=[];
+    const history=[],gemHistory=[];
     for(let turn=1;turn<=5;turn++){
       state.timeline.turnNumber=turn;
       state=economy.advanceV39EconomyTurn(state,map).state;
       history.push(state.players[0].factionState.settlements[0].materialStockByType.黒木);
+      gemHistory.push(state.players[0].factionState.settlements[0].materialStockByType.宝石);
       if(turn===3){ state=JSON.parse(JSON.stringify(state));window.__harvestMid=structuredClone(state); }
     }
     const bases=state.players[0].factionState.settlements;
@@ -44,9 +46,12 @@ try {
     }
     const generated=special.generateV39Specialties(map,{seed:"harvest"});
     window.__harvestFixture={state,map};
-    return {history,second:bases[1].materialStockByType.銀鉄,other:state.players[1].factionState.settlements[0].materialStockByType.銀,undiscovered:bases[0].materialStockByType.特木,repeated:repeated.players[0].factionState.settlements[0].materialStockByType.黒木,counts:counts.map(row=>[row.name,row.count]),paused:paused.progressByTile["5,5"].progress,lost:!!lost.progressByTile["5,5"],researchRule,gained,generated:Object.values(generated).filter(special.isV39HarvestResource).length};
+    return {history,gemHistory,gemRepeated:repeated.players[0].factionState.settlements[0].materialStockByType.宝石,gemRule:special.resolveV39SpecialResourceHarvestRule(sites["6,6"],{}),second:bases[1].materialStockByType.銀鉄,other:state.players[1].factionState.settlements[0].materialStockByType.銀,undiscovered:bases[0].materialStockByType.特木,repeated:repeated.players[0].factionState.settlements[0].materialStockByType.黒木,counts:counts.map(row=>[row.name,row.count]),paused:paused.progressByTile["5,5"].progress,lost:!!lost.progressByTile["5,5"],researchRule,gained,generated:Object.values(generated).filter(special.isV39HarvestResource).length};
   });
   assert.deepEqual(report.history,[0,0,0,0,2]);
+  assert.deepEqual(report.gemHistory,[0,0,0,0,1]);
+  assert.equal(report.gemRepeated,1);
+  assert.deepEqual(report.gemRule,{turns:5,amount:1,speed:1,category:"鍛冶",level:0});
   assert.equal(report.second,1);assert.equal(report.other,1);assert.equal(report.undiscovered,0);assert.equal(report.repeated,2);
   assert.deepEqual(report.counts,[["蜂蜜",1]]);assert.equal(report.paused,1);assert.equal(report.lost,false);
   assert.equal(report.researchRule.level,2);assert.equal(report.researchRule.speed,1.4);assert.equal(report.gained,2);assert.ok(report.generated>0);

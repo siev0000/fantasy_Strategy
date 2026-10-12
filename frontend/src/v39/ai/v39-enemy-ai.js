@@ -15,6 +15,7 @@ import { resolveV39EnemySquadCargoStatus } from "../../lib/v39-logistics-state.j
 import { grantV39UnitExperience } from "../../lib/v39-unit-experience.js";
 import EnemyAiWorker from "../../workers/v39-enemy-ai-worker.js?worker";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import { applyV39SquadSupport, hasV39SquadSupportSources } from "../../lib/v39-squad-support.js";
 import { canV39UnitEatCorpses } from "../../lib/v39-corpse-eating-rules.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
@@ -367,15 +368,17 @@ function compactAiUnit(unit, enemySide = false) {
 }
 
 function buildWorkerState(state = enemyTurnState()) {
+  const supportPresent=hasV39SquadSupportSources(state);
+  const adjust=unit=>supportPresent?applyV39SquadSupport(unit,state):unit;
   const cargoFullEnemyIds = new Set((state?.enemySquads || []).filter(squad => resolveV39EnemySquadCargoStatus(state, squad).full)
     .flatMap(squad => squad?.unitIds || []).map(text).filter(Boolean));
   return {
-    enemies:(state?.enemies || []).map(unit => ({ ...compactAiUnit(unit, true), cargoFull:cargoFullEnemyIds.has(text(unit?.id)) })),
+    enemies:(state?.enemies || []).map(unit => ({ ...compactAiUnit(adjust(unit), true), cargoFull:cargoFullEnemyIds.has(text(unit?.id)) })),
     activeWorldId:state?.activeWorldId,
     players:(state?.players || []).map(player => ({
       id:player?.id,
       factionState:{
-        units:(player?.factionState?.units || []).map(unit => compactAiUnit(unit, false)),
+        units:(player?.factionState?.units || []).map(unit => compactAiUnit(adjust(unit), false)),
         settlements:(player?.factionState?.settlements || []).map(row => ({ id:row?.id, settlementId:row?.settlementId, foodStockByType:row?.foodStockByType }))
       }
     })),

@@ -2,6 +2,7 @@ import { getSelectedSettlement } from "../../lib/settlement-state.js";
 import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
+import { releaseV39ExpeditionCargoOnDeath } from "../../lib/v39-expedition-tools.js";
 import {
   resolveV39UnitRaceCategory,
   resolveV39UnitTotalExpForLevel
@@ -41,9 +42,13 @@ function lastDeadMember(members) {
 }
 
 function moveDefeatedPlayerCargoToCorpses(rawUnits, rawSquads) {
-  let units = rawUnits;
-  const unitById = () => new Map(units.map(unit => [text(unit?.id), unit]));
   let moved = 0;
+  let units = rawUnits.map(unit => {
+    const changed = releaseV39ExpeditionCargoOnDeath(unit);
+    if(changed !== unit)moved += 1;
+    return changed;
+  });
+  const unitById = () => new Map(units.map(unit => [text(unit?.id), unit]));
   const squads = rawSquads.map(squad => {
     {
       const cargoByUnitId = { ...(squad?.cargoByUnitId || {}) };

@@ -138,7 +138,8 @@ function addConditionAttributes(target, rawCondition) {
 }
 
 function deriveAttributeNames(rows) {
-  const names = new Set();
+  // スキル原本の変更で、標準属性や利用者の保存設定を削除しない。
+  const names = new Set([...Object.keys(compositeDefaults.attributes), ...Object.keys(overrides)]);
   for (const row of Array.isArray(rows) ? rows : []) {
     const family = text(row?.系統);
     if (family) names.add(family);
@@ -155,9 +156,6 @@ export async function loadV39EffectAttributes() {
   const rows = await response.json();
   attributeNames = deriveAttributeNames(rows);
   attributesLoaded = true;
-  const valid = new Set(attributeNames);
-  overrides = Object.fromEntries(Object.entries(overrides).filter(([name]) => valid.has(name)));
-  persist();
   return getV39EffectAttributes();
 }
 

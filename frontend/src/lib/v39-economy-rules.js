@@ -1,4 +1,6 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import { resolveV39ConstructionMaterials } from "./v39-construction-materials.js";
+import { resolveV39ResearchEffects } from "./v39-research-effects.js";
 import { createV39DefenseStructure } from "./v39-defense-rules.js";
 import { V39_DEFENSE_BALANCE } from "./v39-gameplay-balance.js";
 import { reservedV39LandExpansionWorkers, advanceV39LandExpansionProjects } from "./v39-land-expansion-rules.js";
@@ -372,12 +374,15 @@ export function inspectV39SettlementDevelopment(state, playerId, settlementId = 
   const lockedResidentialTileKeys = currentDevelopmentOccupiedTiles(village);
   const residentialTileKeys = collectV39DevelopmentResidentialTiles(state, player.id, village);
   const requirements = [];
+  const materialPayment = resolveV39ConstructionMaterials(
+    Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, number(next?.row?.[key])])), village.materialStockByType
+  );
   if (next) {
     const populationNeed = Math.max(0, Math.floor(number(next.minPopulation)));
     requirements.push({ key:"population", label:"人口", current:Math.max(0, Math.floor(number(village.population))), required:populationNeed });
     requirements.push({ key:"residential", label:"居住マス", current:residentialTileKeys.length, required:Math.max(1, Math.floor(number(next.footprintTiles, 1))) });
     for (const resourceKey of [...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS]) {
-      const required = Math.max(0, number(next?.row?.[resourceKey]));
+      const required = Math.max(0, number(FOOD_RESOURCE_KEYS.includes(resourceKey) ? next?.row?.[resourceKey] : materialPayment.cost[resourceKey]));
       if (required <= 0) continue;
       const bag = FOOD_RESOURCE_KEYS.includes(resourceKey) ? village.foodStockByType : village.materialStockByType;
       requirements.push({ key:`resource:${resourceKey}`, label:resourceKey, resourceKey, current:Math.max(0, number(bag?.[resourceKey])), required });
@@ -399,6 +404,7 @@ export function inspectV39SettlementDevelopment(state, playerId, settlementId = 
     current,
     next,
     project,
+    materialPayment,
     requirements:requirements.map(row => ({ ...row, met:row.current >= row.required })),
     lockedResidentialTileKeys,
     residentialTileKeys
@@ -441,7 +447,7 @@ export function startV39SettlementDevelopment(state, playerId, settlementId = ""
     foodStockByType[resourceKey] = round1(Math.max(0, number(foodStockByType[resourceKey]) - Math.max(0, number(next?.row?.[resourceKey]))));
   }
   for (const resourceKey of MATERIAL_RESOURCE_KEYS) {
-    materialStockByType[resourceKey] = round1(Math.max(0, number(materialStockByType[resourceKey]) - Math.max(0, number(next?.row?.[resourceKey]))));
+    materialStockByType[resourceKey] = round1(Math.max(0, number(materialStockByType[resourceKey]) - inspection.materialPayment.cost[resourceKey]));
   }
   const reusedResidentialTileCount = residentialTileKeys.filter(key => {
     const level = text(village?.territoryResidentialLevelMap?.[key]);
@@ -701,6 +707,10 @@ export function resolveV39ProductionSkillMultiplier(skillValue) {
 export function resolveV39SettlementProductionMetrics(state, player, village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race)) {
   const normalized = normalizeV39Village(village, player?.race || "只人");
   const populationSkills = resolveV39SettlementPopulationSkills(normalized, player?.race || "只人");
+  const researchModifiers = resolveV39ResearchEffects(player?.factionState?.research);
+  const effectiveSkills = Object.fromEntries(POPULATION_PRODUCTION_SKILL_KEYS.map(skill => [
+    skill, number(populationSkills.skills[skill]) + number(researchModifiers[skill])
+  ]));
   const labor = state && player
     ? resolveV39SettlementLabor(state, player, normalized)
     : {
@@ -715,10 +725,13 @@ export function resolveV39SettlementProductionMetrics(state, player, village = n
   // 農業・林業・漁業・工業は生産項目として扱い、対応する技能値を倍率表で生産倍率へ換算する。
   const productionMultipliers = Object.fromEntries(POPULATION_PRODUCTION_SKILL_KEYS.map(skill => [
     skill,
-    resolveV39ProductionSkillMultiplier(populationSkills.skills[skill])
+    resolveV39ProductionSkillMultiplier(effectiveSkills[skill])
   ]));
   return {
     ...populationSkills,
+    baseSkills:populationSkills.skills,
+    skills:effectiveSkills,
+    researchModifiers,
     populationCapacity:Math.max(0, Math.floor(number(labor.populationCapacity))),
     landUsePopulationCapacity:Math.max(0, Math.floor(number(labor.landUsePopulationCapacity))),
     settlementScalePopulationCapacity:Math.max(0, Math.floor(number(labor.settlementScalePopulationCapacity))),
@@ -1184,9 +1197,10 @@ export function inspectV39Construction(state, player, definition, tile, mapData 
   const used = allNames.size;
   const capacity = settlementCapacity(village);
   if (used >= capacity) reasons.push(`施設枠不足 ${used}/${capacity}`);
-  const shortage = Object.entries(definition?.cost || {}).filter(([keyName, cost]) => number(cost) > number(village?.materialStockByType?.[keyName]));
+  const materialPayment = resolveV39ConstructionMaterials(definition?.cost, village?.materialStockByType);
+  const shortage = Object.entries(materialPayment.cost).filter(([keyName, cost]) => number(cost) > number(village?.materialStockByType?.[keyName]));
   if (shortage.length) reasons.push(`資材不足: ${shortage.map(([name]) => name).join("・")}`);
-  return { available:reasons.length === 0, reasons, key, used, capacity, levels, village, replacesResidential, researchCheck };
+  return { available:reasons.length === 0, reasons, key, used, capacity, levels, village, replacesResidential, researchCheck, materialPayment };
 }
 
 export function startV39Construction(state, playerId, facilityName, tile, mapData = window.__v39FieldRuntime?.mapData, options = {}) {
@@ -1198,7 +1212,7 @@ export function startV39Construction(state, playerId, facilityName, tile, mapDat
   if (check.replacesResidential && options.confirmResidentialReplacement !== true) return { ok:false, reason:"居住地から施設への変更確認が必要です", state };
   const village = check.village;
   const materialStockByType = { ...village.materialStockByType };
-  for (const key of MATERIAL_RESOURCE_KEYS) materialStockByType[key] = round1(Math.max(0, number(materialStockByType[key]) - number(definition.cost[key])));
+  for (const key of MATERIAL_RESOURCE_KEYS) materialStockByType[key] = round1(Math.max(0, number(materialStockByType[key]) - number(check.materialPayment.cost[key])));
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
   const queueItem = { id:`construction-${player.id}-${definition.name}-${turn}-${check.key}`, facilityName:definition.name, tileKey:check.key, remainingTurns:definition.buildTurns, totalTurns:definition.buildTurns, startedTurn:turn };
   const nextVillage = normalizeV39Village({ ...village, materialStockByType, territoryTileModeMap:{ ...village.territoryTileModeMap, [check.key]:TERRITORY_TILE_MODE_RESOURCE }, constructionQueue:[...village.constructionQueue, queueItem] }, player.race);
@@ -1351,7 +1365,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         return resolveTileTerrain(mapData, x, y);
       });
       const specialties = resolveV39SpecialtyHappiness(getV39SpecialtyEntries(state, player.id, { settlementId, ownedOnly:true }));
-      village.civicState = resolveV39CivicTurn(village, currentTurn, residentialTerrains, specialties);
+      village.civicState = resolveV39CivicTurn(village, currentTurn, residentialTerrains, specialties, resolveV39ResearchEffects(player.factionState.research));
       village.lastEconomyDelta = {
         food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, round1(number(village.foodStockByType[key]) - number(beforeFood[key]))])),
         material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, round1(number(village.materialStockByType[key]) - number(beforeMaterial[key]))])),

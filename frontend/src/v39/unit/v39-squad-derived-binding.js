@@ -360,7 +360,7 @@ function renderDetail() {
   });
 
   const movementGroup = resolveV39SquadMovementGroup(getFactionState() || {}, selectedUnitId,
-    {caveFormation:window.__v39FieldRuntime?.mapData?.isUnderground});
+    {followFormation:true});
   const moveValue = movementGroup?.ok ? Math.max(1, num(movementGroup.movement, 1)) : Math.max(1, num(movementValue(unit), 1));
   const moveBaseAp = Math.ceil(resolveV39BaseMoveApCost(moveValue));
   const moveApEl = document.getElementById("mobileMoveAp");

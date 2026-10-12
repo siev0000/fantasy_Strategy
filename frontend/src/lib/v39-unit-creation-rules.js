@@ -6,8 +6,10 @@ import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-
 import { EQUIPMENT_SLOT_KEYS } from "../constants/unitCommon.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { isV39BaseClassRow } from "./v39-class-rules.js";
-import { resolveV39UnitInitialLevel } from "./v39-unit-experience.js";
+import { resolveV39UnitInitialLevel, resolveV39UnitRaceCategory, resolveV39UnitLevelCap } from "./v39-unit-experience.js";
+import {V39_RECRUIT_TRAINING_BALANCE} from "./v39-gameplay-balance.js";
 import { getV39FacilityRecruitmentClasses, inspectV39FacilityRecruitment, resolveV39FacilityRecruitmentGrowth } from "./v39-facility-recruitment.js";
+import {inspectV39RecruitTraining} from "./v39-recruit-training.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -37,6 +39,16 @@ function limitFromValue(value, population, fallback) {
   return Math.max(0, Math.floor(raw));
 }
 
+function trainingLevelLimits(race, recruitment) {
+  const growth = recruitment?.initialGrowth;
+  if (growth) return {min:Math.max(V39_RECRUIT_TRAINING_BALANCE.minimumTrainingLevel,growth.level),
+    max:resolveV39UnitLevelCap({race,prerequisiteClassLevels:growth.prerequisiteClassLevels,
+      classGrowthStart:{level:growth.level,raceLevels:growth.initialRaceLevel,classLevels:growth.initialClassLevel}})};
+  const isHuman = resolveV39UnitRaceCategory({race}) === "human";
+  return {min:V39_RECRUIT_TRAINING_BALANCE.minimumTrainingLevel,
+    max:V39_RECRUIT_TRAINING_BALANCE.maximumBasicClassLevel * (isHuman ? 1 : 2)};
+}
+
 export function inspectV39UnitCreation(state, player, request = {}) {
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const mode = resolveUnitCreateMode(request.mode || "army", Math.max(
@@ -54,7 +66,7 @@ export function inspectV39UnitCreation(state, player, request = {}) {
   if (number(village?.populationByRace?.[race]) <= 0) reasons.push(`${race}の人口がいません`);
   const militaryLevel = Math.max(number(village?.cityLevels?.軍事Lv), resolveCurrentResearchLevel(player?.factionState?.research, "軍事"));
   if (militaryLevel < mode.requiredMilitaryLevel) reasons.push(`軍事Lv${mode.requiredMilitaryLevel}が必要`);
-  const units = player?.factionState?.units || [];
+  const units = [...(player?.factionState?.units || []), ...(player?.factionState?.unitTrainingQueue || []).map(entry => entry.unit)];
   const isArmy = mode.mode !== "normal";
   if (recruitment) {
     reasons.push(...recruitment.reasons);
@@ -73,7 +85,15 @@ export function inspectV39UnitCreation(state, player, request = {}) {
     const bag = FOOD_RESOURCE_KEYS.includes(key) ? village?.foodStockByType : village?.materialStockByType;
     if (number(bag?.[key]) < value) reasons.push(`${key}不足`);
   }
-  return { available:reasons.length === 0, reasons, village, mode, classRow, race, count, current, cap, populationCost, cost, militaryLevel, recruitment };
+  const levelLimits = trainingLevelLimits(race,recruitment);
+  const defaultLevel = recruitment?.initialGrowth.level ?? resolveV39UnitInitialLevel(race, isArmy);
+  const hasTrainingLevel = request.trainingLevel !== undefined && request.trainingLevel !== null && request.trainingLevel !== "";
+  const requestedLevel = hasTrainingLevel ? Number(request.trainingLevel) : defaultLevel;
+  if (!Number.isInteger(requestedLevel) || requestedLevel < levelLimits.min || requestedLevel > levelLimits.max) {
+    reasons.push(`訓練Lvは${levelLimits.min}〜${levelLimits.max}で指定してください`);
+  }
+  const initialLevel = Math.max(levelLimits.min,Math.min(levelLimits.max,Math.floor(number(requestedLevel,defaultLevel))));
+  return { available:reasons.length === 0, reasons, village, mode, classRow, race, count, current, cap, populationCost, cost, militaryLevel, recruitment, initialLevel, levelLimits };
 }
 
 function nextUnitName(units, race, classRow, isArmy) {
@@ -151,7 +171,7 @@ function createUnit(player, check, name, index) {
     name,
     race:check.race,
     className:text(check.classRow.名前),
-    level:check.recruitment?.initialGrowth.level ?? resolveV39UnitInitialLevel(check.race, check.mode.mode !== "normal"),
+    level:check.initialLevel,
     prerequisiteClassLevels:check.recruitment?.initialGrowth.prerequisiteClassLevels,
     classGrowthStart:check.recruitment ? {
       level:check.recruitment.initialGrowth.level,
@@ -169,6 +189,10 @@ function createUnit(player, check, name, index) {
     settlementId:text(village.settlementId || village.id),
     equipment:buildV39ClassEquipment(check.classRow)
   });
+}
+
+export function buildV39UnitCreationPreview(check) {
+  return createUnit({id:"preview"}, check, "作成予定", 0);
 }
 
 export function createV39Units(state, playerId, request = {}) {
@@ -189,18 +213,23 @@ export function createV39Units(state, playerId, request = {}) {
     heroBirthUnlock:check.mode.mode === "normal" ? number(village.heroBirthUnlock) - check.count : number(village.heroBirthUnlock)
   }, player.race);
   const existing = player.factionState.units || [];
+  const pending = player.factionState.unitTrainingQueue || [];
   const createdUnits = [];
   for (let index = 0; index < check.count; index += 1) {
-    const name = nextUnitName([...existing, ...createdUnits], check.race, check.classRow, check.mode.mode !== "normal");
+    const name = nextUnitName([...existing, ...pending.map(entry => entry.unit), ...createdUnits], check.race, check.classRow, check.mode.mode !== "normal");
     createdUnits.push(createUnit(player, check, name, index));
   }
   const factionState = replaceFactionSettlement({
     ...player.factionState,
-    units:[...existing, ...createdUnits],
-    selectedUnitId:createdUnits[0].id
+    units:existing,
+    unitTrainingQueue:[...pending, ...createdUnits.map(unit => ({
+      id:unit.id, unit, settlementId:unit.settlementId,
+      requiredExp:inspectV39RecruitTraining(player.factionState, village, unit).requiredExp,
+      progressExp:0, lastProcessedTurn:number(state.timeline?.turnNumber, 1)
+    }))]
   }, nextVillage, { ownerPlayerId:player.id });
   const players = state.players.map(row => row.id === player.id ? { ...row, factionState } : row);
-  return { ok:true, state:{ ...state, players }, createdUnits, check };
+  return { ok:true, state:{ ...state, players }, createdUnits:[], queuedUnits:createdUnits, check };
 }
 
 export function getV39UnitCreationOptions(player, state = {}) {

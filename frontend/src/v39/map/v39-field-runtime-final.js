@@ -6,6 +6,7 @@ import { HEX_TILE_CONFIG, V39_FIELD_FOG_STYLE } from "../../lib/phaser-map-panel
 import { runWithSeededRandom } from "../../lib/seeded-random.js";
 import { cacheStaticGraphicsLayer } from "./v39-static-graphics-cache.js";
 import { installV39IdleRender } from "./v39-idle-render.js";
+import { installV39CoordinateRuler } from "./v39-coordinate-ruler.js";
 import { createV39VictoryLandmarkPlan } from "../../lib/v39-victory-landmarks.js";
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
@@ -407,6 +408,7 @@ function installInput(scene, data) {
   disposeFieldInput();
   const camera = scene.cameras.main;
   const inputController = new AbortController();
+  installV39CoordinateRuler(scene, host, data);
   activeFieldInputController = inputController;
   const inputSignal = inputController.signal;
   const pointers = new Map();

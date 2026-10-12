@@ -9,7 +9,7 @@ try {
   for (const width of [1100,390]) {
     const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
     page.on("pageerror",error=>errors.push(String(error)));
-    await page.goto("http://127.0.0.1:3000",{waitUntil:"networkidle"});
+    await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3000",{waitUntil:"networkidle"});
     await page.evaluate(()=>window.setV39TestMode(true));
     await page.locator("[data-v39-cave-test]").click();
     await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();

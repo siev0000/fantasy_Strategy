@@ -12,6 +12,9 @@ import { advanceV39AutomaticTransport } from "../../lib/v39-transport-rules.js";
 import { showV39TurnLoading, paintV39TurnLoading } from "../ui/v39-turn-loading.js";
 import { showV39SideNotice } from "../ui/v39-notification-rail.js";
 import { withV39WorldContext, v39TurnWorldIds } from "./v39-world-context.js";
+import {advanceV39RecruitTraining} from "../../lib/v39-recruit-training.js";
+import {advanceV39RecruitInstructorMovement} from "../../lib/v39-recruit-instructor.js";
+import { advanceV39ExpeditionTools, advanceV39ToolSites } from "../../lib/v39-expedition-tools.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
@@ -229,7 +232,7 @@ export function setTimePaused(paused) {
 
 function focusUnactedUnit(state, playerId, turnNumber) {
   const player = state.players.find(row => row.id === playerId);
-  const unit = player?.factionState?.units?.find(row => isV39UnitUnacted(row, turnNumber)
+  const unit = player?.factionState?.units?.find(row => isV39UnitUnacted(row, turnNumber, player.factionState)
     && !player.factionState.combatRuntime?.pendingActionsByUnitId?.[row.id]);
   if (!unit) return false;
   window.cancelV39SelectedUnitMove?.("unacted-focus");
@@ -273,13 +276,16 @@ export async function advanceTurn(options = {}) {
     const transportWorld=v39TurnWorldIds().includes("surface")?"surface":state.activeWorldId;
     await withV39WorldContext(transportWorld,()=>{
       const scoped=window.getV39GameState();
-      const transport=advanceV39AutomaticTransport(scoped,currentPlayerId,window.__v39FieldRuntime?.mapData,
+      const instructors=advanceV39RecruitInstructorMovement(scoped,currentPlayerId,window.__v39FieldRuntime?.mapData,before.turnNumber);
+      const transport=advanceV39AutomaticTransport(instructors.state,currentPlayerId,window.__v39FieldRuntime?.mapData,
         before.turnNumber,window.__v39FieldRuntime?.mapData?.worldWrapEnabled!==false);
       if(transport.state!==scoped){
         window.setV39GameState({players:transport.state.players},{reason:"automatic-transport"});
         for(const report of transport.reports)window.appendV39ActivityLog?.(currentPlayerId,"物資",`${report.action}: ${report.resource} ${report.amount}`,report);
       }
     });
+    state=window.getV39GameState();
+    window.advanceV39MineDuties?.(currentPlayerId,before.turnNumber);
     state=window.getV39GameState();
     const endedPlayerIds = [...new Set([...playerTimeline.endedPlayerIds, currentPlayerId])];
     const nextPlayerId = playerTimeline.playerTurnOrder.find(playerId => !endedPlayerIds.includes(playerId));
@@ -312,10 +318,17 @@ export async function advanceTurn(options = {}) {
     showBanner(`エネミーターン ${activeTurn}`);
     const worldIds=v39TurnWorldIds(),visibleWorldId=state.activeWorldId||"surface";
     timings.enemy={};
-    for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
-      await withV39WorldContext(worldId,async()=>{
+    const mineOperations=!!window.__v39FieldRuntime?.mapData?.caveMine||Object.values(state.explorationWorlds||{}).some(world=>world.map?.caveMine);
+    if(mineOperations)for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
+      await withV39WorldContext(worldId,()=>{
         const current=window.getV39GameState();
         window.setV39GameState({enemies:current.enemies.map(unit=>clearExpiredGuard(unit,activeTurn)).map(restoreUnitForTurn)});
+      });
+    }
+    if(mineOperations)window.advanceV39CaveIntrusions?.(activeTurn);
+    for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
+      await withV39WorldContext(worldId,async()=>{
+        if(!mineOperations){const current=window.getV39GameState();window.setV39GameState({enemies:current.enemies.map(unit=>clearExpiredGuard(unit,activeTurn)).map(restoreUnitForTurn)});}
         timings.enemy[worldId]=await window.runV39EnemyTurn?.(activeTurn,{presentation:worldId===visibleWorldId});
       });
     }
@@ -337,6 +350,14 @@ export async function advanceTurn(options = {}) {
         await withV39WorldContext(worldId,()=>{
           if(stage==="terrain") advanceV39NaturalFog(window.__v39FieldRuntime?.mapData,nextTurn);
           dispatchTurnStage(stage,nextTurn);
+          if (stage === "economy" && worldId === "surface") {
+            const result = advanceV39RecruitTraining(window.getV39GameState(), nextTurn);
+            window.setV39GameState({players:result.state.players}, {reason:"recruit-training"});
+            for (const {playerId,unit} of result.completedUnits) {
+              window.dispatchEvent(new CustomEvent("v39:units-created", {detail:{playerId,units:[unit]}}));
+              if (playerId === window.getV39ActivePlayer?.()?.id) showBanner(`訓練完了: ${unit.name} Lv${unit.level}`);
+            }
+          }
         },{allUnits:["economy","research","diplomacy"].includes(stage)});
       }
       timings[stage] = performance.now() - startedAt;
@@ -348,6 +369,7 @@ export async function advanceTurn(options = {}) {
       await withV39WorldContext(worldId,()=>{
         const map = window.__v39FieldRuntime?.mapData;
         advanceV39Fog(map,nextTurn);
+        if(map?.caveSites)map.caveSites=advanceV39ToolSites(map,nextTurn).caveSites;
         if (map?.defenseStructures) map.defenseStructures = map.defenseStructures.filter(row =>
           row.hp > 0 && (!row.expiresAtTurn || row.expiresAtTurn > nextTurn));
         const defenseState = window.getV39GameState();
@@ -368,7 +390,8 @@ export async function advanceTurn(options = {}) {
     }
     timings.combatResolution = performance.now() - combatResolutionStartedAt;
     const resolved = window.getV39GameState?.();
-    const recoveredPlayers = (resolved?.players || []).map(player => {
+    const healed = advanceV39ExpeditionTools(resolved,nextTurn);
+    const recoveredPlayers = (healed?.players || []).map(player => {
       const factionState = {
           ...player.factionState,
           units:(player?.factionState?.units || [])

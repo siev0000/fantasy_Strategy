@@ -12,6 +12,7 @@ const DEFAULTS = Object.freeze({
   heightOutlineOnly: true,
   heightShading: true,
   showZoomControls: true,
+  showCoordinateRuler: true,
   reduceMotion: false,
   focusUnactedUnits: true,
   testMode: false,
@@ -94,6 +95,15 @@ function ensureTestModeControl() {
   grid.appendChild(label);
 }
 
+function ensureCoordinateControl() {
+  const grid = document.querySelector("#v39-display-settings-panel .display-settings-grid");
+  if (!grid || document.getElementById("v39-show-coordinate-ruler")) return;
+  const label = document.createElement("label");
+  label.className = "display-setting";
+  label.innerHTML = '<span class="display-setting-title">マップの座標目盛り</span><input type="checkbox" id="v39-show-coordinate-ruler"><small>下端に横座標、右端に縦座標を表示。選択マスの番号は黄色になります。</small>';
+  grid.appendChild(label);
+}
+
 function updateMaxZoomText() {
   const out = document.getElementById("v39-max-zoom-value");
   const note = document.getElementById("v39-max-zoom-note");
@@ -134,6 +144,8 @@ function applySettings({ emit = true, changedKeys } = {}) {
   if (outline) outline.checked = settings.heightOutlineOnly !== false;
   if (shading) shading.checked = settings.heightShading !== false;
   if (showZoom) showZoom.checked = settings.showZoomControls !== false;
+  const ruler = document.getElementById("v39-show-coordinate-ruler");
+  if (ruler) ruler.checked = settings.showCoordinateRuler !== false;
   if (reduceMotion) reduceMotion.checked = !!settings.reduceMotion;
   const focusUnacted = document.getElementById("v39-focus-unacted-units");
   if (focusUnacted) focusUnacted.checked = settings.focusUnactedUnits !== false;
@@ -205,6 +217,9 @@ function bindPanelNavigation() {
 }
 
 function bindControls() {
+  document.getElementById("v39-show-coordinate-ruler")?.addEventListener("change", event => {
+    updateControlSetting("showCoordinateRuler", !!event.target.checked);
+  });
   document.getElementById("v39-focus-unacted-units")?.addEventListener("change", event => {
     updateControlSetting("focusUnactedUnits", !!event.target.checked);
   });
@@ -245,6 +260,7 @@ function installReduceMotionStyle() {
 function install() {
   ensureMaxZoomControl();
   ensureTestModeControl();
+  ensureCoordinateControl();
   installReduceMotionStyle();
   bindPanelNavigation();
   bindControls();

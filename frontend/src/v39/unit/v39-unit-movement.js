@@ -124,7 +124,7 @@ function closestReachableTarget(plan, start, desired) {
 }
 
 function moveFormationOneStep(data, formation, from, to, worldWrapEnabled, group, occupied) {
-  if (data.isUnderground) return advanceV39CaveFormation(data, formation, to, group, occupied);
+  if (group.followFormation) return advanceV39CaveFormation({...data,worldWrapEnabled}, formation, to, group, occupied);
   const w = Math.max(0, integer(data?.w));
   const h = Math.max(0, integer(data?.h));
   const directionIndex = getHexOffsetNeighbors(from.x, from.y).findIndex(raw => {
@@ -371,7 +371,7 @@ function startMove() {
     showToast("このキャラクターは別のマップにいます");return false;
   }
   if(state.timeline.phase!==V39_TURN_PHASE.PLAYER)return false;
-  const moveGroup = resolveV39SquadMovementGroup(faction, unitId(unit), { caveFormation:ctx.data.isUnderground });
+  const moveGroup = resolveV39SquadMovementGroup(faction, unitId(unit), { followFormation:true });
   if (moveGroup.participants?.some(member => isV39UnitWaiting(member, window.getV39GameState?.()?.timeline?.turnNumber))) {
     showToast("部隊にこのターン待機済みのキャラクターがいます");
     return false;
@@ -515,7 +515,7 @@ async function applyMovement() {
     return;
   }
 
-  const currentGroup = resolveV39SquadMovementGroup(faction, session.unitId, { caveFormation:ctx.data.isUnderground });
+  const currentGroup = resolveV39SquadMovementGroup(faction, session.unitId, { followFormation:true });
   if (!currentGroup.ok) {
     showToast(currentGroup.reason || "移動部隊を再取得できませんでした");
     clearMoveMode();

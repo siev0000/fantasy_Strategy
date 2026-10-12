@@ -149,7 +149,7 @@ export function normalizeV39CivicState(village = {}) {
   };
 }
 
-export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTerrains = [], specialties = { names:[], bonus:0 }) {
+export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTerrains = [], specialties = { names:[], bonus:0 }, researchModifiers = {}) {
   const current = normalizeV39CivicState(village);
   if (current.lastProcessedTurn >= turnNumber) return current;
 
@@ -199,6 +199,7 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
       + raceHousingComfort
       + raceFacilityHappiness
       + raceEvent
+      + number(researchModifiers.幸福度)
       + number(specialties.bonus)
       - raceStarvation
       - raceOvercrowding
@@ -224,6 +225,7 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
       occupation:-raceOccupation,
       mixedRace:-raceMixedRace,
       event:raceEvent,
+      research:number(researchModifiers.幸福度),
       specialties:number(specialties.bonus),
       unfavorableTerrainRate,
       unfavorableTerrain:-raceTerrainPenalty,
@@ -260,6 +262,7 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
     - occupation
     - mixedRace
     + eventSecurity
+    + number(researchModifiers.治安)
   );
   const dissatisfaction = approach(current.dissatisfaction, dissatisfactionTarget);
   const security = approach(current.security, securityTarget);
@@ -273,6 +276,8 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
     happinessTargetByRace,
     happinessModifiersByRace,
     modifiers:{
+      researchHappiness:number(researchModifiers.幸福度),
+      researchSecurity:number(researchModifiers.治安),
       specialtyNames:[...(specialties.names || [])],
       specialties:number(specialties.bonus),
       starvationStage,

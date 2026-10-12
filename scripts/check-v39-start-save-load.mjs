@@ -4,13 +4,13 @@ import { chromium } from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/
 const browser=await chromium.launch(),page=await browser.newPage({viewport:{width:390,height:900}}),errors=[];
 page.on("pageerror",error=>errors.push(String(error)));
 try {
-  await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+  await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3022",{waitUntil:"networkidle"});
   await page.locator("[data-v39-cave-test]").click();
   await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
   await page.getByRole("button",{name:"探索開始",exact:true}).click();
   await page.waitForTimeout(700);
   const saved=await page.evaluate(()=>({json:window.exportV39SaveJson(),world:window.getV39GameState().activeWorldId,units:window.getV39ActiveFactionState().units.map(unit=>({id:unit.id,hp:unit.hp}))}));
-  await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+  await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3022",{waitUntil:"networkidle"});
   assert.equal(await page.locator("#v39-start-load-section").count(),0);
   const [chooser]=await Promise.all([page.waitForEvent("filechooser"),page.locator("[data-v39-start-load]").click()]);
   await chooser.setFiles({name:"invalid.json",mimeType:"application/json",buffer:Buffer.from("bad json")});

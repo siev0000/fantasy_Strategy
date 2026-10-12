@@ -16,7 +16,7 @@ try {
       const map=window.generateV39TestFieldWithSeed({w:size,h:size,patternId},`resource-placement-${seed}`);
       // 実際の資源配置は初期拠点決定後。開始位置未指定の診断として同じイベントを通す。
       window.dispatchEvent(new CustomEvent("v39:initial-placement-complete",{detail:{mapData:map,settings:{patternId}}}));
-      const names=["黒木","特木","銀鉄","青金鋼","赤黒鋼","銀"];
+      const names=["黒木","特木","銀鉄","青金鋼","赤黒鋼","銀","宝石"];
       const sites=Object.values(window.getV39GameState().specialtiesByTile||{});
       const counts=Object.fromEntries(names.map(name=>[name,sites.filter(site=>site.name===name).length]));
       const terrains=map.grid.flat();

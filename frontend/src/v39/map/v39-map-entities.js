@@ -172,6 +172,7 @@ function markerRenderSignature(faction, state) {
     .sort();
   return [
     String(state?.activePlayerId || ""),
+    String(state?.activeWorldId || "surface"),
     String(faction?.selectedUnitId || ""),
     isTestMode() ? "test" : "normal",
     String(window.__v39VisibilityRenderVersion || 0),
@@ -931,9 +932,11 @@ function renderMarkers() {
   // ターン文字は領土線（depth16）や選択枠（depth17）より上に描く。
   constructionLabelContainer = scene.add.container(0, 0).setDepth(18).setName("v39-construction-label-layer");
   unitContainer = scene.add.container(0, 0).setDepth(UNIT_LAYER_DEPTH).setName("v39-unit-layer");
-  drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction));
+  const underground = window.__v39FieldRuntime?.mapData?.isUnderground === true;
+  // 勢力の拠点一覧は地上・地下で共通だが、地上の建物を地下へ投影しない。
+  if (!underground) drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction));
   drawEnemyNests(scene, structureContainer, state?.enemyNests);
-  drawSettlementTileMarkers(scene, structureContainer, faction);
+  if (!underground) drawSettlementTileMarkers(scene, structureContainer, faction);
   drawDefenseStructures(scene, constructionLabelContainer, structureContainer);
   drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId);
   drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId);

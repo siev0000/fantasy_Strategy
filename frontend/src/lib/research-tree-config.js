@@ -1,4 +1,7 @@
-import { cityBaseData, researchData as researchDbRaw } from "./game-data-registry.js";
+import { cityBaseData, researchData as formalResearchRows } from "./game-data-registry.js";
+import expeditionDefaults from "../../../config/v39-expedition-defaults.json";
+const researchDbRaw = formalResearchRows.some(row => row.ID === expeditionDefaults.research.ID || row.項目名 === expeditionDefaults.research.項目名)
+  ? formalResearchRows : [...formalResearchRows, expeditionDefaults.research];
 
 const RESEARCH_TARGET_ORDER = [...new Set(researchDbRaw
   .map(row => String(row?.技術対象 ?? "").trim())

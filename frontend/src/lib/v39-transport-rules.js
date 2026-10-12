@@ -34,6 +34,7 @@ export function setV39UnitTransportAssignment(state, playerId, settlementId, uni
   const unit = player?.factionState?.units?.find(row => text(row.id) === text(unitId));
   if (!player || !settlement || !unit) return { ok:false, reason:"拠点またはユニットが見つかりません", state };
   if (enabled) {
+    if (unit.caveDuty) return {ok:false,state,reason:"鉱床の任務を解除してください"};
     if (!isV39ArmyTransportUnit(unit)) return { ok:false, reason:"輸送指定は軍隊ユニットのみ可能です", state };
     if (Number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡") return { ok:false, reason:"死亡したユニットは指定できません", state };
     if (!isV39UnitInsideSettlement(unit, settlement)) return { ok:false, reason:"拠点の占有マス内にいるユニットを指定してください", state };
@@ -83,62 +84,97 @@ export function configureV39TransportRoute(state, playerId, unitId, destinationI
 }
 
 // AP最小の経路を探索する。占有マス・通行条件・高度差は通常移動と同じ制約を使う。
-function routePath(state, mapData, playerId, unit, destination, worldWrapEnabled) {
-  const occupied = new Set([
+export function resolveV39AutomaticRoute(state, mapData, playerId, unit, destination, worldWrapEnabled, ignoreUnitIds = []) {
+  const blockers = [
     ...(state.players || []).flatMap(player => (player.factionState?.units || [])
-      .filter(row => living(row) && !(player.id === playerId && row.id === unit.id))),
-    ...(state.enemies || []).filter(living)
-  ].map(key));
+      .filter(row => living(row) && (row.worldId || "surface") === (unit.worldId || "surface")
+        && !ignoreUnitIds.includes(row.id) && !(player.id === playerId && row.id === unit.id))),
+    ...(state.enemies || []).filter(living),
+    ...(state.neutralVillages || []).flatMap(village => (village.defenseUnits || []).filter(living))
+  ];
+  const friendly = new Set((state.players || []).find(player => player.id === playerId)?.factionState?.units || []);
+  const friendlyByTile = new Map(blockers.filter(row => friendly.has(row)).map(row => [key(row),row.id]));
+  const occupied = new Set(blockers.map(key));
+  const hardOccupied = new Set(blockers.filter(row => !friendly.has(row)).map(key));
   const goals = new Set([key(destination), ...Object.entries(destination.territoryResidentialCenterMap || {})
     .filter(([, center]) => text(center) === key(destination)).map(([tile]) => tile)]);
-  const heap = [];
-  function push(node) {
-    let index = heap.push(node) - 1;
-    while (index > 0) {
-      const parent = (index - 1) >> 1;
-      if (heap[parent].cost <= node.cost) break;
-      heap[index] = heap[parent]; index = parent;
-    }
-    heap[index] = node;
-  }
-  function pop() {
-    const first = heap[0], last = heap.pop();
-    if (heap.length) {
-      let index = 0;
-      while (index * 2 + 1 < heap.length) {
-        let child = index * 2 + 1;
-        if (child + 1 < heap.length && heap[child + 1].cost < heap[child].cost) child++;
-        if (heap[child].cost >= last.cost) break;
-        heap[index] = heap[child]; index = child;
+  const search = (allowFriendly) => {
+    const heap = [];
+    function push(node) {
+      let index = heap.push(node) - 1;
+      while (index > 0) {
+        const parent = (index - 1) >> 1;
+        if (heap[parent].cost <= node.cost) break;
+        heap[index] = heap[parent]; index = parent;
       }
-      heap[index] = last;
+      heap[index] = node;
     }
-    return first;
-  }
-  const start = key(unit), costs = new Map([[start, 0]]), previous = new Map();
-  push({ x:unit.x, y:unit.y, cost:0 });
-  const maxAp = number(unit.maxAp ?? unit.maxActionPoint ?? 100);
-  while (heap.length) {
-    const current = pop(), currentKey = key(current);
-    if (current.cost !== costs.get(currentKey)) continue;
-    if (goals.has(currentKey)) {
-      const path = [];
-      for (let cursor = currentKey; cursor !== start;) {
-        const step = previous.get(cursor); path.unshift(step); cursor = step.from;
+    function pop() {
+      const first = heap[0], last = heap.pop();
+      if (heap.length) {
+        let index = 0;
+        while (index * 2 + 1 < heap.length) {
+          let child = index * 2 + 1;
+          if (child + 1 < heap.length && heap[child + 1].cost < heap[child].cost) child++;
+          if (heap[child].cost >= last.cost) break;
+          heap[index] = heap[child]; index = child;
+        }
+        heap[index] = last;
       }
-      return path;
+      return first;
     }
-    for (const next of getHexNeighborCoords(mapData.w, mapData.h, current.x, current.y, worldWrapEnabled)) {
-      if (occupied.has(next.key)) continue;
-      const stepCost = resolveV39UnitMovementStepCost(mapData, current.x, current.y, next.x, next.y, unit);
-      if (!Number.isFinite(stepCost) || stepCost > maxAp) continue;
-      const cost = current.cost + stepCost;
-      if (cost >= (costs.get(next.key) ?? Infinity)) continue;
-      costs.set(next.key, cost); previous.set(next.key, { ...next, from:currentKey, stepCost });
-      push({ ...next, cost });
+    const start = key(unit), costs = new Map([[start, 0]]), previous = new Map();
+    push({ x:unit.x, y:unit.y, cost:0 });
+    const maxAp = number(unit.maxAp ?? unit.maxActionPoint ?? 100);
+    // 味方を避ける歩ける距離より占有マスを高く評価し、手前の味方への接触を避ける。
+    const friendlyPenalty = (mapData.w * mapData.h + 1) * maxAp;
+    while (heap.length) {
+      const current = pop(), currentKey = key(current);
+      if (current.cost !== costs.get(currentKey)) continue;
+      if (goals.has(currentKey)) {
+        const path = [];
+        for (let cursor = currentKey; cursor !== start;) {
+          const step = previous.get(cursor); path.unshift(step); cursor = step.from;
+        }
+        return path;
+      }
+      for (const next of getHexNeighborCoords(mapData.w, mapData.h, current.x, current.y, worldWrapEnabled)) {
+        if ((allowFriendly ? hardOccupied : occupied).has(next.key)) continue;
+        const stepCost = resolveV39UnitMovementStepCost(mapData, current.x, current.y, next.x, next.y, unit);
+        if (!Number.isFinite(stepCost) || stepCost > maxAp) continue;
+        const cost = current.cost + stepCost + (allowFriendly && friendlyByTile.has(next.key) ? friendlyPenalty : 0);
+        if (cost >= (costs.get(next.key) ?? Infinity)) continue;
+        costs.set(next.key, cost); previous.set(next.key, { ...next, from:currentKey, stepCost });
+        push({ ...next, cost });
+      }
+    }
+    return null;
+  };
+  const direct = search(false);
+  if (direct || !friendlyByTile.size) return direct;
+  // 途中の味方は通過可能。目的地の占有が続く部分だけ手前で待つ。
+  const planned = search(true);
+  if (!planned) return null;
+  for (const step of planned) step.friendlyUnitId = friendlyByTile.get(step.key);
+  let end = planned.length;
+  while (end > 0 && planned[end - 1].friendlyUnitId) end--;
+  const reachable = planned.slice(0,end);
+  if (end < planned.length) reachable.waitingForFriendlyUnitId = planned[end].friendlyUnitId;
+  return reachable;
+}
+
+// AP不足で味方の上に停止しないよう、次の空きマスまでを一括で判定する。
+export function resolveV39AutomaticMovementSteps(path, ap, canStop = () => true) {
+  let cost = 0, safeEnd = 0;
+  for (let index = 0; index < path.length; index++) {
+    cost += path[index].stepCost;
+    if (cost > ap) break;
+    if (!path[index].friendlyUnitId) {
+      if (!canStop(path[index], index)) break;
+      safeEnd = index + 1;
     }
   }
-  return null;
+  return path.slice(0,safeEnd);
 }
 
 export function advanceV39AutomaticTransport(state, playerId, mapData, turnNumber, worldWrapEnabled = false) {
@@ -178,18 +214,20 @@ export function advanceV39AutomaticTransport(state, playerId, mapData, turnNumbe
         assignment.status = "waiting-stock";
       } else {
         const target = assignment.leg === "outbound" ? destination : origin;
-        const path = routePath({ ...nextState, players:nextState.players.map(row => row.id === playerId ? { ...row, factionState:faction } : row) },
+        const path = resolveV39AutomaticRoute({ ...nextState, players:nextState.players.map(row => row.id === playerId ? { ...row, factionState:faction } : row) },
           mapData, playerId, unit, target, mapData.worldWrapEnabled ?? worldWrapEnabled);
         if (!path) { assignment.status = "blocked"; assignment.reason = "通行可能な経路がありません"; }
         else {
           let ap = number(unit.ap ?? unit.currentAp);
-          for (const step of path) {
-            if (step.stepCost > ap) break;
+          for (const step of resolveV39AutomaticMovementSteps(path,ap)) {
             unit = { ...unit, x:step.x, y:step.y, lastActionTurn:turnNumber };
             ap -= step.stepCost;
           }
           unit.ap = ap; unit.currentAp = ap;
           assignment.status = assignment.leg === "outbound" ? "delivering" : "returning";
+          if (path.waitingForFriendlyUnitId && (path.length === 0 || key(unit) === path.at(-1).key)) {
+            assignment.status = "waiting-unit"; assignment.reason = "味方ユニットの移動待ち";
+          }
           if (assignment.leg === "outbound" && isV39UnitInsideSettlement(unit, destination)) {
             const updated = { ...destination, foodStockByType:{ ...destination.foodStockByType }, materialStockByType:{ ...destination.materialStockByType },
               equipmentInventory:[...(destination.equipmentInventory || []), ...cargo.equipmentInventory] };

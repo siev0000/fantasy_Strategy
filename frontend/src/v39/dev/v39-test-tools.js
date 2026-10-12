@@ -607,6 +607,7 @@ function panelHtml() {
   return `
     <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
     <div class="v39-test-tools-scroll">
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>鉱床・道具・部隊支援</summary><div class="v39-test-section-body"><p>専用データで検証。開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><div class="v39-test-button-row"><button data-test-action="expedition-start">輸送・道具・支援テスト</button><button data-test-action="expedition-invasion">侵入・再巣化テスト</button><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div><p>輸送は設定済み。道具試験官は薬草・水薬を所持。王・指揮官・王の騎士は同部隊です。村の警備・建設依頼は受注して確認します。入口警備は輸送を解除してから別途指定してください。</p></div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="turns"${testSectionOpenAttribute("turns")}><summary>制作・ターン進行</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><input id="v39-test-turn-count" aria-label="進めるターン数" type="number" min="1" max="100" step="1" value="${bulkTurnCount}"${advancingTestTurns ? " disabled" : ""}><button data-test-action="turn-many"${advancingTestTurns ? " disabled" : ""}>指定ターン進行</button><button data-test-action="turn-production"${advancingTestTurns ? " disabled" : ""}>建設完了まで進行</button><button data-test-action="turn-stop"${advancingTestTurns ? "" : " disabled"}>停止</button></div><p>施設建設・拠点発展・土地用途変更の待ちターンをまとめて進行。収入・消費・敵AIも通常どおり進みます。</p></div></details>
@@ -654,6 +655,10 @@ function closePanel() {
 function handleAction(action) {
   if (!testModeEnabled()) return closePanel();
   const handlers = {
+    "expedition-start":()=>{if(window.confirm("現在のゲームを専用検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(false);},
+    "expedition-invasion":()=>{if(window.confirm("現在のゲームを侵入・再巣化の検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(true);},
+    "expedition-surface":()=>window.viewV39ExpeditionTestWorld?.("surface"),
+    "expedition-mine":()=>window.viewV39ExpeditionTestWorld?.("cave:expedition-test:1"),
     eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"), disaster:forceDisasterAtSelectedTile, undead:forceUndeadAtSelectedTile,
     "snow-on":() => setSelectedSnowState("cover", true), "snow-off":() => setSelectedSnowState("cover", false),
     "snowfall-on":() => setSelectedSnowState("falling", true), "snowfall-off":() => setSelectedSnowState("falling", false),

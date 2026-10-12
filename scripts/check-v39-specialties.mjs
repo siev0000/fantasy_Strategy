@@ -13,6 +13,10 @@ try {
     const special=await import("/src/lib/v39-specialty-rules.js");
     const civic=await import("/src/lib/v39-civic-rules.js");
     const economy=await import("/src/lib/v39-economy-rules.js");
+    const {researchTreeData}=await import("/src/lib/research-tree-config.js");
+    const discoveryResearch={progress:{completedByCategoryLevel:{調査Lv:Object.fromEntries(
+      researchTreeData.categories.調査Lv.levels.filter(row=>row.level<=2).map(row=>[row.level,row.items.map(item=>item.id)])
+    )}}};
     const icons=await import("/src/lib/resource-icon-glyphs.js");
     const addedNames=["タコ","カニ","エビ","カキ・貝","リンゴ","オレンジ"];
     const definitions=special.v39SpecialtyDefinitions();
@@ -34,6 +38,7 @@ try {
       {id:"q",race:"只人",isPlayer:true,factionState:{units:[],exploration:{}}}],enemies:[],
       specialtiesByTile:{"5,5":{key:"5,5",x:5,y:5,name:"蜂蜜"},"6,5":{key:"6,5",x:6,y:5,name:"蜂蜜"},"7,5":{key:"7,5",x:7,y:5,name:"鉄"},"5,7":{key:"5,7",x:5,y:7,name:"宝石"}},
       territoryOwnerByTile:{"5,5":"p","6,5":"p","7,5":"p"},territoryStateByTile:{"5,5":{settlementId:"base"},"6,5":{settlementId:"base"},"7,5":{settlementId:"base"}},dangerPercentByTile:{},explorationSitesByTile:{}};
+    state.players[0].factionState.research=discoveryResearch;
     const first=survey.startV39SurveyTask(state,"p","u",unit,map);
     const usedAp=first.state.players[0].factionState.units[0].ap;
     const incomplete=survey.advanceV39ExplorationTurn(first.state,1);
@@ -162,19 +167,22 @@ try {
   const narrow=await page.locator("#v39-specialty-header").boundingBox();assert.ok(narrow.x+narrow.width<=391);
   const visibleEdge=await page.locator("#resourceSet").boundingBox();assert.ok(narrow.x+narrow.width<=visibleEdge.x+visibleEdge.width+1);
   await page.screenshot({path:"output/web-game/v39-specialties-mobile-390.png"});
-  const display=await page.evaluate(()=>{
+  const display=await page.evaluate(async()=>{
     const state=window.getV39GameState(), original=structuredClone(state.players[0].factionState.exploration);
+    const originalUnits=structuredClone(state.players[0].factionState.units);
     const updateExploration=value=>{
       const current=window.getV39GameState();
-      window.setV39GameState({players:current.players.map(player=>player.id!=="p"?player:{...player,factionState:{...player.factionState,exploration:value}})});
+      const units=Object.keys(value.discoveredSpecialtiesByTile).length?originalUnits:[];
+      window.setV39GameState({players:current.players.map(player=>player.id!=="p"?player:{...player,factionState:{...player.factionState,units,exploration:value}})},{silent:true});
       window.refreshV39MapEntities();
     };
     const markers=()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list.find(row=>row.name==="v39-unit-layer").list.filter(row=>row.name==="v39-specialty-marker");
-    updateExploration({...original,discoveredSpecialtiesByTile:{}});
+    // 調査済みマスは研究解禁時に再発見されるため、未発見表示の試験では調査記録も外す。
+    updateExploration({...original,surveyedTileKeys:[],discoveredSpecialtiesByTile:{}});
     const preview=markers().map(row=>({key:row.getData("tileKey"),alpha:row.alpha,occupied:row.getData("occupied")}));
     const undiscoveredCount=Object.keys(window.getV39GameState().players[0].factionState.exploration.discoveredSpecialtiesByTile).length;
-    window.setV39TestMode(false);window.refreshV39MapEntities();const hidden=markers().length;
-    window.setV39TestMode(true);updateExploration(original);
+    await window.setV39TestMode(false);window.refreshV39MapEntities();const hidden=markers().length;
+    await window.setV39TestMode(true);updateExploration(original);
     const unit=markers().find(row=>row.getData("tileKey")==="5,5");
     const empty=markers().find(row=>row.getData("tileKey")==="6,5");
     const occupied={occupied:unit.getData("occupied"),alpha:unit.alpha,x:unit.x,y:unit.y};

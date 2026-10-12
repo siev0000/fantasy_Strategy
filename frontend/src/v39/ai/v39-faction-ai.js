@@ -156,7 +156,7 @@ function startAiUnitCreation(state, player) {
     const request = { mode, className:text(classRow?.名前), race, count:1 };
     if (!inspectV39UnitCreation(state, player, request).available) continue;
     const result = createV39Units(state, player.id, request);
-    if (result.ok) return { state:result.state, command:`生成:${result.createdUnits[0]?.name || request.className}` };
+    if (result.ok) return { state:result.state, command:`訓練開始:${result.queuedUnits[0]?.name || request.className}` };
   }
   return null;
 }

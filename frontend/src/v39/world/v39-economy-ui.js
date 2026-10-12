@@ -111,6 +111,10 @@ function installStyles() {
   document.head.appendChild(style);
 }
 
+function substitutionText(payment) {
+  return (payment?.substitutions || []).map(row => `${row.source}不足${formatNumber(row.missing)} → ${row.resource}+${formatNumber(row.amount)}`).join(" / ");
+}
+
 function renderBuildModal() {
   ensureBuildModalShell();
   if (!(modal instanceof HTMLElement)) return;
@@ -132,6 +136,7 @@ function renderBuildModal() {
     const project = development.project;
     developmentPanel.innerHTML = `<div class="v39-development-head"><strong>拠点発展: ${escapeHtml(development.current?.name || context.village?.type || "-")} ${development.next ? `→ ${escapeHtml(development.next.name)}` : ""}</strong><span>${project ? `工事中 残り${project.remainingTurns}/${project.totalTurns}T` : (development.next ? `工期 ${development.next.buildTurns}T` : "最大規模")}</span></div>
       ${requirements ? `<div class="v39-development-requirements">${requirements}</div>` : ""}
+      ${development.materialPayment?.substitutions?.length ? `<div>${escapeHtml(substitutionText(development.materialPayment))}</div>` : ""}
       <div class="v39-development-actions"><span class="v39-development-reason">${escapeHtml(development.reason)}</span>${development.next ? `<button type="button" id="v39-development-start" ${development.available ? "" : "disabled"}>${project ? "発展工事中" : "拡張位置を選択"}</button>` : ""}</div>`;
   }
   const list = modal.querySelector("#v39-build-list");
@@ -145,7 +150,7 @@ function renderBuildModal() {
     <div class="v39-build-fact"><span>建築時間</span><b>${selected.buildTurns}ターン</b></div>
     <div class="v39-build-fact"><span>研究条件 (現在/必要)</span><b>${formatRequirements(selected.requirements, selectedCheck?.levels)}</b></div>
     ${selectedCheck?.researchCheck?.mode === "item" ? `<div class="v39-build-fact"><span>解禁研究</span><b>${selectedCheck.researchCheck.requirements.map(row => `${escapeHtml(row.name)} (${row.completed ? "完了" : "未完了"})`).join("・") || (selectedCheck.researchCheck.reasons.length ? "未設定" : "指定なし")}</b></div>` : ""}
-    <div class="v39-build-fact"><span>必要資材 (所持/必要)</span><b>${formatCost(selected.cost, context.village?.materialStockByType)}</b></div>
+    <div class="v39-build-fact"><span>必要資材 (所持/必要)</span><b>${formatCost(selectedCheck?.materialPayment?.cost || selected.cost, context.village?.materialStockByType)}</b>${selectedCheck?.materialPayment?.substitutions?.length ? `<span>${escapeHtml(substitutionText(selectedCheck.materialPayment))}</span>` : ""}</div>
     <div class="v39-build-fact"><span>施設枠 (使用/上限)</span><b>${selectedCheck?.used || 0}/${selectedCheck?.capacity || 0}</b></div>
   </div><div class="v39-build-reasons">${selectedCheck?.available ? "建設可能" : (selectedCheck?.reasons || ["建設不可"]).join(" / ")}</div><button type="button" id="v39-build-start" ${selectedCheck?.available ? "" : "disabled"}>建設開始</button>`;
   const queue = modal.querySelector("#v39-build-queue");

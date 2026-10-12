@@ -1,5 +1,6 @@
 import { getHexNeighborCoords, getHexDistance } from "./hex-grid.js";
 import eventDefaults from "../../../config/v39-event-defaults.json";
+import expeditionDefaults from "../../../config/v39-expedition-defaults.json";
 import { getGameDataRows } from "./game-data-registry.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE, V39_QUEST_BALANCE } from "./v39-gameplay-balance.js";
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy } from "./v39-economy-rules.js";
@@ -397,6 +398,16 @@ function relationGainFromEvent(row) {
 
 function createQuest(state, village, playerId, turn, mapData, eventId = "") {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
+  const support=expeditionDefaults.villageRequests.find(row=>row.ID===eventId);
+  if(support && player){
+    const last=integer(village.eventCompletedTurnByPlayerId?.[playerId]?.[eventId]);
+    if(last && turn<last+V39_QUEST_BALANCE.villageQuestCooldown)return null;
+    const baselineFacilities=villageSupportFacilities(player,village);
+    if(support.type==='construction' && !player.factionState.settlements?.some(row=>row.placed&&getHexDistance(row,village)<=expeditionDefaults.village.建設支援範囲))return null;
+    return {...support,id:`${village.id}-${playerId}-T${turn}`,eventId:support.ID,label:support.名前,
+      required:support.type==='watch'?expeditionDefaults.village.防衛ターン:expeditionDefaults.village.建設数,
+      baselineFacilities,progress:0,accepted:true,createdTurn:turn,completed:false};
+  }
   const undeadEnemyIds = [...new Set((village?.naturalUndeadThreat?.enemyIds || []).map(text).filter(Boolean))];
   if ((!eventId||eventId===VILLAGE_UNDEAD_QUEST?.ID) && undeadEnemyIds.length && eventReadyForPlayer(VILLAGE_UNDEAD_QUEST, village, player, turn)) {
     return {
@@ -455,7 +466,7 @@ export function listV39NeutralVillageQuests(state,playerId,villageId,mapData) {
   const village=state.neutralVillages?.find(row=>row.id===villageId);
   if(!village || (state.activeWorldId && state.activeWorldId!=="surface")) return [];
   const turn=Math.max(1,integer(state.timeline?.turnNumber,1));
-  return [...new Set([...VILLAGE_EVENT_ROWS.filter(row=>row.イベント種別==="依頼").map(row=>row.ID),...eventDefaults.village.map(row=>row.ID)])]
+  return [...new Set([...VILLAGE_EVENT_ROWS.filter(row=>row.イベント種別==="依頼").map(row=>row.ID),...eventDefaults.village.map(row=>row.ID),...expeditionDefaults.villageRequests.map(row=>row.ID)])]
     .map(id=>createQuest(state,village,playerId,turn,mapData,id)).filter(Boolean);
 }
 
@@ -485,6 +496,9 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId) {
       .map(enemy => text(enemy?.id)));
     const remaining = (quest.targetEnemyIds || []).filter(id => livingTargetIds.has(text(id)));
     if (remaining.length) return { ok:false, reason:`討伐対象が残っています (${remaining.length}/${quest.required})`, state };
+  } else if(['watch','construction'].includes(quest.type)) {
+    const progress=quest.type==='construction'?villageSupportFacilities(state.players.find(row=>row.id===playerId),source).filter(key=>!quest.baselineFacilities?.includes(key)).length:number(quest.progress);
+    if(progress<quest.required)return {ok:false,state,reason:`${quest.label}: ${progress}/${quest.required}`};
   } else {
     const payment = changeSettlementResource(state, playerId, quest.stockKind, -number(quest.required), quest.resourceKey);
     if (!payment.ok) return payment;
@@ -496,9 +510,13 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId) {
     working = reward.state;
   }
   const row = VILLAGE_EVENT_ROWS.find(item => text(item?.ID) === text(quest.eventId)) || null;
-  const relationGain = row ? relationGainFromEvent(row) : V39_QUEST_BALANCE.villageRelationGain;
+  const relationGain = row ? relationGainFromEvent(row) : ['watch','construction'].includes(quest.type)?expeditionDefaults.village.関係値報酬:V39_QUEST_BALANCE.villageRelationGain;
   const completedTurn = integer(state?.timeline?.turnNumber, 1);
   let village = changeRelation(source, playerId, relationGain);
+  if(quest.type==='delivery'){
+    const field=quest.stockKind==='food'?'foodStockByType':'materialStockByType';
+    village={...village,[field]:{...village[field],[quest.resourceKey]:number(village[field]?.[quest.resourceKey])+number(quest.required)}};
+  }
   village = {
     ...village,
     eventCompletedTurnByPlayerId:{
@@ -570,6 +588,15 @@ export function advanceV39NeutralVillages(state, mapData, turnNumber) {
   for (let index = 0; index < villages.length; index += 1) {
     let village = villages[index];
     if (integer(village.lastProcessedTurn) >= turn) continue;
+    const quests={...village.questsByPlayerId};
+    for(const [playerId,quest] of Object.entries(quests)){
+      if(!quest.accepted||quest.completed||!['watch','construction'].includes(quest.type)||quest.createdTurn>=turn||quest.lastProgressTurn>=turn)continue;
+      const player=state.players.find(row=>row.id===playerId);
+      const present=player?.factionState.units.some(unit=>number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡'&&(!unit.worldId||unit.worldId==='surface')&&getHexDistance(unit,village)<=expeditionDefaults.village.防衛範囲);
+      const progress=quest.type==='construction'?villageSupportFacilities(player,village).filter(key=>!quest.baselineFacilities?.includes(key)).length:number(quest.progress)+(present?1:0);
+      quests[playerId]={...quest,progress:Math.min(quest.required,progress),lastProgressTurn:turn};
+    }
+    village={...village,questsByPlayerId:quests};
     if (village.vassalPlayerId) {
       const tribute = Math.max(1, Math.floor(number(village.population) * 0.02 * V39_NEUTRAL_VILLAGE_BALANCE.vassalTributeRate));
       const paid = changeSettlementResource(working, village.vassalPlayerId, "food", tribute);
@@ -594,4 +621,9 @@ export function advanceV39NeutralVillages(state, mapData, turnNumber) {
     state:{ ...working, neutralVillages:villages, settlements:(working.settlements || []).map(row => byId.get(row.id) || row) },
     reports
   };
+}
+
+function villageSupportFacilities(player,village) {
+  return (player?.factionState.settlements || []).filter(row=>row.placed&&getHexDistance(row,village)<=expeditionDefaults.village.建設支援範囲)
+    .flatMap(row=>Object.entries(row.tileFacilityMap || {}).flatMap(([tile,names])=>(Array.isArray(names)?names:[]).map(name=>`${row.settlementId||row.id}:${tile}:${name}`)));
 }

@@ -285,6 +285,7 @@ export function applyV39DerivedCharacterData(unit = {}) {
     level: derived.level,
     movement:status.移動,
     status,
+    squadSupportModifiers:{},
     skillLevels: { ...derived.skillLevels },
     resistances: { ...resistances, ...(unit?.resistanceOverrides || {}) },
     equipment,

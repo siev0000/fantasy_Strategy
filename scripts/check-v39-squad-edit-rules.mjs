@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import {chromium} from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs";
+const browser=await chromium.launch();
+try {
+  const page=await browser.newPage();await page.goto('http://127.0.0.1:3022',{waitUntil:'networkidle'});
+  const report=await page.evaluate(async()=>{
+    const {editV39Squad}=await import('/src/lib/v39-squad-edit-rules.js');
+    const movement=await import('/src/lib/v39-squad-movement-rules.js');
+    const check=(ok,label)=>{if(!ok)throw new Error(label);};
+    const unit=(id,x)=>({id,name:id,x,y:2,hp:100,ap:100,maxAp:100,squadId:'solo',worldId:'surface',status:{移動:30}});
+    const faction={units:[unit('a',5),unit('b',4),unit('c',2),unit('d',1),unit('e',0),unit('f',6)],squads:[{id:'solo',unitIds:['a','b','c','d','e','f'],cargoByUnitId:{a:{resourcesByType:{木材:2},equipmentInventory:[{id:'axe'}]}}}]};
+    const state={activePlayerId:'p',activeWorldId:'surface',players:[{id:'p',factionState:faction},{id:'other',factionState:{units:[],squads:[]}}]};
+    check(!editV39Squad(state,'other',{unitIds:['a']}).ok,'ownership');
+    check(!editV39Squad(state,'p',{unitIds:['a','b','c','d','e','f']}).ok,'cap');
+    const created=editV39Squad(state,'p',{unitIds:['a','b','a'],label:'test',movementLeaderId:'b'});
+    check(created.ok,'create');
+    const after=created.state.players[0].factionState,squad=after.squads.find(row=>row.id===created.squadId);
+    check(squad.unitIds.length===2&&squad.movementLeaderId==='b','deduplicate and leader');
+    check(squad.cargo.resourcesByType.木材===2&&squad.cargo.equipmentInventory[0].id==='axe','personal stock transfer');
+    check(!after.squads.find(row=>row.id==='solo').cargoByUnitId.a,'personal stock not duplicated');
+    check(!editV39Squad(created.state,'p',{squadId:squad.id,disband:true}).ok,'shared stock not lost');
+    check(!editV39Squad(created.state,'p',{unitIds:['a','c']}).ok,'source shared cargo protected');
+    check(state.players[0].factionState.units[0].squadId==='solo'&&faction.squads[0].cargoByUnitId.a.resourcesByType.木材===2,'input immutable');
+    const foreign=structuredClone(state);foreign.players[0].factionState.units[1].worldId='cave';
+    check(!editV39Squad(foreign,'p',{unitIds:['a','b']}).ok,'other map');
+    const automatic=structuredClone(state);automatic.players[0].factionState.units[1].caveDuty={duty:'guard'};
+    check(!editV39Squad(automatic,'p',{unitIds:['a','b']}).ok,'automatic task');
+    const clean=structuredClone(created.state),cleanFaction=clean.players[0].factionState;
+    cleanFaction.squads.find(row=>row.id===squad.id).cargo={};
+    const removed=editV39Squad(clean,'p',{squadId:squad.id,unitIds:['b'],label:'one'});
+    check(removed.ok&&removed.state.players[0].factionState.units[0].squadId==='solo','remove');
+    const disbanded=editV39Squad(removed.state,'p',{squadId:squad.id,disband:true});
+    check(disbanded.ok&&disbanded.state.players[0].factionState.units.every(row=>row.squadId==='solo'),'disband');
+    const map={w:8,h:6,worldWrapEnabled:true,grid:Array.from({length:6},()=>Array(8).fill('平地')),heightLevelMap:Array.from({length:6},()=>Array(8).fill(0))};
+    const wrapped={units:[unit('lead',7),unit('follow',6)],squads:[{id:'wrap',unitIds:['lead','follow'],movementLeaderId:'lead',formationType:'column'}]};
+    const group=movement.resolveV39SquadMovementGroup(wrapped,'follow');
+    check(group.leader.id==='lead'&&group.followFormation,'selected follower independent');
+    const next=movement.advanceV39CaveFormation(map,group.positions,{x:0,y:2},group);
+    check(next?.[0].x===0&&next[1].x===7,'horizontal world wrap follows');
+    wrapped.units[1].movementHold=true;
+    check(movement.resolveV39SquadMovementGroup(wrapped,'lead').participantIds.join(',')==='lead','held follower excluded');
+    wrapped.units[0].movementHold=true;
+    check(!movement.resolveV39SquadMovementGroup(wrapped,'lead').ok,'held leader cannot drag squad');
+    return {ownership:true,cap:true,cargo:true,immutable:true,worlds:true,automatic:true,remove:true,disband:true,wrap:true,hold:true};
+  });assert.ok(report.wrap);console.log(report);
+}finally{await browser.close();}

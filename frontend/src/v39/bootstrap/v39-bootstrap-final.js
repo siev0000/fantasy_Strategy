@@ -1,5 +1,8 @@
 // Final detail UI and terrain presentation modules.
 import "../unit/v39-character-modal.js";
+import "../unit/v39-squad-edit-ui.js";
+import "../unit/v39-expedition-tools-ui.js";
+import "../dev/v39-expedition-test.js";
 import "../map/v39-land-detail.js";
 import "../map/v39-height-boundaries.js";
 import "../map/v39-terrain-icons.js";

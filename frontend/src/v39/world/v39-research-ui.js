@@ -1,3 +1,4 @@
+import { V39_RESEARCH_EFFECT_FIELDS, V39_PENDING_RESEARCH_EFFECT_FIELDS } from "../../lib/v39-research-effects.js";
 import {
   RESEARCH_CATEGORY_ORDER,
   getResearchCategoryMeta,
@@ -167,7 +168,12 @@ function renderRail() {
 }
 
 function itemDetails(item) {
-  const details = (item?.details || []).map(row => `<li><span>${escapeHtml(row.key)}</span><b>${escapeHtml(row.value)}</b></li>`).join("");
+  const details = (item?.details || []).map(row => {
+    const suffix = V39_RESEARCH_EFFECT_FIELDS.includes(row.key)
+      ? (["幸福度", "治安"].includes(row.key) ? "（目標値加算）" : "（生産技能加算）")
+      : V39_PENDING_RESEARCH_EFFECT_FIELDS.includes(row.key) ? "（未接続）" : "";
+    return `<li><span>${escapeHtml(row.key + suffix)}</span><b>${escapeHtml(row.value)}</b></li>`;
+  }).join("");
   const targets = getV39ResearchDiscoveryTargets(item?.category, item?.level, item?.id);
   const discovery = targets.length ? `<section class="v39-research-discovery-targets" data-research-discovery-targets><b>新たに発見できる対象</b><p>${targets.map(escapeHtml).join("・")}</p><small>研究完了で調査済みマスの対象を自動発見します。未調査マスは調査が必要です。</small></section>` : "";
   const facilities = facilitiesUnlockedByResearch(item?.id, facilityDefinitions());

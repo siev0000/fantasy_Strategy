@@ -23,11 +23,16 @@ try {
       squads:[{id:"test-squad",unitIds:[unit.id],cargo:{resourcesByType:{石材:35},equipmentInventory:[]}}]}}],
       enemies:[],enemyNests:[],neutralVillages:[],territoryOwnerByTile:{},territoryStateByTile:{}});
     window.transportEvents=[];
-    window.addEventListener("v39:game-state-changed",event=>{
-      if(event.detail?.reason!=="automatic-transport")return;
-      const state=window.getV39GameState(), unit=state.players[0].factionState.units[0];
-      window.transportEvents.push({turn:state.timeline.turnNumber,x:unit.x,y:unit.y,ap:unit.ap});
-    });
+    // ターン内の中間更新はsilentなので、通知イベントではなく保存直後のAPを確認する。
+    const setState=window.setV39GameState;
+    window.setV39GameState=(patch,options)=>{
+      const result=setState(patch,options);
+      if(options?.reason==="automatic-transport"){
+        const state=window.getV39GameState(),unit=state.players[0].factionState.units[0];
+        window.transportEvents.push({turn:state.timeline.turnNumber,x:unit.x,y:unit.y,ap:unit.ap});
+      }
+      return result;
+    };
     const data=window.__v39FieldRuntime.mapData;
     for(let y=0;y<data.h;y++)for(let x=0;x<data.w;x++){
       data.grid[y][x]="平地";data.heightLevelMap[y][x]=1;

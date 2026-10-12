@@ -1,0 +1,24 @@
+{
+  "説明": "専用検証マップの固定配置。通常ゲームでは自動適用しない。",
+  "地上サイズ": 24,
+  "洞窟サイズ": 14,
+  "拠点": {"id":"expedition-test-base","name":"検証拠点","x":4,"y":4},
+  "入口": {"x":8,"y":5},
+  "鉱床ID": "cave:expedition-test:1",
+  "鉱床入口": {"x":2,"y":2},
+  "鉱床在庫": {"鉱石":10,"宝石":5},
+  "群生地": [{"id":"expedition-test-herb","kind":"herb","name":"薬草群生地","icon":"🌿","x":3,"y":2,"discovered":true}],
+  "村": {"id":"expedition-test-village","name":"依頼検証村","race":"只人","x":10,"y":5},
+  "ユニット": [
+    {"id":"expedition-test-king","name":"支援検証王","race":"只人","className":"ファイター","level":10,"x":5,"y":5,"squadId":"expedition-support","isSovereign":true},
+    {"id":"expedition-test-commander","name":"指揮官","race":"只人","className":"コマンダー","level":11,"x":5,"y":4,"squadId":"expedition-support","prerequisiteClassLevels":{"ファイター":10}},
+    {"id":"expedition-test-knight","name":"王の騎士","race":"只人","className":"ロードナイト","level":11,"x":6,"y":4,"squadId":"expedition-support","prerequisiteClassLevels":{"ナイト":10}},
+    {"id":"expedition-test-medic","name":"道具試験官","race":"只人","className":"クレリック","level":10,"x":3,"y":2,"squadId":"solo","worldId":"cave:expedition-test:1","hpRate":0.5,"toolStockByType":{"薬草":2,"水薬":2},"expeditionCargoByType":{"薬草":5}},
+    {"id":"expedition-test-carrier","name":"鉱床輸送兵","race":"只人","className":"ファイター","level":7,"x":4,"y":4,"squadId":"solo","unitType":"軍隊ユニット"},
+    {"id":"expedition-test-guard","name":"入口警備兵","race":"只人","className":"ファイター","level":10,"x":4,"y":3,"squadId":"solo","unitType":"軍隊ユニット"}
+  ],
+  "侵入者": [
+    {"id":"expedition-test-wolf-1","name":"侵入ウルフ1","race":"ウルフ","className":"ウルフ","level":5,"x":8,"y":5},
+    {"id":"expedition-test-wolf-2","name":"侵入ウルフ2","race":"ウルフ","className":"ウルフ","level":5,"x":8,"y":6}
+  ]
+}

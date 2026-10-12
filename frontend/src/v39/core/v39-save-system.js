@@ -285,7 +285,7 @@ function installSettingsUi() {
       <div><button type="button" id="v39-save-download">セーブを保存</button><button type="button" id="v39-save-load">セーブを読込</button><input id="v39-save-file" type="file" accept="application/json,.json" hidden></div>
       <output id="v39-save-status">未実行</output>
     </section>
-    <section><h3>チーム編成</h3><p>現在は停止中です。</p></section>
+    <section><h3>部隊編制</h3><p>自キャラステータスの「部隊」タブから部隊の作成・メンバー変更・解散ができます。</p></section>
   </div>`;
   const status = document.getElementById("v39-save-status");
   const input = document.getElementById("v39-save-file");

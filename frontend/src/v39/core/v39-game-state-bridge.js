@@ -251,6 +251,7 @@ function cloneFactionState(factionState = {}, race = "只人") {
   return {
     ...base,
     units: Array.isArray(factionState.units) ? factionState.units.map(cloneUnit) : [],
+    unitTrainingQueue:(factionState.unitTrainingQueue || []).map(entry => ({...entry, unit:cloneUnit(entry.unit)})),
     squads: normalizeEntityArray(factionState.squads).map(normalizeV39SquadLogistics),
     deadUnitReserve: normalizeEntityArray(factionState.deadUnitReserve),
     deathHistory: normalizeEntityArray(factionState.deathHistory),
@@ -418,6 +419,9 @@ function resetFactionForNewLocalSession(factionState = {}) {
   return {
     ...source,
     settlements:[],
+    unitTrainingQueue:[],
+    recruitInstructorByTile:{},
+    recruitInstructorTransfers:{},
     selectedSettlementId:"",
     selectedUnitId:String(source?.selectedUnitId || ""),
     villagePlacementMode:false,

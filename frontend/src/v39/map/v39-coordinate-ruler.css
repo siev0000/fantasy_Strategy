@@ -1,0 +1,6 @@
+#v39-coordinate-ruler{position:absolute;inset:0;z-index:2;pointer-events:none;color:#bed0d3;font-size:var(--font-compact);line-height:1}
+#v39-coordinate-ruler[hidden]{display:none}
+#v39-coordinate-ruler span{position:absolute;min-width:1.5em;text-align:center;background:#081115b3;padding:2px;border-radius:2px}
+#v39-coordinate-ruler .v39-coordinate-x{bottom:2px;transform:translateX(-50%)}
+#v39-coordinate-ruler .v39-coordinate-y{right:2px;transform:translateY(-50%)}
+#v39-coordinate-ruler .selected{color:#ffdd72;font-weight:800;background:#17282ee6}
