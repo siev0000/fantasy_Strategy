@@ -75,12 +75,16 @@ function lungeMarker(attackerId, target) {
   }, 30);
 }
 
+function showOutcomePopup(scene, center, message) {
+  const label = scene.add.text(center.x, center.y - 24, message, {
+    fontFamily:"Noto Sans JP, Meiryo, sans-serif", fontSize:"18px", fontStyle:"bold", color:"#bde8ff", stroke:"#102a38", strokeThickness:4
+  }).setOrigin(0.5).setDepth(POPUP_DEPTH);
+  scene.tweens.add({ targets:label, y:center.y-42, alpha:{ from:1, to:0 }, duration:1400, onComplete:() => label.destroy() });
+}
+
 function showDamagePopups(scene, entry, center) {
   if (number(entry?.missCount) > 0 && number(entry?.missCount) >= (Array.isArray(entry?.hits) ? entry.hits.length : 1)) {
-    const label = scene.add.text(center.x, center.y - 24, "Miss", {
-      fontFamily:"Noto Sans JP, Meiryo, sans-serif", fontSize:"18px", fontStyle:"bold", color:"#bde8ff", stroke:"#102a38", strokeThickness:4
-    }).setOrigin(0.5).setDepth(POPUP_DEPTH);
-    scene.tweens.add({ targets:label, y:center.y-42, alpha:{ from:1, to:0 }, duration:1400, onComplete:() => label.destroy() });
+    showOutcomePopup(scene, center, "Miss");
     return;
   }
   const hits = (Array.isArray(entry?.hits) ? entry.hits : []).map((value) => Math.max(0, Math.floor(number(value))));
@@ -146,6 +150,10 @@ function showEntry(entry) {
 }
 
 function showCombatFeedback(detail) {
+  const scene = activeScene(), obstruction = detail?.obstruction;
+  if (scene && obstruction && Number.isFinite(obstruction.x) && Number.isFinite(obstruction.y)) {
+    showOutcomePopup(scene, tileCenter(obstruction.x, obstruction.y), obstruction.message);
+  }
   if (detail?.attackerId && (detail?.entries?.length || 0) > 0) stopCastBlink(detail.attackerId);
   if ((detail?.entries?.length || 0) > 0) lungeMarker(detail?.attackerId, detail?.target);
   for (const entry of Array.isArray(detail?.entries) ? detail.entries : []) showEntry(entry);

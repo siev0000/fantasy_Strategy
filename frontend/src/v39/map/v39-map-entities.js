@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
 import { getFactionSettlements, getSelectedSettlement } from "../../lib/settlement-state.js";
 import { resolveVillageScaleDefinition } from "../../composables/villageCoreUtils.js";
 import {
@@ -14,10 +15,10 @@ import {
 import { resolveFacilityIconArtwork } from "../../lib/facility-icon-artwork.js";
 import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
 import { V39_SPECIALTY_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import defenseFieldImage from "../../../../assets/effect/320×240/シールド.webp";
 
 const STRUCTURE_LAYER_DEPTH = 10;
 const UNIT_LAYER_DEPTH = 12;
-const UNIT_IMAGE_FILL = 0.95;
 const ENEMY_IMAGE_FILL = 0.95;
 const TEST_UNDISCOVERED_ENEMY_ALPHA = 0.4;
 
@@ -130,7 +131,8 @@ function visualUnitSignature(unit) {
     unit.icon, unit.iconName, unit.subIconName,
     unit.currentHp, unit.hp, unit.maxHp, unit.state, unit.condition,
     unit.unitType, profile.mode, profile.unitTypeLabel, profile.memberCount, profile.populationCost,
-    unit.lastStealthBreakTurn, unit.lastStealthBreakReason, unit.lastStealthAttackTurn
+    unit.lastStealthBreakTurn, unit.lastStealthBreakReason, unit.lastStealthAttackTurn,
+    JSON.stringify(unit.shield), JSON.stringify(unit.barrier)
   ].map(value => String(value ?? "")).join("~");
 }
 
@@ -174,6 +176,8 @@ function markerRenderSignature(faction, state) {
     isTestMode() ? "test" : "normal",
     String(window.__v39VisibilityRenderVersion || 0),
     String(markerArtworkVersion),
+    JSON.stringify(window.__v39FieldRuntime?.mapData?.defenseStructures || []),
+    JSON.stringify((faction.units || []).map(unit => [unit.id, unit.shield, unit.barrier])),
     Object.entries(state?.specialtiesByTile || {}).map(([key, value]) => `${key}:${value.name}`).join("|"),
     Object.keys(faction?.exploration?.discoveredSpecialtiesByTile || {}).sort().join("|"),
     [...(Array.isArray(state?.settlements) ? state.settlements : []), activeSettlement].map(visualSettlementSignature).sort().join("|"),
@@ -569,7 +573,7 @@ function addUnitArtwork(scene, marker, unit, diameter) {
     : scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
   const sourceWidth = Math.max(1, Number(image.width) || 1);
   const sourceHeight = Math.max(1, Number(image.height) || 1);
-  const target = diameter * UNIT_IMAGE_FILL;
+  const target = diameter * MAP_ENTITY_SIZE_RULES.unit.imageFill;
   const scale = Math.min(target / sourceWidth, target / sourceHeight);
   image.setScale(scale);
   if (unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0) image.setTint(0x777f82).setAlpha(0.72);
@@ -862,6 +866,56 @@ function drawWanderers(scene, container, groups, activePlayerId) {
   }
 }
 
+function drawDefenseStructures(scene, container, imageContainer) {
+  const { width, height, rowStep } = tileMetrics();
+  const pointsAt = tile => {
+    const center = tileCenter(tile.x, tile.y), left = center.x - width / 2, top = center.y - height / 2;
+    return [{x:center.x,y:top},{x:left+width,y:top+height-rowStep},
+      {x:left+width,y:top+rowStep},{x:center.x,y:top+height},
+      {x:left,y:top+rowStep},{x:left,y:top+height-rowStep}];
+  };
+  const segmentKey = (a,b) => [a,b].map(p=>`${p.x.toFixed(3)},${p.y.toFixed(3)}`).sort().join("/");
+  for (const defense of window.__v39FieldRuntime?.mapData?.defenseStructures || []) {
+    if (defense.hp <= 0) continue;
+    if (!isTestMode() && !defense.tiles.some(tile => window.isV39TileInCurrentVision?.(tile.x,tile.y))) continue;
+    if (defense.kind === "結界") {
+      const rule = MAP_ENTITY_SIZE_RULES.defenseField;
+      const artwork = {src:defenseFieldImage,textureKey:"v39-defense-field-still",
+        sheetFrame:{frameKey:`still-${rule.stillFrame}`,columns:1,rows:rule.sheetRows,column:0,row:rule.stillFrame}};
+      if (ensureArtworkTexture(scene,artwork)) {
+        const imageCenter = resolveV39EffectAreaGeometry(defense.tiles,rule.coverageScale);
+        const diameter = imageCenter.diameter;
+        const image = scene.add.image(imageCenter.x,imageCenter.y,artwork.textureKey,ensureArtworkSheetFrame(scene,artwork))
+          .setName("v39-defense-field-image").setAlpha(rule.alpha).setDisplaySize(diameter,diameter);
+        image.setData("defenseId",defense.id);
+        imageContainer.add(image);
+      }
+    }
+    const graphics = scene.add.graphics().setName("v39-defense-outline");
+    const segments = new Map();
+    for (const tile of defense.tiles) {
+      const points = pointsAt(tile);
+      if (defense.kind === "壁" && !defense.edge) graphics.fillStyle(0x94a7ab,0.5).fillPoints(points,true);
+      for (let index = 0; index < 6; index++) {
+        const a = points[index], b = points[(index+1)%6], key = segmentKey(a,b);
+        if (segments.has(key)) segments.delete(key); else segments.set(key,[a,b]);
+      }
+    }
+    let edges = [...segments.values()];
+    if (defense.edge) {
+      const a = tileCenter(defense.edge.from.x,defense.edge.from.y);
+      const b = tileCenter(defense.edge.to.x,defense.edge.to.y);
+      const mid = { x:(a.x+b.x)/2,y:(a.y+b.y)/2 };
+      edges.sort((aa,bb)=>Math.hypot((aa[0].x+aa[1].x)/2-mid.x,(aa[0].y+aa[1].y)/2-mid.y)
+        - Math.hypot((bb[0].x+bb[1].x)/2-mid.x,(bb[0].y+bb[1].y)/2-mid.y));
+      edges = edges.slice(0,1);
+    }
+    graphics.lineStyle(defense.kind === "壁" ? 5 : 3,defense.kind === "壁" ? 0xd8d5ba : 0x73e0ff,0.95);
+    for (const [a,b] of edges) graphics.lineBetween(a.x,a.y,b.x,b.y);
+    container.add(graphics);
+  }
+}
+
 function renderMarkers() {
   const scene = activeScene();
   const faction = activeFaction();
@@ -880,6 +934,7 @@ function renderMarkers() {
   drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction));
   drawEnemyNests(scene, structureContainer, state?.enemyNests);
   drawSettlementTileMarkers(scene, structureContainer, faction);
+  drawDefenseStructures(scene, constructionLabelContainer, structureContainer);
   drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId);
   drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId);
   drawNeutralVillageUnits(scene, unitContainer, state?.neutralVillages);

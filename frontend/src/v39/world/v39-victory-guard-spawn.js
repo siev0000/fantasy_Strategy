@@ -68,6 +68,7 @@ export function spawnV39VictoryLandmarkGuards(state, mapData) {
   const enemySquads = [...existingSquads];
   const reports = [];
   for (const landmark of Object.values(state?.victoryLandmarksByTile || {})) {
+    if(landmark.peacefulOwnerPlayerId) continue;
     const landmarkKey = text(landmark?.key);
     if (!landmarkKey || existingNests.some(nest => text(nest?.victoryLandmarkKey) === landmarkKey)) continue;
     const definition = guardDefinitionFor(landmark);

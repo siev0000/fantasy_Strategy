@@ -114,12 +114,6 @@ button{color:inherit}
 .skill-top{display:flex;gap:5px;align-items:center}.skill-top strong{font-size:var(--font-size-10)}.skill-top small{margin-left:auto;color:#91d6f5;font-size:var(--font-size-8)}
 .skill-meta{display:flex;gap:4px;flex-wrap:wrap}.skill-meta span{font-size:var(--font-size-7);background:#222d31;border-radius:4px;padding:2px 4px;color:#b7c4c7}
 .skill-bottom{padding:5px;border-top:1px solid #3f4a4e;display:flex;gap:5px}.skill-bottom button{flex:1;min-height:34px}
-.move-confirm{
-  max-width:min(620px,96%);background:rgba(11,19,22,.96);
-  border:1px solid #69bdcc;border-radius:9px;padding:8px;
-  display:none;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;
-  box-shadow:var(--shadow);font-size:var(--font-size-9);pointer-events:auto
-}.move-confirm.show{display:flex}.move-confirm button{min-height:32px;border:1px solid #4d6067;background:#172329;border-radius:6px;padding:0 9px}
 .footer{
   height:auto;min-height:0;background:linear-gradient(180deg,#101a1e,#090f12);
   border-top:1px solid #435158;display:grid;grid-template-rows:32px minmax(0,1fr);z-index:30
@@ -2921,10 +2915,6 @@ html,body{
 
   
 
-  .move-confirm{
-    bottom:8px!important;
-    max-width:calc(100% - 16px);
-  }
 }
 
 /* Landscape smartphone: field left, command panel right */
@@ -3102,7 +3092,7 @@ html,body{
     display:block;
     font-size:var(--font-body);
     line-height:1.15;
-    white-space:normal;overflow-wrap:anywhere;
+    white-space:nowrap;overflow-wrap:normal;
     overflow:visible;
     text-overflow:clip;
   }
@@ -3275,7 +3265,7 @@ html,body{
     display:block;
     font-size:var(--font-body);
     line-height:1.15;
-    white-space:normal;overflow-wrap:anywhere;
+    white-space:nowrap;overflow-wrap:normal;
     overflow:visible;
     text-overflow:clip;
   }
@@ -4155,7 +4145,7 @@ html,body{
 .squad-card.selected{border-color:#7ad4e2!important;background:linear-gradient(180deg,#18333a,#111f24)!important}
 .squad-card-top,.squad-main{min-width:0!important;display:flex!important;align-items:flex-start!important;gap:2px!important}
 .squad-icon{width:28px!important;height:28px!important;font-size:var(--font-size-18)!important;flex:0 0 auto!important}
-.squad-name{font-size:var(--font-body)!important}.squad-pos{font-size:var(--font-size-11)!important}
+.squad-name{font-size:calc(var(--font-body) * var(--v39-text-fit,1))!important}.squad-pos{white-space:nowrap;font-size:calc(var(--font-size-11) * var(--v39-text-fit,1))!important}
 .squad-bars{display:grid!important;grid-template-columns:1fr 1fr!important;gap:5px!important}
 .squad-stat{padding:5px 6px!important;display:grid!important;gap:2px!important}
 .squad-stat span{font-size:var(--font-size-8)!important}.squad-stat b{font-size:var(--font-size-11)!important}
@@ -4356,10 +4346,6 @@ html,body{
     <svg id="map" viewBox="0 0 1180 650" preserveAspectRatio="xMidYMid slice" aria-label="ヘックスマップ"></svg>
     <div class="v39-feedback-lane" id="v39FeedbackLane" aria-live="polite">
       <div class="mode-banner" id="modeBanner"></div>
-      <div class="move-confirm" id="moveConfirm">
-        <span id="moveText">距離 3 / 消費 3 / 残 3</span>
-        <button id="moveCancel">取消</button><button class="primary" id="moveOk">移動確定</button>
-      </div>
       <div class="toast" id="toast"></div>
     </div>
   </main>

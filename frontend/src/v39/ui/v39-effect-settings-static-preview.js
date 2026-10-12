@@ -1,5 +1,7 @@
 import { resolveEffectSheetLayout } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
 import { resolveV39EffectPlaybackDescriptor } from "../combat/v39-effect-player.js";
+import { effectPreviewGeometry } from "./v39-effect-preview-combatants.js";
+import { V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
 
 const CANVAS_ID = "v39-effect-idle-preview";
 const FULL_IMAGE_MODE = "full-image";
@@ -141,13 +143,21 @@ async function drawIdlePreview({ fullImage = false } = {}) {
     const padding = 12;
     const baseScale = Math.min((canvasWidth - padding * 2) / sourceWidth, (canvasHeight - padding * 2) / sourceHeight);
     const settingScale = fullImage ? 1 : Math.max(0.1, Number(descriptor.scaleMultiplierPercent || 100) / 100);
-    const scale = Math.max(0.01, Math.min(baseScale * settingScale * Math.max(0.01, Number(source.sourceScaleMultiplier || 1)), baseScale * 3));
+    const geometry = effectPreviewGeometry(element("v39-effect-preview-stage"), descriptor);
+    const scale = fullImage ? baseScale : geometry.zoom * V39_EFFECT_BASE_SCALE_PERCENT / 100 * settingScale * source.sourceScaleMultiplier;
     const drawWidth = Math.max(1, sourceWidth * scale);
     const drawHeight = Math.max(1, sourceHeight * scale);
-    const x = (canvasWidth - drawWidth) / 2;
-    const y = (canvasHeight - drawHeight) / 2;
+    const x = (fullImage ? canvasWidth / 2 : geometry.x) - drawWidth / 2;
+    const y = (fullImage ? canvasHeight / 2 : geometry.y) - drawHeight / 2;
+    context.save();
+    if (!fullImage) {
+      context.translate(geometry.x, geometry.y);
+      context.rotate(geometry.angleDeg * Math.PI / 180);
+      context.translate(-geometry.x, -geometry.y);
+    }
     context.drawImage(image, 0, 0, sourceWidth, sourceHeight, x, y, drawWidth, drawHeight);
     if (!fullImage) applyFirstFrameColor(context, descriptor, x, y, drawWidth, drawHeight);
+    context.restore();
     canvas.style.display = "block";
     element("v39-effect-preview-stage")?.classList.add("is-ready");
     return true;
@@ -201,6 +211,7 @@ function bind() {
   }
 
   element("v39-effect-setting-source")?.addEventListener("change", () => window.setTimeout(refreshIdlePreview, 0));
+  window.addEventListener("v39:effect-preview-direction-changed", refreshIdlePreview);
   element("v39-effect-playback-mode")?.addEventListener("change", () => window.setTimeout(refreshIdlePreview, 0));
   element("v39-effect-setting-gradient-direction")?.addEventListener("change", () => {
     updateGradientSideLabels();

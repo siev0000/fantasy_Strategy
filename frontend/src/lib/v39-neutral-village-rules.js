@@ -1,6 +1,7 @@
-import { getHexNeighborCoords } from "./hex-grid.js";
+import { getHexNeighborCoords, getHexDistance } from "./hex-grid.js";
+import eventDefaults from "../../../config/v39-event-defaults.json";
 import { getGameDataRows } from "./game-data-registry.js";
-import { V39_NEUTRAL_VILLAGE_BALANCE } from "./v39-gameplay-balance.js";
+import { V39_NEUTRAL_VILLAGE_BALANCE, V39_QUEST_BALANCE } from "./v39-gameplay-balance.js";
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy } from "./v39-economy-rules.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { UNIT_CREATE_MODE_KEYS, resolveUnitCreateMode } from "../composables/militaryUnitUtils.js";
@@ -293,7 +294,7 @@ function updateVillageState(state, village) {
   return { ...state, neutralVillages, settlements };
 }
 
-function changeSettlementResource(state, playerId, kind, amount, resourceKey = "") {
+export function changeV39QuestResource(state, playerId, kind, amount, resourceKey = "") {
   const player = state.players?.find(row => row.id === playerId);
   const settlement = getSelectedSettlement(player?.factionState);
   if (!player || !settlement) return { ok:false, state };
@@ -313,6 +314,8 @@ function changeSettlementResource(state, playerId, kind, amount, resourceKey = "
   });
   return { ok:true, state:{ ...state, players }, resourceName:key };
 }
+
+const changeSettlementResource=changeV39QuestResource;
 
 export function improveV39NeutralVillageRelation(state, playerId, villageId) {
   let village = state?.neutralVillages?.find(row => row.id === villageId);
@@ -392,10 +395,10 @@ function relationGainFromEvent(row) {
     .reduce((sum, effect) => sum + number(effect?.設定?.値), 0);
 }
 
-function createQuest(state, village, playerId, turn, mapData) {
+function createQuest(state, village, playerId, turn, mapData, eventId = "") {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const undeadEnemyIds = [...new Set((village?.naturalUndeadThreat?.enemyIds || []).map(text).filter(Boolean))];
-  if (undeadEnemyIds.length && eventReadyForPlayer(VILLAGE_UNDEAD_QUEST, village, player, turn)) {
+  if ((!eventId||eventId===VILLAGE_UNDEAD_QUEST?.ID) && undeadEnemyIds.length && eventReadyForPlayer(VILLAGE_UNDEAD_QUEST, village, player, turn)) {
     return {
       id:`${village.id}-${playerId}-T${turn}`,
       eventId:text(VILLAGE_UNDEAD_QUEST.ID),
@@ -408,6 +411,26 @@ function createQuest(state, village, playerId, turn, mapData) {
       completed:false
     };
   }
+  const animalRow=VILLAGE_EVENT_ROWS.find(row=>row.ID==="VILLAGE_FIELD_EXTERMINATE_ANIMAL");
+  if ((!eventId||eventId===animalRow?.ID) && eventReadyForPlayer(animalRow,village,player,turn)) {
+    const setting=animalRow.生成設定||{};
+    const targets=(state.enemies||[]).filter(enemy=>number(enemy.currentHp??enemy.hp)>0 && enemy.state!=="死亡" && enemy.aggressive===true
+      && !enemy.victoryGuard && (!enemy.worldId||enemy.worldId==="surface")
+      && getHexDistance(village,enemy)<=number(setting.走査範囲)
+      && (enemy.tags?.includes?.("動物") || eventDefaults.animalRaces.includes(text(enemy.race||enemy.raceName||enemy.species))))
+      .sort((a,b)=>getHexDistance(village,a)-getHexDistance(village,b)||text(a.id).localeCompare(text(b.id)))
+      .slice(0,Math.max(1,integer(setting.最大対象数,1)));
+    if(targets.length>=Math.max(1,integer(setting.最低対象数,1))) return {id:`${village.id}-${playerId}-T${turn}`,eventId:animalRow.ID,
+      type:"hunt",label:animalRow.名前,required:targets.length,targetEnemyIds:targets.map(enemy=>enemy.id),accepted:true,createdTurn:turn,completed:false};
+  }
+  const fallback=eventDefaults.village.find(row=>row.ID===eventId);
+  if(fallback) {
+    const last=integer(village.eventCompletedTurnByPlayerId?.[playerId]?.[eventId]);
+    if(last && turn<last+V39_QUEST_BALANCE.villageQuestCooldown) return null;
+    return {...fallback,id:`${village.id}-${playerId}-T${turn}`,eventId: fallback.ID,type:"delivery",label:fallback.名前,
+      required:V39_QUEST_BALANCE.villageDeliveryAmount,accepted:true,createdTurn:turn,completed:false};
+  }
+  if(eventId && eventId!==VILLAGE_SHORTAGE_SUPPLY_QUEST?.ID) return null;
   const shortage = resolveVillageShortage(village, mapData);
   if (!shortage || !eventReadyForPlayer(VILLAGE_SHORTAGE_SUPPLY_QUEST, village, player, turn)) return null;
   const reward = resolveVillageReward(village, mapData, VILLAGE_SHORTAGE_SUPPLY_QUEST);
@@ -428,27 +451,37 @@ function createQuest(state, village, playerId, turn, mapData) {
   };
 }
 
-export function acceptV39NeutralVillageQuest(state, playerId, villageId, mapData = null) {
+export function listV39NeutralVillageQuests(state,playerId,villageId,mapData) {
+  const village=state.neutralVillages?.find(row=>row.id===villageId);
+  if(!village || (state.activeWorldId && state.activeWorldId!=="surface")) return [];
+  const turn=Math.max(1,integer(state.timeline?.turnNumber,1));
+  return [...new Set([...VILLAGE_EVENT_ROWS.filter(row=>row.イベント種別==="依頼").map(row=>row.ID),...eventDefaults.village.map(row=>row.ID)])]
+    .map(id=>createQuest(state,village,playerId,turn,mapData,id)).filter(Boolean);
+}
+
+export function acceptV39NeutralVillageQuest(state, playerId, villageId, mapData = null, eventId = "") {
+  if (state.activeWorldId && state.activeWorldId!=="surface") return {ok:false,state,reason:"地上の一般村で依頼を受注してください"};
   const source = state?.neutralVillages?.find(row => row.id === villageId);
   if (!source) return { ok:false, reason:"一般村がありません", state };
   if (source?.questsByPlayerId?.[playerId]?.accepted && !source.questsByPlayerId[playerId].completed) {
     return { ok:false, reason:"既に依頼を受注しています", state };
   }
   const turn = Math.max(1, integer(state?.timeline?.turnNumber, 1));
-  const quest = createQuest(state, source, playerId, turn, mapData);
+  const quest = createQuest(state, source, playerId, turn, mapData,eventId);
   if (!quest) return { ok:false, reason:"現在受注できる依頼がありません", state };
   const village = { ...source, questsByPlayerId:{ ...(source.questsByPlayerId || {}), [playerId]:quest } };
   return { ok:true, state:updateVillageState(state, village), village, quest:village.questsByPlayerId[playerId], message:"依頼を受注しました" };
 }
 
 export function completeV39NeutralVillageQuest(state, playerId, villageId) {
+  if (state.activeWorldId && state.activeWorldId!=="surface") return {ok:false,state,reason:"地上の一般村で依頼を報告してください"};
   const source = state?.neutralVillages?.find(row => row.id === villageId);
   const quest = source?.questsByPlayerId?.[playerId];
   if (!source || !quest?.accepted || quest.completed) return { ok:false, reason:"受注中の依頼がありません", state };
   let working = state;
   if (quest.type === "hunt") {
     const livingTargetIds = new Set((state?.enemies || [])
-      .filter(enemy => number(enemy?.hp ?? enemy?.currentHp) > 0 && text(enemy?.state) !== "死亡")
+      .filter(enemy => number(enemy?.currentHp ?? enemy?.hp) > 0 && text(enemy?.state) !== "死亡")
       .map(enemy => text(enemy?.id)));
     const remaining = (quest.targetEnemyIds || []).filter(id => livingTargetIds.has(text(id)));
     if (remaining.length) return { ok:false, reason:`討伐対象が残っています (${remaining.length}/${quest.required})`, state };
@@ -463,7 +496,7 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId) {
     working = reward.state;
   }
   const row = VILLAGE_EVENT_ROWS.find(item => text(item?.ID) === text(quest.eventId)) || null;
-  const relationGain = relationGainFromEvent(row);
+  const relationGain = row ? relationGainFromEvent(row) : V39_QUEST_BALANCE.villageRelationGain;
   const completedTurn = integer(state?.timeline?.turnNumber, 1);
   let village = changeRelation(source, playerId, relationGain);
   village = {

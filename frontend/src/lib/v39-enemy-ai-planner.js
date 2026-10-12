@@ -7,6 +7,9 @@ import { DEFAULT_MAGIC_CAST_TURNS, parseV39TurnCount, remainingV39Turns, resolve
 import { mergeV39EnemyExplorationInformation, normalizeV39EnemyExplorerState } from "./v39-enemy-exploration.js";
 import { resolveV39EnemyFleeHpRate, V39_ENEMY_AI_CONFIG } from "./v39-enemy-ai-config.js";
 import { resolveV39BaseMoveApCost, resolveV39MovementTiles, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
+import { V39_CORPSE_EATING_BALANCE } from "./v39-gameplay-balance.js";
+import { canV39UnitEatCorpses, v39GroundCorpseAmount, consumeV39GroundCorpse } from "./v39-corpse-eating-rules.js";
+import { getGameDataRows } from "./game-data-registry.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -110,6 +113,14 @@ function targetsFor(state, enemy = null) {
 }
 
 function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
+  if(enemy.victoryGuard && enemy.victoryLandmarkKey) {
+    const progress=state.victoryLandmarksByTile?.[enemy.victoryLandmarkKey]?.guardianByPlayerId||{};
+    const guards=(state.enemies||[]).filter(unit=>unit.victoryLandmarkKey===enemy.victoryLandmarkKey);
+    const peacefulIds=new Set((state.players||[]).filter(player=>progress[player.id]?.quest
+      && !guards.some(guard=>player.factionState?.units?.some(unit=>unit.id===guard.aggroTargetUnitId)))
+      .flatMap(player=>player.factionState?.units||[]).map(unit=>unit.id));
+    targets=targets.filter(target=>!peacefulIds.has(target.id)||target.id===enemy.aggroTargetUnitId);
+  }
   const nest = nestFor(state, enemy);
   const center = territoryCenter(enemy, nest);
   const limit = pursuitLimit(enemy, nest);
@@ -130,17 +141,18 @@ function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
     if (!targetsByTile.has(key)) targetsByTile.set(key, []);
     targetsByTile.get(key).push(target);
   }
-  const enemyScout = resolveDetectionScoutValue(enemy);
+  const enemyScout = resolveDetectionScoutValue(enemy,mapData);
   const visible = [];
   for (const group of targetsByTile.values()) {
     if(!hasV39CaveLineOfSight(mapData,enemy,group[0]))continue;
     const targetDistance = distance(enemy, group[0]);
-    const targetSense = resolveDetectionGroupSense(group, { turnNumber });
+    const targetSense = resolveDetectionGroupSense(group, { turnNumber,mapData });
     if (!isDetectedByScout({
       scout:enemyScout,
       stealth:targetSense.stealth,
       distance:targetDistance,
       mapData,
+      from:enemy,to:group[0],visionRange:visionRadius(enemy,mapData),
       inRange:targetDistance <= visionRadius(enemy, mapData)
     })) continue;
     visible.push(...group);
@@ -197,6 +209,28 @@ function movePlan(state, mapData, enemy, target, turnNumber, mode, stopDistance 
 
 function waitPlan(enemy, turnNumber, enemyPatch = {}) {
   return { type:"wait", enemyId:text(enemy.id), turnNumber, enemyPatch };
+}
+
+function corpseFoodTargetFor(state, enemy, mapData, turn, target) {
+  if (!canV39UnitEatCorpses(enemy, getGameDataRows("クラス")) || target || enemy.fleeState?.active
+    || enemy.territoryAssaultOnly || enemy.lastCorpseMealTurn >= turn
+    || number(enemy.ap) < V39_CORPSE_EATING_BALANCE.apCost
+    || state.enemyCombatRuntime?.pendingActionsByEnemyId?.[enemy.id]) return null;
+  const threats = targetsFor(state, enemy);
+  if (threats.some(unit => unit.id === enemy.aggroTargetUnitId && distance(enemy,unit)<=visionRadius(enemy,mapData))) return null;
+  if (threats.some(unit => distance(enemy,unit) <= V39_CORPSE_EATING_BALANCE.dangerDistanceTiles
+    && hasV39CaveLineOfSight(mapData,enemy,unit) && isDetectedByScout({
+      scout:resolveDetectionScoutValue(enemy,mapData),
+      stealth:resolveDetectionGroupSense([unit],{turnNumber:turn,mapData}).stealth,
+      distance:distance(enemy,unit),mapData,from:enemy,to:unit,
+      visionRange:visionRadius(enemy,mapData),inRange:distance(enemy,unit)<=visionRadius(enemy,mapData)
+    }))) return null;
+  return Object.entries(state.groundLootByTile || {})
+    .filter(([, loot]) => v39GroundCorpseAmount(loot) >= V39_CORPSE_EATING_BALANCE.resourceAmount)
+    .map(([key]) => { const [x,y]=key.split(",").map(Number);return {key,x,y,targetDistance:distance(enemy,{x,y})}; })
+    .filter(tile => Number.isInteger(tile.x) && Number.isInteger(tile.y) && tile.targetDistance<=visionRadius(enemy,mapData)
+      && canUnitEnterV39Tile(mapData,tile.x,tile.y,enemy) && hasV39CaveLineOfSight(mapData,enemy,tile))
+    .sort((a,b)=>a.targetDistance-b.targetDistance||a.key.localeCompare(b.key))[0] || null;
 }
 
 function lootTargetFor(state, enemy, mapData) {
@@ -301,12 +335,13 @@ function observeForExplorer(state, mapData, enemy, turnNumber) {
   }
   const visibleUnits = [];
   for (const group of unitsByTile.values()) {
-    const targetSense = resolveDetectionGroupSense(group, { turnNumber });
+    const targetSense = resolveDetectionGroupSense(group, { turnNumber,mapData });
     if (isDetectedByScout({
-      scout:resolveDetectionScoutValue(enemy),
+      scout:resolveDetectionScoutValue(enemy,mapData),
       stealth:targetSense.stealth,
       distance:distance(enemy, group[0]),
       mapData,
+      from:enemy,to:group[0],visionRange:visionRadius(enemy,mapData),
       inRange:true
     })) visibleUnits.push(...group);
   }
@@ -408,6 +443,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber, mapData = null) 
   const targetDistance = target ? distance(enemy, target) : null;
   const attackSkills = target ? attackSkillsFor(state, enemy, target, turnNumber, mapData) : [];
   const lootTarget = lootTargetFor(state, enemy, mapData);
+  const corpseFood = corpseFoodTargetFor(state, enemy, mapData, turnNumber, target);
   const explorer = normalizeV39EnemyExplorerState(enemy?.explorationState);
   const rebelTarget = rebelTerritoryTargetFor(state, enemy);
   const militaryLevel = nest ? Math.max(1, integer(nest?.militaryLevel ?? nest?.軍事Lv, 1)) : 0;
@@ -423,6 +459,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber, mapData = null) 
   else if (!nest && hpRate <= fleeThreshold && enemy?.fleeDecisionMade !== true) { decision="逃走予定"; reason=`HP率が逃走基準${Math.round(fleeThreshold*100)}%以下です`; }
   else if (target && attackSkills.length) { decision=`攻撃: ${text(chooseDeterministically(attackSkills, enemy.id, turnNumber)?.名前, "攻撃")}`; reason=`${text(target.name, target.id)}が射程内、AP・CT条件を満たします`; }
   else if (target) { decision=targetDistance > 1 ? "標的へ追跡" : "攻撃できず待機"; reason=`${text(target.name, target.id)}を認識中ですが、射程・AP・CTを満たす行動Aがありません`; }
+  else if (corpseFood) { decision=corpseFood.targetDistance<=1 ? "死体資源を食べる" : "死体資源へ移動"; reason=`安全を確認して ${corpseFood.key} の死体資源を食べます`; }
   else if (lootTarget) { decision=lootTarget.targetDistance === 0 ? "地上物資を回収" : "地上物資へ移動"; reason=`索敵内の残留品 ${lootTarget.key} を確認しています`; }
   else if (explorer.active && explorer.mode === "raid") { decision="食料領土を襲撃"; reason=`報告済みの食料候補 ${explorer.targetTileKey} へ向かいます`; }
   else if (explorer.active && explorer.mode === "return") { decision="探索報告のため帰還"; reason="食料候補の発見または食料不足解消により所属巣へ戻ります"; }
@@ -438,7 +475,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber, mapData = null) 
       && V39_ENEMY_AI_CONFIG.passiveRetaliatesWhenAttacked
       && !!text(enemy?.aggroTargetUnitId),
     decision, reason,
-    visionRadius:visionRadius(enemy, mapData), scout:resolveDetectionScoutValue(enemy),
+    visionRadius:visionRadius(enemy, mapData), scout:resolveDetectionScoutValue(enemy,mapData),
     targetId:text(target?.id), targetName:text(target?.name, target?.id), targetDistance,
     aggroTargetUnitId:text(enemy?.aggroTargetUnitId), attackSkillNames:attackSkills.map(row => text(row?.名前)).filter(Boolean),
     hasNest:!!nest, nestId:text(nest?.id), nestName:text(nest?.name, nest?.id), nestDistance:nest ? distance(enemy, nest) : null,
@@ -507,6 +544,12 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
 
   const target = action ? null : selectEnemyTarget(state, enemy, targets, turnNumber, mapData);
   if (!action && !target) {
+    const food = corpseFoodTargetFor(state, enemy, mapData, turnNumber, target);
+    if (food) action = food.targetDistance<=1
+      ? { type:"eat-corpse",enemyId:id,turnNumber,tileKey:food.key,requiresSync:true }
+      : movePlan(state,mapData,enemy,food,turnNumber,"toward",1);
+  }
+  if (!action && !target) {
     const loot = lootTargetFor(state, enemy, mapData);
     if (loot?.targetDistance === 0) action = { type:"recover-loot", enemyId:id, turnNumber, tileKey:loot.key, requiresSync:true };
     else if (loot) action = movePlan(state, mapData, enemy, loot, turnNumber, "toward", 0);
@@ -545,6 +588,7 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
     move:inspection?.decision === "縄張り内を徘徊" ? "縄張り内を徘徊" : inspection?.decision,
     wait:"攻撃できず待機",
     "recover-loot":"地上物資を回収",
+    "eat-corpse":"死体資源を食べる",
     train:"訓練",
     "attack-territory":`領土攻撃: ${text(action?.skillName)}`,
     "queue-attack":`発動開始: ${text(action?.skillName)}`,
@@ -573,6 +617,14 @@ export function applyEnemyPlanToSimulation(state, plan) {
   if (!state || !plan) return state;
   const id = text(plan.enemyId);
   if (!(state.enemies || []).some(enemy => text(enemy?.id) === id && isAliveEnemyAiUnit(enemy))) return state;
+  if (plan.type === "eat-corpse") {
+    const enemy = state.enemies.find(unit=>unit.id===id);
+    if (!canV39UnitEatCorpses(enemy,getGameDataRows("クラス"))) return state;
+    const patch = consumeV39GroundCorpse(state,id,plan.tileKey,plan.turnNumber);
+    if (!patch) return state;
+    return {...state,...patch,enemyCombatRuntime:{...state.enemyCombatRuntime,
+      lastActionTurnByEnemyId:{...state.enemyCombatRuntime?.lastActionTurnByEnemyId,[id]:plan.turnNumber}}};
+  }
   const runtime = {
     ...(state.enemyCombatRuntime || {}),
     pendingActionsByEnemyId:{ ...(state.enemyCombatRuntime?.pendingActionsByEnemyId || {}) },

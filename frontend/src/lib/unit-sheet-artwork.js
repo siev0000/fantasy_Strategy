@@ -5,6 +5,29 @@ import {
   resolveFactionUnitArtworkSlot
 } from "../constants/factionUnitArtwork.js";
 import { RACE_CLASS_NAME_MAP } from "../constants/unitCommon.js";
+import { getGameDataRows } from "./game-data-registry.js";
+import { parseV39ClassCondition } from "./v39-class-rules.js";
+
+export function resolveUnitBaseArtworkClass(unit = {}) {
+  const className = text(unit.className || unit.class || unit.クラス);
+  const rows = getGameDataRows("クラス");
+  const visited = new Set();
+  // 上位職に専用画像を要求せず、前提職をたどって基本職の画像を共有する。
+  function resolve(name) {
+    if (!name || visited.has(name)) return "";
+    visited.add(name);
+    if (resolveFactionUnitArtworkSlot(name)) return name;
+    const row = rows.find(row => row.名前 === name);
+    for (const condition of String(row?.条件クラス || "").split("/")) {
+      const base = resolve(parseV39ClassCondition(condition)?.token);
+      if (base) return base;
+    }
+    return "";
+  }
+  return resolve(className)
+    || Object.keys(unit.prerequisiteClassLevels || {}).map(resolve).find(Boolean)
+    || className;
+}
 
 const rawUnitSheetModules = import.meta.glob(
   "../../../assets/images/units/1ファイルまとめ/*.{png,jpg,jpeg,webp,avif,gif}",
@@ -83,7 +106,7 @@ function positionPercent(index, count) {
 export function resolveFactionUnitSheetFrame(unit = {}) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
   const className = text(unit?.className || unit?.class || unit?.クラス);
-  const slot = resolveFactionUnitArtworkSlot(className);
+  const slot = resolveFactionUnitArtworkSlot(resolveUnitBaseArtworkClass(unit));
   const sheet = resolveRaceSheet(raceName);
 
   if (!slot || !sheet) return null;

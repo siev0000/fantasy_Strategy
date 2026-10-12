@@ -14,6 +14,8 @@ import { V39_ENEMY_AI_CONFIG } from "../../lib/v39-enemy-ai-config.js";
 import { resolveV39EnemySquadCargoStatus } from "../../lib/v39-logistics-state.js";
 import { grantV39UnitExperience } from "../../lib/v39-unit-experience.js";
 import EnemyAiWorker from "../../workers/v39-enemy-ai-worker.js?worker";
+import { getGameDataRows } from "../../lib/game-data-registry.js";
+import { canV39UnitEatCorpses } from "../../lib/v39-corpse-eating-rules.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -143,7 +145,15 @@ function applyEnemyPlan(plan, presentationEvents) {
   if (!isAliveEnemyAiUnit(enemy)) return false;
   const id = text(enemy.id);
 
-  if (["move", "wait", "queue-attack"].includes(plan.type)) {
+  if (plan.type === "eat-corpse") {
+    // Workerの計画後にも再判定し、戦闘状態や他個体による消費の変化を検証する。
+    const checked = planNextEnemyAction(before,window.__v39FieldRuntime?.mapData,plan.turnNumber);
+    if (checked?.type !== "eat-corpse" || checked.enemyId !== id || checked.tileKey !== plan.tileKey) return false;
+    const simulated = applyEnemyPlanToSimulation(before,plan);
+    if (simulated === before) return false;
+    patchEnemyTurnState({enemies:simulated.enemies,groundLootByTile:simulated.groundLootByTile,
+      enemyCombatRuntime:simulated.enemyCombatRuntime},"enemy-corpse-eating");
+  } else if (["move", "wait", "queue-attack"].includes(plan.type)) {
     const simulated = applyEnemyPlanToSimulation(before, plan);
     patchEnemyTurnState({ enemies:simulated.enemies, enemyCombatRuntime:simulated.enemyCombatRuntime }, `enemy-action-${plan.type}`);
     if (plan.type === "move") {
@@ -192,7 +202,7 @@ function applyEnemyPlan(plan, presentationEvents) {
       presentationEvents.push({
         type:"attack", attackerId:id, targetUnitId:text(plan.targetUnitId),
         from:{ x:integer(enemy.x), y:integer(enemy.y) }, target:result.detail?.target,
-        skillName:text(plan.skillName), effectName:text(plan.skillRow?.アニメ, "斬撃"), skillRow:plan.skillRow,
+        skillName:text(plan.skillName), effectName:text(plan.skillRow?.アニメ), skillRow:plan.skillRow, attacker:enemy,
         result:result.detail, combatLogs:result.combatLogs,
         visible:window.isV39TileInCurrentVision?.(result.detail?.target?.x, result.detail?.target?.y) === true
       });
@@ -245,7 +255,7 @@ function resolvePendingAction(turnNumber, presentationEvents) {
   window.dispatchEvent(new CustomEvent("v39:cast-ended", { detail:{ unitId:text(pending.enemyId), enemyAction:true, reason:result.resolved ? "resolved" : "cancelled" } }));
   if (result.resolved && enemy) presentationEvents.push({
     type:"attack", attackerId:text(enemy.id), targetUnitId:text(pending.targetUnitId), from:{ x:integer(enemy.x), y:integer(enemy.y) },
-    target:result.detail?.target, skillName:text(pending.skillName), effectName:text(pending.skillRow?.アニメ, "斬撃"), skillRow:pending.skillRow, result:result.detail, combatLogs:result.combatLogs,
+    target:result.detail?.target, skillName:text(pending.skillName), effectName:text(pending.skillRow?.アニメ), skillRow:pending.skillRow, attacker:enemy, result:result.detail, combatLogs:result.combatLogs,
     visible:window.isV39TileInCurrentVision?.(result.detail?.target?.x, result.detail?.target?.y) === true
   });
   if (enemy && inspection) appendEnemyAiDecisionLog(enemy, inspection, {
@@ -350,7 +360,9 @@ function compactAiUnit(unit, enemySide = false) {
     fleeState:unit?.fleeState,
     aggroTargetUnitId:unit?.aggroTargetUnitId,
     explorationState:unit?.explorationState,
-    foodResourceKeys:resolveV39ConsumableFoodKeys(unit?.race, FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS)
+    foodResourceKeys:resolveV39ConsumableFoodKeys(unit?.race, FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS),
+    canEatCorpse:canV39UnitEatCorpses(unit,getGameDataRows("クラス")),
+    lastCorpseMealTurn:unit?.lastCorpseMealTurn
   };
 }
 

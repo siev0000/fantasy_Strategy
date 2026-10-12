@@ -5,7 +5,7 @@ const browser=await chromium.launch({headless:true});
 const page=await browser.newPage({viewport:{width:1000,height:800}}), errors=[];
 page.on("pageerror",error=>errors.push(String(error)));
 try {
-  await page.goto("http://127.0.0.1:3021",{waitUntil:"networkidle"});
+  await page.goto(process.env.V39_BASE_URL || "http://127.0.0.1:3022",{waitUntil:"networkidle"});
   await page.waitForFunction(()=>typeof window.spawnV39Enemies==="function");
   const report=await page.evaluate(async()=>{
     window.startV39LocalSession(1,{playMode:"single-test"});
@@ -23,7 +23,8 @@ try {
       data.grid[y][x]="平地"; data.heightLevelMap[y][x]=0; data.specialMap[y][x]="";
       if(data.reliefMap?.[y])data.reliefMap[y][x]="";
       if(data.lavaMap?.[y])data.lavaMap[y][x]=false;
-      data.strongMonsterMap[y][x]=true;
+      // 強敵地点を間引き、全1296マスの強敵＋配下描画でテストを過負荷にしない。
+      data.strongMonsterMap[y][x]=x%4===0 && y%4===0;
       if(data.strongMonsterInfoMap?.[y])data.strongMonsterInfoMap[y][x]=null;
     }
     window.setV39GameState({enemies:[],enemyNests:[],enemySquads:[],victoryLandmarksByTile:{}});
@@ -32,7 +33,8 @@ try {
     const {rowStatusVector}=await import("http://127.0.0.1:3022/src/composables/unitStatusUtils.js");
     const {STATUS_GROWTH_FIELDS}=await import("http://127.0.0.1:3022/src/constants/unitCommon.js");
     const {resolveMonsterSheetArtwork}=await import("http://127.0.0.1:3022/src/lib/monster-sheet-artwork.js");
-    const bosses=enemies.filter(enemy=>enemy.strongEnemy);
+    const {getStrongAnimalClassCandidates}=await import("http://127.0.0.1:3022/src/lib/animal-artwork-config.js");
+    const bosses=enemies.filter(enemy=>enemy.strongEnemy && getStrongAnimalClassCandidates(enemy.race).length);
     const checks=bosses.map(enemy=>{
       const baseline=window.deriveV39CharacterFromRaceClass({...enemy,level:enemy.level-enemy.strongAnimalClassLevel,strongAnimalClassName:"",strongAnimalClassLevel:0});
       const derived=window.deriveV39CharacterFromRaceClass(JSON.parse(JSON.stringify(enemy)));
@@ -47,12 +49,15 @@ try {
     const horseVariants=["エンジェル","デヴィル"].map(name=>checks.find(enemy=>enemy.race==="ホース"&&enemy.extra===name));
     const sampleIds=horseVariants.map((variant,index)=>enemies.find(enemy=>enemy.race==="ホース"&&enemy.strongAnimalClassName===["エンジェル","デヴィル"][index])?.id);
     const normal=enemies.filter(enemy=>!enemy.strongEnemy);
-    return {checks,horseVariants,sampleIds,normalHasExtra:normal.some(enemy=>enemy.strongAnimalClassName),normalCount:normal.length};
+    return {checks,horseVariants,sampleIds,normalHasExtra:normal.some(enemy=>enemy.strongAnimalClassName),normalCount:normal.length,
+      nonAnimalHasExtra:enemies.some(enemy=>!getStrongAnimalClassCandidates(enemy.race).length && enemy.strongAnimalClassName)};
   });
   assert.ok(report.checks.length>0);
+  for (const name of ["ソルアニマル", "ムーンアニマル"]) assert.ok(report.checks.some(enemy => enemy.extra === name), `${name} is drawn for strong animals`);
   assert.ok(report.checks.every(enemy=>enemy.correct&&enemy.sameBaseLevels&&enemy.extraLv>0&&enemy.baseLv+enemy.extraLv===enemy.level));
   assert.ok(report.checks.every(enemy=>enemy.race==="ホース"||!['エンジェル','デヴィル'].includes(enemy.extra)));
   assert.equal(report.normalHasExtra,false);
+  assert.equal(report.nonAnimalHasExtra,false);
   assert.ok(report.horseVariants.every(Boolean),"天使・悪魔の馬がどちらも抽選される");
   assert.equal(report.horseVariants[0].slot,8);
   assert.equal(report.horseVariants[1].slot,9);

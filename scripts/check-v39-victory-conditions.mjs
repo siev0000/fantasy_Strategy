@@ -45,7 +45,7 @@ try {
     if (!completed.victory?.completed || completed.victory.winnerPlayerId !== playerId) {
       throw new Error(`勝利条件が反映されません: ${JSON.stringify(completed.victory)}`);
     }
-    const banner = document.getElementById("v39-turn-banner")?.textContent || "";
+    const banner = window.getV39SideRailMessages().filter(row=>row.channel==="notification").at(-1)?.message || "";
     if (!banner.includes("勝利")) throw new Error(`勝利通知が表示されません: ${banner}`);
     const saved = window.createV39SaveData?.();
     if (saved?.gameState?.victory?.winnerPlayerId !== playerId) throw new Error("勝利状態がセーブへ保存されません");

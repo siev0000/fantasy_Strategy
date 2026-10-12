@@ -1,4 +1,5 @@
 import { getHexNeighborCoords } from "./hex-grid.js";
+import { isV39FogVisionAllowed } from "./v39-fog-rules.js";
 import { facilityDefinitions } from "./v39-economy-rules.js";
 import { getFactionSettlements } from "./settlement-state.js";
 import {
@@ -46,12 +47,13 @@ function addVisionRange(mapData, sourceX, sourceY, range, visible, detectionByTi
   let index = 0;
   while (index < queue.length) {
     const current = queue[index++];
+    if (!isV39FogVisionAllowed(mapData,{x:sx,y:sy},current,maxDistance,current.distance)) continue;
     const key = coordKey(current.x, current.y);
     visible.add(key);
     const previous = Number(detectionByTile.get(key));
     detectionByTile.set(key, Math.max(
       Number.isFinite(previous) ? previous : Number.NEGATIVE_INFINITY,
-      resolveEffectiveScoutAtDistance(scoutValue, current.distance, mapData)
+      resolveEffectiveScoutAtDistance(scoutValue, current.distance, mapData,{x:sx,y:sy},current)
     ));
     if (current.distance >= maxDistance) continue;
     for (const neighbor of getHexNeighborCoords(width, height, current.x, current.y, mapData?.worldWrapEnabled === true)) {
@@ -75,7 +77,7 @@ export function collectV39FactionVision(state, playerId, mapData) {
   }
   for (const units of unitsByTile(faction.units).values()) {
     const lead = units[0];
-    const sense = resolveDetectionGroupSense(units);
+    const sense = resolveDetectionGroupSense(units,{mapData});
     const range = units.reduce((max, unit) => Math.max(max, resolveV39UnitVisionRange(unit, mapData)), V39_UNIT_VISION_BASE_RANGE);
     addVisionRange(mapData, lead.x, lead.y, range, visible, detectionByTile, sense.scout);
   }
@@ -117,7 +119,7 @@ export function collectV39DetectedFactions(state, observerPlayerId, mapData, tur
     for (const [key, units] of unitsByTile(target?.factionState?.units).entries()) {
       if (!visible.has(key)) continue;
       const scout = Number(detectionByTile.get(key));
-      if (!Number.isFinite(scout) || scout < resolveDetectionGroupSense(units, { turnNumber:turn }).stealth) continue;
+      if (!Number.isFinite(scout) || scout < resolveDetectionGroupSense(units, { turnNumber:turn,mapData }).stealth) continue;
       const [x, y] = key.split(",").map(Number);
       latest = detectedFactionRecord(target, x, y, "unit", turn);
       break;

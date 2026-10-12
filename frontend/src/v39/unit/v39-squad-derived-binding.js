@@ -1,12 +1,8 @@
-import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import { renderV39UnitSkills } from "./v39-unit-skills.js";
 import { resolveV39BaseMoveApCost } from "../../lib/v39-gameplay-balance.js";
 import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
-import { getIconSrcByName } from "../../lib/icon-library.js";
-import { resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "../../lib/v39-combat-engine.js";
-import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
-import { resolveV39UnitExpDisplay } from "../../lib/v39-unit-experience.js";
-import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
-import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
+import { renderV39UnitCard } from "./v39-unit-card.js";
+import { updateV39UnitAbility } from "./v39-unit-detail.js";
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -57,15 +53,12 @@ function apValues(unit) {
   return { current, max };
 }
 
-function gauge(kind, label, values) {
-  const pct = clampPercent(values.current, values.max);
-  return `<div class="v39-card-vital ${kind}">
-    <span class="v39-card-vital-label">${label}</span>
-    <span class="v39-card-vital-track">
-      <i class="v39-card-vital-fill" style="width:${pct.toFixed(2)}%"></i>
-      <b class="v39-card-vital-value">${values.current}/${values.max}</b>
-    </span>
-  </div>`;
+function defenseDisplay(unit) {
+  return [["shield", "盾"], ["barrier", "障壁"]].flatMap(([kind, label]) => {
+    const value = unit?.[kind];
+    if (!value || !(Number(value.maximum) > 0) || (kind === "barrier" && !(Number(value.remaining) > 0))) return [];
+    return [{ kind, label, remaining:Math.max(0, num(value.remaining, 0)), percent:clampPercent(value.remaining, value.maximum) }];
+  });
 }
 
 function roleText(unit) {
@@ -81,63 +74,6 @@ function movementValue(unit) {
   return unit?.movement ?? unit?.status?.移動 ?? unit?.move ?? unit?.moveRange ?? unit?.移動 ?? "-";
 }
 
-function statusValue(unit, key) {
-  const adjusted = applyV39TerrainModifiers(unit, window.__v39FieldRuntime?.mapData);
-  const value = adjusted?.status?.[key];
-  if (!Number.isFinite(Number(value))) return "-";
-  const modifier = num(adjusted?.terrainModifiers?.[key], 0);
-  return modifier ? `${Number(value)} (${modifier > 0 ? "+" : ""}${modifier})` : Number(value);
-}
-
-function skillEntries(unit) {
-  const source = unit?.skillLevels && typeof unit.skillLevels === "object" ? unit.skillLevels : {};
-  return Object.entries(source)
-    .map(([name, value]) => [name, Number(value)])
-    .filter(([, value]) => Number.isFinite(value) && value !== 0);
-}
-
-function resistanceEntries(unit) {
-  const source = unit?.resistances && typeof unit.resistances === "object" ? unit.resistances : {};
-  return RESISTANCE_FIELDS
-    .map(key => [key, Number(source?.[key])])
-    .filter(([, value]) => Number.isFinite(value) && value !== 0);
-}
-
-function renderResistance(unit) {
-  const host = document.getElementById("detailResistanceList");
-  if (!(host instanceof HTMLElement)) return;
-  const rows = resistanceEntries(unit);
-  if (!rows.length) {
-    host.innerHTML = '<div class="squad-empty">耐性データなし</div>';
-    return;
-  }
-  host.innerHTML = rows.map(([key, value]) => {
-    const iconSrc = getResistanceIconSrc(key);
-    const tone = resistanceValueTone(value);
-    return `<button type="button" class="v39-resistance-indicator ${tone}" data-v39-resistance-label="${escapeHtml(key)}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}">
-      ${iconSrc ? `<img src="${escapeHtml(iconSrc)}" alt="" aria-hidden="true" class="v39-resistance-icon">` : '<span class="v39-resistance-icon-fallback" aria-hidden="true">?</span>'}
-      <b>${escapeHtml(formatResistanceValue(value))}</b>
-    </button>`;
-  }).join("");
-}
-
-function techniqueEntries(unit) {
-  const normal = Array.isArray(unit?.techniques) ? unit.techniques.filter(Boolean) : [];
-  const rows = [...normal];
-  const names = new Set(normal.map(row => text(row?.name ?? row?.名前 ?? row?.source?.名前)).filter(Boolean));
-  for (const row of getV39UnitTestTechniques(unit)) {
-    const name = text(row?.name ?? row?.名前 ?? row?.source?.名前);
-    if (!name || names.has(name)) continue;
-    names.add(name);
-    rows.push(row);
-  }
-  return rows;
-}
-
-function techniqueSource(technique) {
-  return technique?.source && typeof technique.source === "object" ? technique.source : technique;
-}
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -145,50 +81,6 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-const BODY_ATTACK_METHODS = new Set(["素手", "角", "牙", "爪", "翼", "尾", "吐息", "針"]);
-
-function techniqueAttackCategory(source = {}) {
-  const method = text(source?.攻撃手段);
-  if (method === "武器") return "武器";
-  if (method === "魔法") return "魔法";
-  if (BODY_ATTACK_METHODS.has(method)) return "肉体";
-  return "その他";
-}
-
-function techniqueIconMarkup(source = {}) {
-  const category = techniqueAttackCategory(source);
-  if (category === "その他") {
-    return { category, markup:'<span class="technique-icon-glyph" aria-hidden="true">◆</span>' };
-  }
-  const src = getIconSrcByName(category, "肉体");
-  return {
-    category,
-    markup:`<img class="technique-icon-image" src="${escapeHtml(src)}" alt="" aria-hidden="true">`
-  };
-}
-
-function techniqueAccentClass(power, guard, healing) {
-  const hasPower = Number(power) > 0;
-  const hasGuard = Number(guard) > 0;
-  const hasHealing = Number(healing) > 0;
-  if (hasPower && hasGuard) return "technique-icon-mixed";
-  if (hasGuard) return "technique-icon-guard";
-  if (hasPower) return "technique-icon-power";
-  if (hasHealing) return "technique-icon-heal";
-  return "technique-icon-neutral";
-}
-
-function techniqueDurationLabel(row, source) {
-  const raw = text(source?.効果時間 ?? row?.duration);
-  if (!raw) return "";
-  const match = raw.match(/^(\d+)\s*t$/i);
-  return match ? `${match[1]}ターン` : raw;
-}
-
-function techniqueDescription(row, source) {
-  return text(source?.詳細 ?? row?.detail ?? source?.説明 ?? row?.description);
 }
 
 function setExpandedTechnique(name = "") {
@@ -430,27 +322,9 @@ function renderMemberList() {
     const selected = id === selectedUnitId;
     const hp = hpValues(unit);
     const ap = apValues(unit);
+    const defenses = defenseDisplay(unit);
     const icon = text(unit?.icon ?? unit?.glyph ?? unit?.symbol, "◆");
-    const exp = resolveV39UnitExpDisplay(unit);
-    const expTitle = `Lv${exp.level} EXP ${exp.exp}/${exp.need}`;
-    return `<button class="squad-card ${selected ? "selected" : ""}" data-v39-unit-id="${id}">
-      <div class="squad-card-top">
-        <div class="squad-main">
-          <span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}">
-            <span class="squad-icon">${icon}</span>
-            <span class="squad-level-number" aria-hidden="true">${exp.level}</span>
-          </span>
-          <div class="squad-name-wrap">
-            <b class="squad-name">${unitName(unit, index)}</b>
-            <small class="squad-pos"${unit.movementHold ? ' title="その場待機中"' : ""}>${unitPosition(unit)}${unit.movementHold ? " ⏸" : ""}</small>
-          </div>
-        </div>
-      </div>
-      <div class="squad-bars" data-v39-gauge="1">
-        ${gauge("hp", "HP", hp)}
-        ${gauge("ap", "AP", ap)}
-      </div>
-    </button>`;
+    return renderV39UnitCard(unit, {id,selected,hp,ap,defenses,icon,name:unitName(unit,index),position:unitPosition(unit)});
   }).join("");
 }
 
@@ -460,6 +334,7 @@ function renderDetail() {
   const pane = document.getElementById("squadDetailPane");
   if (!unit) {
     if (pane) pane.dataset.empty = "1";
+    updateV39UnitAbility(document.getElementById("detailAbilitySections"), null, {fieldIds:true});
     const prof = document.getElementById("detailProficiencyList");
     const resistance = document.getElementById("detailResistanceList");
     const equipment = document.getElementById("detailEquipmentList");
@@ -478,14 +353,6 @@ function renderDetail() {
   const map = {
     detailRole: roleText(unit),
     detailLevel: `Lv${level}`,
-    detailAtk: statusValue(unit, "攻撃"),
-    detailDef: statusValue(unit, "防御"),
-    detailMatk: statusValue(unit, "魔力"),
-    detailMdef: statusValue(unit, "精神"),
-    detailSpd: statusValue(unit, "速度"),
-    detailHit: statusValue(unit, "命中"),
-    detailSiz: statusValue(unit, "SIZ"),
-    detailMov: movementValue(unit)
   };
   Object.entries(map).forEach(([id, value]) => {
     const el = document.getElementById(id);
@@ -511,78 +378,15 @@ function renderDetail() {
     moveRemainEl.textContent = movementGroup?.ok ? `残AP ${movementGroup.moveAp}` : "";
     moveRemainEl.hidden = !movementGroup?.ok;
   }
-  const prof = document.getElementById("detailProficiencyList");
-  if (prof) {
-    const rows = skillEntries(unit);
-    prof.innerHTML = rows.length
-      ? rows.map(([name, value]) => `<div class="proficiency-item"><span>${name}</span><b>${value}</b></div>`).join("")
-      : '<div class="squad-empty">技能データなし</div>';
-  }
-
-  renderResistance(unit);
+  const ability = document.getElementById("detailAbilitySections");
+  updateV39UnitAbility(ability, unit, {
+    mapData:window.__v39FieldRuntime?.mapData, fieldIds:true
+  });
   renderEquipment(unit);
 
   const tech = document.getElementById("detailTechniqueRows");
   if (tech) {
-    const rows = techniqueEntries(unit);
-    const weaponAttackRows = resolveAttackRows(unit).filter(row => row?.装備攻撃 === true);
-    const bodyNames = new Set(weaponAttackRows.filter(row => row.身体武器).map(row => row.名前));
-    const activeRows = [
-      ...weaponAttackRows,
-      ...rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() !== "P"
-        && !bodyNames.has(text(techniqueSource(row)?.名前 ?? row?.name)))
-    ];
-    const passiveRows = rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() === "P");
-    const adjustedUnit = applyV39TerrainModifiers(unit, window.__v39FieldRuntime?.mapData);
-    const renderTechnique = row => {
-          const source = techniqueSource(row) || {};
-          const name = text(source?.名前 ?? row?.name, "名称未設定");
-          const action = text(source?.行動 ?? row?.action).toUpperCase();
-          const apValue = action === "A" ? resolveAttackApCost(source, unit) : num(row?.apCost ?? source?.AP消費, null);
-          const powerValue = action === "A"
-            ? resolveAttackPower(source, adjustedUnit)
-            : num(source?.威力 ?? row?.power, null);
-          const rangeValue = action === "A"
-            ? resolveAttackRange(source, adjustedUnit, window.__v39FieldRuntime?.mapData)
-            : num(row?.range ?? source?.射程, null);
-          const guardValue = action === "A"
-            ? resolveSkillGuard(source, adjustedUnit)
-            : Math.max(0, num(source?.ガード ?? row?.guard, 0) || 0);
-          const healingValue = action === "A"
-            ? resolveSkillHealing(source, adjustedUnit)
-            : Math.max(0, num(source?.回復 ?? row?.healing, 0) || 0);
-          const icon = techniqueIconMarkup(source);
-          const iconAccent = techniqueAccentClass(powerValue, guardValue, healingValue);
-          const combatValueParts = [
-            Number(powerValue) > 0 ? `威${powerValue}` : "",
-            Number(guardValue) > 0 ? `守${guardValue}` : "",
-            Number(healingValue) > 0 ? `回${healingValue}` : ""
-          ].filter(Boolean);
-          const combatValueText = combatValueParts.join("/");
-          const durationLabel = techniqueDurationLabel(row, source);
-          const description = techniqueDescription(row, source);
-          const expanded = name === expandedTechniqueName;
-          const detailHtml = `<span class="technique-detail-head"><b>説明</b>${durationLabel ? `<small>${escapeHtml(durationLabel)}</small>` : ""}</span>
-            <span class="technique-detail-description">${description ? escapeHtml(description) : "説明なし"}</span>`;
-          const attackAttr = action === "A" ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
-          return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" data-v39-technique-name="${escapeHtml(name)}" aria-expanded="${expanded}"${attackAttr}>
-            <span class="technique-summary">
-              <span class="technique-icon ${iconAccent}" data-attack-category="${escapeHtml(icon.category)}" title="${escapeHtml(icon.category)}">${icon.markup}</span>
-              <b class="technique-name">${escapeHtml(name)}</b>
-              <small class="technique-ap">AP ${apValue ?? "-"}</small>
-              ${combatValueText ? `<span class="technique-power">${escapeHtml(combatValueText)}</span>` : ""}
-              <span class="technique-range">射 ${rangeValue ?? "-"}</span>
-            </span>
-            <span class="technique-detail">${detailHtml}</span>
-          </button>`;
-        };
-    const activeHtml = activeRows.map(renderTechnique).join("");
-    const passiveHtml = passiveRows.length
-      ? `<div class="technique-passive-divider">パッシブ</div>${passiveRows.map(renderTechnique).join("")}`
-      : "";
-    tech.innerHTML = activeRows.length || passiveRows.length
-      ? activeHtml + passiveHtml
-      : '<div class="squad-empty">行動データなし</div>';
+    tech.innerHTML = renderV39UnitSkills(unit, {mapData:window.__v39FieldRuntime?.mapData, expandedName:expandedTechniqueName, interactive:true});
   }
   setExpandedTechnique(expandedTechniqueName);
   notifyDetailRendered(unit);

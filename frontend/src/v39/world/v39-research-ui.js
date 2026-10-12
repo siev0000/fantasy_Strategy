@@ -6,18 +6,31 @@ import {
 } from "../../lib/research-tree-config.js";
 import {
   addResearchExperience,
+  findResearchItem,
   isResearchCompleted,
-  isResearchLevelUnlocked,
+  inspectResearchUnlock,
   normalizeResearchState,
   researchExperiencePerTurn,
+  researchLevelEfficiency,
   requiredResearchExp,
   resolveCompletedResearchLevel,
   selectResearch
 } from "../../lib/research-progress.js";
-import { resolveV39ResearchExpReward } from "../../lib/v39-unit-experience.js";
+import { grantV39ActionExperience, resolveV39ResearchExpReward } from "../../lib/v39-unit-experience.js";
+import { getV39ResearchDiscoveryTargets } from "../../lib/v39-research-discovery.js";
+import { facilitiesUnlockedByResearch } from "../../lib/v39-construction-research.js";
+import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
+import { layoutResearchFlow } from "../../lib/research-flow-layout.js";
 
 let activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
 let inspectedItemId = "";
+let renderedCategory = "";
+let researchView = "list";
+let renderedView = "";
+let mobileDetail = false;
+const boardScrollPositions = new Map();
+let renderedItemId = "";
+const compactResearch = () => window.matchMedia("(max-width:760px)").matches;
 
 const escapeHtml = value => String(value ?? "")
   .replaceAll("&", "&amp;")
@@ -51,8 +64,9 @@ function researchUnitExpPerTurn(unit, categoryKey, item) {
   if (!unit || !item) return 0;
   const level = Math.max(1, Math.floor(Number(item?.level) || 1));
   const required = requiredResearchExp(level);
-  const researchPerTurn = Math.max(0, Number(researchExperiencePerTurn(unit, categoryKey)) || 0);
-  const progressRate = required > 0 ? researchPerTurn / required : 0;
+  const researchPerTurn = Math.max(0, Number(researchExperiencePerTurn(unit, categoryKey, researchTreeData, item)) || 0);
+  const remaining = Math.max(0, required - (Number(currentResearch().progress.targetExpMap[item.id]) || 0));
+  const progressRate = required > 0 ? Math.min(researchPerTurn, remaining) / required : 0;
   return resolveV39ResearchExpReward({
     researchLevel:level,
     requiredResearchExp:required,
@@ -80,10 +94,9 @@ function categoryRows(categoryKey) {
 function firstInspectableId(categoryKey, research = currentResearch()) {
   const selected = String(research.selection?.[categoryKey] || "");
   if (selected) return selected;
-  const assignee = defaultAssignee(categoryKey, research);
-  const assigneeLevel = Number(assignee?.level ?? assignee?.Lv ?? assignee?.レベル) || 0;
-  const row = categoryRows(categoryKey).find(levelRow => isResearchLevelUnlocked(research, categoryKey, levelRow.level, assigneeLevel));
-  return String(row?.items?.[0]?.id || categoryRows(categoryKey)?.[0]?.items?.[0]?.id || "");
+  const items=categoryRows(categoryKey).flatMap(row=>row.items || []);
+  return String(items.find(item=>!isResearchCompleted(research,categoryKey,item.level,item.id)
+    && inspectResearchUnlock(research,item.id).unlocked)?.id || items[0]?.id || "");
 }
 
 function updateFactionResearch(nextResearch, reason) {
@@ -155,7 +168,55 @@ function renderRail() {
 
 function itemDetails(item) {
   const details = (item?.details || []).map(row => `<li><span>${escapeHtml(row.key)}</span><b>${escapeHtml(row.value)}</b></li>`).join("");
-  return details ? `<ul class="v39-research-details">${details}</ul>` : "";
+  const targets = getV39ResearchDiscoveryTargets(item?.category, item?.level, item?.id);
+  const discovery = targets.length ? `<section class="v39-research-discovery-targets" data-research-discovery-targets><b>新たに発見できる対象</b><p>${targets.map(escapeHtml).join("・")}</p><small>研究完了で調査済みマスの対象を自動発見します。未調査マスは調査が必要です。</small></section>` : "";
+  const facilities = facilitiesUnlockedByResearch(item?.id, facilityDefinitions());
+  const construction = facilities.length ? `<section class="v39-research-discovery-targets" data-research-construction-targets><b>建設を解禁する施設</b><p>${facilities.map(row => escapeHtml(row.name)).join("・")}</p><small>必要研究Lv・資材・拠点段階・土地条件も満たす必要があります。</small></section>` : "";
+  return discovery + construction + (details ? `<ul class="v39-research-details">${details}</ul>` : "");
+}
+
+function renderLevelList(research, selectedId) {
+  return categoryRows(activeCategory).map(levelRow => {
+    const cards = (levelRow.items || []).map(item => {
+      const check = inspectResearchUnlock(research, item.id);
+      const done = isResearchCompleted(research, activeCategory, item.level, item.id);
+      const picked = item.id === selectedId;
+      const active = item.id === inspectedItemId;
+      const exp = Math.max(0, Number(research.progress.targetExpMap[item.id]) || 0);
+      const required = requiredResearchExp(item.level);
+      const status = done ? "完了" : picked ? "研究中" : check.unlocked ? "研究可能" : "未解禁";
+      return `<button class="v39-research-item${active ? " active" : ""}${picked ? " picked" : ""}${done ? " completed" : ""}" data-research-item="${escapeHtml(item.id)}" data-research-locked="${!check.unlocked}" aria-pressed="${active}"><strong>${escapeHtml(item.name)}</strong><span class="v39-research-item-progress"><i style="width:${Math.min(100, exp / required * 100)}%"></i></span><small>${status} / ${exp}/${required}</small></button>`;
+    }).join("");
+    return `<section class="v39-research-level"><header><b>Lv${levelRow.level}</b><small>必要研究Lv ${Math.min(...levelRow.items.map(item => item.requiredResearchLevel))}</small></header><div>${cards}</div></section>`;
+  }).join("");
+}
+
+function renderFlow(research, selectedId) {
+  const body = document.querySelector("#researchModal .modal-body");
+  const compact = compactResearch();
+  // 非表示のモーダルを開く直前も、0pxの幅で図を生成しない。
+  const bodyWidth = body?.clientWidth || (compact ? window.innerWidth - 2 : Math.min(1200,window.innerWidth*0.96)-2);
+  const available = bodyWidth - (compact ? 20 : 360);
+  const columns = compact ? (available >= 280 ? 2 : 1) : Math.max(1,Math.min(3,Math.floor(available / 190)));
+  const width = Math.max(110,Math.min(180,Math.floor((available - 24 - (columns - 1)*14) / columns)));
+  const height = Math.max(92,Math.ceil(Number.parseFloat(getComputedStyle(body).fontSize)*7) || 92);
+  const flow=layoutResearchFlow(categoryRows(activeCategory).flatMap(row=>row.items || []),{width,height,maxColumns:columns});
+  const cards=flow.nodes.map(node=>{
+    const item=node.item, check=inspectResearchUnlock(research,item.id);
+    const done=isResearchCompleted(research,activeCategory,item.level,item.id), picked=item.id===selectedId;
+    const exp=Number(research.progress.targetExpMap[item.id])||0, required=requiredResearchExp(item.level);
+    const status=done?"完了":picked?"研究中":check.unlocked?"研究可能":"未解禁";
+    return `<button class="v39-research-item v39-research-node${done?" completed":""}${picked?" picked":""}${item.id===inspectedItemId?" active":""}${check.unlocked?"":" locked"}" data-research-item="${escapeHtml(item.id)}" data-research-locked="${!check.unlocked}" aria-pressed="${item.id===inspectedItemId}" style="left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px" title="${escapeHtml(check.reasons.join(" / ") || status)}"><small class="v39-research-node-status">Lv${item.level} <b>${status}</b></small><strong>${escapeHtml(item.name)}</strong><span class="v39-research-item-progress"><i style="width:${Math.min(100,exp/required*100)}%"></i></span><small>${exp} / ${required} EXP</small></button>`;
+  }).join("");
+  const edges=flow.edges.map(({from,to})=>{
+    const x1=from.x+from.width/2,y1=from.y+from.height,x2=to.x+to.width/2,y2=to.y;
+    const completed=isResearchCompleted(research,activeCategory,from.item.level,from.item.id);
+    const adjacent = Math.abs(y2-y1) <= 40;
+    const path = adjacent ? `M ${x1} ${y1} L ${x2} ${y2}`
+      : `M ${x1} ${y1} L ${to.x-8} ${y1+10} L ${to.x-8} ${y2-10} L ${x2} ${y2}`;
+    return `<path data-research-edge="${escapeHtml(from.item.id)}" class="${completed?"complete":""}" d="${path}" marker-end="url(#research-arrow)"/>`;
+  }).join("");
+  return `<div class="v39-research-flow" style="width:${flow.width}px;height:${flow.height}px"><svg class="v39-research-connections" width="${flow.width}" height="${flow.height}" aria-hidden="true"><defs><marker id="research-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#80a6ae"/></marker></defs>${edges}</svg>${cards}</div>`;
 }
 
 function renderModal() {
@@ -166,8 +227,28 @@ function renderModal() {
   const head = modal.querySelector(":scope > .modal-head");
   const body = modal.querySelector(":scope > .modal-body");
   if (!(head instanceof HTMLElement) || !(body instanceof HTMLElement)) return;
+  const previousBoard = body.querySelector(".v39-research-board");
+  const previousDetail = body.querySelector(".v39-research-detail-content");
+  if (previousBoard?.clientHeight) boardScrollPositions.set(`${renderedCategory}:${renderedView}`, {left:previousBoard.scrollLeft,top:previousBoard.scrollTop});
+  const preserveScroll = renderedCategory === activeCategory && renderedView === researchView;
+  const savedScroll = boardScrollPositions.get(`${activeCategory}:${researchView}`);
+  const scrollLeft = savedScroll?.left || 0;
+  const scrollTop = savedScroll?.top || 0;
+  const detailScrollTop = preserveScroll && renderedItemId === inspectedItemId ? previousDetail?.scrollTop || 0 : 0;
   const heading = head.querySelector("h2");
   if (heading) heading.textContent = "研究";
+  let viewSelect = head.querySelector("[data-research-view]");
+  if (!viewSelect) {
+    viewSelect = document.createElement("select");
+    viewSelect.dataset.researchView = "";
+    viewSelect.className = "v39-research-view";
+    viewSelect.setAttribute("aria-label", "研究の表示形式");
+    viewSelect.innerHTML = '<option value="list">従来表示</option><option value="flow">フローチャート</option>';
+    heading?.after(viewSelect);
+  }
+  viewSelect.value = researchView;
+  body.dataset.researchLayoutMode = researchView;
+  body.dataset.researchPanel = mobileDetail ? "detail" : "tree";
 
   const research = currentResearch();
   if (!researchTreeData.categories[activeCategory]) activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
@@ -175,7 +256,6 @@ function renderModal() {
     inspectedItemId = firstInspectableId(activeCategory, research);
   }
   const assignee = defaultAssignee(activeCategory, research);
-  const assigneeLevel = Number(assignee?.level ?? assignee?.Lv ?? assignee?.レベル) || 0;
   const inspected = categoryRows(activeCategory).flatMap(row => row.items || []).find(item => item.id === inspectedItemId) || null;
   const selectedId = String(research.selection?.[activeCategory] || "");
   const selectedResearchItem = categoryRows(activeCategory)
@@ -184,7 +264,8 @@ function renderModal() {
   const expPreviewItem = selectedResearchItem || inspected;
   const selected = inspected?.id === selectedId;
   const completed = inspected ? isResearchCompleted(research, activeCategory, inspected.level, inspected.id) : false;
-  const unlocked = inspected ? isResearchLevelUnlocked(research, activeCategory, inspected.level, assigneeLevel) : false;
+  const unlockCheck=inspectResearchUnlock(research,inspected?.id);
+  const unlocked=unlockCheck.unlocked;
   const currentExp = inspected ? Math.max(0, Number(research.progress.targetExpMap?.[inspected.id]) || 0) : 0;
   const requiredExp = requiredResearchExp(inspected?.level || 1);
   const progressRatio = Math.min(100, Math.round((currentExp / Math.max(1, requiredExp)) * 100));
@@ -196,31 +277,25 @@ function renderModal() {
     return `<button class="v39-research-category${active ? " active" : ""}" data-research-category="${key}" style="--cat-accent:${meta.accent}" aria-pressed="${active}"><b>${meta.icon}</b><span>${meta.label}</span><small>Lv${level}${active ? " 選択中" : ""}</small></button>`;
   }).join("");
 
-  const levels = categoryRows(activeCategory).map(levelRow => {
-    const levelUnlocked = isResearchLevelUnlocked(research, activeCategory, levelRow.level, assigneeLevel);
-    const unitRequirement = Number(researchTreeData.levelRequirements?.[levelRow.level]) || 0;
-    const cards = (levelRow.items || []).map(item => {
-      const done = isResearchCompleted(research, activeCategory, levelRow.level, item.id);
-      const picked = item.id === selectedId;
-      const active = item.id === inspectedItemId;
-      const exp = Math.max(0, Number(research.progress.targetExpMap?.[item.id]) || 0);
-      const required = requiredResearchExp(levelRow.level);
-      const ratio = Math.min(100, Math.round((exp / Math.max(1, required)) * 100));
-      const stateText = done ? "完了 100%" : !levelUnlocked ? `未解放 / ${exp}/${required}` : picked ? `研究中 / ${exp}/${required}` : active ? `選択中 / ${exp}/${required}` : `${exp}/${required}`;
-      return `<button class="v39-research-item${active ? " active" : ""}${picked ? " picked" : ""}${done ? " completed" : ""}" data-research-item="${escapeHtml(item.id)}" aria-pressed="${active}" ${levelUnlocked ? "" : "disabled"}><strong>${escapeHtml(item.name)}</strong><span class="v39-research-item-progress"><i style="width:${ratio}%"></i></span><small>${stateText}</small></button>`;
-    }).join("");
-    return `<section class="v39-research-level${levelUnlocked ? "" : " locked"}"><header><b>Lv${levelRow.level}</b><small>必要ユニットLv ${unitRequirement}</small></header><div>${cards}</div></section>`;
-  }).join("");
+  const levels = researchView === "flow" ? renderFlow(research, selectedId) : renderLevelList(research, selectedId);
 
   const actionLabel = completed ? "研究完了" : (selected ? "研究中" : "研究として選択");
   const assigneeOptions = aliveUnits().map(unit => {
     const unitLevel = Number(unit?.level ?? unit?.Lv ?? 0);
-    const unitExpPerTurn = researchUnitExpPerTurn(unit, activeCategory, expPreviewItem);
-    return `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${unitLevel}｜ユニットEXP +${formatExp(unitExpPerTurn)}/T</option>`;
+    return `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${unitLevel}</option>`;
   }).join("");
-  const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory) : 0;
+  const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory, researchTreeData, expPreviewItem) : 0;
   const assigneeUnitExpPerTurn = assignee ? researchUnitExpPerTurn(assignee, activeCategory, expPreviewItem) : 0;
-  body.innerHTML = `<nav class="v39-research-categories">${categoryButtons}</nav><div class="v39-research-layout"><div class="v39-research-board">${levels || "研究データがありません。"}</div><aside class="v39-research-detail"><label class="v39-research-assignee">担当ユニット<select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>研究EXP +${perTurn}/T ｜ ユニットEXP +${formatExp(assigneeUnitExpPerTurn)}/T</small></label>${inspected ? `<div class="v39-research-detail-head"><div><b>${escapeHtml(inspected.name)}</b><small>${getResearchCategoryMeta(activeCategory).label} Lv${inspected.level}</small></div><strong class="${completed ? "completed" : ""}">${completed ? "100%" : `${progressRatio}%`}</strong></div><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp}</span></div><p>${escapeHtml(inspected.desc || "-")}</p>${itemDetails(inspected)}<p class="v39-research-requirement">必要ユニットLv ${researchTreeData.levelRequirements?.[inspected.level] || "-"}<br>短縮技能: ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || "-")}</p><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? "disabled" : ""}>${actionLabel}</button>` : "研究項目を選択してください。"}</aside></div>`;
+  const status = completed ? '完了' : selected ? '研究中' : unlocked ? '研究可能' : '未解禁';
+  const conditions = inspected ? `<section class="v39-research-requirement"><b>解禁条件</b><div class="${unlockCheck.currentLevel >= unlockCheck.requiredLevel ? 'met' : 'unmet'}">${unlockCheck.currentLevel >= unlockCheck.requiredLevel ? '✓' : '×'} 研究Lv ${unlockCheck.requiredLevel} が必要（現在Lv${unlockCheck.currentLevel}）</div>${unlockCheck.prerequisites.map(row=>`<div class="${row.completed ? 'met' : 'unmet'}">${row.completed ? '✓' : '×'} ${escapeHtml(row.name)} <b>${row.completed ? '完了' : '未完了'}</b></div>`).join('')}${unlockCheck.prerequisites.length ? '' : '<div class="met">✓ 前提研究なし</div>'}${(inspected.prerequisiteErrors || []).map(error=>`<div class="unmet">${escapeHtml(error)}</div>`).join('')}</section>` : '';
+  body.innerHTML = `<div class="v39-research-overview"><nav class="v39-research-categories">${categoryButtons}</nav><p class="v39-research-guide">${researchView === 'flow' ? '上から下へ研究が進みます。矢印は前提研究です。' : 'Lv別の研究一覧です。'} 項目を選ぶと効果と条件を確認できます。</p></div><div class="v39-research-layout"><div class="v39-research-board">${levels || '研究データがありません。'}</div><aside class="v39-research-detail"><div class="v39-research-detail-content"><button class="v39-research-back" data-research-back>← 研究一覧へ戻る</button>${inspected ? `<div class="v39-research-detail-head"><div><small>${getResearchCategoryMeta(activeCategory).label} ・ Lv${inspected.level} ・ ${status}</small><b>${escapeHtml(inspected.name)}</b></div><strong>${completed ? '100%' : `${progressRatio}%`}</strong></div><p>${escapeHtml(inspected.desc || '説明なし')}</p><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp} EXP</span></div>${conditions}${itemDetails(inspected)}` : '研究項目を選択してください。'}<label class="v39-research-assignee"><span>研究担当</span><select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>研究EXP +${perTurn}/ターン</small></label><details class="v39-research-efficiency"><summary>研究速度の内訳</summary><p>推奨ユニットLv ${inspected?.recommendedUnitLevel || '-'}（解禁条件ではありません）<br>担当Lv効率 ${Math.round(researchLevelEfficiency(assignee, inspected) * 100)}%<br>短縮技能 ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || '-')}<br>担当ユニットEXP +${formatExp(assigneeUnitExpPerTurn)}/ターン</p></details></div><footer class="v39-research-detail-footer"><button class="v39-research-select" data-select-research ${(!unlocked || !assignee || completed || selected) ? 'disabled' : ''}>${!unlocked && !completed && !selected ? '条件未達成' : actionLabel}</button></footer></aside></div>`;
+  const board = body.querySelector(".v39-research-board");
+  const detail = body.querySelector(".v39-research-detail-content");
+  if (board) { board.scrollLeft = scrollLeft; board.scrollTop = scrollTop; }
+  if (detail) detail.scrollTop = detailScrollTop;
+  renderedCategory = activeCategory;
+  renderedView = researchView;
+  renderedItemId = inspectedItemId;
 }
 
 function renderAll() {
@@ -229,9 +304,12 @@ function renderAll() {
 }
 
 function openCategory(categoryKey) {
-  const category = normalizeResearchCategoryName(categoryKey);
+  const normalized = normalizeResearchCategoryName(categoryKey);
+  const category = researchTreeData.categories[normalized] ? normalized
+    : Object.keys(researchTreeData.categories).find(key=>categoryRows(key).some(row=>row.items.some(item=>item.id.startsWith(`${normalized}:`))));
   if (!researchTreeData.categories[category]) return;
   activeCategory = category;
+  mobileDetail = false;
   inspectedItemId = firstInspectableId(category);
   renderAll();
   document.getElementById("researchModal")?.classList.add("open");
@@ -239,6 +317,11 @@ function openCategory(categoryKey) {
 
 function installEvents() {
   document.addEventListener("click", event => {
+    if (event.target.closest?.("[data-research-back]")) {
+      mobileDetail = false;
+      renderModal();
+      return;
+    }
     const railButton = event.target.closest?.("[data-v39-research-category]");
     if (railButton) {
       event.preventDefault();
@@ -248,6 +331,7 @@ function installEvents() {
     const categoryButton = event.target.closest?.("[data-research-category]");
     if (categoryButton) {
       activeCategory = normalizeResearchCategoryName(categoryButton.dataset.researchCategory);
+      mobileDetail = false;
       inspectedItemId = firstInspectableId(activeCategory);
       renderModal();
       return;
@@ -255,15 +339,23 @@ function installEvents() {
     const itemButton = event.target.closest?.("[data-research-item]");
     if (itemButton) {
       inspectedItemId = String(itemButton.dataset.researchItem || "");
+      mobileDetail = compactResearch();
       renderModal();
       return;
     }
     if (event.target.closest?.("[data-select-research]")) selectResearchForActivePlayer(activeCategory, inspectedItemId);
   });
   document.addEventListener("change", event => {
+    if (event.target.matches?.("[data-research-view]")) {
+      researchView = event.target.value === "flow" ? "flow" : "list";
+      mobileDetail = false;
+      renderModal();
+      return;
+    }
     if (event.target.matches?.("[data-research-assignee]")) assignResearchUnit(activeCategory, event.target.value);
   });
   window.addEventListener("v39:game-state-changed", renderAll);
+  window.addEventListener("resize", renderModal);
   window.addEventListener("v39:turn-stage-research", advanceAllPlayerResearch);
 }
 
@@ -272,26 +364,41 @@ function advanceAllPlayerResearch() {
   if (!state) return;
   const turnNumber = Math.max(1, Math.floor(Number(state?.timeline?.turnNumber) || 1));
   let changed = false;
+  const levelUps = [];
   const players = (state.players || []).map(player => {
     let playerChanged = false;
     let research = normalizeResearchState(player?.factionState?.research);
     if (research.lastProcessedTurn >= turnNumber) return player;
-    const units = player?.factionState?.units || [];
+    let units = player?.factionState?.units || [];
+    const activityLog = [...(player.factionState.activityLog || [])];
     for (const category of Object.keys(research.selection)) {
       const assignedId = String(research.assignedUnitIdByCategory?.[category] || "");
-      const unit = units.find(row => unitId(row) === assignedId && Number(row?.hp ?? row?.HP ?? 1) > 0);
+      const unit = units.find(row => unitId(row) === assignedId && Number(row?.hp ?? row?.HP ?? 1) > 0 && (row.state || row.statusName) !== "死亡");
       if (!unit) continue;
-      const result = addResearchExperience(research, category, researchExperiencePerTurn(unit, category));
+      const itemId = research.selection[category];
+      const found = findResearchItem(itemId);
+      const beforeExp = Number(research.progress.targetExpMap[itemId]) || 0;
+      const result = addResearchExperience(research, category, researchExperiencePerTurn(unit, category, researchTreeData, found?.item));
       research = result.state;
+      if (result.changed && found) {
+        const progress = (research.progress.targetExpMap[itemId] - beforeExp) / requiredResearchExp(found.level);
+        const reward = resolveV39ResearchExpReward({ researchLevel:found.level, requiredResearchExp:requiredResearchExp(found.level), progressRate:progress });
+        const award = grantV39ActionExperience(unit, "research", reward.rawExp);
+        units = units.map(row => unitId(row) === assignedId ? award.unit : row);
+        activityLog.push({ type:"research-experience", turn:turnNumber, unitId:assignedId,
+          message:`研究: ${found.item.name || itemId} / ${unitName(unit)} EXP +${award.amount}${award.leveledUp ? ` / Lv${award.toLevel}` : ""}` });
+        if (award.leveledUp) levelUps.push({ playerId:player.id, unitId:assignedId, unitName:unitName(unit), fromLevel:award.fromLevel, toLevel:award.toLevel });
+      }
       playerChanged ||= result.changed;
       changed ||= result.changed;
     }
     research.lastProcessedTurn = turnNumber;
     playerChanged = true;
     changed = true;
-    return playerChanged ? { ...player, factionState:{ ...player.factionState, research } } : player;
+    return playerChanged ? { ...player, factionState:{ ...player.factionState, research, units, activityLog:activityLog.slice(-200) } } : player;
   });
   if (changed) window.setV39GameState?.({ players }, { reason:"research-turn-progress" });
+  for (const detail of levelUps) window.dispatchEvent(new CustomEvent("v39:unit-level-up", { detail }));
 }
 
 function installStyles() {
@@ -299,28 +406,69 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-research-ui-style";
   style.textContent = `
-#researchModal .modal{width:min(1040px,94vw);height:min(720px,90vh);background:#0d171b;border:1px solid #53646a}
-#researchModal .modal-body{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;min-height:0;padding:10px;overflow:hidden}
-.v39-research-categories{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-bottom:8px}
-.v39-research-category{min-height:48px;display:flex;align-items:center;justify-content:center;gap:7px;color:#c9d4d5;background:#152226;border:1px solid #405057;border-radius:8px;font-size:var(--font-body);font-weight:800}
-.v39-research-category b{color:var(--cat-accent);font-size:var(--font-size-21)}.v39-research-category small{font-size:var(--font-secondary);color:#91a1a5}
+#researchModal .modal{width:min(1200px,96vw);height:min(820px,94svh);background:#0d171b;border:1px solid #53646a}
+#researchModal .modal-body{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;min-height:0;padding:12px;overflow:hidden;font-size:var(--font-body)}
+#researchModal .modal-head{gap:12px;flex-shrink:0}
+.v39-research-view{margin-left:auto;max-width:50%;padding:7px 10px;background:#152226;color:#dce4e4;border:1px solid #53646a;border-radius:6px;font-size:var(--font-body)}
+.v39-research-categories{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.v39-research-category{min-width:0;min-height:42px;display:flex;align-items:center;justify-content:center;gap:6px;color:#c9d4d5;background:#152226;border:1px solid #405057;border-radius:8px;font-size:var(--font-body);font-weight:800}
+.v39-research-category b{color:var(--cat-accent)}
+.v39-research-category small{font-size:var(--font-secondary);color:#91a1a5}
 .v39-research-category.active{border:2px solid var(--cat-accent);background:#243035;color:#fff}
-.v39-research-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(270px,1fr);gap:9px;min-height:0}
-.v39-research-board{display:flex;gap:8px;min-width:0;overflow:auto;padding:2px 2px 8px}
-.v39-research-level{flex:0 0 170px;border:1px solid #3d4e54;border-radius:8px;background:#111e22;padding:6px}
-.v39-research-level>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:#e8dcc1}.v39-research-level>header small{font-size:var(--font-secondary);color:#a6b3b5}
-.v39-research-level>div{display:grid;gap:6px}.v39-research-level.locked{opacity:.42}
-.v39-research-item{position:relative;min-height:86px;padding:8px;text-align:left;color:#d8e0e0;background:#17252a;border:1px solid #45575e;border-radius:7px}
-.v39-research-item strong{display:block;font-size:var(--font-body);line-height:1.25}.v39-research-item small{display:block;margin-top:4px;font-size:var(--font-secondary);color:#aab6b8}
-.v39-research-item-progress{display:block;height:7px;margin-top:11px;background:#091114;border:1px solid #435158;border-radius:8px;overflow:hidden}.v39-research-item-progress i{display:block;height:100%;background:#d1aa61}
-.v39-research-item.active{border:3px solid #f1d080;padding:6px;background:#2b2a20}.v39-research-item.picked{background:#27362f;box-shadow:inset 0 0 0 2px #78c894}.v39-research-item.completed{background:#173a2a;border-color:#63c184;color:#e7fff0}.v39-research-item.completed .v39-research-item-progress i{background:#62d18d}
-.v39-research-detail{min-width:0;overflow:auto;padding:12px;border:1px solid #44555b;border-radius:9px;background:#142126;color:#dce4e4}
-.v39-research-assignee{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:5px 8px;margin-bottom:12px;padding:8px;border:1px solid #3f5056;border-radius:7px;font-size:var(--font-secondary);font-weight:800}.v39-research-assignee select{min-width:0;height:32px;background:#0c171b;border:1px solid #52646a;border-radius:5px;color:#e5eded;padding:0 6px;font-size:var(--font-secondary)}.v39-research-assignee small{grid-column:2;color:#77ce96}
-.v39-research-detail-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.v39-research-detail-head b{display:block;font-size:var(--font-heading);color:#fff}.v39-research-detail-head small{display:block;margin-top:3px;color:#aebabc}.v39-research-detail-head>strong{font-size:var(--font-heading);color:#e6c66e}.v39-research-detail-head>strong.completed{color:#69d18d}
-.v39-research-large-progress{position:relative;height:22px;margin:12px 0;background:#091216;border:1px solid #53656a;border-radius:7px;overflow:hidden}.v39-research-large-progress i{display:block;height:100%;background:linear-gradient(90deg,#9d7839,#e3c36a)}.v39-research-large-progress span{position:absolute;inset:0;display:grid;place-items:center;font-size:var(--font-secondary);font-weight:900;color:#fff;text-shadow:0 1px 2px #000}
-.v39-research-detail p{font-size:var(--font-body);line-height:1.55}.v39-research-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:0;list-style:none}.v39-research-details li{display:flex;justify-content:space-between;gap:7px;padding:5px 7px;background:#1b2b30;border-radius:5px;font-size:var(--font-secondary)}.v39-research-requirement{color:#aebabc!important;font-size:var(--font-secondary)!important}
-.v39-research-select{width:100%;min-height:42px;margin-top:8px;border:1px solid #c7a856;border-radius:7px;background:#3b321d;color:#fff1be;font-size:var(--font-body);font-weight:900}.v39-research-select:disabled{opacity:.55}
-
+.v39-research-guide{margin:9px 0;color:#aebabc;font-size:var(--font-body)}
+.v39-research-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px;min-height:0;min-width:0}
+.v39-research-board{display:block;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;border:1px solid #31454b;border-radius:8px;background:#101c20}
+#researchModal [data-research-layout-mode="list"] .v39-research-board{display:flex;align-items:flex-start;gap:8px;padding:8px}
+.v39-research-flow{position:relative}
+.v39-research-connections{position:absolute;inset:0;pointer-events:none}
+.v39-research-connections>path{fill:none;stroke:#80a6ae;stroke-width:2}
+.v39-research-connections>path.complete{stroke:#73cf9a;stroke-width:3}
+.v39-research-node{position:absolute;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column}
+.v39-research-node.locked{border-style:dashed;background:#162127}
+.v39-research-node-status{display:flex!important;justify-content:space-between;gap:5px}
+.v39-research-node-status b{padding:2px 5px;border-radius:4px;background:#293b42;color:#dce4e4;font-size:var(--font-secondary)}
+.v39-research-node strong{margin-top:3px;overflow-wrap:anywhere}
+.v39-research-node .v39-research-item-progress{margin-top:auto;flex-shrink:0}
+.v39-research-level{flex:0 0 210px;border:1px solid #3d4e54;border-radius:8px;background:#111e22;padding:8px}
+.v39-research-level>header{display:flex;justify-content:space-between;gap:5px;align-items:center;margin-bottom:8px;color:#e8dcc1}
+.v39-research-level>header small{font-size:var(--font-secondary);color:#a6b3b5}
+.v39-research-level>div{display:grid;gap:8px}
+.v39-research-item{min-height:60px;padding:6px;text-align:left;color:#d8e0e0;background:#17252a;border:1px solid #45575e;border-radius:7px}
+.v39-research-item strong{display:block;font-size:var(--font-body);line-height:1.45}
+.v39-research-item small{display:block;margin-top:4px;font-size:var(--font-secondary);color:#b9c5c8;line-height:1.4}
+.v39-research-item-progress{display:block;height:6px;margin-top:10px;background:#091114;border:1px solid #435158;border-radius:8px;overflow:hidden}
+.v39-research-item-progress i{display:block;height:100%;background:#d1aa61}
+.v39-research-item.active{border:2px solid #f1d080;padding:5px;background:#2b2a20}
+.v39-research-item.picked{box-shadow:inset 0 0 0 2px #78c894}
+.v39-research-item.completed{background:#173a2a;border-color:#63c184;color:#e7fff0}
+.v39-research-item.completed .v39-research-item-progress i{background:#62d18d}
+.v39-research-detail{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0;min-width:0;overflow:hidden;border:1px solid #44555b;border-radius:9px;background:#142126;color:#dce4e4}
+.v39-research-detail-content{min-height:0;overflow:auto;padding:14px;overscroll-behavior:contain}
+.v39-research-detail-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.v39-research-detail-head b{display:block;font-size:var(--font-heading);color:#fff;line-height:1.5;overflow-wrap:anywhere}
+.v39-research-detail-head small{display:block;margin-bottom:6px;font-size:var(--font-secondary);color:#aebabc}
+.v39-research-detail-head>strong{font-size:var(--font-heading);color:#e6c66e}
+.v39-research-detail p{font-size:var(--font-body);line-height:1.7;overflow-wrap:anywhere}
+.v39-research-large-progress{position:relative;height:24px;margin:12px 0;background:#091216;border:1px solid #53656a;border-radius:7px;overflow:hidden}
+.v39-research-large-progress i{display:block;height:100%;background:#9d7839}
+.v39-research-large-progress span{position:absolute;inset:0;display:grid;place-items:center;font-size:var(--font-secondary);font-weight:900;color:#fff;text-shadow:0 1px 2px #000}
+.v39-research-requirement{display:grid;gap:8px;padding:12px;margin:14px 0;border:1px solid #405057;border-radius:7px;font-size:var(--font-body);line-height:1.6}
+.v39-research-requirement .met{color:#91d5b0}
+.v39-research-requirement .unmet{color:#f0c58b}
+.v39-research-assignee{display:grid;gap:7px;margin-top:18px;padding-top:12px;border-top:1px solid #405057;font-size:var(--font-body);font-weight:800}
+.v39-research-assignee select{width:100%;min-width:0;min-height:40px;background:#0c171b;border:1px solid #52646a;border-radius:5px;color:#e5eded;padding:5px;font-size:var(--font-body)}
+.v39-research-assignee small{font-size:var(--font-body);color:#77ce96}
+.v39-research-efficiency{margin-top:12px;font-size:var(--font-secondary);color:#aebabc}
+.v39-research-efficiency summary{cursor:pointer;padding:8px 0}
+.v39-research-detail-footer{padding:10px 14px;background:#142126;border-top:1px solid #405057}
+.v39-research-select{width:100%;min-height:44px;border:1px solid #c7a856;border-radius:7px;background:#3b321d;color:#fff1be;font-size:var(--font-body);font-weight:900}
+.v39-research-select:disabled{color:#bfc8c9;background:#263034;border-color:#53646a}
+.v39-research-back{display:none}
+.v39-research-discovery-targets{padding:10px;border:1px solid #405057;border-radius:7px;background:#152226;margin:10px 0;font-size:var(--font-body)}
+.v39-research-discovery-targets p{margin:6px 0;color:#a8dec4}
+.v39-research-discovery-targets small{font-size:var(--font-secondary);line-height:1.6;color:#aebabc;display:block}
+.v39-research-details{display:grid;gap:6px;padding:0;list-style:none}
+.v39-research-details li{display:flex;justify-content:space-between;gap:7px;padding:6px 8px;background:#1b2b30;border-radius:5px;font-size:var(--font-body)}
 /* Compact field research rail: screen-left, icon + level only. */
 .research-rail{
   left:0!important;right:auto!important;top:6px!important;bottom:auto!important;
@@ -351,70 +499,20 @@ function installStyles() {
 .research-rail-btn .gauge{width:23px!important;height:23px!important}
 .research-rail-btn .gauge b{font-size:var(--font-size-14)!important}
 .research-rail-btn .lv{font-size:var(--font-size-8)!important;line-height:8px!important}
-#researchModal .modal{width:98vw;height:96svh;max-height:96svh}
-#researchModal .modal-body{padding:7px;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
-.v39-research-categories{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-bottom:6px}
-.v39-research-category{min-width:0;min-height:42px;padding:3px 2px;font-size:var(--font-secondary);gap:3px;overflow:hidden}
-.v39-research-category b{font-size:var(--font-body);flex:0 0 auto}
-.v39-research-category span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.v39-research-category small{display:none}
-.v39-research-layout{
-  grid-template-columns:minmax(0,1fr);
-  grid-template-rows:minmax(250px,42%) minmax(0,1fr);
-  gap:7px;
-  min-width:0;
-  min-height:0;
-  overflow:hidden
-}
-.v39-research-board{
-  min-width:0;
-  min-height:0;
-  width:100%;
-  gap:7px;
-  overflow-x:auto;
-  overflow-y:auto;
-  overscroll-behavior:contain;
-  scroll-snap-type:x proximity;
-  padding:2px 2px 7px
-}
-.v39-research-level{
-  flex:0 0 clamp(185px,46vw,220px);
-  min-width:0;
-  padding:6px;
-  scroll-snap-align:start
-}
-.v39-research-level>header{gap:6px}
-.v39-research-level>header small{font-size:var(--font-compact);text-align:right}
-.v39-research-item{min-height:75px;padding:7px}
-.v39-research-item strong{font-size:var(--font-size-14)}
-.v39-research-item small{font-size:var(--font-compact)}
-.v39-research-detail{
-  width:100%;
-  min-width:0;
-  min-height:0;
-  padding:9px;
-  overflow:auto;
-  overscroll-behavior:contain
-}
-.v39-research-assignee{margin-bottom:9px;padding:7px;grid-template-columns:auto minmax(0,1fr)}
-.v39-research-detail-head b{font-size:var(--font-size-17)}
-.v39-research-detail-head>strong{font-size:var(--font-size-18)}
-.v39-research-detail p{font-size:var(--font-size-14);line-height:1.45}
-.v39-research-details{grid-template-columns:1fr}
-.v39-research-details li{font-size:var(--font-compact)}
-}
-@media(max-width:520px){
 #researchModal .modal{width:100vw;height:100svh;max-height:100svh;border-radius:0}
-#researchModal .modal-body{padding:6px}
-.v39-research-categories{gap:3px}
-.v39-research-category{min-height:40px;font-size:var(--font-compact)}
-.v39-research-category b{font-size:var(--font-size-14)}
-.v39-research-layout{grid-template-rows:minmax(270px,44%) minmax(0,1fr);gap:6px}
-.v39-research-level{flex-basis:clamp(190px,48vw,215px)}
-.v39-research-detail{padding:8px}
-.v39-research-assignee{font-size:var(--font-compact);gap:4px 6px}
-.v39-research-assignee select{height:30px;font-size:var(--font-compact)}
-.v39-research-assignee small{font-size:var(--font-size-11)}
+#researchModal .modal-body{padding:8px}
+.v39-research-categories{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.v39-research-category{min-height:40px;gap:4px;font-size:var(--font-body)}
+.v39-research-category small{display:none}
+.v39-research-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.v39-research-detail{display:none}
+#researchModal [data-research-panel="detail"]{grid-template-rows:minmax(0,1fr)}
+#researchModal [data-research-panel="detail"] .v39-research-overview{display:none}
+#researchModal [data-research-panel="detail"] .v39-research-board{display:none}
+#researchModal [data-research-panel="detail"] .v39-research-detail{display:grid}
+.v39-research-back{display:block;min-height:40px;margin-bottom:16px;padding:7px 12px;background:#20333a;border:1px solid #607c85;border-radius:6px;color:#dfedef;font-size:var(--font-body)}
+#researchModal [data-research-layout-mode="list"] .v39-research-board{display:block}
+.v39-research-level{margin-bottom:12px}
 }
 `;
   document.head.appendChild(style);

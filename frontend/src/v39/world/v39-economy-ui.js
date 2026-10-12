@@ -144,6 +144,7 @@ function renderBuildModal() {
     <div class="v39-build-fact"><span>地形 (対象/必要)</span><b>${text(target?.terrain || target?.special || "-")} / ${selected.terrainCondition}</b></div>
     <div class="v39-build-fact"><span>建築時間</span><b>${selected.buildTurns}ターン</b></div>
     <div class="v39-build-fact"><span>研究条件 (現在/必要)</span><b>${formatRequirements(selected.requirements, selectedCheck?.levels)}</b></div>
+    ${selectedCheck?.researchCheck?.mode === "item" ? `<div class="v39-build-fact"><span>解禁研究</span><b>${selectedCheck.researchCheck.requirements.map(row => `${escapeHtml(row.name)} (${row.completed ? "完了" : "未完了"})`).join("・") || (selectedCheck.researchCheck.reasons.length ? "未設定" : "指定なし")}</b></div>` : ""}
     <div class="v39-build-fact"><span>必要資材 (所持/必要)</span><b>${formatCost(selected.cost, context.village?.materialStockByType)}</b></div>
     <div class="v39-build-fact"><span>施設枠 (使用/上限)</span><b>${selectedCheck?.used || 0}/${selectedCheck?.capacity || 0}</b></div>
   </div><div class="v39-build-reasons">${selectedCheck?.available ? "建設可能" : (selectedCheck?.reasons || ["建設不可"]).join(" / ")}</div><button type="button" id="v39-build-start" ${selectedCheck?.available ? "" : "disabled"}>建設開始</button>`;

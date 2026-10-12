@@ -6,6 +6,9 @@ import {
 } from "../../lib/v39-gameplay-balance.js";
 import { createV39EventEnemy } from "../ai/v39-enemy-spawn.js";
 import { normalizeV39NeutralVillage } from "../../lib/v39-neutral-village-rules.js";
+import { advanceV39CorpseFog, isV39DeathFogTile } from "../../lib/v39-fog-rules.js";
+import { V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { convertV39CorpsesInDeathFog } from "../../lib/v39-corpse-undead-rules.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -292,23 +295,35 @@ function corpseAmount(groundLoot) {
 
 function undeadOrigins(state, mapData, activeDisasters) {
   const origins = [];
+  const corpseKeys = new Set(Object.entries(state.groundLootByTile || {}).filter(([, loot]) => corpseAmount(loot) >= V39_FOG_BALANCE.corpseResourcePerBody).map(([key]) => key));
+  for (const unit of [...(state.enemies || []), ...(state.players || []).flatMap(player => player.factionState?.units || [])]) {
+    if (!isLiving(unit)) corpseKeys.add(tileKey(unit.x, unit.y));
+  }
   for (const tile of mapTiles(mapData)) {
-    const terrain = mapTileText(mapData, tile.x, tile.y);
-    if (terrain.some(value => value.includes("死の霧"))) origins.push({ ...tile, source:"死の霧", chance:V39_UNDEAD_SPAWN_BALANCE.deathMistChancePerTile });
+    if (isV39DeathFogTile(mapData,tile.x,tile.y) && !corpseKeys.has(tile.key)) origins.push({ ...tile, source:"死の霧", chance:V39_UNDEAD_SPAWN_BALANCE.deathMistChancePerTile });
   }
   for (const [key, loot] of Object.entries(state?.groundLootByTile || {})) {
-    if (corpseAmount(loot) < 1) continue;
+    if (corpseAmount(loot) < V39_FOG_BALANCE.corpseResourcePerBody) continue;
     const [x, y] = key.split(",").map(Number);
+    if (isV39DeathFogTile(mapData,x,y)) continue;
     if (Number.isFinite(x) && Number.isFinite(y)) origins.push({ x, y, key:tileKey(x, y), source:"死体", chance:V39_UNDEAD_SPAWN_BALANCE.corpseChancePerTile });
   }
   for (const event of activeDisasters || []) {
     if (event?.undeadBonus !== true) continue;
     for (const key of event?.tileKeys || []) {
       const [x, y] = String(key).split(",").map(Number);
+      if (corpseKeys.has(key) && isV39DeathFogTile(mapData,x,y)) continue;
       if (Number.isFinite(x) && Number.isFinite(y)) origins.push({ x, y, key:tileKey(x, y), source:event.name, chance:V39_UNDEAD_SPAWN_BALANCE.disasterBonusChancePerTile });
     }
   }
-  return [...new Map(origins.map(origin => [origin.key, origin])).values()];
+  const merged = new Map();
+  for (const origin of origins) {
+    const previous = merged.get(origin.key);
+    merged.set(origin.key, {...origin,
+      chance:Math.max(origin.chance,previous?.chance||0),
+      source:origin.source==="死体"||previous?.source==="死体"?"死体":origin.source});
+  }
+  return [...merged.values()];
 }
 
 function chooseUndeadCandidate(token) {
@@ -326,8 +341,8 @@ function consumeCorpse(groundLootByTile, key) {
   const current = groundLootByTile[key];
   const cargo = current?.cargo || current;
   const before = corpseAmount(current);
-  if (before < 1) return groundLootByTile;
-  const resourcesByType = { ...(cargo?.resourcesByType || {}), 死体:before - 1 };
+  if (before < V39_FOG_BALANCE.corpseResourcePerBody) return groundLootByTile;
+  const resourcesByType = { ...(cargo?.resourcesByType || {}), 死体:before - V39_FOG_BALANCE.corpseResourcePerBody };
   if (resourcesByType.死体 <= 0) delete resourcesByType.死体;
   return { ...groundLootByTile, [key]:{ ...current, cargo:{ ...cargo, resourcesByType } } };
 }
@@ -390,8 +405,8 @@ function spawnDisasterEnemy(state, event, turn) {
 function syncNeutralVillageUndeadThreats(villages, enemies, turn) {
   const naturalUndead = (enemies || []).filter(enemy => (
     isLiving(enemy)
-    && enemy?.metadata?.isUndead === true
-    && text(enemy?.metadata?.spawnType) === "アンデッド自然発生"
+    && (enemy?.isUndead === true || enemy?.metadata?.isUndead === true)
+    && ["アンデッド自然発生", "死体アンデッド化"].includes(text(enemy?.spawnType || enemy?.metadata?.spawnType))
   ));
   return (villages || []).map(village => {
     const territoryKeys = new Set((village?.territoryTileKeys || [tileKey(village?.x, village?.y)]).map(text));
@@ -410,6 +425,7 @@ function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceD
   const activeDisasters = [...existing, ...created];
   const ticked = tickDisasterDamage(state, mapData, activeDisasters, turn);
   const stateAfterDamage = { ...state, players:ticked.players, enemies:ticked.enemies, neutralVillages:ticked.neutralVillages };
+  advanceV39CorpseFog(mapData,stateAfterDamage,turn);
   const spawnedByDisaster = created.map(event => spawnDisasterEnemy(stateAfterDamage, event, turn)).filter(Boolean);
   const undead = spawnNaturalUndead({ ...stateAfterDamage, enemies:[...ticked.enemies, ...spawnedByDisaster] }, mapData, turn, ticked.activeDisasters, forceUndeadAt);
   const enemies = [...ticked.enemies, ...spawnedByDisaster, ...undead.spawned.map(row => row.enemy)];
@@ -467,6 +483,19 @@ export function runV39NaturalEvents(options = {}) {
 }
 
 function install() {
+  window.resolveV39CorpseUndead = turn => {
+    const state = window.getV39GameState?.(), map = window.__v39FieldRuntime?.mapData;
+    if (!state || !map) return null;
+    const result = convertV39CorpsesInDeathFog(state, map, turn, { createEnemy:createV39EventEnemy });
+    if (!result) return null;
+    const { spawned, ...patch } = result;
+    patch.neutralVillages = syncNeutralVillageUndeadThreats(patch.neutralVillages, patch.enemies, turn);
+    window.setV39GameState?.(patch, { reason:"corpse-undead-conversion" });
+    const playerIds = (state.players || []).map(player => player.id);
+    for (const row of spawned) window.appendV39ActivityLog?.(playerIds, "アンデッド化",
+      `${row.enemy.name} Lv${row.enemy.level}: (${row.origin.x},${row.origin.y})の死体が変化${row.origin.source ? " / 死の霧発生源" : ""}`, row);
+    return { spawned };
+  };
   window.addEventListener("v39:turn-stage-world", event => runV39NaturalEvents({ turnNumber:event?.detail?.turnNumber }));
   window.forceV39Disaster = (disasterId, position = null) => runV39NaturalEvents({ force:true, forceDisasterId:disasterId, forceDisasterAt:position });
   window.forceV39UndeadSpawn = position => runV39NaturalEvents({ force:true, forceUndeadAt:position, skipNaturalDisasters:true });

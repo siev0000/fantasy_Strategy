@@ -7,6 +7,9 @@ import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "../
 import { resolveV39MovementStatFromStatus } from "../../lib/v39-gameplay-balance.js";
 import { isV39InvalidDataToken } from "../../lib/v39-class-rules.js";
 import { deriveV39BodyWeaponLevels } from "../../lib/v39-body-weapon-rules.js";
+import { getV39PassiveRows, isV39ConditionalPassive, collectV39PassiveBonuses, addV39PassiveValues } from "../../lib/v39-passive-rules.js";
+import { V39_BODY_WEAPON_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { resolveV39FacilityClassGrowth } from "../../lib/v39-facility-growth-rules.js";
 
 const INITIAL_RACE_BONUS_LEVEL = 5;
 const STATUS_GROWTH_DIVISOR = 10;
@@ -101,9 +104,9 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   const race = resolveRaceName(unit);
   const className = resolveClassName(unit);
   const secondClassName = resolveSecondClassName(unit);
-  const level = resolveLevel(unit);
+  let level = resolveLevel(unit);
   const raceRow = resolveRaceRow(race);
-  const testMode = isV39TestSkillModeEnabled();
+  const testMode = unit.testOnly === true || isV39TestSkillModeEnabled();
   const classRow = classByName.get(className) || (testMode ? testClassByName.get(className) : null) || null;
 
   if (!race || !className || !raceRow || !classRow) {
@@ -122,12 +125,29 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const isHumanRace = text(raceRow.種類) === "人族";
+  const facilityGrowth = resolveV39FacilityClassGrowth({...unit,level},raceRow.種類);
+  if (facilityGrowth) level = Math.min(level,facilityGrowth.levelCap);
   const strongAnimalClassName = text(unit.strongAnimalClassName);
   const strongAnimalClassRow = classByName.get(strongAnimalClassName) || null;
   const strongAnimalClassLevel = strongAnimalClassRow
     ? Math.max(0, Math.min(level - 1, Math.round(number(unit.strongAnimalClassLevel)))) : 0;
   const baseLevel = level - strongAnimalClassLevel;
-  const { raceLevels, classLevels } = internalLevels(baseLevel, isHumanRace);
+  let { raceLevels, classLevels:totalClassLevels } = internalLevels(baseLevel, isHumanRace);
+  const prerequisiteClasses = Object.entries(unit.prerequisiteClassLevels || {})
+    .filter(([name,levels]) => name !== className && classByName.has(name) && Number(levels) > 0)
+    .map(([name,levels]) => ({name,levels:Math.floor(Number(levels)),row:classByName.get(name)}));
+  let classLevels = Math.max(0,totalClassLevels - prerequisiteClasses.reduce((sum,item) => sum + item.levels,0));
+  // 施設徴兵の初期配分を保持し、その後に得たLvだけ通常の成長配分へ渡す。
+  if (unit.classGrowthStart && prerequisiteClasses.length) {
+    const start = unit.classGrowthStart;
+    const gained = internalLevels(Math.max(0,baseLevel - number(start.level,baseLevel)),isHumanRace);
+    raceLevels = Math.max(0,number(start.raceLevels)) + gained.raceLevels;
+    classLevels = Math.max(0,number(start.classLevels)) + gained.classLevels;
+  }
+  if (facilityGrowth) {
+    raceLevels = facilityGrowth.raceLevels;
+    classLevels = facilityGrowth.classLevels;
+  }
 
   const statusResult = buildCharacterStatusFromRules({
     raceRow,
@@ -153,6 +173,15 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   });
   const resistances = buildUnitResistances(raceRow, classRow, { resistanceFields:RESISTANCE_FIELDS });
 
+  for (const prior of prerequisiteClasses) {
+    const growth = rowStatusVector(prior.row,{statusGrowthFields:STATUS_GROWTH_FIELDS,statusGrowthDivisor:STATUS_GROWTH_DIVISOR});
+    for (const key of STATUS_GROWTH_FIELDS) statusResult.status[key] += growth[key] * prior.levels;
+    const skills = buildUnitSkillLevelsFromRules({classRow:prior.row,classLevels:prior.levels,
+      skillLevelFields:SKILL_LEVEL_FIELDS,statusGrowthDivisor:STATUS_GROWTH_DIVISOR});
+    for (const key of SKILL_LEVEL_FIELDS) skillLevels[key] += skills[key];
+    for (const key of RESISTANCE_FIELDS) resistances[key] += number(prior.row[key]);
+  }
+
   if (strongAnimalClassRow && strongAnimalClassLevel > 0) {
     const growth = rowStatusVector(strongAnimalClassRow, {statusGrowthFields:STATUS_GROWTH_FIELDS,statusGrowthDivisor:STATUS_GROWTH_DIVISOR});
     for (const key of STATUS_GROWTH_FIELDS) statusResult.status[key] += growth[key] * strongAnimalClassLevel;
@@ -163,6 +192,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const acquiredNames = [
+    ...prerequisiteClasses.flatMap(prior => collectSkills(prior.row,prior.levels)),
     ...collectSkills(raceRow, raceLevels),
     ...collectSkills(classRow, classLevels)
   ];
@@ -176,7 +206,13 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
 
   const uniqueNames = [...new Set(acquiredNames.filter(Boolean))];
   const techniques = uniqueNames.map(name => techniqueFromName(name, { allowTest:testMode }));
-  const status = applyMilitaryProfileToStatus(statusResult.status || {}, unit?.combatProfile);
+  const basePassives=getV39PassiveRows({techniques}).filter(row=>!isV39ConditionalPassive(row));
+  const passiveBonuses=collectV39PassiveBonuses(basePassives);
+  const status = addV39PassiveValues(applyMilitaryProfileToStatus(statusResult.status || {}, unit?.combatProfile),passiveBonuses.status);
+  const bodyWeaponLevels=deriveV39BodyWeaponLevels([raceRow,classRow,secondClassRow,strongAnimalClassRow,...prerequisiteClasses.map(prior=>prior.row)]);
+  for (const [key,value] of Object.entries(passiveBonuses.bodyWeaponValues)) {
+    bodyWeaponLevels[key]=(bodyWeaponLevels[key]||0)+value/V39_BODY_WEAPON_BALANCE.levelDivisor;
+  }
 
   return {
     ok: true,
@@ -187,16 +223,21 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     isHumanRace,
     raceLevels,
     classLevels,
+    prerequisiteClassLevels:Object.fromEntries(prerequisiteClasses.map(prior => [prior.name,prior.levels])),
+    growthCaps:facilityGrowth?.caps || null,
     baseLevel,
     strongAnimalClassName:strongAnimalClassRow ? strongAnimalClassName : "",
     strongAnimalClassLevel,
     initialRaceBonusLevel: INITIAL_RACE_BONUS_LEVEL,
     status,
-    skillLevels,
-    resistances,
+    skillLevels:addV39PassiveValues(skillLevels,passiveBonuses.skillLevels),
+    resistances:addV39PassiveValues(resistances,passiveBonuses.resistances),
+    passiveBaseSkillNames:basePassives.map(row=>row.名前),
+    passiveDiagnostics:passiveBonuses.unsupported,
+    passiveBonuses,
     acquiredSkillNames: uniqueNames,
     techniques,
-    bodyWeaponLevels:deriveV39BodyWeaponLevels([raceRow, classRow, secondClassRow, strongAnimalClassRow]),
+    bodyWeaponLevels,
     uiStats: {
       atk: number(status.攻撃),
       def: number(status.防御),
@@ -236,18 +277,20 @@ export function applyV39DerivedCharacterData(unit = {}) {
   const movement = resolveV39MovementStatFromStatus(status, {
     legCount: derived.raceRow?.脚数
   });
-  status.移動 = movement;
+  status.移動 = movement + number(derived.passiveBonuses?.status?.移動);
   return {
     ...unit,
     race: derived.race,
     className: derived.className,
     level: derived.level,
-    movement,
+    movement:status.移動,
     status,
     skillLevels: { ...derived.skillLevels },
     resistances: { ...resistances, ...(unit?.resistanceOverrides || {}) },
     equipment,
     acquiredSkillNames: [...derived.acquiredSkillNames],
+    passiveBaseSkillNames:[...derived.passiveBaseSkillNames],
+    passiveDiagnostics:[...derived.passiveDiagnostics],
     techniques: derived.techniques.map(row => ({ ...row })),
     bodyWeaponLevels: { ...derived.bodyWeaponLevels },
     derivedCharacter: derived,

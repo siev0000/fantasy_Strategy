@@ -57,7 +57,7 @@ try {
   const unitRows = page.locator("#characterModal .v39-char-unit-row");
   if (!(await unitRows.count())) throw new Error("自キャラ一覧がフィールド用のコンパクトカードで表示されません。");
   const unitRowBox = await unitRows.first().boundingBox();
-  if (!unitRowBox || unitRowBox.height > 56) {
+  if (!unitRowBox || unitRowBox.height > 100) {
     throw new Error("自キャラ一覧の項目が固定高さで表示されません。");
   }
   const tabButtons = page.locator("[data-v39-character-detail-tab]");

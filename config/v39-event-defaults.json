@@ -1,0 +1,13 @@
+{
+  "note": "シート未定義の試作用依頼。正式シートへ移行するときは読込処理も対応させ、この仮定義を削除する。",
+  "animalRaces": ["ホーク", "スネーク", "ウルフ", "クロコダイル", "タイガー", "ベア", "ボア", "ホース", "ドレイク"],
+  "village": [
+    {"ID":"VILLAGE_SUPPORT_FOOD","名前":"村への食料支援","進行形式":"納品","resourceKey":"穀物","stockKind":"food"},
+    {"ID":"VILLAGE_SUPPORT_WOOD","名前":"村の修繕用木材","進行形式":"納品","resourceKey":"木材","stockKind":"material"}
+  ],
+  "guardian": [
+    {"ID":"GUARDIAN_SUPPLY","名前":"守護地の修繕物資","type":"delivery","resourceKey":"木材","stockKind":"material"},
+    {"ID":"GUARDIAN_WATCH","名前":"守護地の見張り","type":"watch"},
+    {"ID":"GUARDIAN_HUNT","名前":"周辺の脅威を排除","type":"hunt"}
+  ]
+}

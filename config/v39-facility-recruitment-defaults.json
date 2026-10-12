@@ -1,0 +1,12 @@
+{
+  "description": "上位クラス徴兵の初回試験用。軍事Lv4は暫定値。正式な対応表は後で原本シートへ移す。",
+  "initialRaceLevels": { "人族": 0, "亜人": 3, "魔族": 5 },
+  "growthCaps": {
+    "人族": { "classLevels": 10, "raceLevels": 0 },
+    "亜人": { "classLevels": 7, "raceLevels": 5 },
+    "魔族": { "classLevels": 5, "raceLevels": 7 }
+  },
+  "entries": [
+    { "facilityName": "兵舎", "className": "ウォーリアー", "requiredMilitaryLevel": 4, "initialClassLevel": 1 }
+  ]
+}

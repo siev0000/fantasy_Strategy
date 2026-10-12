@@ -1,4 +1,5 @@
 import { getV39EffectSettingsCatalog } from "./v39-effect-settings.js";
+import compositeDefaults from "../../../config/v39-effect-composite-defaults.json";
 
 const STORAGE_KEY = "v39-effect-attribute-settings-v1";
 const SCHEMA = "v39-effect-attribute-settings";
@@ -35,7 +36,8 @@ const ATTRIBUTE_DEFAULT_COLORS = Object.freeze({
 const DIRECTIONS = new Set(["up", "down", "left", "right"]);
 const MOTION_MODES = new Set(["fixed", "scroll", "wave"]);
 
-let attributeNames = [];
+let attributeNames = Object.keys(compositeDefaults.attributes);
+let attributesLoaded = false;
 let overrides = readState();
 
 function text(value, fallback = "") {
@@ -67,12 +69,14 @@ function defaultSetting(attributeName = "") {
     gradientStartPercent:0,
     gradientEndPercent:100,
     colorStrengthPercent:DEFAULT_COLOR_STRENGTH_PERCENT,
-    gradientSpeedPercentPerSecond:80
+    gradientSpeedPercentPerSecond:80,
+    ...compositeDefaults.attributes[attributeName]
   };
 }
 
 function normalizeSetting(raw = {}, attributeName = "") {
   const base = defaultSetting(attributeName);
+  raw = { ...base, ...raw };
   const catalog = new Set(getV39EffectSettingsCatalog());
   const rawDecoration = text(raw.decorationEffect);
   const start = clamp(raw.gradientStartPercent, 0, 100, base.gradientStartPercent);
@@ -145,11 +149,12 @@ function deriveAttributeNames(rows) {
 }
 
 export async function loadV39EffectAttributes() {
-  if (attributeNames.length) return getV39EffectAttributes();
+  if (attributesLoaded) return getV39EffectAttributes();
   const response = await fetch(dataUrl(), { cache:"no-store" });
   if (!response.ok) throw new Error(`属性一覧を読み込めません: ${response.status} ${response.statusText}`);
   const rows = await response.json();
   attributeNames = deriveAttributeNames(rows);
+  attributesLoaded = true;
   const valid = new Set(attributeNames);
   overrides = Object.fromEntries(Object.entries(overrides).filter(([name]) => valid.has(name)));
   persist();

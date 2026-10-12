@@ -1,4 +1,7 @@
 import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
+import { isV39FogVisionAllowed, isV39FogTile, isV39DeathFogTile, advanceV39Fog } from "../../lib/v39-fog-rules.js";
+import { V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { getV39EffectAttribute } from "../../lib/v39-effect-attribute-settings.js";
 import { hasV39CaveLineOfSight, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import {
@@ -19,6 +22,7 @@ import {
 import { cacheStaticGraphicsLayer, removeStaticGraphicsCache } from "./v39-static-graphics-cache.js";
 
 const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
+const ATMOSPHERE_LAYER_NAME="v39-atmosphere-fog-layer";
 const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";
 const UNIT_SCOUT_LAYER_NAME = "v39-unit-scout-boundary-layer";
 const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
@@ -153,6 +157,57 @@ function removeLayer(scene, name) {
   removeStaticGraphicsCache(scene, name);
 }
 
+function drawAtmosphereFog(scene, data, currentVision, testMode) {
+  removeLayer(scene, ATMOSPHERE_LAYER_NAME);
+  const layer = scene.add.container(0, 0).setDepth(13).setName(ATMOSPHERE_LAYER_NAME);
+  const masks = [];
+  layer.once("destroy", () => { for (const mask of masks) { mask.geometryMask.destroy(); mask.destroy(); } });
+  const groups = [
+    { key:"v39-normal-fog", src:V39_FOG_BALANCE.normalImage, death:false },
+    { key:"v39-death-fog", src:V39_FOG_BALANCE.deathImage, death:true }
+  ];
+  scene.v39FogTextureRequests ||= new Set();
+  let queued = false;
+  for (const group of groups) {
+    const attribute = group.death ? getV39EffectAttribute(V39_FOG_BALANCE.deathAttribute) : null;
+    const color = attribute?.tint || (attribute?.gradientEnabled ? attribute.gradientColorA : "");
+    const tint = /^#[0-9a-f]{6}$/i.test(color || "") ? parseInt(color.slice(1),16) : 0xffffff;
+    const mask = scene.make.graphics({ add:false });
+    mask.fillStyle(group.death ? tint : V39_FOG_BALANCE.displayColor, 1);
+    let count = 0;
+    for (let y=0; y<data.h; y++) for (let x=0; x<data.w; x++) {
+      if (!isV39FogTile(data,x,y) || (!testMode && !currentVision.has(coordKey(x,y)))) continue;
+      if (isV39DeathFogTile(data,x,y)!==group.death) continue;
+      mask.fillPoints(hexPoints(x,y),true);
+      count++;
+    }
+    if (!count) { mask.destroy(); continue; }
+    if (scene.textures.exists(group.key)) {
+      const {width,height,rowStep,oddRowOffsetX} = tileMetrics();
+      const image = scene.add.tileSprite(0,0,data.w*width+oddRowOffsetX,(data.h-1)*rowStep+height,group.key)
+        .setOrigin(0).setAlpha(V39_FOG_BALANCE.displayAlpha);
+      if (group.death) image.setTint(tint);
+      mask.geometryMask = mask.createGeometryMask();
+      image.setMask(mask.geometryMask);
+      masks.push(mask);
+      layer.add(image);
+    } else {
+      mask.setAlpha(V39_FOG_BALANCE.displayAlpha);
+      layer.add(mask);
+      if (!scene.v39FogTextureRequests.has(group.key)) {
+        scene.v39FogTextureRequests.add(group.key);
+        scene.load.image(group.key,group.src);
+        queued = true;
+      }
+    }
+  }
+  // 画像はシーンごとに一度だけ読込む。タイルごとの画像生成は避ける。
+  if (queued) {
+    scene.load.once("complete", () => { lastRenderSignature=null; scheduleRender(); });
+    if (!scene.load.isLoading()) scene.load.start();
+  }
+}
+
 function wrappedCoord(value, size) {
   return ((value % size) + size) % size;
 }
@@ -182,7 +237,7 @@ function neighborEdges(data, x, y) {
   });
 }
 
-function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile = null, scoutValue = 0) {
+function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile = null, scoutValue = 0, applyFog = true) {
   if (sourceX === null || sourceX === undefined || sourceX === ""
     || sourceY === null || sourceY === undefined || sourceY === "") return;
   const sx = Math.floor(Number(sourceX));
@@ -198,7 +253,7 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
     const previousScout = Number(detectionByTile.get(startKey));
     detectionByTile.set(startKey, Math.max(
       Number.isFinite(previousScout) ? previousScout : Number.NEGATIVE_INFINITY,
-      resolveEffectiveScoutAtDistance(scoutValue, 0, data)
+      resolveEffectiveScoutAtDistance(scoutValue, 0, data,{x:sx,y:sy},{x:sx,y:sy})
     ));
   }
   while (queueIndex < queue.length) {
@@ -211,13 +266,14 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
       if (visited.has(key)) continue;
       visited.add(key);
       if (!hasV39CaveLineOfSight(data,{x:sx,y:sy},neighbor,{showWall:true})) continue;
-      output.add(key);
       const distance = current.distance + 1;
+      if (applyFog && !isV39FogVisionAllowed(data,{x:sx,y:sy},neighbor,maxDistance,distance)) continue;
+      output.add(key);
       if (detectionByTile instanceof Map) {
         const previousScout = Number(detectionByTile.get(key));
         detectionByTile.set(key, Math.max(
           Number.isFinite(previousScout) ? previousScout : Number.NEGATIVE_INFINITY,
-          resolveEffectiveScoutAtDistance(scoutValue, distance, data)
+          resolveEffectiveScoutAtDistance(scoutValue, distance, data,{x:sx,y:sy},neighbor)
         ));
       }
       if (!data.isUnderground || data.grid[neighbor.y][neighbor.x] === "洞窟") queue.push({ x:neighbor.x, y:neighbor.y, distance });
@@ -320,6 +376,14 @@ function buildDetectedEntityIds(state, playerId, currentVision, detectionByTile,
     );
     for (const id of ids) detected.add(id);
   }
+  const contacts=state?.players?.find(player=>String(player.id)===String(playerId))?.factionState?.visibility?.contactReveals||{};
+  const entities=[...(state?.enemies||[]),...(state?.neutralVillages||[]).flatMap(village=>village.defenseUnits||[]),
+    ...(state?.players||[]).flatMap(player=>player.factionState?.units||[])];
+  for(const [id,contact] of Object.entries(contacts)){
+    if(contact.turnNumber!==turnNumber||contact.worldId!==(state.activeWorldId||"surface"))continue;
+    const unit=entities.find(row=>String(row.id)===id);
+    if(unit&&unit.x===contact.x&&unit.y===contact.y&&currentVision.has(coordKey(unit.x,unit.y)))detected.add(id);
+  }
   return detected;
 }
 
@@ -345,12 +409,15 @@ function inspectPlayerDetectionForEnemy(enemyOrId) {
   const turnNumber = Math.max(1, Math.floor(Number(state?.timeline?.turnNumber) || 1));
   const targetStealth = roundDetectionValue(resolveDetectionGroupSense(group, { turnNumber }).stealth);
   const exposedUnits = group.filter(unit => resolveDetectionStealthRecoveryRate(unit, { turnNumber }) < 1);
+  const contact=activePlayer(state)?.factionState?.visibility?.contactReveals?.[id];
+  const contactDetected=contact?.turnNumber===turnNumber&&contact?.worldId===(state.activeWorldId||"surface")
+    &&contact?.x===x&&contact?.y===y;
   const exposureReason = [...new Set(exposedUnits.map(unit => Math.floor(Number(unit?.lastStealthBreakTurn)) === turnNumber
     ? String(unit?.lastStealthBreakReason || "combat").trim() : "attack-recovery"))].join(" / ");
   const reason = !inCurrentVision
     ? "索敵範囲外"
     : detected
-      ? exposedUnits.length
+      ? contactDetected ? "発見済み（移動時の接触）" : exposedUnits.length
         ? `発見済み（戦闘露見: ${exposureReason || "combat"} / 有効隠密${targetStealth}）`
         : `発見済み（有効索敵${observerScout ?? "-"} >= 隠密${targetStealth}）`
       : `未発見（有効索敵${observerScout ?? "-"} < 隠密${targetStealth}）`;
@@ -562,7 +629,7 @@ function drawUnitScoutBoundaries(graphics, data, units) {
 function nestTerritoryTileKeys(data, nest) {
   const result = new Set();
   const radius = Math.max(1, Math.floor(Number(nest?.territoryRadius) || 1));
-  addVisionRange(data, nest?.x, nest?.y, radius, result);
+  addVisionRange(data, nest?.x, nest?.y, radius, result,null,0,false);
   return result;
 }
 
@@ -574,6 +641,7 @@ function renderVisibilityLayers() {
   const player = activePlayer(state);
   const faction = player?.factionState;
   if (!data?.grid || !scene?.add || !faction) return false;
+  advanceV39Fog(data,state.timeline?.turnNumber||1);
 
   const vision = buildCurrentVision(data, faction, state, player.id);
   const currentVision = vision.visible;
@@ -615,6 +683,7 @@ function renderVisibilityLayers() {
     sortedSetSignature(explored)
   ].join(";");
   const renderSignature = [
+    JSON.stringify(data.fogMap||[]),JSON.stringify(data.specialMap||[]),
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
     testMode ? 1 : 0,
     initialPlacement ? 1 : 0,
@@ -638,6 +707,7 @@ function renderVisibilityLayers() {
 
   if (redrawFog) removeLayer(scene, FOG_LAYER_NAME);
   removeLayer(scene, SCOUT_LAYER_NAME);
+  drawAtmosphereFog(scene,data,currentVision,testMode);
   removeLayer(scene, UNIT_SCOUT_LAYER_NAME);
   removeLayer(scene, TERRITORY_LAYER_NAME);
   removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
@@ -784,6 +854,13 @@ window.isV39EntityDetected = entityOrId => {
 window.getV39VisibilityStatus = () => ({ ...(window.__v39VisibilityStatus || {}) });
 window.inspectV39PlayerDetectionForEnemy = inspectPlayerDetectionForEnemy;
 window.renderV39Visibility = scheduleRender;
+window.addEventListener("v39:effect-attribute-settings-changed", () => {
+  lastRenderSignature = null;
+  scheduleRender();
+});
+window.addEventListener("v39:turn-advanced",event=>{
+  if(advanceV39Fog(window.__v39FieldRuntime?.mapData,event.detail?.turnNumber)) scheduleRender();
+});
 
 window.addEventListener("v39:field-generated", resetVisibilityForNewField);
 window.addEventListener("v39:field-data-updated", () => {

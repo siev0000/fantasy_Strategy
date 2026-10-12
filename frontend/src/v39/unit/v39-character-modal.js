@@ -1,12 +1,17 @@
+import { renderV39UnitSkills } from "./v39-unit-skills.js";
+import { openV39EquipmentPicker } from "./v39-equipment-picker.js";
+import { isMobUnit } from "../../composables/unitCoreUtils.js";
 import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
-import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../../constants/unitCommon.js";
-import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
-import { resolveUnitArtwork } from "../../lib/map-entity-artwork.js";
+import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
+import { renderV39UnitAbility, renderV39DetailTabs } from "./v39-unit-detail.js";
+import { renderV39UnitCard } from "./v39-unit-card.js";
 
 let activeTab = "character";
 let selectedId = "";
 let detailTab = "status";
 let pinnedResistanceElement = null;
+let expandedSkillName = "";
+let equipmentMessage = "";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -18,39 +23,9 @@ const escapeHtml = (value) => text(value)
   .replaceAll("'", "&#39;");
 const isDead = (unit) => text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0;
 
-function percent(current, maximum) {
-  const max = Math.max(1, number(maximum, 1));
-  return Math.max(0, Math.min(100, (Math.max(0, number(current, 0)) / max) * 100));
-}
-
-function unitRowIcon(unit) {
-  const artwork = resolveUnitArtwork(unit);
-  // スプライトシート全体を縮小表示せず、単体画像または既存アイコンだけを使う。
-  if (artwork?.type !== "unit-sheet" && text(artwork?.src)) {
-    return `<img src="${escapeHtml(artwork.src)}" alt="" class="v39-char-row-icon">`;
-  }
-  const glyph = text(unit?.unitType).includes("軍隊") ? "兵" : "◆";
-  return `<span class="v39-char-row-icon v39-char-row-icon-fallback" aria-hidden="true">${glyph}</span>`;
-}
-
 function unitListRow(unit, id, selected) {
-  const hp = Math.max(0, number(unit?.hp, unit?.currentHp));
-  const maxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || 1));
-  const ap = Math.max(0, number(unit?.ap, unit?.currentAp));
-  const maxAp = Math.max(1, number(unit?.maxAp, 100));
-  const dead = isDead(unit);
-  const name = text(unit?.name || unit?.id, "名称不明");
-  const level = Math.max(1, Math.floor(number(unit?.level, 1)));
-  return `<button class="char-row v39-char-unit-row${selected ? " active" : ""}${dead ? " dead" : ""}" data-v39-character-row="${escapeHtml(id)}" title="${escapeHtml(name)} Lv${level}">
-    ${unitRowIcon(unit)}
-    <span class="v39-char-row-body">
-      <span class="v39-char-row-head"><strong>${escapeHtml(name)}</strong><b>Lv${level}</b></span>
-      <span class="v39-char-row-vital"><i>HP</i><span><em style="width:${percent(hp, maxHp)}%"></em><b>${Math.floor(hp)}/${Math.floor(maxHp)}</b></span></span>
-      <span class="v39-char-row-vital ap"><i>AP</i><span><em style="width:${percent(ap, maxAp)}%"></em><b>${Math.floor(ap)}/${Math.floor(maxAp)}</b></span></span>
-    </span>
-  </button>`;
+  return renderV39UnitCard(unit, {id,selected,character:true,dead:isDead(unit)});
 }
-
 function faction() {
   return window.getV39ActiveFactionState?.() || null;
 }
@@ -63,93 +38,24 @@ function rowsForTab(current) {
   return [];
 }
 
-function skillLevel(unit, field) {
-  const keys = [field?.key, ...(Array.isArray(field?.aliases) ? field.aliases : [])].map(value => text(value)).filter(Boolean);
-  for (const key of keys) {
-    const raw = Number(unit?.skillLevels?.[key]);
-    if (Number.isFinite(raw)) return Math.max(0, Math.round(raw));
-  }
-  return 0;
-}
-
 function statusPanel(unit) {
-  const hp = Math.max(0, number(unit?.hp, unit?.currentHp));
-  const maxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || 1));
-  const ap = Math.max(0, number(unit?.ap, unit?.currentAp));
-  const maxAp = Math.max(1, number(unit?.maxAp, 100));
-  const status = [
-    ["HP", `${hp} / ${maxHp}`],
-    ["AP", `${ap} / ${maxAp}`],
-    ["攻撃", unit?.status?.攻撃],
-    ["防御", unit?.status?.防御],
-    ["魔力", unit?.status?.魔力],
-    ["精神", unit?.status?.精神],
-    ["速度", unit?.status?.速度],
-    ["命中", unit?.status?.命中],
-    ["SIZ", unit?.status?.SIZ]
-  ];
-  if (number(unit?.guard) > 0) status.splice(2, 0, ["ガード", Math.floor(number(unit.guard))]);
-  const statusHtml = status.map(([label, value]) => `<div class="detail-card"><span>${label}</span><b>${escapeHtml(value ?? "-")}</b></div>`).join("");
-  const skillsHtml = SKILL_FIELD_DEFS.map((field) => `<div class="v39-char-skill-row"><span>${escapeHtml(field.label || field.key)}</span><b>${skillLevel(unit, field)}</b></div>`).join("");
-  const resistanceHtml = RESISTANCE_FIELDS
-    .map((key) => [key, Number(unit?.resistances?.[key])])
-    .filter(([, value]) => Number.isFinite(value) && value !== 0)
-    .map(([key, value]) => {
-      const iconSrc = getResistanceIconSrc(key);
-      const tone = resistanceValueTone(value);
-      return `<button type="button" class="v39-char-resistance-row ${tone}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}" data-v39-resistance-label="${escapeHtml(key)}">
-        ${iconSrc ? `<img src="${escapeHtml(iconSrc)}" alt="" aria-hidden="true" class="v39-char-resistance-icon">` : '<span class="v39-char-resistance-icon-fallback" aria-hidden="true">?</span>'}
-        <b>${escapeHtml(formatResistanceValue(value))}</b>
-      </button>`;
-    }).join("");
-  return `<div class="v39-char-detail-scroll">
-    <h4>ステータス</h4>
-    <div class="detail-grid v39-char-status-grid">${statusHtml}</div>
-    <h4>技能</h4>
-    <div class="v39-char-skill-grid">${skillsHtml}</div>
-    <h4>耐性</h4>
-    <div class="v39-char-resistance-grid">${resistanceHtml || '<span class="v39-char-empty">補正なし</span>'}</div>
-  </div>`;
+  return `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAbility(unit, {mapData:window.__v39FieldRuntime?.mapData})}</div>`;
 }
-
-function techniqueMeta(entry) {
-  const rows = [];
-  if (Number.isFinite(Number(entry?.apCost))) rows.push(["AP", Math.round(Number(entry.apCost))]);
-  if (Number.isFinite(Number(entry?.hpCost)) && Number(entry.hpCost) !== 0) rows.push(["HP", Math.round(Number(entry.hpCost))]);
-  if (entry?.range !== null && entry?.range !== undefined && text(entry.range)) rows.push(["射程", entry.range]);
-  if (entry?.area !== null && entry?.area !== undefined && text(entry.area)) rows.push(["範囲", entry.area]);
-  if (entry?.target !== null && entry?.target !== undefined && text(entry.target)) rows.push(["対象", entry.target]);
-  if (text(entry?.action)) rows.push(["行動", entry.action]);
-  return rows;
-}
-
 function skillsPanel(unit) {
-  const techniques = Array.isArray(unit?.techniques) ? unit.techniques : [];
-  if (!techniques.length) return '<div class="v39-char-detail-scroll"><p class="v39-char-empty">取得スキルなし</p></div>';
-  return `<div class="v39-char-detail-scroll v39-char-technique-list">${techniques.map((entry) => {
-    const name = text(entry?.name ?? entry?.名前 ?? entry?.source?.名前, "名称不明");
-    const meta = techniqueMeta(entry);
-    return `<article class="v39-char-technique-card">
-      <header><strong>${escapeHtml(name)}</strong>${Number.isFinite(Number(entry?.apCost)) ? `<span>AP ${Math.round(Number(entry.apCost))}</span>` : ""}</header>
-      ${meta.length ? `<div class="v39-char-technique-meta">${meta.map(([label, value]) => `<span><small>${escapeHtml(label)}</small><b>${escapeHtml(value)}</b></span>`).join("")}</div>` : ""}
-      ${text(entry?.detail) ? `<p>${escapeHtml(entry.detail)}</p>` : ""}
-    </article>`;
-  }).join("")}</div>`;
+  return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><div class="technique-list v39-char-technique-list">${renderV39UnitSkills(unit, {mapData:window.__v39FieldRuntime?.mapData, expandedName:expandedSkillName})}</div></div>`;
 }
-
 function equipmentPanel(unit) {
   const equipment = Array.isArray(unit?.equipment) ? unit.equipment : [];
-  return `<div class="v39-char-detail-scroll">
-    <h4>装備</h4>
-    <div class="v39-char-equipment-list">${EQUIPMENT_SLOT_KEYS.map((slot) => {
-      const item = equipment.find((row) => text(row?.slot) === slot);
+  const fixed = isMobUnit(unit) || isDead(unit);
+  return `<div class="squad-detail-tab-panel v39-char-detail-scroll">
+    <p class="v39-char-note">${fixed ? "このユニットの装備は変更できません。" : "装備を押して変更候補と性能を比較"}</p>
+    <div class="v39-char-equipment-list">${EQUIPMENT_SLOT_KEYS.map(slot => {
+      const item = equipment.find(row => text(row?.slot) === slot);
       const quality = text(item?.qualityLabel || item?.quality);
-      return `<div class="v39-char-equipment-row"><span>${escapeHtml(slot)}</span><b>${escapeHtml(item?.name || "なし")}${quality ? ` [${escapeHtml(quality)}]` : ""}</b></div>`;
-    }).join("")}</div>
-    <p class="v39-char-note">装備の変更・生成・付与は装備画面から行います。</p>
+      return `<button type="button" class="v39-char-equipment-row" data-v39-character-equip-open="${escapeHtml(slot)}"${fixed ? " disabled" : ""}><span>${escapeHtml(slot)}</span><b>${escapeHtml(item?.name || "なし")}${quality ? ` [${escapeHtml(quality)}]` : ""}</b></button>`;
+    }).join("")}</div><output class="v39-char-note" aria-live="polite">${escapeHtml(equipmentMessage)}</output>
   </div>`;
 }
-
 function growthPanel(unit) {
   const derived = unit?.derivedCharacter;
   const raceLevel = Math.max(0, Math.floor(number(derived?.raceLevels, 0)));
@@ -157,9 +63,10 @@ function growthPanel(unit) {
   const secondClassName = text(derived?.secondClassName || unit?.secondClassName || unit?.subClassName);
   const rows = [
     ["総合Lv", Math.max(1, Math.floor(number(unit?.level, 1)))],
-    [`${text(unit?.race, "種族")} Lv`, raceLevel],
-    [`${text(unit?.className, "クラス")} Lv`, classLevel]
+    [`${text(unit?.race, "種族")} Lv`, derived?.growthCaps?.raceLevels > 0 ? `${raceLevel} / ${derived.growthCaps.raceLevels}` : raceLevel],
+    [`${text(unit?.className, "クラス")} Lv`, derived?.growthCaps ? `${classLevel} / ${derived.growthCaps.classLevels}` : classLevel]
   ];
+  for (const [name,levels] of Object.entries(derived?.prerequisiteClassLevels || {})) rows.push([`${name} Lv`,levels]);
   if (secondClassName) rows.push([`${secondClassName} Lv`, 1]);
   if (derived?.strongAnimalClassName) rows.push([`${derived.strongAnimalClassName} Lv`, derived.strongAnimalClassLevel]);
   return `<div class="v39-char-detail-scroll">
@@ -175,22 +82,18 @@ function detailTabs(unit) {
     : detailTab === "equipment" ? equipmentPanel(unit)
     : detailTab === "growth" ? growthPanel(unit)
     : statusPanel(unit);
-  return `<div class="v39-char-detail-tabs">${tabs.map(([key, label]) => `<button type="button" class="${key === detailTab ? "active" : ""}" data-v39-character-detail-tab="${key}">${label}</button>`).join("")}</div>
-    <div class="v39-char-detail-panel">${panel}</div>`;
+  return `${renderV39DetailTabs(tabs, detailTab, "data-v39-character-detail-tab")}
+    <div class="squad-detail-tab-content v39-char-detail-panel">${panel}</div>`;
 }
-
 function unitDetail(unit) {
   if (!unit) return '<div class="detail-pane"><p>表示対象がありません。</p></div>';
   const remainingTurns = remainingV39Turns(unit?.deadExpireTurn, currentV39TurnNumber());
   const role = text(unit?.role || unit?.state, "キャラクター");
-  return `<div class="detail-pane v39-char-unit-detail">
+  return `<div class="detail-pane squad-detail-pane v39-char-unit-detail">
     <div class="v39-char-unit-head">
-      <h3>${escapeHtml(unit.name)}</h3>
-      <div class="v39-char-unit-meta">
-        <div><span>Lv</span><b>${Math.max(1, Math.floor(number(unit?.level, 1)))}</b></div>
-        <div><span>種族</span><b>${escapeHtml(unit?.race || "-")}</b></div>
-        <div><span>クラス</span><b>${escapeHtml(unit?.className || "-")}</b></div>
-        <div><span>役割</span><b>${escapeHtml(role)}</b></div>
+      <div class="squad-detail-minihead v39-char-unit-meta">
+        <span class="squad-detail-chip">${escapeHtml(unit?.race || '-')} / ${escapeHtml(unit?.className || '-')}</span>
+        <span class="squad-detail-chip">${escapeHtml(role)} ・ Lv${Math.max(1, Math.floor(number(unit?.level, 1)))}</span>
       </div>
       ${activeTab === "corpse" ? `<p>消滅まで ${remainingTurns}ターン / 座標 (${number(unit.x)}, ${number(unit.y)})</p>` : ""}
       ${activeTab === "dead" ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}
@@ -233,6 +136,7 @@ function render() {
       }).join("") || '<div class="char-row">該当なし</div>'}</div>
       ${activeTab === "squad" ? squadDetail(selected, current) : unitDetail(selected)}
     </div>`;
+  requestAnimationFrame(() => window.refreshV39SquadCardVitals?.());
   return true;
 }
 
@@ -251,75 +155,34 @@ function installStyles() {
   style.textContent = `
     #characterModal .v39-char-unit-detail{display:grid;grid-template-rows:auto auto minmax(0,1fr);height:100%;min-height:0;overflow:hidden}
     #characterModal .v39-char-unit-head{padding-bottom:8px}
-    #characterModal .v39-char-unit-head h3{margin:3px 0 8px;font-size:var(--font-size-22)}
-    #characterModal .v39-char-unit-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
-    #characterModal .v39-char-unit-meta>div{display:grid;gap:2px;border:1px solid #31464d;border-radius:6px;background:#17252a;padding:6px 8px;min-width:0}
-    #characterModal .v39-char-unit-meta span{font-size:var(--font-compact);color:#91a3a7}
-    #characterModal .v39-char-unit-meta b{font-size:var(--font-body);overflow-wrap:anywhere}
-    #characterModal .v39-char-detail-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin:0 0 7px}
-    #characterModal .v39-char-detail-tabs button{min-width:0;min-height:38px;border:1px solid #41565d;border-radius:6px;background:#17242a;color:#dce6e5;padding:5px 4px;font-size:var(--font-size-14);font-weight:700}
-    #characterModal .v39-char-detail-tabs button.active{border-color:#65d4e6;background:#17323a;color:#f3ffff}
-    #characterModal .v39-char-detail-panel{height:100%;min-height:0;overflow:hidden;border:1px solid #31464d;border-radius:7px;background:#0f191d}
+    #characterModal .modal{width:min(900px,96vw);height:min(780px,94svh)}
+    #characterModal .modal-body{display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;overflow:hidden;gap:7px}
     #characterModal .v39-char-detail-scroll{height:100%;overflow:auto;padding:8px}
     #characterModal .v39-char-detail-scroll h4{margin:5px 0 7px}
-    #characterModal .v39-char-status-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-    #characterModal .v39-char-skill-grid,#characterModal .v39-char-resistance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
-    #characterModal .v39-char-skill-row,#characterModal .v39-char-resistance-row,#characterModal .v39-char-equipment-row,#characterModal .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #31464d;border-radius:6px;background:#17252a;padding:7px 9px;min-width:0}
-    #characterModal .v39-char-skill-row span,#characterModal .v39-char-resistance-row span,#characterModal .v39-char-equipment-row span,#characterModal .v39-char-growth-row span{color:#a8b8ba}
-    #characterModal .v39-char-resistance-row{font:inherit;color:#a8b8ba;cursor:default;outline:none;padding:1px 9px}
-    #characterModal .v39-char-resistance-icon,#characterModal .v39-char-resistance-icon-fallback{width:28px;height:28px;flex:0 0 auto;border-radius:4px}
-    #characterModal .v39-char-resistance-icon{object-fit:contain}
-    #characterModal .v39-char-resistance-icon-fallback{display:inline-flex;align-items:center;justify-content:center;background:#223138;color:#dce8e7;font-size:var(--font-size-11);font-weight:900}
-    #characterModal .v39-char-resistance-row b{margin-left:auto}
     #v39ResistancePopover{position:fixed;z-index:100000;display:none;max-width:min(220px,calc(100vw - 24px));padding:5px 9px;border:1px solid rgba(112,144,153,.9);border-radius:6px;background:#0d171b;color:#eef7f6;box-shadow:0 5px 16px rgba(0,0,0,.36);font-size:var(--font-compact);font-weight:800;line-height:1.2;white-space:nowrap;pointer-events:none;transform:translate(-50%,-100%)}
-    #characterModal .v39-char-resistance-row.positive{border-color:rgba(104,205,139,.5);background:rgba(25,59,39,.72)}
-    #characterModal .v39-char-resistance-row.positive b{color:#7de0a0}
-    #characterModal .v39-char-resistance-row.negative{border-color:rgba(224,116,99,.52);background:rgba(67,31,29,.72)}
-    #characterModal .v39-char-resistance-row.negative b{color:#f08f7f}
     #characterModal .v39-char-equipment-list,#characterModal .v39-char-growth-list{display:grid;gap:6px}
+    #characterModal .v39-char-equipment-row,#characterModal .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #31464d;border-radius:6px;background:#17252a;padding:7px 9px;min-width:0}
+    #characterModal .v39-char-equipment-row span,#characterModal .v39-char-growth-row span{color:#a8b8ba}
+    #characterModal .v39-char-equipment-row{width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer}
+    #characterModal .v39-char-equipment-row:disabled{opacity:.65;cursor:default}
     #characterModal .v39-char-equipment-row b{overflow-wrap:anywhere;text-align:right}
     #characterModal .v39-char-note,#characterModal .v39-char-empty{color:#9eafb2;font-size:var(--font-secondary)}
     #characterModal .v39-char-empty-panel{display:grid;place-items:center;min-height:160px}
-    #characterModal .v39-char-technique-list{display:grid;align-content:start;gap:7px}
-    #characterModal .v39-char-technique-card{border:1px solid #3a5057;border-radius:7px;background:#17252a;padding:8px}
-    #characterModal .v39-char-technique-card header{display:flex;justify-content:space-between;gap:8px;align-items:center}
-    #characterModal .v39-char-technique-card header strong{font-size:var(--font-size-16)}
-    #characterModal .v39-char-technique-card header>span{border:1px solid #56676c;border-radius:5px;padding:3px 6px;font-size:var(--font-secondary)}
-    #characterModal .v39-char-technique-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:6px}
-    #characterModal .v39-char-technique-meta>span{display:grid;gap:1px;border:1px solid #31464d;border-radius:5px;padding:4px 6px}
-    #characterModal .v39-char-technique-meta small{color:#91a3a7}
-    #characterModal .v39-char-technique-card p{margin:7px 0 0;color:#d5dfde;line-height:1.45}
-    #characterModal .character-layout{grid-template-columns:minmax(150px,190px) minmax(0,1fr)}
-    #characterModal .list-pane{display:grid;grid-auto-rows:max-content;align-content:start;gap:4px;padding:4px;overflow:auto}
-    #characterModal .list-pane>.char-row{margin:0;min-height:0}
-    #characterModal .v39-char-unit-row{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;gap:5px;padding:4px;line-height:1;color:#e6efed}
-    #characterModal .v39-char-unit-row.active{border-width:1px;background:#17323a;box-shadow:inset 0 0 0 1px rgba(101,212,230,.26)}
-    #characterModal .v39-char-unit-row.dead{opacity:.65;border-color:rgba(184,104,96,.7)}
-    #characterModal .v39-char-row-icon{width:30px;height:30px;border:1px solid #41565d;border-radius:4px;background:#223138;object-fit:cover}
-    #characterModal .v39-char-row-icon-fallback{display:grid;place-items:center;color:#dce8e7;font-size:var(--font-secondary);font-weight:900}
-    #characterModal .v39-char-row-body{display:grid;gap:3px;min-width:0}
-    #characterModal .v39-char-row-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px;min-width:0}
-    #characterModal .v39-char-row-head strong{min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:var(--font-compact)}
-    #characterModal .v39-char-row-head b{padding:1px 3px;border:1px solid #536a70;border-radius:4px;color:#d8e5e2;font-size:var(--font-size-9);white-space:nowrap}
-    #characterModal .v39-char-row-vital{display:grid;grid-template-columns:15px minmax(0,1fr);align-items:center;gap:3px;min-width:0}
-    #characterModal .v39-char-row-vital>i{color:#a8b8ba;font-size:var(--font-size-8);font-style:normal;font-weight:800}
-    #characterModal .v39-char-row-vital>span{position:relative;display:block;height:8px;overflow:hidden;border:1px solid #566a70;border-radius:4px;background:#10191d}
-    #characterModal .v39-char-row-vital em{position:absolute;inset:0 auto 0 0;background:#54c689}
-    #characterModal .v39-char-row-vital.ap em{background:#60b9db}
-    #characterModal .v39-char-row-vital b{position:relative;z-index:1;display:block;color:#edf5f2;font-size:var(--font-size-7);font-weight:800;line-height:6px;text-align:center;white-space:nowrap}
+    #characterModal .character-layout{grid-template-columns:minmax(150px,190px) minmax(0,1fr);height:100%;min-height:0;gap:7px}
+    #characterModal .list-pane{display:grid;grid-auto-rows:max-content;align-content:start;gap:5px;padding:4px;overflow:auto;min-width:0}
+    #characterModal .v39-char-unit-row{margin:0;width:100%;color:#e6efed}
+    #characterModal .v39-char-unit-row.dead{opacity:.65;border-color:#b86860}
     @media(max-width:760px){
-      #characterModal .character-layout{grid-template-columns:minmax(116px,30%) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
-      #characterModal .v39-char-unit-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
-      #characterModal .v39-char-detail-tabs button{font-size:var(--font-compact);padding:4px 2px}
-      #characterModal .v39-char-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-      #characterModal .v39-char-technique-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
+      #characterModal .modal{width:100vw;height:100svh;max-height:100svh;border-radius:0}
+      #characterModal .modal-body{padding:6px}
+      #characterModal .modal-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px}
+      #characterModal .modal-tabs button{min-width:0;padding:4px 2px;overflow-wrap:anywhere;font-size:var(--font-body)}
+      #characterModal .character-layout{grid-template-columns:minmax(116px,40%) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:5px}
+      #characterModal .v39-char-unit-detail{padding:5px}
+
     }
     @media(max-width:430px){
-      #characterModal .v39-char-unit-head h3{font-size:var(--font-size-19)}
-      #characterModal .v39-char-detail-tabs{gap:3px}
-      #characterModal .v39-char-detail-tabs button{font-size:var(--font-size-11);min-height:36px}
-      #characterModal .v39-char-skill-row{padding:6px}
-      #characterModal .v39-char-resistance-row{padding:1px 6px}
+
     }`;
   document.head.appendChild(style);
 }
@@ -404,6 +267,24 @@ function install() {
       window.setTimeout(openCharacterModal, 0);
       return;
     }
+    const skill = element?.closest("[data-v39-character-skill]");
+    if (skill) {
+      expandedSkillName = expandedSkillName === skill.dataset.v39CharacterSkill ? "" : skill.dataset.v39CharacterSkill;
+      for (const card of skill.parentElement.querySelectorAll("[data-v39-character-skill]")) {
+        const expanded = card.dataset.v39CharacterSkill === expandedSkillName;
+        card.classList.toggle("is-expanded", expanded);
+        card.setAttribute("aria-expanded", String(expanded));
+      }
+      return;
+    }
+    const equipment = element?.closest("[data-v39-character-equip-open]");
+    if (equipment) {
+      openV39EquipmentPicker(selectedId, equipment.dataset.v39CharacterEquipOpen, () => {
+        equipmentMessage = "装備を更新しました";
+        render();
+      });
+      return;
+    }
     const tab = element?.closest("[data-v39-character-tab]");
     if (tab) {
       activeTab = text(tab.dataset.v39CharacterTab, "character");
@@ -422,6 +303,8 @@ function install() {
     if (row) {
       selectedId = text(row.dataset.v39CharacterRow);
       detailTab = "status";
+      expandedSkillName = "";
+      equipmentMessage = "";
       render();
     }
   });

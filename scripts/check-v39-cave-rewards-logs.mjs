@@ -8,7 +8,7 @@ const browser=await chromium.launch();
 const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];
 page.on("pageerror",error=>errors.push(error.stack||String(error)));
 try{
-  await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+  await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3022",{waitUntil:"networkidle"});
   await page.locator("[data-v39-cave-test]").click();
   await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
   await page.getByRole("button",{name:"探索開始",exact:true}).click();
@@ -66,15 +66,16 @@ try{
     check(window.getV39ActiveFactionState().activityLog.some(row=>row.category==="戦闘"&&row.message.includes("ログ試験")),"combat persists in activity log");
     const preview=document.getElementById("v39-chat-preview");
     check(document.getElementById("v39-battle-preview").classList.contains("show")&&document.getElementById("v39-battle-preview").textContent.includes("ログ試験"),"combat popup visible");
-    document.querySelector(".v39-side-log-collapse").click();
     window.pushV39ChatMessage("<b>新着チャット</b>",{title:"参加者"});
     check(preview.textContent.includes("<b>新着チャット</b>")&&!preview.querySelector("b"),"collapsed chat popup escaped");
     for(let i=0;i<5;i++)window.pushV39ChatMessage(`新着${i}`);
-    check(preview.children.length===3,"bounded popup stack");
+    check(preview.children.length===2,"bounded popup stack");
     preview.querySelector("button").click();
     check(document.getElementById("v39-side-log").dataset.channel==="chat"&&!document.getElementById("v39-side-log").classList.contains("collapsed"),"popup opens channel");
     check(!preview.classList.contains("show"),"opened chat clears its previews");
     window.pushV39ChatMessage("既読画面");check(!preview.classList.contains("show"),"open chat does not popup");
+    check(!document.getElementById("v39-battle-preview").classList.contains("show"),"open history hides other previews");
+    document.querySelector(".v39-side-log-collapse").click();
     window.dispatchEvent(new CustomEvent("v39:combat-log",{detail:{summary:"戦闘表示確認",attackerId:actor.id,entries:[]}}));
     return {reward:reward.rawExp,awards:distributed.awards.map(row=>row.amount),cargo,remaining:map.caveSites.find(row=>row.id===site.id).remaining};
   });
@@ -102,7 +103,7 @@ try{
   await page.screenshot({path:`${directory}/desktop.png`});
   await page.setViewportSize({width:390,height:844});
   await page.waitForTimeout(100);
-  assert.equal(await page.locator("#v39-battle-preview").evaluate(el=>{const rect=el.getBoundingClientRect();return rect.width>0&&rect.left>=0&&rect.right<=innerWidth;}),true);
+  assert.equal(await page.locator("#v39-battle-preview button").first().evaluate(el=>{const rect=el.getBoundingClientRect();return rect.width>0&&rect.left>=0&&rect.right<=innerWidth;}),true);
   await page.screenshot({path:`${directory}/mobile.png`});
   await page.waitForTimeout(4200);
   assert.equal(await page.locator("#v39-battle-preview").evaluate(el=>el.classList.contains("show")),false);

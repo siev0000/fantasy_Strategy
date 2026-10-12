@@ -9,6 +9,7 @@
   --mobile-min-font:10px; /* 読ませる補助文字のスマホ下限 */
   --min-font:var(--pc-min-font);
   --font-readable-min:calc(var(--min-font) * var(--font-scale));
+  --font-log:calc(var(--font-readable-min) * 0.95); /* 通知履歴専用。補助文字より5%小さくし、設定倍率にも連動。 */
   /* 補助文字・見出し・小さなラベルは通常文字との比率で管理する。 */
   --font-size-6:calc(var(--font-body) * 6 / 15);
   --font-size-7:calc(var(--font-body) * 7 / 15);

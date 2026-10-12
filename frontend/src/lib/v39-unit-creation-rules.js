@@ -7,6 +7,7 @@ import { EQUIPMENT_SLOT_KEYS } from "../constants/unitCommon.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { isV39BaseClassRow } from "./v39-class-rules.js";
 import { resolveV39UnitInitialLevel } from "./v39-unit-experience.js";
+import { getV39FacilityRecruitmentClasses, inspectV39FacilityRecruitment, resolveV39FacilityRecruitmentGrowth } from "./v39-facility-recruitment.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -42,9 +43,11 @@ export function inspectV39UnitCreation(state, player, request = {}) {
     number(village?.cityLevels?.軍事Lv),
     resolveCurrentResearchLevel(player?.factionState?.research, "軍事")
   ));
-  const classRow = getV39InitialJobClasses().find(row => text(row?.名前) === text(request.className));
+  const recruitment = inspectV39FacilityRecruitment(player, request.className, state);
+  const classRow = getV39InitialJobClasses().find(row => text(row?.名前) === text(request.className)) || recruitment?.row;
   const count = Math.max(1, Math.min(20, Math.floor(number(request.count, 1))));
   const race = text(request.race || player?.race);
+  if (recruitment) recruitment.initialGrowth = resolveV39FacilityRecruitmentGrowth(recruitment,race);
   const reasons = [];
   if (!village?.placed) reasons.push("拠点未配置");
   if (!classRow) reasons.push("初期職業を選択してください");
@@ -53,6 +56,10 @@ export function inspectV39UnitCreation(state, player, request = {}) {
   if (militaryLevel < mode.requiredMilitaryLevel) reasons.push(`軍事Lv${mode.requiredMilitaryLevel}が必要`);
   const units = player?.factionState?.units || [];
   const isArmy = mode.mode !== "normal";
+  if (recruitment) {
+    reasons.push(...recruitment.reasons);
+    if (!isArmy) reasons.push("施設の上位クラス徴兵は軍隊のみです");
+  }
   const current = units.filter(unit => isArmy ? text(unit?.unitType).includes("軍隊") : text(unit?.unitType) === "ヒーロー").length;
   const population = Math.max(0, Math.floor(number(village?.population)));
   const row = factionRow(player?.race);
@@ -66,7 +73,7 @@ export function inspectV39UnitCreation(state, player, request = {}) {
     const bag = FOOD_RESOURCE_KEYS.includes(key) ? village?.foodStockByType : village?.materialStockByType;
     if (number(bag?.[key]) < value) reasons.push(`${key}不足`);
   }
-  return { available:reasons.length === 0, reasons, village, mode, classRow, race, count, current, cap, populationCost, cost, militaryLevel };
+  return { available:reasons.length === 0, reasons, village, mode, classRow, race, count, current, cap, populationCost, cost, militaryLevel, recruitment };
 }
 
 function nextUnitName(units, race, classRow, isArmy) {
@@ -98,7 +105,9 @@ export function buildV39UnitEntity({
   y = null,
   combatProfile = null,
   settlementId = "",
-  equipment = []
+  equipment = [],
+  prerequisiteClassLevels = {},
+  classGrowthStart = null
 } = {}) {
   const unit = applyV39DerivedCharacterData({
     id:text(id),
@@ -118,6 +127,8 @@ export function buildV39UnitEntity({
       : null,
     combatProfile:combatProfile && typeof combatProfile === "object" ? { ...combatProfile } : null,
     settlementId:text(settlementId),
+    prerequisiteClassLevels:{...prerequisiteClassLevels},
+    ...(classGrowthStart ? {classGrowthStart:{...classGrowthStart}} : {}),
     equipment:Array.isArray(equipment) ? equipment.map(row => ({ ...row })) : []
   });
   const maxHp = Math.max(1, number(unit.maxHp, number(unit?.status?.HP, 1)));
@@ -140,7 +151,13 @@ function createUnit(player, check, name, index) {
     name,
     race:check.race,
     className:text(check.classRow.名前),
-    level:resolveV39UnitInitialLevel(check.race, check.mode.mode !== "normal"),
+    level:check.recruitment?.initialGrowth.level ?? resolveV39UnitInitialLevel(check.race, check.mode.mode !== "normal"),
+    prerequisiteClassLevels:check.recruitment?.initialGrowth.prerequisiteClassLevels,
+    classGrowthStart:check.recruitment ? {
+      level:check.recruitment.initialGrowth.level,
+      raceLevels:check.recruitment.initialGrowth.initialRaceLevel,
+      classLevels:check.recruitment.initialGrowth.initialClassLevel
+    } : null,
     unitType:check.mode.unitTypeLabel,
     isMob:check.mode.mode !== "normal",
     isNamed:check.mode.mode === "normal",
@@ -186,12 +203,14 @@ export function createV39Units(state, playerId, request = {}) {
   return { ok:true, state:{ ...state, players }, createdUnits, check };
 }
 
-export function getV39UnitCreationOptions(player) {
+export function getV39UnitCreationOptions(player, state = {}) {
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const militaryLevel = Math.max(number(village?.cityLevels?.軍事Lv), resolveCurrentResearchLevel(player?.factionState?.research, "軍事"));
   return {
     races:Object.entries(village?.populationByRace || {}).filter(([, count]) => number(count) > 0).map(([race]) => race),
-    classes:getV39InitialJobClasses(),
+    classes:[...getV39InitialJobClasses(), ...getV39FacilityRecruitmentClasses()
+      .filter(entry => inspectV39FacilityRecruitment(player,entry.className,state)?.available)
+      .map(entry => ({...entry.row, recruitmentFacility:entry.facilityName}))],
     modes:resolveUnitCreateModeCatalog(),
     militaryLevel
   };

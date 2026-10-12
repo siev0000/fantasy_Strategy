@@ -8,7 +8,7 @@ import { MAP_SETTLEMENT_MARKER_CONFIG } from "./phaser-map-panel-config.js";
 import { resolveVillageScaleDefinition } from "../composables/villageCoreUtils.js";
 import { resolveFactionUnitArtworkName } from "../constants/factionUnitArtwork.js";
 import { resolveMonsterSheetArtwork } from "./monster-sheet-artwork.js";
-import { resolveFactionUnitSheetFrame } from "./unit-sheet-artwork.js";
+import { resolveFactionUnitSheetFrame, resolveUnitBaseArtworkClass } from "./unit-sheet-artwork.js";
 
 const rawEnemyArtworkModules = import.meta.glob("../../../assets/images/illust/*.{png,jpg,jpeg,webp,avif,gif}", {
   eager: true,
@@ -146,7 +146,7 @@ export function resolveUnitImageArtwork(unit) {
     unit?.illustrationName,
     unit?.画像
   ]);
-  const factionArtworkName = resolveFactionUnitArtworkName(className);
+  const factionArtworkName = resolveFactionUnitArtworkName(resolveUnitBaseArtworkClass(unit));
   const generatedNames = unique([
     factionArtworkName,
     raceName && factionArtworkName ? `${raceName}_${factionArtworkName}` : "",

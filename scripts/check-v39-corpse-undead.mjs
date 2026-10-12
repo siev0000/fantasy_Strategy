@@ -1,0 +1,54 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const read = path => readFileSync(path, "utf8");
+const url = source => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+const balance = url(read("frontend/src/lib/v39-gameplay-balance.js"));
+const hex = url(read("frontend/src/lib/hex-grid.js"));
+const ray = url(read("frontend/src/lib/v39-combat-ray.js").replace('"./hex-grid.js"', JSON.stringify(hex)));
+const location = url(read("frontend/src/lib/v39-terrain-location.js"));
+const timing = url(read("frontend/src/lib/v39-turn-timing.js"));
+const fog = url(read("frontend/src/lib/v39-fog-rules.js")
+  .replace('"./v39-gameplay-balance.js"', JSON.stringify(balance))
+  .replaceAll('"./v39-combat-ray.js"', JSON.stringify(ray))
+  .replace('"./v39-terrain-location.js"', JSON.stringify(location))
+  .replace('"./v39-turn-timing.js"', JSON.stringify(timing))
+  .replace('"./hex-grid.js"', JSON.stringify(hex)));
+const rules = url(read("frontend/src/lib/v39-corpse-undead-rules.js")
+  .replace('"./v39-gameplay-balance.js"', JSON.stringify(balance))
+  .replace('"./v39-fog-rules.js"', JSON.stringify(fog))
+  .replace('"./v39-terrain-location.js"', JSON.stringify(location))
+  .replace('"./hex-grid.js"', JSON.stringify(hex)));
+const { convertV39CorpsesInDeathFog:convert } = await import(rules);
+const { isV39DeathFogSource:source, clearV39FogByWind:clear } = await import(fog);
+const map = () => ({ w:9,h:9,grid:Array.from({length:9},()=>Array(9).fill("平地")),fogMap:[],specialMap:[] });
+const mist = (m,x,y,sourceKey) => { m.fogMap[y] ||= []; m.fogMap[y][x] = {kind:"death",sourceKey,expiresAtTurn:10}; };
+const body = (id,x=4,y=4) => ({id,x,y,level:7,hp:0,state:"死亡",deadExpireTurn:10});
+const state = units => ({ activeWorldId:"surface",players:[{id:"p",factionState:{units,squads:[{id:"s",unitIds:units.map(u=>u.id)}],selectedUnitId:units[0]?.id}}],enemies:[],worldEnvironment:{} });
+const opts = random => ({random,createEnemy:args=>({...args,hp:100})});
+let m = map();mist(m,4,4,"4,4");
+let s = state([{...body("dead"),corpseCargo:{resourcesByType:{木材:5},equipmentInventory:[{id:"weapon"}]}}]);
+let r = convert(s,m,1,opts(()=>0.99));
+assert.equal(source(m,4,4),true);assert.equal(r.spawned.length,1);assert.equal(r.enemies[0].level,10);
+assert.equal(r.players[0].factionState.units.length,0);assert.deepEqual(r.players[0].factionState.squads[0].unitIds,[]);
+assert.equal(r.players[0].factionState.selectedUnitId,"");
+assert.equal(r.groundLootByTile["4,4"].cargo.resourcesByType.木材,5);
+assert.equal(r.groundLootByTile["4,4"].cargo.equipmentInventory[0].id,"weapon");
+assert.equal(convert(r,m,1,opts(()=>0)),null);
+mist(m,4,4,"3,4");s=state([body("other")]);
+assert.equal(convert(s,m,1,opts(()=>0.5)).spawned.length,0);
+assert.equal(convert(s,m,1,opts(()=>0.499)).enemies[0].level,7);
+m=map();mist(m,4,4,"4,4");mist(m,5,4,"4,4");mist(m,3,4,"4,4");
+s=state([]);s.groundLootByTile={"4,4":{cargo:{resourcesByType:{死体:350,銀:2}}}};
+r=convert(s,m,1,opts(()=>0));assert.equal(r.spawned.length,3);
+assert.equal(new Set(r.enemies.map(e=>`${e.x},${e.y}`)).size,3);
+assert.equal(r.groundLootByTile["4,4"].cargo.resourcesByType.死体,50);assert.equal(r.groundLootByTile["4,4"].cargo.resourcesByType.銀,2);
+assert.ok(r.enemies.every(e=>["ゾンビ","スケルトン"].includes(e.race)&&e.level===4));
+s=state([body("expired"),{id:"alive",x:4,y:4,hp:10}]);s.players[0].factionState.units[0].deadExpireTurn=1;
+assert.equal(convert(s,m,1,opts(()=>0)).spawned.length,0);
+s=state([body("blocked")]);s.enemies=[{id:"alive",x:4,y:4,hp:10},{id:"a2",x:5,y:4,hp:10},{id:"a3",x:3,y:4,hp:10}];
+r=convert(s,m,1,opts(()=>0));assert.equal(r.spawned.length,0);assert.equal(r.players[0].factionState.units.length,1);
+r=convert(state([body("factory-failed")]),m,1,{random:()=>0,createEnemy:()=>null});assert.equal(r.spawned.length,0);assert.equal(r.players[0].factionState.units.length,1);
+assert.equal(convert(state([body("outside")]),map(),1,opts(()=>0)).spawned.length,0);
+m=map();m.specialMap[4]=[];m.specialMap[4][4]="死の霧";m.deathFogSourceByTile={"4,4":true};assert.equal(source(m,4,4),true);
+clear(m,new Map([["4,4",1]]),{系統:"風",炸裂:0.5});assert.equal(source(m,4,4),false);assert.equal(m.deathFogSourceByTile["4,4"],undefined);
+console.log("corpse undead: source 100%/+3, other 50%, consumption, cargo, placement, expiry, repeat and wind passed");

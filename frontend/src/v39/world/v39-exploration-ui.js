@@ -4,6 +4,7 @@ import {
   generateV39ExplorationSites,
   getV39DiscoveredFeature,
   inspectV39Survey,
+  revealV39SurveyedDiscoveries,
   startV39SurveyTask
 } from "../../lib/v39-exploration-rules.js";
 import { generateV39VictoryLandmarks } from "../../lib/v39-victory-landmarks.js";
@@ -12,6 +13,8 @@ import { showV39Feedback } from "../ui/v39-feedback.js";
 import { inspectV39Gather, gatherV39Resources } from "../../lib/v39-gather-rules.js";
 import { generateV39Specialties } from "../../lib/v39-specialty-rules.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { revealV39NearbySites } from "../../lib/v39-site-discovery.js";
+import { resolveDetectionScoutValue } from "../../lib/v39-detection-rules.js";
 
 let selectedTile = null;
 
@@ -82,8 +85,8 @@ function render() {
     document.getElementById("mobileBattleSurveyUse").disabled = !check.available;
     action.setAttribute("aria-disabled", String(!check.available));
     action.classList.toggle("unavailable", !check.available);
-    action.title = check.available ? `索敵範囲${check.tileKeys.length}マスを調査 / 残りAP全消費` : check.reasons.join(" / ");
-    document.getElementById("mobileSurveyAp").textContent = `AP ${check.apCost}→0`;
+    action.title = check.available ? `索敵範囲${check.tileKeys.length}マスを調査 / 残り調査量${check.remainingAp} / AP消費${check.apCost}` : check.reasons.join(" / ");
+    document.getElementById("mobileSurveyAp").textContent = `AP ${check.apCost} / 残${Math.max(0,check.availableAp-check.apCost)}`;
     const progress = unit?.surveyTask?.progressPercent;
     const surveyed = check.tileKeys.length > 0 && check.tileKeys.every(key => faction?.exploration?.surveyedTileKeys?.includes(key));
     document.getElementById("mobileSurveyProgress").textContent = unit?.surveyTask
@@ -226,14 +229,15 @@ function clearSitesForNewField(event) {
 function advanceTurn(event) {
   const state = window.getV39GameState?.();
   if (!state) return;
-  const result = advanceV39ExplorationTurn(state, event?.detail?.turnNumber);
+  const result = advanceV39ExplorationTurn(state, event?.detail?.turnNumber, window.__v39FieldRuntime?.mapData);
   window.setV39GameState?.({ players:result.state.players, dangerPercentByTile:result.state.dangerPercentByTile, territoryOwnerByTile:result.state.territoryOwnerByTile, territoryStateByTile:result.state.territoryStateByTile, groundLootByTile:result.state.groundLootByTile }, { reason:"exploration-turn" });
   for (const report of result.reports) {
     window.dispatchEvent(new CustomEvent("v39:exploration-log", { detail:report }));
   }
-  const ownReports = result.reports.filter(row => row.playerId === state.activePlayerId);
+  for (const detail of result.levelUps) window.dispatchEvent(new CustomEvent("v39:unit-level-up", { detail }));
+  const ownReports = result.reports.filter(row => row.playerId === state.activePlayerId && row.type !== "survey-experience");
   if (ownReports.length) {
-    const found = [...new Set(ownReports.flatMap(row => [row.featureName, row.specialtyName, row.groundLootDiscovered ? "残留品" : ""]).filter(Boolean))];
+    const found = [...new Set(ownReports.flatMap(row => [row.featureName, row.specialtyName, row.caveEntranceDiscovered ? "洞窟入口" : "", row.groundLootDiscovered ? "残留品" : ""]).filter(Boolean))];
     showMessage(`調査: ${ownReports.length}マス / ${found.join(" / ") || ownReports[0].message}`);
   }
 }
@@ -251,12 +255,64 @@ window.addEventListener("v39:field-generated", clearSitesForNewField);
 window.addEventListener("v39:initial-placement-complete", initializeSites);
 window.addEventListener("v39:turn-stage-exploration", advanceTurn);
 window.addEventListener("v39:tile-selected", event => { selectedTile = event.detail || null; render(); });
-window.addEventListener("v39:game-state-changed", render);
+let discoverySignature = "";
+let syncingDiscovery = false;
+function syncResearchDiscoveries() {
+  if (syncingDiscovery) return;
+  const state = window.getV39GameState?.();
+  if (!state) return;
+  // AP・選択・チャット更新ごとに全マスを走査しない。研究完了/世界切替/ロードのみ再判定する。
+  const signature = JSON.stringify([state.activeWorldId,
+    (state.players || []).map(player => [player.id, player.factionState?.research?.progress?.completedByCategoryLevel,
+      player.factionState?.exploration?.researchDiscoveryVersion])]);
+  if (signature === discoverySignature) return;
+  discoverySignature = signature;
+  const result = revealV39SurveyedDiscoveries(state, window.__v39FieldRuntime?.mapData);
+  if (!result.changed) return;
+  syncingDiscovery = true;
+  try {
+    window.setV39GameState?.({ players:result.state.players, explorationWorlds:result.state.explorationWorlds }, { reason:"research-discovery" });
+    for (const report of result.reports) window.dispatchEvent(new CustomEvent("v39:exploration-log", { detail:report }));
+    const found = result.reports.filter(row => row.playerId === state.activePlayerId && row.worldId === (state.activeWorldId || "surface"));
+    if (found.length) showMessage(`研究により調査済み${found.length}マスで新たに発見`);
+  } finally { syncingDiscovery = false; }
+}
+let proximitySignature="", syncingProximity=false, proximityMap=null;
+function syncNearbyDiscoveries() {
+  if (syncingProximity) return;
+  const state=window.getV39GameState?.(), map=window.__v39FieldRuntime?.mapData;
+  if (!state || !map) return;
+  const signature=JSON.stringify([state.activeWorldId,state.timeline?.turnNumber,state.worldEnvironment,
+    state.explorationSitesByTile,state.specialtiesByTile,
+    (state.players || []).map(player=>[player.id,player.factionState?.research?.progress?.completedByCategoryLevel,
+      (player.factionState?.units || []).map(unit=>[unit.id,unit.x,unit.y,unit.worldId,unit.hp,unit.state,resolveDetectionScoutValue(unit,map)])])]);
+  if (signature===proximitySignature && proximityMap===map) return;
+  proximitySignature=signature; proximityMap=map;
+  const result=revealV39NearbySites(state,map);
+  if (!result.changed) return;
+  syncingProximity=true;
+  try {
+    window.setV39GameState?.({players:result.state.players},{reason:"proximity-discovery"});
+    for (const report of result.reports) window.dispatchEvent(new CustomEvent("v39:exploration-log",{detail:report}));
+  } finally { syncingProximity=false; }
+}
+window.addEventListener("v39:game-state-changed", () => { syncResearchDiscoveries(); syncNearbyDiscoveries(); render(); });
+window.addEventListener("v39:save-loaded", () => { discoverySignature = ""; proximitySignature=""; syncResearchDiscoveries(); syncNearbyDiscoveries(); render(); });
 window.addEventListener("v39:unit-selected", render);
 window.addEventListener("v39:operation-ui-ready", render);
 window.addEventListener("v39:squad-detail-rendered", render);
 window.addEventListener("v39:cave-gather-target-changed", render);
-window.addEventListener("v39:field-layer-changed", render);
+window.addEventListener("v39:field-layer-changed", () => { discoverySignature = ""; proximitySignature=""; syncResearchDiscoveries(); syncNearbyDiscoveries(); render(); });
+// 魔法/イベントから呼ぶ共通入口。具体的なスキルのAP・効果値はスキル側で判定する。
+window.addV39SiteConcealment = ({tileKeys,stealthBonus,turns=null}={}) => {
+  const state=window.getV39GameState?.();
+  if (!state || !Array.isArray(tileKeys) || !tileKeys.length || !Number.isFinite(Number(stealthBonus)) || Number(stealthBonus)<=0) return false;
+  const start=Number(state.timeline?.turnNumber)||1;
+  const effect={tileKeys:[...new Set(tileKeys.map(String))],stealthBonus:Number(stealthBonus),startsAtTurn:start,
+    expiresAtTurn:turns==null?null:start+Math.max(1,Math.floor(Number(turns)||1))-1};
+  window.setV39GameState?.({worldEnvironment:{...state.worldEnvironment,siteConcealmentEffects:[...(state.worldEnvironment?.siteConcealmentEffects || []),effect]}},{reason:"site-concealment"});
+  return true;
+};
 window.getV39ExplorationRules = () => ({ ...V39_EXPLORATION_RULES });
 window.inspectV39Survey = tile => { const current = context(); return inspectV39Survey(current.state, current.player?.id, current.unit?.id, tile || selectedTile); };
 window.startV39Survey = tile => { if (tile) selectedTile = tile; return runSurvey(); };

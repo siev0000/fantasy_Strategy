@@ -1,5 +1,10 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
+import { resolveV39DefenseKind, grantV39PersonalDefense, v39DefenseDamagePatch,
+  createV39DefenseStructure, v39DefenseCovers, resolveV39DefenseFootprint } from "../../lib/v39-defense-rules.js";
 import { hasV39CaveLineOfSight, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
+import { hasV39SkillEffect, traceV39AttackRay, v39HexRay } from "../../lib/v39-combat-ray.js";
+import { V39_DEFENSE_BALANCE, V39_COMBAT_DISPLAY_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import {
   computeAttackDamage,
@@ -11,6 +16,7 @@ import {
   resolveAttackApCost,
   resolveAttackPower,
   resolveAttackRange,
+  resolveAttackRangeScale,
   resolveActionSkillRows,
   resolveAttackRows,
   resolveCounterAttackRow,
@@ -33,6 +39,7 @@ import {
   resolveV39DeadlineTurn
 } from "../../lib/v39-turn-timing.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import { getFactionSettlements, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import { isV39TestInstantDeathSkill } from "../../lib/v39-test-skill-rules.js";
 import {
   distributeV39CombatExperience,
@@ -101,21 +108,42 @@ function guardStatePatch(unit, damage, grantedGuard = 0, turnNumber = currentV39
   const remaining = Math.max(0, integer(damage?.guardRemaining, integer(unit?.guard, 0)));
   const granted = Math.max(0, integer(grantedGuard, 0));
   const guard = remaining + granted;
-  return guard > 0
+  const patch = guard > 0
     ? { guard, guardExpiresAtTurn:granted > 0 ? resolveV39DeadlineTurn(turnNumber, 1) : integer(unit?.guardExpiresAtTurn, turnNumber) }
     : { guard:0, guardExpiresAtTurn:0 };
+  return { ...patch, ...v39DefenseDamagePatch(unit, damage) };
 }
 
 function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, isCounter = false }) {
+  const state = window.getV39GameState?.({ includeWorlds:false });
+  const owner = state?.players?.find(player => player.factionState.units.some(unit => unit.id === target.id))?.id
+    || (state?.enemies?.some(unit => unit.id === target.id) ? `nest:${target.nestId || target.id}` : "");
+  const fields = (activeRuntime()?.data?.defenseStructures || []).filter(structure =>
+    structure.kind === "結界" && structure.ownerId === owner && v39DefenseCovers(structure, target)
+    && !v39DefenseCovers(structure, attacker));
+  const personalBarrier = Math.max(0, number(target?.barrier?.remaining));
+  const fieldValue = fields.reduce((sum, field) => sum + field.hp, 0);
   const baseDamage = computeAttackDamage({
     attacker:terrainAdjusted(attacker),
-    target:terrainAdjusted(target),
+    target:terrainAdjusted(fieldValue ? { ...target, barrier:{ remaining:personalBarrier + fieldValue } } : target),
     skillRow,
     scale,
     friendly,
     isCounter
   });
-  if (!isV39TestInstantDeathSkill(skillRow)) return applyV39GuardToDamage(target, baseDamage);
+  if (!isV39TestInstantDeathSkill(skillRow)) {
+    const personalConsumed = Math.min(personalBarrier,baseDamage.barrierAbsorbed);
+    let consumed = Math.max(0, baseDamage.barrierAbsorbed - personalConsumed);
+    baseDamage.fieldBarrierAbsorbed = consumed;
+    for (const field of fields) {
+      const amount = Math.min(field.hp, consumed);
+      field.hp -= amount;
+      consumed -= amount;
+    }
+    baseDamage.barrierRemaining = personalBarrier - personalConsumed;
+    baseDamage.barrierAbsorbed = personalConsumed;
+    return applyV39GuardToDamage(target, baseDamage);
+  }
 
   const hp = Math.max(0, Math.floor(number(target?.hp, target?.currentHp)));
   const guardBefore = Math.max(0, Math.floor(number(target?.guard)));
@@ -129,8 +157,60 @@ function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, fri
     guardBefore,
     guardAbsorbed:0,
     guardRemaining:guardBefore,
+    shieldRemaining:target.shield?.remaining,
+    barrierRemaining:target.barrier?.remaining,
     detail:{ ...baseDamage.detail, testInstantDeath:true }
   };
+}
+
+function clearDestroyedWallFacilities(state, map, players = state.players) {
+  const destroyed = (map.defenseStructures || []).filter(row => row.hp <= 0 && row.facilityName);
+  if (!destroyed.length) return { players };
+  map.defenseStructures = (map.defenseStructures || []).filter(row => !destroyed.includes(row));
+  const facilitiesByTile = { ...state.facilitiesByTile };
+  for (const wall of destroyed) {
+    const key = coordKey(wall.x,wall.y);
+    facilitiesByTile[key] = (facilitiesByTile[key] || []).filter(name => name !== wall.facilityName);
+  }
+  const remove = settlement => {
+    let changed = settlement;
+    for (const wall of destroyed.filter(wall => wall.settlementId === text(settlement?.settlementId || settlement?.id))) {
+      const key = coordKey(wall.x,wall.y);
+      changed = { ...changed, buildings:(changed.buildings || []).filter(name => name !== wall.facilityName),
+        tileFacilityMap:{ ...changed.tileFacilityMap, [key]:(changed.tileFacilityMap?.[key] || []).filter(name => name !== wall.facilityName) } };
+    }
+    return changed;
+  };
+  return { facilitiesByTile, settlements:(state.settlements || []).map(remove),
+    players:players.map(player => {
+      let factionState = player.factionState;
+      for (const settlement of getFactionSettlements(factionState)) {
+        const next = remove(settlement);
+        if (next !== settlement) factionState = replaceFactionSettlement(factionState,next,{ownerPlayerId:player.id});
+      }
+      return { ...player, factionState };
+    }) };
+}
+
+function damagePlacedWalls(map, area, attacker, row, log) {
+  for (const wall of map.defenseStructures || []) {
+    if (wall.hp <= 0 || (wall.kind !== "壁" && !area.blockingStructures?.has(wall.id))) continue;
+    const keys = wall.edge ? [coordKey(wall.edge.from.x, wall.edge.from.y), coordKey(wall.edge.to.x, wall.edge.to.y)]
+      : wall.tiles.map(tile => coordKey(tile.x, tile.y));
+    const scale = Math.max(area.structureScales?.get(wall.id) || 0, ...keys.map(key => area.get(key) || 0));
+    if (!scale) continue;
+    let damage = computeAttackDamage({ attacker:terrainAdjusted(attacker),
+      target:{ level:1, status:{ 防御:0, 精神:0, 回避:1 } }, skillRow:row, scale });
+    if (wall.kind==="結界") {
+      const power=Math.floor(resolveAttackPower(row,terrainAdjusted(attacker))*scale);
+      const hits=damage.hitResults.map(hit=>hit.hit ? power : 0);
+      damage={...damage,hits,total:hits.reduce((sum,value)=>sum+value,0)};
+    }
+    const beforeHp = wall.hp;
+    wall.hp = Math.max(0, beforeHp - damage.total);
+    log.push({ ...damage, targetId:wall.id, targetName:wall.name, x:wall.x, y:wall.y,
+      beforeHp, afterHp:wall.hp, maxHp:wall.maxHp });
+  }
 }
 
 function neutralVillageGuards(state) {
@@ -227,7 +307,7 @@ function tilesWithin(data, origin, radius) {
     for (const tile of frontier) {
       for (const neighbor of neighbors(data, tile.x, tile.y)) {
         if (found.has(neighbor.key)) continue;
-        if (!hasV39CaveLineOfSight(data, origin, neighbor)) continue;
+        if (!hasV39CaveLineOfSight(data, origin, neighbor, {ignorePlacedWalls:true})) continue;
         const value = { x:neighbor.x, y:neighbor.y, distance };
         found.set(neighbor.key, value);
         next.push(value);
@@ -239,31 +319,13 @@ function tilesWithin(data, origin, radius) {
 }
 
 function directionLine(data, from, target, length) {
-  const adjacent = neighbors(data, from.x, from.y);
-  let current = adjacent.reduce((best, item) => {
-    const score = Math.hypot(item.x - target.x, item.y - target.y);
-    return !best || score < best.score ? { ...item, score } : best;
-  }, null);
-  if (!current || !hasV39CaveLineOfSight(data,from,current)) return [];
-  const out = [current];
-  let previous = from;
-  while (out.length < length) {
-    const options = neighbors(data, current.x, current.y).filter((item) => item.key !== coordKey(previous.x, previous.y));
-    const dx = current.x - previous.x;
-    const dy = current.y - previous.y;
-    const next = options.reduce((best, item) => {
-      const score = Math.abs((item.x - current.x) - dx) + Math.abs((item.y - current.y) - dy);
-      return !best || score < best.score ? { ...item, score } : best;
-    }, null);
-    if (!next || !hasV39CaveLineOfSight(data,from,next)) break;
-    previous = current;
-    current = next;
-    out.push(current);
-  }
-  return out;
+  return v39HexRay(data,from,target,length).filter(tile=>hasV39CaveLineOfSight(data,from,tile,{ignorePlacedWalls:true}))
+    .map(tile=>({...tile,key:coordKey(tile.x,tile.y)}));
 }
 
-function buildAreaScaleMap(data, attacker, target, skillRow) {
+function buildUnblockedAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
+  if (["壁", "結界"].includes(resolveV39DefenseKind(skillRow))) return new Map(
+    resolveV39DefenseFootprint(data, target, skillRow, facing).map(tile => [coordKey(tile.x, tile.y), 1]));
   const type = resolveAreaType(skillRow);
   const result = new Map([[coordKey(target.x, target.y), 1]]);
   if (type === "circle") {
@@ -300,6 +362,74 @@ function buildAreaScaleMap(data, attacker, target, skillRow) {
   return result;
 }
 
+function combatRayUnits(state) {
+  return [...(state?.players || []).flatMap(player=>player.factionState?.units || []),
+    ...(state?.enemies || []),...neutralVillageGuards(state)]
+    .filter(unit=>isV39UnitInWorld(unit,state.activeWorldId));
+}
+
+function buildAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
+  const state=window.getV39GameState?.({includeWorlds:false});
+  const units=new Map(),turn=currentV39TurnNumber(state);
+  const owner=state?.players?.find(player=>player.factionState?.units?.some(unit=>unit.id===attacker.id));
+  const village=state?.neutralVillages?.find(row=>row.defenseUnits?.some(unit=>unit.id===attacker.id));
+  const friendlyIds=new Set((owner?.factionState?.units || village?.defenseUnits || []).map(unit=>unit.id));
+  const ignoreFriendly=unit=>friendlyIds.has(unit.id) || (!!attacker.nestId && unit.nestId===attacker.nestId);
+  for (const unit of combatRayUnits(state)) {
+    const key=coordKey(unit.x,unit.y);
+    if (!units.has(key)) units.set(key,[]);
+    units.get(key).push(unit);
+  }
+  const support=isV39SupportSkill(skillRow,attacker)||!!resolveV39TileTransformEffect(skillRow,TERRAIN_DATA_ROWS);
+  const piercing=hasV39SkillEffect(skillRow,"貫通")&&!support;
+  const splash=resolveSplashSpec(skillRow).value>0;
+  const ray=traceV39AttackRay(data,attacker,target,units,{turn,ignoreUnit:ignoreFriendly,ignoreUnits:support||piercing||splash,
+    length:piercing ? resolveAttackRange(skillRow,attacker,data) : null});
+  let result;
+  if (support) {
+    result=coordKey(ray.impact.x,ray.impact.y)===coordKey(target.x,target.y)
+      ? buildUnblockedAreaScaleMap(data,attacker,target,skillRow,facing) : new Map();
+  } else if (piercing) result=new Map(ray.tiles.map(tile=>[coordKey(tile.x,tile.y),
+    resolveAttackRangeScale(skillRow,attacker,getHexDistance(attacker,tile),data)]));
+  else {
+    result=buildUnblockedAreaScaleMap(data,attacker,ray.impact,skillRow,facing);
+    const rangeScale=resolveAttackRangeScale(skillRow,attacker,getHexDistance(attacker,ray.impact),data);
+    for (const [key,scale] of result) result.set(key,scale*rangeScale);
+  }
+  const blastCenter=piercing && getHexDistance(attacker,ray.impact)>=getHexDistance(attacker,target) ? target : ray.impact;
+  if (piercing && splash) for (const [key,scale] of buildUnblockedAreaScaleMap(data,attacker,blastCenter,{...skillRow,範囲:"単体"},facing)) {
+    const rangeScale=resolveAttackRangeScale(skillRow,attacker,getHexDistance(attacker,blastCenter),data);
+    result.set(key,Math.max(result.get(key)||0,scale*rangeScale));
+  }
+  result.blockingStructures=new Set();
+  result.structureScales=new Map();
+  result.blockedUnitKeys=new Set();
+  if (!support) for (const key of [...result.keys()]) {
+    const [x,y]=key.split(",").map(Number),point={x,y};
+    const check=traceV39AttackRay(data,attacker,point,units,{turn,ignoreUnit:ignoreFriendly,ignoreUnits:piercing||splash});
+    if (coordKey(check.impact.x,check.impact.y)!==key) { result.delete(key); continue; }
+    const structures=[check.structure];
+    // 爆心からの広がりも壁・結界・遮断を回り込まない。
+    if (splash && key!==coordKey(blastCenter.x,blastCenter.y)) {
+      const spread=traceV39AttackRay(data,blastCenter,point,units,{turn,ignoreUnits:true});
+      if (coordKey(spread.impact.x,spread.impact.y)!==key) { result.delete(key); continue; }
+      structures.push(spread.structure);
+    }
+    for (const structure of structures.filter(Boolean)) {
+      result.blockingStructures.add(structure.id); result.blockedUnitKeys.add(key);
+      result.structureScales.set(structure.id,Math.max(result.structureScales.get(structure.id)||0,result.get(key)||0));
+    }
+  }
+  result.impact=ray.impact;
+  result.ray=ray;
+  return result;
+}
+
+function unitAreaScale(area, unit) {
+  const key=coordKey(unit.x,unit.y);
+  return area.blockedUnitKeys?.has(key) ? undefined : area.get(key);
+}
+
 function destroyGraphics() {
   rangeGraphics?.destroy?.();
   areaGraphics?.destroy?.();
@@ -312,11 +442,12 @@ function drawTiles(map, color, alpha, depth, existing) {
   existing?.destroy?.();
   if (!ctx) return null;
   const graphics = ctx.scene.add.graphics().setDepth(depth);
-  for (const key of map.keys()) {
+  for (const [key,tile] of map) {
     const [x, y] = key.split(",").map(Number);
     const points = hexPoints(x, y);
-    graphics.fillStyle(color, alpha).fillPoints(points, true);
-    graphics.lineStyle(2, color, 0.95).strokePoints(points, true);
+    const opacity=tile.rangeScale < 1 ? V39_COMBAT_DISPLAY_BALANCE.fractionalRangeOpacity : 1;
+    graphics.fillStyle(color, alpha*opacity).fillPoints(points, true);
+    graphics.lineStyle(2, color, 0.95*opacity).strokePoints(points, true);
   }
   return graphics;
 }
@@ -331,7 +462,7 @@ function drawAttackArea(areaScale) {
   for (const [key, scale] of areaScale) {
     const [x, y] = key.split(",").map(Number);
     const points = hexPoints(x, y);
-    const color = scale < 1 ? 0xf08a32 : 0xe44d3a;
+    const color = resolveV39DefenseKind(attackSession?.skillRow) ? 0x73e0ff : scale < 1 ? 0xf08a32 : 0xe44d3a;
     areaGraphics.fillStyle(color, 0.25).fillPoints(points, true);
     areaGraphics.lineStyle(2, color, 0.98).strokePoints(points, true);
   }
@@ -346,7 +477,20 @@ function previewAttackArea(target) {
   const ctx = activeRuntime();
   const unit = selectedUnit();
   if (!ctx || !unit) return false;
-  drawAttackArea(buildAreaScaleMap(ctx.data, unit, target, attackSession.skillRow));
+  attackSession.previewTarget = target;
+  drawAttackArea(buildAreaScaleMap(ctx.data, unit, target, attackSession.skillRow, attackSession.defenseFacing || 0));
+  if (resolveV39DefenseKind(attackSession.skillRow) === "壁" && attackSession.skillRow.範囲 === "辺") {
+    const wall = createV39DefenseStructure(ctx.data,target,attackSession.skillRow,unit,
+      currentV39TurnNumber(),attackSession.defenseFacing || 0);
+    if (wall?.edge) {
+      const a=tileCenter(wall.edge.from.x,wall.edge.from.y),b=tileCenter(wall.edge.to.x,wall.edge.to.y);
+      const points=hexPoints(target.x,target.y),mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      const edges=points.map((p,index)=>[p,points[(index+1)%6]]).sort((aa,bb)=>
+        Math.hypot((aa[0].x+aa[1].x)/2-mid.x,(aa[0].y+aa[1].y)/2-mid.y)
+        -Math.hypot((bb[0].x+bb[1].x)/2-mid.x,(bb[0].y+bb[1].y)/2-mid.y));
+      areaGraphics.lineStyle(6,0x73e0ff,1).lineBetween(edges[0][0].x,edges[0][0].y,edges[0][1].x,edges[0][1].y);
+    }
+  }
   return true;
 }
 
@@ -476,6 +620,11 @@ function renderActionPanel() {
 
 }
 
+function canTargetOwnTile(skillRow, unit, data) {
+  return isV39SupportSkill(skillRow, terrainAdjusted(unit)) || (data.defenseStructures || [])
+    .some(wall => wall.kind === "壁" && wall.hp > 0 && v39DefenseCovers(wall,unit));
+}
+
 function startAttack() {
   if(window.isV39MapInputLocked?.())return false;
   const ctx = activeRuntime();
@@ -516,11 +665,30 @@ function startAttack() {
   }
   const range = resolveAttackRange(skillRow, unit, ctx.data);
   const rangeTiles = tilesWithin(ctx.data, unit, range);
-  if (!isV39SupportSkill(skillRow, terrainAdjusted(unit))) rangeTiles.delete(coordKey(unit.x, unit.y));
+  if (!canTargetOwnTile(skillRow,unit,ctx.data)) rangeTiles.delete(coordKey(unit.x, unit.y));
+  const support=isV39SupportSkill(skillRow,unit)||!!resolveV39TileTransformEffect(skillRow,TERRAIN_DATA_ROWS);
+  for (const tile of rangeTiles.values()) tile.rangeScale=support ? 1 : resolveAttackRangeScale(skillRow,unit,tile.distance,ctx.data);
   attackSession = { playerId:state.activePlayerId,worldId:state.activeWorldId,turnNumber:state.timeline.turnNumber,
     unitId:text(unit.id), skillName:text(skillRow.名前), skillRow, range, rangeTiles };
   rangeGraphics = drawTiles(rangeTiles, 0xf3d84a, 0.20, RANGE_DEPTH, rangeGraphics);
   setBanner(`${text(skillRow.名前)}：黄色が射程、対象位置を選択`);
+  if (resolveV39DefenseKind(skillRow) && ["辺", "三角形"].includes(skillRow.範囲)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.v39DefenseFacing = "true";
+    const directions = ["左上","右上","右","右下","左下","左"];
+    button.textContent = `回転：${directions[0]}`;
+    button.onclick = event => {
+      event.stopPropagation();
+      if (!attackSession) return;
+      attackSession.defenseFacing = ((attackSession.defenseFacing || 0) + 1) % 6;
+      attackSession.confirmedTarget = null;
+      button.textContent = `回転：${directions[attackSession.defenseFacing]}`;
+      if (attackSession.previewTarget) previewAttackArea(attackSession.previewTarget);
+    };
+    document.getElementById("modeBanner")?.append(button);
+    previewAttackArea({x:unit.x,y:unit.y});
+  }
   return true;
 }
 
@@ -536,6 +704,9 @@ function logDamage(attacker, target, skillRow, damage) {
     攻撃側地形補正:{ 地形:damage.detail.attackerTerrain, 補正:damage.detail.attackerTerrainModifiers },
     防御側地形補正:{ 地形:damage.detail.targetTerrain, 補正:damage.detail.targetTerrainModifiers },
     ガード吸収前:damage.hitsBeforeGuard, ガード吸収値:damage.guardAbsorbed, ガード残量:damage.guardRemaining,
+    盾吸収値:damage.shieldAbsorbed, 盾残量:damage.shieldRemaining,
+    障壁軽減威力:damage.barrierAbsorbed, 障壁残量:damage.barrierRemaining,
+    結界軽減威力:damage.fieldBarrierAbsorbed,
     適用パッシブ:damage.detail.appliedPassiveSkillNames,
     攻撃回数:damage.detail.attackCount, ヒットダメージ配列:damage.hits, 合計ダメージ:damage.total, スキルデータ:skillRow
   });
@@ -592,6 +763,17 @@ function executeAttack(target) {
     }
   }
   const delayTurns = castDurationTurns(session.skillRow);
+  const ctx = activeRuntime();
+  const area = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow, session.defenseFacing || 0);
+  const requiresConfirmation = area.size > 1 || ["壁", "結界"].includes(resolveV39DefenseKind(session.skillRow));
+  if (requiresConfirmation && (!session.confirmedTarget || coordKey(session.confirmedTarget.x, session.confirmedTarget.y) !== coordKey(target.x, target.y))) {
+    session.confirmedTarget = { x:target.x, y:target.y };
+    previewAttackArea(target);
+    const directionButton = document.querySelector("[data-v39-defense-facing]");
+    setBanner(`${session.skillName}：色付きの範囲を確認、同じマスをもう一度選択で発動`);
+    if (directionButton) document.getElementById("modeBanner")?.append(directionButton);
+    return false;
+  }
   if (delayTurns <= 0) return performAttack(target, { ...session, playerId:player.id });
   const apCost = resolveAttackApCost(session.skillRow, attacker);
   if (currentAp(attacker) < apCost) {
@@ -607,6 +789,7 @@ function executeAttack(target) {
     skillRow:session.skillRow,
     target:{ x:integer(target.x), y:integer(target.y) },
     startedTurn,
+    defenseFacing:session.defenseFacing || 0,
     resolvesAtTurn:resolveV39DeadlineTurn(startedTurn, delayTurns),
     apCost
   };
@@ -679,12 +862,12 @@ function performRevival(target, session, options, state, player, attacker, reviv
     }
   }));
   window.setV39GameState({ players }, { reason:"combat-revival" });
-  const effectName = text(session.skillRow?.アニメ);
-  if (effectName && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
-    effectName,
+  if (window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
+    skillRow:session.skillRow, attacker,
+    attackerTile:{ x:attacker.x, y:attacker.y },
     tileX:target.x,
     tileY:target.y,
-    splash:resolveSplashSpec(session.skillRow).value
+    splash:resolveV39DefenseKind(session.skillRow) ? 0 : resolveSplashSpec(session.skillRow).value
   });
   const summary = `${text(attacker.name)}：${text(session.skillRow?.名前)} / ${text(result.unit?.name)} Lv${result.levelBefore}→${result.levelAfter} / HP${result.hp} / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
@@ -781,13 +964,21 @@ function performAttack(target, session = attackSession, options = {}) {
   const revivalSpec = resolveV39RevivalSpec(session.skillRow);
   const transformSpec = resolveV39TileTransformEffect(session.skillRow, TERRAIN_DATA_ROWS);
   const supportSkill = isV39SupportSkill(session.skillRow, adjustedAttacker);
-  if (!supportSkill) rangeTiles.delete(coordKey(attacker.x, attacker.y));
+  const defenseKind = resolveV39DefenseKind(session.skillRow);
+  if (!canTargetOwnTile(session.skillRow,attacker,ctx.data)) rangeTiles.delete(coordKey(attacker.x, attacker.y));
   if (!rangeTiles.has(targetKey)) {
     showToast("射程外です");
     if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
     return false;
   }
   const apCost = resolveAttackApCost(session.skillRow, attacker);
+  const areaScale = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow, session.defenseFacing || 0);
+  if (!areaScale.size) {
+    showToast("壁・結界・遮断で届きません");
+    if (options.clearPending) clearPendingAction(player.id,text(attacker.id),"cast-target-blocked");
+    return false;
+  }
+  if (!supportSkill && !transformSpec && !revivalSpec) target=areaScale.impact;
   const targetFaction = !supportSkill && state.players.find((row) => row.id !== player.id && row?.factionState?.units?.some((unit) =>
     isV39UnitInWorld(unit,state.activeWorldId) && integer(unit?.x) === integer(target.x) && integer(unit?.y) === integer(target.y) && number(unit?.hp, unit?.currentHp) > 0
   ));
@@ -806,31 +997,42 @@ function performAttack(target, session = attackSession, options = {}) {
   }
   if (revivalSpec) return performRevival(target, session, options, state, player, attacker, revivalSpec, apCost);
   if (transformSpec) return performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx);
-  const areaScale = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow);
+  if (["壁", "結界"].includes(defenseKind)) {
+    const structure = createV39DefenseStructure(ctx.data, target, session.skillRow,
+      { ...attacker, ownerPlayerId:player.id }, currentV39TurnNumber(state), session.defenseFacing || 0);
+    if (!structure) { showToast("この位置には設置できません"); return false; }
+    const previous = ctx.data.defenseStructures || [];
+    ctx.data.defenseStructures = [...previous.filter(row => row.id !== structure.id), structure];
+    // 設置も通常のAP・CT処理を共有する。味方不在のマスでも設置可能。
+  }
   const stealthBreakTurn = currentV39TurnNumber(state);
   const exposesDirectTarget = resolveAreaType(session.skillRow) === "single" && resolveSplashSpec(session.skillRow).value <= 0;
   const supportTargets = supportSkill
     ? player.factionState.units.filter(unit => isV39UnitInWorld(unit,state.activeWorldId) && number(unit?.hp, unit?.currentHp) > 0 && areaScale.has(coordKey(unit.x, unit.y)))
     : [];
-  if (supportSkill && !supportTargets.length) {
+  if (supportSkill && !supportTargets.length && !["壁", "結界"].includes(defenseKind)) {
     showToast("対象位置に生存中の味方がいません");
     return false;
   }
   drawAttackArea(areaScale);
-  const effectName = text(session.skillRow?.アニメ, supportSkill ? "" : "斬撃");
-  if (effectName && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
-    effectName,
+  const combatWallLog = [];
+  if (!supportSkill) damagePlacedWalls(ctx.data, areaScale, attacker, session.skillRow, combatWallLog);
+  if (window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
+    skillRow:session.skillRow, attacker,
+    areaTiles:[...areaScale.keys()].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};}),
+    fitArea:["壁","結界"].includes(defenseKind),
+    attackerTile:{ x:attacker.x, y:attacker.y },
     tileX:target.x,
     tileY:target.y,
-    splash:resolveSplashSpec(session.skillRow).value
+    splash:resolveV39DefenseKind(session.skillRow) ? 0 : resolveSplashSpec(session.skillRow).value
   });
   const damageById = new Map();
   const enemyExpRewardedById = new Map();
   const foreignExpRewardedById = new Map();
   let expPoolRaw = 0;
-  const combatLog = [];
+  const combatLog = [...combatWallLog];
   for (const enemy of supportSkill ? [] : state.enemies) {
-    const scale = areaScale.get(coordKey(enemy.x, enemy.y));
+    const scale = unitAreaScale(areaScale, enemy);
     if (scale === undefined || number(enemy?.hp, enemy?.currentHp) <= 0) continue;
     const damage = resolveAppliedAttackDamage({ attacker, target:enemy, skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
     damageById.set(text(enemy.id), damage);
@@ -846,28 +1048,12 @@ function performAttack(target, session = attackSession, options = {}) {
     });
     logDamage(attacker, enemy, session.skillRow, damage);
   }
-  const friendlyDamageById = new Map();
-  for (const ally of supportSkill ? [] : player.factionState.units) {
-    if (!isV39UnitInWorld(ally,state.activeWorldId)) continue;
-    if (text(ally.id) === text(attacker.id)) continue;
-    const scale = areaScale.get(coordKey(ally.x, ally.y));
-    if (scale === undefined || number(ally?.hp, ally?.currentHp) <= 0) continue;
-    const damage = resolveAppliedAttackDamage({ attacker, target:ally, skillRow:session.skillRow, scale, friendly:true, isCounter:!!options.isCounter });
-    friendlyDamageById.set(text(ally.id), damage);
-    const beforeHp = Math.max(0, number(ally?.hp, ally?.currentHp));
-    combatLog.push({
-      targetId:text(ally.id), targetName:text(ally.name), x:ally.x, y:ally.y,
-      beforeHp, afterHp:Math.max(0, beforeHp - damage.total), maxHp:Math.max(1, number(ally?.maxHp, beforeHp)),
-      friendly:true, ...damage
-    });
-    logDamage(attacker, ally, session.skillRow, damage);
-  }
   const foreignDamageById = new Map();
   for (const foreignPlayer of supportSkill ? [] : state.players) {
     if (foreignPlayer.id === player.id || window.canV39AttackFaction?.(player.id, foreignPlayer.id) !== true) continue;
     for (const foreignUnit of foreignPlayer?.factionState?.units || []) {
       if (!isV39UnitInWorld(foreignUnit,state.activeWorldId)) continue;
-      const scale = areaScale.get(coordKey(foreignUnit.x, foreignUnit.y));
+      const scale = unitAreaScale(areaScale, foreignUnit);
       if (scale === undefined || number(foreignUnit?.hp, foreignUnit?.currentHp) <= 0) continue;
       const damage = resolveAppliedAttackDamage({ attacker, target:foreignUnit, skillRow:session.skillRow, scale, isCounter:!!options.isCounter });
       foreignDamageById.set(text(foreignUnit.id), damage);
@@ -960,19 +1146,22 @@ function performAttack(target, session = attackSession, options = {}) {
           };
         }
         const own = text(unit.id) === text(attacker.id);
-        const damage = friendlyDamageById.get(text(unit.id));
         const supportTarget = supportTargetIds.has(text(unit.id));
         const guardTarget = supportSkill ? supportTarget : own;
         const maxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || unit?.hp));
         const hp = supportTarget && healing > 0
           ? Math.min(maxHp, number(unit?.hp, unit?.currentHp) + healing)
-          : damage ? Math.max(0, number(unit?.hp, unit?.currentHp) - damage.total) : number(unit?.hp, unit?.currentHp);
-        if (!own && !damage && !supportTarget && !guardTarget) return unit;
+          : number(unit?.hp, unit?.currentHp);
+        if (!own && !supportTarget && !guardTarget) return unit;
         const ap = own && !options.apPaid ? Math.max(0, currentAp(unit) - apCost) : currentAp(unit);
         return {
           ...unit, hp, currentHp:hp, ap, currentAp:ap,
           ...(own ? { lastActionTurn:currentV39TurnNumber() } : {}),
-          ...guardStatePatch(unit, damage, guardTarget ? grantedGuard : 0),
+          ...guardStatePatch(unit, null, guardTarget ? grantedGuard : 0),
+          ...(supportTarget ? grantV39PersonalDefense(session.skillRow, attacker, currentV39TurnNumber(state)) : {}),
+          ...(supportTarget && hasV39SkillEffect(session.skillRow,"遮断") ? {
+            rayBlockExpiresAtTurn:resolveV39DeadlineTurn(currentV39TurnNumber(state),parseV39TurnCount(session.skillRow.効果時間,V39_DEFENSE_BALANCE.rayBlockDefaultTurns))
+          } : {}),
           state:hp <= 0 ? "死亡" : text(unit?.state, "生存"),
           lastUsedAttack:text(session.skillRow?.名前),
           ...(own && !supportSkill ? { lastStealthAttackTurn:stealthBreakTurn, lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"attack" } : {}),
@@ -989,12 +1178,24 @@ function performAttack(target, session = attackSession, options = {}) {
   const resolvedPlayers = nextPlayers.map(row => row.id === player.id
     ? { ...row, factionState:expResult.factionState }
     : row);
-  window.setV39GameState({ players:resolvedPlayers, enemies:nextEnemies }, { reason:"combat-attack" });
+  placeV39SkillFog(ctx.data,areaScale,session.skillRow,currentV39TurnNumber(state));
+  window.setV39GameState({ ...clearDestroyedWallFacilities(state,ctx.data,resolvedPlayers), enemies:nextEnemies }, { reason:"combat-attack" });
   for (const levelUp of expResult.levelUps) {
     window.dispatchEvent(new CustomEvent("v39:unit-level-up", { detail:levelUp }));
   }
   const total = combatLog.reduce((sum, entry) => sum + entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
+  // 遮断で止められダメージ対象がないときは、Missではなく停止理由を示す。
+  const stoppedByUnit = !supportSkill && !combatLog.length
+    && ["ユニット","遮断"].includes(areaScale.ray?.reason);
+  const ownBlocker = stoppedByUnit && player.factionState.units.find(unit =>
+    isV39UnitInWorld(unit,state.activeWorldId) && number(unit.hp,unit.currentHp) > 0
+    && coordKey(unit.x,unit.y) === coordKey(target.x,target.y));
+  const obstruction = stoppedByUnit ? {
+    x:target.x, y:target.y,
+    message:"射線遮断",
+    reason:ownBlocker ? `味方（${text(ownBlocker.name)}）の遮断で停止・対象に未到達` : "射線上のユニットで停止・ダメージ対象なし"
+  } : null;
   const supportCount = supportTargetIds.size;
   const expText = expResult.awards.length
     ? ` / EXP ${expResult.awards.map(row => `${row.unitName}+${row.amount}`).join("・")}`
@@ -1004,7 +1205,7 @@ function performAttack(target, session = attackSession, options = {}) {
     : "";
   const summary = supportSkill
     ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${healing > 0 ? `回復${healing} × ${supportCount}` : grantedGuard > 0 ? `ガード+${grantedGuard} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
-    : `${text(attacker.name)}：${text(session.skillRow.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}${expText}${levelUpText}`;
+    : `${text(attacker.name)}：${text(session.skillRow.名前)} / ${obstruction?.reason || `合計${total}${hits.length ? ` (${hits.join(",")})` : ""}`} / AP-${apCost}${expText}${levelUpText}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
     detail:{
       summary,
@@ -1014,6 +1215,7 @@ function performAttack(target, session = attackSession, options = {}) {
       apCost,
       target,
       entries:combatLog,
+      obstruction,
       experience:{ pool:expResult.expPool, awards:expResult.awards, levelUps:expResult.levelUps }
     }
   }));
@@ -1035,28 +1237,66 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     .find((unit) => isV39UnitInWorld(unit,state.activeWorldId) && text(unit?.id) === text(targetUnitId));
   const enemyTarget = state?.enemies?.find((enemy) => text(enemy?.id) === text(targetUnitId));
   const villageTarget = neutralVillageGuards(state).find((unit) => text(unit?.id) === text(targetUnitId));
-  const targetUnit = playerTarget || enemyTarget || villageTarget;
+  let targetUnit = playerTarget || enemyTarget || villageTarget;
   if (!ctx || !state || !attacker || !targetUnit || number(attacker?.hp, attacker?.currentHp) <= 0 || number(targetUnit?.hp, targetUnit?.currentHp) <= 0) return false;
   if (!isCounter && remainingV39Turns(state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(attacker.id)]?.[text(skillRow?.名前)], currentV39TurnNumber(state)) > 0) return false;
   const range = resolveAttackRange(skillRow, attacker, ctx.data);
   if (!tilesWithin(ctx.data, attacker, range).has(coordKey(targetUnit.x, targetUnit.y))) return false;
   const apCost = resolveAttackApCost(skillRow, attacker);
   if (!apPaid && currentAp(attacker) < apCost) return false;
+  const defenseKind = resolveV39DefenseKind(skillRow);
+  if (defenseKind || hasV39SkillEffect(skillRow,"遮断")) {
+    if (!buildAreaScaleMap(ctx.data,attacker,targetUnit,skillRow).size) return false;
+    const turn = currentV39TurnNumber(state);
+    if (["壁", "結界"].includes(defenseKind)) {
+      const placed = createV39DefenseStructure(ctx.data, targetUnit, skillRow,
+        { ...attacker, ownerPlayerId:`nest:${attacker.nestId || attacker.id}` }, turn);
+      if (!placed) return false;
+      ctx.data.defenseStructures = [...(ctx.data.defenseStructures || []).filter(row => row.id !== placed.id), placed];
+    } else if (!enemyTarget || (enemyTarget.id !== attacker.id && (!attacker.nestId || enemyTarget.nestId !== attacker.nestId))) return false;
+    window.setV39GameState({
+      enemies:state.enemies.map(unit => ({ ...unit,
+        ...(unit.id === targetUnit.id ? grantV39PersonalDefense(skillRow, attacker, turn) : {}),
+        ...(unit.id === targetUnit.id && hasV39SkillEffect(skillRow,"遮断") ? {
+          rayBlockExpiresAtTurn:resolveV39DeadlineTurn(turn,parseV39TurnCount(skillRow.効果時間,V39_DEFENSE_BALANCE.rayBlockDefaultTurns))
+        } : {}),
+        ...(unit.id === attacker.id ? { ap:apPaid ? currentAp(unit) : currentAp(unit)-apCost,
+          currentAp:apPaid ? currentAp(unit) : currentAp(unit)-apCost, lastUsedAttack:text(skillRow.名前), lastActionTurn:turn } : {}) })),
+      enemyCombatRuntime:{ ...state.enemyCombatRuntime, cooldownsByEnemyId:{ ...state.enemyCombatRuntime?.cooldownsByEnemyId,
+        [attacker.id]:{ ...state.enemyCombatRuntime?.cooldownsByEnemyId?.[attacker.id],
+          [text(skillRow.名前)]:resolveV39DeadlineTurn(turn,cooldownDurationTurns(skillRow)) } } }
+    }, { reason:"enemy-defense" });
+    window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{
+      summary:`${attacker.name}：${skillRow.名前} / ${defenseKind || "遮断"}付与`, attackerId:attacker.id,
+      skillName:skillRow.名前, target:targetUnit, entries:[] } }));
+    if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
+      skillRow,attacker,attackerTile:attacker,tileX:targetUnit.x,tileY:targetUnit.y,
+      areaTiles:resolveV39DefenseFootprint(ctx.data,targetUnit,skillRow),
+      fitArea:["壁","結界"].includes(defenseKind)
+    });
+    return true;
+  }
   const areaScale = buildAreaScaleMap(ctx.data, attacker, targetUnit, skillRow);
+  if (!areaScale.size) return false;
+  targetUnit=combatRayUnits(state).find(unit=>coordKey(unit.x,unit.y)===coordKey(areaScale.impact.x,areaScale.impact.y)
+    && number(unit.hp,unit.currentHp)>0)||{...areaScale.impact,id:""};
   const stealthBreakTurn = currentV39TurnNumber(state);
   const exposesDirectTarget = resolveAreaType(skillRow) === "single" && resolveSplashSpec(skillRow).value <= 0;
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
-      effectName:text(skillRow?.アニメ, "斬撃"),
+      skillRow, attacker,
+      attackerTile:{ x:attacker.x, y:attacker.y },
       tileX:targetUnit.x,
       tileY:targetUnit.y,
+      areaTiles:[...areaScale.keys()].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};}),
       splash:resolveSplashSpec(skillRow).value
     });
   const combatLog = [];
+  damagePlacedWalls(ctx.data, areaScale, attacker, skillRow, combatLog);
   const damageByUnitId = new Map();
   for (const player of state.players) {
     for (const unit of player?.factionState?.units || []) {
       if (!isV39UnitInWorld(unit,state.activeWorldId)) continue;
-      const scale = areaScale.get(coordKey(unit.x, unit.y));
+      const scale = unitAreaScale(areaScale, unit);
       if (scale === undefined || number(unit?.hp, unit?.currentHp) <= 0) continue;
     const damage = resolveAppliedAttackDamage({ attacker, target:unit, skillRow, scale, isCounter });
       damageByUnitId.set(text(unit.id), damage);
@@ -1072,22 +1312,22 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   const enemyDamageById = new Map();
   for (const enemy of state.enemies) {
     if (text(enemy.id) === text(attacker.id)) continue;
-    const scale = areaScale.get(coordKey(enemy.x, enemy.y));
+    if (attacker.nestId && enemy.nestId===attacker.nestId) continue;
+    const scale = unitAreaScale(areaScale, enemy);
     if (scale === undefined || number(enemy?.hp, enemy?.currentHp) <= 0) continue;
-    const friendly = text(enemy?.nestId) === text(attacker?.nestId);
-    const damage = resolveAppliedAttackDamage({ attacker, target:enemy, skillRow, scale, friendly, isCounter });
+    const damage = resolveAppliedAttackDamage({ attacker, target:enemy, skillRow, scale, isCounter });
     enemyDamageById.set(text(enemy.id), damage);
     const beforeHp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
     combatLog.push({
       targetId:text(enemy.id), targetName:`${text(enemy.name)} Lv${integer(enemy.level, 1)}`, x:enemy.x, y:enemy.y,
       beforeHp, afterHp:Math.max(0, beforeHp-damage.total), maxHp:Math.max(1, number(enemy?.maxHp, beforeHp)),
-      friendly, ...damage
+      friendly:false, ...damage
     });
     logDamage(attacker, enemy, skillRow, damage);
   }
   const villageDamageByUnitId = new Map();
   for (const guard of neutralVillageGuards(state)) {
-    const scale = areaScale.get(coordKey(guard.x, guard.y));
+    const scale = unitAreaScale(areaScale, guard);
     if (scale === undefined || number(guard?.hp, guard?.currentHp) <= 0) continue;
     const damage = resolveAppliedAttackDamage({ attacker, target:guard, skillRow, scale, isCounter });
     villageDamageByUnitId.set(text(guard.id), damage);
@@ -1172,13 +1412,16 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     ...runtime.cooldownsByEnemyId?.[text(attacker.id)],
     [text(skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state),cooldownDurationTurns(skillRow))
   }}};
-  window.setV39GameState({ players, enemies, neutralVillages, enemyNests, enemyCombatRuntime }, { reason:"enemy-combat-attack" });
+  placeV39SkillFog(ctx.data,areaScale,skillRow,currentV39TurnNumber(state));
+  window.setV39GameState({ ...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages, enemyNests, enemyCombatRuntime }, { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerName:`${text(attacker.name)} Lv${integer(attacker.level, 1)}`, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
   if (!isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
-    detail:{ attackerSide:"enemy", targetSide:enemyTarget ? "enemy" : villageTarget ? "neutral-village" : "player", attackerId:text(attacker.id), targetUnitId:text(targetUnit.id), target:{ x:targetUnit.x, y:targetUnit.y }, skillRow, entries:combatLog }
+    detail:{ attackerSide:"enemy", targetSide:state.enemies.some(unit=>unit.id===targetUnit.id) ? "enemy"
+      : neutralVillageGuards(state).some(unit=>unit.id===targetUnit.id) ? "neutral-village" : "player",
+      attackerId:text(attacker.id), targetUnitId:text(targetUnit.id), target:{ x:targetUnit.x, y:targetUnit.y }, skillRow, entries:combatLog }
   }));
   return true;
 }
@@ -1192,33 +1435,39 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
   if (!ctx || !state || !village || !attacker || !target || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
   if(remainingV39Turns(attacker.skillCooldownsByName?.[text(skillRow?.名前)],currentV39TurnNumber(state))>0)return false;
   if (getHexDistance(attacker, target) > resolveAttackRange(skillRow, attacker, ctx.data)) return false;
-  const damage = resolveAppliedAttackDamage({ attacker, target, skillRow });
-  const beforeHp = Math.max(0, number(target?.hp, target?.currentHp));
-  const enemies = state.enemies.map(enemy => text(enemy?.id) === text(target.id)
-    ? { ...applyDirectDamage(enemy, damage, skillRow, { directTarget:true }), lastCombatTurn:currentV39TurnNumber() }
-    : enemy);
+  const area=buildAreaScaleMap(ctx.data,attacker,target,skillRow);
+  if (!area.size) return false;
+  const entries=[];
+  damagePlacedWalls(ctx.data,area,attacker,skillRow,entries);
+  const enemies = state.enemies.map(enemy => {
+    const scale=unitAreaScale(area,enemy);
+    if (scale===undefined || !isV39UnitInWorld(enemy,state.activeWorldId) || number(enemy.hp,enemy.currentHp)<=0) return enemy;
+    const damage=resolveAppliedAttackDamage({attacker,target:enemy,skillRow,scale});
+    const beforeHp=Math.max(0,number(enemy.hp,enemy.currentHp));
+    entries.push({...damage,targetId:enemy.id,targetName:`${enemy.name} Lv${integer(enemy.level,1)}`,
+      x:enemy.x,y:enemy.y,beforeHp,afterHp:Math.max(0,beforeHp-damage.total),maxHp:enemy.maxHp,friendly:false});
+    logDamage(attacker,enemy,skillRow,damage);
+    return {...applyDirectDamage(enemy,damage,skillRow,{directTarget:true}),lastCombatTurn:currentV39TurnNumber()};
+  });
   const neutralVillages = replaceNeutralVillageGuards(state, (guard, sourceVillage) => (
     text(sourceVillage?.id) === text(villageId) && text(guard?.id) === text(guardId)
       ? { ...guard, skillCooldownsByName:{...guard.skillCooldownsByName,[text(skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state),cooldownDurationTurns(skillRow))}, lastCombatTurn:currentV39TurnNumber(), lastStealthAttackTurn:currentV39TurnNumber(), lastStealthBreakTurn:currentV39TurnNumber(), lastStealthBreakReason:"attack" }
       : guard
   ));
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
-    effectName:text(skillRow?.アニメ, "斬撃"), tileX:target.x, tileY:target.y, splash:0
+    skillRow, attacker, attackerTile:{ x:attacker.x, y:attacker.y }, tileX:area.impact.x, tileY:area.impact.y,
+    areaTiles:[...area.keys()].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};}),splash:resolveSplashSpec(skillRow).value
   });
-  logDamage(attacker, target, skillRow, damage);
-  const entry = {
-    targetId:text(target.id), targetName:`${text(target.name)} Lv${integer(target.level, 1)}`, x:target.x, y:target.y,
-    beforeHp, afterHp:Math.max(0, beforeHp-damage.total), maxHp:Math.max(1, number(target?.maxHp, beforeHp)),
-    friendly:false, ...damage
-  };
-  window.setV39GameState({ enemies, neutralVillages }, { reason:"neutral-village-defense-attack" });
-  const hits = (damage.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss");
+  placeV39SkillFog(ctx.data,area,skillRow,currentV39TurnNumber(state));
+  window.setV39GameState({...clearDestroyedWallFacilities(state,ctx.data), enemies, neutralVillages }, { reason:"neutral-village-defense-attack" });
+  const total=entries.reduce((sum,entry)=>sum+entry.total,0);
+  const hits = entries.flatMap(entry=>(entry.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss"));
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{
-    summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${damage.total}${hits.length ? ` (${hits.join(",")})` : ""}`,
-    attackerName:text(attacker.name), attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:0, target:{ x:target.x, y:target.y }, entries:[entry], villageAction:true
+    summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""}`,
+    attackerName:text(attacker.name), attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:0, target:area.impact, entries, villageAction:true
   } }));
   window.dispatchEvent(new CustomEvent("v39:attack-resolved", { detail:{
-    attackerSide:"neutral-village", targetSide:"enemy", attackerId:text(attacker.id), targetUnitId:text(target.id), target:{ x:target.x, y:target.y }, skillRow, entries:[entry]
+    attackerSide:"neutral-village", targetSide:"enemy", attackerId:text(attacker.id), targetUnitId:text(entries[0]?.targetId), target:area.impact, skillRow, entries
   } }));
   return true;
 }
@@ -1307,17 +1556,25 @@ function pruneCombatRuntime(turnNumber = currentV39TurnNumber()) {
 }
 
 function resolvePendingActions(turnNumber = currentV39TurnNumber()) {
+  if (!activeRuntime()) return;
   const state = window.getV39GameState?.({ includeWorlds:false });
   for (const player of state?.players || []) {
     for (const pending of Object.values(player?.factionState?.combatRuntime?.pendingActionsByUnitId || {})) {
       if (number(pending?.resolvesAtTurn) > turnNumber) continue;
-      if(!player.factionState.units.some(unit=>text(unit.id)===text(pending.unitId)&&isV39UnitInWorld(unit,state.activeWorldId)))continue;
-      performAttack(pending.target, {
+      const caster = player.factionState.units.find(unit => text(unit.id) === text(pending.unitId));
+      if (!caster) {
+        clearPendingAction(player.id, text(pending.unitId), "cast-caster-missing");
+        continue;
+      }
+      if (!isV39UnitInWorld(caster, state.activeWorldId)) continue;
+      const resolved = performAttack(pending.target, {
         playerId:player.id,
         unitId:text(pending.unitId),
         skillName:text(pending.skillName),
-        skillRow:pending.skillRow
+        skillRow:pending.skillRow,
+        defenseFacing:pending.defenseFacing || 0
       }, { apPaid:true, clearPending:true });
+      if (!resolved) clearPendingAction(player.id, text(pending.unitId), "cast-failed");
     }
   }
 }
@@ -1325,6 +1582,14 @@ function resolvePendingActions(turnNumber = currentV39TurnNumber()) {
 function installStyles() {
   const style = document.createElement("style");
   style.textContent = `
+    #modeBanner [data-v39-defense-facing]{
+      pointer-events:auto;display:block;margin:6px auto 0;padding:6px 10px;
+      min-height:32px;max-width:100%;border:1px solid #73e0ff;border-radius:6px;
+      background:#174653;color:#f2fbff;font-family:inherit;font-size:var(--font-body);
+      font-weight:700;line-height:1.2;white-space:nowrap;cursor:pointer;
+    }
+    #modeBanner [data-v39-defense-facing]:hover{background:#246579}
+    #modeBanner [data-v39-defense-facing]:focus-visible{outline:2px solid #ffe09a;outline-offset:2px}
     #detailTechniqueList .action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed}
     #detailTechniqueList .action-technique.active{border-color:#e7c466}
   `;
@@ -1362,9 +1627,10 @@ window.addEventListener("v39:tile-selected", (event) => {
     if (attackSession) executeAttack(event.detail);
   });
   window.addEventListener("pointermove", (event) => {
-    if (!attackSession || hoverFrame) return;
+    if (!attackSession || attackSession.confirmedTarget || hoverFrame) return;
     hoverFrame = window.requestAnimationFrame(() => {
       hoverFrame = 0;
+      if (!attackSession || attackSession.confirmedTarget) return;
       const tile = tileAtPointer(event);
       if (tile) previewAttackArea(tile);
     });
@@ -1428,6 +1694,7 @@ window.addEventListener("v39:tile-selected", (event) => {
   window.resolveV39PendingCombatActions = resolvePendingActions;
   window.getV39AttackSession = () => attackSession ? {
     unitId:attackSession.unitId, skillName:attackSession.skillName, range:attackSession.range,
+    confirmedTarget:attackSession.confirmedTarget ? { ...attackSession.confirmedTarget } : null,
     rangeTileKeys:[...attackSession.rangeTiles.keys()]
   } : null;
   renderActionPanel();

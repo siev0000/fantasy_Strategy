@@ -190,7 +190,10 @@ function buildReachablePlan(data, group, apBudget) {
   formations.set(startKey, (group?.positions || []).map(row => ({ ...row })));
   const queue = [{ x:sx, y:sy, cost:0 }];
   const worldWrapEnabled = isWorldWrapEnabled(data);
-  const {blocked:occupied,stopBlocked}=collectV39MovementOccupancy(window.getV39GameState?.(),group?.participantIds,data);
+  const {blocked:occupied,stopBlocked}=collectV39MovementOccupancy(window.getV39GameState?.(),group?.participantIds,data, {
+    isVisible:unit=>window.isV39TileInCurrentVision?.(unit.x,unit.y)===true
+      &&window.isV39EntityDetected?.(unit)===true
+  });
 
   while (queue.length) {
     let minIndex = 0;
@@ -295,10 +298,12 @@ function drawPath(path) {
 }
 
 function setBanner(message = "") {
-  const banner = document.getElementById("modeBanner");
+  const banner = document.getElementById("moveInstruction");
   if (!(banner instanceof HTMLElement)) return;
   banner.textContent = message;
-  banner.classList.toggle("show", !!message);
+  banner.hidden = !message;
+  const confirm = document.getElementById("moveConfirm");
+  if (confirm) confirm.hidden = !message;
 }
 
 function showToast(message) {
@@ -308,8 +313,10 @@ function showToast(message) {
 function setMoveConfirm(visible, message = "") {
   const confirm = document.getElementById("moveConfirm");
   const label = document.getElementById("moveText");
-  if (label && message) label.textContent = message;
-  confirm?.classList.toggle("show", !!visible);
+  if (label) { label.textContent = message; label.hidden = !visible; }
+  if (confirm) confirm.hidden = !visible;
+  const button = document.getElementById("moveOk");
+  if (button) button.disabled = !visible;
 }
 
 function persistMoveCommand(unitIdValue, reason, playerId) {
@@ -409,6 +416,8 @@ function startMove() {
     path:[]
   };
   persistMoveCommand(moveSession.unitId, "move-command-armed");
+  window.activateV39FooterTab?.("squad");
+  document.querySelector('[data-squad-detail-tab="action"]')?.click();
   document.getElementById("mobileBattleMove")?.classList.add("active");
   drawReachable(plan, moveSession.start);
   setMoveConfirm(false);
@@ -457,7 +466,7 @@ function previewTarget(tile) {
   drawPath(path);
   setMoveConfirm(true, `距離 ${path.length - 1} / 消費AP ${cost} / 残AP ${remaining}`);
   setBanner(key === coordKey(tile?.x, tile?.y)
-    ? "経路を確認し、「移動確定」を押してください"
+    ? "経路を確認してください"
     : "目的地へ到達できないため、表示位置で停止します");
 }
 
@@ -521,15 +530,45 @@ async function applyMovement() {
 
   const currentAp = currentGroup.moveAp;
   const freshPlan = buildReachablePlan(ctx.data, currentGroup, currentAp);
-  const targetKey = coordKey(session.target.x, session.target.y);
-  const freshCost = freshPlan.costs.get(targetKey);
+  let targetKey = coordKey(session.target.x, session.target.y);
+  let freshCost = freshPlan.costs.get(targetKey);
   if (!Number.isFinite(freshCost)||!freshPlan.stops.has(targetKey)) {
     showToast("現在の状態ではそのマスへ移動できません");
     clearMoveMode();
     return;
   }
 
-  const path = pathTo(freshPlan, currentStart, session.target);
+  let path = pathTo(freshPlan, currentStart, session.target);
+  const actualOccupancy=collectV39MovementOccupancy(window.getV39GameState?.(),currentGroup.participantIds,ctx.data);
+  let lastStop=0,contactUnits=[];
+  for(let index=1;index<path.length;index++){
+    const formation=freshPlan.formations.get(coordKey(path[index].x,path[index].y))||[];
+    const contactTiles=(formation.transitionFrames||[formation]).flat()
+      .filter(tile=>actualOccupancy.blocked.has(coordKey(tile.x,tile.y)));
+    if(contactTiles.length){
+      contactUnits=contactTiles.flatMap(tile=>actualOccupancy.blockersByTile.get(coordKey(tile.x,tile.y))||[]);
+      path=path.slice(0,lastStop+1);
+      break;
+    }
+    if(formation.every(tile=>!actualOccupancy.stopBlocked.has(coordKey(tile.x,tile.y))))lastStop=index;
+  }
+  if(contactUnits.length){
+    // 接触による発見は操作プレイヤーだけに保持し、攻撃後の隠密低下とは分ける。
+    const contactReveals=Object.fromEntries(Object.entries(faction.visibility?.contactReveals||{})
+      .filter(([,record])=>record.turnNumber===session.turnNumber));
+    for(const other of contactUnits)contactReveals[unitId(other)]={
+      x:other.x,y:other.y,worldId:session.worldId,turnNumber:session.turnNumber
+    };
+    window.updateV39ActiveFactionState?.({visibility:{...faction.visibility,contactReveals}}, {reason:"movement-contact"});
+    session.target={...path.at(-1)};
+    targetKey=coordKey(session.target.x,session.target.y);
+    freshCost=freshPlan.costs.get(targetKey)||0;
+    if(path.length<=1){
+      clearMoveMode();
+      showToast("隠れていたユニットと接触したため、その場で停止しました（AP消費なし）");
+      return;
+    }
+  }
   const nextAp = Math.max(0, currentAp - freshCost);
   const targetPositions = freshPlan.formations.get(targetKey) || [];
   const movement = applyV39SquadMovement(faction, currentGroup, { ...session.target, positions:targetPositions }, freshCost);
@@ -589,7 +628,7 @@ async function applyMovement() {
     const movedLabel = currentGroup.isSquad
       ? text(currentGroup.squad?.label || currentGroup.squad?.name, "部隊")
       : text(unit.name, "キャラクター");
-    showToast(`${movedLabel}：移動完了 / 残AP ${nextAp}`);
+    showToast(`${movedLabel}：${contactUnits.length ? "隠れていたユニットの手前で停止" : "移動完了"} / 残AP ${nextAp}`);
   } finally {
     destroyGraphics();
     window.endV39MapRenderBatch?.(batchToken, { force:true, reason:"unit-movement-complete" });

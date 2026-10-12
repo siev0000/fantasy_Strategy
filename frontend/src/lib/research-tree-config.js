@@ -10,7 +10,11 @@ const RESEARCH_CATEGORY_VISUAL_PRESETS = Object.freeze({
   魔法:Object.freeze({ icon:"✦", accent:"#a980de" }),
   信仰:Object.freeze({ icon:"✚", accent:"#e9de8b" }),
   軍事:Object.freeze({ icon:"⚔", accent:"#cf705e" }),
-  経済:Object.freeze({ icon:"◆", accent:"#79c88f" })
+  経済:Object.freeze({ icon:"◆", accent:"#79c88f" }),
+  調査:Object.freeze({ icon:"⌕", accent:"#70b7c6" }),
+  地質調査:Object.freeze({ icon:"⛏", accent:"#d9b56b" }),
+  生態調査:Object.freeze({ icon:"♧", accent:"#79c88f" }),
+  地下探索:Object.freeze({ icon:"⌕", accent:"#70b7c6" })
 });
 const DEFAULT_RESEARCH_CATEGORY_VISUAL = Object.freeze({ icon:"◆", accent:"#70b7c6" });
 
@@ -31,29 +35,17 @@ export function getResearchCategoryMeta(categoryKey) {
   });
 }
 
-const RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP = new Map();
-const RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT = [];
+const RESEARCH_LEVEL_RECOMMENDATION_MAP = new Map();
 for (const row of researchDbRaw) {
   const level = Number(row?.Lv);
   if (!Number.isInteger(level) || level <= 0) continue;
-  const requirement = Number(row?.必要ユニットLv);
-  if (!Number.isInteger(requirement) || requirement <= 0) {
-    RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT.push(String(row?.ID ?? row?.項目名 ?? `Lv${level}`));
-    continue;
-  }
-  const existing = RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP.get(level);
-  if (existing !== undefined && existing !== requirement) {
-    throw new Error(`[ゲームデータ] 研究.json: Lv${level}の必要ユニットLvが一致しません (${existing} / ${requirement})`);
-  }
-  RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP.set(level, requirement);
+  const recommendation = Math.max(0, Number(row?.推奨ユニットLv ?? row?.必要ユニットLv) || 0);
+  RESEARCH_LEVEL_RECOMMENDATION_MAP.set(level,
+    Math.max(RESEARCH_LEVEL_RECOMMENDATION_MAP.get(level) || 0, recommendation));
 }
-if (RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT.length) {
-  throw new Error(`[ゲームデータ] 研究.json: 必要ユニットLvがありません (${RESEARCH_ROWS_WITHOUT_UNIT_REQUIREMENT.join("、")})`);
-}
-export const RESEARCH_LEVEL_UNIT_REQUIREMENTS = Object.freeze(Object.fromEntries(
-  [...RESEARCH_LEVEL_UNIT_REQUIREMENT_MAP.entries()].sort((a, b) => a[0] - b[0])
+export const RESEARCH_LEVEL_UNIT_RECOMMENDATIONS = Object.freeze(Object.fromEntries(
+  [...RESEARCH_LEVEL_RECOMMENDATION_MAP.entries()].sort((a, b) => a[0] - b[0])
 ));
-
 export const RESEARCH_TIME_REDUCTION_SKILL_BY_CATEGORY = Object.freeze(Object.fromEntries(
   cityBaseData
     .filter(row => String(row?.分類 ?? "").trim() === "研究Lv")
@@ -68,6 +60,10 @@ if (RESEARCH_CATEGORIES_WITHOUT_REDUCTION_SKILL.length) {
 
 const RESEARCH_CATEGORY_ALIAS = Object.freeze({
   ...Object.fromEntries(RESEARCH_TARGET_ORDER.flatMap(target => [[target, `${target}Lv`], [`${target}Lv`, `${target}Lv`]])),
+  // 発見条件と旧セーブでは統合前の枝名を引き続き使う。
+  地質調査:"地質調査Lv",
+  生態調査:"生態調査Lv",
+  地下探索:"地下探索Lv",
   鍛冶場:"鍛冶Lv"
 });
 
@@ -140,7 +136,7 @@ function isInvalidHeaderRow(core) {
 
 function buildExtraDetailEntries(row) {
   if (!row || typeof row !== "object") return [];
-  const excludedKeys = new Set(["ID", "id", "項目名", "name", "名称", "技術対象", "カテゴリ", "category", "target", "Lv", "level", "tier", "必要ユニットLv", "詳細", "desc", "説明"]);
+  const excludedKeys = new Set(["必要研究Lv", "前提研究ID", "ID", "id", "項目名", "name", "名称", "技術対象", "カテゴリ", "category", "target", "Lv", "level", "tier", "必要ユニットLv", "推奨ユニットLv", "詳細", "desc", "説明"]);
   return Object.entries(row)
     .filter(([key, value]) => {
       if (excludedKeys.has(key)) return false;
@@ -177,6 +173,10 @@ function buildCategoriesFromRows(rows) {
       desc: core.desc,
       level: core.level,
       category: core.target,
+      requiredResearchLevel:Math.max(1, Math.floor(Number(row.必要研究Lv ?? core.level) || 1)),
+      prerequisiteIds:[...new Set(String(row.前提研究ID ?? "").split(/[、,\n]/u).map(asText).filter(Boolean))],
+      // 原本の旧列名も読み取るが、研究の解禁条件ではなく速度の目安。
+      recommendedUnitLevel: Math.max(0, Number(row.推奨ユニットLv ?? row.必要ユニットLv) || 0),
       details
     });
   });
@@ -198,6 +198,18 @@ function buildCategoriesFromRows(rows) {
       levels
     };
   }
+  // 不明ID・循環は起動失敗ではなく項目ごとの解禁エラーとして保持する。
+  const items = Object.values(categories).flatMap(cat => cat.levels.flatMap(row => row.items));
+  const byId = new Map(items.map(item => [item.id,item]));
+  const cycle = (id, path = new Set()) => {
+    if (path.has(id)) return true;
+    const next=new Set(path); next.add(id);
+    return (byId.get(id)?.prerequisiteIds || []).some(parent => byId.has(parent) && cycle(parent,next));
+  };
+  for (const item of items) {
+    item.prerequisiteErrors = item.prerequisiteIds.filter(id=>!byId.has(id)).map(id=>`不明な前提研究ID: ${id}`);
+    if (cycle(item.id)) item.prerequisiteErrors.push("前提研究が循環しています");
+  }
   return categories;
 }
 
@@ -214,7 +226,7 @@ export function resolveResearchTreeData(raw = researchDbRaw) {
   return {
     maxImplementedLevel,
     maxDefinedLevel: maxImplementedLevel,
-    levelRequirements: { ...RESEARCH_LEVEL_UNIT_REQUIREMENTS },
+    recommendedUnitLevels: { ...RESEARCH_LEVEL_UNIT_RECOMMENDATIONS },
     timeReductionSkills: { ...RESEARCH_TIME_REDUCTION_SKILL_BY_CATEGORY },
     categories
   };

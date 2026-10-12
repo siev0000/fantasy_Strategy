@@ -4,7 +4,6 @@ import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "../.
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
-import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
 import {
   normalizeV39LocalPlayerCount,
   normalizeV39LocalParticipantCount,
@@ -91,9 +90,11 @@ function normalizeWorldEnvironment(value = {}) {
     lavaFlowData:cloneJson(value?.lavaFlowData, { nodeKeys:[], edgeKeys:[], sourceKeys:[] }),
     lastTerrainEvents:cloneJson(value?.lastTerrainEvents, []),
     activeTerrainEffects:cloneJson(value?.activeTerrainEffects, []),
+    siteConcealmentEffects:cloneJson(value?.siteConcealmentEffects, []),
     lastDisasterEvents:cloneJson(value?.lastDisasterEvents, []),
     activeDisasters:cloneJson(value?.activeDisasters, []),
-    lastNaturalEventTurn:Math.max(0, Math.floor(Number(value?.lastNaturalEventTurn) || 0))
+    lastNaturalEventTurn:Math.max(0, Math.floor(Number(value?.lastNaturalEventTurn) || 0)),
+    lastCorpseConversionTurn:Math.max(0, Math.floor(Number(value?.lastCorpseConversionTurn) || 0))
   };
 }
 
@@ -128,7 +129,6 @@ function normalizeUnitArray(value) {
   return Array.isArray(value)
     ? value
       .filter(Boolean)
-      .filter(row => row?.testOnly !== true || isV39TestSkillModeEnabled())
       .map(row => normalizeUnitCommonAp(applyV39DerivedCharacterData(row)))
     : [];
 }
@@ -232,10 +232,14 @@ function normalizeState(input = {}) {
 function cloneUnit(unit) {
   return {
     ...unit,
+    prerequisiteClassLevels:cloneRecord(unit?.prerequisiteClassLevels),
+    ...(unit.classGrowthStart ? {classGrowthStart:cloneRecord(unit.classGrowthStart)} : {}),
     status: cloneRecord(unit?.status),
     skillLevels: cloneRecord(unit?.skillLevels),
     acquiredSkillNames: Array.isArray(unit?.acquiredSkillNames) ? [...unit.acquiredSkillNames] : unit?.acquiredSkillNames,
     testSkillNames: Array.isArray(unit?.testSkillNames) ? [...unit.testSkillNames] : unit?.testSkillNames,
+    shield:unit?.shield ? { ...unit.shield } : null,
+    barrier:unit?.barrier ? { ...unit.barrier } : null,
     techniques: normalizeEntityArray(unit?.techniques),
     equipment:Array.isArray(unit?.equipment) ? unit.equipment.map(row => ({ ...row, resistanceBonus:cloneRecord(row?.resistanceBonus), source:cloneRecord(row?.source) })) : [],
     derivedCharacter: cloneRecord(unit?.derivedCharacter)
@@ -376,6 +380,7 @@ function patchEnemyTurnState(patch = {}) {
   const next = { ...state };
   if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = patch.enemies;
   if (Object.prototype.hasOwnProperty.call(patch, "enemyNests")) next.enemyNests = patch.enemyNests;
+  if (Object.prototype.hasOwnProperty.call(patch, "groundLootByTile")) next.groundLootByTile = patch.groundLootByTile;
   if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) {
     next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
   }
@@ -477,7 +482,7 @@ function createTestLocalSessionPlayers(count) {
       label:`プレイヤー${index + 1}`,
       isPlayer:true,
       controllerParticipantId:"local-1",
-      factionState:resetFactionForNewLocalSession(remapFactionIdentifiers(template?.factionState, playerId))
+      factionState:{...resetFactionForNewLocalSession(remapFactionIdentifiers(template?.factionState, playerId)), facilityRecruitmentTest:true}
     }, index);
   });
 }

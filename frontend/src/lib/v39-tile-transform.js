@@ -116,6 +116,9 @@ export function applyV39TileTransformEffect(data, xRaw, yRaw, spec, terrainRows 
     ensureSpecialMap(data);
     data.specialMap[y][x] = targetTerrain;
   }
+  data.deathFogSourceByTile ||= {};
+  if(targetTerrain==="死の霧") data.deathFogSourceByTile[`${x},${y}`]=true;
+  else delete data.deathFogSourceByTile[`${x},${y}`];
 
   const before = currentSpecial ? `${currentBase}/${currentSpecial}` : currentBase;
   const after = layer === "特殊" ? `${currentBase}/${targetTerrain}` : targetTerrain;

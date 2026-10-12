@@ -32,7 +32,7 @@ function render(statusText = "") {
   const state = window.getV39GameState?.();
   const player = window.getV39ActivePlayer?.();
   if (!state || !player) return;
-  const options = getV39UnitCreationOptions(player);
+  const options = getV39UnitCreationOptions(player, state);
   const previous = requestFromPanel(panel);
   const race = options.races.includes(previous.race) ? previous.race : options.races[0] || player.race;
   const className = options.classes.some(row => row.名前 === previous.className) ? previous.className : options.classes[0]?.名前 || "";
@@ -43,11 +43,11 @@ function render(statusText = "") {
   panel.innerHTML = `<header class="v39-unit-create-head"><button type="button" id="v39-unit-create-back">← 部隊</button><strong>ユニット作成</strong><span>軍事Lv${options.militaryLevel}</span></header>
     <div class="v39-unit-create-grid">
       <label><span>種族</span><select id="v39-unit-race">${options.races.map(value => `<option${value === race ? " selected" : ""}>${escapeHtml(value)}</option>`).join("")}</select></label>
-      <label><span>初期職業</span><select id="v39-unit-class">${options.classes.map(row => `<option${row.名前 === className ? " selected" : ""}>${escapeHtml(row.名前)}</option>`).join("")}</select></label>
+      <label><span>職業</span><select id="v39-unit-class">${options.classes.map(row => `<option value="${escapeHtml(row.名前)}"${row.名前 === className ? " selected" : ""}>${escapeHtml(row.名前)}${row.recruitmentFacility ? ` [${escapeHtml(row.recruitmentFacility)}]` : ""}</option>`).join("")}</select></label>
       <label><span>種別</span><select id="v39-unit-mode">${options.modes.map(row => `<option value="${row.mode}"${row.mode === mode ? " selected" : ""}>${escapeHtml(row.label)} / 必要軍事Lv${row.requiredMilitaryLevel}</option>`).join("")}</select></label>
       <label><span>作成数</span><input id="v39-unit-count" type="number" min="1" max="20" value="${count}"></label>
     </div>
-    <div class="v39-unit-create-summary"><span>初期Lv${resolveV39UnitInitialLevel(race, mode !== "normal")}</span><span>上限 ${check.current}/${check.cap}</span><span>人口 -${check.populationCost}</span><span>${escapeHtml(cost)}</span></div>
+    <div class="v39-unit-create-summary">${check.recruitment ? `<span>施設徴兵: ${escapeHtml(check.recruitment.facilityName)} / Tier2</span>${Object.entries(check.recruitment.initialGrowth.prerequisiteClassLevels).map(([name,level])=>`<span>${escapeHtml(name)} Lv${level}</span>`).join("")}<span>${escapeHtml(className)} Lv${check.recruitment.initialGrowth.initialClassLevel}</span><span>種族 Lv${check.recruitment.initialGrowth.initialRaceLevel}</span>` : ""}<span>初期Lv${check.recruitment?.initialGrowth.level ?? resolveV39UnitInitialLevel(race, mode !== "normal")}</span><span>上限 ${check.current}/${check.cap}</span><span>人口 -${check.populationCost}</span><span>${escapeHtml(cost)}</span></div>
     <footer><output id="v39-unit-create-status">${escapeHtml(statusText || (check.available ? "生成できます" : check.reasons.join(" / ")))}</output><button type="button" id="v39-unit-create-confirm" class="v39-unit-create-confirm"${check.available ? "" : " disabled"}>${check.available ? "生成" : "生成不可"}</button></footer>`;
 }
 

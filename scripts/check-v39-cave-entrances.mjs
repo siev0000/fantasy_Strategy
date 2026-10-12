@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const source=readFileSync("frontend/src/lib/v39-cave-entrance-rules.js","utf8");
+const {isV39SurfaceCaveEntrance:isEntrance,isV39CaveEntranceDiscovered:discovered}=await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+const map={grid:[["平地","洞窟"]],specialMap:[["洞窟",null]]};
+assert.equal(isEntrance(map,0,0),true);assert.equal(isEntrance(map,1,0),true);
+assert.equal(isEntrance({...map,isUnderground:true},1,0),false);
+assert.equal(discovered({visibility:{exploredTileKeys:["0,0"],visibleTileKeys:["0,0"]}},map,0,0),false);
+assert.equal(discovered({exploration:{discoveredCaveEntrancesByTile:{"0,0":{discoveredTurn:2}}}},map,0,0),true);
+assert.equal(discovered({exploration:{surveyedTileKeys:["1,0"]}},map,1,0),true);
+assert.equal(discovered({exploration:{researchDiscoveryVersion:1,surveyedTileKeys:["1,0"]}},map,1,0),false);
+assert.equal(discovered({exploration:{surveyedTileKeys:["0,0"]}},null,0,0),false);
+assert.equal(discovered({exploration:{}},map,0,0),false);
+console.log("cave entrances: base/special terrain, underground exclusion, survey not vision, saved discoveries and legacy surveys passed");

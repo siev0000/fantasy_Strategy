@@ -47,6 +47,7 @@ const createUnit = definition => {
     level: definition.level,
     role: definition.role,
     isNamed:definition.isNamed === true,
+    testOnly:definition.testOnly === true,
     isSovereign:definition.isSovereign === true,
     unitType:definition.unitType || (definition.isNamed ? "ネームド" : "軍隊"),
     movement: definition.movement,

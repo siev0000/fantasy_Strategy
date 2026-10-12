@@ -31,6 +31,8 @@ try {
       map.grid=map.grid.map(row=>row.map(()=>"洞窟"));map.heightLevelMap=map.grid.map(row=>row.map(()=>0));map.specialMap=[];map.lavaMap=[];
       const units=faction.units.map((unit,index)=>({...unit,x:index?9:10,y:index===1?11:10,ap:100,currentAp:100}));
       const fixture={...faction,units,selectedUnitId:ids[2]};
+      const solo=rules.resolveV39SquadMovementGroup({...fixture,squads:[],units:units.map(unit=>({...unit,squadId:"",movementHold:false}))},ids[0],{caveFormation:true});
+      check(solo.ok&&solo.participants.length===1&&solo.formationType==="column","solo cave unit has valid formation");
       const group=rules.resolveV39SquadMovementGroup(fixture,ids[2],{caveFormation:true});
       check(group.participants.length===2&&!group.participantIds.includes(ids[2]),"held unit excluded");
       const next=rules.advanceV39CaveFormation(map,group.positions,{x:11,y:10},group,new Set(["9,10"]));

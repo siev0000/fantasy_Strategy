@@ -55,7 +55,7 @@ try {
   });
   await page.locator("[data-v39-cave-test]").click();
   await page.locator(".cave-test-dialog select").first().selectOption("branch");
-  await page.getByRole("button",{name:"生成",exact:true}).click();
+  await page.getByRole("button",{name:"同じシードで生成",exact:true}).click();
   await page.screenshot({path:"output/web-game/cave-layout/desktop.png"});
   await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
   await page.getByRole("button",{name:"探索開始",exact:true}).click();

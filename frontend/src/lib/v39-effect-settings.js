@@ -1,3 +1,4 @@
+import { normalizeV39EffectTransform } from "./v39-effect-transform.js";
 const STORAGE_KEY = "v39-effect-settings-v1";
 const SCHEMA_NAME = "v39-effect-settings";
 const SCHEMA_VERSION = 4;
@@ -15,6 +16,7 @@ const DEFAULT_GRADIENT_SPEED = 80;
 
 let effectCatalog = [];
 let effectCatalogSet = new Set();
+const editorProxies = new Map();
 let state = loadState();
 
 function text(value, fallback = "") {
@@ -75,6 +77,8 @@ function defaultSetting(effectName) {
     baseEffect:name,
     decorationEffect:"",
     tint:"",
+    ...normalizeV39EffectTransform(),
+    orientToAttack:false,
     gradientEnabled:false,
     gradientColorA:DEFAULT_GRADIENT_COLOR_A,
     gradientColorB:DEFAULT_GRADIENT_COLOR_B,
@@ -103,6 +107,8 @@ function normalizeSetting(effectName, rawSetting = {}) {
     baseEffect,
     decorationEffect,
     tint:normalizeTint(rawSetting?.tint),
+    ...normalizeV39EffectTransform(rawSetting),
+    orientToAttack:rawSetting?.orientToAttack === true,
     gradientEnabled:rawSetting?.gradientEnabled === true,
     gradientColorA:normalizeGradientColor(rawSetting?.gradientColorA, DEFAULT_GRADIENT_COLOR_A),
     gradientColorB:normalizeGradientColor(rawSetting?.gradientColorB, DEFAULT_GRADIENT_COLOR_B),
@@ -126,6 +132,8 @@ function isDefaultSetting(setting) {
   return setting.baseEffect === setting.effectName
     && setting.decorationEffect === ""
     && setting.tint === ""
+    && setting.rotationDeg === 0 && setting.offsetX === 0 && setting.offsetY === 0
+    && setting.orientToAttack !== true
     && setting.gradientEnabled !== true
     && setting.gradientStartPercent === 0
     && setting.gradientEndPercent === 100
@@ -138,6 +146,8 @@ function serializableSetting(setting) {
     baseEffect:setting.baseEffect,
     decorationEffect:setting.decorationEffect,
     tint:setting.tint,
+    ...normalizeV39EffectTransform(setting),
+    orientToAttack:setting.orientToAttack === true,
     gradientEnabled:setting.gradientEnabled === true,
     gradientColorA:setting.gradientColorA,
     gradientColorB:setting.gradientColorB,
@@ -175,8 +185,18 @@ export function getV39EffectSettingsCatalog() {
   return [...effectCatalog];
 }
 
+export function registerV39EffectEditorProxy(name, baseEffect) {
+  if (!editorProxies.has(name)) editorProxies.set(name, normalizeSetting(name, { baseEffect }));
+  return name;
+}
+
+export function isV39EffectSettingsTarget(name) {
+  return effectCatalogSet.has(name) || editorProxies.has(name);
+}
+
 export function getV39EffectSetting(effectName) {
   const name = text(effectName, "斬撃");
+  if (editorProxies.has(name)) return editorProxies.get(name);
   if (!effectCatalogSet.has(name)) return defaultSetting(name);
   const raw = state.effects?.[name];
   if (!raw) return defaultSetting(name);
@@ -185,6 +205,12 @@ export function getV39EffectSetting(effectName) {
 
 export function updateV39EffectSetting(effectName, patch = {}) {
   const name = text(effectName);
+  if (editorProxies.has(name)) {
+    const setting = normalizeSetting(name, { ...editorProxies.get(name), ...patch });
+    editorProxies.set(name, setting);
+    emitChanged({ effectName:name, setting, reason:"update" });
+    return setting;
+  }
   if (!name || !effectCatalogSet.has(name)) return null;
   const current = getV39EffectSetting(name);
   const normalized = normalizeSetting(name, { ...current, ...patch });
@@ -255,11 +281,13 @@ export function importV39EffectSettings(input) {
 
 export function resolveV39EffectPlaybackSettings(rawEffectName) {
   const rawName = text(rawEffectName, "斬撃");
-  if (!effectCatalogSet.has(rawName)) {
+  if (!isV39EffectSettingsTarget(rawName)) {
     return {
       requestedEffect:rawName,
       sequenceName:rawName,
       tint:"",
+      ...normalizeV39EffectTransform(),
+      orientToAttack:false,
       gradientEnabled:false,
       gradientColorA:DEFAULT_GRADIENT_COLOR_A,
       gradientColorB:DEFAULT_GRADIENT_COLOR_B,
@@ -277,6 +305,8 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
     requestedEffect:rawName,
     sequenceName:[setting.baseEffect, setting.decorationEffect].filter(Boolean).join(":"),
     tint:setting.tint,
+    ...normalizeV39EffectTransform(setting),
+    orientToAttack:setting.orientToAttack,
     gradientEnabled:setting.gradientEnabled,
     gradientColorA:setting.gradientColorA,
     gradientColorB:setting.gradientColorB,

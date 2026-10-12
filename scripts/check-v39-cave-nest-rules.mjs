@@ -1,0 +1,28 @@
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const url = source => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+const balanceUrl = url(readFileSync("frontend/src/lib/v39-gameplay-balance.js","utf8"));
+const {V39_CAVE_NEST_BALANCE:rules} = await import(balanceUrl);
+const source = readFileSync("frontend/src/lib/v39-cave-nest-rules.js","utf8")
+  .replace('"./v39-gameplay-balance.js"',JSON.stringify(balanceUrl));
+const {advanceV39CaveNestProgress:advance} = await import(url(source));
+assert.equal(rules.requiredSameRaceUnits,2);assert.equal(rules.requireEnoughFood,true);
+assert.equal(rules.guardPlacement,"entrance");assert.equal(rules.guardUnitSource,"owner-army");assert.equal(rules.autoCreateGuards,false);
+let state={};
+for(let turn=1;turn<=3;turn++)state=advance(state,turn);
+assert.equal(state.progressTurns,3);assert.equal(state.ready,false);
+state=advance(state,4,{playerPresent:true});state=advance(state,5,{playerPresent:true});
+assert.equal(state.progressTurns,1);
+assert.deepEqual(advance(state,5,{playerPresent:true}),state);
+state=advance(state,6,{playerPresent:true});state=advance(state,7,{playerPresent:true});
+assert.equal(state.progressTurns,0);
+for(let turn=8;turn<=12;turn++)state=advance(state,turn);
+assert.equal(state.progressTurns,5);assert.equal(state.ready,true);
+const saved=JSON.parse(JSON.stringify(state));assert.deepEqual(advance(saved,12),saved);
+assert.equal(advance({progressTurns:3},13,{canProgress:false}).progressTurns,3);
+assert.equal(advance({progressTurns:3},13,{playerPresent:true,canProgress:false}).progressTurns,2);
+assert.equal(advance({progressTurns:3},13,{playerPresent:true},{...rules,intrusionRollbackPerTurn:2}).progressTurns,1);
+let custom={};for(let turn=1;turn<=2;turn++)custom=advance(custom,turn,{}, {...rules,establishmentTurns:4,progressPerTurn:2});
+assert.equal(custom.ready,true);assert.equal(custom.progressTurns,4);
+assert.deepEqual(advance({},NaN),{});assert.deepEqual(advance({},0),{});
+console.log("cave nest configuration: 5 turns, intrusion rollback, zero floor, repeat/save, overrides and guard policy passed");

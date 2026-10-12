@@ -1,5 +1,7 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { getIconSrcByName, hasIconName } from "../../lib/icon-library.js";
+import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
+import { V39_CAVE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
 const BASE_TERRAIN_ICONS = Object.freeze({
   "森": { symbol: "🌲", imageCandidate: true, imageName:"森" },
@@ -74,6 +76,7 @@ function collectIconEntries(data) {
       const specialIcon = SPECIAL_TERRAIN_ICONS[special];
       if (baseIcon) entries.push({ x, y, kind:"base", terrain, icon:baseIcon });
       if (specialIcon) entries.push({ x, y, kind:"special", terrain:special, icon:specialIcon });
+      if(special!=="洞窟"&&isV39SurfaceCaveEntrance(data,x,y))entries.push({x,y,kind:"special",terrain:"洞窟",icon:SPECIAL_TERRAIN_ICONS["洞窟"]});
     }
   }
   return entries;
@@ -154,7 +157,27 @@ function addIconImage(scene, container, x, y, kind, terrain, icon) {
   image.setData("terrain", terrain);
   image.setData("iconKind", kind);
   image.setData("imageCandidate", icon.imageCandidate === true);
+  if(terrain==="洞窟")image.setData("caveEntrance",{x,y});
   container.add(image);
+}
+
+function syncCaveEntranceVisibility(){
+  const scene=activeScene(),map=window.__v39FieldRuntime?.mapData;
+  const overlay=scene?.children?.list?.find(child=>child.name===OVERLAY_NAME);
+  if(!overlay||map?.isUnderground||!scene.v39CaveEntranceIcons?.length)return;
+  const faction=window.getV39ActiveFactionState?.(),test=window.isV39TestMode?.()===true||window.getV39DisplaySettings?.().testMode===true;
+  for(const image of scene.v39CaveEntranceIcons){
+    const point=image.getData?.("caveEntrance");if(!point)continue;
+    const discovered=isV39CaveEntranceDiscovered(faction,map,point.x,point.y);
+    image.setVisible(discovered||test).setAlpha(discovered?1:V39_CAVE_BALANCE.undiscoveredEntranceTestAlpha);
+  }
+}
+
+let caveVisibilityScheduled=false;
+function scheduleCaveEntranceVisibility(){
+  if(caveVisibilityScheduled)return;
+  caveVisibilityScheduled=true;
+  requestAnimationFrame(()=>{caveVisibilityScheduled=false;syncCaveEntranceVisibility();});
 }
 
 function renderTerrainIcons() {
@@ -180,6 +203,8 @@ function renderTerrainIcons() {
     if (entry.kind === "base") baseCount += 1;
     else specialCount += 1;
   }
+  scene.v39CaveEntranceIcons=container.list.filter(image=>image.getData?.("caveEntrance"));
+  syncCaveEntranceVisibility();
 
   window.__v39TerrainIconStatus = {
     rendered: true,
@@ -223,6 +248,9 @@ function install() {
     scheduleTerrainIconRender();
   });
   window.addEventListener("v39:field-data-updated", scheduleTerrainIconRender);
+  window.addEventListener("v39:game-state-changed", scheduleCaveEntranceVisibility);
+  window.addEventListener("v39:display-settings-changed", scheduleCaveEntranceVisibility);
+  window.addEventListener("v39:save-loaded", scheduleCaveEntranceVisibility);
 
   window.renderV39TerrainIcons = scheduleTerrainIconRender;
   window.getV39TerrainIconStatus = () => ({ ...(window.__v39TerrainIconStatus || {}) });

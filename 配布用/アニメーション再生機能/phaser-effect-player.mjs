@@ -328,7 +328,10 @@ export class PhaserEffectPlayer {
     const angle = normalizeAngle(request.angleDeg);
     const angleRadians = angle * Math.PI / 180;
     const scalePercent = clamp(numberOr(request.scalePercent, 50), 1, 1000);
-    const scale = (scalePercent / this.options.baseScalePercent)
+    // 範囲を包む指定時は実コマ寸法から等倍拡縮。フォルダごとの倍率を重ねない。
+    const scale = request.fitDiameterPx > 0
+      ? request.fitDiameterPx / Math.min(layout.frameWidth,layout.frameHeight)
+      : (scalePercent / this.options.baseScalePercent)
       * Math.max(0.01, numberOr(source.sourceScaleMultiplier, 1));
     const tint = normalizeTint(request.tint);
     const tintStrength = clamp(numberOr(request.colorStrengthPercent, 100), 0, 100);

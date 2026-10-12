@@ -4,7 +4,7 @@ import { getV39LandExpansionCandidates, startV39LandExpansion } from "../../lib/
 import { facilityDefinitions, inspectV39Construction, startV39Construction } from "../../lib/v39-economy-rules.js";
 import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "../../lib/v39-unit-creation-rules.js";
 import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "../../lib/research-tree-config.js";
-import { isResearchCompleted, isResearchLevelUnlocked, normalizeResearchState, selectResearch } from "../../lib/research-progress.js";
+import { isResearchCompleted, inspectResearchUnlock, normalizeResearchState, selectResearch } from "../../lib/research-progress.js";
 import { getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
 import { getHexDistance } from "../../lib/hex-grid.js";
 import { resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
@@ -224,9 +224,10 @@ function selectAiResearch(state, player) {
     if (research.selection?.[category]) continue;
     let selected = null;
     for (const levelRow of researchTreeData.categories?.[category]?.levels || []) {
-      const assignee = units.find(unit => isResearchLevelUnlocked(research, category, levelRow.level, number(unit?.level), researchTreeData));
+      const assignee = units[0];
       if (!assignee) continue;
-      const item = (levelRow.items || []).find(candidate => !isResearchCompleted(research, category, levelRow.level, candidate.id));
+      const item = (levelRow.items || []).find(candidate => !isResearchCompleted(research, category, levelRow.level, candidate.id)
+        && inspectResearchUnlock(research,candidate.id,researchTreeData).unlocked);
       if (!item) continue;
       selected = selectResearch(research, category, item.id, assignee, researchTreeData);
       if (selected.changed) {

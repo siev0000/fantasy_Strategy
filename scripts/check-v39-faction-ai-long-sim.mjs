@@ -49,7 +49,7 @@ try {
       for (let index = 0; index < turnCount; index += 1) {
         const beforeAdvance = window.getV39GameState();
         const advanced = await Promise.race([
-          window.advanceV39Turn(),
+          window.advanceV39Turn({ skipUnactedFocus:true }),
           new Promise((_, reject) => window.setTimeout(() => reject(new Error(`ターン${index + 1}の解決が${turnTimeoutMs}ms以内に完了しません`)), turnTimeoutMs))
         ]);
         if (advanced !== true) throw new Error(`ターン${index + 1}を進められません`);

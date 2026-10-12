@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const moduleUrl=source=>`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+const hex=moduleUrl(readFileSync("frontend/src/lib/hex-grid.js","utf8"));
+const source=readFileSync("frontend/src/lib/v39-combat-ray.js","utf8").replace('"./hex-grid.js"',JSON.stringify(hex));
+const { v39HexRay,traceV39AttackRay,hasV39WallLineOfSight,hasV39SkillEffect }=await import(moduleUrl(source));
+
+const map={w:20,h:20,grid:Array.from({length:20},()=>Array(20).fill("洞窟")),isUnderground:true,defenseStructures:[]};
+const from={id:"actor",x:4,y:8},to={x:10,y:8};
+const unit={id:"front",x:6,y:8,hp:100};
+const trace=options=>traceV39AttackRay(map,from,to,[unit],options);
+assert.equal(trace().impact.x,6);
+assert.equal(trace({ignoreUnits:true}).impact.x,10);
+unit.rayBlockExpiresAtTurn=3;
+assert.equal(trace({ignoreUnits:true,turn:2}).reason,"遮断");
+assert.equal(trace({ignoreUnits:true,turn:3}).impact.x,10);
+unit.hp=0;
+assert.equal(trace({turn:2}).impact.x,10);
+unit.hp=100;delete unit.rayBlockExpiresAtTurn;
+unit.techniques=[{source:{行動:"P",効果:"遮断"}}];
+assert.equal(trace({ignoreUnits:true}).reason,"遮断");
+assert.equal(hasV39SkillEffect({貫通:40},"貫通"),false);
+assert.equal(hasV39SkillEffect({効果:"貫通/必中"},"貫通"),true);
+map.defenseStructures=[{id:"wall",kind:"壁",hp:100,tiles:[{x:5,y:8}]}];
+assert.equal(trace({ignoreUnits:true}).reason,"壁");
+assert.equal(hasV39WallLineOfSight(map,from,to),false);
+assert.equal(hasV39WallLineOfSight(map,from,{x:5,y:8},{showWall:true}),true);
+map.defenseStructures[0]={id:"edge",kind:"壁",hp:100,edge:{from:{x:5,y:8},to:{x:6,y:8}},tiles:[{x:5,y:8}]};
+assert.equal(trace({ignoreUnits:true}).impact.x,6);
+assert.equal(traceV39AttackRay(map,to,from,[],{ignoreUnits:true}).reason,"壁");
+map.defenseStructures[0]={id:"field",kind:"結界",hp:100,tiles:[{x:5,y:8},{x:6,y:8}]};
+assert.equal(trace({ignoreUnits:true}).reason,"結界");
+assert.equal(hasV39WallLineOfSight(map,from,to),true);
+assert.equal(traceV39AttackRay(map,{x:5,y:8},{x:6,y:8},[],{}).reason,"");
+map.defenseStructures=[];
+unit.techniques=[];
+map.grid[8][7]="岩壁";
+assert.equal(trace({ignoreUnits:true}).reason,"地形");
+map.grid[8][7]="洞窟";
+for (const target of [{x:8,y:4},{x:4,y:13},{x:2,y:3},{x:11,y:13}]) {
+  const forward=v39HexRay(map,from,target),reverse=v39HexRay(map,target,from);
+  assert.deepEqual(forward.at(-1),target);
+  assert.deepEqual(reverse.at(-1),{x:from.x,y:from.y});
+  assert.equal(forward.length,reverse.length);
+}
+map.worldWrapEnabled=true;
+assert.deepEqual(v39HexRay(map,{x:19,y:8},{x:1,y:8}),[{x:0,y:8},{x:1,y:8}]);
+console.log("Combat ray: interception, penetration, blocking, walls, fields, sight, odd rows, wrap passed");

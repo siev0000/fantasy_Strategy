@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { visibleV39CaveTerrainLabel } from "../../lib/v39-cave-entrance-rules.js";
 import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { HEX_TILE_CONFIG, V39_FIELD_FOG_STYLE } from "../../lib/phaser-map-panel-config.js";
@@ -304,8 +305,7 @@ function drawSpecialTerrain(scene, data) {
     "沼地":"沼",
     "湿地":"湿",
     "薬草の群生地":"草",
-    "峡谷":"峡",
-    "洞窟":"洞"
+    "峡谷":"峡"
   };
   for (let y = 0; y < data.h; y += 1) for (let x = 0; x < data.w; x += 1) {
     const label = labels[String(data.specialMap?.[y]?.[x] || "")];
@@ -466,7 +466,7 @@ function installInput(scene, data) {
       {x:hp[6],y:hp[7]},{x:hp[8],y:hp[9]},{x:hp[10],y:hp[11]}
     ], true);
     scene.v39SelectedTile = selected;
-    const landTerrain = document.getElementById("landTerrain"); if (landTerrain) landTerrain.textContent = selected.special || selected.terrain;
+    const landTerrain = document.getElementById("landTerrain"); if (landTerrain) landTerrain.textContent = visibleV39CaveTerrainLabel(window.getV39ActiveFactionState?.(),data,selected.x,selected.y);
     window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:selected }));
     return selected;
   };
@@ -609,7 +609,7 @@ export function updateV39FieldData(nextData, options = {}) {
         special:String(currentData.specialMap?.[y]?.[x] || "")
       };
       const landTerrain = document.getElementById("landTerrain");
-      if (landTerrain) landTerrain.textContent = scene.v39SelectedTile.special || scene.v39SelectedTile.terrain;
+      if (landTerrain) landTerrain.textContent = visibleV39CaveTerrainLabel(window.getV39ActiveFactionState?.(),currentData,x,y);
     }
   }
   if (options.silent !== true) {
@@ -742,7 +742,14 @@ async function boot(){
   window.isV39MapInputLocked=()=>mapInputLockTokens.size > 0;
   window.waitForV39MapRenderSettled=waitForMapRenderSettled;
   window.__v39FieldRuntime={game:null,mapData:null,settings:null};
-  window.render_game_to_text=()=>JSON.stringify({screen:"v39-field",generated:!!currentData,settings:currentSettings,selectedTile:game?.scene?.getScenes(true)?.[0]?.v39SelectedTile||null});
+  window.render_game_to_text=()=>{
+    const state=window.getV39GameState?.({includeWorlds:false});
+    return JSON.stringify({screen:"v39-field",generated:!!currentData,settings:currentSettings,
+      selectedTile:game?.scene?.getScenes(true)?.[0]?.v39SelectedTile||null,
+      defenseStructures:currentData?.defenseStructures || [],
+      unitDefenses:(state?.players || []).flatMap(player=>player.factionState.units || [])
+        .filter(unit=>unit.shield || unit.barrier).map(unit=>({id:unit.id,x:unit.x,y:unit.y,shield:unit.shield,barrier:unit.barrier}))});
+  };
   window.advanceTime=()=>window.render_game_to_text();
   window.dispatchEvent(new Event("v39:field-runtime-ready"));
 }

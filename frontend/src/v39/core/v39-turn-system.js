@@ -1,4 +1,6 @@
 import { getV39DiscoveredFeature } from "../../lib/v39-exploration-rules.js";
+import { advanceV39PersonalDefenses } from "../../lib/v39-defense-rules.js";
+import { advanceV39NaturalFog, advanceV39Fog } from "../../lib/v39-fog-rules.js";
 import { resolveV39FacilityEffectsAtTile } from "../../lib/v39-economy-rules.js";
 import { getSettlementForTerritory } from "../../lib/settlement-state.js";
 import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
@@ -8,6 +10,7 @@ import { isV39UnitUnacted } from "../../lib/v39-unit-action-rules.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { advanceV39AutomaticTransport } from "../../lib/v39-transport-rules.js";
 import { showV39TurnLoading, paintV39TurnLoading } from "../ui/v39-turn-loading.js";
+import { showV39SideNotice } from "../ui/v39-notification-rail.js";
 import { withV39WorldContext, v39TurnWorldIds } from "./v39-world-context.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
@@ -23,7 +26,6 @@ const DEFAULT_TIMELINE = Object.freeze({
 
 let advancing = false;
 let latestTurnPerformance = null;
-let bannerTimer = 0;
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -62,6 +64,7 @@ function restoreUnitForTurn(unit) {
 }
 
 function clearExpiredGuard(unit, turnNumber) {
+  unit = advanceV39PersonalDefenses(unit, turnNumber);
   if (number(unit?.guard) <= 0 || number(unit?.guardExpiresAtTurn) > turnNumber) return { ...unit };
   return { ...unit, guard:0, guardExpiresAtTurn:0 };
 }
@@ -106,16 +109,8 @@ function setTurnPhase(state, timeline, phase, reason) {
 }
 
 function showBanner(message, persistent = false) {
-  const banner = document.getElementById("v39-turn-banner");
-  if (!(banner instanceof HTMLElement)) return;
-  window.clearTimeout(bannerTimer);
-  banner.textContent = String(message || "");
-  banner.classList.add("show");
-  banner.classList.toggle("persistent", persistent);
-  if (!persistent) bannerTimer = window.setTimeout(() => {
-    if (window.getV39GameState?.()?.timeline?.paused === true) showBanner("時間停止", true);
-    else banner.classList.remove("show");
-  }, 2200);
+  // 停止状態はターン操作ボタンに保持。通知自体は他の新着と同じく期限で消す。
+  return showV39SideNotice(message,{title:"ターン",tone:persistent ? "warn" : "info",durationMs:2200});
 }
 
 function renderControls() {
@@ -176,9 +171,6 @@ function installUi() {
     }
     #v39-turn-menu button[aria-pressed="true"]{border-color:#dcba61;background:#382f18;color:#ffe7a2}
     #v39-turn-next{border-color:#6b8e72!important;background:#193024!important}
-    #v39-turn-banner{position:absolute;left:50%;top:8px;z-index:32;min-width:180px;max-width:60%;transform:translate(-50%,-140%);opacity:0;padding:8px 20px;border:1px solid #74c7d6;border-radius:6px;background:rgba(7,22,27,.95);color:#edf7f5;text-align:center;font-size:var(--font-size-16);font-weight:800;pointer-events:none;transition:transform .2s ease,opacity .2s ease}
-    #v39-turn-banner.show{transform:translate(-50%,0);opacity:1}
-    #v39-turn-banner.persistent{border-color:#d8b65b;color:#ffe69a}
     @media(max-width:700px){
       .topbar{padding-right:50px!important}
       #v39-turn-controls{right:5px;top:4px;width:38px;height:38px}
@@ -186,18 +178,13 @@ function installUi() {
       #v39-turn-label{font-size:var(--font-size-10)}
       #v39-turn-menu{right:44px;width:140px;min-height:38px;padding:3px}
       #v39-turn-menu button{min-height:30px;padding:3px 5px;font-size:var(--font-size-10)}
-      #v39-turn-banner{top:6px;max-width:72%;font-size:var(--font-size-14);padding:6px 12px}
     }
   `;
   document.head.appendChild(style);
   const controls = document.createElement("div");
   controls.id = "v39-turn-controls";
   controls.innerHTML = `<button type="button" id="v39-turn-toggle" aria-label="ターン操作" aria-expanded="false"><span id="v39-turn-label">T1</span></button><div id="v39-turn-menu" aria-hidden="true"><button type="button" id="v39-time-pause">停止</button><button type="button" id="v39-turn-next">ターン終了</button></div>`;
-  const banner = document.createElement("div");
-  banner.id = "v39-turn-banner";
-  banner.setAttribute("role", "status");
   header.appendChild(controls);
-  playfield.appendChild(banner);
   const toggle = controls.querySelector("#v39-turn-toggle");
   const menu = controls.querySelector("#v39-turn-menu");
   const setMenuOpen = open => {
@@ -347,18 +334,39 @@ export async function advanceTurn(options = {}) {
       for(const worldId of targets.length?targets:[visibleWorldId]){
         // 地下に都市・天候はない。全体の研究・外交・消費は一度だけ進める。
         if(worldId!=="surface"&&["terrain","ai"].includes(stage))continue;
-        await withV39WorldContext(worldId,()=>dispatchTurnStage(stage,nextTurn),{allUnits:["economy","research","diplomacy"].includes(stage)});
+        await withV39WorldContext(worldId,()=>{
+          if(stage==="terrain") advanceV39NaturalFog(window.__v39FieldRuntime?.mapData,nextTurn);
+          dispatchTurnStage(stage,nextTurn);
+        },{allUnits:["economy","research","diplomacy"].includes(stage)});
       }
       timings[stage] = performance.now() - startedAt;
     }
+    showV39TurnLoading("予約行動・死亡判定・回復処理中…");
+    await paintV39TurnLoading();
+    const combatResolutionStartedAt = performance.now();
     for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
       await withV39WorldContext(worldId,()=>{
+        const map = window.__v39FieldRuntime?.mapData;
+        advanceV39Fog(map,nextTurn);
+        if (map?.defenseStructures) map.defenseStructures = map.defenseStructures.filter(row =>
+          row.hp > 0 && (!row.expiresAtTurn || row.expiresAtTurn > nextTurn));
+        const defenseState = window.getV39GameState();
+        window.setV39GameState({
+          players:defenseState.players.map(player => ({ ...player, factionState:{ ...player.factionState,
+            units:player.factionState.units.map(unit => advanceV39PersonalDefenses(unit, nextTurn)) } })),
+          enemies:defenseState.enemies.map(unit => advanceV39PersonalDefenses(unit, nextTurn)),
+          neutralVillages:(defenseState.neutralVillages || []).map(village => ({ ...village,
+            defenseUnits:(village.defenseUnits || []).map(unit => advanceV39PersonalDefenses(unit, nextTurn)) }))
+        });
         window.resolveV39PendingCombatActions?.(nextTurn);
         window.runV39DeathLifecycle?.(nextTurn);
+        window.resolveV39CorpseUndead?.(nextTurn);
+        window.advanceV39CaveMine?.(nextTurn);
         const current=window.getV39GameState();
         window.setV39GameState({enemies:current.enemies.map(unit=>recoverUnitHp(unit,null,"",current,activeTurn,true))});
       });
     }
+    timings.combatResolution = performance.now() - combatResolutionStartedAt;
     const resolved = window.getV39GameState?.();
     const recoveredPlayers = (resolved?.players || []).map(player => {
       const factionState = {

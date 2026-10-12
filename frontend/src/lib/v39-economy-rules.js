@@ -1,8 +1,11 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import { createV39DefenseStructure } from "./v39-defense-rules.js";
+import { V39_DEFENSE_BALANCE } from "./v39-gameplay-balance.js";
 import { reservedV39LandExpansionWorkers, advanceV39LandExpansionProjects } from "./v39-land-expansion-rules.js";
 import { resolveV39ResourceIcon } from "./resource-icon-glyphs.js";
 import { V39_CIVIC_BALANCE, V39_SETTLEMENT_DEVELOPMENT_BALANCE, V39_SETTLEMENT_PRODUCTION_BALANCE, V39_VOLCANO_DAMAGE_BALANCE } from "./v39-gameplay-balance.js";
 import { resolveCurrentResearchLevel } from "./research-progress.js";
+import { inspectFacilityResearch } from "./v39-construction-research.js";
 import {
   collectTerritoryIncome,
   multiplyResourceBag,
@@ -1168,6 +1171,8 @@ export function inspectV39Construction(state, player, definition, tile, mapData 
   for (const [field, required] of Object.entries(definition?.requirements || {})) {
     if (number(levels[field]) < number(required)) reasons.push(`${field} ${number(levels[field])}/${number(required)}が必要`);
   }
+  const researchCheck = inspectFacilityResearch(player?.factionState?.research, definition);
+  reasons.push(...researchCheck.reasons);
   const allNames = new Set([...(village?.buildings || []), ...(village?.constructionQueue || []).map(row => row.facilityName)]);
   if (allNames.has(definition?.name)) reasons.push("建設済みまたは建設中");
   const completedAtTile = Array.isArray(village?.tileFacilityMap?.[key])
@@ -1181,7 +1186,7 @@ export function inspectV39Construction(state, player, definition, tile, mapData 
   if (used >= capacity) reasons.push(`施設枠不足 ${used}/${capacity}`);
   const shortage = Object.entries(definition?.cost || {}).filter(([keyName, cost]) => number(cost) > number(village?.materialStockByType?.[keyName]));
   if (shortage.length) reasons.push(`資材不足: ${shortage.map(([name]) => name).join("・")}`);
-  return { available:reasons.length === 0, reasons, key, used, capacity, levels, village, replacesResidential };
+  return { available:reasons.length === 0, reasons, key, used, capacity, levels, village, replacesResidential, researchCheck };
 }
 
 export function startV39Construction(state, playerId, facilityName, tile, mapData = window.__v39FieldRuntime?.mapData, options = {}) {
@@ -1281,6 +1286,15 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
       village = normalizeV39Village(construction.village, player.race);
       for (const item of construction.completed) {
         facilitiesByTile[item.tileKey] = [...new Set([...(facilitiesByTile[item.tileKey] || []), item.facilityName])];
+        const wallRule = V39_DEFENSE_BALANCE.facilityWalls[item.facilityName];
+        if (wallRule) {
+          const [x,y] = item.tileKey.split(",").map(Number);
+          const structure = createV39DefenseStructure(mapData, {x,y},
+            { 名前:item.facilityName, 効果:"壁", ガード:wallRule.hp, 範囲:"単体" },
+            { id:item.id, ownerPlayerId:player.id }, currentTurn);
+          if (structure) mapData.defenseStructures = [...(mapData.defenseStructures || []),
+            { ...structure, height:wallRule.height, facilityName:item.facilityName, settlementId }];
+        }
         completed.push({ ...item, playerId:player.id, settlementId });
       }
       const rawTerritoryIncome = collectV39TerritoryIncome(state, {

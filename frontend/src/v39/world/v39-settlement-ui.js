@@ -58,7 +58,7 @@ function populationRows(settlement) {
     const alert = shortage > 0
       ? `<span class="settlement-population-alert">不足 ${formatNumber(shortage)}</span>`
       : stage > 0
-        ? `<span class="settlement-population-alert">飢餓 ${stage}</span>`
+        ? `<span class="settlement-population-alert">備蓄注意</span>`
         : "";
     return `<div class="settlement-population-card">
       <div class="settlement-population-head">

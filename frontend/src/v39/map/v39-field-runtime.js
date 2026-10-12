@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { visibleV39CaveTerrainLabel } from "../../lib/v39-cave-entrance-rules.js";
 import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 
@@ -365,8 +366,7 @@ function drawRivers(scene, riverData) {
 function drawSpecialTerrain(scene, data) {
   const labels = {
     "沼地": "沼",
-    "峡谷": "峡",
-    "洞窟": "洞"
+    "峡谷": "峡"
   };
   const tileW = Number(HEX_TILE_CONFIG?.width) || 40;
   const tileH = Number(HEX_TILE_CONFIG?.height) || 48;
@@ -525,7 +525,7 @@ function installCameraControls(scene, host, playfield, data) {
     };
     scene.v39SelectedTile = selected;
     const terrainLabel = document.getElementById("landTerrain");
-    if (terrainLabel) terrainLabel.textContent = selected.special || selected.terrain;
+    if (terrainLabel) terrainLabel.textContent = visibleV39CaveTerrainLabel(window.getV39ActiveFactionState?.(),data,selected.x,selected.y);
     window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail: selected }));
     return selected;
   };

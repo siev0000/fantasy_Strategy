@@ -1,3 +1,4 @@
+import { renderV39UnitAbility, renderV39DetailTabs } from "../unit/v39-unit-detail.js";
 import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
 
 (function initializeOperationUi() {
@@ -9,6 +10,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
     { label:"危険度", value:"-" },
     { label:"高度", value:"-", valueId:"landHeight" },
     { label:"施設", value:"-" },
+    { label:"結界 / 壁", value:"なし", valueId:"v39-land-defense" },
     { label:"ユニット", value:"-", valueId:"landUnits" },
     { label:"町状態", value:"-" },
     { label:"領土状態", value:"-" },
@@ -84,49 +86,19 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
         gap:0!important;padding:3px 2px 3px 4px!important;overflow:hidden!important
       }
       #footSquad .squad-detail-pane>*+*{margin-top:0!important}
-      #footSquad .squad-detail-minihead{
-        position:relative!important;z-index:4!important;display:flex!important;align-items:center!important;
-        flex-wrap:wrap!important;gap:2px!important;padding:0 0 2px!important;background:#111b20!important
-      }
-      #footSquad .squad-detail-chip{min-height:20px!important;padding:2px 5px!important}
-      #footSquad .squad-detail-tabs{
-        position:relative!important;z-index:4!important;display:grid!important;grid-template-columns:1fr 1fr!important;
-        gap:0!important;padding:0!important;border:1px solid #394b52!important;border-radius:6px 6px 0 0!important;
-        overflow:hidden!important;background:#0d171b!important
-      }
-      #footSquad .squad-detail-tab{
-        min-width:0!important;min-height:28px!important;border:0!important;border-right:1px solid #394b52!important;
-        background:#121d22!important;color:#93a5a9!important;font:inherit!important;font-size:var(--font-size-9)!important;font-weight:800!important;
-        padding:3px 4px!important;cursor:pointer!important
-      }
-      #footSquad .squad-detail-tab:last-child{border-right:0!important}
-      #footSquad .squad-detail-tab.active{
-        background:#193038!important;color:#eff8f6!important;box-shadow:inset 0 -2px 0 #71cbd8!important
-      }
-      #footSquad .squad-detail-tab-content{
-        min-width:0!important;min-height:0!important;height:100%!important;overflow:hidden!important;
-        border:1px solid #394b52!important;border-top:0!important;border-radius:0 0 6px 6px!important;background:#10191d!important
-      }
-      #footSquad .squad-detail-tab-panel{
-        width:100%!important;height:100%!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;
-        padding:2px!important
-      }
-      #footSquad .squad-detail-tab-panel[hidden],#footSquad #mobileBattleGather[hidden]{display:none!important}
-      #footSquad .squad-detail-section{
-        display:block!important;min-width:0!important;border:1px solid #2f4148!important;border-radius:5px!important;
-        background:#0d171b!important;overflow:hidden!important
-      }
-      #footSquad .squad-detail-section+ .squad-detail-section{margin-top:4px!important}
-      #footSquad .squad-detail-section-title{
-        position:static!important;min-height:24px!important;padding:4px 7px!important;background:#132126!important;
-        font-size:var(--font-compact)!important;color:#c6d3d5!important;font-weight:800!important;cursor:pointer!important;
-        display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;
-        list-style:none!important;user-select:none!important
-      }
-      #footSquad .squad-detail-section-title::-webkit-details-marker{display:none!important}
-      #footSquad .squad-detail-section-title::after{content:"▾";font-size:var(--font-compact);color:#6fc7d6;transition:transform .12s ease}
-      #footSquad .squad-detail-section:not([open])>.squad-detail-section-title::after{transform:rotate(-90deg)}
-      #footSquad .squad-detail-section-body{min-width:0;margin-top:0;padding:3px!important}
+      #footSquad .squad-detail-tab-panel[hidden],#footSquad .system-action-card[hidden]{display:none!important}
+      #footSquad .v39-cave-conquest-choice{display:grid!important;gap:4px;padding:5px;border:1px solid #d7bf73;border-radius:6px;
+        background:#18272b;font-size:var(--font-body);color:#eef5f4}
+      #footSquad .v39-cave-conquest-choice button{font:inherit;min-height:28px;border:1px solid #60757b;border-radius:4px;background:#243a40;color:inherit}
+      .v39-move-confirm{position:sticky;top:0;z-index:5;display:grid;gap:4px;padding:4px;margin-bottom:4px;
+        border:1px solid #69bdcc;border-radius:5px;background:#102127;color:#eaf4f2;font-size:var(--font-body)}
+      .v39-move-confirm[hidden]{display:none}
+      .v39-move-confirm p{margin:0;overflow-wrap:anywhere}
+      .v39-move-confirm-actions{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+      .v39-move-confirm-actions button{min-width:0;min-height:32px;padding:3px;border:1px solid #4d6067;
+        border-radius:5px;background:#172329;color:inherit;font:inherit;font-weight:700}
+      .v39-move-confirm-actions .primary{border-color:#69bdcc;background:#234750}
+      .v39-move-confirm-actions button:disabled{opacity:.45;cursor:not-allowed}
       #footSquad .equipment-list{display:grid;gap:2px}
       #footSquad .equipment-card{
         width:100%;min-width:0;border:1px solid #34484f;border-radius:5px;background:#121e23;color:#e8efec;
@@ -147,38 +119,6 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       #footSquad .equipment-detail-line{font-size:var(--font-size-10);line-height:1.5;color:#c4d0d2}
       #footSquad .equipment-detail-line b{color:#e8f0ed}
       #footSquad .equipment-empty{padding:6px;color:#aebec1;font-size:var(--font-size-11)}
-      #footSquad .squad-detail-stats{gap:2px!important}
-      #footSquad .detail-stat{min-height:48px!important;padding:5px 4px!important;gap:2px!important}
-      #footSquad .detail-stat span{font-size:var(--font-secondary)!important}
-      #footSquad .detail-stat b{font-size:var(--font-body)!important}
-      #footSquad .proficiency-grid{gap:2px!important}
-      #footSquad .proficiency-item{min-height:34px!important;padding:4px 6px!important;gap:4px!important}
-      #footSquad .proficiency-item span{font-size:var(--font-secondary)!important}
-      #footSquad .proficiency-item b{font-size:var(--font-body)!important}
-      #footSquad .v39-resistance-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:2px!important}
-      #footSquad .v39-resistance-indicator{
-        width:100%!important;min-width:0!important;min-height:32px!important;display:flex!important;align-items:center!important;
-        gap:6px!important;padding:1px 7px!important;border:1px solid #3d4d54!important;border-radius:7px!important;
-        background:#121c20!important;color:#a7b4b7!important;font:inherit!important;text-align:left!important;cursor:pointer!important
-      }
-      #footSquad .v39-resistance-icon,#footSquad .v39-resistance-icon-fallback{
-        width:28px!important;height:28px!important;flex:0 0 auto!important;border-radius:4px!important
-      }
-      #footSquad .v39-resistance-icon{object-fit:contain!important}
-      #footSquad .v39-resistance-icon-fallback{
-        display:inline-flex!important;align-items:center!important;justify-content:center!important;background:#223138!important;
-        color:#dce8e7!important;font-size:var(--font-size-11)!important;font-weight:900!important
-      }
-      #footSquad .v39-resistance-indicator b{margin-left:auto!important;flex:0 0 auto!important;font-size:var(--font-secondary)!important}
-      #footSquad .v39-resistance-indicator.positive{border-color:rgba(104,205,139,.5)!important;background:rgba(25,59,39,.72)!important}
-      #footSquad .v39-resistance-indicator.positive b{color:#7de0a0!important}
-      #footSquad .v39-resistance-indicator.negative{border-color:rgba(224,116,99,.52)!important;background:rgba(67,31,29,.72)!important}
-      #footSquad .v39-resistance-indicator.negative b{color:#f08f7f!important}
-      #footSquad .technique-list{gap:2px!important}
-      #footSquad .technique-passive-divider{
-        margin:4px 0 1px!important;padding:2px 3px!important;border-top:1px solid #405159!important;
-        color:#8fa1a5!important;font-size:var(--font-size-8)!important;font-weight:800!important;line-height:1.2!important
-      }
       #footSquad #detailTechniqueRows{display:contents!important}
       #footSquad .system-action-card .technique-icon-system-move{
         border-color:#a98b45!important;background:linear-gradient(135deg,#4a3a18 0%,#75601f 100%)!important
@@ -189,96 +129,6 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       #footSquad .system-action-card.active{
         border-color:#e7c466!important;background:linear-gradient(180deg,#2b291c,#1b1a14)!important;
         box-shadow:0 0 0 1px rgba(231,196,102,.18)
-      }
-      #footSquad .technique-card.technique-select-card{
-        width:100%!important;min-width:0!important;display:block!important;appearance:none;-webkit-appearance:none;
-        padding:0!important;border:1px solid #46565d!important;border-radius:8px!important;
-        background:linear-gradient(180deg,#162126,#10181c)!important;color:inherit!important;
-        font:inherit!important;text-align:left!important;cursor:pointer!important;overflow:hidden!important
-      }
-      #footSquad .technique-summary{
-        display:grid!important;grid-template-columns:28px minmax(0,1fr) auto!important;
-        grid-template-areas:"icon name name" "icon power ap" "icon range range"!important;
-        align-items:center!important;gap:1px 4px!important;padding:2px 3px!important
-      }
-      #footSquad .technique-icon{
-        grid-area:icon!important;width:28px!important;height:28px!important;display:grid!important;place-items:center!important;
-        border:1px solid #40545a!important;border-radius:7px!important;background:#1b2a30!important;
-        font-size:var(--font-size-16)!important;line-height:1!important;overflow:hidden!important
-      }
-      #footSquad .technique-icon-image{
-        width:26px!important;height:26px!important;display:block!important;object-fit:contain!important;
-        filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))
-      }
-      #footSquad .technique-icon-glyph{
-        width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;
-        margin:0!important;padding:0!important;font-size:var(--font-size-14)!important;line-height:1!important;color:#d5e0df!important;
-        transform:translateY(-1px)!important
-      }
-      #footSquad .technique-icon.technique-icon-power{
-        border-color:#d27245!important;
-        background:linear-gradient(135deg,#8f2f24 0%,#d86d2d 100%)!important
-      }
-      #footSquad .technique-icon.technique-icon-guard{
-        border-color:#5b9fd2!important;
-        background:linear-gradient(135deg,#17476d 0%,#2388bd 100%)!important
-      }
-      #footSquad .technique-icon.technique-icon-heal{
-        border-color:#58b978!important;
-        background:linear-gradient(135deg,#1f6c3b 0%,#35a85f 100%)!important
-      }
-      #footSquad .technique-icon.technique-icon-mixed{
-        border-color:#9d8b79!important;
-        background:linear-gradient(90deg,#bc4b29 0%,#d66b2f 45%,#277cac 55%,#18547c 100%)!important
-      }
-      #footSquad .technique-icon.technique-icon-neutral{
-        border-color:#40545a!important;background:#1b2a30!important
-      }
-      #footSquad .technique-name{
-        grid-area:name!important;min-width:0!important;margin:0!important;font-size:var(--font-body)!important;line-height:1.2!important;
-        white-space:normal!important;overflow-wrap:anywhere!important
-      }
-      #footSquad .technique-ap{
-        grid-area:ap!important;margin:0!important;color:#d8c17f!important;font-size:var(--font-size-8)!important;line-height:1!important;white-space:nowrap!important
-      }
-      #footSquad .technique-power{
-        grid-area:power!important;margin:0!important;color:#aebfc2!important;font-size:var(--font-size-8)!important;line-height:1.1!important;white-space:nowrap!important
-      }
-      #footSquad .technique-range{
-        grid-area:range!important;margin:0!important;color:#aebfc2!important;font-size:var(--font-size-8)!important;line-height:1.1!important;white-space:nowrap!important
-      }
-      #footSquad .technique-detail{
-        display:none!important;grid-template-columns:1fr!important;gap:0!important;
-        padding:0!important;border-top:1px solid #35464d!important;background:#0e171b!important
-      }
-      #footSquad .technique-card.is-expanded .technique-detail{display:grid!important}
-      #footSquad .technique-detail-head{
-        grid-area:auto!important;grid-column:1!important;grid-row:auto!important;
-        width:100%!important;min-width:0!important;
-        display:flex!important;align-items:center!important;justify-content:space-between!important;gap:4px!important;
-        padding:3px 5px!important;border-bottom:1px solid #26373d!important;background:#121d21!important;
-        white-space:normal!important;overflow:visible!important;text-overflow:clip!important
-      }
-      #footSquad .technique-detail-head b{
-        grid-area:auto!important;min-width:0!important;
-        color:#9fb0b3!important;font-size:var(--font-size-8)!important;font-weight:800!important;
-        white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important
-      }
-      #footSquad .technique-detail-head small{
-        grid-area:auto!important;min-width:0!important;
-        color:#d8c17f!important;font-size:var(--font-size-8)!important;font-weight:700!important;
-        white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important
-      }
-      #footSquad [data-v39-system-use]{min-height:30px;padding:3px 12px;border:1px solid #c4a652;border-radius:5px;background:#342c17;color:#ffe5a0;font-size:var(--font-body);font-weight:800;cursor:pointer}
-      #footSquad .technique-detail-description{
-        grid-area:auto!important;grid-column:1!important;grid-row:auto!important;
-        width:100%!important;min-width:0!important;
-        display:block!important;padding:4px 5px!important;color:#eef4f2!important;font-size:var(--font-size-9)!important;
-        line-height:1.35!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;
-        overflow-wrap:anywhere!important;word-break:normal!important
-      }
-      #footSquad .technique-detail-empty{
-        grid-column:1 / -1!important;color:#829397!important;font-size:var(--font-size-8)!important;padding:3px 0!important
       }
       #footSquad .technique-card.action-technique.active{
         border-color:#e7c466!important;background:linear-gradient(180deg,#2b291c,#1b1a14)!important;
@@ -325,20 +175,21 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
               <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span></div>
-              <div class="squad-detail-tabs" role="tablist" aria-label="キャラクター詳細">
-                <button type="button" class="squad-detail-tab active" data-squad-detail-tab="status" role="tab" aria-selected="true">能力</button>
-                <button type="button" class="squad-detail-tab" data-squad-detail-tab="action" role="tab" aria-selected="false">行動</button>
-              </div>
+              ${renderV39DetailTabs([["status","能力"],["action","行動"]], "status", "data-squad-detail-tab")}
               <div class="squad-detail-tab-content">
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="status" role="tabpanel" aria-hidden="false">
-                  <details class="squad-detail-section" open><summary class="squad-detail-section-title">ステータス</summary><div class="squad-detail-section-body"><div class="squad-detail-stats">
-                    ${[["攻撃","detailAtk"],["防御","detailDef"],["魔攻","detailMatk"],["魔防","detailMdef"],["速さ","detailSpd"],["命中","detailHit"],["SIZ","detailSiz"],["移動","detailMov"]].map(([label,id]) => `<div class="detail-stat"><span>${label}</span><b id="${id}"></b></div>`).join("")}
-                  </div></div></details>
-                  <details class="squad-detail-section" open><summary class="squad-detail-section-title">技能</summary><div class="squad-detail-section-body"><div class="proficiency-grid" id="detailProficiencyList"></div></div></details>
-                  <details class="squad-detail-section" open><summary class="squad-detail-section-title">耐性</summary><div class="squad-detail-section-body"><div class="v39-resistance-grid" id="detailResistanceList"></div></div></details>
+                  <div id="detailAbilitySections">${renderV39UnitAbility(null, {fieldIds:true})}</div>
                   <details class="squad-detail-section" open><summary class="squad-detail-section-title">装備</summary><div class="squad-detail-section-body"><div class="equipment-list" id="detailEquipmentList"></div></div></details>
                 </section>
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="action" role="tabpanel" hidden aria-hidden="true">
+                  <div class="v39-move-confirm" id="moveConfirm" hidden role="region" aria-label="移動確認">
+                    <p id="moveInstruction" aria-live="polite"></p>
+                    <p id="moveText" hidden></p>
+                    <div class="v39-move-confirm-actions">
+                      <button type="button" id="moveCancel">取消</button>
+                      <button type="button" class="primary" id="moveOk" disabled>移動確定</button>
+                    </div>
+                  </div>
                   <div class="technique-list" id="detailTechniqueList">
                     <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleMove" data-v39-technique-name="__system_move__" aria-expanded="false">
                       <span class="technique-summary">
@@ -369,7 +220,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
                       <span class="technique-summary">
                         <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">⌕</span></span>
                         <b class="technique-name">調査</b>
-                        <small class="technique-ap" id="mobileSurveyAp">残りAP全消費</small>
+                        <small class="technique-ap" id="mobileSurveyAp">必要APのみ消費</small>
                         <span class="technique-power" id="mobileSurveyProgress">未調査</span>
                       </span>
                       <span class="technique-detail"><span class="technique-detail-head"><b>説明</b><button type="button" id="mobileBattleSurveyUse" data-v39-system-use>使用</button></span>

@@ -1,4 +1,5 @@
 import { getGameDataRows, normalizeGameDataReference, readGameDataNumber } from "./game-data-registry.js";
+import { v39WallStepHeight } from "./v39-defense-rules.js";
 import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
 
 const text = value => String(value ?? "").trim();
@@ -97,9 +98,12 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   const absDiff = hasHeight ? Math.abs(toLevel - fromLevel) : 0;
   const climbDiff = hasHeight ? Math.max(0, toLevel - fromLevel) : 0;
   const flightValue = resolveV39UnitFlightValue(unit);
+  const wallHeight = v39WallStepHeight(mapData, { x:fromXValue, y:fromYValue }, { x:toXValue, y:toYValue });
+  if (!Number.isFinite(wallHeight)) return Number.POSITIVE_INFINITY;
+  if (absDiff + wallHeight > 1 && flightValue <= 0) return Number.POSITIVE_INFINITY;
   if (absDiff > 1 && flightValue <= 0) return Number.POSITIVE_INFINITY;
 
-  const heightPenaltyPoints = Math.max(0, (climbDiff * 25) - (Math.floor(flightValue / 30) * 25));
+  const heightPenaltyPoints = Math.max(0, ((climbDiff + wallHeight) * 25) - (Math.floor(flightValue / 30) * 25));
   const terrain = resolveV39TerrainMoveCost(unit, resolveV39TileTerrainName(mapData, toXValue, toYValue), heightPenaltyPoints);
   return Math.max(0, Math.ceil(terrain.multiplier * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))));
 }
@@ -144,5 +148,6 @@ if (typeof window !== "undefined") {
   window.inspectV39TerrainTraversal = inspectV39TerrainTraversal;
   window.canUnitEnterV39Tile = canUnitEnterV39Tile;
   window.resolveV39TerrainMoveCost = resolveV39TerrainMoveCost;
+  window.resolveV39UnitMovementStepCost = resolveV39UnitMovementStepCost;
   window.resolveV39TerrainTurnDamageRule = resolveV39TerrainTurnDamageRule;
 }

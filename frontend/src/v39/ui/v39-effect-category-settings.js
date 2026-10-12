@@ -1,7 +1,9 @@
+import { normalizeV39EffectTransform } from "../../lib/v39-effect-transform.js";
 import {
   getV39EffectSetting,
   getV39EffectSettingsCatalog,
-  updateV39EffectSetting
+  updateV39EffectSetting,
+  registerV39EffectEditorProxy
 } from "../../lib/v39-effect-settings.js";
 import {
   getV39EffectCategories,
@@ -9,7 +11,9 @@ import {
   getV39EffectCategorySettingsSnapshot,
   importV39EffectCategorySettings,
   resetV39EffectCategory,
-  updateV39EffectCategory
+  updateV39EffectCategory,
+  addV39EffectCategory,
+  renameV39EffectCategory
 } from "../../lib/v39-effect-category-settings.js";
 import {
   getV39EffectAttributes,
@@ -25,7 +29,7 @@ const EDITOR_SELECT_ID = "v39-effect-composite-selector";
 const MODE_ID = "v39-effect-composite-mode";
 const STYLE_ID = "v39-effect-category-style";
 const COMPOSITE_SCHEMA = "v39-effect-composite-settings";
-const COMPOSITE_VERSION = 1;
+const COMPOSITE_VERSION = 2;
 let installed = false;
 let installing = false;
 let observer = null;
@@ -70,6 +74,7 @@ function currentAttribute() {
 
 function proxyEffect(category = currentCategory()) {
   const catalog = getV39EffectSettingsCatalog();
+  if (category?.custom || category?.independent) return registerV39EffectEditorProxy(`@category:${category.id}`, category.defaultEffect);
   if (catalog.includes(category?.defaultEffect)) return category.defaultEffect;
   if (catalog.includes(category?.baseEffect)) return category.baseEffect;
   return catalog[0] || "";
@@ -77,6 +82,8 @@ function proxyEffect(category = currentCategory()) {
 
 function categoryPreviewPatch(category) {
   return {
+    ...normalizeV39EffectTransform(category),
+    orientToAttack:category.orientToAttack === true,
     baseEffect:category.baseEffect,
     decorationEffect:"",
     tint:"",
@@ -88,6 +95,8 @@ function categoryPreviewPatch(category) {
 
 function attributePreviewPatch(attribute, category = currentCategory()) {
   return {
+    ...normalizeV39EffectTransform(category),
+    orientToAttack:category?.orientToAttack === true,
     baseEffect:category?.baseEffect || proxyEffect(category),
     decorationEffect:attribute.decorationEffect,
     tint:attribute.tint,
@@ -106,6 +115,8 @@ function attributePreviewPatch(attribute, category = currentCategory()) {
 
 function categoryPatchFromEffect(setting) {
   return {
+    ...normalizeV39EffectTransform(setting),
+    orientToAttack:setting.orientToAttack === true,
     baseEffect:setting.baseEffect,
     scaleMultiplierPercent:setting.scaleMultiplierPercent
   };
@@ -157,6 +168,8 @@ function applyModeVisibility() {
   const attributeMode = editorMode === "attribute";
   hiddenRow("v39-effect-setting-base", attributeMode);
   hiddenRow("v39-effect-setting-scale", attributeMode);
+  hiddenRow("v39-effect-setting-orientation", attributeMode);
+  for (const id of ["rotation", "offset-x", "offset-y"]) hiddenRow(`v39-effect-setting-${id}`, attributeMode);
   hiddenRow("v39-effect-setting-decoration", !attributeMode);
 
   for (const tabName of ["color", "motion"]) {
@@ -168,6 +181,12 @@ function applyModeVisibility() {
   if (selectedHidden) document.querySelector('[data-v39-effect-tab="basic"]')?.click();
 
   const reset = element("v39-effect-setting-reset");
+  if (element("v39-effect-category-add")) element("v39-effect-category-add").hidden = attributeMode;
+  const nameRow = element("v39-effect-category-name-row");
+  if (nameRow) {
+    nameRow.hidden = attributeMode || !currentCategory()?.custom;
+    element("v39-effect-category-name").value = currentCategory()?.name || "";
+  }
   if (reset) reset.textContent = attributeMode ? "↺ この属性を初期化" : "↺ このカテゴリを初期化";
   const note = document.querySelector('[data-v39-effect-panel="data"] .v39-effect-settings-note');
   if (note) note.textContent = "カテゴリは基本形状・Scale、属性は色・グラデーション・動き・属性装飾を共通保存します。JSON書き出しでは両方をまとめて出力します。";
@@ -241,6 +260,12 @@ function activateCurrent({ announce = true } = {}) {
     updateV39EffectSetting(proxy, patch);
     const source = element("v39-effect-setting-source");
     if (source instanceof HTMLSelectElement) {
+      if (![...source.options].some(option => option.value === proxy)) {
+        const option = document.createElement("option");
+        option.value = proxy; option.textContent = category.name;
+        source.appendChild(option);
+      }
+      if (category.custom || category.independent) [...source.options].find(option => option.value === proxy).textContent = category.name;
       source.value = proxy;
       source.dispatchEvent(new Event("change", { bubbles:true }));
     }
@@ -298,6 +323,39 @@ function ensureEditorUi() {
       else selectedAttributeName = select.value;
       activateCurrent();
     });
+  }
+  if (!element("v39-effect-category-add")) {
+    const button = document.createElement("button");
+    button.id = "v39-effect-category-add";
+    button.className = "v39-effect-preview-replay";
+    button.type = "button";
+    button.textContent = "+";
+    button.title = "基本カテゴリを追加";
+    button.setAttribute("aria-label", "基本カテゴリを追加");
+    button.addEventListener("click", () => {
+      syncCurrentFromProxy();
+      syncing = true;
+      let category;
+      try { category = addV39EffectCategory(currentCategory()?.baseEffect); }
+      finally { syncing = false; }
+      selectedCategoryId = category.id;
+      activateCurrent();
+      element("v39-effect-category-name").focus();
+      element("v39-effect-category-name").select();
+    });
+    toolbar.insertBefore(button, element("v39-effect-setting-preview-local"));
+    const row = document.createElement("label");
+    row.id = "v39-effect-category-name-row";
+    row.className = "v39-effect-setting-row";
+    row.hidden = true;
+    const caption = document.createElement("span");
+    caption.textContent = "カテゴリ名";
+    const input = document.createElement("input");
+    input.id = "v39-effect-category-name";
+    input.type = "text";
+    input.addEventListener("change", () => renameV39EffectCategory(selectedCategoryId, input.value));
+    row.append(caption, input);
+    document.querySelector('[data-v39-effect-panel="basic"]').prepend(row);
   }
   return true;
 }
@@ -395,7 +453,7 @@ function interceptSaveControls() {
         if (!category) return;
         resetV39EffectCategory(category.id);
         activateCurrent({ announce:false });
-        setStatus(`カテゴリ「${category.name}」を仮設定へ戻しました。`);
+        setStatus(`カテゴリ「${category.name}」をデフォルト設定へ戻しました。`);
       } else {
         const attribute = currentAttribute();
         if (!attribute) return;

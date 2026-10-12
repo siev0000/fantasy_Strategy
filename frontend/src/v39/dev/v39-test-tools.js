@@ -5,7 +5,8 @@ import { addResearchExperience } from "../../lib/research-progress.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import { disasterData, getGameDataTable } from "../../lib/game-data-registry.js";
 import { getV39TestSkillRows } from "../../lib/v39-test-skill-rules.js";
-import { getHexDistance } from "../../lib/hex-grid.js";
+import { getHexDistance, getHexNeighborCoords } from "../../lib/hex-grid.js";
+import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
 import { getV39NeutralVillageRelation, getV39RelationLabel } from "../../lib/v39-neutral-village-rules.js";
 import { V39_UNDEAD_SPAWN_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import {
@@ -39,74 +40,48 @@ function testModeEnabled() {
   return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
 }
 
-function testCharacterTemplatesByPlayer() {
-  const source = getGameDataTable("テストゲーム状態", {});
-  return new Map((Array.isArray(source?.players) ? source.players : []).map(player => [
-    text(player?.id),
-    {
-      units:(Array.isArray(player?.factionState?.units) ? player.factionState.units : []).filter(unit => unit?.testOnly === true),
-      squads:Array.isArray(player?.factionState?.squads) ? player.factionState.squads : []
-    }
-  ]));
-}
-
-function syncTestCharacters(enabled = testModeEnabled()) {
+// 試験官はテストプレイの初期データだけで生成する。表示設定では増減させない。
+function placeTestCharacters() {
   const state = window.getV39GameState?.();
-  if (!state?.players?.length) return false;
-  const templatesByPlayer = testCharacterTemplatesByPlayer();
+  const map = window.__v39FieldRuntime?.mapData;
+  const worldId = state?.activeWorldId || "surface";
+  if (!state?.players?.length || !map?.grid) return false;
   let changed = false;
+  const occupied = new Set([...state.players.flatMap(player=>player.factionState?.units || []),
+    ...(state.enemies || []),...(state.neutralVillages || []).flatMap(row=>row.defenseUnits || [])]
+    .filter(unit=>(unit.worldId || "surface")===worldId).map(unit=>`${unit.x},${unit.y}`));
   const players = state.players.map(player => {
-    const faction = player?.factionState;
-    if (!faction) return player;
-    const templates = templatesByPlayer.get(text(player.id)) || { units:[], squads:[] };
-    let units = Array.isArray(faction.units) ? [...faction.units] : [];
-    let squads = Array.isArray(faction.squads) ? faction.squads.map(row => ({ ...row, unitIds:[...(row?.unitIds || [])] })) : [];
-    if (!enabled) {
-      const removedIds = new Set([
-        ...units.filter(unit => unit?.testOnly === true).map(unit => text(unit?.id)),
-        ...templates.units.map(unit => text(unit?.id))
-      ].filter(Boolean));
-      const hasTestUnits = units.some(unit => removedIds.has(text(unit?.id)));
-      const hasTestSquadRefs = squads.some(squad => (squad?.unitIds || []).some(id => removedIds.has(text(id))));
-      if (!hasTestUnits && !hasTestSquadRefs) return player;
-      units = units.filter(unit => !removedIds.has(text(unit?.id)));
-      squads = squads.map(squad => ({ ...squad, unitIds:(squad.unitIds || []).filter(id => !removedIds.has(text(id))) }));
-      const selectedUnitId = removedIds.has(text(faction.selectedUnitId))
-        ? text(units.find(unit => unit?.state !== "死亡" && number(unit?.hp, unit?.currentHp) > 0)?.id, text(units[0]?.id))
-        : text(faction.selectedUnitId);
-      changed = true;
-      return { ...player, factionState:{ ...faction, units, squads, selectedUnitId } };
-    }
-
-    const existingIds = new Set(units.map(unit => text(unit?.id)).filter(Boolean));
-    const added = templates.units.filter(unit => !existingIds.has(text(unit?.id))).map(unit => structuredClone(unit));
-    if (added.length) {
-      units.push(...added);
-      changed = true;
-    }
-    for (const templateSquad of templates.squads) {
-      const testUnitIds = (templateSquad?.unitIds || []).map(text).filter(id => templates.units.some(unit => text(unit?.id) === id));
-      if (!testUnitIds.length) continue;
-      const squadIndex = squads.findIndex(squad => text(squad?.id) === text(templateSquad?.id));
-      if (squadIndex < 0) {
-        squads.push({ ...structuredClone(templateSquad), unitIds:testUnitIds });
-        changed = true;
-        continue;
+    const faction = player.factionState;
+    if (!faction || player.id !== state.activePlayerId || faction.villagePlacementMode) return player;
+    const anchor = faction.units.find(unit=>!unit.testOnly && (unit.worldId || "surface")===worldId
+      && Number.isFinite(unit.x) && Number.isFinite(unit.y));
+    if (!anchor) return player;
+    let playerChanged = false;
+    const units = faction.units.map(unit => {
+      // 既に配置済みなら、別の階層にいても自動で連れてこない。
+      if (!unit.testOnly || (Number.isFinite(unit.x) && Number.isFinite(unit.y))) return unit;
+      const derived = applyV39DerivedCharacterData(unit);
+      const queue = [{x:anchor.x,y:anchor.y}], seen = new Set();
+      for (let index=0;index<queue.length;index++) {
+        const point=queue[index], key=`${point.x},${point.y}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!canUnitEnterV39Tile(map,point.x,point.y,derived)) continue;
+        if (!occupied.has(key)) {
+          occupied.add(key);
+          changed = playerChanged = true;
+          const hp = Number.isFinite(unit.hp) ? unit.hp : derived.maxHp;
+          return {...derived,...point,worldId,hp,currentHp:hp};
+        }
+        queue.push(...getHexNeighborCoords(map.w,map.h,point.x,point.y));
       }
-      const currentIds = squads[squadIndex].unitIds || [];
-      const mergedIds = [...new Set([...currentIds, ...testUnitIds])];
-      if (mergedIds.length !== currentIds.length) {
-        squads[squadIndex] = { ...squads[squadIndex], unitIds:mergedIds };
-        changed = true;
-      }
-    }
-    return changed ? { ...player, factionState:{ ...faction, units, squads } } : player;
+      return unit;
+    });
+    return playerChanged ? {...player,factionState:{...faction,units}} : player;
   });
-  if (!changed) return false;
-  window.setV39GameState?.({ players }, { reason:enabled ? "test-characters-enabled" : "test-characters-disabled" });
-  return true;
+  if (changed) window.setV39GameState?.({players},{reason:"test-characters-placed"});
+  return changed;
 }
-
 function context() {
   const state = window.getV39GameState?.();
   const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
@@ -638,7 +613,7 @@ function panelHtml() {
        <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで災害</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
       <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
-      <details class="v39-test-section" data-test-section="test-skills"${testSectionOpenAttribute("test-skills")}><summary>テストスキル</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / 付与中: ${assignedTestSkills.length ? assignedTestSkills.map(escapeHtml).join(" / ") : "なし"}</p><div class="v39-test-form-row"><select id="v39-test-skill-name">${testSkillOptions || '<option value="">テストスキルなし</option>'}</select><button data-test-action="test-skill-add">選択を付与</button><button data-test-action="test-skill-all">即死・蘇生を付与</button><button data-test-action="test-skill-clear">全解除</button></div></div></details>
+      <details class="v39-test-section" data-test-section="test-skills"${testSectionOpenAttribute("test-skills")}><summary>テストスキル</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / 付与中: ${assignedTestSkills.length ? assignedTestSkills.map(escapeHtml).join(" / ") : "なし"}</p><div class="v39-test-form-row"><select id="v39-test-skill-name">${testSkillOptions || '<option value="">テストスキルなし</option>'}</select><button data-test-action="test-skill-add">選択を付与</button><button data-test-action="test-skill-all">全テスト技を付与</button><button data-test-action="test-skill-clear">全解除</button></div></div></details>
       <details class="v39-test-section" data-test-section="enemy-ai"${testSectionOpenAttribute("enemy-ai")}><summary>敵AI診断</summary><div class="v39-test-section-body">${diagnosticUnits.length ? `<div class="v39-test-form-row"><select id="v39-test-enemy-id">${enemyOptions}</select></div>${enemyDebug ? `<div class="v39-test-ai-grid"><span>種別</span><b>${enemyDebug.isVillageGuard ? `一般村守備 / ${escapeHtml(enemyDebug.guardVillageName)}` : "敵AI"}</b><span>判断</span><b>${escapeHtml(enemyDebug.decision)}</b><span>理由</span><b>${escapeHtml(enemyDebug.reason)}</b><span>好戦性</span><b>${enemyDebug.isVillageGuard ? "村防衛" : enemyDebug.aggressive ? "好戦的" : enemyDebug.retaliating ? "反撃中（非好戦的）" : "非好戦的"}</b><span>位置</span><b>(${enemyDebug.x},${enemyDebug.y}) / Lv${enemyDebug.level}</b><span>HP / AP</span><b>${enemyDebug.hp}/${enemyDebug.maxHp} / ${enemyDebug.ap}/${enemyDebug.maxAp}</b>${enemyDebug.isVillageGuard ? `<span>軍隊人口 / 戦力</span><b>${enemyDebug.militaryPopulation}人 / ${enemyDebug.strength}</b>` : `<span>索敵</span><b>半径${enemyDebug.visionRadius} / 値${enemyDebug.scout}</b><span>プレイヤー発見</span><b>${escapeHtml(playerDetectionText)}</b><span>認識標的</span><b>${escapeHtml(enemyDebug.targetName || "なし")}${enemyDebug.targetDistance == null ? "" : ` / 距離${enemyDebug.targetDistance}`}</b><span>敵対記憶</span><b>${escapeHtml(enemyDebug.aggroTargetUnitId || "なし")}</b><span>所属巣</span><b>${escapeHtml(enemyDebug.nestName || "巣なし")}${enemyDebug.nestId ? ` / ${escapeHtml(enemyDebug.nestId)}` : ""}${enemyDebug.nestDistance == null ? "" : ` / 距離${enemyDebug.nestDistance}`}</b><span>縄張り</span><b>${enemyDebug.hasNest ? `中心(${enemyDebug.territoryCenter.x},${enemyDebug.territoryCenter.y}) / 半径${enemyDebug.territoryRadius} / 追跡限界${enemyDebug.pursuitLimit}` : "なし（巣なし個体）"}</b><span>逃走</span><b>基準${Math.round(enemyDebug.fleeThreshold*100)}% / ${enemyDebug.fleeState?.active ? "逃走中" : enemyDebug.fleeDecisionMade ? "判定済み" : "未発動"}</b><span>前回行動</span><b>T${enemyDebug.lastActionTurn || "-"}</b><span>発動待機 / CT</span><b>${escapeHtml(enemyDebug.pendingSkillName ? `${enemyDebug.pendingSkillName}:${enemyDebug.pendingTurns}T` : cooldownText || "なし")}</b>`}<span>攻撃候補</span><b>${escapeHtml(enemyDebug.attackSkillNames.join(" / ") || "なし")}</b></div>` : '<p>診断データを取得できません</p>'}` : '<p>生存している敵または一般村守備軍がいません</p>'}</div></details>
       <details class="v39-test-section" data-test-section="city-research"${testSectionOpenAttribute("city-research")}><summary>拠点技能・研究</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><select id="v39-test-city-level-key">${CITY_LEVEL_KEYS.map(key => `<option value="${key}"${key === cityLevel ? " selected" : ""}>${key}</option>`).join("")}</select><button data-test-action="city-level-minus">-1</button><button data-test-action="city-level-plus">+1</button><input id="v39-test-research-exp" type="number" min="1" step="10" value="100"><button data-test-action="research-exp">選択研究EXP+</button></div></div></details>
       <details class="v39-test-section" data-test-section="territory"${testSectionOpenAttribute("territory")}><summary>選択領土</summary><div class="v39-test-section-body"><div class="v39-test-button-row"><button data-test-action="territory-minus">HP-25</button><button data-test-action="territory-zero">HP0</button><button data-test-action="territory-full">HP全快</button></div></div></details>
@@ -745,14 +720,15 @@ function install() {
     render();
   });
   window.addEventListener("v39:display-settings-changed", () => {
-    const enabled = testModeEnabled();
-    syncTestCharacters(enabled);
     render();
   });
   window.addEventListener("v39:footer-tab-changed", event => {
     if (event?.detail?.tab === "test") render();
   });
   window.addEventListener("v39:game-state-changed", render);
+  for (const name of ["v39:field-generated","v39:cave-world-ready","v39:initial-placement-complete"]) {
+    window.addEventListener(name,()=>placeTestCharacters());
+  }
   window.addEventListener("v39:tile-selected", event => {
     const point = event?.detail;
     if (Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y))) {
@@ -769,7 +745,7 @@ function install() {
   });
   window.openV39TestTools = openPanel;
   window.closeV39TestTools = closePanel;
-  syncTestCharacters(testModeEnabled());
+  placeTestCharacters();
   render();
 }
 

@@ -61,13 +61,14 @@ try {
   await dialog.locator("svg").waitFor({state:"visible"});
   for(const row of patterns){
     await dialog.getByLabel("形状").selectOption(row.id);
-    await dialog.getByRole("button",{name:"生成",exact:true}).click();
+    await dialog.getByRole("button",{name:"同じシードで生成",exact:true}).click();
     assert.ok((await dialog.locator("footer").innerText()).includes(row.name));
     await page.screenshot({path:`output/web-game/cave-test/pattern-${row.id}.png`});
   }
+  await dialog.getByLabel("洞窟シード").fill("cave-1");
   await dialog.getByLabel("形状").selectOption("branch");
   await dialog.getByLabel("出入口").selectOption("4");
-  await dialog.getByRole("button",{name:"生成",exact:true}).click();
+  await dialog.getByRole("button",{name:"同じシードで生成",exact:true}).click();
   await dialog.locator("[data-cave-enemy]").first().click();
   await dialog.locator("[data-cave-enemy-detail]").waitFor({state:"visible"});
   assert.match(await dialog.locator("[data-cave-enemy-detail]").innerText(),/HP/);

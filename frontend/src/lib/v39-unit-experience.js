@@ -2,9 +2,15 @@ import { classData, factionData } from "./game-data-registry.js";
 import { V39_UNIT_EXP_BALANCE, V39_UNIT_INITIAL_LEVEL_BALANCE } from "./v39-gameplay-balance.js";
 import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { RACE_CLASS_NAME_MAP } from "../constants/unitCommon.js";
+import { resolveV39FacilityClassGrowth } from "./v39-facility-growth-rules.js";
 
 export const V39_UNIT_LEVEL_CAP = 120;
 export const V39_UNIT_EXP_LEVEL_SPLIT = 15;
+
+export function resolveV39UnitLevelCap(unit) {
+  const kind = {human:"人族",demi:"亜人",demon:"魔族"}[resolveV39UnitRaceCategory(unit)];
+  return resolveV39FacilityClassGrowth(unit,kind)?.levelCap ?? V39_UNIT_LEVEL_CAP;
+}
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -72,6 +78,9 @@ export function resolveV39UnitExpDisplay(unit = {}) {
   const baseline = resolveV39UnitTotalExpForLevel(level, category);
   const totalExp = Math.max(baseline, Math.floor(number(unit?.totalExp, number(unit?.status?.totalExp, baseline))));
   const progress = resolveV39UnitExpProgress(totalExp, level, category);
+  if (unit.classGrowthStart && level >= resolveV39UnitLevelCap(unit)) {
+    return {...progress,exp:0,need:0,category,level,percent:100,atLimit:true};
+  }
   const percent = progress.need > 0 ? Math.max(0, Math.min(100, (progress.exp/progress.need)*100)) : 0;
   return { ...progress, category, level, percent };
 }
@@ -291,13 +300,16 @@ export function resolveV39ExperienceRecipientIds(factionState = {}, attackerIdRa
 }
 
 export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
-  const amount = Math.max(0, Math.floor(number(amountRaw)));
+  const requestedAmount = Math.max(0, Math.floor(number(amountRaw)));
   const category = resolveV39UnitRaceCategory(unit);
   const fromLevel = Math.max(1, Math.floor(number(unit?.level, 1)));
   const fallbackTotal = resolveV39UnitTotalExpForLevel(fromLevel, category);
-  const previousTotal = Math.max(fallbackTotal, Math.floor(number(unit?.totalExp, number(unit?.status?.totalExp, fallbackTotal))));
-  const totalExp = previousTotal + amount;
-  const level = resolveV39UnitLevelFromTotalExp(totalExp, category);
+  const cap = resolveV39UnitLevelCap(unit);
+  const maxTotal = unit.classGrowthStart ? resolveV39UnitTotalExpForLevel(cap,category) : Infinity;
+  const previousTotal = Math.min(maxTotal,Math.max(fallbackTotal, Math.floor(number(unit?.totalExp, number(unit?.status?.totalExp, fallbackTotal)))));
+  const totalExp = Math.min(maxTotal,previousTotal + requestedAmount);
+  const amount = totalExp - previousTotal;
+  const level = resolveV39UnitLevelFromTotalExp(totalExp, category,cap);
   const consumed = resolveV39UnitTotalExpForLevel(level, category);
   const exp = Math.max(0, totalExp-consumed);
   const oldMaxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || 1));
@@ -305,7 +317,7 @@ export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
   const hpRate = oldHp/oldMaxHp;
   const recalculated = level === fromLevel ? { ...unit } : applyV39DerivedCharacterData({ ...unit, level });
   const maxHp = Math.max(1, Math.floor(number(recalculated?.maxHp, recalculated?.status?.HP || oldMaxHp)));
-  const hp = Math.max(0, Math.min(maxHp, Math.floor(maxHp*hpRate)));
+  const hp = level === fromLevel ? Math.min(maxHp, oldHp) : Math.max(0, Math.min(maxHp, Math.floor(maxHp*hpRate)));
   return {
     unit:{
       ...recalculated,
@@ -323,6 +335,16 @@ export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
     toLevel:level,
     leveledUp:level > fromLevel
   };
+}
+
+// 作業EXPは担当者本人へ付与し、小数を行動別に持ち越す。戦闘の部隊分配とは分離する。
+export function grantV39ActionExperience(unit, action, rawExp) {
+  const remainders = { ...(unit.actionExpRemainders || {}) };
+  const available = Math.max(0, number(rawExp)) + Math.max(0, number(remainders[action]));
+  const amount = Math.floor(available + 1e-9);
+  remainders[action] = Math.max(0, available - amount);
+  const result = grantV39UnitExperience(unit, amount);
+  return { ...result, unit:{ ...result.unit, actionExpRemainders:remainders } };
 }
 
 export function distributeV39CombatExperience(factionState = {}, attackerIdRaw = "", expPoolRaw = 0) {

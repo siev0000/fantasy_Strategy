@@ -63,6 +63,14 @@ function installStyles() {
     .squad-card .v39-card-vital.ap .v39-card-vital-fill{
       background:linear-gradient(90deg,#247dc2,#72caff)!important;
     }
+    .v39-card-defense-fill{
+      position:absolute;left:0;bottom:0;height:2px;z-index:3;
+      pointer-events:none;
+    }
+    .v39-card-defense-fill.shield{background:#65d4ff;bottom:2px}
+    .v39-card-defense-fill.barrier{background:#c998ff}
+    .v39-defense-value.shield{color:#65d4ff}
+    .v39-defense-value.barrier{color:#c998ff}
     .squad-card .v39-card-vital-value{
       position:absolute!important;
       inset:0!important;
@@ -82,11 +90,23 @@ function installStyles() {
       pointer-events:none!important;
     }
     .squad-card{
+      grid-template-columns:minmax(0,1fr);
       gap:2px!important;
       padding:4px!important;
     }
     .squad-card-top{
+      width:100%;min-width:0;
       margin:0!important;
+    }
+    .squad-card .squad-main{display:flex;gap:3px;width:100%;min-width:0}
+    .squad-card .squad-name-wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;flex:1;min-width:0}
+    .squad-card .squad-name{
+      display:block;white-space:nowrap;overflow-wrap:normal;
+      font-size:calc(var(--font-body) * var(--v39-text-fit,1));line-height:1.15;
+    }
+    .squad-card .squad-pos{
+      display:block;white-space:nowrap;
+      font-size:calc(var(--font-size-11) * var(--v39-text-fit,1));line-height:1.1;
     }
 
     .squad-card .squad-exp-ring{
@@ -204,7 +224,16 @@ function convertCard(card) {
 }
 
 function refresh() {
-  document.querySelectorAll("#squadMemberList .squad-card").forEach(convertCard);
+  document.querySelectorAll("#squadMemberList .squad-card, #characterModal .squad-card").forEach(card => {
+    convertCard(card);
+    for (const label of card.querySelectorAll(".squad-name, .squad-pos")) {
+      if (!label.clientWidth) continue;
+      // Reset to the configured size before measuring, so wider layouts can grow again.
+      label.style.setProperty("--v39-text-fit", "1");
+      const ratio = Math.min(1, label.clientWidth / Math.max(1, label.scrollWidth));
+      label.style.setProperty("--v39-text-fit", String(ratio));
+    }
+  });
 }
 
 function install() {
@@ -229,6 +258,14 @@ function install() {
 
     const observer = new MutationObserver(scheduleRefresh);
     observer.observe(list, { childList: true, subtree: true });
+    new ResizeObserver(scheduleRefresh).observe(list);
+    const characterBody = document.querySelector("#characterModal .modal-body");
+    if (characterBody) {
+      observer.observe(characterBody, {childList:true,subtree:true});
+      new ResizeObserver(scheduleRefresh).observe(characterBody);
+    }
+    window.addEventListener("v39:display-settings-changed", scheduleRefresh);
+    document.fonts?.ready.then(scheduleRefresh);
     list.addEventListener("click", () => window.setTimeout(scheduleRefresh, 0), true);
 
     refresh();

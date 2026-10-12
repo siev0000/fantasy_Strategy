@@ -6,6 +6,13 @@ import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
 // 3. マップ上には基本的にアイコンだけを置き、名前・人数・説明などの文字は常設しない。
 // 4. 名称や詳細は、対象タイル/アイコンを選択した後の詳細UIで表示する。
 export const MAP_ENTITY_SIZE_RULES = Object.freeze({
+  defenseField: Object.freeze({
+    // シールド画像の縦20コマから、展開済みの10枚目（0始まり9）を常設表示する。
+    sheetRows:20,
+    stillFrame:9,
+    coverageScale:1.25, // 範囲再生・常設結界共通の外接円倍率。画像余白を補い、マスの端まで覆う。
+    alpha:0.24 // 範囲内の地形とユニットを見分けられる透明度。
+  }),
   construction: Object.freeze({
     // 建築・居住化の残りターン文字。タイル幅の30%（初期12%の2.5倍）。
     turnFontTiles: 0.30,
@@ -29,6 +36,7 @@ export const MAP_ENTITY_SIZE_RULES = Object.freeze({
     // 1ユニットは1タイル内をほぼいっぱいに使う。
     // 選択状態でも大きさは変えず、枠線だけで区別する。
     diameterTiles: 1.0,
+    imageFill: 0.95, // フィールドとエフェクト設定で共通の画像占有率。
     glyphFontTiles: 0.36
   }),
   nest: Object.freeze({

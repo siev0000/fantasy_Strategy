@@ -3,6 +3,12 @@ import effectList320 from "../../../../assets/effect/320×240/effect_list.json";
 import effectListAnimation1 from "../../../../assets/effect/アニメーション1/effect_list.json";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { resolveV39EffectPlaybackSettings, setV39EffectSettingsCatalog } from "../../lib/v39-effect-settings.js";
+import { normalizeV39EffectTransform, resolveV39EffectTransform, V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
+import { getV39EffectCategories } from "../../lib/v39-effect-category-settings.js";
+import { getV39EffectAttributes } from "../../lib/v39-effect-attribute-settings.js";
+import { resolveV39CombatEffect } from "../../lib/v39-combat-effect-rules.js";
+import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
+import { MAP_ENTITY_SIZE_RULES } from "../../lib/map-entity-size-rules.js";
 
 const sources = new Map();
 const EFFECT_TOTAL_DURATION_MS = 1500;
@@ -23,7 +29,16 @@ function registerSources(folder, names, sourceScaleMultiplier) {
 
 registerSources("320×240", effectList320, 1);
 registerSources("アニメーション1", effectListAnimation1, 2);
+const extraImages = import.meta.glob("../../../../assets/effect/アニメーション追記/*.webp", { eager:true, query:"?url", import:"default" });
+for (const [path, src] of Object.entries(extraImages)) {
+  const name = path.split("/").at(-1).replace(/\.webp$/i, "");
+  if (!sources.has(name)) sources.set(name, { src, sourceScaleMultiplier:1 });
+}
 setV39EffectSettingsCatalog([...sources.keys()]);
+
+export function getV39EffectImageSource(name) {
+  return sources.get(name) || null;
+}
 
 let player = null;
 let playerScene = null;
@@ -81,6 +96,8 @@ export function resolveV39EffectPlaybackDescriptor(rawName) {
     sequenceSources:sequence.map((entry) => ({ ...entry.source })),
     tint:playbackSettings.tint || null,
     gradientEnabled:playbackSettings.gradientEnabled === true,
+    orientToAttack:playbackSettings.orientToAttack === true,
+    ...normalizeV39EffectTransform(playbackSettings),
     gradientColorA:playbackSettings.gradientColorA,
     gradientColorB:playbackSettings.gradientColorB,
     gradientDirection:playbackSettings.gradientDirection,
@@ -103,16 +120,26 @@ export async function playV39MapEffect(request = {}) {
   const x = number(request.x ?? request.tileX, Number.NaN);
   const y = number(request.y ?? request.tileY, Number.NaN);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  if (request.allowInFog !== true && window.isV39TileInCurrentVision?.(Math.floor(x), Math.floor(y)) === false) return false;
-  const position = request.worldX !== undefined && request.worldY !== undefined
+  const areaTiles=request.areaTiles || [];
+  const area=areaTiles.length>1 || (request.fitArea && areaTiles.length)
+    ? resolveV39EffectAreaGeometry(areaTiles,MAP_ENTITY_SIZE_RULES.defenseField.coverageScale) : null;
+  const visionTiles=areaTiles.length ? areaTiles : [{x,y}];
+  if (request.allowInFog !== true && !visionTiles.some(tile=>window.isV39TileInCurrentVision?.(tile.x,tile.y) !== false)) return false;
+  const position = area || (request.worldX !== undefined && request.worldY !== undefined
     ? { x:number(request.worldX), y:number(request.worldY) }
-    : tileCenter(x, y);
-  const requestedEffectName = text(request.effectName ?? request.name ?? request.animation, "斬撃");
-  const playbackSettings = resolveV39EffectPlaybackSettings(requestedEffectName);
+    : tileCenter(x, y));
+  const combatEffect = request.skillRow ? resolveV39CombatEffect(request.skillRow, request.attacker,
+    getV39EffectCategories(), getV39EffectAttributes()) : null;
+  const requestedEffectName = combatEffect?.effectName || text(request.effectName ?? request.name ?? request.animation, "斬撃");
+  const playbackSettings = { ...resolveV39EffectPlaybackSettings(requestedEffectName), ...combatEffect?.settings };
+  const origin = request.attackerTile ? tileCenter(request.attackerTile.x, request.attackerTile.y) : null;
+  const attackAngle = origin ? Math.atan2(position.y - origin.y, position.x - origin.x) * 180 / Math.PI : 0;
+  const transform = resolveV39EffectTransform(area ? {...playbackSettings,offsetX:0,offsetY:0} : playbackSettings, position, attackAngle, request.angleDeg);
+  const angleDeg = transform.angleDeg;
   const sequence = resolveSequence(playbackSettings.sequenceName);
   if (!sequence.length) return false;
   const splash = Math.max(0, number(request.splash, 0));
-  const requestedScalePercent = Math.max(10, number(request.scalePercent, 50 * (1 + splash)));
+  const requestedScalePercent = Math.max(10, number(request.scalePercent, V39_EFFECT_BASE_SCALE_PERCENT * (1 + splash)));
   const scaleMultiplier = Math.max(0.1, number(playbackSettings.scaleMultiplierPercent, 100) / 100);
   const scalePercent = Math.max(10, requestedScalePercent * scaleMultiplier);
   const tint = requestValue(request, "tint", playbackSettings.tint || null);
@@ -130,10 +157,16 @@ export async function playV39MapEffect(request = {}) {
   );
   console.info("[エフェクト再生]", {
     元アニメーション:requestedEffectName,
+    選択方法:combatEffect?.reason || "直接指定",
+    基本カテゴリ:combatEffect?.categoryId || "",
+    着色属性:combatEffect?.attributeName || "",
     アニメーション:sequence.map((entry) => entry.name),
     対象座標:{ x, y },
     大きさ:`${scalePercent}%`,
-    角度:number(request.angleDeg, 0),
+    角度:angleDeg,
+    表示位置:{ x:transform.x, y:transform.y },
+    範囲マス数:areaTiles.length,
+    範囲表示直径:area ? area.diameter * Math.max(1,scaleMultiplier) : null,
     tint,
     gradient:gradientEnabled ? {
       colorA:gradientColorA,
@@ -146,11 +179,12 @@ export async function playV39MapEffect(request = {}) {
   const endRender = activeScene()?.game?.v39BeginEffectRender?.();
   try {
     return await targetPlayer.play({
-      x:position.x,
-      y:position.y,
+      x:transform.x,
+      y:transform.y,
       sequenceSources:sequence.map((entry) => entry.source),
       scalePercent,
-      angleDeg:number(request.angleDeg, 0),
+      fitDiameterPx:area ? area.diameter * Math.max(1,scaleMultiplier) : undefined,
+      angleDeg,
       tint,
       gradientEnabled,
       gradientColorA,
@@ -168,7 +202,8 @@ export async function playV39MapEffect(request = {}) {
       totalDurationMs:number(request.totalDurationMs, EFFECT_TOTAL_DURATION_MS),
       sequenceGapMs:number(request.sequenceGapMs, 10),
       depth:number(request.depth, 1000000),
-      displayName:"v39-effect-image"
+      displayName:"v39-effect-image",
+      onFrame:request.onFrame
     });
   } finally { endRender?.(); }
 }

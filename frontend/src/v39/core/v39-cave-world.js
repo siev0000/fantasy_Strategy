@@ -4,13 +4,16 @@ import { createPlayerRecord } from "../../lib/player-state.js";
 import { addV39CargoToFactionUnit } from "../../lib/v39-logistics-state.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { groupV39SurfaceCaves, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
+import { isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
 import { resolveV39MovementLeader, unitCurrentAp } from "../../lib/v39-squad-movement-rules.js";
 import { resolveV39CaveFormation, V39_CAVE_FORMATIONS } from "../../lib/v39-cave-formation-rules.js";
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import { syncV39CavePartyMenu } from "./v39-cave-party-menu.js";
-import { V39_CAVE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { V39_CAVE_BALANCE, V39_CAVE_MINE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { inspectV39CaveMine, createV39CaveMine, advanceV39CaveMine } from "../../lib/v39-cave-mine-rules.js";
+import { renderV39CaveConquestChoice, advanceV39CaveConquest } from "./v39-cave-conquest.js";
 import { createV39CaveEventNpc } from "./v39-cave-events.js";
 import { collectV39MovementOccupancy } from "../../lib/v39-movement-occupancy-rules.js";
 import { playV39UnitMovementPath } from "../unit/v39-unit-movement.js";
@@ -56,6 +59,8 @@ function activateWorld(state,worlds,id,players=state.players){
 function createWorld(options){
   const {map,enemies,sites}=generateCaveFloor({seed:options.seed||"expedition-1",templateId:options.templateId||"random",floor:options.floor||1,caveTest:options.caveTest===true,entranceCount:Math.max(2,options.surfaceEntrances?.length||2)});
   map.caveSites=sites;
+  map.caveBossIds=enemies.filter(unit=>unit.isCaveBoss).map(unit=>unit.id);
+  map.caveBossRace=enemies.find(unit=>unit.isCaveBoss)?.race||"";
   map.caveFloor=options.floor||1;
   map.caveSeed=options.seed||"expedition-1";
   // 抽選結果のtemplateIdとは別に、階層ごとの抽選/指定設定を保持する。
@@ -96,9 +101,10 @@ export function enterV39Cave(options={}){
   const squad=player.factionState.squads.find(row=>row.unitIds?.includes(selected?.id));
   const ids=new Set(options.unitIds||squad?.unitIds||[selected?.id||player.factionState.units[0].id]);
   const surfaceMap=window.__v39FieldRuntime?.mapData;
-  if(!options.seed&&(state.activeWorldId||"surface")==="surface"){
+  if(options.caveTest!==true&&(state.activeWorldId||"surface")==="surface"){
     const group=groupV39SurfaceCaves(surfaceMap).find(row=>row.some(tile=>tile.x===selected?.x&&tile.y===selected?.y));
     if(!group)throw new Error("洞窟の入口に移動してください。");
+    if(!isV39CaveEntranceDiscovered(player.factionState,surfaceMap,selected.x,selected.y))throw new Error("この洞窟入口は未発見です。索敵範囲を調査してください。");
     options={...options,seed:`entrance-${group[0].x}-${group[0].y}`,surfaceEntrances:group,entrySurface:{x:selected.x,y:selected.y}};
   }
   const worlds=rememberWorld(state),worldId=options.worldId||`cave:${options.seed||"expedition-1"}:${options.floor||1}`;
@@ -206,7 +212,7 @@ function installActions(){
   });list.appendChild(button);}
   const state=window.getV39GameState(),unit=window.getV39SelectedSquadUnit?.(),map=window.__v39FieldRuntime?.mapData;
   const underground=state.activeWorldId!=="surface";
-  const entrance=underground?map?.entrances?.some((tile,index)=>tile.x===unit?.x&&tile.y===unit?.y&&(map.parentWorldId?index===0:!!tile.surfaceEntrance||(!map.entrances.some(entry=>entry.surfaceEntrance)&&index===0))):map?.grid?.[unit?.y]?.[unit?.x]==="洞窟";
+  const entrance=underground?map?.entrances?.some((tile,index)=>tile.x===unit?.x&&tile.y===unit?.y&&(map.parentWorldId?index===0:!!tile.surfaceEntrance||(!map.entrances.some(entry=>entry.surfaceEntrance)&&index===0))):isV39CaveEntranceDiscovered(state.players.find(player=>player.id===state.activePlayerId)?.factionState,map,unit?.x,unit?.y);
   button.hidden=!entrance;
   button.disabled=!!window.isV39MapInputLocked?.();
   button.textContent=underground?(map?.parentWorldId?"前の階層へ":"地上へ戻る"):"洞窟に入る";
@@ -215,11 +221,95 @@ function installActions(){
   const stairs=map?.stairsDown||map?.entrances?.[1];
   descend.hidden=!underground||stairs?.x!==unit?.x||stairs?.y!==unit?.y;
   descend.disabled=!!window.isV39MapInputLocked?.();
+  renderMineActions(list,state,unit,map);
+  renderV39CaveConquestChoice(list,state,unit,map,()=>commitMineAction(false));
   renderPartyOrder();
   renderSiteActions();
 }
 
 function renderPartyOrder(){ syncV39CavePartyMenu(); }
+
+function mineActorReason(state, actor, cost){
+  if(window.isV39MapInputLocked?.())return "処理が終わるまでお待ちください";
+  if(state.timeline?.phase!=="player")return "プレイヤーターンに操作してください";
+  const owned=state.players.find(row=>row.id===state.activePlayerId)?.factionState.units.some(unit=>unit.id===actor?.id);
+  if(!owned||!isV39UnitInWorld(actor,state.activeWorldId)||Number(actor.hp??actor.currentHp)<=0)return "この洞窟にいる自軍の生存者を選択してください";
+  if(isV39UnitWaiting(actor,state.timeline.turnNumber))return "このターンは待機済みです";
+  if(unitCurrentAp(actor)<cost)return "APが不足しています";
+  return "";
+}
+
+function commitMineAction(collect){
+  const state=window.getV39GameState(),actor=window.getV39SelectedSquadUnit?.(),map=window.__v39FieldRuntime?.mapData;
+  const cost=collect?V39_CAVE_MINE_BALANCE.harvestApCost:V39_CAVE_MINE_BALANCE.claimApCost;
+  const reason=mineActorReason(state,actor,cost);
+  if(reason)throw new Error(reason);
+  if(!map?.isUnderground)throw new Error("洞窟内で操作してください");
+  let mine,faction=state.players.find(row=>row.id===state.activePlayerId).factionState,message;
+  if(collect){
+    if(map.caveMine?.ownerPlayerId!==state.activePlayerId)throw new Error("自軍の鉱床ではありません");
+    if(!map.entrances.some(tile=>tile.x===actor.x&&tile.y===actor.y))throw new Error("鉱床の入口に移動してください");
+    const stock=map.caveMine.stockByResource;
+    if(!Object.values(stock||{}).some(value=>value>0))throw new Error("まだ採掘在庫がありません");
+    const result=addV39CargoToFactionUnit(faction,actor.id,{resourcesByType:stock});
+    if(!result.ok)throw new Error("物資を運べる部隊を選択してください");
+    faction=result.faction;mine={...map.caveMine,stockByResource:{}};
+    message=`鉱床から回収: ${Object.entries(stock).map(([name,amount])=>`${name} ${amount}`).join(" / ")}`;
+  }else{
+    mine=createV39CaveMine(map,state.enemies,state.activePlayerId,state.timeline.turnNumber);
+    message=`奥地${map.caveFloor}を鉱床化。次ターンから採掘を開始します`;
+  }
+  faction={...faction,units:faction.units.map(unit=>unit.id===actor.id?{...unit,ap:unitCurrentAp(unit)-cost,currentAp:unitCurrentAp(unit)-cost}:unit)};
+  window.cancelV39SelectedUnitMove?.();window.cancelV39SelectedUnitAttack?.("cave-mine");
+  map.caveMine=mine;
+  const worlds=rememberWorld({...state,players:state.players.map(row=>row.id===state.activePlayerId?{...row,factionState:faction}:row)});
+  window.setV39GameState({explorationWorlds:worlds,players:state.players.map(row=>row.id===state.activePlayerId?{...row,factionState:faction}:row)},{reason:"cave-mine"});
+  window.appendV39ActivityLog?.(state.activePlayerId,"鉱床",message,{worldId:state.activeWorldId});
+  window.showV39TurnBanner?.(message);window.refreshV39SquadDerivedUI?.();
+  return {ok:true,mine};
+}
+
+function renderMineActions(list,state,actor,map){
+  // 旧セーブに残っているボスも、除去される前に攻略対象IDを保存する。
+  if(map?.isUnderground&&!map.caveBossIds)map.caveBossIds=state.enemies.filter(unit=>unit.isCaveBoss).map(unit=>unit.id);
+  const show=map?.isUnderground&&((map.caveBossIds||[]).length||map.caveMine);
+  for(const collect of [false,true]){
+    const id=collect?"v39-cave-mine-collect":"v39-cave-mine-claim";
+    let button=document.getElementById(id);
+    if(!button){
+      button=document.createElement("button");button.id=id;button.type="button";button.className="technique-card system-action-card";
+      button.addEventListener("click",()=>{try{commitMineAction(collect);}catch(error){window.showV39TurnBanner?.(error.message);}});list.appendChild(button);
+    }
+    button.hidden=!show||(collect?!map.caveMine:!!map.caveMine);
+    if(button.hidden)continue;
+    let reason=mineActorReason(state,actor,collect?V39_CAVE_MINE_BALANCE.harvestApCost:V39_CAVE_MINE_BALANCE.claimApCost);
+    if(collect){
+      const stock=Object.entries(map.caveMine.stockByResource||{}).map(([name,amount])=>`${name} ${amount}`).join(" / ")||"在庫なし";
+      const income=Object.entries(map.caveMine.resourcesPerCycle||{}).map(([name,amount])=>`${name}+${amount}`).join(" / ");
+      button.textContent=`鉱床回収: ${stock}（${income}/${V39_CAVE_MINE_BALANCE.productionIntervalTurns}ターン${map.caveMine.suspended?"・採掘停止":""}）`;
+      if(map.caveMine.ownerPlayerId!==state.activePlayerId)reason="他勢力の鉱床です";
+      else if(!map.entrances.some(tile=>tile.x===actor?.x&&tile.y===actor?.y))reason="入口で回収できます";
+      else if(!Object.values(map.caveMine.stockByResource||{}).some(value=>value>0))reason="在庫なし";
+    }else{
+      const inspection=inspectV39CaveMine(map,state.enemies);
+      reason=reason||inspection.reason;
+      button.textContent=`鉱床化 / AP ${V39_CAVE_MINE_BALANCE.claimApCost}${reason?` / ${reason}`:""}`;
+    }
+    button.disabled=!!reason;button.title=reason;
+  }
+}
+
+window.claimV39CaveMine=()=>commitMineAction(false);
+window.collectV39CaveMine=()=>commitMineAction(true);
+// 共通ターン処理が各ワールドへ切り替えた状態で呼ぶ。非表示の鉱床も進む。
+window.advanceV39CaveMine=turnNumber=>{
+  advanceV39CaveConquest(turnNumber);
+  const map=window.__v39FieldRuntime?.mapData;
+  if(!map?.isUnderground||!map.caveMine)return;
+  const state=window.getV39GameState();
+  if(!state.players.some(player=>player.id===map.caveMine.ownerPlayerId))return;
+  map.caveMine=advanceV39CaveMine(map.caveMine,state.enemies,turnNumber);
+};
 
 async function applyCavePartyOrder(faction,squad,order,keepHeld=false){
   const state=window.getV39GameState(),runtime=window.__v39FieldRuntime,map=runtime?.mapData;

@@ -4,8 +4,12 @@ import { isV39UnitWaiting } from "./v39-unit-action-rules.js";
 import { resolveV39UnitVisionRange } from "./v39-detection-rules.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
 import { isV39UnitInWorld } from "./v39-cave-spatial-rules.js";
+import { isV39SurfaceCaveEntrance } from "./v39-cave-entrance-rules.js";
+import { createV39DiscoveryCheck } from "./v39-research-discovery.js";
+import { isV39ProximitySite, resolveV39SiteStealth } from "./v39-site-discovery.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { getV39VictoryLandmarkDefinition, isV39VictoryLandmark } from "./v39-victory-landmarks.js";
+import { grantV39ActionExperience, resolveV39SurveyExpReward } from "./v39-unit-experience.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -50,7 +54,7 @@ function hashText(value) {
 }
 
 function isFeatureDefinition(row) {
-  if (!text(row?.地形) || row?.移動コスト !== null) return false;
+  if (!text(row?.地形) || row?.移動コスト != null) return false;
   const rare = RARE_KEYS.some(key => number(row?.[key]) > 0);
   const restorativeFood = number(row?.回復) > 0 && FOOD_KEYS.some(key => number(row?.[key]) > 0);
   return rare || restorativeFood;
@@ -115,7 +119,7 @@ export function getV39SurveyTileKeys(unit, map = window.__v39FieldRuntime?.mapDa
   const visited = new Set([coordKey(x, y)]);
   if (!map?.w || !map?.h) return [...visited];
   if (x >= map.w || y >= map.h) return [];
-  const range = resolveV39UnitVisionRange(unit);
+  const range = resolveV39UnitVisionRange(unit, map);
   for (let i = 0; i < queue.length; i++) {
     const current = queue[i];
     if (current.distance >= range) continue;
@@ -141,10 +145,13 @@ export function inspectV39Survey(state, playerId, unitId, tile, map) {
   if (!key) reasons.push("マスを選択してください");
   if (unit && (number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡")) reasons.push("死亡したキャラクターは調査できません");
   if (unit && key && (Math.floor(number(unit.x, -1)) !== x || Math.floor(number(unit.y, -1)) !== y)) reasons.push("キャラクターと同じマスで実行してください");
-  const apCost = Math.max(0, number(unit?.ap ?? unit?.currentAp ?? unit?.actionPoint));
+  const availableAp = Math.max(0, number(unit?.ap ?? unit?.currentAp ?? unit?.actionPoint));
+  const remainingAp = Math.max(0, V39_SURVEY_BALANCE.requiredAp - number(unit?.surveyTask?.progressAp));
+  const apCost = Math.min(availableAp, remainingAp);
   if (unit && apCost <= 0) reasons.push("APがありません");
   if (unit && isV39UnitWaiting(unit, state?.timeline?.turnNumber)) reasons.push("このターンは待機済みです");
   if (unit?.surveyTask && (unit.surveyTask.key !== key || number(unit.surveyTask.progressAp, V39_SURVEY_BALANCE.requiredAp) >= V39_SURVEY_BALANCE.requiredAp)) reasons.push("すでに調査中です");
+  if (unit?.surveyTask?.worldId && unit.surveyTask.worldId !== (unit.worldId || "surface")) reasons.push("別のマップの調査が残っています");
   const groundLoot = state?.groundLootByTile?.[key];
   const groundLootDiscovered = groundLoot?.discoveredByPlayerIds?.includes(text(playerId));
   const hasUndiscoveredGroundLoot = !!groundLoot && !groundLootDiscovered;
@@ -152,9 +159,9 @@ export function inspectV39Survey(state, playerId, unitId, tile, map) {
   const surveyed = new Set(faction?.exploration?.surveyedTileKeys || []);
   const hasUnsurveyed = tileKeys.some(key => !surveyed.has(key)
     || (state?.groundLootByTile?.[key] && !state.groundLootByTile[key].discoveredByPlayerIds?.includes(text(playerId)))
-    || (state?.specialtiesByTile?.[key] && !faction?.exploration?.discoveredSpecialtiesByTile?.[key]));
+  );
   if (!hasUnsurveyed && !hasUndiscoveredGroundLoot) reasons.push("索敵範囲は調査済みです");
-  return { available:reasons.length === 0, reasons, player, faction, unit, x, y, key, apCost, tileKeys };
+  return { available:reasons.length === 0, reasons, player, faction, unit, x, y, key, apCost, remainingAp, availableAp, tileKeys };
 }
 
 export function startV39SurveyTask(state, playerId, unitId, tile, map) {
@@ -162,12 +169,17 @@ export function startV39SurveyTask(state, playerId, unitId, tile, map) {
   if (!check.available) return { ok:false, reason:check.reasons.join(" / "), state };
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
   const progressAp = Math.min(V39_SURVEY_BALANCE.requiredAp, number(check.unit.surveyTask?.progressAp) + check.apCost);
-  const task = { key:check.key, x:check.x, y:check.y, startedTurn:check.unit.surveyTask?.startedTurn ?? turn,
+  const terrain = TERRAIN_DEFINITION_BY_NAME.get(map?.grid?.[check.y]?.[check.x]);
+  const task = { key:check.key, x:check.x, y:check.y, worldId:check.unit.worldId || "surface", startedTurn:check.unit.surveyTask?.startedTurn ?? turn,
     tileKeys:check.unit.surveyTask?.tileKeys || check.tileKeys,
-    remainingTurns:1, totalTurns:1, progressAp, progressPercent:progressAp / V39_SURVEY_BALANCE.requiredAp * 100 };
+    remainingTurns:1, totalTurns:1, progressAp, progressPercent:progressAp / V39_SURVEY_BALANCE.requiredAp * 100,
+    expProcessedAp:number(check.unit.surveyTask?.expProcessedAp),
+    expTotal:check.unit.surveyTask?.expTotal ?? resolveV39SurveyExpReward({
+      developmentDifficulty:number(terrain?.開拓難易度, 1), heightLevel:number(map?.heightLevelMap?.[check.y]?.[check.x])
+    }).rawExp };
   const players = state.players.map(player => player.id !== check.player.id ? player : ({
     ...player,
-    factionState:{ ...player.factionState, units:player.factionState.units.map(unit => unit.id === check.unit.id ? { ...unit, surveyTask:task, ap:0, currentAp:0, actionPoint:0, lastAction:"調査", lastActionTurn:turn } : unit) }
+    factionState:{ ...player.factionState, units:player.factionState.units.map(unit => unit.id === check.unit.id ? { ...unit, surveyTask:task, ap:check.availableAp-check.apCost, currentAp:check.availableAp-check.apCost, actionPoint:check.availableAp-check.apCost, lastAction:"調査", lastActionTurn:turn } : unit) }
   }));
   return { ok:true, state:{ ...state, players }, task, unit:check.unit, apCost:check.apCost };
 }
@@ -176,9 +188,10 @@ function appendLog(faction, entry) {
   return [...(Array.isArray(faction?.activityLog) ? faction.activityLog : []), entry].slice(-200);
 }
 
-export function advanceV39ExplorationTurn(state, turnNumber) {
+export function advanceV39ExplorationTurn(state, turnNumber, mapData = null) {
   const turn = Math.max(1, Math.floor(number(turnNumber, state?.timeline?.turnNumber || 1)));
   const reports = [];
+  const levelUps = [];
   const dangerPercentByTile = { ...(state?.dangerPercentByTile || {}) };
   const territoryOwnerByTile = { ...(state?.territoryOwnerByTile || {}) };
   const territoryStateByTile = { ...(state?.territoryStateByTile || {}) };
@@ -191,14 +204,18 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
     if (number(exploration.lastProcessedTurn) >= turn) return player;
     const discoveredFeaturesByTile = { ...(exploration.discoveredFeaturesByTile || {}) };
     const discoveredSpecialtiesByTile = { ...(exploration.discoveredSpecialtiesByTile || {}) };
+    const discoveredCaveEntrancesByTile = { ...(exploration.discoveredCaveEntrancesByTile || {}) };
+    const discovery = createV39DiscoveryCheck(faction);
     const surveyed = new Set(exploration.surveyedTileKeys || []);
     const history = [...(exploration.history || [])];
     let activityLog = [...(faction.activityLog || [])];
-    const units = (faction.units || []).map(unit => {
+    const units = (faction.units || []).map(originalUnit => {
+      let unit = originalUnit;
       const task = unit?.surveyTask;
       if (!task) return unit;
       const alive = number(unit.hp ?? unit.currentHp) > 0 && text(unit.state || unit.statusName) !== "死亡";
-      const present = Math.floor(number(unit.x, -1)) === Math.floor(number(task.x)) && Math.floor(number(unit.y, -1)) === Math.floor(number(task.y));
+      const present = Math.floor(number(unit.x, -1)) === Math.floor(number(task.x)) && Math.floor(number(unit.y, -1)) === Math.floor(number(task.y))
+        && (!task.worldId || task.worldId === (unit.worldId || "surface"));
       if (!alive || !present) {
         const report = { type:"survey-cancelled", playerId:player.id, unitId:unit.id, unitName:unit.name, key:task.key, turn, message:`調査中断: ${text(unit.name) || "キャラクター"} (${task.key})` };
         reports.push(report); history.push(report); activityLog = appendLog({ activityLog }, report);
@@ -206,13 +223,27 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
         return rest;
       }
       // 旧セーブのAP項目がない1T調査は従来どおり完了する。
-      if (number(task.progressAp, V39_SURVEY_BALANCE.requiredAp) < V39_SURVEY_BALANCE.requiredAp) return unit;
+      const progressAp = Math.min(V39_SURVEY_BALANCE.requiredAp, number(task.progressAp, V39_SURVEY_BALANCE.requiredAp));
+      const deltaAp = Math.max(0, progressAp - number(task.expProcessedAp));
+      if (deltaAp > 0) {
+        const award = grantV39ActionExperience(unit, "survey", number(task.expTotal, resolveV39SurveyExpReward().rawExp) * deltaAp / V39_SURVEY_BALANCE.requiredAp);
+        unit = { ...award.unit, surveyTask:{ ...task, expProcessedAp:progressAp } };
+        const report = { type:"survey-experience", playerId:player.id, unitId:unit.id, turn,
+          message:`調査: ${text(unit.name)} EXP +${award.amount}${award.leveledUp ? ` / Lv${award.toLevel}` : ""}` };
+        reports.push(report); activityLog = appendLog({ activityLog }, report);
+        if (award.leveledUp) levelUps.push({ playerId:player.id, unitId:unit.id, unitName:unit.name, fromLevel:award.fromLevel, toLevel:award.toLevel });
+      }
+      if (progressAp < V39_SURVEY_BALANCE.requiredAp) return unit;
       // 開始時の索敵範囲を固定。途中で索敵値が変化しても進捗の対象を変えない。
       for (const key of task.tileKeys?.length ? task.tileKeys : [task.key]) {
         const site = state?.explorationSitesByTile?.[key] || null;
-        const feature = site ? resolveExplorationSiteDefinition(site) : null;
+        const definition = site ? resolveExplorationSiteDefinition(site) : null;
+        const feature = definition && discovery.feature(definition) && !isV39ProximitySite({...definition,...site})
+          && resolveV39SiteStealth(state,key,{...definition,...site}) === 0 ? definition : null;
         if (site && feature) discoveredFeaturesByTile[key] = { ...site, discoveredTurn:turn, discoveredByUnitId:unit.id };
-        const specialty = state?.specialtiesByTile?.[key];
+        const specialtySite = state?.specialtiesByTile?.[key];
+        const specialty = specialtySite && discovery.specialty(specialtySite)
+          && !isV39ProximitySite(specialtySite) && resolveV39SiteStealth(state,key,specialtySite) === 0 ? specialtySite : null;
         if (specialty) discoveredSpecialtiesByTile[key] = { ...specialty, discoveredTurn:turn, discoveredByUnitId:unit.id };
         const groundLoot = groundLootByTile[key];
         const groundLootDiscovered = !!groundLoot;
@@ -220,6 +251,7 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
           groundLoot.discoveredByPlayerIds.push(text(player.id));
         }
         const alreadySurveyed = surveyed.has(key);
+        const caveEntranceDiscovered=false; // 入口は接近時の探知で発見する。
         surveyed.add(key);
         const beforeDanger = Math.max(0, number(dangerPercentByTile[key]));
         const level = Math.max(1, Math.floor(number(unit.level, 1)));
@@ -239,8 +271,8 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
             territoryStateByTile
           );
         }
-        const foundText = [feature?.name, specialty?.name, groundLootDiscovered ? "残留品" : ""].filter(Boolean).join(" / ") || "異常なし";
-        const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key, claimedTileKeys, specialtyName:specialty?.name || "", featureId:feature?.id || "", featureName:feature?.name || "", groundLootDiscovered, dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
+        const foundText = [feature?.name, specialty?.name, caveEntranceDiscovered ? "洞窟入口" : "", groundLootDiscovered ? "残留品" : ""].filter(Boolean).join(" / ") || "異常なし";
+        const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key, claimedTileKeys, specialtyName:specialty?.name || "", featureId:feature?.id || "", featureName:feature?.name || "", caveEntranceDiscovered, groundLootDiscovered, dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
         reports.push(report); history.push(report); activityLog = appendLog({ activityLog }, report);
       }
       const { surveyTask, ...rest } = unit;
@@ -269,12 +301,13 @@ export function advanceV39ExplorationTurn(state, turnNumber) {
     for (const report of reports.filter(row => row.playerId === player.id && row.claimed)) {
       for (const key of (report.claimedTileKeys?.length ? report.claimedTileKeys : [report.key])) territoryTileModeMap[key] = "resource";
     }
+    const nextExploration = { ...exploration, researchDiscoveryVersion:1, discoveredFeaturesByTile, discoveredSpecialtiesByTile, discoveredCaveEntrancesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn };
     const factionState = selectedSettlement
-      ? replaceFactionSettlement({ ...faction, units, activityLog, exploration:{ ...exploration, discoveredFeaturesByTile, discoveredSpecialtiesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } }, { ...selectedSettlement, territoryTileModeMap }, { ownerPlayerId:player.id })
-      : { ...faction, units, activityLog, exploration:{ ...exploration, discoveredFeaturesByTile, discoveredSpecialtiesByTile, surveyedTileKeys:[...surveyed], history:history.slice(-200), lastProcessedTurn:turn } };
+      ? replaceFactionSettlement({ ...faction, units, activityLog, exploration:nextExploration }, { ...selectedSettlement, territoryTileModeMap }, { ownerPlayerId:player.id })
+      : { ...faction, units, activityLog, exploration:nextExploration };
     return { ...player, factionState };
   });
-  return { state:{ ...state, players, dangerPercentByTile, territoryOwnerByTile, territoryStateByTile, groundLootByTile }, reports };
+  return { state:{ ...state, players, dangerPercentByTile, territoryOwnerByTile, territoryStateByTile, groundLootByTile }, reports, levelUps };
 }
 
 export function getV39DiscoveredFeature(faction, key) {
@@ -282,6 +315,62 @@ export function getV39DiscoveredFeature(faction, key) {
   if (!site) return null;
   const definition = resolveExplorationSiteDefinition(site);
   return definition ? { ...site, definition } : null;
+}
+
+// 研究の完了時だけ、調査済みマスを再判定する。非表示の別ワールドにも同じ研究を反映する。
+export function revealV39SurveyedDiscoveries(state, mapData = null) {
+  const reports = [];
+  const turn = Math.max(1, number(state?.timeline?.turnNumber, 1));
+  const activeWorldId = state?.activeWorldId || "surface";
+  const worlds = { ...(state?.explorationWorlds || {}) };
+  let changed = false;
+  const reveal = (player, exploration = {}, spatial, map, worldId) => {
+    const discovery = createV39DiscoveryCheck(player.factionState);
+    const features = { ...(exploration.discoveredFeaturesByTile || {}) };
+    const specialties = { ...(exploration.discoveredSpecialtiesByTile || {}) };
+    const caves = { ...(exploration.discoveredCaveEntrancesByTile || {}) };
+    const ownReports = [];
+    for (const key of exploration.surveyedTileKeys || []) {
+      const names = [];
+      const record = { discoveredTurn:turn, discoveredByResearch:true };
+      const site = spatial?.explorationSitesByTile?.[key];
+      const definition = site && resolveExplorationSiteDefinition(site);
+      if (site && definition && !features[key] && discovery.feature(definition)
+        && !isV39ProximitySite({...definition,...site}) && resolveV39SiteStealth(state,key,{...definition,...site}) === 0) {
+        features[key] = { ...site, ...record }; names.push(definition.name);
+      }
+      const specialty = spatial?.specialtiesByTile?.[key];
+      if (specialty && !specialties[key] && discovery.specialty(specialty)
+        && !isV39ProximitySite(specialty) && resolveV39SiteStealth(state,key,specialty) === 0) {
+        specialties[key] = { ...specialty, ...record }; names.push(specialty.name);
+      }
+      const [x,y] = key.split(",").map(Number);
+      if (names.length) ownReports.push({ type:"research-discovery", playerId:player.id, worldId, key, turn,
+        message:`研究により発見: (${key}) / ${names.join(" / ")}` });
+    }
+    const updated = ownReports.length > 0 || exploration.researchDiscoveryVersion !== 1;
+    if (!updated) return exploration;
+    changed = true; reports.push(...ownReports);
+    return { ...exploration, researchDiscoveryVersion:1, discoveredFeaturesByTile:features,
+      discoveredSpecialtiesByTile:specialties, discoveredCaveEntrancesByTile:caves,
+      history:[...(exploration.history || []), ...ownReports].slice(-200) };
+  };
+  const players = (state?.players || []).map(player => {
+    const firstReport = reports.length;
+    const original = player.factionState?.exploration || {};
+    const exploration = reveal(player, original, state, mapData, activeWorldId);
+    for (const [worldId, world] of Object.entries(worlds)) {
+      if (worldId === activeWorldId || !world?.map) continue;
+      const old = world.exploration?.[player.id] || {};
+      const next = reveal(player, old, world.spatial, world.map, worldId);
+      if (next !== old) worlds[worldId] = { ...world, exploration:{ ...world.exploration, [player.id]:next } };
+    }
+    const ownReports = reports.slice(firstReport);
+    if (exploration === original && !ownReports.length) return player;
+    return { ...player, factionState:{ ...player.factionState, exploration,
+      activityLog:[...(player.factionState?.activityLog || []), ...ownReports].slice(-200) } };
+  });
+  return { changed, reports, state:changed ? { ...state, players, explorationWorlds:worlds } : state };
 }
 
 export const V39_EXPLORATION_RULES = Object.freeze({ siteRate:SITE_RATE, requiredTurns:1, requiredAp:V39_SURVEY_BALANCE.requiredAp, dangerReductionBase:DANGER_REDUCTION_BASE });

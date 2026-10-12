@@ -1,9 +1,13 @@
 import { evaluateV39Victory } from "../../lib/v39-victory-rules.js";
+import { advanceV39GuardianQuests } from "../../lib/v39-guardian-quests.js";
 
 function resolveVictory(event) {
   const state = window.getV39GameState?.();
   if (!state || !Object.keys(state.victoryLandmarksByTile || {}).length) return null;
-  const result = evaluateV39Victory(state, event?.detail?.turnNumber);
+  const turn=event?.detail?.turnNumber||state.timeline?.turnNumber||1;
+  const advanced=advanceV39GuardianQuests(state,turn);
+  if(advanced!==state) window.setV39GameState?.({victoryLandmarksByTile:advanced.victoryLandmarksByTile},{reason:"guardian-quest-progress"});
+  const result = evaluateV39Victory(advanced, turn);
   if (!result.changed) return result;
   window.setV39GameState?.({ victory:result.victory }, { reason:"victory-evaluated" });
   if (!result.victory.completed) return result;
@@ -16,6 +20,7 @@ function resolveVictory(event) {
 }
 
 window.addEventListener("v39:turn-stage-exploration", resolveVictory);
+window.resolveV39Victory=resolveVictory;
 window.evaluateV39Victory = (turnNumber = window.getV39GameState?.()?.timeline?.turnNumber) => {
   const state = window.getV39GameState?.();
   if (!state) return null;

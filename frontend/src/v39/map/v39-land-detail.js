@@ -1,4 +1,5 @@
 import { formatV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import {
   inspectV39TerritoryTileConversion,
@@ -14,6 +15,7 @@ const LAND_FIELD_IDS = Object.freeze({
   "高度": "v39-land-height",
   "開拓難易度": "v39-land-development-difficulty",
   "施設": "v39-land-facility",
+  "結界 / 壁": "v39-land-defense",
   "ユニット": "v39-land-units",
   "町状態": "v39-land-settlement",
   "領土状態": "v39-land-territory-state",
@@ -91,6 +93,7 @@ function resetLandPanel(message = "マスを選択") {
   setField("v39-land-height", "-");
   setField("v39-land-development-difficulty", "-");
   setField("v39-land-facility", "なし");
+  setField("v39-land-defense", "なし");
   setField("v39-land-units", "なし");
   setField("v39-land-settlement", "なし");
   setField("v39-land-territory-state", "未所属");
@@ -122,6 +125,7 @@ function resolveGeneratedTileDetail(selected) {
   }
 
   const key = coordKey(x, y);
+  const hiddenCave=isV39SurfaceCaveEntrance(data,x,y)&&!isV39CaveEntranceDiscovered(window.getV39ActiveFactionState?.(),data,x,y);
   const terrain = text(data.grid?.[y]?.[x], "不明");
   const relief = text(data.reliefMap?.[y]?.[x], "");
   const special = text(data.specialMap?.[y]?.[x], "");
@@ -145,6 +149,7 @@ function resolveGeneratedTileDetail(selected) {
     terrain,
     relief,
     special,
+    hiddenCave,
     heightLevel: Number.isFinite(heightLevelRaw) ? heightLevelRaw : null,
     heightRaw: Number.isFinite(heightRaw) ? heightRaw : null,
     river: hasMajorRiver ? "大河" : hasRiver ? "あり" : "なし",
@@ -157,9 +162,9 @@ function resolveGeneratedTileDetail(selected) {
 }
 
 function formatTerrain(detail) {
-  const parts = [detail.terrain];
+  const parts = [detail.hiddenCave&&detail.terrain==="洞窟"?"土地":detail.terrain];
   if (detail.relief && detail.relief !== detail.terrain) parts.push(`地勢:${detail.relief}`);
-  if (detail.special) parts.push(`特殊:${detail.special}`);
+  if (detail.special&&!(detail.hiddenCave&&detail.special==="洞窟")) parts.push(`特殊:${detail.special}`);
   return `${parts.join(" / ")} / (${detail.x}, ${detail.y})`;
 }
 
@@ -300,6 +305,15 @@ function formatVictoryLandmark(discoveredFeature) {
   return [text(discoveredFeature?.name || discoveredFeature?.featureName, "勝利対象"), text(discoveredFeature?.detail, "")].filter(Boolean).join(" / ");
 }
 
+function formatDefenses(state, detail) {
+  if (window.isV39TestMode?.() !== true && window.isV39TileInCurrentVision?.(detail.x,detail.y) !== true) return "未確認";
+  const turn = state?.timeline?.turnNumber || 1;
+  return (window.__v39FieldRuntime?.mapData?.defenseStructures || [])
+    .filter(row => row.hp > 0 && row.tiles?.some(tile => tile.x === detail.x && tile.y === detail.y))
+    .map(row => `${row.kind} ${Math.ceil(row.hp)}/${Math.ceil(row.maxHp)}${row.expiresAtTurn ? ` ⌛${Math.max(0,row.expiresAtTurn-turn)}` : ""}`)
+    .join(" / ") || "なし";
+}
+
 function buildFullDetail(selected) {
   const detail = resolveGeneratedTileDetail(selected);
   if (!detail) return null;
@@ -312,6 +326,7 @@ function buildFullDetail(selected) {
     owner: ownerLabel,
     danger: formatDanger(state, detail),
     facilities: formatFacilities(state, detail.key),
+    defenses: formatDefenses(state, detail),
     units: formatUnits(state, detail),
     settlement: formatSettlement(state, detail),
     territoryState: formatTerritoryState(state, detail, ownerLabel),
@@ -352,6 +367,7 @@ function renderLandDetail(selected) {
   setField("v39-land-height", formatHeight(detail));
   setField("v39-land-development-difficulty", formatDevelopmentDifficulty(detail));
   setField("v39-land-facility", detail.facilities);
+  setField("v39-land-defense", detail.defenses);
   setField("v39-land-units", detail.units);
   setField("v39-land-settlement", detail.settlement);
   setField("v39-land-territory-state", detail.territoryState);

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
-import { V39_CAVE_TEMPLATES, generateV39CaveMap, populateV39CaveMonsters, findV39CavePath } from "../lib/v39-cave-generator.js";
+import { V39_CAVE_TEMPLATES, createV39CaveSeed, generateV39CaveMap, populateV39CaveMonsters, findV39CavePath } from "../lib/v39-cave-generator.js";
 import { createV39EventEnemy, getV39EnemySpawnDefinitions } from "../v39/ai/v39-enemy-spawn.js";
 import { resolveMonsterSheetArtwork } from "../lib/monster-sheet-artwork.js";
 import CaveAdventure from "./CaveAdventure.vue";
@@ -9,7 +9,7 @@ const props = defineProps({show:Boolean});
 const dialogElement = ref(null);
 const adventureMode = ref(false);
 const emit = defineEmits(["close","started"]);
-const seed = ref("cave-1"), templateId = ref("random"), entranceCount = ref(2);
+const seed = ref(createV39CaveSeed()), templateId = ref("random"), entranceCount = ref(2);
 const map = ref(null), enemies = ref([]), hero = ref(null), selectedEnemy = ref(null), route = ref([]), error = ref("");
 const routeKeys = computed(()=>new Set(route.value.map(tile=>tile.key)));
 const enemyByTile = computed(()=>new Map(enemies.value.map(enemy=>[`${enemy.x},${enemy.y}`,enemy])));
@@ -21,8 +21,9 @@ const polygon = tile => Array.from({length:6},(_,i)=>{const angle=(i*60-30)*Math
 const viewBox = computed(()=>`0 0 ${(map.value?.w||1)*stepX+radius*2} ${(map.value?.h||1)*stepY+radius*2}`);
 const routeLine = computed(()=>route.value.map(tile=>{const c=center(tile);return `${c.x},${c.y}`;}).join(" "));
 
-function generate() {
+function generate(newSeed = false) {
   try {
+    if (newSeed) seed.value = createV39CaveSeed();
     const next = generateV39CaveMap({seed:seed.value,templateId:templateId.value,entranceCount:Number(entranceCount.value)});
     const spawned = populateV39CaveMonsters(next,getV39EnemySpawnDefinitions("洞窟"),createV39EventEnemy);
     map.value=next; enemies.value=spawned; hero.value={...next.entrances[0]}; selectedEnemy.value=null; route.value=[]; error.value="";
@@ -53,11 +54,12 @@ watch(()=>props.show,show=>{if(show){generate();nextTick(()=>dialogElement.value
         <header><h2 id="cave-test-title">洞窟生成テスト</h2><button type="button" @click="close">開始画面に戻る</button></header>
         <div class="cave-test-modes"><button type="button" :disabled="!adventureMode" @click="adventureMode=false">生成確認</button><button type="button" :disabled="adventureMode" @click="adventureMode=true">探索ゲーム</button></div>
         <CaveAdventure v-if="adventureMode" @started="emit('started')" />
-        <form v-if="!adventureMode" class="cave-test-controls" @submit.prevent="generate">
+        <form v-if="!adventureMode" class="cave-test-controls" @submit.prevent="generate(true)">
           <label>形状<select v-model="templateId"><option value="random">ランダム</option><option v-for="row in V39_CAVE_TEMPLATES" :key="row.id" :value="row.id">{{ row.名前 }}</option></select></label>
-          <label>シード<input v-model="seed" required aria-label="洞窟シード"></label>
+          <label>シード（再現用）<input v-model="seed" aria-label="洞窟シード"></label>
           <label>出入口<select v-model="entranceCount"><option v-for="n in [2,3,4]" :key="n" :value="n">{{ n }}か所</option></select></label>
-          <button type="submit">生成</button>
+          <button type="submit">ランダム生成</button>
+          <button type="button" :disabled="!seed.trim()" @click="generate()">同じシードで生成</button>
         </form>
         <p v-if="error&&!adventureMode" role="alert">{{ error }}</p>
         <div v-if="map&&!adventureMode" class="cave-test-map">

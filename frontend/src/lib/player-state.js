@@ -19,10 +19,10 @@ const cloneRecord = value => value && typeof value === "object" && !Array.isArra
   : {};
 
 export function createEmptyVisibilityState(source = {}) {
-  return Object.fromEntries(VISIBILITY_ARRAY_KEYS.map(key => [
+  return { ...Object.fromEntries(VISIBILITY_ARRAY_KEYS.map(key => [
     key,
     Array.isArray(source?.[key]) ? source[key].map(value => String(value || "")).filter(Boolean) : []
-  ]));
+  ])), contactReveals:cloneRecord(source?.contactReveals) };
 }
 
 export function createEmptyResearchState(source = {}) {
@@ -50,7 +50,9 @@ export function createEmptyCombatRuntime(source = {}) {
 
 export function createEmptyExplorationState(source = {}) {
   return {
+    researchDiscoveryVersion: Number(source?.researchDiscoveryVersion) || 0,
     discoveredFeaturesByTile: cloneRecord(source?.discoveredFeaturesByTile),
+    discoveredCaveEntrancesByTile: cloneRecord(source?.discoveredCaveEntrancesByTile),
     discoveredSpecialtiesByTile: cloneRecord(source?.discoveredSpecialtiesByTile),
     // 索敵で確認した他勢力だけを保持する。未発見勢力はここへ追加しない。
     discoveredFactionsByPlayerId: cloneRecord(source?.discoveredFactionsByPlayerId),

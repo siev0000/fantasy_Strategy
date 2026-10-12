@@ -6,7 +6,7 @@ const page = await browser.newPage({ viewport:{width:1000,height:800} });
 const errors = [];
 page.on("pageerror", error => errors.push(String(error)));
 try {
-  await page.goto("http://127.0.0.1:3021", {waitUntil:"networkidle"});
+  await page.goto(process.env.V39_BASE_URL || "http://127.0.0.1:3022", {waitUntil:"networkidle"});
   await page.waitForFunction(() => typeof window.generateV39TestFieldWithSeed === "function");
   const report = await page.evaluate(async () => {
     const config = await import("http://127.0.0.1:3022/src/lib/animal-artwork-config.js");
@@ -22,11 +22,16 @@ try {
       ["ボア","ストーンアニマル",8,"ベア・ボア_ユニット集.webp"],
       ["ウルフ","フレイムアニマル",7,"魔獣_ユニット集1.webp"],
       ["ベア","ウィンドアニマル",1,"ベア・ボア_ユニット集.webp"],
-      ["ホース","シーアニマル",7,"狼・馬_ユニット集.webp"]
+      ["ホース","シーアニマル",7,"狼・馬_ユニット集.webp"],
+      ["タイガー","ソルアニマル",10,"クロコダイル・タイガー_ユニット集.webp"],
+      ["ウルフ","ムーンアニマル",2,"狼・馬_ユニット集.webp"],
+      ["ホース","ムーンアニマル",10,"狼・馬_ユニット集.webp"],
+      ["ベア","ソルアニマル",1,"ベア・ボア_ユニット集.webp"]
     ];
     const restored = Object.keys(config.動物属性クラス対応).every(name => classData.some(row => row.名前 === name));
     const cases = specs.map(([race,className,slot,file]) => ({race,className,slot,file,
       artwork:resolveMonsterSheetArtwork({race,className,sourceDefinitionId:"出現敵:平地:ボア:3:8",level:45})}));
+    const displayCases = [...cases.slice(0,5), ...cases.slice(10,13)];
     const matrix = ["ホーク","スネーク","ウルフ","クロコダイル","タイガー","ベア","ボア","ホース","ドレイク"]
       .flatMap(race => Object.keys(config.動物属性クラス対応).map(className => ({race,className,
         low:resolveMonsterSheetArtwork({race,className,level:1}),high:resolveMonsterSheetArtwork({race,className,level:50})})));
@@ -40,9 +45,9 @@ try {
     }
     const state = window.getV39GameState();
     window.setV39GameState({players:state.players.map(player=>({...player,factionState:{...player.factionState,villagePlacementMode:false}})),
-      enemies:cases.slice(0,8).map((item,index)=>({id:`attribute-${index}`,name:item.race,race:item.race,className:item.className,
+      enemies:displayCases.map((item,index)=>({id:`attribute-${index}`,name:item.race,race:item.race,className:item.className,
         level:5,hp:100,maxHp:100,x:12+(index%4)*2,y:12+Math.floor(index/4)*2}))});
-    return {restored,cases,matrix};
+    return {restored,cases,matrix,displayCases};
   });
   assert.equal(report.restored,true);
   for(const item of report.cases) {
@@ -57,7 +62,7 @@ try {
   await page.waitForFunction(()=>typeof window.getV39MapEntityMarker === "function" && [0,1,2,3,4,5,6,7]
     .every(index=>window.getV39MapEntityMarker(`attribute-${index}`)?.list.some(child=>child.type==="Image")));
   const frames = await page.evaluate(()=>[0,1,2,3,4,5,6,7].map(index=>window.getV39MapEntityMarker(`attribute-${index}`).list.find(child=>child.type==="Image").frame.name));
-  report.cases.slice(0,8).forEach((item,index)=>assert.ok(frames[index].endsWith(`-${item.slot}`)));
+  report.displayCases.forEach((item,index)=>assert.ok(frames[index].endsWith(`-${item.slot}`)));
   await page.evaluate(()=>{
     const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
     scene.cameras.main.setZoom(1.6).centerOn(15*62+31,13*56+37);

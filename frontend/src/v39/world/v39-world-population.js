@@ -7,11 +7,14 @@ import {
   completeV39NeutralVillageQuest,
   getV39NeutralVillageRelation,
   getV39RelationLabel,
+  listV39NeutralVillageQuests,
   improveV39NeutralVillageRelation,
   normalizeV39NeutralVillage,
   raidV39NeutralVillage,
   vassalizeV39NeutralVillage
 } from "../../lib/v39-neutral-village-rules.js";
+import { getV39GuardianProgress, listV39GuardianQuests, acceptV39GuardianQuest, completeV39GuardianQuest, transferV39GuardianLand } from "../../lib/v39-guardian-quests.js";
+import { V39_QUEST_BALANCE, V39_VICTORY_CONDITION_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { isV39BaseClassRow } from "../../lib/v39-class-rules.js";
 
@@ -231,7 +234,10 @@ function renderWorldActions() {
   const key = keyOf(selectedTile.x, selectedTile.y);
   const wanderer = state?.wandererGroups?.find(row => keyOf(row.x, row.y) === key && row.discoveredByPlayerIds?.includes(playerId));
   const village = state?.neutralVillages?.find(row => keyOf(row.x, row.y) === key || row?.territoryTileKeys?.includes(key));
-  section.hidden = !wanderer && !village;
+  const landmark=Object.values(state?.victoryLandmarksByTile||{}).find(row=>row.key===key||row.occupiedTileKeys?.includes(key));
+  const discovered=landmark && state.players?.find(row=>row.id===playerId)?.factionState?.exploration?.discoveredFeaturesByTile?.[landmark.key];
+  section.hidden = !wanderer && !village && !discovered;
+  section.dataset.kind="village";
   if (wanderer) {
     section.dataset.targetId = wanderer.id;
     kind.textContent = "放浪者"; detail.textContent = `${wanderer.race} / ${wanderer.population}人`; subdetail.textContent = "";
@@ -243,18 +249,41 @@ function renderWorldActions() {
     kind.textContent = "一般村";
     detail.textContent = `${village.name} / Lv${village.level} / ${village.population}人 / ${getV39RelationLabel(relation)} ${relation}`;
     const questProgress = quest?.type === "hunt"
-      ? ` / 討伐対象 ${quest.required}体`
+      ? ` / 討伐 ${quest.required-(quest.targetEnemyIds||[]).filter(id=>state.enemies?.some(enemy=>enemy.id===id&&number(enemy.currentHp??enemy.hp)>0)).length}/${quest.required}体`
       : (quest?.accepted && !quest.completed ? ` / 必要 ${quest.resourceKey || "資源"} ${quest.required}` : "");
     subdetail.textContent = `${village.vassalPlayerId ? `属国: ${village.vassalPlayerId}` : "独立"} / 守備${(village.defenseUnits || []).reduce((sum, row) => sum + number(row.count), 0)}人${quest?.accepted && !quest.completed ? ` / 依頼: ${quest.label}${questProgress}` : ""}`;
     buttons.innerHTML = [
       `<button type="button" data-world-action="relation">交流</button>`,
       quest?.accepted && !quest.completed
         ? `<button type="button" data-world-action="quest-complete">依頼完了</button>`
-        : `<button type="button" data-world-action="quest">依頼</button>`,
+        : "",
       `<button type="button" data-world-action="vassal"${village.vassalPlayerId ? " disabled" : ""}>属国化</button>`,
       `<button type="button" data-world-action="raid">襲撃</button>`
     ].join("");
+    if(!quest?.accepted||quest.completed) {
+      const choices=listV39NeutralVillageQuests(state,playerId,village.id,window.__v39FieldRuntime?.mapData);
+      for(const choice of choices) addQuestButton(buttons,choice.eventId,`${choice.label} (${choice.type==="hunt"?`${choice.required}体`:`${choice.required}`})`);
+      if(!choices.length) {const note=document.createElement("small");note.textContent="現在受注できる依頼はありません";buttons.append(note);}
+    }
+  } else if(discovered) {
+    const progress=getV39GuardianProgress(state,playerId,landmark.key),quest=progress.quest;
+    section.dataset.kind="guardian";section.dataset.targetId=landmark.key;
+    kind.textContent="勝利対象 / 守護者";
+    detail.textContent=`${landmark.name} / 友好度 ${progress.relation}/${V39_QUEST_BALANCE.guardianTransferRelation}`;
+    const requirement=quest?.type==="delivery"?`${quest.resourceKey} ${quest.required}`:quest?.type==="watch"?`${quest.progress}/${quest.required}ターン`:
+      quest?.type==="hunt"?`残り ${(quest.targetEnemyIds||[]).filter(id=>state.enemies?.some(enemy=>enemy.id===id&&number(enemy.currentHp??enemy.hp)>0)).length}体`:"";
+    subdetail.textContent=`勝利条件: ${V39_VICTORY_CONDITION_BALANCE.requiredLandmarkCount}地点を${V39_VICTORY_CONDITION_BALANCE.requiredHoldTurns}ターン支配`+
+      (quest&&!quest.completed?` / 受注中: ${quest.名前} / ${requirement}`:"");
+    buttons.innerHTML=quest&&!quest.completed?'<button type="button" data-world-action="guardian-complete">依頼を報告</button>':"";
+    if(!quest||quest.completed) for(const choice of listV39GuardianQuests(state,playerId,landmark.key)) addQuestButton(buttons,choice.ID,choice.名前);
+    const transfer=document.createElement("button");transfer.type="button";transfer.dataset.worldAction="guardian-transfer";
+    transfer.textContent="守護者を引き継ぐ";transfer.disabled=progress.relation<V39_QUEST_BALANCE.guardianTransferRelation||!!landmark.peacefulOwnerPlayerId;buttons.append(transfer);
   }
+}
+
+function addQuestButton(container,eventId,label) {
+  const button=document.createElement("button");button.type="button";
+  button.dataset.worldAction="quest";button.dataset.eventId=eventId;button.textContent=label;container.append(button);
 }
 
 function runContactAction(event) {
@@ -264,13 +293,25 @@ function runContactAction(event) {
   const state = window.getV39GameState?.();
   const playerId = state?.activePlayerId;
   let result;
+  const eventId=event.target.closest("[data-world-action]")?.dataset.eventId||"";
+  if(section.dataset.kind==="guardian") {
+    if(action==="quest") result=acceptV39GuardianQuest(state,playerId,section.dataset.targetId,eventId);
+    else if(action==="guardian-complete") result=completeV39GuardianQuest(state,playerId,section.dataset.targetId);
+    else if(action==="guardian-transfer") result=transferV39GuardianLand(state,playerId,section.dataset.targetId);
+    if(!result) return;
+    if(!result.ok) {window.showV39TurnBanner?.(result.reason);return;}
+    window.setV39GameState?.(result.state,{reason:`guardian-${action}`});
+    window.showV39TurnBanner?.(result.message);window.appendV39ActivityLog?.(playerId,"守護者",result.message);
+    if(action==="guardian-transfer") window.resolveV39Victory?.();
+    renderWorldActions();return;
+  }
   if (action === "recruit") result = recruitV39Wanderer(state, playerId, section.dataset.targetId);
   else if (action === "relation") result = improveV39NeutralVillageRelation(state, playerId, section.dataset.targetId);
   else if (action === "quest") result = acceptV39NeutralVillageQuest(
     state,
     playerId,
     section.dataset.targetId,
-    window.__v39FieldRuntime?.mapData || null
+    window.__v39FieldRuntime?.mapData || null,eventId
   );
   else if (action === "quest-complete") result = completeV39NeutralVillageQuest(state, playerId, section.dataset.targetId);
   else if (action === "vassal") result = vassalizeV39NeutralVillage(state, playerId, section.dataset.targetId);

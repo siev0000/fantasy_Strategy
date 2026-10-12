@@ -3,7 +3,8 @@ import { getGameDataRows } from "../../lib/game-data-registry.js";
 
 const SAVE_VERSION = 4;
 
-const skillByName = new Map(getGameDataRows("スキル一覧").map(row => [String(row?.名前 || "").trim(), row]).filter(([name]) => name));
+const skillByName = new Map([...getGameDataRows("スキル一覧"), ...getGameDataRows("テストスキル")]
+  .map(row => [String(row?.名前 || "").trim(), row]).filter(([name]) => name));
 
 function stripDefinitionSnapshots(value, key = "") {
   if (value === null || value === undefined || typeof value !== "object") return value;

@@ -63,6 +63,7 @@ try {
   assert.ok(turn.ok && turn.hidden && turn.unlocked && turn.unbatched);
   assert.equal(turn.profile.turnNumber, 2);
   assert.ok(turn.profile.renderMs >= 0);
+  assert.ok(Number.isFinite(turn.profile.combatResolution) && turn.profile.combatResolution >= 0);
   const ai = await page.evaluate(async () => {
     const state = window.getV39GameState();
     window.setV39GameState({ players:state.players.map(player => ({ ...player, factionState:{ ...player.factionState,

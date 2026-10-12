@@ -207,7 +207,9 @@ def parse_data_field(data: str) -> Tuple[Dict[str, Any], List[dict], List[str]]:
         # key+10 / key-15% / key+3.5
         m = re.match(r"^(.+?)([+-])((?:\d|\.)[^\s]*)$", token)
         if m:
-            _set_value(parsed, m.group(1), m.group(2) + m.group(3), duplicate_fields, token)
+            # 射程+Nは絶対射程ではなく、装備・既定射程への加算値。
+            key = "射程補正" if m.group(1) == "射程" else m.group(1)
+            _set_value(parsed, key, m.group(2) + m.group(3), duplicate_fields, token)
             continue
 
         # 効果時間3t / 射程8m / 炸裂1 / CT3t など

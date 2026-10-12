@@ -6,6 +6,7 @@ import { V39_START_AREA_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { classData } from "../../lib/game-data-registry.js";
 import { RACE_CLASS_NAME_MAP } from "../../constants/unitCommon.js";
 import { runV39FieldUpdate } from "../ui/v39-field-update-loading.js";
+import { seedV39FacilityRecruitmentTest } from "../../lib/v39-facility-recruitment.js";
 
 const MODE_BANNER_ID = "modeBanner";
 let pendingPlacement = null;
@@ -122,6 +123,8 @@ function currentCandidateContext() {
   const playerId = getGameState()?.activePlayerId;
   const race = getActivePlayer()?.race;
   const count = placedSettlements(getActiveFaction()).length;
+  // 種族・クラス選択時点ではマップ未生成。生成後のイベントで候補を再計算する。
+  if (!map?.grid) return { map, playerId, race, count, candidates:[], allowedTiles:[], allowedKeys:new Set() };
   if (candidateContext?.map === map && candidateContext.playerId === playerId && candidateContext.race === race && candidateContext.count === count) return candidateContext;
   const candidates = placementCandidates();
   const tiles = new Map();
@@ -154,6 +157,11 @@ function initialPlacementIssue(tile) {
 }
 
 function ensurePlacementPanel() {
+  if (!fieldMapData()?.grid) {
+    const panel = document.getElementById("v39-placement-preview");
+    if (panel) panel.hidden = true;
+    return null;
+  }
   const host = document.getElementById("footPlacement");
   if (!host) return null;
   let panel = document.getElementById("v39-placement-preview");
@@ -591,6 +599,9 @@ function placeInitialBase(tile, options = {}) {
       tileData.key === key ? "settlement" : "resource"
     ]))
   }, player.race);
+  if (faction.facilityRecruitmentTest === true) {
+    village = normalizeV39Village(seedV39FacilityRecruitmentTest(village, territoryTiles, facilitiesByTile),player.race);
+  }
   const resolvedSettlementId = text(village.settlementId || village.id, settlementId);
   units = units.map(unit => placementSlot(unit) === placementIndex
     ? { ...unit, settlementId:resolvedSettlementId }

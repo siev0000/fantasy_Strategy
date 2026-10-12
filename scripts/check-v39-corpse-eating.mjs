@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const url=source=>`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+const balance=url(readFileSync("frontend/src/lib/v39-gameplay-balance.js","utf8"));
+const hex=url(readFileSync("frontend/src/lib/hex-grid.js","utf8"));
+const source=readFileSync("frontend/src/lib/v39-corpse-eating-rules.js","utf8")
+  .replace('"./v39-gameplay-balance.js"',JSON.stringify(balance)).replace('"./hex-grid.js"',JSON.stringify(hex));
+const {canV39UnitEatCorpses:canEat,consumeV39GroundCorpse:consume}=await import(url(source));
+assert.equal(canEat({race:"ウルフ"}),true);assert.equal(canEat({race:"ホース"}),false);
+assert.equal(canEat({race:"ウルフ"},[{名前:"ウルフ",死体食:"不可"}]),false);
+assert.equal(canEat({race:"新種"},[{名前:"新種",死体食:"可"}]),true);
+assert.equal(canEat({race:"ウルフ",canEatCorpse:false}),false);
+const enemy={id:"wolf",race:"ウルフ",x:4,y:4,hp:100,ap:100};
+const state={activeWorldId:"surface",enemies:[enemy,{id:"corpse",x:5,y:4,hp:0,state:"死亡"}],
+  groundLootByTile:{"5,4":{cargo:{resourcesByType:{死体:200,銀:3},equipmentInventory:[{id:"sword"}]}}}};
+let result=consume(state,"wolf","5,4",1);
+assert.equal(result.enemies[0].ap,70);assert.equal(result.enemies[0].lastCorpseMealTurn,1);
+assert.equal(result.enemies[1].id,"corpse");assert.equal(result.enemies[1].hp,0);
+assert.equal(result.groundLootByTile["5,4"].cargo.resourcesByType.死体,100);
+assert.equal(result.groundLootByTile["5,4"].cargo.resourcesByType.銀,3);
+assert.equal(result.groundLootByTile["5,4"].cargo.equipmentInventory[0].id,"sword");
+assert.equal(consume({...state,...result},"wolf","5,4",1),null);
+assert.equal(state.groundLootByTile["5,4"].cargo.resourcesByType.死体,200);
+assert.equal(consume({...state,enemies:[{...enemy,ap:20}]},"wolf","5,4",1),null);
+assert.equal(consume({...state,enemies:[{...enemy,hp:0}]},"wolf","5,4",1),null);
+assert.equal(consume({...state,activeWorldId:"cave"},"wolf","5,4",1),null);
+assert.equal(consume({...state,groundLootByTile:{}},"wolf","5,4",1),null);
+assert.equal(consume(state,"wolf","8,8",1),null);
+result=consume({...state,groundLootByTile:{"5,4":{resourcesByType:{死体:100,銀:3}}}},"wolf","5,4",1);
+assert.equal(result.groundLootByTile["5,4"].cargo.resourcesByType.死体,undefined);
+assert.equal(result.groundLootByTile["5,4"].cargo.resourcesByType.銀,3);
+console.log("corpse eating: eligibility, source override, AP, 100 consumed, loot/dead-unit preservation, repeat, world and failure passed");

@@ -1,4 +1,24 @@
 // 仕様未確定の調整値はここへ集約し、確定後に処理本体を変えず差し替える。
+export const V39_SITE_DISCOVERY_BALANCE = Object.freeze({
+  // 原本へ隠密列を追加するまでの初期値。原本/個別地点の値があればそちらを優先。
+  defaultStealthByName:Object.freeze({ 洞窟:50, 薬草:50, 薬草の群生地:50 })
+});
+export const V39_RESEARCH_BALANCE = Object.freeze({
+  constructionUnlockMode:"level", // level: 必要研究Lvのみ / item: 必要研究Lv＋指定研究の完了。
+  baseRequiredExp:100, // 研究Lv1の必要EXP。以降は研究Lvごとに2倍。
+  baseExpPerTurn:10, // 対応技能・担当Lvによる補正前の研究EXP。
+  minimumExpPerTurn:1, // 推奨Lv未満でも研究が停止しない最低進行量。
+  levelEfficiencyExponent:1 // 暫定: (担当Lv / 推奨Lv)の指数。1は比例、0はLv補正なし。
+});
+
+export const V39_DEFENSE_BALANCE = Object.freeze({
+  personalDefaultTurns:1, // 効果時間未記入の盾・障壁の仮持続ターン。
+  rayBlockDefaultTurns:1, // 効果時間未記入の「遮断」の仮持続ターン。
+  wallHeight:1, // 魔法壁の仮高度。地形高度差と合わせて移動を判定する。
+  blastPerRing:10, // 結界だけに使う炸裂値1層分。端数は切り捨て。
+  // 施設シートに耐久・高さが追加されるまでの仮値。費用・工期・研究条件は施設JSONのまま。
+  facilityWalls:{ 防壁:{ hp:200, height:1 }, 城壁:{ hp:400, height:2 } }
+});
 // 攻撃の最低命中率。0.25 = 25%。
 export const V39_HIT_RATE_MIN = 0.25;
 // 攻撃の最大命中率。1.00 = 100%。
@@ -65,7 +85,7 @@ export const V39_UNIT_INITIAL_LEVEL_BALANCE = Object.freeze({
 });
 
 export const V39_SURVEY_BALANCE = Object.freeze({
-  // 調査完了に必要な累計AP。残りAPを全消費し、足りない分は次ターン以降に継続する。
+  // 調査完了に必要な累計AP。不足分だけ消費し、足りない分は次ターン以降に継続する。
   requiredAp:100
 });
 
@@ -111,6 +131,10 @@ export const V39_ENEMY_LEVEL_BALANCE = Object.freeze({
 export const V39_COMBAT_BALANCE = Object.freeze({
   // 1ヒットごとの最終ダメージへ掛ける倍率。
   damageMultiplier:3
+});
+
+export const V39_COMBAT_DISPLAY_BALANCE = Object.freeze({
+  fractionalRangeOpacity:0.5 // 射程の端数でダメージが下がるマスの塗り・枠線の濃さ。通常表示に対する倍率。
 });
 
 // ユニット経験値の暫定調整値。必要EXP式は v39-unit-experience.js 側の確定式を使用する。
@@ -163,7 +187,7 @@ export const V39_UNIT_EXP_BALANCE = Object.freeze({
 // 戦闘・閉じたチャットの新着ポップアップ。
 export const V39_LOG_PREVIEW_BALANCE = Object.freeze({
   durationMs:4000, // 新着1件を表示する時間。
-  maxEntries:3 // 同時表示上限。連続攻撃でフィールド全体を覆わない。
+  maxEntries:2 // 通常/ターン通知・チャット・戦闘を合わせた同時表示上限。フィールドを覆いすぎない。
 });
 
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
@@ -220,7 +244,7 @@ export function resolveV39MovementTiles(movement = V39_SQUAD_MOVEMENT_BALANCE.mo
 export function resolveV39RangeTiles(rangeValue, fallbackTiles = 1) {
   const raw = Number(rangeValue);
   if (!Number.isFinite(raw)) return Math.max(1, Math.floor(Number(fallbackTiles) || 1));
-  return Math.max(1, Math.floor(raw / V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile));
+  return Math.max(1, Math.ceil(raw / V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile));
 }
 
 // 軍事Lvによる通常軍隊の編成補正。基本値は都市基本データ.jsonの分類=ユニット作成、army行を使う。
@@ -334,6 +358,58 @@ export const V39_VICTORY_CONDITION_BALANCE = Object.freeze({
   requiredLandmarkCount:1,
   // 支配を維持する必要ターン数。1なら支配を得たターンの判定で達成する。
   requiredHoldTurns:1
+});
+
+export const V39_FOG_BALANCE = Object.freeze({
+  // 暫定: 霧を通る1マスごとの索敵減少と視界半径減少。隣接1マスは維持する。
+  terrainNames:Object.freeze(["霧","死の霧"]),
+  scoutPenaltyPerTile:50,
+  visionPenaltyPerTile:1,
+  // 効果時間が未指定の霧の持続ターン。
+  defaultDurationTurns:3,
+  // 自然霧の確定値: 5ターンごとに発生判定し、5ターン持続する。
+  naturalIntervalTurns:5,
+  naturalDurationTurns:5,
+  // 未確定の発生バランス。地域ごとに5%、同時3地域、半径1～2マス。
+  naturalRegionSize:8,
+  naturalChance:0.05,
+  naturalMaxRegions:3,
+  naturalMinRadius:1,
+  naturalMaxRadius:2,
+  naturalEdgeChance:0.75,
+  naturalTerrainNames:Object.freeze(["湖","川","森林","森","湿地","沼地"]),
+  // 風系統の攻撃で霧を吹き飛ばせる炸裂の下限。
+  windClearSplash:0.5,
+  // 死体起点の死の霧。死体資源100を1体とし、5ターンごとに判定する。
+  corpseResourcePerBody:100,
+  deathFogIntervalTurns:5,
+  deathFogDurationTurns:5,
+  deathFogChancePerBody:0.05,
+  deathFogMaxChance:0.2,
+  // 洞窟は階層の死体総数で1回抽選し、霧を階層全体へ配置する。
+  caveDeathFogChancePerBody:0.01,
+  caveDeathFogMaxChance:0.05,
+  // 通常霧・死の霧の繰り返し画像。画像未読込時は下の色で代替する。
+  normalImage:"/assets/images/background/pipo-fog018.webp",
+  deathImage:"/assets/images/background/pipo-fog019.webp",
+  // 死の霧の着色元。属性設定の色を参照し、ここへ色コードを重複定義しない。
+  deathAttribute:"死霊",
+  displayColor:0xc7dce2,
+  // 地形やユニットを隠しすぎない画像の透明度。
+  displayAlpha:0.3
+});
+export const V39_QUEST_BALANCE = Object.freeze({
+  // シート未定義の交流・守護者依頼用の暫定値。
+  villageDeliveryAmount:50, // 村への支援納品数。
+  villageRelationGain:8, // 仮の村依頼の友好度報酬。
+  villageQuestCooldown:5, // 同じ村支援を再受注するまでのターン。
+  guardianDeliveryAmount:100, // 守護者への納品数。
+  guardianRelationGain:35, // 守護者依頼1件の友好度報酬。
+  guardianTransferRelation:70, // 守護者交代に必要な友好度。
+  guardianWatchTurns:3, // 連続して見張るターン数。
+  guardianContactRange:3, // 交渉・見張りの中心からの距離。
+  guardianHuntRange:8, // 討伐候補を探す範囲。
+  guardianHuntCount:3 // 討伐依頼1件の最大対象数。
 });
 
 export const V39_CIVIC_BALANCE = Object.freeze({
@@ -541,7 +617,20 @@ export const V39_PROVISIONAL_DISASTER_BALANCE = Object.freeze({
 });
 
 // アンデッド自然発生の暫定値。正式な出現敵タグ・発生条件列が追加されるまで使用する。
+export const V39_CORPSE_EATING_BALANCE = Object.freeze({
+  apCost:30, // 平時の死体食事に必要なAP。暫定。
+  resourceAmount:100, // 1回に食べる死体資源。100=1体分。
+  dangerDistanceTiles:2, // この距離以内の敵対者を認識していれば食事へ向かわない。
+  // シートに「死体食」が定義されるまでの仮対象。種族行の明示値を優先する。
+  fallbackRaces:Object.freeze(["ウルフ", "タイガー", "ベア", "ボア", "ホーク", "スネーク", "クロコダイル", "ドレイク"])
+});
+
 export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
+  // 死の霧内の死体1体ごとの変化確率。自然発生の2%とは別に判定する。
+  corpseMistSourceChance:1,
+  corpseMistOtherChance:0.5,
+  // 発生源マスの死体から生まれたアンデッドへのLv補正。
+  corpseMistSourceLevelBonus:3,
   // 死の霧マスに毎ターン行う自然発生判定。0.02 = 2%。
   deathMistChancePerTile:0.02,
   // 死体資源を含む地上戦利品のマスに毎ターン行う稀な補助発生判定。0.01 = 1%。
@@ -569,6 +658,34 @@ export const V39_SETTLEMENT_DEVELOPMENT_BALANCE = Object.freeze({
 });
 
 // 特産品の配置・幸福度の暫定値。正式な種類は特産品シート追加後に差し替える。
+// 洞窟の再定着。未鉱床化の奥地へ仮流入を接続。地上からの実移動・鉱床警備は後続。
+export const V39_CAVE_NEST_BALANCE = Object.freeze({
+  requiredSameRaceUnits:2, // 巣の成立に必要な同種族の生存個体数。
+  requireEnoughFood:true, // 食料確保も成立条件。現在は下記の仮の持ち込み量で判定する。
+  establishmentTurns:5, // プレイヤー不在で巣成立までに必要な進捗ターン数。
+  progressPerTurn:1, // 条件を満たしプレイヤーが来なかったターンの進捗加算。
+  intrusionRollbackPerTurn:1, // プレイヤーが侵入していた1ターンごとに戻す進捗。人数分は掛けない。
+  recolonizeUnclaimed:true, // 攻略後に鉱床化せず放置した奥地を再巣化対象にする。
+  preferDifferentRace:true, // 前のボスと別種族を優先。同種しか候補がない場合は同種も可。
+  arrivalFoodAmount:20, // 暫定：流入した集団が持ち込む、消費可能な資源1種類の量。
+  minimumArrivalFood:1, // 暫定：食料確保判定に必要な持ち込み量（食料不要種族は免除）。
+  initialNestPopulation:5, // 暫定：再巣化時の巣人口。フィールド個体とは別。
+  allowEntryIntoPlayerMine:true, // プレイヤーが確保した鉱床にも生物が侵入できる。
+  guardPlacement:"entrance", // 警備位置は入口。複数入口ごとの配置は後続実装。
+  guardUnitSource:"owner-army", // 警備兵は所有プレイヤーの領土で作成できる軍隊を使用する。
+  autoCreateGuards:false // 専用NPCの自動生成はしない。自軍の軍隊を配置する。
+});
+
+// 奥地マップの鉱床化。正式なシート項目がないため、調整用の仮設定。
+export const V39_CAVE_MINE_BALANCE = Object.freeze({
+  requireAllEnemiesDefeated:true, // ボスだけでなく、その奥地マップの残敵も倒す。
+  claimApCost:30, // 暫定：鉱床化を行うキャラのAP消費。
+  harvestApCost:0, // 暫定：入口で現地在庫を回収するときのAP消費。
+  productionIntervalTurns:1, // 暫定：鉱床の産出周期。攻略したターンには産出しない。
+  productionBySiteKind:Object.freeze({ore:Object.freeze({resource:"鉱石",amount:1}),gem:Object.freeze({resource:"宝石",amount:1})}), // 暫定：存在する地点種類ごとに1個/周期。地点数倍にはしない。
+  pauseWhileEnemiesPresent:true // 暫定：奥地マップに生存敵がいる間は採掘停止。所有権は保持。
+});
+
 export const V39_CAVE_BALANCE = Object.freeze({
   mapWidth:25, // 暫定：洞窟の横マス数。地上HEXの描画寸法に合わせて高さと組み合わせる。
   mapHeight:28, // 暫定：横62px・行間56pxで外形がほぼ正方形になる縦マス数。
@@ -585,6 +702,7 @@ export const V39_CAVE_BALANCE = Object.freeze({
   attackRangeMultiplier:2,
   surfaceEntranceLinkDistance:6, // 暫定：地上洞窟を同じ地下へ接続する中心からの距離。
   maxSurfaceEntrances:4, // テンプレートの出入口数上限。超える入口は別グループにする。
+  undiscoveredEntranceTestAlpha:0.6, // テストモードの未調査洞窟入口の透明度。発見/入場許可は変更しない。
   tilesPerMonster:12, // 暫定：安全地帯を除いた通行可能12マスにつき敵1体。
   encounterGroupRadius:2, // 暫定：洞窟の同一遭遇グループをアンカーから通路2マス以内へ近接配置。
   entranceSafeDistance:2, // 暫定：出入口から2マス以内には敵を配置しない。
