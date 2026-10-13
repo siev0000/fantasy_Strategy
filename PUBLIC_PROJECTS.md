@@ -10,25 +10,25 @@
 | target-marker-lab | https://siev0000.github.io/target-marker-lab/ | https://github.com/siev0000/target-marker-lab | GitHub Pages |
 | image-split-tool | https://siev0000.github.io/image-split-tool/ | https://github.com/siev0000/image-split-tool | GitHub Pages |
 | novel-writing-tool-starter | https://siev0000.github.io/novel-writing-tool-starter/ | https://github.com/siev0000/novel-writing-tool-starter | GitHub Pages |
+| fantasy_Strategy | https://siev0000.github.io/fantasy_Strategy/ | https://github.com/siev0000/fantasy_Strategy | GitHub Pages |
+| RootsOfDuality | https://siev0000.github.io/RootsOfDuality/ | https://github.com/siev0000/RootsOfDuality | GitHub Pages |
+| game-project | https://siev0000.github.io/game-project/ | https://github.com/siev0000/game-project | GitHub Pages |
+| RootsOfDualityRPG | https://siev0000.github.io/RootsOfDualityRPG/ | https://github.com/siev0000/RootsOfDualityRPG | GitHub Pages |
 
-## ソース公開中 / 開発中
+## ソース公開中 / 公開URL未確認
 
 | プロジェクト | GitHub | 状態 |
 |---|---|---|
-| fantasy_Strategy | https://github.com/siev0000/fantasy_Strategy | 開発中 / Public |
-| RootsOfDuality | https://github.com/siev0000/RootsOfDuality | Public |
-| game-project | https://github.com/siev0000/game-project | Public |
-| my-trpg-app | https://github.com/siev0000/my-trpg-app | Public |
+| my-trpg-app | https://github.com/siev0000/my-trpg-app | Public / Railway・公開URL未確認 |
 | cardGame | https://github.com/siev0000/cardGame | Public |
 | starter | https://github.com/siev0000/starter | Public |
-| RootsOfDualityRPG | https://github.com/siev0000/RootsOfDualityRPG | Public |
 
 ## 旧版・バックアップ・派生
 
-| プロジェクト | GitHub | 状態 |
-|---|---|---|
-| RootsOfDualityMMORPG | https://github.com/siev0000/RootsOfDualityMMORPG | Public / 派生・旧プロジェクト候補 |
-| RootsOfDuality_bc | https://github.com/siev0000/RootsOfDuality_bc | Public / backup |
+| プロジェクト | 公開URL | GitHub | 状態 |
+|---|---|---|---|
+| RootsOfDualityMMORPG | - | https://github.com/siev0000/RootsOfDualityMMORPG | Public / 派生・旧プロジェクト候補 |
+| RootsOfDuality_bc | https://siev0000.github.io/RootsOfDuality_bc/ | https://github.com/siev0000/RootsOfDuality_bc | Public / backup / GitHub Pages |
 
 ## ポータルサイト
 
@@ -41,7 +41,8 @@
 
 ### 管理ルール
 
-- 実際にブラウザから利用できるURLが確認できたものは「実際に使える公開サイト」へ移動する。
-- GitHub上でPublicだが公開Web URLが未確認のものは「ソース公開中 / 開発中」に置く。
+- GitHub Pages・Render・Railwayなど、実際にブラウザから利用できるURLが確認できたものは公開URLを直接登録する。
+- GitHub上でPublicでも公開Web URLが未確認のものは「ソース公開中 / 公開URL未確認」に置く。
+- Render/Railway等のURLは推測で登録せず、正確な公開URLを確認してから追加する。
 - バックアップ、旧版、派生版は「旧版・バックアップ・派生」に分ける。
 - 新しく公開したものは公開URLとGitHub URLの両方をここへ追記する。
