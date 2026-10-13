@@ -41,6 +41,7 @@ function createModal() {
         <div class="v39-play-mode-options single">
           <button type="button" data-v39-play-mode="single-normal"><strong>${PLAY_MODE_OPTIONS["single-normal"].label}</strong><small>${PLAY_MODE_OPTIONS["single-normal"].description}</small></button>
           <button type="button" data-v39-play-mode="single-test"><strong>${PLAY_MODE_OPTIONS["single-test"].label}</strong><small>${PLAY_MODE_OPTIONS["single-test"].description}</small></button>
+          <button type="button" data-v39-test-tools><strong>テスト操作</strong><small>召喚・呼集、輸送・道具・支援、侵入・再巣化などの専用テストを選択します。</small></button>
           <button type="button" data-v39-cave-test><strong>洞窟生成テスト</strong><small>洞窟の形状・出入口・モンスター配置を確認します。</small></button>
         </div>
       </section>
@@ -80,6 +81,10 @@ function createModal() {
       saveInput.click();
       return;
     }
+    if (event.target instanceof Element && event.target.closest("[data-v39-test-tools]")) {
+      void openTestToolsFromStart();
+      return;
+    }
     if (event.target instanceof Element && event.target.closest("[data-v39-cave-test]")) {
       closePlayModeSelection();
       window.dispatchEvent(new CustomEvent("v39:cave-test-requested"));
@@ -108,6 +113,18 @@ function openPlayModeSelection() {
 function closePlayModeSelection() {
   modal?.classList.remove("open");
   modal?.setAttribute("aria-hidden", "true");
+}
+
+async function openTestToolsFromStart() {
+  selectedPlayMode = "single-test";
+  try {
+    await window.setV39TestMode?.(true);
+  } catch (error) {
+    console.error("[v39 play mode] test mode enable failed", error);
+    return;
+  }
+  closePlayModeSelection();
+  window.requestAnimationFrame(() => window.openV39TestTools?.());
 }
 
 function selectPlayMode(value) {
