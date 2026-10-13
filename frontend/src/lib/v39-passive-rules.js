@@ -2,6 +2,7 @@ import { COMBAT_STATUS_FIELDS, SKILL_LEVEL_FIELDS, SKILL_FIELD_DEFS, RESISTANCE_
 import { getGameDataRows } from "./game-data-registry.js";
 import { resolveSkillBasePower } from "./skill-power.js";
 import { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
+import {isV39SquadPassive} from "./v39-squad-passive-context.js";
 
 const text=value=>String(value??"").trim();
 const numeric=value=>value!==null&&value!==""&&value!==undefined&&Number.isFinite(Number(value));
@@ -25,10 +26,12 @@ export function getV39PassiveRows(unit) {
 }
 
 export function isV39ConditionalPassive(row) {
-  return !!(text(row.条件)||text(row.条件系統)||text(row.攻撃手段));
+  return isV39SquadPassive(row)||!!(text(row.条件)||text(row.条件系統)||text(row.攻撃手段)
+    ||text(row.対象)&&text(row.対象)!=='自身');
 }
 
 export function matchV39PassiveCondition(row,unit,action,{isCounter=false,mapData,terrainName}={}) {
+  if(text(row.対象)&&text(row.対象)!=='自身')return {matches:false,unsupportedCondition:`対象:${row.対象}`};
   const method=text(row.攻撃手段),actual=text(action?.攻撃手段);
   if (method&&method!==actual) {
     const name=text(action?.装備元?.name||action?.装備元?.source?.装備名);
@@ -100,6 +103,8 @@ export function resolveV39PassiveContext(unit,action,options={}) {
   const rows=[],statRows=[],unsupported=[];
   const baked=new Set([...(unit?.passiveBaseSkillNames||[]),...(unit?.passiveContextSkillNames||[])]);
   for (const row of getV39PassiveRows(unit)) {
+    // 部隊補正は共通の部隊集計で適用済み。個人の戦闘文脈で二重適用しない。
+    if(isV39SquadPassive(row))continue;
     const match=matchV39PassiveCondition(row,unit,action,options);
     if (match.unsupportedCondition) unsupported.push({skillName:row.名前,condition:match.unsupportedCondition});
     if (!match.matches) continue;
@@ -114,6 +119,9 @@ export function resolveV39PassiveContext(unit,action,options={}) {
 
 export function inspectV39Passive(row) {
   const bonuses=collectV39PassiveBonuses([row]);
-  const match=matchV39PassiveCondition(row,{}, {名前:"",攻撃手段:row.攻撃手段,系統:row.条件系統});
+  const scoped=isV39SquadPassive(row),condition=text(row.条件),target=text(row.対象);
+  const validCondition=!condition||condition==='部隊統治者'||/^部隊(?:クラス|種族)_.+/.test(condition);
+  const match=scoped?(validCondition?{}:{unsupportedCondition:condition}):matchV39PassiveCondition(row,{}, {名前:"",攻撃手段:row.攻撃手段,系統:row.条件系統});
+  if(scoped&&target&&!['自身','他部隊員','部隊全員'].includes(target))bonuses.unsupported.push({field:`対象:${target}`});
   return [...bonuses.unsupported.map(entry=>entry.field),...(match.unsupportedCondition?[`条件:${match.unsupportedCondition}`]:[])];
 }

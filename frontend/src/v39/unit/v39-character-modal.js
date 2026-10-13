@@ -5,6 +5,8 @@ import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timi
 import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
 import { renderV39UnitAbility, renderV39DetailTabs } from "./v39-unit-detail.js";
 import { renderV39UnitCard } from "./v39-unit-card.js";
+import {resolveV39ToolSlots,getV39ToolLoadout,getV39ConsumableDefinitions,setV39ToolLoadout} from "../../lib/v39-consumables.js";
+import {getV39ClassPromotionOptions,acquireV39UpperClass} from "../../lib/v39-class-progression.js";
 
 let activeTab = "character";
 let selectedId = "";
@@ -53,10 +55,19 @@ function equipmentPanel(unit) {
       const item = equipment.find(row => text(row?.slot) === slot);
       const quality = text(item?.qualityLabel || item?.quality);
       return `<button type="button" class="v39-char-equipment-row" data-v39-character-equip-open="${escapeHtml(slot)}"${fixed ? " disabled" : ""}><span>${escapeHtml(slot)}</span><b>${escapeHtml(item?.name || "なし")}${quality ? ` [${escapeHtml(quality)}]` : ""}</b></button>`;
-    }).join("")}</div><output class="v39-char-note" aria-live="polite">${escapeHtml(equipmentMessage)}</output>
+    }).join("")}</div>
+    <section class="v39-char-tool-settings"><h4>道具枠 ${resolveV39ToolSlots(unit)} / デフォルト携帯</h4>
+      <p class="v39-char-note">上から優先して補充。設定だけでは道具を支給しません。枠外の在庫は消えず、拠点へ預けられます。</p>
+      ${Array.from({length:resolveV39ToolSlots(unit)},(_,index)=>{
+        const row=getV39ToolLoadout(unit)[index];
+        return `<div data-v39-tool-setting-row><select data-v39-tool-setting-name aria-label="道具枠${index+1}"${isDead(unit)?" disabled":""}><option value="">なし</option>${getV39ConsumableDefinitions().map(item=>`<option value="${escapeHtml(item.名前)}"${item.名前===row?.name?" selected":""}>${escapeHtml(item.名前)}（在庫${number(unit.toolStockByType?.[item.名前],0)}）</option>`).join('')}</select><input type="number" data-v39-tool-setting-count aria-label="携帯個数${index+1}" min="1" value="${row?.count || 1}"${isDead(unit)?" disabled":""}></div>`;
+      }).join('') || '<p class="v39-char-note">胴装備なしでは携帯できません。</p>'}
+      <button type="button" class="v39-char-squad-action" data-v39-tool-settings-save${isDead(unit)?" disabled":""}>携帯設定を保存</button>
+    </section><output class="v39-char-note" aria-live="polite">${escapeHtml(equipmentMessage)}</output>
   </div>`;
 }
 function growthPanel(unit) {
+  const state=window.getV39GameState(),options=getV39ClassPromotionOptions(state,state.activePlayerId,unit);
   const derived = unit?.derivedCharacter;
   const raceLevel = Math.max(0, Math.floor(number(derived?.raceLevels, 0)));
   const classLevel = Math.max(0, Math.floor(number(derived?.classLevels, 0)));
@@ -73,6 +84,10 @@ function growthPanel(unit) {
     <h4>成長</h4>
     <div class="v39-char-growth-list">${rows.map(([label, value]) => `<div class="v39-char-growth-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join("")}</div>
     <p class="v39-char-note">種族Lvは内部Lvのみ表示し、初期種族ボーナスLv5は表示値に含めません。</p>
+    <h4>上位クラス取得</h4>
+    <p class="v39-char-note">前提職の上限を超えたLvを移します。総合LvとEXPは増えません。</p>
+    ${options.length?options.map(option=>`<div class="v39-char-promotion"><b>${escapeHtml(option.row.ルビ || option.row.名前)}</b><p>${option.available?`${escapeHtml(unit.className)}Lv${option.limit}＋${escapeHtml(option.row.名前)}Lv${option.surplus}`:escapeHtml(option.reasons.join(' / '))}</p><button data-v39-class-acquire="${escapeHtml(option.row.名前)}" ${option.available?'':'disabled'}>取得する</button></div>`).join(''):'<p class="v39-char-note">現在職を前提とする上位候補はありません。</p>'}
+    ${equipmentMessage?`<p role="status">${escapeHtml(equipmentMessage)}</p>`:''}
   </div>`;
 }
 
@@ -154,6 +169,7 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-character-modal-style";
   style.textContent = `
+    #characterModal .v39-char-tool-settings{margin-top:10px;border-top:1px solid #38535d;padding-top:6px}#characterModal [data-v39-tool-setting-row]{display:grid;grid-template-columns:minmax(0,1fr) 60px;gap:4px;margin-bottom:5px}#characterModal [data-v39-tool-setting-row] select,#characterModal [data-v39-tool-setting-row] input{min-width:0;min-height:32px;padding:4px;border:1px solid #53717c;border-radius:5px;font-size:var(--font-body);background:#172d35;color:#e8efec}
     #characterModal .v39-char-squad-action{font-size:var(--font-body);min-height:34px;padding:6px 10px;border:1px solid #53717c;border-radius:6px;background:#172d35;color:#e8efec;margin-bottom:6px}
     #characterModal .v39-char-unit-detail{display:grid;grid-template-rows:auto auto minmax(0,1fr);height:100%;min-height:0;overflow:hidden}
     #characterModal .v39-char-unit-head{padding-bottom:8px}
@@ -249,6 +265,15 @@ function install() {
   });
 
   document.addEventListener("click", (event) => {
+    const promotion=event.target instanceof Element?event.target.closest('[data-v39-class-acquire]'):null;
+    if(promotion?.closest('#characterModal')) {
+      const state=window.getV39GameState();
+      if(!window.confirm('前提職の超過Lvを移して上位クラスを取得しますか？'))return;
+      const result=acquireV39UpperClass(state,state.activePlayerId,selectedId,promotion.dataset.v39ClassAcquire);
+      equipmentMessage=result.ok?result.message:result.reason;
+      if(result.ok)window.setV39GameState({players:result.state.players},{reason:'class-promotion'});
+      window.refreshV39SquadDerivedUI?.();render();return;
+    }
     const element = event.target instanceof Element ? event.target : null;
     const resistance = element?.closest("[data-v39-resistance-label]");
     if (resistance) {
@@ -292,6 +317,14 @@ function install() {
         render();
       });
       return;
+    }
+    if(element?.closest('[data-v39-tool-settings-save]')) {
+      if(window.isV39MapInputLocked?.())return;
+      const state=window.getV39GameState(),rows=[...document.querySelectorAll('#characterModal [data-v39-tool-setting-row]')];
+      const loadout=rows.map(row=>({name:row.querySelector('select').value,count:Number(row.querySelector('input').value)})).filter(row=>row.name);
+      const result=setV39ToolLoadout(state,state.activePlayerId,selectedId,loadout);
+      if(result.ok)window.setV39GameState({players:result.state.players},{reason:'tool-loadout'});
+      equipmentMessage=result.ok?'携帯設定を保存しました':result.reason;render();return;
     }
     const tab = element?.closest("[data-v39-character-tab]");
     if (tab) {

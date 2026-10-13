@@ -8,7 +8,9 @@ import { getV39TestSkillRows } from "../../lib/v39-test-skill-rules.js";
 import { getHexDistance, getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
 import { getV39NeutralVillageRelation, getV39RelationLabel } from "../../lib/v39-neutral-village-rules.js";
-import { V39_UNDEAD_SPAWN_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { V39_UNDEAD_SPAWN_BALANCE, V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import undeadTest from "../../../../config/v39-undead-test.json";
+import { isV39Undead } from "../../lib/v39-purification-rules.js";
 import {
   resolveV39UnitRaceCategory,
   resolveV39UnitTotalExpForLevel,
@@ -572,6 +574,21 @@ function testSectionOpenAttribute(key) {
   return collapsedSectionKeys.has(text(key)) ? "" : " open";
 }
 
+function undeadTestStatusHtml(state) {
+  if(!window.__v39FieldRuntime?.mapData?.undeadTestFixture)return "";
+  return [["surface","地上",undeadTest.地上死体],[undeadTest.洞窟ID,"洞窟",undeadTest.洞窟死体]].map(([id,label,rows])=>{
+    const active=(state.activeWorldId || "surface")===id,world=state.explorationWorlds?.[id];
+    const map=active?window.__v39FieldRuntime.mapData:world?.map,spatial=active?state:world?.spatial;
+    const count=(spatial?.enemies || []).filter(unit=>isV39Undead(unit)&&number(unit.hp ?? unit.currentHp)>0).length;
+    const fog=(map?.fogMap || []).flat().filter(tile=>tile?.kind==="death").length;
+    const tiles=rows.map(row=>{
+      const key=`${row.x},${row.y}`,loot=spatial?.groundLootByTile?.[key];
+      const bodies=number((loot?.cargo || loot)?.resourcesByType?.死体)/V39_FOG_BALANCE.corpseResourcePerBody;
+      return `${key}: 死体${bodies} / 浄化${number(map?.purificationByTile?.[key])}`;
+    });
+    return `<p data-undead-test-world="${id}"><strong>${label}: アンデッド${count} / 死の霧${fog}マス</strong><br>${tiles.join("<br>")}</p>`;
+  }).join("");
+}
 function panelHtml() {
   const { state, settlement, unit, tile } = context();
   const resource = selectedResourceKey();
@@ -610,6 +627,7 @@ function panelHtml() {
       <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>鉱床・道具・部隊支援</summary><div class="v39-test-section-body"><p>専用データで検証。開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><div class="v39-test-button-row"><button data-test-action="expedition-start">輸送・道具・支援テスト</button><button data-test-action="expedition-invasion">侵入・再巣化テスト</button><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div><p>輸送は設定済み。道具試験官は薬草・水薬を所持。王・指揮官・王の騎士は同部隊です。村の警備・建設依頼は受注して確認します。入口警備は輸送を解除してから別途指定してください。</p></div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
+      <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
       <details class="v39-test-section" data-test-section="turns"${testSectionOpenAttribute("turns")}><summary>制作・ターン進行</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><input id="v39-test-turn-count" aria-label="進めるターン数" type="number" min="1" max="100" step="1" value="${bulkTurnCount}"${advancingTestTurns ? " disabled" : ""}><button data-test-action="turn-many"${advancingTestTurns ? " disabled" : ""}>指定ターン進行</button><button data-test-action="turn-production"${advancingTestTurns ? " disabled" : ""}>建設完了まで進行</button><button data-test-action="turn-stop"${advancingTestTurns ? "" : " disabled"}>停止</button></div><p>施設建設・拠点発展・土地用途変更の待ちターンをまとめて進行。収入・消費・敵AIも通常どおり進みます。</p></div></details>
        <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで災害</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
@@ -655,6 +673,10 @@ function closePanel() {
 function handleAction(action) {
   if (!testModeEnabled()) return closePanel();
   const handlers = {
+    "undead-test-start":()=>{if(window.confirm("現在のゲームを死体配置済みの検証マップに置き換えます。開始しますか？"))window.startV39UndeadTest?.();},
+    "undead-test-surface":()=>{if(window.viewV39ExpeditionTestWorld?.("surface"))window.activateV39FooterTab?.("test");},
+    "undead-test-cave":()=>{if(window.viewV39ExpeditionTestWorld?.(undeadTest.洞窟ID))window.activateV39FooterTab?.("test");},
+    "undead-test-turn":()=>advanceTurn(),
     "expedition-start":()=>{if(window.confirm("現在のゲームを専用検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(false);},
     "expedition-invasion":()=>{if(window.confirm("現在のゲームを侵入・再巣化の検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(true);},
     "expedition-surface":()=>window.viewV39ExpeditionTestWorld?.("surface"),

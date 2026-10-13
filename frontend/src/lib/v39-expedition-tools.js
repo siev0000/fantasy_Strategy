@@ -6,6 +6,7 @@ import { replaceFactionSettlement } from "./settlement-state.js";
 import { resolveV39UnitCargoCapacity } from "./v39-logistics-state.js";
 import { mergeV39Cargo } from "./v39-logistics-state.js";
 import { V39_CAVE_MINE_BALANCE } from "./v39-gameplay-balance.js";
+import {getV39ConsumableDefinitions,getV39ToolLoadout,useV39Consumable} from "./v39-consumables.js";
 
 const alive = unit => Number(unit?.hp ?? unit?.currentHp)>0 && unit?.state!=="死亡";
 const count = value => Math.max(0,Number(value)||0);
@@ -24,9 +25,7 @@ export function releaseV39ExpeditionCargoOnDeath(unit) {
     caveDuty:null,toolRecovery:null,toolStockByType:{},expeditionCargoByType:{}};
 }
 export function getV39ToolDefinitions() {
-  const rows=getGameDataRows("道具");
-  const research=getGameDataRows("研究").find(row=>row.項目名===defaults.research.項目名);
-  return defaults.items.map(item=>rows.find(row=>row.名前===item.名前)||({...item,...(item.研究ID&&research?.ID?{研究ID:research.ID}:{})}));
+  return getV39ConsumableDefinitions();
 }
 export function isV39ToolUnlocked(faction,item) {
   return !item.研究ID || Object.values(faction.research?.progress?.completedByCategoryLevel || {})
@@ -42,18 +41,8 @@ function actor(state,playerId,unitId) {
     || (unit.worldId || "surface")!==(state.activeWorldId || "surface") || unit.waitTurnNumber===state.timeline.turnNumber) return null;
   return {player,unit,turn:state.timeline.turnNumber};
 }
-export function useV39ExpeditionTool(state,playerId,unitId,name) {
-  const context=actor(state,playerId,unitId),item=getV39ToolDefinitions().find(row=>row.名前===name);
-  if(!context || !item)return {ok:false,state,reason:"道具を使えるユニットを選んでください"};
-  const {unit,turn}=context,ap=count(unit.ap ?? unit.currentAp),stock=count(unit.toolStockByType?.[name]);
-  if(stock<1)return {ok:false,state,reason:"携帯在庫がありません"};
-  if(ap<count(item.AP消費) || unit.toolUsedTurnByName?.[name]===turn)return {ok:false,state,reason:"AP不足またはこのターン使用済みです"};
-  const hp=Math.min(count(unit.maxHp),count(unit.hp ?? unit.currentHp)+count(item.即時回復));
-  const changed={...unit,hp,currentHp:hp,ap:ap-count(item.AP消費),currentAp:ap-count(item.AP消費),lastActionTurn:turn,
-    toolStockByType:{...unit.toolStockByType,[name]:stock-1},toolUsedTurnByName:{...unit.toolUsedTurnByName,[name]:turn},
-    // 回復を重ね掛けせず、最後に使用した道具で残り時間を更新する。
-    toolRecovery:{name,amount:count(item.毎ターン回復),remainingTurns:count(item.持続ターン),lastProcessedTurn:turn}};
-  return {ok:true,state:updateUnit(state,playerId,changed),message:`${unit.name}: ${name}使用 / 回復 ${item.毎ターン回復}/T ⌛${item.持続ターン}`};
+export function useV39ExpeditionTool(state,playerId,unitId,name,map=window.__v39FieldRuntime?.mapData,target=null) {
+  return useV39Consumable(state,playerId,unitId,name,map,target);
 }
 export function advanceV39ExpeditionTools(state,turn) {
   return {...state,players:state.players.map(player=>({...player,factionState:{...player.factionState,units:player.factionState.units.map(unit=>{
@@ -68,6 +57,8 @@ export function replenishV39ExpeditionTools(state,playerId,unitId,map,name) {
   const context=actor(state,playerId,unitId),item=getV39ToolDefinitions().find(row=>row.名前===name);
   if(!context || !item)return {ok:false,state,reason:"補充できません"};
   const {unit,player}=context,faction=player.factionState;
+  const desired=getV39ToolLoadout(unit).find(row=>row.name===name);
+  if(!desired)return {ok:false,state,reason:"携帯設定の使用可能な道具枠に登録してください"};
   const settlement=(unit.worldId||"surface")==="surface" && faction.settlements.find(row=>isV39UnitInsideSettlement(unit,row));
   const rest=map?.caveSites?.find(site=>site.discovered&&!site.wall&&site.x===unit.x&&site.y===unit.y);
   const restFacility=(unit.worldId||"surface")==="surface" && state.territoryOwnerByTile?.[`${unit.x},${unit.y}`]===playerId
@@ -78,10 +69,10 @@ export function replenishV39ExpeditionTools(state,playerId,unitId,map,name) {
   const individual=squad?.id==='solo'||!!unit.transportAssignment;
   const cargo=individual?squad?.cargoByUnitId?.[unitId]:squad?.cargo;
   const prepared=count(carried[name])+count(local[name])+count(cargo?.resourcesByType?.[name]);
-  const material=prepared>0?name:item.材料||name;
-  if(material!==name&&!isV39ToolUnlocked(faction,item))return {ok:false,state,reason:"薬草改良（水薬）の研究が必要です"};
+  // 製造と補充を分離する。施設なしで素材から完成品を無償生成しない。
+  const material=name;
   const gatheredStock=count(cargo?.resourcesByType?.[material]);
-  const missing=Math.max(0,count(item.携帯上限)-count(unit.toolStockByType?.[name]));
+  const missing=Math.max(0,Math.min(count(item.携帯上限),desired.count)-count(unit.toolStockByType?.[name]));
   const amount=Math.min(missing,count(carried[material])+count(local[material])+gatheredStock);
   if(amount<=0)return {ok:false,state,reason:"材料在庫なし、または携帯上限です"};
   const fromCarry=Math.min(amount,count(carried[material]));carried[material]=count(carried[material])-fromCarry;
@@ -118,13 +109,14 @@ export function advanceV39ToolSites(map,turn) {
       toolHarvestRemaining:Math.min(defaults.gather.最大残量,(site.toolHarvestRemaining??defaults.gather.最大残量)+cycles*defaults.gather.採取量)};
   })};
 }
-export function depositV39ExpeditionCargo(state,playerId,unitId) {
+export function depositV39ExpeditionCargo(state,playerId,unitId,includeTools=false) {
   const context=actor(state,playerId,unitId);
   if(!context||(context.unit.worldId||"surface")!=="surface")return {ok:false,state,reason:"自軍拠点へ戻ってください"};
   const {unit,player}=context,settlement=player.factionState.settlements.find(row=>isV39UnitInsideSettlement(unit,row));
   if(!settlement)return {ok:false,state,reason:"拠点の占有マス内で荷下ろしできます"};
   const stock={...settlement.toolStockByType};
   for(const [name,amount] of Object.entries(unit.expeditionCargoByType||{}))stock[name]=count(stock[name])+count(amount);
-  const next=updateUnit(state,playerId,{...unit,expeditionCargoByType:{}}),faction=next.players.find(row=>row.id===playerId).factionState;
+  if(includeTools)for(const [name,amount] of Object.entries(unit.toolStockByType || {}))stock[name]=count(stock[name])+count(amount);
+  const next=updateUnit(state,playerId,{...unit,expeditionCargoByType:{},...(includeTools?{toolStockByType:{}}:{})}),faction=next.players.find(row=>row.id===playerId).factionState;
   return {ok:true,state:{...next,players:next.players.map(row=>row.id===playerId?{...row,factionState:replaceFactionSettlement(faction,{...settlement,toolStockByType:stock},{ownerPlayerId:playerId,select:false})}:row)},message:"採取した道具素材を拠点へ預けました"};
 }

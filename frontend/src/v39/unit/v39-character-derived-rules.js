@@ -125,7 +125,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const isHumanRace = text(raceRow.種類) === "人族";
-  const facilityGrowth = resolveV39FacilityClassGrowth({...unit,level},raceRow.種類);
+  const facilityGrowth = unit.promotionGrowthStart?null:resolveV39FacilityClassGrowth({...unit,level},raceRow.種類);
   if (facilityGrowth) level = Math.min(level,facilityGrowth.levelCap);
   const strongAnimalClassName = text(unit.strongAnimalClassName);
   const strongAnimalClassRow = classByName.get(strongAnimalClassName) || null;
@@ -147,6 +147,12 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   if (facilityGrowth) {
     raceLevels = facilityGrowth.raceLevels;
     classLevels = facilityGrowth.classLevels;
+  }
+  if(unit.promotionGrowthStart) {
+    const start=unit.promotionGrowthStart;
+    const gained=internalLevels(Math.max(0,baseLevel-number(start.level,baseLevel)),isHumanRace);
+    raceLevels=Math.max(0,number(start.raceLevels))+gained.raceLevels;
+    classLevels=Math.max(0,number(start.classLevels))+gained.classLevels;
   }
 
   const statusResult = buildCharacterStatusFromRules({
@@ -286,6 +292,8 @@ export function applyV39DerivedCharacterData(unit = {}) {
     movement:status.移動,
     status,
     squadSupportModifiers:{},
+    squadSupportSkillModifiers:{},
+    squadSupportResistanceModifiers:{},
     skillLevels: { ...derived.skillLevels },
     resistances: { ...resistances, ...(unit?.resistanceOverrides || {}) },
     equipment,

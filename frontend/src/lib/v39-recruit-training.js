@@ -2,6 +2,7 @@ import {V39_RECRUIT_TRAINING_BALANCE as balance} from "./v39-gameplay-balance.js
 import {resolveV39UnitRaceCategory, resolveV39UnitTotalExpForLevel, grantV39UnitExperience} from "./v39-unit-experience.js";
 import {resolveV39AssignedRecruitInstructor, getV39RecruitInstructorFacility} from "./v39-recruit-instructor.js";
 import {getV39FacilityRecruitmentClasses} from "./v39-facility-recruitment.js";
+import {supplyV39DefaultTools} from "./v39-consumables.js";
 
 export function inspectV39RecruitTraining(faction, village, unit, state = {}, tileKey) {
   const instructor = resolveV39AssignedRecruitInstructor(faction, village, unit, state, tileKey);
@@ -46,6 +47,7 @@ export function advanceV39RecruitTraining(state, turnNumber) {
   const completedUnits = [];
   const players = state.players.map(player => {
     const faction = player.factionState;
+    let stockFaction=faction;
     const queue = [];
     let units = [...(faction.units || [])];
     const instructorIds = new Set();
@@ -59,7 +61,9 @@ export function advanceV39RecruitTraining(state, turnNumber) {
       if (progressExp < entry.requiredExp) {
         queue.push({...entry, progressExp, trainingSlotId:slot.id, lastProcessedTurn:turnNumber});
       } else {
-        const unit = {...entry.unit, x:village.x, y:village.y, position:[village.x,village.y], worldId:"surface"};
+        const supplied=supplyV39DefaultTools(stockFaction,entry.settlementId,{...entry.unit,x:village.x,y:village.y,position:[village.x,village.y],worldId:'surface'});
+        stockFaction=supplied.faction;
+        const unit=supplied.unit;
         units.push(unit);
         completedUnits.push({playerId:player.id, unit});
       }
@@ -70,7 +74,7 @@ export function advanceV39RecruitTraining(state, turnNumber) {
       const result = grantV39UnitExperience(unit, balance.instructorRewardExpPerTurn);
       return {...result.unit, lastRecruitInstructorExpTurn:turnNumber};
     });
-    return {...player, factionState:{...faction, units, unitTrainingQueue:queue}};
+    return {...player, factionState:{...stockFaction, units, unitTrainingQueue:queue}};
   });
   return {state:{...state, players}, completedUnits};
 }

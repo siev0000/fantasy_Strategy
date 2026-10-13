@@ -216,6 +216,15 @@ export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   defaultLegCount:2
 });
 
+export const V39_CONSUMABLE_BALANCE=Object.freeze({
+  defaultToolPriority:Object.freeze(['水薬','薬草','聖水']), // 未設定時の携帯優先順位。所持済みの道具は先に移行する。
+  maximumSlots:3, // 胴装備による種類枠の上限。スタック個数とは別。
+  holyWaterPurification:5, // 暫定: 聖水1個による現在マスの浄化増加。
+  holyWaterRequiredFaith:1, // 暫定: 聖水製造担当の最低信仰技能。
+  drugHealingPerLevel:5, // 即時回復薬への薬系研究Lvごとの追加回復。
+  maximumProductionBonus:3 // 薬系Lv3/5/7で生成量+1/+2/+3。
+});
+
 export function resolveV39SizSpeedModifierPercent(siz = 170) {
   const value = Number(siz);
   if (!Number.isFinite(value) || value === 0) return 0;
@@ -638,6 +647,12 @@ export const V39_CORPSE_EATING_BALANCE = Object.freeze({
 });
 
 export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
+  purificationThreshold:-5, // この値以下のマスだけ不浄イベント候補にする。
+  corpsePurificationLoss:1, // 死体があるマスの毎ターン減少量。死体数では増やさない。
+  fogPurificationLoss:1, // 死の霧があるマスの毎ターン追加減少量。
+  deathBladePurificationLoss:5, // 死の刃の所持者による撃破マスの減少量。
+  unholyFogChance:0.08, // 暫定: 不浄候補1マス・1回あたりの死の霧確率。
+  unholyUndeadChance:0.08, // 暫定: 霧とは排他的なアンデッド発生確率。
   // 死の霧内の死体1体ごとの変化確率。自然発生の2%とは別に判定する。
   corpseMistSourceChance:1,
   corpseMistOtherChance:0.5,
@@ -803,3 +818,7 @@ export const V39_DIPLOMACY_BALANCE = Object.freeze({
   // 停戦時に増える友好度。
   peaceRelationGain:10
 });
+// 育成で上位職へ移る際に前提職へ残すLv。種族Lvは別管理。
+export const V39_CLASS_PROGRESSION_BALANCE=Object.freeze({classLevelLimit:10});
+// 召喚軍隊は1人を基準に追加人数ごとHP+50%。既存3/4/5人編成と同じ比率（暫定）。
+export const V39_SUMMON_BALANCE=Object.freeze({maximumLevel:120,hpPerExtraMember:0.5});

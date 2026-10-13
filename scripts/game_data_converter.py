@@ -36,6 +36,7 @@ DEFAULT_REPORT = Path("artifacts/game-data-converter-report.json")
 
 # 通常変換するシートだけを明示する。CS / 画面は対象外。スキル一覧はCS専用変換器で生成する。
 SHEET_TO_JSON = {
+    "道具": "道具.json",
     "クラス": "クラス.json",
     "種族": "種族.json",
     "勢力": "勢力.json",
@@ -61,6 +62,7 @@ SHEET_TO_JSON = {
 
 # すべてのキー項目が入っている行だけ重複検査する。
 UNIQUE_KEYS = {
+    "道具": ("名前",),
     "特産品": ("名前",),
     "種族": ("key",),
     "クラス": ("名前",),

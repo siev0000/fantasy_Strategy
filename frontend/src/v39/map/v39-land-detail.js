@@ -60,6 +60,9 @@ function bindFixedLandFields() {
     item.innerHTML = '<span>地形補正</span><b id="v39-land-modifiers">なし</b>';
     panel.appendChild(item);
   }
+  for(const [id,label] of [['v39-land-purification','浄化'],['v39-land-cave-area','洞窟エリア']])if(!document.getElementById(id)) {
+    const item=document.createElement('div');item.className='land-item';item.innerHTML=`<span>${label}</span><b id="${id}">-</b>`;panel.appendChild(item);
+  }
 
   if (!document.getElementById("v39-land-development-difficulty")) {
     const item = document.createElement("div");
@@ -376,6 +379,9 @@ function renderLandDetail(selected) {
   setField("v39-land-river-waterfall", `${detail.river} / ${detail.waterfall}`);
   setField("v39-land-volcano-lava", `${detail.volcano} / ${detail.lava}`);
   setField("v39-land-modifiers", formatV39TerrainModifiers(window.__v39FieldRuntime?.mapData, detail.x, detail.y));
+  const map=window.__v39FieldRuntime?.mapData,key=coordKey(detail.x,detail.y);
+  setField('v39-land-purification',String(map?.purificationByTile?.[key] ?? 0));
+  setField('v39-land-cave-area',map?.isUnderground?(map?.caveAreaByTile?.[key] || '未設定'):'-');
   setField("v39-land-enemies", detail.enemies);
   setField("v39-land-victory-landmark", detail.victoryLandmark);
   renderSettlementConversionAction();

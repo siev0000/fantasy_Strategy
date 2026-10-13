@@ -18,15 +18,25 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
     .filter(unit => (unit.worldId || "surface") === (state.activeWorldId || "surface"));
   const occupied = new Set(fieldUnits.filter(unit => !dead(unit)).map(keyOf));
   const removed = new Set(), spawned = [];
+  const spawnHistory={...state.worldEnvironment?.undeadSpawnHistoryByTile};
+  const alreadySpawned=state.worldEnvironment?.undeadSpawnCountTurn===turn?Number(state.worldEnvironment?.undeadSpawnCount)||0:0;
+  let eventSpawned=0;
+  const eventKeys=new Set((mapData.unholyUndeadOrigins || []).map(row=>row.key));
   const groundLootByTile = { ...(state.groundLootByTile || {}) };
   const transform = (x, y, original = null) => {
-    if (!isV39DeathFogTile(mapData, x, y) || !weight) return false;
+    const tileKey=`${x},${y}`;
+    if(mapData.fogMap?.[y]?.[x]?.createdAtTurn===turn)return false;
+    const event=eventKeys.has(tileKey);
+    if(event&&(alreadySpawned+eventSpawned>=V39_UNDEAD_SPAWN_BALANCE.maximumSpawnCountPerTurn
+      ||turn-(spawnHistory[tileKey] ?? -Infinity)<V39_UNDEAD_SPAWN_BALANCE.sameTileCooldownTurns))return false;
+    if(Number(mapData.purificationByTile?.[tileKey] ?? 0)>V39_UNDEAD_SPAWN_BALANCE.purificationThreshold)return false;
+    if ((!isV39DeathFogTile(mapData, x, y)&&!eventKeys.has(tileKey)) || !weight) return false;
     const source = isV39DeathFogSource(mapData, x, y);
-    const chance = source ? V39_UNDEAD_SPAWN_BALANCE.corpseMistSourceChance : V39_UNDEAD_SPAWN_BALANCE.corpseMistOtherChance;
+    const chance = eventKeys.has(tileKey)?1:source ? V39_UNDEAD_SPAWN_BALANCE.corpseMistSourceChance : V39_UNDEAD_SPAWN_BALANCE.corpseMistOtherChance;
     if (random() >= chance) return false;
     // 同じマスの複数死体は隣接する霧内の空きマスへ。空きがなければ死体を保持する。
     const position = [{ x, y }, ...getHexNeighborCoords(mapData.w, mapData.h, x, y, mapData.worldWrapEnabled === true)]
-      .find(tile => !occupied.has(keyOf(tile)) && isV39DeathFogTile(mapData, tile.x, tile.y)
+      .find(tile => !occupied.has(keyOf(tile)) && (eventKeys.has(tileKey)&&keyOf(tile)===tileKey||isV39DeathFogTile(mapData, tile.x, tile.y))
         && !["海", "湖", "火山", "溶岩", "壁", "岩壁"].includes(resolveV39TerrainNameAt(mapData, tile.x, tile.y))
         && !["海", "湖", "火山", "溶岩", "壁", "岩壁"].includes(mapData.grid?.[tile.y]?.[tile.x])
         && !mapData.wallMap?.[tile.y]?.[tile.x]);
@@ -43,6 +53,7 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
     enemy.worldId = original?.worldId || state.activeWorldId || "surface";
     spawned.push({ enemy, origin:{ x, y, key:`${x},${y}`, source, corpseId:original?.id || null } });
     occupied.add(keyOf(position));
+    if(event){spawnHistory[tileKey]=turn;eventSpawned++;}
     return true;
   };
   for (const unit of fieldUnits) {
@@ -62,7 +73,7 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
   for (const [key, loot] of Object.entries(state.groundLootByTile || {})) {
     const [x, y] = key.split(",").map(Number);
     const count = Math.floor(corpseAmount(loot) / V39_FOG_BALANCE.corpseResourcePerBody);
-    if (!isV39DeathFogTile(mapData, x, y)) continue;
+    if (!isV39DeathFogTile(mapData, x, y)&&!eventKeys.has(key)) continue;
     let consumed = 0;
     for (let index = 0; index < count; index++) if (transform(x, y)) consumed += V39_FOG_BALANCE.corpseResourcePerBody;
     if (!consumed) continue;
@@ -88,5 +99,6 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
     enemies:[...(state.enemies || []).filter(unit => !removed.has(unit.id)), ...spawned.map(row => row.enemy)],
     enemySquads:[...filterSquads(state.enemySquads), ...spawned.map(({ enemy }) => ({ id:`enemy-squad-${enemy.id}`, unitIds:[enemy.id], nestId:"", cargo:{ resourcesByType:{}, equipmentInventory:[] } }))],
     enemyNests:(state.enemyNests || []).map(nest => ({ ...nest, unitIds:(nest.unitIds || []).filter(id => !removed.has(id)) })),
-    groundLootByTile, worldEnvironment:{ ...state.worldEnvironment, lastCorpseConversionTurn:turn }, spawned };
+    groundLootByTile, worldEnvironment:{ ...state.worldEnvironment, lastCorpseConversionTurn:turn,
+      undeadSpawnHistoryByTile:spawnHistory,undeadSpawnCountTurn:turn,undeadSpawnCount:alreadySpawned+eventSpawned }, spawned };
 }

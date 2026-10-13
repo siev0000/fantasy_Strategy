@@ -294,38 +294,11 @@ function corpseAmount(groundLoot) {
 }
 
 function undeadOrigins(state, mapData, activeDisasters) {
-  const origins = [];
-  const corpseKeys = new Set(Object.entries(state.groundLootByTile || {}).filter(([, loot]) => corpseAmount(loot) >= V39_FOG_BALANCE.corpseResourcePerBody).map(([key]) => key));
-  for (const unit of [...(state.enemies || []), ...(state.players || []).flatMap(player => player.factionState?.units || [])]) {
-    if (!isLiving(unit)) corpseKeys.add(tileKey(unit.x, unit.y));
-  }
-  for (const tile of mapTiles(mapData)) {
-    if (isV39DeathFogTile(mapData,tile.x,tile.y) && !corpseKeys.has(tile.key)) origins.push({ ...tile, source:"死の霧", chance:V39_UNDEAD_SPAWN_BALANCE.deathMistChancePerTile });
-  }
-  for (const [key, loot] of Object.entries(state?.groundLootByTile || {})) {
-    if (corpseAmount(loot) < V39_FOG_BALANCE.corpseResourcePerBody) continue;
-    const [x, y] = key.split(",").map(Number);
-    if (isV39DeathFogTile(mapData,x,y)) continue;
-    if (Number.isFinite(x) && Number.isFinite(y)) origins.push({ x, y, key:tileKey(x, y), source:"死体", chance:V39_UNDEAD_SPAWN_BALANCE.corpseChancePerTile });
-  }
-  for (const event of activeDisasters || []) {
-    if (event?.undeadBonus !== true) continue;
-    for (const key of event?.tileKeys || []) {
-      const [x, y] = String(key).split(",").map(Number);
-      if (corpseKeys.has(key) && isV39DeathFogTile(mapData,x,y)) continue;
-      if (Number.isFinite(x) && Number.isFinite(y)) origins.push({ x, y, key:tileKey(x, y), source:event.name, chance:V39_UNDEAD_SPAWN_BALANCE.disasterBonusChancePerTile });
-    }
-  }
-  const merged = new Map();
-  for (const origin of origins) {
-    const previous = merged.get(origin.key);
-    merged.set(origin.key, {...origin,
-      chance:Math.max(origin.chance,previous?.chance||0),
-      source:origin.source==="死体"||previous?.source==="死体"?"死体":origin.source});
-  }
-  return [...merged.values()];
+  const corpses=new Set(Object.entries(state.groundLootByTile || {}).filter(([,loot])=>corpseAmount(loot)>=V39_FOG_BALANCE.corpseResourcePerBody).map(([key])=>key));
+  for(const unit of [...(state.enemies || []),...(state.players || []).flatMap(player=>player.factionState?.units || []),...(state.neutralVillages || []).flatMap(village=>village.defenseUnits || [])])
+    if(!isLiving(unit)&&(unit.worldId || 'surface')===(state.activeWorldId || 'surface'))corpses.add(tileKey(unit.x,unit.y));
+  return (mapData.unholyUndeadOrigins || []).filter(origin=>!corpses.has(origin.key)).map(origin=>({...origin,source:"不浄",chance:1}));
 }
-
 function chooseUndeadCandidate(token) {
   const candidates = V39_UNDEAD_SPAWN_BALANCE.candidates;
   const total = candidates.reduce((sum, candidate) => sum + Math.max(1, integer(candidate?.weight, 1)), 0);
@@ -355,14 +328,16 @@ function spawnNaturalUndead(state, mapData, turn, activeDisasters, forcePosition
   const cooldown = V39_UNDEAD_SPAWN_BALANCE.sameTileCooldownTurns;
   const history = state?.worldEnvironment?.lastDisasterEvents || [];
   const spawned = [];
+  const spawnHistory={...state.worldEnvironment?.undeadSpawnHistoryByTile};
   let groundLootByTile = { ...(state?.groundLootByTile || {}) };
   for (const origin of origins.sort((left, right) => left.key.localeCompare(right.key, "ja"))) {
     if (spawned.length >= V39_UNDEAD_SPAWN_BALANCE.maximumSpawnCountPerTurn && !forcePosition) break;
     const terrain = mapTileText(mapData, origin.x, origin.y);
+    if(!forcePosition&&mapData.fogMap?.[origin.y]?.[origin.x]?.createdAtTurn===turn)continue;
     if (terrain.some(value => ["海", "湖", "火山"].includes(value)) || mapData?.lavaMap?.[origin.y]?.[origin.x]) continue;
     if (occupied.has(origin.key)) continue;
     const recent = history.some(event => event?.type === "undead-spawn" && text(event?.anchorKey) === origin.key && integer(event?.turn) > turn - cooldown);
-    if (recent || (!forcePosition && roll(`undead:${origin.key}:T${turn}`) >= number(origin.chance))) continue;
+    if (recent || turn-(spawnHistory[origin.key] ?? -Infinity)<cooldown || (!forcePosition && roll(`undead:${origin.key}:T${turn}`) >= number(origin.chance))) continue;
     const candidate = chooseUndeadCandidate(`${origin.key}:T${turn}`);
     if (!candidate) continue;
     const level = integer(candidate.levelMin) + (hash(`undead-level:${origin.key}:T${turn}`) % (integer(candidate.levelMax) - integer(candidate.levelMin) + 1));
@@ -378,10 +353,11 @@ function spawnNaturalUndead(state, mapData, turn, activeDisasters, forcePosition
     });
     if (!enemy) continue;
     spawned.push({ enemy, origin });
+    spawnHistory[origin.key]=turn;
     occupied.add(origin.key);
     if (origin.source === "死体") groundLootByTile = consumeCorpse(groundLootByTile, origin.key);
   }
-  return { spawned, groundLootByTile };
+  return { spawned, groundLootByTile, spawnHistory };
 }
 
 function spawnDisasterEnemy(state, event, turn) {
@@ -441,6 +417,8 @@ function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceD
   ].slice(-120);
   const worldEnvironment = {
     ...environment,
+    undeadSpawnHistoryByTile:undead.spawnHistory,
+    undeadSpawnCountTurn:turn,undeadSpawnCount:undead.spawned.length,
     lastDisasterEvents:eventHistory,
     activeDisasters:ticked.activeDisasters,
     activeTerrainEffects:combineEffects(environment, ticked.activeDisasters, turn),

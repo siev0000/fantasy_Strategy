@@ -15,6 +15,7 @@ import { withV39WorldContext, v39TurnWorldIds } from "./v39-world-context.js";
 import {advanceV39RecruitTraining} from "../../lib/v39-recruit-training.js";
 import {advanceV39RecruitInstructorMovement} from "../../lib/v39-recruit-instructor.js";
 import { advanceV39ExpeditionTools, advanceV39ToolSites } from "../../lib/v39-expedition-tools.js";
+import {advanceV39ToolProduction} from "../../lib/v39-consumables.js";
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
@@ -390,7 +391,7 @@ export async function advanceTurn(options = {}) {
     }
     timings.combatResolution = performance.now() - combatResolutionStartedAt;
     const resolved = window.getV39GameState?.();
-    const healed = advanceV39ExpeditionTools(resolved,nextTurn);
+    const healed = advanceV39ToolProduction(advanceV39ExpeditionTools(resolved,nextTurn),nextTurn);
     const recoveredPlayers = (healed?.players || []).map(player => {
       const factionState = {
           ...player.factionState,

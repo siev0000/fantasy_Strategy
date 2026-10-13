@@ -13,7 +13,7 @@ try{
     const {buildV39UnitEntity}=await import('/src/lib/v39-unit-creation-rules.js');
     const defs=(await import('/@fs/C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/config/v39-expedition-defaults.json')).default;
     const map=(id,underground=false)=>({id,w:12,h:12,grid:Array.from({length:12},()=>Array(12).fill(underground?'洞窟':'平地')),heightGrid:Array.from({length:12},()=>Array(12).fill(0)),isUnderground:underground,entrances:[{x:2,y:2,surfaceEntrance:underground?{x:2,y:2}:undefined}]});
-    const army={...buildV39UnitEntity({id:'a',name:'軍隊',race:'只人',className:'ファイター',level:7,unitType:'軍隊ユニット',isNamed:false,x:2,y:2}),worldId:'surface'};
+    const army={...buildV39UnitEntity({id:'a',name:'軍隊',race:'只人',className:'ファイター',level:7,unitType:'軍隊ユニット',isNamed:false,x:2,y:2,equipment:[{slot:'体',name:'服'}]}),worldId:'surface',defaultToolLoadout:[{name:'薬草',count:3},{name:'水薬',count:3}]};
     const base={id:'base',settlementId:'base',placed:true,x:2,y:2,population:50,foodStockByType:{穀物:100},materialStockByType:{木材:100},tileFacilityMap:{},toolStockByType:{薬草:4}};
     const state={activeWorldId:'surface',activePlayerId:'p',timeline:{phase:'player',turnNumber:1},players:[{id:'p',factionState:{units:[army],squads:[{id:'s',unitIds:['a']}],settlements:[base],selectedSettlementId:'base',research:{}}}],enemies:[],enemyNests:[],enemySquads:[],neutralVillages:[],settlements:[],explorationWorlds:{surface:{map:map('surface'),spatial:{enemies:[],enemyNests:[],enemySquads:[]}},cave:{map:{...map('cave',true),caveMine:{ownerPlayerId:'p',stockByResource:{鉱石:2,宝石:1}}},spatial:{enemies:[],enemyNests:[],enemySquads:[]}}}};
     const check=(condition,message)=>{if(!condition)throw Error(message);};
@@ -56,7 +56,7 @@ try{
     check(tools.advanceV39ExpeditionTools(healed,8).players[0].factionState.units[0].hp===50,'expiry');
     check(!tools.replenishV39ExpeditionTools(state,'p','a',null,'水薬').ok,'potion research gated');
     const researched=structuredClone(state);researched.players[0].factionState.research={progress:{completedByCategoryLevel:{魔法Lv:{2:[defs.research.ID]}}}};
-    const potion=tools.replenishV39ExpeditionTools(researched,'p','a',null,'水薬');check(potion.ok,'potion crafting');
+    check(!tools.replenishV39ExpeditionTools(researched,'p','a',null,'水薬').ok,'research alone does not create potion');
     const looted=structuredClone(state);looted.players[0].factionState.units[0].expeditionCargoByType={水薬:1};
     check(tools.replenishV39ExpeditionTools(looted,'p','a',null,'水薬').ok,'crafted potion needs no research');
     const fallen=tools.releaseV39ExpeditionCargoOnDeath({...army,hp:0,state:'死亡',caveDuty:{cargo:{鉱石:2,宝石:1}},toolStockByType:{薬草:2},expeditionCargoByType:{水薬:1}});
@@ -66,14 +66,15 @@ try{
     const gathered=tools.gatherV39ExpeditionHerbs(state,'p','a',caveMap,'herb');check(gathered.ok,'herb gathered');
     check(gathered.state.players[0].factionState.units[0].expeditionCargoByType.薬草===1,'carried material');
     check(tools.advanceV39ToolSites(gathered.map,6).caveSites[0].toolHarvestRemaining===3,'5 turn herb refill');
-    const u={...army,id:'u',status:{攻撃:100,防御:100,命中:100}},cmd={...army,id:'cmd',className:'コマンダー'};
+    const u={...army,id:'u',status:{攻撃:100,防御:100,命中:100}},cmd={...army,id:'cmd',className:'コマンダー',
+      techniques:[{source:{名前:'部隊指揮',行動:'P',効果:'部隊支援',対象:'他部隊員',攻撃:5,防御:5,命中:5}}]};
     const squad=[{id:'p',factionState:{units:[u,cmd],squads:[{unitIds:['u','cmd']}]}}];
     const buff=support.applyV39SquadSupport(u,squad);check(buff.status.攻撃===105,'commander bonus');
     check(support.applyV39SquadSupport(buff,squad).status.攻撃===105,'support non stacking');
     const dead=structuredClone(squad);dead[0].factionState.units[1].hp=0;
     check(support.applyV39SquadSupport(buff,dead).status.攻撃===100,'dead commander removes bonus');
     check(support.applyV39SquadSupport(u,{enemies:[u,cmd],enemySquads:[{unitIds:['u','cmd']}]}).status.攻撃===105,'enemy support');
-    const knight={...u,className:'ロードナイト'},king={...army,id:'king',isSovereign:true};
+    const knight={...u,className:'ロードナイト',techniques:[{source:{名前:'王への忠誠',行動:'P',対象:'自身',条件:'部隊統治者',攻撃:10,防御:10,精神:10}}]},king={...army,id:'king',isSovereign:true};
     const royal=[{id:'p',factionState:{units:[knight,king],squads:[{unitIds:['u','king']}]}}];
     check(support.applyV39SquadSupport(knight,royal).status.攻撃===110,'lord knight king condition');
     const away=structuredClone(squad);away[0].factionState.units[1].worldId='cave';

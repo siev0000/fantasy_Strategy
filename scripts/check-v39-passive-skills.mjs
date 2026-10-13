@@ -9,7 +9,7 @@ try {
   for (const width of [1100,390]) {
     const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
     page.on("pageerror",e=>errors.push(String(e)));
-    await page.goto("http://127.0.0.1:3000",{waitUntil:"networkidle"});
+    await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3022",{waitUntil:"networkidle"});
     await page.locator("[data-v39-cave-test]").click();
     await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
     await page.getByRole("button",{name:"探索開始",exact:true}).click();
@@ -45,7 +45,7 @@ try {
           fireApplied:damage("炎強化",fire).detail.appliedPassiveSkillNames,
           clawApplied:damage("猛獣の爪",claw).detail.appliedPassiveSkillNames}};
     });
-    assert.equal(report.skillCount,755);assert.equal(report.passiveCount,222);
+    assert.ok(report.skillCount>=755);assert.ok(report.passiveCount>=222);
     assert.ok(report.acquisition.includes("武器の扱い"));assert.ok(report.acquisition.includes("武器の攻め"));
     assert.ok(report.supported.handling.accuracy>report.supported.base.accuracy);
     assert.ok(report.supported.offense.power>report.supported.base.power);

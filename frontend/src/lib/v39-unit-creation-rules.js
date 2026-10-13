@@ -10,6 +10,7 @@ import { resolveV39UnitInitialLevel, resolveV39UnitRaceCategory, resolveV39UnitL
 import {V39_RECRUIT_TRAINING_BALANCE} from "./v39-gameplay-balance.js";
 import { getV39FacilityRecruitmentClasses, inspectV39FacilityRecruitment, resolveV39FacilityRecruitmentGrowth } from "./v39-facility-recruitment.js";
 import {inspectV39RecruitTraining} from "./v39-recruit-training.js";
+import {getV39ToolLoadout,getV39ConsumableDefinitions,resolveV39ToolSlots} from "./v39-consumables.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -217,7 +218,13 @@ export function createV39Units(state, playerId, request = {}) {
   const createdUnits = [];
   for (let index = 0; index < check.count; index += 1) {
     const name = nextUnitName([...existing, ...pending.map(entry => entry.unit), ...createdUnits], check.race, check.classRow, check.mode.mode !== "normal");
-    createdUnits.push(createUnit(player, check, name, index));
+    const unit=createUnit(player,check,name,index);
+    const loadout=request.defaultToolLoadout ?? getV39ToolLoadout(unit);
+    const definitions=getV39ConsumableDefinitions();
+    if(!Array.isArray(loadout)||loadout.length>resolveV39ToolSlots(unit)||new Set(loadout.map(row=>row.name)).size!==loadout.length
+      ||loadout.some(row=>!definitions.some(item=>item.名前===row.name)||!Number.isInteger(row.count)||row.count<1||row.count>number(definitions.find(item=>item.名前===row.name)?.携帯上限)))
+      return {ok:false,state,reason:'デフォルト携帯の道具枠・種類・個数を確認してください'};
+    createdUnits.push({...unit,defaultToolLoadout:loadout.map(row=>({...row}))});
   }
   const factionState = replaceFactionSettlement({
     ...player.factionState,

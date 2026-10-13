@@ -41,6 +41,7 @@ const tableMap = new Map();
 const sourcePathMap = new Map();
 
 const TABLE_KEY_FIELDS = Object.freeze({
+  道具:["名前"],
   特産品:["名前"],
   クラス:["名前"], テストクラス:["名前"], スキル一覧:["名前"], テストスキル:["名前"], テストゲーム状態:["activePlayerId"],
   外交姿勢:["項目カテゴリ", "項目名"], 研究:["技術対象", "Lv", "項目名"], 効果:["追加効果"],
@@ -53,6 +54,7 @@ const TABLE_KEY_FIELDS = Object.freeze({
 });
 
 const RUNTIME_ROW_KEY_FIELDS = Object.freeze({
+  道具:["名前"],
   特産品:["名前"],
   クラス:["名前"], テストクラス:["名前"], スキル一覧:["名前"], テストスキル:["名前"],
   種族:["key"], 勢力:["種族"], 説明:["技能名"], 範囲:["範囲タイプ"], 効果:["追加効果"],
@@ -62,6 +64,7 @@ const RUNTIME_ROW_KEY_FIELDS = Object.freeze({
 });
 
 const REQUIRED_FIELDS = Object.freeze({
+  道具:["名前", "AP消費", "携帯上限"],
   特産品:["名前", "出現地形", "分類"],
   クラス:["名前", "種類"], テストクラス:["名前", "種類", "テスト専用"], スキル一覧:["名前", "行動"], テストスキル:["名前", "行動", "テスト専用"], 装備:["装備名", "装備箇所"],
   地形:["地形"], 出現敵:["ID", "出現地形", "種族名"],
@@ -71,6 +74,7 @@ const REQUIRED_FIELDS = Object.freeze({
 });
 
 export const GAME_DATA_TABLE_METADATA = Object.freeze({
+  道具:{purpose:"携帯消耗品、素材、製造施設、回復・浄化・霧",status:"connected"},
   特産品:{ purpose:"マップ特産品・特殊資源の配置地形、採取周期、研究速度補正", status:"connected" },
   クラス:{ purpose:"種族・職業・敵クラスの能力、成長、装備、取得スキル", status:"connected" },
   テストクラス:{ purpose:"テストモード専用キャラクターの能力と取得スキル", status:"test-only" },
@@ -141,6 +145,9 @@ const prototypeClasses = tableMap.get("クラス") || [];
 tableMap.set("クラス", [...prototypeClasses, ...expeditionDefaults.supportClasses
   .filter(row => !prototypeClasses.some(source => source.名前 === row.名前))
   .map(row => ({...prototypeClasses.find(source => source.名前 === row.基本クラス), ...row}))]);
+const prototypeSkills=tableMap.get("スキル一覧") || [];
+tableMap.set("スキル一覧",[...prototypeSkills,...(expeditionDefaults.supportSkills || [])
+  .filter(row=>!prototypeSkills.some(source=>source.名前===row.名前))]);
 
 export function hasGameDataTable(name) {
   return tableMap.has(String(name || "").replace(/\.json$/i, ""));

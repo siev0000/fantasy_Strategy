@@ -1,26 +1,8 @@
-import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-const read = path => readFileSync(path, "utf8");
-const url = source => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-const balance = url(read("frontend/src/lib/v39-gameplay-balance.js"));
-const hex = url(read("frontend/src/lib/hex-grid.js"));
-const ray = url(read("frontend/src/lib/v39-combat-ray.js").replace('"./hex-grid.js"', JSON.stringify(hex)));
-const location = url(read("frontend/src/lib/v39-terrain-location.js"));
-const timing = url(read("frontend/src/lib/v39-turn-timing.js"));
-const fog = url(read("frontend/src/lib/v39-fog-rules.js")
-  .replace('"./v39-gameplay-balance.js"', JSON.stringify(balance))
-  .replaceAll('"./v39-combat-ray.js"', JSON.stringify(ray))
-  .replace('"./v39-terrain-location.js"', JSON.stringify(location))
-  .replace('"./v39-turn-timing.js"', JSON.stringify(timing))
-  .replace('"./hex-grid.js"', JSON.stringify(hex)));
-const rules = url(read("frontend/src/lib/v39-corpse-undead-rules.js")
-  .replace('"./v39-gameplay-balance.js"', JSON.stringify(balance))
-  .replace('"./v39-fog-rules.js"', JSON.stringify(fog))
-  .replace('"./v39-terrain-location.js"', JSON.stringify(location))
-  .replace('"./hex-grid.js"', JSON.stringify(hex)));
+import assert from 'node:assert/strict';
+import {fogUrl as fog,corpseUrl as rules} from './v39-fog-test-loader.mjs';
 const { convertV39CorpsesInDeathFog:convert } = await import(rules);
 const { isV39DeathFogSource:source, clearV39FogByWind:clear } = await import(fog);
-const map = () => ({ w:9,h:9,grid:Array.from({length:9},()=>Array(9).fill("平地")),fogMap:[],specialMap:[] });
+const map = () => ({ w:9,h:9,grid:Array.from({length:9},()=>Array(9).fill("平地")),fogMap:[],specialMap:[],purificationByTile:{"4,4":-5,"5,4":-5,"3,4":-5} });
 const mist = (m,x,y,sourceKey) => { m.fogMap[y] ||= []; m.fogMap[y][x] = {kind:"death",sourceKey,expiresAtTurn:10}; };
 const body = (id,x=4,y=4) => ({id,x,y,level:7,hp:0,state:"死亡",deadExpireTurn:10});
 const state = units => ({ activeWorldId:"surface",players:[{id:"p",factionState:{units,squads:[{id:"s",unitIds:units.map(u=>u.id)}],selectedUnitId:units[0]?.id}}],enemies:[],worldEnvironment:{} });

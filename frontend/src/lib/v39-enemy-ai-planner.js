@@ -10,6 +10,7 @@ import { resolveV39BaseMoveApCost, resolveV39MovementTiles, V39_SQUAD_MOVEMENT_B
 import { V39_CORPSE_EATING_BALANCE } from "./v39-gameplay-balance.js";
 import { canV39UnitEatCorpses, v39GroundCorpseAmount, consumeV39GroundCorpse } from "./v39-corpse-eating-rules.js";
 import { getGameDataRows } from "./game-data-registry.js";
+import {isV39Undead} from "./v39-purification-rules.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -113,6 +114,7 @@ function targetsFor(state, enemy = null) {
 }
 
 function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
+  if(isV39Undead(enemy))targets=targets.filter(target=>!isV39Undead(target)||target.id===enemy.aggroTargetUnitId);
   if(enemy.victoryGuard && enemy.victoryLandmarkKey) {
     const progress=state.victoryLandmarksByTile?.[enemy.victoryLandmarkKey]?.guardianByPlayerId||{};
     const guards=(state.enemies||[]).filter(unit=>unit.victoryLandmarkKey===enemy.victoryLandmarkKey);

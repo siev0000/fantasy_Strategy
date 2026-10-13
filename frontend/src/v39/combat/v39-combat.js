@@ -1,5 +1,6 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
+import {applyV39DeathBlade} from "../../lib/v39-purification-rules.js";
 import { resolveV39DefenseKind, grantV39PersonalDefense, v39DefenseDamagePatch,
   createV39DefenseStructure, v39DefenseCovers, resolveV39DefenseFootprint } from "../../lib/v39-defense-rules.js";
 import { hasV39CaveLineOfSight, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
@@ -1179,6 +1180,7 @@ function performAttack(target, session = attackSession, options = {}) {
     ? { ...row, factionState:expResult.factionState }
     : row);
   placeV39SkillFog(ctx.data,areaScale,session.skillRow,currentV39TurnNumber(state));
+  applyV39DeathBlade(ctx.data,attacker,combatLog);
   window.setV39GameState({ ...clearDestroyedWallFacilities(state,ctx.data,resolvedPlayers), enemies:nextEnemies }, { reason:"combat-attack" });
   for (const levelUp of expResult.levelUps) {
     window.dispatchEvent(new CustomEvent("v39:unit-level-up", { detail:levelUp }));
@@ -1413,6 +1415,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     [text(skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state),cooldownDurationTurns(skillRow))
   }}};
   placeV39SkillFog(ctx.data,areaScale,skillRow,currentV39TurnNumber(state));
+  applyV39DeathBlade(ctx.data,attacker,combatLog);
   window.setV39GameState({ ...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages, enemyNests, enemyCombatRuntime }, { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
@@ -1459,6 +1462,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
     areaTiles:[...area.keys()].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};}),splash:resolveSplashSpec(skillRow).value
   });
   placeV39SkillFog(ctx.data,area,skillRow,currentV39TurnNumber(state));
+  applyV39DeathBlade(ctx.data,attacker,entries);
   window.setV39GameState({...clearDestroyedWallFacilities(state,ctx.data), enemies, neutralVillages }, { reason:"neutral-village-defense-attack" });
   const total=entries.reduce((sum,entry)=>sum+entry.total,0);
   const hits = entries.flatMap(entry=>(entry.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss"));

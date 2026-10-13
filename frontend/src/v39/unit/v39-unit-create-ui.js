@@ -1,6 +1,7 @@
 import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation, buildV39UnitCreationPreview } from "../../lib/v39-unit-creation-rules.js";
 import {inspectV39RecruitTraining, inspectV39RecruitTrainingQueue, getV39RecruitTrainingSlots} from "../../lib/v39-recruit-training.js";
 import {getV39RecruitInstructorCandidates, assignV39RecruitInstructor, advanceV39RecruitInstructorMovement} from "../../lib/v39-recruit-instructor.js";
+import {getV39ToolLoadout,resolveV39ToolSlots,getV39ConsumableDefinitions} from "../../lib/v39-consumables.js";
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
@@ -24,6 +25,7 @@ function requestFromPanel(panel) {
     className:panel.querySelector("#v39-unit-class")?.value || "",
     mode:panel.querySelector("#v39-unit-mode")?.value || "army",
     trainingLevel:panel.querySelector("#v39-unit-training-level")?.value || undefined,
+    defaultToolLoadout:panel.querySelector('[data-unit-tool-row]')?[...panel.querySelectorAll('[data-unit-tool-row]')].map(row=>({name:row.querySelector('select').value,count:Number(row.querySelector('input').value)})).filter(row=>row.name):undefined,
     count:Number(panel.querySelector("#v39-unit-count")?.value) || 1
   };
 }
@@ -117,6 +119,12 @@ function render(statusText = "") {
       <label><span>作成数</span><input id="v39-unit-count" type="number" min="1" max="20" value="${count}"></label>
       <label><span>訓練Lv</span><input id="v39-unit-training-level" type="number" min="${check.levelLimits.min}" max="${check.levelLimits.max}" step="1" value="${level}" aria-describedby="v39-training-level-help"></label>
       </div>
+      <details class="v39-unit-create-block"><summary>初期携帯・補充設定（道具枠${resolveV39ToolSlots(previewUnit || {})}）</summary><p>訓練完了時に拠点の完成品在庫から支給。不足しても訓練は完了します。</p>
+        ${Array.from({length:resolveV39ToolSlots(previewUnit || {})},(_,index)=>{
+          const desired=(previous.defaultToolLoadout ?? getV39ToolLoadout(previewUnit))[index];
+          return `<label data-unit-tool-row><select aria-label="初期携帯枠${index+1}"><option value="">なし</option>${getV39ConsumableDefinitions().map(item=>`<option value="${escapeHtml(item.名前)}"${desired?.name===item.名前?' selected':''}>${escapeHtml(item.名前)}</option>`).join('')}</select><input type="number" min="1" aria-label="初期携帯個数${index+1}" value="${desired?.count || 1}"></label>`;
+        }).join('')}
+      </details>
       <span id="v39-training-level-help">総合Lv ${check.levelLimits.min}〜${check.levelLimits.max}</span>
       </div>
       <details class="v39-instructor-picker"><summary>教官: ${escapeHtml(training.instructor?.name || "なし")}${transferUnit ? ` / ${escapeHtml(transferUnit.name)} 到着待ち` : ""}</summary>

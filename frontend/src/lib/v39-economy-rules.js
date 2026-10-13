@@ -1017,6 +1017,7 @@ export function facilityDefinitions() {
     scope:text(row.影響範囲) || "単体マス",
     terrainCondition:text(row.条件地形) || "なし",
     buildTurns:Math.max(1, Math.floor(number(row.建築時間, 1))),
+    buildLimit:Math.max(0, Math.floor(number(row.建築数, 1))),
     gatheringResource:text(row.採取資源),
     gatheringRadius:Math.max(0, Math.floor(number(row.採取範囲))),
     cost:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, Math.max(0, number(row?.[key]))])),
@@ -1168,6 +1169,13 @@ function settlementCapacity(village) {
   return Math.max(1, resolveVillageScaleDefinition(village)?.buildingCapacity || 1);
 }
 
+export function countV39FacilityInstances(village, name = "") {
+  const names=Object.values(village?.tileFacilityMap || {}).flat().map(text);
+  const legacy=(village?.buildings || []).filter(value=>!names.includes(text(value))).map(text);
+  return [...names,...legacy,...(village?.constructionQueue || []).map(row=>text(row.facilityName))]
+    .filter(value=>value && (!name || value===name)).length;
+}
+
 export function inspectV39Construction(state, player, definition, tile, mapData = window.__v39FieldRuntime?.mapData) {
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const key = coordKey(tile?.x, tile?.y);
@@ -1186,21 +1194,22 @@ export function inspectV39Construction(state, player, definition, tile, mapData 
   }
   const researchCheck = inspectFacilityResearch(player?.factionState?.research, definition);
   reasons.push(...researchCheck.reasons);
-  const allNames = new Set([...(village?.buildings || []), ...(village?.constructionQueue || []).map(row => row.facilityName)]);
-  if (allNames.has(definition?.name)) reasons.push("建設済みまたは建設中");
+  const sameCount=countV39FacilityInstances(village,definition?.name);
+  const limit=definition?.buildLimit ?? Math.max(0,number(definition?.row?.建築数,1));
+  if(limit>0 && sameCount>=limit)reasons.push(`同施設の建設上限 ${sameCount}/${limit}（建設中を含む）`);
   const completedAtTile = Array.isArray(village?.tileFacilityMap?.[key])
     ? village.tileFacilityMap[key].map(text).filter(Boolean)
     : [];
   const queuedAtTile = (Array.isArray(village?.constructionQueue) ? village.constructionQueue : [])
     .filter(item => text(item?.tileKey) === key);
   if (completedAtTile.length || queuedAtTile.length) reasons.push("このマスには既に施設があります");
-  const used = allNames.size;
+  const used = countV39FacilityInstances(village);
   const capacity = settlementCapacity(village);
   if (used >= capacity) reasons.push(`施設枠不足 ${used}/${capacity}`);
   const materialPayment = resolveV39ConstructionMaterials(definition?.cost, village?.materialStockByType);
   const shortage = Object.entries(materialPayment.cost).filter(([keyName, cost]) => number(cost) > number(village?.materialStockByType?.[keyName]));
   if (shortage.length) reasons.push(`資材不足: ${shortage.map(([name]) => name).join("・")}`);
-  return { available:reasons.length === 0, reasons, key, used, capacity, levels, village, replacesResidential, researchCheck, materialPayment };
+  return { available:reasons.length === 0, reasons, key, used, capacity, sameCount, limit, levels, village, replacesResidential, researchCheck, materialPayment };
 }
 
 export function startV39Construction(state, playerId, facilityName, tile, mapData = window.__v39FieldRuntime?.mapData, options = {}) {

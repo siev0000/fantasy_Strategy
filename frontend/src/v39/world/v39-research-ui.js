@@ -171,7 +171,7 @@ function itemDetails(item) {
   const details = (item?.details || []).map(row => {
     const suffix = V39_RESEARCH_EFFECT_FIELDS.includes(row.key)
       ? (["幸福度", "治安"].includes(row.key) ? "（目標値加算）" : "（生産技能加算）")
-      : V39_PENDING_RESEARCH_EFFECT_FIELDS.includes(row.key) ? "（未接続）" : "";
+      : row.key==='薬即時回復'?'（即時回復HP加算）':row.key==='薬生成量'?'（製造1回の個数加算）':V39_PENDING_RESEARCH_EFFECT_FIELDS.includes(row.key) ? "（未接続）" : "";
     return `<li><span>${escapeHtml(row.key + suffix)}</span><b>${escapeHtml(row.value)}</b></li>`;
   }).join("");
   const targets = getV39ResearchDiscoveryTargets(item?.category, item?.level, item?.id);

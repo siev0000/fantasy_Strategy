@@ -1,7 +1,11 @@
 import { getV39ToolDefinitions, useV39ExpeditionTool, replenishV39ExpeditionTools, gatherV39ExpeditionHerbs, depositV39ExpeditionCargo } from "../../lib/v39-expedition-tools.js";
 import { getHexDistance } from "../../lib/hex-grid.js";
 import "./v39-expedition-tools-ui.css";
+import {getV39ToolLoadout,resolveV39ToolSlots,inspectV39ToolProduction,startV39ToolProduction,cancelV39ToolProduction} from "../../lib/v39-consumables.js";
 let expandedToolId="",selectedUnitId="";
+let selectedToolTile=null;
+window.addEventListener('v39:tile-selected',event=>{selectedToolTile=event.detail;schedule();});
+for(const name of ['v39:unit-selected','v39:field-layer-changed','v39:save-loaded','v39:turn-advanced'])window.addEventListener(name,()=>{selectedToolTile=null;});
 
 function invoke(operation,...args) {
   if(window.isV39MapInputLocked?.())return;
@@ -9,7 +13,7 @@ function invoke(operation,...args) {
   if(!unit)return;
   const result=operation(state,state.activePlayerId,unit.id,...args);
   if(result.ok){
-    if(result.map)window.__v39FieldRuntime.mapData.caveSites=result.map.caveSites;
+    if(result.map)for(const key of ['caveSites','fogMap','purificationByTile'])if(key in result.map)window.__v39FieldRuntime.mapData[key]=result.map[key];
     window.setV39GameState({players:result.state.players},{reason:"expedition-tools"});
     window.refreshV39SquadDerivedUI?.();window.refreshV39MapEntities?.();
     window.appendV39ActivityLog?.(state.activePlayerId,"道具",result.message,{worldId:state.activeWorldId});
@@ -42,11 +46,22 @@ function renderTools() {
     const result=window.assignV39MineDuty(unit.id,'none');window.showV39TurnBanner?.(result.ok?'鉱床任務を解除しました':result.reason);schedule();
   });
   for(const item of getV39ToolDefinitions()){
-    if(Number(unit.toolStockByType?.[item.名前])>0)addCard(list,`use-${item.名前}`,`${item.名前} ×${unit.toolStockByType[item.名前]}`,
-      `AP ${item.AP消費} / 即時HP+${item.即時回復} / 毎ターンHP+${item.毎ターン回復} ⌛${item.持続ターン} / 自身に使用・回復効果は上書き`,()=>invoke(useV39ExpeditionTool,item.名前));
+    if(Number(unit.toolStockByType?.[item.名前])>0&&getV39ToolLoadout(unit).some(row=>row.name===item.名前))addCard(list,`use-${item.名前}`,`${item.名前} ×${unit.toolStockByType[item.名前]}`,
+      `AP ${item.AP消費} / ${item.効果==='浄化'?'使用マスを浄化（HP回復なし）':item.効果==='霧'?`対象マスをタップして通常霧 ⌛${item.持続ターン} / 対象 ${selectedToolTile?`(${selectedToolTile.x},${selectedToolTile.y})`:'未選択'}`:`即時HP+${item.即時回復} / 毎ターンHP+${item.毎ターン回復} ⌛${item.持続ターン} / 回復効果は上書き`}`,
+      ()=>invoke(useV39ExpeditionTool,item.名前,map,selectedToolTile));
     const inspection=replenishV39ExpeditionTools(state,state.activePlayerId,unit.id,map,item.名前);
-    if(inspection.ok)addCard(list,`refill-${item.名前}`,`${item.名前}の補充`,`${item.名前}の在庫${item.材料?`、または研究後に${item.材料}`:""}を消費 / 上限${item.携帯上限} / AP消費なし`,()=>invoke(replenishV39ExpeditionTools,map,item.名前));
+    if(inspection.ok)addCard(list,`refill-${item.名前}`,`${item.名前}の補充`,`${item.名前}の現地完成品在庫を消費 / 上限${item.携帯上限} / AP消費なし`,()=>invoke(replenishV39ExpeditionTools,map,item.名前));
+    const production=inspectV39ToolProduction(state,state.activePlayerId,unit.id,item.名前);
+    if(production.available)addCard(list,`produce-${item.名前}`,`${item.名前}を製造`,`${item.製造施設} / 素材 ${item.必要素材} / ${production.amount}個 / ⌛${item.製造ターン}（暫定）`,()=>invoke(startV39ToolProduction,item.名前));
   }
+  const productionQueues=(player.factionState.settlements || []).filter(village=>unit.worldId!=='surface'&&unit.worldId?false:unit.x===village.x&&unit.y===village.y||village.territoryResidentialCenterMap?.[`${unit.x},${unit.y}`]===`${village.x},${village.y}`)
+    .flatMap(village=>(village.toolProductionQueue || []).map(row=>({...row,settlementId:village.settlementId})));
+  for(const row of productionQueues)addCard(list,`production-${row.name}`,`${row.name}製造 ⌛${row.remainingTurns}`,`${row.facilityName} / ${row.status || '製造中'} / 拠点内に担当者がいる間進行。実行で予約を取消し素材を返却`,()=>{
+    if(window.isV39MapInputLocked?.())return;
+    const current=window.getV39GameState(),result=cancelV39ToolProduction(current,current.activePlayerId,row.settlementId,row.name);
+    if(result.ok)window.setV39GameState({players:result.state.players},{reason:'tool-production-cancel'});
+    window.showV39TurnBanner?.(result.message || result.reason);schedule();
+  });
   for(const site of map?.caveSites||[]){
     if(!site.discovered||!['herb','mushroom'].includes(site.kind)||getHexDistance(unit,site)>1)continue;
     const inspection=gatherV39ExpeditionHerbs(state,state.activePlayerId,unit.id,map,site.id);
@@ -54,6 +69,8 @@ function renderTools() {
   }
   if(Object.values(unit.expeditionCargoByType||{}).some(value=>value>0)&&depositV39ExpeditionCargo(state,state.activePlayerId,unit.id).ok)
     addCard(list,"deposit","道具素材を預ける",Object.entries(unit.expeditionCargoByType).map(([name,amount])=>`${name} ${amount}`).join(" / "),()=>invoke(depositV39ExpeditionCargo));
+  if(Object.values(unit.toolStockByType || {}).some(value=>value>0)&&depositV39ExpeditionCargo(state,state.activePlayerId,unit.id).ok)
+    addCard(list,'deposit-tools','携帯道具を預ける',`枠外を含む全道具を現地拠点へ預けます / 道具枠${resolveV39ToolSlots(unit)}`,()=>invoke(depositV39ExpeditionCargo,true));
   for(const card of list.querySelectorAll('[data-expedition-tool]'))if(card.dataset.expeditionTool===expandedToolId){card.classList.add("is-expanded");card.setAttribute("aria-expanded","true");}
 }
 let pending=false;

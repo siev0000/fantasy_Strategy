@@ -1,0 +1,57 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-20261013-consumables.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "施設",
+    "装備",
+    "道具"
+  ],
+  "excluded_workbook_sheets": [
+    "CS",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 3,
+    "records": 74,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "施設",
+      "output": "施設.json",
+      "input_rows": 999,
+      "records": 37,
+      "skipped_blank_rows": 962,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "装備",
+      "output": "装備.json",
+      "input_rows": 999,
+      "records": 32,
+      "skipped_blank_rows": 966,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 1,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "道具",
+      "output": "道具.json",
+      "input_rows": 5,
+      "records": 5,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

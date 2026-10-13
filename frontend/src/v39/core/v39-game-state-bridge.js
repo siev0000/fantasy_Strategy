@@ -234,6 +234,8 @@ function cloneUnit(unit) {
     ...unit,
     prerequisiteClassLevels:cloneRecord(unit?.prerequisiteClassLevels),
     ...(unit.classGrowthStart ? {classGrowthStart:cloneRecord(unit.classGrowthStart)} : {}),
+    ...(unit.promotionGrowthStart ? {promotionGrowthStart:cloneRecord(unit.promotionGrowthStart)} : {}),
+    ...(unit.classPromotionHistory ? {classPromotionHistory:normalizeEntityArray(unit.classPromotionHistory)} : {}),
     status: cloneRecord(unit?.status),
     skillLevels: cloneRecord(unit?.skillLevels),
     acquiredSkillNames: Array.isArray(unit?.acquiredSkillNames) ? [...unit.acquiredSkillNames] : unit?.acquiredSkillNames,
