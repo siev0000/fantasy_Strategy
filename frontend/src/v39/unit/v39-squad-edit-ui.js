@@ -11,7 +11,7 @@ function render(id="") {
   dialog.innerHTML=`<header><h2 id="v39-squad-editor-title">部隊編制</h2><button type="button" data-squad-edit-close aria-label="閉じる">${context.onClose ? "戻る" : "×"}</button></header>
     <div class="v39-squad-edit-body"><label>編集する部隊<select id="v39-squad-edit-target"><option value="">新規作成</option>${squads.map(row=>`<option value="${html(row.id)}"${row.id===id?" selected":""}>${html(row.label || row.id)}</option>`).join("")}</select></label>
     <label>部隊名<input id="v39-squad-edit-name" value="${html(squad?.label || "新部隊")}" maxlength="40"></label>
-    <p>メンバー <b id="v39-squad-edit-count"></b> / ${balance.maxMembers}体。離れたマスでも編制できます。座標・APは変わりません。</p>
+    <p>メンバー <b id="v39-squad-edit-count"></b>。通常${balance.maxMembers}体まで・召喚は別枠。離れたマスでも編制できます。座標・APは変わりません。</p>
     <div class="v39-squad-edit-members">${(faction.units || []).map(unit=>{
       const restriction=getV39SquadMemberRestriction(faction,unit,context.worldId);
       const member=squad?.unitIds.includes(unit.id);
@@ -28,8 +28,9 @@ function updateMembers(preferred) {
   const select=dialog.querySelector("#v39-squad-edit-leader"),previous=preferred || select.value;
   select.innerHTML=ids.map(id=>`<option value="${html(id)}">${html(faction.units.find(unit=>unit.id===id)?.name || id)}</option>`).join("");
   if(ids.includes(previous)) select.value=previous;
-  dialog.querySelector("#v39-squad-edit-count").textContent=ids.length;
-  dialog.querySelector("[data-squad-edit-save]").disabled=ids.length<1||ids.length>balance.maxMembers;
+  const normal=ids.filter(id=>!faction.units.find(unit=>unit.id===id)?.summon).length;
+  dialog.querySelector("#v39-squad-edit-count").textContent=`通常${normal}/${balance.maxMembers}・召喚${ids.length-normal}`;
+  dialog.querySelector("[data-squad-edit-save]").disabled=ids.length<1||normal>balance.maxMembers;
 }
 function open(options = {}) {
   if(window.isV39MapInputLocked?.())return;

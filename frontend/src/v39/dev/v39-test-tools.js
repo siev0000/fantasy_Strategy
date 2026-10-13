@@ -586,7 +586,13 @@ function undeadTestStatusHtml(state) {
       const bodies=number((loot?.cargo || loot)?.resourcesByType?.死体)/V39_FOG_BALANCE.corpseResourcePerBody;
       return `${key}: 死体${bodies} / 浄化${number(map?.purificationByTile?.[key])}`;
     });
-    return `<p data-undead-test-world="${id}"><strong>${label}: アンデッド${count} / 死の霧${fog}マス</strong><br>${tiles.join("<br>")}</p>`;
+    const units=[...(spatial?.enemies || []),...(state.players || []).flatMap(player=>player.factionState?.units || [])];
+    const individuals=(undeadTest.個体死体 || []).filter(row=>row.worldId===id).map(row=>{
+      const body=units.find(unit=>unit.id===row.id),raised=units.find(unit=>unit.undeadOrigin?.unitId===row.id);
+      const status=raised?`${raised.race}・${raised.className} Lv${raised.level} / 装備${raised.equipment?.length || 0}`:body?'死体':'消失';
+      return `${row.x},${row.y}: ${row.name} Lv${row.level} → ${status}`;
+    });
+    return `<p data-undead-test-world="${id}"><strong>${label}: アンデッド${count} / 死の霧${fog}マス</strong><br>資源死体（画像なし）<br>${tiles.join("<br>")}<br>個体死体（画像あり）<br>${individuals.join('<br>')}</p>`;
   }).join("");
 }
 function panelHtml() {
@@ -624,7 +630,7 @@ function panelHtml() {
   return `
     <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
     <div class="v39-test-tools-scroll">
-      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>鉱床・道具・部隊支援</summary><div class="v39-test-section-body"><p>専用データで検証。開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><div class="v39-test-button-row"><button data-test-action="expedition-start">輸送・道具・支援テスト</button><button data-test-action="expedition-invasion">侵入・再巣化テスト</button><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div><p>輸送は設定済み。道具試験官は薬草・水薬を所持。王・指揮官・王の騎士は同部隊です。村の警備・建設依頼は受注して確認します。入口警備は輸送を解除してから別途指定してください。</p></div></details>
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>鉱床・道具・部隊支援</summary><div class="v39-test-section-body"><p>専用データで検証。開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="expedition-start">輸送・道具・支援テスト</button><button data-test-action="expedition-invasion">侵入・再巣化テスト</button><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div><p>輸送は設定済み。道具試験官は薬草・水薬を所持。王・指揮官・王の騎士は同部隊です。村の警備・建設依頼は受注して確認します。入口警備は輸送を解除してから別途指定してください。</p></div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
@@ -677,6 +683,7 @@ function handleAction(action) {
     "undead-test-surface":()=>{if(window.viewV39ExpeditionTestWorld?.("surface"))window.activateV39FooterTab?.("test");},
     "undead-test-cave":()=>{if(window.viewV39ExpeditionTestWorld?.(undeadTest.洞窟ID))window.activateV39FooterTab?.("test");},
     "undead-test-turn":()=>advanceTurn(),
+    "call-test-start":()=>{if(window.confirm("現在のゲームを召喚・呼集テストに置き換えます。開始しますか？"))window.startV39CallTest?.();},
     "expedition-start":()=>{if(window.confirm("現在のゲームを専用検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(false);},
     "expedition-invasion":()=>{if(window.confirm("現在のゲームを侵入・再巣化の検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(true);},
     "expedition-surface":()=>window.viewV39ExpeditionTestWorld?.("surface"),

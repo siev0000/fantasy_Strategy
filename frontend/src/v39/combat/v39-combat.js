@@ -1,6 +1,8 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
 import {applyV39DeathBlade} from "../../lib/v39-purification-rules.js";
+import {convertV39CorpsesInDeathFog} from '../../lib/v39-corpse-undead-rules.js';
+import {createV39EventEnemy} from '../ai/v39-enemy-spawn.js';
 import { resolveV39DefenseKind, grantV39PersonalDefense, v39DefenseDamagePatch,
   createV39DefenseStructure, v39DefenseCovers, resolveV39DefenseFootprint } from "../../lib/v39-defense-rules.js";
 import { hasV39CaveLineOfSight, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
@@ -766,6 +768,10 @@ function executeAttack(target) {
   const delayTurns = castDurationTurns(session.skillRow);
   const ctx = activeRuntime();
   const area = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow, session.defenseFacing || 0);
+  if(hasV39SkillEffect(session.skillRow,'アンデッド化')&&!prepareUndeadConversion(state,ctx,area)?.spawned.length) {
+    showToast('変換できる死体または配置可能な空きマスがありません');
+    return false;
+  }
   const requiresConfirmation = area.size > 1 || ["壁", "結界"].includes(resolveV39DefenseKind(session.skillRow));
   if (requiresConfirmation && (!session.confirmedTarget || coordKey(session.confirmedTarget.x, session.confirmedTarget.y) !== coordKey(target.x, target.y))) {
     session.confirmedTarget = { x:target.x, y:target.y };
@@ -879,6 +885,50 @@ function performRevival(target, session, options, state, player, attacker, reviv
   cancelAttack("revival-complete");
   renderActionPanel();
   return true;
+}
+
+function prepareUndeadConversion(state,ctx,area) {
+  const bodies=[...state.players.flatMap(row=>row.factionState?.units || []),...(state.enemies || []),
+    ...(state.neutralVillages || []).flatMap(row=>row.defenseUnits || [])]
+    .filter(unit=>isV39UnitInWorld(unit,state.activeWorldId)&&number(unit.hp,unit.currentHp)<=0&&area.has(coordKey(unit.x,unit.y)));
+  return convertV39CorpsesInDeathFog(state,ctx.data,currentV39TurnNumber(state),{
+    createEnemy:createV39EventEnemy,corpseIds:new Set(bodies.map(unit=>unit.id))});
+}
+
+function performUndeadConversion(target,session,options,state,player,attacker,apCost,ctx,area) {
+  const patch=prepareUndeadConversion(state,ctx,area);
+  if(!patch?.spawned.length) {
+    showToast('変換できる死体または配置可能な空きマスがありません');
+    if(options.clearPending)clearPendingAction(player.id,text(attacker.id),'cast-target-invalid');
+    return false;
+  }
+  const created=patch.spawned.map(({enemy})=>({...enemy,role:'味方',ownerPlayerId:player.id,aggressive:false,
+    squadId:'solo',unitType:enemy.combatProfile?.mode==='army'?'軍隊ユニット':'ユニット'}));
+  const ids=new Set(created.map(unit=>unit.id));
+  patch.enemies=patch.enemies.filter(unit=>!ids.has(unit.id));
+  patch.enemySquads=patch.enemySquads.filter(row=>!row.unitIds.some(id=>ids.has(id)));
+  patch.players=patch.players.map(row=>{
+    if(row.id!==player.id)return row;
+    const runtime=row.factionState.combatRuntime || {};
+    const pendingActionsByUnitId={...runtime.pendingActionsByUnitId};
+    if(options.clearPending)delete pendingActionsByUnitId[attacker.id];
+    const turn=currentV39TurnNumber(state);
+    const cooldownsByUnitId={...runtime.cooldownsByUnitId,[attacker.id]:{
+      ...runtime.cooldownsByUnitId?.[attacker.id],[session.skillRow.名前]:resolveV39DeadlineTurn(turn,cooldownDurationTurns(session.skillRow))}};
+    return {...row,factionState:{...row.factionState,units:[...row.factionState.units.map(unit=>{
+      if(unit.id!==attacker.id)return unit;
+      const ap=options.apPaid?currentAp(unit):currentAp(unit)-apCost;
+      return {...unit,ap,currentAp:ap,actionPoint:ap,lastActionTurn:turn,lastUsedAttack:session.skillRow.名前};
+    }),...created],combatRuntime:{...runtime,pendingActionsByUnitId,cooldownsByUnitId}}};
+  });
+  delete patch.spawned;
+  window.setV39GameState(patch,{reason:'combat-undead-conversion'});
+  if(window.__v39SuppressCombatEffects!==true)void window.playV39MapEffect?.({skillRow:session.skillRow,attacker,
+    attackerTile:{x:attacker.x,y:attacker.y},tileX:target.x,tileY:target.y});
+  const summary=`${attacker.name}：${session.skillRow.名前} / ${created.map(unit=>`${unit.name} Lv${unit.level}`).join('、')} / AP-${apCost}`;
+  window.dispatchEvent(new CustomEvent('v39:combat-log',{detail:{summary,attackerId:attacker.id,skillName:session.skillRow.名前,apCost,target,entries:[]}}));
+  if(options.clearPending)window.dispatchEvent(new CustomEvent('v39:cast-ended',{detail:{playerId:player.id,unitId:attacker.id,reason:'resolved'}}));
+  showToast(summary);cancelAttack('undead-conversion-complete');renderActionPanel();return true;
 }
 
 function performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx) {
@@ -997,6 +1047,7 @@ function performAttack(target, session = attackSession, options = {}) {
     return false;
   }
   if (revivalSpec) return performRevival(target, session, options, state, player, attacker, revivalSpec, apCost);
+  if(hasV39SkillEffect(session.skillRow,'アンデッド化'))return performUndeadConversion(target,session,options,state,player,attacker,apCost,ctx,areaScale);
   if (transformSpec) return performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx);
   if (["壁", "結界"].includes(defenseKind)) {
     const structure = createV39DefenseStructure(ctx.data, target, session.skillRow,

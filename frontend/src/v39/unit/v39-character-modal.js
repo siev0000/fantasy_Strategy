@@ -48,7 +48,7 @@ function skillsPanel(unit) {
 }
 function equipmentPanel(unit) {
   const equipment = Array.isArray(unit?.equipment) ? unit.equipment : [];
-  const fixed = isMobUnit(unit) || isDead(unit);
+  const fixed = isMobUnit(unit) || isDead(unit) || !!unit.summon;
   return `<div class="squad-detail-tab-panel v39-char-detail-scroll">
     <p class="v39-char-note">${fixed ? "このユニットの装備は変更できません。" : "装備を押して変更候補と性能を比較"}</p>
     <div class="v39-char-equipment-list">${EQUIPMENT_SLOT_KEYS.map(slot => {

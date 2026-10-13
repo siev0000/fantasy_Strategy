@@ -49,7 +49,7 @@ export function acquireV39UpperClass(state,playerId,unitId,className) {
   const beforeMax=Number(unit.maxHp)||1,ratio=Math.min(1,Number(unit.hp ?? unit.currentHp)/beforeMax);
   let updated=applyV39DerivedCharacterData({...unit,className,prerequisiteClassLevels:{...check.derived.prerequisiteClassLevels,[unit.className]:check.limit},
     promotionGrowthStart:{level:check.derived.baseLevel,raceLevels:check.derived.raceLevels,classLevels:check.surplus},
-    classGrowthStart:null,classPromotionHistory:[...(unit.classPromotionHistory || []),{from:unit.className,to:className,level:unit.level,transferredLevels:check.surplus}]});
+    classGrowthStart:null,undeadGrowthStart:null,classPromotionHistory:[...(unit.classPromotionHistory || []),{from:unit.className,to:className,level:unit.level,transferredLevels:check.surplus}]});
   const hp=Math.max(1,Math.floor(updated.maxHp*ratio));updated={...updated,hp,currentHp:hp};
   return {ok:true,state:{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:{...row.factionState,
     units:row.factionState.units.map(member=>member.id===unitId?updated:member)}}:row)},message:`${className}を取得 / ${unit.className}Lv${check.limit}＋${className}Lv${check.surplus}`};

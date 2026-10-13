@@ -647,6 +647,7 @@ export const V39_CORPSE_EATING_BALANCE = Object.freeze({
 });
 
 export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
+  inheritedUndeadLevelCap:10, // 死体から取得するアンデッド職の初期Lv上限
   purificationThreshold:-5, // この値以下のマスだけ不浄イベント候補にする。
   corpsePurificationLoss:1, // 死体があるマスの毎ターン減少量。死体数では増やさない。
   fogPurificationLoss:1, // 死の霧があるマスの毎ターン追加減少量。
@@ -656,7 +657,7 @@ export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
   // 死の霧内の死体1体ごとの変化確率。自然発生の2%とは別に判定する。
   corpseMistSourceChance:1,
   corpseMistOtherChance:0.5,
-  // 発生源マスの死体から生まれたアンデッドへのLv補正。
+  // 出自不明の資源死体のみ、発生源マスの生成Lvへ加算。個体死体は継承式を使う。
   corpseMistSourceLevelBonus:3,
   // 死の霧マスに毎ターン行う自然発生判定。0.02 = 2%。
   deathMistChancePerTile:0.02,

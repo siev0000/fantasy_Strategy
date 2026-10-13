@@ -1,4 +1,5 @@
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import {expireV39Summons} from "../../lib/v39-summon-rules.js";
 import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
@@ -156,13 +157,14 @@ function normalizeDeadUnit(unit, turnNumber) {
 }
 
 export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
-  const state = window.getV39GameState?.();
-  if (!state) return { collected:0, expired:0 };
+  const before = window.getV39GameState?.();
+  if (!before) return { collected:0, expired:0 };
+  const summons=expireV39Summons(before,turnNumber),state=summons.state;
   let collected = 0;
   let expired = 0;
   let cargoRecovered = 0;
   let groundLootCreated = 0;
-  let changed = false;
+  let changed = summons.removed.length>0;
   let groundLootByTile = { ...(state.groundLootByTile || {}) };
   let players = state.players.map((player) => {
     let faction = player.factionState;

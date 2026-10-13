@@ -251,12 +251,12 @@ function renderWorldActions() {
     const questProgress = quest?.type === "hunt"
       ? ` / 討伐 ${quest.required-(quest.targetEnemyIds||[]).filter(id=>state.enemies?.some(enemy=>enemy.id===id&&number(enemy.currentHp??enemy.hp)>0)).length}/${quest.required}体`
       : ['watch','construction'].includes(quest?.type)?` / ${quest.progress||0}/${quest.required}${quest.type==='watch'?'ターン（村の周囲で警備）':'施設（受注後に新築）'}`
-      : (quest?.accepted && !quest.completed ? ` / 必要 ${quest.resourceKey || "資源"} ${quest.required}` : "");
+      : (quest?.accepted && !quest.completed ? ` / 納品 ${quest.resourceKey || "資源"} ${quest.progress||0}/${quest.required}` : "");
     subdetail.textContent = `${village.vassalPlayerId ? `属国: ${village.vassalPlayerId}` : "独立"} / 守備${(village.defenseUnits || []).reduce((sum, row) => sum + number(row.count), 0)}人${quest?.accepted && !quest.completed ? ` / 依頼: ${quest.label}${questProgress}` : ""}`;
     buttons.innerHTML = [
       `<button type="button" data-world-action="relation">交流</button>`,
       quest?.accepted && !quest.completed
-        ? `<button type="button" data-world-action="quest-complete">依頼完了</button>`
+        ? `<button type="button" data-world-action="quest-complete">${quest.type==='delivery'?'納品・報告':'依頼完了'}</button>`
         : "",
       `<button type="button" data-world-action="vassal"${village.vassalPlayerId ? " disabled" : ""}>属国化</button>`,
       `<button type="button" data-world-action="raid">襲撃</button>`

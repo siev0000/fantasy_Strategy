@@ -254,6 +254,7 @@ export function changeV39UnitEquipment(state, playerId, request = {}) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const unit = player?.factionState?.units?.find(row => text(row?.id) === text(request.unitId));
   if (!unit) return { ok:false, reason:"キャラクターが見つかりません", state };
+  if (unit.summon) return {ok:false,state,reason:"召喚ユニットの装備は交換できません"};
   if (isMobUnit(unit)) return { ok:false, reason:"モブは固定装備です。レア度一新を使用してください", state };
   const slot = normalizeV39EquipmentSlot(request.slot);
   if (!slot) return { ok:false, reason:"装備部位が不正です", state };

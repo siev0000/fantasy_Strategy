@@ -212,7 +212,9 @@ export function validateGameDataRegistry() {
       for (const field of REQUIRED_FIELDS[table.name] || []) {
         if (!asText(row?.[field])) issues.push({ level:"warning", type:"missing-required", table:table.name, recordId:id, field });
       }
-      if (["クラス", "テストクラス"].includes(table.name)) for (let index = 1; index <= 10; index += 1) validateSkillReference(issues, table.name, id, `Skill${index}`, row?.[`Skill${index}`]);
+      if (["クラス", "テストクラス"].includes(table.name)) for (const field of Object.keys(row)) {
+        if (/^(Skill|スキル)[1-9]\d*$/.test(field)) validateSkillReference(issues, table.name, id, field, row[field]);
+      }
       if (table.name === "出現敵") {
         validateReference(issues, table.name, id, "種族", "クラス", "名前", row?.種族);
         validateReference(issues, table.name, id, "サブクラス", "クラス", "名前", row?.サブクラス);

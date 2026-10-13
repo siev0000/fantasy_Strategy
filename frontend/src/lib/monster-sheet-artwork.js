@@ -1,5 +1,6 @@
 import { enemySpawnData } from "./game-data-registry.js";
 import { resolveAnimalArtworkReference } from "./animal-artwork-config.js";
+import {resolveUndeadArtworkReference} from './undead-artwork-config.js';
 
 const MONSTER_SHEET_COLUMNS = 4;
 const MONSTER_SHEET_ROWS = 3;
@@ -123,6 +124,8 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
 }
 
 function resolveReferenceFromEnemy(enemy) {
+  const undead=resolveUndeadArtworkReference(enemy);
+  if(undead)return undead;
   const directFileName = text(
     enemy?.画像ファイル
     ?? enemy?.imageFile

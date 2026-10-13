@@ -34,9 +34,10 @@ export function editV39Squad(state,playerId,request) {
   if(request.squadId && !existing) return fail("部隊が見つかりません");
   if(request.disband && !existing) return fail("解散する部隊を選んでください");
   const ids=[...new Set(request.disband?[]:request.unitIds || [])];
-  if(!request.disband && (!ids.length || ids.length>balance.maxMembers)) return fail(`部隊は1～${balance.maxMembers}体で編制してください`);
+  if(!request.disband && !ids.length) return fail('部隊のメンバーを選んでください');
   const members=ids.map(id=>faction.units.find(unit=>unit.id===id));
   if(members.some(unit=>!unit)) return fail("ユニットが見つかりません");
+  if(members.filter(unit=>!unit.summon).length>balance.maxMembers)return fail(`通常の部隊員は${balance.maxMembers}体まで（召喚ユニットは別枠）`);
   const worldId=state.activeWorldId || "surface";
   for(const unit of members) {
     const reason=getV39SquadMemberRestriction(faction,unit,worldId);
@@ -46,7 +47,10 @@ export function editV39Squad(state,playerId,request) {
   // 共有荷物は分割先が未指定。移籍時に消失・複製しないよう荷下ろしを先に行う。
   if(changed && rows.some(row=>!isV39CargoEmpty(row.cargo) && (row===existing || row.unitIds.some(id=>ids.includes(id)&&row.id!==existing?.id))))
     return fail("編制を変える部隊の運搬品を先に荷下ろししてください");
-  const id=existing?.id || `squad-${globalThis.crypto.randomUUID()}`;
+  // LANのHTTPではrandomUUIDが使えない。現在の部隊と衝突しないIDを補完する。
+  const baseId=existing?.id||`squad-${globalThis.crypto?.randomUUID?.()||`${playerId}-${Date.now()}`}`;
+  let id=existing?.id||baseId,suffix=0;
+  while(!existing&&rows.some(row=>row.id===id))id=`${baseId}-${++suffix}`;
   const leader=ids.includes(request.movementLeaderId)?request.movementLeaderId:ids.includes(existing?.movementLeaderId)?existing.movementLeaderId:ids[0];
   const departing=new Set([...original.filter(unitId=>!ids.includes(unitId)),...ids]);
   const units=faction.units.map(unit=>{

@@ -33,6 +33,6 @@ export function renderV39UnitCard(unit, options={}) {
   const position = options.position ?? `(${unit.x ?? "-"},${unit.y ?? "-"})`;
   const positionLabel = escapeHtml(position) + automaticOperationIcon(unit);
   const expTitle = exp.atLimit ? `Lv${exp.level} 成長上限` : `Lv${exp.level} EXP ${exp.exp}/${exp.need}`;
-  const attribute = options.character ? "data-v39-character-row" : "data-v39-unit-id";
+  const attribute = options.attribute || (options.character ? "data-v39-character-row" : "data-v39-unit-id");
   return `<button class="squad-card${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead ? " dead" : ""}" ${attribute}="${escapeHtml(id)}" title="${escapeHtml(name)} Lv${exp.level}"><div class="squad-card-top"><div class="squad-main"><span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}"><span class="squad-icon">${options.icon ?? escapeHtml(unit.icon ?? unit.glyph ?? unit.symbol ?? "◆")}</span><span class="squad-level-number" aria-hidden="true">${exp.level}</span></span><div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div><div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div></button>`;
 }

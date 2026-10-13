@@ -3,6 +3,8 @@ import { getIconSrcByName } from "../../lib/icon-library.js";
 import { resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "../../lib/v39-combat-engine.js";
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
 import { inspectV39Passive } from "../../lib/v39-passive-rules.js";
+import {getV39SummonEntries} from "../../lib/v39-summon-rules.js";
+import {getV39CallEntries} from '../../lib/v39-call-rules.js';
 import "./v39-unit-skills.css";
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const num = (value, fallback = null) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -133,7 +135,11 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
             <span class="technique-detail">${detailHtml}</span>
           </button>`;
         };
-    const activeHtml = activeRows.map(renderTechnique).join("");
+    const summons=getV39SummonEntries(unit);
+    const calls=getV39CallEntries(unit);
+    const activeHtml = activeRows.filter(row=>!interactive||!/^(召喚|呼集)_/.test(String(techniqueSource(row)?.効果 || ''))).map(renderTechnique).join("")
+      +(interactive&&summons.length?`<button type="button" class="technique-card action-technique" data-v39-technique-name="召喚" data-v39-summon-open="${escapeHtml(unit.id)}"><span class="technique-summary"><span class="technique-icon technique-icon-neutral"><span class="technique-icon-glyph">◆</span></span><b class="technique-name">召喚</b><small>候補${summons.length}</small></span></button>`:'')
+      +(interactive&&calls.length?`<button type="button" class="technique-card action-technique" data-v39-technique-name="呼集" data-v39-call-open="${escapeHtml(unit.id)}"><span class="technique-summary"><span class="technique-icon technique-icon-neutral"><span class="technique-icon-glyph">↪</span></span><b class="technique-name">呼集</b><small>自軍の呼び寄せ</small></span></button>`:'');
     const passiveHtml = passiveRows.length
       ? `<div class="technique-passive-divider">パッシブ</div>${passiveRows.map(renderTechnique).join("")}`
       : "";

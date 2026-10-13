@@ -366,7 +366,7 @@ export class PhaserEffectPlayer {
     };
 
     const applyColor = (image, frameIndex, elapsedMs) => {
-      if (!image) return;
+      if (!image?.scene || !image.frame?.data) return;
       const hueShift = huePerFrame * frameIndex;
       if (!gradientEnabled) {
         if (tint === null) image.clearTint?.();
@@ -444,7 +444,7 @@ export class PhaserEffectPlayer {
     };
 
     const applyFrame = (image, frameIndex, elapsedMs = nowMs() - playbackStartedAt) => {
-      if (!image) return;
+      if (!image?.scene || !image.frame?.data) return;
       const placement = resolvePlacement(frameIndex);
       image.setCrop(placement.cropX, placement.cropY, layout.frameWidth, layout.frameHeight);
       image.setPosition(placement.x, placement.y);
@@ -525,7 +525,8 @@ export class PhaserEffectPlayer {
 
       const frameInterval = Math.max(16, Math.floor(duration / layout.frameCount));
       this.frameTimer = setInterval(() => {
-        if (requestId !== this.requestId || !this.effectImage) {
+        // セーブ読込等でSceneが先に破棄される場合、破棄済みFrameへ触れない。
+        if (requestId !== this.requestId || !this.effectImage?.scene || !this.effectImage.frame?.data) {
           this.clearActiveObjects();
           finish();
           return;

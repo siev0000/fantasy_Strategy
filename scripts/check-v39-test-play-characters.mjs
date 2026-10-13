@@ -45,7 +45,7 @@ try {
     });
     assert.equal(report.caveOn,0);assert.equal(report.caveToggled,0);assert.equal(report.normalOn,0);
     assert.equal(report.testOff.length,2);
-    assert.equal(report.testOff.find(u=>u.id.endsWith("combat-tester")).skills.length,10);
+    assert.equal(report.testOff.find(u=>u.id.endsWith("combat-tester")).skills.length,11);
     assert.deepEqual(report.toggled,report.testOff.map(u=>u.id));
     assert.deepEqual(report.restored,report.toggled);assert.equal(report.respawned,false);
     assert.deepEqual(errors,[]);

@@ -102,7 +102,7 @@ export function resolveAttackRows(unit) {
     .map(buildWeaponAttackRow);
   const bodyWeapons = resolveV39BodyWeaponAttackRows(unit);
   const bodyNames = new Set(bodyWeapons.map(row => row.名前));
-  return [...weapons, ...bodyWeapons, ...resolveActionSkillRows(unit).filter(row => !bodyNames.has(row.名前))];
+  return [...weapons, ...bodyWeapons, ...resolveActionSkillRows(unit).filter(row => !bodyNames.has(row.名前) && !/^(召喚|呼集)_/.test(text(row.効果)))];
 }
 
 function isMeleeCounterRow(row, unit, allowWeaponSkill = false) {
@@ -211,7 +211,7 @@ export function applyV39ActiveCombatEffects(unit, effects) {
 }
 
 export function isV39SupportSkill(skillRow, attacker) {
-  return hasV39SkillEffect(skillRow,"遮断") || !!resolveV39DefenseKind(skillRow) || !!resolveV39RevivalSpec(skillRow)
+  return hasV39SkillEffect(skillRow,"アンデッド化") || hasV39SkillEffect(skillRow,"遮断") || !!resolveV39DefenseKind(skillRow) || !!resolveV39RevivalSpec(skillRow)
     || resolveSkillHealing(skillRow, attacker) > 0
     || (resolveAttackPower(skillRow, attacker) <= 0
       && (Object.keys(resolveSkillTimedModifiers(skillRow)).length > 0 || resolveSkillGuard(skillRow, attacker) > 0));

@@ -3,6 +3,8 @@ import undeadFixture from "../../../../config/v39-undead-test.json";
 import { ensureV39CaveAreas } from "../../lib/v39-cave-areas.js";
 import { V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { buildV39UnitEntity } from "../../lib/v39-unit-creation-rules.js";
+import {applyV39DerivedCharacterData} from '../unit/v39-character-derived-rules.js';
+import {DEFAULT_CORPSE_FIELD_TURNS} from '../../lib/v39-turn-timing.js';
 import { normalizeV39Village, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import { replaceFactionSettlement } from "../../lib/settlement-state.js";
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
@@ -76,6 +78,13 @@ export function buildV39UndeadTestWorlds(template,player,turn) {
   ]))});
   built.worlds={surface:{map:surface,spatial:spatialFor(undeadFixture.地上死体),visibility:{}},
     [undeadFixture.洞窟ID]:{map:cave,spatial:spatialFor(undeadFixture.洞窟死体),visibility:{}}};
+  for(const row of undeadFixture.個体死体 || []) {
+    const unit=applyV39DerivedCharacterData({...buildV39UnitEntity({...row,isNamed:false}),
+      promotionGrowthStart:row.promotionGrowthStart,worldId:row.worldId,testOnly:true,
+      state:'死亡',hp:0,currentHp:0,ap:0,currentAp:0,deathTurn:turn,deadExpireTurn:turn+DEFAULT_CORPSE_FIELD_TURNS});
+    if(!unit.derivedCharacter?.ok)throw new Error(`死体を生成できません: ${row.name}`);
+    built.worlds[row.worldId].spatial.enemies.push(unit);
+  }
   const units=undeadFixture.ユニット.map(row=>({...buildV39UnitEntity({...row,isNamed:true,
     equipment:[{slot:"武器1",name:"剣"},{slot:"体",name:"鎧"}]}),...row,worldId:row.worldId||"surface",testOnly:true}));
   built.player={...built.player,factionState:{...built.player.factionState,units,selectedUnitId:units[0].id,

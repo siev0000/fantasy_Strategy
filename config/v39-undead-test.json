@@ -1,12 +1,20 @@
 {
-  "説明": "自然発生の経過観察用。初期浄化0、霧/敵なし。通常の確率とターン処理を使用する。",
+  "説明": "自然発生と継承の経過観察用。資源死体と画像付き個体死体を配置。初期浄化0、霧/生存敵なし。通常の確率とターン処理を使用する。",
   "洞窟ID": "cave:undead-test:1",
   "洞窟サイズ": 18,
   "部屋": [[5,5,2,3],[12,5,2,3]],
   "地上死体": [{"x":7,"y":5,"人数":1},{"x":7,"y":7,"人数":4},{"x":10,"y":6,"人数":2}],
   "洞窟死体": [{"x":5,"y":5,"人数":1},{"x":6,"y":6,"人数":4},{"x":12,"y":5,"人数":2}],
+  "個体死体": [
+    {"id":"undead-corpse-human","name":"剣士の死体","race":"只人","className":"ファイター","level":14,"x":5,"y":4,"worldId":"surface","equipment":[{"slot":"武器1","name":"剣","quality":"common"}]},
+    {"id":"undead-corpse-elf","name":"弓兵の死体","race":"エルフ","className":"アーチャー","level":20,"x":6,"y":5,"worldId":"surface","equipment":[{"slot":"武器1","name":"弓","quality":"common"}]},
+    {"id":"undead-corpse-ogre","name":"大鬼戦士の死体","race":"オーガ","className":"ウォーリアー","level":25,"x":9,"y":6,"worldId":"surface","prerequisiteClassLevels":{"ファイター":10},"promotionGrowthStart":{"level":25,"raceLevels":8,"classLevels":7},"equipment":[{"slot":"武器1","name":"槍","quality":"common"}]},
+    {"id":"undead-corpse-goblin","name":"小鬼の死体","race":"ゴブリン","className":"シーフ","level":14,"x":4,"y":4,"worldId":"cave:undead-test:1","equipment":[{"slot":"武器1","name":"剣","quality":"common"}]},
+    {"id":"undead-corpse-wolf","name":"狼の死体","race":"ウルフ","className":"ウルフ","level":12,"x":5,"y":6,"worldId":"cave:undead-test:1","equipment":[]},
+    {"id":"undead-corpse-bare-ogre","name":"装備なし大鬼の死体","race":"オーガ","className":"ウォーリアー","level":25,"x":12,"y":6,"worldId":"cave:undead-test:1","prerequisiteClassLevels":{"ファイター":10},"promotionGrowthStart":{"level":25,"raceLevels":8,"classLevels":7},"equipment":[]}
+  ],
   "ユニット": [
-    {"id":"undead-test-surface","name":"地上観察者","race":"只人","className":"ファイター","level":20,"x":4,"y":4,"squadId":"undead-surface","isSovereign":true},
-    {"id":"undead-test-cave","name":"洞窟観察者","race":"只人","className":"ファイター","level":20,"x":3,"y":4,"squadId":"undead-cave","worldId":"cave:undead-test:1"}
+    {"id":"undead-test-surface","name":"地上観察者","race":"只人","className":"ファイター","level":20,"x":4,"y":4,"squadId":"undead-surface","isSovereign":true,"testSkillNames":["TEST_死者の呼び声"]},
+    {"id":"undead-test-cave","name":"洞窟観察者","race":"只人","className":"ファイター","level":20,"x":3,"y":4,"squadId":"undead-cave","worldId":"cave:undead-test:1","testSkillNames":["TEST_死者の呼び声"]}
   ]
 }

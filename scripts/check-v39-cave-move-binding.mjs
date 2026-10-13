@@ -18,6 +18,10 @@ try {
     const ids=await page.evaluate(async()=>{
       const map=structuredClone(window.__v39FieldRuntime.mapData);delete map.caveEventNpc;
       map.grid=map.grid.map((row,y)=>row.map((_,x)=>y===10&&x>=4&&x<=16?"洞窟":"岩壁"));
+      // 移動だけを検証する固定通路へ、生成元の採取/階段/地形補正を持ち込まない。
+      map.caveSites=[];map.entrances=[];map.stairsDown=null;map.defenseStructures=[];
+      map.specialMap=map.grid.map(row=>row.map(()=>''));
+      map.heightLevelMap=map.grid.map(row=>row.map(()=>0));
       const faction=window.getV39ActiveFactionState(),ids=faction.units.map(unit=>unit.id);
       window.loadV39FieldSnapshot(map,window.__v39FieldRuntime.settings,{layerChange:true});
       window.setV39GameState({enemies:[],neutralVillages:[]});

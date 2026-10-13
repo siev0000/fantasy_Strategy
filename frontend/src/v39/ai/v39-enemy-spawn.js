@@ -454,8 +454,9 @@ function chooseStrongAnimalClass(selection, position, level, random) {
 }
 
 // 地形別の出現敵定義を持たないイベント用。能力計算は通常敵と同じ派生処理へ統一する。
-export function createV39EventEnemy({ id, name, race, className, level, x, y, metadata = {} } = {}) {
+export function createV39EventEnemy({ id, name, race, className, level, x, y, metadata = {}, equipment=[], prerequisiteClassLevels, undeadGrowthStart, undeadOrigin, combatProfile, testOnly=false } = {}) {
   const derived = applyV39DerivedCharacterData({
+    equipment,prerequisiteClassLevels,undeadGrowthStart,undeadOrigin,combatProfile,testOnly,
     id:text(id) || `event-enemy-${Date.now()}`,
     name:text(name) || text(className) || "イベント敵",
     race:text(race),

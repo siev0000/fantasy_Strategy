@@ -1,0 +1,9 @@
+{
+  "説明":"明示開始する呼集専用試験。通常プレイへは自動追加しない。",
+  "召喚者":{"x":9,"y":9,"className":"テストサモナー","level":12},
+  "動物":[
+    {"id":"call-test-wolf","name":"呼集ウルフ","race":"ウルフ","x":16,"y":10,"owned":true},
+    {"id":"call-test-horse","name":"呼集ホース","race":"ホース","x":17,"y":10,"owned":true},
+    {"id":"call-test-outside","name":"領土外ウルフ","race":"ウルフ","x":16,"y":11,"owned":false}
+  ]
+}
