@@ -114,6 +114,10 @@ function targetsFor(state, enemy = null) {
 }
 
 function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
+  if(enemy.villageIncidentTargetPlayerId) {
+    const ids=new Set(state.players?.find(row=>row.id===enemy.villageIncidentTargetPlayerId)?.factionState?.units?.map(row=>row.id)||[]);
+    targets=targets.filter(row=>ids.has(row.id));
+  }
   if(isV39Undead(enemy))targets=targets.filter(target=>!isV39Undead(target)||target.id===enemy.aggroTargetUnitId);
   if(enemy.victoryGuard && enemy.victoryLandmarkKey) {
     const progress=state.victoryLandmarksByTile?.[enemy.victoryLandmarkKey]?.guardianByPlayerId||{};

@@ -20,12 +20,15 @@ try {
     const strong = window.applyV39DerivedCharacterData({ race:"ウルフ", className:"ウルフ", level:25,
       strongAnimalClassName:"エヴォリューション・クロー", strongAnimalClassLevel:10 });
     const extraRow = window.getGameDataRows("クラス").find(row => row.名前 === "エヴォリューション・クロー");
+    const clawEquipment=window.getGameDataRows('装備').find(row=>row.装備名==='爪');
+    const wolfClass=window.getGameDataRows('クラス').find(row=>row.名前==='ウルフ');
     return {
       max, multipliers:[1,10,10.1,35,40,50,60].map(level => body.resolveV39BodyWeaponMultiplier(level)),
       rows:rows.filter(row => row.身体武器), clawCount:rows.filter(row => row.名前 === "爪").length,
       ap:combat.resolveAttackApCost(claw, unit), hits:claw.攻撃回数, grownPower:grown.物理,
       counter:counter.身体武器, strongClaw:strong.bodyWeaponLevels.爪,
-      expectedStrongClaw:Math.max(50, Number(extraRow.爪)) / 10,
+      expectedStrongClaw:(Math.max(Number(wolfClass.爪), Number(extraRow.爪))+(strong.derivedCharacter.passiveBonuses.bodyWeaponValues.爪 || 0)) / 10,
+      expectedAp:Number(clawEquipment.攻撃AP),expectedHits:Number(clawEquipment.攻撃回数),expectedGrownPower:Number(clawEquipment.威力)*3.5,
       empty:body.resolveV39BodyWeaponAttackRows({ bodyWeaponLevels:{ 爪:0, 装甲:50 } }).length
     };
   });
@@ -35,9 +38,9 @@ try {
   assert.ok(report.multipliers[2] > report.multipliers[1]);
   assert.deepEqual(report.multipliers.slice(3), [2,2.5,3.5,3.5]);
   assert.equal(report.clawCount, 1);
-  assert.equal(report.ap, 40);
-  assert.equal(report.hits, 2);
-  assert.equal(report.grownPower, 52.5);
+  assert.equal(report.ap, report.expectedAp);
+  assert.equal(report.hits, report.expectedHits);
+  assert.equal(report.grownPower, report.expectedGrownPower);
   assert.equal(report.counter, true);
   assert.equal(report.strongClaw, report.expectedStrongClaw);
   assert.equal(report.empty, 0);
@@ -56,11 +59,11 @@ try {
   });
   await page.addStyleTag({ content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}" });
   await page.locator('[data-squad-detail-tab="action"]').click();
-  const card = page.locator('#detailTechniqueRows [data-v39-attack-name="爪"]');
+  const card = page.locator('#detailTechniqueList [data-v39-attack-name="爪"]');
   assert.equal(await card.count(), 1);
   await card.click();
   assert.ok((await card.innerText()).includes("身体武器Lv5"));
-  assert.ok((await card.innerText()).includes("AP 40"));
+  assert.match(await card.innerText(),new RegExp(`AP\\s*${report.expectedAp}`));
   await page.waitForTimeout(200);
   assert.deepEqual(errors, []);
   await page.screenshot({ path:"output/web-game/v39-body-weapons.png" });

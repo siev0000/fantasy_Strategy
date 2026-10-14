@@ -342,6 +342,7 @@ function compactAiUnit(unit, enemySide = false) {
   return {
     ...compact,
     aggressive:unit?.aggressive,
+    villageIncidentTargetPlayerId:unit?.villageIncidentTargetPlayerId,
     race:unit?.race,
     nestId:unit?.nestId,
     isRebel:unit?.isRebel,

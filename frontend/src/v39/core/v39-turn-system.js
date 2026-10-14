@@ -9,6 +9,7 @@ import { normalizeV39PlayerTurnTimeline } from "../../lib/v39-local-multiplayer-
 import { isV39UnitUnacted } from "../../lib/v39-unit-action-rules.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { advanceV39AutomaticTransport } from "../../lib/v39-transport-rules.js";
+import {advanceV39TradeLogistics} from '../../lib/v39-trade-logistics.js';
 import { showV39TurnLoading, paintV39TurnLoading } from "../ui/v39-turn-loading.js";
 import { showV39SideNotice } from "../ui/v39-notification-rail.js";
 import { withV39WorldContext, v39TurnWorldIds } from "./v39-world-context.js";
@@ -284,6 +285,9 @@ export async function advanceTurn(options = {}) {
         window.setV39GameState({players:transport.state.players},{reason:"automatic-transport"});
         for(const report of transport.reports)window.appendV39ActivityLog?.(currentPlayerId,"物資",`${report.action}: ${report.resource} ${report.amount}`,report);
       }
+      const trade=advanceV39TradeLogistics(transport.state,currentPlayerId,window.__v39FieldRuntime?.mapData,before.turnNumber);
+      if(trade.state!==transport.state){window.setV39GameState({players:trade.state.players,neutralVillages:trade.state.neutralVillages,settlements:trade.state.settlements},{reason:'trade-transport'});
+        for(const report of trade.reports)window.appendV39ActivityLog?.(currentPlayerId,'取引',report.message,report);}
     });
     state=window.getV39GameState();
     window.advanceV39MineDuties?.(currentPlayerId,before.turnNumber);

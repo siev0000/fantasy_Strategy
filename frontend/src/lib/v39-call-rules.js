@@ -48,7 +48,7 @@ export function inspectV39Call(state,playerId,unitId,skillName,map,selectedIds=[
     if(world(unit)!==(state.activeWorldId||'surface'))unavailable.push('別ワールド');
     if(state.territoryOwnerByTile?.[`${unit.x},${unit.y}`]!==playerId)unavailable.push('自領土外');
     const instructor=[...Object.values(faction.recruitInstructorByTile||{}),...Object.values(faction.recruitInstructorTransfers||{})].some(row=>row.unitId===unit.id);
-    if(unit.transportAssignment||unit.caveDuty||instructor)unavailable.push('自動任務中');
+    if(unit.tradeAssignment||unit.transportAssignment||unit.caveDuty||instructor)unavailable.push('自動任務中');
     if(faction.combatRuntime?.pendingActionsByUnitId?.[unit.id])unavailable.push('発動待機中');
     return {unit,available:!unavailable.length,reasons:unavailable};
   });

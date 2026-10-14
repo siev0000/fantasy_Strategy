@@ -12,10 +12,10 @@ export function inspectV39EventDefinition(row) {
   if(!row?.ID)reasons.push('IDがありません');
   if(row?.イベント種別!=='依頼')reasons.push(`未対応種別: ${row?.イベント種別||'未設定'}`);
   for(const condition of list(row?.発生条件))if(!['一般村友好度','プレイヤー種族'].includes(condition.タイプ))reasons.push(`未対応条件: ${condition.タイプ}`);
-  if(!['周辺脅威','村不足資源'].includes(row?.生成設定?.方式))reasons.push(`未対応生成方式: ${row?.生成設定?.方式||'未設定'}`);
+  if(!['周辺脅威','村不足資源','指定物資'].includes(row?.生成設定?.方式))reasons.push(`未対応生成方式: ${row?.生成設定?.方式||'未設定'}`);
   const goals=list(row?.目標);
   if(goals.length!==1||!['納品','討伐'].includes(goals[0]?.タイプ))reasons.push('未対応目標構成');
-  for(const effect of list(row?.完了効果))if(!['一般村友好度変更','村産出資源受取'].includes(effect.タイプ))reasons.push(`未対応完了効果: ${effect.タイプ}`);
+  for(const effect of list(row?.完了効果))if(!['一般村友好度変更','村産出資源受取','魂要求権付与'].includes(effect.タイプ))reasons.push(`未対応完了効果: ${effect.タイプ}`);
   for(const effect of list(row?.失敗効果))if(effect.タイプ!=='一般村友好度変更')reasons.push(`未対応失敗効果: ${effect.タイプ}`);
   const accept=list(row?.選択肢).find(choice=>list(choice.効果).some(effect=>effect.タイプ==='依頼開始'));
   if(!accept)reasons.push('依頼開始の選択肢がありません');

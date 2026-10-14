@@ -5,6 +5,8 @@ import '../dev/v39-call-test.js';
 import "../unit/v39-squad-edit-ui.js";
 import "../unit/v39-expedition-tools-ui.js";
 import "../dev/v39-expedition-test.js";
+import "../dev/v39-village-incident-test.js";
+import '../world/v39-trade-ui.js';
 import "../map/v39-land-detail.js";
 import "../map/v39-height-boundaries.js";
 import "../map/v39-terrain-icons.js";

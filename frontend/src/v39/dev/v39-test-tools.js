@@ -28,7 +28,16 @@ let selectedTestSkillName = "";
 let selectedDisasterId = "";
 let selectedTile = null;
 const collapsedSectionKeys = new Set();
-let testToolsScrollTop = 0;
+const TEST_TOOL_TABS = [
+  {id:'scenarios',label:'専用',sections:['expedition','undead-natural']},
+  {id:'turns',label:'進行',sections:['turns','faction']},
+  {id:'settlement',label:'拠点',sections:['base-info','settlement-resources','city-research','territory']},
+  {id:'unit',label:'キャラ',sections:['character','test-skills']},
+  {id:'environment',label:'環境',sections:['field']},
+  {id:'diagnostics',label:'診断',sections:['enemy-ai']}
+];
+let selectedToolTab = 'scenarios';
+const scrollTopByToolTab = new Map();
 let restoreScrollFrame = 0;
 let bulkTurnCount = 10;
 let advancingTestTurns = false;
@@ -629,8 +638,9 @@ function panelHtml() {
   const enemyOptions = diagnosticUnits.map(unit => `<option value="${escapeHtml(unit.id)}"${text(unit.id) === selectedEnemyId ? " selected" : ""}>${escapeHtml(unit.diagnosticLabel)} (${Math.floor(number(unit.x))},${Math.floor(number(unit.y))})</option>`).join("");
   return `
     <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
-    <div class="v39-test-tools-scroll">
-      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>鉱床・道具・部隊支援</summary><div class="v39-test-section-body"><p>専用データで検証。開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="expedition-start">輸送・道具・支援テスト</button><button data-test-action="expedition-invasion">侵入・再巣化テスト</button><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div><p>輸送は設定済み。道具試験官は薬草・水薬を所持。王・指揮官・王の騎士は同部隊です。村の警備・建設依頼は受注して確認します。入口警備は輸送を解除してから別途指定してください。</p></div></details>
+    <nav class="v39-test-tools-tabs" role="tablist" aria-label="テスト操作カテゴリ">${TEST_TOOL_TABS.map(tab=>`<button type="button" role="tab" id="v39-test-tab-${tab.id}" data-test-tab="${tab.id}" aria-controls="v39-test-tool-content" aria-selected="${tab.id===selectedToolTab}" tabindex="${tab.id===selectedToolTab?0:-1}">${tab.label}</button>`).join('')}</nav>
+    <div class="v39-test-tools-scroll" id="v39-test-tool-content" role="tabpanel" aria-labelledby="v39-test-tab-${selectedToolTab}">
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>鉱床・道具・部隊支援</summary><div class="v39-test-section-body"><p>専用データで検証。開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><div class="v39-test-button-row"><button data-test-action="trade-test-start">取引・郵送テスト</button><button data-test-action="village-incident-start">村依頼・悪魔契約テスト</button><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="expedition-start">輸送・道具・支援テスト</button><button data-test-action="expedition-invasion">侵入・再巣化テスト</button><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div><p>輸送は設定済み。道具試験官は薬草・水薬を所持。王・指揮官・王の騎士は同部隊です。村の警備・建設依頼は受注して確認します。入口警備は輸送を解除してから別途指定してください。</p></div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
@@ -650,13 +660,17 @@ function render() {
   const panel = document.getElementById("v39-test-tools-panel");
   if (!(panel instanceof HTMLElement)) return;
   const currentScroll = panel.querySelector(".v39-test-tools-scroll");
-  if (currentScroll instanceof HTMLElement) testToolsScrollTop = currentScroll.scrollTop;
+  if (currentScroll instanceof HTMLElement) scrollTopByToolTab.set(currentScroll.dataset.toolTab, currentScroll.scrollTop);
   panel.innerHTML = panelHtml();
+  const scroll = panel.querySelector('.v39-test-tools-scroll');
+  scroll.dataset.toolTab = selectedToolTab;
+  const sections=TEST_TOOL_TABS.find(tab=>tab.id===selectedToolTab).sections;
+  panel.querySelectorAll('[data-test-section]').forEach(section=>{section.hidden=!sections.includes(section.dataset.testSection);});
   const restoreScroll = () => {
     const nextScroll = panel.querySelector(".v39-test-tools-scroll");
     if (!(nextScroll instanceof HTMLElement)) return;
     const maxScrollTop = Math.max(0, nextScroll.scrollHeight - nextScroll.clientHeight);
-    nextScroll.scrollTop = Math.min(testToolsScrollTop, maxScrollTop);
+    nextScroll.scrollTop = Math.min(scrollTopByToolTab.get(selectedToolTab)||0, maxScrollTop);
   };
   restoreScroll();
   if (restoreScrollFrame) cancelAnimationFrame(restoreScrollFrame);
@@ -664,6 +678,26 @@ function render() {
     restoreScrollFrame = 0;
     restoreScroll();
   });
+}
+
+function selectToolTab(id, focus=false) {
+  if(!TEST_TOOL_TABS.some(tab=>tab.id===id))return;
+  const panel=document.getElementById('v39-test-tools-panel');
+  const scroll=panel?.querySelector('.v39-test-tools-scroll');
+  if(!scroll)return;
+  if(restoreScrollFrame){cancelAnimationFrame(restoreScrollFrame);restoreScrollFrame=0;}
+  scrollTopByToolTab.set(selectedToolTab,scroll.scrollTop);
+  selectedToolTab=id;
+  const sections=TEST_TOOL_TABS.find(tab=>tab.id===id).sections;
+  panel.querySelectorAll('[data-test-section]').forEach(section=>{section.hidden=!sections.includes(section.dataset.testSection);});
+  panel.querySelectorAll('[data-test-tab]').forEach(tab=>{
+    const active=tab.dataset.testTab===id;tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;
+  });
+  scroll.dataset.toolTab=id;scroll.setAttribute('aria-labelledby',`v39-test-tab-${id}`);
+  scroll.scrollTop=scrollTopByToolTab.get(id)||0;
+  const button=document.getElementById(`v39-test-tab-${id}`);
+  if(focus)button?.focus({preventScroll:true});
+  button?.scrollIntoView({block:'nearest',inline:'nearest'});
 }
 
 function openPanel() {
@@ -679,6 +713,8 @@ function closePanel() {
 function handleAction(action) {
   if (!testModeEnabled()) return closePanel();
   const handlers = {
+    "trade-test-start":()=>{if(window.confirm('現在のゲームを取引・郵送テストに置き換えます。開始しますか？')){closePanel();window.startV39TradeTest?.();}},
+    "village-incident-start":()=>{if(window.confirm("現在のゲームを村イベントの2プレイヤー検証に置き換えます。開始しますか？")){closePanel();window.startV39VillageIncidentTest?.();}},
     "undead-test-start":()=>{if(window.confirm("現在のゲームを死体配置済みの検証マップに置き換えます。開始しますか？"))window.startV39UndeadTest?.();},
     "undead-test-surface":()=>{if(window.viewV39ExpeditionTestWorld?.("surface"))window.activateV39FooterTab?.("test");},
     "undead-test-cave":()=>{if(window.viewV39ExpeditionTestWorld?.(undeadTest.洞窟ID))window.activateV39FooterTab?.("test");},
@@ -712,7 +748,7 @@ function installStyles() {
   if (document.getElementById("v39-test-tools-style")) return;
   const style = document.createElement("style");
   style.id = "v39-test-tools-style";
-  style.textContent = `.v39-test-tools-panel{width:100%;height:100%;max-height:100%;min-width:0;min-height:0;flex:1 1 0;display:flex;flex-direction:column;gap:6px;overflow:hidden;color:#e7efed}.v39-test-tools-panel[hidden]{display:none!important}.v39-test-tools-head{display:flex;align-items:center;gap:8px}.v39-test-tools-head button,.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{min-height:34px;border:1px solid #49626a;border-radius:6px;background:#14242a;color:#edf3f1;padding:5px 9px;font-size:var(--font-body);font-weight:700}.v39-test-tools-head span{margin-left:auto;color:#f1c96f}.v39-test-tools-scroll{min-width:0;min-height:0;max-height:100%;flex:1 1 0;overflow-x:hidden!important;overflow-y:auto!important;display:grid;grid-auto-rows:max-content;gap:7px;align-content:start;padding-bottom:12px;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}.v39-test-section{border:1px solid #354a51;border-radius:7px;background:#101c21;overflow:hidden}.v39-test-section>summary{min-height:34px;display:flex;align-items:center;gap:7px;padding:6px 8px;list-style:none;cursor:pointer;user-select:none;color:#e7efed;font-size:var(--font-body);font-weight:800;background:#14242a}.v39-test-section>summary::-webkit-details-marker{display:none}.v39-test-section>summary::before{content:"▷";display:inline-block;min-width:14px;color:#74d2df;font-size:var(--font-secondary);line-height:1}.v39-test-section[open]>summary::before{content:"▽"}.v39-test-section-body{display:grid;gap:5px;padding:7px}.v39-test-base-list{display:grid;gap:6px}.v39-test-base-card{display:grid;gap:5px;padding:7px;border:1px solid #3e565e;border-radius:7px;background:#0d171b}.v39-test-base-card header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.v39-test-base-card header span{padding:2px 6px;border:1px solid #5f858f;border-radius:999px;color:#9fe1eb;font-size:var(--font-size-11);font-weight:900}.v39-test-base-card header strong{color:#eef7f5;font-size:var(--font-size-14)}.v39-test-base-card p{margin:0!important;font-size:var(--font-compact)!important;color:#b7c7ca!important;line-height:1.4}.v39-test-empty{color:#82979c!important}.v39-test-tools-scroll h3,.v39-test-tools-scroll p{margin:0;font-size:var(--font-body)}.v39-test-tools-scroll p{color:#aebdc0}.v39-test-button-row,.v39-test-form-row{display:flex;flex-wrap:wrap;gap:5px}.v39-test-form-row select{min-width:130px}.v39-test-form-row input{width:100px}.v39-test-ai-grid{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 9px;font-size:var(--font-body)}.v39-test-ai-grid span{color:#91a5aa}.v39-test-ai-grid b{min-width:0;overflow-wrap:anywhere}.v39-test-log-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}.v39-test-log-tabs button{flex:0 0 auto}.v39-test-log-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-test-log-tabs small{color:#a9bbc0}.v39-test-ai-log{max-height:220px;overflow:auto;border:1px solid #293c42;border-radius:6px}.v39-test-ai-log article{display:grid;grid-template-columns:38px minmax(90px,auto) minmax(120px,1fr);gap:5px 8px;padding:7px;border-bottom:1px solid #293c42;font-size:var(--font-body)}.v39-test-ai-log article span{color:#78d19a}.v39-test-ai-log article strong{color:#f0d17b}.v39-test-ai-log article p{grid-column:2/-1}.v39-test-tools-panel button:active{background:#28505a}.v39-test-tools-panel output{min-height:30px;padding:6px 9px;border:1px solid #735f2f;border-radius:6px;background:#2c2616;color:#ffe29a;font-size:var(--font-body);font-weight:700}@media(max-width:620px){.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{padding:4px 7px}.v39-test-section-body{padding:6px}.v39-test-ai-log article{grid-template-columns:34px minmax(80px,auto) minmax(100px,1fr)}}`;
+  style.textContent = `.v39-test-tools-panel{width:100%;height:100%;max-height:100%;min-width:0;min-height:0;flex:1 1 0;display:flex;flex-direction:column;gap:6px;overflow:hidden;color:#e7efed}.v39-test-tools-panel[hidden]{display:none!important}.v39-test-tools-head{display:flex;align-items:center;gap:8px}.v39-test-tools-head button,.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{min-height:34px;border:1px solid #49626a;border-radius:6px;background:#14242a;color:#edf3f1;padding:5px 9px;font-size:var(--font-body);font-weight:700}.v39-test-tools-head span{margin-left:auto;color:#f1c96f}.v39-test-tools-tabs{display:flex;gap:4px;flex:0 0 auto;overflow-x:auto;overscroll-behavior:contain}.v39-test-tools-tabs button{flex:1 0 auto;white-space:nowrap;padding:5px 8px}.v39-test-tools-tabs button[aria-selected="true"]{border-color:#63d6e7;background:#1d4b55;color:#fff}.v39-test-tools-tabs button:focus-visible{outline:2px solid #f1c96f;outline-offset:-3px}.v39-test-section[hidden]{display:none!important}.v39-test-tools-head,.v39-test-tools-panel output{flex:0 0 auto}.v39-test-tools-scroll{min-width:0;min-height:0;max-height:100%;flex:1 1 0;overflow-x:hidden!important;overflow-y:auto!important;overflow-anchor:none;display:grid;grid-auto-rows:max-content;gap:7px;align-content:start;padding-bottom:12px;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}.v39-test-section{border:1px solid #354a51;border-radius:7px;background:#101c21;overflow:hidden}.v39-test-section>summary{min-height:34px;display:flex;align-items:center;gap:7px;padding:6px 8px;list-style:none;cursor:pointer;user-select:none;color:#e7efed;font-size:var(--font-body);font-weight:800;background:#14242a}.v39-test-section>summary::-webkit-details-marker{display:none}.v39-test-section>summary::before{content:"▷";display:inline-block;min-width:14px;color:#74d2df;font-size:var(--font-secondary);line-height:1}.v39-test-section[open]>summary::before{content:"▽"}.v39-test-section-body{display:grid;gap:5px;padding:7px}.v39-test-base-list{display:grid;gap:6px}.v39-test-base-card{display:grid;gap:5px;padding:7px;border:1px solid #3e565e;border-radius:7px;background:#0d171b}.v39-test-base-card header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.v39-test-base-card header span{padding:2px 6px;border:1px solid #5f858f;border-radius:999px;color:#9fe1eb;font-size:var(--font-size-11);font-weight:900}.v39-test-base-card header strong{color:#eef7f5;font-size:var(--font-size-14)}.v39-test-base-card p{margin:0!important;font-size:var(--font-compact)!important;color:#b7c7ca!important;line-height:1.4}.v39-test-empty{color:#82979c!important}.v39-test-tools-scroll h3,.v39-test-tools-scroll p{margin:0;font-size:var(--font-body)}.v39-test-tools-scroll p{color:#aebdc0}.v39-test-button-row,.v39-test-form-row{display:flex;flex-wrap:wrap;gap:5px}.v39-test-form-row select{min-width:130px}.v39-test-form-row input{width:100px}.v39-test-ai-grid{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 9px;font-size:var(--font-body)}.v39-test-ai-grid span{color:#91a5aa}.v39-test-ai-grid b{min-width:0;overflow-wrap:anywhere}.v39-test-log-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}.v39-test-log-tabs button{flex:0 0 auto}.v39-test-log-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-test-log-tabs small{color:#a9bbc0}.v39-test-ai-log{max-height:220px;overflow:auto;border:1px solid #293c42;border-radius:6px}.v39-test-ai-log article{display:grid;grid-template-columns:38px minmax(90px,auto) minmax(120px,1fr);gap:5px 8px;padding:7px;border-bottom:1px solid #293c42;font-size:var(--font-body)}.v39-test-ai-log article span{color:#78d19a}.v39-test-ai-log article strong{color:#f0d17b}.v39-test-ai-log article p{grid-column:2/-1}.v39-test-tools-panel button:active{background:#28505a}.v39-test-tools-panel output{min-height:30px;padding:6px 9px;border:1px solid #735f2f;border-radius:6px;background:#2c2616;color:#ffe29a;font-size:var(--font-body);font-weight:700}@media(max-width:620px){.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{padding:4px 7px}.v39-test-section-body{padding:6px}.v39-test-ai-log article{grid-template-columns:34px minmax(80px,auto) minmax(100px,1fr)}}`;
   document.head.appendChild(style);
 }
 
@@ -727,8 +763,17 @@ function install() {
   panel.setAttribute("aria-hidden", "false");
   host.appendChild(panel);
   panel.addEventListener("click", event => {
+    const tab = event.target instanceof Element ? event.target.closest('[data-test-tab]') : null;
+    if(tab){selectToolTab(tab.dataset.testTab,true);return;}
     const button = event.target instanceof Element ? event.target.closest("[data-test-action]") : null;
     if (button) handleAction(button.dataset.testAction);
+  });
+  panel.addEventListener('keydown',event=>{
+    const tab=event.target.closest?.('[data-test-tab]');if(!tab)return;
+    const index=TEST_TOOL_TABS.findIndex(row=>row.id===tab.dataset.testTab);
+    const offset=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
+    const next=offset?(index+offset+TEST_TOOL_TABS.length)%TEST_TOOL_TABS.length:event.key==='Home'?0:event.key==='End'?TEST_TOOL_TABS.length-1:-1;
+    if(next<0)return;event.preventDefault();selectToolTab(TEST_TOOL_TABS[next].id,true);
   });
   panel.addEventListener("toggle", event => {
     const section = event.target instanceof HTMLDetailsElement

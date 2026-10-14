@@ -166,6 +166,15 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
   let groundLootCreated = 0;
   let changed = summons.removed.length>0;
   let groundLootByTile = { ...(state.groundLootByTile || {}) };
+  // 村の輸送役は軍隊cargoを持たないため、死亡時に携帯物を直接戦利品へ移す。
+  const neutralVillages = (state.neutralVillages || []).map(village => ({ ...village,
+    defenseUnits:(village.defenseUnits || []).map(unit => {
+      if (!isDead(unit) || !isV39UnitInWorld(unit,state.activeWorldId) || isV39CargoEmpty(unit.tradeCargo)) return unit;
+      const key=coordKey(unit),loot=groundLootByTile[key] || {};
+      groundLootByTile[key]={ ...loot,cargo:mergeV39Cargo(loot.cargo,unit.tradeCargo) };
+      changed=true;groundLootCreated+=1;
+      return { ...unit,tradeCargo:normalizeV39Cargo() };
+    }) }));
   let players = state.players.map((player) => {
     let faction = player.factionState;
     let sourceUnits = Array.isArray(faction?.units) ? faction.units.map((unit) => normalizeDeadUnit(unit, turnNumber)) : [];
@@ -265,7 +274,9 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
     return { ...nest, unitIds };
   });
   if (changed) {
-    window.setV39GameState({ players, enemies, enemySquads, enemyNests, groundLootByTile }, { reason:"death-lifecycle" });
+    const villageById=new Map(neutralVillages.map(village=>[village.id,village]));
+    window.setV39GameState({ players, enemies, enemySquads, enemyNests, groundLootByTile,neutralVillages,
+      settlements:(state.settlements || []).map(row=>villageById.get(row.id)||row) }, { reason:"death-lifecycle" });
     window.dispatchEvent(new CustomEvent("v39:death-lifecycle", { detail:{ collected, expired, cargoRecovered, groundLootCreated } }));
   }
   return { collected, expired, cargoRecovered, groundLootCreated };

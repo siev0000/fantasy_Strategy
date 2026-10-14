@@ -14,7 +14,7 @@ try {
       window.generateV39TestFieldWithSeed({ w:36, h:36, patternId:"realistic" }, "test-bulk-turns");
       document.querySelector("#v39-play-mode-select")?.remove();
       document.querySelectorAll(".vue-modal-backdrop").forEach(node => node.remove());
-      window.setV39TestMode(true);
+      await window.setV39TestMode(true);
       window.openV39TestTools();
       const state = window.getV39GameState();
       const player = state.players.find(row => row.id === state.activePlayerId);
@@ -32,6 +32,8 @@ try {
         territoryStateByTile:{ "4,4":{ settlementId:village.id }, "4,5":{ settlementId:village.id } }
       });
       window.runV39EnemyTurn = async () => {};
+      window.openV39TestTools();
+      document.querySelector('[data-test-tab="turns"]').click();
       const font = getComputedStyle(document.documentElement).fontSize;
       const inputFont = getComputedStyle(document.getElementById("v39-test-turn-count")).fontSize;
       const start = window.getV39GameState().timeline.turnNumber;
@@ -45,10 +47,10 @@ try {
       const after = window.getV39GameState();
       const completedVillage = after.players.find(row => row.id === player.id).factionState.settlements[0];
       const result = { font, inputFont, status:document.getElementById("v39-test-tools-status").textContent, advanced:after.timeline.turnNumber - start, completed:completedVillage.tileFacilityMap["4,5"]?.includes("兵舎"), queueLength:completedVillage.constructionQueue.length };
-      window.setV39TestMode(false);
+      await window.setV39TestMode(false);
       document.querySelector('[data-test-action="turn-many"]').click();
       result.blockedWhenOff = window.getV39GameState().timeline.turnNumber === after.timeline.turnNumber;
-      window.setV39TestMode(true);
+      await window.setV39TestMode(true);
       window.openV39TestTools();
       const probe = document.createElement("b");
       probe.className = "squad-name";

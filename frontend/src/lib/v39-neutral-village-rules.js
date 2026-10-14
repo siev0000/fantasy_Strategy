@@ -10,6 +10,7 @@ import { buildV39ClassEquipment, buildV39UnitEntity } from "./v39-unit-creation-
 import { resolveV39UnitInitialLevel } from "./v39-unit-experience.js";
 import {createV39EventQuest,applyV39EventEffects} from './v39-event-rules.js';
 import {isV39Undead} from './v39-purification-rules.js';
+import incidentTest from '../../../config/v39-village-incident-test.json';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -157,6 +158,7 @@ function militaryProfilesForVillage(village, militaryPopulationCap) {
 
 function preserveDefenseRuntime(existing, next) {
   if (!existing || !next) return next;
+  if(existing.tradeAssignment)return {...existing};
   const oldMaxHp = Math.max(1, number(existing?.maxHp ?? existing?.status?.HP, 1));
   const oldHp = Math.max(0, number(existing?.hp ?? existing?.currentHp, oldMaxHp));
   const hpRatio = Math.max(0, Math.min(1, oldHp / oldMaxHp));
@@ -234,6 +236,7 @@ export function buildV39NeutralVillageDefenseUnits(village, mapData, options = {
     }));
   }
 
+  for(const existing of village.defenseUnits||[])if(existing.tradeAssignment&&!units.some(unit=>unit.id===existing.id))units.push({...existing});
   const militaryPopulationUsed = units.reduce(
     (sum, unit) => sum + Math.max(0, integer(unit?.combatProfile?.memberCount ?? unit?.count)),
     0
@@ -250,6 +253,8 @@ export function buildV39NeutralVillageDefenseUnits(village, mapData, options = {
 }
 
 export function normalizeV39NeutralVillage(village, mapData, options = {}) {
+  // 固定検証村の兵は実戦中に敵側へ移す。通常の再編で複製しない。
+  if(village.incidentTest)return {...village};
   const territoryTileKeys = Array.isArray(village?.territoryTileKeys) && village.territoryTileKeys.length
     ? [...new Set(village.territoryTileKeys.map(text).filter(Boolean))]
     : buildV39NeutralVillageTerritory(mapData, village?.x, village?.y);
@@ -363,6 +368,20 @@ function relationGainFromEvent(row) {
 
 function createQuest(state, village, playerId, turn, mapData, eventId = "") {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
+  const sample=village.incidentTest?incidentTest.quests.find(row=>row.ID===eventId):null;
+  if(sample) {
+    const definition={ID:sample.ID,名前:sample.名前,イベント種別:'依頼',再発生:true,クールダウン:1,
+      発生条件:sample.demonOnly?[{タイプ:'プレイヤー種族',比較:'一致',値:'悪魔'}]:[],
+      生成設定:{方式:sample.方式},目標:[{タイプ:sample.方式==='指定物資'?'納品':'討伐',設定:{部分納品:true}}],
+      選択肢:[{効果:[{タイプ:'依頼開始'}]}],完了効果:[{タイプ:'一般村友好度変更',設定:{値:incidentTest.balance.relationGain}},
+        ...(sample.demonOnly?[{タイプ:'魂要求権付与',設定:{数量:incidentTest.balance.soulReward}}]:[])]};
+    return createV39EventQuest(definition,{player,relation:getV39NeutralVillageRelation(village,playerId),turn,
+      lastCompletedTurn:village.eventCompletedTurnByPlayerId?.[playerId]?.eventId},{
+      指定物資:()=>({type:'delivery',stockKind:sample.stockKind,resourceKey:sample.resourceKey,required:sample.required,progress:0}),
+      周辺脅威:()=>{const targets=(state.enemies||[]).filter(unit=>unit.incidentQuestTarget&&number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡');
+        return targets.length?{type:'hunt',required:targets.length,targetEnemyIds:targets.map(row=>row.id)}:null;}
+    });
+  }
   const support=expeditionDefaults.villageRequests.find(row=>row.ID===eventId);
   if(support && player){
     const last=integer(village.eventCompletedTurnByPlayerId?.[playerId]?.[eventId]);
@@ -416,7 +435,8 @@ export function listV39NeutralVillageQuests(state,playerId,villageId,mapData) {
   const village=state.neutralVillages?.find(row=>row.id===villageId);
   if(!village || (state.activeWorldId && state.activeWorldId!=="surface")) return [];
   const turn=Math.max(1,integer(state.timeline?.turnNumber,1));
-  return [...new Set([...VILLAGE_EVENT_ROWS.filter(row=>row.イベント種別==="依頼").map(row=>row.ID),...eventDefaults.village.map(row=>row.ID),...expeditionDefaults.villageRequests.map(row=>row.ID)])]
+  if(village.incidentTest)return incidentTest.quests.map(row=>createQuest(state,village,playerId,turn,mapData,row.ID)).filter(Boolean);
+  return [...new Set([...VILLAGE_EVENT_ROWS.filter(row=>row.イベント種別==="依頼").map(row=>row.ID),...eventDefaults.village.map(row=>row.ID),...expeditionDefaults.villageRequests.map(row=>row.ID),...(village.incidentTest?incidentTest.quests.map(row=>row.ID):[])])]
     .map(id=>createQuest(state,village,playerId,turn,mapData,id)).filter(Boolean);
 }
 
@@ -477,7 +497,9 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId) {
   if(row) {
     const effectResult=applyV39EventEffects(working,row.完了効果,{
       一般村友好度変更:(current,setting)=>({ok:true,state:updateVillageState(current,changeRelation(current.neutralVillages.find(v=>v.id===villageId),playerId,number(setting.値)))}),
-      村産出資源受取:current=>quest.rewardResourceKey&&quest.rewardAmount>0?changeSettlementResource(current,playerId,quest.rewardStockKind,quest.rewardAmount,quest.rewardResourceKey):{ok:true,state:current}
+      村産出資源受取:current=>quest.rewardResourceKey&&quest.rewardAmount>0?changeSettlementResource(current,playerId,quest.rewardStockKind,quest.rewardAmount,quest.rewardResourceKey):{ok:true,state:current},
+      魂要求権付与:(current,setting)=>{const v=current.neutralVillages.find(row=>row.id===villageId);
+        return {ok:true,state:updateVillageState(current,{...v,soulClaimsByPlayerId:{...v.soulClaimsByPlayerId,[playerId]:number(v.soulClaimsByPlayerId?.[playerId])+number(setting.数量)}})};}
     });
     if(!effectResult.ok)return {...effectResult,state};
     working=effectResult.state;

@@ -1,0 +1,105 @@
+import assert from 'node:assert/strict';
+import {mkdirSync,readFileSync} from 'node:fs';
+import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
+const out='output/web-game/village-incidents';mkdirSync(out,{recursive:true});
+const engine=await import(`data:text/javascript;base64,${Buffer.from(readFileSync('frontend/src/lib/v39-village-incidents.js','utf8')).toString('base64')}`);
+const {balance}=JSON.parse(readFileSync('config/v39-village-incident-test.json','utf8'));
+assert.equal(engine.villageAmbushPower(200,4,balance),balance.basePower);
+for(const [relation,mode] of [[-100,'rescue'],[-20,'rescue'],[-19,'none'],[19,'none'],[20,'supply'],[100,'supply']])
+  assert.equal(engine.villageIncidentMode({sacrificeContract:{active:true,playerId:'d'},relationsByPlayerId:{d:relation}},balance),mode);
+const browser=await chromium.launch();
+try {
+  for(const width of [390,1100]) {
+    const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
+    page.on('pageerror',error=>errors.push(String(error.stack)));page.on('dialog',dialog=>dialog.accept());
+    page.on('console',entry=>{if(entry.type()==='error')errors.push(entry.text());});
+    await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
+    await page.locator('[data-v39-test-tools]').click();
+    await page.locator('[data-test-action="village-incident-start"]').click();
+    await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
+    const click=async id=>{if(['high','low','weak','heal'].includes(id)&&await page.locator('#v39-village-incident-panel details').getAttribute('open')===null)await page.locator('#v39-village-incident-panel summary').click();await page.locator(`[data-village-incident="${id}"]`).click();};
+    const read=()=>page.evaluate(()=>{const s=window.getV39GameState(),v=s.neutralVillages.find(v=>v.incidentTest);return {s,v,p:s.players.find(p=>p.id===s.activePlayerId)};});
+    let data=await read();assert.equal(data.s.players.length,2);assert.equal(data.p.factionState.units.length,3);
+    await page.waitForSelector('#v39-village-menu:not([hidden])');
+    assert.match(await page.locator('[data-event-id="TEST_VILLAGE_SUPPLY"]').innerText(),/受注/);
+    await page.locator('[data-close-village-menu]').click();
+    await page.evaluate(()=>{window.activateV39FooterTab('squad');document.querySelector('[data-squad-detail-tab="action"]')?.click();window.refreshV39ExpeditionTools();});
+    const talk=page.locator('[data-expedition-tool^="village-talk-"]');await talk.click();await talk.locator('button').click();
+    await page.waitForSelector('#v39-village-menu:not([hidden])');
+    const source=structuredClone(data.s),v=source.neutralVillages.find(row=>row.incidentTest),visitorId=source.activePlayerId;
+    v.sacrificeContract.active=true;v.relationsByPlayerId[v.sacrificeContract.playerId]=20;
+    const event=engine.restAtIncidentVillage(source,visitorId,v.id,balance,()=>0);
+    assert(event.ok);assert.equal(event.state.neutralVillages.find(row=>row.id===v.id).incidentByPlayerId[visitorId].outcomes.length,3);
+    assert.equal(engine.restAtIncidentVillage(event.state,visitorId,v.id,balance,()=>0).ok,false,'duplicate rest denied');
+    const lacking=structuredClone(source);lacking.players[0].factionState.units[0].ap=0;
+    assert.equal(engine.restAtIncidentVillage(lacking,visitorId,v.id,balance).ok,false,'all members need AP');
+    const outside=structuredClone(source);outside.players[0].factionState.units[1].x=0;
+    assert.equal(engine.restAtIncidentVillage(outside,visitorId,v.id,balance).ok,false,'all members must be present');
+    const own=engine.restAtIncidentVillage(source,v.sacrificeContract.playerId,v.id,balance,()=>0);
+    assert(own.ok);assert.equal(own.state.neutralVillages.find(row=>row.id===v.id).incidentByPlayerId[v.sacrificeContract.playerId].status,'rested','contract holder exempt');
+    const battle=engine.startVillageIncidentBattle(event.state,visitorId,v.id,v.defenseUnits);assert(battle.ok);
+    const casualty=structuredClone(battle.state);casualty.players[0].factionState.units[0].hp=0;
+    assert.equal(engine.resolveVillageIncidentCasualties(casualty,balance,()=>0).neutralVillages.find(row=>row.id===v.id).heldUnits[0].kind,'corpse');
+    assert.equal(engine.resolveVillageIncidentCasualties(casualty,balance,()=>0.99).neutralVillages.find(row=>row.id===v.id).heldUnits[0].kind,'captive');
+    await page.screenshot({path:`${out}/initial-${width}.png`});
+    // Partial delivery uses the existing common quest path, not a test-only reward shortcut.
+    await page.locator('[data-event-id="TEST_VILLAGE_SUPPLY"]').click();
+    await page.evaluate(()=>{const p=window.getV39ActivePlayer(),base=p.factionState.settlements[0];base.foodStockByType.穀物=5;window.updateV39ActiveFactionState({settlements:[base]});});
+    await page.locator('[data-world-action="quest-complete"]').click();data=await read();assert.equal(data.v.questsByPlayerId[data.p.id].progress,5);assert.equal(data.v.relationsByPlayerId[data.p.id],0);
+    await page.evaluate(()=>{const p=window.getV39ActivePlayer(),base=p.factionState.settlements[0];base.foodStockByType.穀物=20;window.updateV39ActiveFactionState({settlements:[base]});});
+    await page.locator('[data-world-action="quest-complete"]').click();data=await read();assert.equal(data.v.relationsByPlayerId[data.p.id],10);
+    await click('demon');await click('contract');
+    await page.locator('[data-event-id="TEST_DEMON_SUPPLY"]').click();await page.locator('[data-world-action="quest-complete"]').click();
+    data=await read();assert.equal(data.v.soulClaimsByPlayerId[data.p.id],2);assert.equal(data.v.relationsByPlayerId[data.p.id],10);
+    await click('souls');data=await read();assert.equal(data.v.soulStock,8);assert.equal(data.p.factionState.settlements[0].foodStockByType.魂,2);
+    await click('souls');data=await read();assert.equal(data.v.soulStock,8,'duplicate request denied');
+    await page.locator('[data-event-id="TEST_DEMON_HUNT"]').click();
+    const defeat=async ids=>{await page.evaluate(ids=>{for(const id of ids){const state=window.getV39GameState(),p=state.players.find(row=>row.id===state.activePlayerId),actor=p.factionState.units.find(row=>row.hp>0),target=state.enemies.find(row=>row.id===id);
+      actor.x=target.x-1;actor.y=target.y;actor.ap=100;actor.currentAp=100;actor.position=[actor.x,actor.y];
+      window.setV39GameState({players:state.players,timeline:{...state.timeline,turnNumber:state.timeline.turnNumber+1}});
+      const ok=window.executeV39FactionCombatAction({playerId:p.id,attackerId:actor.id,targetUnitId:id,skillRow:{名前:`試験討伐-${id}`,攻撃手段:'剣',判定:'攻撃',切断:100,射程:100,AP消費:1,テスト専用:true,効果:'即死'}});
+      if(!ok||window.getV39GameState().enemies.find(row=>row.id===id)?.hp>0)throw Error(`defeat failed: ${id}`);
+    }},ids);await page.waitForFunction(()=>!window.isV39MapInputLocked?.());};
+    await defeat(['village-quest-wolf-1','village-quest-wolf-2']);
+    await page.locator('[data-world-action="quest-complete"]').click();data=await read();assert.equal(data.v.relationsByPlayerId[data.p.id],20,JSON.stringify(await page.evaluate(()=>({phase:window.getV39GameState().timeline,locked:window.isV39MapInputLocked?.(),status:document.querySelector('#v39-village-menu output')?.textContent,quest:window.getV39GameState().neutralVillages[0].questsByPlayerId}))));assert.equal(data.v.soulClaimsByPlayerId[data.p.id],2);
+    await click('visitor');await click('heal');await page.locator('[data-world-action="village-rest"]').click();
+    data=await read();assert.equal(data.v.incidentByPlayerId[data.p.id].status,'choice');assert.equal(data.v.incidentByPlayerId[data.p.id].outcomes.length,3);
+    assert(data.v.incidentByPlayerId[data.p.id].outcomes.every(row=>!row.captured),'strong enough visitors survive');
+    await page.screenshot({path:`${out}/ambush-${width}.png`});
+    await click('battle');data=await read();assert.equal(data.v.defenseUnits.length,0);assert.equal(data.s.enemies.filter(row=>row.villageIncidentBattleId).length,2);
+    await click('victory');data=await read();assert.equal(data.v.incidentByPlayerId[data.p.id].status,'battle','cannot report without actual guard defeats');
+    // Check actual attack path and casualty transaction before ordinary corpse processing.
+    await page.evaluate(()=>{const state=window.getV39GameState(),guard=state.enemies.find(u=>u.villageIncidentBattleId),player=state.players.find(p=>p.id===state.activePlayerId),unit=player.factionState.units[0];
+      guard.status={...guard.status,攻撃:100000,命中:100000};guard.ap=100;unit.hp=1;unit.currentHp=1;
+      window.setV39GameState({enemies:state.enemies,players:state.players});
+      const ok=window.executeV39EnemyCombatAction({enemyId:guard.id,targetUnitId:unit.id,skillRow:{名前:'試験強打',攻撃手段:'剣',判定:'攻撃',打撃:10000,射程:100,AP消費:1,テスト専用:true,効果:'即死'}});if(!ok)throw Error('combat action rejected');});
+    data=await read();assert.equal(data.v.heldUnits.length,1,'battle defeat held as corpse/captive');assert.equal(data.p.factionState.units.length,2);
+    await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson()));
+    data=await read();assert.equal(data.v.heldUnits.length,1,'held target persisted');
+    await page.evaluate(()=>{const state=window.getV39GameState(),v=state.neutralVillages.find(v=>v.incidentTest),held=v.heldUnits[0];
+      // Exercise the surviving-captive branch independently of the 50% battle roll.
+      held.kind='captive';window.setV39GameState({neutralVillages:state.neutralVillages});});
+    await defeat(['village-guard-1','village-guard-2']);await click('victory');data=await read();assert.equal(data.v.heldUnits.length,0);assert.equal(data.p.factionState.units.length,3);
+    // A new fixture is an explicit reset; no test-mode toggle injects village data.
+    await page.evaluate(()=>window.startV39VillageIncidentTest());
+    await click('demon');await click('contract');await click('high');await click('visitor');await click('weak');await click('rest');
+    data=await read();assert.equal(data.v.heldUnits.length,3);assert.equal(data.p.factionState.units.length,0);
+    await click('demon');await click('receive');data=await read();assert.equal(data.v.heldUnits.length,0);assert.equal(data.p.factionState.villagePrisoners.length,3);
+    assert(data.p.factionState.villagePrisoners.every(row=>row.unit.equipment.length===0));
+    const gear=data.p.factionState.settlements[0].equipmentInventory.reduce((sum,row)=>sum+row.count,0);assert.equal(gear,6);
+    await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson()));data=await read();assert.equal(data.p.factionState.villagePrisoners.length,3);assert.equal(data.p.factionState.settlements[0].equipmentInventory.reduce((sum,row)=>sum+row.count,0),6);
+    await click('receive');data=await read();assert.equal(data.p.factionState.villagePrisoners.length,3);
+    await page.evaluate(()=>window.startV39VillageIncidentTest());await click('demon');await click('contract');await click('low');await click('visitor');await click('rest');
+    data=await read();assert.equal(data.v.incidentByPlayerId[data.p.id].status,'rescue');assert.equal(data.v.heldUnits.length,0);
+    await click('rescue');data=await read();assert.equal(data.v.sacrificeContract.active,false);assert.equal(data.v.relationsByPlayerId[data.p.id],10);
+    await page.screenshot({path:`${out}/rescue-${width}.png`});
+    await page.locator('[data-close-village-menu]').click();
+    await page.evaluate(()=>{const s=window.getV39GameState();window.setV39GameState({timeline:{...s.timeline,turnNumber:s.timeline.turnNumber+1}});window.activateV39FooterTab('squad');document.querySelector('[data-squad-detail-tab="action"]')?.click();window.refreshV39ExpeditionTools();});
+    const rest=page.locator('[data-expedition-tool^="village-rest-"]');data=await read();const ap=data.p.factionState.units[0].ap;
+    await rest.click();data=await read();assert.equal(data.p.factionState.units[0].ap,ap,'preview does not perform rest');
+    await rest.locator('button').click();data=await read();assert.equal(data.p.factionState.units[0].ap,ap-30,'action command pays AP for whole party');
+    assert(data.p.factionState.units.every(u=>u.ap===ap-30));
+    await page.screenshot({path:`${out}/village-actions-${width}.png`});
+    assert.deepEqual(errors,[]);console.log(`${width}: common delivery, demon soul request, party ambush, real combat defeat, save, equipment transfer, rescue passed`);await page.close();
+  }
+}finally{await browser.close();}

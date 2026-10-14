@@ -1,0 +1,11 @@
+{
+  "note": "正式イベントシート未接続の仮テスト定義。専用村イベントテストでのみ有効。",
+  "previewZoom":1,
+  "balance": {"relationGain":10,"supplyThreshold":20,"rescueThreshold":-20,"basePower":160,"populationDivisor":50,"ambushChance":1,"deathChance":0.5,"restApCost":30,"restHealRate":0.25,"soulReward":2},
+  "quests": [
+    {"ID":"TEST_VILLAGE_SUPPLY","名前":"村の食料補給","方式":"指定物資","resourceKey":"穀物","stockKind":"food","required":20},
+    {"ID":"TEST_VILLAGE_HUNT","名前":"村周辺のウルフ討伐","方式":"周辺脅威"},
+    {"ID":"TEST_DEMON_SUPPLY","名前":"悪魔の要求: 修繕物資","方式":"指定物資","resourceKey":"木材","stockKind":"material","required":20,"demonOnly":true},
+    {"ID":"TEST_DEMON_HUNT","名前":"悪魔の要求: 周辺討伐","方式":"周辺脅威","demonOnly":true}
+  ]
+}

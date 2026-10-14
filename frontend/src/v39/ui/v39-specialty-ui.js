@@ -1,5 +1,5 @@
-import { getV39SpecialtyEntries, summarizeV39Specialties, isV39HarvestResource, resolveV39SpecialResourceHarvestRule } from "../../lib/v39-specialty-rules.js";
-import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
+import { getV39SpecialtyEntries, getV39SpecialtyAccess, summarizeV39Specialties, isV39HarvestResource, resolveV39SpecialResourceHarvestRule } from "../../lib/v39-specialty-rules.js";
+import { resolveV39ResourceIconGlyph,resolveV39ResourceIcon } from "../../lib/resource-icon-glyphs.js";
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
 
 let opened = false;
@@ -27,7 +27,7 @@ function renderPanel() {
   if (!opened) return;
   const state = window.getV39GameState?.();
   const owned = getV39SpecialtyEntries(state, state?.activePlayerId, { ownedOnly:true });
-  const found = summarizeV39Specialties(owned);
+  const found = getV39SpecialtyAccess(state,state?.activePlayerId);
   const faction = state?.players?.find(player => player.id === state.activePlayerId)?.factionState;
   const settlement = getSelectedSettlement(faction);
   const resourceSites = getV39SpecialtyEntries(state, state?.activePlayerId, { settlementId:settlement?.settlementId || settlement?.id, ownedOnly:true }).filter(isV39HarvestResource);

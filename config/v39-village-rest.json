@@ -1,0 +1,5 @@
+{
+  "note":"通常村の休息の暫定値。専用事件テストの強襲率は通常村へ適用しない。",
+  "restApCost":30,"restHealRate":0.25,"ambushChance":0,
+  "supplyThreshold":20,"rescueThreshold":-20,"basePower":160,"populationDivisor":50
+}

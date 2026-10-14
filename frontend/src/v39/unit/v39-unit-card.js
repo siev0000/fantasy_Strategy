@@ -7,7 +7,7 @@ const count = value => Math.max(0,Number(value)||0);
 function automaticOperationIcon(unit) {
   if (count(unit.hp ?? unit.currentHp) <= 0 || unit.state === "死亡") return "";
   const duty = unit.caveDuty;
-  const route = unit.transportAssignment;
+  const route = unit.tradeAssignment?{...unit.tradeAssignment,enabled:unit.tradeAssignment.automatic,status:unit.tradeAssignment.automatic?'取引・自動往復':'取引中断'}:unit.transportAssignment;
   if (!duty && !route) return "";
   const stopped = duty ? /停止|塞がれ/.test(duty.status || "")
     : route.enabled !== true || ["blocked","paused","awaiting-route"].includes(route.status);

@@ -44,7 +44,7 @@ export function mergeV39Cargo(left = {}, right = {}) {
 
 export function resolveV39UnitCargoCapacity(unit) {
   const size = Math.max(0, number(unit?.status?.SIZ, number(unit?.SIZ)));
-  return Math.max(0, Math.round((100 * size / 170) * 10) / 10);
+  return Math.max(0, Math.round((100 * size / 170 + Math.max(0,number(unit?.cargoCapacityBonus))) * 10) / 10);
 }
 
 export function resolveV39CargoLoad(value = {}) {

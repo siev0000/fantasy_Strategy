@@ -7,7 +7,7 @@ page.on("pageerror", error => errors.push(String(error)));
 page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
 
 try {
-  await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+  await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3000", { waitUntil:"networkidle" });
   await page.waitForFunction(() => (
     typeof window.startV39LocalSession === "function"
     && typeof window.openV39TestTools === "function"
@@ -18,10 +18,11 @@ try {
     document.querySelectorAll(".vue-modal-backdrop").forEach(element => element.remove());
     window.setV39TestMode?.(true);
     window.openV39TestTools?.();
+    document.querySelector('[data-test-tab="settlement"]').click();
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     const scroll = document.querySelector(".v39-test-tools-scroll");
-    const button = document.querySelector('[data-test-action="hp-minus"]');
+    const button = document.querySelector('[data-test-action="resource-plus"]');
     if (!(scroll instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) {
       throw new Error("テスト操作UIを取得できません");
     }

@@ -42,6 +42,11 @@ function renderTools() {
   if(!unit||Number(unit.hp??unit.currentHp)<=0)return;
   const state=window.getV39GameState({includeWorlds:false}),player=state.players.find(row=>row.id===state.activePlayerId);
   if(!player?.factionState.units.some(row=>row.id===unit.id)||(unit.worldId||"surface")!==(state.activeWorldId||"surface"))return;
+  if((state.activeWorldId||'surface')==='surface')for(const village of state.neutralVillages||[]){
+    if(!village.territoryTileKeys?.includes(`${unit.x},${unit.y}`))continue;
+    addCard(list,`village-talk-${village.id}`,'村で会話・依頼',`${village.name} / 依頼の受注・納品・報告を開きます。`,()=>window.openV39VillageMenu?.(village.id));
+    addCard(list,`village-rest-${village.id}`,'村で休息',`AP30 / 部隊全員が村の領域内にいるとき休息できます。選択後に実行で確定します。`,()=>{window.restV39VillageParty?.(village.id);schedule();});
+  }
   if(unit.caveDuty)addCard(list,"mine-duty",`鉱床任務: ${unit.caveDuty.status}`,`積載: ${Object.entries(unit.caveDuty.cargo||{}).filter(([,value])=>value>0).map(([name,value])=>`${name} ${value}`).join(' / ')||'なし'} / 実行で任務解除（積載中は先に搬入）`,()=>{
     const result=window.assignV39MineDuty(unit.id,'none');window.showV39TurnBanner?.(result.ok?'鉱床任務を解除しました':result.reason);schedule();
   });

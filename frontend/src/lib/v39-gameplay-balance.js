@@ -775,6 +775,7 @@ export const V39_CAVE_BALANCE = Object.freeze({
 });
 
 export const V39_SPECIALTY_BALANCE = Object.freeze({
+  tradeLoanTurns:10, // 特産品を取引したときの初期貸出期間。
   minimumResourceSites:1, // 各特殊素材の全体最低地点数。操作プレイヤー数が多い場合はその人数を下限にする。
   minimumResourceRegionTiles:8, // 暫定：適正地形が連続8マス以上の地域ごとに各素材1地点を確保。0で地域保証を停止。
   harvestTurns:5, // 特殊資源1マスにつき1個を採取する基本周期（ターン）。

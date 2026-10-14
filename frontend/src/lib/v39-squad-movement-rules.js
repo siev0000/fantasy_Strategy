@@ -1,5 +1,6 @@
 import { V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
-import { getV39SquadUnitIds, normalizeV39SquadLogistics } from "./v39-logistics-state.js";
+import { getV39SquadUnitIds, normalizeV39SquadLogistics,resolveV39CargoLoad } from "./v39-logistics-state.js";
+import {tradeSpeed} from './v39-trade-state.js';
 import { getHexNeighborCoords } from "./hex-grid.js";
 import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
 import { resolveV39CaveFormation, advanceV39RelativeCaveFormation, assignV39CaveFormationStep } from "./v39-cave-formation-rules.js";
@@ -133,6 +134,11 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", 
     && (unit.worldId||"surface") === (selected.worldId||"surface")
     && (unitId(unit) === selectedId || !automatic(unit)));
   if (!participants.length) return { ok:false, reason:"移動可能な部隊員がいません。" };
+  const cargoSquad=squad||(faction.squads||[]).find(row=>row.unitIds?.includes(selectedId));
+  const load=(squad?resolveV39CargoLoad(cargoSquad?.cargo):0)+participants.reduce((sum,unit)=>sum+resolveV39CargoLoad(cargoSquad?.cargoByUnitId?.[unit.id]),0);
+  const speed=tradeSpeed(participants,load);
+  if(speed<=0)return {ok:false,reason:'積載超過で移動速度0%です。荷下ろし・積み替えが必要です。'};
+  for(let i=0;i<participants.length;i++)participants[i]={...participants[i],cargoSpeedMultiplier:speed};
 
   const leader = followFormation ? resolveV39MovementLeader(squad, participants)
     : participants.find(unit => unitId(unit) === getV39SquadUnitIds(squad)[0]) || selected || participants[0];

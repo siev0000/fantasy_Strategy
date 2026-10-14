@@ -35,7 +35,7 @@ export function assignV39MineDuty(state, playerId, mineWorldId, unitId, duty, se
   if (duty!=='none' && (!mine || mine.ownerPlayerId !== playerId || !route)) return {ok:false,state,reason:"自軍鉱床の地上への接続がありません"};
   if (!alive(unit) || !isV39ArmyTransportUnit(unit)) return {ok:false,state,reason:"生存する自軍の軍隊を指定してください"};
   const instructor = [...Object.values(player.factionState.recruitInstructorByTile || {}), ...Object.values(player.factionState.recruitInstructorTransfers || {})].some(row=>row.unitId===unitId);
-  if (duty !== 'none' && (unit.transportAssignment || instructor)) return {ok:false,state,reason:"他の任務を解除してください"};
+  if (duty !== 'none' && (unit.tradeAssignment || unit.transportAssignment || instructor)) return {ok:false,state,reason:"他の任務を解除してください"};
   if (duty !== 'none' && resolveV39CargoLoad(getV39TransportCargo(player.factionState,unitId))>0) return {ok:false,state,reason:"通常の積載物を荷下ろししてください"};
   const previous = unit.caveDuty;
   if (previous?.cargo && Object.values(previous.cargo).some(value => value > 0)) return {ok:false,state,reason:"積載物を拠点へ届けてから任務を変更してください"};

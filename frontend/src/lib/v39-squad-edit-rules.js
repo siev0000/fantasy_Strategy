@@ -20,7 +20,7 @@ export function getV39EditableSquads(faction) {
 export function getV39SquadMemberRestriction(faction,unit,worldId) {
   if(!(Number(unit.hp ?? unit.currentHp)>0) || unit.state==="死亡") return "死亡";
   if(world(unit)!==worldId) return "別マップ";
-  if(unit.transportAssignment || unit.caveDuty || [...Object.values(faction.recruitInstructorByTile || {}),
+  if(unit.tradeAssignment || unit.transportAssignment || unit.caveDuty || [...Object.values(faction.recruitInstructorByTile || {}),
     ...Object.values(faction.recruitInstructorTransfers || {})].some(row=>row.unitId===unit.id)) return "自動任務中（先に解除）";
   return "";
 }

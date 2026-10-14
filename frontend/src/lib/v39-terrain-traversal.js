@@ -105,7 +105,8 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
 
   const heightPenaltyPoints = Math.max(0, ((climbDiff + wallHeight) * 25) - (Math.floor(flightValue / 30) * 25));
   const terrain = resolveV39TerrainMoveCost(unit, resolveV39TileTerrainName(mapData, toXValue, toYValue), heightPenaltyPoints);
-  return Math.max(0, Math.ceil(terrain.multiplier * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))));
+  const cargoSpeed=Number.isFinite(Number(unit?.cargoSpeedMultiplier))?Math.max(0,Math.min(1,Number(unit.cargoSpeedMultiplier))):1;
+  return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))/cargoSpeed));
 }
 
 export function resolveV39TerrainMoveCost(unit, terrainName, additionalPenaltyPoints = 0) {

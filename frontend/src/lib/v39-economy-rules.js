@@ -1,4 +1,5 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import {divertV39TradeIncome} from './v39-trade-state.js';
 import { resolveV39ConstructionMaterials } from "./v39-construction-materials.js";
 import { resolveV39ResearchEffects } from "./v39-research-effects.js";
 import { createV39DefenseStructure } from "./v39-defense-rules.js";
@@ -32,7 +33,7 @@ import {
   normalizeV39PopulationGrowthState
 } from "./v39-population-economy.js";
 import { normalizeV39CivicState, resolveV39CivicProductionMultiplier, resolveV39CivicTurn } from "./v39-civic-rules.js";
-import { advanceV39SpecialResourceHarvest, getV39SpecialtyEntries, resolveV39SpecialtyHappiness } from "./v39-specialty-rules.js";
+import { advanceV39SpecialResourceHarvest, getV39SpecialtyAccess, getV39SpecialtyEntries, resolveV39SpecialtyHappiness } from "./v39-specialty-rules.js";
 import { advanceV39Rebellions } from "./v39-rebellion-rules.js";
 import { resolveV39CitySpecializationModifiers, resolveV39CityTraits } from "./v39-city-specialization-rules.js";
 import { resolveTerritoryGuardAtTile } from "../composables/militaryUnitUtils.js";
@@ -1269,6 +1270,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
   if (!state || !mapData?.grid) return { state, reports:[], completed:[] };
   state = { ...state, territoryOwnerByTile:{ ...(state.territoryOwnerByTile || {}) }, territoryStateByTile:{ ...(state.territoryStateByTile || {}) } };
   const reports = [];
+  let tradeState=state;
   const completed = [];
   const developmentCompleted = [];
   const territoryConversionCompleted = [];
@@ -1330,11 +1332,17 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
       village = normalizeV39Village(expansion.settlement, player.race);
       landExpansionCompleted.push(...expansion.completed);
       const specialization = resolveV39CitySpecializationModifiers(village);
-      const territoryIncome = {
+      let territoryIncome = {
         ...rawTerritoryIncome,
         food:Object.fromEntries(Object.entries(rawTerritoryIncome.food || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier * specialization.foodMultiplier)])),
         material:Object.fromEntries(Object.entries(rawTerritoryIncome.material || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier * specialization.materialMultiplier)]))
       };
+      const harvest = advanceV39SpecialResourceHarvest(state, player, village, currentTurn, mapData);
+      const actualMaterial={...territoryIncome.material};
+      for(const [key,amount] of Object.entries(harvest.income))actualMaterial[key]=number(actualMaterial[key])+amount;
+      const tradeIncome=divertV39TradeIncome(tradeState,'player',player.id,settlementId,{...territoryIncome.food,...actualMaterial},currentTurn);
+      tradeState=tradeIncome.state;
+      territoryIncome={...territoryIncome,food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key=>[key,number(tradeIncome.income[key])])),material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key=>[key,number(tradeIncome.income[key])]))};
       const assignedUnits = (player.factionState.units || []).filter(unit => {
         if (number(unit?.hp ?? unit?.currentHp) <= 0) return false;
         return text(unit?.settlementId || selectedId) === settlementId;
@@ -1351,8 +1359,6 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
       });
       const materialStockByType = { ...village.materialStockByType };
       for (const key of MATERIAL_RESOURCE_KEYS) materialStockByType[key] = round1(number(materialStockByType[key]) + number(territoryIncome.material[key]));
-      const harvest = advanceV39SpecialResourceHarvest(state, player, village, currentTurn, mapData);
-      for (const [key, amount] of Object.entries(harvest.income)) materialStockByType[key] = number(materialStockByType[key]) + amount;
       village = normalizeV39Village({
         ...village,
         ...populationResult,
@@ -1373,7 +1379,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         const [x, y] = key.split(",").map(Number);
         return resolveTileTerrain(mapData, x, y);
       });
-      const specialties = resolveV39SpecialtyHappiness(getV39SpecialtyEntries(state, player.id, { settlementId, ownedOnly:true }));
+      const specialties = resolveV39SpecialtyHappiness(getV39SpecialtyAccess(state, player.id, { settlementId }));
       village.civicState = resolveV39CivicTurn(village, currentTurn, residentialTerrains, specialties, resolveV39ResearchEffects(player.factionState.research));
       village.lastEconomyDelta = {
         food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, round1(number(village.foodStockByType[key]) - number(beforeFood[key]))])),
@@ -1387,6 +1393,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         citySpecializationId:village.citySpecializationId,
         citySpecializationModifiers:specialization,
         specialResourceHarvest:harvest.income,
+        tradeReservedByType:tradeIncome.reserved,
         turn:state.timeline?.turnNumber
       };
       const scale = resolveVillageScaleLabel(village);
@@ -1432,6 +1439,10 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
       factionState:{ ...player.factionState, units, settlements:nextSettlements, selectedSettlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id) }
     };
   });
+  for(const player of players) {
+    const books=tradeState.players.find(row=>row.id===player.id)?.factionState.tradeContracts;
+    if(books)player.factionState.tradeContracts=books;
+  }
   const currentTurn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
   const enemyEconomy = advanceEnemyNestEconomy({ ...state, players }, mapData, currentTurn);
   const rebellion = advanceV39Rebellions({ ...state, players, facilitiesByTile, settlements, ...enemyEconomy }, currentTurn);

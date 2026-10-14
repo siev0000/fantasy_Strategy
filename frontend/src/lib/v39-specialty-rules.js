@@ -129,6 +129,20 @@ export function summarizeV39Specialties(entries = []) {
   return [...groups.values()];
 }
 
+export function getV39SpecialtyAccess(state,playerId,{settlementId='',includeBorrowed=true}={}) {
+  const village=(state.neutralVillages||[]).find(row=>row.id===playerId);
+  const entries=village?(village.territoryTileKeys||[]).map(key=>state.specialtiesByTile?.[key]).filter(Boolean):getV39SpecialtyEntries(state,playerId,{settlementId,ownedOnly:true});
+  const groups=new Map(summarizeV39Specialties(entries).map(row=>[row.name,{...row}]));
+  const turn=Number(state.timeline?.turnNumber)||1;
+  for(const contract of (state.players||[]).flatMap(player=>player.factionState.tradeContracts||[]))for(const loan of contract.specialtyLoans||[]) {
+    if(turn<loan.startTurn||turn>=loan.endTurn)continue;
+    const from=contract.sides[loan.from],to=contract.sides[1-loan.from];
+    if(from.partyId===playerId&&(!settlementId||from.settlementId===settlementId)){const row=groups.get(loan.name);if(row)row.count=Math.max(0,row.count-loan.count);}
+    if(includeBorrowed&&to.partyId===playerId&&(!settlementId||to.settlementId===settlementId)){const row=groups.get(loan.name)||{name:loan.name,count:0,...resolveV39ResourceIcon(loan.name)};row.count+=loan.count;groups.set(loan.name,row);}
+  }
+  return [...groups.values()].filter(row=>row.count>0);
+}
+
 export function resolveV39SpecialResourceHarvestRule(entry, research) {
   const definition = v39SpecialtyDefinitions().find(row => text(row.名前) === text(entry?.name)) || {};
   const turns = Math.max(1, Number(definition.採取周期) || V39_SPECIALTY_BALANCE.harvestTurns);

@@ -362,6 +362,7 @@ function startMove() {
   }
   const faction = activeFaction();
   const unit = selectedUnitFromFaction(faction);
+  if(unit?.tradeAssignment?.automatic){showToast('取引の自動移動中です。取引画面で中断してから操作してください');return false;}
   if (!unit) {
     showToast("移動するキャラクターを選択してください");
     return false;

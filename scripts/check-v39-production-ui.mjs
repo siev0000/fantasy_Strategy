@@ -28,9 +28,9 @@ try {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   for (const name of [
-    "character-squad-layout", "character-skills-equipment", "field-settings-scroll",
+    "character-squad-layout", "character-skills-equipment", "field-settings-scroll", "test-tools-tabs", "test-tools-scroll", "negotiation-ui", "trade-baskets",
     "test-play-characters", "start-save-load", "research-flow-ui", "cave-move-binding",
-    "field-update-loading", "local-session", "effect-defaults", "effect-direction", "expedition-test-fixture", "coordinate-ruler", "auto-turn-end", "instructor-turn-end", "friendly-auto-movement", "squad-edit-follow", "consumables-unholy-ui", "undead-test-fixture", "class-promotion", "summon-ui", "call-ui", "village-event-ui", "undead-inheritance"
+    "field-update-loading", "local-session", "effect-defaults", "effect-direction", "expedition-test-fixture", "coordinate-ruler", "auto-turn-end", "instructor-turn-end", "friendly-auto-movement", "squad-edit-follow", "consumables-unholy-ui", "undead-test-fixture", "class-promotion", "summon-ui", "call-ui", "village-event-ui", "village-incidents", "undead-inheritance", "trade"
   ]) await run([`scripts/check-v39-${name}.mjs`], env);
   console.log("Production UI regression checks passed");
 } finally {

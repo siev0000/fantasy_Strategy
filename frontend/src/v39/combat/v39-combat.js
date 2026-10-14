@@ -2,6 +2,18 @@ import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
 import {applyV39DeathBlade} from "../../lib/v39-purification-rules.js";
 import {convertV39CorpsesInDeathFog} from '../../lib/v39-corpse-undead-rules.js';
+import {resolveVillageIncidentCasualties} from '../../lib/v39-village-incidents.js';
+import villageIncidentTest from '../../../../config/v39-village-incident-test.json';
+
+function commitVillageCombatState(patch, options) {
+  const state=window.getV39GameState({includeWorlds:false});
+  if(!state.neutralVillages.some(village=>Object.values(village.incidentByPlayerId||{}).some(row=>row.status==='battle'))) {
+    window.setV39GameState(patch,options);return;
+  }
+  // 死体の通常処理へ渡す前に、村事件の敗北者だけ捕虜/死体の保管へ移す。
+  const next=resolveVillageIncidentCasualties({...state,...patch},villageIncidentTest.balance);
+  window.setV39GameState({...patch,players:next.players,neutralVillages:next.neutralVillages,settlements:next.settlements},options);
+}
 import {createV39EventEnemy} from '../ai/v39-enemy-spawn.js';
 import { resolveV39DefenseKind, grantV39PersonalDefense, v39DefenseDamagePatch,
   createV39DefenseStructure, v39DefenseCovers, resolveV39DefenseFootprint } from "../../lib/v39-defense-rules.js";
@@ -1232,7 +1244,7 @@ function performAttack(target, session = attackSession, options = {}) {
     : row);
   placeV39SkillFog(ctx.data,areaScale,session.skillRow,currentV39TurnNumber(state));
   applyV39DeathBlade(ctx.data,attacker,combatLog);
-  window.setV39GameState({ ...clearDestroyedWallFacilities(state,ctx.data,resolvedPlayers), enemies:nextEnemies }, { reason:"combat-attack" });
+  commitVillageCombatState({ ...clearDestroyedWallFacilities(state,ctx.data,resolvedPlayers), enemies:nextEnemies }, { reason:"combat-attack" });
   for (const levelUp of expResult.levelUps) {
     window.dispatchEvent(new CustomEvent("v39:unit-level-up", { detail:levelUp }));
   }
@@ -1467,7 +1479,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   }}};
   placeV39SkillFog(ctx.data,areaScale,skillRow,currentV39TurnNumber(state));
   applyV39DeathBlade(ctx.data,attacker,combatLog);
-  window.setV39GameState({ ...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages, enemyNests, enemyCombatRuntime }, { reason:"enemy-combat-attack" });
+  commitVillageCombatState({ ...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages, enemyNests, enemyCombatRuntime }, { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
@@ -1533,6 +1545,7 @@ function runNeutralVillageDefenseTurn() {
   let attacks = 0;
   for (const village of state.neutralVillages || []) {
     for (const guard of village?.defenseUnits || []) {
+      if(guard.tradeAssignment)continue;
       if (number(guard?.hp, guard?.currentHp) <= 0 || text(guard?.state) === "死亡") continue;
       const skillRow = resolveActionSkillRows(guard).find(row => !isV39SupportSkill(row, guard));
       if (!skillRow) continue;

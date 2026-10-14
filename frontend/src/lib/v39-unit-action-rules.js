@@ -13,6 +13,7 @@ export function isV39UnitUnacted(unit, turnNumber, faction = {}) {
     && ap > 0 && !isV39UnitWaiting(unit, turnNumber)
     && unit?.transportAssignment?.enabled !== true
     && !unit?.caveDuty
+    && unit?.tradeAssignment?.automatic !== true
     && !instructor
     && Number(unit?.lastActionTurn || 0) !== Number(turnNumber)
     && Number(unit?.surveyTask?.startedTurn || 0) !== Number(turnNumber)

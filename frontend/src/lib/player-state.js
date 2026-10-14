@@ -119,6 +119,8 @@ export function createPlayerRecord(source = {}, index = 0) {
 }
 
 export const PLAYER_FACTION_STATE_KEYS = Object.freeze([
+  "tradeContracts",
+  "negotiationAttempts",
   "settlements",
   "selectedSettlementId",
   "units",

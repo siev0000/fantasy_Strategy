@@ -28,6 +28,7 @@ export function getV39RecruitInstructorCandidates(state, player, village, classN
     unit.className === className && alive(unit) && !unit.isMob
   ).map(unit => {
     const reasons = [];
+    if(unit.tradeAssignment)reasons.push('取引の任務中');
     if(unit.caveDuty)reasons.push("鉱床の任務中");
     if (!surface(unit) || unit.x == null || unit.y == null || state.territoryOwnerByTile?.[keyOf(unit)] !== player.id) reasons.push("領土外");
     if (!facility.tileKey) reasons.push(`${facility.facilityName}未建設・損壊`);

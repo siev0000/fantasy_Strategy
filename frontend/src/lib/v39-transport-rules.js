@@ -34,6 +34,7 @@ export function setV39UnitTransportAssignment(state, playerId, settlementId, uni
   const unit = player?.factionState?.units?.find(row => text(row.id) === text(unitId));
   if (!player || !settlement || !unit) return { ok:false, reason:"拠点またはユニットが見つかりません", state };
   if (enabled) {
+    if(unit.tradeAssignment)return {ok:false,state,reason:'取引任務を解除してください'};
     if (unit.caveDuty) return {ok:false,state,reason:"鉱床の任務を解除してください"};
     if (!isV39ArmyTransportUnit(unit)) return { ok:false, reason:"輸送指定は軍隊ユニットのみ可能です", state };
     if (Number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡") return { ok:false, reason:"死亡したユニットは指定できません", state };

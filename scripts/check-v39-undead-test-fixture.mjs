@@ -9,7 +9,8 @@ try {
     page.on('pageerror',e=>errors.push(String(e.stack)));page.on('dialog',dialog=>dialog.accept());
     await page.goto(process.env.V39_TEST_URL || 'http://127.0.0.1:3022',{waitUntil:'networkidle'});
     await page.waitForFunction(()=>!!window.startV39UndeadTest);
-    await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.activateV39FooterTab('test');});
+    await page.locator('[data-v39-test-tools]').click();
+    await page.waitForFunction(()=>window.isV39TestMode()===true);
     await page.locator('[data-test-action="undead-test-start"]').click();
     await page.waitForFunction(()=>window.__v39FieldRuntime.mapData.undeadTestFixture===true);
     const initial=await page.evaluate(()=>{
