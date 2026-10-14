@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import EffectPlayerOverlay from "./EffectPlayerOverlay.vue";
 import { skillData as skillInfoDb } from "../lib/game-data-registry.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
+import { getRaceIconSrc } from "../lib/race-icon-library.js";
 
 const TABS = [
   ["squad", "部隊"], ["battle", "戦闘"], ["tile", "土地"],
@@ -63,6 +64,7 @@ function chooseSquad(k){squadKey.value=k;memberId.value=unitId(squads.value.find
 function chooseMember(u){memberId.value=unitId(u);techName.value="";emit("select-unit",{unitId:memberId.value});}
 function coord(u){return Number.isFinite(Number(u?.x))&&Number.isFinite(Number(u?.y))?`(${u.x},${u.y})`:"(-,-)";}
 function level(u){return Math.max(1,Math.floor(num(u?.level,num(u?.status?.Lv,1))));}
+function raceIconSrc(u){return getRaceIconSrc(text(u?.race));}
 function hp(u){const max=Math.max(0,Math.round(num(u?.status?.HP,num(u?.maxHp,0))));const cur=Math.max(0,Math.min(max||Infinity,Math.round(num(u?.hp,num(u?.currentHp,max)))));return [cur,max];}
 function ap(u){const max=Math.max(1,Math.round(num(u?.actionPointMax,100)));return [Math.max(0,Math.min(max,Math.round(num(u?.actionPoint,max)))),max];}
 function stat(u,k){const vals=[u?.status?.[k],u?.[k]];if(k==="移動")vals.push(u?.move,u?.movement,u?.moveRange);for(const v of vals)if(Number.isFinite(Number(v)))return Math.round(Number(v));return "-";}
@@ -97,7 +99,7 @@ const manage=[["♟","自キャラ","character"],["⌂","都市・建設","build
           <button v-for="u in squad.members" :key="unitId(u)" class="fs-member" :class="{active:unitId(u)===unitId(member)}" @click="chooseMember(u)">
             <div class="fs-mhead">
               <span class="fs-avatar fs-level-badge" :title="`${text(u?.race)||'種族不明'} / Lv${level(u)}`" :aria-label="`${text(u?.race)||'種族不明'} Lv${level(u)}`">
-                <img v-if="u.iconSrc" :src="u.iconSrc" :alt="text(u?.race)||u.name||'種族'"/>
+                <img v-if="raceIconSrc(u)" :src="raceIconSrc(u)" :alt="`${text(u?.race)||'種族不明'} アイコン`"/>
                 <b v-else class="fs-avatar-fallback">{{text(u?.race).slice(0,1)||text(u.name).slice(0,1)||'兵'}}</b>
                 <span class="fs-avatar-level">Lv{{level(u)}}</span>
               </span>
