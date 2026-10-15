@@ -6,8 +6,8 @@ import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import { getRaceIconSrc } from "../lib/race-icon-library.js";
 
 const TABS = [
-  ["squad", "部隊"], ["battle", "戦闘"], ["tile", "土地"],
-  ["tileData", "土地データ"], ["manage", "管理"]
+  ["squad", "部隊"], ["ability", "能力"], ["battle", "行動"],
+  ["tile", "土地"], ["tileData", "土地データ"], ["manage", "管理"]
 ];
 const STATUS = [["攻撃","攻撃"],["防御","防御"],["魔力","魔攻"],["精神","魔防"],["速度","速さ"],["命中","命中"],["SIZ","SIZ"],["移動","移動"]];
 const PROF = ["隠密","感知","威圧","軽業","技術","早業","看破","騙す","知識","鑑定","装置","変装","制作","精神接続","魔法技術","指揮"];
@@ -94,27 +94,29 @@ const manage=[["♟","自キャラ","character"],["⌂","都市・建設","build
   <div :key="activeTab" class="fs-body">
     <section v-if="activeTab==='squad'" class="fs-squad">
       <div v-if="squads.length" class="fs-squad-picker"><button v-for="s in squads" :key="s.key" :class="{active:squad?.key===s.key}" @click="chooseSquad(s.key)"><b>{{s.label}}</b><small>{{s.members.length}}体</small></button></div>
-      <div v-if="squad" class="fs-split">
-        <div class="fs-list">
-          <button v-for="u in squad.members" :key="unitId(u)" class="fs-member" :class="{active:unitId(u)===unitId(member)}" @click="chooseMember(u)">
-            <div class="fs-mhead">
-              <span class="fs-avatar fs-level-badge" :title="`${text(u?.race)||'種族不明'} / Lv${level(u)}`" :aria-label="`${text(u?.race)||'種族不明'} Lv${level(u)}`">
-                <img v-if="raceIconSrc(u)" :src="raceIconSrc(u)" :alt="`${text(u?.race)||'種族不明'} アイコン`"/>
-                <b v-else class="fs-avatar-fallback">{{text(u?.race).slice(0,1)||text(u.name).slice(0,1)||'兵'}}</b>
-                <span class="fs-avatar-level">Lv{{level(u)}}</span>
-              </span>
-              <strong>{{u.name||'キャラ'}}</strong><small>{{coord(u)}}</small>
-            </div>
-            <div class="fs-vital"><span>HP</span><b>{{hp(u)[0]}} / {{hp(u)[1]}}</b></div><div class="fs-vital ap"><span>AP</span><b>{{ap(u)[0]}} / {{ap(u)[1]}}</b></div>
-          </button>
-        </div>
-        <div class="fs-detail" v-if="member">
-          <div class="fs-detail-head"><div><strong>{{member.name||'キャラ'}}</strong><small>{{coord(member)}}</small></div><button type="button" @click.stop="selectTab('battle')">戦闘へ</button></div>
-          <h3>各種ステータス</h3><div class="fs-stats"><div v-for="s in STATUS" :key="s[0]"><span>{{s[1]}}</span><b>{{stat(member,s[0])}}</b></div></div>
-          <h3>技能</h3><div v-if="profRows.length" class="fs-prof"><div v-for="p in profRows" :key="p[0]"><span>{{p[0]}}</span><b>{{p[1]}}</b></div></div><p v-else class="fs-empty">技能データなし</p>
-          <h3>技</h3><div v-if="techRows.length" class="fs-tech"><button v-for="t in techRows" :key="t.name" :class="{active:tech?.name===t.name}" @click="techName=t.name"><strong>{{t.name}}</strong><small>{{techMeta(t)||'詳細データなし'}}</small></button></div><p v-else class="fs-empty">技データなし</p>
-        </div>
+      <div v-if="squad" class="fs-list">
+        <button v-for="u in squad.members" :key="unitId(u)" class="fs-member" :class="{active:unitId(u)===unitId(member)}" @click="chooseMember(u)">
+          <div class="fs-mhead">
+            <span class="fs-avatar fs-level-badge" :title="`${text(u?.race)||'種族不明'} / Lv${level(u)}`" :aria-label="`${text(u?.race)||'種族不明'} Lv${level(u)}`">
+              <img v-if="raceIconSrc(u)" :src="raceIconSrc(u)" :alt="`${text(u?.race)||'種族不明'} アイコン`"/>
+              <b v-else class="fs-avatar-fallback">{{text(u?.race).slice(0,1)||text(u.name).slice(0,1)||'兵'}}</b>
+              <span class="fs-avatar-level">Lv{{level(u)}}</span>
+            </span>
+            <strong>{{u.name||'キャラ'}}</strong><small>{{coord(u)}}</small>
+          </div>
+          <div class="fs-vital"><span>HP</span><b>{{hp(u)[0]}} / {{hp(u)[1]}}</b></div><div class="fs-vital ap"><span>AP</span><b>{{ap(u)[0]}} / {{ap(u)[1]}}</b></div>
+        </button>
       </div><p v-else class="fs-empty">このマスに自軍キャラクターはいません。</p>
+    </section>
+
+    <section v-else-if="activeTab==='ability'" class="fs-detail fs-scroll">
+      <template v-if="member">
+        <div class="fs-detail-head"><div><strong>{{member.name||'キャラ'}}</strong><small>{{coord(member)}}</small></div><button type="button" @click.stop="selectTab('battle')">行動へ</button></div>
+        <h3>各種ステータス</h3><div class="fs-stats"><div v-for="s in STATUS" :key="s[0]"><span>{{s[1]}}</span><b>{{stat(member,s[0])}}</b></div></div>
+        <h3>技能</h3><div v-if="profRows.length" class="fs-prof"><div v-for="p in profRows" :key="p[0]"><span>{{p[0]}}</span><b>{{p[1]}}</b></div></div><p v-else class="fs-empty">技能データなし</p>
+        <h3>技</h3><div v-if="techRows.length" class="fs-tech"><button v-for="t in techRows" :key="t.name" :class="{active:tech?.name===t.name}" @click="techName=t.name"><strong>{{t.name}}</strong><small>{{techMeta(t)||'詳細データなし'}}</small></button></div><p v-else class="fs-empty">技データなし</p>
+      </template>
+      <p v-else class="fs-empty">部隊タブでユニットを選択してください。</p>
     </section>
 
     <section v-else-if="activeTab==='battle'" class="fs-battle">
