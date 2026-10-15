@@ -40,6 +40,13 @@ function resolveConfiguredRaceIconSrc(value) {
   return `${normalizedBase}${relativePath}`;
 }
 
+function configuredIconName(value) {
+  const normalized = text(value).replace(/\\/g, "/");
+  const fileName = normalized.split("/").pop() || "";
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+}
+
 export function resolveRaceIconName(value) {
   const target = text(value);
   if (!target) return "";
@@ -47,6 +54,7 @@ export function resolveRaceIconName(value) {
   const raceRow = findRaceRow(target);
   const factionRow = findFactionRow(target, raceRow);
   const candidates = [
+    configuredIconName(raceRow?.icon),
     target,
     raceRow?.key,
     raceRow?.name,
@@ -61,9 +69,10 @@ export function resolveRaceIconName(value) {
 
 export function getRaceIconSrc(value) {
   const raceRow = findRaceRow(value);
-  const configuredSrc = resolveConfiguredRaceIconSrc(raceRow?.icon);
-  if (configuredSrc) return configuredSrc;
-
   const iconName = resolveRaceIconName(value);
-  return iconName ? getIconSrcByName(iconName, iconName) : "";
+  if (iconName) return getIconSrcByName(iconName, iconName);
+
+  // 設定パスに対応する同名アイコンが無い場合だけ、設定されたパスを最後の候補として使う。
+  // これにより旧 /assets/images/role/... 設定でも、現在の assets/images/アイコン/... を優先できる。
+  return resolveConfiguredRaceIconSrc(raceRow?.icon);
 }
