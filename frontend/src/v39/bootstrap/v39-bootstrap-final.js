@@ -28,3 +28,16 @@ import "../ui/v39-effect-settings-loop-controls.js";
 import "../ui/v39-effect-settings-static-preview.js";
 import "../ui/v39-title-effect-settings.js";
 import "../ui/v39-text-input-modal.js";
+
+const V39_UI_BUILD_LABEL = "UI 2026.10.15-38";
+
+function applyV39UiBuildLabel() {
+  const label = document.getElementById("uiBuildLabel");
+  if (label) label.textContent = V39_UI_BUILD_LABEL;
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", applyV39UiBuildLabel, { once:true });
+} else {
+  applyV39UiBuildLabel();
+}
