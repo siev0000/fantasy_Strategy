@@ -122,6 +122,7 @@ function installStyles() {
       box-sizing:border-box!important;
       background:conic-gradient(#e4c45d var(--v39-exp-progress),#334147 0)!important;
       box-shadow:0 0 0 1px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.08)!important;
+      overflow:hidden!important;
     }
     .squad-card .squad-exp-ring::before{
       content:""!important;
@@ -142,12 +143,22 @@ function installStyles() {
       border-radius:50%!important;
       background:#17252b!important;
       line-height:1!important;
+      overflow:hidden!important;
+    }
+    .squad-card .squad-exp-ring .squad-race-icon{
+      width:100%!important;
+      height:100%!important;
+      display:block!important;
+      object-fit:cover!important;
+      border-radius:50%!important;
+      opacity:1!important;
     }
     .squad-card .squad-exp-ring .squad-level-number{
       position:absolute;inset:3px;z-index:2;display:grid;place-items:center;
-      border-radius:50%;background:rgba(10,18,22,.85);color:#ffe09a;
+      border-radius:50%;background:rgba(10,18,22,.18);color:#fff0b7;
       font-size:var(--font-body);font-weight:900;line-height:1;
-      text-shadow:0 1px 2px #000;pointer-events:none;
+      text-shadow:0 1px 2px #000,1px 0 2px #000,-1px 0 2px #000,0 -1px 2px #000;
+      pointer-events:none;
     }
     @media(max-width:430px) and (orientation:portrait){
       .squad-card .v39-card-vital{
