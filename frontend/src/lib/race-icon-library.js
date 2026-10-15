@@ -1,4 +1,4 @@
-import { factionData, raceData } from "./game-data-registry.js";
+import { classData, factionData, raceData } from "./game-data-registry.js";
 import { getIconSrcByName, hasIconName } from "./icon-library.js";
 
 function text(value) {
@@ -7,6 +7,7 @@ function text(value) {
 
 const raceRows = Array.isArray(raceData) ? raceData : [];
 const factionRows = Array.isArray(factionData) ? factionData : [];
+const classRows = Array.isArray(classData) ? classData : [];
 
 function findRaceRow(value) {
   const target = text(value);
@@ -15,6 +16,18 @@ function findRaceRow(value) {
     row?.key,
     row?.name,
     row?.className
+  ].map(text).includes(target)) || null;
+}
+
+function findClassRow(value) {
+  const target = text(value);
+  if (!target) return null;
+  return classRows.find(row => [
+    row?.名前,
+    row?.name,
+    row?.key,
+    row?.ID,
+    row?.id
   ].map(text).includes(target)) || null;
 }
 
@@ -51,10 +64,16 @@ export function resolveRaceIconName(value) {
   const target = text(value);
   if (!target) return "";
 
+  const classRow = findClassRow(target);
+  if (text(classRow?.種類) === "動物" && hasIconName("動物")) {
+    return "動物";
+  }
+
   const raceRow = findRaceRow(target);
   const factionRow = findFactionRow(target, raceRow);
   const candidates = [
     configuredIconName(raceRow?.icon),
+    classRow?.画像ID,
     target,
     raceRow?.key,
     raceRow?.name,
