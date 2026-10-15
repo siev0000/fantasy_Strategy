@@ -1,0 +1,136 @@
+name: Temporary Unit Resistance Fix
+
+on:
+  push:
+    branches:
+      - ui/mobile-responsive-port-20260912
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+        with:
+          ref: ui/mobile-responsive-port-20260912
+          fetch-depth: 0
+
+      - name: Patch resistance calculation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected 1 match, found {count}")
+              return text.replace(old, new, 1)
+
+          util_path = Path('frontend/src/composables/unitStatusUtils.js')
+          util = util_path.read_text(encoding='utf-8')
+          old_util = '''export function buildUnitResistances(raceRow, classRow, options = {}) {
+            const fields = Array.isArray(options?.resistanceFields) ? options.resistanceFields : [];
+            const toSafeNumber = typeof options?.toSafeNumber === "function"
+              ? options.toSafeNumber
+              : (value, fallback = 0) => {
+                const num = Number(value);
+                return Number.isFinite(num) ? num : fallback;
+              };
+            const out = {};
+            for (const key of fields) {
+              const raceValue = toSafeNumber(raceRow?.[key], 0);
+              const classValue = toSafeNumber(classRow?.[key], 0);
+              out[key] = Math.round(raceValue + classValue);
+            }
+            return out;
+          }
+          '''
+          new_util = '''export function buildUnitResistances(raceRow, classRowOrRows, options = {}) {
+            const fields = Array.isArray(options?.resistanceFields) ? options.resistanceFields : [];
+            const toSafeNumber = typeof options?.toSafeNumber === "function"
+              ? options.toSafeNumber
+              : (value, fallback = 0) => {
+                const num = Number(value);
+                return Number.isFinite(num) ? num : fallback;
+              };
+            const classRows = Array.isArray(classRowOrRows)
+              ? classRowOrRows.filter(row => row && typeof row === "object")
+              : (classRowOrRows && typeof classRowOrRows === "object" ? [classRowOrRows] : []);
+            const out = {};
+            for (const key of fields) {
+              const raceValue = toSafeNumber(raceRow?.[key], 0);
+              const classValue = classRows.reduce(
+                (sum, row) => sum + toSafeNumber(row?.[key], 0),
+                0
+              );
+              out[key] = Math.round(raceValue + classValue);
+            }
+            return out;
+          }
+          '''
+          util = replace_once(util, old_util, new_util, 'unitStatusUtils buildUnitResistances')
+          util_path.write_text(util, encoding='utf-8')
+
+          panel_path = Path('frontend/src/components/PhaserMapGeneratorPanel.vue')
+          panel = panel_path.read_text(encoding='utf-8')
+
+          old_create = '''  const equipment = chooseEquipmentForClass(classRow, isNamed || isSovereign, equipmentSlots, equipmentRarity);
+            const baseResistances = buildUnitResistances(raceRow, classRow);
+          '''
+          new_create = '''  const equipment = chooseEquipmentForClass(classRow, isNamed || isSovereign, equipmentSlots, equipmentRarity);
+            const baseResistances = buildUnitResistances(raceRow, [classRow, secondaryClassRow].filter(Boolean));
+          '''
+          panel = replace_once(panel, old_create, new_create, 'createUnitRecord resistance')
+
+          old_rebuild = '''  const secondaryClassLevels = (human && nextLevel >= 10 && secondaryClassRow) ? 1 : 0;
+            const equipment = normalizeEquipmentList(unit?.equipment);
+            const baseResistances = buildUnitResistances(raceRow, classRow);
+          '''
+          new_rebuild = '''  const secondaryClassLevels = (human && nextLevel >= 10 && secondaryClassRow) ? 1 : 0;
+            const equipment = normalizeEquipmentList(unit?.equipment);
+            const baseResistances = buildUnitResistances(raceRow, [classRow, secondaryClassRow].filter(Boolean));
+          '''
+          panel = replace_once(panel, old_rebuild, new_rebuild, 'rebuildUnitByLevelRules resistance')
+
+          old_autoequip = '''  const normalizedEquipment = normalizeEquipmentList(nextEquipment.filter(Boolean));
+            const baseResistances = buildUnitResistances(raceRow, classRow);
+            const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(normalizedEquipment));
+          '''
+          new_autoequip = '''  const normalizedEquipment = normalizeEquipmentList(nextEquipment.filter(Boolean));
+            const secondaryClassName = nonEmptyText(unit?.secondaryClassName);
+            const secondaryClassRow = secondaryClassName ? findClassRowByName(secondaryClassName) : null;
+            const baseResistances = buildUnitResistances(raceRow, [classRow, secondaryClassRow].filter(Boolean));
+            const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(normalizedEquipment));
+          '''
+          panel = replace_once(panel, old_autoequip, new_autoequip, 'applyAutoEquipForCreatedUnit resistance')
+
+          panel_path.write_text(panel, encoding='utf-8')
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build:front
+
+      - name: Commit resistance fix and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/tmp-unit-resistance-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/composables/unitStatusUtils.js frontend/src/components/PhaserMapGeneratorPanel.vue .github/workflows/tmp-unit-resistance-fix.yml
+          git diff --cached --check
+          git commit -m "fix: make unit resistances level-independent"
+          git push origin HEAD:ui/mobile-responsive-port-20260912
