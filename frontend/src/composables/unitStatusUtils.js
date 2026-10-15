@@ -69,7 +69,7 @@ export function buildUnitSkillLevelsFromRules(input) {
   return addStatusVectors([raceGrowth, classGrowth], skillLevelFields, toSafeNumber);
 }
 
-export function buildUnitResistances(raceRow, classRow, options = {}) {
+export function buildUnitResistances(raceRow, classRowOrRows, options = {}) {
   const fields = Array.isArray(options?.resistanceFields) ? options.resistanceFields : [];
   const toSafeNumber = typeof options?.toSafeNumber === "function"
     ? options.toSafeNumber
@@ -77,10 +77,16 @@ export function buildUnitResistances(raceRow, classRow, options = {}) {
       const num = Number(value);
       return Number.isFinite(num) ? num : fallback;
     };
+  const classRows = Array.isArray(classRowOrRows)
+    ? classRowOrRows.filter(row => row && typeof row === "object")
+    : (classRowOrRows && typeof classRowOrRows === "object" ? [classRowOrRows] : []);
   const out = {};
   for (const key of fields) {
     const raceValue = toSafeNumber(raceRow?.[key], 0);
-    const classValue = toSafeNumber(classRow?.[key], 0);
+    const classValue = classRows.reduce(
+      (sum, row) => sum + toSafeNumber(row?.[key], 0),
+      0
+    );
     out[key] = Math.round(raceValue + classValue);
   }
   return out;

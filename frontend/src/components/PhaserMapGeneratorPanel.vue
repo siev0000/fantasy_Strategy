@@ -9133,7 +9133,7 @@ function createUnitRecord({
   const finalStatus = applyMilitaryProfileToStatus(namedBonus.status, militaryProfile);
   const equipmentSlots = buildEquipmentSlotsFromRaceRow(raceRow || {});
   const equipment = chooseEquipmentForClass(classRow, isNamed || isSovereign, equipmentSlots, equipmentRarity);
-  const baseResistances = buildUnitResistances(raceRow, classRow);
+  const baseResistances = buildUnitResistances(raceRow, [classRow, secondaryClassRow].filter(Boolean));
   const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(equipment));
   const moveRange = 6;
   const normalizedType = isSovereign ? "統治者" : (isNamed ? "ネームド" : unitType);
@@ -9259,7 +9259,7 @@ function rebuildUnitByLevelRules(unit, options = {}) {
   }
   const secondaryClassLevels = (human && nextLevel >= 10 && secondaryClassRow) ? 1 : 0;
   const equipment = normalizeEquipmentList(unit?.equipment);
-  const baseResistances = buildUnitResistances(raceRow, classRow);
+  const baseResistances = buildUnitResistances(raceRow, [classRow, secondaryClassRow].filter(Boolean));
   const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(equipment));
   const baseSkillLevels = buildUnitSkillLevelsFromClass(raceRow, classRow, built.raceLevels, built.classLevels);
   const namedBonus = applyNamedStatusSkillBonus(
@@ -11868,7 +11868,9 @@ function applyAutoEquipForCreatedUnit(unit, raceRow, classRow, village, options 
     nextEquipment.push(nextItem);
   }
   const normalizedEquipment = normalizeEquipmentList(nextEquipment.filter(Boolean));
-  const baseResistances = buildUnitResistances(raceRow, classRow);
+  const secondaryClassName = nonEmptyText(unit?.secondaryClassName);
+  const secondaryClassRow = secondaryClassName ? findClassRowByName(secondaryClassName) : null;
+  const baseResistances = buildUnitResistances(raceRow, [classRow, secondaryClassRow].filter(Boolean));
   const resistances = mergeResistances(baseResistances, buildEquipmentResistanceBonus(normalizedEquipment));
   return {
     ok: true,
