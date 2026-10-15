@@ -29,6 +29,17 @@ function findFactionRow(value, raceRow = null) {
   }) || null;
 }
 
+function resolveConfiguredRaceIconSrc(value) {
+  const raw = text(value).replace(/\\/g, "/");
+  if (!raw) return "";
+  if (/^(?:data:|blob:|https?:\/\/)/i.test(raw)) return raw;
+
+  const relativePath = raw.replace(/^\/+/, "");
+  const basePath = text(import.meta.env.BASE_URL) || "/";
+  const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
+  return `${normalizedBase}${relativePath}`;
+}
+
 export function resolveRaceIconName(value) {
   const target = text(value);
   if (!target) return "";
@@ -49,6 +60,10 @@ export function resolveRaceIconName(value) {
 }
 
 export function getRaceIconSrc(value) {
+  const raceRow = findRaceRow(value);
+  const configuredSrc = resolveConfiguredRaceIconSrc(raceRow?.icon);
+  if (configuredSrc) return configuredSrc;
+
   const iconName = resolveRaceIconName(value);
   return iconName ? getIconSrcByName(iconName, iconName) : "";
 }
