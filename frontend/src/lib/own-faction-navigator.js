@@ -1,3 +1,6 @@
+import { getRaceIconSrc } from "./race-icon-library.js";
+import "./own-faction-navigator-race-badge.css";
+
 function nonEmptyText(value) {
   if (typeof value !== "string") return "";
   const normalized = value.trim();
@@ -94,7 +97,7 @@ export function createOwnSquadNavigatorEntries({
       const positioned = Number.isFinite(rawX) && Number.isFinite(rawY) && rawX >= 0 && rawY >= 0;
       const squadIconName = nonEmptyText(summary?.squadIconName);
       const leaderRaceIconSrc = leader
-        ? moveUnitIconSrc({ ...leader, subIconName: "", iconName: "" })
+        ? getRaceIconSrc(nonEmptyText(leader?.race))
         : "";
       const leaderSubIconName = nonEmptyText(leader?.subIconName);
       const leaderSubIconSrc = leaderSubIconName
@@ -153,7 +156,7 @@ export function createOwnCharacterNavigatorEntries({
       const rawX = toSafeNumber(unit?.x, NaN);
       const rawY = toSafeNumber(unit?.y, NaN);
       const positioned = Number.isFinite(rawX) && Number.isFinite(rawY) && rawX >= 0 && rawY >= 0;
-      const raceIconSrc = moveUnitIconSrc({ ...unit, subIconName: "", iconName: "" });
+      const raceIconSrc = getRaceIconSrc(nonEmptyText(unit?.race));
       const subIconName = nonEmptyText(unit?.subIconName);
       const subIconSrc = subIconName
         ? moveUnitIconSrc({ ...unit, subIconName, iconName: subIconName, race: "" })
