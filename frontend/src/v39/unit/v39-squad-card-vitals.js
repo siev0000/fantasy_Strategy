@@ -1,289 +1,50 @@
-const STYLE_ID = "v39-squad-card-vitals-style";
-
-function installStyles() {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
-  style.textContent = `
-    .squad-card .squad-bars{
-      display:grid!important;
-      grid-template-columns:1fr!important;
-      gap:0!important;
-      min-width:0!important;
-      margin:0!important;
-    }
-    .squad-card .v39-card-vital{
-      min-width:0!important;
-      display:grid!important;
-      grid-template-columns:20px minmax(0,1fr)!important;
-      align-items:center!important;
-      gap:3px!important;
-      min-height:18px!important;
-      padding:0!important;
-      margin:0!important;
-      border:0!important;
-      border-radius:0!important;
-      background:transparent!important;
-      line-height:1!important;
-    }
-    .squad-card .v39-card-vital + .v39-card-vital{
-      margin-top:0!important;
-    }
-    .squad-card .v39-card-vital-label{
-      font-size:var(--font-secondary)!important;
-      font-weight:800!important;
-      color:#a7b5b8!important;
-      white-space:nowrap!important;
-    }
-    .squad-card .v39-card-vital-track{
-      position:relative!important;
-      display:block!important;
-      min-width:0!important;
-      width:100%!important;
-      height:16px!important;
-      border-radius:4px!important;
-      overflow:hidden!important;
-      background:#263136!important;
-      box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)!important;
-    }
-    .squad-card .v39-card-vital-fill{
-      position:absolute!important;
-      left:0!important;
-      top:0!important;
-      bottom:0!important;
-      display:block!important;
-      height:100%!important;
-      min-width:0!important;
-      border-radius:inherit!important;
-      z-index:1!important;
-    }
-    .squad-card .v39-card-vital.hp .v39-card-vital-fill{
-      background:linear-gradient(90deg,#3caa5b,#89df8e)!important;
-    }
-    .squad-card .v39-card-vital.ap .v39-card-vital-fill{
-      background:linear-gradient(90deg,#247dc2,#72caff)!important;
-    }
-    .v39-card-defense-fill{
-      position:absolute;left:0;bottom:0;height:2px;z-index:3;
-      pointer-events:none;
-    }
-    .v39-card-defense-fill.shield{background:#65d4ff;bottom:2px}
-    .v39-card-defense-fill.barrier{background:#c998ff}
-    .v39-defense-value.shield{color:#65d4ff}
-    .v39-defense-value.barrier{color:#c998ff}
-    .squad-card .v39-card-vital-value{
-      position:absolute!important;
-      inset:0!important;
-      z-index:2!important;
-      display:flex!important;
-      align-items:center!important;
-      justify-content:center!important;
-      padding:0 3px!important;
-      margin:0!important;
-      font-size:var(--font-secondary)!important;
-      font-weight:800!important;
-      line-height:1!important;
-      color:#f4f8f6!important;
-      white-space:nowrap!important;
-      text-align:center!important;
-      text-shadow:0 1px 2px rgba(0,0,0,.95), 1px 0 1px rgba(0,0,0,.8)!important;
-      pointer-events:none!important;
-    }
-    .squad-card{
-      grid-template-columns:minmax(0,1fr);
-      gap:2px!important;
-      padding:4px!important;
-    }
-    .squad-card-top{
-      width:100%;min-width:0;
-      margin:0!important;
-    }
-    .squad-card .squad-main{display:flex;gap:3px;width:100%;min-width:0}
-    .squad-card .squad-name-wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;flex:1;min-width:0}
-    .squad-card .squad-name{
-      display:block;white-space:nowrap;overflow-wrap:normal;
-      font-size:calc(var(--font-body) * var(--v39-text-fit,1));line-height:1.15;
-    }
-    .squad-card .squad-pos{
-      display:block;white-space:nowrap;
-      font-size:calc(var(--font-size-11) * var(--v39-text-fit,1));line-height:1.1;
-    }
-
-    .squad-card .squad-exp-ring{
-      --v39-exp-progress:0%;
-      position:relative!important;
-      display:grid!important;
-      place-items:center!important;
-      width:34px!important;
-      height:34px!important;
-      flex:0 0 34px!important;
-      padding:3px!important;
-      border-radius:50%!important;
-      box-sizing:border-box!important;
-      background:conic-gradient(#e4c45d var(--v39-exp-progress),#334147 0)!important;
-      box-shadow:0 0 0 1px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.08)!important;
-      overflow:hidden!important;
-    }
-    .squad-card .squad-exp-ring::before{
-      content:""!important;
-      position:absolute!important;
-      inset:3px!important;
-      border-radius:50%!important;
-      background:#10191d!important;
-      z-index:0!important;
-    }
-    .squad-card .squad-exp-ring .squad-icon{
-      position:relative!important;
-      z-index:1!important;
-      width:28px!important;
-      height:28px!important;
-      display:grid!important;
-      place-items:center!important;
-      margin:0!important;
-      border-radius:50%!important;
-      background:#17252b!important;
-      line-height:1!important;
-      overflow:hidden!important;
-    }
-    .squad-card .squad-exp-ring .squad-race-icon{
-      width:100%!important;
-      height:100%!important;
-      display:block!important;
-      object-fit:cover!important;
-      border-radius:50%!important;
-      opacity:1!important;
-    }
-    .squad-card .squad-exp-ring .squad-level-number{
-      position:absolute;inset:3px;z-index:2;display:grid;place-items:center;
-      border-radius:50%;background:rgba(10,18,22,.18);color:#fff0b7;
-      font-size:var(--font-body);font-weight:900;line-height:1;
-      text-shadow:0 1px 2px #000,1px 0 2px #000,-1px 0 2px #000,0 -1px 2px #000;
-      pointer-events:none;
-    }
-    @media(max-width:430px) and (orientation:portrait){
-      .squad-card .v39-card-vital{
-        grid-template-columns:20px minmax(0,1fr)!important;
-        gap:2px!important;
-        min-height:17px!important;
-      }
-      .squad-card .v39-card-vital-label{
-        font-size:var(--font-secondary)!important;
-      }
-      .squad-card .v39-card-vital-value{
-        font-size:var(--font-secondary)!important;
-      }
-      .squad-card .v39-card-vital-track{
-        height:15px!important;
-      }
-      .squad-card{
-        padding:3px!important;
-        gap:1px!important;
-      }
-
-      .squad-card .squad-exp-ring{
-        width:32px!important;
-        height:32px!important;
-        flex-basis:32px!important;
-        padding:3px!important;
-      }
-      .squad-card .squad-exp-ring .squad-icon{
-        width:26px!important;
-        height:26px!important;
-      }
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-function parseVital(raw) {
-  const match = String(raw || "").match(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)/);
-  if (!match) return null;
-  const current = Number(match[1]);
-  const max = Number(match[2]);
-  if (!Number.isFinite(current) || !Number.isFinite(max)) return null;
-  const percent = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
-  return { current, max, percent };
-}
-
-function gaugeMarkup(kind, label, value) {
-  return `
-    <div class="v39-card-vital ${kind}">
-      <span class="v39-card-vital-label">${label}</span>
-      <span class="v39-card-vital-track">
-        <i class="v39-card-vital-fill" style="width:${value.percent.toFixed(2)}%"></i>
-        <b class="v39-card-vital-value">${value.current}/${value.max}</b>
-      </span>
-    </div>`;
-}
-
-function convertCard(card) {
-  if (!(card instanceof HTMLElement)) return;
-  const bars = card.querySelector(".squad-bars");
-  if (!(bars instanceof HTMLElement)) return;
-  if (bars.dataset.v39Gauge === "1" && bars.querySelectorAll(".v39-card-vital").length === 2) return;
-
-  const hpRaw = bars.querySelector(".squad-stat.hp b")?.textContent || bars.dataset.hp || "";
-  const apRaw = bars.querySelector(".squad-stat.ap b")?.textContent || bars.dataset.ap || "";
-  const hp = parseVital(hpRaw);
-  const ap = parseVital(apRaw);
-  if (!hp || !ap) return;
-
-  bars.dataset.hp = `${hp.current}/${hp.max}`;
-  bars.dataset.ap = `${ap.current}/${ap.max}`;
-  bars.innerHTML = gaugeMarkup("hp", "HP", hp) + gaugeMarkup("ap", "AP", ap);
-  bars.dataset.v39Gauge = "1";
-}
+// Card markup and gauges belong to v39-unit-card.js. Only width-dependent text fitting lives here.
+const measured = new WeakMap();
+let scheduled = false;
+let fontVersion = 0;
 
 function refresh() {
-  document.querySelectorAll("#squadMemberList .squad-card, #characterModal .squad-card").forEach(card => {
-    convertCard(card);
-    for (const label of card.querySelectorAll(".squad-name, .squad-pos")) {
-      if (!label.clientWidth) continue;
-      // Reset to the configured size before measuring, so wider layouts can grow again.
-      label.style.setProperty("--v39-text-fit", "1");
-      const ratio = Math.min(1, label.clientWidth / Math.max(1, label.scrollWidth));
-      label.style.setProperty("--v39-text-fit", String(ratio));
-    }
-  });
+  const pending = [];
+  for (const label of document.querySelectorAll('#squadMemberList .squad-name, #squadMemberList .squad-pos, #characterModal .squad-name, #characterModal .squad-pos')) {
+    const width = label.clientWidth;
+    if (!width) continue;
+    const text = label.textContent;
+    const old = measured.get(label);
+    if (old?.width === width && old.text === text && old.fontVersion === fontVersion) continue;
+    pending.push({label, width, text});
+  }
+  // Batch writes and measurements instead of forcing a layout twice for every label.
+  for (const {label} of pending) label.style.setProperty('--v39-text-fit', '1');
+  for (const entry of pending) entry.ratio = Math.min(1, entry.width / Math.max(1, entry.label.scrollWidth));
+  for (const {label, width, text, ratio} of pending) {
+    label.style.setProperty('--v39-text-fit', String(ratio));
+    measured.set(label, {width, text, fontVersion});
+  }
+}
+
+function scheduleRefresh() {
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => { scheduled = false; refresh(); });
 }
 
 function install() {
-  installStyles();
-
-  const attach = () => {
-    const list = document.getElementById("squadMemberList");
-    if (!(list instanceof HTMLElement)) {
-      window.setTimeout(attach, 50);
-      return;
-    }
-
-    let scheduled = false;
-    const scheduleRefresh = () => {
-      if (scheduled) return;
-      scheduled = true;
-      requestAnimationFrame(() => {
-        scheduled = false;
-        refresh();
-      });
-    };
-
-    const observer = new MutationObserver(scheduleRefresh);
-    observer.observe(list, { childList: true, subtree: true });
-    new ResizeObserver(scheduleRefresh).observe(list);
-    const characterBody = document.querySelector("#characterModal .modal-body");
-    if (characterBody) {
-      observer.observe(characterBody, {childList:true,subtree:true});
-      new ResizeObserver(scheduleRefresh).observe(characterBody);
-    }
-    window.addEventListener("v39:display-settings-changed", scheduleRefresh);
-    document.fonts?.ready.then(scheduleRefresh);
-    list.addEventListener("click", () => window.setTimeout(scheduleRefresh, 0), true);
-
-    refresh();
-    window.refreshV39SquadCardVitals = refresh;
-  };
-
-  attach();
+  const list = document.getElementById('squadMemberList');
+  if (!(list instanceof HTMLElement)) { window.setTimeout(install, 50); return; }
+  const observer = new MutationObserver(scheduleRefresh);
+  const resize = new ResizeObserver(scheduleRefresh);
+  for (const host of [list, document.querySelector('#characterModal .modal-body')].filter(Boolean)) {
+    observer.observe(host, {childList:true, subtree:true});
+    resize.observe(host);
+  }
+  const invalidateFonts = () => { fontVersion++; scheduleRefresh(); };
+  window.addEventListener('v39:display-settings-changed', invalidateFonts);
+  // Crossing the desktop/mobile breakpoint can change font metrics even at the same card width.
+  window.addEventListener('resize', invalidateFonts);
+  document.fonts?.ready.then(invalidateFonts);
+  document.fonts?.addEventListener('loadingdone', invalidateFonts);
+  window.refreshV39SquadCardVitals = scheduleRefresh;
+  scheduleRefresh();
 }
 
 install();

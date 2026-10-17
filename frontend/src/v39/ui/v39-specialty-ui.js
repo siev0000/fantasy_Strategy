@@ -1,5 +1,5 @@
-import { getV39SpecialtyEntries, getV39SpecialtyAccess, summarizeV39Specialties, isV39HarvestResource, resolveV39SpecialResourceHarvestRule } from "../../lib/v39-specialty-rules.js";
-import { resolveV39ResourceIconGlyph,resolveV39ResourceIcon } from "../../lib/resource-icon-glyphs.js";
+import { getV39SpecialtyEntries, getV39SpecialtyAccess, isV39HarvestResource, resolveV39SpecialResourceHarvestRule } from "../../lib/v39-specialty-rules.js";
+import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
 
 let opened = false;
@@ -25,8 +25,7 @@ function renderPanel() {
   }
   panel.hidden = !opened;
   if (!opened) return;
-  const state = window.getV39GameState?.();
-  const owned = getV39SpecialtyEntries(state, state?.activePlayerId, { ownedOnly:true });
+  const state = window.getV39GameState?.({includeWorlds:false});
   const found = getV39SpecialtyAccess(state,state?.activePlayerId);
   const faction = state?.players?.find(player => player.id === state.activePlayerId)?.factionState;
   const settlement = getSelectedSettlement(faction);
@@ -45,31 +44,38 @@ function renderPanel() {
     const description = `${sites.length}マス・次の採取まで${remaining}ターン`;
     return `<small class="v39-harvest-note" title="${description}" aria-label="${description}">×${sites.length} ⌛${remaining}</small>`;
   };
-  panel.innerHTML = `<div class="v39-specialty-head"><b>特殊資源</b><button type="button" data-specialty-close aria-label="閉じる">×</button></div>
+  const markup = `<div class="v39-specialty-head"><b>特殊資源</b><button type="button" data-specialty-close aria-label="閉じる">×</button></div>
     <div class="v39-specialty-tabs" role="tablist">${[["stock","在庫"],["specialties","特産品"]].map(([key,label]) => `<button type="button" role="tab" aria-selected="${selectedTab === key}" data-specialty-tab="${key}">${label}</button>`).join("")}</div>
     <div class="v39-specialty-list">${selectedTab === "stock" ? stock.map(row => `<div class="v39-specialty-row"><span style="color:${escape(row.iconColor || "inherit")}">${escape(row.icon)}</span><b>${escape(row.name)}</b><span>${Number(row.value).toLocaleString("ja-JP")}</span><small>${Math.round(row.delta) > 0 ? "+" : ""}${Math.round(row.delta) || 0}</small>${harvestNote(row)}</div>`).join("") : found.length ? found.map(row => `<div class="v39-specialty-row"><span style="color:${escape(row.color || "inherit")}">${escape(row.glyph)}</span><b>${escape(row.name)}</b><span>${row.count}マス</span></div>`).join("") : "発見済みの特産品マスを領土にすると表示されます。"}</div>`;
+  if(panel.__v39Markup!==markup){panel.innerHTML=markup;panel.__v39Markup=markup;}
 }
 
-export function renderV39SpecialtyHeader(parent) {
-  const state = window.getV39GameState?.();
-  if (ownerId !== state?.activePlayerId) { opened = false; ownerId = state?.activePlayerId; }
-  const button = document.createElement("button");
+export function renderV39SpecialtyHeader(parent,snapshot) {
+  const activePlayerId = window.getV39ActivePlayerId?.();
+  if (ownerId !== activePlayerId) { opened = false; ownerId = activePlayerId; }
+  let button = document.getElementById("v39-specialty-header");
+  if(!button){
+    button=document.createElement("button");
+    button.innerHTML=`<span class="ico">${resolveV39ResourceIconGlyph("特産品")}</span><span><span class="resource-label">特殊資源</span><b class="value-main"></b><small class="value-delta"></small></span>`;
+    button.addEventListener("click", event => {
+      event.stopPropagation(); opened = !opened;
+      document.getElementById("resourceDrawer")?.classList.remove("show");
+      button.setAttribute("aria-expanded", String(opened)); renderPanel();
+    });
+  }
   button.id = "v39-specialty-header";
   button.className = "res-chip ore-group tappable resource-group-btn";
   button.dataset.group = "special";
   button.title = "特殊資源の在庫・発見済みの特産品";
   button.setAttribute("aria-expanded", String(opened));
-  const stock = window.getV39ResourceSnapshot?.()?.special?.items || [];
+  const stock = (snapshot || window.getV39ResourceSnapshot?.())?.special?.items || [];
   const total = stock.reduce((sum,row) => sum + row.value, 0);
   const delta = Math.round(stock.reduce((sum,row) => sum + row.delta, 0));
   button.setAttribute("aria-label", "特殊資源");
-  button.innerHTML = `<span class="ico">${resolveV39ResourceIconGlyph("特産品")}</span><span><span class="resource-label">特殊資源</span><b class="value-main">${total.toLocaleString("ja-JP")}</b><small class="value-delta">${delta > 0 ? "+" : ""}${delta || 0}</small></span>`;
-  button.addEventListener("click", event => {
-    event.stopPropagation(); opened = !opened;
-    document.getElementById("resourceDrawer")?.classList.remove("show");
-    button.setAttribute("aria-expanded", String(opened)); renderPanel();
-  });
-  parent.appendChild(button);
+  const value=total.toLocaleString("ja-JP"),change=`${delta > 0 ? "+" : ""}${delta || 0}`;
+  if(button.querySelector('.value-main').textContent!==value)button.querySelector('.value-main').textContent=value;
+  if(button.querySelector('.value-delta').textContent!==change)button.querySelector('.value-delta').textContent=change;
+  if(button.parentNode!==parent)parent.appendChild(button);
   renderPanel();
 }
 

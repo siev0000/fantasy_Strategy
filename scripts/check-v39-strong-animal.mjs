@@ -29,18 +29,20 @@ try {
     }
     window.setV39GameState({enemies:[],enemyNests:[],enemySquads:[],victoryLandmarksByTile:{}});
     const enemies=window.spawnV39Enemies();
-    const {classData}=await import("http://127.0.0.1:3022/src/lib/game-data-registry.js");
-    const {rowStatusVector}=await import("http://127.0.0.1:3022/src/composables/unitStatusUtils.js");
-    const {STATUS_GROWTH_FIELDS}=await import("http://127.0.0.1:3022/src/constants/unitCommon.js");
-    const {resolveMonsterSheetArtwork}=await import("http://127.0.0.1:3022/src/lib/monster-sheet-artwork.js");
-    const {getStrongAnimalClassCandidates}=await import("http://127.0.0.1:3022/src/lib/animal-artwork-config.js");
-    const bosses=enemies.filter(enemy=>enemy.strongEnemy && getStrongAnimalClassCandidates(enemy.race).length);
+    const {classData,getGameDataRows}=await import('/src/lib/game-data-registry.js');
+    const {rowStatusVector}=await import('/src/composables/unitStatusUtils.js');
+    const {STATUS_GROWTH_FIELDS}=await import('/src/constants/unitCommon.js');
+    const {resolveMonsterSheetArtwork}=await import('/src/lib/monster-sheet-artwork.js');
+    const {getV39BossFusionCandidates}=await import('/src/lib/v39-boss-fusion-rules.js');
+    const candidates=enemy=>getV39BossFusionCandidates(enemy.race,enemy.className,getGameDataRows('モンスター合成'),new Set(classData.map(row=>row.名前)));
+    const bosses=enemies.filter(enemy=>enemy.strongEnemy);
     const checks=bosses.map(enemy=>{
       const baseline=window.deriveV39CharacterFromRaceClass({...enemy,level:enemy.level-enemy.strongAnimalClassLevel,strongAnimalClassName:"",strongAnimalClassLevel:0});
       const derived=window.deriveV39CharacterFromRaceClass(JSON.parse(JSON.stringify(enemy)));
       const row=classData.find(row=>row.名前===enemy.strongAnimalClassName);
       const growth=rowStatusVector(row,{statusGrowthFields:STATUS_GROWTH_FIELDS,statusGrowthDivisor:10});
-      const correct=STATUS_GROWTH_FIELDS.every(key=>derived.status[key]===baseline.status[key]+growth[key]*enemy.strongAnimalClassLevel);
+      const correct=STATUS_GROWTH_FIELDS.every(key=>derived.status[key]-(derived.passiveBonuses?.status?.[key]||0)
+        ===baseline.status[key]-(baseline.passiveBonuses?.status?.[key]||0)+growth[key]*enemy.strongAnimalClassLevel);
       return {race:enemy.race,name:enemy.name,level:enemy.level,extra:enemy.strongAnimalClassName,
         extraLv:enemy.strongAnimalClassLevel,baseLv:derived.baseLevel,correct,
         sameBaseLevels:derived.raceLevels===baseline.raceLevels && derived.classLevels===baseline.classLevels,
@@ -50,14 +52,12 @@ try {
     const sampleIds=horseVariants.map((variant,index)=>enemies.find(enemy=>enemy.race==="ホース"&&enemy.strongAnimalClassName===["エンジェル","デヴィル"][index])?.id);
     const normal=enemies.filter(enemy=>!enemy.strongEnemy);
     return {checks,horseVariants,sampleIds,normalHasExtra:normal.some(enemy=>enemy.strongAnimalClassName),normalCount:normal.length,
-      nonAnimalHasExtra:enemies.some(enemy=>!getStrongAnimalClassCandidates(enemy.race).length && enemy.strongAnimalClassName)};
+      invalidBoss:bosses.some(enemy=>!candidates(enemy).some(row=>row.className===enemy.strongAnimalClassName&&row.name===enemy.name))};
   });
   assert.ok(report.checks.length>0);
-  for (const name of ["ソルアニマル", "ムーンアニマル"]) assert.ok(report.checks.some(enemy => enemy.extra === name), `${name} is drawn for strong animals`);
   assert.ok(report.checks.every(enemy=>enemy.correct&&enemy.sameBaseLevels&&enemy.extraLv>0&&enemy.baseLv+enemy.extraLv===enemy.level));
-  assert.ok(report.checks.every(enemy=>enemy.race==="ホース"||!['エンジェル','デヴィル'].includes(enemy.extra)));
   assert.equal(report.normalHasExtra,false);
-  assert.equal(report.nonAnimalHasExtra,false);
+  assert.equal(report.invalidBoss,false);
   assert.ok(report.horseVariants.every(Boolean),"天使・悪魔の馬がどちらも抽選される");
   assert.equal(report.horseVariants[0].slot,8);
   assert.equal(report.horseVariants[1].slot,9);

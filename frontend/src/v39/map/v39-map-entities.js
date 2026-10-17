@@ -30,6 +30,7 @@ let refreshPendingDuringBatch = false;
 let lastMarkerRenderSignature = null;
 let markerArtworkVersion = 0;
 const markerByEntityId = new Map();
+const specialtyMarkers = new Map();
 const textureLoadState = new WeakMap();
 
 function tileMetrics() {
@@ -54,20 +55,10 @@ function activeScene() {
   return game.scene.getScenes(true)?.[0] || null;
 }
 
-function activeFaction() {
-  try {
-    return typeof window.getV39ActiveFactionState === "function"
-      ? window.getV39ActiveFactionState()
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 function gameState() {
   try {
     return typeof window.getV39GameState === "function"
-      ? window.getV39GameState()
+      ? window.getV39GameState({includeWorlds:false})
       : null;
   } catch {
     return null;
@@ -194,6 +185,10 @@ function markerRenderSignature(faction, state) {
 }
 
 function clearMarkers() {
+  // Keep expensive Phaser text textures when only unit markers need rebuilding.
+  for (const {marker} of specialtyMarkers.values()) {
+    if (unitContainer && marker.parentContainer === unitContainer) unitContainer.remove(marker,false);
+  }
   if (structureContainer?.destroy) structureContainer.destroy(true);
   if (constructionLabelContainer?.destroy) constructionLabelContainer.destroy(true);
   if (unitContainer?.destroy) unitContainer.destroy(true);
@@ -242,7 +237,7 @@ function drawBase(scene, container, village) {
   container.add(marker);
 }
 
-function drawBases(scene, container, settlements, activeVillage) {
+function drawBases(scene, container, settlements, activeVillage, activePlayerId) {
   const seen = new Set();
   // 選択中拠点は勢力状態側が正本。世界一覧に同座標の旧データが残っていても先に描画する。
   for (const settlement of [activeVillage, ...(Array.isArray(settlements) ? settlements : [])]) {
@@ -252,7 +247,7 @@ function drawBases(scene, container, settlements, activeVillage) {
     if (x === null || y === null) continue;
     const key = `${x},${y}`;
     if (seen.has(key)) continue;
-    const isOwnBase = settlement.id === activeVillage?.id || settlement.ownerPlayerId === gameState()?.activePlayerId;
+    const isOwnBase = settlement.id === activeVillage?.id || settlement.ownerPlayerId === activePlayerId;
     // 未探索の一般村はFogに隠す。ただしテストモードでは初期配置を確認できるよう全件表示する。
     if (!isOwnBase && !isTestMode() && window.isV39TileExplored?.(x, y) === false) continue;
     seen.add(key);
@@ -497,10 +492,10 @@ function selectUnit(unit) {
   window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail: { unitId: unit.id, unit } }));
 }
 
-function unitGroupsByTile(units) {
+function unitGroupsByTile(units, worldId) {
   const groups = new Map();
   for (const unit of Array.isArray(units) ? units : []) {
-    if ((unit.worldId || "surface") !== (window.getV39GameState?.({ includeWorlds:false })?.activeWorldId || "surface") && !unit.isEnemy && String(unit.id).startsWith("cave-party")) continue;
+    if ((unit.worldId || "surface") !== worldId && !unit.isEnemy && String(unit.id).startsWith("cave-party")) continue;
     const x = finiteCoord(unit?.x);
     const y = finiteCoord(unit?.y);
     if (x === null || y === null) continue;
@@ -719,22 +714,21 @@ function drawUnitGroup(scene, container, group, selectedUnitId) {
   container.add(marker);
 }
 
-function drawUnits(scene, container, units, selectedUnitId) {
-  const worldId=window.getV39GameState?.({ includeWorlds:false })?.activeWorldId||"surface";
+function drawUnits(scene, container, units, selectedUnitId, worldId) {
   const list = (Array.isArray(units) ? units : []).filter(unit=>(unit.worldId||"surface")===worldId);
-  for (const group of unitGroupsByTile(list).values()) {
+  for (const group of unitGroupsByTile(list,worldId).values()) {
     drawUnitGroup(scene, container, group, selectedUnitId);
   }
 }
 
-function drawForeignUnits(scene, container, players, activePlayerId) {
+function drawForeignUnits(scene, container, players, activePlayerId, worldId) {
   const rule = MAP_ENTITY_SIZE_RULES.unit;
   const diameter = tileRelativePx(rule.diameterTiles);
   const radius = diameter / 2;
   const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
   for (const player of Array.isArray(players) ? players : []) {
     if (player?.id === activePlayerId) continue;
-    for (const group of unitGroupsByTile((player?.factionState?.units||[]).filter(unit=>(unit.worldId||"surface")===(window.getV39GameState?.({ includeWorlds:false })?.activeWorldId||"surface"))).values()) {
+    for (const group of unitGroupsByTile((player?.factionState?.units||[]).filter(unit=>(unit.worldId||"surface")===worldId),worldId).values()) {
       const unit = representativeUnit(group, "");
       const x = finiteCoord(unit?.x);
       const y = finiteCoord(unit?.y);
@@ -766,7 +760,7 @@ function drawForeignUnits(scene, container, players, activePlayerId) {
   }
 }
 
-function drawNeutralVillageUnits(scene, container, villages) {
+function drawNeutralVillageUnits(scene, container, villages, worldId) {
   const rule = MAP_ENTITY_SIZE_RULES.unit;
   const diameter = tileRelativePx(rule.diameterTiles);
   const radius = diameter / 2;
@@ -775,7 +769,7 @@ function drawNeutralVillageUnits(scene, container, villages) {
   const units = (Array.isArray(villages) ? villages : [])
     .flatMap(village => Array.isArray(village?.defenseUnits) ? village.defenseUnits : []);
 
-  for (const group of unitGroupsByTile(units).values()) {
+  for (const group of unitGroupsByTile(units,worldId).values()) {
     const unit = representativeUnit(group, "");
     const x = finiteCoord(unit?.x);
     const y = finiteCoord(unit?.y);
@@ -811,13 +805,13 @@ function drawNeutralVillageUnits(scene, container, villages) {
   }
 }
 
-function drawEnemies(scene, container, enemies) {
+function drawEnemies(scene, container, enemies, worldId) {
   const rule = MAP_ENTITY_SIZE_RULES.unit;
   const diameter = tileRelativePx(rule.diameterTiles);
   const radius = diameter / 2;
   const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
   const revealAllEnemies = isTestMode();
-  for (const group of unitGroupsByTile(enemies).values()) {
+  for (const group of unitGroupsByTile(enemies,worldId).values()) {
     const enemy = representativeUnit(group, "");
     if (!enemy) continue;
     const x = finiteCoord(enemy.x);
@@ -919,8 +913,10 @@ function drawDefenseStructures(scene, container, imageContainer) {
 
 function renderMarkers() {
   const scene = activeScene();
-  const faction = activeFaction();
   const state = gameState();
+  const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0];
+  const faction = player?.factionState;
+  const worldId = state?.activeWorldId || 'surface';
   if (!scene || !faction) return false;
 
   const signature = markerRenderSignature(faction, state);
@@ -934,24 +930,34 @@ function renderMarkers() {
   unitContainer = scene.add.container(0, 0).setDepth(UNIT_LAYER_DEPTH).setName("v39-unit-layer");
   const underground = window.__v39FieldRuntime?.mapData?.isUnderground === true;
   // 勢力の拠点一覧は地上・地下で共通だが、地上の建物を地下へ投影しない。
-  if (!underground) drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction));
+  if (!underground) drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction),state?.activePlayerId);
   drawEnemyNests(scene, structureContainer, state?.enemyNests);
   if (!underground) drawSettlementTileMarkers(scene, structureContainer, faction);
   drawDefenseStructures(scene, constructionLabelContainer, structureContainer);
-  drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId);
-  drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId);
-  drawNeutralVillageUnits(scene, unitContainer, state?.neutralVillages);
-  drawEnemies(scene, unitContainer, state?.enemies);
+  drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId,worldId);
+  drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId,worldId);
+  drawNeutralVillageUnits(scene, unitContainer, state?.neutralVillages,worldId);
+  drawEnemies(scene, unitContainer, state?.enemies,worldId);
   drawWanderers(scene, unitContainer, state?.wandererGroups, state?.activePlayerId);
   // 見えていない敵による位置変更で、その存在を漏らさない。
   const occupiedCenters = new Set(unitContainer.list.map(marker => `${marker.x},${marker.y}`));
+  const retainedSpecialties = new Set();
   for (const [key, specialty] of Object.entries(state?.specialtiesByTile || {})) {
     const discovered = !!faction?.exploration?.discoveredSpecialtiesByTile?.[key];
     if (!discovered && !isTestMode()) continue;
     const [x, y] = key.split(",").map(Number);
     const center = tileCenter(x, y);
     const occupied = occupiedCenters.has(`${center.x},${center.y}`);
-    const marker = addTileTextMarker(scene, unitContainer, key, resolveV39ResourceIconGlyph(specialty.name), {
+    const glyph = resolveV39ResourceIconGlyph(specialty.name);
+    const signature = JSON.stringify([glyph,occupied,discovered]);
+    const cached = specialtyMarkers.get(key);
+    if (cached?.marker.scene === scene && cached.signature === signature) {
+      unitContainer.add(cached.marker);
+      retainedSpecialties.add(key);
+      continue;
+    }
+    cached?.marker.destroy();
+    const marker = addTileTextMarker(scene, unitContainer, key, glyph, {
       name:"v39-specialty-marker", radiusTiles:occupied ? 0.15 : 0.19,
       fontTiles:occupied ? V39_SPECIALTY_BALANCE.occupiedMarkerSizeTiles : V39_SPECIALTY_BALANCE.markerSizeTiles,
       offsetX:occupied ? tileRelativePx(V39_SPECIALTY_BALANCE.occupiedOffsetRightTiles) : 0,
@@ -961,6 +967,15 @@ function renderMarkers() {
     marker?.setAlpha(discovered ? 1 : V39_SPECIALTY_BALANCE.testUndiscoveredAlpha);
     marker?.setData("discovered", discovered);
     marker?.setData("occupied", occupied);
+    if (marker) {
+      specialtyMarkers.set(key,{marker,signature});
+      retainedSpecialties.add(key);
+    }
+  }
+  for (const [key,{marker}] of specialtyMarkers) {
+    if (retainedSpecialties.has(key)) continue;
+    marker.destroy();
+    specialtyMarkers.delete(key);
   }
   return true;
 }

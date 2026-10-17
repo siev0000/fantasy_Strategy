@@ -125,7 +125,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const isHumanRace = text(raceRow.種類) === "人族";
-  const facilityGrowth = unit.promotionGrowthStart||unit.undeadGrowthStart?null:resolveV39FacilityClassGrowth({...unit,level},raceRow.種類);
+  const facilityGrowth = unit.fusionGrowth||unit.promotionGrowthStart||unit.undeadGrowthStart?null:resolveV39FacilityClassGrowth({...unit,level},raceRow.種類);
   if (facilityGrowth) level = Math.min(level,facilityGrowth.levelCap);
   const strongAnimalClassName = text(unit.strongAnimalClassName);
   const strongAnimalClassRow = classByName.get(strongAnimalClassName) || null;
@@ -134,7 +134,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   const baseLevel = level - strongAnimalClassLevel;
   let { raceLevels, classLevels:totalClassLevels } = internalLevels(baseLevel, isHumanRace);
   const prerequisiteClasses = Object.entries(unit.prerequisiteClassLevels || {})
-    .filter(([name,levels]) => name !== className && (classByName.has(name)||(testMode&&testClassByName.has(name))) && Number(levels) > 0)
+    .filter(([name,levels]) => name !== className && (!unit.fusionGrowth||name!==race) && (classByName.has(name)||(testMode&&testClassByName.has(name))) && Number(levels) > 0)
     .map(([name,levels]) => ({name,levels:Math.floor(Number(levels)),row:classByName.get(name)||(testMode?testClassByName.get(name):null)}));
   let classLevels = Math.max(0,totalClassLevels - prerequisiteClasses.reduce((sum,item) => sum + item.levels,0));
   // 施設徴兵の初期配分を保持し、その後に得たLvだけ通常の成長配分へ渡す。
@@ -159,6 +159,11 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     const gained=internalLevels(Math.max(0,baseLevel-number(start.level,baseLevel)),isHumanRace);
     raceLevels=Math.max(0,number(start.raceLevels))+gained.raceLevels;
     classLevels=Math.max(0,number(start.classLevels))+gained.classLevels;
+  }
+
+  if(unit.fusionGrowth?.levelsByClass) {
+    raceLevels=Math.max(0,number(unit.fusionGrowth.levelsByClass[race]));
+    classLevels=race===className?0:Math.max(0,number(unit.fusionGrowth.levelsByClass[className]));
   }
 
   const statusResult = buildCharacterStatusFromRules({

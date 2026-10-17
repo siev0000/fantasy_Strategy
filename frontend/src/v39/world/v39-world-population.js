@@ -21,6 +21,8 @@ import incidentFixture from '../../../../config/v39-village-incident-test.json';
 import {restAtIncidentVillage} from '../../lib/v39-village-incidents.js';
 import {renderV39Conversation,recordV39Conversation} from './v39-negotiation-conversation.js';
 import { isV39BaseClassRow } from "../../lib/v39-class-rules.js";
+import {renderV39VillageDialogue,resetV39VillageDialogue} from './v39-village-dialogue-ui.js';
+import {installTradeLayout} from './v39-trade-layout.js';
 
 const WANDERER_TILES_PER_GROUP = 300;
 const MAX_WANDERER_GROUPS = 20;
@@ -28,10 +30,11 @@ let selectedTile = null;
 let menuVillageId='';
 
 function closeVillageMenu() {
+  resetV39VillageDialogue();
   menuVillageId='';
   const root=document.getElementById('v39-village-menu'),section=document.getElementById('v39-world-contact-actions');
   if(root)root.hidden=true;
-  if(section)document.getElementById('footTile')?.append(section);
+  if(section)document.getElementById('v39-interaction-actions')?.append(section);
   renderWorldActions();
 }
 function openVillageMenu(villageId) {
@@ -39,12 +42,13 @@ function openVillageMenu(villageId) {
   if(!village||(state.activeWorldId||'surface')!=='surface')return;
   let root=document.getElementById('v39-village-menu');
   if(!root){root=document.createElement('div');root.id='v39-village-menu';root.hidden=true;
-    root.innerHTML='<section role="dialog" aria-modal="true" aria-labelledby="v39-village-menu-title"><header><b id="v39-village-menu-title">村で会話・依頼</b><button type="button" data-close-village-menu aria-label="閉じる">×</button></header><div class="v39-village-menu-body"></div><output role="status"></output></section>';
-    document.body.append(root);root.querySelector('[data-close-village-menu]').onclick=closeVillageMenu;
+    root.innerHTML='<section role="dialog" aria-modal="true" aria-labelledby="v39-village-menu-title"><header><b id="v39-village-menu-title">村で会話・依頼</b><button type="button" data-close-village-menu aria-label="閉じる">×</button></header><div class="v39-village-menu-body"><div class="v39-village-choice-area"></div></div><output role="status"></output></section>';
+    document.body.append(root);installTradeLayout(root);root.querySelector('[data-close-village-menu]').onclick=closeVillageMenu;
     for(const type of ['pointerdown','pointerup','mousedown','mouseup','touchstart','touchend','wheel'])root.addEventListener(type,event=>event.stopPropagation());
     root.addEventListener('click',event=>{if(event.target===root)closeVillageMenu();});}
   menuVillageId=villageId;root.hidden=false;ensureWorldActions();
-  root.querySelector('.v39-village-menu-body').append(document.getElementById('v39-world-contact-actions'));
+  root.querySelector('.v39-village-choice-area').scrollTop=0;
+  root.querySelector('.v39-village-choice-area').append(document.getElementById('v39-world-contact-actions'));
   if(!root.querySelector('output').textContent)root.querySelector('output').textContent='依頼を選んで受注します。受注中は納品・報告から進められます。';
   renderWorldActions();window.dispatchEvent(new CustomEvent('v39:village-menu-opened'));
 }
@@ -256,7 +260,7 @@ function ensureWorldActions() {
   section.id = "v39-world-contact-actions";
   section.hidden = true;
   section.innerHTML = `<div class="v39-world-contact-copy"><span id="v39-world-contact-kind"></span><b id="v39-world-contact-detail"></b><small id="v39-world-contact-subdetail"></small></div><div id="v39-world-contact-buttons"></div>`;
-  panel.appendChild(section);
+  (document.getElementById('v39-interaction-actions') || panel).appendChild(section);
   section.addEventListener("click", runContactAction);
 }
 
@@ -268,7 +272,7 @@ function renderWorldActions() {
   const subdetail = document.getElementById("v39-world-contact-subdetail");
   const buttons = document.getElementById("v39-world-contact-buttons");
   if (!section || !kind || !detail || !subdetail || !buttons || (!selectedTile&&!menuVillageId)) { if (section) section.hidden = true; return; }
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   const playerId = state?.activePlayerId;
   const pinned=menuVillageId&&state?.neutralVillages?.find(row=>row.id===menuVillageId);
   if(menuVillageId&&(!pinned||(state.activeWorldId||'surface')!=='surface')){closeVillageMenu();return;}
@@ -279,6 +283,8 @@ function renderWorldActions() {
   const landmark=Object.values(state?.victoryLandmarksByTile||{}).find(row=>row.key===key||row.occupiedTileKeys?.includes(key));
   const discovered=landmark && state.players?.find(row=>row.id===playerId)?.factionState?.exploration?.discoveredFeaturesByTile?.[landmark.key];
   section.hidden = !wanderer && !village && !discovered;
+  const empty = document.querySelector('[data-interaction-empty]');
+  if (empty) empty.hidden = !section.hidden;
   section.dataset.kind="village";
   if (wanderer) {
     section.dataset.targetId = wanderer.id;
@@ -299,7 +305,7 @@ function renderWorldActions() {
       menuVillageId?'':`<button type="button" data-world-action="village-menu">村で会話・依頼</button>`,
       `<button type="button" data-world-action="village-rest">村で休息 AP30</button>`,
       `<button type="button" data-world-action="relation">交流</button>`,
-      quest?.accepted && !quest.completed
+      quest?.accepted && !quest.completed && !quest.dialogueEventId
         ? `<button type="button" data-world-action="quest-complete">${quest.type==='delivery'?'納品・報告':'依頼完了'}</button>`
         : "",
       `<button type="button" data-world-action="vassal"${village.vassalPlayerId ? " disabled" : ""}>属国化</button>`,
@@ -317,6 +323,8 @@ function renderWorldActions() {
       renderV39Conversation(document.querySelector('#v39-village-menu .v39-village-menu-body'),{target:village.id,actor,units,
         peer:village.defenseUnits?.find(unit=>Number(unit.hp??unit.currentHp)>0)||{race:village.race,className:'ファイター',name:`${village.name}の代表`},
         onActorChange:id=>window.updateV39ActiveFactionState({selectedUnitId:id},{reason:'negotiator-selected'})});
+      renderV39VillageDialogue(document.querySelector('#v39-village-menu .v39-village-menu-body'),state,village,{
+        onSpeech:(reply,speech)=>recordV39Conversation(village.id,reply,speech),onRefresh:renderWorldActions});
     }
   } else if(discovered) {
     const progress=getV39GuardianProgress(state,playerId,landmark.key),quest=progress.quest;
@@ -437,6 +445,6 @@ window.getV39WorldPopulationRules = () => ({
   maxWandererGroups:MAX_WANDERER_GROUPS
 });
 installStyles();
-const menuStyle=document.createElement('style');menuStyle.textContent='#v39-village-menu{position:fixed;inset:0;z-index:2600;background:#0009;display:flex;align-items:center;justify-content:center;padding:0}#v39-village-menu[hidden]{display:none}#v39-village-menu>section{width:100%;height:100%;max-height:100%;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;background:#102127;border:0;border-radius:0;padding:0;gap:7px;color:#eff5f4;font-size:var(--font-body)}#v39-village-menu header{display:flex;align-items:center;gap:8px;flex-shrink:0}#v39-village-menu header b{flex:1}#v39-village-menu header button{font:inherit;background:#192e34;color:inherit;border:1px solid #68818a;border-radius:6px;padding:6px 12px;min-height:34px}.v39-village-menu-body{flex:1;min-height:0;overflow:auto;overflow-anchor:none}#v39-village-menu output{flex-shrink:0;font-size:var(--font-secondary);color:#e4c987}';document.head.append(menuStyle);
+const menuStyle=document.createElement('style');menuStyle.textContent='#v39-village-menu{position:fixed;inset:var(--v39-trade-top,0px) 0 0;z-index:2600;background:#0009;display:flex;align-items:center;justify-content:center;padding:0}#v39-village-menu[hidden]{display:none}#v39-village-menu>section{width:100%;height:100%;max-height:100%;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;background:#102127;border:0;border-radius:0;padding:0;gap:7px;color:#eff5f4;font-size:var(--font-body)}#v39-village-menu header{display:flex;align-items:center;gap:8px;flex-shrink:0}#v39-village-menu header b{flex:1}#v39-village-menu header button{font:inherit;background:#192e34;color:inherit;border:1px solid #68818a;border-radius:6px;padding:6px 12px;min-height:34px}.v39-village-menu-body{flex:1;min-height:0;overflow:auto;overflow-anchor:none}#v39-village-menu output{flex-shrink:0;font-size:var(--font-secondary);color:#e4c987}';document.head.append(menuStyle);
 window.addEventListener('keydown',event=>{if(event.key==='Escape'&&menuVillageId)closeVillageMenu();});
 ensureWorldActions();

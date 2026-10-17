@@ -8,6 +8,16 @@
 #v39-squad-editor select,#v39-squad-editor input:not([type=checkbox]),#v39-squad-editor button{box-sizing:border-box;min-width:0;min-height:34px;padding:6px;font:inherit;background:#172d35;border:1px solid #53717c;border-radius:6px;color:inherit}
 #v39-squad-editor p{margin:0;line-height:1.5;color:#b8c8cb}
 #v39-squad-editor .v39-squad-edit-members{display:grid;gap:5px}
+#v39-squad-editor .v39-squad-member-filters{display:flex;gap:5px}
+#v39-squad-editor .v39-squad-member-filters button{flex:1}
+#v39-squad-editor [data-squad-member-filter][aria-pressed=true]{border-color:#75d5e4;background:#21404a}
+#v39-squad-editor .v39-squad-edit-members [hidden]{display:none}
+#v39-squad-editor .v39-squad-membership{font-size:var(--font-secondary);color:#a8dfe5}
+#v39-squad-editor .v39-squad-membership.other{color:#f0cd83}
+#v39-squad-editor .v39-squad-restriction{color:#efb5a6}
+#v39-squad-editor .v39-squad-edit-members label:has(input:checked){border-color:#75d5e4;background:#1c353d}
+#v39-squad-editor #v39-squad-edit-changes{flex-basis:100%;font-size:var(--font-secondary);color:#f0cd83;overflow-wrap:anywhere}
+#v39-squad-editor .v39-squad-edit-note{padding:0 10px 6px;font-size:var(--font-secondary);flex-shrink:0}
 #v39-squad-editor .v39-squad-edit-members label{display:flex;align-items:center;padding:6px;background:#14262d;border:1px solid #38535d;border-radius:6px}
 #v39-squad-editor .v39-squad-edit-members span{display:grid;gap:3px;overflow-wrap:anywhere}
 #v39-squad-editor small{font-size:var(--font-secondary);color:#abbec2}

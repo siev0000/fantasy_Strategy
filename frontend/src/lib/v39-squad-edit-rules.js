@@ -1,6 +1,7 @@
 import {V39_SQUAD_MOVEMENT_BALANCE as balance} from "./v39-gameplay-balance.js";
 import {getV39SquadUnitIds, isV39CargoEmpty, mergeV39Cargo} from "./v39-logistics-state.js";
 import {resolveV39CaveFormation} from "./v39-cave-formation-rules.js";
+import {inspectV39SquadAssembly} from './v39-squad-coordination.js';
 
 const solo = id => !id || id === "solo" || id === "単独";
 const world = unit => unit.worldId || "surface";
@@ -25,7 +26,7 @@ export function getV39SquadMemberRestriction(faction,unit,worldId) {
   return "";
 }
 
-export function editV39Squad(state,playerId,request) {
+export function editV39Squad(state,playerId,request,map=null,{joiningByMagic=false}={}) {
   const fail=reason=>({ok:false,state,reason});
   const player=state.players?.find(row=>row.id===playerId);
   if(!player || state.activePlayerId && state.activePlayerId!==playerId) return fail("操作中の勢力を選んでください");
@@ -39,11 +40,16 @@ export function editV39Squad(state,playerId,request) {
   if(members.some(unit=>!unit)) return fail("ユニットが見つかりません");
   if(members.filter(unit=>!unit.summon).length>balance.maxMembers)return fail(`通常の部隊員は${balance.maxMembers}体まで（召喚ユニットは別枠）`);
   const worldId=state.activeWorldId || "surface";
+  const original=getV39SquadUnitIds(existing);
   for(const unit of members) {
+    if(joiningByMagic&&original.includes(unit.id))continue;
     const reason=getV39SquadMemberRestriction(faction,unit,worldId);
     if(reason) return fail(`${unit.name || unit.id}：${reason}`);
   }
-  const original=getV39SquadUnitIds(existing),changed=ids.length!==original.length || ids.some(id=>!original.includes(id));
+  const changed=ids.length!==original.length || ids.some(id=>!original.includes(id));
+  const joining=ids.some(id=>!original.includes(id));
+  const rallyStarted=joining&&!joiningByMagic;
+  if(rallyStarted){const check=inspectV39SquadAssembly(state,playerId,members,map);if(!check.ok)return fail(check.reason);}
   // 共有荷物は分割先が未指定。移籍時に消失・複製しないよう荷下ろしを先に行う。
   if(changed && rows.some(row=>!isV39CargoEmpty(row.cargo) && (row===existing || row.unitIds.some(id=>ids.includes(id)&&row.id!==existing?.id))))
     return fail("編制を変える部隊の運搬品を先に荷下ろししてください");
@@ -55,7 +61,8 @@ export function editV39Squad(state,playerId,request) {
   const departing=new Set([...original.filter(unitId=>!ids.includes(unitId)),...ids]);
   const units=faction.units.map(unit=>{
     if(!departing.has(unit.id)) return unit;
-    const next={...unit,squadId:ids.includes(unit.id)?id:"solo",solo:false,isSolo:false};
+    const next={...unit,squadId:ids.includes(unit.id)?id:"solo",solo:false,isSolo:false,
+      ...(!ids.includes(unit.id)?{squadMoveMode:'independent',squadGather:null}:rallyStarted?{squadMoveMode:'gather',squadGather:{status:'moving',reason:'',lastProcessedTurn:0}}:{})};
     delete next.squadLeaderId;delete next.squads;
     return next;
   });
@@ -69,7 +76,8 @@ export function editV39Squad(state,playerId,request) {
     return {...row,unitIds:row.unitIds.filter(unitId=>!departing.has(unitId)),cargoByUnitId};
   });
   if(ids.length) squads.push({...existing,id,label:String(request.label || existing?.label || "新部隊").trim() || "新部隊",
-    unitIds:ids,movementLeaderId:leader,...resolveV39CaveFormation({formationType:request.formationType || existing?.formationType},[leader,...ids.filter(id=>id!==leader)]),cargo,cargoByUnitId:{}});
+    unitIds:ids,movementLeaderId:leader,...resolveV39CaveFormation({formationType:request.formationType || existing?.formationType},[leader,...ids.filter(id=>id!==leader)]),
+    ...(rallyStarted?{rallyPoint:{x:members.find(unit=>unit.id===leader).x,y:members.find(unit=>unit.id===leader).y,worldId}}:{}),cargo,cargoByUnitId:{}});
   let single=squads.find(row=>row.id==="solo");
   if(!single){single={id:"solo",label:"単独",unitIds:[]};squads.push(single);}
   single.cargoByUnitId={...single.cargoByUnitId};
@@ -81,5 +89,5 @@ export function editV39Squad(state,playerId,request) {
   const assigned=new Set(squads.flatMap(row=>row.unitIds));
   single.unitIds.push(...units.filter(unit=>!assigned.has(unit.id)).map(unit=>unit.id));
   const next={...faction,units,squads:squads.filter(row=>row.id==="solo"||row.unitIds.length),selectedUnitId:ids[0] || faction.selectedUnitId};
-  return {ok:true,squadId:ids.length?id:"solo",state:{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:next}:row)}};
+  return {ok:true,rallyStarted,squadId:ids.length?id:"solo",state:{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:next}:row)}};
 }

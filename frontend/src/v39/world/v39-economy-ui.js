@@ -320,7 +320,8 @@ function startSelectedConstruction() {
 
 function currentResourceSnapshot() {
   // Before the initial village is placed, the player's resource bags are empty rather than sample data.
-  return buildV39ResourceSnapshot(activeContext().village || {});
+  const player = window.getV39ActivePlayer?.();
+  return buildV39ResourceSnapshot(normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race) || {});
 }
 
 function handleTurn() {

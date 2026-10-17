@@ -2,6 +2,7 @@ import templates from "../../../data/manual/洞窟テンプレート.json";
 import { getHexNeighborCoords } from "./hex-grid.js";
 import {ensureV39CaveAreas} from "./v39-cave-areas.js";
 import { V39_CAVE_BALANCE } from "./v39-gameplay-balance.js";
+import {resolveV39EnemyCombatProfile} from './v39-enemy-formation.js';
 import { createV39CaveLayout, isV39CaveRoomFloor } from "./v39-cave-layout.js";
 
 export const V39_CAVE_TEMPLATES = templates;
@@ -160,6 +161,7 @@ export function populateV39CaveMonsters(map, definitions, createEnemy) {
       available.delete(`${tile.x},${tile.y}`);
       const level = Math.min(V39_CAVE_BALANCE.maxTestLevel,definition.minLevel+Math.floor(random()*(definition.maxLevel-definition.minLevel+1)));
       const enemy = createEnemy({ id:`${map.id}-enemy-${enemies.length}`,name:definition.name,race:definition.race,className:definition.className,level,x:tile.x,y:tile.y,
+        combatProfile:resolveV39EnemyCombatProfile(definition.row),
         metadata:{ spawnTerrain:"洞窟",sourceDefinitionId:definition.definitionId,image:definition.row.画像,aggressive:definition.row.好戦的===true,
           groupId,spawnForm,encounterGroupSize:positions.length } });
       if (!enemy) throw new Error(`洞窟の敵生成に失敗しました: ${definition.name}`);

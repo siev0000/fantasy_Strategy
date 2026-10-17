@@ -20,7 +20,11 @@ export function isV39TestSkillModeEnabled() {
 }
 
 export function getV39TestSkillRows() {
-  return getGameDataRows("テストスキル").filter(row => row?.テスト専用 === true && text(row?.名前));
+  return getGameDataRows("テストスキル").filter(row => row?.テスト専用 === true && text(row?.名前)).map(row=>{
+    if(!row.参照スキル)return row;
+    const source=getGameDataRows('スキル一覧').find(skill=>skill.名前===row.参照スキル);
+    return source?{...source,...row}:null;
+  }).filter(Boolean);
 }
 
 export function getV39UnitTestSkillRows(unit) {

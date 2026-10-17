@@ -4,7 +4,8 @@ const url=source=>`data:text/javascript;base64,${Buffer.from(source).toString("b
 const rows=JSON.parse(readFileSync("data/source/export/json/研究.json","utf8"));
 const city=JSON.parse(readFileSync("data/source/export/json/都市基本データ.json","utf8"));
 const registry=url(`export const researchData=${JSON.stringify(rows)}, cityBaseData=${JSON.stringify(city)};`);
-const config=url(readFileSync("frontend/src/lib/research-tree-config.js","utf8").replace('"./game-data-registry.js"',JSON.stringify(registry)));
+const defaults=url(`export default ${readFileSync('config/v39-expedition-defaults.json','utf8')};`);
+const config=url(readFileSync("frontend/src/lib/research-tree-config.js","utf8").replace('"./game-data-registry.js"',JSON.stringify(registry)).replace('"../../../config/v39-expedition-defaults.json"',JSON.stringify(defaults)));
 const balance=url(readFileSync("frontend/src/lib/v39-gameplay-balance.js","utf8"));
 const rules=await import(url(readFileSync("frontend/src/lib/research-progress.js","utf8").replace('"./research-tree-config.js"',JSON.stringify(config)).replace('"./v39-gameplay-balance.js"',JSON.stringify(balance))));
 const {researchTreeData:tree,resolveResearchTreeData}=await import(config);

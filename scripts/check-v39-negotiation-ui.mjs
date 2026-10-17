@@ -11,13 +11,16 @@ try{for(const width of [390,1100]){
   await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
   const villageLayout=await page.locator('#v39-village-menu').evaluate(root=>{const section=root.querySelector(':scope > section'),rect=section.getBoundingClientRect(),style=getComputedStyle(section);return {padding:getComputedStyle(root).padding,sectionPadding:style.padding,border:style.borderTopWidth,radius:style.borderTopLeftRadius,left:rect.left,top:rect.top,width:rect.width,height:rect.height,viewWidth:innerWidth,viewHeight:innerHeight};});
   assert.equal(villageLayout.padding,'0px');assert.equal(villageLayout.sectionPadding,'0px');assert.equal(villageLayout.border,'0px');assert.equal(villageLayout.radius,'0px');
-  assert.equal(villageLayout.left,0);assert.equal(villageLayout.top,0);assert.equal(villageLayout.width,villageLayout.viewWidth);assert.equal(villageLayout.height,villageLayout.viewHeight);
+  const headerBottom=await page.locator('.topbar').evaluate(header=>header.getBoundingClientRect().bottom);
+  assert.equal(villageLayout.left,0);assert.equal(villageLayout.top,headerBottom);assert.equal(villageLayout.width,villageLayout.viewWidth);assert.equal(villageLayout.height,villageLayout.viewHeight-headerBottom);
+  assert(await page.locator('.topbar').evaluate(header=>header.matches(':popover-open')),'conversation retains original resource header');
   assert.equal(await page.locator('#v39-village-menu .v39-conversation-stage figure').count(),2);
+  await page.locator('#v39-village-menu .v39-conversation-preparation>summary').click();
   await page.locator('#v39-village-menu [data-conversation-actor]').selectOption('village-visitor-2');
   assert.equal(await page.evaluate(()=>window.getV39ActivePlayer().factionState.selectedUnitId),'village-visitor-2');
   await page.evaluate(()=>{const s=window.getV39GameState(),p=s.players.find(p=>p.id===s.activePlayerId),unit=p.factionState.units.find(u=>u.id===p.factionState.selectedUnitId),v=s.neutralVillages[0];
     window.getV39NegotiationRules().renderV39Conversation(document.querySelector('#v39-village-menu .v39-village-menu-body'),{target:v.id,actor:{...unit,techniques:[{source:{名前:'テスト交渉強化',行動:'A',対象:'自身',交渉:20,効果時間:3,AP消費:10,射程:0,判定:'精神'}}]},peer:v.defenseUnits[0],units:p.factionState.units,onActorChange:()=>{}});});
-  await page.locator('#v39-village-menu .v39-negotiation-conversation details').first().locator('summary').click();
+  await page.locator('#v39-village-menu .v39-conversation-preparation').evaluate(node=>node.open=true);
   await page.locator('[data-conversation-skill="0"]').click();
   let info=await page.evaluate(()=>{const s=window.getV39GameState(),p=s.players.find(p=>p.id===s.activePlayerId),u=p.factionState.units.find(u=>u.id===p.factionState.selectedUnitId);return {ap:u.ap,skill:window.getV39NegotiationRules().resolveV39NegotiationSkill(s,p.id,u,'交渉'),base:u.skillLevels?.交渉||0,cooldown:p.factionState.combatRuntime?.cooldownsByUnitId?.[u.id]?.テスト交渉強化};});
   assert.equal(info.ap,90);assert.equal(info.skill,info.base+20);assert(info.cooldown);

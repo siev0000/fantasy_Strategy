@@ -13,6 +13,7 @@ export function inspectV39ClassPromotion(state,playerId,unit,row) {
     : V39_CLASS_PROGRESSION_BALANCE.classLevelLimit;
   const surplus=Math.max(0,n(derived.classLevels)-limit);
   if(!derived.ok)reasons.push('現在のクラス情報が不正');
+  if(unit.fusionGrowth)reasons.push('合体ユニットの職業変更は未対応');
   if(state.activePlayerId!==playerId||state.timeline?.phase!=='player')reasons.push('自分の操作ターンに取得可能');
   if(n(unit.hp ?? unit.currentHp)===0||unit.state==='死亡')reasons.push('生存ユニットが必要');
   if((unit.worldId || 'surface')!==(state.activeWorldId || 'surface'))reasons.push('表示中のワールドにいる必要があります');

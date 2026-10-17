@@ -22,12 +22,13 @@ function start() {
   const guards=[build('village-guard-1','村の戦士1','只人',5,9,5,'village-guards'),build('village-guard-2','村の戦士2','只人',5,9,4,'village-guards')]
     .map(unit=>({...unit,count:1,neutral:true,isNeutralVillageGuard:true,neutralVillageId:original.id,ownerNeutralVillageId:original.id}));
   const village={...original,name:'契約・依頼検証村',population:200,populationByRace:{只人:200},incidentTest:true,defenseUnits:guards,
+    materialStockByType:{...original.materialStockByType,金:100},
     relationsByPlayerId:{[first.id]:0,[demonId]:0},questsByPlayerId:{},heldUnits:[],soulStock:10,soulClaimsByPlayerId:{},
     sacrificeContract:{active:false,playerId:demonId,alliedPlayerIds:[]},incidentByPlayerId:{}};
-  const visitor={...first,name:'一般プレイヤー',label:'一般側',race:'只人',factionState:{...first.factionState,units,
+  const visitor={...first,name:'一般プレイヤー',label:'一般側',race:'只人',factionState:{...first.factionState,units,eventDialogueById:{},
     squads:[{id:'village-visitors',label:'訪問部隊',unitIds:units.map(u=>u.id)},{id:'solo',label:'単独',unitIds:[]}],selectedUnitId:units[0].id}};
   const base=structuredClone(first.factionState.settlements[0]);base.id='demon-test-base';base.settlementId=base.id;base.ownerPlayerId=demonId;base.name='悪魔の物資庫';base.foodStockByType.魂=0;
-  const demon={...first,id:demonId,name:'悪魔プレイヤー',label:'悪魔側',race:'悪魔',factionState:{...first.factionState,units:[demonUnit],
+  const demon={...first,id:demonId,name:'悪魔プレイヤー',label:'悪魔側',race:'悪魔',factionState:{...first.factionState,units:[demonUnit],eventDialogueById:{},
     squads:[{id:'solo',label:'単独',unitIds:[demonUnit.id]}],settlements:[],selectedUnitId:demonUnit.id}};
   demon.factionState=replaceFactionSettlement(demon.factionState,base,{ownerPlayerId:demonId});
   const enemies=[build('village-quest-wolf-1','依頼対象ウルフ1','ウルフ',3,12,5,'village-quest-wolves'),
@@ -111,7 +112,7 @@ function run(action) {
   window.appendV39ActivityLog?.(playerId,'村イベント',message);window.showV39TurnBanner?.(message);render();
 }
 function render() {
-  const state=window.getV39GameState(),village=testVillage(state),parent=document.getElementById('v39-world-contact-actions');
+  const state=window.getV39GameState({includeWorlds:false}),village=testVillage(state),parent=document.getElementById('v39-world-contact-actions');
   let panel=document.getElementById('v39-village-incident-panel');
   if(!village||state.activeWorldId!=='surface'){panel?.remove();return;}
   if(!parent)return;
@@ -119,15 +120,16 @@ function render() {
     panel.addEventListener('click',event=>{const action=event.target.closest('[data-village-incident]')?.dataset.villageIncident;if(action)run(action);});}
   const playerId=state.activePlayerId,player=state.players.find(row=>row.id===playerId),isDemon=playerId===village.sacrificeContract.playerId;
   const incident=village.incidentByPlayerId?.[playerId];
-  const expanded=panel.querySelector('details')?.open;
+  const expanded=panel.querySelector('[data-village-incident-values]')?.open;
+  const toolsOpen=panel.querySelector('[data-village-incident-tools]')?.open;
   const button=(id,label)=>`<button type="button" data-village-incident="${id}">${label}</button>`;
   const heldLabel=(village.heldUnits||[]).map(row=>`${row.unit.name}: ${row.kind==='captive'?'拘束':'死亡'} / 装備${row.unit.equipment?.length||0}`).join('、');
   const modeLabel={supply:'生贄供給',rescue:'救援要請',none:'事件なし'}[villageIncidentMode(village,fixture.balance)];
-  panel.innerHTML=`<b>村イベント仮テスト / ${escape(player.name)}</b><p>契約: ${village.sacrificeContract.active?'有効':'なし'} / 悪魔との友好度 ${Number(village.relationsByPlayerId?.[village.sacrificeContract.playerId])||0} / 分岐 ${modeLabel}<br>保管 ${village.heldUnits.length}体 / 村の魂 ${village.soulStock} / 魂要求権 ${Number(village.soulClaimsByPlayerId?.[playerId])||0}<br>所持魂 ${Number(getSelectedSettlement(player.factionState)?.foodStockByType?.魂)||0} / 受領した捕虜・死体 ${player.factionState.villagePrisoners?.length||0}体${heldLabel?`<br>${escape(heldLabel)}`:''}</p>
+  panel.innerHTML=`<details data-village-incident-tools${toolsOpen?' open':''}><summary>テスト操作 / ${escape(player.name)}</summary><p>契約: ${village.sacrificeContract.active?'有効':'なし'} / 悪魔との友好度 ${Number(village.relationsByPlayerId?.[village.sacrificeContract.playerId])||0} / 分岐 ${modeLabel}<br>保管 ${village.heldUnits.length}体 / 村の魂 ${village.soulStock} / 魂要求権 ${Number(village.soulClaimsByPlayerId?.[playerId])||0}<br>所持魂 ${Number(getSelectedSettlement(player.factionState)?.foodStockByType?.魂)||0} / 受領した捕虜・死体 ${player.factionState.villagePrisoners?.length||0}体${heldLabel?`<br>${escape(heldLabel)}`:''}</p>
     <div class="v39-test-button-row">${button('visitor','一般側')}${button('demon','悪魔側')}${isDemon?button('contract','仮契約を成立')+button('souls','魂を要求')+button('receive','捕虜・装備を受け取る'):button('rest','部隊で休息 AP30')}
     ${incident?.status==='choice'?(incident.unitIds.length?button('battle','反撃して戦闘')+button('escape','逃走'):'全員拘束。別部隊による救援待ち。'):''}${incident?.status==='battle'?button('victory','村の戦闘勝利を報告'):''}${incident?.status==='rescue'?button('rescue','仮操作: 契約解除して救援'):''}</div>
-    <details${expanded?' open':''}><summary>検証値の操作</summary><div class="v39-test-button-row">${button('high','悪魔との友好度+20')}${button('low','悪魔との友好度-20')}${button('weak','操作側HP1/AP全快')}${button('heal','操作側HP/AP全快')}</div></details>
-    <p role="status">${escape(message)}</p><small>魂は仮在庫から移転。強襲発生率100%、基準威力160。実戦時の兵はフィールドに出現します。</small>`;
+    <details data-village-incident-values${expanded?' open':''}><summary>検証値の操作</summary><div class="v39-test-button-row">${button('high','悪魔との友好度+20')}${button('low','悪魔との友好度-20')}${button('weak','操作側HP1/AP全快')}${button('heal','操作側HP/AP全快')}</div></details>
+    <p role="status">${escape(message)}</p><small>魂は仮在庫から移転。強襲発生率100%、基準威力160。実戦時の兵はフィールドに出現します。</small></details>`;
 }
 window.startV39VillageIncidentTest=start;
 const style=document.createElement('style');style.textContent='#v39-village-incident-panel{font-size:var(--font-body);overflow-wrap:anywhere}#v39-village-incident-panel .v39-test-button-row{display:flex;flex-wrap:wrap;gap:4px}#v39-village-incident-panel button{font:inherit;color:#ffe6a0;background:#493a18;border:1px solid #d4af58;border-radius:6px;padding:6px;min-height:34px}#v39-village-incident-panel small{font-size:var(--font-secondary)}';document.head.append(style);

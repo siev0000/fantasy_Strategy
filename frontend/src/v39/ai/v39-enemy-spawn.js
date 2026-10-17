@@ -1,10 +1,11 @@
-import { classData, enemySpawnData } from "../../lib/game-data-registry.js";
+import { classData, enemySpawnData, getGameDataRows } from "../../lib/game-data-registry.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/v39-nest-rules.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { V39_START_AREA_BALANCE, V39_ENEMY_LEVEL_BALANCE } from "../../lib/v39-gameplay-balance.js";
-import { getStrongAnimalClassCandidates, 属性ホース名称 } from "../../lib/animal-artwork-config.js";
+import { getV39BossFusionCandidates } from "../../lib/v39-boss-fusion-rules.js";
+import {resolveV39EnemyMemberCount,resolveV39EnemyCombatProfile} from '../../lib/v39-enemy-formation.js';
 
 const SAFE_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.safeRadius;
 const LOW_LEVEL_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.beginnerRadius;
@@ -23,6 +24,13 @@ const DEFAULT_STRONG_TERRITORY_RADIUS = V39_INITIAL_NEST_TERRITORY_RADIUS;
 const INITIAL_SPAWN_TYPES = new Set(["通常", "強敵", "強敵配下"]);
 
 const classNames = new Set(classData.map(row => text(row?.名前)).filter(Boolean));
+const bossFusionCandidates = new Map();
+function fusionCandidates(definition) {
+  const key = JSON.stringify([definition.race, definition.className]);
+  if (!bossFusionCandidates.has(key)) bossFusionCandidates.set(key,
+    getV39BossFusionCandidates(definition.race, definition.className, getGameDataRows('モンスター合成'), classNames));
+  return bossFusionCandidates.get(key);
+}
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -132,9 +140,11 @@ function validDefinition(row) {
   const terrain = text(row?.出現地形);
   const minLevel = integer(row?.Lv_Min, 0);
   const maxLevel = integer(row?.Lv_Max, 0);
+  const memberCount=resolveV39EnemyMemberCount(row);
+  if(memberCount===null)return null;
   if (!definitionId || !name || !terrain || minLevel <= 0 || maxLevel < minLevel) return null;
   if (!classNames.has(race) || !classNames.has(className)) return null;
-  return { row, definitionId, name, race, className, terrain, minLevel, maxLevel };
+  return { row, definitionId, name, race, className, terrain, minLevel, maxLevel, memberCount };
 }
 
 const definitionsByTerrain = new Map();
@@ -232,6 +242,7 @@ function intersectDefinitionLevel(definition, levelRange) {
 
 function eligibleForRange(definitions, levelRange) {
   if (!levelRange) return [];
+  if(['boss','extreme'].includes(levelRange.levelBand))definitions=definitions.filter(definition=>definition.memberCount===1);
   const regular = definitions.map(definition => intersectDefinitionLevel(definition, levelRange)).filter(Boolean);
   if (!regular.length && definitions.length && ["boss", "extreme"].includes(levelRange.levelBand)) {
     // 専用Lv帯がJSONにない場合も、同じ地形の元Lv帯に最も近い種族から個体を作る。
@@ -260,7 +271,8 @@ function buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled) {
   const levelRange = terrainLevelRange(data, x, y, distance, strong);
   if (!levelRange) return null;
 
-  const eligibleDefinitions = eligibleForRange(definitions, levelRange);
+  const eligibleDefinitions = eligibleForRange(strong
+    ? definitions.filter(definition => fusionCandidates(definition).length) : definitions, levelRange);
   if (!eligibleDefinitions.length) return null;
 
   return {
@@ -383,13 +395,17 @@ function createEnemy(selection, position, level, index, metadata = {}, random = 
   if (!definition) return null;
   const strongEnemy = metadata.strongEnemy === true || (metadata.strongEnemy !== false && position.strong === true);
   const extraClass = strongEnemy ? chooseStrongAnimalClass(selection, position, level, random) : {};
+  if (strongEnemy && !extraClass.strongAnimalClassName) return null;
+  const combatProfile=resolveV39EnemyCombatProfile(definition.row,{special:strongEnemy||position.levelRange?.levelBand==='extreme'});
   const derived = applyV39DerivedCharacterData({
     id:`enemy-${index + 1}-${position.x}-${position.y}`,
-    name:definition.race === "ホース" ? (属性ホース名称[extraClass.strongAnimalClassName] || definition.name) : definition.name,
+    name:extraClass.strongFusionResultName || definition.name,
     race:definition.race,
     className:definition.className,
     ...extraClass,
     level,
+    combatProfile,
+    unitType:combatProfile?'軍隊':'通常ユニット',isMob:true,isNamed:false,
     x:position.x,
     y:position.y,
     role:"敵",
@@ -438,7 +454,7 @@ function createEnemy(selection, position, level, index, metadata = {}, random = 
 
 function chooseStrongAnimalClass(selection, position, level, random) {
   const definition = selection.definition;
-  const candidates = getStrongAnimalClassCandidates(definition.race).filter(name => classNames.has(name) && name !== definition.className);
+  const candidates = fusionCandidates(definition);
   if (!candidates.length) return {};
   // 同じ位置の通常Lv帯とJSONの出現Lvを交差させ、強敵化で増えた分だけを追加クラスへ配る。
   const height = Math.abs(Math.trunc(position.levelRange?.rawHeightLevel || 0));
@@ -447,8 +463,10 @@ function chooseStrongAnimalClass(selection, position, level, random) {
   const min = Math.max(definition.minLevel, normalMin);
   const max = Math.min(definition.maxLevel, normalMax);
   const baseLevel = Math.min(level, min <= max ? min + Math.floor(random() * (max - min + 1)) : normalMax);
+  const selected = candidates[Math.floor(random() * candidates.length)];
   return {
-    strongAnimalClassName:candidates[Math.floor(random() * candidates.length)],
+    strongAnimalClassName:selected.className,
+    strongFusionResultName:selected.name,
     strongAnimalClassLevel:Math.max(0, level - baseLevel)
   };
 }
@@ -457,6 +475,7 @@ function chooseStrongAnimalClass(selection, position, level, random) {
 export function createV39EventEnemy({ id, name, race, className, level, x, y, metadata = {}, equipment=[], prerequisiteClassLevels, undeadGrowthStart, undeadOrigin, combatProfile, testOnly=false } = {}) {
   const derived = applyV39DerivedCharacterData({
     equipment,prerequisiteClassLevels,undeadGrowthStart,undeadOrigin,combatProfile,testOnly,
+    ...(combatProfile?.memberCount>1?{unitType:'軍隊',isMob:true,isNamed:false}:{}),
     id:text(id) || `event-enemy-${Date.now()}`,
     name:text(name) || text(className) || "イベント敵",
     race:text(race),
@@ -902,9 +921,10 @@ window.inspectV39InitialPlacementArea = tile => {
     const definitions = definitionsForTile(data, x, y);
     const baseDistance = closestBaseDistance(bases, { x, y }, data.w, data.h, wrap);
     if (baseDistance <= SAFE_DISTANCE_FROM_BASE) continue;
-    const range = terrainLevelRange(data, x, y, baseDistance,
-      baseDistance > LOW_LEVEL_DISTANCE_FROM_BASE && isStrongMonsterTile(data, x, y));
-    for (const selection of eligibleForRange(definitions, range)) {
+    const strong = baseDistance > LOW_LEVEL_DISTANCE_FROM_BASE && isStrongMonsterTile(data, x, y);
+    const range = terrainLevelRange(data, x, y, baseDistance, strong);
+    for (const selection of eligibleForRange(strong
+      ? definitions.filter(definition => fusionCandidates(definition).length) : definitions, range)) {
       if (distance <= LOW_LEVEL_DISTANCE_FROM_BASE) names.add(selection.definition.name);
       else outerLevels.push(selection.minLevel, selection.maxLevel);
     }

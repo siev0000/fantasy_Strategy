@@ -36,6 +36,7 @@ DEFAULT_REPORT = Path("artifacts/game-data-converter-report.json")
 
 # 通常変換するシートだけを明示する。CS / 画面は対象外。スキル一覧はCS専用変換器で生成する。
 SHEET_TO_JSON = {
+    "モンスター合成": "モンスター合成.json",
     "道具": "道具.json",
     "クラス": "クラス.json",
     "種族": "種族.json",
@@ -62,6 +63,7 @@ SHEET_TO_JSON = {
 
 # すべてのキー項目が入っている行だけ重複検査する。
 UNIQUE_KEYS = {
+    "モンスター合成": ("素材", "合成結果"),
     "道具": ("名前",),
     "特産品": ("名前",),
     "種族": ("key",),
@@ -251,6 +253,17 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
         return result
 
     header_row_no, header_cells = rows[0]
+    # This sheet has three independent tables separated by blank columns.
+    # Only the left recipe table is runtime fusion data.
+    if sheet_name == "モンスター合成":
+        primary = {}
+        for col in sorted(header_cells):
+            if header_text(header_cells[col].value) is None:
+                break
+            if primary and col != max(primary) + 1:
+                break
+            primary[col] = header_cells[col]
+        header_cells = primary
     headers = {
         col: h
         for col, cell in header_cells.items()
@@ -344,6 +357,12 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
         if required_keys and not all(key in record and not is_blank(record[key]) for key in required_keys):
             result.skipped_missing_key_rows += 1
             continue
+        if sheet_name == "出現敵" and "編成人数" in record:
+            count = record["編成人数"]
+            if isinstance(count, bool) or not isinstance(count, (int, float)) or not float(count).is_integer() or not 1 <= count <= 99:
+                result.errors.append({"type": "invalid_member_count", "row": row_no,
+                                      "header": "編成人数", "value": count,
+                                      "message": "編成人数は1〜99の整数で指定してください"})
         result.records.append(record)
 
     key_fields = UNIQUE_KEYS.get(sheet_name)

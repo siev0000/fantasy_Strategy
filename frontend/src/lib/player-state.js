@@ -77,6 +77,7 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
     recruitInstructorTransfers:cloneRecord(source?.recruitInstructorTransfers),
     squads: cloneRows(source?.squads).map(normalizeV39SquadLogistics),
     deadUnitReserve: cloneRows(source?.deadUnitReserve),
+    soulStorage: cloneRows(source?.soulStorage),
     deathHistory: cloneRows(source?.deathHistory),
     selectedUnitId: String(source?.selectedUnitId || ""),
     villagePlacementMode: !!source?.villagePlacementMode,
@@ -87,6 +88,7 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
     research: createEmptyResearchState(source?.research),
     exploration: createEmptyExplorationState(source?.exploration),
     activityLog: cloneRows(source?.activityLog),
+    eventDialogueById: source?.eventDialogueById ? structuredClone(source.eventDialogueById) : {},
     aiState: {
       lastProcessedTurn: Math.max(0, Math.floor(Number(source?.aiState?.lastProcessedTurn) || 0)),
       lastCommands: Array.isArray(source?.aiState?.lastCommands) ? source.aiState.lastCommands.map(String) : [],
@@ -129,6 +131,7 @@ export const PLAYER_FACTION_STATE_KEYS = Object.freeze([
   "recruitInstructorTransfers",
   "squads",
   "deadUnitReserve",
+  "soulStorage",
   "deathHistory",
   "selectedUnitId",
   "villagePlacementMode",

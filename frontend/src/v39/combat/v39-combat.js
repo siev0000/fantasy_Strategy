@@ -2,6 +2,7 @@ import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
 import {applyV39DeathBlade} from "../../lib/v39-purification-rules.js";
 import {convertV39CorpsesInDeathFog} from '../../lib/v39-corpse-undead-rules.js';
+import {inspectV39SoulCollection,collectV39Soul} from '../../lib/v39-soul-storage.js';
 import {resolveVillageIncidentCasualties} from '../../lib/v39-village-incidents.js';
 import villageIncidentTest from '../../../../config/v39-village-incident-test.json';
 
@@ -568,6 +569,7 @@ function resolveRevivalTarget(player, target, revivalSpec) {
       && integer(candidate?.y) === integer(target?.y)
   );
   if (!unit) return { ok:false, reason:"対象位置に死亡した味方がいません" };
+  if(unit.soulCollected)return {ok:false,reason:'魂が回収された死体は蘇生できません'};
   const levelBefore = Math.max(1, integer(unit?.level, integer(unit?.Lv, 1)));
   const levelAfter = levelBefore - revivalSpec.levelLoss;
   if (levelAfter <= 0) return { ok:false, reason:`Lv${levelBefore}から${revivalSpec.levelLoss}低下すると0以下になるため蘇生できません` };
@@ -778,6 +780,10 @@ function executeAttack(target) {
     }
   }
   const delayTurns = castDurationTurns(session.skillRow);
+  if(hasV39SkillEffect(session.skillRow,'魂回収')){
+    const check=inspectV39SoulCollection(window.getV39GameState(),player.id,target);
+    if(!check.ok){showToast(check.reason);return false;}
+  }
   const ctx = activeRuntime();
   const area = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow, session.defenseFacing || 0);
   if(hasV39SkillEffect(session.skillRow,'アンデッド化')&&!prepareUndeadConversion(state,ctx,area)?.spawned.length) {
@@ -905,6 +911,32 @@ function prepareUndeadConversion(state,ctx,area) {
     .filter(unit=>isV39UnitInWorld(unit,state.activeWorldId)&&number(unit.hp,unit.currentHp)<=0&&area.has(coordKey(unit.x,unit.y)));
   return convertV39CorpsesInDeathFog(state,ctx.data,currentV39TurnNumber(state),{
     createEnemy:createV39EventEnemy,corpseIds:new Set(bodies.map(unit=>unit.id))});
+}
+
+function performSoulCollection(target,session,options,state,player,attacker,apCost){
+  const result=collectV39Soul(window.getV39GameState(),player.id,target);
+  if(!result.ok){
+    showToast(result.reason);
+    if(options.clearPending)clearPendingAction(player.id,attacker.id,'soul-target-invalid');
+    return false;
+  }
+  const turn=currentV39TurnNumber(state);
+  const players=result.state.players.map(row=>{
+    if(row.id!==player.id)return row;
+    const runtime=row.factionState.combatRuntime||{},pending={...runtime.pendingActionsByUnitId};
+    if(options.clearPending)delete pending[attacker.id];
+    return {...row,factionState:{...row.factionState,units:row.factionState.units.map(unit=>{
+      if(unit.id!==attacker.id)return unit;
+      const ap=options.apPaid?currentAp(unit):currentAp(unit)-apCost;
+      return {...unit,ap,currentAp:ap,actionPoint:ap,lastActionTurn:turn,lastUsedAttack:session.skillRow.名前};
+    }),combatRuntime:{...runtime,pendingActionsByUnitId:pending,cooldownsByUnitId:{...runtime.cooldownsByUnitId,
+      [attacker.id]:{...runtime.cooldownsByUnitId?.[attacker.id],[session.skillRow.名前]:resolveV39DeadlineTurn(turn,cooldownDurationTurns(session.skillRow))}}}}};
+  });
+  window.setV39GameState({players,enemies:result.state.enemies,neutralVillages:result.state.neutralVillages,settlements:result.state.settlements},{reason:'soul-collected'});
+  const summary=`${attacker.name}：魂回収 / ${result.soul.name} Lv${result.soul.level} → 魂の保管庫 / AP-${apCost}`;
+  window.dispatchEvent(new CustomEvent('v39:combat-log',{detail:{summary,attackerId:attacker.id,skillName:session.skillRow.名前,apCost,target,entries:[]}}));
+  if(options.clearPending)window.dispatchEvent(new CustomEvent('v39:cast-ended',{detail:{playerId:player.id,unitId:attacker.id,reason:'resolved'}}));
+  showToast(summary);cancelAttack('soul-collected');renderActionPanel();return true;
 }
 
 function performUndeadConversion(target,session,options,state,player,attacker,apCost,ctx,area) {
@@ -1059,6 +1091,7 @@ function performAttack(target, session = attackSession, options = {}) {
     return false;
   }
   if (revivalSpec) return performRevival(target, session, options, state, player, attacker, revivalSpec, apCost);
+  if(hasV39SkillEffect(session.skillRow,'魂回収'))return performSoulCollection(target,session,options,state,player,attacker,apCost);
   if(hasV39SkillEffect(session.skillRow,'アンデッド化'))return performUndeadConversion(target,session,options,state,player,attacker,apCost,ctx,areaScale);
   if (transformSpec) return performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx);
   if (["壁", "結界"].includes(defenseKind)) {

@@ -291,6 +291,7 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
   const fieldIndex = player.factionState.units.findIndex((unit) => text(unit?.id) === text(unitId) && isDead(unit));
   if (reserveIndex < 0 && fieldIndex < 0) return { ok:false, reason:"蘇生対象の死亡者がいません" };
   const source = reserveIndex >= 0 ? reserve[reserveIndex].unit : player.factionState.units[fieldIndex];
+  if(source?.soulCollected)return {ok:false,reason:'魂が回収された死体は蘇生できません'};
   const levelBefore = Math.max(1, Math.floor(number(source?.level, source?.Lv || 1)));
   const levelLoss = Math.max(0, Math.floor(number(options.levelLoss)));
   const levelAfter = levelBefore - levelLoss;

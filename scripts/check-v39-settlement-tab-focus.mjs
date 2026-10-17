@@ -6,7 +6,7 @@ const page=await browser.newPage({viewport:{width:1000,height:800}});
 const errors=[];
 page.on("pageerror",error=>errors.push(String(error)));
 try {
-  await page.goto("http://127.0.0.1:3021",{waitUntil:"networkidle"});
+  await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3021",{waitUntil:"networkidle"});
   await page.waitForFunction(()=>typeof window.renderV39SettlementPanel==="function");
   await page.evaluate(()=>{
     window.startV39LocalSession(1,{playMode:"single-test"});

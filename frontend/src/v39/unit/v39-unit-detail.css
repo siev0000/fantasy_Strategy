@@ -68,3 +68,7 @@
       .squad-detail-pane .v39-resistance-indicator.positive b{color:#7de0a0!important}
       .squad-detail-pane .v39-resistance-indicator.negative{border-color:rgba(224,116,99,.52)!important;background:rgba(67,31,29,.72)!important}
       .squad-detail-pane .v39-resistance-indicator.negative b{color:#f08f7f!important}
+.squad-detail-pane .v39-char-equipment-list,.squad-detail-pane .v39-char-growth-list{display:grid;gap:4px}
+.squad-detail-pane .v39-char-equipment-row,.squad-detail-pane .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:5px;min-width:0;border:1px solid #31464d;border-radius:5px;background:#17252a;padding:5px}
+.squad-detail-pane .v39-char-equipment-row span,.squad-detail-pane .v39-char-growth-row span{color:#a8b8ba}
+.squad-detail-pane .v39-char-equipment-row b,.squad-detail-pane .v39-char-growth-row b{overflow-wrap:anywhere;text-align:right}

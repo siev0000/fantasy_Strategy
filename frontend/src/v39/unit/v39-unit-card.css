@@ -1,0 +1,186 @@
+.squad-card .squad-bars{
+      display:grid!important;
+      grid-template-columns:1fr!important;
+      gap:0!important;
+      min-width:0!important;
+      margin:0!important;
+    }
+    .squad-card .v39-card-vital{
+      min-width:0!important;
+      display:grid!important;
+      grid-template-columns:20px minmax(0,1fr)!important;
+      align-items:center!important;
+      gap:3px!important;
+      min-height:18px!important;
+      padding:0!important;
+      margin:0!important;
+      border:0!important;
+      border-radius:0!important;
+      background:transparent!important;
+      line-height:1!important;
+    }
+    .squad-card .v39-card-vital + .v39-card-vital{
+      margin-top:0!important;
+    }
+    .squad-card .v39-card-vital-label{
+      font-size:var(--font-secondary)!important;
+      font-weight:800!important;
+      color:#a7b5b8!important;
+      white-space:nowrap!important;
+    }
+    .squad-card .v39-card-vital-track{
+      position:relative!important;
+      display:block!important;
+      min-width:0!important;
+      width:100%!important;
+      height:16px!important;
+      border-radius:4px!important;
+      overflow:hidden!important;
+      background:#263136!important;
+      box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)!important;
+    }
+    .squad-card .v39-card-vital-fill{
+      position:absolute!important;
+      left:0!important;
+      top:0!important;
+      bottom:0!important;
+      display:block!important;
+      height:100%!important;
+      min-width:0!important;
+      border-radius:inherit!important;
+      z-index:1!important;
+    }
+    .squad-card .v39-card-vital.hp .v39-card-vital-fill{
+      background:linear-gradient(90deg,#3caa5b,#89df8e)!important;
+    }
+    .squad-card .v39-card-vital.ap .v39-card-vital-fill{
+      background:linear-gradient(90deg,#247dc2,#72caff)!important;
+    }
+    .v39-card-defense-fill{
+      position:absolute;left:0;bottom:0;height:2px;z-index:3;
+      pointer-events:none;
+    }
+    .v39-card-defense-fill.shield{background:#65d4ff;bottom:2px}
+    .v39-card-defense-fill.barrier{background:#c998ff}
+    .v39-defense-value.shield{color:#65d4ff}
+    .v39-defense-value.barrier{color:#c998ff}
+    .squad-card .v39-card-vital-value{
+      position:absolute!important;
+      inset:0!important;
+      z-index:2!important;
+      display:flex!important;
+      align-items:center!important;
+      justify-content:center!important;
+      padding:0 3px!important;
+      margin:0!important;
+      font-size:var(--font-secondary)!important;
+      font-weight:800!important;
+      line-height:1!important;
+      color:#f4f8f6!important;
+      white-space:nowrap!important;
+      text-align:center!important;
+      text-shadow:0 1px 2px rgba(0,0,0,.95), 1px 0 1px rgba(0,0,0,.8)!important;
+      pointer-events:none!important;
+    }
+    .squad-card{
+      grid-template-columns:minmax(0,1fr);
+      gap:2px!important;
+      padding:4px!important;
+    }
+    .squad-card-top{
+      width:100%;min-width:0;
+      margin:0!important;
+    }
+    .squad-card .squad-main{display:flex;gap:3px;width:100%;min-width:0}
+    .squad-card .squad-name-wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;flex:1;min-width:0}
+    .squad-card .squad-name{
+      display:block;white-space:nowrap;overflow-wrap:normal;
+      font-size:calc(var(--font-body) * var(--v39-text-fit,1));line-height:1.15;
+    }
+    .squad-card .squad-pos{
+      display:block;white-space:nowrap;
+      font-size:calc(var(--font-size-11) * var(--v39-text-fit,1));line-height:1.1;
+    }
+
+    .squad-card .squad-exp-ring{
+      --v39-exp-progress:0%;
+      position:relative!important;
+      display:grid!important;
+      place-items:center!important;
+      width:34px!important;
+      height:34px!important;
+      flex:0 0 34px!important;
+      padding:3px!important;
+      border-radius:50%!important;
+      box-sizing:border-box!important;
+      background:conic-gradient(#e4c45d var(--v39-exp-progress),#334147 0)!important;
+      box-shadow:0 0 0 1px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.08)!important;
+      overflow:hidden!important;
+    }
+    .squad-card .squad-exp-ring::before{
+      content:""!important;
+      position:absolute!important;
+      inset:3px!important;
+      border-radius:50%!important;
+      background:#10191d!important;
+      z-index:0!important;
+    }
+    .squad-card .squad-exp-ring .squad-icon{
+      position:relative!important;
+      z-index:1!important;
+      width:28px!important;
+      height:28px!important;
+      display:grid!important;
+      place-items:center!important;
+      margin:0!important;
+      border-radius:50%!important;
+      background:#17252b!important;
+      line-height:1!important;
+      overflow:hidden!important;
+    }
+    .squad-card .squad-exp-ring .squad-race-icon{
+      width:100%!important;
+      height:100%!important;
+      display:block!important;
+      object-fit:cover!important;
+      border-radius:50%!important;
+      opacity:1!important;
+    }
+    .squad-card .squad-exp-ring .squad-level-number{
+      position:absolute;inset:3px;z-index:2;display:grid;place-items:center;
+      border-radius:50%;background:rgba(10,18,22,.18);color:#fff0b7;
+      font-size:var(--font-body);font-weight:900;line-height:1;
+      text-shadow:0 1px 2px #000,1px 0 2px #000,-1px 0 2px #000,0 -1px 2px #000;
+      pointer-events:none;
+    }
+    @media(max-width:430px) and (orientation:portrait){
+      .squad-card .v39-card-vital{
+        grid-template-columns:20px minmax(0,1fr)!important;
+        gap:2px!important;
+        min-height:17px!important;
+      }
+      .squad-card .v39-card-vital-label{
+        font-size:var(--font-secondary)!important;
+      }
+      .squad-card .v39-card-vital-value{
+        font-size:var(--font-secondary)!important;
+      }
+      .squad-card .v39-card-vital-track{
+        height:15px!important;
+      }
+      .squad-card{
+        padding:3px!important;
+        gap:1px!important;
+      }
+
+      .squad-card .squad-exp-ring{
+        width:32px!important;
+        height:32px!important;
+        flex-basis:32px!important;
+        padding:3px!important;
+      }
+      .squad-card .squad-exp-ring .squad-icon{
+        width:26px!important;
+        height:26px!important;
+      }
+    }

@@ -22,6 +22,7 @@ import { getV39ResearchDiscoveryTargets } from "../../lib/v39-research-discovery
 import { facilitiesUnlockedByResearch } from "../../lib/v39-construction-research.js";
 import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
 import { layoutResearchFlow } from "../../lib/research-flow-layout.js";
+import { updateV39RetainedMarkup } from "../ui/v39-retained-markup.js";
 
 let activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
 let inspectedItemId = "";
@@ -156,7 +157,7 @@ function renderRail() {
   const rail = document.getElementById("researchRail");
   if (!(rail instanceof HTMLElement)) return;
   const research = currentResearch();
-  rail.innerHTML = RESEARCH_CATEGORY_ORDER
+  updateV39RetainedMarkup(rail, RESEARCH_CATEGORY_ORDER
     .filter(key => researchTreeData.categories[key])
     .map(key => {
       const meta = getResearchCategoryMeta(key);
@@ -164,7 +165,7 @@ function renderRail() {
       const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
       const selected = research.selection?.[key] ? " active" : "";
       return `<button class="research-rail-btn${selected}" data-v39-research-category="${key}" style="--p:${progress.ratio}%;--accent:${meta.accent}" title="${meta.label} Lv${level} / EXP ${progress.current}/${progress.required}" aria-label="${meta.label} Lv${level}"><span class="gauge"><b>${meta.icon}</b></span><span class="lv">${level}</span></button>`;
-    }).join("");
+    }).join(""), {preserveInput:true});
 }
 
 function itemDetails(item) {
@@ -205,7 +206,7 @@ function renderFlow(research, selectedId) {
   const available = bodyWidth - (compact ? 20 : 360);
   const columns = compact ? (available >= 280 ? 2 : 1) : Math.max(1,Math.min(3,Math.floor(available / 190)));
   const width = Math.max(110,Math.min(180,Math.floor((available - 24 - (columns - 1)*14) / columns)));
-  const height = Math.max(92,Math.ceil(Number.parseFloat(getComputedStyle(body).fontSize)*7) || 92);
+  const height = Math.max(78,Math.ceil(Number.parseFloat(getComputedStyle(body).fontSize)*5.5) || 78);
   const flow=layoutResearchFlow(categoryRows(activeCategory).flatMap(row=>row.items || []),{width,height,maxColumns:columns});
   const cards=flow.nodes.map(node=>{
     const item=node.item, check=inspectResearchUnlock(research,item.id);
@@ -249,7 +250,7 @@ function renderModal() {
     viewSelect.dataset.researchView = "";
     viewSelect.className = "v39-research-view";
     viewSelect.setAttribute("aria-label", "研究の表示形式");
-    viewSelect.innerHTML = '<option value="list">従来表示</option><option value="flow">フローチャート</option>';
+    viewSelect.innerHTML = '<option value="list">研究一覧</option><option value="flow">フローチャート</option>';
     heading?.after(viewSelect);
   }
   viewSelect.value = researchView;
@@ -294,7 +295,7 @@ function renderModal() {
   const assigneeUnitExpPerTurn = assignee ? researchUnitExpPerTurn(assignee, activeCategory, expPreviewItem) : 0;
   const status = completed ? '完了' : selected ? '研究中' : unlocked ? '研究可能' : '未解禁';
   const conditions = inspected ? `<section class="v39-research-requirement"><b>解禁条件</b><div class="${unlockCheck.currentLevel >= unlockCheck.requiredLevel ? 'met' : 'unmet'}">${unlockCheck.currentLevel >= unlockCheck.requiredLevel ? '✓' : '×'} 研究Lv ${unlockCheck.requiredLevel} が必要（現在Lv${unlockCheck.currentLevel}）</div>${unlockCheck.prerequisites.map(row=>`<div class="${row.completed ? 'met' : 'unmet'}">${row.completed ? '✓' : '×'} ${escapeHtml(row.name)} <b>${row.completed ? '完了' : '未完了'}</b></div>`).join('')}${unlockCheck.prerequisites.length ? '' : '<div class="met">✓ 前提研究なし</div>'}${(inspected.prerequisiteErrors || []).map(error=>`<div class="unmet">${escapeHtml(error)}</div>`).join('')}</section>` : '';
-  body.innerHTML = `<div class="v39-research-overview"><nav class="v39-research-categories">${categoryButtons}</nav><p class="v39-research-guide">${researchView === 'flow' ? '上から下へ研究が進みます。矢印は前提研究です。' : 'Lv別の研究一覧です。'} 項目を選ぶと効果と条件を確認できます。</p></div><div class="v39-research-layout"><div class="v39-research-board">${levels || '研究データがありません。'}</div><aside class="v39-research-detail"><div class="v39-research-detail-content"><button class="v39-research-back" data-research-back>← 研究一覧へ戻る</button>${inspected ? `<div class="v39-research-detail-head"><div><small>${getResearchCategoryMeta(activeCategory).label} ・ Lv${inspected.level} ・ ${status}</small><b>${escapeHtml(inspected.name)}</b></div><strong>${completed ? '100%' : `${progressRatio}%`}</strong></div><p>${escapeHtml(inspected.desc || '説明なし')}</p><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp} EXP</span></div>${conditions}${itemDetails(inspected)}` : '研究項目を選択してください。'}<label class="v39-research-assignee"><span>研究担当</span><select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>研究EXP +${perTurn}/ターン</small></label><details class="v39-research-efficiency"><summary>研究速度の内訳</summary><p>推奨ユニットLv ${inspected?.recommendedUnitLevel || '-'}（解禁条件ではありません）<br>担当Lv効率 ${Math.round(researchLevelEfficiency(assignee, inspected) * 100)}%<br>短縮技能 ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || '-')}<br>担当ユニットEXP +${formatExp(assigneeUnitExpPerTurn)}/ターン</p></details></div><footer class="v39-research-detail-footer"><button class="v39-research-select" data-select-research ${(!unlocked || !assignee || completed || selected) ? 'disabled' : ''}>${!unlocked && !completed && !selected ? '条件未達成' : actionLabel}</button></footer></aside></div>`;
+  updateV39RetainedMarkup(body, `<div class="v39-research-overview"><nav class="v39-research-categories">${categoryButtons}</nav><p class="v39-research-guide">${researchView === 'flow' ? '上から下へ研究が進みます。矢印は前提研究です。' : 'Lv別の研究一覧です。'} 項目を選ぶと効果と条件を確認できます。</p></div><div class="v39-research-layout"><div class="v39-research-board">${levels || '研究データがありません。'}</div><aside class="v39-research-detail"><div class="v39-research-detail-content"><button class="v39-research-back" data-research-back>← 研究一覧へ戻る</button>${inspected ? `<div class="v39-research-detail-head"><div><small>${getResearchCategoryMeta(activeCategory).label} ・ Lv${inspected.level} ・ ${status}</small><b>${escapeHtml(inspected.name)}</b></div><strong>${completed ? '100%' : `${progressRatio}%`}</strong></div><p>${escapeHtml(inspected.desc || '説明なし')}</p><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp} EXP</span></div>${conditions}${itemDetails(inspected)}` : '研究項目を選択してください。'}<label class="v39-research-assignee"><span>研究担当</span><select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>研究EXP +${perTurn}/ターン</small></label><details class="v39-research-efficiency"><summary>研究速度の内訳</summary><p>推奨ユニットLv ${inspected?.recommendedUnitLevel || '-'}（解禁条件ではありません）<br>担当Lv効率 ${Math.round(researchLevelEfficiency(assignee, inspected) * 100)}%<br>短縮技能 ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || '-')}<br>担当ユニットEXP +${formatExp(assigneeUnitExpPerTurn)}/ターン</p></details></div><footer class="v39-research-detail-footer"><button class="v39-research-select" data-select-research ${(!unlocked || !assignee || completed || selected) ? 'disabled' : ''}>${!unlocked && !completed && !selected ? '条件未達成' : actionLabel}</button></footer></aside></div>`, {preserveInput:true,preserveDetails:()=>preserveScroll && renderedItemId === inspectedItemId});
   const board = body.querySelector(".v39-research-board");
   const detail = body.querySelector(".v39-research-detail-content");
   if (board) { board.scrollLeft = scrollLeft; board.scrollTop = scrollTop; }
@@ -413,18 +414,19 @@ function installStyles() {
   style.id = "v39-research-ui-style";
   style.textContent = `
 #researchModal .modal{width:min(1200px,96vw);height:min(820px,94svh);background:#0d171b;border:1px solid #53646a}
-#researchModal .modal-body{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;min-height:0;padding:12px;overflow:hidden;font-size:var(--font-body)}
+#researchModal .modal-body{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;min-height:0;min-width:0;box-sizing:border-box;padding:8px;overflow:hidden;font-size:var(--font-body)}
+.v39-research-overview{min-width:0;overflow:hidden}
 #researchModal .modal-head{gap:12px;flex-shrink:0}
 .v39-research-view{margin-left:auto;max-width:50%;padding:7px 10px;background:#152226;color:#dce4e4;border:1px solid #53646a;border-radius:6px;font-size:var(--font-body)}
-.v39-research-categories{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
-.v39-research-category{min-width:0;min-height:42px;display:flex;align-items:center;justify-content:center;gap:6px;color:#c9d4d5;background:#152226;border:1px solid #405057;border-radius:8px;font-size:var(--font-body);font-weight:800}
+.v39-research-categories{display:flex;gap:4px;overflow-x:auto;padding-bottom:3px}
+.v39-research-category{flex:1 0 auto;min-width:64px;min-height:34px;padding:4px 8px;display:flex;align-items:center;justify-content:center;gap:5px;color:#c9d4d5;background:#152226;border:1px solid #405057;border-radius:6px;font-size:var(--font-body);font-weight:800}
 .v39-research-category b{color:var(--cat-accent)}
 .v39-research-category small{font-size:var(--font-secondary);color:#91a1a5}
 .v39-research-category.active{border:2px solid var(--cat-accent);background:#243035;color:#fff}
 .v39-research-guide{margin:9px 0;color:#aebabc;font-size:var(--font-body)}
 .v39-research-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px;min-height:0;min-width:0}
 .v39-research-board{display:block;min-height:0;min-width:0;overflow:auto;overscroll-behavior:contain;border:1px solid #31454b;border-radius:8px;background:#101c20}
-#researchModal [data-research-layout-mode="list"] .v39-research-board{display:flex;align-items:flex-start;gap:8px;padding:8px}
+#researchModal [data-research-layout-mode="list"] .v39-research-board{display:grid;align-content:start;gap:8px;padding:6px}
 .v39-research-flow{position:relative}
 .v39-research-connections{position:absolute;inset:0;pointer-events:none}
 .v39-research-connections>path{fill:none;stroke:#80a6ae;stroke-width:2}
@@ -435,14 +437,14 @@ function installStyles() {
 .v39-research-node-status b{padding:2px 5px;border-radius:4px;background:#293b42;color:#dce4e4;font-size:var(--font-secondary)}
 .v39-research-node strong{margin-top:3px;overflow-wrap:anywhere}
 .v39-research-node .v39-research-item-progress{margin-top:auto;flex-shrink:0}
-.v39-research-level{flex:0 0 210px;border:1px solid #3d4e54;border-radius:8px;background:#111e22;padding:8px}
+.v39-research-level{min-width:0;border:0;border-bottom:1px solid #3d4e54;background:#111e22;padding:5px}
 .v39-research-level>header{display:flex;justify-content:space-between;gap:5px;align-items:center;margin-bottom:8px;color:#e8dcc1}
 .v39-research-level>header small{font-size:var(--font-secondary);color:#a6b3b5}
-.v39-research-level>div{display:grid;gap:8px}
-.v39-research-item{min-height:60px;padding:6px;text-align:left;color:#d8e0e0;background:#17252a;border:1px solid #45575e;border-radius:7px}
+.v39-research-level>div{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:5px}
+.v39-research-item{min-height:54px;min-width:0;padding:6px;text-align:left;color:#d8e0e0;background:#17252a;border:1px solid #45575e;border-radius:6px}
 .v39-research-item strong{display:block;font-size:var(--font-body);line-height:1.45}
 .v39-research-item small{display:block;margin-top:4px;font-size:var(--font-secondary);color:#b9c5c8;line-height:1.4}
-.v39-research-item-progress{display:block;height:6px;margin-top:10px;background:#091114;border:1px solid #435158;border-radius:8px;overflow:hidden}
+.v39-research-item-progress{display:block;height:4px;margin-top:5px;background:#091114;border:1px solid #435158;border-radius:8px;overflow:hidden}
 .v39-research-item-progress i{display:block;height:100%;background:#d1aa61}
 .v39-research-item.active{border:2px solid #f1d080;padding:5px;background:#2b2a20}
 .v39-research-item.picked{box-shadow:inset 0 0 0 2px #78c894}
@@ -500,6 +502,8 @@ function installStyles() {
 .research-rail-btn.active::after{display:none!important}
 .research-rail-btn.active{border-color:#f0cf76!important;background:rgba(37,33,22,.86)!important}
 @media(max-width:760px){
+#researchModal{padding:0}
+#researchModal .modal{box-sizing:border-box}
 .research-rail{top:4px!important;width:36px!important;padding:3px 2px!important;gap:3px!important}
 .research-rail-btn{width:31px!important;height:38px!important;min-width:31px!important;min-height:38px!important;grid-template-rows:24px 9px!important}
 .research-rail-btn .gauge{width:23px!important;height:23px!important}
@@ -507,8 +511,8 @@ function installStyles() {
 .research-rail-btn .lv{font-size:var(--font-size-8)!important;line-height:8px!important}
 #researchModal .modal{width:100vw;height:100svh;max-height:100svh;border-radius:0}
 #researchModal .modal-body{padding:8px}
-.v39-research-categories{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
-.v39-research-category{min-height:40px;gap:4px;font-size:var(--font-body)}
+.v39-research-categories{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.v39-research-category{min-height:34px;gap:4px;font-size:var(--font-body)}
 .v39-research-category small{display:none}
 .v39-research-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
 .v39-research-detail{display:none}

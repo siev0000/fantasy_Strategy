@@ -1,3 +1,4 @@
+import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
 import {V39_TRADE_CONFIG as config,V39_TRADE_RESOURCES,listV39Trades,proposeV39Trade,acceptV39Trade,stopV39Trade,resumeV39Trade,
   tradeBank,tradeBankAmount,tradeMembers,tradeCapacity,tradeTurn,tradeAlive,divertV39TradeIncome,updateTradeBank,updateV39Trade,getTradeCargo,reserveV39TradeFromStock,tradeSpeed} from '../../lib/v39-trade-state.js';
 import {advanceV39TradeLogistics} from '../../lib/v39-trade-logistics.js';
@@ -19,6 +20,10 @@ const selectedItems=['',''];
 const folds=new Map();
 const state=()=>window.getV39GameState();
 const modal=()=>document.getElementById('v39-trade-modal');
+const updateTradeMarkup=(host,markup,options={})=>updateV39RetainedMarkup(host,markup,{
+  ...options,preserveValue:node=>node.id?.startsWith('trade-date-')&&node.value!==node.defaultValue,
+  preserveDetails:node=>!node.hasAttribute('data-trade-fold')
+});
 function closeResourcePicker() {
   const index=resourcePicker;resourcePicker=-1;
   modal()?.querySelector('.v39-trade-picker-backdrop')?.remove();
@@ -26,15 +31,15 @@ function closeResourcePicker() {
   if(dialog)dialog.inert=false;
   modal()?.querySelector(`[data-trade-add-side="${index}"]`)?.focus();
 }
-function renderResourcePicker() {
+function renderResourcePicker(options={}) {
   const root=modal();
   const previous=root.querySelector('.v39-trade-picker-backdrop'),scroll=previous?.querySelector('.v39-trade-resource-grid')?.scrollTop||0;
   const focused=document.activeElement,filter=focused?.dataset.tradeResourceFilter,searchFocused=focused?.hasAttribute('data-trade-resource-search'),selection=focused?.selectionStart;
-  previous?.remove();
   root.querySelector('.v39-trade-dialog').inert=resourcePicker>=0;
-  if(resourcePicker<0||!draft)return;
-  const overlay=document.createElement('div');overlay.className='v39-trade-picker-backdrop';
-  overlay.innerHTML=tradePickerModalHtml(state(),draft.sides[resourcePicker],resourcePicker,{filter:resourceFilter,search:resourceSearch,selected:selectedItems[resourcePicker]});
+  if(resourcePicker<0||!draft){previous?.remove();return;}
+  const overlay=previous||document.createElement('div');overlay.className='v39-trade-picker-backdrop';
+  updateTradeMarkup(overlay,tradePickerModalHtml(state(),draft.sides[resourcePicker],resourcePicker,{filter:resourceFilter,search:resourceSearch,selected:selectedItems[resourcePicker]}),options);
+  if(!previous){
   overlay.addEventListener('click',event=>{if(event.target===overlay)closeResourcePicker();});
   overlay.addEventListener('keydown',event=>{
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeResourcePicker();}
@@ -44,9 +49,11 @@ function renderResourcePicker() {
       else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
     }
   });
-  root.append(overlay);overlay.querySelector('.v39-trade-resource-grid').scrollTop=scroll;
+  root.append(overlay);
+  }
+  overlay.querySelector('.v39-trade-resource-grid').scrollTop=scroll;
   const nextFocus=searchFocused?overlay.querySelector('[data-trade-resource-search]'):filter?overlay.querySelector(`[data-trade-resource-filter="${filter}"]`):overlay.querySelector('[data-trade-picker-close]');
-  nextFocus.focus();if(searchFocused&&selection!=null)nextFocus.setSelectionRange(selection,selection);
+  if(!previous||!overlay.contains(document.activeElement)){nextFocus.focus();if(searchFocused&&selection!=null)nextFocus.setSelectionRange(selection,selection);}
 }
 function endpoints(s) {
   const own=s.players.find(row=>row.id===s.activePlayerId);
@@ -99,11 +106,11 @@ function ensure() {
       draft.sides[index].goods[name]=amount;
       root.querySelectorAll('[data-side-field="amount"]').forEach(control=>{if(Number(control.dataset.tradeSide)===index&&control.dataset.tradeResource===name){if(control.type==='range')control.max=Math.max(Number(control.max),amount);if(control!==input)control.value=amount;}});
       root.querySelectorAll('[data-trade-item-select],[data-trade-resource-add]').forEach(button=>{if(Number(button.dataset.tradeItemSide)===index&&(button.dataset.tradeItemSelect||button.dataset.tradeResourceAdd)===name){button.querySelector('b').textContent=amount;button.setAttribute('aria-label',`${name} ${amount}`);}});
-      const preview=proposeV39Trade(state(),state().activePlayerId,draft),button=root.querySelector('[data-trade-action="propose"]');
+      const current=state(),preview=proposeV39Trade(current,current.activePlayerId,draft),button=root.querySelector('[data-trade-action="propose"]');
       if(button)button.disabled=!preview.ok;
       const copy=root.querySelector('.v39-trade-footer-copy');if(copy)copy.textContent=preview.ok?'':preview.reason;
     }
-    if(input.hasAttribute('data-trade-resource-search')){resourceSearch=input.value;const grid=root.querySelector('.v39-trade-resource-grid');if(grid)grid.innerHTML=tradeResourcePicker(state(),draft.sides[resourcePicker],resourcePicker,{filter:resourceFilter,search:resourceSearch,selected:selectedItems[resourcePicker]});}
+    if(input.hasAttribute('data-trade-resource-search')){resourceSearch=input.value;const grid=root.querySelector('.v39-trade-resource-grid');if(grid)updateTradeMarkup(grid,tradeResourcePicker(state(),draft.sides[resourcePicker],resourcePicker,{filter:resourceFilter,search:resourceSearch,selected:selectedItems[resourcePicker]}));}
   });
   root.addEventListener('change',event=>{
     const input=event.target;
@@ -148,14 +155,18 @@ function sideHtml(s,side,index) {
     <div class="v39-trade-row">X<input type="number" min="0" value="${side.center.x}" ${attr('x')}>Y<input type="number" min="0" value="${side.center.y}" ${attr('y')}><button data-trade-pick="${index}">マップで指定</button></div>
     <label>許容範囲<input type="number" min="0" max="${config.maxRadius}" value="${side.radius}" ${attr('radius')}></label>${forecast}</section>`;
 }
-function render() {
+function render(options={}) {
   ensure();if(modal().hidden)return;const s=state(),body=modal().querySelector('.v39-trade-body'),scroll=body.scrollTop;
+  let content=body.querySelector(':scope > .v39-trade-content');
+  if(!content){content=document.createElement('div');content.className='v39-trade-content';body.append(content);}
+  const context=`${s.activePlayerId}:${draftKey}:${tab}`;
+  if(content.dataset.context!==context){content.replaceChildren();content.__v39RetainedMarkup=null;content.dataset.context=context;}
   body.querySelectorAll('[data-trade-fold]').forEach(details=>folds.set(details.dataset.tradeFold,details.open));
   modal().querySelectorAll('[data-trade-tab]').forEach(button=>button.classList.toggle('active',button.dataset.tradeTab===tab));
   const footer=modal().querySelector('.v39-trade-footer');footer.hidden=tab!=='new'||!draft;
   if(tab==='new'&&draft){const preview=proposeV39Trade(s,s.activePlayerId,draft);
-    footer.innerHTML=`<div class="v39-trade-footer-copy">${preview.ok?'':html(preview.reason)}</div><button data-trade-action="propose"${preview.ok?'':' disabled'}>提案</button>`;
-    body.innerHTML=`<div class="v39-trade-partner"><label>取引相手 <select data-trade-side="1" data-side-field="party">${endpoints(s).map(row=>option(row.value,row.label,`${draft.sides[1].kind}:${draft.sides[1].partyId}`)).join('')}</select></label><label>方法 <select data-trade-field="method">${option('exchange','交換・要求',draft.method)}${option('mail','郵送（一方向）',draft.method)}</select></label></div>
+    updateTradeMarkup(footer,`<div class="v39-trade-footer-copy">${preview.ok?'':html(preview.reason)}</div><button data-trade-action="propose"${preview.ok?'':' disabled'}>提案</button>`,options);
+    updateTradeMarkup(content,`<div class="v39-trade-partner"><label>取引相手 <select data-trade-side="1" data-side-field="party">${endpoints(s).map(row=>option(row.value,row.label,`${draft.sides[1].kind}:${draft.sides[1].partyId}`)).join('')}</select></label><label>方法 <select data-trade-field="method">${option('exchange','交換・要求',draft.method)}${option('mail','郵送（一方向）',draft.method)}</select></label></div>
     <div class="v39-trade-baskets">${draft.sides.map((side,index)=>tradeBasketHtml(s,side,index,{mail:draft.method==='mail',selected:selectedItems[index]})).join('')}</div>
     <details class="v39-trade-options" data-trade-fold="delivery"${folds.get('delivery')?' open':''}><summary>配送・日程 / T${draft.dueTurn} / ${draft.period?`${draft.period}Tごと・${draft.cycles}回`:'単発'}</summary><div class="v39-trade-options-content"><div class="v39-trade-row">
     <label>交渉 <select data-trade-field="negotiation">${option('normal','通常交渉',draft.negotiation)}${option('intimidation','威圧交渉',draft.negotiation)}</select></label>
@@ -164,36 +175,38 @@ function render() {
     <label>周期<input type="number" min="0" value="${draft.period}" data-trade-field="period"></label>
     <label>回数<input type="number" min="1" max="100" value="${draft.cycles}" data-trade-field="cycles"></label></div><div class="v39-trade-sides">${draft.sides.map((side,i)=>sideHtml(s,side,i)).join('')}</div></div></details>
     ${draft.sides.some(side=>Object.keys(side.goods).some(name=>V39_TRADE_RESOURCES.find(row=>row.name===name)?.specialty))?`<label>特産品の貸出 ⌛<input type="number" min="1" max="100" value="${draft.specialtyTurns||10}" data-trade-field="specialtyTurns" aria-label="特産品の貸出ターン数"></label>`:''}
-    <details class="v39-trade-options" data-trade-fold="rules"${folds.get('rules')?' open':''}><summary>予約在庫・維持費について</summary><p>成立時に双方の次回分1/3を手持ちから確保します。残りは実収入から予約し、維持費には使えません。周期0は単発。双方の到着後、指定日から猶予内に同時交換し、担当者は帰還します。</p></details>`;
+    <details class="v39-trade-options" data-trade-fold="rules"${folds.get('rules')?' open':''}><summary>予約在庫・維持費について</summary><p>成立時に双方の次回分1/3を手持ちから確保します。残りは実収入から予約し、維持費には使えません。周期0は単発。双方の到着後、指定日から猶予内に同時交換し、担当者は帰還します。</p></details>`,options);
   }
   else {
     const visible=listV39Trades(s).filter(row=>row.sides.some(side=>side.kind==='player'&&side.partyId===s.activePlayerId));
     const labels={proposed:'承諾待ち',active:'自動取引中',interrupted:'中断・再協議',cancelling:'中止・帰還中',complete:'完了',cancelled:'中止完了',rejected:'拒否/取下げ'};
     const stages={collecting:'収入確保・拠点へ集合',outbound:'取引場所へ移動',waiting:'到着待ち',returning:'帰還・荷下ろし',returned:'帰還済み'};
     const partyName=side=>side.kind==='player'?s.players.find(row=>row.id===side.partyId)?.label:s.neutralVillages.find(row=>row.id===side.partyId)?.name;
-    body.innerHTML=visible.map(row=>`<article class="v39-trade-contract" data-trade-contract="${html(row.id)}"><h4>取引 #${row.sequence} / ${labels[row.status]}</h4><span>取引日 T${row.dueTurn}〜T${row.dueTurn+row.grace} / ${row.completedCycles}/${row.cycles}回${row.reason?` / ${html(row.reason)}`:''}</span>
+    updateTradeMarkup(content,visible.map(row=>`<article class="v39-trade-contract" data-trade-contract="${html(row.id)}"><h4>取引 #${row.sequence} / ${labels[row.status]}</h4><span>取引日 T${row.dueTurn}〜T${row.dueTurn+row.grace} / ${row.completedCycles}/${row.cycles}回${row.reason?` / ${html(row.reason)}`:''}</span>
       ${row.sides.map(side=>`<div class="v39-trade-side-progress"><b>${html(partyName(side)||side.partyId)} / ${side.kind==='player'&&side.partyId===s.activePlayerId?'渡す物資':'受け取る物資'}</b><div class="v39-trade-summary-items">${tradeResourceChips(side.goods)}</div><small>${html(stages[side.stage]||'未成立')}${side.reason?` / ${html(side.reason)}`:''}</small><details><summary>予約・運搬の詳細</summary>${Object.entries(side.goods).map(([name,total])=>{const reserved=n(side.reserved?.[name]),carried=n(getTradeCargo(s,side).resourcesByType[name]),missing=Math.max(0,total-reserved-carried);return `<p>${tradeResourceChips({[name]:total})} / 予約${reserved} / 搬送${carried}${['collecting','outbound','waiting'].includes(side.stage)?` / 未確保${missing} / 毎T目標${Math.ceil(missing/Math.max(1,row.dueTurn-tradeTurn(s)))}`:''}</p>`;}).join('')}</details></div>`).join('')}
       <div class="v39-trade-row">${row.status==='proposed'&&(row.sides[1].kind==='village'?row.ownerId===s.activePlayerId:row.sides[1].partyId===s.activePlayerId)?`<button data-trade-action="accept" data-trade-id="${html(row.id)}">${row.sides[1].kind==='village'?'村へ条件を提示・判定':'承諾'}</button>`:''}
       ${row.status==='active'?`<button data-trade-action="pause" data-trade-id="${html(row.id)}">中断</button><button data-trade-action="reserve-stock" data-trade-id="${html(row.id)}">手持ちから追加確保</button>${row.sides.some(side=>side.kind==='village')&&row.ownerId===s.activePlayerId?`<button data-trade-action="reserve-village" data-trade-id="${html(row.id)}">村へ備蓄の確保を交渉</button>`:''}`:''}
       ${row.status==='interrupted'?`<label>再開日 T<input id="trade-date-${html(row.id)}" type="number" value="${Math.max(row.dueTurn,tradeTurn(s)+3)}"></label><button data-trade-action="resume" data-trade-id="${html(row.id)}">この日程で再開を確認</button>`:''}
       ${['proposed','active','interrupted'].includes(row.status)?`<button data-trade-action="cancel" data-trade-id="${html(row.id)}">${row.status==='proposed'?'拒否・取下げ':'中止・引き返す'}</button>`:''}
-      <button data-trade-action="revise" data-trade-id="${html(row.id)}">条件を変えて再提案</button></div></article>`).join('')||'<p>取引はありません。相手がいれば「提案」タブから作成できます。</p>';
+      <button data-trade-action="revise" data-trade-id="${html(row.id)}">条件を変えて再提案</button></div></article>`).join('')||'<p>取引はありません。相手がいれば「提案」タブから作成できます。</p>',options);
   }
   body.scrollTop=scroll;modal().querySelector('output').textContent=message;modal().querySelector('output').hidden=!message;
   if(draft){const own=s.players.find(p=>p.id===s.activePlayerId),other=draft.sides[1],units=own.factionState.units.filter(unit=>tradeAlive(unit)&&(unit.worldId||'surface')==='surface');
     const actor=units.find(unit=>unit.id===draft.negotiatorId)||units.find(unit=>unit.id===own.factionState.selectedUnitId)||units[0];
     const peers=other.kind==='village'?s.neutralVillages.find(v=>v.id===other.partyId)?.defenseUnits:s.players.find(p=>p.id===other.partyId)?.factionState.units;
     const village=other.kind==='village'?s.neutralVillages.find(v=>v.id===other.partyId):null;
-    const conversation=document.createElement('details');conversation.className='v39-trade-conversation-fold';conversation.dataset.tradeFold='conversation';conversation.open=folds.get('conversation')===true;
-    const summary=document.createElement('summary');summary.textContent=`会話・スキル / ${actor?.name||'交渉役なし'} / AP ${n(actor?.ap??actor?.currentAp)}`;conversation.append(summary);
-    const conversationBody=document.createElement('div');conversation.append(conversationBody);body.prepend(conversation);
+    let conversation=body.querySelector(':scope > .v39-trade-conversation-fold');
+    if(!conversation){conversation=document.createElement('details');conversation.className='v39-trade-conversation-fold';conversation.innerHTML='<summary></summary><div></div>';body.prepend(conversation);}
+    conversation.dataset.tradeFold='conversation';conversation.open=folds.get('conversation')===true;
+    conversation.querySelector('summary').textContent=`会話・スキル / ${actor?.name||'交渉役なし'} / AP ${n(actor?.ap??actor?.currentAp)}`;
+    const conversationBody=conversation.querySelector(':scope > div');
     renderV39Conversation(conversationBody,{target:other.partyId,actor,units,peer:peers?.find(tradeAlive)||{race:village?.race||'只人',className:'ファイター',name:village?`${village.name}の代表`:'相手の代表'},onActorChange:id=>{
       draft.negotiatorId=id;let next=s;
       for(const contract of listV39Trades(s))if(contract.ownerId===s.activePlayerId&&['proposed','active','interrupted'].includes(contract.status)&&contract.sides.some(side=>side.kind==='village'&&side.partyId===other.partyId))next=updateV39Trade(next,{...contract,negotiatorId:id});
       if(next!==s)window.setV39GameState(next,{reason:'trade-negotiator-selected'});render();}});
     body.scrollTop=scroll;
   }
-  renderResourcePicker();
+  renderResourcePicker(options);
 }
 function commit(result) {
   message=result.ok?result.message:result.reason;if(draft)recordV39Conversation(draft.sides[1].partyId,'提示した条件をご確認ください。',message);
@@ -214,12 +227,12 @@ function run(action,id) {
 }
 function entries() {
   const s=state();if(!s?.players?.length)return;
-  for(const [host,village] of [[document.getElementById('footSettlement'),null],[document.getElementById('v39-world-contact-buttons'),document.getElementById('v39-world-contact-actions')?.dataset.targetId]]) {
+  for(const [host,village] of [[document.querySelector('#footSettlement .settlement-toolbar'),null],[document.getElementById('v39-world-contact-buttons'),document.getElementById('v39-world-contact-actions')?.dataset.targetId]]) {
     if(!host||host.querySelector('[data-open-v39-trade]'))continue;
     const button=document.createElement('button');button.type='button';button.className='v39-trade-entry';button.dataset.openV39Trade='true';button.textContent='取引・郵送';button.onclick=()=>open(s.neutralVillages?.some(row=>row.id===village)?village:'');host.prepend(button);
   }
 }
-function queue() {if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;entries();if(!modal()?.hidden&&!modal()?.contains(document.activeElement))render();});}
+function queue() {if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;entries();if(modal()&&!modal().hidden){if(draft&&draft.sides[0].partyId!==state().activePlayerId){closeResourcePicker();modal().hidden=true;}else render({preserveInput:true});}});}
 function advanceNpc(event) {
   const map=window.__v39FieldRuntime?.mapData,s=state(),turn=n(event.detail?.turnNumber)||tradeTurn(s);if(!map?.grid||(s.activeWorldId||'surface')!=='surface')return;
   const villageIds=new Set(listV39Trades(s).flatMap(row=>row.sides.filter(side=>side.kind==='village').map(side=>side.partyId)));if(!villageIds.size)return;

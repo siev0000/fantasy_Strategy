@@ -203,6 +203,9 @@ export const V39_LOG_PREVIEW_BALANCE = Object.freeze({
 
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   maxMembers:5, // リーダー1体＋部隊員4体。軍隊ユニットも1体として数える。
+  assemblyBorderRadius:2,
+  rallyRadius:1,
+  rallyMaximumRadius:3,
   // 移動コスト計算の基準値。APプールは戦闘と共通で、別の移動APは持たない。
   moveApMax:100,
   // 移動値10を、AP100で平地を1マス移動できる基準とする。
@@ -424,6 +427,7 @@ export const V39_QUEST_BALANCE = Object.freeze({
   villageDeliveryAmount:50, // 村への支援納品数。
   villageRelationGain:8, // 仮の村依頼の友好度報酬。
   villageQuestCooldown:5, // 同じ村支援を再受注するまでのターン。
+    villageNumberedHuntRange:8, // 番号付き村依頼の暫定討伐対象範囲。
   guardianDeliveryAmount:100, // 守護者への納品数。
   guardianRelationGain:35, // 守護者依頼1件の友好度報酬。
   guardianTransferRelation:70, // 守護者交代に必要な友好度。

@@ -74,36 +74,39 @@ function resourceIconMarkup(icon,color,className){
   const style=safeColor?` style="color:${safeColor}"`:"";
   return `<span class="${className}"${style}>${icon||""}</span>`;
 }
-function detailGroupTotal(group){
-  const g=currentResourceDetail()[group];
-  return (g?.items||[]).reduce((s,i)=>s+i.value,0);
-}
-function detailGroupDelta(group){
-  const g=currentResourceDetail()[group];
-  return (g?.items||[]).reduce((s,i)=>s+i.delta,0);
-}
 function renderResourceTop(){
-  resourceSet.innerHTML="";
+  const snapshot=currentResourceDetail();
   resourceSet.classList.toggle("mode-simple",resourceMode==="simple");
-  for(const [key,g] of Object.entries(currentResourceDetail())){
+  const activeKeys=new Set(Object.keys(snapshot));
+  for(const button of resourceSet.querySelectorAll('[data-group]'))if(button.dataset.group!=="special"&&!activeKeys.has(button.dataset.group))button.remove();
+  let index=0;
+  for(const [key,g] of Object.entries(snapshot)){
     if(key==="special")continue;
-    const b=document.createElement("button");
+    let b=[...resourceSet.children].find(button=>button.dataset.group===key);
+    if(!b){
+      b=document.createElement("button");
+      b.dataset.group=key;
+      b.addEventListener("click",e=>{e.stopPropagation();openResourceGroup(key,b)});
+    }
     b.className=`res-chip ${g.className} tappable resource-group-btn`;
-    b.dataset.group=key;
-    b.innerHTML=`${resourceIconMarkup(g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.title}</span><b class="value-main">${fmtNum(detailGroupTotal(key))}</b><small class="value-delta">${signed(detailGroupDelta(key))}</small></span>`;
+    const markup=`${resourceIconMarkup(g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.title}</span><b class="value-main"></b><small class="value-delta"></small></span>`;
+    if(b.__v39ResourceMarkup!==markup){b.innerHTML=markup;b.__v39ResourceMarkup=markup;}
+    const total=fmtNum((g.items||[]).reduce((sum,item)=>sum+item.value,0));
+    const delta=signed((g.items||[]).reduce((sum,item)=>sum+item.delta,0));
+    const value=b.querySelector('.value-main'),change=b.querySelector('.value-delta');
+    if(value.textContent!==total)value.textContent=total;
+    if(change.textContent!==delta)change.textContent=delta;
     b.title=`${g.title}の内訳を表示`;
     b.setAttribute("aria-label",g.title);
-    b.addEventListener("click",e=>{e.stopPropagation();openResourceGroup(key,b)});
-    resourceSet.appendChild(b);
+    if(resourceSet.children[index]!==b)resourceSet.insertBefore(b,resourceSet.children[index]||null);
+    index++;
   }
-  renderV39SpecialtyHeader(resourceSet);
+  renderV39SpecialtyHeader(resourceSet,snapshot);
 }
 
 function openResourceGroup(key,anchor){
 
   const g=currentResourceDetail()[key];if(!g)return;
-
-  const total=detailGroupTotal(key),delta=detailGroupDelta(key);
 
   const body=document.getElementById("resourceDrawerBody");
   body.innerHTML=

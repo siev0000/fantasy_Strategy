@@ -4,6 +4,7 @@ import {tradeSpeed} from './v39-trade-state.js';
 import { getHexNeighborCoords } from "./hex-grid.js";
 import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
 import { resolveV39CaveFormation, advanceV39RelativeCaveFormation, assignV39CaveFormationStep } from "./v39-cave-formation-rules.js";
+import {v39SquadMoveMode} from './v39-squad-coordination.js';
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -126,13 +127,14 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", 
   if (!isLivingUnit(selected)) return { ok:false, reason:"死亡したユニットは移動できません。" };
 
   const instructors=new Set([...Object.values(faction.recruitInstructorByTile || {}),...Object.values(faction.recruitInstructorTransfers || {})].map(row=>row.unitId));
-  const automatic = unit => !!unit.transportAssignment || !!unit.caveDuty || instructors.has(unitId(unit));
-  const squad = automatic(selected) ? null : resolveSquadRecord(faction, selected);
-  const participantIds = automatic(selected) ? [selectedId] : resolveParticipantIds(faction, selected, squad);
+  const automatic = unit => !!unit.transportAssignment || !!unit.tradeAssignment || !!unit.caveDuty || instructors.has(unitId(unit));
+  const detached=automatic(selected)||v39SquadMoveMode(selected)!=='follow';
+  const squad = detached ? null : resolveSquadRecord(faction, selected);
+  const participantIds = detached ? [selectedId] : resolveParticipantIds(faction, selected, squad);
   const participantSet = new Set(participantIds);
   const participants = units.filter(unit => participantSet.has(unitId(unit)) && isLivingUnit(unit)
     && (unit.worldId||"surface") === (selected.worldId||"surface")
-    && (unitId(unit) === selectedId || !automatic(unit)));
+    && (unitId(unit) === selectedId || !automatic(unit)&&v39SquadMoveMode(unit)==='follow'));
   if (!participants.length) return { ok:false, reason:"移動可能な部隊員がいません。" };
   const cargoSquad=squad||(faction.squads||[]).find(row=>row.unitIds?.includes(selectedId));
   const load=(squad?resolveV39CargoLoad(cargoSquad?.cargo):0)+participants.reduce((sum,unit)=>sum+resolveV39CargoLoad(cargoSquad?.cargoByUnitId?.[unit.id]),0);
@@ -183,7 +185,7 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", 
     selected,
     leader,
     followFormation,
-    ...(followFormation ? resolveV39CaveFormation(squad || {},[unitId(leader),...participantIds.filter(id=>id!==unitId(leader))]) : {}),
+    ...(followFormation ? resolveV39CaveFormation(squad || {},participants.map(unitId)) : {}),
     participants,
     participantIds:participants.map(unitId),
     positions:participants.map(unit => ({ id:unitId(unit), x:integer(unit?.x), y:integer(unit?.y) })),
@@ -277,7 +279,7 @@ export function applyV39SquadMovement(faction = {}, group = {}, target = {}, mov
   const squads = (Array.isArray(faction?.squads) ? faction.squads : []).map(raw => {
     if (!group.isSquad || text(raw?.id || raw?.squadId) !== group.squadId) return raw;
     squadFound = true;
-    return normalizeV39SquadLogistics({ ...raw, x, y });
+    return normalizeV39SquadLogistics({ ...raw, x, y,...(raw.rallyPoint?{rallyPoint:{x,y,worldId:group.selected.worldId||'surface'}}:{}) });
   });
   if (group.isSquad && !squadFound) {
     squads.push(normalizeV39SquadLogistics({

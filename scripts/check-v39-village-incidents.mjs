@@ -17,7 +17,7 @@ try {
     await page.locator('[data-v39-test-tools]').click();
     await page.locator('[data-test-action="village-incident-start"]').click();
     await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
-    const click=async id=>{if(['high','low','weak','heal'].includes(id)&&await page.locator('#v39-village-incident-panel details').getAttribute('open')===null)await page.locator('#v39-village-incident-panel summary').click();await page.locator(`[data-village-incident="${id}"]`).click();};
+    const click=async id=>{if(await page.locator('[data-village-incident-tools]').getAttribute('open')===null)await page.locator('[data-village-incident-tools]>summary').click();if(['high','low','weak','heal'].includes(id)&&await page.locator('[data-village-incident-values]').getAttribute('open')===null)await page.locator('[data-village-incident-values]>summary').click();await page.locator(`[data-village-incident="${id}"]`).click();};
     const read=()=>page.evaluate(()=>{const s=window.getV39GameState(),v=s.neutralVillages.find(v=>v.incidentTest);return {s,v,p:s.players.find(p=>p.id===s.activePlayerId)};});
     let data=await read();assert.equal(data.s.players.length,2);assert.equal(data.p.factionState.units.length,3);
     await page.waitForSelector('#v39-village-menu:not([hidden])');
@@ -48,6 +48,9 @@ try {
     await page.locator('[data-world-action="quest-complete"]').click();data=await read();assert.equal(data.v.questsByPlayerId[data.p.id].progress,5);assert.equal(data.v.relationsByPlayerId[data.p.id],0);
     await page.evaluate(()=>{const p=window.getV39ActivePlayer(),base=p.factionState.settlements[0];base.foodStockByType.穀物=20;window.updateV39ActiveFactionState({settlements:[base]});});
     await page.locator('[data-world-action="quest-complete"]').click();data=await read();assert.equal(data.v.relationsByPlayerId[data.p.id],10);
+    assert.equal(await page.locator('[data-event-id="TEST_VILLAGE_SUPPLY"]').count(),0,'completed event is on cooldown');
+    await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson()));
+    assert.equal(await page.locator('[data-event-id="TEST_VILLAGE_SUPPLY"]').count(),0,'cooldown survives save/load');
     await click('demon');await click('contract');
     await page.locator('[data-event-id="TEST_DEMON_SUPPLY"]').click();await page.locator('[data-world-action="quest-complete"]').click();
     data=await read();assert.equal(data.v.soulClaimsByPlayerId[data.p.id],2);assert.equal(data.v.relationsByPlayerId[data.p.id],10);

@@ -1,5 +1,7 @@
 import { resolveV39UnitExpDisplay } from "../../lib/v39-unit-experience.js";
 import { getRaceIconSrc } from "../../lib/race-icon-library.js";
+import "./v39-unit-card.css";
+import {v39SquadMoveMode,v39SquadMoveLabel} from '../../lib/v39-squad-coordination.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const ratio = (current,max) => max > 0 ? Math.max(0,Math.min(100,current/max*100)) : 0;
@@ -49,7 +51,8 @@ export function renderV39UnitCard(unit, options={}) {
   });
   const gauge = (kind,label,values,overlays=[]) => `<div class="v39-card-vital ${kind}"><span class="v39-card-vital-label">${label}</span><span class="v39-card-vital-track"><i class="v39-card-vital-fill" style="width:${ratio(values.current,values.max).toFixed(2)}%"></i>${overlays.map(value=>`<i class="v39-card-defense-fill ${value.kind}" style="width:${value.percent.toFixed(2)}%" aria-hidden="true"></i>`).join("")}<b class="v39-card-vital-value">${values.current}/${values.max}</b></span></div>`;
   const position = options.position ?? `(${unit.x ?? "-"},${unit.y ?? "-"})`;
-  const positionLabel = escapeHtml(position) + automaticOperationIcon(unit);
+  const positionLabel = escapeHtml(position) + automaticOperationIcon(unit)
+    +(v39SquadMoveMode(unit)==='follow'?'':` <span class="v39-squad-mode-label">${escapeHtml(v39SquadMoveLabel(unit))}</span>`);
   const expTitle = exp.atLimit ? `Lv${exp.level} 成長上限` : `Lv${exp.level} EXP ${exp.exp}/${exp.need}`;
   const attribute = options.attribute || (options.character ? "data-v39-character-row" : "data-v39-unit-id");
   const badgeIcon = levelBadgeIconMarkup(unit, options);

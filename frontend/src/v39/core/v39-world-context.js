@@ -30,7 +30,7 @@ export async function withV39WorldContext(worldId,callback,{allUnits=false}={}) 
       };
       window.updateV39ActiveFactionState=(patch,options)=>{
         const state=window.getV39GameState({includeWorlds:false});
-        window.setV39GameState({players:state.players.map(player=>player.id===state.activePlayerId?{...player,factionState:{...player.factionState,...patch}}:player)},options);
+        window.setV39GameState({players:state.players.map(player=>player.id===state.activePlayerId?{...player,factionState:{...player.factionState,...patch}}:player)},{...options,returnState:false});
         return window.getV39ActiveFactionState();
       };
       return await callback();
@@ -71,18 +71,22 @@ export async function withV39WorldContext(worldId,callback,{allUnits=false}={}) 
     originals.setV39GameState({activeWorldId:worldId,...world.spatial,
       enemyCombatRuntime:world.spatial.enemyCombatRuntime||{},
       players:initial.players.map(player=>({...player,factionState:{...player.factionState,visibility:world.visibility?.[player.id]||{},exploration:world.exploration?.[player.id]||{}}}))
-    },{silent:true});
+    },{silent:true,returnState:false});
     window.getV39GameState=options=>project(originals.getV39GameState(options));
     window.getV39EnemyTurnState=()=>project(originals.getV39EnemyTurnState());
-    window.getV39ActivePlayer=()=>({ ...originals.getV39ActivePlayer(), factionState:projectFaction(originals.getV39ActiveFactionState()) });
+    window.getV39ActivePlayer=()=>{
+      const player=originals.getV39ActivePlayer();
+      return player?{...player,factionState:projectFaction(player.factionState)}:null;
+    };
     window.getV39ActiveFactionState=()=>window.getV39ActivePlayer()?.factionState;
     window.setV39GameState=(patch,options={})=>{
       const merged=patch.players?{...patch,players:mergePlayers(patch.players)}:patch;
-      return project(originals.setV39GameState(merged,{...options,silent:true}));
+      const result=originals.setV39GameState(merged,{...options,silent:true});
+      return options.returnState===false?undefined:project(result);
     };
     window.updateV39ActiveFactionState=(patch,options={})=>{
       const state=window.getV39GameState({includeWorlds:false});
-      window.setV39GameState({players:state.players.map(player=>player.id===state.activePlayerId?{...player,factionState:{...player.factionState,...patch}}:player)},options);
+      window.setV39GameState({players:state.players.map(player=>player.id===state.activePlayerId?{...player,factionState:{...player.factionState,...patch}}:player)},{...options,returnState:false});
       return window.getV39ActiveFactionState();
     };
     if(worldId!==visibleId)window.updateV39FieldData=map=>{runtime.mapData=map;};
@@ -97,7 +101,7 @@ export async function withV39WorldContext(worldId,callback,{allUnits=false}={}) 
     const restore=worldId===visibleId?captured[worldId]:visible;
     originals.setV39GameState({activeWorldId:visibleId,explorationWorlds:captured,...restore.spatial,
       players:updated.players.map(player=>({...player,factionState:{...player.factionState,visibility:restore.visibility?.[player.id]||{},exploration:restore.exploration?.[player.id]||{}}}))
-    },{silent:true});
+    },{silent:true,returnState:false});
   }
 }
 

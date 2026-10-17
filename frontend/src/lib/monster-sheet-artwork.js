@@ -101,7 +101,7 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
   if (!fileName || slotNumber === null) continue;
   if (slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) continue;
 
-  const reference = { fileName, slotNumber, sizeByLevel };
+  const reference = { fileName, slotNumber, sizeByLevel, race:text(row.種族), className:text(row.サブクラス) };
 
   if (definitionId) {
     monsterSheetReferenceByDefinitionId.set(definitionId, reference);
@@ -125,7 +125,16 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
 
 function resolveReferenceFromEnemy(enemy) {
   const undead=resolveUndeadArtworkReference(enemy);
-  if(undead)return undead;
+  const resultNames=[enemy?.strongFusionResultName,enemy?.fusionGrowth?.recipeName,
+    enemy?.種族名,enemy?.speciesName,enemy?.enemyName,enemy?.name,enemy?.displayName].map(text).filter(Boolean);
+  const baseRace=text(enemy?.race || enemy?.種族 || enemy?.raceName);
+  // A sheet-defined wolf + ghost beast is not itself a resurrected ghost.
+  const namedGhostBeast=!enemy?.undeadOrigin&&baseRace!=='ゴースト'
+    &&text(enemy?.className || enemy?.サブクラス)==='ゴースト'&&resultNames.some(name=>{
+      const ref=monsterSheetReferenceByName.get(name);
+      return ref?.race===baseRace&&ref?.className==='ゴースト';
+    });
+  if(undead&&!namedGhostBeast)return undead;
   const directFileName = text(
     enemy?.画像ファイル
     ?? enemy?.imageFile
@@ -148,6 +157,14 @@ function resolveReferenceFromEnemy(enemy) {
     if (legacySheetNumber !== null) {
       return { fileName:legacySheetFileName(legacySheetNumber), slotNumber:directSlotNumber, sizeByLevel };
     }
+  }
+
+  // Fusion keeps its base race; resolve the result identity before that race's ordinary sprite.
+  // Reuse the sheet-managed named references instead of maintaining a second slot table.
+  for(const name of resultNames){
+    if(name===baseRace)continue;
+    const reference=monsterSheetReferenceByName.get(name);
+    if(reference)return reference;
   }
 
   const animalReference = resolveAnimalArtworkReference(enemy);

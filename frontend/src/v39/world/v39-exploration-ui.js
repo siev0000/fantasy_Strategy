@@ -21,7 +21,7 @@ let selectedTile = null;
 const text = value => String(value ?? "").trim();
 
 function context() {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
   const faction = player?.factionState || null;
   const unit = faction?.units?.find(row => text(row?.id) === text(faction?.selectedUnitId)) || null;
@@ -259,7 +259,7 @@ let discoverySignature = "";
 let syncingDiscovery = false;
 function syncResearchDiscoveries() {
   if (syncingDiscovery) return;
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   if (!state) return;
   // AP・選択・チャット更新ごとに全マスを走査しない。研究完了/世界切替/ロードのみ再判定する。
   const signature = JSON.stringify([state.activeWorldId,
@@ -267,7 +267,8 @@ function syncResearchDiscoveries() {
       player.factionState?.exploration?.researchDiscoveryVersion])]);
   if (signature === discoverySignature) return;
   discoverySignature = signature;
-  const result = revealV39SurveyedDiscoveries(state, window.__v39FieldRuntime?.mapData);
+  // Research discovery also visits saved worlds, but only after its inputs changed.
+  const result = revealV39SurveyedDiscoveries(window.getV39GameState(), window.__v39FieldRuntime?.mapData);
   if (!result.changed) return;
   syncingDiscovery = true;
   try {
@@ -280,7 +281,7 @@ function syncResearchDiscoveries() {
 let proximitySignature="", syncingProximity=false, proximityMap=null;
 function syncNearbyDiscoveries() {
   if (syncingProximity) return;
-  const state=window.getV39GameState?.(), map=window.__v39FieldRuntime?.mapData;
+  const state=window.getV39GameState?.({includeWorlds:false}), map=window.__v39FieldRuntime?.mapData;
   if (!state || !map) return;
   const signature=JSON.stringify([state.activeWorldId,state.timeline?.turnNumber,state.worldEnvironment,
     state.explorationSitesByTile,state.specialtiesByTile,

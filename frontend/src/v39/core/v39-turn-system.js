@@ -17,6 +17,7 @@ import {advanceV39RecruitTraining} from "../../lib/v39-recruit-training.js";
 import {advanceV39RecruitInstructorMovement} from "../../lib/v39-recruit-instructor.js";
 import { advanceV39ExpeditionTools, advanceV39ToolSites } from "../../lib/v39-expedition-tools.js";
 import {advanceV39ToolProduction} from "../../lib/v39-consumables.js";
+import {advanceV39SquadRallies} from '../../lib/v39-squad-coordination.js';
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
@@ -119,8 +120,7 @@ function showBanner(message, persistent = false) {
 }
 
 function renderControls() {
-  const state = window.getV39GameState?.();
-  const timeline = normalizeTimeline(state?.timeline, state?.players, state?.activePlayerId);
+  const timeline = window.getV39TimelineState?.() || normalizeTimeline();
   const label = document.getElementById("v39-turn-label");
   const pause = document.getElementById("v39-time-pause");
   if (label) label.textContent = `T${timeline.turnNumber}`;
@@ -275,6 +275,13 @@ export async function advanceTurn(options = {}) {
     const currentPlayerId = playerTimeline.activeTurnPlayerId || state.activePlayerId;
     if (options.skipUnactedFocus !== true && window.getV39DisplaySettings?.()?.focusUnactedUnits !== false
       && focusUnactedUnit(state, currentPlayerId, before.turnNumber)) return false;
+    const rallyWorlds=new Set((state.players.find(player=>player.id===currentPlayerId)?.factionState.units||[])
+      .filter(unit=>unit.squadMoveMode==='gather'&&Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡').map(unit=>unit.worldId||'surface'));
+    if(rallyWorlds.size)for(const worldId of v39TurnWorldIds().filter(id=>rallyWorlds.has(id)))await withV39WorldContext(worldId,()=>{
+        const scoped=window.getV39GameState({includeWorlds:false});
+        const result=advanceV39SquadRallies(scoped,currentPlayerId,window.__v39FieldRuntime?.mapData,before.turnNumber);
+        if(result.state!==scoped)window.setV39GameState({players:result.state.players},{reason:'squad-rally',returnState:false});
+      });
     const transportWorld=v39TurnWorldIds().includes("surface")?"surface":state.activeWorldId;
     await withV39WorldContext(transportWorld,()=>{
       const scoped=window.getV39GameState();

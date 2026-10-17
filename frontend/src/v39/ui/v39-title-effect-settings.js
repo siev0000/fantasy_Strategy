@@ -1,3 +1,5 @@
+import { setV39EffectSettingsCloseHandler } from "./v39-effect-settings.js";
+
 let titleMode = false;
 let originalParent = null;
 let originalNextSibling = null;
@@ -87,9 +89,8 @@ function openFromTitle() {
   return true;
 }
 
-function closeTitleSettings() {
+function restoreTitlePanel() {
   if (!titleMode) return false;
-  window.closeV39EffectSettings?.();
   const panel = element("v39-effect-settings-panel");
   const back = element("v39-effect-settings-back");
 
@@ -114,19 +115,16 @@ function closeTitleSettings() {
   return true;
 }
 
-function bindBackCapture() {
-  element("v39-effect-settings-back")?.addEventListener("click", event => {
-    if (!titleMode) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    closeTitleSettings();
-  }, true);
+function closeTitleSettings() {
+  if (!titleMode) return false;
+  window.closeV39EffectSettings?.();
+  return true;
 }
 
 function install() {
   installStyles();
   ensureTitleEntry();
-  bindBackCapture();
+  setV39EffectSettingsCloseHandler(restoreTitlePanel);
   window.addEventListener("v39:bootstrap-complete", ensureTitleEntry);
   window.openV39TitleEffectSettings = openFromTitle;
   window.closeV39TitleEffectSettings = closeTitleSettings;

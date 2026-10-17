@@ -1,13 +1,10 @@
+// Drawing only. Playback, visibility and cancellation are owned by v39-effect-settings.js.
 import { resolveEffectSheetLayout } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
 import { resolveV39EffectPlaybackDescriptor } from "../combat/v39-effect-player.js";
 import { effectPreviewGeometry } from "./v39-effect-preview-combatants.js";
 import { V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
 
 const CANVAS_ID = "v39-effect-idle-preview";
-const FULL_IMAGE_MODE = "full-image";
-const PLAYBACK_DURATION_MS = 1500;
-const SEQUENCE_GAP_MS = 10;
-let restoreTimer = null;
 let drawRequestId = 0;
 const imageCache = new Map();
 
@@ -42,18 +39,7 @@ function ensureCanvas() {
   return canvas;
 }
 
-function ensureFullImageMode() {
-  const select = element("v39-effect-playback-mode");
-  if (!(select instanceof HTMLSelectElement)) return;
-  if (![...select.options].some(option => option.value === FULL_IMAGE_MODE)) {
-    const option = document.createElement("option");
-    option.value = FULL_IMAGE_MODE;
-    option.textContent = "元画像全体";
-    select.appendChild(option);
-  }
-}
-
-function updateGradientSideLabels() {
+export function updateGradientSideLabels() {
   const direction = element("v39-effect-setting-gradient-direction")?.value || "up";
   const horizontal = direction === "left" || direction === "right";
   const labelA = element("v39-effect-setting-gradient-a")?.closest("label")?.querySelector("span");
@@ -121,7 +107,7 @@ function applyFirstFrameColor(context, descriptor, x, y, width, height) {
   context.restore();
 }
 
-async function drawIdlePreview({ fullImage = false } = {}) {
+export async function drawIdlePreview({ fullImage = false } = {}) {
   if (!panelVisible()) return false;
   const canvas = ensureCanvas();
   const selected = element("v39-effect-setting-source")?.value;
@@ -167,80 +153,8 @@ async function drawIdlePreview({ fullImage = false } = {}) {
   }
 }
 
-function hideIdlePreview() {
-  window.clearTimeout(restoreTimer);
+export function hideIdlePreview() {
+  drawRequestId++;
   const canvas = element(CANVAS_ID);
   if (canvas) canvas.style.display = "none";
 }
-
-function currentMode() {
-  return element("v39-effect-playback-mode")?.value || "once";
-}
-
-function refreshIdlePreview() {
-  window.clearTimeout(restoreTimer);
-  const mode = currentMode();
-  if (mode === "frame") {
-    hideIdlePreview();
-    return;
-  }
-  void drawIdlePreview({ fullImage:mode === FULL_IMAGE_MODE });
-}
-
-function scheduleRestoreAfterOnce() {
-  if (currentMode() !== "once") return;
-  const selected = element("v39-effect-setting-source")?.value;
-  const descriptor = resolveV39EffectPlaybackDescriptor(selected);
-  const count = Math.max(1, descriptor?.sequenceSources?.length || 1);
-  window.clearTimeout(restoreTimer);
-  restoreTimer = window.setTimeout(refreshIdlePreview, count * PLAYBACK_DURATION_MS + Math.max(0, count - 1) * SEQUENCE_GAP_MS + 80);
-}
-
-function bind() {
-  ensureFullImageMode();
-  updateGradientSideLabels();
-  const panel = element("v39-effect-settings-panel");
-  if (panel instanceof HTMLElement) {
-    new MutationObserver(() => {
-      if (panelVisible()) window.requestAnimationFrame(() => {
-        updateGradientSideLabels();
-        refreshIdlePreview();
-      });
-      else hideIdlePreview();
-    }).observe(panel, { attributes:true, attributeFilter:["hidden", "aria-hidden"] });
-  }
-
-  element("v39-effect-setting-source")?.addEventListener("change", () => window.setTimeout(refreshIdlePreview, 0));
-  window.addEventListener("v39:effect-preview-direction-changed", refreshIdlePreview);
-  element("v39-effect-playback-mode")?.addEventListener("change", () => window.setTimeout(refreshIdlePreview, 0));
-  element("v39-effect-setting-gradient-direction")?.addEventListener("change", () => {
-    updateGradientSideLabels();
-    window.setTimeout(refreshIdlePreview, 0);
-  });
-  window.addEventListener("v39:effect-settings-changed", () => {
-    updateGradientSideLabels();
-    if (panelVisible()) window.setTimeout(refreshIdlePreview, 0);
-  });
-
-  element("v39-effect-setting-preview-local")?.addEventListener("click", event => {
-    if (currentMode() === FULL_IMAGE_MODE) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void drawIdlePreview({ fullImage:true });
-      return;
-    }
-    hideIdlePreview();
-    scheduleRestoreAfterOnce();
-  }, true);
-
-  if (panelVisible()) refreshIdlePreview();
-}
-
-function install() {
-  ensureCanvas();
-  ensureFullImageMode();
-  updateGradientSideLabels();
-  bind();
-}
-
-install();

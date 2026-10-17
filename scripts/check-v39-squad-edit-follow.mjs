@@ -43,10 +43,13 @@ try {
     await page.locator('[data-squad-edit-save]').click();
     await page.waitForFunction(()=>document.getElementById('characterModal').classList.contains('open'));
     await page.locator('#characterModal [data-close]').click();
+    await page.waitForFunction(()=>!window.isV39MapInputLocked());
     const created=await page.evaluate(()=>window.getV39ActiveFactionState());
     const squad=created.squads.find(row=>row.label==='追従試験部隊');
     assert.deepEqual(squad.unitIds,['crew1','crew2','crew3']);assert.equal(squad.movementLeaderId,'crew1');
-    assert.deepEqual(created.units.slice(0,3).map(row=>[row.x,row.y,row.ap]),[[8,10,1000],[7,10,1000],[6,10,1000]]);
+    assert.deepEqual(created.units.slice(0,2).map(row=>[row.x,row.y,row.ap]),[[8,10,1000],[7,10,1000]],'already assembled units do not spend AP');
+    assert.equal(new Set(created.units.slice(0,3).map(row=>`${row.x},${row.y}`)).size,3,'gather does not stack units');
+    assert(created.units[2].ap<1000&&created.units[2].squadMoveMode==='follow','distant recruit spends AP to assemble before following');
     const moved=await page.evaluate(async()=>{
       window.updateV39ActiveFactionState({selectedUnitId:'crew3'});
       window.refreshV39SquadDerivedUI();
@@ -58,7 +61,8 @@ try {
       for(let i=0;i<100&&window.isV39MapInputLocked();i++)await new Promise(resolve=>setTimeout(resolve,50));
       return window.getV39ActiveFactionState();
     });
-    assert.deepEqual(moved.units.slice(0,3).map(row=>[row.x,row.y]),[[9,10],[8,10],[7,10]]);
+    assert.equal(moved.units[0].x,9);
+    assert.deepEqual(moved.units.slice(0,3).map(row=>[row.x,row.y]).sort((a,b)=>a[0]-b[0]),[[7,10],[8,10],[9,10]],'narrow formation may swap followers, without overlap');
     assert.equal(moved.selectedUnitId,'crew3');
     assert.ok(moved.units.slice(0,3).every(row=>row.ap<1000));
     assert.equal(moved.squads.find(row=>row.id===squad.id).formationType,'front-two');
@@ -87,7 +91,7 @@ try {
     await page.waitForFunction(()=>document.getElementById('characterModal').classList.contains('open'));
     assert.ok(await page.evaluate(()=>window.getV39ActiveFactionState().units.every(row=>row.squadId==='solo')));
     assert.deepEqual(errors,[]);
-    console.log(`${width}: actual create/edit/disband, member cap, no teleport/AP change, surface following, narrow column, selection and save passed`);
+    console.log(`${width}: actual create/edit/disband, member cap, gather AP, surface following, narrow column, selection and save passed`);
     await page.close();
   }
 }finally{await browser.close();}

@@ -291,6 +291,7 @@ function changeRelation(village, playerId, delta) {
     }
   };
 }
+export {changeRelation as changeV39NeutralVillageRelation, updateVillageState as updateV39NeutralVillageState};
 
 function updateVillageState(state, village) {
   const neutralVillages = (state.neutralVillages || []).map(row => row.id === village.id ? village : row);
@@ -366,7 +367,7 @@ function relationGainFromEvent(row) {
     .reduce((sum, effect) => sum + number(effect?.設定?.値), 0);
 }
 
-function createQuest(state, village, playerId, turn, mapData, eventId = "") {
+function createQuest(state, village, playerId, turn, mapData, eventId = "", override = null) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const sample=village.incidentTest?incidentTest.quests.find(row=>row.ID===eventId):null;
   if(sample) {
@@ -376,7 +377,7 @@ function createQuest(state, village, playerId, turn, mapData, eventId = "") {
       選択肢:[{効果:[{タイプ:'依頼開始'}]}],完了効果:[{タイプ:'一般村友好度変更',設定:{値:incidentTest.balance.relationGain}},
         ...(sample.demonOnly?[{タイプ:'魂要求権付与',設定:{数量:incidentTest.balance.soulReward}}]:[])]};
     return createV39EventQuest(definition,{player,relation:getV39NeutralVillageRelation(village,playerId),turn,
-      lastCompletedTurn:village.eventCompletedTurnByPlayerId?.[playerId]?.eventId},{
+      lastCompletedTurn:village.eventCompletedTurnByPlayerId?.[playerId]?.[eventId]},{
       指定物資:()=>({type:'delivery',stockKind:sample.stockKind,resourceKey:sample.resourceKey,required:sample.required,progress:0}),
       周辺脅威:()=>{const targets=(state.enemies||[]).filter(unit=>unit.incidentQuestTarget&&number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡');
         return targets.length?{type:'hunt',required:targets.length,targetEnemyIds:targets.map(row=>row.id)}:null;}
@@ -392,11 +393,20 @@ function createQuest(state, village, playerId, turn, mapData, eventId = "") {
       required:support.type==='watch'?expeditionDefaults.village.防衛ターン:expeditionDefaults.village.建設数,
       baselineFacilities,progress:0,accepted:true,createdTurn:turn,completed:false};
   }
-  const definition=VILLAGE_EVENT_ROWS.find(row=>row.ID===eventId);
+  const definition=override || VILLAGE_EVENT_ROWS.find(row=>row.ID===eventId);
   if(definition) {
     const context={player,relation:getV39NeutralVillageRelation(village,playerId),turn,
       lastCompletedTurn:village.eventCompletedTurnByPlayerId?.[playerId]?.[definition.ID]};
     const quest=createV39EventQuest(definition,context,{
+      指定物資:setting=>FOOD_RESOURCE_KEYS.includes(setting.対象)||MATERIAL_RESOURCE_KEYS.includes(setting.対象)
+        ? {type:'delivery',stockKind:FOOD_RESOURCE_KEYS.includes(setting.対象)?'food':'material',resourceKey:setting.対象,required:setting.数量,progress:0}:null,
+      指定討伐:setting=>{
+        const targets=(state.enemies||[]).filter(enemy=>number(enemy.hp??enemy.currentHp)>0&&enemy.state!=='死亡'
+          &&(enemy.worldId||'surface')==='surface'&&!enemy.victoryGuard&&getHexDistance(village,enemy)<=setting.範囲
+          &&[enemy.race,enemy.raceName,enemy.className,enemy.name].includes(setting.対象))
+          .sort((a,b)=>text(a.id).localeCompare(text(b.id))).slice(0,setting.数量);
+        return targets.length===setting.数量?{type:'hunt',required:setting.数量,targetEnemyIds:targets.map(row=>row.id)}:null;
+      },
       周辺脅威:setting=>{
         const tags=setting.対象?.タグ||[];
         const targets=(state.enemies||[]).filter(enemy=>number(enemy.hp??enemy.currentHp)>0&&enemy.state!=='死亡'
@@ -440,7 +450,7 @@ export function listV39NeutralVillageQuests(state,playerId,villageId,mapData) {
     .map(id=>createQuest(state,village,playerId,turn,mapData,id)).filter(Boolean);
 }
 
-export function acceptV39NeutralVillageQuest(state, playerId, villageId, mapData = null, eventId = "") {
+export function acceptV39NeutralVillageQuest(state, playerId, villageId, mapData = null, eventId = "", definition = null) {
   if (state.activeWorldId && state.activeWorldId!=="surface") return {ok:false,state,reason:"地上の一般村で依頼を受注してください"};
   const source = state?.neutralVillages?.find(row => row.id === villageId);
   if (!source) return { ok:false, reason:"一般村がありません", state };
@@ -448,17 +458,18 @@ export function acceptV39NeutralVillageQuest(state, playerId, villageId, mapData
     return { ok:false, reason:"既に依頼を受注しています", state };
   }
   const turn = Math.max(1, integer(state?.timeline?.turnNumber, 1));
-  const quest = createQuest(state, source, playerId, turn, mapData,eventId);
+  const quest = createQuest(state, source, playerId, turn, mapData,eventId,definition);
   if (!quest) return { ok:false, reason:"現在受注できる依頼がありません", state };
   const village = { ...source, questsByPlayerId:{ ...(source.questsByPlayerId || {}), [playerId]:quest } };
   return { ok:true, state:updateVillageState(state, village), village, quest:village.questsByPlayerId[playerId], message:"依頼を受注しました" };
 }
 
-export function completeV39NeutralVillageQuest(state, playerId, villageId) {
+export function completeV39NeutralVillageQuest(state, playerId, villageId, options = {}) {
   if (state.activeWorldId && state.activeWorldId!=="surface") return {ok:false,state,reason:"地上の一般村で依頼を報告してください"};
   const source = state?.neutralVillages?.find(row => row.id === villageId);
   const quest = source?.questsByPlayerId?.[playerId];
   if (!source || !quest?.accepted || quest.completed) return { ok:false, reason:"受注中の依頼がありません", state };
+  if(quest.dialogueEventId&&!options.fromDialogue)return {ok:false,state,reason:'この依頼は番号付き会話から報告してください'};
   if(quest.deadlineTurn&&number(state.timeline?.turnNumber)>=quest.deadlineTurn)return {ok:false,state,reason:'依頼の期限が過ぎています'};
   let working = state;
   let delivered=0;

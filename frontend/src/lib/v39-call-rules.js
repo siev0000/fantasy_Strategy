@@ -3,6 +3,7 @@ import {getV39UnitTestTechniques} from './v39-test-skill-rules.js';
 import {resolveV39SummonPlacements} from './v39-summon-rules.js';
 import {resolveV39SkillCooldownTurns} from './v39-turn-timing.js';
 import {editV39Squad,getV39EditableSquads} from './v39-squad-edit-rules.js';
+import {v39SquadMoveMode} from './v39-squad-coordination.js';
 
 const number=value=>Math.max(0,Number(value)||0);
 const world=unit=>unit.worldId||'surface';
@@ -28,7 +29,7 @@ function prepareCallSquad(state,playerId,caster,selectedIds) {
     squadId:existing?.id,label:existing?.label||`${caster.name||'呼集者'}の部隊`,
     unitIds:[...new Set([...(existing?.unitIds||[caster.id]),...selectedIds])],
     movementLeaderId:existing?.movementLeaderId||caster.id,formationType:existing?.formationType||'column'
-  });
+  },null,{joiningByMagic:true});
 }
 export function inspectV39Call(state,playerId,unitId,skillName,map,selectedIds=[]) {
   const faction=state.players.find(player=>player.id===playerId)?.factionState;
@@ -77,14 +78,17 @@ export function callV39Units(state,playerId,unitId,skillName,map,selectedIds=[])
   if(!check.available)return {ok:false,state,reason:check.reasons.join(' / ')};
   const player=check.squad.state.players.find(row=>row.id===playerId),faction=player.factionState,turn=state.timeline.turnNumber;
   const locations=new Map(selectedIds.map((id,i)=>[id,check.tiles[i]]));
+  const original=state.players.find(row=>row.id===playerId).factionState;
+  const hadParty=getV39EditableSquads(original).some(row=>!['solo','単独'].includes(row.id)&&row.unitIds.includes(unitId));
+  const mode=hadParty?v39SquadMoveMode(check.caster):'follow';
+  const movement={squadMoveMode:mode,squadGather:mode==='gather'?{status:'moving',reason:'',lastProcessedTurn:0}:null};
   const ap=number(check.caster.ap??check.caster.currentAp)-check.cost,hp=number(check.caster.hp??check.caster.currentHp)-check.hpCost;
   const units=faction.units.map(unit=>{
-    if(unit.id===unitId)return {...unit,ap,currentAp:ap,actionPoint:ap,hp,currentHp:hp,lastActionTurn:turn,lastUsedAttack:skillName};
+    if(unit.id===unitId)return {...unit,...(!hadParty?movement:{}),ap,currentAp:ap,actionPoint:ap,hp,currentHp:hp,lastActionTurn:turn,lastUsedAttack:skillName};
     const tile=locations.get(unit.id);
-    return tile?{...unit,x:tile.x,y:tile.y,position:[tile.x,tile.y]}:unit;
+    return tile?{...unit,...movement,x:tile.x,y:tile.y,position:[tile.x,tile.y]}:unit;
   });
   const runtime=faction.combatRuntime||{};
-  const original=state.players.find(row=>row.id===playerId).factionState;
   const squads=faction.squads.map(row=>row.movementLeaderId&&!row.unitIds.includes(row.movementLeaderId)
     ?{...row,movementLeaderId:row.unitIds[0]||''}:row);
   const next={...faction,selectedUnitId:original.selectedUnitId,units,squads,combatRuntime:{...runtime,cooldownsByUnitId:{...runtime.cooldownsByUnitId,[unitId]:{...runtime.cooldownsByUnitId?.[unitId],[skillName]:turn+resolveV39SkillCooldownTurns(check.entry.row)}}}};

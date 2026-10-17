@@ -3,6 +3,15 @@ import { resolveV39BaseMoveApCost } from "../../lib/v39-gameplay-balance.js";
 import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { renderV39UnitCard } from "./v39-unit-card.js";
 import { updateV39UnitAbility } from "./v39-unit-detail.js";
+import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
+
+const renderedMarkup = new WeakMap();
+let renderingFaction;
+function updateMarkup(host, markup) {
+  if (!host || renderedMarkup.get(host) === markup) return;
+  host.innerHTML = markup;
+  renderedMarkup.set(host, markup);
+}
 
 function text(value, fallback = "") {
   const out = String(value ?? "").trim();
@@ -90,7 +99,7 @@ function setExpandedTechnique(name = "") {
   list.querySelectorAll("[data-v39-technique-name]").forEach(card => {
     const expanded = text(card?.dataset?.v39TechniqueName) === expandedTechniqueName;
     card.classList.toggle("is-expanded", expanded);
-    card.setAttribute("aria-expanded", String(expanded));
+    if (card.getAttribute("aria-expanded") !== String(expanded)) card.setAttribute("aria-expanded", String(expanded));
   });
 }
 
@@ -154,11 +163,11 @@ function renderEquipment(unit) {
   if (!(host instanceof HTMLElement)) return;
   const equipment = Array.isArray(unit?.equipment) ? unit.equipment.filter(Boolean) : [];
   if (!equipment.length) {
-    host.innerHTML = '<div class="equipment-empty">装備なし</div>';
+    updateMarkup(host, '<div class="equipment-empty">装備なし</div>');
     expandedEquipmentKey = "";
     return;
   }
-  host.innerHTML = equipment.map((item, index) => {
+  updateMarkup(host, equipment.map((item, index) => {
     const key = equipmentKey(item, index);
     const expanded = key === expandedEquipmentKey;
     const quality = text(item?.qualityLabel ?? item?.quality);
@@ -171,7 +180,7 @@ function renderEquipment(unit) {
       </span>
       <span class="equipment-detail">${equipmentDetailMarkup(item)}</span>
     </button>`;
-  }).join("");
+  }).join(""));
 }
 
 function setExpandedEquipment(key = "") {
@@ -197,6 +206,7 @@ let expandedTechniqueName = "";
 let expandedEquipmentKey = "";
 
 function getFactionState() {
+  if (renderingFaction !== undefined) return renderingFaction;
   return typeof window.getV39ActiveFactionState === "function"
     ? window.getV39ActiveFactionState()
     : null;
@@ -293,13 +303,13 @@ function updateSelectorCounts() {
   if (!(selector instanceof HTMLElement)) return;
   const keys = squads.map((row, index) => squadIdOf(row, index)).filter(Boolean);
   if (!keys.includes(selectedSquadKey)) selectedSquadKey = keys[0] || "";
-  selector.innerHTML = squads.map((squad, index) => {
+  updateMarkup(selector, squads.map((squad, index) => {
     const key = squadIdOf(squad, index);
     const ids = new Set(Array.isArray(squad?.unitIds) ? squad.unitIds.map(String) : []);
     const count = units.filter((unit, unitIndex) => ids.has(unitId(unit, unitIndex))).length;
     const label = text(squad?.label ?? squad?.name, key === "solo" ? "単独" : key);
     return `<button class="squad-select-btn${key === selectedSquadKey ? " active" : ""}" data-squad-select="${key}"><b>${label}</b><small>${count}体</small></button>`;
-  }).join("");
+  }).join(""));
 }
 
 function renderMemberList() {
@@ -309,7 +319,7 @@ function renderMemberList() {
   const units = unitsForSelectedSquad();
   if (!units.length) {
     selectedUnitId = "";
-    list.innerHTML = '<div class="squad-empty">この部隊に実ユニットはいません</div>';
+    updateMarkup(list, '<div class="squad-empty">この部隊に実ユニットはいません</div>');
     return;
   }
 
@@ -317,7 +327,7 @@ function renderMemberList() {
     selectedUnitId = unitId(units[0], 0);
   }
 
-  list.innerHTML = units.map((unit, index) => {
+  updateMarkup(list, units.map((unit, index) => {
     const id = unitId(unit, index);
     const selected = id === selectedUnitId;
     const hp = hpValues(unit);
@@ -325,7 +335,7 @@ function renderMemberList() {
     const defenses = defenseDisplay(unit);
     const icon = text(unit?.icon ?? unit?.glyph ?? unit?.symbol, "◆");
     return renderV39UnitCard(unit, {id,selected,hp,ap,defenses,icon,name:unitName(unit,index),position:unitPosition(unit)});
-  }).join("");
+  }).join(""));
 }
 
 function renderDetail() {
@@ -339,15 +349,23 @@ function renderDetail() {
     const resistance = document.getElementById("detailResistanceList");
     const equipment = document.getElementById("detailEquipmentList");
     const tech = document.getElementById("detailTechniqueRows");
-    if (prof) prof.innerHTML = '<div class="squad-empty">技能データなし</div>';
-    if (resistance) resistance.innerHTML = '<div class="squad-empty">耐性データなし</div>';
-    if (equipment) equipment.innerHTML = '<div class="equipment-empty">装備なし</div>';
-    if (tech) tech.innerHTML = '<div class="squad-empty">行動データなし</div>';
+    updateMarkup(prof, '<div class="squad-empty">技能データなし</div>');
+    updateMarkup(resistance, '<div class="squad-empty">耐性データなし</div>');
+    updateMarkup(equipment, '<div class="equipment-empty">装備なし</div>');
+    updateMarkup(tech, '<div class="squad-empty">行動データなし</div>');
     expandedEquipmentKey = "";
     notifyDetailRendered();
     return;
   }
   if (pane) delete pane.dataset.empty;
+  const head=pane?.querySelector('.squad-detail-minihead');
+  if(head){
+    let controls=head.querySelector('[data-squad-coordination-host]');
+    if(!controls){controls=document.createElement('div');controls.dataset.squadCoordinationHost='';controls.style.cssText='flex-basis:100%;min-width:0';head.append(controls);}
+    const open=controls.querySelector('details')?.open;
+    updateMarkup(controls,renderV39SquadCoordination(unit,renderingFaction));
+    if(open&&controls.querySelector('details'))controls.querySelector('details').open=true;
+  }
 
   const level = Math.max(1, Math.round(num(unit?.level ?? unit?.lv ?? unit?.Lv, 1)));
   const map = {
@@ -356,7 +374,7 @@ function renderDetail() {
   };
   Object.entries(map).forEach(([id, value]) => {
     const el = document.getElementById(id);
-    if (el) el.textContent = String(value);
+    if (el && el.textContent !== String(value)) el.textContent = String(value);
   });
 
   const movementGroup = resolveV39SquadMovementGroup(getFactionState() || {}, selectedUnitId,
@@ -386,19 +404,23 @@ function renderDetail() {
 
   const tech = document.getElementById("detailTechniqueRows");
   if (tech) {
-    tech.innerHTML = renderV39UnitSkills(unit, {mapData:window.__v39FieldRuntime?.mapData, expandedName:expandedTechniqueName, interactive:true});
+    updateMarkup(tech, renderV39UnitSkills(unit, {mapData:window.__v39FieldRuntime?.mapData, expandedName:expandedTechniqueName, interactive:true}));
   }
   setExpandedTechnique(expandedTechniqueName);
   notifyDetailRendered(unit);
 }
 
 function render() {
-  syncSelectionFromGameState();
-  updateSelectorCounts();
-  renderMemberList();
-  renderDetail();
-  if (typeof window.refreshV39SquadCardVitals === "function") {
-    queueMicrotask(() => window.refreshV39SquadCardVitals());
+  // One detached faction snapshot per render, not another deep clone for every lookup.
+  renderingFaction = getFactionState();
+  try {
+    syncSelectionFromGameState();
+    updateSelectorCounts();
+    renderMemberList();
+    renderDetail();
+    window.refreshV39SquadCardVitals?.();
+  } finally {
+    renderingFaction = undefined;
   }
 }
 

@@ -6,7 +6,7 @@ const page = await browser.newPage({ viewport:{ width:1000, height:850 } });
 const errors = [];
 page.on("pageerror", error => errors.push(String(error)));
 try {
-  await page.goto("http://127.0.0.1:3022", { waitUntil:"networkidle" });
+  await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3022", { waitUntil:"networkidle" });
   await page.waitForFunction(() => typeof window.startV39LocalSession === "function");
   const report = await page.evaluate(async () => {
     const rules = await import("/src/lib/v39-land-expansion-rules.js");
@@ -93,6 +93,7 @@ try {
     window.activateV39FooterTab("settlement");window.renderV39SettlementPanel();
   });
   await page.addStyleTag({content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}"});
+  await page.locator('[data-settlement-page-select="operation"]').click();
   await page.locator('[data-settlement-fold="expansion"] summary').click();
   await page.locator('[data-expansion-action="choose"]').click();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("v39:tile-selected",{detail:{x:7,y:5}})));

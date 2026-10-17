@@ -25,7 +25,7 @@ export function syncV39CavePartyMenu(){
   if(!menu){
     menu=document.createElement("div");menu.id="v39-cave-party-menu";menu.hidden=true;
     menu.setAttribute("role","group");menu.setAttribute("aria-label","隊列変更");
-    menu.innerHTML='<button type="button" data-movement-leader>移動先頭にする</button><button type="button" data-formation="column">縦列</button><button type="button" data-formation="front-two">前2人</button><button type="button" data-movement-hold>その場待機</button><button type="button" data-order="-1" aria-label="隊列を前へ">前へ</button><button type="button" data-order="1" aria-label="隊列を後ろへ">後ろへ</button>';
+    menu.innerHTML='<button type="button" data-movement-leader>移動先頭にする</button><button type="button" data-formation="column">縦列</button><button type="button" data-formation="front-two">前2人</button><button type="button" data-movement-hold>その場待機</button><button type="button" data-party-mode>単独行動</button><button type="button" data-party-scatter>全員散開</button><button type="button" data-party-rally>集合</button><button type="button" data-order="-1" aria-label="隊列を前へ">前へ</button><button type="button" data-order="1" aria-label="隊列を後ろへ">後ろへ</button>';
     const style=document.createElement("style");
     style.textContent='#v39-cave-party-menu{position:fixed;z-index:10300;display:grid;gap:4px;padding:5px;border:1px solid #73949c;border-radius:7px;background:#102027;box-shadow:0 5px 16px #0008}#v39-cave-party-menu[hidden]{display:none}#v39-cave-party-menu button{min-height:40px;padding:8px 20px;font-size:var(--font-body);color:#ecf4f1;background:#1c323a;border:1px solid #55727b;border-radius:5px}';
     document.head.appendChild(style);document.body.appendChild(menu);
@@ -35,6 +35,8 @@ export function syncV39CavePartyMenu(){
       if(button.hasAttribute("data-movement-leader"))await window.setV39CaveMovementLeader(id);
       else if(button.hasAttribute("data-formation"))window.setV39CaveFormation(id,button.dataset.formation);
       else if(button.hasAttribute("data-movement-hold"))window.toggleV39CaveMovementHold(id);
+      else if(button.hasAttribute('data-party-mode')){const squad=squadFor(id),unit=window.getV39ActiveFactionState().units.find(row=>row.id===id);await window.commandV39SquadMovement(squad.id,unit.squadMoveMode==='independent'?'follow':'independent',id);}
+      else if(button.hasAttribute('data-party-scatter')||button.hasAttribute('data-party-rally'))await window.commandV39SquadMovement(squadFor(id).id,button.hasAttribute('data-party-scatter')?'scatter':'gather',id);
       else await window.reorderV39CaveParty(Number(button.dataset.order),id);
     });
     list.addEventListener("contextmenu",event=>{
@@ -83,6 +85,8 @@ export function syncV39CavePartyMenu(){
       button.disabled=false;button.setAttribute("aria-pressed",String((squad.formationType||"column")===button.dataset.formation));
     }else if(button.hasAttribute("data-movement-hold")){
       button.disabled=Number(unit?.hp??unit?.currentHp)<=0;button.textContent=unit?.movementHold?"その場待機を解除":"その場待機";
-    }else{const next=index+Number(button.dataset.order);button.disabled=next<0||next>=squad.unitIds.length;}
+    }else if(button.hasAttribute('data-party-mode')){button.disabled=Number(unit?.hp??unit?.currentHp)<=0;button.textContent=unit?.squadMoveMode==='independent'?'追従に戻る':'単独行動';}
+    else if(button.hasAttribute('data-party-scatter')||button.hasAttribute('data-party-rally'))button.disabled=false;
+    else{const next=index+Number(button.dataset.order);button.disabled=next<0||next>=squad.unitIds.length;}
   });
 }

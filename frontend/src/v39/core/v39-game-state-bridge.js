@@ -147,6 +147,7 @@ function normalizeFactionState(value = {}, ownerPlayerId = "", race = "只人") 
     })),
     squads: normalizeEntityArray(source.squads).map(normalizeV39SquadLogistics),
     deadUnitReserve: normalizeEntityArray(source.deadUnitReserve),
+    soulStorage:normalizeEntityArray(source.soulStorage).map(soul=>({...applyV39DerivedCharacterData({...soul,equipment:[]}),soulStored:true,state:'死亡',hp:0,currentHp:0})),
     deathHistory: normalizeEntityArray(source.deathHistory),
     settlements: settlementState.settlements.map(row => normalizeV39Village(row, race)).filter(Boolean),
     selectedSettlementId: settlementState.selectedSettlementId,
@@ -233,6 +234,7 @@ function cloneUnit(unit) {
   return {
     ...unit,
     prerequisiteClassLevels:cloneRecord(unit?.prerequisiteClassLevels),
+    ...(unit.fusionGrowth ? {fusionGrowth:cloneJson(unit.fusionGrowth,{})} : {}),
     ...(unit.classGrowthStart ? {classGrowthStart:cloneRecord(unit.classGrowthStart)} : {}),
     ...(unit.promotionGrowthStart ? {promotionGrowthStart:cloneRecord(unit.promotionGrowthStart)} : {}),
     ...(unit.classPromotionHistory ? {classPromotionHistory:normalizeEntityArray(unit.classPromotionHistory)} : {}),
@@ -256,6 +258,7 @@ function cloneFactionState(factionState = {}, race = "只人") {
     unitTrainingQueue:(factionState.unitTrainingQueue || []).map(entry => ({...entry, unit:cloneUnit(entry.unit)})),
     squads: normalizeEntityArray(factionState.squads).map(normalizeV39SquadLogistics),
     deadUnitReserve: normalizeEntityArray(factionState.deadUnitReserve),
+    soulStorage:normalizeEntityArray(factionState.soulStorage),
     deathHistory: normalizeEntityArray(factionState.deathHistory),
     settlements: base.settlements.map(row => normalizeV39Village(row, race)).filter(Boolean),
     selectedSettlementId: base.selectedSettlementId,
@@ -374,7 +377,8 @@ function setState(patch = {}, options = {}) {
   // 保存済みマップは書込時に既に複製済み。無関係な更新で再複製しない。
   state = { ...normalizeState({ ...next, explorationWorlds:{} }), explorationWorlds:next.explorationWorlds };
   if (options.silent !== true) dispatchChange(options.reason || "set");
-  return getState();
+  // Internal writes can omit an unused detached return value; public callers keep it by default.
+  return options.returnState === false ? undefined : getState();
 }
 
 // Enemy turns can update dozens of units. Intermediate states are normalized once
@@ -422,6 +426,7 @@ function resetFactionForNewLocalSession(factionState = {}) {
     ...source,
     settlements:[],
     unitTrainingQueue:[],
+    soulStorage:[],
     recruitInstructorByTile:{},
     recruitInstructorTransfers:{},
     selectedSettlementId:"",
@@ -730,6 +735,7 @@ window.setV39GameState = setState;
 window.patchV39EnemyTurnState = patchEnemyTurnState;
 window.getV39EnemyTurnState = () => state;
 window.getV39ActivePlayer = getActivePlayer;
+window.getV39ActivePlayerId = () => state.activePlayerId;
 window.getV39ActiveFactionState = getActiveFactionState;
 window.getV39TimelineState = getTimelineState;
 window.getV39ExplorationWorldIds = () => Object.keys(state.explorationWorlds).filter(id => state.explorationWorlds[id]?.map);

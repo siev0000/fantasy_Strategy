@@ -2,6 +2,7 @@ import { PhaserEffectPlayer, resolveEffectSheetLayout } from "../../../../配布
 import { resolveV39EffectPlaybackDescriptor } from "../combat/v39-effect-player.js";
 import { effectPreviewGeometry, renderEffectPreviewCombatants } from "./v39-effect-preview-combatants.js";
 import { installEffectImagePicker, syncEffectImagePicker } from "./v39-effect-image-picker.js";
+import { drawIdlePreview, hideIdlePreview, updateGradientSideLabels } from "./v39-effect-settings-static-preview.js";
 import { V39_EFFECT_ROTATION_LIMIT, V39_EFFECT_OFFSET_LIMIT, V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
 import {
   V39_EFFECT_GRADIENT_SPEED_MAX,
@@ -38,8 +39,35 @@ let previewReplayTimer = null;
 let previewScheduleTimer = null;
 let previewRequestId = 0;
 let playbackMode = "once";
+let previewPlaying = false;
+let loopRequested = false;
+let sleepPending = false;
 let previewFrameIndex = 0;
 let previewBounds = null;
+let editorActions = {};
+let closeHandler = null;
+
+export function configureV39EffectSettingsEditor(actions) { editorActions = actions; }
+export function setV39EffectSettingsCloseHandler(handler) { closeHandler = handler; }
+export function setV39EffectPreviewFrame(index) {
+  previewFrameIndex = Math.max(0, Math.floor(Number(index) || 0));
+  if (previewPanelVisible() && playbackMode === "frame") void showPanelFrame();
+}
+
+export function selectV39EffectSettingsProxy(name, patch, label) {
+  const source = element("v39-effect-setting-source");
+  if (!source || !isV39EffectSettingsTarget(name)) return false;
+  if (![...source.options].some(option => option.value === name)) source.add(new Option(label || name, name));
+  if (label) [...source.options].find(option => option.value === name).textContent = label;
+  selectedEffectName = name;
+  source.value = name;
+  previewFrameIndex = 0;
+  rendering = true;
+  try { updateV39EffectSetting(name, patch); }
+  finally { rendering = false; }
+  renderSetting();
+  return true;
+}
 
 function element(id) {
   return document.getElementById(id);
@@ -84,7 +112,10 @@ function installStyles() {
     #v39-effect-gradient-guides[hidden]{display:none}
     #v39-effect-gradient-guides text{font-size:var(--font-secondary);font-weight:800;paint-order:stroke;stroke:#071015;stroke-width:3px;stroke-linejoin:round}
     .v39-effect-settings-lower{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#0d161a}
-    .v39-effect-settings-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid #354950;background:#111d22}
+    .v39-effect-settings-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;border-bottom:1px solid #354950;background:#111d22}
+    #v39-effect-setting-preview-lower{min-width:68px;min-height:42px;border:0;border-left:1px solid #2b3c42;background:#173039;color:#eef8f5;padding:5px 9px;font:inherit;font-size:var(--font-secondary);font-weight:800;cursor:pointer}
+    #v39-effect-setting-preview-lower:hover{background:#1d424b;color:#fff}
+    @media(max-width:600px){#v39-effect-setting-preview-lower{min-width:60px;min-height:44px;padding:4px 7px;font-size:var(--font-compact)}}
     .v39-effect-settings-tab{min-width:0;min-height:42px;border:0;border-right:1px solid #2b3c42;background:#111d22;color:#9eb0b3;padding:5px 3px;font:inherit;font-size:var(--font-secondary);font-weight:800;cursor:pointer}
     .v39-effect-settings-tab:last-child{border-right:0}.v39-effect-settings-tab[aria-selected="true"]{background:#1b343b;color:#eff9f7;box-shadow:inset 0 -2px #70c5d2}
     .v39-effect-settings-body{min-height:0;overflow:hidden}
@@ -190,7 +221,7 @@ function ensurePanel() {
       </div>
       <div class="v39-effect-playback-controls">
         <select id="v39-effect-preview-direction" aria-label="攻撃方向"><option value="self">自身</option><option value="0" selected>右へ</option><option value="60">右下へ</option><option value="120">左下へ</option><option value="180">左へ</option><option value="240">左上へ</option><option value="300">右上へ</option></select>
-        <select id="v39-effect-playback-mode" aria-label="再生方式"><option value="once">1回再生</option><option value="loop">ループ</option><option value="frame">コマ切り替え</option></select>
+        <select id="v39-effect-playback-mode" aria-label="再生方式"><option value="once">1回再生</option><option value="loop">ループ</option><option value="frame">コマ切り替え</option><option value="full-image">元画像全体</option></select>
         <div id="v39-effect-frame-controls" class="v39-effect-frame-controls" hidden>
           <button type="button" id="v39-effect-frame-prev" aria-label="前のコマ">◀</button>
           <input type="range" id="v39-effect-frame-slider" aria-label="コマ位置" min="0" max="0" value="0">
@@ -206,6 +237,7 @@ function ensurePanel() {
         <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="color" role="tab" aria-selected="false">色</button>
         <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="motion" role="tab" aria-selected="false">動き</button>
         <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="data" role="tab" aria-selected="false">保存</button>
+        <button type="button" id="v39-effect-setting-preview-lower" aria-label="エフェクトを再生">▶ 再生</button>
       </nav>
       <div class="v39-effect-settings-body">
         <section class="v39-effect-settings-tabpanel" data-v39-effect-panel="basic" role="tabpanel">
@@ -229,6 +261,7 @@ function ensurePanel() {
           <label id="v39-effect-color-strength" class="v39-effect-setting-row" hidden><span>着色強度 (%)</span><span class="v39-effect-gradient-height"><input type="range" id="v39-effect-setting-strength-slider" min="0" max="100" step="1" value="100" aria-label="着色強度"><input type="number" id="v39-effect-setting-strength" min="0" max="100" step="1" value="100" aria-label="着色強度の数値"></span></label>
         </section>
         <section class="v39-effect-settings-tabpanel" data-v39-effect-panel="motion" role="tabpanel" hidden>
+          <label class="v39-effect-setting-row"><span>移動方式</span><select id="v39-effect-setting-gradient-motion-mode" aria-label="グラデーション移動方式"><option value="fixed">固定</option><option value="scroll">一方向</option><option value="wave">往復循環</option></select></label>
           <label class="v39-effect-setting-row"><span>移動方向</span><select id="v39-effect-setting-gradient-direction"><option value="up">上へ</option><option value="down">下へ</option><option value="left">左へ</option><option value="right">右へ</option></select></label>
           <label class="v39-effect-setting-row"><span>移動速度</span><span class="v39-effect-gradient-speed"><input type="number" id="v39-effect-setting-gradient-speed" min="${V39_EFFECT_GRADIENT_SPEED_MIN}" max="${V39_EFFECT_GRADIENT_SPEED_MAX}" step="10" value="80"><small>% / 秒</small></span></label>
           <p class="v39-effect-settings-note">グラデーションがOFFの場合、移動方向と速度は無効になります。</p>
@@ -333,11 +366,42 @@ function applyColorControlState(setting) {
   for (const name of ["gradient-start", "gradient-end"]) {
     for (const suffix of ["", "-slider"]) element(`v39-effect-setting-${name}${suffix}`).disabled = !gradientEnabled;
   }
+  element("v39-effect-setting-gradient-motion-mode").disabled = !gradientEnabled;
+  const fixed = setting.gradientMotionMode === "fixed";
+  element("v39-effect-setting-gradient-direction").disabled = !gradientEnabled || fixed;
+  element("v39-effect-setting-gradient-speed").disabled = !gradientEnabled || fixed;
+  updateGradientSideLabels();
 }
 
 function previewPanelVisible() {
   const panel = element("v39-effect-settings-panel");
   return panel instanceof HTMLElement && panel.hidden === false && panel.getAttribute("aria-hidden") !== "true";
+}
+
+function syncPlaybackControls() {
+  const button = element("v39-effect-setting-preview-lower");
+  if (!button) return;
+  const running = loopRequested && playbackMode === "loop";
+  button.textContent = running ? "■ 停止" : "▶ 再生";
+  button.setAttribute("aria-label", running ? "エフェクトを停止" : "エフェクトを再生");
+  button.setAttribute("aria-pressed", String(running));
+}
+
+function sleepPreviewAfterRender() {
+  if (!previewGame || sleepPending) return;
+  sleepPending = true;
+  previewGame.events.once("postrender", () => {
+    sleepPending = false;
+    if (!previewPlaying) previewGame.loop.sleep();
+  });
+  previewGame.loop.wake();
+}
+
+async function showIdlePreview() {
+  if (!previewPanelVisible()) return;
+  hideIdlePreview();
+  await drawIdlePreview({ fullImage:playbackMode === "full-image" });
+  sleepPreviewAfterRender();
 }
 
 async function previewSources(descriptor) {
@@ -378,6 +442,9 @@ function playPanelPreview() {
   const scaleMultiplier = Math.max(0.1, Number(descriptor.scaleMultiplierPercent || 100) / 100);
   window.clearTimeout(previewReplayTimer);
   const requestId = ++previewRequestId;
+  hideIdlePreview();
+  previewPlaying = true;
+  syncPlaybackControls();
   previewGame.loop.wake();
   setStatus(`${effectDisplayName()} を再生中…`);
   let playbackError = null;
@@ -392,6 +459,7 @@ function playPanelPreview() {
       gradientColorA:descriptor.gradientColorA,
       gradientColorB:descriptor.gradientColorB,
       gradientDirection:descriptor.gradientDirection,
+      gradientMotionMode:descriptor.gradientMotionMode,
       gradientStartPercent:descriptor.gradientStartPercent,
       gradientEndPercent:descriptor.gradientEndPercent,
       gradientSpeedPercentPerSecond:descriptor.gradientSpeedPercentPerSecond,
@@ -408,16 +476,28 @@ function playPanelPreview() {
   }).then(played => {
     // Replay only after the entire base + decoration sequence has finished.
     if (requestId !== previewRequestId || !previewPanelVisible()) return;
+    previewPlaying = false;
     if (!played || playbackError) {
+      loopRequested = false;
+      syncPlaybackControls();
+      sleepPreviewAfterRender();
       console.error("[エフェクト設定] 再生失敗", playbackError);
       showPreviewFailure("エフェクト再生に失敗しました。", playbackError || new Error("再生処理が false を返しました。"), descriptor);
       return;
     }
     setStatus(`${effectDisplayName()} の再生完了`);
-    if (playbackMode === "loop") previewReplayTimer = window.setTimeout(playPanelPreview, 300);
+    if (playbackMode === "loop" && loopRequested) {
+      previewReplayTimer = window.setTimeout(playPanelPreview, 300);
+      sleepPreviewAfterRender();
+    }
     else if (playbackMode === "frame") void showPanelFrame();
+    else void showIdlePreview();
   }).catch(error => {
     if (requestId !== previewRequestId) return;
+    previewPlaying = false;
+    loopRequested = false;
+    syncPlaybackControls();
+    sleepPreviewAfterRender();
     console.error("[エフェクト設定] 画面内プレビュー失敗", error);
     const source = error?.previewSource || previewSourceUrl(descriptor);
     setStatus(`画面内プレビューに失敗しました。\nURL: ${source}\n原因: ${previewErrorMessage(error)}`, true);
@@ -429,8 +509,15 @@ function schedulePanelPreview(delay = 80) {
   if (previewScheduleTimer) window.clearTimeout(previewScheduleTimer);
   previewScheduleTimer = window.setTimeout(() => {
     previewScheduleTimer = null;
-    if (playbackMode === "frame") void showPanelFrame();
-    else if (previewPanelVisible() && ["color", "motion"].includes(activeSettingsTab)) {
+    if (!previewPanelVisible()) return;
+    if (loopRequested && playbackMode === "loop") {
+      const requestId = previewRequestId;
+      void ensurePreviewGame().then(() => { if (requestId === previewRequestId && loopRequested) playPanelPreview(); });
+    } else if (playbackMode === "frame") void showPanelFrame();
+    else {
+      void showIdlePreview();
+    }
+    if (["color", "motion"].includes(activeSettingsTab) && playbackMode !== "frame") {
       const requestId = previewRequestId;
       const descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
       void ensurePreviewGame().then(() => {
@@ -484,8 +571,7 @@ function preparePreview() {
     if (!game || !previewPanelVisible()) return;
     const host = element("v39-effect-preview-stage");
     game.scale.resize(Math.max(1, host.clientWidth), Math.max(1, host.clientHeight));
-    game.loop.wake();
-    if (playbackMode === "frame") schedulePanelPreview(0);
+    schedulePanelPreview(0);
   });
 }
 
@@ -496,10 +582,18 @@ function stopPanelPlayback() {
   previewReplayTimer = null;
   previewScheduleTimer = null;
   previewPlayer?.stop();
+  previewPlaying = false;
+  loopRequested = false;
+  hideIdlePreview();
+  syncPlaybackControls();
+  sleepPreviewAfterRender();
 }
 
 async function showPanelFrame() {
+  if (!previewPanelVisible()) return;
   const requestId = ++previewRequestId;
+  hideIdlePreview();
+  previewPlaying = false;
   let descriptor = null;
   try {
     await ensurePreviewGame();
@@ -528,16 +622,21 @@ async function showPanelFrame() {
       scalePercent:V39_EFFECT_BASE_SCALE_PERCENT * descriptor.scaleMultiplierPercent / 100,
       renderStyle:"soft", depth:10, displayName:"v39-effect-settings-preview", onFrame:renderGradientGuides
     });
+    if (requestId === previewRequestId) sleepPreviewAfterRender();
   } catch (error) {
     if (requestId !== previewRequestId) return;
     console.error("[エフェクト設定] コマ表示失敗", error);
     const source = error?.previewSource || previewSourceUrl(descriptor);
     setStatus(`コマを表示できませんでした。\nURL: ${source}\n原因: ${previewErrorMessage(error)}`, true);
+    sleepPreviewAfterRender();
   }
 }
 
 function renderSetting() {
+  const resumeLoop = loopRequested && playbackMode === "loop";
   stopPanelPlayback();
+  loopRequested = resumeLoop;
+  syncPlaybackControls();
   const catalog = getV39EffectSettingsCatalog();
   if (!catalog.length) {
     setStatus("エフェクトカタログが空です。", true);
@@ -578,6 +677,7 @@ function renderSetting() {
     if (gradientACode) gradientACode.textContent = setting.gradientColorA;
     if (gradientBCode) gradientBCode.textContent = setting.gradientColorB;
     if (gradientDirection) gradientDirection.value = setting.gradientDirection;
+    element("v39-effect-setting-gradient-motion-mode").value = setting.gradientMotionMode;
     for (const [id, value] of [["gradient-start", setting.gradientStartPercent], ["gradient-end", setting.gradientEndPercent], ["strength", setting.colorStrengthPercent]]) {
       element(`v39-effect-setting-${id}`).value = String(value);
       element(`v39-effect-setting-${id}-slider`).value = String(value);
@@ -598,7 +698,8 @@ function saveCurrentSetting() {
   const colorMode = element("v39-effect-setting-color-mode")?.value;
   const tintEnabled = colorMode === "tint";
   const tintValue = tintEnabled ? element("v39-effect-setting-tint")?.value : "";
-  updateV39EffectSetting(selectedEffectName, {
+  rendering = true;
+  try { updateV39EffectSetting(selectedEffectName, {
     baseEffect:element("v39-effect-setting-base")?.value,
     orientToAttack:element("v39-effect-setting-orientation")?.value === "attack",
     rotationDeg:element("v39-effect-setting-rotation").value,
@@ -610,12 +711,13 @@ function saveCurrentSetting() {
     gradientColorA:element("v39-effect-setting-gradient-a")?.value,
     gradientColorB:element("v39-effect-setting-gradient-b")?.value,
     gradientDirection:element("v39-effect-setting-gradient-direction")?.value,
+    gradientMotionMode:element("v39-effect-setting-gradient-motion-mode")?.value,
     gradientStartPercent:element("v39-effect-setting-gradient-start")?.value,
     gradientEndPercent:element("v39-effect-setting-gradient-end")?.value,
     colorStrengthPercent:element("v39-effect-setting-strength")?.value,
     gradientSpeedPercentPerSecond:element("v39-effect-setting-gradient-speed")?.value,
     scaleMultiplierPercent:element("v39-effect-setting-scale")?.value
-  });
+  }); } finally { rendering = false; }
   renderSetting();
 }
 
@@ -690,8 +792,8 @@ function closePanel() {
   panel.hidden = true;
   panel.setAttribute("aria-hidden", "true");
   stopPanelPlayback();
-  previewGame?.loop.sleep();
   menu.hidden = false;
+  closeHandler?.();
 }
 
 function bindControls() {
@@ -703,9 +805,12 @@ function bindControls() {
   }
   element("v39-effect-setting-orientation").addEventListener("change", saveCurrentSetting);
   element("v39-effect-preview-direction").addEventListener("change", () => {
+    const resumeLoop = loopRequested;
     stopPanelPlayback();
+    loopRequested = resumeLoop;
+    syncPlaybackControls();
     renderEffectPreviewCombatants(element("v39-effect-preview-stage"));
-    if (playbackMode === "frame") schedulePanelPreview(0);
+    schedulePanelPreview(0);
     window.dispatchEvent(new CustomEvent("v39:effect-preview-direction-changed"));
   });
   new ResizeObserver(() => { renderEffectPreviewCombatants(element("v39-effect-preview-stage")); schedulePanelPreview(0); window.dispatchEvent(new CustomEvent("v39:effect-preview-direction-changed")); })
@@ -737,6 +842,7 @@ function bindControls() {
     });
   }
   element("v39-effect-setting-gradient-direction")?.addEventListener("change", saveCurrentSetting);
+  element("v39-effect-setting-gradient-motion-mode")?.addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-gradient-speed")?.addEventListener("change", saveCurrentSetting);
   for (const id of ["gradient-start", "gradient-end", "strength"]) {
     for (const suffix of ["", "-slider"]) element(`v39-effect-setting-${id}${suffix}`).addEventListener("input", event => {
@@ -750,15 +856,27 @@ function bindControls() {
     });
   }
   element("v39-effect-setting-scale")?.addEventListener("change", saveCurrentSetting);
-  element("v39-effect-setting-preview-local")?.addEventListener("click", () => {
+  const startPlayback = () => {
     stopPanelPlayback();
-    void ensurePreviewGame().then(() => playPanelPreview());
+    if (playbackMode === "full-image") { void showIdlePreview(); return; }
+    loopRequested = playbackMode === "loop";
+    syncPlaybackControls();
+    const requestId = previewRequestId;
+    void ensurePreviewGame().then(() => { if (requestId === previewRequestId) playPanelPreview(); });
+  };
+  element("v39-effect-setting-preview-local")?.addEventListener("click", startPlayback);
+  element("v39-effect-setting-preview-lower")?.addEventListener("click", () => {
+    if (loopRequested && playbackMode === "loop") {
+      stopPanelPlayback();
+      schedulePanelPreview(0);
+    } else startPlayback();
   });
   element("v39-effect-playback-mode")?.addEventListener("change", event => {
     stopPanelPlayback();
     playbackMode = event.target.value;
     element("v39-effect-frame-controls").hidden = playbackMode !== "frame";
     if (playbackMode === "frame") void showPanelFrame();
+    else schedulePanelPreview(0);
   });
   element("v39-effect-frame-slider")?.addEventListener("input", event => {
     previewFrameIndex = Number(event.target.value);
@@ -772,20 +890,21 @@ function bindControls() {
   }
   element("v39-effect-setting-preview")?.addEventListener("click", previewCurrentEffectOnMap);
   element("v39-effect-setting-reset")?.addEventListener("click", () => {
+    if (editorActions.reset) { editorActions.reset(); return; }
     if (!selectedEffectName) return;
     resetV39EffectSetting(selectedEffectName);
     renderSetting();
     setStatus(`${selectedEffectName} を初期設定へ戻しました。`);
   });
-  element("v39-effect-settings-export")?.addEventListener("click", exportJson);
+  element("v39-effect-settings-export")?.addEventListener("click", () => (editorActions.exportJson || exportJson)());
   element("v39-effect-settings-import")?.addEventListener("click", () => element("v39-effect-settings-file")?.click());
   element("v39-effect-settings-file")?.addEventListener("change", event => {
     const file = event.target.files?.[0];
-    void importJsonFile(file);
+    void (editorActions.importJsonFile || importJsonFile)(file);
     event.target.value = "";
   });
   window.addEventListener("v39:effect-settings-changed", () => {
-    if (!element("v39-effect-settings-panel")?.hidden) renderSetting();
+    if (!rendering && !element("v39-effect-settings-panel")?.hidden) renderSetting();
   });
 }
 
@@ -809,7 +928,7 @@ function install() {
   window.openV39EffectSettings = openPanel;
   window.closeV39EffectSettings = closePanel;
   window.refreshV39EffectSettingsPreview = () => {
-    void ensurePreviewGame().then(() => schedulePanelPreview(0));
+    if (previewPanelVisible()) schedulePanelPreview(0);
   };
 }
 

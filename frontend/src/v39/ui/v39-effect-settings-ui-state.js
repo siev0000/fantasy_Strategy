@@ -1,3 +1,5 @@
+import { setV39EffectPreviewFrame } from "./v39-effect-settings.js";
+
 const STORAGE_KEY = "v39-effect-settings-ui-state-v1";
 const MODE_ID = "v39-effect-composite-mode";
 const SELECT_ID = "v39-effect-composite-selector";
@@ -47,17 +49,9 @@ function writeState(patch = {}) {
   }
 }
 
-function restoreFrameIndex(frameIndex, retries = 8) {
-  const slider = element("v39-effect-frame-slider");
-  if (!(slider instanceof HTMLInputElement)) return;
-  const max = Math.max(0, Number(slider.max || 0));
-  if (max <= 0 && frameIndex > 0 && retries > 0) {
-    window.setTimeout(() => restoreFrameIndex(frameIndex, retries - 1), 80);
-    return;
-  }
-  const value = Math.max(0, Math.min(frameIndex, max));
-  slider.value = String(value);
-  slider.dispatchEvent(new Event("input", { bubbles:true }));
+function restoreFrameIndex(frameIndex) {
+  const value = Math.max(0, Math.floor(Number(frameIndex) || 0));
+  setV39EffectPreviewFrame(value);
   preservedFrameIndex = value;
 }
 
@@ -121,19 +115,16 @@ function restoreState() {
   }
 }
 
-function install() {
+export function installV39EffectSettingsUiState() {
   if (installed) return;
   const select = element(SELECT_ID);
   const slider = element("v39-effect-frame-slider");
   if (!(select instanceof HTMLSelectElement) || !(slider instanceof HTMLInputElement)) {
-    window.setTimeout(install, 80);
     return;
   }
   installed = true;
   bindCacheEvents();
   restoreState();
 }
-
-install();
 
 export const V39_EFFECT_SETTINGS_UI_STATE_STORAGE_KEY = STORAGE_KEY;

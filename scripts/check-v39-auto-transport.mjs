@@ -43,6 +43,7 @@ try {
     window.activateV39FooterTab("settlement");
   });
   await page.addStyleTag({content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}"});
+  await page.locator('[data-settlement-page-select="operation"]').click();
   await page.locator('[data-settlement-fold="transport"] summary').click();
   await page.locator('[data-unit-transport="carrier"]').click();
   await page.locator('[data-transport-destination]').selectOption("搬入拠点");

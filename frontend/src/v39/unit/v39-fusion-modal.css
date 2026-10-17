@@ -1,0 +1,52 @@
+#v39-fusion-modal{position:fixed;inset:0;z-index:2100;background:#0b171b;color:#e2edea;font-size:var(--font-body,15px)}
+#v39-fusion-modal>section{width:100%;height:100%;height:100svh;display:grid;grid-template-rows:auto minmax(100px,36fr) minmax(0,64fr) auto;overflow:hidden}
+#v39-fusion-modal header,#v39-fusion-modal footer{background:#11282e;padding:5px 8px;min-width:0}
+#v39-fusion-modal header{display:flex;align-items:center;gap:8px;border-bottom:1px solid #3a555c}
+#v39-fusion-modal header h3{flex:1;font-size:1.1em;margin:0}#v39-fusion-modal header span{color:#a8c3c7}
+#v39-fusion-modal button:not(.squad-card):not(.squad-detail-tab){font:inherit;color:inherit;background:#18343c;border:1px solid #4a6b75;border-radius:5px;padding:6px 9px;cursor:pointer}
+#v39-fusion-modal button:disabled{opacity:.45;cursor:default}
+#v39-fusion-modal button[aria-selected=true]{background:#25464d;border-color:#8dcfd1;color:#fff}
+#v39-fusion-modal select{min-width:0;width:100%;font:inherit;color:inherit;background:#172d33;border:1px solid #526e76;border-radius:5px;padding:6px}
+#v39-fusion-modal .fusion-preview{position:relative;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) auto auto auto;justify-items:center;gap:2px;overflow:hidden;padding:16px 0 3px;background:radial-gradient(ellipse at 50% 80%,#36504488,transparent 65%),linear-gradient(155deg,#172c31,#0d1b20);border-bottom:1px solid #60745c}
+#v39-fusion-modal .fusion-preview-label{position:absolute;left:9px;top:7px;font-size:.9em;color:#a9c3b3}
+#v39-fusion-modal .fusion-preview h3{margin:0;color:#f2ddb0;font-size:1.2em}
+#v39-fusion-modal .fusion-preview>b{color:#f2ddb0}
+#v39-fusion-modal .fusion-portrait{width:auto;height:100%;aspect-ratio:1;max-height:210px;max-width:100%;background-repeat:no-repeat;display:grid;place-items:center;min-height:0;font-size:3em;align-self:center}
+#v39-fusion-modal .silhouette{color:#6c8587;opacity:.45;filter:brightness(0) invert(.6)}
+#v39-fusion-modal .fusion-confirm-warning{margin:1px 8px;color:#ffd5b2;text-align:center;font-size:.9em}
+#v39-fusion-modal .fusion-workspace{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+#v39-fusion-modal .fusion-toolbar{display:flex;align-items:center;gap:5px;padding:4px 6px;background:#12232a;flex:none}
+#v39-fusion-modal .fusion-toolbar label{display:flex;align-items:center;gap:4px;min-width:0;flex:1}
+#v39-fusion-modal .fusion-toolbar label:first-child{flex:3}#v39-fusion-modal .fusion-toolbar label>span{font-size:.85em;color:#acc0c3;white-space:nowrap;flex:none}
+#v39-fusion-modal .fusion-slots{display:flex;overflow-x:auto;gap:4px;padding:3px 6px;flex:none;scrollbar-width:thin}
+#v39-fusion-modal .fusion-slots button{white-space:nowrap;flex:none}
+#v39-fusion-modal .fusion-panes{display:grid;grid-template-columns:minmax(0,40%) minmax(0,1fr);gap:5px;padding:3px 6px;flex:1;min-height:0}
+#v39-fusion-modal .fusion-material-pane{display:flex;flex-direction:column;min-height:0;min-width:0}
+#v39-fusion-modal .fusion-list-heading{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:2px;padding:3px 2px;color:#c8dcda;flex:none}
+#v39-fusion-modal .fusion-list-heading small{color:#90afb5;font-size:.85em}
+#v39-fusion-modal .squad-member-list{overflow-y:auto;overflow-x:hidden;min-height:0;flex:1;overscroll-behavior:contain;scrollbar-width:thin}
+#v39-fusion-modal .fusion-candidate{margin-bottom:3px;min-width:0}
+#v39-fusion-modal .fusion-candidate small{display:block;font-size:.85em;color:#e5b99b;padding:2px 4px}
+#v39-fusion-modal .fusion-candidate.unavailable .squad-card{opacity:.55}
+#v39-fusion-modal .squad-card{width:100%;text-align:left;min-width:0;padding:5px;background:#162a30;border:1px solid #3d5d65;border-radius:7px;color:inherit;font:inherit;cursor:pointer}
+#v39-fusion-modal .squad-card.selected{background:#22444a;border-color:#82d2d3;box-shadow:inset 3px 0 #82d2d3}
+#v39-fusion-modal .squad-main{display:flex;align-items:center;gap:4px;min-width:0}
+#v39-fusion-modal .squad-name-wrap{min-width:0;flex:1}#v39-fusion-modal .squad-name{display:block;overflow-wrap:anywhere}
+#v39-fusion-modal .squad-pos{display:block;color:#a5b9bc;font-size:.85em}
+#v39-fusion-modal .squad-detail-pane{display:flex!important;flex-direction:column!important;min-width:0;min-height:0;overflow:hidden;gap:0;padding:0!important}
+#v39-fusion-modal .fusion-detail-source{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:3px;flex:none}
+#v39-fusion-modal .squad-detail-header{display:flex;justify-content:space-between;gap:4px;align-items:center;padding:3px;flex-wrap:wrap;flex:none}
+#v39-fusion-modal .squad-detail-header b{overflow-wrap:anywhere}
+#v39-fusion-modal .squad-detail-tabs{flex:none}
+#v39-fusion-modal .squad-detail-tab-content{flex:1;height:auto!important}
+#v39-fusion-modal .fusion-status{max-height:2.8em;overflow-y:auto;overscroll-behavior:contain;color:#b4c6c8;font-size:.9em;margin-bottom:3px}
+#v39-fusion-modal .fusion-footer-buttons{display:flex;gap:5px;justify-content:flex-end}
+#v39-fusion-modal [data-fusion-choose]{border-color:#7abfc3!important}
+#v39-fusion-modal [data-fusion-confirm],#v39-fusion-modal [data-fusion-commit]{background:#65511d!important;border-color:#bda363!important}
+#v39-fusion-modal .fusion-converge{position:absolute;inset:0;display:flex;justify-content:space-around;align-items:center;pointer-events:none;animation:fusion-converge .55s ease-in forwards}
+#v39-fusion-modal .animating>.fusion-portrait{animation:fusion-reveal .9s ease-out}
+@keyframes fusion-converge{from{opacity:1;transform:scale(1.2)}to{opacity:0;transform:scale(0)}}
+@keyframes fusion-reveal{0%{opacity:0;transform:scale(.5);filter:brightness(4)}45%{opacity:1;filter:brightness(2)}100%{transform:scale(1);filter:brightness(1)}}
+@media(min-width:800px){#v39-fusion-modal>section{grid-template-rows:auto minmax(120px,42fr) minmax(0,58fr) auto}#v39-fusion-modal .fusion-panes{grid-template-columns:minmax(220px,32%) minmax(0,1fr)}}
+@media(max-width:600px){#v39-fusion-modal .fusion-toolbar label>span{display:none}#v39-fusion-modal .fusion-footer-buttons>button{flex:1;padding:6px 3px!important}#v39-fusion-modal .fusion-panes{gap:3px;padding:2px 3px}}
+@media(prefers-reduced-motion:reduce){#v39-fusion-modal .animating>.fusion-portrait{animation:none}#v39-fusion-modal .fusion-converge{display:none}}

@@ -9,6 +9,7 @@ import { isV39ArmyTransportUnit, isV39UnitInsideSettlement, setV39UnitTransportA
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);
+let activePage = 'overview';
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const escapeHtml = value => text(value).replace(/[&<>"']/g, char => ({
@@ -76,7 +77,8 @@ function populationRows(settlement) {
 }
 
 function section(key, label, value, body) {
-  return `<details class="settlement-fold" data-settlement-fold="${key}"${openSections.has(key) ? " open" : ""}>
+  const page = ['population','civic','territory'].includes(key) ? 'overview' : ['food','material'].includes(key) ? 'production' : 'operation';
+  return `<details class="settlement-fold" data-settlement-page="${page}"${page === activePage ? '' : ' hidden'} data-settlement-fold="${key}"${openSections.has(key) ? " open" : ""}>
     <summary><span>${label}</span>${value ? `<b>${value}</b>` : ""}</summary>
     <div class="settlement-fold-body">${body}</div>
   </details>`;
@@ -192,6 +194,7 @@ function render() {
       </nav>
       <button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button>
     </div>
+    <nav class="settlement-pages" aria-label="拠点の操作">${[['overview','概況'],['production','生産'],['operation','運用']].map(([key,label])=>`<button type="button" data-settlement-page-select="${key}" aria-pressed="${activePage===key}">${label}</button>`).join('')}</nav>
     <div class="settlement-fold-list">
       ${section("population", "人口", formatNumber(settlement.population), populationSummary)}
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
@@ -219,6 +222,14 @@ panel?.addEventListener("toggle", event => {
 }, true);
 
 panel?.addEventListener("click", event => {
+  const pageButton = event.target.closest?.('[data-settlement-page-select]');
+  if (pageButton) {
+    activePage = pageButton.dataset.settlementPageSelect;
+    panel.querySelectorAll('[data-settlement-page-select]').forEach(button=>button.setAttribute('aria-pressed',String(button===pageButton)));
+    panel.querySelectorAll('[data-settlement-page]').forEach(section=>section.hidden=section.dataset.settlementPage!==activePage);
+    panel.querySelector('.settlement-fold-list').scrollTop=0;
+    return;
+  }
   const routeButton = event.target instanceof Element ? event.target.closest("[data-transport-route]") : null;
   if (routeButton) {
     const { state, player } = activeContext();

@@ -20,6 +20,7 @@ try {
     await page.locator('[data-v39-character-row="expedition-test-king"]').click();
     await page.locator('[data-v39-character-detail-tab="growth"]').click();
     const before=await page.evaluate(()=>{const u=window.getV39ActiveFactionState().units.find(u=>u.id==='expedition-test-king');return {level:u.level,totalExp:u.totalExp,hp:u.hp,ap:u.ap};});
+    await page.locator('.v39-char-promotion').filter({has:page.locator('[data-v39-class-acquire="ウォーリアー"]')}).locator('summary').click();
     await page.locator('[data-v39-class-acquire="ウォーリアー"]').click();
     const after=await page.evaluate(()=>{const u=window.getV39ActiveFactionState().units.find(u=>u.id==='expedition-test-king');return {className:u.className,level:u.level,totalExp:u.totalExp,ap:u.ap,prior:u.prerequisiteClassLevels,own:u.derivedCharacter.classLevels,race:u.derivedCharacter.raceLevels};});
     assert.equal(after.className,'ウォーリアー');assert.equal(after.level,before.level);assert.equal(after.totalExp,before.totalExp);assert.equal(after.ap,before.ap);

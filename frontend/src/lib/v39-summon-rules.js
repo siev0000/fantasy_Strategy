@@ -8,6 +8,7 @@ import {parseV39TurnCount,resolveV39SkillCooldownTurns} from "./v39-turn-timing.
 import {V39_SUMMON_BALANCE} from "./v39-gameplay-balance.js";
 import {getV39EditableSquads} from './v39-squad-edit-rules.js';
 import {mergeV39Cargo} from './v39-logistics-state.js';
+import {v39SquadMoveMode} from './v39-squad-coordination.js';
 import initialEquipment from '../../../config/v39-summon-equipment.json';
 import {createV39EquipmentEntry} from './v39-equipment-rules.js';
 import {applyV39DerivedCharacterData} from '../v39/unit/v39-character-derived-rules.js';
@@ -102,6 +103,8 @@ export function summonV39Units(state,playerId,unitId,skillName,map) {
   const existing=rows.find(row=>row.id!=='solo'&&row.id!=='単独'&&row.unitIds.includes(unitId));
   let squadId=existing?.id||`summon-party-${unitId}`;
   if(!existing){let suffix=0;while(rows.some(row=>row.id===squadId))squadId=`summon-party-${unitId}-${++suffix}`;}
+  const mode=existing?v39SquadMoveMode(check.caster):'follow';
+  const movement={squadMoveMode:mode,squadGather:mode==='gather'?{status:'moving',reason:'',lastProcessedTurn:0}:null};
   let serial=n(faction.summonSerial)+1;const created=[];
   while(faction.units.some(unit=>String(unit.id).startsWith(`summon-${playerId}-${turn}-${serial}-`)))serial++;
   for(let i=0;i<check.entry.spec.count;i++) {
@@ -110,7 +113,7 @@ export function summonV39Units(state,playerId,unitId,skillName,map) {
     const derived=applyV39DerivedCharacterData({...structuredClone(check.preview),equipment:buildV39SummonEquipment(check.entry.spec.target,row,Math.random)});
     const maxHp=Math.max(1,Math.round(derived.maxHp));
     created.push({...derived,maxHp,hp:maxHp,currentHp:maxHp,id,name:`${check.entry.spec.target}${check.entry.spec.members?'軍':''}（召喚）`,
-      x:tile.x,y:tile.y,position:[tile.x,tile.y],worldId:state.activeWorldId || 'surface',squadId,
+      x:tile.x,y:tile.y,position:[tile.x,tile.y],worldId:state.activeWorldId || 'surface',squadId,...movement,
       summon:{casterId:unitId,skillName,createdTurn:turn,expiresAtTurn:turn+check.duration}});
   }
   const runtime=faction.combatRuntime || {},hp=n(check.caster.hp ?? check.caster.currentHp)-check.hpCost,ap=n(check.caster.ap ?? check.caster.currentAp)-check.cost;
@@ -123,7 +126,7 @@ export function summonV39Units(state,playerId,unitId,skillName,map) {
   if(!existing)squads.push({id:squadId,label:`${check.caster.name||'召喚者'}の部隊`,summonOwnerId:unitId,
     unitIds:[unitId,...created.map(unit=>unit.id)],movementLeaderId:unitId,formationType:'column',
     cargo:mergeV39Cargo({},rows.find(row=>row.unitIds.includes(unitId))?.cargoByUnitId?.[unitId])});
-  const next={...faction,summonSerial:serial,squads,units:[...faction.units.map(unit=>unit.id===unitId?{...unit,squadId,hp,currentHp:hp,ap,currentAp:ap,actionPoint:ap,lastActionTurn:turn,lastUsedAttack:skillName}:unit),...created],
+  const next={...faction,summonSerial:serial,squads,units:[...faction.units.map(unit=>unit.id===unitId?{...unit,...(!existing?movement:{}),squadId,hp,currentHp:hp,ap,currentAp:ap,actionPoint:ap,lastActionTurn:turn,lastUsedAttack:skillName}:unit),...created],
     combatRuntime:{...runtime,cooldownsByUnitId:{...runtime.cooldownsByUnitId,[unitId]:{...runtime.cooldownsByUnitId?.[unitId],[skillName]:turn+resolveV39SkillCooldownTurns(check.entry.row)}}}};
   return {ok:true,state:{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:next}:row)},created,
     message:`${check.entry.spec.target}を${created.length}ユニット召喚しました`};

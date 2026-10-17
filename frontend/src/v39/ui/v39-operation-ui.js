@@ -1,5 +1,6 @@
 import { renderV39UnitAbility, renderV39DetailTabs } from "../unit/v39-unit-detail.js";
 import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
+import './v39-operation-layout.css';
 
 (function initializeOperationUi() {
   "use strict";
@@ -26,6 +27,7 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       { key: "squad", label: "部隊", icon: "👥" },
       { key: "tile", label: "土地", icon: "⬢" },
       { key: "settlement", label: "拠点", icon: "⌂" },
+      { key: "interaction", label: "交流", icon: "◇" },
       { key: "test", label: "テスト", icon: "試" },
       { key: "manage", label: "管理", icon: "⚙" }
     ],
@@ -140,9 +142,6 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
       html:not(.v39-test-mode) [data-foot="test"]{display:none!important}
       html:not(.v39-test-mode) #footTest{display:none!important}
       #footTest{min-width:0;min-height:0;height:100%;max-height:100%;overflow:hidden;display:flex;flex:1 1 0;flex-direction:column}
-      #footTile .v39-land-shortcuts{grid-column:1 / -1;display:flex;align-items:center;gap:6px}
-      #footTile .v39-land-shortcuts .v39-footer-shortcut{min-height:34px;min-width:92px}
-      #v39-land-settlement-convert-status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9fb0b4;font-size:var(--font-secondary)}
       #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
       #footSquad.is-unit-create-open>#v39-squad-main,#footSquad.is-unit-create-open>#v39-squad-content{display:none!important}
       #footSquad.is-unit-create-open>.v39-unit-create-panel{display:grid;height:100%;min-height:0}
@@ -248,11 +247,13 @@ import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
           <div class="v39-land-shortcuts">
             <button type="button" class="v39-footer-shortcut" data-open="build">⌂ 建設</button>
             <button type="button" class="v39-footer-shortcut" id="v39-land-settlement-convert" disabled>居住化</button>
+            <button type="button" class="v39-footer-shortcut" data-foot="interaction">交流へ</button>
             <span id="v39-land-settlement-convert-status" aria-live="polite">マスを選択</span>
           </div>
           ${data.landItems.map(item => `<div class="land-item"><span>${item.label}</span><b${item.valueId ? ` id="${item.valueId}"` : ""}>${item.value}</b></div>`).join("")}
         </section>
         <section id="footSettlement" class="settlement-panel" hidden aria-hidden="true"></section>
+        <section id="footInteraction" class="v39-interaction-panel" hidden aria-hidden="true"><header><strong>交流</strong><span>地図で相手のマスを選択</span></header><p data-interaction-empty>村・放浪者・守護者のマスを選ぶと、利用できる交流を表示します。</p><div id="v39-interaction-actions"></div></section>
         <section id="footTest" class="v39-test-footer-panel" hidden aria-hidden="true"></section>
         <section id="footManage" class="mobile-manage-panel" hidden aria-hidden="true">
           <div id="v39-manage-menu" class="manage-menu-grid">${data.manageItems.map(item => `<button class="manage-tile" ${attributes(item)}><b>${item.icon}</b><span>${item.labelHtml || item.label}</span></button>`).join("")}</div>

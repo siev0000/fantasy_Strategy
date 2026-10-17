@@ -1,16 +1,20 @@
 // Keep the real header in place; the popover top layer escapes the app's stacking context.
+const roots=new Set();
+let controller=null;
 export function installTradeLayout(root) {
+  roots.add(root);
+  if(controller){controller.observe(root);controller.sync();return;}
   let header=null,previousPopover=null,spacer=null;
   const drawer=document.getElementById('resourceDrawer'),previousDrawerPopover=drawer?.getAttribute('popover')??null;
   const specialty=document.getElementById('v39-specialty-panel'),previousSpecialtyPopover=specialty?.getAttribute('popover')??null;
-  const active=()=>!root.hidden;
+  const active=()=>[...roots].some(panel=>!panel.hidden);
   function measure() {
     if(!active()||!header)return;
     const container=header.parentElement,rect=container?.getBoundingClientRect();
     if(!rect)return;
     const height=parseFloat(getComputedStyle(container).gridTemplateRows)||header.getBoundingClientRect().height;
     const bottom=Math.max(0,rect.top+height);
-    root.style.setProperty('--v39-trade-top',`${bottom}px`);
+    for(const panel of roots)panel.style.setProperty('--v39-trade-top',`${bottom}px`);
     drawer?.style.setProperty('--trade-drawer-top',`${bottom+6}px`);
     specialty?.style.setProperty('--trade-drawer-top',`${bottom+6}px`);
     header.style.setProperty('--trade-header-top',`${rect.top}px`);
@@ -57,7 +61,9 @@ export function installTradeLayout(root) {
     else {if(specialty.matches(':popover-open'))specialty.hidePopover();specialty.classList.remove('v39-trade-live-drawer');if(previousSpecialtyPopover===null)specialty.removeAttribute('popover');else specialty.setAttribute('popover',previousSpecialtyPopover);}
   }
   const observer=new ResizeObserver(measure);
-  new MutationObserver(sync).observe(root,{attributes:true,attributeFilter:['hidden']});
+  const rootObserver=new MutationObserver(sync);
+  controller={sync,observe:panel=>rootObserver.observe(panel,{attributes:true,attributeFilter:['hidden']})};
+  controller.observe(root);
   if(drawer)new MutationObserver(syncDrawer).observe(drawer,{attributes:true,attributeFilter:['class']});
   if(specialty)new MutationObserver(syncSpecialty).observe(specialty,{attributes:true,attributeFilter:['hidden']});
   for(const panel of [drawer,specialty])if(panel)for(const type of ['pointerdown','pointerup','mousedown','mouseup','touchstart','touchend','wheel'])panel.addEventListener(type,event=>{if(active())event.stopPropagation();});

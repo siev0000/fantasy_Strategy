@@ -62,7 +62,7 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
     return true;
   };
   for (const unit of fieldUnits) {
-    if ((magic&&!corpseIds.has(unit.id))||!dead(unit) || (unit.deadExpireTurn && unit.deadExpireTurn <= turn)
+    if (unit.soulCollected||(magic&&!corpseIds.has(unit.id))||!dead(unit) || (unit.deadExpireTurn && unit.deadExpireTurn <= turn)
       || !Number.isInteger(unit.x) || !Number.isInteger(unit.y) || removed.has(unit.id)) continue;
     if (!transform(unit.x, unit.y, unit)) continue;
     removed.add(unit.id);

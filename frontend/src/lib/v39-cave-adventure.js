@@ -69,7 +69,10 @@ export function generateCaveFloor(game) {
     map.caveHabitatRace=race;
     levelBonus=height*window.getV39EnemySpawnRules().terrainLevelStep;
   }
-  const factory = options => createV39EventEnemy({...options,level:Math.min(balance.adventureEnemyLevelCap,options.level+levelBonus)});
+  const factory = options => {
+    const definition=definitions.find(row=>row.definitionId===options.metadata?.sourceDefinitionId);
+    return createV39EventEnemy({...options,level:Math.min(balance.adventureEnemyLevelCap,definition?.maxLevel??balance.adventureEnemyLevelCap,options.level+levelBonus)});
+  };
   const enemies=populateV39CaveMonsters(map,definitions,factory);
   if(balance.bossFloorInterval>0&&game.floor%balance.bossFloorInterval===0) {
     const definition=[...definitions].sort((a,b)=>b.maxLevel-a.maxLevel)[0];

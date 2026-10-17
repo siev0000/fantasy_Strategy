@@ -5,6 +5,7 @@ import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
 import { inspectV39Passive } from "../../lib/v39-passive-rules.js";
 import {getV39SummonEntries} from "../../lib/v39-summon-rules.js";
 import {getV39CallEntries} from '../../lib/v39-call-rules.js';
+import {getV39FusionSkills,inspectV39FusionAccess} from '../../lib/v39-monster-fusion.js';
 import "./v39-unit-skills.css";
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const num = (value, fallback = null) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -137,13 +138,17 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
         };
     const summons=getV39SummonEntries(unit);
     const calls=getV39CallEntries(unit);
-    const activeHtml = activeRows.filter(row=>!interactive||!/^(召喚|呼集)_/.test(String(techniqueSource(row)?.効果 || ''))).map(renderTechnique).join("")
+    const fusionSkills=getV39FusionSkills(unit);
+    const fusionState=interactive?window.getV39GameState?.({includeWorlds:false}):null;
+    const fusionFacility=fusionState&&inspectV39FusionAccess(fusionState,fusionState.activePlayerId,unit.id,'facility').reasons.length===0;
+    const activeHtml = activeRows.filter(row=>!interactive||(!/^(召喚|呼集)_/.test(String(techniqueSource(row)?.効果 || ''))&&String(techniqueSource(row)?.効果||'')!=='合体')).map(renderTechnique).join("")
+      +(interactive&&(fusionSkills.length||fusionFacility)?`<button type="button" class="technique-card action-technique" data-v39-fusion-open="${escapeHtml(unit.id)}" data-fusion-mode="${fusionSkills.length?'skill':'facility'}"><span class="technique-summary"><b class="technique-name">合体</b><small>${fusionSkills.length?'素材を選ぶ':'魔術工房'}</small></span></button>`:'')
       +(interactive&&summons.length?`<button type="button" class="technique-card action-technique" data-v39-technique-name="召喚" data-v39-summon-open="${escapeHtml(unit.id)}"><span class="technique-summary"><span class="technique-icon technique-icon-neutral"><span class="technique-icon-glyph">◆</span></span><b class="technique-name">召喚</b><small>候補${summons.length}</small></span></button>`:'')
       +(interactive&&calls.length?`<button type="button" class="technique-card action-technique" data-v39-technique-name="呼集" data-v39-call-open="${escapeHtml(unit.id)}"><span class="technique-summary"><span class="technique-icon technique-icon-neutral"><span class="technique-icon-glyph">↪</span></span><b class="technique-name">呼集</b><small>自軍の呼び寄せ</small></span></button>`:'');
     const passiveHtml = passiveRows.length
       ? `<div class="technique-passive-divider">パッシブ</div>${passiveRows.map(renderTechnique).join("")}`
       : "";
-    return activeRows.length || passiveRows.length
+    return activeRows.length || passiveRows.length || fusionSkills.length || fusionFacility
       ? activeHtml + passiveHtml
       : '<div class="squad-empty">行動データなし</div>';
 

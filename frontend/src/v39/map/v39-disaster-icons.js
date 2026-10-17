@@ -114,7 +114,7 @@ function addMarker(scene, container, marker) {
 }
 
 function render() {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   const scene = activeScene();
   if (!state || !scene?.add) return false;
   const markers = collectMarkers(state);

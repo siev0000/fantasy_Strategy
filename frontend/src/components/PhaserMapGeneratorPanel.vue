@@ -1,4 +1,5 @@
 <script setup>
+import {resolveV39EnemyMemberCount,resolveV39EnemyCombatProfile} from '../lib/v39-enemy-formation.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Phaser from "phaser";
 import GenericModal from "./GenericModal.vue";
@@ -2936,6 +2937,8 @@ const enemySpawnRows = computed(() => {
     const lvMin = Math.max(1, Math.floor(Math.min(lvMinRaw, lvMaxRaw)));
     const lvMax = Math.max(lvMin, Math.floor(Math.max(lvMinRaw, lvMaxRaw)));
     const className = nonEmptyText(raw?.サブクラス);
+    const memberCount=resolveV39EnemyMemberCount(raw);
+    if(memberCount===null)continue;
     const spawnCount = parseEnemySpawnCountRange(raw?.出現数);
     const aggressive = isStrictTrueFlag(raw?.好戦的);
     const armamentNames = ENEMY_EQUIPMENT_FIELDS
@@ -2950,6 +2953,7 @@ const enemySpawnRows = computed(() => {
       displayName: nonEmptyText(raw?.種族名) || raceName,
       lvMin,
       lvMax,
+      memberCount,
       spawnCountMin: spawnCount.min,
       spawnCountMax: spawnCount.max,
       spawnCountExplicit: !!spawnCount.explicit,
@@ -8808,6 +8812,7 @@ function buildEnemySpawnDataForMap(data) {
           raceLevels: built.raceLevels,
           classLevels: built.classLevels
         });
+        const combatProfile=resolveV39EnemyCombatProfile({編成人数:picked.memberCount},{special:isStrongTile});
         tileEnemies.push({
           id: `enemy-${x}-${y}-${index}`,
           name: picked.displayName || picked.raceName,
@@ -8825,7 +8830,9 @@ function buildEnemySpawnDataForMap(data) {
           strongGroupSize: groupCount,
           equipmentTier: isStrongTile ? ENEMY_STRONG_EQUIPMENT_TIER : "",
           armamentNames: Array.isArray(picked.armamentNames) ? [...picked.armamentNames] : [],
-          status: built.status,
+          combatProfile,
+          unitType:combatProfile?'軍隊':'通常ユニット',isMob:true,isNamed:false,
+          status: applyMilitaryProfileToStatusUtil(built.status,combatProfile),
           skillLevels,
           skills,
           resistances,

@@ -1,3 +1,4 @@
+import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
 import {getV39SummonEntries,inspectV39Summon,summonV39Units,describeV39SummonEquipment} from "../../lib/v39-summon-rules.js";
 import {renderV39UnitCard} from "./v39-unit-card.js";
 import {renderV39UnitAbility,renderV39DetailTabs} from "./v39-unit-detail.js";
@@ -5,13 +6,28 @@ import {renderV39UnitSkills} from "./v39-unit-skills.js";
 import {getV39CallEntries,inspectV39Call,callV39Units} from '../../lib/v39-call-rules.js';
 const escape=value=>String(value || '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 let session=null,message='',tab='ability',inputLock=null;
+let scheduled=false;
 function close(){document.getElementById('v39-summon-modal')?.remove();session=null;if(inputLock!==null)window.endV39MapInputLock?.(inputLock);inputLock=null;}
+function updateView(host,markup){
+  const listScroll=host.querySelector('.list-pane')?.scrollTop||0;
+  const detailScroll=host.querySelector('.summon-scroll')?.scrollTop||0;
+  const context=`${session.mode}:${session.skillName}:${session.mode==='call'?session.previewId:''}:${tab}`;
+  const changed=host.dataset.detailContext!==context;
+  if(changed){host.querySelector('.summon-scroll')?.replaceChildren();host.__v39RetainedMarkup=null;}
+  updateV39RetainedMarkup(host,markup,{preserveInput:true});
+  host.querySelector('.list-pane').scrollTop=listScroll;
+  host.querySelector('.summon-scroll').scrollTop=changed?0:detailScroll;
+  host.dataset.detailContext=context;
+}
 function renderCall(host,state,caster) {
   const entries=getV39CallEntries(caster);
-  if(!entries.some(entry=>entry.row.名前===session.skillName))session.skillName=entries[0]?.row.名前;
-  const check=inspectV39Call(state,session.playerId,session.unitId,session.skillName,window.__v39FieldRuntime.mapData,session.selectedIds);
+  if(!entries.some(entry=>entry.row.名前===session.skillName)){session.skillName=entries[0]?.row.名前;session.selectedIds=[];session.previewId=null;}
+  let check=inspectV39Call(state,session.playerId,session.unitId,session.skillName,window.__v39FieldRuntime.mapData,session.selectedIds);
+  const ids=session.selectedIds.filter(id=>check.candidates.some(item=>item.unit.id===id));
+  if(ids.length!==session.selectedIds.length){session.selectedIds=ids;check=inspectV39Call(state,session.playerId,session.unitId,session.skillName,window.__v39FieldRuntime.mapData,ids);}
   const focused=check.candidates.find(item=>item.unit.id===session.previewId)||check.candidates[0];
-  host.innerHTML=`<section class="modal" role="dialog" aria-modal="true" aria-labelledby="v39-summon-title">
+  session.previewId=focused?.unit.id;
+  updateView(host,`<section class="modal" role="dialog" aria-modal="true" aria-labelledby="v39-summon-title">
     <header class="modal-header"><h3 id="v39-summon-title">呼集</h3><button data-summon-close aria-label="閉じる">×</button></header>
     <div class="modal-body character-layout"><div class="list-pane">
       <select data-call-skill aria-label="呼集の種類">${entries.map(entry=>`<option value="${escape(entry.row.名前)}" ${entry.row.名前===session.skillName?'selected':''}>${escape(entry.spec?.target||entry.row.名前)} / 最大${entry.spec?.count||0}体</option>`).join('')}</select>
@@ -24,11 +40,11 @@ function renderCall(host,state,caster) {
       <div class="summon-scroll">${focused?(tab==='ability'?renderV39UnitAbility(focused.unit):renderV39UnitSkills(focused.unit)):'同ワールド・自領土の味方から選択します'}</div>
       <footer><p role="status">${escape(message||(check.available?'選択した味方を隣へ呼び寄せ、同じ部隊へ加入させます':check.reasons.join(' / ')))}</p>
         <button data-call-confirm ${check.available?'':'disabled'}>呼び寄せる</button></footer>
-    </div></div></section>`;
+    </div></div></section>`);
 }
 function render() {
   const state=window.getV39GameState(),caster=state.players.find(row=>row.id===session?.playerId)?.factionState.units.find(row=>row.id===session?.unitId);
-  if(!session||!caster||state.activePlayerId!==session.playerId||state.activeWorldId!==session.worldId||state.timeline.turnNumber!==session.turn||state.timeline.phase!=='player'){close();return;}
+  if(!session||!caster||Number(caster.hp??caster.currentHp)<=0||state.activePlayerId!==session.playerId||state.activeWorldId!==session.worldId||state.timeline.turnNumber!==session.turn||state.timeline.phase!=='player'){close();return;}
   if(session.mode==='call') {
     let host=document.getElementById('v39-summon-modal');
     if(!host){host=document.createElement('div');host.id='v39-summon-modal';host.className='modal-backdrop open';document.body.append(host);}
@@ -39,9 +55,8 @@ function render() {
   const check=checks.find(check=>check.entry?.row.名前===session.skillName),entry=check?.entry;
   let host=document.getElementById('v39-summon-modal');
   if(!host){host=document.createElement('div');host.id='v39-summon-modal';host.className='modal-backdrop open';document.body.append(host);}
-  host.innerHTML=`<section class="modal" role="dialog" aria-modal="true" aria-labelledby="v39-summon-title"><header class="modal-header"><h3 id="v39-summon-title">召喚</h3><button data-summon-close aria-label="閉じる">×</button></header><div class="modal-body character-layout"><div class="list-pane">${checks.map(item=>`<div data-summon-option="${escape(item.entry?.row.名前)}" class="${item.available?'':'unavailable'}">${item.preview?renderV39UnitCard(item.preview,{id:item.entry.row.名前,character:true,attribute:"data-summon-card",selected:item.entry.row.名前===session.skillName,position:`${item.entry.spec.members?item.entry.spec.members+'人編成 / ':''}${item.entry.spec.count}ユニット`}):`<button>${escape(item.entry?.row.名前)}（設定不正）</button>`}</div>`).join('')}</div><div class="summon-detail squad-detail-pane"><h4>${escape(entry?.spec?.target || '候補を選択')}</h4>${entry?`<p>Lv${entry.spec?.level ?? '-'} / ${entry.spec?.members?`軍隊${entry.spec.members}人`:'個人'} / ${entry.spec?.count ?? '-'}ユニット</p><p>AP ${check.cost} ${check.hpCost?`/ HP ${check.hpCost}`:''} / ⌛${check.duration}</p>`:''}${renderV39DetailTabs([['ability','能力'],['skills','スキル']],tab,'data-summon-tab')}<div class="summon-scroll">${check?.preview?(tab==='ability'?renderV39UnitAbility(check.preview):renderV39UnitSkills(check.preview)):''}</div><footer><p role="status">${escape(message || (check?.available?'召喚先を確保できます':check?.reasons.join(' / ')))}</p><button data-summon-confirm ${check?.available?'':'disabled'}>召喚する</button></footer></div></div></section>`;
-  const equipmentNote=describeV39SummonEquipment(entry?.spec?.target);
-  if(equipmentNote){const note=document.createElement('p');note.textContent=equipmentNote;host.querySelector('.summon-detail h4')?.after(note);}
+  updateView(host,`<section class="modal" role="dialog" aria-modal="true" aria-labelledby="v39-summon-title"><header class="modal-header"><h3 id="v39-summon-title">召喚</h3><button data-summon-close aria-label="閉じる">×</button></header><div class="modal-body character-layout"><div class="list-pane">${checks.map(item=>`<div data-summon-option="${escape(item.entry?.row.名前)}" class="${item.available?'':'unavailable'}">${item.preview?renderV39UnitCard(item.preview,{id:item.entry.row.名前,character:true,attribute:"data-summon-card",selected:item.entry.row.名前===session.skillName,position:`${item.entry.spec.members?item.entry.spec.members+'人編成 / ':''}${item.entry.spec.count}ユニット`}):`<button>${escape(item.entry?.row.名前)}（設定不正）</button>`}</div>`).join('')}</div><div class="summon-detail squad-detail-pane"><h4>${escape(entry?.spec?.target || '候補を選択')}</h4>${describeV39SummonEquipment(entry?.spec?.target)?`<p class="summon-equipment-note">${escape(describeV39SummonEquipment(entry?.spec?.target))}</p>`:''}${entry?`<p>Lv${entry.spec?.level ?? '-'} / ${entry.spec?.members?`軍隊${entry.spec.members}人`:'個人'} / ${entry.spec?.count ?? '-'}ユニット</p><p>AP ${check.cost} ${check.hpCost?`/ HP ${check.hpCost}`:''} / ⌛${check.duration}</p>`:''}${renderV39DetailTabs([['ability','能力'],['skills','スキル']],tab,'data-summon-tab')}<div class="summon-scroll">${check?.preview?(tab==='ability'?renderV39UnitAbility(check.preview):renderV39UnitSkills(check.preview)):''}</div><footer><p role="status">${escape(message || (check?.available?'召喚先を確保できます':check?.reasons.join(' / ')))}</p><button data-summon-confirm ${check?.available?'':'disabled'}>召喚する</button></footer></div></div></section>`);
+
 }
 function open(unitId,mode='summon') {
   if(window.isV39MapInputLocked?.())return;
@@ -58,9 +73,9 @@ document.addEventListener('click',event=>{
   const callOption=el.closest('[data-call-option]');if(callOption){
     const state=window.getV39GameState(),check=inspectV39Call(state,session.playerId,session.unitId,session.skillName,window.__v39FieldRuntime.mapData,session.selectedIds);
     const id=callOption.dataset.callOption,item=check.candidates.find(item=>item.unit.id===id);session.previewId=id;message='';
-    if(item?.available) {
-      if(session.selectedIds.includes(id))session.selectedIds=session.selectedIds.filter(value=>value!==id);
-      else if(session.selectedIds.length<check.entry.spec.count)session.selectedIds.push(id);
+    if(session.selectedIds.includes(id))session.selectedIds=session.selectedIds.filter(value=>value!==id);
+    else if(item?.available) {
+      if(session.selectedIds.length<check.entry.spec.count)session.selectedIds.push(id);
       else message=`最大${check.entry.spec.count}体です。先に選択を解除してください`;
     }
     render();return;
@@ -81,7 +96,11 @@ document.addEventListener('click',event=>{
 });
 document.addEventListener('change',event=>{if(event.target instanceof Element&&event.target.matches('#v39-summon-modal [data-call-skill]')){session.skillName=event.target.value;session.selectedIds=[];message='';render();}});
 window.addEventListener('keydown',event=>{if(event.key==='Escape')close();});
-for(const name of ['v39:game-state-changed','v39:unit-selected','v39:save-loaded','v39:field-generated'])window.addEventListener(name,()=>{if(session)close();});
+window.addEventListener('v39:game-state-changed',()=>{
+  if(!session||scheduled)return;scheduled=true;const current=session;
+  requestAnimationFrame(()=>{scheduled=false;if(session===current)render();});
+});
+for(const name of ['v39:unit-selected','v39:save-loaded','v39:field-generated'])window.addEventListener(name,()=>{if(session)close();});
 const style=document.createElement('style');style.textContent=`
 #v39-summon-modal{position:fixed;inset:0;z-index:2100;background:#0009;display:grid;place-items:center}
 #v39-summon-modal .modal{width:min(900px,96vw);height:min(780px,94svh);display:flex;flex-direction:column;background:#102025;border:1px solid #65858b;border-radius:10px;color:#e6eeeb;overflow:hidden;font-size:var(--font-body)}

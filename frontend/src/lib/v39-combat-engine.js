@@ -211,7 +211,7 @@ export function applyV39ActiveCombatEffects(unit, effects) {
 }
 
 export function isV39SupportSkill(skillRow, attacker) {
-  return hasV39SkillEffect(skillRow,"アンデッド化") || hasV39SkillEffect(skillRow,"遮断") || !!resolveV39DefenseKind(skillRow) || !!resolveV39RevivalSpec(skillRow)
+  return hasV39SkillEffect(skillRow,"魂回収") || hasV39SkillEffect(skillRow,"アンデッド化") || hasV39SkillEffect(skillRow,"遮断") || !!resolveV39DefenseKind(skillRow) || !!resolveV39RevivalSpec(skillRow)
     || resolveSkillHealing(skillRow, attacker) > 0
     || (resolveAttackPower(skillRow, attacker) <= 0
       && (Object.keys(resolveSkillTimedModifiers(skillRow)).length > 0 || resolveSkillGuard(skillRow, attacker) > 0));
@@ -354,7 +354,8 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   const targetLevel = Math.max(1, Math.floor(number(target?.level, target?.status?.Lv || 1)));
   const levelReduction = (targetLevel / 10) * effectiveResistance;
   const reducedPower = Math.max(0, power - levelReduction);
-  const attackCount = Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)));
+  const attackCount = Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)))
+    * Math.max(1,Math.floor(number(adjusted.attacker?.combatProfile?.attackCount,1)));
   const magicalAttack = text(adjusted.skillRow?.攻撃手段) === "魔法" || magicalJudge;
   const accuracyKey = magicalAttack ? "精神" : "命中";
   const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey]));

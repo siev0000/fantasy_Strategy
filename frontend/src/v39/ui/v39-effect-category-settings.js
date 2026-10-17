@@ -1,8 +1,9 @@
 import { normalizeV39EffectTransform } from "../../lib/v39-effect-transform.js";
+import { configureV39EffectSettingsEditor, selectV39EffectSettingsProxy } from "./v39-effect-settings.js";
+import { installV39EffectSettingsUiState } from "./v39-effect-settings-ui-state.js";
 import {
   getV39EffectSetting,
   getV39EffectSettingsCatalog,
-  updateV39EffectSetting,
   registerV39EffectEditorProxy
 } from "../../lib/v39-effect-settings.js";
 import {
@@ -32,7 +33,6 @@ const COMPOSITE_SCHEMA = "v39-effect-composite-settings";
 const COMPOSITE_VERSION = 2;
 let installed = false;
 let installing = false;
-let observer = null;
 let editorMode = "category";
 let selectedCategoryId = "";
 let selectedAttributeName = "";
@@ -257,18 +257,7 @@ function activateCurrent({ announce = true } = {}) {
 
   syncing = true;
   try {
-    updateV39EffectSetting(proxy, patch);
-    const source = element("v39-effect-setting-source");
-    if (source instanceof HTMLSelectElement) {
-      if (![...source.options].some(option => option.value === proxy)) {
-        const option = document.createElement("option");
-        option.value = proxy; option.textContent = category.name;
-        source.appendChild(option);
-      }
-      if (category.custom || category.independent) [...source.options].find(option => option.value === proxy).textContent = category.name;
-      source.value = proxy;
-      source.dispatchEvent(new Event("change", { bubbles:true }));
-    }
+    selectV39EffectSettingsProxy(proxy, patch, category.custom || category.independent ? category.name : undefined);
   } finally {
     syncing = false;
   }
@@ -407,47 +396,13 @@ async function importCompositeJson(file) {
   }
 }
 
-function interceptSaveControls() {
-  const exportButton = element("v39-effect-settings-export");
-  if (exportButton && !exportButton.dataset.v39CompositeBound) {
-    exportButton.dataset.v39CompositeBound = "1";
-    exportButton.textContent = "設定JSON書き出し";
-    exportButton.addEventListener("click", event => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      exportCompositeJson();
-    }, true);
-  }
-
-  const importButton = element("v39-effect-settings-import");
-  if (importButton && !importButton.dataset.v39CompositeBound) {
-    importButton.dataset.v39CompositeBound = "1";
-    importButton.textContent = "設定JSON読み込み";
-    importButton.addEventListener("click", event => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      element("v39-effect-settings-file")?.click();
-    }, true);
-  }
-
-  const fileInput = element("v39-effect-settings-file");
-  if (fileInput && !fileInput.dataset.v39CompositeBound) {
-    fileInput.dataset.v39CompositeBound = "1";
-    fileInput.addEventListener("change", event => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const file = event.target.files?.[0];
-      void importCompositeJson(file);
-      event.target.value = "";
-    }, true);
-  }
-
-  const resetButton = element("v39-effect-setting-reset");
-  if (resetButton && !resetButton.dataset.v39CompositeBound) {
-    resetButton.dataset.v39CompositeBound = "1";
-    resetButton.addEventListener("click", event => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
+function configureSaveControls() {
+  element("v39-effect-settings-export").textContent = "設定JSON書き出し";
+  element("v39-effect-settings-import").textContent = "設定JSON読み込み";
+  configureV39EffectSettingsEditor({
+    exportJson:exportCompositeJson,
+    importJsonFile:importCompositeJson,
+    reset:() => {
       if (editorMode === "category") {
         const category = currentCategory();
         if (!category) return;
@@ -461,29 +416,20 @@ function interceptSaveControls() {
         activateCurrent({ announce:false });
         setStatus(`属性「${attribute.name}」の共通設定を初期化しました。`);
       }
-    }, true);
-  }
+    }
+  });
 }
-
 async function install() {
   if (installed || installing) return;
-  if (!ensureEditorUi()) {
-    if (!observer && document.body) {
-      observer = new MutationObserver(() => void install());
-      observer.observe(document.body, { childList:true, subtree:true });
-    }
-    return;
-  }
+  if (!ensureEditorUi()) return;
   installing = true;
   try {
     await loadV39EffectAttributes();
     fillEditorSelector();
-    interceptSaveControls();
+    configureSaveControls();
     applyModeVisibility();
     updateModeButtons();
     installed = true;
-    observer?.disconnect();
-    observer = null;
     activateCurrent({ announce:false });
 
     window.addEventListener("v39:effect-settings-changed", () => syncCurrentFromProxy());
@@ -497,6 +443,7 @@ async function install() {
       const changedName = event.detail?.attribute?.name;
       if (!changedName || changedName === selectedAttributeName) activateCurrent({ announce:false });
     });
+    installV39EffectSettingsUiState();
   } catch (error) {
     console.error("[エフェクト属性設定] 属性一覧の初期化失敗", error);
     setStatus(`属性一覧を読み込めませんでした: ${String(error?.message || error)}`, true);

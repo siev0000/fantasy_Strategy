@@ -1,0 +1,15 @@
+{
+  "facilityNames": ["魔術工房", "魂の保管庫"],
+  "materialRadius": 2,
+  "territoryWideMaterials": true,
+  "animationMs": 900,
+  "experienceBaseWeight": 1,
+  "experienceAcquiredClassWeight": 1,
+  "testRecipe": {
+    "素材": "ホース_1,デヴィル_1",
+    "合成結果": "テスト・バイコーン",
+    "ボーナスクラス": "エヴォリューション・ホーン",
+    "状態": "テスト専用",
+    "備考": "既存クラスだけで実行する検証用。正式バイコーンの代用データではありません。"
+  }
+}

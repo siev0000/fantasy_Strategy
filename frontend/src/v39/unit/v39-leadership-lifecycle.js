@@ -51,7 +51,7 @@ export function normalizeV39Leadership(player) {
 let applying = false;
 function reconcile() {
   if (applying) return;
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   if (!state) return;
   const results = state.players.map(normalizeV39Leadership);
   if (!results.some(row => row.changed)) return;

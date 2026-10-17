@@ -605,7 +605,8 @@ async function applyMovement() {
     }), ctx.data);
     window.updateV39ActiveFactionState({
       units:movement.faction.units.map(member => currentGroup.participantIds.includes(unitId(member))
-        ? { ...member, lastActionTurn:window.getV39GameState?.()?.timeline?.turnNumber } : member),
+        ? { ...member, lastActionTurn:window.getV39GameState?.()?.timeline?.turnNumber,
+          ...(member.squadMoveMode==='gather'?{squadMoveMode:'independent',squadGather:null}:{}) } : member),
       squads:movement.faction.squads,
       selectedUnitId:session.unitId,
       moveCommandUnitId:""

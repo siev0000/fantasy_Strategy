@@ -139,7 +139,7 @@ function activeScene() {
 }
 
 function gameState() {
-  return typeof window.getV39GameState === "function" ? window.getV39GameState() : null;
+  return typeof window.getV39GameState === "function" ? window.getV39GameState({includeWorlds:false}) : null;
 }
 
 function activePlayer(state) {

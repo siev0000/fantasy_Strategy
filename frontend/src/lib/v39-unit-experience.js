@@ -3,6 +3,7 @@ import { V39_UNIT_EXP_BALANCE, V39_UNIT_INITIAL_LEVEL_BALANCE } from "./v39-game
 import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { RACE_CLASS_NAME_MAP } from "../constants/unitCommon.js";
 import { resolveV39FacilityClassGrowth } from "./v39-facility-growth-rules.js";
+import fusionDefaults from '../../../config/v39-fusion-defaults.json';
 
 export const V39_UNIT_LEVEL_CAP = 120;
 export const V39_UNIT_EXP_LEVEL_SPLIT = 15;
@@ -75,6 +76,10 @@ export function resolveV39UnitExpProgress(totalExpRaw, levelRaw, category = "oth
 export function resolveV39UnitExpDisplay(unit = {}) {
   const category = resolveV39UnitRaceCategory(unit);
   const level = Math.max(1, Math.floor(number(unit?.level, 1)));
+  if(unit.fusionGrowth){
+    const exp=Math.max(0,number(unit.fusionGrowth.baseExp)),need=Math.max(1,number(unit.fusionGrowth.baseNeed,1));
+    return {exp,need,totalExp:number(unit.totalExp),category,level,percent:Math.min(100,exp/need*100)};
+  }
   const baseline = resolveV39UnitTotalExpForLevel(level, category);
   const totalExp = Math.max(baseline, Math.floor(number(unit?.totalExp, number(unit?.status?.totalExp, baseline))));
   const progress = resolveV39UnitExpProgress(totalExp, level, category);
@@ -300,6 +305,7 @@ export function resolveV39ExperienceRecipientIds(factionState = {}, attackerIdRa
 }
 
 export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
+  if(unit.fusionGrowth?.levelsByClass)return grantFusionExperience(unit,amountRaw);
   const requestedAmount = Math.max(0, Math.floor(number(amountRaw)));
   const category = resolveV39UnitRaceCategory(unit);
   const fromLevel = Math.max(1, Math.floor(number(unit?.level, 1)));
@@ -335,6 +341,36 @@ export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
     toLevel:level,
     leveledUp:level > fromLevel
   };
+}
+
+// Fusion fractions belong to separate growth pools; never silently discard or add them twice.
+function grantFusionExperience(unit,amountRaw) {
+  const amount=Math.max(0,Math.floor(number(amountRaw))),fromLevel=unit.level;
+  const growth=structuredClone(unit.fusionGrowth),levels=growth.levelsByClass;
+  const targets=['',...Object.keys(growth.classExp)];
+  const baseWeight=Math.max(1,Number(fusionDefaults.experienceBaseWeight)||1),classWeight=Math.max(1,Number(fusionDefaults.experienceAcquiredClassWeight)||1);
+  const weight=baseWeight+classWeight*(targets.length-1);
+  growth.baseExp+=amount*baseWeight/weight;
+  for(const name of targets.slice(1))growth.classExp[name]+=amount*classWeight/weight;
+  let level=fromLevel,changed=true;
+  while(changed&&level<V39_UNIT_LEVEL_CAP){
+    changed=false;
+    for(const name of targets){
+      if(level>=V39_UNIT_LEVEL_CAP)break;
+      const need=name?resolveV39UnitExpNeed(levels[name]||0,resolveV39UnitRaceCategory({race:name})):growth.baseNeed;
+      const exp=name?growth.classExp[name]:growth.baseExp;
+      if(exp+1e-9<need)continue;
+      const target=name||unit.className;
+      levels[target]=(levels[target]||0)+1;level++;changed=true;
+      if(name)growth.classExp[name]=Math.max(0,exp-need);
+      else {growth.baseExp=Math.max(0,exp-need);growth.baseLevel++;growth.baseNeed=resolveV39UnitExpNeed(growth.baseLevel,resolveV39UnitRaceCategory(unit));}
+    }
+  }
+  const prerequisiteClassLevels=Object.fromEntries(Object.entries(levels).filter(([name])=>name!==unit.race&&name!==unit.className));
+  const next=applyV39DerivedCharacterData({...unit,level,fusionGrowth:growth,prerequisiteClassLevels});
+  const hp=Math.min(next.maxHp,Math.floor(next.maxHp*Math.max(0,number(unit.hp??unit.currentHp))/Math.max(1,unit.maxHp)));
+  const exp=growth.baseExp,totalExp=resolveV39UnitTotalExpForLevel(level,resolveV39UnitRaceCategory(unit))+exp;
+  return {unit:{...next,hp,currentHp:hp,exp,totalExp,status:{...next.status,exp,totalExp}},amount,fromLevel,toLevel:level,leveledUp:level>fromLevel};
 }
 
 // 作業EXPは担当者本人へ付与し、小数を行動別に持ち越す。戦闘の部隊分配とは分離する。

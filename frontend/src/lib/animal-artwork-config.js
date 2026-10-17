@@ -42,22 +42,14 @@ export const 動物属性クラス対応 = Object.freeze({
   ムーンアニマル:"月"
 });
 
-// 強敵の追加クラス候補。ホースのみ天使・悪魔を候補に加える。
-export const 強敵動物追加クラス候補 = Object.freeze(Object.keys(動物属性クラス対応));
-export const 強敵ホース追加クラス候補 = Object.freeze([...強敵動物追加クラス候補, "エンジェル", "デヴィル"]);
 export const 属性ホース名称 = Object.freeze({ エンジェル:"ユニコーン", デヴィル:"バイコーン" });
-
-export function getStrongAnimalClassCandidates(race) {
-  if (!対象別画像.has(`通常${race}`)) return [];
-  return race === "ホース" ? 強敵ホース追加クラス候補 : 強敵動物追加クラス候補;
-}
 
 export function resolveAnimalArtworkReference(enemy = {}) {
   const names = [enemy.race, enemy.種族, enemy.raceName, enemy.speciesName, enemy.種族名, enemy.name]
     .map(value => String(value || "").trim());
   const species = names.find(name => 対象別画像.has(`通常${name}`));
   if (!species) return null;
-  const classes = [enemy.strongAnimalClassName, enemy.className, enemy.subClass, enemy.subclass, enemy.サブクラス]
+  const classes = [enemy.fusionAppearanceClass, enemy.strongAnimalClassName, enemy.className, enemy.subClass, enemy.subclass, enemy.サブクラス]
     .map(value => String(value || "").trim());
   if (species === "ホース") {
     const target = classes.map(name => 属性ホース名称[name]).find(Boolean);

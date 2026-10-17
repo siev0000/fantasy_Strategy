@@ -5,6 +5,7 @@ const half=value=>Math.floor(Math.max(0,Number(value)||0)/2);
 
 // 基礎種族ボーナス(+5)はLvではない。実際の種族・各取得職のLvを個別に半減する。
 export function buildV39UndeadInheritance(original,undeadClass='ゾンビ') {
+  if(original?.soulCollected)return null;
   const derived=deriveV39CharacterFromRaceClass(original);
   if(!derived.ok)return null;
   const classes={...derived.prerequisiteClassLevels};

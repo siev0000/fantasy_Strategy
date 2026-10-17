@@ -2,6 +2,7 @@ import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
 import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 import "./v39-unit-detail.css";
+import {EQUIPMENT_SLOT_KEYS} from '../../constants/unitCommon.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -22,6 +23,33 @@ export function renderV39DetailTabs(tabs, active, attribute) {
   return `<div class="squad-detail-tabs" style="--v39-detail-tab-count:${tabs.length}" role="tablist" aria-label="キャラクター詳細">${tabs.map(([key, label]) =>
     `<button type="button" class="squad-detail-tab${key === active ? " active" : ""}" ${attribute}="${escapeHtml(key)}" role="tab" aria-selected="${key === active}">${escapeHtml(label)}</button>`
   ).join("")}</div>`;
+}
+
+export function renderV39UnitEquipment(unit,{readOnly=true,disabled=false}={}){
+  const equipment=Array.isArray(unit?.equipment)?unit.equipment:[];
+  return `<div class="v39-char-equipment-list">${EQUIPMENT_SLOT_KEYS.map(slot=>{
+    const item=equipment.find(row=>row.slot===slot);
+    const quality=item?.qualityLabel||item?.quality;
+    const content=`<span>${escapeHtml(slot)}</span><b>${escapeHtml(item?.name||'なし')}${quality?` [${escapeHtml(quality)}]`:''}</b>`;
+    return readOnly?`<div class="v39-char-equipment-row">${content}</div>`
+      :`<button type="button" class="v39-char-equipment-row" data-v39-character-equip-open="${escapeHtml(slot)}"${disabled?' disabled':''}>${content}</button>`;
+  }).join('')}</div>`;
+}
+
+export function renderV39UnitGrowth(unit){
+  const derived=unit?.derivedCharacter||{},number=value=>Math.max(0,Math.floor(Number(value)||0));
+  const rows=[['総合Lv',Math.max(1,number(unit?.level))],
+    [`${unit?.race||'種族'} Lv`,derived.growthCaps?.raceLevels>0?`${number(derived.raceLevels)} / ${derived.growthCaps.raceLevels}`:number(derived.raceLevels)],
+    [`${unit?.className||'クラス'} Lv`,derived.growthCaps?`${number(derived.classLevels)} / ${derived.growthCaps.classLevels}`:number(derived.classLevels)]];
+  for(const [name,levels] of Object.entries(derived.prerequisiteClassLevels||{}))rows.push([`${name} Lv`,levels]);
+  const second=derived.secondClassName||unit?.secondClassName||unit?.subClassName;
+  if(second)rows.push([`${second} Lv`,1]);
+  if(derived.strongAnimalClassName)rows.push([`${derived.strongAnimalClassName} Lv`,derived.strongAnimalClassLevel]);
+  if(unit?.fusionGrowth){
+    rows.push(['合体・基礎EXP',`${Number(unit.fusionGrowth.baseExp||0).toFixed(1)} / ${unit.fusionGrowth.baseNeed}`]);
+    for(const [name,exp] of Object.entries(unit.fusionGrowth.classExp||{}))rows.push([`${name} EXP`,Number(exp).toFixed(1)]);
+  }
+  return `<div class="v39-char-growth-list">${rows.map(([label,value])=>`<div class="v39-char-growth-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div>`;
 }
 
 export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {

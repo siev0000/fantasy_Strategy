@@ -39,7 +39,17 @@ try {
     await inspect("鍛冶Lv:2:製作効率Ⅰ");
     assert.equal(await page.locator("[data-select-research]").isEnabled(),true);
     await page.locator("[data-select-research]").click();
-    await page.evaluate(()=>{window.addV39ResearchExperience("鍛冶Lv",37);window.importV39SaveJson(window.exportV39SaveJson());window.openV39Research("鍛冶Lv");});
+    await page.locator('.v39-research-efficiency > summary').click();
+    const retained=await page.evaluate(()=>{
+      const select=document.querySelector('[data-research-assignee]'),board=document.querySelector('.v39-research-board'),item=document.querySelector('[data-research-item="鍛冶Lv:2:製作効率Ⅰ"]');select.focus();
+      for(let i=0;i<10;i++)window.dispatchEvent(new CustomEvent('v39:game-state-changed'));
+      const unchanged=select===document.querySelector('[data-research-assignee]')&&board===document.querySelector('.v39-research-board')&&item===document.querySelector('[data-research-item="鍛冶Lv:2:製作効率Ⅰ"]')&&document.activeElement===select;
+      window.addV39ResearchExperience('鍛冶Lv',7);
+      return {unchanged,changed:select===document.querySelector('[data-research-assignee]')&&document.activeElement===select,expanded:document.querySelector('.v39-research-efficiency').open,
+        exp:window.getV39ResearchState().progress.targetExpMap['鍛冶Lv:2:製作効率Ⅰ']};
+    });
+    assert(retained.unchanged&&retained.changed&&retained.expanded,'updates retain research inputs, board, cards and open explanation');assert.equal(retained.exp,7);
+    await page.evaluate(()=>{window.addV39ResearchExperience("鍛冶Lv",30);window.importV39SaveJson(window.exportV39SaveJson());window.openV39Research("鍛冶Lv");});
     assert.equal(await page.evaluate(()=>window.getV39ActiveFactionState().research.progress.targetExpMap["鍛冶Lv:2:製作効率Ⅰ"]),37);
     await page.locator("[data-research-view]").selectOption("list");
     assert.equal(await page.locator(".v39-research-level").count(),4);

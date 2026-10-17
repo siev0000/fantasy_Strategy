@@ -10,6 +10,7 @@ import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
 import { unitCurrentAp } from "../../lib/v39-squad-movement-rules.js";
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import { advanceV39CaveNestProgress } from "../../lib/v39-cave-nest-rules.js";
+import {resolveV39EnemyCombatProfile} from '../../lib/v39-enemy-formation.js';
 
 const alive = unit => Number(unit?.hp ?? unit?.currentHp ?? 0) > 0;
 const key = unit => `${unit.x},${unit.y}`;
@@ -61,16 +62,16 @@ function arrivalPlan(map,conquest){
   const foodKeys=resolveV39ConsumableFoodKeys(definition.race,FOOD_RESOURCE_KEYS,NORMAL_FOOD_RESOURCE_KEYS);
   const bonus=map.caveTest?(map.caveDifficultyHeight||0)*window.getV39EnemySpawnRules().terrainLevelStep
     :Math.max(0,map.caveFloor-1)*V39_CAVE_BALANCE.floorLevelStep;
-  const level=Math.min(V39_CAVE_BALANCE.adventureEnemyLevelCap,definition.maxLevel+bonus);
+  const level=Math.min(V39_CAVE_BALANCE.adventureEnemyLevelCap,definition.maxLevel);
   return {race:definition.race,className:definition.className,name:definition.name,image:definition.row.画像,
-    definitionId:definition.definitionId,level,bossLevel:Math.min(V39_CAVE_BALANCE.adventureEnemyLevelCap,level+V39_CAVE_BALANCE.bossLevelBonus),
+    definitionId:definition.definitionId,level,combatProfile:resolveV39EnemyCombatProfile(definition.row),bossLevel:Math.min(V39_CAVE_BALANCE.adventureEnemyLevelCap,level+bonus+V39_CAVE_BALANCE.bossLevelBonus),
     settlerCount:Math.max(1,Math.floor(rules.requiredSameRaceUnits)),requiresFood:foodKeys.length>0,
     foodResource:foodKeys[0]||"",foodAmount:Math.max(0,Number(rules.arrivalFoodAmount)||0)};
 }
 
 function spawnNest(map,state,plan,turnNumber){
   const generation=(map.caveConquest.generation||0)+1,nestId=`${map.id}-recolonized-${generation}`;
-  const template=createV39EventEnemy({id:`${nestId}-probe`,race:plan.race,className:plan.className,level:plan.level,x:0,y:0});
+  const template=createV39EventEnemy({id:`${nestId}-probe`,race:plan.race,className:plan.className,level:plan.level,x:0,y:0,combatProfile:plan.combatProfile});
   if(!template)return null;
   const occupied=new Set([...state.enemies,...state.players.flatMap(player=>player.factionState.units)].filter(alive).map(key));
   if(map.caveEventNpc)occupied.add(key(map.caveEventNpc));
@@ -97,6 +98,7 @@ function spawnNest(map,state,plan,turnNumber){
     const boss=index===positions.length-1;
     const enemy=createV39EventEnemy({id:`${nestId}-${boss?"boss":index}`,name:`${plan.name}${boss?"（ボス）":""}`,
       race:plan.race,className:plan.className,level:boss?plan.bossLevel:plan.level,...position,
+      combatProfile:boss?null:plan.combatProfile,
       metadata:{image:plan.image,spawnTerrain:"洞窟",sourceDefinitionId:plan.definitionId,spawnType:"洞窟再巣化",aggressive:true,enemySquadId:squadId}});
     return enemy?{...enemy,worldId:state.activeWorldId,isCaveBoss:boss,nestId,nestType:plan.race,
       territoryCenterX:center.x,territoryCenterY:center.y,territoryRadius:radius}:null;

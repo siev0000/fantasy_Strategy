@@ -16,6 +16,7 @@ import { inspectV39CaveMine, createV39CaveMine, advanceV39CaveMine } from "../..
 import { renderV39CaveConquestChoice, advanceV39CaveConquest } from "./v39-cave-conquest.js";
 import { createV39CaveEventNpc } from "./v39-cave-events.js";
 import { collectV39MovementOccupancy } from "../../lib/v39-movement-occupancy-rules.js";
+import {v39SquadMoveMode} from '../../lib/v39-squad-coordination.js';
 import { playV39UnitMovementPath } from "../unit/v39-unit-movement.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { assignV39MineDuty, advanceV39MineDuties, advanceV39CaveIntrusions } from "../../lib/v39-cave-operations.js";
@@ -100,7 +101,9 @@ export function enterV39Cave(options={}){
   const player=state.players.find(row=>row.id===state.activePlayerId);
   if(!player?.factionState.units.length)throw new Error("探索するユニットがいません。");
   const squad=player.factionState.squads.find(row=>row.unitIds?.includes(selected?.id));
-  const ids=new Set(options.unitIds||squad?.unitIds||[selected?.id||player.factionState.units[0].id]);
+  const actor=selected||player.factionState.units[0];
+  const ids=new Set(options.unitIds||(v39SquadMoveMode(actor)!=='follow'?[actor.id]:
+    (squad?.unitIds||[actor.id]).filter(id=>v39SquadMoveMode(player.factionState.units.find(unit=>unit.id===id))==='follow')));
   const surfaceMap=window.__v39FieldRuntime?.mapData;
   if(options.caveTest!==true&&(state.activeWorldId||"surface")==="surface"){
     const group=groupV39SurfaceCaves(surfaceMap).find(row=>row.some(tile=>tile.x===selected?.x&&tile.y===selected?.y));
@@ -167,7 +170,7 @@ export function leaveV39Cave(){
   if(map?.entrances?.some(tile=>tile.surfaceEntrance)&&!exit?.surfaceEntrance)throw new Error("地上への入口に移動してください。");
   const faction=state.players.find(player=>player.id===state.activePlayerId)?.factionState;
   const squad=faction?.squads.find(row=>row.unitIds?.includes(actor?.id));
-  const ids=new Set(squad?.unitIds||[actor?.id]);
+  const ids=new Set(v39SquadMoveMode(actor)!=='follow'?[actor?.id]:(squad?.unitIds||[actor?.id]).filter(id=>v39SquadMoveMode(faction.units.find(unit=>unit.id===id))==='follow'));
   const members=faction.units.filter(unit=>ids.has(unit.id)&&isV39UnitInWorld(unit,state.activeWorldId)&&Number(unit.hp??unit.currentHp)>0);
   if(resolveV39MovementLeader(squad,members)?.movementHold)throw new Error("移動先頭がその場待機中です。解除するか先頭を変更してください。");
   const outgoing=members.filter(unit=>!unit.movementHold);
@@ -222,7 +225,7 @@ function installActions(){
     try{window.getV39GameState().activeWorldId==="surface"?enterV39Cave():leaveV39Cave();}
     catch(error){window.showV39TurnBanner?.(error.message);}
   });list.appendChild(button);}
-  const state=window.getV39GameState(),unit=window.getV39SelectedSquadUnit?.(),map=window.__v39FieldRuntime?.mapData;
+  const state=window.getV39GameState({includeWorlds:false}),unit=window.getV39SelectedSquadUnit?.(),map=window.__v39FieldRuntime?.mapData;
   const underground=state.activeWorldId!=="surface";
   const entrance=underground?map?.entrances?.some((tile,index)=>tile.x===unit?.x&&tile.y===unit?.y&&(map.parentWorldId?index===0:!!tile.surfaceEntrance||(!map.entrances.some(entry=>entry.surfaceEntrance)&&index===0))):isV39CaveEntranceDiscovered(state.players.find(player=>player.id===state.activePlayerId)?.factionState,map,unit?.x,unit?.y);
   button.hidden=!entrance;
@@ -235,7 +238,6 @@ function installActions(){
   descend.disabled=!!window.isV39MapInputLocked?.();
   renderMineActions(list,state,unit,map);
   renderV39CaveConquestChoice(list,state,unit,map,()=>commitMineAction(false));
-  renderPartyOrder();
   renderSiteActions();
 }
 
@@ -281,25 +283,44 @@ function commitMineAction(collect){
   return {ok:true,mine};
 }
 
+function updateMineOptions(select,rows){
+  const selected=select.value,existing=new Map([...select.options].map(option=>[option.value,option]));
+  let cursor=select.firstElementChild;
+  for(const row of rows){
+    const option=existing.get(row.id)||document.createElement('option');
+    existing.delete(row.id);option.value=row.id;
+    if(option.textContent!==row.label)option.textContent=row.label;
+    if(option!==cursor)select.insertBefore(option,cursor);
+    cursor=option.nextElementSibling;
+  }
+  for(const option of existing.values())option.remove();
+  if(rows.some(row=>row.id===selected))select.value=selected;
+}
+
 function renderMineActions(list,state,actor,map){
   let operations=document.getElementById("v39-mine-operations");
   if(!operations){operations=document.createElement("div");operations.id="v39-mine-operations";operations.className="system-action-card";list.appendChild(operations);}
-  operations.replaceChildren();
   operations.hidden=map?.caveMine?.ownerPlayerId!==state.activePlayerId;
+  const context=`${state.activePlayerId}:${state.activeWorldId}`;
+  if(operations.dataset.context!==context){operations.replaceChildren();operations.dataset.context=context;}
   if(map?.caveMine?.ownerPlayerId===state.activePlayerId){
     const player=state.players.find(row=>row.id===state.activePlayerId);
+    if(!operations.firstChild){
     const title=document.createElement("b");title.textContent="鉱床の運搬・入口警備";operations.appendChild(title);
     const units=document.createElement("select");units.id="v39-mine-duty-unit";units.setAttribute("aria-label","担当軍隊");
-    for(const unit of player.factionState.units.filter(unit=>Number(unit.hp)>0&&String(unit.unitType).includes("軍隊")&&!unit.isNamed)){
-      const option=document.createElement("option");option.value=unit.id;option.textContent=`${unit.name} ${unit.caveDuty?.status||"任務なし"}`;units.appendChild(option);
-    }
     const settlements=document.createElement("select");settlements.id="v39-mine-duty-settlement";settlements.setAttribute("aria-label","搬入先拠点");
-    for(const settlement of player.factionState.settlements.filter(row=>row.placed)){const option=document.createElement("option");option.value=settlement.id;option.textContent=settlement.name||settlement.id;settlements.appendChild(option);}
     operations.append(units,settlements);
     for(const [duty,label] of [["transport","自動輸送"],["guard","入口警備"],["none","任務解除"]]){
       const button=document.createElement("button");button.type="button";button.textContent=label;button.dataset.mineDuty=duty;button.disabled=!units.options.length;
       button.addEventListener("click",()=>{const result=window.assignV39MineDuty(units.value,duty,settlements.value);window.showV39TurnBanner?.(result.ok?`${label}を指定しました`:result.reason);renderSiteActions();});operations.appendChild(button);
     }
+    }
+    const units=operations.querySelector('#v39-mine-duty-unit');
+    updateMineOptions(units,player.factionState.units.filter(unit=>Number(unit.hp)>0&&String(unit.unitType).includes('軍隊')&&!unit.isNamed)
+      .map(unit=>({id:unit.id,label:`${unit.name} ${unit.caveDuty?.status||'任務なし'}`})));
+    updateMineOptions(operations.querySelector('#v39-mine-duty-settlement'),player.factionState.settlements.filter(row=>row.placed)
+      .map(settlement=>({id:settlement.id,label:settlement.name||settlement.id})));
+    operations.querySelectorAll('[data-mine-duty]').forEach(button=>button.disabled=!units.options.length||!!window.isV39MapInputLocked?.());
   }
   // 旧セーブに残っているボスも、除去される前に攻略対象IDを保存する。
   if(map?.isUnderground&&!map.caveBossIds)map.caveBossIds=state.enemies.filter(unit=>unit.isCaveBoss).map(unit=>unit.id);
@@ -346,13 +367,13 @@ async function applyCavePartyOrder(faction,squad,order,keepHeld=false){
   const state=window.getV39GameState(),runtime=window.__v39FieldRuntime,map=runtime?.mapData;
   const byId=new Map(faction.units.map(unit=>[unit.id,unit]));
   // 先頭の明示変更では待機者を残す。前へ/後ろへの位置交換は解除してから行う。
-  const fixed=id=>keepHeld&&byId.get(id)?.movementHold;
+  const fixed=id=>keepHeld&&(byId.get(id)?.movementHold||v39SquadMoveMode(byId.get(id))!=='follow');
   const previous=squad.unitIds.filter(id=>!fixed(id)),next=order.filter(id=>!fixed(id));
   const changed=next.map((id,index)=>({unit:byId.get(id),target:byId.get(previous[index])}))
     .filter((row,index)=>next[index]!==previous[index]);
   const unavailable=changed.some(({unit,target})=>!unit||!target||Number(unit.hp??unit.currentHp)<=0
-    ||!isV39UnitInWorld(unit,state.activeWorldId)||unit.movementHold);
-  if(unavailable){showV39Feedback("同じ階層の生存者で、その場待機を解除してから隊列を変更してください");return false;}
+    ||!isV39UnitInWorld(unit,state.activeWorldId)||unit.movementHold||['independent','gather'].includes(unit.squadMoveMode));
+  if(unavailable){showV39Feedback("同じ階層の生存者を追従に戻し、その場待機を解除してから隊列を変更してください");return false;}
   if(changed.some(({unit})=>isV39UnitWaiting(unit,state.timeline.turnNumber))){
     showV39Feedback("このターン待機済みのキャラクターは隊列交換で移動できません");return false;
   }
@@ -420,6 +441,7 @@ export async function setV39CaveMovementLeader(unitId){
   const faction=window.getV39ActiveFactionState(),actor=faction.units.find(unit=>unit.id===unitId);
   const squad=faction.squads.find(row=>row.unitIds?.includes(unitId));
   if(!squad||!actor||Number(actor.hp??actor.currentHp)<=0)return false;
+  if(v39SquadMoveMode(actor)!=='follow'){showV39Feedback('追従に戻してから移動先頭を変更してください');return false;}
   const order=[unitId,...squad.unitIds.filter(id=>id!==unitId)];
   return applyCavePartyOrder(faction,squad,order,true);
 }
@@ -522,10 +544,12 @@ function renderSiteActions(){
   const list=document.getElementById("detailTechniqueList"),map=window.__v39FieldRuntime?.mapData,actor=window.getV39SelectedSquadUnit?.();
   if(!list)return;
   const expandedSite=list.querySelector('[data-v39-cave-site].is-expanded')?.dataset.v39CaveSite;
-  list.querySelectorAll("[data-v39-cave-site]").forEach(button=>button.remove());
-  if(!map?.isUnderground||!actor)return;
-  const state=window.getV39GameState();if(!isV39UnitInWorld(actor,state.activeWorldId))return;
+  const previous=new Map([...list.querySelectorAll('[data-v39-cave-site]')].map(node=>[node.dataset.v39CaveSite,node]));
+  const removePrevious=()=>{for(const node of previous.values())node.remove();};
+  if(!map?.isUnderground||!actor){removePrevious();return;}
+  const state=window.getV39GameState({includeWorlds:false});if(!isV39UnitInWorld(actor,state.activeWorldId)){removePrevious();return;}
   const game=siteGame(state,actor);
+  let cursor=previous.values().next().value||document.getElementById('detailTechniqueRows');
   for(const site of map.caveSites||[]){
     if(site.wall)continue;
     if(!site.discovered||site.remaining<=0||site.x!==actor.x||site.y!==actor.y)continue;
@@ -549,10 +573,17 @@ function renderSiteActions(){
     const use=detail.querySelector("button");
     use.disabled=!!reason;
     button.title=reason;button.classList.toggle("unavailable",use.disabled);
-    use.addEventListener("click",event=>{event.stopPropagation();interactSite(site);});
-    list.insertBefore(button,document.getElementById("detailTechniqueRows"));
+    use.onclick=event=>{event.stopPropagation();interactSite(site);};
     if(expandedSite===site.id){button.classList.add("is-expanded");button.setAttribute("aria-expanded","true");}
+    const old=previous.get(site.id);
+    let next=button;
+    if(old&&old.outerHTML===button.outerHTML){next=old;old.querySelector('[data-v39-system-use]').onclick=use.onclick;}
+    else if(old){if(cursor===old)cursor=old.nextElementSibling;old.remove();}
+    previous.delete(site.id);
+    if(next!==cursor)list.insertBefore(next,cursor);
+    cursor=next.nextElementSibling;
   }
+  removePrevious();
 }
 
 function interactSite(site){
@@ -581,7 +612,7 @@ function interactSite(site){
 function inspectCaveGather(){
   const map=window.__v39FieldRuntime?.mapData,actor=window.getV39SelectedSquadUnit?.();
   if(!map?.isUnderground)return null;
-  const state=window.getV39GameState();
+  const state=window.getV39GameState({includeWorlds:false});
   const nearby=new Set(actor&&isV39UnitInWorld(actor,state.activeWorldId)?getHexNeighborCoords(map.w,map.h,actor.x,actor.y).map(tile=>tile.key):[]);
   const hasTarget=map.caveSites?.some(row=>row.wall&&row.discovered&&row.remaining>0&&nearby.has(`${row.x},${row.y}`))||false;
   const site=map.caveSites?.find(row=>row.wall&&row.discovered&&row.x===selectedGatherTile?.x&&row.y===selectedGatherTile?.y);

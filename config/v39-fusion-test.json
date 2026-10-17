@@ -1,0 +1,12 @@
+{
+  "description": "合体専用テストのみ。原本レシピの素材から登録済みクラスを配置する。",
+  "minimumCopies": 2,
+  "defaultLevel": 10,
+  "materialRadius": 6,
+  "territoryRadius": 6,
+  "actorPosition": {"x":3,"y":4},
+  "fixedMaterials": [
+    {"id":"fusion-test-horse","race":"ホース","level":5,"x":2,"y":4,"imageFile":"狼・馬_ユニット集.webp","imageIndex":7},
+    {"id":"fusion-test-devil","race":"デヴィル","level":6,"x":3,"y":5,"imageFile":"デヴィル_ユニット集.webp","imageIndex":1}
+  ]
+}

@@ -31,6 +31,7 @@ try {
     window.activateV39FooterTab("settlement");
   });
   await page.addStyleTag({content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}"});
+  await page.locator('[data-settlement-page-select="operation"]').click();
   await page.locator('[data-settlement-fold="transport"] summary').click();
   assert.equal(await page.locator('[data-unit-transport="輸送候補"]').count(),1);
   assert.equal(await page.locator('[data-unit-transport="町の付属マス"]').count(),1);

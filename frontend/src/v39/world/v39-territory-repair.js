@@ -4,7 +4,7 @@ import { getFactionSettlements, replaceFactionSettlement } from "../../lib/settl
 const text = value => String(value ?? "").trim();
 
 function commitRepair(playerId, settlementId, turnNumber, reason) {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   const result = applyV39TerritoryRepair(state, playerId, settlementId, turnNumber);
   if (!result.reports.length) return result;
   window.setV39GameState?.({ players:result.state.players, territoryStateByTile:result.state.territoryStateByTile }, { reason });
@@ -18,7 +18,7 @@ function commitRepair(playerId, settlementId, turnNumber, reason) {
 }
 
 function setAutoRepair(playerId, settlementId, enabled) {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const settlement = getFactionSettlements(player?.factionState).find(row => text(row?.settlementId) === text(settlementId));
   if (!player || !settlement) return false;
@@ -31,14 +31,14 @@ function setAutoRepair(playerId, settlementId, enabled) {
 window.runV39TerritoryRepair = (playerId, settlementId) => commitRepair(
   playerId,
   settlementId,
-  window.getV39GameState?.()?.timeline?.turnNumber || 1,
+  window.getV39GameState?.({includeWorlds:false})?.timeline?.turnNumber || 1,
   "territory-manual-repair"
 );
-window.inspectV39TerritoryRepair = (playerId, settlementId) => inspectV39TerritoryRepair(window.getV39GameState?.(), playerId, settlementId);
+window.inspectV39TerritoryRepair = (playerId, settlementId) => inspectV39TerritoryRepair(window.getV39GameState?.({includeWorlds:false}), playerId, settlementId);
 window.setV39TerritoryAutoRepair = setAutoRepair;
 
 window.addEventListener("v39:economy-turn-resolved", event => {
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   const turnNumber = event?.detail?.turnNumber || state?.timeline?.turnNumber || 1;
   for (const player of state?.players || []) {
     for (const settlement of getFactionSettlements(player?.factionState)) {
