@@ -43,7 +43,10 @@
       .squad-detail-pane .squad-detail-section-body{min-width:0;margin-top:0;padding:3px!important}
       .squad-detail-pane .squad-detail-stats{gap:2px!important}
       .squad-detail-pane .v39-char-status-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}
-      .squad-detail-pane .detail-stat{min-height:48px!important;padding:5px 4px!important;gap:2px!important}
+      .squad-detail-pane .detail-stat{
+        min-height:48px!important;padding:5px 4px!important;gap:6px!important;
+        display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:space-between!important
+      }
       .squad-detail-pane .detail-stat span{font-size:var(--font-secondary)!important}
       .squad-detail-pane .detail-stat b{font-size:var(--font-body)!important}
       .squad-detail-pane .proficiency-grid{gap:2px!important}
