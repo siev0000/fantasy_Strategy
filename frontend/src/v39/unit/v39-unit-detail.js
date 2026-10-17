@@ -10,8 +10,8 @@ const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replace
 // 項目・表示名・順序はフィールドと自キャラ画面で共有する。
 const STATUS_FIELDS = [
   ["攻撃", "攻撃", "detailAtk"], ["防御", "防御", "detailDef"],
-  ["魔力", "魔攻", "detailMatk"], ["精神", "魔防", "detailMdef"],
-  ["命中", "命中", "detailHit"], ["速度", "速さ", "detailSpd"],
+  ["魔力", "魔力", "detailMatk"], ["精神", "精神", "detailMdef"],
+  ["命中", "命中", "detailHit"], ["速度", "速度", "detailSpd"],
   ["SIZ", "SIZ", "detailSiz"], ["移動", "移動", "detailMov"]
 ];
 
