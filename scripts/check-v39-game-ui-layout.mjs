@@ -26,6 +26,18 @@ try {
     for(const tab of ['status','skills','equipment','growth']) {
       await page.locator(`[data-v39-character-detail-tab="${tab}"]`).click();
       assert(await page.locator('#characterModal .v39-char-detail-panel').isVisible());
+      if(tab==='status') {
+        const cells=await page.locator('#characterModal .squad-detail-stats .detail-stat').evaluateAll(nodes=>nodes.map(node=>{
+          const rect=node.getBoundingClientRect();return {label:node.querySelector('span').textContent,x:rect.x,y:rect.y};
+        }));
+        assert.deepEqual(cells.map(cell=>cell.label),['攻撃','防御','魔力','精神','命中','速度','SIZ','移動']);
+        for(let i=0;i<cells.length;i+=2){
+          assert(Math.abs(cells[i].y-cells[i+1].y)<1,'paired statuses share a row');
+          assert(cells[i].x<cells[i+1].x,'paired statuses have left/right order');
+          if(i>0)assert(cells[i].y>cells[i-2].y,'exactly two columns');
+        }
+        await page.screenshot({path:`${out}/status-${width}.png`});
+      }
     }
     await page.screenshot({path:`${out}/squad-${width}.png`});
     await bounds('#characterModal .modal');

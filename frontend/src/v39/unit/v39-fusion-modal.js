@@ -63,10 +63,10 @@ function render(){
   const list=candidates.map(u=>{
     const blocked=candidateReasons(state,check,u);
     return `<div class="fusion-candidate${blocked.length?' unavailable':''}" data-fusion-row="${esc(u.id)}">${renderV39UnitCard(u,{attribute:'data-fusion-candidate',selected:u.id===session.candidateId,
-      name:`${u.soulStored?'魂 · ':''}${u.name}`,dead:u.soulStored,position:u.soulStored?'魂 / 合成専用':undefined})}
+      name:`${u.soulStored?'魂 · ':u.facilityStored?'格納 · ':''}${u.name}`,dead:u.soulStored,position:u.soulStored?'魂 / 合成専用':u.facilityStored?`${u.facilityStored.name} (${u.facilityStored.tileKey})`:undefined})}
       ${blocked.length?`<small>${esc(blocked[0])}</small>`:''}</div>`;
   }).join('')||'<div class="squad-empty">条件を満たす種族・クラスがありません</div>';
-  const controls=session.created?`<button data-fusion-done>${session.animating?'演出をスキップ':'閉じる'}</button>`
+  const controls=session.created?`<button data-fusion-done>${session.animating?'演出をスキップ':'閉じる'}</button><button data-fusion-next>続けて合成</button>`
     :session.confirming?`<button data-fusion-back>戻る</button><button data-fusion-commit${check.available?'':' disabled'}>消費して合体する</button>`
     :`<button data-fusion-close>戻る</button><button data-fusion-choose${reasons.length?' disabled':''}>素材${session.activeSlot+1}に選ぶ</button><button data-fusion-confirm${check.available?'':' disabled'}>合体を確認</button>`;
   const status=session.created?'新しいユニットを作成しました。':session.message||
@@ -92,6 +92,11 @@ document.addEventListener('click',event=>{
   if(trigger){openV39FusionModal(trigger.dataset.v39FusionOpen,trigger.dataset.fusionMode||'skill');return;}
   if(!session||!el?.closest('#v39-fusion-modal'))return;
   if(el.closest('[data-fusion-close]')){close();return;}
+  if(el.closest('[data-fusion-next]')&&session.created){
+    clearTimeout(timer);timer=null;
+    Object.assign(session,{created:null,animating:false,busy:false,confirming:false,materials:[],materialIds:[],activeSlot:0,candidateId:'',detailSource:'material',expandedSkillName:'',message:'',lastDetailKey:null});
+    render();return;
+  }
   if(el.closest('[data-fusion-done]')){if(session.animating){clearTimeout(timer);session.animating=false;render();}else close();return;}
   const source=el.closest('[data-fusion-source]'),tab=el.closest('[data-fusion-detail-tab]');
   if(source){session.detailSource=source.dataset.fusionSource;render();return;}

@@ -1,4 +1,4 @@
-import settings from '../../../config/v39-soul-storage.json';
+import {getV39FacilityStorageRule} from './v39-facility-storage.js';
 import {applyV39DerivedCharacterData} from '../v39/unit/v39-character-derived-rules.js';
 import {getHexDistance} from './hex-grid.js';
 
@@ -7,7 +7,7 @@ const dead=u=>u&&(u.state==='死亡'||Number(u.hp??u.currentHp)<=0);
 export function getV39SoulArchives(state,playerId){
   const surface=(state.activeWorldId||'surface')==='surface'?state:state.explorationWorlds?.surface?.spatial;
   return Object.entries(surface?.facilitiesByTile||{}).filter(([tile,names])=>
-    surface.territoryOwnerByTile?.[tile]===playerId&&Array.isArray(names)&&names.includes(settings.facilityName))
+    surface.territoryOwnerByTile?.[tile]===playerId&&Array.isArray(names)&&names.some(name=>getV39FacilityStorageRule(name)?.type==='soul'))
     .map(([tile])=>{const [x,y]=tile.split(',').map(Number);return {x,y,key:tile};});
 }
 export function canUseV39StoredSouls(state,playerId,actor){

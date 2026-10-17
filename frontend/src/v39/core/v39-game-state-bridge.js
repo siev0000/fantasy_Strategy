@@ -4,6 +4,7 @@ import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "../.
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
+import {findV39NewUnitDeaths,applyV39DeathPurification} from '../../lib/v39-death-purification.js';
 import {
   normalizeV39LocalPlayerCount,
   normalizeV39LocalParticipantCount,
@@ -146,8 +147,9 @@ function normalizeFactionState(value = {}, ownerPlayerId = "", race = "只人") 
       settlementId:String(unit?.settlementId || fallbackSettlementId)
     })),
     squads: normalizeEntityArray(source.squads).map(normalizeV39SquadLogistics),
-    deadUnitReserve: normalizeEntityArray(source.deadUnitReserve),
+    deadUnitReserve: normalizeEntityArray(source.deadUnitReserve).map(entry=>entry.corpseStorage&&entry.unit?{...entry,unit:{...normalizeUnitArray([entry.unit])[0],hp:0,currentHp:0,state:'死亡'}}:entry),
     soulStorage:normalizeEntityArray(source.soulStorage).map(soul=>({...applyV39DerivedCharacterData({...soul,equipment:[]}),soulStored:true,state:'死亡',hp:0,currentHp:0})),
+    facilityStorage:normalizeEntityArray(cloneJson(source.facilityStorage,[])).filter(entry=>entry.unit?.id).map(entry=>({...entry,unit:normalizeUnitArray([entry.unit])[0]})),
     deathHistory: normalizeEntityArray(source.deathHistory),
     settlements: settlementState.settlements.map(row => normalizeV39Village(row, race)).filter(Boolean),
     selectedSettlementId: settlementState.selectedSettlementId,
@@ -257,8 +259,9 @@ function cloneFactionState(factionState = {}, race = "只人") {
     units: Array.isArray(factionState.units) ? factionState.units.map(cloneUnit) : [],
     unitTrainingQueue:(factionState.unitTrainingQueue || []).map(entry => ({...entry, unit:cloneUnit(entry.unit)})),
     squads: normalizeEntityArray(factionState.squads).map(normalizeV39SquadLogistics),
-    deadUnitReserve: normalizeEntityArray(factionState.deadUnitReserve),
+    deadUnitReserve: cloneJson(factionState.deadUnitReserve,[]),
     soulStorage:normalizeEntityArray(factionState.soulStorage),
+    facilityStorage:cloneJson(factionState.facilityStorage,[]),
     deathHistory: normalizeEntityArray(factionState.deathHistory),
     settlements: base.settlements.map(row => normalizeV39Village(row, race)).filter(Boolean),
     selectedSettlementId: base.selectedSettlementId,
@@ -340,6 +343,25 @@ function dispatchChange(reason = "update") {
   window.dispatchEvent(new CustomEvent("v39:game-state-changed", { detail }));
 }
 
+function applyDeathPurification(before,next,fields,options={}){
+  if(options.reason==='save-loaded'||options.trackUnitDeaths===false||before.activeWorldId!==next.activeWorldId)return;
+  const changed=fields.filter(key=>['players','enemies','neutralVillages'].includes(key));
+  if(!changed.length)return;
+  const deaths=findV39NewUnitDeaths(before,next,changed);
+  if(!deaths.length)return;
+  for(const worldId of new Set(deaths.map(u=>u.worldId||'surface'))){
+    const active=worldId===(next.activeWorldId||'surface');
+    const saved=next.explorationWorlds?.[worldId];
+    const map=active?window.__v39FieldRuntime?.mapData:saved?.map;
+    if(!map)continue;
+    const spatial=active?next:{...saved.spatial,players:next.players,timeline:next.timeline,activeWorldId:worldId};
+    const result=applyV39DeathPurification(map,spatial,deaths);
+    if(!result.changed)continue;
+    if(active){map.purificationByTile=result.map.purificationByTile;map.deathPurificationProtection=result.map.deathPurificationProtection;}
+    else next.explorationWorlds={...next.explorationWorlds,[worldId]:{...saved,map:result.map}};
+  }
+}
+
 function setState(patch = {}, options = {}) {
   const next = { ...state };
   if (Object.prototype.hasOwnProperty.call(patch, "activeWorldId")) next.activeWorldId = String(patch.activeWorldId || "surface");
@@ -375,7 +397,9 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "gameSettings")) next.gameSettings = normalizeGameStartSettings(patch.gameSettings);
   if (Object.prototype.hasOwnProperty.call(patch, "timeline")) next.timeline = { ...state.timeline, ...patch.timeline };
   // 保存済みマップは書込時に既に複製済み。無関係な更新で再複製しない。
-  state = { ...normalizeState({ ...next, explorationWorlds:{} }), explorationWorlds:next.explorationWorlds };
+  const normalized = { ...normalizeState({ ...next, explorationWorlds:{} }), explorationWorlds:next.explorationWorlds };
+  applyDeathPurification(state,normalized,Object.keys(patch),options);
+  state = normalized;
   if (options.silent !== true) dispatchChange(options.reason || "set");
   // Internal writes can omit an unused detached return value; public callers keep it by default.
   return options.returnState === false ? undefined : getState();
@@ -391,6 +415,7 @@ function patchEnemyTurnState(patch = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) {
     next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
   }
+  applyDeathPurification(state,next,Object.keys(patch));
   state = next;
   return true;
 }
@@ -427,6 +452,7 @@ function resetFactionForNewLocalSession(factionState = {}) {
     settlements:[],
     unitTrainingQueue:[],
     soulStorage:[],
+    facilityStorage:[],
     recruitInstructorByTile:{},
     recruitInstructorTransfers:{},
     selectedSettlementId:"",
@@ -693,12 +719,14 @@ function startLocalSession(playerCount, options = {}) {
 
 function updateActiveFactionState(patch = {}, options = {}) {
   const activeId = state.activePlayerId;
-  state = {
+  const next = {
     ...state,
     players: state.players.map(player => player.id === activeId
       ? { ...player, factionState:normalizeFactionState({ ...player.factionState, ...patch }, player.id, player.race) }
       : player)
   };
+  applyDeathPurification(state,next,Object.hasOwn(patch,'units')?['players']:[],options);
+  state=next;
   if (options.silent !== true) dispatchChange(options.reason || "active-faction");
   return getActiveFactionState();
 }

@@ -4,6 +4,8 @@ import { resolveV39SettlementProductionMetrics } from "../../lib/v39-economy-rul
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { renderV39LandExpansionControls } from "./v39-land-expansion-ui.js";
+import {renderV39FacilityStorageButtons} from '../unit/v39-facility-storage-ui.js';
+import {getV39DeathProtectionStatus} from '../../lib/v39-death-purification.js';
 import { isV39ArmyTransportUnit, isV39UnitInsideSettlement, setV39UnitTransportAssignment,
   configureV39TransportRoute, getV39TransportCargo, V39_TRANSPORT_RESOURCE_KEYS } from "../../lib/v39-transport-rules.js";
 
@@ -140,6 +142,8 @@ function render() {
     }),
     ...queue.map(item => `<span class="settlement-chip building">${escapeHtml(item.facilityName)} 残${Math.max(0, Math.floor(number(item.remainingTurns)))}T</span>`)
   ].join("") || `<span class="settlement-empty">なし</span>`;
+  const deathProtection=getV39DeathProtectionStatus(window.__v39FieldRuntime?.mapData,state,player.id,settlementId);
+  const deathProtectionBody=deathProtection.capacity?`<div class="settlement-inline-facts" data-v39-cemetery-quota>死亡時の浄化保護 残り${deathProtection.remaining}/${deathProtection.capacity}件（このターン）</div>`:'';
   const production = resolveV39SettlementProductionMetrics(state, player, settlement);
   // 領土に紐づく雇用枠から再計算した稼働率を表示する。
   const employmentRate = Math.max(0, Math.min(1, number(production.employmentRate)));
@@ -200,7 +204,7 @@ function render() {
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
       ${section("material", "資材", formatNumber(settlement.materialStock), keyValueRows(settlement.materialStockByType))}
       ${transportRows(player, settlement)}
-      ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}</div>`)}
+      ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}${renderV39FacilityStorageButtons(state,player.id,settlement)}</div>${deathProtectionBody}`)}
       ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
       ${section("expansion", "開拓", `${formatNumber(production.expansionWorkers)}人`, renderV39LandExpansionControls(state, player, settlement))}
       ${section("civic", "住民状態", `幸福${formatNumber(civic.happiness)}`, civicBody)}

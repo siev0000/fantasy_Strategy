@@ -653,6 +653,7 @@ export const V39_CORPSE_EATING_BALANCE = Object.freeze({
 export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
   inheritedUndeadLevelCap:10, // 死体から取得するアンデッド職の初期Lv上限
   purificationThreshold:-5, // この値以下のマスだけ不浄イベント候補にする。
+  deathPurificationLoss:1, // 生存から死亡へ変わった瞬間の減少量。
   corpsePurificationLoss:1, // 死体があるマスの毎ターン減少量。死体数では増やさない。
   fogPurificationLoss:1, // 死の霧があるマスの毎ターン追加減少量。
   deathBladePurificationLoss:5, // 死の刃の所持者による撃破マスの減少量。

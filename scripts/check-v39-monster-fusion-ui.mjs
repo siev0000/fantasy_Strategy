@@ -57,7 +57,7 @@ try {
         equipment:rejected((s,f)=>f.units.find(u=>u.id==='fusion-test-horse').equipment=[{name:'剣'}]),
         cargo:rejected((s,f)=>f.units.find(u=>u.id==='fusion-test-horse').cargo={resourcesByType:{木材:3}}),
         duty:rejected((s,f)=>f.units.find(u=>u.id==='fusion-test-horse').tradeAssignment={automatic:true}),
-        teacher:rejected((s,f)=>f.recruitInstructorByTile={'4,4':{unitId:'fusion-test-horse'}}),
+        teacher:rejected((s,f)=>f.recruitInstructorByTile={'3,3':{unitId:'fusion-test-horse'}}),
         ap:rejected((s,f)=>{const u=f.units.find(u=>u.id===request.actorId);u.ap=0;u.currentAp=0;}),
         turn:rejected(s=>s.timeline.phase='enemy'),
         ownership:rejected((s,f)=>f.units=f.units.filter(u=>u.id!=='fusion-test-devil')),
@@ -90,7 +90,7 @@ try {
       flags.materialReuse=!rules.executeV39MonsterFusion(made.state,request).ok;
       const facility=rules.executeV39MonsterFusion(state,{...request,mode:'facility'});
       flags.facility=facility.ok&&facility.state.players.find(p=>p.id===player.id).factionState.units.find(u=>u.id===request.actorId).ap===100;
-      const noFacility=structuredClone(state);delete noFacility.territoryOwnerByTile['4,4'];delete noFacility.territoryOwnerByTile['3,4'];
+      const noFacility=structuredClone(state);delete noFacility.territoryOwnerByTile['3,3'];delete noFacility.territoryOwnerByTile['3,4'];
       flags.noFacility=!rules.executeV39MonsterFusion(noFacility,{...request,mode:'facility'}).ok;
       const normal=f.units.find(u=>u.id==='expedition-test-king'),normalGrow=exp.grantV39UnitExperience(normal,100);
       flags.normal=normalGrow.amount===100&&!normalGrow.unit.fusionGrowth;

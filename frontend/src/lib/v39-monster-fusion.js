@@ -10,12 +10,13 @@ import {resolveV39UnitTotalExpForLevel,resolveV39UnitRaceCategory} from './v39-u
 import testFixture from '../../../config/v39-fusion-test.json';
 import {canUseV39StoredSouls} from './v39-soul-storage.js';
 import {canUnitEnterV39Tile} from './v39-terrain-traversal.js';
+import {getV39StorageFacilities} from './v39-facility-storage.js';
 
 const split=value=>String(value||'').split(/[,、\n]/).map(s=>s.trim()).filter(Boolean);
 const alive=u=>Number(u?.hp??u?.currentHp)>0&&!['死亡','死体'].includes(u?.state);
 const world=u=>u?.worldId||'surface';
 const hasCargo=value=>value&&typeof value==='object'&&Object.values(value).some(v=>typeof v==='number'?v>0:Array.isArray(v)?v.length>0:typeof v==='object'?hasCargo(v):Boolean(v));
-export function getV39FusionMaterials(faction){return [...(faction?.units||[]),...(faction?.soulStorage||[])];}
+export function getV39FusionMaterials(faction){return [...(faction?.units||[]),...(faction?.soulStorage||[]),...(faction?.facilityStorage||[]).map(entry=>({...entry.unit,facilityStored:{tileKey:entry.tileKey,name:entry.facilityName,worldId:entry.worldId}}))];}
 export function getV39FusionSkills(unit){
   const rows=resolveActionSkillRows(unit).filter(row=>split(row.効果).includes('合体'));
   if(unit?.fusionTestFixture&&isV39TestSkillModeEnabled())rows.push({名前:'テスト合体',行動:'A',効果:'合体',AP消費:20});
@@ -54,12 +55,19 @@ export function inspectV39FusionAccess(state,playerId,actorId,mode='skill',skill
       const key=`${x},${y}`,names=state.facilitiesByTile?.[key];
       return state.territoryOwnerByTile?.[key]===playerId&&Array.isArray(names)&&names.some(name=>defaults.facilityNames.includes(name));
     });
-    if(!available)reasons.push('自領の魔術工房・魂の保管庫の隣接マスに移動してください');
+    if(!available)reasons.push('自領の魔術工房・魔獣研究所・魂の保管庫の隣接マスに移動してください');
   }else reasons.push('合体の実行方法が不正');
   return {actor,player,faction,skill,cost,reasons};
 }
 export function inspectV39FusionMaterial(state,playerId,actor,unit,settings=defaults){
   const faction=state.players?.find(p=>p.id===playerId)?.factionState,reasons=[];
+  if(unit?.facilityStored){
+    const entry=faction?.facilityStorage?.find(e=>e.unit?.id===unit.id);
+    const facility=getV39StorageFacilities(state,playerId).find(f=>f.tileKey===entry?.tileKey&&f.name===entry?.facilityName&&f.worldId===entry?.worldId);
+    if(!entry||!facility||!actor||world(actor)!==facility.worldId||getHexDistance(actor,facility)>1)return ['格納施設上か隣接マスで合成してください'];
+    const projected={...entry.unit,x:facility.x,y:facility.y,worldId:facility.worldId};
+    return inspectV39FusionMaterial({...state,players:state.players.map(p=>p.id===playerId?{...p,factionState:{...faction,units:[...faction.units,projected]}}:p)},playerId,actor,projected,settings);
+  }
   if(unit?.soulStored){
     if(!faction?.soulStorage?.some(s=>s.id===unit.id))return ['自軍の保管された魂が必要'];
     if(!canUseV39StoredSouls(state,playerId,actor))reasons.push('魂の保管庫かその隣接マスで合成してください');
@@ -101,8 +109,8 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
     reasons.push(...inspectV39FusionMaterial(state,playerId,access.actor,unit));
     if(unit&&!(Number(collectV39FusionClassLevels(unit)?.[slots[index]])>0))reasons.push(`素材${index+1}に${slots[index]}が必要`);
   });
-  let origin=materials.find(unit=>unit&&!unit.soulStored);
-  if(materials.length&&materials.every(unit=>unit?.soulStored)&&access.actor){
+  let origin=materials.find(unit=>unit&&!unit.soulStored&&!unit.facilityStored);
+  if(materials.length&&materials.every(unit=>unit?.soulStored||unit?.facilityStored)&&access.actor){
     const map=typeof window!=='undefined'?window.__v39FieldRuntime?.mapData:null;
     const occupied=new Set([...state.players.flatMap(p=>p.factionState.units),...(state.enemies||[]),
       ...(state.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])].filter(u=>alive(u)&&world(u)===world(access.actor)).map(u=>`${u.x},${u.y}`));
@@ -154,6 +162,6 @@ export function executeV39MonsterFusion(state,request){
   });
   if(!squads.some(s=>s.id==='solo'))squads.push({id:'solo',label:'単独',unitIds:[id]});
   const units=faction.units.filter(u=>!ids.has(u.id)).map(u=>u.id===request.actorId?{...u,ap:Number(u.ap??u.currentAp)-check.cost,currentAp:Number(u.ap??u.currentAp)-check.cost}:u);
-  const next={...faction,units:[...units,created],soulStorage:(faction.soulStorage||[]).filter(s=>!ids.has(s.id)),squads,combatRuntime:runtime,fusionSerial:serial,selectedUnitId:id};
+  const next={...faction,units:[...units,created],soulStorage:(faction.soulStorage||[]).filter(s=>!ids.has(s.id)),facilityStorage:(faction.facilityStorage||[]).filter(e=>!ids.has(e.unit.id)),squads,combatRuntime:runtime,fusionSerial:serial,selectedUnitId:id};
   return {ok:true,created,state:{...state,players:state.players.map(p=>p.id===request.playerId?{...p,factionState:next}:p)}};
 }

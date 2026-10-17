@@ -11,6 +11,8 @@ import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
 let activeTab = "character";
 let selectedId = "";
 let selectedSquadMemberId = "";
+let selectedSquadId = "";
+let locationFilter = 'all';
 const detailUnitId = () => activeTab === 'squad' ? selectedSquadMemberId : selectedId;
 let detailTab = "status";
 let pinnedResistanceElement = null;
@@ -85,16 +87,31 @@ const escapeHtml = (value) => text(value)
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#39;");
 const isDead = (unit) => text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0;
+const storageOf = unit => unit?.characterStorage || unit?.reserveEntry?.corpseStorage;
+const storageLabel = unit => {
+  const storage=storageOf(unit);
+  return storage ? `${storage.facilityName} (${storage.tileKey})${storage.worldId&&storage.worldId!=='surface'?' / 洞窟':''}` : '';
+};
+
+function characterRows(current) {
+  const field=current.units.filter(unit=>!isDead(unit));
+  const stored=(current.facilityStorage||[]).filter(entry=>entry.unit?.id).map(entry=>({...entry.unit,characterStorage:entry}));
+  const corpses=(current.deadUnitReserve||[]).filter(entry=>entry.corpseStorage&&entry.unit?.id).map(entry=>({...entry.unit,reserveEntry:entry}));
+  return [...new Map([...field,...stored,...corpses].map(unit=>[unit.id,unit])).values()];
+}
 
 function unitListRow(unit, id, selected) {
-  return renderV39UnitCard(unit, {id,selected,character:true,dead:isDead(unit)});
+  return renderV39UnitCard(unit, {id,selected,character:true,dead:isDead(unit),...(storageOf(unit)?{position:storageLabel(unit)}:{})});
 }
 function faction() {
   return window.getV39ActiveFactionState?.() || null;
 }
 
 function rowsForTab(current) {
-  if (activeTab === "character") return current.units.filter((unit) => !isDead(unit));
+  if (activeTab === "character") return characterRows(current).filter(unit=>locationFilter==='all'
+    ||locationFilter==='field'&&!storageOf(unit)
+    ||locationFilter==='facility'&&unit.characterStorage
+    ||locationFilter==='mausoleum'&&unit.reserveEntry?.corpseStorage);
   if (activeTab === "squad") return current.squads;
   if (activeTab === "corpse") return current.units.filter(isDead);
   if (activeTab === "dead") return current.deadUnitReserve.map((entry) => ({ ...entry.unit, reserveEntry:entry }));
@@ -102,12 +119,13 @@ function rowsForTab(current) {
 }
 
 function statusPanel(unit) {
-  return `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAbility(unit, {mapData:window.__v39FieldRuntime?.mapData})}</div>`;
+  return `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAbility(unit, {mapData:storageOf(unit)?null:window.__v39FieldRuntime?.mapData})}</div>`;
 }
 function skillsPanel(unit) {
-  return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><div class="technique-list v39-char-technique-list">${renderV39UnitSkills(unit, {mapData:window.__v39FieldRuntime?.mapData, expandedName:expandedSkillName})}</div></div>`;
+  return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><div class="technique-list v39-char-technique-list">${renderV39UnitSkills(unit, {mapData:storageOf(unit)?null:window.__v39FieldRuntime?.mapData, expandedName:expandedSkillName})}</div></div>`;
 }
 function equipmentPanel(unit) {
+  if(storageOf(unit))return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><p class="v39-char-note">保管中は閲覧のみです。変更する場合は施設から取り出してください。</p>${renderV39UnitEquipment(unit)}</div>`;
   const fixed = isMobUnit(unit) || isDead(unit) || !!unit.summon;
   return `<div class="squad-detail-tab-panel v39-char-detail-scroll">
     <p class="v39-char-note">${fixed ? "このユニットの装備は変更できません。" : "装備を押して変更候補と性能を比較"}</p>
@@ -123,6 +141,7 @@ function equipmentPanel(unit) {
   </div>`;
 }
 function growthPanel(unit) {
+  if(storageOf(unit))return `<div class="v39-char-detail-scroll"><h4>成長</h4>${renderV39UnitGrowth(unit)}<p class="v39-char-note">保管中は閲覧のみです。</p></div>`;
   const state=window.getV39GameState({includeWorlds:false}),options=getV39ClassPromotionOptions(state,state.activePlayerId,unit);
   return `<div class="v39-char-detail-scroll">
     <h4>成長</h4>
@@ -146,7 +165,7 @@ function detailTabs(unit) {
     <div class="squad-detail-tab-content v39-char-detail-panel">${panel}</div>`;
 }
 function unitDetail(unit,current=faction()) {
-  if (!unit) return '<div class="detail-pane"><p>表示対象がありません。</p></div>';
+  if (!unit) return '<div class="detail-pane squad-detail-pane"><p>表示対象がありません。</p></div>';
   const remainingTurns = remainingV39Turns(unit?.deadExpireTurn, currentV39TurnNumber());
   const role = text(unit?.role || unit?.state, "キャラクター");
   return `<div class="detail-pane squad-detail-pane v39-char-unit-detail">
@@ -156,8 +175,9 @@ function unitDetail(unit,current=faction()) {
         <span class="squad-detail-chip">${escapeHtml(role)} ・ Lv${Math.max(1, Math.floor(number(unit?.level, 1)))}</span>
       </div>
       ${activeTab === "corpse" ? `<p>消滅まで ${remainingTurns}ターン / 座標 (${number(unit.x)}, ${number(unit.y)})</p>` : ""}
-      ${activeTab === "dead" ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}
-      ${activeTab==='corpse'||activeTab==='dead'?'':renderV39SquadCoordination(unit,current)}
+      ${activeTab === "dead"&&!storageOf(unit) ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}
+      ${storageOf(unit)?`<p class="v39-char-storage-location">${escapeHtml(storageLabel(unit))}${isDead(unit)?' / 遺体保管・消滅停止':' / 施設格納中'}</p>`:''}
+      ${activeTab==='corpse'||activeTab==='dead'||storageOf(unit)?'':renderV39SquadCoordination(unit,current)}
     </div>
     ${detailTabs(unit)}
   </div>`;
@@ -169,9 +189,7 @@ function squadDetail(squad, current) {
   const members = current.units.filter((unit) => ids.includes(unit.id));
   const member = members.find(unit => unit.id === selectedSquadMemberId) || members[0];
   selectedSquadMemberId = member?.id || "";
-  return `<div class="v39-char-squad-detail"><header class="v39-char-squad-header"><strong>${escapeHtml(squad.name || squad.label || "部隊")} / ${members.length}体</strong>
-    ${squad.id !== "solo" && squad.id !== "単独" ? `<button type="button" class="v39-char-squad-action" data-v39-character-squad-edit="${escapeHtml(squad.id)}">編制変更</button>` : ""}
-    </header>${unitDetail(member,current)}</div>`;
+  return `<div class="v39-char-squad-detail">${unitDetail(member,current)}</div>`;
 }
 
 function render({preserveDrafts=true} = {}) {
@@ -191,26 +209,34 @@ function render({preserveDrafts=true} = {}) {
   const selected = rows.find((row, index) => idFor(row, index) === selectedId) || null;
   const tabs = [["character", "キャラクター"], ["squad", "部隊"], ["corpse", "死体回収"], ["dead", "死亡者一覧"]];
   if (!body.querySelector('[data-v39-character-detail-host]')) {
-    body.innerHTML = `<div class="modal-tabs">${tabs.map(([key,label]) => `<button data-v39-character-tab="${key}">${label}</button>`).join('')}</div>
+    body.innerHTML = `<div class="modal-tabs">${tabs.map(([key,label]) => `<button data-v39-character-tab="${key}">${label}</button>`).join('')}</div><div class="v39-char-squad-toolbar" hidden></div>
       <div class="character-layout"><div class="list-pane"></div><div data-v39-character-detail-host style="display:contents"></div></div>`;
     renderedMarkup.delete(body);
   }
   for (const button of body.querySelectorAll('[data-v39-character-tab]')) button.classList.toggle('active',button.dataset.v39CharacterTab === activeTab);
+  const toolbar=body.querySelector('.v39-char-squad-toolbar');
+  toolbar.hidden=activeTab!=='squad';
+  if(activeTab==='squad'){
+    selectedSquadId=selected?.id||'';
+    updateMarkup(toolbar,`<select data-v39-character-squad-select aria-label="表示する部隊">${rows.map(squad=>`<option value="${escapeHtml(squad.id)}"${squad.id===selectedId?' selected':''}>${escapeHtml(squad.name||squad.label||'部隊')} / ${current.units.filter(u=>(squad.unitIds||squad.memberIds||[]).includes(u.id)).length}体</option>`).join('')}</select><button type="button" class="v39-char-squad-action" id="v39-squad-edit" data-v39-character-squad-edit="">新規部隊</button>${selected&&!['solo','単独'].includes(selected.id)?`<button type="button" class="v39-char-squad-action" data-v39-character-squad-edit="${escapeHtml(selected.id)}">編制変更</button>`:''}`);
+  }
   const list = body.querySelector('.list-pane');
   if (activeTab === 'squad') {
     const ids = selected?.unitIds || selected?.memberIds || [];
     if (!ids.includes(selectedSquadMemberId)) selectedSquadMemberId = ids[0] || '';
   }
-  const entries = rows.flatMap((row,index) => {
+  const entries = (activeTab==='squad'?(selected?[selected]:[]):rows).flatMap((row,index) => {
     const id = idFor(row,index);
     if (activeTab !== 'squad') return [[`${activeTab}:${id}`,unitListRow(row,id,id === selectedId)]];
     const ids = row.unitIds || row.memberIds || [];
     const members = current.units.filter(unit=>ids.includes(unit.id));
-    return [[`squad:${id}`,`<button type="button" class="v39-char-group-heading" data-v39-character-row="${escapeHtml(id)}">${escapeHtml(row.name || row.label || '部隊')} / ${members.length}体</button>`],
-      ...members.map(unit=>[`member:${id}:${unit.id}`,renderV39UnitCard(unit,{character:true,attribute:'data-v39-squad-member',selected:id===selectedId&&unit.id===selectedSquadMemberId})])];
+    return members.map(unit=>[`member:${id}:${unit.id}`,renderV39UnitCard(unit,{character:true,attribute:'data-v39-squad-member',selected:id===selectedId&&unit.id===selectedSquadMemberId})]);
   });
   if (!entries.length) entries.push(['empty','<div class="char-row">該当なし</div>']);
-  if (activeTab === 'squad') entries.unshift(['new-squad','<button type="button" class="v39-char-squad-action" id="v39-squad-edit" data-v39-character-squad-edit="">新規部隊</button>']);
+  if(activeTab==='character') {
+    const all=characterRows(current),counts={all:all.length,field:all.filter(u=>!storageOf(u)).length,facility:all.filter(u=>u.characterStorage).length,mausoleum:all.filter(u=>u.reserveEntry?.corpseStorage).length};
+    entries.unshift(['location-filter',`<select data-v39-character-location aria-label="保管場所で絞り込み">${[['all','すべて'],['field','活動中'],['facility','施設内'],['mausoleum','霊廟']].map(([key,label])=>`<option value="${key}"${locationFilter===key?' selected':''}>${label} ${counts[key]}</option>`).join('')}</select>`]);
+  }
   updateList(list,entries);
   const host = body.querySelector('[data-v39-character-detail-host]');
   const key = JSON.stringify([window.getV39ActivePlayerId?.(),activeTab,selectedId,selectedSquadMemberId,detailTab]);
@@ -253,7 +279,11 @@ function installStyles() {
     #characterModal .v39-char-tool-settings{margin-top:10px;border-top:1px solid #38535d;padding-top:6px}#characterModal [data-v39-tool-setting-row]{display:grid;grid-template-columns:minmax(0,1fr) 60px;gap:4px;margin-bottom:5px}#characterModal [data-v39-tool-setting-row] select,#characterModal [data-v39-tool-setting-row] input{min-width:0;min-height:32px;padding:4px;border:1px solid #53717c;border-radius:5px;font-size:var(--font-body);background:#172d35;color:#e8efec}
     #characterModal .v39-char-squad-action{font-size:var(--font-body);min-height:34px;padding:6px 10px;border:1px solid #53717c;border-radius:6px;background:#172d35;color:#e8efec;margin-bottom:6px}
     #characterModal .v39-char-unit-detail{display:grid;grid-template-rows:auto auto minmax(0,1fr);height:100%;min-height:0;overflow:hidden}
-    #characterModal .v39-char-squad-detail{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;min-height:0;min-width:0;overflow:hidden}
+    #characterModal .v39-char-squad-detail{display:grid;grid-template-rows:minmax(0,1fr);height:100%;min-height:0;min-width:0;overflow:hidden}
+    #characterModal .v39-char-squad-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:4px;min-width:0}
+    #characterModal .v39-char-squad-toolbar[hidden]{display:none}
+    #characterModal .v39-char-squad-toolbar select{min-width:0;width:100%;min-height:34px;font:inherit;background:#172d35;color:#e8efec;border:1px solid #53717c;border-radius:5px}
+    #characterModal .v39-char-squad-toolbar .v39-char-squad-action{margin:0;padding:5px 7px}
     #characterModal .v39-char-squad-header{display:flex;justify-content:space-between;align-items:center;gap:6px}
     #characterModal .v39-char-group-heading{font:inherit;min-height:30px;padding:4px 0;border:0;border-bottom:1px solid #40575e;background:transparent;color:#a8dfe5;text-align:left;overflow-wrap:anywhere}
     #characterModal .v39-char-promotion{border-bottom:1px solid #40575e;padding:5px 0}
@@ -261,8 +291,12 @@ function installStyles() {
     #characterModal .v39-char-promotion summary span{display:block;color:#a9bbbf;font-size:var(--font-secondary)}
     #characterModal .char-row{min-width:0;overflow-wrap:anywhere}
     #characterModal .v39-char-unit-head{padding-bottom:8px}
+    #characterModal [data-v39-character-location]{position:sticky;top:0;z-index:1;width:100%;min-width:0;min-height:32px;font:inherit;background:#172d35;color:#e8efec;border:1px solid #53717c;border-radius:5px}
+    #characterModal .v39-char-storage-location{margin:4px 0;font-size:var(--font-secondary);color:#a8dfe5;overflow-wrap:anywhere}
+    #characterModal .v39-char-unit-row .squad-pos{white-space:normal;overflow-wrap:anywhere}
     #characterModal .modal{width:min(900px,96vw);height:min(780px,94svh)}
-    #characterModal .modal-body{display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;overflow:hidden;gap:7px}
+    #characterModal .modal-body{display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0;overflow:hidden;gap:7px}
+    #characterModal .modal-body:has(.v39-char-squad-toolbar[hidden]){grid-template-rows:auto minmax(0,1fr)}
     #characterModal .v39-char-detail-scroll{height:100%;overflow:auto;padding:8px}
     #characterModal .v39-char-detail-scroll h4{margin:5px 0 7px}
     #v39ResistancePopover{position:fixed;z-index:100000;display:none;max-width:min(220px,calc(100vw - 24px));padding:5px 9px;border:1px solid rgba(112,144,153,.9);border-radius:6px;background:#0d171b;color:#eef7f6;box-shadow:0 5px 16px rgba(0,0,0,.36);font-size:var(--font-compact);font-weight:800;line-height:1.2;white-space:nowrap;pointer-events:none;transform:translate(-50%,-100%)}
@@ -325,6 +359,13 @@ function hideResistancePopover() {
 
 function install() {
   installStyles();
+  document.addEventListener('change',event=>{
+    if(event.target.matches?.('#characterModal [data-v39-character-squad-select]')){
+      selectedId=event.target.value;selectedSquadId=selectedId;selectedSquadMemberId='';equipmentMessage='';expandedSkillName='';render();return;
+    }
+    if(!event.target.matches?.('#characterModal [data-v39-character-location]'))return;
+    locationFilter=event.target.value;selectedId='';equipmentMessage='';expandedSkillName='';render();
+  });
 
   document.addEventListener("pointerover", (event) => {
     const element = event.target instanceof Element ? event.target : null;
@@ -424,7 +465,7 @@ function install() {
     }
     if (tab) {
       activeTab = text(tab.dataset.v39CharacterTab, "character");
-      selectedId = "";
+      selectedId = activeTab==='squad'?selectedSquadId:"";
       expandedSkillName = "";
       equipmentMessage = "";
       render();

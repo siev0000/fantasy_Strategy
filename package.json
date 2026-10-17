@@ -5,6 +5,10 @@
   "description": "Fantasy Strategy prototype with room-based multiplayer.",
   "type": "commonjs",
   "scripts": {
+    "check:cemetery": "node scripts/check-v39-cemetery.mjs",
+    "check:corpse-storage": "node scripts/check-v39-corpse-storage.mjs",
+    "check:character-storage": "node scripts/check-v39-character-storage.mjs",
+    "check:facility-storage": "node scripts/check-v39-facility-storage.mjs",
     "check:fusion-layout": "node scripts/check-v39-fusion-layout.mjs",
     "check:fusion-artwork": "node scripts/check-v39-fusion-artwork.mjs",
     "check:soul-storage": "node scripts/check-v39-soul-storage.mjs",

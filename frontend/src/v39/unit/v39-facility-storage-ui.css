@@ -1,0 +1,13 @@
+#v39-facility-storage{position:fixed;inset:60px 0 0;z-index:2100;color:#e2edea;background:#0b171b;font-size:var(--font-body,15px)}
+#v39-facility-storage>section{height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto}
+#v39-facility-storage header,#v39-facility-storage nav,#v39-facility-storage footer{display:flex;gap:5px;align-items:center;padding:6px;background:#13282e}
+#v39-facility-storage header b{flex:1}#v39-facility-storage footer{min-height:38px}
+#v39-facility-storage button:not(.squad-card){font:inherit;color:inherit;background:#19353d;border:1px solid #4b6a70;border-radius:5px;padding:6px;cursor:pointer}
+#v39-facility-storage button:disabled{opacity:.4;cursor:default}
+#v39-facility-storage button[aria-pressed=true]{border-color:#eed28b;background:#394338}
+#v39-facility-storage .storage-panes{display:grid;grid-template-columns:minmax(0,40%) minmax(0,60%);min-height:0;gap:4px;padding:4px}
+#v39-facility-storage .squad-member-list,#v39-facility-storage .squad-detail-pane{min-height:0;overflow:auto}
+#v39-facility-storage .storage-row{display:grid;gap:3px;margin-bottom:6px}
+#v39-facility-storage .storage-row small{color:#c8b7a2;font-size:var(--font-secondary,12px)}
+#v39-facility-storage .squad-card{width:100%;font:inherit;color:inherit;background:#142a30;border:1px solid #42636a;border-radius:6px;padding:4px;text-align:left}
+#v39-facility-storage .squad-card.selected{border-color:#efd88a}

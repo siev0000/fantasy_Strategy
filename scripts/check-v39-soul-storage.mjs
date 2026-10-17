@@ -12,6 +12,7 @@ try{
     await page.waitForFunction(()=>!!window.startV39FusionTest);
     const initial=await page.evaluate(async()=>{
       window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39FusionTest();
+      window.updateV39ActiveFactionState({soulStorage:[]},{reason:'soul-collection-test-reset'});
       const state=window.getV39GameState(),f=window.getV39ActiveFactionState();
       window.setV39GameState({enemies:state.enemies.map(u=>u.soulTestCorpse?{...u,equipment:[{name:'魂に移さない剣',slot:'武器1'}],corpseCargo:{resourcesByType:{木材:3}}}:u)});
       await window.waitForV39MapRenderSettled();

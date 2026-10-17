@@ -1,0 +1,8 @@
+{
+  "facilities": {
+    "兵舎": { "type": "unit", "capacity": 0, "target": "player" },
+    "訓練場": { "type": "unit", "capacity": 0, "target": "player" },
+    "魔術工房": { "type": "unit", "capacity": 0 },
+    "魂の保管庫": { "type": "soul", "capacity": 0 }
+  }
+}

@@ -41,7 +41,7 @@
       .squad-detail-pane .squad-detail-section-title::after{content:"▾";font-size:var(--font-compact);color:#6fc7d6;transition:transform .12s ease}
       .squad-detail-pane .squad-detail-section:not([open])>.squad-detail-section-title::after{transform:rotate(-90deg)}
       .squad-detail-pane .squad-detail-section-body{min-width:0;margin-top:0;padding:3px!important}
-      .squad-detail-pane .squad-detail-stats{gap:2px!important}
+      .squad-detail-pane .squad-detail-stats{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:2px!important}
       .squad-detail-pane .v39-char-status-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}
       .squad-detail-pane .detail-stat{
         min-height:34px!important;padding:4px 6px!important;gap:4px!important;

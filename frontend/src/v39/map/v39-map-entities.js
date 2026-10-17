@@ -13,6 +13,7 @@ import {
   resolveUnitArtwork
 } from "../../lib/map-entity-artwork.js";
 import { resolveFacilityIconArtwork } from "../../lib/facility-icon-artwork.js";
+import {getV39StorageFacilities,getV39FacilityStoredEntries} from '../../lib/v39-facility-storage.js';
 import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
 import { V39_SPECIALTY_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import defenseFieldImage from "../../../../assets/effect/320×240/シールド.webp";
@@ -165,6 +166,9 @@ function markerRenderSignature(faction, state) {
     String(state?.activePlayerId || ""),
     String(state?.activeWorldId || "surface"),
     String(faction?.selectedUnitId || ""),
+    JSON.stringify((faction.facilityStorage||[]).map(e=>[e.unit?.id,e.tileKey,e.facilityName,e.worldId])),
+    JSON.stringify((faction.soulStorage||[]).map(e=>[e.id,e.storageTileKey])),
+    JSON.stringify((faction.deadUnitReserve||[]).filter(e=>e.corpseStorage).map(e=>[e.unitId,e.corpseStorage])),
     isTestMode() ? "test" : "normal",
     String(window.__v39VisibilityRenderVersion || 0),
     String(markerArtworkVersion),
@@ -406,6 +410,11 @@ function addResidentialVillageMarker(scene, container, tileKey, options = {}) {
 }
 
 function drawSettlementTileMarkers(scene, container, faction) {
+  const state=gameState(),storageCounts=new Map();
+  for(const facility of getV39StorageFacilities(state,state.activePlayerId)){
+    const count=getV39FacilityStoredEntries(state,state.activePlayerId,facility).length;
+    if(count)storageCounts.set(facility.tileKey,(storageCounts.get(facility.tileKey)||0)+count);
+  }
   const villageIconSize = Number(resolveSettlementArtwork({ type:"村", scaleKey:"village", scaleLevel:1 })?.sizePx) || 60;
   const completedOffsetX = 0;
   const completedOffsetY = 0;
@@ -474,6 +483,9 @@ function drawSettlementTileMarkers(scene, container, faction) {
         strokeColor:0xffd36d
       });
     }
+  }
+  for(const [tileKey,count] of storageCounts){
+    addTileTextMarker(scene,container,tileKey,String(count),{name:'v39-facility-storage-count',offsetX:tileRelativePx(.29),offsetY:-tileRelativePx(.25),radiusTiles:.14,fontTiles:.23,fillColor:0x17343d,strokeColor:0xe4d497});
   }
 }
 

@@ -1267,7 +1267,7 @@ watch(
 </script>
 
 <template>
-  <base-modal :show="show" title="自キャラステータス" :wide="true" @close="emit('close')">
+  <base-modal :show="show" title="ユニット一覧" :wide="true" @close="emit('close')">
     <div class="char-tabs">
       <div class="char-tabs-left">
         <button type="button" class="char-tab-btn" :class="{ active: activeTab === 'character' }" @click="selectTab('character')">キャラクター</button>

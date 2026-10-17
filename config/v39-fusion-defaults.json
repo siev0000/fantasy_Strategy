@@ -1,5 +1,5 @@
 {
-  "facilityNames": ["魔術工房", "魂の保管庫"],
+  "facilityNames": ["魔術工房", "魔獣研究所", "魂の保管庫"],
   "materialRadius": 2,
   "territoryWideMaterials": true,
   "animationMs": 900,
