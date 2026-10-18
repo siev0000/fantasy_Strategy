@@ -18,14 +18,13 @@ function occupied(state,side) {
     ...(state.neutralVillages||[]).flatMap(row=>row.defenseUnits||[])].filter(unit=>tradeAlive(unit)&&!own.has(unit.id)&&(unit.worldId||'surface')==='surface').map(pointKey));
 }
 function inMeeting(unit,contract) {return !!unit&&contract.sides.every(side=>getHexDistance(unit,side.center)<=side.radius);}
-function moveParty(state,side,contract,map,home) {
-  let members=tradeMembers(state,side);const actor=members.find(row=>row.id===side.unitId);
-  const bank=tradeBank(state,side);if(!actor||!bank)return {state,arrived:false,reason:'担当者または出発拠点がありません'};
+export function resolveV39TradeMovementPath(state,side,contract,map,home){
+  const members=tradeMembers(state,side),actor=members.find(row=>row.id===side.unitId),bank=tradeBank(state,side);
+  if(!actor||!bank||!map?.grid)return null;
   const peer=contract.sides.find(row=>row!==side&&row.stage==='waiting');
   const peerActor=peer?tradeMembers(state,peer).find(row=>row.id===peer.unitId&&tradeAlive(row)):null;
-  const done=()=>{const lead=members.find(row=>row.id===side.unitId),cohesive=members.every(unit=>getHexDistance(unit,lead)<=Math.max(1,members.length-1));
-    return cohesive&&(home?getHexDistance(lead,bank)<=1:inMeeting(lead,contract)&&(!peerActor||getHexDistance(lead,peerActor)<=1));};
-  if(done())return {state,arrived:true};
+  const cohesive=members.every(unit=>getHexDistance(unit,actor)<=Math.max(1,members.length-1));
+  if(cohesive&&(home?getHexDistance(actor,bank)<=1:inMeeting(actor,contract)&&(!peerActor||getHexDistance(actor,peerActor)<=1)))return [];
   const blocked=occupied(state,side);
   let goals=[];
   if(home)goals=[bank,...getHexNeighborCoords(map.w,map.h,bank.x,bank.y,false)];
@@ -34,6 +33,17 @@ function moveParty(state,side,contract,map,home) {
     .sort((a,b)=>getHexDistance(actor,a)-getHexDistance(actor,b));
   let path=null;
   for(const goal of goals.slice(0,20)) {path=resolveV39AutomaticRoute(state,map,side.kind==='player'?side.partyId:'',actor,goal,false,side.memberIds);if(path?.length)break;path=null;}
+  return path;
+}
+function moveParty(state,side,contract,map,home) {
+  let members=tradeMembers(state,side);const actor=members.find(row=>row.id===side.unitId);
+  const bank=tradeBank(state,side);if(!actor||!bank)return {state,arrived:false,reason:'担当者または出発拠点がありません'};
+  const peer=contract.sides.find(row=>row!==side&&row.stage==='waiting');
+  const peerActor=peer?tradeMembers(state,peer).find(row=>row.id===peer.unitId&&tradeAlive(row)):null;
+  const done=()=>{const lead=members.find(row=>row.id===side.unitId),cohesive=members.every(unit=>getHexDistance(unit,lead)<=Math.max(1,members.length-1));
+    return cohesive&&(home?getHexDistance(lead,bank)<=1:inMeeting(lead,contract)&&(!peerActor||getHexDistance(lead,peerActor)<=1));};
+  if(done())return {state,arrived:true};
+  const blocked=occupied(state,side),path=resolveV39TradeMovementPath(state,side,contract,map,home);
   if(!path)return {state,arrived:false,reason:'通行可能な待ち合わせ/帰還経路がありません'};
   const load=resolveV39CargoLoad(getTradeCargo(state,side)),speed=tradeSpeed(members,load);
   if(speed<=0)return {state,arrived:false,reason:'積載超過で移動速度0%です'};

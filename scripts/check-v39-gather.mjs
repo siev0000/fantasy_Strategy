@@ -24,7 +24,7 @@ try {
     map.grid[5][5]="森";map.specialMap[5][5]="";map.lavaMap[5][5]=false;
     window.dispatchEvent(new CustomEvent("v39:unit-selected",{detail:{unitId:unit.id}}));
     window.activateV39FooterTab("squad");
-    document.querySelector('[data-squad-detail-tab="action"]').click();
+    document.querySelector('[data-squad-detail-tab="basic"]').click();
   });
   await page.addStyleTag({content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}"});
   await page.locator('#mobileBattleGather').click();

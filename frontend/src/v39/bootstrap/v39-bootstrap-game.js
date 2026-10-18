@@ -4,6 +4,7 @@ import "../unit/v39-unit-create-ui.js";
 import "../unit/v39-equipment-ui.js";
 import "../ai/v39-enemy-spawn.js";
 import "../unit/v39-logistics.js";
+import "../world/v39-logistics-ui.js";
 import "../ai/v39-enemy-raiding.js";
 import "../world/v39-territory-repair.js";
 import "../ai/v39-enemy-nest-lifecycle.js";

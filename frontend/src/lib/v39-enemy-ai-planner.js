@@ -2,11 +2,11 @@ import { isV39SupportSkill, resolveActionSkillRows, resolveAttackApCost, resolve
 import { getHexDistance, getHexNeighborCoords } from "./hex-grid.js";
 import { hasV39CaveLineOfSight, isV39UnitInWorld } from "./v39-cave-spatial-rules.js";
 import { isDetectedByScout, resolveDetectionGroupSense, resolveDetectionScoutValue, resolveV39UnitVisionRange } from "./v39-detection-rules.js";
-import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
+import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "./v39-terrain-traversal.js";
 import { DEFAULT_MAGIC_CAST_TURNS, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "./v39-turn-timing.js";
 import { mergeV39EnemyExplorationInformation, normalizeV39EnemyExplorerState } from "./v39-enemy-exploration.js";
 import { resolveV39EnemyFleeHpRate, V39_ENEMY_AI_CONFIG } from "./v39-enemy-ai-config.js";
-import { resolveV39BaseMoveApCost, resolveV39MovementTiles, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
+import { resolveV39MovementTiles, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
 import { V39_CORPSE_EATING_BALANCE } from "./v39-gameplay-balance.js";
 import { canV39UnitEatCorpses, v39GroundCorpseAmount, consumeV39GroundCorpse } from "./v39-corpse-eating-rules.js";
 import { getGameDataRows } from "./game-data-registry.js";
@@ -170,15 +170,8 @@ function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
 }
 
 function enemyMoveStepCost(mapData, enemy, tile) {
-  if (!canUnitEnterV39Tile(mapData, tile.x, tile.y, enemy)) return Number.POSITIVE_INFINITY;
-  const fromHeight = number(mapData?.heightLevelMap?.[integer(enemy.y)]?.[integer(enemy.x)], Number.NaN);
-  const toHeight = number(mapData?.heightLevelMap?.[tile.y]?.[tile.x], Number.NaN);
-  const flight = Math.max(0, number(enemy?.status?.飛行, number(enemy?.飛行, number(enemy?.skillLevels?.飛行))));
-  if (Number.isFinite(fromHeight) && Number.isFinite(toHeight) && Math.abs(toHeight-fromHeight) > 1 && flight <= 0) return Number.POSITIVE_INFINITY;
-  const climb = Number.isFinite(fromHeight) && Number.isFinite(toHeight) ? Math.max(0, toHeight-fromHeight) : 0;
-  const terrainCost = Math.max(0, 1 + climb*2 - Math.floor(flight/30));
-  const movement = enemyMovementStat(enemy);
-  return Math.max(0, Math.ceil(terrainCost * resolveV39BaseMoveApCost(movement)));
+  return resolveV39UnitMovementStepCost(mapData, enemy.x, enemy.y, tile.x, tile.y,
+    {...enemy, status:{...enemy.status, 移動:enemyMovementStat(enemy)}});
 }
 
 function availableEnemyMoves(state, mapData, enemy) {

@@ -8,12 +8,12 @@ try {
   for(const width of [390,1280]) {
     const page=await browser.newPage({viewport:{width,height:900}});
     page.on("pageerror",error=>errors.push(String(error)));
-    await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+    await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3022",{waitUntil:"networkidle"});
     await page.locator("[data-v39-cave-test]").click();
     await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
     await page.getByRole("button",{name:"探索開始",exact:true}).click();
     await page.waitForTimeout(700);
-    await page.locator('[data-squad-detail-tab="action"]').click();
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     const snapshot=()=>page.evaluate(()=>{
       const faction=window.getV39ActiveFactionState(),unit=window.getV39SelectedSquadUnit();
       return {ap:unit.ap,wait:unit.waitTurnNumber||null,survey:unit.surveyTask||null,cargo:faction.squads[0].cargo||null};

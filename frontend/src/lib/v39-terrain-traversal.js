@@ -1,6 +1,6 @@
 import { getGameDataRows, normalizeGameDataReference, readGameDataNumber } from "./game-data-registry.js";
 import { v39WallStepHeight } from "./v39-defense-rules.js";
-import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
+import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE, V39_FLIGHT_BALANCE } from "./v39-gameplay-balance.js";
 
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -76,8 +76,9 @@ export function resolveV39UnitMovementValue(unit) {
 function resolveV39UnitFlightValue(unit) {
   const candidates = [unit?.status?.飛行, unit?.飛行, unit?.skillLevels?.飛行];
   for (const value of candidates) {
+    if (value === null || value === undefined || value === "") continue;
     const parsed = Number(value);
-    if (Number.isFinite(parsed)) return Math.max(0, Math.floor(parsed));
+    if (Number.isFinite(parsed)) return Math.max(0, parsed);
   }
   return 0;
 }
@@ -101,9 +102,8 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   const wallHeight = v39WallStepHeight(mapData, { x:fromXValue, y:fromYValue }, { x:toXValue, y:toYValue });
   if (!Number.isFinite(wallHeight)) return Number.POSITIVE_INFINITY;
   if (absDiff + wallHeight > 1 && flightValue <= 0) return Number.POSITIVE_INFINITY;
-  if (absDiff > 1 && flightValue <= 0) return Number.POSITIVE_INFINITY;
-
-  const heightPenaltyPoints = Math.max(0, ((climbDiff + wallHeight) * 25) - (Math.floor(flightValue / 30) * 25));
+  const heightPenaltyPoints = Math.max(0, climbDiff + wallHeight - flightValue / V39_FLIGHT_BALANCE.skillPerIgnoredHeight)
+    * V39_FLIGHT_BALANCE.climbPenaltyPointsPerHeight;
   const terrain = resolveV39TerrainMoveCost(unit, resolveV39TileTerrainName(mapData, toXValue, toYValue), heightPenaltyPoints);
   const cargoSpeed=Number.isFinite(Number(unit?.cargoSpeedMultiplier))?Math.max(0,Math.min(1,Number(unit.cargoSpeedMultiplier))):1;
   return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))/cargoSpeed));

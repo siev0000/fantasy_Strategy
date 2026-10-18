@@ -502,7 +502,7 @@ function install() {
     window.cancelV39SelectedUnitMove?.("system-action-preview");
     window.cancelV39SelectedUnitAttack?.("system-action-preview");
     window.activateV39FooterTab?.("squad");
-    document.querySelector('[data-squad-detail-tab="action"]')?.click();
+    document.querySelector('[data-squad-detail-tab="basic"]')?.click();
     setExpandedTechnique(name);
     const card = [...document.querySelectorAll("[data-v39-technique-name]")].find(row => row.dataset.v39TechniqueName === name);
     card?.scrollIntoView({ block:"nearest" });

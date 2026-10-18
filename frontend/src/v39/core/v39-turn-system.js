@@ -298,6 +298,7 @@ export async function advanceTurn(options = {}) {
     });
     state=window.getV39GameState();
     window.advanceV39MineDuties?.(currentPlayerId,before.turnNumber);
+    window.advanceV39LogisticsRoutes?.(currentPlayerId,before.turnNumber);
     state=window.getV39GameState();
     const endedPlayerIds = [...new Set([...playerTimeline.endedPlayerIds, currentPlayerId])];
     const nextPlayerId = playerTimeline.playerTurnOrder.find(playerId => !endedPlayerIds.includes(playerId));

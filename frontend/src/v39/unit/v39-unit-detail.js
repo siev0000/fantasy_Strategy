@@ -12,7 +12,8 @@ const STATUS_FIELDS = [
   ["攻撃", "攻撃", "detailAtk"], ["防御", "防御", "detailDef"],
   ["魔力", "魔力", "detailMatk"], ["精神", "精神", "detailMdef"],
   ["命中", "命中", "detailHit"], ["速度", "速度", "detailSpd"],
-  ["SIZ", "SIZ", "detailSiz"], ["移動", "移動", "detailMov"]
+  ["SIZ", "SIZ", "detailSiz"], ["APP", "APP", "detailApp"],
+  ["移動", "移動", "detailMov"], ["飛行", "飛行", "detailFlight"]
 ];
 
 export function renderV39DetailSection(label, content) {
@@ -58,14 +59,15 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
   const stats = STATUS_FIELDS.map(([label, key, fieldId]) => {
     const raw = key === "移動"
       ? unit?.movement ?? unit?.status?.移動 ?? unit?.move ?? unit?.moveRange ?? unit?.移動
-      : adjusted?.status?.[key];
+      : key === "飛行" ? adjusted?.skillLevels?.飛行 ?? adjusted?.status?.飛行 ?? unit?.飛行 ?? 0
+      : adjusted?.status?.[key] ?? unit?.[key];
     const modifier = key === "移動" ? 0 : Number(adjusted?.terrainModifiers?.[key]) || 0;
     const value = !Number.isFinite(Number(raw)) ? "-"
       : modifier ? `${Number(raw)} (${modifier > 0 ? "+" : ""}${modifier})` : Number(raw);
     return `<div class="detail-stat"><span>${label}</span><b${id(fieldId)}>${escapeHtml(value)}</b></div>`;
   }).join("");
   const skills = Object.entries(adjusted?.skillLevels || {})
-    .filter(([, value]) => Number.isFinite(Number(value)) && Number(value) !== 0)
+    .filter(([key, value]) => key !== "飛行" && Number.isFinite(Number(value)) && Number(value) !== 0)
     .map(([name, value]) => `<div class="proficiency-item"><span>${escapeHtml(name)}</span><b>${escapeHtml(Number(value))}</b></div>`).join("");
   const resistances = RESISTANCE_FIELDS.flatMap(key => {
     const value = Number(adjusted?.resistances?.[key]);

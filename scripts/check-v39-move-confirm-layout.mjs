@@ -26,7 +26,7 @@ try {
       return {x:unit.x,y:unit.y};
     });
     await page.locator('[data-foot="squad"]').click();
-    await page.locator('[data-squad-detail-tab="action"]').click();
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     await page.locator("#mobileBattleMove").click();
     await page.locator("#moveConfirm").waitFor({state:"visible"});
     assert.ok(await page.locator("#moveOk").isDisabled());

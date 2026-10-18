@@ -15,7 +15,7 @@ try{
       window.enterV39Cave({seed:"conquest-ui",floor:3,caveTest:true});
       // Simulate the test mode's enemy removal after a generated boss encounter.
       window.setV39GameState({enemies:[],groundLootByTile:{}});
-      document.querySelector('[data-squad-detail-tab="action"]').click();
+      document.querySelector('[data-squad-detail-tab="basic"]').click();
     });
     assert.equal(await page.locator("#v39-cave-conquest-choice").isVisible(),true);
     await page.screenshot({path:`${directory}/${width}-choice.png`});
@@ -24,7 +24,7 @@ try{
     await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson()));
     await page.waitForTimeout(200);
     assert.equal(await page.locator("#v39-cave-conquest-choice").isVisible(),false);
-    await page.locator('[data-squad-detail-tab="action"]').click();
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     assert.equal(await page.locator("#v39-cave-mine-claim").isVisible(),true);
     assert.equal(await page.locator("#v39-cave-mine-claim").isEnabled(),true);
     const report=await page.evaluate(async()=>{
@@ -62,7 +62,7 @@ try{
       window.enterV39Cave({seed:"conquest-ui",floor:3,caveTest:true,worldId});
       try{window.claimV39CaveMine();throw new Error("live boss allowed reclaim");}catch(error){check(error.message.includes("ボス"),error.message);}
       window.setV39GameState({enemies:[],groundLootByTile:{},enemyNests:[],enemySquads:[]});
-      document.querySelector('[data-squad-detail-tab="action"]').click();
+      document.querySelector('[data-squad-detail-tab="basic"]').click();
       check(!document.getElementById("v39-cave-conquest-choice").hidden,"new boss defeat did not ask again");
       return afterRespawn;
     });

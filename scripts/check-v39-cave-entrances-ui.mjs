@@ -62,7 +62,7 @@ try{
     await page.waitForTimeout(150);icons=await inspect();assert.equal(icons.find(icon=>icon.name.endsWith(":8,8")).visible,true);
     await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson()));
     await page.waitForTimeout(200);
-    await page.evaluate(()=>document.querySelector('[data-squad-detail-tab="action"]').click());
+    await page.evaluate(()=>document.querySelector('[data-squad-detail-tab="basic"]').click());
     assert.equal(await page.locator("#v39-cave-enter-action").isVisible(),true);
     await page.locator("#v39-cave-enter-action").scrollIntoViewIfNeeded();
     await page.screenshot({path:`${out}/${width}-discovered.png`});

@@ -418,7 +418,7 @@ function startMove() {
   };
   persistMoveCommand(moveSession.unitId, "move-command-armed");
   window.activateV39FooterTab?.("squad");
-  document.querySelector('[data-squad-detail-tab="action"]')?.click();
+  document.querySelector('[data-squad-detail-tab="basic"]')?.click();
   document.getElementById("mobileBattleMove")?.classList.add("active");
   drawReachable(plan, moveSession.start);
   setMoveConfirm(false);

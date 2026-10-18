@@ -14,7 +14,7 @@ try{
     await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
     await page.getByRole("button",{name:"探索開始",exact:true}).click();
     await page.waitForTimeout(800);
-    await page.locator('[data-squad-detail-tab="action"]').click();
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     const report=await page.evaluate(async()=>{
       const check=(ok,message)=>{if(!ok)throw new Error(message);};
       const map=structuredClone(window.__v39FieldRuntime.mapData);delete map.caveEventNpc;

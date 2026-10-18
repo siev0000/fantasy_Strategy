@@ -1,4 +1,5 @@
 import { factionData, raceData } from "../../lib/game-data-registry.js";
+import { SKILL_LEVEL_FIELDS } from "../../constants/unitCommon.js";
 import factionDetailFallbackData from "../../../../data/manual/勢力詳細.json";
 import {
   applyV39InitialSovereignProfile,
@@ -9,7 +10,7 @@ const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Math.floor(Number(value)) : 0;
 const raceRows = (Array.isArray(raceData) ? raceData : []).filter(row => text(row?.key));
 const raceByKey = new Map(raceRows.map(row => [text(row.key), row]));
-const SPECIALTY_KEYS = ["指揮", "威圧", "看破", "早業", "技術", "隠密", "索敵", "統治", "交渉", "農業", "林業", "漁業", "工業", "鍛冶", "魔術", "信仰"];
+const SPECIALTY_KEYS = [...SKILL_LEVEL_FIELDS, "鍛冶"];
 const CLASS_NON_STATUS_KEYS = new Set(["名前", "ルビ", "種類", "合計", "Tire", "増加条件", "コスト", "穀物", "野菜", "肉", "魚", "魂", "死体", "脚数", "画像ID"]);
 const factionRows = Array.isArray(factionData) ? factionData : [];
 const factionDetailFallbackRows = Array.isArray(factionDetailFallbackData) ? factionDetailFallbackData : [];

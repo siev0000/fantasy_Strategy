@@ -11,9 +11,9 @@ if (racesWithoutClassName.length) {
 }
 export const RACE_CLASS_NAME_MAP = Object.freeze(Object.fromEntries(raceClassEntries));
 
-export const STATUS_FIELDS = Object.freeze(["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"]);
-export const STATUS_GROWTH_FIELDS = Object.freeze(["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中"]);
-export const COMBAT_STATUS_FIELDS = Object.freeze(["HP", "MP", "ST", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ", "Cr率", "Cr威力", "耐性貫通"]);
+export const STATUS_FIELDS = Object.freeze(["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ", "APP"]);
+export const STATUS_GROWTH_FIELDS = Object.freeze(["HP", "攻撃", "防御", "魔力", "精神", "速度", "命中", "APP"]);
+export const COMBAT_STATUS_FIELDS = Object.freeze(["HP", "MP", "ST", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ", "APP", "Cr率", "Cr威力", "耐性貫通"]);
 export const DAMAGE_TYPE_FIELDS = Object.freeze(["物理", "魔法", "射撃", "切断", "貫通", "打撃", "炎", "氷", "雷", "毒", "光", "闇"]);
 export const SKILL_STATE_KEYS = Object.freeze(["精神", "盲目", "怯み", "出血", "拘束", "幻覚"]);
 
@@ -21,7 +21,9 @@ export const SKILL_FIELD_DEFS = Object.freeze([
   Object.freeze({ key: "指揮", label: "指揮" }),
   Object.freeze({ key: "威圧", label: "威圧" }),
   Object.freeze({ key: "看破", label: "看破" }),
+  Object.freeze({ key: "変装", label: "変装" }),
   Object.freeze({ key: "早業", label: "早業" }),
+  Object.freeze({ key: "飛行", label: "飛行" }),
   Object.freeze({ key: "技術", label: "技術" }),
   Object.freeze({ key: "隠密", label: "隠密" }),
   Object.freeze({ key: "索敵", label: "索敵" }),

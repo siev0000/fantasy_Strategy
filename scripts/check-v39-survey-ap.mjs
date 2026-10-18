@@ -67,6 +67,6 @@ try {
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify(report,null,2));
   await page.addStyleTag({ content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}" });
-  await page.evaluate(() => document.querySelector('[data-squad-detail-tab="action"]')?.click());
+  await page.evaluate(() => document.querySelector('[data-squad-detail-tab="basic"]')?.click());
   await page.screenshot({ path:"output/web-game/v39-survey-ap.png" });
 } finally { await browser.close(); }

@@ -3,14 +3,15 @@ import { computed, ref, watch } from "vue";
 import { skillData as skillInfoDb } from "../lib/game-data-registry.js";
 import { computeSkillScaledTriplet } from "../lib/skill-power.js";
 import { getRaceIconSrc } from "../lib/race-icon-library.js";
+import { SKILL_LEVEL_FIELDS } from "../constants/unitCommon.js";
 
 const TABS = [
   ["action", "行動"],
   ["info", "情報"],
   ["interaction", "交流"]
 ];
-const STATUS = [["攻撃","攻撃"],["防御","防御"],["魔力","魔攻"],["精神","魔防"],["速度","速さ"],["命中","命中"],["SIZ","SIZ"],["移動","移動"]];
-const PROF = ["隠密","感知","威圧","軽業","技術","早業","看破","騙す","知識","鑑定","装置","変装","制作","精神接続","魔法技術","指揮"];
+const STATUS = [["攻撃","攻撃"],["防御","防御"],["魔力","魔力"],["精神","精神"],["命中","命中"],["速度","速度"],["SIZ","SIZ"],["APP","APP"],["移動","移動"],["飛行","飛行"]];
+const PROF = [...new Set([...SKILL_LEVEL_FIELDS,"感知","軽業","騙す","知識","鑑定","装置","制作","精神接続","魔法技術"])];
 
 const props = defineProps({
   selectedTileDetail:{type:Object,default:null}, tileUnits:{type:Array,default:()=>[]},
@@ -67,11 +68,11 @@ function level(u){return Math.max(1,Math.floor(num(u?.level,num(u?.status?.Lv,1)
 function raceIconSrc(u){return getRaceIconSrc(text(u?.race));}
 function hp(u){const max=Math.max(0,Math.round(num(u?.status?.HP,num(u?.maxHp,0))));const cur=Math.max(0,Math.min(max||Infinity,Math.round(num(u?.hp,num(u?.currentHp,max)))));return [cur,max];}
 function ap(u){const max=Math.max(1,Math.round(num(u?.actionPointMax,100)));return [Math.max(0,Math.min(max,Math.round(num(u?.actionPoint,max)))),max];}
-function stat(u,k){const vals=[u?.status?.[k],u?.[k]];if(k==="移動")vals.push(u?.move,u?.movement,u?.moveRange);for(const v of vals)if(Number.isFinite(Number(v)))return Math.round(Number(v));return "-";}
+function stat(u,k){const vals=k==="飛行"?[u?.skillLevels?.飛行,u?.status?.飛行,u?.飛行,0]:[u?.status?.[k],u?.[k]];if(k==="移動")vals.push(u?.move,u?.movement,u?.moveRange);for(const v of vals)if(Number.isFinite(Number(v)))return Math.round(Number(v));return "-";}
 
 const profRows=computed(()=>{
   const u=member.value;if(!u)return[];const src=[u?.skillLevels,u?.proficiencies,u?.skillLevelMap,u?.status];const out=[];
-  for(const k of PROF){for(const s of src){if(s&&Number.isFinite(Number(s[k]))){out.push([k,Math.round(Number(s[k]))]);break;}}}return out;
+  for(const k of PROF.filter(key=>key!=="飛行")){for(const s of src){if(s&&Number.isFinite(Number(s[k]))){out.push([k,Math.round(Number(s[k]))]);break;}}}return out;
 });
 const skillDb=new Map((Array.isArray(skillInfoDb)?skillInfoDb:[]).map(r=>[text(r?.名前),r]).filter(([n])=>n));
 function techRaw(r){if(typeof r==="string")return{name:text(r),row:skillDb.get(text(r))||null};if(!r||typeof r!=="object")return null;const name=text(r.name||r.名前||r.skillName);return name?{name,row:r.名前?r:(skillDb.get(name)||r)}:null;}

@@ -37,7 +37,7 @@ try{
       if(state.enemies.some(unit=>unit.hp>0))throw new Error("boss survived native combat");
       window.activateV39FooterTab?.("squad");
       window.refreshV39SquadDerivedUI?.();
-      document.querySelector('[data-squad-detail-tab="action"]')?.click();
+      document.querySelector('[data-squad-detail-tab="basic"]')?.click();
     });
     // Use the actual operation button, not just the pure rule function.
     await page.locator("#v39-cave-mine-claim").scrollIntoViewIfNeeded();
@@ -98,7 +98,7 @@ try{
       window.enterV39Cave({seed:"mine-ui",floor:3,caveTest:true,worldId});
       const map=window.__v39FieldRuntime.mapData,actor=window.getV39SelectedSquadUnit();
       window.updateV39ActiveFactionState({units:window.getV39ActiveFactionState().units.map(unit=>unit.id===actor.id?{...unit,x:map.entrances[0].x,y:map.entrances[0].y}:unit)});
-      document.querySelector('[data-squad-detail-tab="action"]')?.click();
+      document.querySelector('[data-squad-detail-tab="basic"]')?.click();
       window.refreshV39SquadDerivedUI?.();
     },bossInfo.worldId);
     await page.waitForTimeout(400);

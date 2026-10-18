@@ -201,6 +201,11 @@ export const V39_LOG_PREVIEW_BALANCE = Object.freeze({
   maxEntries:2 // 通常/ターン通知・チャット・戦闘を合わせた同時表示上限。フィールドを覆いすぎない。
 });
 
+export const V39_FLIGHT_BALANCE = Object.freeze({
+  skillPerIgnoredHeight:100,
+  climbPenaltyPointsPerHeight:25
+});
+
 export const V39_SQUAD_MOVEMENT_BALANCE = Object.freeze({
   maxMembers:5, // リーダー1体＋部隊員4体。軍隊ユニットも1体として数える。
   assemblyBorderRadius:2,

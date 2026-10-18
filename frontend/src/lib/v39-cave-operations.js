@@ -53,7 +53,7 @@ export function advanceV39MineDuties(state, playerId, turn) {
   if (!player) return state;
   let faction = player.factionState;
   const units = faction.units.map(source => {
-    if (!source.caveDuty || !alive(source) || source.caveDuty.lastTurn >= turn || source.waitTurnNumber === turn) return source;
+    if (!source.caveDuty || source.caveDuty.paused || !alive(source) || source.caveDuty.lastTurn >= turn || source.waitTurnNumber === turn) return source;
     const duty = {...source.caveDuty, cargo:{...source.caveDuty.cargo}, lastTurn:turn};
     let unit = {...source, caveDuty:duty};
     const route = resolveV39MineRoute(worlds, duty.mineWorldId), mineMap = worlds[duty.mineWorldId]?.map;

@@ -1,5 +1,6 @@
 <script setup>
 import {resolveV39EnemyMemberCount,resolveV39EnemyCombatProfile} from '../lib/v39-enemy-formation.js';
+import { resolveV39UnitMovementStepCost } from '../lib/v39-terrain-traversal.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Phaser from "phaser";
 import GenericModal from "./GenericModal.vue";
@@ -4834,45 +4835,8 @@ function tileHeightLevel(data, x, y) {
   return Number.isFinite(raw) ? Math.floor(raw) : null;
 }
 
-function resolveUnitFlightValue(unit) {
-  if (!unit || typeof unit !== "object") return 0;
-  const statusFlight = toSafeNumber(unit?.status?.飛行, Number.NaN);
-  const directFlight = toSafeNumber(unit?.飛行, Number.NaN);
-  const skillFlight = toSafeNumber(unit?.skillLevels?.飛行, Number.NaN);
-  const candidate = Number.isFinite(statusFlight)
-    ? statusFlight
-    : (Number.isFinite(directFlight) ? directFlight : skillFlight);
-  return Math.max(0, Math.floor(toSafeNumber(candidate, 0)));
-}
-
 function movementStepCost(data, fromX, fromY, toX, toY, moveUnit = null) {
-  const fromLevel = tileHeightLevel(data, fromX, fromY);
-  const toLevel = tileHeightLevel(data, toX, toY);
-  const absDiff = Number.isFinite(fromLevel) && Number.isFinite(toLevel)
-    ? Math.abs(toLevel - fromLevel)
-    : 0;
-  const climbDiff = Number.isFinite(fromLevel) && Number.isFinite(toLevel)
-    ? Math.max(0, toLevel - fromLevel)
-    : 0;
-  const flightValue = resolveUnitFlightValue(moveUnit);
-  const hasFlight = flightValue > 0;
-
-  // 高低差エッジ(差2以上)は飛行なしでは通行不可。
-  if (absDiff > 1 && !hasFlight) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  // 基本1 + 登り(高度差1につき+2)。移動力4なら平地1マスはAP25となる。
-  let terrainCost = 1 + (climbDiff * 2);
-  // 飛行30ごとに移動コスト-1。0未満にはしない。
-  const flightReduction = Math.floor(flightValue / 30);
-  terrainCost = Math.max(0, terrainCost - flightReduction);
-  const moveStat = Math.max(1, Math.floor(toSafeNumber(
-    moveUnit?.status?.移動,
-    toSafeNumber(moveUnit?.移動, toSafeNumber(moveUnit?.moveRange, 1))
-  )));
-  const baseApCost = UNIT_ACTION_POINT_MAX / moveStat;
-  return Math.max(0, Math.ceil(terrainCost * baseApCost));
+  return resolveV39UnitMovementStepCost(data, fromX, fromY, toX, toY, moveUnit);
 }
 
 function roundTo1(value) {

@@ -44,6 +44,7 @@ Phaser/canvas上の地図ラベル・ダメージ数値のサイズはHTML文字
 
 - ステータス・技能・耐性は `frontend/src/v39/unit/v39-unit-detail.js` の `renderV39UnitAbility` を両画面で使う。表示名・順序・地形補正・技能のゼロ値除外を別々に実装しない。
 - 見出し・タブ・折りたたみ・能力欄のCSSは `frontend/src/v39/unit/v39-unit-detail.css` に置き、`.squad-detail-pane` に共通適用する。モーダル側に能力欄のコピーや別の文字サイズ設定を追加しない。
+- ステータス/技能行の縦幅は同CSSの `--v39-ability-row-min-height`（28px）と `--v39-ability-row-padding-y`（上下2px）で調整する。文字サイズや左右余白6pxは維持し、フィールド/ユニット一覧を同時に変更する。
 - タブは同じ `renderV39DetailTabs` を使う。部隊画面の能力／行動と、自キャラ画面の能力／スキル／装備／成長という用途の違いは維持する。
 - フィールドの既存IDは `fieldIds:true` の場合だけ付ける。モーダルに同名IDやフィールドの行動イベント属性を付けない。
 - フィールドの再更新時は `updateV39UnitAbility` で変更のない描画を省き、閉じたセクションを保持する。

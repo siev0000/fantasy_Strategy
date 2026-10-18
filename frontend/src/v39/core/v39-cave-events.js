@@ -161,11 +161,11 @@ function conversationDialogue(c,held){
   }
 }
 function render(){
-  const c=context(),list=document.getElementById("detailTechniqueList");if(!list)return;
+  const c=context(),list=document.getElementById("detailBasicList");if(!list)return;
   document.getElementById("v39-cave-talk")?.remove();
   if(!c.near||(opened&&conversationActor!==c.actor.id)){opened=false;closeV39Conversation();if(!c.near)return;}
   const talk=button("⚒ ドワーフに話す",openConversation);talk.id="v39-cave-talk";talk.className="technique-card system-action-card";
-  list.insertBefore(talk,document.getElementById("detailTechniqueRows"));
+  list.insertBefore(talk,document.getElementById("detailBasicRows"));
   if(!opened||!c.campaign)return;
   const panel=element("section", "");panel.id="v39-cave-event-panel";
   panel.append(element("b",`携帯金 ${c.campaign.gold}`));
@@ -242,7 +242,7 @@ function drawNpc(){
   }
   marker.setInteractive();marker.on("pointerdown",()=>{
     if(!context().near){window.showV39TurnBanner?.("鍛冶師の隣へ移動してください");return;}
-    window.activateV39FooterTab?.("squad");document.querySelector('[data-squad-detail-tab="action"]')?.click();openConversation();
+    window.activateV39FooterTab?.("squad");document.querySelector('[data-squad-detail-tab="basic"]')?.click();openConversation();
   });group.add(marker);
   group.add(scene.add.text(hex.width*.25,-hex.height*.3,"…",{fontSize:`${hex.width*.25}px`,color:"#ffe3a1",backgroundColor:"#172a30"}).setOrigin(.5));
 }

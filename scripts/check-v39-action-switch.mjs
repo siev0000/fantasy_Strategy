@@ -28,6 +28,7 @@ try {
   const attack = () => page.locator('[data-v39-attack-name]:not(.unavailable)').first();
   const session = () => page.evaluate(() => window.getV39AttackSession());
   const clickUnavailableSurvey = async () => {
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     const button = page.locator("#mobileBattleSurvey");
     await button.scrollIntoViewIfNeeded();
     const box = await button.boundingBox();
@@ -35,6 +36,7 @@ try {
     await page.mouse.click(box.x + box.width / 2,box.y + box.height / 2);
   };
   const start = async () => {
+    await page.locator('[data-squad-detail-tab="action"]').click();
     await attack().click();
     await page.waitForFunction(() => !!window.getV39AttackSession());
   };
@@ -51,9 +53,11 @@ try {
     await attack().click();
   }
   await start();
+  await page.locator('[data-squad-detail-tab="basic"]').click();
   await page.locator("#mobileBattleMove").click();
   assert.equal(await session(),null,"movement must cancel attack");
   await start();
+  await page.locator('[data-squad-detail-tab="basic"]').click();
   await page.locator("#mobileBattleSurvey").click();
   assert.equal(await session(),null,"survey must cancel attack");
   await page.locator("#mobileBattleSurveyUse").click();
@@ -76,6 +80,7 @@ try {
   assert.match(await page.locator("#mobileBattleSurvey").getAttribute("title"),/すでに調査中/);
   assert.equal(await page.locator("#mobileBattleSurveyUse").isDisabled(),true);
   await start();
+  await page.locator('[data-squad-detail-tab="basic"]').click();
   await page.locator("#mobileBattleWait").click();
   assert.equal(await session(),null,"wait must cancel attack");
   await page.locator("#mobileBattleWaitUse").click();

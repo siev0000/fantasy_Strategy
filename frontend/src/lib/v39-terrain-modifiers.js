@@ -40,7 +40,7 @@ export function applyV39TerrainModifiers(unit, mapData = globalThis.window?.__v3
   const status = { ...base.status };
   const skillLevels = { ...base.skillLevels };
   for (const [key, value] of Object.entries(terrain.modifiers)) {
-    if (Object.prototype.hasOwnProperty.call(status, key) || ["HP", "MP", "ST", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ"].includes(key)) {
+    if (Object.prototype.hasOwnProperty.call(status, key) || COMBAT_STATUS_FIELDS.includes(key)) {
       status[key] = number(status[key]) + value;
     } else {
       skillLevels[key] = number(skillLevels[key]) + value;

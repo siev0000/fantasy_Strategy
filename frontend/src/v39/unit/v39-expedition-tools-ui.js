@@ -65,7 +65,7 @@ function updateCards(host,choices) {
   }
 }
 function renderTools() {
-  const host=document.getElementById("techniqueList")||document.getElementById("detailTechniqueList");
+  const host=document.getElementById("detailBasicList")||document.getElementById("techniqueList");
   if(!host)return;
   const list=[];
   const unit=window.getV39SelectedSquadUnit?.(),map=window.__v39FieldRuntime?.mapData;
@@ -78,7 +78,7 @@ function renderTools() {
     addCard(list,`village-talk-${village.id}`,'村で会話・依頼',`${village.name} / 依頼の受注・納品・報告を開きます。`,()=>window.openV39VillageMenu?.(village.id));
     addCard(list,`village-rest-${village.id}`,'村で休息',`AP30 / 部隊全員が村の領域内にいるとき休息できます。選択後に実行で確定します。`,()=>{window.restV39VillageParty?.(village.id);schedule();});
   }
-  if(unit.caveDuty)addCard(list,"mine-duty",`鉱床任務: ${unit.caveDuty.status}`,`積載: ${Object.entries(unit.caveDuty.cargo||{}).filter(([,value])=>value>0).map(([name,value])=>`${name} ${value}`).join(' / ')||'なし'} / 実行で任務解除（積載中は先に搬入）`,()=>{
+  if(unit.caveDuty?.duty==='guard')addCard(list,"mine-duty",`入口警備: ${unit.caveDuty.status}`,`実行で警備任務を解除します。`,()=>{
     const result=window.assignV39MineDuty(unit.id,'none');window.showV39TurnBanner?.(result.ok?'鉱床任務を解除しました':result.reason);schedule();
   });
   for(const item of getV39ToolDefinitions()){

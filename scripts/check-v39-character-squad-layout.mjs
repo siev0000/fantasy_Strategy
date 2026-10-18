@@ -22,6 +22,11 @@ try {
       const style=getComputedStyle(node), value=getComputedStyle(node.querySelector("b"));
       return {padding:style.padding,minHeight:style.minHeight,font:value.fontSize,background:style.backgroundColor};
     });
+    assert.equal(abilityStyle.minHeight,'28px');assert.equal(abilityStyle.padding,'2px 6px');
+    const skillStyle=await page.locator('#detailAbilitySections .proficiency-item').first().evaluate(node=>{
+      const style=getComputedStyle(node);return {minHeight:style.minHeight,padding:style.padding};
+    });
+    assert.deepEqual(skillStyle,{minHeight:'28px',padding:'2px 6px'});
     await page.evaluate(()=>window.openV39CharacterModal());
     const card=page.locator(`[data-v39-character-row="${id}"]`);
     await card.click();

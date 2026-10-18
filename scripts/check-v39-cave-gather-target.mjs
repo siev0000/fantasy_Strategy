@@ -8,12 +8,12 @@ try{
   for(const width of [390,1280]){
     const page=await browser.newPage({viewport:{width,height:900}});
     page.on("pageerror",error=>errors.push(String(error)));
-    await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+    await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3022",{waitUntil:"networkidle"});
     await page.locator("[data-v39-cave-test]").click();
     await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();
     await page.getByRole("button",{name:"探索開始",exact:true}).click();
     await page.waitForTimeout(700);
-    await page.locator('[data-squad-detail-tab="action"]').click();
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     const point=await page.evaluate(async()=>{
       const {HEX_TILE_CONFIG:c}=await import("/src/lib/phaser-map-panel-config.js");
       const {getHexNeighborCoords}=await import("/src/lib/hex-grid.js");

@@ -7,7 +7,7 @@ try{
   for(const width of [390,1280]){
     const page=await browser.newPage({viewport:{width,height:900}});
     page.on("pageerror",error=>errors.push(String(error)));
-    await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+    await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3022",{waitUntil:"networkidle"});
     await page.locator("[data-v39-cave-test]").click();await page.getByRole("button",{name:"探索ゲーム",exact:true}).click();await page.getByRole("button",{name:"探索開始",exact:true}).click();
     await page.waitForTimeout(800);
     await page.evaluate(async()=>{
@@ -34,7 +34,7 @@ try{
         };check();
       });
     });
-    await page.locator('[data-squad-detail-tab="action"]').click();await page.locator("#v39-cave-talk").click();
+    await page.locator('[data-squad-detail-tab="basic"]').click();await page.locator("#v39-cave-talk").click();
     const layout=await page.evaluate(()=>{
       const host=document.querySelector(".footer-body"),panel=document.getElementById("v39-conversation-panel");
       const a=host.getBoundingClientRect(),b=panel.getBoundingClientRect();

@@ -77,7 +77,7 @@ try{
     await page.locator('[data-close-village-menu]').click();
     await page.evaluate(()=>window.activateV39FooterTab('test'));
     await page.locator('[data-test-action="expedition-mine"]').click();
-    await page.evaluate(()=>{window.activateV39FooterTab('squad');document.querySelector('[data-squad-detail-tab="action"]')?.click();window.refreshV39ExpeditionTools();});
+    await page.evaluate(()=>{window.activateV39FooterTab('squad');document.querySelector('[data-squad-detail-tab="basic"]')?.click();window.refreshV39ExpeditionTools();});
     const recovery=await page.evaluate(()=>{
       const card=document.querySelector('[data-v39-cave-site="expedition-test-herb"]');
       if(!card)throw new Error('native recovery card is missing');
@@ -101,6 +101,7 @@ try{
     await page.screenshot({path:`output/web-game/expedition-fixture/tools-${width}.png`});
     assert.equal(await page.evaluate(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children
       .getByName('v39-structure-layer').list.length),0,'surface buildings must not appear underground');
+    await page.evaluate(()=>window.activateV39FooterTab('tile'));
     await page.selectOption('#v39-mine-duty-unit','expedition-test-guard');
     const mineControls=await page.evaluate(async()=>{
       const unit=document.getElementById('v39-mine-duty-unit'),settlement=document.getElementById('v39-mine-duty-settlement'),option=unit.selectedOptions[0];unit.focus();
@@ -121,6 +122,7 @@ try{
       return {delivered,world:window.getV39GameState().activeWorldId,units:window.getV39ActiveFactionState().units.length};
     });
     assert.equal(delivery.delivered,true);assert.equal(delivery.units,6);
+    await page.evaluate(()=>window.activateV39FooterTab('tile'));
     await page.selectOption('#v39-mine-duty-unit','expedition-test-carrier');
     await page.locator('[data-mine-duty="none"]').click();
     await page.selectOption('#v39-mine-duty-unit','expedition-test-guard');

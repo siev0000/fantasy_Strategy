@@ -28,6 +28,7 @@ import './v39-operation-layout.css';
       { key: "tile", label: "土地", icon: "⬢" },
       { key: "settlement", label: "拠点", icon: "⌂" },
       { key: "interaction", label: "交流", icon: "◇" },
+      { key: "logistics", label: "物流", icon: "⇄" },
       { key: "test", label: "テスト", icon: "試" },
       { key: "manage", label: "管理", icon: "⚙" }
     ],
@@ -174,13 +175,13 @@ import './v39-operation-layout.css';
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
               <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span></div>
-              ${renderV39DetailTabs([["status","能力"],["action","行動"]], "status", "data-squad-detail-tab")}
-              <div class="squad-detail-tab-content">
+              ${renderV39DetailTabs([["status","能力"],["basic","基本"],["action","スキル"]], "status", "data-squad-detail-tab")}
+              <div class="squad-detail-tab-content" id="detailTechniqueList">
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="status" role="tabpanel" aria-hidden="false">
                   <div id="detailAbilitySections">${renderV39UnitAbility(null, {fieldIds:true})}</div>
                   <details class="squad-detail-section" open><summary class="squad-detail-section-title">装備</summary><div class="squad-detail-section-body"><div class="equipment-list" id="detailEquipmentList"></div></div></details>
                 </section>
-                <section class="squad-detail-tab-panel" data-squad-detail-panel="action" role="tabpanel" hidden aria-hidden="true">
+                <section class="squad-detail-tab-panel" data-squad-detail-panel="basic" role="tabpanel" hidden aria-hidden="true">
                   <div class="v39-move-confirm" id="moveConfirm" hidden role="region" aria-label="移動確認">
                     <p id="moveInstruction" aria-live="polite"></p>
                     <p id="moveText" hidden></p>
@@ -189,7 +190,7 @@ import './v39-operation-layout.css';
                       <button type="button" class="primary" id="moveOk" disabled>移動確定</button>
                     </div>
                   </div>
-                  <div class="technique-list" id="detailTechniqueList">
+                  <div class="technique-list" id="detailBasicList">
                     <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleMove" data-v39-technique-name="__system_move__" aria-expanded="false">
                       <span class="technique-summary">
                         <span class="technique-icon technique-icon-system-move"><span class="technique-icon-glyph" aria-hidden="true">➜</span></span>
@@ -236,8 +237,11 @@ import './v39-operation-layout.css';
                         <span class="technique-detail-description">地上では現在地の森・洞窟から採取します。洞窟内では周囲1マスの鉱石・宝石を選択して使用します。荷物として運び、拠点へ戻って搬入します。</span>
                       </span>
                     </div>
-                    <div id="detailTechniqueRows"></div>
+                    <div id="detailBasicRows"></div>
                   </div>
+                </section>
+                <section class="squad-detail-tab-panel" data-squad-detail-panel="action" role="tabpanel" hidden aria-hidden="true">
+                  <div class="technique-list" id="detailTechniqueRows"></div>
                 </section>
               </div>
             </section>
@@ -254,6 +258,7 @@ import './v39-operation-layout.css';
         </section>
         <section id="footSettlement" class="settlement-panel" hidden aria-hidden="true"></section>
         <section id="footInteraction" class="v39-interaction-panel" hidden aria-hidden="true"><header><strong>交流</strong><span>地図で相手のマスを選択</span></header><p data-interaction-empty>村・放浪者・守護者のマスを選ぶと、利用できる交流を表示します。</p><div id="v39-interaction-actions"></div></section>
+        <section id="footLogistics" hidden aria-hidden="true"></section>
         <section id="footTest" class="v39-test-footer-panel" hidden aria-hidden="true"></section>
         <section id="footManage" class="mobile-manage-panel" hidden aria-hidden="true">
           <div id="v39-manage-menu" class="manage-menu-grid">${data.manageItems.map(item => `<button class="manage-tile" ${attributes(item)}><b>${item.icon}</b><span>${item.labelHtml || item.label}</span></button>`).join("")}</div>
@@ -275,7 +280,7 @@ import './v39-operation-layout.css';
   }
 
   function activateSquadDetailTab(tabKey) {
-    const normalized = tabKey === "action" ? "action" : "status";
+    const normalized = ['basic','action'].includes(tabKey) ? tabKey : "status";
     document.querySelectorAll("[data-squad-detail-tab]").forEach(button => {
       const active = button.dataset.squadDetailTab === normalized;
       button.classList.toggle("active", active);

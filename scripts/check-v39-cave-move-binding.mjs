@@ -31,7 +31,7 @@ try {
       });
       await window.waitForV39MapRenderSettled();return ids;
     });
-    await page.locator('[data-squad-detail-tab="action"]').click();
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     for(const reordered of [false,true]){
       if(reordered){
         await page.locator(`#squadMemberList [data-v39-unit-id="${ids[2]}"]`).click({button:"right"});
