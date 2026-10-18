@@ -227,12 +227,15 @@ function run(action,id) {
 }
 function entries() {
   const s=state();if(!s?.players?.length)return;
-  for(const [host,village] of [[document.querySelector('#footSettlement .settlement-toolbar'),null],[document.getElementById('v39-world-contact-buttons'),document.getElementById('v39-world-contact-actions')?.dataset.targetId]]) {
+  for(const [host,village] of [[document.getElementById('v39-world-contact-buttons'),document.getElementById('v39-world-contact-actions')?.dataset.targetId]]) {
     if(!host||host.querySelector('[data-open-v39-trade]'))continue;
     const button=document.createElement('button');button.type='button';button.className='v39-trade-entry';button.dataset.openV39Trade='true';button.textContent='取引・郵送';button.onclick=()=>open(s.neutralVillages?.some(row=>row.id===village)?village:'');host.prepend(button);
   }
 }
 function queue() {if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;entries();if(modal()&&!modal().hidden){if(draft&&draft.sides[0].partyId!==state().activePlayerId){closeResourcePicker();modal().hidden=true;}else render({preserveInput:true});}});}
+document.addEventListener('click',event=>{
+  if(event.target.closest?.('#footSettlement [data-open-v39-trade]'))open();
+});
 function advanceNpc(event) {
   const map=window.__v39FieldRuntime?.mapData,s=state(),turn=n(event.detail?.turnNumber)||tradeTurn(s);if(!map?.grid||(s.activeWorldId||'surface')!=='surface')return;
   const villageIds=new Set(listV39Trades(s).flatMap(row=>row.sides.filter(side=>side.kind==='village').map(side=>side.partyId)));if(!villageIds.size)return;

@@ -8,7 +8,6 @@
 .settlement-pages button{flex:1;min-width:0;font:inherit;font-size:var(--font-body);min-height:34px;border:1px solid #40575e;border-radius:6px;background:#14252b;color:#b6c9cc}
 .settlement-pages [aria-pressed=true]{background:#21404a;border-color:#75cbd5;color:#fff}
 .settlement-fold[hidden]{display:none}
-.settlement-toolbar .v39-trade-entry{flex-shrink:0;min-width:0;margin:0}
 #footTile.land-panel{align-content:start;grid-auto-rows:max-content;overflow:auto;min-height:0;height:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 #footTile .land-item{min-width:0}
 #footTile .land-item b{overflow-wrap:anywhere}

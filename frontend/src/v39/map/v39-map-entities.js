@@ -17,6 +17,7 @@ import {getV39StorageFacilities,getV39FacilityStoredEntries} from '../../lib/v39
 import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
 import { V39_SPECIALTY_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import defenseFieldImage from "../../../../assets/effect/320×240/シールド.webp";
+import {resolveV39PlayerColor} from '../../lib/v39-player-colors.js';
 
 const STRUCTURE_LAYER_DEPTH = 10;
 const UNIT_LAYER_DEPTH = 12;
@@ -165,6 +166,7 @@ function markerRenderSignature(faction, state) {
   return [
     String(state?.activePlayerId || ""),
     String(state?.activeWorldId || "surface"),
+    players.map(player=>`${player.id}:${resolveV39PlayerColor(state,player.id)}`).join('|'),
     String(faction?.selectedUnitId || ""),
     JSON.stringify((faction.facilityStorage||[]).map(e=>[e.unit?.id,e.tileKey,e.facilityName,e.worldId])),
     JSON.stringify((faction.soulStorage||[]).map(e=>[e.id,e.storageTileKey])),
@@ -685,7 +687,7 @@ function addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, select
   marker.add([bg, glyph]);
 }
 
-function drawUnitGroup(scene, container, group, selectedUnitId) {
+function drawUnitGroup(scene, container, group, selectedUnitId, ownerColor) {
   const unit = representativeUnit(group, selectedUnitId);
   if (!unit) return;
 
@@ -703,17 +705,16 @@ function drawUnitGroup(scene, container, group, selectedUnitId) {
   // One tile renders only one icon. No count/name text is permanently attached to the map.
   // Unit markers stay in world-space and scale exactly with their tile.
   const marker = scene.add.container(center.x, center.y).setName("v39-player-unit-marker");
+  marker.setData('ownerColor',ownerColor);
   for (const member of group) {
     const id = String(member?.id || "").trim();
     if (id) markerByEntityId.set(id, marker);
   }
   const artworkAdded = addUnitArtwork(scene, marker, unit, diameter);
 
-  if (artworkAdded) {
-    addSelectionRing(scene, marker, radius, selected);
-  } else {
-    addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, selected);
-  }
+  if (!artworkAdded) addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, selected);
+  marker.add(scene.add.circle(0,0,radius*.9,0,0).setStrokeStyle(Math.max(2,tileRelativePx(.04)),ownerColor,1).setName('v39-unit-owner-ring'));
+  if (artworkAdded) addSelectionRing(scene, marker, radius, selected);
   addDeadMark(scene, marker, unit, radius);
   addMilitaryMemberCount(scene, marker, unit, radius);
 
@@ -726,10 +727,10 @@ function drawUnitGroup(scene, container, group, selectedUnitId) {
   container.add(marker);
 }
 
-function drawUnits(scene, container, units, selectedUnitId, worldId) {
+function drawUnits(scene, container, units, selectedUnitId, worldId, ownerColor) {
   const list = (Array.isArray(units) ? units : []).filter(unit=>(unit.worldId||"surface")===worldId);
   for (const group of unitGroupsByTile(list,worldId).values()) {
-    drawUnitGroup(scene, container, group, selectedUnitId);
+    drawUnitGroup(scene, container, group, selectedUnitId, ownerColor);
   }
 }
 
@@ -740,6 +741,7 @@ function drawForeignUnits(scene, container, players, activePlayerId, worldId) {
   const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
   for (const player of Array.isArray(players) ? players : []) {
     if (player?.id === activePlayerId) continue;
+    const ownerColor=resolveV39PlayerColor({players},player.id);
     for (const group of unitGroupsByTile((player?.factionState?.units||[]).filter(unit=>(unit.worldId||"surface")===worldId),worldId).values()) {
       const unit = representativeUnit(group, "");
       const x = finiteCoord(unit?.x);
@@ -749,6 +751,7 @@ function drawForeignUnits(scene, container, players, activePlayerId, worldId) {
       if (!isTestMode() && !normallyVisible) continue;
       const center = tileCenter(x, y);
       const marker = scene.add.container(center.x, center.y).setName("v39-foreign-unit-marker");
+      marker.setData('ownerColor',ownerColor);
       if (isTestMode() && !normallyVisible) marker.setAlpha(TEST_UNDISCOVERED_ENEMY_ALPHA);
       for (const member of group) {
         const id = String(member?.id || "").trim();
@@ -757,13 +760,13 @@ function drawForeignUnits(scene, container, players, activePlayerId, worldId) {
       if (!addUnitArtwork(scene, marker, unit, diameter)) {
         const dead = unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0;
         const bg = scene.add.circle(0, 0, radius, dead ? 0x555b5d : 0x35252c, 0.96)
-          .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe19aaf, 1);
+          .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), ownerColor, 1);
         const glyph = scene.add.text(0, -0.5, String(unit?.icon || "◆").slice(0, 2), {
           fontSize:`${glyphFontSize}px`, fontStyle:"bold", color:"#fff0f5"
         }).setOrigin(0.5);
         marker.add([bg, glyph]);
       } else {
-        marker.add(scene.add.circle(0, 0, radius, 0x000000, 0).setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe19aaf, 0.9));
+        marker.add(scene.add.circle(0, 0, radius, 0x000000, 0).setStrokeStyle(Math.max(2, tileRelativePx(0.04)), ownerColor, 1));
       }
       addDeadMark(scene, marker, unit, radius);
       addMilitaryMemberCount(scene, marker, unit, radius);
@@ -946,7 +949,7 @@ function renderMarkers() {
   drawEnemyNests(scene, structureContainer, state?.enemyNests);
   if (!underground) drawSettlementTileMarkers(scene, structureContainer, faction);
   drawDefenseStructures(scene, constructionLabelContainer, structureContainer);
-  drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId,worldId);
+  drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId,worldId,resolveV39PlayerColor(state,state.activePlayerId));
   drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId,worldId);
   drawNeutralVillageUnits(scene, unitContainer, state?.neutralVillages,worldId);
   drawEnemies(scene, unitContainer, state?.enemies,worldId);

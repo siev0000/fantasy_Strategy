@@ -4201,15 +4201,17 @@ html,body{
   box-sizing:border-box;width:100%;height:100%;min-height:0;overflow:hidden;
   grid-template-rows:auto minmax(0,1fr);gap:6px
 }
-.settlement-toolbar{min-width:0;display:flex;align-items:center;gap:6px}
+.settlement-toolbar{min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
+.settlement-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}
 .settlement-tabs{
-  flex:1;min-width:0;display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:0 1px 3px;
+  width:100%;box-sizing:border-box;min-width:0;display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:0 1px 3px;
   scrollbar-width:thin
 }
-.settlement-development-open{
+.settlement-development-open,.settlement-trade-open{
   flex:0 0 auto;min-height:34px;padding:5px 11px;border:1px solid #73d6e4;border-radius:7px;
   background:#17323a;color:#efffff;font-size:var(--font-body);font-weight:800;white-space:nowrap;cursor:pointer
 }
+.settlement-trade-open{border-color:#c8ab60;background:#3a3017;color:#f5deb0}
 .settlement-development-open:hover,.settlement-development-open:focus-visible{background:#20505a;border-color:#a3edf5}
 .settlement-tab{
   flex:0 0 auto;min-width:92px;min-height:34px;padding:5px 10px;border:1px solid #405158;

@@ -13,6 +13,7 @@ window.startV39FusionTest=()=>{
   const actorId='expedition-test-king';
   const {tileKey,name:facilityName}=fixture.storageFacility,[storageX,storageY]=tileKey.split(',').map(Number);
   const actor=fixture.actorPosition,classes=new Set(getGameDataRows('クラス').map(row=>row.名前)),counts=new Map(),skippedSpecies=[];
+  for(const race of fixture.additionalMaterialSpecies||[])counts.set(race,fixture.minimumCopies);
   for(const recipe of getGameDataRows('モンスター合成')){
     const perRecipe=new Map();
     for(const part of String(recipe.素材||'').split(/[,、\n]/)){

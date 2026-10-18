@@ -148,6 +148,21 @@ export function enterV39Cave(options={}){
   return activateWorld(state,worlds,worldId,players);
 }
 
+// View an owned unit's world without moving the unit or changing its mission.
+window.viewV39OwnedUnitWorld=(unitId,{surface=false}={})=>{
+  if(window.isV39MapInputLocked?.())return false;
+  const state=window.getV39GameState(),faction=state.players.find(p=>p.id===state.activePlayerId)?.factionState;
+  const unit=faction?.units.find(u=>u.id===unitId&&Number(u.hp??u.currentHp)>0);
+  if(!unit)return false;
+  const id=surface?'surface':unit.worldId||'surface',worlds=rememberWorld(state);
+  if(!worlds[id]?.map)return false;
+  const selected=(unit.worldId||'surface')===id?unit:faction.units.find(u=>(u.worldId||'surface')===id&&Number(u.hp??u.currentHp)>0);
+  const players=state.players.map(p=>p.id===state.activePlayerId?{...p,factionState:{...p.factionState,selectedUnitId:selected?.id||p.factionState.selectedUnitId}}:p);
+  if(id!==state.activeWorldId)activateWorld(state,worlds,id,players);
+  else window.setV39GameState({players},{reason:'logistics-unit-viewed'});
+  return true;
+};
+
 // 専用検証マップの表示切替。個体は移動させず、通常ゲームでは使用できない。
 window.viewV39ExpeditionTestWorld=(id)=>{
   if(!window.isV39TestMode?.()||window.isV39MapInputLocked?.())return false;

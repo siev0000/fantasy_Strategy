@@ -1,0 +1,13 @@
+{
+  "dueAfterTurns":10,
+  "graceTurns":10,
+  "players": [
+    {"id":"logistics-north","label":"北の交易国","settlementId":"north-trade-town","x":13,"y":3,"couriers":[{"x":13,"y":3},{"x":13,"y":4}]},
+    {"id":"logistics-east","label":"東の交易国","settlementId":"east-trade-town","x":20,"y":9,"couriers":[{"x":20,"y":9}]}
+  ],
+  "ownCourier":{"x":4,"y":5},
+  "trades":[
+    {"from":"self","to":"logistics-north","fromCourier":0,"toCourier":0,"give":"穀物","receive":"木材","amount":6,"meeting":{"x":9,"y":8}},
+    {"from":"logistics-north","to":"logistics-east","fromCourier":1,"toCourier":0,"give":"木材","receive":"鉄","amount":6,"meeting":{"x":17,"y":8}}
+  ]
+}

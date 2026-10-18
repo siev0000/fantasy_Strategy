@@ -29,6 +29,12 @@ export const 動物画像一覧 = Object.freeze(Object.entries(画像集).flatMa
 // 同じ対象が複数の画像集にある場合、後の専用画像集を優先する。
 const 対象別画像 = new Map(動物画像一覧.map(row => [row.対象, row]));
 対象別画像.set("通常ドレイク", Object.freeze({ ファイル:"ワイバーン・ドレイク_ユニット集.webp", 番号:7 }));
+対象別画像.set("通常フォックス", Object.freeze({ ファイル:"鼠・狐_ユニット集.webp", 番号:7 }));
+対象別画像.set("スケルトンフォックス", Object.freeze({ ファイル:"鼠・狐_ユニット集.webp", 番号:11 }));
+対象別画像.set("ゾンビフォックス", Object.freeze({ ファイル:"鼠・狐_ユニット集.webp", 番号:12 }));
+対象別画像.set("通常リザード", Object.freeze({ ファイル:"蜥蜴・蛙_ユニット集.webp", 番号:1 }));
+対象別画像.set("スケルトンリザード", Object.freeze({ ファイル:"蜥蜴・蛙_ユニット集.webp", 番号:5 }));
+対象別画像.set("ゾンビリザード", Object.freeze({ ファイル:"蜥蜴・蛙_ユニット集.webp", 番号:6 }));
 
 export const 動物属性クラス対応 = Object.freeze({
   フレイムアニマル:"炎",

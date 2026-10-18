@@ -11,6 +11,7 @@ import testFixture from '../../../config/v39-fusion-test.json';
 import {canUseV39StoredSouls} from './v39-soul-storage.js';
 import {canUnitEnterV39Tile} from './v39-terrain-traversal.js';
 import {getV39StorageFacilities} from './v39-facility-storage.js';
+import {isV39InvalidDataToken} from './v39-class-rules.js';
 
 const split=value=>String(value||'').split(/[,、\n]/).map(s=>s.trim()).filter(Boolean);
 const alive=u=>Number(u?.hp??u?.currentHp)>0&&!['死亡','死体'].includes(u?.state);
@@ -28,7 +29,7 @@ export function getV39FusionRecipes(state){
   if(testing)rows.push(defaults.testRecipe);
   return rows.map((row,index)=>({...row,id:`fusion-${index}`,requirements:split(row.素材).map(item=>{
     const match=/^(.+)_([1-9]\d*)$/.exec(item);return match?{name:match[1],count:Number(match[2])}:null;
-  }),bonuses:split(row.ボーナスクラス)}));
+  }),bonuses:split(row.ボーナスクラス),acquiredSkills:[...new Set(split(row.獲得スキル).filter(name=>!isV39InvalidDataToken(name)))]}));
 }
 export function resolveV39FusionMaterialRadius(actor){
   return actor?.fusionTestFixture&&isV39TestSkillModeEnabled()?testFixture.materialRadius:defaults.materialRadius;
@@ -101,8 +102,14 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
   const acquiredClasses=recipe.bonuses.filter(name=>classes.has(name));
   const skippedClasses=recipe.bonuses.filter(name=>!classes.has(name));
   const warnings=skippedClasses.length?[`未登録のため付与しません: ${skippedClasses.join('、')}`]:[];
-  if(String(recipe.獲得スキル||'').trim())reasons.push('直接の獲得スキル指定は未対応');
   const materials=Array.from(materialIds,id=>getV39FusionMaterials(access.faction).find(u=>u.id===id));
+  const acquiredSkillNames=[...new Set([
+    ...recipe.acquiredSkills,
+    ...materials.flatMap(unit=>Array.isArray(unit?.fusionGrowth?.acquiredSkillNames)?unit.fusionGrowth.acquiredSkillNames:[])
+  ].filter(name=>typeof name==='string'&&!isV39InvalidDataToken(name)).map(name=>name.trim()))];
+  const knownSkills=new Set(getGameDataRows('スキル一覧').map(row=>row.名前));
+  const unresolvedSkills=acquiredSkillNames.filter(name=>!knownSkills.has(name));
+  if(unresolvedSkills.length)warnings.push(`未登録スキル（名前のみ保持・効果なし）: ${unresolvedSkills.join('、')}`);
   if(materialIds.length!==slots.length||materials.some(u=>!u))reasons.push('素材をすべて選択してください');
   if(new Set(materialIds).size!==materialIds.length)reasons.push('同じ素材を重複使用できません');
   materials.forEach((unit,index)=>{
@@ -134,7 +141,7 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
         fusionAppearanceClass:Object.keys(levels).find(name=>['デヴィル','エンジェル'].includes(name))||'',
         fusionGrowth:{levelsByClass:{...levels},baseLevel:Math.floor(growth.baseValue),baseExp:growth.baseProgress.exp,baseNeed:growth.baseProgress.need,
           classExp:Object.fromEntries(Object.entries(growth.acquiredProgress).map(([name,p])=>[name,p.exp])),
-          recipeName:recipe.合成結果,sourceIds:[...materialIds],skippedClasses:[...skippedClasses]},
+          recipeName:recipe.合成結果,sourceIds:[...materialIds],skippedClasses:[...skippedClasses],acquiredSkillNames},
         prerequisiteClassLevels:Object.fromEntries(Object.entries(levels).filter(([name])=>name!==race&&name!==className))});
       const exp=growth.baseProgress.exp,totalExp=resolveV39UnitTotalExpForLevel(growth.level,resolveV39UnitRaceCategory(preview))+exp;
       preview={...preview,exp,totalExp,status:{...preview.status,exp,totalExp},hp:preview.maxHp,currentHp:preview.maxHp,ap:0,currentAp:0,maxAp:100};

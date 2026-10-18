@@ -5,6 +5,7 @@ import {
   resolveEffectiveMaxZoomFactor
 } from "../../lib/map-camera-zoom-rules.js";
 import { runV39FieldUpdate } from "./v39-field-update-loading.js";
+import {normalizeV39PlayerColors,resolveV39PlayerColor,v39PlayerColorHex} from '../../lib/v39-player-colors.js';
 
 const STORAGE_KEY = "v39-display-settings-v1";
 const DEFAULTS = Object.freeze({
@@ -16,6 +17,7 @@ const DEFAULTS = Object.freeze({
   reduceMotion: false,
   focusUnactedUnits: true,
   testMode: false,
+  playerColors: {},
   maxZoomFactor: MAP_CAMERA_ZOOM_RULES.defaultUserMaxFactor
 });
 
@@ -39,7 +41,8 @@ function loadSettings() {
         140,
         DEFAULTS.fontScalePercent
       ),
-      maxZoomFactor: normalizeUserMaxZoomFactor(saved.maxZoomFactor)
+      maxZoomFactor: normalizeUserMaxZoomFactor(saved.maxZoomFactor),
+      playerColors:normalizeV39PlayerColors(saved.playerColors)
     };
   } catch {
     return { ...DEFAULTS };
@@ -104,6 +107,23 @@ function ensureCoordinateControl() {
   grid.appendChild(label);
 }
 
+function renderPlayerColors() {
+  const host=document.getElementById('v39-player-colors');if(!host)return;
+  const state=window.getV39GameState?.({includeWorlds:false})||{},players=state.players||[];
+  const key=JSON.stringify(players.map(p=>[p.id,p.label,p.id===state.activePlayerId,settings.playerColors[p.id]]));
+  if(host.dataset.key===key)return;
+  host.dataset.key=key;host.replaceChildren();
+  for(const player of players) {
+    const label=document.createElement('label');label.className='display-setting-title';
+    const name=document.createElement('span');name.textContent=`${player.label||player.id}${player.id===state.activePlayerId?'（操作中）':''}`;
+    const input=document.createElement('input');input.type='color';input.dataset.playerColor=player.id;
+    input.value=v39PlayerColorHex(resolveV39PlayerColor(state,player.id,settings.playerColors));
+    input.setAttribute('aria-label',`${player.label||player.id}の色`);
+    label.append(name,input);host.append(label);
+  }
+  if(!players.length)host.textContent='ゲーム開始後にプレイヤーの色を変更できます。';
+}
+
 function updateMaxZoomText() {
   const out = document.getElementById("v39-max-zoom-value");
   const note = document.getElementById("v39-max-zoom-note");
@@ -158,6 +178,7 @@ function applySettings({ emit = true, changedKeys } = {}) {
   if (controls) controls.style.display = settings.showZoomControls === false ? "none" : "grid";
 
   updateMaxZoomText();
+  renderPlayerColors();
   if (emit) {
     window.dispatchEvent(new CustomEvent("v39:display-settings-changed", {
       detail: { ...settings, testMode:testModeEnabled, ...currentMapSize(), changedKeys }
@@ -208,6 +229,7 @@ function bindPanelNavigation() {
     panel.hidden = false;
     panel.setAttribute("aria-hidden", "false");
     updateMaxZoomText();
+    renderPlayerColors();
   });
   back.addEventListener("click", () => {
     panel.hidden = true;
@@ -217,6 +239,10 @@ function bindPanelNavigation() {
 }
 
 function bindControls() {
+  document.getElementById('v39-player-colors')?.addEventListener('change',event=>{
+    const id=event.target.dataset.playerColor;if(!id)return;
+    updateControlSetting('playerColors',normalizeV39PlayerColors({...settings.playerColors,[id]:event.target.value}));
+  });
   document.getElementById("v39-show-coordinate-ruler")?.addEventListener("change", event => {
     updateControlSetting("showCoordinateRuler", !!event.target.checked);
   });
@@ -271,7 +297,11 @@ function install() {
     requestAnimationFrame(() => applySettings({ emit: false }));
   });
 
-  window.getV39DisplaySettings = () => ({ ...settings, testMode:effectiveTestMode() });
+  window.getV39DisplaySettings = () => ({ ...settings, playerColors:{...settings.playerColors}, testMode:effectiveTestMode() });
+  window.getV39PlayerColor = id => resolveV39PlayerColor(window.getV39GameState?.({includeWorlds:false}),id);
+  window.addEventListener('v39:game-state-changed',()=>{
+    const panel=document.getElementById('v39-display-settings-panel');if(panel&&!panel.hidden)renderPlayerColors();
+  });
   window.isV39TestMode = () => effectiveTestMode();
   window.setV39TestMode = enabled => updateSetting("testMode", enabled === true);
 }

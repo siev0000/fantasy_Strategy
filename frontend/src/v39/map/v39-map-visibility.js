@@ -1,4 +1,5 @@
 import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
+import {resolveV39PlayerColor} from '../../lib/v39-player-colors.js';
 import { isV39FogVisionAllowed, isV39FogTile, isV39DeathFogTile, advanceV39Fog } from "../../lib/v39-fog-rules.js";
 import { V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { getV39EffectAttribute } from "../../lib/v39-effect-attribute-settings.js";
@@ -14,7 +15,6 @@ import {
 } from "../../lib/v39-detection-rules.js";
 import {
   BASE_VILLAGE_SCOUT_RANGE,
-  FACTION_BORDER_COLOR_PALETTE,
   HEX_TILE_CONFIG,
   V39_FIELD_FOG_STYLE,
   MAP_BOUNDARY_DASH_CONFIG
@@ -675,7 +675,7 @@ function renderVisibilityLayers() {
   );
   const residentialTiles = residentialTileKeys(state, player, faction);
   const developmentSelection = window.getV39SettlementDevelopmentSelection?.() || null;
-  const playerIndex = Math.max(0, state.players.findIndex(row => row?.id === player.id));
+  const playerColor = resolveV39PlayerColor(state,player.id);
   const fogSignature = [
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
     testMode ? 1 : 0,
@@ -697,7 +697,7 @@ function renderVisibilityLayers() {
     sortedSetSignature(residentialTiles),
     sortedSetSignature(developmentSelection?.candidateTileKeys),
     sortedSetSignature(developmentSelection?.selectedTileKeys),
-    playerIndex
+    playerColor
   ].join(";");
   persistVisibilityTiles(faction, explored, currentVision);
   if (renderSignature === lastRenderSignature) return true;
@@ -786,9 +786,10 @@ function renderVisibilityLayers() {
   }
 
   const territory = scene.add.graphics().setDepth(16).setName(TERRITORY_LAYER_NAME);
+  territory.setData('ownerColor',playerColor);
   drawOuterBoundary(territory, data, ownTerritory, {
       width:TERRITORY_WIDTH,
-      color:FACTION_BORDER_COLOR_PALETTE[playerIndex % FACTION_BORDER_COLOR_PALETTE.length],
+      color:playerColor,
       alpha:TERRITORY_ALPHA,
       ...MAP_BOUNDARY_DASH_CONFIG
   });

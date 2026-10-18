@@ -214,6 +214,10 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     ...collectSkills(classRow, classLevels)
   ];
   if (strongAnimalClassRow) acquiredNames.push(...collectSkills(strongAnimalClassRow, strongAnimalClassLevel));
+  // Direct fusion rewards are permanent, independent of class skill unlock levels.
+  const fusionSkillNames = Array.isArray(unit.fusionGrowth?.acquiredSkillNames)
+    ? unit.fusionGrowth.acquiredSkillNames.filter(name => typeof name === 'string' && !isPlaceholder(name)).map(text) : [];
+  acquiredNames.push(...fusionSkillNames);
 
   let secondClassRow = null;
   if (isHumanRace && level >= 10 && secondClassName && secondClassName !== className) {
@@ -222,7 +226,11 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const uniqueNames = [...new Set(acquiredNames.filter(Boolean))];
-  const techniques = uniqueNames.map(name => techniqueFromName(name, { allowTest:testMode }));
+  const techniques = uniqueNames.map(name => {
+    const technique = techniqueFromName(name, { allowTest:testMode });
+    return !technique.source && fusionSkillNames.includes(name)
+      ? {...technique, detail:'スキル一覧に未登録のため、名前のみ保持しています。効果はありません。'} : technique;
+  });
   const basePassives=getV39PassiveRows({techniques}).filter(row=>!isV39ConditionalPassive(row));
   const passiveBonuses=collectV39PassiveBonuses(basePassives);
   const status = addV39PassiveValues(applyMilitaryProfileToStatus(statusResult.status || {}, unit?.combatProfile),passiveBonuses.status);

@@ -265,6 +265,7 @@ import './v39-operation-layout.css';
           <section id="v39-display-settings-panel" class="display-settings-panel" hidden aria-hidden="true">
             <header class="display-settings-head"><button type="button" id="v39-display-settings-back" class="display-settings-back">← 管理</button><strong>表示設定</strong></header>
             <div class="display-settings-grid">
+              <section class="display-setting"><strong>プレイヤーの色</strong><div id="v39-player-colors"></div><small>領土・ユニット・物流の所属色。このブラウザの表示設定として保存します。</small></section>
               <label class="display-setting"><span class="display-setting-title">文字の大きさ <output id="v39-font-size-value">100%</output></span><input type="range" id="v39-font-size" min="80" max="140" step="5" value="100"><small>下部UIを含む画面内文字の倍率です。</small></label>
               <label class="display-setting"><span class="display-setting-title">高低差がある境界だけ表示 <input type="checkbox" id="v39-height-outline-only" checked></span><small>同じ高さ同士の黒いマス目線を隠します。</small></label>
               <label class="display-setting"><span class="display-setting-title">高度による色の濃淡 <input type="checkbox" id="v39-height-shading" checked></span><small>低地を明るく、高地と深い海を暗くします。</small></label>

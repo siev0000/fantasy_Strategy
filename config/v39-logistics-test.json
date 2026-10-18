@@ -1,0 +1,15 @@
+{
+  "description":"物流専用の固定配置。森便は森を領有する集積村の実在庫を運搬する。通常ゲームには適用しない。",
+  "settlements":[
+    {"id":"logistics-forest","name":"森の集積村","x":3,"y":13,"type":"村","population":30,"forest":true},
+    {"id":"logistics-farm","name":"東の農村","x":17,"y":5,"type":"村","population":40},
+    {"id":"logistics-town","name":"中央物流町","x":12,"y":12,"type":"町","population":90},
+    {"id":"logistics-east-town","name":"東の交易町","x":19,"y":17,"type":"町","population":90}
+  ],
+  "routes":[
+    {"id":"cave","name":"洞窟鉱床便","sourceId":"mine:cave:expedition-test:1","destinationId":"settlement:expedition-test-base","resource":"鉄","amount":10,"worldId":"cave:expedition-test:1","members":[{"x":2,"y":2},{"x":2,"y":3}]},
+    {"id":"forest","name":"森の木材便","sourceId":"settlement:logistics-forest","destinationId":"settlement:logistics-town","resource":"木材","amount":20,"members":[{"x":3,"y":13},{"x":2,"y":13}]},
+    {"id":"village","name":"村の食料便","sourceId":"settlement:logistics-farm","destinationId":"settlement:logistics-east-town","resource":"穀物","amount":20,"members":[{"x":17,"y":5},{"x":16,"y":5}]},
+    {"id":"town","name":"町の補給便","sourceId":"settlement:logistics-town","destinationId":"settlement:expedition-test-base","resource":"木材","amount":10,"members":[{"x":12,"y":12},{"x":11,"y":12}]}
+  ]
+}

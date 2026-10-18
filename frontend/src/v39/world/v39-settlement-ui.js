@@ -165,12 +165,16 @@ function render() {
   const specializationOptions = inspectV39CitySpecializations(state, player, settlement);
   const specializationBody = `<div class="settlement-inline-facts"><span>選択中 <b>${escapeHtml(settlement.citySpecializationId || "なし")}</b></span><span>都市特性 <b>${escapeHtml((settlement.cityTraits || []).join(" / ") || "なし")}</b></span><span>条件の正本 <b>都市.json</b></span></div><div class="settlement-chip-list">${specializationOptions.map(option => `<button type="button" class="settlement-chip${settlement.citySpecializationId === option.id ? " building" : ""}" data-city-specialization="${escapeHtml(option.id)}" title="${escapeHtml(option.reason)}"${option.available ? "" : " disabled"}>${escapeHtml(option.name)}${option.available ? "" : " ×"}</button>`).join("")}</div>`;
 
+  const tabScrollLeft=panel.querySelector('.settlement-tabs')?.scrollLeft||0;
   panel.innerHTML = `
     <div class="settlement-toolbar">
       <nav class="settlement-tabs" aria-label="所有拠点">
         ${settlements.map(row => `<button type="button" class="settlement-tab${text(row.settlementId) === settlementId ? " active" : ""}" data-settlement-id="${escapeHtml(row.settlementId)}">${escapeHtml(row.name || row.type || "拠点")}</button>`).join("")}
       </nav>
-      <button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button>
+      <div class="settlement-actions" role="group" aria-label="選択した拠点の操作">
+        <button type="button" class="settlement-trade-open" data-open-v39-trade>取引</button>
+        <button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button>
+      </div>
     </div>
     <nav class="settlement-pages" aria-label="拠点の操作">${[['overview','概況'],['production','生産'],['operation','運用']].map(([key,label])=>`<button type="button" data-settlement-page-select="${key}" aria-pressed="${activePage===key}">${label}</button>`).join('')}</nav>
     <div class="settlement-fold-list">
@@ -186,6 +190,7 @@ function render() {
       ${section("repair", "修復", repairTargets.length ? `${repairTargets.length}マス` : "なし", repairBody)}
     </div>`;
   panel.scrollTop = scrollTop;
+  panel.querySelector('.settlement-tabs').scrollLeft=tabScrollLeft;
   const foldList = panel.querySelector(".settlement-fold-list");
   if (foldList) foldList.scrollTop = listScrollTop;
 }

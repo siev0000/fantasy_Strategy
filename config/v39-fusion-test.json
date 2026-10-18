@@ -1,6 +1,7 @@
 {
   "description": "合体専用テストのみ。固定2体を除くレシピ素材は魔獣研究所へ格納する。",
   "minimumCopies": 2,
+  "additionalMaterialSpecies": ["ライオン", "ゴート", "オウル", "リザード", "モンキー", "フォックス", "タートル", "ディア"],
   "defaultLevel": 10,
   "previewZoom": 1,
   "materialRadius": 6,

@@ -29,9 +29,11 @@ function detail(unit,check){
     :session.detailTab==='equipment'?renderV39UnitEquipment(unit)
     :session.detailTab==='growth'?renderV39UnitGrowth(unit):renderV39UnitAbility(unit);
   const allocation=session.detailSource==='result'&&check.growth?.ok?`<details><summary>合成Lvの計算</summary><p>最高Lv${check.growth.highestLevel} ＋ 残りLv${check.growth.sourceLevel-check.growth.highestLevel} × 20% ＝ ${check.growth.targetValue}</p><p>条件・獲得クラスは最低Lv1。残りは元のLv比率で配分。</p><p>端数EXP ${check.growth.baseProgress.exp.toFixed(1)}</p></details>`:'';
+  const rewards=(session.detailSource==='result'||session.created)&&unit.fusionGrowth?.acquiredSkillNames?.length
+    ? `<p data-fusion-acquired-skills>獲得スキル: ${unit.fusionGrowth.acquiredSkillNames.map(esc).join('、')}</p>` : '';
   return `<div class="squad-detail-header"><b>${esc(unit.name)}</b><span>Lv${unit.level}${unit.soulStored?' · 魂':''}</span></div>
     ${renderV39DetailTabs([['status','能力'],['skills','スキル'],['equipment','装備'],['growth','成長']],session.detailTab,'data-fusion-detail-tab')}
-    <div class="squad-detail-tab-content"><div class="squad-detail-tab-panel" data-fusion-detail-scroll>${content}${allocation}</div></div>`;
+    <div class="squad-detail-tab-content"><div class="squad-detail-tab-panel" data-fusion-detail-scroll>${rewards}${content}${allocation}</div></div>`;
 }
 function render(){
   if(!session)return;

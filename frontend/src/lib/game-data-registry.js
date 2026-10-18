@@ -232,6 +232,11 @@ export function validateGameDataRegistry() {
         validateSkillReference(issues, table.name, id, "獲得スキル", row?.獲得スキル);
         validateReference(issues, table.name, id, "範囲", "範囲", "範囲タイプ", row?.範囲);
       }
+      if (table.name === "モンスター合成") {
+        for (const name of asText(row?.獲得スキル).split(/[,、\n]/).map(value => value.trim()).filter(Boolean)) {
+          validateSkillReference(issues, table.name, id, "獲得スキル", name);
+        }
+      }
     }
   }
   return {

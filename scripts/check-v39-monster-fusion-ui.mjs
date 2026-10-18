@@ -23,11 +23,11 @@ try {
       await selectFusionMaterial(page,1,'fusion-test-devil');
     };
     await open();
-    assert.match(await page.locator('#v39-fusion-modal').innerText(),/未登録のため付与しません: 幻獣/);
+    assert.match(await page.locator('#v39-fusion-modal').innerText(),/未登録スキル.*呪角/);
     assert(await page.locator('[data-fusion-confirm]').isDisabled());
     await selectFusionMaterial(page,0,'fusion-test-horse');
     await selectFusionMaterial(page,1,'fusion-test-devil');
-    assert(!await page.locator('[data-fusion-confirm]').isDisabled(),'official recipe is usable without creating missing bonus classes');
+    assert(!await page.locator('[data-fusion-confirm]').isDisabled(),'an undefined reward does not block the official recipe');
     await page.screenshot({path:`output/web-game/fusion/official-${width}.png`});
     await select();assert(!await page.locator('[data-fusion-confirm]').isDisabled());
     await page.screenshot({path:`output/web-game/fusion/preview-${width}.png`});
@@ -81,8 +81,10 @@ try {
       const grown=exp.grantV39UnitExperience(made.created,growthAmount);
       const officialRecipe=rules.getV39FusionRecipes(state).find(r=>r.合成結果==='バイコーン');
       const official=rules.executeV39MonsterFusion(state,{...request,recipeId:officialRecipe.id});
-      flags.missingBonusSkipped=official.ok&&official.created.name==='バイコーン'&&!('幻獣' in official.created.fusionGrowth.levelsByClass)&&official.created.fusionGrowth.skippedClasses.includes('幻獣');
-      flags.bonusBudget=official.ok&&JSON.stringify(official.created.fusionGrowth.levelsByClass)===JSON.stringify(made.created.fusionGrowth.levelsByClass);
+      const classNames=new Set(window.getGameDataRows('クラス').map(r=>r.名前));
+      flags.registeredBonuses=official.ok&&official.created.name==='バイコーン'&&officialRecipe.bonuses.every(name=>classNames.has(name)
+        ?official.created.fusionGrowth.levelsByClass[name]>=1:official.created.fusionGrowth.skippedClasses.includes(name));
+      flags.bonusBudget=official.ok&&Object.values(official.created.fusionGrowth.levelsByClass).reduce((sum,lv)=>sum+lv,0)===made.created.level;
       flags.growth=grown.toLevel>made.created.level&&Object.values(grown.unit.fusionGrowth.levelsByClass).reduce((s,v)=>s+v,0)===grown.toLevel;
       flags.noLostFractions=grown.unit.fusionGrowth.classExp['エヴォリューション・ホーン']>=0;
       flags.baseFractionUsed=Math.abs(grown.unit.fusionGrowth.baseExp-(made.created.fusionGrowth.baseExp+growthAmount/2-made.created.fusionGrowth.baseNeed))<1e-8;
