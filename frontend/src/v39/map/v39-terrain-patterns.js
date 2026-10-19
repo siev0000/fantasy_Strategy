@@ -2,8 +2,26 @@ import config from '../../../../config/v39-terrain-patterns.json';
 import { HEX_TILE_CONFIG } from '../../lib/phaser-map-panel-config.js';
 
 const SOURCE_KEY = 'v39-terrain-pattern-source';
+const rawTerrainPatternModules = import.meta.glob('../../../../assets/images/units/1ファイルまとめ/*.{png,jpg,jpeg,webp,svg}', {
+  eager: true,
+  import: 'default'
+});
+
+function resolveBundledTerrainAsset(path) {
+  const normalized = String(path ?? '').trim().replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!normalized) return '';
+  const match = Object.entries(rawTerrainPatternModules)
+    .find(([modulePath]) => modulePath.replace(/\\/g, '/').endsWith(normalized));
+  return String(match?.[1] || '');
+}
+
+const TERRAIN_SOURCE_URL = resolveBundledTerrainAsset(config.asset);
 
 export function loadV39TerrainPatterns(scene, getData, getDisplay) {
+  if (!TERRAIN_SOURCE_URL) {
+    console.warn('[v39 terrain] terrain artwork was not bundled:', config.asset);
+    return;
+  }
   const loaded = () => {
     clearPatterns(scene);
     drawV39TerrainPatterns(scene, getData(), getDisplay());
@@ -12,7 +30,7 @@ export function loadV39TerrainPatterns(scene, getData, getDisplay) {
   };
   scene.load.once(`filecomplete-image-${SOURCE_KEY}`, loaded);
   scene.events.once('shutdown', () => scene.load.off(`filecomplete-image-${SOURCE_KEY}`, loaded));
-  scene.load.image(SOURCE_KEY, encodeURI(config.asset));
+  scene.load.image(SOURCE_KEY, TERRAIN_SOURCE_URL);
   scene.load.start();
 }
 
