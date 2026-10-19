@@ -1,0 +1,12 @@
+{
+  "resolution": 0.5,
+  "chunkSize": 1024,
+  "textureAlphaFloor": 0.55,
+  "kinds": [
+    {"id":"fog","name":"霧","color":"#DCE7EB"},
+    {"id":"death","name":"死の霧","fogAttribute":true},
+    {"id":"miasma","name":"瘴気","disasterId":"災害:瘴気","color":"#A6BD48"},
+    {"id":"heat","name":"熱波","disasterId":"災害:熱波","color":"#F49A52"},
+    {"id":"cold","name":"大寒波","disasterId":"災害:大寒波","color":"#83D9FA"}
+  ]
+}

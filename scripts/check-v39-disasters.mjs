@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fixture from '../config/v39-disaster-test.json' with {type:'json'};
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
 const out='output/web-game/disasters';mkdirSync(out,{recursive:true});
@@ -13,7 +14,7 @@ try{
     await page.evaluate(()=>window.activateV39FooterTab('test'));
     await page.locator('[data-test-section="expedition"]').evaluate(n=>n.open=true);
     await page.locator('[data-test-action="disaster-test-start"]').click();
-    await page.waitForFunction(()=>window.inspectV39NaturalEvents?.().activeDisasters.length===4);
+    await page.waitForFunction(count=>window.inspectV39NaturalEvents?.().activeDisasters.length===count,fixture.events.length+1);
     await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list
       .find(c=>c.name==='v39-disaster-icon-overlay')?.list.some(c=>c.type==='Image'));
     const initial=await page.evaluate(async()=>{

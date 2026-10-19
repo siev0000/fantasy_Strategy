@@ -2,6 +2,7 @@ import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { getIconSrcByName, hasIconName } from "../../lib/icon-library.js";
 import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { V39_CAVE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { hasV39TerrainPattern } from './v39-terrain-patterns.js';
 
 const BASE_TERRAIN_ICONS = Object.freeze({
   "森": { symbol: "🌲", imageCandidate: true, imageName:"森" },
@@ -66,7 +67,7 @@ function hasActiveOverlay(scene) {
   return (scene?.children?.list || []).some(child => child?.name === OVERLAY_NAME);
 }
 
-function collectIconEntries(data) {
+function collectIconEntries(data, scene) {
   const entries = [];
   for (let y = 0; y < Number(data?.h || 0); y += 1) {
     for (let x = 0; x < Number(data?.w || 0); x += 1) {
@@ -74,8 +75,8 @@ function collectIconEntries(data) {
       const special = String(data?.specialMap?.[y]?.[x] || "");
       const baseIcon = BASE_TERRAIN_ICONS[terrain];
       const specialIcon = SPECIAL_TERRAIN_ICONS[special];
-      if (baseIcon) entries.push({ x, y, kind:"base", terrain, icon:baseIcon });
-      if (specialIcon) entries.push({ x, y, kind:"special", terrain:special, icon:specialIcon });
+      if (baseIcon && !hasV39TerrainPattern(scene,terrain)) entries.push({ x, y, kind:"base", terrain, icon:baseIcon });
+      if (specialIcon && !(hasV39TerrainPattern(scene,special) && special===terrain)) entries.push({ x, y, kind:"special", terrain:special, icon:specialIcon });
       if(special!=="洞窟"&&isV39SurfaceCaveEntrance(data,x,y))entries.push({x,y,kind:"special",terrain:"洞窟",icon:SPECIAL_TERRAIN_ICONS["洞窟"]});
     }
   }
@@ -186,7 +187,7 @@ function renderTerrainIcons() {
   const scene = activeScene();
   if (!data || !scene || !scene.add || !scene.textures) return false;
 
-  const entries = collectIconEntries(data);
+  const entries = collectIconEntries(data, scene);
   const signature = terrainIconSignature(data, entries);
   if (signature === lastTerrainIconSignature && hasActiveOverlay(scene)) return true;
   lastTerrainIconSignature = signature;

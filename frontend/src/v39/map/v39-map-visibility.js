@@ -1,8 +1,8 @@
 import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
 import {resolveV39PlayerColor} from '../../lib/v39-player-colors.js';
-import { isV39FogVisionAllowed, isV39FogTile, isV39DeathFogTile, advanceV39Fog } from "../../lib/v39-fog-rules.js";
-import { V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
-import { getV39EffectAttribute } from "../../lib/v39-effect-attribute-settings.js";
+import { isV39FogVisionAllowed, advanceV39Fog } from "../../lib/v39-fog-rules.js";
+import {activeV39AtmosphereDisasters,v39AtmospherePalette} from '../../lib/v39-atmosphere-display.js';
+import {drawV39AtmosphereLayer,v39AtmosphereArtworkVersion} from './v39-atmosphere-layer.js';
 import { hasV39CaveLineOfSight, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import {
@@ -22,7 +22,6 @@ import {
 import { cacheStaticGraphicsLayer, removeStaticGraphicsCache } from "./v39-static-graphics-cache.js";
 
 const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
-const ATMOSPHERE_LAYER_NAME="v39-atmosphere-fog-layer";
 const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";
 const UNIT_SCOUT_LAYER_NAME = "v39-unit-scout-boundary-layer";
 const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
@@ -155,57 +154,6 @@ function removeLayer(scene, name) {
     if (child?.name === name) child.destroy();
   }
   removeStaticGraphicsCache(scene, name);
-}
-
-function drawAtmosphereFog(scene, data, currentVision, testMode) {
-  removeLayer(scene, ATMOSPHERE_LAYER_NAME);
-  const layer = scene.add.container(0, 0).setDepth(13).setName(ATMOSPHERE_LAYER_NAME);
-  const masks = [];
-  layer.once("destroy", () => { for (const mask of masks) { mask.geometryMask.destroy(); mask.destroy(); } });
-  const groups = [
-    { key:"v39-normal-fog", src:V39_FOG_BALANCE.normalImage, death:false },
-    { key:"v39-death-fog", src:V39_FOG_BALANCE.deathImage, death:true }
-  ];
-  scene.v39FogTextureRequests ||= new Set();
-  let queued = false;
-  for (const group of groups) {
-    const attribute = group.death ? getV39EffectAttribute(V39_FOG_BALANCE.deathAttribute) : null;
-    const color = attribute?.tint || (attribute?.gradientEnabled ? attribute.gradientColorA : "");
-    const tint = /^#[0-9a-f]{6}$/i.test(color || "") ? parseInt(color.slice(1),16) : 0xffffff;
-    const mask = scene.make.graphics({ add:false });
-    mask.fillStyle(group.death ? tint : V39_FOG_BALANCE.displayColor, 1);
-    let count = 0;
-    for (let y=0; y<data.h; y++) for (let x=0; x<data.w; x++) {
-      if (!isV39FogTile(data,x,y) || (!testMode && !currentVision.has(coordKey(x,y)))) continue;
-      if (isV39DeathFogTile(data,x,y)!==group.death) continue;
-      mask.fillPoints(hexPoints(x,y),true);
-      count++;
-    }
-    if (!count) { mask.destroy(); continue; }
-    if (scene.textures.exists(group.key)) {
-      const {width,height,rowStep,oddRowOffsetX} = tileMetrics();
-      const image = scene.add.tileSprite(0,0,data.w*width+oddRowOffsetX,(data.h-1)*rowStep+height,group.key)
-        .setOrigin(0).setAlpha(V39_FOG_BALANCE.displayAlpha);
-      if (group.death) image.setTint(tint);
-      mask.geometryMask = mask.createGeometryMask();
-      image.setMask(mask.geometryMask);
-      masks.push(mask);
-      layer.add(image);
-    } else {
-      mask.setAlpha(V39_FOG_BALANCE.displayAlpha);
-      layer.add(mask);
-      if (!scene.v39FogTextureRequests.has(group.key)) {
-        scene.v39FogTextureRequests.add(group.key);
-        scene.load.image(group.key,group.src);
-        queued = true;
-      }
-    }
-  }
-  // 画像はシーンごとに一度だけ読込む。タイルごとの画像生成は避ける。
-  if (queued) {
-    scene.load.once("complete", () => { lastRenderSignature=null; scheduleRender(); });
-    if (!scene.load.isLoading()) scene.load.start();
-  }
 }
 
 function wrappedCoord(value, size) {
@@ -683,6 +631,8 @@ function renderVisibilityLayers() {
     sortedSetSignature(explored)
   ].join(";");
   const renderSignature = [
+    state.activeWorldId||'surface',data.isUnderground===true?1:0,
+    JSON.stringify(activeV39AtmosphereDisasters(state)),v39AtmosphereArtworkVersion(scene),JSON.stringify(v39AtmospherePalette()),
     JSON.stringify(data.fogMap||[]),JSON.stringify(data.specialMap||[]),
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
     testMode ? 1 : 0,
@@ -707,7 +657,7 @@ function renderVisibilityLayers() {
 
   if (redrawFog) removeLayer(scene, FOG_LAYER_NAME);
   removeLayer(scene, SCOUT_LAYER_NAME);
-  drawAtmosphereFog(scene,data,currentVision,testMode);
+  drawV39AtmosphereLayer(scene,data,state,currentVision,testMode);
   removeLayer(scene, UNIT_SCOUT_LAYER_NAME);
   removeLayer(scene, TERRITORY_LAYER_NAME);
   removeLayer(scene, NEST_TERRITORY_LAYER_NAME);

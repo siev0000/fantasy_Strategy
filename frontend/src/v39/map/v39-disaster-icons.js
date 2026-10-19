@@ -2,6 +2,7 @@ import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { V39_PROVISIONAL_DISASTER_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import {resolveV39DisasterIcon} from '../../lib/disaster-icon-artwork.js';
 import {resolveV39DisasterRule} from '../../lib/v39-disaster-rules.js';
+import {isV39AtmosphereDisaster} from '../../lib/v39-atmosphere-display.js';
 
 const OVERLAY_NAME = "v39-disaster-icon-overlay";
 const STRIKE_OVERLAY_NAME = "v39-disaster-strike-overlay";
@@ -73,6 +74,7 @@ function collectMarkers(state) {
   const testMode=window.isV39TestMode?.()===true;
   for (const event of activeEvents(state)) {
     for (const key of event.tileKeys) {
+      if(isV39AtmosphereDisaster(event.disasterId)&&key!==(event.anchorKey||`${event.x},${event.y}`))continue;
       const [x, y] = text(key).split(",").map(Number);
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       const visible=window.isV39TileInCurrentVision?.(x,y)===true;

@@ -418,14 +418,14 @@ export const V39_FOG_BALANCE = Object.freeze({
   // 洞窟は階層の死体総数で1回抽選し、霧を階層全体へ配置する。
   caveDeathFogChancePerBody:0.01,
   caveDeathFogMaxChance:0.05,
-  // 通常霧・死の霧の繰り返し画像。画像未読込時は下の色で代替する。
+  // 通常霧・死の霧・環境災害の共通画像。deathImageは旧設定互換用。
   normalImage:"/assets/images/background/pipo-fog018.webp",
   deathImage:"/assets/images/background/pipo-fog019.webp",
   // 死の霧の着色元。属性設定の色を参照し、ここへ色コードを重複定義しない。
   deathAttribute:"死霊",
   displayColor:0xc7dce2,
-  // 地形やユニットを隠しすぎない画像の透明度。
-  displayAlpha:0.3
+  // 共通の霧・災害着色は重複数にかかわらずこの濃さを上限にする。
+  displayAlpha:0.42
 });
 export const V39_QUEST_BALANCE = Object.freeze({
   // シート未定義の交流・守護者依頼用の暫定値。

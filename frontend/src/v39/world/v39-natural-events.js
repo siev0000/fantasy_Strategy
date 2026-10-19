@@ -120,13 +120,14 @@ function settlementAnchors(state) {
     .map(row => ({ x:integer(row.x), y:integer(row.y), key:tileKey(row.x, row.y), settlementId:text(row?.settlementId || row?.id) }));
 }
 
-function chooseAnchor(state, mapData, rule, turn, forcedPosition = null, candidateCache=new Map(),ignoreWeather=false) {
+function chooseAnchor(state, mapData, rule, turn, forcedPosition = null, candidateCache=new Map(),ignoreWeather=false,trace=null) {
   if (forcedPosition && Number.isFinite(Number(forcedPosition.x)) && Number.isFinite(Number(forcedPosition.y))) {
     return { x:integer(forcedPosition.x), y:integer(forcedPosition.y), key:tileKey(forcedPosition.x, forcedPosition.y) };
   }
   const cacheKey=`${rule.targetMode}:${rule.targetTerrain.join(',')}`;
   if(!candidateCache.has(cacheKey))candidateCache.set(cacheKey,rule.targetMode === "settlement"?settlementAnchors(state):mapTiles(mapData, rule.targetTerrain));
   const source=candidateCache.get(cacheKey).filter(point=>ignoreWeather||resolveV39DisasterWeather(rule,mapData,state.worldEnvironment?.weather,point).allowed);
+  if(trace){trace.terrainCandidates=candidateCache.get(cacheKey).length;trace.eligibleCandidates=source.length;}
   if (!source.length) return null;
   return source[hash(`${rule.id}:T${turn}:anchor`) % source.length];
 }
@@ -165,28 +166,42 @@ function buildDisasterEvent(rule, mapData, anchor, turn, forced = false, terrain
   };
 }
 
-function createNaturalDisasters(state, mapData, turn, forceRuleId = "", forcedPosition = null) {
+function createNaturalDisasters(state, mapData, turn, forceRuleId = "", forcedPosition = null, diagnostics=null) {
   const environment = state?.worldEnvironment || {};
   const events = [];
   const candidateCache=new Map();
   for (const row of disasterRows()) {
     const rule = readRule(row);
+    const trace=diagnostics?{id:rule.id,name:rule.name,baseChance:rule.chance,condition:rule.occurrenceCondition,status:'disabled'}:null;
+    if(trace)diagnostics.push(trace);
     if(!rule.enabled)continue;
     const forced = text(forceRuleId) === rule.id;
-    if(!forced&&!rule.occurrenceMethods.some(method=>['自然','条件付き'].includes(method)))continue;
+    if(!forced&&!rule.occurrenceMethods.some(method=>['自然','条件付き'].includes(method))){if(trace)trace.status='not-natural';continue;}
     // テスト強制時は選択した1種だけを発生させ、同ターンの通常抽選を混ぜない。
     if (forceRuleId && !forced) continue;
-    if (!forced && events.length >= V39_PROVISIONAL_DISASTER_BALANCE.maximumNaturalEventsPerTurn) continue;
-    const anchor = chooseAnchor(state, mapData, rule, turn, forced ? forcedPosition : null,candidateCache,forced);
-    if (!anchor || (!forced && recentSameEvent(environment, rule, anchor.key, turn))) continue;
+    if (!forced && events.length >= V39_PROVISIONAL_DISASTER_BALANCE.maximumNaturalEventsPerTurn){if(trace)trace.status='limit';continue;}
+    const anchor = chooseAnchor(state, mapData, rule, turn, forced ? forcedPosition : null,candidateCache,forced,trace);
+    if (!anchor){if(trace)trace.status=trace.terrainCandidates?'condition':'no-terrain';continue;}
+    if(trace)trace.anchorKey=anchor.key;
+    if (!forced && recentSameEvent(environment, rule, anchor.key, turn)){if(trace)trace.status='cooldown';continue;}
     const terrainAffinity = terrainAffinityMultiplier(rule, anchor.terrain || mapTileText(mapData, anchor.x, anchor.y));
     const weather=resolveV39DisasterWeather(rule,mapData,environment.weather,anchor);
-    if (!forced && (!weather.allowed||roll(`${rule.id}:T${turn}`) >= Math.min(1,rule.chance*terrainAffinity*weather.climateMultiplier*weather.weatherMultiplier))) continue;
+    const chance=Math.min(1,rule.chance*terrainAffinity*weather.climateMultiplier*weather.weatherMultiplier),rolled=roll(`${rule.id}:T${turn}`);
+    if(trace)Object.assign(trace,{chance,rolled,terrainAffinity,climateMultiplier:weather.climateMultiplier,weatherMultiplier:weather.weatherMultiplier});
+    if (!forced && (!weather.allowed||rolled >= chance)){if(trace)trace.status=weather.allowed?'miss':'condition';continue;}
+    if(trace)trace.status='spawned';
     events.push({...buildDisasterEvent(rule, mapData, anchor, turn, forced, terrainAffinity),
       weatherAtSpawn:weather.current||null,climateMultiplier:weather.climateMultiplier,weatherMultiplier:weather.weatherMultiplier});
     if (forced) break;
   }
   return events;
+}
+
+// Read-only planning shares the exact normal conditions and deterministic roll.
+export function inspectV39NaturalDisasterTrial(state,mapData,turn){
+  const weather=advanceV39Weather(ensureV39ClimateProfile(mapData),state.worldEnvironment?.weather,turn),attempts=[];
+  const events=createNaturalDisasters({...state,worldEnvironment:{...state.worldEnvironment,weather}},mapData,turn,'',null,attempts);
+  return {turn,weather,events,attempts};
 }
 
 function tickDisasterDamage(state, mapData, activeDisasters, turn) {
@@ -383,11 +398,12 @@ function syncNeutralVillageUndeadThreats(villages, enemies, turn) {
   });
 }
 
-function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceDisasterAt = null, forceUndeadAt = null, skipNaturalDisasters = false } = {}) {
+function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceDisasterAt = null, forceUndeadAt = null, skipNaturalDisasters = false, recordDisasterDiagnostics=false } = {}) {
   const environment = {...state?.worldEnvironment,weather:advanceV39Weather(ensureV39ClimateProfile(mapData),state?.worldEnvironment?.weather,turn)};
   state={...state,worldEnvironment:environment};
   const existing = (environment.activeDisasters || []).filter(event => integer(event?.expiresAtTurn, turn) >= turn);
-  const created = skipNaturalDisasters ? [] : createNaturalDisasters(state, mapData, turn, forceDisasterId, forceDisasterAt);
+  const diagnostics=recordDisasterDiagnostics&&!skipNaturalDisasters&&!forceDisasterId?[]:null;
+  const created = skipNaturalDisasters ? [] : createNaturalDisasters(state, mapData, turn, forceDisasterId, forceDisasterAt,diagnostics);
   const activeDisasters = [...existing, ...created];
   const ticked = tickDisasterDamage(state, mapData, activeDisasters, turn);
   const stateAfterDamage = { ...state, players:ticked.players, enemies:ticked.enemies, neutralVillages:ticked.neutralVillages };
@@ -407,6 +423,7 @@ function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceD
   ].slice(-120);
   const worldEnvironment = {
     ...environment,
+    ...(diagnostics?{disasterDiagnostics:{turn,attempts:diagnostics}}:{}),
     undeadSpawnHistoryByTile:undead.spawnHistory,
     undeadSpawnCountTurn:turn,undeadSpawnCount:undead.spawned.length,
     lastDisasterEvents:eventHistory,
@@ -439,7 +456,8 @@ export function runV39NaturalEvents(options = {}) {
     forceDisasterId:text(options?.forceDisasterId),
     forceDisasterAt:options?.forceDisasterAt || null,
     forceUndeadAt:options?.forceUndeadAt || null,
-    skipNaturalDisasters:mapData.isUnderground || options?.skipNaturalDisasters === true
+    skipNaturalDisasters:mapData.isUnderground || options?.skipNaturalDisasters === true,
+    recordDisasterDiagnostics:window.isV39TestMode?.()===true
   });
   // Capture visibility before deaths/state normalization can remove a target marker.
   const units=[...(state.players||[]).flatMap(player=>player.factionState?.units||[]),...(state.enemies||[]),
@@ -523,7 +541,8 @@ function install() {
     return {
       rules:disasterRows().map(row => readRule(row)),
       activeDisasters:state?.worldEnvironment?.activeDisasters || [],
-      recentEvents:state?.worldEnvironment?.lastDisasterEvents || []
+      recentEvents:state?.worldEnvironment?.lastDisasterEvents || [],
+      diagnostics:state?.worldEnvironment?.disasterDiagnostics || null
     };
   };
 }

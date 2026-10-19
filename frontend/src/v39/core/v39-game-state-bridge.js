@@ -94,6 +94,7 @@ function normalizeWorldEnvironment(value = {}) {
     activeTerrainEffects:cloneJson(value?.activeTerrainEffects, []),
     siteConcealmentEffects:cloneJson(value?.siteConcealmentEffects, []),
     lastDisasterEvents:cloneJson(value?.lastDisasterEvents, []),
+    disasterDiagnostics:cloneJson(value?.disasterDiagnostics, null),
     activeDisasters:cloneJson(value?.activeDisasters, []),
     lastNaturalEventTurn:Math.max(0, Math.floor(Number(value?.lastNaturalEventTurn) || 0)),
     lastCorpseConversionTurn:Math.max(0, Math.floor(Number(value?.lastCorpseConversionTurn) || 0))

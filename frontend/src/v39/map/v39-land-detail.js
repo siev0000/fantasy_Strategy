@@ -1,4 +1,5 @@
 import { formatV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import {inspectV39EnvironmentEffectsAt} from '../../lib/v39-atmosphere-display.js';
 import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import {
@@ -60,7 +61,7 @@ function bindFixedLandFields() {
     item.innerHTML = '<span>地形補正</span><b id="v39-land-modifiers">なし</b>';
     panel.appendChild(item);
   }
-  for(const [id,label] of [['v39-land-purification','浄化'],['v39-land-cave-area','洞窟エリア'],['v39-land-weather','天候']])if(!document.getElementById(id)) {
+  for(const [id,label] of [['v39-land-purification','浄化'],['v39-land-cave-area','洞窟エリア'],['v39-land-weather','天候'],['v39-land-environment-effects','環境効果']])if(!document.getElementById(id)) {
     const item=document.createElement('div');item.className='land-item';item.innerHTML=`<span>${label}</span><b id="${id}">-</b>`;panel.appendChild(item);
   }
 
@@ -327,6 +328,7 @@ function buildFullDetail(selected) {
   const discoveredFeature = activeFaction?.exploration?.discoveredFeaturesByTile?.[detail.key] || null;
   return {
     ...detail,
+    environmentEffects:inspectV39EnvironmentEffectsAt(window.__v39FieldRuntime?.mapData,state,detail.x,detail.y),
     owner: ownerLabel,
     danger: formatDanger(state, detail),
     facilities: formatFacilities(state, detail.key),
@@ -386,6 +388,8 @@ function renderLandDetail(selected) {
   const weather=window.inspectV39WeatherAt?.(detail.x,detail.y);
   const weatherVisible=window.isV39TestMode?.()||window.isV39TileInCurrentVision?.(detail.x,detail.y);
   setField('v39-land-weather',weather&&weatherVisible?`${weather.weather||'未更新'} / ${Math.round(weather.temperature??weather.climateTemperature)}℃ / 乾燥${Math.round(weather.dryness??0)}`:'-');
+  const effects=detail.environmentEffects;
+  setField('v39-land-environment-effects',weatherVisible?(effects.map(row=>`${row.name}${row.remaining===null?'':` ⌛${row.remaining}`}`).join(' / ')||'なし'):'未確認');
   setField("v39-land-enemies", detail.enemies);
   setField("v39-land-victory-landmark", detail.victoryLandmark);
   renderSettlementConversionAction();

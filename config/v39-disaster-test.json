@@ -1,6 +1,18 @@
 {
-  "description": "山火事・洪水・干ばつ・落雷を同じ災害テストへ固定配置。通常ゲームには適用しない。落雷観察者は中心と周囲6マス。発生ターン込みの持続・被害・保存を確認する。",
+  "description": "対応済みの環境災害11種類を離れた地点へ固定配置。通常ゲームには適用しない。落雷観察者は中心と周囲6マス。発生ターン込みの持続・被害・保存を確認する。自然発生モードには固定配置しない。",
   "lightning": {"x":12,"y":10,"durationTurns":5},
+  "natural": {"initialWeatherTurns":5,"dryness":80,"dryHumidity":20,"wetHumidity":90,"conditionTurns":3},
+  "atmosphere": {
+    "durationTurns":5,
+    "radius":2,
+    "samples":[
+      {"name":"通常の霧","x":8,"y":16,"fog":"normal","disasters":[]},
+      {"name":"死の霧","x":14,"y":16,"fog":"death","disasters":[]},
+      {"name":"霧＋熱波（2色）","x":4,"y":20,"fog":"normal","disasters":["災害:熱波"]},
+      {"name":"死の霧＋大寒波（2色）","x":18,"y":20,"fog":"death","disasters":["災害:大寒波"]},
+      {"name":"霧＋瘴気＋熱波＋大寒波（4色）","x":4,"y":14,"fog":"normal","disasters":["災害:瘴気","災害:熱波","災害:大寒波"]}
+    ]
+  },
   "weatherSamples": [
     {"x":4,"y":4,"weather":"晴れ"},
     {"x":16,"y":4,"weather":"雷雨"},
@@ -10,6 +22,13 @@
   "events": [
     {"id":"災害:山火事","x":4,"y":4,"terrain":"森"},
     {"id":"災害:洪水","x":10,"y":5,"terrain":"河川"},
-    {"id":"災害:干ばつ","x":8,"y":10,"terrain":"平地"}
+    {"id":"災害:干ばつ","x":8,"y":10,"terrain":"平地"},
+    {"id":"災害:暴風","x":18,"y":3,"terrain":"平地"},
+    {"id":"災害:地震","x":22,"y":8,"terrain":"山岳"},
+    {"id":"災害:大寒波","x":18,"y":20,"terrain":"雪原"},
+    {"id":"災害:熱波","x":4,"y":20,"terrain":"砂漠"},
+    {"id":"災害:土砂崩れ","x":20,"y":13,"terrain":"丘陵"},
+    {"id":"災害:瘴気","x":4,"y":14,"terrain":"沼地"},
+    {"id":"災害:流星落下","x":11,"y":20,"terrain":"荒野"}
   ]
 }

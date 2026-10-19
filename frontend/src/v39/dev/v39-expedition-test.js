@@ -94,7 +94,7 @@ export function buildV39UndeadTestWorlds(template,player,turn) {
   built.worlds.surface.spatial.facilitiesByTile={...base.tileFacilityMap};
   return built;
 }
-function startTest(invasion=false,undead=false) {
+function startTest(invasion=false,undead=false,options={}) {
   if(!window.isV39TestMode?.()||window.isV39MapInputLocked?.())return {ok:false,reason:"テストモードで処理が完了してから使用してください"};
   window.cancelV39SelectedUnitMove?.();window.cancelV39SelectedUnitAttack?.("expedition-test");
   const session=window.startV39LocalSession(1,{playMode:"single-test"});
@@ -108,8 +108,8 @@ function startTest(invasion=false,undead=false) {
   if(!invasion&&!undead){const assigned=assignV39MineDuty(state,state.activePlayerId,fixture.鉱床ID,"expedition-test-carrier","transport",fixture.拠点.id);if(!assigned.ok)throw new Error(assigned.reason);state=assigned.state;}
   window.setV39GameState(state,{reason:"expedition-test-started",trackUnitDeaths:false});
   window.refreshV39SquadDerivedUI?.();window.refreshV39MapEntities?.();window.activateV39FooterTab?.("test");
-  window.showV39TurnBanner?.(undead?"死体を配置しました。地上・洞窟に観察者各1体。通常ターンで浄化低下と自然発生を確認します。":invasion?"侵入検証: 入口のウルフ2体が通常ターンで侵入。地下へ人を入れず5ターン経過を確認。":"検証データ配置: 輸送は設定済み。鉱床を表示すると道具・採取・警備指定を確認できます。");
+  if(!options.silentBanner)window.showV39TurnBanner?.(undead?"死体を配置しました。地上・洞窟に観察者各1体。通常ターンで浄化低下と自然発生を確認します。":invasion?"侵入検証: 入口のウルフ2体が通常ターンで侵入。地下へ人を入れず5ターン経過を確認。":"検証データ配置: 輸送は設定済み。鉱床を表示すると道具・採取・警備指定を確認できます。");
   return {ok:true,worldId:undead?undeadFixture.洞窟ID:fixture.鉱床ID};
 }
-window.startV39ExpeditionTest=(invasion=false)=>startTest(invasion);
+window.startV39ExpeditionTest=(invasion=false,options={})=>startTest(invasion,false,options);
 window.startV39UndeadTest=()=>startTest(false,true);

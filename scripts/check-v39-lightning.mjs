@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fixture from '../config/v39-disaster-test.json' with {type:'json'};
 import {mkdirSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
 const out='output/web-game/lightning';mkdirSync(out,{recursive:true});
@@ -13,14 +14,14 @@ try{
     assert.equal(await page.locator('[data-test-action="lightning-test-start"]').count(),0);
     await page.locator('[data-test-action="disaster-test-start"]').click();
     await page.waitForFunction(()=>window.getV39ActiveFactionState().units.filter(u=>u.id.startsWith('lightning-observer-')).length===7&&!window.isV39MapInputLocked());
-    await page.evaluate(async()=>{
+    await page.evaluate(async(expectedCount)=>{
       const {HEX_TILE_CONFIG:c}=await import('/src/lib/phaser-map-panel-config.js');
       const s=window.getV39GameState(),f=window.getV39ActiveFactionState();
-      if(s.worldEnvironment.activeDisasters.length!==4||!f.units.some(u=>u.name==='山火事観察者'))throw new Error('other disasters lost');
+      if(s.worldEnvironment.activeDisasters.length!==expectedCount||!f.units.some(u=>u.name==='山火事観察者'))throw new Error('other disasters lost');
       window.activateV39FooterTab('squad');
       const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
       scene.cameras.main.setZoom(1);scene.v39RequestedZoom=1;scene.cameras.main.centerOn(12*c.width+c.width/2,10*c.rowStep+c.height/2);
-    });
+    },fixture.events.length+1);
     const first=await page.evaluate(async()=>{
       const {resolveV39DisasterDamageTiles:tiles}=await import('/src/lib/v39-disaster-strikes.js');
       const {resolveV39DisasterRule:rule}=await import('/src/lib/v39-disaster-rules.js');

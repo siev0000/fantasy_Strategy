@@ -41,6 +41,13 @@ try{
     assert.equal(runtime.before.scope,'island');assert.deepEqual(runtime.after.climate,setup.climateSettings);
     assert.equal(runtime.after.id,runtime.before.id);assert.equal(runtime.ui,'island');
     assert.equal(runtime.before.settings.islandCustomSettings.worldWrapEnabled,false);
+    await page.evaluate(()=>window.closeFieldSettingsModal());
+    await page.screenshot({path:`${out}/generated-${width}.png`});
+    await page.evaluate(()=>window.openFieldSettingsModal({playMode:'single-test'}));
+    await page.locator('#v39-field-generate').click();
+    await page.waitForFunction(()=>window.__v39FieldRuntime.mapData.mapScope==='island'&&!document.getElementById('v39-field-settings-modal').classList.contains('open'));
+    const persisted=await page.evaluate(()=>({saved:JSON.parse(localStorage.getItem('v39-field-settings-v1')),map:window.__v39FieldRuntime.mapData.climateSettings}));
+    assert.equal(persisted.saved.mapScope,'island');assert.deepEqual(persisted.map,setup.climateSettings);
     if(!process.env.V39_TEST_URL){
       const pure=await page.evaluate(async()=>{
         const {createTerrainMapData:generate}=await import('/src/lib/map-generator.js');

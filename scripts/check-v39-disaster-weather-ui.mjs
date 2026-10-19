@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fixture from '../config/v39-disaster-test.json' with {type:'json'};
 import {mkdirSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
 
@@ -21,7 +22,7 @@ try{
       count:window.getV39ActiveFactionState().units.length
     }));
     assert.deepEqual(Object.values(initial.regions).map(r=>r.weather),['晴れ','雷雨','豪雨','吹雪']);
-    assert.equal(initial.disasters,4);
+    assert.equal(initial.disasters,fixture.events.length+1);
     const samples=[['晴れ','0,0'],['雷雨','1,0'],['豪雨','0,1'],['吹雪','1,1']];
     for(let i=0;i<samples.length;i++){
       await page.locator(`[data-test-action="weather-sample-${i}"]`).click();

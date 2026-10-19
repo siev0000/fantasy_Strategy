@@ -10,6 +10,7 @@ import { installV39CoordinateRuler } from "./v39-coordinate-ruler.js";
 import { createV39VictoryLandmarkPlan } from "../../lib/v39-victory-landmarks.js";
 import {ensureV39ClimateProfile} from '../../lib/v39-weather.js';
 import {normalizeV39MapScope,normalizeV39ScopePattern} from '../../lib/v39-map-scope.js';
+import {loadV39TerrainPatterns,drawV39TerrainPatterns,terrainHeightBrightness} from './v39-terrain-patterns.js';
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
 const SNOW_RING_OUTER_INSET_RATIO = 0.06;
@@ -150,8 +151,7 @@ function colorNumber(hex) {
 
 function shadeColorByHeight(hex, level) {
   if (!hex?.startsWith?.("#") || !Number.isFinite(level)) return hex;
-  const t = Phaser.Math.Clamp((level + 2) / 10, 0, 1);
-  const brightness = 1.18 + ((0.74 - 1.18) * t);
+  const brightness = terrainHeightBrightness(level);
   const raw = Number.parseInt(hex.slice(1), 16);
   const r = Phaser.Math.Clamp(Math.round(((raw >> 16) & 0xff) * brightness), 0, 255);
   const g = Phaser.Math.Clamp(Math.round(((raw >> 8) & 0xff) * brightness), 0, 255);
@@ -213,6 +213,7 @@ function drawTerrain(scene, data, graphics = scene.add.graphics()) {
     name:"v39-terrain-layer",
     depth:0
   });
+  drawV39TerrainPatterns(scene, data, display);
   return graphics;
 }
 
@@ -568,6 +569,7 @@ function createGame(data) {
     scene:{create(){
       ensureSnowStateMaps(data);
       const terrainGraphics=drawTerrain(this,data);
+      loadV39TerrainPatterns(this,()=>data,readDisplaySettings);
       const snowCoverGraphics=drawSnowCover(this,data);
       drawRivers(this,data.riverData);
       drawSpecialTerrain(this,data);
@@ -708,6 +710,7 @@ export function loadV39FieldSnapshot(mapData, inputSettings={}, options={}) {
   }
   const settings=normalizeSettings({
     ...inputSettings,
+    ...normalizeV39MapScope(mapData),
     w:Number(mapData.w)||inputSettings.w,
     h:Number(mapData.h)||inputSettings.h
   });

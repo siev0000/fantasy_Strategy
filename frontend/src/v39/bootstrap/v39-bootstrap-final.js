@@ -5,6 +5,7 @@ import '../dev/v39-call-test.js';
 import '../dev/v39-fusion-test.js';
 import '../dev/v39-animal-army-test.js';
 import '../dev/v39-disaster-test.js';
+import '../dev/v39-terrain-test.js';
 import '../unit/v39-fusion-modal.js';
 import "../unit/v39-squad-edit-ui.js";
 import "../unit/v39-expedition-tools-ui.js";
@@ -31,7 +32,7 @@ import "../ui/v39-effect-category-settings.js";
 import "../ui/v39-title-effect-settings.js";
 import "../ui/v39-text-input-modal.js";
 
-const V39_UI_BUILD_LABEL = "UI 2026.10.19-16";
+const V39_UI_BUILD_LABEL = "UI 2026.10.19-25";
 
 function applyV39UiBuildLabel() {
   const label = document.getElementById("uiBuildLabel");

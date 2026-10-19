@@ -50,11 +50,12 @@ try {
     await page.waitForFunction(()=>{
       const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
       const layer=scene.children.getByName("v39-atmosphere-fog-layer");
-      return scene.textures.exists("v39-normal-fog")&&scene.textures.exists("v39-death-fog")&&layer.list.filter(row=>row.type==="TileSprite").length===2;
+      const meta=layer?.getData('atmosphere');
+      return scene.textures.exists('v39-atmosphere-source')&&meta?.ready&&meta.combinations.includes('fog')&&meta.combinations.includes('death');
     });
     const deathTint=await page.evaluate(()=>{
       const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
-      return scene.children.getByName("v39-atmosphere-fog-layer").list.filter(row=>row.type==="TileSprite")[1].tintTopLeft;
+      return parseInt(scene.children.getByName('v39-atmosphere-fog-layer').getData('atmosphere').palette.find(row=>row.id==='death').color.slice(1),16);
     });
     assert.equal(deathTint,0x9c27b0);
     await page.screenshot({path:`${out}/${width}-fog.png`});
