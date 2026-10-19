@@ -6,7 +6,7 @@ const NAME='v39-weather-overlay',LABELS=`${NAME}-labels`,DEPTH=8;
 const TEMPERATURE_COLORS=[[0,0x639ee2],[10,0x69cece],[20,0xd9df80],[30,0xf2ad62],[Infinity,0xe66e5c]];
 const EDGE_BY_NEIGHBOR=[4,1,5,0,3,2];
 const attached=new WeakSet(),layers=new WeakMap();
-let enabled=true,pending=0,lastScene=null,lastMap=null,lastSignature='',renderCount=0;
+let enabled=false,pending=0,lastScene=null,lastMap=null,lastSignature='',renderCount=0;
 
 function visible(){
   return enabled&&window.isV39TestMode?.()===true;
