@@ -5,6 +5,7 @@
   "description": "Fantasy Strategy prototype with room-based multiplayer.",
   "type": "commonjs",
   "scripts": {
+    "check:animal-army": "node scripts/check-v39-animal-army.mjs",
     "check:logistics-routes": "node scripts/check-v39-logistics-routes.mjs && node scripts/check-v39-logistics-stops.mjs",
     "check:cemetery": "node scripts/check-v39-cemetery.mjs",
     "check:corpse-storage": "node scripts/check-v39-corpse-storage.mjs",

@@ -11,6 +11,7 @@ import { V39_CORPSE_EATING_BALANCE } from "./v39-gameplay-balance.js";
 import { canV39UnitEatCorpses, v39GroundCorpseAmount, consumeV39GroundCorpse } from "./v39-corpse-eating-rules.js";
 import { getGameDataRows } from "./game-data-registry.js";
 import {isV39Undead} from "./v39-purification-rules.js";
+import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -633,13 +634,13 @@ export function applyEnemyPlanToSimulation(state, plan) {
   runtime.lastActionTurnByEnemyId[id] = plan.turnNumber;
   let enemies = state.enemies || [];
   if (plan.type === "move") {
-    enemies = enemies.map(enemy => text(enemy?.id) === id ? {
-      ...enemy, ...(plan.enemyPatch || {}), x:plan.to.x, y:plan.to.y,
+    enemies = enemies.map(enemy => text(enemy?.id) === id ? applyV39DisasterMovementDamage({
+      ...enemy, ...(plan.enemyPatch || {}),
       ap:Math.max(0, number(enemy.ap)-number(plan.cost)),
       currentAp:Math.max(0, number(enemy.ap)-number(plan.cost)),
       actionPoint:Math.max(0, number(enemy.ap)-number(plan.cost)),
       lastMovedTurn:plan.turnNumber
-    } : enemy);
+    },[plan.to],state,plan.turnNumber).unit : enemy);
   } else if (plan.type === "wait") {
     enemies = enemies.map(enemy => text(enemy?.id) === id ? { ...enemy, ...(plan.enemyPatch || {}) } : enemy);
   } else if (plan.type === "queue-attack") {

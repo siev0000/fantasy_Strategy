@@ -3,7 +3,7 @@ import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/no
 const browser=await chromium.launch();
 try {
   const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(String(e)));
-  await page.goto('http://127.0.0.1:3022',{waitUntil:'networkidle'});
+  await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
   const report=await page.evaluate(async()=>{
     const tools=await import('/src/lib/v39-consumables.js'),exp=await import('/src/lib/v39-expedition-tools.js');
     const economy=await import('/src/lib/v39-economy-rules.js'),data=await import('/src/lib/game-data-registry.js');
@@ -81,9 +81,12 @@ try {
     check(economy.countV39FacilityInstances({...base,tileFacilityMap:{'1,1':['兵舎'],'2,1':['兵舎']},buildings:['兵舎'],constructionQueue:[{facilityName:'兵舎'}]},'兵舎')===3,'count real instances and queue');
     const convertedMap=map();convertedMap.purificationByTile={'2,2':-5,'8,2':-5};convertedMap.fogMap=[];
     for(const x of [2,8]){convertedMap.fogMap[2] ||= [];convertedMap.fogMap[2][x]={kind:'death',sourceKey:`${x},2`,expiresAtTurn:10};}
-    const bodies={...state,players:[],enemies:[{id:'dead1',hp:0,x:2,y:2,level:5},{id:'dead2',hp:0,x:8,y:2,level:5}],worldEnvironment:{}};
+    const bodies={...state,players:[],enemies:[{id:'dead1',race:'ヒューマン',className:'ファイター',hp:0,x:2,y:2,level:5},{id:'dead2',race:'ヒューマン',className:'ファイター',hp:0,x:8,y:2,level:5}],worldEnvironment:{}};
     const converted=corpses.convertV39CorpsesInDeathFog(bodies,convertedMap,1,{random:()=>0,createEnemy:args=>({...args,hp:100,...args.metadata})});
-    check(converted.spawned.length===2&&converted.enemies.every(row=>row.level===8),'corpse conversion cap and source bonus');
+    check(converted.spawned.length===2&&converted.enemies.every(row=>row.level===4&&row.undeadOrigin.race==='ヒューマン'),'individual corpse half-level inheritance');
+    const anonymous={...bodies,enemies:[],groundLootByTile:{'2,2':{resourcesByType:{死体:100}},'8,2':{resourcesByType:{死体:100}}}};
+    const resourceBodies=corpses.convertV39CorpsesInDeathFog(anonymous,convertedMap,1,{random:()=>0,createEnemy:args=>({...args,hp:100,...args.metadata})});
+    check(resourceBodies.spawned.length===2&&resourceBodies.enemies.every(row=>row.level===4),'anonymous corpse source bonus and null species');
     const scenario={activeWorldId:'surface',enemies:[{...actor,id:'enemy',className:'スケルトン',race:'スケルトン',hp:100,x:4,y:3,aggressive:true,status:{索敵:1000},skillLevels:{索敵:1000}}],players:[{id:'p',factionState:{units:[{...actor,id:'friendly-undead',race:'ゾンビ',hp:100,x:5,y:3,status:{隠密:0}}]}}],enemyNests:[],enemySquads:[],neutralVillages:[]};
     check(!ai.inspectEnemyAiState(scenario,'enemy',1,map()).targetId,'undead player not proactively targeted');
     scenario.enemies[0].aggroTargetUnitId='friendly-undead';check(ai.inspectEnemyAiState(scenario,'enemy',1,map()).targetId==='friendly-undead','attacked undead retaliation target allowed');

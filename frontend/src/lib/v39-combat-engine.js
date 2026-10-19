@@ -339,14 +339,14 @@ export function resolveAttackPower(skillRow, attacker, options = {}) {
   return Math.round(power);
 }
 
-export function computeAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, random = Math.random, isCounter = false }) {
+export function computeAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, random = Math.random, isCounter = false, damageType = '' }) {
   const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, { isCounter });
   target=resolveV39PassiveContext(target,passiveActionContext(target,skillRow),{isCounter:false}).unit;
   const power = resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[] });
   const magicalJudge = text(adjusted.skillRow?.判定).includes("魔");
   const defenseKey = magicalJudge ? "精神" : "防御";
   const defense = Math.max(0, number(target?.status?.[defenseKey], 0));
-  const resistanceKey = `${strongestDamageType(adjusted.skillRow)}耐性`;
+  const resistanceKey = `${[...DAMAGE_TYPE_FIELDS,'精神'].includes(damageType)?damageType:strongestDamageType(adjusted.skillRow)}耐性`;
   const resistance = Math.max(0, number(target?.status?.[resistanceKey], number(target?.resistances?.[resistanceKey], 0)));
   const resistancePenetration = Math.max(0, number(adjusted.attacker?.status?.耐性貫通, 0));
   const effectiveResistance = Math.max(0, resistance - resistancePenetration);

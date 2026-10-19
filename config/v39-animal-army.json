@@ -1,0 +1,9 @@
+{
+  "minimumMembers": 2,
+  "maximumMembers": 5,
+  "assemblyRadius": 2,
+  "deploymentRadius": 2,
+  "ordinaryLevelCap": 15,
+  "eligibleKinds": ["動物", "蟲"],
+  "hpBonusPerMember": 0.5
+}

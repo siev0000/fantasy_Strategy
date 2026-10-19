@@ -123,6 +123,8 @@ function renderControls() {
   const timeline = window.getV39TimelineState?.() || normalizeTimeline();
   const label = document.getElementById("v39-turn-label");
   const pause = document.getElementById("v39-time-pause");
+  const testNext = document.getElementById("v39-turn-test-next");
+  if (testNext) testNext.hidden = window.isV39TestMode?.() !== true;
   if (label) label.textContent = `T${timeline.turnNumber}`;
   if (pause) {
     pause.textContent = timeline.paused ? "再開" : "停止";
@@ -176,6 +178,9 @@ function installUi() {
     }
     #v39-turn-menu button[aria-pressed="true"]{border-color:#dcba61;background:#382f18;color:#ffe7a2}
     #v39-turn-next{border-color:#6b8e72!important;background:#193024!important}
+    #v39-turn-test-next{grid-column:1/-1;border-color:#b69b56;background:#352d18;color:#ffe5a0}
+    #v39-turn-test-next[hidden]{display:none!important}
+    #v39-turn-test-next:disabled{opacity:.5;cursor:wait}
     @media(max-width:700px){
       .topbar{padding-right:50px!important}
       #v39-turn-controls{right:5px;top:4px;width:38px;height:38px}
@@ -188,7 +193,7 @@ function installUi() {
   document.head.appendChild(style);
   const controls = document.createElement("div");
   controls.id = "v39-turn-controls";
-  controls.innerHTML = `<button type="button" id="v39-turn-toggle" aria-label="ターン操作" aria-expanded="false"><span id="v39-turn-label">T1</span></button><div id="v39-turn-menu" aria-hidden="true"><button type="button" id="v39-time-pause">停止</button><button type="button" id="v39-turn-next">ターン終了</button></div>`;
+  controls.innerHTML = `<button type="button" id="v39-turn-toggle" aria-label="ターン操作" aria-expanded="false"><span id="v39-turn-label">T1</span></button><div id="v39-turn-menu" aria-hidden="true"><button type="button" id="v39-time-pause">停止</button><button type="button" id="v39-turn-next">ターン終了</button><button type="button" id="v39-turn-test-next" title="未行動確認を省略して1ターン経過（テスト用）" hidden>1T経過</button></div>`;
   header.appendChild(controls);
   const toggle = controls.querySelector("#v39-turn-toggle");
   const menu = controls.querySelector("#v39-turn-menu");
@@ -211,6 +216,18 @@ function installUi() {
     event.stopPropagation();
     setMenuOpen(false);
     advanceTurn();
+  });
+  controls.querySelector("#v39-turn-test-next")?.addEventListener("click", async event => {
+    event.stopPropagation();
+    if (window.isV39TestMode?.() !== true || event.currentTarget.disabled) return;
+    const button = event.currentTarget;
+    button.disabled = true;
+    setMenuOpen(false);
+    try {
+      await window.advanceV39TestTurns?.(1);
+    } finally {
+      button.disabled = false;
+    }
   });
   document.addEventListener("click", event => {
     if (!controls.contains(event.target)) setMenuOpen(false);
@@ -444,6 +461,7 @@ export async function advanceTurn(options = {}) {
     window.endV39MapRenderBatch?.(batchToken, { force:true, reason:"turn-resolution-complete" });
     batchToken = null;
     await window.waitForV39MapRenderSettled?.();
+    window.flushV39HazardFeedback?.();
     timings.renderMs = performance.now() - renderStartedAt;
     latestTurnPerformance = { turnNumber:nextTurn, ...timings };
     window.dispatchEvent(new CustomEvent("v39:turn-performance", { detail:{ turnNumber:nextTurn, ...timings } }));
@@ -464,4 +482,5 @@ window.showV39TurnBanner = showBanner;
 
 window.addEventListener("v39:operation-ui-ready", installUi, { once:true });
 window.addEventListener("v39:game-state-changed", renderControls);
+window.addEventListener("v39:display-settings-changed", renderControls);
 installUi();

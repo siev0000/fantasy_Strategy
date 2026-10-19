@@ -5,6 +5,7 @@ const BAR_DEPTH = 1000005;
 const BAR_WIDTH = 34;
 const BAR_HEIGHT = 4;
 const castTweens = new Map();
+let pendingHazardFeedback = [];
 
 function number(value, fallback = 0) {
   const parsed = Number(value);
@@ -100,7 +101,8 @@ function showDamagePopups(scene, entry, center) {
       color:final ? "#fff4ef" : "#ffd15a",
       stroke:"#38100b",
       strokeThickness:4
-    }).setOrigin(0.5).setDepth(POPUP_DEPTH).setAlpha(0);
+    }).setOrigin(0.5).setDepth(POPUP_DEPTH).setAlpha(0)
+      .setName('v39-damage-popup').setData('targetId',entry.targetId).setData('damage',cumulative);
     scene.tweens.add({
       targets:label,
       alpha:{ from:0, to:1 },
@@ -123,7 +125,8 @@ function showDelayedHpBar(scene, entry, center) {
   const y = center.y + 27;
   const objects = [];
   const background = scene.add.rectangle(center.x, y, BAR_WIDTH + 2, BAR_HEIGHT + 2, 0x101719, 0.96)
-    .setStrokeStyle(1, 0xd6e0dc, 0.9).setDepth(BAR_DEPTH);
+    .setStrokeStyle(1, 0xd6e0dc, 0.9).setDepth(BAR_DEPTH)
+    .setName('v39-damage-hp-bar').setData('targetId',entry.targetId).setData('beforeHp',entry.beforeHp).setData('afterHp',entry.afterHp);
   const remaining = scene.add.rectangle(left, y, BAR_WIDTH * afterRate, BAR_HEIGHT, afterRate <= 0.2 ? 0xd34235 : afterRate <= 0.5 ? 0xd5b438 : 0x55c878)
     .setOrigin(0, 0.5).setDepth(BAR_DEPTH + 1);
   const lostWidth = Math.max(0, BAR_WIDTH * (beforeRate - afterRate));
@@ -166,7 +169,41 @@ window.addEventListener("v39:combat-log", event => {
 window.addEventListener("v39:combat-presentation", event => showCombatFeedback(event?.detail));
 window.addEventListener("v39:cast-started", (event) => {if(!window.__v39BackgroundWorldTurn)startCastBlink(event?.detail?.unitId);});
 window.addEventListener("v39:cast-ended", (event) => stopCastBlink(event?.detail?.unitId));
-window.addEventListener("v39:terrain-damage", (event) => {
-  if(window.__v39BackgroundWorldTurn)return;
-  for (const entry of Array.isArray(event?.detail?.entries) ? event.detail.entries : []) showEntry(entry);
-});
+
+function showHazardFeedback(entries,worldId) {
+  if(!entries?.length||window.__v39BackgroundWorldTurn)return;
+  const state=window.getV39EnemyTurnState?.()||window.getV39GameState?.({includeWorlds:false});
+  const visibleWorld=state?.activeWorldId||'surface';
+  if(worldId&&worldId!==visibleWorld)return;
+  const units=[...(state?.players||[]).flatMap(player=>player.factionState?.units||[]),...(state?.enemies||[]),
+    ...(state?.neutralVillages||[]).flatMap(village=>village.defenseUnits||[])];
+  const byId=new Map(units.map(unit=>[unit.id,unit]));
+  for(const entry of entries||[]){
+    if(entry.visibleAtDamage===false)continue;
+    const targetId=entry.targetId||entry.unitId,unit=byId.get(targetId);
+    if(!targetId||!Number.isFinite(Number(entry.x))||!Number.isFinite(Number(entry.y)))continue;
+    if(entry.visibleAtDamage!==true&&window.isV39TestMode?.()!==true
+      &&!state?.players?.find(player=>player.id===state.activePlayerId)?.factionState?.units?.some(row=>row.id===targetId)
+      &&!(window.isV39TileInCurrentVision?.(entry.x,entry.y)===true&&unit&&window.isV39EntityDetected?.(unit)!==false))continue;
+    const normalized={...entry,targetId,total:number(entry.total,number(entry.damage)),
+      maxHp:Math.max(1,number(entry.maxHp,number(unit?.maxHp,number(entry.beforeHp,1)))),
+      hits:Array.isArray(entry.hits)?entry.hits:[number(entry.damage)],worldId:visibleWorld};
+    if(state?.timeline?.phase==='resolution')pendingHazardFeedback.push(normalized);
+    else showEntry(normalized);
+  }
+}
+
+window.flushV39HazardFeedback=()=>{
+  const worldId=window.getV39EnemyTurnState?.()?.activeWorldId||'surface',grouped=new Map();
+  for(const entry of pendingHazardFeedback){
+    if(entry.worldId!==worldId)continue;
+    const previous=grouped.get(entry.targetId);
+    grouped.set(entry.targetId,previous?{...entry,beforeHp:previous.beforeHp,total:previous.total+entry.total,hits:[...previous.hits,...entry.hits]}:entry);
+  }
+  pendingHazardFeedback=[];
+  for(const entry of grouped.values())showEntry(entry);
+  return grouped.size;
+};
+window.addEventListener('v39:field-generated',()=>{pendingHazardFeedback=[];});
+window.addEventListener('v39:natural-events-resolved',event=>showHazardFeedback(event.detail?.damageEntries,event.detail?.worldId));
+window.addEventListener('v39:terrain-damage',event=>showHazardFeedback(event.detail?.entries,event.detail?.worldId));

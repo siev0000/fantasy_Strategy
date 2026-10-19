@@ -1,0 +1,16 @@
+{
+  "regionSize": 12,
+  "durationMin": 3,
+  "durationMax": 5,
+  "temperature": {"equator":28,"latitudeDrop":20,"heightDrop":4,"minimum":-20,"maximum":40,"snowRegionMaximum":-3,"snowfallMaximum":0},
+  "humidity": {"base":35,"water":50,"forest":35,"river":20,"desert":-45},
+  "conditions": {"dryness":55,"coldTemperature":5,"hotTemperature":28,"wetHumidity":65,"unholyPurification":-5},
+  "weathers": {
+    "晴れ": {"weight":40,"humidityBias":-0.25,"temperatureOffset":3,"drynessDelta":8,"humidityDelta":-2,"precipitation":false},
+    "雨": {"weight":22,"humidityBias":0.5,"temperatureOffset":-2,"drynessDelta":-10,"humidityDelta":4,"precipitation":true},
+    "豪雨": {"weight":8,"humidityBias":1,"temperatureOffset":-3,"drynessDelta":-18,"humidityDelta":7,"precipitation":true},
+    "雷雨": {"weight":7,"humidityBias":0.8,"temperatureOffset":-1,"drynessDelta":-14,"humidityDelta":6,"precipitation":true},
+    "雪": {"weight":22,"humidityBias":0.5,"temperatureOffset":-3,"drynessDelta":-6,"humidityDelta":2,"precipitation":true},
+    "吹雪": {"weight":8,"humidityBias":0.8,"temperatureOffset":-6,"drynessDelta":-10,"humidityDelta":4,"precipitation":true}
+  }
+}

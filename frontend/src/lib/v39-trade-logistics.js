@@ -6,6 +6,7 @@ import {resolveV39CargoLoad} from './v39-logistics-state.js';
 import {listV39Trades,updateV39Trade,tradeBank,changeTradeBank,tradeMembers,tradeAlive,tradeTurn,
   updateTradeUnits,getTradeCargo,setTradeCargo,tradeCapacity,tradeSpeed,tradeReserveAmount,V39_TRADE_RESOURCES} from './v39-trade-state.js';
 import {getV39SpecialtyAccess} from './v39-specialty-rules.js';
+import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 const n=value=>Number(value)||0;
 const pointKey=row=>`${row.x},${row.y}`;
 const hasGoods=(bag,goods)=>Object.entries(goods).every(([resource,amount])=>n(bag?.[resource])+0.01>=amount);
@@ -55,7 +56,8 @@ function moveParty(state,side,contract,map,home) {
     const positions=advanceV39CaveFormation(map,formation,step,{participants:members},blocked);if(!positions)break;
     const costs=positions.map(position=>{const unit=members.find(row=>row.id===position.id);return Math.ceil(resolveV39UnitMovementStepCost(map,unit.x,unit.y,position.x,position.y,unit)/speed);});
     if(costs.some((cost,index)=>!Number.isFinite(cost)||cost>n(members.find(row=>row.id===positions[index].id).ap)))break;
-    members=members.map(unit=>{const index=positions.findIndex(row=>row.id===unit.id),position=positions[index],ap=Math.max(0,n(unit.ap)-costs[index]);return {...unit,...position,position:[position.x,position.y],ap,currentAp:ap,lastActionTurn:tradeTurn(state)};});
+    members=members.map(unit=>{const index=positions.findIndex(row=>row.id===unit.id),position=positions[index],ap=Math.max(0,n(unit.ap)-costs[index]);return applyV39DisasterMovementDamage({...unit,ap,currentAp:ap,lastActionTurn:tradeTurn(state)},[position],state).unit;});
+    if(members.some(unit=>!tradeAlive(unit))){const byId=new Map(members.map(unit=>[unit.id,unit]));return {state:updateTradeUnits(state,side,unit=>byId.get(unit.id)||unit),arrived:false,reason:'災害で部隊員が死亡しました',path:[...moved,step]};}
     formation=positions;moved.push({x:step.x,y:step.y});if(done())break;
   }
   const byId=new Map(members.map(unit=>[unit.id,unit]));

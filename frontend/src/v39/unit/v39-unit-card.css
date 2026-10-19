@@ -5,6 +5,26 @@
       min-width:0!important;
       margin:0!important;
     }
+    .v39-card-portrait{
+      --v39-card-portrait-size:44px;
+      position:relative;display:block;flex:0 0 var(--v39-card-portrait-size);
+      width:var(--v39-card-portrait-size);height:var(--v39-card-portrait-size);
+      padding:2px;border-radius:7px;overflow:hidden;box-sizing:border-box;
+      background:conic-gradient(#e4c45d var(--v39-exp-progress),#334147 0);
+    }
+    .v39-card-portrait-image{
+      display:block;width:100%;height:100%;border-radius:5px;
+      background-color:#152329;background-repeat:no-repeat;
+    }
+    .v39-card-portrait-level{
+      position:absolute;right:1px;bottom:1px;min-width:1.4em;padding:0 2px;
+      border-radius:4px;background:rgba(8,17,20,.92);color:#fff0b7;
+      font-size:var(--font-secondary);font-weight:900;line-height:1.2;text-align:center;
+      pointer-events:none;
+    }
+    @media(max-width:430px){
+      .v39-card-portrait{--v39-card-portrait-size:38px}
+    }
     .squad-card .v39-card-vital{
       min-width:0!important;
       display:grid!important;

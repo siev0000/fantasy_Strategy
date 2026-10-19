@@ -376,6 +376,7 @@ function buildWorkerState(state = enemyTurnState()) {
   return {
     enemies:(state?.enemies || []).map(unit => ({ ...compactAiUnit(adjust(unit), true), cargoFull:cargoFullEnemyIds.has(text(unit?.id)) })),
     activeWorldId:state?.activeWorldId,
+    worldEnvironment:{activeDisasters:state?.worldEnvironment?.activeDisasters||[]},
     players:(state?.players || []).map(player => ({
       id:player?.id,
       factionState:{

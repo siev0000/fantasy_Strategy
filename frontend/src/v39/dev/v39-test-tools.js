@@ -11,6 +11,10 @@ import { getV39NeutralVillageRelation, getV39RelationLabel } from "../../lib/v39
 import { V39_UNDEAD_SPAWN_BALANCE, V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import undeadTest from "../../../../config/v39-undead-test.json";
 import { isV39Undead } from "../../lib/v39-purification-rules.js";
+import {V39_WEATHER_TYPES,resolveV39DisasterWeather} from '../../lib/v39-weather.js';
+import {resolveV39DisasterRule} from '../../lib/v39-disaster-rules.js';
+import disasterTest from '../../../../config/v39-disaster-test.json';
+import {HEX_TILE_CONFIG} from '../../lib/phaser-map-panel-config.js';
 import {
   resolveV39UnitRaceCategory,
   resolveV39UnitTotalExpForLevel,
@@ -26,6 +30,7 @@ let statusMessage = "テスト対象を選択してください";
 let selectedEnemyId = "";
 let selectedTestSkillName = "";
 let selectedDisasterId = "";
+let selectedWeatherType = '晴れ';
 let selectedTile = null;
 const collapsedSectionKeys = new Set();
 const TEST_TOOL_TABS = [
@@ -604,6 +609,23 @@ function undeadTestStatusHtml(state) {
     return `<p data-undead-test-world="${id}"><strong>${label}: アンデッド${count} / 死の霧${fog}マス</strong><br>資源死体（画像なし）<br>${tiles.join("<br>")}<br>個体死体（画像あり）<br>${individuals.join('<br>')}</p>`;
   }).join("");
 }
+function weatherTestHtml(tile) {
+  const map=window.__v39FieldRuntime?.mapData,state=window.getV39GameState?.({includeWorlds:false});
+  const samples=map?.disasterTestFixture?`<div class="v39-weather-samples">${disasterTest.weatherSamples.map((sample,index)=>{
+    const weather=window.inspectV39WeatherAt?.(sample.x,sample.y);
+    if(!weather)return '';
+    return `<button data-test-action="weather-sample-${index}" data-weather-region="${escapeHtml(weather.regionId)}" aria-pressed="${weather.regionId===window.inspectV39WeatherAt?.(tile?.x,tile?.y)?.regionId}"><strong>${escapeHtml(weather.weather||'未更新')}</strong> (${sample.x},${sample.y})<br>${Math.round(weather.temperature)}℃ / 乾燥${Math.round(weather.dryness)}</button>`;
+  }).join('')}</div>`:'';
+  const current=window.inspectV39WeatherAt?.(tile?.x,tile?.y);
+  if(!current)return `${samples}<p>気候・天候: 地上のマスを選択してください</p>`;
+  const checks=['山火事','洪水','落雷嵐'].map(name=>{
+    const rule=resolveV39DisasterRule(`災害:${name}`),allowed=resolveV39DisasterWeather(rule,map,state.worldEnvironment?.weather,tile).allowed;
+    return `${name}${allowed?'○':'×'}`;
+  }).join(' / ');
+  const remaining=Math.max(0,(current.weatherUntilTurn||0)-(state.timeline?.turnNumber||1)+1);
+  return `${samples}<div data-weather-test-info><p>地域 ${escapeHtml(current.regionId)} / 気候 ${current.climateTemperature}℃・湿潤度${current.climateHumidity}<br>天候 ${escapeHtml(current.weather||'未更新')} ⌛${remaining} / ${Math.round(current.temperature??current.climateTemperature)}℃ / 湿度${Math.round(current.humidity??0)}・乾燥${Math.round(current.dryness??0)}<br>晴天${current.dryTurns||0}T・降水${current.wetTurns||0}T</p><p data-weather-conditions>気象条件: ${checks}<br>○でも地形条件と確率抽選が必要。強制発生は条件を無視します。</p><div class="v39-test-form-row"><select id="v39-test-weather-type" aria-label="変更する天候">${V39_WEATHER_TYPES.map(name=>`<option${name===selectedWeatherType?' selected':''}>${name}</option>`).join('')}</select><button data-test-action="weather-change">地域の天候を変更</button><button data-test-action="weather-turn">1T経過</button><button data-test-action="weather-overlay" aria-pressed="${window.isV39WeatherOverlayEnabled?.()!==false}">フィールド気象 ${window.isV39WeatherOverlayEnabled?.()===false?'OFF':'ON'}</button></div></div>`;
+}
+
 function panelHtml() {
   const { state, settlement, unit, tile } = context();
   const resource = selectedResourceKey();
@@ -640,12 +662,12 @@ function panelHtml() {
     <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
     <nav class="v39-test-tools-tabs" role="tablist" aria-label="テスト操作カテゴリ">${TEST_TOOL_TABS.map(tab=>`<button type="button" role="tab" id="v39-test-tab-${tab.id}" data-test-tab="${tab.id}" aria-controls="v39-test-tool-content" aria-selected="${tab.id===selectedToolTab}" tabindex="${tab.id===selectedToolTab?0:-1}">${tab.label}</button>`).join('')}</nav>
     <div class="v39-test-tools-scroll" id="v39-test-tool-content" role="tabpanel" aria-labelledby="v39-test-tab-${selectedToolTab}">
-      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>鉱床・道具・部隊支援</summary><div class="v39-test-section-body"><p>専用データで検証。開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><div class="v39-test-button-row"><button data-test-action="trade-test-start">取引・郵送テスト</button><button data-test-action="village-incident-start">村依頼・悪魔契約テスト</button><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="logistics-test-start">物流ルートテスト</button><button data-test-action="expedition-start">輸送・道具・支援テスト</button><button data-test-action="expedition-invasion">侵入・再巣化テスト</button><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div><p>輸送は設定済み。道具試験官は薬草・水薬を所持。王・指揮官・王の騎士は同部隊です。村の警備・建設依頼は受注して確認します。入口警備は輸送を解除してから別途指定してください。</p></div></details>
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>鉱床・道具・部隊支援</summary><div class="v39-test-section-body"><p>専用データで検証。開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><div class="v39-test-button-row"><button data-test-action="trade-test-start">取引・郵送テスト</button><button data-test-action="village-incident-start">村依頼・悪魔契約テスト</button><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="logistics-test-start">物流ルートテスト</button><button data-test-action="expedition-start">輸送・道具・支援テスト</button><button data-test-action="expedition-invasion">侵入・再巣化テスト</button><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div><p>輸送は設定済み。道具試験官は薬草・水薬を所持。王・指揮官・王の騎士は同部隊です。村の警備・建設依頼は受注して確認します。入口警備は輸送を解除してから別途指定してください。</p></div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
       <details class="v39-test-section" data-test-section="turns"${testSectionOpenAttribute("turns")}><summary>制作・ターン進行</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><input id="v39-test-turn-count" aria-label="進めるターン数" type="number" min="1" max="100" step="1" value="${bulkTurnCount}"${advancingTestTurns ? " disabled" : ""}><button data-test-action="turn-many"${advancingTestTurns ? " disabled" : ""}>指定ターン進行</button><button data-test-action="turn-production"${advancingTestTurns ? " disabled" : ""}>建設完了まで進行</button><button data-test-action="turn-stop"${advancingTestTurns ? "" : " disabled"}>停止</button></div><p>施設建設・拠点発展・土地用途変更の待ちターンをまとめて進行。収入・消費・敵AIも通常どおり進みます。</p></div></details>
-       <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p><div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで災害</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
+       <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p>${weatherTestHtml(tile)}<div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで災害</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
       <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
       <details class="v39-test-section" data-test-section="test-skills"${testSectionOpenAttribute("test-skills")}><summary>テストスキル</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / 付与中: ${assignedTestSkills.length ? assignedTestSkills.map(escapeHtml).join(" / ") : "なし"}</p><div class="v39-test-form-row"><select id="v39-test-skill-name">${testSkillOptions || '<option value="">テストスキルなし</option>'}</select><button data-test-action="test-skill-add">選択を付与</button><button data-test-action="test-skill-all">全テスト技を付与</button><button data-test-action="test-skill-clear">全解除</button></div></div></details>
@@ -678,6 +700,7 @@ function render() {
     restoreScrollFrame = 0;
     restoreScroll();
   });
+  window.dispatchEvent(new CustomEvent('v39:test-tool-tab-changed'));
 }
 
 function selectToolTab(id, focus=false) {
@@ -698,6 +721,7 @@ function selectToolTab(id, focus=false) {
   const button=document.getElementById(`v39-test-tab-${id}`);
   if(focus)button?.focus({preventScroll:true});
   button?.scrollIntoView({block:'nearest',inline:'nearest'});
+  window.dispatchEvent(new CustomEvent('v39:test-tool-tab-changed'));
 }
 
 function openPanel() {
@@ -712,6 +736,17 @@ function closePanel() {
 
 function handleAction(action) {
   if (!testModeEnabled()) return closePanel();
+  if(/^weather-sample-\d+$/.test(action)){
+    const sample=disasterTest.weatherSamples[Number(action.split('-').at(-1))];
+    if(!sample||!window.__v39FieldRuntime?.mapData?.disasterTestFixture||window.isV39MapInputLocked?.())return;
+    const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
+    scene.v39SelectedTile={x:sample.x,y:sample.y};
+    selectedWeatherType=window.inspectV39WeatherAt?.(sample.x,sample.y)?.weather||'晴れ';
+    const c=HEX_TILE_CONFIG;
+    scene.cameras.main.centerOn(sample.x*c.width+(sample.y%2?c.oddRowOffsetX:0)+c.width/2,sample.y*c.rowStep+c.height/2);
+    window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x:sample.x,y:sample.y}}));
+    return;
+  }
   const handlers = {
     "trade-test-start":()=>{if(window.confirm('現在のゲームを取引・郵送テストに置き換えます。開始しますか？')){closePanel();window.startV39TradeTest?.();}},
     "village-incident-start":()=>{if(window.confirm("現在のゲームを村イベントの2プレイヤー検証に置き換えます。開始しますか？")){closePanel();window.startV39VillageIncidentTest?.();}},
@@ -721,6 +756,8 @@ function handleAction(action) {
     "undead-test-turn":()=>advanceTurn(),
     "call-test-start":()=>{if(window.confirm("現在のゲームを召喚・呼集テストに置き換えます。開始しますか？"))window.startV39CallTest?.();},
     "fusion-test-start":()=>{if(window.confirm("現在のゲームを合体テストに置き換えます。開始しますか？"))window.startV39FusionTest?.();},
+    "animal-army-test-start":()=>{if(window.confirm('現在のゲームを動物軍隊テストに置き換えます。開始しますか？')){closePanel();window.startV39AnimalArmyTest?.();}},
+    "disaster-test-start":()=>{if(window.confirm('現在のゲームを山火事・洪水・干ばつの災害検証マップに置き換えます。開始しますか？')){closePanel();window.startV39DisasterTest?.();}},
     "expedition-start":()=>{if(window.confirm("現在のゲームを専用検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(false);},
     "logistics-test-start":()=>{if(window.confirm("現在のゲームを洞窟・森・村・町と3か国の物流検証マップに置き換えます。開始しますか？")){closePanel();window.startV39LogisticsTest?.();}},
     "expedition-invasion":()=>{if(window.confirm("現在のゲームを侵入・再巣化の検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(true);},
@@ -728,6 +765,9 @@ function handleAction(action) {
     "expedition-mine":()=>window.viewV39ExpeditionTestWorld?.("cave:expedition-test:1"),
     eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"), disaster:forceDisasterAtSelectedTile, undead:forceUndeadAtSelectedTile,
     "snow-on":() => setSelectedSnowState("cover", true), "snow-off":() => setSelectedSnowState("cover", false),
+    "weather-change":()=>{const {tile}=context();setStatus(window.setV39TestWeatherAt?.(tile?.x,tile?.y,selectedWeatherType)?'地域の天候を変更しました':'地上のマスを選択し、処理完了後に操作してください');},
+    "weather-turn":()=>advanceTurn(),
+    "weather-overlay":()=>{window.setV39WeatherOverlayEnabled?.(window.isV39WeatherOverlayEnabled?.()===false);render();},
     "snowfall-on":() => setSelectedSnowState("falling", true), "snowfall-off":() => setSelectedSnowState("falling", false),
     "faction-player":() => addTestFaction("player"), "faction-npc":() => addTestFaction("npc"),
     turn:() => advanceTurn(),
@@ -751,6 +791,7 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-test-tools-style";
   style.textContent = `.v39-test-tools-panel{width:100%;height:100%;max-height:100%;min-width:0;min-height:0;flex:1 1 0;display:flex;flex-direction:column;gap:6px;overflow:hidden;color:#e7efed}.v39-test-tools-panel[hidden]{display:none!important}.v39-test-tools-head{display:flex;align-items:center;gap:8px}.v39-test-tools-head button,.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{min-height:34px;border:1px solid #49626a;border-radius:6px;background:#14242a;color:#edf3f1;padding:5px 9px;font-size:var(--font-body);font-weight:700}.v39-test-tools-head span{margin-left:auto;color:#f1c96f}.v39-test-tools-tabs{display:flex;gap:4px;flex:0 0 auto;overflow-x:auto;overscroll-behavior:contain}.v39-test-tools-tabs button{flex:1 0 auto;white-space:nowrap;padding:5px 8px}.v39-test-tools-tabs button[aria-selected="true"]{border-color:#63d6e7;background:#1d4b55;color:#fff}.v39-test-tools-tabs button:focus-visible{outline:2px solid #f1c96f;outline-offset:-3px}.v39-test-section[hidden]{display:none!important}.v39-test-tools-head,.v39-test-tools-panel output{flex:0 0 auto}.v39-test-tools-scroll{min-width:0;min-height:0;max-height:100%;flex:1 1 0;overflow-x:hidden!important;overflow-y:auto!important;overflow-anchor:none;display:grid;grid-auto-rows:max-content;gap:7px;align-content:start;padding-bottom:12px;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}.v39-test-section{border:1px solid #354a51;border-radius:7px;background:#101c21;overflow:hidden}.v39-test-section>summary{min-height:34px;display:flex;align-items:center;gap:7px;padding:6px 8px;list-style:none;cursor:pointer;user-select:none;color:#e7efed;font-size:var(--font-body);font-weight:800;background:#14242a}.v39-test-section>summary::-webkit-details-marker{display:none}.v39-test-section>summary::before{content:"▷";display:inline-block;min-width:14px;color:#74d2df;font-size:var(--font-secondary);line-height:1}.v39-test-section[open]>summary::before{content:"▽"}.v39-test-section-body{display:grid;gap:5px;padding:7px}.v39-test-base-list{display:grid;gap:6px}.v39-test-base-card{display:grid;gap:5px;padding:7px;border:1px solid #3e565e;border-radius:7px;background:#0d171b}.v39-test-base-card header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.v39-test-base-card header span{padding:2px 6px;border:1px solid #5f858f;border-radius:999px;color:#9fe1eb;font-size:var(--font-size-11);font-weight:900}.v39-test-base-card header strong{color:#eef7f5;font-size:var(--font-size-14)}.v39-test-base-card p{margin:0!important;font-size:var(--font-compact)!important;color:#b7c7ca!important;line-height:1.4}.v39-test-empty{color:#82979c!important}.v39-test-tools-scroll h3,.v39-test-tools-scroll p{margin:0;font-size:var(--font-body)}.v39-test-tools-scroll p{color:#aebdc0}.v39-test-button-row,.v39-test-form-row{display:flex;flex-wrap:wrap;gap:5px}.v39-test-form-row select{min-width:130px}.v39-test-form-row input{width:100px}.v39-test-ai-grid{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 9px;font-size:var(--font-body)}.v39-test-ai-grid span{color:#91a5aa}.v39-test-ai-grid b{min-width:0;overflow-wrap:anywhere}.v39-test-log-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}.v39-test-log-tabs button{flex:0 0 auto}.v39-test-log-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-test-log-tabs small{color:#a9bbc0}.v39-test-ai-log{max-height:220px;overflow:auto;border:1px solid #293c42;border-radius:6px}.v39-test-ai-log article{display:grid;grid-template-columns:38px minmax(90px,auto) minmax(120px,1fr);gap:5px 8px;padding:7px;border-bottom:1px solid #293c42;font-size:var(--font-body)}.v39-test-ai-log article span{color:#78d19a}.v39-test-ai-log article strong{color:#f0d17b}.v39-test-ai-log article p{grid-column:2/-1}.v39-test-tools-panel button:active{background:#28505a}.v39-test-tools-panel output{min-height:30px;padding:6px 9px;border:1px solid #735f2f;border-radius:6px;background:#2c2616;color:#ffe29a;font-size:var(--font-body);font-weight:700}@media(max-width:620px){.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{padding:4px 7px}.v39-test-section-body{padding:6px}.v39-test-ai-log article{grid-template-columns:34px minmax(80px,auto) minmax(100px,1fr)}}`;
+  style.textContent+=`.v39-weather-samples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.v39-weather-samples button{min-width:0;text-align:left;line-height:1.4}.v39-weather-samples button[aria-pressed="true"]{border-color:#f0ce77;background:#33301d}.v39-weather-samples strong{color:#b8edf4}[data-weather-test-info]{display:grid;gap:6px}[data-weather-conditions]{font-size:var(--font-compact)!important}`;
   document.head.appendChild(style);
 }
 
@@ -797,6 +838,7 @@ function install() {
     if (event.target.id === "v39-test-enemy-id") selectedEnemyId = text(event.target.value);
     else if (event.target.id === "v39-test-skill-name") selectedTestSkillName = text(event.target.value);
     else if (event.target.id === "v39-test-disaster-id") selectedDisasterId = text(event.target.value);
+    else if (event.target.id === "v39-test-weather-type") selectedWeatherType = text(event.target.value);
     else return;
     render();
   });
@@ -807,6 +849,12 @@ function install() {
     if (event?.detail?.tab === "test") render();
   });
   window.addEventListener("v39:game-state-changed", render);
+  window.addEventListener('v39:disaster-test-ready',event=>{
+    const scene=window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
+    if(scene)scene.v39SelectedTile={...event.detail};
+    selectedTile={...event.detail};selectedWeatherType=window.inspectV39WeatherAt?.(selectedTile.x,selectedTile.y)?.weather||'晴れ';
+    selectedToolTab='environment';collapsedSectionKeys.delete('field');render();
+  });
   for (const name of ["v39:field-generated","v39:cave-world-ready","v39:initial-placement-complete"]) {
     window.addEventListener(name,()=>placeTestCharacters());
   }
@@ -826,6 +874,7 @@ function install() {
   });
   window.openV39TestTools = openPanel;
   window.closeV39TestTools = closePanel;
+  window.advanceV39TestTurns = advanceTurn;
   placeTestCharacters();
   render();
 }

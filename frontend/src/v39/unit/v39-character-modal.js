@@ -7,6 +7,7 @@ import { renderV39UnitCard } from "./v39-unit-card.js";
 import {resolveV39ToolSlots,getV39ToolLoadout,getV39ConsumableDefinitions,setV39ToolLoadout} from "../../lib/v39-consumables.js";
 import {getV39ClassPromotionOptions,acquireV39UpperClass} from "../../lib/v39-class-progression.js";
 import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
+import {renderV39AnimalArmyControls,openV39AnimalArmyEditor} from './v39-animal-army-ui.js';
 
 let activeTab = "character";
 let selectedId = "";
@@ -101,7 +102,7 @@ function characterRows(current) {
 }
 
 function unitListRow(unit, id, selected) {
-  return renderV39UnitCard(unit, {id,selected,character:true,dead:isDead(unit),...(storageOf(unit)?{position:storageLabel(unit)}:{})});
+  return renderV39UnitCard(unit, {id,selected,character:true,portrait:true,dead:isDead(unit),...(storageOf(unit)?{position:storageLabel(unit)}:{})});
 }
 function faction() {
   return window.getV39ActiveFactionState?.() || null;
@@ -177,6 +178,7 @@ function unitDetail(unit,current=faction()) {
       ${activeTab === "corpse" ? `<p>消滅まで ${remainingTurns}ターン / 座標 (${number(unit.x)}, ${number(unit.y)})</p>` : ""}
       ${activeTab === "dead"&&!storageOf(unit) ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}
       ${storageOf(unit)?`<p class="v39-char-storage-location">${escapeHtml(storageLabel(unit))}${isDead(unit)?' / 遺体保管・消滅停止':' / 施設格納中'}</p>`:''}
+      ${!isDead(unit)&&activeTab!=='dead'?renderV39AnimalArmyControls(unit):''}
       ${activeTab==='corpse'||activeTab==='dead'||storageOf(unit)?'':renderV39SquadCoordination(unit,current)}
     </div>
     ${detailTabs(unit)}
@@ -230,7 +232,7 @@ function render({preserveDrafts=true} = {}) {
     if (activeTab !== 'squad') return [[`${activeTab}:${id}`,unitListRow(row,id,id === selectedId)]];
     const ids = row.unitIds || row.memberIds || [];
     const members = current.units.filter(unit=>ids.includes(unit.id));
-    return members.map(unit=>[`member:${id}:${unit.id}`,renderV39UnitCard(unit,{character:true,attribute:'data-v39-squad-member',selected:id===selectedId&&unit.id===selectedSquadMemberId})]);
+    return members.map(unit=>[`member:${id}:${unit.id}`,renderV39UnitCard(unit,{character:true,portrait:true,attribute:'data-v39-squad-member',selected:id===selectedId&&unit.id===selectedSquadMemberId})]);
   });
   if (!entries.length) entries.push(['empty','<div class="char-row">該当なし</div>']);
   if(activeTab==='character') {
@@ -395,6 +397,8 @@ function install() {
   });
 
   document.addEventListener("click", (event) => {
+    const army=event.target.closest?.('#characterModal [data-animal-army-open]');
+    if(army){openV39AnimalArmyEditor(army.dataset.animalArmyOpen,openCharacterModal);return;}
     const promotion=event.target instanceof Element?event.target.closest('[data-v39-class-acquire]'):null;
     if(promotion?.closest('#characterModal')) {
       const state=window.getV39GameState();

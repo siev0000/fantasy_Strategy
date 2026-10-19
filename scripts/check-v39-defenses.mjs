@@ -127,6 +127,7 @@ try {
       window.updateV39ActiveFactionState({selectedUnitId:id});
       window.dispatchEvent(new CustomEvent("v39:unit-selected",{detail:{unitId:id}}));
       window.openV39TestTools();
+      document.querySelector('[data-test-tab="unit"]')?.click();
       const section=document.querySelector('[data-test-section="test-skills"]');
       if(section)section.open=true;
     },report.casterId);

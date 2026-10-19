@@ -12,6 +12,12 @@ import {canUseV39StoredSouls} from './v39-soul-storage.js';
 import {canUnitEnterV39Tile} from './v39-terrain-traversal.js';
 import {getV39StorageFacilities} from './v39-facility-storage.js';
 import {isV39InvalidDataToken} from './v39-class-rules.js';
+import {resolveV39FusionRequirementNames} from './v39-fusion-material-types.js';
+
+export function matchV39FusionMaterialRequirement(unit,name) {
+  const levels=collectV39FusionClassLevels(unit);
+  return resolveV39FusionRequirementNames(name).find(candidate=>Number(levels?.[candidate])>0) || '';
+}
 
 const split=value=>String(value||'').split(/[,、\n]/).map(s=>s.trim()).filter(Boolean);
 const alive=u=>Number(u?.hp??u?.currentHp)>0&&!['死亡','死体'].includes(u?.state);
@@ -98,7 +104,7 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
   if(recipe.requirements.some(r=>!r)||!recipe.requirements.length)reasons.push('素材書式が不正');
   const required=recipe.requirements.filter(Boolean),slots=required.flatMap(r=>Array.from({length:Math.min(13,r.count)},()=>r.name));
   if(slots.length>12||slots.length<2)reasons.push('対応する素材数は2〜12体です');
-  for(const name of slots)if(!classes.has(name))reasons.push(`素材クラス未登録: ${name}`);
+  for(const name of slots)if(!resolveV39FusionRequirementNames(name).some(candidate=>classes.has(candidate)))reasons.push(`素材クラス未登録: ${name}`);
   const acquiredClasses=recipe.bonuses.filter(name=>classes.has(name));
   const skippedClasses=recipe.bonuses.filter(name=>!classes.has(name));
   const warnings=skippedClasses.length?[`未登録のため付与しません: ${skippedClasses.join('、')}`]:[];
@@ -114,7 +120,7 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
   if(new Set(materialIds).size!==materialIds.length)reasons.push('同じ素材を重複使用できません');
   materials.forEach((unit,index)=>{
     reasons.push(...inspectV39FusionMaterial(state,playerId,access.actor,unit));
-    if(unit&&!(Number(collectV39FusionClassLevels(unit)?.[slots[index]])>0))reasons.push(`素材${index+1}に${slots[index]}が必要`);
+    if(unit&&!matchV39FusionMaterialRequirement(unit,slots[index]))reasons.push(`素材${index+1}に${slots[index]}が必要`);
   });
   let origin=materials.find(unit=>unit&&!unit.soulStored&&!unit.facilityStored);
   if(materials.length&&materials.every(unit=>unit?.soulStored||unit?.facilityStored)&&access.actor){
@@ -129,7 +135,8 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
   if(origin&&[...state.players.flatMap(p=>p.factionState.units),...(state.enemies||[])].some(u=>!materialIds.includes(u.id)&&alive(u)&&world(u)===world(origin)&&u.x===origin.x&&u.y===origin.y))reasons.push('合体後の配置マスが他のユニットと重なっています');
   let growth=null,preview=null;
   if(!reasons.length){
-    growth=calculateV39MonsterFusionGrowth({materials,requiredClasses:slots,acquiredClasses});
+    const requiredClasses=materials.map((unit,index)=>matchV39FusionMaterialRequirement(unit,slots[index]));
+    growth=calculateV39MonsterFusionGrowth({materials,requiredClasses,acquiredClasses});
     if(!growth.ok)reasons.push(growth.reason);
     else {
       for(const name of Object.keys(growth.levelsByClass))if(!classes.has(name))reasons.push(`継承クラス未登録: ${name}`);

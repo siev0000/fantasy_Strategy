@@ -60,7 +60,7 @@ function bindFixedLandFields() {
     item.innerHTML = '<span>地形補正</span><b id="v39-land-modifiers">なし</b>';
     panel.appendChild(item);
   }
-  for(const [id,label] of [['v39-land-purification','浄化'],['v39-land-cave-area','洞窟エリア']])if(!document.getElementById(id)) {
+  for(const [id,label] of [['v39-land-purification','浄化'],['v39-land-cave-area','洞窟エリア'],['v39-land-weather','天候']])if(!document.getElementById(id)) {
     const item=document.createElement('div');item.className='land-item';item.innerHTML=`<span>${label}</span><b id="${id}">-</b>`;panel.appendChild(item);
   }
 
@@ -94,6 +94,7 @@ function resetLandPanel(message = "マスを選択") {
   setField("v39-land-owner", "未所属");
   setField("v39-land-danger", "-");
   setField("v39-land-height", "-");
+  setField("v39-land-weather", "-");
   setField("v39-land-development-difficulty", "-");
   setField("v39-land-facility", "なし");
   setField("v39-land-defense", "なし");
@@ -382,6 +383,9 @@ function renderLandDetail(selected) {
   const map=window.__v39FieldRuntime?.mapData,key=coordKey(detail.x,detail.y);
   setField('v39-land-purification',String(map?.purificationByTile?.[key] ?? 0));
   setField('v39-land-cave-area',map?.isUnderground?(map?.caveAreaByTile?.[key] || '未設定'):'-');
+  const weather=window.inspectV39WeatherAt?.(detail.x,detail.y);
+  const weatherVisible=window.isV39TestMode?.()||window.isV39TileInCurrentVision?.(detail.x,detail.y);
+  setField('v39-land-weather',weather&&weatherVisible?`${weather.weather||'未更新'} / ${Math.round(weather.temperature??weather.climateTemperature)}℃ / 乾燥${Math.round(weather.dryness??0)}`:'-');
   setField("v39-land-enemies", detail.enemies);
   setField("v39-land-victory-landmark", detail.victoryLandmark);
   renderSettlementConversionAction();

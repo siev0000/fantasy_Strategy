@@ -1,0 +1,7 @@
+{
+  "race": "ウルフ",
+  "fieldLevels": [3, 6, 9, 12],
+  "storedLevels": [4, 7, 10, 5, 8, 12],
+  "storageTile": "3,3",
+  "storageFacility": "魔獣研究所"
+}

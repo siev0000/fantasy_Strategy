@@ -1,4 +1,5 @@
-import {resolveAnimalArtworkReference} from './animal-artwork-config.js';
+import {resolveAnimalArtworkReference,getArtworkClassNames} from './animal-artwork-config.js';
+import {resolveInsectSpecies,resolveInsectArtwork} from './insect-artwork-config.js';
 import {RACE_CLASS_NAME_MAP} from '../constants/unitCommon.js';
 
 // 画像だけの対応表。4列×3行、左上から横順に1～12。能力データは変更しない。
@@ -23,9 +24,12 @@ const 種族別アンデッド画像 = {
 };
 
 export function resolveUndeadArtworkReference(unit={}) {
-  const names=[unit.className,unit.クラス,unit.race,unit.raceName,unit.種族名,unit.種族];
-  const target=names.find(name=>Object.hasOwn(アンデッド画像対応,name));
+  const insect=resolveInsectSpecies(unit);
+  const names=[...getArtworkClassNames(unit),unit.race,unit.raceName,unit.種族名,unit.種族];
+  const target=names.find(name=>Object.hasOwn(アンデッド画像対応,name)
+    || insect&&['ヴァンパイア','吸血鬼'].includes(name));
   if(!target)return null;
+  if(insect&&['ヴァンパイア','吸血鬼','ゾンビ','動死体','スケルトン','骸骨'].includes(target))return resolveInsectArtwork(unit,target);
   const rawSpecies=unit.race || unit.raceName || unit.種族;
   const species=RACE_CLASS_NAME_MAP[rawSpecies] || rawSpecies;
   const pair=種族別アンデッド画像[species];

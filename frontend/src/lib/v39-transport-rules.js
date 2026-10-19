@@ -2,6 +2,7 @@ import { getFactionSettlementById, getFactionSettlements, replaceFactionSettleme
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./v39-economy-rules.js";
 import { getV39SquadUnitIds, normalizeV39Cargo, isV39CargoEmpty, resolveV39CargoLoad, resolveV39UnitCargoCapacity } from "./v39-logistics-state.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
+import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 import { resolveV39UnitMovementStepCost } from "./v39-terrain-traversal.js";
 
 const text = value => String(value ?? "").trim();
@@ -221,15 +222,17 @@ export function advanceV39AutomaticTransport(state, playerId, mapData, turnNumbe
         else {
           let ap = number(unit.ap ?? unit.currentAp);
           for (const step of resolveV39AutomaticMovementSteps(path,ap)) {
-            unit = { ...unit, x:step.x, y:step.y, lastActionTurn:turnNumber };
+            unit = applyV39DisasterMovementDamage({...unit,lastActionTurn:turnNumber},[step],nextState,turnNumber).unit;
             ap -= step.stepCost;
+            if(!living(unit))break;
           }
           unit.ap = ap; unit.currentAp = ap;
           assignment.status = assignment.leg === "outbound" ? "delivering" : "returning";
           if (path.waitingForFriendlyUnitId && (path.length === 0 || key(unit) === path.at(-1).key)) {
             assignment.status = "waiting-unit"; assignment.reason = "味方ユニットの移動待ち";
           }
-          if (assignment.leg === "outbound" && isV39UnitInsideSettlement(unit, destination)) {
+          if(!living(unit)){assignment.enabled=false;assignment.status='paused';assignment.reason='災害で輸送担当が死亡しました';}
+          if (living(unit) && assignment.leg === "outbound" && isV39UnitInsideSettlement(unit, destination)) {
             const updated = { ...destination, foodStockByType:{ ...destination.foodStockByType }, materialStockByType:{ ...destination.materialStockByType },
               equipmentInventory:[...(destination.equipmentInventory || []), ...cargo.equipmentInventory] };
             for (const [name, amount] of Object.entries(cargo.resourcesByType)) {

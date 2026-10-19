@@ -377,6 +377,8 @@ function startHostedGame(payload) {
       w:size.w,
       h:size.h,
       patternId:gameSetup.patternId,
+      mapScope:gameSetup.mapScope,
+      climateSettings:gameSetup.climateSettings,
       mountainMode:gameSetup.mountainMode,
       enemySpawnTileDivisor:gameSetup.enemySpawnTileDivisor,
       neutralVillageCount:gameSetup.neutralVillageCount,

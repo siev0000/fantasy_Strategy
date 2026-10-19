@@ -3,6 +3,7 @@ import { isV39DeathFogTile, isV39DeathFogSource } from "./v39-fog-rules.js";
 import { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
 import {buildV39UndeadInheritance} from './v39-undead-inheritance.js';
+import {canV39SpeciesBecomeUndead} from './v39-undead-species-rules.js';
 
 const keyOf = unit => `${unit.x},${unit.y}`;
 const dead = unit => unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0;
@@ -13,7 +14,6 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
   const magic=corpseIds instanceof Set;
   if (!mapData?.grid || !createEnemy || (!magic&&state.worldEnvironment?.lastCorpseConversionTurn >= turn)) return null;
   const candidates = V39_UNDEAD_SPAWN_BALANCE.candidates.filter(row => ["ゾンビ", "スケルトン"].includes(row.race));
-  const weight = candidates.reduce((sum, row) => sum + row.weight, 0);
   const playerUnits = (state.players || []).flatMap(player => player.factionState?.units || []);
   const guards = (state.neutralVillages || []).flatMap(village => village.defenseUnits || []);
   const fieldUnits = [...playerUnits, ...(state.enemies || []), ...guards]
@@ -26,6 +26,9 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
   const eventKeys=new Set((mapData.unholyUndeadOrigins || []).map(row=>row.key));
   const groundLootByTile = { ...(state.groundLootByTile || {}) };
   const transform = (x, y, original = null) => {
+    if(undeadClass && !canV39SpeciesBecomeUndead(original,undeadClass))return false;
+    const eligible=candidates.filter(row=>canV39SpeciesBecomeUndead(original,row.className));
+    const weight=eligible.reduce((sum,row)=>sum+row.weight,0);
     const tileKey=`${x},${y}`;
     if(!magic&&mapData.fogMap?.[y]?.[x]?.createdAtTurn===turn)return false;
     const event=!magic&&eventKeys.has(tileKey);
@@ -44,7 +47,7 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
         && !mapData.wallMap?.[tile.y]?.[tile.x]);
     if (!position) return false;
     let cursor = random() * weight;
-    const candidate = undeadClass?{race:undeadClass,className:undeadClass}:candidates.find(row => (cursor -= row.weight) < 0) || candidates.at(-1);
+    const candidate = undeadClass?{race:undeadClass,className:undeadClass}:eligible.find(row => (cursor -= row.weight) < 0) || eligible.at(-1);
     const baseLevel = original ? Math.max(1, Number(original.level ?? original.lv) || 1)
       : candidate.levelMin + Math.floor(random() * (candidate.levelMax - candidate.levelMin + 1));
     const level = baseLevel + (source ? V39_UNDEAD_SPAWN_BALANCE.corpseMistSourceLevelBonus : 0);

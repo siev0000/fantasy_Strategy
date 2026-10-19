@@ -3,6 +3,7 @@ import { resolveV39AutomaticRoute, resolveV39AutomaticMovementSteps, isV39ArmyTr
 import { resolveV39UnitCargoCapacity, resolveV39CargoLoad } from "./v39-logistics-state.js";
 import { replaceFactionSettlement } from "./settlement-state.js";
 import { getHexDistance } from "./hex-grid.js";
+import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 
 const alive = unit => Number(unit?.hp ?? unit?.currentHp) > 0 && unit?.state !== "死亡";
 const at = (a,b) => a?.x === b?.x && a?.y === b?.y;
@@ -73,7 +74,11 @@ export function advanceV39MineDuties(state, playerId, turn) {
       const scoped = {...state,...(worlds[entry.id].spatial || {}), players:state.players.map(row => row.id === playerId ? {...row,factionState:{...faction,units:faction.units.map(row=>row.id===unit.id?unit:row)}} : row)};
       const path = resolveV39AutomaticRoute(scoped,entry.map,playerId,unit,target,entry.map.worldWrapEnabled === true);
       if (!path) {duty.status="停止：通路が塞がれています";break;}
-      for (const step of resolveV39AutomaticMovementSteps(path,ap)) {unit={...unit,x:step.x,y:step.y,lastActionTurn:turn};ap-=step.stepCost;}
+      for (const step of resolveV39AutomaticMovementSteps(path,ap)) {
+        unit=applyV39DisasterMovementDamage({...unit,lastActionTurn:turn},[step],{...state,explorationWorlds:worlds},turn).unit;
+        ap-=step.stepCost;if(!alive(unit))break;
+      }
+      if(!alive(unit)){duty.status='停止：災害で担当者が死亡';break;}
       if (path.waitingForFriendlyUnitId && (path.length === 0 || `${unit.x},${unit.y}` === path.at(-1).key)) {
         duty.status="味方ユニットの移動待ち";break;
       }

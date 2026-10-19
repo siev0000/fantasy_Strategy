@@ -6,6 +6,7 @@ import fixture from '../../../../config/v39-fusion-test.json';
 import {getSelectedSettlement,replaceFactionSettlement,normalizeTerritoryStateRecord} from '../../lib/settlement-state.js';
 import {applyV39DerivedCharacterData} from '../unit/v39-character-derived-rules.js';
 import {collectV39Soul} from '../../lib/v39-soul-storage.js';
+import {resolveV39FusionRequirementNames} from '../../lib/v39-fusion-material-types.js';
 
 window.startV39FusionTest=()=>{
   const result=window.startV39ExpeditionTest?.();if(!result?.ok)return result;
@@ -18,7 +19,7 @@ window.startV39FusionTest=()=>{
     const perRecipe=new Map();
     for(const part of String(recipe.素材||'').split(/[,、\n]/)){
       const match=/^(.+)_([1-9]\d*)$/.exec(part.trim());if(!match)continue;
-      perRecipe.set(match[1],(perRecipe.get(match[1])||0)+Number(match[2]));
+      for(const name of resolveV39FusionRequirementNames(match[1]))perRecipe.set(name,(perRecipe.get(name)||0)+Number(match[2]));
     }
     for(const [race,count] of perRecipe)counts.set(race,Math.max(counts.get(race)||fixture.minimumCopies,count));
   }

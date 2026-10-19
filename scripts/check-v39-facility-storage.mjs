@@ -16,12 +16,13 @@ try{
       window.setV39GameState({facilitiesByTile:{...s.facilitiesByTile,'3,3':['魔獣研究所']},players:s.players.map(row=>row.id===p.id?{...row,factionState:{...f,units:f.units.map(u=>u.id===horse.id?{...u,x:3,y:3,position:[3,3]}:u),combatRuntime:{...f.combatRuntime,cooldownsByUnitId:{...f.combatRuntime.cooldownsByUnitId,[horse.id]:{test:s.timeline.turnNumber+5}}}}}:row)});
       window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();
     });
-    await page.locator('[data-settlement-page-select="operation"]').click();
+    await page.locator('[data-settlement-page-select="production"]').click();
     await page.locator('[data-settlement-fold="facility"] summary').click();
     const open=page.locator('[data-storage-open="3,3"][data-storage-name="魔獣研究所"]');
     assert(await open.isVisible(),'storage entry in actual settlement panel');await open.click();
     await page.locator('[data-storage-tab="deposit"]').click();
     const deposit=page.locator('[data-storage-deposit="fusion-test-horse"]');
+    const initialStoredCount=await page.evaluate(()=>window.getV39ActiveFactionState().facilityStorage.length);
     assert(!await deposit.isDisabled(),await page.locator('[data-storage-row="fusion-test-horse"]').innerText());await deposit.click();
     await page.locator('[data-storage-tab="stored"]').click();
     assert.equal(await page.locator('[data-storage-row="fusion-test-horse"]').count(),1);
@@ -57,11 +58,11 @@ try{
       const stored=window.getV39ActiveFactionState().facilityStorage.find(e=>e.unit.id==='fusion-test-horse');return stored.unit.name!=='snapshot-mutation'&&stored.runtimeByKey.cooldownsByUnitId.test>0;
     }),'stored identity/runtime snapshots are detached');
     await page.evaluate(()=>{window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();});
-    await page.locator('[data-settlement-page-select="operation"]').click();
+    await page.locator('[data-settlement-page-select="production"]').click();
     const summary=page.locator('[data-settlement-fold="facility"]');if(await summary.getAttribute('open')===null)await summary.locator('summary').click();
     await open.click();await page.locator('[data-storage-withdraw="fusion-test-horse"]').click();
     const released=await page.evaluate(()=>{const f=window.getV39ActiveFactionState(),u=f.units.find(u=>u.id==='fusion-test-horse');return {ap:u.ap,count:f.facilityStorage.length,cooldown:f.combatRuntime.cooldownsByUnitId[u.id].test,turn:window.getV39GameState().timeline.turnNumber};});
-    assert.equal(released.ap,0);assert.equal(released.count,69);assert.equal(released.cooldown,released.turn+5);
+    assert.equal(released.ap,0);assert.equal(released.count,initialStoredCount);assert.equal(released.cooldown,released.turn+5);
     await page.locator('[data-storage-close]').click();
     await page.evaluate(async()=>{
       const s=window.getV39GameState(),corpse=s.enemies.find(u=>u.soulTestCorpse);

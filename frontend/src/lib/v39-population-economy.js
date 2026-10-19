@@ -39,6 +39,7 @@ function growthCondition(row) {
 }
 
 function unitUpkeepWeight(unit) {
+  if (unit?.animalArmy?.members) return unit.animalArmy.members.length;
   const mode = text(unit?.combatProfile?.mode);
   if (mode === "elite_army") return 5;
   if (mode === "army") return 4;

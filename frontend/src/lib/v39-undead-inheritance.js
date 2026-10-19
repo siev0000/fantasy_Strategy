@@ -1,11 +1,12 @@
 import {deriveV39CharacterFromRaceClass} from '../v39/unit/v39-character-derived-rules.js';
 import {V39_UNDEAD_SPAWN_BALANCE} from './v39-gameplay-balance.js';
+import {canV39SpeciesBecomeUndead} from './v39-undead-species-rules.js';
 
 const half=value=>Math.floor(Math.max(0,Number(value)||0)/2);
 
 // 基礎種族ボーナス(+5)はLvではない。実際の種族・各取得職のLvを個別に半減する。
 export function buildV39UndeadInheritance(original,undeadClass='ゾンビ') {
-  if(original?.soulCollected)return null;
+  if(original?.soulCollected || !canV39SpeciesBecomeUndead(original,undeadClass))return null;
   const derived=deriveV39CharacterFromRaceClass(original);
   if(!derived.ok)return null;
   const classes={...derived.prerequisiteClassLevels};

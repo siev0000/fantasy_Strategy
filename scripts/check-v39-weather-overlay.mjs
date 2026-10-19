@@ -1,0 +1,63 @@
+import assert from 'node:assert/strict';
+import {mkdirSync} from 'node:fs';
+import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
+const out='output/web-game/weather-overlay';mkdirSync(out,{recursive:true});
+const browser=await chromium.launch();
+try{
+  for(const width of [320,390,1100]){
+    const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
+    page.on('pageerror',e=>errors.push(String(e.stack)));page.on('dialog',d=>d.accept());
+    await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
+    await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39DisasterTest();await window.waitForV39MapRenderSettled();});
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus?.().active===true);
+    const initial=await page.evaluate(()=>{
+      const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0],labels=scene.children.list.find(c=>c.name==='v39-weather-overlay-labels');
+      const zoom=Math.min(.4,(window.innerWidth-50)/1550);
+      scene.cameras.main.setZoom(zoom);scene.v39RequestedZoom=zoom;scene.cameras.main.centerOn(744,672);
+      labels.setData('identity','same');
+      return {status:window.getV39WeatherOverlayStatus(),labels:labels.list.map(n=>n.getData('weather')),depth:labels.depth};
+    });
+    assert.equal(initial.status.regionCount,4);assert.equal(initial.status.tileCount,576);
+    assert.deepEqual(initial.labels,['晴れ','雷雨','豪雨','吹雪']);
+    await page.waitForTimeout(2400);
+    assert.equal(await page.evaluate(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list.find(c=>c.name==='v39-weather-overlay-labels').list.filter(n=>n.visible).length),4);
+    await page.screenshot({path:`${out}/field-${width}.png`});
+    await page.evaluate(()=>{for(let i=0;i<10;i++)window.dispatchEvent(new CustomEvent('v39:test-tool-tab-changed'));});
+    await page.waitForTimeout(100);
+    const cached=await page.evaluate(()=>({status:window.getV39WeatherOverlayStatus(),same:window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list.find(c=>c.name==='v39-weather-overlay-labels').getData('identity')}));
+    assert.equal(cached.status.renderCount,initial.status.renderCount);assert.equal(cached.same,'same');
+    await page.locator('#v39-test-weather-type').selectOption('雷雨');
+    await page.locator('[data-test-action="weather-change"]').click();
+    await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list.find(c=>c.name==='v39-weather-overlay-labels')?.list.find(n=>n.getData('regionId')==='0,0')?.getData('weather')==='雷雨');
+    await page.locator('[data-test-action="weather-sample-2"]').click();
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().selectedRegion==='0,1');
+    await page.locator('[data-test-action="weather-overlay"]').click();
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active===false);
+    assert.equal(await page.evaluate(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list.filter(c=>c.name.startsWith('v39-weather-overlay')).length),0);
+    await page.locator('[data-test-action="weather-overlay"]').click();
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.locator('[data-test-tab="scenarios"]').click();
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.locator('[data-test-tab="environment"]').click();
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.evaluate(()=>window.activateV39FooterTab('squad'));
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.evaluate(()=>window.activateV39FooterTab('test'));
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.locator('[data-test-section="field"]').evaluate(n=>n.open=false);
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.locator('[data-test-section="field"]').evaluate(n=>n.open=true);
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.evaluate(()=>window.viewV39ExpeditionTestWorld('cave:expedition-test:1'));
+    await page.waitForFunction(()=>!window.getV39WeatherOverlayStatus().active);
+    await page.evaluate(()=>window.viewV39ExpeditionTestWorld('surface'));
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.evaluate(()=>window.activateV39FooterTab('test'));
+    await page.waitForFunction(()=>window.getV39WeatherOverlayStatus().active);
+    await page.evaluate(()=>window.setV39TestMode(false));
+    await page.waitForFunction(()=>!window.getV39WeatherOverlayStatus().active);
+    assert.deepEqual(errors,[]);
+    console.log(`${width}: field regions/weather, change/selection, cached redraw, sticky ON across tabs, cave/test-mode cleanup passed`);
+    await page.close();
+  }
+}finally{await browser.close();}

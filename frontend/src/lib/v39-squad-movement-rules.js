@@ -5,6 +5,7 @@ import { getHexNeighborCoords } from "./hex-grid.js";
 import { canUnitEnterV39Tile } from "./v39-terrain-traversal.js";
 import { resolveV39CaveFormation, advanceV39RelativeCaveFormation, assignV39CaveFormationStep } from "./v39-cave-formation-rules.js";
 import {v39SquadMoveMode} from './v39-squad-coordination.js';
+import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -242,7 +243,7 @@ export function advanceV39CaveFormation(data, formation, destination, group, occ
   return next;
 }
 
-export function applyV39SquadMovement(faction = {}, group = {}, target = {}, moveApCost = 0) {
+export function applyV39SquadMovement(faction = {}, group = {}, target = {}, moveApCost = 0, state = null) {
   if (!group?.ok) return { ok:false, faction, reason:group?.reason || "部隊を確定できません。" };
   const x = integer(target?.x, -1);
   const y = integer(target?.y, -1);
@@ -273,7 +274,10 @@ export function applyV39SquadMovement(faction = {}, group = {}, target = {}, mov
     if (!participantSet.has(unitId(unit))) return unit;
     const position = targetPositionById.get(unitId(unit));
     const ap = Math.max(0, unitCurrentAp(unit) - cost);
-    return { ...unit, x:position.x, y:position.y, ap, currentAp:ap, actionPoint:ap };
+    const moved={ ...unit, x:position.x, y:position.y, ap, currentAp:ap, actionPoint:ap };
+    if(!state)return moved;
+    const route=target.frames?target.frames.flatMap(frame=>frame.filter(row=>text(row.id)===unitId(unit))):[position];
+    return applyV39DisasterMovementDamage({...moved,x:unit.x,y:unit.y},route,state).unit;
   });
   let squadFound = false;
   const squads = (Array.isArray(faction?.squads) ? faction.squads : []).map(raw => {

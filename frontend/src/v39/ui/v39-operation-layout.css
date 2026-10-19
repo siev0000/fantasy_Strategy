@@ -3,11 +3,11 @@
 #footInteraction>header span,#footInteraction>p{color:#a9bbbf;font-size:var(--font-secondary)}
 #v39-interaction-actions #v39-world-contact-actions{grid-template-columns:1fr;padding:8px;margin-top:6px;background:#14252b;border-color:#40575e}
 #v39-interaction-actions #v39-world-contact-buttons{justify-content:flex-start}
-#footSettlement.settlement-panel{grid-template-rows:auto auto minmax(0,1fr)}
+#footSettlement.settlement-panel{grid-template-rows:minmax(0,1fr)}
 .settlement-pages{display:flex;gap:4px}
 .settlement-pages button{flex:1;min-width:0;font:inherit;font-size:var(--font-body);min-height:34px;border:1px solid #40575e;border-radius:6px;background:#14252b;color:#b6c9cc}
 .settlement-pages [aria-pressed=true]{background:#21404a;border-color:#75cbd5;color:#fff}
-.settlement-fold[hidden]{display:none}
+#footSettlement [data-settlement-page][hidden]{display:none}
 #footTile.land-panel{align-content:start;grid-auto-rows:max-content;overflow:auto;min-height:0;height:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 #footTile .land-item{min-width:0}
 #footTile .land-item b{overflow-wrap:anywhere}

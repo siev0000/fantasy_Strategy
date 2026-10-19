@@ -1,6 +1,8 @@
 import { enemySpawnData } from "./game-data-registry.js";
 import { resolveAnimalArtworkReference } from "./animal-artwork-config.js";
 import {resolveUndeadArtworkReference} from './undead-artwork-config.js';
+import {migrateRetiredMonsterArtwork} from './retired-monster-artwork.js';
+import {resolveYokaiArtworkReference} from './yokai-artwork-config.js';
 
 const MONSTER_SHEET_COLUMNS = 4;
 const MONSTER_SHEET_ROWS = 3;
@@ -125,6 +127,10 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
 
 function resolveReferenceFromEnemy(enemy) {
   const undead=resolveUndeadArtworkReference(enemy);
+  const yokaiReference=resolveYokaiArtworkReference(enemy);
+  // Ghost/skeleton ingredients describe a fusion, not a resurrected corpse.
+  const namedYokaiFusion=!enemy?.undeadOrigin&&yokaiReference
+    &&(enemy?.fusionGrowth?.recipeName===yokaiReference.name||enemy?.strongFusionResultName===yokaiReference.name);
   const resultNames=[enemy?.strongFusionResultName,enemy?.fusionGrowth?.recipeName,
     enemy?.種族名,enemy?.speciesName,enemy?.enemyName,enemy?.name,enemy?.displayName].map(text).filter(Boolean);
   const baseRace=text(enemy?.race || enemy?.種族 || enemy?.raceName);
@@ -134,7 +140,7 @@ function resolveReferenceFromEnemy(enemy) {
       const ref=monsterSheetReferenceByName.get(name);
       return ref?.race===baseRace&&ref?.className==='ゴースト';
     });
-  if(undead&&!namedGhostBeast)return undead;
+  if(undead&&!namedGhostBeast&&!namedYokaiFusion)return undead;
   const directFileName = text(
     enemy?.画像ファイル
     ?? enemy?.imageFile
@@ -158,6 +164,8 @@ function resolveReferenceFromEnemy(enemy) {
       return { fileName:legacySheetFileName(legacySheetNumber), slotNumber:directSlotNumber, sizeByLevel };
     }
   }
+
+  if (yokaiReference) return yokaiReference;
 
   // Fusion keeps its base race; resolve the result identity before that race's ordinary sprite.
   // Reuse the sheet-managed named references instead of maintaining a second slot table.
@@ -210,6 +218,7 @@ function resolveReferenceFromEnemy(enemy) {
 }
 
 function resolveReferenceArtwork(reference, enemy = null) {
+  reference = migrateRetiredMonsterArtwork(reference);
   if (!reference) return null;
   const baseSlotNumber = integer(reference.slotNumber);
   if (baseSlotNumber === null || baseSlotNumber < 1 || baseSlotNumber > MONSTER_SHEET_SLOT_COUNT) return null;

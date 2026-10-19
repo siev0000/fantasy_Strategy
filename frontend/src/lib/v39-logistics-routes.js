@@ -114,8 +114,9 @@ export function advanceLogisticsRoutes(state,playerId,turn){
           if(!positions){stop('部隊が通過できない・進路が塞がれています');failed=true;break;}
           const cost=Math.max(...positions.map(p=>{const u=g.participants.find(u=>u.id===p.id);return resolveV39UnitMovementStepCost(map,u.x,u.y,p.x,p.y,u);}));
           if(cost>g.moveAp){r.status='AP待ち';failed=true;break;}
-          const moved=applyV39SquadMovement(f,g,{x:step.x,y:step.y,positions},cost);
+          const moved=applyV39SquadMovement(f,g,{x:step.x,y:step.y,positions},cost,scopedState);
           if(!moved.ok){stop(moved.reason);failed=true;break;}f=moved.faction;
+          if(r.memberIds.some(id=>!alive(f.units.find(u=>u.id===id)))){stop('災害で部隊員が死亡しました');failed=true;break;}
         }
         if(failed)break;
         const leader=f.units.find(u=>u.id===r.leaderId);

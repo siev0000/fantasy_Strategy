@@ -10,33 +10,38 @@ try {
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
     await page.locator('[data-v39-test-tools]').click();await page.locator('[data-test-action="logistics-test-start"]').click();
     await page.evaluate(()=>{window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();});
-    await page.waitForSelector('.settlement-actions [data-open-v39-trade]');
+    await page.waitForSelector('.settlement-detail-pane');
     const layout=await page.evaluate(()=>{
       const rect=sel=>{const r=document.querySelector(sel).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,bottom:r.bottom,right:r.right};};
-      return {toolbar:rect('.settlement-toolbar'),tabs:rect('.settlement-tabs'),actions:rect('.settlement-actions'),
-        trade:rect('.settlement-actions [data-open-v39-trade]'),develop:rect('[data-settlement-development]')};
+      return {tabs:rect('.settlement-tabs'),detail:rect('.settlement-detail-pane'),develop:rect('[data-settlement-development]')};
     });
-    assert(layout.tabs.width>=layout.toolbar.width-2,'tabs occupy the full header width');
-    assert(layout.actions.y>=layout.tabs.bottom-1,'buttons never squeeze the scrolling tab row');
-    assert(layout.trade.right<=width&&layout.develop.right<=width);
+    assert(layout.tabs.right<=layout.detail.x,'settlement list is left of details');
+    assert(layout.detail.right<=width&&layout.develop.right<=width);
+    await page.locator('[data-settlement-page-select="production"]').click();
+    await page.locator('[data-settlement-fold="facility"]').waitFor({state:'visible'});
+    assert.equal(await page.locator('[data-settlement-development]').isVisible(),false);
     const last=page.locator('.settlement-tab').last();await last.click();
-    await page.waitForSelector('.settlement-actions [data-open-v39-trade]');
+    await page.waitForSelector('.settlement-tab.active');
     const scroll=await page.evaluate(()=>{
-      const nav=document.querySelector('.settlement-tabs'),before=nav.scrollLeft;
+      const nav=document.querySelector('.settlement-tabs'),before=nav.scrollTop;
       window.renderV39SettlementPanel();
-      return {before,after:document.querySelector('.settlement-tabs').scrollLeft,
+      return {before,after:document.querySelector('.settlement-tabs').scrollTop,
         selected:document.querySelector('.settlement-tab.active').textContent};
     });assert.equal(scroll.before,scroll.after);assert.match(scroll.selected,/東の交易町/);
-    const headerY=await page.locator('.settlement-toolbar').evaluate(el=>el.getBoundingClientRect().y);
+    assert.equal(await page.locator('[data-settlement-page-select="production"]').getAttribute('aria-pressed'),'true');
+    const headerY=await page.locator('.settlement-pages').evaluate(el=>el.getBoundingClientRect().y);
     await page.locator('.settlement-fold-list').evaluate(el=>el.scrollTop=1000);
-    assert.equal(await page.locator('.settlement-toolbar').evaluate(el=>el.getBoundingClientRect().y),headerY);
+    assert.equal(await page.locator('.settlement-pages').evaluate(el=>el.getBoundingClientRect().y),headerY);
     await page.screenshot({path:`${out}/header-${width}.png`});
-    await page.locator('.settlement-actions [data-open-v39-trade]').click();
+    await page.locator('[data-settlement-page-select="operation"]').click();
+    await page.locator('#footSettlement [data-open-v39-trade]').click();
     await page.waitForSelector('#v39-trade-modal:not([hidden])');
     await page.locator('[data-trade-action="close"]').click();
+    await page.locator('[data-settlement-page-select="overview"]').click();
+    await page.screenshot({path:`${out}/overview-${width}.png`});
     await page.locator('[data-settlement-development]').click();
     await page.waitForSelector('#buildModal.open');
-    assert.deepEqual(errors,[]);console.log(`${width}: full-width base tabs, separate action row, fixed header, scroll retention and common trade modal passed`);
+    assert.deepEqual(errors,[]);console.log(`${width}: split panes, tab retention, independent scroll, contextual trade/development passed`);
     await page.close();
   }
 } finally {await browser.close();}

@@ -572,7 +572,11 @@ async function applyMovement() {
   }
   const nextAp = Math.max(0, currentAp - freshCost);
   const targetPositions = freshPlan.formations.get(targetKey) || [];
-  const movement = applyV39SquadMovement(faction, currentGroup, { ...session.target, positions:targetPositions }, freshCost);
+  const movementFrames=path.flatMap(node=>{
+    const formation=freshPlan.formations.get(coordKey(node.x,node.y))||[];
+    return formation.transitionFrames||[formation];
+  });
+  const movement = applyV39SquadMovement(faction, currentGroup, { ...session.target, positions:targetPositions,frames:movementFrames }, freshCost,window.getV39GameState({includeWorlds:false}));
   if (!movement.ok) {
     showToast(movement.reason || "部隊移動を反映できませんでした");
     clearMoveMode();
@@ -599,10 +603,13 @@ async function applyMovement() {
     window.refreshV39MapEntities?.();
     batchToken = window.beginV39MapRenderBatch?.("unit-movement");
     drawPath(path);
-    await playV39UnitMovementPath(activeRuntime()?.scene, path.flatMap(node => {
-      const formation=freshPlan.formations.get(coordKey(node.x,node.y))||[];
-      return formation.transitionFrames||[formation];
-    }), ctx.data);
+    const stopped=new Set(),deadMembers=new Map(movement.faction.units.filter(u=>u.state==='死亡').map(u=>[unitId(u),u]));
+    const shownFrames=movementFrames.map(frame=>frame.map(position=>{
+      const dead=deadMembers.get(text(position.id));
+      if(dead&&position.x===dead.x&&position.y===dead.y)stopped.add(text(position.id));
+      return stopped.has(text(position.id))?{...position,x:dead.x,y:dead.y}:position;
+    }));
+    await playV39UnitMovementPath(activeRuntime()?.scene, shownFrames, ctx.data);
     window.updateV39ActiveFactionState({
       units:movement.faction.units.map(member => currentGroup.participantIds.includes(unitId(member))
         ? { ...member, lastActionTurn:window.getV39GameState?.()?.timeline?.turnNumber,
@@ -611,17 +618,25 @@ async function applyMovement() {
       selectedUnitId:session.unitId,
       moveCommandUnitId:""
     }, { reason:"unit-moved" });
+    const entries=movement.faction.units.flatMap(member=>{
+      const before=units.find(row=>unitId(row)===unitId(member));
+      const damage=Number(before?.hp??before?.currentHp)-Number(member.hp??member.currentHp);
+      return damage>0?[{unitId:member.id,name:member.name,damage,hits:[damage],beforeHp:before.hp,afterHp:member.hp,x:member.x,y:member.y,source:'災害通過'}]:[];
+    });
+    if(entries.length)window.dispatchEvent(new CustomEvent('v39:terrain-damage',{detail:{turnNumber:session.turnNumber,entries}}));
 
+    const actualEnd=movement.faction.units.find(row=>unitId(row)===session.unitId);
+    const completedPath=actualEnd.state==='死亡'?path.slice(0,path.findIndex(point=>point.x===actualEnd.x&&point.y===actualEnd.y)+1):path;
     window.dispatchEvent(new CustomEvent("v39:unit-moved", {
       detail:{
         unitId:session.unitId,
         squadId:currentGroup.squadId,
         unitIds:[...currentGroup.participantIds],
         from:{ ...currentStart },
-        to:{ x:session.target.x, y:session.target.y },
-        positions:targetPositions.map(row => ({ ...row })),
-        path,
-        distance:Math.max(0, path.length - 1),
+        to:{x:actualEnd.x,y:actualEnd.y},
+        positions:movement.faction.units.filter(row=>currentGroup.participantIds.includes(unitId(row))).map(row=>({id:unitId(row),x:row.x,y:row.y})),
+        path:completedPath,
+        distance:Math.max(0, completedPath.length - 1),
         apCost:freshCost,
         apRemaining:nextAp,
         moveApRemaining:nextAp
@@ -630,7 +645,7 @@ async function applyMovement() {
     const movedLabel = currentGroup.isSquad
       ? text(currentGroup.squad?.label || currentGroup.squad?.name, "部隊")
       : text(unit.name, "キャラクター");
-    showToast(`${movedLabel}：${contactUnits.length ? "隠れていたユニットの手前で停止" : "移動完了"} / 残AP ${nextAp}`);
+    showToast(`${movedLabel}：${actualEnd.state==='死亡'?'災害で死亡':contactUnits.length ? "隠れていたユニットの手前で停止" : "移動完了"} / 残AP ${nextAp}`);
   } finally {
     destroyGraphics();
     window.endV39MapRenderBatch?.(batchToken, { force:true, reason:"unit-movement-complete" });

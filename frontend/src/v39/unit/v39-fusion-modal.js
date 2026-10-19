@@ -1,5 +1,5 @@
 import {getV39FusionRecipes,getV39FusionSkills,inspectV39MonsterFusion,inspectV39FusionMaterial,executeV39MonsterFusion,isV39FusionTerritoryScope,resolveV39FusionMaterialRadius,getV39FusionMaterials} from '../../lib/v39-monster-fusion.js';
-import {collectV39FusionClassLevels} from '../../lib/v39-monster-fusion-growth.js';
+import {matchV39FusionMaterialRequirement} from '../../lib/v39-monster-fusion.js';
 import {resolveUnitArtwork} from '../../lib/map-entity-artwork.js';
 import {resolveMonsterSheetArtwork} from '../../lib/monster-sheet-artwork.js';
 import {renderV39UnitAbility,renderV39DetailTabs,renderV39UnitEquipment,renderV39UnitGrowth} from './v39-unit-detail.js';
@@ -45,7 +45,7 @@ function render(){
   if(!recipes.some(r=>r.id===session.recipeId)){session.recipeId=recipes[0]?.id;session.materialIds=[];}
   const check=inspectV39MonsterFusion(state,session),units=getV39FusionMaterials(check.faction),recipe=check.recipe;
   session.activeSlot=Math.min(session.activeSlot,Math.max(0,(check.slots?.length||1)-1));
-  const required=check.slots?.[session.activeSlot],candidates=units.filter(u=>required&&Number(collectV39FusionClassLevels(u)?.[required])>0);
+  const required=check.slots?.[session.activeSlot],candidates=units.filter(u=>required&&matchV39FusionMaterialRequirement(u,required));
   if(!candidates.some(u=>u.id===session.candidateId))session.candidateId=session.materialIds[session.activeSlot]
     ||candidates.find(u=>!candidateReasons(state,check,u).length)?.id||candidates[0]?.id||'';
   const candidate=candidates.find(u=>u.id===session.candidateId),reasons=candidate?candidateReasons(state,check,candidate):['候補がありません'];
@@ -111,7 +111,7 @@ document.addEventListener('click',event=>{
   if(candidate){session.candidateId=candidate.dataset.fusionCandidate;session.detailSource='material';render();return;}
   if(el.closest('[data-fusion-choose]')){
     const state=currentState(),check=inspectV39MonsterFusion(state,session),unit=getV39FusionMaterials(check.faction).find(u=>u.id===session.candidateId);
-    if(unit&&Number(collectV39FusionClassLevels(unit)?.[check.slots?.[session.activeSlot]])>0&&!candidateReasons(state,check,unit).length){
+    if(unit&&matchV39FusionMaterialRequirement(unit,check.slots?.[session.activeSlot])&&!candidateReasons(state,check,unit).length){
       session.materialIds[session.activeSlot]=unit.id;session.message='';session.confirming=false;
       const next=(check.slots||[]).findIndex((_,i)=>!session.materialIds[i]);
       if(next>=0){session.activeSlot=next;session.candidateId='';}

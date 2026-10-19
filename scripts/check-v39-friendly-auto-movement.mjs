@@ -26,7 +26,7 @@ try {
     assert.equal(waiting.caveDuty.status,'味方ユニットの移動待ち');
     assert.notDeepEqual([waiting.x,waiting.y],[4,3]);assert.notDeepEqual([waiting.x,waiting.y],[8,5]);
     await page.locator('[data-v39-unit-id="expedition-test-guard"]').click();
-    await page.locator('[data-expedition-tool="mine-duty"]').scrollIntoViewIfNeeded();
+    await page.locator('#squadMemberList [data-v39-unit-id="expedition-test-guard"]').scrollIntoViewIfNeeded();
     await page.waitForTimeout(200);
     await page.screenshot({path:`output/web-game/friendly-auto-movement/waiting-${width}.png`});
     const resumed=await page.evaluate(async()=>{

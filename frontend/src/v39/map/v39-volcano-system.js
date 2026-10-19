@@ -281,6 +281,7 @@ function resolveActiveTerrainEffects(previousEnvironment, events, turnNumber) {
 
 function environmentFromMap(mapData, processedTurn, events = [], previousEnvironment = null) {
   return {
+    ...previousEnvironment,
     processedTurn:asCount(processedTurn),
     volcanoData:mapData?.volcanoData || null,
     lavaState:mapData?.lavaState || { flows:[] },
@@ -358,7 +359,9 @@ function initializeEnvironment(event) {
   const mapData = event?.detail?.mapData || window.__v39FieldRuntime?.mapData;
   if (!state || !mapData) return;
   const processedTurn = Math.max(1, asCount(state.timeline?.turnNumber));
-  window.setV39GameState?.({ worldEnvironment:environmentFromMap(mapData, processedTurn) }, { reason:"terrain-initialized" });
+  const weather=state.worldEnvironment?.weather;
+  const initializedWeather=weather?.profileId===mapData.climateProfile?.id?{weather}:null;
+  window.setV39GameState?.({ worldEnvironment:environmentFromMap(mapData, processedTurn,[],initializedWeather) }, { reason:"terrain-initialized" });
 }
 
 window.addEventListener("v39:field-generated", initializeEnvironment);

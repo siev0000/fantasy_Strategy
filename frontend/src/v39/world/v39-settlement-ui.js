@@ -78,7 +78,7 @@ function populationRows(settlement) {
 }
 
 function section(key, label, value, body) {
-  const page = ['population','civic','territory'].includes(key) ? 'overview' : ['food','material'].includes(key) ? 'production' : 'operation';
+  const page = ['population','civic','territory'].includes(key) ? 'overview' : ['food','material','facility'].includes(key) ? 'production' : 'operation';
   return `<details class="settlement-fold" data-settlement-page="${page}"${page === activePage ? '' : ' hidden'} data-settlement-fold="${key}"${openSections.has(key) ? " open" : ""}>
     <summary><span>${label}</span>${value ? `<b>${value}</b>` : ""}</summary>
     <div class="settlement-fold-body">${body}</div>
@@ -165,32 +165,29 @@ function render() {
   const specializationOptions = inspectV39CitySpecializations(state, player, settlement);
   const specializationBody = `<div class="settlement-inline-facts"><span>選択中 <b>${escapeHtml(settlement.citySpecializationId || "なし")}</b></span><span>都市特性 <b>${escapeHtml((settlement.cityTraits || []).join(" / ") || "なし")}</b></span><span>条件の正本 <b>都市.json</b></span></div><div class="settlement-chip-list">${specializationOptions.map(option => `<button type="button" class="settlement-chip${settlement.citySpecializationId === option.id ? " building" : ""}" data-city-specialization="${escapeHtml(option.id)}" title="${escapeHtml(option.reason)}"${option.available ? "" : " disabled"}>${escapeHtml(option.name)}${option.available ? "" : " ×"}</button>`).join("")}</div>`;
 
-  const tabScrollLeft=panel.querySelector('.settlement-tabs')?.scrollLeft||0;
+  const listScroll = panel.querySelector('.settlement-tabs')?.scrollTop || 0;
   panel.innerHTML = `
-    <div class="settlement-toolbar">
-      <nav class="settlement-tabs" aria-label="所有拠点">
-        ${settlements.map(row => `<button type="button" class="settlement-tab${text(row.settlementId) === settlementId ? " active" : ""}" data-settlement-id="${escapeHtml(row.settlementId)}">${escapeHtml(row.name || row.type || "拠点")}</button>`).join("")}
-      </nav>
-      <div class="settlement-actions" role="group" aria-label="選択した拠点の操作">
-        <button type="button" class="settlement-trade-open" data-open-v39-trade>取引</button>
-        <button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button>
-      </div>
-    </div>
+    <nav class="settlement-tabs" aria-label="所有拠点">
+      ${settlements.map(row => `<button type="button" class="settlement-tab${text(row.settlementId) === settlementId ? " active" : ""}" aria-pressed="${text(row.settlementId) === settlementId}" data-settlement-id="${escapeHtml(row.settlementId)}"><span class="settlement-card-type">${escapeHtml(row.type || '拠点')}</span><strong>${escapeHtml(row.name || row.type || "拠点")}</strong><span>人口 ${formatNumber(row.population)}</span></button>`).join("")}
+    </nav>
+    <div class="settlement-detail-pane">
+    <header class="settlement-heading"><strong>${escapeHtml(settlement.name || settlement.type || '拠点')}</strong><span>${escapeHtml(settlement.type || '')}</span></header>
     <nav class="settlement-pages" aria-label="拠点の操作">${[['overview','概況'],['production','生産'],['operation','運用']].map(([key,label])=>`<button type="button" data-settlement-page-select="${key}" aria-pressed="${activePage===key}">${label}</button>`).join('')}</nav>
     <div class="settlement-fold-list">
+      <div class="settlement-page-actions" data-settlement-page="overview"${activePage === 'overview' ? '' : ' hidden'}><button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button></div>
+      <div class="settlement-page-actions" data-settlement-page="operation"${activePage === 'operation' ? '' : ' hidden'}><button type="button" class="settlement-trade-open" data-open-v39-trade>取引</button><button type="button" class="settlement-chip" data-foot="logistics">物流</button></div>
       ${section("population", "人口", formatNumber(settlement.population), populationSummary)}
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
       ${section("material", "資材", formatNumber(settlement.materialStock), keyValueRows(settlement.materialStockByType))}
-      <button type="button" class="settlement-chip" data-foot="logistics">物流：運搬の設定・任務一覧</button>
       ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}${renderV39FacilityStorageButtons(state,player.id,settlement)}</div>${deathProtectionBody}`)}
       ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
       ${section("expansion", "開拓", `${formatNumber(production.expansionWorkers)}人`, renderV39LandExpansionControls(state, player, settlement))}
       ${section("civic", "住民状態", `幸福${formatNumber(civic.happiness)}`, civicBody)}
       ${section("specialization", "都市専門化", escapeHtml(settlement.citySpecializationId || "未選択"), specializationBody)}
       ${section("repair", "修復", repairTargets.length ? `${repairTargets.length}マス` : "なし", repairBody)}
-    </div>`;
+    </div></div>`;
   panel.scrollTop = scrollTop;
-  panel.querySelector('.settlement-tabs').scrollLeft=tabScrollLeft;
+  panel.querySelector('.settlement-tabs').scrollTop = listScroll;
   const foldList = panel.querySelector(".settlement-fold-list");
   if (foldList) foldList.scrollTop = listScrollTop;
 }

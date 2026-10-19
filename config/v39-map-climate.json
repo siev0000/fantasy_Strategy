@@ -1,0 +1,18 @@
+{
+  "scopes": {
+    "world": {"label":"全世界","description":"複数の大陸・島。中央の低緯度から上下の極地まで気候が変わります。","latitudeDrop":40},
+    "region": {"label":"一地域・周辺諸島","description":"選んだ気候帯の一地域と周辺の島。高度で気温が変わります。","latitudeDrop":3},
+    "island": {"label":"単一島","description":"一つの島を主役に生成。双子島・列島などは選択できません。","latitudeDrop":2}
+  },
+  "zones": {
+    "tropical": {"label":"熱帯・多湿","temperature":28,"humidity":75,"forestScale":1.4},
+    "arid": {"label":"高温・乾燥","temperature":30,"humidity":20,"forestScale":0.35},
+    "temperate": {"label":"温暖","temperature":18,"humidity":55,"forestScale":1},
+    "cool": {"label":"冷涼","temperature":9,"humidity":60,"forestScale":0.8},
+    "polar": {"label":"寒冷","temperature":-8,"humidity":45,"forestScale":0.25}
+  },
+  "singleIslandPatterns": ["realistic","continent"],
+  "snowTemperature":0,
+  "desertMinimumTemperature":20,
+  "desertMaximumHumidity":45
+}

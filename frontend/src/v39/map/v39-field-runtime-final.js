@@ -8,6 +8,8 @@ import { cacheStaticGraphicsLayer } from "./v39-static-graphics-cache.js";
 import { installV39IdleRender } from "./v39-idle-render.js";
 import { installV39CoordinateRuler } from "./v39-coordinate-ruler.js";
 import { createV39VictoryLandmarkPlan } from "../../lib/v39-victory-landmarks.js";
+import {ensureV39ClimateProfile} from '../../lib/v39-weather.js';
+import {normalizeV39MapScope,normalizeV39ScopePattern} from '../../lib/v39-map-scope.js';
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
 const SNOW_RING_OUTER_INSET_RATIO = 0.06;
@@ -649,10 +651,12 @@ function normalizeSettings(input={}) {
   const allowedPatterns=new Set(["realistic","balanced","continent","archipelago","twins","chain"]);
   const allowedMountains=new Set(["random","single","multi","mixed"]);
   const custom=input.islandCustomSettings&&typeof input.islandCustomSettings==="object"?input.islandCustomSettings:{};
+  const scope=normalizeV39MapScope(input);
   const min=Math.min(Number(custom.isletCountMin)||1,Number(custom.isletCountMax)||4),max=Math.max(Number(custom.isletCountMin)||1,Number(custom.isletCountMax)||4);
   return {
     w,h,
-    patternId:allowedPatterns.has(input.patternId)?input.patternId:"realistic",
+    ...scope,
+    patternId:normalizeV39ScopePattern(allowedPatterns.has(input.patternId)?input.patternId:"realistic",scope.mapScope),
     mountainMode:allowedMountains.has(input.mountainMode)?input.mountainMode:"random",
     neutralVillageCount:Phaser.Math.Clamp(
       Math.round(Number(input.neutralVillageCount ?? V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount)),
@@ -660,15 +664,15 @@ function normalizeSettings(input={}) {
       V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount
     ),
     islandCustomSettings:{
-      enabled:!!custom.enabled,
-      largeIslandCount:Phaser.Math.Clamp(Math.round(Number(custom.largeIslandCount)||2),1,8),
-      isletCountMin:Phaser.Math.Clamp(Math.round(min),0,12),
-      isletCountMax:Phaser.Math.Clamp(Math.round(max),0,12),
+      enabled:scope.mapScope==='island'?false:!!custom.enabled,
+      largeIslandCount:scope.mapScope==='island'?1:Phaser.Math.Clamp(Math.round(Number(custom.largeIslandCount)||2),1,8),
+      isletCountMin:scope.mapScope==='island'?0:Phaser.Math.Clamp(Math.round(min),0,12),
+      isletCountMax:scope.mapScope==='island'?0:Phaser.Math.Clamp(Math.round(max),0,12),
       riverPerContinentMin:Phaser.Math.Clamp(Math.round(Math.min(Number(custom.riverPerContinentMin)||3,Number(custom.riverPerContinentMax)||4)),1,12),
       riverPerContinentMax:Phaser.Math.Clamp(Math.round(Math.max(Number(custom.riverPerContinentMin)||3,Number(custom.riverPerContinentMax)||4)),1,12),
       targetLandRatio:Phaser.Math.Clamp(Number(custom.targetLandRatio)||0.5,0.25,0.60),
       largeIslandMinGap:Phaser.Math.Clamp(Math.round(Number(custom.largeIslandMinGap)||6),2,12),
-      worldWrapEnabled:custom.worldWrapEnabled!==false
+      worldWrapEnabled:scope.mapScope==='island'?false:custom.worldWrapEnabled!==false
     }
   };
 }
@@ -679,6 +683,7 @@ export function generateFieldFromSettings(input={}) {
   currentSettings=settings;
   const victoryLandmarkPlan=createV39VictoryLandmarkPlan(settings,{patternId:settings.patternId});
   currentData=ensureSnowStateMaps(createTerrainMapData({ ...settings, victoryLandmarkPlan }));
+  ensureV39ClimateProfile(currentData);
   disposeFieldInput();
   if(game){ game.destroy(true); game=null; host.replaceChildren(); }
   createGame(currentData);
@@ -710,6 +715,7 @@ export function loadV39FieldSnapshot(mapData, inputSettings={}, options={}) {
   settings.h=Number(mapData.h);
   currentSettings=settings;
   currentData=ensureSnowStateMaps(mapData);
+  ensureV39ClimateProfile(currentData);
   disposeFieldInput();
   if(game){ game.destroy(true); game=null; host.replaceChildren(); }
   createGame(currentData);

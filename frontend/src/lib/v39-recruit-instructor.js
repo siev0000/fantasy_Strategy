@@ -2,6 +2,7 @@ import {getV39FacilityRecruitmentClasses} from "./v39-facility-recruitment.js";
 import {V39_RECRUIT_TRAINING_BALANCE as balance} from "./v39-gameplay-balance.js";
 import {resolveV39AutomaticRoute,resolveV39AutomaticMovementSteps} from "./v39-transport-rules.js";
 import {resolveV39UnitMovementStepCost} from "./v39-terrain-traversal.js";
+import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 
 const surface = unit => !unit.worldId || unit.worldId === "surface";
 const alive = unit => Number(unit.hp ?? unit.currentHp) > 0;
@@ -112,13 +113,14 @@ export function advanceV39RecruitInstructorMovement(state, playerId, mapData, tu
           movementHold:assignments[tileKey].previousMovementHold === true} : row);
       }
       ap -= step.stepCost;
-      unit={...unit,x:step.x,y:step.y,position:[step.x,step.y],ap,currentAp:ap,actionPoint:ap,lastActionTurn:turnNumber};
+      unit=applyV39DisasterMovementDamage({...unit,ap,currentAp:ap,actionPoint:ap,lastActionTurn:turnNumber},[step],state,turnNumber).unit;
+      if(!alive(unit)){transfer.status='blocked';transfer.reason='災害で教官が死亡しました';break;}
     }
     if (path?.waitingForFriendlyUnitId && (path.length === 0 || keyOf(unit) === path.at(-1).key)) {
       transfer.status="waiting-unit";transfer.reason="味方ユニットの移動待ち";
     }
     units=units.map(row => row.id === unit.id ? unit : row);
-    if (keyOf(unit) === tileKey) {assignments[tileKey]={...transfer};delete transfers[tileKey];}
+    if (alive(unit)&&keyOf(unit) === tileKey) {assignments[tileKey]={...transfer};delete transfers[tileKey];}
     else transfers[tileKey]=transfer;
   }
   return {state:{...state,players:state.players.map(row => row.id === playerId

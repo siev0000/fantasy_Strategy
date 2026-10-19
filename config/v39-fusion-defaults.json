@@ -1,6 +1,7 @@
 {
   "facilityNames": ["魔術工房", "魔獣研究所", "魂の保管庫"],
   "materialRadius": 2,
+  "materialGroups": {"鳥系": ["ホーク", "オウル"]},
   "territoryWideMaterials": true,
   "animationMs": 900,
   "experienceBaseWeight": 1,

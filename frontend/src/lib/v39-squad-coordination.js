@@ -3,6 +3,7 @@ import {getHexDistance,getHexNeighborCoords} from './hex-grid.js';
 import {territorySettlementId} from './settlement-state.js';
 import {resolveV39AutomaticRoute,resolveV39AutomaticMovementSteps} from './v39-transport-rules.js';
 import {canUnitEnterV39Tile,resolveV39UnitMovementStepCost} from './v39-terrain-traversal.js';
+import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 
 const world=unit=>unit?.worldId || 'surface';
 const alive=unit=>unit&&Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
@@ -116,9 +117,9 @@ export function advanceV39SquadRallies(state,playerId,map,turn,{move=true}={}) {
       const steps=best?resolveV39AutomaticMovementSteps(best,ap):[];
       const spent=steps.reduce((sum,step)=>sum+step.stepCost,0),end=steps.at(-1)||unit;
       const ready=steps.length&&availableSlots.some(tile=>key(tile)===key(end));
-      const next={...unit,x:end.x,y:end.y,ap:ap-spent,currentAp:ap-spent,actionPoint:ap-spent,
+      const next=applyV39DisasterMovementDamage({...unit,ap:ap-spent,currentAp:ap-spent,actionPoint:ap-spent,
         ...(steps.length?{lastActionTurn:turn}:{}),squadMoveMode:ready?'follow':'gather',
-        squadGather:ready?null:{status:reason&&reason!=='移動AP待ち'?'blocked':'waiting-ap',reason:reason||'移動AP待ち',lastProcessedTurn:turn}};
+        squadGather:ready?null:{status:reason&&reason!=='移動AP待ち'?'blocked':'waiting-ap',reason:reason||'移動AP待ち',lastProcessedTurn:turn}},steps,state,turn).unit;
       units=units.map(row=>row.id===unit.id?next:row);changed=true;
       if(steps.length)paths.push({unitId:unit.id,positions:[{id:unit.id,x:unit.x,y:unit.y},...steps.map(step=>({id:unit.id,x:step.x,y:step.y}))],apCost:spent});
     }

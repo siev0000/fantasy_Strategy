@@ -23,6 +23,7 @@ try{
     window.closeV39PlayModeSelection();window.setV39TestMode(true);window.startV39ExpeditionTest();
     const {getGameDataRows,classData}=await import('/src/lib/game-data-registry.js');
     const {getV39BossFusionCandidates}=await import('/src/lib/v39-boss-fusion-rules.js');
+    const {V39_FUSION_MATERIAL_GROUPS}=await import('/src/lib/v39-fusion-material-types.js');
     const recipes=getGameDataRows('モンスター合成'),names=new Set(classData.map(row=>row.名前));
     const data=window.__v39FieldRuntime.mapData;
     const results=[];
@@ -39,7 +40,7 @@ try{
       window.setV39GameState({enemies:[],enemyNests:[],enemySquads:[],victoryLandmarksByTile:{}});
       const enemies=window.spawnV39Enemies(),bosses=enemies.filter(e=>e.strongEnemy);
       results.push({terrain,bosses:bosses.map(e=>({race:e.race,extra:e.strongAnimalClassName,name:e.name,
-        matches:getV39BossFusionCandidates(e.race,e.className,recipes,names).some(r=>r.className===e.strongAnimalClassName&&r.name===e.name),
+        matches:getV39BossFusionCandidates(e.race,e.className,recipes,names,V39_FUSION_MATERIAL_GROUPS).some(r=>r.className===e.strongAnimalClassName&&r.name===e.name),
         extraLv:e.strongAnimalClassLevel,level:e.level})),
         ordinary:enemies.filter(e=>!e.strongEnemy).length,ordinaryExtra:enemies.some(e=>!e.strongEnemy&&e.strongAnimalClassName)});
     }

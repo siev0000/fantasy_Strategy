@@ -1,3 +1,5 @@
+import {resolveInsectSpecies,resolveInsectArtwork} from './insect-artwork-config.js';
+
 // 画像だけの対応表。能力・スキルはスプレッドシートから生成したクラス.jsonを参照する。
 // 4列×3行、左上から横順に1～12。実ファイルの拡張子は.webp。
 const 画像集 = {
@@ -50,19 +52,35 @@ export const 動物属性クラス対応 = Object.freeze({
 
 export const 属性ホース名称 = Object.freeze({ エンジェル:"ユニコーン", デヴィル:"バイコーン" });
 
+export function getArtworkClassNames(unit={}) {
+  const levels=[unit.prerequisiteClassLevels,unit.fusionGrowth?.levelsByClass,
+    unit.derivedCharacter?.prerequisiteClassLevels];
+  return [unit.className,unit.クラス,unit.fusionAppearanceClass,unit.strongAnimalClassName,
+    unit.subClass,unit.subclass,unit.サブクラス,
+    ...levels.flatMap(map=>Object.entries(map||{}).filter(([,lv])=>Number(lv)>0).map(([name])=>name))]
+    .map(value=>String(value||'').trim()).filter(Boolean);
+}
+
+export function getArtworkUndeadClass(unit={}) {
+  const aliases={動死体:'ゾンビ',骸骨:'スケルトン',吸血鬼:'ヴァンパイア'};
+  return getArtworkClassNames(unit).map(name=>aliases[name]||name)
+    .find(name=>['ゾンビ','スケルトン','ヴァンパイア'].includes(name)) || '';
+}
+
 export function resolveAnimalArtworkReference(enemy = {}) {
+  const undeadClass=getArtworkUndeadClass(enemy);
+  if(resolveInsectSpecies(enemy))return resolveInsectArtwork(enemy,undeadClass);
   const names = [enemy.race, enemy.種族, enemy.raceName, enemy.speciesName, enemy.種族名, enemy.name]
     .map(value => String(value || "").trim());
   const species = names.find(name => 対象別画像.has(`通常${name}`));
   if (!species) return null;
-  const classes = [enemy.fusionAppearanceClass, enemy.strongAnimalClassName, enemy.className, enemy.subClass, enemy.subclass, enemy.サブクラス]
-    .map(value => String(value || "").trim());
-  if (species === "ホース") {
+  const classes = getArtworkClassNames(enemy);
+  if (species === "ホース" && !undeadClass) {
     const target = classes.map(name => 属性ホース名称[name]).find(Boolean);
     const horse = 対象別画像.get(target);
     if (horse) return { fileName:horse.ファイル, slotNumber:horse.番号, sizeByLevel:false };
   }
-  const attribute = classes.map(name => 動物属性クラス対応[name]
+  const attribute = undeadClass || classes.map(name => 動物属性クラス対応[name]
     || (name === "スケルトン" || name === "ゾンビ" ? name : "")).find(Boolean);
   // 属性画像がない組み合わせを、別の動物や別属性の画像で代用しない。
   const row = 対象別画像.get(`${attribute || "通常"}${species}`) || 対象別画像.get(`通常${species}`);

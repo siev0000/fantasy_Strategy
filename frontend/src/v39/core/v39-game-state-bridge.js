@@ -85,6 +85,7 @@ const cloneJson = cloneValue;
 
 function normalizeWorldEnvironment(value = {}) {
   return {
+    weather:cloneJson(value?.weather, null),
     processedTurn:Math.max(0, Math.floor(Number(value?.processedTurn) || 0)),
     volcanoData:cloneJson(value?.volcanoData, null),
     lavaState:cloneJson(value?.lavaState, { flows:[] }),

@@ -2,6 +2,8 @@ import { generateIsland as generateRealisticIsland } from "./realistic-island.js
 import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
 import { getHexDistance, getHexNeighborCoords as getSharedHexNeighborCoords } from "./hex-grid.js";
 import { getGameDataRows } from "./game-data-registry.js";
+import {normalizeV39MapScope,normalizeV39ScopePattern,v39ClimateForestScale,applyV39ClimateBiomes} from './v39-map-scope.js';
+import {createV39ClimateProfile} from './v39-weather.js';
 
 function jsonNumber(row, key, fallback) {
   const value = Number(row?.[key]);
@@ -1883,8 +1885,12 @@ function generateIslands(grid, w, h, totalTiles, patternId = "balanced", options
   const useCustomPlan = !!customPlan;
   const interiorCap = Math.max(1, (w - 2) * (h - 2));
 
-  if (!useCustomPlan && !useLegacyConfiguredLargeIslands && patternId === "realistic") {
+  if (options.forceSingleIsland || !useCustomPlan && !useLegacyConfiguredLargeIslands && patternId === "realistic") {
     generateRealisticIsland(grid, w, h, patternTargetLand, cfg);
+    if(options.forceSingleIsland){
+      const components=buildLandComponents(grid,w,h).components.sort((a,b)=>b.size-a.size);
+      for(const component of components.slice(1))for(const tile of component.cells)grid[tile.y][tile.x]='海';
+    }
     return {
       patternName: cfg.name,
       islandGenerationInfo: {
@@ -5070,11 +5076,13 @@ function createIslandShapeData({ w, h, patternId = "balanced", islandCustomSetti
   };
 }
 
-function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "random", islandCustomSettings = null, victoryLandmarkPlan = null }) {
+function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "random", islandCustomSettings = null, victoryLandmarkPlan = null, mapScope,climateSettings }) {
+  const scope=normalizeV39MapScope({mapScope,climateSettings});
+  patternId=normalizeV39ScopePattern(patternId,scope.mapScope);
   const totalTiles = w * h;
   const grid = buildInitialGrid(w, h, "海");
   const { patternName, islandGenerationInfo } = generateIslands(grid, w, h, totalTiles, patternId, {
-    islandCustomSettings
+    islandCustomSettings,forceSingleIsland:scope.mapScope==='island'
   });
   const { components: 島一覧 } = buildLandComponents(grid, w, h);
   const 島別比率設定 = buildIslandTerrainRatioProfiles(島一覧);
@@ -5129,7 +5137,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
 
   for (const island of 島一覧) {
     const islandCoordSet = new Set(island.cells.map(c => coordKey(c.x, c.y)));
-    const islandForestTarget = 森目標計画.byIsland.get(island.id) || 0;
+    const islandForestTarget = Math.round((森目標計画.byIsland.get(island.id) || 0)*v39ClimateForestScale(scope));
     if (islandForestTarget > 0) {
       growClusters(
         grid, w, h, "森", islandForestTarget,
@@ -5197,7 +5205,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
   cohereTerrainBlobs(grid, w, h);
   for (const island of 島一覧) {
     const islandCoordSet = new Set(island.cells.map(c => coordKey(c.x, c.y)));
-    const islandForestTarget = 森目標計画.byIsland.get(island.id) || 0;
+    const islandForestTarget = Math.round((森目標計画.byIsland.get(island.id) || 0)*v39ClimateForestScale(scope));
     topUpForestToTarget(grid, reliefMap, w, h, islandForestTarget, islandCoordSet);
   }
   const reliefRule = 地形生成設定.山岳塊?.起伏保証 || {};
@@ -5226,7 +5234,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     }
   }
 
-  const climateBandInfo = applyNorthSnowBand(
+  let climateBandInfo = scope.mapScope?{rows:0,changed:0}:applyNorthSnowBand(
     grid,
     w,
     h,
@@ -5287,6 +5295,10 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
   if (meshHandlingRule.中央湖化 !== false) {
     applyMeshRiverLakeTiles(grid, riverData?.meshCenterSet, 高度レベルマップ, w, h);
   }
+  const climateProfile=scope.mapScope?createV39ClimateProfile({w,h,grid,heightLevelMap:高度レベルマップ,riverData,reliefMap,...scope}):null;
+  const climateBiomes=climateProfile?applyV39ClimateBiomes({w,h,grid},climateProfile,
+    new Set((victoryTerrainSupport?.regions||[]).flatMap(region=>region.tileKeys||[]))):null;
+  if(climateBiomes)climateBandInfo=climateBiomes.info;
   const coastData = buildCoastMap(grid, w, h, 高度レベルマップ);
   const { specialMap, specialCounts, caveSizeMap, caveScaleMap, caveCoastAnchorMap } = buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ);
   const { strongMonsterMap, strongMonsterInfoMap, strongMonsterStats } = buildStrongMonsterSpawnData(
@@ -5305,6 +5317,8 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     grid,
     patternName,
     shapeOnly: false,
+    ...scope,
+    climateProfile,
     riverData,
     heightMap: 高度マップ,
     heightLevelMap: 高度レベルマップ,
@@ -5317,7 +5331,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     strongMonsterStats,
     forestTargetCount: 森目標計画.totalTarget,
     specialMap,
-    snowCoverMap: buildInitialGrid(w, h, false),
+    snowCoverMap: climateBiomes?.snowCoverMap||buildInitialGrid(w, h, false),
     snowfallMap: buildInitialGrid(w, h, false),
     specialCounts,
     caveSizeMap,

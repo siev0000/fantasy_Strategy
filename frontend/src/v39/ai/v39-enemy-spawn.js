@@ -5,6 +5,7 @@ import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { V39_START_AREA_BALANCE, V39_ENEMY_LEVEL_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { getV39BossFusionCandidates } from "../../lib/v39-boss-fusion-rules.js";
+import {V39_FUSION_MATERIAL_GROUPS} from '../../lib/v39-fusion-material-types.js';
 import {resolveV39EnemyMemberCount,resolveV39EnemyCombatProfile} from '../../lib/v39-enemy-formation.js';
 
 const SAFE_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.safeRadius;
@@ -28,7 +29,7 @@ const bossFusionCandidates = new Map();
 function fusionCandidates(definition) {
   const key = JSON.stringify([definition.race, definition.className]);
   if (!bossFusionCandidates.has(key)) bossFusionCandidates.set(key,
-    getV39BossFusionCandidates(definition.race, definition.className, getGameDataRows('モンスター合成'), classNames));
+    getV39BossFusionCandidates(definition.race, definition.className, getGameDataRows('モンスター合成'), classNames,V39_FUSION_MATERIAL_GROUPS));
   return bossFusionCandidates.get(key);
 }
 

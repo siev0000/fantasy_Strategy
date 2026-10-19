@@ -7,6 +7,7 @@ import {
   normalizeGameStartSettings
 } from "../../lib/game-start-settings.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import {V39_MAP_SCOPES,V39_CLIMATE_ZONES,V39_SINGLE_ISLAND_PATTERNS,normalizeV39MapScope} from '../../lib/v39-map-scope.js';
 import {
   V39_LOCAL_SESSION_PLAYER_LIMIT,
   normalizeV39LocalParticipantCount,
@@ -25,6 +26,8 @@ const DEFAULT_FIELD_SETTINGS = Object.freeze({
   playMode: "single-normal",
   mapSize: "60x60",
   patternId: "realistic",
+  mapScope:'region',
+  climateSettings:{zone:'temperate',baseTemperature:18,humidity:55},
   mountainMode: "random",
   enemySpawnTileDivisor: 40,
   neutralVillageCount: V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount,
@@ -213,6 +216,25 @@ function createModal() {
               </select>
             </label>
             <label class="v39-setting-row">
+              <span>描く範囲</span>
+              <select id="v39-field-scope">${Object.entries(V39_MAP_SCOPES).map(([id,row])=>`<option value="${id}">${row.label}</option>`).join('')}</select>
+              <small id="v39-field-scope-note"></small>
+            </label>
+            <label class="v39-setting-row">
+              <span>気候帯</span>
+              <select id="v39-field-climate-zone">${Object.entries(V39_CLIMATE_ZONES).map(([id,row])=>`<option value="${id}">${row.label}</option>`).join('')}</select>
+              <small id="v39-field-climate-note">地域の気候を選び、下の数値で調整できます。</small>
+            </label>
+            <label class="v39-setting-row">
+              <span>低地の基準気温（℃）</span>
+              <input id="v39-field-climate-temperature" type="number" min="-20" max="35" step="1">
+              <small>高度や地域差、現在の天候によって実際の気温が変わります。</small>
+            </label>
+            <label class="v39-setting-row">
+              <span>基準湿潤度（0〜100）</span>
+              <input id="v39-field-climate-humidity" type="number" min="0" max="100" step="1">
+            </label>
+            <label class="v39-setting-row">
               <span>島形状パターン</span>
               <select id="v39-field-pattern">
                 <option value="realistic">リアル島</option>
@@ -283,6 +305,18 @@ function boot() {
   let lobbyGameSettingsMode = false;
   const overlay = createModal();
   const get = id => document.getElementById(id);
+  const syncScopeControls=()=>{
+    const scope=get('v39-field-scope').value,single=scope==='island',world=scope==='world';
+    get('v39-field-scope-note').textContent=V39_MAP_SCOPES[scope].description;
+    for(const option of get('v39-field-pattern').options)option.disabled=single&&!V39_SINGLE_ISLAND_PATTERNS.includes(option.value);
+    if(get('v39-field-pattern').selectedOptions[0]?.disabled)get('v39-field-pattern').value='realistic';
+    for(const id of ['v39-field-climate-zone','v39-field-climate-temperature','v39-field-climate-humidity'])get(id).disabled=world;
+    get('v39-field-climate-note').textContent=world?'全世界は赤道〜極地の気候を自動配置します。':'地域の気候を選び、下の数値で調整できます。';
+    get('v39-field-wrap').disabled=single;if(single)get('v39-field-wrap').checked=false;
+    get('v39-field-custom-enabled').disabled=single;
+    if(single){get('v39-field-custom-enabled').checked=false;get('v39-field-large-islands').value=1;get('v39-field-islet-min').value=0;get('v39-field-islet-max').value=0;}
+    get('v39-field-custom-grid').classList.toggle('is-disabled',single||!get('v39-field-custom-enabled').checked);
+  };
 
   const turnModeSelect = get("v39-field-turn-mode");
   if (turnModeSelect instanceof HTMLSelectElement) {
@@ -364,6 +398,12 @@ function boot() {
         : "シングル・通常プレイ用のマップ・ゲーム進行を設定";
     get("v39-field-map-size").value = settings.mapSize;
     get("v39-field-pattern").value = settings.patternId;
+    const scope=normalizeV39MapScope(settings);
+    get('v39-field-scope').value=scope.mapScope||'region';
+    const climate=scope.climateSettings||DEFAULT_FIELD_SETTINGS.climateSettings;
+    get('v39-field-climate-zone').value=climate.zone;
+    get('v39-field-climate-temperature').value=climate.baseTemperature;
+    get('v39-field-climate-humidity').value=climate.humidity;
     get("v39-field-mountain").value = settings.mountainMode;
     get("v39-field-enemy-amount").value = enemyDivisorToAmount(settings.enemySpawnTileDivisor);
     get("v39-field-neutral-village-count").value = settings.neutralVillageCount;
@@ -389,6 +429,7 @@ function boot() {
     get("v39-field-river-min").value = settings.islandCustomSettings.riverPerContinentMin;
     get("v39-field-river-max").value = settings.islandCustomSettings.riverPerContinentMax;
     get("v39-field-custom-grid").classList.toggle("is-disabled", !settings.islandCustomSettings.enabled);
+    syncScopeControls();
     ["v39-field-local-player-row", "v39-start-participant-section"]
       .forEach(id => {
         const element = get(id);
@@ -408,6 +449,7 @@ function boot() {
       playMode:"multiplayer",
       mapSize:String(source.mapSize || settings.mapSize),
       patternId:String(source.patternId || settings.patternId),
+      ...normalizeV39MapScope({mapScope:source.mapScope||'world',climateSettings:source.climateSettings}),
       mountainMode:String(source.mountainMode || settings.mountainMode),
       enemySpawnTileDivisor:source.enemySpawnTileDivisor ?? settings.enemySpawnTileDivisor,
       neutralVillageCount:source.neutralVillageCount ?? settings.neutralVillageCount,
@@ -435,6 +477,8 @@ function boot() {
     settings = {
       playMode:normalizePlayMode(settings.playMode),
       mapSize: get("v39-field-map-size").value,
+      ...normalizeV39MapScope({mapScope:get('v39-field-scope').value,climateSettings:{zone:get('v39-field-climate-zone').value,
+        baseTemperature:get('v39-field-climate-temperature').value,humidity:get('v39-field-climate-humidity').value}}),
       patternId: get("v39-field-pattern").value,
       mountainMode: get("v39-field-mountain").value,
       enemySpawnTileDivisor: enemyAmountToDivisor(get("v39-field-enemy-amount").value),
@@ -490,6 +534,7 @@ function boot() {
       settings.playerParticipantAssignments = Object.fromEntries((players || []).map(player => [player.id, player.controllerParticipantId]));
     }
     if (!lobbyGameSettingsMode && generated && runtimeFieldSettings) {
+      if(runtimeFieldSettings.mapScope)Object.assign(settings,normalizeV39MapScope(runtimeFieldSettings));
       settings.neutralVillageCount = Math.round(clampNumber(
         runtimeFieldSettings.neutralVillageCount,
         0,
@@ -543,6 +588,12 @@ function boot() {
   get("v39-field-custom-enabled").addEventListener("click", event => {
     event.stopPropagation();
   });
+  get('v39-field-scope').addEventListener('change',syncScopeControls);
+  get('v39-field-climate-zone').addEventListener('change',()=>{
+    const zone=V39_CLIMATE_ZONES[get('v39-field-climate-zone').value];
+    get('v39-field-climate-temperature').value=zone.temperature;
+    get('v39-field-climate-humidity').value=zone.humidity;
+  });
   get("v39-field-custom-enabled").addEventListener("change", () => {
     settings.islandCustomSettings.enabled = get("v39-field-custom-enabled").checked;
     get("v39-field-custom-grid").classList.toggle("is-disabled", !settings.islandCustomSettings.enabled);
@@ -558,6 +609,7 @@ function boot() {
       const gameSetup = {
         mapSize:next.mapSize,
         patternId:next.patternId,
+        ...normalizeV39MapScope(next),
         mountainMode:next.mountainMode,
         enemySpawnTileDivisor:next.enemySpawnTileDivisor,
         neutralVillageCount:next.neutralVillageCount,
@@ -593,6 +645,7 @@ function boot() {
         w,
         h,
         patternId:next.patternId,
+        ...normalizeV39MapScope(next),
         mountainMode:next.mountainMode,
         enemySpawnTileDivisor:next.enemySpawnTileDivisor,
         neutralVillageCount:next.neutralVillageCount,

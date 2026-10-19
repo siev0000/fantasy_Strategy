@@ -3,6 +3,8 @@ import "../unit/v39-character-modal.js";
 import "../unit/v39-summon-modal.js";
 import '../dev/v39-call-test.js';
 import '../dev/v39-fusion-test.js';
+import '../dev/v39-animal-army-test.js';
+import '../dev/v39-disaster-test.js';
 import '../unit/v39-fusion-modal.js';
 import "../unit/v39-squad-edit-ui.js";
 import "../unit/v39-expedition-tools-ui.js";
@@ -14,6 +16,7 @@ import "../map/v39-land-detail.js";
 import "../map/v39-height-boundaries.js";
 import "../map/v39-terrain-icons.js";
 import "../map/v39-disaster-icons.js";
+import '../map/v39-weather-overlay.js';
 import "../map/v39-victory-landmark-icons.js";
 import "../core/v39-victory-system.js";
 import "../map/v39-volcano-system.js";
@@ -28,7 +31,7 @@ import "../ui/v39-effect-category-settings.js";
 import "../ui/v39-title-effect-settings.js";
 import "../ui/v39-text-input-modal.js";
 
-const V39_UI_BUILD_LABEL = "UI 2026.10.18-15";
+const V39_UI_BUILD_LABEL = "UI 2026.10.19-16";
 
 function applyV39UiBuildLabel() {
   const label = document.getElementById("uiBuildLabel");

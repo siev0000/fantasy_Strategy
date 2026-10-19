@@ -15,7 +15,7 @@ function emptySpatial() {
 }
 function testMap(template, size, underground) {
   const grid=Array.from({length:size},(_,y)=>Array.from({length:size},(_,x)=>underground?(x===0||y===0||x===size-1||y===size-1?"岩壁":"洞窟"):"平地"));
-  return {...template,w:size,h:size,grid,isUnderground:underground,worldWrapEnabled:false,riverData:[],
+  return {...template,w:size,h:size,grid,isUnderground:underground,worldWrapEnabled:false,riverData:[],disasterTestFixture:false,
     heightLevelMap:grid.map(row=>row.map(()=>0)),specialMap:grid.map(row=>row.map(()=>"")),
     lavaMap:grid.map(row=>row.map(()=>false)),snowCoverMap:grid.map(row=>row.map(()=>false)),
     entrances:[],caveSites:[],caveBossIds:[],caveMine:null,caveEventNpc:null,caveConquest:null,
