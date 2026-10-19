@@ -3,14 +3,19 @@ import {V39_FOG_BALANCE} from '../../lib/v39-gameplay-balance.js';
 import {V39_ATMOSPHERE_DISPLAY as config,collectV39AtmosphereTiles,v39AtmospherePalette} from '../../lib/v39-atmosphere-display.js';
 
 const SOURCE='v39-atmosphere-source',LAYER='v39-atmosphere-fog-layer';
+const rawAtmosphereArtworkModules=import.meta.glob('../../../../assets/images/background/*.{png,jpg,jpeg,webp,svg}',{
+  eager:true,
+  import:'default'
+});
 
-function resolvePublicAssetUrl(path){
-  const value=String(path??'').trim();
-  if(!value.startsWith('/'))return value;
-  const base=String(import.meta.env.BASE_URL||'/').trim()||'/';
-  if(base==='/')return value;
-  return `${base.replace(/\/+$/,'')}${value}`;
+function resolveBundledAtmosphereAsset(path){
+  const normalized=String(path??'').trim().replace(/\\/g,'/').replace(/^\/+/, '');
+  if(!normalized)return '';
+  const match=Object.entries(rawAtmosphereArtworkModules).find(([modulePath])=>modulePath.replace(/\\/g,'/').endsWith(normalized));
+  return String(match?.[1]||path||'');
 }
+
+const ATMOSPHERE_SOURCE_URL=resolveBundledAtmosphereAsset(V39_FOG_BALANCE.normalImage);
 
 export function v39AtmosphereArtworkVersion(scene){return scene.textures.exists(SOURCE)?1:0;}
 
@@ -38,7 +43,7 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
     const loaded=()=>{scene.v39AtmosphereSignature=null;window.renderV39Visibility?.();scene.game.v39InvalidateRender?.();};
     scene.load.once(`filecomplete-image-${SOURCE}`,loaded);
     scene.events.once('shutdown',()=>scene.load.off(`filecomplete-image-${SOURCE}`,loaded));
-    scene.load.image(SOURCE,resolvePublicAssetUrl(V39_FOG_BALANCE.normalImage));if(!scene.load.isLoading())scene.load.start();
+    scene.load.image(SOURCE,ATMOSPHERE_SOURCE_URL);if(!scene.load.isLoading())scene.load.start();
   }
   const source=ready?scene.textures.get(SOURCE).getSourceImage():null;
   const variants=new Map(),chunks=new Map(),scale=config.resolution,size=config.chunkSize;
