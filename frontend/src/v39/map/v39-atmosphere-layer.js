@@ -7,12 +7,13 @@ const rawAtmosphereArtworkModules=import.meta.glob('../../../../assets/images/ba
   eager:true,
   import:'default'
 });
+const atmosphereTextureState=new WeakMap();
 
 function resolveBundledAtmosphereAsset(path){
   const normalized=String(path??'').trim().replace(/\\/g,'/').replace(/^\/+/, '');
   if(!normalized)return '';
   const match=Object.entries(rawAtmosphereArtworkModules).find(([modulePath])=>modulePath.replace(/\\/g,'/').endsWith(normalized));
-  return String(match?.[1]||path||'');
+  return String(match?.[1]||'');
 }
 
 const ATMOSPHERE_SOURCE_URL=resolveBundledAtmosphereAsset(V39_FOG_BALANCE.normalImage);
@@ -25,6 +26,32 @@ function clear(scene){
   scene.v39AtmosphereTextureKeys=[];
 }
 
+function ensureAtmosphereTexture(scene){
+  if(scene.textures.exists(SOURCE))return true;
+  if(atmosphereTextureState.get(scene)==='loading'||atmosphereTextureState.get(scene)==='failed')return false;
+  if(!ATMOSPHERE_SOURCE_URL){
+    atmosphereTextureState.set(scene,'failed');
+    return false;
+  }
+  atmosphereTextureState.set(scene,'loading');
+  const image=new Image();
+  image.onload=()=>{
+    if(!scene?.sys?.isActive?.())return;
+    if(!scene.textures.exists(SOURCE))scene.textures.addImage(SOURCE,image);
+    atmosphereTextureState.set(scene,'loaded');
+    scene.v39AtmosphereSignature=null;
+    window.renderV39Visibility?.();
+    scene.game.v39InvalidateRender?.();
+  };
+  image.onerror=()=>{
+    atmosphereTextureState.set(scene,'failed');
+    scene.v39AtmosphereSignature=null;
+    scene.game.v39InvalidateRender?.();
+  };
+  image.src=ATMOSPHERE_SOURCE_URL;
+  return false;
+}
+
 export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
   const palette=v39AtmospherePalette(),ready=!!v39AtmosphereArtworkVersion(scene);
   const tiles=collectV39AtmosphereTiles(data,state).filter(tile=>testMode||vision.has(tile.key));
@@ -33,19 +60,13 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
   scene.v39AtmosphereSignature=signature;clear(scene);
   const layer=scene.add.container().setDepth(13).setName(LAYER);
   const combinations=[...new Set(tiles.map(tile=>tile.kinds.join('|')))];
-  layer.setData('atmosphere',{tileCount:tiles.length,combinations,palette,ready});
+  layer.setData('atmosphere',{tileCount:tiles.length,combinations,palette,ready,sourceUrl:ATMOSPHERE_SOURCE_URL});
   if(!scene.v39AtmosphereCleanup){
     scene.v39AtmosphereCleanup=true;scene.events.once('shutdown',()=>clear(scene));
   }
   if(!tiles.length)return;
-  if(!ready&&!scene.v39AtmosphereLoading){
-    scene.v39AtmosphereLoading=true;
-    const loaded=()=>{scene.v39AtmosphereSignature=null;window.renderV39Visibility?.();scene.game.v39InvalidateRender?.();};
-    scene.load.once(`filecomplete-image-${SOURCE}`,loaded);
-    scene.events.once('shutdown',()=>scene.load.off(`filecomplete-image-${SOURCE}`,loaded));
-    scene.load.image(SOURCE,ATMOSPHERE_SOURCE_URL);if(!scene.load.isLoading())scene.load.start();
-  }
-  const source=ready?scene.textures.get(SOURCE).getSourceImage():null;
+  if(!ready){ensureAtmosphereTexture(scene);return;}
+  const source=scene.textures.get(SOURCE).getSourceImage();
   const variants=new Map(),chunks=new Map(),scale=config.resolution,size=config.chunkSize;
   const worldW=Math.ceil((data.w*hex.width+hex.oddRowOffsetX)*scale),worldH=Math.ceil(((data.h-1)*hex.rowStep+hex.height)*scale);
   for(const tile of tiles){
@@ -53,18 +74,17 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
     if(!image){
       image=document.createElement('canvas');image.width=hex.width;image.height=hex.height;
       const ctx=image.getContext('2d');
-      if(source)ctx.drawImage(source,0,0,image.width,image.height);else{ctx.fillStyle='#ffffff';ctx.fillRect(0,0,image.width,image.height);}
-      // Multiply one ordered colour ramp into the fog's luminance; alpha is applied once below.
+      ctx.drawImage(source,0,0,image.width,image.height);
       const ramp=document.createElement('canvas');ramp.width=image.width;ramp.height=1;
       const r=ramp.getContext('2d'),gradient=r.createLinearGradient(0,0,ramp.width,0);
       tile.kinds.forEach((kind,index)=>gradient.addColorStop(tile.kinds.length===1?0:index/(tile.kinds.length-1),palette.find(row=>row.id===kind).color));
       r.fillStyle=gradient;r.fillRect(0,0,ramp.width,1);
       const colors=r.getImageData(0,0,ramp.width,1).data,pixels=ctx.getImageData(0,0,image.width,image.height);
       for(let i=0;i<pixels.data.length;i+=4){
-        const column=(i/4)%image.width,alpha=pixels.data[i+3]/255;
-        const luminance=255*(1-alpha)+(pixels.data[i]+pixels.data[i+1]+pixels.data[i+2])/3*alpha;
+        const column=(i/4)%image.width,sourceAlpha=pixels.data[i+3];
+        const luminance=(pixels.data[i]+pixels.data[i+1]+pixels.data[i+2])/3;
         for(let c=0;c<3;c++)pixels.data[i+c]=Math.round(luminance*colors[column*4+c]/255);
-        pixels.data[i+3]=Math.round(255*(config.textureAlphaFloor+(1-config.textureAlphaFloor)*alpha));
+        pixels.data[i+3]=sourceAlpha;
       }
       ctx.putImageData(pixels,0,0);variants.set(id,image);
     }
