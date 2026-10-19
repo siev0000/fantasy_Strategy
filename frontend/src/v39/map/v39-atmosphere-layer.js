@@ -4,6 +4,14 @@ import {V39_ATMOSPHERE_DISPLAY as config,collectV39AtmosphereTiles,v39Atmosphere
 
 const SOURCE='v39-atmosphere-source',LAYER='v39-atmosphere-fog-layer';
 
+function resolvePublicAssetUrl(path){
+  const value=String(path??'').trim();
+  if(!value.startsWith('/'))return value;
+  const base=String(import.meta.env.BASE_URL||'/').trim()||'/';
+  if(base==='/')return value;
+  return `${base.replace(/\/+$/,'')}${value}`;
+}
+
 export function v39AtmosphereArtworkVersion(scene){return scene.textures.exists(SOURCE)?1:0;}
 
 function clear(scene){
@@ -30,7 +38,7 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
     const loaded=()=>{scene.v39AtmosphereSignature=null;window.renderV39Visibility?.();scene.game.v39InvalidateRender?.();};
     scene.load.once(`filecomplete-image-${SOURCE}`,loaded);
     scene.events.once('shutdown',()=>scene.load.off(`filecomplete-image-${SOURCE}`,loaded));
-    scene.load.image(SOURCE,V39_FOG_BALANCE.normalImage);if(!scene.load.isLoading())scene.load.start();
+    scene.load.image(SOURCE,resolvePublicAssetUrl(V39_FOG_BALANCE.normalImage));if(!scene.load.isLoading())scene.load.start();
   }
   const source=ready?scene.textures.get(SOURCE).getSourceImage():null;
   const variants=new Map(),chunks=new Map(),scale=config.resolution,size=config.chunkSize;
