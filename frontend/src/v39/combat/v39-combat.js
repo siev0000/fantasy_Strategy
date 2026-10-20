@@ -1,4 +1,7 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import {canV39UnitLeaveOrganicCorpse} from '../../lib/v39-corpse-types.js';
+import {v39HazardRecoveryMultiplier} from '../../lib/v39-hazard-zones.js';
+import {resolveV39CorpseLifetimeTurns} from '../../lib/v39-corpse-lifetime.js';
 import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
 import {applyV39DeathBlade} from "../../lib/v39-purification-rules.js";
 import {convertV39CorpsesInDeathFog} from '../../lib/v39-corpse-undead-rules.js';
@@ -46,7 +49,6 @@ import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords } from "../../lib/hex-grid.js";
 import {
-  DEFAULT_CORPSE_FIELD_TURNS,
   DEFAULT_MAGIC_CAST_TURNS,
   currentV39TurnNumber,
   parseV39TurnCount,
@@ -258,7 +260,7 @@ function applyDirectDamage(unit, damage, skillRow, { directTarget = false } = {}
     ...(directTarget ? { lastStealthBreakTurn:deathTurn, lastStealthBreakReason:"direct-target" } : {}),
     ...(newlyDead ? {
       diedAtTurn:deathTurn,
-      deadExpireTurn:resolveV39DeadlineTurn(deathTurn, DEFAULT_CORPSE_FIELD_TURNS),
+      deadExpireTurn:resolveV39DeadlineTurn(deathTurn, resolveV39CorpseLifetimeTurns(unit)),
       deathPosition:{ x:integer(unit?.x), y:integer(unit?.y) },
       deathCause:text(skillRow?.名前),
       deathTurn
@@ -569,6 +571,7 @@ function resolveRevivalTarget(player, target, revivalSpec) {
       && integer(candidate?.y) === integer(target?.y)
   );
   if (!unit) return { ok:false, reason:"対象位置に死亡した味方がいません" };
+  if(!canV39UnitLeaveOrganicCorpse(unit))return {ok:false,reason:'アンデッドの残骸は通常の蘇生対象にできません'};
   if(unit.soulCollected)return {ok:false,reason:'魂が回収された死体は蘇生できません'};
   const levelBefore = Math.max(1, integer(unit?.level, integer(unit?.Lv, 1)));
   const levelAfter = levelBefore - revivalSpec.levelLoss;
@@ -1173,7 +1176,7 @@ function performAttack(target, session = attackSession, options = {}) {
     return {
       state:"死亡",
       diedAtTurn:deathTurn,
-      deadExpireTurn:resolveV39DeadlineTurn(deathTurn, DEFAULT_CORPSE_FIELD_TURNS),
+      deadExpireTurn:resolveV39DeadlineTurn(deathTurn, resolveV39CorpseLifetimeTurns(unit)),
       deathPosition:{ x:integer(unit?.x), y:integer(unit?.y) },
       deathCause:text(session.skillRow?.名前),
       deathTurn
@@ -1247,7 +1250,7 @@ function performAttack(target, session = attackSession, options = {}) {
         const guardTarget = supportSkill ? supportTarget : own;
         const maxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || unit?.hp));
         const hp = supportTarget && healing > 0
-          ? Math.min(maxHp, number(unit?.hp, unit?.currentHp) + healing)
+          ? Math.min(maxHp, number(unit?.hp, unit?.currentHp) + Math.floor(healing*v39HazardRecoveryMultiplier(window.__v39FieldRuntime?.mapData,unit,state.timeline.turnNumber)))
           : number(unit?.hp, unit?.currentHp);
         if (!own && !supportTarget && !guardTarget) return unit;
         const ap = own && !options.apPaid ? Math.max(0, currentAp(unit) - apCost) : currentAp(unit);
@@ -1451,7 +1454,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       ...(directTarget ? { lastStealthBreakTurn:stealthBreakTurn, lastStealthBreakReason:"direct-target" } : {}),
       ...(newlyDead ? {
         diedAtTurn:deathTurn,
-        deadExpireTurn:resolveV39DeadlineTurn(deathTurn, DEFAULT_CORPSE_FIELD_TURNS),
+        deadExpireTurn:resolveV39DeadlineTurn(deathTurn, resolveV39CorpseLifetimeTurns(unit)),
         deathPosition:{ x:integer(unit?.x), y:integer(unit?.y) },
         deathCause:text(skillRow?.名前),
         deathTurn

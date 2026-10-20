@@ -1,4 +1,5 @@
 import {resolveV39DisasterRule} from './v39-disaster-rules.js';
+import {getV39HazardRule,isV39HazardFlightAvoided} from './v39-hazard-zones.js';
 import {computeAttackDamage,applyV39GuardToDamage} from './v39-combat-engine.js';
 
 export function resolveV39DisasterDamage(event,mode='stationary') {
@@ -56,7 +57,7 @@ export function applyV39DisasterMovementDamage(unit,path,state,turn=state?.timel
     if(point.x===current.x&&point.y===current.y)continue;
     current={...current,x:point.x,y:point.y,position:[point.x,point.y]};visited.push(point);
     const key=`${point.x},${point.y}`;
-    const specs=events.filter(event=>event.tileKeys?.includes(key)).map(event=>resolveV39DisasterDamage(event,'movement'));
+    const specs=events.filter(event=>event.tileKeys?.includes(key)&&!isV39HazardFlightAvoided(current,getV39HazardRule(event.disasterId))).map(event=>resolveV39DisasterDamage(event,'movement'));
     const result=applyV39DisasterDamage(current,specs,turn,'災害通過');current=result.unit;
     if(result.entry)entries.push(result.entry);
   }

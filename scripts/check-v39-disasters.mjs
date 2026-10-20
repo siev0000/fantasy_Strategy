@@ -14,6 +14,7 @@ try{
     await page.evaluate(()=>window.activateV39FooterTab('test'));
     await page.locator('[data-test-section="expedition"]').evaluate(n=>n.open=true);
     await page.locator('[data-test-action="disaster-test-start"]').click();
+    await page.locator('[data-test-action="disaster-fixed-start"]').click();
     await page.waitForFunction(count=>window.inspectV39NaturalEvents?.().activeDisasters.length===count,fixture.events.length+1);
     await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list
       .find(c=>c.name==='v39-disaster-icon-overlay')?.list.some(c=>c.type==='Image'));

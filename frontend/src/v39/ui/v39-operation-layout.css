@@ -11,6 +11,8 @@
 #footTile.land-panel{align-content:start;grid-auto-rows:max-content;overflow:auto;min-height:0;height:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 #footTile .land-item{min-width:0}
 #footTile .land-item b{overflow-wrap:anywhere}
+#footTile .land-item:has(#v39-land-environment-effects){grid-column:1/-1;border-color:#557983}
+#footTile #v39-land-environment-effects{white-space:normal;line-height:1.35}
 #footTile .v39-land-shortcuts{grid-column:1/-1;display:flex;align-items:center;gap:5px;position:sticky;top:0;background:#101c21;z-index:2;flex-wrap:wrap;padding:4px 0}
 #footTile .v39-land-shortcuts .v39-footer-shortcut{min-width:0;flex:0 0 auto}
 #footTile #v39-land-settlement-convert-status{flex:1 0 100%;min-width:0;white-space:normal;color:#9fb0b4;font-size:var(--font-secondary)}

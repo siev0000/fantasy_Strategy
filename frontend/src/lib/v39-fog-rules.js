@@ -1,4 +1,5 @@
 import { V39_FOG_BALANCE } from "./v39-gameplay-balance.js";
+import {getV39ActiveHazardsAt,getV39HazardRule} from './v39-hazard-zones.js';
 import { v39HexRay } from "./v39-combat-ray.js";
 import { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
 import { parseV39TurnCount } from "./v39-turn-timing.js";
@@ -28,10 +29,17 @@ export function clearV39FogByWind(mapData,area,skill) {
   const systems=Array.isArray(skill?.系統)?skill.系統:String(skill?.系統||"").split(/[\s,、/|]+/);
   if(!systems.includes("風") || !(Number(skill?.炸裂)>=V39_FOG_BALANCE.windClearSplash)) return 0;
   let count=0;
+  const turn=mapData.hazardTurn||1;
   for(const [key,scale] of area) {
     if(!(scale>0)) continue;
     const [x,y]=key.split(",").map(Number);
     let removed=false;
+    for(const zone of mapData.hazardZones||[]){
+      const effect=getV39HazardRule(zone.disasterId)?.危険地帯効果;
+      if(zone.tileKeys.includes(key)&&effect?.windSuppressTurns>0){
+        zone.suppressedUntilByTile||={};zone.suppressedUntilByTile[key]=turn+effect.windSuppressTurns;removed=true;
+      }
+    }
     if(mapData?.fogMap?.[y]?.[x]) {mapData.fogMap[y][x]=null;removed=true;}
     // 地形変換の死の霧は特殊レイヤーだけ外し、基本地形を壊さない。
     if(V39_FOG_BALANCE.terrainNames.includes(mapData?.specialMap?.[y]?.[x])) {
@@ -100,7 +108,8 @@ export function advanceV39CorpseFog(mapData,state,turn,random=Math.random) {
   return changed;
 }
 export function isV39FogTile(mapData,x,y) {
-  return !!mapData?.fogMap?.[y]?.[x] || V39_FOG_BALANCE.terrainNames.includes(resolveV39TerrainNameAt(mapData,x,y));
+  return !!mapData?.fogMap?.[y]?.[x] || V39_FOG_BALANCE.terrainNames.includes(resolveV39TerrainNameAt(mapData,x,y))
+    ||getV39ActiveHazardsAt(mapData,x,y,mapData?.hazardTurn||1).some(({rule})=>rule.危険地帯効果?.fog);
 }
 export function placeV39SkillFog(mapData,area,skill,turn) {
   clearV39FogByWind(mapData,area,skill);

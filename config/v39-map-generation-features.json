@@ -1,0 +1,4 @@
+{
+  "mountainRivers":{"minimumClusterSize":7,"sourceAttempts":12},
+  "wasteland":{"minimumRegionSize":7,"maximumRegionSize":28,"eligibleRatio":0.14,"minimumCoreNeighbors":4,"regionGap":3}
+}

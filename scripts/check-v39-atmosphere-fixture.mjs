@@ -11,6 +11,7 @@ try{
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
     await page.waitForFunction(()=>typeof window.startV39DisasterTest==='function');
     await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39DisasterTest();await window.waitForV39MapRenderSettled();});
+    assert.equal(await page.locator('#v39-test-atmosphere-sample option').count(),fixture.atmosphere.samples.length);
     await page.locator('[data-test-action="disaster-atmosphere-start"]').click();
     await page.waitForFunction(()=>document.querySelector('#v39-test-atmosphere-sample')&&window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.getByName('v39-atmosphere-fog-layer')?.getData('atmosphere')?.ready);
     assert.equal(await page.locator('#v39-test-atmosphere-sample option').count(),fixture.atmosphere.samples.length);

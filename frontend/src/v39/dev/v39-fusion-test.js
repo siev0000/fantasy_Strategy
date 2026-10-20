@@ -27,8 +27,14 @@ window.startV39FusionTest=()=>{
   for(const key of [fixture.storageFacility.tileKey,fixture.corpseStorageFacility.tileKey,'3,4','2,4'])occupied.add(key);
   occupied.add(`${actor.x},${actor.y}`);
   const makeUnit=row=>{
-    const {id,race,level,x,y}=row,frame=resolveMonsterSheetArtwork({race,className:race})?.sheetFrame;
-    return {...buildV39UnitEntity({id,name:`素材${race}${row.copy>1?row.copy:''}`,race,className:race,level,x,y,isNamed:false,unitType:'通常ユニット'}),worldId:'surface',testOnly:true,fusionTestMaterial:true,
+    const {id,level,x,y}=row,race=fixture.attributeMaterialSpecies?.[row.race]||row.race;
+    let unit=buildV39UnitEntity({id,name:`素材${race}${race!==row.race?`（${row.race}）`:''}${row.copy>1?row.copy:''}`,race,className:race,level,x,y,isNamed:false,unitType:'通常ユニット'});
+    if(race!==row.race){
+      unit=applyV39DerivedCharacterData({...unit,strongAnimalClassName:row.race,strongAnimalClassLevel:Math.min(level-1,fixture.attributeMaterialLevel)});
+      unit={...unit,hp:unit.maxHp,currentHp:unit.maxHp};
+    }
+    const frame=resolveMonsterSheetArtwork(unit)?.sheetFrame;
+    return {...unit,worldId:'surface',testOnly:true,fusionTestMaterial:true,fusionTestRequirementName:row.race,
       ...(row.imageFile?{画像ファイル:row.imageFile,画像番号:row.imageIndex}:frame?{画像ファイル:frame.fileName,画像番号:frame.slotNumber}:{})};
   };
   const units=fixture.fixedMaterials.map(makeUnit);for(const unit of units)occupied.add(`${unit.x},${unit.y}`);
@@ -45,7 +51,7 @@ window.startV39FusionTest=()=>{
   }
   for(const [race,count] of counts){
     if(!classes.has(race)){skippedSpecies.push(race);continue;}
-    const existing=units.filter(u=>u.race===race).length;
+    const existing=units.filter(u=>u.fusionTestRequirementName===race).length;
     for(let copy=existing+1;copy<=count;copy++){
       const unit=makeUnit({id:`fusion-material-${race}-${copy}`,race,level:fixture.defaultLevel,x:storageX,y:storageY,copy});
       if(!unit.derivedCharacter?.ok)throw new Error(`合体テスト素材を生成できません: ${race}`);

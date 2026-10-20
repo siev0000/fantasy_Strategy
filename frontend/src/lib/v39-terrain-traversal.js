@@ -1,4 +1,5 @@
 import { getGameDataRows, normalizeGameDataReference, readGameDataNumber } from "./game-data-registry.js";
+import {v39HazardMovementMultiplier} from './v39-hazard-zones.js';
 import { v39WallStepHeight } from "./v39-defense-rules.js";
 import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE, V39_FLIGHT_BALANCE } from "./v39-gameplay-balance.js";
 
@@ -106,7 +107,7 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
     * V39_FLIGHT_BALANCE.climbPenaltyPointsPerHeight;
   const terrain = resolveV39TerrainMoveCost(unit, resolveV39TileTerrainName(mapData, toXValue, toYValue), heightPenaltyPoints);
   const cargoSpeed=Number.isFinite(Number(unit?.cargoSpeedMultiplier))?Math.max(0,Math.min(1,Number(unit.cargoSpeedMultiplier))):1;
-  return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))/cargoSpeed));
+  return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * v39HazardMovementMultiplier(mapData,unit,toXValue,toYValue) * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))/cargoSpeed));
 }
 
 export function resolveV39TerrainMoveCost(unit, terrainName, additionalPenaltyPoints = 0) {

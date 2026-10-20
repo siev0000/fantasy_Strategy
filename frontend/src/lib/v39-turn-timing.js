@@ -1,3 +1,5 @@
+import {V39_CORPSE_LIFETIME_BALANCE} from './v39-gameplay-balance.js';
+
 export const V39_TURN_PHASE = Object.freeze({
   PLAYER: "player",
   ENEMY: "enemy",
@@ -5,7 +7,7 @@ export const V39_TURN_PHASE = Object.freeze({
 });
 
 export const DEFAULT_MAGIC_CAST_TURNS = 1;
-export const DEFAULT_CORPSE_FIELD_TURNS = 30;
+export const DEFAULT_CORPSE_FIELD_TURNS = V39_CORPSE_LIFETIME_BALANCE.organicTurns;
 
 const finiteNumber = (value, fallback = 0) => {
   const parsed = Number(value);

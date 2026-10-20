@@ -1,4 +1,5 @@
 import { classData, enemySpawnData, getGameDataRows } from "../../lib/game-data-registry.js";
+import {parseV39SpawnTerrains} from '../../lib/v39-spawn-terrain-list.js';
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/v39-nest-rules.js";
@@ -138,22 +139,25 @@ function validDefinition(row) {
   // 種族未設定の行は制作途中として扱い、敵出現候補には含めない。
   if (!race) return null;
   const className = text(row?.サブクラス, race);
-  const terrain = text(row?.出現地形);
+  const terrains=parseV39SpawnTerrains(row?.出現地形);
+  const terrain=terrains.join('/');
   const minLevel = integer(row?.Lv_Min, 0);
   const maxLevel = integer(row?.Lv_Max, 0);
   const memberCount=resolveV39EnemyMemberCount(row);
   if(memberCount===null)return null;
   if (!definitionId || !name || !terrain || minLevel <= 0 || maxLevel < minLevel) return null;
   if (!classNames.has(race) || !classNames.has(className)) return null;
-  return { row, definitionId, name, race, className, terrain, minLevel, maxLevel, memberCount };
+  return { row, definitionId, name, race, className, terrain, terrains, minLevel, maxLevel, memberCount };
 }
 
 const definitionsByTerrain = new Map();
 for (const row of enemySpawnData) {
   const definition = validDefinition(row);
   if (!definition) continue;
-  if (!definitionsByTerrain.has(definition.terrain)) definitionsByTerrain.set(definition.terrain, []);
-  definitionsByTerrain.get(definition.terrain).push(definition);
+  for(const terrain of definition.terrains){
+    if (!definitionsByTerrain.has(terrain)) definitionsByTerrain.set(terrain, []);
+    definitionsByTerrain.get(terrain).push({...definition,terrain});
+  }
 }
 
 // イベント敵も、通常敵と同じクラス・出現定義の検証結果を使う。
@@ -175,8 +179,12 @@ function tileTerrainKeys(data, x, y) {
 
 function definitionsForTile(data, x, y) {
   const rows = [];
+  const seen=new Set();
   for (const terrain of tileTerrainKeys(data, x, y)) {
-    rows.push(...(definitionsByTerrain.get(terrain) || []));
+    for(const definition of definitionsByTerrain.get(terrain)||[]){
+      if(seen.has(definition.definitionId))continue;
+      seen.add(definition.definitionId);rows.push(definition);
+    }
   }
   return rows;
 }

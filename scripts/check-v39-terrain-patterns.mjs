@@ -28,9 +28,10 @@ try{
       const mountainIcons=icons.list.filter(child=>child.getData('terrain')==='山岳'||child.getData('terrain')==='火山').length;
       const landmarks=icons.list.filter(child=>['洞窟','遺跡'].includes(child.getData('terrain'))).length;
       const savedCount=scene.v39TerrainPatterns.tileCount;
-      scene.v39TerrainPatterns.tileCount=0;window.renderV39TerrainIcons();
+      const savedTerrainCounts=scene.v39TerrainPatterns.terrainCounts;
+      scene.v39TerrainPatterns.tileCount=0;scene.v39TerrainPatterns.terrainCounts={};window.renderV39TerrainIcons();
       const fallbackMarks=scene.children.list.find(child=>child.name==='v39-terrain-icon-overlay').list.filter(child=>child.getData('terrain')==='砂漠').length;
-      scene.v39TerrainPatterns.tileCount=savedCount;window.renderV39TerrainIcons();
+      scene.v39TerrainPatterns.tileCount=savedCount;scene.v39TerrainPatterns.terrainCounts=savedTerrainCounts;window.renderV39TerrainIcons();
       const state=scene.v39TerrainPatterns,keys=state.chunks.map(c=>c.key);
       const corners=state.chunks[0].texture.context.getImageData(0,0,1,1).data[3];
       const source=scene.textures.get('v39-terrain-pattern-source').getSourceImage();

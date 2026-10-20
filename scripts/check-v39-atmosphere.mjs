@@ -9,7 +9,7 @@ try{
     page.on('pageerror',e=>errors.push(String(e.stack)));page.on('dialog',d=>d.accept());
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
     await page.waitForFunction(()=>typeof window.startV39DisasterTest==='function');
-    await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39DisasterTest();await window.waitForV39MapRenderSettled();window.setV39WeatherOverlayEnabled(false);});
+    await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39DisasterTest({atmosphere:false});await window.waitForV39MapRenderSettled();window.setV39WeatherOverlayEnabled(false);});
     await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0]?.children.getByName('v39-atmosphere-fog-layer')?.getData('atmosphere')?.ready);
     const initial=await page.evaluate(()=>{
       const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0],layer=scene.children.getByName('v39-atmosphere-fog-layer');

@@ -1,9 +1,12 @@
 import { generateIsland as generateRealisticIsland } from "./realistic-island.js";
+import {generateV39HazardZones} from './v39-hazard-zones.js';
 import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
 import { getHexDistance, getHexNeighborCoords as getSharedHexNeighborCoords } from "./hex-grid.js";
 import { getGameDataRows } from "./game-data-registry.js";
 import {normalizeV39MapScope,normalizeV39ScopePattern,v39ClimateForestScale,applyV39ClimateBiomes} from './v39-map-scope.js';
 import {createV39ClimateProfile} from './v39-weather.js';
+import generationFeatures from '../../../config/v39-map-generation-features.json';
+import {generateV39WastelandRegions} from './v39-wasteland-generation.js';
 
 function jsonNumber(row, key, fallback) {
   const value = Number(row?.[key]);
@@ -3213,47 +3216,6 @@ function desertLatitudeWeight(y, h) {
   return 0.15 + (core * core) * 0.85;
 }
 
-function applyWastelandTransition(grid, reliefMap, w, h) {
-  const toWasteland = [];
-  for (let y = 0; y < h; y += 1) {
-    for (let x = 0; x < w; x += 1) {
-      if (grid[y][x] !== "平地") continue;
-      const relief = reliefMap?.[y]?.[x];
-      if (relief !== "平地" && relief !== "丘陵") continue;
-      const desertNear = countAround(grid, x, y, "砂漠");
-      if (desertNear <= 0) continue;
-      const forestNear = countAround(grid, x, y, "森");
-      const seaNear = countAround(grid, x, y, "海");
-      const lakeNear = countAround(grid, x, y, "湖");
-      const riverNear = countAround(grid, x, y, "河川");
-      const dryness = desertLatitudeWeight(y, h);
-      const aridScore = (desertNear * 1.35)
-        + (dryness * 1.4)
-        - (forestNear * 1.15)
-        - (lakeNear * 0.9)
-        - (riverNear * 0.45)
-        - (seaNear * 0.35);
-      if (aridScore >= 2.05 || (desertNear >= 2 && forestNear === 0 && dryness >= 0.4)) {
-        toWasteland.push({ x, y });
-      }
-    }
-  }
-  for (const p of toWasteland) {
-    grid[p.y][p.x] = "荒野";
-  }
-  for (let y = 0; y < h; y += 1) {
-    for (let x = 0; x < w; x += 1) {
-      if (grid[y][x] !== "荒野") continue;
-      const desertNear = countAround(grid, x, y, "砂漠");
-      const forestNear = countAround(grid, x, y, "森");
-      if (forestNear >= 2 && desertNear <= 1) {
-        grid[y][x] = "平地";
-      }
-    }
-  }
-  return toWasteland.length;
-}
-
 function placeCentralOasis(grid, w, h) {
   const deserts = [];
   for (let y = 1; y < h - 1; y += 1) {
@@ -4300,6 +4262,7 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap, islan
   };
 
   const listMountainCenters = component => {
+    if(component.mountainClusters)return component.mountainClusters;
     const componentKeySet = new Set(component.cells.map(c => keyOf(c.x, c.y)));
     const visited = new Set();
     const centers = [];
@@ -4335,9 +4298,9 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap, islan
           center = c;
         }
       }
-      centers.push(center);
+      centers.push({...center,cells:cluster,size:cluster.length});
     }
-    return centers;
+    component.mountainClusters=centers;return centers;
   };
 
   const buildSourceCandidates = component => {
@@ -4981,6 +4944,67 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap, islan
   };
   const prunedCornerSpikeCount = pruneSingleSegmentCornerSpikes();
 
+  // Ensure each substantial mountain mass has a source, independently of the island river quota.
+  const mountainSources=[];
+  const outletForSource=sourceKey=>{
+    const adjacency=new Map();
+    for(const raw of [...edgeSet,...waterLinkSet]){
+      const [a,b]=raw.split('|');
+      if(!adjacency.has(a))adjacency.set(a,[]);if(!adjacency.has(b))adjacency.set(b,[]);
+      adjacency.get(a).push(b);adjacency.get(b).push(a);
+    }
+    const queue=[sourceKey],seen=new Set(queue);
+    for(let i=0;i<queue.length;i++){
+      if(isTileKeyWater(queue[i]))return queue[i];
+      for(const next of adjacency.get(queue[i])||[])if(!seen.has(next)){seen.add(next);queue.push(next);}
+    }
+    return null;
+  };
+  const mountainOutletPath=source=>{
+    const queue=[{...source,key:keyOf(source.x,source.y),level:getLevel(source.x,source.y)}],parents=new Map([[queue[0].key,null]]);
+    for(let i=0;i<queue.length;i++){
+      const current=queue[i];
+      const neighbors=getHexNeighborCoords(w,h,current.x,current.y).sort((a,b)=>getLevel(a.x,a.y)-getLevel(b.x,b.y));
+      const mouth=neighbors.find(n=>isWaterTerrain(grid[n.y][n.x])&&getLevel(n.x,n.y)<=current.level);
+      if(mouth){
+        const path=[];let node=current;
+        while(node){path.push(node);node=parents.get(node.key);}path.reverse();
+        return {ok:true,path,mouth};
+      }
+      for(const next of neighbors){
+        const key=keyOf(next.x,next.y),level=getLevel(next.x,next.y);
+        if(parents.has(key)||isWaterTerrain(grid[next.y][next.x])||level>current.level)continue;
+        parents.set(key,current);queue.push({...next,key,level});
+      }
+    }
+    return {ok:false};
+  };
+  for(const component of components)for(const cluster of listMountainCenters(component)){
+    if(cluster.size<generationFeatures.mountainRivers.minimumClusterSize)continue;
+    const cells=[...cluster.cells].sort((a,b)=>getLevel(b.x,b.y)-getLevel(a.x,a.y));
+    const existing=cells.find(cell=>sourceSet.has(keyOf(cell.x,cell.y))&&outletForSource(keyOf(cell.x,cell.y)));
+    if(existing){mountainSources.push({size:cluster.size,sourceKey:keyOf(existing.x,existing.y),added:false,connected:true});continue;}
+    let route=null;
+    for(const source of cells.slice(0,generationFeatures.mountainRivers.sourceAttempts)){
+      const candidate=mountainOutletPath(source);if(candidate.ok){route=candidate;break;}
+    }
+    // Enclosed basins use the same water-distance breach policy as existing major-river fallback.
+    if(!route){
+      const source=cells[0],path=[],seen=new Set();let current=source;
+      while(current){
+        const key=keyOf(current.x,current.y);if(seen.has(key))break;seen.add(key);
+        path.push({...current,key,level:getLevel(current.x,current.y)});
+        const neighbors=getHexNeighborCoords(w,h,current.x,current.y);
+        const mouth=neighbors.find(n=>isWaterTerrain(grid[n.y][n.x]));
+        if(mouth){route={ok:true,path,mouth,basinFallback:true};break;}
+        current=neighbors.filter(n=>waterDistanceMap[n.y][n.x]<waterDistanceMap[current.y][current.x])
+          .sort((a,b)=>getLevel(a.x,a.y)-getLevel(b.x,b.y))[0];
+      }
+    }
+    if(route)commitPath(route,'major');
+    mountainSources.push({size:cluster.size,sourceKey:route?.path[0].key||null,added:!!route,connected:!!route?.mouth,basinFallback:route?.basinFallback===true});
+  }
+
   const meshCenterSet = detectMeshCenterTiles();
   if (typeof console !== "undefined" && typeof console.log === "function") {
     const majorRiverCount = majorMouthCoords.length;
@@ -5013,6 +5037,7 @@ function generateRivers(grid, w, h, totalTiles, heightMap, heightLevelMap, islan
     cornerWaterLinkSet,
     meshCenterSet,
     largeRiverSet: majorRiverSet,
+    mountainSources,
     riverTouchSet: buildRiverTouchSet({ riverSet, edgeSet, waterLinkSet, meshCenterSet, cornerEdgeSet, cornerWaterLinkSet }, w, h)
   };
 }
@@ -5192,7 +5217,6 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
       );
     }
   }
-  applyWastelandTransition(grid, reliefMap, w, h);
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
@@ -5299,6 +5323,9 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
   const climateBiomes=climateProfile?applyV39ClimateBiomes({w,h,grid},climateProfile,
     new Set((victoryTerrainSupport?.regions||[]).flatMap(region=>region.tileKeys||[]))):null;
   if(climateBiomes)climateBandInfo=climateBiomes.info;
+  const wastelandProtectedKeys=new Set((victoryTerrainSupport?.regions||[]).flatMap(region=>region.tileKeys||[]));
+  for(const event of volcanoTurnResult.events||[])if(event.type==='lava-cooled')wastelandProtectedKeys.add(event.key);
+  const wastelandGeneration=generateV39WastelandRegions({grid,w,h},climateProfile,wastelandProtectedKeys);
   const coastData = buildCoastMap(grid, w, h, 高度レベルマップ);
   const { specialMap, specialCounts, caveSizeMap, caveScaleMap, caveCoastAnchorMap } = buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ);
   const { strongMonsterMap, strongMonsterInfoMap, strongMonsterStats } = buildStrongMonsterSpawnData(
@@ -5310,7 +5337,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     riverData,
     reliefMap
   );
-  return {
+  return generateV39HazardZones({
     w,
     h,
     totalTiles,
@@ -5319,6 +5346,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     shapeOnly: false,
     ...scope,
     climateProfile,
+    wastelandGeneration,
     riverData,
     heightMap: 高度マップ,
     heightLevelMap: 高度レベルマップ,
@@ -5358,7 +5386,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
       lastEventCount: 0
     },
     islandGenerationInfo
-  };
+  });
 }
 
 export {

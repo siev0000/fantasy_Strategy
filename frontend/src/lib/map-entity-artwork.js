@@ -169,6 +169,7 @@ export function resolveUnitArtwork(unit) {
   const className = text(unit?.className || unit?.class || unit?.クラス);
   return (unit?.画像ファイル || unit?.fusionGrowth || unit?.strongFusionResultName || unit?.fusionAppearanceClass || resolveUndeadArtworkReference(unit) ? resolveMonsterSheetArtwork(unit) : null)
     || resolveUnitSheetArtwork(unit)
+    || resolveMonsterSheetArtwork(unit)
     || resolveUnitImageArtwork(unit)
     || iconArtwork([
       unit?.iconName,

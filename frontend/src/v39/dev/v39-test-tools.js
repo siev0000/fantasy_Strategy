@@ -11,6 +11,7 @@ import { getV39NeutralVillageRelation, getV39RelationLabel } from "../../lib/v39
 import { V39_UNDEAD_SPAWN_BALANCE, V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import undeadTest from "../../../../config/v39-undead-test.json";
 import { isV39Undead } from "../../lib/v39-purification-rules.js";
+import {V39_ATMOSPHERE_OPACITY_KINDS,v39AtmosphereOpacityPercent} from '../../lib/v39-atmosphere-opacity.js';
 import {V39_WEATHER_TYPES,resolveV39DisasterWeather} from '../../lib/v39-weather.js';
 import {resolveV39DisasterRule} from '../../lib/v39-disaster-rules.js';
 import disasterTest from '../../../../config/v39-disaster-test.json';
@@ -33,6 +34,7 @@ let selectedDisasterId = "";
 let selectedAtmosphereSample = 0;
 let selectedWeatherType = '晴れ';
 let selectedTerrainSample = 0;
+let selectedTerrainAtmosphereKind='fog';
 let selectedTile = null;
 const collapsedSectionKeys = new Set();
 const TEST_TOOL_TABS = [
@@ -288,6 +290,7 @@ function forceDisasterAtSelectedTile() {
   const { tile } = context();
   if (!selectedTileKey(tile)) return setStatus("災害を発生させるマスを選択してください");
   if (!selectedDisasterId) return setStatus("災害種別を選択してください");
+  if(selectedDisasterId.startsWith('危険地帯:'))return setStatus('常設の危険地帯は「危険地帯6種を確認」で配置してください');
   const result = window.forceV39Disaster?.(selectedDisasterId, { x:tile.x, y:tile.y });
   if (!result?.ok) return setStatus("災害を発生できません: " + text(result?.reason, "処理未接続"));
   setStatus(`${result.disasters?.[0]?.name || "災害"}を発生しました`);
@@ -612,21 +615,26 @@ function undeadTestStatusHtml(state) {
   }).join("");
 }
 function terrainTestHtml() {
-  const samples=window.__v39FieldRuntime?.mapData?.terrainTestSamples;
-  if(!samples)return '';
+  const map=window.__v39FieldRuntime?.mapData;
+  if(!map?.terrainTestSamples)return '';
+  const samples=[...map.terrainTestSamples,...(map.terrainAtmosphereSamples||[])];
   const sample=samples[selectedTerrainSample]||samples[0];
-  return `<p>地形一覧 ${samples.length}種類／各区画は左→右：高度0・3・6</p><div class="v39-test-form-row"><select id="v39-test-terrain-sample" aria-label="表示する地形">${samples.map(item=>`<option value="${item.index}"${item.index===sample.index?' selected':''}>${item.index+1}. ${escapeHtml(item.name)}</option>`).join('')}</select><button data-test-action="terrain-sample-focus">この地形へ</button><button data-test-action="terrain-overview">全体</button></div><p>${escapeHtml(sample.mode)}。通常の拡大・縮小、ドラッグでも比較できます。</p>`;
+  const opacity=v39AtmosphereOpacityPercent(selectedTerrainAtmosphereKind,window.getV39DisplaySettings?.());
+  return `<p>地形${map.terrainTestSamples.length}種類＋霧比較${map.terrainAtmosphereSamples?.length||0}区画／左→右：高度0・3・6</p><div class="v39-test-form-row"><select id="v39-test-terrain-sample" aria-label="表示する地形">${samples.map(item=>`<option value="${item.index}"${item.index===sample.index?' selected':''}>${item.index+1}. ${escapeHtml(item.name)}</option>`).join('')}</select><button data-test-action="terrain-sample-focus">この地形へ</button><button data-test-action="terrain-overview">全体</button></div><p>${escapeHtml(sample.mode)}。通常の拡大・縮小、ドラッグでも比較できます。</p>
+    <label class="v39-test-form-row">霧・環境の濃さ<select id="v39-test-atmosphere-kind" aria-label="濃さを調整する種類">${V39_ATMOSPHERE_OPACITY_KINDS.map(kind=>`<option value="${kind.id}"${kind.id===selectedTerrainAtmosphereKind?' selected':''}>${escapeHtml(kind.name)}</option>`).join('')}</select></label>
+    <div class="v39-test-form-row"><input id="v39-test-atmosphere-opacity" aria-label="霧の濃さ" type="range" min="0" max="100" step="1" value="${opacity}" style="min-width:60px;flex:1"><input id="v39-test-atmosphere-opacity-number" aria-label="霧の濃さの数値" type="number" min="0" max="100" step="1" value="${opacity}" style="width:5em;min-width:0">%</div>
+    <div class="v39-test-button-row"><button data-test-action="terrain-atmosphere-all">この濃さを全種へ</button><button data-test-action="terrain-atmosphere-reset">濃さを初期値へ</button></div><p>0%=透明、100%=不透明。表示だけを変更し、通常プレイにも保存します。</p>`;
 }
 
 function fixedDisasterTestHtml(state){
   const map=window.__v39FieldRuntime?.mapData;
   if(!map?.disasterTestFixture||map.disasterNaturalTestFixture)return '';
-  const rows=[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}];
+  const rows=map.hazardTestFixture?map.hazardZones.map(zone=>({...zone,id:zone.disasterId})):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}];
   const turn=state.timeline?.turnNumber||1,active=state.worldEnvironment?.activeDisasters||[];
   const comparison=`<div data-atmosphere-test-info><button data-test-action="disaster-atmosphere-start">霧・重なり比較を開始</button>${map.disasterAtmosphereTestFixture?`<p>霧・対象災害は検証用⌛${disasterTest.atmosphere.durationTurns}。気象の色はOFFで比較。効果の内訳は土地画面へ。</p><div class="v39-test-form-row"><select id="v39-test-atmosphere-sample" aria-label="霧の比較地点">${disasterTest.atmosphere.samples.map((sample,index)=>`<option value="${index}"${index===selectedAtmosphereSample?' selected':''}>${escapeHtml(sample.name)} (${sample.x},${sample.y})</option>`).join('')}</select><button data-test-action="disaster-atmosphere-focus">比較地点へ</button></div>`:''}</div>`;
-  return `<div data-fixed-disaster-info><p>固定配置 ${rows.length}種類／${map.disasterAtmosphereTestFixture?'霧・対象災害の持続は比較用に延長':'継続・威力は通常データ（落雷の持続のみ検証用）'}</p><div class="v39-test-form-row"><select id="v39-test-disaster-fixture" aria-label="確認する固定災害">${rows.map(row=>{
+  return `<div data-fixed-disaster-info><p>固定配置 ${rows.length}種類／${map.hazardTestFixture?'常設危険地帯：通常・耐性100の観察者を配置':map.disasterAtmosphereTestFixture?'霧・対象災害の持続は比較用に延長':'継続・威力は通常データ（落雷の持続のみ検証用）'}</p><div class="v39-test-form-row"><select id="v39-test-disaster-fixture" aria-label="確認する固定災害">${rows.map(row=>{
     const event=active.find(item=>item.disasterId===row.id),remaining=event?Math.max(0,event.expiresAtTurn-turn+1):0;
-    return `<option value="${escapeHtml(row.id)}"${row.id===selectedDisasterId?' selected':''}>${escapeHtml(resolveV39DisasterRule(row.id).name)} ${remaining?`⌛${remaining}`:'終了'} (${row.x},${row.y})</option>`;
+    return `<option value="${escapeHtml(row.id)}"${row.id===selectedDisasterId?' selected':''}>${escapeHtml(resolveV39DisasterRule(row.id).name)} ${map.hazardTestFixture?'常設':remaining?`⌛${remaining}`:'終了'} (${row.x},${row.y})</option>`;
   }).join('')}</select><button data-test-action="disaster-fixture-focus">発生地点へ</button></div>${comparison}</div>`;
 }
 
@@ -637,7 +645,7 @@ function naturalDisasterTestHtml(state){
   const percent=n=>`${(n*100).toFixed(2)}%`;
   const detail=row=>`${statuses[row.status]||row.status}${row.chance!==undefined?`／実効${percent(row.chance)}・抽選値${percent(row.rolled)}`:''}${row.terrainCandidates!==undefined?`／条件適合${row.eligibleCandidates}/${row.terrainCandidates}マス`:''}${row.anchorKey?`／(${row.anchorKey})`:''}`;
   const history=(env.lastDisasterEvents||[]).filter(row=>row.disasterId&&!row.forced).slice(-4).reverse();
-  return `<div data-natural-disaster-info><p><b>自然発生の確認</b>：${window.__v39FieldRuntime?.mapData?.disasterNaturalTestFixture?'自然発生テスト（強制配置なし）':'通常確率で抽選'}</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-start">自然発生用に初期化</button>${window.__v39FieldRuntime?.mapData?.disasterTestFixture?'<button data-test-action="disaster-fixed-start">固定配置に戻す</button>':''}</div><p>発生率は通常のまま。初期化は条件を満たす天候・地形のみ用意し、災害は配置しません。火山噴火は別の専用処理です。</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-turns"${advancingTestTurns?" disabled":""}>10T経過</button><button data-test-action="turn-stop"${advancingTestTurns?"":" disabled"}>停止</button></div><p>${report?`T${report.turn}：抽選${attempts.filter(row=>row.rolled!==undefined).length}件／自然発生${attempts.filter(row=>row.status==='spawned').length}件`:'未抽選：次の通常ターンから結果を表示'}</p>${chosen?`<p data-disaster-trial-selected><b>${escapeHtml(chosen.name)}</b>：${escapeHtml(detail(chosen))}</p>`:''}${report?`<details><summary>全${attempts.length}件の抽選結果</summary>${attempts.map(row=>`<p>${escapeHtml(row.name)}：${escapeHtml(detail(row))}</p>`).join('')}</details>`:''}<p data-natural-disaster-history>${history.length?history.map(row=>`T${row.turn} ${escapeHtml(row.name)} (${row.x},${row.y})`).join('<br>'):'自然発生の履歴なし'}</p></div>`;
+  return `<div data-natural-disaster-info><p><b>自然発生の確認</b>：${window.__v39FieldRuntime?.mapData?.disasterNaturalTestFixture?'自然発生テスト（強制配置なし）':'通常確率で抽選'}</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-start">自然発生用に初期化</button><button data-test-action="hazard-test-start">危険地帯6種を確認</button>${window.__v39FieldRuntime?.mapData?.disasterTestFixture?'<button data-test-action="disaster-fixed-start">固定配置に戻す</button>':''}</div><p>発生率は通常のまま。初期化は条件を満たす天候・地形のみ用意し、災害は配置しません。火山噴火は別の専用処理です。</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-turns"${advancingTestTurns?" disabled":""}>10T経過</button><button data-test-action="turn-stop"${advancingTestTurns?"":" disabled"}>停止</button></div><p>${report?`T${report.turn}：抽選${attempts.filter(row=>row.rolled!==undefined).length}件／自然発生${attempts.filter(row=>row.status==='spawned').length}件`:'未抽選：次の通常ターンから結果を表示'}</p>${chosen?`<p data-disaster-trial-selected><b>${escapeHtml(chosen.name)}</b>：${escapeHtml(detail(chosen))}</p>`:''}${report?`<details><summary>全${attempts.length}件の抽選結果</summary>${attempts.map(row=>`<p>${escapeHtml(row.name)}：${escapeHtml(detail(row))}</p>`).join('')}</details>`:''}<p data-natural-disaster-history>${history.length?history.map(row=>`T${row.turn} ${escapeHtml(row.name)} (${row.x},${row.y})`).join('<br>'):'自然発生の履歴なし'}</p></div>`;
 }
 
 function weatherTestHtml(tile) {
@@ -767,6 +775,14 @@ function closePanel() {
 
 function handleAction(action) {
   if (!testModeEnabled()) return closePanel();
+  if(action==='terrain-atmosphere-reset'||action==='terrain-atmosphere-all'){
+    const opacity=number(document.getElementById('v39-test-atmosphere-opacity-number')?.value);
+    void window.setV39AtmosphereOpacity?.(action.endsWith('reset')?'reset':'all',opacity).then(()=>render());return;
+  }
+  if(action==='hazard-test-start'){
+    if(!advancingTestTurns&&window.confirm('現在のゲームを危険地帯6種の検証マップに置き換えます。開始しますか？'))window.startV39HazardTest?.();
+    return;
+  }
   if(action==='disaster-natural-start'||action==='disaster-fixed-start'||action==='disaster-atmosphere-start'){
     if(advancingTestTurns)return;
     if(window.confirm('現在のゲームを災害検証マップに置き換えます。開始しますか？')){
@@ -784,9 +800,9 @@ function handleAction(action) {
     const id=document.getElementById('v39-test-disaster-fixture')?.value||selectedDisasterId;
     const comparison=action==='disaster-atmosphere-focus';
     if(comparison&&!map.disasterAtmosphereTestFixture)return;
-    const sample=comparison?disasterTest.atmosphere.samples[selectedAtmosphereSample]:[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}].find(row=>row.id===id);
+    const sample=comparison?disasterTest.atmosphere.samples[selectedAtmosphereSample]:map.hazardTestFixture?map.hazardZones.find(zone=>zone.disasterId===id):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}].find(row=>row.id===id);
     const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];if(!sample||!scene)return;
-    if(!comparison)selectedDisasterId=sample.id;
+    if(!comparison)selectedDisasterId=sample.disasterId||sample.id;
     const c=HEX_TILE_CONFIG;
     scene.cameras.main.setZoom(Math.min(1.2,(scene.v39FitZoom||1)*6)).centerOn(sample.x*c.width+(sample.y%2?c.oddRowOffsetX:0)+c.width/2,sample.y*c.rowStep+c.height/2);
     scene.v39RequestedZoom=scene.cameras.main.zoom;scene.v39SelectedTile={x:sample.x,y:sample.y};
@@ -898,6 +914,7 @@ function install() {
       return;
     }
     if (!(event.target instanceof HTMLSelectElement)) return;
+    if(event.target.id==='v39-test-atmosphere-kind'){selectedTerrainAtmosphereKind=event.target.value;render();return;}
     if (event.target.id === "v39-test-enemy-id") selectedEnemyId = text(event.target.value);
     else if (event.target.id === "v39-test-skill-name") selectedTestSkillName = text(event.target.value);
     else if (event.target.id === "v39-test-atmosphere-sample") selectedAtmosphereSample = Number(event.target.value)||0;
@@ -907,7 +924,14 @@ function install() {
     else return;
     render();
   });
-  window.addEventListener("v39:display-settings-changed", () => {
+  panel.addEventListener('input',event=>{
+    if(!['v39-test-atmosphere-opacity','v39-test-atmosphere-opacity-number'].includes(event.target.id)||event.target.value==='')return;
+    const value=clamp(Math.round(number(event.target.value)),0,100);
+    for(const id of ['v39-test-atmosphere-opacity','v39-test-atmosphere-opacity-number']){const control=document.getElementById(id);if(control&&control!==event.target)control.value=String(value);}
+    void window.setV39AtmosphereOpacity?.(selectedTerrainAtmosphereKind,value);
+  });
+  window.addEventListener("v39:display-settings-changed", event => {
+    if(event.detail?.changedKeys?.every(key=>key==='atmosphereOpacityByKind'))return;
     render();
   });
   window.addEventListener("v39:footer-tab-changed", event => {

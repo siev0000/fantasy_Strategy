@@ -13,6 +13,7 @@ try{
     await page.locator('[data-test-section="expedition"]').evaluate(n=>n.open=true);
     assert.equal(await page.locator('[data-test-action="lightning-test-start"]').count(),0);
     await page.locator('[data-test-action="disaster-test-start"]').click();
+    await page.locator('[data-test-action="disaster-fixed-start"]').click();
     await page.waitForFunction(()=>window.getV39ActiveFactionState().units.filter(u=>u.id.startsWith('lightning-observer-')).length===7&&!window.isV39MapInputLocked());
     await page.evaluate(async(expectedCount)=>{
       const {HEX_TILE_CONFIG:c}=await import('/src/lib/phaser-map-panel-config.js');

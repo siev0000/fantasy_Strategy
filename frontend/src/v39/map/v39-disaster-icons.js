@@ -74,7 +74,7 @@ function collectMarkers(state) {
   const testMode=window.isV39TestMode?.()===true;
   for (const event of activeEvents(state)) {
     for (const key of event.tileKeys) {
-      if(isV39AtmosphereDisaster(event.disasterId)&&key!==(event.anchorKey||`${event.x},${event.y}`))continue;
+      if((event.persistentHazard||isV39AtmosphereDisaster(event.disasterId))&&key!==(event.anchorKey||`${event.x},${event.y}`))continue;
       const [x, y] = text(key).split(",").map(Number);
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       const visible=window.isV39TileInCurrentVision?.(x,y)===true;

@@ -7,6 +7,11 @@
     {"id":"death","name":"死の霧","fogAttribute":true},
     {"id":"miasma","name":"瘴気","disasterId":"災害:瘴気","color":"#A6BD48"},
     {"id":"heat","name":"熱波","disasterId":"災害:熱波","color":"#F49A52"},
-    {"id":"cold","name":"大寒波","disasterId":"災害:大寒波","color":"#83D9FA"}
+    {"id":"cold","name":"大寒波","disasterId":"災害:大寒波","color":"#83D9FA"},
+    {"id":"acid-zone","name":"酸の沼","disasterId":"危険地帯:酸の沼","color":"#A4C742"},
+    {"id":"poison-zone","name":"毒沼","disasterId":"危険地帯:毒沼","color":"#6C9A3A"},
+    {"id":"steam-zone","name":"噴気地帯","disasterId":"危険地帯:噴気地帯","color":"#CFB879"},
+    {"id":"cold-zone","name":"極寒地帯","disasterId":"危険地帯:極寒地帯","color":"#83D9FA"},
+    {"id":"miasma-zone","name":"瘴気地帯","disasterId":"危険地帯:瘴気地帯","color":"#A6BD48"}
   ]
 }

@@ -91,7 +91,9 @@ function placementCandidates() {
       .map(dy => getHexDistance(a, { x:b.x + dx, y:b.y + dy }))))
     : getHexDistance(a, b);
   const tiles = [];
+  const unsafe=new Set((data.hazardZones||[]).flatMap(zone=>zone.tileKeys));
   for (let y = 0; y < data.h; y += 1) for (let x = 0; x < data.w; x += 1) {
+    if(unsafe.has(`${x},${y}`)||getHexNeighborCoords(data.w,data.h,x,y,false).some(tile=>unsafe.has(tile.key)))continue;
     if (!unitCanStandAt(data, x, y)) continue;
     const height = Number(data.heightLevelMap?.[y]?.[x]) || 0;
     const tile = { x, y, height, terrain:data.grid[y][x], special:data.specialMap?.[y]?.[x] || "" };

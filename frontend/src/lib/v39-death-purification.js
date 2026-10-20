@@ -2,6 +2,7 @@ import {getGameDataRows} from './game-data-registry.js';
 import {getFactionSettlements,territorySettlementId} from './settlement-state.js';
 import {changeV39Purification} from './v39-purification-rules.js';
 import {V39_UNDEAD_SPAWN_BALANCE as balance} from './v39-gameplay-balance.js';
+import {canV39UnitLeaveOrganicCorpse} from './v39-corpse-types.js';
 
 const world=unit=>unit?.worldId||'surface';
 const dead=unit=>['死亡','死体'].includes(unit?.state)||Number(unit?.hp??unit?.currentHp)<=0;
@@ -12,7 +13,7 @@ function units(state,fields){
     ...(fields.includes('neutralVillages')?(state.neutralVillages||[]).flatMap(v=>v.defenseUnits||[]):[])];
 }
 export function findV39NewUnitDeaths(before,after,fields=['players','enemies','neutralVillages']){
-  const candidates=units(after,fields).filter(unit=>dead(unit)&&!unit.summon);
+  const candidates=units(after,fields).filter(unit=>dead(unit)&&canV39UnitLeaveOrganicCorpse(unit));
   if(!candidates.length)return [];
   const ids=new Set(candidates.map(u=>`${world(u)}:${u.id}`));
   const previous=new Map(units(before,fields).filter(u=>ids.has(`${world(u)}:${u.id}`)).map(u=>[`${world(u)}:${u.id}`,u]));
@@ -43,7 +44,7 @@ export function getV39DeathProtectionStatus(map,state,owner,id){
   return {capacity,used,remaining:Math.max(0,capacity-used)};
 }
 export function applyV39DeathPurification(map,state,deaths){
-  const applicable=deaths.filter(u=>world(u)===(state.activeWorldId||'surface')&&Number.isInteger(u.x)&&Number.isInteger(u.y)&&map?.grid?.[u.y]?.[u.x]);
+  const applicable=deaths.filter(u=>canV39UnitLeaveOrganicCorpse(u)&&world(u)===(state.activeWorldId||'surface')&&Number.isInteger(u.x)&&Number.isInteger(u.y)&&map?.grid?.[u.y]?.[u.x]);
   if(!applicable.length)return {map,changed:false,protectedCount:0,lossCount:0};
   const turn=state.timeline?.turnNumber||1,old=map.deathPurificationProtection;
   const next={...map,purificationByTile:{...map.purificationByTile},deathPurificationProtection:{turn,usedBySettlement:old?.turn===turn?{...old.usedBySettlement}:{}}};

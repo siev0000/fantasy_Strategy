@@ -9,7 +9,16 @@ try{
     page.on('pageerror',e=>errors.push(e.stack));
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
     await page.waitForFunction(()=>!!window.startV39ExpeditionTest);
-    await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39ExpeditionTest();window.activateV39FooterTab('squad');window.refreshV39SquadDerivedUI();});
+    await page.evaluate(async()=>{
+      window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39ExpeditionTest();
+      const faction=window.getV39ActiveFactionState(),members=new Set(['expedition-test-carrier','expedition-test-guard']);
+      window.updateV39ActiveFactionState({
+        units:faction.units.map(unit=>members.has(unit.id)?{...unit,squadId:'retention-second-squad'}:unit),
+        squads:[...faction.squads.map(squad=>({...squad,unitIds:squad.unitIds.filter(id=>!members.has(id))})),
+          {id:'retention-second-squad',label:'切替検証部隊',unitIds:[...members]}]
+      });
+      window.activateV39FooterTab('squad');window.refreshV39SquadDerivedUI();
+    });
     for(const tab of ['status','action']){
       await page.locator(`[data-squad-detail-tab="${tab}"]`).click();
       const cards=page.locator('#squadMemberList [data-v39-unit-id]');assert(await cards.count()>1);
@@ -39,7 +48,7 @@ try{
       assert(await members.count()>1);
       await members.nth(1).click();
       assert.equal(await page.locator('#characterModal [data-v39-character-detail-tab].active').getAttribute('data-v39-character-detail-tab'),tab);
-      await page.locator('#characterModal [data-v39-character-row]').nth(1).click();
+      await page.locator('#characterModal [data-v39-character-squad-select]').selectOption('retention-second-squad');
       assert.equal(await page.locator('#characterModal [data-v39-character-detail-tab].active').getAttribute('data-v39-character-detail-tab'),tab);
       await page.locator('[data-v39-character-tab="character"]').click();
       assert.equal(await page.locator('#characterModal [data-v39-character-detail-tab].active').getAttribute('data-v39-character-detail-tab'),tab);

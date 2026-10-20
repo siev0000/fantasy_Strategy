@@ -334,7 +334,7 @@ function renderMemberList() {
     const ap = apValues(unit);
     const defenses = defenseDisplay(unit);
     const icon = text(unit?.icon ?? unit?.glyph ?? unit?.symbol, "◆");
-    return renderV39UnitCard(unit, {id,selected,hp,ap,defenses,icon,name:unitName(unit,index),position:unitPosition(unit)});
+    return renderV39UnitCard(unit, {id,selected,hp,ap,defenses,icon,portrait:true,name:unitName(unit,index),position:unitPosition(unit)});
   }).join(""));
 }
 

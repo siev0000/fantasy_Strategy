@@ -20,7 +20,7 @@ try{
         transport:s.players[0].factionState.units.some(u=>u.transportAssignment||u.caveDuty),landmarks:Object.keys(s.victoryLandmarksByTile).length};
     });
     assert.deepEqual(initial.names,expected);assert(initial.heights.every(row=>row.join(',')==='0,3,6'));
-    assert.equal(initial.labels,expected.length);assert.equal(initial.enemies,0);assert(!initial.transport);assert(initial.landmarks>=3);
+    assert.equal(initial.labels,expected.length+4);assert.equal(initial.enemies,0);assert(!initial.transport);assert(initial.landmarks>=3);
     await page.locator('#v39-test-terrain-sample').selectOption(String(expected.indexOf('森')));
     await page.locator('[data-test-action="terrain-sample-focus"]').click();
     const selected=await page.evaluate(()=>{const r=window.__v39FieldRuntime;return r.game.scene.getScenes(true)[0].v39SelectedTile;});

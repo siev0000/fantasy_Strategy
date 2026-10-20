@@ -3,6 +3,7 @@ import {getHexDistance,getHexOffsetNeighbors} from '../../lib/hex-grid.js';
 import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
 import {createV39ClimateProfile,setV39WeatherAt} from '../../lib/v39-weather.js';
 import {resolveV39DisasterRule} from '../../lib/v39-disaster-rules.js';
+import {getV39HazardDefinitions,projectV39HazardEvents} from '../../lib/v39-hazard-zones.js';
 
 window.startV39DisasterTest=(options={})=>{
   const natural=options.natural===true;
@@ -10,6 +11,7 @@ window.startV39DisasterTest=(options={})=>{
   const result=window.startV39ExpeditionTest?.(false,{silentBanner:natural});
   if(!result?.ok)return result;
   const map=window.__v39FieldRuntime.mapData,state=window.getV39GameState({includeWorlds:false});
+  map.hazardZones=[];
   const player=state.players.find(p=>p.id===state.activePlayerId),f=player.factionState;
   const events=fixture.events;
   if(natural)for(let y=0;y<map.h;y++)for(let x=0;x<map.w;x++){
@@ -91,4 +93,34 @@ window.startV39DisasterTest=(options={})=>{
   window.activateV39FooterTab?.('test');
   window.dispatchEvent(new CustomEvent('v39:disaster-test-ready',{detail:{x:events[0].x,y:events[0].y}}));
   return {ok:true,natural,events:natural?[]:[...events.map(event=>({...event})),{id:'災害:落雷嵐',x,y}]};
+};
+
+window.startV39HazardTest=()=>{
+  const result=window.startV39ExpeditionTest?.(false,{silentBanner:true});if(!result?.ok)return result;
+  const map=window.__v39FieldRuntime.mapData,state=window.getV39GameState(),turn=state.timeline.turnNumber;
+  map.hazardTurn=turn;map.hazardZones=[];map.fogMap=[];map.disasterTestFixture=true;map.hazardTestFixture=true;
+  const units=[],points=[[4,5],[11,5],[18,5],[4,15],[11,15],[18,15]];
+  getV39HazardDefinitions().forEach((definition,index)=>{
+    const [x,y]=points[index],tileKeys=[];
+    for(let ty=0;ty<map.h;ty++)for(let tx=0;tx<map.w;tx++)if(getHexDistance({x,y},{x:tx,y:ty})<=1){
+      map.grid[ty][tx]=['沼地','湿地','平地','平地','雪原','平地'][index];map.heightLevelMap[ty][tx]=0;
+      map.specialMap[ty][tx]='';tileKeys.push(`${tx},${ty}`);
+    }
+    map.hazardZones.push({id:`hazard-test-${index}`,disasterId:definition.disasterId,name:definition.name,x,y,tileKeys,suppressedUntilByTile:{}});
+    for(const immune of [false,true]){
+      const id=`hazard-observer-${index}-${immune?'immune':'normal'}`;
+      const unit=buildV39UnitEntity({id,name:`${definition.name}${immune?'耐性100':'観察者'}`,race:'只人',className:'ファイター',level:1,x:x+(immune?1:0),y});
+      units.push({...unit,worldId:'surface',squadId:'solo',maxHp:300,hp:300,currentHp:300,
+        status:{...unit.status,HP:300,防御:0,精神:0,毒耐性:immune?100:0,炎耐性:immune?100:0,氷耐性:immune?100:0},
+        resistanceOverrides:{毒耐性:immune?100:0,炎耐性:immune?100:0,氷耐性:immune?100:0}});
+    }
+  });
+  const players=state.players.map(p=>p.id===state.activePlayerId?{...p,factionState:{...p.factionState,units,
+    squads:[{id:'solo',name:'単独',unitIds:units.map(u=>u.id)}],selectedSquadId:'solo',selectedUnitId:units[0].id}}:p);
+  window.updateV39FieldData({...map},{silent:true});
+  window.setV39GameState({players,enemies:[],enemySquads:[],enemyNests:[],neutralVillages:[],
+    worldEnvironment:{...state.worldEnvironment,activeDisasters:projectV39HazardEvents(map,turn),lastNaturalEventTurn:turn}},{reason:'hazard-test-start',trackUnitDeaths:false});
+  window.activateV39FooterTab?.('test');window.refreshV39MapEntities?.();window.renderV39DisasterIcons?.();
+  window.showV39TurnBanner?.('危険地帯6種：各地点に通常・耐性100の観察者。1T経過で継続被害、土地で環境効果を確認。');
+  return {ok:true,zones:map.hazardZones};
 };

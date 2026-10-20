@@ -1,4 +1,9 @@
 // 仕様未確定の調整値はここへ集約し、確定後に処理本体を変えず差し替える。
+export const V39_CORPSE_LIFETIME_BALANCE = Object.freeze({
+  organicTurns:10, // 通常の死体・地面の死体資源。
+  remainsTurns:5 // アンデッドの実体ある残骸。霊廟では残り期限を停止する。
+});
+
 export const V39_RECRUIT_TRAINING_BALANCE = Object.freeze({
   defaultInstructorFacilityName:"兵舎", // 暫定: 基礎職の教官を置く施設。上位職は徴兵施設を使う。
   trainingSlotsPerFacility:1, // 1施設で同時に訓練できるユニット数。
@@ -381,12 +386,12 @@ export const V39_VICTORY_GUARD_BALANCE = Object.freeze({
   minionLevelOffset:2
 });
 
-// 勝利対象土地の暫定勝利条件。守護ボス・勢力滅亡条件が確定するまではここだけで調整する。
+// 勝利対象土地の確保条件。地点数は通常生成数に合わせて調整する。
 export const V39_VICTORY_CONDITION_BALANCE = Object.freeze({
   // 通常生成数が1件のため、暫定では1地点の支配で勝利候補になる。
   requiredLandmarkCount:1,
-  // 支配を維持する必要ターン数。1なら支配を得たターンの判定で達成する。
-  requiredHoldTurns:1
+  // 取得ターンは0。妨害なしで+1、敵対者の侵入中は-1（下限0）。
+  requiredHoldTurns:5
 });
 
 export const V39_FOG_BALANCE = Object.freeze({
@@ -656,6 +661,7 @@ export const V39_CORPSE_EATING_BALANCE = Object.freeze({
 });
 
 export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
+  minimumPurification:-20, // 浄化値自体の下限。自然発生の判定閾値とは別。
   inheritedUndeadLevelCap:10, // 死体から取得するアンデッド職の初期Lv上限
   purificationThreshold:-5, // この値以下のマスだけ不浄イベント候補にする。
   deathPurificationLoss:1, // 生存から死亡へ変わった瞬間の減少量。

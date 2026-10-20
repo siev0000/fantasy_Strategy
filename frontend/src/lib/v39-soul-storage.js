@@ -1,6 +1,7 @@
 import {getV39FacilityStorageRule} from './v39-facility-storage.js';
 import {applyV39DerivedCharacterData} from '../v39/unit/v39-character-derived-rules.js';
 import {getHexDistance} from './hex-grid.js';
+import {canV39UnitLeaveOrganicCorpse} from './v39-corpse-types.js';
 
 const world=u=>u?.worldId||'surface';
 const dead=u=>u&&(u.state==='死亡'||Number(u.hp??u.currentHp)<=0);
@@ -19,7 +20,7 @@ export function inspectV39SoulCollection(state,playerId,target){
   const bodies=[...(state.players||[]).flatMap(p=>p.factionState?.units||[]),...(state.enemies||[]),
     ...(state.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])];
   const turn=state.timeline?.turnNumber||0;
-  const corpse=bodies.find(u=>dead(u)&&!u.soulCollected&&!u.summon&&!(u.combatProfile?.memberCount>1)
+  const corpse=bodies.find(u=>canV39UnitLeaveOrganicCorpse(u)&&dead(u)&&!u.soulCollected&&!u.summon&&!(u.combatProfile?.memberCount>1)
     &&world(u)===(state.activeWorldId||'surface')&&u.x===target.x&&u.y===target.y
     &&(!u.deadExpireTurn||u.deadExpireTurn>turn));
   if(!corpse)return {ok:false,reason:'回収可能な単体の死体がありません（回収済み・召喚体・軍隊は対象外）'};

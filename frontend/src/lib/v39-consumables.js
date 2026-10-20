@@ -1,4 +1,5 @@
 import defaults from "../../../config/v39-expedition-defaults.json";
+import {v39HazardRecoveryMultiplier} from './v39-hazard-zones.js';
 import {getGameDataRows} from "./game-data-registry.js";
 import {getFactionSettlementById,replaceFactionSettlement} from "./settlement-state.js";
 import {getHexDistance} from "./hex-grid.js";
@@ -154,7 +155,7 @@ export function useV39Consumable(state,playerId,unitId,name,map,target=null) {
     if(!map)return fail('マップがありません');
     nextMap.purificationByTile={...map.purificationByTile};changeV39Purification(nextMap,`${unit.x},${unit.y}`,balance.holyWaterPurification);
   }
-  const hp=Math.min(n(unit.maxHp),n(unit.hp ?? unit.currentHp)+n(item.即時回復)+(n(item.即時回復)>0?resolveV39DrugResearchLevel(player.factionState)*balance.drugHealingPerLevel:0));
+  const hp=Math.min(n(unit.maxHp),n(unit.hp ?? unit.currentHp)+Math.floor((n(item.即時回復)+(n(item.即時回復)>0?resolveV39DrugResearchLevel(player.factionState)*balance.drugHealingPerLevel:0))*v39HazardRecoveryMultiplier(map,unit,turn)));
   const changed={...unit,hp,currentHp:hp,ap:ap-n(item.AP消費),currentAp:ap-n(item.AP消費),lastActionTurn:turn,
     toolStockByType:{...unit.toolStockByType,[name]:n(unit.toolStockByType?.[name])-1},toolUsedTurnByName:{...unit.toolUsedTurnByName,[name]:turn}};
   if(n(item.毎ターン回復)>0)changed.toolRecovery={name,amount:n(item.毎ターン回復),remainingTurns:n(item.持続ターン),lastProcessedTurn:turn};

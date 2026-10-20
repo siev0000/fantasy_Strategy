@@ -631,6 +631,7 @@ function renderVisibilityLayers() {
     sortedSetSignature(explored)
   ].join(";");
   const renderSignature = [
+    JSON.stringify(window.getV39DisplaySettings?.().atmosphereOpacityByKind||{}),
     state.activeWorldId||'surface',data.isUnderground===true?1:0,
     JSON.stringify(activeV39AtmosphereDisasters(state)),v39AtmosphereArtworkVersion(scene),JSON.stringify(v39AtmospherePalette()),
     JSON.stringify(data.fogMap||[]),JSON.stringify(data.specialMap||[]),

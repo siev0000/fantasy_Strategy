@@ -1,5 +1,6 @@
 import templates from "../../../data/manual/洞窟テンプレート.json";
 import { getHexNeighborCoords } from "./hex-grid.js";
+import {generateV39HazardZones} from './v39-hazard-zones.js';
 import {ensureV39CaveAreas} from "./v39-cave-areas.js";
 import { V39_CAVE_BALANCE } from "./v39-gameplay-balance.js";
 import {resolveV39EnemyCombatProfile} from './v39-enemy-formation.js';
@@ -99,7 +100,7 @@ export function generateV39CaveMap({ seed = "cave", templateId = "random", entra
   const map={ id:`cave-${seed}-${template.id}`,seed:String(seed),templateId:template.id,templateName:template.名前,w,h,grid,entrances,corridors,
     rooms:template.部屋,roomOutlines:template.部屋輪郭||[],generationVersion:2,worldWrapEnabled:false,isUnderground:true };
   ensureV39CaveAreas(map);
-  return map;
+  return generateV39HazardZones(map,random);
 }
 
 export function populateV39CaveMonsters(map, definitions, createEnemy) {

@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { visibleV39CaveTerrainLabel } from "../../lib/v39-cave-entrance-rules.js";
 import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
-import { HEX_TILE_CONFIG, V39_FIELD_FOG_STYLE } from "../../lib/phaser-map-panel-config.js";
+import { HEX_TILE_CONFIG, V39_FIELD_FOG_STYLE, FIELD_TERRAIN_OVERLAY_STYLE } from "../../lib/phaser-map-panel-config.js";
 import { runWithSeededRandom } from "../../lib/seeded-random.js";
 import { cacheStaticGraphicsLayer } from "./v39-static-graphics-cache.js";
 import { installV39IdleRender } from "./v39-idle-render.js";
@@ -11,12 +11,11 @@ import { createV39VictoryLandmarkPlan } from "../../lib/v39-victory-landmarks.js
 import {ensureV39ClimateProfile} from '../../lib/v39-weather.js';
 import {normalizeV39MapScope,normalizeV39ScopePattern} from '../../lib/v39-map-scope.js';
 import {loadV39TerrainPatterns,drawV39TerrainPatterns,terrainHeightBrightness} from './v39-terrain-patterns.js';
+import {resolveV39RiverFlowDirections} from '../../lib/v39-river-flow.js';
+import {normalizeV39MapPurification} from '../../lib/v39-purification-rules.js';
 
 const DEFAULT_MAX_ZOOM_FACTOR = 10;
-const SNOW_RING_OUTER_INSET_RATIO = 0.06;
-const SNOW_RING_INNER_INSET_RATIO = 0.26;
-const SNOW_RING_COLOR = 0xf4f7fb;
-const SNOW_RING_ALPHA = 0.94;
+const {snow:SNOW_STYLE,river:RIVER_STYLE}=FIELD_TERRAIN_OVERLAY_STYLE;
 const terrainColorMap = new Map(
   (Array.isArray(terrainDefinitions) ? terrainDefinitions : []).map(row => [String(row?.key || ""), String(row?.color || "#607078")])
 );
@@ -93,6 +92,7 @@ function ensureBooleanGrid(data, key) {
 }
 
 function ensureSnowStateMaps(data) {
+  normalizeV39MapPurification(data);
   ensureBooleanGrid(data, "snowCoverMap");
   ensureBooleanGrid(data, "snowfallMap");
   return data;
@@ -246,9 +246,9 @@ function drawSnowCover(scene, data, graphics = scene.add.graphics().setDepth(1))
       if (data?.snowCoverMap?.[y]?.[x] !== true) continue;
       const points = hexPoints(x, y);
       const center = tileCenter(x, y);
-      const outer = insetHexPoints(points, center, SNOW_RING_OUTER_INSET_RATIO);
-      const inner = insetHexPoints(points, center, SNOW_RING_INNER_INSET_RATIO);
-      graphics.fillStyle(SNOW_RING_COLOR, SNOW_RING_ALPHA);
+      const outer = insetHexPoints(points, center, SNOW_STYLE.outerInset);
+      const inner = insetHexPoints(points, center, SNOW_STYLE.innerInset);
+      graphics.fillStyle(SNOW_STYLE.color, SNOW_STYLE.alpha);
       for (let side = 0; side < 6; side += 1) {
         const next = (side + 1) % 6;
         graphics.fillPoints([
@@ -282,23 +282,41 @@ function drawSnowfall(scene, data) {
   }
 }
 
-function drawRivers(scene, riverData) {
-  const g = scene.add.graphics().setDepth(3).setName("v39-river-layer");
-  g.lineStyle(3, 0x5aa9de, 0.95);
+function drawRivers(scene, riverData, g = scene.add.graphics().setDepth(3).setName("v39-river-layer")) {
   const edges = new Set([
     ...(riverData?.cornerEdgeSet instanceof Set ? riverData.cornerEdgeSet : []),
     ...(riverData?.cornerWaterLinkSet instanceof Set ? riverData.cornerWaterLinkSet : [])
   ]);
-  for (const raw of edges) {
-    const e = parseEdge(raw); if (e) g.lineBetween(e.a.x, e.a.y, e.b.x, e.b.y);
-  }
   const falls = riverData?.cornerWaterfallEdgeSet instanceof Set ? riverData.cornerWaterfallEdgeSet : new Set();
-  g.lineStyle(5, 0xd9f5ff, 1);
+  const signature=JSON.stringify([[...edges].sort(),[...(riverData?.cornerWaterLinkSet||[])].sort(),[...falls].sort()]);
+  if(g.getData('signature')===signature)return g;
+  g.clear().setData('signature',signature);
+  const segments=[...edges].map(parseEdge).filter(Boolean),width=tileMetrics().width*RIVER_STYLE.widthRatio;
+  const points=new Map();
+  for(const edge of segments)for(const point of [edge.a,edge.b])points.set(`${point.x},${point.y}`,point);
+  // Draw every bank first so connected segments never cut across another segment's water.
+  for(const [size,color] of [[width+RIVER_STYLE.bankWidth*2,RIVER_STYLE.bankColor],[width,RIVER_STYLE.waterColor]]){
+    g.lineStyle(size,color,RIVER_STYLE.alpha);g.fillStyle(color,RIVER_STYLE.alpha);
+    for(const edge of segments)g.lineBetween(edge.a.x,edge.a.y,edge.b.x,edge.b.y);
+    for(const point of points.values())g.fillCircle(point.x,point.y,size/2);
+  }
+  g.lineStyle(width*RIVER_STYLE.waterfallWidthRatio, RIVER_STYLE.waterfallColor, 1);
   for (const raw of falls) {
     const e = parseEdge(raw); if (!e) continue;
     g.lineBetween(e.a.x, e.a.y, e.b.x, e.b.y);
     g.fillStyle(0xffffff, 0.95); g.fillCircle((e.a.x + e.b.x)/2, (e.a.y + e.b.y)/2, 3);
   }
+  const directions=resolveV39RiverFlowDirections(riverData);
+  g.fillStyle(RIVER_STYLE.arrowColor,RIVER_STYLE.arrowAlpha);
+  for(const direction of directions){
+    const a=parsePoint(direction.from),b=parsePoint(direction.to);if(!a||!b)continue;
+    const length=Math.hypot(b.x-a.x,b.y-a.y);if(!length)continue;
+    const ux=(b.x-a.x)/length,uy=(b.y-a.y)/length,mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    const size=width*RIVER_STYLE.arrowLengthRatio,half=width*RIVER_STYLE.arrowWidthRatio/2;
+    g.fillTriangle(mx+ux*size/2,my+uy*size/2,mx-ux*size/2-uy*half,my-uy*size/2+ux*half,mx-ux*size/2+uy*half,my-uy*size/2-ux*half);
+  }
+  g.setData('river',{segments:segments.length,width,bankWidth:RIVER_STYLE.bankWidth,arrows:directions.length});
+  return g;
 }
 
 function drawSpecialTerrain(scene, data) {
@@ -571,7 +589,7 @@ function createGame(data) {
       const terrainGraphics=drawTerrain(this,data);
       loadV39TerrainPatterns(this,()=>data,readDisplaySettings);
       const snowCoverGraphics=drawSnowCover(this,data);
-      drawRivers(this,data.riverData);
+      this.v39RiverGraphics=drawRivers(this,data.riverData);
       drawSpecialTerrain(this,data);
       drawSnowfall(this,data);
       const lavaGraphics=drawLava(this,data);
@@ -601,6 +619,7 @@ export function updateV39FieldData(nextData, options = {}) {
   if (scene) {
     drawTerrain(scene, currentData, scene.v39TerrainGraphics);
     scene.v39SnowCoverGraphics = drawSnowCover(scene, currentData, scene.v39SnowCoverGraphics);
+    scene.v39RiverGraphics = drawRivers(scene, currentData.riverData, scene.v39RiverGraphics);
     drawSpecialTerrain(scene, currentData);
     drawSnowfall(scene, currentData);
     drawLava(scene, currentData, scene.v39LavaGraphics);

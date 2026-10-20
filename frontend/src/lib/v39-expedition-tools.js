@@ -1,4 +1,5 @@
 import defaults from "../../../config/v39-expedition-defaults.json";
+import {v39HazardRecoveryFromState} from './v39-hazard-zones.js';
 import { getGameDataRows } from "./game-data-registry.js";
 import { getHexDistance } from "./hex-grid.js";
 import { isV39UnitInsideSettlement } from "./v39-transport-rules.js";
@@ -49,7 +50,7 @@ export function advanceV39ExpeditionTools(state,turn) {
     const effect=unit.toolRecovery;
     if(!effect||effect.remainingTurns<=0||effect.lastProcessedTurn>=turn)return unit;
     if(!alive(unit))return {...unit,toolRecovery:null};
-    const hp=Math.min(count(unit.maxHp),count(unit.hp ?? unit.currentHp)+count(effect.amount));
+    const hp=Math.min(count(unit.maxHp),count(unit.hp ?? unit.currentHp)+Math.floor(count(effect.amount)*v39HazardRecoveryFromState(state,unit)));
     return {...unit,hp,currentHp:hp,toolRecovery:{...effect,remainingTurns:effect.remainingTurns-1,lastProcessedTurn:turn}};
   })}}))};
 }

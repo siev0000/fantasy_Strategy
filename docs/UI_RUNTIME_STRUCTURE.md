@@ -1,5 +1,11 @@
 # UI実行経路と負荷の整理
 
+2026-10-20 土地の環境表示: `v39-operation-ui.js` の既存土地項目へ環境効果/天候/浄化を配置し、環境効果は地形・領土・危険度の直後に全幅表示する。`v39-land-detail.js` が値を更新し、`v39-atmosphere-display.js` が通常霧/死の霧/一時災害/常設地帯と抑制期限を読む。末尾への後付けでスクロール外になる状態を解消。未確認地形の情報は表示しない。常設は「（常設）」、一時効果は⌛残り、抑制は抑制⌛残り。新規モーダルや二重描画は追加しない。
+
+2026-10-19 川の流向: `lib/v39-river-flow.js` が既存corner辺/河口リンクから方向を解決し、既存drawRiversのGraphics内へ三角矢印を焼く。矢印ごとのSprite・別レイヤー・新規状態購読は追加しない。河口リンク集合も描画署名へ含める。山岳源流の補完は既存map-generatorのcommitPath、荒野はlib/v39-wasteland-generation.jsが新規生成の気候変換後に一度だけ実行し、表示時に地形を変更しない。
+
+2026-10-19 川/積雪表示: `v39-field-runtime-final.js` の既存drawRivers/drawSnowCoverが唯一の描画元。川は既存cornerEdgeSet/cornerWaterLinkSetを濃青の縁→水色の順で描き、接続点を同じ幅の円でつなぐ。地形画像と積雪より上、ユニットや視界Fogより下に置く。updateV39FieldDataでも同一Graphicsを更新し、経路/滝の署名が同じなら再描画しない。マスごとの新規Spriteや川の別状態は追加しない。幅/色/積雪枠の不透明度は `lib/phaser-map-panel-config.js` の `FIELD_TERRAIN_OVERLAY_STYLE` に集中。川の生成やゲーム判定は変更しない。
+
 2026-10-19 霧/環境災害の表示統合: `map/v39-atmosphere-layer.js` が唯一の画像描画元。`lib/v39-atmosphere-display.js` は既存のfogMap/災害から表示対象・固定順パレット・土地詳細を取得するだけで、ゲーム状態を変更しない。旧visibility内の霧描画は除去し、既存の更新経路から共通rendererを呼ぶ。色の組合せごとに画像を一度合成し、半解像度/1024px分割CanvasTextureへ焼く。同一状態ではlayerを再利用し、解除/scene終了で解放する。死の霧の色は既存属性設定を参照。`v39-disaster-icons.js` は対象3災害の中心マーカーだけ、`v39-land-detail.js` は環境効果の名前/残り⌛だけを表示する。新しい購読や後付けモーダルは追加しない。
 
 2026-10-19 災害の自然抽選診断: `world/v39-natural-events.js` の本来の候補選択/条件/確率判定に結果記録を統合。テストモード時のみ直近1ターンを `worldEnvironment.disasterDiagnostics` に保存し、`v39-game-state-bridge.js` の正規化で保持。`dev/v39-test-tools.js` は保存済み結果を表示するだけで抽選しない。`dev/v39-disaster-test.js` は既存の災害テスト内で固定配置/自然発生の初期化を切替。通常の発生率、地上1ターンあたりの上限、抽選順序は変更しない。
@@ -12,7 +18,7 @@
 
 2026-10-19 気象検査: `map/v39-weather-overlay.js` が地上マップの天候色/地域境界/ラベルを所有。`dev/v39-test-tools.js` は環境タブ切替を通知するだけでマップを描画しない。既存climateProfile/worldEnvironment.weatherを読み、データの再生成/複製はしない。天候/選択地域/マップが同じなら再構築せず、色/境界は既存の静的Graphicsキャッシュを共用する。ラベル位置/サイズはカメラ変化時のみ更新し、ONの間はタブ/欄を閉じても表示を維持し、OFF・洞窟・テストOFFで描画物とキャッシュを解放する。通常ゲーム/洞窟では表示しない。
 
-2026-10-19 ユニット一覧: `v39-character-modal.js` が共通カードの `portrait:true` を指定し、通常/部隊/施設格納/遺体一覧に立ち絵を表示する。画像は `resolveMonsterSheetArtwork` / `resolveUnitArtwork` とシートのフレーム情報を共用し、画像対応表を複製しない。画像不明は従来の種族アイコン/Lv表示へ戻す。フィールド下部カードは指定なしで従来表示を維持する。後付けDOM置換/画像用の状態購読は追加しない。
+2026-10-19 ユニット一覧/下部部隊カード: `v39-character-modal.js` と `v39-squad-derived-binding.js` が共通カードの `portrait:true` を指定し、一覧の通常/部隊/施設格納/遺体とフィールド下部の部隊/単独カードに同じ立ち絵を表示する。画像は `resolveMonsterSheetArtwork` / `resolveUnitArtwork` とシートのフレーム情報を共用し、画像対応表を複製しない。画像不明は従来の種族アイコン/Lv表示へ戻す。Lvは画像右下、経験値枠・HP/AP・座標・自動操作印は共通カードのまま維持。後付けDOM置換/画像用の状態購読は追加しない。
 
 2026-10-18 拠点画面: `v39-settlement-ui.js` が左の拠点一覧と右の概況/生産/運用を描画する。左右独立スクロール、右のヘッダー/タブ固定。発展は概況、施設は生産、取引/物流は運用。`v39-trade-ui.js` は拠点へのボタン後付けを行わず、共通モーダルのイベントを委譲する。交流の既存入口は維持する。旧横タブ/常設操作列は残さない。
 
@@ -146,3 +152,8 @@ npm run check:ui-render-work
 - MutationObserverはDOM構造が外部から変わる必要がある箇所だけに限定する。利用する場合も、同じ内容を再書込しない。通常の更新には所有者からの明示的な通知を優先する。
 - document全体のクリックで全パネルを再構築しない。該当操作・該当状態の変更だけを購読する。
 - 大きな整理は機能単位で行い、既存テスト・実画面・保存復元を確認してから次へ進む。
+
+## 地形・霧表示の共通化（2026-10-20）
+
+- 地形画像は terrainPatternNameAt で通常地形と specialMap の沼地/湿地を共通解決する。画像がある地形だけ文字マークを省略し、通常プレイも同じ描画経路を使う。地形レイヤー集の7番/8番を使用する。
+- 霧の濃さは v39-atmosphere-opacity.js と既存表示設定で管理。地形テストから変更し、共通環境レイヤーと表示署名へ反映する。スライダー操作中はパネルDOMを作り直さず、不要なresizeも行わない。

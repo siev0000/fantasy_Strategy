@@ -43,7 +43,7 @@ try{
       positionsUnique:new Set(faction.units.filter(u=>(u.worldId||'surface')==='surface').map(u=>`${u.x},${u.y}`)).size===faction.units.filter(u=>(u.worldId||'surface')==='surface').length,
       idsUnique:new Set(faction.units.map(u=>u.id)).size===faction.units.length,
       allEligible:units.every(u=>rules.inspectV39FusionMaterial(state,state.activePlayerId,faction.units.find(u=>u.fusionTestFixture),u).length===0),
-      copies:Object.fromEntries(['ウルフ','スネーク','ホーク','ホース','デヴィル','エンジェル'].map(race=>[race,units.filter(u=>u.race===race).length])),
+      copies:Object.fromEntries(['ウルフ','スネーク','ホーク','ホース','デヴィル','エンジェル'].map(race=>[race,units.filter(u=>(u.fusionTestRequirementName||u.race)===race).length])),
       recipeCount:recipes.length,normalRecipes:rules.getV39FusionRecipes(normal).map(r=>r.状態),checks};
   });
   assert(result.fixture.ok);assert(result.unitCount>=60);assert(result.speciesCount>=25);
@@ -72,7 +72,7 @@ try{
   await page.locator('[data-v39-fusion-open]').first().click();
   await page.selectOption('[data-fusion-recipe]',{label:'ケルベロス（候補・テスト限定）'});
   const candidates=await fusionCandidateIds(page,0);
-  assert.equal(candidates.length,3);
+  assert(candidates.length>=3,'ordinary and attribute wolves can both satisfy the wolf ingredient');
   for(let i=0;i<3;i++)await selectFusionMaterial(page,i,candidates[i]);
   await selectFusionMaterial(page,3,'fusion-test-devil');
   assert(!await page.locator('[data-fusion-confirm]').isDisabled());

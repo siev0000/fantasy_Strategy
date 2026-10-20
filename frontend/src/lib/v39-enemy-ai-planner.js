@@ -1,5 +1,6 @@
 import { isV39SupportSkill, resolveActionSkillRows, resolveAttackApCost, resolveAttackRange, resolveAttackRows } from "./v39-combat-engine.js";
 import { getHexDistance, getHexNeighborCoords } from "./hex-grid.js";
+import {v39HazardRiskAt} from './v39-hazard-zones.js';
 import { hasV39CaveLineOfSight, isV39UnitInWorld } from "./v39-cave-spatial-rules.js";
 import { isDetectedByScout, resolveDetectionGroupSense, resolveDetectionScoutValue, resolveV39UnitVisionRange } from "./v39-detection-rules.js";
 import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "./v39-terrain-traversal.js";
@@ -185,8 +186,8 @@ function availableEnemyMoves(state, mapData, enemy) {
   ].map(row => coordKey(row.x, row.y)));
   return getHexNeighborCoords(mapData.w, mapData.h, enemy?.x, enemy?.y, mapData?.worldWrapEnabled !== false)
     .filter(tile => !occupied.has(tile.key))
-    .map(tile => ({ ...tile, cost:enemyMoveStepCost(mapData, enemy, tile) }))
-    .filter(tile => Number.isFinite(tile.cost) && tile.cost <= number(enemy.ap));
+    .map(tile => ({ ...tile, cost:enemyMoveStepCost(mapData, enemy, tile),hazardRisk:v39HazardRiskAt(mapData,enemy,tile.x,tile.y) }))
+    .filter(tile => Number.isFinite(tile.cost) && tile.cost <= number(enemy.ap)&&tile.hazardRisk<number(enemy.hp??enemy.currentHp)*0.5);
 }
 
 function movePlan(state, mapData, enemy, target, turnNumber, mode, stopDistance = 1, enemyPatch = {}) {
@@ -195,9 +196,9 @@ function movePlan(state, mapData, enemy, target, turnNumber, mode, stopDistance 
   const candidates = availableEnemyMoves(state, mapData, enemy)
     .map(tile => ({ ...tile, targetDistance:distance(tile, target) }))
     .filter(tile => mode === "away" ? tile.targetDistance > currentDistance : tile.targetDistance < currentDistance)
-    .sort((a, b) => mode === "away"
+    .sort((a, b) => a.hazardRisk-b.hazardRisk || (mode === "away"
       ? b.targetDistance-a.targetDistance || a.cost-b.cost || a.key.localeCompare(b.key)
-      : a.targetDistance-b.targetDistance || a.cost-b.cost || a.key.localeCompare(b.key));
+      : a.targetDistance-b.targetDistance || a.cost-b.cost || a.key.localeCompare(b.key)));
   const next = candidates[0];
   if (!next) return null;
   return {

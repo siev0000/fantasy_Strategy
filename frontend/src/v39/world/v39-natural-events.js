@@ -1,4 +1,6 @@
 import { disasterData, terrainData } from "../../lib/game-data-registry.js";
+import {projectV39HazardEvents} from '../../lib/v39-hazard-zones.js';
+import {tickV39HazardEffects} from '../../lib/v39-hazard-effects.js';
 import { getHexDistance } from "../../lib/hex-grid.js";
 import {
   V39_PROVISIONAL_DISASTER_BALANCE,
@@ -12,6 +14,7 @@ import { convertV39CorpsesInDeathFog } from "../../lib/v39-corpse-undead-rules.j
 import {resolveV39DisasterRule as readRule} from '../../lib/v39-disaster-rules.js';
 import {applyV39DisasterDamage as damageUnit,resolveV39DisasterDamage} from '../../lib/v39-disaster-damage.js';
 import {resolveV39DisasterDamageTiles} from '../../lib/v39-disaster-strikes.js';
+import {canV39UnitLeaveOrganicCorpse} from '../../lib/v39-corpse-types.js';
 import {ensureV39ClimateProfile,advanceV39Weather,inspectV39WeatherAt,setV39WeatherAt,resolveV39DisasterWeather} from '../../lib/v39-weather.js';
 
 const text = value => String(value ?? "").trim();
@@ -88,7 +91,7 @@ function affectedTiles(mapData, anchor, radius) {
 
 function disasterRows() {
   return (Array.isArray(disasterData) ? disasterData : [])
-    .filter(row => text(row?.ID) && text(row?.ID) !== "災害:火山噴火");
+    .filter(row => text(row?.ID) && text(row?.ID) !== "災害:火山噴火"&&row.常設危険地帯!==true);
 }
 
 function recentSameEvent(environment, rule, key, turn) {
@@ -300,7 +303,7 @@ function corpseAmount(groundLoot) {
 function undeadOrigins(state, mapData, activeDisasters) {
   const corpses=new Set(Object.entries(state.groundLootByTile || {}).filter(([,loot])=>corpseAmount(loot)>=V39_FOG_BALANCE.corpseResourcePerBody).map(([key])=>key));
   for(const unit of [...(state.enemies || []),...(state.players || []).flatMap(player=>player.factionState?.units || []),...(state.neutralVillages || []).flatMap(village=>village.defenseUnits || [])])
-    if(!isLiving(unit)&&(unit.worldId || 'surface')===(state.activeWorldId || 'surface'))corpses.add(tileKey(unit.x,unit.y));
+    if(canV39UnitLeaveOrganicCorpse(unit)&&!isLiving(unit)&&(unit.worldId || 'surface')===(state.activeWorldId || 'surface'))corpses.add(tileKey(unit.x,unit.y));
   return (mapData.unholyUndeadOrigins || []).filter(origin=>!corpses.has(origin.key)).map(origin=>({...origin,source:"不浄",chance:1}));
 }
 function chooseUndeadCandidate(token) {
@@ -401,11 +404,14 @@ function syncNeutralVillageUndeadThreats(villages, enemies, turn) {
 function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceDisasterAt = null, forceUndeadAt = null, skipNaturalDisasters = false, recordDisasterDiagnostics=false } = {}) {
   const environment = {...state?.worldEnvironment,weather:advanceV39Weather(ensureV39ClimateProfile(mapData),state?.worldEnvironment?.weather,turn)};
   state={...state,worldEnvironment:environment};
-  const existing = (environment.activeDisasters || []).filter(event => integer(event?.expiresAtTurn, turn) >= turn);
+  const existing = [...(environment.activeDisasters || []).filter(event => !event.persistentHazard&&integer(event?.expiresAtTurn, turn) >= turn),...projectV39HazardEvents(mapData,turn)];
+  const ended = (environment.activeDisasters || []).filter(event => !event.persistentHazard&&integer(event?.expiresAtTurn, turn) < turn);
   const diagnostics=recordDisasterDiagnostics&&!skipNaturalDisasters&&!forceDisasterId?[]:null;
   const created = skipNaturalDisasters ? [] : createNaturalDisasters(state, mapData, turn, forceDisasterId, forceDisasterAt,diagnostics);
   const activeDisasters = [...existing, ...created];
   const ticked = tickDisasterDamage(state, mapData, activeDisasters, turn);
+  const hazards=tickV39HazardEffects({...state,...ticked},mapData,turn);
+  ticked.players=hazards.players;ticked.enemies=hazards.enemies;ticked.neutralVillages=hazards.neutralVillages;ticked.entries.push(...hazards.entries);
   const stateAfterDamage = { ...state, players:ticked.players, enemies:ticked.enemies, neutralVillages:ticked.neutralVillages };
   advanceV39CorpseFog(mapData,stateAfterDamage,turn);
   const spawnedByDisaster = created.map(event => spawnDisasterEnemy(stateAfterDamage, event, turn)).filter(Boolean);
@@ -433,7 +439,7 @@ function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceD
   };
   const neutralVillageById = new Map(neutralVillages.map(village => [text(village?.id), village]));
   const settlements = (state?.settlements || []).map(settlement => neutralVillageById.get(text(settlement?.id)) || settlement);
-  return { players:ticked.players, enemies, enemySquads, neutralVillages, settlements, groundLootByTile:undead.groundLootByTile, worldEnvironment, created, damageEntries:ticked.entries, undead:undead.spawned, spawnedByDisaster };
+  return { players:ticked.players, enemies, enemySquads, neutralVillages, settlements, groundLootByTile:undead.groundLootByTile, worldEnvironment, created, ended, damageEntries:ticked.entries, undead:undead.spawned, spawnedByDisaster };
 }
 
 export function runV39NaturalEvents(options = {}) {
@@ -442,7 +448,7 @@ export function runV39NaturalEvents(options = {}) {
   if (!state || !mapData) return { ok:false, reason:"field-not-generated" };
   if(options.forceDisasterId){
     const rule=readRule(text(options.forceDisasterId)),point=options.forceDisasterAt;
-    if(!rule || !rule.enabled || rule.id==='災害:火山噴火')return {ok:false,reason:'invalid-disaster'};
+    if(!rule || !rule.enabled || rule.id==='災害:火山噴火'||rule.occurrenceMethods.includes('常設'))return {ok:false,reason:'invalid-disaster'};
     if(point&&(!Number.isInteger(point.x)||!Number.isInteger(point.y)||point.x<0||point.y<0||point.x>=mapData.w||point.y>=mapData.h))return {ok:false,reason:'invalid-position'};
     if(mapData.isUnderground)return {ok:false,reason:'underground-disaster-disabled'};
     if(point&&(state.worldEnvironment?.activeDisasters||[]).some(event=>event.disasterId===rule.id&&event.turn===state.timeline?.turnNumber&&event.anchorKey===tileKey(point.x,point.y)))return {ok:false,reason:'already-active'};
@@ -459,6 +465,12 @@ export function runV39NaturalEvents(options = {}) {
     skipNaturalDisasters:mapData.isUnderground || options?.skipNaturalDisasters === true,
     recordDisasterDiagnostics:window.isV39TestMode?.()===true
   });
+  // Snapshot before damage/state updates change vision; any affected tile is enough.
+  const lifecycleNotices=[...result.created.map(event=>({event,phase:'started'})),
+    ...result.ended.map(event=>({event,phase:'ended'}))].map(row=>({...row,
+      observed:window.__v39BackgroundWorldTurn!==true&&(row.event.tileKeys||[tileKey(row.event.x,row.event.y)])
+        .some(key=>{const [x,y]=key.split(',').map(Number);return window.isV39TileInCurrentVision?.(x,y)===true;})
+    })).filter(row=>row.observed||window.isV39TestMode?.()===true);
   // Capture visibility before deaths/state normalization can remove a target marker.
   const units=[...(state.players||[]).flatMap(player=>player.factionState?.units||[]),...(state.enemies||[]),
     ...(state.neutralVillages||[]).flatMap(village=>village.defenseUnits||[])];
@@ -477,7 +489,14 @@ export function runV39NaturalEvents(options = {}) {
     worldEnvironment:result.worldEnvironment
   }, { reason:"natural-events" });
   const allPlayers = (state.players || []).map(player => text(player?.id)).filter(Boolean);
-  for (const event of result.created) window.appendV39ActivityLog?.(allPlayers, "災害", `${event.name}が発生: (${event.x},${event.y}) / ${event.tileKeys.length}マス`, event);
+  for(const {event,phase,observed} of lifecycleNotices){
+    const message=phase==='started'?`${event.name} 発生中: (${event.x},${event.y}) / ${event.tileKeys.length}マス`
+      :`${event.name}が終了: (${event.x},${event.y})`;
+    const detail={...event,disasterPhase:phase,worldId:state.activeWorldId||'surface'};
+    window.appendV39ActivityLog?.([state.activePlayerId],'災害',message,detail);
+    window.pushV39Notification?.(message,{title:'災害',environmentVisibility:{playerId:state.activePlayerId,
+      worldId:detail.worldId,observed}});
+  }
   const visibleToActive=(x,y)=>window.isV39TestMode?.()===true||window.isV39TileInCurrentVision?.(x,y)===true;
   for(const event of result.worldEnvironment.activeDisasters){
     const previous=state.worldEnvironment?.activeDisasters?.find(row=>row.id===event.id);
@@ -493,16 +512,18 @@ export function runV39NaturalEvents(options = {}) {
     if(viewers.length)window.appendV39ActivityLog?.(viewers,'災害',`${entry.name}: ${entry.detail?.resistanceKey?.replace('耐性','')||''}${entry.damage}ダメージ`,entry);
   }
   for (const row of result.undead) window.appendV39ActivityLog?.(allPlayers, "自然発生", `${row.enemy.name}が${row.origin.source}から発生: (${row.origin.x},${row.origin.y})`, row);
-  window.dispatchEvent(new CustomEvent("v39:natural-events-resolved", { detail:{ worldId:state.activeWorldId||'surface',turnNumber:turn, disasters:result.created, damageEntries:result.damageEntries, undead:result.undead } }));
-  return { ok:true, turnNumber:turn, disasters:result.created, damageEntries:result.damageEntries, undead:result.undead };
+  window.dispatchEvent(new CustomEvent("v39:natural-events-resolved", { detail:{ worldId:state.activeWorldId||'surface',turnNumber:turn, disasters:result.created, endedDisasters:result.ended, damageEntries:result.damageEntries, undead:result.undead } }));
+  return { ok:true, turnNumber:turn, disasters:result.created, endedDisasters:result.ended, damageEntries:result.damageEntries, undead:result.undead };
 }
 
 function install() {
   const initializeWeather=()=>{
     const map=window.__v39FieldRuntime?.mapData,state=window.getV39GameState?.({includeWorlds:false});
     if(!map||!state)return;
-    const weather=advanceV39Weather(ensureV39ClimateProfile(map),state.worldEnvironment?.weather,Math.max(1,state.timeline?.turnNumber||1));
-    if(weather!==state.worldEnvironment?.weather)window.setV39GameState({worldEnvironment:{...state.worldEnvironment,weather}},{reason:'weather-initialized'});
+    const turn=Math.max(1,state.timeline?.turnNumber||1);map.hazardTurn=turn;
+    const weather=advanceV39Weather(ensureV39ClimateProfile(map),state.worldEnvironment?.weather,turn);
+    const activeDisasters=[...(state.worldEnvironment?.activeDisasters||[]).filter(event=>!event.persistentHazard),...projectV39HazardEvents(map,turn)];
+    if(weather!==state.worldEnvironment?.weather||JSON.stringify(activeDisasters)!==JSON.stringify(state.worldEnvironment?.activeDisasters))window.setV39GameState({worldEnvironment:{...state.worldEnvironment,weather,activeDisasters}},{reason:'weather-initialized'});
   };
   window.addEventListener('v39:field-generated',initializeWeather);
   window.addEventListener('v39:save-loaded',initializeWeather);

@@ -11,7 +11,7 @@ try{
     await page.waitForFunction(()=>!!window.startV39ExpeditionTest);
     const pure=await page.evaluate(async()=>{
       const {applyV39DeathPurification,findV39NewUnitDeaths,getV39DeathProtectionStatus}=await import('/src/lib/v39-death-purification.js');
-      const {advanceV39Purification,applyV39DeathBlade}=await import('/src/lib/v39-purification-rules.js');
+      const {advanceV39Purification,applyV39DeathBlade,changeV39Purification,normalizeV39MapPurification}=await import('/src/lib/v39-purification-rules.js');
       const map={w:8,h:8,grid:Array.from({length:8},()=>Array(8).fill('平地')),purificationByTile:{}};
       const state={activeWorldId:'surface',timeline:{turnNumber:1},players:[{id:'p',factionState:{units:[],settlements:[{id:'a',settlementId:'a'},{id:'b',settlementId:'b'}]}}],enemies:[],
         territoryOwnerByTile:{'1,1':'p','2,1':'p','3,1':'p','6,1':'p'},territoryStateByTile:{'1,1':{settlementId:'a'},'2,1':{settlementId:'a'},'3,1':{settlementId:'a'},'6,1':{settlementId:'b'}},facilitiesByTile:{'1,1':['墓地']}};
@@ -30,12 +30,21 @@ try{
       const summon=findV39NewUnitDeaths({...state,enemies:[{...alive[0],summon:{}}]},{...state,enemies:[{...deaths[0],summon:{}}]});
       const decay=structuredClone(protectedThree.map);advanceV39Purification(decay,{...state,enemies:deaths},2,()=>1);
       const blade=structuredClone(noFacility.map);applyV39DeathBlade(blade,{skills:['死の刃']},[{x:2,y:1,beforeHp:1,afterHp:0,total:1}]);
+      const floor=structuredClone(map);floor.purificationByTile={'2,1':-19};
+      const deathFloor=applyV39DeathPurification(floor,{...state,facilitiesByTile:{}},deaths).map;
+      applyV39DeathBlade(deathFloor,{skills:['死の刃']},[{x:2,y:1,beforeHp:1,afterHp:0,total:1}]);
+      deathFloor.fogMap=[];deathFloor.fogMap[1]=[];deathFloor.fogMap[1][2]={kind:'death'};
+      advanceV39Purification(deathFloor,{...state,enemies:deaths},2,()=>1);
+      const minimum=deathFloor.purificationByTile['2,1'];changeV39Purification(deathFloor,'2,1',5);
+      const recovery=deathFloor.purificationByTile['2,1'];changeV39Purification(deathFloor,'2,1',100);
+      const legacy=structuredClone(map);legacy.purificationByTile={'2,1':-90};normalizeV39MapPurification(legacy);changeV39Purification(legacy,'2,1',5);
       return {immutable:before===JSON.stringify({state,map}),one:protectedThree.protectedCount===2&&protectedThree.map.purificationByTile['2,1']===-1,
         multiple:multiple.protectedCount===4&&multiple.lossCount===1,next:nextTurn.protectedCount===2&&nextTurn.map.purificationByTile['2,1']===-1,
         outside:outside.lossCount===1,other:otherBase.lossCount===1,noFacility:noFacility.lossCount===1,
         transitions:transitions.length===5&&!repeated.length&&!preplaced.length&&!expired.length&&!summon.length,
         decay:decay.purificationByTile['2,1']===-2,blade:blade.purificationByTile['2,1']===-6,
-        quota:getV39DeathProtectionStatus(protectedThree.map,state,'p','a').remaining===0};
+        quota:getV39DeathProtectionStatus(protectedThree.map,state,'p','a').remaining===0,
+        minimum:minimum===-20,recovery:recovery===-15,upperUnchanged:deathFloor.purificationByTile['2,1']===85,legacy:legacy.purificationByTile['2,1']===-15};
     });
     for(const [key,value] of Object.entries(pure))assert.equal(value,true,key);
     await page.evaluate(async()=>{
@@ -68,7 +77,7 @@ try{
     });
     assert.equal(factionAndBackground.value,-1);assert.equal(factionAndBackground.surface,-2);
     await page.evaluate(()=>{window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();});
-    await page.locator('[data-settlement-page-select="operation"]').click();
+    await page.locator('[data-settlement-page-select="production"]').click();
     await page.locator('[data-settlement-fold="facility"] summary').click();
     assert.match(await page.locator('[data-v39-cemetery-quota]').innerText(),/残り1\/2/);
     await page.screenshot({path:`output/web-game/cemetery/quota-${width}.png`});

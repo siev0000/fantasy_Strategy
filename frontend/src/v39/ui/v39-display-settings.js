@@ -5,6 +5,7 @@ import {
   resolveEffectiveMaxZoomFactor
 } from "../../lib/map-camera-zoom-rules.js";
 import { runV39FieldUpdate } from "./v39-field-update-loading.js";
+import {normalizeV39AtmosphereOpacity,V39_ATMOSPHERE_OPACITY_KINDS,v39AtmosphereOpacityPercent} from '../../lib/v39-atmosphere-opacity.js';
 import {normalizeV39PlayerColors,resolveV39PlayerColor,v39PlayerColorHex} from '../../lib/v39-player-colors.js';
 
 const STORAGE_KEY = "v39-display-settings-v1";
@@ -18,6 +19,7 @@ const DEFAULTS = Object.freeze({
   focusUnactedUnits: true,
   testMode: false,
   playerColors: {},
+  atmosphereOpacityByKind:{},
   maxZoomFactor: MAP_CAMERA_ZOOM_RULES.defaultUserMaxFactor
 });
 
@@ -42,7 +44,8 @@ function loadSettings() {
         DEFAULTS.fontScalePercent
       ),
       maxZoomFactor: normalizeUserMaxZoomFactor(saved.maxZoomFactor),
-      playerColors:normalizeV39PlayerColors(saved.playerColors)
+      playerColors:normalizeV39PlayerColors(saved.playerColors),
+      atmosphereOpacityByKind:normalizeV39AtmosphereOpacity(saved.atmosphereOpacityByKind)
     };
   } catch {
     return { ...DEFAULTS };
@@ -183,7 +186,7 @@ function applySettings({ emit = true, changedKeys } = {}) {
     window.dispatchEvent(new CustomEvent("v39:display-settings-changed", {
       detail: { ...settings, testMode:testModeEnabled, ...currentMapSize(), changedKeys }
     }));
-    window.dispatchEvent(new Event("resize"));
+    if(!changedKeys?.every(key=>key==='atmosphereOpacityByKind'))window.dispatchEvent(new Event("resize"));
   }
 }
 
@@ -297,7 +300,14 @@ function install() {
     requestAnimationFrame(() => applySettings({ emit: false }));
   });
 
-  window.getV39DisplaySettings = () => ({ ...settings, playerColors:{...settings.playerColors}, testMode:effectiveTestMode() });
+  window.getV39DisplaySettings = () => ({ ...settings, playerColors:{...settings.playerColors}, atmosphereOpacityByKind:{...settings.atmosphereOpacityByKind},testMode:effectiveTestMode() });
+  window.setV39AtmosphereOpacity=(kind,percent)=>{
+    if(kind==='reset')return updateSetting('atmosphereOpacityByKind',{});
+    const ids=kind==='all'?V39_ATMOSPHERE_OPACITY_KINDS.map(row=>row.id):[kind];
+    const values={...settings.atmosphereOpacityByKind};
+    for(const id of ids)if(V39_ATMOSPHERE_OPACITY_KINDS.some(row=>row.id===id))values[id]=clamp(percent,0,100,v39AtmosphereOpacityPercent(id,settings));
+    return updateSetting('atmosphereOpacityByKind',normalizeV39AtmosphereOpacity(values));
+  };
   window.getV39PlayerColor = id => resolveV39PlayerColor(window.getV39GameState?.({includeWorlds:false}),id);
   window.addEventListener('v39:game-state-changed',()=>{
     const panel=document.getElementById('v39-display-settings-panel');if(panel&&!panel.hidden)renderPlayerColors();

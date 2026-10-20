@@ -1,8 +1,10 @@
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import {isV39Undead,resolveV39CorpseKind} from '../../lib/v39-corpse-types.js';
 import {expireV39Summons} from "../../lib/v39-summon-rules.js";
 import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
-import { FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
+import {V39_CORPSE_LIFETIME_BALANCE} from '../../lib/v39-gameplay-balance.js';
+import {resolveV39CorpseExpiry,expireV39GroundCorpses} from '../../lib/v39-corpse-lifetime.js';
 import { releaseV39ExpeditionCargoOnDeath } from "../../lib/v39-expedition-tools.js";
 import {
   resolveV39UnitRaceCategory,
@@ -18,8 +20,7 @@ import {
 import {
   DEFAULT_CORPSE_FIELD_TURNS,
   currentV39TurnNumber,
-  isV39TurnDeadlineReached,
-  resolveV39DeadlineTurn
+  isV39TurnDeadlineReached
 } from "../../lib/v39-turn-timing.js";
 
 const DEAD_UNIT_FIELD_TIMEOUT_TURNS = DEFAULT_CORPSE_FIELD_TURNS;
@@ -28,7 +29,6 @@ const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const coordKey = (unit) => `${Math.floor(number(unit?.x))},${Math.floor(number(unit?.y))}`;
 const isDead = (unit) => text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0;
-const foodResourceKeys = new Set(FOOD_RESOURCE_KEYS);
 
 function attachCargoToUnit(units, unitId, cargo) {
   return units.map(unit => text(unit?.id) === text(unitId)
@@ -88,23 +88,15 @@ function moveDefeatedEnemyCargoToCorpses(rawEnemies, rawSquads) {
   return { enemies, squads, moved };
 }
 
-function cargoRemainingAfterCorpseExpires(rawCargo) {
-  const cargo = normalizeV39Cargo(rawCargo);
-  return normalizeV39Cargo({
-    resourcesByType:Object.fromEntries(Object.entries(cargo.resourcesByType)
-      .filter(([name]) => !foodResourceKeys.has(name))),
-    equipmentInventory:cargo.equipmentInventory
-  });
-}
-
 function addGroundLoot(groundLootByTile, key, cargo) {
-  const remaining = cargoRemainingAfterCorpseExpires(cargo);
+  const remaining = normalizeV39Cargo(cargo);
   if (isV39CargoEmpty(remaining)) return { value:groundLootByTile, added:false };
   const current = groundLootByTile[key] || {};
   return {
     value:{
       ...groundLootByTile,
       [key]:{
+        ...current,
         discoveredByPlayerIds:Array.isArray(current.discoveredByPlayerIds) ? current.discoveredByPlayerIds : [],
         cargo:mergeV39Cargo(current.cargo, remaining)
       }
@@ -145,13 +137,15 @@ function normalizeDeadUnit(unit, turnNumber) {
   const diedAtTurn = Math.max(1, Math.floor(number(unit?.diedAtTurn, unit?.deathTurn || turnNumber)));
   return {
     ...unit,
+    ...(isV39Undead(unit)?{corpseKind:resolveV39CorpseKind(unit),equipment:[],
+      corpseCargo:mergeV39Cargo(unit.corpseCargo,{equipmentInventory:unit.equipment})}:{}),
     hp:0,
     currentHp:0,
     state:"死亡",
     diedAtTurn,
     deathTurn:diedAtTurn,
-    deadExpireTurn:Math.max(diedAtTurn, Math.floor(number(unit?.deadExpireTurn,
-      resolveV39DeadlineTurn(diedAtTurn, DEAD_UNIT_FIELD_TIMEOUT_TURNS)))),
+    corpseLifetimeVersion:1,
+    deadExpireTurn:resolveV39CorpseExpiry(unit,turnNumber),
     deathPosition:unit?.deathPosition || { x:Math.floor(number(unit?.x)), y:Math.floor(number(unit?.y)) }
   };
 }
@@ -165,19 +159,46 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
   let cargoRecovered = 0;
   let groundLootCreated = 0;
   let changed = summons.removed.length>0;
-  let groundLootByTile = { ...(state.groundLootByTile || {}) };
+  const groundExpiry=expireV39GroundCorpses(state.groundLootByTile,turnNumber);
+  let groundLootByTile = groundExpiry.groundLootByTile;
+  changed ||= groundExpiry.changed;
+  const normalizeUnit=unit=>{
+    if(!isV39UnitInWorld(unit,state.activeWorldId))return unit;
+    const next=normalizeDeadUnit(unit,turnNumber);
+    if(isDead(unit)&&(unit.deadExpireTurn!==next.deadExpireTurn||unit.corpseLifetimeVersion!==1))changed=true;
+    if(isDead(unit)&&isV39Undead(unit)&&(unit.corpseKind!==next.corpseKind||unit.equipment?.length))changed=true;
+    return next;
+  };
+  const dropDissolvedUnit=unit=>{
+    const key=coordKey(unit),loot=groundLootByTile[key]||{};
+    if(!isV39CargoEmpty(unit.corpseCargo)){
+      groundLootByTile[key]={...loot,cargo:mergeV39Cargo(loot.cargo,unit.corpseCargo)};
+      groundLootCreated++;
+    }
+    changed=true;expired++;
+  };
   // 村の輸送役は軍隊cargoを持たないため、死亡時に携帯物を直接戦利品へ移す。
   const neutralVillages = (state.neutralVillages || []).map(village => ({ ...village,
-    defenseUnits:(village.defenseUnits || []).map(unit => {
-      if (!isDead(unit) || !isV39UnitInWorld(unit,state.activeWorldId) || isV39CargoEmpty(unit.tradeCargo)) return unit;
-      const key=coordKey(unit),loot=groundLootByTile[key] || {};
-      groundLootByTile[key]={ ...loot,cargo:mergeV39Cargo(loot.cargo,unit.tradeCargo) };
-      changed=true;groundLootCreated+=1;
-      return { ...unit,tradeCargo:normalizeV39Cargo() };
+    defenseUnits:(village.defenseUnits || []).flatMap(raw => {
+      let unit=normalizeUnit(raw);
+      if (!isDead(unit) || !isV39UnitInWorld(unit,state.activeWorldId)) return [unit];
+      if(!isV39CargoEmpty(unit.tradeCargo)){
+        const key=coordKey(unit),loot=groundLootByTile[key] || {};
+        groundLootByTile[key]={ ...loot,cargo:mergeV39Cargo(loot.cargo,unit.tradeCargo) };
+        changed=true;groundLootCreated+=1;
+        unit={ ...unit,tradeCargo:normalizeV39Cargo() };
+      }
+      if(resolveV39CorpseKind(unit)==='none'){dropDissolvedUnit(unit);return [];}
+      if(isV39TurnDeadlineReached(unit.deadExpireTurn,turnNumber)){
+        const drop=addGroundLoot(groundLootByTile,coordKey(unit),mergeV39Cargo(unit.corpseCargo,{equipmentInventory:unit.equipment}));
+        groundLootByTile=drop.value;if(drop.added)groundLootCreated++;
+        changed=true;expired++;return [];
+      }
+      return [unit];
     }) }));
   let players = state.players.map((player) => {
     let faction = player.factionState;
-    let sourceUnits = Array.isArray(faction?.units) ? faction.units.map((unit) => normalizeDeadUnit(unit, turnNumber)) : [];
+    let sourceUnits = Array.isArray(faction?.units) ? faction.units.map(normalizeUnit) : [];
     const defeated = moveDefeatedPlayerCargoToCorpses(sourceUnits, Array.isArray(faction?.squads) ? faction.squads : []);
     sourceUnits = defeated.units;
     let squads = defeated.squads;
@@ -191,6 +212,9 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
       if (!isDead(unit)||!isV39UnitInWorld(unit,state.activeWorldId)) {
         units.push(unit);
         continue;
+      }
+      if(resolveV39CorpseKind(unit)==='none'){
+        dropDissolvedUnit(unit);history.push(historyEntry(unit,'消滅',turnNumber));removedIds.add(text(unit.id));continue;
       }
       const collector = aliveUnits.find(row => coordKey(row) === coordKey(unit));
       if (collector) {
@@ -206,7 +230,7 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
         // Loot remains automatic; bodies are recovered explicitly through a mausoleum.
       }
       if (isV39TurnDeadlineReached(unit.deadExpireTurn, turnNumber)) {
-        const groundResult = addGroundLoot(groundLootByTile, coordKey(unit), unit?.corpseCargo);
+        const groundResult = addGroundLoot(groundLootByTile, coordKey(unit), mergeV39Cargo(unit.corpseCargo,{equipmentInventory:unit.equipment}));
         groundLootByTile = groundResult.value;
         if (groundResult.added) groundLootCreated += 1;
         history.push(historyEntry(unit, "消滅", turnNumber));
@@ -227,11 +251,14 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
       : text(units.find((unit) => !isDead(unit))?.id, text(units[0]?.id));
     return { ...player, factionState:{ ...faction, units, squads, deadUnitReserve:reserve, deathHistory:history, selectedUnitId } };
   });
-  const normalizedEnemies = state.enemies.map(rawEnemy => normalizeDeadUnit(rawEnemy, turnNumber));
+  const normalizedEnemies = state.enemies.map(normalizeUnit);
   const defeatedEnemies = moveDefeatedEnemyCargoToCorpses(normalizedEnemies, Array.isArray(state.enemySquads) ? state.enemySquads : []);
   if (defeatedEnemies.moved) changed = true;
   const enemies = [];
   for (let enemy of defeatedEnemies.enemies) {
+    if(isDead(enemy)&&isV39UnitInWorld(enemy,state.activeWorldId)&&resolveV39CorpseKind(enemy)==='none'){
+      dropDissolvedUnit(enemy);continue;
+    }
     const collector = isDead(enemy)
       ? players.flatMap(player => player.factionState.units
         .filter(unit => !isDead(unit) && isV39UnitInWorld(unit,state.activeWorldId) && coordKey(unit) === coordKey(enemy))
@@ -250,8 +277,8 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
         });
       }
     }
-    if (isDead(enemy) && isV39TurnDeadlineReached(enemy.deadExpireTurn, turnNumber)) {
-      const groundResult = addGroundLoot(groundLootByTile, coordKey(enemy), enemy?.corpseCargo);
+    if (isDead(enemy) && isV39UnitInWorld(enemy,state.activeWorldId) && isV39TurnDeadlineReached(enemy.deadExpireTurn, turnNumber)) {
+      const groundResult = addGroundLoot(groundLootByTile, coordKey(enemy), mergeV39Cargo(enemy.corpseCargo,{equipmentInventory:enemy.equipment}));
       groundLootByTile = groundResult.value;
       if (groundResult.added) groundLootCreated += 1;
       expired += 1;
@@ -271,6 +298,7 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
     return { ...nest, unitIds };
   });
   if (changed) {
+    groundLootByTile=expireV39GroundCorpses(groundLootByTile,turnNumber).groundLootByTile;
     const villageById=new Map(neutralVillages.map(village=>[village.id,village]));
     window.setV39GameState({ players, enemies, enemySquads, enemyNests, groundLootByTile,neutralVillages,
       settlements:(state.settlements || []).map(row=>villageById.get(row.id)||row) }, { reason:"death-lifecycle" });
@@ -289,6 +317,7 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
   if (reserveIndex < 0 && fieldIndex < 0) return { ok:false, reason:"蘇生対象の死亡者がいません" };
   if(reserveIndex>=0&&reserve[reserveIndex].corpseStorage)return {ok:false,reason:'霊廟から遺体を取り出してから蘇生してください'};
   const source = reserveIndex >= 0 ? reserve[reserveIndex].unit : player.factionState.units[fieldIndex];
+  if(resolveV39CorpseKind(source)!=='organic')return {ok:false,reason:'アンデッドの残骸は通常の蘇生対象にできません'};
   if(source?.soulCollected)return {ok:false,reason:'魂が回収された死体は蘇生できません'};
   const levelBefore = Math.max(1, Math.floor(number(source?.level, source?.Lv || 1)));
   const levelLoss = Math.max(0, Math.floor(number(options.levelLoss)));
@@ -311,7 +340,7 @@ export function reviveV39Unit(playerId, unitId, options = {}) {
     currentHp:hp,
     state:"生存"
   };
-  for (const key of ["diedAtMs", "deadExpireAtMs", "diedAtTurn", "deadExpireTurn", "deathPosition", "deathCause", "deathTurn", "corpseCargo"]) delete revived[key];
+  for (const key of ["diedAtMs", "deadExpireAtMs", "diedAtTurn", "deadExpireTurn", "deathPosition", "deathCause", "deathTurn", "corpseCargo", "corpseLifetimeVersion"]) delete revived[key];
   if (reserveIndex >= 0) reserve.splice(reserveIndex, 1);
   const units = reserveIndex >= 0
     ? [...player.factionState.units, revived]
@@ -338,7 +367,7 @@ function install() {
   window.addEventListener("v39:attack-resolved", () => runV39DeathLifecycle());
   window.runV39DeathLifecycle = runV39DeathLifecycle;
   window.reviveV39Unit = reviveV39Unit;
-  window.getV39DeathRules = () => ({ fieldTimeoutTurns:DEAD_UNIT_FIELD_TIMEOUT_TURNS });
+  window.getV39DeathRules = () => ({ fieldTimeoutTurns:DEAD_UNIT_FIELD_TIMEOUT_TURNS,...V39_CORPSE_LIFETIME_BALANCE });
 }
 
 install();

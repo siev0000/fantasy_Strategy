@@ -1,6 +1,7 @@
 import { normalizeV39NestExplorationState } from "./v39-enemy-exploration.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "./v39-nest-rules.js";
-import { V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
+import { V39_SQUAD_MOVEMENT_BALANCE, V39_CORPSE_LIFETIME_BALANCE } from "./v39-gameplay-balance.js";
+import {normalizeV39CorpseResourceBatches} from './v39-corpse-lifetime.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -179,9 +180,11 @@ export function normalizeV39EnemyNests(value) {
     : [];
 }
 
-export function normalizeV39GroundLootByTile(value = {}) {
+export function normalizeV39GroundLootByTile(value = {}, turn = null) {
   return Object.fromEntries(Object.entries(value && typeof value === "object" ? value : {})
     .map(([tileKey, loot]) => [text(tileKey), {
+      corpseResourceBatches:normalizeV39CorpseResourceBatches(loot).map(row=>({...row,
+        expiresAtTurn:row.expiresAtTurn ?? (Number(turn)>0?Number(turn)+V39_CORPSE_LIFETIME_BALANCE.organicTurns:null)})),
       discoveredByPlayerIds:[...new Set((Array.isArray(loot?.discoveredByPlayerIds) ? loot.discoveredByPlayerIds : []).map(text).filter(Boolean))],
       cargo:normalizeV39Cargo(loot?.cargo)
     }])

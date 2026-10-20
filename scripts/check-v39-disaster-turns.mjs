@@ -9,7 +9,7 @@ try{
   await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
   const initial=await page.evaluate(async()=>{
     window.closeV39PlayModeSelection();await window.setV39TestMode(true);
-    const result=window.startV39DisasterTest();await window.waitForV39MapRenderSettled();
+    const result=window.startV39DisasterTest({atmosphere:false});await window.waitForV39MapRenderSettled();
     window.activateV39FooterTab('squad');
     return {result,build:document.querySelector('#uiBuildLabel')?.textContent,hp:window.getV39ActiveFactionState().units[0].hp};
   });

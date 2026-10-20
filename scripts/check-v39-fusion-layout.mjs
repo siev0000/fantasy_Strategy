@@ -16,6 +16,9 @@ try{
     assert.equal(await page.locator('.fusion-preview .silhouette').count(),1);
     assert.equal(await page.locator('select[data-fusion-material]').count(),0,'no legacy hidden selection UI');
     const candidates=await fusionCandidateIds(page,0);assert(candidates.length>=2);
+    const horsePortrait=page.locator('[data-fusion-candidate="fusion-test-horse"] .v39-card-portrait-image');
+    assert.equal(await horsePortrait.getAttribute('data-v39-portrait-file'),'狼・馬_ユニット集.webp');
+    assert.equal(await horsePortrait.getAttribute('data-v39-portrait-slot'),'7');
     await page.locator('[data-fusion-detail-tab="skills"]').click();
     await page.locator(`[data-fusion-candidate="${candidates[1]}"]`).click();
     assert.equal(await page.locator('[data-fusion-detail-tab="skills"]').getAttribute('aria-selected'),'true');
@@ -57,6 +60,13 @@ try{
     assert(retained.same);assert.equal(retained.scroll,scroll);
     await page.locator('[data-fusion-slot="9"]').click();
     await page.screenshot({path:`output/web-game/fusion-layout/many-${width}.png`});
+    await page.selectOption('[data-fusion-recipe]',{label:'バイコーン'});
+    await selectFusionMaterial(page,0,'fusion-test-horse');await selectFusionMaterial(page,1,'fusion-test-devil');
+    await page.locator('[data-fusion-confirm]').click();await page.locator('[data-fusion-commit]').click();
+    const consumed=page.locator('[data-fusion-consumed]');
+    assert.equal(await consumed.count(),2);assert.equal(await consumed.locator('.v39-card-portrait-image').count(),2);
+    assert.equal(await consumed.first().locator('.v39-card-portrait-image').getAttribute('data-v39-portrait-slot'),'7');
+    await page.screenshot({path:`output/web-game/fusion-layout/consumed-${width}.png`});
     await page.evaluate(()=>{const s=window.getV39GameState();window.setV39GameState({timeline:{...s.timeline,turnNumber:s.timeline.turnNumber+1}});});
     assert.equal(await page.locator('#v39-fusion-modal').count(),0);assert.equal(await page.evaluate(()=>window.isV39MapInputLocked()),false);
     assert.deepEqual(errors,[]);console.log(`${width}: two-pane composition, shared cards/details, tab retention, read-only skills, confirmation/back, ten slots, scroll identity and turn cancellation passed`);

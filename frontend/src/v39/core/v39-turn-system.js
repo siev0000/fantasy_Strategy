@@ -1,4 +1,5 @@
 import { getV39DiscoveredFeature } from "../../lib/v39-exploration-rules.js";
+import {v39HazardRecoveryFromState} from '../../lib/v39-hazard-zones.js';
 import { advanceV39PersonalDefenses } from "../../lib/v39-defense-rules.js";
 import { advanceV39NaturalFog, advanceV39Fog } from "../../lib/v39-fog-rules.js";
 import { resolveV39FacilityEffectsAtTile } from "../../lib/v39-economy-rules.js";
@@ -96,7 +97,7 @@ function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide =
       && `${Math.floor(number(row?.x))},${Math.floor(number(row?.y))}` === key)
     : null;
   const nestRecovery = number(nest?.recoveryPercent ?? nest?.回復補正 ?? nest?.回復);
-  const recovered = Math.max(1, Math.floor(maxHp * ((5 + featureRecovery + facilityRecovery + nestRecovery) / 100)));
+  const recovered = Math.floor(Math.max(1, Math.floor(maxHp * ((5 + featureRecovery + facilityRecovery + nestRecovery) / 100)))*v39HazardRecoveryFromState(state,unit));
   const nextHp = Math.min(maxHp, hp + recovered);
   return { ...unit, hp:nextHp, currentHp:nextHp };
 }

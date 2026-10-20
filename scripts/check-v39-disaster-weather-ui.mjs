@@ -13,6 +13,7 @@ try{
     await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.activateV39FooterTab('test');});
     await page.locator('[data-test-section="expedition"]').evaluate(n=>n.open=true);
     await page.locator('[data-test-action="disaster-test-start"]').click();
+    await page.locator('[data-test-action="disaster-fixed-start"]').click();
     await page.waitForFunction(()=>!window.isV39MapInputLocked()&&window.getV39GameState().worldEnvironment.weather);
     assert.equal(await page.locator('[data-test-tab="environment"]').getAttribute('aria-selected'),'true');
     assert.equal(await page.locator('.v39-weather-samples button').count(),4);
@@ -55,7 +56,7 @@ try{
     await page.screenshot({path:`${out}/weather-${width}.png`});
     const overflow=await page.locator('.v39-weather-samples').evaluate(n=>n.scrollWidth>n.clientWidth);
     assert.equal(overflow,false);
-    await page.evaluate(()=>window.startV39DisasterTest());
+    await page.evaluate(()=>window.startV39DisasterTest({atmosphere:false}));
     assert.equal(await page.locator('.v39-weather-samples button').count(),4);
     assert.equal(await page.evaluate(()=>window.getV39ActiveFactionState().units.length),initial.count);
     await page.evaluate(()=>window.startV39ExpeditionTest());

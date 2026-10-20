@@ -2,12 +2,11 @@ import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { getIconSrcByName, hasIconName } from "../../lib/icon-library.js";
 import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { V39_CAVE_BALANCE } from "../../lib/v39-gameplay-balance.js";
-import { hasV39TerrainPattern } from './v39-terrain-patterns.js';
+import { hasV39TerrainPattern,terrainPatternNameAt } from './v39-terrain-patterns.js';
 
 const BASE_TERRAIN_ICONS = Object.freeze({
   "森": { symbol: "🌲", imageCandidate: true, imageName:"森" },
   "山岳": { symbol: "⛰", imageCandidate: false },
-  "雪原": { symbol: "❄", imageCandidate: false },
   "火山": { symbol: "🌋", imageCandidate: false },
   "砂漠": { symbol: "∴", imageCandidate: false }
 });
@@ -75,8 +74,8 @@ function collectIconEntries(data, scene) {
       const special = String(data?.specialMap?.[y]?.[x] || "");
       const baseIcon = BASE_TERRAIN_ICONS[terrain];
       const specialIcon = SPECIAL_TERRAIN_ICONS[special];
-      if (baseIcon && !hasV39TerrainPattern(scene,terrain)) entries.push({ x, y, kind:"base", terrain, icon:baseIcon });
-      if (specialIcon && !(hasV39TerrainPattern(scene,special) && special===terrain)) entries.push({ x, y, kind:"special", terrain:special, icon:specialIcon });
+      if (baseIcon && !hasV39TerrainPattern(scene,terrainPatternNameAt(data,x,y))) entries.push({ x, y, kind:"base", terrain, icon:baseIcon });
+      if (specialIcon && !hasV39TerrainPattern(scene,special)) entries.push({ x, y, kind:"special", terrain:special, icon:specialIcon });
       if(special!=="洞窟"&&isV39SurfaceCaveEntrance(data,x,y))entries.push({x,y,kind:"special",terrain:"洞窟",icon:SPECIAL_TERRAIN_ICONS["洞窟"]});
     }
   }

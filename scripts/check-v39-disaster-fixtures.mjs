@@ -12,6 +12,7 @@ try{
     await page.waitForFunction(()=>typeof window.startV39DisasterTest==='function');
     await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.openV39TestTools();});
     await page.locator('[data-test-action="disaster-test-start"]').click();
+    await page.locator('[data-test-action="disaster-fixed-start"]').click();
     await page.waitForFunction(()=>document.getElementById('v39-test-disaster-fixture'));
     const initial=await page.evaluate(()=>{
       const state=window.getV39GameState(),events=state.worldEnvironment.activeDisasters;

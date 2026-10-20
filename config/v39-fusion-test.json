@@ -3,6 +3,18 @@
   "minimumCopies": 2,
   "additionalMaterialSpecies": ["ライオン", "ゴート", "オウル", "リザード", "モンキー", "フォックス", "タートル", "ディア"],
   "defaultLevel": 10,
+  "attributeMaterialLevel": 3,
+  "attributeMaterialSpecies": {
+    "フレイムアニマル": "ボア",
+    "フロストアニマル": "ウルフ",
+    "ウィンドアニマル": "ホーク",
+    "スパークアニマル": "ホーク",
+    "ポイズンアニマル": "スネーク",
+    "シーアニマル": "タートル",
+    "ストーンアニマル": "タートル",
+    "ソルアニマル": "ライオン",
+    "ムーンアニマル": "ウルフ"
+  },
   "previewZoom": 1,
   "materialRadius": 6,
   "territoryRadius": 6,

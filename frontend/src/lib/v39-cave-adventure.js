@@ -1,4 +1,5 @@
 import { classData, raceData, equipmentData } from "./game-data-registry.js";
+import {v39HazardRecoveryMultiplier} from './v39-hazard-zones.js';
 import { buildV39UnitEntity, buildV39ClassEquipment, getV39InitialJobClasses } from "./v39-unit-creation-rules.js";
 import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { resolveV39UnitInitialLevel, resolveV39DamageExpReward, grantV39UnitExperience } from "./v39-unit-experience.js";
@@ -255,7 +256,7 @@ export function useCaveSite(game,siteId,actorId) {
     log(game,`${actor.name}：${site.name} +1`);
   } else {
     for(const unit of game.party.filter(alive)) {
-      const amount=Math.min(unit.maxHp-unit.hp,Math.ceil(unit.maxHp*balance.recoveryHpRate));
+      const amount=Math.min(unit.maxHp-unit.hp,Math.floor(Math.ceil(unit.maxHp*balance.recoveryHpRate)*v39HazardRecoveryMultiplier(game.map,unit,game.turn)));
       unit.hp+=amount;unit.currentHp=unit.hp;unit.ap-=balance.recoveryApCost;unit.currentAp=unit.ap;
       log(game,`${site.name}：${unit.name} HP +${amount}`);
     }

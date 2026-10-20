@@ -4,6 +4,7 @@ import { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
 import {buildV39UndeadInheritance} from './v39-undead-inheritance.js';
 import {canV39SpeciesBecomeUndead} from './v39-undead-species-rules.js';
+import {canV39UnitLeaveOrganicCorpse} from './v39-corpse-types.js';
 
 const keyOf = unit => `${unit.x},${unit.y}`;
 const dead = unit => unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0;
@@ -65,7 +66,7 @@ export function convertV39CorpsesInDeathFog(state, mapData, turn, { createEnemy,
     return true;
   };
   for (const unit of fieldUnits) {
-    if (unit.soulCollected||(magic&&!corpseIds.has(unit.id))||!dead(unit) || (unit.deadExpireTurn && unit.deadExpireTurn <= turn)
+    if (!canV39UnitLeaveOrganicCorpse(unit)||unit.soulCollected||(magic&&!corpseIds.has(unit.id))||!dead(unit) || (unit.deadExpireTurn && unit.deadExpireTurn <= turn)
       || !Number.isInteger(unit.x) || !Number.isInteger(unit.y) || removed.has(unit.id)) continue;
     if (!transform(unit.x, unit.y, unit)) continue;
     removed.add(unit.id);

@@ -35,7 +35,12 @@ export function loadV39TerrainPatterns(scene, getData, getDisplay) {
 }
 
 export function hasV39TerrainPattern(scene, terrain) {
-  return !!config.terrains[terrain] && (scene.v39TerrainPatterns?.tileCount || 0) > 0;
+  return (scene.v39TerrainPatterns?.terrainCounts?.[terrain] || 0)>0;
+}
+
+export function terrainPatternNameAt(data,x,y){
+  const special=data.specialMap?.[y]?.[x];
+  return ['沼地','湿地'].includes(special)?special:data.grid[y]?.[x];
 }
 
 export function terrainHeightBrightness(level, enabled = true) {
@@ -65,10 +70,10 @@ function clearPatterns(scene) {
 
 // Bake cropped artwork into bounded textures, not thousands of live tile sprites.
 export function drawV39TerrainPatterns(scene, data, display = {}) {
-  const signature = data.isUnderground ? 'underground' : `${data.w}:${data.h}:${display.heightShading}:${display.heightOutlineOnly}:${JSON.stringify(data.heightLevelMap)}:${data.grid.map(row => row.join('|')).join(';')}`;
+  const signature = data.isUnderground ? 'underground' : `${data.w}:${data.h}:${display.heightShading}:${display.heightOutlineOnly}:${JSON.stringify(data.heightLevelMap)}:${data.grid.map((row,y) => row.map((_,x)=>terrainPatternNameAt(data,x,y)).join('|')).join(';')}`;
   if (scene.v39TerrainPatterns?.signature === signature) return;
   clearPatterns(scene);
-  const state = { signature, chunks: [], tileCount: 0 };
+  const state = { signature, chunks: [], tileCount: 0,terrainCounts:{} };
   scene.v39TerrainPatterns = state;
   if (!scene.v39TerrainPatternsCleanup) {
     scene.v39TerrainPatternsCleanup = true;
@@ -81,7 +86,7 @@ export function drawV39TerrainPatterns(scene, data, display = {}) {
   const chunks = new Map();
   const artwork = new Map();
   for (let y = 0; y < data.h; y++) for (let x = 0; x < data.w; x++) {
-    const rule = config.terrains[data.grid[y]?.[x]];
+    const terrain=terrainPatternNameAt(data,x,y),rule = config.terrains[terrain];
     if (!rule) continue;
     const left = x * width + (y % 2 ? oddRowOffsetX : 0), top = y * rowStep;
     const crop = terrainPatternCrop(source, rule.frame);
@@ -126,6 +131,7 @@ export function drawV39TerrainPatterns(scene, data, display = {}) {
       }
     }
     state.tileCount++;
+    state.terrainCounts[terrain]=(state.terrainCounts[terrain]||0)+1;
   }
   for (const chunk of chunks.values()) chunk.texture.refresh();
 }

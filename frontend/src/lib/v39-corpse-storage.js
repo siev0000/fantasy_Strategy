@@ -1,6 +1,6 @@
 import {getHexDistance} from './hex-grid.js';
 import {getV39StorageFacilities,getV39FacilityStoredEntries} from './v39-facility-storage.js';
-import {DEFAULT_CORPSE_FIELD_TURNS} from './v39-turn-timing.js';
+import {resolveV39CorpseExpiry} from './v39-corpse-lifetime.js';
 
 const dead=u=>u&&Number(u.hp??u.currentHp)===0&&['死亡','死体'].includes(u.state)&&!u.summon;
 const world=u=>u?.worldId||'surface';
@@ -10,7 +10,7 @@ const turnOf=s=>Math.max(1,Number(s.timeline?.turnNumber)||1);
 export function getV39CorpseStorageCandidates(state,playerId,facility){
   const faction=factionOf(state,playerId);
   if(!facility||facility.type!=='corpse')return [];
-  const nearby=u=>dead(u)&&(!u.deadExpireTurn||u.deadExpireTurn>turnOf(state))&&world(u)===facility.worldId&&Number.isInteger(u.x)&&Number.isInteger(u.y)&&getHexDistance(u,facility)<=1;
+  const nearby=u=>dead(u)&&resolveV39CorpseExpiry(u,turnOf(state))>turnOf(state)&&world(u)===facility.worldId&&Number.isInteger(u.x)&&Number.isInteger(u.y)&&getHexDistance(u,facility)<=1;
   const rows=[...(faction?.units||[]),...(state.enemies||[])].filter(nearby);
   for(const entry of faction?.deadUnitReserve||[])if(!entry.corpseStorage&&dead(entry.unit)&&world(entry.unit)===facility.worldId)rows.push(entry.unit);
   return [...new Map(rows.map(u=>[u.id,u])).values()];
@@ -26,7 +26,7 @@ export function recoverV39CorpseToFacility(state,playerId,facility,unitId){
   if((faction.deadUnitReserve||[]).some(e=>e.unit?.id===unitId&&e.corpseStorage))return fail('既に保管されています');
   const turn=turnOf(state),previous=(faction.deadUnitReserve||[]).find(e=>e.unit?.id===unitId);
   const corpseStorage={tileKey:facility.tileKey,facilityName:facility.name,worldId:facility.worldId,
-    remainingTurns:Math.max(1,(Number(unit.deadExpireTurn)||turn+DEFAULT_CORPSE_FIELD_TURNS)-turn)};
+    remainingTurns:Math.max(1,resolveV39CorpseExpiry(unit,turn)-turn)};
   const reserve={...previous,unitId,unit:{...structuredClone(unit),ap:0,currentAp:0,actionPoint:0},reason:'霊廟保管',storedAtTurn:turn,storedAtMs:Date.now(),corpseStorage};
   const next={...faction,units:faction.units.filter(u=>u.id!==unitId),
     squads:(faction.squads||[]).map(s=>({...s,unitIds:(s.unitIds||[]).filter(id=>id!==unitId),memberIds:(s.memberIds||[]).filter(id=>id!==unitId)})),
@@ -45,7 +45,7 @@ export function releaseV39StoredCorpse(state,playerId,facility,unitId){
   if(!facility||!entry||state.activePlayerId!==playerId||state.timeline?.phase!=='player')return fail('操作可能な自軍の霊廟が必要です');
   // Resume only the unspent field lifetime; withdrawing never revives the body.
   const unit={...structuredClone(entry.unit),x:facility.x,y:facility.y,position:[facility.x,facility.y],worldId:facility.worldId,
-    hp:0,currentHp:0,ap:0,currentAp:0,state:'死亡',squadId:'solo',deadExpireTurn:turnOf(state)+Math.max(1,entry.corpseStorage.remainingTurns||1)};
+    hp:0,currentHp:0,ap:0,currentAp:0,state:'死亡',squadId:'solo',corpseLifetimeVersion:1,deadExpireTurn:turnOf(state)+Math.max(1,entry.corpseStorage.remainingTurns||1)};
   const next={...faction,units:[...faction.units,unit],deadUnitReserve:faction.deadUnitReserve.filter(e=>e!==entry)};
   return {ok:true,state:{...state,players:state.players.map(p=>p.id===playerId?{...p,factionState:next}:p)}};
 }

@@ -65,6 +65,13 @@ export const TERRITORY_RESIDENTIAL_LEVEL_CONFIG = {
 // UIプロトタイプの見やすさを取り込み、通常タイルの輪郭を少し濃くする。
 // 塗り色やFog判定には触れず、既存の探索/視界ロジックを維持する。
 export const TILE_BORDER_DEFAULT = { width: 1.0, color: 0x26353b, alpha: 0.95 };
+
+export const FIELD_TERRAIN_OVERLAY_STYLE = Object.freeze({
+  snow: Object.freeze({ outerInset:0.06, innerInset:0.26, color:0xf4f7fb, alpha:0.85 }),
+  river: Object.freeze({ widthRatio:0.18, bankWidth:2, bankColor:0x235b79, waterColor:0x70c9ec, alpha:1,
+    waterfallColor:0xd9f5ff, waterfallWidthRatio:0.65,
+    arrowColor:0x235b79, arrowAlpha:0.9, arrowLengthRatio:0.7, arrowWidthRatio:0.5 })
+});
 export const TILE_BORDER_PLAYER = { width: 2.25, color: 0x5ad4ff, alpha: 0.98 };
 export const TILE_BORDER_ENEMY = { width: 2.25, color: 0xe25c5c, alpha: 0.98 };
 export const TILE_BORDER_FACTION_WIDTH = 2.25;

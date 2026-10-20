@@ -89,6 +89,7 @@ function findSheet(fileNameValue) {
 }
 
 const monsterSheetReferenceByName = new Map();
+const monsterSheetReferenceByRace = new Map();
 const monsterSheetReferenceByDefinitionId = new Map();
 
 for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
@@ -104,6 +105,11 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
   if (slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) continue;
 
   const reference = { fileName, slotNumber, sizeByLevel, race:text(row.種族), className:text(row.サブクラス) };
+  // Canonical race can differ from the spawn display name (fire/flame elemental).
+  // Variant rows must not replace the race's ordinary appearance.
+  if (reference.race && !reference.className && !monsterSheetReferenceByRace.has(reference.race)) {
+    monsterSheetReferenceByRace.set(reference.race, reference);
+  }
 
   if (definitionId) {
     monsterSheetReferenceByDefinitionId.set(definitionId, reference);
@@ -214,7 +220,7 @@ function resolveReferenceFromEnemy(enemy) {
     const reference = name ? monsterSheetReferenceByName.get(name) : null;
     if (reference) return reference;
   }
-  return null;
+  return monsterSheetReferenceByRace.get(baseRace) || null;
 }
 
 function resolveReferenceArtwork(reference, enemy = null) {

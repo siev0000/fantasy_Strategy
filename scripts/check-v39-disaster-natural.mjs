@@ -44,10 +44,12 @@ try{
         weather:plan.weather,lastNaturalEventTurn:plan.turn-1,lastDisasterEvents:[],activeDisasters:[]}});
       const advanced=await window.advanceV39Turn({skipUnactedFocus:true});await window.waitForV39MapRenderSettled();
       const state=window.getV39GameState(),env=state.worldEnvironment;
-      return {advanced,turn:state.timeline.turnNumber,events:env.lastDisasterEvents.filter(e=>e.disasterId),diagnostics:env.disasterDiagnostics};
+      return {advanced,turn:state.timeline.turnNumber,events:env.lastDisasterEvents.filter(e=>e.disasterId),diagnostics:env.disasterDiagnostics,
+        logs:window.getV39ActiveFactionState().activityLog.filter(row=>row.detail?.disasterPhase)};
     },plan);
     assert(actual.advanced);assert.equal(actual.turn,plan.turn);assert(actual.events.length>0);
     assert(actual.events.every(e=>e.forced===false));assert.deepEqual(actual.events.map(e=>e.name),plan.names);
+    for(const event of actual.events)assert.equal(actual.logs.filter(row=>row.detail.id===event.id&&row.detail.disasterPhase==='started').length,1);
     assert(actual.diagnostics.attempts.some(r=>r.status==='spawned'&&r.rolled<r.chance));
     await page.locator('#v39-test-disaster-id').selectOption(actual.events[0].disasterId);
     assert((await page.locator('[data-disaster-trial-selected]').innerText()).includes('自然発生'));
@@ -62,6 +64,8 @@ try{
     await page.locator('[data-test-action="disaster-natural-turns"]').click();
     await page.waitForFunction(turn=>window.getV39GameState().timeline.turnNumber===turn+10,beforeBulk);
     await page.waitForFunction(()=>!document.querySelector('[data-test-action="disaster-natural-turns"]').disabled);
+    const endedLogs=await page.evaluate(()=>window.getV39ActiveFactionState().activityLog.filter(row=>row.detail?.disasterPhase==='ended'));
+    for(const event of actual.events.filter(event=>event.expiresAtTurn<beforeBulk+10))assert.equal(endedLogs.filter(row=>row.detail.id===event.id).length,1);
     await page.locator('[data-test-action="disaster-fixed-start"]').click();
     await page.waitForFunction(()=>!window.__v39FieldRuntime.mapData.disasterNaturalTestFixture);
     assert.equal(await page.evaluate(()=>window.getV39GameState().worldEnvironment.activeDisasters.filter(e=>e.forced).length),fixture.events.length+1);

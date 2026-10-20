@@ -28,6 +28,11 @@ function currentTurn() {
 }
 
 function canSeeMessage(entry) {
+  if(entry.environmentVisibility){
+    const state=window.getV39EnemyTurnState?.(),visibility=entry.environmentVisibility;
+    if(visibility.playerId!==state?.activePlayerId)return false;
+    if(window.isV39TestMode?.()!==true&&(!visibility.observed||visibility.worldId!==(state?.activeWorldId||'surface')))return false;
+  }
   if (entry.channel !== "battle" || !entry.combatVisibility) return true;
   if (window.isV39TestMode?.() === true) return true;
   const state = window.getV39EnemyTurnState?.();
@@ -161,6 +166,7 @@ export function pushV39SideRailMessage(input, options = {}) {
     id:text(source.id) || `side-log:${Date.now()}:${sequence += 1}`,
     channel,
     combatVisibility:source.combatVisibility,
+    environmentVisibility:source.environmentVisibility,
     title:text(source.title, LABELS[channel]),
     message,
     details:text(source.details ?? options.details),

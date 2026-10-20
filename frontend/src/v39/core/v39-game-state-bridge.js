@@ -5,6 +5,7 @@ import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLoot
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
 import {findV39NewUnitDeaths,applyV39DeathPurification} from '../../lib/v39-death-purification.js';
+import {evaluateV39Victory} from '../../lib/v39-victory-rules.js';
 import {
   normalizeV39LocalPlayerCount,
   normalizeV39LocalParticipantCount,
@@ -213,7 +214,7 @@ function normalizeState(input = {}) {
     enemies: normalizeUnitArray(input.enemies),
     enemySquads:normalizeV39EnemySquads(input.enemySquads),
     enemyNests:normalizeV39EnemyNests(input.enemyNests),
-    groundLootByTile:normalizeV39GroundLootByTile(input.groundLootByTile),
+    groundLootByTile:normalizeV39GroundLootByTile(input.groundLootByTile,input.timeline?.turnNumber || 1),
     worldEnvironment: normalizeWorldEnvironment(input.worldEnvironment),
     enemyCombatRuntime: {
       pendingActionsByEnemyId: cloneRecord(input?.enemyCombatRuntime?.pendingActionsByEnemyId),
@@ -311,7 +312,7 @@ function getState({ includeWorlds = true } = {}) {
     enemies: state.enemies.map(cloneUnit),
     enemySquads:normalizeV39EnemySquads(state.enemySquads),
     enemyNests:normalizeV39EnemyNests(state.enemyNests),
-    groundLootByTile:normalizeV39GroundLootByTile(state.groundLootByTile),
+    groundLootByTile:normalizeV39GroundLootByTile(state.groundLootByTile,state.timeline?.turnNumber || 1),
     worldEnvironment: normalizeWorldEnvironment(state.worldEnvironment),
     enemyCombatRuntime: {
       pendingActionsByEnemyId:{ ...state.enemyCombatRuntime.pendingActionsByEnemyId },
@@ -393,7 +394,7 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = normalizeUnitArray(patch.enemies);
   if (Object.prototype.hasOwnProperty.call(patch, "enemySquads")) next.enemySquads = normalizeV39EnemySquads(patch.enemySquads);
   if (Object.prototype.hasOwnProperty.call(patch, "enemyNests")) next.enemyNests = normalizeV39EnemyNests(patch.enemyNests);
-  if (Object.prototype.hasOwnProperty.call(patch, "groundLootByTile")) next.groundLootByTile = normalizeV39GroundLootByTile(patch.groundLootByTile);
+  if (Object.prototype.hasOwnProperty.call(patch, "groundLootByTile")) next.groundLootByTile = normalizeV39GroundLootByTile(patch.groundLootByTile,patch.timeline?.turnNumber || state.timeline?.turnNumber || 1);
   if (Object.prototype.hasOwnProperty.call(patch, "worldEnvironment")) next.worldEnvironment = normalizeWorldEnvironment(patch.worldEnvironment);
   if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) next.enemyCombatRuntime = {
     ...(patch.activeWorldId && patch.activeWorldId !== state.activeWorldId ? {} : state.enemyCombatRuntime), ...patch.enemyCombatRuntime
@@ -402,6 +403,12 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "timeline")) next.timeline = { ...state.timeline, ...patch.timeline };
   // 保存済みマップは書込時に既に複製済み。無関係な更新で再複製しない。
   const normalized = { ...normalizeState({ ...next, explorationWorlds:{} }), explorationWorlds:next.explorationWorlds };
+  // Observe acquisition/loss immediately without advancing the end-of-turn counter.
+  if(!Object.hasOwn(patch,'victory')&&!normalized.victory?.completed&&(normalized.activeWorldId||'surface')==='surface'
+    &&(Object.hasOwn(patch,'territoryOwnerByTile')||Object.hasOwn(patch,'victoryLandmarksByTile'))
+    &&Object.keys(normalized.victoryLandmarksByTile||{}).length){
+    normalized.victory=evaluateV39Victory(normalized,normalized.timeline.turnNumber,{advanceProgress:false}).victory;
+  }
   applyDeathPurification(state,normalized,Object.keys(patch),options);
   state = normalized;
   if (options.silent !== true) dispatchChange(options.reason || "set");

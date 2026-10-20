@@ -41,14 +41,17 @@ try{
     const before=JSON.stringify(spawned.map(u=>({id:u.id,level:u.level,hp:u.hp,combatProfile:u.combatProfile})));
     window.importV39SaveJson(window.exportV39SaveJson());
     const after=window.getV39GameState().enemies;
-    return {armies:armies.map(u=>({id:u.id,level:u.level,members:u.combatProfile.memberCount})),singles:singles.map(u=>u.level),
+    const sourceDefinitions=new Map(getV39EnemySpawnDefinitions('平地').map(row=>[row.definitionId,row]));
+    return {armies:armies.map(u=>({id:u.id,level:u.level,members:u.combatProfile.memberCount})),singles:singles.map(u=>({level:u.level,adjusted:u.beginnerAdjusted,
+      min:sourceDefinitions.get(u.sourceDefinitionId)?.minLevel,max:sourceDefinitions.get(u.sourceDefinitionId)?.maxLevel})),
       doubledHp:army.maxHp===single.maxHp*2,attackCount:a.detail.attackCount,singleAttackCount:s.detail.attackCount,damageTriple:a.total===s.total*3,
       bosses:boss.map(u=>({level:u.level,profile:u.combatProfile})),extreme:extreme.map(u=>({level:u.level,profile:u.combatProfile})),
       cave:caveEnemies.map(u=>({members:u.combatProfile?.memberCount,level:u.level})),
       saved:before===JSON.stringify(after.map(u=>({id:u.id,level:u.level,hp:u.hp,combatProfile:u.combatProfile})))};
   });
   assert(report.armies.length>0&&report.singles.length>0);
-  assert(report.armies.every(u=>u.level>=1&&u.level<=10));assert(report.singles.every(lv=>lv>=5&&lv<=15));
+  assert(report.armies.every(u=>u.level>=1&&u.level<=10));
+  assert(report.singles.every(u=>u.level>=1&&u.level<=15&&(u.adjusted||u.level>=u.min&&u.level<=u.max)));
   assert(report.doubledHp&&report.damageTriple);assert.equal(report.attackCount,3);assert.equal(report.singleAttackCount,1);
   assert(report.bosses.length&&report.bosses.every(u=>!u.profile&&u.level>=20&&u.level<=25));
   assert(report.extreme.length&&report.extreme.every(u=>!u.profile&&u.level===30));

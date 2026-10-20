@@ -7,7 +7,7 @@ page.on("pageerror", error => errors.push(String(error)));
 page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
 
 try {
-  await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+  await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3024", { waitUntil:"networkidle" });
   await page.waitForFunction(() => (
     typeof window.startV39LocalSession === "function"
     && typeof window.generateV39TestFieldWithSeed === "function"
@@ -37,9 +37,16 @@ try {
 
     window.setV39GameState({
       territoryOwnerByTile,
+      enemies:before.enemies.filter(unit=>!unit.victoryGuard&&!unit.strongMinion),
       timeline:{ ...before.timeline, turnNumber:3 }
     }, { reason:"victory-condition-check" });
     window.dispatchEvent(new CustomEvent("v39:turn-stage-exploration", { detail:{ turnNumber:3 } }));
+    if(window.getV39GameState().victory.completed)throw new Error('取得直後に勝利しています');
+    for(let turn=4;turn<=8;turn++){
+      const current=window.getV39GameState();window.setV39GameState({timeline:{...current.timeline,turnNumber:turn}});
+      window.dispatchEvent(new CustomEvent('v39:turn-stage-exploration',{detail:{turnNumber:turn}}));
+      if(turn<8&&window.getV39GameState().victory.completed)throw new Error('5ターン経過前に勝利しています');
+    }
     await new Promise(resolve => window.setTimeout(resolve, 50));
     const completed = window.getV39GameState();
     if (!completed.victory?.completed || completed.victory.winnerPlayerId !== playerId) {

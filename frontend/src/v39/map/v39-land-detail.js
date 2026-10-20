@@ -14,6 +14,9 @@ const LAND_FIELD_IDS = Object.freeze({
   "領土": "v39-land-owner",
   "危険度": "v39-land-danger",
   "高度": "v39-land-height",
+  "環境効果": "v39-land-environment-effects",
+  "天候": "v39-land-weather",
+  "浄化": "v39-land-purification",
   "開拓難易度": "v39-land-development-difficulty",
   "施設": "v39-land-facility",
   "結界 / 壁": "v39-land-defense",
@@ -96,6 +99,11 @@ function resetLandPanel(message = "マスを選択") {
   setField("v39-land-danger", "-");
   setField("v39-land-height", "-");
   setField("v39-land-weather", "-");
+  setField("v39-land-environment-effects", "マスを選択");
+  const environmentField=document.getElementById('v39-land-environment-effects');
+  if(environmentField)environmentField.title='';
+  setField("v39-land-purification", "-");
+  setField("v39-land-cave-area", "-");
   setField("v39-land-development-difficulty", "-");
   setField("v39-land-facility", "なし");
   setField("v39-land-defense", "なし");
@@ -389,7 +397,9 @@ function renderLandDetail(selected) {
   const weatherVisible=window.isV39TestMode?.()||window.isV39TileInCurrentVision?.(detail.x,detail.y);
   setField('v39-land-weather',weather&&weatherVisible?`${weather.weather||'未更新'} / ${Math.round(weather.temperature??weather.climateTemperature)}℃ / 乾燥${Math.round(weather.dryness??0)}`:'-');
   const effects=detail.environmentEffects;
-  setField('v39-land-environment-effects',weatherVisible?(effects.map(row=>`${row.name}${row.remaining===null?'':` ⌛${row.remaining}`}`).join(' / ')||'なし'):'未確認');
+  setField('v39-land-environment-effects',weatherVisible?(effects.map(row=>`${row.name}${row.suppressedRemaining>0?` 抑制⌛${row.suppressedRemaining}`:row.persistent?'（常設）':row.remaining===null?'':` ⌛${row.remaining}`}`).join(' / ')||'なし'):'未確認');
+  const environmentField=document.getElementById('v39-land-environment-effects');
+  if(environmentField)environmentField.title=weatherVisible?effects.map(row=>[row.name,row.description].filter(Boolean).join('：')).join('\n'):'';
   setField("v39-land-enemies", detail.enemies);
   setField("v39-land-victory-landmark", detail.victoryLandmark);
   renderSettlementConversionAction();

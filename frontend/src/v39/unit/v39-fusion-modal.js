@@ -64,7 +64,7 @@ function render(){
   const slotBar=`<div class="fusion-slots" role="tablist" aria-label="素材枠">${(check.slots||[]).map((name,index)=>`<button role="tab" aria-selected="${index===session.activeSlot}" data-fusion-slot="${index}">素材${index+1} ${esc(name)}${session.materialIds[index]?' ✓':''}</button>`).join('')}</div>`;
   const list=candidates.map(u=>{
     const blocked=candidateReasons(state,check,u);
-    return `<div class="fusion-candidate${blocked.length?' unavailable':''}" data-fusion-row="${esc(u.id)}">${renderV39UnitCard(u,{attribute:'data-fusion-candidate',selected:u.id===session.candidateId,
+    return `<div class="fusion-candidate${blocked.length?' unavailable':''}" data-fusion-row="${esc(u.id)}">${renderV39UnitCard(u,{attribute:'data-fusion-candidate',portrait:true,selected:u.id===session.candidateId,
       name:`${u.soulStored?'魂 · ':u.facilityStored?'格納 · ':''}${u.name}`,dead:u.soulStored,position:u.soulStored?'魂 / 合成専用':u.facilityStored?`${u.facilityStored.name} (${u.facilityStored.tileKey})`:undefined})}
       ${blocked.length?`<small>${esc(blocked[0])}</small>`:''}</div>`;
   }).join('')||'<div class="squad-empty">条件を満たす種族・クラスがありません</div>';
@@ -76,7 +76,7 @@ function render(){
   updateV39RetainedMarkup(host,`<section role="dialog" aria-modal="true" aria-labelledby="fusion-title"><header><h3 id="fusion-title">モンスター合成</h3><span>${session.mode==='facility'?'施設 / AP消費なし':`AP${check.cost}`}</span><button data-fusion-close aria-label="閉じる">×</button></header>
     ${preview}<div class="fusion-workspace">${session.created?'':toolbar+slotBar}
     <div class="fusion-panes"><div class="fusion-material-pane"><div class="fusion-list-heading">${session.created?'消費した素材':`素材${session.activeSlot+1} · ${esc(required||'')}`}<small>${isV39FusionTerritoryScope(state,session.playerId,check.actor)?'自領全域':`周囲${resolveV39FusionMaterialRadius(check.actor)}マス`}</small></div>
-      <div class="squad-member-list" data-fusion-candidates>${session.created?session.materials.map(u=>renderV39UnitCard(u,{attribute:'data-fusion-consumed',position:'消費済み'})).join(''):list}</div></div>
+      <div class="squad-member-list" data-fusion-candidates>${session.created?session.materials.map(u=>renderV39UnitCard(u,{attribute:'data-fusion-consumed',portrait:true,position:'消費済み'})).join(''):list}</div></div>
       <div class="squad-detail-pane"><div class="fusion-detail-source" role="tablist" aria-label="詳細の対象"><button data-fusion-source="material" aria-selected="${session.detailSource==='material'}"${session.created?' disabled':''}>選択素材</button><button data-fusion-source="result" aria-selected="${session.detailSource==='result'||!!session.created}">合成後</button></div>${detail(detailUnit,check)}</div></div></div>
     <footer><div class="fusion-status" role="status">${esc(status)}</div><div class="fusion-footer-buttons">${controls}</div></footer></section>`,{preserveInput:true,preserveDetails:()=>detailKey===session.lastDetailKey});
   if(detailKey!==session.lastDetailKey)host.querySelector('[data-fusion-detail-scroll]')?.scrollTo(0,0);
