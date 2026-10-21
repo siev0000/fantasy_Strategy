@@ -111,7 +111,7 @@ try{for(const width of [320,390,1100]){
     await page.screenshot({path:out+'/actual-trade-picker-'+side+'-'+width+'.png'});
     await page.keyboard.press('Escape');
     await page.locator('#v39-hub-tab-quests').click();
-    const baseline=await page.evaluate(()=>{const s=window.getV39GameState(),p=s.players.find(p=>p.id===s.activePlayerId),v=s.neutralVillages.find(v=>v.incidentTest);return {own:p.factionState.settlements[0].population,village:v.population,ap:p.factionState.units[0].ap,gold:p.factionState.settlements[0].materialStockByType.金,wood:p.factionState.settlements[0].materialStockByType.木材,vGold:v.materialStockByType.金};});
+    const baseline=await page.evaluate(()=>{const s=window.getV39GameState(),p=s.players.find(p=>p.id===s.activePlayerId),v=s.neutralVillages.find(v=>v.incidentTest);return {own:p.factionState.settlements[0].population,souls:Number(p.factionState.settlements[0].foodStockByType.魂)||0,village:v.population,ap:p.factionState.units[0].ap,gold:p.factionState.settlements[0].materialStockByType.金,wood:p.factionState.settlements[0].materialStockByType.木材,vGold:v.materialStockByType.金};});
     await page.locator('[data-hub-quest="'+eventId+'"]').check();
     const editor=page.locator('[data-hub-reward-editor]');
     assert(await editor.isHidden(),'checkboxes must not open reward UI');
@@ -173,8 +173,8 @@ try{for(const width of [320,390,1100]){
     await page.locator('[data-hub-primary]').click();
     await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson(0)));
     await page.locator('[data-hub-quest="'+eventId+'"]').check();await page.locator('[data-hub-primary]').click();
-    const result=await page.evaluate(()=>{const s=window.getV39GameState(),p=s.players.find(p=>p.id===s.activePlayerId),v=s.neutralVillages.find(v=>v.incidentTest);return {own:p.factionState.settlements[0].population,village:v.population,ap:p.factionState.units[0].ap,quest:v.questsByPlayerId[p.id],gold:p.factionState.settlements[0].materialStockByType.金,wood:p.factionState.settlements[0].materialStockByType.木材,claims:v.soulClaimsByPlayerId?.[p.id]||0};});
-    assert.equal(result.own,baseline.own+1);assert.equal(result.village,baseline.village-1);assert.equal(result.ap,baseline.ap-20);assert.equal(result.claims,0);
+    const result=await page.evaluate(()=>{const s=window.getV39GameState(),p=s.players.find(p=>p.id===s.activePlayerId),v=s.neutralVillages.find(v=>v.incidentTest);return {own:p.factionState.settlements[0].population,souls:Number(p.factionState.settlements[0].foodStockByType.魂)||0,village:v.population,ap:p.factionState.units[0].ap,quest:v.questsByPlayerId[p.id],gold:p.factionState.settlements[0].materialStockByType.金,wood:p.factionState.settlements[0].materialStockByType.木材,claims:v.soulClaimsByPlayerId?.[p.id]||0};});
+    assert.equal(result.own,baseline.own+(side==='demon'?0:1));assert.equal(result.souls,baseline.souls+(side==='demon'?1:0));assert.equal(result.village,baseline.village-1);assert.equal(result.ap,baseline.ap-20);assert.equal(result.claims,0);
     assert.equal(result.gold,baseline.gold+5);assert.equal(result.wood,baseline.wood+25);
     assert(result.quest.completed&&Array.isArray(result.quest.rewardTerms)&&result.quest.rewardTerms.length===3);
     assert(await page.locator('[data-hub-primary]').isDisabled());

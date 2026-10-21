@@ -26,7 +26,7 @@ export function inspectV39SoulCollection(state,playerId,target){
   if(!corpse)return {ok:false,reason:'回収可能な単体の死体がありません（回収済み・召喚体・軍隊は対象外）'};
   // Store only growth/appearance identity; gear, cargo, orders and coordinates stay outside the soul.
   const fields=['race','className','secondClassName','level','prerequisiteClassLevels','strongAnimalClassName',
-    'strongAnimalClassLevel','fusionGrowth','promotionGrowthStart','classGrowthStart','undeadGrowthStart',
+    'strongAnimalClassLevel','fusionGrowth','promotionGrowthStart','classGrowthStart','undeadGrowthStart','reincarnationGrowthStart','reincarnationInheritedSkillNames','reincarnationSecondClassName',
     'fusionAppearanceClass','image','imageFile','imageIndex','testOnly'];
   const identity=Object.fromEntries(fields.filter(field=>corpse[field]!==undefined).map(field=>[field,structuredClone(corpse[field])]));
   const soul=applyV39DerivedCharacterData({...identity,id:`soul-${playerId}-${corpse.id}`,name:corpse.name,

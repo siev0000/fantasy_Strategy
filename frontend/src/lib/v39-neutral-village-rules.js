@@ -1,4 +1,5 @@
 import {isV39VillageHostileToPlayer} from './v39-village-hostility.js';
+import {resolveV39SpecialVillage} from './v39-special-villages.js';
 import { getHexNeighborCoords, getHexDistance } from "./hex-grid.js";
 import eventDefaults from "../../../config/v39-event-defaults.json";
 import expeditionDefaults from "../../../config/v39-expedition-defaults.json";
@@ -89,7 +90,7 @@ function combatRaceNameForVillage(village, factionRow = factionRowForVillage(vil
 }
 
 function villageMilitaryLevel(village) {
-  return Math.max(0, integer(village?.researchLevels?.軍事Lv ?? village?.militaryLevel, 0));
+  return Math.max(0, integer(village?.researchLevels?.軍事Lv ?? village?.militaryLevel, 0),integer(resolveV39SpecialVillage(village)?.militaryLevel));
 }
 
 function passableDefenseTile(mapData, x, y) {
@@ -221,7 +222,7 @@ export function buildV39NeutralVillageDefenseUnits(village, mapData, options = {
     const classRow = CLASS_BY_NAME.get(className) || CLASS_BY_NAME.get("ファイター") || {};
     const id = text(village?.id) + "-defense-" + (index + 1);
     const existing = existingById.get(id);
-    const level = existing ? Math.max(1, integer(existing.level, 1)) : resolveV39UnitInitialLevel(combatRaceName, true);
+    const level = existing ? Math.max(1, integer(existing.level, 1)) : Math.max(resolveV39UnitInitialLevel(combatRaceName, true),integer(resolveV39SpecialVillage(village)?.armyLevel));
     const label = text(classRow?.ルビ) || className || "戦士";
     const built = buildV39UnitEntity({
       id,

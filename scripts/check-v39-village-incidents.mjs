@@ -87,11 +87,12 @@ try {
     await page.evaluate(()=>window.startV39VillageIncidentTest());
     await click('demon');await click('contract');await click('high');await click('visitor');await click('weak');await click('rest');
     data=await read();assert.equal(data.v.heldUnits.length,3);assert.equal(data.p.factionState.units.length,0);
-    await click('demon');await click('receive');data=await read();assert.equal(data.v.heldUnits.length,0);assert.equal(data.p.factionState.villagePrisoners.length,3);
-    assert(data.p.factionState.villagePrisoners.every(row=>row.unit.equipment.length===0));
-    const gear=data.p.factionState.settlements[0].equipmentInventory.reduce((sum,row)=>sum+row.count,0);assert.equal(gear,6);
-    await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson()));data=await read();assert.equal(data.p.factionState.villagePrisoners.length,3);assert.equal(data.p.factionState.settlements[0].equipmentInventory.reduce((sum,row)=>sum+row.count,0),6);
-    await click('receive');data=await read();assert.equal(data.p.factionState.villagePrisoners.length,3);
+    await click('demon');await click('receive');data=await read();assert.equal(data.v.heldUnits.length,0);assert.equal(data.p.factionState.villagePrisoners.length,0);
+    const cargo=()=>data.p.factionState.squads[0].cargoByUnitId[data.p.factionState.units[0].id];
+    assert.equal(cargo().resourcesByType.魂,3);
+    assert.equal(cargo().equipmentInventory.reduce((sum,row)=>sum+row.count,0),6);
+    await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson()));data=await read();assert.equal(cargo().resourcesByType.魂,3);assert.equal(cargo().equipmentInventory.reduce((sum,row)=>sum+row.count,0),6);
+    await click('receive');data=await read();assert.equal(cargo().resourcesByType.魂,3);
     await page.evaluate(()=>window.startV39VillageIncidentTest());await click('demon');await click('contract');await click('low');await click('visitor');await click('rest');
     data=await read();assert.equal(data.v.incidentByPlayerId[data.p.id].status,'rescue');assert.equal(data.v.heldUnits.length,0);
     await click('rescue');data=await read();assert.equal(data.v.sacrificeContract.active,false);assert.equal(data.v.relationsByPlayerId[data.p.id],10);

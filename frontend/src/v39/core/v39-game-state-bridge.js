@@ -1,8 +1,7 @@
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import {raceData} from '../../lib/game-data-registry.js';
 import npcBalance from '../../../../config/v39-npc-faction-ai.json';
-import {buildV39UnitEntity,buildV39ClassEquipment} from '../../lib/v39-unit-creation-rules.js';
-import {resolveV39UnitInitialLevel} from '../../lib/v39-unit-experience.js';
+import {buildV39UnitEntity,buildV39ClassEquipment,getV39UnitCreationOptions,inspectV39UnitCreation} from '../../lib/v39-unit-creation-rules.js';
 import {applyV39InitialSovereignProfile,getV39InitialSovereignClassCandidates} from './v39-initial-sovereign.js';
 import {withV39ConversationPersonality} from '../../lib/v39-conversation-personality.js';
 import {withV39VillageLeader} from '../../lib/v39-village-leaders.js';
@@ -670,14 +669,24 @@ function createNpcSessionPlayers(count) {
     const result=applyV39InitialSovereignProfile({players:[player]},{playerId:id,race,className,characterName:`${race}の統治者`,villageName:`${race}の拠点`});
     if(!result.ok)throw new Error(result.reason);
     const created=result.state.players[0];
-    const min=Math.max(0,Math.floor(npcBalance.initialSoldiersMin)),max=Math.max(min,Math.floor(npcBalance.initialSoldiersMax));
-    const soldiers=Array.from({length:min+Math.floor(Math.random()*(max-min+1))},(_,soldierIndex)=>{
-      const definition=classes.find(row=>row.名前===className);
-      const unit=buildV39UnitEntity({id:`${id}-initial-soldier-${soldierIndex+1}`,name:`${race}の一般兵${soldierIndex+1}`,race,className,
-        level:resolveV39UnitInitialLevel(race),unitType:'一般',isMob:true,isNamed:false,equipment:buildV39ClassEquipment(definition)});
+    const options=getV39UnitCreationOptions(created);
+    const candidates=[...options.classes].sort((a,b)=>(a.名前===className?-1:0)-(b.名前===className?-1:0));
+    let check=null;
+    for(const row of candidates){
+      const candidate=inspectV39UnitCreation({players:[created]},created,{mode:'army',race,className:row.名前,count:1});
+      if(candidate.classRow&&candidate.militaryLevel>=candidate.mode.requiredMilitaryLevel&&(!candidate.recruitment||candidate.recruitment.available)){
+        check=candidate;break;
+      }
+    }
+    if(!check)throw new Error(`${race}: 初期軍隊として作成可能なクラスがありません`);
+    // This is an initial grant, not a paid training order before the base has been placed.
+    const armies=Array.from({length:Math.max(0,Math.floor(Number(npcBalance.initialArmies)||0))},(_,armyIndex)=>{
+      const unit=buildV39UnitEntity({id:`${id}-initial-army-${armyIndex+1}`,name:`${race}${check.classRow.ルビ||check.classRow.名前}軍${armyIndex+1}`,race,className:check.classRow.名前,
+        level:check.initialLevel,unitType:check.mode.unitTypeLabel,combatProfile:check.mode,isMob:true,isNamed:false,
+        role:`メンバー / ${check.mode.unitTypeLabel}`,equipment:buildV39ClassEquipment(check.classRow)});
       return {...unit,x:null,y:null,position:null,initialSettlementSlot:0};
     });
-    return {...created,factionState:{...created.factionState,units:[...created.factionState.units,...soldiers]}};
+    return {...created,factionState:{...created.factionState,units:[...created.factionState.units,...armies]}};
   });
 }
 

@@ -1,4 +1,6 @@
 import config from '../../../config/v39-quest-rewards.json';
+import {resolveV39ImmediateSoulAmount} from './v39-soul-conversion.js';
+import {isV39Undead} from './v39-corpse-types.js';
 import {findV39VillageQuest} from './v39-village-quest-log.js';
 import {FOOD_RESOURCE_KEYS,MATERIAL_RESOURCE_KEYS} from './v39-economy-rules.js';
 import {getSelectedSettlement,replaceFactionSettlement} from './settlement-state.js';
@@ -117,7 +119,9 @@ function paySingleReward(state,playerId,villageId,reward){
   let paid,received;
   if(reward.kind==='population'){
     paid={...village,population:village.population-reward.amount,populationByRace:{...village.populationByRace,[reward.name]:n(village.populationByRace[reward.name])-reward.amount}};
-    received={...bank,population:n(bank.population)+reward.amount,populationByRace:{...bank.populationByRace,[reward.name]:n(bank.populationByRace?.[reward.name])+reward.amount}};
+    const souls=isV39Undead({race:reward.name})?0:resolveV39ImmediateSoulAmount(player,reward.amount);
+    received=souls>0?{...bank,foodStockByType:{...bank.foodStockByType,魂:n(bank.foodStockByType?.魂)+souls}}
+      :{...bank,population:n(bank.population)+reward.amount,populationByRace:{...bank.populationByRace,[reward.name]:n(bank.populationByRace?.[reward.name])+reward.amount}};
   }else{
     const field=resourceField(reward.name);paid={...village,[field]:{...village[field],[reward.name]:n(village[field]?.[reward.name])-reward.amount}};
     received={...bank,[field]:{...bank[field],[reward.name]:n(bank[field]?.[reward.name])+reward.amount}};

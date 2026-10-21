@@ -132,7 +132,7 @@ export function getV39SurveyTileKeys(unit, map = window.__v39FieldRuntime?.mapDa
   return [...visited];
 }
 
-export function inspectV39Survey(state, playerId, unitId, tile, map) {
+export function inspectV39Survey(state, playerId, unitId, tile, map, context = {}) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const faction = player?.factionState;
   const unit = faction?.units?.find(row => text(row?.id) === text(unitId));
@@ -142,7 +142,8 @@ export function inspectV39Survey(state, playerId, unitId, tile, map) {
   const reasons = [];
   if (!player || !unit) reasons.push("調査するキャラクターを選択してください");
   if(unit&&!isV39UnitInWorld(unit,state?.activeWorldId))reasons.push("このキャラクターは別のマップにいます");
-  if(state?.timeline?.phase&&state.timeline.phase!=="player")reasons.push("操作ターンに実行してください");
+  const npcTurn = context.aiTurn === true && player?.isPlayer === false && state?.timeline?.phase === 'resolution';
+  if(state?.timeline?.phase&&state.timeline.phase!=="player"&&!npcTurn)reasons.push("操作ターンに実行してください");
   if (!key) reasons.push("マスを選択してください");
   if (unit && (number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡")) reasons.push("死亡したキャラクターは調査できません");
   if (unit && key && (Math.floor(number(unit.x, -1)) !== x || Math.floor(number(unit.y, -1)) !== y)) reasons.push("キャラクターと同じマスで実行してください");
@@ -165,10 +166,10 @@ export function inspectV39Survey(state, playerId, unitId, tile, map) {
   return { available:reasons.length === 0, reasons, player, faction, unit, x, y, key, apCost, remainingAp, availableAp, tileKeys };
 }
 
-export function startV39SurveyTask(state, playerId, unitId, tile, map) {
-  const check = inspectV39Survey(state, playerId, unitId, tile, map);
+export function startV39SurveyTask(state, playerId, unitId, tile, map, context = {}) {
+  const check = inspectV39Survey(state, playerId, unitId, tile, map, context);
   if (!check.available) return { ok:false, reason:check.reasons.join(" / "), state };
-  const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
+  const turn = Math.max(1, Math.floor(number(context.aiTurn && check.player.isPlayer === false ? context.turnNumber : state?.timeline?.turnNumber, 1)));
   const progressAp = Math.min(V39_SURVEY_BALANCE.requiredAp, number(check.unit.surveyTask?.progressAp) + check.apCost);
   const terrain = TERRAIN_DEFINITION_BY_NAME.get(map?.grid?.[check.y]?.[check.x]);
   const task = { key:check.key, x:check.x, y:check.y, worldId:check.unit.worldId || "surface", startedTurn:check.unit.surveyTask?.startedTurn ?? turn,

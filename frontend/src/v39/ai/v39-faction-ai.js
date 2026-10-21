@@ -1,20 +1,20 @@
-import { inspectV39Survey, startV39SurveyTask } from "../../lib/v39-exploration-rules.js";
 import npcBalance from '../../../../config/v39-npc-faction-ai.json';
-import {hasV39FacilityPrerequisites} from '../../lib/v39-facility-development-rules.js';
 import {getV39VictoryLandmarkStatus} from '../../lib/v39-victory-rules.js';
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { getV39LandExpansionCandidates, startV39LandExpansion } from "../../lib/v39-land-expansion-rules.js";
-import { facilityDefinitions, inspectV39Construction, startV39Construction,inspectV39NeutralVillageEconomy } from "../../lib/v39-economy-rules.js";
-import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation } from "../../lib/v39-unit-creation-rules.js";
+import { startV39Construction } from "../../lib/v39-economy-rules.js";
+import { createV39Units } from "../../lib/v39-unit-creation-rules.js";
+import {inspectV39NpcConstructionPlan,inspectV39NpcReinforcementPlan,inspectV39NpcDevelopmentPlan} from '../../lib/v39-npc-development-plan.js';
 import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "../../lib/research-tree-config.js";
 import { isResearchCompleted, inspectResearchUnlock, normalizeResearchState, selectResearch } from "../../lib/research-progress.js";
 import { getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
 import { getHexDistance } from "../../lib/hex-grid.js";
 import { resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
 import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
-import { refreshV39FactionIntelligence } from "../../lib/v39-faction-intelligence-rules.js";
+import { refreshV39FactionIntelligence, collectV39FactionVision } from "../../lib/v39-faction-intelligence-rules.js";
 import { canV39FactionAttack } from "../../lib/v39-diplomacy-rules.js";
 import { isV39SupportSkill, resolveAttackApCost, resolveAttackRange, resolveAttackRows } from "../../lib/v39-combat-engine.js";
+import { selectV39NpcResourceObjective, executeV39NpcResourceObjective, isV39NpcResourceReturnComplete } from '../../lib/v39-npc-resource-policy.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -26,12 +26,14 @@ function playerFrom(state, playerId) {
   return state?.players?.find(player => text(player?.id) === text(playerId)) || null;
 }
 
-function decideAiObjective(state, player) {
+function decideAiObjective(state, player, mapData, turn = state.timeline?.turnNumber) {
   const hold=Object.entries(state.victoryLandmarksByTile||{}).find(([key])=>{
     const status=getV39VictoryLandmarkStatus(state,key,player.id);
     return status.controlled&&(status.interfered||status.securedTurns<status.requiredTurns);
   });
   if(hold){const [key,site]=hold;return {type:'victory-landmark',hold:true,targetTileKey:key,targetName:site.name,x:site.x,y:site.y};}
+  const resourceObjective = selectV39NpcResourceObjective(state, player, mapData, npcBalance, turn);
+  if (resourceObjective && resourceObjective.type !== 'resource-search') return resourceObjective;
   const knownFactions = Object.values(player?.factionState?.exploration?.discoveredFactionsByPlayerId || {});
   const hostileFaction = knownFactions
     .filter(record => canV39FactionAttack(state, player?.id, record?.playerId) && Number.isFinite(Number(record?.x)) && Number.isFinite(Number(record?.y)))
@@ -56,17 +58,7 @@ function decideAiObjective(state, player) {
     x:Math.floor(number(landmark.x)),
     y:Math.floor(number(landmark.y))
   };
-  return hostileObjective||{ type:"explore", targetTileKey:"", targetName:"", x:null, y:null };
-}
-
-function startAiSurvey(state, player) {
-  const unit = (player?.factionState?.units || []).filter(alive).find(candidate =>
-    (candidate.worldId||'surface')===(state.activeWorldId||'surface')&&!candidate.pendingWorldExit&&
-    number(candidate?.x, -1) >= 0 && number(candidate?.y, -1) >= 0
-    && inspectV39Survey(state, player.id, candidate.id, candidate).available);
-  if (!unit) return null;
-  const result = startV39SurveyTask(state, player.id, unit.id, { x:unit.x, y:unit.y });
-  return result.ok ? { state:result.state, command:`調査:${result.task.key}` } : null;
+  return hostileObjective||resourceObjective||{ type:"explore", targetTileKey:"", targetName:"", x:null, y:null };
 }
 
 function worldWrapEnabled(mapData) {
@@ -103,20 +95,22 @@ function nextFormationForDirection(group, from, to, mapData) {
   return positions;
 }
 
-// NPCは未調査情報だけを目的にし、地形は既存の移動命令を検証するためだけに読む。
-function moveAiExplorer(state, player, mapData, objective = decideAiObjective(state, player)) {
+// Move toward an already known objective; surveying is not a movement prerequisite.
+function moveAiExplorer(state, player, mapData, objective = decideAiObjective(state, player, mapData)) {
   if (!mapData?.grid || !number(mapData?.w) || !number(mapData?.h)) return null;
-  const surveyed = new Set(player?.factionState?.exploration?.surveyedTileKeys || []);
   const units = (player?.factionState?.units || []).filter(unit => alive(unit) && !unit?.surveyTask&&!unit.pendingWorldExit&&(unit.worldId||'surface')===(state.activeWorldId||'surface'));
   const occupied = occupiedTileKeys(state);
   for (const unit of units) {
+    if (objective.actorId && unit.id !== objective.actorId) continue;
+    if (['resource-demand','resource-receive'].includes(objective.type) && getHexDistance(unit, objective) <= 1) continue;
+    if (objective.type === 'resource-return' && isV39NpcResourceReturnComplete(player, objective)) continue;
     const group = resolveV39SquadMovementGroup(player.factionState, unitId(unit));
     if (!group.ok || group.moveAp <= 0) continue;
     const start = { x:group.x, y:group.y };
     if(objective.type==='victory-landmark'&&getHexDistance(start,objective)===0)continue;
+    const directed = objective.x !== null && objective.y !== null && Number.isFinite(objective.x) && Number.isFinite(objective.y);
     const candidates = getHexNeighborCoords(mapData.w, mapData.h, start.x, start.y, worldWrapEnabled(mapData))
-      .filter(tile => objective.type === "victory-landmark" || objective.type === "foreign-faction" || !surveyed.has(tile.key))
-      .sort((a, b) => objective.type === "victory-landmark" || objective.type === "foreign-faction"
+      .sort((a, b) => directed
         ? getHexDistance(a, objective) - getHexDistance(b, objective) || a.y - b.y || a.x - b.x
         : a.y - b.y || a.x - b.x);
     for (const target of candidates) {
@@ -139,6 +133,7 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
         : row);
       const purpose = objective.type === "victory-landmark" ? `勝利対象へ移動:${objective.targetName}`
         : objective.type === "foreign-faction" ? `他勢力へ移動:${objective.targetName}`
+          : objective.type.startsWith('resource-') ? `資源確保へ移動:${objective.targetName}`
           : "探索移動";
       return { state:{ ...state, players }, command:`${purpose}:${coordKey(start.x, start.y)}→${target.key}` };
     }
@@ -146,39 +141,100 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
   return null;
 }
 
-function startAiConstruction(state, player, mapData) {
-  const village=getFactionSettlements(player.factionState).find(row=>row.settlementId===player.factionState.selectedSettlementId)||getFactionSettlements(player.factionState)[0];
-  if(!village||(village.constructionQueue||[]).length)return null;
-  const foodShortage=inspectV39NeutralVillageEconomy({...village,race:player.race},mapData,state).shortageTotal>0;
-  const priority=definition=>number(definition.row.自動建設優先度)+number(npcBalance.constructionPurposeBonus[definition.row.建設目的])+
-    (foodShortage&&(number(definition.row.農業)>0||definition.gatheringResource==='魚'||definition.row.施設ID==='cemetery')?npcBalance.foodShortageBonus:0);
-  const definitions=facilityDefinitions().filter(definition=>hasV39FacilityPrerequisites(village,definition.row)&&!(village.buildings||[]).includes(definition.name))
-    .sort((a,b)=>priority(b)-priority(a)||a.name.localeCompare(b.name));
-  const keys = Object.entries(state?.territoryOwnerByTile || {})
-    .filter(([, owner]) => text(owner) === text(player.id))
-    .map(([key]) => key)
-    .sort();
-  for (const definition of definitions) for (const key of keys) {
-    const [x, y] = key.split(",").map(Number);
-    const tile = { x, y };
-    if (!inspectV39Construction(state, player, definition, tile, mapData).available) continue;
-    const result = startV39Construction(state, player.id, definition.name, tile, mapData);
-    if (result.ok) return { state:result.state, command:`建設:${definition.name}@${key}` };
+function rememberNpcScoutVision(state, playerId, mapData) {
+  const player = playerFrom(state, playerId);
+  const scoped = { ...state, players:state.players.map(row => row.id !== playerId ? row : { ...row,
+    factionState:{ ...row.factionState, units:row.factionState.units.filter(unit => (unit.worldId || 'surface') === 'surface') } }) };
+  const { visible } = collectV39FactionVision(scoped, playerId, mapData);
+  const explored = new Set([...(player.factionState.visibility?.exploredTileKeys || []), ...visible]);
+  return { ...state, players:state.players.map(row => row.id !== playerId ? row : { ...row, factionState:{ ...row.factionState,
+    visibility:{ ...row.factionState.visibility, visibleTileKeys:[...visible], exploredTileKeys:[...explored] }
+  } }) };
+}
+
+// Search known, reachable ground for a route to the edge of sight. Do not use hidden village positions.
+function findNpcScoutStep(state, player, mapData) {
+  const explored = new Set(player.factionState.visibility?.exploredTileKeys || []);
+  const settings = npcBalance.scouting || npcBalance.resourceScouting;
+  const limit = Math.max(1, Math.floor(number(settings?.searchNodeLimit, 512)));
+  const checkedGroups = new Set();
+  for (const unit of player.factionState.units || []) {
+    if (!alive(unit) || unit.surveyTask || unit.pendingWorldExit || (unit.worldId || 'surface') !== 'surface') continue;
+    const group = resolveV39SquadMovementGroup(player.factionState, unit.id);
+    if (!group.ok || group.moveAp <= 0) continue;
+    const groupKey = group.participants.map(member => member.id).sort().join('|');
+    if (checkedGroups.has(groupKey)) continue;
+    checkedGroups.add(groupKey);
+    const occupied = occupiedTileKeys(state, group.participants.map(member => member.id));
+    for (const village of state.neutralVillages || []) for (const guard of village.defenseUnits || []) {
+      if (alive(guard)) occupied.add(coordKey(guard.x, guard.y));
+    }
+    const start = { x:group.x, y:group.y, members:group.participants, first:null };
+    const queue = [start], visited = new Set([coordKey(start.x, start.y)]);
+    for (let i = 0; i < queue.length && i < limit; i++) {
+      const current = queue[i];
+      for (const target of getHexNeighborCoords(mapData.w, mapData.h, current.x, current.y, worldWrapEnabled(mapData))) {
+        if (visited.has(target.key)) continue;
+        const positions = nextFormationForDirection({ participants:current.members }, current, target, mapData);
+        if (!positions || new Set(positions.map(row => coordKey(row.x, row.y))).size !== positions.length
+          || positions.some(row => occupied.has(coordKey(row.x, row.y)))) continue;
+        let cost = 0;
+        for (const member of current.members) {
+          const to = positions.find(row => row.id === member.id);
+          cost = Math.max(cost, resolveV39UnitMovementStepCost(mapData, member.x, member.y, to.x, to.y, member));
+        }
+        if (!Number.isFinite(cost) || (!current.first && cost > group.moveAp)) continue;
+        const first = current.first || { group, target:{ ...target, positions }, cost };
+        if (!explored.has(target.key)) return first;
+        visited.add(target.key);
+        // Unknown terrain is an exploration goal, never a shortcut used to plan beyond sight.
+        if (queue.length < limit) queue.push({ ...target, first,
+          members:current.members.map(member => ({ ...member, ...positions.find(row => row.id === member.id) })) });
+      }
+    }
   }
   return null;
 }
 
-function startAiUnitCreation(state, player) {
-  const count=(player.factionState.units||[]).filter(alive).length+(player.factionState.unitTrainingQueue||[]).length;
-  if(count>=npcBalance.unitTarget)return null;
-  const options = getV39UnitCreationOptions(player);
-  for (const mode of ["army", "normal"]) for (const classRow of options.classes || []) for (const race of options.races || []) {
-    const request = { mode, className:text(classRow?.名前), race, count:1 };
-    if (!inspectV39UnitCreation(state, player, request).available) continue;
-    const result = createV39Units(state, player.id, request);
-    if (result.ok) return { state:result.state, command:`訓練開始:${result.queuedUnits[0]?.name || request.className}` };
+function scoutNpcMap(sourceState, player, mapData, turn, initialObjective) {
+  if (!mapData?.grid || (sourceState.activeWorldId || 'surface') !== 'surface') return null;
+  let state = rememberNpcScoutVision(sourceState, player.id, mapData);
+  let objective = decideAiObjective(state, playerFrom(state, player.id), mapData, turn);
+  const steps = [];
+  const settings = npcBalance.scouting || npcBalance.resourceScouting;
+  const maxSteps = Math.max(1, Math.floor(number(settings?.maxStepsPerTurn, 6)));
+  const exploring = value => ['explore', 'resource-search'].includes(value?.type);
+  for (let step = 0; step < maxSteps && exploring(objective); step++) {
+    const current = playerFrom(state, player.id);
+    if (planAiCombat(state, current, objective)) break;
+    const route = findNpcScoutStep(state, current, mapData);
+    if (!route) break;
+    const moved = applyV39SquadMovement(current.factionState, route.group, route.target, route.cost, state);
+    if (!moved.ok) break;
+    state = { ...state, players:state.players.map(row => row.id !== player.id ? row : { ...row, factionState:moved.faction }) };
+    state = rememberNpcScoutVision(state, player.id, mapData);
+    const intelligence = refreshV39FactionIntelligence(state, player.id, mapData, turn);
+    state = intelligence.state;
+    steps.push(route.target.key);
+    objective = decideAiObjective(state, playerFrom(state, player.id), mapData, turn);
   }
-  return null;
+  const label = initialObjective.type === 'resource-search' ? '供給元の移動探索' : '探索移動';
+  return { state, objective, command:steps.length ? `${label}:${steps.join('→')}${!exploring(objective)?` / 発見:${objective?.targetName || ''}`:''}`
+    :!exploring(objective)?`${label}:発見 ${objective?.targetName || ''}`:`${label}:移動可能な未踏領域なし` };
+}
+
+function startAiConstruction(state, player, mapData) {
+  const plan=inspectV39NpcConstructionPlan(state,player,mapData);
+  if(plan.status!=='ready')return null;
+  const result=startV39Construction(state,player.id,plan.name,plan.tile,mapData);
+  return result.ok?{state:result.state,command:`建設:${plan.name}@${plan.tileKey}`}:null;
+}
+
+function startAiUnitCreation(state, player) {
+  const plan=inspectV39NpcReinforcementPlan(state,player);
+  if(plan.status!=='ready')return null;
+  const result=createV39Units(state,player.id,plan.request);
+  return result.ok?{state:result.state,command:`訓練開始:${result.queuedUnits[0]?.name || plan.className}`}:null;
 }
 
 // 戦争相手または勝利地点の守護者だけを既存の勢力戦闘処理へ渡す。ダメージ処理・反撃・死亡処理は重複しない。
@@ -264,14 +320,14 @@ function selectAiResearch(state, player) {
   return { state:{ ...state, players }, commands };
 }
 
-function storeAiResult(state, playerId, turn, commands, objective) {
+function storeAiResult(state, playerId, turn, commands, objective, mapData) {
   const players = state.players.map(player => {
     if (player.id !== playerId) return player;
     const current = player?.factionState?.aiState || {};
     const history = [...(Array.isArray(current.history) ? current.history : []), { turn, commands:[...commands] }].slice(-100);
     return {
       ...player,
-      factionState:{ ...player.factionState, aiState:{ ...current, objective:{ ...objective }, lastProcessedTurn:turn, lastCommands:[...commands], history } }
+      factionState:{ ...player.factionState, aiState:{ ...current, objective:{ ...objective }, developmentPlan:inspectV39NpcDevelopmentPlan(state,player,mapData), lastProcessedTurn:turn, lastCommands:[...commands], history } }
     };
   });
   return { ...state, players };
@@ -314,13 +370,16 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
     state = intelligence.state;
     player = playerFrom(state, playerId);
     for (const discovery of intelligence.discoveries) commands.push(`勢力発見:${discovery.playerName}`);
-    const objective = decideAiObjective(state, player);
+    let objective = decideAiObjective(state, player, mapData, turn);
     if (objective.type === "victory-landmark") commands.push(`目的:勝利対象 ${objective.targetName}`);
     if (objective.type === "foreign-faction") commands.push(`目的:他勢力 ${objective.targetName}`);
+    if (objective.resource || objective.type === 'resource-return') commands.push(`目的:資源確保 ${objective.resource || '持帰り'} / ${objective.targetName}`);
+    const resourceAction = executeV39NpcResourceObjective(state, playerId, objective, turn);
+    if (resourceAction) { state = resourceAction.state; player = playerFrom(state, playerId); commands.push(resourceAction.command); }
     const immediateCombat=planAiCombat(state,player,objective);
     for (const action of [
-      () => immediateCombat?null:startAiSurvey(state, player),
-      () => immediateCombat?null:moveAiExplorer(state, player, mapData, objective),
+      () => immediateCombat||resourceAction?null:['explore','resource-search'].includes(objective.type)
+        ?scoutNpcMap(state, player, mapData, turn, objective):moveAiExplorer(state, player, mapData, objective),
       () => startAiLandExpansion(state, player, mapData),
       () => startAiUnitCreation(state, player),
       () => startAiConstruction(state, player, mapData)
@@ -329,7 +388,12 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
       if (!result) continue;
       state = result.state;
       player = playerFrom(state, playerId);
+      if (result.objective) objective = result.objective;
       commands.push(result.command);
+    }
+    if (!resourceAction) {
+      const arrived = executeV39NpcResourceObjective(state, playerId, objective, turn);
+      if (arrived) { state = arrived.state; player = playerFrom(state, playerId); commands.push(arrived.command); }
     }
     const researchResult = selectAiResearch(state, player);
     if (researchResult) {
@@ -343,7 +407,7 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
     }
     const territoryAction = combatAction ? null : planAiTerritoryAssault(state, playerFrom(state, playerId));
     if (territoryAction) commands.push(`領土攻撃準備:${text(territoryAction.skillRow?.名前)}@${territoryAction.tileKey}`);
-    state = storeAiResult(state, playerId, turn, commands, objective);
+    state = storeAiResult(state, playerId, turn, commands, objective, mapData);
     reports.push({ playerId, turn, commands, objective, combatActions, territoryActions:territoryAction ? [territoryAction] : [] });
   }
   return { state, reports };
@@ -354,7 +418,10 @@ function handleTurn(event) {
   if (!state) return;
   const result = runV39FactionAiTurn(state, event?.detail?.turnNumber, window.__v39FieldRuntime?.mapData);
   if (!result.reports.length) return;
-  window.setV39GameState?.({ players:result.state.players }, { reason:"faction-ai-turn" });
+  window.setV39GameState?.({ players:result.state.players, neutralVillages:result.state.neutralVillages,
+    settlements:result.state.settlements, diplomacyRelations:result.state.diplomacyRelations,
+    groundLootByTile:result.state.groundLootByTile }, { reason:"faction-ai-turn" });
+  for (const report of result.reports) window.depositV39PlayerCargo?.(report.playerId);
   for (const action of result.reports.flatMap(report => report.combatActions || [])) {
     window.executeV39FactionCombatAction?.(action);
   }

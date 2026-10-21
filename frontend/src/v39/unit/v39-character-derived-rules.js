@@ -125,7 +125,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const isHumanRace = text(raceRow.種類) === "人族";
-  const facilityGrowth = unit.fusionGrowth||unit.promotionGrowthStart||unit.undeadGrowthStart?null:resolveV39FacilityClassGrowth({...unit,level},raceRow.種類);
+  const facilityGrowth = unit.fusionGrowth||unit.promotionGrowthStart||unit.undeadGrowthStart||unit.reincarnationGrowthStart?null:resolveV39FacilityClassGrowth({...unit,level},raceRow.種類);
   if (facilityGrowth) level = Math.min(level,facilityGrowth.levelCap);
   const strongAnimalClassName = text(unit.strongAnimalClassName);
   const strongAnimalClassRow = classByName.get(strongAnimalClassName) || null;
@@ -164,6 +164,12 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   if(unit.fusionGrowth?.levelsByClass) {
     raceLevels=Math.max(0,number(unit.fusionGrowth.levelsByClass[race]));
     classLevels=race===className?0:Math.max(0,number(unit.fusionGrowth.levelsByClass[className]));
+  }
+  if(unit.reincarnationGrowthStart){
+    const start=unit.reincarnationGrowthStart;
+    const gained=internalLevels(Math.max(0,baseLevel-number(start.level,baseLevel)),isHumanRace);
+    raceLevels=Math.max(0,number(start.raceLevels))+gained.raceLevels;
+    classLevels=Math.max(0,number(start.classLevels))+gained.classLevels;
   }
 
   const statusResult = buildCharacterStatusFromRules({
@@ -218,9 +224,10 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   const fusionSkillNames = Array.isArray(unit.fusionGrowth?.acquiredSkillNames)
     ? unit.fusionGrowth.acquiredSkillNames.filter(name => typeof name === 'string' && !isPlaceholder(name)).map(text) : [];
   acquiredNames.push(...fusionSkillNames);
+  acquiredNames.push(...(unit.reincarnationInheritedSkillNames||[]));
 
   let secondClassRow = null;
-  if (isHumanRace && level >= 10 && secondClassName && secondClassName !== className) {
+  if ((isHumanRace && level >= 10 || unit.reincarnationSecondClassName===secondClassName) && secondClassName && secondClassName !== className) {
     secondClassRow = classByName.get(secondClassName) || null;
     if (secondClassRow) acquiredNames.push(...collectSkills(secondClassRow, 1));
   }

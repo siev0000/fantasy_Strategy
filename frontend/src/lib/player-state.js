@@ -94,10 +94,12 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
     activityLog: cloneRows(source?.activityLog),
     eventDialogueById: source?.eventDialogueById ? structuredClone(source.eventDialogueById) : {},
     aiState: {
+      behaviorPatternId: String(source?.aiState?.behaviorPatternId || ""),
       lastProcessedTurn: Math.max(0, Math.floor(Number(source?.aiState?.lastProcessedTurn) || 0)),
       lastCommands: Array.isArray(source?.aiState?.lastCommands) ? source.aiState.lastCommands.map(String) : [],
       history: cloneRows(source?.aiState?.history),
-      objective: cloneRecord(source?.aiState?.objective)
+      objective: cloneRecord(source?.aiState?.objective),
+      developmentPlan: source?.aiState?.developmentPlan ? structuredClone(source.aiState.developmentPlan) : null
     },
     nationPolicy: {
       governmentSelections: cloneRecord(source?.nationPolicy?.governmentSelections),

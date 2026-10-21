@@ -51,16 +51,16 @@ function emptyBag(keys) {
   return Object.fromEntries(keys.map(key => [key, 0]));
 }
 
-function resourceUnitValue(key) {
+export function resolveV39PopulationResourceUnitValue(key) {
   return ["魂", "死体"].includes(text(key)) ? 100 : 1;
 }
 
 function normalizeStock(source, keys) {
-  return Object.fromEntries(keys.map(key => [key, round1(Math.max(0, number(source?.[key])) * resourceUnitValue(key))]));
+  return Object.fromEntries(keys.map(key => [key, round1(Math.max(0, number(source?.[key])) * resolveV39PopulationResourceUnitValue(key))]));
 }
 
 function stockValueToStoredUnits(source, keys) {
-  return Object.fromEntries(keys.map(key => [key, round1(Math.max(0, number(source?.[key])) / resourceUnitValue(key))]));
+  return Object.fromEntries(keys.map(key => [key, round1(Math.max(0, number(source?.[key])) / resolveV39PopulationResourceUnitValue(key))]));
 }
 
 function upkeepPerConsumer(row, resourceKeys) {
@@ -318,7 +318,7 @@ export function advanceV39PopulationEconomy({ village, units = [], income = {}, 
     };
   });
   const stock = normalizeStock(village?.foodStockByType, resourceKeys);
-  const incomeValue = Object.fromEntries(resourceKeys.map(key => [key, round1(number(income?.[key]) * resourceUnitValue(key))]));
+  const incomeValue = Object.fromEntries(resourceKeys.map(key => [key, round1(number(income?.[key]) * resolveV39PopulationResourceUnitValue(key))]));
   for (const key of resourceKeys) stock[key] = round1(number(stock[key]) + incomeValue[key]);
   const stockBeforeMaintenance = { ...stock };
   const stages = resolveStarvationStages(races, stockBeforeMaintenance, normalFoodKeys);

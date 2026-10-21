@@ -3,6 +3,9 @@ import {renderV39Conversation,recordV39Conversation} from './v39-negotiation-con
 import {getV39VillageQuests} from '../../lib/v39-village-quest-log.js';
 import {submitV39VillageQuestBatch} from '../../lib/v39-village-quest-batch.js';
 import {V39_NEGOTIATION_AP} from '../../lib/v39-negotiation-rules.js';
+import {resolveV39ImmediateSoulAmount} from '../../lib/v39-soul-conversion.js';
+import {resolveV39SpecialVillage,offerV39SpecialVillageSacrifice,suspendV39SpecialVillageContract,reincarnateV39VillageNegotiator} from '../../lib/v39-special-villages.js';
+import {specialVillageOfferingMarkup,specialVillageReincarnationMarkup} from './v39-special-village-offering-ui.js';
 import {resolveV39ResourceIcon} from '../../lib/resource-icon-glyphs.js';
 import {mountV39TradePanel,hideV39TradePanel,unmountV39TradePanel,submitV39TradePanel,selectV39TradeNegotiator} from './v39-trade-ui.js';
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
@@ -22,6 +25,8 @@ const tabs=[['talk','会話'],['quests','クエスト'],['trade','取引'],['inf
 const alive=unit=>Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
 const types={hunt:'討伐',delivery:'物資',watch:'警備',construction:'建築'};
 let context='',active='talk',selectedTalk='status',rewardQuestId='',questScroll=0,latest=null;
+let offeringDraft={count:1},offeringCheck=null;
+let reincarnationCheck=null;
 const checkedQuests=new Set();
 let tradeAction={label:'この条件で提案',disabled:true,message:''};
 const output=root=>root.querySelector('.v39-hub-footer > output');
@@ -47,6 +52,8 @@ function footer(){
   if(active==='quests'&&rewardQuestId){label=`この報酬を要求 AP${V39_NEGOTIATION_AP}`;disabled=!actor||Number(actor.ap??actor.currentAp)<V39_NEGOTIATION_AP||!root.querySelector('[data-hub-reward-editor]').canSubmitReward;message='報酬を選び、数量を指定して交渉します。受注は依頼一覧から行います。';}
   if(active==='trade'){label=tradeAction.label;disabled=tradeAction.disabled;message=tradeAction.message;}
   if(active==='info'){label='会話へ戻る';disabled=false;message='交渉役の変更・スキル使用はこのタブで行えます。';}
+  if(active==='talk'&&selectedTalk==='special-offering'){label=`軍隊${offeringDraft.count}駒で契約`;disabled=!offeringCheck?.available;message=offeringCheck?.available?'今回の奉納と定期的な維持費に同意して確定します。':offeringCheck?.reasons.join(' / ')||'条件を確認してください';}
+  if(active==='talk'&&selectedTalk==='special-reincarnation'){label=`転生する / 生贄${reincarnationCheck?.cost||0}人・AP${V39_NEGOTIATION_AP}`;disabled=!reincarnationCheck?.available;message=reincarnationCheck?.available?'交渉者本人の主要種族を変更します。':reincarnationCheck?.reasons.join(' / ')||'条件を確認してください';}
   button.textContent=label;button.disabled=disabled;delete button.dataset.sheetChoice;
   output(root).textContent=message;
 }
@@ -69,7 +76,7 @@ export function renderV39VillageHub(options){
   latest=options;
   const {root,state,village,actor,units,relation,relationLabel,choices,onAction,onRefresh,onClose,onActorChange}=options;
   const key=`${state.activePlayerId}:${village.id}`;
-  if(context!==key){closeV39QuestRewardPicker();unmountV39TradePanel();context=key;active='talk';selectedTalk='status';rewardQuestId='';checkedQuests.clear();}
+  if(context!==key){closeV39QuestRewardPicker();unmountV39TradePanel();context=key;active='talk';selectedTalk='status';rewardQuestId='';checkedQuests.clear();offeringDraft={count:village.offeringByPlayerId?.[state.activePlayerId]?.count||1,settlementId:village.offeringByPlayerId?.[state.activePlayerId]?.settlementId,race:village.offeringByPlayerId?.[state.activePlayerId]?.race};offeringCheck=null;}
 
   root.querySelector('#v39-village-menu-title').textContent=village.name;
   root.querySelector('[data-hub-relation]').textContent=`${relationLabel} ${relation}`;
@@ -79,7 +86,21 @@ export function renderV39VillageHub(options){
     peer:getV39VillageSpeaker(village),
     onActorChange:id=>{onActorChange(id);selectV39TradeNegotiator(id,village.id);},preparationHost:root.querySelector('[data-hub-preparation]')});
   const talk=[['status','村の様子を聞く','現在の計画や困っていることを確認します。'],['relation','交流する',`友好関係を深めます。食料 ${V39_NEUTRAL_VILLAGE_BALANCE.improveRelationCost}`],['village-rest','部隊で休息','村で部隊を休ませます。AP30'],['vassal','属国化を交渉','村を自国の保護下に置く交渉です。'],['raid','村を襲撃','戦闘を開始する敵対行動です。']];
-  updateV39RetainedMarkup(root.querySelector('#v39-hub-talk'),`<h2>何を話しますか？</h2><div class="v39-hub-talk-options">${talk.map(([id,title,copy])=>`<button type="button" data-hub-talk="${id}" aria-pressed="${selectedTalk===id}"${id==='vassal'&&village.vassalPlayerId?' disabled':''}><b>${title}</b><small>${copy}</small></button>`).join('')}</div>`);
+  if(resolveV39SpecialVillage(village))talk.splice(1,0,['special-offering','生贄の奉納・軍隊加入','奉納する人数に応じて、軍隊を1駒・2駒・3駒と配下に迎えます。']);
+  if(resolveV39SpecialVillage(village)?.reincarnation?.enabled)talk.splice(2,0,['special-reincarnation','転生を交渉','生贄を奉納し、交渉者本人が対応種族Lv3を取得して主要種族を変更します。']);
+  if(village.sacrificeContract?.active&&village.sacrificeContract.playerId===state.activePlayerId&&village.heldUnits?.length)
+    talk.splice(3,0,['sacrifice-receive','生贄を受け取る',resolveV39ImmediateSoulAmount(state.players.find(p=>p.id===state.activePlayerId),1)>0?'確保された生贄を受け取り、魂へ即時変換します。装備は荷物に入ります。':'確保された捕虜・死体を受け取ります。装備は荷物に入ります。']);
+  if(!talk.some(([id])=>id===selectedTalk))selectedTalk='status';
+  let offeringMarkup='';
+  if(active==='talk'&&selectedTalk==='special-offering'){
+    const offering=specialVillageOfferingMarkup(state,village,actor,offeringDraft,window.__v39FieldRuntime?.mapData);
+    offeringCheck=offering.check;offeringMarkup=offering.markup;
+  }
+  if(active==='talk'&&selectedTalk==='special-reincarnation'){
+    const reincarnation=specialVillageReincarnationMarkup(state,village,actor,offeringDraft);
+    reincarnationCheck=reincarnation.check;offeringMarkup=reincarnation.markup;
+  }
+  updateV39RetainedMarkup(root.querySelector('#v39-hub-talk'),`<h2>何を話しますか？</h2><div class="v39-hub-talk-options">${talk.map(([id,title,copy])=>`<button type="button" data-hub-talk="${id}" aria-pressed="${selectedTalk===id}"${id==='vassal'&&village.vassalPlayerId?' disabled':''}><b>${title}</b><small>${copy}</small></button>`).join('')}</div>${offeringMarkup}`);
   const plan=village.planSchedule?.active;
   updateV39RetainedMarkup(root.querySelector('[data-hub-info]'),`<h2>村の情報</h2><dl class="v39-hub-facts"><div><dt>人口</dt><dd>${village.population}人</dd></div><div><dt>村のLv</dt><dd>${village.level}</dd></div><div><dt>守備</dt><dd>${(village.defenseUnits||[]).filter(alive).reduce((sum,unit)=>sum+(Number(unit.count)||1),0)}人</dd></div><div><dt>所属</dt><dd>${esc(village.vassalPlayerId||'独立')}</dd></div></dl><p data-hub-leader>交渉相手: ${esc(getV39VillageSpeaker(village).name)} / ${esc(getV39VillageSpeaker(village).title||"村長")}</p><p>相手の性格: ${esc(village.conversationPersonality||'未設定')} / 交渉役の性格: ${esc(actor?.conversationPersonality||'未設定')}</p><p data-hub-pronouns>相手の一人称: ${esc(getV39ConversationProfile(getV39VillageSpeaker(village)).一人称)} / 二人称: ${esc(getV39ConversationProfile(getV39VillageSpeaker(village)).二人称)}</p><p data-hub-facilities>完成施設: ${esc((village.buildings||[]).join('・')||'なし')}</p><article class="v39-hub-card"><h3>現在の計画</h3><p>${esc(describeV39VillagePlan(village))}</p>${plan?.blockers?.length?`<p>${esc(plan.blockers.join(' / '))}</p>`:''}</article>${developmentMarkup(state,village)}<h2>交渉役・スキル</h2>`);
   const records=getV39VillageQuests(village,state.activePlayerId),pending=records.filter(row=>row.accepted&&!row.completed);
@@ -109,6 +130,12 @@ export function renderV39VillageHub(options){
     if(button.hasAttribute('data-hub-reward-negotiate')){questScroll=root.querySelector('.v39-village-menu-body').scrollTop;rewardQuestId=button.dataset.hubRewardNegotiate;renderV39VillageHub(latest);root.querySelector('.v39-village-menu-body').scrollTop=0;root.querySelector('[data-hub-reward-back]')?.focus({preventScroll:true});return;}
     if(button.hasAttribute('data-hub-reward-back')){const previous=rewardQuestId;rewardQuestId='';renderV39VillageHub(latest);root.querySelector('.v39-village-menu-body').scrollTop=questScroll;Array.from(root.querySelectorAll('[data-hub-reward-negotiate]')).find(b=>b.dataset.hubRewardNegotiate===previous)?.focus({preventScroll:true});return;}
     if(button.dataset.hubTalk){selectedTalk=button.dataset.hubTalk;renderV39VillageHub(latest);return;}
+    if(button.hasAttribute('data-special-contract-stop')){
+      if(window.isV39MapInputLocked?.())return;
+      const current=window.getV39GameState(),result=suspendV39SpecialVillageContract(current,current.activePlayerId,village.id);
+      if(result.ok)window.setV39GameState(result.state,{reason:'special-village-contract-stop'});
+      onRefresh();output(root).textContent=result.message||result.reason;return;
+    }
     if(!button.hasAttribute('data-hub-primary'))return;
     if(active==='trade'){submitV39TradePanel();return;}
     if(active==='info'){switchTab('talk');return;}
@@ -121,11 +148,29 @@ export function renderV39VillageHub(options){
       onRefresh();output(root).textContent=result.message||result.reason;return;
     }
     if(selectedTalk==='status'){recordV39Conversation(village.id,'村の様子を教えてください。',describeV39VillagePlan(village));onRefresh();return;}
+    if(selectedTalk==='special-offering'){
+      if(window.isV39MapInputLocked?.())return;
+      const current=window.getV39GameState();
+      const result=offerV39SpecialVillageSacrifice(current,current.activePlayerId,village.id,{...offeringDraft,unitId:actor?.id},window.__v39FieldRuntime?.mapData);
+      if(result.ok){window.setV39GameState(result.state,{reason:'special-village-offering'});recordV39Conversation(village.id,'生贄を奉納し、軍隊を迎えます。',result.message);window.appendV39ActivityLog?.(current.activePlayerId,'特殊村',result.message);}
+      onRefresh();output(root).textContent=result.message||result.reason;return;
+    }
+    if(selectedTalk==='special-reincarnation'){
+      if(window.isV39MapInputLocked?.())return;
+      const current=window.getV39GameState(),result=reincarnateV39VillageNegotiator(current,current.activePlayerId,village.id,{...offeringDraft,unitId:actor?.id});
+      if(result.ok){window.setV39GameState(result.state,{reason:'special-village-reincarnation'});recordV39Conversation(village.id,'生贄を奉納して転生を願います。',result.message);window.appendV39ActivityLog?.(current.activePlayerId,'転生',result.message);}
+      onRefresh();output(root).textContent=result.message||result.reason;return;
+    }
     if(selectedTalk==='raid'&&!window.confirm('この村を襲撃し、戦闘を開始しますか？'))return;
     const result=onAction(selectedTalk,'',talk.find(([id])=>id===selectedTalk)?.[1]);if(result)output(root).textContent=result.message||result.reason;
   };
   root.onkeydown=null;
   root.onchange=event=>{
+    const field=event.target.dataset.offeringField;
+    if(['settlementId','race','count'].includes(field)){
+      offeringDraft={...offeringDraft,[field]:field==='count'?Number(event.target.value):event.target.value};
+      renderV39VillageHub(latest);return;
+    }
     const checkbox=event.target;if(!checkbox.matches('[data-hub-quest]'))return;
     const id=checkbox.dataset.hubQuest;
     if(checkbox.checked)checkedQuests.add(id);else checkedQuests.delete(id);

@@ -1,9 +1,10 @@
 import config from '../../../config/v39-negotiation.json';
 export const V39_NEGOTIATION_AP=config.apCost;
-export function chargeV39Negotiation(state,playerId,unitId,targetId,terms) {
+export function chargeV39Negotiation(state,playerId,unitId,targetId,terms,context={}) {
   const player=state.players.find(row=>row.id===playerId),unit=player?.factionState.units.find(row=>row.id===unitId);
-  const turn=Number(state.timeline?.turnNumber)||1;
-  if(state.activePlayerId!==playerId||state.timeline?.phase!=='player'||!(Number(unit?.hp??unit?.currentHp)>0)||(unit.worldId||'surface')!=='surface')return {ok:false,state,reason:'地上の操作中プレイヤーの交渉役を選択してください'};
+  const turn=context.aiTurn ? Number(context.turnNumber)||Number(state.timeline?.turnNumber)||1 : Number(state.timeline?.turnNumber)||1;
+  const allowed=context.aiTurn ? player?.isPlayer===false&&['player','resolution'].includes(state.timeline?.phase) : state.activePlayerId===playerId&&state.timeline?.phase==='player';
+  if(!allowed||!(Number(unit?.hp??unit?.currentHp)>0)||(unit.worldId||'surface')!=='surface')return {ok:false,state,reason:'地上の操作中プレイヤーの交渉役を選択してください'};
   const key=JSON.stringify([targetId,terms]),attempts=(player.factionState.negotiationAttempts||[]).filter(row=>row.turn===turn);
   if(attempts.some(row=>row.key===key))return {ok:false,state,reason:'同じ条件ではこのターンに交渉済みです'};
   if(unit.waitTurnNumber===turn)return {ok:false,state,reason:'このターンは待機済みです'};

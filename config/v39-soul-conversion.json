@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "receiverClassNames": ["エンジェル", "デヴィル"],
+  "soulsPerPerson": 1,
+  "note": "暫定: 天使・悪魔が受け取った生贄/人口報酬を即時に人口用の魂へ変換。OFFで通常の受取に戻す。合成用保管魂は対象外。"
+}

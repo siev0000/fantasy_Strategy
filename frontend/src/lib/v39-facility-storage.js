@@ -38,6 +38,7 @@ export function getV39FacilityStoredEntries(state,playerId,facility){
   return (faction?.facilityStorage||[]).filter(entry=>entry.tileKey===facility?.tileKey&&entry.facilityName===facility?.name&&entry.worldId===facility?.worldId);
 }
 export function inspectV39FacilityDeposit(state,playerId,facility,unit){
+  if(unit?.specialVillageOrigin)return '特殊村の契約軍隊は施設へ格納できません。村の奉納画面から契約を停止してください';
   const faction=state.players?.find(p=>p.id===playerId)?.factionState;
   if(state.activePlayerId!==playerId||state.timeline?.phase!=='player')return '自分の操作ターンに行ってください';
   const found=getV39StorageFacilities(state,playerId).find(f=>f.tileKey===facility?.tileKey&&f.name===facility?.name);

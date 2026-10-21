@@ -11,6 +11,7 @@ import {
 } from "../../lib/v39-logistics-state.js";
 import { getFactionSettlements, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import { isV39UnitInsideSettlement } from "../../lib/v39-transport-rules.js";
+import { recoverV39GroundLootState } from '../../lib/v39-ground-loot-recovery.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -206,20 +207,11 @@ export function recoverV39GroundLoot(playerId, unitId, rawTileKey) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const unit = player?.factionState?.units?.find(row => text(row?.id) === text(unitId));
   const key = text(rawTileKey || tileKey(unit));
-  const groundLoot = state?.groundLootByTile?.[key];
-  if (!state || !player || !unit || number(unit?.hp ?? unit?.currentHp) <= 0) return { ok:false, reason:"回収するキャラクターがいません" };
-  if (tileKey(unit) !== key) return { ok:false, reason:"残留品と同じマスで実行してください" };
-  if (!groundLoot || cargoEmpty(groundLoot.cargo)) return { ok:false, reason:"残留品がありません" };
-  if (!groundLoot.discoveredByPlayerIds?.includes(text(player.id))) return { ok:false, reason:"先に残留品を調査してください" };
-  const result = addV39CargoToFactionUnit(player.factionState, unit.id, groundLoot.cargo);
-  if (!result.ok) return { ok:false, reason:"所属部隊が見つかりません" };
-  const players = state.players.map(row => text(row?.id) === text(player.id)
-    ? { ...row, factionState:result.faction }
-    : row);
-  const groundLootByTile = { ...state.groundLootByTile };
-  delete groundLootByTile[key];
-  window.setV39GameState?.({ players, groundLootByTile }, { reason:"ground-loot-recovered" });
-  const report = { playerId:player.id, unitId:text(unit.id), squadId:result.squadId, key, recovered:normalizeV39Cargo(groundLoot.cargo) };
+  if (!state) return { ok:false, reason:'ゲームが開始されていません' };
+  const result = recoverV39GroundLootState(state, playerId, unitId, key);
+  if (!result.ok) return result;
+  window.setV39GameState?.({ players:result.state.players, groundLootByTile:result.state.groundLootByTile }, { reason:"ground-loot-recovered" });
+  const report = result.report;
   window.appendV39ActivityLog?.(player.id, "物資", `残留品を回収: ${cargoSummary(report.recovered)}`, report);
   window.dispatchEvent(new CustomEvent("v39:ground-loot-recovered", { detail:report }));
   return { ok:true, ...report };

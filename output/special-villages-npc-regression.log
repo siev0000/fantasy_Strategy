@@ -1,0 +1,195 @@
+{
+  "result": {
+    "plan": {
+      "construction": {
+        "status": "blocked",
+        "name": "墓地",
+        "tileKey": "4,5",
+        "purpose": "浄化",
+        "reasons": [
+          "資材不足: 木材・石材・鉄"
+        ],
+        "shortages": [
+          {
+            "name": "木材",
+            "required": 50,
+            "stock": 0,
+            "missing": 50
+          },
+          {
+            "name": "石材",
+            "required": 50,
+            "stock": 0,
+            "missing": 50
+          },
+          {
+            "name": "鉄",
+            "required": 50,
+            "stock": 0,
+            "missing": 50
+          }
+        ]
+      },
+      "reinforcement": {
+        "living": 1,
+        "queued": 0,
+        "target": 6,
+        "remaining": 5,
+        "shortages": [
+          {
+            "name": "穀物",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "野菜",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "肉",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "木材",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "石材",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "鉄",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          }
+        ],
+        "reasons": [
+          "穀物不足",
+          "野菜不足",
+          "肉不足",
+          "木材不足",
+          "石材不足",
+          "鉄不足"
+        ],
+        "status": "blocked",
+        "className": "ファイター",
+        "race": "只人",
+        "unitType": "軍隊",
+        "level": 3
+      },
+      "resourceGoals": [
+        {
+          "name": "木材",
+          "required": 50,
+          "stock": 0,
+          "missing": 50,
+          "purpose": "建設: 墓地"
+        },
+        {
+          "name": "石材",
+          "required": 50,
+          "stock": 0,
+          "missing": 50,
+          "purpose": "建設: 墓地"
+        },
+        {
+          "name": "鉄",
+          "required": 50,
+          "stock": 0,
+          "missing": 50,
+          "purpose": "建設: 墓地"
+        },
+        {
+          "name": "穀物",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強"
+        },
+        {
+          "name": "野菜",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強"
+        },
+        {
+          "name": "肉",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強"
+        },
+        {
+          "name": "木材",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強"
+        },
+        {
+          "name": "石材",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強"
+        },
+        {
+          "name": "鉄",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強"
+        }
+      ]
+    },
+    "nextPlan": {
+      "construction": {
+        "status": "building",
+        "name": "墓地",
+        "tileKey": "4,5",
+        "remainingTurns": 2,
+        "shortages": [],
+        "reasons": []
+      },
+      "reinforcement": {
+        "living": 1,
+        "queued": 1,
+        "target": 6,
+        "remaining": 4,
+        "shortages": [],
+        "reasons": [],
+        "status": "ready",
+        "className": "ファイター",
+        "race": "只人",
+        "unitType": "軍隊",
+        "level": 3
+      },
+      "resourceGoals": []
+    },
+    "commands": [
+      "勢力発見:一般プレイヤー",
+      "探索移動:移動可能な未踏領域なし",
+      "開拓:3,4",
+      "訓練開始:只人戦士軍1",
+      "建設:墓地@4,5",
+      "研究:鍛冶熟練Ⅰ",
+      "研究:貴金属効率Ⅰ",
+      "研究:穀物加護Ⅰ",
+      "研究:軍事基礎教育Ⅰ",
+      "研究:経済基盤教育Ⅰ",
+      "研究:生態調査Ⅰ"
+    ]
+  },
+  "errors": []
+}

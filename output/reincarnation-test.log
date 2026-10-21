@@ -1,0 +1,30 @@
+{
+  "pure": [
+    {
+      "race": "エンジェル",
+      "level": 23,
+      "raceLevels": 3,
+      "classLevels": 20
+    },
+    {
+      "race": "デヴィル",
+      "level": 23,
+      "raceLevels": 3,
+      "classLevels": 20
+    },
+    {
+      "race": "ヴァンパイア",
+      "level": 23,
+      "raceLevels": 3,
+      "classLevels": 20
+    }
+  ],
+  "applied": {
+    "race": "エンジェル",
+    "level": 23,
+    "raceLevels": 3,
+    "ap": 80,
+    "population": 97
+  },
+  "errors": []
+}

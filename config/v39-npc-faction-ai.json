@@ -1,7 +1,14 @@
 {
   "unitTarget": 6,
-  "initialSoldiersMin":1,
-  "initialSoldiersMax":2,
+  "initialArmies":2,
   "constructionPurposeBonus": {"防衛":80,"探索":90,"研究":20,"食料":20,"浄化":10},
-  "foodShortageBonus":150
+  "foodShortageBonus":150,
+  "scouting": { "maxStepsPerTurn": 6, "searchNodeLimit": 512 },
+  "racePatternIds": {},
+  "resourcePatterns": {
+    "standard": { "actions": [] },
+    "soul-hunter": { "condition": "魂", "actions": ["recover", "demand", "raid"], "minimumStock": 1, "demandCooldownTurns": 5, "allowWar": true },
+    "corpse-hunter": { "condition": "死体", "actions": ["recover", "demand", "raid"], "minimumStock": 1, "demandCooldownTurns": 5, "allowWar": true }
+  },
+  "sacrificeDemand": { "baseChance": 0.5, "minimumChance": 0.05, "maximumChance": 0.95, "skillDivisor": 400, "strengthDivisor": 500, "maximumStrengthBonus": 0.25, "relationCost": 5 }
 }

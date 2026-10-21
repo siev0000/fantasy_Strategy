@@ -12,6 +12,7 @@ import { V39_UNDEAD_SPAWN_BALANCE, V39_FOG_BALANCE } from "../../lib/v39-gamepla
 import undeadTest from "../../../../config/v39-undead-test.json";
 import {renderV39VillagePlanTestTools} from './v39-village-plan-test.js';
 import {renderV39NegotiationHubTestTools,startV39NegotiationHubTest,focusV39NegotiationHubTest} from './v39-negotiation-hub-test.js';
+import {startV39SpecialVillageTest} from './v39-special-village-test.js';
 import { isV39Undead } from "../../lib/v39-purification-rules.js";
 import {V39_ATMOSPHERE_OPACITY_KINDS,v39AtmosphereOpacityPercent} from '../../lib/v39-atmosphere-opacity.js';
 import {V39_WEATHER_TYPES,resolveV39DisasterWeather} from '../../lib/v39-weather.js';
@@ -49,6 +50,7 @@ const TEST_TOOL_TABS = [
   {id:'diagnostics',label:'診断',sections:['npc-ai','enemy-ai']}
 ];
 let selectedToolTab = 'scenarios';
+let selectedNpcDiagnosticId = '';
 const scrollTopByToolTab = new Map();
 let restoreScrollFrame = 0;
 let bulkTurnCount = 10;
@@ -394,14 +396,40 @@ function livingUnit(unit) {
   return number(unit?.hp ?? unit?.currentHp) > 0 && text(unit?.state, "生存") !== "死亡";
 }
 
+function npcDevelopmentMarkup(plan) {
+  if (!plan) return '<p>建設・戦力・不足資材は、次のAI行動で判断します。</p>';
+  const construction=plan.construction||{},reinforcement=plan.reinforcement||{};
+  const amount=value=>Math.round(number(value)*100)/100;
+  const resources=(plan.resourceGoals||[]).map(row=>`<div>${escapeHtml(row.name)} ${amount(row.stock)}/${amount(row.required)}（不足${amount(row.missing)}）/ ${escapeHtml(row.purpose)}</div>`).join('');
+  const reasons=rows=>(rows||[]).length?`<p>${rows.map(escapeHtml).join(' / ')}</p>`:'';
+  const building=construction.status==='building';
+  const constructionLabel=building?'建設中':construction.status==='ready'?'次の建設':'建設候補・条件待ち';
+  const reinforcementLabel=reinforcement.status==='satisfied'?(reinforcement.queued?'訓練完了待ち':'目標数を確保'):reinforcement.status==='ready'?'次の訓練':'増強・条件待ち';
+  return `<div class="v39-test-base-card" data-npc-construction-goal><strong>${constructionLabel}</strong><p>${escapeHtml(construction.name||'候補なし')}${construction.tileKey?' @'+escapeHtml(construction.tileKey):''}${building?' / 残り'+amount(construction.remainingTurns)+'T':''}</p>${building?'<p>次の候補は完成後に判断</p>':reasons(construction.reasons)}</div>
+    <div class="v39-test-base-card" data-npc-reinforcement-goal><strong>戦力増強: ${reinforcementLabel}</strong><p>生存${amount(reinforcement.living)}＋訓練中${amount(reinforcement.queued)} / 目標${amount(reinforcement.target)}駒（あと${amount(reinforcement.remaining)}）</p>${reinforcement.className?`<p>${escapeHtml(reinforcement.unitType)} / ${escapeHtml(reinforcement.race)} / ${escapeHtml(reinforcement.className)} Lv${amount(reinforcement.level)}</p>`:''}${reasons(reinforcement.reasons)}</div>
+    <div class="v39-test-base-card" data-npc-resource-goals><strong>求める資材（在庫/必要）</strong>${resources||'<p>現在の計画で不足なし</p>'}</div>`;
+}
+
 function npcDiagnosticsMarkup(state) {
   const factions=(state.players||[]).filter(player=>player.isPlayer===false);
-  return `<details class="v39-test-section" data-test-section="npc-ai"${testSectionOpenAttribute('npc-ai')}><summary>NPC勢力診断（${factions.length}）</summary><div class="v39-test-section-body">${factions.length?factions.map(player=>{
+  if(!factions.some(player=>player.id===selectedNpcDiagnosticId))selectedNpcDiagnosticId=factions[0]?.id||'';
+  const index=factions.findIndex(player=>player.id===selectedNpcDiagnosticId);
+  const tabs=factions.length?`<div class="v39-test-log-tabs" role="tablist" aria-label="NPC勢力">${factions.map((player,i)=>`<button type="button" role="tab" id="v39-npc-diagnostic-tab-${i}" data-npc-diagnostic-tab="${escapeHtml(player.id)}" aria-controls="v39-npc-diagnostic-pane" aria-selected="${player.id===selectedNpcDiagnosticId}" tabindex="${player.id===selectedNpcDiagnosticId?0:-1}" class="${player.id===selectedNpcDiagnosticId?'active':''}">${escapeHtml(player.label||player.name||player.id)}</button>`).join('')}</div>`:'';
+  return `<details class="v39-test-section" data-test-section="npc-ai"${testSectionOpenAttribute('npc-ai')}><summary>NPC勢力診断（${factions.length}）</summary><div class="v39-test-section-body">${tabs}${factions.length?factions.filter(player=>player.id===selectedNpcDiagnosticId).map(player=>{
     const faction=player.factionState||{},ai=faction.aiState||{},units=faction.units||[];
     const living=units.filter(livingUnit),settlements=(faction.settlements||[]).filter(row=>row.placed);
-    const objective=ai.objective||{},purpose=objective.type==='victory-landmark'?(objective.hold?'覇権地の防衛':'覇権地の攻略'):objective.type==='foreign-faction'?'他勢力へ対応':'探索';
-    return `<article data-npc-diagnostic="${escapeHtml(player.id)}"><h4>${escapeHtml(player.label||player.id)} / ${escapeHtml(player.race)}</h4><div class="v39-test-ai-grid"><span>拠点 / 生存 / 訓練中</span><b>${settlements.length} / ${living.length} / ${(faction.unitTrainingQueue||[]).length}</b><span>目標</span><b>${escapeHtml(purpose)} ${escapeHtml(objective.targetName||'')}${objective.targetTileKey?' @'+escapeHtml(objective.targetTileKey):''}</b><span>前回処理</span><b>${ai.lastProcessedTurn?'T'+ai.lastProcessedTurn:'未行動'}</b><span>直近の行動</span><b>${escapeHtml((ai.lastCommands||[]).join(' / ')||'まだ実行されていません')}</b><span>完成施設</span><b>${escapeHtml(settlements.map(row=>`${row.name}: ${(row.buildings||[]).join('・')||'なし'}`).join(' / '))}</b></div><ul>${units.map(unit=>`<li data-npc-unit="${escapeHtml(unit.id)}">${escapeHtml(unit.name)} / ${unit.isSovereign?'統治者':unit.isNamed?'ヒーロー':'一般兵'} Lv${number(unit.level)} / ${escapeHtml(unit.worldId||'surface')} (${unit.x??'-'},${unit.y??'-'}) / HP ${number(unit.hp??unit.currentHp)}/${number(unit.maxHp)} / AP ${number(unit.ap??unit.currentAp)}</li>`).join('')}</ul></article>`;
+    const objective=ai.objective||{},purpose=objective.type==='victory-landmark'?(objective.hold?'覇権地の防衛':'覇権地の攻略'):objective.type==='foreign-faction'?(objective.resourceRaid?'資源確保の襲撃':'他勢力へ対応'):({'explore':'未踏地域を移動探索','resource-search':'魂・死体の供給元探索','resource-recover':'残留資源の回収','resource-demand':'村への生贄要求','resource-receive':'生贄の受取','resource-return':'資源の持帰り'}[objective.type]||'未設定（次のAI行動で決定）');
+    return `<article role="tabpanel" id="v39-npc-diagnostic-pane" aria-labelledby="v39-npc-diagnostic-tab-${index}" data-npc-diagnostic="${escapeHtml(player.id)}"><h4>${escapeHtml(player.label||player.id)} / ${escapeHtml(player.race)}</h4><div class="v39-test-base-card" data-npc-current-objective><strong>現在の目標: ${escapeHtml(purpose)}</strong>${objective.targetName||objective.targetTileKey?`<p>${escapeHtml(objective.targetName||'')}${objective.targetTileKey?' @'+escapeHtml(objective.targetTileKey):''}</p>`:''}${objective.resource?`<p>必要資源: ${escapeHtml(objective.resource)}</p>`:''}</div>${npcDevelopmentMarkup(ai.developmentPlan)}<div class="v39-test-ai-grid"><span>拠点 / 生存 / 訓練中</span><b>${settlements.length} / ${living.length} / ${(faction.unitTrainingQueue||[]).length}</b><span>直近の行動</span><b>${escapeHtml((ai.lastCommands||[]).join(' / ')||'まだ実行されていません')}</b><span>完成施設</span><b>${escapeHtml(settlements.map(row=>`${row.name}: ${(row.buildings||[]).join('・')||'なし'}`).join(' / '))}</b></div><ul>${units.map(unit=>`<li data-npc-unit="${escapeHtml(unit.id)}">${escapeHtml(unit.name)} / ${unit.isSovereign?'統治者':unit.combatProfile?.mode==='army'||unit.combatProfile?.mode==='elite_army'?`${escapeHtml(unit.unitType||'軍隊')} ${number(unit.combatProfile.memberCount??unit.combatProfile.populationCost)}人`:unit.isNamed?'ヒーロー':'一般兵'} Lv${number(unit.level)} / ${escapeHtml(unit.worldId||'surface')} (${unit.x??'-'},${unit.y??'-'}) / HP ${number(unit.hp??unit.currentHp)}/${number(unit.maxHp)} / AP ${number(unit.ap??unit.currentAp)}</li>`).join('')}</ul></article>`;
   }).join(''):'<p>NPC勢力は登録されていません。開始設定のNPC勢力数、または「進行 → 勢力追加」を確認してください。</p>'}</div></details>`;
+}
+
+function selectNpcDiagnostic(id) {
+  if(!(window.getV39GameState?.()?.players||[]).some(player=>player.isPlayer===false&&player.id===id))return;
+  selectedNpcDiagnosticId=id;
+  render();
+  const tab=[...document.querySelectorAll('[data-npc-diagnostic-tab]')].find(button=>button.dataset.npcDiagnosticTab===id);
+  tab?.focus({preventScroll:true});
+  tab?.scrollIntoView({block:'nearest',inline:'nearest'});
 }
 
 function villageGuardDiagnostic(state, unitId) {
@@ -605,6 +633,7 @@ function selectedTileBaseInfoHtml(state, tile) {
 const SCENARIO_SUITES = [
   {id:'village',label:'村・交流テスト',description:'村との会話・依頼・報酬交渉と、村の発展を確認します。',scenarios:[
     ['negotiation-hub-start','会話・報酬交渉','村長・性格・交渉スキル・人口報酬・休息・属国化'],
+    ['special-village-start','特殊村・生贄奉納','天使・悪魔・ヴァンパイアの軍隊加入・定期維持・本人の転生'],
     ['village-plan-start','村の計画・支援','物資不足・討伐依頼・墓地建設・守備兵の補充'],
     ['village-incident-start','契約・強襲・救援','2プレイヤーで仮契約・部隊休息時の事件・人物と装備の受渡し']
   ]},
@@ -868,6 +897,12 @@ function handleAction(action) {
     return;
   }
   const handlers = {
+    'special-village-start':async()=>{
+      if(!window.confirm('現在のゲームを特殊村・生贄奉納テストに置き換えます。開始しますか？'))return;
+      closePanel();
+      try{const result=await startV39SpecialVillageTest();if(!result?.ok){window.openV39TestTools?.();setStatus(result?.reason||'特殊村テストを起動できませんでした');}}
+      catch(error){window.openV39TestTools?.();setStatus(`特殊村テストの起動に失敗: ${error.message}`);console.error('[特殊村テスト]',error);}
+    },
     'negotiation-hub-start':async()=>{
       if(!window.confirm('現在のゲームを村長・交渉総合テストに置き換えます。開始しますか？'))return;
       closePanel();
@@ -955,12 +990,21 @@ function install() {
   panel.setAttribute("aria-hidden", "false");
   host.appendChild(panel);
   panel.addEventListener("click", event => {
+    const npcTab = event.target instanceof Element ? event.target.closest('[data-npc-diagnostic-tab]') : null;
+    if(npcTab){selectNpcDiagnostic(npcTab.dataset.npcDiagnosticTab);return;}
     const tab = event.target instanceof Element ? event.target.closest('[data-test-tab]') : null;
     if(tab){selectToolTab(tab.dataset.testTab,true);return;}
     const button = event.target instanceof Element ? event.target.closest("[data-test-action]") : null;
     if (button) handleAction(button.dataset.testAction);
   });
   panel.addEventListener('keydown',event=>{
+    const npcTab=event.target.closest?.('[data-npc-diagnostic-tab]');
+    if(npcTab){
+      const tabs=[...panel.querySelectorAll('[data-npc-diagnostic-tab]')],index=tabs.indexOf(npcTab);
+      const offset=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
+      const next=offset?(index+offset+tabs.length)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:-1;
+      if(next>=0){event.preventDefault();selectNpcDiagnostic(tabs[next].dataset.npcDiagnosticTab);}return;
+    }
     const tab=event.target.closest?.('[data-test-tab]');if(!tab)return;
     const index=TEST_TOOL_TABS.findIndex(row=>row.id===tab.dataset.testTab);
     const offset=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;

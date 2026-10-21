@@ -73,3 +73,6 @@
  .v39-development-node[data-development-status="completed"]{border-color:#7bb687}
  .v39-development-node[data-development-status="active"]{border-color:#dfbc60}
  .v39-development-node[data-development-status="locked"]{opacity:.65}
+ .v39-offering-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}
+ .v39-offering-fields label{display:grid;gap:3px;min-width:0}
+ .v39-offering-fields select{width:100%;min-width:0;min-height:36px;border:1px solid #786542;border-radius:6px;background:#20221c;color:#f0e7c9;padding:5px;font:inherit}

@@ -30,6 +30,7 @@ try {
       ...player,
       factionState:{
         ...player.factionState,
+        aiState:{...player.factionState.aiState,behaviorPatternId:'standard'},
         exploration:{
           ...player.factionState.exploration,
           discoveredFeaturesByTile:{ ...player.factionState.exploration.discoveredFeaturesByTile, [target.key]:{ ...target } }

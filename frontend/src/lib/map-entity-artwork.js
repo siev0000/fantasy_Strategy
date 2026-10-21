@@ -167,6 +167,10 @@ export function resolveUnitImageArtwork(unit) {
 export function resolveUnitArtwork(unit) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
   const className = text(unit?.className || unit?.class || unit?.クラス);
+  if(unit?.reincarnationGrowthStart||unit?.reincarnationHistory?.length){
+    const primary=resolveUnitSheetArtwork(unit);
+    if(primary)return primary;
+  }
   return (unit?.画像ファイル || unit?.fusionGrowth || unit?.strongFusionResultName || unit?.fusionAppearanceClass || resolveUndeadArtworkReference(unit) ? resolveMonsterSheetArtwork(unit) : null)
     || resolveUnitSheetArtwork(unit)
     || resolveMonsterSheetArtwork(unit)

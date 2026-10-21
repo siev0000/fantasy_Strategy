@@ -1,7 +1,7 @@
 import fixture from '../../../../config/v39-village-incident-test.json';
 import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
-import {getSelectedSettlement,replaceFactionSettlement} from '../../lib/settlement-state.js';
-import {normalizeV39EquipmentInventory} from '../../lib/v39-equipment-rules.js';
+import {replaceFactionSettlement} from '../../lib/settlement-state.js';
+import {receiveV39VillageSacrifice} from '../../lib/v39-village-sacrifice.js';
 import {restAtIncidentVillage,startVillageIncidentBattle,finishVillageIncidentBattle,
   replaceIncidentVillage,villageIncidentMode,releaseVillageCaptives} from '../../lib/v39-village-incidents.js';
 
@@ -48,19 +48,8 @@ function start() {
   window.openV39VillageMenu?.(village.id);
   return {ok:true};
 }
-function present(state,playerId,village) {
-  return state.players.find(row=>row.id===playerId)?.factionState.units.some(unit=>alive(unit)&&(unit.worldId||'surface')==='surface'&&village.territoryTileKeys.includes(`${unit.x},${unit.y}`));
-}
 function receive(state,village,playerId) {
-  if(!village.sacrificeContract?.active||village.sacrificeContract.playerId!==playerId||!present(state,playerId,village))return {ok:false,reason:'有効な契約の受取プレイヤーが村へ来訪してください'};
-  const held=village.heldUnits||[];if(!held.length)return {ok:false,reason:'引き渡し対象がありません'};
-  const player=state.players.find(row=>row.id===playerId),base=getSelectedSettlement(player.factionState);if(!base)return {ok:false,reason:'受取拠点がありません'};
-  const inventory=normalizeV39EquipmentInventory([...(base.equipmentInventory||[]),...held.flatMap(row=>(row.unit.equipment||[]).map(item=>({item,count:1})))]);
-  const captured=held.map(row=>({...row,unit:{...row.unit,equipment:[]},receivedTurn:state.timeline.turnNumber}));
-  let faction=replaceFactionSettlement(player.factionState,{...base,equipmentInventory:inventory},{ownerPlayerId:playerId});
-  faction={...faction,villagePrisoners:[...(player.factionState.villagePrisoners||[]),...captured]};
-  return {ok:true,state:replaceIncidentVillage({...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:faction}:row)},
-    {...village,heldUnits:[]}),message:`捕虜/死体 ${held.length}体と装備を受け取りました`};
+  return receiveV39VillageSacrifice(state,playerId,village.id);
 }
 function run(action) {
   let state=window.getV39GameState(),village=testVillage(state);if(!village)return;

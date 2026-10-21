@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "races": ["エンジェル", "デヴィル", "ヴァンパイア"],
+  "offeringIntervalTurns": 5,
+  "peoplePerArmy": 1,
+  "maxArmiesPerOffering": 3,
+  "minimumRemainingPopulation": 1,
+  "armyLevel": 15,
+  "militaryLevel": 4,
+  "reincarnation": { "enabled": true, "raceLevel": 3, "people": 3, "minimumRelation": null }
+}

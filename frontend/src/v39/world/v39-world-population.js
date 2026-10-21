@@ -25,6 +25,8 @@ import {resettleV39AbandonedVillage} from '../../lib/v39-abandoned-villages.js';
 import {getV39HegemonyGuards} from '../../lib/v39-hegemony-land-rules.js';
 import incidentFixture from '../../../../config/v39-village-incident-test.json';
 import {restAtIncidentVillage} from '../../lib/v39-village-incidents.js';
+import {receiveV39VillageSacrifice} from '../../lib/v39-village-sacrifice.js';
+import {advanceV39SpecialVillageContracts} from '../../lib/v39-special-villages.js';
 import {recordV39Conversation} from './v39-negotiation-conversation.js';
 import { isV39BaseClassRow } from "../../lib/v39-class-rules.js";
 import {villageHubMarkup,renderV39VillageHub,resetV39VillageHub,villageHubOwnsEscape} from './v39-village-hub.js';
@@ -225,7 +227,9 @@ export function advanceV39WorldPopulation(state, mapData, turnNumber, {includeRe
     for (const player of state?.players || []) if ((player?.factionState?.units || []).some(unit => number(unit.hp ?? unit.currentHp) > 0 && keyOf(unit.x, unit.y) === keyOf(next.x, next.y))) discovered.add(player.id);
     return { ...group, x:next.x, y:next.y, discoveredByPlayerIds:[...discovered], lastMovedTurn:turn };
   });
-  const result=advanceV39NeutralVillages({ ...state, wandererGroups }, mapData, turn);
+  const contracts=advanceV39SpecialVillageContracts({...state,wandererGroups},turn);
+  const result=advanceV39NeutralVillages(contracts.state, mapData, turn);
+  result.reports.unshift(...contracts.reports);
   return includeReports?result:result.state;
 }
 
@@ -405,6 +409,11 @@ function performContactAction(action,eventId='',label='',targetId='',kind='villa
     window.showV39TurnBanner?.(result.message||result.reason);renderWorldActions();return;
   }
   if(action==='village-rest'){return restVillage(targetId);}
+  if(action==='sacrifice-receive'){
+    result=receiveV39VillageSacrifice(state,playerId,targetId,{unitId:state.players.find(player=>player.id===playerId)?.factionState.selectedUnitId});
+    if(result.ok){window.setV39GameState(result.state,{reason:'village-sacrifice-received'});window.depositV39PlayerCargo?.(playerId);window.appendV39ActivityLog?.(playerId,'村',result.message);}
+    window.showV39TurnBanner?.(result.message||result.reason);renderWorldActions();return result;
+  }
   if(kind==="guardian") {
     if(action==="quest") result=acceptV39GuardianQuest(state,playerId,targetId,eventId);
     else if(action==="guardian-complete") result=completeV39GuardianQuest(state,playerId,targetId);
@@ -475,8 +484,12 @@ function advance(event) {
   const neutralById = new Map(next.neutralVillages.map(row => [row.id, row]));
   const settlements = (next.settlements || state.settlements || []).map(row => neutralById.get(row.id) || row);
   window.setV39GameState?.({ players:next.players, neutralVillages:next.neutralVillages, wandererGroups:next.wandererGroups, settlements,
+    ...(next.explorationWorlds?{explorationWorlds:next.explorationWorlds}:{}),
     facilitiesByTile:next.facilitiesByTile,territoryOwnerByTile:next.territoryOwnerByTile }, { reason:"world-population-turn" });
   for(const report of reports){
+    if(report.type==='special-village-maintained'||report.type==='special-village-suspended'){
+      window.appendV39ActivityLog?.(report.playerId,'特殊村',report.message,report);continue;
+    }
     if(report.type!=='village-construction-completed')continue;
     const [x,y]=report.tileKey.split(',').map(Number);
     if(!window.isV39TestMode?.()&&window.isV39TileInCurrentVision?.(x,y)!==true)continue;

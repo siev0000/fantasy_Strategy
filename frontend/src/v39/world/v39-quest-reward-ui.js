@@ -1,6 +1,8 @@
 import {getV39AgreedQuestReward,getV39QuestRewardItems,getV39QuestRelationReward,getV39QuestRewardResources,describeV39QuestReward,requestV39QuestRewardChange} from '../../lib/v39-quest-rewards.js';
 import {resolveV39ResourceIcon} from '../../lib/resource-icon-glyphs.js';
 import {V39_NEGOTIATION_AP} from '../../lib/v39-negotiation-rules.js';
+import {resolveV39ImmediateSoulAmount} from '../../lib/v39-soul-conversion.js';
+import {isV39Undead} from '../../lib/v39-corpse-types.js';
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
 import {tradeBasketHtml,tradePickerModalHtml} from './v39-trade-items.js';
 import {renderV39TradePicker,closeV39TradePicker} from './v39-trade-picker.js';
@@ -16,7 +18,13 @@ function rewardBadge(name,amount,label){
 export function questRewardSummary(state,village,quest){
   const offer=quest.rewardTerms?null:getV39AgreedQuestReward(state,village,state.activePlayerId,quest);
   const items=offer?getV39QuestRewardItems({rewardTerms:offer.reward}):getV39QuestRewardItems(quest),relation=getV39QuestRelationReward(quest);
-  return `<div class="v39-quest-reward-summary" data-quest-reward-summary><b>報酬${offer?'（合意済み）':quest.rewardTerms?'（確定）':''}</b>${offer?`<small title="この条件で受注できる残りターン">⌛${offer.expiresTurn-state.timeline.turnNumber}</small>`:''}${items.map(r=>rewardBadge(r.kind==='population'?'人口':r.kind==='legacySoul'?'魂':r.name,r.amount,describeV39QuestReward(r))).join('')}${relation?`<span>友好度 ${relation>0?'+':''}${relation}</span>`:''}${!items.length&&!relation?'<small>なし</small>':''}</div>`;
+  const receiver=state.players.find(player=>player.id===state.activePlayerId);
+  const badges=items.map(r=>{
+    const souls=r.kind==='population'&&!isV39Undead({race:r.name})?resolveV39ImmediateSoulAmount(receiver,r.amount):0;
+    return souls>0?rewardBadge('魂',souls,`${describeV39QuestReward(r)} → 魂へ即時変換`)
+      :rewardBadge(r.kind==='population'?'人口':r.kind==='legacySoul'?'魂':r.name,r.amount,describeV39QuestReward(r));
+  }).join('');
+  return `<div class="v39-quest-reward-summary" data-quest-reward-summary><b>報酬${offer?'（合意済み）':quest.rewardTerms?'（確定）':''}</b>${offer?`<small title="この条件で受注できる残りターン">⌛${offer.expiresTurn-state.timeline.turnNumber}</small>`:''}${badges}${relation?`<span>友好度 ${relation>0?'+':''}${relation}</span>`:''}${!items.length&&!relation?'<small>なし</small>':''}</div>`;
 }
 
 let activePicker=null;

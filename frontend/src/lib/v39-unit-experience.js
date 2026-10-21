@@ -83,7 +83,7 @@ export function resolveV39UnitExpDisplay(unit = {}) {
     const atLimit=unit.animalArmy.members.every(member=>member.level>=resolveV39UnitLevelCap(member));
     return {...progress,category,percent:atLimit?100:progress.exp/progress.need*100,atLimit};
   }
-  if(unit.fusionGrowth){
+  if(unit.fusionGrowth&&!unit.reincarnationGrowthStart){
     const exp=Math.max(0,number(unit.fusionGrowth.baseExp)),need=Math.max(1,number(unit.fusionGrowth.baseNeed,1));
     return {exp,need,totalExp:number(unit.totalExp),category,level,percent:Math.min(100,exp/need*100)};
   }
@@ -313,7 +313,7 @@ export function resolveV39ExperienceRecipientIds(factionState = {}, attackerIdRa
 
 export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
   if(isV39AnimalArmy(unit))return grantAnimalArmyExperience(unit,amountRaw);
-  if(unit.fusionGrowth?.levelsByClass)return grantFusionExperience(unit,amountRaw);
+  if(unit.fusionGrowth?.levelsByClass&&!unit.reincarnationGrowthStart)return grantFusionExperience(unit,amountRaw);
   const requestedAmount = Math.max(0, Math.floor(number(amountRaw)));
   const category = resolveV39UnitRaceCategory(unit);
   const fromLevel = Math.max(1, Math.floor(number(unit?.level, 1)));

@@ -1,0 +1,31 @@
+{
+  "pure": {
+    "race": "エンジェル",
+    "cost": 3,
+    "armies": [
+      {
+        "id": "offering-negotiation-standard-player-1-1-0",
+        "level": 15,
+        "hp": 334,
+        "members": 3
+      },
+      {
+        "id": "offering-negotiation-standard-player-1-1-1",
+        "level": 15,
+        "hp": 334,
+        "members": 3
+      },
+      {
+        "id": "offering-negotiation-standard-player-1-1-2",
+        "level": 15,
+        "hp": 334,
+        "members": 3
+      }
+    ]
+  },
+  "applied": {
+    "population": 97,
+    "units": 3
+  },
+  "errors": []
+}
