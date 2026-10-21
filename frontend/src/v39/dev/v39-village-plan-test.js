@@ -1,3 +1,4 @@
+import {describeV39VillagePlan} from '../../lib/v39-village-plans.js';
 import fixture from '../../../../config/v39-village-plan-test.json';
 import {getGameDataRows} from '../../lib/game-data-registry.js';
 import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
@@ -72,7 +73,7 @@ async function createVillagePlanTest() {
       spatial.territoryStateByTile[key(tile)]={status:'領土',settlementId:id,hp:100,maxHp:100};map.purificationByTile[key(tile)]=20;}
     let village=normalizeV39NeutralVillage({id,name:sample.name,x:sample.x,y:sample.y,race:'只人',level:1,population:50,
       populationByRace:{只人:50},territoryTileKeys:tiles.map(key),neutral:true,planTestKey:sample.key,
-      researchLevels:{信仰Lv:1},foodStockByType:food(),materialStockByType:materials(),buildings:[],tileFacilityMap:{},constructionQueue:[],
+      researchLevels:{信仰Lv:1,経済Lv:1},foodStockByType:food(),materialStockByType:materials(),buildings:[],tileFacilityMap:{},constructionQueue:[],
       relationsByPlayerId:{[player.id]:0},questsByPlayerId:{},defenseUnits:[]},map);
     if(sample.key==='cemetery'){
       village.materialStockByType.木材=0;
@@ -125,8 +126,8 @@ export function startV39VillagePlanTest() {
 export function renderV39VillagePlanTestTools(state) {
   if(!window.__v39FieldRuntime?.mapData?.villagePlanTest)return '';
   return `<details class="v39-test-section" data-test-section="village-plans" open><summary>村の計画・支援テスト</summary><div class="v39-test-section-body"><p>村を選ぶと担当の支援者と交流欄へ切り替わります。物資は支援物資拠点に準備済み。交流欄の「村で会話・依頼」からクエストを開き、チェック選択で受注・支援報告します。</p>${fixture.villages.map(sample=>{
-    const village=state.neutralVillages.find(row=>row.planTestKey===sample.key),plan=village?.planSchedule?.active;
-    return `<p><button data-test-action="village-plan-${sample.key}">${escape(sample.name)}</button> ${escape(plan?`${plan.name} / ${plan.stage}${plan.remainingTurns!=null?` ⌛${plan.remainingTurns}`:''}`:'計画完了・待機')}<br>${escape(sample.hint)}</p>`;
+    const village=state.neutralVillages.find(row=>row.planTestKey===sample.key);
+    return `<p><button data-test-action="village-plan-${sample.key}">${escape(sample.name)}</button> ${escape(village?describeV39VillagePlan(village):'村がありません')}<br>${escape(sample.hint)}</p>`;
   }).join('')}<p>左の「進行」またはターン終了付近の「1T経過」で、未行動確認をせず実際のターンを進められます。</p></div></details>`;
 }
 window.startV39VillagePlanTest=startV39VillagePlanTest;

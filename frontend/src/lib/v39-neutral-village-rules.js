@@ -1,3 +1,4 @@
+import {isV39VillageHostileToPlayer} from './v39-village-hostility.js';
 import { getHexNeighborCoords, getHexDistance } from "./hex-grid.js";
 import eventDefaults from "../../../config/v39-event-defaults.json";
 import expeditionDefaults from "../../../config/v39-expedition-defaults.json";
@@ -631,14 +632,14 @@ export function raidV39NeutralVillage(state, playerId, villageId) {
   const unit = player?.factionState?.units?.find(row => row.id === player?.factionState?.selectedUnitId);
   if (!source || !unit) return { ok:false, reason:"襲撃するユニットを選択してください", state };
   if (!(source.territoryTileKeys || []).includes(keyOf(unit.x, unit.y))) return { ok:false, reason:"村の範囲内にユニットがいません", state };
-  const defenseStrength = (source.defenseUnits || []).reduce((sum, row) => sum + number(row.strength), 0);
-  const attackStrength = Math.max(1, number(unit?.status?.攻撃 ?? unit?.attack, 1) + number(unit?.level) * 5);
-  const success = attackStrength >= defenseStrength;
-  let village = changeRelation(source, playerId, -V39_NEUTRAL_VILLAGE_BALANCE.raidRelationLoss);
-  village = { ...village, population:Math.max(1, integer(village.population) - (success ? Math.max(1, Math.floor(number(village.population) * 0.05)) : 0)), lastPlayerRaid:{ turn:integer(state?.timeline?.turnNumber, 1), playerId, success } };
-  let next = updateVillageState(state, village);
-  if (success) next = changeSettlementResource(next, playerId, "material", 20 * Math.max(1, integer(village.level, 1))).state;
-  return { ok:true, success, state:next, village, message:success ? "襲撃成功 / 資材を獲得" : "襲撃失敗 / 守備隊に阻止されました" };
+  if(state.activePlayerId!==playerId||state.timeline?.phase!=='player'||(state.activeWorldId||'surface')!=='surface'||(unit.worldId||'surface')!=='surface'||number(unit.hp??unit.currentHp)<=0)return {ok:false,state,reason:'地上の操作中ユニットで襲撃してください'};
+  if(isV39VillageHostileToPlayer(source,playerId))return {ok:false,state,reason:'この村とは既に敵対しています'};
+  const hostilePlayerIds=[...new Set([...(source.hostilePlayerIds||[]),playerId])];
+  const village={...changeRelation(source,playerId,-V39_NEUTRAL_VILLAGE_BALANCE.raidRelationLoss),hostilePlayerIds,
+    lastPlayerRaid:{turn:integer(state.timeline.turnNumber,1),playerId,started:true}};
+  village.relationsByPlayerId={...village.relationsByPlayerId,[playerId]:Math.min(-60,village.relationsByPlayerId[playerId])};
+  return {ok:true,success:true,state:updateVillageState(state,village),village,message:`${village.name}と敵対しました。守備隊との戦闘を開始します。`};
+
 }
 
 function syncNeutralVillageDefensesForState(state, mapData, rows) {
@@ -677,6 +678,7 @@ export function advanceV39NeutralVillages(state, mapData, turnNumber) {
     village = advanceVillageDefenseTraining(village, {...working, neutralVillages:villages}, mapData, turn, reports);
     const planned=advanceV39VillagePlans({...working,neutralVillages:villages},village,mapData,turn);
     working=planned.state;village=planned.village;
+    for(const item of planned.completed||[])reports.push({type:'village-construction-completed',villageId:village.id,villageName:village.name,facilityName:item.facilityName,tileKey:item.tileKey,turn});
     const playerIds=[...new Set([...Object.keys(village.questsByPlayerId||{}),...Object.keys(village.questLogByPlayerId||{})])];
     for(const playerId of playerIds)for(const quest of getV39VillageQuests(village,playerId)){
       const saveQuest=next=>{village=syncV39VillageQuestLog({...village,questsByPlayerId:{...village.questsByPlayerId,[playerId]:next}});};

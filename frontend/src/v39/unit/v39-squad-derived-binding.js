@@ -1,4 +1,5 @@
 import { renderV39UnitSkills } from "./v39-unit-skills.js";
+import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { resolveV39BaseMoveApCost } from "../../lib/v39-gameplay-balance.js";
 import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { renderV39UnitCard } from "./v39-unit-card.js";
@@ -294,6 +295,7 @@ function persistSelectedUnit(targetUnitId, reason = "squad-unit-selected") {
     window.updateV39ActiveFactionState({ selectedUnitId:id }, { reason });
   }
   window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail:{ unitId:id, unit } }));
+  focusV39MapTile(unit,{worldId:unit.worldId||'surface'});
 }
 
 function updateSelectorCounts() {

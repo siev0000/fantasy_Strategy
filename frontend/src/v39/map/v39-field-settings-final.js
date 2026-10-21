@@ -35,6 +35,7 @@ const DEFAULT_FIELD_SETTINGS = Object.freeze({
   localParticipantCount: V39_LOCAL_SESSION_PLAYER_LIMIT.min,
   playerParticipantAssignments: {},
   gameSettings: normalizeGameStartSettings({
+    npcFactionCount:2,
     turnProgressionMode: GAME_START_DEFAULT_TURN_MODE,
     maxCombatTurnsPerWorldTurn: GAME_START_DEFAULT_MAX_COMBAT_TURNS
   }),
@@ -166,6 +167,11 @@ function createModal() {
               <span>操作勢力数</span>
               <input id="v39-field-local-player-count" type="number" min="${V39_LOCAL_SESSION_PLAYER_LIMIT.min}" max="${V39_LOCAL_SESSION_PLAYER_LIMIT.max}" step="1">
               <small>1台で順番に操作する勢力数です。全勢力の終了後にエネミーと全体処理を実行します。</small>
+            </label>
+            <label class="v39-setting-row">
+              <span>NPC勢力数</span>
+              <input id="v39-field-npc-count" type="number" min="0" max="8" step="1">
+              <small>AIが操作し、探索・戦力整備・覇権地の確保を行う国の数です。一般村の数とは別です。</small>
             </label>
           </div>
         </details>
@@ -413,6 +419,7 @@ function boot() {
     get("v39-field-local-participant-count").value = settings.localParticipantCount;
     syncPlayerAssignments();
     const normalizedGameSettings = normalizeGameStartSettings(settings.gameSettings);
+    get('v39-field-npc-count').value=normalizedGameSettings.npcFactionCount;
     settings.gameSettings = normalizedGameSettings;
     get("v39-field-turn-mode").value = normalizedGameSettings.turnProgressionMode;
     get("v39-field-max-combat-turns").value = normalizedGameSettings.maxCombatTurnsPerWorldTurn;
@@ -492,6 +499,7 @@ function boot() {
       localParticipantCount,
       playerParticipantAssignments,
       gameSettings: normalizeGameStartSettings({
+        npcFactionCount:get('v39-field-npc-count').value,
         turnProgressionMode: get("v39-field-turn-mode").value,
         maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
       }),
@@ -528,7 +536,7 @@ function boot() {
     }
     if (!lobbyGameSettingsMode && generated && typeof window.getV39GameState === "function") {
       const gameState = window.getV39GameState();
-      const players = gameState?.players;
+      const players = gameState?.players?.filter(player=>player.isPlayer!==false);
       settings.localPlayerCount = normalizeV39LocalPlayerCount(Array.isArray(players) ? players.length : settings.localPlayerCount);
       settings.localParticipantCount = normalizeV39LocalParticipantCount(gameState?.sessionParticipants?.length, settings.localPlayerCount);
       settings.playerParticipantAssignments = Object.fromEntries((players || []).map(player => [player.id, player.controllerParticipantId]));
@@ -557,6 +565,7 @@ function boot() {
   });
   get("v39-field-turn-mode").addEventListener("change", () => {
     const next = normalizeGameStartSettings({
+      ...settings.gameSettings,
       turnProgressionMode: get("v39-field-turn-mode").value,
       maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
     });
@@ -567,6 +576,7 @@ function boot() {
   });
   get("v39-field-max-combat-turns").addEventListener("change", () => {
     settings.gameSettings = normalizeGameStartSettings({
+      ...settings.gameSettings,
       turnProgressionMode: get("v39-field-turn-mode").value,
       maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
     });
@@ -576,6 +586,10 @@ function boot() {
     settings.localPlayerCount = normalizeV39LocalPlayerCount(get("v39-field-local-player-count").value);
     settings.localParticipantCount = normalizeV39LocalParticipantCount(settings.localParticipantCount, settings.localPlayerCount);
     sync();
+  });
+  get('v39-field-npc-count').addEventListener('change',()=>{
+    settings.gameSettings=normalizeGameStartSettings({...settings.gameSettings,npcFactionCount:get('v39-field-npc-count').value});
+    get('v39-field-npc-count').value=settings.gameSettings.npcFactionCount;
   });
   get("v39-field-local-participant-count").addEventListener("change", () => {
     settings.localParticipantCount = normalizeV39LocalParticipantCount(

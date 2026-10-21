@@ -1,3 +1,6 @@
+import {describeV39VillagePlan} from '../../lib/v39-village-plans.js';
+import {hasV39VillageContact,recordV39VillageContact} from '../../lib/v39-village-contacts.js';
+import {focusV39MapTile} from '../map/v39-map-focus.js';
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
@@ -43,6 +46,8 @@ function closeVillageMenu() {
 function openVillageMenu(villageId) {
   const state=window.getV39GameState(),village=state.neutralVillages?.find(row=>row.id===villageId);
   if(!village||(state.activeWorldId||'surface')!=='surface')return;
+  const contacted=recordV39VillageContact(state,villageId,state.activePlayerId);
+  if(contacted)window.setV39GameState({neutralVillages:contacted},{reason:'village-contact-recorded'});
   let root=document.getElementById('v39-village-menu');
   if(!root){root=document.createElement('div');root.id='v39-village-menu';root.hidden=true;
     root.innerHTML=`<section role="dialog" aria-modal="true" aria-labelledby="v39-village-menu-title">${villageHubMarkup()}</section>`;
@@ -202,7 +207,7 @@ function neighbors(mapData, x, y) {
     .filter(tile => !["海", "湖", "火山"].includes(text(mapData.grid?.[tile.y]?.[tile.x])) && !mapData?.lavaMap?.[tile.y]?.[tile.x]);
 }
 
-export function advanceV39WorldPopulation(state, mapData, turnNumber) {
+export function advanceV39WorldPopulation(state, mapData, turnNumber, {includeReports=false}={}) {
   const turn = Math.max(1, Math.floor(number(turnNumber, state?.timeline?.turnNumber || 1)));
   const occupied = new Set((state?.enemies || []).map(row => keyOf(row.x, row.y)));
   for (const player of state?.players || []) {
@@ -220,7 +225,8 @@ export function advanceV39WorldPopulation(state, mapData, turnNumber) {
     for (const player of state?.players || []) if ((player?.factionState?.units || []).some(unit => number(unit.hp ?? unit.currentHp) > 0 && keyOf(unit.x, unit.y) === keyOf(next.x, next.y))) discovered.add(player.id);
     return { ...group, x:next.x, y:next.y, discoveredByPlayerIds:[...discovered], lastMovedTurn:turn };
   });
-  return advanceV39NeutralVillages({ ...state, wandererGroups }, mapData, turn).state;
+  const result=advanceV39NeutralVillages({ ...state, wandererGroups }, mapData, turn);
+  return includeReports?result:result.state;
 }
 
 export function recruitV39Wanderer(state, playerId, groupId) {
@@ -265,10 +271,34 @@ function ensureWorldActions() {
   section.innerHTML = `<div class="v39-world-contact-copy"><span id="v39-world-contact-kind"></span><b id="v39-world-contact-detail"></b><small id="v39-world-contact-subdetail"></small></div><div id="v39-world-contact-buttons"></div>`;
   (document.getElementById('v39-interaction-actions') || panel).appendChild(section);
   section.addEventListener("click", runContactAction);
+  const host=document.getElementById('v39-interaction-actions');
+  if(host&&!document.getElementById('v39-village-contacts')){
+    const list=document.createElement('section');list.id='v39-village-contacts';host.append(list);
+    list.addEventListener('click',event=>{
+      const button=event.target.closest('[data-village-focus]');if(!button)return;
+      const state=window.getV39GameState?.({includeWorlds:false});
+      const village=state?.neutralVillages?.find(row=>row.id===button.dataset.villageFocus);
+      if(!village||!hasV39VillageContact(village,state.activePlayerId))return;
+      if(!focusV39MapTile(village,{worldId:'surface',select:true}))window.showV39TurnBanner?.('地上で、処理完了後に位置を確認できます');
+    });
+  }
+}
+
+function renderVillageContacts() {
+  const host=document.getElementById('v39-village-contacts');if(!host)return;
+  const state=window.getV39GameState?.({includeWorlds:false}),playerId=state?.activePlayerId;
+  const villages=(state?.neutralVillages||[]).filter(row=>hasV39VillageContact(row,playerId));
+  const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const html='<strong>交流した村</strong>'+(villages.length?villages.map(village=>{
+    const pending=getV39VillageQuests(village,playerId).filter(row=>row.accepted&&!row.completed).length;
+    return `<button type="button" data-village-focus="${escape(village.id)}" aria-label="${escape(village.name)}の位置へ移動"><b>${escape(village.name)}${village.abandoned?'（廃村）':''}</b><small>(${village.x},${village.y}) / 友好度 ${getV39NeutralVillageRelation(village,playerId)}${pending?' / 受注中 '+pending+'件':''}</small></button>`;
+  }).join(''):'<p>まだ交流した村はありません。</p>');
+  if(host.__markup!==html){host.innerHTML=html;host.__markup=html;}
 }
 
 function renderWorldActions() {
   ensureWorldActions();
+  renderVillageContacts();
   const section = document.getElementById("v39-world-contact-actions");
   const kind = document.getElementById("v39-world-contact-kind");
   const detail = document.getElementById("v39-world-contact-detail");
@@ -314,8 +344,8 @@ function renderWorldActions() {
       subdetail.textContent+=` / 守備軍訓練 ⌛${Math.max(0,village.defenseTraining.readyTurn-state.timeline.turnNumber)}`;
     }
     const plan=village.planSchedule?.active;
-    if(plan){
-      const status=document.createElement('small');status.textContent=`計画: ${plan.name} / ${plan.stage}${plan.remainingTurns!=null?` ⌛${plan.remainingTurns}`:''}${plan.blockers.length?` / ${plan.blockers[0]}`:''}`;
+    if(plan||village.planSchedule?.lastCompleted||village.buildings?.length){
+      const status=document.createElement('small');status.dataset.villagePlanStatus='';status.textContent=describeV39VillagePlan(village);
       buttons.before(status);
       section.__planStatus=status;
     }
@@ -402,7 +432,7 @@ function performContactAction(action,eventId='',label='',targetId='',kind='villa
   window.setV39GameState?.(result.state, { reason:`world-contact-${action}` });
   window.showV39TurnBanner?.(result.message);
   window.appendV39ActivityLog?.(state.activePlayerId, action === "recruit" ? "放浪者" : "一般村", result.message, { chance:result.chance, roll:result.roll, joined:result.joined });
-  renderWorldActions();
+  if(action==='raid')closeVillageMenu();else renderWorldActions();
   return result;
 }
 
@@ -411,6 +441,7 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-world-population-style";
   style.textContent = `#v39-world-contact-actions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,1fr);gap:6px;align-items:center;padding:6px;border:1px solid #786542;border-radius:7px;background:#282515}#v39-world-contact-actions[hidden]{display:none}.v39-world-contact-copy span,.v39-world-contact-copy b,.v39-world-contact-copy small{display:block}.v39-world-contact-copy span,.v39-world-contact-copy small{font-size:var(--font-secondary);color:#c0aa77}.v39-world-contact-copy b{font-size:var(--font-body)}#v39-world-contact-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}#v39-world-contact-buttons button{min-height:34px;border:1px solid #d4af58;border-radius:6px;background:#493a18;color:#ffe6a0;padding:4px 8px;font-size:var(--font-secondary);font-weight:800}#v39-world-contact-buttons button:disabled{opacity:.45}@media(max-width:620px){#v39-world-contact-actions{grid-template-columns:1fr}#v39-world-contact-buttons{justify-content:flex-start}}`;
+  style.textContent+=`#v39-village-contacts{display:grid;gap:4px;min-width:0;margin-top:6px}#v39-village-contacts>button{display:grid;gap:2px;text-align:left;min-width:0;padding:5px 8px;border:1px solid #56747a;border-radius:6px;background:#142a30;color:#e7f4f4;font-size:var(--font-body)}#v39-village-contacts small{font-size:var(--font-secondary);color:#bdd1d2}#v39-village-contacts p{margin:3px 0;color:#bdd1d2}#v39-village-contacts>button:focus-visible{outline:2px solid #ffdd72}`;
   document.head.appendChild(style);
 }
 
@@ -440,11 +471,17 @@ function advance(event) {
   const state = window.getV39GameState?.();
   const mapData = window.__v39FieldRuntime?.mapData;
   if (!state || !mapData) return;
-  const next = advanceV39WorldPopulation(state, mapData, event?.detail?.turnNumber);
+  const {state:next,reports}=advanceV39WorldPopulation(state,mapData,event?.detail?.turnNumber,{includeReports:true});
   const neutralById = new Map(next.neutralVillages.map(row => [row.id, row]));
   const settlements = (next.settlements || state.settlements || []).map(row => neutralById.get(row.id) || row);
   window.setV39GameState?.({ players:next.players, neutralVillages:next.neutralVillages, wandererGroups:next.wandererGroups, settlements,
     facilitiesByTile:next.facilitiesByTile,territoryOwnerByTile:next.territoryOwnerByTile }, { reason:"world-population-turn" });
+  for(const report of reports){
+    if(report.type!=='village-construction-completed')continue;
+    const [x,y]=report.tileKey.split(',').map(Number);
+    if(!window.isV39TestMode?.()&&window.isV39TileInCurrentVision?.(x,y)!==true)continue;
+    window.appendV39ActivityLog?.([state.activePlayerId],'建設',`${report.villageName}: ${report.facilityName}が完成（${report.tileKey}）`,report);
+  }
 }
 
 window.addEventListener("v39:field-generated", clearForNewField);

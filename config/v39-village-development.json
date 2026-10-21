@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "nodes": [
+    {"id":"safety","planId":"PLAN_VILLAGE_THREAT","requires":[]},
+    {"id":"defense","planId":"PLAN_VILLAGE_DEFENSE","requires":[]},
+    {"id":"cemetery","planId":"PLAN_VILLAGE_CEMETERY","requires":["safety"],"proactive":true},
+    {"id":"food","planId":"PLAN_VILLAGE_FOOD","requires":["cemetery"]}
+  ]
+}

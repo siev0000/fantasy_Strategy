@@ -1,3 +1,4 @@
+import {describeV39VillagePlan,inspectV39VillageDevelopment} from '../../lib/v39-village-plans.js';
 import {renderV39Conversation,recordV39Conversation} from './v39-negotiation-conversation.js';
 import {getV39VillageQuests} from '../../lib/v39-village-quest-log.js';
 import {submitV39VillageQuestBatch} from '../../lib/v39-village-quest-batch.js';
@@ -12,6 +13,11 @@ import {questRewardSummary,renderV39QuestRewardEditor,closeV39QuestRewardPicker}
 import './v39-village-hub.css';
 
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+function developmentMarkup(state,village){
+  const nodes=inspectV39VillageDevelopment(state,village,window.__v39FieldRuntime?.mapData);
+  const labels={completed:'完了',active:'進行中',locked:'前提待ち',unavailable:'定義なし'};
+  return `<article class="v39-hub-card" data-village-development><h3>村の発展計画</h3>${nodes.map(node=>`<div class="v39-development-node" data-development-status="${node.status}"><b>${esc(node.name)}</b><span>${labels[node.status]}</span>${node.requires.length?`<small>前提: ${esc(node.requires.map(id=>nodes.find(row=>row.id===id)?.name||id).join('・'))}</small>`:''}${node.status==='active'?`<small>${esc([node.stage,...node.needs.map(need=>`${need.resource} あと${need.amount}`),...node.blockers].filter(Boolean).join(' / '))}</small>`:''}</div>`).join('')}</article>`;
+}
 const tabs=[['talk','会話'],['quests','クエスト'],['trade','取引'],['info','情報']];
 const alive=unit=>Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
 const types={hunt:'討伐',delivery:'物資',watch:'警備',construction:'建築'};
@@ -75,7 +81,7 @@ export function renderV39VillageHub(options){
   const talk=[['status','村の様子を聞く','現在の計画や困っていることを確認します。'],['relation','交流する',`友好関係を深めます。食料 ${V39_NEUTRAL_VILLAGE_BALANCE.improveRelationCost}`],['village-rest','部隊で休息','村で部隊を休ませます。AP30'],['vassal','属国化を交渉','村を自国の保護下に置く交渉です。'],['raid','村を襲撃','戦闘を開始する敵対行動です。']];
   updateV39RetainedMarkup(root.querySelector('#v39-hub-talk'),`<h2>何を話しますか？</h2><div class="v39-hub-talk-options">${talk.map(([id,title,copy])=>`<button type="button" data-hub-talk="${id}" aria-pressed="${selectedTalk===id}"${id==='vassal'&&village.vassalPlayerId?' disabled':''}><b>${title}</b><small>${copy}</small></button>`).join('')}</div>`);
   const plan=village.planSchedule?.active;
-  updateV39RetainedMarkup(root.querySelector('[data-hub-info]'),`<h2>村の情報</h2><dl class="v39-hub-facts"><div><dt>人口</dt><dd>${village.population}人</dd></div><div><dt>村のLv</dt><dd>${village.level}</dd></div><div><dt>守備</dt><dd>${(village.defenseUnits||[]).filter(alive).reduce((sum,unit)=>sum+(Number(unit.count)||1),0)}人</dd></div><div><dt>所属</dt><dd>${esc(village.vassalPlayerId||'独立')}</dd></div></dl><p data-hub-leader>交渉相手: ${esc(getV39VillageSpeaker(village).name)} / ${esc(getV39VillageSpeaker(village).title||"村長")}</p><p>相手の性格: ${esc(village.conversationPersonality||'未設定')} / 交渉役の性格: ${esc(actor?.conversationPersonality||'未設定')}</p><p data-hub-pronouns>相手の一人称: ${esc(getV39ConversationProfile(getV39VillageSpeaker(village)).一人称)} / 二人称: ${esc(getV39ConversationProfile(getV39VillageSpeaker(village)).二人称)}</p><article class="v39-hub-card"><h3>現在の計画</h3><p>${esc(plan?`${plan.name} / ${plan.stage}`:'現在の計画はありません。')}</p>${plan?.blockers?.length?`<p>${esc(plan.blockers.join(' / '))}</p>`:''}</article><h2>交渉役・スキル</h2>`);
+  updateV39RetainedMarkup(root.querySelector('[data-hub-info]'),`<h2>村の情報</h2><dl class="v39-hub-facts"><div><dt>人口</dt><dd>${village.population}人</dd></div><div><dt>村のLv</dt><dd>${village.level}</dd></div><div><dt>守備</dt><dd>${(village.defenseUnits||[]).filter(alive).reduce((sum,unit)=>sum+(Number(unit.count)||1),0)}人</dd></div><div><dt>所属</dt><dd>${esc(village.vassalPlayerId||'独立')}</dd></div></dl><p data-hub-leader>交渉相手: ${esc(getV39VillageSpeaker(village).name)} / ${esc(getV39VillageSpeaker(village).title||"村長")}</p><p>相手の性格: ${esc(village.conversationPersonality||'未設定')} / 交渉役の性格: ${esc(actor?.conversationPersonality||'未設定')}</p><p data-hub-pronouns>相手の一人称: ${esc(getV39ConversationProfile(getV39VillageSpeaker(village)).一人称)} / 二人称: ${esc(getV39ConversationProfile(getV39VillageSpeaker(village)).二人称)}</p><p data-hub-facilities>完成施設: ${esc((village.buildings||[]).join('・')||'なし')}</p><article class="v39-hub-card"><h3>現在の計画</h3><p>${esc(describeV39VillagePlan(village))}</p>${plan?.blockers?.length?`<p>${esc(plan.blockers.join(' / '))}</p>`:''}</article>${developmentMarkup(state,village)}<h2>交渉役・スキル</h2>`);
   const records=getV39VillageQuests(village,state.activePlayerId),pending=records.filter(row=>row.accepted&&!row.completed);
   const entries=new Map(choices.map(row=>[row.eventId,row]));
   for(const record of pending)entries.set(record.eventId,{...record,pending:true});
@@ -114,7 +120,7 @@ export function renderV39VillageHub(options){
       if(result.ok){checkedQuests.clear();window.setV39GameState(result.state,{reason:'quest-batch'});recordV39Conversation(village.id,'選択した依頼をお願いします。',result.message);}
       onRefresh();output(root).textContent=result.message||result.reason;return;
     }
-    if(selectedTalk==='status'){recordV39Conversation(village.id,'村の様子を教えてください。',plan?`${plan.name}を進めています。${plan.blockers?.join(' / ')||plan.stage}`:'今のところ、新たな計画はありません。');onRefresh();return;}
+    if(selectedTalk==='status'){recordV39Conversation(village.id,'村の様子を教えてください。',describeV39VillagePlan(village));onRefresh();return;}
     if(selectedTalk==='raid'&&!window.confirm('この村を襲撃し、戦闘を開始しますか？'))return;
     const result=onAction(selectedTalk,'',talk.find(([id])=>id===selectedTalk)?.[1]);if(result)output(root).textContent=result.message||result.reason;
   };

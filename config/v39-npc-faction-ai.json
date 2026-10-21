@@ -1,0 +1,7 @@
+{
+  "unitTarget": 6,
+  "initialSoldiersMin":1,
+  "initialSoldiersMax":2,
+  "constructionPurposeBonus": {"防衛":80,"探索":90,"研究":20,"食料":20,"浄化":10},
+  "foodShortageBonus":150
+}

@@ -2,7 +2,7 @@ import { getFactionSettlements, selectFactionSettlement, territorySettlementId }
 import { inspectV39CitySpecializations, selectV39CitySpecialization } from "../../lib/v39-city-specialization-rules.js";
 import { resolveV39SettlementProductionMetrics } from "../../lib/v39-economy-rules.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
-import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { renderV39LandExpansionControls } from "./v39-land-expansion-ui.js";
 import {renderV39FacilityStorageButtons} from '../unit/v39-facility-storage-ui.js';
 import {getV39DeathProtectionStatus} from '../../lib/v39-death-purification.js';
@@ -245,10 +245,7 @@ panel?.addEventListener("click", event => {
   window.updateV39ActiveFactionState?.(next, { reason:"settlement-selected" });
   const settlement = next.settlements.find(row => text(row.settlementId) === next.selectedSettlementId);
   if (!settlement?.placed || !Number.isFinite(settlement.x) || !Number.isFinite(settlement.y)) return;
-  const camera = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0]?.cameras?.main;
-  const x = settlement.x * HEX_TILE_CONFIG.width + (settlement.y % 2 ? HEX_TILE_CONFIG.oddRowOffsetX : 0) + HEX_TILE_CONFIG.width / 2;
-  const y = settlement.y * HEX_TILE_CONFIG.rowStep + HEX_TILE_CONFIG.height / 2;
-  camera?.centerOn(x, y);
+  focusV39MapTile(settlement,{worldId:'surface'});
 });
 
 // 状態更新で内容を準備済み。タブを開くだけでは再計算・DOM交換しない。

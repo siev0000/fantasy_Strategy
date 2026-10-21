@@ -56,6 +56,7 @@ function normalizeGameStartSettings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const requestedMode = String(source.turnProgressionMode || "").trim();
   return {
+    npcFactionCount:Math.max(0,Math.min(8,Math.floor(Number(source.npcFactionCount)||0))),
     turnProgressionMode: turnModeValues.has(requestedMode)
       ? requestedMode
       : GAME_START_DEFAULT_TURN_MODE,

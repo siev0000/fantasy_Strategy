@@ -272,7 +272,7 @@ function findNextPlayerNeedingInitialPlacement(state, afterPlayerId = "") {
   const start = Math.max(-1, players.findIndex(player => player.id === afterPlayerId));
   for (let offset = 1; offset <= players.length; offset += 1) {
     const player = players[(start + offset + players.length) % players.length];
-    if (needsInitialPlacement(player)) return player;
+    if (player.isPlayer!==false&&needsInitialPlacement(player)) return player;
   }
   return null;
 }
@@ -674,12 +674,28 @@ function placeInitialBase(tile, options = {}) {
       return true;
     }
     window.dispatchEvent(new CustomEvent("v39:initial-settlement-placed", { detail }));
+    if(placePendingNpcBases())return true;
     window.dispatchEvent(new CustomEvent("v39:initial-placement-complete", {
       detail:{ ...detail, settlements:getFactionSettlements(factionState) }
     }));
   } else {
     showBanner(`拠点${placementIndex + 1}/${plans.length}を設置しました。続けて${placementBannerText(factionState)}`, true);
   }
+  return true;
+}
+
+let placingNpcs=false;
+function placePendingNpcBases() {
+  if(placingNpcs)return false;
+  const state=getGameState();
+  if(state.players.some(player=>player.isPlayer!==false&&needsInitialPlacement(player)))return false;
+  const pending=state.players.filter(player=>player.isPlayer===false&&needsInitialPlacement(player));
+  if(!pending.length)return false;
+  placingNpcs=true;
+  try{for(const player of pending){
+    const result=autoPlaceInitialBases(player.id);
+    if(!result.ok){showBanner(`${player.label}: ${result.reason}。マップを広げるかNPC勢力数を減らしてください`,true);break;}
+  }}finally{placingNpcs=false;}
   return true;
 }
 
@@ -816,6 +832,7 @@ function install() {
   }
 
   window.addEventListener("v39:tile-selected", handleTileSelected);
+  window.addEventListener('v39:initial-player-placement-complete',placePendingNpcBases);
   window.addEventListener("v39:game-state-changed", syncPlacementMode);
   window.addEventListener("v39:field-generated", handleFieldGenerated);
   window.addEventListener("v39:operation-ui-ready", syncPlacementMode);

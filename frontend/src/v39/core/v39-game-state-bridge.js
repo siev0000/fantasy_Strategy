@@ -1,4 +1,9 @@
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import {raceData} from '../../lib/game-data-registry.js';
+import npcBalance from '../../../../config/v39-npc-faction-ai.json';
+import {buildV39UnitEntity,buildV39ClassEquipment} from '../../lib/v39-unit-creation-rules.js';
+import {resolveV39UnitInitialLevel} from '../../lib/v39-unit-experience.js';
+import {applyV39InitialSovereignProfile,getV39InitialSovereignClassCandidates} from './v39-initial-sovereign.js';
 import {withV39ConversationPersonality} from '../../lib/v39-conversation-personality.js';
 import {withV39VillageLeader} from '../../lib/v39-village-leaders.js';
 import { createPlayerFactionState, createPlayerRecord } from "../../lib/player-state.js";
@@ -655,6 +660,27 @@ function createRemoteSessionParticipants(players, participantSource, assignments
   return { players:normalizedPlayers, sessionParticipants:participants };
 }
 
+function createNpcSessionPlayers(count) {
+  const races=raceData.filter(row=>getV39InitialSovereignClassCandidates(row.key).length);
+  return Array.from({length:count},(_,index)=>{
+    const id=`npc-${index+1}`,race=races[Math.floor(Math.random()*races.length)]?.key;
+    const classes=getV39InitialSovereignClassCandidates(race),className=(classes.find(row=>row.名前==='ファイター')||classes[0])?.名前;
+    const player=createPlayerRecord({id,label:`NPC勢力${index+1}`,race,isPlayer:false,ready:true,controllerParticipantId:'',
+      factionState:createPlayerFactionState({nationLogKey:id},id)},index);
+    const result=applyV39InitialSovereignProfile({players:[player]},{playerId:id,race,className,characterName:`${race}の統治者`,villageName:`${race}の拠点`});
+    if(!result.ok)throw new Error(result.reason);
+    const created=result.state.players[0];
+    const min=Math.max(0,Math.floor(npcBalance.initialSoldiersMin)),max=Math.max(min,Math.floor(npcBalance.initialSoldiersMax));
+    const soldiers=Array.from({length:min+Math.floor(Math.random()*(max-min+1))},(_,soldierIndex)=>{
+      const definition=classes.find(row=>row.名前===className);
+      const unit=buildV39UnitEntity({id:`${id}-initial-soldier-${soldierIndex+1}`,name:`${race}の一般兵${soldierIndex+1}`,race,className,
+        level:resolveV39UnitInitialLevel(race),unitType:'一般',isMob:true,isNamed:false,equipment:buildV39ClassEquipment(definition)});
+      return {...unit,x:null,y:null,position:null,initialSettlementSlot:0};
+    });
+    return {...created,factionState:{...created.factionState,units:[...created.factionState.units,...soldiers]}};
+  });
+}
+
 function startMultiplayerSession(playerCount, options = {}) {
   const count = normalizeV39LocalPlayerCount(playerCount);
   const initialPlayers = createMultiplayerSessionPlayers(count, options?.playerFactionSelections);
@@ -669,9 +695,9 @@ function startMultiplayerSession(playerCount, options = {}) {
   if (!session.players.length || !session.sessionParticipants.length) {
     throw new Error("通信参加者がゲーム状態へ接続されていません。");
   }
-  const players = session.players;
+  const gameSettings = normalizeGameStartSettings(options?.gameSettings || {...state.gameSettings,npcFactionCount:0});
+  const players = [...session.players,...createNpcSessionPlayers(gameSettings.npcFactionCount)];
   const activePlayerId = players[0]?.id || "";
-  const gameSettings = normalizeGameStartSettings(options?.gameSettings || state.gameSettings);
   state = normalizeState({
     ...EMPTY_STATE,
     gameSettings,
@@ -680,7 +706,7 @@ function startMultiplayerSession(playerCount, options = {}) {
     sessionParticipants:session.sessionParticipants,
     timeline:{
       ...EMPTY_STATE.timeline,
-      playerTurnOrder:players.map(player => player.id),
+      playerTurnOrder:session.players.map(player => player.id),
       activeTurnPlayerId:activePlayerId,
       endedPlayerIds:[]
     }
@@ -710,10 +736,10 @@ function startLocalSession(playerCount, options = {}) {
     options?.participantCount,
     options?.playerParticipantAssignments
   );
-  const players = session.players;
+  const gameSettings = normalizeGameStartSettings(options?.gameSettings || {...state.gameSettings,npcFactionCount:0});
+  const players = [...session.players,...createNpcSessionPlayers(gameSettings.npcFactionCount)];
   const activePlayerId = players[0].id;
   const activeTurnPlayerId = activePlayerId;
-  const gameSettings = normalizeGameStartSettings(options?.gameSettings || state.gameSettings);
   state = normalizeState({
     ...EMPTY_STATE,
     gameSettings,
@@ -722,7 +748,7 @@ function startLocalSession(playerCount, options = {}) {
     sessionParticipants:session.sessionParticipants,
     timeline:{
       ...EMPTY_STATE.timeline,
-      playerTurnOrder:players.map(player => player.id),
+      playerTurnOrder:session.players.map(player => player.id),
       activeTurnPlayerId,
       endedPlayerIds:[]
     }

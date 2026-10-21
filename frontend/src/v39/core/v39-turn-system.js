@@ -8,7 +8,7 @@ import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
 import { restoreV39SquadMovementForTurn } from "../../lib/v39-squad-movement-rules.js";
 import { normalizeV39PlayerTurnTimeline } from "../../lib/v39-local-multiplayer-session.js";
 import { isV39UnitUnacted } from "../../lib/v39-unit-action-rules.js";
-import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { advanceV39AutomaticTransport } from "../../lib/v39-transport-rules.js";
 import {advanceV39TradeLogistics} from '../../lib/v39-trade-logistics.js';
 import { showV39TurnLoading, paintV39TurnLoading } from "../ui/v39-turn-loading.js";
@@ -262,10 +262,7 @@ function focusUnactedUnit(state, playerId, turnNumber) {
   })) }, { reason:"unacted-unit-focus" });
   window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail:{ unitId:unit.id, unit } }));
   window.activateV39FooterTab?.("squad");
-  const camera = window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0]?.cameras?.main;
-  const x = unit.x * HEX_TILE_CONFIG.width + (unit.y % 2 ? HEX_TILE_CONFIG.oddRowOffsetX : 0) + HEX_TILE_CONFIG.width / 2;
-  const y = unit.y * HEX_TILE_CONFIG.rowStep + HEX_TILE_CONFIG.height / 2;
-  camera?.centerOn(x, y);
+  focusV39MapTile(unit,{worldId:unit.worldId||'surface'});
   showBanner(`${unit.name || "キャラクター"}は未行動です。行動または待機を選んでください`);
   return true;
 }

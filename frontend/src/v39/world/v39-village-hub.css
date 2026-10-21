@@ -68,3 +68,8 @@
   .v39-hub-footer output{height:1.4em;margin-bottom:3px}
   .v39-hub-footer{padding-top:4px;padding-bottom:max(4px,env(safe-area-inset-bottom))}
 }
+ .v39-development-node{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;border-left:3px solid #5d7378;padding:6px 8px;margin:5px 0;background:#14252a}
+ .v39-development-node small{grid-column:1/-1;color:#bbced0}
+ .v39-development-node[data-development-status="completed"]{border-color:#7bb687}
+ .v39-development-node[data-development-status="active"]{border-color:#dfbc60}
+ .v39-development-node[data-development-status="locked"]{opacity:.65}

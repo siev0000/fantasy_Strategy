@@ -1,0 +1,154 @@
+{
+  "report": {
+    "assignedSessionCheck": {
+      "participantCount": 2,
+      "assignments": {
+        "player-1": "local-1",
+        "player-2": "local-2",
+        "player-3": "local-2"
+      }
+    },
+    "maximumSessionCheck": {
+      "playerCount": 8,
+      "assignedPlayerCount": 8,
+      "uniqueUnitIds": 36,
+      "unitCount": 36
+    },
+    "normalSessionCheck": {
+      "playerCount": 2,
+      "unitCount": 0,
+      "settlementCount": 0,
+      "races": [
+        "",
+        ""
+      ]
+    },
+    "sourcePlayers": 2,
+    "sessionParticipants": [
+      {
+        "participantId": "local-1",
+        "name": "参加者1",
+        "controlMode": "local",
+        "assignedPlayerIds": [
+          "player-1",
+          "player-2"
+        ]
+      }
+    ],
+    "uniqueUnitIds": 9,
+    "unitCount": 9,
+    "placedPlayerIds": [
+      "player-1"
+    ],
+    "placementComplete": true,
+    "firstEnd": {
+      "turnNumber": 1,
+      "activePlayerId": "player-2",
+      "activeTurnPlayerId": "player-2",
+      "endedPlayerIds": [
+        "player-1"
+      ],
+      "enemyTurnCalls": 0
+    },
+    "roundEnd": {
+      "turnNumber": 2,
+      "activePlayerId": "player-1",
+      "activeTurnPlayerId": "player-1",
+      "endedPlayerIds": [],
+      "enemyTurnCalls": 1
+    },
+    "fieldSettingsPlayerCount": "2",
+    "fieldSettingsParticipantCount": "2",
+    "fieldSettingsAssignmentCount": 2,
+    "fieldSettingsAssignmentBox": {
+      "x": 579.1875,
+      "y": 489.34375,
+      "width": 400.8125,
+      "height": 30,
+      "top": 489.34375,
+      "right": 980,
+      "bottom": 519.34375,
+      "left": 579.1875
+    },
+    "fieldSettingsAssignmentRow": {
+      "x": 300,
+      "y": 482.34375,
+      "width": 680,
+      "height": 63.390625,
+      "top": 482.34375,
+      "right": 980,
+      "bottom": 545.734375,
+      "left": 300
+    },
+    "fieldSettingsGameSection": {
+      "x": 289,
+      "y": 77,
+      "width": 702,
+      "height": 286.953125,
+      "top": 77,
+      "right": 991,
+      "bottom": 363.953125,
+      "left": 289
+    },
+    "generatedParticipantCount": 2,
+    "generatedAssignments": {
+      "player-1": "local-1",
+      "player-2": "local-2"
+    },
+    "fieldSettings": {
+      "playMode": "single-normal",
+      "mapSize": "60x60",
+      "mapScope": "region",
+      "climateSettings": {
+        "zone": "temperate",
+        "baseTemperature": 18,
+        "humidity": 55
+      },
+      "patternId": "realistic",
+      "mountainMode": "random",
+      "enemySpawnTileDivisor": 40,
+      "neutralVillageCount": 2,
+      "localPlayerCount": 2,
+      "localParticipantCount": 2,
+      "playerParticipantAssignments": {
+        "player-1": "local-1",
+        "player-2": "local-2"
+      },
+      "gameSettings": {
+        "npcFactionCount": 0,
+        "turnProgressionMode": "standard",
+        "maxCombatTurnsPerWorldTurn": 6
+      },
+      "islandCustomSettings": {
+        "enabled": false,
+        "worldWrapEnabled": true,
+        "largeIslandCount": 2,
+        "largeIslandMinGap": 6,
+        "targetLandRatio": 0.5,
+        "isletCountMin": 1,
+        "isletCountMax": 4,
+        "riverPerContinentMin": 3,
+        "riverPerContinentMax": 4
+      }
+    },
+    "fieldSettingsModalMode": "1",
+    "save": {
+      "version": 4,
+      "participantCount": 1,
+      "turnOrder": [
+        "player-1",
+        "player-2"
+      ]
+    },
+    "legacyMigration": {
+      "version": 4,
+      "participantCount": 1,
+      "assignedPlayerCount": 2,
+      "turnOrder": [
+        "player-1",
+        "player-2"
+      ]
+    }
+  },
+  "errors": []
+}

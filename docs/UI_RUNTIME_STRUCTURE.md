@@ -1,5 +1,9 @@
 # UI実行経路と負荷の整理
 
+2026-10-21 NPC勢力: 開始設定の既存gameSettingsへnpcFactionCountを追加。状態ブリッジが通常統治者生成を呼び、既存初期配置の完了経路でNPCだけを自動配置する。人の担当/手番とNPCのAIフェーズを分け、設定再表示の操作勢力数も人だけを数える。施設前提はlib/v39-facility-development-rules.jsを村/勢力AIで共用。行動用の新規タイマーや描画購読は追加しない。
+
+2026-10-21 交流した村: `v39-world-population.js` の既存交流欄が一覧と選択を所有し、村モーダルを開いた時点の接触履歴をプレイヤー別に保存する。`lib/v39-village-contacts.js` が履歴と旧セーブ判定を共用。`map/v39-map-focus.js` が座標変換・倍率維持・画面端補正・別ワールド拒否を所有し、村一覧・拠点選択・部隊カード選択・未行動ユニットへの移動・通常のマスfocusから使用する。新しい状態購読や別モーダルは追加せず、一覧の内容が同一ならDOMを保持する。
+
 2026-10-21 取引配送: `v39-trade-state.js` がdeliveryMode（proposer/partner/meeting）と片側使者の検証/予約を所有し、`v39-trade-logistics.js` が通常APの往復・相手拠点の予約在庫との同時交換を処理。受取拠点側はユニットを割り当てず、その場で納品分を受領。旧モード未設定契約は従来の双方待ち合わせを維持。UIは既存v39-trade-uiへ配送選択を追加し、待ち合わせだけ申込側の共通座標を表示する。物資追加は共有バスケットの見出し横＋。提供候補はavailabilityで自国の在庫/収入を判定し、選択数/保有数を表示。要求候補はv39-trade-knowledge.jsとgetV39KnownTradeResourcesで自国の既知物資を判定し、要求数量のみ表示。knownTradeResourceNamesを勢力状態として保存し、相手在庫/収入を候補・警告・ゲージ上限に使わない。共通資材名欄を使う。後付け監視/代理クリックは追加しない。
 
 2026-10-21 村交渉ハブ: `v39-world-population.js` は既存の村モーダルと接触処理を所有。`v39-village-hub.js` が4タブ/固定下端/村情報を描画し、操作は共通 `performContactAction` へ明示的に渡す。番号付き依頼は既存 `v39-village-dialogue-ui.js`、人物/発言/交渉役/スキルは `v39-negotiation-conversation.js` を共用。`v39-trade-ui.js` にmount/hide/unmount/submitのライフサイクルを追加し、同じ取引DOM/未送信入力/物資選択/判定処理を村の取引タブで使用する。独立取引も維持。閉じると取引DOMをbodyへ戻して非表示にし、マップ選択中だけハブを退避する。新規MutationObserverや代理クリックによる完成DOM上書きは追加していない。

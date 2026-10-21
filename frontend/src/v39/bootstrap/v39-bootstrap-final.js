@@ -33,7 +33,7 @@ import "../ui/v39-effect-category-settings.js";
 import "../ui/v39-title-effect-settings.js";
 import "../ui/v39-text-input-modal.js";
 
-const V39_UI_BUILD_LABEL = "UI 2026.10.21-53";
+const V39_UI_BUILD_LABEL = "UI 2026.10.21-60";
 
 function applyV39UiBuildLabel() {
   const label = document.getElementById("uiBuildLabel");

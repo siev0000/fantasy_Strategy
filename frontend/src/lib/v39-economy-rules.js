@@ -87,7 +87,7 @@ const INITIAL_STOCK_TURNS = 3;
 const RESEARCH_FIELDS = RESEARCH_CATEGORY_ORDER;
 const FACILITY_NON_EFFECT_FIELDS = new Set([
   "施設名", "分類", "識別キー", "規模Lv", "規模下限人口", "ネームド上限", "表示画像", "表示サイズ", "1マス収容人数", "占有マス数",
-  "条件地形", "詳細", "建築時間", "建築数", "影響範囲", "土地用途",
+  "条件地形", "詳細", "建築時間", "建築数", "影響範囲", "土地用途", "施設ID", "前提施設ID", "建設目的", "自動建設優先度",
   "必要拠点段階", "採取資源", "採取範囲", "改築元", "改築短縮ターン",
   ...RESEARCH_FIELDS, ...MATERIAL_RESOURCE_KEYS, "死体", "魂"
 ]);
@@ -928,7 +928,7 @@ export function collectV39TerritoryTileIncome(state, ownerPlayerId, key, mapData
 
 // 一般村はまだ実在庫を消費・保存しないため、7マス領域の生活可能性を確認する専用の読み取り診断。
 // プレイヤー拠点と同じ地形産出、稼働率、人口構成の対応技能倍率を使用する。
-export function inspectV39NeutralVillageEconomy(village, mapData) {
+export function inspectV39NeutralVillageEconomy(village, mapData, state = {}) {
   const race = text(village?.race) || "只人";
   const population = Math.max(0, Math.floor(number(village?.population)));
   const normalized = normalizeV39Village({
@@ -949,12 +949,16 @@ export function inspectV39NeutralVillageEconomy(village, mapData) {
     roundTo1:round1,
     parseCoordKey:key => { const [x, y] = text(key).split(",").map(Number); return { x, y }; },
     resolveTileTerrainForYield:resolveTileTerrain,
-    resolveTileYieldMultiplier:() => number(TERRITORY_TILE_MODE_CONFIG[TERRITORY_TILE_MODE_RESOURCE]?.incomeMultiplier, 2) * employmentRate,
-    resolveResourceYieldMultiplier:({ resourceKey, row }) => number(row?.[resourceKey]) > 0
-      ? resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
+    resolveTileYieldMultiplier:({ key }) => tileModeMultiplier(normalized, key) * employmentRate * resolveV39HazardYieldMultiplier(state, key),
+    resolveResourceYieldMultiplier:({ key, resourceKey, row }) => number(row?.[resourceKey]) > 0
+      ? resolveV39FacilityYieldMultiplier(normalized, key, resourceKey) * resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
       : 1,
     terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
   });
+  const ownerId=text(village.id),owners={...state.territoryOwnerByTile};
+  for(const key of territoryKeys)if(!owners[key])owners[key]=ownerId;
+  const projected={id:ownerId,race,factionState:{settlements:[{...normalized,settlementId:ownerId}],selectedSettlementId:ownerId}};
+  collectFacilityWaterIncome(raw,{...state,territoryOwnerByTile:owners},projected,{...normalized,settlementId:ownerId},mapData,{employmentRate},productionMetrics);
   const income = {
     food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 })

@@ -1,3 +1,4 @@
+import {isV39VillageHostileToPlayer} from '../../lib/v39-village-hostility.js';
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
 import { getFactionSettlements, getSelectedSettlement } from "../../lib/settlement-state.js";
@@ -161,7 +162,7 @@ function markerRenderSignature(faction, state) {
     .flatMap(player => Array.isArray(player?.factionState?.units) ? player.factionState.units.map(visualUnitSignature) : [])
     .sort();
   const neutralVillageUnits = (Array.isArray(state?.neutralVillages) ? state.neutralVillages : [])
-    .flatMap(village => Array.isArray(village?.defenseUnits) ? village.defenseUnits.map(visualUnitSignature) : [])
+    .flatMap(village => [JSON.stringify(village.hostilePlayerIds||village.lastPlayerRaid||null),...(village.defenseUnits||[]).map(visualUnitSignature)])
     .sort();
   return [
     String(state?.activePlayerId || ""),
@@ -183,6 +184,7 @@ function markerRenderSignature(faction, state) {
     playerUnits.join("|"),
     foreignUnits.join("|"),
     neutralVillageUnits.join("|"),
+    (state.neutralVillages||[]).map(visualSettlementSignature).sort().join("|"),
     (Array.isArray(state?.enemies) ? state.enemies : []).map(visualUnitSignature).sort().join("|"),
     (Array.isArray(state?.wandererGroups) ? state.wandererGroups : []).map(group => [
       group?.id, group?.x, group?.y, ...(Array.isArray(group?.discoveredByPlayerIds) ? group.discoveredByPlayerIds : [])
@@ -411,9 +413,9 @@ function addResidentialVillageMarker(scene, container, tileKey, options = {}) {
   return marker;
 }
 
-function drawSettlementTileMarkers(scene, container, faction) {
+function drawSettlementTileMarkers(scene, container, faction, {settlements=getFactionSettlements(faction),visibleOnly=false}={}) {
   const state=gameState(),storageCounts=new Map();
-  for(const facility of getV39StorageFacilities(state,state.activePlayerId)){
+  for(const facility of visibleOnly?[]:getV39StorageFacilities(state,state.activePlayerId)){
     const count=getV39FacilityStoredEntries(state,state.activePlayerId,facility).length;
     if(count)storageCounts.set(facility.tileKey,(storageCounts.get(facility.tileKey)||0)+count);
   }
@@ -422,19 +424,22 @@ function drawSettlementTileMarkers(scene, container, faction) {
   const completedOffsetY = 0;
   const pendingOffsetX = 0;
   const pendingOffsetY = 0;
-  for (const settlement of getFactionSettlements(faction)) {
+  const visible=key=>!visibleOnly||isTestMode()||window.isV39TileInCurrentVision?.(...String(key).split(',').map(Number))===true;
+  for (const settlement of settlements) {
     const occupiedTileKeys = new Set(settlementOccupiedTiles(settlement).map(tile => tile.key));
     for (const project of settlement.landExpansionProjects || []) {
+      if(!visible(project.tileKey))continue;
       addTileTextMarker(scene, container, project.tileKey, "開", {
         name:"v39-land-expansion-marker", subLabel:project.paused ? "停止" : `${project.remainingTurns}T`,
         radiusTiles:0.17, fontTiles:0.2, fillColor:0x33585f, strokeColor:0xe8cf58
       });
     }
     for (const [tileKey, mode] of Object.entries(settlement?.territoryTileModeMap || {})) {
-      if (String(mode) !== "settlement") continue;
+      if (!visible(tileKey)||String(mode) !== "settlement") continue;
       if (!occupiedTileKeys.has(tileKey)) addResidentialVillageMarker(scene, container, tileKey);
     }
     for (const [tileKey, conversion] of Object.entries(settlement?.territoryTileConversionMap || {})) {
+      if(!visible(tileKey))continue;
       const targetMode = String(conversion?.targetMode || "");
       addTileTextMarker(scene, container, tileKey, targetMode === "settlement" ? "居" : "資", {
         name:"v39-tile-conversion-marker",
@@ -454,6 +459,7 @@ function drawSettlementTileMarkers(scene, container, faction) {
       }
     }
     for (const [tileKey, facilityNames] of Object.entries(settlement?.tileFacilityMap || {})) {
+      if(!visible(tileKey))continue;
       if (settlement.territoryTileConversionMap?.[tileKey]?.targetMode === "settlement") continue;
       (Array.isArray(facilityNames) ? facilityNames : []).slice(0, 1).forEach(facilityName => {
         addTileFacilityMarker(scene, container, tileKey, facilityName, {
@@ -470,6 +476,7 @@ function drawSettlementTileMarkers(scene, container, faction) {
       });
     }
     for (const item of Array.isArray(settlement?.constructionQueue) ? settlement.constructionQueue : []) {
+      if(!visible(item.tileKey))continue;
       if (settlement.territoryTileConversionMap?.[item.tileKey]?.targetMode === "settlement") continue;
       addTileFacilityMarker(scene, container, item?.tileKey, item?.facilityName, {
         name:"v39-facility-construction-marker",
@@ -782,7 +789,7 @@ function drawNeutralVillageUnits(scene, container, villages, worldId) {
   const glyphFontSize = tileRelativePx(rule.glyphFontTiles);
   const revealAll = isTestMode();
   const units = (Array.isArray(villages) ? villages : [])
-    .flatMap(village => Array.isArray(village?.defenseUnits) ? village.defenseUnits : []);
+    .flatMap(village => (village.defenseUnits||[]).map(unit=>({...unit,villageHostile:isV39VillageHostileToPlayer(village,window.getV39ActivePlayer?.()?.id)})));
 
   for (const group of unitGroupsByTile(units,worldId).values()) {
     const unit = representativeUnit(group, "");
@@ -803,7 +810,7 @@ function drawNeutralVillageUnits(scene, container, villages, worldId) {
     if (!addUnitArtwork(scene, marker, unit, diameter)) {
       marker.add([
         scene.add.circle(0, 0, radius, 0x4a4021, 0.97)
-          .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe0c46c, 1),
+          .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), (unit.villageHostile?0xef6959:0xe0c46c), 1),
         scene.add.text(0, -0.5, "兵", {
           fontSize:`${glyphFontSize}px`,
           fontStyle:"bold",
@@ -812,7 +819,7 @@ function drawNeutralVillageUnits(scene, container, villages, worldId) {
       ]);
     } else {
       marker.add(scene.add.circle(0, 0, radius, 0x000000, 0)
-        .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe0c46c, 0.95));
+        .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), (unit.villageHostile?0xef6959:0xe0c46c), 0.95));
     }
     addDeadMark(scene, marker, unit, radius);
     addMilitaryMemberCount(scene, marker, unit, radius);
@@ -947,7 +954,10 @@ function renderMarkers() {
   // 勢力の拠点一覧は地上・地下で共通だが、地上の建物を地下へ投影しない。
   if (!underground) drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction),state?.activePlayerId);
   drawEnemyNests(scene, structureContainer, state?.enemyNests);
-  if (!underground) drawSettlementTileMarkers(scene, structureContainer, faction);
+  if (!underground) {
+    drawSettlementTileMarkers(scene, structureContainer, faction);
+    drawSettlementTileMarkers(scene, structureContainer, {}, {settlements:(state.neutralVillages||[]).filter(v=>!v.abandoned),visibleOnly:true});
+  }
   drawDefenseStructures(scene, constructionLabelContainer, structureContainer);
   drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId,worldId,resolveV39PlayerColor(state,state.activePlayerId));
   drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId,worldId);

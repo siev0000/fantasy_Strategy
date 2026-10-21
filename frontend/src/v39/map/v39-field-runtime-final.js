@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import {focusV39MapTile} from './v39-map-focus.js';
 import {hegemonyZoneAt} from '../../lib/v39-hegemony-areas.js';
 import { visibleV39CaveTerrainLabel } from "../../lib/v39-cave-entrance-rules.js";
 import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
@@ -479,12 +480,7 @@ function installInput(scene, data) {
       && window.canPlaceV39InitialBase?.(selected) === false) return null;
     const hp = hexPoints(tile.x, tile.y);
     if (focus) {
-      const size = worldSize(data);
-      camera.centerOn(
-        camera.width / camera.zoom >= size.width ? size.width / 2 : (hp[0] + hp[6]) / 2,
-        camera.height / camera.zoom >= size.height ? size.height / 2 : (hp[1] + hp[7]) / 2
-      );
-      clampCamera(scene);
+      focusV39MapTile(tile);
     }
     selection.clear().lineStyle(4, 0xffdd72, 1).strokePoints([
       {x:hp[0],y:hp[1]},{x:hp[2],y:hp[3]},{x:hp[4],y:hp[5]},

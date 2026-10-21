@@ -1,5 +1,17 @@
 Original prompt: 全体を整理してほしい。メモと地形ランダム生成だけは消さないで vueファイルにできるところはVueファイルに
 
+- 2026-10-21: UI60。NPC新規開始時に統治者1＋一般兵1〜2（config initialSoldiersMin/Max）を支給。buildV39UnitEntity/buildV39ClassEquipment/種族別初期Lvを使用し、null座標/初期拠点slot0で通常配置へ渡す。テスト診断の対象が野良/村守備のみだったため、同じ診断タブへnpc-ai欄を追加。全NPC勢力の目標/コマンド/拠点/所属ユニット/ワールド/座標/HP/APを表示、NPC0も案内。既存セーブは閲覧のみで再支給なし。check-v39-npc-startに初期兵数の下限/上限、装備/HP/配置の非重複、全NPC診断への表示を追加。設定から生成する確認は開始統治者profileも準備し、未完の種族選択モーダルを残さない。ビルド記録output/npc-initial-diagnostics-build.log、診断画像output/web-game/npc-start/diagnostics-390.png。
+
+- 2026-10-21: UI59。開始設定NPC勢力数0〜8（新規2）をgameSettings.npcFactionCountへ保存。local/multiplayerホストの生成時に通常種族/クラス候補・統治者生成を共用、初期配置は人完了後の既存autoPlaceを利用。NPCは人の担当/手番へ追加しない。設定再表示の操作数を人だけに修正、設定同期でNPC値が消えるのも防止。施設前提を共通helperへ抽出、NPC建設は防衛/探索/食料不足優先、訓練目標数6（configで可変）、訓練を建設より先に判定。既知の未確保覇権地を他勢力より優先し、確保期間/妨害中は防衛。戦闘可能時の探索AP消費を避け、地上/奥地/退出待機を分離。check-v39-npc-start390/1100（UI→生成/配置/人のみの手番・担当/保存/再表示/実AIラウンド/既知目標/0）、既存local-session/objective/exploration成功。build:front成功、output/npc-factions-build.log。NPCの長期勝率と自動開戦/昇格は未調整。docs/NPC勢力ルール.mdに記録。
+
+- 2026-10-21: UI58。原本施設BS22/BS31をvillage/cemeteryへ変更・読み戻し・施設のみ再生成。村の候補選択を施設ID/AND前提へ接続、墓地を初期目標、その後に実増産がある食料施設を選ぶ。仮配置後の既存収入式で種族技能/地形/水域採取を比較。建設資材不足の増産施設へ重みを付ける（木材不足の森→伐採場を確認）。通常費用/研究/枠/地形/工期と既存支援テンプレートを共用。村の収入式に施設補正/船着き場の水域採取を接続し、新定義の優先度を施設効果から除外。村計画テストに経済Lv1を設定。既存建設完了390/1100成功、新check-v39-village-production.mjsで墓地→農場/保存/実収入増加/木材不足→伐採場/不足材依頼を確認。build:front成功（output/village-production-build.log）。土地自動獲得/拠点昇格/自動交易は未接続で、その処理を仮完了させない。後続は施設枠と適地が不足する場合の拡張接続。
+
+- 2026-10-21: 施設の基本フローチャートを原本game_data（1M55erZwPIapl8-fw7NS1Souy1SiW1iH6J56C6C85NPg）施設BR1:BU37へ入力。36施設の固定ID/AND前提/目的/基礎優先度。ヘッダー注記・新列のみ幅/書式設定、既存列は不変更。読み戻し全件一致（空セルは正規化）、ID一意/参照先/循環を確認。artifacts/game_data-facility-flow.xlsxから施設のみdry-run/再生成（0警告0エラー）、audit:data完了（output/facility-flow-audit.log、既存未接続41件あり）。docs/施設発展フローチャート.mdに全36件と接続範囲を記載。全施設AIへの接続は未実装、現行configの4段階は継続。
+
+- 2026-10-21: UI57。村計画を発展経路へ接続。config/v39-village-development.jsonが既存シート計画IDの前提関係（安全/食料→守備→墓地）のみを管理し、費用/期間/依頼は既存生成データを参照。前提待ち/進行中/完了と不足量を既存情報タブへ表示。completedByIdを保存し、安全/食料/守備不足は再判定。墓地を予防建設へ変更。既存物資/討伐テンプレートから支援生成し通常建設/訓練を共用。接続設定のシート移行・教官派遣等の新しい訓練依頼は未対応。既存建設完了テストは別村の予防建設を誤集計しないよう対象村の領域と村IDで限定し、発展4段階完了/保存を検証。ビルド記録output/village-development-build.log、表示画像output/web-game/village-plan-completion/development-390.png。
+
+- 2026-10-21: UI56。交流タブへ接触済み村の一覧（村名/座標/友好度/受注中件数）を追加。村モーダルを開くとcontactedByPlayerIdsを保存し、発見/マス選択だけでは登録しない。旧セーブの関係/依頼/属国/襲撃記録も判定し、プレイヤー別に分離。選択は同倍率で地図を移動/マス選択するのみ。map/v39-map-focus.jsへ座標変換・画面端補正・入力ロック/別世界拒否を統合し、拠点/部隊カード/未行動フォーカス/通常selectTile(focus)も共用。既存交流rendererに統合し新規購読なし、同一一覧DOMは保持。check-v39-village-contacts.mjsの390/1100で実接触/位置/倍率維持/保存/別プレイヤー/旧関係/部隊カード移動を確認。既存contact-entryの320/390/1100も成功。build:front成功（output/village-contacts-build.log）、標準web_game_playwright_client起動と実プレイ画像を確認。出力output/web-game/village-contactsとvillage-contacts-smoke。
+
 - 2026-10-21: 村依頼カード/番号付き依頼に報酬表示と受注前の報酬変更要求を追加。金/既知資材/通常人口を数量指定して交渉/脅迫（AP20）、合意を期限付きで村/プレイヤー/依頼へ保存し受注時rewardTermsへ固定。完了時に村の実資源/人口から受取拠点へ移転し、旧報酬は置換。部分納品は完了時のみ支払、支払不能なら納品ごとロールバック、二重受領/同条件再試行/受注後変更を拒否。魂変換/通常取引への人口追加は未実装のまま。390/1100の11コアケースと通常UIの合意/受注保存読込、番号付き人口報酬、既存hub/即時支援/村長/交渉操作の回帰成功。UI 2026.10.21-43。
 
 - 2026-10-21: 「村長・交渉総合テスト」が既存専用テスト一覧に無く分かりにくかったため、expedition一覧の先頭へ開始ボタンを移動。開始前の独立欄を非表示とし、開始後のみ設定欄を出す。起動ボタンが一覧内で1件だけ存在することを390/1100ブラウザ回帰へ追加し実起動を確認。UI 2026.10.21-42。
@@ -2308,3 +2320,10 @@ pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整�
 
 - 2026-10-21 UI53: 村交流欄を情報/全受注件数/村モーダル入口のみに統一。旧直接受注/報告/休息/交流/属国化/襲撃とtrade-uiからの後付け取引ボタンを撤去。放浪者・守護者・廃村固有操作は維持。一般村の旧UI実行分岐も除去し、受注/報告は既存batchに限定（コアAPI/旧受注保存は保持）。現行正本3資料を書き直し、旧内容をdocs/history/village-ui-before-ui53へ退避、README/現状メモ/霧交流/タスク/UI一覧を同期。
 - UI53検証: build:front成功。village-contact-entryは320/390/1100で入口1件・2件→1件・保存・勧誘/再入植維持を成功。progress-questsは390/1100、quest-rewardsは320/390/1100で成功。village-plan-playableは390（CPU4倍遅延）/1100でモーダル受注/報告・墓地完成/守備補充・再開始成功。hegemony-productionは390/1100で守護者攻略/取得/保存成功。標準web-game-clientと交流欄画像を確認。
+
+- 2026-10-21 UI54: 襲撃が関係値/架空略奪だけで戦闘対象化しなかった不具合を修正。村/プレイヤー別hostilePlayerIds（旧lastPlayerRaid読込互換）、守備兵の赤枠、平時の攻撃拒否、敵対guardへの通常攻撃/EXP/死体/反撃、防衛AIの敵対プレイヤー迎撃と基本武器候補を接続。襲撃後モーダルを閉じる。守備兵はdefenseUnitsのまま、複製/敵全体化しない。
+- UI54検証: build:front成功。check-v39-village-raidは390/1100で襲撃UI→平時拒否→実攻撃/反撃/迎撃→保存敵対維持→守備兵死亡/死体期限→他プレイヤー攻撃拒否まで成功。village-contact-entry/quest-rewardsは320/390/1100、progress-questsは390/1100で成功。旧village-replenishmentテストは停止中3024のVite直import専用で未実行（3000へ無理に転用せず）。
+- 追加回帰: check-v39-defenses/area-effectsは390/1100で盾/障壁/壁・実範囲攻撃・保存/ターン更新を成功。標準web-game-client起動と襲撃後の敵対表示/戦闘ログを目視確認。
+
+- 2026-10-21 UI55: 村計画の墓地はT2残2→T3残1→T4キュー消去/墓地追加まで内部完了していたが、施設描画が自軍拠点のみでNPCマーカーが0件、完成結果も通知されず計画が消えるだけだった。再現テストで完成マーカー欠落を確認。共通施設描画へ村を渡し、通常視界/テスト表示と地下除外を維持。計画完成履歴・建設ログ1回・交流/情報/テスト欄の完成施設表示を追加。古い保存はbuildingsから表示し完成日を捏造しない。
+- UI55検証: build:front成功。check-v39-village-plan-completionは390/1100で建設/完成マーカー切替、交流/情報/テスト表示、完成通知1回、保存復元/同T重複なし、通常視界外非表示を成功。village-contact-entryは320/390/1100、progress-questsは390/1100で成功。標準web-game-client起動と完成表示の画像を確認。
