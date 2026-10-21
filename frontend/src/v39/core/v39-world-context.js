@@ -107,5 +107,7 @@ export async function withV39WorldContext(worldId,callback,{allUnits=false}={}) 
 
 export function v39TurnWorldIds(){
   const state=window.getV39EnemyTurnState();
-  return [...new Set([state.activeWorldId||"surface",...window.getV39ExplorationWorldIds()])];
+  return [...new Set([state.activeWorldId||"surface",...window.getV39ExplorationWorldIds()])].filter(id=>
+    id===(state.activeWorldId||'surface')||state.explorationWorlds[id]?.map?.hegemonyVisited!==false
+      ||state.players.some(player=>player.factionState.units.some(unit=>isV39UnitInWorld(unit,id)&&Number(unit.hp??unit.currentHp)>0)));
 }

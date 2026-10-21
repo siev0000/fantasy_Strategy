@@ -58,6 +58,28 @@ export function buildV39ExpeditionTestWorlds(template, player, turn, invasion=fa
   const worlds={surface:{map:surface,spatial,visibility:{}},[fixture.鉱床ID]:{map:cave,spatial:emptySpatial(),visibility:{}}};
   return {worlds,player:{...player,factionState:faction}};
 }
+export function configureV39ExpeditionTestProfile(built,profile) {
+  if(!['support','transport'].includes(profile))return built;
+  const support=profile==='support',faction=built.player.factionState,surface=built.worlds.surface;
+  const ids=support?['king','commander','knight','medic']:['king','carrier','guard'];
+  faction.units=faction.units.filter(unit=>ids.some(id=>unit.id===`expedition-test-${id}`));
+  if(support){
+    const medic=faction.units.find(unit=>unit.id==='expedition-test-medic');
+    Object.assign(medic,{x:4,y:5,position:[4,5],worldId:'surface'});
+    surface.map.grid[fixture.入口.y][fixture.入口.x]='平地';
+    built.worlds={surface};
+    faction.exploration={...faction.exploration,discoveredCaveEntrancesByTile:{}};
+  }
+  faction.squads=faction.squads.map(squad=>({...squad,unitIds:faction.units.filter(unit=>unit.squadId===squad.id).map(unit=>unit.id)}));
+  faction.selectedUnitId=support?'expedition-test-medic':'expedition-test-carrier';
+  // Village requests belong to the village suite, not tool or transport fixtures.
+  const villageIds=new Set(surface.spatial.neutralVillages.map(village=>village.id));
+  surface.spatial.neutralVillages=[];
+  surface.spatial.settlements=surface.spatial.settlements.filter(row=>!villageIds.has(row.id));
+  surface.spatial.territoryOwnerByTile=Object.fromEntries(Object.entries(surface.spatial.territoryOwnerByTile).filter(([,owner])=>!villageIds.has(owner)));
+  surface.map.expeditionTestProfile=profile;
+  return built;
+}
 export function buildV39UndeadTestWorlds(template,player,turn) {
   const built=buildV39ExpeditionTestWorlds(template,player,turn);
   const surface=built.worlds.surface.map,cave=testMap(template,undeadFixture.洞窟サイズ,true);
@@ -103,13 +125,15 @@ function startTest(invasion=false,undead=false,options={}) {
     units:player.factionState.units.map((unit,index)=>index===0?{...unit,isSovereign:true}:unit)}}))},{silent:true});
   const template=window.generateV39TestFieldWithSeed({w:fixture.地上サイズ,h:fixture.地上サイズ,patternId:"realistic"},"expedition-test");
   const built=undead?buildV39UndeadTestWorlds(template,session.players[0],1):buildV39ExpeditionTestWorlds(template,session.players[0],1,invasion);
+  if(!invasion&&!undead)configureV39ExpeditionTestProfile(built,options.profile);
   window.loadV39FieldSnapshot(built.worlds.surface.map,{...window.__v39FieldRuntime.settings,w:fixture.地上サイズ,h:fixture.地上サイズ},{layerChange:true});
   let state={...window.getV39GameState(),activeWorldId:"surface",explorationWorlds:built.worlds,...built.worlds.surface.spatial,players:[built.player]};
-  if(!invasion&&!undead){const assigned=assignV39MineDuty(state,state.activePlayerId,fixture.鉱床ID,"expedition-test-carrier","transport",fixture.拠点.id);if(!assigned.ok)throw new Error(assigned.reason);state=assigned.state;}
+  if(!invasion&&!undead&&options.profile!=='support'){const assigned=assignV39MineDuty(state,state.activePlayerId,fixture.鉱床ID,"expedition-test-carrier","transport",fixture.拠点.id);if(!assigned.ok)throw new Error(assigned.reason);state=assigned.state;}
   window.setV39GameState(state,{reason:"expedition-test-started",trackUnitDeaths:false});
   window.refreshV39SquadDerivedUI?.();window.refreshV39MapEntities?.();window.activateV39FooterTab?.("test");
-  if(!options.silentBanner)window.showV39TurnBanner?.(undead?"死体を配置しました。地上・洞窟に観察者各1体。通常ターンで浄化低下と自然発生を確認します。":invasion?"侵入検証: 入口のウルフ2体が通常ターンで侵入。地下へ人を入れず5ターン経過を確認。":"検証データ配置: 輸送は設定済み。鉱床を表示すると道具・採取・警備指定を確認できます。");
-  return {ok:true,worldId:undead?undeadFixture.洞窟ID:fixture.鉱床ID};
+  if(['support','transport'].includes(options.profile))window.activateV39FooterTab?.('squad');
+  if(!options.silentBanner)window.showV39TurnBanner?.(undead?"死体を配置しました。地上・洞窟に観察者各1体。通常ターンで浄化低下と自然発生を確認します。":invasion?"侵入検証: 入口のウルフ2体が通常ターンで侵入。地下へ人を入れず5ターン経過を確認。":options.profile==='support'?"道具・部隊支援: 道具試験官と王・指揮官・王の騎士を地上に配置しました。":options.profile==='transport'?"鉱床輸送・入口警備: 輸送は設定済み。警備は入口警備兵から指定できます。":"検証データ配置: 輸送は設定済み。鉱床を表示すると道具・採取・警備指定を確認できます。");
+  return {ok:true,worldId:options.profile==='support'?'surface':undead?undeadFixture.洞窟ID:fixture.鉱床ID};
 }
 window.startV39ExpeditionTest=(invasion=false,options={})=>startTest(invasion,false,options);
 window.startV39UndeadTest=()=>startTest(false,true);

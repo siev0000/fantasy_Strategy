@@ -1,3 +1,4 @@
+import {openV39TestSuite} from './lib/v39-test-suite.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
@@ -7,7 +8,7 @@ try{for(const width of [320,390,1100]){
   const page=await browser.newPage({viewport:{width,height:844}}),errors=[];let acceptDialogs=true;
   page.on('pageerror',error=>errors.push(String(error)));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});page.on('dialog',dialog=>acceptDialogs?dialog.accept():dialog.dismiss());
   await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
-  await page.locator('[data-v39-test-tools]').click();await page.locator('[data-test-action="trade-test-start"]').click();
+  await page.locator('[data-v39-test-tools]').click();await openV39TestSuite(page,'logistics');await page.locator('[data-test-action="trade-test-start"]').click();
   await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
   const basket=index=>page.locator(`[data-trade-basket="${index}"]`);
   const amount=(index,name)=>basket(index).locator(`input[type="number"][data-side-field="amount"][data-trade-resource="${name}"]`);
@@ -39,7 +40,7 @@ try{for(const width of [320,390,1100]){
   assert.equal(await page.locator('.v39-trade-picker-backdrop').count(),0);
   const specialty=await page.evaluate(()=>window.getV39TradeRules().getV39SpecialtyAccess(window.getV39GameState(),window.getV39GameState().players[0].id)[0].name);
   await page.locator('[data-trade-add-side="0"]').click();await page.locator('[data-trade-resource-filter="specialties"]').click();
-  assert.equal(await page.locator(`[data-trade-resource-add="${specialty}"] b`).innerText(),'2','test specialty holding is available');
+  assert.equal(await page.locator(`[data-trade-resource-add="${specialty}"] b`).innerText(),'0/2','selected / holding count is visible');
   assert.equal(await page.locator('.v39-trade-resource-grid small').count(),0,'no stock explanations on icon cards');
   await page.locator('[data-trade-picker-close]').last().click();
   await add(0,'木材');await edit(0,'木材',5);

@@ -1,3 +1,4 @@
+import {openV39TestSuite} from './lib/v39-test-suite.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
@@ -10,7 +11,7 @@ try{for(const width of [320,390,1100]){
   page.on('dialog',dialog=>dialog.accept());
   await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
   await page.locator('[data-v39-test-tools]').click();
-  await page.locator('[data-test-action="trade-test-start"]').click();
+  await openV39TestSuite(page,'logistics');await page.locator('[data-test-action="trade-test-start"]').click();
   await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
   const amount=page.locator('[data-trade-basket="0"] input[type="number"]');
   await amount.fill('31');await amount.dispatchEvent('change');

@@ -1,60 +1,69 @@
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
 import {V39_TRADE_CONFIG as config,V39_TRADE_RESOURCES,listV39Trades,proposeV39Trade,acceptV39Trade,stopV39Trade,resumeV39Trade,
-  tradeBank,tradeBankAmount,tradeMembers,tradeCapacity,tradeTurn,tradeAlive,divertV39TradeIncome,updateTradeBank,updateV39Trade,getTradeCargo,reserveV39TradeFromStock,tradeSpeed} from '../../lib/v39-trade-state.js';
+  tradeBank,tradeBankAmount,tradeMembers,tradeCapacity,tradeTurn,tradeAlive,divertV39TradeIncome,updateTradeBank,updateV39Trade,getTradeCargo,reserveV39TradeFromStock,tradeSpeed,tradeCourierIndex} from '../../lib/v39-trade-state.js';
 import {advanceV39TradeLogistics} from '../../lib/v39-trade-logistics.js';
 import {inspectV39NeutralVillageEconomy,collectV39TerritoryIncome,FOOD_RESOURCE_KEYS} from '../../lib/v39-economy-rules.js';
 import {buildV39PopulationMaintenanceStock} from '../../lib/v39-population-economy.js';
+import {getV39TradeResourceAvailability,getV39KnownTradeResources} from '../../lib/v39-trade-resource-availability.js';
 import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
 import {getHexNeighborCoords} from '../../lib/hex-grid.js';
 import {renderV39Conversation,recordV39Conversation} from './v39-negotiation-conversation.js';
+import {getV39VillageSpeaker} from '../../lib/v39-village-leaders.js';
 import {tradeBasketHtml,tradeResourcePicker,tradeResourceChips,tradePickerModalHtml} from './v39-trade-items.js';
+import {renderV39TradePicker,closeV39TradePicker} from './v39-trade-picker.js';
 import {installTradeLayout} from './v39-trade-layout.js';
 import {v39SpecialtyDefinitions,getV39SpecialtyAccess} from '../../lib/v39-specialty-rules.js';
 import './v39-trade-items.css';
 const html=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const n=value=>Number(value)||0;
 let draft=null,message='',picking=-1,scheduled=false,tab='new';
+let embedded=null;
 const drafts=new Map();let draftKey='';
 let resourcePicker=-1,resourceFilter='all',resourceSearch='';
 const selectedItems=['',''];
 const folds=new Map();
 const state=()=>window.getV39GameState();
 const modal=()=>document.getElementById('v39-trade-modal');
+function notifyPanel(){embedded?.onChange?.({label:tab==='new'?'この条件で提案':'新しい取引',disabled:resourcePicker>=0||(tab==='new'&&(!draft||!proposeV39Trade(state(),state().activePlayerId,draft).ok)),message:message||modal()?.querySelector('.v39-trade-footer-copy')?.textContent||''});}
+export function submitV39TradePanel(){if(tab==='new')run('propose');else{tab='new';render();}}
+export function selectV39TradeNegotiator(id,targetId){
+  if(draft?.sides[1].partyId===targetId)draft.negotiatorId=id;
+  const s=state();let next=s;
+  for(const contract of listV39Trades(s))if(contract.negotiatorId!==id&&contract.ownerId===s.activePlayerId&&['proposed','active','interrupted'].includes(contract.status)&&contract.sides.some(side=>side.kind==='village'&&side.partyId===targetId))next=updateV39Trade(next,{...contract,negotiatorId:id});
+  if(next!==s)window.setV39GameState(next,{reason:'trade-negotiator-selected'});
+}
+export function unmountV39TradePanel(){
+  if(!embedded)return;
+  closeResourcePicker();picking=-1;const root=modal();root.hidden=true;root.classList.remove('v39-trade-embedded');document.body.append(root);embedded=null;
+  root.querySelector('.v39-trade-dialog').setAttribute('role','dialog');root.querySelector('.v39-trade-dialog').setAttribute('aria-modal','true');
+}
+export function mountV39TradePanel(host,villageId,callbacks){
+  ensure();
+  if(embedded?.host!==host||embedded?.villageId!==villageId){
+    unmountV39TradePanel();embedded={host,villageId,...callbacks};host.append(modal());modal().classList.add('v39-trade-embedded');
+    modal().querySelector('.v39-trade-dialog').setAttribute('role','region');modal().querySelector('.v39-trade-dialog').removeAttribute('aria-modal');open(villageId,'new',true);
+  }else{modal().hidden=false;if(callbacks.negotiatorId&&draft)draft.negotiatorId=callbacks.negotiatorId;render({preserveInput:true});}
+}
+export function hideV39TradePanel(){if(embedded){closeResourcePicker();modal().hidden=true;}}
 const updateTradeMarkup=(host,markup,options={})=>updateV39RetainedMarkup(host,markup,{
   ...options,preserveValue:node=>node.id?.startsWith('trade-date-')&&node.value!==node.defaultValue,
   preserveDetails:node=>!node.hasAttribute('data-trade-fold')
 });
 function closeResourcePicker() {
   const index=resourcePicker;resourcePicker=-1;
-  modal()?.querySelector('.v39-trade-picker-backdrop')?.remove();
-  const dialog=modal()?.querySelector('.v39-trade-dialog');
-  if(dialog)dialog.inert=false;
+  closeV39TradePicker(modal());
   modal()?.querySelector(`[data-trade-add-side="${index}"]`)?.focus();
+  notifyPanel();
 }
 function renderResourcePicker(options={}) {
   const root=modal();
-  const previous=root.querySelector('.v39-trade-picker-backdrop'),scroll=previous?.querySelector('.v39-trade-resource-grid')?.scrollTop||0;
-  const focused=document.activeElement,filter=focused?.dataset.tradeResourceFilter,searchFocused=focused?.hasAttribute('data-trade-resource-search'),selection=focused?.selectionStart;
-  root.querySelector('.v39-trade-dialog').inert=resourcePicker>=0;
-  if(resourcePicker<0||!draft){previous?.remove();return;}
-  const overlay=previous||document.createElement('div');overlay.className='v39-trade-picker-backdrop';
-  updateTradeMarkup(overlay,tradePickerModalHtml(state(),draft.sides[resourcePicker],resourcePicker,{filter:resourceFilter,search:resourceSearch,selected:selectedItems[resourcePicker]}),options);
-  if(!previous){
-  overlay.addEventListener('click',event=>{if(event.target===overlay)closeResourcePicker();});
-  overlay.addEventListener('keydown',event=>{
-    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeResourcePicker();}
-    if(event.key==='Tab'){
-      const nodes=[...overlay.querySelectorAll('button:not(:disabled),input')],first=nodes[0],last=nodes.at(-1);
-      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
-      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
-    }
+  if(resourcePicker<0||!draft){closeV39TradePicker(root);return;}
+  renderV39TradePicker(root,tradePickerModalHtml(state(),draft.sides[resourcePicker],resourcePicker,{filter:resourceFilter,search:resourceSearch,selected:selectedItems[resourcePicker]}),{
+    background:root.querySelector('.v39-trade-dialog'),onClose:closeResourcePicker,updateMarkup:updateTradeMarkup,options
   });
-  root.append(overlay);
-  }
-  overlay.querySelector('.v39-trade-resource-grid').scrollTop=scroll;
-  const nextFocus=searchFocused?overlay.querySelector('[data-trade-resource-search]'):filter?overlay.querySelector(`[data-trade-resource-filter="${filter}"]`):overlay.querySelector('[data-trade-picker-close]');
-  if(!previous||!overlay.contains(document.activeElement)){nextFocus.focus();if(searchFocused&&selection!=null)nextFocus.setSelectionRange(selection,selection);}
+  notifyPanel();
 }
+
 function endpoints(s) {
   const own=s.players.find(row=>row.id===s.activePlayerId);
   return [...s.players.filter(row=>row.id!==s.activePlayerId).map(row=>({value:`player:${row.id}`,label:row.label||row.name||row.id})),
@@ -74,7 +83,13 @@ function fresh(s,villageId) {
   const sides=[sideFor(s,`player:${s.activePlayerId}`),sideFor(s,other)];
   const midpoint={x:Math.round((sides[0].center.x+sides[1].center.x)/2),y:Math.round((sides[0].center.y+sides[1].center.y)/2)};
   sides.forEach(side=>{side.center={...midpoint};});
-  return {sides,negotiatorId:s.players.find(p=>p.id===s.activePlayerId)?.factionState.selectedUnitId||sides[0].unitId,dueTurn:tradeTurn(s)+8,grace:3,period:0,cycles:1,specialtyTurns:10,method:'exchange',negotiation:'normal'};
+  return {sides,deliveryMode:'proposer',negotiatorId:s.players.find(p=>p.id===s.activePlayerId)?.factionState.selectedUnitId||sides[0].unitId,dueTurn:tradeTurn(s)+8,grace:3,period:0,cycles:1,specialtyTurns:10,method:'exchange',negotiation:'normal'};
+}
+function syncDelivery(s){
+  if(!draft)return;draft.deliveryMode||='meeting';
+  const courier=tradeCourierIndex(draft);
+  if(courier>=0){const bank=tradeBank(s,draft.sides[1-courier]);if(bank)draft.sides.forEach(side=>{side.center={x:bank.x,y:bank.y};side.radius=1;});}
+  else{draft.sides[1].center={...draft.sides[0].center};draft.sides[1].radius=draft.sides[0].radius;}
 }
 function ensure() {
   if(modal())return;
@@ -86,29 +101,53 @@ function ensure() {
   root.addEventListener('click',event=>{
     const button=event.target.closest('button');if(!button)return;
     const sideIndex=Number(button.dataset.tradeItemSide);
+    if(button.hasAttribute('data-trade-warning')){message=button.title;notifyPanel();return;}
     if(button.hasAttribute('data-trade-picker-close')){closeResourcePicker();return;}
     if(button.dataset.tradeAddSide!=null){resourcePicker=Number(button.dataset.tradeAddSide);resourceSearch='';renderResourcePicker();return;}
     if(button.dataset.tradeResourceFilter){resourceFilter=button.dataset.tradeResourceFilter;render();return;}
-    if(button.dataset.tradeResourceAdd){const name=button.dataset.tradeResourceAdd;selectedItems[sideIndex]=name;if(!Object.hasOwn(draft.sides[sideIndex].goods,name))draft.sides[sideIndex].goods[name]=1;render();return;}
+    if(button.dataset.tradeResourceAdd){
+      const name=button.dataset.tradeResourceAdd,current=state(),side=draft?.sides[sideIndex];
+      if(!side||(sideIndex===1?!getV39KnownTradeResources(current).has(name):!getV39TradeResourceAvailability(current,side,window.__v39FieldRuntime?.mapData)[name]?.canSelect)){message=sideIndex===1?'まだ知らない物資は要求できません':`${name}: 在庫・収入がないため追加できません`;render();return;}
+      selectedItems[sideIndex]=name;if(!Object.hasOwn(side.goods,name))side.goods[name]=1;render();return;
+    }
     if(button.dataset.tradeItemSelect){selectedItems[sideIndex]=button.dataset.tradeItemSelect;render();return;}
-    if(button.dataset.tradeItemRemove){delete draft.sides[sideIndex].goods[button.dataset.tradeItemRemove];render();return;}
+    if(button.dataset.tradeItemRemove){delete draft.sides[sideIndex].goods[button.dataset.tradeItemRemove];if(selectedItems[sideIndex]===button.dataset.tradeItemRemove)selectedItems[sideIndex]='';render();return;}
     if(button.dataset.tradeItemStep){const name=button.dataset.tradeResource;draft.sides[sideIndex].goods[name]=Math.max(1,n(draft.sides[sideIndex].goods[name])+Number(button.dataset.tradeItemStep));render();return;}
     if(button.dataset.tradeTab){closeResourcePicker();tab=button.dataset.tradeTab;render();return;}
-    if(button.dataset.tradePick){picking=Number(button.dataset.tradePick);root.hidden=true;window.activateV39FooterTab?.('tile');window.showV39TurnBanner?.('待ち合わせのマスを選択してください。Escで取消');return;}
+    if(button.dataset.tradePick){picking=Number(button.dataset.tradePick);root.hidden=true;embedded?.onMapPick?.(true);window.activateV39FooterTab?.('tile');window.showV39TurnBanner?.('待ち合わせのマスを選択してください。Escで取消');return;}
     if(button.dataset.tradeAction)run(button.dataset.tradeAction,button.dataset.tradeId);
   });
   root.addEventListener('toggle',event=>{if(event.target.isConnected&&event.target.dataset.tradeFold){const key=event.target.dataset.tradeFold,changed=folds.get(key)!==event.target.open;folds.set(key,event.target.open);if(key==='delivery'&&changed&&event.target.open)render();}},true);
+  root.addEventListener('focusin',event=>{
+    const input=event.target,resource=input.closest?.('[data-trade-resource-add]');
+    if(resource){const name=root.querySelector('[data-trade-picker-name]');if(name)name.textContent=resource.dataset.tradeResourceAdd;}
+    if(!embedded||!input.classList.contains('v39-trade-icon-amount'))return;
+    const index=Number(input.dataset.tradeSide),name=input.dataset.tradeResource;
+    if(selectedItems[index]!==name){selectedItems[index]=name;render({preserveInput:true});}
+  });
+  root.addEventListener('pointerover',event=>{const resource=event.target.closest?.('[data-trade-resource-add]'),name=root.querySelector('[data-trade-picker-name]');if(resource&&name)name.textContent=resource.dataset.tradeResourceAdd;});
+  const restorePickerName=event=>{
+    const resource=event.target.closest?.('[data-trade-resource-add]'),name=root.querySelector('[data-trade-picker-name]'),side=draft?.sides[resourcePicker];
+    if(resource&&name&&side&&!resource.contains(event.relatedTarget))name.textContent=Object.hasOwn(side.goods,selectedItems[resourcePicker])?selectedItems[resourcePicker]:Object.keys(side.goods)[0]||'物資を選択';
+  };
+  root.addEventListener('pointerout',restorePickerName);root.addEventListener('focusout',restorePickerName);
   root.addEventListener('input',event=>{
     const input=event.target;
     if(input.dataset.sideField==='amount'){
       const amount=Number(input.value),index=Number(input.dataset.tradeSide),name=input.dataset.tradeResource;
       if(!Number.isSafeInteger(amount)||amount<1||!Object.hasOwn(draft.sides[index].goods,name))return;
       draft.sides[index].goods[name]=amount;
+      const current=state();
       root.querySelectorAll('[data-side-field="amount"]').forEach(control=>{if(Number(control.dataset.tradeSide)===index&&control.dataset.tradeResource===name){if(control.type==='range')control.max=Math.max(Number(control.max),amount);if(control!==input)control.value=amount;}});
-      root.querySelectorAll('[data-trade-item-select],[data-trade-resource-add]').forEach(button=>{if(Number(button.dataset.tradeItemSide)===index&&(button.dataset.tradeItemSelect||button.dataset.tradeResourceAdd)===name){button.querySelector('b').textContent=amount;button.setAttribute('aria-label',`${name} ${amount}`);}});
-      const current=state(),preview=proposeV39Trade(current,current.activePlayerId,draft),button=root.querySelector('[data-trade-action="propose"]');
+      root.querySelectorAll('[data-trade-item-select],[data-trade-resource-add]').forEach(button=>{if(Number(button.dataset.tradeItemSide)===index&&(button.dataset.tradeItemSelect||button.dataset.tradeResourceAdd)===name){const badge=button.querySelector('b');if(badge)badge.textContent=button.dataset.tradeResourceAdd&&index===0?`${amount}/${Math.floor(tradeBankAmount(tradeBank(current,draft.sides[index]),name))}`:amount;button.setAttribute('aria-label',`${name} ${amount}`);}});
+      const preview=proposeV39Trade(current,current.activePlayerId,draft),button=root.querySelector('[data-trade-action="propose"]');
       if(button)button.disabled=!preview.ok;
       const copy=root.querySelector('.v39-trade-footer-copy');if(copy)copy.textContent=preview.ok?'':preview.reason;
+      if(embedded)draft.sides.forEach((side,sideIndex)=>{
+        const warnings=resourceWarnings(current,side);
+        root.querySelectorAll(`[data-trade-warning][data-trade-item-side="${sideIndex}"]`).forEach(marker=>{const reason=warnings[marker.dataset.tradeWarning]||'';marker.hidden=!reason;marker.title=reason;marker.setAttribute('aria-label',reason);});
+      });
+      notifyPanel();
     }
     if(input.hasAttribute('data-trade-resource-search')){resourceSearch=input.value;const grid=root.querySelector('.v39-trade-resource-grid');if(grid)updateTradeMarkup(grid,tradeResourcePicker(state(),draft.sides[resourcePicker],resourcePicker,{filter:resourceFilter,search:resourceSearch,selected:selectedItems[resourcePicker]}));}
   });
@@ -116,7 +155,11 @@ function ensure() {
     const input=event.target;
     if(input.dataset.tradeField){const field=input.dataset.tradeField;
       if(field==='method'&&input.value==='mail'&&Object.keys(draft.sides[1].goods).length&&!window.confirm('郵送では要求物資を指定できません。要求した物資を外して郵送に切り替えますか？')){render();return;}
-      draft[field]=['method','negotiation'].includes(field)?input.value:Number(input.value);
+      draft[field]=['method','negotiation','deliveryMode'].includes(field)?input.value:Number(input.value);
+      if(field==='deliveryMode'){
+        if(input.value==='meeting'){const banks=draft.sides.map(side=>tradeBank(state(),side));if(banks.every(Boolean))draft.sides[0].center={x:Math.round((banks[0].x+banks[1].x)/2),y:Math.round((banks[0].y+banks[1].y)/2)};draft.sides[0].radius=1;}
+        draft.sides.forEach((side,index)=>{if(!side.unitId&&(tradeCourierIndex(draft)<0||tradeCourierIndex(draft)===index))side.unitId=sideFor(state(),`${side.kind}:${side.partyId}`).unitId;});
+      }
       if(field==='method'&&input.value==='mail'){draft.sides[1].goods={};resourcePicker=-1;const bank=tradeBank(state(),draft.sides[1]);if(bank)draft.sides.forEach(side=>{side.center={x:bank.x,y:bank.y};side.radius=1;});}render();return;}
     if(input.dataset.tradeSide==null)return;
     const i=Number(input.dataset.tradeSide),side=draft.sides[i],field=input.dataset.sideField;
@@ -127,33 +170,49 @@ function ensure() {
     else side[field]=['radius'].includes(field)?Number(input.value):input.value;
     render();
   });
-  const style=document.createElement('style');style.textContent='.v39-trade-backdrop{position:fixed;inset:0;z-index:2600;background:#0009;display:flex;align-items:center;justify-content:center;padding:0}.v39-trade-backdrop[hidden]{display:none}.v39-trade-dialog{width:100%;max-height:100%;display:flex;flex-direction:column;gap:6px;background:#0e1b20;color:#edf4f2;border:0;border-radius:0;padding:0;font-size:var(--font-body)}.v39-trade-dialog header,.v39-trade-dialog nav{display:flex;align-items:center;gap:6px;flex-shrink:0}.v39-trade-dialog header b{flex:1}.v39-trade-body{flex:1;min-height:0;overflow:auto;overflow-anchor:none}.v39-trade-dialog button,.v39-trade-dialog select,.v39-trade-dialog input{font:inherit;min-height:34px;padding:5px 7px;border:1px solid #4b6d75;border-radius:6px;background:#182c33;color:inherit;max-width:100%;min-width:0}.v39-trade-dialog button{cursor:pointer}.v39-trade-dialog button:disabled{opacity:.4;cursor:default}.v39-trade-dialog nav .active{border-color:#e8c56c;color:#e8c56c}.v39-trade-sides{display:grid;grid-template-columns:1fr 1fr;gap:7px}.v39-trade-side,.v39-trade-contract{border:1px solid #39535b;padding:8px;border-radius:7px;margin-bottom:7px;display:grid;gap:6px}.v39-trade-side label{display:grid;grid-template-columns:7em minmax(0,1fr);gap:6px;align-items:center}.v39-trade-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.v39-trade-row input{width:70px}.v39-trade-side small{color:#b6c9c9;font-size:var(--font-secondary);overflow-wrap:anywhere}.v39-trade-dialog output{padding:6px;background:#302917;color:#f4db90;flex-shrink:0;overflow-wrap:anywhere}.v39-trade-warning{color:#f3b581}.v39-trade-contract h4{margin:0}.v39-trade-dialog p{margin:5px 0}.v39-trade-entry{font:inherit;padding:6px;min-height:34px;border:1px solid #c8ab60;border-radius:6px;background:#3a3017;color:#f5deb0;margin-bottom:5px}@media(max-width:620px){.v39-trade-sides{grid-template-columns:1fr}.v39-trade-side label{grid-template-columns:6em minmax(0,1fr)}}';document.head.append(style);
+
 }
-function open(villageId='',show='new') {
-  window.closeV39VillageMenu?.();
+function open(villageId='',show='new',inline=false) {
+  if(!inline){window.closeV39VillageMenu?.();unmountV39TradePanel();}
   ensure();const s=state();if(s.timeline.phase!=='player'){window.showV39TurnBanner?.('操作ターンに取引を開いてください');return;}
   draftKey=`${s.activePlayerId}:${villageId||'default'}`;
   const cached=drafts.get(draftKey),matches=row=>row?.sides[0].partyId===s.activePlayerId&&(!villageId||row.sides[1].kind==='village'&&row.sides[1].partyId===villageId);
   draft=(matches(cached)?cached:null)||(villageId?[...drafts.values()].find(matches):null)||fresh(s,villageId);if(draft)drafts.set(draftKey,draft);
+  if(inline&&embedded?.negotiatorId&&draft)draft.negotiatorId=embedded.negotiatorId;
   closeResourcePicker();tab=show;message='';modal().hidden=false;render();
 }
 const option=(value,label,selected)=>`<option value="${html(value)}"${value===selected?' selected':''}>${html(label)}</option>`;
+function resourceWarnings(s,side){
+  if(side.kind!=='player'||side.partyId!==s.activePlayerId)return {};
+  if(!Object.keys(side.goods).length)return {};
+  const party=side.kind==='player'?s.players.find(row=>row.id===side.partyId):s.neutralVillages.find(row=>row.id===side.partyId);
+  const bank=tradeBank(s,side),map=window.__v39FieldRuntime?.mapData,turns=Math.max(1,draft.dueTurn-tradeTurn(s));
+  if(!bank)return {};
+  const metrics=map?.grid?(side.kind==='village'?inspectV39NeutralVillageEconomy(bank,map):collectV39TerritoryIncome(s,{...party,factionState:{...party.factionState,selectedSettlementId:side.settlementId}},map)):null;
+  const units=party?.factionState?.units||[];
+  const maintenance=side.kind==='village'?metrics?.maintenance:buildV39PopulationMaintenanceStock(bank.populationByRace,units.filter(unit=>tradeAlive(unit)&&(unit.settlementId||party.factionState.selectedSettlementId)===side.settlementId),FOOD_RESOURCE_KEYS);
+  return Object.fromEntries(Object.entries(side.goods).map(([name,amount])=>{
+    const current=tradeBankAmount(bank,name),needed=Math.ceil(amount/3),income=n(metrics?.income?.food?.[name]??metrics?.income?.material?.[name]??metrics?.food?.[name]??metrics?.material?.[name]),target=Math.ceil(Math.max(0,amount-needed)/turns),upkeep=n(maintenance?.[name]),reasons=[];
+    if(V39_TRADE_RESOURCES.find(row=>row.name===name)?.specialty){if(current<amount)reasons.push('貸出できる保有数が不足しています');}
+    else{
+      if(current<needed)reasons.push('初回に予約する在庫が不足しています');
+      if(metrics&&current<amount&&income<target)reasons.push('期日までに収入が不足する見込みです');
+      if(metrics&&current-needed+turns*(income-target-upkeep)<0)reasons.push('予約後に維持費が不足する見込みです');
+    }
+    return [name,reasons.length?`${name}: ${reasons.join(' / ')}`:''];
+  }));
+}
+function courierSelector(s,side,index){
+  const party=side.kind==='player'?s.players.find(row=>row.id===side.partyId):s.neutralVillages.find(row=>row.id===side.partyId),units=side.kind==='player'?party?.factionState.units||[]:party?.defenseUnits||[];
+  return `<label>使者・部隊<select data-trade-side="${index}" data-side-field="unitId">${units.filter(unit=>tradeAlive(unit)&&(unit.worldId||'surface')==='surface').map(unit=>option(unit.id,`${unit.name} ${unit.tradeAssignment?'[取引中]':''}`,side.unitId)).join('')}</select></label>`;
+}
 function sideHtml(s,side,index) {
   const party=side.kind==='player'?s.players.find(row=>row.id===side.partyId):s.neutralVillages.find(row=>row.id===side.partyId);
   const banks=side.kind==='player'?party?.factionState.settlements||[]:party?[party]:[];
-  const units=side.kind==='player'?party?.factionState.units||[]:party?.defenseUnits||[];
   const attr=field=>`data-trade-side="${index}" data-side-field="${field}"`;
-  const bank=tradeBank(s,side);
-  const map=window.__v39FieldRuntime?.mapData,turns=Math.max(1,draft.dueTurn-tradeTurn(s));
-  const metrics=folds.get('delivery')&&bank&&map?.grid?(side.kind==='village'?inspectV39NeutralVillageEconomy(bank,map):collectV39TerritoryIncome(s,{...party,factionState:{...party.factionState,selectedSettlementId:side.settlementId}},map)):null;
-  const maintenance=side.kind==='village'?metrics?.maintenance:buildV39PopulationMaintenanceStock(bank?.populationByRace,units.filter(unit=>tradeAlive(unit)&&(unit.settlementId||party?.factionState.selectedSettlementId)===side.settlementId),FOOD_RESOURCE_KEYS);
-  const forecast=metrics?Object.entries(side.goods).map(([resource,amount])=>{const current=tradeBankAmount(bank,resource),needed=Math.ceil(amount/3),income=n(metrics?.income?.food?.[resource]??metrics?.income?.material?.[resource]??metrics?.food?.[resource]??metrics?.material?.[resource]),target=Math.ceil(Math.max(0,amount-needed)/turns),upkeep=n(maintenance?.[resource]);
-    return `<small>${tradeResourceChips({[resource]:amount})} / 収入${Math.round(income*10)/10}/T・維持${Math.round(upkeep*10)/10}/T・確保${target}/T${income<target?'<span class="v39-trade-warning"> / 期日までに収入不足の見込み</span>':''}${current-needed+turns*(income-target-upkeep)<0?'<span class="v39-trade-warning"> / 維持費不足の見込み</span>':''}</small>`;}).join(''):'';
-  return `<section class="v39-trade-side"><b>${index?'要求物資を運ぶ相手側':'提供物資を運ぶ自分側'} / ${html(party?.label||party?.name||side.partyId)}</b>
+  return `<section class="v39-trade-side"><b>${index?'相手の拠点':'自国の拠点'} / ${html(party?.label||party?.name||side.partyId)}</b>
     <label>出発拠点<select ${attr('settlementId')}>${banks.filter(row=>row.placed||side.kind==='village').map(row=>option(row.settlementId||row.id,row.name||row.id,side.settlementId)).join('')}</select></label>
-    <label>担当者・部隊<select ${attr('unitId')}>${units.filter(unit=>tradeAlive(unit)&&(unit.worldId||'surface')==='surface').map(unit=>option(unit.id,`${unit.name} ${unit.tradeAssignment?'[取引中]':''}`,side.unitId)).join('')}</select></label>
-    <div class="v39-trade-row">X<input type="number" min="0" value="${side.center.x}" ${attr('x')}>Y<input type="number" min="0" value="${side.center.y}" ${attr('y')}><button data-trade-pick="${index}">マップで指定</button></div>
-    <label>許容範囲<input type="number" min="0" max="${config.maxRadius}" value="${side.radius}" ${attr('radius')}></label>${forecast}</section>`;
+    ${tradeCourierIndex(draft)<0?courierSelector(s,side,index):''}</section>`;
 }
 function render(options={}) {
   ensure();if(modal().hidden)return;const s=state(),body=modal().querySelector('.v39-trade-body'),scroll=body.scrollTop;
@@ -164,21 +223,22 @@ function render(options={}) {
   body.querySelectorAll('[data-trade-fold]').forEach(details=>folds.set(details.dataset.tradeFold,details.open));
   modal().querySelectorAll('[data-trade-tab]').forEach(button=>button.classList.toggle('active',button.dataset.tradeTab===tab));
   const footer=modal().querySelector('.v39-trade-footer');footer.hidden=tab!=='new'||!draft;
-  if(tab==='new'&&draft){const preview=proposeV39Trade(s,s.activePlayerId,draft);
+  if(tab==='new'&&draft){syncDelivery(s);const preview=proposeV39Trade(s,s.activePlayerId,draft),courier=tradeCourierIndex(draft);
     updateTradeMarkup(footer,`<div class="v39-trade-footer-copy">${preview.ok?'':html(preview.reason)}</div><button data-trade-action="propose"${preview.ok?'':' disabled'}>提案</button>`,options);
     updateTradeMarkup(content,`<div class="v39-trade-partner"><label>取引相手 <select data-trade-side="1" data-side-field="party">${endpoints(s).map(row=>option(row.value,row.label,`${draft.sides[1].kind}:${draft.sides[1].partyId}`)).join('')}</select></label><label>方法 <select data-trade-field="method">${option('exchange','交換・要求',draft.method)}${option('mail','郵送（一方向）',draft.method)}</select></label></div>
-    <div class="v39-trade-baskets">${draft.sides.map((side,index)=>tradeBasketHtml(s,side,index,{mail:draft.method==='mail',selected:selectedItems[index]})).join('')}</div>
-    <details class="v39-trade-options" data-trade-fold="delivery"${folds.get('delivery')?' open':''}><summary>配送・日程 / T${draft.dueTurn} / ${draft.period?`${draft.period}Tごと・${draft.cycles}回`:'単発'}</summary><div class="v39-trade-options-content"><div class="v39-trade-row">
+    <div class="v39-trade-baskets">${draft.sides.map((side,index)=>tradeBasketHtml(s,side,index,{mail:draft.method==='mail',selected:selectedItems[index],rows:!!embedded,warnings:embedded?resourceWarnings(s,side):{}})).join('')}</div>
+    <div class="v39-trade-delivery"><label>配送<select data-trade-field="deliveryMode">${option('proposer','自国から使者を出す',draft.deliveryMode)}${option('partner','相手から使者を出す',draft.deliveryMode)}${option('meeting','双方で待ち合わせる',draft.deliveryMode)}</select></label>${courier>=0?courierSelector(s,draft.sides[courier],courier):''}</div>
+    <details class="v39-trade-options" data-trade-fold="delivery"${folds.get('delivery')?' open':''}><summary>${courier<0?'待ち合わせ・日程':'日程・拠点'} / T${draft.dueTurn} / ${draft.period?`${draft.period}Tごと・${draft.cycles}回`:'単発'}</summary><div class="v39-trade-options-content">${courier<0?`<div class="v39-trade-meeting"><b>申込側が指定する待ち合わせ場所</b><div class="v39-trade-row"><label>X<input type="number" min="0" value="${draft.sides[0].center.x}" data-trade-side="0" data-side-field="x"></label><label>Y<input type="number" min="0" value="${draft.sides[0].center.y}" data-trade-side="0" data-side-field="y"></label><button data-trade-pick="0">マップで指定</button><label>周囲<input type="number" min="1" max="${config.maxRadius}" value="${draft.sides[0].radius}" data-trade-side="0" data-side-field="radius">マス</label></div></div>`:''}<div class="v39-trade-row">
     <label>交渉 <select data-trade-field="negotiation">${option('normal','通常交渉',draft.negotiation)}${option('intimidation','威圧交渉',draft.negotiation)}</select></label>
     <label>取引日 T<input type="number" min="${tradeTurn(s)+1}" value="${draft.dueTurn}" data-trade-field="dueTurn"></label>
     <label>猶予<input type="number" min="3" max="30" value="${draft.grace}" data-trade-field="grace"></label>
     <label>周期<input type="number" min="0" value="${draft.period}" data-trade-field="period"></label>
     <label>回数<input type="number" min="1" max="100" value="${draft.cycles}" data-trade-field="cycles"></label></div><div class="v39-trade-sides">${draft.sides.map((side,i)=>sideHtml(s,side,i)).join('')}</div></div></details>
     ${draft.sides.some(side=>Object.keys(side.goods).some(name=>V39_TRADE_RESOURCES.find(row=>row.name===name)?.specialty))?`<label>特産品の貸出 ⌛<input type="number" min="1" max="100" value="${draft.specialtyTurns||10}" data-trade-field="specialtyTurns" aria-label="特産品の貸出ターン数"></label>`:''}
-    <details class="v39-trade-options" data-trade-fold="rules"${folds.get('rules')?' open':''}><summary>予約在庫・維持費について</summary><p>成立時に双方の次回分1/3を手持ちから確保します。残りは実収入から予約し、維持費には使えません。周期0は単発。双方の到着後、指定日から猶予内に同時交換し、担当者は帰還します。</p></details>`,options);
+    <details class="v39-trade-options" data-trade-fold="rules"${folds.get('rules')?' open':''}><summary>予約在庫・維持費について</summary><p>成立時に双方の次回分1/3を手持ちから確保します。残りは実収入から予約し、維持費には使えません。使者は相手の拠点で受け渡して帰還します。待ち合わせでは指定場所に双方が到着して交換します。</p></details>`,options);
   }
   else {
-    const visible=listV39Trades(s).filter(row=>row.sides.some(side=>side.kind==='player'&&side.partyId===s.activePlayerId));
+    const visible=listV39Trades(s).filter(row=>row.sides.some(side=>side.kind==='player'&&side.partyId===s.activePlayerId)&&(!embedded||row.sides.some(side=>side.kind==='village'&&side.partyId===embedded.villageId)));
     const labels={proposed:'承諾待ち',active:'自動取引中',interrupted:'中断・再協議',cancelling:'中止・帰還中',complete:'完了',cancelled:'中止完了',rejected:'拒否/取下げ'};
     const stages={collecting:'収入確保・拠点へ集合',outbound:'取引場所へ移動',waiting:'到着待ち',returning:'帰還・荷下ろし',returned:'帰還済み'};
     const partyName=side=>side.kind==='player'?s.players.find(row=>row.id===side.partyId)?.label:s.neutralVillages.find(row=>row.id===side.partyId)?.name;
@@ -191,7 +251,7 @@ function render(options={}) {
       <button data-trade-action="revise" data-trade-id="${html(row.id)}">条件を変えて再提案</button></div></article>`).join('')||'<p>取引はありません。相手がいれば「提案」タブから作成できます。</p>',options);
   }
   body.scrollTop=scroll;modal().querySelector('output').textContent=message;modal().querySelector('output').hidden=!message;
-  if(draft){const own=s.players.find(p=>p.id===s.activePlayerId),other=draft.sides[1],units=own.factionState.units.filter(unit=>tradeAlive(unit)&&(unit.worldId||'surface')==='surface');
+  if(draft&&!embedded){const own=s.players.find(p=>p.id===s.activePlayerId),other=draft.sides[1],units=own.factionState.units.filter(unit=>tradeAlive(unit)&&(unit.worldId||'surface')==='surface');
     const actor=units.find(unit=>unit.id===draft.negotiatorId)||units.find(unit=>unit.id===own.factionState.selectedUnitId)||units[0];
     const peers=other.kind==='village'?s.neutralVillages.find(v=>v.id===other.partyId)?.defenseUnits:s.players.find(p=>p.id===other.partyId)?.factionState.units;
     const village=other.kind==='village'?s.neutralVillages.find(v=>v.id===other.partyId):null;
@@ -200,16 +260,15 @@ function render(options={}) {
     conversation.dataset.tradeFold='conversation';conversation.open=folds.get('conversation')===true;
     conversation.querySelector('summary').textContent=`会話・スキル / ${actor?.name||'交渉役なし'} / AP ${n(actor?.ap??actor?.currentAp)}`;
     const conversationBody=conversation.querySelector(':scope > div');
-    renderV39Conversation(conversationBody,{target:other.partyId,actor,units,peer:peers?.find(tradeAlive)||{race:village?.race||'只人',className:'ファイター',name:village?`${village.name}の代表`:'相手の代表'},onActorChange:id=>{
-      draft.negotiatorId=id;let next=s;
-      for(const contract of listV39Trades(s))if(contract.ownerId===s.activePlayerId&&['proposed','active','interrupted'].includes(contract.status)&&contract.sides.some(side=>side.kind==='village'&&side.partyId===other.partyId))next=updateV39Trade(next,{...contract,negotiatorId:id});
-      if(next!==s)window.setV39GameState(next,{reason:'trade-negotiator-selected'});render();}});
+    renderV39Conversation(conversationBody,{target:other.partyId,actor,units,peer:village?getV39VillageSpeaker(village):peers?.find(tradeAlive)||{race:'只人',className:'ファイター',name:'相手の代表'},onActorChange:id=>{
+      draft.negotiatorId=id;selectV39TradeNegotiator(id,other.partyId);render();}});
     body.scrollTop=scroll;
   }
   renderResourcePicker(options);
+  notifyPanel();
 }
-function commit(result) {
-  message=result.ok?result.message:result.reason;if(draft)recordV39Conversation(draft.sides[1].partyId,'提示した条件をご確認ください。',message);
+function commit(result,conversation={}) {
+  message=result.ok?result.message:result.reason;if(draft)recordV39Conversation(draft.sides[1].partyId,'{一人称}から提示した条件をご確認ください。',message,{replyColumn:'取引提案',...conversation});
   if(result.ok){window.setV39GameState(result.state,{reason:'trade-operation'});window.appendV39ActivityLog?.(state().activePlayerId,'取引',message);}render();return result;
 }
 function run(action,id) {
@@ -219,20 +278,13 @@ function run(action,id) {
   if(action==='propose'){const map=window.__v39FieldRuntime?.mapData;
     if(draft?.sides.some(side=>map&&(side.center.x>=map.w||side.center.y>=map.h))){message='マップ内の待ち合わせマスを指定してください';render();return;}
     const result=proposeV39Trade(s,playerId,draft);if(result.ok)tab='contracts';commit(result);}
-  else if(action==='accept'){const contract=listV39Trades(s).find(row=>row.id===id);if(!window.confirm(contract?.sides[1].kind==='village'?'この条件で交渉しますか？ 成否に関わらず交渉役のAP20を消費します。':'この取引を承諾しますか？ 次回分の1/3を確保します。'))return;commit(acceptV39Trade(s,playerId,id));}
+  else if(action==='accept'){const contract=listV39Trades(s).find(row=>row.id===id);if(!window.confirm(contract?.sides[1].kind==='village'?'この条件で交渉しますか？ 成否に関わらず交渉役のAP20を消費します。':'この取引を承諾しますか？ 次回分の1/3を確保します。'))return;const result=acceptV39Trade(s,playerId,id);commit(result,{speechColumn:result.ok?(listV39Trades(result.state).find(row=>row.id===id)?.status==='rejected'?'交渉失敗':'交渉成功'):undefined});}
   else if(action==='pause'||action==='cancel')commit(stopV39Trade(s,playerId,id,action==='cancel'));
   else if(action==='reserve-stock'||action==='reserve-village'){if(action==='reserve-village'&&!window.confirm('村の備蓄を追加確保する交渉を行いますか？ AP20を消費します。'))return;commit(reserveV39TradeFromStock(s,playerId,id,action==='reserve-village'));}
   else if(action==='resume'){const row=listV39Trades(s).find(row=>row.id===id);if(row.sides.some(side=>side.kind==='village')&&!window.confirm('この日程で再開を交渉しますか？ AP20を消費します。'))return;commit(resumeV39Trade(s,playerId,id,Number(document.getElementById(`trade-date-${id}`).value),row.grace));}
-  else if(action==='revise'){const row=listV39Trades(s).find(row=>row.id===id);draft=structuredClone(row);if(draft.sides[0].partyId!==playerId)draft.sides.reverse();draft.dueTurn=tradeTurn(s)+8;drafts.set(draftKey,draft);tab='new';message='旧取引は勝手に変更されません。旧取引を中止・荷下ろししてから再提案してください。';render();}
+  else if(action==='revise'){const row=listV39Trades(s).find(row=>row.id===id);draft=structuredClone(row);if(draft.sides[0].partyId!==playerId){draft.sides.reverse();if(tradeCourierIndex(draft)>=0)draft.deliveryMode=draft.deliveryMode==='proposer'?'partner':'proposer';}draft.dueTurn=tradeTurn(s)+8;drafts.set(draftKey,draft);tab='new';message='旧取引は勝手に変更されません。旧取引を中止・荷下ろししてから再提案してください。';render();}
 }
-function entries() {
-  const s=state();if(!s?.players?.length)return;
-  for(const [host,village] of [[document.getElementById('v39-world-contact-buttons'),document.getElementById('v39-world-contact-actions')?.dataset.targetId]]) {
-    if(!host||host.querySelector('[data-open-v39-trade]'))continue;
-    const button=document.createElement('button');button.type='button';button.className='v39-trade-entry';button.dataset.openV39Trade='true';button.textContent='取引・郵送';button.onclick=()=>open(s.neutralVillages?.some(row=>row.id===village)?village:'');host.prepend(button);
-  }
-}
-function queue() {if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;entries();if(modal()&&!modal().hidden){if(draft&&draft.sides[0].partyId!==state().activePlayerId){closeResourcePicker();modal().hidden=true;}else render({preserveInput:true});}});}
+function queue() {if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;if(modal()&&!modal().hidden){if(draft&&draft.sides[0].partyId!==state().activePlayerId){closeResourcePicker();modal().hidden=true;}else render({preserveInput:true});}});}
 document.addEventListener('click',event=>{
   if(event.target.closest?.('#footSettlement [data-open-v39-trade]'))open();
 });
@@ -251,14 +303,14 @@ function advanceNpc(event) {
   const logistics=advanceV39TradeLogistics(next,'',map,turn,true);window.setV39GameState({players:logistics.state.players,neutralVillages:logistics.state.neutralVillages,settlements:logistics.state.settlements},{reason:'trade-village-turn'});
 }
 window.openV39TradeModal=open;
-window.getV39TradeRules=()=>({listV39Trades,proposeV39Trade,acceptV39Trade,stopV39Trade,resumeV39Trade,divertV39TradeIncome,advanceV39TradeLogistics,reserveV39TradeFromStock,tradeCapacity,tradeSpeed,getV39SpecialtyAccess});
+window.getV39TradeRules=()=>({listV39Trades,proposeV39Trade,acceptV39Trade,stopV39Trade,resumeV39Trade,divertV39TradeIncome,advanceV39TradeLogistics,reserveV39TradeFromStock,tradeCapacity,tradeSpeed,getV39SpecialtyAccess,getV39TradeResourceAvailability,getV39KnownTradeResources});
 window.addEventListener('v39:game-state-changed',queue);window.addEventListener('v39:footer-tab-changed',queue);window.addEventListener('v39:tile-selected',event=>{
-  if(picking>=0&&draft){draft.sides[picking].center={x:event.detail.x,y:event.detail.y};picking=-1;modal().hidden=false;render();}else queue();
+  if(picking>=0&&draft){draft.sides[picking].center={x:event.detail.x,y:event.detail.y};picking=-1;embedded?.onMapPick?.(false);modal().hidden=false;render();}else queue();
 });
 window.addEventListener('v39:village-menu-opened',queue);
 window.addEventListener('v39:conversation-updated',queue);
 window.addEventListener('v39:field-generated',()=>{closeResourcePicker();drafts.clear();draft=null;message='';if(modal())modal().hidden=true;});
-window.addEventListener('keydown',event=>{if(event.key==='Escape'){if(resourcePicker>=0){closeResourcePicker();return;}if(picking>=0){picking=-1;modal().hidden=false;render();}else if(modal())modal().hidden=true;}});
+window.addEventListener('keydown',event=>{if(event.key==='Escape'&&!event.defaultPrevented){if(resourcePicker>=0){event.preventDefault();closeResourcePicker();return;}if(picking>=0){event.preventDefault();picking=-1;embedded?.onMapPick?.(false);modal().hidden=false;render();}else if(modal()&&!embedded)modal().hidden=true;}});
 window.addEventListener('v39:turn-stage-world',advanceNpc);queue();
 
 window.startV39TradeTest=()=>{

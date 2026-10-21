@@ -1,5 +1,7 @@
 {
   "note":"取引の未確定係数。正式な馬車クラス/研究は原本へ追加するまで仮テストだけに配置する。",
   "maxRadius":30,"maxGrace":30,"defaultGrace":3,"initialReserveDivisor":3,
+  "initialKnownResources":["穀物","野菜","肉","魚","木材","石材","鉄","金"],
+  "requestSliderMaximum":1000,
   "wagonBonus":100,"npcBaseChance":0.7,"npcSkillDivisor":500,"npcBurdenRate":0.15
 }

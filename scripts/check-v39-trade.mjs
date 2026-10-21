@@ -1,3 +1,4 @@
+import {openV39TestSuite} from './lib/v39-test-suite.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
@@ -8,7 +9,7 @@ try {
     const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
     page.on('pageerror',error=>errors.push(String(error.stack)));page.on('console',entry=>{if(entry.type()==='error')errors.push(entry.text());});page.on('dialog',dialog=>dialog.accept());
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
-    await page.locator('[data-v39-test-tools]').click();await page.locator('[data-test-action="trade-test-start"]').click();
+    await page.locator('[data-v39-test-tools]').click();await openV39TestSuite(page,'logistics');await page.locator('[data-test-action="trade-test-start"]').click();
     await page.waitForSelector('#v39-trade-modal:not([hidden])');
     await page.screenshot({path:`output/web-game/trade/proposal-${width}.png`});
     await page.locator('[data-trade-action="propose"]').click();

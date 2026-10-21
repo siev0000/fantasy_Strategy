@@ -20,14 +20,16 @@ function randomFor(seed) {
 }
 
 export function findV39CavePath(map, from, to, blocked = []) {
+  if(!from||!to)return [];
+  const floor=(x,y)=>map.hegemonyInterior?!!map.grid?.[y]?.[x]&&map.grid[y][x]!=="岩壁":map.grid?.[y]?.[x]==="洞窟";
   const start = `${from.x},${from.y}`, goal = `${to.x},${to.y}`;
   const blockedKeys = new Set(blocked);
   const queue = [from], previous = new Map([[start, null]]);
-  if (map.grid?.[from.y]?.[from.x] !== "洞窟" || map.grid?.[to.y]?.[to.x] !== "洞窟" || blockedKeys.has(goal)) return [];
+  if (!floor(from.x,from.y) || !floor(to.x,to.y) || blockedKeys.has(goal)) return [];
   for (let i = 0; i < queue.length && !previous.has(goal); i++) {
     const current = queue[i];
     for (const next of getHexNeighborCoords(map.w, map.h, current.x, current.y)) {
-      if (map.grid[next.y][next.x] !== "洞窟" || previous.has(next.key) || blockedKeys.has(next.key)) continue;
+      if (!floor(next.x,next.y) || previous.has(next.key) || blockedKeys.has(next.key)) continue;
       previous.set(next.key, `${current.x},${current.y}`);
       queue.push(next);
     }

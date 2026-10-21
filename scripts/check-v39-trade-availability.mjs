@@ -1,0 +1,43 @@
+import {openV39TestSuite} from './lib/v39-test-suite.mjs';
+import assert from 'node:assert/strict';
+import {mkdirSync} from 'node:fs';
+import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
+const out='output/web-game/trade-availability';mkdirSync(out,{recursive:true});
+const browser=await chromium.launch();
+try{for(const width of [320,390,1100]){
+  const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
+  page.on('pageerror',error=>errors.push(String(error.stack)));page.on('dialog',dialog=>dialog.accept());
+  await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3000',{waitUntil:'networkidle'});
+  await page.locator('[data-v39-test-tools]').click();await openV39TestSuite(page,'logistics');await page.locator('[data-test-action=trade-test-start]').click();
+  await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
+  const cases=await page.evaluate(()=>{
+    const s=window.getV39GameState(),p=s.players.find(row=>row.id===s.activePlayerId),bank=p.factionState.settlements[0];
+    bank.foodStockByType=Object.fromEntries(Object.keys(bank.foodStockByType).map(key=>[key,0]));
+    bank.materialStockByType=Object.fromEntries(Object.keys(bank.materialStockByType).map(key=>[key,0]));bank.materialStockByType.金=10;
+    const key=bank.territoryTileKeys.find(key=>{const [x,y]=key.split(',').map(Number);return !window.__v39FieldRuntime.mapData.lavaMap?.[y]?.[x];}),[x,y]=key.split(',').map(Number);
+    p.factionState.exploration.discoveredSpecialtiesByTile[key]={name:'銀',category:'特殊資源',x,y};
+    s.territoryOwnerByTile[key]=p.id;s.territoryStateByTile[key]={...s.territoryStateByTile[key],settlementId:bank.settlementId,hp:100};
+    window.setV39GameState({players:s.players,territoryOwnerByTile:s.territoryOwnerByTile,territoryStateByTile:s.territoryStateByTile},{reason:'availability-fixture'});
+    const rows=window.getV39TradeRules().getV39TradeResourceAvailability(s,{kind:'player',partyId:p.id,settlementId:bank.settlementId},window.__v39FieldRuntime.mapData);
+    return {none:Object.keys(rows).find(name=>!rows[name].canSelect&&rows[name].field!=='specialtyStockByType'),stock:Object.keys(rows).find(name=>rows[name].stock>0&&rows[name].income===0),income:Object.keys(rows).find(name=>rows[name].stock===0&&rows[name].income>0&&name!=='銀'),silver:rows.銀};
+  });
+  assert(cases.none&&cases.stock&&cases.income);assert(cases.silver.stock===0&&cases.silver.income>0&&cases.silver.canSelect,'periodic harvest counts as income');
+  await page.locator('[data-trade-add-side="0"]').click();
+  const item=name=>page.locator(`[data-trade-resource-add="${name}"]`);
+  assert.equal(await item(cases.none).count(),0);assert(await item(cases.stock).isEnabled());assert(await item(cases.income).isEnabled());assert(await item('銀').isEnabled());
+  await page.evaluate(name=>{const button=document.createElement('button');button.dataset.tradeResourceAdd=name;button.dataset.tradeItemSide='0';document.querySelector('.v39-trade-resource-grid').append(button);button.dispatchEvent(new MouseEvent('click',{bubbles:true}));},cases.none);
+  assert.equal(await page.locator(`[data-trade-basket="0"] [data-trade-item="${cases.none}"]`).count(),0,'addition handler rejects synthetic click on unavailable resource');
+  for(const name of [cases.stock,cases.income,'銀'])await item(name).click();
+  await item(cases.stock).hover();assert.equal(await page.locator('[data-trade-picker-name]').innerText(),cases.stock);
+  await item('銀').click();assert.equal(await page.locator('[data-trade-picker-name]').innerText(),'銀');
+  assert.equal(await item('銀').locator('b').innerText(),'1/0','selected / owned works for periodic income without stock');
+  await page.screenshot({path:`${out}/picker-${width}.png`});
+  await page.locator('[data-trade-picker-close]').last().click();
+  for(const name of [cases.stock,cases.income,'銀'])assert.equal(await page.locator(`[data-trade-basket="0"] [data-trade-item="${name}"]`).count(),1);
+  await page.locator('[data-trade-add-side="0"]').click();
+  await page.evaluate(name=>{const s=window.getV39GameState(),bank=s.players.find(p=>p.id===s.activePlayerId).factionState.settlements[0],side={kind:'player',partyId:s.activePlayerId,settlementId:bank.settlementId},row=window.getV39TradeRules().getV39TradeResourceAvailability(s,side,window.__v39FieldRuntime.mapData)[name];bank[row.field][name]=1;window.setV39GameState({players:s.players},{reason:'availability-stock-gained'});},cases.none);
+  await page.waitForFunction(name=>!!document.querySelector(`[data-trade-resource-add="${name}"]`),cases.none);
+  await page.evaluate(name=>{const s=window.getV39GameState(),bank=s.players.find(p=>p.id===s.activePlayerId).factionState.settlements[0],side={kind:'player',partyId:s.activePlayerId,settlementId:bank.settlementId},row=window.getV39TradeRules().getV39TradeResourceAvailability(s,side,window.__v39FieldRuntime.mapData)[name];bank[row.field][name]=0;window.setV39GameState({players:s.players},{reason:'availability-stock-lost'});},cases.none);
+  await page.waitForFunction(name=>!document.querySelector(`[data-trade-resource-add="${name}"]`),cases.none);
+  assert.deepEqual(errors,[]);console.log(`${width}: stock-only, income-only, periodic harvest, unavailable guard and live stock updates passed`);await page.close();
+}}finally{await browser.close();}

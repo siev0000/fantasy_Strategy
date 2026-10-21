@@ -1,11 +1,13 @@
 import { classData, enemySpawnData, getGameDataRows } from "../../lib/game-data-registry.js";
 import {parseV39SpawnTerrains} from '../../lib/v39-spawn-terrain-list.js';
+import {createV39EnemyClimateLookup,v39EnemyClimateWeight} from '../../lib/v39-enemy-climate.js';
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "../../lib/v39-nest-rules.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { V39_START_AREA_BALANCE, V39_ENEMY_LEVEL_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { getV39BossFusionCandidates } from "../../lib/v39-boss-fusion-rules.js";
+import {V39_GUARDIAN_ONLY_SPECIES} from '../../lib/v39-victory-guardian-candidates.js';
 import {V39_FUSION_MATERIAL_GROUPS} from '../../lib/v39-fusion-material-types.js';
 import {resolveV39EnemyMemberCount,resolveV39EnemyCombatProfile} from '../../lib/v39-enemy-formation.js';
 
@@ -30,7 +32,7 @@ const bossFusionCandidates = new Map();
 function fusionCandidates(definition) {
   const key = JSON.stringify([definition.race, definition.className]);
   if (!bossFusionCandidates.has(key)) bossFusionCandidates.set(key,
-    getV39BossFusionCandidates(definition.race, definition.className, getGameDataRows('モンスター合成'), classNames,V39_FUSION_MATERIAL_GROUPS));
+    getV39BossFusionCandidates(definition.race, definition.className, getGameDataRows('モンスター合成'), classNames,V39_FUSION_MATERIAL_GROUPS,V39_GUARDIAN_ONLY_SPECIES));
   return bossFusionCandidates.get(key);
 }
 
@@ -139,6 +141,7 @@ function validDefinition(row) {
   // 種族未設定の行は制作途中として扱い、敵出現候補には含めない。
   if (!race) return null;
   const className = text(row?.サブクラス, race);
+  if([name,race,className].some(value=>V39_GUARDIAN_ONLY_SPECIES.has(value)||value==='神獣'))return null;
   const terrains=parseV39SpawnTerrains(row?.出現地形);
   const terrain=terrains.join('/');
   const minLevel = integer(row?.Lv_Min, 0);
@@ -177,13 +180,14 @@ function tileTerrainKeys(data, x, y) {
   return [...keys];
 }
 
-function definitionsForTile(data, x, y) {
+function definitionsForTile(data, x, y, climateAt) {
   const rows = [];
   const seen=new Set();
   for (const terrain of tileTerrainKeys(data, x, y)) {
     for(const definition of definitionsByTerrain.get(terrain)||[]){
       if(seen.has(definition.definitionId))continue;
-      seen.add(definition.definitionId);rows.push(definition);
+      seen.add(definition.definitionId);
+      if(v39EnemyClimateWeight(definition.row,climateAt?.(x,y))>0)rows.push(definition);
     }
   }
   return rows;
@@ -269,8 +273,8 @@ function eligibleForRange(definitions, levelRange) {
   }));
 }
 
-function buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled) {
-  const definitions = definitionsForTile(data, x, y);
+function buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled, climateAt) {
+  const definitions = definitionsForTile(data, x, y, climateAt);
   if (!definitions.length) return null;
 
   const distance = closestBaseDistance(settlements, { x, y }, w, h, wrapEnabled);
@@ -291,13 +295,17 @@ function buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled) {
     strong,
     levelRange,
     eligibleDefinitions,
+    climate:climateAt?.(x,y),
     strongMonsterInfo: strong ? (data?.strongMonsterInfoMap?.[y]?.[x] || null) : null
   };
 }
 
 function chooseEnemyDefinition(candidate, random) {
   if (!candidate?.eligibleDefinitions?.length) return null;
-  return candidate.eligibleDefinitions[Math.floor(random() * candidate.eligibleDefinitions.length)] || null;
+  const rows=candidate.eligibleDefinitions,weights=rows.map(row=>v39EnemyClimateWeight(row.definition.row,candidate.climate));
+  let roll=random()*weights.reduce((sum,value)=>sum+value,0);
+  for(let i=0;i<rows.length;i++){roll-=weights[i];if(roll<0)return rows[i];}
+  return rows[rows.length-1]||null;
 }
 
 function chooseEnemyLevel(selection, random) {
@@ -357,7 +365,7 @@ function strongTerritoryRadius(candidate) {
   return Math.max(1, integer(candidate?.strongMonsterInfo?.territoryRadius, DEFAULT_STRONG_TERRITORY_RADIUS));
 }
 
-function buildStrongMinionCandidates(data, settlements, strongCandidate, minionNames, w, h, wrapEnabled, occupied) {
+function buildStrongMinionCandidates(data, settlements, strongCandidate, minionNames, w, h, wrapEnabled, occupied, climateAt) {
   const desiredNames = new Set((Array.isArray(minionNames) ? minionNames : []).map(item => text(item)).filter(Boolean));
   if (!desiredNames.size) return [];
 
@@ -379,7 +387,7 @@ function buildStrongMinionCandidates(data, settlements, strongCandidate, minionN
       const levelRange = terrainLevelRange(data, x, y, distanceFromBase, false);
       if (!levelRange) continue;
 
-      const eligibleDefinitions = eligibleForRange(definitionsForTile(data, x, y)
+      const eligibleDefinitions = eligibleForRange(definitionsForTile(data, x, y, climateAt)
         .filter(definition => desiredNames.has(definition.name)), levelRange);
       if (!eligibleDefinitions.length) continue;
 
@@ -391,6 +399,7 @@ function buildStrongMinionCandidates(data, settlements, strongCandidate, minionN
         strong:false,
         levelRange,
         eligibleDefinitions,
+        climate:climateAt?.(x,y),
         strongMonsterInfo: strongCandidate.strongMonsterInfo
       });
     }
@@ -529,7 +538,7 @@ export function createV39EventEnemy({ id, name, race, className, level, x, y, me
   };
 }
 
-function spawnStrongGroup(data, settlements, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random) {
+function spawnStrongGroup(data, settlements, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random, climateAt) {
   const plan = buildStrongGroupPlan(selection, random);
   const groupId = `strong-group-${candidate.x}-${candidate.y}`;
   const nestId = `enemy-nest-${groupId}`;
@@ -558,7 +567,7 @@ function spawnStrongGroup(data, settlements, candidate, selection, level, enemie
   }
 
   const minionCandidates = shuffle(
-    buildStrongMinionCandidates(data, settlements, candidate, plan.minionNames, w, h, wrapEnabled, occupied),
+    buildStrongMinionCandidates(data, settlements, candidate, plan.minionNames, w, h, wrapEnabled, occupied, climateAt),
     random
   );
   let minionCount = 0;
@@ -692,7 +701,8 @@ function buildEnemyNestAndSquadState(enemies) {
   return { enemyNests:nests, enemySquads };
 }
 
-function collectEnemySpawnPlan(data, settlements) {
+function collectEnemySpawnPlan(data, settlements, weather) {
+  const climateAt=createV39EnemyClimateLookup(data,weather);
   const w = Math.max(1, integer(data?.w, 1));
   const h = Math.max(1, integer(data?.h, 1));
   const wrapEnabled = data?.worldWrapEnabled !== false
@@ -702,7 +712,7 @@ function collectEnemySpawnPlan(data, settlements) {
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
-      const candidate = buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled);
+      const candidate = buildSpawnCandidate(data, settlements, x, y, w, h, wrapEnabled, climateAt);
       if (!candidate) continue;
       if (candidate.strong) strongCandidates.push(candidate);
       else normalCandidates.push(candidate);
@@ -732,7 +742,7 @@ function collectEnemySpawnPlan(data, settlements) {
     const selection = chooseEnemyDefinition(candidate, random);
     const level = chooseEnemyLevel(selection, random);
     if (level === null) continue;
-    spawnStrongGroup(data, settlements, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random);
+    spawnStrongGroup(data, settlements, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random, climateAt);
   }
 
   let normalSpawned = 0;
@@ -825,7 +835,7 @@ function spawnForActivePlayer() {
   const settlements = (state?.players || [])
     .flatMap(player => getFactionSettlements(player?.factionState).filter(row => row?.placed));
   if (!data || !state || !settlements.length) return [];
-  const spawnPlan = collectEnemySpawnPlan(data, settlements);
+  const spawnPlan = collectEnemySpawnPlan(data, settlements,state.worldEnvironment?.weather);
   const initialEnemies = spawnPlan.enemies;
   const initialState = buildEnemyNestAndSquadState(initialEnemies);
   const preserved = preserveNonInitialEnemyState(state);
@@ -885,7 +895,7 @@ window.inspectV39EnemySpawn = () => {
   const settlements = (state?.players || [])
     .flatMap(player => getFactionSettlements(player?.factionState).filter(row => row?.placed));
   if (!data || !state) return { ok:false, reason:"field-or-state-missing" };
-  const plan = collectEnemySpawnPlan(data, settlements);
+  const plan = collectEnemySpawnPlan(data, settlements,state.worldEnvironment?.weather);
   return {
     ok:true,
     allInitialPlacementsComplete:allInitialPlacementsComplete(state),
@@ -922,12 +932,14 @@ window.inspectV39InitialPlacementArea = tile => {
   const wrap = data.worldWrapEnabled !== false
     && window.__v39FieldRuntime?.settings?.islandCustomSettings?.worldWrapEnabled !== false;
   const names = new Set(), outerLevels = [];
-  const bases = [...(window.getV39GameState?.()?.players || []).flatMap(player =>
+  const state=window.getV39GameState?.({includeWorlds:false});
+  const climateAt=createV39EnemyClimateLookup(data,state?.worldEnvironment?.weather);
+  const bases = [...(state?.players || []).flatMap(player =>
     getFactionSettlements(player.factionState).filter(row => row.placed)), tile];
   for (let y = 0; y < data.h; y++) for (let x = 0; x < data.w; x++) {
     const distance = wrappedHexDistance(tile, { x, y }, data.w, data.h, wrap);
     if (distance <= SAFE_DISTANCE_FROM_BASE || distance > LOW_LEVEL_DISTANCE_FROM_BASE + 1) continue;
-    const definitions = definitionsForTile(data, x, y);
+    const definitions = definitionsForTile(data, x, y, climateAt);
     const baseDistance = closestBaseDistance(bases, { x, y }, data.w, data.h, wrap);
     if (baseDistance <= SAFE_DISTANCE_FROM_BASE) continue;
     const strong = baseDistance > LOW_LEVEL_DISTANCE_FROM_BASE && isStrongMonsterTile(data, x, y);

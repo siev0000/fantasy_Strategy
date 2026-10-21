@@ -7,6 +7,7 @@ import {normalizeV39MapScope,normalizeV39ScopePattern,v39ClimateForestScale,appl
 import {createV39ClimateProfile} from './v39-weather.js';
 import generationFeatures from '../../../config/v39-map-generation-features.json';
 import {generateV39WastelandRegions} from './v39-wasteland-generation.js';
+import {generateV39CanyonRegions} from './v39-canyon-generation.js';
 
 function jsonNumber(row, key, fallback) {
   const value = Number(row?.[key]);
@@ -103,7 +104,6 @@ const 地形生成設定 = {
     湖候補: 0.35,
     沼地化: 0.28,
     滝化: 0.5,
-    峡谷化: 0.18,
     洞窟化: 0.1
   },
   河川: {
@@ -265,13 +265,6 @@ const 地形比率プリセット定義 = {
 };
 
 const 特殊地形設定 = {
-  峡谷: {
-    対象地形キー: ["丘陵", "山岳", "火山"],
-    最低高度Lv: 2,
-    最低落差Lv: 2,
-    最低川隣接数: 1,
-    川判定に自マスを含む: true
-  },
   洞窟: {
     対象地形キー: ["森", "丘陵", "山岳", "火山"],
     最低高度Lv: 2,
@@ -3404,7 +3397,7 @@ function buildCoastMap(grid, w, h, 高度レベルマップ) {
   };
 }
 
-function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
+function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ, protectedKeys=new Set()) {
   const specialMap = buildInitialGrid(w, h, null);
   const specialCounts = { 沼地: 0, 峡谷: 0, 洞窟: 0, 洞窟_小: 0, 洞窟_中: 0, 洞窟_大: 0 };
   const caveCoastAnchorMap = buildInitialGrid(w, h, "");
@@ -3415,16 +3408,16 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
   const majorRiverSet = riverData?.largeRiverSet instanceof Set
     ? riverData.largeRiverSet
     : (riverData?.meshCenterSet instanceof Set ? riverData.meshCenterSet : new Set());
-  const canyonRule = 特殊地形設定.峡谷;
   const caveRule = 特殊地形設定.洞窟;
   const wetRule = 特殊地形設定.沼地.湿潤条件;
   const waterTerrainSet = new Set(wetRule.水地形キー || []);
-  const canyonTerrainSet = new Set(canyonRule.対象地形キー || []);
   const caveTerrainSet = new Set(caveRule.対象地形キー || []);
   const resolveRiverJudgeSet = judgeType => (judgeType === "大河" ? majorRiverSet : riverTouchSet);
   const wetRiverSet = resolveRiverJudgeSet(String(wetRule.川判定種別 || "河川"));
   const leftRightRule = wetRule.左右川で湿地化 || {};
   const leftRightRiverSet = resolveRiverJudgeSet(String(leftRightRule.判定種別 || wetRule.川判定種別 || "河川"));
+  const canyonGeneration=generateV39CanyonRegions({grid,w,h,specialMap,heightLevelMap:高度レベルマップ,riverTouchSet},{protectedKeys});
+  specialCounts.峡谷=canyonGeneration.placed;
 
   for (let y = 0; y < h; y += 1) {
     for (let x = 0; x < w; x += 1) {
@@ -3433,26 +3426,7 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
       const tileKey = `${x},${y}`;
       const neighbors = getHexNeighborCoords(w, h, x, y);
 
-      if (canyonTerrainSet.has(terrain) && Number.isFinite(level) && level >= canyonRule.最低高度Lv) {
-        const riverBase = (canyonRule.川判定に自マスを含む && riverTouchSet.has(tileKey)) ? 1 : 0;
-        const riverNear = neighbors.reduce((sum, n) => (
-          sum + (riverTouchSet.has(`${n.x},${n.y}`) ? 1 : 0)
-        ), riverBase);
-        const maxDrop = neighbors.reduce((best, n) => {
-          const nLevel = 高度レベルマップ?.[n.y]?.[n.x];
-          if (!Number.isFinite(nLevel)) return best;
-          return Math.max(best, level - nLevel);
-        }, 0);
-        if (
-          riverNear >= canyonRule.最低川隣接数
-          && maxDrop >= canyonRule.最低落差Lv
-          && Math.random() < 地形生成設定.確率.峡谷化
-        ) {
-          specialMap[y][x] = "峡谷";
-          specialCounts.峡谷 += 1;
-          continue;
-        }
-      }
+      if(specialMap[y][x]==='峡谷')continue;
 
       if (caveTerrainSet.has(terrain) && Number.isFinite(level) && level >= caveRule.最低高度Lv) {
         const mountainBase = (caveRule.山岳判定に自マスを含む && isMountainLikeTerrain(terrain)) ? 1 : 0;
@@ -3594,7 +3568,7 @@ function buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ) {
     }
   }
 
-  return { specialMap, specialCounts, caveSizeMap, caveScaleMap, caveCoastAnchorMap };
+  return { specialMap, specialCounts, caveSizeMap, caveScaleMap, caveCoastAnchorMap, canyonGeneration };
 }
 
 function buildStrongMonsterSpawnData(grid, w, h, 高度レベルマップ, specialMap, riverData, reliefMap) {
@@ -5327,7 +5301,8 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
   for(const event of volcanoTurnResult.events||[])if(event.type==='lava-cooled')wastelandProtectedKeys.add(event.key);
   const wastelandGeneration=generateV39WastelandRegions({grid,w,h},climateProfile,wastelandProtectedKeys);
   const coastData = buildCoastMap(grid, w, h, 高度レベルマップ);
-  const { specialMap, specialCounts, caveSizeMap, caveScaleMap, caveCoastAnchorMap } = buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ);
+  const { specialMap, specialCounts, caveSizeMap, caveScaleMap, caveCoastAnchorMap, canyonGeneration } = buildSpecialTileMap(grid, w, h, riverData, 高度レベルマップ,
+    new Set((victoryTerrainSupport?.regions||[]).flatMap(region=>region.tileKeys||[])));
   const { strongMonsterMap, strongMonsterInfoMap, strongMonsterStats } = buildStrongMonsterSpawnData(
     grid,
     w,
@@ -5347,6 +5322,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     ...scope,
     climateProfile,
     wastelandGeneration,
+    canyonGeneration,
     riverData,
     heightMap: 高度マップ,
     heightLevelMap: 高度レベルマップ,

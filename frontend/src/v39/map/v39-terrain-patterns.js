@@ -1,4 +1,5 @@
 import config from '../../../../config/v39-terrain-patterns.json';
+import {hegemonyZoneAt} from '../../lib/v39-hegemony-areas.js';
 import { HEX_TILE_CONFIG } from '../../lib/phaser-map-panel-config.js';
 
 const SOURCE_KEY = 'v39-terrain-pattern-source';
@@ -39,6 +40,8 @@ export function hasV39TerrainPattern(scene, terrain) {
 }
 
 export function terrainPatternNameAt(data,x,y){
+  const appearance=hegemonyZoneAt(data,x,y);
+  if(appearance?.visualTerrain)return appearance.visualTerrain;
   const special=data.specialMap?.[y]?.[x];
   return ['沼地','湿地'].includes(special)?special:data.grid[y]?.[x];
 }

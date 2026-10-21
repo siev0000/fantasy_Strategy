@@ -8,9 +8,17 @@ import {convertV39CorpsesInDeathFog} from '../../lib/v39-corpse-undead-rules.js'
 import {inspectV39SoulCollection,collectV39Soul} from '../../lib/v39-soul-storage.js';
 import {resolveVillageIncidentCasualties} from '../../lib/v39-village-incidents.js';
 import villageIncidentTest from '../../../../config/v39-village-incident-test.json';
+import npcDefense from '../../../../config/v39-npc-defense.json';
+import {resolveV39UnitMovementStepCost} from '../../lib/v39-terrain-traversal.js';
+import {markV39AbandonedVillage} from '../../lib/v39-abandoned-villages.js';
 
 function commitVillageCombatState(patch, options) {
   const state=window.getV39GameState({includeWorlds:false});
+  if(patch.neutralVillages){
+    const villages=patch.neutralVillages.map(village=>markV39AbandonedVillage(village,state.timeline.turnNumber));
+    const byId=new Map(villages.map(village=>[village.id,village]));
+    patch={...patch,neutralVillages:villages,settlements:(patch.settlements||state.settlements).map(row=>byId.get(row.id)||row)};
+  }
   if(!state.neutralVillages.some(village=>Object.values(village.incidentByPlayerId||{}).some(row=>row.status==='battle'))) {
     window.setV39GameState(patch,options);return;
   }
@@ -1536,6 +1544,8 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
   const target = state?.enemies?.find(enemy => text(enemy?.id) === text(targetEnemyId));
   if (!ctx || !state || !village || !attacker || !target || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
   if(remainingV39Turns(attacker.skillCooldownsByName?.[text(skillRow?.名前)],currentV39TurnNumber(state))>0)return false;
+  const defenseApCost=resolveAttackApCost(skillRow,attacker);
+  if(currentAp(attacker)<defenseApCost)return false;
   if (getHexDistance(attacker, target) > resolveAttackRange(skillRow, attacker, ctx.data)) return false;
   const area=buildAreaScaleMap(ctx.data,attacker,target,skillRow);
   if (!area.size) return false;
@@ -1553,7 +1563,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
   });
   const neutralVillages = replaceNeutralVillageGuards(state, (guard, sourceVillage) => (
     text(sourceVillage?.id) === text(villageId) && text(guard?.id) === text(guardId)
-      ? { ...guard, skillCooldownsByName:{...guard.skillCooldownsByName,[text(skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state),cooldownDurationTurns(skillRow))}, lastCombatTurn:currentV39TurnNumber(), lastStealthAttackTurn:currentV39TurnNumber(), lastStealthBreakTurn:currentV39TurnNumber(), lastStealthBreakReason:"attack" }
+      ? { ...guard,ap:Math.max(0,currentAp(guard)-defenseApCost),currentAp:Math.max(0,currentAp(guard)-defenseApCost),skillCooldownsByName:{...guard.skillCooldownsByName,[text(skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state),cooldownDurationTurns(skillRow))}, lastCombatTurn:currentV39TurnNumber(), lastStealthAttackTurn:currentV39TurnNumber(), lastStealthBreakTurn:currentV39TurnNumber(), lastStealthBreakReason:"attack" }
       : guard
   ));
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
@@ -1567,7 +1577,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
   const hits = entries.flatMap(entry=>(entry.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss"));
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{
     summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""}`,
-    attackerName:text(attacker.name), attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:0, target:area.impact, entries, villageAction:true
+    attackerName:text(attacker.name), attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:defenseApCost, target:area.impact, entries, villageAction:true
   } }));
   window.dispatchEvent(new CustomEvent("v39:attack-resolved", { detail:{
     attackerSide:"neutral-village", targetSide:"enemy", attackerId:text(attacker.id), targetUnitId:text(entries[0]?.targetId), target:area.impact, skillRow, entries
@@ -1576,23 +1586,47 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, s
 }
 
 function runNeutralVillageDefenseTurn() {
-  const state = window.getV39GameState?.({ includeWorlds:false });
-  if (!state) return { attacks:0 };
-  let attacks = 0;
-  for (const village of state.neutralVillages || []) {
-    for (const guard of village?.defenseUnits || []) {
-      if(guard.tradeAssignment)continue;
-      if (number(guard?.hp, guard?.currentHp) <= 0 || text(guard?.state) === "死亡") continue;
-      const skillRow = resolveActionSkillRows(guard).find(row => !isV39SupportSkill(row, guard));
-      if (!skillRow) continue;
-      const target = (window.getV39GameState?.({ includeWorlds:false })?.enemies || [])
-        .filter(enemy => number(enemy?.hp, enemy?.currentHp) > 0 && text(enemy?.state) !== "死亡")
-        .filter(enemy => getHexDistance(guard, enemy) <= resolveAttackRange(skillRow, guard, window.__v39FieldRuntime?.mapData))
-        .sort((left, right) => getHexDistance(guard, left)-getHexDistance(guard, right) || text(left?.id).localeCompare(text(right?.id), "ja"))[0];
-      if (target && performNeutralVillageGuardAttack({ villageId:village.id, guardId:guard.id, targetEnemyId:target.id, skillRow })) attacks += 1;
+  const initial=window.getV39GameState?.({includeWorlds:false}),map=window.__v39FieldRuntime?.mapData;
+  if(!initial||!map)return {attacks:0,moves:0};
+  const turn=currentV39TurnNumber(initial);let attacks=0,moves=0;
+  for(const village of initial.neutralVillages||[]){
+    if(village.abandoned)continue;
+    for(const original of village.defenseUnits||[]){
+      if(original.tradeAssignment||Number(original.hp??original.currentHp)<=0||original.lastDefenseTurn>=turn)continue;
+      const patchGuard=patch=>{const current=window.getV39GameState({includeWorlds:false});
+        window.setV39GameState({neutralVillages:replaceNeutralVillageGuards(current,(unit,source)=>source.id===village.id&&unit.id===original.id?{...unit,...patch}:unit)},{reason:'village-defense-move'});};
+      const safe=!(initial.enemies||[]).some(enemy=>Number(enemy.hp??enemy.currentHp)>0&&getHexDistance(enemy,village)<=npcDefense.villageDefenseRadius);
+      const hp=safe&&getHexDistance(original,village)<=1&&Number(original.lastCombatTurn||0)<turn-1
+        ?Math.min(Number(original.maxHp),Number(original.hp??original.currentHp)+Math.max(1,Math.floor(Number(original.maxHp)*npcDefense.safeRecoveryRate))):Number(original.hp??original.currentHp);
+      patchGuard({ap:100,currentAp:100,lastDefenseTurn:turn,hp,currentHp:hp});
+      for(let step=0;step<npcDefense.maximumActions;step++){
+        const state=window.getV39GameState({includeWorlds:false}),guard=state.neutralVillages.find(v=>v.id===village.id)?.defenseUnits.find(u=>u.id===original.id);
+        if(!guard||Number(guard.hp??guard.currentHp)<=0)break;
+        const targets=(state.enemies||[]).filter(enemy=>Number(enemy.hp??enemy.currentHp)>0&&enemy.state!=='死亡'
+          &&getHexDistance(enemy,village)<=npcDefense.villageDefenseRadius
+          &&(enemy.aggressive===true||enemy.metadata?.aggressive===true||enemy.aggroTargetUnitId===guard.id)
+          &&hasV39CaveLineOfSight(map,guard,enemy))
+          .sort((a,b)=>getHexDistance(guard,a)-getHexDistance(guard,b)||text(a.id).localeCompare(text(b.id)));
+        const target=targets[0],retreat=Number(guard.hp??guard.currentHp)/Math.max(1,Number(guard.maxHp))<npcDefense.retreatHpRate;
+        const skill=target&&!retreat?resolveActionSkillRows(guard).find(row=>!isV39SupportSkill(row,guard)
+          &&currentAp(guard)>=resolveAttackApCost(row,guard)
+          &&remainingV39Turns(guard.skillCooldownsByName?.[text(row.名前)],turn)<=0
+          &&getHexDistance(guard,target)<=resolveAttackRange(row,guard,map)):null;
+        if(skill&&performNeutralVillageGuardAttack({villageId:village.id,guardId:guard.id,targetEnemyId:target.id,skillRow:skill})){attacks++;continue;}
+        const goal=target&&!retreat?target:village;
+        if(!target&&getHexDistance(guard,village)<=1)break;
+        const occupied=new Set([...state.enemies,...state.players.flatMap(p=>p.factionState.units),...neutralVillageGuards(state)]
+          .filter(u=>Number(u.hp??u.currentHp)>0).map(u=>u.x+','+u.y));
+        const next=getHexNeighborCoords(map.w,map.h,guard.x,guard.y).filter(tile=>!occupied.has(tile.key)&&getHexDistance(tile,village)<=npcDefense.villageDefenseRadius
+          &&getHexDistance(tile,goal)<getHexDistance(guard,goal))
+          .map(tile=>({...tile,cost:resolveV39UnitMovementStepCost(map,guard.x,guard.y,tile.x,tile.y,guard)}))
+          .filter(tile=>tile.cost<=currentAp(guard)).sort((a,b)=>getHexDistance(a,goal)-getHexDistance(b,goal)||a.cost-b.cost)[0];
+        if(!next)break;
+        const ap=Math.max(0,currentAp(guard)-next.cost);patchGuard({x:next.x,y:next.y,position:[next.x,next.y],ap,currentAp:ap,lastMovedTurn:turn});moves++;
+      }
     }
   }
-  return { attacks };
+  return {attacks,moves};
 }
 
 function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {

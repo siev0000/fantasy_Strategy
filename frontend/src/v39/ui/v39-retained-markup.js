@@ -23,6 +23,7 @@ export function updateV39RetainedMarkup(host,markup,{preserveInput=false,preserv
         patch(current,source);
         if(expanded!==null)current.open=expanded;
         if((current.tagName==='INPUT'||current.tagName==='SELECT')&&!editing&&current.value!==source.value)current.value=source.value;
+        if(current.tagName==='INPUT'&&!editing&&['checkbox','radio'].includes(current.type)&&current.checked!==source.checked)current.checked=source.checked;
       }else if(current.nodeValue!==source.nodeValue)current.nodeValue=source.nodeValue;
       cursor=current.nextSibling;
     }

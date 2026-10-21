@@ -1,3 +1,4 @@
+import {hegemonyZoneAt} from './v39-hegemony-areas.js';
 import config from '../../../config/v39-atmosphere-display.json';
 import {projectV39HazardEvents,getV39ActiveHazardsAt} from './v39-hazard-zones.js';
 import {isV39FogTile,isV39DeathFogTile} from './v39-fog-rules.js';
@@ -55,5 +56,7 @@ export function inspectV39EnvironmentEffectsAt(data,state,x,y){
   if(!data.isUnderground)for(const event of state.worldEnvironment?.activeDisasters||[]){
     if(!event.persistentHazard&&(event.startsAtTurn??event.turn??0)<=turn&&event.expiresAtTurn>=turn&&event.tileKeys?.includes(key))effects.push({name:event.name||event.disasterId,remaining:event.expiresAtTurn-turn+1});
   }
+  const area=hegemonyZoneAt(data,x,y);
+  if(area)effects.push({name:area.zoneName,remaining:null,persistent:true,description:area.description});
   return effects;
 }

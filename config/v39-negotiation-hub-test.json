@@ -1,0 +1,10 @@
+{
+  "villages":[
+    {"key":"standard","name":"交渉の村","race":"只人","personality":"真面目","relation":0,"x":7,"y":7},
+    {"key":"friendly","name":"友好の村","race":"只人","personality":"温厚","relation":90,"x":17,"y":7},
+    {"key":"tribe","name":"ゴブリンの集落","race":"ゴブリン","personality":"豪胆","relation":-20,"x":7,"y":17},
+    {"key":"quiet","name":"守備兵不在の村","race":"只人","personality":"古風","relation":30,"x":17,"y":17,"noGuards":true}
+  ],
+  "testSkills":["TEST_交渉支援","TEST_威圧支援"],
+  "previewColumns":["交渉開始","好条件","悪条件","値下げ要求","値上げ要求","承諾","拒否","交渉成功","交渉失敗","脅迫","威圧","煽り","挑発","降伏要求","金品要求","終了"]
+}

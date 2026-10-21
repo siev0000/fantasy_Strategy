@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import {hegemonyZoneAt} from '../../lib/v39-hegemony-areas.js';
 import { visibleV39CaveTerrainLabel } from "../../lib/v39-cave-entrance-rules.js";
 import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
@@ -189,7 +190,8 @@ function drawTerrain(scene, data, graphics = scene.add.graphics()) {
   for (let y = 0; y < data.h; y += 1) {
     for (let x = 0; x < data.w; x += 1) {
       const terrain = String(data.grid?.[y]?.[x] || "海");
-      const base = data.isUnderground ? (terrain==="岩壁"?"#26353b":"#929079") : terrainColorMap.get(terrain) || "#607078";
+      const appearance=hegemonyZoneAt(data,x,y);
+      const base = appearance?.visualColor || (data.isUnderground ? (terrain==="岩壁"?"#26353b":"#929079") : terrainColorMap.get(terrain) || "#607078");
       const level = Number(data.heightLevelMap?.[y]?.[x]);
       const color = display.heightShading
         ? (terrain === "海" ? shadeSeaColorByDepth(base, level) : shadeColorByHeight(base, level))

@@ -59,10 +59,12 @@ SHEET_TO_JSON = {
     "装備": "装備.json",
     "勝利対象土地": "勝利対象土地.json",
     "特産品": "特産品.json",
+    "性格会話": "性格会話.json",
 }
 
 # すべてのキー項目が入っている行だけ重複検査する。
 UNIQUE_KEYS = {
+    "性格会話": ("性格",),
     "モンスター合成": ("素材", "合成結果"),
     "道具": ("名前",),
     "特産品": ("名前",),
@@ -363,6 +365,22 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
                 result.errors.append({"type": "invalid_member_count", "row": row_no,
                                       "header": "編成人数", "value": count,
                                       "message": "編成人数は1〜99の整数で指定してください"})
+        if sheet_name in ("出現敵", "特産品"):
+            for header in ("最低気温", "最高気温", "最低湿潤度", "最高湿潤度"):
+                if header in record and (isinstance(record[header], bool)
+                        or not isinstance(record[header], (int, float)) or not math.isfinite(record[header])):
+                    result.errors.append({"type": "invalid_spawn_temperature", "row": row_no,
+                                          "header": header, "value": record[header], "message": "気候条件は数値または空欄で指定してください"})
+            for low_key, high_key in (("最低気温", "最高気温"), ("最低湿潤度", "最高湿潤度")):
+                low, high = record.get(low_key), record.get(high_key)
+                if type(low) in (int, float) and type(high) in (int, float) and low > high:
+                    result.errors.append({"type": "invalid_spawn_temperature_range", "row": row_no,
+                                          "message": f"{low_key}は{high_key}以下にしてください"})
+            for header in ("最低湿潤度", "最高湿潤度"):
+                value = record.get(header)
+                if type(value) in (int, float) and not 0 <= value <= 100:
+                    result.errors.append({"type": "invalid_climate_humidity", "row": row_no, "header": header,
+                                          "message": "湿潤度は0〜100にしてください"})
         result.records.append(record)
 
     key_fields = UNIQUE_KEYS.get(sheet_name)

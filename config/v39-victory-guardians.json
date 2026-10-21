@@ -1,0 +1,30 @@
+{
+  "note": "勝利土地の守護者候補。固有クラス未登録時はrace/classNameを能力テンプレートとして使う。固有クラス登録後は同名クラスを優先する。",
+  "minionCandidates": {
+    "勝利対象:太陽の山": [{"race":"ホーク","className":"ソルアニマル"},{"race":"タイガー","className":"ソルアニマル"}],
+    "勝利対象:黄昏の樹": [{"race":"ウルフ","className":"ムーンアニマル"},{"race":"トレント","className":"トレント"}],
+    "勝利対象:星の火口": [{"race":"フレイムエレメンタル","className":"フレイムエレメンタル"},{"race":"ボア","className":"フレイムアニマル"},{"race":"フォックス","className":"フレイムアニマル"}],
+    "勝利対象:宇宙の海": [{"race":"スネーク","className":"シーアニマル"},{"race":"クロコダイル","className":"シーアニマル"},{"race":"ウォーターエレメンタル","className":"ウォーターエレメンタル"}]
+  },
+  "landmarks": {
+    "勝利対象:太陽の山": [
+      {"name":"白虎","race":"タイガー","className":"神獣","unique":true},
+      {"name":"スフィンクス","race":"ライオン","className":"幻獣","unique":true},
+      {"name":"応龍","race":"ドレイク","className":"神獣","unique":true}
+    ],
+    "勝利対象:黄昏の樹": [
+      {"name":"麒麟","race":"ホース","className":"神獣","unique":true},
+      {"name":"白沢","race":"ライオン","className":"神獣","unique":true},
+      {"name":"九尾狐","race":"フォックス","className":"神獣","unique":true}
+    ],
+    "勝利対象:星の火口": [
+      {"name":"朱雀","race":"ホーク","className":"神獣","unique":true,"lowerForm":"フェニックス"},
+      {"name":"サラマンダー","race":"リザード","className":"フレイムアニマル","unique":true}
+    ],
+    "勝利対象:宇宙の海": [
+      {"name":"玄武","race":"タートル","className":"神獣","unique":true},
+      {"name":"青龍","race":"スネーク","className":"神獣","unique":true},
+      {"name":"クラーケン","race":"ウォーターエレメンタル","className":"幻獣","unique":true}
+    ]
+  }
+}

@@ -1,4 +1,6 @@
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import {withV39ConversationPersonality} from '../../lib/v39-conversation-personality.js';
+import {withV39VillageLeader} from '../../lib/v39-village-leaders.js';
 import { createPlayerFactionState, createPlayerRecord } from "../../lib/player-state.js";
 import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "../../lib/settlement-state.js";
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
@@ -105,6 +107,10 @@ function normalizeWorldEnvironment(value = {}) {
 function normalizeEntityArray(value) {
   return Array.isArray(value) ? value.filter(Boolean).map(row => cloneValue(row, {})) : [];
 }
+function normalizeConversationEntities(value){
+  return normalizeEntityArray(value).map(row=>({...withV39ConversationPersonality(row),
+    ...(Array.isArray(row.defenseUnits)?{defenseUnits:row.defenseUnits.map(unit=>withV39ConversationPersonality(unit))}:{})}));
+}
 
 function firstFiniteUnitNumber(values, fallback = 0) {
   for (const value of values) {
@@ -126,7 +132,7 @@ function normalizeUnitCommonAp(unit = {}) {
     unit?.currentAp,
     unit?.actionPoint
   ], maxAp))));
-  return { ...unit, maxAp, ap, currentAp:ap, actionPoint:ap };
+  return { ...withV39ConversationPersonality(unit), maxAp, ap, currentAp:ap, actionPoint:ap };
 }
 
 function normalizeUnitArray(value) {
@@ -200,8 +206,8 @@ function normalizeState(input = {}) {
     dangerPercentByTile: cloneRecord(input.dangerPercentByTile),
     facilitiesByTile: cloneRecord(input.facilitiesByTile),
     settlements: deriveWorldSettlements(players, input.settlements),
-    neutralVillages: normalizeEntityArray(input.neutralVillages),
-    wandererGroups: normalizeEntityArray(input.wandererGroups),
+    neutralVillages: normalizeConversationEntities(input.neutralVillages).map(withV39VillageLeader),
+    wandererGroups: normalizeConversationEntities(input.wandererGroups),
     territoryStateByTile: Object.fromEntries(Object.entries(cloneRecord(input.territoryStateByTile))
       .map(([key, value]) => [key, normalizeTerritoryStateRecord(value)])),
     recoveryPercentByTile: cloneRecord(input.recoveryPercentByTile),
@@ -379,8 +385,8 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "dangerPercentByTile")) next.dangerPercentByTile = cloneRecord(patch.dangerPercentByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "facilitiesByTile")) next.facilitiesByTile = cloneRecord(patch.facilitiesByTile);
   if (Object.prototype.hasOwnProperty.call(patch, "settlements")) next.settlements = normalizeEntityArray(patch.settlements);
-  if (Object.prototype.hasOwnProperty.call(patch, "neutralVillages")) next.neutralVillages = normalizeEntityArray(patch.neutralVillages);
-  if (Object.prototype.hasOwnProperty.call(patch, "wandererGroups")) next.wandererGroups = normalizeEntityArray(patch.wandererGroups);
+  if (Object.prototype.hasOwnProperty.call(patch, "neutralVillages")) next.neutralVillages = normalizeConversationEntities(patch.neutralVillages).map(withV39VillageLeader);
+  if (Object.prototype.hasOwnProperty.call(patch, "wandererGroups")) next.wandererGroups = normalizeConversationEntities(patch.wandererGroups);
   if (Object.prototype.hasOwnProperty.call(patch, "territoryStateByTile")) next.territoryStateByTile = Object.fromEntries(
     Object.entries(cloneRecord(patch.territoryStateByTile)).map(([key, value]) => [key, normalizeTerritoryStateRecord(value)])
   );

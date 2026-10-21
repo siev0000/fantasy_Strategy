@@ -1,3 +1,4 @@
+import {hegemonyLightMultiplier} from './v39-hegemony-areas.js';
 import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { getV39UnitTestSkillRows } from "./v39-test-skill-rules.js";
@@ -342,7 +343,9 @@ export function resolveAttackPower(skillRow, attacker, options = {}) {
 export function computeAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, random = Math.random, isCounter = false, damageType = '' }) {
   const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, { isCounter });
   target=resolveV39PassiveContext(target,passiveActionContext(target,skillRow),{isCounter:false}).unit;
-  const power = resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[] });
+  const runtime=globalThis.window?.__v39FieldRuntime;
+  const areaScale=runtime?.mapData?.hegemonyInterior?hegemonyLightMultiplier(runtime.mapData,attacker,damageType||strongestDamageType(adjusted.skillRow),globalThis.window?.getV39GameState?.({includeWorlds:false})?.activeWorldId):1;
+  const power = resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[] })*areaScale;
   const magicalJudge = text(adjusted.skillRow?.判定).includes("魔");
   const defenseKey = magicalJudge ? "精神" : "防御";
   const defense = Math.max(0, number(target?.status?.[defenseKey], 0));

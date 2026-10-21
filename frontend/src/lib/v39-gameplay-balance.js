@@ -380,10 +380,11 @@ export const V39_VICTORY_GUARD_BALANCE = Object.freeze({
   bossLevel:40,
   // 大都市相当の占有半径1と、その外側2リングを含む守護領域。
   territoryRadius:3,
-  // ボスに加える同種配下の人数。0にすればボス単独へ変更できる。
-  minionCount:1,
+  // 登録済みの土地別候補から選ぶ配下数。0ならボス単独。
+  minionCount:2,
   // 配下LvをボスLvから下げる値。最低Lvは1。
-  minionLevelOffset:2
+  minionLevelOffset:20,
+  minionLevelVariance:5
 });
 
 // 勝利対象土地の確保条件。地点数は通常生成数に合わせて調整する。
@@ -430,7 +431,7 @@ export const V39_FOG_BALANCE = Object.freeze({
   deathAttribute:"死霊",
   displayColor:0xc7dce2,
   // 共通の霧・災害着色は重複数にかかわらずこの濃さを上限にする。
-  displayAlpha:0.42
+  displayAlpha:0.75
 });
 export const V39_QUEST_BALANCE = Object.freeze({
   // シート未定義の交流・守護者依頼用の暫定値。

@@ -17,7 +17,7 @@ try{
       return {meta:layer.getData('atmosphere'),icons:icons.length,alpha:layer.list.map(item=>item.alpha)};
     });
     assert(initial.meta.combinations.includes('miasma'));assert(initial.meta.combinations.includes('heat'));assert(initial.meta.combinations.includes('cold'));
-    assert.equal(initial.icons,3);assert(initial.alpha.every(a=>a>=.3&&a<=.5));
+    assert.equal(initial.icons,3);assert(initial.alpha.every(a=>a===.75));
     await page.evaluate(()=>{window.forceV39Disaster('災害:熱波',{x:4,y:14});window.renderV39Visibility();});
     await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.getByName('v39-atmosphere-fog-layer').getData('atmosphere').combinations.includes('miasma|heat'));
     await page.locator('#v39-test-disaster-fixture').selectOption('災害:瘴気');

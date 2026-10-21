@@ -4,13 +4,14 @@ import {advanceV39CaveFormation} from './v39-squad-movement-rules.js';
 import {resolveV39UnitMovementStepCost,canUnitEnterV39Tile} from './v39-terrain-traversal.js';
 import {resolveV39CargoLoad} from './v39-logistics-state.js';
 import {listV39Trades,updateV39Trade,tradeBank,changeTradeBank,tradeMembers,tradeAlive,tradeTurn,
-  updateTradeUnits,getTradeCargo,setTradeCargo,tradeCapacity,tradeSpeed,tradeReserveAmount,V39_TRADE_RESOURCES} from './v39-trade-state.js';
+  updateTradeUnits,getTradeCargo,setTradeCargo,tradeCapacity,tradeSpeed,tradeReserveAmount,V39_TRADE_RESOURCES,tradeCourierIndex} from './v39-trade-state.js';
 import {getV39SpecialtyAccess} from './v39-specialty-rules.js';
 import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 const n=value=>Number(value)||0;
 const pointKey=row=>`${row.x},${row.y}`;
 const hasGoods=(bag,goods)=>Object.entries(goods).every(([resource,amount])=>n(bag?.[resource])+0.01>=amount);
 function assign(state,side,id,automatic) {
+  if(!side.memberIds?.length)return state;
   return updateTradeUnits(state,side,unit=>side.memberIds.includes(unit.id)?{...unit,tradeAssignment:id?{contractId:id,automatic}:undefined}:unit);
 }
 function occupied(state,side) {
@@ -74,7 +75,17 @@ export function advanceV39TradeLogistics(state,playerId,map,turn=tradeTurn(state
   for(const source of listV39Trades(state)) {
     if(!['active','cancelling'].includes(source.status))continue;
     let contract=structuredClone(source);
-    for(const side of contract.sides) {
+    const courier=tradeCourierIndex(contract);
+    if(courier>=0&&contract.status==='active'&&['collecting','waiting'].includes(contract.sides[1-courier].stage)){
+      const receiver=tradeBank(next,contract.sides[1-courier]);
+      if(!receiver||receiver.x!==contract.sides[1-courier].center.x||receiver.y!==contract.sides[1-courier].center.y){next=interrupt(next,contract,'受渡拠点を失ったか、位置が変わりました');continue;}
+    }
+    for(const [index,side] of contract.sides.entries()) {
+      if(courier>=0&&index!==courier){
+        if(side.stage==='collecting'&&hasGoods(side.reserved,side.goods))side.stage='waiting';
+        if(side.stage==='returning')side.stage='returned';
+        continue;
+      }
       if(npcOnly?side.kind!=='village':side.kind!=='player'||side.partyId!==playerId)continue;
       if(side.lastMoveTurn>=turn)continue;
       side.lastMoveTurn=turn;
@@ -107,13 +118,13 @@ export function advanceV39TradeLogistics(state,playerId,map,turn=tradeTurn(state
       }
     }
     if(contract.status==='active'&&contract.sides.every(side=>side.stage==='waiting')&&turn>=contract.dueTurn&&turn<=contract.dueTurn+contract.grace) {
-      const cargos=contract.sides.map(side=>getTradeCargo(next,side));
+      const cargos=contract.sides.map((side,index)=>courier>=0&&courier!==index?{resourcesByType:side.reserved}:getTradeCargo(next,side));
       const members=contract.sides.map(side=>tradeMembers(next,side));
-      if(contract.sides.some((side,index)=>!hasGoods(cargos[index].resourcesByType,side.goods)||members[index].length!==side.memberIds.length||members[index].some(unit=>!tradeAlive(unit)||(unit.worldId||'surface')!=='surface')||!inMeeting(members[index].find(unit=>unit.id===side.unitId),contract))
-        ||getHexDistance(members[0].find(unit=>unit.id===contract.sides[0].unitId),members[1].find(unit=>unit.id===contract.sides[1].unitId))>1) {
+      if(contract.sides.some((side,index)=>!hasGoods(cargos[index].resourcesByType,side.goods)||((courier<0||courier===index)&&(members[index].length!==side.memberIds.length||members[index].some(unit=>!tradeAlive(unit)||(unit.worldId||'surface')!=='surface')||!inMeeting(members[index].find(unit=>unit.id===side.unitId),contract))))
+        ||(courier<0&&getHexDistance(members[0].find(unit=>unit.id===contract.sides[0].unitId),members[1].find(unit=>unit.id===contract.sides[1].unitId))>1)) {
         next=interrupt(next,contract,'交換前の物資/到着条件が変わりました');continue;
       }
-      if(contract.sides.some((side,index)=>Object.values(contract.sides[1-index].goods).reduce((sum,value)=>sum+n(value),0)>tradeCapacity(members[index]))) {
+      if(contract.sides.some((side,index)=>(courier<0||courier===index)&&Object.values(contract.sides[1-index].goods).reduce((sum,value)=>sum+n(value),0)>tradeCapacity(members[index]))) {
         next=interrupt(next,contract,'受け取る荷物を一度に運べません');continue;
       }
       // 双方を検証してから、同じstateの書込みで交換する。
@@ -130,6 +141,10 @@ export function advanceV39TradeLogistics(state,playerId,map,turn=tradeTurn(state
         if(Object.keys(release).length)next=changeTradeBank(next,contract.sides[i],release,1).state;
       }
       for(let i=0;i<2;i++) {
+        if(courier>=0&&i!==courier){
+          const incoming=Object.fromEntries(Object.entries(contract.sides[1-i].goods).filter(([name])=>!V39_TRADE_RESOURCES.find(row=>row.name===name)?.specialty));
+          next=changeTradeBank(next,contract.sides[i],incoming,1).state;contract.sides[i].reserved={};contract.sides[i].stage='returned';continue;
+        }
         const bag={...cargos[i].resourcesByType};
         for(const [name,amount] of Object.entries(contract.sides[i].goods))bag[name]=Math.max(0,n(bag[name])-amount);
         for(const [name,amount] of Object.entries(contract.sides[1-i].goods))if(!V39_TRADE_RESOURCES.find(row=>row.name===name)?.specialty)bag[name]=n(bag[name])+amount;

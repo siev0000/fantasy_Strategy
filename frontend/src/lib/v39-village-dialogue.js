@@ -4,11 +4,12 @@ import {acceptV39NeutralVillageQuest,completeV39NeutralVillageQuest,changeV39Que
 import {getSelectedSettlement} from './settlement-state.js';
 import {FOOD_RESOURCE_KEYS,MATERIAL_RESOURCE_KEYS} from './v39-economy-rules.js';
 import {V39_QUEST_BALANCE} from './v39-gameplay-balance.js';
+import {findV39VillageQuest} from './v39-village-quest-log.js';
 
 const fail=(state,reason)=>({ok:false,state,reason});
 const playerOf=state=>state.players.find(row=>row.id===state.activePlayerId);
 const villageOf=(state,id)=>state.neutralVillages?.find(row=>row.id===id);
-const questOf=(state,id)=>villageOf(state,id)?.questsByPlayerId?.[state.activePlayerId];
+const questOf=(state,id,eventId)=>eventId?findV39VillageQuest(villageOf(state,id),state.activePlayerId,eventId):villageOf(state,id)?.questsByPlayerId?.[state.activePlayerId];
 const sessionsOf=state=>playerOf(state)?.factionState.eventDialogueById||{};
 const resourceKind=name=>FOOD_RESOURCE_KEYS.includes(name)?'food':MATERIAL_RESOURCE_KEYS.includes(name)?'material':'';
 const fieldOf=name=>resourceKind(name)==='food'?'foodStockByType':'materialStockByType';
@@ -18,6 +19,7 @@ const alive=unit=>Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
 function accessReason(state,villageId) {
   const village=villageOf(state,villageId),player=playerOf(state);
   if(!village||!player)return '会話相手またはプレイヤーがいません';
+  if(village.abandoned)return '廃村には会話できる住民がいません';
   if((state.activeWorldId||'surface')!=='surface'||state.timeline?.phase!=='player')return '地上の操作ターンに会話してください';
   if(!player.factionState.units.some(unit=>alive(unit)&&(unit.worldId||'surface')==='surface'
     &&(village.territoryTileKeys||[`${village.x},${village.y}`]).includes(`${unit.x},${unit.y}`)))return '村の領域に生存ユニットを移動してください';
@@ -26,7 +28,7 @@ function accessReason(state,villageId) {
 
 function adapters(definition,mapData) {
   const ownedQuest=ctx=>{
-    const quest=questOf(ctx.state,ctx.contextId);
+    const quest=questOf(ctx.state,ctx.contextId,definition.ID);
     return quest?.dialogueEventId===definition.ID&&quest.accepted&&!quest.completed?quest:null;
   };
   return {
@@ -68,7 +70,7 @@ function adapters(definition,mapData) {
           numberedDefinition:structuredClone(definition)};
         working=updateV39NeutralVillageState(result.state,{...village,questsByPlayerId:{...village.questsByPlayerId,[context.playerId]:quest}});
       }
-      const quest=questOf(working,context.contextId);
+      const quest=questOf(working,context.contextId,definition.ID);
       if(complete&&(!quest||quest.dialogueEventId!==definition.ID||quest.dialogueQuestKey!==complete.設定.対象||quest.completed))return fail(state,'この会話の受注中依頼がありません');
       // The common delivery handler charges the goal itself. Do not charge a sheet cost twice.
       let covered=complete&&quest.type==='delivery'?Math.max(0,quest.required-(quest.progress||0)):0;
@@ -81,11 +83,12 @@ function adapters(definition,mapData) {
         working=result.state;
       }
       if(complete) {
-        const result=completeV39NeutralVillageQuest(working,context.playerId,context.contextId,{fromDialogue:true});
+        const result=completeV39NeutralVillageQuest(working,context.playerId,context.contextId,{fromDialogue:true,eventId:definition.ID});
         if(!result.ok)return result;
         working=result.state;
       }
       for(const term of choice.報酬) {
+        if(quest?.rewardTerms&&term.タイプ==='資源')continue;
         let village=villageOf(working,context.contextId);
         if(term.タイプ==='一般村友好度変更') {
           working=updateV39NeutralVillageState(working,changeV39NeutralVillageRelation(village,context.playerId,Number(term.設定?.値)||0));
@@ -110,7 +113,7 @@ export function openV39VillageDialogue(state,definition,villageId,mapData) {
   if(definition?.分類!=='一般村'||inspectV39NumberedDialogue(definition).length)return fail(state,'未対応の会話定義です');
   const sessions=Object.values(sessionsOf(state)).filter(row=>row.contextId===villageId&&row.eventId===definition.ID);
   const active=sessions.find(row=>!row.closed);
-  const quest=questOf(state,villageId),pending=quest?.dialogueEventId===definition.ID&&!quest.completed;
+  const quest=questOf(state,villageId,definition.ID),pending=quest?.dialogueEventId===definition.ID&&!quest.completed;
   const turn=state.timeline.turnNumber;
   const last=villageOf(state,villageId).eventCompletedTurnByPlayerId?.[state.activePlayerId]?.[definition.ID];
   const repeat=definition.再発生===true&&last!=null&&turn>=last+(definition.クールダウン||0)&&!pending;

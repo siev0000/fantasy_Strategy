@@ -373,11 +373,16 @@ export async function advanceTurn(options = {}) {
       showV39TurnLoading(`${stageNames[stage]}処理中…`);
       await paintV39TurnLoading();
       const startedAt = performance.now();
-      const targets=["exploration","world"].includes(stage)?worldIds
+      const targets=["exploration","world","ai"].includes(stage)?worldIds
         :[worldIds.includes("surface")?"surface":visibleWorldId];
       for(const worldId of targets.length?targets:[visibleWorldId]){
         // 地下に都市・天候はない。全体の研究・外交・消費は一度だけ進める。
-        if(worldId!=="surface"&&["terrain","ai"].includes(stage))continue;
+        if(worldId!=='surface'&&stage==='terrain')continue;
+        if(worldId!=='surface'&&stage==='ai'){
+          const snapshot=window.getV39EnemyTurnState();
+          if(!snapshot.explorationWorlds?.[worldId]?.map?.hegemonyInterior
+            ||!snapshot.players.some(player=>player.isPlayer===false&&player.factionState.units.some(unit=>unit.worldId===worldId&&Number(unit.hp??unit.currentHp)>0)))continue;
+        }
         await withV39WorldContext(worldId,()=>{
           if(stage==="terrain") advanceV39NaturalFog(window.__v39FieldRuntime?.mapData,nextTurn);
           dispatchTurnStage(stage,nextTurn);
@@ -453,6 +458,8 @@ export async function advanceTurn(options = {}) {
       activePlayerId:completedTimeline.activeTurnPlayerId,
       timeline:completedTimeline
     }, { reason:"turn-complete" });
+    window.resolveV39PendingWorldExits?.();
+    window.advanceV39NpcHegemonyTravel?.();
     renderControls();
     showBanner(`プレイヤーターン ${nextTurn}`);
     window.dispatchEvent(new CustomEvent("v39:turn-phase-changed", { detail:{ phase:V39_TURN_PHASE.PLAYER, turnNumber:nextTurn } }));

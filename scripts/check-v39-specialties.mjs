@@ -6,7 +6,7 @@ const page = await browser.newPage({ viewport:{ width:440,height:956 } });
 const errors=[];
 page.on("pageerror", error => errors.push(String(error)));
 try {
-  await page.goto("http://127.0.0.1:3022", {waitUntil:"networkidle"});
+  await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3024", {waitUntil:"networkidle"});
   await page.waitForFunction(()=>typeof window.startV39LocalSession==="function");
   const report=await page.evaluate(async()=>{
     const survey=await import("/src/lib/v39-exploration-rules.js");

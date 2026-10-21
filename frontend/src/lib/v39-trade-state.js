@@ -16,6 +16,8 @@ const round=value=>Math.round(value*10)/10;
 export const tradeAlive=unit=>n(unit?.hp??unit?.currentHp)>0&&unit.state!=='死亡';
 const failure=(state,reason)=>({ok:false,state,reason});
 export const tradeTurn=state=>Math.max(1,n(state.timeline?.turnNumber));
+// Old saves without a delivery mode keep their two-party rendezvous behavior.
+export const tradeCourierIndex=contract=>contract.deliveryMode==='proposer'?0:contract.deliveryMode==='partner'?1:-1;
 export const listV39Trades=state=>(state.players||[]).flatMap(player=>player.factionState.tradeContracts||[]).sort((a,b)=>(a.acceptedOrder??a.sequence)-(b.acceptedOrder??b.sequence));
 export function updateV39Trade(state,contract) {
   return {...state,players:state.players.map(player=>player.id!==contract.ownerId?player:{...player,factionState:{...player.factionState,
@@ -23,7 +25,7 @@ export function updateV39Trade(state,contract) {
 }
 export function tradeBank(state,side) {
   const bank=side.kind==='village'?state.neutralVillages?.find(row=>row.id===side.partyId):state.players.find(row=>row.id===side.partyId)?.factionState.settlements?.find(row=>(row.settlementId||row.id)===side.settlementId);
-  if(!bank)return bank;
+  if(!bank||bank.abandoned)return null;
   const holdings=getV39SpecialtyAccess(state,side.partyId,{settlementId:side.settlementId,includeBorrowed:false});
   return {...bank,specialtyStockByType:Object.fromEntries(holdings.map(row=>[row.name,Math.max(0,row.count-n(bank.specialtyReservedByType?.[row.name]))]))};
 }
@@ -94,14 +96,15 @@ function hasAdjacentMeetingTiles(sides) {
   }
   return false;
 }
-function validateSide(state,side,assign=false) {
+function validateSide(state,side,assign=false,travels=true) {
   const bank=tradeBank(state,side),members=tradeMembers(state,side);
-  if(!bank||!members.length||members.some(unit=>!tradeAlive(unit)||(unit.worldId||'surface')!=='surface'))return '地上の生存担当者と取引拠点を選択してください';
+  if(!bank)return '取引拠点を選択してください';
+  if(travels&&(!members.length||members.some(unit=>!tradeAlive(unit)||(unit.worldId||'surface')!=='surface')))return '地上の生存担当者と取引拠点を選択してください';
   if(!side.center||![side.center.x,side.center.y,side.radius].every(Number.isSafeInteger)||side.center.x<0||side.center.y<0||side.radius<0||side.radius>config.maxRadius)return '待ち合わせマス・範囲が不正です';
   const entries=Object.entries(side.goods||{});
   if(entries.some(([resource,amount])=>!V39_TRADE_RESOURCES.some(row=>row.name===resource)||!Number.isInteger(amount)||amount<1))return '物資と整数の数量を指定してください';
-  if(entries.reduce((sum,[,amount])=>sum+amount,0)>tradeCapacity(members))return '1回の取引量が部隊の積載量を超えています';
-  if(assign) {
+  if(travels&&entries.reduce((sum,[,amount])=>sum+amount,0)>tradeCapacity(members))return '1回の取引量が部隊の積載量を超えています';
+  if(assign&&travels) {
     if(members.some(unit=>unit.tradeAssignment||unit.transportAssignment||unit.caveDuty||unit.movementHold||unit.isSummoned))return '部隊に他の任務中・その場待機・召喚のメンバーがいます';
     if(side.kind==='player') {
       const faction=state.players.find(row=>row.id===side.partyId).factionState;
@@ -118,22 +121,31 @@ export function proposeV39Trade(state,playerId,request) {
   const sides=(request.sides||[]).map(side=>({kind:side.kind,partyId:side.partyId,settlementId:side.settlementId,unitId:side.unitId,
     center:structuredClone(side.center),radius:side.radius,goods:structuredClone(side.goods||{})}));
   if(sides.length!==2||sides[0].kind!=='player'||sides[0].partyId!==playerId||sides[0].partyId===sides[1].partyId)return failure(state,'相手を選択してください');
+  const deliveryMode=request.deliveryMode??'meeting',courier=tradeCourierIndex({deliveryMode});
+  if(!['proposer','partner','meeting'].includes(deliveryMode))return failure(state,'使者の配送方式が不正です');
+  if(courier>=0){
+    const receiver=tradeBank(state,sides[1-courier]);if(!receiver)return failure(state,'受渡拠点がありません');
+    sides.forEach(side=>{side.center={x:receiver.x,y:receiver.y};side.radius=1;});sides[1-courier].unitId='';
+  }else if(request.deliveryMode==='meeting'){
+    sides[1].center=structuredClone(sides[0].center);sides[1].radius=sides[0].radius;
+  }
   const dueTurn=n(request.dueTurn),grace=n(request.grace),period=n(request.period),cycles=n(request.cycles);
   const specialtyTurns=request.specialtyTurns??V39_SPECIALTY_BALANCE.tradeLoanTurns;
   if(!Number.isInteger(specialtyTurns)||specialtyTurns<1||specialtyTurns>100)return failure(state,'特産品の貸出期間は1〜100ターンで指定してください');
   if(!Number.isInteger(dueTurn)||dueTurn<=tradeTurn(state)||!Number.isInteger(grace)||grace<3||grace>config.maxGrace||!Number.isInteger(period)||period<0||!Number.isInteger(cycles)||cycles<1||cycles>100)return failure(state,'取引日・猶予・周期・回数が不正です');
   if(period&&period<=grace)return failure(state,'定期取引の周期は猶予より長くしてください');
   if(getHexDistance(sides[0].center||{},sides[1].center||{})>n(sides[0].radius)+n(sides[1].radius))return failure(state,'指定範囲が重なりません');
-  for(const side of sides){const reason=validateSide(state,side,true);if(reason)return failure(state,reason);}
-  if(!hasAdjacentMeetingTiles(sides))return failure(state,'共通範囲に双方が停止できる隣接2マスが必要です。許容範囲を広げてください');
+  for(let i=0;i<2;i++){const reason=validateSide(state,sides[i],true,courier<0||courier===i);if(reason)return failure(state,reason);}
+  if(courier<0&&!hasAdjacentMeetingTiles(sides))return failure(state,'共通範囲に双方が停止できる隣接2マスが必要です。許容範囲を広げてください');
   if(!sides.some(side=>Object.keys(side.goods).length))return failure(state,'取引する物資を指定してください');
   if(request.method==='mail'&&Object.keys(sides[1].goods).length)return failure(state,'郵送の受取側は提供数量を0にしてください');
-  for(let i=0;i<2;i++)if(Object.values(sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,sides[i])))return failure(state,'受け取る物資が担当部隊の積載量を超えています');
+  for(let i=0;i<2;i++)if((courier<0||courier===i)&&Object.values(sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,sides[i])))return failure(state,'受け取る物資が担当部隊の積載量を超えています');
   const firstReserve=Object.fromEntries(Object.entries(sides[0].goods).map(([name,amount])=>[name,tradeReserveAmount(name,amount)]));
   if(Object.entries(firstReserve).some(([name,amount])=>tradeBankAmount(tradeBank(state,sides[0]),name)<amount))return failure(state,'手持ちから次回分の1/3を確保できません');
   const books=listV39Trades(state),sequence=Math.max(0,...books.map(row=>row.sequence))+1;
   const contract={id:`trade-${playerId}-${sequence}`,ownerId:playerId,sequence,status:'proposed',sides,dueTurn,grace,period,cycles:period?cycles:1,completedCycles:0,method:request.method==='mail'?'mail':'exchange',negotiation:request.negotiation==='intimidation'?'intimidation':'normal',createdTurn:tradeTurn(state),history:[]};
-  contract.negotiatorId=request.negotiatorId||sides[0].unitId;
+  contract.deliveryMode=deliveryMode;
+  contract.negotiatorId=request.negotiatorId||request.sides[0].unitId;
   contract.specialtyTurns=specialtyTurns;
   return {ok:true,state:updateV39Trade(state,contract),contract,message:'取引条件を提案しました。相手の承諾待ちです'};
 }
@@ -142,16 +154,18 @@ export function acceptV39Trade(state,playerId,id,random=Math.random) {
   if(source?.status!=='proposed'||(source.sides[1].kind==='player'?playerId!==source.sides[1].partyId:playerId!==source.ownerId)||state.activePlayerId!==playerId)return failure(state,'この提案を承諾できません');
   if(state.timeline?.phase!=='player'||source.dueTurn<=tradeTurn(state))return failure(state,'操作ターンに、未来の取引日で再提案してください');
   const contract=structuredClone(source);let next=state;
+  const courier=tradeCourierIndex(contract);
   contract.negotiatorId ||= contract.sides[0].unitId;
-  for(let i=0;i<2;i++)if(Object.values(contract.sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,contract.sides[i])))return failure(state,'受け取る物資が現在の部隊積載量を超えています');
-  for(const side of contract.sides) {
-    const reason=validateSide(next,side,true);if(reason)return failure(state,reason);
-    side.memberIds=tradeMembers(next,side).map(unit=>unit.id);side.stage='collecting';side.reserved={};
+  for(let i=0;i<2;i++)if((courier<0||courier===i)&&Object.values(contract.sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,contract.sides[i])))return failure(state,'受け取る物資が現在の部隊積載量を超えています');
+  for(const [i,side] of contract.sides.entries()) {
+    const travels=courier<0||courier===i,reason=validateSide(next,side,true,travels);if(reason)return failure(state,reason);
+    if(!travels)side.unitId='';
+    side.memberIds=travels?tradeMembers(next,side).map(unit=>unit.id):[];side.stage='collecting';side.reserved={};
     for(const [resource,amount] of Object.entries(side.goods))side.reserved[resource]=tradeReserveAmount(resource,amount);
-    const payment=changeTradeBank(next,side,side.reserved,-1);if(!payment.ok)return failure(state,payment.reason);next=payment.state;
+    const payment=changeTradeBank(next,side,side.reserved,-1);if(!payment.ok)return failure(state,side.kind==='village'?'相手はこの条件の物資を用意できません':payment.reason);next=payment.state;
   }
   if(contract.sides[1].kind==='village') {
-    const terms=[contract.negotiation,contract.method,contract.specialtyTurns,contract.dueTurn,contract.grace,contract.period,contract.cycles,contract.sides.map(side=>[side.settlementId,[side.center.x,side.center.y],side.radius,Object.entries(side.goods).sort()])];
+    const terms=[contract.negotiation,contract.method,contract.deliveryMode,contract.specialtyTurns,contract.dueTurn,contract.grace,contract.period,contract.cycles,contract.sides.map(side=>[side.settlementId,[side.center.x,side.center.y],side.radius,Object.entries(side.goods).sort()])];
     const charged=chargeV39Negotiation(state,playerId,contract.negotiatorId,contract.sides[1].partyId,terms);if(!charged.ok)return charged;
     state=charged.state;
     next={...next,players:next.players.map(row=>{const paid=state.players.find(p=>p.id===row.id);return row.id!==playerId?row:{...row,factionState:{...row.factionState,units:paid.factionState.units,negotiationAttempts:paid.factionState.negotiationAttempts}};})};
@@ -162,7 +176,7 @@ export function acceptV39Trade(state,playerId,id,random=Math.random) {
     const burden=requested/Math.max(1,offered)*(contract.cycles>1?Math.max(1,5/contract.period):1)+stockBurden;
     const chance=Math.max(.05,Math.min(.95,config.npcBaseChance+(skill+n(village.relationsByPlayerId?.[playerId]))/config.npcSkillDivisor-burden*config.npcBurdenRate));
     contract.npcChance=chance;
-    if(random()>=chance){contract.status='rejected';return {ok:true,state:updateV39Trade(state,contract),message:`村が条件を拒否しました（暫定成功率${Math.round(chance*100)}%）`};}
+    if(random()>=chance){contract.status='rejected';return {ok:true,state:updateV39Trade(state,contract),message:'村が条件を拒否しました'};}
     if(contract.negotiation==='intimidation')next=updateTradeBank(next,contract.sides[1],{...tradeBank(next,contract.sides[1]),relationsByPlayerId:{...village.relationsByPlayerId,[playerId]:Math.max(-100,n(village.relationsByPlayerId?.[playerId])-10)}});
   }
   contract.status='active';contract.acceptedTurn=tradeTurn(state);contract.acceptedOrder=Math.max(0,...listV39Trades(state).map(row=>n(row.acceptedOrder)))+1;

@@ -1,8 +1,9 @@
 import { enemySpawnData } from "./game-data-registry.js";
-import { resolveAnimalArtworkReference } from "./animal-artwork-config.js";
+import { resolveAnimalArtworkReference, getArtworkClassNames } from "./animal-artwork-config.js";
 import {resolveUndeadArtworkReference} from './undead-artwork-config.js';
 import {migrateRetiredMonsterArtwork} from './retired-monster-artwork.js';
 import {resolveYokaiArtworkReference} from './yokai-artwork-config.js';
+import {resolveBeastArtworkReference} from './beast-artwork-config.js';
 
 const MONSTER_SHEET_COLUMNS = 4;
 const MONSTER_SHEET_ROWS = 3;
@@ -142,11 +143,14 @@ function resolveReferenceFromEnemy(enemy) {
   const baseRace=text(enemy?.race || enemy?.種族 || enemy?.raceName);
   // A sheet-defined wolf + ghost beast is not itself a resurrected ghost.
   const namedGhostBeast=!enemy?.undeadOrigin&&baseRace!=='ゴースト'
-    &&text(enemy?.className || enemy?.サブクラス)==='ゴースト'&&resultNames.some(name=>{
+    &&undead?.fileName==='アンデッド・霊体系_ユニット集.webp'&&undead.slotNumber===6
+    &&getArtworkClassNames(enemy).includes('ゴースト')&&resultNames.some(name=>{
       const ref=monsterSheetReferenceByName.get(name);
       return ref?.race===baseRace&&ref?.className==='ゴースト';
     });
   if(undead&&!namedGhostBeast&&!namedYokaiFusion)return undead;
+  const beastReference=resolveBeastArtworkReference(enemy);
+  if(beastReference)return beastReference;
   const directFileName = text(
     enemy?.画像ファイル
     ?? enemy?.imageFile

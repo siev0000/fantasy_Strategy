@@ -4,6 +4,7 @@ import { V39_SPECIALTY_BALANCE } from "./v39-gameplay-balance.js";
 import { resolveV39ResourceIcon } from "./resource-icon-glyphs.js";
 import { resolveCompletedResearchLevel } from "./research-progress.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
+import {createV39ClimateLookup,matchesV39ClimateConditions} from './v39-climate-conditions.js';
 
 const text = value => String(value ?? "").trim();
 const terrainAliases = new Map(getGameDataRows("地形").flatMap(row => {
@@ -42,6 +43,7 @@ export function generateV39Specialties(map, {
   minimumResourceRegionTiles = V39_SPECIALTY_BALANCE.minimumResourceRegionTiles,
 } = {}) {
   const reserved = new Set(reservedTileKeys);
+  const climateAt=createV39ClimateLookup(map);
   const candidates = definitions.map(row => ({ row, conditions:parseV39SpecialtyTerrainConditions(row.出現地形) }));
   const result = {};
   const resourceCandidates = new Map(candidates.filter(({row}) => text(row.分類) === "特殊資源" && Number(row.出現重み ?? 1) > 0).map(({row}) => [row, []]));
@@ -50,11 +52,12 @@ export function generateV39Specialties(map, {
     if (reserved.has(key) || map?.lavaMap?.[y]?.[x]) continue;
     const terrains = [text(map?.grid?.[y]?.[x]), text(map?.specialMap?.[y]?.[x])].map(name => terrainAliases.get(name) || name);
     const height = Number(map?.heightLevelMap?.[y]?.[x]) || 0;
+    const climate=climateAt(x,y);
     const eligible = candidates.filter(({ row, conditions }) => {
       return conditions.some(condition => terrains.includes(condition.terrain) && height >= condition.min && height <= condition.max)
         && (!text(row.最低高度) || height >= Number(row.最低高度))
         && (!text(row.最高高度) || height <= Number(row.最高高度))
-        && Number(row.出現重み ?? 1) > 0;
+        && Number(row.出現重み ?? 1) > 0 && matchesV39ClimateConditions(row,climate);
     }).map(({ row }) => row);
     for (const row of eligible) resourceCandidates.get(row)?.push({ key, x, y });
     if (!eligible.length || hash(`${seed}:${key}:place`) / 4294967296 >= V39_SPECIALTY_BALANCE.placementRate) continue;
@@ -63,7 +66,7 @@ export function generateV39Specialties(map, {
     const definition = eligible.find(row => (choice -= Number(row.出現重み ?? 1)) < 0) || eligible.at(-1);
     result[key] = { key, x, y, name:text(definition.名前), category:text(definition.分類) };
   }
-  // 抽選で欠けた素材だけ補充する。地形・高度・予約地・溶岩の制限は維持する。
+  // 補充も地形・高度・気候を満たした候補内に限る。
   const minimum = Math.max(0, Math.floor(Number(minimumResourceSites) || 0), Math.floor(Number(playerCount) || 0));
   const regionSize = Math.max(0, Math.floor(Number(minimumResourceRegionTiles) || 0));
   for (const [row, tiles] of [...resourceCandidates].sort((a,b) => a[1].length - b[1].length)) {

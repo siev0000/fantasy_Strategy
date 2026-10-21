@@ -59,6 +59,7 @@ export function resolveV39TileTerrainName(mapData, x, y) {
 }
 
 export function canUnitEnterV39Tile(mapData, x, y, unit) {
+  if(mapData?.hegemonyInterior&&mapData.grid?.[y]?.[x]==="岩壁")return false;
   if (mapData?.isUnderground && mapData.grid?.[y]?.[x] !== "洞窟") return false;
   return inspectV39TerrainTraversal(unit, resolveV39TileTerrainName(mapData, x, y)).allowed;
 }

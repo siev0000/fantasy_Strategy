@@ -1,5 +1,9 @@
 # UI実行経路と負荷の整理
 
+2026-10-21 取引配送: `v39-trade-state.js` がdeliveryMode（proposer/partner/meeting）と片側使者の検証/予約を所有し、`v39-trade-logistics.js` が通常APの往復・相手拠点の予約在庫との同時交換を処理。受取拠点側はユニットを割り当てず、その場で納品分を受領。旧モード未設定契約は従来の双方待ち合わせを維持。UIは既存v39-trade-uiへ配送選択を追加し、待ち合わせだけ申込側の共通座標を表示する。物資追加は共有バスケットの見出し横＋。提供候補はavailabilityで自国の在庫/収入を判定し、選択数/保有数を表示。要求候補はv39-trade-knowledge.jsとgetV39KnownTradeResourcesで自国の既知物資を判定し、要求数量のみ表示。knownTradeResourceNamesを勢力状態として保存し、相手在庫/収入を候補・警告・ゲージ上限に使わない。共通資材名欄を使う。後付け監視/代理クリックは追加しない。
+
+2026-10-21 村交渉ハブ: `v39-world-population.js` は既存の村モーダルと接触処理を所有。`v39-village-hub.js` が4タブ/固定下端/村情報を描画し、操作は共通 `performContactAction` へ明示的に渡す。番号付き依頼は既存 `v39-village-dialogue-ui.js`、人物/発言/交渉役/スキルは `v39-negotiation-conversation.js` を共用。`v39-trade-ui.js` にmount/hide/unmount/submitのライフサイクルを追加し、同じ取引DOM/未送信入力/物資選択/判定処理を村の取引タブで使用する。独立取引も維持。閉じると取引DOMをbodyへ戻して非表示にし、マップ選択中だけハブを退避する。新規MutationObserverや代理クリックによる完成DOM上書きは追加していない。
+
 2026-10-20 土地の環境表示: `v39-operation-ui.js` の既存土地項目へ環境効果/天候/浄化を配置し、環境効果は地形・領土・危険度の直後に全幅表示する。`v39-land-detail.js` が値を更新し、`v39-atmosphere-display.js` が通常霧/死の霧/一時災害/常設地帯と抑制期限を読む。末尾への後付けでスクロール外になる状態を解消。未確認地形の情報は表示しない。常設は「（常設）」、一時効果は⌛残り、抑制は抑制⌛残り。新規モーダルや二重描画は追加しない。
 
 2026-10-19 川の流向: `lib/v39-river-flow.js` が既存corner辺/河口リンクから方向を解決し、既存drawRiversのGraphics内へ三角矢印を焼く。矢印ごとのSprite・別レイヤー・新規状態購読は追加しない。河口リンク集合も描画署名へ含める。山岳源流の補完は既存map-generatorのcommitPath、荒野はlib/v39-wasteland-generation.jsが新規生成の気候変換後に一度だけ実行し、表示時に地形を変更しない。
@@ -157,3 +161,21 @@ npm run check:ui-render-work
 
 - 地形画像は terrainPatternNameAt で通常地形と specialMap の沼地/湿地を共通解決する。画像がある地形だけ文字マークを省略し、通常プレイも同じ描画経路を使う。地形レイヤー集の7番/8番を使用する。
 - 霧の濃さは v39-atmosphere-opacity.js と既存表示設定で管理。地形テストから変更し、共通環境レイヤーと表示署名へ反映する。スライダー操作中はパネルDOMを作り直さず、不要なresizeも行わない。
+
+2026-10-21 会話/操作の分離: v39-village-hub.jsの会話hostと4タブをv39-village-menu-bodyの外へ配置し、下段本文のみをスクロール。会話hostは画面高に応じた固定枠、タブと共通footerは縮まず固定。switchTabは下段scrollTopのみをリセットし、scrollIntoViewで上段を巻き込まない。既存の会話/取引rendererは流用。
+
+2026-10-21 村長: game-state-bridgeの一般村正規化時にv39-village-leaders.jsでleaderを初期化/復元。共通getV39VillageSpeakerが村会話と独立取引の人物を解決する。守備兵/操作ユニット配列に加えず、人口や移動を妨げない。テスト操作の専用カテゴリにはv39-negotiation-hub-test.jsを明示的にマウントし、既存会話renderer/通常のスキル・依頼・取引を使用する。台詞プレビューは既存recordV39Conversationへ渡すだけでゲーム効果を偽装しない。
+
+2026-10-21 依頼報酬: v39-quest-rewards.jsが報酬表示用データ/変更要求のAP判定と合意/受注時の固定/完了時の受渡しを所有。通常依頼と番号付き会話が同じコアを使用し、旧報酬との二重受領を抑止する。v39-quest-reward-ui.jsが共通のコンパクト編集欄を描画し、既存ハブ/番号付きrendererへ明示マウント。物資編集時の再描画は保留値と入力ノードを維持し、後付けDOM監視や代理クリックを追加しない。
+
+2026-10-21 UI 46 依頼一覧: v39-village-hub.jsのquestCardを生成依頼/番号付き依頼で共用し、候補は一つの依頼一覧へ描画する。v39-village-dialogue-ui.jsは候補取得/明示選択APIと詳細の選択肢だけを担当し、hubでは独立した会話・依頼リストを作らない。選択時は一覧から詳細へ切替、一覧へ戻ると受注中カードから再開可能。データ形式や処理元の違いだけで同じ利用目的のUIを分割しない。受注/支払処理は従来を共有し、代理クリック・DOM監視による後付け上書きを追加しない。
+
+2026-10-21 UI 48: クエストはv39-village-hub.js内の単一チェック一覧へ統一し、旧v39-village-dialogue-ui.jsの詳細rendererはハブから外す。定義の取得はlib/v39-village-quest-definitions.js、複数受注記録/旧保存互換はv39-village-quest-log.js、一括トランザクションはv39-village-quest-batch.jsが担当。番号付きの受注/報告も既存のルールAPIを直接呼び、選択時の画面切替や代理クリックを追加しない。retained-markupはcheckbox/radioのcheckedプロパティもモデルに同期し、受注後に見た目だけ選択が残る状態を防ぐ。
+
+2026-10-21 UI 49: ハブの新規クエスト一覧からイベント会話/番号付き定義の候補追加を除去。既存listV39NeutralVillageQuestsとresolveV39VillagePlanQuestが唯一の新規候補生成経路。会話・交渉テストは固定依頼ではなく不足物資と敵を配置し、同じ経路で生成。イベント選択肢の処理は古い保存済み受注の報告互換としてのみ残す。
+
+### 報酬交渉と取引の共通UI（UI51）
+- `v39-trade-items.js`: 取引/報酬共通の2列バスケット・アイコン数量・物資選択モーダル。報酬側は候補データと人口分類を渡すのみ。
+- `v39-trade-picker.js`: 両画面共通のモーダル開閉、背景inert、フォーカス/Esc処理。
+- `v39-trade-dialog.css`: 従来trade-uiのensure内にあった基本スタイルを移設。取引を開いていない状態でも同じ見た目を適用する。
+- 報酬専用の小型インライン物資選択は廃止。交渉結果/受注/支払いは既存の報酬ルールを維持。

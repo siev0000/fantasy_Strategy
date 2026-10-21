@@ -41,6 +41,7 @@ const tableMap = new Map();
 const sourcePathMap = new Map();
 
 const TABLE_KEY_FIELDS = Object.freeze({
+  性格会話:["性格"],
   モンスター合成:["素材", "合成結果"],
   イベント会話:["ID"],
   道具:["名前"],

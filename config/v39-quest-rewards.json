@@ -1,0 +1,17 @@
+{
+  "baseChance":0.7,
+  "minimumChance":0.05,
+  "maximumChance":0.95,
+  "skillDivisor":400,
+  "relationDivisor":400,
+  "minimumBudget":5,
+  "objectiveBudgetRate":0.1,
+  "extraValuePenalty":0.02,
+  "populationValue":25,
+  "intimidationRelationCost":5,
+  "strengthDivisor":500,
+  "maximumStrengthBonus":0.15,
+  "offerValidTurns":5,
+  "minimumVillagePopulation":1,
+  "maximumAmount":100000
+}

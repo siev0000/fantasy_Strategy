@@ -1,0 +1,6 @@
+{
+  "defaultTitle":"村長",
+  "defaultClass":"ファイター",
+  "minimumLevel":1,
+  "titleByRace":{"ゴブリン":"族長","オーガ":"族長","悪魔":"リーダー"}
+}

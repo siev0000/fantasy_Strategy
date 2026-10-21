@@ -122,7 +122,8 @@ function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
   }
   if(isV39Undead(enemy))targets=targets.filter(target=>!isV39Undead(target)||target.id===enemy.aggroTargetUnitId);
   if(enemy.victoryGuard && enemy.victoryLandmarkKey) {
-    const progress=state.victoryLandmarksByTile?.[enemy.victoryLandmarkKey]?.guardianByPlayerId||{};
+    const progress=(state.victoryLandmarksByTile?.[enemy.victoryLandmarkKey]
+      ||state.explorationWorlds?.surface?.spatial?.victoryLandmarksByTile?.[enemy.victoryLandmarkKey])?.guardianByPlayerId||{};
     const guards=(state.enemies||[]).filter(unit=>unit.victoryLandmarkKey===enemy.victoryLandmarkKey);
     const peacefulIds=new Set((state.players||[]).filter(player=>progress[player.id]?.quest
       && !guards.some(guard=>player.factionState?.units?.some(unit=>unit.id===guard.aggroTargetUnitId)))

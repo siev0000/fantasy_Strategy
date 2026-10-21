@@ -6,6 +6,10 @@ const clamp=(n,min=0,max=100)=>Math.min(max,Math.max(min,n));
 const hash=value=>{let h=2166136261;for(const c of String(value)){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}h^=h>>>16;h=Math.imul(h,0x7feb352d);h^=h>>>15;h=Math.imul(h,0x846ca68b);return (h^(h>>>16))>>>0;};
 const roll=key=>hash(key)/4294967296;
 const CLIMATE_VERSION=3;
+export function v39ClimateLatitudeAt(row,height,mapScope){
+  const latitude=Math.abs(row/height*2-1);
+  return mapScope==='world'?Math.max(0,latitude-2*V39_MAP_SCOPES.world.polarInsetRatio):latitude;
+}
 function weatherTemperature(region,type){
   const temperature=region.temperature+config.weathers[type].temperatureOffset;
   return ['雪','吹雪'].includes(type)?Math.min(config.temperature.snowfallMaximum,temperature):temperature;
@@ -32,7 +36,7 @@ export function createV39ClimateProfile(map) {
   const scopeKey=JSON.stringify(scope);
   const id=`climate:v${CLIMATE_VERSION}:${w}x${h}:${hash(fingerprint+scopeKey)}`;
   for(const region of Object.values(regions)){
-    const latitude=Math.abs(((region.y+Math.min(size,h-region.y)/2)/h)*2-1),t=config.temperature,u=config.humidity;
+    const latitude=v39ClimateLatitudeAt(region.y+Math.min(size,h-region.y)/2,h,scope.mapScope),t=config.temperature,u=config.humidity;
     const base=managed&&scope.mapScope!=='world'?scope.climateSettings.baseTemperature:t.equator;
     const latitudeDrop=managed?V39_MAP_SCOPES[scope.mapScope].latitudeDrop:t.latitudeDrop;
     region.temperature=Math.round(clamp(base-latitude*latitudeDrop-region.height/region.count*t.heightDrop

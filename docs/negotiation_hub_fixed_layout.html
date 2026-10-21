@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>交渉UI 修正版</title>
+<style>
+:root{
+  --bg:#080807;
+  --panel:#11110f;
+  --panel2:#171611;
+  --line:#5b4a30;
+  --line2:#30281c;
+  --gold:#d6aa45;
+  --text:#eee8da;
+  --muted:#a79e8d;
+  --self:#17364b;
+  --selfBorder:#4d7896;
+  --other:#2b241b;
+  --otherBorder:#786341;
+  --green1:#158a69;
+  --green2:#075545;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  background:#050505;
+  color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI","Noto Sans JP",sans-serif;
+}
+button,input{font:inherit;color:inherit}
+
+.app{
+  position:relative;
+  width:min(100vw,430px);
+  aspect-ratio:9/19.5;
+  max-height:100vh;
+  overflow:hidden;
+  background:linear-gradient(#0d0c0a,#080807 45%,#0c0b09);
+  box-shadow:0 20px 60px #000;
+}
+
+.header{
+  height:44px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:6px 9px;
+  background:#090908;
+  border-bottom:1px solid var(--line2);
+}
+.header b{font-size:12px;color:var(--gold)}
+.resources{display:flex;gap:4px}
+.res{
+  font-size:8px;
+  border:1px solid #2e281c;
+  border-radius:6px;
+  background:#13110e;
+  padding:4px;
+}
+
+.scroll{
+  position:absolute;
+  left:0;right:0;
+  top:44px;
+  bottom:62px;
+  overflow:auto;
+}
+
+/* ===== 会話エリア ===== */
+.conversation{
+  padding:10px;
+  background:
+    radial-gradient(circle at 85% 14%,rgba(130,89,45,.18),transparent 24%),
+    radial-gradient(circle at 15% 78%,rgba(50,98,140,.16),transparent 24%),
+    #0d0d0b;
+  border-bottom:1px solid var(--line);
+}
+
+.dialogueRow{
+  display:grid;
+  align-items:end;
+  gap:8px;
+  margin-bottom:10px;
+}
+
+.dialogueRow.other{
+  grid-template-columns:minmax(0,1fr) 68px;
+}
+
+.dialogueRow.self{
+  grid-template-columns:68px minmax(0,1fr);
+}
+
+.avatar{
+  width:68px;
+  height:86px;
+  border-radius:12px 12px 6px 6px;
+  border:1px solid #4b4130;
+  background:linear-gradient(#463521,#181714);
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  position:relative;
+  overflow:hidden;
+  box-shadow:0 6px 14px rgba(0,0,0,.4);
+}
+
+.avatar.selfAvatar{
+  background:linear-gradient(#264b62,#151d24);
+  border-color:#3d5f74;
+}
+
+.avatarFace{
+  font-size:45px;
+  transform:translateY(3px);
+}
+
+.avatarName{
+  position:absolute;
+  left:3px;right:3px;bottom:3px;
+  text-align:center;
+  font-size:7px;
+  background:rgba(0,0,0,.68);
+  border-radius:5px;
+  padding:2px;
+}
+
+.bubble{
+  position:relative;
+  min-height:74px;
+  padding:9px 10px;
+  border-radius:10px;
+  font-size:11px;
+  line-height:1.55;
+  box-shadow:0 5px 12px rgba(0,0,0,.25);
+}
+
+.bubble.other{
+  background:linear-gradient(#30271d,#211c16);
+  border:1px solid var(--otherBorder);
+}
+
+.bubble.self{
+  background:linear-gradient(#214b63,#173448);
+  border:1px solid var(--selfBorder);
+}
+
+.bubble.other:after{
+  content:"";
+  position:absolute;
+  right:-7px;
+  bottom:15px;
+  width:12px;height:12px;
+  transform:rotate(45deg);
+  background:#231d16;
+  border-top:1px solid var(--otherBorder);
+  border-right:1px solid var(--otherBorder);
+}
+
+.bubble.self:after{
+  content:"";
+  position:absolute;
+  left:-7px;
+  bottom:15px;
+  width:12px;height:12px;
+  transform:rotate(45deg);
+  background:#19384d;
+  border-left:1px solid var(--selfBorder);
+  border-bottom:1px solid var(--selfBorder);
+}
+
+.speaker{
+  display:block;
+  margin-bottom:3px;
+  font-size:9px;
+  font-weight:800;
+  color:#e4c377;
+}
+
+.self .speaker{
+  color:#bcdff5;
+}
+
+/* ===== 発言候補 ===== */
+.quick{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+  margin-top:2px;
+}
+
+.quick button{
+  padding:8px 5px;
+  border-radius:7px;
+  border:1px solid #425366;
+  background:linear-gradient(#174662,#0b293e);
+  font-size:9px;
+  font-weight:800;
+}
+
+.quick button.trade{
+  border-color:#9e8946;
+  background:linear-gradient(var(--green1),var(--green2));
+}
+
+/* ===== タブ ===== */
+.tabs{
+  position:sticky;
+  top:0;
+  z-index:10;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:5px;
+  padding:7px;
+  background:#090908;
+  border-bottom:1px solid var(--line2);
+}
+
+.tab{
+  padding:8px 2px;
+  border-radius:7px;
+  border:1px solid #393126;
+  background:#15140f;
+  font-size:9px;
+  font-weight:800;
+}
+
+.tab.active{
+  color:#e5c36b;
+  border-color:#a18441;
+}
+
+.panel{display:none}
+.panel.active{display:block}
+
+.sectionTitle{
+  padding:8px 10px;
+  background:#0d0d0b;
+  border-bottom:1px solid var(--line2);
+  font-size:9px;
+  color:var(--muted);
+}
+
+.option{
+  width:calc(100% - 16px);
+  margin:8px 8px 0;
+  text-align:left;
+  padding:10px;
+  border-radius:8px;
+  border:1px solid #393124;
+  background:#12110e;
+}
+
+.option b{display:block;font-size:11px}
+.option small{display:block;margin-top:3px;font-size:8px;color:var(--muted)}
+
+/* ===== クエスト ===== */
+.quest{
+  margin:8px;
+  padding:9px;
+  border:1px solid #3c3324;
+  border-radius:8px;
+  background:#10100e;
+}
+
+.questHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.questHead b{font-size:11px}
+.badge{
+  font-size:7px;
+  border:1px solid #70592f;
+  color:#e7c779;
+  border-radius:999px;
+  padding:3px 5px;
+}
+.quest p{
+  margin:6px 0;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.6;
+}
+.questButtons{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+.questButtons button{
+  padding:7px;
+  border-radius:7px;
+  border:1px solid #3b3224;
+  background:#17150f;
+  font-size:8px;
+}
+
+/* ===== 取引 ===== */
+.tradeGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  border-bottom:1px solid var(--line);
+}
+.tradeSide:first-child{border-right:1px solid var(--line)}
+.tradeHead{
+  text-align:center;
+  padding:8px 3px;
+  background:#10100e;
+  border-bottom:1px solid var(--line2);
+  font-size:9px;
+}
+.offerList{
+  min-height:145px;
+  padding:7px;
+  background:#12110e;
+}
+.empty{
+  min-height:65px;
+  border:1px dashed #3a3226;
+  border-radius:7px;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  font-size:8px;
+  color:#777064;
+}
+.offerItem{
+  padding:6px;
+  margin-bottom:5px;
+  border:1px solid #312a20;
+  border-radius:7px;
+  background:#0c0c0b;
+}
+.itemTop{
+  display:grid;
+  grid-template-columns:28px 1fr 20px;
+  gap:6px;
+  align-items:center;
+}
+.itemIcon{
+  width:28px;height:28px;
+  display:grid;
+  place-items:center;
+  border:1px solid #59492c;
+  border-radius:6px;
+  background:#201e18;
+}
+.itemTop b{font-size:9px}
+.itemTop small{font-size:7px;color:var(--muted)}
+.remove{
+  width:20px;height:20px;
+  border-radius:5px;
+  border:1px solid #563b32;
+  background:#2b1715;
+}
+.qty{
+  margin-top:5px;
+  display:grid;
+  grid-template-columns:24px 1fr 40px 24px;
+  gap:4px;
+  align-items:center;
+}
+.qty button{
+  height:25px;
+  border-radius:5px;
+  border:1px solid #40372a;
+  background:#1a1814;
+}
+.qty input[type=range]{
+  width:100%;
+  accent-color:#b18938;
+}
+.qty input[type=number]{
+  width:40px;height:25px;
+  border-radius:5px;
+  border:1px solid #40372a;
+  background:#080807;
+  text-align:center;
+}
+.addWrap{
+  padding:6px;
+  background:#0f0f0d;
+  border-top:1px solid var(--line2);
+}
+.add{
+  width:100%;
+  padding:7px 4px;
+  border-radius:6px;
+  border:1px solid #66542f;
+  background:#201c13;
+  color:#e4c671;
+  font-size:9px;
+  font-weight:800;
+}
+
+.details{
+  margin:8px;
+  border:1px solid #403720;
+  border-radius:8px;
+  overflow:hidden;
+}
+.details summary{
+  padding:8px;
+  background:#17150f;
+  font-size:9px;
+  font-weight:800;
+}
+.details div{
+  padding:8px;
+  font-size:8px;
+  color:var(--muted);
+  line-height:1.7;
+}
+
+/* ===== footer ===== */
+.footer{
+  position:absolute;
+  left:0;right:0;bottom:0;
+  height:62px;
+  display:grid;
+  grid-template-columns:1fr 1.4fr;
+  gap:7px;
+  padding:7px 9px calc(7px + env(safe-area-inset-bottom));
+  background:#080807;
+  border-top:1px solid var(--line);
+}
+.footer button{
+  border-radius:7px;
+  border:1px solid #493e2b;
+  font-size:9px;
+  font-weight:800;
+}
+.closeBtn{background:#171713}
+.mainBtn{
+  background:linear-gradient(var(--green1),var(--green2));
+  border-color:#958143!important;
+}
+.mainBtn:disabled{opacity:.4}
+
+/* ===== material picker ===== */
+.modal{
+  position:absolute;
+  z-index:60;
+  top:44px;
+  bottom:62px;
+  left:0;right:0;
+  background:#0b0b09;
+  display:none;
+}
+.modal.show{display:grid;grid-template-rows:auto auto 1fr auto}
+.modalHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:9px;
+  border-bottom:1px solid var(--line);
+}
+.modalHead b{font-size:11px}
+.modalHead button{
+  width:29px;height:29px;
+  border-radius:6px;
+  border:1px solid #4a4031;
+  background:#171612;
+}
+.filters{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:5px;
+  padding:7px;
+  border-bottom:1px solid var(--line2);
+}
+.filter{
+  padding:7px;
+  border-radius:6px;
+  border:1px solid #373126;
+  background:#15140f;
+  font-size:8px;
+}
+.filter.active{color:#e2bf68;border-color:#9b8142}
+.itemGrid{
+  overflow:auto;
+  padding:8px;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:6px;
+  align-content:start;
+}
+.pick{
+  aspect-ratio:1;
+  position:relative;
+  border-radius:7px;
+  border:1px solid #3b3224;
+  background:#171611;
+  display:grid;
+  place-items:center;
+  font-size:22px;
+}
+.pick.selected{outline:2px solid #d0a749}
+.stock{
+  position:absolute;
+  top:3px;right:3px;
+  min-width:18px;
+  text-align:center;
+  padding:1px 4px;
+  border-radius:8px;
+  border:1px solid #8e7338;
+  background:#050505;
+  font-size:7px;
+}
+.label{
+  position:absolute;
+  left:2px;right:2px;bottom:2px;
+  text-align:center;
+  font-size:6px;
+}
+.modalFoot{
+  display:grid;
+  grid-template-columns:1fr 1.3fr;
+  gap:6px;
+  padding:7px;
+  border-top:1px solid var(--line);
+}
+.modalFoot button{
+  padding:8px;
+  border-radius:7px;
+  border:1px solid #493d28;
+  background:#17150f;
+  font-size:9px;
+  font-weight:800;
+}
+.modalFoot .done{
+  background:#5e4b22;
+  border-color:#9a7b38;
+}
+
+.toast{
+  position:absolute;
+  z-index:100;
+  left:50%;
+  bottom:70px;
+  transform:translateX(-50%);
+  padding:8px 10px;
+  border-radius:7px;
+  border:1px solid #50442d;
+  background:#080807;
+  white-space:nowrap;
+  font-size:8px;
+  opacity:0;
+  transition:.15s;
+}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <b>プレイヤー会話 / 交渉</b>
+    <div class="resources">
+      <span class="res">💧37</span>
+      <span class="res">🔮29</span>
+      <span class="res">⚙️677</span>
+      <span class="res">🪙108</span>
+    </div>
+  </header>
+
+  <main class="scroll">
+    <section class="conversation">
+      <div class="dialogueRow other">
+        <div class="bubble other">
+          <span class="speaker">テンギス・ハン</span>
+          <span id="otherLine">よく来たな。交易でも、依頼でも、話したいことがあるなら聞こう。</span>
+        </div>
+        <div class="avatar">
+          <div class="avatarFace">🧔</div>
+          <div class="avatarName">テンギス</div>
+        </div>
+      </div>
+
+      <div class="dialogueRow self">
+        <div class="avatar selfAvatar">
+          <div class="avatarFace">🧑</div>
+          <div class="avatarName">あなた</div>
+        </div>
+        <div class="bubble self">
+          <span class="speaker">あなた</span>
+          <span id="selfLine">まずはできることを教えてくれ。</span>
+        </div>
+      </div>
+
+      <div class="quick">
+        <button data-jump="talk">世間話をする</button>
+        <button data-jump="quest">依頼を聞く</button>
+        <button class="trade" data-jump="trade">取引をしたい</button>
+        <button data-jump="info">情報を聞く</button>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button class="tab active" data-panel="talk">会話</button>
+      <button class="tab" data-panel="quest">クエスト</button>
+      <button class="tab" data-panel="trade">取引</button>
+      <button class="tab" data-panel="info">情報</button>
+    </nav>
+
+    <section class="panel active" id="panel-talk">
+      <div class="sectionTitle">通常の会話</div>
+      <button class="option" data-self="最近の情勢について聞きたい。" data-other="北の峠道には最近オークの斥候が出る。護衛なしの旅はおすすめしない。">
+        <b>最近の情勢を聞く</b>
+        <small>周辺勢力や危険地帯について聞く</small>
+      </button>
+      <button class="option" data-self="そちらが扱っている品について知りたい。" data-other="我が部族は馬と塩を扱っている。利益があるなら商談は歓迎だ。">
+        <b>商売について聞く</b>
+        <small>この勢力の特産品や交易情報</small>
+      </button>
+      <button class="option" data-self="友好関係を深めるにはどうすればいい？" data-other="取引や依頼を通して信頼を積め。そうすれば話せる内容も増える。">
+        <b>友好関係について聞く</b>
+        <small>関係値による変化を確認</small>
+      </button>
+    </section>
+
+    <section class="panel" id="panel-quest">
+      <div class="sectionTitle">受注できる依頼</div>
+
+      <div class="quest">
+        <div class="questHead">
+          <b>隊商の護衛</b>
+          <span class="badge">推奨Lv12</span>
+        </div>
+        <p>北の街道を通る隊商を護衛してほしい。野盗の襲撃が続いている。</p>
+        <div class="questButtons">
+          <button data-self="護衛依頼の詳細を聞かせてくれ。" data-other="北の街道を無事に通せば報酬は弾もう。">詳細を見る</button>
+          <button data-self="その護衛依頼、引き受けよう。" data-other="よし。出発前に準備を整えてくれ。">受注する</button>
+        </div>
+      </div>
+
+      <div class="quest">
+        <div class="questHead">
+          <b>不足物資の調達</b>
+          <span class="badge">納品</span>
+        </div>
+        <p>穀物30、木材20を納めれば関係が改善する。</p>
+        <div class="questButtons">
+          <button data-self="不足している物資を確認したい。" data-other="食料と木材が足りん。納めてもらえると助かる。">詳細を見る</button>
+          <button data-open-trade="1">取引で相談</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-trade">
+      <div class="sectionTitle">取引内容</div>
+      <div class="tradeGrid">
+        <div class="tradeSide">
+          <div class="tradeHead">自国の提案</div>
+          <div class="offerList" id="giveList">
+            <div class="empty">渡す物資は<br>まだありません</div>
+          </div>
+          <div class="addWrap">
+            <button class="add" data-side="give">＋ 物資を追加</button>
+          </div>
+        </div>
+
+        <div class="tradeSide">
+          <div class="tradeHead">相手への要求</div>
+          <div class="offerList" id="receiveList">
+            <div class="empty">要求する物資は<br>まだありません</div>
+          </div>
+          <div class="addWrap">
+            <button class="add" data-side="receive">＋ 物資を追加</button>
+          </div>
+        </div>
+      </div>
+
+      <details class="details">
+        <summary>配送・日程</summary>
+        <div>
+          出発拠点、運搬担当者、待ち合わせ地点、日程、交渉方式を設定します。
+        </div>
+      </details>
+    </section>
+
+    <section class="panel" id="panel-info">
+      <div class="sectionTitle">周辺情報</div>
+      <button class="option" data-self="最近の相場を教えてほしい。" data-other="西では馬の相場が下がり、鉄材は値上がりしている。">
+        <b>相場情報を聞く</b>
+        <small>交易価格について聞く</small>
+      </button>
+      <button class="option" data-self="安全な交易路はどこだ？" data-other="北は危険だ。東の道なら少し遠いが比較的安全だ。">
+        <b>安全な交易路を聞く</b>
+        <small>運搬経路の判断材料</small>
+      </button>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <button class="closeBtn" id="close">閉じる</button>
+    <button class="mainBtn" id="mainAction">会話を進める</button>
+  </footer>
+
+  <section class="modal" id="modal">
+    <div class="modalHead">
+      <b id="modalTitle">物資を選択</b>
+      <button id="modalClose">×</button>
+    </div>
+
+    <div class="filters">
+      <button class="filter active" data-cat="all">すべて</button>
+      <button class="filter" data-cat="basic">基本資材</button>
+      <button class="filter" data-cat="special">特殊資源</button>
+    </div>
+
+    <div class="itemGrid" id="itemGrid"></div>
+
+    <div class="modalFoot">
+      <button id="cancelPick">キャンセル</button>
+      <button class="done" id="donePick">選択した物資を追加</button>
+    </div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+const selfLine = document.getElementById('selfLine');
+const otherLine = document.getElementById('otherLine');
+const tabs = document.querySelectorAll('.tab');
+const panels = document.querySelectorAll('.panel');
+const mainAction = document.getElementById('mainAction');
+const toast = document.getElementById('toast');
+
+let currentPanel = 'talk';
+
+function showToast(text){
+  toast.textContent=text;
+  toast.classList.add('show');
+  clearTimeout(window.toastTimer);
+  window.toastTimer=setTimeout(()=>toast.classList.remove('show'),1200);
+}
+
+function setTalk(selfText, otherText){
+  if(selfText) selfLine.textContent=selfText;
+  if(otherText) otherLine.textContent=otherText;
+}
+
+function switchPanel(key){
+  currentPanel=key;
+  tabs.forEach(x=>x.classList.toggle('active',x.dataset.panel===key));
+  panels.forEach(x=>x.classList.toggle('active',x.id==='panel-'+key));
+
+  const labels={
+    talk:'会話を進める',
+    quest:'依頼を確認',
+    trade:'この条件で提案',
+    info:'情報を確認'
+  };
+  mainAction.textContent=labels[key];
+  if(key==='trade') mainAction.disabled=!hasTrade();
+  else mainAction.disabled=false;
+}
+
+tabs.forEach(btn=>{
+  btn.onclick=()=>switchPanel(btn.dataset.panel);
+});
+
+document.querySelectorAll('[data-jump]').forEach(btn=>{
+  btn.onclick=()=>{
+    const key=btn.dataset.jump;
+    switchPanel(key);
+    const map={
+      talk:['最近の話を聞かせてくれ。','では話を続けよう。'],
+      quest:['何か依頼はあるか？','いくつか頼みたいことがある。'],
+      trade:['取引の相談をしたい。','いいだろう。条件を決めよう。'],
+      info:['周辺の情報を聞きたい。','知っている範囲なら教えよう。']
+    };
+    setTalk(map[key][0],map[key][1]);
+  };
+});
+
+document.querySelectorAll('[data-self][data-other]').forEach(btn=>{
+  btn.onclick=()=>setTalk(btn.dataset.self,btn.dataset.other);
+});
+
+document.querySelectorAll('[data-open-trade]').forEach(btn=>{
+  btn.onclick=()=>{
+    setTalk('納品条件を取引で相談したい。','いいだろう。取引画面で条件を決めよう。');
+    switchPanel('trade');
+  };
+});
+
+document.getElementById('close').onclick=()=>showToast('会話画面を閉じます');
+
+mainAction.onclick=()=>{
+  if(currentPanel==='trade'){
+    if(!hasTrade()) return showToast('取引内容を設定してください');
+    setTalk('この条件でどうだ？','なるほど。条件を確認しよう。');
+    showToast('取引条件を提案しました');
+  }else{
+    showToast(mainAction.textContent);
+  }
+};
+
+/* trade */
+const mine=[
+  {id:'grain',name:'穀物',icon:'🌾',stock:86,cat:'basic'},
+  {id:'wood',name:'木材',icon:'🪵',stock:24,cat:'basic'},
+  {id:'stone',name:'石材',icon:'🪨',stock:42,cat:'basic'},
+  {id:'iron',name:'鉄材',icon:'⛓️',stock:19,cat:'basic'},
+  {id:'crystal',name:'魔晶石',icon:'🔮',stock:3,cat:'special'},
+  {id:'soul',name:'魂',icon:'👻',stock:2,cat:'special'}
+];
+const theirs=[
+  {id:'gold',name:'ゴールド',icon:'🪙',stock:86,cat:'basic'},
+  {id:'salt',name:'塩',icon:'🧂',stock:31,cat:'basic'},
+  {id:'horse',name:'馬',icon:'🐎',stock:2,cat:'special'},
+  {id:'fur',name:'毛皮',icon:'🧶',stock:18,cat:'special'},
+  {id:'gem',name:'宝石',icon:'💎',stock:7,cat:'special'}
+];
+
+const state={give:{},receive:{}};
+let pickSide='give';
+let filter='all';
+let selected=new Set();
+
+const modal=document.getElementById('modal');
+const itemGrid=document.getElementById('itemGrid');
+const modalTitle=document.getElementById('modalTitle');
+const giveList=document.getElementById('giveList');
+const receiveList=document.getElementById('receiveList');
+
+function source(){return pickSide==='give'?mine:theirs}
+function hasTrade(){return Object.keys(state.give).length||Object.keys(state.receive).length}
+
+function renderTrade(){
+  renderSide(giveList,'give');
+  renderSide(receiveList,'receive');
+  if(currentPanel==='trade') mainAction.disabled=!hasTrade();
+}
+
+function renderSide(el,side){
+  const arr=Object.values(state[side]);
+  if(!arr.length){
+    el.innerHTML=`<div class="empty">${side==='give'?'渡す':'要求する'}物資は<br>まだありません</div>`;
+    return;
+  }
+
+  el.innerHTML=arr.map(item=>`
+    <div class="offerItem">
+      <div class="itemTop">
+        <div class="itemIcon">${item.icon}</div>
+        <div><b>${item.name}</b><small>在庫 ${item.stock}</small></div>
+        <button class="remove" data-remove="${item.id}" data-side="${side}">×</button>
+      </div>
+      <div class="qty">
+        <button data-minus="${item.id}" data-side="${side}">−</button>
+        <input type="range" min="1" max="${item.stock}" value="${item.qty}" data-range="${item.id}">
+        <input type="number" min="1" max="${item.stock}" value="${item.qty}" data-input="${item.id}">
+        <button data-plus="${item.id}" data-side="${side}">＋</button>
+      </div>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('[data-remove]').forEach(b=>{
+    b.onclick=()=>{
+      delete state[b.dataset.side][b.dataset.remove];
+      renderTrade();
+    };
+  });
+
+  function setQty(id,val){
+    const item=state[side][id];
+    if(!item)return;
+    item.qty=Math.max(1,Math.min(item.stock,Number(val)||1));
+    const r=el.querySelector(`[data-range="${id}"]`);
+    const i=el.querySelector(`[data-input="${id}"]`);
+    if(r)r.value=item.qty;
+    if(i)i.value=item.qty;
+  }
+
+  el.querySelectorAll('[data-minus]').forEach(b=>{
+    b.onclick=()=>setQty(b.dataset.minus,state[side][b.dataset.minus].qty-1);
+  });
+  el.querySelectorAll('[data-plus]').forEach(b=>{
+    b.onclick=()=>setQty(b.dataset.plus,state[side][b.dataset.plus].qty+1);
+  });
+  el.querySelectorAll('[data-range]').forEach(x=>x.oninput=()=>setQty(x.dataset.range,x.value));
+  el.querySelectorAll('[data-input]').forEach(x=>x.oninput=()=>setQty(x.dataset.input,x.value));
+}
+
+document.querySelectorAll('.add').forEach(btn=>{
+  btn.onclick=()=>{
+    pickSide=btn.dataset.side;
+    filter='all';
+    selected=new Set(Object.keys(state[pickSide]));
+    modalTitle.textContent=pickSide==='give'?'渡す物資を選択':'要求する物資を選択';
+    document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.cat==='all'));
+    renderPicker();
+    modal.classList.add('show');
+  };
+});
+
+function renderPicker(){
+  const items=source().filter(x=>filter==='all'||x.cat===filter);
+  itemGrid.innerHTML=items.map(item=>`
+    <button class="pick ${selected.has(item.id)?'selected':''}" data-id="${item.id}">
+      ${item.icon}
+      <span class="stock">${item.stock}</span>
+      <span class="label">${item.name}</span>
+    </button>
+  `).join('');
+
+  itemGrid.querySelectorAll('.pick').forEach(btn=>{
+    btn.onclick=()=>{
+      if(selected.has(btn.dataset.id)) selected.delete(btn.dataset.id);
+      else selected.add(btn.dataset.id);
+      renderPicker();
+    };
+  });
+}
+
+document.querySelectorAll('.filter').forEach(btn=>{
+  btn.onclick=()=>{
+    filter=btn.dataset.cat;
+    document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x===btn));
+    renderPicker();
+  };
+});
+
+document.getElementById('donePick').onclick=()=>{
+  const next={};
+  selected.forEach(id=>{
+    const item=source().find(x=>x.id===id);
+    if(item) next[id]=state[pickSide][id]||{...item,qty:1};
+  });
+  state[pickSide]=next;
+  modal.classList.remove('show');
+  renderTrade();
+};
+document.getElementById('modalClose').onclick=()=>modal.classList.remove('show');
+document.getElementById('cancelPick').onclick=()=>modal.classList.remove('show');
+
+renderTrade();
+</script>
+</body>
+</html>

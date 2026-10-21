@@ -18,11 +18,14 @@ import { getV39GuardianProgress, listV39GuardianQuests, acceptV39GuardianQuest, 
 import { V39_QUEST_BALANCE, V39_VICTORY_CONDITION_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import restBalance from '../../../../config/v39-village-rest.json';
+import {resettleV39AbandonedVillage} from '../../lib/v39-abandoned-villages.js';
+import {getV39HegemonyGuards} from '../../lib/v39-hegemony-land-rules.js';
 import incidentFixture from '../../../../config/v39-village-incident-test.json';
 import {restAtIncidentVillage} from '../../lib/v39-village-incidents.js';
-import {renderV39Conversation,recordV39Conversation} from './v39-negotiation-conversation.js';
+import {recordV39Conversation} from './v39-negotiation-conversation.js';
 import { isV39BaseClassRow } from "../../lib/v39-class-rules.js";
-import {renderV39VillageDialogue,resetV39VillageDialogue} from './v39-village-dialogue-ui.js';
+import {villageHubMarkup,renderV39VillageHub,resetV39VillageHub,villageHubOwnsEscape} from './v39-village-hub.js';
+import {getV39VillageQuests} from '../../lib/v39-village-quest-log.js';
 import {installTradeLayout} from './v39-trade-layout.js';
 
 const WANDERER_TILES_PER_GROUP = 300;
@@ -31,11 +34,10 @@ let selectedTile = null;
 let menuVillageId='';
 
 function closeVillageMenu() {
-  resetV39VillageDialogue();
+  resetV39VillageHub();
   menuVillageId='';
-  const root=document.getElementById('v39-village-menu'),section=document.getElementById('v39-world-contact-actions');
+  const root=document.getElementById('v39-village-menu');
   if(root)root.hidden=true;
-  if(section)document.getElementById('v39-interaction-actions')?.append(section);
   renderWorldActions();
 }
 function openVillageMenu(villageId) {
@@ -43,23 +45,23 @@ function openVillageMenu(villageId) {
   if(!village||(state.activeWorldId||'surface')!=='surface')return;
   let root=document.getElementById('v39-village-menu');
   if(!root){root=document.createElement('div');root.id='v39-village-menu';root.hidden=true;
-    root.innerHTML='<section role="dialog" aria-modal="true" aria-labelledby="v39-village-menu-title"><header><b id="v39-village-menu-title">村で会話・依頼</b><button type="button" data-close-village-menu aria-label="閉じる">×</button></header><div class="v39-village-menu-body"><div class="v39-village-choice-area"></div></div><output role="status"></output></section>';
-    document.body.append(root);installTradeLayout(root);root.querySelector('[data-close-village-menu]').onclick=closeVillageMenu;
+    root.innerHTML=`<section role="dialog" aria-modal="true" aria-labelledby="v39-village-menu-title">${villageHubMarkup()}</section>`;
+    document.body.append(root);installTradeLayout(root);
     for(const type of ['pointerdown','pointerup','mousedown','mouseup','touchstart','touchend','wheel'])root.addEventListener(type,event=>event.stopPropagation());
     root.addEventListener('click',event=>{if(event.target===root)closeVillageMenu();});}
   menuVillageId=villageId;root.hidden=false;ensureWorldActions();
-  root.querySelector('.v39-village-choice-area').scrollTop=0;
-  root.querySelector('.v39-village-choice-area').append(document.getElementById('v39-world-contact-actions'));
+  root.querySelector('.v39-village-menu-body').scrollTop=0;
   if(!root.querySelector('output').textContent)root.querySelector('output').textContent='依頼を選んで受注します。受注中は納品・報告から進められます。';
   renderWorldActions();window.dispatchEvent(new CustomEvent('v39:village-menu-opened'));
 }
 function restVillage(villageId) {
   const state=window.getV39GameState(),village=state.neutralVillages?.find(row=>row.id===villageId);
+  if(village?.abandoned){window.showV39TurnBanner?.('廃村では休息できません');return {ok:false,reason:'廃村です'};}
   if(window.isV39MapInputLocked?.())return {ok:false,reason:'処理完了後に休息してください'};
   const result=restAtIncidentVillage(state,state.activePlayerId,villageId,village?.incidentTest?incidentFixture.balance:restBalance);
   if(result.ok){window.setV39GameState(result.state,{reason:'village-rest'});window.appendV39ActivityLog?.(state.activePlayerId,'村',result.message);}
   window.showV39TurnBanner?.(result.message||result.reason);
-  const output=document.querySelector('#v39-village-menu output');if(output)output.textContent=result.message||result.reason;
+  const output=document.querySelector('#v39-village-menu .v39-hub-footer > output');if(output)output.textContent=result.message||result.reason;
   return result;
 }
 window.openV39VillageMenu=openVillageMenu;
@@ -272,6 +274,7 @@ function renderWorldActions() {
   const detail = document.getElementById("v39-world-contact-detail");
   const subdetail = document.getElementById("v39-world-contact-subdetail");
   const buttons = document.getElementById("v39-world-contact-buttons");
+  if(section?.__planStatus){section.__planStatus.remove();section.__planStatus=null;}
   if (!section || !kind || !detail || !subdetail || !buttons || (!selectedTile&&!menuVillageId)) { if (section) section.hidden = true; return; }
   const state = window.getV39GameState?.({includeWorlds:false});
   const playerId = state?.activePlayerId;
@@ -282,50 +285,49 @@ function renderWorldActions() {
   const wanderer = state?.wandererGroups?.find(row => keyOf(row.x, row.y) === key && row.discoveredByPlayerIds?.includes(playerId));
   const village = state?.neutralVillages?.find(row => keyOf(row.x, row.y) === key || row?.territoryTileKeys?.includes(key));
   const landmark=Object.values(state?.victoryLandmarksByTile||{}).find(row=>row.key===key||row.occupiedTileKeys?.includes(key));
+  // Guardian UI only reads remote worlds; do not clone every saved map on each refresh.
+  if(landmark?.hegemonyWorldId)state.explorationWorlds=window.getV39EnemyTurnState?.()?.explorationWorlds;
   const discovered=landmark && state.players?.find(row=>row.id===playerId)?.factionState?.exploration?.discoveredFeaturesByTile?.[landmark.key];
   section.hidden = !wanderer && !village && !discovered;
   const empty = document.querySelector('[data-interaction-empty]');
   if (empty) empty.hidden = !section.hidden;
   section.dataset.kind="village";
   if (wanderer) {
+    section.dataset.kind='wanderer';
     section.dataset.targetId = wanderer.id;
     kind.textContent = "放浪者"; detail.textContent = `${wanderer.race} / ${wanderer.population}人`; subdetail.textContent = "";
     buttons.innerHTML = `<button type="button" data-world-action="recruit">勧誘</button>`;
   } else if (village) {
     const relation = getV39NeutralVillageRelation(village, playerId);
-    const quest = village.questsByPlayerId?.[playerId];
+    const pending=getV39VillageQuests(village,playerId).filter(quest=>quest.accepted&&!quest.completed);
     section.dataset.targetId = village.id;
     kind.textContent = "一般村";
     detail.textContent = `${village.name} / Lv${village.level} / ${village.population}人 / ${getV39RelationLabel(relation)} ${relation}`;
-    const questProgress = quest?.type === "hunt"
-      ? ` / 討伐 ${quest.required-(quest.targetEnemyIds||[]).filter(id=>state.enemies?.some(enemy=>enemy.id===id&&number(enemy.currentHp??enemy.hp)>0)).length}/${quest.required}体`
-      : ['watch','construction'].includes(quest?.type)?` / ${quest.progress||0}/${quest.required}${quest.type==='watch'?'ターン（村の周囲で警備）':'施設（受注後に新築）'}`
-      : (quest?.accepted && !quest.completed ? ` / 納品 ${quest.resourceKey || "資源"} ${quest.progress||0}/${quest.required}` : "");
-    subdetail.textContent = `${village.vassalPlayerId ? `属国: ${village.vassalPlayerId}` : "独立"} / 守備${(village.defenseUnits || []).reduce((sum, row) => sum + number(row.count), 0)}人${quest?.accepted && !quest.completed ? ` / 依頼: ${quest.label}${questProgress}` : ""}`;
-    buttons.innerHTML = [
-      menuVillageId?'':`<button type="button" data-world-action="village-menu">村で会話・依頼</button>`,
-      `<button type="button" data-world-action="village-rest">村で休息 AP30</button>`,
-      `<button type="button" data-world-action="relation">交流</button>`,
-      quest?.accepted && !quest.completed && !quest.dialogueEventId
-        ? `<button type="button" data-world-action="quest-complete">${quest.type==='delivery'?'納品・報告':'依頼完了'}</button>`
-        : "",
-      `<button type="button" data-world-action="vassal"${village.vassalPlayerId ? " disabled" : ""}>属国化</button>`,
-      `<button type="button" data-world-action="raid">襲撃</button>`
-    ].join("");
-    if(!quest?.accepted||quest.completed) {
-      const choices=listV39NeutralVillageQuests(state,playerId,village.id,window.__v39FieldRuntime?.mapData);
-      for(const choice of choices) addQuestButton(buttons,choice.eventId,`受注: ${choice.label} (${choice.type==="hunt"?`${choice.required}体`:`${choice.required}`})`);
-      if(!choices.length) {const note=document.createElement("small");note.textContent="現在受注できる依頼はありません";buttons.append(note);}
+    subdetail.textContent = `${village.vassalPlayerId ? '属国: '+village.vassalPlayerId : '独立'} / 守備${(village.defenseUnits||[]).filter(row=>number(row.hp??row.currentHp)>0&&row.state!=='死亡').reduce((sum,row)=>sum+number(row.count),0)}人 / 受注中 ${pending.length}件`;
+    buttons.innerHTML = '<button type="button" data-world-action="village-menu">村で会話・依頼</button>';
+    if(village.abandoned){
+      if(menuVillageId)closeVillageMenu();
+      kind.textContent='廃村';detail.textContent=village.name;subdetail.textContent='拠点は残っています。住民5人で再入植できます。';
+      buttons.innerHTML='<button type="button" data-world-action="village-resettle">廃村へ再入植（住民5人）</button>';return;
+    }
+    if(village.defenseTraining){
+      subdetail.textContent+=` / 守備軍訓練 ⌛${Math.max(0,village.defenseTraining.readyTurn-state.timeline.turnNumber)}`;
+    }
+    const plan=village.planSchedule?.active;
+    if(plan){
+      const status=document.createElement('small');status.textContent=`計画: ${plan.name} / ${plan.stage}${plan.remainingTurns!=null?` ⌛${plan.remainingTurns}`:''}${plan.blockers.length?` / ${plan.blockers[0]}`:''}`;
+      buttons.before(status);
+      section.__planStatus=status;
     }
     if(menuVillageId){
       const faction=state.players.find(p=>p.id===playerId).factionState;
       const units=faction.units.filter(unit=>Number(unit.hp??unit.currentHp)>0&&(unit.worldId||'surface')==='surface'&&village.territoryTileKeys?.includes(`${unit.x},${unit.y}`));
       const actor=units.find(unit=>unit.id===faction.selectedUnitId)||units[0];
-      renderV39Conversation(document.querySelector('#v39-village-menu .v39-village-menu-body'),{target:village.id,actor,units,
-        peer:village.defenseUnits?.find(unit=>Number(unit.hp??unit.currentHp)>0)||{race:village.race,className:'ファイター',name:`${village.name}の代表`},
-        onActorChange:id=>window.updateV39ActiveFactionState({selectedUnitId:id},{reason:'negotiator-selected'})});
-      renderV39VillageDialogue(document.querySelector('#v39-village-menu .v39-village-menu-body'),state,village,{
-        onSpeech:(reply,speech)=>recordV39Conversation(village.id,reply,speech),onRefresh:renderWorldActions});
+      section.hidden=true;
+      renderV39VillageHub({root:document.getElementById('v39-village-menu'),state,village,actor,units,relation,relationLabel:getV39RelationLabel(relation),
+        choices:listV39NeutralVillageQuests(state,playerId,village.id,window.__v39FieldRuntime?.mapData),
+        onActorChange:id=>window.updateV39ActiveFactionState({selectedUnitId:id},{reason:'negotiator-selected'}),
+        onAction:(action,eventId,label)=>performContactAction(action,eventId,label,village.id),onRefresh:renderWorldActions,onClose:closeVillageMenu});
     }
   } else if(discovered) {
     const progress=getV39GuardianProgress(state,playerId,landmark.key),quest=progress.quest;
@@ -342,6 +344,11 @@ function renderWorldActions() {
     if(!quest||quest.completed) for(const choice of listV39GuardianQuests(state,playerId,landmark.key)) addQuestButton(buttons,choice.ID,choice.名前);
     const transfer=document.createElement("button");transfer.type="button";transfer.dataset.worldAction="guardian-transfer";
     transfer.textContent="守護者を引き継ぐ";transfer.disabled=progress.relation<V39_QUEST_BALANCE.guardianTransferRelation||!!landmark.peacefulOwnerPlayerId;buttons.append(transfer);
+    if(landmark.hegemonyWorldId&&!secure.controlled){
+      const claim=document.createElement('button');claim.type='button';claim.dataset.worldAction='guardian-claim';claim.textContent='奥地攻略後に覇権地を取得';buttons.append(claim);
+      const guards=getV39HegemonyGuards(state,landmark);claim.disabled=guards.length>0;
+      subdetail.textContent+=` / 奥地の守護者・配下 ${guards.length}体`;
+    }
   }
 }
 
@@ -352,45 +359,51 @@ function addQuestButton(container,eventId,label) {
 
 function runContactAction(event) {
   const section = document.getElementById("v39-world-contact-actions");
-  const action = event?.target instanceof Element ? event.target.closest("[data-world-action]")?.dataset.worldAction : "";
+  const button=event?.target instanceof Element?event.target.closest('[data-world-action]'):null;
+  if(button)performContactAction(button.dataset.worldAction,button.dataset.eventId||'',button.textContent,section.dataset.targetId,section.dataset.kind);
+}
+function performContactAction(action,eventId='',label='',targetId='',kind='village') {
   if (!action) return;
   const state = window.getV39GameState?.();
   const playerId = state?.activePlayerId;
   let result;
   if(window.isV39MapInputLocked?.()||state?.timeline?.phase!=='player'){window.showV39TurnBanner?.('処理完了後、操作ターンに実行してください');return;}
-  if(action==='village-menu'){openVillageMenu(section.dataset.targetId);return;}
-  if(action==='village-rest'){restVillage(section.dataset.targetId);return;}
-  const eventId=event.target.closest("[data-world-action]")?.dataset.eventId||"";
-  if(section.dataset.kind==="guardian") {
-    if(action==="quest") result=acceptV39GuardianQuest(state,playerId,section.dataset.targetId,eventId);
-    else if(action==="guardian-complete") result=completeV39GuardianQuest(state,playerId,section.dataset.targetId);
-    else if(action==="guardian-transfer") result=transferV39GuardianLand(state,playerId,section.dataset.targetId);
+  if(action==='village-menu'){openVillageMenu(targetId);return;}
+  if(action==='village-resettle'){
+    result=resettleV39AbandonedVillage(state,playerId,targetId);
+    if(result.ok)window.setV39GameState(result.state,{reason:'village-resettled'});
+    window.showV39TurnBanner?.(result.message||result.reason);renderWorldActions();return;
+  }
+  if(action==='village-rest'){return restVillage(targetId);}
+  if(kind==="guardian") {
+    if(action==="quest") result=acceptV39GuardianQuest(state,playerId,targetId,eventId);
+    else if(action==="guardian-complete") result=completeV39GuardianQuest(state,playerId,targetId);
+    else if(action==="guardian-transfer") result=transferV39GuardianLand(state,playerId,targetId);
+    else if(action==="guardian-claim") result=transferV39GuardianLand(state,playerId,targetId,{conquest:true});
     if(!result) return;
     if(!result.ok) {window.showV39TurnBanner?.(result.reason);return;}
     window.setV39GameState?.(result.state,{reason:`guardian-${action}`});
     window.showV39TurnBanner?.(result.message);window.appendV39ActivityLog?.(playerId,"守護者",result.message);
-    if(action==="guardian-transfer") window.resolveV39Victory?.();
+    if(action==="guardian-transfer"||action==='guardian-claim') window.resolveV39Victory?.();
     renderWorldActions();return;
   }
-  if (action === "recruit") result = recruitV39Wanderer(state, playerId, section.dataset.targetId);
-  else if (action === "relation") result = improveV39NeutralVillageRelation(state, playerId, section.dataset.targetId);
-  else if (action === "quest") result = acceptV39NeutralVillageQuest(
-    state,
-    playerId,
-    section.dataset.targetId,
-    window.__v39FieldRuntime?.mapData || null,eventId
-  );
-  else if (action === "quest-complete") result = completeV39NeutralVillageQuest(state, playerId, section.dataset.targetId);
-  else if (action === "vassal") result = vassalizeV39NeutralVillage(state, playerId, section.dataset.targetId);
-  else if (action === "raid") result = raidV39NeutralVillage(state, playerId, section.dataset.targetId);
+  if (action === "recruit") result = recruitV39Wanderer(state, playerId, targetId);
+  else if (action === "relation") result = improveV39NeutralVillageRelation(state, playerId, targetId);
+  else if (action === "vassal") result = vassalizeV39NeutralVillage(state, playerId, targetId);
+  else if (action === "raid") result = raidV39NeutralVillage(state, playerId, targetId);
   if (!result) return;
-  const output=document.querySelector('#v39-village-menu output');if(output)output.textContent=result.message||result.reason;
-  if(menuVillageId)recordV39Conversation(section.dataset.targetId,event.target.textContent,result.message||result.reason);
-  if (!result.ok) { window.showV39TurnBanner?.(`実行不可: ${result.reason}`); return; }
+  const output=document.querySelector('#v39-village-menu .v39-hub-footer > output');if(output)output.textContent=result.message||result.reason;
+  if(menuVillageId){
+    const success=result.ok&&result.success!==false;
+    const speechColumn=result.ok?(['relation','vassal'].includes(action)?(success?'交渉成功':'交渉失敗'):undefined):undefined;
+    recordV39Conversation(targetId,label,result.message||result.reason,{speechColumn,replyColumn:action==='raid'?'挑発':undefined});
+  }
+  if (!result.ok) { window.showV39TurnBanner?.(`実行不可: ${result.reason}`);renderWorldActions();return result; }
   window.setV39GameState?.(result.state, { reason:`world-contact-${action}` });
   window.showV39TurnBanner?.(result.message);
   window.appendV39ActivityLog?.(state.activePlayerId, action === "recruit" ? "放浪者" : "一般村", result.message, { chance:result.chance, roll:result.roll, joined:result.joined });
   renderWorldActions();
+  return result;
 }
 
 function installStyles() {
@@ -430,7 +443,8 @@ function advance(event) {
   const next = advanceV39WorldPopulation(state, mapData, event?.detail?.turnNumber);
   const neutralById = new Map(next.neutralVillages.map(row => [row.id, row]));
   const settlements = (next.settlements || state.settlements || []).map(row => neutralById.get(row.id) || row);
-  window.setV39GameState?.({ players:next.players, neutralVillages:next.neutralVillages, wandererGroups:next.wandererGroups, settlements }, { reason:"world-population-turn" });
+  window.setV39GameState?.({ players:next.players, neutralVillages:next.neutralVillages, wandererGroups:next.wandererGroups, settlements,
+    facilitiesByTile:next.facilitiesByTile,territoryOwnerByTile:next.territoryOwnerByTile }, { reason:"world-population-turn" });
 }
 
 window.addEventListener("v39:field-generated", clearForNewField);
@@ -442,12 +456,13 @@ window.addEventListener('v39:conversation-updated',renderWorldActions);
 window.generateV39WorldPopulation = generateV39WorldPopulation;
 window.recruitV39Wanderer = groupId => { const state = window.getV39GameState?.(); return recruitV39Wanderer(state, state?.activePlayerId, groupId); };
 window.getV39WorldPopulationRules = () => ({
+  advanceV39NeutralVillages,
+  listV39NeutralVillageQuests,acceptV39NeutralVillageQuest,completeV39NeutralVillageQuest,
   initialVillageCount:V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount,
   maxNeutralVillages:V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount,
   wandererTilesPerGroup:WANDERER_TILES_PER_GROUP,
   maxWandererGroups:MAX_WANDERER_GROUPS
 });
 installStyles();
-const menuStyle=document.createElement('style');menuStyle.textContent='#v39-village-menu{position:fixed;inset:var(--v39-trade-top,0px) 0 0;z-index:2600;background:#0009;display:flex;align-items:center;justify-content:center;padding:0}#v39-village-menu[hidden]{display:none}#v39-village-menu>section{width:100%;height:100%;max-height:100%;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;background:#102127;border:0;border-radius:0;padding:0;gap:7px;color:#eff5f4;font-size:var(--font-body)}#v39-village-menu header{display:flex;align-items:center;gap:8px;flex-shrink:0}#v39-village-menu header b{flex:1}#v39-village-menu header button{font:inherit;background:#192e34;color:inherit;border:1px solid #68818a;border-radius:6px;padding:6px 12px;min-height:34px}.v39-village-menu-body{flex:1;min-height:0;overflow:auto;overflow-anchor:none}#v39-village-menu output{flex-shrink:0;font-size:var(--font-secondary);color:#e4c987}';document.head.append(menuStyle);
-window.addEventListener('keydown',event=>{if(event.key==='Escape'&&menuVillageId)closeVillageMenu();});
+window.addEventListener('keydown',event=>{if(event.key==='Escape'&&menuVillageId&&!event.defaultPrevented&&!villageHubOwnsEscape(document.getElementById('v39-village-menu')))closeVillageMenu();});
 ensureWorldActions();

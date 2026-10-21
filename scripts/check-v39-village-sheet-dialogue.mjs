@@ -11,6 +11,7 @@ try {
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
     await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39VillageIncidentTest();});
     await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
+    await page.locator('#v39-hub-tab-quests').click();
     await page.waitForSelector('[data-sheet-event="TEST_SHEET_SUPPLY"]');
     await page.waitForFunction(()=>document.querySelector('.topbar').matches(':popover-open'));
     const originalHeader=await page.evaluate(()=>{
@@ -32,14 +33,16 @@ try {
       return {quest:v.questsByPlayerId[s.activePlayerId],wood:p.factionState.settlements[0].materialStockByType.木材};
     });
     assert.equal(accepted.quest.dialogueEventId,'TEST_SHEET_SUPPLY');assert.equal(accepted.wood,initial.wood,'inspection/acceptance does not deliver');
+    await page.locator('#v39-hub-tab-info').click();
     const stable=await page.evaluate(()=>{
       const actor=document.querySelector('[data-conversation-actor]'),choice=document.querySelector('[data-sheet-choice="1-1"]');
-      document.querySelector('.v39-negotiation-conversation details').open=true;actor.focus();
+      document.querySelector('[data-hub-preparation] details').open=true;actor.focus();
       window.dispatchEvent(new CustomEvent('v39:conversation-updated'));
       return {actor:actor===document.querySelector('[data-conversation-actor]'),choice:choice===document.querySelector('[data-sheet-choice="1-1"]'),
-        focused:document.activeElement===actor,open:document.querySelector('.v39-negotiation-conversation details').open};
+        focused:document.activeElement===actor,open:document.querySelector('[data-hub-preparation] details').open};
     });
     assert(stable.actor&&stable.choice&&stable.focused&&stable.open,'unchanged conversation keeps choices, focus and folds');
+    await page.locator('#v39-hub-tab-quests').click();
     await page.locator('[data-sheet-choice="1-1"]').click();
     const read=()=>page.evaluate(()=>{
       const s=window.getV39GameState(),v=s.neutralVillages.find(v=>v.incidentTest),p=s.players.find(p=>p.id===s.activePlayerId),base=p.factionState.settlements[0];
@@ -53,11 +56,12 @@ try {
     assert.deepEqual(await read(),completed,'backtracking does not duplicate payment/reward');
     await page.evaluate(()=>{const save=window.exportV39SaveJson();window.importV39SaveJson(save);});
     await page.evaluate(id=>window.openV39VillageMenu(id),initial.village);
+    await page.locator('#v39-hub-tab-quests').click();
     if(await page.locator('[data-sheet-event-list]').count())await page.locator('[data-sheet-event-list]').click();
     await page.locator('[data-sheet-event="TEST_SHEET_SUPPLY"]').click();
     await page.locator('[data-sheet-event-back]').click();await page.locator('[data-sheet-choice="1-1"]').click();
     assert.deepEqual(await read(),completed,'load/resume does not repeat rewards');
-    assert(await page.locator('.v39-conversation-lines .peer').innerText().then(value=>value.includes('謝礼')),'response uses existing conversation stage');
+    assert(await page.locator('.v39-conversation-row.peer').innerText().then(value=>value.includes('謝礼')),'response uses existing conversation stage');
     assert(await page.locator('#v39-village-menu').evaluate(node=>node.scrollWidth<=innerWidth+1),'modal fits viewport');
     await page.screenshot({path:`${out}/delivery-${width}.png`});
     if(process.env.V39_PRODUCTION_CHECK!=='1') {
@@ -89,7 +93,7 @@ try {
         const huntEnd=choose(huntStart,'1-1');
         const beforeAcceptance=structuredClone(initial);beforeAcceptance.enemies=[];
         const killedBefore=choose(open(beforeAcceptance,hunt),'1');
-        const demon=definitions.find(d=>d.ID==='TEST_SHEET_DEMON');
+        const demon=definitions.find(d=>d.ID==='TEST_SHEET_SUPPLY');
         const restricted=open(initial,demon);
         const denied=choose(restricted,'1');
         const demonState=structuredClone(initial);demonState.activePlayerId=demonState.players.find(p=>p.race==='悪魔').id;
@@ -100,14 +104,14 @@ try {
         return {unchanged,reason:failed.reason,outside:open(outside).ok,isolated,expired:expiredResult.ok,
           newCycle:repeated.session.instanceId!==receiptId&&repeatAccepted.ok,
           early:early.ok,hunt:huntEnd.ok,killedBefore:killedBefore.ok,demonDenied:denied.ok,demon:demonEnd.ok,
-          souls:demonPlayer.factionState.settlements[0].foodStockByType.魂,
-          villageSouls:demonEnd.state.neutralVillages.find(row=>row.id===v.id).soulStock,
+          goldGain:demonPlayer.factionState.settlements[0].materialStockByType.金-demonState.players.find(p=>p.id===demonState.activePlayerId).factionState.settlements[0].materialStockByType.金,
+          noSoulClaims:!demonEnd.state.neutralVillages.find(row=>row.id===v.id).soulClaimsByPlayerId?.[demonState.activePlayerId],
           otherUnchanged:JSON.stringify(demonEnd.state.players[0])===JSON.stringify(demonState.players[0])};
       },definitions);
       assert(rules.unchanged,rules.reason);assert.equal(rules.outside,false);assert(rules.isolated,'snapshot mutation must not alter saved conversation');
       assert.equal(rules.early,false);assert(rules.hunt);assert.equal(rules.killedBefore,false);
       assert.equal(rules.expired,false);assert(rules.newCycle,'cooldown opens a new quest cycle, not the old reward branch');
-      assert.equal(rules.demonDenied,false);assert(rules.demon);assert.equal(rules.souls,2);assert.equal(rules.villageSouls,8);assert(rules.otherUnchanged);
+      assert.equal(rules.demonDenied,true);assert(rules.demon);assert.equal(rules.goldGain,5);assert(rules.noSoulClaims);assert(rules.otherUnchanged);
     }
     if(width===390) {
       await page.locator('[data-sheet-event-list]').click();await page.locator('[data-sheet-event="TEST_SHEET_HUNT"]').click();
@@ -118,9 +122,9 @@ try {
       assert(await page.evaluate(()=>{const s=window.getV39GameState();return s.neutralVillages.find(v=>v.incidentTest).questsByPlayerId[s.activePlayerId].completed;}));
       await page.screenshot({path:`${out}/hunt-${width}.png`});
       await page.evaluate(id=>{const s=window.getV39GameState();window.setV39ActivePlayer(s.players.find(p=>p.race==='悪魔').id);window.openV39VillageMenu(id);},initial.village);
-      await page.locator('[data-sheet-event="TEST_SHEET_DEMON"]').click();await page.locator('[data-sheet-choice="1"]').click();await page.locator('[data-sheet-choice="1-1"]').click();
-      const soul=await page.evaluate(()=>{const s=window.getV39GameState();return {stock:s.players.find(p=>p.id===s.activePlayerId).factionState.settlements[0].foodStockByType.魂,village:s.neutralVillages.find(v=>v.incidentTest).soulStock};});
-      assert.equal(soul.stock,2);assert.equal(soul.village,8);
+      await page.locator('#v39-hub-tab-quests').click();
+      await page.locator('[data-sheet-event="TEST_SHEET_SUPPLY"]').click();await page.locator('[data-sheet-choice="1"]').click();await page.locator('[data-sheet-choice="1-1"]').click();
+      assert(await page.evaluate(()=>{const s=window.getV39GameState(),v=s.neutralVillages.find(v=>v.incidentTest);return v.questsByPlayerId[s.activePlayerId].completed&&!v.soulClaimsByPlayerId?.[s.activePlayerId];}));
       await page.screenshot({path:`${out}/demon-${width}.png`});
     }
     assert.deepEqual(errors,[]);console.log(`${width}: sheet conversation, native delivery, once-only reward, resume, presence and viewport passed`);

@@ -3,6 +3,7 @@ import { getHexDistance } from "./hex-grid.js";
 import { V39_QUEST_BALANCE as balance } from "./v39-gameplay-balance.js";
 import { changeV39QuestResource } from "./v39-neutral-village-rules.js";
 import { getSelectedSettlement } from "./settlement-state.js";
+import {getV39HegemonyGuards} from './v39-hegemony-land-rules.js';
 
 const living=unit=>unit && Number(unit.currentHp??unit.hp)>0 && unit.state!=="死亡";
 const nearby=(unit,landmark)=>living(unit) && (!unit.worldId||unit.worldId==="surface")
@@ -22,7 +23,7 @@ function canContact(state,playerId,key) {
   if(!landmark||!discovered) return "勝利対象土地を調査して発見してください";
   if(!player.factionState.units?.some(unit=>nearby(unit,landmark))) return "守護地の近くに生存ユニットが必要です";
   if(landmark.peacefulOwnerPlayerId) return "既に守護者が交代しています";
-  const guards=(state.enemies||[]).filter(unit=>unit.victoryLandmarkKey===key && living(unit));
+  const guards=getV39HegemonyGuards(state,landmark);
   if(!guards.length) return "守護者は既に倒されています。領土として取得してください";
   if(guards.some(guard=>player.factionState.units.some(unit=>unit.id===guard.aggroTargetUnitId))) return "守護者との交戦中は交渉できません";
   return "";
@@ -80,10 +81,15 @@ export function advanceV39GuardianQuests(state,turn) {
   }
   return working;
 }
-export function transferV39GuardianLand(state,playerId,key) {
-  const reason=canContact(state,playerId,key);
+export function transferV39GuardianLand(state,playerId,key,{conquest=false}={}) {
+  const site=state.victoryLandmarksByTile?.[key],player=state.players.find(player=>player.id===playerId);
+  if(site?.peacefulOwnerPlayerId)return {ok:false,state,reason:'既に取得された覇権地です'};
+  const world=state.explorationWorlds?.[site?.hegemonyWorldId];
+  const reason=conquest?(!site||state.activeWorldId!=='surface'||!player?.factionState.exploration?.discoveredFeaturesByTile?.[key]
+    ||!player.factionState.units.some(unit=>nearby(unit,site))?'発見済みの覇権地へ生存ユニットを向かわせてください':
+    !world?.map?.guardianInitialized||getV39HegemonyGuards(state,site).length?'奥地の守護者と配下を倒してください':''):canContact(state,playerId,key);
   if(reason) return {ok:false,state,reason};
-  if(getV39GuardianProgress(state,playerId,key).relation<balance.guardianTransferRelation) return {ok:false,state,reason:`友好度${balance.guardianTransferRelation}が必要です`};
+  if(!conquest&&getV39GuardianProgress(state,playerId,key).relation<balance.guardianTransferRelation) return {ok:false,state,reason:`友好度${balance.guardianTransferRelation}が必要です`};
   const landmark=state.victoryLandmarksByTile[key],keys=landmark.occupiedTileKeys?.length?landmark.occupiedTileKeys:[key];
   const settlement=getSelectedSettlement(state.players?.find(player=>player.id===playerId)?.factionState);
   if(!settlement?.placed) return {ok:false,state,reason:"領土を所属させる拠点が必要です"};
@@ -91,10 +97,18 @@ export function transferV39GuardianLand(state,playerId,key) {
   const owner={...state.territoryOwnerByTile},territory={...state.territoryStateByTile},danger={...state.dangerPercentByTile};
   for(const tile of keys) {owner[tile]=playerId;territory[tile]={...territory[tile],status:"領土",settlementId:settlement.id||settlement.settlementId};danger[tile]=0;}
   const guardIds=new Set((state.enemies||[]).filter(enemy=>enemy.victoryLandmarkKey===key).map(enemy=>enemy.id));
+  const worlds={...state.explorationWorlds};
+  if(landmark.hegemonyWorldId&&worlds[landmark.hegemonyWorldId]){
+    const interior=worlds[landmark.hegemonyWorldId],ids=new Set(interior.spatial.enemies.filter(enemy=>enemy.victoryLandmarkKey===key).map(enemy=>enemy.id));
+    worlds[landmark.hegemonyWorldId]={...interior,map:{...interior.map,hegemonyOwnerPlayerId:playerId},spatial:{...interior.spatial,
+      enemies:interior.spatial.enemies.filter(enemy=>!ids.has(enemy.id)),enemyNests:interior.spatial.enemyNests.filter(nest=>nest.victoryLandmarkKey!==key),
+      enemySquads:interior.spatial.enemySquads.filter(squad=>!squad.unitIds?.some(id=>ids.has(id)))}};
+  }
   return {ok:true,state:{...state,territoryOwnerByTile:owner,territoryStateByTile:territory,dangerPercentByTile:danger,
+    explorationWorlds:worlds,
     victoryLandmarksByTile:{...state.victoryLandmarksByTile,[key]:{...landmark,peacefulOwnerPlayerId:playerId}},
     enemies:(state.enemies||[]).filter(enemy=>!guardIds.has(enemy.id)),
     enemyNests:(state.enemyNests||[]).filter(nest=>nest.victoryLandmarkKey!==key),
     enemySquads:(state.enemySquads||[]).filter(squad=>!squad.unitIds?.some(id=>guardIds.has(id)))},
-    message:`${landmark.name}の守護者を引き継ぎました`};
+    message:conquest?`${landmark.name}を取得しました。これから5ターンの確保を開始します`:`${landmark.name}の守護者を引き継ぎました`};
 }

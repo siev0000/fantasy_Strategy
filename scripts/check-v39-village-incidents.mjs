@@ -1,3 +1,4 @@
+import {openV39TestSuite} from './lib/v39-test-suite.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync,readFileSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
@@ -15,7 +16,8 @@ try {
     page.on('console',entry=>{if(entry.type()==='error')errors.push(entry.text());});
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
     await page.locator('[data-v39-test-tools]').click();
-    await page.locator('[data-test-action="village-incident-start"]').click();
+    await page.locator('[data-test-suite=village]>summary').click();
+    await openV39TestSuite(page,'village');await page.locator('[data-test-action="village-incident-start"]').click();
     await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
     const click=async id=>{if(await page.locator('[data-village-incident-tools]').getAttribute('open')===null)await page.locator('[data-village-incident-tools]>summary').click();if(['high','low','weak','heal'].includes(id)&&await page.locator('[data-village-incident-values]').getAttribute('open')===null)await page.locator('[data-village-incident-values]>summary').click();await page.locator(`[data-village-incident="${id}"]`).click();};
     const read=()=>page.evaluate(()=>{const s=window.getV39GameState(),v=s.neutralVillages.find(v=>v.incidentTest);return {s,v,p:s.players.find(p=>p.id===s.activePlayerId)};});
@@ -52,11 +54,9 @@ try {
     await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson()));
     assert.equal(await page.locator('[data-event-id="TEST_VILLAGE_SUPPLY"]').count(),0,'cooldown survives save/load');
     await click('demon');await click('contract');
-    await page.locator('[data-event-id="TEST_DEMON_SUPPLY"]').click();await page.locator('[data-world-action="quest-complete"]').click();
-    data=await read();assert.equal(data.v.soulClaimsByPlayerId[data.p.id],2);assert.equal(data.v.relationsByPlayerId[data.p.id],10);
-    await click('souls');data=await read();assert.equal(data.v.soulStock,8);assert.equal(data.p.factionState.settlements[0].foodStockByType.魂,2);
-    await click('souls');data=await read();assert.equal(data.v.soulStock,8,'duplicate request denied');
-    await page.locator('[data-event-id="TEST_DEMON_HUNT"]').click();
+    await page.locator('[data-event-id="TEST_VILLAGE_SUPPLY"]').click();await page.locator('[data-world-action="quest-complete"]').click();
+    data=await read();assert.equal(data.v.soulClaimsByPlayerId?.[data.p.id]||0,0);assert.equal(data.v.relationsByPlayerId[data.p.id],10);
+    await page.locator('[data-event-id="TEST_VILLAGE_HUNT"]').click();
     const defeat=async ids=>{await page.evaluate(ids=>{for(const id of ids){const state=window.getV39GameState(),p=state.players.find(row=>row.id===state.activePlayerId),actor=p.factionState.units.find(row=>row.hp>0),target=state.enemies.find(row=>row.id===id);
       actor.x=target.x-1;actor.y=target.y;actor.ap=100;actor.currentAp=100;actor.position=[actor.x,actor.y];
       window.setV39GameState({players:state.players,timeline:{...state.timeline,turnNumber:state.timeline.turnNumber+1}});
@@ -64,7 +64,7 @@ try {
       if(!ok||window.getV39GameState().enemies.find(row=>row.id===id)?.hp>0)throw Error(`defeat failed: ${id}`);
     }},ids);await page.waitForFunction(()=>!window.isV39MapInputLocked?.());};
     await defeat(['village-quest-wolf-1','village-quest-wolf-2']);
-    await page.locator('[data-world-action="quest-complete"]').click();data=await read();assert.equal(data.v.relationsByPlayerId[data.p.id],20,JSON.stringify(await page.evaluate(()=>({phase:window.getV39GameState().timeline,locked:window.isV39MapInputLocked?.(),status:document.querySelector('#v39-village-menu output')?.textContent,quest:window.getV39GameState().neutralVillages[0].questsByPlayerId}))));assert.equal(data.v.soulClaimsByPlayerId[data.p.id],2);
+    await page.locator('[data-world-action="quest-complete"]').click();data=await read();assert.equal(data.v.relationsByPlayerId[data.p.id],20,JSON.stringify(await page.evaluate(()=>({phase:window.getV39GameState().timeline,locked:window.isV39MapInputLocked?.(),status:document.querySelector('#v39-village-menu output')?.textContent,quest:window.getV39GameState().neutralVillages[0].questsByPlayerId}))));assert.equal(data.v.soulClaimsByPlayerId?.[data.p.id]||0,0);
     await click('visitor');await click('heal');await page.locator('[data-world-action="village-rest"]').click();
     data=await read();assert.equal(data.v.incidentByPlayerId[data.p.id].status,'choice');assert.equal(data.v.incidentByPlayerId[data.p.id].outcomes.length,3);
     assert(data.v.incidentByPlayerId[data.p.id].outcomes.every(row=>!row.captured),'strong enough visitors survive');

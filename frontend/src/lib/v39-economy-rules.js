@@ -1251,7 +1251,7 @@ function facilityCityModifiers(buildings) {
   return result;
 }
 
-function advanceConstruction(village) {
+export function advanceConstruction(village) {
   const completed = [];
   const queue = [];
   const tileFacilityMap = { ...village.tileFacilityMap };

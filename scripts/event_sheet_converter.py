@@ -16,10 +16,12 @@ HEADERS = (
     "ID", "状態", "分類", "イベント種別", "名前", "説明", "発生タイミング", "発生条件",
     "選択肢", "回答", "条件", "消費", "報酬", "効果", "目標", "期限ターン", "再発生",
     "クールダウン", "周期", "猶予", "備考",
+    "計画対象", "優先度", "判定基準", "工程", "支援依頼ID", "対象範囲", "数量上限", "目標ターン",
 )
 NUMBERED = ("選択肢", "回答", "条件", "消費", "報酬", "効果")
 CATEGORIES = {name: f"イベント_{name}.json" for name in ("一般村", "洞窟", "探索", "都市", "外交", "国家", "守護者", "災害")}
 RUNTIME_DIR = Path(__file__).resolve().parents[1] / "data/source/export/json"
+PLAN_FILES = ("村計画.json", "村依頼ひな型.json")
 LINE = re.compile(r"^([1-9][0-9]*(?:[-−－–][1-9][0-9]*)*)[.．]\s*(\S.*)$")
 
 
@@ -169,6 +171,31 @@ def compile_rows(rows, resources, targets=None):
             category = row.get("分類")
             if category not in CATEGORIES:
                 raise ValueError(f"未対応の分類: {category}")
+            if row.get("イベント種別") in {"村計画", "依頼ひな型"}:
+                if category != "一般村" or not row.get("名前") or not row.get("計画対象"):
+                    raise ValueError("村計画/ひな型には一般村分類・名前・計画対象が必要です")
+                record = {key: row[key] for key in ("ID", "名前", "説明", "計画対象", "判定基準") if not is_blank(row.get(key))}
+                for key in ("優先度", "対象範囲", "数量上限", "目標ターン", "期限ターン", "クールダウン"):
+                    if not is_blank(row.get(key)):
+                        record[key] = integer(row[key], key)
+                if row["イベント種別"] == "村計画":
+                    if row.get("判定基準") not in {"死亡者あり", "守備兵不在", "食料備蓄不足", "周辺脅威あり"}:
+                        raise ValueError("未対応の計画判定基準")
+                    record["工程"] = str(row.get("工程", "")).split(">")
+                    if any(step not in {"安全確保", "資材確保", "建設", "訓練"} for step in record["工程"]):
+                        raise ValueError("未対応の計画工程")
+                    record["支援依頼ID"] = tokens(row.get("支援依頼ID"))
+                    filename = PLAN_FILES[0]
+                else:
+                    if row["計画対象"] not in {"不足資源", "周辺脅威"}:
+                        raise ValueError("未対応の依頼ひな型対象")
+                    record["完了効果"] = amount_terms(cells["報酬"].get("1-1"), resources, True)
+                    if any(effect["タイプ"] != "一般村友好度変更" for effect in record["完了効果"]):
+                        raise ValueError("自動依頼の報酬は現在友好度変更に対応")
+                    filename = PLAN_FILES[1]
+                output.setdefault(filename, []).append(record)
+                report["有効"] += 1
+                continue
             if not choices or not row.get("名前") or row.get("イベント種別") not in {"依頼", "会話"}:
                 raise ValueError("名前・選択肢が必要です。対応種別は依頼/会話です")
             record = {key: row[key] for key in ("ID", "分類", "イベント種別", "名前", "説明", "発生タイミング") if not is_blank(row.get(key))}
@@ -202,6 +229,10 @@ def compile_rows(rows, resources, targets=None):
             report["有効"] += 1
         except (ValueError, TypeError) as exc:
             report["エラー"].append({"行": row_number, "ID": row.get("ID", ""), "内容": str(exc)})
+    template_ids = {row["ID"] for row in output.get(PLAN_FILES[1], [])}
+    for plan in output.get(PLAN_FILES[0], []):
+        if set(plan["支援依頼ID"]) - template_ids:
+            report["エラー"].append({"ID": plan["ID"], "内容": "有効な支援依頼ひな型がありません"})
     return output, report
 
 
@@ -251,9 +282,11 @@ def main(argv=None):
             return 2
         if not args.dry_run:
             if args.runtime:
-                atomic_write_json(runtime / "イベント会話.json", [row for rows in output.values() for row in rows])
+                atomic_write_json(runtime / "イベント会話.json", [row for name, rows in output.items() if name not in PLAN_FILES for row in rows])
+                for filename in PLAN_FILES:
+                    atomic_write_json(runtime / filename, output.get(filename, []))
             # Write every supported category so removed/disabled rows cannot survive an old export.
-            for filename in CATEGORIES.values():
+            for filename in (*CATEGORIES.values(), *PLAN_FILES):
                 atomic_write_json(args.output_dir / filename, output.get(filename, []))
         print(f"有効{report['有効']}件 / 除外{len(report['除外'])}件 / エラー0件。{report['ゲーム接続']}")
         return 0

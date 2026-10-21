@@ -1,0 +1,9 @@
+.v39-quest-reward-summary{display:flex;gap:5px 10px;flex-wrap:wrap;align-items:center;margin:8px 0;color:#e6ce91;font-size:var(--font-body)}
+.v39-quest-reward-summary span{padding:3px 6px;border:1px solid #655332;border-radius:4px;background:#211e14}
+.v39-quest-reward-item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.v39-quest-reward-item i{font-style:normal;font-size:1.25em;line-height:1}.v39-quest-reward-item strong{font-variant-numeric:tabular-nums}
+
+.v39-quest-reward-edit{background:transparent;gap:8px}
+.v39-quest-reward-edit>header{display:flex;gap:8px;align-items:center}
+.v39-quest-reward-edit>header b{flex:1}
+.v39-quest-reward-edit .v39-quest-reward-summary{margin:0}
+.v39-quest-reward-edit>p{margin:0}

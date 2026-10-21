@@ -1,6 +1,6 @@
 {
   "scopes": {
-    "world": {"label":"全世界","description":"複数の大陸・島。中央の低緯度から上下の極地まで気候が変わります。","latitudeDrop":40},
+    "world": {"label":"全世界","description":"複数の大陸・島。中央の低緯度から上下の極地まで気候が変わります。","latitudeDrop":40,"polarInsetRatio":0.02},
     "region": {"label":"一地域・周辺諸島","description":"選んだ気候帯の一地域と周辺の島。高度で気温が変わります。","latitudeDrop":3},
     "island": {"label":"単一島","description":"一つの島を主役に生成。双子島・列島などは選択できません。","latitudeDrop":2}
   },

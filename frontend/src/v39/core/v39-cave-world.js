@@ -1,3 +1,8 @@
+import {createV39HegemonyWorld,hegemonyEntranceAt,V39_HEGEMONY_EXIT_TURNS} from '../../lib/v39-hegemony-areas.js';
+import {advanceV39WorldExits} from '../../lib/v39-world-exit-rules.js';
+import {prepareV39HegemonyWorlds} from '../../lib/v39-hegemony-land-rules.js';
+import {getHexDistance} from '../../lib/hex-grid.js';
+import {transferV39GuardianLand} from '../../lib/v39-guardian-quests.js';
 import { createCaveCharacter, generateCaveFloor, useCaveSite, caveSiteUnavailable } from "../../lib/v39-cave-adventure.js";
 import { findV39CavePath, createV39CaveSeed } from "../../lib/v39-cave-generator.js";
 import { createPlayerRecord } from "../../lib/player-state.js";
@@ -59,6 +64,7 @@ function activateWorld(state,worlds,id,players=state.players){
 }
 
 function createWorld(options){
+  if(options.hegemonyArea)return createV39HegemonyWorld(options);
   const {map,enemies,sites}=generateCaveFloor({seed:options.seed||"expedition-1",templateId:options.templateId||"random",floor:options.floor||1,caveTest:options.caveTest===true,entranceCount:Math.max(2,options.surfaceEntrances?.length||2)});
   map.caveSites=sites;
   map.caveBossIds=enemies.filter(unit=>unit.isCaveBoss).map(unit=>unit.id);
@@ -97,7 +103,10 @@ function createWorld(options){
 
 export function enterV39Cave(options={}){
   if(window.isV39MapInputLocked?.())throw new Error("処理が終わるまでお待ちください。");
-  const state=window.getV39GameState(),selected=window.getV39SelectedSquadUnit?.();
+  let state=window.getV39GameState();
+  const prepared=prepareV39HegemonyWorlds(state);
+  if(prepared!==state){window.setV39GameState(prepared,{reason:'hegemony-worlds-prepared'});state=window.getV39GameState();}
+  const selected=window.getV39SelectedSquadUnit?.();
   const player=state.players.find(row=>row.id===state.activePlayerId);
   if(!player?.factionState.units.length)throw new Error("探索するユニットがいません。");
   const squad=player.factionState.squads.find(row=>row.unitIds?.includes(selected?.id));
@@ -105,6 +114,16 @@ export function enterV39Cave(options={}){
   const ids=new Set(options.unitIds||(v39SquadMoveMode(actor)!=='follow'?[actor.id]:
     (squad?.unitIds||[actor.id]).filter(id=>v39SquadMoveMode(player.factionState.units.find(unit=>unit.id===id))==='follow')));
   const surfaceMap=window.__v39FieldRuntime?.mapData;
+  const areaEntry=hegemonyEntranceAt(surfaceMap,actor.x,actor.y);
+  const landmark=(state.activeWorldId||'surface')==='surface'&&!areaEntry?Object.values(state.victoryLandmarksByTile||{})
+    .find(site=>site.hegemonyWorldId&&(site.occupiedTileKeys||[site.key]).includes(`${actor.x},${actor.y}`)):null;
+  if(landmark){
+    if(!player.factionState.exploration?.discoveredFeaturesByTile?.[landmark.key])throw new Error('覇権地を調査して発見してください。');
+    options={...options,caveTest:true,worldId:landmark.hegemonyWorldId,parentWorldId:'surface',entrySurface:{x:actor.x,y:actor.y}};
+  }
+  if(areaEntry)options={...options,caveTest:true,hegemonyArea:areaEntry.areaId,worldId:`hegemony-test:${areaEntry.areaId}`,
+    parentWorldId:state.activeWorldId||'surface',parentExit:{x:areaEntry.x,y:areaEntry.y},entrySurface:{x:areaEntry.x,y:areaEntry.y}};
+  else if(surfaceMap?.hegemonyTestHub)throw new Error('覇権地の入口マスに移動してください。');
   if(options.caveTest!==true&&(state.activeWorldId||"surface")==="surface"){
     const group=groupV39SurfaceCaves(surfaceMap).find(row=>row.some(tile=>tile.x===selected?.x&&tile.y===selected?.y));
     if(!group)throw new Error("洞窟の入口に移動してください。");
@@ -114,7 +133,9 @@ export function enterV39Cave(options={}){
   const worlds=rememberWorld(state),worldId=options.worldId||`cave:${options.seed||"expedition-1"}:${options.floor||1}`;
   worlds[worldId] ||= createWorld(options);
   const world=worlds[worldId],entry=world.map.entrances.find(tile=>tile.surfaceEntrance?.x===options.entrySurface?.x&&tile.surfaceEntrance?.y===options.entrySurface?.y)||world.map.entrances[0];
-  const path=findV39CavePath(world.map,entry,world.map.stairsDown||world.map.entrances[1]);
+  if(world.map.hegemonyInterior&&options.entrySurface)world.map.parentExit={...options.entrySurface};
+  if(world.map.hegemonyInterior)world.map.hegemonyVisited=true;
+  const path=findV39CavePath(world.map,entry,world.map.entryTarget||world.map.stairsDown||world.map.entrances[1]);
   const members=player.factionState.units.filter(unit=>ids.has(unit.id)&&isV39UnitInWorld(unit,state.activeWorldId)&&Number(unit.hp??unit.currentHp)>0);
   if(resolveV39MovementLeader(squad,members)?.movementHold)throw new Error("移動先頭がその場待機中です。解除するか先頭を変更してください。");
   const incoming=members.filter(unit=>!unit.movementHold);
@@ -126,7 +147,7 @@ export function enterV39Cave(options={}){
   const queue=[...path.slice(0,entryOrder.length).reverse()],seen=new Set(queue.map(tile=>`${tile.x},${tile.y}`));
   if(!queue.length){queue.push(entry);seen.add(entry.key);}
   for(let i=0;i<queue.length;i++)for(const next of getHexNeighborCoords(world.map.w,world.map.h,queue[i].x,queue[i].y)){
-    if(seen.has(next.key)||world.map.grid[next.y][next.x]!=="洞窟")continue;
+    if(seen.has(next.key)||(world.map.hegemonyInterior?world.map.grid[next.y][next.x]==="岩壁":world.map.grid[next.y][next.x]!=="洞窟"))continue;
     seen.add(next.key);queue.push(next);
   }
   const positions=new Map();
@@ -190,6 +211,21 @@ export function leaveV39Cave(){
   if(resolveV39MovementLeader(squad,members)?.movementHold)throw new Error("移動先頭がその場待機中です。解除するか先頭を変更してください。");
   const outgoing=members.filter(unit=>!unit.movementHold);
   const anchor=map?.parentExit||exit?.surfaceEntrance;
+  if(map?.hegemonyInterior){
+    if(!anchor)throw new Error('地上の出口が設定されていません。');
+    if(state.timeline?.phase!=='player')throw new Error('プレイヤーターンに退出を開始してください。');
+    if(!actor||Number(actor.hp??actor.currentHp)<=0)throw new Error('退出する生存ユニットを選択してください。');
+    if(actor.pendingWorldExit)throw new Error('退出準備中です。ターンを終了してください。');
+    const request={actorId:actor.id,worldId:state.activeWorldId,destination,x:actor.x,y:actor.y,anchor,
+      startedTurn:state.timeline.turnNumber,readyTurn:state.timeline.turnNumber+V39_HEGEMONY_EXIT_TURNS};
+    const ids=new Set(outgoing.map(unit=>unit.id));
+    const players=state.players.map(player=>player.id!==state.activePlayerId?player:{...player,factionState:{...player.factionState,
+      units:player.factionState.units.map(unit=>ids.has(unit.id)?{...unit,pendingWorldExit:request,ap:0,currentAp:0,actionPoint:0,
+        waitTurnNumber:state.timeline.turnNumber,lastActionTurn:state.timeline.turnNumber}:unit)}});
+    window.setV39GameState({players},{reason:'world-exit-requested'});
+    window.showV39TurnBanner?.(`退出準備中 ⌛${V39_HEGEMONY_EXIT_TURNS}：敵の行動後に地上へ戻ります。`);
+    return {pending:true,readyTurn:request.readyTurn};
+  }
   const occupied=new Set([...state.players.flatMap(player=>player.factionState.units).filter(unit=>isV39UnitInWorld(unit,destination)),...worlds[destination].spatial.enemies].filter(unit=>Number(unit.hp??unit.currentHp)>0).map(unit=>`${unit.x},${unit.y}`));
   const queue=anchor?[anchor]:[],positions=[];
   const seen=new Set(queue.map(tile=>`${tile.x},${tile.y}`));
@@ -212,6 +248,66 @@ export function leaveV39Cave(){
   })}});
   return activateWorld(state,worlds,destination,players);
 }
+
+window.resolveV39PendingWorldExits=()=>{
+  if(!window.getV39EnemyTurnState().players.some(player=>player.factionState.units.some(unit=>unit.pendingWorldExit)))return;
+  const state=window.getV39GameState();
+  const worlds=rememberWorld(state),result=advanceV39WorldExits(state,worlds,state.timeline.turnNumber);
+  if(!result.notices.length)return;
+  if(result.viewWorldId)activateWorld(state,worlds,result.viewWorldId,result.players);
+  else window.setV39GameState({players:result.players,explorationWorlds:worlds},{reason:'world-exits-resolved'});
+  for(const notice of result.notices)window.appendV39ActivityLog?.([notice.playerId],'移動',notice.message);
+};
+
+window.advanceV39NpcHegemonyTravel=()=>{
+  const snapshot=window.getV39EnemyTurnState(),sites=snapshot.activeWorldId==='surface'?snapshot.victoryLandmarksByTile:snapshot.explorationWorlds?.surface?.spatial?.victoryLandmarksByTile;
+  if(!snapshot.players.some(player=>player.isPlayer===false&&player.factionState.units.some(unit=>Number(unit.hp??unit.currentHp)>0&&
+    (snapshot.explorationWorlds?.[unit.worldId]?.map?.hegemonyInterior||Object.values(sites||{}).some(site=>site.hegemonyWorldId&&(site.occupiedTileKeys||[site.key]).includes(`${unit.x},${unit.y}`))))))return;
+  const initial=window.getV39GameState(),worlds=rememberWorld(initial),surface=worlds.surface;
+  if(!surface)return;
+  let players=initial.players,changed=false;
+  for(const player of players.filter(player=>player.isPlayer===false)){
+    for(const landmark of Object.values(surface.spatial.victoryLandmarksByTile||{})){
+      const world=worlds[landmark.hegemonyWorldId];if(!world)continue;
+      const faction=players.find(row=>row.id===player.id).factionState;
+      const living=unit=>Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
+      const guards=world.spatial.enemies.filter(unit=>unit.victoryGuard&&living(unit));
+      const inside=faction.units.filter(unit=>living(unit)&&unit.worldId===landmark.hegemonyWorldId&&!unit.pendingWorldExit);
+      const exit=world.map.entrances[0],departing=inside.find(unit=>unit.x===exit.x&&unit.y===exit.y);
+      if(!guards.length&&departing){
+        const request={actorId:departing.id,worldId:landmark.hegemonyWorldId,destination:'surface',x:exit.x,y:exit.y,
+          anchor:world.map.parentExit,startedTurn:initial.timeline.turnNumber,readyTurn:initial.timeline.turnNumber+V39_HEGEMONY_EXIT_TURNS};
+        const ids=new Set(inside.filter(unit=>unit.squadId===departing.squadId).map(unit=>unit.id));
+        players=players.map(row=>row.id!==player.id?row:{...row,factionState:{...row.factionState,units:row.factionState.units.map(unit=>ids.has(unit.id)?{...unit,pendingWorldExit:request,ap:0,currentAp:0}:unit)}});changed=true;
+      }
+      const approaching=faction.units.find(unit=>living(unit)&&(unit.worldId||'surface')==='surface'&&(landmark.occupiedTileKeys||[landmark.key]).includes(`${unit.x},${unit.y}`));
+      if(!approaching)continue;
+      if(!guards.length){
+        const claim=transferV39GuardianLand({...initial,...surface.spatial,activeWorldId:'surface',players,explorationWorlds:worlds},player.id,landmark.key,{conquest:true});
+        if(claim.ok){players=claim.state.players;worlds[landmark.hegemonyWorldId]=claim.state.explorationWorlds[landmark.hegemonyWorldId];
+          for(const field of ['territoryOwnerByTile','territoryStateByTile','dangerPercentByTile','victoryLandmarksByTile'])surface.spatial[field]=claim.state[field];changed=true;}
+        continue;
+      }
+      const party=faction.units.filter(unit=>living(unit)&&(unit.worldId||'surface')==='surface'&&unit.squadId===approaching.squadId);
+      const occupied=new Set([...world.spatial.enemies,...players.flatMap(p=>p.factionState.units).filter(unit=>unit.worldId===landmark.hegemonyWorldId)]
+        .filter(living).map(unit=>`${unit.x},${unit.y}`));
+      const tiles=[];
+      for(let y=0;y<world.map.h;y++)for(let x=0;x<world.map.w;x++)if(world.map.grid[y][x]!=='岩壁')tiles.push({x,y});
+      tiles.sort((a,b)=>getHexDistance(a,exit)-getHexDistance(b,exit));
+      const positions=new Map();
+      for(const unit of party){const tile=tiles.find(tile=>!occupied.has(`${tile.x},${tile.y}`)&&canUnitEnterV39Tile(world.map,tile.x,tile.y,unit));
+        if(!tile)break;positions.set(unit.id,tile);occupied.add(`${tile.x},${tile.y}`);}
+      if(positions.size!==party.length)continue;
+      world.map.parentExit={x:approaching.x,y:approaching.y};
+      world.map.hegemonyVisited=true;
+      players=players.map(row=>row.id!==player.id?row:{...row,factionState:{...row.factionState,units:row.factionState.units.map(unit=>{
+        const tile=positions.get(unit.id);return tile?{...unit,worldId:landmark.hegemonyWorldId,x:tile.x,y:tile.y,position:[tile.x,tile.y],ap:0,currentAp:0,
+          locationsByWorld:{...unit.locationsByWorld,surface:{x:unit.x,y:unit.y}}}:unit;
+      })}});changed=true;
+    }
+  }
+  if(changed)window.setV39GameState({players,explorationWorlds:worlds,...(initial.activeWorldId==='surface'?surface.spatial:{})},{reason:'npc-hegemony-travel'});
+};
 
 export function descendV39Cave(){
   const map=window.__v39FieldRuntime?.mapData,unit=window.getV39SelectedSquadUnit?.();
@@ -242,10 +338,30 @@ function installActions(){
   });list.appendChild(button);}
   const state=window.getV39GameState({includeWorlds:false}),unit=window.getV39SelectedSquadUnit?.(),map=window.__v39FieldRuntime?.mapData;
   const underground=state.activeWorldId!=="surface";
-  const entrance=underground?map?.entrances?.some((tile,index)=>tile.x===unit?.x&&tile.y===unit?.y&&(map.parentWorldId?index===0:!!tile.surfaceEntrance||(!map.entrances.some(entry=>entry.surfaceEntrance)&&index===0))):isV39CaveEntranceDiscovered(state.players.find(player=>player.id===state.activePlayerId)?.factionState,map,unit?.x,unit?.y);
-  button.hidden=!entrance;
-  button.disabled=!!window.isV39MapInputLocked?.();
-  button.textContent=underground?(map?.parentWorldId?"前の階層へ":"地上へ戻る"):"洞窟に入る";
+  const areaEntrance=hegemonyEntranceAt(map,unit?.x,unit?.y);
+  const landmarkEntrance=!underground?Object.values(state.victoryLandmarksByTile||{}).find(site=>
+    state.players.find(player=>player.id===state.activePlayerId)?.factionState.exploration?.discoveredFeaturesByTile?.[site.key]
+    &&(site.hegemonyWorldId||state.enemies.some(enemy=>enemy.victoryLandmarkKey===site.key))&&(site.occupiedTileKeys||[site.key]).includes(`${unit?.x},${unit?.y}`)):null;
+  const entrance=underground?map?.entrances?.some((tile,index)=>tile.x===unit?.x&&tile.y===unit?.y&&(map.parentWorldId?index===0:!!tile.surfaceEntrance||(!map.entrances.some(entry=>entry.surfaceEntrance)&&index===0))):!!areaEntrance||isV39CaveEntranceDiscovered(state.players.find(player=>player.id===state.activePlayerId)?.factionState,map,unit?.x,unit?.y);
+  button.hidden=!entrance&&!landmarkEntrance;
+  button.disabled=!!window.isV39MapInputLocked?.()||!!unit?.pendingWorldExit;
+  button.textContent=underground?(map?.hegemonyInterior?"地上へ戻る":map?.parentWorldId?"前の階層へ":"地上へ戻る"):areaEntrance?`${areaEntrance.name}に入る`:"洞窟に入る";
+  if(map?.hegemonyInterior)button.textContent=unit?.pendingWorldExit
+    ?`退出準備中 ⌛${Math.max(0,unit.pendingWorldExit.readyTurn-state.timeline.turnNumber)}`:`地上へ戻る ⌛${V39_HEGEMONY_EXIT_TURNS}`;
+  if(landmarkEntrance)button.textContent=`${landmarkEntrance.name}の奥地へ`;
+  let cancelExit=document.getElementById('v39-world-exit-cancel');
+  if(!cancelExit){
+    cancelExit=document.createElement('button');cancelExit.id='v39-world-exit-cancel';cancelExit.className='technique-card system-action-card';
+    cancelExit.type='button';cancelExit.textContent='退出を取り消す';list.appendChild(cancelExit);
+    cancelExit.addEventListener('click',()=>{
+      if(window.isV39MapInputLocked?.())return;
+      const current=window.getV39GameState(),request=window.getV39SelectedSquadUnit?.()?.pendingWorldExit;if(!request)return;
+      window.setV39GameState({players:current.players.map(player=>player.id!==current.activePlayerId?player:{...player,factionState:{...player.factionState,
+        units:player.factionState.units.map(unit=>unit.pendingWorldExit?.actorId===request.actorId&&unit.pendingWorldExit?.worldId===request.worldId
+          ?{...unit,pendingWorldExit:null}:unit)}})},{reason:'world-exit-cancelled'});
+    });
+  }
+  cancelExit.hidden=!unit?.pendingWorldExit;cancelExit.disabled=!!window.isV39MapInputLocked?.();
   let descend=document.getElementById("v39-cave-descend-action");
   if(!descend){descend=document.createElement("button");descend.id="v39-cave-descend-action";descend.className="technique-card system-action-card";descend.type="button";descend.textContent="次の階層へ";descend.addEventListener("click",()=>{try{descendV39Cave();}catch(error){window.showV39TurnBanner?.(error.message);}});list.appendChild(descend);}
   const stairs=map?.stairsDown||map?.entrances?.[1];
@@ -522,24 +638,27 @@ window.addEventListener("v39:unit-selected",event=>{
 });
 window.addEventListener("v39:field-layer-changed",()=>{setTimeout(()=>{installActions();renderSites();},100);});
 window.addEventListener("v39:visibility-rendered",renderSites);
+window.addEventListener("v39:field-input-ready",()=>{installActions();renderSites();});
 window.addEventListener("v39:save-loaded",()=>{setTimeout(()=>{installActions();renderSites();},100);});
 
 function renderSites(){
   if(window.__v39BackgroundWorldTurn)return;
   const map=window.__v39FieldRuntime?.mapData,scene=window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
-  if(!scene||!map?.isUnderground)return;
+  if(!scene||(!map?.isUnderground&&!map?.hegemonyInterior))return;
   scene.v39CaveSites?.destroy(true);
   scene.v39CaveSites=scene.add.container(0,0).setDepth(27);
-  const stairs=(map.entrances||[]).map((tile,index)=>({...tile,icon:map.parentWorldId&&index===0?"↑":"↗",remaining:1}));
+  const stairs=(map.entrances||[]).map((tile,index)=>({...tile,icon:map.hegemonyInterior?'出口':map.parentWorldId&&index===0?"↑":"↗",remaining:1,worldExit:map.hegemonyInterior}));
   if(map.stairsDown)stairs.push({...map.stairsDown,icon:"↓",remaining:1});
   for(const site of [...(map.caveSites||[]),...stairs]){
-    if(!window.isV39TileExplored?.(site.x,site.y)&&!window.isV39TileInCurrentVision?.(site.x,site.y))continue;
+    if(!(site.worldExit&&window.isV39TestMode?.())&&!window.isV39TileExplored?.(site.x,site.y)&&!window.isV39TileInCurrentVision?.(site.x,site.y))continue;
     site.discovered=true;
     const x=site.x*HEX_TILE_CONFIG.width+(site.y%2?HEX_TILE_CONFIG.oddRowOffsetX:0)+HEX_TILE_CONFIG.width/2,y=site.y*HEX_TILE_CONFIG.rowStep+HEX_TILE_CONFIG.height/2;
-    const marker=scene.add.text(x,y,site.icon,{fontSize:`${HEX_TILE_CONFIG.width*.4}px`}).setOrigin(.5).setInteractive();
+    if(site.worldExit)scene.v39CaveSites.add(scene.add.circle(x,y,HEX_TILE_CONFIG.width*.46,0x102d35,.9).setStrokeStyle(3,0xffe17a));
+    const marker=scene.add.text(x,y,site.icon,{fontSize:`${HEX_TILE_CONFIG.width*.4}px`,color:site.worldExit?'#ffe17a':'#ffffff',fontStyle:'bold'}).setOrigin(.5).setInteractive();
+    if(site.worldExit)marker.setName('v39-world-exit-marker');
     marker.setAlpha(site.remaining>0?1:.35);
     marker.on("pointerdown",()=>{
-      window.dispatchEvent(new CustomEvent("v39:tile-selected",{detail:{x:site.x,y:site.y,terrain:site.wall?"岩壁":"洞窟"}}));
+      window.dispatchEvent(new CustomEvent("v39:tile-selected",{detail:{x:site.x,y:site.y,terrain:map.hegemonyInterior?map.grid[site.y][site.x]:site.wall?"岩壁":"洞窟"}}));
     });
     scene.v39CaveSites.add(marker);
   }

@@ -1,0 +1,19 @@
+
+> fantasy-strategy@0.1.0 build:front
+> vite build --config frontend/vite.config.mjs
+
+vite v6.4.1 building for production...
+transforming...
+✓ 975 modules transformed.
+✗ Build failed in 5.78s
+error during build:
+ENOTEMPTY: directory not empty, rmdir 'C:\Users\skkt3\ドキュメント\Github\fantasy_Strategy\web-vue-dist\assets'
+    at Object.rmdirSync (node:fs:1201:11)
+    at _rmdirSync (node:internal/fs/rimraf:261:21)
+    at rimrafSync (node:internal/fs/rimraf:194:7)
+    at Object.rmSync (node:fs:1247:10)
+    at emptyDir (file:///C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:6855:19)
+    at prepareOutDir (file:///C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:46273:7)
+    at buildEnvironment (file:///C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:46237:7)
+    at async Object.defaultBuildApp [as buildApp] (file:///C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:46713:5)
+    at async CAC.<anonymous> (file:///C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/node_modules/vite/dist/node/cli.js:863:7)

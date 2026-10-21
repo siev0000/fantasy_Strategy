@@ -1,0 +1,13 @@
+{
+  "width":20,
+  "height":16,
+  "unitLevel":30,
+  "minimumMovement":120,
+  "base":{"id":"village-plan-test-base","name":"支援物資拠点","x":9,"y":7},
+  "villages":[
+    {"key":"cemetery","name":"墓地建設の村","x":4,"y":4,"terrain":"平地","hint":"交流で物資支援を受注→納品・報告。その後ターンを進めて墓地完成を確認。"},
+    {"key":"food","name":"食料不足の村","x":14,"y":4,"terrain":"砂漠","hint":"交流で食料支援を受注→納品・報告。在庫と友好度の変化を確認。"},
+    {"key":"threat","name":"討伐支援の村","x":4,"y":11,"terrain":"平地","hint":"先に交流で討伐支援を受注→村の南のウルフを倒す→村へ戻り報告。"},
+    {"key":"guard","name":"守備兵不在の村","x":14,"y":11,"terrain":"平地","hint":"訓練⌛を確認し、1T経過で守備軍1部隊が補充されるまで進める。"}
+  ]
+}

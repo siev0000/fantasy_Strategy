@@ -44,6 +44,28 @@ class EventSheetTests(unittest.TestCase):
     def compile(self, *data):
         return compile_rows(enumerate(data, 2), {"木材", "穀物", "金", "魂"})
 
+    def test_village_plan_and_template(self):
+        template=row(ID="TPL", イベント種別="依頼ひな型", 計画対象="不足資源", 数量上限=100, 報酬="1-1. 友好度_10")
+        plan=row(ID="PLAN", イベント種別="村計画", 計画対象="墓地", 判定基準="死亡者あり",
+                 工程="安全確保>資材確保>建設", 支援依頼ID="TPL", 優先度=60)
+        output, report=self.compile(plan, template)
+        self.assertFalse(report["エラー"])
+        self.assertNotIn("イベント_一般村.json", output)
+        self.assertEqual(output["村計画.json"][0]["工程"], ["安全確保", "資材確保", "建設"])
+        self.assertEqual(output["村依頼ひな型.json"][0]["完了効果"][0]["設定"]["値"], 10)
+
+    def test_village_plan_rejects_missing_template(self):
+        _, report=self.compile(row(イベント種別="村計画", 計画対象="墓地", 判定基準="死亡者あり",
+                                  工程="建設", 支援依頼ID="MISSING"))
+        self.assertTrue(report["エラー"])
+
+    def test_village_plan_does_not_enable_unsupported_drafts(self):
+        output, report=self.compile(row(イベント種別="村計画", 状態="試作", 計画対象="旧所有地",
+                                        判定基準="所有地喪失", 工程="奪還"))
+        self.assertFalse(output)
+        self.assertFalse(report["エラー"])
+        self.assertEqual(len(report["除外"]), 1)
+
     def test_number_matching_not_line_order(self):
         output, report = self.compile(row())
         self.assertFalse(report["エラー"])

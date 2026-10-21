@@ -1,0 +1,10 @@
+{
+  "villageDefenseRadius":3,
+  "retreatHpRate":0.3,
+  "maximumActions":12,
+  "safeRecoveryRate":0.1,
+  "replacementTrainingTurns":3,
+  "initialGoldPerResident":1,
+  "initialGrainPerResident":5,
+  "resettlementPopulation":5
+}

@@ -303,6 +303,7 @@ export function applyV39DerivedCharacterData(unit = {}) {
     legCount: derived.raceRow?.脚数
   });
   status.移動 = movement + number(derived.passiveBonuses?.status?.移動);
+  if(unit.testOnly===true)status.移動=Math.max(status.移動,number(unit.testMovementMinimum));
   return {
     ...unit,
     race: derived.race,

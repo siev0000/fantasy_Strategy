@@ -1,4 +1,5 @@
 {
   "mountainRivers":{"minimumClusterSize":7,"sourceAttempts":12},
+  "canyons":{"terrains":["丘陵","山岳","火山"],"seedMinHeight":2,"seedMinDrop":2,"minimumHeight":1,"riverDistance":2,"normalLength":[4,8],"largeLength":[10,15],"smallLength":[1,2],"largeChance":0.12,"smallChance":0.1,"widthChance":0.35,"areaPerRegion":1500,"maximumAttempts":60,"searchBudget":180},
   "wasteland":{"minimumRegionSize":7,"maximumRegionSize":28,"eligibleRatio":0.14,"minimumCoreNeighbors":4,"regionGap":3}
 }

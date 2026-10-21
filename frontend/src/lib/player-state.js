@@ -1,4 +1,5 @@
 import { normalizeFactionSettlements } from "./settlement-state.js";
+import {collectV39TradeResourceKnowledge} from './v39-trade-knowledge.js';
 import { normalizeV39SquadLogistics } from "./v39-logistics-state.js";
 
 const VISIBILITY_ARRAY_KEYS = Object.freeze([
@@ -71,6 +72,7 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
     ...sourceWithoutLegacyVillage,
     settlements: settlementState.settlements,
     selectedSettlementId: settlementState.selectedSettlementId,
+    knownTradeResourceNames:collectV39TradeResourceKnowledge({...source,settlements:settlementState.settlements}),
     units: cloneRows(source?.units),
     unitTrainingQueue: cloneRows(source?.unitTrainingQueue),
     recruitInstructorByTile:cloneRecord(source?.recruitInstructorByTile),
@@ -123,6 +125,7 @@ export function createPlayerRecord(source = {}, index = 0) {
 }
 
 export const PLAYER_FACTION_STATE_KEYS = Object.freeze([
+  "knownTradeResourceNames",
   "tradeContracts",
   "negotiationAttempts",
   "settlements",

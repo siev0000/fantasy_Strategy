@@ -1,3 +1,4 @@
+import {openV39TestSuite} from './lib/v39-test-suite.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
@@ -11,7 +12,7 @@ try {
     page.on('console',msg=>{if(msg.type()==='error')console.error(msg.text());});
     page.on('dialog',dialog=>dialog.accept());
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
-    await page.locator('[data-v39-test-tools]').click();await page.locator('[data-test-action="logistics-test-start"]').click();
+    await page.locator('[data-v39-test-tools]').click();await openV39TestSuite(page,'logistics');await page.locator('[data-test-action="logistics-test-start"]').click();
     await page.waitForFunction(()=>window.getV39ActiveFactionState()?.logisticsRoutes?.length===4);
     const ids=await page.evaluate(async()=>{
       const s=window.getV39GameState(),p=s.players.find(p=>p.id===s.activePlayerId),other=structuredClone(p);

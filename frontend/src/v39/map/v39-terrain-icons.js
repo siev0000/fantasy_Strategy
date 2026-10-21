@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import {hegemonyZoneAt} from '../../lib/v39-hegemony-areas.js';
 import { getIconSrcByName, hasIconName } from "../../lib/icon-library.js";
 import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { V39_CAVE_BALANCE } from "../../lib/v39-gameplay-balance.js";
@@ -71,7 +72,7 @@ function collectIconEntries(data, scene) {
   for (let y = 0; y < Number(data?.h || 0); y += 1) {
     for (let x = 0; x < Number(data?.w || 0); x += 1) {
       const terrain = String(data?.grid?.[y]?.[x] || "");
-      const special = String(data?.specialMap?.[y]?.[x] || "");
+      const special = hegemonyZoneAt(data,x,y)?.visualSpecial || String(data?.specialMap?.[y]?.[x] || "");
       const baseIcon = BASE_TERRAIN_ICONS[terrain];
       const specialIcon = SPECIAL_TERRAIN_ICONS[special];
       if (baseIcon && !hasV39TerrainPattern(scene,terrainPatternNameAt(data,x,y))) entries.push({ x, y, kind:"base", terrain, icon:baseIcon });

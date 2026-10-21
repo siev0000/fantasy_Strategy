@@ -1,3 +1,4 @@
+import {tickV39HegemonyArea} from '../../lib/v39-hegemony-area-effects.js';
 import { disasterData, terrainData } from "../../lib/game-data-registry.js";
 import {projectV39HazardEvents} from '../../lib/v39-hazard-zones.js';
 import {tickV39HazardEffects} from '../../lib/v39-hazard-effects.js';
@@ -412,6 +413,8 @@ function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceD
   const ticked = tickDisasterDamage(state, mapData, activeDisasters, turn);
   const hazards=tickV39HazardEffects({...state,...ticked},mapData,turn);
   ticked.players=hazards.players;ticked.enemies=hazards.enemies;ticked.neutralVillages=hazards.neutralVillages;ticked.entries.push(...hazards.entries);
+  const areaEffects=tickV39HegemonyArea({...state,...ticked},mapData,turn);
+  ticked.players=areaEffects.players;ticked.enemies=areaEffects.enemies;ticked.neutralVillages=areaEffects.neutralVillages;ticked.entries.push(...areaEffects.entries);
   const stateAfterDamage = { ...state, players:ticked.players, enemies:ticked.enemies, neutralVillages:ticked.neutralVillages };
   advanceV39CorpseFog(mapData,stateAfterDamage,turn);
   const spawnedByDisaster = created.map(event => spawnDisasterEnemy(stateAfterDamage, event, turn)).filter(Boolean);
@@ -439,7 +442,7 @@ function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "", forceD
   };
   const neutralVillageById = new Map(neutralVillages.map(village => [text(village?.id), village]));
   const settlements = (state?.settlements || []).map(settlement => neutralVillageById.get(text(settlement?.id)) || settlement);
-  return { players:ticked.players, enemies, enemySquads, neutralVillages, settlements, groundLootByTile:undead.groundLootByTile, worldEnvironment, created, ended, damageEntries:ticked.entries, undead:undead.spawned, spawnedByDisaster };
+  return { players:ticked.players, enemies, enemySquads, neutralVillages, settlements, groundLootByTile:undead.groundLootByTile, worldEnvironment, created, ended, recoveryEntries:areaEffects.recoveries, damageEntries:ticked.entries, undead:undead.spawned, spawnedByDisaster };
 }
 
 export function runV39NaturalEvents(options = {}) {
@@ -462,7 +465,7 @@ export function runV39NaturalEvents(options = {}) {
     forceDisasterId:text(options?.forceDisasterId),
     forceDisasterAt:options?.forceDisasterAt || null,
     forceUndeadAt:options?.forceUndeadAt || null,
-    skipNaturalDisasters:mapData.isUnderground || options?.skipNaturalDisasters === true,
+    skipNaturalDisasters:mapData.isUnderground || mapData.hegemonyInterior || mapData.hegemonyTestHub || mapData.villagePlanTest || options?.skipNaturalDisasters === true,
     recordDisasterDiagnostics:window.isV39TestMode?.()===true
   });
   // Snapshot before damage/state updates change vision; any affected tile is enough.
@@ -506,6 +509,10 @@ export function runV39NaturalEvents(options = {}) {
       const [x,y]=key.split(',').map(Number);if(!visibleToActive(x,y))continue;
       window.appendV39ActivityLog?.([state.activePlayerId],'災害',`${event.name}: (${x},${y})へ落雷 / ${event.damageElement} 威力${event.damagePower}`,{...event,strikeKey:key});
     }
+  }
+  for(const entry of result.recoveryEntries||[]){
+    const viewers=entry.playerId?[entry.playerId]:visibleToActive(entry.x,entry.y)?[state.activePlayerId]:[];
+    if(viewers.length)window.appendV39ActivityLog?.(viewers,"回復",`${entry.name}: 生命の根でHP${entry.amount}回復`,entry);
   }
   for(const entry of result.damageEntries){
     const viewers=entry.playerId?[entry.playerId]:visibleToActive(entry.x,entry.y)?[state.activePlayerId]:[];

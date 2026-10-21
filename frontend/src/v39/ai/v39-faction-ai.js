@@ -271,6 +271,20 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
   let state = sourceState;
   const turn = Math.max(1, Math.floor(number(turnNumber, state?.timeline?.turnNumber || 1)));
   const reports = [];
+  if(mapData?.hegemonyInterior){
+    for(const source of state.players.filter(player=>player.isPlayer===false)){
+      if(!source.factionState.units.some(alive))continue;
+      const stamp=source.factionState.aiState?.lastHegemonyTurnByWorld?.[state.activeWorldId];if(stamp>=turn)continue;
+      const guards=state.enemies.filter(alive),target=guards[0]||mapData.entrances[0];
+      const objective={type:'victory-landmark',targetTileKey:mapData.hegemonyLandmarkKey,x:target.x,y:target.y,targetName:mapData.hegemonyAreaName};
+      const combat=planAiCombat(state,source,objective);
+      if(!combat){const moved=moveAiExplorer(state,source,mapData,objective);if(moved)state=moved.state;}
+      state={...state,players:state.players.map(player=>player.id!==source.id?player:{...player,factionState:{...player.factionState,aiState:{...player.factionState.aiState,
+        lastHegemonyTurnByWorld:{...player.factionState.aiState?.lastHegemonyTurnByWorld,[state.activeWorldId]:turn}}}})};
+      reports.push({playerId:source.id,combatActions:combat?[combat]:[],commands:['覇権地奥地の攻略'],turnNumber:turn});
+    }
+    return {state,reports};
+  }
   for (const playerId of (state?.players || []).filter(player => player?.isPlayer === false).map(player => player.id)) {
     let player = playerFrom(state, playerId);
     if (!player || number(player?.factionState?.aiState?.lastProcessedTurn) >= turn) continue;

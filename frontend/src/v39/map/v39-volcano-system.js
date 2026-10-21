@@ -315,6 +315,7 @@ export function runV39TerrainTurn(options = {}) {
   const runtime = window.__v39FieldRuntime;
   const mapData = runtime?.mapData;
   if (!state || !mapData) return { ok:false, reason:"field-not-generated", events:[] };
+  if(mapData.hegemonyInterior||mapData.hegemonyTestHub)return {ok:true,reason:'fixed-hegemony-map',events:[]};
   const targetTurn = Math.max(1, asCount(options.targetTurn ?? state.timeline?.turnNumber));
   const alreadyProcessed = asCount(state.worldEnvironment?.processedTurn);
   if (options.force !== true && alreadyProcessed >= targetTurn) return { ok:false, reason:"already-processed", events:[] };

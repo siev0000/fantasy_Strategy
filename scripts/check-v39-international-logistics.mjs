@@ -1,3 +1,4 @@
+import {openV39TestSuite} from './lib/v39-test-suite.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
@@ -8,7 +9,7 @@ try {
     const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
     page.on('pageerror',e=>{errors.push(String(e.stack));console.error(e.stack);});page.on('dialog',d=>d.accept());
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
-    await page.locator('[data-v39-test-tools]').click();await page.locator('[data-test-action="logistics-test-start"]').click();
+    await page.locator('[data-v39-test-tools]').click();await openV39TestSuite(page,'logistics');await page.locator('[data-test-action="logistics-test-start"]').click();
     await page.waitForSelector('[data-logistics-view-player]');
     const setup=await page.evaluate(()=>{
       const s=window.getV39GameState(),contracts=window.getV39TradeRules().listV39Trades(s);

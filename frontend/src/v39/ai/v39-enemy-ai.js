@@ -342,6 +342,7 @@ function compactAiUnit(unit, enemySide = false) {
   return {
     ...compact,
     aggressive:unit?.aggressive,
+    victoryGuard:unit?.victoryGuard,victoryLandmarkKey:unit?.victoryLandmarkKey,
     villageIncidentTargetPlayerId:unit?.villageIncidentTargetPlayerId,
     race:unit?.race,
     nestId:unit?.nestId,
@@ -376,6 +377,8 @@ function buildWorkerState(state = enemyTurnState()) {
   return {
     enemies:(state?.enemies || []).map(unit => ({ ...compactAiUnit(adjust(unit), true), cargoFull:cargoFullEnemyIds.has(text(unit?.id)) })),
     activeWorldId:state?.activeWorldId,
+    victoryLandmarksByTile:state?.activeWorldId&&state.activeWorldId!=='surface'
+      ?state.explorationWorlds?.surface?.spatial?.victoryLandmarksByTile||{}:state.victoryLandmarksByTile||{},
     worldEnvironment:{activeDisasters:state?.worldEnvironment?.activeDisasters||[]},
     players:(state?.players || []).map(player => ({
       id:player?.id,

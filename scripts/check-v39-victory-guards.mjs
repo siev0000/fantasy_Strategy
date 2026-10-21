@@ -63,12 +63,17 @@ try {
       factionState:{
         ...row.factionState,
         units:row.factionState.units.slice(0, 1).map(unit => ({ ...unit, x:neighbor.x, y:neighbor.y, ap:100, currentAp:100, maxAp:100 })),
-        exploration:{ ...row.factionState.exploration, discoveredFeaturesByTile:{ [landmark.key]:{ ...landmark } } },
+        // This fixture checks combat, not whether surveying consumes all AP first.
+        exploration:{ ...row.factionState.exploration,
+          surveyedTileKeys:Array.from({length:window.__v39FieldRuntime.mapData.h},(_,y)=>Array.from({length:window.__v39FieldRuntime.mapData.w},(_,x)=>`${x},${y}`)).flat(),
+          discoveredFeaturesByTile:{ [landmark.key]:{ ...landmark } } },
         aiState:{ ...row.factionState.aiState, lastProcessedTurn:0 }
       }
       });
     });
-    const combatPrepared = { ...combatBase, players:combatPlayers };
+    // Spawn/minion persistence was checked above; isolate the boss as the combat target.
+    const combatPrepared = { ...combatBase, players:combatPlayers,
+      enemies:combatBase.enemies.filter(enemy=>enemy.victoryLandmarkKey!==landmark.key||enemy.id===boss.id) };
     const npcResult = window.runV39FactionAiTurn(combatPrepared, 2, window.__v39FieldRuntime.mapData);
     const combatAction = npcResult.reports.find(row => row.playerId === added.player.id)?.combatActions?.find(action => action.targetType === "victory-guard");
     if (!combatAction || combatAction.targetUnitId !== boss.id) throw new Error(`NPCが守護ボスを攻撃対象にしません: ${JSON.stringify(combatAction)}`);

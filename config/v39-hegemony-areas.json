@@ -1,0 +1,18 @@
+{
+  "width": 12,
+  "height": 12,
+  "exitTurns": 1,
+  "entry": {"x": 5, "y": 10},
+  "entryTarget": {"x": 5, "y": 7},
+  "testHub": {"width":16,"height":14,"unitLevel":30,"minimumMovement":120,"party":[{"x":7,"y":7},{"x":7,"y":8}],"entrances":[{"areaId":"sun","x":4,"y":4},{"areaId":"tree","x":11,"y":4},{"areaId":"crater","x":4,"y":9},{"areaId":"sea","x":11,"y":9}]},
+  "areas": [
+    {"id":"sun","name":"太陽の山","base":"丘陵","zoneName":"陽光","description":"このマスからの光属性攻撃の威力1.2倍","color":"#ffe17a","lightMultiplier":1.2,
+      "layout":["############","###......###","##..xxx...##","#..xxxxx...#","#...xxx....#","#..........#","#..xx...xx.#","#..xx...xx.#","#..........#","##........##","###......###","############"]},
+    {"id":"tree","name":"黄昏の樹","base":"森","zoneName":"生命の根","description":"ターン経過でHP5回復（敵味方共通）","color":"#ffe17a","visualSpecial":"薬草の群生地","healing":5,
+      "layout":["############","###......###","##..xxx...##","#...xxx....#","#....x.....#","#....x.....#","#..xxx.....#","#....xxx...#","#......x...#","##........##","###......###","############"]},
+    {"id":"crater","name":"星の火口","base":"荒野","zoneName":"灼熱の地面","description":"ターン経過で炎・威力20のダメージ（敵味方共通）","color":"#ff784f","visualTerrain":"溶岩","visualColor":"#d83d17","power":20,"element":"炎",
+      "layout":["############","###......###","##xxx..xxx##","#xxxx..xxxx#","#xxx....xxx#","#xx......xx#","#xxx....xxx#","#xxxx..xxxx#","#xxx....xxx#","##........##","###......###","############"]},
+    {"id":"sea","name":"宇宙の海","base":"平地","zoneName":"水域","description":"水域の通常移動条件を適用。中央に陸路、周囲に河川と海","color":"#72caff","water":true,
+      "layout":["############","###......###","##xx....xx##","#xxxx..xxxx#","#xxxx..xxxx#","#xxx....xxx#","#xxx....xxx#","#xxxx..xxxx#","#xxx....xxx#","##........##","###......###","############"]}
+  ]
+}

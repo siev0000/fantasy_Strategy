@@ -1,3 +1,4 @@
+import {openV39TestSuite} from './lib/v39-test-suite.mjs';
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { chromium } from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs";
@@ -12,7 +13,8 @@ try{
     await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3022",{waitUntil:"networkidle"});
     await page.waitForFunction(()=>typeof window.startV39ExpeditionTest==='function');
     await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.activateV39FooterTab("test");});
-    await page.locator('[data-test-action="expedition-start"]').click();
+    // Preserve the full shared builder regression; user-facing fixtures are split by profile.
+    await page.evaluate(()=>window.startV39ExpeditionTest());
     await page.waitForFunction(()=>window.__v39FieldRuntime.mapData.expeditionTestFixture===true);
     await page.waitForTimeout(300);
     const before=await page.evaluate(()=>{
@@ -76,6 +78,7 @@ try{
     assert.equal(await page.evaluate(()=>window.getV39GameState().neutralVillages[0].questsByPlayerId[window.getV39GameState().activePlayerId].type),'watch');
     await page.locator('[data-close-village-menu]').click();
     await page.evaluate(()=>window.activateV39FooterTab('test'));
+    await page.locator('[data-test-suite=logistics]>summary').click();
     await page.locator('[data-test-action="expedition-mine"]').click();
     await page.evaluate(()=>{window.activateV39FooterTab('squad');document.querySelector('[data-squad-detail-tab="basic"]')?.click();window.refreshV39ExpeditionTools();});
     const recovery=await page.evaluate(()=>{
@@ -133,7 +136,7 @@ try{
     });
     assert.equal(guard.worldId,'surface');assert.equal(guard.x,8);assert.equal(guard.y,5);
     await page.evaluate(()=>window.activateV39FooterTab('test'));
-    await page.locator('[data-test-action="expedition-invasion"]').click();
+    await openV39TestSuite(page,'logistics');await page.locator('[data-test-action="expedition-invasion"]').click();
     const invaded=await page.evaluate(async()=>{
       for(let n=0;n<9;n++)await window.advanceV39Turn({skipUnactedFocus:true});
       const state=window.getV39GameState(),cave=state.explorationWorlds['cave:expedition-test:1'];

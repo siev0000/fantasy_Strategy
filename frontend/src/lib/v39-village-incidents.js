@@ -35,6 +35,7 @@ function holdTargets(state, village, playerId, held, remainingUnits) {
 export function restAtIncidentVillage(state, playerId, villageId, balance, random=Math.random) {
   if((state.activeWorldId||'surface')!=='surface'||state.timeline?.phase!=='player')return fail(state,'地上の操作ターンで休息してください');
   const village=state.neutralVillages?.find(row=>row.id===villageId),party=villageRestParty(state,playerId,villageId);
+  if(village?.abandoned)return fail(state,'廃村では休息できません');
   if(!village||!party.length)return fail(state,'休息する部隊を選択してください');
   if(village.incidentByPlayerId?.[playerId]?.status==='choice'||village.incidentByPlayerId?.[playerId]?.status==='battle')return fail(state,'進行中の強襲に対応してください');
   if(party.some(unit=>!village.territoryTileKeys?.includes(key(unit))))return fail(state,'部隊全員が村の領域内にいる必要があります');

@@ -10,6 +10,7 @@ import { isV39ProximitySite, resolveV39SiteStealth } from "./v39-site-discovery.
 import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
 import { getV39VictoryLandmarkDefinition, isV39VictoryLandmark } from "./v39-victory-landmarks.js";
 import { grantV39ActionExperience, resolveV39SurveyExpReward } from "./v39-unit-experience.js";
+import {canV39ClaimHegemony} from './v39-hegemony-land-rules.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -259,7 +260,7 @@ export function advanceV39ExplorationTurn(state, turnNumber, mapData = null) {
         dangerPercentByTile[key] = Math.max(0, beforeDanger - (alreadySurveyed ? 0 : reduction));
         const hasLivingEnemy = (state?.enemies || []).some(enemy => number(enemy.hp ?? enemy.currentHp) > 0 && coordKey(enemy.x, enemy.y) === key);
         // 通常土地の取得は拠点の開拓へ分離。勝利対象の専用獲得条件は維持する。
-        const claimed = key === task.key && isV39VictoryLandmark(site) && dangerPercentByTile[key] <= 0 && !territoryOwnerByTile[key] && !hasLivingEnemy;
+        const claimed = key === task.key && isV39VictoryLandmark(site) && canV39ClaimHegemony(state,{...site,key}) && dangerPercentByTile[key] <= 0 && !territoryOwnerByTile[key] && !hasLivingEnemy;
         let claimedTileKeys = [];
         if (claimed) {
           claimedTileKeys = claimFeatureTerritory(
@@ -284,6 +285,7 @@ export function advanceV39ExplorationTurn(state, turnNumber, mapData = null) {
       .map(unit => coordKey(unit?.x, unit?.y)));
     for (const [key, feature] of Object.entries(discoveredFeaturesByTile)) {
       if (!isV39VictoryLandmark(feature) || territoryOwnerByTile[key] || !occupiedByLivingUnit.has(key)) continue;
+      if(!canV39ClaimHegemony(state,{...feature,key}))continue;
       const hasLivingEnemy = (state?.enemies || []).some(enemy => number(enemy?.hp ?? enemy?.currentHp) > 0 && coordKey(enemy.x, enemy.y) === key);
       if (number(dangerPercentByTile[key]) > 0 || hasLivingEnemy) continue;
       const claimedTileKeys = claimFeatureTerritory(

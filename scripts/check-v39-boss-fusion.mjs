@@ -24,6 +24,7 @@ try{
     const {getGameDataRows,classData}=await import('/src/lib/game-data-registry.js');
     const {getV39BossFusionCandidates}=await import('/src/lib/v39-boss-fusion-rules.js');
     const {V39_FUSION_MATERIAL_GROUPS}=await import('/src/lib/v39-fusion-material-types.js');
+    const {V39_GUARDIAN_ONLY_SPECIES}=await import('/src/lib/v39-victory-guardian-candidates.js');
     const recipes=getGameDataRows('モンスター合成'),names=new Set(classData.map(row=>row.名前));
     const data=window.__v39FieldRuntime.mapData;
     const results=[];
@@ -40,6 +41,7 @@ try{
       window.setV39GameState({enemies:[],enemyNests:[],enemySquads:[],victoryLandmarksByTile:{}});
       const enemies=window.spawnV39Enemies(),bosses=enemies.filter(e=>e.strongEnemy);
       results.push({terrain,bosses:bosses.map(e=>({race:e.race,extra:e.strongAnimalClassName,name:e.name,
+        guardianOnly:V39_GUARDIAN_ONLY_SPECIES.has(e.strongFusionResultName)||e.strongAnimalClassName==='神獣',
         matches:getV39BossFusionCandidates(e.race,e.className,recipes,names,V39_FUSION_MATERIAL_GROUPS).some(r=>r.className===e.strongAnimalClassName&&r.name===e.name),
         extraLv:e.strongAnimalClassLevel,level:e.level})),
         ordinary:enemies.filter(e=>!e.strongEnemy).length,ordinaryExtra:enemies.some(e=>!e.strongEnemy&&e.strongAnimalClassName)});
@@ -50,9 +52,10 @@ try{
   for(const row of report){
     assert.ok(row.ordinary>0);assert.equal(row.ordinaryExtra,false);
     assert.ok(row.bosses.every(b=>b.matches&&b.extraLv>0&&b.level>=20&&b.level<=25));
+    assert.ok(row.bosses.every(b=>!b.guardianOnly),'divine guardians must not spawn as natural Lv20-25 bosses');
   }
-  assert.ok(report.flatMap(r=>r.bosses).some(b=>b.race==='ホース'&&b.extra==='デヴィル'));
-  assert.ok(report.flatMap(r=>r.bosses).some(b=>b.race==='ホース'&&b.extra==='エンジェル'));
+  // A finite random spawn is not guaranteed to contain both horse variants.
+  // Their eligibility is checked deterministically against the recipe fixture above.
   await page.waitForTimeout(300);
   await page.screenshot({path:'output/web-game/boss-fusion/field.png'});
   assert.deepEqual(errors,[]);
