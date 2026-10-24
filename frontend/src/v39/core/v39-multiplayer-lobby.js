@@ -1,5 +1,6 @@
 import { io } from "socket.io-client";
 import { raceData } from "../../lib/game-data-registry.js";
+import {isV39RacePlayable} from '../../lib/v39-race-definitions.js';
 import {
   applyV39InitialSovereignProfile,
   getV39InitialSetupProgress,
@@ -14,6 +15,7 @@ const HOST_DEFAULT_DISPLAY_NAME = "ホストプレイヤー";
 const JOIN_DEFAULT_DISPLAY_NAME = "プレイヤー1";
 const LEGACY_DEFAULT_DISPLAY_NAME = "参加者";
 const SELECTABLE_RACES = (Array.isArray(raceData) ? raceData : [])
+  .filter(isV39RacePlayable)
   .map(row => ({
     key:String(row?.key || "").trim(),
     name:String(row?.name || row?.key || "").trim()

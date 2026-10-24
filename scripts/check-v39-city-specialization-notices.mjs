@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import {mkdirSync} from 'node:fs';
+import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
+const out='output/web-game/city-specialization-notices';mkdirSync(out,{recursive:true});
+const browser=await chromium.launch();
+try {for(const width of [390,1100]){
+ const page=await browser.newPage({viewport:{width,height:900}}),errors=[];
+ page.on('pageerror',error=>errors.push(String(error.stack)));
+ await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:5173',{waitUntil:'networkidle'});
+ await page.waitForFunction(()=>typeof window.startV39CallTest==='function');
+ const fixture=await page.evaluate(async()=>{
+  window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39CallTest();
+  const state=window.getV39GameState(),owner=state.players.find(player=>player.id===state.activePlayerId),base=owner.factionState.settlements[0];
+  const home={...base,citySpecializationId:'',citySpecializationSelectedTurn:null,citySpecializationSeenIds:[],cityTraits:['test-none'],scaleKey:'city',scaleLevel:3,type:'都市',population:100,populationByRace:{只人:100},cityLevels:{鍛冶Lv:3,魔法Lv:3,信仰Lv:3,軍事Lv:3,経済Lv:3}};
+  const second={...home,id:'notice-second',settlementId:'notice-second',name:'別の都市',x:6,y:4};
+  window.activateV39FooterTab('squad');
+  window.setV39GameState({...state,timeline:{...state.timeline,turnNumber:10},players:state.players.map(player=>player.id===owner.id?{...player,factionState:{...player.factionState,research:{},settlements:[home,second],selectedSettlementId:home.settlementId}}:player)});
+  const rules=await import('/src/lib/v39-city-specialization-rules.js');
+  const current=window.getV39GameState(),player=current.players.find(row=>row.id===current.activePlayerId),first=player.factionState.settlements[0];
+  const notice=rules.inspectV39CitySpecializationNotice(current,player,first);
+  const ack=rules.acknowledgeV39CitySpecializations(current,player.id,first.settlementId);
+  if(!ack.changed||rules.acknowledgeV39CitySpecializations(ack.state,player.id,first.settlementId).changed)throw Error('acknowledgement is not idempotent');
+  return {id:first.settlementId,ids:notice.changeable.map(row=>row.id)};
+ });
+ const seen=()=>page.evaluate(()=>window.getV39ActiveFactionState().settlements[0].citySpecializationSeenIds||[]);
+ assert.deepEqual(await seen(),[],'hidden rendering marked candidates read');
+ await page.locator('.footer-tab').filter({hasText:'拠点'}).click();
+ assert.equal(await page.locator('[data-city-notice]').count(),2);
+ assert.equal(await page.locator('[data-city-header-notice]').count(),1);
+ await page.screenshot({path:`${out}/${width}-notice.png`});
+ await page.locator('[data-open-city-specialization]').click();
+ await page.waitForFunction(()=>document.querySelector('[data-settlement-fold="specialization"]')?.open&&window.getV39ActiveFactionState().settlements[0].citySpecializationSeenIds?.length>0);
+ assert.deepEqual((await seen()).sort(),[...fixture.ids].sort());
+ assert.equal(await page.locator('[data-city-header-notice]').count(),0);
+ assert.equal(await page.locator('[data-city-notice]').count(),1,'other settlement read status changed');
+ assert.equal(await page.locator('[data-city-specialization]').count(),fixture.ids.length,'locked options visible');
+ assert.equal(await page.locator('[data-city-specialization="城塞都市"]').count(),0);
+ assert.ok(await page.locator('[data-city-specialization] .settlement-city-new').count()>0,'new candidate marker absent while reading');
+ await page.screenshot({path:`${out}/${width}-candidates.png`});
+ await page.locator('[data-settlement-fold="specialization"] > summary').click();
+ await page.waitForFunction(()=>!document.querySelector('[data-settlement-fold="specialization"]')?.open);
+ await page.locator('[data-settlement-fold="specialization"] > summary').click();
+ assert.equal(await page.locator('[data-city-specialization] .settlement-city-new').count(),0,'read marker survived reopening');
+ await page.evaluate(async()=>{const save=await import('/src/v39/core/v39-save-system.js');save.importV39SaveJson(save.exportV39SaveJson());});
+ assert.deepEqual((await seen()).sort(),[...fixture.ids].sort(),'read state not saved');
+ await page.evaluate(()=>{
+  window.activateV39FooterTab('squad');const state=window.getV39GameState();
+  window.setV39GameState({players:state.players.map(player=>player.id!==state.activePlayerId?player:{...player,factionState:{...player.factionState,settlements:player.factionState.settlements.map((base,index)=>index?base:{...base,cityLevels:{...base.cityLevels,軍事Lv:4}})}})});
+ });
+ assert.ok(!(await seen()).includes('城塞都市'),'new candidate silently read off screen');
+ await page.locator('.footer-tab').filter({hasText:'拠点'}).click();
+ await page.waitForFunction(()=>window.getV39ActiveFactionState().settlements[0].citySpecializationSeenIds.includes('城塞都市'));
+ await page.locator('[data-city-specialization="交易都市"]').click();
+ assert.equal(await page.locator('[data-open-city-specialization]').count(),0,'shortcut during cooldown');
+ assert.match(await page.locator('.settlement-city-wait').innerText(),/5ターン/);
+ assert.equal(await page.locator('[data-city-specialization="魔法都市"]').isEnabled(),false);
+ await page.evaluate(()=>{
+  const state=window.getV39GameState();window.setV39GameState({timeline:{...state.timeline,turnNumber:11},players:state.players.map(player=>player.id!==state.activePlayerId?player:{...player,factionState:{...player.factionState,settlements:player.factionState.settlements.map((base,index)=>index?base:{...base,cityTraits:['浮遊']})}})});
+ });
+ assert.ok(!(await seen()).includes('空中都市'),'cooldown candidate marked read');
+ assert.match(await page.locator('.settlement-city-wait').innerText(),/4ターン/);
+ assert.equal(await page.locator('[data-city-specialization="空中都市"]').isEnabled(),false);
+ await page.evaluate(()=>{window.activateV39FooterTab('squad');const state=window.getV39GameState();window.setV39GameState({timeline:{...state.timeline,turnNumber:15}});});
+ assert.ok(!(await seen()).includes('空中都市'));
+ assert.equal(await page.locator('[data-city-header-notice]').count(),1,'cooldown expiry did not announce new candidate');
+ await page.locator('.footer-tab').filter({hasText:'拠点'}).click();
+ await page.waitForFunction(()=>window.getV39ActiveFactionState().settlements[0].citySpecializationSeenIds.includes('空中都市'));
+ assert.equal(await page.locator('[data-city-specialization="空中都市"]').isEnabled(),true);
+ await page.evaluate(()=>{
+  const state=window.getV39GameState();window.setV39GameState({players:state.players.map(player=>player.id!==state.activePlayerId?player:{...player,factionState:{...player.factionState,settlements:player.factionState.settlements.map((base,index)=>index?base:{...base,scaleKey:'village',scaleLevel:1})}})});
+ });
+ assert.equal(await page.locator('[data-city-specialization]').count(),1,'unmet options not hidden');
+ assert.match(await page.locator('[data-city-specialization]').innerText(),/選択中/);
+ assert.deepEqual(errors,[]);console.log(`${width}: notices, explicit review, hidden rendering, new unlock, cooldown, scope and save passed`);
+ await page.close();
+}}finally{await browser.close();}

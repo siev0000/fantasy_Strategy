@@ -16,8 +16,8 @@ try{
       window.setV39GameState({facilitiesByTile:{...s.facilitiesByTile,'3,3':['魔獣研究所']},players:s.players.map(row=>row.id===p.id?{...row,factionState:{...f,units:f.units.map(u=>u.id===horse.id?{...u,x:3,y:3,position:[3,3]}:u),combatRuntime:{...f.combatRuntime,cooldownsByUnitId:{...f.combatRuntime.cooldownsByUnitId,[horse.id]:{test:s.timeline.turnNumber+5}}}}}:row)});
       window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();
     });
-    await page.locator('[data-settlement-page-select="production"]').click();
-    await page.locator('[data-settlement-fold="facility"] summary').click();
+    await page.locator('[data-settlement-page-select="facility"]').click();
+    await page.locator('[data-settlement-facility]').filter({hasText:'魔獣研究所'}).click();
     const open=page.locator('[data-storage-open="3,3"][data-storage-name="魔獣研究所"]');
     assert(await open.isVisible(),'storage entry in actual settlement panel');await open.click();
     await page.locator('[data-storage-tab="deposit"]').click();
@@ -58,8 +58,8 @@ try{
       const stored=window.getV39ActiveFactionState().facilityStorage.find(e=>e.unit.id==='fusion-test-horse');return stored.unit.name!=='snapshot-mutation'&&stored.runtimeByKey.cooldownsByUnitId.test>0;
     }),'stored identity/runtime snapshots are detached');
     await page.evaluate(()=>{window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();});
-    await page.locator('[data-settlement-page-select="production"]').click();
-    const summary=page.locator('[data-settlement-fold="facility"]');if(await summary.getAttribute('open')===null)await summary.locator('summary').click();
+    await page.locator('[data-settlement-page-select="facility"]').click();
+    await page.locator('[data-settlement-facility]').filter({hasText:'魔獣研究所'}).click();
     await open.click();await page.locator('[data-storage-withdraw="fusion-test-horse"]').click();
     const released=await page.evaluate(()=>{const f=window.getV39ActiveFactionState(),u=f.units.find(u=>u.id==='fusion-test-horse');return {ap:u.ap,count:f.facilityStorage.length,cooldown:f.combatRuntime.cooldownsByUnitId[u.id].test,turn:window.getV39GameState().timeline.turnNumber};});
     assert.equal(released.ap,0);assert.equal(released.count,initialStoredCount);assert.equal(released.cooldown,released.turn+5);
@@ -70,6 +70,7 @@ try{
       const result=collectV39Soul(s,s.activePlayerId,corpse);if(!result.ok)throw new Error(result.reason);
       window.setV39GameState({players:result.state.players,enemies:result.state.enemies});
     });
+    await page.locator('[data-settlement-facility]').filter({hasText:'魂の保管庫'}).click();
     await page.locator('[data-storage-open="3,4"][data-storage-name="魂の保管庫"]').click();
     assert.equal(await page.locator('[data-storage-row]').count(),3,'two seeded souls and the collected soul are visible');
     assert.equal(await page.locator('[data-storage-tab="deposit"]').count(),0);

@@ -1,6 +1,9 @@
 import {V39_UNDEAD_SPAWN_BALANCE as balance,V39_FOG_BALANCE} from "./v39-gameplay-balance.js";
 import {resolveV39TerrainNameAt} from "./v39-terrain-location.js";
 import {canV39UnitLeaveOrganicCorpse} from './v39-corpse-types.js';
+import {resolveV39CitySpecializationModifiers,getV39SelectedCityDefinitions} from './v39-city-specialization-rules.js';
+import {getHexDistance} from './hex-grid.js';
+import {territorySettlementId,getFactionSettlementById,getSelectedSettlement} from './settlement-state.js';
 export {isV39Undead} from './v39-corpse-types.js';
 const key=unit=>`${unit.x},${unit.y}`;
 export function normalizeV39Purification(value) {
@@ -37,6 +40,23 @@ export function advanceV39Purification(map,state,turn,random=Math.random) {
   for(const tile of corpses)changeV39Purification(map,tile,-balance.corpsePurificationLoss);
   for(let y=0;y<map.h;y++)for(let x=0;x<map.w;x++)
     if(map.fogMap?.[y]?.[x]?.kind==='death'||map.specialMap?.[y]?.[x]==='死の霧'||map.grid[y]?.[x]==='死の霧')changeV39Purification(map,`${x},${y}`,-balance.fogPurificationLoss);
+  const cities=new Map();
+  for(const [tile,owner] of Object.entries(state.territoryOwnerByTile||{})) {
+    const player=state.players?.find(row=>row.id===owner),id=territorySettlementId(state.territoryStateByTile?.[tile]);
+    const cacheKey=`${owner}:${id}`;
+    if(!cities.has(cacheKey)){
+      const base=id?getFactionSettlementById(player?.factionState,id):getSelectedSettlement(player?.factionState);
+      cities.set(cacheKey,{base,scoped:getV39SelectedCityDefinitions(base).some(row=>row.効果範囲&&row.効果範囲!=='所属領土'),amounts:new Map()});
+    }
+    const city=cities.get(cacheKey),base=city.base;
+    if(!base?.placed||(base.worldId||'surface')!==(state.activeWorldId||'surface'))continue;
+    const [x,y]=tile.split(',').map(Number),distance=city.scoped?getHexDistance(base,{x,y}):'*';
+    if(!city.amounts.has(distance)){
+      const modifiers=resolveV39CitySpecializationModifiers(base,{tileKey:tile,worldId:state.activeWorldId||'surface'});
+      city.amounts.set(distance,modifiers.purification-modifiers.impurity);
+    }
+    const amount=city.amounts.get(distance);if(amount)changeV39Purification(map,tile,amount);
+  }
   map.unholyEventTurnByTile ||= {};
   const events=[];
   for(const [tile,value] of Object.entries(map.purificationByTile || {})) {

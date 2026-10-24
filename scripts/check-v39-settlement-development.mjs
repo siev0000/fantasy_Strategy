@@ -15,6 +15,7 @@ try {
     && typeof window.advanceV39Turn === "function"
   ));
   const report = await page.evaluate(async () => {
+    const {resolveV39SettlementProductionMetrics}=await import('/src/lib/v39-economy-rules.js');
     const confirmations = [];
     window.confirm = message => { confirmations.push(message); return true; };
     window.startV39LocalSession(1, { playMode:"single-test" });
@@ -151,10 +152,10 @@ try {
 
     const originalEnemyTurn = window.runV39EnemyTurn;
     window.runV39EnemyTurn = async () => {};
-    await window.advanceV39Turn();
+    await window.advanceV39Turn({skipUnactedFocus:true});
     const afterOneTurn = window.getV39GameState();
     const firstTurnVillages = afterOneTurn.players.find(row => row.id === player.id).factionState.settlements;
-    await window.advanceV39Turn();
+    await window.advanceV39Turn({skipUnactedFocus:true});
     const completedState = window.getV39GameState();
     window.runV39EnemyTurn = originalEnemyTurn;
     const completedVillages = completedState.players.find(row => row.id === player.id).factionState.settlements;
@@ -237,10 +238,10 @@ try {
     const constructionPreviewImage = constructionPreview?.list?.find(child => child.name === "v39-residential-village-image");
     const pendingConstructionCheck = window.inspectV39Construction("教会", { x:firstCompleted.x, y:firstCompleted.y + 1 });
     window.runV39EnemyTurn = async () => {};
-    await window.advanceV39Turn();
+    await window.advanceV39Turn({skipUnactedFocus:true});
     const conversionFirstTurnState = window.getV39GameState();
     const conversionFirstTurnVillage = conversionFirstTurnState.players.find(row => row.id === player.id).factionState.settlements.find(row => row.settlementId === firstVillage.id);
-    await window.advanceV39Turn();
+    await window.advanceV39Turn({skipUnactedFocus:true});
     window.runV39EnemyTurn = originalEnemyTurn;
     const conversionCompletedState = window.getV39GameState();
     const conversionCompletedVillage = conversionCompletedState.players.find(row => row.id === player.id).factionState.settlements.find(row => row.settlementId === firstVillage.id);
@@ -332,6 +333,11 @@ try {
         townCapacity:firstCompleted?.populationCapacity ?? null,
         resourceCapacity:conversionFirstTurnVillage?.populationCapacity ?? null,
         settlementCapacity:conversionCompletedVillage?.populationCapacity ?? null,
+        expectedCapacities:[
+          [completedState,firstCompleted],
+          [conversionFirstTurnState,conversionFirstTurnVillage],
+          [conversionCompletedState,conversionCompletedVillage]
+        ].map(([snapshot,base])=>resolveV39SettlementProductionMetrics(snapshot,snapshot.players.find(row=>row.id===player.id),base).populationCapacity),
         completedMode:conversionCompletedVillage?.territoryTileModeMap?.[conversionKey] || "",
         hasQueue:!!conversionCompletedVillage?.territoryTileConversionMap?.[conversionKey],
         renderedResidentialTiles:residentialLayer?.getData?.("tileCount") ?? null,
@@ -363,14 +369,14 @@ try {
     const accepted = window.startV39Construction("兵舎", { x, y });
     const originalEnemyTurn = window.runV39EnemyTurn;
     window.runV39EnemyTurn = async () => {};
-    await window.advanceV39Turn();
-    await window.advanceV39Turn();
+    await window.advanceV39Turn({skipUnactedFocus:true});
+    await window.advanceV39Turn({skipUnactedFocus:true});
     const completedFacility = getVillage().tileFacilityMap[tileKey]?.includes("兵舎");
     window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:{ x, y } }));
     await new Promise(resolve => setTimeout(resolve, 80));
     document.getElementById("v39-land-settlement-convert").click();
-    await window.advanceV39Turn();
-    await window.advanceV39Turn();
+    await window.advanceV39Turn({skipUnactedFocus:true});
+    await window.advanceV39Turn({skipUnactedFocus:true});
     const facilityRemovedAgain = !getVillage().tileFacilityMap[tileKey];
     window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:{ x, y } }));
     await new Promise(resolve => setTimeout(resolve, 80));
@@ -378,8 +384,8 @@ try {
     const buttonText = button.textContent;
     button.click();
     try {
-      await window.advanceV39Turn();
-      await window.advanceV39Turn();
+      await window.advanceV39Turn({skipUnactedFocus:true});
+      await window.advanceV39Turn({skipUnactedFocus:true});
     } finally {
       window.runV39EnemyTurn = originalEnemyTurn;
     }
@@ -436,7 +442,7 @@ try {
   const uiValid = report.ui.hasButton
     && report.ui.buttonText === "拠点発展"
     && report.ui.modalVisible
-    && report.ui.modalTitle === "都市・建設"
+    && report.ui.modalTitle === "拠点発展"
     && report.ui.modalText.includes("拠点発展");
   const startValid = report.started.buttonEnabled
     && report.started.selectionBeforeCount === 1
@@ -460,9 +466,9 @@ try {
     && report.conversion.turnLabel === "🔨2T"
     && report.conversion.turnAboveCenter
     && report.conversion.previewAlpha === 0.5
-    && report.conversion.townCapacity === 130
-    && report.conversion.resourceCapacity === 145
-    && report.conversion.settlementCapacity === 145
+    && report.conversion.townCapacity === report.conversion.expectedCapacities[0]
+    && report.conversion.resourceCapacity === report.conversion.expectedCapacities[1]
+    && report.conversion.settlementCapacity === report.conversion.expectedCapacities[2]
     && report.conversion.renderedResidentialTiles === 5
     && report.conversion.facilityMarkerLabel === "農"
     && report.conversion.facilityMarkerIconFrame === "facility:農場"

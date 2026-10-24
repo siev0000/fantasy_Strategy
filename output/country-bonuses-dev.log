@@ -1,0 +1,11 @@
+
+> fantasy-strategy@0.1.0 dev:front
+> vite --config frontend/vite.config.mjs --host 127.0.0.1
+
+
+  VITE v6.4.1  ready in 2817 ms
+
+  ➜  Local:   http://127.0.0.1:5173/
+0:24:51 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/現状ゲーム仕様メモ.md
+0:24:51 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/rules/economy/領土・資源生産ルール.md
+0:24:51 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/ALL_TASKS_UNIFIED.md

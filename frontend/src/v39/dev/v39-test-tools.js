@@ -766,7 +766,7 @@ function panelHtml() {
     <div class="v39-test-tools-scroll" id="v39-test-tool-content" role="tabpanel" aria-labelledby="v39-test-tab-${selectedToolTab}">
       ${renderV39VillagePlanTestTools(state)}
       ${renderV39NegotiationHubTestTools(state)}
-      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
@@ -837,6 +837,19 @@ function openPanel() {
 
 function closePanel() {
   window.activateV39FooterTab?.("squad");
+}
+
+async function startRitualTest(stage) {
+  if(!window.isV39CallTestReady?.()
+    &&!window.confirm('現在のゲームを儀式施設・召喚テストに置き換えます。開始しますか？'))return;
+  setStatus('儀式施設テストを準備しています');
+  try {
+    const result=await window.startV39RitualTest?.(stage);
+    if(!result?.ok){window.openV39TestTools?.();setStatus(result?.reason||'儀式テストを起動できませんでした');}
+  } catch(error) {
+    window.openV39TestTools?.();setStatus(`儀式テストの起動に失敗: ${error.message}`);
+    console.error('[儀式テスト]',error);
+  }
 }
 
 function handleAction(action) {
@@ -937,6 +950,10 @@ function handleAction(action) {
     "undead-test-cave":()=>{if(window.viewV39ExpeditionTestWorld?.(undeadTest.洞窟ID))window.activateV39FooterTab?.("test");},
     "undead-test-turn":()=>advanceTurn(),
     "call-test-start":()=>{if(window.confirm("現在のゲームを召喚・呼集テストに置き換えます。開始しますか？"))window.startV39CallTest?.();},
+    "ritual-test-none":()=>startRitualTest(0),
+    "ritual-test-one":()=>startRitualTest(1),
+    "ritual-test-two":()=>startRitualTest(2),
+    "ritual-test-three":()=>startRitualTest(3),
     "fusion-test-start":()=>{if(window.confirm("現在のゲームを合体テストに置き換えます。開始しますか？"))window.startV39FusionTest?.();},
     "animal-army-test-start":()=>{if(window.confirm('現在のゲームを動物軍隊テストに置き換えます。開始しますか？')){closePanel();window.startV39AnimalArmyTest?.();}},
     "disaster-test-start":()=>{if(window.confirm('現在のゲームを11種類の災害検証マップに置き換えます。開始しますか？')){closePanel();window.startV39DisasterTest?.();}},

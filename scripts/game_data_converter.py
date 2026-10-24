@@ -36,6 +36,7 @@ DEFAULT_REPORT = Path("artifacts/game-data-converter-report.json")
 
 # 通常変換するシートだけを明示する。CS / 画面は対象外。スキル一覧はCS専用変換器で生成する。
 SHEET_TO_JSON = {
+    "召喚モンスターリスト": "召喚モンスターリスト.json",
     "モンスター合成": "モンスター合成.json",
     "道具": "道具.json",
     "クラス": "クラス.json",
@@ -62,8 +63,141 @@ SHEET_TO_JSON = {
     "性格会話": "性格会話.json",
 }
 
+# Logical tables keep their runtime names even when the editing tabs are combined.
+# Column bounds are zero-based and end-exclusive; each table starts on row 1.
+MERGED_SHEET_TABLES = {
+    "効果": ("用語辞書", 0, 2),
+    "説明": ("用語辞書", 3, 5),
+    "範囲": ("用語辞書", 6, 9),
+    "体制": ("国家設定", 0, 25),
+    "外交姿勢": ("国家設定", 26, 35),
+    "組織": ("国家設定", 36, 40),
+}
+
+RACE_TABLE_COLUMNS = {
+    "key":"種族", "name":"種族", "className":"能力クラス", "icon":"画像", "summary":"概要",
+    "detail":"詳細", "traits":"特徴", "使用可":"使用可", "旧名称":"旧名称", "設定メモ":"設定メモ",
+    **{key:key for key in ("マーカー文字", "マーカー色", "初期人数", "高さ", "ヒーロー", "軍隊", "土地")},
+}
+FACTION_TABLE_COLUMNS = {
+    "種族":"種族", "カナ":"能力クラス", "使用可":"使用可", "旧名称":"旧名称",
+    **{key:key for key in ("マーカー文字", "マーカー色", "初期人数", "高さ", "ヒーロー", "軍隊", "土地")},
+}
+
+
+def has_unified_race_table(reader):
+    if "種族" not in getattr(reader, "sheet_targets", {}):
+        return False
+    first = next(iter(reader.sheet_rows("種族")), (0, {}))[1]
+    return {"種族", "能力クラス", "使用可"}.issubset({cell.value for cell in first.values() if isinstance(cell.value, str)})
+
+
+def projected_race_rows(reader, table_name):
+    rows = iter(reader.sheet_rows("種族"))
+    number, header = next(rows)
+    source_columns = {str(cell.value).strip():col for col,cell in header.items() if isinstance(cell.value,str)}
+    fields = RACE_TABLE_COLUMNS if table_name == "種族" else FACTION_TABLE_COLUMNS
+    yield number, {i:CellValue(value=field) for i,field in enumerate(fields)}
+    for number, cells in rows:
+        yield number, {i:cells.get(source_columns.get(source),CellValue()) for i,source in enumerate(fields.values())}
+
+
+def validate_unified_race_table(reader):
+    if not has_unified_race_table(reader):
+        return
+    rows = iter(reader.sheet_rows("種族"))
+    _, header = next(rows)
+    columns = {str(cell.value).strip():col for col,cell in header.items() if isinstance(cell.value,str)}
+    required = set(RACE_TABLE_COLUMNS.values()) - {"旧名称", "設定メモ"}
+    if not required.issubset(columns):
+        raise ValueError(f"種族: 統合表の列が不足しています: {', '.join(sorted(required-columns.keys()))}")
+    class_rows = {}
+    if "クラス" in reader.sheet_targets:
+        class_rows = {row.get("名前"):row for row in convert_sheet(reader,"クラス","クラス.json").records}
+    used = {}
+    for number,cells in rows:
+        record = {key:normalize_value(cells.get(col,CellValue()).value) for key,col in columns.items()}
+        name = record.get("種族")
+        if not name:
+            if record.get("使用可") is True:
+                raise ValueError(f"種族!行{number}: 使用可TRUEですが種族名がありません")
+            continue
+        if not isinstance(name,str) or name in used:
+            raise ValueError(f"種族!行{number}: 種族名が不正または重複しています: {name}")
+        aliases = record.get("旧名称")
+        if is_blank(aliases):
+            aliases = []
+        if not isinstance(aliases,list) or any(not isinstance(value,str) or not value.strip() for value in aliases):
+            raise ValueError(f"種族!行{number}: 旧名称は文字列のJSON配列で指定してください")
+        for alias in {name,*aliases}:
+            if alias in used:
+                raise ValueError(f"種族!行{number}: 名称/旧名称が別種族と重複しています: {alias}")
+            used[alias]=name
+        if not isinstance(record.get("使用可"),bool):
+            raise ValueError(f"種族!行{number}: 使用可はTRUE/FALSEで指定してください")
+        if not record["使用可"]:
+            continue
+        missing = [key for key in required if is_blank(record.get(key))]
+        if missing:
+            raise ValueError(f"種族!行{number}: 使用可TRUEですが未設定: {', '.join(sorted(missing))}")
+        if record["能力クラス"] not in class_rows:
+            raise ValueError(f"種族!行{number}: 未登録の能力クラス: {record['能力クラス']}")
+        ability = class_rows[record["能力クラス"]]
+        for key in ("HP","攻撃","防御","魔力","精神","命中","速度","SIZ"):
+            value=ability.get(key)
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<0 or key=="HP" and value<=0:
+                raise ValueError(f"種族!行{number}: 能力クラスの{key}が未設定または不正です")
+        if not isinstance(record["特徴"],list) or not record["特徴"] or any(not isinstance(value,str) or not value.strip() for value in record["特徴"]):
+            raise ValueError(f"種族!行{number}: 特徴は空でないJSON配列が必要です")
+        for key in ("初期人数","高さ","ヒーロー","軍隊"):
+            value=record[key]
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<0 or key=="初期人数" and value<=0:
+                raise ValueError(f"種族!行{number}: {key}の数値が不正です")
+        if any(not float(record[key]).is_integer() for key in ("初期人数","高さ")):
+            raise ValueError(f"種族!行{number}: 初期人数/高さは整数が必要です")
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}",str(record["マーカー色"])):
+            raise ValueError(f"種族!行{number}: マーカー色は#RRGGBBで指定してください")
+
+
+def source_sheet_name(reader, table_name):
+    if table_name == "勢力" and has_unified_race_table(reader):
+        return "種族"
+    merged = MERGED_SHEET_TABLES.get(table_name)
+    return merged[0] if merged and merged[0] in getattr(reader, "sheet_targets", {}) else table_name
+
+
+def logical_table_rows(reader, table_name):
+    if table_name in {"種族","勢力"} and has_unified_race_table(reader):
+        yield from projected_race_rows(reader,table_name)
+        return
+    source = source_sheet_name(reader, table_name)
+    if source == table_name:
+        yield from reader.sheet_rows(table_name)
+        return
+    _, first, end = MERGED_SHEET_TABLES[table_name]
+    for number, cells in reader.sheet_rows(source):
+        selected = {col-first: cell for col, cell in cells.items() if first <= col < end}
+        if number == 1:
+            headers = {str(cell.value).strip() for cell in selected.values() if cell.value is not None}
+            if not set(UNIQUE_KEYS[table_name]).issubset(headers):
+                raise ValueError(f"{source}: {table_name}表の必須ヘッダーがありません。統合表の列範囲を確認してください")
+        if number == 1 or any(not is_blank(cell.value) or cell.formula for cell in selected.values()):
+            yield number, selected
+
+
+def expand_selected_tables(names):
+    selected = []
+    for name in names:
+        tables = [table for table, spec in MERGED_SHEET_TABLES.items() if spec[0] == name]
+        for table in tables or [name]:
+            if table not in selected:
+                selected.append(table)
+    return selected
+
 # すべてのキー項目が入っている行だけ重複検査する。
 UNIQUE_KEYS = {
+    "施設": ("施設名",),
+    "召喚モンスターリスト": ("名称",),
     "性格会話": ("性格",),
     "モンスター合成": ("素材", "合成結果"),
     "道具": ("名前",),
@@ -249,7 +383,7 @@ def is_repeated_header_row(pairs):
 
 def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=False):
     result = SheetResult(sheet_name, output_name)
-    rows = list(reader.sheet_rows(sheet_name))
+    rows = list(logical_table_rows(reader, sheet_name))
     if not rows:
         result.errors.append({"type": "empty_sheet", "message": "シートにデータがありません"})
         return result
@@ -403,7 +537,46 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
             else:
                 seen[key] = index
 
+    if sheet_name == "施設":
+        validate_facility_references(result)
     return result
+
+
+def validate_facility_references(result):
+    """Facility names are keys; reject dangling references before replacing runtime data."""
+    by_name = {row["施設名"]: row for row in result.records}
+    edges = {}
+    for row in result.records:
+        name = row["施設名"]
+        if "/" in str(name):
+            result.errors.append({"type": "invalid_facility_name", "name": name,
+                                  "message": "施設名に条件区切りの / は使えません"})
+        edges[name] = []
+        for field in ("前提施設", "改築元", "召喚補正前提施設"):
+            for target in (part.strip() for part in str(row.get(field, "")).split("/")):
+                if not target:
+                    continue
+                if target not in by_name:
+                    result.errors.append({"type": "unknown_facility_reference", "name": name,
+                                          "header": field, "value": target})
+                elif field != "召喚補正前提施設":
+                    edges[name].append(target)
+    visited, visiting = set(), set()
+
+    def visit(name):
+        if name in visiting:
+            result.errors.append({"type": "facility_dependency_cycle", "name": name})
+            return
+        if name in visited:
+            return
+        visiting.add(name)
+        for target in edges.get(name, []):
+            visit(target)
+        visiting.remove(name)
+        visited.add(name)
+
+    for name in edges:
+        visit(name)
 
 
 def atomic_write_json(path: Path, data, compact=False):
@@ -455,15 +628,24 @@ def main():
             workbook_sheets = list(reader.sheet_targets)
             if args.list:
                 for name in workbook_sheets:
-                    mark = f"-> {SHEET_TO_JSON[name]}" if name in SHEET_TO_JSON else "(対象外)"
+                    tables = [table for table, spec in MERGED_SHEET_TABLES.items() if spec[0] == name]
+                    if name == "種族" and has_unified_race_table(reader):
+                        tables = ["種族","勢力"]
+                    if tables:
+                        mark = "-> " + ", ".join(SHEET_TO_JSON[table] for table in tables)
+                    else:
+                        mark = f"-> {SHEET_TO_JSON[name]}" if name in SHEET_TO_JSON else "(対象外)"
                     print(f"{name}: {mark}")
                 return 0
 
-            selected = args.sheet or list(SHEET_TO_JSON)
+            selected = expand_selected_tables(args.sheet or list(SHEET_TO_JSON))
+            if has_unified_race_table(reader) and any(name in selected for name in ("種族","勢力")):
+                selected = list(dict.fromkeys([*selected,"種族","勢力"]))
+                validate_unified_race_table(reader)
             unknown = [s for s in selected if s not in SHEET_TO_JSON]
             if unknown:
                 raise ValueError(f"変換対象に定義されていないシート: {', '.join(unknown)}")
-            missing = [s for s in selected if s not in reader.sheet_targets]
+            missing = [s for s in selected if source_sheet_name(reader, s) not in reader.sheet_targets]
             if missing:
                 raise ValueError(f"XLSXに存在しないシート: {', '.join(missing)}")
 
@@ -471,6 +653,8 @@ def main():
                 convert_sheet(reader, s, SHEET_TO_JSON[s], args.allow_missing_formula_cache)
                 for s in selected
             ]
+            source_sheets = {s: source_sheet_name(reader, s) for s in selected}
+            recognized_sources = {source_sheet_name(reader, table) for table in SHEET_TO_JSON}
 
         report = {
             "version": VERSION,
@@ -479,7 +663,8 @@ def main():
             "dry_run": bool(args.dry_run),
             "allow_missing_formula_cache": bool(args.allow_missing_formula_cache),
             "converted_sheets": selected,
-            "excluded_workbook_sheets": [s for s in workbook_sheets if s not in SHEET_TO_JSON],
+            "source_sheets": source_sheets,
+            "excluded_workbook_sheets": [s for s in workbook_sheets if s not in recognized_sources],
             "summary": {
                 "sheets": len(results),
                 "records": sum(len(r.records) for r in results),

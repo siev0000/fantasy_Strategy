@@ -1,4 +1,5 @@
 import { classData, raceData } from "../../lib/game-data-registry.js";
+import {isV39RacePlayable,normalizeV39RaceName} from '../../lib/v39-race-definitions.js';
 import { createPlayerFactionState } from "../../lib/player-state.js";
 import {
   createV39EquipmentEntry,
@@ -20,8 +21,8 @@ const classByName = new Map(classRows.map(row => [text(row?.名前), row]).filte
 const raceByKey = new Map((Array.isArray(raceData) ? raceData : []).map(row => [text(row?.key), row]).filter(([key]) => key));
 
 export function getV39InitialSovereignClassCandidates(race) {
-  const raceDefinition = raceByKey.get(text(race));
-  if (!raceDefinition) return [];
+  const raceDefinition = raceByKey.get(normalizeV39RaceName(race));
+  if (!isV39RacePlayable(raceDefinition)) return [];
   const raceClassName = text(raceDefinition.className);
   return classRows.filter(row => {
     if (text(row?.名前) === raceClassName && text(row?.種類) !== "人族") return true;
@@ -57,12 +58,12 @@ function uniqueUnitId(playerId) {
 
 export function createV39InitialSovereign(profile = {}) {
   const playerId = text(profile.playerId);
-  const race = text(profile.race);
+  const race = normalizeV39RaceName(profile.race);
   const className = text(profile.className);
   const name = text(profile.characterName).slice(0, 20);
   const classRow = resolveAllowedClass(race, className);
   const raceDefinition = raceByKey.get(race);
-  if (!playerId || !raceDefinition) return { ok:false, reason:"開始種族が不正です。" };
+  if (!playerId || !isV39RacePlayable(raceDefinition)) return { ok:false, reason:"この種族は未設定または新規使用できません。" };
   if (!classRow) return { ok:false, reason:"開始時に選択できないクラスです。" };
   if (!name) return { ok:false, reason:"統治者名を入力してください。" };
 
@@ -122,12 +123,12 @@ export function createV39InitialSovereign(profile = {}) {
 
 export function applyV39InitialSovereignProfile(state, profile = {}) {
   const playerId = text(profile.playerId);
-  const race = text(profile.race);
+  const race = normalizeV39RaceName(profile.race);
   const villageName = text(profile.villageName).slice(0, 20) || "はじまりの村";
   const players = Array.isArray(state?.players) ? state.players : [];
   const target = players.find(player => text(player?.id) === playerId);
   if (!target) return { ok:false, reason:"担当勢力が見つかりません。", state };
-  if (text(target.race) !== race) return { ok:false, reason:"ロビーで選択した開始種族と一致しません。", state };
+  if (normalizeV39RaceName(target.race) !== race) return { ok:false, reason:"ロビーで選択した開始種族と一致しません。", state };
   if ((target?.factionState?.units || []).some(unit => isSovereignUnit(unit))) {
     return { ok:false, reason:"この勢力の統治者は作成済みです。", state };
   }
@@ -163,7 +164,7 @@ export function applyV39InitialSovereignProfile(state, profile = {}) {
     unit:created.unit,
     state:{
       ...state,
-      players:players.map(player => text(player?.id) === playerId ? { ...player, factionState } : player)
+      players:players.map(player => text(player?.id) === playerId ? { ...player, race, factionState } : player)
     }
   };
 }

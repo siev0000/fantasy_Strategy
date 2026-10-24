@@ -81,8 +81,9 @@ function techniqueDescription(row, source) {
 
 
 export function renderV39UnitSkills(unit, {mapData, expandedName = "", interactive = false} = {}) {
-    const rows = techniqueEntries(unit);
-    const weaponAttackRows = resolveAttackRows(unit).filter(row => row?.装備攻撃 === true);
+    const adjustedUnit = applyV39TerrainModifiers(unit, mapData);
+    const rows = techniqueEntries(adjustedUnit);
+    const weaponAttackRows = resolveAttackRows(adjustedUnit).filter(row => row?.装備攻撃 === true);
     const bodyNames = new Set(weaponAttackRows.filter(row => row.身体武器).map(row => row.名前));
     const activeRows = [
       ...weaponAttackRows,
@@ -90,12 +91,11 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
         && !bodyNames.has(text(techniqueSource(row)?.名前 ?? row?.name)))
     ];
     const passiveRows = rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() === "P");
-    const adjustedUnit = applyV39TerrainModifiers(unit, mapData);
     const renderTechnique = row => {
           const source = techniqueSource(row) || {};
           const name = text(source?.名前 ?? row?.name, "名称未設定");
           const action = text(source?.行動 ?? row?.action).toUpperCase();
-          const apValue = action === "A" ? resolveAttackApCost(source, unit) : num(row?.apCost ?? source?.AP消費, null);
+          const apValue = action === "A" ? resolveAttackApCost(source, adjustedUnit) : num(row?.apCost ?? source?.AP消費, null);
           const powerValue = action === "A"
             ? resolveAttackPower(source, adjustedUnit)
             : num(source?.威力 ?? row?.power, null);

@@ -12,6 +12,7 @@ import { getV39RaceSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getRaceIconSrc } from "../lib/race-icon-library.js";
 import { RACE_CLASS_NAME_MAP, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
 import { isV39InvalidDataToken } from "../lib/v39-class-rules.js";
+import {isV39RacePlayable} from '../lib/v39-race-definitions.js';
 
 const raceBackgroundModules = import.meta.glob("../../../assets/images/background/*.{png,jpg,jpeg,webp}", {
   eager: true,
@@ -94,7 +95,7 @@ function raceListIconSrc(race) {
 
 const races = computed(() => {
   if (!Array.isArray(raceSelectionDb)) return [];
-  return raceSelectionDb.filter(item => item && typeof item.key === "string" && item.key.trim().length > 0);
+  return raceSelectionDb.filter(isV39RacePlayable);
 });
 
 const allowedRaceSet = computed(() => {

@@ -17,7 +17,7 @@ const STATUS_FIELDS = [
 ];
 
 export function renderV39DetailSection(label, content) {
-  return `<details class="squad-detail-section" open><summary class="squad-detail-section-title">${escapeHtml(label)}</summary><div class="squad-detail-section-body">${content}</div></details>`;
+  return `<details class="squad-detail-section" data-v39-detail-section="${escapeHtml(label.replace(/ Lv\d+$/,''))}" open><summary class="squad-detail-section-title">${escapeHtml(label)}</summary><div class="squad-detail-section-body">${content}</div></details>`;
 }
 
 export function renderV39DetailTabs(tabs, active, attribute) {
@@ -64,7 +64,8 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
     const modifier = key === "移動" ? 0 : Number(adjusted?.terrainModifiers?.[key]) || 0;
     const value = !Number.isFinite(Number(raw)) ? "-"
       : modifier ? `${Number(raw)} (${modifier > 0 ? "+" : ""}${modifier})` : Number(raw);
-    return `<div class="detail-stat"><span>${label}</span><b${id(fieldId)}>${escapeHtml(value)}</b></div>`;
+    const cityBonus=Number(adjusted?.cityAuraDeltas?.status?.[key])||0;
+    return `<div class="detail-stat"${cityBonus?` title="都市常時 ${cityBonus>0?'+':''}${cityBonus}"`:''}><span>${label}</span><b${id(fieldId)}>${escapeHtml(value)}</b></div>`;
   }).join("");
   const skills = Object.entries(adjusted?.skillLevels || {})
     .filter(([key, value]) => key !== "飛行" && Number.isFinite(Number(value)) && Number(value) !== 0)
@@ -78,7 +79,10 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
       <b>${escapeHtml(formatResistanceValue(value))}</b></button>`];
   }).join("");
   const empty = message => `<div class="squad-empty">${message}</div>`;
-  return renderV39DetailSection("ステータス", `<div class="squad-detail-stats v39-char-status-grid">${stats}</div>`)
+  const level=Math.max(1,Math.floor(Number(unit?.level??unit?.lv??unit?.Lv)||1));
+  const identity=unit?`<div class="v39-unit-lineage"><span>種族：${escapeHtml(unit.race||'-')}</span><span>クラス：${escapeHtml(unit.className||'-')}</span></div>`:'';
+  const aura=adjusted?.cityAuraSkillNames?.length?`<div class="v39-unit-lineage">都市常時：${escapeHtml(adjusted.cityAuraSkillNames.join(' / '))}</div>`:'';
+  return renderV39DetailSection(unit?`ステータス Lv${level}`:'ステータス', `${identity}${aura}<div class="squad-detail-stats v39-char-status-grid">${stats}</div>`)
     + renderV39DetailSection("技能", `<div class="proficiency-grid"${id("detailProficiencyList")}>${skills || empty("技能データなし")}</div>`)
     + renderV39DetailSection("耐性", `<div class="v39-resistance-grid"${id("detailResistanceList")}>${resistances || empty("耐性データなし")}</div>`);
 }
@@ -88,10 +92,10 @@ export function updateV39UnitAbility(host, unit, options) {
   const markup = renderV39UnitAbility(unit, options);
   if (host.__v39AbilityMarkup === markup) return;
   const closed = new Set(Array.from(host.querySelectorAll("details:not([open])"),
-    section => section.querySelector("summary")?.textContent));
+    section => section.dataset.v39DetailSection));
   host.innerHTML = markup;
   host.__v39AbilityMarkup = markup;
   for (const section of host.querySelectorAll("details")) {
-    if (closed.has(section.querySelector("summary")?.textContent)) section.open = false;
+    if (closed.has(section.dataset.v39DetailSection)) section.open = false;
   }
 }

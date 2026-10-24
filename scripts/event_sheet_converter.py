@@ -64,11 +64,16 @@ def tokens(value):
     return [part.strip() for part in parts]
 
 
-def resources_from_repo(root):
-    names = {"金", "魂", "死体"}
+def stock_resources_from_repo(root):
+    names = set()
     for row in json.loads((root / "都市基本データ.json").read_text(encoding="utf-8-sig")):
         if row.get("分類") in {"食料", "特殊資源", "木材", "石材", "金属", "貴金属", "宝石"}:
             names.add(row["データ分類"])
+    return names
+
+
+def resources_from_repo(root):
+    names = stock_resources_from_repo(root) | {"金", "魂", "死体"}
     for row in json.loads((root / "特産品.json").read_text(encoding="utf-8-sig")):
         names.add(row["名前"])
     return names
@@ -84,7 +89,7 @@ def targets_from_repo(root):
     return names
 
 
-def amount_terms(value, resources, rewards=False):
+def amount_terms(value, resources, rewards=False, relation_type="一般村友好度変更"):
     result = []
     for term in tokens(value):
         match = re.fullmatch(r"(.+)_(-?[0-9]+)", term)
@@ -94,7 +99,7 @@ def amount_terms(value, resources, rewards=False):
         if rewards and name == "友好度":
             if not -100 <= amount <= 100:
                 raise ValueError("友好度は-100〜100で指定してください")
-            result.append({"タイプ": "一般村友好度変更", "設定": {"値": amount}})
+            result.append({"タイプ": relation_type, "設定": {"値": amount}})
         elif name in resources and amount > 0:
             result.append({"タイプ": "資源", "名前": name, "数量": amount})
         else:
@@ -141,7 +146,56 @@ def effects(value):
     return result
 
 
-def compile_rows(rows, resources, targets=None):
+def guardian_record(row, cells, resources):
+    """Compile only the guardian vocabulary that the runtime can actually execute."""
+    event_id = row["ID"]
+    if row.get("イベント種別") != "依頼" or not row.get("名前"):
+        raise ValueError("守護者は名前のある依頼に対応します")
+    for field in ("発生条件", "期限ターン", "クールダウン", "周期", "猶予", "計画対象", "優先度", "判定基準", "工程", "支援依頼ID", "数量上限", "目標ターン"):
+        if not is_blank(row.get(field)):
+            raise ValueError(f"守護者依頼では未対応の列: {field}")
+    repeat = row.get("再発生")
+    if not (is_blank(repeat) or repeat is False or isinstance(repeat, str) and repeat == "FALSE"):
+        raise ValueError("守護者依頼は再発生FALSEのみ対応します")
+    if set(cells["選択肢"]) != {"1", "1-1", "1-2", "2"}:
+        raise ValueError("守護者依頼は1受注/1-1報告/1-2保留/2辞退の番号を使います")
+    if cells["条件"] != {"1-1": "依頼受注済み"}:
+        raise ValueError("守護者の条件は1-1. 依頼受注済みを指定してください")
+    if cells["効果"] != {"1": f"依頼開始_{event_id}", "1-1": f"依頼完了_{event_id}"}:
+        raise ValueError("守護者の受注/完了効果は自身のIDを参照してください")
+    if set(cells["報酬"]) != {"1-1"}:
+        raise ValueError("守護者の報酬は完了番号1-1だけに指定してください")
+    rewards = amount_terms(cells["報酬"]["1-1"], resources, True, "守護者友好度変更")
+    if len(rewards) != 1 or rewards[0]["タイプ"] != "守護者友好度変更":
+        raise ValueError("守護者の報酬は友好度変更1項目に対応します")
+    goal = re.fullmatch(r"(.+)_([0-9]+)", str(row.get("目標", "")))
+    if not goal:
+        raise ValueError("守護者の目標は資源/見張り/周辺脅威_数量で指定してください")
+    target, amount = goal[1], integer(goal[2], "目標数", 1)
+    if target in resources:
+        kind = "納品"
+        if cells["消費"] != {"1-1": f"{target}_{amount}"}:
+            raise ValueError("守護者の納品消費は目標の資源・数量と一致させてください")
+    elif target in {"見張り", "周辺脅威"}:
+        kind = "見張り" if target == "見張り" else "周辺討伐"
+        if cells["消費"]:
+            raise ValueError("見張り/周辺討伐の消費は未対応です")
+    else:
+        raise ValueError(f"未対応の守護者目標: {target}")
+    result = {key: row[key] for key in ("ID", "名前", "説明", "発生タイミング") if not is_blank(row.get(key))}
+    result.update({"分類": "守護者", "イベント種別": "依頼", "再発生": False,
+                   "目標": [{"タイプ": kind, "設定": {"対象": target, "数量": amount}}],
+                   "完了効果": rewards,
+                   "選択肢": [{"番号": key, "名前": label, "回答": cells["回答"].get(key, "")}
+                            for key, label in cells["選択肢"].items()]})
+    if kind != "納品":
+        result["対象範囲"] = integer(row.get("対象範囲"), "対象範囲", 1)
+    elif not is_blank(row.get("対象範囲")):
+        raise ValueError("納品の対象範囲は指定しません")
+    return result
+
+
+def compile_rows(rows, resources, targets=None, stock_resources=None):
     output, report, seen = {}, {"有効": 0, "除外": [], "エラー": []}, set()
     for row_number, row in rows:
         if not any(not is_blank(v) for v in row.values()):
@@ -171,6 +225,11 @@ def compile_rows(rows, resources, targets=None):
             category = row.get("分類")
             if category not in CATEGORIES:
                 raise ValueError(f"未対応の分類: {category}")
+            if category == "守護者":
+                supported = stock_resources if stock_resources is not None else resources - {"金", "魂", "死体"}
+                output.setdefault(CATEGORIES[category], []).append(guardian_record(row, cells, supported))
+                report["有効"] += 1
+                continue
             if row.get("イベント種別") in {"村計画", "依頼ひな型"}:
                 if category != "一般村" or not row.get("名前") or not row.get("計画対象"):
                     raise ValueError("村計画/ひな型には一般村分類・名前・計画対象が必要です")
@@ -274,8 +333,8 @@ def main(argv=None):
         runtime = RUNTIME_DIR
         if any(path == runtime.resolve() or runtime.resolve() in path.parents for path in (args.output_dir.resolve(), args.report.resolve())):
             raise ValueError("既存イベントの移行前のため実行時JSONフォルダには出力できません")
-        output, report = compile_rows(read_rows(args.input), resources_from_repo(args.data_dir), targets_from_repo(args.data_dir))
-        report.update({"入力": str(args.input), "出力先": str(args.output_dir), "検証のみ": args.dry_run, "ゲーム接続": "一般村の会話/納品/討伐に対応。他分類は後続" if args.runtime else "確認用", "出力ファイル": sorted(output)})
+        output, report = compile_rows(read_rows(args.input), resources_from_repo(args.data_dir), targets_from_repo(args.data_dir), stock_resources_from_repo(args.data_dir))
+        report.update({"入力": str(args.input), "出力先": str(args.output_dir), "検証のみ": args.dry_run, "ゲーム接続": "一般村の旧保存互換・村計画/ひな型、守護者の納品/見張り/周辺討伐に対応。他分類は後続" if args.runtime else "確認用", "出力ファイル": sorted(output)})
         atomic_write_json(args.report, report)
         if report["エラー"]:
             print(f"検証エラー{len(report['エラー'])}件。イベントJSONは更新しません。詳細: {args.report}", file=sys.stderr)

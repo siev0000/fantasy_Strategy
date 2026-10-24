@@ -11,6 +11,8 @@ import {V39_RECRUIT_TRAINING_BALANCE} from "./v39-gameplay-balance.js";
 import { getV39FacilityRecruitmentClasses, inspectV39FacilityRecruitment, resolveV39FacilityRecruitmentGrowth } from "./v39-facility-recruitment.js";
 import {inspectV39RecruitTraining} from "./v39-recruit-training.js";
 import {getV39ToolLoadout,getV39ConsumableDefinitions,resolveV39ToolSlots} from "./v39-consumables.js";
+import {getV39CountryBonuses} from './v39-country-bonuses.js';
+import {resolveV39CitySpecializationModifiers} from './v39-city-specialization-rules.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -30,8 +32,7 @@ export function getV39InitialJobClasses() {
 
 function factionRow(race) {
   const target = text(race);
-  return getGameDataRows("勢力").find(row => [row?.種族, row?.カナ].some(value => text(value) === target))
-    || (target === "只人" ? getGameDataRows("勢力").find(row => text(row?.種族) === "人間") : null);
+  return getGameDataRows("勢力").find(row => [row?.種族, row?.カナ,...(row?.旧名称||[])].some(value => text(value) === target)) || null;
 }
 
 function limitFromValue(value, population, fallback) {
@@ -76,7 +77,8 @@ export function inspectV39UnitCreation(state, player, request = {}) {
   const current = units.filter(unit => isArmy ? text(unit?.unitType).includes("軍隊") : text(unit?.unitType) === "ヒーロー").length;
   const population = Math.max(0, Math.floor(number(village?.population)));
   const row = factionRow(player?.race);
-  const cap = isArmy ? limitFromValue(row?.軍隊, population, Math.floor(population / 10)) : limitFromValue(row?.ヒーロー, population, 1);
+  const cap = isArmy ? Math.max(0,limitFromValue(row?.軍隊, population, Math.floor(population / 10))+Math.floor(resolveV39CitySpecializationModifiers(village).armyLimit))
+    : Math.max(0,limitFromValue(row?.ヒーロー, population, 1)+getV39CountryBonuses(player).heroLimit+Math.floor(resolveV39CitySpecializationModifiers(village).heroLimit));
   if (current + count > cap) reasons.push(`${mode.unitTypeLabel}上限 ${current}/${cap}`);
   const populationCost = mode.populationCost * count;
   if (number(village?.populationByRace?.[race]) <= populationCost) reasons.push(`人口不足 必要${populationCost}人`);

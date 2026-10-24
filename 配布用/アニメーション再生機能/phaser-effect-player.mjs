@@ -333,6 +333,9 @@ export class PhaserEffectPlayer {
       ? request.fitDiameterPx / Math.min(layout.frameWidth,layout.frameHeight)
       : (scalePercent / this.options.baseScalePercent)
       * Math.max(0.01, numberOr(source.sourceScaleMultiplier, 1));
+    const stretched=Number.isFinite(request.stretchLengthPx)&&request.stretchLengthPx>0;
+    const scaleX=stretched&&request.stretchAxis!=='y'?request.stretchLengthPx/layout.frameWidth:scale;
+    const scaleY=stretched&&request.stretchAxis==='y'?request.stretchLengthPx/layout.frameHeight:scale;
     const tint = normalizeTint(request.tint);
     const tintStrength = clamp(numberOr(request.colorStrengthPercent, 100), 0, 100);
     const huePerFrame = clamp(numberOr(request.hueAnimationDegPerFrame, 0), -360, 360);
@@ -355,8 +358,8 @@ export class PhaserEffectPlayer {
       const cropX = layout.horizontal ? frameIndex * layout.frameWidth : 0;
       const cropY = layout.horizontal ? 0 : frameIndex * layout.frameHeight;
       const frameOffset = frameOffsets[frameIndex] || frameOffsets[String(frameIndex)] || {};
-      const localX = ((layout.sourceWidth / 2) - cropX - (layout.frameWidth / 2)) * scale;
-      const localY = ((layout.sourceHeight / 2) - cropY - (layout.frameHeight / 2)) * scale;
+      const localX = ((layout.sourceWidth / 2) - cropX - (layout.frameWidth / 2)) * scaleX;
+      const localY = ((layout.sourceHeight / 2) - cropY - (layout.frameHeight / 2)) * scaleY;
       return {
         cropX,
         cropY,
@@ -452,14 +455,14 @@ export class PhaserEffectPlayer {
       if (image === this.effectImage) {
         const offset = frameOffsets[frameIndex] || frameOffsets[String(frameIndex)] || {};
         request.onFrame?.({ x:position.x + numberOr(offset.x, 0), y:position.y + numberOr(offset.y, 0),
-          width:layout.frameWidth * scale, height:layout.frameHeight * scale, frameIndex });
+          width:layout.frameWidth * scaleX, height:layout.frameHeight * scaleY, frameIndex });
       }
     };
 
     const createImage = (imageDepth, alpha = 1) => {
       const image = this.scene.add.image(position.x, position.y, textureKey);
       image.setOrigin(0.5, 0.5);
-      image.setScale(scale);
+      image.setScale(scaleX,scaleY);
       image.setDepth(imageDepth);
       image.setAngle(angle);
       image.setAlpha(alpha);
@@ -478,9 +481,9 @@ export class PhaserEffectPlayer {
       const maskKey = this.ensureSoftMaskTexture();
       if (maskKey) {
         this.maskImage = this.scene.make.image({ x: position.x, y: position.y, key: maskKey, add: false });
-        const displayWidth = layout.frameWidth * scale;
-        const displayHeight = layout.frameHeight * scale;
-        const elliptical = displayWidth > displayHeight * this.options.ellipseRatioThreshold;
+        const displayWidth = layout.frameWidth * scaleX;
+        const displayHeight = layout.frameHeight * scaleY;
+        const elliptical = stretched || displayWidth > displayHeight * this.options.ellipseRatioThreshold;
         const maskWidth = elliptical ? displayWidth : Math.min(displayWidth, displayHeight);
         const maskHeight = elliptical ? displayHeight : Math.min(displayWidth, displayHeight);
         this.maskImage.setOrigin(0.5, 0.5);

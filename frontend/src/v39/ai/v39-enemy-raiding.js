@@ -2,6 +2,7 @@ import { resolveAttackApCost, resolveAttackPower } from "../../lib/v39-combat-en
 import { collectV39TerritoryTileIncome, FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import { resolveV39ConsumableFoodKeys } from "../../lib/v39-population-economy.js";
 import { normalizeTerritoryStateRecord } from "../../lib/settlement-state.js";
+import {resolveV39CityTerritoryDamage} from '../../lib/v39-city-specialization-rules.js';
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -28,7 +29,7 @@ export function executeV39EnemyTerritoryRaid({ enemyId, tileKey, skillRow, turnN
   if (territory.raided === true) return { ok:false, reason:"修復されるまで再略奪できません", completed:true };
   const apCost = resolveAttackApCost(skillRow);
   if (number(enemy?.ap, enemy?.currentAp) < apCost) return { ok:false, reason:"APが不足しています" };
-  const damage = Math.max(1, resolveAttackPower(skillRow, enemy));
+  const damage = resolveV39CityTerritoryDamage(state,key,resolveAttackPower(skillRow, enemy),{skillRow,attacker:enemy});
   const hpBefore = territory.hp;
   const hp = Math.max(0, hpBefore-damage);
   const completed = hp <= 0;

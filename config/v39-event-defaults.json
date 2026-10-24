@@ -1,5 +1,5 @@
 {
-  "note": "一般村の食料・木材支援はイベントシートへ移行済み。guardianと動物分類は仮設定。",
+  "note": "守護者依頼はイベントシートへ移行済み。動物分類のみ仮設定。一般村は村計画/依頼ひな型から生成。",
   "animalRaces": [
     "ホーク",
     "スネーク",
@@ -11,24 +11,5 @@
     "ホース",
     "ドレイク"
   ],
-  "village": [],
-  "guardian": [
-    {
-      "ID": "GUARDIAN_SUPPLY",
-      "名前": "守護地の修繕物資",
-      "type": "delivery",
-      "resourceKey": "木材",
-      "stockKind": "material"
-    },
-    {
-      "ID": "GUARDIAN_WATCH",
-      "名前": "守護地の見張り",
-      "type": "watch"
-    },
-    {
-      "ID": "GUARDIAN_HUNT",
-      "名前": "周辺の脅威を排除",
-      "type": "hunt"
-    }
-  ]
+  "village": []
 }

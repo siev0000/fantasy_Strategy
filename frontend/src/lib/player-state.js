@@ -1,6 +1,7 @@
 import { normalizeFactionSettlements } from "./settlement-state.js";
 import {collectV39TradeResourceKnowledge} from './v39-trade-knowledge.js';
 import { normalizeV39SquadLogistics } from "./v39-logistics-state.js";
+import {normalizeV39CountryBonuses} from './v39-country-bonuses.js';
 
 const VISIBILITY_ARRAY_KEYS = Object.freeze([
   "exploredTileKeys",
@@ -70,6 +71,7 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
   delete sourceWithoutLegacyVillage.village;
   return {
     ...sourceWithoutLegacyVillage,
+    countryBonuses:normalizeV39CountryBonuses(source?.countryBonuses),
     settlements: settlementState.settlements,
     selectedSettlementId: settlementState.selectedSettlementId,
     knownTradeResourceNames:collectV39TradeResourceKnowledge({...source,settlements:settlementState.settlements}),
@@ -81,6 +83,7 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
     deadUnitReserve: Array.isArray(source?.deadUnitReserve)?structuredClone(source.deadUnitReserve):[],
     soulStorage: cloneRows(source?.soulStorage),
     facilityStorage: Array.isArray(source?.facilityStorage)?structuredClone(source.facilityStorage):[],
+    facilitySummonsBySlot:source?.facilitySummonsBySlot?structuredClone(source.facilitySummonsBySlot):{},
     logisticsRoutes:Array.isArray(source?.logisticsRoutes)?structuredClone(source.logisticsRoutes):[],
     deathHistory: cloneRows(source?.deathHistory),
     selectedUnitId: String(source?.selectedUnitId || ""),
@@ -127,6 +130,7 @@ export function createPlayerRecord(source = {}, index = 0) {
 }
 
 export const PLAYER_FACTION_STATE_KEYS = Object.freeze([
+  "countryBonuses",
   "knownTradeResourceNames",
   "tradeContracts",
   "negotiationAttempts",
@@ -140,6 +144,7 @@ export const PLAYER_FACTION_STATE_KEYS = Object.freeze([
   "deadUnitReserve",
   "soulStorage",
   "facilityStorage",
+  "facilitySummonsBySlot",
   "logisticsRoutes",
   "logisticsSerial",
   "deathHistory",

@@ -1,0 +1,34 @@
+#footTile.land-panel.is-construction-open{display:block!important;overflow:hidden!important;padding:0!important}
+#footTile.is-construction-open>:not(#v39-land-construction){display:none!important}
+#v39-land-construction{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;font-size:var(--font-body);color:#e7efed}
+#v39-land-construction>header{display:flex;align-items:center;gap:8px;padding:4px;border-bottom:1px solid #40575e}
+#v39-land-construction>header span{margin-left:auto;font-size:var(--font-secondary);color:#a9bbbf}
+#v39-land-construction [data-land-build-category]{flex:1;min-width:0;max-width:120px;min-height:32px;padding:3px;color:inherit;background:#14252b;border:1px solid #40575e;border-radius:6px;font:inherit}
+#v39-land-construction button{font:inherit;color:inherit;background:#14252b;border:1px solid #40575e;border-radius:6px;min-height:32px;cursor:pointer;padding:4px 6px}
+.v39-land-build-panes{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);min-height:0;gap:4px;padding:4px}
+.v39-land-build-list,.v39-land-build-detail{overflow:auto;min-width:0;min-height:0;overscroll-behavior:contain}
+.v39-land-build-list{display:flex;flex-direction:column;gap:4px}
+#v39-land-construction [data-land-build-facility]{display:flex;align-items:center;gap:4px;flex:0 0 auto;text-align:left;min-width:0}
+[data-land-build-facility] strong{font-size:var(--font-body);overflow-wrap:anywhere}
+#v39-land-construction [aria-pressed=true]{background:#21404a;border-color:#75cbd5}
+#v39-land-construction .unavailable{opacity:.55}
+.v39-build-art{width:38px;height:38px;flex:0 0 38px;border-radius:4px;background-repeat:no-repeat;background-color:#102025}
+.v39-build-art-fallback{display:grid;place-items:center;color:#e4c480}
+.v39-land-build-detail{border:1px solid #40575e;border-radius:6px;padding:6px}
+.v39-land-build-detail h3{margin:0 0 6px;font-size:var(--font-body)}
+.v39-land-build-detail p{margin:0 0 8px;line-height:1.4;overflow-wrap:anywhere}
+.v39-land-build-detail dl{margin:0;display:grid;gap:6px}
+.v39-land-build-detail dl>div{border-top:1px solid #294249;padding-top:4px}
+.v39-land-build-detail dt{color:#a9bbbf;font-size:var(--font-secondary)}
+.v39-land-build-detail dd{margin:2px 0 0;overflow-wrap:anywhere}
+.v39-build-materials{display:flex;flex-direction:column;gap:4px}
+.v39-build-material{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.v39-build-material small{color:#a9bbbf;font-size:var(--font-secondary)}
+.v39-build-material.shortage{color:#efb0a2}
+.v39-land-build-blocked{color:#efb0a2;margin-top:8px}
+.v39-land-build-blocked h4{font:inherit;margin:0 0 4px}
+#v39-land-construction>footer{border-top:1px solid #40575e;padding:4px;display:flex;gap:5px;align-items:center}
+#v39-land-construction>footer p{flex:1;min-width:0;margin:0;font-size:var(--font-secondary);overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+#v39-land-construction [data-land-construction-start]{flex:0 0 auto;background:#443716;border-color:#bd984c;color:#ffe6a0}
+#v39-land-construction button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:430px){.v39-build-art{width:30px;height:30px;flex-basis:30px}}

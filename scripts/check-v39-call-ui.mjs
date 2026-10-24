@@ -82,6 +82,7 @@ try {
       }
       check(art.resolveUnitArtwork({race:'ウルフ',className:'スケルトン'}).sheetFrame.slotNumber===5,'animal undead preserved');
     });
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     await page.locator('#mobileBattleMove').click();
     await page.waitForFunction(()=>window.getV39UnitMovePreview()?.unitIds.includes('call-test-wolf')&&window.getV39UnitMovePreview()?.unitIds.includes('call-test-horse'));
     const destination=await page.evaluate(()=>{const p=window.getV39UnitMovePreview(),tile=p.reachable.find(tile=>tile.cost>0);if(!tile)throw Error('no party movement destination');const [x,y]=tile.key.split(',').map(Number);window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x,y}}));return {x,y};});

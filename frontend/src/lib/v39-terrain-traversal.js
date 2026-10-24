@@ -1,5 +1,7 @@
 import { getGameDataRows, normalizeGameDataReference, readGameDataNumber } from "./game-data-registry.js";
 import {v39HazardMovementMultiplier} from './v39-hazard-zones.js';
+import {resolveV39CityRoadAtTile} from './v39-city-development.js';
+import {applyV39CityAura} from './v39-city-aura.js';
 import { v39WallStepHeight } from "./v39-defense-rules.js";
 import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE, V39_FLIGHT_BALANCE } from "./v39-gameplay-balance.js";
 
@@ -93,6 +95,8 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   const toYValue = Math.floor(Number(toY));
   if (![fromXValue, fromYValue, toXValue, toYValue].every(Number.isFinite)) return Number.POSITIVE_INFINITY;
   if (fromXValue === toXValue && fromYValue === toYValue) return 0;
+  const state=globalThis.window?.getV39EnemyTurnState?.();
+  if(unit)unit=applyV39CityAura({...unit,x:fromXValue,y:fromYValue},state,resolveV39TileTerrainName(mapData,fromXValue,fromYValue));
   if (!canUnitEnterV39Tile(mapData, toXValue, toYValue, unit)) return Number.POSITIVE_INFINITY;
 
   const fromLevel = Number(mapData?.heightLevelMap?.[fromYValue]?.[fromXValue]);
@@ -106,7 +110,8 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   if (absDiff + wallHeight > 1 && flightValue <= 0) return Number.POSITIVE_INFINITY;
   const heightPenaltyPoints = Math.max(0, climbDiff + wallHeight - flightValue / V39_FLIGHT_BALANCE.skillPerIgnoredHeight)
     * V39_FLIGHT_BALANCE.climbPenaltyPointsPerHeight;
-  const terrain = resolveV39TerrainMoveCost(unit, resolveV39TileTerrainName(mapData, toXValue, toYValue), heightPenaltyPoints);
+  const road=resolveV39CityRoadAtTile(state,`${toXValue},${toYValue}`,unit?.worldId||state?.activeWorldId||'surface');
+  const terrain = resolveV39TerrainMoveCost(unit, road?`道路${road}`:resolveV39TileTerrainName(mapData, toXValue, toYValue), heightPenaltyPoints);
   const cargoSpeed=Number.isFinite(Number(unit?.cargoSpeedMultiplier))?Math.max(0,Math.min(1,Number(unit.cargoSpeedMultiplier))):1;
   return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * v39HazardMovementMultiplier(mapData,unit,toXValue,toYValue) * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))/cargoSpeed));
 }

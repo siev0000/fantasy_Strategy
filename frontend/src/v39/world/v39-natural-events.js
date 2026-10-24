@@ -17,6 +17,7 @@ import {applyV39DisasterDamage as damageUnit,resolveV39DisasterDamage} from '../
 import {resolveV39DisasterDamageTiles} from '../../lib/v39-disaster-strikes.js';
 import {canV39UnitLeaveOrganicCorpse} from '../../lib/v39-corpse-types.js';
 import {ensureV39ClimateProfile,advanceV39Weather,inspectV39WeatherAt,setV39WeatherAt,resolveV39DisasterWeather} from '../../lib/v39-weather.js';
+import {resolveV39CityAtTile} from '../../lib/v39-city-specialization-rules.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -190,7 +191,8 @@ function createNaturalDisasters(state, mapData, turn, forceRuleId = "", forcedPo
     if (!forced && recentSameEvent(environment, rule, anchor.key, turn)){if(trace)trace.status='cooldown';continue;}
     const terrainAffinity = terrainAffinityMultiplier(rule, anchor.terrain || mapTileText(mapData, anchor.x, anchor.y));
     const weather=resolveV39DisasterWeather(rule,mapData,environment.weather,anchor);
-    const chance=Math.min(1,rule.chance*terrainAffinity*weather.climateMultiplier*weather.weatherMultiplier),rolled=roll(`${rule.id}:T${turn}`);
+    const stability=Math.max(0,Math.min(100,resolveV39CityAtTile(state,anchor.key).modifiers.environmentStability));
+    const chance=Math.min(1,rule.chance*terrainAffinity*weather.climateMultiplier*weather.weatherMultiplier*(1-stability/100)),rolled=roll(`${rule.id}:T${turn}`);
     if(trace)Object.assign(trace,{chance,rolled,terrainAffinity,climateMultiplier:weather.climateMultiplier,weatherMultiplier:weather.weatherMultiplier});
     if (!forced && (!weather.allowed||rolled >= chance)){if(trace)trace.status=weather.allowed?'miss':'condition';continue;}
     if(trace)trace.status='spawned';

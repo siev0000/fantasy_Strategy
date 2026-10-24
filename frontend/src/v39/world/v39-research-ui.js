@@ -1,4 +1,5 @@
 import { V39_RESEARCH_EFFECT_FIELDS, V39_PENDING_RESEARCH_EFFECT_FIELDS } from "../../lib/v39-research-effects.js";
+import {resolveV39CityUnitModifiers} from '../../lib/v39-city-specialization-rules.js';
 import {
   RESEARCH_CATEGORY_ORDER,
   getResearchCategoryMeta,
@@ -66,7 +67,7 @@ function researchUnitExpPerTurn(unit, categoryKey, item) {
   if (!unit || !item) return 0;
   const level = Math.max(1, Math.floor(Number(item?.level) || 1));
   const required = requiredResearchExp(level);
-  const researchPerTurn = Math.max(0, Number(researchExperiencePerTurn(unit, categoryKey, researchTreeData, item)) || 0);
+  const researchPerTurn = Math.max(0, Number(researchExperiencePerTurn(unit, categoryKey, researchTreeData, item,resolveV39CityUnitModifiers(window.getV39ActivePlayer?.(),unit))) || 0);
   const remaining = Math.max(0, required - (Number(currentResearch().progress.targetExpMap[item.id]) || 0));
   const progressRate = required > 0 ? Math.min(researchPerTurn, remaining) / required : 0;
   return resolveV39ResearchExpReward({
@@ -291,7 +292,7 @@ function renderModal() {
     const unitLevel = Number(unit?.level ?? unit?.Lv ?? 0);
     return `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${unitLevel}</option>`;
   }).join("");
-  const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory, researchTreeData, expPreviewItem) : 0;
+  const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory, researchTreeData, expPreviewItem,resolveV39CityUnitModifiers(window.getV39ActivePlayer?.(),assignee)) : 0;
   const assigneeUnitExpPerTurn = assignee ? researchUnitExpPerTurn(assignee, activeCategory, expPreviewItem) : 0;
   const status = completed ? '完了' : selected ? '研究中' : unlocked ? '研究可能' : '未解禁';
   const conditions = inspected ? `<section class="v39-research-requirement"><b>解禁条件</b><div class="${unlockCheck.currentLevel >= unlockCheck.requiredLevel ? 'met' : 'unmet'}">${unlockCheck.currentLevel >= unlockCheck.requiredLevel ? '✓' : '×'} 研究Lv ${unlockCheck.requiredLevel} が必要（現在Lv${unlockCheck.currentLevel}）</div>${unlockCheck.prerequisites.map(row=>`<div class="${row.completed ? 'met' : 'unmet'}">${row.completed ? '✓' : '×'} ${escapeHtml(row.name)} <b>${row.completed ? '完了' : '未完了'}</b></div>`).join('')}${unlockCheck.prerequisites.length ? '' : '<div class="met">✓ 前提研究なし</div>'}${(inspected.prerequisiteErrors || []).map(error=>`<div class="unmet">${escapeHtml(error)}</div>`).join('')}</section>` : '';
@@ -385,7 +386,7 @@ function advanceAllPlayerResearch() {
       const itemId = research.selection[category];
       const found = findResearchItem(itemId);
       const beforeExp = Number(research.progress.targetExpMap[itemId]) || 0;
-      const result = addResearchExperience(research, category, researchExperiencePerTurn(unit, category, researchTreeData, found?.item));
+      const result = addResearchExperience(research, category, researchExperiencePerTurn(unit, category, researchTreeData, found?.item,resolveV39CityUnitModifiers(player,unit)));
       research = result.state;
       if (result.changed && found) {
         const progress = (research.progress.targetExpMap[itemId] - beforeExp) / requiredResearchExp(found.level);

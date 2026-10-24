@@ -69,6 +69,7 @@ const V39_ROOM_PARTICIPANT_LIMIT = 8;
 const V39_ROOM_PROTOCOL_VERSION = "v39-room-v1";
 const V39_SELECTABLE_RACE_KEYS = new Set(
   (Array.isArray(V39_RACE_DEFINITIONS) ? V39_RACE_DEFINITIONS : [])
+    .filter(row=>row.使用可===true)
     .map(row => String(row?.key || "").trim())
     .filter(Boolean)
 );

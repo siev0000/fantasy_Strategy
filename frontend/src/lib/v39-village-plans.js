@@ -1,6 +1,7 @@
 import {getGameDataRows} from './game-data-registry.js';
 import {hasV39FacilityPrerequisites} from './v39-facility-development-rules.js';
 import development from '../../../config/v39-village-development.json';
+import legacyPlanIds from '../../../config/v39-legacy-facility-plan-ids.json';
 import {getHexDistance} from './hex-grid.js';
 import {FOOD_RESOURCE_KEYS, inspectV39NeutralVillageEconomy, normalizeV39Village, facilityDefinitions,
   inspectV39Construction, startV39Construction, advanceConstruction} from './v39-economy-rules.js';
@@ -91,18 +92,19 @@ export function inspectV39VillagePlans(state,village,map,turn=state.timeline?.tu
 }
 
 function selectVillageFacilityPlan(state,village,map,turn) {
-  const definitions=facilityDefinitions(), rows=getGameDataRows('施設'),byId=new Map(rows.map(row=>[row.施設ID,row]));
-  const has=id=>{
-    const row=byId.get(id);if(!row)return false;
+  const definitions=facilityDefinitions(), rows=getGameDataRows('施設'),byName=new Map(rows.map(row=>[row.施設名,row]));
+  const has=name=>{
+    const row=byName.get(name);if(!row)return false;
     return row.分類==='拠点規模'?number(village.scaleLevel||1)>=number(row.規模Lv):(village.buildings||[]).includes(row.施設名);
   };
   const templates=villageQuestTemplates().map(row=>row.ID);
   const cemetery=plans().find(row=>row.ID==='PLAN_VILLAGE_CEMETERY');
-  const makeRow=definition=>definition.name==='墓地'&&cemetery?cemetery:{ID:`FACILITY_${definition.row.施設ID}`,名前:`${definition.name}の建設`,計画対象:definition.name,
+  // Preserve already accepted quest/plan identities; new facilities need only their name.
+  const makeRow=definition=>definition.name==='墓地'&&cemetery?cemetery:{ID:legacyPlanIds[definition.name]||`FACILITY_${definition.name}`,名前:`${definition.name}の建設`,計画対象:definition.name,
     判定基準:'施設未建設',優先度:number(definition.row.自動建設優先度),対象範囲:3,数量上限:100,工程:['安全確保','資材確保','建設'],支援依頼ID:templates};
   const queued=village.constructionQueue?.[0];
   if(queued){const definition=definitions.find(row=>row.name===queued.facilityName);if(definition){const row=makeRow(definition);return {row,plan:inspectPlan(state,village,row,map,turn,{proactive:true})};}}
-  if(!has('cemetery')&&cemetery){return {row:cemetery,plan:inspectPlan(state,village,cemetery,map,turn,{proactive:true})};}
+  if(!has('墓地')&&cemetery){return {row:cemetery,plan:inspectPlan(state,village,cemetery,map,turn,{proactive:true})};}
   const economy=inspectV39NeutralVillageEconomy(village,map,state),context=projectVillage(state,village,turn);
   const oldGoal=village.planSchedule?.active?.facilityName;
   const materialGoal=definitions.find(row=>row.name===oldGoal);
@@ -111,7 +113,7 @@ function selectVillageFacilityPlan(state,village,map,turn) {
   const foodFacility=(village.buildings||[]).some(name=>{const row=definitions.find(item=>item.name===name);return number(row?.row.農業)>0||FOOD_RESOURCE_KEYS.includes(row?.gatheringResource);});
   const candidates=[],blocked=[];
   for(const definition of definitions){
-    const data=definition.row;if(!data.施設ID||has(data.施設ID)||!hasV39FacilityPrerequisites(village,data))continue;
+    const data=definition.row;if(!data.施設名||has(data.施設名)||!hasV39FacilityPrerequisites(village,data))continue;
     const row=makeRow(definition);
     const provisional=inspectPlan(state,village,row,map,turn,{proactive:true});
     if(!provisional?.tile||provisional.blockers.length){

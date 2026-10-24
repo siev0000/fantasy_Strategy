@@ -92,7 +92,7 @@ export function advanceV39MineDuties(state, playerId, turn) {
       }
       if (!returning && index === route.length-1) {
         const mine={...mineMap.caveMine,stockByResource:{...mineMap.caveMine.stockByResource}};
-        let remaining=resolveV39UnitCargoCapacity(unit)-Object.values(duty.cargo).reduce((sum,value)=>sum+value,0);
+        let remaining=resolveV39UnitCargoCapacity(unit,state)-Object.values(duty.cargo).reduce((sum,value)=>sum+value,0);
         for(const [resource,available] of Object.entries(mine.stockByResource)){const amount=Math.max(0,Math.min(available,remaining));duty.cargo[resource]=(duty.cargo[resource]||0)+amount;mine.stockByResource[resource]-=amount;remaining-=amount;}
         worlds[duty.mineWorldId]={...worlds[duty.mineWorldId],map:{...mineMap,caveMine:mine}};
         if(Object.values(duty.cargo).some(value=>value>0)){duty.leg='home';duty.status="積込完了";}else duty.status="採掘待ち";

@@ -100,17 +100,14 @@ try {
 
   await page.locator('[data-v39-race-option="只人"]').click();
   const sharedRaceTabs = page.locator(".detail-tabs button");
-  if (await sharedRaceTabs.count() !== 3) {
-    throw new Error("共通種族選択画面がステータス・技能・スキルの3タブ表示になっていません。");
+  if (await sharedRaceTabs.count() !== 2) {
+    throw new Error("共通種族選択画面が能力・スキルの共通2タブ表示になっていません。");
   }
-  const statusBodyText = await page.locator(".detail-tab-panel").textContent();
+  const statusBodyText = await page.locator(".operation-detail-panel").textContent();
   if (!statusBodyText?.includes("HP") || !statusBodyText?.includes("攻撃") || !statusBodyText?.includes("防御")) {
     throw new Error("共通種族選択画面のステータス詳細が表示されていません。");
   }
-  await sharedRaceTabs.filter({ hasText:"技能" }).click();
-  if ((await sharedRaceTabs.filter({ hasText:"技能" }).getAttribute("aria-selected")) !== "true") {
-    throw new Error("共通種族選択画面の技能タブへ切り替えられません。");
-  }
+  if (!statusBodyText?.includes("技能")) throw new Error("能力タブ内に技能欄がありません。");
   await sharedRaceTabs.filter({ hasText:"スキル" }).click();
   if ((await sharedRaceTabs.filter({ hasText:"スキル" }).getAttribute("aria-selected")) !== "true") {
     throw new Error("共通種族選択画面のスキルタブへ切り替えられません。");

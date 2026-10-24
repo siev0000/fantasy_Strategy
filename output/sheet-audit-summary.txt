@@ -1,0 +1,30 @@
+{"name": "CS", "populated_rows": 3053, "max_row": 3086, "max_column_count": 20, "formula_count": 5411, "output": "スキル一覧.json", "runtime_records": 788}
+{"name": "クラス", "populated_rows": 441, "max_row": 442, "max_column_count": 94, "formula_count": 3938, "output": "クラス.json", "runtime_records": 237}
+{"name": "種族", "populated_rows": 9, "max_row": 9, "max_column_count": 7, "formula_count": 0, "output": "種族.json", "runtime_records": 8}
+{"name": "勢力", "populated_rows": 12, "max_row": 12, "max_column_count": 9, "formula_count": 0, "output": "勢力.json", "runtime_records": 11}
+{"name": "説明", "populated_rows": 16, "max_row": 16, "max_column_count": 2, "formula_count": 0, "output": "説明.json", "runtime_records": 15}
+{"name": "範囲", "populated_rows": 24, "max_row": 25, "max_column_count": 3, "formula_count": 0, "output": "範囲.json", "runtime_records": 17}
+{"name": "効果", "populated_rows": 63, "max_row": 70, "max_column_count": 2, "formula_count": 0, "output": "効果.json", "runtime_records": 62}
+{"name": "地形", "populated_rows": 38, "max_row": 41, "max_column_count": 75, "formula_count": 3, "output": "地形.json", "runtime_records": 37}
+{"name": "出現敵", "populated_rows": 224, "max_row": 225, "max_column_count": 33, "formula_count": 185, "output": "出現敵.json", "runtime_records": 200}
+{"name": "召喚モンスターリスト", "populated_rows": 67, "max_row": 71, "max_column_count": 14, "formula_count": 0, "output": "召喚モンスターリスト.json", "runtime_records": 66}
+{"name": "モンスター合成", "populated_rows": 85, "max_row": 85, "max_column_count": 22, "formula_count": 0, "output": "モンスター合成.json", "runtime_records": 44}
+{"name": "災害", "populated_rows": 35, "max_row": 41, "max_column_count": 38, "formula_count": 0, "output": "災害.json", "runtime_records": 31}
+{"name": "都市基本データ", "populated_rows": 58, "max_row": 60, "max_column_count": 14, "formula_count": 0, "output": "都市基本データ.json", "runtime_records": 57}
+{"name": "都市", "populated_rows": 21, "max_row": 21, "max_column_count": 35, "formula_count": 0, "output": "都市.json", "runtime_records": 20}
+{"name": "組織", "populated_rows": 5, "max_row": 5, "max_column_count": 4, "formula_count": 0, "output": "組織.json", "runtime_records": 4}
+{"name": "施設", "populated_rows": 59, "max_row": 59, "max_column_count": 83, "formula_count": 455, "output": "施設.json", "runtime_records": 58}
+{"name": "研究", "populated_rows": 120, "max_row": 120, "max_column_count": 55, "formula_count": 5, "output": "研究.json", "runtime_records": 74}
+{"name": "付与", "populated_rows": 41, "max_row": 42, "max_column_count": 88, "formula_count": 14, "output": "付与.json", "runtime_records": 40}
+{"name": "外交姿勢", "populated_rows": 6, "max_row": 6, "max_column_count": 9, "formula_count": 0, "output": "外交姿勢.json", "runtime_records": 5}
+{"name": "体制", "populated_rows": 14, "max_row": 14, "max_column_count": 25, "formula_count": 0, "output": "体制.json", "runtime_records": 13}
+{"name": "消費量", "populated_rows": 17, "max_row": 21, "max_column_count": 26, "formula_count": 2, "output": "消費量.json", "runtime_records": 15}
+{"name": "装備", "populated_rows": 34, "max_row": 39, "max_column_count": 27, "formula_count": 0, "output": "装備.json", "runtime_records": 32}
+{"name": "イベント", "populated_rows": 20, "max_row": 20, "max_column_count": 29, "formula_count": 0, "output": null, "runtime_records": null}
+{"name": "勝利対象土地", "populated_rows": 5, "max_row": 5, "max_column_count": 6, "formula_count": 0, "output": "勝利対象土地.json", "runtime_records": 4}
+{"name": "特産品", "populated_rows": 21, "max_row": 21, "max_column_count": 17, "formula_count": 0, "output": "特産品.json", "runtime_records": 20}
+{"name": "道具", "populated_rows": 6, "max_row": 6, "max_column_count": 13, "formula_count": 0, "output": "道具.json", "runtime_records": 5}
+{"name": "スキル一覧", "populated_rows": 100, "max_row": 100, "max_column_count": 92, "formula_count": 685, "output": null, "runtime_records": null}
+{"name": "性格会話", "populated_rows": 19, "max_row": 19, "max_column_count": 19, "formula_count": 0, "output": "性格会話.json", "runtime_records": 18}
+FORMULA EDGES [["CS", "効果", 2421], ["CS", "クラス", 2860], ["クラス", "CS", 3920], ["出現敵", "クラス", 183], ["施設", "消費量", 449], ["スキル一覧", "CS", 685]]
+DYNAMIC 1 NAMES 3 OTHER 5

@@ -1,0 +1,17 @@
+
+> fantasy-strategy@0.1.0 dev:front
+> vite --config frontend/vite.config.mjs --host 127.0.0.1
+
+
+  VITE v6.4.1  ready in 404 ms
+
+  ➜  Local:   http://127.0.0.1:5173/
+22:30:24 [vite] (client) page reload src/v39/ui/v39-effect-preview-combatants.js
+22:30:24 [vite] (client) page reload src/v39/ui/v39-effect-settings.js
+22:31:35 [vite] (client) page reload src/v39/ui/v39-effect-preview-combatants.js
+22:31:35 [vite] (client) page reload src/v39/ui/v39-effect-settings.js
+22:34:06 [vite] (client) page reload src/v39/ui/v39-effect-preview-combatants.js
+22:36:40 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/rules/ui/戦闘エフェクトルール.md
+22:36:40 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/rules/ui/GAME_UI_LAYOUT_RULES.md
+22:36:40 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/現状ゲーム仕様メモ.md
+22:36:40 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/tasks/戦闘エフェクト設定タスク.md

@@ -1,0 +1,430 @@
+{
+  "date": "2026-10-23",
+  "moves": [
+    {
+      "from": "docs/3864485c-b85b-40df-9c67-a0ca509a8244.png",
+      "to": "docs/references/assets/3864485c-b85b-40df-9c67-a0ca509a8244.png",
+      "originalSha256": "a381bd2001a37ffaf3225dfc5f531b81b8acdc4cb1278b1187775c2f3ca5d78d"
+    },
+    {
+      "from": "docs/CHARACTER_STATUS_RULES.md",
+      "to": "docs/rules/units/CHARACTER_STATUS_RULES.md",
+      "originalSha256": "9fd0b512062136786834e21a1c33391e44d2179e34e94821a92a57e44876bdcf"
+    },
+    {
+      "from": "docs/city_system_design.md",
+      "to": "docs/design/city_system_design.md",
+      "originalSha256": "f82c0485d34a5e0f306f62f9524e97c885ce6d7ea2d5999f477b612298ed1075"
+    },
+    {
+      "from": "docs/CLASS_RACE_SKILL_CREATION_RULES.md",
+      "to": "docs/references/CLASS_RACE_SKILL_CREATION_RULES.md",
+      "originalSha256": "e09168ace8a5f017d03a5129a4581af465b113e176e076134e6b3f75a12135be"
+    },
+    {
+      "from": "docs/CLASS_SKILL_ROLE_RULES.md",
+      "to": "docs/rules/units/CLASS_SKILL_ROLE_RULES.md",
+      "originalSha256": "e1930f0cdbf4c49502a3a9d8e42330cbea70b51d00c70ead5d2ab06e396b1741"
+    },
+    {
+      "from": "docs/DATA_DRIVEN_RULES.md",
+      "to": "docs/development/DATA_DRIVEN_RULES.md",
+      "originalSha256": "309687fd9a5b4129b6b72a520cf64e9c5185ede1da1c615f1cd4d303fc888091"
+    },
+    {
+      "from": "docs/equipment_material_tables.md",
+      "to": "docs/references/equipment_material_tables.md",
+      "originalSha256": "96c188dabd78e04c995708a64295a11ec8a598b2689931a8380c3eedf3ab8df4"
+    },
+    {
+      "from": "docs/fantasy_strategy_core_design.md",
+      "to": "docs/design/fantasy_strategy_core_design.md",
+      "originalSha256": "20fab8714e736200adcd491590da9648e1adaaf0b47282e8a7ec9fdb43412202"
+    },
+    {
+      "from": "docs/GAME_UI_LAYOUT_RULES.md",
+      "to": "docs/rules/ui/GAME_UI_LAYOUT_RULES.md",
+      "originalSha256": "d40e7c384641f0cbe9cc26321fd4a1817bdaedcce611a65763d50b9ff4f6be0a"
+    },
+    {
+      "from": "docs/map-screen-overview.md",
+      "to": "docs/rules/ui/map-screen-overview.md",
+      "originalSha256": "d36e5ad17db42831b91559c2ad26c6b80276f6c2b39edd267c5f4049edf28eb3"
+    },
+    {
+      "from": "docs/MULTIPLAYER_ROOM_DESIGN.md",
+      "to": "docs/design/MULTIPLAYER_ROOM_DESIGN.md",
+      "originalSha256": "051827a190d73970c0d52532f514eacc4921aced039820635a5af5d39bee4861"
+    },
+    {
+      "from": "docs/negotiation_hub_fixed_layout.html",
+      "to": "docs/references/assets/negotiation_hub_fixed_layout.html",
+      "originalSha256": "3842a0c29b4e55a0ad35e355074228b3b5ff194e8c3119e1d6d86a96ecb30d3d"
+    },
+    {
+      "from": "docs/NEXT_TASKS.md",
+      "to": "docs/history/legacy-notes/NEXT_TASKS.md",
+      "originalSha256": "4d648ea8a2b7115128236c290b0de558b2ff92a8cc870261eb453b6af7a0ebd5"
+    },
+    {
+      "from": "docs/NPC勢力ルール.md",
+      "to": "docs/rules/diplomacy/NPC勢力ルール.md",
+      "originalSha256": "36420d647236b1462a4dc3951aed2e3b745013bb639c1121019eee612dcf3095"
+    },
+    {
+      "from": "docs/RULE_TASKS.md",
+      "to": "docs/history/legacy-notes/RULE_TASKS.md",
+      "originalSha256": "00c3d43e0f2ba5232f2a27076a060990759a9055e75b5adc5495ca9aa959d41b"
+    },
+    {
+      "from": "docs/RUN_SERVER.md",
+      "to": "docs/development/RUN_SERVER.md",
+      "originalSha256": "24abd52bda75abf1b5ec22dddbe50446594e0dbe615e41fa58a83d8bc5296a92"
+    },
+    {
+      "from": "docs/TERRAIN_RULES.md",
+      "to": "docs/rules/world/TERRAIN_RULES.md",
+      "originalSha256": "f0d34e71f4485ddccddfe288b72fdd52461214d6583026047cd426c1f29d4fa8"
+    },
+    {
+      "from": "docs/test.html",
+      "to": "docs/references/assets/test.html",
+      "originalSha256": "5c1df98a9e4eea21b14d2a1f3b28a3f54ae3636562fea1c4c44afaf2373512e1"
+    },
+    {
+      "from": "docs/UI_FIX_QUEUE.md",
+      "to": "docs/tasks/UI_FIX_QUEUE.md",
+      "originalSha256": "65ee28a507ad98bcd7250cda3533fbadb258513adca5c22a3c692eb80c1f16fd"
+    },
+    {
+      "from": "docs/ui_migration_guard_20260912.md",
+      "to": "docs/development/ui_migration_guard_20260912.md",
+      "originalSha256": "733f4be5f1f41f24f5067cda7311ff0197d605f40a649e126f0e1bb3ecd4d753"
+    },
+    {
+      "from": "docs/ui_reference_civ_style_2026-05-03.png",
+      "to": "docs/references/assets/ui_reference_civ_style_2026-05-03.png",
+      "originalSha256": "cbba825af98fbc25a194ff2714605d92c05f195d0ad2715b199d985b81259fcc"
+    },
+    {
+      "from": "docs/ui_reference_civ_style_2026-05-03_2.png",
+      "to": "docs/references/assets/ui_reference_civ_style_2026-05-03_2.png",
+      "originalSha256": "975fb7c85c841b74cb02c7306709094d9982a73a50b38dfb868a0fcfe1d5a8cb"
+    },
+    {
+      "from": "docs/UI_RUNTIME_STRUCTURE.md",
+      "to": "docs/development/UI_RUNTIME_STRUCTURE.md",
+      "originalSha256": "7e2d5e02c1b7ac40589f57efdf8242489f18a1703f6c2e5336e80ee104aae8e3"
+    },
+    {
+      "from": "docs/UI_TYPOGRAPHY_RULES.md",
+      "to": "docs/rules/ui/UI_TYPOGRAPHY_RULES.md",
+      "originalSha256": "21fbc601d68a76e4fb17b2064f91978e4949952dfeb81e95ddcb4c92e5e875fa"
+    },
+    {
+      "from": "docs/v39_field_settings_spec.md",
+      "to": "docs/rules/ui/v39_field_settings_spec.md",
+      "originalSha256": "dd17fd90ecf7bb820b28557444049560d80aa21943a4ad9b41268330539925da"
+    },
+    {
+      "from": "docs/v39_land_detail_spec.md",
+      "to": "docs/rules/ui/v39_land_detail_spec.md",
+      "originalSha256": "9b0b4be7e952da7d56f87787daa24497e862fb8310c0514d9d86a1dc31716c19"
+    },
+    {
+      "from": "docs/v39_map_interaction_spec.md",
+      "to": "docs/rules/ui/v39_map_interaction_spec.md",
+      "originalSha256": "d4b0b749fd9e44a8f0361c9c92149f9573c7aa0c562eb7bcacf31c183637170c"
+    },
+    {
+      "from": "docs/V39_MODULE_STRUCTURE.md",
+      "to": "docs/development/V39_MODULE_STRUCTURE.md",
+      "originalSha256": "a3377e87d87637fe9066d1a257d67a1990722c921f0a3e109b19e748c11ea79a"
+    },
+    {
+      "from": "docs/v39_terrain_icon_spec.md",
+      "to": "docs/rules/ui/v39_terrain_icon_spec.md",
+      "originalSha256": "b5b3d494a8f7837dc3096cc957ab73347cc54d758b76d26c187d1017273ebd78"
+    },
+    {
+      "from": "docs/v39_text_input_and_map_controls_spec.md",
+      "to": "docs/rules/ui/v39_text_input_and_map_controls_spec.md",
+      "originalSha256": "25a8858811c544bec077ab6eda5107ef446a2895a244987439d0f0c1d68b87f3"
+    },
+    {
+      "from": "docs/v39_ui_interaction_map.md",
+      "to": "docs/rules/ui/v39_ui_interaction_map.md",
+      "originalSha256": "34273d9f40878c765e1b8066ee5bd3a5c2002dc70329c988c0d0b22dbe13134b"
+    },
+    {
+      "from": "docs/アンデッド・不浄ルール.md",
+      "to": "docs/rules/units/アンデッド・不浄ルール.md",
+      "originalSha256": "c7c3e6a675b6fac4f216fad1674c9d9ce1be96b5544332f2bfc7e886d721c84b"
+    },
+    {
+      "from": "docs/イベントシステム設計.md",
+      "to": "docs/design/イベントシステム設計.md",
+      "originalSha256": "1d46313a0c25f837248883f1f23ed4864892a0448d6c693704ec52e14e134eb1"
+    },
+    {
+      "from": "docs/スキル効果対応状況.md",
+      "to": "docs/rules/units/スキル効果対応状況.md",
+      "originalSha256": "39aa5b229f1370042a7fdf7206c3703bbb7b84264cf3f8d212a8dcadc409984c"
+    },
+    {
+      "from": "docs/ファンタジーストラテジー 実装メモ（草案）.md",
+      "to": "docs/history/legacy-notes/ファンタジーストラテジー 実装メモ（草案）.md",
+      "originalSha256": "934a25fb0a2bc8b97a323db27832c029535cb136112a15fce25629411b41b2a4"
+    },
+    {
+      "from": "docs/マップ範囲・気候生成ルール.md",
+      "to": "docs/rules/world/マップ範囲・気候生成ルール.md",
+      "originalSha256": "8f883835fb1e3b20a80f49ce6441f4cba7ab5a8849c1b3b768cfe6f4853a1ccb"
+    },
+    {
+      "from": "docs/モンスター上位系統・多部位クラスルール.md",
+      "to": "docs/rules/units/モンスター上位系統・多部位クラスルール.md",
+      "originalSha256": "1340cc784b0dda41f9b2789994419a3fd515fd9425f656851b0bfac645abc417"
+    },
+    {
+      "from": "docs/モンスター出現ルールまとめ.md",
+      "to": "docs/rules/world/モンスター出現ルールまとめ.md",
+      "originalSha256": "662ddba3b121a44a737f5077b8e462fa90e72672e2b920e01dfab689933ee1fc"
+    },
+    {
+      "from": "docs/モンスター合体ルール.md",
+      "to": "docs/rules/units/モンスター合体ルール.md",
+      "originalSha256": "a2056f522a59d4585640f42652dc4fea9b91f6d89e7e21128fc47ac715edde04"
+    },
+    {
+      "from": "docs/ユニット耐性ルール.md",
+      "to": "docs/rules/units/ユニット耐性ルール.md",
+      "originalSha256": "0697a2b937ef6419e89bafdb57903d0b6789f695a6186c5679d31614db08ba81"
+    },
+    {
+      "from": "docs/ルール確定メモ_2026-09-16.md",
+      "to": "docs/rules/world/ルール確定メモ_2026-09-16.md",
+      "originalSha256": "c33820eaf7be3b317665430608330cd227f297b62550270c908d9f7b5e16346d"
+    },
+    {
+      "from": "docs/ローカル複数勢力ターン設計.md",
+      "to": "docs/rules/diplomacy/ローカル複数勢力ターン設計.md",
+      "originalSha256": "226ab85fa79fb4b0e7b88964e3e61b7928dfad185c2cb2bb27905facd5da7c12"
+    },
+    {
+      "from": "docs/一般村_種族別依頼イベント案.md",
+      "to": "docs/design/一般村_種族別依頼イベント案.md",
+      "originalSha256": "90346a303e68a42b4b197773d26149cc2dd3eda0b7eb99c24e72ffa1d41f6555"
+    },
+    {
+      "from": "docs/一般村と放浪者メモ.md",
+      "to": "docs/design/一般村と放浪者メモ.md",
+      "originalSha256": "d48610def3b7f00668b23b8684040245066c44d0b8fb0f063378a44732a3f714"
+    },
+    {
+      "from": "docs/一般村イベント共通ルール.md",
+      "to": "docs/rules/diplomacy/一般村イベント共通ルール.md",
+      "originalSha256": "e635ca04a1947ad36d293e3dd8394a7435bcbc1a429b27282423cc3f57377733"
+    },
+    {
+      "from": "docs/一般村防衛・廃村ルール.md",
+      "to": "docs/rules/diplomacy/一般村防衛・廃村ルール.md",
+      "originalSha256": "dd20f486928a110fd4675aad35dce36074f4c062ffd0f3fbd3c914e9dba6007d"
+    },
+    {
+      "from": "docs/交流・クエスト仕様整理.md",
+      "to": "docs/rules/diplomacy/交流・クエスト仕様整理.md",
+      "originalSha256": "f5f23ddd456d73ba2756293a8caadd5d65ad7d1d209fcb82bb7528dd7e51b250"
+    },
+    {
+      "from": "docs/交渉モーダルルール.md",
+      "to": "docs/rules/ui/交渉モーダルルール.md",
+      "originalSha256": "70f67aeb53146b229d388d013fc18615126dd1250e103bac60f514bf8ddd1d8d"
+    },
+    {
+      "from": "docs/人口成長・食料不足ルール.md",
+      "to": "docs/rules/economy/人口成長・食料不足ルール.md",
+      "originalSha256": "22f8df4e7049ec82e68b5b30ea53d4e1e1c2e75b2f957dd57168ddc7a1741926"
+    },
+    {
+      "from": "docs/動物軍隊編成ルール.md",
+      "to": "docs/rules/units/動物軍隊編成ルール.md",
+      "originalSha256": "6d35c110f4eef32e7aed07064d98afa7e9dfb64994fe2e00f323d79c8ee51e6a"
+    },
+    {
+      "from": "docs/勢力AI設計.md",
+      "to": "docs/design/勢力AI設計.md",
+      "originalSha256": "c10e87c08770486f34ec85e1023c32c923ec2cb210114ab8da281b2bdaf13518"
+    },
+    {
+      "from": "docs/取引・郵送・貿易ルール.md",
+      "to": "docs/rules/diplomacy/取引・郵送・貿易ルール.md",
+      "originalSha256": "3d65eedeaa59ea473ac49f7add508696946d8283cf5a970d1760fac1b9bd8b1d"
+    },
+    {
+      "from": "docs/取引画面.png",
+      "to": "docs/references/assets/取引画面.png",
+      "originalSha256": "bb9a235a0a43d05050efb5443357bc1065eb4ad4dec389701ee4409ac2bdd2e0"
+    },
+    {
+      "from": "docs/召喚・呼集ルール.md",
+      "to": "docs/rules/units/召喚・呼集ルール.md",
+      "originalSha256": "46a45f780a21f6b0a325fe8c5abed73d29d8ab08432a806f104503ae76222976"
+    },
+    {
+      "from": "docs/専用テスト構成.md",
+      "to": "docs/tests/専用テスト構成.md",
+      "originalSha256": "a780357650dbf77a4712583fa94a00b5f805271a7ebc5534a972b5a5235041b0"
+    },
+    {
+      "from": "docs/性格会話ルール.md",
+      "to": "docs/rules/diplomacy/性格会話ルール.md",
+      "originalSha256": "52050e9a025a11e1e65e4e2087dbec0a53960df1710e035759d3ee7aa3fc47c6"
+    },
+    {
+      "from": "docs/戦闘エフェクトルール.md",
+      "to": "docs/rules/ui/戦闘エフェクトルール.md",
+      "originalSha256": "36f2aab1b6c2639d698c750c10300858c59e73aa2ae84c9fe02fa8cc5869191e"
+    },
+    {
+      "from": "docs/戦闘エフェクト属性共通設定.md",
+      "to": "docs/rules/ui/戦闘エフェクト属性共通設定.md",
+      "originalSha256": "4f1f6d65238c137963244818fb165aaa11b2191da525a1dfc25959c589d7db95"
+    },
+    {
+      "from": "docs/戦闘エフェクト設定タスク.md",
+      "to": "docs/tasks/戦闘エフェクト設定タスク.md",
+      "originalSha256": "d02b337e2633cdcd29c3046b6cc30c4e2c5e2ac049a4a1b8a0d68c0f025446ec"
+    },
+    {
+      "from": "docs/戦闘ダメージ・耐性ルール.md",
+      "to": "docs/rules/units/戦闘ダメージ・耐性ルール.md",
+      "originalSha256": "bb6f0a5728212bcf4aa1ae21297ebbe05f4e09deebec6cbb8cb158ffaf53d6f8"
+    },
+    {
+      "from": "docs/投擲・投擲アイテムルール.md",
+      "to": "docs/rules/units/投擲・投擲アイテムルール.md",
+      "originalSha256": "8689b15b1b2f22f81aa8cf1c55c625043624b4393bf94f7caff7747d57d8b9e1"
+    },
+    {
+      "from": "docs/攻撃エフェクト描画ルール.md",
+      "to": "docs/rules/ui/攻撃エフェクト描画ルール.md",
+      "originalSha256": "1d2154caf2d0ae0558bc47c39fc8ba4df16a36b662be5c1222b245181836629d"
+    },
+    {
+      "from": "docs/敵AI・巣・生態系仕様.md",
+      "to": "docs/rules/world/敵AI・巣・生態系仕様.md",
+      "originalSha256": "76fb0df9a529d04cc266da552eb6cd427d90862280903e7c0ff15c70ec29a47c"
+    },
+    {
+      "from": "docs/施設上位クラス徴兵ルール.md",
+      "to": "docs/rules/economy/施設上位クラス徴兵ルール.md",
+      "originalSha256": "587c467655327ebeb2ed440fe3bf14cc91e9f29ff188b0eeeeea41f865e352ee"
+    },
+    {
+      "from": "docs/施設発展フローチャート.md",
+      "to": "docs/rules/economy/施設発展フローチャート.md",
+      "originalSha256": "9087925d8db244ddbdaed4f9f2217a0f8bc80e7d0baa8a85ab7c421bc413f41f"
+    },
+    {
+      "from": "docs/施設研究解禁の切替.md",
+      "to": "docs/rules/economy/施設研究解禁の切替.md",
+      "originalSha256": "68e42635a89a12d1ffddb04e0d1dd2c8f9039acdd361ed0725cc316efafb9763"
+    },
+    {
+      "from": "docs/洞窟イベントテスト.md",
+      "to": "docs/tests/洞窟イベントテスト.md",
+      "originalSha256": "a224b738a898c2f6aadc2b49ca2056bcd2da1f68a50f35a428d1ffdc5c4744ef"
+    },
+    {
+      "from": "docs/洞窟マップルール.md",
+      "to": "docs/rules/world/洞窟マップルール.md",
+      "originalSha256": "c615e4e5f54bb4afb78fbe6ed8b2240eb07c297f2cd4db0e048e8bcdf0c81ea9"
+    },
+    {
+      "from": "docs/洞窟鉱床・道具・部隊支援ルール.md",
+      "to": "docs/rules/economy/洞窟鉱床・道具・部隊支援ルール.md",
+      "originalSha256": "b97c0399682d3805d76cd9ce050ffc17eb1f76d31d2c730e846f2a20de125195"
+    },
+    {
+      "from": "docs/消耗品携帯・軍隊編成ルール.md",
+      "to": "docs/rules/units/消耗品携帯・軍隊編成ルール.md",
+      "originalSha256": "58d9f06d3912a13a7330e9dbb03b87410f716d48c844e149ea56998d477c787d"
+    },
+    {
+      "from": "docs/災害ルール.md",
+      "to": "docs/rules/world/災害ルール.md",
+      "originalSha256": "2b6fc333cb0c05c5b5682658956797b3cccb6c8064f755b8255082f820c82168"
+    },
+    {
+      "from": "docs/物流・運搬ルートルール.md",
+      "to": "docs/rules/economy/物流・運搬ルートルール.md",
+      "originalSha256": "acee5df08458fec6e1d58816a947db3278da8bb9dbe274623681c5ed34f6aef9"
+    },
+    {
+      "from": "docs/特殊村・奉納契約ルール.md",
+      "to": "docs/rules/diplomacy/特殊村・奉納契約ルール.md",
+      "originalSha256": "05031c6ccf4354331f169163f3c1635de52db7a365cf0f3718f55e3fa09375da"
+    },
+    {
+      "from": "docs/画像素材準備リスト.md",
+      "to": "docs/references/画像素材準備リスト.md",
+      "originalSha256": "fe9eaa0563ad4553430fa665671facdc96928e7a31f6719d8e472b052854e3ca"
+    },
+    {
+      "from": "docs/研究フローチャートルール.md",
+      "to": "docs/rules/economy/研究フローチャートルール.md",
+      "originalSha256": "2e3ff7158b54dc44039284140b9d857b0102a7ccfc882825d71b152ed1c680b8"
+    },
+    {
+      "from": "docs/研究・上位クラス徴兵検討メモ.md",
+      "to": "docs/design/研究・上位クラス徴兵検討メモ.md",
+      "originalSha256": "ec003b9b606aa6e3c95db3e67849abe4608bdac8932f95565631cdf8ec1c4afb"
+    },
+    {
+      "from": "docs/覇権地奥地テスト.md",
+      "to": "docs/tests/覇権地奥地テスト.md",
+      "originalSha256": "0f5d8b15d62b1150a1dc38adc00660fca50aae7508cbcbcab587821d250d2e6c"
+    },
+    {
+      "from": "docs/調査・特産品ルール.md",
+      "to": "docs/rules/world/調査・特産品ルール.md",
+      "originalSha256": "26073fff472c521d1956e49e6f895077cbf4749b8bab45f41fb19b09bdf83002"
+    },
+    {
+      "from": "docs/道具ストック・薬草改良案.md",
+      "to": "docs/design/道具ストック・薬草改良案.md",
+      "originalSha256": "d144252a5d2c1eebc628eeff07e0c170b156aa3f7caeef97a15cc4729dcf3ddc"
+    },
+    {
+      "from": "docs/部隊編成・散開・集合ルール.md",
+      "to": "docs/rules/units/部隊編成・散開・集合ルール.md",
+      "originalSha256": "8c6b71bc729dd781058d057894a7ca887c5159fa22889459eb2e93a077d66eeb"
+    },
+    {
+      "from": "docs/部隊運用・敵軍編成ルール_2026-09-17.md",
+      "to": "docs/rules/units/部隊運用・敵軍編成ルール_2026-09-17.md",
+      "originalSha256": "cff836a48a204e992c222a3f6ff2257848bf3aa599ce5577ebb0fd7ace838a20"
+    },
+    {
+      "from": "docs/都市研究と施設ルールまとめ.md",
+      "to": "docs/design/都市研究と施設ルールまとめ.md",
+      "originalSha256": "2340f2aa2d237dd818bf7875474f4b4a2510fcaa08a27fc9917d8c08b15299c8"
+    },
+    {
+      "from": "docs/霧・交流クエスト・守護者ルール.md",
+      "to": "docs/rules/world/霧・交流クエスト・守護者ルール.md",
+      "originalSha256": "1a7a3ec0009bedde7166b971ccfcb829418644a2513eaba12f318af54b9ce611"
+    },
+    {
+      "from": "docs/領土・資源生産ルール.md",
+      "to": "docs/rules/economy/領土・資源生産ルール.md",
+      "originalSha256": "f52736f3cb893a58ab68742af7e64701e2b242a16cca1c50109abec03c321b03"
+    },
+    {
+      "from": "docs/領土警備ルール.md",
+      "to": "docs/rules/economy/領土警備ルール.md",
+      "originalSha256": "2df3d78d5feb800a6fe03091caf59511333ad7df957b528d4076be1b6af0d5de"
+    }
+  ]
+}

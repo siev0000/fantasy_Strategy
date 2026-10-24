@@ -15,7 +15,8 @@ function findRaceRow(value) {
   return raceRows.find(row => [
     row?.key,
     row?.name,
-    row?.className
+    row?.className,
+    ...(Array.isArray(row?.旧名称)?row.旧名称:[])
   ].map(text).includes(target)) || null;
 }
 

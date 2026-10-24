@@ -15,7 +15,7 @@ CSシート -> スキル一覧.json 変換器
 - CSの A:N のうちゲーム用項目を直接読む
 - H列「データ」を key:value / key+value / key-value 形式で展開
 - 効果時間3t / 射程8m / 炸裂1 などのコロン無し表記にも対応
-- I列「効果」は「追加効果」として保持し、「効果」シートA:Bから説明を補完
+- I列「効果」は「追加効果」として保持し、「用語辞書」A:Bから説明を補完（旧ブックの「効果」にも対応）
 - 同名スキルは先頭行を採用。後続重複は report.json に記録
 - 空欄はJSONから除外
 - CSの「出力確認」列が TRUE の行だけを出力
@@ -322,6 +322,8 @@ class XlsxReader:
 
 def load_effect_descriptions(xlsx: XlsxReader, sheet_name: str) -> Dict[str, str]:
     result: Dict[str, str] = {}
+    if sheet_name == "効果" and "用語辞書" in xlsx.sheet_targets:
+        sheet_name = "用語辞書"
     if sheet_name not in xlsx.sheet_targets:
         return result
     for row_no, row in xlsx.sheet_rows(sheet_name):
@@ -527,7 +529,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("input", nargs="?", default="game_data.xlsx", help="入力xlsx (既定: game_data.xlsx)")
     p.add_argument("-o", "--output", default=str(DEFAULT_OUTPUT), help="出力JSON (既定: スキル一覧.json)")
     p.add_argument("--sheet", default="CS", help="CSシート名 (既定: CS)")
-    p.add_argument("--effect-sheet", default="効果", help="効果説明シート名 (既定: 効果)")
+    p.add_argument("--effect-sheet", default="効果", help="効果説明の論理表名 (既定: 効果。現在の原本は用語辞書A:Bを自動参照)")
     p.add_argument(
         "--duplicates", choices=("first", "error", "all"), default="first",
         help="同名重複: first=先頭採用, error=内容差があれば停止, all=全部出力",

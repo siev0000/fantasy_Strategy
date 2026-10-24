@@ -1,7 +1,7 @@
 import { normalizeV39EffectTransform } from "./v39-effect-transform.js";
 const STORAGE_KEY = "v39-effect-settings-v1";
 const SCHEMA_NAME = "v39-effect-settings";
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const SCALE_MIN = 10;
 const SCALE_MAX = 400;
 const GRADIENT_SPEED_MIN = 0;
@@ -134,6 +134,7 @@ function isDefaultSetting(setting) {
     && setting.tint === ""
     && setting.rotationDeg === 0 && setting.offsetX === 0 && setting.offsetY === 0
     && setting.orientToAttack !== true
+    && setting.placementMode === 'target'
     && setting.gradientEnabled !== true
     && setting.gradientStartPercent === 0
     && setting.gradientEndPercent === 100

@@ -31,7 +31,7 @@ export function createV39FactionPairKey(firstPlayerId, secondPlayerId) {
 export function resolveV39RaceCategory(raceName) {
   const race = asText(raceName);
   if (!race) return "";
-  const faction = factionData.find(row => [row?.種族, row?.カナ].some(value => asText(value) === race));
+  const faction = factionData.find(row => [row?.種族, row?.カナ,...(row?.旧名称||[])].some(value => asText(value) === race));
   const className = asText(faction?.カナ || race);
   return asText(classData.find(row => asText(row?.名前) === className)?.種類);
 }

@@ -4,6 +4,7 @@ import { advanceV39PersonalDefenses } from "../../lib/v39-defense-rules.js";
 import { advanceV39NaturalFog, advanceV39Fog } from "../../lib/v39-fog-rules.js";
 import { resolveV39FacilityEffectsAtTile } from "../../lib/v39-economy-rules.js";
 import { getSettlementForTerritory } from "../../lib/settlement-state.js";
+import {resolveV39CitySpecializationModifiers} from '../../lib/v39-city-specialization-rules.js';
 import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
 import { restoreV39SquadMovementForTurn } from "../../lib/v39-squad-movement-rules.js";
 import { normalizeV39PlayerTurnTimeline } from "../../lib/v39-local-multiplayer-session.js";
@@ -90,8 +91,8 @@ function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide =
     : "";
   const featureRecovery = getV39DiscoveredFeature(faction, key)?.definition?.recoveryPercent || 0;
   const owned = key && String(state?.territoryOwnerByTile?.[key] || "") === String(playerId || "");
-  const settlement = getSettlementForTerritory(faction, state?.territoryStateByTile?.[key]);
-  const facilityRecovery = owned ? number(resolveV39FacilityEffectsAtTile(settlement, key)?.回復) : 0;
+  const settlement = getSettlementForTerritory(faction||state?.players?.find(player=>player.id===playerId)?.factionState, state?.territoryStateByTile?.[key]);
+  const facilityRecovery = owned ? number(resolveV39FacilityEffectsAtTile(settlement, key)?.回復)+resolveV39CitySpecializationModifiers(settlement,{tileKey:key,worldId:unit.worldId||'surface'}).recoveryPercent : 0;
   const nest = enemySide && key
     ? (state?.enemyNests || []).find(row => String(row?.id || "") === String(unit?.nestId || "")
       && `${Math.floor(number(row?.x))},${Math.floor(number(row?.y))}` === key)

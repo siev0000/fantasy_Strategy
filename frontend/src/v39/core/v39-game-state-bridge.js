@@ -1,5 +1,6 @@
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import {raceData} from '../../lib/game-data-registry.js';
+import {isV39RacePlayable} from '../../lib/v39-race-definitions.js';
 import npcBalance from '../../../../config/v39-npc-faction-ai.json';
 import {buildV39UnitEntity,buildV39ClassEquipment,getV39UnitCreationOptions,inspectV39UnitCreation} from '../../lib/v39-unit-creation-rules.js';
 import {applyV39InitialSovereignProfile,getV39InitialSovereignClassCandidates} from './v39-initial-sovereign.js';
@@ -164,6 +165,7 @@ function normalizeFactionState(value = {}, ownerPlayerId = "", race = "只人") 
     soulStorage:normalizeEntityArray(source.soulStorage).map(soul=>({...applyV39DerivedCharacterData({...soul,equipment:[]}),soulStored:true,state:'死亡',hp:0,currentHp:0})),
     facilityStorage:normalizeEntityArray(cloneJson(source.facilityStorage,[])).filter(entry=>entry.unit?.id).map(entry=>({...entry,unit:normalizeUnitArray([entry.unit])[0]})),
     logisticsRoutes:cloneJson(source.logisticsRoutes,[]),
+    facilitySummonsBySlot:cloneJson(source.facilitySummonsBySlot,{}),
     deathHistory: normalizeEntityArray(source.deathHistory),
     settlements: settlementState.settlements.map(row => normalizeV39Village(row, race)).filter(Boolean),
     selectedSettlementId: settlementState.selectedSettlementId,
@@ -251,6 +253,7 @@ function cloneUnit(unit) {
     ...unit,
     prerequisiteClassLevels:cloneRecord(unit?.prerequisiteClassLevels),
     ...(unit.fusionGrowth ? {fusionGrowth:cloneJson(unit.fusionGrowth,{})} : {}),
+    ...(unit.summonGrowth ? {summonGrowth:cloneJson(unit.summonGrowth,{})} : {}),
     ...(unit.classGrowthStart ? {classGrowthStart:cloneRecord(unit.classGrowthStart)} : {}),
     ...(unit.promotionGrowthStart ? {promotionGrowthStart:cloneRecord(unit.promotionGrowthStart)} : {}),
     ...(unit.classPromotionHistory ? {classPromotionHistory:normalizeEntityArray(unit.classPromotionHistory)} : {}),
@@ -277,6 +280,7 @@ function cloneFactionState(factionState = {}, race = "只人") {
     soulStorage:normalizeEntityArray(factionState.soulStorage),
     facilityStorage:cloneJson(factionState.facilityStorage,[]),
     logisticsRoutes:cloneJson(factionState.logisticsRoutes,[]),
+    facilitySummonsBySlot:cloneJson(factionState.facilitySummonsBySlot,{}),
     deathHistory: normalizeEntityArray(factionState.deathHistory),
     settlements: base.settlements.map(row => normalizeV39Village(row, race)).filter(Boolean),
     selectedSettlementId: base.selectedSettlementId,
@@ -660,7 +664,8 @@ function createRemoteSessionParticipants(players, participantSource, assignments
 }
 
 function createNpcSessionPlayers(count) {
-  const races=raceData.filter(row=>getV39InitialSovereignClassCandidates(row.key).length);
+  const races=raceData.filter(row=>isV39RacePlayable(row)&&getV39InitialSovereignClassCandidates(row.key).length);
+  if(count>0&&!races.length)throw new Error('使用可能な種族がありません。種族シートの設定を確認してください');
   return Array.from({length:count},(_,index)=>{
     const id=`npc-${index+1}`,race=races[Math.floor(Math.random()*races.length)]?.key;
     const classes=getV39InitialSovereignClassCandidates(race),className=(classes.find(row=>row.名前==='ファイター')||classes[0])?.名前;

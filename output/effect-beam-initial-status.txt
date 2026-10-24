@@ -1,0 +1,252 @@
+ M AGENTS.md
+ M config/v39-call-test.json
+ M "data/source/export/json/\343\203\206\343\202\271\343\203\210\343\202\271\343\202\255\343\203\253.json"
+ M "data/source/export/json/\346\226\275\350\250\255.json"
+ D docs/3864485c-b85b-40df-9c67-a0ca509a8244.png
+ M docs/ALL_TASKS_UNIFIED.md
+ D docs/CHARACTER_STATUS_RULES.md
+ D docs/CLASS_RACE_SKILL_CREATION_RULES.md
+ D docs/CLASS_SKILL_ROLE_RULES.md
+ M docs/CLASS_SKILL_RULES.md
+ D docs/DATA_DRIVEN_RULES.md
+ D docs/GAME_UI_LAYOUT_RULES.md
+ M docs/MEMO.md
+ D docs/MULTIPLAYER_ROOM_DESIGN.md
+ D docs/NEXT_TASKS.md
+ D "docs/NPC\345\213\242\345\212\233\343\203\253\343\203\274\343\203\253.md"
+ M docs/README.md
+ D docs/RULE_TASKS.md
+ D docs/RUN_SERVER.md
+ M docs/SPREADSHEET_DATA_WORKFLOW.md
+ D docs/TERRAIN_RULES.md
+ D docs/UI_FIX_QUEUE.md
+ D docs/UI_RUNTIME_STRUCTURE.md
+ D docs/UI_TYPOGRAPHY_RULES.md
+ D docs/V39_MODULE_STRUCTURE.md
+ D docs/city_system_design.md
+ D docs/equipment_material_tables.md
+ D docs/fantasy_strategy_core_design.md
+ M "docs/history/village-ui-before-ui53/\344\270\200\350\210\254\346\235\221\343\202\244\343\203\231\343\203\263\343\203\210\345\205\261\351\200\232\343\203\253\343\203\274\343\203\253.md"
+ M "docs/history/village-ui-before-ui53/\344\272\244\346\265\201\343\203\273\343\202\257\343\202\250\343\202\271\343\203\210\344\273\225\346\247\230\346\225\264\347\220\206.md"
+ M "docs/history/village-ui-before-ui53/\346\235\221UI\346\233\264\346\226\260\345\261\245\346\255\264.md"
+ D docs/map-screen-overview.md
+ D docs/negotiation_hub_fixed_layout.html
+ D docs/test.html
+ D docs/ui_migration_guard_20260912.md
+ D docs/ui_reference_civ_style_2026-05-03.png
+ D docs/ui_reference_civ_style_2026-05-03_2.png
+ D docs/v39_field_settings_spec.md
+ D docs/v39_land_detail_spec.md
+ D docs/v39_map_interaction_spec.md
+ D docs/v39_terrain_icon_spec.md
+ D docs/v39_text_input_and_map_controls_spec.md
+ D docs/v39_ui_interaction_map.md
+ D "docs/\343\202\242\343\203\263\343\203\207\343\203\203\343\203\211\343\203\273\344\270\215\346\265\204\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\343\202\244\343\203\231\343\203\263\343\203\210\343\202\267\343\202\271\343\203\206\343\203\240\350\250\255\350\250\210.md"
+ D "docs/\343\202\271\343\202\255\343\203\253\345\212\271\346\236\234\345\257\276\345\277\234\347\212\266\346\263\201.md"
+ D "docs/\343\203\225\343\202\241\343\203\263\343\202\277\343\202\270\343\203\274\343\202\271\343\203\210\343\203\251\343\203\206\343\202\270\343\203\274 \345\256\237\350\243\205\343\203\241\343\203\242\357\274\210\350\215\211\346\241\210\357\274\211.md"
+ D "docs/\343\203\236\343\203\203\343\203\227\347\257\204\345\233\262\343\203\273\346\260\227\345\200\231\347\224\237\346\210\220\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\343\203\242\343\203\263\343\202\271\343\202\277\343\203\274\344\270\212\344\275\215\347\263\273\347\265\261\343\203\273\345\244\232\351\203\250\344\275\215\343\202\257\343\203\251\343\202\271\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\343\203\242\343\203\263\343\202\271\343\202\277\343\203\274\345\207\272\347\217\276\343\203\253\343\203\274\343\203\253\343\201\276\343\201\250\343\202\201.md"
+ D "docs/\343\203\242\343\203\263\343\202\271\343\202\277\343\203\274\345\220\210\344\275\223\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\343\203\246\343\203\213\343\203\203\343\203\210\350\200\220\346\200\247\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\343\203\253\343\203\274\343\203\253\347\242\272\345\256\232\343\203\241\343\203\242_2026-09-16.md"
+ D "docs/\343\203\255\343\203\274\343\202\253\343\203\253\350\244\207\346\225\260\345\213\242\345\212\233\343\202\277\343\203\274\343\203\263\350\250\255\350\250\210.md"
+ D "docs/\344\270\200\350\210\254\346\235\221_\347\250\256\346\227\217\345\210\245\344\276\235\351\240\274\343\202\244\343\203\231\343\203\263\343\203\210\346\241\210.md"
+ D "docs/\344\270\200\350\210\254\346\235\221\343\201\250\346\224\276\346\265\252\350\200\205\343\203\241\343\203\242.md"
+ D "docs/\344\270\200\350\210\254\346\235\221\343\202\244\343\203\231\343\203\263\343\203\210\345\205\261\351\200\232\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\344\270\200\350\210\254\346\235\221\351\230\262\350\241\233\343\203\273\345\273\203\346\235\221\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\344\272\244\346\265\201\343\203\273\343\202\257\343\202\250\343\202\271\343\203\210\344\273\225\346\247\230\346\225\264\347\220\206.md"
+ D "docs/\344\272\244\346\270\211\343\203\242\343\203\274\343\203\200\343\203\253\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\344\272\272\345\217\243\346\210\220\351\225\267\343\203\273\351\243\237\346\226\231\344\270\215\350\266\263\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\345\213\225\347\211\251\350\273\215\351\232\212\347\267\250\346\210\220\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\345\213\242\345\212\233AI\350\250\255\350\250\210.md"
+ D "docs/\345\217\226\345\274\225\343\203\273\351\203\265\351\200\201\343\203\273\350\262\277\346\230\223\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\345\217\226\345\274\225\347\224\273\351\235\242.png"
+ D "docs/\345\217\254\345\226\232\343\203\273\345\221\274\351\233\206\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\345\260\202\347\224\250\343\203\206\343\202\271\343\203\210\346\247\213\346\210\220.md"
+ D "docs/\346\200\247\346\240\274\344\274\232\350\251\261\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\346\210\246\351\227\230\343\202\250\343\203\225\343\202\247\343\202\257\343\203\210\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\346\210\246\351\227\230\343\202\250\343\203\225\343\202\247\343\202\257\343\203\210\345\261\236\346\200\247\345\205\261\351\200\232\350\250\255\345\256\232.md"
+ D "docs/\346\210\246\351\227\230\343\202\250\343\203\225\343\202\247\343\202\257\343\203\210\350\250\255\345\256\232\343\202\277\343\202\271\343\202\257.md"
+ D "docs/\346\210\246\351\227\230\343\203\200\343\203\241\343\203\274\343\202\270\343\203\273\350\200\220\346\200\247\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\346\212\225\346\223\262\343\203\273\346\212\225\346\223\262\343\202\242\343\202\244\343\203\206\343\203\240\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\346\224\273\346\222\203\343\202\250\343\203\225\343\202\247\343\202\257\343\203\210\346\217\217\347\224\273\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\346\225\265AI\343\203\273\345\267\243\343\203\273\347\224\237\346\205\213\347\263\273\344\273\225\346\247\230.md"
+ D "docs/\346\226\275\350\250\255\344\270\212\344\275\215\343\202\257\343\203\251\343\202\271\345\276\264\345\205\265\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\346\226\275\350\250\255\347\231\272\345\261\225\343\203\225\343\203\255\343\203\274\343\203\201\343\203\243\343\203\274\343\203\210.md"
+ D "docs/\346\226\275\350\250\255\347\240\224\347\251\266\350\247\243\347\246\201\343\201\256\345\210\207\346\233\277.md"
+ D "docs/\346\264\236\347\252\237\343\202\244\343\203\231\343\203\263\343\203\210\343\203\206\343\202\271\343\203\210.md"
+ D "docs/\346\264\236\347\252\237\343\203\236\343\203\203\343\203\227\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\346\264\236\347\252\237\351\211\261\345\272\212\343\203\273\351\201\223\345\205\267\343\203\273\351\203\250\351\232\212\346\224\257\346\217\264\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\346\266\210\350\200\227\345\223\201\346\220\272\345\270\257\343\203\273\350\273\215\351\232\212\347\267\250\346\210\220\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\347\201\275\345\256\263\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\347\211\251\346\265\201\343\203\273\351\201\213\346\220\254\343\203\253\343\203\274\343\203\210\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\347\211\271\346\256\212\346\235\221\343\203\273\345\245\211\347\264\215\345\245\221\347\264\204\343\203\253\343\203\274\343\203\253.md"
+ M "docs/\347\217\276\347\212\266\343\202\262\343\203\274\343\203\240\344\273\225\346\247\230\343\203\241\343\203\242.md"
+ D "docs/\347\224\273\345\203\217\347\264\240\346\235\220\346\272\226\345\202\231\343\203\252\343\202\271\343\203\210.md"
+ D "docs/\347\240\224\347\251\266\343\203\225\343\203\255\343\203\274\343\203\201\343\203\243\343\203\274\343\203\210\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\347\240\224\347\251\266\343\203\273\344\270\212\344\275\215\343\202\257\343\203\251\343\202\271\345\276\264\345\205\265\346\244\234\350\250\216\343\203\241\343\203\242.md"
+ D "docs/\350\246\207\346\250\251\345\234\260\345\245\245\345\234\260\343\203\206\343\202\271\343\203\210.md"
+ D "docs/\350\252\277\346\237\273\343\203\273\347\211\271\347\224\243\345\223\201\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\351\201\223\345\205\267\343\202\271\343\203\210\343\203\203\343\202\257\343\203\273\350\226\254\350\215\211\346\224\271\350\211\257\346\241\210.md"
+ D "docs/\351\203\250\351\232\212\347\267\250\346\210\220\343\203\273\346\225\243\351\226\213\343\203\273\351\233\206\345\220\210\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\351\203\250\351\232\212\351\201\213\347\224\250\343\203\273\346\225\265\350\273\215\347\267\250\346\210\220\343\203\253\343\203\274\343\203\253_2026-09-17.md"
+ D "docs/\351\203\275\345\270\202\347\240\224\347\251\266\343\201\250\346\226\275\350\250\255\343\203\253\343\203\274\343\203\253\343\201\276\343\201\250\343\202\201.md"
+ D "docs/\351\234\247\343\203\273\344\272\244\346\265\201\343\202\257\343\202\250\343\202\271\343\203\210\343\203\273\345\256\210\350\255\267\350\200\205\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\351\240\230\345\234\237\343\203\273\350\263\207\346\272\220\347\224\237\347\224\243\343\203\253\343\203\274\343\203\253.md"
+ D "docs/\351\240\230\345\234\237\350\255\246\345\202\231\343\203\253\343\203\274\343\203\253.md"
+ M frontend/index.html
+ M frontend/src/lib/game-data-registry.js
+ M frontend/src/lib/player-state.js
+ M frontend/src/lib/v39-economy-rules.js
+ M frontend/src/lib/v39-facility-development-rules.js
+ M frontend/src/lib/v39-gameplay-balance.js
+ M frontend/src/lib/v39-npc-development-plan.js
+ M frontend/src/lib/v39-soul-conversion.js
+ M frontend/src/lib/v39-special-villages.js
+ M frontend/src/lib/v39-summon-rules.js
+ M frontend/src/lib/v39-village-plans.js
+ M frontend/src/v39/bootstrap/v39-bootstrap-final.js
+ M frontend/src/v39/combat/v39-death-lifecycle.js
+ M frontend/src/v39/core/v39-game-state-bridge.js
+ M frontend/src/v39/dev/v39-call-test.js
+ M frontend/src/v39/dev/v39-test-tools.js
+ M frontend/src/v39/map/v39-land-detail.js
+ M frontend/src/v39/map/v39-map-entities.js
+ M frontend/src/v39/map/v39-map-visibility.js
+ M frontend/src/v39/ui/v39-design-docs-viewer.js
+ M frontend/src/v39/ui/v39-effect-preview-combatants.js
+ M frontend/src/v39/ui/v39-effect-settings-static-preview.js
+ M frontend/src/v39/ui/v39-effect-settings.js
+ M frontend/src/v39/ui/v39-operation-ui.js
+ M frontend/src/v39/unit/v39-character-derived-rules.js
+ M frontend/src/v39/unit/v39-character-modal.js
+ M frontend/src/v39/unit/v39-facility-storage-ui.js
+ M frontend/src/v39/unit/v39-fusion-modal.js
+ M frontend/src/v39/unit/v39-squad-card-vitals.js
+ M frontend/src/v39/unit/v39-squad-derived-binding.js
+ M frontend/src/v39/unit/v39-summon-modal.js
+ M frontend/src/v39/unit/v39-unit-card.css
+ M frontend/src/v39/unit/v39-unit-card.js
+ M frontend/src/v39/unit/v39-unit-detail.css
+ M frontend/src/v39/unit/v39-unit-detail.js
+ M frontend/src/v39/world/v39-economy-ui.js
+ M frontend/src/v39/world/v39-settlement-ui.js
+ M frontend/src/v39/world/v39-village-hub.js
+ M output/facility-resource-conversion/substitution-ui/1100.png
+ M output/facility-resource-conversion/substitution-ui/390.png
+ M package.json
+ M progress.md
+ M scripts/check-v39-call-ui.mjs
+ M scripts/check-v39-cemetery.mjs
+ M scripts/check-v39-character-squad-layout.mjs
+ M scripts/check-v39-corpse-storage.mjs
+ M scripts/check-v39-effect-direction.mjs
+ M scripts/check-v39-facility-resource-costs.mjs
+ M scripts/check-v39-facility-storage.mjs
+ M scripts/check-v39-fusion-placement.mjs
+ M scripts/check-v39-npc-development-plan.mjs
+ M scripts/check-v39-settlement-development.mjs
+ M scripts/check-v39-settlement-toolbar.mjs
+ M scripts/check-v39-village-plans.mjs
+ M scripts/game_data_converter.py
+?? config/v39-facility-summon-costs.json
+?? config/v39-legacy-facility-plan-ids.json
+?? "data/source/export/json/\345\217\254\345\226\232\343\203\242\343\203\263\343\202\271\343\202\277\343\203\274\343\203\252\343\202\271\343\203\210.json"
+?? docs/DOCUMENTATION_RULES.md
+?? docs/INDEX.md
+?? docs/design/
+?? docs/development/
+?? docs/history/docs-index-before-2026-10-23.md
+?? docs/history/document-moves-2026-10-23.json
+?? docs/history/legacy-notes/
+?? docs/references/
+?? docs/rules/
+?? docs/tasks/
+?? docs/tests/
+?? frontend/src/lib/v39-construction-categories.js
+?? frontend/src/lib/v39-facility-summon-costs.js
+?? frontend/src/lib/v39-facility-summoning.js
+?? frontend/src/lib/v39-ritual-facilities.js
+?? frontend/src/lib/v39-summon-batches.js
+?? frontend/src/lib/v39-summon-materials.js
+?? frontend/src/v39/unit/v39-unit-card-name-fit.js
+?? frontend/src/v39/unit/v39-unit-heading.js
+?? frontend/src/v39/world/v39-facility-panel.css
+?? frontend/src/v39/world/v39-facility-panel.js
+?? frontend/src/v39/world/v39-land-construction-ui.css
+?? frontend/src/v39/world/v39-land-construction-ui.js
+?? output/check-docs-viewer.mjs
+?? output/check-facility-summoning-built.mjs
+?? output/check-ritual-built.mjs
+?? output/compact-level-build.log
+?? output/compact-level-dev.log
+?? output/compact-unit-card-bottom-gauges-build.log
+?? output/compact-unit-cards-build.log
+?? output/compact-unit-cards-fix-build.log
+?? output/completion-bonus-build.log
+?? output/construction-categories-build.log
+?? output/construction-categories-development-check.log
+?? output/construction-visibility-build.log
+?? output/construction-visibility-dev.log
+?? output/docs-organization-build.log
+?? output/effect-beam-initial-status.txt
+?? output/effect-preview-range-build.log
+?? output/effect-preview-range-dev.log
+?? output/effect-preview-range-direction.log
+?? output/effect-preview-range-lifecycle.log
+?? output/effect-preview-zoom-build.log
+?? output/effect-preview-zoom-dev.log
+?? output/effect-preview-zoom-direction.log
+?? output/effect-preview-zoom-lifecycle.log
+?? output/facility-names-build.log
+?? output/facility-names-npc-regression.log
+?? output/facility-names-village-regression.log
+?? output/facility-panel-build.log
+?? output/facility-summon-cost-build.log
+?? output/facility-summon-cost-dev.log
+?? output/facility-summon-cost-placement.log
+?? output/facility-summon-cost-regression.log
+?? output/facility-summon-placement-build.log
+?? output/facility-summoning-build.log
+?? output/facility-summoning-npc-regression.log
+?? output/land-construction-build.log
+?? output/land-construction-development-check.log
+?? output/reproduce-ritual-button.mjs
+?? output/ritual-facilities-audit.log
+?? output/ritual-facilities-build.log
+?? output/ritual-test-buttons-build.log
+?? output/summon-batch-build.log
+?? output/summon-batch-card-check.log
+?? output/summon-batch-dev.log
+?? output/summon-batch-placement.log
+?? output/summon-batch-regression.log
+?? output/summon-batch-visibility.log
+?? output/summon-candidate-visibility-build.log
+?? output/summon-material-build.log
+?? output/summon-material-dev.log
+?? output/summon-material-placement.log
+?? output/summon-material-regression.log
+?? output/summon-material-visibility.log
+?? output/summon-portraits-build.log
+?? output/unit-heading-build.log
+?? output/unit-name-fit-build.log
+?? scripts/check-docs.mjs
+?? scripts/check-v39-compact-unit-cards.mjs
+?? scripts/check-v39-construction-categories.mjs
+?? scripts/check-v39-effect-preview-range.mjs
+?? scripts/check-v39-facility-panel.mjs
+?? scripts/check-v39-facility-summon-costs.mjs
+?? scripts/check-v39-facility-summon-placement.mjs
+?? scripts/check-v39-facility-summoning.mjs
+?? scripts/check-v39-land-construction.mjs
+?? scripts/check-v39-ritual-facilities.mjs
+?? scripts/check-v39-ritual-test-buttons.mjs
+?? scripts/check-v39-summon-batches.mjs
+?? scripts/check-v39-summon-candidate-visibility.mjs
+?? scripts/check-v39-summon-material-gameplay.mjs
+?? scripts/check-v39-summon-portraits.mjs
+?? scripts/check-v39-unit-heading.mjs
+?? scripts/check-v39-unit-name-fit.mjs
+?? scripts/test_facility_name_converter.py

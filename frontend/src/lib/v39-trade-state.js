@@ -82,9 +82,9 @@ export function setTradeCargo(state,side,cargo) {
   return {...state,players:state.players.map(player=>player.id!==side.partyId?player:{...player,factionState:{...player.factionState,
     squads:player.factionState.squads.map(squad=>squad.unitIds?.includes(side.unitId)?{...squad,cargoByUnitId:{...squad.cargoByUnitId,[side.unitId]:normalizeV39Cargo(cargo)}}:squad)}})};
 }
-export function tradeCapacity(members) {return round(members.filter(tradeAlive).reduce((sum,unit)=>sum+resolveV39UnitCargoCapacity(unit),0));}
-export function tradeSpeed(members,load) {
-  const capacity=tradeCapacity(members),normal=members.filter(unit=>tradeAlive(unit)&&!unit.isTransportVehicle);
+export function tradeCapacity(members,state) {return round(members.filter(tradeAlive).reduce((sum,unit)=>sum+resolveV39UnitCargoCapacity(unit,state),0));}
+export function tradeSpeed(members,load,state) {
+  const capacity=tradeCapacity(members,state),normal=members.filter(unit=>tradeAlive(unit)&&!unit.isTransportVehicle);
   const attack=normal.length?normal.reduce((sum,unit)=>sum+n(unit.status?.攻撃),0)/normal.length:0;
   return capacity>0?Math.max(0,Math.min(1,2-load/capacity+attack/1000)):load>0?0:1;
 }
@@ -103,7 +103,7 @@ function validateSide(state,side,assign=false,travels=true) {
   if(!side.center||![side.center.x,side.center.y,side.radius].every(Number.isSafeInteger)||side.center.x<0||side.center.y<0||side.radius<0||side.radius>config.maxRadius)return '待ち合わせマス・範囲が不正です';
   const entries=Object.entries(side.goods||{});
   if(entries.some(([resource,amount])=>!V39_TRADE_RESOURCES.some(row=>row.name===resource)||!Number.isInteger(amount)||amount<1))return '物資と整数の数量を指定してください';
-  if(travels&&entries.reduce((sum,[,amount])=>sum+amount,0)>tradeCapacity(members))return '1回の取引量が部隊の積載量を超えています';
+  if(travels&&entries.reduce((sum,[,amount])=>sum+amount,0)>tradeCapacity(members,state))return '1回の取引量が部隊の積載量を超えています';
   if(assign&&travels) {
     if(members.some(unit=>unit.tradeAssignment||unit.transportAssignment||unit.caveDuty||unit.movementHold||unit.isSummoned))return '部隊に他の任務中・その場待機・召喚のメンバーがいます';
     if(side.kind==='player') {
@@ -139,7 +139,7 @@ export function proposeV39Trade(state,playerId,request) {
   if(courier<0&&!hasAdjacentMeetingTiles(sides))return failure(state,'共通範囲に双方が停止できる隣接2マスが必要です。許容範囲を広げてください');
   if(!sides.some(side=>Object.keys(side.goods).length))return failure(state,'取引する物資を指定してください');
   if(request.method==='mail'&&Object.keys(sides[1].goods).length)return failure(state,'郵送の受取側は提供数量を0にしてください');
-  for(let i=0;i<2;i++)if((courier<0||courier===i)&&Object.values(sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,sides[i])))return failure(state,'受け取る物資が担当部隊の積載量を超えています');
+  for(let i=0;i<2;i++)if((courier<0||courier===i)&&Object.values(sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,sides[i]),state))return failure(state,'受け取る物資が担当部隊の積載量を超えています');
   const firstReserve=Object.fromEntries(Object.entries(sides[0].goods).map(([name,amount])=>[name,tradeReserveAmount(name,amount)]));
   if(Object.entries(firstReserve).some(([name,amount])=>tradeBankAmount(tradeBank(state,sides[0]),name)<amount))return failure(state,'手持ちから次回分の1/3を確保できません');
   const books=listV39Trades(state),sequence=Math.max(0,...books.map(row=>row.sequence))+1;
@@ -156,7 +156,7 @@ export function acceptV39Trade(state,playerId,id,random=Math.random) {
   const contract=structuredClone(source);let next=state;
   const courier=tradeCourierIndex(contract);
   contract.negotiatorId ||= contract.sides[0].unitId;
-  for(let i=0;i<2;i++)if((courier<0||courier===i)&&Object.values(contract.sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,contract.sides[i])))return failure(state,'受け取る物資が現在の部隊積載量を超えています');
+  for(let i=0;i<2;i++)if((courier<0||courier===i)&&Object.values(contract.sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,contract.sides[i]),state))return failure(state,'受け取る物資が現在の部隊積載量を超えています');
   for(const [i,side] of contract.sides.entries()) {
     const travels=courier<0||courier===i,reason=validateSide(next,side,true,travels);if(reason)return failure(state,reason);
     if(!travels)side.unitId='';

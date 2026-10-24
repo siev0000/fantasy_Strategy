@@ -3,7 +3,7 @@ import {chromium} from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/no
 const browser=await chromium.launch();
 try {
   const page=await browser.newPage();
-  await page.goto("http://127.0.0.1:3022", {waitUntil:"networkidle"});
+  await page.goto(process.env.V39_TEST_URL || "http://127.0.0.1:3022", {waitUntil:"networkidle"});
   const result=await page.evaluate(async () => {
     const {inspectV39RecruitTraining,advanceV39RecruitTraining,inspectV39RecruitTrainingQueue}=await import("/src/lib/v39-recruit-training.js");
     const {createV39Units}=await import("/src/lib/v39-unit-creation-rules.js");

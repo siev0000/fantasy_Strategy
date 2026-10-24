@@ -1,11 +1,11 @@
-// Card markup and gauges belong to v39-unit-card.js. Only width-dependent text fitting lives here.
+// Name fitting is owned by v39-unit-card-name-fit.js; this module fits coordinates only.
 const measured = new WeakMap();
 let scheduled = false;
 let fontVersion = 0;
 
 function refresh() {
   const pending = [];
-  for (const label of document.querySelectorAll('#squadMemberList .squad-name, #squadMemberList .squad-pos, #characterModal .squad-name, #characterModal .squad-pos')) {
+  for (const label of document.querySelectorAll('#squadMemberList .squad-pos, #characterModal .squad-pos')) {
     const width = label.clientWidth;
     if (!width) continue;
     const text = label.textContent;

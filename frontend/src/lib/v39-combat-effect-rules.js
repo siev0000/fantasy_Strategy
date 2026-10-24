@@ -42,6 +42,7 @@ export function resolveV39CombatEffect(skillRow = {}, attacker = {}, categories 
       sequenceName:category?.baseEffect || "斬撃",
       rotationDeg:category?.rotationDeg || 0, offsetX:category?.offsetX || 0, offsetY:category?.offsetY || 0,
       orientToAttack:category?.orientToAttack === true,
+      placementMode:category?.placementMode || 'target',
       scaleMultiplierPercent:category?.scaleMultiplierPercent ?? 100,
       tint:attribute?.tint || "", gradientEnabled:attribute?.gradientEnabled === true,
       gradientColorA:attribute?.gradientColorA, gradientColorB:attribute?.gradientColorB,

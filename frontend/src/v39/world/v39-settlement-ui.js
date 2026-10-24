@@ -1,16 +1,16 @@
 import { getFactionSettlements, selectFactionSettlement, territorySettlementId } from "../../lib/settlement-state.js";
-import { inspectV39CitySpecializations, selectV39CitySpecialization } from "../../lib/v39-city-specialization-rules.js";
+import { inspectV39CitySpecializationNotice, acknowledgeV39CitySpecializations, selectV39CitySpecialization, getV39SelectedCityDefinitions, describeV39CitySpecialization } from "../../lib/v39-city-specialization-rules.js";
 import { resolveV39SettlementProductionMetrics } from "../../lib/v39-economy-rules.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { renderV39LandExpansionControls } from "./v39-land-expansion-ui.js";
-import {renderV39FacilityStorageButtons} from '../unit/v39-facility-storage-ui.js';
-import {getV39DeathProtectionStatus} from '../../lib/v39-death-purification.js';
-
+import {getV39SettlementFacilities,renderV39FacilityOperations} from './v39-facility-panel.js';
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);
 let activePage = 'overview';
+const selectedFacilityByBase = new Map();
+const reviewedCityCandidates=new Map();
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const escapeHtml = value => text(value).replace(/[&<>"']/g, char => ({
@@ -85,6 +85,34 @@ function section(key, label, value, body) {
   </details>`;
 }
 
+function cityReviewKey(player,settlement) {return JSON.stringify([player?.id,settlement?.settlementId||settlement?.id]);}
+const cityNoticeState=state=>({...state,explorationWorlds:window.getV39EnemyTurnState?.()?.explorationWorlds||state?.explorationWorlds});
+
+function cityCandidateCard(option,currentId,fresh) {
+  const selected=option.id===currentId;
+  const marker=fresh.has(option.id)&&option.available&&!selected?'<span class="settlement-city-new" aria-label="新しく解禁">!</span> ':'';
+  return `<button type="button" class="settlement-chip settlement-city-option${selected?' building':''}" data-city-specialization="${escapeHtml(option.id)}" title="${escapeHtml(option.reason)}"${option.available?'':' disabled'}><b>${marker}${escapeHtml(option.name)}${selected?'（選択中）':''}</b><span>${escapeHtml(option.effects)}</span><small>${escapeHtml(option.condition||'条件なし')} / ${escapeHtml(option.reason)}</small></button>`;
+}
+
+function reviewCityCandidates() {
+  const details=panel?.querySelector('[data-settlement-fold="specialization"]');
+  if(panel?.hidden||activePage!=='operation'||!details?.open)return;
+  const {state,player,settlement}=activeContext();
+  const notice=inspectV39CitySpecializationNotice(cityNoticeState(state),player,settlement);
+  if(!notice.unseen.length)return;
+  const key=cityReviewKey(player,settlement),highlight=reviewedCityCandidates.get(key)||new Set();
+  notice.unseen.forEach(option=>highlight.add(option.id));reviewedCityCandidates.set(key,highlight);
+  const result=acknowledgeV39CitySpecializations(cityNoticeState(state),player.id,settlement.settlementId);
+  if(result.changed)window.setV39GameState?.({players:result.state.players},{reason:'city-specialization-reviewed'});
+}
+
+function openCityCandidates() {
+  activePage='operation';openSections.add('specialization');render();
+  reviewCityCandidates();
+  const summary=panel.querySelector('[data-settlement-fold="specialization"] > summary');
+  summary?.focus({preventScroll:true});summary?.scrollIntoView({block:'nearest'});
+}
+
 function render() {
   if (!(panel instanceof HTMLElement)) return;
   const scrollTop = panel.scrollTop;
@@ -104,20 +132,11 @@ function render() {
     const record = state?.territoryStateByTile?.[key];
     return number(record?.maxHp) > 0 && number(record?.hp) < number(record?.maxHp);
   });
-  const buildings = Array.isArray(settlement.buildings) ? settlement.buildings : [];
-  const queue = Array.isArray(settlement.constructionQueue) ? settlement.constructionQueue : [];
-  const facilityStateByName = new Map(Object.values(settlement.facilityStateByTile || {})
-    .flatMap(states => Object.entries(states || {})));
-  const facilityBody = [
-    ...buildings.map(name => {
-      const facility = facilityStateByName.get(name);
-      const damaged = facility && number(facility.hp) < number(facility.maxHp, 100);
-      return `<span class="settlement-chip${damaged ? " building" : ""}">${escapeHtml(name)}${damaged ? ` HP ${formatNumber(facility.hp)}/${formatNumber(facility.maxHp)}` : ""}</span>`;
-    }),
-    ...queue.map(item => `<span class="settlement-chip building">${escapeHtml(item.facilityName)} 残${Math.max(0, Math.floor(number(item.remainingTurns)))}T</span>`)
-  ].join("") || `<span class="settlement-empty">なし</span>`;
-  const deathProtection=getV39DeathProtectionStatus(window.__v39FieldRuntime?.mapData,state,player.id,settlementId);
-  const deathProtectionBody=deathProtection.capacity?`<div class="settlement-inline-facts" data-v39-cemetery-quota>死亡時の浄化保護 残り${deathProtection.remaining}/${deathProtection.capacity}件（このターン）</div>`:'';
+  const facilities = getV39SettlementFacilities(state,player.id,settlement);
+  const selectionKey = JSON.stringify([player.id,settlementId]);
+  const selected = facilities.find(row=>row.id===selectedFacilityByBase.get(selectionKey)) || facilities[0];
+  if(selected)selectedFacilityByBase.set(selectionKey,selected.id);
+  const facilityPage = `<div class="v39-facility-list" data-settlement-page="facility"${activePage==='facility'?'':' hidden'}>${facilities.map(row=>`<section class="v39-facility-row"><button type="button" data-settlement-facility="${escapeHtml(row.id)}" aria-expanded="${row.id===selected?.id}"><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.tileKey?`(${row.tileKey})`:'未配置')}</small></button>${row.id===selected?.id?renderV39FacilityOperations(state,player.id,row):''}</section>`).join('')||'<p class="settlement-empty">施設なし</p>'}${(settlement.constructionQueue||[]).filter(item=>!facilities.some(row=>row.tileKey===item.tileKey)).map(item=>`<div class="v39-facility-queue">建設中: ${escapeHtml(item.facilityName)} · 残${Math.max(0,Math.floor(number(item.remainingTurns)))}T</div>`).join('')}</div>`;
   const production = resolveV39SettlementProductionMetrics(state, player, settlement);
   // 領土に紐づく雇用枠から再計算した稼働率を表示する。
   const employmentRate = Math.max(0, Math.min(1, number(production.employmentRate)));
@@ -149,6 +168,9 @@ function render() {
     ["食料", number(civicModifiers.foodComfort)],
     ["住居", number(civicModifiers.housingComfort)],
     ["施設", number(civicModifiers.facilityHappiness)],
+    ["国", number(civicModifiers.countryHappiness)],
+    ["都市幸福", number(civicModifiers.specializationHappiness)],
+    ["都市治安", number(civicModifiers.specializationSecurity)],
     ["飢餓", number(civicModifiers.starvationHappiness)],
     ["人口過多", number(civicModifiers.overcrowding)],
     ["災害", number(civicModifiers.disaster)],
@@ -162,28 +184,33 @@ function render() {
     ? civicModifierEntries.map(([label, value]) => `<span>${escapeHtml(label)} <b>${value > 0 ? "+" : ""}${formatNumber(value)}</b></span>`).join("")
     : "<span>補正 <b>なし</b></span>";
   const civicBody = `<div class="settlement-inline-facts"><span>幸福度 <b>${formatNumber(civic.happiness)}</b></span><span>不満度 <b>${formatNumber(civic.dissatisfaction)}</b></span><span>治安 <b>${formatNumber(civic.security)}</b></span><span>産出補正 <b>${formatNumber(number(settlement.lastEconomyDelta?.civicProductionMultiplier || 1) * 100)}%</b></span></div><div class="settlement-inline-facts"><span>目標幸福 <b>${formatNumber(civicModifiers.happinessTarget ?? civic.happiness)}</b></span><span>目標不満 <b>${formatNumber(civicModifiers.dissatisfactionTarget ?? civic.dissatisfaction)}</b></span><span>目標治安 <b>${formatNumber(civicModifiers.securityTarget ?? civic.security)}</b></span><span>食料余裕 <b>${civicModifiers.foodReserveTurns == null ? "-" : `${formatNumber(civicModifiers.foodReserveTurns)}T`}</b></span></div><div class="settlement-inline-facts">${civicModifierText}</div><div class="settlement-subhead">種族別幸福度</div>${raceHappinessBody}`;
-  const specializationOptions = inspectV39CitySpecializations(state, player, settlement);
-  const specializationBody = `<div class="settlement-inline-facts"><span>選択中 <b>${escapeHtml(settlement.citySpecializationId || "なし")}</b></span><span>都市特性 <b>${escapeHtml((settlement.cityTraits || []).join(" / ") || "なし")}</b></span><span>条件の正本 <b>都市.json</b></span></div><div class="settlement-chip-list">${specializationOptions.map(option => `<button type="button" class="settlement-chip${settlement.citySpecializationId === option.id ? " building" : ""}" data-city-specialization="${escapeHtml(option.id)}" title="${escapeHtml(option.reason)}"${option.available ? "" : " disabled"}>${escapeHtml(option.name)}${option.available ? "" : " ×"}</button>`).join("")}</div>`;
+  const noticeState=cityNoticeState(state);
+  const notices=new Map(settlements.map(base=>[text(base.settlementId),inspectV39CitySpecializationNotice(noticeState,player,base)]));
+  const cityNotice=notices.get(settlementId),highlight=reviewedCityCandidates.get(cityReviewKey(player,settlement))||new Set();
+  const fresh=new Set([...cityNotice.unseen.map(option=>option.id),...highlight]);
+  const specializationOptions=cityNotice.options.filter(option=>option.unlocked||option.id===settlement.citySpecializationId);
+  const specializationSummary=`<div data-city-effects-summary>${getV39SelectedCityDefinitions(settlement).filter(row=>row.レア度==='レア').map(row=>`<p><b>${escapeHtml(row.項目名)}</b> ${escapeHtml(describeV39CitySpecialization(row))}</p>`).join('')}<div class="settlement-inline-facts"><span>環境安定度 <b>${formatNumber(settlement.environmentStability)}</b></span><span>道路整備済み <b>${Object.keys(settlement.roadDevelopmentByTile||{}).length}マス</b></span></div>${settlement.cityEventCandidates?.length?`<p>イベント候補: ${settlement.cityEventCandidates.map(id=>escapeHtml(getGameDataRows('イベント会話').find(row=>row.ID===id)?.名前||id)).join(' / ')}</p>`:''}</div>`;
+  const specializationBody = `<div class="settlement-inline-facts"><span>選択中 <b>${escapeHtml(settlement.citySpecializationId || "なし")}</b></span><span>都市特性 <b>${escapeHtml((settlement.cityTraits || []).join(" / ") || "なし")}</b></span></div>${cityNotice.remainingTurns?`<p class="settlement-city-wait">切替まであと${cityNotice.remainingTurns}ターン</p>`:''}<div class="settlement-chip-list">${specializationOptions.map(option=>cityCandidateCard(option,settlement.citySpecializationId,fresh)).join('')||'<p class="settlement-empty" data-city-no-options>条件を満たした都市特化はありません</p>'}</div>`;
 
   const listScroll = panel.querySelector('.settlement-tabs')?.scrollTop || 0;
   panel.innerHTML = `
     <nav class="settlement-tabs" aria-label="所有拠点">
-      ${settlements.map(row => `<button type="button" class="settlement-tab${text(row.settlementId) === settlementId ? " active" : ""}" aria-pressed="${text(row.settlementId) === settlementId}" data-settlement-id="${escapeHtml(row.settlementId)}"><span class="settlement-card-type">${escapeHtml(row.type || '拠点')}</span><strong>${escapeHtml(row.name || row.type || "拠点")}</strong><span>人口 ${formatNumber(row.population)}</span></button>`).join("")}
+      ${settlements.map(row => `<button type="button" class="settlement-tab${text(row.settlementId) === settlementId ? " active" : ""}" aria-pressed="${text(row.settlementId) === settlementId}" data-settlement-id="${escapeHtml(row.settlementId)}">${notices.get(text(row.settlementId))?.unseen.length?'<span class="settlement-city-alert" data-city-notice aria-label="未確認の都市特化があります">!</span>':''}<span class="settlement-card-type">${escapeHtml(row.type || '拠点')}</span><strong>${escapeHtml(row.name || row.type || "拠点")}</strong><span>人口 ${formatNumber(row.population)}</span></button>`).join("")}
     </nav>
     <div class="settlement-detail-pane">
-    <header class="settlement-heading"><strong>${escapeHtml(settlement.name || settlement.type || '拠点')}</strong><span>${escapeHtml(settlement.type || '')}</span></header>
-    <nav class="settlement-pages" aria-label="拠点の操作">${[['overview','概況'],['production','生産'],['operation','運用']].map(([key,label])=>`<button type="button" data-settlement-page-select="${key}" aria-pressed="${activePage===key}">${label}</button>`).join('')}</nav>
+    <header class="settlement-heading"><strong>${escapeHtml(settlement.name || settlement.type || '拠点')}</strong><span>${escapeHtml(settlement.type || '')}</span>${cityNotice.changeable.length?`<button type="button" class="settlement-city-shortcut" data-open-city-specialization>${cityNotice.unseen.length?'<span class="settlement-city-new" data-city-header-notice aria-label="未確認">!</span> ':''}都市特化を変更可能</button>`:''}</header>
+    <nav class="settlement-pages" aria-label="拠点の操作">${[['overview','概況'],['production','生産'],['facility','施設'],['operation','運用']].map(([key,label])=>`<button type="button" data-settlement-page-select="${key}" aria-pressed="${activePage===key}">${label}</button>`).join('')}</nav>
     <div class="settlement-fold-list">
       <div class="settlement-page-actions" data-settlement-page="overview"${activePage === 'overview' ? '' : ' hidden'}><button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button></div>
       <div class="settlement-page-actions" data-settlement-page="operation"${activePage === 'operation' ? '' : ' hidden'}><button type="button" class="settlement-trade-open" data-open-v39-trade>取引</button><button type="button" class="settlement-chip" data-foot="logistics">物流</button></div>
       ${section("population", "人口", formatNumber(settlement.population), populationSummary)}
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
       ${section("material", "資材", formatNumber(settlement.materialStock), keyValueRows(settlement.materialStockByType))}
-      ${section("facility", "施設", `${buildings.length + queue.length}`, `<div class="settlement-chip-list">${facilityBody}${renderV39FacilityStorageButtons(state,player.id,settlement)}</div>${deathProtectionBody}`)}
+      ${facilityPage}
       ${section("territory", "領土", `${ownedTerritories.length}マス`, `<div class="settlement-inline-facts"><span>損傷 <b>${damaged.length}</b></span><span>雇用 <b>${formatNumber(settlement.population)}/${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span><span>座標 <b>${Math.floor(number(settlement.x))},${Math.floor(number(settlement.y))}</b></span></div>`)}
       ${section("expansion", "開拓", `${formatNumber(production.expansionWorkers)}人`, renderV39LandExpansionControls(state, player, settlement))}
       ${section("civic", "住民状態", `幸福${formatNumber(civic.happiness)}`, civicBody)}
-      ${section("specialization", "都市専門化", escapeHtml(settlement.citySpecializationId || "未選択"), specializationBody)}
+      ${section("specialization", "都市専門化", escapeHtml(settlement.citySpecializationId || "未選択"), specializationSummary+specializationBody)}
       ${section("repair", "修復", repairTargets.length ? `${repairTargets.length}マス` : "なし", repairBody)}
     </div></div>`;
   panel.scrollTop = scrollTop;
@@ -199,15 +226,32 @@ panel?.addEventListener("toggle", event => {
   if (!key) return;
   if (details.open) openSections.add(key);
   else openSections.delete(key);
+  if(key==='specialization'){
+    if(details.open)reviewCityCandidates();
+    else {const {player,settlement}=activeContext();reviewedCityCandidates.delete(cityReviewKey(player,settlement));render();}
+  }
 }, true);
 
 panel?.addEventListener("click", event => {
+  if(event.target.closest?.('[data-open-city-specialization]')){openCityCandidates();return;}
   const pageButton = event.target.closest?.('[data-settlement-page-select]');
   if (pageButton) {
     activePage = pageButton.dataset.settlementPageSelect;
     panel.querySelectorAll('[data-settlement-page-select]').forEach(button=>button.setAttribute('aria-pressed',String(button===pageButton)));
     panel.querySelectorAll('[data-settlement-page]').forEach(section=>section.hidden=section.dataset.settlementPage!==activePage);
     panel.querySelector('.settlement-fold-list').scrollTop=0;
+    reviewCityCandidates();
+    return;
+  }
+  const facilityButton=event.target.closest?.('[data-settlement-facility]');
+  if(facilityButton){
+    const {state,player,settlement}=activeContext();
+    const facility=getV39SettlementFacilities(state,player.id,settlement).find(row=>row.id===facilityButton.dataset.settlementFacility);
+    if(!facility)return;
+    selectedFacilityByBase.set(JSON.stringify([player.id,text(settlement.settlementId||settlement.id)]),facility.id);
+    render();
+    panel.querySelectorAll('[data-settlement-facility]').forEach(button=>{if(button.dataset.settlementFacility===facility.id)button.focus({preventScroll:true});});
+    if(facility.tileKey){const [x,y]=facility.tileKey.split(',').map(Number);focusV39MapTile({x,y},{worldId:facility.worldId});}
     return;
   }
   const developmentButton = event.target instanceof Element ? event.target.closest("[data-settlement-development]") : null;
@@ -241,8 +285,10 @@ panel?.addEventListener("click", event => {
   const button = event.target instanceof Element ? event.target.closest("[data-settlement-id]") : null;
   if (!button) return;
   const faction = window.getV39ActiveFactionState?.();
+  const previous=activeContext();reviewedCityCandidates.delete(cityReviewKey(previous.player,previous.settlement));
   const next = selectFactionSettlement(faction, button.dataset.settlementId);
   window.updateV39ActiveFactionState?.(next, { reason:"settlement-selected" });
+  reviewCityCandidates();
   const settlement = next.settlements.find(row => text(row.settlementId) === next.selectedSettlementId);
   if (!settlement?.placed || !Number.isFinite(settlement.x) || !Number.isFinite(settlement.y)) return;
   focusV39MapTile(settlement,{worldId:'surface'});
@@ -253,6 +299,7 @@ window.addEventListener("v39:game-state-changed", event => {
   if (event.detail?.reason !== "activity-log") render();
 });
 window.addEventListener("v39:operation-ui-ready", render);
+window.addEventListener('v39:footer-tab-changed',event=>{if(event.detail?.tab==='settlement')reviewCityCandidates();else if(reviewedCityCandidates.size){reviewedCityCandidates.clear();render();}});
 render();
 
 window.renderV39SettlementPanel = render;

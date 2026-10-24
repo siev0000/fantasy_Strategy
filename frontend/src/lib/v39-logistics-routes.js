@@ -149,7 +149,7 @@ export function advanceLogisticsRoutes(state,playerId,turn){
         let cargo=getV39TransportCargo(f,r.leaderId);
         if(target.kind==='settlement'&&!isV39UnitInsideSettlement(leader,f.settlements.find(s=>(s.settlementId||s.id)===target.settlementId))){stop('拠点へ到着できません');break;}
         if(r.phase==='fetch'&&!r.returning){
-          const capacity=members.reduce((n,u)=>n+resolveV39UnitCargoCapacity(u),0),amountLimit=Math.min(r.amount,Math.max(0,capacity-resolveV39CargoLoad(cargo)));
+          const capacity=members.reduce((n,u)=>n+resolveV39UnitCargoCapacity(u,state),0),amountLimit=Math.min(r.amount,Math.max(0,capacity-resolveV39CargoLoad(cargo)));
           if(target.kind==='mine'){
             const entry=worlds[target.worldId],mine=entry.map.caveMine;
             const alias=r.resource==='鉄'&&mine.stockByResource.鉱石!==undefined?'鉱石':r.resource;

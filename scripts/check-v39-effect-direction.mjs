@@ -5,8 +5,8 @@ import { chromium } from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/
 const output = "output/web-game/effect-direction";
 const transformSource = readFileSync(new URL("../frontend/src/lib/v39-effect-transform.js", import.meta.url), "utf8");
 const { normalizeV39EffectTransform, resolveV39EffectTransform } = await import(`data:text/javascript;base64,${Buffer.from(transformSource).toString("base64")}`);
-assert.deepEqual(normalizeV39EffectTransform(), { rotationDeg:0, offsetX:0, offsetY:0 });
-assert.deepEqual(normalizeV39EffectTransform({ rotationDeg:999, offsetX:-999, offsetY:"bad" }), { rotationDeg:180, offsetX:-300, offsetY:0 });
+assert.deepEqual(normalizeV39EffectTransform(), { rotationDeg:0, offsetX:0, offsetY:0, placementMode:'target' });
+assert.deepEqual(normalizeV39EffectTransform({ rotationDeg:999, offsetX:-999, offsetY:"bad" }), { rotationDeg:180, offsetX:-300, offsetY:0, placementMode:'target' });
 assert.deepEqual(resolveV39EffectTransform({ rotationDeg:90, offsetX:12, offsetY:-8 }, { x:100, y:100 }, 180), { x:108, y:112, angleDeg:90 });
 for (const [angle, x, y] of [[0, 112, 92], [90, 108, 112], [180, 88, 108], [270, 92, 88]]) {
   const result = resolveV39EffectTransform({ orientToAttack:true, offsetX:12, offsetY:-8 }, { x:100, y:100 }, angle);
@@ -46,7 +46,7 @@ try {
     await page.waitForTimeout(300);
     assert.equal(await page.locator("[data-preview-attacker] img").evaluate(img => img.complete && img.naturalWidth > 0), true);
     assert.equal(await page.locator("[data-preview-target] img").evaluate(img => img.complete && img.naturalWidth > 0), true);
-    assert.equal(await page.locator("[data-preview-cell]").count(), 7);
+    assert.equal(await page.locator("[data-preview-cell]").count(), 19);
     const attackerBefore = await page.locator("[data-preview-attacker]").boundingBox();
     assert.deepEqual(await page.locator("[data-preview-attacker] img").boundingBox(), attackerBefore);
     for (const id of ["60", "120", "180", "240", "300", "0", "self"]) {

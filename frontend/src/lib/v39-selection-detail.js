@@ -168,7 +168,7 @@ export function buildV39SelectionDetailFromClassRow(row) {
 
 export function getV39RaceSelectionDetail(raceKey) {
   const key = text(raceKey);
-  const race = raceByKey.get(key);
+  const race = raceByKey.get(key) || raceRows.find(row=>(row.旧名称||[]).includes(key));
   if (!race) return null;
   const className = RACE_CLASS_NAME_MAP[key] || text(race?.className) || key;
   const classRow = classByName.get(className) || null;

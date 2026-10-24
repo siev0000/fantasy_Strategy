@@ -130,9 +130,10 @@ export async function drawIdlePreview({ fullImage = false } = {}) {
     const baseScale = Math.min((canvasWidth - padding * 2) / sourceWidth, (canvasHeight - padding * 2) / sourceHeight);
     const settingScale = fullImage ? 1 : Math.max(0.1, Number(descriptor.scaleMultiplierPercent || 100) / 100);
     const geometry = effectPreviewGeometry(element("v39-effect-preview-stage"), descriptor);
-    const scale = fullImage ? baseScale : geometry.zoom * V39_EFFECT_BASE_SCALE_PERCENT / 100 * settingScale * source.sourceScaleMultiplier;
-    const drawWidth = Math.max(1, sourceWidth * scale);
-    const drawHeight = Math.max(1, sourceHeight * scale);
+    const scale = fullImage ? baseScale : geometry.fitDiameterPx>0?geometry.fitDiameterPx/Math.min(sourceWidth,sourceHeight)
+      : geometry.zoom * V39_EFFECT_BASE_SCALE_PERCENT / 100 * settingScale * source.sourceScaleMultiplier;
+    const drawWidth = Math.max(1, !fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='x'?geometry.stretchLengthPx:sourceWidth * scale);
+    const drawHeight = Math.max(1, !fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='y'?geometry.stretchLengthPx:sourceHeight * scale);
     const x = (fullImage ? canvasWidth / 2 : geometry.x) - drawWidth / 2;
     const y = (fullImage ? canvasHeight / 2 : geometry.y) - drawHeight / 2;
     context.save();

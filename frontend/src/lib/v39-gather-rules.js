@@ -34,7 +34,7 @@ export function inspectV39Gather(state, playerId, unitId, mapData) {
   const ids = new Set(getV39SquadUnitIds(squad));
   const carriers = individual ? [unit] : (faction?.units || []).filter(item => ids.has(item.id)
     && number(item.hp ?? item.currentHp) > 0 && text(item.state || item.statusName) !== "死亡" && !item.transportAssignment);
-  const capacity = carriers.filter(Boolean).reduce((sum, item) => sum + resolveV39UnitCargoCapacity(item), 0);
+  const capacity = carriers.filter(Boolean).reduce((sum, item) => sum + resolveV39UnitCargoCapacity(item,state), 0);
   const fitted = fitV39CargoToCapacity({ resourcesByType:yields }, Math.max(0, capacity - resolveV39CargoLoad(cargo)));
   if (!unit || !squad) reasons.push("採取するキャラクターを選択してください");
   if(unit&&!isV39UnitInWorld(unit,state?.activeWorldId))reasons.push("このキャラクターは別のマップにいます");

@@ -8,9 +8,9 @@ import './v39-facility-storage-ui.css';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let session=null,lock=null;
 const current=()=>window.getV39GameState({includeWorlds:false});
-export function renderV39FacilityStorageButtons(state,playerId,settlement){
+export function renderV39FacilityStorageButtons(state,playerId,settlement,selected=null){
   const keys=new Set([...(settlement?.territoryTileKeys||[]),...Object.keys(settlement?.tileFacilityMap||{})]);
-  return getV39StorageFacilities(state,playerId).filter(f=>keys.has(f.tileKey)).map(f=>
+  return getV39StorageFacilities(state,playerId).filter(f=>keys.has(f.tileKey)&&(!selected||(f.tileKey===selected.tileKey&&f.name===selected.name))).map(f=>
     `<button type="button" class="settlement-chip" data-storage-open="${esc(f.tileKey)}" data-storage-name="${esc(f.name)}">${esc(f.name)} (${f.x},${f.y}) · ${f.type==='soul'?'魂':'格納'} ${getV39FacilityStoredEntries(state,playerId,f).length}</button>`).join('');
 }
 function close(){document.getElementById('v39-facility-storage')?.remove();session=null;if(lock!==null)window.endV39MapInputLock?.(lock);lock=null;}

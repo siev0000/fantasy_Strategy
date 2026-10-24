@@ -7,7 +7,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on("pageerror", error => errors.push(String(error)));
 try {
-  await page.goto("http://127.0.0.1:3022", { waitUntil:"networkidle" });
+  await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3022", { waitUntil:"networkidle" });
   await page.waitForFunction(() => typeof window.startV39LocalSession === "function");
   const report = await page.evaluate(async () => {
     const economy = await import("/src/lib/v39-economy-rules.js");
@@ -105,10 +105,13 @@ try {
   mkdirSync(directory, { recursive:true });
   for (const width of [1100, 390]) {
     await page.setViewportSize({ width, height:844 });
-    await page.locator('[data-v39-facility="城壁"]').click();
+    await page.evaluate(()=>window.openV39SettlementDevelopment());
     assert.match(await page.locator("#v39-development").textContent(), /黒木不足1 → 木材\+100/);
-    assert.match(await page.locator("#v39-build-detail").textContent(), /黒木不足5 → 木材\+500/);
-    await page.locator("#buildModal").screenshot({ path:`${directory}/${width}.png` });
+    await page.evaluate(()=>window.openV39LandConstruction({x:6,y:5}));
+    await page.locator('[data-land-build-facility="城壁"]').click();
+    assert.match(await page.locator('.v39-land-build-detail').textContent(), /黒木不足5 → 木材 500/);
+    await page.locator('#v39-land-construction').screenshot({ path:`${directory}/${width}.png` });
+    await page.locator('[data-land-construction-back]').click();
   }
   assert.deepEqual(errors, []);
   console.log("facility costs: 5T/1 harvest, original costs, full/partial substitutes, combined costs, shortage rejection and exact debit passed");

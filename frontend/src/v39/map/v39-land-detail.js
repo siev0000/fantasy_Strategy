@@ -2,6 +2,8 @@ import { formatV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
 import {inspectV39EnvironmentEffectsAt} from '../../lib/v39-atmosphere-display.js';
 import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import {getV39LandFacility,renderV39FacilityOperations} from '../world/v39-facility-panel.js';
+import {resolveV39CityRoadAtTile} from '../../lib/v39-city-development.js';
 import {
   inspectV39TerritoryTileConversion,
   startV39TerritoryTileConversion
@@ -84,6 +86,11 @@ function bindFixedLandFields() {
 
   const firstLabel = panel.querySelector(".land-item span");
   if (firstLabel) firstLabel.textContent = "地形 / 座標";
+  if(!document.getElementById('v39-land-facility-actions')){
+    const actions=document.createElement('section');
+    actions.id='v39-land-facility-actions';actions.hidden=true;
+    document.getElementById('v39-land-facility')?.closest('.land-item')?.after(actions);
+  }
   return panel;
 }
 
@@ -106,6 +113,7 @@ function resetLandPanel(message = "マスを選択") {
   setField("v39-land-cave-area", "-");
   setField("v39-land-development-difficulty", "-");
   setField("v39-land-facility", "なし");
+  renderLandFacility(null);
   setField("v39-land-defense", "なし");
   setField("v39-land-units", "なし");
   setField("v39-land-settlement", "なし");
@@ -334,6 +342,7 @@ function buildFullDetail(selected) {
   const ownerLabel = resolveOwnerLabel(state, detail.key);
   const activeFaction = typeof window.getV39ActiveFactionState === "function" ? window.getV39ActiveFactionState() : null;
   const discoveredFeature = activeFaction?.exploration?.discoveredFeaturesByTile?.[detail.key] || null;
+  const road=resolveV39CityRoadAtTile(state,detail.key,state.activeWorldId||'surface');
   return {
     ...detail,
     environmentEffects:inspectV39EnvironmentEffectsAt(window.__v39FieldRuntime?.mapData,state,detail.x,detail.y),
@@ -343,7 +352,7 @@ function buildFullDetail(selected) {
     defenses: formatDefenses(state, detail),
     units: formatUnits(state, detail),
     settlement: formatSettlement(state, detail),
-    territoryState: formatTerritoryState(state, detail, ownerLabel),
+    territoryState: formatTerritoryState(state, detail, ownerLabel)+(road?` / 道路${road}`:''),
     recovery: formatRecovery(state, detail.key),
     moveStop: formatMoveStop(state, detail),
     enemies: formatEnemies(state, detail),
@@ -381,6 +390,7 @@ function renderLandDetail(selected) {
   setField("v39-land-height", formatHeight(detail));
   setField("v39-land-development-difficulty", formatDevelopmentDifficulty(detail));
   setField("v39-land-facility", detail.facilities);
+  renderLandFacility(detail.key);
   setField("v39-land-defense", detail.defenses);
   setField("v39-land-units", detail.units);
   setField("v39-land-settlement", detail.settlement);
@@ -416,6 +426,16 @@ function renderLandDetail(selected) {
 
 function activePlayer(state) {
   return state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
+}
+
+function renderLandFacility(tileKey){
+  const host=document.getElementById('v39-land-facility-actions');
+  if(!host)return;
+  const state=gameState(),playerId=state.activePlayerId;
+  const facility=tileKey?getV39LandFacility(state,playerId,tileKey):null;
+  host.hidden=!facility;
+  host.innerHTML=facility?renderV39FacilityOperations(state,playerId,facility):'';
+  if(facility){const heading=document.createElement('strong');heading.textContent=facility.name;host.prepend(heading);}
 }
 
 function renderSettlementConversionAction() {

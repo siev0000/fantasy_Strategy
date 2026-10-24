@@ -2,6 +2,7 @@ import { normalizeV39NestExplorationState } from "./v39-enemy-exploration.js";
 import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "./v39-nest-rules.js";
 import { V39_SQUAD_MOVEMENT_BALANCE, V39_CORPSE_LIFETIME_BALANCE } from "./v39-gameplay-balance.js";
 import {normalizeV39CorpseResourceBatches} from './v39-corpse-lifetime.js';
+import {resolveV39CityUnitModifiers} from './v39-city-specialization-rules.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -43,9 +44,11 @@ export function mergeV39Cargo(left = {}, right = {}) {
   };
 }
 
-export function resolveV39UnitCargoCapacity(unit) {
+export function resolveV39UnitCargoCapacity(unit,state) {
   const size = Math.max(0, number(unit?.status?.SIZ, number(unit?.SIZ)));
-  return Math.max(0, Math.round((100 * size / 170 + Math.max(0,number(unit?.cargoCapacityBonus))) * 10) / 10);
+  const owner=state?.players?.find(player=>player.factionState?.units?.some(row=>row.id===unit?.id));
+  const percent=owner?resolveV39CityUnitModifiers(owner,unit).cargoCapacityPercent:0;
+  return Math.max(0, Math.round((100 * size / 170 + Math.max(0,number(unit?.cargoCapacityBonus)))*Math.max(0,1+percent/100) * 10) / 10);
 }
 
 export function resolveV39CargoLoad(value = {}) {
@@ -57,7 +60,7 @@ export function resolveV39CargoLoad(value = {}) {
 export function resolveV39EnemySquadCargoStatus(state, squad) {
   const ids = new Set(getV39SquadUnitIds(squad));
   const members = (state?.enemies || []).filter(unit => ids.has(text(unit?.id)) && number(unit?.hp ?? unit?.currentHp) > 0);
-  const capacity = Math.round(members.reduce((sum, unit) => sum + resolveV39UnitCargoCapacity(unit), 0) * 10) / 10;
+  const capacity = Math.round(members.reduce((sum, unit) => sum + resolveV39UnitCargoCapacity(unit,state), 0) * 10) / 10;
   const load = resolveV39CargoLoad(squad?.cargo);
   return { capacity, load, remaining:Math.max(0, Math.round((capacity-load)*10)/10), full:capacity > 0 && load >= capacity };
 }

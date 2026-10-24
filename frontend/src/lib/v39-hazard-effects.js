@@ -1,6 +1,7 @@
 import {getV39ActiveHazardsAt,isV39HazardFlightAvoided} from './v39-hazard-zones.js';
 import {applyV39DisasterDamage} from './v39-disaster-damage.js';
 import {changeV39Purification} from './v39-purification-rules.js';
+import {applyV39CityAura} from './v39-city-aura.js';
 
 export function tickV39HazardEffects(state,map,turn){
   const entries=[];map.hazardTurn=turn;
@@ -10,7 +11,8 @@ export function tickV39HazardEffects(state,map,turn){
     let poison=unit.environmentPoison;
     if(!hazards.length&&!poison)return unit;
     for(const {rule} of hazards){
-      const effect=rule.危険地帯効果||{},resist=Number(unit.status?.毒耐性??unit.resistances?.毒耐性)||0;
+      const adjusted=applyV39CityAura(unit,state,map.grid?.[unit.y]?.[unit.x]);
+      const effect=rule.危険地帯効果||{},resist=Number(adjusted.status?.毒耐性??adjusted.resistances?.毒耐性)||0;
       if(effect.poisonPower>0&&resist<100)poison={power:Math.max(Number(poison?.power)||0,effect.poisonPower),
         expiresAtTurn:turn+effect.poisonTurns,source:rule.カテゴリ名};
     }

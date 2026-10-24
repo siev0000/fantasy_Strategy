@@ -5,6 +5,7 @@ import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules
 import { renderV39UnitCard } from "./v39-unit-card.js";
 import { updateV39UnitAbility } from "./v39-unit-detail.js";
 import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
+import {renderV39UnitHeading} from './v39-unit-heading.js';
 
 const renderedMarkup = new WeakMap();
 let renderingFaction;
@@ -69,15 +70,6 @@ function defenseDisplay(unit) {
     if (!value || !(Number(value.maximum) > 0) || (kind === "barrier" && !(Number(value.remaining) > 0))) return [];
     return [{ kind, label, remaining:Math.max(0, num(value.remaining, 0)), percent:clampPercent(value.remaining, value.maximum) }];
   });
-}
-
-function roleText(unit) {
-  const role = text(unit?.role ?? unit?.positionRole);
-  const race = text(unit?.race ?? unit?.raceName ?? unit?.種族);
-  const className = text(unit?.className ?? unit?.class ?? unit?.クラス);
-  if (role) return role;
-  if (race && className) return `${race} / ${className}`;
-  return className || race || "-";
 }
 
 function movementValue(unit) {
@@ -345,6 +337,7 @@ function renderDetail() {
   const unit = units.find((item, index) => unitId(item, index) === selectedUnitId) || units[0];
   const pane = document.getElementById("squadDetailPane");
   if (!unit) {
+    updateMarkup(document.getElementById('detailUnitHeading'),'');
     if (pane) pane.dataset.empty = "1";
     updateV39UnitAbility(document.getElementById("detailAbilitySections"), null, {fieldIds:true});
     const prof = document.getElementById("detailProficiencyList");
@@ -369,15 +362,7 @@ function renderDetail() {
     if(open&&controls.querySelector('details'))controls.querySelector('details').open=true;
   }
 
-  const level = Math.max(1, Math.round(num(unit?.level ?? unit?.lv ?? unit?.Lv, 1)));
-  const map = {
-    detailRole: roleText(unit),
-    detailLevel: `Lv${level}`,
-  };
-  Object.entries(map).forEach(([id, value]) => {
-    const el = document.getElementById(id);
-    if (el && el.textContent !== String(value)) el.textContent = String(value);
-  });
+  updateMarkup(document.getElementById('detailUnitHeading'),renderV39UnitHeading(unit));
 
   const movementGroup = resolveV39SquadMovementGroup(getFactionState() || {}, selectedUnitId,
     {followFormation:true});

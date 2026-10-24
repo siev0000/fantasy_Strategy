@@ -1,6 +1,7 @@
 import { resolveAttackApCost, resolveAttackPower } from "../../lib/v39-combat-engine.js";
 import { canV39FactionAttack } from "../../lib/v39-diplomacy-rules.js";
 import { normalizeTerritoryStateRecord } from "../../lib/settlement-state.js";
+import {resolveV39CityTerritoryDamage} from '../../lib/v39-city-specialization-rules.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -21,7 +22,7 @@ export function executeV39FactionTerritoryAssault({ playerId, attackerId, tileKe
   if (territory.raided === true) return { ok:false, reason:"対象領土はすでに略奪されています", completed:true };
   const apCost = resolveAttackApCost(skillRow, attacker);
   if (number(attacker?.ap, attacker?.currentAp) < apCost) return { ok:false, reason:"APが不足しています" };
-  const damage = Math.max(1, resolveAttackPower(skillRow, attacker));
+  const damage = resolveV39CityTerritoryDamage(state,key,resolveAttackPower(skillRow, attacker),{skillRow,attacker});
   const hpBefore = Math.max(0, number(territory.hp, territory.maxHp || 100));
   const hp = Math.max(0, hpBefore - damage);
   const completed = hp <= 0;

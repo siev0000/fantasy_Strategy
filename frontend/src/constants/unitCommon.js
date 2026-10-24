@@ -1,10 +1,11 @@
 import { raceData } from "../lib/game-data-registry.js";
 
 const raceClassEntries = raceData
-  .map(row => [String(row?.key ?? "").trim(), String(row?.className ?? "").trim()])
+  .flatMap(row => [row.key,row.name,...(Array.isArray(row.旧名称)?row.旧名称:[])]
+    .map(name=>[String(name??'').trim(),String(row?.className??'').trim()]))
   .filter(([race, className]) => race && className);
 const racesWithoutClassName = raceData
-  .filter(row => String(row?.key ?? "").trim() && !String(row?.className ?? "").trim())
+  .filter(row => row.使用可===true && String(row?.key ?? "").trim() && !String(row?.className ?? "").trim())
   .map(row => String(row.key).trim());
 if (racesWithoutClassName.length) {
   throw new Error(`[ゲームデータ] 種族.json: classNameがありません (${racesWithoutClassName.join("、")})`);

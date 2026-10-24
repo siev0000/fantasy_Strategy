@@ -139,7 +139,7 @@ export function resolveV39SquadMovementGroup(faction = {}, selectedUnitId = "", 
   if (!participants.length) return { ok:false, reason:"移動可能な部隊員がいません。" };
   const cargoSquad=squad||(faction.squads||[]).find(row=>row.unitIds?.includes(selectedId));
   const load=(squad?resolveV39CargoLoad(cargoSquad?.cargo):0)+participants.reduce((sum,unit)=>sum+resolveV39CargoLoad(cargoSquad?.cargoByUnitId?.[unit.id]),0);
-  const speed=tradeSpeed(participants,load);
+  const speed=tradeSpeed(participants,load,{players:[{factionState:faction}]});
   if(speed<=0)return {ok:false,reason:'積載超過で移動速度0%です。荷下ろし・積み替えが必要です。'};
   for(let i=0;i<participants.length;i++)participants[i]={...participants[i],cargoSpeedMultiplier:speed};
 

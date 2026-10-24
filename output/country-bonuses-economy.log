@@ -1,0 +1,9 @@
+{
+  "report": {
+    "village": "検証一般村",
+    "x": 10,
+    "y": 10,
+    "hasDiagnostics": true
+  },
+  "errors": []
+}

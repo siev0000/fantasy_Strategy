@@ -1,0 +1,16 @@
+.v39-facility-list{display:flex;flex-direction:column;gap:4px;min-width:0}
+.v39-facility-row{border:1px solid #40575e;border-radius:6px;overflow:hidden;background:#122127}
+.v39-facility-row>button{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;min-height:36px;padding:6px 8px;text-align:left;font:inherit;color:#e7efed;background:transparent;border:0;cursor:pointer}
+.v39-facility-row>button[aria-expanded=true]{background:#21404a;color:#fff;box-shadow:inset 3px 0 #75cbd5}
+.v39-facility-row>button strong{overflow-wrap:anywhere;min-width:0}
+.v39-facility-row>button small{font-size:var(--font-secondary);color:#a9bbbf;white-space:nowrap}
+.v39-facility-operations{padding:6px 8px;font-size:var(--font-body);min-width:0}
+.v39-facility-operations p{margin:0 0 6px;line-height:1.4;overflow-wrap:anywhere}
+.v39-facility-operations .settlement-chip-list:empty{display:none}
+.v39-facility-description{margin-top:6px;color:#b6c9cc}
+.v39-facility-description>summary{cursor:pointer;font-size:var(--font-secondary)}
+.v39-facility-description>p{margin-top:6px}
+.v39-facility-queue{padding:6px;color:#e4c480}
+#v39-land-facility-actions{grid-column:1/-1;border:1px solid #557983;border-radius:6px;background:#122127}
+#v39-land-facility-actions[hidden]{display:none}
+#v39-land-facility-actions>strong{display:block;padding:6px 8px 0}

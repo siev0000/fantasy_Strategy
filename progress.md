@@ -1,5 +1,55 @@
 Original prompt: 全体を整理してほしい。メモと地形ランダム生成だけは消さないで vueファイルにできるところはVueファイルに
 
+- 2026-10-24: ユーザー指定の6タブを用語辞書/国家設定へ統合（全24タブ）。旧効果/体制のsheetId維持、他4表をコピーし検証後旧タブ除去。CS式/入力規則は辞書A:Bへ自動追従。通常変換は論理表の範囲切出し、CS専用変換は辞書の効果表を読む。旧XLSXも検証可能。前後の6JSON121件/CS788件一致、全25論理表1097件0警告0エラー、Python45件・国家補正/保存IDのブラウザ検証・ビルド/文書チェック通過。既存ランタイムとの差（追加範囲6/体制の旧説明行）は今回適用せず、生成はoutput内。バックアップsheet-merge-before.xlsx。描画確認はGoogleブラウザがないため2タブ抽出のローカルプレビューを使用し、行高/折返しを調整。残件は元のイベント正式化の警備/建設支援等。
+
+- 2026-10-24 UI100: 順序1の正式イベント化から、守護者の共通3依頼をイベント18〜20行へ追加。元ID/数値を維持し最新XLSXから生成。数量/範囲/友好度/回答を受注保存へ固定、旧受注は元条件と互換報酬を維持。仮guardian配列と不要数量定数を除去。Python17件・guardian-sheetスマホ/PC・一般村進捗依頼回帰を確認。残り1は警備/建設支援、契約/複合目標。次の2〜5へ進む前にこの残件を扱う。Google画面はIAB未提供のため目視不可、セル読み戻し済み。
+
+- 2026-10-23: UI90。エフェクトプレビューに距離1〜8/単体・着弾円・直線/円半径0〜4、任意マス選択、範囲強調とマス数表示を追加。画角は必要箇所を含む矩形で調整。範囲重心・外接円は実戦と共用し静止/通常/コマへ適用、実マップ確認にも指定を渡す。range/direction/lifecycleテストでスマホとPC・保存/休止を回帰確認。
+
+- 2026-10-23: UI89。施設召喚1〜4体/75・60・50%閾値、個別/軍隊、体数分費用と維持、複数マス一括確定を追加。数と比率は設定化、画面で数を変更可。group unitIdsで全員消滅後CT/旧unitId互換、保存と別worldの組保持を検証。通常スキル効果の数指定は維持。check-v39-summon-batches.mjsを追加。
+
+- 2026-10-23: UI88。共通カードの未選択時Lv非表示を解除。画像/種族アイコンの既存Lvを使い、高さ/細線ゲージ/名前欄を維持。compact-unit-cardsに選択前後ともLv表示の検証を追加。
+
+- 2026-10-23: UI87。召喚原本M/Nへ必要資材/維持素材の空欄列/注記を追加し読み戻し。共通素材解析/一括支払いと通常/施設召喚の消費・維持を接続。共有表を変えずテスト拠点にフレイムエレメンタル宝石1/1と宝石10・金1000を設定。金/素材/APの部分消費拒否、魂在庫、保存、別テスト非継承を検証。
+
+- 2026-10-23: UI86。施設召喚時/5T維持費を補正込みLv×2金へ統一。設定JSONの係数/間隔、所属拠点課金、召喚期日保存、旧セーブ猶予、金不足候補グレー、維持不足時解除/既存CT、ログ/費用UIを接続。通常スキル召喚は対象外。facility-summon-costsで正確な支払期日/二重請求防止/save/load/別world/不足/解除/旧saveを検証。
+
+- 2026-10-23: UI85。建築候補の先出しを撤廃し、既存前提施設判定を共用。未完成/工事中は隠し、改築は下位施設のあるマスのみ、住居は現在/次段階まで。解禁後の研究/素材不足はグレーで選択可能。分類テストに未解禁非表示/工事中未解禁/完成後グレー/飛び級段階非表示を追加。
+
+- 2026-10-23: UI84。建築カテゴリを共通ヘルパーで施設の収容人数/必要研究Lvから導出。住居に拠点規模も表示し既存発展へ接続、対象拠点を保持。分類テストは320/390/1100で複数所属・空候補・選択維持・別拠点の発展経路を確認。施設数値/生成JSONは変更しない。
+
+- 2026-10-23: UI83。土地から建築する下画面左右分割UI、ヘッダー戻る、固定開始ボタン、画像/概要/素材/維持費なし表示を追加。既存建築API/素材代替/改築を共用。inspectの対象拠点を土地所属から取得し、建築による拠点選択変更を抑止。Phaser既存施設画像/代替マーカーをプレビュー専用レイヤーへ透過表示、キャンセルや文脈変更で解除。旧建築モーダル内の一覧/詳細/キューを撤去し規模発展だけ残す。land-constructionで320/390/1100・プレビュー非消費/別拠点課金/二重配置拒否/戻る/固定操作/発展分離を検証。
+
+- 2026-10-23: UI82。名前の2行省略を廃止。共通カードがname-fitをimportし、選択/未選択・全候補画面の実幅でDOM折返し測定/最大サイズへ縮小。短名は通常サイズ、名前欄の予約高さとゲージ固定維持。幅/表示/文字/フォント変更を監視し、描画更新でstyleが戻っても再計算。unit-name-fitで320/390/540/1100・実際の行数/全文/短名/resize/再描画/ユニット一覧/召喚を検証。
+
+- 2026-10-23: UI81。未選択共通カードの細線を画像右側の最下部に配置し、画像基準の高さへ。2行名前の領域とゲージ余白を確保、fallback種族画像も同寸法。選択時は維持。compact-unit-cardsへ名前1/2行で位置と高さ不変・画像右側・下端固定・名前非重複を追加。
+
+- 2026-10-23: UI80。CallTestの多数一覧でカード内部ゲージの下端が自カード外へ出ることを再現。共通カードのheight/max-content行とflex非縮小、compact min-contentで修正。テストに多数表示/低い600px画面/子要素包含/隣接行重なり/末尾選択を追加。
+
+- 2026-10-23: UI79。共通カードの未選択表示を画像/名前/HPAP3px細線へ。選択中は従来の座標/Lv/数値付きゲージへ戻す。共通既定値で部隊・ユニット一覧・召喚/呼集・合成・格納へ適用。compact-unit-cardsで320/390/1100・選択切替/同じ文字サイズ/細線寸法/横溢れを検証。
+
+- 2026-10-23: UI78。召喚モーダルの候補カードでportrait指定が漏れていたため施設召喚/スキル召喚/呼集に追加。画像/切り出し/Lv/経験値枠は既存共通カードを使用し、未対応画像は従来フォールバック維持。専用回帰check-v39-summon-portraitsを追加。
+
+- 2026-10-23: UI77。拠点ヘッダーに施設タブ、施設を縦一覧/単一選択へ。施設のHP・召喚/格納・効果折畳み・改築中・墓地保護を共通facility-panelへ集約し、土地から同一操作へ接続。選択は拠点別保持、所有/ワールドを検査、空マス/リセットで操作を除去。儀式テストと既存テストの操作経路を更新。facility-panelで320/390/1100・選択維持・正確な召喚枠・土地召喚/格納・他国/空/リセットを検証。
+
+- 2026-10-23: UI76。ユーザー承認のヘッダー整理を実装。v39-unit-headingで名前/施設・拠点/召喚者を共通表示、召喚元の名称スナップショットを新規保存し旧slotKey/casterIdも解決。名前接尾辞は表示時除去、新規名に付けず、カード名は--font-body固定/最大2行/同じ高さ。文字自動縮小は座標行だけ。部隊/ユニット一覧/合成素材詳細を統一、ステータスLv見出しと種族/クラスを能力欄へ移す。折り畳みキーはLvに依存させない。check:unit-headingで320/390/540/1100・旧セーブ接尾辞・元不在・保存・2行サイズ・カード高さを検証。既存character-squad-layoutも通過。
+
+- 2026-10-23: UI75。召喚inspectへ静的対象eligibleを分離し、モーダルはeligible候補のみ表示。上限超/未解禁/不正は非表示、枠使用/再使用待ち/占有/配置/AP/CT等は残してグレー。表Lvで判定し生成ボーナスは足切りしない。選択が消えたとき先頭候補へ戻す。check:summon-candidate-visibilityで390/1100の段階別表示・活動中/死亡25T/敵占有/AP不足時の件数維持を検証。
+
+- 2026-10-23: UI74。施設召喚を指定配置へ。改築元チェーンから半径0/1/2、施設上の敵で全域禁止、全生存ユニット占有/地形/壁/ラップを検査。APIは明示目的地が必須で確定時再検査。モーダル候補→マップ選択→確定、戻る/Esc/状態変更解除、既存ハイライト描画とフォーカスを共用。小表示時は周辺へズーム。check:facility-summon-placementを追加し19マス境界/敵対村/他勢力/死亡/別ワールド/壁/実マスクリック/390・1100を確認。既存施設召喚と儀式ボタンのテストも2段階操作へ更新。
+
+- 2026-10-23: UI73。儀式I〜IIIボタンが低水準の段階変更だけを呼び、未配置/プレイヤーなしで起動しない不具合を再現。startV39RitualTestを追加し、未開始のみ確認後にCallTestを準備、開始済みは既存枠/待ち時間を保持。施設召喚画面を開き、洞窟からは地上へ復帰。起動失敗をステータスへ表示。低水準setterは理由付き失敗に変更。実ボタン回帰check:ritual-test-buttonsで390/1100各I/II/III・キャンセル・死亡待機25T維持・洞窟復帰を確認。
+
+- 2026-10-23: UI72。施設名へ識別キー統一。原本旧BR施設IDを削除、旧BS/BYを前提施設/召喚補正前提施設へ改名して日本語化。施設58件のみ再生成。建設/改築/四属性完成/村・NPC計画は名称参照。施設召喚枠IDは変更せず死亡待ち時間を保持、村の既存計画・受注依頼IDはlegacy-facility-plan-ids固定互換表で保持（新施設に追記不要）。変換器で施設名一意/存在/前提循環を検証、単体35件成功。前提制限の適用範囲は変更しない。
+
+- 2026-10-23: UI71。ユーザー確定の四属性完成I/II/III=表Lv10/20/25以下へ+1/+3/+5。原本施設CFに対象帯を追加、BY/CEを段階別へ変更し施設58件のみ再生成。完成済みの最高段階から下位達成を判定し、補正前総Lvで対象帯を検査。施設/スキルの共通処理を使用、単独ランク補正との最大値方式は維持。各段階の8/10/11/15/20/21/25/26境界と混在改築を回帰テストへ追加。
+
+- 2026-10-23: UI70。ユーザー決定で施設召喚とスキル召喚の両方へ分離。施設は同時1体・効果時間なし・撃破後25Tで再選択/再使用。施設CC:CEへ枠ID/再使用T/完成補正を追加、BXはスキル用ランク1/2/3へ、四属性完成5は重ねず最大。BL改築元を原本へ設定し施設58件のみ再生成。v39-facility-summoningで候補・配置・1体枠を検査し、既存召喚モーダル/生成/死亡消滅処理を再利用。facilitySummonsBySlotを保存し死亡時にだけ期限を開始、改築/ロード/洞窟切替で保持。建設は同じマスで下位を置換し枠を増やさず、工事中保存・HP継承対応。拠点→生産→施設に入口を追加、テストの段階切替は最高段階のみ配置。check:facility-summoningで24/25T境界/死亡/独立枠/改築中保存/洞窟/390・1100を検証。追加維持費なし・施設外活動可は暫定。
+
+- 2026-10-23: UI69 / Issue #28施設分。原本「施設」38〜59の22件へ工期/費用/研究/前提/建設上限とBV:CB効果7列を設定し読み戻し。通常変換へ召喚モンスターリストを追加し施設58/召喚表66件のみ生成。召喚上限I10（ユーザー指定）/II20暫定/III25、四属性III完成で生成Lv+5、祭壇の魂倍率・転生最低Lvを既存処理へ接続。系統召喚は既存モーダル/元スキルCTを共用し表の構成Lvと装備を保持、summonGrowthを保存。未登録アークエンジェルを含む2候補と通常上限超は実行不可。専用召喚/呼集テストへ表選択技と施設段階切替を追加。建設の実行/費用/完成/前提拒否、390/1100、保存/転生/魂/既存召喚・呼集の回帰を検証。出力output/web-game/ritual-facilities、ビルドoutput/ritual-facilities-build.log。襲撃・制圧・徴収AI、特殊祭壇、カスタム召喚体、支援パッシブは別工程。
+
+- 2026-10-23: docsを用途別に整理。85ファイルをrules（5分野）/development/tests/tasks/design/references/historyへ移動、MEMOと必読資料の固定パスを維持。本文削除なし、リンクと参照パスを修正、旧READMEと移動記録を保存。README/INDEX/DOCUMENTATION_RULESで入口・一覧・メモ運用を明確化、AGENTSへ追加。npm run docs:index / check:docsを追加。ゲーム内設計書は現行資料を初期表示し分類選択・正規パス・README初期選択へ。ビルド成功、390/1100pxで分類/MEMO/検索/移動文書/閉じるを確認、標準client smoke確認。参考HTML test.htmlの未提供icon1/icon2は元からのプレースホルダーとして警告に区別。ゲームの挙動・データは変更しない。
+
 - 2026-10-22: UI68。特殊村会話に交渉者本人の転生を追加。対応種族Lv3まで不足分取得・主要種族raceを切替。元種族/各職Lv/第二職/習得技能/装備を保持し、専用reincarnationGrowthStartで新種族の将来成長を分離、既存の総合Lv半分再配分や旧合体配分の上書きを防止。EXP進捗率保持、同種族往復でLv加算なし、HP/AP回復なし。ユーザー確認により生贄必須、暫定は自拠点人口3人＋通常交渉AP20の一度払い（定期軍隊維持と分離、config.reincarnationで調整）。軍隊/召喚体/契約軍隊対象外。主種族画像優先、魂保存の成長情報/上位職取得への引継ぎも対応。check-v39-reincarnationで3種族・本人限定・個体/合体由来配分・第二職・同名種族職の重複防止・成長/上位職取得・費用不足等の不変性・保存・390/1100実操作を確認。軍隊契約/既存class-promotion回帰と合体Lv計算1225組も成功。build:front成功（output/reincarnation-build.log）、画像output/web-game/reincarnation。
 
 - 2026-10-21: UI67。特殊村（天使/悪魔/ヴァンパイア）は勝利競争せず、自拠点の生体人口を定期奉納して軍隊1〜3駒を維持。ユーザー確認により「奉納ごとに追加生成」ではなく維持費方式、暫定1人/軍隊/5T。config/v39-special-villages.json、共通inspect/締結/増枠/停止/周期精算と村会話へ接続。増枠は差分のみ/期日延長なし、加入AP0、維持支払でHP/装備再支給なし。不足・敵対等で同ID/装備/残HP/荷物を保持して帰還、手動再開。施設格納を禁止し行動予約/教官指定を解除。地上非表示時は保存されたsurfaceの契約を精算。特殊村守備軍の新規生成もLv15/編成Lv4へ、通常村・既存守備兵は維持。専用→村・交流→特殊村・生贄奉納を追加。種族変異/配下や捕虜選択/実輸送/NPC自動契約は未対応。check-v39-special-villages（5173と配信3000、加入/増枠/維持/停止/保存/再開/洞窟/390・1100）、quest-rewards（320/390/1100）、npc-development-plan回帰成功。ビルドoutput/special-villages-build.log、画像output/web-game/special-villages。
@@ -18,11 +68,11 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 
 - 2026-10-21: UI60。NPC新規開始時に統治者1＋一般兵1〜2（config initialSoldiersMin/Max）を支給。buildV39UnitEntity/buildV39ClassEquipment/種族別初期Lvを使用し、null座標/初期拠点slot0で通常配置へ渡す。テスト診断の対象が野良/村守備のみだったため、同じ診断タブへnpc-ai欄を追加。全NPC勢力の目標/コマンド/拠点/所属ユニット/ワールド/座標/HP/APを表示、NPC0も案内。既存セーブは閲覧のみで再支給なし。check-v39-npc-startに初期兵数の下限/上限、装備/HP/配置の非重複、全NPC診断への表示を追加。設定から生成する確認は開始統治者profileも準備し、未完の種族選択モーダルを残さない。ビルド記録output/npc-initial-diagnostics-build.log、診断画像output/web-game/npc-start/diagnostics-390.png。
 
-- 2026-10-21: UI59。開始設定NPC勢力数0〜8（新規2）をgameSettings.npcFactionCountへ保存。local/multiplayerホストの生成時に通常種族/クラス候補・統治者生成を共用、初期配置は人完了後の既存autoPlaceを利用。NPCは人の担当/手番へ追加しない。設定再表示の操作数を人だけに修正、設定同期でNPC値が消えるのも防止。施設前提を共通helperへ抽出、NPC建設は防衛/探索/食料不足優先、訓練目標数6（configで可変）、訓練を建設より先に判定。既知の未確保覇権地を他勢力より優先し、確保期間/妨害中は防衛。戦闘可能時の探索AP消費を避け、地上/奥地/退出待機を分離。check-v39-npc-start390/1100（UI→生成/配置/人のみの手番・担当/保存/再表示/実AIラウンド/既知目標/0）、既存local-session/objective/exploration成功。build:front成功、output/npc-factions-build.log。NPCの長期勝率と自動開戦/昇格は未調整。docs/NPC勢力ルール.mdに記録。
+- 2026-10-21: UI59。開始設定NPC勢力数0〜8（新規2）をgameSettings.npcFactionCountへ保存。local/multiplayerホストの生成時に通常種族/クラス候補・統治者生成を共用、初期配置は人完了後の既存autoPlaceを利用。NPCは人の担当/手番へ追加しない。設定再表示の操作数を人だけに修正、設定同期でNPC値が消えるのも防止。施設前提を共通helperへ抽出、NPC建設は防衛/探索/食料不足優先、訓練目標数6（configで可変）、訓練を建設より先に判定。既知の未確保覇権地を他勢力より優先し、確保期間/妨害中は防衛。戦闘可能時の探索AP消費を避け、地上/奥地/退出待機を分離。check-v39-npc-start390/1100（UI→生成/配置/人のみの手番・担当/保存/再表示/実AIラウンド/既知目標/0）、既存local-session/objective/exploration成功。build:front成功、output/npc-factions-build.log。NPCの長期勝率と自動開戦/昇格は未調整。docs/rules/diplomacy/NPC勢力ルール.mdに記録。
 
 - 2026-10-21: UI58。原本施設BS22/BS31をvillage/cemeteryへ変更・読み戻し・施設のみ再生成。村の候補選択を施設ID/AND前提へ接続、墓地を初期目標、その後に実増産がある食料施設を選ぶ。仮配置後の既存収入式で種族技能/地形/水域採取を比較。建設資材不足の増産施設へ重みを付ける（木材不足の森→伐採場を確認）。通常費用/研究/枠/地形/工期と既存支援テンプレートを共用。村の収入式に施設補正/船着き場の水域採取を接続し、新定義の優先度を施設効果から除外。村計画テストに経済Lv1を設定。既存建設完了390/1100成功、新check-v39-village-production.mjsで墓地→農場/保存/実収入増加/木材不足→伐採場/不足材依頼を確認。build:front成功（output/village-production-build.log）。土地自動獲得/拠点昇格/自動交易は未接続で、その処理を仮完了させない。後続は施設枠と適地が不足する場合の拡張接続。
 
-- 2026-10-21: 施設の基本フローチャートを原本game_data（1M55erZwPIapl8-fw7NS1Souy1SiW1iH6J56C6C85NPg）施設BR1:BU37へ入力。36施設の固定ID/AND前提/目的/基礎優先度。ヘッダー注記・新列のみ幅/書式設定、既存列は不変更。読み戻し全件一致（空セルは正規化）、ID一意/参照先/循環を確認。artifacts/game_data-facility-flow.xlsxから施設のみdry-run/再生成（0警告0エラー）、audit:data完了（output/facility-flow-audit.log、既存未接続41件あり）。docs/施設発展フローチャート.mdに全36件と接続範囲を記載。全施設AIへの接続は未実装、現行configの4段階は継続。
+- 2026-10-21: 施設の基本フローチャートを原本game_data（1M55erZwPIapl8-fw7NS1Souy1SiW1iH6J56C6C85NPg）施設BR1:BU37へ入力。36施設の固定ID/AND前提/目的/基礎優先度。ヘッダー注記・新列のみ幅/書式設定、既存列は不変更。読み戻し全件一致（空セルは正規化）、ID一意/参照先/循環を確認。artifacts/game_data-facility-flow.xlsxから施設のみdry-run/再生成（0警告0エラー）、audit:data完了（output/facility-flow-audit.log、既存未接続41件あり）。docs/rules/economy/施設発展フローチャート.mdに全36件と接続範囲を記載。全施設AIへの接続は未実装、現行configの4段階は継続。
 
 - 2026-10-21: UI57。村計画を発展経路へ接続。config/v39-village-development.jsonが既存シート計画IDの前提関係（安全/食料→守備→墓地）のみを管理し、費用/期間/依頼は既存生成データを参照。前提待ち/進行中/完了と不足量を既存情報タブへ表示。completedByIdを保存し、安全/食料/守備不足は再判定。墓地を予防建設へ変更。既存物資/討伐テンプレートから支援生成し通常建設/訓練を共用。接続設定のシート移行・教官派遣等の新しい訓練依頼は未対応。既存建設完了テストは別村の予防建設を誤集計しないよう対象村の領域と村IDで限定し、発展4段階完了/保存を検証。ビルド記録output/village-development-build.log、表示画像output/web-game/village-plan-completion/development-390.png。
 
@@ -38,7 +88,7 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 
 - 2026-10-21: 下段が操作でスクロールできない問題を再現。取引バスケットulのoverscroll-behavior:containが外側スクロールを遮断していたためautoへ変更。下段はpan-y/ネイティブ縦スクロールを明示、本文外ではcontain維持。会話を28dvh/max224→23dvh/max184、見出しとモバイルタブを縮小。新しいネイティブwheel/CDP実タッチテストで修正前の取引スクロール0を確認、修正後は全4タブで正常。従来の上下分離4画面サイズ検証成功。UI 2026.10.21-39。
 
-- 2026-10-21: @game_data「性格会話」18件を最新XLSXから専用対象指定で生成。通常変換器とregistryへ追加。性格はユニット/一般村代表/放浪者の初回状態登録時にランダム決定しconversationPersonalityを保存。共通会話でシートの交渉開始/一人称/二人称、村交流/依頼/属国化/襲撃と取引判定に性格台詞を接続。固有回答/実行結果は残す。再描画時に台詞再抽選せず、情報タブで性格を確認可能。不足列/未接続場面はdocs/性格会話ルール.md、既存セルの不足APIを追加。18種類の抽選・文・代名詞・実際の交流・ネイティブsave/loadを320/390/1100幅で確認し成功。変換器2テスト成功。UI 2026.10.21-38。
+- 2026-10-21: @game_data「性格会話」18件を最新XLSXから専用対象指定で生成。通常変換器とregistryへ追加。性格はユニット/一般村代表/放浪者の初回状態登録時にランダム決定しconversationPersonalityを保存。共通会話でシートの交渉開始/一人称/二人称、村交流/依頼/属国化/襲撃と取引判定に性格台詞を接続。固有回答/実行結果は残す。再描画時に台詞再抽選せず、情報タブで性格を確認可能。不足列/未接続場面はdocs/rules/diplomacy/性格会話ルール.md、既存セルの不足APIを追加。18種類の抽選・文・代名詞・実際の交流・ネイティブsave/loadを320/390/1100幅で確認し成功。変換器2テスト成功。UI 2026.10.21-38。
 
 - 2026-10-21: 村交渉の会話host/4タブを下段スクロール本文から分離。上の会話・タブ・共通実行footerは固定し、下段の会話選択肢/クエスト/取引/情報のみスクロール。タブ切替は下段scrollTopだけリセット。短い画面では余白と会話高を調整。320x568/390x844/1100x800/844x390の上下分離テストと既存hub全幅操作テスト、build、diff-check成功。UI 2026.10.21-37。
 
@@ -56,7 +106,7 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 
 - 2026-10-21: 交渉ハブの上段4ショートカットを削除し、会話/クエスト/取引/情報のタブ1組だけに統一。不要CSSも削除、仕様メモ更新。UI 2026.10.21-31。配信用3000の320/390/1100でナビゲーション4個のみ・重複なしと既存受注/納品/取引/交渉役/マップ選択を確認。スマホ画像目視、build:front/標準Playwright/diff --check成功。
 
-- 2026-10-21: ユーザー作成のdocs/negotiation_hub_fixed_layout.htmlを基準に村の交渉を再構成。会話/クエスト/取引/情報、2段の発言と相手右/自分左の人物、用件ショートカット、下端固定の閉じる/実行を実装。交渉役/技能/履歴は情報へ集約。通常依頼は選択後に受注、番号付き依頼は既存の選択肢/戻るを共用。村計画/人口/守備は実状態を表示し、参考HTMLの仮会話/相場は追加しない。
+- 2026-10-21: ユーザー作成のdocs/references/assets/negotiation_hub_fixed_layout.htmlを基準に村の交渉を再構成。会話/クエスト/取引/情報、2段の発言と相手右/自分左の人物、用件ショートカット、下端固定の閉じる/実行を実装。交渉役/技能/履歴は情報へ集約。通常依頼は選択後に受注、番号付き依頼は既存の選択肢/戻るを共用。村計画/人口/守備は実状態を表示し、参考HTMLの仮会話/相場は追加しない。
 - 取引は既存v39-trade-uiのDOM/草案/入力保持/判定へmount/hide/unmount/submitを追加し、村の取引タブ内で使用。提供/要求の2列、物資行ごとの保有/数値/メーター/増減/削除、資源選択モーダル、マップ指定後の復帰を接続。国家間の独立取引も維持。交渉役変更は未完了の村取引にも反映し、運搬担当は変更しない。元の資源ヘッダー/AP/取引条件/セーブ形式は維持。UI 2026.10.21-30。
 - 検証: 配信用3000でcheck-v39-village-hub（320/390/1100、4タブ/固定操作/通常と番号付き依頼の受注納品/交渉役/草案保持/マップ選択とEsc復帰/提案/交渉役再指定）成功。既存negotiation-uiで自己強化/AP/CT/AP20/再試行/拒否時予約なし、sheet-dialogueで納品/二重報酬防止/保存再開/悪魔の魂報酬、trade-basketsとtrade-input-stability、village-plan-playableで墓地完成/守備補充/再起動も成功。スマホ/PC画像目視、build:front/標準Playwright/diff --check成功。実行中の既存Vite watchと手動buildが競合してENOTEMPTYになることがあるため、ソース更新が落ち着いた後に単独buildを再実行して成功を確認した。既存watch/serverは停止していない。
 
@@ -228,7 +278,7 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 
 - 2026-10-18 技能: 共通SKILL_FIELD_DEFSへ変装/飛行を追加。成長/パッシブ/時限補正/選択画面で同じ定義を使い、旧Vue補助UIと統治者の技能表示も共通項目に追従。原本/生成JSONの値は変更せず、列未設定は0、既存能力UIは0を省略。変装の固有判定は未実装。check-v39-skill-fieldsの390/1100で成長式/0初期値/補正/飛行の高低差通行/保存復元/フィールドとユニット一覧表示を確認。UI 2026.10.18-02。
 
-- 2026-10-18 物流: 縦タブ/一覧/専用運搬設定を追加。部隊・単独、運搬元（自拠点/自軍鉱床）、搬送先、資源、1回上限、片道/往復を指定。共通隊列/AP/地形/容量/荷物を使って実移動し、世界間入口も通過。中断/再開/帰還/積荷付き解除禁止・保存を追加。旧ユニット輸送と取引も表示し、取引経路計算を既存エンジンから共用。運搬設定を基本/拠点から物流へ集約し、入口警備を土地へ移動。フィールド経路/矢印/停止×/待機Ⅱ、未知区間非表示、物流を閉じると描画破棄。有効任務なしならturnフックは即時終了。UI 2026.10.18-01。正本: docs/物流・運搬ルートルール.md。
+- 2026-10-18 物流: 縦タブ/一覧/専用運搬設定を追加。部隊・単独、運搬元（自拠点/自軍鉱床）、搬送先、資源、1回上限、片道/往復を指定。共通隊列/AP/地形/容量/荷物を使って実移動し、世界間入口も通過。中断/再開/帰還/積荷付き解除禁止・保存を追加。旧ユニット輸送と取引も表示し、取引経路計算を既存エンジンから共用。運搬設定を基本/拠点から物流へ集約し、入口警備を土地へ移動。フィールド経路/矢印/停止×/待機Ⅱ、未知区間非表示、物流を閉じると描画破棄。有効任務なしならturnフックは即時終了。UI 2026.10.18-01。正本: docs/rules/economy/物流・運搬ルートルール.md。
 - 物流検証: logistics-routesの390/1100で専用設定・2体追従・実ターン・保存・鉱床世界間運搬成功、logistics-stopsで経路不能/積荷保持/帰還/停止理由/索敵/ロック解除成功。標準クライアントは未生成テスト操作画面のみ。build:front/空白検査成功（既存大チャンク警告あり）。既存expedition-test-fixtureは道具・旧輸送・保存・入口警備まで通過するが、侵入後9ターンの再巣化判定（142行、鉱床が残る）で失敗。条件を緩めず要調査として残す。
 - 取引回帰: check-v39-tradeの390/1100で予約・相互承認・実移動/収入・同時交換・帰還・保存・郵送・中断/死亡/期限の境界条件を通過。390ではNPCの通常ターンによる交換/帰還も成功。
 
@@ -611,7 +661,7 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 
 - 2026-09-24: スキル対象選択中に味方・死亡者のフィールドマーカーを押すと、選択中の攻撃者を切り替えずマーカー座標をスキル対象として実行するよう修正。通常攻撃、回復、蘇生で対象マーカーを実クリックするPlaywright検証を追加し、味方への同士討ち、HP回復、死亡者の蘇生、攻撃者選択の維持を確認した（`npm run check:friendly-skill-targeting`）。
 
-- 2026-09-24: ローカル複数勢力ターン制を `docs/ローカル複数勢力ターン設計.md` へ固定後、v39状態へ `sessionParticipants[]`、`players[].controllerParticipantId`、`timeline.playerTurnOrder / activeTurnPlayerId / endedPlayerIds` を追加。ゲーム開始設定で操作勢力数（1〜8）、仮参加者数、各勢力の担当参加者を指定し、各勢力のユニットIDを再採番して混在を防止する。初期拠点は全勢力が完了するまで敵・一般村を生成せず、ターン終了は次勢力へ切り替え、全勢力終了後だけエネミー・全体処理を実行する。v39セーブはv4へ更新し、旧セーブを `local-1` 参加者へ移行する。旧プレースホルダーが最終ゲーム開始設定モーダルの同期APIを上書きしていたため停止した。検証: `npm run build:front`、`npm run audit:data`、`npm run check:local-session` 成功。後者で2勢力2参加者の担当割当、2勢力の初期配置、1勢力目終了時の敵処理未実行、2勢力目終了後の1回だけの敵処理、設定再表示、セーブv4を確認。
+- 2026-09-24: ローカル複数勢力ターン制を `docs/rules/diplomacy/ローカル複数勢力ターン設計.md` へ固定後、v39状態へ `sessionParticipants[]`、`players[].controllerParticipantId`、`timeline.playerTurnOrder / activeTurnPlayerId / endedPlayerIds` を追加。ゲーム開始設定で操作勢力数（1〜8）、仮参加者数、各勢力の担当参加者を指定し、各勢力のユニットIDを再採番して混在を防止する。初期拠点は全勢力が完了するまで敵・一般村を生成せず、ターン終了は次勢力へ切り替え、全勢力終了後だけエネミー・全体処理を実行する。v39セーブはv4へ更新し、旧セーブを `local-1` 参加者へ移行する。旧プレースホルダーが最終ゲーム開始設定モーダルの同期APIを上書きしていたため停止した。検証: `npm run build:front`、`npm run audit:data`、`npm run check:local-session` 成功。後者で2勢力2参加者の担当割当、2勢力の初期配置、1勢力目終了時の敵処理未実行、2勢力目終了後の1回だけの敵処理、設定再表示、セーブv4を確認。
 
 - 2026-09-19: 拠点人口の種族別人数を `種族.json.className` 経由で `クラス.json` の農業・林業・漁業・工業へ対応付け、人口加重した技能を算出。農業・林業・漁業・工業は生産項目として、その技能値を補間表で換算した生産倍率を表示する。稼働率は人数補正、生産項目倍率は資源種別ごとの技能補正として別々にタイル収入へ掛ける予定であり、拠点タブは生産項目だけを表示する。拠点タブの雇用枠・稼働率も領土集計済みの値を使用する。施設の研究条件はユニット生成と同じ現在研究Lvを参照し、建設画面へ地形・研究Lv・資材・施設枠の現在値と必要値を表示する。ユニットは人口・就業人口に含めず、資源収入と建設時間への反映は未接続。
 - 2026-09-19: 領土・巣・一般村・合算索敵の外周を共通の点線描画へ変更。各生存ユニットの索敵範囲は個別の薄水色点線として追加し、同じマス・同じ範囲の部隊員は重複描画しない。点線の長さと間隔は `MAP_BOUNDARY_DASH_CONFIG` で調整する。
@@ -657,7 +707,7 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 - 2026-03-20: 装備生成コスト計算を調整。`消費量.json(Lv)` と `装備.json` の `木材` / `鉱石` 倍率のみで素材計算し、石材・金・銀・宝石は武器生成基本コストから除外。
 - 2026-03-20: 鍛冶生成上限は `鍛冶場Lv` の定義上限（defined cap）参照に変更。
 - 2026-03-20: 武器生成「押しても何も起きない」対策として、道具モーダルに親関数直接呼び出し経路（`onCraftWeapon`）を追加し、モーダル内に実行結果/失敗理由メッセージを表示。
-- 2026-03-18: ルール追記。行動処理順を `索敵(情報確定) -> 移動(同時解決/1マス判定) -> 接敵ロック -> 奇襲/攻撃 -> 建築/経済` に整理し、先逃げ防止の接敵ロック方針を `docs/fantasy_strategy_core_design.md` と `docs/NEXT_TASKS.md` に反映。
+- 2026-03-18: ルール追記。行動処理順を `索敵(情報確定) -> 移動(同時解決/1マス判定) -> 接敵ロック -> 奇襲/攻撃 -> 建築/経済` に整理し、先逃げ防止の接敵ロック方針を `docs/design/fantasy_strategy_core_design.md` と `docs/history/legacy-notes/NEXT_TASKS.md` に反映。
 - 2026-03-18: ユニット移動を非同期ステップ実行へ変更。経路確認後は `MOVE_STEP_INTERVAL_MS`（既定1000ms）ごとに1マスずつ進み、各マスで判定を実施。移動中の再入力ガード（経路再作成/移動モード切替）も追加。
 - 2026-03-18: `develop-web-game` Playwright クライアント検証を実行したが、スキル実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
 - 2026-03-18: 索敵で発見/被発見したユニットに「接敵ロック」を付与。ロック中は移動不可にし、移動停止理由を `selectedTileDetail` と `mapClickInfo` に可視化。ロック状態は勢力スナップショット保存/復元に対応。
@@ -928,8 +978,8 @@ TODO / next agent:
 - 2026-03-03: `develop-web-game` Playwright client retry after character-status modal integration still blocked by unresolved `playwright` in skill runtime path (`ERR_MODULE_NOT_FOUND`).
 - 2026-03-03: Reduced character status growth scale by applying `1/10` divisor to per-level growth values (`STATUS_GROWTH_DIVISOR = 10`) in `PhaserMapGeneratorPanel.vue`.
 - 2026-03-03: Updated character rule text output to include growth scale (`成長係数 1/10`) and revalidated build (`npm run build:front` pass).
-- 2026-03-04: Added ordered implementation task sheet in docs/NEXT_TASKS.md (Phase1-3 + DoD + tutorial necessity/MVP steps).
-- 2026-03-04: Linked docs/MEMO.md task section to docs/NEXT_TASKS.md for sequential execution reference.
+- 2026-03-04: Added ordered implementation task sheet in docs/history/legacy-notes/NEXT_TASKS.md (Phase1-3 + DoD + tutorial necessity/MVP steps).
+- 2026-03-04: Linked docs/MEMO.md task section to docs/history/legacy-notes/NEXT_TASKS.md for sequential execution reference.
 - 2026-03-04: Switched Vite build cleanup back to `emptyOutDir: true` in `frontend/vite.config.mjs` so old `web-vue-dist/assets/index-*.js` files are not accumulated.
 - 2026-03-04: Validation passed after dist cleanup setting change: `npm run build:front`.
 - 2026-03-04: Added `CharacterNameModal.vue` and character naming flow: after class confirmation, name modal opens (`クラス選択 -> 名前設定`).
@@ -1021,7 +1071,7 @@ Deferred / memo (latest user decisions):
 - 2026-03-04: 村データに `buildings` を追加し、毎ターン経済処理へ建設補正収入を反映（`建設補正収入` 行をイベントログへ出力）。建設前後で収支数値が変化するDoDに対応。
 - 2026-03-04: 建設条件不足をブロック（`建設失敗: 資材不足`）し、成功時は国家ログへ建設完了・コスト・補正を記録。
 - 2026-03-04: 検証 `npm run build:front` 成功。`develop-web-game` Playwright クライアント再試行は引き続き `ERR_MODULE_NOT_FOUND: playwright`（スキル実行環境依存）。
-- 2026-03-04: `docs/NEXT_TASKS.md` に進捗状態を追記（Task1/Task2=完了、Task3=次着手）し、順次実装の基準を明確化。
+- 2026-03-04: `docs/history/legacy-notes/NEXT_TASKS.md` に進捗状態を追記（Task1/Task2=完了、Task3=次着手）し、順次実装の基準を明確化。
 - 2026-03-04: Phase1 Task3(ユニット行動/AP)を実装。ユニットに `actionPointMax/actionPoint` を追加し、移動時にAPを1消費する仕様へ変更（移動2マス/回の既存仕様は維持）。
 - 2026-03-04: APが0のユニットは移動不可。移動モード選択候補は `AP>0 && 移動残>0` のユニットのみ表示。移動不可時は `APがありません` を表示。
 - 2026-03-04: ターン経過で全ユニットの移動残量とAPを最大値へ回復するよう更新し、国家ログへ `行動ポイント回復` を記録。
@@ -1129,7 +1179,7 @@ Deferred / memo (latest user decisions):
 - 2026-03-05: Simplified zoom flow per request: removed pointer/tile zoom-focus logic from wheel handling and removed pendingZoomFocus application in camera targeting. Zoom now only changes magnification around current camera center.
 - 2026-03-05: Added DOM wheel fallback on Phaser canvas (`addEventListener("wheel", ... , {passive:false})`) and expanded zoom range to 20-400 with 25-step wheel increments to make zoom visibly change even if Phaser wheel input is unreliable in current layout.
 - 2026-03-05: Adjusted zoom stability per user report: disabled camera scroll clamping when world-wrap is enabled (to avoid per-wheel position shifts), and set zoom lower bound to map-size baseline (min 100%, max 400%).
-- 2026-03-05: Reworked map-camera baseline per user: wrap copies remain enabled at all zoom levels; min zoom is now dynamic from map size so viewport never exceeds map x1.20; drag clamp now uses center-based range and keeps camera around map center. Added `docs/map-screen-overview.md` as implementation spec.
+- 2026-03-05: Reworked map-camera baseline per user: wrap copies remain enabled at all zoom levels; min zoom is now dynamic from map size so viewport never exceeds map x1.20; drag clamp now uses center-based range and keeps camera around map center. Added `docs/rules/ui/map-screen-overview.md` as implementation spec.
 - 2026-03-05: Extracted resource-bag pure helpers from PhaserMapGeneratorPanel into new composable rontend/src/composables/resourceEconomyUtils.js (empty/normalize/sum/add/multiply/format/split helpers).
 - 2026-03-05: Updated PhaserMapGeneratorPanel.vue to import resource helpers via thin wrappers, keeping existing call sites unchanged.
 - 2026-03-05: Validation passed: 
@@ -1182,7 +1232,7 @@ pm run build:front.
 - 2026-03-08: 死体アイコンは `アンデット` 名を優先し、未登録時は `死者` へフォールバック。木材/石材/鉄も未登録時は既存アイコンへフォールバック。Validation: `npm run build:front` pass。
 - 2026-03-08: develop-web-game Playwright client 再試行 -> `playwright` 未導入で失敗（ERR_MODULE_NOT_FOUND）。
 - 2026-03-08: 資源アイコン表示を改善。表示値が0になる資源は非表示に変更し、ホバー時に資源名を表示（title属性）。Validation: `npm run build:front` pass。
-- 2026-03-08: docs/equipment_material_tables.md / docs/city_system_design.md を実装反映。都市能力(鍛冶場/魔法/信仰/軍事/経済)を村データへ追加し、建設モーダルからLv1→Lv4まで資材で強化可能にした。
+- 2026-03-08: docs/references/equipment_material_tables.md / docs/design/city_system_design.md を実装反映。都市能力(鍛冶場/魔法/信仰/軍事/経済)を村データへ追加し、建設モーダルからLv1→Lv4まで資材で強化可能にした。
 - 2026-03-08: 経済Lvを領土/建物収入倍率へ反映（Lv1=1.0, Lv2=1.15, Lv3=1.3, Lv4=1.5）。村情報/マス詳細に都市能力表示を追加。
 - 2026-03-08: 装備変更に素材消費テーブルを接続。レアリティ→装備Lv(1-4)で木材/金属消費、魔法/信仰系装備は貴金属/宝石も追加消費。鍛冶場/魔法/信仰Lv不足時は装備変更をブロック。
 - 2026-03-08: 互換のためルートにも quipment_material_tables.md / city_system_design.md を追加。Validation: 
@@ -1574,7 +1624,7 @@ pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整�
 - 2026-09-14: v39初期拠点の領土登録を中心1マスから半径1へ修正。中心+隣接6マスの通行可能・未所有タイルを取得し、中心を拠点、周囲を領土として登録。再配置時の旧自領データと新規マップ配置開始時の探索履歴を消去する。
 - 2026-09-14: Playwrightで内陸配置は7マス、沿岸配置は通行不能地形を除いた3マスとなることを確認。中心施設/状態、周囲の領土状態、完了イベント、陣地外周用データ、再配置時の旧陣地削除、実行時エラー0件を確認。`npm run build:front` 成功。
 - 2026-09-14: `docs/ALL_TASKS_UNIFIED.md` を現行v39移行状況に合わせて全般棚卸し。陣地、索敵、火山/噴火/溶岩、AP戦闘、反撃、死亡回収、ターン処理、外交、敵AI、マルチ、テスト、性能、UIの不足仕様と完了条件、推奨実装順を追加。
-- 2026-09-14: `data/source/export/json` をゲーム内容の正本とし、既存方式の種類追加をJSONだけで行えるようにする `docs/DATA_DRIVEN_RULES.md` を追加。共通データ登録口、識別キー、固定配列廃止、参照検証、セーブ時のID参照を全般タスクへ追加。
+- 2026-09-14: `data/source/export/json` をゲーム内容の正本とし、既存方式の種類追加をJSONだけで行えるようにする `docs/development/DATA_DRIVEN_RULES.md` を追加。共通データ登録口、識別キー、固定配列廃止、参照検証、セーブ時のID参照を全般タスクへ追加。
 - 2026-09-14: JSONデータ駆動の対象を主要データだけでなく `data/source/export/json` 内の全21ファイル・全レコードへ明確化。新規JSONの自動登録、未接続列の検出、コード側の重複定義禁止を仕様とタスクへ追記。
 - 2026-09-14: `frontend/src/lib/game-data-registry.js` を追加し、`data/source/export/json/*.json` を自動登録する共通データ入口へ全Vue/v39/Phaserの直接importを移行。ブラウザで21テーブル605レコード、既存テスト2プレイヤー、レオンHP112/攻撃107/防御99/剣を確認。`npm run build:front` 成功、実行時エラー0件。
 - 2026-09-14: v39初期拠点配置後に `出現敵.json` と `クラス.json` から敵を生成する `v39-enemy-spawn.js` を追加。拠点4マス以内を除外、10マス以内をLv10以下、出現可能タイル120マスにつき1体・8～30体で決定的配置する。60x60検証で29体、安全距離5、近傍Lv超過0、無効生成0、実行時エラー0件を確認。`npm run build:front` 成功。
@@ -2169,7 +2219,7 @@ pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整�
 - 王/コマンダー/ロードナイト、薬草・水薬を持つ負傷キャラ、輸送兵、入口警備兵、所有鉱床の鉱石/宝石在庫、薬草群生地、一般村と受注可能な警備/建設依頼を用意。侵入シナリオはウルフ2体と食料のある巣を配置し、地下の味方を地上へ移す。
 - 初期統治者モーダルが専用検証開始を遮る問題と、地下で地上の拠点/施設が表示される問題を修正。マーカーキャッシュにワールドIDを含める。
 - 390/1100pxの実ボタン、支援値、依頼受注、道具使用、地上建物の地下非表示、実ターン輸送/警備到着/侵入/再巣化、保存読込とテストOFFの開始拒否を確認。ルール単体と既存鉱床UI試験も成功。標準web-game client実行、追加シナリオと開始画面のスクリーンショットを目視確認。
-- npm run check:expedition-testを追加し、配布ビルド回帰にも組み込む。手動確認手順はdocs/洞窟鉱床・道具・部隊支援ルール.mdに記載。生成JSONの編集・シート更新は行っていない。
+- npm run check:expedition-testを追加し、配布ビルド回帰にも組み込む。手動確認手順はdocs/rules/economy/洞窟鉱床・道具・部隊支援ルール.mdに記載。生成JSONの編集・シート更新は行っていない。
 - 最終npm run check:production-ui成功。配布版でも追加検証の390/1100pxと、既存の能力/スキル/装備/研究/移動/保存/設定/エフェクト各画面の回帰確認を通過。ビルドの既存大チャンク警告は残る。
 
 # 2026-10-12 自動任務アイコン・座標目盛り
@@ -2275,7 +2325,7 @@ pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整�
 - 双方の到着/生存/携帯物を確認して同時交換、物理的な帰還/荷下ろし、定期の次回予約、中止帰還、死亡停止、期限切れ、手動再開と二者承認、保存/読込を接続。NPC携帯物は死亡時に戦利品へ移し一度だけ解放する。
 - SIZ容量と運搬用加算、攻撃補正を最後に加える荷重速度、カードの自動/中断マーク、任務兼任禁止を追加。仮馬車はテストのみで、原本管理の生成JSONを変更していない。
 - 専用テスト: タイトル→テスト操作→専用→取引・郵送テスト。PC1100/スマホ390で実画面・実ターン・保存、定期2回/NPC魂/郵送/物理中止/死亡/日程再承認/優先確保/荷重境界を検証。特殊資源の周期採取、配信用の28回帰、最終ビルドと道具/死亡処理回帰が成功。標準ブラウザクライアント実行・画像確認済み。大きなチャンクの既存警告は継続。
-- 残作業: 正式馬車クラス/研究と原本への追加、遠隔マルチプレイのサーバー権威承認、資源UIの複数種類一括指定。数量/担当者変更は現段階では旧取引を中止・荷下ろしして再提案する。仕様正本: docs/取引・郵送・貿易ルール.md。
+- 残作業: 正式馬車クラス/研究と原本への追加、遠隔マルチプレイのサーバー権威承認、資源UIの複数種類一括指定。数量/担当者変更は現段階では旧取引を中止・荷下ろしして再提案する。仕様正本: docs/rules/diplomacy/取引・郵送・貿易ルール.md。
 - 最終確認: 村相手も実世界ターンの収入/担当者AP回復/同時交換/帰還を確認。純粋ルール試験のたびに非同期マップ再生成を重ねていたテストハーネスを、初期スナップショットの複製方式へ変更して描画と分離。最新配信ビルドの取引再検証でコンソールエラーなし。共通範囲が1マスしかない提案とマップ外のUI指定を拒否し、交渉技能は指定した担当者本人を参照する。
 
 ## 2026-10-20 地形テストの環境濃度・湿地描画
@@ -2343,3 +2393,20 @@ pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整�
 
 - 2026-10-21 UI55: 村計画の墓地はT2残2→T3残1→T4キュー消去/墓地追加まで内部完了していたが、施設描画が自軍拠点のみでNPCマーカーが0件、完成結果も通知されず計画が消えるだけだった。再現テストで完成マーカー欠落を確認。共通施設描画へ村を渡し、通常視界/テスト表示と地下除外を維持。計画完成履歴・建設ログ1回・交流/情報/テスト欄の完成施設表示を追加。古い保存はbuildingsから表示し完成日を捏造しない。
 - UI55検証: build:front成功。check-v39-village-plan-completionは390/1100で建設/完成マーカー切替、交流/情報/テスト表示、完成通知1回、保存復元/同T重複なし、通常視界外非表示を成功。village-contact-entryは320/390/1100、progress-questsは390/1100で成功。標準web-game-client起動と完成表示の画像を確認。
+
+- UI91: 範囲変更で自動縮小するプレビューを固定倍率へ変更。手動倍率/明示的な全体表示、範囲拡大時の径増加と倍率維持の回帰テストを追加。
+
+- UI92: placementMode target/beam-x/beam-yで発射元→対象の伸長を追加。共通端点計算、非等方拡縮、静止/再生/コマ/マスク/残像/ガイドへ反映。カテゴリ自動選択と保存/JSON入出力を接続。beam/direction/range/lifecycleでスマホ・PCを検証。
+
+- UI93: 伸長時の角度補正を有効化し共通計算へ加算。カテゴリの保存値がゲーム再生へ即反映されることを実フィールドで検証、属性モードの未保存伸長項目を非表示化。beamテストで角度・長さ・中心維持、再読込、実戦カテゴリ変更後の即時反映を追加。
+
+- UI94: 伸長モードの位置補正を解禁、resolveV39EffectTransformを共用。角度別/画像軸別の補正ベクトル、UI入力・保存/読込、実フィールドと自動カテゴリで同じ位置になる検証をbeamテストへ追加。
+
+- UI95: 独立信仰を見送りcountryBonusesを国データへ追加。幸福度目標/ヒーロー上限/全般・系統別召喚Lv、保存復元、既存の内訳表示へ接続。未指定0で全通常国の値は変更せず、信仰候補や選択画面は追加しない。仕様は領土・資源生産ルールと現状メモに記録。
+
+- UI96: 都市シートG:Mへ条件/必要規模/数値効果/切替待機を設定し最新XLSXから都市20件だけ生成。通常14種・レア3種を既存UI/生産/幸福治安/領土被ダメ軽減へ接続し名前別補正を廃止。14条件・拠点分離・数値変更・待機・実領土攻撃・保存/390/1100pxを検証。
+- 2026-10-24: UI97。都市N:Zへ13補正列と注記を原本入力し都市20件のみ再生成（警告/エラー0）。技能生産・魔法/全研究・訓練・軍隊枠・運搬/取引・交渉・召喚・領土浄化/自然回復に接続。専用テストと既存都市/訓練/取引/物流/浄化/国補正の回帰を確認。
+- 2026-10-24: UI98。都市J/K/Wを幸福度/治安/軍隊へ統一、AA:AIにヒーロー/イベント/道路/環境/穢れ/範囲/常時P/耐性/災害耐性を原本追加。数値0と空欄を既定にし、範囲判定・P解除/重複防止・浄化差引・道路移動・自然災害抑制・土地施設の被害補正・保存へ接続。イベントは既存IDの候補抽選と一般村候補への接続まで。自都市固有実行系は未追加。
+- 2026-10-24: UI99。都市特化の未確認解禁を拠点一覧/ヘッダーの!で通知、直接都市専門化へ移動。条件未達非表示、待機中通知抑制・残T、候補を実表示時だけcitySpecializationSeenIdsへ保存。別拠点の未読維持、非表示再描画、新解禁、保存/読込、390/1100pxを専用テストで確認。
+
+- UI101: 種族/勢力を原本1表へ統一（23タブ）、使用可7/未完成4。只人等の正式名と旧名参照、2JSON同時生成、開始/NPC/一般村/通信の候補制限を接続。変換器51テスト・390/1100px・専用サーバー・訓練・NPC計画の回帰は成功。通信開始全体テストはクラス画面への遷移待ちで停止し未完了。稼働中3000サーバーは停止していない。

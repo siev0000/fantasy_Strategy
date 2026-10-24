@@ -149,7 +149,7 @@ export function normalizeV39CivicState(village = {}) {
   };
 }
 
-export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTerrains = [], specialties = { names:[], bonus:0 }, researchModifiers = {}) {
+export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTerrains = [], specialties = { names:[], bonus:0 }, researchModifiers = {}, countryBonuses = {}, cityModifiers = {}) {
   const current = normalizeV39CivicState(village);
   if (current.lastProcessedTurn >= turnNumber) return current;
 
@@ -200,6 +200,8 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
       + raceFacilityHappiness
       + raceEvent
       + number(researchModifiers.幸福度)
+      + number(countryBonuses.happiness)
+      + number(cityModifiers.happinessBonus)
       + number(specialties.bonus)
       - raceStarvation
       - raceOvercrowding
@@ -226,6 +228,8 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
       mixedRace:-raceMixedRace,
       event:raceEvent,
       research:number(researchModifiers.幸福度),
+      country:number(countryBonuses.happiness),
+      specialization:number(cityModifiers.happinessBonus),
       specialties:number(specialties.bonus),
       unfavorableTerrainRate,
       unfavorableTerrain:-raceTerrainPenalty,
@@ -263,6 +267,7 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
     - mixedRace
     + eventSecurity
     + number(researchModifiers.治安)
+    + number(cityModifiers.civicBonus)
   );
   const dissatisfaction = approach(current.dissatisfaction, dissatisfactionTarget);
   const security = approach(current.security, securityTarget);
@@ -277,6 +282,9 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
     happinessModifiersByRace,
     modifiers:{
       researchHappiness:number(researchModifiers.幸福度),
+      countryHappiness:number(countryBonuses.happiness),
+      specializationHappiness:number(cityModifiers.happinessBonus),
+      specializationSecurity:number(cityModifiers.civicBonus),
       researchSecurity:number(researchModifiers.治安),
       specialtyNames:[...(specialties.names || [])],
       specialties:number(specialties.bonus),

@@ -1,4 +1,5 @@
 import settings from '../../../config/v39-special-villages.json';
+import {resolveV39RitualRaceEffects} from './v39-ritual-facilities.js';
 import {resolvePopulationClassDefinition} from './v39-population-economy.js';
 import {getSelectedSettlement,replaceFactionSettlement} from './settlement-state.js';
 import {getGameDataRows} from './game-data-registry.js';
@@ -55,7 +56,8 @@ export function inspectV39SpecialVillageReincarnation(state,playerId,villageId,r
     if(derived.strongAnimalClassName)add(derived.strongAnimalClassName,derived.strongAnimalClassLevel);
   }
   const currentRace=resolvePopulationClassDefinition(derived?.race)?.名前||derived?.race;
-  const targetRace=config?.race,targetLevel=Math.max(integer(rule?.raceLevel),integer(levels[targetRace]));
+  const targetRace=config?.race,targetLevel=Math.max(integer(rule?.raceLevel),integer(levels[targetRace]),
+    resolveV39RitualRaceEffects(player,targetRace).reincarnationLevel);
   const addedLevel=Math.max(0,targetLevel-integer(levels[targetRace])),level=integer(actor?.level)+addedLevel;
   if(targetRace===currentRace&&!addedLevel)reasons.push('すでに対応種族を必要Lv以上取得し、主要種族にしています');
   if(level>V39_UNIT_LEVEL_CAP)reasons.push(`転生後の総合Lvが上限${V39_UNIT_LEVEL_CAP}を超えます`);

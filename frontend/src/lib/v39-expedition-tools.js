@@ -102,7 +102,7 @@ export function inspectV39ExpeditionGather(state,playerId,unitId,map,siteId) {
   if(ap<defaults.gather.AP消費||remaining<1)return {ok:false,reason:"AP不足または採取分の再生待ちです"};
   const cargo=unit.expeditionCargoByType || {},name=site.kind==='herb'?'薬草':'キノコ';
   const load=Object.values(cargo).reduce((sum,value)=>sum+count(value),0)+Object.values(unit.toolStockByType||{}).reduce((sum,value)=>sum+count(value),0);
-  if(load+defaults.gather.採取量>resolveV39UnitCargoCapacity(unit))return {ok:false,reason:"携帯容量が不足しています"};
+  if(load+defaults.gather.採取量>resolveV39UnitCargoCapacity(unit,state))return {ok:false,reason:"携帯容量が不足しています"};
   return {ok:true,unit,turn,ap,remaining,name};
 }
 export function gatherV39ExpeditionHerbs(state,playerId,unitId,map,siteId) {

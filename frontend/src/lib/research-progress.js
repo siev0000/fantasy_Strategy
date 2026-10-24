@@ -179,12 +179,13 @@ export function researchLevelEfficiency(unit, item, tree = researchTreeData) {
   return Math.min(1, level / recommended) ** V39_RESEARCH_BALANCE.levelEfficiencyExponent;
 }
 
-export function researchExperiencePerTurn(unit, categoryKey, tree = researchTreeData, item = null) {
+export function researchExperiencePerTurn(unit, categoryKey, tree = researchTreeData, item = null, cityModifiers = {}) {
   if (!unit) return 0;
   const category = normalizeResearchCategoryName(categoryKey);
   const skillName = asText(tree?.timeReductionSkills?.[category]);
   const fallbackSkill = skillName === "魔法技術" ? "魔術" : "";
-  const skillLevel = Math.max(0, Number(unit?.skillLevels?.[skillName] ?? unit?.skillLevels?.[fallbackSkill]) || 0);
+  const skillLevel = Math.max(0, (Number(unit?.skillLevels?.[skillName] ?? unit?.skillLevels?.[fallbackSkill]) || 0)
+    +Number(cityModifiers.skills?.[skillName]??cityModifiers.skills?.[fallbackSkill]??0));
   return Math.max(V39_RESEARCH_BALANCE.minimumExpPerTurn,
-    Math.floor(RESEARCH_EXP_PER_TURN * (1 + skillLevel / 100) * researchLevelEfficiency(unit, item, tree)));
+    Math.floor(RESEARCH_EXP_PER_TURN * (1 + skillLevel / 100) * researchLevelEfficiency(unit, item, tree)*Math.max(0,1+(Number(cityModifiers.researchExpPercent)||0)/100)));
 }

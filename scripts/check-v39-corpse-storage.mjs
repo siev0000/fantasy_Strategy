@@ -13,8 +13,8 @@ try{
       window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39FusionTest();await window.waitForV39MapRenderSettled();
       window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();
     });
-    await page.locator('[data-settlement-page-select="production"]').click();
-    await page.locator('[data-settlement-fold="facility"] summary').click();
+    await page.locator('[data-settlement-page-select="facility"]').click();
+    await page.locator('[data-settlement-facility]').filter({hasText:'霊廟'}).click();
     await page.locator('[data-storage-open="5,5"][data-storage-name="霊廟"]').click();
     await page.locator('[data-storage-tab="deposit"]').click();
     const before=await page.evaluate(()=>window.getV39GameState().enemies.find(u=>u.id==='mausoleum-test-corpse'));
@@ -62,8 +62,8 @@ try{
       const s=window.getV39GameState();window.setV39GameState({timeline:{...s.timeline,turnNumber:s.timeline.turnNumber+50}});
       window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();
     });
-    await page.locator('[data-settlement-page-select="production"]').click();
-    const fold=page.locator('[data-settlement-fold="facility"]');if(await fold.getAttribute('open')===null)await fold.locator('summary').click();
+    await page.locator('[data-settlement-page-select="facility"]').click();
+    await page.locator('[data-settlement-facility]').filter({hasText:'霊廟'}).click();
     await page.locator('[data-storage-open="5,5"][data-storage-name="霊廟"]').click();
     await page.locator('[data-storage-withdraw="mausoleum-test-corpse"]').click();
     const released=await page.evaluate(async()=>{

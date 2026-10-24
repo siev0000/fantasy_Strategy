@@ -1,0 +1,34 @@
+{
+  "version": "1.1.0",
+  "input": "output\\city-effects-v98-source.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "都市"
+  ],
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 20,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "都市",
+      "output": "都市.json",
+      "input_rows": 44,
+      "records": 20,
+      "skipped_blank_rows": 24,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

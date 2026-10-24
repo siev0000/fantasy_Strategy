@@ -1,13 +1,32 @@
-import defaults from "../../../config/v39-event-defaults.json";
+import { getGameDataRows } from "./game-data-registry.js";
 import { getHexDistance } from "./hex-grid.js";
 import { V39_QUEST_BALANCE as balance } from "./v39-gameplay-balance.js";
 import { changeV39QuestResource } from "./v39-neutral-village-rules.js";
 import { getSelectedSettlement } from "./settlement-state.js";
 import {getV39HegemonyGuards} from './v39-hegemony-land-rules.js';
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS } from "./v39-economy-rules.js";
 
 const living=unit=>unit && Number(unit.currentHp??unit.hp)>0 && unit.state!=="死亡";
 const nearby=(unit,landmark)=>living(unit) && (!unit.worldId||unit.worldId==="surface")
   && getHexDistance(unit,landmark)<=balance.guardianContactRange;
+export function getV39GuardianQuestDefinitions() {
+  return getGameDataRows("イベント会話").filter(row=>row.分類==="守護者").flatMap(row=>{
+    const goal=row.目標?.[0],setting=goal?.設定;
+    const type=({納品:"delivery",見張り:"watch",周辺討伐:"hunt"})[goal?.タイプ];
+    const reward=row.完了効果?.[0];
+    if(!type||row.目標.length!==1||!Number.isInteger(setting?.数量)||setting.数量<1
+      ||row.完了効果?.length!==1||reward?.タイプ!=="守護者友好度変更"
+      ||!Number.isFinite(reward.設定?.値)
+      ||(type==="delivery"&&![...FOOD_RESOURCE_KEYS,...MATERIAL_RESOURCE_KEYS].includes(setting.対象))
+      ||(type!=="delivery"&&(!Number.isInteger(row.対象範囲)||row.対象範囲<1))) return [];
+    return [{ID:row.ID,名前:row.名前,説明:row.説明,type,required:setting.数量,
+      resourceKey:type==="delivery"?setting.対象:"",range:row.対象範囲,
+      stockKind:FOOD_RESOURCE_KEYS.includes(setting.対象)?"food":"material",
+      acceptReply:row.選択肢?.find(choice=>choice.番号==="1")?.回答||"",
+      completeReply:row.選択肢?.find(choice=>choice.番号==="1-1")?.回答||"",
+      relationGain:reward.設定.値}];
+  });
+}
 export function getV39GuardianProgress(state,playerId,key) {
   return state.victoryLandmarksByTile?.[key]?.guardianByPlayerId?.[playerId]||{relation:0,completedEventIds:[]};
 }
@@ -31,12 +50,12 @@ function canContact(state,playerId,key) {
 export function listV39GuardianQuests(state,playerId,key) {
   if(canContact(state,playerId,key)) return [];
   const progress=getV39GuardianProgress(state,playerId,key),landmark=state.victoryLandmarksByTile[key];
-  return defaults.guardian.filter(row=>!progress.completedEventIds?.includes(row.ID)).map(row=>{
+  return getV39GuardianQuestDefinitions().filter(row=>!progress.completedEventIds?.includes(row.ID)).map(row=>{
     if(row.type!=="hunt") return row;
     const targetEnemyIds=(state.enemies||[]).filter(enemy=>living(enemy)&&!enemy.victoryGuard && enemy.aggressive===true
-      && (!enemy.worldId||enemy.worldId==="surface") && getHexDistance(enemy,landmark)<=balance.guardianHuntRange)
+      && (!enemy.worldId||enemy.worldId==="surface") && getHexDistance(enemy,landmark)<=row.range)
       .sort((a,b)=>getHexDistance(a,landmark)-getHexDistance(b,landmark)||String(a.id).localeCompare(String(b.id)))
-      .slice(0,balance.guardianHuntCount).map(enemy=>enemy.id);
+      .slice(0,row.required).map(enemy=>enemy.id);
     return {...row,targetEnemyIds};
   }).filter(row=>row.type!=="hunt"||row.targetEnemyIds.length);
 }
@@ -49,14 +68,15 @@ export function acceptV39GuardianQuest(state,playerId,key,eventId) {
   if(!row) return {ok:false,state,reason:"その依頼は受注できません"};
   const turn=state.timeline?.turnNumber||1;
   const quest={...row,createdTurn:turn,lastProgressTurn:turn,progress:0,completed:false,
-    required:row.type==="watch"?balance.guardianWatchTurns:row.type==="hunt"?row.targetEnemyIds.length:balance.guardianDeliveryAmount};
-  return {ok:true,state:update(state,playerId,key,{...progress,quest}),message:`受注: ${row.名前}`};
+    required:row.type==="hunt"?row.targetEnemyIds.length:row.required};
+  return {ok:true,state:update(state,playerId,key,{...progress,quest}),message:`受注: ${row.名前}${row.acceptReply?` / ${row.acceptReply}`:""}`};
 }
 export function completeV39GuardianQuest(state,playerId,key) {
   const reason=canContact(state,playerId,key);
   if(reason) return {ok:false,state,reason};
   const progress=getV39GuardianProgress(state,playerId,key),quest=progress.quest;
   if(!quest||quest.completed) return {ok:false,state,reason:"受注中の依頼がありません"};
+  if(!["delivery","watch","hunt"].includes(quest.type)) return {ok:false,state,reason:"未対応の依頼形式です"};
   if(quest.type==="watch"&&quest.progress<quest.required) return {ok:false,state,reason:`見張り ${quest.progress}/${quest.required}ターン`};
   if(quest.type==="hunt"&&state.enemies?.some(enemy=>quest.targetEnemyIds.includes(enemy.id)&&living(enemy))) return {ok:false,state,reason:"討伐対象が残っています"};
   let working=state;
@@ -65,17 +85,19 @@ export function completeV39GuardianQuest(state,playerId,key) {
     if(!payment.ok) return {...payment,reason:payment.reason||"納品する拠点がありません"};
     working=payment.state;
   }
+  const relationGain=quest.relationGain??balance.guardianRelationGain;
   return {ok:true,state:update(working,playerId,key,{...progress,
-    relation:Math.min(100,progress.relation+balance.guardianRelationGain),
+    relation:Math.max(-100,Math.min(100,progress.relation+relationGain)),
     completedEventIds:[...(progress.completedEventIds||[]),quest.ID],quest:{...quest,completed:true}}),
-    message:`依頼完了 / 守護者の友好度 +${balance.guardianRelationGain}`};
+    message:`依頼完了 / 守護者の友好度 ${relationGain>=0?"+":""}${relationGain}${quest.completeReply?` / ${quest.completeReply}`:""}`};
 }
 export function advanceV39GuardianQuests(state,turn) {
   let working=state;
   for(const [key,landmark] of Object.entries(state.victoryLandmarksByTile||{})) for(const player of state.players||[]) {
     const progress=getV39GuardianProgress(working,player.id,key),quest=progress.quest;
     if(!quest||quest.completed||quest.type!=="watch"||quest.lastProgressTurn>=turn) continue;
-    const present=player.factionState?.units?.some(unit=>nearby(unit,landmark));
+    const present=player.factionState?.units?.some(unit=>living(unit)&&(!unit.worldId||unit.worldId==="surface")
+      && getHexDistance(unit,landmark)<=(quest.range??balance.guardianContactRange));
     working=update(working,player.id,key,{...progress,quest:{...quest,lastProgressTurn:turn,
       progress:present?Math.min(quest.required,quest.progress+1):0}});
   }

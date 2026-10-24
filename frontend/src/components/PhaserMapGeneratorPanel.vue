@@ -6662,7 +6662,7 @@ function resolveFactionRowByRace(raceKey = "") {
   const className = resolveRaceBaseClassName(race);
   const rows = factionRows.value;
   if (!rows.length) return null;
-  const byName = rows.find(row => nonEmptyText(row?.種族) === race);
+  const byName = rows.find(row => [row?.種族,...(row?.旧名称||[])].some(name=>nonEmptyText(name)===race));
   if (byName) return byName;
   const byKana = rows.find(row => {
     const kana = nonEmptyText(row?.カナ);

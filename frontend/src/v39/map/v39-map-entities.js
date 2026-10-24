@@ -26,6 +26,8 @@ const ENEMY_IMAGE_FILL = 0.95;
 const TEST_UNDISCOVERED_ENEMY_ALPHA = 0.4;
 
 let structureContainer = null;
+let constructionPreviewContainer=null;
+let constructionPreviewSignature='';
 let constructionLabelContainer = null;
 let unitContainer = null;
 let refreshTimer = null;
@@ -394,7 +396,7 @@ function addTileFacilityMarker(scene, container, tileKey, facilityName, options 
 }
 
 function addResidentialVillageMarker(scene, container, tileKey, options = {}) {
-  const artwork = resolveSettlementArtwork({ type:"村", scaleKey:"village", scaleLevel:1 });
+  const artwork = resolveSettlementArtwork(options.settlementType?{type:options.settlementType}:{ type:"村", scaleKey:"village", scaleLevel:1 });
   if (!artwork || !ensureArtworkTexture(scene, artwork)) return null;
   const [x, y] = String(tileKey || "").split(",").map(Number);
   if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
@@ -933,6 +935,26 @@ function drawDefenseStructures(scene, container, imageContainer) {
   }
 }
 
+function renderConstructionPreview(){
+  const scene=activeScene(),preview=window.getV39LandConstructionPreview?.();
+  const signature=JSON.stringify([preview,markerArtworkVersion]);
+  if(!scene||!preview){
+    constructionPreviewContainer?.destroy();constructionPreviewContainer=null;constructionPreviewSignature='';return;
+  }
+  if(constructionPreviewContainer?.scene===scene&&signature===constructionPreviewSignature)return;
+  constructionPreviewContainer?.destroy();
+  constructionPreviewContainer=scene.add.container(0,0).setDepth(STRUCTURE_LAYER_DEPTH+1).setName('v39-construction-preview-layer');
+  constructionPreviewSignature=signature;
+  if(preview.settlementType){
+    addResidentialVillageMarker(scene,constructionPreviewContainer,preview.tileKey,{name:'v39-construction-preview',settlementType:preview.settlementType})?.setAlpha(.45);
+    return;
+  }
+  addTileFacilityMarker(scene,constructionPreviewContainer,preview.tileKey,preview.facilityName,{
+    name:'v39-construction-preview',iconPx:60,radiusTiles:.3,fontTiles:.25,
+    fillColor:0x244d50,strokeColor:0x91dce5
+  })?.setAlpha(.45);
+}
+
 function renderMarkers() {
   const scene = activeScene();
   const state = gameState();
@@ -941,6 +963,7 @@ function renderMarkers() {
   const worldId = state?.activeWorldId || 'surface';
   if (!scene || !faction) return false;
 
+  renderConstructionPreview();
   const signature = markerRenderSignature(faction, state);
   if (signature === lastMarkerRenderSignature && hasActiveMarkerContainers(scene)) return true;
   lastMarkerRenderSignature = signature;
@@ -1024,6 +1047,7 @@ function scheduleRefresh(delay = 0) {
 }
 
 function install() {
+  window.addEventListener('v39:construction-preview-changed',renderConstructionPreview);
   window.addEventListener("v39:field-generated", () => {
     lastMarkerRenderSignature = null;
     scheduleRefresh(60);

@@ -3,6 +3,7 @@ import { COMBAT_STATUS_FIELDS, SKILL_LEVEL_FIELDS } from "../constants/unitCommo
 import { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
 import { applyV39TerrainPassiveBonuses } from "./v39-passive-rules.js";
 import { applyV39SquadSupport } from "./v39-squad-support.js";
+import {applyV39CityAura} from './v39-city-aura.js';
 export { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
 
 export const TERRAIN_STATUS_FIELDS = Object.freeze([
@@ -29,7 +30,7 @@ export function applyV39TerrainModifiers(unit, mapData = globalThis.window?.__v3
   unit=applyV39SquadSupport(unit);
   const terrain = getV39TerrainModifiers(mapData, unit.x, unit.y);
   // 再評価や移動時は前回の現在地補正だけ戻し、恒久能力は変更しない。
-  const base={...unit,passiveContextSkillNames:[]};
+  let base={...unit,passiveContextSkillNames:[]};
   for (const bucket of ["status","skillLevels","resistances"]) {
     base[bucket]={...(unit[bucket]||{})};
     for (const [key,value] of Object.entries(unit.terrainAdjustmentDeltas?.[bucket]||{})) {
@@ -37,6 +38,7 @@ export function applyV39TerrainModifiers(unit, mapData = globalThis.window?.__v3
       if (base[bucket][key]===0 && unit.terrainAdjustmentAddedKeys?.[bucket]?.includes(key)) delete base[bucket][key];
     }
   }
+  base=applyV39CityAura(base,undefined,terrain.terrainName);
   const status = { ...base.status };
   const skillLevels = { ...base.skillLevels };
   for (const [key, value] of Object.entries(terrain.modifiers)) {

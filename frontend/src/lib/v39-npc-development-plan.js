@@ -18,7 +18,7 @@ export function inspectV39NpcConstructionPlan(state, player, mapData) {
     remainingTurns:queued.remainingTurns, shortages:[], reasons:[] };
   const foodShortage = inspectV39NeutralVillageEconomy({ ...village, race:player.race }, mapData, state).shortageTotal > 0;
   const priority = definition => n(definition.row.自動建設優先度) + n(balance.constructionPurposeBonus[definition.row.建設目的])
-    + (foodShortage && (n(definition.row.農業) > 0 || definition.gatheringResource === '魚' || definition.row.施設ID === 'cemetery') ? balance.foodShortageBonus : 0);
+    + (foodShortage && (n(definition.row.農業) > 0 || definition.gatheringResource === '魚' || definition.name === '墓地') ? balance.foodShortageBonus : 0);
   const definitions = facilityDefinitions().filter(definition => hasV39FacilityPrerequisites(village, definition.row)
     && !(village.buildings || []).includes(definition.name)).sort((a,b) => priority(b)-priority(a) || a.name.localeCompare(b.name));
   const keys = Object.entries(state.territoryOwnerByTile || {}).filter(([,owner]) => owner === player.id).map(([key])=>key).sort();

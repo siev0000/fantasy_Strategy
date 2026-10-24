@@ -1,4 +1,5 @@
 import config from '../../../config/v39-negotiation.json';
+import {resolveV39CityUnitModifiers} from './v39-city-specialization-rules.js';
 export const V39_NEGOTIATION_AP=config.apCost;
 export function chargeV39Negotiation(state,playerId,unitId,targetId,terms,context={}) {
   const player=state.players.find(row=>row.id===playerId),unit=player?.factionState.units.find(row=>row.id===unitId);
@@ -14,5 +15,6 @@ export function chargeV39Negotiation(state,playerId,unitId,targetId,terms,contex
 }
 export function resolveV39NegotiationSkill(state,playerId,unit,key) {
   const effects=state.players.find(row=>row.id===playerId)?.factionState.combatRuntime?.activeEffectsByUnitId?.[unit.id]||[];
-  return (Number(unit.skillLevels?.[key])||0)+effects.filter(row=>!row.expiresAtTurn||row.expiresAtTurn>state.timeline.turnNumber).reduce((sum,row)=>sum+(Number(row.modifiers?.[key])||0),0);
+  return (Number(unit.skillLevels?.[key])||0)+(key==='交渉'?resolveV39CityUnitModifiers(state.players.find(row=>row.id===playerId),unit).skills.交渉:0)
+    +effects.filter(row=>!row.expiresAtTurn||row.expiresAtTurn>state.timeline.turnNumber).reduce((sum,row)=>sum+(Number(row.modifiers?.[key])||0),0);
 }

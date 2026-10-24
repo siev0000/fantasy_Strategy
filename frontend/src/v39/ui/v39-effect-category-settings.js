@@ -148,7 +148,7 @@ function syncCurrentFromProxy() {
   try {
     if (editorMode === "category") {
       const updated = updateV39EffectCategory(category?.id, categoryPatchFromEffect(setting));
-      if (updated) setStatus(`カテゴリ「${updated.name}」を自動保存しました。`);
+      if (updated) setStatus(`カテゴリ「${updated.name}」を自動保存し、ゲームの戦闘へ反映しました。`);
     } else {
       const attribute = currentAttribute();
       const updated = updateV39EffectAttribute(attribute?.name, attributePatchFromEffect(setting));
@@ -169,6 +169,8 @@ function applyModeVisibility() {
   hiddenRow("v39-effect-setting-base", attributeMode);
   hiddenRow("v39-effect-setting-scale", attributeMode);
   hiddenRow("v39-effect-setting-orientation", attributeMode);
+  hiddenRow("v39-effect-setting-placement", attributeMode);
+  element("v39-effect-setting-placement-hint").hidden=attributeMode;
   for (const id of ["rotation", "offset-x", "offset-y"]) hiddenRow(`v39-effect-setting-${id}`, attributeMode);
   hiddenRow("v39-effect-setting-decoration", !attributeMode);
 

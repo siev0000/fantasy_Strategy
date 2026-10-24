@@ -43,8 +43,8 @@ try{
     assert.equal(await page.locator('#characterModal [data-v39-character-row]').count(),3);
     await page.screenshot({path:`output/web-game/fusion-placement/mausoleum-${width}.png`});
     await page.evaluate(()=>{document.getElementById('characterModal').classList.remove('open');window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();});
-    await page.locator('[data-settlement-page-select="operation"]').click();
-    await page.locator('[data-settlement-fold="facility"] summary').click();
+    await page.locator('[data-settlement-page-select="facility"]').click();
+    await page.locator('[data-settlement-facility]').filter({hasText:'魂の保管庫'}).click();
     await page.locator('[data-storage-open="3,4"][data-storage-name="魂の保管庫"]').click();
     assert.equal(await page.locator('#v39-facility-storage [data-storage-row]').count(),2);
     assert.equal(await page.locator('#v39-facility-storage [data-storage-withdraw]').count(),0);

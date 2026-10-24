@@ -47,7 +47,7 @@ function moveParty(state,side,contract,map,home) {
   if(done())return {state,arrived:true};
   const blocked=occupied(state,side),path=resolveV39TradeMovementPath(state,side,contract,map,home);
   if(!path)return {state,arrived:false,reason:'通行可能な待ち合わせ/帰還経路がありません'};
-  const load=resolveV39CargoLoad(getTradeCargo(state,side)),speed=tradeSpeed(members,load);
+  const load=resolveV39CargoLoad(getTradeCargo(state,side)),speed=tradeSpeed(members,load,state);
   if(speed<=0)return {state,arrived:false,reason:'積載超過で移動速度0%です'};
   let formation=members.map(unit=>({id:unit.id,x:unit.x,y:unit.y}));
   // 指定担当者を先頭にし、既存の狭路対応の追従形成を使う。
@@ -124,7 +124,7 @@ export function advanceV39TradeLogistics(state,playerId,map,turn=tradeTurn(state
         ||(courier<0&&getHexDistance(members[0].find(unit=>unit.id===contract.sides[0].unitId),members[1].find(unit=>unit.id===contract.sides[1].unitId))>1)) {
         next=interrupt(next,contract,'交換前の物資/到着条件が変わりました');continue;
       }
-      if(contract.sides.some((side,index)=>(courier<0||courier===index)&&Object.values(contract.sides[1-index].goods).reduce((sum,value)=>sum+n(value),0)>tradeCapacity(members[index]))) {
+      if(contract.sides.some((side,index)=>(courier<0||courier===index)&&Object.values(contract.sides[1-index].goods).reduce((sum,value)=>sum+n(value),0)>tradeCapacity(members[index],next))) {
         next=interrupt(next,contract,'受け取る荷物を一度に運べません');continue;
       }
       // 双方を検証してから、同じstateの書込みで交換する。

@@ -439,13 +439,9 @@ export const V39_QUEST_BALANCE = Object.freeze({
   villageRelationGain:8, // 仮の村依頼の友好度報酬。
   villageQuestCooldown:5, // 同じ村支援を再受注するまでのターン。
     villageNumberedHuntRange:8, // 番号付き村依頼の暫定討伐対象範囲。
-  guardianDeliveryAmount:100, // 守護者への納品数。
-  guardianRelationGain:35, // 守護者依頼1件の友好度報酬。
+  guardianRelationGain:35, // シート移行前の受注保存にのみ使う互換報酬。
   guardianTransferRelation:70, // 守護者交代に必要な友好度。
-  guardianWatchTurns:3, // 連続して見張るターン数。
-  guardianContactRange:3, // 交渉・見張りの中心からの距離。
-  guardianHuntRange:8, // 討伐候補を探す範囲。
-  guardianHuntCount:3 // 討伐依頼1件の最大対象数。
+  guardianContactRange:3 // 交渉距離。見張りは受注保存の範囲（旧保存はこの値）。
 });
 
 export const V39_CIVIC_BALANCE = Object.freeze({
@@ -536,22 +532,8 @@ export const V39_CIVIC_BALANCE = Object.freeze({
 export const V39_CITY_SPECIALIZATION_BALANCE = Object.freeze({
   // 専門化を選択できる最低拠点規模Lv。3 = 都市。
   minimumScaleLevel:3,
-  // 個別効果が未定義の専門化に使う資源産出倍率。1.1 = 10%増。
-  defaultResourceMultiplier:1.1,
-  // 農業都市の食料産出倍率。1.25 = 25%増。
-  foodMultiplier:1.25,
-  // 産業都市の資材産出倍率。1.25 = 25%増。
-  materialMultiplier:1.25,
-  // 交易都市の食料・資材産出倍率。1.15 = 15%増。
-  tradeMultiplier:1.15,
   // レア都市特性を持つ都市になる確率。0.2 = 20%。同じ拠点では固定結果。
-  rareTraitChance:0.2,
-  // レア都市特性の食料・資材産出倍率。1.05 = 5%増。
-  rareTraitResourceMultiplier:1.05,
-  // 軍事都市・城塞都市に付与する防衛値。
-  defenseBonus:20,
-  // 魔法・信仰・学術都市に付与する治安系ボーナス。
-  civicBonus:5
+  rareTraitChance:0.2
 });
 
 // 拠点人口の技能から算出する生産力の補正表。種族とクラスの対応は種族.json、技能値はクラス.jsonを正本にする。
@@ -840,4 +822,4 @@ export const V39_DIPLOMACY_BALANCE = Object.freeze({
 // 育成で上位職へ移る際に前提職へ残すLv。種族Lvは別管理。
 export const V39_CLASS_PROGRESSION_BALANCE=Object.freeze({classLevelLimit:10});
 // 召喚軍隊は1人を基準に追加人数ごとHP+50%。既存3/4/5人編成と同じ比率（暫定）。
-export const V39_SUMMON_BALANCE=Object.freeze({maximumLevel:120,hpPerExtraMember:0.5});
+export const V39_SUMMON_BALANCE=Object.freeze({maximumLevel:120,baseMaximumLevel:10,normalMaximumLevel:25,hpPerExtraMember:0.5});

@@ -1,0 +1,52 @@
+
+> fantasy-strategy@0.1.0 dev:front
+> vite --config frontend/vite.config.mjs --host 127.0.0.1
+
+
+  VITE v6.4.1  ready in 2293 ms
+
+  ➜  Local:   http://127.0.0.1:5173/
+11:47:58 [vite] (client) page reload src/lib/v39-guardian-quests.js
+11:47:58 [vite] (client) page reload src/v39/bootstrap/v39-bootstrap-final.js
+11:47:58 [vite] (client) page reload src/lib/game-data-registry.js
+11:47:59 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/data/source/export/json/イベント会話.json
+11:47:59 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/data/source/export/json/村計画.json
+11:47:59 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/data/source/export/json/村依頼ひな型.json
+11:49:13 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/rules/world/霧・交流クエスト・守護者ルール.md
+11:49:13 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/現状ゲーム仕様メモ.md
+11:49:13 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/ALL_TASKS_UNIFIED.md
+11:49:13 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/SPREADSHEET_DATA_WORKFLOW.md
+11:49:13 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/design/イベントシステム設計.md
+13:12:46 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/SPREADSHEET_DATA_WORKFLOW.md
+13:29:26 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/SPREADSHEET_DATA_WORKFLOW.md
+13:29:26 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/現状ゲーム仕様メモ.md
+13:32:54 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/development/DATA_DRIVEN_RULES.md
+13:32:54 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/ALL_TASKS_UNIFIED.md
+13:57:18 [vite] (client) page reload src/constants/unitCommon.js
+13:57:18 [vite] (client) page reload src/lib/v39-cave-adventure.js
+13:57:18 [vite] (client) page reload src/v39/core/v39-initial-sovereign.js
+13:57:18 [vite] (client) page reload src/v39/core/v39-multiplayer-lobby.js
+13:57:18 [vite] (client) page reload src/v39/core/v39-game-state-bridge.js
+13:57:18 [vite] (client) hmr update /src/components/RaceSelectModal.vue
+13:58:03 [vite] (client) page reload src/lib/v39-neutral-village-rules.js
+13:58:03 [vite] (client) page reload src/lib/race-icon-library.js
+13:58:03 [vite] (client) page reload src/lib/v39-unit-experience.js
+13:58:03 [vite] (client) page reload src/lib/v39-diplomacy-rules.js
+13:58:21 [vite] (client) page reload src/v39/core/v39-initial-sovereign.js
+13:58:21 [vite] (client) page reload src/v39/world/v39-world-population.js
+13:58:21 [vite] (client) page reload src/lib/v39-unit-creation-rules.js
+13:58:21 [vite] (client) page reload src/v39/bootstrap/v39-bootstrap-final.js
+13:58:57 [vite] (client) page reload src/v39/core/v39-game-state-bridge.js
+14:01:12 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/data/source/export/json/種族.json
+14:01:12 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/data/source/export/json/勢力.json
+14:02:21 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/data/source/export/json/種族.json
+14:02:21 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/data/source/export/json/勢力.json
+14:02:22 [vite] (client) page reload src/lib/game-data-registry.js
+14:02:22 [vite] (client) hmr update /src/components/ClassSelectModal.vue, /src/components/RaceSelectModal.vue
+14:05:31 [vite] (client) hmr update /src/v39/ui/V39InitialSovereignFlow.vue
+14:06:45 [vite] (client) page reload src/lib/v39-race-definitions.js
+14:15:00 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/SPREADSHEET_DATA_WORKFLOW.md
+14:15:00 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/development/DATA_DRIVEN_RULES.md
+14:15:00 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/現状ゲーム仕様メモ.md
+14:15:00 [vite] (client) page reload C:/Users/skkt3/ドキュメント/Github/fantasy_Strategy/docs/ALL_TASKS_UNIFIED.md
+14:15:00 [vite] (client) page reload src/lib/v39-race-definitions.js

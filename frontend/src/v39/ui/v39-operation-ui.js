@@ -177,7 +177,7 @@ import './v39-operation-layout.css';
           <div class="squad-content-split" id="v39-squad-content">
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
-              <div class="squad-detail-minihead"><span class="squad-detail-chip" id="detailRole"></span><span class="squad-detail-chip" id="detailLevel"></span></div>
+              <div class="squad-detail-minihead"><div id="detailUnitHeading" style="width:100%;min-width:0"></div></div>
               ${renderV39DetailTabs([["status","能力"],["basic","基本"],["action","スキル"]], "status", "data-squad-detail-tab")}
               <div class="squad-detail-tab-content" id="detailTechniqueList">
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="status" role="tabpanel" aria-hidden="false">
@@ -252,7 +252,7 @@ import './v39-operation-layout.css';
         </section>
         <section id="footTile" class="land-panel" hidden aria-hidden="true">
           <div class="v39-land-shortcuts">
-            <button type="button" class="v39-footer-shortcut" data-open="build">⌂ 建設</button>
+            <button type="button" class="v39-footer-shortcut" data-land-construction-open>⌂ 建築</button>
             <button type="button" class="v39-footer-shortcut" id="v39-land-settlement-convert" disabled>居住化</button>
             <button type="button" class="v39-footer-shortcut" data-foot="interaction">交流へ</button>
             <span id="v39-land-settlement-convert-status" aria-live="polite">マスを選択</span>

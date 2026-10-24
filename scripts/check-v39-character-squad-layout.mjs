@@ -32,7 +32,7 @@ try {
     await card.click();
     assert.equal(await card.locator(".v39-card-vital.hp .v39-card-vital-value").innerText(),hp);
     assert.equal(await card.locator(".v39-card-vital-value").first().evaluate(node=>getComputedStyle(node).fontSize),fieldFont);
-    assert.ok(await card.locator(".squad-level-number").count());
+    assert.ok(await card.locator(".squad-level-number, .v39-card-portrait-level").count());
     assert.equal(await card.evaluate(node=>node.classList.contains("selected")),true);
     assert.equal(await page.locator("#characterModal .v39-char-detail-scroll").innerHTML(),abilityMarkup);
     assert.deepEqual(await page.locator("#characterModal .detail-stat").first().evaluate(node=>{

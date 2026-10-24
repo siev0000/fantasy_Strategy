@@ -9,8 +9,21 @@ export function normalizeV39EffectTransform(setting = {}) {
   return {
     rotationDeg:clamp(setting.rotationDeg, V39_EFFECT_ROTATION_LIMIT),
     offsetX:clamp(setting.offsetX, V39_EFFECT_OFFSET_LIMIT),
-    offsetY:clamp(setting.offsetY, V39_EFFECT_OFFSET_LIMIT)
+    offsetY:clamp(setting.offsetY, V39_EFFECT_OFFSET_LIMIT),
+    placementMode:['beam-x','beam-y'].includes(setting.placementMode) ? setting.placementMode : 'target'
   };
+}
+
+// Fit length to the attack segment, then apply the same local transform as impacts.
+export function resolveV39EffectBeam(setting = {}, origin, target) {
+  const {placementMode:mode}=normalizeV39EffectTransform(setting);
+  if(mode==='target'||!origin||!target)return null;
+  const dx=target.x-origin.x,dy=target.y-origin.y,length=Math.hypot(dx,dy);
+  if(!Number.isFinite(length)||length<.001)return null;
+  const attackAngle=Math.atan2(dy,dx)*180/Math.PI-(mode==='beam-y'?90:0);
+  return {...resolveV39EffectTransform({...setting,orientToAttack:true},
+      {x:(origin.x+target.x)/2,y:(origin.y+target.y)/2},attackAngle),
+    stretchLengthPx:length,stretchAxis:mode==='beam-y'?'y':'x'};
 }
 
 export function resolveV39EffectTransform(setting = {}, position = {}, attackAngle = 0, angleOverride) {

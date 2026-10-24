@@ -1,4 +1,7 @@
 import {hegemonyLightMultiplier} from './v39-hegemony-areas.js';
+import {resolveV39ResistanceReduction} from './v39-resistance-math.js';
+import {hasV39CityAuraSources} from './v39-city-aura.js';
+import {applyV39TerrainModifiers} from './v39-terrain-modifiers.js';
 import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { getV39UnitTestSkillRows } from "./v39-test-skill-rules.js";
@@ -341,6 +344,9 @@ export function resolveAttackPower(skillRow, attacker, options = {}) {
 }
 
 export function computeAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, random = Math.random, isCounter = false, damageType = '' }) {
+  if(hasV39CityAuraSources()||attacker?.cityAuraSkillNames?.length||target?.cityAuraSkillNames?.length){
+    attacker=applyV39TerrainModifiers(attacker);target=applyV39TerrainModifiers(target);
+  }
   const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, { isCounter });
   target=resolveV39PassiveContext(target,passiveActionContext(target,skillRow),{isCounter:false}).unit;
   const runtime=globalThis.window?.__v39FieldRuntime;
@@ -352,11 +358,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   const resistanceKey = `${[...DAMAGE_TYPE_FIELDS,'精神'].includes(damageType)?damageType:strongestDamageType(adjusted.skillRow)}耐性`;
   const resistance = Math.max(0, number(target?.status?.[resistanceKey], number(target?.resistances?.[resistanceKey], 0)));
   const resistancePenetration = Math.max(0, number(adjusted.attacker?.status?.耐性貫通, 0));
-  const effectiveResistance = Math.max(0, resistance - resistancePenetration);
-  const resistanceRate = Math.min(1, effectiveResistance / 100);
-  const targetLevel = Math.max(1, Math.floor(number(target?.level, target?.status?.Lv || 1)));
-  const levelReduction = (targetLevel / 10) * effectiveResistance;
-  const reducedPower = Math.max(0, power - levelReduction);
+  const {effectiveResistance,resistanceRate,targetLevel,levelReduction,reducedPower}=resolveV39ResistanceReduction(power,number(target?.level,target?.status?.Lv||1),resistance,resistancePenetration);
   const attackCount = Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)))
     * Math.max(1,Math.floor(number(adjusted.attacker?.combatProfile?.attackCount,1)));
   const magicalAttack = text(adjusted.skillRow?.攻撃手段) === "魔法" || magicalJudge;

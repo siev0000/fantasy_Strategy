@@ -3,7 +3,7 @@ import effectList320 from "../../../../assets/effect/320×240/effect_list.json";
 import effectListAnimation1 from "../../../../assets/effect/アニメーション1/effect_list.json";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { resolveV39EffectPlaybackSettings, setV39EffectSettingsCatalog } from "../../lib/v39-effect-settings.js";
-import { normalizeV39EffectTransform, resolveV39EffectTransform, V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
+import { normalizeV39EffectTransform, resolveV39EffectTransform, resolveV39EffectBeam, V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
 import { getV39EffectCategories } from "../../lib/v39-effect-category-settings.js";
 import { getV39EffectAttributes } from "../../lib/v39-effect-attribute-settings.js";
 import { resolveV39CombatEffect } from "../../lib/v39-combat-effect-rules.js";
@@ -134,7 +134,9 @@ export async function playV39MapEffect(request = {}) {
   const playbackSettings = { ...resolveV39EffectPlaybackSettings(requestedEffectName), ...combatEffect?.settings };
   const origin = request.attackerTile ? tileCenter(request.attackerTile.x, request.attackerTile.y) : null;
   const attackAngle = origin ? Math.atan2(position.y - origin.y, position.x - origin.x) * 180 / Math.PI : 0;
-  const transform = resolveV39EffectTransform(area ? {...playbackSettings,offsetX:0,offsetY:0} : playbackSettings, position, attackAngle, request.angleDeg);
+  const endpoint=request.worldX !== undefined && request.worldY !== undefined ? {x:number(request.worldX),y:number(request.worldY)} : tileCenter(x,y);
+  const beam=resolveV39EffectBeam(playbackSettings,origin,endpoint);
+  const transform = beam || resolveV39EffectTransform(area ? {...playbackSettings,offsetX:0,offsetY:0} : playbackSettings, position, attackAngle, request.angleDeg);
   const angleDeg = transform.angleDeg;
   const sequence = resolveSequence(playbackSettings.sequenceName);
   if (!sequence.length) return false;
@@ -183,7 +185,9 @@ export async function playV39MapEffect(request = {}) {
       y:transform.y,
       sequenceSources:sequence.map((entry) => entry.source),
       scalePercent,
-      fitDiameterPx:area ? area.diameter * Math.max(1,scaleMultiplier) : undefined,
+      fitDiameterPx:!beam && area ? area.diameter * Math.max(1,scaleMultiplier) : undefined,
+      stretchLengthPx:beam?.stretchLengthPx,
+      stretchAxis:beam?.stretchAxis,
       angleDeg,
       tint,
       gradientEnabled,

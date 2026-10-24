@@ -1,0 +1,106 @@
+{
+  "version": "1.1.0",
+  "input": "output\\sheet-merge-copied.xlsx",
+  "output_dir": "output\\sheet-merge-check",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "効果",
+    "説明",
+    "範囲",
+    "体制",
+    "外交姿勢",
+    "組織"
+  ],
+  "source_sheets": {
+    "効果": "用語辞書",
+    "説明": "用語辞書",
+    "範囲": "用語辞書",
+    "体制": "国家設定",
+    "外交姿勢": "国家設定",
+    "組織": "国家設定"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "説明",
+    "範囲",
+    "組織",
+    "外交姿勢",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 6,
+    "records": 121,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "効果",
+      "output": "効果.json",
+      "input_rows": 62,
+      "records": 62,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "説明",
+      "output": "説明.json",
+      "input_rows": 15,
+      "records": 15,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "範囲",
+      "output": "範囲.json",
+      "input_rows": 23,
+      "records": 23,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "体制",
+      "output": "体制.json",
+      "input_rows": 13,
+      "records": 12,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 1,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "外交姿勢",
+      "output": "外交姿勢.json",
+      "input_rows": 5,
+      "records": 5,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "組織",
+      "output": "組織.json",
+      "input_rows": 4,
+      "records": 4,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

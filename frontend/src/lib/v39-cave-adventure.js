@@ -1,4 +1,5 @@
 import { classData, raceData, equipmentData } from "./game-data-registry.js";
+import {isV39RacePlayable} from './v39-race-definitions.js';
 import {v39HazardRecoveryMultiplier} from './v39-hazard-zones.js';
 import { buildV39UnitEntity, buildV39ClassEquipment, getV39InitialJobClasses } from "./v39-unit-creation-rules.js";
 import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
@@ -11,7 +12,7 @@ import { getHexNeighborCoords } from "./hex-grid.js";
 import { V39_CAVE_BALANCE as balance } from "./v39-gameplay-balance.js";
 import { createCaveSites, caveSiteVisible } from "./v39-cave-sites.js";
 
-export const caveRaceOptions = raceData.filter(row=>classData.some(item=>item.名前===row.className));
+export const caveRaceOptions = raceData.filter(isV39RacePlayable);
 export const caveClassOptions = getV39InitialJobClasses();
 export const caveEquipmentOptions = equipmentData.filter(row=>getV39EquipmentSlotCandidates(row).length);
 const key = tile => `${tile.x},${tile.y}`;

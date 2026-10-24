@@ -202,7 +202,7 @@ export function advanceV39AutomaticTransport(state, playerId, mapData, turnNumbe
       const resource = assignment.resource, field = stockField(resource);
       if (isV39UnitInsideSettlement(unit, origin) && assignment.leg === "return") {
         const amount = Math.max(0, Math.min(number(origin[field]?.[resource]),
-          resolveV39UnitCargoCapacity(unit) - resolveV39CargoLoad(cargo)));
+          resolveV39UnitCargoCapacity(unit,state) - resolveV39CargoLoad(cargo)));
         if (amount > 0) {
           const updatedOrigin = normalizeV39Village({ ...origin, [field]:{ ...origin[field],
             [resource]:number(origin[field]?.[resource]) - amount } }, player.race);

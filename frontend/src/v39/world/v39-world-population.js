@@ -2,6 +2,7 @@ import {describeV39VillagePlan} from '../../lib/v39-village-plans.js';
 import {hasV39VillageContact,recordV39VillageContact} from '../../lib/v39-village-contacts.js';
 import {focusV39MapTile} from '../map/v39-map-focus.js';
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import {isV39RacePlayable,normalizeV39RaceName} from '../../lib/v39-race-definitions.js';
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import {getV39VictoryLandmarkStatus} from '../../lib/v39-victory-rules.js';
@@ -78,7 +79,7 @@ window.restV39VillageParty=restVillage;
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const keyOf = (x, y) => `${Math.floor(number(x))},${Math.floor(number(y))}`;
-const normalizedRaceName = value => text(value) === "人間" ? "只人" : text(value);
+const normalizedRaceName = normalizeV39RaceName;
 
 function hash(value) {
   let result = 0;
@@ -96,7 +97,7 @@ function passableTiles(mapData) {
 }
 
 function raceDefinitions() {
-  return getGameDataRows("勢力").filter(row => text(row?.種族)).map(row => ({
+  return getGameDataRows("勢力").filter(row => isV39RacePlayable(row.種族)).map(row => ({
     race:normalizedRaceName(row.種族),
     dataName:text(row.種族),
     combatRaceName:text(row?.カナ) || normalizedRaceName(row.種族),

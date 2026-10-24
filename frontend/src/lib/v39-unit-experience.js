@@ -21,7 +21,7 @@ const classByName = new Map((Array.isArray(classData) ? classData : []).map(row 
 
 export function resolveV39UnitRaceCategory(unit = {}) {
   const raceName = text(unit?.race || unit?.raceName || unit?.種族);
-  const faction = factionData.find(row => [row?.種族, row?.カナ].some(value => text(value) === raceName));
+  const faction = factionData.find(row => [row?.種族, row?.カナ,...(row?.旧名称||[])].some(value => text(value) === raceName));
   const row = classByName.get(RACE_CLASS_NAME_MAP[raceName] || text(faction?.カナ) || raceName) || null;
   const kind = text(row?.種類);
   if (kind === "人族") return "human";

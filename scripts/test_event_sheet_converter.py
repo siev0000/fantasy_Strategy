@@ -66,6 +66,30 @@ class EventSheetTests(unittest.TestCase):
         self.assertFalse(report["エラー"])
         self.assertEqual(len(report["除外"]), 1)
 
+    def guardian(self, **extra):
+        return row(ID="GUARDIAN_SUPPLY", 分類="守護者", イベント種別="依頼", 目標="木材_100", 再発生=False,
+                   選択肢="1. 受注\n1-1. 報告\n1-2. 保留\n2. 辞退", 回答="1-1. ありがとう",
+                   条件="1-1. 依頼受注済み", 消費="1-1. 木材_100", 報酬="1-1. 友好度_35",
+                   効果="1. 依頼開始_GUARDIAN_SUPPLY\n1-1. 依頼完了_GUARDIAN_SUPPLY") | extra
+
+    def test_guardian_goals_and_rewards(self):
+        for goal, consume, radius, kind in (("木材_100", "1-1. 木材_100", "", "納品"),
+                                          ("見張り_3", "", 3, "見張り"), ("周辺脅威_3", "", 8, "周辺討伐")):
+            output, report = self.compile(self.guardian(目標=goal, 消費=consume, 対象範囲=radius))
+            self.assertFalse(report["エラー"], report)
+            event = output["イベント_守護者.json"][0]
+            self.assertEqual(event["目標"][0]["タイプ"], kind)
+            self.assertEqual(event["完了効果"], [{"タイプ": "守護者友好度変更", "設定": {"値": 35}}])
+            self.assertFalse(event["再発生"])
+
+    def test_guardian_does_not_silently_accept_unsupported_terms(self):
+        for extra in ({"報酬": "1-1. 金_10"}, {"報酬": "1. 友好度_35"}, {"期限ターン": 5},
+                      {"再発生": True}, {"再発生": 0}, {"発生条件": "種族_悪魔"}, {"条件": "1-1. 不明条件"},
+                      {"消費": "1-1. 木材_99"}, {"目標": "魂_1", "消費": "1-1. 魂_1"},
+                      {"目標": "見張り_3", "消費": "", "対象範囲": 0}, {"効果": "1. 契約開始_例"}):
+            with self.subTest(extra=extra):
+                self.assertTrue(self.compile(self.guardian(**extra))[1]["エラー"])
+
     def test_number_matching_not_line_order(self):
         output, report = self.compile(row())
         self.assertFalse(report["エラー"])

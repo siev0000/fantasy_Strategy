@@ -4,6 +4,7 @@ import RaceSelectModal from "../../components/RaceSelectModal.vue";
 import ClassSelectModal from "../../components/ClassSelectModal.vue";
 import CharacterNameModal from "../../components/CharacterNameModal.vue";
 import { applyV39InitialSovereignProfile } from "../core/v39-initial-sovereign.js";
+import {isV39RacePlayable,normalizeV39RaceName} from '../../lib/v39-race-definitions.js';
 
 const selectedRace = ref("");
 const selectedClass = ref("");
@@ -22,7 +23,11 @@ function openSetup(detail = {}) {
     multiplayerRaceOnly:detail?.multiplayerRaceOnly === true,
     multiplayerProfile:detail?.multiplayerProfile === true
   };
-  selectedRace.value = String(detail?.race || "").trim();
+  selectedRace.value = normalizeV39RaceName(detail?.race);
+  if(detail?.skipRace===true&&!isV39RacePlayable(selectedRace.value)){
+    closeAll();
+    return false;
+  }
   selectedClass.value = "";
   selectedCharacterName.value = "主人公";
   selectedVillageName.value = "はじまりの村";
@@ -55,8 +60,8 @@ function backToClass() {
 }
 
 function confirmRace(race) {
-  selectedRace.value = String(race || "").trim();
-  if (!selectedRace.value) return;
+  selectedRace.value = normalizeV39RaceName(race);
+  if (!isV39RacePlayable(selectedRace.value)) return;
   if (setupTarget.value?.multiplayerRaceOnly) {
     const playerId = setupTarget.value.playerId;
     closeAll();
@@ -99,7 +104,7 @@ function confirmName(payload) {
   const target = setupTarget.value;
   const characterName = String(payload?.characterName || "").trim().slice(0, 20);
   const villageName = String(payload?.villageName || "").trim().slice(0, 20);
-  if (!target || !selectedRace.value || !selectedClass.value || !characterName || !villageName) return;
+  if (!target || !isV39RacePlayable(selectedRace.value) || !selectedClass.value || !characterName || !villageName) return;
 
   const profile = {
     playerId:target.playerId,

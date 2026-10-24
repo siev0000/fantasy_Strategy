@@ -87,7 +87,7 @@ export function renderV39VillageHub(options){
     onActorChange:id=>{onActorChange(id);selectV39TradeNegotiator(id,village.id);},preparationHost:root.querySelector('[data-hub-preparation]')});
   const talk=[['status','村の様子を聞く','現在の計画や困っていることを確認します。'],['relation','交流する',`友好関係を深めます。食料 ${V39_NEUTRAL_VILLAGE_BALANCE.improveRelationCost}`],['village-rest','部隊で休息','村で部隊を休ませます。AP30'],['vassal','属国化を交渉','村を自国の保護下に置く交渉です。'],['raid','村を襲撃','戦闘を開始する敵対行動です。']];
   if(resolveV39SpecialVillage(village))talk.splice(1,0,['special-offering','生贄の奉納・軍隊加入','奉納する人数に応じて、軍隊を1駒・2駒・3駒と配下に迎えます。']);
-  if(resolveV39SpecialVillage(village)?.reincarnation?.enabled)talk.splice(2,0,['special-reincarnation','転生を交渉','生贄を奉納し、交渉者本人が対応種族Lv3を取得して主要種族を変更します。']);
+  if(resolveV39SpecialVillage(village)?.reincarnation?.enabled)talk.splice(2,0,['special-reincarnation','転生を交渉','生贄を奉納し、交渉者本人の主要種族を変更します。最低取得Lvは祭壇に応じて強化されます（施設なしLv3）。']);
   if(village.sacrificeContract?.active&&village.sacrificeContract.playerId===state.activePlayerId&&village.heldUnits?.length)
     talk.splice(3,0,['sacrifice-receive','生贄を受け取る',resolveV39ImmediateSoulAmount(state.players.find(p=>p.id===state.activePlayerId),1)>0?'確保された生贄を受け取り、魂へ即時変換します。装備は荷物に入ります。':'確保された捕虜・死体を受け取ります。装備は荷物に入ります。']);
   if(!talk.some(([id])=>id===selectedTalk))selectedTalk='status';

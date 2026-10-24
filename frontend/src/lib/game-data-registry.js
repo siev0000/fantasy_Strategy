@@ -41,6 +41,7 @@ const tableMap = new Map();
 const sourcePathMap = new Map();
 
 const TABLE_KEY_FIELDS = Object.freeze({
+  召喚モンスターリスト:["名称"],
   性格会話:["性格"],
   モンスター合成:["素材", "合成結果"],
   イベント会話:["ID"],
@@ -57,6 +58,7 @@ const TABLE_KEY_FIELDS = Object.freeze({
 });
 
 const RUNTIME_ROW_KEY_FIELDS = Object.freeze({
+  召喚モンスターリスト:["名称"],
   道具:["名前"],
   特産品:["名前"],
   クラス:["名前"], テストクラス:["名前"], スキル一覧:["名前"], テストスキル:["名前"],
@@ -67,6 +69,7 @@ const RUNTIME_ROW_KEY_FIELDS = Object.freeze({
 });
 
 const REQUIRED_FIELDS = Object.freeze({
+  召喚モンスターリスト:["名称","分類","クラス構成","総Lv"],
   道具:["名前", "AP消費", "携帯上限"],
   特産品:["名前", "出現地形", "分類"],
   クラス:["名前", "種類"], テストクラス:["名前", "種類", "テスト専用"], スキル一覧:["名前", "行動"], テストスキル:["名前", "行動", "テスト専用"], 装備:["装備名", "装備箇所"],
@@ -77,8 +80,9 @@ const REQUIRED_FIELDS = Object.freeze({
 });
 
 export const GAME_DATA_TABLE_METADATA = Object.freeze({
+  召喚モンスターリスト:{purpose:"系統召喚の候補・総合Lv・クラス配分・装備。対応施設で召喚可能上限と生成Lvを補正",status:"connected"},
   モンスター合成:{purpose:"左側の確定レシピ。専用モーダルで素材確認・一括消費・生成・半減/20%共有/端数EXP成長。未登録ボーナスクラスは付与せず実行",status:"connected"},
-  イベント会話:{purpose:"番号付きイベントシートの有効行。一般村の会話・納品・討伐を接続、他分類は未接続",status:"connected"},
+  イベント会話:{purpose:"イベントシートの有効行。一般村の旧保存互換と守護者の納品・見張り・周辺討伐を接続。他分類は未接続",status:"connected"},
   道具:{purpose:"携帯消耗品、素材、製造施設、回復・浄化・霧",status:"connected"},
   特産品:{ purpose:"マップ特産品・特殊資源の配置地形、採取周期、研究速度補正", status:"connected" },
   クラス:{ purpose:"種族・職業・敵クラスの能力、成長、装備、取得スキル", status:"connected" },
@@ -91,18 +95,18 @@ export const GAME_DATA_TABLE_METADATA = Object.freeze({
   効果:{ purpose:"スキル追加効果名の説明辞書", status:"definition-only" },
   災害:{ purpose:"災害ID、種類、効果説明と将来の発生条件。未追加の数値列は共通暫定設定を使用", status:"connected" },
   施設:{ purpose:"建設条件、費用、時間、範囲、都市・土地効果", status:"connected" },
-  種族:{ purpose:"種族選択肢と表示情報", status:"connected" },
+  種族:{ purpose:"種族統合表の表示・能力参照・初期設定・使用可否・旧名称。未完成は新規選択しない", status:"connected" },
   種族分類:{ purpose:"開始種族UIの人族・亜人・魔族分類説明", status:"connected" },
   種族幸福度仮:{ purpose:"クラス.jsonへ幸福度係数を追加するまでの種族別幸福度フォールバック", status:"provisional" },
   出現敵:{ purpose:"地形別の敵、レベル、装備、個体数", status:"connected" },
   消費量:{ purpose:"装備生成、レア度変更、付与の資材費", status:"connected" },
-  勢力:{ purpose:"勢力種族の初期人口、土地傾向、国家基礎値", status:"connected" },
+  勢力:{ purpose:"種族統合表から生成した初期人口・土地傾向・国家基礎値。編集元は種族1表", status:"connected" },
   説明:{ purpose:"技能・能力の表示説明", status:"connected" },
   組織:{ purpose:"国家組織の選択肢と補正", status:"connected" },
   装備:{ purpose:"装備性能、スロット、素材倍率、特性", status:"connected" },
   体制:{ purpose:"国家体制の選択肢と補正", status:"connected" },
   地形:{ purpose:"地形性能、産出、危険度、能力補正、探索資源", status:"connected" },
-  都市:{ purpose:"都市特性候補。仮条件・仮効果の確定待ち", status:"provisional" },
+  都市:{ purpose:"通常特化の条件/数値補正/切替待機とレア特性の数値補正。遺産は未接続", status:"connected" },
   都市基本データ:{ purpose:"都市項目の分類・説明・対応技能", status:"definition-only" },
   範囲:{ purpose:"スキル範囲名と対象抽出処理タイプ", status:"connected" },
   付与:{ purpose:"装備付与、条件、費用、能力・耐性・攻撃属性", status:"connected" },

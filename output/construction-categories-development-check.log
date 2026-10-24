@@ -1,0 +1,128 @@
+{
+  "report": {
+    "afterOneTurn": [
+      {
+        "id": "development-a",
+        "scaleKey": "village",
+        "remainingTurns": 1
+      },
+      {
+        "id": "development-b",
+        "scaleKey": "village",
+        "remainingTurns": 1
+      }
+    ],
+    "completed": [
+      {
+        "id": "development-a",
+        "scaleKey": "town",
+        "scaleLevel": 2,
+        "type": "町",
+        "hasProject": false
+      },
+      {
+        "id": "development-b",
+        "scaleKey": "town",
+        "scaleLevel": 2,
+        "type": "町",
+        "hasProject": false
+      }
+    ],
+    "firstResidential": {
+      "center": "town",
+      "attached": "town",
+      "owner": "4,4"
+    },
+    "secondResidential": {
+      "center": "town",
+      "attached": "town",
+      "owner": "8,4"
+    },
+    "worldSettlement": {
+      "scaleKey": "town",
+      "scaleLevel": 2,
+      "type": "町",
+      "occupiedCount": 2,
+      "markerTextureKey": "v39-settlement:町",
+      "markerWidth": 119,
+      "markerHeight": 57
+    },
+    "completionCount": 2,
+    "turnNumber": 3,
+    "started": {
+      "buttonEnabled": true,
+      "selectionBeforeCount": 1,
+      "selectionAfterCount": 2,
+      "selectionCandidateCount": 2,
+      "selectedTerrain": "海",
+      "renderedSelectionCount": 2,
+      "targetScaleKey": "town",
+      "totalTurns": 7,
+      "baseBuildTurns": 8,
+      "reusedResidentialTileCount": 1,
+      "turnReduction": 1,
+      "wood": 800
+    },
+    "occupiedFacilityCheck": {
+      "available": false,
+      "reasons": [
+        "拠点占有・発展工事中のマスには施設を建設できません",
+        "このマスには既に施設があります"
+      ]
+    },
+    "ui": {
+      "hasButton": true,
+      "buttonText": "拠点発展",
+      "modalVisible": true,
+      "modalTitle": "拠点発展",
+      "modalText": "\n    拠点発展×\n    \n      拠点 発展試験A人口 137\n      拠点発展: 町 → 都市工期 16T\n      人口 137/260居住マス 2/3木材 800/400黒木 999/2特木 1,000/1石材 800/400鉄 913.4/200銀鉄 1,000/1金 1,007.7/50銀 1,000/1\n      \n      人口不足 / 居住マス不足拡張位置を選択\n    \n  "
+    },
+    "conversion": {
+      "cancelledWithoutChanges": true,
+      "confirmationMentionsRemoval": true,
+      "tileKey": "4,5",
+      "facilityRemoved": true,
+      "constructionRemoved": true,
+      "constructionBlockedDuringConversion": true,
+      "hasButton": true,
+      "buttonEnabled": true,
+      "startedRemaining": 2,
+      "startedMarkerLabel": "居",
+      "turnFontSize": 18.599999999999998,
+      "turnLabel": "🔨2T",
+      "turnAboveCenter": true,
+      "previewAlpha": 0.5,
+      "townCapacity": 120,
+      "resourceCapacity": 135,
+      "settlementCapacity": 135,
+      "expectedCapacities": [
+        120,
+        135,
+        135
+      ],
+      "completedMode": "settlement",
+      "hasQueue": false,
+      "renderedResidentialTiles": 5,
+      "facilityMarkerLabel": "農",
+      "facilityMarkerIconFrame": "facility:農場",
+      "facilityMarkerTextureKey": "v39-facility-icon-sheet:1",
+      "facilityMarkerDisplaySize": 60,
+      "residentialVillageTextureKey": "v39-settlement:村",
+      "residentialVillageDisplaySize": 60
+    },
+    "reversal": {
+      "buttonText": "居住化解除",
+      "cancelledWithoutChanges": true,
+      "replacementStarted": true,
+      "replacementCompleted": true,
+      "facilityRemovedAgain": true,
+      "confirmationMentionsReplacement": true,
+      "farmMultiplier": 2,
+      "residentialReplacementAvailable": true,
+      "completedMode": "resource",
+      "villageMarkerRemaining": false,
+      "occupiedReversalBlocked": true
+    }
+  },
+  "errors": []
+}

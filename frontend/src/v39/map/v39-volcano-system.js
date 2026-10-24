@@ -15,6 +15,7 @@ import {
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { resolveV39TerrainTurnDamageRule, resolveV39UnitCapabilityValue } from "../../lib/v39-terrain-traversal.js";
 import { V39_VOLCANO_DAMAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import {resolveV39CityHazardDamage} from '../../lib/v39-city-specialization-rules.js';
 
 const asCount = value => Math.max(0, Math.floor(Number(value) || 0));
 const LAVA_DAMAGE_RULE = resolveV39TerrainTurnDamageRule("溶岩");
@@ -208,6 +209,7 @@ export function applyTerritoryHazardDamage(state, mapData, events, turnNumber) {
     const territory = normalizeTerritoryStateRecord(territoryStateByTile[target.key]);
     const maxHp = Math.max(1, Number(territory.maxHp) || TERRITORY_TILE_MAX_HP);
     const beforeHp = Math.max(0, Math.min(maxHp, Number(territory.hp) || 0));
+    target.damage=resolveV39CityHazardDamage(state,target.key,target.damage,'災害:火山噴火');
     const afterHp = Math.max(0, beforeHp - target.damage);
     const settlementId = territorySettlementId(territory);
     const player = (state.players || []).find(row => text(row?.id) === ownerPlayerId);

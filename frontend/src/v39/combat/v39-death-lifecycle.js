@@ -158,7 +158,7 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
   let expired = 0;
   let cargoRecovered = 0;
   let groundLootCreated = 0;
-  let changed = summons.removed.length>0;
+  let changed = summons.state!==before;
   const groundExpiry=expireV39GroundCorpses(state.groundLootByTile,turnNumber);
   let groundLootByTile = groundExpiry.groundLootByTile;
   changed ||= groundExpiry.changed;
@@ -303,6 +303,7 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
     window.setV39GameState({ players, enemies, enemySquads, enemyNests, groundLootByTile,neutralVillages,
       settlements:(state.settlements || []).map(row=>villageById.get(row.id)||row) }, { reason:"death-lifecycle" });
     window.dispatchEvent(new CustomEvent("v39:death-lifecycle", { detail:{ collected, expired, cargoRecovered, groundLootCreated } }));
+    for(const report of summons.reports)window.appendV39ActivityLog?.(report.playerId,'召喚',report.message);
   }
   return { collected, expired, cargoRecovered, groundLootCreated };
 }

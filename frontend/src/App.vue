@@ -4,6 +4,7 @@ import { io } from "socket.io-client";
 import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH, UI_MANUAL_SCALE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./lib/research-tree-config.js";
 import { raceData as raceSelectionDb } from "./lib/game-data-registry.js";
+import {isV39RacePlayable,getV39PlayableRaceDefinitions} from './lib/v39-race-definitions.js';
 import { applyV39InitialSovereignProfile } from "./v39/core/v39-initial-sovereign.js";
 import {
   GAME_START_DEFAULT_MAX_COMBAT_TURNS,
@@ -26,7 +27,7 @@ const CharacterNameModal = defineAsyncComponent(() => import("./components/Chara
 
 const DEFAULT_RACE_STATS = { hp: 100, atk: 20 };
 const RACES = Array.isArray(raceSelectionDb)
-  ? raceSelectionDb.reduce((acc, item) => {
+  ? raceSelectionDb.filter(isV39RacePlayable).reduce((acc, item) => {
     const key = String(item?.key || "").trim();
     if (!key) return acc;
     const hp = Number(item?.hp);
@@ -273,7 +274,7 @@ const gameStartRandomPlacementEnabled = ref(true);
 const gameStartPlayerPlacementMode = ref("all_random");
 const gameStartSetupSlotIds = ref([]);
 const gameStartSetupSlotIndex = ref(0);
-const selectedRace = ref(raceSelectionDb?.[0]?.key || "只人");
+const selectedRace = ref(getV39PlayableRaceDefinitions()[0]?.key || "");
 const selectedClass = ref("");
 const selectedCharacterName = ref("主人公");
 const selectedVillageName = ref("はじまりの村");

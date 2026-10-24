@@ -8,6 +8,7 @@ import {resolveV39ToolSlots,getV39ToolLoadout,getV39ConsumableDefinitions,setV39
 import {getV39ClassPromotionOptions,acquireV39UpperClass} from "../../lib/v39-class-progression.js";
 import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
 import {renderV39AnimalArmyControls,openV39AnimalArmyEditor} from './v39-animal-army-ui.js';
+import {renderV39UnitHeading} from './v39-unit-heading.js';
 
 let activeTab = "character";
 let selectedId = "";
@@ -168,12 +169,10 @@ function detailTabs(unit) {
 function unitDetail(unit,current=faction()) {
   if (!unit) return '<div class="detail-pane squad-detail-pane"><p>表示対象がありません。</p></div>';
   const remainingTurns = remainingV39Turns(unit?.deadExpireTurn, currentV39TurnNumber());
-  const role = text(unit?.role || unit?.state, "キャラクター");
   return `<div class="detail-pane squad-detail-pane v39-char-unit-detail">
     <div class="v39-char-unit-head">
       <div class="squad-detail-minihead v39-char-unit-meta">
-        <span class="squad-detail-chip">${escapeHtml(unit?.race || '-')} / ${escapeHtml(unit?.className || '-')}</span>
-        <span class="squad-detail-chip">${escapeHtml(role)} ・ Lv${Math.max(1, Math.floor(number(unit?.level, 1)))}</span>
+        ${renderV39UnitHeading(unit)}
       </div>
       ${activeTab === "corpse" ? `<p>消滅まで ${remainingTurns}ターン / 座標 (${number(unit.x)}, ${number(unit.y)})</p>` : ""}
       ${activeTab === "dead"&&!storageOf(unit) ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}

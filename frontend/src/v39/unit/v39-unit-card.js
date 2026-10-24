@@ -3,7 +3,9 @@ import { getRaceIconSrc } from "../../lib/race-icon-library.js";
 import {resolveUnitArtwork} from '../../lib/map-entity-artwork.js';
 import {resolveMonsterSheetArtwork} from '../../lib/monster-sheet-artwork.js';
 import "./v39-unit-card.css";
+import './v39-unit-card-name-fit.js';
 import {v39SquadMoveMode,v39SquadMoveLabel} from '../../lib/v39-squad-coordination.js';
+import {getV39UnitDisplayName} from './v39-unit-heading.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const ratio = (current,max) => max > 0 ? Math.max(0,Math.min(100,current/max*100)) : 0;
@@ -53,7 +55,7 @@ function portraitMarkup(unit, exp, expTitle) {
 // 部隊一覧と自キャラ画面が同じカードを描く。クリック先だけ呼出し側で指定する。
 export function renderV39UnitCard(unit, options={}) {
   const id = options.id ?? unit.id;
-  const name = options.name ?? unit.name ?? id;
+  const name = getV39UnitDisplayName(unit,options.name ?? unit.name ?? id);
   const exp = resolveV39UnitExpDisplay(unit);
   const hp = options.hp ?? {current:count(unit.hp ?? unit.currentHp),max:count(unit.maxHp ?? unit.status?.HP)};
   const ap = options.ap ?? {current:count(unit.ap ?? unit.currentAp),max:count(unit.maxAp ?? unit.apMax ?? 100)};
@@ -70,5 +72,5 @@ export function renderV39UnitCard(unit, options={}) {
   const attribute = options.attribute || (options.character ? "data-v39-character-row" : "data-v39-unit-id");
   const badgeIcon = levelBadgeIconMarkup(unit, options);
   const badge = (options.portrait ? portraitMarkup(unit,exp,expTitle) : '') || `<span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}"><span class="squad-icon">${badgeIcon}</span><span class="squad-level-number" aria-hidden="true">${exp.level}</span></span>`;
-  return `<button class="squad-card${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead ? " dead" : ""}" ${attribute}="${escapeHtml(id)}" title="${escapeHtml(name)} Lv${exp.level}"><div class="squad-card-top"><div class="squad-main">${badge}<div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div><div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div></button>`;
+  return `<button class="squad-card${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead ? " dead" : ""}${options.collapseUnselected !== false ? " v39-card-collapse-unselected" : ""}" ${attribute}="${escapeHtml(id)}" title="${escapeHtml(name)} Lv${exp.level}"><div class="squad-card-top"><div class="squad-main">${badge}<div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div><div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div></button>`;
 }

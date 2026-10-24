@@ -77,8 +77,8 @@ try{
     });
     assert.equal(factionAndBackground.value,-1);assert.equal(factionAndBackground.surface,-2);
     await page.evaluate(()=>{window.activateV39FooterTab('settlement');window.renderV39SettlementPanel();});
-    await page.locator('[data-settlement-page-select="production"]').click();
-    await page.locator('[data-settlement-fold="facility"] summary').click();
+    await page.locator('[data-settlement-page-select="facility"]').click();
+    await page.locator('[data-settlement-facility]').filter({hasText:'墓地'}).click();
     assert.match(await page.locator('[data-v39-cemetery-quota]').innerText(),/残り1\/2/);
     await page.screenshot({path:`output/web-game/cemetery/quota-${width}.png`});
     const combat=await page.evaluate(async()=>{

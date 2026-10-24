@@ -622,7 +622,8 @@ function renderVisibilityLayers() {
       .map(([key]) => key)
   );
   const residentialTiles = residentialTileKeys(state, player, faction);
-  const developmentSelection = window.getV39SettlementDevelopmentSelection?.() || null;
+  // Facility placement shares the existing tile-selection highlight renderer.
+  const developmentSelection = window.getV39FacilitySummonSelection?.() || window.getV39SettlementDevelopmentSelection?.() || null;
   const playerColor = resolveV39PlayerColor(state,player.id);
   const fogSignature = [
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,

@@ -4,6 +4,8 @@
 
 Before changing game behavior, read `docs/README.md` and follow its documentation priority.
 
+Before adding, reorganizing, or archiving documentation, read `docs/DOCUMENTATION_RULES.md`. Update an existing subsystem document instead of creating parallel current-spec memos. Regenerate `docs/INDEX.md` with `npm run docs:index` and validate with `npm run check:docs` after moving documents.
+
 When changing spreadsheet-managed game data, read `docs/SPREADSHEET_DATA_WORKFLOW.md` before editing generated JSON. For these datasets, `@game_data` is the editing source and `data/source/export/json` is generated runtime data. Do not preserve legacy JSON-only fields that no longer exist in the spreadsheet.
 
 When creating a new class or intentionally redesigning a class skill layout in `CS` / `クラス`, read `docs/CLASS_SKILL_RULES.md` before writing to the spreadsheet. Confirm the fixed A/P count and level placement before editing. The default layout is `Lv1 A / Lv3 P / Lv5 A / Lv7 P / Lv9 A / Lv10 P` (A3 / P3). Do not infer a different layout from legacy class rows alone. Exceptions require an explicit current user instruction, a current subsystem rule, or a confirmed implementation-compatibility reason. After editing, read back the `CS` rows and `クラス` Skill1-Skill10 values before reporting completion.

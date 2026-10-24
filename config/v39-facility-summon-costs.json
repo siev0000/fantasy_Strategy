@@ -1,0 +1,6 @@
+{
+  "goldPerLevel": 2,
+  "upkeepIntervalTurns": 5,
+  "maximumBatchCount": 4,
+  "batchLevelRatios": {"1":1,"2":0.75,"3":0.6,"4":0.5}
+}

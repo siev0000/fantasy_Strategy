@@ -7,6 +7,15 @@
 .settlement-pages{display:flex;gap:4px}
 .settlement-pages button{flex:1;min-width:0;font:inherit;font-size:var(--font-body);min-height:34px;border:1px solid #40575e;border-radius:6px;background:#14252b;color:#b6c9cc}
 .settlement-pages [aria-pressed=true]{background:#21404a;border-color:#75cbd5;color:#fff}
+.settlement-tab{position:relative}
+.settlement-tab:has([data-city-notice]){padding-right:26px}
+.settlement-city-alert,.settlement-city-new{display:inline-flex;align-items:center;justify-content:center;background:#f1c754;color:#182126!important;border:1px solid #ffe59a;border-radius:50%;width:20px;height:20px;flex:0 0 20px;font-weight:900;font-size:15px;line-height:1}
+.settlement-city-alert{position:absolute;top:5px;right:5px}
+.settlement-city-shortcut{display:flex;align-items:center;justify-content:center;gap:5px;margin-left:auto;min-height:34px;max-width:100%;padding:4px 8px;border:1px solid #cda957;border-radius:6px;background:#302a18;color:#ffe092;font:inherit;white-space:normal}
+.settlement-city-option{display:grid;gap:4px;text-align:left;border-radius:6px;width:100%;white-space:normal;overflow-wrap:anywhere}
+.settlement-city-option>b{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.settlement-city-wait{color:#e8c76b}
+@media(max-width:600px){.settlement-city-shortcut{flex:1 0 100%;margin-left:0}}
 #footSettlement [data-settlement-page][hidden]{display:none}
 #footTile.land-panel{align-content:start;grid-auto-rows:max-content;overflow:auto;min-height:0;height:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 #footTile .land-item{min-width:0}

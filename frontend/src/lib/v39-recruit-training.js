@@ -3,10 +3,12 @@ import {resolveV39UnitRaceCategory, resolveV39UnitTotalExpForLevel, grantV39Unit
 import {resolveV39AssignedRecruitInstructor, getV39RecruitInstructorFacility} from "./v39-recruit-instructor.js";
 import {getV39FacilityRecruitmentClasses} from "./v39-facility-recruitment.js";
 import {supplyV39DefaultTools} from "./v39-consumables.js";
+import {resolveV39CitySpecializationModifiers} from './v39-city-specialization-rules.js';
 
 export function inspectV39RecruitTraining(faction, village, unit, state = {}, tileKey) {
   const instructor = resolveV39AssignedRecruitInstructor(faction, village, unit, state, tileKey);
-  const expPerTurn = balance.baseExpPerTurn + (instructor ? Number(instructor.level) * balance.instructorExpPerLevel : 0);
+  const expPerTurn = Math.max(1,Math.floor((balance.baseExpPerTurn + (instructor ? Number(instructor.level) * balance.instructorExpPerLevel : 0))
+    * Math.max(0,1+resolveV39CitySpecializationModifiers(village).trainingExpPercent/100)));
   const requiredExp = Math.max(balance.minimumTrainingExp,
     resolveV39UnitTotalExpForLevel(unit.level, resolveV39UnitRaceCategory(unit)));
   return {requiredExp, expPerTurn, instructor, instructorRewardExp:balance.instructorRewardExpPerTurn, turns:Math.ceil(requiredExp / expPerTurn)};

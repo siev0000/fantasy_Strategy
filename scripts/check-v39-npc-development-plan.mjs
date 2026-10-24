@@ -6,7 +6,7 @@ const browser=await chromium.launch({headless:true});
 const page=await browser.newPage({viewport:{width:1100,height:850}});
 const errors=[];page.on('pageerror',error=>errors.push(String(error)));
 try {
-  await page.goto('http://127.0.0.1:3000',{waitUntil:'networkidle'});
+  await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3000',{waitUntil:'networkidle'});
   await page.waitForFunction(()=>typeof window.runV39FactionAiTurn==='function');
   const result=await page.evaluate(async()=>{
     window.closeV39PlayModeSelection();await window.setV39TestMode(true);

@@ -71,7 +71,7 @@ function factionRowForVillage(village) {
     text(village?.race),
     text(village?.combatRaceName)
   ].filter(Boolean));
-  let row = FACTION_ROWS.find(item => candidates.has(text(item?.種族)) || candidates.has(text(item?.カナ))) || null;
+  let row = FACTION_ROWS.find(item => [item?.種族,item?.カナ,...(item?.旧名称||[])].some(name=>candidates.has(text(name)))) || null;
   if (row) return row;
 
   const raceRow = RACE_ROWS.find(item => (

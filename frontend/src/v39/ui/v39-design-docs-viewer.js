@@ -6,7 +6,7 @@ const DOC_MODULES = import.meta.glob("../../../../docs/**/*.md", {
 
 const DOCS = Object.entries(DOC_MODULES)
   .map(([sourcePath, content]) => {
-    const path = sourcePath.replace(/^\.\.\/\.\.\//, "");
+    const path = sourcePath.replace(/^(?:\.\.\/)+/, "");
     const fileName = path.split("/").pop() || path;
     const text = String(content ?? "");
     const titleLine = text.split(/\r?\n/).find(line => /^#\s+/.test(line.trim()));
@@ -133,7 +133,7 @@ function installStyles() {
 #v39-design-docs-modal .v39-doc-head-title span{display:block;margin-top:1px;color:#82959a;font-size:var(--font-secondary)}
 #v39-design-docs-modal .v39-doc-close{width:34px;height:32px;border:1px solid #485a61;border-radius:7px;background:#19272c;color:#e8efee;font-size:var(--font-heading);cursor:pointer}
 #v39-design-docs-modal .v39-doc-body{min-height:0;display:grid;grid-template-columns:250px minmax(0,1fr)}
-#v39-design-docs-modal .v39-doc-sidebar{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:7px;padding:8px;border-right:1px solid #304147;background:rgba(5,12,15,.7)}
+#v39-design-docs-modal .v39-doc-sidebar{min-width:0;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:7px;padding:8px;border-right:1px solid #304147;background:rgba(5,12,15,.7)}
 #v39-design-docs-modal .v39-doc-search{width:100%;box-sizing:border-box;padding:8px 9px;border:1px solid #3d4e55;border-radius:7px;background:#101a1f;color:#e5edeb;outline:none}
 #v39-design-docs-modal .v39-doc-list{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:4px;scrollbar-width:none}
 #v39-design-docs-modal .v39-doc-list::-webkit-scrollbar,#v39-design-docs-modal .v39-doc-reader::-webkit-scrollbar{display:none}
@@ -173,14 +173,15 @@ function createViewer() {
         <button type="button" class="v39-doc-close" aria-label="閉じる">×</button>
       </header>
       <div class="v39-doc-body">
-        <aside class="v39-doc-sidebar"><input class="v39-doc-search" type="search" placeholder="設計書を検索"><div class="v39-doc-list"></div></aside>
+        <aside class="v39-doc-sidebar"><select class="v39-doc-category v39-doc-search" aria-label="文書の分類"><option value="current">現行資料</option><option value="all">すべて</option><option value="development/">開発手順</option><option value="tests/">検証手順</option><option value="tasks/">分野別タスク</option><option value="design/">設計・検討案</option><option value="references/">参考資料</option><option value="history/">履歴・旧メモ</option></select><input class="v39-doc-search" type="search" aria-label="設計書を検索" placeholder="設計書を検索"><div class="v39-doc-list"></div></aside>
         <main class="v39-doc-main"><div class="v39-doc-current"><strong>設計書を選択</strong><code>docs/</code></div><article class="v39-doc-reader"></article></main>
       </div>
     </section>`;
   document.body.appendChild(overlay);
 
   const list = overlay.querySelector(".v39-doc-list");
-  const search = overlay.querySelector(".v39-doc-search");
+  const search = overlay.querySelector('input.v39-doc-search');
+  const category = overlay.querySelector('.v39-doc-category');
   const title = overlay.querySelector(".v39-doc-current strong");
   const path = overlay.querySelector(".v39-doc-current code");
   const reader = overlay.querySelector(".v39-doc-reader");
@@ -200,18 +201,27 @@ function createViewer() {
   const renderList = query => {
     if (!list) return;
     const q = String(query || "").trim().toLowerCase();
-    const filtered = DOCS.filter(doc => !q || `${doc.title}\n${doc.path}`.toLowerCase().includes(q));
+    const group = category?.value || "current";
+    const filtered = DOCS.filter(doc => {
+      const local = doc.path.replace(/^docs\//, "");
+      const matchesGroup = group === "all" || (group === "current"
+        ? local.startsWith("rules/") || (!local.includes("/") && local !== "MEMO.md")
+        : group === "history/" ? local.startsWith(group) || local === "MEMO.md" : local.startsWith(group));
+      return matchesGroup && (!q || `${doc.title}\n${doc.path}`.toLowerCase().includes(q));
+    });
     list.innerHTML = "";
     for (const doc of filtered) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "v39-doc-item";
       button.dataset.path = doc.path;
+      button.classList.toggle("active", doc.path === selectedPath);
       button.innerHTML = `<b>${escapeHtml(doc.title)}</b><small>${escapeHtml(doc.path)}</small>`;
       button.addEventListener("click", () => selectDoc(doc));
       list.appendChild(button);
     }
     if (!filtered.length) list.innerHTML = '<div class="v39-doc-empty">該当する設計書がありません</div>';
+    return filtered;
   };
 
   const close = () => {
@@ -221,11 +231,15 @@ function createViewer() {
   const open = () => {
     overlay.classList.add("open");
     overlay.setAttribute("aria-hidden", "false");
-    if (!selectedPath && DOCS.length) selectDoc(DOCS.find(doc => doc.path.endsWith("v39_ui_interaction_map.md")) || DOCS[0]);
+    if (!selectedPath && DOCS.length) selectDoc(DOCS.find(doc => doc.path === "docs/README.md") || DOCS[0]);
     if (!DOCS.length && reader) reader.innerHTML = '<div class="v39-doc-empty">設計書がビルドに含まれていません</div>';
   };
 
   search?.addEventListener("input", () => renderList(search.value));
+  category?.addEventListener("change", () => {
+    const filtered = renderList(search?.value);
+    if (filtered?.length && !filtered.some(doc => doc.path === selectedPath)) selectDoc(filtered[0]);
+  });
   overlay.querySelector(".v39-doc-close")?.addEventListener("click", close);
   overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
   window.addEventListener("keydown", event => { if (event.key === "Escape" && overlay.classList.contains("open")) close(); });

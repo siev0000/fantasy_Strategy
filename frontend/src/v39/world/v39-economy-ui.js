@@ -1,5 +1,4 @@
 import {
-  MATERIAL_RESOURCE_KEYS,
   advanceV39EconomyTurn,
   buildV39ResourceSnapshot,
   facilityDefinitions,
@@ -11,15 +10,17 @@ import {
   startV39Construction,
   startV39SettlementDevelopment
 } from "../../lib/v39-economy-rules.js";
-import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import { getSelectedSettlement,getFactionSettlementById } from "../../lib/settlement-state.js";
 import { getVillageScaleDefinitions, resolveVillageScaleDefinition } from "../../composables/villageCoreUtils.js";
 import { getHexOffsetNeighbors } from "../../lib/hex-grid.js";
+import './v39-land-construction-ui.js';
 
 const modal = document.getElementById("buildModal");
 let selectedTile = null;
 let selectedFacilityName = "";
 let processingTurn = false;
 let developmentSelection = null;
+let developmentSettlementId='';
 
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -28,10 +29,11 @@ const escapeHtml = value => text(value).replace(/[&<>"']/g, char => ({
   "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
 }[char]));
 
-function activeContext() {
+function activeContext(forDevelopment=false) {
   const state = window.getV39GameState?.({ includeWorlds:false });
   const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
-  return { state, player, village:normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race) };
+  const village=forDevelopment&&developmentSettlementId?getFactionSettlementById(player?.factionState,developmentSettlementId):getSelectedSettlement(player?.factionState);
+  return { state, player, village:normalizeV39Village(village, player?.race) };
 }
 
 function targetTile(context = activeContext()) {
@@ -41,41 +43,19 @@ function targetTile(context = activeContext()) {
   return selectedTile;
 }
 
-function formatCost(cost, stock = {}) {
-  const parts = MATERIAL_RESOURCE_KEYS.filter(key => number(cost?.[key]) > 0).map(key => `${key} ${formatNumber(stock?.[key])}/${formatNumber(cost[key])}`);
-  return parts.length ? parts.join(" / ") : "なし";
-}
-
-function formatRequirements(requirements, levels = {}) {
-  const parts = Object.entries(requirements || {}).filter(([, value]) => number(value) > 0).map(([key, value]) => `${key} ${formatNumber(levels?.[key])}/${formatNumber(value)}`);
-  return parts.length ? parts.join(" / ") : "なし";
-}
-
 function ensureBuildModalShell() {
   if (!(modal instanceof HTMLElement) || modal.dataset.v39EconomyReady === "true") return;
   modal.dataset.v39EconomyReady = "true";
   modal.innerHTML = `<div class="modal v39-build-modal">
-    <div class="modal-head"><h2>都市・建設</h2><button class="close" data-close>×</button></div>
+    <div class="modal-head"><h2>拠点発展</h2><button class="close" data-close>×</button></div>
     <div class="modal-body v39-build-body">
       <header class="v39-build-summary" id="v39-build-summary"></header>
       <section class="v39-development" id="v39-development"></section>
-      <div class="v39-build-layout">
-        <div class="v39-build-list" id="v39-build-list"></div>
-        <section class="v39-build-detail" id="v39-build-detail"></section>
-      </div>
-      <section class="v39-build-queue" id="v39-build-queue"></section>
     </div>
   </div>`;
   modal.querySelector("[data-close]")?.addEventListener("click", () => modal.classList.remove("open"));
   modal.addEventListener("click", event => {
-    const facilityButton = event.target instanceof Element ? event.target.closest("[data-v39-facility]") : null;
-    if (facilityButton) {
-      selectedFacilityName = text(facilityButton.dataset.v39Facility);
-      renderBuildModal();
-      return;
-    }
     if (event.target instanceof Element && event.target.closest("#v39-development-start")) startSelectedDevelopment();
-    if (event.target instanceof Element && event.target.closest("#v39-build-start")) startSelectedConstruction();
   });
   installStyles();
 }
@@ -86,18 +66,8 @@ function installStyles() {
   style.id = "v39-economy-style";
   style.textContent = `
     .v39-build-modal{width:min(920px,94vw);height:min(680px,88vh)}
-    .v39-build-body{display:grid!important;grid-template-rows:auto auto minmax(0,1fr) auto;gap:8px;overflow:hidden!important}
+    .v39-build-body{display:grid!important;grid-template-rows:auto auto;align-content:start;gap:8px;overflow:auto!important}
     .v39-build-summary{display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #3f555d;border-radius:8px;background:#101d22;font-size:var(--font-body)}
-    .v39-build-summary b{color:#88dfab}.v39-build-layout{display:grid;grid-template-columns:minmax(250px,42%) minmax(0,1fr);gap:8px;min-height:0}
-    .v39-build-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:6px;overflow:auto;padding-right:3px}
-    .v39-build-item{min-height:66px;padding:7px;text-align:left;border:1px solid #40545b;border-radius:7px;background:#142329;color:#e5eeee;cursor:pointer}
-    .v39-build-item strong,.v39-build-item span{display:block}.v39-build-item strong{font-size:var(--font-body)}.v39-build-item span{margin-top:3px;color:#9fb0b4;font-size:var(--font-secondary)}
-    .v39-build-item.active{border:2px solid #67cddd;background:#17343c}.v39-build-item.unavailable{opacity:.48}
-    .v39-build-detail{overflow:auto;padding:12px;border:1px solid #465b63;border-radius:8px;background:#111e23;color:#dae7e7}
-    .v39-build-detail h3{margin:0 0 8px;font-size:var(--font-size-21)}.v39-build-detail p{font-size:var(--font-body);line-height:1.55}.v39-build-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-    .v39-build-fact{padding:8px;border-radius:6px;background:#192a30}.v39-build-fact span,.v39-build-fact b{display:block}.v39-build-fact span{font-size:var(--font-secondary);color:#93a5aa}.v39-build-fact b{margin-top:2px;font-size:var(--font-body)}
-    #v39-build-start{width:100%;min-height:42px;margin-top:10px;border:1px solid #c29c45;border-radius:7px;background:#3c3217;color:#ffe6a0;font-size:var(--font-size-16);font-weight:800;cursor:pointer}
-    #v39-build-start:disabled{cursor:not-allowed;opacity:.4}.v39-build-reasons{min-height:22px;margin-top:8px;color:#e89a89;font-size:var(--font-secondary)}
     .v39-development{display:grid;gap:7px;padding:9px;border:1px solid #477680;border-radius:8px;background:#102228;color:#e9f5f3}
     .v39-development-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.v39-development-head strong{font-size:var(--font-size-16)}.v39-development-head span{font-size:var(--font-secondary);color:#9bb0b4}
     .v39-development-requirements{display:flex;flex-wrap:wrap;gap:5px}.v39-development-requirement{padding:5px 7px;border:1px solid #526268;border-radius:6px;background:#17282e;font-size:var(--font-secondary)}.v39-development-requirement.met{border-color:#4d8b68;color:#bce7ca}.v39-development-requirement.shortage{border-color:#8c594f;color:#efb0a2}
@@ -105,8 +75,7 @@ function installStyles() {
     #v39-development-start{min-height:36px;padding:6px 12px;border:1px solid #67cddd;border-radius:7px;background:#17343c;color:#efffff;font-size:var(--font-body);font-weight:800;cursor:pointer}#v39-development-start:disabled{opacity:.4;cursor:not-allowed}
     .v39-development-selection-toolbar{position:fixed;top:76px;left:50%;z-index:6000;transform:translateX(-50%);display:flex;align-items:center;gap:8px;max-width:calc(100vw - 24px);padding:9px 11px;border:2px solid #67cddd;border-radius:9px;background:rgba(9,24,29,.97);box-shadow:0 5px 18px rgba(0,0,0,.4);color:#eaffff;font-size:var(--font-body);font-weight:700}
     .v39-development-selection-toolbar button{min-height:34px;padding:5px 10px;border:1px solid #597078;border-radius:6px;background:#17282e;color:#e8f4f3;font-size:var(--font-body);font-weight:700;cursor:pointer}.v39-development-selection-toolbar button.confirm{border-color:#d2aa4c;background:#443716;color:#ffe69d}.v39-development-selection-toolbar button:disabled{opacity:.4;cursor:not-allowed}
-    .v39-build-queue{display:flex;gap:6px;min-height:42px;overflow-x:auto}.v39-build-queue-item{flex:0 0 auto;padding:7px 10px;border:1px solid #53666c;border-radius:7px;background:#17252a;font-size:var(--font-secondary)}.v39-build-queue-empty{color:#829397;font-size:var(--font-secondary);padding:8px}
-    @media(max-width:680px){.v39-build-modal{height:92vh}.v39-build-layout{grid-template-columns:1fr;grid-template-rows:minmax(130px,42%) minmax(0,1fr)}.v39-build-list{grid-template-columns:1fr 1fr}.v39-build-facts{grid-template-columns:1fr}.v39-build-item{min-height:58px}}
+    @media(max-width:680px){.v39-build-modal{height:92vh}}
   `;
   document.head.appendChild(style);
 }
@@ -118,17 +87,11 @@ function substitutionText(payment) {
 function renderBuildModal() {
   ensureBuildModalShell();
   if (!(modal instanceof HTMLElement)) return;
-  const context = activeContext();
-  const target = targetTile(context);
-  const definitions = facilityDefinitions();
-  if (!selectedFacilityName || !definitions.some(row => row.name === selectedFacilityName)) selectedFacilityName = definitions[0]?.name || "";
-  const selected = definitions.find(row => row.name === selectedFacilityName) || null;
-  const checks = new Map(definitions.map(definition => [definition.name, inspectV39Construction(context.state, context.player, definition, target)]));
-  const selectedCheck = selected ? checks.get(selected.name) : null;
-  const summary = modal.querySelector("#v39-build-summary");
-  if (summary) summary.innerHTML = context.village?.placed
-    ? `<span>都市 <b>${text(context.village.name) || "拠点"}</b></span><span>人口 <b>${formatNumber(context.village.population)}</b></span><span>施設 <b>${selectedCheck?.used || 0}/${selectedCheck?.capacity || 0}</b></span><span>対象 <b>(${target?.x ?? "-"}, ${target?.y ?? "-"}) ${text(target?.special || target?.terrain)}</b></span>`
-    : `<span>初期拠点を配置してください</span>`;
+  const context = activeContext(true);
+  const summary = modal.querySelector('#v39-build-summary');
+  if(summary)summary.innerHTML=context.village?.placed
+    ? `<span>拠点 <b>${escapeHtml(context.village.name||'拠点')}</b></span><span>人口 <b>${formatNumber(context.village.population)}</b></span>`
+    : '<span>初期拠点を配置してください</span>';
   const development = inspectV39SettlementDevelopment(context.state, context.player?.id, context.village?.settlementId || context.village?.id);
   const developmentPanel = modal.querySelector("#v39-development");
   if (developmentPanel) {
@@ -139,24 +102,6 @@ function renderBuildModal() {
       ${development.materialPayment?.substitutions?.length ? `<div>${escapeHtml(substitutionText(development.materialPayment))}</div>` : ""}
       <div class="v39-development-actions"><span class="v39-development-reason">${escapeHtml(development.reason)}</span>${development.next ? `<button type="button" id="v39-development-start" ${development.available ? "" : "disabled"}>${project ? "発展工事中" : "拡張位置を選択"}</button>` : ""}</div>`;
   }
-  const list = modal.querySelector("#v39-build-list");
-  if (list) list.innerHTML = definitions.map(definition => {
-    const check = checks.get(definition.name);
-    return `<button type="button" class="v39-build-item${definition.name === selectedFacilityName ? " active" : ""}${check?.available ? "" : " unavailable"}" data-v39-facility="${definition.name}"><strong>${definition.name}</strong><span>${definition.terrainCondition} / ${definition.buildTurns}T</span></button>`;
-  }).join("");
-  const detail = modal.querySelector("#v39-build-detail");
-  if (detail && selected) detail.innerHTML = `<h3>${selected.name}</h3><p>${selected.description}</p><div class="v39-build-facts">
-    <div class="v39-build-fact"><span>地形 (対象/必要)</span><b>${text(target?.terrain || target?.special || "-")} / ${selected.terrainCondition}</b></div>
-    <div class="v39-build-fact"><span>建築時間</span><b>${selected.buildTurns}ターン</b></div>
-    <div class="v39-build-fact"><span>研究条件 (現在/必要)</span><b>${formatRequirements(selected.requirements, selectedCheck?.levels)}</b></div>
-    ${selectedCheck?.researchCheck?.mode === "item" ? `<div class="v39-build-fact"><span>解禁研究</span><b>${selectedCheck.researchCheck.requirements.map(row => `${escapeHtml(row.name)} (${row.completed ? "完了" : "未完了"})`).join("・") || (selectedCheck.researchCheck.reasons.length ? "未設定" : "指定なし")}</b></div>` : ""}
-    <div class="v39-build-fact"><span>必要資材 (所持/必要)</span><b>${formatCost(selectedCheck?.materialPayment?.cost || selected.cost, context.village?.materialStockByType)}</b>${selectedCheck?.materialPayment?.substitutions?.length ? `<span>${escapeHtml(substitutionText(selectedCheck.materialPayment))}</span>` : ""}</div>
-    <div class="v39-build-fact"><span>施設枠 (使用/上限)</span><b>${selectedCheck?.used || 0}/${selectedCheck?.capacity || 0}</b></div>
-  </div><div class="v39-build-reasons">${selectedCheck?.available ? "建設可能" : (selectedCheck?.reasons || ["建設不可"]).join(" / ")}</div><button type="button" id="v39-build-start" ${selectedCheck?.available ? "" : "disabled"}>建設開始</button>`;
-  const queue = modal.querySelector("#v39-build-queue");
-  if (queue) queue.innerHTML = context.village?.constructionQueue?.length
-    ? context.village.constructionQueue.map(item => `<div class="v39-build-queue-item"><b>${item.facilityName}</b> (${item.tileKey}) 残${item.remainingTurns}/${item.totalTurns}T</div>`).join("")
-    : `<div class="v39-build-queue-empty">建設中の施設なし</div>`;
 }
 
 function developmentSelectionKey(tile) {
@@ -208,11 +153,11 @@ function clearDevelopmentSelection({ reopen = false } = {}) {
   developmentSelection = null;
   renderDevelopmentSelectionToolbar();
   dispatchDevelopmentSelectionChanged();
-  if (reopen) window.openV39SettlementDevelopment?.();
+  if (reopen) window.openV39SettlementDevelopment?.(developmentSettlementId);
 }
 
 function beginDevelopmentSelection() {
-  const context = activeContext();
+  const context = activeContext(true);
   const inspection = inspectV39SettlementDevelopment(context.state, context.player?.id, context.village?.settlementId || context.village?.id);
   if (!inspection.available) {
     window.showV39TurnBanner?.(`発展不可: ${inspection.reason}`);
@@ -238,7 +183,7 @@ function beginDevelopmentSelection() {
 
 function confirmDevelopmentSelection() {
   if (!developmentSelection || developmentSelection.selectedTileKeys.size !== developmentSelection.requiredTiles) return { ok:false, reason:"必要マス数を選択してください" };
-  const context = activeContext();
+  const context = activeContext(true);
   const result = startV39SettlementDevelopment(
     context.state,
     developmentSelection.playerId,
@@ -299,9 +244,9 @@ function startSelectedDevelopment() {
   return beginDevelopmentSelection();
 }
 
-function startSelectedConstruction() {
+function startSelectedConstruction(explicitTile=null) {
   const context = activeContext();
-  const tile = targetTile(context);
+  const tile = explicitTile||targetTile(context);
   const definition = facilityDefinitions().find(row => row.name === selectedFacilityName);
   const check = definition ? inspectV39Construction(context.state, context.player, definition, tile) : null;
   if (check?.available && check.replacesResidential && !window.confirm(`居住地を${selectedFacilityName}へ変更しますか？\n村表示を施設に置き換え、建設資材を消費します。\n工期は${definition.buildTurns}ターンです。施設があるマスの基礎産出は土地用途の設定に従います。`)) return { ok:false, cancelled:true };
@@ -410,9 +355,10 @@ window.inspectV39Construction = (facilityName, tile = targetTile()) => {
 window.startV39Construction = (facilityName, tile = targetTile()) => {
   selectedFacilityName = text(facilityName);
   selectedTile = tile;
-  return startSelectedConstruction();
+  return startSelectedConstruction(tile);
 };
-window.openV39SettlementDevelopment = () => {
+window.openV39SettlementDevelopment = (settlementId='') => {
+  developmentSettlementId=settlementId;
   renderBuildModal();
   modal?.classList.add("open");
   return modal instanceof HTMLElement;
@@ -444,7 +390,7 @@ document.addEventListener("click", event => {
     return;
   }
   const buildButton = event.target instanceof Element ? event.target.closest('[data-open="build"]') : null;
-  if (buildButton) window.requestAnimationFrame(renderBuildModal);
+  if (buildButton){developmentSettlementId='';window.requestAnimationFrame(renderBuildModal);}
 });
 ensureBuildModalShell();
 refresh();

@@ -18,8 +18,8 @@ try {
     });
     assert(layout.tabs.right<=layout.detail.x,'settlement list is left of details');
     assert(layout.detail.right<=width&&layout.develop.right<=width);
-    await page.locator('[data-settlement-page-select="production"]').click();
-    await page.locator('[data-settlement-fold="facility"]').waitFor({state:'visible'});
+    await page.locator('[data-settlement-page-select="facility"]').click();
+    await page.locator('[data-settlement-page="facility"]').waitFor({state:'visible'});
     assert.equal(await page.locator('[data-settlement-development]').isVisible(),false);
     const last=page.locator('.settlement-tab').last();await last.click();
     await page.waitForSelector('.settlement-tab.active');
@@ -29,7 +29,7 @@ try {
       return {before,after:document.querySelector('.settlement-tabs').scrollTop,
         selected:document.querySelector('.settlement-tab.active').textContent};
     });assert.equal(scroll.before,scroll.after);assert.match(scroll.selected,/東の交易町/);
-    assert.equal(await page.locator('[data-settlement-page-select="production"]').getAttribute('aria-pressed'),'true');
+    assert.equal(await page.locator('[data-settlement-page-select="facility"]').getAttribute('aria-pressed'),'true');
     const headerY=await page.locator('.settlement-pages').evaluate(el=>el.getBoundingClientRect().y);
     await page.locator('.settlement-fold-list').evaluate(el=>el.scrollTop=1000);
     assert.equal(await page.locator('.settlement-pages').evaluate(el=>el.getBoundingClientRect().y),headerY);

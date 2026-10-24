@@ -1,0 +1,6 @@
+Facility summoning OK {
+  failures: [],
+  slotId: '["expedition-test-base","fire_ritual_site_1"]',
+  deathTurn: 1,
+  readyTurn: 26
+}

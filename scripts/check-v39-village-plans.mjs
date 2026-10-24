@@ -5,7 +5,7 @@ mkdirSync('output/web-game/village-plans',{recursive:true});
 const browser=await chromium.launch();
 try{
  const page=await browser.newPage({viewport:{width:390,height:850}}),errors=[];page.on('pageerror',error=>errors.push(String(error)));
- await page.goto('http://127.0.0.1:3024',{waitUntil:'networkidle'});
+ await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3024',{waitUntil:'networkidle'});
  const result=await page.evaluate(async()=>{
   const rules=await import('/src/lib/v39-neutral-village-rules.js');
   const plans=await import('/src/lib/v39-village-plans.js');
