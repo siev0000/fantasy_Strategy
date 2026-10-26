@@ -82,7 +82,7 @@ jobs:
           elif new_resolver not in text:
               raise SystemExit('resolveFieldVisionBonusTiles target not found')
 
-          marker = '''function drawScoutRangeBoundaryOverlay(data, scoutRangeTileKeys, graphics, wrapOffsets) {'''
+          marker = 'function drawScoutRangeBoundaryOverlay(data, scoutRangeTileKeys, graphics, wrapOffsets) {'
           refresh = '''function refreshFieldVisionFromGameSettings() {
             if (typeof window !== "undefined" && typeof window.getV39GameSettings === "function") {
               gameStartSettings.value = normalizeGameStartSettings(window.getV39GameSettings());
@@ -98,7 +98,7 @@ jobs:
           }
 
           '''
-          if refresh not in text:
+          if 'window.refreshV39FieldVisionFromGameSettings = refreshFieldVisionFromGameSettings;' not in text:
               if marker not in text:
                   raise SystemExit('field vision refresh insertion target not found')
               text = text.replace(marker, refresh + marker, 1)
@@ -108,70 +108,62 @@ jobs:
           save = Path('frontend/src/v39/core/v39-save-system.js')
           text = save.read_text(encoding='utf-8')
 
-          import_line = '''import {normalizeV39RecoveryWaitPercent,updateV39RecoveryWaitSettings} from '../../lib/v39-recovery-wait.js';'''
-          settings_import = '''import { GAME_START_FIELD_VISION_BONUS_MAX, GAME_START_FIELD_VISION_BONUS_MIN, normalizeFieldVisionBonusTiles, normalizeGameStartSettings } from '../../lib/game-start-settings.js';'''
+          import_line = "import {normalizeV39RecoveryWaitPercent,updateV39RecoveryWaitSettings} from '../../lib/v39-recovery-wait.js';"
+          settings_import = "import { GAME_START_FIELD_VISION_BONUS_MAX, GAME_START_FIELD_VISION_BONUS_MIN, normalizeFieldVisionBonusTiles, normalizeGameStartSettings } from '../../lib/game-start-settings.js';"
           if settings_import not in text:
               if import_line not in text:
                   raise SystemExit('save-system import target not found')
               text = text.replace(import_line, import_line + '\n' + settings_import, 1)
 
-          recovery_section = '''    <section><h3>回復まで待機</h3>
-              <label>待機を終えるHP <input id="v39-recovery-wait-percent" type="number" min="1" max="100" step="1" aria-label="回復待機の目標HP率"> %</label>
-              <p>基本行動の「回復まで待機」で使用します。初期値100%。変更は待機中のユニットにも適用され、セーブに保存されます。</p>
-            </section>
-          '''
           vision_section = '''    <section><h3>フィールド視界</h3>
               <label>追加マス <input id="v39-field-vision-bonus" type="number" min="${GAME_START_FIELD_VISION_BONUS_MIN}" max="${GAME_START_FIELD_VISION_BONUS_MAX}" step="1" aria-label="フィールド視界追加マス"> マス</label>
               <p>地形を見渡せる範囲だけを追加します。初期値2マス。索敵・敵発見距離は広がらず、高低差で視界が遮られます。</p>
             </section>
           '''
-          if vision_section not in text:
-              if recovery_section not in text:
+          squad_marker = '    <section><h3>部隊編制</h3>'
+          if 'id="v39-field-vision-bonus"' not in text:
+              if squad_marker not in text:
                   raise SystemExit('settings UI insertion target not found')
-              text = text.replace(recovery_section, recovery_section + vision_section, 1)
+              text = text.replace(squad_marker, vision_section + squad_marker, 1)
 
-          old_decls = '''  const recoveryInput = document.getElementById('v39-recovery-wait-percent');'''
-          new_decls = '''  const recoveryInput = document.getElementById('v39-recovery-wait-percent');
-            const fieldVisionInput = document.getElementById('v39-field-vision-bonus');'''
-          if new_decls not in text:
+          old_decls = "  const recoveryInput = document.getElementById('v39-recovery-wait-percent');"
+          new_decls = old_decls + "\n  const fieldVisionInput = document.getElementById('v39-field-vision-bonus');"
+          if 'const fieldVisionInput =' not in text:
               if old_decls not in text:
                   raise SystemExit('settings input declaration target not found')
               text = text.replace(old_decls, new_decls, 1)
 
-          recovery_sync = '''  syncRecoverySetting();
-            recoveryInput.addEventListener('change',()=>{'''
+          recovery_sync = "  syncRecoverySetting();\n  recoveryInput.addEventListener('change',()=>{"
           combined_sync = '''  const syncFieldVisionSetting = () => {
-              if (!(fieldVisionInput instanceof HTMLInputElement)) return;
-              if (document.activeElement !== fieldVisionInput) {
-                fieldVisionInput.value = String(normalizeFieldVisionBonusTiles(window.getV39GameSettings?.()?.fieldVisionBonusTiles));
-              }
-            };
-            syncRecoverySetting();
-            syncFieldVisionSetting();
-            fieldVisionInput?.addEventListener('change',()=>{
-              const state = window.getV39GameState?.({includeWorlds:false});
-              if (!state || window.isV39MapInputLocked?.()) return;
-              const nextSettings = normalizeGameStartSettings({
-                ...state.gameSettings,
-                fieldVisionBonusTiles: fieldVisionInput.value
-              });
-              window.setV39GameState({gameSettings:nextSettings},{reason:'field-vision-setting'});
-              fieldVisionInput.value = String(nextSettings.fieldVisionBonusTiles);
-              window.refreshV39FieldVisionFromGameSettings?.();
+            if (!(fieldVisionInput instanceof HTMLInputElement)) return;
+            if (document.activeElement !== fieldVisionInput) {
+              fieldVisionInput.value = String(normalizeFieldVisionBonusTiles(window.getV39GameSettings?.()?.fieldVisionBonusTiles));
+            }
+          };
+          syncRecoverySetting();
+          syncFieldVisionSetting();
+          fieldVisionInput?.addEventListener('change',()=>{
+            const state = window.getV39GameState?.({includeWorlds:false});
+            if (!state || window.isV39MapInputLocked?.()) return;
+            const nextSettings = normalizeGameStartSettings({
+              ...state.gameSettings,
+              fieldVisionBonusTiles: fieldVisionInput.value
             });
-            recoveryInput.addEventListener('change',()=>{'''
-          if combined_sync not in text:
+            window.setV39GameState({gameSettings:nextSettings},{reason:'field-vision-setting'});
+            fieldVisionInput.value = String(nextSettings.fieldVisionBonusTiles);
+            window.refreshV39FieldVisionFromGameSettings?.();
+          });
+          recoveryInput.addEventListener('change',()=>{'''
+          if 'const syncFieldVisionSetting = () =>' not in text:
               if recovery_sync not in text:
                   raise SystemExit('settings sync target not found')
               text = text.replace(recovery_sync, combined_sync, 1)
 
-          event_line = '''  window.addEventListener('v39:game-state-changed',syncRecoverySetting);'''
-          event_lines = '''  window.addEventListener('v39:game-state-changed',syncRecoverySetting);
-            window.addEventListener('v39:game-state-changed',syncFieldVisionSetting);'''
-          if event_lines not in text:
+          event_line = "  window.addEventListener('v39:game-state-changed',syncRecoverySetting);"
+          if "window.addEventListener('v39:game-state-changed',syncFieldVisionSetting);" not in text:
               if event_line not in text:
                   raise SystemExit('settings event target not found')
-              text = text.replace(event_line, event_lines, 1)
+              text = text.replace(event_line, event_line + "\n  window.addEventListener('v39:game-state-changed',syncFieldVisionSetting);", 1)
 
           text = text.replace(
               '#v39-recovery-wait-percent{width:5em;',
