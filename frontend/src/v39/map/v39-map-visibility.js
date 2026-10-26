@@ -1,4 +1,6 @@
 import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
+import { normalizeFieldVisionBonusTiles } from "../../lib/game-start-settings.js";
+import { isV39FieldVisionPathClear } from "../../lib/v39-field-visibility.js";
 import {resolveV39PlayerColor} from '../../lib/v39-player-colors.js';
 import {buildV39TerritoryOverlayGroups,V39_TERRITORY_OVERLAY_STYLE as territoryStyle} from '../../lib/v39-territory-overlay.js';
 import { isV39FogVisionAllowed, advanceV39Fog } from "../../lib/v39-fog-rules.js";
@@ -238,6 +240,26 @@ function unitVisionRange(unit) {
   return resolveV39UnitVisionRange(unit, window.__v39FieldRuntime?.mapData);
 }
 
+function fieldVisionBonusTiles(state = gameState()) {
+  return normalizeFieldVisionBonusTiles(state?.gameSettings?.fieldVisionBonusTiles);
+}
+
+function addFieldVisionRange(data, sourceX, sourceY, range, output, applyFog = true) {
+  if (!(output instanceof Set)) return;
+  const sx = Math.floor(Number(sourceX));
+  const sy = Math.floor(Number(sourceY));
+  if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+  const candidates = new Set();
+  addVisionRange(data, sx, sy, range, candidates, null, 0, applyFog);
+  for (const key of candidates) {
+    const [x, y] = key.split(",").map(Number);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if ((x === sx && y === sy) || isV39FieldVisionPathClear(data, { x:sx, y:sy }, { x, y })) {
+      output.add(key);
+    }
+  }
+}
+
 function livingUnit(unit) {
   const hp = Number(unit?.currentHp ?? unit?.hp);
   return unit?.state !== "死亡" && unit?.condition !== "死亡" && (!Number.isFinite(hp) || hp > 0);
@@ -260,15 +282,20 @@ function unitsByTile(units = [], { livingOnly = false } = {}) {
 function buildCurrentVision(data, faction, state, playerId, applyFog = true) {
   const visible = new Set();
   const detectionByTile = applyFog ? new Map() : null;
+  const fieldBonus = fieldVisionBonusTiles(state);
   const settlements = data.isUnderground ? [] : getFactionSettlements(faction);
   for (const settlement of settlements) {
-    if (settlement?.placed) addVisionRange(data, settlement.x, settlement.y, BASE_VILLAGE_SCOUT_RANGE, visible, detectionByTile, 0, applyFog);
+    if (!settlement?.placed) continue;
+    const detectionRange = BASE_VILLAGE_SCOUT_RANGE;
+    addFieldVisionRange(data, settlement.x, settlement.y, detectionRange + fieldBonus, visible, applyFog);
+    if (detectionByTile) addVisionRange(data, settlement.x, settlement.y, detectionRange, new Set(), detectionByTile, 0, applyFog);
   }
   for (const units of unitsByTile((faction?.units||[]).filter(unit=>isV39UnitInWorld(unit,state.activeWorldId)), { livingOnly:true }).values()) {
     const sense = applyFog ? resolveDetectionGroupSense(units) : {scout:0};
     const lead = units[0];
-    const range = units.reduce((max, unit) => Math.max(max, unitVisionRange(unit)), V39_UNIT_VISION_BASE_RANGE);
-    addVisionRange(data, lead.x, lead.y, range, visible, detectionByTile, sense.scout, applyFog);
+    const detectionRange = units.reduce((max, unit) => Math.max(max, unitVisionRange(unit)), V39_UNIT_VISION_BASE_RANGE);
+    addFieldVisionRange(data, lead.x, lead.y, detectionRange + fieldBonus, visible, applyFog);
+    if (detectionByTile) addVisionRange(data, lead.x, lead.y, detectionRange, new Set(), detectionByTile, sense.scout, applyFog);
   }
   const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));
   for (const settlement of settlements) {
@@ -277,7 +304,9 @@ function buildCurrentVision(data, faction, state, playerId, applyFog = true) {
       const scout = (Array.isArray(names) ? names : []).reduce((sum, name) => sum + Math.max(0, Number(definitions.get(String(name))?.effects?.索敵) || 0), 0);
       if (scout <= 0) continue;
       const [x, y] = key.split(",").map(Number);
-      addVisionRange(data, x, y, V39_UNIT_VISION_BASE_RANGE + Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP), visible, detectionByTile, scout, applyFog);
+      const detectionRange = V39_UNIT_VISION_BASE_RANGE + Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP);
+      addFieldVisionRange(data, x, y, detectionRange + fieldBonus, visible, applyFog);
+      if (detectionByTile) addVisionRange(data, x, y, detectionRange, new Set(), detectionByTile, scout, applyFog);
     }
   }
   return { visible, detectionByTile };
@@ -289,7 +318,7 @@ function atmosphereDisplayVision(scene,data,faction,state,playerId) {
     .filter(row=>row.placed).map(row=>[row.x,row.y,Object.entries(row.tileFacilityMap||{})
       .map(([key,names])=>[key,names,state.territoryOwnerByTile?.[key]===playerId])]);
   const signature=JSON.stringify([atmosphereGeometryVersion,playerId,state.activeWorldId,data.w,data.h,
-    livingUnitScoutSignature(units),sources]);
+    fieldVisionBonusTiles(state),livingUnitScoutSignature(units),sources]);
   const cached=atmosphereVisionCache.get(scene);
   if(cached?.signature===signature)return cached.visible;
   const visible=buildCurrentVision(data,faction,state,playerId,false).visible;
@@ -451,12 +480,13 @@ function revealMovementPath(event) {
     (Array.isArray(faction.visibility?.exploredTileKeys) ? faction.visibility.exploredTileKeys : []).map(String)
   );
   const beforeSize = explored.size;
-  const visionRange = unitVisionRange(unit);
+  const visionRange = unitVisionRange(unit) + fieldVisionBonusTiles(state);
 
-  // Normal movement sends every traversed hex in path, so each step contributes its scouting range.
+  // Normal movement sends every traversed hex in path, so each step contributes its field-vision range.
+  // The visual bonus does not change detection/scout range, and height LOS still blocks terrain reveal.
   // Teleport-type movement can keep the jump behavior by sending no intermediate path nodes
   // (or only source/destination), which deliberately leaves the skipped corridor unexplored.
-  for (const node of path) addVisionRange(data, node?.x, node?.y, visionRange, explored);
+  for (const node of path) addFieldVisionRange(data, node?.x, node?.y, visionRange, explored);
 
   if (explored.size === beforeSize) {
     scheduleRender();
@@ -844,6 +874,12 @@ window.isV39EntityDetected = entityOrId => {
 window.getV39VisibilityStatus = () => ({ ...(window.__v39VisibilityStatus || {}) });
 window.inspectV39PlayerDetectionForEnemy = inspectPlayerDetectionForEnemy;
 window.renderV39Visibility = scheduleRender;
+window.refreshV39FieldVisionFromGameSettings = () => {
+  atmosphereGeometryVersion += 1;
+  lastRenderSignature = null;
+  lastFogSignature = null;
+  return scheduleRender();
+};
 window.addEventListener("v39:effect-attribute-settings-changed", () => {
   lastRenderSignature = null;
   scheduleRender();
