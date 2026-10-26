@@ -1,0 +1,49 @@
+name: Apply field vision patch v2
+
+on:
+  push:
+    branches:
+      - ui/mobile-responsive-port-20260912
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ui/mobile-responsive-port-20260912
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: python scripts/apply-field-vision-patch.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build:front
+
+      - name: Verify patch invariants
+        run: |
+          grep -F 'fieldVisionBonusTiles' frontend/src/components/PhaserMapGeneratorPanel.vue
+          grep -F 'addV39FieldVisionRangeKeys' frontend/src/components/PhaserMapGeneratorPanel.vue
+          grep -F 'const playerInRange = distance <= playerVisionRange;' frontend/src/components/PhaserMapGeneratorPanel.vue
+          grep -F 'フィールド視界追加マス' config/player_config_options.json
+
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: extend field vision without extending detection"
+          git push origin HEAD:ui/mobile-responsive-port-20260912
