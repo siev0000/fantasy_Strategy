@@ -1,6 +1,7 @@
 const SAVE_FORMAT = "fantasy-strategy-v39";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import {normalizeV39RecoveryWaitPercent,updateV39RecoveryWaitSettings} from '../../lib/v39-recovery-wait.js';
+import { GAME_START_FIELD_VISION_BONUS_MAX, GAME_START_FIELD_VISION_BONUS_MIN, normalizeFieldVisionBonusTiles, normalizeGameStartSettings } from '../../lib/game-start-settings.js';
 
 const SAVE_VERSION = 4;
 
@@ -290,16 +291,39 @@ function installSettingsUi() {
       <label>待機を終えるHP <input id="v39-recovery-wait-percent" type="number" min="1" max="100" step="1" aria-label="回復待機の目標HP率"> %</label>
       <p>基本行動の「回復まで待機」で使用します。初期値100%。変更は待機中のユニットにも適用され、セーブに保存されます。</p>
     </section>
+    <section><h3>フィールド視界</h3>
+    <label>追加マス <input id="v39-field-vision-bonus" type="number" min="${GAME_START_FIELD_VISION_BONUS_MIN}" max="${GAME_START_FIELD_VISION_BONUS_MAX}" step="1" aria-label="フィールド視界追加マス"> マス</label>
+    <p>地形を見渡せる範囲だけを追加します。初期値2マス。索敵・敵発見距離は広がらず、高低差で視界が遮られます。</p>
+  </section>
     <section><h3>部隊編制</h3><p>ユニット一覧の「部隊」タブから部隊の作成・メンバー変更・解散ができます。</p></section>
   </div>`;
   const status = document.getElementById("v39-save-status");
   const input = document.getElementById("v39-save-file");
   const recoveryInput = document.getElementById('v39-recovery-wait-percent');
+  const fieldVisionInput = document.getElementById('v39-field-vision-bonus');
   const syncRecoverySetting = () => {
     if (document.activeElement !== recoveryInput) recoveryInput.value = normalizeV39RecoveryWaitPercent(window.getV39GameSettings?.()?.recoveryWaitHpPercent);
   };
-  syncRecoverySetting();
-  recoveryInput.addEventListener('change',()=>{
+  const syncFieldVisionSetting = () => {
+  if (!(fieldVisionInput instanceof HTMLInputElement)) return;
+  if (document.activeElement !== fieldVisionInput) {
+    fieldVisionInput.value = String(normalizeFieldVisionBonusTiles(window.getV39GameSettings?.()?.fieldVisionBonusTiles));
+  }
+};
+syncRecoverySetting();
+syncFieldVisionSetting();
+fieldVisionInput?.addEventListener('change',()=>{
+  const state = window.getV39GameState?.({includeWorlds:false});
+  if (!state || window.isV39MapInputLocked?.()) return;
+  const nextSettings = normalizeGameStartSettings({
+    ...state.gameSettings,
+    fieldVisionBonusTiles: fieldVisionInput.value
+  });
+  window.setV39GameState({gameSettings:nextSettings},{reason:'field-vision-setting'});
+  fieldVisionInput.value = String(nextSettings.fieldVisionBonusTiles);
+  window.refreshV39FieldVisionFromGameSettings?.();
+});
+recoveryInput.addEventListener('change',()=>{
     const state=window.getV39GameState?.({includeWorlds:false});
     if (!state || window.isV39MapInputLocked?.()) return;
     const next=updateV39RecoveryWaitSettings(state,recoveryInput.value);
@@ -307,6 +331,7 @@ function installSettingsUi() {
     recoveryInput.value=next.gameSettings.recoveryWaitHpPercent;
   });
   window.addEventListener('v39:game-state-changed',syncRecoverySetting);
+  window.addEventListener('v39:game-state-changed',syncFieldVisionSetting);
   document.getElementById("v39-save-download")?.addEventListener("click", () => {
     try { downloadSave(); status.textContent = "セーブを保存しました"; }
     catch (error) { status.textContent = error.message; }
@@ -328,7 +353,7 @@ function installSettingsUi() {
 
 function installStyles() {
   const style = document.createElement("style");
-  style.textContent = `#v39-recovery-wait-percent{width:5em;min-height:36px;background:#0d171b;color:#edf5f3;border:1px solid #54717a;border-radius:6px;padding:3px 6px;font:inherit}.v39-save-settings{display:grid;gap:10px}.v39-save-settings section{border:1px solid #3b4d54;border-radius:8px;background:#121e23;padding:12px}.v39-save-settings h3{margin:0 0 6px;font-size:var(--font-size-16)}.v39-save-settings p,.v39-save-settings output{font-size:var(--font-body);color:#afbec1}.v39-save-settings section>div{display:flex;gap:8px;margin:10px 0}.v39-save-settings button{min-height:40px;border:1px solid #54717a;border-radius:7px;background:#173039;color:#edf5f3;padding:6px 12px;font-size:var(--font-body);font-weight:700}`;
+  style.textContent = `#v39-recovery-wait-percent,#v39-field-vision-bonus{width:5em;min-height:36px;background:#0d171b;color:#edf5f3;border:1px solid #54717a;border-radius:6px;padding:3px 6px;font:inherit}.v39-save-settings{display:grid;gap:10px}.v39-save-settings section{border:1px solid #3b4d54;border-radius:8px;background:#121e23;padding:12px}.v39-save-settings h3{margin:0 0 6px;font-size:var(--font-size-16)}.v39-save-settings p,.v39-save-settings output{font-size:var(--font-body);color:#afbec1}.v39-save-settings section>div{display:flex;gap:8px;margin:10px 0}.v39-save-settings button{min-height:40px;border:1px solid #54717a;border-radius:7px;background:#173039;color:#edf5f3;padding:6px 12px;font-size:var(--font-body);font-weight:700}`;
   document.head.appendChild(style);
 }
 

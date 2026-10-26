@@ -7241,7 +7241,12 @@ function addVisionRangeKeys(data, sx, sy, range, outSet) {
 }
 
 function resolveFieldVisionBonusTiles() {
-  return normalizeFieldVisionBonusTiles(gameStartSettings.value?.fieldVisionBonusTiles);
+  const runtimeSettings = typeof window !== "undefined" && typeof window.getV39GameSettings === "function"
+    ? window.getV39GameSettings()
+    : null;
+  return normalizeFieldVisionBonusTiles(
+    runtimeSettings?.fieldVisionBonusTiles ?? gameStartSettings.value?.fieldVisionBonusTiles
+  );
 }
 
 function buildCurrentScoutRangeTileSet(data) {
@@ -7258,6 +7263,20 @@ function buildCurrentScoutRangeTileSet(data) {
     addVisionRangeKeys(data, unit.x, unit.y, resolveUnitVisionRange(unit) + fieldVisionBonus, dynamicVisible);
   }
   return dynamicVisible;
+}
+
+function refreshFieldVisionFromGameSettings() {
+  if (typeof window !== "undefined" && typeof window.getV39GameSettings === "function") {
+    gameStartSettings.value = normalizeGameStartSettings(window.getV39GameSettings());
+  }
+  if (!currentData.value?.grid) return false;
+  rebuildVisibleTiles(currentData.value);
+  requestMapRender();
+  return true;
+}
+
+if (typeof window !== "undefined") {
+  window.refreshV39FieldVisionFromGameSettings = refreshFieldVisionFromGameSettings;
 }
 
 function drawScoutRangeBoundaryOverlay(data, scoutRangeTileKeys, graphics, wrapOffsets) {
@@ -13845,7 +13864,7 @@ function nudgeCustomIslandInt(key, delta) {
 function applyDisplaySettingChange(payload) {
   if (!payload || !payload.key) return;
   const { key, value } = payload;
-  if (key === "section_game" || key === "section_display" || key === "section_audio") return;
+  if (key === "section_display" || key === "section_audio") return;
   if (key === "gameViewPreset") {
     // 解像度は固定運用。既存データ互換のため入力は受けるが反映しない。
     return;
@@ -24077,7 +24096,7 @@ watch(() => props.characterCommand, command => {
       <div class="settings-modal quick-settings-modal">
         <h3>設定メニュー</h3>
         <div class="quick-settings-grid">
-          <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">ゲーム設定</button>
+          <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">音量/表示設定</button>
           <label class="setting-row quick-settings-checkbox-row">
             <input
               type="checkbox"
