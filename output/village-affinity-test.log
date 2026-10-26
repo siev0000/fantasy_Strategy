@@ -1,0 +1,104 @@
+{
+  "result": {
+    "elf": {
+      "definitionId": "FACILITY_school",
+      "name": "学校の建設",
+      "priority": 65,
+      "stages": [
+        "安全確保",
+        "資材確保",
+        "建設"
+      ],
+      "needs": [],
+      "targetEnemyIds": [],
+      "blockers": [],
+      "stage": "建設",
+      "help": false,
+      "tile": {
+        "x": 3,
+        "y": 3,
+        "key": "3,3"
+      },
+      "facilityName": "学校",
+      "affinity": {
+        "share": 100,
+        "bonus": 30,
+        "cities": [
+          "学術都市",
+          "神秘都市"
+        ]
+      }
+    },
+    "ogre": {
+      "definitionId": "FACILITY_barracks",
+      "name": "兵舎の建設",
+      "priority": 85,
+      "stages": [
+        "安全確保",
+        "資材確保",
+        "建設"
+      ],
+      "needs": [],
+      "targetEnemyIds": [],
+      "blockers": [],
+      "stage": "建設",
+      "help": false,
+      "tile": {
+        "x": 3,
+        "y": 3,
+        "key": "3,3"
+      },
+      "facilityName": "兵舎",
+      "affinity": {
+        "share": 100,
+        "bonus": 30,
+        "cities": [
+          "城塞都市",
+          "軍事都市"
+        ]
+      }
+    },
+    "mixed": {
+      "share": 75,
+      "bonus": 22.5,
+      "cities": [
+        "神秘都市",
+        "魔法都市"
+      ]
+    },
+    "material": {
+      "definitionId": "FACILITY_smithy",
+      "name": "鍛冶場の建設",
+      "priority": 70,
+      "stages": [
+        "安全確保",
+        "資材確保",
+        "建設"
+      ],
+      "needs": [
+        {
+          "resource": "木材",
+          "amount": 50,
+          "help": true
+        }
+      ],
+      "targetEnemyIds": [],
+      "blockers": [],
+      "stage": "資材確保",
+      "help": false,
+      "tile": {
+        "x": 4,
+        "y": 3,
+        "key": "4,3"
+      },
+      "facilityName": "鍛冶場",
+      "affinity": {
+        "share": 0,
+        "bonus": 0,
+        "cities": []
+      }
+    },
+    "description": "学校の建設 / 建設 / 残り3T / 種族適性100%（学術都市・神秘都市） / 完成施設: 墓地・農場・鍛冶場・魔術工房・港・伐採場・採石場・鉱山"
+  },
+  "errors": []
+}

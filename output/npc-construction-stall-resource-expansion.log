@@ -1,0 +1,53 @@
+{
+  "result": {
+    "choice": {
+      "settlementId": "resource-base",
+      "name": "資源開拓拠点",
+      "needs": {
+        "木材": 50
+      },
+      "tile": {
+        "x": 6,
+        "y": 4,
+        "key": "6,4"
+      },
+      "tileKey": "6,4",
+      "gains": {
+        "木材": 13
+      },
+      "score": 650,
+      "foodGain": 0,
+      "priority": 0,
+      "status": "ready",
+      "reason": "不足資源の実増産を優先"
+    },
+    "remaining": 2,
+    "paused": {
+      "tileKey": "6,4",
+      "workers": 10,
+      "remainingTurns": 2,
+      "totalTurns": 2,
+      "startedTurn": 10,
+      "paused": true,
+      "reason": "対象マスに生存モンスター・他勢力ユニットがいます"
+    },
+    "completed": [
+      "4,4",
+      "3,4",
+      "5,4",
+      "3,3",
+      "4,3",
+      "3,5",
+      "4,5",
+      "6,4"
+    ],
+    "woodIncome": 35.8,
+    "oldWoodIncome": 22.8,
+    "commands": [
+      "食料優先:資源開拓拠点 / 通常食料の収支赤字",
+      "探索移動:移動可能な未踏領域なし",
+      "資源地開拓:6,4 / 木材+13/T・穀物+3.3/T・野菜+7.8/T・肉+4.6/T"
+    ]
+  },
+  "errors": []
+}

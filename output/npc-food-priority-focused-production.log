@@ -1,0 +1,146 @@
+{
+  "result": {
+    "balance": [
+      {
+        "settlementId": "food-home",
+        "name": "食料検証拠点",
+        "status": "deficit",
+        "active": true,
+        "income": {
+          "穀物": 11.7,
+          "野菜": 7.8,
+          "肉": 3.9,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "maintenance": {
+          "穀物": 89.6,
+          "野菜": 67.2,
+          "肉": 44.8,
+          "魚": 22.4
+        },
+        "deficit": {
+          "穀物": 77.9,
+          "野菜": 59.4,
+          "肉": 40.9,
+          "魚": 22.4
+        },
+        "deficitTotal": 200.6,
+        "reserveDeficit": {
+          "穀物": 0,
+          "野菜": 0,
+          "肉": 0,
+          "魚": 0
+        },
+        "reserveDeficitTotal": 0,
+        "queuedUnits": 0,
+        "surplus": 0
+      }
+    ],
+    "pending": {
+      "settlementId": "food-home",
+      "name": "食料検証拠点",
+      "status": "deficit",
+      "active": true,
+      "income": {
+        "穀物": 11.7,
+        "野菜": 7.8,
+        "肉": 3.9,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0
+      },
+      "maintenance": {
+        "穀物": 92.8,
+        "野菜": 69.6,
+        "肉": 46.4,
+        "魚": 23.2
+      },
+      "deficit": {
+        "穀物": 81.1,
+        "野菜": 61.8,
+        "肉": 42.5,
+        "魚": 23.2
+      },
+      "deficitTotal": 208.6,
+      "reserveDeficit": {
+        "穀物": 0,
+        "野菜": 0,
+        "肉": 0,
+        "魚": 0
+      },
+      "reserveDeficitTotal": 0,
+      "queuedUnits": 1,
+      "surplus": 0
+    },
+    "construction": {
+      "status": "ready",
+      "name": "農場",
+      "tileKey": "4,5",
+      "purpose": "食料",
+      "reasons": [],
+      "shortages": [],
+      "foodGain": 18.72,
+      "foodPriority": true
+    },
+    "commands": [
+      "勢力発見:只人",
+      "食料優先:食料検証拠点 / 通常食料の収支赤字",
+      "探索移動:移動可能な未踏領域なし",
+      "資源地開拓:3,3 / 穀物+7.8/T・野菜+5.2/T・肉+2.6/T",
+      "建設:農場@4,5",
+      "研究:鍛冶熟練Ⅰ",
+      "研究:貴金属効率Ⅰ",
+      "研究:穀物加護Ⅰ",
+      "研究:軍事基礎教育Ⅰ",
+      "研究:経済基盤教育Ⅰ",
+      "研究:生態調査Ⅰ"
+    ],
+    "production": {
+      "food": [
+        {
+          "settlementId": "food-home",
+          "name": "食料検証拠点",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 11.7,
+            "野菜": 7.8,
+            "肉": 3.9,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 89.6,
+            "野菜": 67.2,
+            "肉": 44.8,
+            "魚": 22.4
+          },
+          "deficit": {
+            "穀物": 77.9,
+            "野菜": 59.4,
+            "肉": 40.9,
+            "魚": 22.4
+          },
+          "deficitTotal": 200.6,
+          "reserveDeficit": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0
+          },
+          "reserveDeficitTotal": 0,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "commands": [
+        "食料優先:食料検証拠点 / 通常食料の収支赤字",
+        "探索移動:移動可能な未踏領域なし"
+      ]
+    }
+  },
+  "errors": []
+}

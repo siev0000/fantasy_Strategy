@@ -168,11 +168,36 @@ def guardian_record(row, cells, resources):
     rewards = amount_terms(cells["報酬"]["1-1"], resources, True, "守護者友好度変更")
     if len(rewards) != 1 or rewards[0]["タイプ"] != "守護者友好度変更":
         raise ValueError("守護者の報酬は友好度変更1項目に対応します")
-    goal = re.fullmatch(r"(.+)_([0-9]+)", str(row.get("目標", "")))
-    if not goal:
-        raise ValueError("守護者の目標は資源/見張り/周辺脅威_数量で指定してください")
-    target, amount = goal[1], integer(goal[2], "目標数", 1)
-    if target in resources:
+    raw_goal = str(row.get("目標", ""))
+    goal = re.fullmatch(r"(.+)_([0-9]+)", raw_goal)
+    supplies = tokens(raw_goal)
+    goals = None
+    if len(supplies) > 1:
+        amounts = amount_terms(raw_goal, resources)
+        if len({item["名前"] for item in amounts}) != len(amounts):
+            raise ValueError("守護者の納品資源は重複できません")
+        if cells["消費"] != {"1-1": raw_goal}:
+            raise ValueError("守護者の複数納品消費は目標の全資源・数量と一致させてください")
+        goals = [{"タイプ": "納品", "設定": {"対象": item["名前"], "数量": item["数量"]}} for item in amounts]
+        target, amount, kind = "複数資源", len(goals), "納品"
+    elif match := re.fullmatch(r"試練召喚_守護者配下_Lv([0-9]+)_数([0-9]+)", raw_goal):
+        target, amount, kind = "守護者配下", integer(match[2], "召喚数", 1), "試練討伐"
+        level = integer(match[1], "召喚Lv", 1)
+        if level > 100 or amount > 5:
+            raise ValueError("試練召喚はLv100以下・5体以下で指定してください")
+        goals = [{"タイプ": kind, "設定": {"対象": target, "数量": amount, "Lv": level}}]
+    elif match := re.fullmatch(r"村発展_施設([0-9]+)_数([0-9]+)", raw_goal):
+        target, amount, kind = "完成施設", integer(match[2], "村数", 1), "村発展"
+        facilities = integer(match[1], "完成施設数", 1)
+        goals = [{"タイプ": kind, "設定": {"対象": target, "数量": amount, "完成施設数": facilities}}]
+    elif not goal:
+        raise ValueError("守護者の目標は資源_数量（/で複数可）、試練召喚_守護者配下_Lv30_数1、村発展_施設3_数2等で指定してください")
+    if goals is None:
+        target, amount = goal[1], integer(goal[2], "目標数", 1)
+    if goals is not None:
+        if kind != "納品" and cells["消費"]:
+            raise ValueError("試練討伐/村発展の消費は指定しません")
+    elif target in resources:
         kind = "納品"
         if cells["消費"] != {"1-1": f"{target}_{amount}"}:
             raise ValueError("守護者の納品消費は目標の資源・数量と一致させてください")
@@ -184,7 +209,7 @@ def guardian_record(row, cells, resources):
         raise ValueError(f"未対応の守護者目標: {target}")
     result = {key: row[key] for key in ("ID", "名前", "説明", "発生タイミング") if not is_blank(row.get(key))}
     result.update({"分類": "守護者", "イベント種別": "依頼", "再発生": False,
-                   "目標": [{"タイプ": kind, "設定": {"対象": target, "数量": amount}}],
+                   "目標": goals or [{"タイプ": kind, "設定": {"対象": target, "数量": amount}}],
                    "完了効果": rewards,
                    "選択肢": [{"番号": key, "名前": label, "回答": cells["回答"].get(key, "")}
                             for key, label in cells["選択肢"].items()]})
@@ -234,7 +259,7 @@ def compile_rows(rows, resources, targets=None, stock_resources=None):
                 if category != "一般村" or not row.get("名前") or not row.get("計画対象"):
                     raise ValueError("村計画/ひな型には一般村分類・名前・計画対象が必要です")
                 record = {key: row[key] for key in ("ID", "名前", "説明", "計画対象", "判定基準") if not is_blank(row.get(key))}
-                for key in ("優先度", "対象範囲", "数量上限", "目標ターン", "期限ターン", "クールダウン"):
+                for key in ("優先度", "対象範囲", "数量上限", "目標ターン", "期限ターン", "クールダウン", "周期", "猶予"):
                     if not is_blank(row.get(key)):
                         record[key] = integer(row[key], key)
                 if row["イベント種別"] == "村計画":
@@ -246,8 +271,26 @@ def compile_rows(rows, resources, targets=None, stock_resources=None):
                     record["支援依頼ID"] = tokens(row.get("支援依頼ID"))
                     filename = PLAN_FILES[0]
                 else:
-                    if row["計画対象"] not in {"不足資源", "周辺脅威"}:
+                    if row["計画対象"] not in {"不足資源", "周辺脅威", "警備", "建設支援", "複合支援", "継続支援"}:
                         raise ValueError("未対応の依頼ひな型対象")
+                    if row["計画対象"] in {"警備", "建設支援", "複合支援"}:
+                        goals = []
+                        for term in tokens(row.get("目標")):
+                            match = re.fullmatch(r"(警備|建設)_([1-9][0-9]*)", term)
+                            if not match or match[1] == "建設" and match[2] != "1":
+                                raise ValueError("支援目標は警備_連続T/建設_1で指定")
+                            goals.append({"タイプ": match[1], "設定": {"数量": int(match[2])}})
+                        expected = {"警備": {"警備"}, "建設支援": {"建設"}, "複合支援": {"警備", "建設"}}[row["計画対象"]]
+                        if {goal["タイプ"] for goal in goals} != expected or len(goals) != len(expected):
+                            raise ValueError("支援種別と目標が一致しません")
+                        record["目標"] = goals
+                        record["対象範囲"] = integer(row.get("対象範囲"), "対象範囲", 1)
+                    if row["計画対象"] == "継続支援":
+                        for field in ("周期", "目標ターン", "数量上限"):
+                            record[field] = integer(row.get(field), field, 1)
+                        record["猶予"] = integer(row.get("猶予"), "猶予", 3)
+                        if not is_blank(row.get("期限ターン")):
+                            raise ValueError("継続支援は各納品日と猶予を使い、期限ターンは空欄")
                     record["完了効果"] = amount_terms(cells["報酬"].get("1-1"), resources, True)
                     if any(effect["タイプ"] != "一般村友好度変更" for effect in record["完了効果"]):
                         raise ValueError("自動依頼の報酬は現在友好度変更に対応")
@@ -334,7 +377,7 @@ def main(argv=None):
         if any(path == runtime.resolve() or runtime.resolve() in path.parents for path in (args.output_dir.resolve(), args.report.resolve())):
             raise ValueError("既存イベントの移行前のため実行時JSONフォルダには出力できません")
         output, report = compile_rows(read_rows(args.input), resources_from_repo(args.data_dir), targets_from_repo(args.data_dir), stock_resources_from_repo(args.data_dir))
-        report.update({"入力": str(args.input), "出力先": str(args.output_dir), "検証のみ": args.dry_run, "ゲーム接続": "一般村の旧保存互換・村計画/ひな型、守護者の納品/見張り/周辺討伐に対応。他分類は後続" if args.runtime else "確認用", "出力ファイル": sorted(output)})
+        report.update({"入力": str(args.input), "出力先": str(args.output_dir), "検証のみ": args.dry_run, "ゲーム接続": "一般村の旧保存互換・村計画/支援/有限定期契約のひな型、守護者3試練に対応。他分類は後続" if args.runtime else "確認用", "出力ファイル": sorted(output)})
         atomic_write_json(args.report, report)
         if report["エラー"]:
             print(f"検証エラー{len(report['エラー'])}件。イベントJSONは更新しません。詳細: {args.report}", file=sys.stderr)

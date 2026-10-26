@@ -5,7 +5,47 @@
     "配置地形": "山岳",
     "代替地形": "丘陵",
     "詳細": "太陽の光を宿す霊峰。",
-    "発見方法": "調査"
+    "発見方法": "調査",
+    "守護者候補": [
+      {
+        "name": "白虎",
+        "race": "タイガー",
+        "className": "神獣",
+        "unique": true
+      },
+      {
+        "name": "スフィンクス",
+        "race": "ライオン",
+        "className": "幻獣",
+        "unique": true
+      },
+      {
+        "name": "応龍",
+        "race": "ドレイク",
+        "className": "神獣",
+        "unique": true
+      }
+    ],
+    "配下候補": [
+      {
+        "race": "ホーク",
+        "className": "ソルアニマル"
+      },
+      {
+        "race": "タイガー",
+        "className": "ソルアニマル"
+      }
+    ],
+    "守護者Lv": 40,
+    "配下数": 2,
+    "配下Lv差": 20,
+    "配下Lv幅": 5,
+    "試練ID": [
+      "GUARDIAN_TRIAL_RESOURCES",
+      "GUARDIAN_TRIAL_DEVELOPMENT",
+      "GUARDIAN_TRIAL_POWER"
+    ],
+    "守護範囲": 3
   },
   {
     "ID": "勝利対象:黄昏の樹",
@@ -13,7 +53,47 @@
     "配置地形": "森",
     "代替地形": "平地",
     "詳細": "黄昏の気配をまとった巨樹。",
-    "発見方法": "調査"
+    "発見方法": "調査",
+    "守護者候補": [
+      {
+        "name": "麒麟",
+        "race": "ホース",
+        "className": "神獣",
+        "unique": true
+      },
+      {
+        "name": "白沢",
+        "race": "ライオン",
+        "className": "神獣",
+        "unique": true
+      },
+      {
+        "name": "九尾狐",
+        "race": "フォックス",
+        "className": "神獣",
+        "unique": true
+      }
+    ],
+    "配下候補": [
+      {
+        "race": "ウルフ",
+        "className": "ムーンアニマル"
+      },
+      {
+        "race": "トレント",
+        "className": "トレント"
+      }
+    ],
+    "守護者Lv": 40,
+    "配下数": 2,
+    "配下Lv差": 20,
+    "配下Lv幅": 5,
+    "試練ID": [
+      "GUARDIAN_TRIAL_RESOURCES",
+      "GUARDIAN_TRIAL_DEVELOPMENT",
+      "GUARDIAN_TRIAL_POWER"
+    ],
+    "守護範囲": 3
   },
   {
     "ID": "勝利対象:星の火口",
@@ -21,7 +101,46 @@
     "配置地形": "火山",
     "代替地形": "山岳",
     "詳細": "星光を宿す火口。",
-    "発見方法": "調査"
+    "発見方法": "調査",
+    "守護者候補": [
+      {
+        "name": "朱雀",
+        "race": "ホーク",
+        "className": "神獣",
+        "unique": true,
+        "lowerForm": "フェニックス"
+      },
+      {
+        "name": "サラマンダー",
+        "race": "リザード",
+        "className": "フレイムアニマル",
+        "unique": true
+      }
+    ],
+    "配下候補": [
+      {
+        "race": "フレイムエレメンタル",
+        "className": "フレイムエレメンタル"
+      },
+      {
+        "race": "ボア",
+        "className": "フレイムアニマル"
+      },
+      {
+        "race": "フォックス",
+        "className": "フレイムアニマル"
+      }
+    ],
+    "守護者Lv": 40,
+    "配下数": 2,
+    "配下Lv差": 20,
+    "配下Lv幅": 5,
+    "試練ID": [
+      "GUARDIAN_TRIAL_RESOURCES",
+      "GUARDIAN_TRIAL_DEVELOPMENT",
+      "GUARDIAN_TRIAL_POWER"
+    ],
+    "守護範囲": 3
   },
   {
     "ID": "勝利対象:宇宙の海",
@@ -29,6 +148,50 @@
     "配置地形": "海",
     "代替地形": "湖",
     "詳細": "宇宙を映す海域。",
-    "発見方法": "調査"
+    "発見方法": "調査",
+    "守護者候補": [
+      {
+        "name": "玄武",
+        "race": "タートル",
+        "className": "神獣",
+        "unique": true
+      },
+      {
+        "name": "青龍",
+        "race": "スネーク",
+        "className": "神獣",
+        "unique": true
+      },
+      {
+        "name": "クラーケン",
+        "race": "ウォーターエレメンタル",
+        "className": "幻獣",
+        "unique": true
+      }
+    ],
+    "配下候補": [
+      {
+        "race": "スネーク",
+        "className": "シーアニマル"
+      },
+      {
+        "race": "クロコダイル",
+        "className": "シーアニマル"
+      },
+      {
+        "race": "ウォーターエレメンタル",
+        "className": "ウォーターエレメンタル"
+      }
+    ],
+    "守護者Lv": 40,
+    "配下数": 2,
+    "配下Lv差": 20,
+    "配下Lv幅": 5,
+    "試練ID": [
+      "GUARDIAN_TRIAL_RESOURCES",
+      "GUARDIAN_TRIAL_DEVELOPMENT",
+      "GUARDIAN_TRIAL_POWER"
+    ],
+    "守護範囲": 3
   }
 ]

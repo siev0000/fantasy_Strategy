@@ -1,4 +1,9 @@
 // 仕様未確定の調整値はここへ集約し、確定後に処理本体を変えず差し替える。
+export const V39_INITIAL_STOCK_BALANCE = Object.freeze({
+  territoryIncomeTurns:3,
+  normalFoodMaintenanceTurns:10 // 通常食料のみ。魂・死体と人口増加用の消費は保証しない。
+});
+
 export const V39_CORPSE_LIFETIME_BALANCE = Object.freeze({
   organicTurns:10, // 通常の死体・地面の死体資源。
   remainsTurns:5 // アンデッドの実体ある残骸。霊廟では残り期限を停止する。
@@ -373,20 +378,6 @@ export const V39_VICTORY_LANDMARK_BALANCE = Object.freeze({
   })
 });
 
-// 勝利対象土地の守護編成。勝利対象土地.jsonに守護列が追加されるまでの暫定設定。
-// 敵種族・巣画像は出現敵.jsonから対象地形に合う最高Lv候補を使う。
-export const V39_VICTORY_GUARD_BALANCE = Object.freeze({
-  // 勝利対象土地の守護ボスの初期Lv。配下は下の差分設定を使う。
-  bossLevel:40,
-  // 大都市相当の占有半径1と、その外側2リングを含む守護領域。
-  territoryRadius:3,
-  // 登録済みの土地別候補から選ぶ配下数。0ならボス単独。
-  minionCount:2,
-  // 配下LvをボスLvから下げる値。最低Lvは1。
-  minionLevelOffset:20,
-  minionLevelVariance:5
-});
-
 // 勝利対象土地の確保条件。地点数は通常生成数に合わせて調整する。
 export const V39_VICTORY_CONDITION_BALANCE = Object.freeze({
   // 通常生成数が1件のため、暫定では1地点の支配で勝利候補になる。
@@ -440,7 +431,6 @@ export const V39_QUEST_BALANCE = Object.freeze({
   villageQuestCooldown:5, // 同じ村支援を再受注するまでのターン。
     villageNumberedHuntRange:8, // 番号付き村依頼の暫定討伐対象範囲。
   guardianRelationGain:35, // シート移行前の受注保存にのみ使う互換報酬。
-  guardianTransferRelation:70, // 守護者交代に必要な友好度。
   guardianContactRange:3 // 交渉距離。見張りは受注保存の範囲（旧保存はこの値）。
 });
 
@@ -649,7 +639,7 @@ export const V39_UNDEAD_SPAWN_BALANCE = Object.freeze({
   purificationThreshold:-5, // この値以下のマスだけ不浄イベント候補にする。
   deathPurificationLoss:1, // 生存から死亡へ変わった瞬間の減少量。
   corpsePurificationLoss:1, // 死体があるマスの毎ターン減少量。死体数では増やさない。
-  fogPurificationLoss:1, // 死の霧があるマスの毎ターン追加減少量。
+  fogPurificationLoss:1, // 死の霧と有機死体が両方あるマスだけ毎ターン追加減少。
   deathBladePurificationLoss:5, // 死の刃の所持者による撃破マスの減少量。
   unholyFogChance:0.08, // 暫定: 不浄候補1マス・1回あたりの死の霧確率。
   unholyUndeadChance:0.08, // 暫定: 霧とは排他的なアンデッド発生確率。
@@ -817,7 +807,19 @@ export const V39_DIPLOMACY_BALANCE = Object.freeze({
   // 宣戦時に減る友好度。
   warRelationLoss:30,
   // 停戦時に増える友好度。
-  peaceRelationGain:10
+  peaceRelationGain:10,
+  // 新拠点設立の外交設定。設立・発見イベントへの接続は未実装。
+  settlementProximity:Object.freeze({
+    enabled:true,
+    distanceMetric:'hex-center-to-center',
+    distanceBands:Object.freeze([
+      Object.freeze({maxDistance:3,relationLoss:20}),
+      Object.freeze({maxDistance:6,relationLoss:10})
+    ]),
+    applyOnDiscovery:true,
+    applyToInitialPlacement:false,
+    oncePerSettlementPerObserver:true
+  })
 });
 // 育成で上位職へ移る際に前提職へ残すLv。種族Lvは別管理。
 export const V39_CLASS_PROGRESSION_BALANCE=Object.freeze({classLevelLimit:10});

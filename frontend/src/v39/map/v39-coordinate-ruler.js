@@ -53,6 +53,8 @@ export function installV39CoordinateRuler(scene, host, map) {
   scene.events.on("postupdate",update);
   window.addEventListener("v39:display-settings-changed",update);
   const dispose = () => {
+    scene.events.off("shutdown",dispose);
+    scene.events.off("destroy",dispose);
     scene.events.off("postupdate",update);
     window.removeEventListener("v39:display-settings-changed",update);
     root.remove();
@@ -60,4 +62,5 @@ export function installV39CoordinateRuler(scene, host, map) {
   scene.events.once("shutdown",dispose);
   scene.events.once("destroy",dispose);
   update();
+  return dispose;
 }

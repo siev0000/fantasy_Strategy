@@ -1,0 +1,184 @@
+ M config/v39-expedition-defaults.json
+ M config/v39-npc-faction-ai.json
+ D config/v39-victory-guardians.json
+ M config/v39-village-development.json
+ M "data/source/export/json/\343\202\244\343\203\231\343\203\263\343\203\210\344\274\232\350\251\261.json"
+ M "data/source/export/json/\345\213\235\345\210\251\345\257\276\350\261\241\345\234\237\345\234\260.json"
+ M "data/source/export/json/\345\213\242\345\212\233.json"
+ M "data/source/export/json/\346\235\221\344\276\235\351\240\274\343\201\262\343\201\252\345\236\213.json"
+ M "data/source/export/json/\347\250\256\346\227\217.json"
+ M docs/ALL_TASKS_UNIFIED.md
+ M docs/INDEX.md
+ M docs/SPREADSHEET_DATA_WORKFLOW.md
+ M "docs/rules/diplomacy/NPC\345\213\242\345\212\233\343\203\253\343\203\274\343\203\253.md"
+ M "docs/rules/diplomacy/\344\270\200\350\210\254\346\235\221\343\202\244\343\203\231\343\203\263\343\203\210\345\205\261\351\200\232\343\203\253\343\203\274\343\203\253.md"
+ M "docs/rules/economy/\351\240\230\345\234\237\343\203\273\350\263\207\346\272\220\347\224\237\347\224\243\343\203\253\343\203\274\343\203\253.md"
+ M "docs/rules/world/\351\234\247\343\203\273\344\272\244\346\265\201\343\202\257\343\202\250\343\202\271\343\203\210\343\203\273\345\256\210\350\255\267\350\200\205\343\203\253\343\203\274\343\203\253.md"
+ M "docs/tests/\345\260\202\347\224\250\343\203\206\343\202\271\343\203\210\346\247\213\346\210\220.md"
+ M "docs/\347\217\276\347\212\266\343\202\262\343\203\274\343\203\240\344\273\225\346\247\230\343\203\241\343\203\242.md"
+ M frontend/src/lib/game-data-registry.js
+ M frontend/src/lib/v39-city-specialization-rules.js
+ M frontend/src/lib/v39-economy-rules.js
+ M frontend/src/lib/v39-gameplay-balance.js
+ M frontend/src/lib/v39-gather-rules.js
+ M frontend/src/lib/v39-guardian-quests.js
+ M frontend/src/lib/v39-land-expansion-rules.js
+ M frontend/src/lib/v39-neutral-village-rules.js
+ M frontend/src/lib/v39-npc-development-plan.js
+ M frontend/src/lib/v39-population-economy.js
+ M frontend/src/lib/v39-quest-rewards.js
+ M frontend/src/lib/v39-race-definitions.js
+ M frontend/src/lib/v39-recruit-training.js
+ M frontend/src/lib/v39-squad-edit-rules.js
+ M frontend/src/lib/v39-victory-guardian-candidates.js
+ M frontend/src/lib/v39-village-plans.js
+ M frontend/src/v39/ai/v39-faction-ai.js
+ M frontend/src/v39/bootstrap/v39-bootstrap-final.js
+ M frontend/src/v39/combat/v39-death-lifecycle.js
+ M frontend/src/v39/dev/v39-test-tools.js
+ M frontend/src/v39/dev/v39-village-plan-test.js
+ M frontend/src/v39/ui/v39-operation-layout.css
+ M frontend/src/v39/unit/v39-logistics.js
+ M frontend/src/v39/world/v39-victory-guard-spawn.js
+ M frontend/src/v39/world/v39-village-hub.js
+ M frontend/src/v39/world/v39-world-population.js
+ M progress.md
+ M scripts/check-v39-expedition-operations.mjs
+ M scripts/check-v39-guardian-candidates.mjs
+ M scripts/check-v39-guardian-climate-production.mjs
+ M scripts/check-v39-guardian-sheet.mjs
+ M scripts/check-v39-hegemony-campaign.mjs
+ M scripts/check-v39-npc-development-plan.mjs
+ M scripts/check-v39-race-server.mjs
+ M scripts/check-v39-race-unification.mjs
+ M scripts/check-v39-squad-edit-rules.mjs
+ M scripts/event_sheet_converter.py
+ M scripts/game_data_converter.py
+ M scripts/test_event_sheet_converter.py
+ M scripts/test_unified_race_converter.py
+?? frontend/src/lib/v39-cargo-deposit.js
+?? frontend/src/lib/v39-npc-city-specialization.js
+?? frontend/src/lib/v39-npc-resource-expansion.js
+?? frontend/src/lib/v39-npc-resource-teams.js
+?? frontend/src/lib/v39-resource-team-movement.js
+?? frontend/src/lib/v39-village-resource-teams.js
+?? frontend/src/lib/v39-village-support-goals.js
+?? frontend/src/v39/dev/v39-guardian-trial-test.js
+?? output/events-guardians-before.xlsx
+?? output/events-guardians-build.log
+?? output/events-guardians-campaign.log
+?? output/events-guardians-candidates.log
+?? output/events-guardians-data-report.json
+?? output/events-guardians-diff.log
+?? output/events-guardians-event-report.json
+?? output/events-guardians-expedition.log
+?? output/events-guardians-final.xlsx
+?? output/events-guardians-generated/
+?? output/events-guardians-initial-status.txt
+?? output/events-guardians-plan.log
+?? output/events-guardians-preview.xlsx
+?? output/events-guardians-python.log
+?? output/events-guardians-trials.log
+?? output/events-guardians-ui.log
+?? output/guardian-settings-preview.xlsx
+?? output/guardian-sheet-check-before.mjs
+?? output/guardian-trials-before.xlsx
+?? output/guardian-trials-build.log
+?? output/guardian-trials-campaign.log
+?? output/guardian-trials-diff-warnings.log
+?? output/guardian-trials-final.xlsx
+?? output/guardian-trials-first.png
+?? output/guardian-trials-generated/
+?? output/guardian-trials-initial-status.txt
+?? output/guardian-trials-preview.xlsx
+?? output/guardian-trials-python.log
+?? output/guardian-trials-render.log
+?? output/guardian-trials-report.json
+?? output/guardian-trials-security.log
+?? output/guardian-trials-ui.log
+?? output/npc-affinity-build.log
+?? output/npc-affinity-city-regression.log
+?? output/npc-affinity-client-ready.log
+?? output/npc-affinity-client.log
+?? output/npc-affinity-development.log
+?? output/npc-affinity-diff.log
+?? output/npc-affinity-final-diff.log
+?? output/npc-affinity-initial-status.txt
+?? output/npc-affinity-start-regression.log
+?? output/npc-affinity-test.log
+?? output/npc-city-village-initial-status.txt
+?? output/npc-internal-supply-initial-status.txt
+?? output/npc-resource-team-logistics-before.js
+?? output/npc-resource-teams-affinity.log
+?? output/npc-resource-teams-build.log
+?? output/npc-resource-teams-client.log
+?? output/npc-resource-teams-completion.log
+?? output/npc-resource-teams-diff.log
+?? output/npc-resource-teams-gather.log
+?? output/npc-resource-teams-initial-status.txt
+?? output/npc-resource-teams-plan.log
+?? output/npc-resource-teams-policy.log
+?? output/npc-resource-teams-progress-before.md
+?? output/npc-resource-teams-squad.log
+?? output/npc-resource-teams-start.log
+?? output/npc-resource-teams-support.log
+?? output/npc-resource-teams-test.log
+?? output/npc-resource-teams-training.log
+?? output/npc-resource-teams-village-affinity.log
+?? output/npc-resource-teams-village.log
+?? output/race-preferences-before.xlsx
+?? output/race-preferences-build.log
+?? output/race-preferences-diff.log
+?? output/race-preferences-final.xlsx
+?? output/race-preferences-initial-status.txt
+?? output/race-preferences-preview.xlsx
+?? output/race-preferences-python.log
+?? output/race-preferences-report.json
+?? output/race-preferences-server.log
+?? output/race-preferences-ui.log
+?? output/resource-expansion-affinity.log
+?? output/resource-expansion-base.log
+?? output/resource-expansion-build.log
+?? output/resource-expansion-client.log
+?? output/resource-expansion-completion.log
+?? output/resource-expansion-diff.log
+?? output/resource-expansion-initial-status.txt
+?? output/resource-expansion-npc-plan.log
+?? output/resource-expansion-progress-before.md
+?? output/resource-expansion-support.log
+?? output/resource-expansion-teams.log
+?? output/resource-expansion-test.log
+?? output/resource-expansion-village-plans.log
+?? output/sheet-merge-preview/event-support-goals.png
+?? output/sheet-merge-preview/event-support-names.png
+?? output/sheet-merge-preview/guardian-event-goals.png
+?? output/sheet-merge-preview/guardian-event-names.png
+?? output/sheet-merge-preview/guardian-settings-candidates.png
+?? output/sheet-merge-preview/guardian-settings-values.png
+?? output/sheet-merge-preview/race-preference-names.png
+?? output/sheet-merge-preview/race-preference-values.png
+?? output/sheet-merge-preview/render-event-support.mjs
+?? output/sheet-merge-preview/render-guardian-settings.mjs
+?? output/sheet-merge-preview/render-guardian.mjs
+?? output/sheet-merge-preview/render-race-preferences.mjs
+?? output/sheet-merge-preview/trim-event-support.py
+?? output/sheet-merge-preview/trim-guardian-settings.py
+?? output/sheet-merge-preview/trim-guardian.py
+?? output/sheet-merge-preview/trim-race-preferences.py
+?? output/village-affinity-build.log
+?? output/village-affinity-client.log
+?? output/village-affinity-completion.log
+?? output/village-affinity-diff.log
+?? output/village-affinity-initial-status.txt
+?? output/village-affinity-npc.log
+?? output/village-affinity-plans.log
+?? output/village-affinity-progress-before.md
+?? output/village-affinity-support.log
+?? output/village-affinity-test.log
+?? scripts/check-v39-event-support.mjs
+?? scripts/check-v39-guardian-trials.mjs
+?? scripts/check-v39-npc-affinity.mjs
+?? scripts/check-v39-resource-expansion.mjs
+?? scripts/check-v39-resource-teams.mjs
+?? scripts/check-v39-village-affinity.mjs
+?? scripts/test_guardian_data_converter.py

@@ -45,7 +45,7 @@ export function inspectV39RecruitTrainingQueue(faction, state = {}) {
 }
 
 // 全プレイヤー・敵ターン終了後に一度だけ呼ぶ。予約は所属拠点に固定する。
-export function advanceV39RecruitTraining(state, turnNumber) {
+export function advanceV39RecruitTraining(state, turnNumber, {canDeploy=()=>true}={}) {
   const completedUnits = [];
   const players = state.players.map(player => {
     const faction = player.factionState;
@@ -62,6 +62,8 @@ export function advanceV39RecruitTraining(state, turnNumber) {
       const progressExp = Math.min(entry.requiredExp, entry.progressExp + training.expPerTurn);
       if (progressExp < entry.requiredExp) {
         queue.push({...entry, progressExp, trainingSlotId:slot.id, lastProcessedTurn:turnNumber});
+      } else if(!canDeploy(entry.unit,village)) {
+        queue.push({...entry,progressExp,trainingSlotId:slot.id,lastProcessedTurn:turnNumber});
       } else {
         const supplied=supplyV39DefaultTools(stockFaction,entry.settlementId,{...entry.unit,x:village.x,y:village.y,position:[village.x,village.y],worldId:'surface'});
         stockFaction=supplied.faction;

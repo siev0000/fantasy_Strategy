@@ -4,6 +4,7 @@ import {territorySettlementId} from './settlement-state.js';
 import {resolveV39AutomaticRoute,resolveV39AutomaticMovementSteps} from './v39-transport-rules.js';
 import {canUnitEnterV39Tile,resolveV39UnitMovementStepCost} from './v39-terrain-traversal.js';
 import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
+import {isV39UnitWaiting} from './v39-unit-action-rules.js';
 
 const world=unit=>unit?.worldId || 'surface';
 const alive=unit=>unit&&Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
@@ -101,7 +102,7 @@ export function advanceV39SquadRallies(state,playerId,map,turn,{move=true}={}) {
       }
       if(!move)continue;
       const casting=!!faction.combatRuntime?.pendingActionsByUnitId?.[unit.id];
-      const waiting=Number(unit.waitTurnNumber)===Number(turn)||unit.movementHold||casting;
+      const waiting=isV39UnitWaiting(unit,turn)||unit.movementHold||casting;
       const engaged=(state.enemies||[]).some(enemy=>alive(enemy)&&distance(unit,enemy,map)<=1);
       let reason=waiting?casting?'詠唱・待機行動中です':'待機中です':engaged?'敵が隣接しています':ap<=0?'移動AP待ち':'';
       let best=null;

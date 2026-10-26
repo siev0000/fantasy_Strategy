@@ -1,5 +1,19 @@
 {
   "version": 2,
+  "facilityAffinity": {
+    "preferredCityBonus": 30,
+    "effectFields": ["農業", "林業", "漁業", "工業", "魔術", "交渉", "浄化", "回復", "研究EXP補正", "訓練EXP補正", "軍隊", "ヒーロー", "運搬容量補正", "召喚Lv補正", "領土被ダメージ軽減"],
+    "purposeEffects": {
+      "研究": ["研究EXP補正"],
+      "防衛": ["訓練EXP補正", "軍隊", "領土被ダメージ軽減"],
+      "交易": ["運搬容量補正", "交渉"],
+      "物流": ["運搬容量補正"],
+      "召喚": ["召喚Lv補正"],
+      "信仰": ["浄化", "回復"],
+      "浄化": ["浄化"],
+      "魔術": ["魔術"]
+    }
+  },
   "nodes": [
     {"id":"safety","planId":"PLAN_VILLAGE_THREAT","requires":[]},
     {"id":"defense","planId":"PLAN_VILLAGE_DEFENSE","requires":[]},

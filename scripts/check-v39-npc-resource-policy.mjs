@@ -106,6 +106,7 @@ try {
   await page.locator('[data-test-tab=diagnostics]').click();
   const diagnostic=page.locator('[data-test-section=npc-ai]');
   if(!await diagnostic.evaluate(el=>el.open))await diagnostic.locator(':scope > summary').click();
+  await diagnostic.locator('[data-npc-diagnostic-view=actions]').click();
   await page.screenshot({path:'output/web-game/npc-resource-policy/diagnostics-1100.png'});
   assert.match(await diagnostic.innerText(),/村への生贄要求/);
   await page.setViewportSize({width:390,height:844});

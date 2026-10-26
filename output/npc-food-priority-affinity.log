@@ -1,0 +1,243 @@
+{
+  "result": {
+    "plans": [
+      {
+        "settlementId": "demon-test-base",
+        "name": "悪魔の物資庫",
+        "currentId": "",
+        "targetId": "交易都市",
+        "status": "ready",
+        "remainingTurns": 0,
+        "score": 61,
+        "affinity": 25,
+        "reasons": [
+          "食料不足"
+        ],
+        "candidates": [
+          {
+            "id": "農業都市",
+            "score": 87.5,
+            "affinity": 25,
+            "available": false
+          },
+          {
+            "id": "交易都市",
+            "score": 61,
+            "affinity": 25,
+            "available": true
+          },
+          {
+            "id": "水上都市",
+            "score": 52.5,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "学術都市",
+            "score": 43.5,
+            "affinity": 100,
+            "available": true
+          },
+          {
+            "id": "神秘都市",
+            "score": 34,
+            "affinity": 75,
+            "available": true
+          },
+          {
+            "id": "魔法都市",
+            "score": 33,
+            "affinity": 75,
+            "available": true
+          },
+          {
+            "id": "放浪都市",
+            "score": 32,
+            "affinity": 0,
+            "available": true
+          },
+          {
+            "id": "空中都市",
+            "score": 24,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "軍事都市",
+            "score": 9.5,
+            "affinity": 0,
+            "available": true
+          },
+          {
+            "id": "城塞都市",
+            "score": 4.5,
+            "affinity": 0,
+            "available": true
+          },
+          {
+            "id": "地下都市",
+            "score": 3.5,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "産業都市",
+            "score": 2.5,
+            "affinity": 0,
+            "available": true
+          },
+          {
+            "id": "死者の都",
+            "score": 2,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "信仰都市",
+            "score": 1.5,
+            "affinity": 0,
+            "available": true
+          }
+        ]
+      }
+    ],
+    "waiting": [
+      {
+        "settlementId": "demon-test-base",
+        "name": "悪魔の物資庫",
+        "currentId": "交易都市",
+        "targetId": "交易都市",
+        "status": "waiting",
+        "remainingTurns": 5,
+        "score": 61,
+        "affinity": 25,
+        "reasons": [
+          "食料不足",
+          "戦力増強"
+        ],
+        "candidates": [
+          {
+            "id": "農業都市",
+            "score": 87.5,
+            "affinity": 25,
+            "available": false
+          },
+          {
+            "id": "交易都市",
+            "score": 61,
+            "affinity": 25,
+            "available": true
+          },
+          {
+            "id": "水上都市",
+            "score": 52.5,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "学術都市",
+            "score": 43.5,
+            "affinity": 100,
+            "available": false
+          },
+          {
+            "id": "神秘都市",
+            "score": 34,
+            "affinity": 75,
+            "available": false
+          },
+          {
+            "id": "魔法都市",
+            "score": 33,
+            "affinity": 75,
+            "available": false
+          },
+          {
+            "id": "放浪都市",
+            "score": 32,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "軍事都市",
+            "score": 30.5,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "空中都市",
+            "score": 24,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "城塞都市",
+            "score": 4.5,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "地下都市",
+            "score": 3.5,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "産業都市",
+            "score": 2.5,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "死者の都",
+            "score": 2,
+            "affinity": 0,
+            "available": false
+          },
+          {
+            "id": "信仰都市",
+            "score": 1.5,
+            "affinity": 0,
+            "available": false
+          }
+        ]
+      }
+    ],
+    "recruit": {
+      "living": 1,
+      "queued": 0,
+      "target": 6,
+      "remaining": 5,
+      "shortages": [],
+      "reasons": [],
+      "status": "ready",
+      "className": "アーチャー",
+      "race": "エルフ",
+      "unitType": "軍隊",
+      "level": 3,
+      "request": {
+        "mode": "army",
+        "className": "アーチャー",
+        "race": "エルフ",
+        "count": 1
+      },
+      "preference": true,
+      "affinityScore": 30
+    },
+    "commands": [
+      "勢力発見:一般プレイヤー",
+      "食料優先:悪魔の物資庫 / 通常食料の収支赤字",
+      "都市特化:悪魔の物資庫→交易都市（種族適性25% / 食料不足・戦力増強）",
+      "探索移動:移動可能な未踏領域なし",
+      "資源地開拓:3,3 / 穀物+10.9/T・野菜+7.3/T・肉+3.7/T",
+      "訓練開始:エルフ弓兵軍1",
+      "研究:鍛冶熟練Ⅰ",
+      "研究:貴金属効率Ⅰ",
+      "研究:穀物加護Ⅰ",
+      "研究:軍事基礎教育Ⅰ",
+      "研究:経済基盤教育Ⅰ",
+      "研究:生態調査Ⅰ"
+    ]
+  },
+  "errors": []
+}

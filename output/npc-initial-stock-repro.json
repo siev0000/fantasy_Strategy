@@ -1,0 +1,1050 @@
+{
+  "placed": {
+    "ok": true,
+    "playerId": "player-1"
+  },
+  "players": [
+    {
+      "id": "player-1",
+      "race": "只人",
+      "plans": [
+        {
+          "name": "備蓄検証",
+          "populationByRace": {
+            "只人": 12,
+            "エルフ": 10,
+            "竜人": 6
+          },
+          "foodStockByType": {
+            "穀物": 400,
+            "野菜": 320,
+            "肉": 220,
+            "魚": 160
+          },
+          "materialStockByType": {
+            "木材": 200,
+            "石材": 160,
+            "鉄": 100
+          },
+          "buildings": [
+            "学校"
+          ],
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0
+          }
+        },
+        {
+          "name": "第二試験拠点",
+          "populationByRace": {
+            "ゴブリン": 10,
+            "オーガ": 7,
+            "天使": 5
+          },
+          "foodStockByType": {
+            "穀物": 110,
+            "野菜": 80,
+            "肉": 130,
+            "魚": 50
+          },
+          "materialStockByType": {
+            "木材": 120,
+            "石材": 100,
+            "鉄": 70
+          },
+          "buildings": [],
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0
+          }
+        }
+      ],
+      "village": {
+        "id": "village-40-34",
+        "name": "備蓄検証",
+        "x": 40,
+        "y": 34,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 28,
+        "populationByRace": {
+          "只人": 12,
+          "エルフ": 10,
+          "竜人": 6
+        },
+        "foodStockByType": {
+          "穀物": 400,
+          "野菜": 320,
+          "肉": 220,
+          "魚": 160,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 200,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 160,
+          "鉄": 100,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [
+          "学校",
+          "兵舎"
+        ],
+        "tileFacilityMap": {
+          "39,34": [
+            "兵舎"
+          ]
+        },
+        "constructionQueue": [],
+        "foodStock": 1100,
+        "materialStock": 460,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 4,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {
+          "39,34": {
+            "兵舎": {
+              "hp": 100,
+              "maxHp": 100,
+              "status": "稼働"
+            }
+          }
+        },
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "只人": {
+            "gauge": 0,
+            "lastRequiredGauge": 48,
+            "lastPopulation": 12,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "エルフ": {
+            "gauge": 0,
+            "lastRequiredGauge": 40,
+            "lastPopulation": 10,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "竜人": {
+            "gauge": 0,
+            "lastRequiredGauge": 26.4,
+            "lastPopulation": 6,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "lastProcessedTurn": 0,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {}
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "40,34": "settlement",
+          "39,34": "settlement",
+          "41,34": "resource",
+          "39,33": "resource",
+          "40,33": "resource",
+          "39,35": "resource",
+          "40,35": "resource"
+        },
+        "settlementId": "village-40-34",
+        "ownerPlayerId": "player-1"
+      },
+      "income": {
+        "food": {
+          "穀物": 2.7,
+          "野菜": 2.7,
+          "肉": 2.7,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "material": {
+          "木材": 0,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 13.6,
+          "鉄": 0,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 8.1,
+          "銀": 0,
+          "宝石": 0
+        },
+        "tiles": 7,
+        "ownedKeys": [
+          "31,44",
+          "30,44",
+          "32,44",
+          "30,43",
+          "31,43",
+          "30,45",
+          "31,45"
+        ],
+        "expansionWorkers": 0,
+        "availablePopulation": 22,
+        "populationCapacity": 75,
+        "landUsePopulationCapacity": 55,
+        "settlementScalePopulationCapacity": 20,
+        "employmentSlots": 60,
+        "employmentRate": 0.36666666666666664,
+        "productionMetrics": {
+          "population": 22,
+          "skills": {
+            "農業": -5.7,
+            "林業": -5.7,
+            "漁業": -5.7,
+            "工業": -5.7
+          },
+          "contributions": [
+            {
+              "race": "ゴブリン",
+              "population": 10,
+              "className": "ゴブリン",
+              "skills": {
+                "農業": 0,
+                "林業": 0,
+                "漁業": 0,
+                "工業": 0
+              }
+            },
+            {
+              "race": "オーガ",
+              "population": 7,
+              "className": "オーガ",
+              "skills": {
+                "農業": 0,
+                "林業": 0,
+                "漁業": 0,
+                "工業": 0
+              }
+            },
+            {
+              "race": "天使",
+              "population": 5,
+              "className": "エンジェル",
+              "skills": {
+                "農業": -25,
+                "林業": -25,
+                "漁業": -25,
+                "工業": -25
+              }
+            }
+          ],
+          "baseSkills": {
+            "農業": -5.7,
+            "林業": -5.7,
+            "漁業": -5.7,
+            "工業": -5.7
+          },
+          "researchModifiers": {
+            "農業": 0,
+            "林業": 0,
+            "漁業": 0,
+            "工業": 0,
+            "幸福度": 0,
+            "治安": 0
+          },
+          "cityModifiers": {
+            "foodMultiplier": 1,
+            "materialMultiplier": 1,
+            "defenseBonus": 0,
+            "civicBonus": 0,
+            "happinessBonus": 0,
+            "resistances": {},
+            "disasterResistances": {},
+            "constantSkills": [],
+            "events": [],
+            "diagnostics": [],
+            "skills": {
+              "農業": 0,
+              "林業": 0,
+              "漁業": 0,
+              "工業": 0,
+              "魔術": 0,
+              "交渉": 0
+            },
+            "purification": 0,
+            "impurity": 0,
+            "recoveryPercent": 0,
+            "researchExpPercent": 0,
+            "trainingExpPercent": 0,
+            "armyLimit": 0,
+            "heroLimit": 0,
+            "roadDevelopment": 0,
+            "environmentStability": 0,
+            "cargoCapacityPercent": 0,
+            "summonLevel": 0
+          },
+          "populationCapacity": 75,
+          "landUsePopulationCapacity": 55,
+          "settlementScalePopulationCapacity": 20,
+          "employmentRate": 0.36666666666666664,
+          "employmentSlots": 60,
+          "workingPopulation": 22,
+          "expansionWorkers": 0,
+          "productionMultipliers": {
+            "農業": 0.6158,
+            "林業": 0.6158,
+            "漁業": 0.6158,
+            "工業": 0.6158
+          }
+        }
+      },
+      "again": {
+        "id": "village-40-34",
+        "name": "拠点",
+        "x": 40,
+        "y": 34,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 50,
+        "populationByRace": {
+          "只人": 50
+        },
+        "foodStockByType": {
+          "穀物": 56.4,
+          "野菜": 44.4,
+          "肉": 39,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 15,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 150,
+          "鉄": 66.9,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 6.9,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 139.8,
+        "materialStock": 238.8,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "只人": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 50,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null
+      }
+    },
+    {
+      "id": "npc-1",
+      "race": "只人",
+      "plans": [
+        {
+          "name": "只人の拠点"
+        }
+      ],
+      "village": {
+        "id": "village-44-31",
+        "name": "只人の拠点",
+        "x": 44,
+        "y": 31,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 50,
+        "populationByRace": {
+          "只人": 50
+        },
+        "foodStockByType": {
+          "穀物": 117,
+          "野菜": 78,
+          "肉": 39,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 48.9,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 48.9,
+          "鉄": 19.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 234,
+        "materialStock": 117.3,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "只人": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 50,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "44,31": "settlement",
+          "43,31": "resource",
+          "45,31": "resource",
+          "44,30": "resource",
+          "45,30": "resource",
+          "44,32": "resource",
+          "45,32": "resource"
+        },
+        "settlementId": "village-44-31",
+        "ownerPlayerId": "npc-1"
+      },
+      "income": {
+        "food": {
+          "穀物": 39,
+          "野菜": 26,
+          "肉": 13,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "material": {
+          "木材": 16.3,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 16.3,
+          "鉄": 6.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "tiles": 7,
+        "ownedKeys": [
+          "44,31",
+          "43,31",
+          "45,31",
+          "44,30",
+          "45,30",
+          "44,32",
+          "45,32"
+        ],
+        "expansionWorkers": 0,
+        "availablePopulation": 50,
+        "populationCapacity": 65,
+        "landUsePopulationCapacity": 45,
+        "settlementScalePopulationCapacity": 20,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "productionMetrics": {
+          "population": 50,
+          "skills": {
+            "農業": 0,
+            "林業": 0,
+            "漁業": 0,
+            "工業": 0
+          },
+          "contributions": [
+            {
+              "race": "只人",
+              "population": 50,
+              "className": "ヒューマン",
+              "skills": {
+                "農業": 0,
+                "林業": 0,
+                "漁業": 0,
+                "工業": 0
+              }
+            }
+          ],
+          "baseSkills": {
+            "農業": 0,
+            "林業": 0,
+            "漁業": 0,
+            "工業": 0
+          },
+          "researchModifiers": {
+            "農業": 0,
+            "林業": 0,
+            "漁業": 0,
+            "工業": 0,
+            "幸福度": 0,
+            "治安": 0
+          },
+          "cityModifiers": {
+            "foodMultiplier": 1,
+            "materialMultiplier": 1,
+            "defenseBonus": 0,
+            "civicBonus": 0,
+            "happinessBonus": 0,
+            "resistances": {},
+            "disasterResistances": {},
+            "constantSkills": [],
+            "events": [],
+            "diagnostics": [],
+            "skills": {
+              "農業": 0,
+              "林業": 0,
+              "漁業": 0,
+              "工業": 0,
+              "魔術": 0,
+              "交渉": 0
+            },
+            "purification": 0,
+            "impurity": 0,
+            "recoveryPercent": 0,
+            "researchExpPercent": 0,
+            "trainingExpPercent": 0,
+            "armyLimit": 0,
+            "heroLimit": 0,
+            "roadDevelopment": 0,
+            "environmentStability": 0,
+            "cargoCapacityPercent": 0,
+            "summonLevel": 0
+          },
+          "populationCapacity": 65,
+          "landUsePopulationCapacity": 45,
+          "settlementScalePopulationCapacity": 20,
+          "employmentRate": 0.7692307692307693,
+          "employmentSlots": 65,
+          "workingPopulation": 50,
+          "expansionWorkers": 0,
+          "productionMultipliers": {
+            "農業": 0.65,
+            "林業": 0.65,
+            "漁業": 0.65,
+            "工業": 0.65
+          }
+        }
+      },
+      "again": {
+        "id": "village-44-31",
+        "name": "拠点",
+        "x": 44,
+        "y": 31,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 50,
+        "populationByRace": {
+          "只人": 50
+        },
+        "foodStockByType": {
+          "穀物": 117,
+          "野菜": 78,
+          "肉": 39,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 48.9,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 48.9,
+          "鉄": 19.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 234,
+        "materialStock": 117.3,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "只人": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 50,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null
+      }
+    },
+    {
+      "id": "npc-2",
+      "race": "只人",
+      "plans": [
+        {
+          "name": "只人の拠点"
+        }
+      ],
+      "village": {
+        "id": "village-45-34",
+        "name": "只人の拠点",
+        "x": 45,
+        "y": 34,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 50,
+        "populationByRace": {
+          "只人": 50
+        },
+        "foodStockByType": {
+          "穀物": 117,
+          "野菜": 78,
+          "肉": 39,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 48.9,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 48.9,
+          "鉄": 19.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 234,
+        "materialStock": 117.3,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "只人": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 50,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "45,34": "settlement",
+          "44,34": "resource",
+          "46,34": "resource",
+          "44,33": "resource",
+          "45,33": "resource",
+          "44,35": "resource",
+          "45,35": "resource"
+        },
+        "settlementId": "village-45-34",
+        "ownerPlayerId": "npc-2"
+      },
+      "income": {
+        "food": {
+          "穀物": 39,
+          "野菜": 26,
+          "肉": 13,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "material": {
+          "木材": 16.3,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 16.3,
+          "鉄": 6.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "tiles": 7,
+        "ownedKeys": [
+          "45,34",
+          "44,34",
+          "46,34",
+          "44,33",
+          "45,33",
+          "44,35",
+          "45,35"
+        ],
+        "expansionWorkers": 0,
+        "availablePopulation": 50,
+        "populationCapacity": 65,
+        "landUsePopulationCapacity": 45,
+        "settlementScalePopulationCapacity": 20,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "productionMetrics": {
+          "population": 50,
+          "skills": {
+            "農業": 0,
+            "林業": 0,
+            "漁業": 0,
+            "工業": 0
+          },
+          "contributions": [
+            {
+              "race": "只人",
+              "population": 50,
+              "className": "ヒューマン",
+              "skills": {
+                "農業": 0,
+                "林業": 0,
+                "漁業": 0,
+                "工業": 0
+              }
+            }
+          ],
+          "baseSkills": {
+            "農業": 0,
+            "林業": 0,
+            "漁業": 0,
+            "工業": 0
+          },
+          "researchModifiers": {
+            "農業": 0,
+            "林業": 0,
+            "漁業": 0,
+            "工業": 0,
+            "幸福度": 0,
+            "治安": 0
+          },
+          "cityModifiers": {
+            "foodMultiplier": 1,
+            "materialMultiplier": 1,
+            "defenseBonus": 0,
+            "civicBonus": 0,
+            "happinessBonus": 0,
+            "resistances": {},
+            "disasterResistances": {},
+            "constantSkills": [],
+            "events": [],
+            "diagnostics": [],
+            "skills": {
+              "農業": 0,
+              "林業": 0,
+              "漁業": 0,
+              "工業": 0,
+              "魔術": 0,
+              "交渉": 0
+            },
+            "purification": 0,
+            "impurity": 0,
+            "recoveryPercent": 0,
+            "researchExpPercent": 0,
+            "trainingExpPercent": 0,
+            "armyLimit": 0,
+            "heroLimit": 0,
+            "roadDevelopment": 0,
+            "environmentStability": 0,
+            "cargoCapacityPercent": 0,
+            "summonLevel": 0
+          },
+          "populationCapacity": 65,
+          "landUsePopulationCapacity": 45,
+          "settlementScalePopulationCapacity": 20,
+          "employmentRate": 0.7692307692307693,
+          "employmentSlots": 65,
+          "workingPopulation": 50,
+          "expansionWorkers": 0,
+          "productionMultipliers": {
+            "農業": 0.65,
+            "林業": 0.65,
+            "漁業": 0.65,
+            "工業": 0.65
+          }
+        }
+      },
+      "again": {
+        "id": "village-45-34",
+        "name": "拠点",
+        "x": 45,
+        "y": 34,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 50,
+        "populationByRace": {
+          "只人": 50
+        },
+        "foodStockByType": {
+          "穀物": 117,
+          "野菜": 78,
+          "肉": 39,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 48.9,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 48.9,
+          "鉄": 19.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 234,
+        "materialStock": 117.3,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "只人": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 50,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null
+      }
+    }
+  ]
+}

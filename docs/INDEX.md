@@ -7,6 +7,7 @@
 
 ## 入口・共通ルール
 
+- [ai-simulation-report.json](ai-simulation-report.json) : `ai-simulation-report.json`
 - [実装ロードマップ / 設計バックログ](ALL_TASKS_UNIFIED.md) : `ALL_TASKS_UNIFIED.md`
 - [クラススキル構成ルール](CLASS_SKILL_RULES.md) : `CLASS_SKILL_RULES.md`
 - [文書・メモ運用ルール](DOCUMENTATION_RULES.md) : `DOCUMENTATION_RULES.md`
@@ -14,6 +15,7 @@
 - [ドキュメントの入口](README.md) : `README.md`
 - [@game_data スプレッドシート → JSON 変換運用](SPREADSHEET_DATA_WORKFLOW.md) : `SPREADSHEET_DATA_WORKFLOW.md`
 - [ユニット立ち絵生成ルール](UNIT_PORTRAIT_GENERATION_RULES.md) : `UNIT_PORTRAIT_GENERATION_RULES.md`
+- [軽量利用方法(仮).md](%E8%BB%BD%E9%87%8F%E5%88%A9%E7%94%A8%E6%96%B9%E6%B3%95%28%E4%BB%AE%29.md) : `軽量利用方法(仮).md`
 - [現状ゲーム仕様メモ](%E7%8F%BE%E7%8A%B6%E3%82%B2%E3%83%BC%E3%83%A0%E4%BB%95%E6%A7%98%E3%83%A1%E3%83%A2.md) : `現状ゲーム仕様メモ.md`
 
 ## ユニット・戦闘

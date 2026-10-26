@@ -1,8 +1,7 @@
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
-import { V39_VICTORY_GUARD_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { createV39EventEnemy, getV39EnemySpawnDefinitions } from "../ai/v39-enemy-spawn.js";
 import {classData,enemySpawnData} from '../../lib/game-data-registry.js';
-import {chooseV39VictoryGuardian,getV39GuardianMinionCandidates} from '../../lib/v39-victory-guardian-candidates.js';
+import {chooseV39VictoryGuardian,getV39GuardianMinionCandidates,getV39GuardianLandSettings} from '../../lib/v39-victory-guardian-candidates.js';
 import {parseV39SpawnTerrains} from '../../lib/v39-spawn-terrain-list.js';
 import {prepareV39HegemonyWorlds} from '../../lib/v39-hegemony-land-rules.js';
 
@@ -15,6 +14,7 @@ const classNames=new Set(classData.map(row=>row.名前));
 const minionDefinitions=[...new Set(enemySpawnData.flatMap(row=>parseV39SpawnTerrains(row.出現地形)))].flatMap(getV39EnemySpawnDefinitions);
 
 function createGuardUnit(landmark, definition, { id, x, y, level, minion = false, nestId, squadId, guardian }) {
+  const settings=getV39GuardianLandSettings(landmark);
   const race = text(definition?.種族, text(definition?.種族名));
   const className = text(definition?.サブクラス, race);
   const enemy = createV39EventEnemy({
@@ -43,7 +43,7 @@ function createGuardUnit(landmark, definition, { id, x, y, level, minion = false
     strongGroupId:`victory-guard-group:${landmark.id}`,
     strongLeaderId:minion ? `victory-guard:${landmark.id}:boss` : null,
     strongGroupType:"群体",
-    strongGroupExpectedMinionCount:V39_VICTORY_GUARD_BALANCE.minionCount,
+    strongGroupExpectedMinionCount:settings.minionCount,
     strongGroupCountSource:"勝利対象守護設定",
     strongGroupMinionSource:"登録済みの土地別種族・属性候補",
     nestType:text(definition?.巣, "守護の巣"),
@@ -51,7 +51,7 @@ function createGuardUnit(landmark, definition, { id, x, y, level, minion = false
     enemySquadId:squadId,
     territoryCenterX:integer(landmark?.x),
     territoryCenterY:integer(landmark?.y),
-    territoryRadius:V39_VICTORY_GUARD_BALANCE.territoryRadius,
+    territoryRadius:settings.territoryRadius,
     victoryLandmarkKey:text(landmark?.key),
     victoryGuard:true
   };
@@ -65,6 +65,7 @@ export function spawnV39VictoryLandmarkGuards(state, mapData) {
   const occupied = new Set([...existingEnemies,...(state?.players||[]).flatMap(player=>player.factionState?.units||[])]
     .filter(living).map(unit => keyOf(unit?.x, unit?.y)));
   const enemies = [...existingEnemies];
+  const victoryLandmarksByTile={...state.victoryLandmarksByTile};
   const enemyNests = [...existingNests];
   const enemySquads = [...existingSquads];
   const reports = [];
@@ -75,6 +76,7 @@ export function spawnV39VictoryLandmarkGuards(state, mapData) {
     if (occupied.has(landmarkKey)) continue;
     const guardian=chooseV39VictoryGuardian(landmark,{...state,enemies},classNames,mapData?.seed||mapData?.id||'');
     if(!guardian)continue;
+    const settings=getV39GuardianLandSettings(landmark);if(!settings)continue;
     const definition={種族:guardian.race,サブクラス:guardian.className,種族名:guardian.name,ID:`守護者:${guardian.name}`};
     const minionCandidates=getV39GuardianMinionCandidates(landmark,minionDefinitions);
     const minionOffset=[...`${mapData?.seed||''}:${landmark.id}`].reduce((value,char)=>(Math.imul(value,31)+char.charCodeAt(0))>>>0,0);
@@ -82,18 +84,19 @@ export function spawnV39VictoryLandmarkGuards(state, mapData) {
     const squadId = `victory-guard-squad:${landmark.id}`;
     const boss = createGuardUnit(landmark, definition, {
       id:`victory-guard:${landmark.id}:boss`, x:landmark.x, y:landmark.y,
-      level:V39_VICTORY_GUARD_BALANCE.bossLevel, nestId, squadId, guardian
+      level:settings.bossLevel, nestId, squadId, guardian
     });
     if (!boss) continue;
+    victoryLandmarksByTile[landmarkKey]={...landmark,guardianTrialIds:[...(guardian.trialIds||settings.trialIds)]};
     const members = [boss];
     occupied.add(landmarkKey);
-    const minionMaxLevel = Math.max(1, number(boss?.level, 1) - V39_VICTORY_GUARD_BALANCE.minionLevelOffset);
+    const minionMaxLevel = Math.max(1, number(boss?.level, 1) - settings.minionLevelOffset);
     const neighbors = getHexNeighborCoords(mapData?.w, mapData?.h, landmark.x, landmark.y, mapData?.worldWrapEnabled === true);
     for (const neighbor of neighbors) {
       if(!minionCandidates.length)break;
-      if (members.length > V39_VICTORY_GUARD_BALANCE.minionCount || occupied.has(neighbor.key)) continue;
+      if (members.length > settings.minionCount || occupied.has(neighbor.key)) continue;
       const selection=minionCandidates[(minionOffset+members.length-1)%minionCandidates.length];
-      const minionLevel=Math.max(1,minionMaxLevel-(integer(landmark.x)+integer(landmark.y)+members.length)%(V39_VICTORY_GUARD_BALANCE.minionLevelVariance+1));
+      const minionLevel=Math.max(1,minionMaxLevel-(integer(landmark.x)+integer(landmark.y)+members.length)%(settings.minionLevelVariance+1));
       const minion = createGuardUnit(landmark, selection.row, {
         id:`victory-guard:${landmark.id}:minion-${members.length}`, x:neighbor.x, y:neighbor.y,
         level:minionLevel, minion:true, nestId, squadId
@@ -113,7 +116,7 @@ export function spawnV39VictoryLandmarkGuards(state, mapData) {
       victoryGuard:true,
       squadId,
       x:integer(landmark.x), y:integer(landmark.y),
-      territoryRadius:V39_VICTORY_GUARD_BALANCE.territoryRadius,
+      territoryRadius:settings.territoryRadius,
       scaleLevel:1, scaleName:"守護", militaryLevel:1,
       population:members.length,
       unitIds:members.map(unit => unit.id), everHadUnits:true,
@@ -122,7 +125,7 @@ export function spawnV39VictoryLandmarkGuards(state, mapData) {
     enemySquads.push({ id:squadId, nestId, unitIds:members.map(unit => unit.id), cargo:{ resourcesByType:{}, equipmentInventory:[] } });
     reports.push({ landmarkKey, landmarkName:landmark.name, guardianName:guardian.name, nestId, bossId:boss.id, minionCount:members.length - 1 });
   }
-  return { state:{ ...state, enemies, enemyNests, enemySquads }, reports };
+  return { state:{ ...state, enemies, enemyNests, enemySquads,victoryLandmarksByTile }, reports };
 }
 
 function install() {

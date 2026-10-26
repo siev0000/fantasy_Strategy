@@ -1,0 +1,85 @@
+ M config/v39-expedition-defaults.json
+ D config/v39-victory-guardians.json
+ M "data/source/export/json/\343\202\244\343\203\231\343\203\263\343\203\210\344\274\232\350\251\261.json"
+ M "data/source/export/json/\345\213\235\345\210\251\345\257\276\350\261\241\345\234\237\345\234\260.json"
+ M "data/source/export/json/\346\235\221\344\276\235\351\240\274\343\201\262\343\201\252\345\236\213.json"
+ M docs/ALL_TASKS_UNIFIED.md
+ M docs/INDEX.md
+ M docs/SPREADSHEET_DATA_WORKFLOW.md
+ M "docs/rules/world/\351\234\247\343\203\273\344\272\244\346\265\201\343\202\257\343\202\250\343\202\271\343\203\210\343\203\273\345\256\210\350\255\267\350\200\205\343\203\253\343\203\274\343\203\253.md"
+ M "docs/tests/\345\260\202\347\224\250\343\203\206\343\202\271\343\203\210\346\247\213\346\210\220.md"
+ M "docs/\347\217\276\347\212\266\343\202\262\343\203\274\343\203\240\344\273\225\346\247\230\343\203\241\343\203\242.md"
+ M frontend/src/lib/game-data-registry.js
+ M frontend/src/lib/v39-gameplay-balance.js
+ M frontend/src/lib/v39-guardian-quests.js
+ M frontend/src/lib/v39-neutral-village-rules.js
+ M frontend/src/lib/v39-quest-rewards.js
+ M frontend/src/lib/v39-victory-guardian-candidates.js
+ M frontend/src/lib/v39-village-plans.js
+ M frontend/src/v39/bootstrap/v39-bootstrap-final.js
+ M frontend/src/v39/combat/v39-death-lifecycle.js
+ M frontend/src/v39/dev/v39-test-tools.js
+ M frontend/src/v39/dev/v39-village-plan-test.js
+ M frontend/src/v39/ui/v39-operation-layout.css
+ M frontend/src/v39/world/v39-victory-guard-spawn.js
+ M frontend/src/v39/world/v39-village-hub.js
+ M frontend/src/v39/world/v39-world-population.js
+ M progress.md
+ M scripts/check-v39-expedition-operations.mjs
+ M scripts/check-v39-guardian-candidates.mjs
+ M scripts/check-v39-guardian-climate-production.mjs
+ M scripts/check-v39-guardian-sheet.mjs
+ M scripts/check-v39-hegemony-campaign.mjs
+ M scripts/event_sheet_converter.py
+ M scripts/game_data_converter.py
+ M scripts/test_event_sheet_converter.py
+?? frontend/src/lib/v39-village-support-goals.js
+?? frontend/src/v39/dev/v39-guardian-trial-test.js
+?? output/events-guardians-before.xlsx
+?? output/events-guardians-build.log
+?? output/events-guardians-campaign.log
+?? output/events-guardians-candidates.log
+?? output/events-guardians-data-report.json
+?? output/events-guardians-diff.log
+?? output/events-guardians-event-report.json
+?? output/events-guardians-expedition.log
+?? output/events-guardians-final.xlsx
+?? output/events-guardians-generated/
+?? output/events-guardians-initial-status.txt
+?? output/events-guardians-plan.log
+?? output/events-guardians-preview.xlsx
+?? output/events-guardians-python.log
+?? output/events-guardians-trials.log
+?? output/events-guardians-ui.log
+?? output/guardian-settings-preview.xlsx
+?? output/guardian-sheet-check-before.mjs
+?? output/guardian-trials-before.xlsx
+?? output/guardian-trials-build.log
+?? output/guardian-trials-campaign.log
+?? output/guardian-trials-diff-warnings.log
+?? output/guardian-trials-final.xlsx
+?? output/guardian-trials-first.png
+?? output/guardian-trials-generated/
+?? output/guardian-trials-initial-status.txt
+?? output/guardian-trials-preview.xlsx
+?? output/guardian-trials-python.log
+?? output/guardian-trials-render.log
+?? output/guardian-trials-report.json
+?? output/guardian-trials-security.log
+?? output/guardian-trials-ui.log
+?? output/npc-city-village-initial-status.txt
+?? output/sheet-merge-preview/event-support-goals.png
+?? output/sheet-merge-preview/event-support-names.png
+?? output/sheet-merge-preview/guardian-event-goals.png
+?? output/sheet-merge-preview/guardian-event-names.png
+?? output/sheet-merge-preview/guardian-settings-candidates.png
+?? output/sheet-merge-preview/guardian-settings-values.png
+?? output/sheet-merge-preview/render-event-support.mjs
+?? output/sheet-merge-preview/render-guardian-settings.mjs
+?? output/sheet-merge-preview/render-guardian.mjs
+?? output/sheet-merge-preview/trim-event-support.py
+?? output/sheet-merge-preview/trim-guardian-settings.py
+?? output/sheet-merge-preview/trim-guardian.py
+?? scripts/check-v39-event-support.mjs
+?? scripts/check-v39-guardian-trials.mjs
+?? scripts/test_guardian_data_converter.py

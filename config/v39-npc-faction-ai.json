@@ -1,8 +1,25 @@
 {
   "unitTarget": 6,
   "initialArmies":2,
+  "commerce": {"enabled":true,"cooldownTurns":5,"maxActive":1,"maxQuantity":20,"graceTurns":10,"minimumRelation":0},
+  "growth": {"enabled":true,"equipmentCooldownTurns":5,"surveyCandidateLimit":128,"surveyRetryTurns":5},
+  "foodPriority": {"enabled":true,"minimumDefenseUnits":2,"constructionCandidateLimit":64,"constructionReserveUnits":1},
+  "internalSupply": {"enabled":true,"foodReserveTurns":5},
+  "resourceExpansion": {"enabled":true,"deficitWeightCap":100,"candidateLimit":64,"rareResourceApproachRange":8},
+  "resourceTeams": {"reserveUnits":2,"resourcesPerArmy":100,"stockReserveTurns":5,"maxTeams":6,"villageMaxTeams":3,"maxTeamsPerResource":2,"maxUnits":12,"escortMembers":2,"maxStepsPerTurn":6,"sourceCandidateLimit":128},
   "constructionPurposeBonus": {"防衛":80,"探索":90,"研究":20,"食料":20,"浄化":10},
   "foodShortageBonus":150,
+  "recruitmentAffinity": {"preferredClassBonus":30,"duplicateClassPenalty":8},
+  "citySpecialization": {
+    "preferredCityBonus":40,"minimumSwitchGain":15,"threatRange":5,
+    "baseWeights":{"食料産出補正":0.2,"資材産出補正":0.2,"農業":0.1,"漁業":0.1,"林業":0.1,"工業":0.1,"魔術":0.1,"研究EXP補正":0.2,"訓練EXP補正":0.2,"軍隊":1,"ヒーロー":1,"治安":0.1,"幸福度":0.1,"領土被ダメージ軽減":0.2},
+    "foodShortageWeights":{"食料産出補正":3,"農業":3,"漁業":2},
+    "materialShortageWeights":{"資材産出補正":2,"林業":1,"工業":1},
+    "reinforcementWeights":{"訓練EXP補正":0.6,"軍隊":3},
+    "threatWeights":{"領土被ダメージ軽減":2,"回復":2,"治安":0.5},
+    "researchWeights":{"研究EXP補正":0.5},
+    "magicResearchWeights":{"魔術":0.3,"召喚Lv補正":1}
+  },
   "scouting": { "maxStepsPerTurn": 6, "searchNodeLimit": 512 },
   "racePatternIds": {},
   "resourcePatterns": {

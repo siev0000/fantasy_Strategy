@@ -1,4 +1,5 @@
 import {describeV39VillagePlan,inspectV39VillageDevelopment} from '../../lib/v39-village-plans.js';
+import {inspectV39VillageSupportQuest} from '../../lib/v39-village-support-goals.js';
 import {renderV39Conversation,recordV39Conversation} from './v39-negotiation-conversation.js';
 import {getV39VillageQuests} from '../../lib/v39-village-quest-log.js';
 import {submitV39VillageQuestBatch} from '../../lib/v39-village-quest-batch.js';
@@ -19,11 +20,16 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 function developmentMarkup(state,village){
   const nodes=inspectV39VillageDevelopment(state,village,window.__v39FieldRuntime?.mapData);
   const labels={completed:'完了',active:'進行中',locked:'前提待ち',unavailable:'定義なし'};
-  return `<article class="v39-hub-card" data-village-development><h3>村の発展計画</h3>${nodes.map(node=>`<div class="v39-development-node" data-development-status="${node.status}"><b>${esc(node.name)}</b><span>${labels[node.status]}</span>${node.requires.length?`<small>前提: ${esc(node.requires.map(id=>nodes.find(row=>row.id===id)?.name||id).join('・'))}</small>`:''}${node.status==='active'?`<small>${esc([node.stage,...node.needs.map(need=>`${need.resource} あと${need.amount}`),...node.blockers].filter(Boolean).join(' / '))}</small>`:''}</div>`).join('')}</article>`;
+  const teams=village.resourceOperations?.aiState?.resourceTeams||[];
+  const expansion=village.resourceOperations?.resourceExpansion||[];
+  const labelsExpansion={building:'開拓中',paused:'停止中',ready:'候補',blocked:'条件待ち',idle:'不足なし',disabled:'OFF'};
+  const expansionMarkup=expansion.length?`<article class="v39-hub-card" data-village-resource-expansion><h3>資源地の開拓</h3>${expansion.map(row=>`<p>${labelsExpansion[row.status]||''}${row.tileKey?' @'+esc(row.tileKey):''}${row.remainingTurns!=null?' / 残り'+Number(row.remainingTurns)+'T':''}${row.reason?' / '+esc(row.reason):''}</p>`).join('')}</article>`:'';
+  const resources=teams.length?`<article class="v39-hub-card" data-village-resource-teams><h3>資源確保の分担</h3>${teams.map(team=>`<p>${esc(team.resource)} / ${esc(team.role)} / ${esc(team.status)} / ${team.unitIds?.length||0}駒</p>`).join('')}${village.resourceOperations.recruitment?.reasons?.length?`<p>${esc(village.resourceOperations.recruitment.reasons.join(' / '))}</p>`:''}</article>`:'';
+  return `<article class="v39-hub-card" data-village-development><h3>村の発展計画</h3>${nodes.map(node=>`<div class="v39-development-node" data-development-status="${node.status}"><b>${esc(node.name)}</b><span>${labels[node.status]}</span>${node.requires.length?`<small>前提: ${esc(node.requires.map(id=>nodes.find(row=>row.id===id)?.name||id).join('・'))}</small>`:''}${node.status==='active'?`<small>${esc([node.stage,...node.needs.map(need=>`${need.resource} あと${need.amount}`),...node.blockers].filter(Boolean).join(' / '))}</small>`:''}</div>`).join('')}</article>${resources}${expansionMarkup}`;
 }
 const tabs=[['talk','会話'],['quests','クエスト'],['trade','取引'],['info','情報']];
 const alive=unit=>Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
-const types={hunt:'討伐',delivery:'物資',watch:'警備',construction:'建築'};
+const types={hunt:'討伐',delivery:'物資',watch:'警備',construction:'建築',composite:'複合支援',contract:'定期契約'};
 let context='',active='talk',selectedTalk='status',rewardQuestId='',questScroll=0,latest=null;
 let offeringDraft={count:1},offeringCheck=null;
 let reincarnationCheck=null;
@@ -68,7 +74,8 @@ function conditionIcon(name,value){
 }
 function questCard(row,state,village){
   const value=row.pending?`${row.type==='hunt'?Math.max(0,row.required-(row.targetEnemyIds||[]).filter(id=>state.enemies?.some(unit=>unit.id===id&&alive(unit))).length):row.progress||0}/${row.required}`:row.required;
-  const condition=row.type==='delivery'?conditionIcon(row.resourceKey,value):row.type==='hunt'?conditionIcon('攻撃',`${value}体`):row.type==='watch'?`⌛${esc(value)}`:row.type==='construction'?conditionIcon('建設',value):esc(row.objective||'依頼内容を確認');
+  const support=row.supportGoals?inspectV39VillageSupportQuest(row,village,state.timeline.turnNumber):null;
+  const condition=support?support.goals.map(goal=>goal.type==='watch'?`⌛${goal.progress}/${goal.required}T`:`${esc(goal.facilityName)} ${conditionIcon('建設',`${goal.progress}/${goal.required}`)}`).join(' / '):row.type==='contract'?`${conditionIcon(row.resourceKey,row.amountPerPeriod)} × ${esc(value)}回 / 次回T${row.nextDueTurn}（猶予${row.grace}T）`:row.type==='delivery'?conditionIcon(row.resourceKey,value):row.type==='hunt'?conditionIcon('攻撃',`${value}体`):row.type==='watch'?`⌛${esc(value)}`:row.type==='construction'?conditionIcon('建設',value):esc(row.objective||'依頼内容を確認');
   return `<article class="v39-hub-card${checkedQuests.has(row.eventId)?' selected':''}" data-quest-entry="${esc(row.eventId)}"><label class="v39-quest-check-row"><input type="checkbox" data-hub-quest="${esc(row.eventId)}" aria-label="${esc(row.label)}を選択"${checkedQuests.has(row.eventId)?' checked':''}><div><div class="v39-hub-card-title"><h3>${esc(row.label)}</h3><span>${row.pending?'受注中':esc(types[row.type]||'依頼')}</span></div><p>${esc(row.説明||row.description||row.詳細||'')}</p><p>達成条件: ${condition}</p>${questRewardSummary(state,village,row)}${row.deadlineTurn?`<small>期限 T${row.deadlineTurn}</small>`:''}</div></label>${row.pending?'':`<button type="button" data-hub-reward-negotiate="${esc(row.eventId)}">交渉</button>`}</article>`;
 }
 

@@ -1,0 +1,8 @@
+{
+  transport: true,
+  intrusion: true,
+  guard: true,
+  tools: true,
+  support: true,
+  villageRequests: true
+}

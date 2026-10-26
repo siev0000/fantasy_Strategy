@@ -1,0 +1,59 @@
+{
+  "checks": [
+    "equipment plan uses real rarity and costs",
+    "hero equips crafted upgrade",
+    "equipment materials charged exactly",
+    "planning and actions do not mutate source state",
+    "construction reserves block luxury spending",
+    "equipment cooldown persisted",
+    "growth cooldown survives state normalization",
+    "mob army uses paid fixed-equipment reroll",
+    "available upgrade inventory avoids duplicate crafting cost",
+    "NPC promotes during resolution using shared rule",
+    "surplus levels transferred without free levels",
+    "AI context cannot bypass human turn",
+    "surplus level still required",
+    "rare resources require completed discovery research",
+    "discovery prerequisite selected from data graph",
+    "known suitable terrain creates survey candidate",
+    "survey planner does not read hidden resource coordinates",
+    "survey charges normal 100 AP",
+    "partial survey does not grant missing AP",
+    "next survey spends remaining 70 AP",
+    "actual survey resolves hidden special resource",
+    "rare periodic income is scored for land acquisition",
+    "special resource follows real periodic harvest rather than instant grant",
+    "NPC negotiates real village exchange",
+    "negotiation costs AP20",
+    "no requested goods teleported at acceptance",
+    "courier physically exchanges and returns",
+    "returned goods deposited into own base",
+    "village paid and received actual resources",
+    "undiscovered villages are not trade targets",
+    "rejection spends AP without reserving stock",
+    "rejected offer does not lose materials",
+    "interrupted trade requires manual restart",
+    "village shortage generates physical aid shipment",
+    "aid is not teleported before delivery",
+    "physical aid reaches village stock exactly once",
+    "research and growth diagnostic is read-only rendered"
+  ],
+  "contract": {
+    "status": "complete",
+    "history": [
+      {
+        "turn": 22,
+        "cycle": 1,
+        "goods": [
+          {
+            "木材": 20
+          },
+          {
+            "鉄": 20
+          }
+        ]
+      }
+    ]
+  },
+  "harvested": 1
+}

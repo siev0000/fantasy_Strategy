@@ -1,0 +1,13 @@
+{
+  surfaceGuards: 0,
+  insideGuards: 3,
+  boss: 'スフィンクス',
+  blocked: true,
+  peaceful: true,
+  entered: 'hegemony:campaign-sun',
+  returned: 'surface',
+  owned: true,
+  immediate: false,
+  won: true,
+  saved: true
+}

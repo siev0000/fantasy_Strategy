@@ -1,0 +1,70 @@
+generation T1 を初期状態として記録しました（勢力・村 5） / 0 / 50T / 要確認 0・異常 0
+progress 一時停止（現在ターン完了後） / 2 / 5T / 要確認 0・異常 0
+progress T6 完了 (2195ms) / 5 / 5T / 要確認 0・異常 0
+{
+  "completed": 5,
+  "actors": [
+    {
+      "name": "NPC勢力1",
+      "kind": "勢力",
+      "units": 3,
+      "buildings": [],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "10,22",
+          "remainingTurns": 1
+        }
+      ]
+    },
+    {
+      "name": "NPC勢力2",
+      "kind": "勢力",
+      "units": 3,
+      "buildings": [],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "11,31",
+          "remainingTurns": 1
+        }
+      ]
+    },
+    {
+      "name": "NPC勢力3",
+      "kind": "勢力",
+      "units": 3,
+      "buildings": [],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "27,17",
+          "remainingTurns": 1
+        }
+      ]
+    },
+    {
+      "name": "ヴァンパイアの村",
+      "kind": "村",
+      "units": 2,
+      "buildings": [],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "10,8",
+          "remainingTurns": 2
+        }
+      ]
+    },
+    {
+      "name": "天使の村",
+      "kind": "村",
+      "units": 2,
+      "buildings": [],
+      "pending": []
+    }
+  ],
+  "issues": [],
+  "pauseAt": 2,
+  "errors": []
+}

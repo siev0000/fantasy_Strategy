@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "rulerCategory": "魔族",
+  "minimumPopulation": 10,
+  "maximumPopulation": 15,
+  "terrainRaces": {
+    "丘陵": "ドワーフ", "山岳": "ドワーフ", "荒野": "ドワーフ", "砂漠": "ドワーフ",
+    "森": "エルフ", "湖": "エルフ", "沼地": "エルフ", "湿地": "エルフ"
+  },
+  "fallbackRace": "只人",
+  "corpsesPerPerson": 1,
+  "npc": { "enabled": true, "minimumRemaining": 5, "maximumPerTurn": 1 }
+}

@@ -10,6 +10,24 @@ export function resolveV39RaceDefinition(value) {
 
 export const normalizeV39RaceName=value=>resolveV39RaceDefinition(value)?.key||text(value);
 
+export function getV39RaceRecommendations(value) {
+  const row=resolveV39RaceDefinition(value);
+  const names=key=>[...new Set(text(row?.[key]).split('/').map(text).filter(Boolean))];
+  return {classes:names('推奨クラス'),cities:names('推奨都市特化')};
+}
+
+export function getV39PopulationRaceRecommendations(settlement,fallbackRace) {
+  let populations=Object.entries(settlement?.populationByRace||{}).filter(([,count])=>Number.isFinite(Number(count))&&Number(count)>0);
+  if(!populations.length)populations=[[fallbackRace,1]];
+  const total=populations.reduce((sum,[,count])=>sum+Number(count),0);
+  return populations.map(([race,count])=>({race,share:Number(count)/total,...getV39RaceRecommendations(race)}));
+}
+
+export function getV39CityRaceAffinity(settlement,cityId,fallbackRace) {
+  return getV39PopulationRaceRecommendations(settlement,fallbackRace)
+    .reduce((sum,row)=>sum+(row.cities.includes(cityId)?row.share:0),0);
+}
+
 export function isV39RacePlayable(value) {
   const row=typeof value==='object'&&value?value:resolveV39RaceDefinition(value);
   if(!row||row.使用可!==true||!text(row.key)||!text(row.name)||!text(row.className))return false;

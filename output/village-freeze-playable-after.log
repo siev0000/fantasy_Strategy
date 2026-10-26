@@ -1,0 +1,22 @@
+390 [
+  { key: 'cemetery', plan: 'PLAN_VILLAGE_CEMETERY', training: null },
+  { key: 'food', plan: 'PLAN_VILLAGE_FOOD', training: null },
+  { key: 'threat', plan: 'PLAN_VILLAGE_THREAT', training: null },
+  {
+    key: 'guard',
+    plan: 'PLAN_VILLAGE_DEFENSE',
+    training: { startedTurn: 1, readyTurn: 4 }
+  }
+]
+390 { cemetery: true, guards: 1 }
+1100 [
+  { key: 'cemetery', plan: 'PLAN_VILLAGE_CEMETERY', training: null },
+  { key: 'food', plan: 'PLAN_VILLAGE_FOOD', training: null },
+  { key: 'threat', plan: 'PLAN_VILLAGE_THREAT', training: null },
+  {
+    key: 'guard',
+    plan: 'PLAN_VILLAGE_DEFENSE',
+    training: { startedTurn: 1, readyTurn: 4 }
+  }
+]
+1100 { cemetery: true, guards: 1 }

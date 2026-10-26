@@ -233,3 +233,7 @@
         height:26px!important;
       }
     }
+.squad-card.v39-unit-waited .v39-card-portrait-image,
+.squad-card.v39-unit-waited .squad-icon{
+  filter:brightness(var(--v39-waited-brightness));
+}

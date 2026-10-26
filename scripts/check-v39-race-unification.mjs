@@ -10,7 +10,7 @@ try{for(const width of [390,1100]){
   await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:5173',{waitUntil:'networkidle'});
   await page.waitForFunction(()=>typeof window.startV39CallTest==='function');
   const result=await page.evaluate(async()=>{
-    const {raceData,factionData}=await import('/src/lib/game-data-registry.js');
+    const {raceData,factionData,classData,cityData}=await import('/src/lib/game-data-registry.js');
     const rules=await import('/src/lib/v39-race-definitions.js');
     const sovereign=await import('/src/v39/core/v39-initial-sovereign.js');
     const exp=await import('/src/lib/v39-unit-experience.js');
@@ -18,18 +18,26 @@ try{for(const width of [390,1100]){
     const {generateV39WorldPopulation}=await import('/src/v39/world/v39-world-population.js');
     const failures=[],ok=(value,message)=>{if(!value)failures.push(message);};
     const available=rules.getV39PlayableRaceDefinitions().map(row=>row.key).sort();
-    const expected=['只人','エルフ','オーガ','ゴブリン','竜人','悪魔','天使'].sort();
+    const expected=raceData.filter(row=>row.使用可===true).map(row=>row.key).sort();
     ok(JSON.stringify(available)===JSON.stringify(expected),'playable list');
     ok(raceData.length===11&&factionData.length===11,'pending records preserved');
     ok(factionData.every(row=>raceData.some(r=>r.key===row.種族&&r.name===row.種族&&r.className===row.カナ)),'one canonical name per race');
     ok(rules.normalizeV39RaceName('人間')==='只人'&&rules.normalizeV39RaceName('森人')==='エルフ','legacy names');
     ok(rules.normalizeV39RaceName('人族')==='人族','human family must not collapse to only humans');
     ok(exp.resolveV39UnitRaceCategory({race:'人間'})==='human'&&exp.resolveV39UnitRaceCategory({race:'森人'})==='human','legacy growth category');
-    ok(caveRaceOptions.every(r=>available.includes(r.key))&&caveRaceOptions.length===7,'cave selection');
-    for(const name of ['ドワーフ','獣人','巨人','ヴァンパイア']){
+    ok(caveRaceOptions.every(r=>available.includes(r.key))&&caveRaceOptions.length===expected.length,'cave selection');
+    for(const name of raceData.filter(row=>row.使用可!==true).map(row=>row.key)){
       ok(!rules.isV39RacePlayable(name),'incomplete enabled '+name);
       ok(sovereign.getV39InitialSovereignClassCandidates(name).length===0,'class candidates for incomplete '+name);
       ok(!sovereign.createV39InitialSovereign({playerId:'test',race:name,className:'ファイター',characterName:'試験'}).ok,'incomplete direct creation '+name);
+    }
+    ok(rules.getV39RaceRecommendations('只人').classes.length===0,'generalist has no forced class preference');
+    ok(rules.getV39RaceRecommendations('森人').classes.includes('ウィザード'),'preferences resolve old race names');
+    for(const race of raceData){
+      const preferred=rules.getV39RaceRecommendations(race.key);
+      ok(preferred.classes.every(name=>classData.some(row=>row.名前===name)),'registered class preferences');
+      ok(preferred.cities.every(name=>cityData.some(row=>row.項目名===name&&row.レア度==='通常')),'registered normal city preferences');
+      ok(factionData.find(row=>row.種族===race.key)?.推奨クラス===race.推奨クラス,'single-source preference projection');
     }
     const old=sovereign.createV39InitialSovereign({playerId:'test',race:'人間',className:'ファイター',characterName:'旧名称試験'});
     ok(old.ok&&old.unit.race==='只人','alias creation not canonical');

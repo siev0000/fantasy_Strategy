@@ -43,21 +43,15 @@ function rememberWorld(state){
 function activateWorld(state,worlds,id,players=state.players){
   const world=worlds[id];if(!world?.map)throw new Error("移動先のマップがありません。");
   switching=true;
+  const batch=window.beginV39MapRenderBatch?.('world-layer-switch');
   try{
     window.cancelV39SelectedUnitMove?.();
     window.cancelV39SelectedUnitAttack?.("world-layer-changed");
-    window.loadV39FieldSnapshot(world.map,world.settings||{}, {layerChange:true});
+    window.loadV39FieldSnapshot(world.map,world.settings||{}, {layerChange:true,worldId:id,camera:world.camera});
     window.setV39GameState({activeWorldId:id,explorationWorlds:worlds,...world.spatial,players:players.map(player=>({...player,factionState:{...player.factionState,visibility:world.visibility?.[player.id]||{},exploration:world.exploration?.[player.id]||{}}}))},{reason:"world-layer-changed"});
     window.refreshV39SquadDerivedUI?.();
-    window.renderV39Visibility?.();
-    window.refreshV39MapEntities?.();
     window.activateV39FooterTab?.("squad");
-    setTimeout(()=>{
-      if(window.getV39GameState().activeWorldId!==id)return;
-      const camera=window.__v39FieldRuntime.game?.scene?.getScenes(true)?.[0]?.cameras?.main;
-      if(camera&&world.camera){camera.setZoom(world.camera.zoom);camera.setScroll(world.camera.scrollX,world.camera.scrollY);}
-    },100);
-  }finally{switching=false;}
+  }finally{switching=false;window.endV39MapRenderBatch?.(batch,{force:true,reason:'world-layer-switch'});}
   installActions();renderSites();
   window.dispatchEvent(new CustomEvent("v39:cave-world-ready"));
   return id;

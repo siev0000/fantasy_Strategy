@@ -1,0 +1,12 @@
+{
+  ownership: true,
+  cap: true,
+  cargo: true,
+  immutable: true,
+  worlds: true,
+  automatic: true,
+  remove: true,
+  disband: true,
+  wrap: true,
+  hold: true
+}

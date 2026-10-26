@@ -1,0 +1,2116 @@
+[
+  {
+    "id": "npc-1",
+    "name": "NPC勢力1",
+    "race": "ゴブリン",
+    "pop": [
+      75,
+      74
+    ],
+    "units": [
+      3,
+      2
+    ],
+    "buildings": [
+      "墓地",
+      "農場",
+      "船着き場"
+    ],
+    "pending": [
+      {
+        "name": "開拓",
+        "tileKey": "31,19",
+        "remainingTurns": 1
+      }
+    ],
+    "goal": "未踏地域を移動探索",
+    "reasons": [
+      "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+      "食料確保を優先するため新規の軍備増強を停止"
+    ],
+    "food": [
+      {
+        "name": "ゴブリンの拠点",
+        "status": "deficit",
+        "deficit": 14.6,
+        "reserve": 194.6
+      }
+    ],
+    "needs": [
+      {
+        "name": "穀物",
+        "stock": 133.8,
+        "required": 230.8,
+        "missing": 97,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "野菜",
+        "stock": 131,
+        "required": 160,
+        "missing": 29,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "魚",
+        "stock": 0,
+        "required": 71,
+        "missing": 71,
+        "purpose": "食料収支改善"
+      }
+    ],
+    "stocks": {
+      "穀物": 130,
+      "野菜": 116.4,
+      "肉": 121.1,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 1136.8
+    }
+  },
+  {
+    "id": "npc-2",
+    "name": "NPC勢力2",
+    "race": "ゴブリン",
+    "pop": [
+      75,
+      75
+    ],
+    "units": [
+      3,
+      3
+    ],
+    "buildings": [
+      "墓地",
+      "農場"
+    ],
+    "pending": [],
+    "goal": "未踏地域を移動探索",
+    "reasons": [
+      "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+      "食料確保を優先するため新規の軍備増強を停止"
+    ],
+    "food": [
+      {
+        "name": "ゴブリンの拠点",
+        "status": "deficit",
+        "deficit": 13.9,
+        "reserve": 203.3
+      }
+    ],
+    "needs": [
+      {
+        "name": "穀物",
+        "stock": 133,
+        "required": 233,
+        "missing": 100,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "野菜",
+        "stock": 127.4,
+        "required": 161.4,
+        "missing": 34,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "魚",
+        "stock": 0,
+        "required": 71,
+        "missing": 71,
+        "purpose": "食料収支改善"
+      }
+    ],
+    "stocks": {
+      "穀物": 127.1,
+      "野菜": 125.3,
+      "肉": 125.3,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 3217.3
+    }
+  },
+  {
+    "id": "npc-3",
+    "name": "NPC勢力3",
+    "race": "只人",
+    "pop": [
+      50,
+      35
+    ],
+    "units": [
+      3,
+      2
+    ],
+    "buildings": [
+      "墓地",
+      "船着き場"
+    ],
+    "pending": [
+      {
+        "name": "開拓",
+        "tileKey": "11,17",
+        "remainingTurns": 2
+      }
+    ],
+    "goal": "未踏地域を移動探索",
+    "reasons": [
+      "資材不足: 鉄",
+      "食料確保を優先するため新規の軍備増強を停止"
+    ],
+    "food": [
+      {
+        "name": "只人の拠点",
+        "status": "deficit",
+        "deficit": 50.1,
+        "reserve": 430
+      }
+    ],
+    "needs": [
+      {
+        "name": "鉄",
+        "stock": 17.7,
+        "required": 50,
+        "missing": 32.3,
+        "purpose": "建設: 農場"
+      },
+      {
+        "name": "穀物",
+        "stock": 0,
+        "required": 172,
+        "missing": 172,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "野菜",
+        "stock": 0,
+        "required": 129,
+        "missing": 129,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "肉",
+        "stock": 0,
+        "required": 86,
+        "missing": 86,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "魚",
+        "stock": 0,
+        "required": 43,
+        "missing": 43,
+        "purpose": "食料収支改善"
+      }
+    ],
+    "stocks": {
+      "穀物": 0.7,
+      "野菜": 2,
+      "肉": 0,
+      "魚": 0.2,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 20.2
+    }
+  },
+  {
+    "id": "npc-4",
+    "name": "NPC勢力4",
+    "race": "竜人",
+    "pop": [
+      25,
+      0
+    ],
+    "units": [
+      3,
+      0
+    ],
+    "firstZero": 32,
+    "buildings": [
+      "墓地"
+    ],
+    "pending": [
+      {
+        "name": "開拓",
+        "tileKey": "24,17",
+        "remainingTurns": 1
+      }
+    ],
+    "goal": "未踏地域を移動探索",
+    "reasons": [
+      "資材不足: 木材",
+      "作成可能な種族・職業がありません"
+    ],
+    "food": [
+      {
+        "name": "竜人の拠点",
+        "status": "stable",
+        "deficit": 0,
+        "reserve": 0
+      }
+    ],
+    "needs": [
+      {
+        "name": "木材",
+        "stock": 34.3,
+        "required": 50,
+        "missing": 15.71,
+        "purpose": "建設: 兵舎"
+      }
+    ],
+    "stocks": {
+      "穀物": 0,
+      "野菜": 0,
+      "肉": 0,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 530.9
+    }
+  },
+  {
+    "id": "npc-5",
+    "name": "NPC勢力5",
+    "race": "天使",
+    "pop": [
+      30,
+      61
+    ],
+    "units": [
+      3,
+      0
+    ],
+    "firstZero": 49,
+    "buildings": [
+      "墓地",
+      "農場"
+    ],
+    "pending": [],
+    "goal": "他勢力へ対応",
+    "reasons": [
+      "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+      "野菜不足"
+    ],
+    "food": [
+      {
+        "name": "天使の拠点",
+        "status": "deficit",
+        "deficit": 24.4,
+        "reserve": 52.8
+      }
+    ],
+    "needs": [
+      {
+        "name": "魂",
+        "stock": 0,
+        "required": 1,
+        "missing": 1,
+        "purpose": "人口増加"
+      },
+      {
+        "name": "野菜",
+        "stock": 0,
+        "required": 40,
+        "missing": 40,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "魚",
+        "stock": 0,
+        "required": 14,
+        "missing": 14,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "魂",
+        "stock": 0,
+        "required": 0.5,
+        "missing": 1,
+        "purpose": "食料備蓄"
+      },
+      {
+        "name": "野菜",
+        "stock": 0,
+        "required": 2,
+        "missing": 2,
+        "purpose": "戦力増強"
+      }
+    ],
+    "stocks": {
+      "穀物": 196.4,
+      "野菜": 0,
+      "肉": 197.7,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 2935.6
+    }
+  },
+  {
+    "id": "npc-6",
+    "name": "NPC勢力6",
+    "race": "只人",
+    "pop": [
+      50,
+      50
+    ],
+    "units": [
+      3,
+      2
+    ],
+    "buildings": [
+      "墓地",
+      "農場"
+    ],
+    "pending": [],
+    "goal": "未踏地域を移動探索",
+    "reasons": [
+      "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+      "食料確保を優先するため新規の軍備増強を停止"
+    ],
+    "food": [
+      {
+        "name": "只人の拠点",
+        "status": "deficit",
+        "deficit": 58,
+        "reserve": 520.2
+      }
+    ],
+    "needs": [
+      {
+        "name": "穀物",
+        "stock": 12.4,
+        "required": 220.4,
+        "missing": 208,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "野菜",
+        "stock": 9.9,
+        "required": 165.9,
+        "missing": 156,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "肉",
+        "stock": 7.5,
+        "required": 110.5,
+        "missing": 103,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "魚",
+        "stock": 0,
+        "required": 55,
+        "missing": 55,
+        "purpose": "食料収支改善"
+      }
+    ],
+    "stocks": {
+      "穀物": 6.7,
+      "野菜": 9.2,
+      "肉": 6.9,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 644.4
+    }
+  },
+  {
+    "id": "npc-7",
+    "name": "NPC勢力7",
+    "race": "只人",
+    "pop": [
+      50,
+      6
+    ],
+    "units": [
+      3,
+      3
+    ],
+    "buildings": [
+      "墓地",
+      "農場"
+    ],
+    "pending": [],
+    "goal": "未踏地域を移動探索",
+    "reasons": [
+      "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+      "食料確保を優先するため新規の軍備増強を停止"
+    ],
+    "food": [
+      {
+        "name": "只人の拠点",
+        "status": "deficit",
+        "deficit": 24.2,
+        "reserve": 170
+      }
+    ],
+    "needs": [
+      {
+        "name": "穀物",
+        "stock": 0,
+        "required": 68,
+        "missing": 68,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "野菜",
+        "stock": 0,
+        "required": 51,
+        "missing": 51,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "肉",
+        "stock": 0,
+        "required": 34,
+        "missing": 34,
+        "purpose": "食料収支改善"
+      },
+      {
+        "name": "魚",
+        "stock": 0,
+        "required": 17,
+        "missing": 17,
+        "purpose": "食料収支改善"
+      }
+    ],
+    "stocks": {
+      "穀物": 0,
+      "野菜": 0,
+      "肉": 0,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 91.9
+    }
+  },
+  {
+    "id": "village:neutral-village-1-35,25",
+    "name": "悪魔の村",
+    "race": "悪魔",
+    "pop": [
+      10,
+      10
+    ],
+    "units": [
+      2,
+      2
+    ],
+    "buildings": [],
+    "pending": [],
+    "goal": "食料備蓄の確保 / 資材確保",
+    "reasons": [],
+    "food": [],
+    "needs": [],
+    "stocks": {
+      "穀物": 107.6,
+      "野菜": 57.6,
+      "肉": 0,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 118.2
+    }
+  },
+  {
+    "id": "village:neutral-village-2-24,22",
+    "name": "ヴァンパイアの村",
+    "race": "ヴァンパイア",
+    "pop": [
+      10,
+      10
+    ],
+    "units": [
+      2,
+      1
+    ],
+    "buildings": [],
+    "pending": [],
+    "goal": "村周辺の安全確保 / 安全確保",
+    "reasons": [],
+    "food": [],
+    "needs": [],
+    "stocks": {
+      "穀物": 93.9,
+      "野菜": 63,
+      "肉": 0,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 137.4
+    }
+  },
+  {
+    "id": "village:neutral-village-3-19,27",
+    "name": "オーガの村",
+    "race": "オーガ",
+    "pop": [
+      30,
+      30
+    ],
+    "units": [
+      3,
+      1
+    ],
+    "buildings": [],
+    "pending": [],
+    "goal": "村周辺の安全確保 / 安全確保",
+    "reasons": [],
+    "food": [],
+    "needs": [],
+    "stocks": {
+      "穀物": 0,
+      "野菜": 212,
+      "肉": 0,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 973.2
+    }
+  },
+  {
+    "id": "village:neutral-village-4-11,25",
+    "name": "エルフの村",
+    "race": "エルフ",
+    "pop": [
+      44,
+      44
+    ],
+    "units": [
+      1,
+      1
+    ],
+    "firstZero": 3,
+    "buildings": [],
+    "pending": [],
+    "goal": "村周辺の安全確保 / 安全確保",
+    "reasons": [],
+    "food": [],
+    "needs": [],
+    "stocks": {
+      "穀物": 220.9,
+      "野菜": 51.4,
+      "肉": 830.7,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 0
+    }
+  },
+  {
+    "id": "village:neutral-village-5-16,8",
+    "name": "ゴブリンの村",
+    "race": "ゴブリン",
+    "pop": [
+      84,
+      84
+    ],
+    "units": [
+      2,
+      2
+    ],
+    "buildings": [],
+    "pending": [],
+    "goal": "村周辺の安全確保 / 安全確保",
+    "reasons": [],
+    "food": [],
+    "needs": [],
+    "stocks": {
+      "穀物": 0,
+      "野菜": 0,
+      "肉": 0,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 0
+    }
+  },
+  {
+    "id": "village:neutral-village-6-14,33",
+    "name": "天使の村",
+    "race": "天使",
+    "pop": [
+      18,
+      18
+    ],
+    "units": [
+      3,
+      3
+    ],
+    "buildings": [],
+    "pending": [],
+    "goal": "村周辺の安全確保 / 安全確保",
+    "reasons": [],
+    "food": [],
+    "needs": [],
+    "stocks": {
+      "穀物": 9.6,
+      "野菜": 0,
+      "肉": 0,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 21.9
+    }
+  },
+  {
+    "id": "village:neutral-village-7-24,34",
+    "name": "只人の村",
+    "race": "只人",
+    "pop": [
+      38,
+      38
+    ],
+    "units": [
+      1,
+      1
+    ],
+    "firstZero": 5,
+    "buildings": [],
+    "pending": [],
+    "goal": "食料備蓄の確保 / 資材確保",
+    "reasons": [],
+    "food": [],
+    "needs": [],
+    "stocks": {
+      "穀物": 0,
+      "野菜": 0,
+      "肉": 0,
+      "魚": 0,
+      "死体": 0,
+      "魂": 0,
+      "鉄": 145.2
+    }
+  }
+]
+TIMES [
+  {
+    t: 2,
+    ms: 9607,
+    stages: {
+      turnNumber: 2,
+      enemy: [Object],
+      terrain: 149.80000001192093,
+      ai: 1592.199999988079,
+      exploration: 45.30000001192093,
+      world: 838.5999999940395,
+      economy: 209.1000000089407,
+      research: 48.70000000298023,
+      diplomacy: 183.09999999403954,
+      combatResolution: 161.3999999910593,
+      renderMs: 0
+    }
+  },
+  { t: 3, ms: 7669, stages: undefined },
+  { t: 4, ms: 9568, stages: undefined },
+  { t: 5, ms: 8615, stages: undefined },
+  { t: 6, ms: 9906, stages: undefined },
+  { t: 7, ms: 9145, stages: undefined },
+  { t: 8, ms: 10685, stages: undefined },
+  { t: 9, ms: 10725, stages: undefined },
+  { t: 10, ms: 13899, stages: undefined },
+  { t: 11, ms: 16830, stages: undefined },
+  { t: 12, ms: 15303, stages: undefined },
+  { t: 13, ms: 12984, stages: undefined },
+  { t: 14, ms: 18238, stages: undefined },
+  { t: 15, ms: 14927, stages: undefined },
+  { t: 16, ms: 16559, stages: undefined },
+  { t: 17, ms: 21098, stages: undefined },
+  { t: 18, ms: 18974, stages: undefined },
+  { t: 19, ms: 14766, stages: undefined },
+  { t: 20, ms: 21374, stages: undefined },
+  { t: 21, ms: 23532, stages: undefined },
+  { t: 22, ms: 19687, stages: undefined },
+  { t: 23, ms: 23232, stages: undefined },
+  { t: 24, ms: 23494, stages: undefined },
+  { t: 25, ms: 20766, stages: undefined },
+  { t: 26, ms: 23975, stages: undefined },
+  { t: 27, ms: 25720, stages: undefined },
+  { t: 28, ms: 27040, stages: undefined },
+  { t: 29, ms: 26764, stages: undefined },
+  { t: 30, ms: 31279, stages: undefined },
+  { t: 31, ms: 29213, stages: undefined },
+  { t: 32, ms: 38910, stages: undefined },
+  { t: 33, ms: 25208, stages: undefined },
+  { t: 34, ms: 30403, stages: undefined },
+  { t: 35, ms: 28870, stages: undefined },
+  { t: 36, ms: 35694, stages: undefined },
+  { t: 37, ms: 31201, stages: undefined },
+  { t: 38, ms: 35752, stages: undefined },
+  { t: 39, ms: 29903, stages: undefined },
+  { t: 40, ms: 28336, stages: undefined },
+  { t: 41, ms: 30372, stages: undefined },
+  { t: 42, ms: 29785, stages: undefined },
+  { t: 43, ms: 27295, stages: undefined },
+  { t: 44, ms: 30219, stages: undefined },
+  { t: 45, ms: 33151, stages: undefined },
+  { t: 46, ms: 36166, stages: undefined },
+  { t: 47, ms: 38462, stages: undefined },
+  { t: 48, ms: 33566, stages: undefined },
+  {
+    t: 49,
+    ms: 37829,
+    stages: {
+      turnNumber: 49,
+      enemy: [Object],
+      terrain: 576.5,
+      ai: 9763.29999999702,
+      exploration: 278,
+      world: 4348.20000000298,
+      economy: 1884.199999988079,
+      research: 214.6000000089407,
+      diplomacy: 449.70000000298023,
+      combatResolution: 1043.5999999940395,
+      renderMs: 0
+    }
+  },
+  {
+    t: 50,
+    ms: 33899,
+    stages: {
+      turnNumber: 50,
+      enemy: [Object],
+      terrain: 574.5,
+      ai: 8479.90000000596,
+      exploration: 295.5,
+      world: 4346.70000000298,
+      economy: 2125.3999999910593,
+      research: 241.70000000298023,
+      diplomacy: 444.40000000596046,
+      combatResolution: 853.7999999970198,
+      renderMs: 0
+    }
+  },
+  {
+    t: 51,
+    ms: 39282,
+    stages: {
+      turnNumber: 51,
+      enemy: [Object],
+      terrain: 578.3000000119209,
+      ai: 9062.199999988079,
+      exploration: 280.5,
+      world: 4650.9000000059605,
+      economy: 1789.2999999970198,
+      research: 219.6000000089407,
+      diplomacy: 447.5,
+      combatResolution: 859.3999999910593,
+      renderMs: 0
+    }
+  }
+]
+BYTES {
+  version: 1,
+  exportedAt: 24,
+  seed: 12,
+  status: 20,
+  completed: 2,
+  target: 2,
+  finalFrame: 24763,
+  frames: 1403901,
+  issues: 959,
+  initialSave: 1697223,
+  checkpointSave: 28892416
+}
+LOSS npc-4 32 [
+  {
+    "t": 30,
+    "actor": {
+      "id": "npc-4",
+      "name": "NPC勢力4",
+      "kind": "勢力",
+      "race": "竜人",
+      "goal": "未踏地域を移動探索",
+      "units": [
+        {
+          "id": "npc-4-initial-army-1",
+          "name": "竜人戦士軍1",
+          "x": 17,
+          "y": 18,
+          "worldId": "surface",
+          "hp": 15,
+          "ap": 100
+        }
+      ],
+      "stocks": {
+        "穀物": 0,
+        "野菜": 0,
+        "肉": 0,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0,
+        "木材": 34.3,
+        "黒木": 0,
+        "特木": 0,
+        "石材": 374.4,
+        "鉄": 530.9,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0,
+        "金": 97.6,
+        "銀": 0,
+        "宝石": 0
+      },
+      "population": 0,
+      "buildings": [
+        "墓地"
+      ],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "24,17",
+          "remainingTurns": 1
+        }
+      ],
+      "training": [],
+      "reasons": [
+        "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+        "作成可能な種族・職業がありません"
+      ],
+      "commands": [
+        "食料優先:竜人の拠点 / 通常食料の収支赤字",
+        "攻撃準備:長剣→npc-5-initial-army-2"
+      ],
+      "processedTurn": 30,
+      "food": [
+        {
+          "settlementId": "village-26-14",
+          "name": "竜人の拠点",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 1.2,
+            "野菜": 0.8,
+            "肉": 5.6,
+            "魚": 1.2
+          },
+          "deficit": {
+            "穀物": 1.2,
+            "野菜": 0.8,
+            "肉": 5.6,
+            "魚": 1.2
+          },
+          "deficitTotal": 8.8,
+          "reserveDeficit": {
+            "穀物": 6,
+            "野菜": 4,
+            "肉": 28,
+            "魚": 6
+          },
+          "reserveDeficitTotal": 44,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "needs": [
+        {
+          "name": "穀物",
+          "stock": 0,
+          "required": 6,
+          "missing": 6,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 4,
+          "missing": 4,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "肉",
+          "stock": 0,
+          "required": 28,
+          "missing": 28,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魚",
+          "stock": 0,
+          "required": 6,
+          "missing": 6,
+          "purpose": "食料収支改善"
+        }
+      ],
+      "nextConstruction": "",
+      "task": {
+        "type": "explore",
+        "targetTileKey": "",
+        "targetName": "",
+        "x": null,
+        "y": null
+      }
+    },
+    "events": [
+      {
+        "actorId": "npc-4",
+        "category": "判断",
+        "message": "食料優先:竜人の拠点 / 通常食料の収支赤字"
+      },
+      {
+        "actorId": "npc-4",
+        "category": "戦闘",
+        "message": "攻撃準備:長剣→npc-5-initial-army-2"
+      },
+      {
+        "actorId": "npc-4",
+        "category": "戦闘",
+        "message": "竜人戦士軍1: HP 189 → 15（回復・災害を含む）"
+      },
+      {
+        "actorId": "npc-4",
+        "actorIds": [
+          "npc-4",
+          "npc-5"
+        ],
+        "category": "戦闘",
+        "message": "竜人戦士軍1：長剣 / 合計76 (25,24,27) / AP-40 / EXP 竜人戦士軍1+274 / LvUP 竜人戦士軍1 6→7"
+      },
+      {
+        "actorId": "npc-4",
+        "actorIds": [
+          "npc-4",
+          "npc-5"
+        ],
+        "category": "戦闘",
+        "message": "天使戦士軍2：長剣（反撃） / 合計92 (30,33,29) / AP-20 / EXP 天使戦士軍2+266 / LvUP 天使戦士軍2 10→11"
+      },
+      {
+        "actorId": "npc-4",
+        "actorIds": [
+          "npc-4",
+          "npc-5"
+        ],
+        "category": "戦闘",
+        "message": "天使戦士軍2：長剣 / 合計99 (34,34,31) / AP-40 / EXP 天使戦士軍2+286"
+      },
+      {
+        "actorId": "npc-4",
+        "actorIds": [
+          "npc-4",
+          "npc-5"
+        ],
+        "category": "戦闘",
+        "message": "竜人戦士軍1：長剣（反撃） / 合計78 (25,27,26) / AP-20 / EXP 竜人戦士軍1+286"
+      }
+    ]
+  },
+  {
+    "t": 31,
+    "actor": {
+      "id": "npc-4",
+      "name": "NPC勢力4",
+      "kind": "勢力",
+      "race": "竜人",
+      "goal": "未踏地域を移動探索",
+      "units": [
+        {
+          "id": "npc-4-initial-army-1",
+          "name": "竜人戦士軍1",
+          "x": 17,
+          "y": 18,
+          "worldId": "surface",
+          "hp": 16,
+          "ap": 100
+        }
+      ],
+      "stocks": {
+        "穀物": 0,
+        "野菜": 0,
+        "肉": 0,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0,
+        "木材": 34.3,
+        "黒木": 0,
+        "特木": 0,
+        "石材": 374.4,
+        "鉄": 530.9,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0,
+        "金": 97.6,
+        "銀": 0,
+        "宝石": 0
+      },
+      "population": 0,
+      "buildings": [
+        "墓地"
+      ],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "24,17",
+          "remainingTurns": 1
+        }
+      ],
+      "training": [],
+      "reasons": [
+        "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+        "作成可能な種族・職業がありません"
+      ],
+      "commands": [
+        "食料優先:竜人の拠点 / 通常食料の収支赤字",
+        "攻撃準備:長剣→npc-5-initial-army-2"
+      ],
+      "processedTurn": 31,
+      "food": [
+        {
+          "settlementId": "village-26-14",
+          "name": "竜人の拠点",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 1.2,
+            "野菜": 0.8,
+            "肉": 5.6,
+            "魚": 1.2
+          },
+          "deficit": {
+            "穀物": 1.2,
+            "野菜": 0.8,
+            "肉": 5.6,
+            "魚": 1.2
+          },
+          "deficitTotal": 8.8,
+          "reserveDeficit": {
+            "穀物": 6,
+            "野菜": 4,
+            "肉": 28,
+            "魚": 6
+          },
+          "reserveDeficitTotal": 44,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "needs": [
+        {
+          "name": "穀物",
+          "stock": 0,
+          "required": 6,
+          "missing": 6,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 4,
+          "missing": 4,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "肉",
+          "stock": 0,
+          "required": 28,
+          "missing": 28,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魚",
+          "stock": 0,
+          "required": 6,
+          "missing": 6,
+          "purpose": "食料収支改善"
+        }
+      ],
+      "nextConstruction": "",
+      "task": {
+        "type": "explore",
+        "targetTileKey": "",
+        "targetName": "",
+        "x": null,
+        "y": null
+      }
+    },
+    "events": [
+      {
+        "actorId": "npc-4",
+        "category": "判断",
+        "message": "食料優先:竜人の拠点 / 通常食料の収支赤字"
+      },
+      {
+        "actorId": "npc-4",
+        "category": "戦闘",
+        "message": "攻撃準備:長剣→npc-5-initial-army-2"
+      },
+      {
+        "actorId": "npc-4",
+        "category": "戦闘",
+        "message": "竜人戦士軍1: HP 15 → 16（回復・災害を含む）"
+      },
+      {
+        "actorId": "npc-4",
+        "actorIds": [
+          "npc-4",
+          "npc-5"
+        ],
+        "category": "戦闘",
+        "message": "竜人戦士軍1：長剣 / 合計80 (28,26,26) / AP-40 / EXP 竜人戦士軍1+249 / LvUP 竜人戦士軍1 7→8"
+      }
+    ]
+  },
+  {
+    "t": 32,
+    "actor": {
+      "id": "npc-4",
+      "name": "NPC勢力4",
+      "kind": "勢力",
+      "race": "竜人",
+      "goal": "未踏地域を移動探索",
+      "units": [],
+      "stocks": {
+        "穀物": 0,
+        "野菜": 0,
+        "肉": 0,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0,
+        "木材": 34.3,
+        "黒木": 0,
+        "特木": 0,
+        "石材": 374.4,
+        "鉄": 530.9,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0,
+        "金": 97.6,
+        "銀": 0,
+        "宝石": 0
+      },
+      "population": 0,
+      "buildings": [
+        "墓地"
+      ],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "24,17",
+          "remainingTurns": 1
+        }
+      ],
+      "training": [],
+      "reasons": [
+        "資材不足: 木材",
+        "作成可能な種族・職業がありません"
+      ],
+      "commands": [
+        "探索移動:移動可能な未踏領域なし"
+      ],
+      "processedTurn": 32,
+      "food": [
+        {
+          "settlementId": "village-26-14",
+          "name": "竜人の拠点",
+          "status": "stable",
+          "active": false,
+          "income": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0
+          },
+          "deficit": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0
+          },
+          "deficitTotal": 0,
+          "reserveDeficit": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0
+          },
+          "reserveDeficitTotal": 0,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "needs": [
+        {
+          "name": "木材",
+          "stock": 34.3,
+          "required": 50,
+          "missing": 15.71,
+          "purpose": "建設: 兵舎"
+        }
+      ],
+      "nextConstruction": "兵舎",
+      "task": {
+        "type": "explore",
+        "targetTileKey": "",
+        "targetName": "",
+        "x": null,
+        "y": null
+      }
+    },
+    "events": [
+      {
+        "actorId": "npc-4",
+        "category": "移動",
+        "message": "探索移動:移動可能な未踏領域なし"
+      },
+      {
+        "actorId": "npc-4",
+        "category": "変化",
+        "message": "竜人戦士軍1 が一覧から離脱（死亡・移籍・格納など）"
+      },
+      {
+        "actorId": "npc-4",
+        "actorIds": [
+          "npc-4"
+        ],
+        "category": "戦闘",
+        "message": "天使・スケルトン Lv10：闘気撃 / 合計177 (60,57,60) / AP-100"
+      }
+    ]
+  },
+  {
+    "t": 33,
+    "actor": {
+      "id": "npc-4",
+      "name": "NPC勢力4",
+      "kind": "勢力",
+      "race": "竜人",
+      "goal": "未踏地域を移動探索",
+      "units": [],
+      "stocks": {
+        "穀物": 0,
+        "野菜": 0,
+        "肉": 0,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0,
+        "木材": 34.3,
+        "黒木": 0,
+        "特木": 0,
+        "石材": 374.4,
+        "鉄": 530.9,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0,
+        "金": 97.6,
+        "銀": 0,
+        "宝石": 0
+      },
+      "population": 0,
+      "buildings": [
+        "墓地"
+      ],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "24,17",
+          "remainingTurns": 1
+        }
+      ],
+      "training": [],
+      "reasons": [
+        "資材不足: 木材",
+        "作成可能な種族・職業がありません"
+      ],
+      "commands": [
+        "探索移動:移動可能な未踏領域なし"
+      ],
+      "processedTurn": 33,
+      "food": [
+        {
+          "settlementId": "village-26-14",
+          "name": "竜人の拠点",
+          "status": "stable",
+          "active": false,
+          "income": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0
+          },
+          "deficit": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0
+          },
+          "deficitTotal": 0,
+          "reserveDeficit": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0
+          },
+          "reserveDeficitTotal": 0,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "needs": [
+        {
+          "name": "木材",
+          "stock": 34.3,
+          "required": 50,
+          "missing": 15.71,
+          "purpose": "建設: 兵舎"
+        }
+      ],
+      "nextConstruction": "兵舎",
+      "task": {
+        "type": "explore",
+        "targetTileKey": "",
+        "targetName": "",
+        "x": null,
+        "y": null
+      }
+    },
+    "events": [
+      {
+        "actorId": "npc-4",
+        "category": "移動",
+        "message": "探索移動:移動可能な未踏領域なし"
+      }
+    ]
+  }
+]
+LOSS npc-5 49 [
+  {
+    "t": 47,
+    "actor": {
+      "id": "npc-5",
+      "name": "NPC勢力5",
+      "kind": "勢力",
+      "race": "天使",
+      "goal": "村への生贄要求",
+      "units": [
+        {
+          "id": "npc-5-initial-army-1",
+          "name": "天使戦士軍1",
+          "x": 23,
+          "y": 21,
+          "worldId": "surface",
+          "hp": 12,
+          "ap": 80
+        }
+      ],
+      "stocks": {
+        "穀物": 198.9,
+        "野菜": 0,
+        "肉": 197.7,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0,
+        "木材": 829.5,
+        "黒木": 0,
+        "特木": 0,
+        "石材": 2358.4,
+        "鉄": 2794.3,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0,
+        "金": 446.6,
+        "銀": 0,
+        "宝石": 0
+      },
+      "population": 75,
+      "buildings": [
+        "墓地",
+        "農場"
+      ],
+      "pending": [],
+      "training": [],
+      "reasons": [
+        "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+        "野菜不足"
+      ],
+      "commands": [
+        "食料優先:天使の拠点 / 通常食料の収支赤字",
+        "目的:資源確保 魂 / ヴァンパイアの村",
+        "資源確保へ移動:ヴァンパイアの村:24,20→23,21",
+        "生贄要求:ヴァンパイアの村 / 拒否 / AP消費"
+      ],
+      "processedTurn": 47,
+      "food": [
+        {
+          "settlementId": "village-30-34",
+          "name": "天使の拠点",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 23.1,
+            "野菜": 26.2,
+            "肉": 20.7,
+            "魚": 2.4,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 18.6,
+            "野菜": 48.8,
+            "肉": 19.6,
+            "魚": 16.6
+          },
+          "deficit": {
+            "穀物": 0,
+            "野菜": 19.7,
+            "肉": 0,
+            "魚": 12.4
+          },
+          "deficitTotal": 32.1,
+          "reserveDeficit": {
+            "穀物": 0,
+            "野菜": 116,
+            "肉": 0,
+            "魚": 39.5
+          },
+          "reserveDeficitTotal": 155.5,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "needs": [
+        {
+          "name": "魂",
+          "stock": 0,
+          "required": 1,
+          "missing": 1,
+          "purpose": "人口増加"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 116,
+          "missing": 116,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魚",
+          "stock": 0,
+          "required": 40,
+          "missing": 40,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魂",
+          "stock": 0,
+          "required": 1,
+          "missing": 1,
+          "purpose": "食料備蓄"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 2,
+          "missing": 2,
+          "purpose": "戦力増強"
+        }
+      ],
+      "nextConstruction": "",
+      "task": {
+        "resource": "魂",
+        "patternId": "soul-hunter",
+        "settlementId": "village-30-34",
+        "type": "resource-demand",
+        "targetVillageId": "neutral-village-2-24,22",
+        "targetName": "ヴァンパイアの村",
+        "targetTileKey": "24,22",
+        "x": 24,
+        "y": 22
+      }
+    },
+    "events": [
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "食料優先:天使の拠点 / 通常食料の収支赤字"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "目的:資源確保 魂 / ヴァンパイアの村"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "移動",
+        "message": "資源確保へ移動:ヴァンパイアの村:24,20→23,21"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "生贄要求:ヴァンパイアの村 / 拒否 / AP消費"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "移動",
+        "message": "天使戦士軍1: surface(24,20) → surface(23,21)"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "戦闘",
+        "message": "天使戦士軍1: HP 23 → 12（回復・災害を含む）"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "変化",
+        "message": "人口 79 → 75"
+      }
+    ]
+  },
+  {
+    "t": 48,
+    "actor": {
+      "id": "npc-5",
+      "name": "NPC勢力5",
+      "kind": "勢力",
+      "race": "天使",
+      "goal": "資源確保の襲撃",
+      "units": [
+        {
+          "id": "npc-5-initial-army-1",
+          "name": "天使戦士軍1",
+          "x": 23,
+          "y": 20,
+          "worldId": "surface",
+          "hp": 1,
+          "ap": 80
+        }
+      ],
+      "stocks": {
+        "穀物": 198.3,
+        "野菜": 0,
+        "肉": 197.7,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0,
+        "木材": 860.9,
+        "黒木": 0,
+        "特木": 0,
+        "石材": 2397.7,
+        "鉄": 2832.7,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0,
+        "金": 452.3,
+        "銀": 0,
+        "宝石": 0
+      },
+      "population": 72,
+      "buildings": [
+        "墓地",
+        "農場"
+      ],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "20,31",
+          "remainingTurns": 1
+        }
+      ],
+      "training": [],
+      "reasons": [
+        "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+        "野菜不足"
+      ],
+      "commands": [
+        "食料優先:天使の拠点 / 通常食料の収支赤字",
+        "目的:他勢力 竜人",
+        "目的:資源確保 魂 / 竜人",
+        "他勢力へ移動:竜人:23,21→23,20",
+        "資源地開拓:20,31 / 野菜+0.6/T"
+      ],
+      "processedTurn": 48,
+      "food": [
+        {
+          "settlementId": "village-30-34",
+          "name": "天使の拠点",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 21.6,
+            "野菜": 25.2,
+            "肉": 19.7,
+            "魚": 2.2,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 17.8,
+            "野菜": 46.4,
+            "肉": 18.8,
+            "魚": 15.8
+          },
+          "deficit": {
+            "穀物": 0,
+            "野菜": 18.8,
+            "肉": 0,
+            "魚": 12.1
+          },
+          "deficitTotal": 30.9,
+          "reserveDeficit": {
+            "穀物": 0,
+            "野菜": 99.2,
+            "肉": 0,
+            "魚": 33.8
+          },
+          "reserveDeficitTotal": 133,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "needs": [
+        {
+          "name": "魂",
+          "stock": 0,
+          "required": 1,
+          "missing": 1,
+          "purpose": "人口増加"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 100,
+          "missing": 100,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魚",
+          "stock": 0,
+          "required": 34,
+          "missing": 34,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魂",
+          "stock": 0,
+          "required": 0.5,
+          "missing": 1,
+          "purpose": "食料備蓄"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 2,
+          "missing": 2,
+          "purpose": "戦力増強"
+        }
+      ],
+      "nextConstruction": "",
+      "task": {
+        "resource": "魂",
+        "patternId": "soul-hunter",
+        "settlementId": "village-30-34",
+        "type": "foreign-faction",
+        "resourceRaid": true,
+        "targetPlayerId": "npc-4",
+        "targetTileKey": "17,18",
+        "targetName": "竜人",
+        "x": 17,
+        "y": 18
+      }
+    },
+    "events": [
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "食料優先:天使の拠点 / 通常食料の収支赤字"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "目的:他勢力 竜人"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "目的:資源確保 魂 / 竜人"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "移動",
+        "message": "他勢力へ移動:竜人:23,21→23,20"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "建設",
+        "message": "資源地開拓:20,31 / 野菜+0.6/T"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "移動",
+        "message": "天使戦士軍1: surface(23,21) → surface(23,20)"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "戦闘",
+        "message": "天使戦士軍1: HP 12 → 1（回復・災害を含む）"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "変化",
+        "message": "人口 75 → 72"
+      }
+    ]
+  },
+  {
+    "t": 49,
+    "actor": {
+      "id": "npc-5",
+      "name": "NPC勢力5",
+      "kind": "勢力",
+      "race": "天使",
+      "goal": "資源確保の襲撃",
+      "units": [],
+      "stocks": {
+        "穀物": 196.9,
+        "野菜": 0,
+        "肉": 197.7,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0,
+        "木材": 891,
+        "黒木": 0,
+        "特木": 0,
+        "石材": 2436,
+        "鉄": 2870,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0,
+        "金": 457.9,
+        "銀": 0,
+        "宝石": 0
+      },
+      "population": 68,
+      "buildings": [
+        "墓地",
+        "農場"
+      ],
+      "pending": [],
+      "training": [],
+      "reasons": [
+        "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+        "野菜不足"
+      ],
+      "commands": [
+        "食料優先:天使の拠点 / 通常食料の収支赤字",
+        "目的:他勢力 竜人",
+        "目的:資源確保 魂 / 竜人",
+        "他勢力へ移動:竜人:23,20→22,19"
+      ],
+      "processedTurn": 49,
+      "food": [
+        {
+          "settlementId": "village-30-34",
+          "name": "天使の拠点",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 20.8,
+            "野菜": 24.3,
+            "肉": 18.9,
+            "魚": 2.1,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 17.6,
+            "野菜": 44.4,
+            "肉": 18.8,
+            "魚": 15.2
+          },
+          "deficit": {
+            "穀物": 0,
+            "野菜": 18.4,
+            "肉": 0,
+            "魚": 12
+          },
+          "deficitTotal": 30.4,
+          "reserveDeficit": {
+            "穀物": 0,
+            "野菜": 89.1,
+            "肉": 0,
+            "魚": 30.5
+          },
+          "reserveDeficitTotal": 119.6,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "needs": [
+        {
+          "name": "魂",
+          "stock": 0,
+          "required": 1,
+          "missing": 1,
+          "purpose": "人口増加"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 90,
+          "missing": 90,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魚",
+          "stock": 0,
+          "required": 31,
+          "missing": 31,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魂",
+          "stock": 0,
+          "required": 0.5,
+          "missing": 1,
+          "purpose": "食料備蓄"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 2,
+          "missing": 2,
+          "purpose": "戦力増強"
+        }
+      ],
+      "nextConstruction": "",
+      "task": {
+        "resource": "魂",
+        "patternId": "soul-hunter",
+        "settlementId": "village-30-34",
+        "type": "foreign-faction",
+        "resourceRaid": true,
+        "targetPlayerId": "npc-4",
+        "targetTileKey": "17,18",
+        "targetName": "竜人",
+        "x": 17,
+        "y": 18
+      }
+    },
+    "events": [
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "食料優先:天使の拠点 / 通常食料の収支赤字"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "目的:他勢力 竜人"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "目的:資源確保 魂 / 竜人"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "移動",
+        "message": "他勢力へ移動:竜人:23,20→22,19"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "変化",
+        "message": "天使戦士軍1 が一覧から離脱（死亡・移籍・格納など）"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "変化",
+        "message": "人口 72 → 68"
+      }
+    ]
+  },
+  {
+    "t": 50,
+    "actor": {
+      "id": "npc-5",
+      "name": "NPC勢力5",
+      "kind": "勢力",
+      "race": "天使",
+      "goal": "他勢力へ対応",
+      "units": [],
+      "stocks": {
+        "穀物": 196.9,
+        "野菜": 0,
+        "肉": 197.7,
+        "魚": 0,
+        "死体": 0,
+        "魂": 0,
+        "木材": 920,
+        "黒木": 0,
+        "特木": 0,
+        "石材": 2471.2,
+        "鉄": 2903.9,
+        "銀鉄": 0,
+        "青金鋼": 0,
+        "赤黒鋼": 0,
+        "金": 462.9,
+        "銀": 0,
+        "宝石": 0
+      },
+      "population": 64,
+      "buildings": [
+        "墓地",
+        "農場"
+      ],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "20,32",
+          "remainingTurns": 1
+        }
+      ],
+      "training": [],
+      "reasons": [
+        "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます",
+        "野菜不足"
+      ],
+      "commands": [
+        "食料優先:天使の拠点 / 通常食料の収支赤字",
+        "目的:他勢力 竜人",
+        "資源地開拓:20,32 / 野菜+0.5/T"
+      ],
+      "processedTurn": 50,
+      "food": [
+        {
+          "settlementId": "village-30-34",
+          "name": "天使の拠点",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 19.3,
+            "野菜": 23.1,
+            "肉": 17.8,
+            "魚": 1.9,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 16,
+            "野菜": 39.6,
+            "肉": 17.2,
+            "魚": 13.6
+          },
+          "deficit": {
+            "穀物": 0,
+            "野菜": 14.6,
+            "肉": 0,
+            "魚": 10.4
+          },
+          "deficitTotal": 25,
+          "reserveDeficit": {
+            "穀物": 0,
+            "野菜": 56.2,
+            "肉": 0,
+            "魚": 19.3
+          },
+          "reserveDeficitTotal": 75.5,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "needs": [
+        {
+          "name": "魂",
+          "stock": 0,
+          "required": 1,
+          "missing": 1,
+          "purpose": "人口増加"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 57,
+          "missing": 57,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魚",
+          "stock": 0,
+          "required": 20,
+          "missing": 20,
+          "purpose": "食料収支改善"
+        },
+        {
+          "name": "魂",
+          "stock": 0,
+          "required": 0.5,
+          "missing": 1,
+          "purpose": "食料備蓄"
+        },
+        {
+          "name": "野菜",
+          "stock": 0,
+          "required": 2,
+          "missing": 2,
+          "purpose": "戦力増強"
+        }
+      ],
+      "nextConstruction": "",
+      "task": {
+        "type": "foreign-faction",
+        "targetPlayerId": "npc-4",
+        "targetTileKey": "17,18",
+        "targetName": "竜人",
+        "x": 17,
+        "y": 18
+      }
+    },
+    "events": [
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "食料優先:天使の拠点 / 通常食料の収支赤字"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "判断",
+        "message": "目的:他勢力 竜人"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "建設",
+        "message": "資源地開拓:20,32 / 野菜+0.5/T"
+      },
+      {
+        "actorId": "npc-5",
+        "category": "変化",
+        "message": "人口 68 → 64"
+      }
+    ]
+  }
+]

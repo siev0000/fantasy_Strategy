@@ -463,7 +463,7 @@ function install() {
     const card = event.target instanceof Element ? event.target.closest("[data-v39-technique-name]") : null;
     if (!card) return;
     const name = text(card.dataset.v39TechniqueName);
-    if (["__system_wait__", "__system_survey__", "__system_gather__"].includes(name) || name.startsWith("__cave_site_")) {
+    if (["__system_wait__", "__system_recovery_wait__", "__system_survey__", "__system_gather__"].includes(name) || name.startsWith("__cave_site_")) {
       window.cancelV39SelectedUnitMove?.("system-action-preview");
       window.cancelV39SelectedUnitAttack?.("system-action-preview");
     }

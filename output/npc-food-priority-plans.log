@@ -1,0 +1,655 @@
+{
+  "result": {
+    "plan": {
+      "construction": {
+        "status": "blocked",
+        "reasons": [
+          "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます"
+        ],
+        "shortages": [],
+        "foodPriority": true
+      },
+      "reinforcement": {
+        "living": 1,
+        "queued": 0,
+        "target": 8,
+        "remaining": 7,
+        "shortages": [
+          {
+            "name": "穀物",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "野菜",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "肉",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "木材",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "石材",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          },
+          {
+            "name": "鉄",
+            "required": 2,
+            "stock": 0,
+            "missing": 2
+          }
+        ],
+        "reasons": [
+          "穀物不足",
+          "野菜不足",
+          "肉不足",
+          "木材不足",
+          "石材不足",
+          "鉄不足"
+        ],
+        "status": "blocked",
+        "className": "アーチャー",
+        "race": "只人",
+        "unitType": "軍隊",
+        "level": 3,
+        "preference": false,
+        "affinityScore": 0
+      },
+      "resourceGoals": [
+        {
+          "name": "穀物",
+          "required": 400,
+          "stock": 0,
+          "missing": 400,
+          "settlementId": "demon-test-base",
+          "purpose": "食料収支改善",
+          "priority": 2
+        },
+        {
+          "name": "野菜",
+          "required": 300,
+          "stock": 0,
+          "missing": 300,
+          "settlementId": "demon-test-base",
+          "purpose": "食料収支改善",
+          "priority": 2
+        },
+        {
+          "name": "肉",
+          "required": 205,
+          "stock": 0,
+          "missing": 205,
+          "settlementId": "demon-test-base",
+          "purpose": "食料収支改善",
+          "priority": 2
+        },
+        {
+          "name": "魚",
+          "required": 103,
+          "stock": 0,
+          "missing": 103,
+          "settlementId": "demon-test-base",
+          "purpose": "食料収支改善",
+          "priority": 2
+        },
+        {
+          "name": "穀物",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強",
+          "settlementId": "demon-test-base"
+        },
+        {
+          "name": "野菜",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強",
+          "settlementId": "demon-test-base"
+        },
+        {
+          "name": "肉",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強",
+          "settlementId": "demon-test-base"
+        },
+        {
+          "name": "木材",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強",
+          "settlementId": "demon-test-base"
+        },
+        {
+          "name": "石材",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強",
+          "settlementId": "demon-test-base"
+        },
+        {
+          "name": "鉄",
+          "required": 2,
+          "stock": 0,
+          "missing": 2,
+          "purpose": "戦力増強",
+          "settlementId": "demon-test-base"
+        }
+      ],
+      "foodBalances": [
+        {
+          "settlementId": "demon-test-base",
+          "name": "悪魔の物資庫",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 19.5,
+            "野菜": 13,
+            "肉": 6.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 80,
+            "野菜": 60,
+            "肉": 41,
+            "魚": 20.5
+          },
+          "deficit": {
+            "穀物": 60.5,
+            "野菜": 47,
+            "肉": 34.5,
+            "魚": 20.5
+          },
+          "deficitTotal": 162.5,
+          "reserveDeficit": {
+            "穀物": 400,
+            "野菜": 300,
+            "肉": 205,
+            "魚": 102.5
+          },
+          "reserveDeficitTotal": 1007.5,
+          "queuedUnits": 0,
+          "surplus": 0
+        }
+      ],
+      "citySpecializations": [
+        {
+          "settlementId": "demon-test-base",
+          "name": "悪魔の物資庫",
+          "currentId": "",
+          "targetId": "",
+          "status": "blocked",
+          "remainingTurns": 0,
+          "score": 0,
+          "affinity": 0,
+          "reasons": [
+            "食料不足",
+            "戦力増強",
+            "研究中"
+          ],
+          "candidates": [
+            {
+              "id": "農業都市",
+              "score": 117.5,
+              "affinity": 100,
+              "available": false
+            },
+            {
+              "id": "交易都市",
+              "score": 91,
+              "affinity": 100,
+              "available": false
+            },
+            {
+              "id": "水上都市",
+              "score": 52.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "学術都市",
+              "score": 51,
+              "affinity": 100,
+              "available": false
+            },
+            {
+              "id": "放浪都市",
+              "score": 32,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "軍事都市",
+              "score": 30.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "空中都市",
+              "score": 24,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "神秘都市",
+              "score": 9,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "城塞都市",
+              "score": 4.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "地下都市",
+              "score": 3.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "魔法都市",
+              "score": 3,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "産業都市",
+              "score": 2.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "死者の都",
+              "score": 2,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "信仰都市",
+              "score": 1.5,
+              "affinity": 0,
+              "available": false
+            }
+          ]
+        }
+      ],
+      "resourceExpansion": [
+        {
+          "settlementId": "demon-test-base",
+          "name": "悪魔の物資庫",
+          "needs": {
+            "穀物": 400,
+            "野菜": 300,
+            "肉": 205,
+            "魚": 103,
+            "木材": 2,
+            "石材": 2,
+            "鉄": 2
+          },
+          "status": "building",
+          "tileKey": "3,3",
+          "remainingTurns": 2,
+          "reason": ""
+        }
+      ],
+      "supplyBudgetBySettlement": {
+        "demon-test-base": {
+          "穀物": 402,
+          "野菜": 302,
+          "肉": 207,
+          "魚": 102.5,
+          "死体": 0,
+          "魂": 0,
+          "木材": 2,
+          "石材": 2,
+          "鉄": 2
+        }
+      },
+      "resourceWorkforce": {
+        "jobs": [
+          {
+            "resource": "穀物",
+            "settlementId": "demon-test-base",
+            "missing": 400,
+            "priority": 2,
+            "id": "resource:demon-test-base:穀物:0"
+          },
+          {
+            "resource": "穀物",
+            "settlementId": "demon-test-base",
+            "missing": 400,
+            "priority": 2,
+            "id": "resource:demon-test-base:穀物:1"
+          },
+          {
+            "resource": "野菜",
+            "settlementId": "demon-test-base",
+            "missing": 300,
+            "priority": 2,
+            "id": "resource:demon-test-base:野菜:0"
+          },
+          {
+            "resource": "野菜",
+            "settlementId": "demon-test-base",
+            "missing": 300,
+            "priority": 2,
+            "id": "resource:demon-test-base:野菜:1"
+          },
+          {
+            "resource": "肉",
+            "settlementId": "demon-test-base",
+            "missing": 205,
+            "priority": 2,
+            "id": "resource:demon-test-base:肉:0"
+          },
+          {
+            "resource": "肉",
+            "settlementId": "demon-test-base",
+            "missing": 205,
+            "priority": 2,
+            "id": "resource:demon-test-base:肉:1"
+          }
+        ],
+        "targetUnits": 8
+      },
+      "resourceTeams": [
+        {
+          "resource": "穀物",
+          "settlementId": "demon-test-base",
+          "missing": 400,
+          "priority": 2,
+          "id": "resource:demon-test-base:穀物:0",
+          "unitIds": [],
+          "actorId": "",
+          "role": "探索",
+          "status": "軍隊訓練待ち"
+        },
+        {
+          "resource": "穀物",
+          "settlementId": "demon-test-base",
+          "missing": 400,
+          "priority": 2,
+          "id": "resource:demon-test-base:穀物:1",
+          "unitIds": [],
+          "actorId": "",
+          "role": "探索",
+          "status": "軍隊訓練待ち"
+        },
+        {
+          "resource": "野菜",
+          "settlementId": "demon-test-base",
+          "missing": 300,
+          "priority": 2,
+          "id": "resource:demon-test-base:野菜:0",
+          "unitIds": [],
+          "actorId": "",
+          "role": "探索",
+          "status": "軍隊訓練待ち"
+        },
+        {
+          "resource": "野菜",
+          "settlementId": "demon-test-base",
+          "missing": 300,
+          "priority": 2,
+          "id": "resource:demon-test-base:野菜:1",
+          "unitIds": [],
+          "actorId": "",
+          "role": "探索",
+          "status": "軍隊訓練待ち"
+        },
+        {
+          "resource": "肉",
+          "settlementId": "demon-test-base",
+          "missing": 205,
+          "priority": 2,
+          "id": "resource:demon-test-base:肉:0",
+          "unitIds": [],
+          "actorId": "",
+          "role": "探索",
+          "status": "軍隊訓練待ち"
+        },
+        {
+          "resource": "肉",
+          "settlementId": "demon-test-base",
+          "missing": 205,
+          "priority": 2,
+          "id": "resource:demon-test-base:肉:1",
+          "unitIds": [],
+          "actorId": "",
+          "role": "探索",
+          "status": "軍隊訓練待ち"
+        }
+      ]
+    },
+    "nextPlan": {
+      "construction": {
+        "status": "blocked",
+        "reasons": [
+          "食料優先: 食料を増やせる建設候補がありません。開拓・調達を待ちます"
+        ],
+        "shortages": [],
+        "foodPriority": true
+      },
+      "reinforcement": {
+        "living": 1,
+        "queued": 1,
+        "target": 6,
+        "remaining": 4,
+        "shortages": [],
+        "reasons": [
+          "食料確保を優先するため新規の軍備増強を停止"
+        ],
+        "status": "blocked",
+        "foodPaused": true
+      },
+      "resourceGoals": [],
+      "foodBalances": [
+        {
+          "settlementId": "demon-test-base",
+          "name": "悪魔の物資庫",
+          "status": "deficit",
+          "active": true,
+          "income": {
+            "穀物": 19.5,
+            "野菜": 13,
+            "肉": 6.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "maintenance": {
+            "穀物": 80.8,
+            "野菜": 60.6,
+            "肉": 41.4,
+            "魚": 20.7
+          },
+          "deficit": {
+            "穀物": 61.3,
+            "野菜": 47.6,
+            "肉": 34.9,
+            "魚": 20.7
+          },
+          "deficitTotal": 164.5,
+          "reserveDeficit": {
+            "穀物": 0,
+            "野菜": 0,
+            "肉": 0,
+            "魚": 0
+          },
+          "reserveDeficitTotal": 0,
+          "queuedUnits": 1,
+          "surplus": 0
+        }
+      ],
+      "citySpecializations": [
+        {
+          "settlementId": "demon-test-base",
+          "name": "悪魔の物資庫",
+          "currentId": "",
+          "targetId": "",
+          "status": "blocked",
+          "remainingTurns": 0,
+          "score": 0,
+          "affinity": 0,
+          "reasons": [
+            "食料不足",
+            "研究中"
+          ],
+          "candidates": [
+            {
+              "id": "農業都市",
+              "score": 117.5,
+              "affinity": 100,
+              "available": false
+            },
+            {
+              "id": "交易都市",
+              "score": 91,
+              "affinity": 100,
+              "available": false
+            },
+            {
+              "id": "水上都市",
+              "score": 52.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "学術都市",
+              "score": 51,
+              "affinity": 100,
+              "available": false
+            },
+            {
+              "id": "放浪都市",
+              "score": 32,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "空中都市",
+              "score": 24,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "軍事都市",
+              "score": 9.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "神秘都市",
+              "score": 9,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "城塞都市",
+              "score": 4.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "地下都市",
+              "score": 3.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "魔法都市",
+              "score": 3,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "産業都市",
+              "score": 2.5,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "死者の都",
+              "score": 2,
+              "affinity": 0,
+              "available": false
+            },
+            {
+              "id": "信仰都市",
+              "score": 1.5,
+              "affinity": 0,
+              "available": false
+            }
+          ]
+        }
+      ],
+      "resourceExpansion": [
+        {
+          "settlementId": "demon-test-base",
+          "name": "悪魔の物資庫",
+          "needs": {
+            "穀物": 306.5,
+            "野菜": 238,
+            "肉": 174.5,
+            "魚": 103.5
+          },
+          "status": "building",
+          "tileKey": "3,3",
+          "remainingTurns": 2,
+          "reason": ""
+        }
+      ],
+      "supplyBudgetBySettlement": {
+        "demon-test-base": {
+          "穀物": 388,
+          "野菜": 291,
+          "肉": 199,
+          "魚": 99.5,
+          "死体": 0,
+          "魂": 0
+        }
+      },
+      "resourceWorkforce": {
+        "jobs": [],
+        "targetUnits": 6
+      },
+      "resourceTeams": []
+    },
+    "commands": [
+      "勢力発見:一般プレイヤー",
+      "食料優先:悪魔の物資庫 / 通常食料の収支赤字",
+      "探索移動:移動可能な未踏領域なし",
+      "資源地開拓:3,3 / 穀物+7.8/T・野菜+5.2/T・肉+2.6/T",
+      "訓練開始:只人弓兵軍1",
+      "研究:鍛冶熟練Ⅰ",
+      "研究:貴金属効率Ⅰ",
+      "研究:穀物加護Ⅰ",
+      "研究:軍事基礎教育Ⅰ",
+      "研究:経済基盤教育Ⅰ",
+      "研究:生態調査Ⅰ"
+    ]
+  },
+  "errors": []
+}

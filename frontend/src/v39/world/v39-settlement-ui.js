@@ -5,6 +5,9 @@ import { getGameDataRows } from "../../lib/game-data-registry.js";
 import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { renderV39LandExpansionControls } from "./v39-land-expansion-ui.js";
 import {getV39SettlementFacilities,renderV39FacilityOperations} from './v39-facility-panel.js';
+import {convertV39SubjectPopulation} from '../../lib/v39-subject-conversion.js';
+import {isV39SubjectRuler,normalizeV39SubjectPopulation} from '../../lib/v39-initial-subjects.js';
+import './v39-subject-population.css';
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);
@@ -75,6 +78,13 @@ function populationRows(settlement) {
       </div>
     </div>`;
   }).join("")}</div>`;
+}
+
+function subjectPopulationControls(player,settlement){
+  if(!isV39SubjectRuler(player?.race))return '';
+  const rows=Object.entries(normalizeV39SubjectPopulation(settlement.populationByRace,settlement.subjectPopulationByRace));
+  if(!rows.length)return '';
+  return `<div data-subject-population><strong>奴隷住民</strong><p>人口・生産に含まれます。変換すると住民と生産力が減少します。</p>${rows.map(([race,count])=>`<div class="settlement-inline-facts" data-subject-race="${escapeHtml(race)}"><span>${escapeHtml(race)} ${count}人</span><label>人数 <input type="number" min="1" max="${count}" step="1" value="1" data-subject-count style="width:4em"></label><button type="button" data-subject-convert="魂">魂に変換</button><button type="button" data-subject-convert="死体">死体に変換</button></div>`).join('')}</div>`;
 }
 
 function section(key, label, value, body) {
@@ -203,7 +213,7 @@ function render() {
     <div class="settlement-fold-list">
       <div class="settlement-page-actions" data-settlement-page="overview"${activePage === 'overview' ? '' : ' hidden'}><button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button></div>
       <div class="settlement-page-actions" data-settlement-page="operation"${activePage === 'operation' ? '' : ' hidden'}><button type="button" class="settlement-trade-open" data-open-v39-trade>取引</button><button type="button" class="settlement-chip" data-foot="logistics">物流</button></div>
-      ${section("population", "人口", formatNumber(settlement.population), populationSummary)}
+      ${section("population", "人口", formatNumber(settlement.population), populationSummary+subjectPopulationControls(player,settlement))}
       ${section("food", "食料", formatNumber(settlement.foodStock), keyValueRows(settlement.foodStockByType))}
       ${section("material", "資材", formatNumber(settlement.materialStock), keyValueRows(settlement.materialStockByType))}
       ${facilityPage}
@@ -233,6 +243,20 @@ panel?.addEventListener("toggle", event => {
 }, true);
 
 panel?.addEventListener("click", event => {
+  const conversion=event.target.closest?.('[data-subject-convert]');
+  if(conversion){
+    if(window.isV39MapInputLocked?.())return;
+    const {state,player,settlement}=activeContext(),row=conversion.closest('[data-subject-race]');
+    const count=Number(row.querySelector('[data-subject-count]').value),race=row.dataset.subjectRace,resource=conversion.dataset.subjectConvert;
+    if(!Number.isSafeInteger(count)||count<1||count>Number(settlement.subjectPopulationByRace?.[race]||0)){
+      window.showV39TurnBanner?.('奴隷住民の保有人数以内で指定してください');return;
+    }
+    if(!window.confirm(`${race}${count}人を${resource}へ変換します。住民が減り、元には戻せません。実行しますか？`))return;
+    const result=convertV39SubjectPopulation(state,player.id,settlement.settlementId||settlement.id,{race,count,resource});
+    if(result.ok){window.setV39GameState({players:result.state.players,settlements:result.state.settlements},{reason:'subject-conversion'});
+      window.appendV39ActivityLog?.(player.id,'人口',result.message);}
+    window.showV39TurnBanner?.(result.ok?result.message:result.reason);return;
+  }
   if(event.target.closest?.('[data-open-city-specialization]')){openCityCandidates();return;}
   const pageButton = event.target.closest?.('[data-settlement-page-select]');
   if (pageButton) {

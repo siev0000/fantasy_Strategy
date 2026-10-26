@@ -1,3 +1,5 @@
+import {renderV39NpcDiagnostics,handleV39NpcDiagnosticEvent} from './v39-npc-diagnostics.js';
+import {openV39AiSimulation} from './v39-ai-simulation.js';
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy, normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { buildV39PopulationMaintenanceStock } from "../../lib/v39-population-economy.js";
@@ -50,7 +52,7 @@ const TEST_TOOL_TABS = [
   {id:'diagnostics',label:'診断',sections:['npc-ai','enemy-ai']}
 ];
 let selectedToolTab = 'scenarios';
-let selectedNpcDiagnosticId = '';
+
 const scrollTopByToolTab = new Map();
 let restoreScrollFrame = 0;
 let bulkTurnCount = 10;
@@ -396,42 +398,6 @@ function livingUnit(unit) {
   return number(unit?.hp ?? unit?.currentHp) > 0 && text(unit?.state, "生存") !== "死亡";
 }
 
-function npcDevelopmentMarkup(plan) {
-  if (!plan) return '<p>建設・戦力・不足資材は、次のAI行動で判断します。</p>';
-  const construction=plan.construction||{},reinforcement=plan.reinforcement||{};
-  const amount=value=>Math.round(number(value)*100)/100;
-  const resources=(plan.resourceGoals||[]).map(row=>`<div>${escapeHtml(row.name)} ${amount(row.stock)}/${amount(row.required)}（不足${amount(row.missing)}）/ ${escapeHtml(row.purpose)}</div>`).join('');
-  const reasons=rows=>(rows||[]).length?`<p>${rows.map(escapeHtml).join(' / ')}</p>`:'';
-  const building=construction.status==='building';
-  const constructionLabel=building?'建設中':construction.status==='ready'?'次の建設':'建設候補・条件待ち';
-  const reinforcementLabel=reinforcement.status==='satisfied'?(reinforcement.queued?'訓練完了待ち':'目標数を確保'):reinforcement.status==='ready'?'次の訓練':'増強・条件待ち';
-  return `<div class="v39-test-base-card" data-npc-construction-goal><strong>${constructionLabel}</strong><p>${escapeHtml(construction.name||'候補なし')}${construction.tileKey?' @'+escapeHtml(construction.tileKey):''}${building?' / 残り'+amount(construction.remainingTurns)+'T':''}</p>${building?'<p>次の候補は完成後に判断</p>':reasons(construction.reasons)}</div>
-    <div class="v39-test-base-card" data-npc-reinforcement-goal><strong>戦力増強: ${reinforcementLabel}</strong><p>生存${amount(reinforcement.living)}＋訓練中${amount(reinforcement.queued)} / 目標${amount(reinforcement.target)}駒（あと${amount(reinforcement.remaining)}）</p>${reinforcement.className?`<p>${escapeHtml(reinforcement.unitType)} / ${escapeHtml(reinforcement.race)} / ${escapeHtml(reinforcement.className)} Lv${amount(reinforcement.level)}</p>`:''}${reasons(reinforcement.reasons)}</div>
-    <div class="v39-test-base-card" data-npc-resource-goals><strong>求める資材（在庫/必要）</strong>${resources||'<p>現在の計画で不足なし</p>'}</div>`;
-}
-
-function npcDiagnosticsMarkup(state) {
-  const factions=(state.players||[]).filter(player=>player.isPlayer===false);
-  if(!factions.some(player=>player.id===selectedNpcDiagnosticId))selectedNpcDiagnosticId=factions[0]?.id||'';
-  const index=factions.findIndex(player=>player.id===selectedNpcDiagnosticId);
-  const tabs=factions.length?`<div class="v39-test-log-tabs" role="tablist" aria-label="NPC勢力">${factions.map((player,i)=>`<button type="button" role="tab" id="v39-npc-diagnostic-tab-${i}" data-npc-diagnostic-tab="${escapeHtml(player.id)}" aria-controls="v39-npc-diagnostic-pane" aria-selected="${player.id===selectedNpcDiagnosticId}" tabindex="${player.id===selectedNpcDiagnosticId?0:-1}" class="${player.id===selectedNpcDiagnosticId?'active':''}">${escapeHtml(player.label||player.name||player.id)}</button>`).join('')}</div>`:'';
-  return `<details class="v39-test-section" data-test-section="npc-ai"${testSectionOpenAttribute('npc-ai')}><summary>NPC勢力診断（${factions.length}）</summary><div class="v39-test-section-body">${tabs}${factions.length?factions.filter(player=>player.id===selectedNpcDiagnosticId).map(player=>{
-    const faction=player.factionState||{},ai=faction.aiState||{},units=faction.units||[];
-    const living=units.filter(livingUnit),settlements=(faction.settlements||[]).filter(row=>row.placed);
-    const objective=ai.objective||{},purpose=objective.type==='victory-landmark'?(objective.hold?'覇権地の防衛':'覇権地の攻略'):objective.type==='foreign-faction'?(objective.resourceRaid?'資源確保の襲撃':'他勢力へ対応'):({'explore':'未踏地域を移動探索','resource-search':'魂・死体の供給元探索','resource-recover':'残留資源の回収','resource-demand':'村への生贄要求','resource-receive':'生贄の受取','resource-return':'資源の持帰り'}[objective.type]||'未設定（次のAI行動で決定）');
-    return `<article role="tabpanel" id="v39-npc-diagnostic-pane" aria-labelledby="v39-npc-diagnostic-tab-${index}" data-npc-diagnostic="${escapeHtml(player.id)}"><h4>${escapeHtml(player.label||player.id)} / ${escapeHtml(player.race)}</h4><div class="v39-test-base-card" data-npc-current-objective><strong>現在の目標: ${escapeHtml(purpose)}</strong>${objective.targetName||objective.targetTileKey?`<p>${escapeHtml(objective.targetName||'')}${objective.targetTileKey?' @'+escapeHtml(objective.targetTileKey):''}</p>`:''}${objective.resource?`<p>必要資源: ${escapeHtml(objective.resource)}</p>`:''}</div>${npcDevelopmentMarkup(ai.developmentPlan)}<div class="v39-test-ai-grid"><span>拠点 / 生存 / 訓練中</span><b>${settlements.length} / ${living.length} / ${(faction.unitTrainingQueue||[]).length}</b><span>直近の行動</span><b>${escapeHtml((ai.lastCommands||[]).join(' / ')||'まだ実行されていません')}</b><span>完成施設</span><b>${escapeHtml(settlements.map(row=>`${row.name}: ${(row.buildings||[]).join('・')||'なし'}`).join(' / '))}</b></div><ul>${units.map(unit=>`<li data-npc-unit="${escapeHtml(unit.id)}">${escapeHtml(unit.name)} / ${unit.isSovereign?'統治者':unit.combatProfile?.mode==='army'||unit.combatProfile?.mode==='elite_army'?`${escapeHtml(unit.unitType||'軍隊')} ${number(unit.combatProfile.memberCount??unit.combatProfile.populationCost)}人`:unit.isNamed?'ヒーロー':'一般兵'} Lv${number(unit.level)} / ${escapeHtml(unit.worldId||'surface')} (${unit.x??'-'},${unit.y??'-'}) / HP ${number(unit.hp??unit.currentHp)}/${number(unit.maxHp)} / AP ${number(unit.ap??unit.currentAp)}</li>`).join('')}</ul></article>`;
-  }).join(''):'<p>NPC勢力は登録されていません。開始設定のNPC勢力数、または「進行 → 勢力追加」を確認してください。</p>'}</div></details>`;
-}
-
-function selectNpcDiagnostic(id) {
-  if(!(window.getV39GameState?.()?.players||[]).some(player=>player.isPlayer===false&&player.id===id))return;
-  selectedNpcDiagnosticId=id;
-  render();
-  const tab=[...document.querySelectorAll('[data-npc-diagnostic-tab]')].find(button=>button.dataset.npcDiagnosticTab===id);
-  tab?.focus({preventScroll:true});
-  tab?.scrollIntoView({block:'nearest',inline:'nearest'});
-}
-
 function villageGuardDiagnostic(state, unitId) {
   for (const village of state?.neutralVillages || []) {
     const unit = (village?.defenseUnits || []).find(row => text(row?.id) === text(unitId));
@@ -766,7 +732,7 @@ function panelHtml() {
     <div class="v39-test-tools-scroll" id="v39-test-tool-content" role="tabpanel" aria-labelledby="v39-test-tab-${selectedToolTab}">
       ${renderV39VillagePlanTestTools(state)}
       ${renderV39NegotiationHubTestTools(state)}
-      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><button data-test-action="ai-simulation">AI長期シミュレーション</button>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="guardian-trial-test-start">守護者3試練テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
@@ -775,7 +741,7 @@ function panelHtml() {
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
       <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
       <details class="v39-test-section" data-test-section="test-skills"${testSectionOpenAttribute("test-skills")}><summary>テストスキル</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / 付与中: ${assignedTestSkills.length ? assignedTestSkills.map(escapeHtml).join(" / ") : "なし"}</p><div class="v39-test-form-row"><select id="v39-test-skill-name">${testSkillOptions || '<option value="">テストスキルなし</option>'}</select><button data-test-action="test-skill-add">選択を付与</button><button data-test-action="test-skill-all">全テスト技を付与</button><button data-test-action="test-skill-clear">全解除</button></div></div></details>
-      ${npcDiagnosticsMarkup(state)}
+      ${renderV39NpcDiagnostics(state,testSectionOpenAttribute('npc-ai'))}
       <details class="v39-test-section" data-test-section="enemy-ai"${testSectionOpenAttribute("enemy-ai")}><summary>敵AI診断</summary><div class="v39-test-section-body">${diagnosticUnits.length ? `<div class="v39-test-form-row"><select id="v39-test-enemy-id">${enemyOptions}</select></div>${enemyDebug ? `<div class="v39-test-ai-grid"><span>種別</span><b>${enemyDebug.isVillageGuard ? `一般村守備 / ${escapeHtml(enemyDebug.guardVillageName)}` : "敵AI"}</b><span>判断</span><b>${escapeHtml(enemyDebug.decision)}</b><span>理由</span><b>${escapeHtml(enemyDebug.reason)}</b><span>好戦性</span><b>${enemyDebug.isVillageGuard ? "村防衛" : enemyDebug.aggressive ? "好戦的" : enemyDebug.retaliating ? "反撃中（非好戦的）" : "非好戦的"}</b><span>位置</span><b>(${enemyDebug.x},${enemyDebug.y}) / Lv${enemyDebug.level}</b><span>HP / AP</span><b>${enemyDebug.hp}/${enemyDebug.maxHp} / ${enemyDebug.ap}/${enemyDebug.maxAp}</b>${enemyDebug.isVillageGuard ? `<span>軍隊人口 / 戦力</span><b>${enemyDebug.militaryPopulation}人 / ${enemyDebug.strength}</b>` : `<span>索敵</span><b>半径${enemyDebug.visionRadius} / 値${enemyDebug.scout}</b><span>プレイヤー発見</span><b>${escapeHtml(playerDetectionText)}</b><span>認識標的</span><b>${escapeHtml(enemyDebug.targetName || "なし")}${enemyDebug.targetDistance == null ? "" : ` / 距離${enemyDebug.targetDistance}`}</b><span>敵対記憶</span><b>${escapeHtml(enemyDebug.aggroTargetUnitId || "なし")}</b><span>所属巣</span><b>${escapeHtml(enemyDebug.nestName || "巣なし")}${enemyDebug.nestId ? ` / ${escapeHtml(enemyDebug.nestId)}` : ""}${enemyDebug.nestDistance == null ? "" : ` / 距離${enemyDebug.nestDistance}`}</b><span>縄張り</span><b>${enemyDebug.hasNest ? `中心(${enemyDebug.territoryCenter.x},${enemyDebug.territoryCenter.y}) / 半径${enemyDebug.territoryRadius} / 追跡限界${enemyDebug.pursuitLimit}` : "なし（巣なし個体）"}</b><span>逃走</span><b>基準${Math.round(enemyDebug.fleeThreshold*100)}% / ${enemyDebug.fleeState?.active ? "逃走中" : enemyDebug.fleeDecisionMade ? "判定済み" : "未発動"}</b><span>前回行動</span><b>T${enemyDebug.lastActionTurn || "-"}</b><span>発動待機 / CT</span><b>${escapeHtml(enemyDebug.pendingSkillName ? `${enemyDebug.pendingSkillName}:${enemyDebug.pendingTurns}T` : cooldownText || "なし")}</b>`}<span>攻撃候補</span><b>${escapeHtml(enemyDebug.attackSkillNames.join(" / ") || "なし")}</b></div>` : '<p>診断データを取得できません</p>'}` : '<p>生存している敵または一般村守備軍がいません</p>'}</div></details>
       <details class="v39-test-section" data-test-section="city-research"${testSectionOpenAttribute("city-research")}><summary>拠点技能・研究</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><select id="v39-test-city-level-key">${CITY_LEVEL_KEYS.map(key => `<option value="${key}"${key === cityLevel ? " selected" : ""}>${key}</option>`).join("")}</select><button data-test-action="city-level-minus">-1</button><button data-test-action="city-level-plus">+1</button><input id="v39-test-research-exp" type="number" min="1" step="10" value="100"><button data-test-action="research-exp">選択研究EXP+</button></div></div></details>
       <details class="v39-test-section" data-test-section="territory"${testSectionOpenAttribute("territory")}><summary>選択領土</summary><div class="v39-test-section-body"><div class="v39-test-button-row"><button data-test-action="territory-minus">HP-25</button><button data-test-action="territory-zero">HP0</button><button data-test-action="territory-full">HP全快</button></div></div></details>
@@ -784,6 +750,7 @@ function panelHtml() {
 }
 
 function render() {
+  if(window.__v39AiSimulationRunning)return;
   const panel = document.getElementById("v39-test-tools-panel");
   if (!(panel instanceof HTMLElement)) return;
   const currentScroll = panel.querySelector(".v39-test-tools-scroll");
@@ -854,6 +821,7 @@ async function startRitualTest(stage) {
 
 function handleAction(action) {
   if (!testModeEnabled()) return closePanel();
+  if(action==='ai-simulation'){openV39AiSimulation();return;}
   if(action==='terrain-atmosphere-reset'||action==='terrain-atmosphere-all'){
     const opacity=number(document.getElementById('v39-test-atmosphere-opacity-number')?.value);
     void window.setV39AtmosphereOpacity?.(action.endsWith('reset')?'reset':'all',opacity).then(()=>render());return;
@@ -887,6 +855,10 @@ function handleAction(action) {
     scene.v39RequestedZoom=scene.cameras.main.zoom;scene.v39SelectedTile={x:sample.x,y:sample.y};
     selectedWeatherType=window.inspectV39WeatherAt?.(sample.x,sample.y)?.weather||'晴れ';
     window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:scene.v39SelectedTile}));return;
+  }
+  if(action==='guardian-trial-test-start'){
+    if(window.confirm('現在のゲームを守護者3試練テストに置き換えます。開始しますか？')){closePanel();void window.startV39GuardianTrialTest?.();}
+    return;
   }
   if(action==='hegemony-test-start'){
     if(window.confirm('現在のゲームを覇権地の固定エリア確認テストに置き換えます。開始しますか？')){closePanel();window.startV39HegemonyAreaTest?.();}
@@ -1007,21 +979,14 @@ function install() {
   panel.setAttribute("aria-hidden", "false");
   host.appendChild(panel);
   panel.addEventListener("click", event => {
-    const npcTab = event.target instanceof Element ? event.target.closest('[data-npc-diagnostic-tab]') : null;
-    if(npcTab){selectNpcDiagnostic(npcTab.dataset.npcDiagnosticTab);return;}
+    if(handleV39NpcDiagnosticEvent(event,render))return;
     const tab = event.target instanceof Element ? event.target.closest('[data-test-tab]') : null;
     if(tab){selectToolTab(tab.dataset.testTab,true);return;}
     const button = event.target instanceof Element ? event.target.closest("[data-test-action]") : null;
     if (button) handleAction(button.dataset.testAction);
   });
   panel.addEventListener('keydown',event=>{
-    const npcTab=event.target.closest?.('[data-npc-diagnostic-tab]');
-    if(npcTab){
-      const tabs=[...panel.querySelectorAll('[data-npc-diagnostic-tab]')],index=tabs.indexOf(npcTab);
-      const offset=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
-      const next=offset?(index+offset+tabs.length)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:-1;
-      if(next>=0){event.preventDefault();selectNpcDiagnostic(tabs[next].dataset.npcDiagnosticTab);}return;
-    }
+    if(handleV39NpcDiagnosticEvent(event,render))return;
     const tab=event.target.closest?.('[data-test-tab]');if(!tab)return;
     const index=TEST_TOOL_TABS.findIndex(row=>row.id===tab.dataset.testTab);
     const offset=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
@@ -1044,6 +1009,7 @@ function install() {
     else collapsedSectionKeys.add(key);
   }, true);
   panel.addEventListener("change", event => {
+    if(handleV39NpcDiagnosticEvent(event,render))return;
     if (event.target.id === "v39-test-turn-count") {
       bulkTurnCount = clamp(Math.floor(number(event.target.value, 10)), 1, 100);
       event.target.value = String(bulkTurnCount);

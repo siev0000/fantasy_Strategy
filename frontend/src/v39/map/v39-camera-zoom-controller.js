@@ -122,8 +122,9 @@ function applyCapturedZoom(snapshot) {
   clampCamera(scene);
 }
 
-function scheduleCapturedZoom(snapshot) {
+function scheduleCapturedZoom(snapshot,event) {
   if (!snapshot) return;
+  if(event)event.v39ZoomHandled=true;
   queueMicrotask(() => applyCapturedZoom(snapshot));
 }
 
@@ -151,7 +152,7 @@ function zoomAroundCenterTo(targetZoom) {
 window.addEventListener("wheel", event => {
   const host = fieldHost();
   if (!host || !(event.target instanceof Node) || !host.contains(event.target)) return;
-  scheduleCapturedZoom(captureZoom(event.clientX, event.clientY, event.deltaY < 0 ? 1.16 : 1 / 1.16));
+  scheduleCapturedZoom(captureZoom(event.clientX, event.clientY, event.deltaY < 0 ? 1.16 : 1 / 1.16),event);
 }, { capture: true, passive: true });
 
 document.addEventListener("click", event => {
@@ -161,13 +162,13 @@ document.addEventListener("click", event => {
   if (!host) return;
   const rect = host.getBoundingClientRect();
   const factor = button.getAttribute("data-map-zoom") === "in" ? 1.3 : 1 / 1.3;
-  scheduleCapturedZoom(captureZoom(rect.left + rect.width / 2, rect.top + rect.height / 2, factor));
+  scheduleCapturedZoom(captureZoom(rect.left + rect.width / 2, rect.top + rect.height / 2, factor),event);
 }, true);
 
 window.addEventListener("dblclick", event => {
   const host = fieldHost();
   if (!host || !(event.target instanceof Node) || !host.contains(event.target)) return;
-  scheduleCapturedZoom(captureZoom(event.clientX, event.clientY, 1.5));
+  scheduleCapturedZoom(captureZoom(event.clientX, event.clientY, 1.5),event);
 }, { capture: true });
 
 window.addEventListener("pointerdown", event => {
@@ -188,7 +189,7 @@ window.addEventListener("pointermove", event => {
   if (!(oldDistance > 0) || !(newDistance > 0)) return;
   const centerX = (after[0].x + after[1].x) / 2;
   const centerY = (after[0].y + after[1].y) / 2;
-  scheduleCapturedZoom(captureZoom(centerX, centerY, newDistance / oldDistance));
+  scheduleCapturedZoom(captureZoom(centerX, centerY, newDistance / oldDistance),event);
 }, { capture: true });
 
 const releasePointer = event => pointers.delete(event.pointerId);

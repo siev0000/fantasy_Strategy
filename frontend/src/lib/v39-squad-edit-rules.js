@@ -26,10 +26,10 @@ export function getV39SquadMemberRestriction(faction,unit,worldId) {
   return "";
 }
 
-export function editV39Squad(state,playerId,request,map=null,{joiningByMagic=false}={}) {
+export function editV39Squad(state,playerId,request,map=null,{joiningByMagic=false,aiTurn=false}={}) {
   const fail=reason=>({ok:false,state,reason});
   const player=state.players?.find(row=>row.id===playerId);
-  if(!player || state.activePlayerId && state.activePlayerId!==playerId) return fail("操作中の勢力を選んでください");
+  if(!player || state.activePlayerId && state.activePlayerId!==playerId&&!(aiTurn&&player.isPlayer===false)) return fail("操作中の勢力を選んでください");
   const faction=player.factionState,rows=getV39EditableSquads(faction);
   const existing=rows.find(row=>row.id===request.squadId && !solo(row.id));
   if(request.squadId && !existing) return fail("部隊が見つかりません");

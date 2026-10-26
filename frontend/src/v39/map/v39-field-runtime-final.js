@@ -29,6 +29,9 @@ let game = null;
 let currentData = null;
 let currentSettings = null;
 let activeFieldInputController = null;
+const worldLayers = new Map();
+let activeWorldLayerId = 'surface';
+let worldLayerSequence = 0;
 const mapRenderBatchTokens = new Set();
 const mapInputLockTokens = new Set();
 let mapRuntimeTokenSequence = 0;
@@ -432,7 +435,7 @@ function installInput(scene, data) {
   disposeFieldInput();
   const camera = scene.cameras.main;
   const inputController = new AbortController();
-  installV39CoordinateRuler(scene, host, data);
+  const disposeRuler = installV39CoordinateRuler(scene, host, data);
   activeFieldInputController = inputController;
   const inputSignal = inputController.signal;
   const pointers = new Map();
@@ -443,10 +446,6 @@ function installInput(scene, data) {
   const outsideMask = placementMask.createGeometryMask();
   outsideMask.setInvertAlpha(true);
   placementShade.setMask(outsideMask);
-  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-    placementShade.clearMask(true);
-    placementMask.destroy();
-  });
   let dragged = false;
   let lastTouchTap = null;
 
@@ -516,11 +515,12 @@ function installInput(scene, data) {
   };
   scene.v39Input = { selectTile, selectTileAt:selectAt, zoomAt, showPlacementTiles };
   // create中はまだアクティブシーン一覧へ載らないため、最初の更新後に配置範囲を描画する。
-  scene.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
+  const inputReady = () => {
     window.dispatchEvent(new CustomEvent("v39:field-input-ready"));
-  });
+  };
+  scene.events.once(Phaser.Scenes.Events.POST_UPDATE, inputReady);
 
-  host.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false, signal:inputSignal });
+  host.addEventListener("wheel", e => { e.preventDefault(); if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false, signal:inputSignal });
   host.addEventListener("pointerdown", e => {
     if (window.isV39MapInputLocked?.() === true) return;
     if (e.pointerType==="mouse" && e.button!==0) return;
@@ -532,13 +532,13 @@ function installInput(scene, data) {
     if (window.isV39MapInputLocked?.() === true) return;
     const prev=pointers.get(e.pointerId); if(!prev)return;
     const old=[...pointers.values()]; pointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); const next=[...pointers.values()];
-    if(next.length>=2){ const od=Math.hypot(old[0].x-old[1].x,old[0].y-old[1].y), nd=Math.hypot(next[0].x-next[1].x,next[0].y-next[1].y); if(od>0&&nd>0){zoomAt((next[0].x+next[1].x)/2,(next[0].y+next[1].y)/2,nd/od);dragged=true;} return; }
+    if(next.length>=2){ const od=Math.hypot(old[0].x-old[1].x,old[0].y-old[1].y), nd=Math.hypot(next[0].x-next[1].x,next[0].y-next[1].y); if(od>0&&nd>0){if(!e.v39ZoomHandled)zoomAt((next[0].x+next[1].x)/2,(next[0].y+next[1].y)/2,nd/od);dragged=true;} return; }
     const dx=e.clientX-prev.x,dy=e.clientY-prev.y; if(Math.abs(dx)+Math.abs(dy)<1)return;
     camera.scrollX-=dx/camera.zoom; camera.scrollY-=dy/camera.zoom; clampCamera(scene); dragged=true;
   }, { signal:inputSignal });
   const finish=e=>{ const touch=e.pointerType!=="mouse", select=!dragged&&pointers.size===1; pointers.delete(e.pointerId); try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ } if(select)selectAt(e.clientX,e.clientY); if(touch&&!dragged&&!pointers.size){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
   host.addEventListener("pointerup",finish,{ signal:inputSignal }); host.addEventListener("pointercancel",finish,{ signal:inputSignal });
-  host.addEventListener("dblclick",e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,1.5);},{ signal:inputSignal });
+  host.addEventListener("dblclick",e=>{e.preventDefault();if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,1.5);},{ signal:inputSignal });
   const handleKeyboard = e => {
     if (window.isV39MapInputLocked?.() === true) return;
     const target = e.target;
@@ -560,11 +560,18 @@ function installInput(scene, data) {
     e.preventDefault();
   };
   window.addEventListener("keydown", handleKeyboard, { signal:inputSignal });
-  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-    inputController.abort();
+  const shutdownInput = () => inputController.abort();
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, shutdownInput);
+  inputSignal.addEventListener('abort', () => {
+    scene.events.off(Phaser.Scenes.Events.SHUTDOWN, shutdownInput);
+    scene.events.off(Phaser.Scenes.Events.POST_UPDATE, inputReady);
+    disposeRuler?.();
+    placementShade.clearMask(true);
+    placementMask.destroy();
+    for (const item of [selection,placementArea,placementShade]) item.destroy();
     if (activeFieldInputController === inputController) activeFieldInputController = null;
     pointers.clear();
-  });
+  }, {once:true});
 
   document.getElementById("v39-map-camera-controls")?.remove();
   const controls=document.createElement("div"); controls.id="v39-map-camera-controls";
@@ -572,55 +579,145 @@ function installInput(scene, data) {
   Object.assign(controls.style,{position:"absolute",left:"6px",bottom:"6px",zIndex:"24",display:"grid",gap:"4px"});
   controls.querySelectorAll("button").forEach(b=>Object.assign(b.style,{width:"38px",height:"38px",border:"1px solid #597078",borderRadius:"7px",background:"rgba(13,27,32,.94)",color:"#e8efec",fontSize:"23px"}));
   const centerZoom=f=>{const r=host.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,f);};
-  controls.querySelector('[data-map-zoom="in"]')?.addEventListener("click",()=>centerZoom(1.3));
-  controls.querySelector('[data-map-zoom="out"]')?.addEventListener("click",()=>centerZoom(1/1.3));
+  controls.querySelector('[data-map-zoom="in"]')?.addEventListener("click",event=>{if(!event.v39ZoomHandled)centerZoom(1.3);});
+  controls.querySelector('[data-map-zoom="out"]')?.addEventListener("click",event=>{if(!event.v39ZoomHandled)centerZoom(1/1.3);});
   playfield.appendChild(controls);
 }
 
-function createGame(data) {
-  game = new Phaser.Game({
-    type:Phaser.AUTO,parent:host,transparent:false,backgroundColor:"#081115",
+function terrainLayerSignature(data) {
+  const display=readDisplaySettings();
+  return JSON.stringify([data.w,data.h,data.isUnderground,data.grid,data.heightLevelMap,
+    data.specialMap,data.snowCoverMap,data.snowfallMap,data.riverData,data.lavaFlowData,
+    data.hegemonyAreaId,data.hegemonyZoneKeys,display.heightShading,display.heightOutlineOnly]);
+}
+
+function refreshWorldTerrain(entry) {
+  const scene=entry.scene,data=entry.data,signature=terrainLayerSignature(data);
+  if (!scene || entry.signature===signature) return;
+  scene.v39TerrainGraphics=drawTerrain(scene,data,scene.v39TerrainGraphics);
+  scene.v39SnowCoverGraphics=drawSnowCover(scene,data,scene.v39SnowCoverGraphics);
+  scene.v39RiverGraphics=drawRivers(scene,data.riverData,scene.v39RiverGraphics);
+  drawSpecialTerrain(scene,data);drawSnowfall(scene,data);
+  scene.v39LavaGraphics=drawLava(scene,data,scene.v39LavaGraphics);
+  entry.signature=signature;
+  entry.terrainBuilds=(entry.terrainBuilds||0)+1;
+}
+
+function resizeWorldCamera(scene,data) {
+  const oldZoom=Number(scene.v39RequestedZoom)||scene.cameras.main.zoom,size=worldSize(data);
+  const fit=Math.max(.05,Math.min(scene.cameras.main.width/size.width,scene.cameras.main.height/size.height)*.97);
+  scene.v39FitZoom=fit;
+  scene.v39RequestedZoom=Phaser.Math.Clamp(oldZoom,fit,fit*readDisplaySettings().maxZoomFactor);
+  scene.cameras.main.setZoom(scene.v39RequestedZoom);clampCamera(scene);
+}
+
+function restoreWorldCamera(entry) {
+  if(!entry.camera)return;
+  const scene=entry.scene,fit=scene.v39FitZoom;
+  const zoom=Phaser.Math.Clamp(entry.camera.zoom,fit,fit*readDisplaySettings().maxZoomFactor);
+  scene.cameras.main.setZoom(zoom).setScroll(entry.camera.scrollX,entry.camera.scrollY);
+  scene.v39RequestedZoom=zoom;clampCamera(scene);
+}
+
+function worldSceneConfig(entry) {
+  return {key:entry.key,create(){
+    entry.scene=this;
+    this.v39WorldId=entry.id;
+    refreshWorldTerrain(entry);
+    loadV39TerrainPatterns(this,()=>entry.data,readDisplaySettings);
+    if(entry.id===activeWorldLayerId){fitCamera(this);restoreWorldCamera(entry);installInput(this,entry.data);}
+    const redraw=event=>{
+      const keys=event.detail?.changedKeys;
+      if(keys&&!keys.some(key=>key==='heightOutlineOnly'||key==='heightShading'))return;
+      entry.signature=null;
+      if(this.sys.isActive())refreshWorldTerrain(entry);
+    };
+    const resize=()=>{if(this.sys.isActive())resizeWorldCamera(this,entry.data);};
+    window.addEventListener('v39:display-settings-changed',redraw);
+    this.scale.on('resize',resize);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN,()=>{
+      window.removeEventListener('v39:display-settings-changed',redraw);
+      this.scale.off('resize',resize);
+    });
+    this.events.once(Phaser.Scenes.Events.CREATE,()=>{
+      if(worldLayers.get(entry.id)!==entry){this.scene.stop();this.scene.remove();}
+      else if(entry.id!==activeWorldLayerId)this.scene.sleep();
+    });
+  }};
+}
+
+function newWorldLayer(id,data) {
+  const entry={id,key:`v39-world-${++worldLayerSequence}`,data,scene:null,signature:null,terrainBuilds:0};
+  worldLayers.set(id,entry);
+  return entry;
+}
+
+function createGame(data,worldId='surface') {
+  worldLayers.clear();activeWorldLayerId=worldId;
+  const entry=newWorldLayer(worldId,data);
+  game=new Phaser.Game({
+    type:Phaser.AUTO,parent:host,transparent:false,backgroundColor:'#081115',
     callbacks:{postBoot:installV39IdleRender},
     scale:{mode:Phaser.Scale.RESIZE,width:Math.max(1,host.clientWidth),height:Math.max(1,host.clientHeight)},
-    scene:{create(){
-      ensureSnowStateMaps(data);
-      const terrainGraphics=drawTerrain(this,data);
-      loadV39TerrainPatterns(this,()=>data,readDisplaySettings);
-      const snowCoverGraphics=drawSnowCover(this,data);
-      this.v39RiverGraphics=drawRivers(this,data.riverData);
-      drawSpecialTerrain(this,data);
-      drawSnowfall(this,data);
-      const lavaGraphics=drawLava(this,data);
-      fitCamera(this);
-      installInput(this,data);
-      this.v39TerrainGraphics=terrainGraphics;
-      this.v39SnowCoverGraphics=snowCoverGraphics;
-      this.v39LavaGraphics=lavaGraphics;
-      const redraw=event=>{
-        const keys=event.detail?.changedKeys;
-        if (!keys || keys.some(key=>key==="heightOutlineOnly" || key==="heightShading")) drawTerrain(this,data,terrainGraphics);
-      }; window.addEventListener("v39:display-settings-changed",redraw);
-      this.events.once(Phaser.Scenes.Events.SHUTDOWN,()=>window.removeEventListener("v39:display-settings-changed",redraw));
-      this.scale.on("resize",()=>{const oldZoom=Number(this.v39RequestedZoom)||this.cameras.main.zoom;const size=worldSize(data);const fit=Math.max(.05,Math.min(this.cameras.main.width/size.width,this.cameras.main.height/size.height)*.97);this.v39FitZoom=fit;const max=fit*readDisplaySettings().maxZoomFactor;this.v39RequestedZoom=Phaser.Math.Clamp(oldZoom,fit,max);this.cameras.main.setZoom(this.v39RequestedZoom);clampCamera(this);});
-    }}
+    scene:worldSceneConfig(entry)
   });
   return game;
+}
+
+function pruneWorldLayers() {
+  if(!game)return;
+  const state=window.getV39EnemyTurnState?.();
+  const units=state?.players?.find(player=>player.id===state.activePlayerId)?.factionState?.units||[];
+  const occupied=new Set(units.filter(unit=>Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡'
+    &&Number(unit.x)>=0&&Number(unit.y)>=0).map(unit=>unit.worldId||'surface'));
+  for(const [id,entry] of worldLayers){
+    if(id===activeWorldLayerId||occupied.has(id))continue;
+    game.scene.stop(entry.key);game.scene.remove(entry.key);worldLayers.delete(id);
+  }
+}
+
+function activateWorldLayer(mapData,worldId,camera) {
+  const previous=worldLayers.get(activeWorldLayerId);
+  if(previous?.scene){
+    const camera=previous.scene.cameras.main;
+    previous.camera={zoom:camera.zoom,scrollX:camera.scrollX,scrollY:camera.scrollY};
+    game.scene.sleep(previous.key);
+  }
+  disposeFieldInput();
+  activeWorldLayerId=worldId;
+  let entry=worldLayers.get(worldId);
+  if(!entry){
+    entry=newWorldLayer(worldId,mapData);entry.camera=camera;currentData=entry.data;
+    if(window.__v39FieldRuntime)window.__v39FieldRuntime.mapData=currentData;
+    game.scene.add(entry.key,worldSceneConfig(entry),true);
+  }else{
+    if(entry.data!==mapData){for(const key of Object.keys(entry.data))delete entry.data[key];Object.assign(entry.data,mapData);}
+    currentData=entry.data;
+    if(window.__v39FieldRuntime)window.__v39FieldRuntime.mapData=currentData;
+    game.scene.wake(entry.key);
+    if(camera)entry.camera=camera;
+    if(entry.scene){
+      refreshWorldTerrain(entry);
+      resizeWorldCamera(entry.scene,entry.data);
+      restoreWorldCamera(entry);
+      installInput(entry.scene,entry.data);
+    }
+  }
+  pruneWorldLayers();
+  game.v39InvalidateRender?.();
 }
 
 export function updateV39FieldData(nextData, options = {}) {
   if (!currentData || !nextData || typeof nextData !== "object") return false;
   ensureSnowStateMaps(nextData);
-  for (const key of Object.keys(currentData)) delete currentData[key];
-  Object.assign(currentData, nextData);
+  if(currentData!==nextData){
+    for (const key of Object.keys(currentData)) delete currentData[key];
+    Object.assign(currentData, nextData);
+  }
   if (window.__v39FieldRuntime) window.__v39FieldRuntime.mapData = currentData;
   const scene = game?.scene?.getScenes?.(true)?.[0];
   if (scene) {
-    drawTerrain(scene, currentData, scene.v39TerrainGraphics);
-    scene.v39SnowCoverGraphics = drawSnowCover(scene, currentData, scene.v39SnowCoverGraphics);
-    scene.v39RiverGraphics = drawRivers(scene, currentData.riverData, scene.v39RiverGraphics);
-    drawSpecialTerrain(scene, currentData);
-    drawSnowfall(scene, currentData);
-    drawLava(scene, currentData, scene.v39LavaGraphics);
+    refreshWorldTerrain(worldLayers.get(activeWorldLayerId));
     const selected = scene.v39SelectedTile;
     if (selected && Number.isFinite(Number(selected.x)) && Number.isFinite(Number(selected.y))) {
       const x = Math.floor(Number(selected.x));
@@ -736,9 +833,13 @@ export function loadV39FieldSnapshot(mapData, inputSettings={}, options={}) {
   currentSettings=settings;
   currentData=ensureSnowStateMaps(mapData);
   ensureV39ClimateProfile(currentData);
-  disposeFieldInput();
-  if(game){ game.destroy(true); game=null; host.replaceChildren(); }
-  createGame(currentData);
+  if(options.layerChange&&options.worldId&&game&&!options.resetWorldLayers){
+    activateWorldLayer(currentData,String(options.worldId),options.camera);
+  }else{
+    disposeFieldInput();
+    if(game){ game.destroy(true); game=null; host.replaceChildren(); }
+    createGame(currentData,options.worldId||'surface');
+  }
   const chip=playfield.querySelector(".map-chip");
   if(chip) chip.textContent=`${settings.w}×${settings.h} / ${settings.patternId} / 復元`;
   window.__v39FieldRuntime={game,mapData:currentData,settings,mapWidth:settings.w,mapHeight:settings.h,patternId:settings.patternId,mountainMode:settings.mountainMode};
@@ -769,6 +870,13 @@ async function boot(){
   window.endV39MapInputLock=endMapInputLock;
   window.isV39MapInputLocked=()=>mapInputLockTokens.size > 0;
   window.waitForV39MapRenderSettled=waitForMapRenderSettled;
+  window.getV39WorldLayerCacheStatus=()=>[...worldLayers.values()].map(entry=>({worldId:entry.id,sceneKey:entry.key,
+    active:entry.id===activeWorldLayerId,terrainBuilds:entry.terrainBuilds,children:entry.scene?.children?.list?.length||0}));
+  let pruneQueued=false;
+  window.addEventListener('v39:game-state-changed',()=>{
+    if(pruneQueued)return;pruneQueued=true;
+    queueMicrotask(()=>{pruneQueued=false;pruneWorldLayers();});
+  });
   window.__v39FieldRuntime={game:null,mapData:null,settings:null};
   window.render_game_to_text=()=>{
     const state=window.getV39GameState?.({includeWorlds:false});

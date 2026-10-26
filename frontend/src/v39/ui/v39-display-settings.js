@@ -15,6 +15,7 @@ const DEFAULTS = Object.freeze({
   heightShading: true,
   showZoomControls: true,
   showCoordinateRuler: true,
+  showTerritoryOwnership: true,
   reduceMotion: false,
   focusUnactedUnits: true,
   testMode: false,
@@ -110,6 +111,14 @@ function ensureCoordinateControl() {
   grid.appendChild(label);
 }
 
+function ensureTerritoryControl(){
+  const grid=document.querySelector('#v39-display-settings-panel .display-settings-grid');
+  if(!grid||document.getElementById('v39-show-territory-ownership'))return;
+  const label=document.createElement('label');label.className='display-setting';
+  label.innerHTML='<span class="display-setting-title">領土の色分け</span><input type="checkbox" id="v39-show-territory-ownership"><small>勢力・村の所有マスを所有者の色で薄く表示します。未探索の領土は表示しません。</small>';
+  grid.append(label);
+}
+
 function renderPlayerColors() {
   const host=document.getElementById('v39-player-colors');if(!host)return;
   const state=window.getV39GameState?.({includeWorlds:false})||{},players=state.players||[];
@@ -169,6 +178,8 @@ function applySettings({ emit = true, changedKeys } = {}) {
   if (showZoom) showZoom.checked = settings.showZoomControls !== false;
   const ruler = document.getElementById("v39-show-coordinate-ruler");
   if (ruler) ruler.checked = settings.showCoordinateRuler !== false;
+  const territory=document.getElementById('v39-show-territory-ownership');
+  if(territory)territory.checked=settings.showTerritoryOwnership!==false;
   if (reduceMotion) reduceMotion.checked = !!settings.reduceMotion;
   const focusUnacted = document.getElementById("v39-focus-unacted-units");
   if (focusUnacted) focusUnacted.checked = settings.focusUnactedUnits !== false;
@@ -242,6 +253,7 @@ function bindPanelNavigation() {
 }
 
 function bindControls() {
+  document.getElementById('v39-show-territory-ownership')?.addEventListener('change',event=>updateControlSetting('showTerritoryOwnership',!!event.target.checked));
   document.getElementById('v39-player-colors')?.addEventListener('change',event=>{
     const id=event.target.dataset.playerColor;if(!id)return;
     updateControlSetting('playerColors',normalizeV39PlayerColors({...settings.playerColors,[id]:event.target.value}));
@@ -290,6 +302,7 @@ function install() {
   ensureMaxZoomControl();
   ensureTestModeControl();
   ensureCoordinateControl();
+  ensureTerritoryControl();
   installReduceMotionStyle();
   bindPanelNavigation();
   bindControls();

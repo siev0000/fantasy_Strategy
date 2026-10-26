@@ -1,5 +1,6 @@
 const SAVE_FORMAT = "fantasy-strategy-v39";
 import { getGameDataRows } from "../../lib/game-data-registry.js";
+import {normalizeV39RecoveryWaitPercent,updateV39RecoveryWaitSettings} from '../../lib/v39-recovery-wait.js';
 
 const SAVE_VERSION = 4;
 
@@ -258,7 +259,7 @@ export function importV39SaveJson(jsonText) {
   validateSaveData(save);
   const migration = migrateSaveData(save);
   save = validateSaveData(migration.save);
-  if (save.field) window.loadV39FieldSnapshot?.(save.field.mapData, save.field.settings || {}, {layerChange:true});
+  if (save.field) window.loadV39FieldSnapshot?.(save.field.mapData, save.field.settings || {}, {layerChange:true,worldId:save.gameState.activeWorldId||'surface',resetWorldLayers:true});
   window.setV39GameState?.(hydrateRuntimeDefinitions(save.gameState), { reason:"save-loaded" });
   restoreView(save.view);
   window.dispatchEvent(new CustomEvent("v39:save-loaded", {
@@ -285,10 +286,27 @@ function installSettingsUi() {
       <div><button type="button" id="v39-save-download">セーブを保存</button><button type="button" id="v39-save-load">セーブを読込</button><input id="v39-save-file" type="file" accept="application/json,.json" hidden></div>
       <output id="v39-save-status">未実行</output>
     </section>
+    <section><h3>回復まで待機</h3>
+      <label>待機を終えるHP <input id="v39-recovery-wait-percent" type="number" min="1" max="100" step="1" aria-label="回復待機の目標HP率"> %</label>
+      <p>基本行動の「回復まで待機」で使用します。初期値100%。変更は待機中のユニットにも適用され、セーブに保存されます。</p>
+    </section>
     <section><h3>部隊編制</h3><p>ユニット一覧の「部隊」タブから部隊の作成・メンバー変更・解散ができます。</p></section>
   </div>`;
   const status = document.getElementById("v39-save-status");
   const input = document.getElementById("v39-save-file");
+  const recoveryInput = document.getElementById('v39-recovery-wait-percent');
+  const syncRecoverySetting = () => {
+    if (document.activeElement !== recoveryInput) recoveryInput.value = normalizeV39RecoveryWaitPercent(window.getV39GameSettings?.()?.recoveryWaitHpPercent);
+  };
+  syncRecoverySetting();
+  recoveryInput.addEventListener('change',()=>{
+    const state=window.getV39GameState?.({includeWorlds:false});
+    if (!state || window.isV39MapInputLocked?.()) return;
+    const next=updateV39RecoveryWaitSettings(state,recoveryInput.value);
+    window.setV39GameState({gameSettings:next.gameSettings,players:next.players},{reason:'recovery-wait-setting'});
+    recoveryInput.value=next.gameSettings.recoveryWaitHpPercent;
+  });
+  window.addEventListener('v39:game-state-changed',syncRecoverySetting);
   document.getElementById("v39-save-download")?.addEventListener("click", () => {
     try { downloadSave(); status.textContent = "セーブを保存しました"; }
     catch (error) { status.textContent = error.message; }
@@ -310,7 +328,7 @@ function installSettingsUi() {
 
 function installStyles() {
   const style = document.createElement("style");
-  style.textContent = `.v39-save-settings{display:grid;gap:10px}.v39-save-settings section{border:1px solid #3b4d54;border-radius:8px;background:#121e23;padding:12px}.v39-save-settings h3{margin:0 0 6px;font-size:var(--font-size-16)}.v39-save-settings p,.v39-save-settings output{font-size:var(--font-body);color:#afbec1}.v39-save-settings section>div{display:flex;gap:8px;margin:10px 0}.v39-save-settings button{min-height:40px;border:1px solid #54717a;border-radius:7px;background:#173039;color:#edf5f3;padding:6px 12px;font-size:var(--font-body);font-weight:700}`;
+  style.textContent = `#v39-recovery-wait-percent{width:5em;min-height:36px;background:#0d171b;color:#edf5f3;border:1px solid #54717a;border-radius:6px;padding:3px 6px;font:inherit}.v39-save-settings{display:grid;gap:10px}.v39-save-settings section{border:1px solid #3b4d54;border-radius:8px;background:#121e23;padding:12px}.v39-save-settings h3{margin:0 0 6px;font-size:var(--font-size-16)}.v39-save-settings p,.v39-save-settings output{font-size:var(--font-body);color:#afbec1}.v39-save-settings section>div{display:flex;gap:8px;margin:10px 0}.v39-save-settings button{min-height:40px;border:1px solid #54717a;border-radius:7px;background:#173039;color:#edf5f3;padding:6px 12px;font-size:var(--font-body);font-weight:700}`;
   document.head.appendChild(style);
 }
 

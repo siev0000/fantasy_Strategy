@@ -1,6 +1,7 @@
 import config from '../../../../config/v39-terrain-patterns.json';
 import {hegemonyZoneAt} from '../../lib/v39-hegemony-areas.js';
 import { HEX_TILE_CONFIG } from '../../lib/phaser-map-panel-config.js';
+import {loadV39SharedImageTexture} from './v39-shared-image-texture.js';
 
 const SOURCE_KEY = 'v39-terrain-pattern-source';
 const rawTerrainPatternModules = import.meta.glob('../../../../assets/images/units/1ファイルまとめ/*.{png,jpg,jpeg,webp,svg}', {
@@ -26,13 +27,10 @@ export function loadV39TerrainPatterns(scene, getData, getDisplay) {
   const loaded = () => {
     clearPatterns(scene);
     drawV39TerrainPatterns(scene, getData(), getDisplay());
-    window.renderV39TerrainIcons?.();
+    if (scene.sys.isActive()) window.renderV39TerrainIcons?.();
     scene.game.v39InvalidateRender?.();
   };
-  scene.load.once(`filecomplete-image-${SOURCE_KEY}`, loaded);
-  scene.events.once('shutdown', () => scene.load.off(`filecomplete-image-${SOURCE_KEY}`, loaded));
-  scene.load.image(SOURCE_KEY, TERRAIN_SOURCE_URL);
-  scene.load.start();
+  loadV39SharedImageTexture(scene,SOURCE_KEY,TERRAIN_SOURCE_URL,loaded);
 }
 
 export function hasV39TerrainPattern(scene, terrain) {
@@ -110,7 +108,7 @@ export function drawV39TerrainPatterns(scene, data, display = {}) {
         const id = `${cx}:${cy}`;
         let chunk = chunks.get(id);
         if (!chunk) {
-          const key = `v39-terrain-pattern-${id}`;
+          const key = `v39-terrain-pattern-${scene.sys.settings.key}-${id}`;
           const texture = scene.textures.createCanvas(key, size, size);
           const image = scene.add.image(cx * size / scale, cy * size / scale, key)
             .setOrigin(0).setScale(1 / scale).setDepth(0.1).setName('v39-terrain-pattern-chunk');

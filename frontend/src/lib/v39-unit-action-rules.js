@@ -1,5 +1,20 @@
+import {isV39UnitRecoveryWaiting} from './v39-recovery-wait.js';
+
 export function isV39UnitWaiting(unit, turnNumber) {
-  return Number(unit?.waitTurnNumber) === Number(turnNumber);
+  return Number(unit?.waitTurnNumber) === Number(turnNumber) || isV39UnitRecoveryWaiting(unit);
+}
+
+export const V39_WAITED_UNIT_BRIGHTNESS = 0.72;
+
+export function isV39UnitWaitDimmed(unit, turnNumber) {
+  return Number(turnNumber) >= 1
+    && Number(unit?.hp ?? unit?.currentHp) > 0 && unit?.state !== "死亡"
+    && isV39UnitWaiting(unit, turnNumber);
+}
+
+export function getV39UnitWaitTint(unit, turnNumber) {
+  const channel = Math.round(255 * V39_WAITED_UNIT_BRIGHTNESS);
+  return isV39UnitWaitDimmed(unit, turnNumber) ? channel * 0x010101 : 0xffffff;
 }
 
 export function isV39UnitUnacted(unit, turnNumber, faction = {}) {

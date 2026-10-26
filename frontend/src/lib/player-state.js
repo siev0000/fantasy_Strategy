@@ -67,6 +67,9 @@ export function createEmptyExplorationState(source = {}) {
 
 export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
   const settlementState = normalizeFactionSettlements(source, ownerPlayerId);
+  const aiTeams=source?.aiState?.resourceTeams??source?.aiState?.developmentPlan?.resourceTeams;
+  const aiSupplyBudget=source?.aiState?.supplyBudgetBySettlement??source?.aiState?.developmentPlan?.supplyBudgetBySettlement;
+  const aiUnitTarget=source?.aiState?.resourceUnitTarget??source?.aiState?.developmentPlan?.reinforcement?.target;
   const sourceWithoutLegacyVillage = { ...source };
   delete sourceWithoutLegacyVillage.village;
   return {
@@ -102,6 +105,12 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
       lastCommands: Array.isArray(source?.aiState?.lastCommands) ? source.aiState.lastCommands.map(String) : [],
       history: cloneRows(source?.aiState?.history),
       objective: cloneRecord(source?.aiState?.objective),
+      growthPlan: source?.aiState?.growthPlan ? structuredClone(source.aiState.growthPlan) : null,
+      lastEquipmentTurn: Math.max(0,Math.floor(Number(source?.aiState?.lastEquipmentTurn)||0)),
+      lastCommerceTurn: Math.max(0,Math.floor(Number(source?.aiState?.lastCommerceTurn)||0)),
+      resourceTeams: Array.isArray(aiTeams)?structuredClone(aiTeams):[],
+      resourceUnitTarget:aiUnitTarget==null?undefined:Math.max(0,Math.floor(Number(aiUnitTarget)||0)),
+      supplyBudgetBySettlement:structuredClone(cloneRecord(aiSupplyBudget)),
       developmentPlan: source?.aiState?.developmentPlan ? structuredClone(source.aiState.developmentPlan) : null
     },
     nationPolicy: {

@@ -1,0 +1,61 @@
+{
+  "有効": 10,
+  "除外": [
+    {
+      "行": 2,
+      "ID": "EXAMPLE_VILLAGE_SUPPLY",
+      "状態": "参考"
+    },
+    {
+      "行": 3,
+      "ID": "EXAMPLE_VILLAGE_HUNT",
+      "状態": "参考"
+    },
+    {
+      "行": 4,
+      "ID": "EXAMPLE_VILLAGE_DIALOGUE",
+      "状態": "参考"
+    },
+    {
+      "行": 5,
+      "ID": "EXAMPLE_DEMON_SUPPLY",
+      "状態": "参考"
+    },
+    {
+      "行": 6,
+      "ID": "VILLAGE_SUPPORT_FOOD",
+      "状態": "無効"
+    },
+    {
+      "行": 7,
+      "ID": "VILLAGE_SUPPORT_WOOD",
+      "状態": "無効"
+    },
+    {
+      "行": 8,
+      "ID": "VILLAGE_WOLF_HUNT",
+      "状態": "無効"
+    },
+    {
+      "行": 14,
+      "ID": "PLAN_VILLAGE_CHURCH",
+      "状態": "試作"
+    },
+    {
+      "行": 15,
+      "ID": "PLAN_VILLAGE_RECAPTURE",
+      "状態": "試作"
+    }
+  ],
+  "エラー": [],
+  "入力": "output\\guardian-trials-final.xlsx",
+  "出力先": "output\\guardian-trials-generated",
+  "検証のみ": false,
+  "ゲーム接続": "一般村の旧保存互換・村計画/ひな型、守護者の納品/見張り/周辺討伐に対応。他分類は後続",
+  "出力ファイル": [
+    "イベント_一般村.json",
+    "イベント_守護者.json",
+    "村依頼ひな型.json",
+    "村計画.json"
+  ]
+}

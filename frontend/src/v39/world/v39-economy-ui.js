@@ -11,6 +11,7 @@ import {
   startV39SettlementDevelopment
 } from "../../lib/v39-economy-rules.js";
 import { getSelectedSettlement,getFactionSettlementById } from "../../lib/settlement-state.js";
+import {V39_INITIAL_STOCK_BALANCE} from '../../lib/v39-gameplay-balance.js';
 import { getVillageScaleDefinitions, resolveVillageScaleDefinition } from "../../composables/villageCoreUtils.js";
 import { getHexOffsetNeighbors } from "../../lib/hex-grid.js";
 import './v39-land-construction-ui.js';
@@ -371,7 +372,8 @@ window.getV39SettlementDevelopmentSelection = () => developmentSelection ? ({
 }) : null;
 window.confirmV39SettlementDevelopmentSelection = confirmDevelopmentSelection;
 window.cancelV39SettlementDevelopmentSelection = () => clearDevelopmentSelection({ reopen:true });
-window.getV39EconomyRules = () => ({ gainScale:0.1, consumptionScale:0.1, initialStockTurns:3, constructionUsesJsonTurns:true });
+window.getV39EconomyRules = () => ({ gainScale:0.1, consumptionScale:0.1, initialStockTurns:V39_INITIAL_STOCK_BALANCE.territoryIncomeTurns,
+  initialFoodMaintenanceTurns:V39_INITIAL_STOCK_BALANCE.normalFoodMaintenanceTurns, constructionUsesJsonTurns:true });
 
 window.addEventListener("v39:tile-selected", event => {
   selectedTile = event.detail || null;

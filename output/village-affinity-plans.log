@@ -1,0 +1,29 @@
+{
+  plan: '墓地の建設',
+  stage: '資材確保',
+  required: 34,
+  donation: 34,
+  duplicateBlocked: true,
+  relation: 10,
+  started: 2,
+  same: 2,
+  saved: true,
+  built: true,
+  facility: true,
+  hunt: [ 'actual-threat' ],
+  noUnnecessaryHunt: true,
+  huntDone: true,
+  costs: {
+    '木材': 50,
+    '黒木': 0,
+    '特木': 0,
+    '石材': 50,
+    '鉄': 50,
+    '銀鉄': 0,
+    '青金鋼': 0,
+    '赤黒鋼': 0,
+    '金': 0,
+    '銀': 0,
+    '宝石': 0
+  }
+}

@@ -1,0 +1,82 @@
+generation T1 を初期状態として記録しました（勢力・村 5） / 0 / 50T / 要確認 0・異常 0
+progress 一時停止（現在ターン完了後） / 2 / 30T / 要確認 0・異常 0
+progress T6 完了 (2046ms) / 5 / 30T / 要確認 0・異常 0
+progress T9 完了 (1861ms) / 8 / 30T / 要確認 0・異常 0
+progress T11 完了 (2241ms) / 10 / 30T / 要確認 0・異常 0
+progress T13 完了 (2278ms) / 12 / 30T / 要確認 0・異常 0
+progress T15 完了 (3348ms) / 14 / 30T / 要確認 0・異常 0
+progress T16 完了 (4555ms) / 15 / 30T / 要確認 0・異常 0
+progress T18 完了 (4568ms) / 17 / 30T / 要確認 0・異常 0
+progress T20 完了 (4015ms) / 19 / 30T / 要確認 0・異常 0
+progress T22 完了 (5062ms) / 21 / 30T / 要確認 1・異常 0
+progress T24 完了 (4059ms) / 23 / 30T / 要確認 1・異常 0
+progress T26 完了 (5560ms) / 25 / 30T / 要確認 1・異常 0
+progress T27 完了 (5010ms) / 26 / 30T / 要確認 1・異常 0
+progress T28 完了 (5902ms) / 27 / 30T / 要確認 1・異常 0
+progress T29 完了 (6116ms) / 28 / 30T / 要確認 1・異常 0
+progress T30 完了 (5316ms) / 29 / 30T / 要確認 1・異常 0
+{
+  "completed": 30,
+  "actors": [
+    {
+      "name": "NPC勢力1",
+      "kind": "勢力",
+      "units": 0,
+      "buildings": [
+        "墓地"
+      ],
+      "pending": []
+    },
+    {
+      "name": "NPC勢力2",
+      "kind": "勢力",
+      "units": 3,
+      "buildings": [
+        "墓地",
+        "農場",
+        "船着き場"
+      ],
+      "pending": [
+        {
+          "name": "開拓",
+          "tileKey": "12,29",
+          "remainingTurns": 1
+        }
+      ]
+    },
+    {
+      "name": "NPC勢力3",
+      "kind": "勢力",
+      "units": 2,
+      "buildings": [
+        "墓地",
+        "農場"
+      ],
+      "pending": []
+    },
+    {
+      "name": "ヴァンパイアの村",
+      "kind": "村",
+      "units": 2,
+      "buildings": [],
+      "pending": []
+    },
+    {
+      "name": "天使の村",
+      "kind": "村",
+      "units": 2,
+      "buildings": [],
+      "pending": []
+    }
+  ],
+  "issues": [
+    {
+      "actorId": "village:neutral-village-1-9,10",
+      "severity": "要確認",
+      "message": "5ターン連続で位置・戦力・工事進捗・目標に変化なし（待機理由を確認）",
+      "turn": 22
+    }
+  ],
+  "pauseAt": 2,
+  "errors": []
+}

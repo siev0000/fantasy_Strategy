@@ -823,6 +823,7 @@ window.getV39ActivePlayer = getActivePlayer;
 window.getV39ActivePlayerId = () => state.activePlayerId;
 window.getV39ActiveFactionState = getActiveFactionState;
 window.getV39TimelineState = getTimelineState;
+window.getV39GameSettings = () => ({...state.gameSettings});
 window.getV39ExplorationWorldIds = () => Object.keys(state.explorationWorlds).filter(id => state.explorationWorlds[id]?.map);
 window.setV39ActivePlayer = setActivePlayer;
 window.updateV39TimelineState = updateTimelineState;

@@ -19,6 +19,7 @@ function territoryKeys(state, playerId, settlement) {
       && record?.raided !== true && number(record?.hp ?? 100) > 0;
   }).map(([key]) => key));
 }
+export {territoryKeys as getV39SettlementTerritoryKeys};
 
 function waterKeys(state, playerId, settlement, map, owned) {
   const keys = new Set();
@@ -54,7 +55,7 @@ export function inspectV39LandExpansion(state, playerId, settlementId, tile, map
   else if (state.territoryOwnerByTile?.[key]) reason = "すでに領有されている土地です";
   else if ((state.neutralVillages || []).some(row => keyOf(row) === key || row.territoryTileKeys?.includes(key))) reason = "一般村は通常の開拓では取得できません";
   else if (Object.values(state.victoryLandmarksByTile || {}).some(row => keyOf(row) === key || row.occupiedTileKeys?.includes(key))) reason = "勝利対象土地は専用の獲得条件が必要です";
-  else if ([...(state.enemies || []), ...(state.neutralVillages || []).flatMap(row => row.defenseUnits || row.units || []),
+  else if ([...(state.enemies || []), ...(state.neutralVillages || []).filter(row=>row.id!==playerId).flatMap(row => row.defenseUnits || row.units || []),
     ...(state.players || []).filter(row => row.id !== playerId).flatMap(row => row.factionState?.units || [])]
     .some(unit => alive(unit) && keyOf(unit) === key)) reason = "対象マスに生存モンスター・他勢力ユニットがいます";
   if (!reason) {
@@ -74,7 +75,8 @@ export function inspectV39LandExpansion(state, playerId, settlementId, tile, map
   if (!reason && !options.project) {
     if (projects.length >= V39_LAND_EXPANSION_BALANCE.maxProjects) reason = "この拠点はすでに開拓中です";
     else if ((state.players || []).some(row => (row.factionState?.settlements || [])
-      .some(base => base.landExpansionProjects?.some(project => project.tileKey === key)))) reason = "この土地はすでに開拓中です";
+      .some(base => base.landExpansionProjects?.some(project => project.tileKey === key)))
+      ||(state.neutralVillages||[]).some(village=>village.id!==playerId&&village.landExpansionProjects?.some(project=>project.tileKey===key))) reason = "この土地はすでに開拓中です";
   }
   return { ok:!reason, reason, key, settlement, player, workers, totalTurns:V39_LAND_EXPANSION_BALANCE.turns };
 }

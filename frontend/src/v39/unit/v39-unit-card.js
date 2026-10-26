@@ -6,6 +6,7 @@ import "./v39-unit-card.css";
 import './v39-unit-card-name-fit.js';
 import {v39SquadMoveMode,v39SquadMoveLabel} from '../../lib/v39-squad-coordination.js';
 import {getV39UnitDisplayName} from './v39-unit-heading.js';
+import {isV39UnitWaitDimmed, V39_WAITED_UNIT_BRIGHTNESS} from '../../lib/v39-unit-action-rules.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const ratio = (current,max) => max > 0 ? Math.max(0,Math.min(100,current/max*100)) : 0;
@@ -54,6 +55,7 @@ function portraitMarkup(unit, exp, expTitle) {
 
 // 部隊一覧と自キャラ画面が同じカードを描く。クリック先だけ呼出し側で指定する。
 export function renderV39UnitCard(unit, options={}) {
+  const waited = isV39UnitWaitDimmed(unit, options.turnNumber ?? window.getV39TimelineState?.()?.turnNumber);
   const id = options.id ?? unit.id;
   const name = getV39UnitDisplayName(unit,options.name ?? unit.name ?? id);
   const exp = resolveV39UnitExpDisplay(unit);
@@ -66,11 +68,12 @@ export function renderV39UnitCard(unit, options={}) {
   });
   const gauge = (kind,label,values,overlays=[]) => `<div class="v39-card-vital ${kind}"><span class="v39-card-vital-label">${label}</span><span class="v39-card-vital-track"><i class="v39-card-vital-fill" style="width:${ratio(values.current,values.max).toFixed(2)}%"></i>${overlays.map(value=>`<i class="v39-card-defense-fill ${value.kind}" style="width:${value.percent.toFixed(2)}%" aria-hidden="true"></i>`).join("")}<b class="v39-card-vital-value">${values.current}/${values.max}</b></span></div>`;
   const position = options.position ?? `(${unit.x ?? "-"},${unit.y ?? "-"})`;
-  const positionLabel = escapeHtml(position) + (unit.animalArmy?.members ? ` / ${unit.animalArmy.members.length}体` : '') + automaticOperationIcon(unit)
+  const recoveryIcon=Number(unit.recoveryWaitTargetPercent)>0?` <span class="v39-auto-operation-icon" title="HP${Number(unit.recoveryWaitTargetPercent)}%まで回復待機" aria-label="回復待機中">◷</span>`:'';
+  const positionLabel = escapeHtml(position) + recoveryIcon + (unit.animalArmy?.members ? ` / ${unit.animalArmy.members.length}体` : '') + automaticOperationIcon(unit)
     +(v39SquadMoveMode(unit)==='follow'?'':` <span class="v39-squad-mode-label">${escapeHtml(v39SquadMoveLabel(unit))}</span>`);
   const expTitle = exp.atLimit ? `Lv${exp.level} 成長上限` : `Lv${exp.level} EXP ${exp.exp}/${exp.need}`;
   const attribute = options.attribute || (options.character ? "data-v39-character-row" : "data-v39-unit-id");
   const badgeIcon = levelBadgeIconMarkup(unit, options);
   const badge = (options.portrait ? portraitMarkup(unit,exp,expTitle) : '') || `<span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}"><span class="squad-icon">${badgeIcon}</span><span class="squad-level-number" aria-hidden="true">${exp.level}</span></span>`;
-  return `<button class="squad-card${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead ? " dead" : ""}${options.collapseUnselected !== false ? " v39-card-collapse-unselected" : ""}" ${attribute}="${escapeHtml(id)}" title="${escapeHtml(name)} Lv${exp.level}"><div class="squad-card-top"><div class="squad-main">${badge}<div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div><div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div></button>`;
+  return `<button class="squad-card${waited ? " v39-unit-waited" : ""}${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead ? " dead" : ""}${options.collapseUnselected !== false ? " v39-card-collapse-unselected" : ""}" ${attribute}="${escapeHtml(id)}" style="--v39-waited-brightness:${V39_WAITED_UNIT_BRIGHTNESS}" title="${escapeHtml(name)} Lv${exp.level}${waited ? " / 待機済み" : ""}"><div class="squad-card-top"><div class="squad-main">${badge}<div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div><div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div></button>`;
 }

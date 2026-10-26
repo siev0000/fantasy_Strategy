@@ -81,11 +81,12 @@ try{
     check(support.applyV39SquadSupport(buff,away).status.攻撃===100,'support off world removed');
     const nv={id:'v',name:'村',x:3,y:2,level:1,population:20,race:'只人',relationsByPlayerId:{p:0},defenseUnits:[],territoryTileKeys:['3,2'],questsByPlayerId:{}};
     const vs={...state,neutralVillages:[nv]};
-    const watch=village.acceptV39NeutralVillageQuest(vs,'p','v',map('surface'),'VILLAGE_SUPPORT_DEFENSE');check(watch.ok,'watch accept');
+    // Old saved support quests remain compatible; new source-driven templates have their own end-to-end test.
+    const watch={ok:true,state:{...vs,neutralVillages:[{...nv,questsByPlayerId:{p:{eventId:'VILLAGE_SUPPORT_DEFENSE',type:'watch',required:3,progress:0,createdTurn:1,accepted:true,completed:false}}}]}};
     let watched=watch.state;for(let turn=2;turn<=4;turn++)watched=village.advanceV39NeutralVillages(watched,map('surface'),turn).state;
     const complete=village.completeV39NeutralVillageQuest(watched,'p','v');check(complete.ok,'watch complete');
     check(!village.completeV39NeutralVillageQuest(complete.state,'p','v').ok,'one reward only');
-    const build=village.acceptV39NeutralVillageQuest(vs,'p','v',map('surface'),'VILLAGE_SUPPORT_CONSTRUCTION');check(build.ok,'build accept');
+    const build={ok:true,state:structuredClone({...vs,neutralVillages:[{...nv,questsByPlayerId:{p:{eventId:'VILLAGE_SUPPORT_CONSTRUCTION',type:'construction',required:1,baselineFacilities:[],createdTurn:1,accepted:true,completed:false}}}]})};
     check(!village.completeV39NeutralVillageQuest(build.state,'p','v').ok,'pre-existing facilities excluded');
     build.state.players[0].factionState.settlements[0].tileFacilityMap={'2,2':['兵舎']};
     check(village.completeV39NeutralVillageQuest(build.state,'p','v').ok,'new facility complete');

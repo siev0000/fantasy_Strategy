@@ -1,0 +1,31 @@
+.v39-test-tools-panel .npc-diagnostic > summary { display: flex; flex-wrap: nowrap; align-items: center; gap: 3px; }
+.npc-diagnostic > summary > span { flex: 0 0 auto; white-space: nowrap; }
+.v39-test-tools-panel .npc-diagnostic > summary select { flex: 1 1 0; width: 0; min-width: 0; max-width: 100%; }
+.npc-diagnostic-header { position: sticky; top: 0; z-index: 2; background: #102027; padding: 0 0 2px; }
+.npc-diagnostic-tabs { display: flex; gap: 3px; overflow-x: auto; }
+.npc-diagnostic-tabs button { flex: 1 0 auto; white-space: nowrap; }
+.npc-diagnostic-tabs [aria-selected="true"] { border-color: #67d5e4; background: #1d4b55; }
+[data-npc-diagnostic] { display: grid; gap: 3px; outline-offset: 2px; }
+[data-npc-diagnostic] .v39-test-base-card { min-width: 0; overflow-wrap: anywhere; }
+[data-npc-diagnostic] h4 { margin: 0 0 2px; color: #b7e4e9; }
+.npc-diagnostic-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 10px; margin: 0; }
+.npc-diagnostic-values > div { display: flex; justify-content: space-between; align-items: baseline; gap: 3px; border-bottom: 1px solid #2f444a; padding: var(--v39-diagnostic-padding-y) var(--v39-diagnostic-padding-x); }
+.npc-diagnostic-values dt { color: #bbcccf; }.npc-diagnostic-values dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.npc-diagnostic-values small, .npc-diagnostic-list small { display: block; color: #a6bec3; }
+.npc-diagnostic-values dd { text-align:right; }
+.npc-stock-delta { display:inline-block; font-size:var(--font-secondary); }
+.npc-stock-delta.positive { color:#8be2af; }.npc-stock-delta.negative { color:#ffb4a4; }
+.npc-stock-delta.zero,.npc-stock-delta.unknown { color:#a6bec3; }
+.npc-diagnostic-list { margin: 0; padding-left: 19px; }.npc-diagnostic-list li { margin: 5px 0; }
+.npc-diagnostic-empty { color: #a6bec3; }
+@media (max-width: 620px) { .npc-diagnostic-tabs button { font-size: var(--font-secondary); } }
+.v39-test-tools-panel { --v39-diagnostic-padding-y: 2px; --v39-diagnostic-padding-x: 3px; }
+.v39-test-tools-panel .npc-diagnostic > summary,
+.v39-test-tools-panel .npc-diagnostic > .v39-test-section-body,
+.v39-test-tools-panel .npc-diagnostic .v39-test-base-card,
+.v39-test-tools-panel .npc-diagnostic button,
+.v39-test-tools-panel .npc-diagnostic select {
+  padding: var(--v39-diagnostic-padding-y) var(--v39-diagnostic-padding-x);
+}
+.v39-test-tools-panel .npc-diagnostic button,
+.v39-test-tools-panel .npc-diagnostic select { min-height: 0; line-height: 1.3; }

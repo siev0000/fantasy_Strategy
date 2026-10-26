@@ -5,9 +5,9 @@ mkdirSync('output/web-game/hegemony-campaign',{recursive:true});
 const browser=await chromium.launch();
 try{
  const page=await browser.newPage({viewport:{width:390,height:850}}),errors=[];page.on('pageerror',e=>errors.push(String(e)));
- await page.goto('http://127.0.0.1:3024',{waitUntil:'networkidle'});
+ await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:5173',{waitUntil:'networkidle'});
  const result=await page.evaluate(async()=>{
-  const {transferV39GuardianLand,acceptV39GuardianQuest,completeV39GuardianQuest,advanceV39GuardianQuests}=await import('/src/lib/v39-guardian-quests.js');
+  const {transferV39GuardianLand,getV39GuardianQuestDefinitions}=await import('/src/lib/v39-guardian-quests.js');
   const {evaluateV39Victory}=await import('/src/lib/v39-victory-rules.js');
   window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39ExpeditionTest(false,{silentBanner:true});await window.waitForV39MapRenderSettled();
   const current=window.getV39GameState(),player=current.players[0],site={id:'campaign-sun',landmarkId:'勝利対象:太陽の山',kind:'victory-landmark',name:'太陽の山',terrain:'山岳',key:'12,8',x:12,y:8,
@@ -18,12 +18,9 @@ try{
   if(!world)throw Error(JSON.stringify({reports:spawned.reports,site:landmark,enemyCount:state.enemies.length,worlds:Object.keys(state.explorationWorlds)}));
   const blocked=transferV39GuardianLand(state,player.id,site.key,{conquest:true});
   const initial={surfaceGuards:state.enemies.filter(u=>u.victoryGuard).length,insideGuards:world.spatial.enemies.length,boss:world.spatial.enemies.find(u=>u.guardianSpeciesName)?.guardianSpeciesName,blocked:!blocked.ok};
-  let peaceful=acceptV39GuardianQuest(state,player.id,site.key,'GUARDIAN_SUPPLY');if(!peaceful.ok)throw Error(peaceful.reason);
-  peaceful=completeV39GuardianQuest(peaceful.state,player.id,site.key);if(!peaceful.ok)throw Error(peaceful.reason);
-  peaceful=acceptV39GuardianQuest(peaceful.state,player.id,site.key,'GUARDIAN_WATCH');if(!peaceful.ok)throw Error(peaceful.reason);
-  for(let t=2;t<=4;t++)peaceful.state=advanceV39GuardianQuests(peaceful.state,t);
-  peaceful=completeV39GuardianQuest(peaceful.state,player.id,site.key);if(!peaceful.ok)throw Error(peaceful.reason);
-  peaceful=transferV39GuardianLand(peaceful.state,player.id,site.key);
+  // Full trial execution is covered by check-v39-guardian-trials; this fixture tests interior cleanup.
+  const completed={...landmark,guardianByPlayerId:{[player.id]:{relation:100,completedEventIds:getV39GuardianQuestDefinitions().map(row=>row.ID)}}};
+  const peaceful=transferV39GuardianLand({...state,victoryLandmarksByTile:{...state.victoryLandmarksByTile,[site.key]:completed}},player.id,site.key);
   initial.peaceful=peaceful.ok&&peaceful.state.explorationWorlds[landmark.hegemonyWorldId].spatial.enemies.length===0;
   window.enterV39Cave();await window.waitForV39MapRenderSettled();
   const entered=window.getV39GameState().activeWorldId;

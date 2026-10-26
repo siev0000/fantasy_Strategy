@@ -1,0 +1,562 @@
+log TRACE placement {"ok":true,"playerId":"player-1"}
+setup { enemies: 250, villages: 8, players: 3 }
+ITERATION 0
+log TRACE enemy start 23476.60000000149
+log TRACE enemy end 29261.89999999851
+log TRACE stage terrain 30119.10000000149
+log TRACE stage ai 30788
+log TRACE stage exploration 31050.5
+log TRACE stage world 32112
+log TRACE stage economy 32523.5
+log TRACE stage research 32883.29999999702
+log TRACE stage diplomacy 33148.39999999851
+log TRACE done true
+ITERATION 1
+log TRACE enemy start 36057.29999999702
+log TRACE enemy start 36057.39999999851
+log TRACE enemy end 41780.89999999851
+log TRACE enemy end 41781
+log TRACE stage terrain 42708.60000000149
+log TRACE stage terrain 42708.70000000298
+log TRACE stage ai 43264
+log TRACE stage ai 43264.10000000149
+log TRACE stage exploration 43549.20000000298
+log TRACE stage exploration 43549.20000000298
+log TRACE stage world 44360.29999999702
+log TRACE stage world 44360.39999999851
+log TRACE stage economy 44783.5
+log TRACE stage economy 44783.70000000298
+log TRACE stage research 45133.29999999702
+log TRACE stage research 45133.39999999851
+log TRACE stage diplomacy 45412.60000000149
+log TRACE stage diplomacy 45412.70000000298
+log TRACE done true
+ITERATION 2
+log TRACE enemy start 48224.39999999851
+log TRACE enemy start 48224.5
+log TRACE enemy start 48224.5
+log TRACE enemy end 53485.79999999702
+log TRACE enemy end 53485.79999999702
+log TRACE enemy end 53485.89999999851
+log TRACE stage terrain 54683.60000000149
+log TRACE stage terrain 54683.70000000298
+log TRACE stage terrain 54683.70000000298
+log TRACE stage ai 55097.39999999851
+log TRACE stage ai 55097.5
+log TRACE stage ai 55097.5
+log TRACE stage exploration 55200.29999999702
+log TRACE stage exploration 55200.39999999851
+log TRACE stage exploration 55200.39999999851
+log TRACE stage world 56061.10000000149
+log TRACE stage world 56061.20000000298
+log TRACE stage world 56061.20000000298
+log TRACE stage economy 56597.60000000149
+log TRACE stage economy 56597.70000000298
+log TRACE stage economy 56597.70000000298
+log TRACE stage research 56746.5
+log TRACE stage research 56746.60000000149
+log TRACE stage research 56746.60000000149
+log TRACE stage diplomacy 56827.79999999702
+log TRACE stage diplomacy 56827.79999999702
+log TRACE stage diplomacy 56827.89999999851
+log TRACE done true
+ITERATION 3
+log TRACE enemy start 60163.60000000149
+log TRACE enemy start 60163.60000000149
+log TRACE enemy start 60163.60000000149
+log TRACE enemy start 60163.70000000298
+log TRACE enemy end 65537.79999999702
+log TRACE enemy end 65537.79999999702
+log TRACE enemy end 65537.79999999702
+log TRACE enemy end 65537.89999999851
+log TRACE stage terrain 66841.20000000298
+log TRACE stage terrain 66841.20000000298
+log TRACE stage terrain 66841.29999999702
+log TRACE stage terrain 66841.29999999702
+log TRACE stage ai 67264.10000000149
+log TRACE stage ai 67264.20000000298
+log TRACE stage ai 67264.20000000298
+log TRACE stage ai 67264.20000000298
+log TRACE stage exploration 67388.20000000298
+log TRACE stage exploration 67388.29999999702
+log TRACE stage exploration 67388.39999999851
+log TRACE stage exploration 67388.39999999851
+log TRACE stage world 68199.79999999702
+log TRACE stage world 68200
+log TRACE stage world 68200
+log TRACE stage world 68200
+log TRACE stage economy 68788.10000000149
+log TRACE stage economy 68788.10000000149
+log TRACE stage economy 68788.10000000149
+log TRACE stage economy 68788.10000000149
+log TRACE stage research 68957.10000000149
+log TRACE stage research 68957.20000000298
+log TRACE stage research 68957.29999999702
+log TRACE stage research 68957.29999999702
+log TRACE stage diplomacy 69052.39999999851
+log TRACE stage diplomacy 69052.5
+log TRACE stage diplomacy 69052.5
+log TRACE stage diplomacy 69052.60000000149
+log TRACE done true
+ITERATION 4
+log TRACE enemy start 72642.39999999851
+log TRACE enemy start 72642.5
+log TRACE enemy start 72642.5
+log TRACE enemy start 72642.60000000149
+log TRACE enemy start 72642.60000000149
+log TRACE enemy end 78195
+log TRACE enemy end 78195.10000000149
+log TRACE enemy end 78195.10000000149
+log TRACE enemy end 78195.10000000149
+log TRACE enemy end 78195.10000000149
+log TRACE stage terrain 79504.70000000298
+log TRACE stage terrain 79504.70000000298
+log TRACE stage terrain 79504.70000000298
+log TRACE stage terrain 79504.79999999702
+log TRACE stage terrain 79504.79999999702
+log TRACE stage ai 79945
+log TRACE stage ai 79945.10000000149
+log TRACE stage ai 79945.20000000298
+log TRACE stage ai 79945.20000000298
+log TRACE stage ai 79945.29999999702
+log TRACE stage exploration 80082.20000000298
+log TRACE stage exploration 80082.29999999702
+log TRACE stage exploration 80082.29999999702
+log TRACE stage exploration 80082.29999999702
+log TRACE stage exploration 80082.29999999702
+log TRACE stage world 81171.29999999702
+log TRACE stage world 81171.39999999851
+log TRACE stage world 81171.39999999851
+log TRACE stage world 81171.39999999851
+log TRACE stage world 81171.5
+log TRACE stage economy 81811.29999999702
+log TRACE stage economy 81811.29999999702
+log TRACE stage economy 81811.39999999851
+log TRACE stage economy 81811.5
+log TRACE stage economy 81811.5
+log TRACE stage research 81992.60000000149
+log TRACE stage research 81992.70000000298
+log TRACE stage research 81992.79999999702
+log TRACE stage research 81992.79999999702
+log TRACE stage research 81992.79999999702
+log TRACE stage diplomacy 82097.89999999851
+log TRACE stage diplomacy 82097.89999999851
+log TRACE stage diplomacy 82098
+log TRACE stage diplomacy 82098.10000000149
+log TRACE stage diplomacy 82098.10000000149
+log TRACE done true
+ITERATION 5
+log TRACE enemy start 85664.70000000298
+log TRACE enemy start 85664.70000000298
+log TRACE enemy start 85664.70000000298
+log TRACE enemy start 85664.79999999702
+log TRACE enemy start 85664.79999999702
+log TRACE enemy start 85664.79999999702
+log TRACE enemy end 94714.70000000298
+log TRACE enemy end 94714.79999999702
+log TRACE enemy end 94714.89999999851
+log TRACE enemy end 94714.89999999851
+log TRACE enemy end 94714.89999999851
+log TRACE enemy end 94714.89999999851
+log TRACE stage terrain 96208.10000000149
+log TRACE stage terrain 96208.29999999702
+log TRACE stage terrain 96208.29999999702
+log TRACE stage terrain 96208.29999999702
+log TRACE stage terrain 96208.39999999851
+log TRACE stage terrain 96208.5
+log TRACE stage ai 96756.70000000298
+log TRACE stage ai 96756.79999999702
+log TRACE stage ai 96756.79999999702
+log TRACE stage ai 96756.79999999702
+log TRACE stage ai 96756.79999999702
+log TRACE stage ai 96756.79999999702
+log TRACE stage exploration 97135.10000000149
+log TRACE stage exploration 97135.20000000298
+log TRACE stage exploration 97135.29999999702
+log TRACE stage exploration 97135.29999999702
+log TRACE stage exploration 97135.39999999851
+log TRACE stage exploration 97135.39999999851
+log TRACE stage world 98365.10000000149
+log TRACE stage world 98365.20000000298
+log TRACE stage world 98365.20000000298
+log TRACE stage world 98365.20000000298
+log TRACE stage world 98365.29999999702
+log TRACE stage world 98365.29999999702
+log TRACE stage economy 99038.39999999851
+log TRACE stage economy 99038.5
+log TRACE stage economy 99038.5
+log TRACE stage economy 99038.60000000149
+log TRACE stage economy 99038.60000000149
+log TRACE stage economy 99038.70000000298
+log TRACE stage research 99475.89999999851
+log TRACE stage research 99476
+log TRACE stage research 99476
+log TRACE stage research 99476
+log TRACE stage research 99476.10000000149
+log TRACE stage research 99476.10000000149
+log TRACE stage diplomacy 99786.10000000149
+log TRACE stage diplomacy 99786.20000000298
+log TRACE stage diplomacy 99786.29999999702
+log TRACE stage diplomacy 99786.29999999702
+log TRACE stage diplomacy 99786.39999999851
+log TRACE stage diplomacy 99786.39999999851
+log TRACE done true
+ITERATION 6
+log TRACE enemy start 104887.89999999851
+log TRACE enemy start 104887.89999999851
+log TRACE enemy start 104887.89999999851
+log TRACE enemy start 104888
+log TRACE enemy start 104888.10000000149
+log TRACE enemy start 104888.10000000149
+log TRACE enemy start 104888.10000000149
+log TRACE enemy end 113420.70000000298
+log TRACE enemy end 113420.79999999702
+log TRACE enemy end 113420.89999999851
+log TRACE enemy end 113420.89999999851
+log TRACE enemy end 113420.89999999851
+log TRACE enemy end 113420.89999999851
+log TRACE enemy end 113420.89999999851
+log TRACE stage terrain 114961.89999999851
+log TRACE stage terrain 114962
+log TRACE stage terrain 114962
+log TRACE stage terrain 114962.10000000149
+log TRACE stage terrain 114962.10000000149
+log TRACE stage terrain 114962.10000000149
+log TRACE stage terrain 114962.10000000149
+log TRACE stage ai 115459.60000000149
+log TRACE stage ai 115459.60000000149
+log TRACE stage ai 115459.70000000298
+log TRACE stage ai 115459.70000000298
+log TRACE stage ai 115459.70000000298
+log TRACE stage ai 115459.79999999702
+log TRACE stage ai 115459.79999999702
+log TRACE stage exploration 115802.39999999851
+log TRACE stage exploration 115802.5
+log TRACE stage exploration 115802.60000000149
+log TRACE stage exploration 115802.60000000149
+log TRACE stage exploration 115802.60000000149
+log TRACE stage exploration 115802.70000000298
+log TRACE stage exploration 115802.70000000298
+log TRACE stage world 117318.5
+log TRACE stage world 117318.60000000149
+log TRACE stage world 117318.60000000149
+log TRACE stage world 117318.70000000298
+log TRACE stage world 117318.70000000298
+log TRACE stage world 117318.70000000298
+log TRACE stage world 117318.70000000298
+log TRACE stage economy 117837.60000000149
+log TRACE stage economy 117837.70000000298
+log TRACE stage economy 117837.79999999702
+log TRACE stage economy 117837.79999999702
+log TRACE stage economy 117837.79999999702
+log TRACE stage economy 117837.79999999702
+log TRACE stage economy 117837.89999999851
+log TRACE stage research 118287.20000000298
+log TRACE stage research 118287.29999999702
+log TRACE stage research 118287.29999999702
+log TRACE stage research 118287.39999999851
+log TRACE stage research 118287.39999999851
+log TRACE stage research 118287.39999999851
+log TRACE stage research 118287.39999999851
+log TRACE stage diplomacy 118594
+log TRACE stage diplomacy 118594
+log TRACE stage diplomacy 118594
+log TRACE stage diplomacy 118594.10000000149
+log TRACE stage diplomacy 118594.10000000149
+log TRACE stage diplomacy 118594.20000000298
+log TRACE stage diplomacy 118594.20000000298
+log TRACE done true
+ITERATION 7
+log TRACE enemy start 123336.70000000298
+log TRACE enemy start 123336.79999999702
+log TRACE enemy start 123336.79999999702
+log TRACE enemy start 123336.79999999702
+log TRACE enemy start 123336.89999999851
+log TRACE enemy start 123336.89999999851
+log TRACE enemy start 123336.89999999851
+log TRACE enemy start 123337
+log TRACE enemy end 135802.70000000298
+log TRACE enemy end 135802.70000000298
+log TRACE enemy end 135802.70000000298
+log TRACE enemy end 135802.70000000298
+log TRACE enemy end 135802.70000000298
+log TRACE enemy end 135802.79999999702
+log TRACE enemy end 135802.79999999702
+log TRACE enemy end 135802.79999999702
+log TRACE stage terrain 137215.6000000015
+log TRACE stage terrain 137215.70000000298
+log TRACE stage terrain 137215.70000000298
+log TRACE stage terrain 137215.70000000298
+log TRACE stage terrain 137215.70000000298
+log TRACE stage terrain 137215.70000000298
+log TRACE stage terrain 137215.70000000298
+log TRACE stage terrain 137215.79999999702
+log TRACE stage ai 137800.29999999702
+log TRACE stage ai 137800.29999999702
+log TRACE stage ai 137800.29999999702
+log TRACE stage ai 137800.3999999985
+log TRACE stage ai 137800.3999999985
+log TRACE stage ai 137800.5
+log TRACE stage ai 137800.5
+log TRACE stage ai 137800.5
+log TRACE stage exploration 138146.20000000298
+log TRACE stage exploration 138146.29999999702
+log TRACE stage exploration 138146.29999999702
+log TRACE stage exploration 138146.3999999985
+log TRACE stage exploration 138146.3999999985
+log TRACE stage exploration 138146.5
+log TRACE stage exploration 138146.5
+log TRACE stage exploration 138146.5
+log TRACE stage world 139660.20000000298
+log TRACE stage world 139660.20000000298
+log TRACE stage world 139660.29999999702
+log TRACE stage world 139660.29999999702
+log TRACE stage world 139660.29999999702
+log TRACE stage world 139660.29999999702
+log TRACE stage world 139660.3999999985
+log TRACE stage world 139660.3999999985
+log TRACE stage economy 140244.29999999702
+log TRACE stage economy 140244.29999999702
+log TRACE stage economy 140244.29999999702
+log TRACE stage economy 140244.3999999985
+log TRACE stage economy 140244.3999999985
+log TRACE stage economy 140244.3999999985
+log TRACE stage economy 140244.3999999985
+log TRACE stage economy 140244.5
+log TRACE stage research 140674.29999999702
+log TRACE stage research 140674.29999999702
+log TRACE stage research 140674.3999999985
+log TRACE stage research 140674.3999999985
+log TRACE stage research 140674.5
+log TRACE stage research 140674.5
+log TRACE stage research 140674.6000000015
+log TRACE stage research 140674.6000000015
+log TRACE stage diplomacy 140982.3999999985
+log TRACE stage diplomacy 140982.3999999985
+log TRACE stage diplomacy 140982.5
+log TRACE stage diplomacy 140982.5
+log TRACE stage diplomacy 140982.5
+log TRACE stage diplomacy 140982.5
+log TRACE stage diplomacy 140982.6000000015
+log TRACE stage diplomacy 140982.6000000015
+log TRACE done true
+ITERATION 8
+log TRACE enemy start 145970.70000000298
+log TRACE enemy start 145970.79999999702
+log TRACE enemy start 145970.79999999702
+log TRACE enemy start 145970.79999999702
+log TRACE enemy start 145970.79999999702
+log TRACE enemy start 145970.8999999985
+log TRACE enemy start 145971
+log TRACE enemy start 145971
+log TRACE enemy start 145971
+log TRACE enemy end 162228.79999999702
+log TRACE enemy end 162228.8999999985
+log TRACE enemy end 162228.8999999985
+log TRACE enemy end 162228.8999999985
+log TRACE enemy end 162228.8999999985
+log TRACE enemy end 162229
+log TRACE enemy end 162229
+log TRACE enemy end 162229
+log TRACE enemy end 162229
+log TRACE stage terrain 163658.70000000298
+log TRACE stage terrain 163658.79999999702
+log TRACE stage terrain 163658.79999999702
+log TRACE stage terrain 163658.79999999702
+log TRACE stage terrain 163658.79999999702
+log TRACE stage terrain 163658.79999999702
+log TRACE stage terrain 163658.8999999985
+log TRACE stage terrain 163658.8999999985
+log TRACE stage terrain 163658.8999999985
+log TRACE stage ai 164250.1000000015
+log TRACE stage ai 164250.29999999702
+log TRACE stage ai 164250.29999999702
+log TRACE stage ai 164250.29999999702
+log TRACE stage ai 164250.29999999702
+log TRACE stage ai 164250.29999999702
+log TRACE stage ai 164250.3999999985
+log TRACE stage ai 164250.3999999985
+log TRACE stage ai 164250.3999999985
+log TRACE stage exploration 164611.29999999702
+log TRACE stage exploration 164611.3999999985
+log TRACE stage exploration 164611.3999999985
+log TRACE stage exploration 164611.5
+log TRACE stage exploration 164611.5
+log TRACE stage exploration 164611.6000000015
+log TRACE stage exploration 164611.6000000015
+log TRACE stage exploration 164611.6000000015
+log TRACE stage exploration 164611.6000000015
+log TRACE stage world 166035
+log TRACE stage world 166035.1000000015
+log TRACE stage world 166035.1000000015
+log TRACE stage world 166035.20000000298
+log TRACE stage world 166035.29999999702
+log TRACE stage world 166035.29999999702
+log TRACE stage world 166035.29999999702
+log TRACE stage world 166035.29999999702
+log TRACE stage world 166035.3999999985
+log TRACE stage economy 166571.6000000015
+log TRACE stage economy 166571.6000000015
+log TRACE stage economy 166571.6000000015
+log TRACE stage economy 166571.70000000298
+log TRACE stage economy 166571.70000000298
+log TRACE stage economy 166571.70000000298
+log TRACE stage economy 166571.70000000298
+log TRACE stage economy 166571.79999999702
+log TRACE stage economy 166571.79999999702
+log TRACE stage research 167002.5
+log TRACE stage research 167002.6000000015
+log TRACE stage research 167002.6000000015
+log TRACE stage research 167002.6000000015
+log TRACE stage research 167002.70000000298
+log TRACE stage research 167002.70000000298
+log TRACE stage research 167002.79999999702
+log TRACE stage research 167002.79999999702
+log TRACE stage research 167002.79999999702
+log TRACE stage diplomacy 167324.29999999702
+log TRACE stage diplomacy 167324.3999999985
+log TRACE stage diplomacy 167324.3999999985
+log TRACE stage diplomacy 167324.5
+log TRACE stage diplomacy 167324.5
+log TRACE stage diplomacy 167324.5
+log TRACE stage diplomacy 167324.5
+log TRACE stage diplomacy 167324.6000000015
+log TRACE stage diplomacy 167324.6000000015
+log TRACE done true
+ITERATION 9
+log TRACE enemy start 172591.29999999702
+log TRACE enemy start 172591.29999999702
+log TRACE enemy start 172591.29999999702
+log TRACE enemy start 172591.3999999985
+log TRACE enemy start 172591.3999999985
+log TRACE enemy start 172591.3999999985
+log TRACE enemy start 172591.3999999985
+log TRACE enemy start 172591.5
+log TRACE enemy start 172591.5
+log TRACE enemy start 172591.6000000015
+log TRACE enemy end 180987.6000000015
+log TRACE enemy end 180987.6000000015
+log TRACE enemy end 180987.6000000015
+log TRACE enemy end 180987.6000000015
+log TRACE enemy end 180987.6000000015
+log TRACE enemy end 180987.6000000015
+log TRACE enemy end 180987.6000000015
+log TRACE enemy end 180987.70000000298
+log TRACE enemy end 180987.70000000298
+log TRACE enemy end 180987.79999999702
+log TRACE stage terrain 182441.8999999985
+log TRACE stage terrain 182441.8999999985
+log TRACE stage terrain 182441.8999999985
+log TRACE stage terrain 182442
+log TRACE stage terrain 182442
+log TRACE stage terrain 182442
+log TRACE stage terrain 182442.1000000015
+log TRACE stage terrain 182442.1000000015
+log TRACE stage terrain 182442.1000000015
+log TRACE stage terrain 182442.1000000015
+log TRACE stage ai 182947.70000000298
+log TRACE stage ai 182947.79999999702
+log TRACE stage ai 182947.8999999985
+log TRACE stage ai 182947.8999999985
+log TRACE stage ai 182947.8999999985
+log TRACE stage ai 182947.8999999985
+log TRACE stage ai 182947.8999999985
+log TRACE stage ai 182948
+log TRACE stage ai 182948
+log TRACE stage ai 182948
+log TRACE stage exploration 183122.5
+log TRACE stage exploration 183122.5
+log TRACE stage exploration 183122.5
+log TRACE stage exploration 183122.6000000015
+log TRACE stage exploration 183122.6000000015
+log TRACE stage exploration 183122.70000000298
+log TRACE stage exploration 183122.70000000298
+log TRACE stage exploration 183122.70000000298
+log TRACE stage exploration 183122.70000000298
+log TRACE stage exploration 183122.79999999702
+log TRACE stage world 184186.79999999702
+log TRACE stage world 184187
+log TRACE stage world 184187
+log TRACE stage world 184187
+log TRACE stage world 184187
+log TRACE stage world 184187.1000000015
+log TRACE stage world 184187.1000000015
+log TRACE stage world 184187.1000000015
+log TRACE stage world 184187.1000000015
+log TRACE stage world 184187.1000000015
+log TRACE stage economy 184615.5
+log TRACE stage economy 184615.6000000015
+log TRACE stage economy 184615.70000000298
+log TRACE stage economy 184615.70000000298
+log TRACE stage economy 184615.79999999702
+log TRACE stage economy 184615.79999999702
+log TRACE stage economy 184615.79999999702
+log TRACE stage economy 184615.79999999702
+log TRACE stage economy 184615.79999999702
+log TRACE stage economy 184615.8999999985
+log TRACE stage research 184886.1000000015
+log TRACE stage research 184886.20000000298
+log TRACE stage research 184886.20000000298
+log TRACE stage research 184886.20000000298
+log TRACE stage research 184886.20000000298
+log TRACE stage research 184886.29999999702
+log TRACE stage research 184886.29999999702
+log TRACE stage research 184886.29999999702
+log TRACE stage research 184886.29999999702
+log TRACE stage research 184886.29999999702
+log TRACE stage diplomacy 185028.1000000015
+log TRACE stage diplomacy 185028.20000000298
+log TRACE stage diplomacy 185028.20000000298
+log TRACE stage diplomacy 185028.29999999702
+log TRACE stage diplomacy 185028.29999999702
+log TRACE stage diplomacy 185028.29999999702
+log TRACE stage diplomacy 185028.29999999702
+log TRACE stage diplomacy 185028.3999999985
+log TRACE stage diplomacy 185028.3999999985
+log TRACE stage diplomacy 185028.3999999985
+log TRACE done true
+final {
+  turn: {
+    turnNumber: 11,
+    phase: 'player',
+    paused: false,
+    lastResolvedTurn: 10,
+    lastStageSequence: [
+      'player-turn',   'enemy-turn',
+      'terrain',       'ai',
+      'exploration',   'world',
+      'economy',       'research',
+      'diplomacy',     'recovery',
+      'turn-complete'
+    ],
+    playerTurnOrder: [ 'player-1' ],
+    activeTurnPlayerId: 'player-1',
+    endedPlayerIds: []
+  },
+  perf: {
+    turnNumber: 10,
+    startedAt: 172591.6000000015,
+    totalMs: 8395.89999999851,
+    aliveEnemies: 248,
+    playerTargets: 15,
+    actionLimit: 496,
+    aiPasses: 553,
+    movedEnemies: 111,
+    decisionLogsAdded: 553,
+    pendingActions: 0,
+    timings: {
+      state: 1919.6000000014901,
+      combat: 1049.1000000014901,
+      loot: 0,
+      deposit: 0
+    },
+    counts: { state: 1130, combat: 1, loot: 0, deposit: 0 },
+    workerCalculationMs: 1107.3999998793006,
+    mainApplyMs: 1691.5000001341105,
+    workerTotalMs: 8393.29999999702,
+    fallbackUsed: false,
+    actionEventCount: 313,
+    presentationEventCount: 0,
+    otherAiMs: 0
+  }
+}

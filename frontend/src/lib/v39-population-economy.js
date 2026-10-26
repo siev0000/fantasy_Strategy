@@ -1,4 +1,5 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import {resolveV39RaceDefinition} from './v39-race-definitions.js';
 import { V39_CIVIC_BALANCE } from "./v39-gameplay-balance.js";
 
 export const POPULATION_UPKEEP_SCALE = 0.2;
@@ -21,7 +22,8 @@ function factionForRace(race) {
 export function resolvePopulationClassDefinition(race) {
   const target = text(race);
   const faction = factionForRace(target);
-  const candidates = new Set([target, text(faction?.種族), text(faction?.カナ)].filter(Boolean));
+  const definition=resolveV39RaceDefinition(target);
+  const candidates = new Set([text(definition?.className),target,text(definition?.key),text(faction?.種族),text(faction?.カナ)].filter(Boolean));
   return CLASS_ROWS.find(row => candidates.has(text(row?.名前))) || null;
 }
 
@@ -216,6 +218,15 @@ function consumeMaintenance(races, stock, resourceKeys, normalFoodKeys, stages) 
     }
   }
   return { shortages, consumed };
+}
+
+export function inspectV39NormalFoodSupply(available,demand,normalFoodKeys){
+  const stock=normalizeStock(available,normalFoodKeys);
+  const result=consumeMaintenance([{race:'total',baseDemand:demand}],stock,normalFoodKeys,normalFoodKeys,{});
+  const shortageByType=result.shortages.total;
+  return {remaining:stock,consumed:result.consumed,shortageByType,
+    shortageTotal:round1(Object.values(shortageByType).reduce((sum,value)=>sum+number(value),0)),
+    surplus:round1(Object.values(stock).reduce((sum,value)=>sum+number(value),0))};
 }
 
 function distributeGrowthResource(races, stock, growthPool, normalFoodKeys, capacityReached) {

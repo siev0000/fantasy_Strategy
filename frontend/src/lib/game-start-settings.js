@@ -1,4 +1,5 @@
 import playerConfigOptions from "../../../config/player_config_options.json";
+import {normalizeV39RecoveryWaitPercent} from './v39-recovery-wait.js';
 
 const progressConfig = playerConfigOptions?.["ゲーム進行設定"] || {};
 const turnModeConfig = progressConfig?.["ターン進行方式"] || {};
@@ -56,6 +57,7 @@ function normalizeGameStartSettings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const requestedMode = String(source.turnProgressionMode || "").trim();
   return {
+    recoveryWaitHpPercent:normalizeV39RecoveryWaitPercent(source.recoveryWaitHpPercent),
     npcFactionCount:Math.max(0,Math.min(8,Math.floor(Number(source.npcFactionCount)||0))),
     turnProgressionMode: turnModeValues.has(requestedMode)
       ? requestedMode

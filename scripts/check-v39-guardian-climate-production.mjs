@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync,mkdirSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
-const config=JSON.parse(readFileSync('config/v39-victory-guardians.json','utf8'));
+const config={landmarks:Object.fromEntries(JSON.parse(readFileSync('data/source/export/json/勝利対象土地.json','utf8')).map(row=>[row.ID,row.守護者候補]))};
 mkdirSync('output/web-game/guardian-climate-production',{recursive:true});
 const browser=await chromium.launch();
 try{

@@ -1,0 +1,81 @@
+generation T1 を初期状態として記録しました（勢力・村 5） / 0 / 50T / 要確認 0・異常 0
+progress 一時停止（現在ターン完了後） / 2 / 50T / 要確認 0・異常 0
+progress T6 完了 (2207ms) / 5 / 50T / 要確認 0・異常 0
+progress T9 完了 (2166ms) / 8 / 50T / 要確認 0・異常 0
+progress T11 完了 (2709ms) / 10 / 50T / 要確認 0・異常 0
+progress T13 完了 (2608ms) / 12 / 50T / 要確認 0・異常 0
+progress T14 完了 (3768ms) / 13 / 50T / 要確認 0・異常 0
+progress T16 完了 (3549ms) / 15 / 50T / 要確認 0・異常 0
+progress T18 完了 (4452ms) / 17 / 50T / 要確認 0・異常 0
+progress T19 完了 (4392ms) / 18 / 50T / 要確認 0・異常 0
+progress T20 完了 (4959ms) / 19 / 50T / 要確認 0・異常 0
+progress T21 完了 (4900ms) / 20 / 50T / 要確認 0・異常 0
+progress T22 完了 (5198ms) / 21 / 50T / 要確認 0・異常 0
+progress T24 完了 (4337ms) / 23 / 50T / 要確認 0・異常 0
+progress T25 完了 (5376ms) / 24 / 50T / 要確認 0・異常 0
+progress T26 完了 (5640ms) / 25 / 50T / 要確認 0・異常 0
+progress T27 完了 (6187ms) / 26 / 50T / 要確認 0・異常 0
+progress T28 完了 (5702ms) / 27 / 50T / 要確認 0・異常 0
+progress T29 完了 (5729ms) / 28 / 50T / 要確認 1・異常 0
+progress T30 完了 (5242ms) / 29 / 50T / 要確認 1・異常 0
+progress T31 完了 (4796ms) / 30 / 50T / 要確認 1・異常 0
+progress T32 完了 (4945ms) / 31 / 50T / 要確認 1・異常 0
+progress T33 完了 (6294ms) / 32 / 50T / 要確認 1・異常 0
+progress T34 完了 (5679ms) / 33 / 50T / 要確認 1・異常 0
+progress T35 完了 (5115ms) / 34 / 50T / 要確認 1・異常 0
+progress T36 完了 (7183ms) / 35 / 50T / 要確認 1・異常 0
+progress T37 完了 (5642ms) / 36 / 50T / 要確認 1・異常 0
+progress T38 完了 (9488ms) / 37 / 50T / 要確認 1・異常 0
+progress T39 完了 (7265ms) / 38 / 50T / 要確認 1・異常 0
+progress T40 完了 (7215ms) / 39 / 50T / 要確認 1・異常 0
+progress T41 完了 (7546ms) / 40 / 50T / 要確認 1・異常 0
+progress T42 完了 (8353ms) / 41 / 50T / 要確認 1・異常 0
+progress T43 完了 (7213ms) / 42 / 50T / 要確認 1・異常 0
+progress T44 完了 (7803ms) / 43 / 50T / 要確認 1・異常 0
+progress T45 完了 (8085ms) / 44 / 50T / 要確認 1・異常 0
+progress T46 完了 (9523ms) / 45 / 50T / 要確認 1・異常 0
+progress T47 完了 (8150ms) / 46 / 50T / 要確認 1・異常 0
+progress T48 完了 (10871ms) / 47 / 50T / 要確認 1・異常 0
+progress T49 完了 (8078ms) / 48 / 50T / 要確認 1・異常 0
+progress T50 完了 (10710ms) / 49 / 50T / 要確認 1・異常 0
+progress T51 完了 (8556ms) / 50 / 50T / 要確認 1・異常 0
+{
+  "completed": 50,
+  "actors": [
+    {
+      "name": "NPC勢力1",
+      "kind": "勢力",
+      "units": 0
+    },
+    {
+      "name": "NPC勢力2",
+      "kind": "勢力",
+      "units": 3
+    },
+    {
+      "name": "NPC勢力3",
+      "kind": "勢力",
+      "units": 2
+    },
+    {
+      "name": "ヴァンパイアの村",
+      "kind": "村",
+      "units": 2
+    },
+    {
+      "name": "天使の村",
+      "kind": "村",
+      "units": 2
+    }
+  ],
+  "issues": [
+    {
+      "actorId": "village:neutral-village-2-24,22",
+      "severity": "要確認",
+      "message": "5ターン連続で位置・戦力・工事進捗・目標に変化なし（待機理由を確認）",
+      "turn": 29
+    }
+  ],
+  "pauseAt": 2,
+  "errors": []
+}

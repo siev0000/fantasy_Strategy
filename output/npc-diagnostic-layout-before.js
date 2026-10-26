@@ -1,0 +1,1121 @@
+import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { buildV39PopulationMaintenanceStock } from "../../lib/v39-population-economy.js";
+import { addResearchExperience } from "../../lib/research-progress.js";
+import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
+import { disasterData, getGameDataTable } from "../../lib/game-data-registry.js";
+import { getV39TestSkillRows } from "../../lib/v39-test-skill-rules.js";
+import { getHexDistance, getHexNeighborCoords } from "../../lib/hex-grid.js";
+import { canUnitEnterV39Tile } from "../../lib/v39-terrain-traversal.js";
+import { getV39NeutralVillageRelation, getV39RelationLabel } from "../../lib/v39-neutral-village-rules.js";
+import { V39_UNDEAD_SPAWN_BALANCE, V39_FOG_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import undeadTest from "../../../../config/v39-undead-test.json";
+import {renderV39VillagePlanTestTools} from './v39-village-plan-test.js';
+import {renderV39NegotiationHubTestTools,startV39NegotiationHubTest,focusV39NegotiationHubTest} from './v39-negotiation-hub-test.js';
+import {startV39SpecialVillageTest} from './v39-special-village-test.js';
+import { isV39Undead } from "../../lib/v39-purification-rules.js";
+import {V39_ATMOSPHERE_OPACITY_KINDS,v39AtmosphereOpacityPercent} from '../../lib/v39-atmosphere-opacity.js';
+import {V39_WEATHER_TYPES,resolveV39DisasterWeather} from '../../lib/v39-weather.js';
+import {resolveV39DisasterRule} from '../../lib/v39-disaster-rules.js';
+import disasterTest from '../../../../config/v39-disaster-test.json';
+import {HEX_TILE_CONFIG} from '../../lib/phaser-map-panel-config.js';
+import {
+  resolveV39UnitRaceCategory,
+  resolveV39UnitTotalExpForLevel,
+  V39_UNIT_LEVEL_CAP
+} from "../../lib/v39-unit-experience.js";
+
+const RESOURCE_KEYS = [...new Set([...FOOD_RESOURCE_KEYS, ...MATERIAL_RESOURCE_KEYS])];
+const CITY_LEVEL_KEYS = ["鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv"];
+const text = value => String(value ?? "").trim();
+const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+let statusMessage = "テスト対象を選択してください";
+let selectedEnemyId = "";
+let selectedTestSkillName = "";
+let selectedDisasterId = "";
+let selectedAtmosphereSample = 0;
+let selectedWeatherType = '晴れ';
+let selectedTerrainSample = 0;
+let selectedTerrainAtmosphereKind='fog';
+let selectedTile = null;
+const collapsedSectionKeys = new Set();
+const openScenarioSuites = new Set();
+const TEST_TOOL_TABS = [
+  {id:'scenarios',label:'専用',sections:['expedition','village-plans','negotiation-hub','undead-natural']},
+  {id:'turns',label:'進行',sections:['turns','faction']},
+  {id:'settlement',label:'拠点',sections:['base-info','settlement-resources','city-research','territory']},
+  {id:'unit',label:'キャラ',sections:['character','test-skills']},
+  {id:'environment',label:'環境',sections:['field']},
+  {id:'diagnostics',label:'診断',sections:['npc-ai','enemy-ai']}
+];
+let selectedToolTab = 'scenarios';
+let selectedNpcDiagnosticId = '';
+const scrollTopByToolTab = new Map();
+let restoreScrollFrame = 0;
+let bulkTurnCount = 10;
+let advancingTestTurns = false;
+let stopTestTurns = false;
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
+}
+
+function testModeEnabled() {
+  return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
+}
+
+// 試験官はテストプレイの初期データだけで生成する。表示設定では増減させない。
+function placeTestCharacters() {
+  const state = window.getV39GameState?.();
+  const map = window.__v39FieldRuntime?.mapData;
+  const worldId = state?.activeWorldId || "surface";
+  if (!state?.players?.length || !map?.grid) return false;
+  let changed = false;
+  const occupied = new Set([...state.players.flatMap(player=>player.factionState?.units || []),
+    ...(state.enemies || []),...(state.neutralVillages || []).flatMap(row=>row.defenseUnits || [])]
+    .filter(unit=>(unit.worldId || "surface")===worldId).map(unit=>`${unit.x},${unit.y}`));
+  const players = state.players.map(player => {
+    const faction = player.factionState;
+    if (!faction || player.id !== state.activePlayerId || faction.villagePlacementMode) return player;
+    const anchor = faction.units.find(unit=>!unit.testOnly && (unit.worldId || "surface")===worldId
+      && Number.isFinite(unit.x) && Number.isFinite(unit.y));
+    if (!anchor) return player;
+    let playerChanged = false;
+    const units = faction.units.map(unit => {
+      // 既に配置済みなら、別の階層にいても自動で連れてこない。
+      if (!unit.testOnly || (Number.isFinite(unit.x) && Number.isFinite(unit.y))) return unit;
+      const derived = applyV39DerivedCharacterData(unit);
+      const queue = [{x:anchor.x,y:anchor.y}], seen = new Set();
+      for (let index=0;index<queue.length;index++) {
+        const point=queue[index], key=`${point.x},${point.y}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!canUnitEnterV39Tile(map,point.x,point.y,derived)) continue;
+        if (!occupied.has(key)) {
+          occupied.add(key);
+          changed = playerChanged = true;
+          const hp = Number.isFinite(unit.hp) ? unit.hp : derived.maxHp;
+          return {...derived,...point,worldId,hp,currentHp:hp};
+        }
+        queue.push(...getHexNeighborCoords(map.w,map.h,point.x,point.y));
+      }
+      return unit;
+    });
+    return playerChanged ? {...player,factionState:{...faction,units}} : player;
+  });
+  if (changed) window.setV39GameState?.({players},{reason:"test-characters-placed"});
+  return changed;
+}
+function context() {
+  const state = window.getV39GameState?.();
+  const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0] || null;
+  const faction = player?.factionState || null;
+  const settlement = getSelectedSettlement(faction);
+  const unit = (faction?.units || []).find(row => text(row?.id) === text(faction?.selectedUnitId)) || faction?.units?.[0] || null;
+  const scene = window.__v39FieldRuntime?.game?.scene?.getScenes?.(true)?.[0];
+  // Phaserの選択状態を優先し、テスト自動操作やUI再描画直後は選択イベントの座標を使う。
+  const tile = scene?.v39SelectedTile || selectedTile || null;
+  return { state, player, faction, settlement, unit, tile };
+}
+
+function updateFaction(faction, reason) {
+  window.updateV39ActiveFactionState?.(faction, { reason });
+}
+
+function updateSettlement(mutator, reason) {
+  const { player, faction, settlement } = context();
+  if (!player || !faction || !settlement) return false;
+  const nextSettlement = normalizeV39Village(mutator({ ...settlement }), player.race);
+  updateFaction(replaceFactionSettlement(faction, nextSettlement, { ownerPlayerId:player.id }), reason);
+  return true;
+}
+
+function updateSelectedUnit(mutator, reason) {
+  const { faction, unit } = context();
+  if (!faction || !unit) return false;
+  const units = (faction.units || []).map(row => row.id === unit.id ? mutator({ ...row }) : row);
+  updateFaction({ ...faction, units }, reason);
+  return true;
+}
+
+function setStatus(message) {
+  statusMessage = text(message) || "完了";
+  render();
+}
+
+function resourceAmount() {
+  return Math.max(0, number(document.getElementById("v39-test-resource-amount")?.value, 100));
+}
+
+function selectedResourceKey() {
+  return text(document.getElementById("v39-test-resource-key")?.value) || RESOURCE_KEYS[0] || "";
+}
+
+function changeResource(direction) {
+  const key = selectedResourceKey();
+  const amount = resourceAmount() * direction;
+  const changed = updateSettlement(settlement => {
+    const stockKey = FOOD_RESOURCE_KEYS.includes(key) ? "foodStockByType" : "materialStockByType";
+    const stock = { ...(settlement[stockKey] || {}) };
+    stock[key] = Math.max(0, number(stock[key]) + amount);
+    return { ...settlement, [stockKey]:stock };
+  }, "test-resource");
+  setStatus(changed ? `${key} ${amount >= 0 ? "+" : ""}${amount}` : "拠点がありません");
+}
+
+function addAllResources() {
+  const amount = resourceAmount();
+  const changed = updateSettlement(settlement => ({
+    ...settlement,
+    foodStockByType:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, number(settlement?.foodStockByType?.[key]) + amount])),
+    materialStockByType:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, number(settlement?.materialStockByType?.[key]) + amount]))
+  }), "test-all-resources");
+  setStatus(changed ? `全資源 +${amount}` : "拠点がありません");
+}
+
+function changePopulation(delta) {
+  const { player } = context();
+  const race = text(player?.race) || "只人";
+  const changed = updateSettlement(settlement => {
+    const populationByRace = { ...(settlement.populationByRace || {}) };
+    populationByRace[race] = Math.max(0, Math.floor(number(populationByRace[race]) + delta));
+    return { ...settlement, populationByRace };
+  }, "test-population");
+  setStatus(changed ? `人口 ${delta >= 0 ? "+" : ""}${delta}` : "拠点がありません");
+}
+
+function changeUnitLevel(delta) {
+  const changed = updateSelectedUnit(unit => {
+    const oldMaxHp = Math.max(1, number(unit.maxHp ?? unit.status?.HP, 1));
+    const hpRate = clamp(number(unit.hp ?? unit.currentHp, oldMaxHp) / oldMaxHp, 0, 1);
+    const level = clamp(Math.floor(number(unit.level, 1) + delta), 1, V39_UNIT_LEVEL_CAP);
+    const next = applyV39DerivedCharacterData({ ...unit, level });
+    const category = resolveV39UnitRaceCategory(next);
+    const totalExp = resolveV39UnitTotalExpForLevel(level, category);
+    const maxHp = Math.max(1, number(next.maxHp ?? next.status?.HP, oldMaxHp));
+    const hp = Math.round(maxHp * hpRate);
+    return {
+      ...next,
+      exp:0,
+      totalExp,
+      status:{ ...(next.status || {}), exp:0, totalExp },
+      hp,
+      currentHp:hp
+    };
+  }, "test-unit-level");
+  setStatus(changed ? `キャラLv ${delta >= 0 ? "+" : ""}${delta}` : "キャラが選択されていません");
+}
+
+function changeUnitVital(kind, action) {
+  const changed = updateSelectedUnit(unit => {
+    const max = Math.max(1, number(kind === "hp" ? (unit.maxHp ?? unit.status?.HP) : (unit.maxAp ?? unit.maxActionPoint), 100));
+    const current = clamp(number(kind === "hp" ? (unit.hp ?? unit.currentHp) : (unit.ap ?? unit.currentAp), max), 0, max);
+    const next = action === "full" ? max : action === "zero" ? 0 : clamp(current + number(action), 0, max);
+    return kind === "hp"
+      ? { ...unit, hp:next, currentHp:next, ...(next > 0 ? { state:"", deathCause:"", deathTurn:0, diedAtTurn:0 } : {}) }
+      : { ...unit, ap:next, currentAp:next, actionPoint:next };
+  }, `test-unit-${kind}`);
+  setStatus(changed ? `${kind.toUpperCase()}を変更` : "キャラが選択されていません");
+}
+
+function changeCityLevel(delta) {
+  const key = text(document.getElementById("v39-test-city-level-key")?.value) || CITY_LEVEL_KEYS[0];
+  const changed = updateSettlement(settlement => ({
+    ...settlement,
+    cityLevels:{ ...(settlement.cityLevels || {}), [key]:clamp(Math.floor(number(settlement?.cityLevels?.[key]) + delta), 0, 99) }
+  }), "test-city-level");
+  setStatus(changed ? `${key} ${delta >= 0 ? "+" : ""}${delta}` : "拠点がありません");
+}
+
+function addResearchExp() {
+  const amount = Math.max(1, Math.floor(number(document.getElementById("v39-test-research-exp")?.value, 100)));
+  const { faction } = context();
+  if (!faction) return setStatus("勢力データがありません");
+  let research = faction.research;
+  let changedCount = 0;
+  for (const category of Object.keys(research?.selection || {})) {
+    const result = addResearchExperience(research, category, amount);
+    research = result.state;
+    if (result.changed) changedCount += 1;
+  }
+  updateFaction({ ...faction, research }, "test-research-exp");
+  setStatus(changedCount ? `選択研究 ${changedCount}件にEXP +${amount}` : "進行中の研究がありません");
+}
+
+function selectedTileKey(tile) {
+  const x = Math.floor(Number(tile?.x));
+  const y = Math.floor(Number(tile?.y));
+  return Number.isFinite(x) && Number.isFinite(y) ? `${x},${y}` : "";
+}
+
+function changeTerritoryHp(action) {
+  const { state, tile } = context();
+  const key = selectedTileKey(tile);
+  const current = state?.territoryStateByTile?.[key];
+  if (!key || !current) return setStatus("領土マスを選択してください");
+  const maxHp = Math.max(1, number(current.maxHp, 100));
+  const hp = action === "full" ? maxHp : action === "zero" ? 0 : clamp(number(current.hp, maxHp) + number(action), 0, maxHp);
+  window.updateV39TileState?.(tile.x, tile.y, {
+    territoryState:{
+      ...current,
+      hp,
+      maxHp,
+      ...(hp > 0 ? { raided:false, raidedAtTurn:null, raidedByNestId:"" } : {})
+    }
+  });
+  setStatus(`領土HP ${Math.round(hp)}/${Math.round(maxHp)}`);
+}
+
+function setSelectedSnowState(kind, enabled) {
+  const { tile } = context();
+  const key = selectedTileKey(tile);
+  if (!key) return setStatus("積雪を変更するマスを選択してください");
+  const setter = kind === "falling" ? window.setV39SnowfallAt : window.setV39SnowCoverAt;
+  const changed = setter?.(tile.x, tile.y, enabled === true) === true;
+  const label = kind === "falling" ? "降雪" : "積雪";
+  setStatus(changed ? `${label} ${enabled ? "ON" : "OFF"}: ${key}` : `${label}を変更できませんでした`);
+}
+
+function forceTerrainEvent(mode) {
+  const { tile } = context();
+  if (!window.__v39FieldRuntime?.mapData) return setStatus("フィールドが未生成です");
+  if (mode === "eruption" && !selectedTileKey(tile)) return setStatus("噴火させるマスを選択してください");
+  const result = window.runV39TerrainTurn?.({
+    eventMode:mode,
+    force:true,
+    forceTestEvent:true,
+    markProcessed:false,
+    ...(mode === "eruption" ? { forceEruptionAt:{ x:tile.x, y:tile.y } } : {})
+  });
+  setStatus(result?.ok ? `${mode === "eruption" ? "選択マスを噴火" : "溶岩を進行"}: ${result.events?.length || 0}件` : `実行失敗: ${result?.reason || "不明"}`);
+}
+
+function forceDisasterAtSelectedTile() {
+  const { tile } = context();
+  if (!selectedTileKey(tile)) return setStatus("災害を発生させるマスを選択してください");
+  if (!selectedDisasterId) return setStatus("災害種別を選択してください");
+  if(selectedDisasterId.startsWith('危険地帯:'))return setStatus('常設の危険地帯は「危険地帯6種を確認」で配置してください');
+  const result = window.forceV39Disaster?.(selectedDisasterId, { x:tile.x, y:tile.y });
+  if (!result?.ok) return setStatus("災害を発生できません: " + text(result?.reason, "処理未接続"));
+  setStatus(`${result.disasters?.[0]?.name || "災害"}を発生しました`);
+}
+
+function forceUndeadAtSelectedTile() {
+  const { tile } = context();
+  if (!selectedTileKey(tile)) return setStatus("アンデッドを発生させるマスを選択してください");
+  const result = window.forceV39UndeadSpawn?.({ x:tile.x, y:tile.y });
+  if (!result?.ok) return setStatus("アンデッドを発生できません: " + text(result?.reason, "処理未接続"));
+  const enemy = result.undead?.[0]?.enemy;
+  setStatus(enemy ? `${enemy.name}を発生しました` : "アンデッドを発生できません: マスが埋まっています");
+}
+
+function selectedTestSkill() {
+  const rows = getV39TestSkillRows();
+  if (!rows.some(row => text(row?.名前) === selectedTestSkillName)) {
+    selectedTestSkillName = text(rows[0]?.名前);
+  }
+  return rows.find(row => text(row?.名前) === selectedTestSkillName) || null;
+}
+
+function assignTestSkill(all = false) {
+  const rows = getV39TestSkillRows();
+  const selected = selectedTestSkill();
+  const names = all ? rows.map(row => text(row?.名前)).filter(Boolean) : [text(selected?.名前)].filter(Boolean);
+  if (!names.length) return setStatus("テストスキルがありません");
+  const changed = updateSelectedUnit(unit => ({
+    ...unit,
+    testSkillNames:[...new Set([...(Array.isArray(unit?.testSkillNames) ? unit.testSkillNames : []), ...names])]
+  }), "test-skill-assigned");
+  setStatus(changed ? `テストスキル付与: ${names.join(" / ")}` : "キャラが選択されていません");
+}
+
+function clearTestSkills() {
+  const changed = updateSelectedUnit(unit => ({ ...unit, testSkillNames:[] }), "test-skills-cleared");
+  setStatus(changed ? "テストスキルを解除しました" : "キャラが選択されていません");
+}
+
+async function advanceTurn(count = 1) {
+  if (advancingTestTurns || !testModeEnabled()) return;
+  const startTurn = number(context().state?.timeline?.turnNumber, 1);
+  const targetTurn = startTurn + count;
+  advancingTestTurns = true;
+  stopTestTurns = false;
+  try {
+    while (number(context().state?.timeline?.turnNumber, 1) < targetTurn) {
+      if (stopTestTurns || !testModeEnabled()) break;
+      setStatus(`ターン進行中 ${number(context().state?.timeline?.turnNumber, 1) - startTurn}/${count}`);
+      // 複数プレイヤー時も、全員と敵の処理を終えた一巡を1ターンとして数える。
+      if (!await window.advanceV39Turn?.({ skipUnactedFocus:true })) break;
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  } catch (error) {
+    console.error("[テストターン進行]", error);
+  } finally {
+    advancingTestTurns = false;
+    setStatus(`${number(context().state?.timeline?.turnNumber, 1) - startTurn}ターン進行しました`);
+  }
+}
+
+function advanceProductionTurns() {
+  const { faction } = context();
+  const pending = (faction?.settlements || []).flatMap(village => [
+    ...(village.constructionQueue || []),
+    ...Object.values(village.territoryTileConversionMap || {}),
+    ...Object.values(village.territoryResidentialUpgradeQueueMap || {}),
+    village.developmentProject
+  ].filter(Boolean));
+  const turns = Math.max(0, ...pending.map(item => Math.ceil(number(item.remainingTurns))));
+  if (!turns) return setStatus("制作・建設待ちはありません");
+  return advanceTurn(turns);
+}
+
+function addTestFaction(kind) {
+  const result = window.addV39TestFaction?.(kind);
+  if (!result?.ok) return setStatus(`勢力を追加できません: ${text(result?.reason, "処理未接続")}`);
+  const placement = window.autoPlaceV39InitialBases?.(result.player.id);
+  setStatus(placement?.ok
+    ? `${text(result.player.label)}を追加し、初期拠点を配置しました`
+    : `${text(result.player.label)}を追加しましたが、初期配置に失敗しました: ${text(placement?.reason)}`);
+}
+
+
+function sumBag(bag) {
+  return Object.values(bag && typeof bag === "object" ? bag : {})
+    .reduce((sum, value) => sum + Math.max(0, number(value)), 0);
+}
+
+function formatRequiredResources(bag) {
+  const rows = Object.entries(bag && typeof bag === "object" ? bag : {})
+    .filter(([, value]) => number(value) > 0)
+    .map(([key, value]) => `${key}${Math.round(number(value) * 10) / 10}`);
+  return rows.length ? rows.join(" / ") : "なし";
+}
+
+function livingUnit(unit) {
+  return number(unit?.hp ?? unit?.currentHp) > 0 && text(unit?.state, "生存") !== "死亡";
+}
+
+function npcDevelopmentMarkup(plan) {
+  if (!plan) return '<p>建設・戦力・不足資材は、次のAI行動で判断します。</p>';
+  const construction=plan.construction||{},reinforcement=plan.reinforcement||{};
+  const amount=value=>Math.round(number(value)*100)/100;
+  const resources=(plan.resourceGoals||[]).map(row=>`<div>${escapeHtml(row.name)} ${amount(row.stock)}/${amount(row.required)}（不足${amount(row.missing)}）/ ${escapeHtml(row.purpose)}</div>`).join('');
+  const reasons=rows=>(rows||[]).length?`<p>${rows.map(escapeHtml).join(' / ')}</p>`:'';
+  const building=construction.status==='building';
+  const constructionLabel=building?'建設中':construction.status==='ready'?'次の建設':'建設候補・条件待ち';
+  const reinforcementLabel=reinforcement.status==='satisfied'?(reinforcement.queued?'訓練完了待ち':'目標数を確保'):reinforcement.status==='ready'?'次の訓練':'増強・条件待ち';
+  const expansionLabels={building:'開拓中',paused:'停止中',ready:'候補',blocked:'条件待ち',idle:'不足なし',disabled:'OFF'};
+  const expansion=(plan.resourceExpansion||[]).map(row=>`<p>${escapeHtml(row.name||row.settlementId)} / ${expansionLabels[row.status]||''}${row.tileKey?' @'+escapeHtml(row.tileKey):''}${row.remainingTurns!=null?' / 残り'+amount(row.remainingTurns)+'T':''}${row.reason?' / '+escapeHtml(row.reason):''}</p>`).join('');
+  const teams=(plan.resourceTeams||[]).map(team=>`<p>${escapeHtml(team.resource)} / 不足${amount(team.missing)} / ${escapeHtml(team.role)} / ${escapeHtml(team.status)} / ${team.unitIds?.length||0}駒${team.objective?.targetName?' / '+escapeHtml(team.objective.targetName):''}</p>`).join('');
+  const cities=(plan.citySpecializations||[]).map(city=>`<p>${escapeHtml(city.name||city.settlementId)}: ${escapeHtml(city.currentId||'未特化')}${city.targetId&&city.targetId!==city.currentId?' → '+escapeHtml(city.targetId):''} / ${({ready:'選択予定',waiting:'切替待機',maintain:'維持',blocked:'条件待ち'})[city.status]||''}${city.remainingTurns?' '+amount(city.remainingTurns)+'T':''} / 種族適性${amount(city.affinity)}%</p>${reasons(city.reasons)}`).join('');
+  return `<div class="v39-test-base-card" data-npc-construction-goal><strong>${constructionLabel}</strong><p>${escapeHtml(construction.name||'候補なし')}${construction.tileKey?' @'+escapeHtml(construction.tileKey):''}${building?' / 残り'+amount(construction.remainingTurns)+'T':''}</p>${building?'<p>次の候補は完成後に判断</p>':reasons(construction.reasons)}</div>
+    <div class="v39-test-base-card" data-npc-reinforcement-goal><strong>戦力増強: ${reinforcementLabel}</strong><p>生存${amount(reinforcement.living)}＋訓練中${amount(reinforcement.queued)} / 目標${amount(reinforcement.target)}駒（あと${amount(reinforcement.remaining)}）</p>${reinforcement.className?`<p>${escapeHtml(reinforcement.unitType)} / ${escapeHtml(reinforcement.race)} / ${escapeHtml(reinforcement.className)} Lv${amount(reinforcement.level)}</p>`:''}${reasons(reinforcement.reasons)}</div>
+    <div class="v39-test-base-card" data-npc-resource-goals><strong>求める資材（在庫/必要）</strong>${resources||'<p>現在の計画で不足なし</p>'}</div>
+    <div class="v39-test-base-card" data-npc-city-specialization-goal><strong>都市特化</strong>${cities||'<p>対象拠点なし</p>'}</div>
+    <div class="v39-test-base-card" data-npc-resource-teams><strong>資源確保の分担</strong>${teams||'<p>不足資源の任務なし</p>'}</div>
+    <div class="v39-test-base-card" data-npc-resource-expansion><strong>資源地の開拓</strong>${expansion||'<p>開拓候補なし</p>'}</div>`;
+}
+
+function npcDiagnosticsMarkup(state) {
+  const factions=(state.players||[]).filter(player=>player.isPlayer===false);
+  if(!factions.some(player=>player.id===selectedNpcDiagnosticId))selectedNpcDiagnosticId=factions[0]?.id||'';
+  const index=factions.findIndex(player=>player.id===selectedNpcDiagnosticId);
+  const tabs=factions.length?`<div class="v39-test-log-tabs" role="tablist" aria-label="NPC勢力">${factions.map((player,i)=>`<button type="button" role="tab" id="v39-npc-diagnostic-tab-${i}" data-npc-diagnostic-tab="${escapeHtml(player.id)}" aria-controls="v39-npc-diagnostic-pane" aria-selected="${player.id===selectedNpcDiagnosticId}" tabindex="${player.id===selectedNpcDiagnosticId?0:-1}" class="${player.id===selectedNpcDiagnosticId?'active':''}">${escapeHtml(player.label||player.name||player.id)}</button>`).join('')}</div>`:'';
+  return `<details class="v39-test-section" data-test-section="npc-ai"${testSectionOpenAttribute('npc-ai')}><summary>NPC勢力診断（${factions.length}）</summary><div class="v39-test-section-body">${tabs}${factions.length?factions.filter(player=>player.id===selectedNpcDiagnosticId).map(player=>{
+    const faction=player.factionState||{},ai=faction.aiState||{},units=faction.units||[];
+    const living=units.filter(livingUnit),settlements=(faction.settlements||[]).filter(row=>row.placed);
+    const objective=ai.objective||{},purpose=objective.type==='victory-landmark'?(objective.hold?'覇権地の防衛':'覇権地の攻略'):objective.type==='foreign-faction'?(objective.resourceRaid?'資源確保の襲撃':'他勢力へ対応'):({'explore':'未踏地域を移動探索','resource-search':'魂・死体の供給元探索','resource-recover':'残留資源の回収','resource-demand':'村への生贄要求','resource-receive':'生贄の受取','resource-return':'資源の持帰り'}[objective.type]||'未設定（次のAI行動で決定）');
+    return `<article role="tabpanel" id="v39-npc-diagnostic-pane" aria-labelledby="v39-npc-diagnostic-tab-${index}" data-npc-diagnostic="${escapeHtml(player.id)}"><h4>${escapeHtml(player.label||player.id)} / ${escapeHtml(player.race)}</h4><div class="v39-test-base-card" data-npc-current-objective><strong>現在の目標: ${escapeHtml(purpose)}</strong>${objective.targetName||objective.targetTileKey?`<p>${escapeHtml(objective.targetName||'')}${objective.targetTileKey?' @'+escapeHtml(objective.targetTileKey):''}</p>`:''}${objective.resource?`<p>必要資源: ${escapeHtml(objective.resource)}</p>`:''}</div>${npcDevelopmentMarkup(ai.developmentPlan)}<div class="v39-test-ai-grid"><span>拠点 / 生存 / 訓練中</span><b>${settlements.length} / ${living.length} / ${(faction.unitTrainingQueue||[]).length}</b><span>直近の行動</span><b>${escapeHtml((ai.lastCommands||[]).join(' / ')||'まだ実行されていません')}</b><span>完成施設</span><b>${escapeHtml(settlements.map(row=>`${row.name}: ${(row.buildings||[]).join('・')||'なし'}`).join(' / '))}</b></div><ul>${units.map(unit=>`<li data-npc-unit="${escapeHtml(unit.id)}">${escapeHtml(unit.name)} / ${unit.isSovereign?'統治者':unit.combatProfile?.mode==='army'||unit.combatProfile?.mode==='elite_army'?`${escapeHtml(unit.unitType||'軍隊')} ${number(unit.combatProfile.memberCount??unit.combatProfile.populationCost)}人`:unit.isNamed?'ヒーロー':'一般兵'} Lv${number(unit.level)} / ${escapeHtml(unit.worldId||'surface')} (${unit.x??'-'},${unit.y??'-'}) / HP ${number(unit.hp??unit.currentHp)}/${number(unit.maxHp)} / AP ${number(unit.ap??unit.currentAp)}</li>`).join('')}</ul></article>`;
+  }).join(''):'<p>NPC勢力は登録されていません。開始設定のNPC勢力数、または「進行 → 勢力追加」を確認してください。</p>'}</div></details>`;
+}
+
+function selectNpcDiagnostic(id) {
+  if(!(window.getV39GameState?.()?.players||[]).some(player=>player.isPlayer===false&&player.id===id))return;
+  selectedNpcDiagnosticId=id;
+  render();
+  const tab=[...document.querySelectorAll('[data-npc-diagnostic-tab]')].find(button=>button.dataset.npcDiagnosticTab===id);
+  tab?.focus({preventScroll:true});
+  tab?.scrollIntoView({block:'nearest',inline:'nearest'});
+}
+
+function villageGuardDiagnostic(state, unitId) {
+  for (const village of state?.neutralVillages || []) {
+    const unit = (village?.defenseUnits || []).find(row => text(row?.id) === text(unitId));
+    if (!unit) continue;
+    const skills = Array.isArray(unit?.skills) ? unit.skills : (Array.isArray(unit?.skillNames) ? unit.skillNames : []);
+    return {
+      isVillageGuard:true,
+      guardVillageName:text(village?.name, "一般村"),
+      decision:"村防衛",
+      reason:"一般村の守備軍。現時点では敵巣AIの個別行動対象ではありません。",
+      aggressive:false,
+      retaliating:false,
+      x:Math.floor(number(unit?.x)), y:Math.floor(number(unit?.y)), level:Math.max(1, Math.floor(number(unit?.level, 1))),
+      hp:Math.floor(number(unit?.hp ?? unit?.currentHp)), maxHp:Math.floor(number(unit?.maxHp ?? unit?.status?.HP)),
+      ap:Math.floor(number(unit?.ap ?? unit?.currentAp)), maxAp:Math.floor(number(unit?.maxAp, 100)),
+      visionRadius:Math.max(0, Math.floor(number(unit?.visionRadius))), scout:Math.floor(number(unit?.status?.索敵 ?? unit?.scout)),
+      targetName:"", targetDistance:null, aggroTargetUnitId:"", attackSkillNames:skills.map(row => text(row?.名前 ?? row)).filter(Boolean),
+      nestName:"", nestId:"", nestDistance:null, hasNest:false, territoryCenter:null, territoryRadius:0, pursuitLimit:0,
+      fleeThreshold:0, fleeState:null, fleeDecisionMade:false, lastActionTurn:0, pendingSkillName:"", pendingTurns:0, cooldowns:{},
+      militaryPopulation:Math.max(0, Math.floor(number(unit?.militaryPopulation ?? unit?.count))), strength:Math.round(number(unit?.strength))
+    };
+  }
+  return null;
+}
+
+function villageThreatDiagnostic(state, village) {
+  const territoryKeys = new Set((village?.territoryTileKeys || []).map(text).filter(Boolean));
+  const invadingEnemies = (state?.enemies || []).filter(unit => (
+    livingUnit(unit) && territoryKeys.has(selectedTileKey(unit))
+  ));
+  const overlappingNests = (state?.enemyNests || []).filter(nest => {
+    const radius = Math.max(0, Math.floor(number(nest?.territoryRadius)));
+    return [...territoryKeys].some(key => {
+      const [x, y] = key.split(",").map(Number);
+      return Number.isFinite(x) && Number.isFinite(y)
+        && getHexDistance({ x, y }, { x:nest?.x, y:nest?.y }) <= radius;
+    });
+  });
+  return { invadingEnemies, overlappingNests };
+}
+
+function playerLabel(state, playerId) {
+  const player = (state?.players || []).find(row => text(row?.id) === text(playerId));
+  return text(player?.label || player?.name || player?.id) || text(playerId) || "-";
+}
+
+function selectedTileBaseInfo(state, tile) {
+  const key = selectedTileKey(tile);
+  if (!state || !key) return [];
+
+  const entries = [];
+  const territoryState = state?.territoryStateByTile?.[key] || null;
+  const territorySettlementId = text(territoryState?.settlementId);
+
+  const neutralVillage = (state?.neutralVillages || []).find(village => (
+    selectedTileKey(village) === key
+    || (Array.isArray(village?.territoryTileKeys) && village.territoryTileKeys.map(text).includes(key))
+  )) || null;
+
+  const naturalUndeadAt = unit => {
+    const metadata = unit?.metadata || {};
+    return metadata?.isUndead === true && text(metadata?.spawnType) === "アンデッド自然発生";
+  };
+  const naturalUndeadForKeys = keys => (state?.enemies || []).filter(unit => (
+    naturalUndeadAt(unit) && keys.includes(selectedTileKey(unit))
+  ));
+  const naturalUndead = naturalUndeadForKeys(neutralVillage?.territoryTileKeys || [key]);
+
+  const ownedSettlement = (state?.settlements || []).find(settlement => {
+    if (settlement?.neutral === true) return false;
+    const id = text(settlement?.settlementId || settlement?.id);
+    return selectedTileKey(settlement) === key || (!!territorySettlementId && id === territorySettlementId);
+  }) || null;
+
+  if (ownedSettlement) {
+    const ownerPlayerId = text(ownedSettlement?.ownerPlayerId || state?.territoryOwnerByTile?.[key]);
+    const owner = (state?.players || []).find(row => text(row?.id) === ownerPlayerId);
+    const cityLevels = ownedSettlement?.cityLevels || {};
+    const settlementId = text(ownedSettlement?.settlementId || ownedSettlement?.id);
+    const ownedTerritoryKeys = Object.entries(state?.territoryStateByTile || {})
+      .filter(([, value]) => text(value?.settlementId) === settlementId)
+      .map(([territoryKey]) => territoryKey);
+    const ownedNaturalUndead = naturalUndeadForKeys(ownedTerritoryKeys);
+    entries.push({
+      kind:"所有拠点",
+      name:text(ownedSettlement?.name || ownedSettlement?.type) || "拠点",
+      lines:[
+        "所有: " + playerLabel(state, ownerPlayerId) + " / 種族: " + (text(owner?.race) || "-"),
+        "中心: (" + Math.floor(number(ownedSettlement?.x)) + "," + Math.floor(number(ownedSettlement?.y)) + ") / 選択マス: " + key,
+        "規模: " + (text(ownedSettlement?.type || ownedSettlement?.scaleName) || "村") + " / Lv" + Math.max(1, Math.floor(number(ownedSettlement?.scaleLevel, 1))) + " / 人口 " + Math.floor(number(ownedSettlement?.population)),
+        "技能: 鍛冶" + Math.floor(number(cityLevels?.鍛冶Lv)) + " / 魔法" + Math.floor(number(cityLevels?.魔法Lv)) + " / 信仰" + Math.floor(number(cityLevels?.信仰Lv)) + " / 軍事" + Math.floor(number(cityLevels?.軍事Lv)) + " / 経済" + Math.floor(number(cityLevels?.経済Lv)),
+        "備蓄: 食料 " + Math.round(sumBag(ownedSettlement?.foodStockByType)) + " / 資材 " + Math.round(sumBag(ownedSettlement?.materialStockByType)),
+        "自然アンデッド脅威: " + ownedNaturalUndead.length + "体" + (ownedNaturalUndead.length ? " / " + ownedNaturalUndead.map(unit => text(unit?.name) || "不明").join("、") : ""),
+        "選択土地: " + (text(territoryState?.status) || "-") + " / HP " + Math.round(number(territoryState?.hp, territoryState?.maxHp || 100)) + "/" + Math.round(number(territoryState?.maxHp, 100))
+      ]
+    });
+  }
+
+  if (neutralVillage) {
+    const militaryLevel = Math.max(0, Math.floor(number(neutralVillage?.researchLevels?.軍事Lv ?? neutralVillage?.militaryLevel)));
+    const defenders = Array.isArray(neutralVillage?.defenseUnits) ? neutralVillage.defenseUnits : [];
+    const defenseCount = defenders.reduce((sum, row) => sum + Math.max(0, Math.floor(number(row?.count))), 0);
+    const defenseStrength = defenders.reduce((sum, row) => sum + Math.max(0, number(row?.strength)), 0);
+    const activePlayerId = text(state?.activePlayerId);
+    const relation = getV39NeutralVillageRelation(neutralVillage, activePlayerId);
+    const maintenance = buildV39PopulationMaintenanceStock(
+      { [text(neutralVillage?.race)]:Math.max(0, Math.floor(number(neutralVillage?.population))) },
+      defenders,
+      FOOD_RESOURCE_KEYS,
+      1
+    );
+    const economyDiagnostic = inspectV39NeutralVillageEconomy(neutralVillage, window.__v39FieldRuntime?.mapData);
+    const threats = villageThreatDiagnostic(state, neutralVillage);
+    const estimatedIncome = [
+      formatRequiredResources(economyDiagnostic.income?.food),
+      formatRequiredResources(economyDiagnostic.income?.material)
+    ].filter(value => value !== "なし").join(" / ") || "なし";
+    entries.push({
+      kind:"一般村",
+      name:text(neutralVillage?.name) || "一般村",
+      lines:[
+        "種族: " + (text(neutralVillage?.race) || "-") + " / クラス: " + (text(neutralVillage?.className) || "-"),
+        "中心: (" + Math.floor(number(neutralVillage?.x)) + "," + Math.floor(number(neutralVillage?.y)) + ") / 選択マス: " + key,
+        "村Lv" + Math.max(1, Math.floor(number(neutralVillage?.level, 1))) + " / 人口 " + Math.floor(number(neutralVillage?.population)) + " / 軍事Lv" + militaryLevel,
+        "軍隊人口: " + Math.floor(number(neutralVillage?.militaryPopulationUsed, defenseCount)) + "/" + Math.floor(number(neutralVillage?.militaryPopulationCap, defenseCount)) + "人 / 軍隊率 " + Math.round(number(neutralVillage?.armyRate) * 100) + "%",
+        "守備: " + (neutralVillage?.defenseUnits || []).length + "隊 / " + defenseCount + "人 / 戦力 " + Math.round(defenseStrength),
+        "必要物資(1T): " + formatRequiredResources(maintenance),
+        "推定産出(1T): " + estimatedIncome + " / 稼働 " + Math.round(number(economyDiagnostic.employmentRate) * 100) + "% (" + economyDiagnostic.tiles + "マス)",
+        "不足候補(1T): " + formatRequiredResources(economyDiagnostic.shortageByType),
+        "得意資源: " + (economyDiagnostic.favorableResourceKeys?.join(" / ") || "なし"),
+        "自然アンデッド脅威: " + naturalUndead.length + "体" + (naturalUndead.length ? " / " + naturalUndead.map(unit => text(unit?.name) || "不明").join("、") : ""),
+        "実敵脅威(領域内): " + threats.invadingEnemies.length + "体" + (threats.invadingEnemies.length ? " / " + threats.invadingEnemies.map(unit => text(unit?.name) || "不明").join("、") : ""),
+        "重複する敵巣縄張り: " + threats.overlappingNests.length + "件" + (threats.overlappingNests.length ? " / " + threats.overlappingNests.map(nest => text(nest?.name || nest?.id) || "不明").join("、") : ""),
+        "直近の災害被害: " + (neutralVillage?.disasterState ? "T" + Math.floor(number(neutralVillage.disasterState.turn)) + " / 人口 -" + Math.floor(number(neutralVillage.disasterState.populationLoss)) : "なし"),
+        "関係: " + getV39RelationLabel(relation) + " " + relation + " / " + (neutralVillage?.vassalPlayerId ? "属国: " + text(neutralVillage.vassalPlayerId) : "独立"),
+        "最近の襲撃: " + (neutralVillage?.raidState ? "T" + Math.floor(number(neutralVillage.raidState.turn)) + " / " + (neutralVillage.raidState.defended ? "防衛成功" : "防衛失敗") : "なし")
+      ]
+    });
+  }
+
+  const tilePoint = { x:Math.floor(number(tile?.x)), y:Math.floor(number(tile?.y)) };
+  const nestRows = (state?.enemyNests || [])
+    .map(nest => ({
+      nest,
+      distance:getHexDistance(tilePoint, { x:nest?.x, y:nest?.y }),
+      radius:Math.max(0, Math.floor(number(nest?.territoryRadius)))
+    }))
+    .filter(row => row.distance <= row.radius)
+    .sort((a, b) => a.distance - b.distance);
+  const nestRow = nestRows[0] || null;
+
+  if (nestRow?.nest) {
+    const nest = nestRow.nest;
+    const memberCount = Array.isArray(nest?.unitIds) ? nest.unitIds.filter(Boolean).length : 0;
+    entries.push({
+      kind:"敵巣",
+      name:text(nest?.name) || text(nest?.id) || "敵巣",
+      lines:[
+        "種族: " + (text(nest?.race) || "-") + " / 中心: (" + Math.floor(number(nest?.x)) + "," + Math.floor(number(nest?.y)) + ")",
+        "選択マス: " + key + " / 中心距離 " + nestRow.distance + " / 縄張り半径 " + nestRow.radius,
+        "規模: " + (text(nest?.scaleName) || "-") + " / Lv" + Math.max(1, Math.floor(number(nest?.scaleLevel, 1))) + " / 軍事Lv" + Math.max(1, Math.floor(number(nest?.militaryLevel, 1))),
+        "人口 " + Math.floor(number(nest?.population)) + " / 所属ユニット " + memberCount,
+        "備蓄: 食料 " + Math.round(sumBag(nest?.foodStockByType)) + " / 資材 " + Math.round(sumBag(nest?.materialStockByType))
+      ]
+    });
+  }
+
+  const wanderers = (state?.wandererGroups || []).filter(group => selectedTileKey(group) === key);
+  for (const wanderer of wanderers) {
+    const nearbyUndead = (state?.enemies || []).filter(unit => (
+      naturalUndeadAt(unit)
+      && getHexDistance(tilePoint, { x:unit?.x, y:unit?.y }) <= V39_UNDEAD_SPAWN_BALANCE.threatRangeTiles
+    ));
+    entries.push({
+      kind:"放浪者",
+      name:text(wanderer?.name || wanderer?.race) || "放浪者",
+      lines:[
+        "人数: " + Math.max(0, Math.floor(number(wanderer?.population ?? wanderer?.count, 1))),
+        "自然アンデッド脅威: " + nearbyUndead.length + "体" + (nearbyUndead.length ? " / " + nearbyUndead.map(unit => text(unit?.name) || "不明").join("、") : "")
+      ]
+    });
+  }
+
+  return entries;
+}
+
+function selectedTileBaseInfoHtml(state, tile) {
+  const entries = selectedTileBaseInfo(state, tile);
+  if (!selectedTileKey(tile)) return '<p class="v39-test-empty">マスを選択してください</p>';
+  if (!entries.length) return '<p class="v39-test-empty">選択マスに関連する拠点はありません</p>';
+  return entries.map(entry => (
+    '<article class="v39-test-base-card">'
+      + '<header><span>' + escapeHtml(entry.kind) + '</span><strong>' + escapeHtml(entry.name) + '</strong></header>'
+      + '<div>' + entry.lines.map(line => '<p>' + escapeHtml(line) + '</p>').join("") + '</div>'
+    + '</article>'
+  )).join("");
+}
+
+const SCENARIO_SUITES = [
+  {id:'village',label:'村・交流テスト',description:'村との会話・依頼・報酬交渉と、村の発展を確認します。',scenarios:[
+    ['negotiation-hub-start','会話・報酬交渉','村長・性格・交渉スキル・人口報酬・休息・属国化'],
+    ['special-village-start','特殊村・生贄奉納','天使・悪魔・ヴァンパイアの軍隊加入・定期維持・本人の転生'],
+    ['village-plan-start','村の計画・支援','物資不足・討伐依頼・墓地建設・守備兵の補充'],
+    ['village-incident-start','契約・強襲・救援','2プレイヤーで仮契約・部隊休息時の事件・人物と装備の受渡し']
+  ]},
+  {id:'logistics',label:'取引・物流テスト',description:'物資の交換・配送と、拠点間の流れを確認します。',scenarios:[
+    ['trade-test-start','取引・郵送','提供と要求・使者・日程・定期取引'],
+    ['logistics-test-start','拠点間の物流','洞窟・森・村・町と3か国の輸送ルート'],
+    ['expedition-transport-start','鉱床輸送・入口警備','鉱床からの自動輸送・警備兵の指定'],
+    ['expedition-invasion','洞窟への侵入・再巣化','入口への侵入と、プレイヤー不在時の再巣化']
+  ]},
+  {id:'support',label:'道具・部隊支援テスト',description:'薬草・水薬と、王・指揮官・王の騎士の部隊支援を確認します。',scenarios:[
+    ['expedition-start','道具・部隊支援を開始','傷ついた道具試験官と支援検証部隊を地上に配置']
+  ]}
+];
+
+function scenarioSuitesHtml(){
+  return SCENARIO_SUITES.map(suite=>`<details class="v39-test-suite" data-test-suite="${suite.id}"${openScenarioSuites.has(suite.id)?' open':''}><summary>${suite.label}</summary><div class="v39-test-section-body"><p>${suite.description}</p>${suite.scenarios.map(([action,label,description])=>`<div class="v39-test-scenario"><button type="button" data-test-action="${action}">${label}</button><small>${description}</small></div>`).join('')}</div></details>`).join('');
+}
+
+function testSectionOpenAttribute(key) {
+  return collapsedSectionKeys.has(text(key)) ? "" : " open";
+}
+
+function undeadTestStatusHtml(state) {
+  if(!window.__v39FieldRuntime?.mapData?.undeadTestFixture)return "";
+  return [["surface","地上",undeadTest.地上死体],[undeadTest.洞窟ID,"洞窟",undeadTest.洞窟死体]].map(([id,label,rows])=>{
+    const active=(state.activeWorldId || "surface")===id,world=state.explorationWorlds?.[id];
+    const map=active?window.__v39FieldRuntime.mapData:world?.map,spatial=active?state:world?.spatial;
+    const count=(spatial?.enemies || []).filter(unit=>isV39Undead(unit)&&number(unit.hp ?? unit.currentHp)>0).length;
+    const fog=(map?.fogMap || []).flat().filter(tile=>tile?.kind==="death").length;
+    const tiles=rows.map(row=>{
+      const key=`${row.x},${row.y}`,loot=spatial?.groundLootByTile?.[key];
+      const bodies=number((loot?.cargo || loot)?.resourcesByType?.死体)/V39_FOG_BALANCE.corpseResourcePerBody;
+      return `${key}: 死体${bodies} / 浄化${number(map?.purificationByTile?.[key])}`;
+    });
+    const units=[...(spatial?.enemies || []),...(state.players || []).flatMap(player=>player.factionState?.units || [])];
+    const individuals=(undeadTest.個体死体 || []).filter(row=>row.worldId===id).map(row=>{
+      const body=units.find(unit=>unit.id===row.id),raised=units.find(unit=>unit.undeadOrigin?.unitId===row.id);
+      const status=raised?`${raised.race}・${raised.className} Lv${raised.level} / 装備${raised.equipment?.length || 0}`:body?'死体':'消失';
+      return `${row.x},${row.y}: ${row.name} Lv${row.level} → ${status}`;
+    });
+    return `<p data-undead-test-world="${id}"><strong>${label}: アンデッド${count} / 死の霧${fog}マス</strong><br>資源死体（画像なし）<br>${tiles.join("<br>")}<br>個体死体（画像あり）<br>${individuals.join('<br>')}</p>`;
+  }).join("");
+}
+function terrainTestHtml() {
+  const map=window.__v39FieldRuntime?.mapData;
+  if(!map?.terrainTestSamples)return '';
+  const samples=[...map.terrainTestSamples,...(map.terrainAtmosphereSamples||[])];
+  const sample=samples[selectedTerrainSample]||samples[0];
+  const opacity=v39AtmosphereOpacityPercent(selectedTerrainAtmosphereKind,window.getV39DisplaySettings?.());
+  return `<p>地形${map.terrainTestSamples.length}種類＋霧比較${map.terrainAtmosphereSamples?.length||0}区画／左→右：高度0・3・6</p><div class="v39-test-form-row"><select id="v39-test-terrain-sample" aria-label="表示する地形">${samples.map(item=>`<option value="${item.index}"${item.index===sample.index?' selected':''}>${item.index+1}. ${escapeHtml(item.name)}</option>`).join('')}</select><button data-test-action="terrain-sample-focus">この地形へ</button><button data-test-action="terrain-overview">全体</button></div><p>${escapeHtml(sample.mode)}。通常の拡大・縮小、ドラッグでも比較できます。</p>
+    <label class="v39-test-form-row">霧・環境の濃さ<select id="v39-test-atmosphere-kind" aria-label="濃さを調整する種類">${V39_ATMOSPHERE_OPACITY_KINDS.map(kind=>`<option value="${kind.id}"${kind.id===selectedTerrainAtmosphereKind?' selected':''}>${escapeHtml(kind.name)}</option>`).join('')}</select></label>
+    <div class="v39-test-form-row"><input id="v39-test-atmosphere-opacity" aria-label="霧の濃さ" type="range" min="0" max="100" step="1" value="${opacity}" style="min-width:60px;flex:1"><input id="v39-test-atmosphere-opacity-number" aria-label="霧の濃さの数値" type="number" min="0" max="100" step="1" value="${opacity}" style="width:5em;min-width:0">%</div>
+    <div class="v39-test-button-row"><button data-test-action="terrain-atmosphere-all">この濃さを全種へ</button><button data-test-action="terrain-atmosphere-reset">濃さを初期値へ</button></div><p>0%=透明、100%=不透明。表示だけを変更し、通常プレイにも保存します。</p>`;
+}
+
+function fixedDisasterTestHtml(state){
+  const map=window.__v39FieldRuntime?.mapData;
+  if(!map?.disasterTestFixture||map.disasterNaturalTestFixture)return '';
+  const rows=map.hazardTestFixture?map.hazardZones.map(zone=>({...zone,id:zone.disasterId})):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}];
+  const turn=state.timeline?.turnNumber||1,active=state.worldEnvironment?.activeDisasters||[];
+  const comparison=`<div data-atmosphere-test-info><button data-test-action="disaster-atmosphere-start">霧・重なり比較を開始</button>${map.disasterAtmosphereTestFixture?`<p>霧・対象災害は検証用⌛${disasterTest.atmosphere.durationTurns}。気象の色はOFFで比較。効果の内訳は土地画面へ。</p><div class="v39-test-form-row"><select id="v39-test-atmosphere-sample" aria-label="霧の比較地点">${disasterTest.atmosphere.samples.map((sample,index)=>`<option value="${index}"${index===selectedAtmosphereSample?' selected':''}>${escapeHtml(sample.name)} (${sample.x},${sample.y})</option>`).join('')}</select><button data-test-action="disaster-atmosphere-focus">比較地点へ</button></div>`:''}</div>`;
+  return `<div data-fixed-disaster-info><p>固定配置 ${rows.length}種類／${map.hazardTestFixture?'常設危険地帯：通常・耐性100の観察者を配置':map.disasterAtmosphereTestFixture?'霧・対象災害の持続は比較用に延長':'継続・威力は通常データ（落雷の持続のみ検証用）'}</p><div class="v39-test-form-row"><select id="v39-test-disaster-fixture" aria-label="確認する固定災害">${rows.map(row=>{
+    const event=active.find(item=>item.disasterId===row.id),remaining=event?Math.max(0,event.expiresAtTurn-turn+1):0;
+    return `<option value="${escapeHtml(row.id)}"${row.id===selectedDisasterId?' selected':''}>${escapeHtml(resolveV39DisasterRule(row.id).name)} ${map.hazardTestFixture?'常設':remaining?`⌛${remaining}`:'終了'} (${row.x},${row.y})</option>`;
+  }).join('')}</select><button data-test-action="disaster-fixture-focus">発生地点へ</button></div>${comparison}</div>`;
+}
+
+function naturalDisasterTestHtml(state){
+  const env=state.worldEnvironment||{},report=env.disasterDiagnostics;
+  const statuses={spawned:'自然発生',miss:'抽選不成立',condition:'気象・不浄条件未達','no-terrain':'対象地形なし',cooldown:'同一マス待機中',limit:'このターンの発生上限',disabled:'無効','not-natural':'自然抽選の対象外'};
+  const attempts=report?.attempts||[],chosen=attempts.find(row=>row.id===selectedDisasterId);
+  const percent=n=>`${(n*100).toFixed(2)}%`;
+  const detail=row=>`${statuses[row.status]||row.status}${row.chance!==undefined?`／実効${percent(row.chance)}・抽選値${percent(row.rolled)}`:''}${row.terrainCandidates!==undefined?`／条件適合${row.eligibleCandidates}/${row.terrainCandidates}マス`:''}${row.anchorKey?`／(${row.anchorKey})`:''}`;
+  const history=(env.lastDisasterEvents||[]).filter(row=>row.disasterId&&!row.forced).slice(-4).reverse();
+  return `<div data-natural-disaster-info><p><b>自然発生の確認</b>：${window.__v39FieldRuntime?.mapData?.disasterNaturalTestFixture?'自然発生テスト（強制配置なし）':'通常確率で抽選'}</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-start">自然発生用に初期化</button><button data-test-action="hazard-test-start">危険地帯6種を確認</button>${window.__v39FieldRuntime?.mapData?.disasterTestFixture?'<button data-test-action="disaster-fixed-start">固定配置に戻す</button>':''}</div><p>発生率は通常のまま。初期化は条件を満たす天候・地形のみ用意し、災害は配置しません。火山噴火は別の専用処理です。</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-turns"${advancingTestTurns?" disabled":""}>10T経過</button><button data-test-action="turn-stop"${advancingTestTurns?"":" disabled"}>停止</button></div><p>${report?`T${report.turn}：抽選${attempts.filter(row=>row.rolled!==undefined).length}件／自然発生${attempts.filter(row=>row.status==='spawned').length}件`:'未抽選：次の通常ターンから結果を表示'}</p>${chosen?`<p data-disaster-trial-selected><b>${escapeHtml(chosen.name)}</b>：${escapeHtml(detail(chosen))}</p>`:''}${report?`<details><summary>全${attempts.length}件の抽選結果</summary>${attempts.map(row=>`<p>${escapeHtml(row.name)}：${escapeHtml(detail(row))}</p>`).join('')}</details>`:''}<p data-natural-disaster-history>${history.length?history.map(row=>`T${row.turn} ${escapeHtml(row.name)} (${row.x},${row.y})`).join('<br>'):'自然発生の履歴なし'}</p></div>`;
+}
+
+function weatherTestHtml(tile) {
+  const map=window.__v39FieldRuntime?.mapData,state=window.getV39GameState?.({includeWorlds:false});
+  const samples=map?.disasterTestFixture?`<div class="v39-weather-samples">${disasterTest.weatherSamples.map((sample,index)=>{
+    const weather=window.inspectV39WeatherAt?.(sample.x,sample.y);
+    if(!weather)return '';
+    return `<button data-test-action="weather-sample-${index}" data-weather-region="${escapeHtml(weather.regionId)}" aria-pressed="${weather.regionId===window.inspectV39WeatherAt?.(tile?.x,tile?.y)?.regionId}"><strong>${escapeHtml(weather.weather||'未更新')}</strong> (${sample.x},${sample.y})<br>${Math.round(weather.temperature)}℃ / 乾燥${Math.round(weather.dryness)}</button>`;
+  }).join('')}</div>`:'';
+  const current=window.inspectV39WeatherAt?.(tile?.x,tile?.y);
+  if(!current)return `${samples}<p>気候・天候: 地上のマスを選択してください</p>`;
+  const checks=['山火事','洪水','落雷嵐'].map(name=>{
+    const rule=resolveV39DisasterRule(`災害:${name}`),allowed=resolveV39DisasterWeather(rule,map,state.worldEnvironment?.weather,tile).allowed;
+    return `${name}${allowed?'○':'×'}`;
+  }).join(' / ');
+  const remaining=Math.max(0,(current.weatherUntilTurn||0)-(state.timeline?.turnNumber||1)+1);
+  return `${samples}<div data-weather-test-info><p>地域 ${escapeHtml(current.regionId)} / 気候 ${current.climateTemperature}℃・湿潤度${current.climateHumidity}<br>天候 ${escapeHtml(current.weather||'未更新')} ⌛${remaining} / ${Math.round(current.temperature??current.climateTemperature)}℃ / 湿度${Math.round(current.humidity??0)}・乾燥${Math.round(current.dryness??0)}<br>晴天${current.dryTurns||0}T・降水${current.wetTurns||0}T</p><p data-weather-conditions>気象条件: ${checks}<br>○でも地形条件と確率抽選が必要。強制発生は条件を無視します。</p><div class="v39-test-form-row"><select id="v39-test-weather-type" aria-label="変更する天候">${V39_WEATHER_TYPES.map(name=>`<option${name===selectedWeatherType?' selected':''}>${name}</option>`).join('')}</select><button data-test-action="weather-change">地域の天候を変更</button><button data-test-action="weather-turn">1T経過</button><button data-test-action="weather-overlay" aria-pressed="${window.isV39WeatherOverlayEnabled?.()!==false}">フィールド気象 ${window.isV39WeatherOverlayEnabled?.()===false?'OFF':'ON'}</button></div></div>`;
+}
+
+function panelHtml() {
+  const { state, settlement, unit, tile } = context();
+  const resource = selectedResourceKey();
+  const cityLevel = text(document.getElementById("v39-test-city-level-key")?.value) || CITY_LEVEL_KEYS[0];
+  const tileKey = selectedTileKey(tile);
+  const testSkills = getV39TestSkillRows();
+  const disasters = (Array.isArray(disasterData) ? disasterData : []).filter(row => text(row?.ID) && text(row?.ID) !== "災害:火山噴火");
+  if (!disasters.some(row => text(row?.ID) === selectedDisasterId)) selectedDisasterId = text(disasters[0]?.ID);
+  const disasterOptions = disasters.map(row => `<option value="${escapeHtml(text(row.ID))}"${text(row.ID) === selectedDisasterId ? " selected" : ""}>${escapeHtml(text(row.カテゴリ名))}</option>`).join("");
+  if (!testSkills.some(row => text(row?.名前) === selectedTestSkillName)) selectedTestSkillName = text(testSkills[0]?.名前);
+  const assignedTestSkills = Array.isArray(unit?.testSkillNames) ? unit.testSkillNames.map(text).filter(Boolean) : [];
+  const testSkillOptions = testSkills.map(row => {
+    const name = text(row?.名前);
+    return `<option value="${escapeHtml(name)}"${name === selectedTestSkillName ? " selected" : ""}>${escapeHtml(name)}</option>`;
+  }).join("");
+  const enemies = (state?.enemies || []).filter(livingUnit).map(enemy => ({ ...enemy, diagnosticKind:"enemy", diagnosticLabel:text(enemy?.name || enemy?.id) }));
+  const villageGuards = (state?.neutralVillages || []).flatMap(village => (village?.defenseUnits || [])
+    .filter(livingUnit)
+    .map(unit => ({ ...unit, diagnosticKind:"village-guard", diagnosticLabel:`${text(village?.name, "一般村")} / ${text(unit?.name || unit?.id)}` })));
+  const diagnosticUnits = [...enemies, ...villageGuards];
+  const unitsOnTile = tileKey ? diagnosticUnits.filter(unit => selectedTileKey(unit) === tileKey) : [];
+  if (!diagnosticUnits.some(unit => text(unit?.id) === selectedEnemyId)) selectedEnemyId = text(unitsOnTile[0]?.id || diagnosticUnits[0]?.id);
+  const selectedDiagnosticUnit = diagnosticUnits.find(unit => text(unit?.id) === selectedEnemyId) || null;
+  const enemyDebug = selectedDiagnosticUnit?.diagnosticKind === "village-guard"
+    ? villageGuardDiagnostic(state, selectedEnemyId)
+    : window.inspectV39EnemyAi?.(selectedEnemyId) || null;
+  const playerDetection = enemyDebug && !enemyDebug.isVillageGuard ? window.inspectV39PlayerDetectionForEnemy?.(selectedEnemyId) || null : null;
+  const cooldownText = enemyDebug ? Object.entries(enemyDebug.cooldowns || {}).map(([name, turns]) => `${name}:${turns}T`).join(" / ") : "";
+  const playerDetectionText = playerDetection
+    ? `${playerDetection.detected ? "発見済み" : "未発見"} / ${playerDetection.inCurrentVision ? "索敵範囲内" : "索敵範囲外"} / 有効索敵${playerDetection.observerScout ?? "-"} / 隠密${playerDetection.targetStealth} / ${playerDetection.reason}`
+    : "判定データなし";
+  const enemyOptions = diagnosticUnits.map(unit => `<option value="${escapeHtml(unit.id)}"${text(unit.id) === selectedEnemyId ? " selected" : ""}>${escapeHtml(unit.diagnosticLabel)} (${Math.floor(number(unit.x))},${Math.floor(number(unit.y))})</option>`).join("");
+  return `
+    <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
+    <nav class="v39-test-tools-tabs" role="tablist" aria-label="テスト操作カテゴリ">${TEST_TOOL_TABS.map(tab=>`<button type="button" role="tab" id="v39-test-tab-${tab.id}" data-test-tab="${tab.id}" aria-controls="v39-test-tool-content" aria-selected="${tab.id===selectedToolTab}" tabindex="${tab.id===selectedToolTab?0:-1}">${tab.label}</button>`).join('')}</nav>
+    <div class="v39-test-tools-scroll" id="v39-test-tool-content" role="tabpanel" aria-labelledby="v39-test-tab-${selectedToolTab}">
+      ${renderV39VillagePlanTestTools(state)}
+      ${renderV39NegotiationHubTestTools(state)}
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="guardian-trial-test-start">守護者3試練テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
+      <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
+      <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
+      <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
+      <details class="v39-test-section" data-test-section="turns"${testSectionOpenAttribute("turns")}><summary>制作・ターン進行</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><input id="v39-test-turn-count" aria-label="進めるターン数" type="number" min="1" max="100" step="1" value="${bulkTurnCount}"${advancingTestTurns ? " disabled" : ""}><button data-test-action="turn-many"${advancingTestTurns ? " disabled" : ""}>指定ターン進行</button><button data-test-action="turn-production"${advancingTestTurns ? " disabled" : ""}>建設完了まで進行</button><button data-test-action="turn-stop"${advancingTestTurns ? "" : " disabled"}>停止</button></div><p>施設建設・拠点発展・土地用途変更の待ちターンをまとめて進行。収入・消費・敵AIも通常どおり進みます。</p></div></details>
+       <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p>${terrainTestHtml()}${fixedDisasterTestHtml(state)}${weatherTestHtml(tile)}${naturalDisasterTestHtml(state)}<div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで強制発生</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
+      <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
+      <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
+      <details class="v39-test-section" data-test-section="test-skills"${testSectionOpenAttribute("test-skills")}><summary>テストスキル</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / 付与中: ${assignedTestSkills.length ? assignedTestSkills.map(escapeHtml).join(" / ") : "なし"}</p><div class="v39-test-form-row"><select id="v39-test-skill-name">${testSkillOptions || '<option value="">テストスキルなし</option>'}</select><button data-test-action="test-skill-add">選択を付与</button><button data-test-action="test-skill-all">全テスト技を付与</button><button data-test-action="test-skill-clear">全解除</button></div></div></details>
+      ${npcDiagnosticsMarkup(state)}
+      <details class="v39-test-section" data-test-section="enemy-ai"${testSectionOpenAttribute("enemy-ai")}><summary>敵AI診断</summary><div class="v39-test-section-body">${diagnosticUnits.length ? `<div class="v39-test-form-row"><select id="v39-test-enemy-id">${enemyOptions}</select></div>${enemyDebug ? `<div class="v39-test-ai-grid"><span>種別</span><b>${enemyDebug.isVillageGuard ? `一般村守備 / ${escapeHtml(enemyDebug.guardVillageName)}` : "敵AI"}</b><span>判断</span><b>${escapeHtml(enemyDebug.decision)}</b><span>理由</span><b>${escapeHtml(enemyDebug.reason)}</b><span>好戦性</span><b>${enemyDebug.isVillageGuard ? "村防衛" : enemyDebug.aggressive ? "好戦的" : enemyDebug.retaliating ? "反撃中（非好戦的）" : "非好戦的"}</b><span>位置</span><b>(${enemyDebug.x},${enemyDebug.y}) / Lv${enemyDebug.level}</b><span>HP / AP</span><b>${enemyDebug.hp}/${enemyDebug.maxHp} / ${enemyDebug.ap}/${enemyDebug.maxAp}</b>${enemyDebug.isVillageGuard ? `<span>軍隊人口 / 戦力</span><b>${enemyDebug.militaryPopulation}人 / ${enemyDebug.strength}</b>` : `<span>索敵</span><b>半径${enemyDebug.visionRadius} / 値${enemyDebug.scout}</b><span>プレイヤー発見</span><b>${escapeHtml(playerDetectionText)}</b><span>認識標的</span><b>${escapeHtml(enemyDebug.targetName || "なし")}${enemyDebug.targetDistance == null ? "" : ` / 距離${enemyDebug.targetDistance}`}</b><span>敵対記憶</span><b>${escapeHtml(enemyDebug.aggroTargetUnitId || "なし")}</b><span>所属巣</span><b>${escapeHtml(enemyDebug.nestName || "巣なし")}${enemyDebug.nestId ? ` / ${escapeHtml(enemyDebug.nestId)}` : ""}${enemyDebug.nestDistance == null ? "" : ` / 距離${enemyDebug.nestDistance}`}</b><span>縄張り</span><b>${enemyDebug.hasNest ? `中心(${enemyDebug.territoryCenter.x},${enemyDebug.territoryCenter.y}) / 半径${enemyDebug.territoryRadius} / 追跡限界${enemyDebug.pursuitLimit}` : "なし（巣なし個体）"}</b><span>逃走</span><b>基準${Math.round(enemyDebug.fleeThreshold*100)}% / ${enemyDebug.fleeState?.active ? "逃走中" : enemyDebug.fleeDecisionMade ? "判定済み" : "未発動"}</b><span>前回行動</span><b>T${enemyDebug.lastActionTurn || "-"}</b><span>発動待機 / CT</span><b>${escapeHtml(enemyDebug.pendingSkillName ? `${enemyDebug.pendingSkillName}:${enemyDebug.pendingTurns}T` : cooldownText || "なし")}</b>`}<span>攻撃候補</span><b>${escapeHtml(enemyDebug.attackSkillNames.join(" / ") || "なし")}</b></div>` : '<p>診断データを取得できません</p>'}` : '<p>生存している敵または一般村守備軍がいません</p>'}</div></details>
+      <details class="v39-test-section" data-test-section="city-research"${testSectionOpenAttribute("city-research")}><summary>拠点技能・研究</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><select id="v39-test-city-level-key">${CITY_LEVEL_KEYS.map(key => `<option value="${key}"${key === cityLevel ? " selected" : ""}>${key}</option>`).join("")}</select><button data-test-action="city-level-minus">-1</button><button data-test-action="city-level-plus">+1</button><input id="v39-test-research-exp" type="number" min="1" step="10" value="100"><button data-test-action="research-exp">選択研究EXP+</button></div></div></details>
+      <details class="v39-test-section" data-test-section="territory"${testSectionOpenAttribute("territory")}><summary>選択領土</summary><div class="v39-test-section-body"><div class="v39-test-button-row"><button data-test-action="territory-minus">HP-25</button><button data-test-action="territory-zero">HP0</button><button data-test-action="territory-full">HP全快</button></div></div></details>
+    </div>
+    <output id="v39-test-tools-status">${statusMessage}</output>`;
+}
+
+function render() {
+  const panel = document.getElementById("v39-test-tools-panel");
+  if (!(panel instanceof HTMLElement)) return;
+  const currentScroll = panel.querySelector(".v39-test-tools-scroll");
+  if (currentScroll instanceof HTMLElement) scrollTopByToolTab.set(currentScroll.dataset.toolTab, currentScroll.scrollTop);
+  panel.innerHTML = panelHtml();
+  const scroll = panel.querySelector('.v39-test-tools-scroll');
+  scroll.dataset.toolTab = selectedToolTab;
+  const sections=TEST_TOOL_TABS.find(tab=>tab.id===selectedToolTab).sections;
+  panel.querySelectorAll('[data-test-section]').forEach(section=>{section.hidden=!sections.includes(section.dataset.testSection);});
+  const restoreScroll = () => {
+    const nextScroll = panel.querySelector(".v39-test-tools-scroll");
+    if (!(nextScroll instanceof HTMLElement)) return;
+    const maxScrollTop = Math.max(0, nextScroll.scrollHeight - nextScroll.clientHeight);
+    nextScroll.scrollTop = Math.min(scrollTopByToolTab.get(selectedToolTab)||0, maxScrollTop);
+  };
+  restoreScroll();
+  if (restoreScrollFrame) cancelAnimationFrame(restoreScrollFrame);
+  restoreScrollFrame = requestAnimationFrame(() => {
+    restoreScrollFrame = 0;
+    restoreScroll();
+  });
+  window.dispatchEvent(new CustomEvent('v39:test-tool-tab-changed'));
+}
+
+function selectToolTab(id, focus=false) {
+  if(!TEST_TOOL_TABS.some(tab=>tab.id===id))return;
+  const panel=document.getElementById('v39-test-tools-panel');
+  const scroll=panel?.querySelector('.v39-test-tools-scroll');
+  if(!scroll)return;
+  if(restoreScrollFrame){cancelAnimationFrame(restoreScrollFrame);restoreScrollFrame=0;}
+  scrollTopByToolTab.set(selectedToolTab,scroll.scrollTop);
+  selectedToolTab=id;
+  const sections=TEST_TOOL_TABS.find(tab=>tab.id===id).sections;
+  panel.querySelectorAll('[data-test-section]').forEach(section=>{section.hidden=!sections.includes(section.dataset.testSection);});
+  panel.querySelectorAll('[data-test-tab]').forEach(tab=>{
+    const active=tab.dataset.testTab===id;tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;
+  });
+  scroll.dataset.toolTab=id;scroll.setAttribute('aria-labelledby',`v39-test-tab-${id}`);
+  scroll.scrollTop=scrollTopByToolTab.get(id)||0;
+  const button=document.getElementById(`v39-test-tab-${id}`);
+  if(focus)button?.focus({preventScroll:true});
+  button?.scrollIntoView({block:'nearest',inline:'nearest'});
+  window.dispatchEvent(new CustomEvent('v39:test-tool-tab-changed'));
+}
+
+function openPanel() {
+  if (!testModeEnabled()) return;
+  window.activateV39FooterTab?.("test");
+  render();
+}
+
+function closePanel() {
+  window.activateV39FooterTab?.("squad");
+}
+
+async function startRitualTest(stage) {
+  if(!window.isV39CallTestReady?.()
+    &&!window.confirm('現在のゲームを儀式施設・召喚テストに置き換えます。開始しますか？'))return;
+  setStatus('儀式施設テストを準備しています');
+  try {
+    const result=await window.startV39RitualTest?.(stage);
+    if(!result?.ok){window.openV39TestTools?.();setStatus(result?.reason||'儀式テストを起動できませんでした');}
+  } catch(error) {
+    window.openV39TestTools?.();setStatus(`儀式テストの起動に失敗: ${error.message}`);
+    console.error('[儀式テスト]',error);
+  }
+}
+
+function handleAction(action) {
+  if (!testModeEnabled()) return closePanel();
+  if(action==='terrain-atmosphere-reset'||action==='terrain-atmosphere-all'){
+    const opacity=number(document.getElementById('v39-test-atmosphere-opacity-number')?.value);
+    void window.setV39AtmosphereOpacity?.(action.endsWith('reset')?'reset':'all',opacity).then(()=>render());return;
+  }
+  if(action==='hazard-test-start'){
+    if(!advancingTestTurns&&window.confirm('現在のゲームを危険地帯6種の検証マップに置き換えます。開始しますか？'))window.startV39HazardTest?.();
+    return;
+  }
+  if(action==='disaster-natural-start'||action==='disaster-fixed-start'||action==='disaster-atmosphere-start'){
+    if(advancingTestTurns)return;
+    if(window.confirm('現在のゲームを災害検証マップに置き換えます。開始しますか？')){
+      window.startV39DisasterTest?.({natural:action==='disaster-natural-start',atmosphere:action==='disaster-atmosphere-start'});
+      if(action==='disaster-atmosphere-start'){
+        selectedAtmosphereSample=0;window.setV39WeatherOverlayEnabled?.(false);render();handleAction('disaster-atmosphere-focus');
+      }
+    }
+    return;
+  }
+  if(action==='disaster-natural-turns'){void advanceTurn(10);return;}
+  if(action==='disaster-fixture-focus'||action==='disaster-atmosphere-focus'){
+    const map=window.__v39FieldRuntime?.mapData;
+    if(!map?.disasterTestFixture||map.disasterNaturalTestFixture)return;
+    const id=document.getElementById('v39-test-disaster-fixture')?.value||selectedDisasterId;
+    const comparison=action==='disaster-atmosphere-focus';
+    if(comparison&&!map.disasterAtmosphereTestFixture)return;
+    const sample=comparison?disasterTest.atmosphere.samples[selectedAtmosphereSample]:map.hazardTestFixture?map.hazardZones.find(zone=>zone.disasterId===id):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}].find(row=>row.id===id);
+    const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];if(!sample||!scene)return;
+    if(!comparison)selectedDisasterId=sample.disasterId||sample.id;
+    const c=HEX_TILE_CONFIG;
+    scene.cameras.main.setZoom(Math.min(1.2,(scene.v39FitZoom||1)*6)).centerOn(sample.x*c.width+(sample.y%2?c.oddRowOffsetX:0)+c.width/2,sample.y*c.rowStep+c.height/2);
+    scene.v39RequestedZoom=scene.cameras.main.zoom;scene.v39SelectedTile={x:sample.x,y:sample.y};
+    selectedWeatherType=window.inspectV39WeatherAt?.(sample.x,sample.y)?.weather||'晴れ';
+    window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:scene.v39SelectedTile}));return;
+  }
+  if(action==='guardian-trial-test-start'){
+    if(window.confirm('現在のゲームを守護者3試練テストに置き換えます。開始しますか？')){closePanel();void window.startV39GuardianTrialTest?.();}
+    return;
+  }
+  if(action==='hegemony-test-start'){
+    if(window.confirm('現在のゲームを覇権地の固定エリア確認テストに置き換えます。開始しますか？')){closePanel();window.startV39HegemonyAreaTest?.();}
+    return;
+  }
+  if(action==='terrain-test-start'){
+    if(window.confirm('現在のゲームを全地形の比較マップに置き換えます。開始しますか？')){closePanel();window.startV39TerrainTest?.();}
+    return;
+  }
+  if(action==='terrain-sample-focus'){window.focusV39TerrainTestSample?.(selectedTerrainSample);return;}
+  if(action==='terrain-overview'){window.overviewV39TerrainTest?.();return;}
+  if(/^weather-sample-\d+$/.test(action)){
+    const sample=disasterTest.weatherSamples[Number(action.split('-').at(-1))];
+    if(!sample||!window.__v39FieldRuntime?.mapData?.disasterTestFixture||window.isV39MapInputLocked?.())return;
+    const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
+    scene.v39SelectedTile={x:sample.x,y:sample.y};
+    selectedWeatherType=window.inspectV39WeatherAt?.(sample.x,sample.y)?.weather||'晴れ';
+    const c=HEX_TILE_CONFIG;
+    scene.cameras.main.centerOn(sample.x*c.width+(sample.y%2?c.oddRowOffsetX:0)+c.width/2,sample.y*c.rowStep+c.height/2);
+    window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x:sample.x,y:sample.y}}));
+    return;
+  }
+  const handlers = {
+    'special-village-start':async()=>{
+      if(!window.confirm('現在のゲームを特殊村・生贄奉納テストに置き換えます。開始しますか？'))return;
+      closePanel();
+      try{const result=await startV39SpecialVillageTest();if(!result?.ok){window.openV39TestTools?.();setStatus(result?.reason||'特殊村テストを起動できませんでした');}}
+      catch(error){window.openV39TestTools?.();setStatus(`特殊村テストの起動に失敗: ${error.message}`);console.error('[特殊村テスト]',error);}
+    },
+    'negotiation-hub-start':async()=>{
+      if(!window.confirm('現在のゲームを村長・交渉総合テストに置き換えます。開始しますか？'))return;
+      closePanel();
+      try{const result=await startV39NegotiationHubTest();if(!result?.ok){window.openV39TestTools?.();setStatus(result?.reason||'交渉テストを起動できませんでした');}}
+      catch(error){window.openV39TestTools?.();setStatus(`交渉テストの起動に失敗: ${error.message}`);console.error('[交渉総合テスト]',error);}
+    },
+    'negotiation-hub-focus':()=>{
+      const key=document.getElementById('v39-test-negotiation-village')?.value;closePanel();focusV39NegotiationHubTest(key);
+    },
+    'negotiation-hub-preview':()=>{
+      const key=document.getElementById('v39-test-negotiation-village')?.value,personality=document.getElementById('v39-test-negotiation-personality')?.value,column=document.getElementById('v39-test-negotiation-column')?.value;
+      closePanel();focusV39NegotiationHubTest(key,personality,column);
+    },
+    "village-plan-start":async()=>{
+      if(!window.confirm('現在のゲームを村の計画・支援テストに置き換えます。開始しますか？'))return;
+      setStatus('村の計画・支援テストを準備しています');
+      try{
+        const result=await window.startV39VillagePlanTest?.();
+        if(!result?.ok){window.openV39TestTools?.();setStatus(result?.reason||'村テストを起動できませんでした');}
+      }catch(error){
+        window.openV39TestTools?.();setStatus(`村テストの起動に失敗: ${error.message}`);console.error('[村計画テスト]',error);
+      }
+    },
+    "village-plan-cemetery":()=>{closePanel();window.focusV39VillagePlanTest?.('cemetery');},
+    "village-plan-food":()=>{closePanel();window.focusV39VillagePlanTest?.('food');},
+    "village-plan-threat":()=>{closePanel();window.focusV39VillagePlanTest?.('threat');},
+    "village-plan-guard":()=>{closePanel();window.focusV39VillagePlanTest?.('guard');},
+    "trade-test-start":()=>{if(window.confirm('現在のゲームを取引・郵送テストに置き換えます。開始しますか？')){closePanel();window.startV39TradeTest?.();}},
+    "village-incident-start":()=>{if(window.confirm("現在のゲームを村イベントの2プレイヤー検証に置き換えます。開始しますか？")){closePanel();window.startV39VillageIncidentTest?.();}},
+    "undead-test-start":()=>{if(window.confirm("現在のゲームを死体配置済みの検証マップに置き換えます。開始しますか？"))window.startV39UndeadTest?.();},
+    "undead-test-surface":()=>{if(window.viewV39ExpeditionTestWorld?.("surface"))window.activateV39FooterTab?.("test");},
+    "undead-test-cave":()=>{if(window.viewV39ExpeditionTestWorld?.(undeadTest.洞窟ID))window.activateV39FooterTab?.("test");},
+    "undead-test-turn":()=>advanceTurn(),
+    "call-test-start":()=>{if(window.confirm("現在のゲームを召喚・呼集テストに置き換えます。開始しますか？"))window.startV39CallTest?.();},
+    "ritual-test-none":()=>startRitualTest(0),
+    "ritual-test-one":()=>startRitualTest(1),
+    "ritual-test-two":()=>startRitualTest(2),
+    "ritual-test-three":()=>startRitualTest(3),
+    "fusion-test-start":()=>{if(window.confirm("現在のゲームを合体テストに置き換えます。開始しますか？"))window.startV39FusionTest?.();},
+    "animal-army-test-start":()=>{if(window.confirm('現在のゲームを動物軍隊テストに置き換えます。開始しますか？')){closePanel();window.startV39AnimalArmyTest?.();}},
+    "disaster-test-start":()=>{if(window.confirm('現在のゲームを11種類の災害検証マップに置き換えます。開始しますか？')){closePanel();window.startV39DisasterTest?.();}},
+    "expedition-start":()=>{if(window.confirm("現在のゲームを道具・部隊支援の検証マップに置き換えます。開始しますか？")){closePanel();window.startV39ExpeditionTest?.(false,{profile:"support"});}},
+    "expedition-transport-start":()=>{if(window.confirm("現在のゲームを鉱床輸送・入口警備の検証マップに置き換えます。開始しますか？")){closePanel();window.startV39ExpeditionTest?.(false,{profile:"transport"});}},
+    "logistics-test-start":()=>{if(window.confirm("現在のゲームを洞窟・森・村・町と3か国の物流検証マップに置き換えます。開始しますか？")){closePanel();window.startV39LogisticsTest?.();}},
+    "expedition-invasion":()=>{if(window.confirm("現在のゲームを侵入・再巣化の検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(true);},
+    "expedition-surface":()=>window.viewV39ExpeditionTestWorld?.("surface"),
+    "expedition-mine":()=>window.viewV39ExpeditionTestWorld?.("cave:expedition-test:1"),
+    eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"), disaster:forceDisasterAtSelectedTile, undead:forceUndeadAtSelectedTile,
+    "snow-on":() => setSelectedSnowState("cover", true), "snow-off":() => setSelectedSnowState("cover", false),
+    "weather-change":()=>{const {tile}=context();setStatus(window.setV39TestWeatherAt?.(tile?.x,tile?.y,selectedWeatherType)?'地域の天候を変更しました':'地上のマスを選択し、処理完了後に操作してください');},
+    "weather-turn":()=>advanceTurn(),
+    "weather-overlay":()=>{window.setV39WeatherOverlayEnabled?.(window.isV39WeatherOverlayEnabled?.()===false);render();},
+    "snowfall-on":() => setSelectedSnowState("falling", true), "snowfall-off":() => setSelectedSnowState("falling", false),
+    "faction-player":() => addTestFaction("player"), "faction-npc":() => addTestFaction("npc"),
+    turn:() => advanceTurn(),
+    "turn-many":() => advanceTurn(bulkTurnCount),
+    "turn-production":advanceProductionTurns,
+    "turn-stop":() => { stopTestTurns = true; },
+    "resource-minus":() => changeResource(-1), "resource-plus":() => changeResource(1), "resource-all":addAllResources,
+    "population-minus":() => changePopulation(-10), "population-plus":() => changePopulation(10),
+    "level-minus":() => changeUnitLevel(-1), "level-plus":() => changeUnitLevel(1), "level-plus10":() => changeUnitLevel(10),
+    "hp-full":() => changeUnitVital("hp", "full"), "hp-minus":() => changeUnitVital("hp", -10), "hp-zero":() => changeUnitVital("hp", "zero"),
+    "ap-full":() => changeUnitVital("ap", "full"), "ap-minus":() => changeUnitVital("ap", -10),
+    "test-skill-add":() => assignTestSkill(false), "test-skill-all":() => assignTestSkill(true), "test-skill-clear":clearTestSkills,
+    "city-level-minus":() => changeCityLevel(-1), "city-level-plus":() => changeCityLevel(1), "research-exp":addResearchExp,
+    "territory-minus":() => changeTerritoryHp(-25), "territory-zero":() => changeTerritoryHp("zero"), "territory-full":() => changeTerritoryHp("full")
+  };
+  handlers[action]?.();
+}
+
+function installStyles() {
+  if (document.getElementById("v39-test-tools-style")) return;
+  const style = document.createElement("style");
+  style.id = "v39-test-tools-style";
+  style.textContent = `.v39-test-tools-panel{width:100%;height:100%;max-height:100%;min-width:0;min-height:0;flex:1 1 0;display:flex;flex-direction:column;gap:6px;overflow:hidden;color:#e7efed}.v39-test-tools-panel[hidden]{display:none!important}.v39-test-tools-head{display:flex;align-items:center;gap:8px}.v39-test-tools-head button,.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{min-height:34px;border:1px solid #49626a;border-radius:6px;background:#14242a;color:#edf3f1;padding:5px 9px;font-size:var(--font-body);font-weight:700}.v39-test-tools-head span{margin-left:auto;color:#f1c96f}.v39-test-tools-tabs{display:flex;gap:4px;flex:0 0 auto;overflow-x:auto;overscroll-behavior:contain}.v39-test-tools-tabs button{flex:1 0 auto;white-space:nowrap;padding:5px 8px}.v39-test-tools-tabs button[aria-selected="true"]{border-color:#63d6e7;background:#1d4b55;color:#fff}.v39-test-tools-tabs button:focus-visible{outline:2px solid #f1c96f;outline-offset:-3px}.v39-test-section[hidden]{display:none!important}.v39-test-tools-head,.v39-test-tools-panel output{flex:0 0 auto}.v39-test-tools-scroll{min-width:0;min-height:0;max-height:100%;flex:1 1 0;overflow-x:hidden!important;overflow-y:auto!important;overflow-anchor:none;display:grid;grid-auto-rows:max-content;gap:7px;align-content:start;padding-bottom:12px;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}.v39-test-section{border:1px solid #354a51;border-radius:7px;background:#101c21;overflow:hidden}.v39-test-section>summary{min-height:34px;display:flex;align-items:center;gap:7px;padding:6px 8px;list-style:none;cursor:pointer;user-select:none;color:#e7efed;font-size:var(--font-body);font-weight:800;background:#14242a}.v39-test-section>summary::-webkit-details-marker{display:none}.v39-test-section>summary::before{content:"▷";display:inline-block;min-width:14px;color:#74d2df;font-size:var(--font-secondary);line-height:1}.v39-test-section[open]>summary::before{content:"▽"}.v39-test-section-body{display:grid;gap:5px;padding:7px}.v39-test-base-list{display:grid;gap:6px}.v39-test-base-card{display:grid;gap:5px;padding:7px;border:1px solid #3e565e;border-radius:7px;background:#0d171b}.v39-test-base-card header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.v39-test-base-card header span{padding:2px 6px;border:1px solid #5f858f;border-radius:999px;color:#9fe1eb;font-size:var(--font-size-11);font-weight:900}.v39-test-base-card header strong{color:#eef7f5;font-size:var(--font-size-14)}.v39-test-base-card p{margin:0!important;font-size:var(--font-compact)!important;color:#b7c7ca!important;line-height:1.4}.v39-test-empty{color:#82979c!important}.v39-test-tools-scroll h3,.v39-test-tools-scroll p{margin:0;font-size:var(--font-body)}.v39-test-tools-scroll p{color:#aebdc0}.v39-test-button-row,.v39-test-form-row{display:flex;flex-wrap:wrap;gap:5px}.v39-test-form-row select{min-width:130px}.v39-test-form-row input{width:100px}.v39-test-ai-grid{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 9px;font-size:var(--font-body)}.v39-test-ai-grid span{color:#91a5aa}.v39-test-ai-grid b{min-width:0;overflow-wrap:anywhere}.v39-test-log-tabs{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}.v39-test-log-tabs button{flex:0 0 auto}.v39-test-log-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-test-log-tabs small{color:#a9bbc0}.v39-test-ai-log{max-height:220px;overflow:auto;border:1px solid #293c42;border-radius:6px}.v39-test-ai-log article{display:grid;grid-template-columns:38px minmax(90px,auto) minmax(120px,1fr);gap:5px 8px;padding:7px;border-bottom:1px solid #293c42;font-size:var(--font-body)}.v39-test-ai-log article span{color:#78d19a}.v39-test-ai-log article strong{color:#f0d17b}.v39-test-ai-log article p{grid-column:2/-1}.v39-test-tools-panel button:active{background:#28505a}.v39-test-tools-panel output{min-height:30px;padding:6px 9px;border:1px solid #735f2f;border-radius:6px;background:#2c2616;color:#ffe29a;font-size:var(--font-body);font-weight:700}@media(max-width:620px){.v39-test-tools-panel button,.v39-test-tools-panel select,.v39-test-tools-panel input{padding:4px 7px}.v39-test-section-body{padding:6px}.v39-test-ai-log article{grid-template-columns:34px minmax(80px,auto) minmax(100px,1fr)}}`;
+  style.textContent+=`.v39-weather-samples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.v39-weather-samples button{min-width:0;text-align:left;line-height:1.4}.v39-weather-samples button[aria-pressed="true"]{border-color:#f0ce77;background:#33301d}.v39-weather-samples strong{color:#b8edf4}[data-weather-test-info]{display:grid;gap:6px}[data-weather-conditions]{font-size:var(--font-compact)!important}
+  .v39-test-suite{border:1px solid #47616a;border-radius:7px;margin-bottom:6px;background:#102127}.v39-test-suite>summary{padding:10px;cursor:pointer;font-weight:700;color:#d8f2f5}.v39-test-suite[open]>summary{border-bottom:1px solid #47616a}.v39-test-scenario{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;padding:5px 0}.v39-test-scenario button{text-align:left;width:100%}.v39-test-scenario small{font-size:var(--font-secondary);color:#adc3c8;overflow-wrap:anywhere}`;
+  document.head.appendChild(style);
+}
+
+function install() {
+  const host = document.getElementById("footTest");
+  if (!(host instanceof HTMLElement)) return window.setTimeout(install, 30);
+  installStyles();
+  const panel = document.createElement("section");
+  panel.id = "v39-test-tools-panel";
+  panel.className = "v39-test-tools-panel";
+  panel.hidden = false;
+  panel.setAttribute("aria-hidden", "false");
+  host.appendChild(panel);
+  panel.addEventListener("click", event => {
+    const npcTab = event.target instanceof Element ? event.target.closest('[data-npc-diagnostic-tab]') : null;
+    if(npcTab){selectNpcDiagnostic(npcTab.dataset.npcDiagnosticTab);return;}
+    const tab = event.target instanceof Element ? event.target.closest('[data-test-tab]') : null;
+    if(tab){selectToolTab(tab.dataset.testTab,true);return;}
+    const button = event.target instanceof Element ? event.target.closest("[data-test-action]") : null;
+    if (button) handleAction(button.dataset.testAction);
+  });
+  panel.addEventListener('keydown',event=>{
+    const npcTab=event.target.closest?.('[data-npc-diagnostic-tab]');
+    if(npcTab){
+      const tabs=[...panel.querySelectorAll('[data-npc-diagnostic-tab]')],index=tabs.indexOf(npcTab);
+      const offset=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
+      const next=offset?(index+offset+tabs.length)%tabs.length:event.key==='Home'?0:event.key==='End'?tabs.length-1:-1;
+      if(next>=0){event.preventDefault();selectNpcDiagnostic(tabs[next].dataset.npcDiagnosticTab);}return;
+    }
+    const tab=event.target.closest?.('[data-test-tab]');if(!tab)return;
+    const index=TEST_TOOL_TABS.findIndex(row=>row.id===tab.dataset.testTab);
+    const offset=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0;
+    const next=offset?(index+offset+TEST_TOOL_TABS.length)%TEST_TOOL_TABS.length:event.key==='Home'?0:event.key==='End'?TEST_TOOL_TABS.length-1:-1;
+    if(next<0)return;event.preventDefault();selectToolTab(TEST_TOOL_TABS[next].id,true);
+  });
+  panel.addEventListener("toggle", event => {
+    if(event.target instanceof HTMLDetailsElement&&event.target.hasAttribute('data-test-suite')){
+      const key=event.target.dataset.testSuite;
+      if(event.target.open)openScenarioSuites.add(key);else openScenarioSuites.delete(key);
+      return;
+    }
+    const section = event.target instanceof HTMLDetailsElement
+      ? event.target.matches("[data-test-section]") ? event.target : null
+      : null;
+    if (!(section instanceof HTMLDetailsElement)) return;
+    const key = text(section.dataset.testSection);
+    if (!key) return;
+    if (section.open) collapsedSectionKeys.delete(key);
+    else collapsedSectionKeys.add(key);
+  }, true);
+  panel.addEventListener("change", event => {
+    if (event.target.id === "v39-test-turn-count") {
+      bulkTurnCount = clamp(Math.floor(number(event.target.value, 10)), 1, 100);
+      event.target.value = String(bulkTurnCount);
+      return;
+    }
+    if (!(event.target instanceof HTMLSelectElement)) return;
+    if(event.target.id==='v39-test-atmosphere-kind'){selectedTerrainAtmosphereKind=event.target.value;render();return;}
+    if (event.target.id === "v39-test-enemy-id") selectedEnemyId = text(event.target.value);
+    else if (event.target.id === "v39-test-skill-name") selectedTestSkillName = text(event.target.value);
+    else if (event.target.id === "v39-test-atmosphere-sample") selectedAtmosphereSample = Number(event.target.value)||0;
+    else if (event.target.id === "v39-test-disaster-id"||event.target.id === "v39-test-disaster-fixture") selectedDisasterId = text(event.target.value);
+    else if (event.target.id === "v39-test-weather-type") selectedWeatherType = text(event.target.value);
+    else if (event.target.id === "v39-test-terrain-sample") selectedTerrainSample = number(event.target.value);
+    else return;
+    render();
+  });
+  panel.addEventListener('input',event=>{
+    if(!['v39-test-atmosphere-opacity','v39-test-atmosphere-opacity-number'].includes(event.target.id)||event.target.value==='')return;
+    const value=clamp(Math.round(number(event.target.value)),0,100);
+    for(const id of ['v39-test-atmosphere-opacity','v39-test-atmosphere-opacity-number']){const control=document.getElementById(id);if(control&&control!==event.target)control.value=String(value);}
+    void window.setV39AtmosphereOpacity?.(selectedTerrainAtmosphereKind,value);
+  });
+  window.addEventListener("v39:display-settings-changed", event => {
+    if(event.detail?.changedKeys?.every(key=>key==='atmosphereOpacityByKind'))return;
+    render();
+  });
+  window.addEventListener("v39:footer-tab-changed", event => {
+    if (event?.detail?.tab === "test") render();
+  });
+  window.addEventListener("v39:game-state-changed", render);
+  window.addEventListener('v39:disaster-test-ready',event=>{
+    const scene=window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
+    if(scene)scene.v39SelectedTile={...event.detail};
+    selectedTile={...event.detail};selectedWeatherType=window.inspectV39WeatherAt?.(selectedTile.x,selectedTile.y)?.weather||'晴れ';
+    selectedToolTab='environment';collapsedSectionKeys.delete('field');render();
+  });
+  window.addEventListener('v39:terrain-test-ready',()=>{
+    selectedTerrainSample=0;selectedToolTab='environment';collapsedSectionKeys.delete('field');render();
+  });
+  for (const name of ["v39:field-generated","v39:cave-world-ready","v39:initial-placement-complete"]) {
+    window.addEventListener(name,()=>placeTestCharacters());
+  }
+  window.addEventListener("v39:tile-selected", event => {
+    const point = event?.detail;
+    if (Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y))) {
+      selectedTile = { x:Math.floor(number(point.x)), y:Math.floor(number(point.y)) };
+    }
+    const key = selectedTileKey(point);
+    const state = window.getV39GameState?.();
+    const enemy = (state?.enemies || []).find(row => selectedTileKey(row) === key && livingUnit(row));
+    const villageGuard = (state?.neutralVillages || []).flatMap(village => village?.defenseUnits || [])
+      .find(row => selectedTileKey(row) === key && livingUnit(row));
+    const target = enemy || villageGuard;
+    if (target) selectedEnemyId = text(target.id);
+    render();
+  });
+  window.openV39TestTools = openPanel;
+  window.closeV39TestTools = closePanel;
+  window.advanceV39TestTurns = advanceTurn;
+  placeTestCharacters();
+  render();
+}
+
+install();

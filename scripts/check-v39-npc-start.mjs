@@ -67,25 +67,26 @@ try{for(const width of [390,1100]){
  await page.locator('[data-test-tab=diagnostics]').click();
  const diagnostic=page.locator('[data-test-section=npc-ai]');
  if(!await diagnostic.evaluate(el=>el.open))await diagnostic.locator(':scope > summary').click();
- assert.equal(await diagnostic.locator('[data-npc-diagnostic-tab]').count(),2);
+ assert.equal(await diagnostic.locator('[data-npc-diagnostic-select] option').count(),2);
+ await diagnostic.locator('[data-npc-diagnostic-view=actions]').click();
  assert.equal(await diagnostic.locator('[data-npc-diagnostic]').count(),1);
  for(const npc of npcs){
-   await diagnostic.locator(`[data-npc-diagnostic-tab="${npc.id}"]`).click();
+   await diagnostic.locator('[data-npc-diagnostic-select]').selectOption(npc.id);
    assert.equal(await diagnostic.locator('[data-npc-diagnostic]').getAttribute('data-npc-diagnostic'),npc.id);
    for(const unit of npc.units)assert.equal(await diagnostic.locator(`[data-npc-unit="${unit.id}"]`).count(),1);
    assert.match(await diagnostic.locator('[data-npc-current-objective]').innerText(),/現在の目標/);
    assert(!/前回処理/.test(await diagnostic.innerText()));
  }
- await diagnostic.locator('[data-npc-diagnostic-tab][aria-selected=true]').press('Home');
- assert.equal(await diagnostic.locator('[data-npc-diagnostic-tab][aria-selected=true]').getAttribute('data-npc-diagnostic-tab'),npcs[0].id);
- await diagnostic.locator('[data-npc-diagnostic-tab][aria-selected=true]').press('ArrowRight');
- assert.equal(await diagnostic.locator('[data-npc-diagnostic-tab][aria-selected=true]').getAttribute('data-npc-diagnostic-tab'),npcs[1].id);
+ await diagnostic.locator('[data-npc-diagnostic-view][aria-selected=true]').press('Home');
+ assert.equal(await diagnostic.locator('[data-npc-diagnostic-content]').getAttribute('data-npc-diagnostic-content'),'resources');
+ await diagnostic.locator('[data-npc-diagnostic-view][aria-selected=true]').press('End');
+ assert.equal(await diagnostic.locator('[data-npc-diagnostic-content]').getAttribute('data-npc-diagnostic-content'),'actions');
  await page.evaluate(selectedId=>{const s=window.getV39GameState();window.setV39GameState({players:s.players.map(p=>p.isPlayer!==false?p:{...p,factionState:{...p.factionState,aiState:{...p.factionState.aiState,objective:p.id===selectedId?{type:'resource-search',resource:'死体',targetName:'死体の供給元を探索'}:{type:'victory-landmark',hold:true,targetName:'防衛する覇権地',targetTileKey:'10,10'}}}})});},npcs[1].id);
  assert.equal(await diagnostic.locator('[data-npc-diagnostic]').getAttribute('data-npc-diagnostic'),npcs[1].id,'selection survives state refresh');
  assert.match(await diagnostic.locator('[data-npc-current-objective]').innerText(),/死体/);
- await diagnostic.locator(`[data-npc-diagnostic-tab="${npcs[0].id}"]`).click();
+ await diagnostic.locator('[data-npc-diagnostic-select]').selectOption(npcs[0].id);
  assert.match(await diagnostic.locator('[data-npc-current-objective]').innerText(),/防衛する覇権地/);
- await diagnostic.locator(`[data-npc-diagnostic-tab="${npcs[1].id}"]`).click();
+ await diagnostic.locator('[data-npc-diagnostic-select]').selectOption(npcs[1].id);
  assert.match(await diagnostic.locator('[data-npc-current-objective]').innerText(),/死体/);
  await page.screenshot({path:`output/web-game/npc-start/diagnostics-${width}.png`});
  await page.evaluate(id=>{const s=window.getV39GameState();window.setV39GameState({players:s.players.filter(p=>p.id!==id)});},npcs[1].id);

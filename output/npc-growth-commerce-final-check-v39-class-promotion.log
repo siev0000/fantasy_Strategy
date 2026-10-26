@@ -1,0 +1,8 @@
+{
+  promotion: true,
+  continuedGrowth: true,
+  nonhuman: true,
+  squadSkills: true
+}
+390: native promotion, level conservation and real save/load passed
+1100: native promotion, level conservation and real save/load passed

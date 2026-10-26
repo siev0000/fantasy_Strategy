@@ -6,7 +6,7 @@ import { parseV39TurnCount } from "./v39-turn-timing.js";
 import { hasV39SkillEffect } from "./v39-combat-ray.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
 import {ensureV39CaveAreas} from "./v39-cave-areas.js";
-import {advanceV39Purification,changeV39Purification} from "./v39-purification-rules.js";
+import {advanceV39Purification} from "./v39-purification-rules.js";
 
 export function placeV39DeathFog(mapData,sourceKey,turn) {
   const [x,y]=sourceKey.split(',').map(Number);
@@ -20,7 +20,7 @@ export function placeV39DeathFog(mapData,sourceKey,turn) {
     if(mapData.fogMap[ty]?.[tx]?.kind==='death')continue;
     mapData.fogMap[ty] ||= [];
     mapData.fogMap[ty][tx]={kind:'death',source:'unholy',sourceKey,areaId,createdAtTurn:turn,expiresAtTurn:turn+V39_FOG_BALANCE.deathFogDurationTurns};
-    changeV39Purification(mapData,key,key===sourceKey?-2:-1);placed++;
+    placed++;
   }
   return placed;
 }

@@ -15,6 +15,7 @@ function alignLoadingToHeader() {
 }
 
 export function showV39TurnLoading(message) {
+  if(window.__v39AiSimulationRunning){if(overlay)overlay.hidden=true;return;}
   if (!overlay) {
     const style = document.createElement("style");
     style.textContent = `#v39-turn-loading{position:fixed;inset:0;z-index:1000100;cursor:progress;box-sizing:border-box;background:#0001}
@@ -38,7 +39,7 @@ export function showV39TurnLoading(message) {
 }
 
 // 重い同期処理の前に、ロード表示をブラウザーへ描画させる。
-export const paintV39TurnLoading = () => new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+export const paintV39TurnLoading = () => window.__v39AiSimulationRunning?Promise.resolve():new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
 
 export function updateV39TurnLoading(message) {
   if (overlay && !overlay.hidden) showV39TurnLoading(message);

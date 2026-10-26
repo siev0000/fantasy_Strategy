@@ -74,6 +74,13 @@ function effectPlayer() {
   player?.destroy?.();
   playerScene = scene;
   player = new PhaserEffectPlayer(scene, { totalDurationMs:EFFECT_TOTAL_DURATION_MS, sequenceGapMs:10, depth:1000000 });
+  const ownedPlayer=player;
+  const release=()=>{
+    scene.events.off('sleep',release);scene.events.off('shutdown',release);
+    ownedPlayer.destroy();
+    if(player===ownedPlayer){player=null;playerScene=null;}
+  };
+  scene.events.once('sleep',release);scene.events.once('shutdown',release);
   return player;
 }
 

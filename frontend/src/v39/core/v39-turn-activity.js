@@ -26,7 +26,8 @@ window.addEventListener("v39:unit-moved", event => markUnitActivity(event?.detai
 window.addEventListener("v39:enemy-moved", event => markUnitActivity(event?.detail?.enemyId, "lastMovedTurn", "turn-activity-enemy-moved"));
 window.addEventListener("v39:combat-log", event => {
   const detail = event?.detail || {};
-  if (!text(detail.skillName)) return;
+  // The shared log also carries non-combat commands such as waiting.
+  if (detail.combatActivity === false || !text(detail.skillName)) return;
   markUnitActivity([detail.attackerId, ...(detail.entries || []).map(entry => entry?.targetId)], "lastCombatTurn", "turn-activity-combat");
 });
 

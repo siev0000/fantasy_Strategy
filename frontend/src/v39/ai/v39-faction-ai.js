@@ -1,10 +1,17 @@
 import npcBalance from '../../../../config/v39-npc-faction-ai.json';
+import {advanceV39NpcCommerce} from '../../lib/v39-npc-commerce.js';
+import {advanceV39NpcGrowth} from '../../lib/v39-npc-growth.js';
+import {focusV39NpcFoodSettlement} from '../../lib/v39-npc-food-priority.js';
+import {advanceV39NpcSubjectConversion} from '../../lib/v39-subject-conversion.js';
 import {getV39VictoryLandmarkStatus} from '../../lib/v39-victory-rules.js';
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { getV39LandExpansionCandidates, startV39LandExpansion } from "../../lib/v39-land-expansion-rules.js";
 import { startV39Construction } from "../../lib/v39-economy-rules.js";
 import { createV39Units } from "../../lib/v39-unit-creation-rules.js";
 import {inspectV39NpcConstructionPlan,inspectV39NpcReinforcementPlan,inspectV39NpcDevelopmentPlan} from '../../lib/v39-npc-development-plan.js';
+import {applyV39NpcCitySpecializations} from '../../lib/v39-npc-city-specialization.js';
+import {startV39NpcResourceExpansion} from '../../lib/v39-npc-resource-expansion.js';
+import {assignV39NpcResourceTeams,getV39NpcResourceUnitIds,advanceV39NpcResourceTeams} from '../../lib/v39-npc-resource-teams.js';
 import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "../../lib/research-tree-config.js";
 import { isResearchCompleted, inspectResearchUnlock, normalizeResearchState, selectResearch } from "../../lib/research-progress.js";
 import { getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
@@ -98,9 +105,12 @@ function nextFormationForDirection(group, from, to, mapData) {
 // Move toward an already known objective; surveying is not a movement prerequisite.
 function moveAiExplorer(state, player, mapData, objective = decideAiObjective(state, player, mapData)) {
   if (!mapData?.grid || !number(mapData?.w) || !number(mapData?.h)) return null;
-  const units = (player?.factionState?.units || []).filter(unit => alive(unit) && !unit?.surveyTask&&!unit.pendingWorldExit&&(unit.worldId||'surface')===(state.activeWorldId||'surface'));
+  const busy=new Set(player.factionState.aiState?.growthPlan?.busyIds||[]);
+  const units = (player?.factionState?.units || []).filter(unit => alive(unit) && !unit.tradeAssignment&&!unit.transportAssignment&&!busy.has(unit.id)&&!unit?.surveyTask&&!unit.pendingWorldExit&&(unit.worldId||'surface')===(state.activeWorldId||'surface'));
+  const workers=getV39NpcResourceUnitIds(player);
   const occupied = occupiedTileKeys(state);
   for (const unit of units) {
+    if(!objective.actorId&&workers.has(unit.id))continue;
     if (objective.actorId && unit.id !== objective.actorId) continue;
     if (['resource-demand','resource-receive'].includes(objective.type) && getHexDistance(unit, objective) <= 1) continue;
     if (objective.type === 'resource-return' && isV39NpcResourceReturnComplete(player, objective)) continue;
@@ -126,7 +136,7 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
         cost = Math.max(cost, stepCost);
       }
       if (!valid || cost > group.moveAp) continue;
-      const movement = applyV39SquadMovement(player.factionState, group, { ...target, positions }, cost);
+      const movement = applyV39SquadMovement(player.factionState, group, { ...target, positions }, cost,state);
       if (!movement.ok) continue;
       const players = state.players.map(row => row.id === player.id
         ? { ...row, factionState:movement.faction }
@@ -158,8 +168,10 @@ function findNpcScoutStep(state, player, mapData) {
   const settings = npcBalance.scouting || npcBalance.resourceScouting;
   const limit = Math.max(1, Math.floor(number(settings?.searchNodeLimit, 512)));
   const checkedGroups = new Set();
+  const workers=getV39NpcResourceUnitIds(player);
   for (const unit of player.factionState.units || []) {
-    if (!alive(unit) || unit.surveyTask || unit.pendingWorldExit || (unit.worldId || 'surface') !== 'surface') continue;
+    if(workers.has(unit.id))continue;
+    if (!alive(unit) || unit.tradeAssignment || unit.transportAssignment || player.factionState.aiState?.growthPlan?.busyIds?.includes(unit.id) || unit.surveyTask || unit.pendingWorldExit || (unit.worldId || 'surface') !== 'surface') continue;
     const group = resolveV39SquadMovementGroup(player.factionState, unit.id);
     if (!group.ok || group.moveAp <= 0) continue;
     const groupKey = group.participants.map(member => member.id).sort().join('|');
@@ -325,15 +337,21 @@ function storeAiResult(state, playerId, turn, commands, objective, mapData) {
     if (player.id !== playerId) return player;
     const current = player?.factionState?.aiState || {};
     const history = [...(Array.isArray(current.history) ? current.history : []), { turn, commands:[...commands] }].slice(-100);
+    const developmentPlan=inspectV39NpcDevelopmentPlan(state,player,mapData);
+    developmentPlan.resourceGoals.push(...(current.growthPlan?.equipment?.shortages||[]));
     return {
       ...player,
-      factionState:{ ...player.factionState, aiState:{ ...current, objective:{ ...objective }, developmentPlan:inspectV39NpcDevelopmentPlan(state,player,mapData), lastProcessedTurn:turn, lastCommands:[...commands], history } }
+      factionState:{ ...player.factionState, aiState:{ ...current, objective:{ ...objective }, developmentPlan, lastProcessedTurn:turn, lastCommands:[...commands], history } }
     };
   });
   return { ...state, players };
 }
 
-function startAiLandExpansion(state, player, mapData) {
+function startAiLandExpansion(state, player, mapData, goals=[],foodBalances=[]) {
+  if((goals.some(row=>row.missing>0)||foodBalances.some(row=>row.active))&&npcBalance.resourceExpansion.enabled){
+    const result=startV39NpcResourceExpansion(state,player.id,mapData,goals,{foodBalances});
+    return result.commands.length?{state:result.state,command:result.commands.join(' / ')}:null;
+  }
   for (const settlement of getFactionSettlements(player.factionState)) {
     const tile = getV39LandExpansionCandidates(state, player.id, settlement.settlementId, mapData)[0];
     if (!tile) continue;
@@ -370,6 +388,27 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
     state = intelligence.state;
     player = playerFrom(state, playerId);
     for (const discovery of intelligence.discoveries) commands.push(`勢力発見:${discovery.playerName}`);
+    const subjectConversion=advanceV39NpcSubjectConversion(state,playerId);
+    if(subjectConversion){state=subjectConversion.state;player=playerFrom(state,playerId);commands.push(subjectConversion.message);}
+    state=focusV39NpcFoodSettlement(state,playerId,mapData);player=playerFrom(state,playerId);
+    const development=inspectV39NpcDevelopmentPlan(state,player,mapData);
+    const growth=advanceV39NpcGrowth(state,playerId,mapData,turn,development);
+    state=growth.state;player=playerFrom(state,playerId);commands.push(...growth.commands);
+    development.resourceGoals.push(...growth.resourceGoals);
+    const equipmentBudget=player.factionState.aiState?.growthPlan?.equipment;
+    if(equipmentBudget){
+      const base=getFactionSettlements(player.factionState).find(base=>(base.settlementId||base.id)===player.factionState.selectedSettlementId);
+      const budget=development.supplyBudgetBySettlement[base?.settlementId||base?.id];
+      if(budget)for(const [name,amount] of Object.entries(equipmentBudget.cost))budget[name]=number(budget[name])+number(amount);
+    }
+    const commerce=advanceV39NpcCommerce(state,playerId,mapData,turn,development);
+    state=commerce.state;player=playerFrom(state,playerId);commands.push(...commerce.commands);
+    for(const food of development.foodBalances.filter(row=>row.active))commands.push(`食料優先:${food.name} / ${food.status==='deficit'?'通常食料の収支赤字':'備蓄不足'}${food.queuedUnits?' / 訓練中の兵の維持費を含む':''}`);
+    const specialization=applyV39NpcCitySpecializations(state,playerId,mapData,development.citySpecializations);
+    state=specialization.state;player=playerFrom(state,playerId);commands.push(...specialization.commands);
+    state=assignV39NpcResourceTeams(state,playerId,development.resourceGoals,mapData,{supplyBudgetBySettlement:development.supplyBudgetBySettlement}).state;
+    const work=advanceV39NpcResourceTeams(state,playerId,mapData,turn);
+    state=work.state;player=playerFrom(state,playerId);commands.push(...work.commands);
     let objective = decideAiObjective(state, player, mapData, turn);
     if (objective.type === "victory-landmark") commands.push(`目的:勝利対象 ${objective.targetName}`);
     if (objective.type === "foreign-faction") commands.push(`目的:他勢力 ${objective.targetName}`);
@@ -380,7 +419,7 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
     for (const action of [
       () => immediateCombat||resourceAction?null:['explore','resource-search'].includes(objective.type)
         ?scoutNpcMap(state, player, mapData, turn, objective):moveAiExplorer(state, player, mapData, objective),
-      () => startAiLandExpansion(state, player, mapData),
+      () => startAiLandExpansion(state, player, mapData,development.resourceGoals,development.foodBalances),
       () => startAiUnitCreation(state, player),
       () => startAiConstruction(state, player, mapData)
     ]) {

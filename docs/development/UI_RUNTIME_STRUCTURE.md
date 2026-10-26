@@ -1,5 +1,9 @@
 # UI実行経路と負荷の整理
 
+2026-10-26 UI129 霧画像の範囲: `v39-map-visibility.js` の同じ視界走査にapplyFog切替を追加し、索敵/探索には従来のペナルティ適用後、`v39-atmosphere-layer.js` の環境画像だけには適用前の範囲を渡す。画像だけのマスクはScene/操作勢力/ユニット/施設/地形更新でキャッシュし、環境画像の候補がある場合だけ計算する。未探索の暗幕より上・境界線より下のdepth14.2へ置くが、未発見の敵や地形を追加描画しない。画像独自の署名は視界レイヤー全体の早期return前に照合し、壁変更・画像解除・読み込み完了も反映する。確認は `check-v39-cave-atmosphere-vision.mjs`。
+
+2026-10-26 UI128 ワールド描画キャッシュ: `v39-field-runtime-final.js` が一つのPhaser.Game内でワールド別Sceneを管理する。洞窟切替はworldId/cameraを渡し、地形データ/表示設定の署名が同じなら焼込みを再利用する。非表示Sceneはsleep、操作勢力の生存ユニットがいない非表示Sceneはstop/remove。ゲームデータにSceneを保存しない。`v39-cave-world.js` は切替を描画バッチ化し、新規マップと旧ワールド状態の混在を避ける。地形/霧の専用CanvasTextureキーはScene別、原画像は `v39-shared-image-texture.js` でゲーム単位に一度だけ読み込む。入力Abortで目盛り/選択マスク/イベントも解放し、共通ズーム処理済みイベントをruntime側で再適用しない。視界の描画署名はSceneも照合する。確認は `check-v39-world-layer-cache.mjs` と既存洞窟ワールド/視界検査。
+
 2026-10-23 文書閲覧: `v39-design-docs-viewer.js` は既存の再帰Markdown読込を維持し、パスを `docs/` 基準に正規化。初期選択はREADME、初期一覧は現行資料とし、分類選択で開発/検証/検討/参考/履歴を分ける。`MEMO.md` は履歴から引き続き閲覧できる。新しいタイマー・購読・ゲーム状態の保存は追加しない。
 
 2026-10-21 NPC勢力: 開始設定の既存gameSettingsへnpcFactionCountを追加。状態ブリッジが通常統治者生成を呼び、既存初期配置の完了経路でNPCだけを自動配置する。人の担当/手番とNPCのAIフェーズを分け、設定再表示の操作勢力数も人だけを数える。施設前提はlib/v39-facility-development-rules.jsを村/勢力AIで共用。行動用の新規タイマーや描画購読は追加しない。

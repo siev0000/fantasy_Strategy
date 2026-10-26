@@ -1,0 +1,370 @@
+ M config/v39-expedition-defaults.json
+ M config/v39-npc-faction-ai.json
+ D config/v39-victory-guardians.json
+ M config/v39-village-development.json
+ M "data/source/export/json/\343\202\244\343\203\231\343\203\263\343\203\210\344\274\232\350\251\261.json"
+ M "data/source/export/json/\345\213\235\345\210\251\345\257\276\350\261\241\345\234\237\345\234\260.json"
+ M "data/source/export/json/\345\213\242\345\212\233.json"
+ M "data/source/export/json/\346\235\221\344\276\235\351\240\274\343\201\262\343\201\252\345\236\213.json"
+ M "data/source/export/json/\347\250\256\346\227\217.json"
+ M docs/ALL_TASKS_UNIFIED.md
+ M docs/INDEX.md
+ M docs/SPREADSHEET_DATA_WORKFLOW.md
+ M "docs/rules/diplomacy/NPC\345\213\242\345\212\233\343\203\253\343\203\274\343\203\253.md"
+ M "docs/rules/diplomacy/\344\270\200\350\210\254\346\235\221\343\202\244\343\203\231\343\203\263\343\203\210\345\205\261\351\200\232\343\203\253\343\203\274\343\203\253.md"
+ M "docs/rules/economy/\344\272\272\345\217\243\346\210\220\351\225\267\343\203\273\351\243\237\346\226\231\344\270\215\350\266\263\343\203\253\343\203\274\343\203\253.md"
+ M "docs/rules/economy/\351\240\230\345\234\237\343\203\273\350\263\207\346\272\220\347\224\237\347\224\243\343\203\253\343\203\274\343\203\253.md"
+ M "docs/rules/world/\351\234\247\343\203\273\344\272\244\346\265\201\343\202\257\343\202\250\343\202\271\343\203\210\343\203\273\345\256\210\350\255\267\350\200\205\343\203\253\343\203\274\343\203\253.md"
+ M "docs/tests/\345\260\202\347\224\250\343\203\206\343\202\271\343\203\210\346\247\213\346\210\220.md"
+ M "docs/\347\217\276\347\212\266\343\202\262\343\203\274\343\203\240\344\273\225\346\247\230\343\203\241\343\203\242.md"
+ M frontend/src/lib/game-data-registry.js
+ M frontend/src/lib/player-state.js
+ M frontend/src/lib/v39-city-aura.js
+ M frontend/src/lib/v39-city-specialization-rules.js
+ M frontend/src/lib/v39-economy-rules.js
+ M frontend/src/lib/v39-gameplay-balance.js
+ M frontend/src/lib/v39-gather-rules.js
+ M frontend/src/lib/v39-guardian-quests.js
+ M frontend/src/lib/v39-land-expansion-rules.js
+ M frontend/src/lib/v39-logistics-routes.js
+ M frontend/src/lib/v39-logistics-state.js
+ M frontend/src/lib/v39-neutral-village-rules.js
+ M frontend/src/lib/v39-npc-development-plan.js
+ M frontend/src/lib/v39-npc-resource-policy.js
+ M frontend/src/lib/v39-population-economy.js
+ M frontend/src/lib/v39-quest-rewards.js
+ M frontend/src/lib/v39-race-definitions.js
+ M frontend/src/lib/v39-recruit-training.js
+ M frontend/src/lib/v39-soul-conversion.js
+ M frontend/src/lib/v39-squad-edit-rules.js
+ M frontend/src/lib/v39-transport-rules.js
+ M frontend/src/lib/v39-victory-guardian-candidates.js
+ M frontend/src/lib/v39-village-plans.js
+ M frontend/src/v39/ai/v39-faction-ai.js
+ M frontend/src/v39/bootstrap/v39-bootstrap-final.js
+ M frontend/src/v39/combat/v39-combat-feedback.js
+ M frontend/src/v39/combat/v39-death-lifecycle.js
+ M frontend/src/v39/combat/v39-deferred-effect-presentation.js
+ M frontend/src/v39/core/v39-turn-system.js
+ M frontend/src/v39/dev/v39-test-tools.js
+ M frontend/src/v39/dev/v39-village-plan-test.js
+ M frontend/src/v39/map/v39-initial-placement.js
+ M frontend/src/v39/ui/v39-operation-layout.css
+ M frontend/src/v39/ui/v39-turn-loading.js
+ M frontend/src/v39/unit/v39-logistics.js
+ M frontend/src/v39/world/v39-economy-ui.js
+ M frontend/src/v39/world/v39-settlement-ui.js
+ M frontend/src/v39/world/v39-victory-guard-spawn.js
+ M frontend/src/v39/world/v39-village-hub.js
+ M frontend/src/v39/world/v39-world-population.js
+ M progress.md
+ M scripts/check-v39-auto-transport.mjs
+ M scripts/check-v39-expedition-operations.mjs
+ M scripts/check-v39-guardian-candidates.mjs
+ M scripts/check-v39-guardian-climate-production.mjs
+ M scripts/check-v39-guardian-sheet.mjs
+ M scripts/check-v39-hegemony-campaign.mjs
+ M scripts/check-v39-npc-development-plan.mjs
+ M scripts/check-v39-npc-resource-policy.mjs
+ M scripts/check-v39-npc-start.mjs
+ M scripts/check-v39-race-server.mjs
+ M scripts/check-v39-race-unification.mjs
+ M scripts/check-v39-squad-edit-rules.mjs
+ M scripts/event_sheet_converter.py
+ M scripts/game_data_converter.py
+ M scripts/test_event_sheet_converter.py
+ M scripts/test_unified_race_converter.py
+?? config/v39-initial-subjects.json
+?? frontend/src/lib/v39-cargo-deposit.js
+?? frontend/src/lib/v39-initial-subjects.js
+?? frontend/src/lib/v39-npc-city-specialization.js
+?? frontend/src/lib/v39-npc-food-priority.js
+?? frontend/src/lib/v39-npc-objective-label.js
+?? frontend/src/lib/v39-npc-resource-expansion.js
+?? frontend/src/lib/v39-npc-resource-teams.js
+?? frontend/src/lib/v39-resource-team-movement.js
+?? frontend/src/lib/v39-subject-conversion.js
+?? frontend/src/lib/v39-village-resource-teams.js
+?? frontend/src/lib/v39-village-support-goals.js
+?? frontend/src/v39/dev/v39-ai-simulation-records.js
+?? frontend/src/v39/dev/v39-ai-simulation.css
+?? frontend/src/v39/dev/v39-ai-simulation.js
+?? frontend/src/v39/dev/v39-guardian-trial-test.js
+?? frontend/src/v39/dev/v39-npc-diagnostics.css
+?? frontend/src/v39/dev/v39-npc-diagnostics.js
+?? frontend/src/v39/world/v39-subject-population.css
+?? output/ai-log-download-build.log
+?? output/ai-log-download-client.log
+?? output/ai-log-download-diff.log
+?? output/ai-log-download-docs.log
+?? output/ai-log-download-test.log
+?? output/ai-simulation-build.log
+?? output/ai-simulation-client.log
+?? output/ai-simulation-development-regression.log
+?? output/ai-simulation-diff.log
+?? output/ai-simulation-docs.log
+?? output/ai-simulation-download-status.txt
+?? output/ai-simulation-final-docs.log
+?? output/ai-simulation-final-smoke.log
+?? output/ai-simulation-initial-status.txt
+?? output/ai-simulation-production-test.log
+?? output/ai-simulation-records-test.log
+?? output/ai-simulation-test.log
+?? output/ai-simulation-village-regression.log
+?? output/events-guardians-before.xlsx
+?? output/events-guardians-build.log
+?? output/events-guardians-campaign.log
+?? output/events-guardians-candidates.log
+?? output/events-guardians-data-report.json
+?? output/events-guardians-diff.log
+?? output/events-guardians-event-report.json
+?? output/events-guardians-expedition.log
+?? output/events-guardians-final.xlsx
+?? output/events-guardians-generated/
+?? output/events-guardians-initial-status.txt
+?? output/events-guardians-plan.log
+?? output/events-guardians-preview.xlsx
+?? output/events-guardians-python.log
+?? output/events-guardians-trials.log
+?? output/events-guardians-ui.log
+?? output/guardian-settings-preview.xlsx
+?? output/guardian-sheet-check-before.mjs
+?? output/guardian-trials-before.xlsx
+?? output/guardian-trials-build.log
+?? output/guardian-trials-campaign.log
+?? output/guardian-trials-diff-warnings.log
+?? output/guardian-trials-final.xlsx
+?? output/guardian-trials-first.png
+?? output/guardian-trials-generated/
+?? output/guardian-trials-initial-status.txt
+?? output/guardian-trials-preview.xlsx
+?? output/guardian-trials-python.log
+?? output/guardian-trials-render.log
+?? output/guardian-trials-report.json
+?? output/guardian-trials-security.log
+?? output/guardian-trials-ui.log
+?? output/initial-food-reserve-build.log
+?? output/initial-food-reserve-client.log
+?? output/initial-food-reserve-diff.log
+?? output/initial-food-reserve-final-diff.log
+?? output/initial-food-reserve-policy.log
+?? output/initial-food-reserve-production.log
+?? output/initial-food-reserve-progress-before.md
+?? output/initial-food-reserve-start.log
+?? output/initial-food-reserve-status.txt
+?? output/initial-food-reserve-subjects.log
+?? output/initial-food-reserve-supply.log
+?? output/initial-food-reserve-test.log
+?? output/initial-subjects-build.log
+?? output/initial-subjects-client.log
+?? output/initial-subjects-diff.log
+?? output/initial-subjects-final-build.log
+?? output/initial-subjects-final-diff.log
+?? output/initial-subjects-final-production.log
+?? output/initial-subjects-policy-regression.log
+?? output/initial-subjects-production.log
+?? output/initial-subjects-progress-before.md
+?? output/initial-subjects-smoke.json
+?? output/initial-subjects-start-regression.log
+?? output/initial-subjects-status.txt
+?? output/initial-subjects-supply-regression.log
+?? output/initial-subjects-teams-regression.log
+?? output/initial-subjects-test.log
+?? output/initial-subjects-village-regression.log
+?? output/inspect-npc-food.mjs
+?? output/inspect-npc-initial-stock-last.mjs
+?? output/inspect-npc-initial-stock.mjs
+?? output/npc-affinity-build.log
+?? output/npc-affinity-city-regression.log
+?? output/npc-affinity-client-ready.log
+?? output/npc-affinity-client.log
+?? output/npc-affinity-development.log
+?? output/npc-affinity-diff.log
+?? output/npc-affinity-final-diff.log
+?? output/npc-affinity-initial-status.txt
+?? output/npc-affinity-start-regression.log
+?? output/npc-affinity-test.log
+?? output/npc-city-village-initial-status.txt
+?? output/npc-construction-stall-build.log
+?? output/npc-construction-stall-client.log
+?? output/npc-construction-stall-diff.log
+?? output/npc-construction-stall-docs.log
+?? output/npc-construction-stall-focused.log
+?? output/npc-construction-stall-long.log
+?? output/npc-construction-stall-npc-development-plan.log
+?? output/npc-construction-stall-npc-food-priority.log
+?? output/npc-construction-stall-npc-internal-supply.log
+?? output/npc-construction-stall-resource-expansion.log
+?? output/npc-construction-stall-status.txt
+?? output/npc-diagnostic-header-build.log
+?? output/npc-diagnostic-header-client.log
+?? output/npc-diagnostic-header-diff.log
+?? output/npc-diagnostic-header-production.log
+?? output/npc-diagnostic-header-status.txt
+?? output/npc-diagnostic-header-test.log
+?? output/npc-diagnostic-layout-affinity.log
+?? output/npc-diagnostic-layout-before.js
+?? output/npc-diagnostic-layout-build.log
+?? output/npc-diagnostic-layout-client.log
+?? output/npc-diagnostic-layout-diff.log
+?? output/npc-diagnostic-layout-expansion.log
+?? output/npc-diagnostic-layout-final-diff.log
+?? output/npc-diagnostic-layout-plans.log
+?? output/npc-diagnostic-layout-production.log
+?? output/npc-diagnostic-layout-progress-before.md
+?? output/npc-diagnostic-layout-start.log
+?? output/npc-diagnostic-layout-status.txt
+?? output/npc-diagnostic-layout-supply.log
+?? output/npc-diagnostic-layout-teams.log
+?? output/npc-diagnostic-layout-test.log
+?? output/npc-diagnostic-padding-build.log
+?? output/npc-diagnostic-padding-client.log
+?? output/npc-diagnostic-padding-diff.log
+?? output/npc-diagnostic-padding-production.log
+?? output/npc-diagnostic-padding-status.txt
+?? output/npc-diagnostic-padding-test.log
+?? output/npc-food-inspection.json
+?? output/npc-food-priority-affinity.log
+?? output/npc-food-priority-build.log
+?? output/npc-food-priority-diff.log
+?? output/npc-food-priority-docs.log
+?? output/npc-food-priority-final-docs.log
+?? output/npc-food-priority-final-initial-food-reserve.log
+?? output/npc-food-priority-final-npc-affinity.log
+?? output/npc-food-priority-focused-production.log
+?? output/npc-food-priority-focused.log
+?? output/npc-food-priority-npc-internal-supply.log
+?? output/npc-food-priority-npc-resource-policy.log
+?? output/npc-food-priority-plans.log
+?? output/npc-food-priority-production-npc-development-plan.log
+?? output/npc-food-priority-production-npc-start.log
+?? output/npc-food-priority-production-village-runtime.log
+?? output/npc-food-priority-resource-expansion.log
+?? output/npc-food-priority-resource-teams.log
+?? output/npc-food-priority-start.log
+?? output/npc-food-priority-status.txt
+?? output/npc-food-priority-supply.log
+?? output/npc-food-priority-village-runtime.log
+?? output/npc-initial-stock-last.json
+?? output/npc-initial-stock-repro.json
+?? output/npc-initial-stock-status.txt
+?? output/npc-internal-supply-affinity.log
+?? output/npc-internal-supply-auto.log
+?? output/npc-internal-supply-build.log
+?? output/npc-internal-supply-client.log
+?? output/npc-internal-supply-diff.log
+?? output/npc-internal-supply-expansion.log
+?? output/npc-internal-supply-initial-status.txt
+?? output/npc-internal-supply-logistics.log
+?? output/npc-internal-supply-plan.log
+?? output/npc-internal-supply-policy.log
+?? output/npc-internal-supply-progress-before.md
+?? output/npc-internal-supply-support.log
+?? output/npc-internal-supply-teams.log
+?? output/npc-internal-supply-test.log
+?? output/npc-material-supply-status.txt
+?? output/npc-resource-team-logistics-before.js
+?? output/npc-resource-teams-affinity.log
+?? output/npc-resource-teams-build.log
+?? output/npc-resource-teams-client.log
+?? output/npc-resource-teams-completion.log
+?? output/npc-resource-teams-diff.log
+?? output/npc-resource-teams-gather.log
+?? output/npc-resource-teams-initial-status.txt
+?? output/npc-resource-teams-plan.log
+?? output/npc-resource-teams-policy.log
+?? output/npc-resource-teams-progress-before.md
+?? output/npc-resource-teams-squad.log
+?? output/npc-resource-teams-start.log
+?? output/npc-resource-teams-support.log
+?? output/npc-resource-teams-test.log
+?? output/npc-resource-teams-training.log
+?? output/npc-resource-teams-village-affinity.log
+?? output/npc-resource-teams-village.log
+?? output/npc-start-freeze-full-turn.log
+?? output/npc-start-freeze-initial-status.txt
+?? output/npc-start-freeze-multiple.log
+?? output/npc-start-freeze-repro.log
+?? output/npc-zero-stock-both.log
+?? output/npc-zero-stock-status.txt
+?? output/race-preferences-before.xlsx
+?? output/race-preferences-build.log
+?? output/race-preferences-diff.log
+?? output/race-preferences-final.xlsx
+?? output/race-preferences-initial-status.txt
+?? output/race-preferences-preview.xlsx
+?? output/race-preferences-python.log
+?? output/race-preferences-report.json
+?? output/race-preferences-server.log
+?? output/race-preferences-ui.log
+?? output/repro-npc-freeze.mjs
+?? output/repro-npc-zero-stock.mjs
+?? output/repro-village-freeze.mjs
+?? output/resource-expansion-affinity.log
+?? output/resource-expansion-base.log
+?? output/resource-expansion-build.log
+?? output/resource-expansion-client.log
+?? output/resource-expansion-completion.log
+?? output/resource-expansion-diff.log
+?? output/resource-expansion-initial-status.txt
+?? output/resource-expansion-npc-plan.log
+?? output/resource-expansion-progress-before.md
+?? output/resource-expansion-support.log
+?? output/resource-expansion-teams.log
+?? output/resource-expansion-test.log
+?? output/resource-expansion-village-plans.log
+?? output/sheet-merge-preview/event-support-goals.png
+?? output/sheet-merge-preview/event-support-names.png
+?? output/sheet-merge-preview/guardian-event-goals.png
+?? output/sheet-merge-preview/guardian-event-names.png
+?? output/sheet-merge-preview/guardian-settings-candidates.png
+?? output/sheet-merge-preview/guardian-settings-values.png
+?? output/sheet-merge-preview/race-preference-names.png
+?? output/sheet-merge-preview/race-preference-values.png
+?? output/sheet-merge-preview/render-event-support.mjs
+?? output/sheet-merge-preview/render-guardian-settings.mjs
+?? output/sheet-merge-preview/render-guardian.mjs
+?? output/sheet-merge-preview/render-race-preferences.mjs
+?? output/sheet-merge-preview/trim-event-support.py
+?? output/sheet-merge-preview/trim-guardian-settings.py
+?? output/sheet-merge-preview/trim-guardian.py
+?? output/sheet-merge-preview/trim-race-preferences.py
+?? output/subject-race-land-status.txt
+?? output/village-affinity-build.log
+?? output/village-affinity-client.log
+?? output/village-affinity-completion.log
+?? output/village-affinity-diff.log
+?? output/village-affinity-initial-status.txt
+?? output/village-affinity-npc.log
+?? output/village-affinity-plans.log
+?? output/village-affinity-progress-before.md
+?? output/village-affinity-support.log
+?? output/village-affinity-test.log
+?? output/village-freeze-both-after.log
+?? output/village-freeze-both.log
+?? output/village-freeze-city-regression.log
+?? output/village-freeze-diff.log
+?? output/village-freeze-final-build.log
+?? output/village-freeze-final-runtime.log
+?? output/village-freeze-fix-build.log
+?? output/village-freeze-playable-after.log
+?? output/village-freeze-production-repro.log
+?? output/village-freeze-progress-before.md
+?? output/village-freeze-runtime-check.log
+?? output/village-freeze-standard-client.log
+?? scripts/check-v39-ai-simulation-records.mjs
+?? scripts/check-v39-ai-simulation.mjs
+?? scripts/check-v39-event-support.mjs
+?? scripts/check-v39-guardian-trials.mjs
+?? scripts/check-v39-initial-food-reserve.mjs
+?? scripts/check-v39-initial-subjects-production.mjs
+?? scripts/check-v39-initial-subjects.mjs
+?? scripts/check-v39-npc-affinity.mjs
+?? scripts/check-v39-npc-diagnostic-layout.mjs
+?? scripts/check-v39-npc-food-priority.mjs
+?? scripts/check-v39-npc-internal-supply.mjs
+?? scripts/check-v39-resource-expansion.mjs
+?? scripts/check-v39-resource-teams.mjs
+?? scripts/check-v39-village-affinity.mjs
+?? scripts/check-v39-village-runtime.mjs
+?? scripts/test_guardian_data_converter.py

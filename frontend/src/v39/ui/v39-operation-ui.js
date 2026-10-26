@@ -219,6 +219,18 @@ import './v39-operation-layout.css';
                         <span class="technique-detail-description">APを消費せず、このターンの行動を終了します。次のターンに再び行動できます。</span>
                       </span>
                     </div>
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleRecoveryWait" data-v39-technique-name="__system_recovery_wait__" aria-expanded="false">
+                      <span class="technique-summary">
+                        <span class="technique-icon technique-icon-system-wait"><span class="technique-icon-glyph" aria-hidden="true">◷</span></span>
+                        <b class="technique-name">回復まで待機</b>
+                        <small class="technique-ap">AP保持</small>
+                        <span class="technique-power" id="mobileRecoveryWaitTarget"></span>
+                      </span>
+                      <span class="technique-detail">
+                        <span class="technique-detail-head"><b>説明</b><button type="button" id="mobileBattleRecoveryWaitUse" data-v39-system-use>開始</button></span>
+                        <span class="technique-detail-description">目標HPまで毎ターン自動で待機します。途中解除可。目標は管理のゲーム設定で変更できます。回復速度は通常のままです。</span>
+                      </span>
+                    </div>
                     <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleSurvey" data-v39-technique-name="__system_survey__" aria-expanded="false">
                       <span class="technique-summary">
                         <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">⌕</span></span>

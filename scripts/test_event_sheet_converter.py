@@ -90,6 +90,42 @@ class EventSheetTests(unittest.TestCase):
             with self.subTest(extra=extra):
                 self.assertTrue(self.compile(self.guardian(**extra))[1]["エラー"])
 
+    def test_guardian_three_trials(self):
+        resources = {"黒木", "特木", "青金鋼", "赤黒鋼", "宝石"}
+        bundle = "/".join(f"{name}_10" for name in sorted(resources))
+        for goal, consume, radius, kind in ((bundle, "1-1. " + bundle, "", "納品"),
+                                           ("試練召喚_守護者配下_Lv30_数1", "", 3, "試練討伐"),
+                                           ("村発展_施設3_数2", "", 16, "村発展")):
+            output, report = compile_rows([(18, self.guardian(目標=goal, 消費=consume, 対象範囲=radius))], resources, stock_resources=resources)
+            self.assertFalse(report["エラー"], report)
+            goals = output["イベント_守護者.json"][0]["目標"]
+            self.assertEqual(goals[0]["タイプ"], kind)
+            self.assertEqual(len(goals), 5 if kind == "納品" else 1)
+
+    def test_support_templates(self):
+        for kind, goal in (("警備", "警備_3"), ("建設支援", "建設_1"), ("複合支援", "警備_3/建設_1")):
+            output, report = self.compile(row(イベント種別="依頼ひな型", 計画対象=kind, 目標=goal, 対象範囲=1, 報酬="1-1. 友好度_10"))
+            self.assertFalse(report["エラー"], report)
+            self.assertEqual(len(output["村依頼ひな型.json"][0]["目標"]), 2 if kind == "複合支援" else 1)
+        output, report = self.compile(row(イベント種別="依頼ひな型", 計画対象="継続支援", 周期=5, 猶予=3, 目標ターン=3, 数量上限=20))
+        self.assertFalse(report["エラー"], report)
+        self.assertEqual(output["村依頼ひな型.json"][0]["周期"], 5)
+
+    def test_support_rejects_incomplete_or_unknown_terms(self):
+        for fields in ({"計画対象":"複合支援", "目標":"警備_3", "対象範囲":1},
+                       {"計画対象":"建設支援", "目標":"建設_2", "対象範囲":1},
+                       {"計画対象":"警備", "目標":"不明_3", "対象範囲":1},
+                       {"計画対象":"継続支援", "周期":0, "猶予":3, "目標ターン":3, "数量上限":20},
+                       {"計画対象":"継続支援", "周期":5, "猶予":2, "目標ターン":3, "数量上限":20}):
+            self.assertTrue(self.compile(row(イベント種別="依頼ひな型", **fields))[1]["エラー"])
+
+    def test_guardian_trial_validation(self):
+        for goal, consume in (("木材_5/木材_5", "1-1. 木材_5/木材_5"),
+                              ("木材_5/穀物_10", "1-1. 木材_5"),
+                              ("試練召喚_守護者配下_Lv0_数1", ""), ("試練召喚_守護者配下_Lv30_数6", ""),
+                              ("村発展_施設0_数2", ""), ("村発展_施設3_数0", "")):
+            self.assertTrue(self.compile(self.guardian(目標=goal, 消費=consume, 対象範囲=3))[1]["エラー"], goal)
+
     def test_number_matching_not_line_order(self):
         output, report = self.compile(row())
         self.assertFalse(report["エラー"])

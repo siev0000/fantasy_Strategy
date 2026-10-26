@@ -1,0 +1,14 @@
+
+> fantasy-strategy@0.1.0 docs:index
+> node scripts/check-docs.mjs --write-index
+
+Documentation OK: 101 files, index and local links verified; 85 migration targets present.
+Reference placeholder (not a game asset): references/assets/test.html -> icon1.png
+Reference placeholder (not a game asset): references/assets/test.html -> icon2.png
+
+> fantasy-strategy@0.1.0 check:docs
+> node scripts/check-docs.mjs
+
+Documentation OK: 101 files, index and local links verified; 85 migration targets present.
+Reference placeholder (not a game asset): references/assets/test.html -> icon1.png
+Reference placeholder (not a game asset): references/assets/test.html -> icon2.png

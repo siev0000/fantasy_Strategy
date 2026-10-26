@@ -1,4 +1,13 @@
-import config from '../../../config/v39-victory-guardians.json';
+import {getGameDataRows} from './game-data-registry.js';
+
+const definitions=getGameDataRows('勝利対象土地');
+const config={landmarks:Object.fromEntries(definitions.map(row=>[row.ID,row.守護者候補||[]])),
+  minionCandidates:Object.fromEntries(definitions.map(row=>[row.ID,row.配下候補||[]]))};
+export function getV39GuardianLandSettings(landmark){
+  const row=definitions.find(row=>row.ID===landmark?.landmarkId||row.名称===landmark?.name);
+  return row?{bossLevel:row.守護者Lv,minionCount:row.配下数,minionLevelOffset:row.配下Lv差,minionLevelVariance:row.配下Lv幅,
+    territoryRadius:row.守護範囲,trialIds:landmark.guardianTrialIds||row.試練ID||[]}:null;
+}
 
 export const V39_VICTORY_GUARDIAN_CANDIDATES=config.landmarks;
 export const V39_VICTORY_GUARDIAN_MINIONS=config.minionCandidates;
@@ -17,7 +26,7 @@ const identityNames=unit=>[unit.guardianSpeciesName,unit.strongFusionResultName,
   unit.race,unit.className,unit.name,unit.speciesName].map(text);
 
 export function chooseV39VictoryGuardian(landmark,state,classNames,seed=''){
-  const units=[...(state.enemies||[]),...(state.players||[]).flatMap(player=>player.factionState?.units||[])];
+  const units=[...(state.enemies||[]),...Object.values(state.explorationWorlds||{}).flatMap(world=>world.spatial?.enemies||[]),...(state.players||[]).flatMap(player=>player.factionState?.units||[])];
   const used=new Set(units.filter(unit=>Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡').flatMap(identityNames));
   const rows=(config.landmarks[landmark.landmarkId]||[]).filter(row=>
     (!row.unique||!used.has(row.name))&&classNames.has(row.race)&&classNames.has(row.className));

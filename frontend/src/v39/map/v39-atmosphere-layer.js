@@ -1,4 +1,5 @@
 import {HEX_TILE_CONFIG as hex} from '../../lib/phaser-map-panel-config.js';
+import {loadV39SharedImageTexture} from './v39-shared-image-texture.js';
 import {V39_FOG_BALANCE} from '../../lib/v39-gameplay-balance.js';
 import {v39AtmosphereOpacityPercent} from '../../lib/v39-atmosphere-opacity.js';
 import {V39_ATMOSPHERE_DISPLAY as config,collectV39AtmosphereTiles,v39AtmospherePalette} from '../../lib/v39-atmosphere-display.js';
@@ -29,26 +30,26 @@ function clear(scene){
 export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
   const settings=window.getV39DisplaySettings?.()||{};
   const palette=v39AtmospherePalette().map(kind=>({...kind,opacity:v39AtmosphereOpacityPercent(kind.id,settings)/100})),ready=!!v39AtmosphereArtworkVersion(scene);
-  const tiles=collectV39AtmosphereTiles(data,state).filter(tile=>testMode||vision.has(tile.key))
+  const candidates=collectV39AtmosphereTiles(data,state);
+  const displayVision=!testMode&&candidates.length?(typeof vision==='function'?vision():vision):null;
+  const tiles=candidates.filter(tile=>testMode||displayVision?.has(tile.key))
     .map(tile=>({...tile,kinds:tile.kinds.filter(id=>palette.find(kind=>kind.id===id).opacity>0)})).filter(tile=>tile.kinds.length);
   const opacityFor=tile=>Math.max(0,...tile.kinds.map(id=>palette.find(row=>row.id===id).opacity));
   const maxAlpha=Math.max(0,...tiles.map(opacityFor));
   const signature=JSON.stringify([data.w,data.h,ready,palette,tiles]);
   if(scene.v39AtmosphereSignature===signature&&scene.children.list.some(child=>child.name===LAYER))return;
   scene.v39AtmosphereSignature=signature;clear(scene);
-  const layer=scene.add.container().setDepth(13).setName(LAYER);
+  const layer=scene.add.container().setDepth(14.2).setName(LAYER);
   const combinations=[...new Set(tiles.map(tile=>tile.kinds.join('|')))];
-  layer.setData('atmosphere',{tileCount:tiles.length,combinations,palette,ready,maxAlpha});
+  layer.setData('atmosphere',{tileCount:tiles.length,tileKeys:tiles.map(tile=>tile.key),combinations,palette,ready,maxAlpha});
   if(!scene.v39AtmosphereCleanup){
     scene.v39AtmosphereCleanup=true;scene.events.once('shutdown',()=>clear(scene));
   }
   if(!tiles.length)return;
   if(!ready&&!scene.v39AtmosphereLoading){
     scene.v39AtmosphereLoading=true;
-    const loaded=()=>{scene.v39AtmosphereSignature=null;window.renderV39Visibility?.();scene.game.v39InvalidateRender?.();};
-    scene.load.once(`filecomplete-image-${SOURCE}`,loaded);
-    scene.events.once('shutdown',()=>scene.load.off(`filecomplete-image-${SOURCE}`,loaded));
-    scene.load.image(SOURCE,ATMOSPHERE_SOURCE_URL);if(!scene.load.isLoading())scene.load.start();
+    const loaded=()=>{scene.v39AtmosphereSignature=null;if(scene.sys.isActive())window.renderV39Visibility?.();scene.game.v39InvalidateRender?.();};
+    loadV39SharedImageTexture(scene,SOURCE,ATMOSPHERE_SOURCE_URL,loaded);
   }
   const source=ready?scene.textures.get(SOURCE).getSourceImage():null;
   const variants=new Map(),chunks=new Map(),scale=config.resolution,size=config.chunkSize;
@@ -77,7 +78,7 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
     const left=tile.x*hex.width+(tile.y%2?hex.oddRowOffsetX:0),top=tile.y*hex.rowStep;
     for(let cy=Math.floor(top*scale/size);cy<=Math.floor((top+hex.height)*scale/size);cy++)for(let cx=Math.floor(left*scale/size);cx<=Math.floor((left+hex.width)*scale/size);cx++){
       if(cx*size>=worldW||cy*size>=worldH)continue;
-      const key=`v39-atmosphere-chunk-${cx}-${cy}`;let chunk=chunks.get(key);
+      const key=`v39-atmosphere-chunk-${scene.sys.settings.key}-${cx}-${cy}`;let chunk=chunks.get(key);
       if(!chunk){
         chunk=scene.textures.createCanvas(key,Math.min(size,worldW-cx*size),Math.min(size,worldH-cy*size));chunks.set(key,chunk);scene.v39AtmosphereTextureKeys.push(key);
         layer.add(scene.add.image(cx*size/scale,cy*size/scale,key).setOrigin(0).setScale(1/scale).setAlpha(maxAlpha));

@@ -1,0 +1,52 @@
+log TRACE placement {"ok":true,"playerId":"player-1"}
+setup { enemies: 248, villages: 8, players: 3 }
+log TRACE enemy start 22121
+log TRACE enemy end 26613.5
+log TRACE stage terrain 27501.5
+log TRACE stage ai 28187.60000000149
+log TRACE stage exploration 28470.39999999851
+log TRACE stage world 29398.39999999851
+log TRACE stage economy 29804.20000000298
+log TRACE stage research 30119.89999999851
+log TRACE stage diplomacy 30380.79999999702
+log TRACE done true
+final {
+  turn: {
+    turnNumber: 2,
+    phase: 'player',
+    paused: false,
+    lastResolvedTurn: 1,
+    lastStageSequence: [
+      'player-turn',   'enemy-turn',
+      'terrain',       'ai',
+      'exploration',   'world',
+      'economy',       'research',
+      'diplomacy',     'recovery',
+      'turn-complete'
+    ],
+    playerTurnOrder: [ 'player-1' ],
+    activeTurnPlayerId: 'player-1',
+    endedPlayerIds: []
+  },
+  perf: {
+    turnNumber: 1,
+    startedAt: 22121.70000000298,
+    totalMs: 4491.69999999553,
+    aliveEnemies: 248,
+    playerTargets: 15,
+    actionLimit: 496,
+    aiPasses: 617,
+    movedEnemies: 138,
+    decisionLogsAdded: 617,
+    pendingActions: 0,
+    timings: { state: 1011.2000000402331, combat: 0, loot: 0, deposit: 0 },
+    counts: { state: 1263, combat: 0, loot: 0, deposit: 0 },
+    workerCalculationMs: 1129.900000140071,
+    mainApplyMs: 55.70000007003546,
+    workerTotalMs: 4489.69999999553,
+    fallbackUsed: false,
+    actionEventCount: 374,
+    presentationEventCount: 0,
+    otherAiMs: 0
+  }
+}

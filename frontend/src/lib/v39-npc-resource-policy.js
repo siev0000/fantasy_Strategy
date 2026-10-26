@@ -14,9 +14,10 @@ const n = value => Number(value) || 0;
 const alive = unit => n(unit?.hp ?? unit?.currentHp) > 0 && unit.state !== '死亡';
 const keyOf = unit => `${unit.x},${unit.y}`;
 const surfaceUnits = player => (player.factionState?.units || []).filter(unit => alive(unit)
-  && (unit.worldId || 'surface') === 'surface' && Number.isInteger(unit.x) && Number.isInteger(unit.y) && !unit.pendingWorldExit);
+  && (unit.worldId || 'surface') === 'surface' && Number.isInteger(unit.x) && Number.isInteger(unit.y) && !unit.pendingWorldExit
+  && !unit.tradeAssignment && !unit.transportAssignment && !unit.surveyTask && !player.factionState.aiState?.growthPlan?.busyIds?.includes(unit.id));
 
-export function inspectV39NpcResourceNeeds(player, config = balance) {
+export function inspectV39NpcResourceNeeds(player, config = balance, {includeSatisfied=false}={}) {
   const patterns = config.resourcePatterns || {};
   const override = player.factionState?.aiState?.behaviorPatternId;
   const needs = [];
@@ -32,7 +33,7 @@ export function inspectV39NpcResourceNeeds(player, config = balance) {
       const stock = n(settlement.foodStockByType?.[condition]);
       const required = Math.max(n(pattern.minimumStock),
         (n(settlement.populationGrowthByRace?.[race]?.lastRequiredGauge) - n(settlement.populationGrowthByRace?.[race]?.gauge)) / resolveV39PopulationResourceUnitValue(condition));
-      if (stock >= required) continue;
+      if (stock >= required&&!includeSatisfied) continue;
       const existing = needs.find(row => row.settlementId === settlement.settlementId && row.resource === condition);
       if (existing) { existing.required = Math.max(existing.required, required); continue; }
       needs.push({ patternId, pattern, resource:condition, stock, required, settlementId:settlement.settlementId });

@@ -1,0 +1,10 @@
+warning: in the working copy of 'config/v39-npc-faction-ai.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/ALL_TASKS_UNIFIED.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/rules/diplomacy/NPC勢力ルール.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/tests/専用テスト構成.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/現状ゲーム仕様メモ.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/lib/player-state.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/lib/v39-class-progression.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/lib/v39-npc-resource-policy.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/lib/v39-trade-state.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/v39/bootstrap/v39-bootstrap-final.js', LF will be replaced by CRLF the next time Git touches it

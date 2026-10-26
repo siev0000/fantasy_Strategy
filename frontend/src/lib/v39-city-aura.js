@@ -5,7 +5,9 @@ import {isV39SquadPassive,getV39SquadMembers,matchV39SquadCondition} from './v39
 
 export const hasV39CityAuraSources=()=>cityData.some(row=>row.常時発動スキル);
 
-export function applyV39CityAura(unit,state=globalThis.window?.getV39EnemyTurnState?.(),terrainName='') {
+export function applyV39CityAura(unit,state,terrainName='') {
+  // Keep the optional method call out of parameter defaults: production lowering can lose its receiver binding.
+  if(state===undefined)state=globalThis.window?.getV39EnemyTurnState?.();
   if(!unit)return unit;
   if(!hasV39CityAuraSources()&&!unit.cityAuraSkillNames?.length)return unit;
   const ownsSource=state?.players?.some(player=>player.factionState?.settlements?.some(base=>

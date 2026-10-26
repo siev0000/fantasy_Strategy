@@ -1,5 +1,6 @@
 import { facilityDefinitions } from "../../lib/v39-economy-rules.js";
 import {resolveV39PlayerColor} from '../../lib/v39-player-colors.js';
+import {buildV39TerritoryOverlayGroups,V39_TERRITORY_OVERLAY_STYLE as territoryStyle} from '../../lib/v39-territory-overlay.js';
 import { isV39FogVisionAllowed, advanceV39Fog } from "../../lib/v39-fog-rules.js";
 import {activeV39AtmosphereDisasters,v39AtmospherePalette} from '../../lib/v39-atmosphere-display.js';
 import {drawV39AtmosphereLayer,v39AtmosphereArtworkVersion} from './v39-atmosphere-layer.js';
@@ -25,6 +26,7 @@ const FOG_LAYER_NAME = "v39-unexplored-fog-layer";
 const SCOUT_LAYER_NAME = "v39-scout-boundary-layer";
 const UNIT_SCOUT_LAYER_NAME = "v39-unit-scout-boundary-layer";
 const TERRITORY_LAYER_NAME = "v39-own-territory-boundary-layer";
+const OWNERSHIP_LAYER_NAME='v39-territory-ownership-layer';
 const NEST_TERRITORY_LAYER_NAME = "v39-nest-territory-boundary-layer";
 const NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME = "v39-neutral-village-territory-boundary-layer";
 const RESIDENTIAL_TILE_LAYER_NAME = "v39-residential-tile-layer";
@@ -51,6 +53,9 @@ let renderRequestId = 0;
 let renderPendingDuringBatch = false;
 let lastRenderSignature = null;
 let lastFogSignature = null;
+let lastRenderScene = null;
+const atmosphereVisionCache = new WeakMap();
+let atmosphereGeometryVersion = 0;
 let visibilityRenderVersion = 0;
 let lastSnapshot = {
   exploredTileKeys:new Set(),
@@ -252,18 +257,18 @@ function unitsByTile(units = [], { livingOnly = false } = {}) {
   return groups;
 }
 
-function buildCurrentVision(data, faction, state, playerId) {
+function buildCurrentVision(data, faction, state, playerId, applyFog = true) {
   const visible = new Set();
-  const detectionByTile = new Map();
+  const detectionByTile = applyFog ? new Map() : null;
   const settlements = data.isUnderground ? [] : getFactionSettlements(faction);
   for (const settlement of settlements) {
-    if (settlement?.placed) addVisionRange(data, settlement.x, settlement.y, BASE_VILLAGE_SCOUT_RANGE, visible, detectionByTile, 0);
+    if (settlement?.placed) addVisionRange(data, settlement.x, settlement.y, BASE_VILLAGE_SCOUT_RANGE, visible, detectionByTile, 0, applyFog);
   }
   for (const units of unitsByTile((faction?.units||[]).filter(unit=>isV39UnitInWorld(unit,state.activeWorldId)), { livingOnly:true }).values()) {
-    const sense = resolveDetectionGroupSense(units);
+    const sense = applyFog ? resolveDetectionGroupSense(units) : {scout:0};
     const lead = units[0];
     const range = units.reduce((max, unit) => Math.max(max, unitVisionRange(unit)), V39_UNIT_VISION_BASE_RANGE);
-    addVisionRange(data, lead.x, lead.y, range, visible, detectionByTile, sense.scout);
+    addVisionRange(data, lead.x, lead.y, range, visible, detectionByTile, sense.scout, applyFog);
   }
   const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));
   for (const settlement of settlements) {
@@ -272,10 +277,24 @@ function buildCurrentVision(data, faction, state, playerId) {
       const scout = (Array.isArray(names) ? names : []).reduce((sum, name) => sum + Math.max(0, Number(definitions.get(String(name))?.effects?.索敵) || 0), 0);
       if (scout <= 0) continue;
       const [x, y] = key.split(",").map(Number);
-      addVisionRange(data, x, y, V39_UNIT_VISION_BASE_RANGE + Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP), visible, detectionByTile, scout);
+      addVisionRange(data, x, y, V39_UNIT_VISION_BASE_RANGE + Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP), visible, detectionByTile, scout, applyFog);
     }
   }
   return { visible, detectionByTile };
+}
+
+function atmosphereDisplayVision(scene,data,faction,state,playerId) {
+  const units=(faction.units||[]).filter(unit=>isV39UnitInWorld(unit,state.activeWorldId));
+  const sources=data.isUnderground?[]:getFactionSettlements(faction)
+    .filter(row=>row.placed).map(row=>[row.x,row.y,Object.entries(row.tileFacilityMap||{})
+      .map(([key,names])=>[key,names,state.territoryOwnerByTile?.[key]===playerId])]);
+  const signature=JSON.stringify([atmosphereGeometryVersion,playerId,state.activeWorldId,data.w,data.h,
+    livingUnitScoutSignature(units),sources]);
+  const cached=atmosphereVisionCache.get(scene);
+  if(cached?.signature===signature)return cached.visible;
+  const visible=buildCurrentVision(data,faction,state,playerId,false).visible;
+  atmosphereVisionCache.set(scene,{signature,visible});
+  return visible;
 }
 
 function detectedEntityIdsForGroups(groups, currentVision, detectionByTile, turnNumber) {
@@ -625,6 +644,8 @@ function renderVisibilityLayers() {
   // Facility placement shares the existing tile-selection highlight renderer.
   const developmentSelection = window.getV39FacilitySummonSelection?.() || window.getV39SettlementDevelopmentSelection?.() || null;
   const playerColor = resolveV39PlayerColor(state,player.id);
+  const showOwnership=window.getV39DisplaySettings?.().showTerritoryOwnership!==false;
+  const ownership=showOwnership?buildV39TerritoryOverlayGroups(state,data,{testMode,explored,activePlayerId:player.id}):[];
   const fogSignature = [
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
     testMode ? 1 : 0,
@@ -632,6 +653,7 @@ function renderVisibilityLayers() {
     sortedSetSignature(explored)
   ].join(";");
   const renderSignature = [
+    showOwnership,JSON.stringify(ownership),
     JSON.stringify(window.getV39DisplaySettings?.().atmosphereOpacityByKind||{}),
     state.activeWorldId||'surface',data.isUnderground===true?1:0,
     JSON.stringify(activeV39AtmosphereDisasters(state)),v39AtmosphereArtworkVersion(scene),JSON.stringify(v39AtmospherePalette()),
@@ -652,16 +674,20 @@ function renderVisibilityLayers() {
     playerColor
   ].join(";");
   persistVisibilityTiles(faction, explored, currentVision);
-  if (renderSignature === lastRenderSignature) return true;
+  // Weather remains visible out to normal LOS; spotting and exploration still use penalized vision.
+  drawV39AtmosphereLayer(scene,data,state,()=>atmosphereDisplayVision(scene,data,faction,state,player.id),testMode);
+  if (renderSignature === lastRenderSignature && scene === lastRenderScene) return true;
   lastRenderSignature = renderSignature;
-  const redrawFog = fogSignature !== lastFogSignature;
+  const redrawFog = scene !== lastRenderScene || fogSignature !== lastFogSignature;
+  lastRenderScene = scene;
   lastFogSignature = fogSignature;
 
   if (redrawFog) removeLayer(scene, FOG_LAYER_NAME);
   removeLayer(scene, SCOUT_LAYER_NAME);
-  drawV39AtmosphereLayer(scene,data,state,currentVision,testMode);
   removeLayer(scene, UNIT_SCOUT_LAYER_NAME);
   removeLayer(scene, TERRITORY_LAYER_NAME);
+  removeLayer(scene, OWNERSHIP_LAYER_NAME);
+  removeLayer(scene, OWNERSHIP_LAYER_NAME+'-border');
   removeLayer(scene, NEST_TERRITORY_LAYER_NAME);
   removeLayer(scene, NEUTRAL_VILLAGE_TERRITORY_LAYER_NAME);
   removeLayer(scene, RESIDENTIAL_TILE_LAYER_NAME);
@@ -738,6 +764,17 @@ function renderVisibilityLayers() {
   }
 
   const territory = scene.add.graphics().setDepth(16).setName(TERRITORY_LAYER_NAME);
+  if(showOwnership){
+    const ownershipLayer=scene.add.graphics().setDepth(territoryStyle.depth).setName(OWNERSHIP_LAYER_NAME);
+    const ownershipBorder=scene.add.graphics().setDepth(territoryStyle.borderDepth).setName(OWNERSHIP_LAYER_NAME+'-border');
+    for(const group of ownership){
+      ownershipLayer.fillStyle(group.color,territoryStyle.fillAlpha);
+      for(const key of group.tileKeys){const [x,y]=key.split(',').map(Number);ownershipLayer.fillPoints(hexPoints(x,y),true);}
+      drawOuterBoundary(ownershipBorder,data,new Set(group.tileKeys),{width:territoryStyle.borderWidth,color:group.color,alpha:territoryStyle.borderAlpha});
+    }
+    ownershipLayer.setData('owners',ownership);
+    ownershipLayer.setData('tileCount',ownership.reduce((sum,group)=>sum+group.tileKeys.length,0));
+  }
   territory.setData('ownerColor',playerColor);
   drawOuterBoundary(territory, data, ownTerritory, {
       width:TERRITORY_WIDTH,
@@ -817,6 +854,7 @@ window.addEventListener("v39:turn-advanced",event=>{
 
 window.addEventListener("v39:field-generated", resetVisibilityForNewField);
 window.addEventListener("v39:field-data-updated", () => {
+  atmosphereGeometryVersion += 1;
   // 溶岩などの地形更新は視界形状に影響しない。署名比較で必要時だけ描画する。
   scheduleRender();
 });

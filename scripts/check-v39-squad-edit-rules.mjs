@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {chromium} from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs";
 const browser=await chromium.launch();
 try {
-  const page=await browser.newPage();await page.goto('http://127.0.0.1:3022',{waitUntil:'networkidle'});
+  const page=await browser.newPage();await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
   const report=await page.evaluate(async()=>{
     const {editV39Squad}=await import('/src/lib/v39-squad-edit-rules.js');
     const movement=await import('/src/lib/v39-squad-movement-rules.js');

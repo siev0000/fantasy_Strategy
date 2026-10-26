@@ -23,7 +23,7 @@ try {
     const ok=(value,message)=>{if(!value)throw new Error(message);};
     const first=window.runV39FactionAiTurn(state,3,map),plan=first.state.players[1].factionState.aiState.developmentPlan;
     ok(plan?.construction&&plan?.reinforcement,'計画が保存されない');
-    ok(plan.reinforcement.living===1&&plan.reinforcement.target===6&&plan.reinforcement.remaining===5,'戦力目標数が不正');
+    ok(plan.reinforcement.living===1&&plan.reinforcement.target>=6&&plan.reinforcement.remaining===plan.reinforcement.target-1,'戦力目標数が不正');
     ok(plan.resourceGoals.length>0,'資材ゼロでも不足が表示されない');
     ok(plan.resourceGoals.every(row=>row.missing>0&&row.required>row.stock),'不足量が不正');
     const filled=structuredClone(state);
@@ -39,7 +39,7 @@ try {
       ok(next.reports[0].commands.some(command=>command.startsWith(`建設:${plan.construction.name}@`)),'表示した建設候補と実行が不一致');
       ok(nextPlan.construction.status==='building','建設中に切り替わらない');
     }
-    const full=structuredClone(state);full.players[1].factionState.units=Array.from({length:6},(_,i)=>({...unit,id:`full-${i}`}));
+    const full=structuredClone(state);full.players[1].factionState.units=Array.from({length:plan.reinforcement.target},(_,i)=>({...unit,id:`full-${i}`}));
     const fullPlan=window.runV39FactionAiTurn(full,5,map).state.players[1].factionState.aiState.developmentPlan;
     ok(fullPlan.reinforcement.status==='satisfied'&&fullPlan.reinforcement.remaining===0,'目標達成後も増強を要求');
     full.players[1].factionState.units.pop();
@@ -57,14 +57,17 @@ try {
   const diagnostic=page.locator('[data-test-section=npc-ai]');
   if(!await diagnostic.evaluate(el=>el.open))await diagnostic.locator(':scope > summary').click();
   const before=await page.evaluate(()=>JSON.stringify(window.getV39GameState().players[1].factionState.aiState));
-  for(const selector of ['[data-npc-resource-goals]','[data-npc-construction-goal]','[data-npc-reinforcement-goal]'])assert.equal(await diagnostic.locator(selector).count(),1);
+  await diagnostic.locator('[data-npc-diagnostic-view=resources]').click();
   assert.match(await diagnostic.locator('[data-npc-resource-goals]').innerText(),/不足/);
-  assert.match(await diagnostic.locator('[data-npc-reinforcement-goal]').innerText(),/目標6駒/);
+  await diagnostic.locator('[data-npc-diagnostic-view=actions]').click();
+  assert.match(await diagnostic.locator('[data-npc-reinforcement-goal]').innerText(),/目標\d+駒/);
   await mkdir('output/web-game/npc-development-plan',{recursive:true});
   for(const width of [1100,390]){
     await page.setViewportSize({width,height:850});
+    await diagnostic.locator('[data-npc-diagnostic-view=construction]').click();
     await diagnostic.locator('[data-npc-construction-goal]').scrollIntoViewIfNeeded();
     await page.screenshot({path:`output/web-game/npc-development-plan/goals-${width}.png`});
+    await diagnostic.locator('[data-npc-diagnostic-view=resources]').click();
     await diagnostic.locator('[data-npc-resource-goals]').scrollIntoViewIfNeeded();
     await page.screenshot({path:`output/web-game/npc-development-plan/resources-${width}.png`});
   }

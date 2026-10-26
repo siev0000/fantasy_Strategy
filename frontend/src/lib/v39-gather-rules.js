@@ -13,7 +13,7 @@ const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const terrainRows = new Map(getGameDataRows("地形").map(row => [text(row.地形), row]));
 const resourceRows = getGameDataRows("都市基本データ");
 
-export function inspectV39Gather(state, playerId, unitId, mapData) {
+export function inspectV39Gather(state, playerId, unitId, mapData, {aiTurn=false,resource=''}={}) {
   const player = state?.players?.find(row => row.id === playerId);
   const faction = player?.factionState;
   const unit = faction?.units?.find(row => row.id === unitId);
@@ -26,7 +26,7 @@ export function inspectV39Gather(state, playerId, unitId, mapData) {
     : sourceName.includes("洞窟") ? ["石材", "金属", "貴金属", "宝石"] : [];
   const yields = Object.fromEntries(resourceRows.filter(item => categories.includes(text(item.分類)))
     .map(item => [text(item.データ分類), Math.round(Math.max(0, number(row?.[item.データ分類])) * ECONOMY_GAIN_SCALE * 10) / 10])
-    .filter(([name, amount]) => name && amount > 0));
+    .filter(([name, amount]) => name && amount > 0&&(!resource||name===resource)));
   const turn = number(state?.timeline?.turnNumber);
   const squad = faction?.squads?.find(item => getV39SquadUnitIds(item).includes(text(unitId)));
   const individual = text(squad?.id) === "solo" || !!unit?.transportAssignment;
@@ -38,7 +38,7 @@ export function inspectV39Gather(state, playerId, unitId, mapData) {
   const fitted = fitV39CargoToCapacity({ resourcesByType:yields }, Math.max(0, capacity - resolveV39CargoLoad(cargo)));
   if (!unit || !squad) reasons.push("採取するキャラクターを選択してください");
   if(unit&&!isV39UnitInWorld(unit,state?.activeWorldId))reasons.push("このキャラクターは別のマップにいます");
-  if (state?.timeline?.phase && state.timeline.phase !== "player") reasons.push("操作ターンに実行してください");
+  if (state?.timeline?.phase && state.timeline.phase !== "player"&&!(aiTurn&&player?.isPlayer===false)) reasons.push("操作ターンに実行してください");
   if (unit && (number(unit.hp ?? unit.currentHp) <= 0 || text(unit.state || unit.statusName) === "死亡")) reasons.push("死亡したキャラクターは採取できません");
   if (!mapData?.grid?.[unit?.y]?.[unit?.x]) reasons.push("フィールド上で実行してください");
   if (number(unit?.ap ?? unit?.currentAp) < V39_GATHER_BALANCE.apCost) reasons.push("APが不足しています");
@@ -47,14 +47,15 @@ export function inspectV39Gather(state, playerId, unitId, mapData) {
   if (unit?.transportAssignment?.enabled) reasons.push("自動輸送を停止してから採取してください");
   if (state?.territoryOwnerByTile?.[key]) reasons.push("通常収入との重複を避けるため領土外で採取してください");
   if ((state?.players || []).some(item => number(item.factionState?.exploration?.gatheredAtTurnByTile?.[key]) === turn)) reasons.push("このマスは今ターン採取済みです");
+  if((state?.neutralVillages||[]).some(village=>number(village.resourceOperations?.exploration?.gatheredAtTurnByTile?.[key])===turn))reasons.push("このマスは今ターン採取済みです");
   if (!Object.keys(yields).length) reasons.push("採取できる森・洞窟ではありません");
   else if (isV39CargoEmpty(fitted.accepted)) reasons.push("運搬上限です");
   return { available:!reasons.length, reasons, player, faction, unit, key, turn, sourceName,
     apCost:V39_GATHER_BALANCE.apCost, yields, accepted:fitted.accepted, capacity, load:resolveV39CargoLoad(cargo) };
 }
 
-export function gatherV39Resources(state, playerId, unitId, mapData) {
-  const check = inspectV39Gather(state, playerId, unitId, mapData);
+export function gatherV39Resources(state, playerId, unitId, mapData,options={}) {
+  const check = inspectV39Gather(state, playerId, unitId, mapData,options);
   if (!check.available) return { ok:false, reason:check.reasons.join(" / "), state };
   const added = addV39CargoToFactionUnit(check.faction, unitId, check.accepted);
   const faction = { ...added.faction, units:added.faction.units.map(unit => unit.id !== unitId ? unit : {

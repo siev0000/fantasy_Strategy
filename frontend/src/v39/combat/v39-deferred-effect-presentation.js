@@ -63,6 +63,7 @@ function matchingPendingAction(request) {
 }
 
 async function playEffect(request = {}) {
+  if(window.__v39AiSimulationRunning)return false;
   const pending = matchingPendingAction(request);
   if (!pending || typeof originalPlayV39MapEffect !== "function") {
     return originalPlayV39MapEffect ? originalPlayV39MapEffect(request) : false;

@@ -9,6 +9,7 @@ import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
 import { restoreV39SquadMovementForTurn } from "../../lib/v39-squad-movement-rules.js";
 import { normalizeV39PlayerTurnTimeline } from "../../lib/v39-local-multiplayer-session.js";
 import { isV39UnitUnacted } from "../../lib/v39-unit-action-rules.js";
+import {finishV39RecoveryWait} from '../../lib/v39-recovery-wait.js';
 import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { advanceV39AutomaticTransport } from "../../lib/v39-transport-rules.js";
 import {advanceV39TradeLogistics} from '../../lib/v39-trade-logistics.js';
@@ -58,6 +59,7 @@ function normalizeTimeline(value = {}, players = [], fallbackActivePlayerId = ""
 }
 
 function restoreUnitForTurn(unit) {
+  unit = finishV39RecoveryWait(unit);
   if (!unit || isDead(unit)) return { ...unit };
   const configuredMaxAp = Math.max(0, Math.floor(number(unit.maxAp ?? unit.maxActionPoint, 100)));
   const starvationCap = Math.max(0, Math.floor(number(unit?.starvationApCap)));
@@ -277,6 +279,7 @@ export async function advanceTurn(options = {}) {
     return false;
   }
   advancing = true;
+  const presentation=options.presentation!==false||window.isV39TestMode?.()!==true;
   let inputToken = null;
   let batchToken = null;
   const timings = {};
@@ -358,7 +361,7 @@ export async function advanceTurn(options = {}) {
     for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
       await withV39WorldContext(worldId,async()=>{
         if(!mineOperations){const current=window.getV39GameState();window.setV39GameState({enemies:current.enemies.map(unit=>clearExpiredGuard(unit,activeTurn)).map(restoreUnitForTurn)});}
-        timings.enemy[worldId]=await window.runV39EnemyTurn?.(activeTurn,{presentation:worldId===visibleWorldId});
+        timings.enemy[worldId]=await window.runV39EnemyTurn?.(activeTurn,{presentation:presentation&&worldId===visibleWorldId});
       });
     }
     const afterEnemy = window.getV39GameState?.() || state;
@@ -466,7 +469,7 @@ export async function advanceTurn(options = {}) {
     const renderStartedAt = performance.now();
     window.endV39MapRenderBatch?.(batchToken, { force:true, reason:"turn-resolution-complete" });
     batchToken = null;
-    await window.waitForV39MapRenderSettled?.();
+    if(presentation)await window.waitForV39MapRenderSettled?.();
     window.flushV39HazardFeedback?.();
     timings.renderMs = performance.now() - renderStartedAt;
     latestTurnPerformance = { turnNumber:nextTurn, ...timings };

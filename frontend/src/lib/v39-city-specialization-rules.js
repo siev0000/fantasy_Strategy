@@ -194,11 +194,11 @@ export function resolveV39CityTerritoryDamage(state,tileKey,power,{skillRow={},a
   return resisted<=0?0:reduction?Math.max(1,Math.round(resisted*(1-reduction/100))):resisted;
 }
 
-export function selectV39CitySpecialization(state, playerId, settlementId, specializationId) {
+export function selectV39CitySpecialization(state, playerId, settlementId, specializationId, mapData=globalThis.window?.__v39FieldRuntime?.mapData) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const settlements = player?.factionState?.settlements || [];
   const settlement = settlements.find(row => text(row?.settlementId || row?.id) === text(settlementId));
-  const candidate = inspectV39CitySpecializations(state, player, settlement).find(row => row.id === text(specializationId));
+  const candidate = inspectV39CitySpecializations(state, player, settlement, mapData).find(row => row.id === text(specializationId));
   if(candidate&&text(settlement?.citySpecializationId)===candidate.id)return {ok:true,state,specialization:candidate};
   if (!candidate?.available) return { ok:false, reason:candidate?.reason || "選択できない都市特性です", state };
   const players = state.players.map(row => row.id !== player.id ? row : {

@@ -3,6 +3,10 @@
 #footInteraction>header span,#footInteraction>p{color:#a9bbbf;font-size:var(--font-secondary)}
 #v39-interaction-actions #v39-world-contact-actions{grid-template-columns:1fr;padding:8px;margin-top:6px;background:#14252b;border-color:#40575e}
 #v39-interaction-actions #v39-world-contact-buttons{justify-content:flex-start}
+#v39-world-contact-actions[data-kind=guardian] #v39-world-contact-buttons{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%}
+.v39-guardian-trial-choice{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;padding:6px;border:1px solid #40575e;border-radius:6px;min-width:0}
+.v39-guardian-trial-choice button{text-align:left;white-space:normal}
+.v39-guardian-trial-choice small,#v39-world-contact-subdetail{white-space:normal;overflow-wrap:anywhere}
 #footSettlement.settlement-panel{grid-template-rows:minmax(0,1fr)}
 .settlement-pages{display:flex;gap:4px}
 .settlement-pages button{flex:1;min-width:0;font:inherit;font-size:var(--font-body);min-height:34px;border:1px solid #40575e;border-radius:6px;background:#14252b;color:#b6c9cc}

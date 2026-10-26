@@ -77,7 +77,7 @@ export function requestV39QuestRewardChange(state,playerId,villageId,quest,reque
   if((state.activeWorldId||'surface')!=='surface'||!(village.territoryTileKeys||[]).includes(`${actor?.x},${actor?.y}`))return fail(state,'村の領域内にいる交渉役を選択してください');
   const pending=findV39VillageQuest(village,playerId,quest?.eventId);
   if(pending?.accepted&&!pending.completed)return fail(state,'受注後の報酬は変更できません');
-  if(!quest?.eventId||!['delivery','hunt','watch','construction'].includes(quest.type))return fail(state,'依頼を選択してください');
+  if(!quest?.eventId||!['delivery','hunt','watch','construction','composite','contract'].includes(quest.type))return fail(state,'依頼を選択してください');
   const rewards=normalizeRewards(request.rewards??request);
   if(!rewards)return fail(state,'要求する報酬と数量を指定してください');
   const known=getV39QuestRewardResources(state,playerId);

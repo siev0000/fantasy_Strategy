@@ -18,7 +18,7 @@ import {
   raidV39NeutralVillage,
   vassalizeV39NeutralVillage
 } from "../../lib/v39-neutral-village-rules.js";
-import { getV39GuardianProgress, listV39GuardianQuests, acceptV39GuardianQuest, completeV39GuardianQuest, transferV39GuardianLand } from "../../lib/v39-guardian-quests.js";
+import { getV39GuardianProgress, listV39GuardianQuests, acceptV39GuardianQuest, completeV39GuardianQuest, transferV39GuardianLand,inspectV39GuardianQuest,getV39GuardianTrialStatus } from "../../lib/v39-guardian-quests.js";
 import { V39_QUEST_BALANCE, V39_VICTORY_CONDITION_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import restBalance from '../../../../config/v39-village-rest.json';
@@ -367,18 +367,22 @@ function renderWorldActions() {
   } else if(discovered) {
     const progress=getV39GuardianProgress(state,playerId,landmark.key),quest=progress.quest;
     section.dataset.kind="guardian";section.dataset.targetId=landmark.key;
-    kind.textContent="勝利対象 / 守護者";
-    detail.textContent=`${landmark.name} / 友好度 ${progress.relation}/${V39_QUEST_BALANCE.guardianTransferRelation}`;
-    const requirement=quest?.type==="delivery"?`${quest.resourceKey} ${quest.required}`:quest?.type==="watch"?`${quest.progress}/${quest.required}ターン`:
-      quest?.type==="hunt"?`残り ${(quest.targetEnemyIds||[]).filter(id=>state.enemies?.some(enemy=>enemy.id===id&&number(enemy.currentHp??enemy.hp)>0)).length}体`:"";
+    kind.textContent="覇権地 / 守護者";
+    const trials=getV39GuardianTrialStatus(state,playerId,landmark.key);
+    detail.textContent=`${landmark.name} / 試練 ${trials.completed}/${trials.required}達成 / 友好度 ${progress.relation}`;
+    const requirement=inspectV39GuardianQuest(state,playerId,landmark.key).description;
     const secure=getV39VictoryLandmarkStatus(state,landmark.key,playerId);
     subdetail.textContent=`勝利条件: ${V39_VICTORY_CONDITION_BALANCE.requiredLandmarkCount}地点を${secure.requiredTurns}ターン確保`+
       (secure.controlled?` / 確保 ${secure.securedTurns}/${secure.requiredTurns}${secure.interfered?'（妨害中：毎ターン−1）':''}`:' / 取得後に開始')+
       (quest&&!quest.completed?` / 受注中: ${quest.名前} / ${requirement}`:"");
     buttons.innerHTML=quest&&!quest.completed?'<button type="button" data-world-action="guardian-complete">依頼を報告</button>':"";
-    if(!quest||quest.completed) for(const choice of listV39GuardianQuests(state,playerId,landmark.key)) addQuestButton(buttons,choice.ID,choice.名前);
+    if(!quest||quest.completed) for(const choice of listV39GuardianQuests(state,playerId,landmark.key)) {
+      const card=document.createElement('div');card.className='v39-guardian-trial-choice';
+      addQuestButton(card,choice.ID,choice.名前);
+      const description=document.createElement('small');description.textContent=choice.説明;card.append(description);buttons.append(card);
+    }
     const transfer=document.createElement("button");transfer.type="button";transfer.dataset.worldAction="guardian-transfer";
-    transfer.textContent="守護者を引き継ぐ";transfer.disabled=progress.relation<V39_QUEST_BALANCE.guardianTransferRelation||!!landmark.peacefulOwnerPlayerId;buttons.append(transfer);
+    transfer.textContent="守護者を引き継ぐ（3試練達成）";transfer.disabled=!trials.ready||!!landmark.peacefulOwnerPlayerId;buttons.append(transfer);
     if(landmark.hegemonyWorldId&&!secure.controlled){
       const claim=document.createElement('button');claim.type='button';claim.dataset.worldAction='guardian-claim';claim.textContent='奥地攻略後に覇権地を取得';buttons.append(claim);
       const guards=getV39HegemonyGuards(state,landmark);claim.disabled=guards.length>0;

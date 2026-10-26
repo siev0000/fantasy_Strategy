@@ -1,5 +1,5 @@
 import {getHexDistance,getHexOffsetNeighbors} from './hex-grid.js';
-import {resolveV39AutomaticRoute,isV39UnitInsideSettlement,V39_TRANSPORT_RESOURCE_KEYS,getV39TransportCargo} from './v39-transport-rules.js';
+import {resolveV39AutomaticRoute,isV39UnitInsideSettlement,V39_TRANSPORT_RESOURCE_KEYS,getV39TransportCargo,loadV39SettlementResource} from './v39-transport-rules.js';
 import {resolveV39MineRoute} from './v39-cave-operations.js';
 import {resolveV39SquadMovementGroup,advanceV39CaveFormation,applyV39SquadMovement} from './v39-squad-movement-rules.js';
 import {resolveV39UnitMovementStepCost,canUnitEnterV39Tile} from './v39-terrain-traversal.js';
@@ -157,9 +157,10 @@ export function advanceLogisticsRoutes(state,playerId,turn){
             cargo.resourcesByType[r.resource]=(cargo.resourcesByType[r.resource]||0)+amount;
             worlds[target.worldId]={...entry,map:{...entry.map,caveMine:{...mine,stockByResource:{...mine.stockByResource,[alias]:(mine.stockByResource[alias]||0)-amount}}}};
           }else{
-            const source=f.settlements.find(s=>(s.settlementId||s.id)===target.settlementId),bag=field(r.resource),amount=Math.max(0,Math.min(Number(source[bag]?.[r.resource])||0,amountLimit));
-            cargo.resourcesByType[r.resource]=(cargo.resourcesByType[r.resource]||0)+amount;
-            f=replaceFactionSettlement(f,{...source,[bag]:{...source[bag],[r.resource]:(source[bag]?.[r.resource]||0)-amount}},{ownerPlayerId:playerId,select:false});
+            const source=f.settlements.find(s=>(s.settlementId||s.id)===target.settlementId);
+            const loaded=loadV39SettlementResource(source,state.players.find(player=>player.id===playerId)?.race,r.resource,cargo,capacity,{maxAmount:r.amount});
+            cargo=loaded.cargo;
+            f=replaceFactionSettlement(f,loaded.settlement,{ownerPlayerId:playerId,select:false});
           }
           r.phase=resolveV39CargoLoad(cargo)>0?'deliver':'fetch';r.status=r.phase==='deliver'?'積込完了':'物資待ち';
         }else{

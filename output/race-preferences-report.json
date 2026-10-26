@@ -1,0 +1,50 @@
+{
+  "version": "1.1.0",
+  "input": "output\\race-preferences-final.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "種族",
+    "勢力"
+  ],
+  "source_sheets": {
+    "種族": "種族",
+    "勢力": "種族"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 2,
+    "records": 22,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "種族",
+      "output": "種族.json",
+      "input_rows": 999,
+      "records": 11,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 988,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "勢力",
+      "output": "勢力.json",
+      "input_rows": 999,
+      "records": 11,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 988,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

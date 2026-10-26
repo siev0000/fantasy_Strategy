@@ -4,7 +4,7 @@ import {deriveV39CharacterFromRaceClass,applyV39DerivedCharacterData} from "../v
 import {V39_CLASS_PROGRESSION_BALANCE} from "./v39-gameplay-balance.js";
 import recruitment from "../../../config/v39-facility-recruitment-defaults.json";
 const n=value=>Math.max(0,Math.floor(Number(value) || 0));
-export function inspectV39ClassPromotion(state,playerId,unit,row) {
+export function inspectV39ClassPromotion(state,playerId,unit,row,context={}) {
   const derived=deriveV39CharacterFromRaceClass(unit),reasons=[];
   const current=derived.classRow,prior={...derived.prerequisiteClassLevels,[unit.className]:derived.classLevels};
   const conditions=splitV39ClassCondition(row.条件クラス).map(value=>parseV39ClassCondition(value));
@@ -14,7 +14,8 @@ export function inspectV39ClassPromotion(state,playerId,unit,row) {
   const surplus=Math.max(0,n(derived.classLevels)-limit);
   if(!derived.ok)reasons.push('現在のクラス情報が不正');
   if(unit.fusionGrowth)reasons.push('合体ユニットの職業変更は未対応');
-  if(state.activePlayerId!==playerId||state.timeline?.phase!=='player')reasons.push('自分の操作ターンに取得可能');
+  const npcTurn=context.aiTurn===true&&state.players.find(player=>player.id===playerId)?.isPlayer===false&&state.timeline?.phase==='resolution';
+  if(!npcTurn&&(state.activePlayerId!==playerId||state.timeline?.phase!=='player'))reasons.push('自分の操作ターンに取得可能');
   if(n(unit.hp ?? unit.currentHp)===0||unit.state==='死亡')reasons.push('生存ユニットが必要');
   if((unit.worldId || 'surface')!==(state.activeWorldId || 'surface'))reasons.push('表示中のワールドにいる必要があります');
   if(!isV39ProfessionClassRow(row)||n(row.Tire ?? row.Tier)<=n(current?.Tire ?? current?.Tier))reasons.push('現在より上位の職業が必要');
@@ -37,15 +38,15 @@ export function inspectV39ClassPromotion(state,playerId,unit,row) {
   }
   return {row,derived,limit,surplus,reasons,available:reasons.length===0};
 }
-export function getV39ClassPromotionOptions(state,playerId,unit) {
+export function getV39ClassPromotionOptions(state,playerId,unit,context={}) {
   return getGameDataRows('クラス').filter(row=>isV39ProfessionClassRow(row)&&splitV39ClassCondition(row.条件クラス)
-    .some(value=>parseV39ClassCondition(value)?.token===unit.className)).map(row=>inspectV39ClassPromotion(state,playerId,unit,row));
+    .some(value=>parseV39ClassCondition(value)?.token===unit.className)).map(row=>inspectV39ClassPromotion(state,playerId,unit,row,context));
 }
-export function acquireV39UpperClass(state,playerId,unitId,className) {
+export function acquireV39UpperClass(state,playerId,unitId,className,context={}) {
   const player=state.players.find(row=>row.id===playerId),unit=player?.factionState.units.find(row=>row.id===unitId);
   const row=getGameDataRows('クラス').find(row=>row.名前===className);
   if(!unit||!row)return {ok:false,state,reason:'取得対象がありません'};
-  const check=inspectV39ClassPromotion(state,playerId,unit,row);
+  const check=inspectV39ClassPromotion(state,playerId,unit,row,context);
   if(!check.available)return {ok:false,state,reason:check.reasons.join(' / ')};
   const beforeMax=Number(unit.maxHp)||1,ratio=Math.min(1,Number(unit.hp ?? unit.currentHp)/beforeMax);
   let updated=applyV39DerivedCharacterData({...unit,className,prerequisiteClassLevels:{...check.derived.prerequisiteClassLevels,[unit.className]:check.limit},

@@ -17,6 +17,8 @@ import {isV39Undead} from './v39-purification-rules.js';
 import {markV39AbandonedVillage} from './v39-abandoned-villages.js';
 import npcDefense from '../../../config/v39-npc-defense.json';
 import {advanceV39VillagePlans, villageQuestTemplates, resolveV39VillagePlanQuest, villageDefenseTrainingTurns} from './v39-village-plans.js';
+import {advanceV39VillageSupportQuest,inspectV39VillageSupportQuest} from './v39-village-support-goals.js';
+import {advanceV39VillageResourceTeams} from './v39-village-resource-teams.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -449,16 +451,6 @@ function createQuest(state, village, playerId, turn, mapData, eventId = "", over
     return {...resolved,id:`${village.id}:${eventId}:${playerId}:${turn}`,accepted:true,completed:false,createdTurn:turn,
       deadlineTurn:template.期限ターン?turn+template.期限ターン:0};
   }
-  const support=expeditionDefaults.villageRequests.find(row=>row.ID===eventId);
-  if(support && player){
-    const last=integer(village.eventCompletedTurnByPlayerId?.[playerId]?.[eventId]);
-    if(last && turn<last+V39_QUEST_BALANCE.villageQuestCooldown)return null;
-    const baselineFacilities=villageSupportFacilities(player,village);
-    if(support.type==='construction' && !player.factionState.settlements?.some(row=>row.placed&&getHexDistance(row,village)<=expeditionDefaults.village.建設支援範囲))return null;
-    return {...support,id:`${village.id}-${playerId}-T${turn}`,eventId:support.ID,label:support.名前,
-      required:support.type==='watch'?expeditionDefaults.village.防衛ターン:expeditionDefaults.village.建設数,
-      baselineFacilities,progress:0,accepted:true,createdTurn:turn,completed:false};
-  }
   const definition=override || VILLAGE_EVENT_ROWS.find(row=>row.ID===eventId);
   if(definition) {
     const context={player,relation:getV39NeutralVillageRelation(village,playerId),turn,
@@ -552,12 +544,36 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId, optio
   if(quest.deadlineTurn&&number(state.timeline?.turnNumber)>=quest.deadlineTurn)return {ok:false,state,reason:'依頼の期限が過ぎています'};
   let working = state;
   let delivered=0;
+  if(quest.supportGoals){
+    const check=inspectV39VillageSupportQuest(quest,source,number(state.timeline?.turnNumber));
+    if(!check.ready)return {ok:false,state,reason:check.description};
+  }
+  if(quest.type==='contract'){
+    const turn=number(state.timeline?.turnNumber);
+    if(turn<quest.nextDueTurn)return {ok:false,state,reason:`次の納品はT${quest.nextDueTurn}です`};
+    if(turn>quest.nextDueTurn+quest.grace){
+      const village={...source,questsByPlayerId:{...source.questsByPlayerId,[playerId]:{...quest,nextDueTurn:turn+quest.period}}};
+      return {ok:true,state:updateVillageState(state,village),message:`定期納品を再開。次の納品はT${turn+quest.period}です（物資消費なし）`};
+    }
+    const payment=changeSettlementResource(state,playerId,quest.stockKind,-quest.amountPerPeriod,quest.resourceKey);
+    if(!payment.ok)return payment;
+    working=payment.state;
+    const field=quest.stockKind==='food'?'foodStockByType':'materialStockByType';
+    const village={...source,[field]:{...source[field],[quest.resourceKey]:number(source[field]?.[quest.resourceKey])+quest.amountPerPeriod}};
+    working=updateVillageState(working,village);
+    if(number(quest.progress)+1<quest.required){
+      const next={...quest,progress:number(quest.progress)+1,nextDueTurn:turn+quest.period};
+      return {ok:true,state:updateVillageState(working,{...village,questsByPlayerId:{...village.questsByPlayerId,[playerId]:next}}),message:`定期納品 ${next.progress}/${quest.required}回 / 次回T${next.nextDueTurn}`};
+    }
+  }
   if (quest.type === "hunt") {
     const livingTargetIds = new Set((state?.enemies || [])
       .filter(enemy => number(enemy?.currentHp ?? enemy?.hp) > 0 && text(enemy?.state) !== "死亡")
       .map(enemy => text(enemy?.id)));
     const remaining = (quest.targetEnemyIds || []).filter(id => livingTargetIds.has(text(id)));
     if (remaining.length) return { ok:false, reason:`討伐対象が残っています (${remaining.length}/${quest.required})`, state };
+  } else if(quest.supportGoals||quest.type==='contract') {
+    // Saved component goals and scheduled payment were checked above.
   } else if(['watch','construction'].includes(quest.type)) {
     const progress=quest.type==='construction'?villageSupportFacilities(state.players.find(row=>row.id===playerId),source).filter(key=>!quest.baselineFacilities?.includes(key)).length:number(quest.progress);
     if(progress<quest.required)return {ok:false,state,reason:`${quest.label}: ${progress}/${quest.required}`};
@@ -679,6 +695,8 @@ export function advanceV39NeutralVillages(state, mapData, turnNumber) {
     village = advanceVillageDefenseTraining(village, {...working, neutralVillages:villages}, mapData, turn, reports);
     const planned=advanceV39VillagePlans({...working,neutralVillages:villages},village,mapData,turn);
     working=planned.state;village=planned.village;
+    const resources=advanceV39VillageResourceTeams({...working,neutralVillages:villages},village,mapData,turn);
+    working=resources.state;village=resources.village;reports.push(...resources.reports);
     for(const item of planned.completed||[])reports.push({type:'village-construction-completed',villageId:village.id,villageName:village.name,facilityName:item.facilityName,tileKey:item.tileKey,turn});
     const playerIds=[...new Set([...Object.keys(village.questsByPlayerId||{}),...Object.keys(village.questLogByPlayerId||{})])];
     for(const playerId of playerIds)for(const quest of getV39VillageQuests(village,playerId)){
@@ -690,6 +708,7 @@ export function advanceV39NeutralVillages(state, mapData, turnNumber) {
         village={...village,eventCompletedTurnByPlayerId:{...village.eventCompletedTurnByPlayerId,[playerId]:{...village.eventCompletedTurnByPlayerId?.[playerId],[quest.eventId]:turn}}};
         reports.push({type:'quest-expired',villageId:village.id,playerId});continue;
       }
+      if(quest.accepted&&!quest.completed&&quest.supportGoals&&quest.createdTurn<turn){saveQuest(advanceV39VillageSupportQuest(quest,{...working,neutralVillages:villages},village,playerId,turn));continue;}
       if(!quest.accepted||quest.completed||!['watch','construction'].includes(quest.type)||quest.createdTurn>=turn||quest.lastProgressTurn>=turn)continue;
       const player=state.players.find(row=>row.id===playerId);
       const present=player?.factionState.units.some(unit=>number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡'&&(!unit.worldId||unit.worldId==='surface')&&getHexDistance(unit,village)<=expeditionDefaults.village.防衛範囲);

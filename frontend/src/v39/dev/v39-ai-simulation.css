@@ -1,0 +1,42 @@
+#v39-ai-simulation { position:fixed; inset:0; z-index:1000300; background:#0c181d; color:#e1edf0; font-size:14px; }
+#v39-ai-simulation * { box-sizing:border-box; }
+#v39-ai-simulation .sim-shell { height:100%; display:flex; flex-direction:column; padding:6px; gap:5px; }
+#v39-ai-simulation header { display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+#v39-ai-simulation .sim-header-actions { display:flex; gap:4px; }
+#v39-ai-simulation h2 { font-size:18px; margin:0; } #v39-ai-simulation h3,#v39-ai-simulation h4 { margin:8px 0 4px; color:#b5dfe5; }
+#v39-ai-simulation button,#v39-ai-simulation input,#v39-ai-simulation select { font:inherit; color:inherit; background:#172c34; border:1px solid #506e78; border-radius:5px; padding:4px 6px; min-height:30px; }
+#v39-ai-simulation button { cursor:pointer; } #v39-ai-simulation button:disabled { opacity:.4; cursor:default; }
+#v39-ai-simulation [aria-pressed=true] { background:#20515e; border-color:#65d7e8; }
+#v39-ai-simulation .sim-controls { display:flex; flex-wrap:wrap; gap:4px; flex-shrink:0; }
+#v39-ai-simulation label { display:inline-flex; align-items:center; gap:4px; }
+#v39-ai-simulation input { width:120px; } #v39-ai-simulation input[type=number] { width:65px; }
+#v39-ai-simulation .sim-status { padding:3px; border-block:1px solid #38515a; flex-shrink:0; }
+#v39-ai-simulation progress { width:100%; height:5px; display:block; margin-top:4px; accent-color:#66d6b1; }
+#v39-ai-simulation .sim-body { flex:1; min-height:0; display:grid; grid-template-columns:minmax(130px,23%) minmax(0,1fr); gap:6px; }
+#v39-ai-simulation aside { overflow:auto; display:flex; flex-direction:column; gap:4px; }
+#v39-ai-simulation aside button { text-align:left; flex-shrink:0; overflow-wrap:anywhere; }
+#v39-ai-simulation small { display:block; font-size:12px; color:#a5c1cb; }
+#v39-ai-simulation main { min-width:0; min-height:0; display:flex; flex-direction:column; border:1px solid #38515a; border-radius:5px; }
+#v39-ai-simulation nav { display:flex; gap:3px; padding:3px; flex-wrap:wrap; border-bottom:1px solid #38515a; flex-shrink:0; }
+#v39-ai-simulation .sim-detail { overflow:auto; padding:5px; flex:1; min-height:0; overflow-wrap:anywhere; }
+#v39-ai-simulation p { margin:5px 0; line-height:1.5; color:inherit; }
+#v39-ai-simulation .sim-metrics { display:flex; flex-wrap:wrap; gap:8px; padding:5px 0; }
+#v39-ai-simulation .sim-stocks { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3px 10px; margin:0; }
+#v39-ai-simulation .sim-stocks div { display:flex; justify-content:space-between; gap:5px; border-bottom:1px solid #293f47; }
+#v39-ai-simulation dd { margin:0; font-variant-numeric:tabular-nums; }
+#v39-ai-simulation .sim-stocks dd { text-align:right; }
+#v39-ai-simulation .sim-stock-delta { display:inline-block; font-size:12px; }
+#v39-ai-simulation .sim-stock-delta.positive { color:#8be2af; }
+#v39-ai-simulation .sim-stock-delta.negative { color:#ffb4a4; }
+#v39-ai-simulation .sim-stock-delta.zero,#v39-ai-simulation .sim-stock-delta.unknown { color:#a6bec3; }
+#v39-ai-simulation .sim-issue { padding:6px 0; border-bottom:1px solid #4a4540; color:#edc679; }
+#v39-ai-simulation footer { font-size:12px; color:#a5c1cb; flex-shrink:0; }
+.v39-ai-simulation-open .playfield canvas { visibility:hidden; }
+@media(max-width:620px){
+ #v39-ai-simulation header { flex-wrap:wrap; gap:4px; }
+ #v39-ai-simulation .sim-header-actions { margin-left:auto; }
+ #v39-ai-simulation .sim-body { grid-template-columns:104px minmax(0,1fr); }
+ #v39-ai-simulation .sim-stocks { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ #v39-ai-simulation .sim-controls { max-height:160px; overflow:auto; }
+ #v39-ai-simulation nav button { flex:1; padding:3px; }
+}

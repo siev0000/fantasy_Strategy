@@ -38,8 +38,10 @@ export function advanceV39Purification(map,state,turn,random=Math.random) {
   for(const unit of units)if(canV39UnitLeaveOrganicCorpse(unit)&&(unit.worldId || 'surface')===(state.activeWorldId || 'surface')&&(unit.state==='死亡'||Number(unit.hp ?? unit.currentHp)<=0)
     &&(!unit.deadExpireTurn||unit.deadExpireTurn>turn))corpses.add(key(unit));
   for(const tile of corpses)changeV39Purification(map,tile,-balance.corpsePurificationLoss);
-  for(let y=0;y<map.h;y++)for(let x=0;x<map.w;x++)
-    if(map.fogMap?.[y]?.[x]?.kind==='death'||map.specialMap?.[y]?.[x]==='死の霧'||map.grid[y]?.[x]==='死の霧')changeV39Purification(map,`${x},${y}`,-balance.fogPurificationLoss);
+  for(const tile of corpses){
+    const [x,y]=tile.split(',').map(Number);
+    if(map.fogMap?.[y]?.[x]?.kind==='death'||map.specialMap?.[y]?.[x]==='死の霧'||map.grid[y]?.[x]==='死の霧')changeV39Purification(map,tile,-balance.fogPurificationLoss);
+  }
   const cities=new Map();
   for(const [tile,owner] of Object.entries(state.territoryOwnerByTile||{})) {
     const player=state.players?.find(row=>row.id===owner),id=territorySettlementId(state.territoryStateByTile?.[tile]);

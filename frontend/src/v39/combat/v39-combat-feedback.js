@@ -171,6 +171,7 @@ window.addEventListener("v39:cast-started", (event) => {if(!window.__v39Backgrou
 window.addEventListener("v39:cast-ended", (event) => stopCastBlink(event?.detail?.unitId));
 
 function showHazardFeedback(entries,worldId) {
+  if(window.__v39AiSimulationRunning)return;
   if(!entries?.length||window.__v39BackgroundWorldTurn)return;
   const state=window.getV39EnemyTurnState?.()||window.getV39GameState?.({includeWorlds:false});
   const visibleWorld=state?.activeWorldId||'surface';

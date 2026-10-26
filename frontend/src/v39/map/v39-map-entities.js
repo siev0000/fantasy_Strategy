@@ -19,6 +19,7 @@ import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
 import { V39_SPECIALTY_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import defenseFieldImage from "../../../../assets/effect/320×240/シールド.webp";
 import {resolveV39PlayerColor} from '../../lib/v39-player-colors.js';
+import {getV39UnitWaitTint} from '../../lib/v39-unit-action-rules.js';
 
 const STRUCTURE_LAYER_DEPTH = 10;
 const UNIT_LAYER_DEPTH = 12;
@@ -125,7 +126,7 @@ function visualUnitSignature(unit) {
     unit.x, unit.y, unit.name, unit.race, unit.raceName, unit.className, unit.class,
     unit.imageName, unit.image, unit.illustrationName, unit.画像,
     unit.icon, unit.iconName, unit.subIconName,
-    unit.currentHp, unit.hp, unit.maxHp, unit.state, unit.condition,
+    unit.currentHp, unit.hp, unit.maxHp, unit.state, unit.condition, unit.waitTurnNumber, unit.recoveryWaitTargetPercent,
     unit.unitType, profile.mode, profile.unitTypeLabel, profile.memberCount, profile.populationCost,
     unit.lastStealthBreakTurn, unit.lastStealthBreakReason, unit.lastStealthAttackTurn,
     JSON.stringify(unit.shield), JSON.stringify(unit.barrier)
@@ -168,6 +169,7 @@ function markerRenderSignature(faction, state) {
     .sort();
   return [
     String(state?.activePlayerId || ""),
+    String(state?.timeline?.turnNumber || ""),
     String(state?.activeWorldId || "surface"),
     players.map(player=>`${player.id}:${resolveV39PlayerColor(state,player.id)}`).join('|'),
     String(faction?.selectedUnitId || ""),
@@ -596,6 +598,7 @@ function addUnitArtwork(scene, marker, unit, diameter) {
   const scale = Math.min(target / sourceWidth, target / sourceHeight);
   image.setScale(scale);
   if (unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0) image.setTint(0x777f82).setAlpha(0.72);
+  else image.setTint(getV39UnitWaitTint(unit, window.getV39TimelineState?.()?.turnNumber));
   marker.add(image);
   return true;
 }
@@ -693,6 +696,7 @@ function addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, select
     fontStyle: "bold",
     color: "#e8f7fb"
   }).setOrigin(0.5);
+  if (!dead) glyph.setTint(getV39UnitWaitTint(unit, window.getV39TimelineState?.()?.turnNumber));
   marker.add([bg, glyph]);
 }
 

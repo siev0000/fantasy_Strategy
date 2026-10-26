@@ -46,6 +46,7 @@ let previewFrameIndex = 0;
 let previewBounds = null;
 let editorActions = {};
 let closeHandler = null;
+let returnFocus = null;
 
 export function configureV39EffectSettingsEditor(actions) { editorActions = actions; }
 export function setV39EffectSettingsCloseHandler(handler) { closeHandler = handler; }
@@ -82,8 +83,17 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-effect-settings-style";
   style.textContent = `
+    #v39-effect-settings-host{position:fixed;inset:0;z-index:10160;display:grid;place-items:center;background:rgba(2,8,11,.94);overflow:hidden}
+    #v39-effect-settings-host[hidden]{display:none!important}
+    #v39-effect-settings-host #v39-effect-settings-panel{width:min(1100px,100%);height:100%;max-height:100dvh;box-sizing:border-box}
     #v39-effect-settings-panel{height:100%;min-height:0;overflow:hidden;display:grid;grid-template-rows:auto minmax(0,42%) minmax(0,1fr);background:#0e171b;color:#e7efec}
     #v39-effect-settings-panel[hidden]{display:none!important}
+    @media(min-width:650px) and (max-height:500px){
+      #v39-effect-settings-host #v39-effect-settings-panel{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+      #v39-effect-settings-panel>.v39-effect-settings-head{grid-column:1/-1}
+      #v39-effect-settings-panel>.v39-effect-preview-pane{grid-column:1;grid-row:2;border-bottom:0;border-right:1px solid #354950}
+      #v39-effect-settings-panel>.v39-effect-settings-lower{grid-column:2;grid-row:2}
+    }
     .v39-effect-settings-head{min-height:42px;display:flex;align-items:center;gap:8px;padding:5px 7px;border-bottom:1px solid #3a4c53;background:#142126}
     .v39-effect-settings-head strong{font-size:var(--font-body)}
     .v39-effect-settings-back{min-height:34px;border:1px solid #4b626b;border-radius:6px;background:#18282e;color:#e8f2f0;padding:4px 10px;font:inherit;font-weight:800;cursor:pointer}
@@ -293,7 +303,23 @@ function ensurePanel() {
       </div>
       <p id="v39-effect-settings-status" aria-live="polite"></p>
     </section>`;
-  manage.appendChild(panel);
+  const host = document.createElement("div");
+  host.id = "v39-effect-settings-host";
+  host.hidden = true;
+  host.setAttribute("role", "dialog");
+  host.setAttribute("aria-modal", "true");
+  host.setAttribute("aria-label", "エフェクト設定");
+  host.appendChild(panel);
+  document.body.appendChild(host);
+  host.addEventListener("keydown", event => {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closePanel(); }
+    if (event.key !== "Tab") return;
+    const controls = [...host.querySelectorAll('button:not(:disabled),select:not(:disabled),input:not(:disabled),[tabindex="0"]')]
+      .filter(node => node.getClientRects().length > 0);
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  });
   return panel;
 }
 
@@ -754,6 +780,7 @@ function previewCurrentEffectOnMap() {
   const geometry=getV39EffectPreviewMapRequest(map);
   if(!geometry){setStatus('指定距離がマップ外です。距離を小さくしてください。',true);return;}
   setStatus(`${effectDisplayName()} を指定距離・${geometry.areaTiles.length}マスの範囲で再生します。`);
+  closePanel();
   void Promise.resolve(play({
     effectName:selectedEffectName,
     ...geometry,
@@ -791,11 +818,14 @@ async function importJsonFile(file) {
   }
 }
 
-function openPanel() {
+function openPanel(options = {}) {
   const menu = element("v39-manage-menu");
   const displayPanel = element("v39-display-settings-panel");
   const panel = element("v39-effect-settings-panel");
   if (!menu || !panel) return;
+  if (panel.hidden) returnFocus = document.activeElement;
+  element("v39-effect-settings-back").textContent = options.returnTo === "title" ? "← タイトル" : "← 管理";
+  element("v39-effect-settings-host").hidden = false;
   if (displayPanel) {
     displayPanel.hidden = true;
     displayPanel.setAttribute("aria-hidden", "true");
@@ -805,6 +835,7 @@ function openPanel() {
   panel.setAttribute("aria-hidden", "false");
   renderSetting();
   preparePreview();
+  element("v39-effect-settings-back").focus({preventScroll:true});
 }
 
 function closePanel() {
@@ -814,8 +845,11 @@ function closePanel() {
   panel.hidden = true;
   panel.setAttribute("aria-hidden", "true");
   stopPanelPlayback();
+  element("v39-effect-settings-host").hidden = true;
   menu.hidden = false;
   closeHandler?.();
+  if (returnFocus?.isConnected) returnFocus.focus({preventScroll:true});
+  returnFocus = null;
 }
 
 function bindControls() {

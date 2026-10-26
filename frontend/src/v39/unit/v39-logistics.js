@@ -1,4 +1,5 @@
-import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import {depositV39FactionCargo} from '../../lib/v39-cargo-deposit.js';
+import { FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import { normalizeV39EquipmentInventory } from "../../lib/v39-equipment-rules.js";
 import {
   addV39CargoToFactionUnit,
@@ -9,15 +10,12 @@ import {
   normalizeV39Cargo,
   resolveV39EnemySquadCargoStatus
 } from "../../lib/v39-logistics-state.js";
-import { getFactionSettlements, replaceFactionSettlement } from "../../lib/settlement-state.js";
-import { isV39UnitInsideSettlement } from "../../lib/v39-transport-rules.js";
 import { recoverV39GroundLootState } from '../../lib/v39-ground-loot-recovery.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const tileKey = value => `${Math.floor(number(value?.x))},${Math.floor(number(value?.y))}`;
 const foodKeys = new Set(FOOD_RESOURCE_KEYS);
-const materialKeys = new Set(MATERIAL_RESOURCE_KEYS);
 
 function cargoEmpty(value) {
   return isV39CargoEmpty(value);
@@ -25,45 +23,6 @@ function cargoEmpty(value) {
 
 function squadUnitIds(squad) {
   return getV39SquadUnitIds(squad);
-}
-
-function settlementAt(faction, unit) {
-  return getFactionSettlements(faction).find(settlement => isV39UnitInsideSettlement(unit, settlement)) || null;
-}
-
-function allLivingSquadMembersAt(faction, squad, destination) {
-  const ids = new Set(squadUnitIds(squad));
-  const members = (faction?.units || []).filter(unit => ids.has(text(unit?.id)) && number(unit?.hp ?? unit?.currentHp) > 0);
-  return members.length > 0 && members.every(unit => tileKey(unit) === tileKey(destination));
-}
-
-function depositIntoSettlement(rawSettlement, race, rawCargo) {
-  const settlement = normalizeV39Village(rawSettlement, race);
-  const cargo = normalizeV39Cargo(rawCargo);
-  const foodStockByType = { ...settlement.foodStockByType };
-  const materialStockByType = { ...settlement.materialStockByType };
-  const remainingResources = {};
-  const depositedResources = {};
-  for (const [name, amount] of Object.entries(cargo.resourcesByType)) {
-    if (foodKeys.has(name)) foodStockByType[name] = number(foodStockByType[name]) + amount;
-    else if (materialKeys.has(name)) materialStockByType[name] = number(materialStockByType[name]) + amount;
-    else {
-      remainingResources[name] = amount;
-      continue;
-    }
-    depositedResources[name] = amount;
-  }
-  const depositedEquipment = [...cargo.equipmentInventory];
-  return {
-    settlement:normalizeV39Village({
-      ...settlement,
-      foodStockByType,
-      materialStockByType,
-      equipmentInventory:normalizeV39EquipmentInventory([...settlement.equipmentInventory, ...depositedEquipment])
-    }, race),
-    remainingCargo:{ resourcesByType:remainingResources, equipmentInventory:[] },
-    deposited:{ resourcesByType:depositedResources, equipmentInventory:depositedEquipment }
-  };
 }
 
 function depositIntoNest(rawNest, rawCargo) {
@@ -131,49 +90,12 @@ export function addV39CargoToEnemy(enemyId, cargoToAdd) {
   };
 }
 
-export function depositV39PlayerCargo(playerId, movedUnitId = "") {
-  const state = window.getV39GameState?.();
-  const player = state?.players?.find(row => text(row?.id) === text(playerId));
-  if (!state || !player) return [];
-  let faction = player.factionState;
-  let changed = false;
-  const reports = [];
-  const squads = faction.squads.map(squad => {
-    const ids = squadUnitIds(squad);
-    if (movedUnitId && !ids.includes(text(movedUnitId))) return squad;
-    const solo = text(squad?.id) === "solo";
-    {
-      const cargoByUnitId = { ...(squad?.cargoByUnitId || {}) };
-      for (const unitId of movedUnitId ? [text(movedUnitId)] : Object.keys(cargoByUnitId)) {
-        const unit = faction.units.find(row => text(row?.id) === unitId);
-        const settlement = unit && settlementAt(faction, unit);
-        if (!settlement || unit.transportAssignment?.enabled || cargoEmpty(cargoByUnitId[unitId])) continue;
-        const result = depositIntoSettlement(settlement, player.race, cargoByUnitId[unitId]);
-        faction = replaceFactionSettlement(faction, result.settlement, { ownerPlayerId:player.id, select:false });
-        if (cargoEmpty(result.remainingCargo)) delete cargoByUnitId[unitId];
-        else cargoByUnitId[unitId] = result.remainingCargo;
-        reports.push({ playerId:player.id, unitId, squadId:text(squad.id), settlementId:text(settlement.settlementId || settlement.id), deposited:result.deposited });
-        changed = true;
-      }
-      squad = { ...squad, cargoByUnitId };
-    }
-    if (solo) return squad;
-    const member = faction.units.find(unit => ids.includes(text(unit?.id)));
-    const settlement = member && settlementAt(faction, member);
-    if (!settlement || cargoEmpty(squad?.cargo) || !allLivingSquadMembersAt(faction, squad, settlement)) return squad;
-    const result = depositIntoSettlement(settlement, player.race, squad.cargo);
-    faction = replaceFactionSettlement(faction, result.settlement, { ownerPlayerId:player.id });
-    reports.push({ playerId:player.id, squadId:text(squad.id), settlementId:text(settlement.settlementId || settlement.id), deposited:result.deposited });
-    changed = true;
-    return { ...squad, cargo:result.remainingCargo };
-  });
-  if (!changed) return reports;
-  faction = { ...faction, squads };
-  const players = state.players.map(row => text(row?.id) === text(player.id) ? { ...row, factionState:faction } : row);
-  window.setV39GameState?.({ players }, { reason:"player-cargo-deposited" });
-  for (const report of reports) window.appendV39ActivityLog?.(player.id, "物資", `拠点へ搬入: ${cargoSummary(report.deposited)}`, report);
-  window.dispatchEvent(new CustomEvent("v39:cargo-deposited", { detail:{ side:"player", reports } }));
-  return reports;
+export function depositV39PlayerCargo(playerId,movedUnitId="") {
+  const source=window.getV39GameState?.(),result=depositV39FactionCargo(source,playerId,movedUnitId);
+  if(result.state!==source)window.setV39GameState?.({players:result.state.players},{reason:'player-cargo-deposited'});
+  for(const report of result.reports)window.appendV39ActivityLog?.(playerId,'物資',`拠点へ搬入: ${cargoSummary(report.deposited)}`,report);
+  if(result.reports.length)window.dispatchEvent(new CustomEvent('v39:cargo-deposited',{detail:{side:'player',reports:result.reports}}));
+  return result.reports;
 }
 
 export function depositV39EnemyCargo(enemyId = "") {

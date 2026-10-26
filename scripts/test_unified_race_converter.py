@@ -50,6 +50,17 @@ class UnifiedRaceTests(unittest.TestCase):
         self.assertFalse(convert_sheet(reader,'種族','種族.json').records[0]['使用可'])
         self.assertFalse(convert_sheet(reader,'勢力','勢力.json').records[0]['使用可'])
 
+    def test_optional_recommendations_projected(self):
+        reader=Reader([ready(推奨クラス='ヒューマン')]);validate_unified_race_table(reader)
+        self.assertEqual(convert_sheet(reader,'種族','種族.json').records[0]['推奨クラス'],'ヒューマン')
+        self.assertEqual(convert_sheet(reader,'勢力','勢力.json').records[0]['推奨クラス'],'ヒューマン')
+
+    def test_invalid_recommendations_rejected(self):
+        for extra in ({'推奨クラス':'未登録'},{'推奨クラス':'ヒューマン/'},{'推奨クラス':'ヒューマン/ヒューマン'},
+                      {'推奨クラス':['ヒューマン']},{'推奨都市特化':'未登録都市'}):
+            with self.subTest(extra=extra),self.assertRaises(ValueError):
+                validate_unified_race_table(Reader([ready(**extra)]))
+
     def test_enabled_missing_values_rejected(self):
         for key in ('高さ','初期人数','画像','概要','詳細','特徴','マーカー色','土地'):
             with self.subTest(key=key), self.assertRaises(ValueError):

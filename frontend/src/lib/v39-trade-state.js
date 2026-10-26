@@ -116,8 +116,11 @@ function validateSide(state,side,assign=false,travels=true) {
   }
   return '';
 }
-export function proposeV39Trade(state,playerId,request) {
-  if(state.activePlayerId!==playerId||state.timeline?.phase!=='player'||(state.activeWorldId||'surface')!=='surface')return failure(state,'地上の操作中プレイヤーから提案してください');
+function isNpcTradeTurn(state,playerId,context) {
+  return context.aiTurn===true&&state.players.find(row=>row.id===playerId)?.isPlayer===false&&state.timeline?.phase==='resolution';
+}
+export function proposeV39Trade(state,playerId,request,context={}) {
+  if((!isNpcTradeTurn(state,playerId,context)&&(state.activePlayerId!==playerId||state.timeline?.phase!=='player'))||(state.activeWorldId||'surface')!=='surface')return failure(state,'地上の操作中プレイヤーから提案してください');
   const sides=(request.sides||[]).map(side=>({kind:side.kind,partyId:side.partyId,settlementId:side.settlementId,unitId:side.unitId,
     center:structuredClone(side.center),radius:side.radius,goods:structuredClone(side.goods||{})}));
   if(sides.length!==2||sides[0].kind!=='player'||sides[0].partyId!==playerId||sides[0].partyId===sides[1].partyId)return failure(state,'相手を選択してください');
@@ -149,10 +152,11 @@ export function proposeV39Trade(state,playerId,request) {
   contract.specialtyTurns=specialtyTurns;
   return {ok:true,state:updateV39Trade(state,contract),contract,message:'取引条件を提案しました。相手の承諾待ちです'};
 }
-export function acceptV39Trade(state,playerId,id,random=Math.random) {
+export function acceptV39Trade(state,playerId,id,random=Math.random,context={}) {
   const source=listV39Trades(state).find(row=>row.id===id);
-  if(source?.status!=='proposed'||(source.sides[1].kind==='player'?playerId!==source.sides[1].partyId:playerId!==source.ownerId)||state.activePlayerId!==playerId)return failure(state,'この提案を承諾できません');
-  if(state.timeline?.phase!=='player'||source.dueTurn<=tradeTurn(state))return failure(state,'操作ターンに、未来の取引日で再提案してください');
+  const npcTurn=isNpcTradeTurn(state,playerId,context);
+  if(source?.status!=='proposed'||(source.sides[1].kind==='player'?playerId!==source.sides[1].partyId:playerId!==source.ownerId)||(!npcTurn&&state.activePlayerId!==playerId))return failure(state,'この提案を承諾できません');
+  if((!npcTurn&&state.timeline?.phase!=='player')||source.dueTurn<=tradeTurn(state))return failure(state,'操作ターンに、未来の取引日で再提案してください');
   const contract=structuredClone(source);let next=state;
   const courier=tradeCourierIndex(contract);
   contract.negotiatorId ||= contract.sides[0].unitId;
@@ -166,7 +170,7 @@ export function acceptV39Trade(state,playerId,id,random=Math.random) {
   }
   if(contract.sides[1].kind==='village') {
     const terms=[contract.negotiation,contract.method,contract.deliveryMode,contract.specialtyTurns,contract.dueTurn,contract.grace,contract.period,contract.cycles,contract.sides.map(side=>[side.settlementId,[side.center.x,side.center.y],side.radius,Object.entries(side.goods).sort()])];
-    const charged=chargeV39Negotiation(state,playerId,contract.negotiatorId,contract.sides[1].partyId,terms);if(!charged.ok)return charged;
+    const charged=chargeV39Negotiation(state,playerId,contract.negotiatorId,contract.sides[1].partyId,terms,context);if(!charged.ok)return charged;
     state=charged.state;
     next={...next,players:next.players.map(row=>{const paid=state.players.find(p=>p.id===row.id);return row.id!==playerId?row:{...row,factionState:{...row.factionState,units:paid.factionState.units,negotiationAttempts:paid.factionState.negotiationAttempts}};})};
     const village=tradeBank(state,contract.sides[1]),unit=state.players.find(p=>p.id===playerId).factionState.units.find(row=>row.id===contract.negotiatorId);
@@ -221,12 +225,12 @@ export function stopV39Trade(state,playerId,id,cancel=false) {
   }
   return {ok:true,state:updateV39Trade(next,contract),message:cancel?'取引を中止。未積載の予約解除・担当者は引き返します（受領済み分は返却交渉が必要）':'取引を中断しました。再開は双方の確認が必要です'};
 }
-export function reserveV39TradeFromStock(state,playerId,id,npc=false,random=Math.random) {
+export function reserveV39TradeFromStock(state,playerId,id,npc=false,random=Math.random,context={}) {
   const source=listV39Trades(state).find(row=>row.id===id);
-  if(source?.status!=='active'||state.activePlayerId!==playerId)return failure(state,'操作中の取引を選択してください');
+  if(source?.status!=='active'||(!isNpcTradeTurn(state,playerId,context)&&state.activePlayerId!==playerId))return failure(state,'操作中の取引を選択してください');
   const side=source.sides.find(row=>npc?row.kind==='village'&&source.ownerId===playerId:row.kind==='player'&&row.partyId===playerId);
   if(!side||side.stage!=='collecting')return failure(state,'収入確保中の当事者だけが追加確保できます');
-  if(npc){const charged=chargeV39Negotiation(state,playerId,source.negotiatorId||source.sides[0].unitId,side.partyId,['追加確保',source.sides.map(row=>Object.entries(row.goods).sort())]);if(!charged.ok)return charged;state=charged.state;
+  if(npc){const charged=chargeV39Negotiation(state,playerId,source.negotiatorId||source.sides[0].unitId,side.partyId,['追加確保',source.sides.map(row=>Object.entries(row.goods).sort())],context);if(!charged.ok)return charged;state=charged.state;
     if(random()>=(source.npcChance??config.npcBaseChance))return {ok:true,state,message:'村が備蓄からの追加確保を拒否しました（AP20消費）'};}
   const contract=structuredClone(source),index=source.sides.indexOf(side),target=contract.sides[index];
   const payment=Object.fromEntries(Object.entries(side.goods).map(([name,total])=>[name,Math.max(0,Math.min(total-n(side.reserved[name]),tradeBankAmount(tradeBank(state,side),name)))]));

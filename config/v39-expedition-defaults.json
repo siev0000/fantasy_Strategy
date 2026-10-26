@@ -64,18 +64,6 @@
     "建設数": 1,
     "関係値報酬": 12
   },
-  "villageRequests": [
-    {
-      "ID": "VILLAGE_SUPPORT_DEFENSE",
-      "名前": "村の周囲を警備",
-      "type": "watch"
-    },
-    {
-      "ID": "VILLAGE_SUPPORT_CONSTRUCTION",
-      "名前": "近隣拠点の施設整備",
-      "type": "construction"
-    }
-  ],
   "supportSkills": [
     {
       "名前": "部隊指揮",

@@ -8,6 +8,9 @@ import {FOOD_RESOURCE_KEYS, inspectV39NeutralVillageEconomy, normalizeV39Village
 import {getSelectedSettlement} from './settlement-state.js';
 import {resolveV39ConstructionMaterials} from './v39-construction-materials.js';
 import {canV39UnitLeaveOrganicCorpse} from './v39-corpse-types.js';
+import {resolveV39VillageSupportTemplate} from './v39-village-support-goals.js';
+import {getV39PopulationRaceRecommendations} from './v39-race-definitions.js';
+import {getV39CitySpecializationDefinitions} from './v39-city-specialization-rules.js';
 
 const number=value=>Number(value)||0;
 const alive=unit=>number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
@@ -30,7 +33,7 @@ function needsHelp(village,targets) {
 }
 function projectVillage(state,village,turn) {
   const base=normalizeV39Village({...village,placed:true,settlementId:village.id,
-    populationByRace:{[village.race]:village.population},cityLevels:{...village.cityLevels,...village.researchLevels}},village.race);
+    populationByRace:village.populationByRace||{[village.race]:village.population},cityLevels:{...village.cityLevels,...village.researchLevels}},village.race);
   const player={id:village.id,race:village.race,factionState:{settlements:[base],selectedSettlementId:village.id,research:village.research||{}}};
   const owners={...state.territoryOwnerByTile};
   for(const key of village.territoryTileKeys||[])if(!owners[key])owners[key]=village.id;
@@ -66,7 +69,7 @@ function inspectPlan(state,village,row,map,turn,{proactive=false,preferredTileKe
     ||Object.entries(state.groundLootByTile||{}).some(([key,loot])=>keys.has(key)&&number((loot.cargo||loot).resourcesByType?.死体)>0);
   const queue=(village.constructionQueue||[]).find(item=>item.facilityName===row.計画対象);
   if((village.buildings||[]).includes(row.計画対象)||!proactive&&!found&&!queue)return null;
-  if(queue)return {...common,stage:'建設',remainingTurns:queue.remainingTurns};
+  if(queue)return {...common,stage:'建設',facilityName:row.計画対象,remainingTurns:queue.remainingTurns};
   const definition=facilityDefinitions().find(item=>item.name===row.計画対象);
   if(!definition)return {...common,blockers:['施設定義がありません']};
   const payment=resolveV39ConstructionMaterials(definition.cost,village.materialStockByType);
@@ -91,6 +94,22 @@ export function inspectV39VillagePlans(state,village,map,turn=state.timeline?.tu
     .sort((a,b)=>b.row.優先度-a.row.優先度||a.row.ID.localeCompare(b.row.ID));
 }
 
+export function inspectV39VillageFacilityAffinity(village,definition,preferences=getV39PopulationRaceRecommendations(village,village.race),cities=getV39CitySpecializationDefinitions()) {
+  const data=definition.row||definition,cfg=development.facilityAffinity;
+  const purposes=String(data.建設目的||'').split('/');
+  const matching=new Set(cities.filter(city=>{
+    const purpose=purposes.some(name=>(cfg.purposeEffects[name]||[]).some(key=>number(city[key])>0));
+    return purpose||cfg.effectFields.some(key=>number(city[key])>0&&number(data[key])>0);
+  }).map(city=>city.項目名));
+  let share=0;const matches=new Set();
+  // A race contributes once, even when several of its recommended cities match.
+  for(const preference of preferences){
+    const names=preference.cities.filter(name=>matching.has(name));
+    if(names.length){share+=preference.share;for(const name of names)matches.add(name);}
+  }
+  return {share:Math.round(share*100),bonus:share*cfg.preferredCityBonus,cities:[...matches].sort()};
+}
+
 function selectVillageFacilityPlan(state,village,map,turn) {
   const definitions=facilityDefinitions(), rows=getGameDataRows('施設'),byName=new Map(rows.map(row=>[row.施設名,row]));
   const has=name=>{
@@ -103,7 +122,7 @@ function selectVillageFacilityPlan(state,village,map,turn) {
   const makeRow=definition=>definition.name==='墓地'&&cemetery?cemetery:{ID:legacyPlanIds[definition.name]||`FACILITY_${definition.name}`,名前:`${definition.name}の建設`,計画対象:definition.name,
     判定基準:'施設未建設',優先度:number(definition.row.自動建設優先度),対象範囲:3,数量上限:100,工程:['安全確保','資材確保','建設'],支援依頼ID:templates};
   const queued=village.constructionQueue?.[0];
-  if(queued){const definition=definitions.find(row=>row.name===queued.facilityName);if(definition){const row=makeRow(definition);return {row,plan:inspectPlan(state,village,row,map,turn,{proactive:true})};}}
+  if(queued){const definition=definitions.find(row=>row.name===queued.facilityName);if(definition){const row=makeRow(definition);return {row,plan:{...inspectPlan(state,village,row,map,turn,{proactive:true}),affinity:village.planSchedule?.active?.affinity}};}}
   if(!has('墓地')&&cemetery){return {row:cemetery,plan:inspectPlan(state,village,cemetery,map,turn,{proactive:true})};}
   const economy=inspectV39NeutralVillageEconomy(village,map,state),context=projectVillage(state,village,turn);
   const oldGoal=village.planSchedule?.active?.facilityName;
@@ -111,6 +130,7 @@ function selectVillageFacilityPlan(state,village,map,turn) {
   const shortages=materialGoal?Object.entries(resolveV39ConstructionMaterials(materialGoal.cost,village.materialStockByType).cost)
     .filter(([key,cost])=>cost>number(village.materialStockByType?.[key])).map(([key])=>key):[];
   const foodFacility=(village.buildings||[]).some(name=>{const row=definitions.find(item=>item.name===name);return number(row?.row.農業)>0||FOOD_RESOURCE_KEYS.includes(row?.gatheringResource);});
+  const preferences=getV39PopulationRaceRecommendations(village,village.race),cities=getV39CitySpecializationDefinitions();
   const candidates=[],blocked=[];
   for(const definition of definitions){
     const data=definition.row;if(!data.施設名||has(data.施設名)||!hasV39FacilityPrerequisites(village,data))continue;
@@ -122,6 +142,7 @@ function selectVillageFacilityPlan(state,village,map,turn) {
       continue;
     }
     let best=null;
+    const affinity=inspectV39VillageFacilityAffinity(village,definition,preferences,cities);
     for(const key of village.territoryTileKeys||[]){
       const [x,y]=key.split(',').map(Number),tile={x,y,key};
       const check=inspectV39Construction(context.state,context.player,definition,tile,map);
@@ -137,12 +158,15 @@ function selectVillageFacilityPlan(state,village,map,turn) {
       if(!foodFacility&&foodGain<=0)continue;
       if(foodFacility&&production&&foodGain<=0&&materialGain<=0)continue;
       const score=number(data.自動建設優先度)+(!foodFacility?foodGain*100:foodGain)+materialGain*100+
-        (definition.name===oldGoal?20:0);
-      if(!best||score>best.score)best={score,key};
+        (definition.name===oldGoal?20:0)+(foodFacility?affinity.bonus:0);
+      // Affinity must not outweigh actual gains needed for food or the active project.
+      const urgency=(!foodFacility||economy.shortageTotal>0?foodGain:0)+materialGain;
+      if(!best||urgency>best.urgency||urgency===best.urgency&&score>best.score)best={score,key,urgency};
     }
-    if(best)candidates.push({row,score:best.score,plan:inspectPlan(state,village,row,map,turn,{proactive:true,preferredTileKey:best.key})});
+    if(best)candidates.push({row,score:best.score,urgency:best.urgency,plan:{...inspectPlan(state,village,row,map,turn,{proactive:true,preferredTileKey:best.key}),
+      affinity:foodFacility?affinity:{share:0,bonus:0,cities:[]}}});
   }
-  candidates.sort((a,b)=>b.score-a.score||a.row.ID.localeCompare(b.row.ID));
+  candidates.sort((a,b)=>b.urgency-a.urgency||b.score-a.score||a.row.ID.localeCompare(b.row.ID));
   if(candidates.length)return candidates[0];
   // Explain unavailable productive land instead of inventing income or building on unsuitable terrain.
   return blocked.find(item=>item.plan)||null;
@@ -207,6 +231,13 @@ export function advanceV39VillagePlans(state,village,map,turn) {
 }
 function interpolate(value,vars) {return String(value||'').replace(/\{([^}]+)\}/g,(_match,key)=>vars[key]??'');}
 export function resolveV39VillagePlanQuest(state,village,template,map) {
+  if(['警備','建設支援','複合支援','継続支援'].includes(template.計画対象)){
+    const quest=resolveV39VillageSupportTemplate(state,village,template,inspectV39VillagePlans(state,village,map));
+    if(!quest)return null;
+    const eventDefinition={ID:template.ID,名前:template.名前,イベント種別:'依頼',生成設定:{方式:'村計画'},
+      目標:template.目標||[],完了効果:template.完了効果,再発生:true,選択肢:[{効果:[{タイプ:'依頼開始'}]}]};
+    return {...quest,eventDefinition};
+  }
   const selected=inspectV39VillagePlans(state,village,map).find(item=>item.row.支援依頼ID.includes(template.ID)&&!item.plan.blockers.length
     &&(template.計画対象==='不足資源'?item.plan.stage==='資材確保'&&item.plan.needs.some(need=>need.help):template.計画対象==='周辺脅威'&&item.plan.stage==='安全確保'&&item.plan.help));
   if(!selected||!selected.row.支援依頼ID.includes(template.ID)||selected.plan.blockers.length)return null;
@@ -233,8 +264,9 @@ export function describeV39VillagePlan(village){
   const plan=village.planSchedule?.active,last=village.planSchedule?.lastCompleted;
   const remaining=plan?.remainingTurns;
   const progress=remaining==null?'':remaining>0?` / 残り${remaining}T`:' / 完了処理待ち';
+  const affinity=plan?.affinity?.bonus>0?` / 種族適性${plan.affinity.share}%（${plan.affinity.cities.join('・')}）`:'';
   const finished=development.nodes.every(node=>village.planSchedule?.development?.completedById?.[node.id]);
-  const current=plan?`${plan.name} / ${plan.stage}${progress}${plan.blockers?.length?' / '+plan.blockers.join(' / '):''}`:finished?'発展計画完了':'計画待機中';
+  const current=plan?`${plan.name} / ${plan.stage}${progress}${affinity}${plan.blockers?.length?' / '+plan.blockers.join(' / '):''}`:finished?'発展計画完了':'計画待機中';
   const completed=last?.facilities?.map(item=>`${item.facilityName} 完成（${item.tileKey}）`).join('・');
   if(completed)return `${current} / 直近: ${completed} T${last.turn}`;
   return village.buildings?.length?`${current} / 完成施設: ${village.buildings.join('・')}`:current;

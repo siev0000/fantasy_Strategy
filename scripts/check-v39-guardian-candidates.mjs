@@ -6,7 +6,7 @@ const browser=await chromium.launch();
 try{
  const page=await browser.newPage({viewport:{width:1100,height:850}}),errors=[];
  page.on('pageerror',e=>errors.push(String(e)));
- await page.goto('http://127.0.0.1:3024',{waitUntil:'networkidle'});
+ await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:5173',{waitUntil:'networkidle'});
  const report=await page.evaluate(async()=>{
   window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39ExpeditionTest();
   await window.waitForV39MapRenderSettled();

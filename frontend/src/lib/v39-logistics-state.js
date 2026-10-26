@@ -115,6 +115,16 @@ export function addV39CargoToFactionUnit(faction = {}, unitId = "", cargoToAdd =
   return { ok:true, solo, squadId:text(squad.id), faction:{ ...faction, squads:nextSquads } };
 }
 
+export function setV39CargoDeliveryTarget(faction,unitId,settlementId){
+  const unit=faction.units?.find(row=>row.id===unitId);
+  const squad=faction.squads?.find(row=>getV39SquadUnitIds(row).includes(unitId));
+  if(!unit||!squad)return faction;
+  const individual=squad.id==='solo'||!!unit.transportAssignment;
+  return {...faction,squads:faction.squads.map(row=>row!==squad?row:individual
+    ?{...row,cargoDeliveryTargetByUnitId:{...row.cargoDeliveryTargetByUnitId,[unitId]:settlementId}}
+    :{...row,cargoDeliveryTargetSettlementId:settlementId})};
+}
+
 export function normalizeV39SquadLogistics(squad = {}) {
   const moveApMax = Math.max(1, Math.floor(number(squad?.moveApMax, V39_SQUAD_MOVEMENT_BALANCE.moveApMax)));
   const moveAp = Math.max(0, Math.min(moveApMax, Math.floor(number(squad?.moveAp, moveApMax))));

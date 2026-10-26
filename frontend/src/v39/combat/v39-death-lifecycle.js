@@ -1,6 +1,7 @@
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
 import {isV39Undead,resolveV39CorpseKind} from '../../lib/v39-corpse-types.js';
 import {expireV39Summons} from "../../lib/v39-summon-rules.js";
+import {recordV39GuardianTrialDefeats} from '../../lib/v39-guardian-quests.js';
 import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import {V39_CORPSE_LIFETIME_BALANCE} from '../../lib/v39-gameplay-balance.js';
@@ -153,7 +154,7 @@ function normalizeDeadUnit(unit, turnNumber) {
 export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
   const before = window.getV39GameState?.();
   if (!before) return { collected:0, expired:0 };
-  const summons=expireV39Summons(before,turnNumber),state=summons.state;
+  const summons=expireV39Summons(recordV39GuardianTrialDefeats(before),turnNumber),state=summons.state;
   let collected = 0;
   let expired = 0;
   let cargoRecovered = 0;
@@ -171,7 +172,7 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
   };
   const dropDissolvedUnit=unit=>{
     const key=coordKey(unit),loot=groundLootByTile[key]||{};
-    if(!isV39CargoEmpty(unit.corpseCargo)){
+    if(!unit.guardianTrial&&!isV39CargoEmpty(unit.corpseCargo)){
       groundLootByTile[key]={...loot,cargo:mergeV39Cargo(loot.cargo,unit.corpseCargo)};
       groundLootCreated++;
     }
@@ -300,7 +301,7 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
   if (changed) {
     groundLootByTile=expireV39GroundCorpses(groundLootByTile,turnNumber).groundLootByTile;
     const villageById=new Map(neutralVillages.map(village=>[village.id,village]));
-    window.setV39GameState({ players, enemies, enemySquads, enemyNests, groundLootByTile,neutralVillages,
+    window.setV39GameState({ players, enemies, enemySquads, enemyNests, groundLootByTile,neutralVillages,victoryLandmarksByTile:state.victoryLandmarksByTile,
       settlements:(state.settlements || []).map(row=>villageById.get(row.id)||row) }, { reason:"death-lifecycle" });
     window.dispatchEvent(new CustomEvent("v39:death-lifecycle", { detail:{ collected, expired, cargoRecovered, groundLootCreated } }));
     for(const report of summons.reports)window.appendV39ActivityLog?.(report.playerId,'召喚',report.message);

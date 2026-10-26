@@ -77,10 +77,12 @@ MERGED_SHEET_TABLES = {
 RACE_TABLE_COLUMNS = {
     "key":"種族", "name":"種族", "className":"能力クラス", "icon":"画像", "summary":"概要",
     "detail":"詳細", "traits":"特徴", "使用可":"使用可", "旧名称":"旧名称", "設定メモ":"設定メモ",
+    "推奨クラス":"推奨クラス", "推奨都市特化":"推奨都市特化",
     **{key:key for key in ("マーカー文字", "マーカー色", "初期人数", "高さ", "ヒーロー", "軍隊", "土地")},
 }
 FACTION_TABLE_COLUMNS = {
     "種族":"種族", "カナ":"能力クラス", "使用可":"使用可", "旧名称":"旧名称",
+    "推奨クラス":"推奨クラス", "推奨都市特化":"推奨都市特化",
     **{key:key for key in ("マーカー文字", "マーカー色", "初期人数", "高さ", "ヒーロー", "軍隊", "土地")},
 }
 
@@ -108,12 +110,14 @@ def validate_unified_race_table(reader):
     rows = iter(reader.sheet_rows("種族"))
     _, header = next(rows)
     columns = {str(cell.value).strip():col for col,cell in header.items() if isinstance(cell.value,str)}
-    required = set(RACE_TABLE_COLUMNS.values()) - {"旧名称", "設定メモ"}
+    required = set(RACE_TABLE_COLUMNS.values()) - {"旧名称", "設定メモ", "推奨クラス", "推奨都市特化"}
     if not required.issubset(columns):
         raise ValueError(f"種族: 統合表の列が不足しています: {', '.join(sorted(required-columns.keys()))}")
     class_rows = {}
     if "クラス" in reader.sheet_targets:
         class_rows = {row.get("名前"):row for row in convert_sheet(reader,"クラス","クラス.json").records}
+    city_names = {row.get("項目名") for row in convert_sheet(reader,"都市","都市.json").records
+                  if row.get("レア度") == "通常" and row.get("影響タイプ") == "都市補正"} if "都市" in reader.sheet_targets else set()
     used = {}
     for number,cells in rows:
         record = {key:normalize_value(cells.get(col,CellValue()).value) for key,col in columns.items()}
@@ -135,6 +139,15 @@ def validate_unified_race_table(reader):
             used[alias]=name
         if not isinstance(record.get("使用可"),bool):
             raise ValueError(f"種族!行{number}: 使用可はTRUE/FALSEで指定してください")
+        for key, known in (("推奨クラス", class_rows), ("推奨都市特化", city_names)):
+            value = record.get(key)
+            if is_blank(value):
+                continue
+            if not isinstance(value, str):
+                raise ValueError(f"種族!行{number}: {key}は/区切りの文字列で指定してください")
+            names = [item.strip() for item in value.split("/")]
+            if any(not item or item not in known for item in names) or len(set(names)) != len(names):
+                raise ValueError(f"種族!行{number}: {key}に未登録名・空項目・重複があります: {value}")
         if not record["使用可"]:
             continue
         missing = [key for key in required if is_blank(record.get(key))]
@@ -539,7 +552,52 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
 
     if sheet_name == "施設":
         validate_facility_references(result)
+    if sheet_name == "勝利対象土地":
+        validate_guardian_landmarks(reader, result)
     return result
+
+
+def validate_guardian_landmarks(reader, result):
+    fields = ("守護者候補", "配下候補", "守護者Lv", "配下数", "配下Lv差", "配下Lv幅", "試練ID", "守護範囲")
+    if not any(any(field in row for field in fields) for row in result.records):
+        return
+    classes = {row.get("名前") for row in convert_sheet(reader, "クラス", "クラス.json").records}
+    event_rows = list(reader.sheet_rows("イベント"))
+    names = {col:cell.value for col,cell in event_rows[0][1].items()}
+    events = {row.get("ID") for _, cells in event_rows[1:] if (row := {names.get(col):cell.value for col,cell in cells.items()}).get("分類") == "守護者" and row.get("状態") == "有効"}
+    for row in result.records:
+        errors = []
+        for key in fields:
+            if key not in row:
+                errors.append(f"未設定: {key}")
+        for key in ("守護者候補", "配下候補"):
+            candidates = row.get(key)
+            if not isinstance(candidates, list) or key == "守護者候補" and not candidates:
+                errors.append(f"{key}はJSON配列で指定")
+                continue
+            seen = set()
+            for candidate in candidates:
+                if not isinstance(candidate, dict) or candidate.get("race") not in classes or candidate.get("className") not in classes:
+                    errors.append(f"{key}の種族/能力クラスが未登録")
+                    continue
+                identity = candidate.get("name") if key == "守護者候補" else (candidate["race"], candidate["className"])
+                if not identity or identity in seen:
+                    errors.append(f"{key}の識別名が空欄/重複")
+                seen.add(identity)
+                if key == "守護者候補" and not isinstance(candidate.get("unique"), bool):
+                    errors.append("守護者候補のuniqueは真偽値で指定")
+                if "trialIds" in candidate:
+                    value = candidate["trialIds"]
+                    if not isinstance(value, list) or len(value) != 3 or any(not isinstance(name, str) for name in value) or len(set(value)) != 3 or any(name not in events for name in value):
+                        errors.append("候補固有trialIdsは有効な試練3件で指定")
+        for key in fields[2:]:
+            value = row.get(key)
+            if key == "試練ID":
+                if not isinstance(value, list) or len(value) != 3 or any(not isinstance(name, str) for name in value) or len(set(value)) != 3 or any(name not in events for name in value):
+                    errors.append("試練IDは有効な守護者依頼3件を重複せず指定")
+            elif isinstance(value, bool) or not isinstance(value, int) or value < (1 if key == "守護者Lv" else 0):
+                errors.append(f"{key}は有効な整数で指定")
+        result.errors.extend({"type":"guardian_definition", "ID":row.get("ID"), "message":message} for message in errors)
 
 
 def validate_facility_references(result):

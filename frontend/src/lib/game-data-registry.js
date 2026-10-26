@@ -82,7 +82,7 @@ const REQUIRED_FIELDS = Object.freeze({
 export const GAME_DATA_TABLE_METADATA = Object.freeze({
   召喚モンスターリスト:{purpose:"系統召喚の候補・総合Lv・クラス配分・装備。対応施設で召喚可能上限と生成Lvを補正",status:"connected"},
   モンスター合成:{purpose:"左側の確定レシピ。専用モーダルで素材確認・一括消費・生成・半減/20%共有/端数EXP成長。未登録ボーナスクラスは付与せず実行",status:"connected"},
-  イベント会話:{purpose:"イベントシートの有効行。一般村の旧保存互換と守護者の納品・見張り・周辺討伐を接続。他分類は未接続",status:"connected"},
+  イベント会話:{purpose:"イベントシートの有効行。一般村の旧保存互換と守護者の試練を接続。村計画・支援/定期契約のひな型は同じシートから生成",status:"connected"},
   道具:{purpose:"携帯消耗品、素材、製造施設、回復・浄化・霧",status:"connected"},
   特産品:{ purpose:"マップ特産品・特殊資源の配置地形、採取周期、研究速度補正", status:"connected" },
   クラス:{ purpose:"種族・職業・敵クラスの能力、成長、装備、取得スキル", status:"connected" },
@@ -110,7 +110,7 @@ export const GAME_DATA_TABLE_METADATA = Object.freeze({
   都市基本データ:{ purpose:"都市項目の分類・説明・対応技能", status:"definition-only" },
   範囲:{ purpose:"スキル範囲名と対象抽出処理タイプ", status:"connected" },
   付与:{ purpose:"装備付与、条件、費用、能力・耐性・攻撃属性", status:"connected" },
-  勝利対象土地:{ purpose:"勝利条件へ接続する特別土地のID、配置地形、発見方法。勝利判定の詳細は未実装", status:"connected" }
+  勝利対象土地:{ purpose:"覇権地の配置・発見、守護者候補/配下/生成Lv/試練ID。取得後5T確保で勝利", status:"connected" }
 });
 
 const asText = value => String(value ?? "").trim();

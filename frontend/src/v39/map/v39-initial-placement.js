@@ -578,14 +578,14 @@ function placeInitialBase(tile, options = {}) {
     race:player.race,
     state:stateWithTerritory,
     player,
+    populationByRace:plan?.populationByRace,
+    initialUnits:assignedUnits,
     mapData:fieldMapData()
   });
   village = normalizeV39Village({
     ...village,
     name:text(plan?.name, village.name),
-    populationByRace:plan?.populationByRace && typeof plan.populationByRace === "object"
-      ? { ...plan.populationByRace }
-      : village.populationByRace,
+    populationByRace:village.populationByRace,
     foodStockByType:plan?.foodStockByType && typeof plan.foodStockByType === "object"
       ? { ...plan.foodStockByType }
       : village.foodStockByType,

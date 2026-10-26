@@ -1,0 +1,4488 @@
+3000 {
+  "placed": {
+    "ok": true,
+    "playerId": "player-1"
+  },
+  "events": [
+    {
+      "id": "player-1",
+      "village": {
+        "id": "village-51-70",
+        "name": "備蓄検証",
+        "x": 51,
+        "y": 70,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 28,
+        "populationByRace": {
+          "只人": 12,
+          "エルフ": 10,
+          "竜人": 6
+        },
+        "foodStockByType": {
+          "穀物": 400,
+          "野菜": 320,
+          "肉": 220,
+          "魚": 160,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 200,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 160,
+          "鉄": 100,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [
+          "学校",
+          "兵舎"
+        ],
+        "tileFacilityMap": {
+          "50,70": [
+            "兵舎"
+          ]
+        },
+        "constructionQueue": [],
+        "foodStock": 1100,
+        "materialStock": 460,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 4,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {
+          "50,70": {
+            "兵舎": {
+              "hp": 100,
+              "maxHp": 100,
+              "status": "稼働"
+            }
+          }
+        },
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "只人": {
+            "gauge": 0,
+            "lastRequiredGauge": 48,
+            "lastPopulation": 12,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "エルフ": {
+            "gauge": 0,
+            "lastRequiredGauge": 40,
+            "lastPopulation": 10,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "竜人": {
+            "gauge": 0,
+            "lastRequiredGauge": 26.4,
+            "lastPopulation": 6,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "lastProcessedTurn": 0,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {}
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "51,70": "settlement",
+          "50,70": "settlement",
+          "52,70": "resource",
+          "50,69": "resource",
+          "51,69": "resource",
+          "50,71": "resource",
+          "51,71": "resource"
+        }
+      }
+    },
+    {
+      "id": "player-1",
+      "village": {
+        "id": "village-42-71",
+        "name": "第二試験拠点",
+        "x": 42,
+        "y": 71,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 22,
+        "populationByRace": {
+          "ゴブリン": 10,
+          "オーガ": 7,
+          "天使": 5
+        },
+        "foodStockByType": {
+          "穀物": 110,
+          "野菜": 80,
+          "肉": 130,
+          "魚": 50,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 120,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 100,
+          "鉄": 70,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [
+          "兵舎"
+        ],
+        "tileFacilityMap": {
+          "41,71": [
+            "兵舎"
+          ]
+        },
+        "constructionQueue": [],
+        "foodStock": 370,
+        "materialStock": 290,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 4,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {
+          "41,71": {
+            "兵舎": {
+              "hp": 100,
+              "maxHp": 100,
+              "status": "稼働"
+            }
+          }
+        },
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "ゴブリン": {
+            "gauge": 0,
+            "lastRequiredGauge": 28,
+            "lastPopulation": 10,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "オーガ": {
+            "gauge": 0,
+            "lastRequiredGauge": 56,
+            "lastPopulation": 7,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "天使": {
+            "gauge": 0,
+            "lastRequiredGauge": 6,
+            "lastPopulation": 5,
+            "condition": "魂",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "lastProcessedTurn": 0,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {}
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "42,71": "settlement",
+          "41,71": "settlement",
+          "43,71": "resource",
+          "42,70": "resource",
+          "43,70": "resource",
+          "42,72": "resource",
+          "43,72": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-1",
+      "village": {
+        "id": "village-26-49",
+        "name": "ヴァンパイアの拠点",
+        "x": 26,
+        "y": 49,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 10,
+        "populationByRace": {
+          "ヴァンパイア": 10
+        },
+        "foodStockByType": {
+          "穀物": 7.5,
+          "野菜": 18,
+          "肉": 10.5,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 30,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 7.5,
+          "鉄": 0,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 36,
+        "materialStock": 37.5,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "ヴァンパイア": {
+            "gauge": 0,
+            "lastRequiredGauge": 20,
+            "lastPopulation": 10,
+            "condition": "死体",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.15384615384615385,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "26,49": "settlement",
+          "25,49": "resource",
+          "27,49": "resource",
+          "26,48": "resource",
+          "27,48": "resource",
+          "26,50": "resource",
+          "27,50": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-2",
+      "village": {
+        "id": "village-58-28",
+        "name": "オーガの拠点",
+        "x": 58,
+        "y": 28,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 25,
+        "populationByRace": {
+          "オーガ": 25
+        },
+        "foodStockByType": {
+          "穀物": 14.7,
+          "野菜": 14.7,
+          "肉": 19.5,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 0,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 97.5,
+          "鉄": 43.8,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 4.8,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 48.9,
+        "materialStock": 146.1,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "オーガ": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 25,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.38461538461538464,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "58,28": "settlement",
+          "57,28": "resource",
+          "59,28": "resource",
+          "57,27": "resource",
+          "58,27": "resource",
+          "57,29": "resource",
+          "58,29": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-3",
+      "village": {
+        "id": "village-80-59",
+        "name": "オーガの拠点",
+        "x": 80,
+        "y": 59,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 25,
+        "populationByRace": {
+          "オーガ": 25
+        },
+        "foodStockByType": {
+          "穀物": 28.2,
+          "野菜": 22.2,
+          "肉": 19.5,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 7.5,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 75,
+          "鉄": 33.3,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 3.3,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 69.9,
+        "materialStock": 119.1,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "オーガ": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 25,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.38461538461538464,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "80,59": "settlement",
+          "79,59": "resource",
+          "81,59": "resource",
+          "80,58": "resource",
+          "81,58": "resource",
+          "80,60": "resource",
+          "81,60": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-4",
+      "village": {
+        "id": "village-61-73",
+        "name": "天使の拠点",
+        "x": 61,
+        "y": 73,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 15,
+        "populationByRace": {
+          "天使": 15
+        },
+        "foodStockByType": {
+          "穀物": 4.5,
+          "野菜": 4.5,
+          "肉": 9,
+          "魚": 4.5,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 13.5,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 67.5,
+          "鉄": 90,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 13.5,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 22.5,
+        "materialStock": 184.5,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "天使": {
+            "gauge": 0,
+            "lastRequiredGauge": 18,
+            "lastPopulation": 15,
+            "condition": "魂",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.23076923076923078,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "61,73": "settlement",
+          "60,73": "resource",
+          "62,73": "resource",
+          "61,72": "resource",
+          "62,72": "resource",
+          "61,74": "resource",
+          "62,74": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-5",
+      "village": {
+        "id": "village-25-52",
+        "name": "エルフの拠点",
+        "x": 25,
+        "y": 52,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 50,
+        "populationByRace": {
+          "エルフ": 50
+        },
+        "foodStockByType": {
+          "穀物": 75,
+          "野菜": 180,
+          "肉": 105,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 300,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 48.9,
+          "鉄": 0,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 360,
+        "materialStock": 348.9,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "エルフ": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 50,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "25,52": "settlement",
+          "24,52": "resource",
+          "26,52": "resource",
+          "24,51": "resource",
+          "25,51": "resource",
+          "24,53": "resource",
+          "25,53": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-6",
+      "village": {
+        "id": "village-61-26",
+        "name": "竜人の拠点",
+        "x": 61,
+        "y": 26,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 25,
+        "populationByRace": {
+          "竜人": 25
+        },
+        "foodStockByType": {
+          "穀物": 9.9,
+          "野菜": 9.9,
+          "肉": 19.5,
+          "魚": 9.9,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 29.4,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 146.4,
+          "鉄": 195,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 29.4,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 49.2,
+        "materialStock": 400.2,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "竜人": {
+            "gauge": 0,
+            "lastRequiredGauge": 110,
+            "lastPopulation": 25,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.38461538461538464,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "61,26": "settlement",
+          "60,26": "resource",
+          "62,26": "resource",
+          "60,25": "resource",
+          "61,25": "resource",
+          "60,27": "resource",
+          "61,27": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-7",
+      "village": {
+        "id": "village-24-45",
+        "name": "ヴァンパイアの拠点",
+        "x": 24,
+        "y": 45,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 10,
+        "populationByRace": {
+          "ヴァンパイア": 10
+        },
+        "foodStockByType": {
+          "穀物": 7.5,
+          "野菜": 18,
+          "肉": 10.5,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 30,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 7.5,
+          "鉄": 0,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 36,
+        "materialStock": 37.5,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "ヴァンパイア": {
+            "gauge": 0,
+            "lastRequiredGauge": 20,
+            "lastPopulation": 10,
+            "condition": "死体",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.15384615384615385,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "24,45": "settlement",
+          "23,45": "resource",
+          "25,45": "resource",
+          "24,44": "resource",
+          "25,44": "resource",
+          "24,46": "resource",
+          "25,46": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-8",
+      "village": {
+        "id": "village-64-74",
+        "name": "天使の拠点",
+        "x": 64,
+        "y": 74,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 15,
+        "populationByRace": {
+          "天使": 15
+        },
+        "foodStockByType": {
+          "穀物": 3.9,
+          "野菜": 3.9,
+          "肉": 8.4,
+          "魚": 3.9,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 11.4,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 62.7,
+          "鉄": 86.7,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 14.1,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 20.1,
+        "materialStock": 174.9,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "天使": {
+            "gauge": 0,
+            "lastRequiredGauge": 18,
+            "lastPopulation": 15,
+            "condition": "魂",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.23076923076923078,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "64,74": "settlement",
+          "63,74": "resource",
+          "65,74": "resource",
+          "63,73": "resource",
+          "64,73": "resource",
+          "63,75": "resource",
+          "64,75": "resource"
+        }
+      }
+    }
+  ],
+  "players": [
+    {
+      "id": "player-1",
+      "race": "只人",
+      "plans": [
+        {
+          "name": "備蓄検証",
+          "populationByRace": {
+            "只人": 12,
+            "エルフ": 10,
+            "竜人": 6
+          },
+          "foodStockByType": {
+            "穀物": 400,
+            "野菜": 320,
+            "肉": 220,
+            "魚": 160
+          },
+          "materialStockByType": {
+            "木材": 200,
+            "石材": 160,
+            "鉄": 100
+          },
+          "buildings": [
+            "学校"
+          ],
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0
+          }
+        },
+        {
+          "name": "第二試験拠点",
+          "populationByRace": {
+            "ゴブリン": 10,
+            "オーガ": 7,
+            "天使": 5
+          },
+          "foodStockByType": {
+            "穀物": 110,
+            "野菜": 80,
+            "肉": 130,
+            "魚": 50
+          },
+          "materialStockByType": {
+            "木材": 120,
+            "石材": 100,
+            "鉄": 70
+          },
+          "buildings": [],
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0
+          }
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-51-70",
+          "name": "備蓄検証",
+          "x": 51,
+          "y": 70,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 28,
+          "populationByRace": {
+            "只人": 12,
+            "エルフ": 10,
+            "竜人": 6
+          },
+          "foodStockByType": {
+            "穀物": 400,
+            "野菜": 320,
+            "肉": 220,
+            "魚": 160,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 200,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 160,
+            "鉄": 100,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [
+            "学校",
+            "兵舎"
+          ],
+          "tileFacilityMap": {
+            "50,70": [
+              "兵舎"
+            ]
+          },
+          "constructionQueue": [],
+          "foodStock": 1100,
+          "materialStock": 460,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 4,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {
+            "50,70": {
+              "兵舎": {
+                "hp": 100,
+                "maxHp": 100,
+                "status": "稼働"
+              }
+            }
+          },
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "只人": {
+              "gauge": 0,
+              "lastRequiredGauge": 48,
+              "lastPopulation": 12,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            },
+            "エルフ": {
+              "gauge": 0,
+              "lastRequiredGauge": 40,
+              "lastPopulation": 10,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            },
+            "竜人": {
+              "gauge": 0,
+              "lastRequiredGauge": 26.4,
+              "lastPopulation": 6,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.7692307692307693,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {}
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "51,70": "settlement",
+            "50,70": "settlement",
+            "52,70": "resource",
+            "50,69": "resource",
+            "51,69": "resource",
+            "50,71": "resource",
+            "51,71": "resource"
+          },
+          "settlementId": "village-51-70",
+          "ownerPlayerId": "player-1"
+        },
+        {
+          "id": "village-42-71",
+          "name": "第二試験拠点",
+          "x": 42,
+          "y": 71,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 22,
+          "populationByRace": {
+            "ゴブリン": 10,
+            "オーガ": 7,
+            "天使": 5
+          },
+          "foodStockByType": {
+            "穀物": 110,
+            "野菜": 80,
+            "肉": 130,
+            "魚": 50,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 120,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 100,
+            "鉄": 70,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [
+            "兵舎"
+          ],
+          "tileFacilityMap": {
+            "41,71": [
+              "兵舎"
+            ]
+          },
+          "constructionQueue": [],
+          "foodStock": 370,
+          "materialStock": 290,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 4,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {
+            "41,71": {
+              "兵舎": {
+                "hp": 100,
+                "maxHp": 100,
+                "status": "稼働"
+              }
+            }
+          },
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "ゴブリン": {
+              "gauge": 0,
+              "lastRequiredGauge": 28,
+              "lastPopulation": 10,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            },
+            "オーガ": {
+              "gauge": 0,
+              "lastRequiredGauge": 56,
+              "lastPopulation": 7,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            },
+            "天使": {
+              "gauge": 0,
+              "lastRequiredGauge": 6,
+              "lastPopulation": 5,
+              "condition": "魂",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.7692307692307693,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {}
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "42,71": "settlement",
+            "41,71": "settlement",
+            "43,71": "resource",
+            "42,70": "resource",
+            "43,70": "resource",
+            "42,72": "resource",
+            "43,72": "resource"
+          },
+          "settlementId": "village-42-71",
+          "ownerPlayerId": "player-1"
+        }
+      ]
+    },
+    {
+      "id": "npc-1",
+      "race": "ヴァンパイア",
+      "plans": [
+        {
+          "name": "ヴァンパイアの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-26-49",
+          "name": "ヴァンパイアの拠点",
+          "x": 26,
+          "y": 49,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 10,
+          "populationByRace": {
+            "ヴァンパイア": 10
+          },
+          "foodStockByType": {
+            "穀物": 7.5,
+            "野菜": 18,
+            "肉": 10.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 30,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 7.5,
+            "鉄": 0,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 36,
+          "materialStock": 37.5,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "ヴァンパイア": {
+              "gauge": 0,
+              "lastRequiredGauge": 20,
+              "lastPopulation": 10,
+              "condition": "死体",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.15384615384615385,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "26,49": "settlement",
+            "25,49": "resource",
+            "27,49": "resource",
+            "26,48": "resource",
+            "27,48": "resource",
+            "26,50": "resource",
+            "27,50": "resource"
+          },
+          "settlementId": "village-26-49",
+          "ownerPlayerId": "npc-1"
+        }
+      ]
+    },
+    {
+      "id": "npc-2",
+      "race": "オーガ",
+      "plans": [
+        {
+          "name": "オーガの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-58-28",
+          "name": "オーガの拠点",
+          "x": 58,
+          "y": 28,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 25,
+          "populationByRace": {
+            "オーガ": 25
+          },
+          "foodStockByType": {
+            "穀物": 14.7,
+            "野菜": 14.7,
+            "肉": 19.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 0,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 97.5,
+            "鉄": 43.8,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 4.8,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 48.9,
+          "materialStock": 146.1,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "オーガ": {
+              "gauge": 0,
+              "lastRequiredGauge": 200,
+              "lastPopulation": 25,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.38461538461538464,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "58,28": "settlement",
+            "57,28": "resource",
+            "59,28": "resource",
+            "57,27": "resource",
+            "58,27": "resource",
+            "57,29": "resource",
+            "58,29": "resource"
+          },
+          "settlementId": "village-58-28",
+          "ownerPlayerId": "npc-2"
+        }
+      ]
+    },
+    {
+      "id": "npc-3",
+      "race": "オーガ",
+      "plans": [
+        {
+          "name": "オーガの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-80-59",
+          "name": "オーガの拠点",
+          "x": 80,
+          "y": 59,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 25,
+          "populationByRace": {
+            "オーガ": 25
+          },
+          "foodStockByType": {
+            "穀物": 28.2,
+            "野菜": 22.2,
+            "肉": 19.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 7.5,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 75,
+            "鉄": 33.3,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 3.3,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 69.9,
+          "materialStock": 119.1,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "オーガ": {
+              "gauge": 0,
+              "lastRequiredGauge": 200,
+              "lastPopulation": 25,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.38461538461538464,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "80,59": "settlement",
+            "79,59": "resource",
+            "81,59": "resource",
+            "80,58": "resource",
+            "81,58": "resource",
+            "80,60": "resource",
+            "81,60": "resource"
+          },
+          "settlementId": "village-80-59",
+          "ownerPlayerId": "npc-3"
+        }
+      ]
+    },
+    {
+      "id": "npc-4",
+      "race": "天使",
+      "plans": [
+        {
+          "name": "天使の拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-61-73",
+          "name": "天使の拠点",
+          "x": 61,
+          "y": 73,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 15,
+          "populationByRace": {
+            "天使": 15
+          },
+          "foodStockByType": {
+            "穀物": 4.5,
+            "野菜": 4.5,
+            "肉": 9,
+            "魚": 4.5,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 13.5,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 67.5,
+            "鉄": 90,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 13.5,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 22.5,
+          "materialStock": 184.5,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "天使": {
+              "gauge": 0,
+              "lastRequiredGauge": 18,
+              "lastPopulation": 15,
+              "condition": "魂",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.23076923076923078,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "61,73": "settlement",
+            "60,73": "resource",
+            "62,73": "resource",
+            "61,72": "resource",
+            "62,72": "resource",
+            "61,74": "resource",
+            "62,74": "resource"
+          },
+          "settlementId": "village-61-73",
+          "ownerPlayerId": "npc-4"
+        }
+      ]
+    },
+    {
+      "id": "npc-5",
+      "race": "エルフ",
+      "plans": [
+        {
+          "name": "エルフの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-25-52",
+          "name": "エルフの拠点",
+          "x": 25,
+          "y": 52,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 50,
+          "populationByRace": {
+            "エルフ": 50
+          },
+          "foodStockByType": {
+            "穀物": 75,
+            "野菜": 180,
+            "肉": 105,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 300,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 48.9,
+            "鉄": 0,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 360,
+          "materialStock": 348.9,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "エルフ": {
+              "gauge": 0,
+              "lastRequiredGauge": 200,
+              "lastPopulation": 50,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.7692307692307693,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "25,52": "settlement",
+            "24,52": "resource",
+            "26,52": "resource",
+            "24,51": "resource",
+            "25,51": "resource",
+            "24,53": "resource",
+            "25,53": "resource"
+          },
+          "settlementId": "village-25-52",
+          "ownerPlayerId": "npc-5"
+        }
+      ]
+    },
+    {
+      "id": "npc-6",
+      "race": "竜人",
+      "plans": [
+        {
+          "name": "竜人の拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-61-26",
+          "name": "竜人の拠点",
+          "x": 61,
+          "y": 26,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 25,
+          "populationByRace": {
+            "竜人": 25
+          },
+          "foodStockByType": {
+            "穀物": 9.9,
+            "野菜": 9.9,
+            "肉": 19.5,
+            "魚": 9.9,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 29.4,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 146.4,
+            "鉄": 195,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 29.4,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 49.2,
+          "materialStock": 400.2,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "竜人": {
+              "gauge": 0,
+              "lastRequiredGauge": 110,
+              "lastPopulation": 25,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.38461538461538464,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "61,26": "settlement",
+            "60,26": "resource",
+            "62,26": "resource",
+            "60,25": "resource",
+            "61,25": "resource",
+            "60,27": "resource",
+            "61,27": "resource"
+          },
+          "settlementId": "village-61-26",
+          "ownerPlayerId": "npc-6"
+        }
+      ]
+    },
+    {
+      "id": "npc-7",
+      "race": "ヴァンパイア",
+      "plans": [
+        {
+          "name": "ヴァンパイアの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-24-45",
+          "name": "ヴァンパイアの拠点",
+          "x": 24,
+          "y": 45,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 10,
+          "populationByRace": {
+            "ヴァンパイア": 10
+          },
+          "foodStockByType": {
+            "穀物": 7.5,
+            "野菜": 18,
+            "肉": 10.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 30,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 7.5,
+            "鉄": 0,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 36,
+          "materialStock": 37.5,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "ヴァンパイア": {
+              "gauge": 0,
+              "lastRequiredGauge": 20,
+              "lastPopulation": 10,
+              "condition": "死体",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.15384615384615385,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "24,45": "settlement",
+            "23,45": "resource",
+            "25,45": "resource",
+            "24,44": "resource",
+            "25,44": "resource",
+            "24,46": "resource",
+            "25,46": "resource"
+          },
+          "settlementId": "village-24-45",
+          "ownerPlayerId": "npc-7"
+        }
+      ]
+    },
+    {
+      "id": "npc-8",
+      "race": "天使",
+      "plans": [
+        {
+          "name": "天使の拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-64-74",
+          "name": "天使の拠点",
+          "x": 64,
+          "y": 74,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 15,
+          "populationByRace": {
+            "天使": 15
+          },
+          "foodStockByType": {
+            "穀物": 3.9,
+            "野菜": 3.9,
+            "肉": 8.4,
+            "魚": 3.9,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 11.4,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 62.7,
+            "鉄": 86.7,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 14.1,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 20.1,
+          "materialStock": 174.9,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "天使": {
+              "gauge": 0,
+              "lastRequiredGauge": 18,
+              "lastPopulation": 15,
+              "condition": "魂",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.23076923076923078,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "64,74": "settlement",
+            "63,74": "resource",
+            "65,74": "resource",
+            "63,73": "resource",
+            "64,73": "resource",
+            "63,75": "resource",
+            "64,75": "resource"
+          },
+          "settlementId": "village-64-74",
+          "ownerPlayerId": "npc-8"
+        }
+      ]
+    }
+  ]
+}
+5173 {
+  "placed": {
+    "ok": true,
+    "playerId": "player-1"
+  },
+  "events": [
+    {
+      "id": "player-1",
+      "village": {
+        "id": "village-51-70",
+        "name": "備蓄検証",
+        "x": 51,
+        "y": 70,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 28,
+        "populationByRace": {
+          "只人": 12,
+          "エルフ": 10,
+          "竜人": 6
+        },
+        "foodStockByType": {
+          "穀物": 400,
+          "野菜": 320,
+          "肉": 220,
+          "魚": 160,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 200,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 160,
+          "鉄": 100,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [
+          "学校",
+          "兵舎"
+        ],
+        "tileFacilityMap": {
+          "50,70": [
+            "兵舎"
+          ]
+        },
+        "constructionQueue": [],
+        "foodStock": 1100,
+        "materialStock": 460,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 4,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {
+          "50,70": {
+            "兵舎": {
+              "hp": 100,
+              "maxHp": 100,
+              "status": "稼働"
+            }
+          }
+        },
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "只人": {
+            "gauge": 0,
+            "lastRequiredGauge": 48,
+            "lastPopulation": 12,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "エルフ": {
+            "gauge": 0,
+            "lastRequiredGauge": 40,
+            "lastPopulation": 10,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "竜人": {
+            "gauge": 0,
+            "lastRequiredGauge": 26.4,
+            "lastPopulation": 6,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "lastProcessedTurn": 0,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {}
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "51,70": "settlement",
+          "50,70": "settlement",
+          "52,70": "resource",
+          "50,69": "resource",
+          "51,69": "resource",
+          "50,71": "resource",
+          "51,71": "resource"
+        }
+      }
+    },
+    {
+      "id": "player-1",
+      "village": {
+        "id": "village-42-71",
+        "name": "第二試験拠点",
+        "x": 42,
+        "y": 71,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 22,
+        "populationByRace": {
+          "ゴブリン": 10,
+          "オーガ": 7,
+          "天使": 5
+        },
+        "foodStockByType": {
+          "穀物": 110,
+          "野菜": 80,
+          "肉": 130,
+          "魚": 50,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 120,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 100,
+          "鉄": 70,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [
+          "兵舎"
+        ],
+        "tileFacilityMap": {
+          "41,71": [
+            "兵舎"
+          ]
+        },
+        "constructionQueue": [],
+        "foodStock": 370,
+        "materialStock": 290,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 4,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {
+          "41,71": {
+            "兵舎": {
+              "hp": 100,
+              "maxHp": 100,
+              "status": "稼働"
+            }
+          }
+        },
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "ゴブリン": {
+            "gauge": 0,
+            "lastRequiredGauge": 28,
+            "lastPopulation": 10,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "オーガ": {
+            "gauge": 0,
+            "lastRequiredGauge": 56,
+            "lastPopulation": 7,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          },
+          "天使": {
+            "gauge": 0,
+            "lastRequiredGauge": 6,
+            "lastPopulation": 5,
+            "condition": "魂",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.7692307692307693,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "lastProcessedTurn": 0,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {}
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "42,71": "settlement",
+          "41,71": "settlement",
+          "43,71": "resource",
+          "42,70": "resource",
+          "43,70": "resource",
+          "42,72": "resource",
+          "43,72": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-1",
+      "village": {
+        "id": "village-58-28",
+        "name": "オーガの拠点",
+        "x": 58,
+        "y": 28,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 25,
+        "populationByRace": {
+          "オーガ": 25
+        },
+        "foodStockByType": {
+          "穀物": 14.7,
+          "野菜": 14.7,
+          "肉": 19.5,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 0,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 97.5,
+          "鉄": 43.8,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 4.8,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 48.9,
+        "materialStock": 146.1,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "オーガ": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 25,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.38461538461538464,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "58,28": "settlement",
+          "57,28": "resource",
+          "59,28": "resource",
+          "57,27": "resource",
+          "58,27": "resource",
+          "57,29": "resource",
+          "58,29": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-2",
+      "village": {
+        "id": "village-59-25",
+        "name": "ゴブリンの拠点",
+        "x": 59,
+        "y": 25,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 75,
+        "populationByRace": {
+          "ゴブリン": 75
+        },
+        "foodStockByType": {
+          "穀物": 30.3,
+          "野菜": 30.3,
+          "肉": 50.7,
+          "魚": 15.6,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 46.8,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 331.5,
+          "鉄": 355.8,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 51.6,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 126.9,
+        "materialStock": 785.7,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "ゴブリン": {
+            "gauge": 0,
+            "lastRequiredGauge": 210,
+            "lastPopulation": 75,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 1,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "59,25": "settlement",
+          "58,25": "resource",
+          "60,25": "resource",
+          "59,24": "resource",
+          "60,24": "resource",
+          "59,26": "resource",
+          "60,26": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-3",
+      "village": {
+        "id": "village-26-49",
+        "name": "ヴァンパイアの拠点",
+        "x": 26,
+        "y": 49,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 10,
+        "populationByRace": {
+          "ヴァンパイア": 10
+        },
+        "foodStockByType": {
+          "穀物": 7.5,
+          "野菜": 18,
+          "肉": 10.5,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 30,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 7.5,
+          "鉄": 0,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 36,
+        "materialStock": 37.5,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "ヴァンパイア": {
+            "gauge": 0,
+            "lastRequiredGauge": 20,
+            "lastPopulation": 10,
+            "condition": "死体",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.15384615384615385,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "26,49": "settlement",
+          "25,49": "resource",
+          "27,49": "resource",
+          "26,48": "resource",
+          "27,48": "resource",
+          "26,50": "resource",
+          "27,50": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-4",
+      "village": {
+        "id": "village-60-29",
+        "name": "ゴブリンの拠点",
+        "x": 60,
+        "y": 29,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 75,
+        "populationByRace": {
+          "ゴブリン": 75
+        },
+        "foodStockByType": {
+          "穀物": 88.8,
+          "野菜": 65.4,
+          "肉": 50.7,
+          "魚": 3.9,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 41.1,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 185.4,
+          "鉄": 133.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 16.5,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 208.8,
+        "materialStock": 376.5,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "ゴブリン": {
+            "gauge": 0,
+            "lastRequiredGauge": 210,
+            "lastPopulation": 75,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 1,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "60,29": "settlement",
+          "59,29": "resource",
+          "61,29": "resource",
+          "60,28": "resource",
+          "61,28": "resource",
+          "60,30": "resource",
+          "61,30": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-5",
+      "village": {
+        "id": "village-25-52",
+        "name": "ヴァンパイアの拠点",
+        "x": 25,
+        "y": 52,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 10,
+        "populationByRace": {
+          "ヴァンパイア": 10
+        },
+        "foodStockByType": {
+          "穀物": 7.5,
+          "野菜": 18,
+          "肉": 10.5,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 30,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 7.5,
+          "鉄": 0,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 0,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 36,
+        "materialStock": 37.5,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "ヴァンパイア": {
+            "gauge": 0,
+            "lastRequiredGauge": 20,
+            "lastPopulation": 10,
+            "condition": "死体",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.15384615384615385,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "25,52": "settlement",
+          "24,52": "resource",
+          "26,52": "resource",
+          "24,51": "resource",
+          "25,51": "resource",
+          "24,53": "resource",
+          "25,53": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-6",
+      "village": {
+        "id": "village-38-27",
+        "name": "悪魔の拠点",
+        "x": 38,
+        "y": 27,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 10,
+        "populationByRace": {
+          "悪魔": 10
+        },
+        "foodStockByType": {
+          "穀物": 4.5,
+          "野菜": 4.5,
+          "肉": 6,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 0,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 30,
+          "鉄": 13.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 1.5,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 15,
+        "materialStock": 45,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "悪魔": {
+            "gauge": 0,
+            "lastRequiredGauge": 12,
+            "lastPopulation": 10,
+            "condition": "魂",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.15384615384615385,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "38,27": "settlement",
+          "37,27": "resource",
+          "39,27": "resource",
+          "38,26": "resource",
+          "39,26": "resource",
+          "38,28": "resource",
+          "39,28": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-7",
+      "village": {
+        "id": "village-45-74",
+        "name": "悪魔の拠点",
+        "x": 45,
+        "y": 74,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 10,
+        "populationByRace": {
+          "悪魔": 10
+        },
+        "foodStockByType": {
+          "穀物": 4.5,
+          "野菜": 4.5,
+          "肉": 6,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 0,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 30,
+          "鉄": 13.5,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 1.5,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 15,
+        "materialStock": 45,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "悪魔": {
+            "gauge": 0,
+            "lastRequiredGauge": 12,
+            "lastPopulation": 10,
+            "condition": "魂",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.15384615384615385,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "45,74": "settlement",
+          "44,74": "resource",
+          "46,74": "resource",
+          "44,73": "resource",
+          "45,73": "resource",
+          "44,75": "resource",
+          "45,75": "resource"
+        }
+      }
+    },
+    {
+      "id": "npc-8",
+      "village": {
+        "id": "village-80-59",
+        "name": "オーガの拠点",
+        "x": 80,
+        "y": 59,
+        "placed": true,
+        "type": "村",
+        "scaleKey": "village",
+        "scaleLevel": 1,
+        "developmentProject": null,
+        "population": 25,
+        "populationByRace": {
+          "オーガ": 25
+        },
+        "foodStockByType": {
+          "穀物": 28.2,
+          "野菜": 22.2,
+          "肉": 19.5,
+          "魚": 0,
+          "死体": 0,
+          "魂": 0
+        },
+        "materialStockByType": {
+          "木材": 7.5,
+          "黒木": 0,
+          "特木": 0,
+          "石材": 75,
+          "鉄": 33.3,
+          "銀鉄": 0,
+          "青金鋼": 0,
+          "赤黒鋼": 0,
+          "金": 3.3,
+          "銀": 0,
+          "宝石": 0
+        },
+        "buildings": [],
+        "tileFacilityMap": {},
+        "constructionQueue": [],
+        "foodStock": 69.9,
+        "materialStock": 119.1,
+        "cityLevels": {
+          "鍛冶Lv": 0,
+          "魔法Lv": 0,
+          "信仰Lv": 0,
+          "軍事Lv": 0,
+          "経済Lv": 0
+        },
+        "facilityStateByTile": {},
+        "storageStockByTile": {},
+        "equipmentInventory": [],
+        "populationGrowthByRace": {
+          "オーガ": {
+            "gauge": 0,
+            "lastRequiredGauge": 200,
+            "lastPopulation": 25,
+            "condition": "食事",
+            "unitUpkeep": 0,
+            "shortage": 0,
+            "starvationStage": 0,
+            "recoveryStage": 0,
+            "remainingTurns": null
+          }
+        },
+        "populationCapacity": 65,
+        "employmentSlots": 65,
+        "employmentRate": 0.38461538461538464,
+        "overcrowdingPopulation": 0,
+        "overcrowdingRate": 0,
+        "overcrowdingHappinessPenalty": 0,
+        "overcrowdingSecurityPenalty": 0,
+        "lastPopulationOutflow": 0,
+        "civicState": {
+          "happiness": 50,
+          "dissatisfaction": 50,
+          "security": 50,
+          "happinessByRace": {},
+          "happinessTargetByRace": {},
+          "happinessModifiersByRace": {},
+          "modifiers": {},
+          "lastProcessedTurn": 0
+        },
+        "citySpecializationId": "",
+        "cityTraits": [],
+        "lastEconomyDelta": null,
+        "territoryTileModeMap": {
+          "80,59": "settlement",
+          "79,59": "resource",
+          "81,59": "resource",
+          "80,58": "resource",
+          "81,58": "resource",
+          "80,60": "resource",
+          "81,60": "resource"
+        }
+      }
+    }
+  ],
+  "players": [
+    {
+      "id": "player-1",
+      "race": "只人",
+      "plans": [
+        {
+          "name": "備蓄検証",
+          "populationByRace": {
+            "只人": 12,
+            "エルフ": 10,
+            "竜人": 6
+          },
+          "foodStockByType": {
+            "穀物": 400,
+            "野菜": 320,
+            "肉": 220,
+            "魚": 160
+          },
+          "materialStockByType": {
+            "木材": 200,
+            "石材": 160,
+            "鉄": 100
+          },
+          "buildings": [
+            "学校"
+          ],
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0
+          }
+        },
+        {
+          "name": "第二試験拠点",
+          "populationByRace": {
+            "ゴブリン": 10,
+            "オーガ": 7,
+            "天使": 5
+          },
+          "foodStockByType": {
+            "穀物": 110,
+            "野菜": 80,
+            "肉": 130,
+            "魚": 50
+          },
+          "materialStockByType": {
+            "木材": 120,
+            "石材": 100,
+            "鉄": 70
+          },
+          "buildings": [],
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0
+          }
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-51-70",
+          "name": "備蓄検証",
+          "x": 51,
+          "y": 70,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 28,
+          "populationByRace": {
+            "只人": 12,
+            "エルフ": 10,
+            "竜人": 6
+          },
+          "foodStockByType": {
+            "穀物": 400,
+            "野菜": 320,
+            "肉": 220,
+            "魚": 160,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 200,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 160,
+            "鉄": 100,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [
+            "学校",
+            "兵舎"
+          ],
+          "tileFacilityMap": {
+            "50,70": [
+              "兵舎"
+            ]
+          },
+          "constructionQueue": [],
+          "foodStock": 1100,
+          "materialStock": 460,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 4,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {
+            "50,70": {
+              "兵舎": {
+                "hp": 100,
+                "maxHp": 100,
+                "status": "稼働"
+              }
+            }
+          },
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "只人": {
+              "gauge": 0,
+              "lastRequiredGauge": 48,
+              "lastPopulation": 12,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            },
+            "エルフ": {
+              "gauge": 0,
+              "lastRequiredGauge": 40,
+              "lastPopulation": 10,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            },
+            "竜人": {
+              "gauge": 0,
+              "lastRequiredGauge": 26.4,
+              "lastPopulation": 6,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.7692307692307693,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {}
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "51,70": "settlement",
+            "50,70": "settlement",
+            "52,70": "resource",
+            "50,69": "resource",
+            "51,69": "resource",
+            "50,71": "resource",
+            "51,71": "resource"
+          },
+          "settlementId": "village-51-70",
+          "ownerPlayerId": "player-1"
+        },
+        {
+          "id": "village-42-71",
+          "name": "第二試験拠点",
+          "x": 42,
+          "y": 71,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 22,
+          "populationByRace": {
+            "ゴブリン": 10,
+            "オーガ": 7,
+            "天使": 5
+          },
+          "foodStockByType": {
+            "穀物": 110,
+            "野菜": 80,
+            "肉": 130,
+            "魚": 50,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 120,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 100,
+            "鉄": 70,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [
+            "兵舎"
+          ],
+          "tileFacilityMap": {
+            "41,71": [
+              "兵舎"
+            ]
+          },
+          "constructionQueue": [],
+          "foodStock": 370,
+          "materialStock": 290,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 4,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {
+            "41,71": {
+              "兵舎": {
+                "hp": 100,
+                "maxHp": 100,
+                "status": "稼働"
+              }
+            }
+          },
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "ゴブリン": {
+              "gauge": 0,
+              "lastRequiredGauge": 28,
+              "lastPopulation": 10,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            },
+            "オーガ": {
+              "gauge": 0,
+              "lastRequiredGauge": 56,
+              "lastPopulation": 7,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            },
+            "天使": {
+              "gauge": 0,
+              "lastRequiredGauge": 6,
+              "lastPopulation": 5,
+              "condition": "魂",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.7692307692307693,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "lastProcessedTurn": 0,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {}
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "42,71": "settlement",
+            "41,71": "settlement",
+            "43,71": "resource",
+            "42,70": "resource",
+            "43,70": "resource",
+            "42,72": "resource",
+            "43,72": "resource"
+          },
+          "settlementId": "village-42-71",
+          "ownerPlayerId": "player-1"
+        }
+      ]
+    },
+    {
+      "id": "npc-1",
+      "race": "オーガ",
+      "plans": [
+        {
+          "name": "オーガの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-58-28",
+          "name": "オーガの拠点",
+          "x": 58,
+          "y": 28,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 25,
+          "populationByRace": {
+            "オーガ": 25
+          },
+          "foodStockByType": {
+            "穀物": 14.7,
+            "野菜": 14.7,
+            "肉": 19.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 0,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 97.5,
+            "鉄": 43.8,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 4.8,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 48.9,
+          "materialStock": 146.1,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "オーガ": {
+              "gauge": 0,
+              "lastRequiredGauge": 200,
+              "lastPopulation": 25,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.38461538461538464,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "58,28": "settlement",
+            "57,28": "resource",
+            "59,28": "resource",
+            "57,27": "resource",
+            "58,27": "resource",
+            "57,29": "resource",
+            "58,29": "resource"
+          },
+          "settlementId": "village-58-28",
+          "ownerPlayerId": "npc-1"
+        }
+      ]
+    },
+    {
+      "id": "npc-2",
+      "race": "ゴブリン",
+      "plans": [
+        {
+          "name": "ゴブリンの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-59-25",
+          "name": "ゴブリンの拠点",
+          "x": 59,
+          "y": 25,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 75,
+          "populationByRace": {
+            "ゴブリン": 75
+          },
+          "foodStockByType": {
+            "穀物": 30.3,
+            "野菜": 30.3,
+            "肉": 50.7,
+            "魚": 15.6,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 46.8,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 331.5,
+            "鉄": 355.8,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 51.6,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 126.9,
+          "materialStock": 785.7,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "ゴブリン": {
+              "gauge": 0,
+              "lastRequiredGauge": 210,
+              "lastPopulation": 75,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 1,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "59,25": "settlement",
+            "58,25": "resource",
+            "60,25": "resource",
+            "59,24": "resource",
+            "60,24": "resource",
+            "59,26": "resource",
+            "60,26": "resource"
+          },
+          "settlementId": "village-59-25",
+          "ownerPlayerId": "npc-2"
+        }
+      ]
+    },
+    {
+      "id": "npc-3",
+      "race": "ヴァンパイア",
+      "plans": [
+        {
+          "name": "ヴァンパイアの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-26-49",
+          "name": "ヴァンパイアの拠点",
+          "x": 26,
+          "y": 49,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 10,
+          "populationByRace": {
+            "ヴァンパイア": 10
+          },
+          "foodStockByType": {
+            "穀物": 7.5,
+            "野菜": 18,
+            "肉": 10.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 30,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 7.5,
+            "鉄": 0,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 36,
+          "materialStock": 37.5,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "ヴァンパイア": {
+              "gauge": 0,
+              "lastRequiredGauge": 20,
+              "lastPopulation": 10,
+              "condition": "死体",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.15384615384615385,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "26,49": "settlement",
+            "25,49": "resource",
+            "27,49": "resource",
+            "26,48": "resource",
+            "27,48": "resource",
+            "26,50": "resource",
+            "27,50": "resource"
+          },
+          "settlementId": "village-26-49",
+          "ownerPlayerId": "npc-3"
+        }
+      ]
+    },
+    {
+      "id": "npc-4",
+      "race": "ゴブリン",
+      "plans": [
+        {
+          "name": "ゴブリンの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-60-29",
+          "name": "ゴブリンの拠点",
+          "x": 60,
+          "y": 29,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 75,
+          "populationByRace": {
+            "ゴブリン": 75
+          },
+          "foodStockByType": {
+            "穀物": 88.8,
+            "野菜": 65.4,
+            "肉": 50.7,
+            "魚": 3.9,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 41.1,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 185.4,
+            "鉄": 133.5,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 16.5,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 208.8,
+          "materialStock": 376.5,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "ゴブリン": {
+              "gauge": 0,
+              "lastRequiredGauge": 210,
+              "lastPopulation": 75,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 1,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "60,29": "settlement",
+            "59,29": "resource",
+            "61,29": "resource",
+            "60,28": "resource",
+            "61,28": "resource",
+            "60,30": "resource",
+            "61,30": "resource"
+          },
+          "settlementId": "village-60-29",
+          "ownerPlayerId": "npc-4"
+        }
+      ]
+    },
+    {
+      "id": "npc-5",
+      "race": "ヴァンパイア",
+      "plans": [
+        {
+          "name": "ヴァンパイアの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-25-52",
+          "name": "ヴァンパイアの拠点",
+          "x": 25,
+          "y": 52,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 10,
+          "populationByRace": {
+            "ヴァンパイア": 10
+          },
+          "foodStockByType": {
+            "穀物": 7.5,
+            "野菜": 18,
+            "肉": 10.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 30,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 7.5,
+            "鉄": 0,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 0,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 36,
+          "materialStock": 37.5,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "ヴァンパイア": {
+              "gauge": 0,
+              "lastRequiredGauge": 20,
+              "lastPopulation": 10,
+              "condition": "死体",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.15384615384615385,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "25,52": "settlement",
+            "24,52": "resource",
+            "26,52": "resource",
+            "24,51": "resource",
+            "25,51": "resource",
+            "24,53": "resource",
+            "25,53": "resource"
+          },
+          "settlementId": "village-25-52",
+          "ownerPlayerId": "npc-5"
+        }
+      ]
+    },
+    {
+      "id": "npc-6",
+      "race": "悪魔",
+      "plans": [
+        {
+          "name": "悪魔の拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-38-27",
+          "name": "悪魔の拠点",
+          "x": 38,
+          "y": 27,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 10,
+          "populationByRace": {
+            "悪魔": 10
+          },
+          "foodStockByType": {
+            "穀物": 4.5,
+            "野菜": 4.5,
+            "肉": 6,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 0,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 30,
+            "鉄": 13.5,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 1.5,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 15,
+          "materialStock": 45,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "悪魔": {
+              "gauge": 0,
+              "lastRequiredGauge": 12,
+              "lastPopulation": 10,
+              "condition": "魂",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.15384615384615385,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "38,27": "settlement",
+            "37,27": "resource",
+            "39,27": "resource",
+            "38,26": "resource",
+            "39,26": "resource",
+            "38,28": "resource",
+            "39,28": "resource"
+          },
+          "settlementId": "village-38-27",
+          "ownerPlayerId": "npc-6"
+        }
+      ]
+    },
+    {
+      "id": "npc-7",
+      "race": "悪魔",
+      "plans": [
+        {
+          "name": "悪魔の拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-45-74",
+          "name": "悪魔の拠点",
+          "x": 45,
+          "y": 74,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 10,
+          "populationByRace": {
+            "悪魔": 10
+          },
+          "foodStockByType": {
+            "穀物": 4.5,
+            "野菜": 4.5,
+            "肉": 6,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 0,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 30,
+            "鉄": 13.5,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 1.5,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 15,
+          "materialStock": 45,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "悪魔": {
+              "gauge": 0,
+              "lastRequiredGauge": 12,
+              "lastPopulation": 10,
+              "condition": "魂",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.15384615384615385,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "45,74": "settlement",
+            "44,74": "resource",
+            "46,74": "resource",
+            "44,73": "resource",
+            "45,73": "resource",
+            "44,75": "resource",
+            "45,75": "resource"
+          },
+          "settlementId": "village-45-74",
+          "ownerPlayerId": "npc-7"
+        }
+      ]
+    },
+    {
+      "id": "npc-8",
+      "race": "オーガ",
+      "plans": [
+        {
+          "name": "オーガの拠点"
+        }
+      ],
+      "villages": [
+        {
+          "id": "village-80-59",
+          "name": "オーガの拠点",
+          "x": 80,
+          "y": 59,
+          "placed": true,
+          "type": "村",
+          "scaleKey": "village",
+          "scaleLevel": 1,
+          "developmentProject": null,
+          "population": 25,
+          "populationByRace": {
+            "オーガ": 25
+          },
+          "foodStockByType": {
+            "穀物": 28.2,
+            "野菜": 22.2,
+            "肉": 19.5,
+            "魚": 0,
+            "死体": 0,
+            "魂": 0
+          },
+          "materialStockByType": {
+            "木材": 7.5,
+            "黒木": 0,
+            "特木": 0,
+            "石材": 75,
+            "鉄": 33.3,
+            "銀鉄": 0,
+            "青金鋼": 0,
+            "赤黒鋼": 0,
+            "金": 3.3,
+            "銀": 0,
+            "宝石": 0
+          },
+          "buildings": [],
+          "tileFacilityMap": {},
+          "constructionQueue": [],
+          "foodStock": 69.9,
+          "materialStock": 119.1,
+          "cityLevels": {
+            "鍛冶Lv": 0,
+            "魔法Lv": 0,
+            "信仰Lv": 0,
+            "軍事Lv": 0,
+            "経済Lv": 0
+          },
+          "facilityStateByTile": {},
+          "storageStockByTile": {},
+          "equipmentInventory": [],
+          "populationGrowthByRace": {
+            "オーガ": {
+              "gauge": 0,
+              "lastRequiredGauge": 200,
+              "lastPopulation": 25,
+              "condition": "食事",
+              "unitUpkeep": 0,
+              "shortage": 0,
+              "starvationStage": 0,
+              "recoveryStage": 0,
+              "remainingTurns": null
+            }
+          },
+          "populationCapacity": 65,
+          "employmentSlots": 65,
+          "employmentRate": 0.38461538461538464,
+          "overcrowdingPopulation": 0,
+          "overcrowdingRate": 0,
+          "overcrowdingHappinessPenalty": 0,
+          "overcrowdingSecurityPenalty": 0,
+          "lastPopulationOutflow": 0,
+          "civicState": {
+            "happiness": 50,
+            "dissatisfaction": 50,
+            "security": 50,
+            "happinessByRace": {},
+            "happinessTargetByRace": {},
+            "happinessModifiersByRace": {},
+            "modifiers": {},
+            "lastProcessedTurn": 0
+          },
+          "citySpecializationId": "",
+          "cityTraits": [],
+          "lastEconomyDelta": null,
+          "territoryTileModeMap": {
+            "80,59": "settlement",
+            "79,59": "resource",
+            "81,59": "resource",
+            "80,58": "resource",
+            "81,58": "resource",
+            "80,60": "resource",
+            "81,60": "resource"
+          },
+          "settlementId": "village-80-59",
+          "ownerPlayerId": "npc-8"
+        }
+      ]
+    }
+  ]
+}

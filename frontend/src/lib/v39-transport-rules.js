@@ -14,6 +14,16 @@ const living = unit => number(unit?.hp ?? unit?.currentHp) > 0 && text(unit?.sta
 const cargoSquad = (faction, unitId) => (faction?.squads || []).find(row => getV39SquadUnitIds(row).includes(text(unitId)));
 export const getV39TransportCargo = (faction, unitId) => normalizeV39Cargo(cargoSquad(faction, unitId)?.cargoByUnitId?.[unitId]);
 
+export function loadV39SettlementResource(settlement,race,resource,rawCargo,capacity,{maxAmount=Infinity,minimumStock=0}={}) {
+  const cargo=normalizeV39Cargo(rawCargo),field=stockField(resource);
+  const limit=maxAmount===Infinity?Infinity:Math.max(0,number(maxAmount));
+  const amount=V39_TRANSPORT_RESOURCE_KEYS.includes(resource)?Math.floor((Math.max(0,Math.min(limit,
+    number(settlement?.[field]?.[resource])-Math.max(0,number(minimumStock)),number(capacity)-resolveV39CargoLoad(cargo)))+1e-9)*10)/10:0;
+  if(!amount)return {settlement,cargo,amount:0};
+  return {amount,settlement:normalizeV39Village({...settlement,[field]:{...settlement[field],[resource]:number(settlement[field]?.[resource])-amount}},race),
+    cargo:{...cargo,resourcesByType:{...cargo.resourcesByType,[resource]:number(cargo.resourcesByType[resource])+amount}}};
+}
+
 export function isV39AutomaticTransport(unit) {
   return unit?.transportAssignment?.enabled === true && !!unit.transportAssignment.destinationSettlementId;
 }
@@ -199,15 +209,13 @@ export function advanceV39AutomaticTransport(state, playerId, mapData, turnNumbe
     if (!origin?.placed || !destination?.placed || !squad) {
       assignment.status = "blocked"; assignment.reason = "輸送先または所属部隊がありません";
     } else {
-      const resource = assignment.resource, field = stockField(resource);
+      const resource = assignment.resource;
       if (isV39UnitInsideSettlement(unit, origin) && assignment.leg === "return") {
-        const amount = Math.max(0, Math.min(number(origin[field]?.[resource]),
-          resolveV39UnitCargoCapacity(unit,state) - resolveV39CargoLoad(cargo)));
+        const loaded=loadV39SettlementResource(origin,player.race,resource,cargo,resolveV39UnitCargoCapacity(unit,state));
+        const amount=loaded.amount;
         if (amount > 0) {
-          const updatedOrigin = normalizeV39Village({ ...origin, [field]:{ ...origin[field],
-            [resource]:number(origin[field]?.[resource]) - amount } }, player.race);
-          faction = replaceFactionSettlement(faction, updatedOrigin, { ownerPlayerId:player.id, select:false });
-          cargo.resourcesByType[resource] = number(cargo.resourcesByType[resource]) + amount;
+          faction = replaceFactionSettlement(faction, loaded.settlement, { ownerPlayerId:player.id, select:false });
+          cargo=loaded.cargo;
           reports.push({ unitId:unit.id, action:"積込", resource, amount, settlementId:origin.settlementId });
         }
         assignment.leg = isV39CargoEmpty(cargo) ? "return" : "outbound";

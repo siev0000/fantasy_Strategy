@@ -43,12 +43,14 @@ try {
     window.activateV39FooterTab("settlement");
   });
   await page.addStyleTag({content:"#v39-play-mode-select,.vue-modal-backdrop{display:none!important}"});
-  await page.locator('[data-settlement-page-select="operation"]').click();
-  await page.locator('[data-settlement-fold="transport"] summary').click();
-  await page.locator('[data-unit-transport="carrier"]').click();
-  await page.locator('[data-transport-destination]').selectOption("搬入拠点");
-  await page.locator('[data-transport-resource]').selectOption({label:"木材"});
-  await page.locator('[data-transport-route="carrier"]').click();
+  await page.evaluate(async()=>{
+    const rules=await import('/src/lib/v39-transport-rules.js');let s=window.getV39GameState();
+    const assigned=rules.setV39UnitTransportAssignment(s,s.activePlayerId,'出発拠点','carrier',true);
+    if(!assigned.ok)throw Error(assigned.reason);
+    const routed=rules.configureV39TransportRoute(assigned.state,s.activePlayerId,'carrier','搬入拠点','木材',true);
+    if(!routed.ok)throw Error(routed.reason);
+    window.setV39GameState(routed.state);window.activateV39FooterTab('logistics');
+  });
   const snapshot=()=>page.evaluate(()=>{
     const state=window.getV39GameState(), faction=state.players[0].factionState, unit=faction.units[0];
     return {turn:state.timeline.turnNumber,x:unit.x,y:unit.y,assignment:unit.transportAssignment,
@@ -76,7 +78,7 @@ try {
   assert.equal((await snapshot()).x,3);
   await step();
   assert.deepEqual((await snapshot()).wood,[50,100]);
-  await page.locator('[data-transport-route="carrier"]').click();
+  await page.locator('[data-logistics-legacy]').click();
   const paused=await snapshot();
   assert.equal(paused.assignment.enabled,false);
   await step();
@@ -84,7 +86,7 @@ try {
   assert.equal(stillPaused.x,paused.x);
   assert.deepEqual(stillPaused.cargo,paused.cargo);
   // Loading must not duplicate cargo or overwrite unrelated group cargo on resume.
-  await page.locator('[data-transport-route="carrier"]').click();
+  await page.locator('[data-logistics-legacy]').click();
   await step();
   for(let i=0;i<25 && (await snapshot()).assignment.status!=="waiting-stock";i++)await step();
   const complete=await snapshot();
@@ -92,10 +94,10 @@ try {
   assert.equal(complete.assignment.status,"waiting-stock");
   assert.equal(complete.shared.resourcesByType.石材,35);
   assert.equal(complete.selected,"出発拠点");
-  await page.locator('[data-settlement-fold="transport"]').scrollIntoViewIfNeeded();
+  await page.locator('.logistics-detail').scrollIntoViewIfNeeded();
   await page.screenshot({path:"output/web-game/v39-auto-transport.png"});
   await page.setViewportSize({width:440,height:900});
-  await page.locator('[data-settlement-fold="transport"]').scrollIntoViewIfNeeded();
+  await page.locator('.logistics-detail').scrollIntoViewIfNeeded();
   await page.screenshot({path:"output/web-game/v39-auto-transport-mobile.png"});
   // An impassable map holds its load in place; transport deaths retain individual cargo.
   await page.evaluate(()=>{
@@ -112,11 +114,13 @@ try {
   assert.equal(blocked.x,3);
   assert.equal(blocked.assignment.status,"blocked");
   assert.equal(blocked.cargo.resourcesByType.木材,100);
-  await page.locator('[data-transport-route="carrier"]').click();
+  await page.locator('[data-logistics-legacy]').click();
+  // The current logistics UI pauses the legacy route; verify unloading through its shared API.
+  await page.evaluate(()=>window.depositV39PlayerCargo(window.getV39GameState().activePlayerId,'carrier'));
   const unloaded=await snapshot();
   assert.deepEqual(unloaded.wood,[100,250]);
   assert.ok(!unloaded.cargo?.resourcesByType?.木材);
-  await page.locator('[data-transport-route="carrier"]').click();
+  await page.locator('[data-logistics-legacy]').click();
   await step();
   assert.equal((await snapshot()).cargo.resourcesByType.木材,100);
   await page.evaluate(()=>{
