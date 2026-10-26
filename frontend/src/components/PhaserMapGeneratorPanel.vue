@@ -2322,21 +2322,6 @@ function applyLargeMapPerformanceDefaults(w, h) {
 
 const displaySettingsFields = computed(() => ([
   {
-    key: "section_game",
-    kind: "header",
-    label: "ゲーム設定"
-  },
-  {
-    key: "fieldVisionBonusTiles",
-    kind: "number",
-    label: "フィールド視界追加マス",
-    value: gameStartSettings.value?.fieldVisionBonusTiles ?? 2,
-    min: GAME_START_FIELD_VISION_BONUS_MIN,
-    max: GAME_START_FIELD_VISION_BONUS_MAX,
-    step: 1,
-    help: "地形を見渡せる範囲だけを追加します。索敵・敵発見距離は広がらず、高低差で遮られます。"
-  },
-  {
     key: "section_display",
     kind: "header",
     label: "表示設定"
