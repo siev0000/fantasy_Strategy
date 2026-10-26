@@ -394,7 +394,7 @@ const showStrongEnemyMarkers = ref(false); // 強敵候補表示
 const lowPowerMode = ref(true); // 省電力モード
 const isPageHidden = ref(typeof document !== "undefined" ? !!document.hidden : false); // タブ非表示状態
 const focusCameraOnTileClick = ref(false); // クリック時カメラフォーカス
-const showSettingsModal = ref(false); // 表示設定モーダル表示
+const showSettingsModal = ref(false); // ゲーム設定モーダル表示
 const showQuickSettingsModal = ref(false); // 右上設定メニュー表示
 const squadFormationEnabled = ref(true); // チーム編成機能ON/OFF
 const gameStartSettings = ref(normalizeGameStartSettings()); // 開始時のターン進行設定
@@ -2322,9 +2322,9 @@ function applyLargeMapPerformanceDefaults(w, h) {
 
 const displaySettingsFields = computed(() => ([
   {
-    key: "section_display",
+    key: "section_game",
     kind: "header",
-    label: "表示設定"
+    label: "ゲーム設定"
   },
   {
     key: "fieldVisionBonusTiles",
@@ -2335,6 +2335,11 @@ const displaySettingsFields = computed(() => ([
     max: GAME_START_FIELD_VISION_BONUS_MAX,
     step: 1,
     help: "地形を見渡せる範囲だけを追加します。索敵・敵発見距離は広がらず、高低差で遮られます。"
+  },
+  {
+    key: "section_display",
+    kind: "header",
+    label: "表示設定"
   },
   {
     key: "showHeightNumbers",
@@ -13840,7 +13845,7 @@ function nudgeCustomIslandInt(key, delta) {
 function applyDisplaySettingChange(payload) {
   if (!payload || !payload.key) return;
   const { key, value } = payload;
-  if (key === "section_display" || key === "section_audio") return;
+  if (key === "section_game" || key === "section_display" || key === "section_audio") return;
   if (key === "gameViewPreset") {
     // 解像度は固定運用。既存データ互換のため入力は受けるが反映しない。
     return;
@@ -24061,7 +24066,7 @@ watch(() => props.characterCommand, command => {
 
     <generic-modal
       :show="showSettingsModal"
-      title="表示設定"
+      title="ゲーム設定"
       modal-type="form"
       :fields="displaySettingsFields"
       :notes="displaySettingsNotes"
@@ -24072,7 +24077,7 @@ watch(() => props.characterCommand, command => {
       <div class="settings-modal quick-settings-modal">
         <h3>設定メニュー</h3>
         <div class="quick-settings-grid">
-          <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">音量/表示設定</button>
+          <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">ゲーム設定</button>
           <label class="setting-row quick-settings-checkbox-row">
             <input
               type="checkbox"
