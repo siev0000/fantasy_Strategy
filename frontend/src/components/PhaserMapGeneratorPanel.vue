@@ -1,6 +1,7 @@
 <script setup>
 import {resolveV39EnemyMemberCount,resolveV39EnemyCombatProfile} from '../lib/v39-enemy-formation.js';
 import { resolveV39UnitMovementStepCost } from '../lib/v39-terrain-traversal.js';
+import { addV39FieldVisionRangeKeys } from "../lib/v39-field-visibility.js";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Phaser from "phaser";
 import GenericModal from "./GenericModal.vue";
@@ -37,7 +38,12 @@ import {
 import { RESEARCH_CATEGORY_ORDER as RESEARCH_CATEGORY_ORDER_CONFIG } from "../lib/research-tree-config.js";
 import { createOwnCharacterNavigatorEntries, createOwnSquadNavigatorEntries } from "../lib/own-faction-navigator.js";
 import { createPlayerFactionState, createPlayerRecord } from "../lib/player-state.js";
-import { normalizeGameStartSettings } from "../lib/game-start-settings.js";
+import {
+  GAME_START_FIELD_VISION_BONUS_MAX,
+  GAME_START_FIELD_VISION_BONUS_MIN,
+  normalizeFieldVisionBonusTiles,
+  normalizeGameStartSettings
+} from "../lib/game-start-settings.js";
 import {
   clampCameraCenter as clampCameraCenterUtil,
   clampCameraScroll as clampCameraScrollUtil,
@@ -2319,6 +2325,16 @@ const displaySettingsFields = computed(() => ([
     key: "section_display",
     kind: "header",
     label: "表示設定"
+  },
+  {
+    key: "fieldVisionBonusTiles",
+    kind: "number",
+    label: "フィールド視界追加マス",
+    value: gameStartSettings.value?.fieldVisionBonusTiles ?? 2,
+    min: GAME_START_FIELD_VISION_BONUS_MIN,
+    max: GAME_START_FIELD_VISION_BONUS_MAX,
+    step: 1,
+    help: "地形を見渡せる範囲だけを追加します。索敵・敵発見距離は広がらず、高低差で遮られます。"
   },
   {
     key: "showHeightNumbers",
@@ -7216,41 +7232,25 @@ function markPathExplored(path) {
 }
 
 function addVisionRangeKeys(data, sx, sy, range, outSet) {
-  if (!data?.grid || !outSet) return;
-  if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
-  if (sx < 0 || sy < 0 || sx >= data.w || sy >= data.h) return;
-  const safeRange = Math.max(0, Math.floor(toSafeNumber(range, 0)));
-  const startKey = coordKey(sx, sy);
-  if (!outSet.has(startKey)) outSet.add(startKey);
-  if (safeRange <= 0) return;
+  return addV39FieldVisionRangeKeys(data, sx, sy, range, outSet);
+}
 
-  const visited = new Set([startKey]);
-  const queue = [{ x: sx, y: sy, d: 0 }];
-  while (queue.length) {
-    const cur = queue.shift();
-    if (!cur || cur.d >= safeRange) continue;
-    const neighbors = getHexNeighborCoordsBySize(data.w, data.h, cur.x, cur.y, resolveWorldWrapEnabled(data));
-    for (const n of neighbors) {
-      const k = coordKey(n.x, n.y);
-      if (visited.has(k)) continue;
-      visited.add(k);
-      outSet.add(k);
-      queue.push({ x: n.x, y: n.y, d: cur.d + 1 });
-    }
-  }
+function resolveFieldVisionBonusTiles() {
+  return normalizeFieldVisionBonusTiles(gameStartSettings.value?.fieldVisionBonusTiles);
 }
 
 function buildCurrentScoutRangeTileSet(data) {
   const dynamicVisible = new Set();
   if (!data?.grid) return dynamicVisible;
+  const fieldVisionBonus = resolveFieldVisionBonusTiles();
 
   const v = villageState.value;
   if (v?.placed && Number.isFinite(v.x) && Number.isFinite(v.y)) {
-    addVisionRangeKeys(data, v.x, v.y, BASE_VILLAGE_SCOUT_RANGE, dynamicVisible);
+    addVisionRangeKeys(data, v.x, v.y, BASE_VILLAGE_SCOUT_RANGE + fieldVisionBonus, dynamicVisible);
   }
   for (const unit of unitList.value) {
     if (!Number.isFinite(unit?.x) || !Number.isFinite(unit?.y) || unit.x < 0 || unit.y < 0) continue;
-    addVisionRangeKeys(data, unit.x, unit.y, resolveUnitVisionRange(unit), dynamicVisible);
+    addVisionRangeKeys(data, unit.x, unit.y, resolveUnitVisionRange(unit) + fieldVisionBonus, dynamicVisible);
   }
   return dynamicVisible;
 }
@@ -13844,6 +13844,13 @@ function applyDisplaySettingChange(payload) {
   if (key === "gameViewPreset") {
     // 解像度は固定運用。既存データ互換のため入力は受けるが反映しない。
     return;
+  } else if (key === "fieldVisionBonusTiles") {
+    gameStartSettings.value = normalizeGameStartSettings({
+      ...gameStartSettings.value,
+      fieldVisionBonusTiles: value
+    });
+    rebuildVisibleTiles(currentData.value);
+    requestMapRender();
   } else if (key === "showHeightNumbers") showHeightNumbers.value = !!value;
   else if (key === "useHeightShading") useHeightShading.value = !!value;
   else if (key === "useFiveResourceMode") useFiveResourceMode.value = !!value;

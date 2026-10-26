@@ -4,6 +4,7 @@ import {normalizeV39RecoveryWaitPercent} from './v39-recovery-wait.js';
 const progressConfig = playerConfigOptions?.["ゲーム進行設定"] || {};
 const turnModeConfig = progressConfig?.["ターン進行方式"] || {};
 const combatTurnConfig = progressConfig?.["最大戦闘ターン数"] || {};
+const fieldVisionConfig = progressConfig?.["フィールド視界追加マス"] || {};
 
 const rawTurnModeOptions = Array.isArray(turnModeConfig?.["選択肢"])
   ? turnModeConfig["選択肢"]
@@ -36,6 +37,15 @@ const GAME_START_MAX_COMBAT_TURNS_MAX = Number.isFinite(rawMaxCombatTurns)
   ? Math.max(GAME_START_MAX_COMBAT_TURNS_MIN, rawMaxCombatTurns)
   : 99;
 
+const rawMinFieldVisionBonus = Math.floor(Number(fieldVisionConfig?.["最小"]));
+const rawMaxFieldVisionBonus = Math.floor(Number(fieldVisionConfig?.["最大"]));
+const GAME_START_FIELD_VISION_BONUS_MIN = Number.isFinite(rawMinFieldVisionBonus)
+  ? Math.max(0, rawMinFieldVisionBonus)
+  : 0;
+const GAME_START_FIELD_VISION_BONUS_MAX = Number.isFinite(rawMaxFieldVisionBonus)
+  ? Math.max(GAME_START_FIELD_VISION_BONUS_MIN, rawMaxFieldVisionBonus)
+  : 10;
+
 function normalizeCombatTurnCount(value) {
   const raw = Math.floor(Number(value));
   const fallbackRaw = Math.floor(Number(combatTurnConfig?.["デフォルト"]));
@@ -53,12 +63,30 @@ const GAME_START_DEFAULT_MAX_COMBAT_TURNS = normalizeCombatTurnCount(
   combatTurnConfig?.["デフォルト"]
 );
 
+function normalizeFieldVisionBonusTiles(value) {
+  const raw = Math.floor(Number(value));
+  const fallbackRaw = Math.floor(Number(fieldVisionConfig?.["デフォルト"]));
+  const fallback = Number.isFinite(fallbackRaw)
+    ? fallbackRaw
+    : 2;
+  const base = Number.isFinite(raw) ? raw : fallback;
+  return Math.min(
+    GAME_START_FIELD_VISION_BONUS_MAX,
+    Math.max(GAME_START_FIELD_VISION_BONUS_MIN, base)
+  );
+}
+
+const GAME_START_DEFAULT_FIELD_VISION_BONUS = normalizeFieldVisionBonusTiles(
+  fieldVisionConfig?.["デフォルト"]
+);
+
 function normalizeGameStartSettings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const requestedMode = String(source.turnProgressionMode || "").trim();
   return {
     recoveryWaitHpPercent:normalizeV39RecoveryWaitPercent(source.recoveryWaitHpPercent),
     npcFactionCount:Math.max(0,Math.min(8,Math.floor(Number(source.npcFactionCount)||0))),
+    fieldVisionBonusTiles: normalizeFieldVisionBonusTiles(source.fieldVisionBonusTiles),
     turnProgressionMode: turnModeValues.has(requestedMode)
       ? requestedMode
       : GAME_START_DEFAULT_TURN_MODE,
@@ -69,10 +97,14 @@ function normalizeGameStartSettings(value = {}) {
 }
 
 export {
+  GAME_START_DEFAULT_FIELD_VISION_BONUS,
   GAME_START_DEFAULT_MAX_COMBAT_TURNS,
+  GAME_START_FIELD_VISION_BONUS_MAX,
+  GAME_START_FIELD_VISION_BONUS_MIN,
   GAME_START_DEFAULT_TURN_MODE,
   GAME_START_MAX_COMBAT_TURNS_MAX,
   GAME_START_MAX_COMBAT_TURNS_MIN,
   GAME_START_TURN_MODE_OPTIONS,
+  normalizeFieldVisionBonusTiles,
   normalizeGameStartSettings
 };
