@@ -16,7 +16,7 @@ export function resolveV39FieldHeightLevel(mapData, x, y) {
 }
 
 // フィールド表示用LOS。目的マス自身は遮蔽物にせず、途中の高度だけを判定する。
-// 始点→終点の視線高度を線形補間し、中間マスがその線より高ければ奥を隠す。
+// 始点→終点の視線高度を線形補間し、中間マスがその線より高ければ奥を隠す（同高度は遮らない）。
 export function isV39FieldVisionPathClear(mapData, from, to) {
   if (!mapData?.grid || !from || !to) return false;
   const sx = toSafeInt(from.x, Number.NaN);
