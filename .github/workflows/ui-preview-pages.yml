@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -21,6 +21,55 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Apply game settings UI fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("frontend/src/components/PhaserMapGeneratorPanel.vue")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  'const displaySettingsFields = computed(() => ([\n  { key: "section_display", kind: "header", label: "表示設定" },',
+                  'const displaySettingsFields = computed(() => ([\n  { key: "section_game", kind: "header", label: "ゲーム設定" },'
+              ),
+              (
+                  '  {\n    key: "showHeightNumbers",',
+                  '  { key: "section_display", kind: "header", label: "表示設定" },\n  {\n    key: "showHeightNumbers",'
+              ),
+              (
+                  'if (key === "section_display" || key === "section_audio") return;',
+                  'if (key === "section_game" || key === "section_display" || key === "section_audio") return;'
+              ),
+              (
+                  '@click="openDisplaySettingsFromQuickMenu">音量/表示設定</button>',
+                  '@click="openDisplaySettingsFromQuickMenu">ゲーム設定</button>'
+              ),
+              (
+                  'v-model="showSettingsModal"\n      title="表示設定"',
+                  'v-model="showSettingsModal"\n      title="ゲーム設定"'
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one match, found {count}: {old[:80]!r}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          if ! git diff --quiet -- frontend/src/components/PhaserMapGeneratorPanel.vue; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add frontend/src/components/PhaserMapGeneratorPanel.vue
+            git commit -m "視界設定をゲーム設定画面へ移動"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
