@@ -162,7 +162,6 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
-          node --check frontend/src/v39/map/v39-map-visibility.js
           git diff --check -- frontend/src/v39/map/v39-map-visibility.js
 
           if ! git diff --quiet -- frontend/src/v39/map/v39-map-visibility.js; then
