@@ -21,7 +21,7 @@ class GameAudioController {
     this.bgmAudio = null;
     this.seCache = new Map();
     this.masterVolume = 0.5;
-    this.bgmVolume = 0.3;
+    this.bgmVolume = 0.15;
     this.seVolume = 0.5;
     this.loadVolumeSettings();
   }

@@ -80,10 +80,10 @@ body {
   position: fixed;
   left: 50%;
   top: 50%;
-  width: 1280px;
-  height: 720px;
-  max-width: 1280px;
-  min-height: 720px;
+  width: var(--game-view-width-px, 1280px);
+  height: var(--game-view-height-px, 640px);
+  max-width: var(--game-view-width-px, 1280px);
+  min-height: var(--game-view-height-px, 640px);
   border: none;
   border-radius: 0;
   background: transparent;

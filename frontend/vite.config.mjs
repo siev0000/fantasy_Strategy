@@ -4,6 +4,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 
 export default defineConfig(({ mode }) => {
   const isTestOnMode = mode === "teston" || process.env.TEST_ON === "1";
+  const isWatchMode = mode === "watch";
   return {
     root: "frontend",
     plugins: [vue()],
@@ -23,7 +24,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: "../web-vue-dist",
-      emptyOutDir: true,
+      emptyOutDir: !isWatchMode,
       rollupOptions: {
         output: {
           manualChunks(id) {

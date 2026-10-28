@@ -227,7 +227,7 @@ export function configureUnitSquadState(units, unitId, memberIds = [], options =
   const resolveDefaultSquadNameFn = typeof options?.resolveDefaultSquadName === "function"
     ? options.resolveDefaultSquadName
     : (rows => resolveDefaultSquadName(rows, { nonEmptyText }));
-  const maxSquadMemberCount = Math.max(1, Math.floor(Number(options?.maxSquadMemberCount || 5)));
+  const maxSquadMemberCount = Math.max(1, Math.floor(Number(options?.maxSquadMemberCount || 4)));
 
   const currentUnits = Array.isArray(units) ? units : [];
   const leaderId = nonEmptyText(unitId);

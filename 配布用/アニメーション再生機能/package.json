@@ -1,0 +1,12 @@
+{
+  "name": "phaser-effect-player-copy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/player-smoke.mjs"
+  },
+  "peerDependencies": {
+    "phaser": ">=3.70.0",
+    "vue": ">=3.4.0"
+  }
+}

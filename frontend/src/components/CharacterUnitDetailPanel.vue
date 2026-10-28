@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
+import { isMobUnit as isMobUnitUtil } from "../composables/unitCoreUtils.js";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import EquipmentInventoryModal from "./EquipmentInventoryModal.vue";
 
@@ -37,6 +38,7 @@ const EQUIPMENT_RARITY_ALIAS_MAP = {
   エピック: "epic",
   レジェンダリー: "legendary"
 };
+const EQUIPMENT_RARITY_KEYS = ["common", "uncommon", "rare", "epic", "legendary"];
 
 const iconOptions = computed(() => listIconOptions());
 const iconDraft = ref(DEFAULT_ICON_NAME);
@@ -45,6 +47,8 @@ const leftPanelView = ref("status");
 const selectedEquipSlotKey = ref("武器1");
 const showEquipmentPickerModal = ref(false);
 const equipmentActionStatus = ref("");
+const mobRarityDraft = ref("common");
+const lastUnitId = ref("");
 
 function nonEmptyText(value) {
   const text = String(value ?? "").trim();
@@ -127,6 +131,10 @@ function normalizeEquipmentRarity(value) {
   return EQUIPMENT_RARITY_ALIAS_MAP[text] || "common";
 }
 
+function isMobUnit(unit) {
+  return isMobUnitUtil(unit, { nonEmptyText });
+}
+
 function equipmentRarityShort(value) {
   const key = normalizeEquipmentRarity(value);
   if (key === "legendary") return "L";
@@ -179,6 +187,24 @@ function equipmentResistancePairText(item) {
   const magic = Math.round(toSafeNumber(item?.resistanceBonus?.["魔法耐性"], 0));
   if (physical === 0 && magic === 0) return "";
   return `${physical}/${magic}`;
+}
+
+function equipmentStatPartsText(item) {
+  const parts = [];
+  const power = Math.round(toSafeNumber(item?.power, 0));
+  const guard = Math.round(toSafeNumber(item?.guard, 0));
+  const criticalRate = Math.round(toSafeNumber(item?.criticalRate, 0));
+  const criticalPower = Math.round(toSafeNumber(item?.criticalPower, 0));
+  const attackAp = Math.round(toSafeNumber(item?.attackAp, 0));
+  const magicAp = Math.round(toSafeNumber(item?.magicAp, 0));
+  if (power !== 0) parts.push(`威 ${power}`);
+  if (guard !== 0) parts.push(`守 ${guard}`);
+  if (criticalRate !== 0) parts.push(`Cr率 ${criticalRate}`);
+  if (criticalPower !== 0) parts.push(`Cr威力 ${criticalPower}`);
+  if (attackAp !== 0 || magicAp !== 0) parts.push(`AP ${equipmentApText(item)}`);
+  const resistPair = equipmentResistancePairText(item);
+  if (resistPair) parts.push(`物/魔耐 ${resistPair}`);
+  return parts.join(" / ");
 }
 
 function normalizeEquipmentSlotKey(value) {
@@ -257,6 +283,10 @@ function selectEquipmentSlot(slotKey) {
 }
 
 function openEquipmentPickerModal() {
+  if (isMobEquipmentRestricted.value) {
+    equipmentActionStatus.value = "モブは個別装備変更できません。レア度一新を使ってください。";
+    return;
+  }
   const slotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
   if (!slotKey) {
     equipmentActionStatus.value = "装備選択失敗: スロットを選択してください。";
@@ -275,6 +305,10 @@ function closeEquipmentPickerModal() {
 }
 
 function applyPickedEquipmentItem(payload = {}) {
+  if (isMobEquipmentRestricted.value) {
+    equipmentActionStatus.value = "モブは個別装備変更できません。";
+    return;
+  }
   const unitId = nonEmptyText(props.unit?.id);
   const slotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
   const equipmentName = nonEmptyText(payload?.equipmentName);
@@ -300,6 +334,10 @@ function applyPickedEquipmentItem(payload = {}) {
 }
 
 function applyCraftFromPicker(payload = {}) {
+  if (isMobEquipmentRestricted.value) {
+    equipmentActionStatus.value = "モブは個別装備変更できません。";
+    return;
+  }
   const unitId = nonEmptyText(props.unit?.id);
   const slotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
   const equipmentName = nonEmptyText(payload?.equipmentName);
@@ -324,6 +362,10 @@ function applyCraftFromPicker(payload = {}) {
 }
 
 function removeSelectedEquipment() {
+  if (isMobEquipmentRestricted.value) {
+    equipmentActionStatus.value = "モブは個別装備変更できません。";
+    return;
+  }
   const unitId = nonEmptyText(props.unit?.id);
   const slotKey = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
   if (!unitId || !slotKey) {
@@ -343,6 +385,18 @@ function removeSelectedEquipment() {
     rarity: normalizeEquipmentRarity(slot?.item?.quality || slot?.item?.qualityLabel || "common")
   });
   equipmentActionStatus.value = `装備解除: ${slot.label}`;
+}
+
+function applyMobEquipmentRarityRefresh() {
+  const unitId = nonEmptyText(props.unit?.id);
+  if (!unitId || !isMobEquipmentRestricted.value) return;
+  const rarity = normalizeEquipmentRarity(mobRarityDraft.value);
+  emit("update-unit-equipment", {
+    unitId,
+    mode: "rerollRarity",
+    rarity
+  });
+  equipmentActionStatus.value = `モブ装備を固定プリセットで一新: ${equipmentRarityLabel(rarity)}`;
 }
 
 function applyIconChange(iconNameOverride = "") {
@@ -456,7 +510,10 @@ const equipmentSlots = computed(() => {
   }));
 });
 
+const isMobEquipmentRestricted = computed(() => isMobUnit(props.unit));
+
 const canRemoveSelectedEquipment = computed(() => {
+  if (isMobEquipmentRestricted.value) return false;
   const key = normalizeEquipmentSlotKey(selectedEquipSlotKey.value);
   if (!key) return false;
   const slot = equipmentSlots.value.find(row => row.key === key);
@@ -474,9 +531,15 @@ watch(
   (unit) => {
     if (!unit) return;
     initDrafts(unit);
-    leftPanelView.value = "status";
-    equipmentActionStatus.value = "";
-    showEquipmentPickerModal.value = false;
+    const currentUnitId = nonEmptyText(unit?.id);
+    const changedUnit = currentUnitId && currentUnitId !== lastUnitId.value;
+    if (changedUnit) {
+      equipmentActionStatus.value = "";
+      showEquipmentPickerModal.value = false;
+    }
+    lastUnitId.value = currentUnitId;
+    const defaultRarity = normalizeEquipmentRarity(unitEquipmentAtSlot(unit, "武器1")?.quality || unitEquipmentAtSlot(unit, "武器1")?.qualityLabel || "common");
+    mobRarityDraft.value = defaultRarity;
   },
   { immediate: true }
 );
@@ -605,15 +668,28 @@ watch(
             <div class="equipment-head-row">
               <h4>装備一覧</h4>
               <div class="equipment-head-actions">
-                <button type="button" class="secondary" :disabled="!selectedEquipSlotKey" @click="openEquipmentPickerModal">
-                  スロットを変更
-                </button>
-                <button type="button" class="secondary" :disabled="!canRemoveSelectedEquipment" @click="removeSelectedEquipment">
-                  外す
-                </button>
+                <template v-if="isMobEquipmentRestricted">
+                  <select v-model="mobRarityDraft">
+                    <option v-for="rarity in EQUIPMENT_RARITY_KEYS" :key="`mob-rarity-${rarity}`" :value="rarity">
+                      {{ equipmentRarityLabel(rarity) }}
+                    </option>
+                  </select>
+                  <button type="button" class="secondary" @click="applyMobEquipmentRarityRefresh">
+                    レア度一新
+                  </button>
+                </template>
+                <template v-else>
+                  <button type="button" class="secondary" :disabled="!selectedEquipSlotKey" @click="openEquipmentPickerModal">
+                    スロットを変更
+                  </button>
+                  <button type="button" class="secondary" :disabled="!canRemoveSelectedEquipment" @click="removeSelectedEquipment">
+                    外す
+                  </button>
+                </template>
               </div>
             </div>
             <div class="small">対象スロット: {{ selectedEquipSlotKey || "-" }}</div>
+            <div v-if="isMobEquipmentRestricted" class="small">モブ装備は固定プリセット参照です。個別変更はできません。</div>
             <div v-if="equipmentSlots.length" class="equipment-edit-list">
               <article
                 v-for="slot in equipmentSlots"
@@ -653,9 +729,8 @@ watch(
                         </template>
                       </span>
                     </div>
-                    <div class="small" v-if="slot.item">
-                      威/守 {{ toSafeNumber(slot.item.power, 0) }}/{{ toSafeNumber(slot.item.guard, 0) }} / Cr率 {{ toSafeNumber(slot.item.criticalRate, 0) }} / Cr威力 {{ toSafeNumber(slot.item.criticalPower, 0) }} / AP {{ equipmentApText(slot.item) }}
-                      <template v-if="equipmentResistancePairText(slot.item)"> / 物/魔耐 {{ equipmentResistancePairText(slot.item) }}</template>
+                    <div class="small" v-if="slot.item && equipmentStatPartsText(slot.item)">
+                      {{ equipmentStatPartsText(slot.item) }}
                     </div>
                   </div>
                 </div>
@@ -701,6 +776,7 @@ watch(
   <equipment-inventory-modal
     :show="showEquipmentPickerModal"
     :village="village"
+    :units="unit ? [unit] : []"
     :smith-level="smithLevelForModal"
     :picker-mode="true"
     :allow-craft-in-picker-mode="true"

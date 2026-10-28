@@ -1,6 +1,15 @@
 Original prompt: 全体を整理してほしい。メモと地形ランダム生成だけは消さないで vueファイルにできるところはVueファイルに
 
+- 2026-09-11: 自動ターン更新時にカメラを初期化・統治者へフォーカスしない `preserveCameraView` を追加。選択中タイルと閲覧中のカメラ位置・ズームを維持する。
+- 2026-09-11: 画面上部中央へ、ターン経過・自動進行の開始/停止・10ターン区切り停止を3.8秒表示するテロップを追加。
+- 2026-09-11: 他勢力攻撃へ宣戦布告を追加。未宣戦攻撃は確認モーダルで停止し、宣戦後のみ攻撃可能。外交評価-20を20ターン記録し、魔族同士は宣戦・ペナルティを免除する。
+
+- 2026-05-03: 資源サイドバー表示方針を固定。基本は「文字最小・アイコン+数値」表示へ統一し、トップ行をアイコン中心表示に変更。食料詳細の `魂/死体` は `保有0 かつ 増減0` で非表示化。アイコンサイズは `--sidebar-menu-icon-size` / `--sidebar-detail-icon-size` で調整可能にした。
+- 2026-05-03: 添付の参考画像ベースでHUD方向性メモを追記。`docs/MEMO.md` と `docs/現状ゲーム仕様メモ.md` に「上部資源バー / 左アクション列 / 右イベントログ / 下部戦闘カード / 右下ミニマップ」の画面構成指針を追加。
+- 2026-05-03: 仕様メモ更新。`docs/MEMO.md` と `docs/現状ゲーム仕様メモ.md` に「資源サイドバー表示ルール（固定）」を追記。
 - 2026-02-26: Started reorganization with focus on preserving map random generation and memo docs.
+- 2026-03-28: 移動コスト判定を調整。`高さ差1`は通常コスト、`高さ差2以上`のみ追加コスト+1に変更して、高さLv2以上タイルが実質移動不能になりやすい問題を緩和。`PhaserMapGeneratorPanel.vue` と `pathfindingWorker.js` の両方を同条件に統一。
+- 2026-03-28: 高度差2マスを増やす調整を実施。`地形生成設定.高度` の `ノイズ幅: 10 -> 13`、`平滑化回数: 2 -> 1`。さらに高度Lv算出で `山岳 +1 / 火山 +2` の持ち上げを追加し、平地との段差が出やすいように調整。
 - 2026-03-20: 装備在庫UIを専用モーダル化。`EquipmentInventoryModal.vue` を追加し、フィールド右上アクションに「道具一覧」ボタン（装備アイコン）を追加。`PhaserMapGeneratorPanel.vue` から開閉できるよう接続。
 - 2026-03-20: `CharacterStatusModal.vue` の暫定「装備在庫チップバー」を削除し、装備在庫表示を専用モーダルへ一本化。
 - 2026-03-20: 検証: `npm run build:front` 成功。
@@ -18,6 +27,8 @@ Original prompt: 全体を整理してほしい。メモと地形ランダム生
 - 2026-03-20: 検証: `npm run build:front` 成功。
 - 2026-03-20: 道具一覧モーダルに「武器生成」機能を追加。武器名・レアリティ・個数を指定して生成可能にし、鍛冶Lvに応じて選択可能レアリティを制御（common〜legendary）。
 - 2026-03-20: `PhaserMapGeneratorPanel.vue` に武器生成イベントハンドラを追加し、既存 `craftEquipmentInventoryItem` に接続。ログ/通知は「武器生成」として表示。
+- 2026-03-28: 地形高度レベルを再調整。海にディスタンスマップを使った深度差を導入し、湖/平地/山岳のスケールを再設計して湖が単一値にならず、山岳により大きな高さ差が出るように変更。
+- 2026-03-28: 検証: `npm run build:front` 成功。
 - 2026-03-20: 装備生成コスト計算を調整。`消費量.json(Lv)` と `装備.json` の `木材` / `鉱石` 倍率のみで素材計算し、石材・金・銀・宝石は武器生成基本コストから除外。
 - 2026-03-20: 鍛冶生成上限は `鍛冶場Lv` の定義上限（defined cap）参照に変更。
 - 2026-03-20: 武器生成「押しても何も起きない」対策として、道具モーダルに親関数直接呼び出し経路（`onCraftWeapon`）を追加し、モーダル内に実行結果/失敗理由メッセージを表示。
@@ -824,3 +835,73 @@ pm run build:front.- 2026-03-10: Fixed fog-of-war toggle regression: when test m
 - 2026-03-24: タイル詳細に攻撃ボタンを追加。押下で攻撃モード（赤カーソル）に切替し、隣接マスクリックで仮戦闘モーダルを開く暫定フローを実装。
 - 2026-03-24: 検証 `npm run build:front` 成功。
 - 2026-03-24: `develop-web-game` Playwright クライアント実行を試行したが、スキル実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-28: 川/滝/溶岩の画面描画を edge 基準へ寄せるため、PhaserMapGeneratorPanel.vue のタイル中央滝アイコン描画と川ノード（円）描画を削除。川・滝・溶岩は共有辺ライン描画のみを使用。
+- 2026-03-28: 関連する未使用定義（esolveWaterfallIconName / MAP_WATERFALL_ICON_CONFIG 参照 / waterfallTextureKey）を整理。
+- 2026-03-28: 検証: 
+pm run build:front 成功。
+- 2026-03-28: develop-web-game Playwrightクライアント実行は playwright パッケージ未導入のため失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-28: Height-difference borders now use Δ-level to choose line count (diff>1 draws 2 or 3 lines, ≤1 hides), colors/alpha keyed to strong drops, matching the spec for multi-line borders.
+- 2026-03-28: ビルド: 
+pm run build:front 成功 (chunk warning unchanged).
+
+- 2026-03-29: 平地/荒野を分離。`地形定義`に`荒野`を追加し、色を調整（平地=黄緑系、荒野=旧平地色）。
+- 2026-03-29: 生成ルールを追加。砂漠隣接・乾燥度・森隣接などを使って`平地 -> 荒野`へ変換する`applyWastelandTransition`を実装し、「森寄りは平地、砂漠寄りは荒野」を反映。
+- 2026-03-29: 森の目標補充が荒野を上書きしないよう`topUpForestToTarget`を修正。
+- 2026-03-29: 地形塊の整形対象に`荒野`を追加（孤立荒野の補正含む）。
+- 2026-03-29: 勢力地形名の正規化とカテゴリに`荒野`を追加（`FACTION_TERRAIN_ALIAS_MAP` / `BASE_TERRAIN_KEYS`）。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: `develop-web-game` Playwright クライアントは今回も `playwright` パッケージ未解決で実行不可（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-29: 数値入力UIを「右側△▽ステッパー」基準に統一。`PhaserMapGeneratorPanel.vue` の島カスタム/攻撃射程/ユニット作成数を更新し、`App.vue` のゲーム開始設定（プレイヤー数・別勢力数）にも同形式を追加。
+- 2026-03-29: `App.vue` にゲーム開始数値のステップ調整関数 `nudgeGameStartCount` を追加。合計上限（最大勢力数）に従う既存 `normalizeGameStartCounts` を継続利用。
+- 2026-03-29: 検証 `npm run build:front` 成功。- 2026-03-29: develop-web-game Playwrightクライアント再実行は playwright パッケージ未解決のため失敗（ERR_MODULE_NOT_FOUND）。
+- 2026-03-29: 修正: 戦闘勝利後の敵マーカー残留を抑止。`applyFieldBattleResultV2` で調査文脈を含む全勝利時にタイル敵クリア処理を通すよう変更し、`clearMonsterTileByAmbush` の即時再抽選を停止（次回調査時再抽選）。
+- 2026-03-29: 修正: 選択マス詳細の敵表示を改善。発見時の敵名を `spottedEnemyNamesByTile` に記録し、現在敵がいない場合でも `発見履歴:` として表示。
+- 2026-03-29: 修正: ターン終了時HP回復の適用条件を見直し。再生値回復は常時適用、地形回復は自領または村中心で適用するよう `applyVillageTileRecoveryTurn` を更新。
+- 2026-03-29: 検証: `npm run build:front` 成功。`develop-web-game` Playwright クライアントは `playwright` パッケージ未解決で実行不可（ERR_MODULE_NOT_FOUND）。
+- 2026-03-29: 追補: 奇襲ログの「再抽選:0体」表示を抑止。再ビルド確認 (`npm run build:front` 成功)。
+- 2026-03-29: 危険度ルール更新。自領タイルは `applyDangerRulesByTerritory` で常時危険度0%に補正し、危険度0%タイルは `clearEnemyPresenceAtTile` で敵自然配置を抑止。
+- 2026-03-29: 無主地の危険度自然上昇を追加。3ターンごとに +20%（上限100%）をターン進行時のみ適用。
+- 2026-03-29: 村配置時/マップ適用時に危険度ルールを再適用し、`rerollEnemySpawnAtTile` 側でも危険度0%時は敵再抽選しないよう修正。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: 初期村配置直後の危険度0化不具合を修正。マルチ勢力作成中に `syncActiveTestPlayerSlotFromLiveState` より前に領土再計算していたため中心1マスのみ0化されるケースがあり、同期→領土再計算→危険度適用の順へ変更。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: 危険度0化条件を拡張。`applyDangerRulesByTerritory` で「自勢力のみ」から「領土化済みタイル全体（全勢力）」を危険度0%維持に変更。
+- 2026-03-29: マルチ初期配置直後の同期差分対策として、`rebuildTerritorySets` のアクティブ勢力判定は live `villageState` を優先し、activeId未設定時は先頭スロットIDへフォールバック。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: 初期配置直後の危険度反映を強化。`syncDangerRulesForCurrentMap` を追加し、村配置完了後 `nextTick` で領土再計算→危険度同期→再描画を再実行して開始時ズレを抑止。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: ターン進行を自動時間経過へ変更。共通基準 TURN_SECONDS（既定60秒）を追加し、時計・ターン進行・移動時間計算をこの基準へ統一。
+- 2026-03-29: 自動進行は AUTO_TURN_PAUSE_EVERY_TURNS（既定10T）ごとに停止するように変更。時計モーダルから「開始/停止」で再開・停止可能化。
+- 2026-03-29: 移動を時間経過式へ変更。1マス移動時間 = (MOVE_TIME_BASE_TURNS * TURN_SECONDS) / 移動値（既定 2*60/移動）で待機し、停止中は移動進行も停止。
+- 2026-03-29: unNextTurn に showEventModal オプションを追加し、自動進行時は毎ターンのイベントモーダル表示を抑止。
+- 2026-03-29: 検証: 
+pm run build:front 成功。
+- 2026-03-29: ユニット移動の全体ロックを撤廃し、ユニット単位の移動中管理へ変更。`useUnitMovePanel.js` に `movingUnitIdSet` / `isMoveGroupInProgress` を追加し、移動中でも他ユニット選択・別ユニット移動指示・各UI操作が並行可能な構成へ更新。
+- 2026-03-29: 移動中ユニット以外の操作性を維持するため、移動ステップ中の `setSelectedTileKey` / `onMapTileSelected` は「現在選択中ユニットが当該移動グループに含まれる場合のみ」反映するよう修正。
+- 2026-03-29: 攻撃可否の移動判定を「誰かが移動中」から「選択中ユニット(移動グループ)が移動中」に変更（`resolveSelectedTileAttackActionState`）。
+- 2026-03-29: 検証 `npm run build:front` 成功。
+- 2026-03-29: `develop-web-game` Playwright クライアント実行を試行したが、実行環境で `playwright` パッケージ未解決のため失敗（`ERR_MODULE_NOT_FOUND`）。
+- 2026-03-29: own-faction-panel に移動中インジケータを追加。`unitEntries` に `isMoving` を付与し、移動値の右に `👣` を点滅表示するよう更新。検証: `npm run build:front` 成功。
+- 2026-04-05: 強敵出現ルールを調整。map-generator.js の 強敵配置設定 に 出現率倍率: 0.5 と テリトリー半径 を追加し、強敵候補生成時にテリトリー重複チェックを導入（重複時は候補生成をスキップ）。PhaserMapGeneratorPanel.vue 側でも強敵タイルは常にテリトリー付きで敵スポーンするよう統一し、既存テリトリー重複チェックを適用。
+- 2026-04-05: 修正: map-generator.js で未定義の clampNumber を使用していたため clamp に統一。Uncaught ReferenceError: clampNumber is not defined を解消。
+pm run build:front 成功。
+- 2026-04-05: 修正: map-generator.js に 	oSafeNumber ヘルパーを追加し、強敵テリトリー関連変更で発生した 	oSafeNumber is not defined を解消。
+pm run build:front 成功。
+- 2026-04-05: ゲーム中クリック時の文字選択ハイライトを無効化。PhaserMapGeneratorPanel.css で user-select none と tap-highlight 無効化を追加し、input/textarea/select/contenteditable は除外。
+
+- 2026-04-05: 河川生成を仕様変更。generateRivers を主河川/小河川の2段生成へ再構成。
+  - 主河川: 連結陸地サイズごとの本数テーブル（1〜39=0, 40〜119=1, 120〜219=2, 220〜359=3, 360〜539=4, 540〜759=5, 760以上=6+200毎+1）で生成。
+  - 主河川: 下り方向のみで流路作成、最小長6、河口間距離>=6、中間距離>=4を満たす候補のみ採用。
+  - 小河川: 主河川生成後に密度ベース（大陸サイズ/係数）で短距離（3〜8）を追加。
+  - 既存の riverData 返却形式（riverSet/sourceSet/branchSet/mouthSet/edgeSet/waterLinkSet/corner*Set/meshCenterSet/largeRiverSet）を維持。
+- 2026-04-05: 検証: 
+pm run build:front 成功。- 2026-04-05: 河川分岐率を既定25%に調整（河川.分岐.幹線確率=0.25）。小河川生成数を分岐率でスケーリングし、分岐流路は llowEarlyStop:false + 長さレンジ拡張で分岐先が伸びるよう修正。検証: npm run build:front 成功。
+- 2026-04-05: 川分岐の生成起点を主河川隣接へ変更し、分岐開始エッジを明示接続。分岐ルートの近接判定を先頭数マスで緩和して『分岐してすぐ止まる』状態を改善。検証: npm run build:front 成功。
+- 2026-04-11: 敵配置調整。森モンスターの地形キー付与を『周囲隣接がすべて森の内部タイル』に限定し、森端での出現を抑制。平地隣接時のテリトリー中心ズレを軽減。検証: npm run build:front 成功。
+
+- 2026-07-20: 他プロジェクトへコピーして使える `配布用/アニメーション再生機能` を追加。Vue非依存の `PhaserEffectPlayer`、Vue操作部品、Vite素材一覧例、導入例、README、簡易テストを収録。
+- 2026-07-20: 現行の `assets/effect/320×240` と `assets/effect/アニメーション1` を配布用へコピー。235ファイル・24.58MiBをSHA256で原本一致確認。
+- 2026-07-20: 配布版は現行仕様に合わせ、1素材1500ms固定、連続間隔10ms、幅320px素材は縦120px分割、`アニメーション1`は2倍表示を初期設定。`npm test`、Vue SFC解析、`npm run build:front` 成功。
+- 2026-07-20: develop-web-game Playwrightクライアントは `playwright` パッケージ未解決 (`ERR_MODULE_NOT_FOUND`) のため画面キャプチャ未実施。
+
+- 2026-04-12: フィールド非表示の原因を修正。isForestCoreSpawnTile 内で未定義の getHexNeighborCoords を呼んでいたため実行時に初期化停止。getHexNeighborCoordsBySize(..., resolveWorldWrapEnabled(data)) に差し替え。uild:front と Playwright で pageerror 解消・描画復帰を確認。

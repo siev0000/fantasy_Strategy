@@ -10,6 +10,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  initialCategory: {
+    type: String,
+    default: ""
+  },
   researchProgress: {
     type: Object,
     default: () => ({})
@@ -26,7 +30,7 @@ const researchCategoriesMap = researchTreeData.categories || {};
 const activeCategory = ref("");
 const activeLevel = ref(1);
 const selectedResearchId = ref("");
-const selectedByCategoryLevel = ref({});
+const selectedByCategory = ref({});
 const researchProgressState = ref(createEmptyResearchProgressState());
 const RESEARCH_EXP_BASE = 100;
 const EXP_MANUAL_STEP = 50;
@@ -54,15 +58,21 @@ function sanitizeSelectionMap(raw) {
   if (!raw || typeof raw !== "object") return {};
   return Object.entries(raw).reduce((acc, [categoryKey, value]) => {
     const normalizedKey = String(categoryKey || "").trim();
-    if (!normalizedKey || !value || typeof value !== "object") return acc;
-    const pickedByLevel = Object.entries(value).reduce((pickedAcc, [levelKey, itemId]) => {
+    if (!normalizedKey) return acc;
+    if (typeof value === "string" || typeof value === "number") {
+      const directId = String(value || "").trim();
+      if (directId) acc[normalizedKey] = directId;
+      return acc;
+    }
+    if (!value || typeof value !== "object") return acc;
+    const selectedPairs = Object.entries(value).map(([levelKey, itemId]) => {
       const level = Math.max(1, Math.floor(Number(levelKey) || 1));
       const id = String(itemId || "").trim();
-      if (!id) return pickedAcc;
-      pickedAcc[level] = id;
-      return pickedAcc;
-    }, {});
-    acc[normalizedKey] = pickedByLevel;
+      return { level, id };
+    }).filter(row => !!row.id);
+    selectedPairs.sort((a, b) => b.level - a.level);
+    const picked = selectedPairs[0]?.id || String(value?.itemId || value?.id || "").trim();
+    if (picked) acc[normalizedKey] = picked;
     return acc;
   }, {});
 }
@@ -117,12 +127,10 @@ function normalizeCompletedIds(rawValue) {
   return single ? [single] : [];
 }
 
-function readSelectedMap(categoryKey) {
+function readSelectedItemId(categoryKey) {
   const key = String(categoryKey || "").trim();
-  if (!key) return {};
-  const source = selectedByCategoryLevel.value[key];
-  if (!source || typeof source !== "object") return {};
-  return source;
+  if (!key) return "";
+  return String(selectedByCategory.value?.[key] || "").trim();
 }
 
 function readCompletedMap(categoryKey) {
@@ -176,9 +184,8 @@ function resolveCurrentLevel(categoryKey) {
   return Math.max(1, Math.min(maxLevel, completed + 1));
 }
 
-function resolvePickedItemId(categoryKey, level) {
-  const map = readSelectedMap(categoryKey);
-  return String(map[level] || "").trim();
+function resolvePickedItemId(categoryKey) {
+  return readSelectedItemId(categoryKey);
 }
 
 function isLevelCompleted(categoryKey, level) {
@@ -307,7 +314,7 @@ const selectedResearchInfo = computed(() => {
 });
 
 const activeSelectedPickedId = computed(() => {
-  return resolvePickedItemId(activeCategory.value, activeLevel.value);
+  return resolvePickedItemId(activeCategory.value);
 });
 
 const activeSelectedIsPicked = computed(() => {
@@ -365,17 +372,17 @@ watch(() => props.researchProgress, raw => {
 
 watch(() => props.researchSelection, raw => {
   const nextValue = sanitizeSelectionMap(raw);
-  const currentSig = JSON.stringify(sanitizeSelectionMap(selectedByCategoryLevel.value));
+  const currentSig = JSON.stringify(sanitizeSelectionMap(selectedByCategory.value));
   const nextSig = JSON.stringify(nextValue);
   if (currentSig === nextSig) return;
-  selectedByCategoryLevel.value = nextValue;
+  selectedByCategory.value = nextValue;
 }, { immediate: true, deep: true });
 
 watch(researchProgressState, value => {
   emit("update:researchProgress", sanitizeResearchProgress(value));
 }, { deep: true });
 
-watch(selectedByCategoryLevel, value => {
+watch(selectedByCategory, value => {
   emit("update:researchSelection", sanitizeSelectionMap(value));
 }, { deep: true });
 
@@ -411,6 +418,20 @@ watch(activeLevelRow, row => {
   }
 }, { immediate: true });
 
+watch(
+  [() => props.show, () => props.initialCategory, resolvedCategories],
+  ([visible, initialCategory, categories]) => {
+    if (!visible) return;
+    const key = normalizeCategoryName(initialCategory);
+    if (!key) return;
+    if (!Array.isArray(categories) || !categories.includes(key)) return;
+    if (activeCategory.value !== key) {
+      activeCategory.value = key;
+    }
+  },
+  { immediate: true }
+);
+
 function selectCategory(key) {
   activeCategory.value = key;
 }
@@ -435,12 +456,9 @@ function chooseSelectedResearch() {
   const level = Number(row?.level) || 1;
   if (!isLevelUnlocked(categoryKey, level)) return;
   if (isItemCompleted(categoryKey, level, String(item.id || ""))) return;
-  selectedByCategoryLevel.value = {
-    ...selectedByCategoryLevel.value,
-    [categoryKey]: {
-      ...readSelectedMap(categoryKey),
-      [level]: String(item.id)
-    }
+  selectedByCategory.value = {
+    ...selectedByCategory.value,
+    [categoryKey]: String(item.id || "").trim()
   };
   consumeCarryForResearch(categoryKey, level, String(item.id || ""));
 }
@@ -509,7 +527,7 @@ const researchBoardRows = computed(() => {
     return activeLevelNumbers.value.map(level => {
       const row = resolveLevelRowByLevel(level);
       const item = Array.isArray(row?.items) ? (row.items[rowIndex] || null) : null;
-      const pickedId = resolvePickedItemId(categoryKey, level);
+      const pickedId = resolvePickedItemId(categoryKey);
       const isActive = !!item
         && Number(activeLevel.value) === Number(level)
         && String(selectedResearchId.value || "") === String(item.id || "");
@@ -545,7 +563,7 @@ function selectResearchCell(level, item) {
   >
     <div class="research-modal">
       <p class="small research-help">
-        各Lvで複数研究できます。同時進行は1件のみです（研究として選択した項目）。
+        研究として選択できる項目は、カテゴリごとに常に1件のみです。
       </p>
 
       <div v-if="skippedCategories.length" class="research-warning">
@@ -648,6 +666,9 @@ function selectResearchCell(level, item) {
                     <div class="research-item-exp-bar">
                       <span
                         class="research-item-exp-fill"
+                        :class="{
+                          completed: cell.completed || (cell.requiredExp > 0 && cell.currentExp >= cell.requiredExp)
+                        }"
                         :style="{ width: `${Math.max(0, Math.min(100, Math.round((cell.currentExp / Math.max(1, cell.requiredExp)) * 100)))}%` }"
                       />
                     </div>
@@ -695,7 +716,7 @@ function selectResearchCell(level, item) {
                   :disabled="!isLevelUnlocked(activeCategory, selectedResearchInfo.level) || isItemCompleted(activeCategory, selectedResearchInfo.level, selectedResearchInfo.id)"
                   @click="chooseSelectedResearch"
                 >
-                  Lv{{ selectedResearchInfo.level }}の研究として選択
+                  研究として選択
                 </button>
                 <p class="small">
                   <template v-if="activeSelectedCompleted">
@@ -833,7 +854,10 @@ function selectResearchCell(level, item) {
   gap: 10px;
   margin-bottom: 8px;
   max-height: 55px;
-  background: linear-gradient(120deg, #3d2f14, #5f3a00);
+  background: linear-gradient(120deg, rgba(36, 23, 9, 0.96), rgba(67, 39, 7, 0.96));
+  border: 1px solid rgba(236, 206, 150, 0.5);
+  border-radius: 8px;
+  padding: 6px 8px;
 }
 
 .research-pane-title {
@@ -843,8 +867,9 @@ function selectResearchCell(level, item) {
 
 .research-pane-head h3 {
   margin: 0;
-  color: #fff0c8;
+  color: #fff8e6;
   font-size: calc(1rem * var(--research-text-scale, 1));
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.62);
 }
 
 .research-head-controls {
@@ -856,11 +881,15 @@ function selectResearchCell(level, item) {
 }
 
 .research-head-exp {
-  color: #fff1ce;
+  color: #fff8e2;
   font-weight: 700;
   font-size: calc(0.78rem * var(--research-text-scale, 1));
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
   white-space: nowrap;
+  background: rgba(17, 12, 7, 0.36);
+  border: 1px solid rgba(241, 214, 161, 0.35);
+  border-radius: 999px;
+  padding: 2px 7px;
 }
 
 .research-head-buttons {
@@ -933,6 +962,8 @@ function selectResearchCell(level, item) {
   align-content: start;
   grid-auto-rows: min-content;
   min-height: 115px;
+  position: relative;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .research-grid-cell:not(.active):not(.picked):not(.locked):not(.empty) {
@@ -990,6 +1021,11 @@ function selectResearchCell(level, item) {
   background: linear-gradient(90deg, rgba(109, 166, 125, 0.9), rgba(178, 224, 144, 0.9));
 }
 
+.research-item-exp-fill.completed {
+  background: linear-gradient(90deg, rgba(96, 186, 132, 0.98), rgba(201, 255, 159, 0.98));
+  box-shadow: 0 0 8px rgba(130, 222, 160, 0.42);
+}
+
 .research-item-desc {
   min-height: 44px;
   max-height: 100px;
@@ -1014,11 +1050,62 @@ function selectResearchCell(level, item) {
 
 .research-grid-cell.active {
   border-color: rgba(246, 215, 150, 0.9);
-  box-shadow: 0 0 0 1px rgba(246, 215, 150, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(246, 215, 150, 0.45),
+    inset 0 0 0 1px rgba(255, 244, 214, 0.18);
+  background: linear-gradient(170deg, rgba(104, 72, 29, 0.95), rgba(61, 41, 17, 0.96));
+}
+
+.research-grid-cell.active strong {
+  color: #fff8e9;
+}
+
+.research-grid-cell.active small {
+  color: #ffeec9;
 }
 
 .research-grid-cell.picked {
-  border-color: rgba(162, 220, 176, 0.95);
+  border: 3px solid rgba(138, 235, 186, 0.98);
+  background: linear-gradient(170deg, rgba(28, 63, 45, 0.96), rgba(18, 45, 33, 0.97));
+  box-shadow:
+    0 0 0 1px rgba(206, 255, 228, 0.52),
+    0 0 16px rgba(67, 191, 133, 0.35);
+}
+
+.research-grid-cell.picked::after {
+  content: "研究中";
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(211, 255, 233, 0.86);
+  background: rgba(18, 67, 46, 0.96);
+  color: #dfffea;
+  font-size: calc(0.62rem * var(--research-text-scale, 1));
+  font-weight: 800;
+  line-height: 1;
+  padding: 2px 7px;
+  letter-spacing: 0.01em;
+}
+
+.research-grid-cell.picked strong {
+  color: #ecfff5;
+}
+
+.research-grid-cell.picked small {
+  color: #d7ffe9;
+}
+
+.research-grid-cell.picked .research-item-exp-bar {
+  border-color: rgba(186, 255, 224, 0.58);
+  background: rgba(12, 44, 32, 0.82);
+}
+
+.research-grid-cell.picked.active {
+  border-color: rgba(230, 248, 174, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(250, 255, 223, 0.58),
+    0 0 16px rgba(133, 207, 106, 0.34);
 }
 
 .research-grid-cell.completed {

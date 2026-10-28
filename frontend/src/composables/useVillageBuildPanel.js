@@ -126,6 +126,13 @@ export function useVillageBuildPanel(options = {}) {
   const canOpenVillageBuildAtTile = typeof options.canOpenVillageBuildAtTile === "function"
     ? options.canOpenVillageBuildAtTile
     : (() => false);
+  const resolveFacilityTerrainCondition = typeof options.resolveFacilityTerrainCondition === "function"
+    ? options.resolveFacilityTerrainCondition
+    : (conditionRaw => {
+      const condition = nonEmptyText(conditionRaw);
+      const ok = !condition || condition === "なし";
+      return { ok, reason: ok ? "" : `地形条件を確認できません: ${condition}` };
+    });
 
   function normalizeVillageTileFacilityMap(rawMap) {
     const source = rawMap && typeof rawMap === "object" ? rawMap : {};
@@ -328,6 +335,7 @@ export function useVillageBuildPanel(options = {}) {
   function resolveVillageBuildingStatusText(availability) {
     const source = availability && typeof availability === "object" ? availability : {};
     const states = [];
+    if (source.hasTerrain === false) states.push("地形不一致");
     if (source.hasResearch === false) states.push("研究不足");
     if (source.canAfford === false) states.push("素材不足");
     if (source.hasLand === false) states.push("土地不足");
@@ -400,6 +408,11 @@ export function useVillageBuildPanel(options = {}) {
       };
     }
     const reasons = [];
+    const terrainStatusRaw = resolveFacilityTerrainCondition(def.conditionTerrain, target);
+    const hasTerrain = terrainStatusRaw === true || terrainStatusRaw?.ok === true;
+    if (!hasTerrain) {
+      reasons.push(nonEmptyText(terrainStatusRaw?.reason) || `地形条件: ${def.conditionTerrain || "不明"}`);
+    }
     const requirements = Array.isArray(def.requirements) ? def.requirements : [];
     let hasResearch = true;
     for (const requirement of requirements) {
@@ -422,10 +435,11 @@ export function useVillageBuildPanel(options = {}) {
     if (!canAfford) {
       reasons.push(`資材不足: ${materialStatus.shortageText || formatMaterialRawPositiveResourceBag(def.cost)}`);
     }
-    const statusText = resolveVillageBuildingStatusText({ hasResearch, canAfford, hasLand });
+    const statusText = resolveVillageBuildingStatusText({ hasTerrain, hasResearch, canAfford, hasLand });
     return {
-      selectable: hasResearch && canAfford && hasLand,
+      selectable: hasTerrain && hasResearch && canAfford && hasLand,
       canAfford,
+      hasTerrain,
       hasResearch,
       hasLand,
       slotCost,
